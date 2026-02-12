@@ -1,0 +1,2585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zimi</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0b; --surface: #141416; --surface2: #1c1c20;
+    --border: #27272b; --text: #e8e8ed; --text2: #6e6e7a;
+    --accent: #f5f5f7; --amber: #f59e0b; --amber2: #d97706;
+    --amber-glow: rgba(245, 158, 11, 0.08); --amber-border: rgba(245, 158, 11, 0.25);
+    --radius: 10px;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  }
+
+  body { background: var(--bg); color: var(--text); min-height: 100vh; padding-top: 56px; }
+
+  /* ── Topbar ── */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    height: 56px; display: flex; align-items: center; gap: 10px;
+    padding: 0 16px; background: rgba(10, 10, 11, 0.85); backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar .logo {
+    font-size: 18px; font-weight: 700; letter-spacing: -0.5px;
+    text-decoration: none; white-space: nowrap; flex-shrink: 0; cursor: pointer;
+    background: linear-gradient(135deg, #f59e0b, #f97316, #ef4444);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; transition: opacity 0.15s;
+  }
+  .topbar .logo:hover { opacity: 0.8; }
+
+  .back-btn {
+    display: none; align-items: center; justify-content: center;
+    background: none; border: 1px solid transparent; border-radius: var(--radius);
+    color: var(--text2); font-size: 16px; padding: 4px 6px; cursor: pointer;
+    flex-shrink: 0; transition: all 0.15s; line-height: 1;
+  }
+  .back-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+
+  .topbar-breadcrumb { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-width: 0; }
+  .bc-sep { color: var(--text2); font-size: 18px; opacity: 0.5; font-weight: 300; }
+  .bc-icon { display: none; flex-shrink: 0; line-height: 0; cursor: pointer; }
+  .bc-icon img { width: 22px; height: 22px; border-radius: 5px; object-fit: cover; background: #fff; }
+  .bc-icon .bc-letter {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 5px;
+    background: var(--surface2); color: var(--accent);
+    font-size: 12px; font-weight: 700;
+  }
+
+  .topbar-search { flex: 1; position: relative; margin-left: 4px; }
+  .topbar-search input {
+    width: 100%; padding: 9px 14px 9px 36px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); font-size: 14px; outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .topbar-search input:focus {
+    border-color: var(--amber-border);
+    box-shadow: 0 0 0 3px var(--amber-glow), 0 0 20px var(--amber-glow);
+  }
+  .topbar-search input::placeholder { color: var(--text2); }
+  .topbar-search .search-icon {
+    position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+    width: 14px; height: 14px; color: var(--text2); pointer-events: none;
+  }
+  .topbar-search .kbd {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    font-size: 11px; color: var(--text2); background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px;
+    font-family: inherit; pointer-events: none; opacity: 0.7; transition: opacity 0.15s;
+  }
+  .topbar-search input:focus ~ .kbd { opacity: 0; }
+
+  /* ── Suggest dropdown ── */
+  .suggest-dropdown {
+    position: absolute; top: 100%; left: 0; right: 0;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 0 0 var(--radius) var(--radius);
+    display: none; z-index: 300; max-height: 300px; overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .suggest-item {
+    padding: 8px 14px; cursor: pointer; font-size: 13px; transition: background 0.1s;
+  }
+  .suggest-item:hover, .suggest-item.active { background: var(--amber-glow); }
+  .suggest-item .sg-title { color: var(--text); }
+  .suggest-item .sg-source { font-size: 11px; color: var(--text2); margin-top: 1px; }
+
+  .random-btn, .manage-btn, .newtab-btn {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text2); text-decoration: none;
+    flex-shrink: 0; padding: 6px 10px;
+    border-radius: var(--radius); transition: all 0.2s; border: 1px solid transparent;
+  }
+  .random-btn { font-size: 18px; }
+  .manage-btn, .newtab-btn { display: none; font-size: 16px; }
+  .random-btn:hover, .manage-btn:hover, .newtab-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .random-btn .dice { display: inline-block; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .random-btn:hover .dice { transform: rotate(20deg) scale(1.15); }
+  .random-btn.rolling .dice { animation: diceRoll 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  @keyframes diceRoll {
+    0% { transform: rotate(0deg) scale(1); }
+    30% { transform: rotate(180deg) scale(1.3); }
+    60% { transform: rotate(360deg) scale(0.9); }
+    100% { transform: rotate(360deg) scale(1); }
+  }
+
+  /* ── Layout ── */
+  .container { max-width: 820px; margin: 0 auto; padding: 28px 16px; }
+
+  /* ── Stats bar ── */
+  .stats-bar { text-align: center; padding: 8px 0 20px; font-size: 14px; color: var(--text2); }
+  .stats-bar .num { color: var(--amber); font-weight: 600; }
+
+  /* ── Pills (categories + search source filters) ── */
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 20px; }
+  .pill {
+    padding: 6px 14px; font-size: 12px; font-weight: 500;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    color: var(--text2); cursor: pointer; transition: all 0.2s;
+  }
+  .pill:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
+  .pill.active {
+    background: linear-gradient(135deg, var(--amber), var(--amber2));
+    color: #000; border-color: transparent; font-weight: 600;
+  }
+
+  /* ── Category headings ── */
+  .cat-heading {
+    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+    margin: 32px 0 10px; padding-left: 2px;
+    background: linear-gradient(90deg, var(--amber), var(--text2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .cat-heading:first-child { margin-top: 0; }
+
+  /* ── Source header ── */
+  .source-header {
+    display: flex; gap: 16px; align-items: flex-start; padding: 4px 0 24px;
+  }
+  .sh-icon {
+    width: 64px; height: 64px; flex-shrink: 0; border-radius: 12px; overflow: hidden;
+    background: var(--surface2); display: flex; align-items: center; justify-content: center;
+  }
+  .sh-icon img { width: 64px; height: 64px; object-fit: cover; background: #fff; }
+  .sh-info { flex: 1; min-width: 0; }
+  .source-header h1 { font-size: 20px; font-weight: 600; color: var(--accent); margin: 0; }
+  .sh-meta { font-size: 13px; color: var(--text2); margin-top: 4px; }
+  .sh-desc { font-size: 13px; color: var(--text2); margin-top: 4px; line-height: 1.5; }
+
+  /* ── Source cards ── */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 8px; margin-top: 8px;
+  }
+  .stat-card {
+    background: var(--surface); border-radius: var(--radius); padding: 14px;
+    border: 1px solid var(--border);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex; gap: 14px; align-items: stretch; text-decoration: none; color: inherit; cursor: pointer;
+  }
+  .stat-card:hover, .stat-card:focus-visible {
+    background: var(--surface2); border-color: var(--amber-border);
+    box-shadow: 0 4px 24px var(--amber-glow), 0 0 0 1px var(--amber-glow);
+    transform: translateY(-2px); outline: none;
+  }
+  .card-icon {
+    width: 48px; height: 48px; flex-shrink: 0; border-radius: 10px; overflow: hidden;
+    background: var(--surface2); display: flex; align-items: center; justify-content: center;
+    align-self: center;
+  }
+  .card-icon img { width: 48px; height: 48px; object-fit: cover; background: #fff; border-radius: 8px; }
+  .icon-letter {
+    font-size: 20px; font-weight: 700;
+    background: linear-gradient(135deg, var(--amber), #f97316);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .card-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .stat-card .name { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 2px; }
+  .stat-card .desc {
+    font-size: 12px; color: var(--text2); line-height: 1.4; margin-bottom: 4px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .stat-card .detail { font-size: 11px; color: var(--text2); opacity: 0.6; margin-top: auto; }
+
+  /* ── Search results ── */
+  .meta { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; font-size: 12px; color: var(--text2); }
+  .meta .count { color: var(--amber); font-weight: 600; }
+  .meta .time { opacity: 0.6; }
+
+  .results { display: flex; flex-direction: column; gap: 3px; }
+  .result {
+    padding: 14px 16px; background: var(--surface); border-radius: var(--radius);
+    cursor: pointer; border: 1px solid transparent;
+    transition: all 0.2s; opacity: 0; animation: fadeUp 0.3s ease forwards;
+  }
+  .result:hover, .result:focus-visible {
+    background: var(--surface2); border-color: var(--amber-border);
+    box-shadow: 0 2px 12px var(--amber-glow);
+    transform: translateX(4px); outline: none;
+  }
+  .result-source {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+  }
+  .result-source img { width: 20px; height: 20px; border-radius: 4px; flex-shrink: 0; background: #fff; }
+  .result-source .rs-letter {
+    width: 20px; height: 20px; border-radius: 4px; background: var(--surface2);
+    display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: var(--text2); flex-shrink: 0;
+  }
+  .result-source .rs-name { font-size: 12px; color: var(--text2); font-weight: 500; }
+  .result .title { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+  .result .snippet {
+    font-size: 13px; color: var(--text2); line-height: 1.5;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    transition: opacity 0.3s;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .result:nth-child(1) { animation-delay: 0s; }
+  .result:nth-child(2) { animation-delay: 0.04s; }
+  .result:nth-child(3) { animation-delay: 0.08s; }
+  .result:nth-child(4) { animation-delay: 0.12s; }
+  .result:nth-child(5) { animation-delay: 0.16s; }
+  .result:nth-child(n+6) { animation-delay: 0.2s; }
+
+  /* ── Load more ── */
+  .load-more {
+    text-align: center; padding: 16px;
+  }
+  .load-more button {
+    padding: 10px 24px; font-size: 13px; font-weight: 500; cursor: pointer;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    border-radius: var(--radius); transition: all 0.2s;
+  }
+  .load-more button:hover {
+    border-color: var(--amber-border); background: var(--amber-glow);
+  }
+
+  /* ── Reader ── */
+  .reader-view {
+    position: fixed; top: 56px; left: 0; right: 0; bottom: 0;
+    display: none; flex-direction: column; z-index: 100; background: var(--bg);
+  }
+  .reader-view.open { display: flex; animation: fadeIn 0.15s ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  #reader-frame { flex: 1; border: none; width: 100%; background: #fff; }
+  .reader-loading {
+    position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; flex-direction: column; gap: 12px;
+    background: var(--bg); color: var(--text2); font-size: 13px;
+    z-index: 5; transition: opacity 0.3s;
+  }
+  .reader-loading.hidden { opacity: 0; pointer-events: none; }
+  .reader-loading .spinner {
+    width: 24px; height: 24px; border: 2px solid var(--border);
+    border-top-color: var(--amber); border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Footer ── */
+  .footer {
+    text-align: center; padding: 32px 16px 24px;
+    font-size: 12px; color: var(--text2); opacity: 0.5;
+    border-top: 1px solid var(--border); margin-top: 40px;
+  }
+  .footer .footer-brand {
+    background: linear-gradient(135deg, #f59e0b, #f97316);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; font-weight: 600; text-decoration: none;
+  }
+  .footer .footer-brand:hover { opacity: 0.8; }
+
+  /* ── Utility ── */
+  .loading { text-align: center; padding: 40px; color: var(--text2); font-size: 13px; }
+  .loading .spinner-inline {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid var(--border); border-top-color: var(--amber);
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    vertical-align: middle; margin-right: 8px;
+  }
+  .empty { text-align: center; padding: 48px 20px; color: var(--text2); }
+  .empty p { font-size: 14px; margin-bottom: 8px; }
+  .empty .hint { font-size: 12px; opacity: 0.5; }
+  .search-deeper {
+    text-align: center; padding: 14px 20px; margin-top: 16px;
+    color: var(--amber); font-size: 13px; cursor: pointer;
+    border: 1px dashed var(--border); border-radius: var(--radius);
+    transition: all 0.2s;
+  }
+  .search-deeper:hover, .search-deeper:focus-visible {
+    border-color: var(--amber-border); background: var(--surface);
+    outline: none;
+  }
+  #main-view.hidden { display: none; }
+
+  /* ── Manage page ── */
+  .manage-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; margin-bottom: 16px;
+  }
+  .manage-card h2 {
+    font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 12px;
+  }
+  .manage-card .mc-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: var(--text2); padding: 4px 0;
+  }
+  .manage-card .mc-row .mc-label { color: var(--text2); }
+  .manage-card .mc-row .mc-value { color: var(--text); font-weight: 500; }
+  .manage-btn-action {
+    padding: 8px 18px; font-size: 13px; font-weight: 500; cursor: pointer;
+    background: linear-gradient(135deg, var(--amber), var(--amber2));
+    color: #000; border: none; border-radius: var(--radius);
+    transition: opacity 0.2s;
+  }
+  .manage-btn-action:hover { opacity: 0.85; }
+  .manage-btn-action:disabled { opacity: 0.4; cursor: default; }
+  .manage-search { margin-bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .manage-search input {
+    flex: 1; padding: 9px 14px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--text); font-size: 14px; outline: none;
+  }
+  .manage-search input:focus { border-color: var(--amber-border); }
+  .manage-search select {
+    padding: 9px 12px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--text); font-size: 13px; outline: none;
+  }
+  .catalog-item {
+    display: flex; gap: 14px; align-items: center; padding: 14px 16px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    margin-bottom: 6px; transition: border-color 0.2s, opacity 0.3s, max-height 0.3s, padding 0.3s, margin 0.3s;
+    max-height: 200px; overflow: hidden;
+  }
+  .catalog-item.ci-removing {
+    opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: 0;
+    border-color: transparent;
+  }
+  .catalog-item:hover { border-color: var(--amber-border); }
+  .catalog-item.ci-installed-item { opacity: 0.6; }
+  .ci-icon { flex-shrink: 0; width: 40px; height: 40px; border-radius: 8px; overflow: hidden; background: var(--surface2); }
+  .ci-icon img { width: 40px; height: 40px; object-fit: cover; }
+  .ci-icon .ci-letter {
+    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; font-size: 16px; font-weight: 700; color: var(--accent);
+  }
+  .catalog-item .ci-info { flex: 1; min-width: 0; }
+  .catalog-item .ci-title { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 3px; }
+  .catalog-item .ci-summary {
+    font-size: 12px; color: var(--text2); line-height: 1.4; margin-bottom: 4px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .catalog-item .ci-meta { font-size: 12px; color: var(--text2); opacity: 0.5; }
+  .catalog-item .ci-actions { flex-shrink: 0; display: flex; align-items: center; gap: 6px; margin-left: 8px; }
+  .ci-installed-badge {
+    font-size: 11px; color: var(--amber); font-weight: 600; padding: 4px 10px;
+    border: 1px solid var(--amber-border); border-radius: 12px; background: var(--amber-glow);
+  }
+  .ci-delete-btn {
+    background: none; border: 1px solid transparent; color: var(--text2); opacity: 0.3;
+    font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 6px;
+    transition: all 0.2s; line-height: 1;
+  }
+  .ci-delete-btn:hover { opacity: 1; color: #f44; border-color: #f44; }
+  .ci-delete-btn.confirming { opacity: 1; color: #f44; border-color: #f44; font-size: 11px; padding: 4px 10px; }
+  .ci-update-btn {
+    font-size: 11px; font-weight: 600; padding: 4px 12px; cursor: pointer;
+    color: #fff; background: var(--amber2); border: none; border-radius: 12px;
+    transition: all 0.2s; white-space: nowrap;
+  }
+  .ci-update-btn:hover { background: var(--amber); }
+  .ci-has-update { border-color: var(--amber-border); }
+  .ci-add-btn {
+    padding: 6px 14px; font-size: 12px; font-weight: 500; cursor: pointer;
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+    border-radius: var(--radius); transition: all 0.2s;
+  }
+  .ci-add-btn:hover { border-color: var(--amber-border); background: var(--amber-glow); }
+  .ci-variants { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .ci-variant-btn {
+    padding: 3px 10px; font-size: 11px; font-weight: 500; cursor: pointer;
+    background: var(--surface2); color: var(--text2); border: 1px solid var(--border);
+    border-radius: 12px; transition: all 0.2s; white-space: nowrap;
+  }
+  .ci-variant-btn:hover { border-color: var(--amber-border); background: var(--amber-glow); color: var(--text); }
+  .ci-section-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text2); padding: 16px 0 8px; opacity: 0.7;
+  }
+  .dl-item {
+    padding: 12px 14px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 6px; font-size: 13px;
+  }
+  .dl-row { display: flex; gap: 12px; align-items: center; }
+  .dl-item .dl-name { flex: 1; color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dl-item .dl-size { color: var(--text2); flex-shrink: 0; }
+  .dl-item .dl-done { color: var(--amber); font-weight: 600; }
+  .dl-item .dl-error { color: #f87171; font-weight: 600; }
+  .dl-progress { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+  .dl-progress-bar { height: 100%; background: var(--amber); border-radius: 2px; transition: width 0.5s; }
+  .dl-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);
+    font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+  .dl-cancel-btn:hover { border-color: #f44; color: #f44; }
+  .dl-retry-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .dl-meta { font-size: 11px; color: var(--text2); opacity: 0.6; }
+  .dl-clear-btn {
+    float: right; background: none; border: 1px solid var(--border); color: var(--text2);
+    font-size: 11px; padding: 2px 10px; border-radius: 4px; cursor: pointer; margin-top: -28px;
+  }
+  .dl-clear-btn:hover { border-color: var(--amber); color: var(--amber); }
+
+  /* ── Manage tabs ── */
+  .manage-tabs {
+    display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px;
+  }
+  .manage-tab {
+    padding: 10px 20px; font-size: 13px; font-weight: 500; cursor: pointer;
+    background: none; border: none; border-bottom: 2px solid transparent;
+    color: var(--text2); transition: all 0.2s; white-space: nowrap;
+  }
+  .manage-tab:hover { color: var(--text); }
+  .manage-tab.active {
+    color: var(--amber); border-bottom-color: var(--amber); font-weight: 600;
+  }
+  .manage-tab-content { display: none; }
+  .manage-tab-content.active { display: block; }
+  .manage-installed-group { margin-bottom: 24px; }
+  .manage-installed-group .ci-section-label { margin-top: 0; }
+  .manage-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+
+  /* ── Browse category gallery ── */
+  .browse-gallery { }
+  .browse-header { text-align: center; margin-bottom: 24px; }
+  .browse-title { font-size: 18px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+  .browse-subtitle { font-size: 13px; color: var(--text2); }
+  .browse-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px;
+  }
+  .browse-cat-card {
+    display: flex; gap: 14px; align-items: stretch;
+    padding: 18px; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); transition: all 0.2s;
+  }
+  .browse-cat-card:hover {
+    border-color: var(--amber-border); background: var(--surface2); transform: translateY(-1px);
+  }
+  .bcc-icon {
+    font-size: 28px; width: 48px; height: 48px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface2); border-radius: 12px; flex-shrink: 0;
+    align-self: center;
+  }
+  .bcc-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .bcc-name { font-size: 15px; font-weight: 600; color: var(--accent); margin-bottom: 2px; }
+  .bcc-desc { font-size: 12px; color: var(--text2); line-height: 1.4; }
+  .bcc-count { font-size: 11px; color: var(--text2); opacity: 0.6; margin-top: auto; }
+  .bcc-arrow {
+    font-size: 20px; color: var(--text2); opacity: 0.3; flex-shrink: 0; transition: all 0.2s;
+    align-self: center;
+  }
+  .browse-cat-card:hover .bcc-arrow { color: var(--amber); opacity: 1; }
+  .browse-drilldown-header {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+  }
+  .browse-back {
+    background: none; border: none; color: var(--amber);
+    font-size: 13px; cursor: pointer; padding: 4px 0; font-weight: 500;
+  }
+  .browse-back:hover { text-decoration: underline; }
+  .browse-drilldown-title { font-size: 15px; font-weight: 600; color: var(--accent); }
+  .browse-drilldown-count { font-size: 12px; color: var(--text2); margin-left: auto; }
+
+  /* ── Mobile ── */
+  /* ── Results summary ── */
+  .results-summary {
+    text-align: center; padding: 16px 0 4px; font-size: 12px; color: var(--text2); opacity: 0.6;
+  }
+
+  /* ── Footer ── */
+  .footer-sub { margin-top: 6px; font-size: 11px; opacity: 0.7; }
+  .footer a { color: var(--amber); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+  .kbd-hints { opacity: 0.6; }
+
+  /* ── Mobile ── */
+  @media (max-width: 600px) {
+    .topbar { padding: 0 10px; gap: 6px; }
+    .topbar .logo { font-size: 16px; }
+    .bc-icon img { width: 18px; height: 18px; }
+    .bc-icon .bc-letter { width: 18px; height: 18px; font-size: 10px; }
+    .stats-grid { grid-template-columns: 1fr; }
+    .browse-grid { grid-template-columns: 1fr; }
+    .container { padding: 20px 12px; }
+    .topbar-search .kbd { display: none; }
+    .kbd-hints { display: none; }
+    .manage-search input { min-width: 0; }
+    .manage-search select { flex-shrink: 0; }
+    .manage-card { padding: 16px 12px; }
+    .manage-tab { padding: 8px 14px; font-size: 12px; }
+    body { overflow-x: hidden; }
+  }
+
+  /* ── Password modal ── */
+  .pw-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:200; align-items:center; justify-content:center; }
+  .pw-overlay.open { display:flex; }
+  .pw-box { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; width:320px; max-width:90vw; }
+  .pw-box h3 { margin:0 0 12px; font-size:15px; color:var(--text); }
+  .pw-box input[type="password"] { width:100%; padding:8px 10px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:14px; box-sizing:border-box; }
+  .pw-box input[type="password"]:focus { outline:none; border-color:var(--amber); }
+  .pw-box .pw-actions { display:flex; gap:8px; margin-top:12px; justify-content:flex-end; }
+  .pw-box button { padding:6px 14px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; font-size:13px; }
+  .pw-box button.pw-primary { background:var(--amber); color:#000; border-color:var(--amber); font-weight:600; }
+  .pw-box .pw-error { color:#ef4444; font-size:12px; margin-top:8px; display:none; }
+
+  /* ── Reduced motion ── */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="topbar" aria-label="Main navigation">
+  <div class="topbar-breadcrumb" onclick="bcClick(event)">
+    <a id="logo" class="logo" onclick="goHome(event)">Zimi</a>
+    <span id="bc-sep" class="bc-sep" style="display:none">/</span>
+    <span id="bc-icon" class="bc-icon" style="display:none"></span>
+  </div>
+  <button id="back-btn" class="back-btn" onclick="goBack()" aria-label="Go back" style="display:none">&#x2190;</button>
+  <div class="topbar-search">
+    <input type="text" id="q" placeholder="Search everything..." autofocus aria-label="Search" autocomplete="off">
+    <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>
+    <span class="kbd">/</span>
+    <div id="suggest-dropdown" class="suggest-dropdown"></div>
+  </div>
+  <a href="#" id="random-btn" class="random-btn" title="Random article (R)" onclick="randomArticle(event)"><span class="dice">&#x1F3B2;</span></a>
+  <a href="#" id="manage-btn" class="manage-btn" title="Library Manager" onclick="toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
+  <a id="newtab-btn" class="newtab-btn" href="#" target="_blank" rel="noopener" title="Open in new tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+</nav>
+
+<div id="pw-overlay" class="pw-overlay" onclick="if(event.target===this)closePwModal()">
+  <form class="pw-box" onsubmit="event.preventDefault();submitPw()" autocomplete="off">
+    <h3 id="pw-title">Enter password</h3>
+    <input style="display:none" type="text" name="fakeuser" tabindex="-1" autocomplete="off">
+    <input id="pw-input" type="password" placeholder="Password" autocomplete="new-password" data-1p-ignore onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
+    <div class="pw-error" id="pw-error"></div>
+    <label id="pw-remember-row" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--text2);cursor:pointer">
+      <input type="checkbox" id="pw-remember" style="accent-color:var(--amber);flex-shrink:0"> <span>Remember me</span>
+    </label>
+    <div class="pw-actions" style="justify-content:space-between">
+      <button type="button" id="pw-remove-btn" onclick="manageClearPassword()" style="display:none;color:var(--text2);font-size:12px">Remove</button>
+      <span style="flex:1"></span>
+      <button type="button" onclick="closePwModal()">Cancel</button>
+      <button type="submit" class="pw-primary">OK</button>
+    </div>
+  </form>
+</div>
+
+<noscript>
+  <div style="max-width:520px;margin:40px auto;padding:20px;text-align:center;color:#e8e8ed">
+    <h1 style="font-size:20px;margin-bottom:8px">Zimi</h1>
+    <p>Zimi requires JavaScript to browse your offline knowledge library.</p>
+    <p style="margin-top:8px;opacity:0.6;font-size:13px">The API endpoints (/search, /read, /list) work without JS.</p>
+  </div>
+</noscript>
+
+<main id="main-view">
+  <div class="container">
+    <div id="stats-bar" class="stats-bar"></div>
+    <div id="pills-bar" class="pills"></div>
+    <div id="source-header" style="display:none"></div>
+    <div class="meta" id="search-meta" style="display:none">
+      <span class="count" id="search-count"></span>
+      <span class="time" id="search-time"></span>
+    </div>
+    <div id="output"></div>
+  </div>
+  <footer id="footer" class="footer" style="display:none">
+    <a href="https://github.com/epheterson/zimi" target="_blank" rel="noopener" class="footer-brand">Zimi</a> &middot; Powered by <a href="https://kiwix.org" target="_blank" rel="noopener">Kiwix</a>
+    <div class="footer-sub"><span class="kbd-hints"><kbd>/</kbd> Search &middot; <kbd>R</kbd> Random &middot; <kbd>Esc</kbd> Back</span></div>
+  </footer>
+</main>
+
+<div id="reader" class="reader-view">
+  <div class="reader-loading" id="reader-loading"><div class="spinner"></div><span>Loading...</span></div>
+  <iframe id="reader-frame" title="Article content" sandbox="allow-same-origin allow-scripts allow-popups"></iframe>
+</div>
+
+<script>
+// ── State ──
+let mode = 'home'; // 'home' | 'source' | 'search' | 'manage'
+let currentSource = null;
+let readerOpen = false;
+let readerSource = null; // ZIM name of what's in reader (for topbar badge when no explicit source)
+let sourceAutoReader = false; // true when enterSource auto-opened the reader (non-zimgit homepage)
+let zimsCache = null;
+let manageEnabled = false;
+let activeCategories = new Set();
+let activeSourceFilters = new Set();
+let allResults = {};
+let searchController = null;
+let searchTimer = null;
+let suggestTimer = null;
+let suggestItems = [];
+let suggestIndex = -1;
+let snippetController = null;
+
+const RESULTS_PER_PAGE = 20;
+let visibleResultCount = RESULTS_PER_PAGE;
+
+function fmtSize(gb) { return gb < 0.1 ? Math.max(1, Math.round(gb * 1024)) + ' MB' : gb < 10 ? gb.toFixed(1) + ' GB' : Math.round(gb) + ' GB'; }
+function fmtSizeHtml(gb) { if (gb < 0.1) return '<span class="num">' + Math.max(1, Math.round(gb * 1024)) + '</span> MB'; if (gb < 10) return '<span class="num">' + gb.toFixed(1) + '</span> GB'; return '<span class="num">' + Math.round(gb) + '</span> GB'; }
+
+// ── DOM refs ──
+const q = document.getElementById('q');
+const output = document.getElementById('output');
+const mainView = document.getElementById('main-view');
+const statsBar = document.getElementById('stats-bar');
+const pillsBar = document.getElementById('pills-bar');
+const sourceHeaderEl = document.getElementById('source-header');
+const searchMeta = document.getElementById('search-meta');
+const logoEl = document.getElementById('logo');
+const backBtn = document.getElementById('back-btn');
+const bcSep = document.getElementById('bc-sep');
+const bcIcon = document.getElementById('bc-icon');
+const randomBtn = document.getElementById('random-btn');
+const manageBtnEl = document.getElementById('manage-btn');
+const _gearSvg = manageBtnEl.innerHTML; // capture gear icon for toggle
+const newtabBtn = document.getElementById('newtab-btn');
+const suggestDropdown = document.getElementById('suggest-dropdown');
+const footerEl = document.getElementById('footer');
+
+// ── Manage password ──
+let _manageToken = '';
+let _pwResolve = null;
+let _pwReject = null;
+
+function manageFetch(url, opts) {
+  opts = opts || {};
+  if (_manageToken) {
+    opts.headers = Object.assign({}, opts.headers, {'Authorization': 'Bearer ' + _manageToken});
+  }
+  return fetch(url, opts).then(function(res) {
+    if (res.status === 401) {
+      return new Promise(function(resolve) {
+        _pwResolve = function(token) {
+          _manageToken = token;
+          if (document.getElementById('pw-remember').checked) {
+            sessionStorage.setItem('zimi_manage_pw', token);
+          }
+          const retry = Object.assign({}, opts);
+          retry.headers = Object.assign({}, retry.headers, {'Authorization': 'Bearer ' + token});
+          resolve(fetch(url, retry));
+        };
+        openPwModal('Enter password');
+      });
+    }
+    return res;
+  });
+}
+
+function manageLogout() {
+  _manageToken = '';
+  sessionStorage.removeItem('zimi_manage_pw');
+  toggleManage();
+}
+
+function openPwModal(title, opts) {
+  document.getElementById('pw-title').textContent = title || 'Enter password';
+  document.getElementById('pw-input').value = '';
+  document.getElementById('pw-input').placeholder = (opts && opts.placeholder) || 'Password';
+  document.getElementById('pw-input').autocomplete = (opts && opts.hideRemember) ? 'new-password' : 'current-password';
+  document.getElementById('pw-error').style.display = 'none';
+  document.getElementById('pw-remember-row').style.display = (opts && opts.hideRemember) ? 'none' : 'flex';
+  document.getElementById('pw-remove-btn').style.display = 'none';
+  document.getElementById('pw-overlay').classList.add('open');
+  setTimeout(function() { document.getElementById('pw-input').focus(); }, 50);
+}
+
+function closePwModal() {
+  document.getElementById('pw-overlay').classList.remove('open');
+  if (_pwReject) { _pwReject(); _pwReject = null; }
+  _pwResolve = null;
+}
+
+function submitPw() {
+  const pw = document.getElementById('pw-input').value;
+  if (!pw) return;
+  if (_pwResolve) {
+    _pwReject = null;  // prevent cancel on close
+    _pwResolve(pw);
+    closePwModal();
+  }
+}
+
+// ── Topbar ──
+function updateTopbar() {
+  const activeSource = currentSource || readerSource;
+  // Back button: show when not on home (between breadcrumb and search bar — logo never moves)
+  const showBack = (readerOpen && !sourceAutoReader) || mode === 'search';
+  backBtn.style.display = showBack ? 'flex' : 'none';
+
+  // Breadcrumb: Zimi / [icon] — search bar shows source name as placeholder
+  if (activeSource) {
+    bcSep.style.display = 'inline';
+    bcIcon.style.display = 'inline-flex';
+    const info = zimsCache && zimsCache.find(z => z.name === activeSource);
+    const title = _zimTitle(activeSource);
+    if (info && info.has_icon) {
+      bcIcon.innerHTML = '<img src="/w/' + encodeURIComponent(activeSource) + '/-/icon" width="22" height="22">';
+    } else {
+      bcIcon.innerHTML = '<span class="bc-letter">' + (esc(title)[0] || 'Z').toUpperCase() + '</span>';
+    }
+  } else {
+    bcSep.style.display = 'none';
+    bcIcon.style.display = 'none';
+  }
+
+  // Manage: gear → X close button, keep breadcrumb as-is
+  if (mode === 'manage') {
+    manageBtnEl.style.display = 'flex';
+    manageBtnEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    manageBtnEl.title = 'Close';
+    manageBtnEl.style.color = 'var(--amber)';
+    manageBtnEl.style.borderColor = 'var(--amber-border)';
+    manageBtnEl.style.background = 'var(--amber-glow)';
+  } else {
+    manageBtnEl.style.display = manageEnabled && !activeSource ? 'flex' : 'none';
+    manageBtnEl.innerHTML = _gearSvg;
+    manageBtnEl.title = 'Library Manager';
+    manageBtnEl.style.color = '';
+    manageBtnEl.style.borderColor = '';
+    manageBtnEl.style.background = '';
+  }
+
+  newtabBtn.style.display = readerOpen ? 'flex' : 'none';
+  randomBtn.style.display = 'flex';
+
+  // Search placeholder
+  if (currentSource) {
+    q.placeholder = _zimTitle(currentSource);
+  } else if (mode === 'manage') {
+    if (manageTab === 'installed') {
+      q.placeholder = 'Filter installed ZIMs...';
+    } else if (manageCategoryFilter) {
+      const catMeta = BROWSE_CATEGORIES.find(c => c.key === manageCategoryFilter);
+      q.placeholder = 'Search in ' + (catMeta ? catMeta.name : manageCategoryFilter) + '...';
+    } else {
+      q.placeholder = 'Search Kiwix library...';
+    }
+  } else {
+    q.placeholder = 'Search everything...';
+  }
+
+  // Footer
+  updateFooter();
+}
+
+function bcClick(e) {
+  // Clicking the icon in the breadcrumb goes to the source view
+  if (e.target.id === 'logo') return;
+  if (currentSource && (readerOpen || mode === 'search')) {
+    if (readerOpen) closeReader();
+    enterSource(currentSource, false);
+  }
+}
+
+function updateFooter() {
+  if (readerOpen) {
+    footerEl.style.display = 'none';
+  } else {
+    footerEl.style.display = '';
+  }
+}
+
+// ── Init ──
+async function init() {
+  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading library\u2026</div>';
+  try {
+    const res = await fetch('/list');
+    zimsCache = await res.json();
+  } catch(e) { zimsCache = []; }
+  try {
+    const mres = await fetch('/manage/status');  // plain fetch — don't prompt for password on homepage
+    if (mres.ok) {
+      const mdata = await mres.json();
+      manageEnabled = !!mdata.manage_enabled;
+    } else if (mres.status === 401) {
+      manageEnabled = true;  // manage exists but needs password
+    }
+  } catch(e) {}
+  route(false);
+}
+
+function route(push) {
+  const path = location.pathname;
+  const search = location.search;
+  if (search === '?manage' && manageEnabled) { enterManage(); return; }
+  if (path.startsWith('/w/')) {
+    const rest = decodeURIComponent(path.slice(3));
+    const name = rest.split('/')[0];
+    if (name) { enterSource(name, push); return; }
+  }
+  if (zimsCache && zimsCache.length === 1) {
+    enterSource(zimsCache[0].name, false);
+    history.replaceState(null, '', '/w/' + encodeURIComponent(zimsCache[0].name));
+    return;
+  }
+  enterHome(push);
+}
+
+// ── Navigation ──
+function goHome(e) {
+  if (e) e.preventDefault();
+  closeReader();
+  currentSource = null;
+  readerSource = null;
+  sourceAutoReader = false;
+  activeCategories.clear();
+  enterHome(true);
+}
+
+function goBack() {
+  if (readerOpen) {
+    closeReader();
+    // Only go home if reader was auto-opened by enterSource AND user hasn't searched
+    if (sourceAutoReader) {
+      sourceAutoReader = false;
+      currentSource = null;
+      enterHome(true);
+    }
+    // Otherwise mainView still has content (search results, document list, etc)
+    return;
+  }
+  // Not in reader — navigate up the breadcrumb
+  if (mode === 'search' && currentSource) {
+    // Back from scoped search → return to source
+    enterSource(currentSource, true);
+  } else {
+    goHome(null);
+  }
+}
+
+function enterHome(push) {
+  mode = 'home';
+  currentSource = null;
+  readerSource = null;
+  sourceAutoReader = false;
+  q.value = '';
+  searchMeta.style.display = 'none';
+  sourceHeaderEl.style.display = 'none';
+  activeSourceFilters.clear();
+  hideSuggest();
+  if (push) history.pushState({ mode: 'home' }, '', '/');
+  updateTopbar();
+  renderHome();
+}
+
+async function enterSource(name, push) {
+  const info = zimsCache && zimsCache.find(z => z.name === name);
+  if (!info) { enterHome(push); return; }
+  mode = 'source';
+  currentSource = name;
+  readerSource = null;
+  sourceAutoReader = false;
+  q.value = '';
+  searchMeta.style.display = 'none';
+  activeSourceFilters.clear();
+  hideSuggest();
+  if (push) history.pushState({ mode: 'source', source: name }, '', '/w/' + encodeURIComponent(name));
+  updateTopbar();
+  await renderSource(name);
+}
+
+// ── Render: Home ──
+function renderHome(filter) {
+  if (!zimsCache || zimsCache.length === 0) {
+    statsBar.innerHTML = ''; statsBar.style.display = 'none';
+    pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+    output.innerHTML = '<div class="empty"><p>No knowledge sources found</p><p class="hint">Add ZIM files to get started</p></div>';
+    return;
+  }
+
+  // Filter ZIMs by title/name/description when filter text provided
+  let zims = zimsCache;
+  if (filter) {
+    const fl = filter.toLowerCase();
+    const words = fl.split(/\s+/).filter(Boolean);
+    zims = zimsCache.filter(z => {
+      const t = ((z.title || '') + ' ' + z.name + ' ' + (z.description || '')).toLowerCase();
+      return words.every(w => t.includes(w));
+    });
+  }
+
+  const totalAll = zimsCache.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
+  const totalGbAll = zimsCache.reduce((s, z) => s + z.size_gb, 0);
+
+  const n = zimsCache.length;
+  if (filter && zims.length !== zimsCache.length) {
+    statsBar.innerHTML = '<span class="num">' + zims.length + '</span> of ' + n + ' source' + (n !== 1 ? 's' : '') +
+      ' matching &ldquo;' + esc(filter) + '&rdquo;';
+  } else {
+    statsBar.innerHTML = '<span class="num">' + n + '</span> source' + (n !== 1 ? 's' : '') + ' &middot; ' +
+      '<span class="num">' + totalAll.toLocaleString() + '</span> article' + (totalAll !== 1 ? 's' : '') + ' &middot; ' +
+      fmtSizeHtml(totalGbAll);
+  }
+  statsBar.style.display = '';
+
+  const groups = {};
+  const sorted = zims.filter(z => z.entries !== '?').sort((a, b) => (b.entries || 0) - (a.entries || 0));
+  sorted.forEach(z => {
+    const key = z.category || '_uncategorized';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(z);
+  });
+
+  const cats = Object.keys(groups).filter(c => c !== '_uncategorized').sort();
+
+  // No pills on home — sections provide the organization
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+
+  let h = '';
+
+  // Show article search hint at the top when filtering
+  if (filter) {
+    const totalAll = zimsCache.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
+    h += '<div class="search-deeper" onclick="doSearch(\'' + escAttr(filter) + '\')" tabindex="0" ' +
+      'onkeydown="if(event.key===\'Enter\')doSearch(\'' + escAttr(filter) + '\')">' +
+      'Search ' + totalAll.toLocaleString() + ' articles for &ldquo;' + esc(filter) + '&rdquo; \u2192</div>';
+  }
+
+  if (filter && zims.length === 0) {
+    h += '<div class="empty"><p>No sources matching &ldquo;' + esc(filter) + '&rdquo;</p></div>';
+  } else {
+    cats.forEach(cat => {
+      h += '<div class="cat-heading">' + esc(cat) + '</div>';
+      h += renderCardGrid(groups[cat]);
+    });
+    if (groups._uncategorized) {
+      h += '<div class="cat-heading" style="opacity:0.5">Other</div>';
+      h += renderCardGrid(groups._uncategorized);
+    }
+  }
+
+  output.innerHTML = h;
+}
+
+function renderCardGrid(items) {
+  if (!items || !items.length) return '';
+  return '<div class="stats-grid">' + items.map(z => {
+    const icon = z.has_icon
+      ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" width="48" height="48" loading="lazy">'
+      : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
+    return '<div class="stat-card" tabindex="0" role="button" onclick="enterSource(\'' + escAttr(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escAttr(z.name) + '\', true)">' +
+      '<div class="card-icon">' + icon + '</div>' +
+      '<div class="card-info">' +
+        '<div class="name">' + esc(z.title || z.name) + '</div>' +
+        (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
+        '<div class="detail">' + (typeof z.entries === 'number' ? z.entries.toLocaleString() + ' entries' : '') +
+        ' &middot; ' + fmtSize(z.size_gb) + '</div>' +
+      '</div></div>';
+  }).join('') + '</div>';
+}
+
+function toggleCategory(cat) {
+  if (activeCategories.has(cat)) activeCategories.delete(cat);
+  else activeCategories.add(cat);
+  renderHome();
+}
+
+// ── Render: Source ──
+async function renderSource(name) {
+  const info = zimsCache.find(z => z.name === name);
+  if (!info) return;
+
+  statsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+
+  // Build source header HTML (shown only for catalog/empty ZIMs)
+  const iconHtml = info.has_icon
+    ? '<img src="/w/' + encodeURIComponent(name) + '/-/icon" width="64" height="64">'
+    : '<span class="icon-letter" style="font-size:28px">' + esc(info.title || name)[0].toUpperCase() + '</span>';
+  const headerHtml = '<div class="source-header">' +
+    '<div class="sh-icon">' + iconHtml + '</div>' +
+    '<div class="sh-info">' +
+      '<h1>' + esc(info.title || name) + '</h1>' +
+      '<div class="sh-meta">' + (typeof info.entries === 'number' ? info.entries.toLocaleString() + ' entries' : '') +
+      ' &middot; ' + fmtSize(info.size_gb) + '</div>' +
+      (info.description ? '<div class="sh-desc">' + esc(info.description) + '</div>' : '') +
+    '</div></div>';
+
+  // For ZIMs with a homepage, go straight to reader (skip intermediate page)
+  const isZimgit = name.startsWith('zimgit-');
+  if (info.main_path && !isZimgit) {
+    sourceHeaderEl.style.display = 'none';
+    output.innerHTML = '';
+    sourceAutoReader = true;
+    openReader('/w/' + encodeURIComponent(name) + '/' + info.main_path);
+    return;
+  }
+
+  // Catalog ZIMs or ZIMs without main_path — show source header
+  sourceHeaderEl.innerHTML = headerHtml;
+  sourceHeaderEl.style.display = '';
+  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading...</div>';
+
+  // Try catalog (zimgit PDF collections show document list)
+  try {
+    const res = await fetch('/catalog?zim=' + encodeURIComponent(name));
+    const data = await res.json();
+    if (mode !== 'source' || currentSource !== name) return; // stale
+    if (data.documents && data.documents.length) {
+      output.innerHTML = '<div class="cat-heading">' + esc(String(data.count)) + ' Documents</div>' +
+        '<div class="results">' + data.documents.map((d, i) => {
+          const hasPath = !!d.path;
+          const clickAttr = hasPath ? ' onclick="openArticle(\'' + escAttr(name) + '\', \'' + escAttr(d.path) + '\')" onkeydown="if(event.key===\'Enter\')openArticle(\'' + escAttr(name) + '\', \'' + escAttr(d.path) + '\')"' : '';
+          return '<div class="result"' + (hasPath ? ' tabindex="0" role="button"' : '') + ' style="animation-delay:' + (i * 0.04) + 's"' + clickAttr + '>' +
+            '<div class="title">' + esc(d.title) + '</div>' +
+            (d.description ? '<div class="snippet">' + esc(d.description) + '</div>' : '') +
+          '</div>';
+        }).join('') + '</div>';
+      return;
+    }
+  } catch(e) {}
+
+  if (mode !== 'source' || currentSource !== name) return;
+
+  // No catalog and no main_path — show empty source page
+  if (info.main_path) {
+    sourceAutoReader = true;
+    output.innerHTML = '';
+    sourceHeaderEl.style.display = 'none';
+    openReader('/w/' + encodeURIComponent(name) + '/' + info.main_path);
+  } else if (info.entries === 0 || info.entries === '?') {
+    output.innerHTML = '<div class="empty"><p>This source has no content</p><p class="hint">The ZIM file may be corrupted or empty</p></div>';
+  } else {
+    output.innerHTML = '';
+  }
+}
+
+// ── Search ──
+q.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  const val = q.value.trim();
+  // Suggest (200ms debounce)
+  clearTimeout(suggestTimer);
+  if (val && val.length >= 2 && mode !== 'manage') {
+    suggestTimer = setTimeout(() => fetchSuggestions(val), 200);
+  } else {
+    hideSuggest();
+  }
+  // Full search or clear
+  if (!val) { hideSuggest(); clearSearch(); return; }
+  if (mode === 'manage') {
+    searchTimer = setTimeout(() => {
+      if (manageTab === 'installed') {
+        renderInstalled(val);
+      } else {
+        browseCatalogFilter(val);
+      }
+    }, 300);
+    return;
+  }
+  // On homepage: live-filter ZIM sources; article search only on Enter
+  if (!currentSource && (mode === 'home' || mode === 'search')) {
+    mode = 'home';
+    searchMeta.style.display = 'none';
+    renderHome(val);
+    return;
+  }
+  searchTimer = setTimeout(() => doSearch(val), 500);
+});
+
+q.addEventListener('keydown', e => {
+  // Suggest keyboard navigation
+  if (suggestDropdown.style.display !== 'none') {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      suggestIndex = Math.min(suggestIndex + 1, suggestItems.length - 1);
+      highlightSuggest();
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      suggestIndex = Math.max(suggestIndex - 1, -1);
+      highlightSuggest();
+      return;
+    }
+    if (e.key === 'Enter' && suggestIndex >= 0) {
+      e.preventDefault();
+      selectSuggest(suggestIndex);
+      return;
+    }
+    if (e.key === 'Escape') {
+      hideSuggest();
+      return;
+    }
+  }
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    clearTimeout(searchTimer);
+    hideSuggest();
+    if (mode === 'manage') {
+      if (manageTab === 'installed') {
+        renderInstalled(q.value.trim());
+      } else {
+        const val = q.value.trim();
+        if (val) { browseCatalogFilter(val); } else { renderBrowseGallery(); }
+      }
+      return;
+    }
+    doSearch(q.value.trim());
+  }
+});
+
+
+async function doSearch(query) {
+  if (!query) return;
+
+  // Reject all-stop-word queries (e.g. "what", "the", "is it")
+  const STOPS = new Set(['a','an','and','are','as','at','be','by','for','from','has','have','how','i','in','is','it','its','my','not','of','on','or','so','that','the','this','to','was','we','what','when','where','which','who','will','with','you']);
+  const meaningful = query.toLowerCase().split(/\s+/).filter(w => !STOPS.has(w));
+  if (!meaningful.length) {
+    mode = 'search';
+    statsBar.style.display = 'none';
+    pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+    searchMeta.style.display = 'none';
+    output.innerHTML = '<div class="empty"><p>Try more specific keywords</p><p class="hint">Common words like \u201c' + esc(query) + '\u201d match too many articles</p></div>';
+    updateTopbar();
+    return;
+  }
+
+  if (searchController) searchController.abort();
+  searchController = new AbortController();
+
+  const scope = currentSource;
+  mode = 'search';
+  sourceAutoReader = false; // user searched — don't auto-home on back
+  visibleResultCount = RESULTS_PER_PAGE;
+
+  // Close reader if open
+  if (readerOpen) closeReader();
+
+  mainView.classList.remove('hidden');
+  if (!scope) sourceHeaderEl.style.display = 'none';
+  statsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  searchMeta.style.display = 'none';
+  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Searching...</div>';
+  updateTopbar();
+
+  const zimParam = scope ? '&zim=' + encodeURIComponent(scope) : '';
+  const searchT0 = performance.now();
+
+  try {
+    const res = await fetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam,
+      { signal: searchController.signal });
+    allResults = await res.json();
+    allResults._clientElapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
+    allResults._query = query;
+    // Push search state so browser back from reader returns here
+    const searchUrl = scope ? '/w/' + encodeURIComponent(scope) + '?q=' + encodeURIComponent(query) : '/?q=' + encodeURIComponent(query);
+    history.pushState({ mode: 'search', query: query, source: scope }, '', searchUrl);
+    renderSearchResults(allResults, scope);
+  } catch(e) {
+    if (e.name === 'AbortError') return;
+    output.innerHTML = '<div class="empty"><p>Search failed</p><p class="hint">Try again in a moment.</p></div>';
+  }
+}
+
+function _sourceIconHtml(zimName, size) {
+  const info = zimsCache && zimsCache.find(z => z.name === zimName);
+  const title = (info && info.title) || zimName;
+  if (info && info.has_icon) {
+    return '<img src="/w/' + encodeURIComponent(zimName) + '/-/icon" width="' + size + '" height="' + size + '">';
+  }
+  return '<span class="rs-letter">' + (esc(title)[0] || 'Z').toUpperCase() + '</span>';
+}
+
+function renderSearchResults(data, scope) {
+  if (snippetController) { snippetController.abort(); snippetController = null; }
+  let items = data.results || [];
+  const bySource = data.by_source || {};
+  const totalCount = data.total || items.length;
+
+  // Source filter pills (global search only, multiple sources)
+  const sourceNames = Object.keys(bySource);
+  if (!scope && sourceNames.length > 1) {
+    pillsBar.innerHTML = sourceNames.sort().map(s => {
+      return '<button class="pill' + (activeSourceFilters.has(s) ? ' active' : '') +
+        '" aria-pressed="' + activeSourceFilters.has(s) + '" onclick="toggleSourceFilter(\'' + escAttr(s) + '\')">' +
+        esc(_zimTitle(s)) + ' (' + bySource[s] + ')</button>';
+    }).join('');
+    pillsBar.style.display = '';
+  }
+
+  if (activeSourceFilters.size > 0) {
+    items = items.filter(r => activeSourceFilters.has(r.zim));
+  }
+
+  const displayElapsed = data._clientElapsed || (data.elapsed ? data.elapsed.toFixed(1) : null);
+  document.getElementById('search-count').textContent = totalCount + ' results';
+  document.getElementById('search-time').textContent = displayElapsed ? 'in ' + displayElapsed + 's' : '';
+  searchMeta.style.display = items.length ? 'flex' : 'none';
+
+  if (!items.length) {
+    output.innerHTML = '<div class="empty"><p>No results found</p><p class="hint">Try different keywords</p></div>';
+    return;
+  }
+
+  // Show matching ZIM sources above results (global search only)
+  let zimMatchHtml = '';
+  if (!scope && zimsCache && data._query) {
+    const ql = data._query.toLowerCase();
+    const qw = ql.split(/\s+/).filter(Boolean);
+    const matches = zimsCache.filter(z => {
+      const t = ((z.title || '') + ' ' + z.name + ' ' + (z.description || '')).toLowerCase();
+      return qw.every(w => t.includes(w));
+    });
+    if (matches.length > 0 && matches.length <= 8) {
+      zimMatchHtml = '<div class="stats-grid" style="margin-bottom:16px">' + matches.map(z => {
+        const icon = z.has_icon
+          ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" width="48" height="48" loading="lazy">'
+          : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
+        return '<div class="stat-card" tabindex="0" role="button" onclick="enterSource(\'' + escAttr(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escAttr(z.name) + '\', true)">' +
+          '<div class="card-icon">' + icon + '</div>' +
+          '<div class="card-info">' +
+            '<div class="name">' + esc(z.title || z.name) + '</div>' +
+            (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
+            '<div class="detail">' + (typeof z.entries === 'number' ? z.entries.toLocaleString() + ' entries' : '') +
+            ' &middot; ' + fmtSize(z.size_gb) + '</div>' +
+          '</div></div>';
+      }).join('') + '</div>';
+    }
+  }
+
+  // Pagination: show only first visibleResultCount items
+  const visible = items.slice(0, visibleResultCount);
+  const remaining = items.length - visibleResultCount;
+
+  let html = zimMatchHtml + '<div class="results">' + visible.map((r, i) => {
+    const sourceRow = !scope
+      ? '<div class="result-source">' + _sourceIconHtml(r.zim, 20) +
+        '<span class="rs-name">' + esc(_zimTitle(r.zim)) + '</span></div>'
+      : '';
+    return '<div class="result" tabindex="0" role="button" data-zim="' + escAttr(r.zim) + '" data-path="' + escAttr(r.path) + '" style="animation-delay:' + (Math.min(i, 5) * 0.04) + 's" onclick="openArticle(\'' + escAttr(r.zim) + '\', \'' + escAttr(r.path) + '\')" onkeydown="if(event.key===\'Enter\')openArticle(\'' + escAttr(r.zim) + '\', \'' + escAttr(r.path) + '\')">' +
+      sourceRow +
+      '<div class="title">' + esc(r.title) + '</div>' +
+      (r.snippet ? '<div class="snippet">' + esc(r.snippet) + '</div>' : '<div class="snippet" data-needs-snippet="1"></div>') +
+      '</div>';
+  }).join('') + '</div>';
+
+  if (remaining > 0) {
+    html += '<div class="load-more"><button onclick="showMoreResults()">Show ' +
+      Math.min(RESULTS_PER_PAGE, remaining) + ' more results</button></div>';
+  }
+
+  if (displayElapsed) {
+    html += '<div class="results-summary">Found ' + totalCount + ' results in ' + displayElapsed + 's</div>';
+  }
+
+  output.innerHTML = html;
+
+  if (!scope) loadSnippets();
+}
+
+function showMoreResults() {
+  visibleResultCount += RESULTS_PER_PAGE;
+  renderSearchResults(allResults, currentSource);
+}
+
+function _zimTitle(name) {
+  const info = zimsCache && zimsCache.find(z => z.name === name);
+  return (info && info.title) || name;
+}
+
+// ── Async Snippets ──
+async function loadSnippets() {
+  if (snippetController) snippetController.abort();
+  snippetController = new AbortController();
+  const signal = snippetController.signal;
+
+  const els = document.querySelectorAll('.result [data-needs-snippet="1"]');
+  if (!els.length) return;
+
+  const queue = Array.from(els);
+  const concurrency = 4;
+  let active = 0;
+  let idx = 0;
+
+  function next() {
+    while (active < concurrency && idx < queue.length) {
+      const el = queue[idx++];
+      const card = el.closest('.result');
+      if (!card) continue;
+      const zim = card.dataset.zim;
+      const path = card.dataset.path;
+      if (!zim || !path) continue;
+      active++;
+      fetchSnippet(el, zim, path, signal).finally(() => { active--; next(); });
+    }
+  }
+  next();
+}
+
+async function fetchSnippet(el, zim, path, signal) {
+  try {
+    const res = await fetch('/snippet?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path), { signal });
+    const data = await res.json();
+    if (data.snippet) {
+      el.textContent = data.snippet;
+      el.removeAttribute('data-needs-snippet');
+      el.style.opacity = '0';
+      requestAnimationFrame(() => { el.style.opacity = '1'; });
+    } else {
+      el.remove();
+    }
+  } catch(e) {
+    if (e.name !== 'AbortError') el.remove();
+  }
+}
+
+function toggleSourceFilter(s) {
+  if (activeSourceFilters.has(s)) activeSourceFilters.delete(s);
+  else activeSourceFilters.add(s);
+  visibleResultCount = RESULTS_PER_PAGE;
+  renderSearchResults(allResults, null);
+}
+
+function clearSearch() {
+  activeSourceFilters.clear();
+  if (snippetController) { snippetController.abort(); snippetController = null; }
+  searchMeta.style.display = 'none';
+  visibleResultCount = RESULTS_PER_PAGE;
+  if (mode === 'manage') {
+    if (manageTab === 'browse') {
+      if (manageCategoryFilter) drillCategory(manageCategoryFilter);
+      else renderBrowseGallery();
+    } else {
+      renderInstalledPills();
+      renderInstalled();
+    }
+  } else if (currentSource) {
+    mode = 'source';
+    updateTopbar();
+    renderSource(currentSource);
+  } else {
+    mode = 'home';
+    updateTopbar();
+    renderHome();
+  }
+}
+
+// ── Suggest / Autocomplete ──
+let suggestController = null;
+let _suggestSeq = 0; // sequence counter to discard stale responses
+
+async function fetchSuggestions(query) {
+  // Cancel any in-flight suggest request
+  if (suggestController) suggestController.abort();
+  suggestController = new AbortController();
+  const seq = ++_suggestSeq;
+
+  const zimParam = currentSource ? '&zim=' + encodeURIComponent(currentSource) : '';
+  try {
+    const res = await fetch('/suggest?q=' + encodeURIComponent(query) + '&limit=6' + zimParam,
+      { signal: suggestController.signal });
+    const data = await res.json();
+    // Discard if a newer request has been issued or input lost focus
+    if (seq !== _suggestSeq || document.activeElement !== q) return;
+    // data is {zim_name: [{path, title}, ...], ...}
+    suggestItems = [];
+    for (const [zim, items] of Object.entries(data)) {
+      for (const item of items) {
+        if (item.error) continue;
+        suggestItems.push({ zim, path: item.path, title: item.title });
+      }
+    }
+    // Deduplicate by title
+    const seen = new Set();
+    suggestItems = suggestItems.filter(s => {
+      const key = s.title.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 6);
+
+    if (suggestItems.length) showSuggest();
+    else hideSuggest();
+  } catch(e) {
+    if (e.name !== 'AbortError') hideSuggest();
+  }
+}
+
+// Close suggestions when clicking anywhere outside the search box/dropdown
+document.addEventListener('mousedown', (e) => {
+  if (!suggestDropdown.contains(e.target) && e.target !== q) {
+    hideSuggest();
+  }
+});
+
+function showSuggest() {
+  suggestIndex = -1;
+  suggestDropdown.innerHTML = suggestItems.map((s, i) =>
+    '<div class="suggest-item" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
+    '<div class="sg-title">' + esc(s.title) + '</div>' +
+    (!currentSource ? '<div class="sg-source">' + esc(_zimTitle(s.zim)) + '</div>' : '') +
+    '</div>'
+  ).join('');
+  suggestDropdown.style.display = 'block';
+}
+
+function hideSuggest() {
+  suggestDropdown.style.display = 'none';
+  suggestIndex = -1;
+}
+
+function highlightSuggest() {
+  suggestDropdown.querySelectorAll('.suggest-item').forEach((el, i) => {
+    el.classList.toggle('active', i === suggestIndex);
+  });
+}
+
+function selectSuggest(i) {
+  const s = suggestItems[i];
+  if (!s) return;
+  hideSuggest();
+  q.value = s.title;
+  openArticle(s.zim, s.path);
+}
+
+// ── Library Manager ──
+function toggleManage(e) {
+  if (e) e.preventDefault();
+  if (mode === 'manage') {
+    if (!sessionStorage.getItem('zimi_manage_pw')) _manageToken = '';
+    goHome(e); return;
+  }
+  enterManage(e);
+}
+
+function enterManage(e) {
+  if (e) e.preventDefault();
+  if (!manageEnabled) return;
+  mode = 'manage';
+  currentSource = null;
+  readerSource = null;
+  sourceAutoReader = false;
+  q.value = '';
+  closeReader();
+  statsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  searchMeta.style.display = 'none';
+  sourceHeaderEl.style.display = 'none';
+  hideSuggest();
+  history.pushState({ mode: 'manage' }, '', '/?manage');
+  updateTopbar();
+  renderManage();
+}
+
+let manageTab = 'installed';
+let manageCategoryFilter = null;
+let catalogPage = 0;
+let _catalogObserver = null;
+let _catalogTotal = 0;
+let _dlTimer = null;
+
+// ── Browse gallery data layer ──
+let _catalogCache = null;      // All catalog items (fetched once)
+let _catalogCacheLang = null;   // Language of cached data
+let _browseView = 'gallery';   // 'gallery' | 'drilldown' | 'search'
+let _availableUpdates = {};    // keyed by installed filename → update info
+let _mergedToOther = new Set(); // categories merged into Other (< MIN_BROWSE_CAT items)
+
+// ── Browse category gallery metadata ──
+const BROWSE_CATEGORIES = [
+  { key: 'wikipedia',      name: 'Encyclopedias',       icon: '\u{1F30D}', desc: 'Wikipedia, Wiktionary, Wikiquote, and Wikimedia projects' },
+  { key: 'stack_exchange', name: 'Q&A Communities',      icon: '\u{1F4AC}', desc: 'Stack Overflow, Ask Ubuntu, cooking, DIY, science' },
+  { key: 'devdocs',        name: 'Dev & Tech Docs',      icon: '\u{1F4BB}', desc: 'Language references, Linux wikis, programming tutorials' },
+  { key: 'ted',            name: 'Video & Talks',        icon: '\u{1F3AC}', desc: 'TED talks by topic \u2014 multilingual' },
+  { key: 'education',      name: 'Education & Textbooks', icon: '\u{1F393}', desc: 'Khan Academy, LibreTexts, CrashCourse, PhET, and more' },
+  { key: 'gutenberg',      name: 'Books & Literature',   icon: '\u{1F4DA}', desc: 'Project Gutenberg \u2014 public domain books' },
+  { key: 'medical',        name: 'Medical & Health',     icon: '\u{1FA7A}', desc: 'WikiMed, MedlinePlus, CDC, NHS, field medicine' },
+  { key: 'survival',       name: 'Survival & Preparedness', icon: '\u{1F9ED}', desc: 'Emergency guides, prepping, off-grid, water treatment' },
+  { key: 'gaming',         name: 'Gaming & Fandom',      icon: '\u{1F3AE}', desc: 'Minecraft, Pok\u00E9mon, D&D, Stardew Valley, and more' },
+  { key: 'ifixit',         name: 'How-To & Repair',      icon: '\u{1F527}', desc: 'iFixit, WikiHow, and practical guides' },
+  { key: 'other',          name: 'Other',                icon: '\u{1F4E6}', desc: 'Cooking, music, finance, and more' },
+];
+
+// Language display: "Multilingual (24 langs)" or "French" instead of raw codes
+const LANG_NAMES = {
+  eng:'English',fra:'French',deu:'German',spa:'Spanish',por:'Portuguese',ita:'Italian',
+  rus:'Russian',ara:'Arabic',zho:'Chinese',jpn:'Japanese',kor:'Korean',hin:'Hindi',
+  tur:'Turkish',pol:'Polish',nld:'Dutch',swe:'Swedish',vie:'Vietnamese',tha:'Thai',
+  heb:'Hebrew',ell:'Greek',ron:'Romanian',hun:'Hungarian',fas:'Persian',ind:'Indonesian',
+  ukr:'Ukrainian',ces:'Czech',dan:'Danish',fin:'Finnish',nor:'Norwegian',cat:'Catalan',
+  mul:'Multilingual'
+};
+function formatLanguage(langStr) {
+  if (!langStr) return '';
+  const codes = langStr.toLowerCase().split(',').map(c => c.trim()).filter(Boolean);
+  if (codes.length === 0) return '';
+  if (codes.length === 1) {
+    if (codes[0] === 'eng') return ''; // Don't show English when it's the only language
+    return LANG_NAMES[codes[0]] || codes[0].toUpperCase();
+  }
+  // Multilingual
+  if (codes.length <= 3) return codes.map(c => LANG_NAMES[c] || c.toUpperCase()).join(', ');
+  return 'Multilingual (' + codes.length + ' langs)';
+}
+
+// Auto-categorize items that Kiwix OPDS leaves uncategorized
+function autoCategorize(item) {
+  const cat = item.category;
+  const n = (item.name || '').toLowerCase();
+  // Merge tiny Wikimedia sub-categories into wikipedia
+  if (/^wiki(books|quote|source|news|versity)|^vikidia|^wiktionary/.test(cat)) return 'wikipedia';
+  if (cat && cat !== 'other') return cat;
+  // Dev & tech docs
+  if (n.startsWith('devdocs_') || /freecodecamp|mdn_/.test(n)) return 'devdocs';
+  if (/^docs\.|^peps\.|php\.net|dart\.dev|getbootstrap|gobyexample|lesscss|lua\.org|mankier/.test(n)) return 'devdocs';
+  if (/archlinux|alpinelinux|gentoo|installgentoo|termux|postmarketos|unrealircd|neos-wiki/.test(n)) return 'devdocs';
+  if (/devhints|cheatography|coreyms_|cloudflare\.com|htdp\.org|opendatastructures|jeffe\.cs/.test(n)) return 'devdocs';
+  if (/blender\.org|openzim|thalesdoc/.test(n)) return 'devdocs';
+  // Stack Exchange
+  if (/stackoverflow|stackexchange|askubuntu|superuser|serverfault/.test(n)) return 'stack_exchange';
+  // Education & textbooks
+  if (/crashcourse|phet|artofproblemsolving|coursera|khan|openstax|mooc|explainxkcd|coreeng/.test(n)) return 'education';
+  if (/libretexts|milneopentextbooks|oer4schools|learningstatistics|lost-stats|mspeekenbrink/.test(n)) return 'education';
+  if (/planetmath|proofwiki|stacks\.math|voa_learning|ethanweed|edu\.gcfglobal|scienceinthebath/.test(n)) return 'education';
+  if (/biologycourses|genomicseducation|ncert|ghana-bece|diksha|booksdash|prunelle|project-fuel/.test(n)) return 'education';
+  if (/internet-encyclopedia|encyclopedie-environnement|cd3wdproject|noted\.lol|smbc-comics/.test(n)) return 'education';
+  if (/appropedia|energypedia|citizendium|metakgp/.test(n)) return 'education';
+  // Wikipedia family
+  if (/^wiki[a-z]|^wikt|openstreetmap-wiki|mediawiki/.test(n)) return 'wikipedia';
+  // Books
+  if (/gutenberg|rationalwiki|factbook/.test(n)) return 'gutenberg';
+  // TED
+  if (/^ted_/.test(n)) return 'ted';
+  // Medical & health
+  if (/medicine|wikem|medlineplus|military[._-]medicine|fas-military/.test(n)) return 'medical';
+  if (/mdwiki|librepathology|nhs\.uk|wwwnc\.cdc|skin-of-color/.test(n)) return 'medical';
+  // Survival & preparedness
+  if (/canadian_prep|urban-prepper|survivorlibrary|s2underground|lrnselfreliance/.test(n)) return 'survival';
+  if (/ready\.gov|zimgit-|armypubs|anonymousplanet|incognitocat|solar\.lowtech|off-the-grid/.test(n)) return 'survival';
+  // Gaming & fandom
+  if (/dandwiki|evageeks|frackinuniverse|granbluefantasy|bulbagarden|pokemonwiki/.test(n)) return 'gaming';
+  if (/minecraftwiki|rimworldwiki|riskofrain2|stardewvalleywiki|westeros|whitewolfwiki/.test(n)) return 'gaming';
+  if (/the_infosphere|zdoom|allthetropes|xkcd\.com/.test(n)) return 'gaming';
+  // iFixit / how-to
+  if (/ifixit|wikihow|restarters/.test(n)) return 'ifixit';
+  return 'other';
+}
+
+async function loadFullCatalog() {
+  const lang = (document.getElementById('catalog-lang') || {}).value || '';
+  if (_catalogCache && _catalogCacheLang === lang) return _catalogCache;
+
+  const res = await manageFetch('/manage/catalog?lang=' + encodeURIComponent(lang) + '&count=500&start=0');
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  const total = data.total || 0;
+  let items = data.items || [];
+
+  // Fetch remaining pages in parallel if needed
+  if (total > 500) {
+    const fetches = [];
+    for (let start = 500; start < total; start += 500) {
+      fetches.push(
+        manageFetch('/manage/catalog?lang=' + encodeURIComponent(lang) + '&count=500&start=' + start)
+          .then(r => r.json()).then(d => d.items || [])
+      );
+    }
+    const pages = await Promise.all(fetches);
+    for (const page of pages) items = items.concat(page);
+  }
+
+  // Auto-categorize uncategorized items
+  for (const item of items) {
+    if (!item.category) item.category = autoCategorize(item);
+  }
+
+  // Enrich with installed ZIM metadata by matching filename prefix to catalog name
+  // OPDS catalog name: "wiktionary_en_all", installed filename: "wiktionary_en_all_maxi_2024-05.zim"
+  if (zimsCache) {
+    for (const item of items) {
+      for (const z of zimsCache) {
+        const fb = (z.file || '').replace(/\.zim$/, '');
+        if (fb.startsWith(item.name + '_') || fb === item.name) {
+          item.installed = true;
+          const m = fb.match(/(\d{4}-\d{2})$/);
+          item._installedDate = m ? m[1] : null;
+          item._installedFile = z.file;
+          item._installedSizeGb = z.size_gb;
+          break;
+        }
+      }
+    }
+  }
+
+  _catalogCache = items;
+  _catalogCacheLang = lang;
+  return _catalogCache;
+}
+
+function renderBrowseGallery() {
+  const results = document.getElementById('catalog-results');
+  if (!results) return;
+  _browseView = 'gallery';
+  manageCategoryFilter = null;
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  q.placeholder = 'Search Kiwix library...';
+
+  results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading library...</div>';
+
+  loadFullCatalog().then(items => {
+    // Count unique ZIMs per category (group variants by name)
+    const catNames = {};    // cat -> Set of names
+    const catInstalled = {};
+    for (const item of items) {
+      const cat = item.category || 'other';
+      if (!catNames[cat]) catNames[cat] = new Set();
+      catNames[cat].add(item.name);
+      if (item.installed) catInstalled[cat] = (catInstalled[cat] || 0) + 1;
+    }
+    const catCounts = {};
+    for (const [cat, names] of Object.entries(catNames)) catCounts[cat] = names.size;
+
+    // Build gallery cards in BROWSE_CATEGORIES order
+    const knownKeys = new Set(BROWSE_CATEGORIES.map(c => c.key));
+    // Collect unknown categories into "other"
+    let otherExtra = 0, otherInstalledExtra = 0;
+    for (const [cat, count] of Object.entries(catCounts)) {
+      if (!knownKeys.has(cat)) {
+        otherExtra += count;
+        otherInstalledExtra += (catInstalled[cat] || 0);
+      }
+    }
+    if (otherExtra > 0) catCounts['other'] = (catCounts['other'] || 0) + otherExtra;
+    if (otherInstalledExtra > 0) catInstalled['other'] = (catInstalled['other'] || 0) + otherInstalledExtra;
+
+    // Merge small categories (< 3 items) into Other
+    const MIN_BROWSE_CAT = 3;
+    _mergedToOther = new Set();
+    for (const cat of BROWSE_CATEGORIES) {
+      if (cat.key === 'other') continue;
+      const count = catCounts[cat.key] || 0;
+      if (count > 0 && count < MIN_BROWSE_CAT) {
+        _mergedToOther.add(cat.key);
+        catCounts['other'] = (catCounts['other'] || 0) + count;
+        catInstalled['other'] = (catInstalled['other'] || 0) + (catInstalled[cat.key] || 0);
+        catCounts[cat.key] = 0;
+      }
+    }
+
+    const visibleCats = BROWSE_CATEGORIES.filter(c => (catCounts[c.key] || 0) > 0);
+    let h = '<div class="browse-gallery">';
+    h += '<div class="browse-header"><div class="browse-title">Browse Library</div>';
+    h += '<div class="browse-subtitle">' + items.length.toLocaleString() + ' ZIMs available across ' +
+      visibleCats.length + ' categories</div></div>';
+    h += '<div class="browse-grid">';
+
+    for (const cat of BROWSE_CATEGORIES) {
+      const count = catCounts[cat.key] || 0;
+      if (count === 0) continue;
+      const installed = catInstalled[cat.key] || 0;
+      const countLine = count + ' available' + (installed > 0 ? ' \u00B7 ' + installed + ' installed' : '');
+      h += '<div class="browse-cat-card" onclick="drillCategory(\'' + escAttr(cat.key) + '\')">' +
+        '<div class="bcc-icon">' + cat.icon + '</div>' +
+        '<div class="bcc-info">' +
+          '<div class="bcc-name">' + esc(cat.name) + '</div>' +
+          '<div class="bcc-desc">' + esc(cat.desc) + '</div>' +
+          '<div class="bcc-count">' + esc(countLine) + '</div>' +
+        '</div>' +
+        '<div class="bcc-arrow">\u203A</div>' +
+      '</div>';
+    }
+    h += '</div></div>';
+    results.innerHTML = h;
+  }).catch(err => {
+    results.innerHTML = '<div class="empty"><p>Failed to load library</p><div class="hint">' + esc(String(err)) + '</div></div>';
+  });
+}
+
+function drillCategory(catKey) {
+  const results = document.getElementById('catalog-results');
+  if (!results) return;
+  _browseView = 'drilldown';
+  manageCategoryFilter = catKey;
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+
+  const catMeta = BROWSE_CATEGORIES.find(c => c.key === catKey);
+  const catName = catMeta ? catMeta.name : catKey;
+  q.placeholder = 'Search in ' + catName + '...';
+  q.value = '';
+
+  results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading...</div>';
+
+  loadFullCatalog().then(items => {
+    // Filter to this category (+ unknown/merged cats go to "other")
+    const knownKeys = new Set(BROWSE_CATEGORIES.map(c => c.key));
+    const filtered = items.filter(item => {
+      const cat = item.category || 'other';
+      if (catKey === 'other') return cat === 'other' || !knownKeys.has(cat) || _mergedToOther.has(cat);
+      return cat === catKey;
+    });
+
+    const grouped = groupVariants(filtered);
+    // Sort: installed first, then by article_count desc
+    grouped.sort((a, b) => {
+      const aInst = (a.variants || [a]).some(v => v.installed) ? 1 : 0;
+      const bInst = (b.variants || [b]).some(v => v.installed) ? 1 : 0;
+      if (bInst !== aInst) return bInst - aInst;
+      return (b.article_count || 0) - (a.article_count || 0);
+    });
+
+    let h = '<div class="browse-drilldown-header">' +
+      '<button class="browse-back" onclick="renderBrowseGallery()">\u2190 Back to library</button>' +
+      '<span class="browse-drilldown-title">' + (catMeta ? catMeta.icon + ' ' : '') + esc(catName) + '</span>' +
+      '<span class="browse-drilldown-count">' + grouped.length + ' available</span>' +
+    '</div>';
+    for (const item of grouped) h += renderCatalogItem(item);
+    if (!grouped.length) h += '<div class="empty"><p>No ZIMs in this category</p></div>';
+    results.innerHTML = h;
+  }).catch(err => {
+    results.innerHTML = '<div class="empty"><p>Failed to load category</p></div>';
+  });
+}
+
+function browseCatalogFilter(query) {
+  if (!query) { renderBrowseGallery(); return; }
+  const results = document.getElementById('catalog-results');
+  if (!results) return;
+  _browseView = 'search';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+
+  if (!_catalogCache) {
+    results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading...</div>';
+  }
+  loadFullCatalog().then(items => {
+    const lq = query.toLowerCase();
+    const knownKeys = new Set(BROWSE_CATEGORIES.map(c => c.key));
+    // Filter within current category if drilled down, otherwise all
+    let pool = items;
+    if (manageCategoryFilter) {
+      pool = items.filter(item => {
+        const cat = item.category || 'other';
+        if (manageCategoryFilter === 'other') return cat === 'other' || !knownKeys.has(cat) || _mergedToOther.has(cat);
+        return cat === manageCategoryFilter;
+      });
+    }
+    const filtered = pool.filter(item => {
+      const title = (item.title || item.name || '').toLowerCase();
+      const summary = (item.summary || '').toLowerCase();
+      return title.includes(lq) || summary.includes(lq) || (item.name || '').toLowerCase().includes(lq);
+    });
+    const grouped = groupVariants(filtered);
+    grouped.sort((a, b) => {
+      const aInst = (a.variants || [a]).some(v => v.installed) ? 1 : 0;
+      const bInst = (b.variants || [b]).some(v => v.installed) ? 1 : 0;
+      if (bInst !== aInst) return bInst - aInst;
+      return (b.article_count || 0) - (a.article_count || 0);
+    });
+    let h = '<div class="browse-drilldown-header">' +
+      '<button class="browse-back" onclick="' + (manageCategoryFilter ? "drillCategory('" + escAttr(manageCategoryFilter) + "')" : 'renderBrowseGallery()') + '">\u2190 Back</button>' +
+      '<span class="browse-drilldown-count">' + filtered.length + ' results for \u201C' + esc(query) + '\u201D</span>' +
+    '</div>';
+    for (const item of grouped) h += renderCatalogItem(item);
+    if (!grouped.length) h += '<div class="empty"><p>No matching ZIMs</p></div>';
+    results.innerHTML = h;
+  }).catch(() => {
+    results.innerHTML = '<div class="empty"><p>Failed to search catalog</p></div>';
+  });
+}
+
+// ── Category mapping (mirrors server _categorize_zim) ──
+const MANAGE_CATEGORIES = [
+  'Wikimedia', 'Stack Exchange', 'Dev Docs', 'Education', 'Medical', 'How-To', 'Books', 'Other'
+];
+
+function categorizeZim(name) {
+  const n = name.toLowerCase();
+  if (/medicine|wikem|ready\.gov/.test(n) || (n.startsWith('zimgit-') && /water|food|disaster|knots/.test(n))) return 'Medical';
+  if (/stackoverflow|askubuntu|superuser|serverfault|stackexchange/.test(n)) return 'Stack Exchange';
+  if (n.startsWith('devdocs_') || n === 'freecodecamp') return 'Dev Docs';
+  if (/^ted_|^phzh_/.test(n) || /crashcourse|phet|appropedia|artofproblemsolving|edutechwiki|explainxkcd|coreeng/.test(n)) return 'Education';
+  if (/wikihow|ifixit|off-the-grid/.test(n)) return 'How-To';
+  if (/^wiki|^wikt/.test(n) || n === 'openstreetmap-wiki') return 'Wikimedia';
+  if (/gutenberg|rationalwiki|theworldfactbook/.test(n)) return 'Books';
+  return 'Other';
+}
+
+function formatSize(bytes) {
+  if (!bytes) return '0 MB';
+  const gb = bytes / (1024 ** 3);
+  return gb >= 1 ? gb.toFixed(1) + ' GB' : (bytes / (1024 ** 2)).toFixed(0) + ' MB';
+}
+
+function groupVariants(items) {
+  const groups = {};
+  for (const item of items) {
+    const key = item.name;
+    if (!groups[key]) groups[key] = { ...item, variants: [] };
+    groups[key].variants.push(item);
+    if (item.article_count > (groups[key].article_count || 0)) groups[key].article_count = item.article_count;
+    if (item.summary && !groups[key].summary) groups[key].summary = item.summary;
+    if (item.icon_url && !groups[key].icon_url) groups[key].icon_url = item.icon_url;
+  }
+  return Object.values(groups);
+}
+
+function variantLabel(url) {
+  if (!url) return '';
+  const f = url.split('/').pop() || '';
+  if (f.includes('_maxi_')) return 'Full';
+  if (f.includes('_nopic_')) return 'No images';
+  if (f.includes('_mini_')) return 'Mini';
+  return '';
+}
+
+function renderCatalogItem(group) {
+  const item = group;
+  const variants = group.variants || [item];
+  const meta = [];
+  if (item.article_count) meta.push(item.article_count.toLocaleString() + ' articles');
+  const langDisplay = formatLanguage(item.language);
+  if (langDisplay) meta.push(langDisplay);
+  if (item.date) meta.push(item.date);
+  const sizes = variants.map(v => v.size_bytes).sort((a, b) => a - b);
+  if (sizes.length > 1) {
+    meta.push(formatSize(sizes[0]) + ' \u2013 ' + formatSize(sizes[sizes.length - 1]));
+  } else {
+    meta.push(formatSize(sizes[0]));
+  }
+  const iconHtml = item.icon_url
+    ? '<img src="' + escAttr(item.icon_url) + '" width="40" height="40" loading="lazy">'
+    : '<span class="ci-letter">' + (esc(item.title || item.name)[0] || '?').toUpperCase() + '</span>';
+  const anyInstalled = variants.some(v => v.installed);
+  let actionsHtml = '';
+  if (anyInstalled) {
+    // Show installed date + variant info
+    const instVariant = variants.find(v => v.installed) || item;
+    let badgeText = 'Installed';
+    if (instVariant._installedDate) {
+      badgeText += ' \u00B7 ' + instVariant._installedDate;
+      // Check if catalog has a newer version
+      if (item.date && instVariant._installedDate < item.date.substring(0, 7)) {
+        badgeText += ' \u2192 ' + item.date + ' available';
+      }
+    }
+    actionsHtml = '<span class="ci-installed-badge">' + esc(badgeText) + '</span>';
+    if (instVariant._installedFile) {
+      actionsHtml += '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(instVariant._installedFile) + '\', this)" title="Delete this ZIM file">\u00D7</button>';
+    }
+  } else {
+    const withLabels = variants.filter(v => v.download_url).map(v => {
+      const label = variantLabel(v.download_url) || 'Full';
+      const size = formatSize(v.size_bytes);
+      return { label, size, url: v.download_url };
+    });
+    const order = { 'Mini': 0, 'No images': 1, 'Full': 2 };
+    withLabels.sort((a, b) => (order[a.label] ?? 1) - (order[b.label] ?? 1));
+    const btns = withLabels.map(v =>
+      '<button class="ci-variant-btn" onclick="downloadZim(\'' + escAttr(v.url) + '\', this)">' + esc(v.label + ' (' + v.size + ')') + '</button>'
+    );
+    if (btns.length) actionsHtml = '<div class="ci-variants">' + btns.join('') + '</div>';
+  }
+  const catAttr = item.category ? ' data-category="' + escAttr(item.category) + '"' : '';
+  return '<div class="catalog-item' + (anyInstalled ? ' ci-installed-item' : '') + '"' + catAttr + '>' +
+    '<div class="ci-icon">' + iconHtml + '</div>' +
+    '<div class="ci-info">' +
+      '<div class="ci-title">' + esc(item.title || item.name) + '</div>' +
+      (item.summary ? '<div class="ci-summary">' + esc(item.summary) + '</div>' : '') +
+      '<div class="ci-meta">' + meta.join(' &middot; ') + '</div>' +
+    '</div>' +
+    '<div class="ci-actions">' + actionsHtml + '</div>' +
+  '</div>';
+}
+
+// ── Tab switching ──
+function switchManageTab(tab) {
+  manageTab = tab;
+  manageCategoryFilter = null;
+  _browseView = 'gallery';
+  document.querySelectorAll('.manage-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.manage-tab-content').forEach(c => c.classList.toggle('active', c.id === 'manage-' + tab));
+  q.value = '';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  if (tab === 'installed') {
+    q.placeholder = 'Filter installed ZIMs...';
+    renderInstalled();
+  } else {
+    renderBrowseGallery();
+  }
+}
+
+// ── Manage entry point ──
+async function renderManage() {
+  // If password is set, prompt before showing manage (use saved token only if "remember me" was used)
+  const hasPw = await fetch('/manage/has-password').then(r => r.json()).catch(() => ({}));
+  if (hasPw.has_password) {
+    const saved = sessionStorage.getItem('zimi_manage_pw');
+    if (saved) {
+      _manageToken = saved;
+    } else if (!_manageToken) {
+      try {
+        await new Promise(function(resolve, reject) {
+          _pwResolve = function(token) {
+            _manageToken = token;
+            if (document.getElementById('pw-remember').checked) {
+              sessionStorage.setItem('zimi_manage_pw', token);
+            }
+            _pwReject = null;
+            resolve();
+          };
+          _pwReject = reject;
+          openPwModal('Enter password');
+        });
+      } catch(e) {
+        // Cancelled — go back to home
+        toggleManage(); return;
+      }
+    }
+  }
+  const installedCount = zimsCache ? zimsCache.length : 0;
+
+  output.innerHTML =
+    '<div id="manage-status" class="manage-card"><h2>Library Status</h2><div class="loading"><span class="spinner-inline"></span>Loading...</div></div>' +
+    '<div id="manage-downloads"></div>' +
+    '<div class="manage-tabs">' +
+      '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">Installed (' + installedCount + ')</button>' +
+      '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">Browse Library</button>' +
+    '</div>' +
+    '<div id="manage-installed" class="manage-tab-content' + (manageTab === 'installed' ? ' active' : '') + '"></div>' +
+    '<div id="manage-browse" class="manage-tab-content' + (manageTab === 'browse' ? ' active' : '') + '">' +
+      '<div class="manage-search" style="justify-content:flex-end">' +
+        '<select id="catalog-lang" onchange="_catalogCache=null;if(_browseView===\'drilldown\'&&manageCategoryFilter)drillCategory(manageCategoryFilter);else if(_browseView===\'search\'){var v=q.value.trim();if(v)browseCatalogFilter(v);else renderBrowseGallery();}else renderBrowseGallery();" style="max-width:140px"><option value="">All languages</option><option value="eng">English</option><option value="fra">French</option><option value="deu">German</option><option value="spa">Spanish</option></select>' +
+      '</div>' +
+      '<div id="catalog-results"></div>' +
+    '</div>';
+
+  // Status card
+  try {
+    const res = await manageFetch('/manage/status');
+    const data = await res.json();
+    const statusEl = document.getElementById('manage-status');
+    if (statusEl) {
+      statusEl.innerHTML = '<h2>Library Status</h2>' +
+        '<div class="mc-row"><span class="mc-label">ZIM files</span><span class="mc-value">' + esc(String(data.zim_count)) + '</span></div>' +
+        '<div class="mc-row"><span class="mc-label">Total size</span><span class="mc-value">' + fmtSize(data.total_size_gb) + '</span></div>' +
+        '<div id="update-status" class="mc-row"><span class="mc-label">Updates</span><span class="mc-value" style="color:var(--text2)">Checking\u2026</span></div>' +
+        '<div style="margin-top:12px;display:flex;gap:8px;align-items:center">' +
+          '<button class="manage-btn-action" onclick="refreshLibrary()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Refresh Cache</button>' +
+          '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">&#x1F512; Password</button>' +
+          (sessionStorage.getItem('zimi_manage_pw') ? '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" title="Log out and return to home">Log Out</button>' : '') +
+          '<span style="flex:1"></span>' +
+          '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none">Update All</button>' +
+        '</div>';
+    }
+    checkForUpdates();
+  } catch(e) {
+    const statusEl = document.getElementById('manage-status');
+    if (statusEl) statusEl.innerHTML = '<h2>Library Status</h2><div style="color:var(--text2);font-size:13px">Could not load library status</div>';
+  }
+
+  // Render active tab content
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  if (manageTab === 'installed') {
+    renderInstalled();
+  } else {
+    if (manageCategoryFilter) {
+      drillCategory(manageCategoryFilter);
+    } else {
+      renderBrowseGallery();
+    }
+  }
+  refreshDownloads();
+}
+
+function getInstalledPillsHtml() {
+  const zims = zimsCache || [];
+  const cats = new Set();
+  for (const z of zims) cats.add(z.category || categorizeZim(z.name));
+  const sorted = MANAGE_CATEGORIES.filter(c => cats.has(c));
+  if (sorted.length <= 1) return '';
+  let h = '<div class="pills" style="margin-bottom:12px"><button class="pill' + (!manageCategoryFilter ? ' active' : '') + '" onclick="filterManageCategory(null)">All</button>';
+  for (const cat of sorted) {
+    h += '<button class="pill' + (manageCategoryFilter === cat ? ' active' : '') + '" onclick="filterManageCategory(\'' + escAttr(cat) + '\')">' + esc(cat) + '</button>';
+  }
+  return h + '</div>';
+}
+
+function filterManageCategory(cat) {
+  manageCategoryFilter = cat;
+  renderInstalled();
+}
+
+// ── Installed tab: render ZIMs grouped by category ──
+function renderInstalled(filterText) {
+  const el = document.getElementById('manage-installed');
+  if (!el) return;
+  const zims = zimsCache || [];
+  if (!zims.length) {
+    el.innerHTML = '<div class="empty"><p>No ZIMs installed</p><div class="hint">Switch to Browse Library to add some</div></div>';
+    return;
+  }
+
+  // Group by category
+  const groups = {};
+  for (const z of zims) {
+    const cat = z.category || categorizeZim(z.name);
+    if (manageCategoryFilter && cat !== manageCategoryFilter) continue;
+    if (filterText) {
+      const ft = filterText.toLowerCase();
+      const title = (z.title || z.name).toLowerCase();
+      const catLower = cat.toLowerCase();
+      if (!title.includes(ft) && !catLower.includes(ft) && !z.name.toLowerCase().includes(ft)) continue;
+    }
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(z);
+  }
+
+  // Merge small categories (<3 items) into Other
+  const MIN_CAT = 3;
+  for (const cat of Object.keys(groups)) {
+    if (cat !== 'Other' && groups[cat].length < MIN_CAT) {
+      if (!groups['Other']) groups['Other'] = [];
+      groups['Other'].push(...groups[cat]);
+      delete groups[cat];
+    }
+  }
+
+  const catOrder = MANAGE_CATEGORIES;
+  let items_h = '';
+  for (const cat of catOrder) {
+    const items = groups[cat];
+    if (!items || !items.length) continue;
+    items.sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
+    items_h += '<div class="manage-installed-group">';
+    items_h += '<div class="ci-section-label">' + esc(cat) + ' (' + items.length + ')</div>';
+    for (const z of items) {
+      const iconHtml = z.has_icon
+        ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" width="40" height="40" loading="lazy">'
+        : '<span class="ci-letter">' + (esc(z.title || z.name)[0] || '?').toUpperCase() + '</span>';
+      const meta = [];
+      if (typeof z.entries === 'number') meta.push(z.entries.toLocaleString() + ' entries');
+      meta.push(fmtSize(z.size_gb));
+      // Show date from ZIM metadata
+      const dateStr = z.date ? z.date.substring(0, 7) : null;
+      if (dateStr) meta.push(dateStr);
+      const upd = _availableUpdates[z.file];
+      let actionsHtml = '';
+      if (upd) {
+        actionsHtml = '<button class="ci-update-btn" onclick="downloadZim(\'' + escAttr(upd.download_url) + '\', this)">' +
+          'Update \u2192 ' + esc(upd.latest_date) + '</button>' +
+          '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="Delete">\u00D7</button>';
+      } else {
+        actionsHtml = '<span class="ci-installed-badge">Installed</span>' +
+          '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="Delete">\u00D7</button>';
+      }
+      items_h += '<div class="catalog-item' + (upd ? ' ci-has-update' : '') + '">' +
+        '<div class="ci-icon">' + iconHtml + '</div>' +
+        '<div class="ci-info">' +
+          '<div class="ci-title">' + esc(z.title || z.name) + '</div>' +
+          '<div class="ci-meta">' + meta.join(' &middot; ') + '</div>' +
+        '</div>' +
+        '<div class="ci-actions">' + actionsHtml + '</div>' +
+      '</div>';
+    }
+    items_h += '</div>';
+  }
+  if (!items_h) items_h = '<div class="empty"><p>No matching ZIMs</p></div>';
+  el.innerHTML = getInstalledPillsHtml() + items_h;
+}
+
+// ── Browse tab: explicit server-side catalog search (Search button / Enter in catalog-q) ──
+async function searchCatalog(append) {
+  const cq = document.getElementById('catalog-q');
+  const lang = document.getElementById('catalog-lang');
+  const results = document.getElementById('catalog-results');
+  if (!results) return;
+  _browseView = 'search';
+  if (!append) {
+    catalogPage = 0;
+    results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Searching Kiwix catalog...</div>';
+    if (_catalogObserver) { _catalogObserver.disconnect(); _catalogObserver = null; }
+  }
+
+  const query = (cq && cq.value) || '';
+  const langVal = (lang && lang.value) || 'eng';
+  const pageSize = 50;
+  try {
+    const res = await manageFetch('/manage/catalog?q=' + encodeURIComponent(query) + '&lang=' + encodeURIComponent(langVal) + '&count=' + pageSize + '&start=' + (catalogPage * pageSize));
+    const data = await res.json();
+    if (data.error) { results.innerHTML = '<div class="empty"><p>' + esc(data.error) + '</p></div>'; return; }
+    _catalogTotal = data.total || 0;
+
+    const grouped = groupVariants(data.items || []);
+    let h = '';
+    if (!append) {
+      h += '<div class="browse-drilldown-header">' +
+        '<button class="browse-back" onclick="renderBrowseGallery();q.value=\'\'">\u2190 Back to library</button>' +
+        '<span class="browse-drilldown-count">' + esc(String(data.total)) + ' results</span></div>';
+    }
+    for (const item of grouped) h += renderCatalogItem(item);
+
+    // Remove old sentinel
+    const oldSentinel = results.querySelector('#catalog-sentinel');
+    if (oldSentinel) oldSentinel.remove();
+
+    if (append) {
+      results.insertAdjacentHTML('beforeend', h);
+    } else {
+      results.innerHTML = h;
+    }
+
+    // Infinite scroll sentinel
+    const loaded = (catalogPage + 1) * pageSize;
+    if (loaded < _catalogTotal) {
+      const sentinel = document.createElement('div');
+      sentinel.id = 'catalog-sentinel';
+      sentinel.innerHTML = '<div class="loading" style="padding:16px"><span class="spinner-inline"></span>Loading more...</div>';
+      results.appendChild(sentinel);
+      _catalogObserver = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          _catalogObserver.disconnect();
+          catalogPage++;
+          searchCatalog(true);
+        }
+      }, { rootMargin: '200px' });
+      _catalogObserver.observe(sentinel);
+    }
+  } catch(e) {
+    if (!append) results.innerHTML = '<div class="empty"><p>Failed to fetch catalog</p></div>';
+  }
+}
+
+async function downloadZim(url, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Starting...'; }
+  try {
+    const res = await manageFetch('/manage/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (data.error) { if (btn) { btn.textContent = 'Error'; btn.disabled = false; } return; }
+    if (btn) {
+      btn.dataset.dlUrl = url;
+      btn.textContent = 'Queued...';
+      btn.classList.add('ci-installed-badge');
+      // Hide sibling variant buttons (only show the one being downloaded)
+      const variantsDiv = btn.closest('.ci-variants');
+      if (variantsDiv) {
+        variantsDiv.querySelectorAll('.ci-variant-btn').forEach(b => {
+          if (b !== btn) b.style.display = 'none';
+        });
+      }
+    }
+    _dlPrevAllDone = false; // ensure completion transition fires even for fast downloads
+    refreshDownloads();
+  } catch(e) {
+    if (btn) { btn.textContent = 'Error'; btn.disabled = false; }
+  }
+}
+
+async function deleteZim(filename, btn) {
+  if (!btn) return;
+  // Two-click confirmation: first click shows "Delete?", second click confirms
+  if (!btn.classList.contains('confirming')) {
+    btn.classList.add('confirming');
+    btn.textContent = 'Delete?';
+    btn.title = 'Click again to confirm deletion';
+    // Reset after 4 seconds if not confirmed
+    setTimeout(() => { if (btn.classList.contains('confirming')) { btn.classList.remove('confirming'); btn.textContent = '\u00D7'; btn.title = 'Delete this ZIM file'; }}, 4000);
+    return;
+  }
+  btn.textContent = 'Deleting...';
+  btn.disabled = true;
+  const card = btn.closest('.catalog-item');
+  try {
+    const res = await manageFetch('/manage/delete', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({filename})
+    });
+    const data = await res.json();
+    if (data.error) { btn.textContent = 'Error: ' + data.error; return; }
+    // Animate card out
+    if (card) {
+      card.classList.add('ci-removing');
+      await new Promise(r => setTimeout(r, 350));
+    }
+    _catalogCache = null;
+    const lr = await fetch('/list');
+    zimsCache = await lr.json();
+    const tabBtn = document.querySelector('.manage-tab[data-tab="installed"]');
+    if (tabBtn) tabBtn.textContent = 'Installed (' + (zimsCache ? zimsCache.length : 0) + ')';
+    // Update status card count
+    const statusVal = document.querySelector('#manage-status .mc-value');
+    if (statusVal) statusVal.textContent = String(zimsCache ? zimsCache.length : 0);
+    // Re-render current view
+    if (manageTab === 'installed') renderInstalled();
+    else if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
+    else if (_browseView === 'gallery') renderBrowseGallery();
+  } catch(e) {
+    btn.textContent = 'Error';
+  }
+}
+
+function dlTitle(dl) {
+  const fn = dl.filename || '';
+  const url = dl.url || '';
+  const urlBase = url.replace(/\.meta4$/, '');
+  // 1. Exact match in installed cache
+  if (zimsCache) {
+    const exact = zimsCache.find(z => z.file === fn);
+    if (exact) return exact.title || exact.name;
+  }
+  // 2. Check _availableUpdates — match by download URL
+  for (const u of Object.values(_availableUpdates)) {
+    if (u.download_url && url) {
+      const uBase = u.download_url.replace(/\.meta4$/, '');
+      if (uBase === urlBase) return u.title || u.name;
+    }
+  }
+  // 3. Base-name match in installed cache (for updates: same ZIM, different date)
+  const base = fn.replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '');
+  if (zimsCache && base) {
+    const match = zimsCache.find(z => {
+      const zbase = (z.file || '').replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '');
+      return zbase === base;
+    });
+    if (match) return match.title || match.name;
+  }
+  // 4. Catalog cache match by download URL
+  if (_catalogCache && url) {
+    for (const item of _catalogCache) {
+      if (item.download_url) {
+        const iBase = item.download_url.replace(/\.meta4$/, '');
+        if (iBase === urlBase) return item.title || item.name;
+      }
+    }
+  }
+  // 5. Humanize filename
+  return base.replace(/_/g, ' ').replace(/\./g, ' ');
+}
+
+let _dlPrevAllDone = true; // track when downloads finish to trigger refresh
+
+async function refreshDownloads() {
+  if (_dlTimer) { clearTimeout(_dlTimer); _dlTimer = null; }
+  const dlEl = document.getElementById('manage-downloads');
+  if (!dlEl) return;
+  try {
+    const res = await manageFetch('/manage/downloads');
+    const data = await res.json();
+    const dls = data.downloads || [];
+    if (!dls.length) { dlEl.innerHTML = ''; _dlPrevAllDone = true; return; }
+    const anyActive = dls.some(d => !d.done);
+    const allDone = !anyActive;
+    let h = '<div class="manage-card"><h2>Downloads</h2>';
+    if (allDone) {
+      h += '<button class="dl-clear-btn" onclick="clearDownloads()">Clear</button>';
+    }
+    for (const dl of dls) {
+      const title = dlTitle(dl);
+      const fmtBytes = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
+      const totalStr = dl.total_bytes ? fmtBytes(dl.total_bytes) : '?';
+      const dlStr = fmtBytes(dl.downloaded_bytes);
+      const pct = dl.percent || 0;
+      const speed = dl.elapsed > 0 && dl.downloaded_bytes > 0 ? ((dl.downloaded_bytes / 1024 / 1024) / dl.elapsed).toFixed(1) : '0';
+
+      h += '<div class="dl-item">';
+      h += '<div class="dl-row"><span class="dl-name">' + esc(title) + '</span>';
+      if (dl.error) {
+        h += '<span class="dl-error">' + esc(dl.error) + '</span>';
+      } else if (dl.done) {
+        h += '<span class="dl-done">\u2713 Complete</span>';
+      } else {
+        h += '<span class="dl-size">' + dlStr + ' / ' + totalStr + ' · ' + speed + ' MB/s</span>';
+      }
+      h += '</div>';
+
+      if (!dl.done && !dl.error) {
+        h += '<div class="dl-progress"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>';
+        h += '<div class="dl-actions"><button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">Cancel</button></div>';
+      }
+      if (dl.error && dl.error !== 'Cancelled') {
+        h += '<div class="dl-actions"><button class="dl-retry-btn" onclick="downloadZim(\'' + escAttr(dl.url) + '\')">Retry</button></div>';
+      }
+      h += '</div>';
+    }
+    h += '</div>';
+    dlEl.innerHTML = h;
+    // Update catalog item buttons with download progress
+    for (const dl of dls) {
+      const btns = document.querySelectorAll('[data-dl-url]');
+      for (const btn of btns) {
+        if (btn.dataset.dlUrl === dl.url) {
+          if (dl.done) { btn.textContent = 'Installed'; }
+          else if (dl.error) { btn.textContent = 'Error'; btn.disabled = false; }
+          else if (dl.percent > 0) { btn.textContent = Math.round(dl.percent) + '%'; }
+          else { btn.textContent = 'Queued...'; }
+        }
+      }
+    }
+    // When downloads finish, refresh the library to show new installs
+    if (allDone && !_dlPrevAllDone) {
+      _dlPrevAllDone = true;
+      try {
+        const lr = await fetch('/list');
+        zimsCache = await lr.json();
+        _catalogCache = null;
+        _availableUpdates = {};
+        renderInstalled();
+        checkForUpdates();
+        // Update status card counts
+        const sr = await manageFetch('/manage/status');
+        const sd = await sr.json();
+        const statusEl = document.getElementById('manage-status');
+        if (statusEl) {
+          statusEl.querySelector('.mc-value').textContent = String(sd.zim_count);
+          const sizeVal = statusEl.querySelectorAll('.mc-value')[1];
+          if (sizeVal) sizeVal.textContent = fmtSize(sd.total_size_gb);
+        }
+        // Update tab count
+        const tabBtn = document.querySelector('.manage-tab[data-tab="installed"]');
+        if (tabBtn) tabBtn.textContent = 'Installed (' + (zimsCache ? zimsCache.length : 0) + ')';
+        // Re-render browse view so download buttons update to "Installed"
+        if (manageTab === 'browse') {
+          if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
+          else if (_browseView === 'search') { var sq = q.value.trim(); if (sq) browseCatalogFilter(sq); }
+          else if (_browseView === 'gallery') renderBrowseGallery();
+        }
+      } catch(e) {}
+    }
+    _dlPrevAllDone = allDone;
+    if (anyActive && mode === 'manage') {
+      _dlTimer = setTimeout(refreshDownloads, 2000);
+    }
+  } catch(e) {}
+}
+
+async function clearDownloads() {
+  try {
+    await manageFetch('/manage/clear-downloads', { method: 'POST' });
+    const dlEl = document.getElementById('manage-downloads');
+    if (dlEl) dlEl.innerHTML = '';
+  } catch(e) {}
+}
+
+async function cancelDownload(id) {
+  try {
+    await manageFetch('/manage/cancel', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id})
+    });
+    refreshDownloads();
+  } catch(e) {}
+}
+
+async function triggerUpdate() {
+  const updates = Object.values(_availableUpdates);
+  if (!updates.length) return;
+  const btn = document.querySelector('.manage-btn-action[onclick*="triggerUpdate"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Updating ' + updates.length + '...'; }
+  let started = 0;
+  for (const u of updates) {
+    try {
+      const res = await manageFetch('/manage/download', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({url: u.download_url}) });
+      const data = await res.json();
+      if (data.id) started++;
+    } catch(e) {}
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Update All'; }
+  if (started > 0) refreshDownloads();
+}
+
+async function checkForUpdates() {
+  const el = document.getElementById('update-status');
+  if (!el) return;
+  try {
+    const res = await manageFetch('/manage/check-updates');
+    const data = await res.json();
+    _availableUpdates = {};
+    if (data.updates) {
+      for (const u of data.updates) {
+        if (u.installed_file) _availableUpdates[u.installed_file] = u;
+      }
+    }
+    const count = Object.keys(_availableUpdates).length;
+    const updateBtn = document.getElementById('update-all-btn');
+    if (count > 0) {
+      el.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--amber)">' + count + ' available</span>';
+      if (updateBtn) { updateBtn.style.display = ''; updateBtn.textContent = 'Update All'; }
+    } else {
+      el.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--text2)">All up to date</span>';
+      if (updateBtn) updateBtn.style.display = 'none';
+    }
+    // Re-render installed tab to show inline update buttons
+    if (manageTab === 'installed') renderInstalled();
+  } catch(e) {
+    // Silently fail — update check is optional
+  }
+}
+
+async function refreshLibrary() {
+  try {
+    const res = await manageFetch('/manage/refresh', { method: 'POST' });
+    const data = await res.json();
+    if (data.status === 'refreshed') {
+      try {
+        const lr = await fetch('/list');
+        zimsCache = await lr.json();
+      } catch(e) {}
+      renderManage();
+    }
+  } catch(e) {}
+}
+
+async function managePassword() {
+  const has = await manageFetch('/manage/has-password').then(r => r.json()).catch(() => ({}));
+  const errEl = document.getElementById('pw-error');
+  const overlay = document.getElementById('pw-overlay');
+
+  openPwModal(has.has_password ? 'Change password' : 'Set password', {placeholder: 'New password', hideRemember: true});
+  document.getElementById('pw-remove-btn').style.display = has.has_password ? '' : 'none';
+
+  _pwResolve = async function(newPw) {
+    const body = {password: newPw};
+    if (has.has_password && _manageToken) body.current = _manageToken;
+    const res = await manageFetch('/manage/set-password', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      errEl.textContent = d.error || 'Failed';
+      errEl.style.display = 'block';
+      overlay.classList.add('open');
+      return;
+    }
+    if (newPw) {
+      _manageToken = newPw;
+      if (document.getElementById('pw-remember').checked) {
+        sessionStorage.setItem('zimi_manage_pw', newPw);
+      } else {
+        sessionStorage.removeItem('zimi_manage_pw');
+      }
+    } else {
+      _manageToken = '';
+      sessionStorage.removeItem('zimi_manage_pw');
+    }
+    closePwModal();
+    renderManage();
+  };
+}
+
+async function manageClearPassword() {
+  if (!confirm('Remove password protection?')) return;
+  const body = {password: ''};
+  if (_manageToken) body.current = _manageToken;
+  const res = await manageFetch('/manage/set-password', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  if (res.ok) {
+    _manageToken = '';
+    sessionStorage.removeItem('zimi_manage_pw');
+    closePwModal();
+    renderManage();
+  }
+}
+
+// ── Reader ──
+function openReader(url) {
+  // PDFs can't render inside sandboxed iframes — open in new tab
+  if (url.toLowerCase().endsWith('.pdf')) {
+    window.open(url, '_blank');
+    return;
+  }
+  readerOpen = true;
+  const reader = document.getElementById('reader');
+  const frame = document.getElementById('reader-frame');
+  const loading = document.getElementById('reader-loading');
+
+  mainView.classList.add('hidden');
+  reader.classList.add('open');
+  loading.classList.remove('hidden');
+
+  newtabBtn.href = url;
+
+  frame.onload = function() {
+    loading.classList.add('hidden');
+  };
+  frame.src = url;
+  updateTopbar();
+}
+
+function openArticle(zim, path) {
+  const url = '/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/');
+  // Track which ZIM the reader is showing (for topbar badge)
+  readerSource = zim;
+  // Push history so browser back closes the reader
+  history.pushState({ mode: 'reader', zim: zim, path: path }, '', url);
+  openReader(url);
+}
+
+function closeReader() {
+  if (!readerOpen) return;
+  readerOpen = false;
+  readerSource = null;
+  document.getElementById('reader').classList.remove('open');
+  document.getElementById('reader-frame').src = 'about:blank';
+  mainView.classList.remove('hidden');
+  updateTopbar();
+}
+
+// ── Random ──
+async function randomArticle(event) {
+  if (event) event.preventDefault();
+  if (mode === 'manage') { mode = 'home'; updateTopbar(); }
+  const btn = document.getElementById('random-btn');
+  btn.classList.add('rolling');
+  setTimeout(() => btn.classList.remove('rolling'), 600);
+  const zimParam = currentSource ? '?zim=' + encodeURIComponent(currentSource) : '';
+  try {
+    const res = await fetch('/random' + zimParam);
+    const data = await res.json();
+    if (data.error) return;
+    openArticle(data.zim, data.path);
+  } catch(e) {}
+}
+
+// ── Keyboard ──
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (suggestDropdown.style.display !== 'none') { hideSuggest(); return; }
+    if (readerOpen) { goBack(); return; }
+    if (q.value) { q.value = ''; hideSuggest(); clearSearch(); return; }
+    if (mode === 'source' || mode === 'manage') { enterHome(true); return; }
+    return;
+  }
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (e.key === '/' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); q.focus(); }
+  if (e.key === 'r' && !e.metaKey && !e.ctrlKey && !e.altKey && mode !== 'manage') { e.preventDefault(); randomArticle(e); }
+});
+
+// ── History ──
+window.addEventListener('popstate', (e) => {
+  hideSuggest();
+  if (readerOpen) closeReader();
+  // Always re-route based on the URL the browser navigated to
+  q.value = '';
+  activeCategories.clear();
+  activeSourceFilters.clear();
+  sourceAutoReader = false;
+  route(false);
+});
+
+// ── Util ──
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function escAttr(s) { return esc(s).replace(/'/g, '&#39;').replace(/"/g, '&quot;'); }
+
+init();
+</script>
+</body>
+</html>
