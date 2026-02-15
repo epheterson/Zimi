@@ -55,7 +55,7 @@ curl "http://localhost:8899/search?q=water+purification&limit=3"
 | `GET /catalog?zim=...` | PDF catalog for zimgit-style ZIMs |
 | `GET /snippet?zim=...&path=...` | Short text snippet |
 | `GET /random?zim=...` | Random article |
-| `GET /health` | Health check |
+| `GET /health` | Health check (includes version) |
 | `GET /w/<zim>/<path>` | Serve raw ZIM content (HTML, images) |
 
 ### Examples

@@ -276,6 +276,11 @@ def _search_cache_put(key, result):
             del _search_cache[oldest_key]
         _search_cache[key] = (result, time.time())
 
+def _search_cache_clear():
+    """Clear all cached search results (e.g. after library changes)."""
+    with _search_cache_lock:
+        _search_cache.clear()
+
 # MIME type fallback for ZIM entries with empty mimetype
 MIME_FALLBACK = {
     ".html": "text/html", ".htm": "text/html", ".css": "text/css",
@@ -1280,6 +1285,7 @@ def _download_thread(dl):
                         pass
         with _zim_lock:
             load_cache(force=True)
+        _search_cache_clear()
         dl["done"] = True
     except Exception as e:
         # Keep .tmp for resume on transient network errors; delete on validation failures
@@ -1382,12 +1388,17 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html")
         self.end_headers()
 
+    # IPs allowed to set X-Forwarded-For (reverse proxies)
+    _TRUSTED_PROXIES = {"127.0.0.1", "::1", "172.17.0.1", "172.18.0.1"}
+
     def _client_ip(self):
-        """Get client IP, respecting X-Forwarded-For for reverse proxies."""
-        xff = self.headers.get("X-Forwarded-For")
-        if xff:
-            return xff.split(",")[0].strip()
-        return self.client_address[0]
+        """Get client IP, respecting X-Forwarded-For only from trusted proxies."""
+        direct_ip = self.client_address[0]
+        if direct_ip in self._TRUSTED_PROXIES:
+            xff = self.headers.get("X-Forwarded-For")
+            if xff:
+                return xff.split(",")[0].strip()
+        return direct_ip
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -1674,6 +1685,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 with _zim_lock:
                     load_cache(force=True)
                     count = len(_zim_list_cache or [])
+                _search_cache_clear()
                 return self._json(200, {"status": "refreshed", "zim_count": count})
 
             elif parsed.path == "/manage/delete" and ZIMI_MANAGE:
@@ -1690,6 +1702,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     log.info(f"Deleted ZIM: {filename}")
                     with _zim_lock:
                         load_cache(force=True)
+                    _search_cache_clear()
                     return self._json(200, {"status": "deleted", "filename": filename})
                 except OSError as e:
                     return self._json(500, {"error": f"Failed to delete: {e}"})
@@ -1715,9 +1728,12 @@ class ZimHandler(BaseHTTPRequestHandler):
                 _auto_update_freq = freq
                 if enabled and not _auto_update_enabled:
                     _auto_update_enabled = True
-                    _auto_update_thread = threading.Thread(
-                        target=_auto_update_loop, kwargs={"initial_delay": 30}, daemon=True)
-                    _auto_update_thread.start()
+                    if _auto_update_thread and _auto_update_thread.is_alive():
+                        log.info("Auto-update thread still running, reusing it")
+                    else:
+                        _auto_update_thread = threading.Thread(
+                            target=_auto_update_loop, kwargs={"initial_delay": 30}, daemon=True)
+                        _auto_update_thread.start()
                     log.info("Auto-update enabled: %s (first check in 30s)", freq)
                 elif not enabled and _auto_update_enabled:
                     _auto_update_enabled = False

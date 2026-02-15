@@ -849,7 +849,8 @@ function route(push) {
   const params = new URLSearchParams(search);
   if (params.get('manage') !== null && manageEnabled) { enterManage(); return; }
   if (path.startsWith('/w/')) {
-    const rest = decodeURIComponent(path.slice(3));
+    let rest;
+    try { rest = decodeURIComponent(path.slice(3)); } catch(e) { rest = path.slice(3); }
     const slashIdx = rest.indexOf('/');
     const name = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
     const articlePath = slashIdx === -1 ? null : rest.slice(slashIdx + 1);
