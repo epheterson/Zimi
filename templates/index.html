@@ -59,7 +59,7 @@
   .topbar-search input {
     width: 100%; padding: 9px 14px 9px 36px;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    color: var(--text); font-size: 14px; outline: none;
+    color: var(--text); font-size: 16px; outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
   }
   .topbar-search input:focus {
@@ -142,6 +142,8 @@
     background-clip: text;
   }
   .cat-heading:first-child { margin-top: 0; }
+  .cat-heading.clickable { cursor: pointer; }
+  .cat-heading.clickable:hover { opacity: 0.8; }
 
   /* ── Source header ── */
   .source-header {
@@ -185,7 +187,7 @@
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text;
   }
-  .card-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .card-info { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-right: 28px; }
   .stat-card .name { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 2px; }
   .stat-card .desc {
     font-size: 12px; color: var(--text2); line-height: 1.4; margin-bottom: 4px;
@@ -292,6 +294,16 @@
     border-radius: 50%; animation: spin 0.7s linear infinite;
     vertical-align: middle; margin-right: 8px;
   }
+  .content-search-indicator {
+    text-align: center; padding: 12px; color: var(--text2); font-size: 12px;
+    opacity: 0.7; animation: fadeIn 0.3s ease;
+  }
+  .content-search-indicator .spinner-inline {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid var(--border); border-top-color: var(--amber);
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }
   .empty { text-align: center; padding: 48px 20px; color: var(--text2); }
   .empty p { font-size: 14px; margin-bottom: 8px; }
   .empty .hint { font-size: 12px; opacity: 0.5; }
@@ -344,10 +356,6 @@
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
     margin-bottom: 6px; transition: border-color 0.2s, opacity 0.3s, max-height 0.3s, padding 0.3s, margin 0.3s;
     max-height: 200px; overflow: hidden;
-  }
-  .catalog-item.ci-removing {
-    opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: 0;
-    border-color: transparent;
   }
   .catalog-item:hover { border-color: var(--amber-border); }
   .catalog-item.ci-installed-item { opacity: 0.6; }
@@ -553,6 +561,46 @@
   .pw-box button.pw-primary { background:var(--amber); color:#000; border-color:var(--amber); font-weight:600; }
   .pw-box .pw-error { color:#ef4444; font-size:12px; margin-top:8px; display:none; }
 
+  /* ── Card category badge (inline in detail row) ── */
+  .card-cat { font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* ── Star (favorite) toggle ── */
+  .star-btn {
+    position: absolute; top: 8px; right: 8px; z-index: 2;
+    background: none; border: none; cursor: pointer; font-size: 18px; line-height: 1;
+    color: var(--text2); opacity: 0.3; transition: all 0.2s; padding: 2px;
+  }
+  .star-btn:hover { opacity: 1; color: var(--amber); transform: scale(1.2); }
+  .star-btn.starred { opacity: 1; color: var(--amber); }
+  .stat-card { position: relative; }
+
+  /* ── Collections manage ── */
+  .coll-form { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .coll-form input {
+    flex: 1; min-width: 120px; padding: 8px 12px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); font-size: 13px; outline: none;
+  }
+  .coll-form input:focus { border-color: var(--amber-border); }
+  .coll-form button {
+    padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer;
+    background: linear-gradient(135deg, var(--amber), var(--amber2));
+    color: #000; border: none; border-radius: var(--radius);
+  }
+  .coll-item {
+    display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    margin-bottom: 6px; font-size: 13px;
+  }
+  .coll-item .coll-name { font-weight: 600; color: var(--accent); }
+  .coll-item .coll-zims { flex: 1; color: var(--text2); font-size: 12px; }
+  .coll-item .coll-del {
+    background: none; border: 1px solid transparent; color: var(--text2); opacity: 0.3;
+    font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 6px;
+    transition: all 0.2s; line-height: 1;
+  }
+  .coll-item .coll-del:hover { opacity: 1; color: #f44; border-color: #f44; }
+
   /* ── Reduced motion ── */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
@@ -645,6 +693,9 @@ let suggestTimer = null;
 let suggestItems = [];
 let suggestIndex = -1;
 let snippetController = null;
+let collectionsCache = null; // {version, favorites, collections}
+let _expandedCollection = null; // which collection is expanded for ZIM picking
+let homeScope = null; // {type:'favorites'|'category'|'collection', label, zimNames:[]}
 
 const RESULTS_PER_PAGE = 20;
 let visibleResultCount = RESULTS_PER_PAGE;
@@ -738,7 +789,7 @@ function submitPw() {
 function updateTopbar() {
   const activeSource = currentSource || readerSource;
   // Back button: show when not on home (between breadcrumb and search bar — logo never moves)
-  const showBack = (readerOpen && !sourceAutoReader) || mode === 'search';
+  const showBack = (readerOpen && !sourceAutoReader) || mode === 'search' || homeScope;
   backBtn.style.display = showBack ? 'flex' : 'none';
 
   // Breadcrumb: Zimi / [icon] — search bar shows source name as placeholder
@@ -791,6 +842,8 @@ function updateTopbar() {
     } else {
       q.placeholder = 'Search Kiwix library...';
     }
+  } else if (homeScope) {
+    q.placeholder = 'Search ' + homeScope.label + '...';
   } else {
     q.placeholder = 'Search everything...';
   }
@@ -832,6 +885,11 @@ async function init() {
       manageEnabled = true;  // manage exists but needs password
     }
   } catch(e) {}
+  // Fetch collections/favorites (public, no auth needed)
+  try {
+    const cres = await fetch('/collections');
+    if (cres.ok) collectionsCache = await cres.json();
+  } catch(e) {}
   // Fetch version for footer
   try {
     const hres = await fetch('/health');
@@ -872,6 +930,26 @@ function route(push) {
       enterSource(name, push);
       return;
     }
+  }
+  // Scoped home: /?scope=type:label
+  const scopeParam = params.get('scope');
+  if (scopeParam) {
+    const state = history.state;
+    if (state && state.scope) {
+      // Restore scope from history state (has zimNames)
+      enterScope(state.scope.type, state.scope.label, state.scope.zimNames, false);
+    } else {
+      // Reconstruct scope from URL param
+      const [stype, ...rest] = scopeParam.split(':');
+      const slabel = rest.join(':');
+      const scopeZims = _resolveScopeZims(stype, slabel);
+      if (scopeZims.length) {
+        enterScope(stype, slabel, scopeZims, false);
+      } else {
+        enterHome(push);
+      }
+    }
+    return;
   }
   // Global search: /?q=term
   const qParam = params.get('q');
@@ -926,12 +1004,44 @@ function enterHome(push) {
   currentSource = null;
   readerSource = null;
   sourceAutoReader = false;
+  homeScope = null;
   q.value = '';
   searchMeta.style.display = 'none';
   sourceHeaderEl.style.display = 'none';
   activeSourceFilters.clear();
   hideSuggest();
   if (push) history.pushState({ mode: 'home' }, '', '/');
+  updateTopbar();
+  renderHome();
+}
+
+function _resolveScopeZims(type, label) {
+  if (!zimsCache) return [];
+  if (type === 'favorites') {
+    return (collectionsCache && collectionsCache.favorites) || [];
+  }
+  if (type === 'category') {
+    return zimsCache.filter(z => z.category === label).map(z => z.name);
+  }
+  if (type === 'collection' && collectionsCache && collectionsCache.collections) {
+    const coll = Object.values(collectionsCache.collections).find(c => c.label === label);
+    return coll ? (coll.zims || []) : [];
+  }
+  return [];
+}
+
+function enterScope(type, label, zimNames, push) {
+  mode = 'home';
+  currentSource = null;
+  readerSource = null;
+  sourceAutoReader = false;
+  homeScope = { type, label, zimNames };
+  q.value = '';
+  searchMeta.style.display = 'none';
+  sourceHeaderEl.style.display = 'none';
+  activeSourceFilters.clear();
+  hideSuggest();
+  if (push) history.pushState({ mode: 'home', scope: homeScope }, '', '/?scope=' + encodeURIComponent(type + ':' + label));
   updateTopbar();
   renderHome();
 }
@@ -963,28 +1073,35 @@ function renderHome(filter) {
     return;
   }
 
+  // Determine base ZIM set (scoped or all)
+  let baseZims = zimsCache;
+  if (homeScope) {
+    const scopeSet = new Set(homeScope.zimNames);
+    baseZims = zimsCache.filter(z => scopeSet.has(z.name));
+  }
+
   // Filter ZIMs by title/name/description when filter text provided
-  let zims = zimsCache;
+  let zims = baseZims;
   if (filter) {
     const fl = filter.toLowerCase();
     const words = fl.split(/\s+/).filter(Boolean);
-    zims = zimsCache.filter(z => {
+    zims = baseZims.filter(z => {
       const t = ((z.title || '') + ' ' + z.name + ' ' + (z.description || '')).toLowerCase();
       return words.every(w => t.includes(w));
     });
   }
 
-  const totalAll = zimsCache.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
-  const totalGbAll = zimsCache.reduce((s, z) => s + z.size_gb, 0);
+  const totalEntries = baseZims.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
+  const totalGb = baseZims.reduce((s, z) => s + z.size_gb, 0);
 
-  const n = zimsCache.length;
-  if (filter && zims.length !== zimsCache.length) {
+  const n = baseZims.length;
+  if (filter && zims.length !== baseZims.length) {
     statsBar.innerHTML = '<span class="num">' + zims.length + '</span> of ' + n + ' source' + (n !== 1 ? 's' : '') +
       ' matching &ldquo;' + esc(filter) + '&rdquo;';
   } else {
     statsBar.innerHTML = '<span class="num">' + n + '</span> source' + (n !== 1 ? 's' : '') + ' &middot; ' +
-      '<span class="num">' + totalAll.toLocaleString() + '</span> article' + (totalAll !== 1 ? 's' : '') + ' &middot; ' +
-      fmtSizeHtml(totalGbAll);
+      '<span class="num">' + totalEntries.toLocaleString() + '</span> article' + (totalEntries !== 1 ? 's' : '') + ' &middot; ' +
+      fmtSizeHtml(totalGb);
   }
   statsBar.style.display = '';
 
@@ -1003,45 +1120,109 @@ function renderHome(filter) {
 
   let h = '';
 
+  // Scope header with back link
+  if (homeScope) {
+    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">' +
+      '<a href="#" onclick="event.preventDefault();enterHome(true)" style="color:var(--text2);text-decoration:none;font-size:13px">\u2190 All Sources</a>' +
+      '<span style="color:var(--border)">/</span>' +
+      '<span style="font-size:13px;font-weight:600;color:var(--amber)">' + esc(homeScope.label) + '</span>' +
+    '</div>';
+  }
+
   // Show article search hint at the top when filtering
   if (filter) {
-    const totalAll = zimsCache.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
+    const scopeEntries = baseZims.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
     h += '<div class="search-deeper" onclick="doSearch(\'' + escAttr(filter) + '\')" tabindex="0" ' +
       'onkeydown="if(event.key===\'Enter\')doSearch(\'' + escAttr(filter) + '\')">' +
-      'Search ' + totalAll.toLocaleString() + ' articles for &ldquo;' + esc(filter) + '&rdquo; \u2192</div>';
+      'Search ' + scopeEntries.toLocaleString() + ' articles for &ldquo;' + esc(filter) + '&rdquo; \u2192</div>';
+  }
+
+  // Favorites section at top (only on unscoped home)
+  if (!homeScope) {
+    const favNames = (collectionsCache && collectionsCache.favorites) || [];
+    if (!filter && favNames.length > 0) {
+      const favZims = favNames.map(n => zimsCache.find(z => z.name === n)).filter(Boolean);
+      if (favZims.length > 0) {
+        const favZimNames = favZims.map(z => z.name);
+        h += '<div class="cat-heading clickable" onclick="enterScope(\'favorites\',\'\u2605 Favorites\',' + escAttr(JSON.stringify(favZimNames)) + ',true)">\u2605 Favorites</div>';
+        h += renderCardGrid(favZims, true, true);
+      }
+    }
+
+    // Collections sections (if any, not when filtering)
+    if (!filter && collectionsCache && collectionsCache.collections) {
+      for (const [cname, coll] of Object.entries(collectionsCache.collections)) {
+        const collZims = (coll.zims || []).map(n => zimsCache.find(z => z.name === n)).filter(Boolean);
+        if (collZims.length > 0) {
+          const collZimNames = collZims.map(z => z.name);
+          h += '<div class="cat-heading clickable" onclick="enterScope(\'collection\',\'' + escAttr(coll.label || cname) + '\',' + escAttr(JSON.stringify(collZimNames)) + ',true)">' + esc(coll.label || cname) + '</div>';
+          h += renderCardGrid(collZims, true, true);
+        }
+      }
+    }
   }
 
   if (filter && zims.length === 0) {
     h += '<div class="empty"><p>No sources matching &ldquo;' + esc(filter) + '&rdquo;</p></div>';
   } else {
     cats.forEach(cat => {
-      h += '<div class="cat-heading">' + esc(cat) + '</div>';
-      h += renderCardGrid(groups[cat]);
+      if (!homeScope) {
+        const catZimNames = groups[cat].map(z => z.name);
+        h += '<div class="cat-heading clickable" onclick="enterScope(\'category\',\'' + escAttr(cat) + '\',' + escAttr(JSON.stringify(catZimNames)) + ',true)">' + esc(cat) + '</div>';
+      } else {
+        h += '<div class="cat-heading">' + esc(cat) + '</div>';
+      }
+      h += renderCardGrid(groups[cat], true);
     });
     if (groups._uncategorized) {
       h += '<div class="cat-heading" style="opacity:0.5">Other</div>';
-      h += renderCardGrid(groups._uncategorized);
+      h += renderCardGrid(groups._uncategorized, true);
     }
   }
 
   output.innerHTML = h;
 }
 
-function renderCardGrid(items) {
+function renderCardGrid(items, showStars, showCategory) {
   if (!items || !items.length) return '';
+  const favs = (collectionsCache && collectionsCache.favorites) || [];
   return '<div class="stats-grid">' + items.map(z => {
     const icon = z.has_icon
       ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" width="48" height="48" loading="lazy">'
       : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
+    const isFav = favs.includes(z.name);
+    const starHtml = showStars
+      ? '<button class="star-btn' + (isFav ? ' starred' : '') + '" onclick="event.stopPropagation();toggleFavorite(\'' + escAttr(z.name) + '\')" title="' + (isFav ? 'Remove from favorites' : 'Add to favorites') + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
+      : '';
+    const catSuffix = showCategory && z.category ? ' &middot; <span class="card-cat">' + esc(z.category) + '</span>' : '';
     return '<div class="stat-card" tabindex="0" role="button" onclick="enterSource(\'' + escAttr(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escAttr(z.name) + '\', true)">' +
+      starHtml +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info">' +
         '<div class="name">' + esc(z.title || z.name) + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
         '<div class="detail">' + (typeof z.entries === 'number' ? z.entries.toLocaleString() + ' entries' : '') +
-        ' &middot; ' + fmtSize(z.size_gb) + '</div>' +
+        ' &middot; ' + fmtSize(z.size_gb) + catSuffix + '</div>' +
       '</div></div>';
   }).join('') + '</div>';
+}
+
+async function toggleFavorite(zimName) {
+  try {
+    const res = await fetch('/favorites', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', ..._manageToken ? {'Authorization': 'Bearer ' + _manageToken} : {}},
+      body: JSON.stringify({zim: zimName})
+    });
+    const data = await res.json();
+    if (data.favorites) {
+      if (!collectionsCache) collectionsCache = {version: 1, favorites: [], collections: {}};
+      collectionsCache.favorites = data.favorites;
+    }
+    // Re-render current view to update stars
+    if (mode === 'home') renderHome();
+    else if (mode === 'search') renderSearchResults(allResults, currentSource);
+  } catch(e) {}
 }
 
 function toggleCategory(cat) {
@@ -1181,6 +1362,7 @@ q.addEventListener('keydown', e => {
   if (e.key === 'Enter') {
     e.preventDefault();
     clearTimeout(searchTimer);
+    clearTimeout(suggestTimer);
     hideSuggest();
     if (mode === 'manage') {
       if (manageTab === 'installed') {
@@ -1198,6 +1380,8 @@ q.addEventListener('keydown', e => {
 
 async function doSearch(query) {
   if (!query) return;
+  clearTimeout(suggestTimer);
+  hideSuggest();
 
   // Reject all-stop-word queries (e.g. "what", "the", "is it")
   const STOPS = new Set(['a','an','and','are','as','at','be','by','for','from','has','have','how','i','in','is','it','its','my','not','of','on','or','so','that','the','this','to','was','we','what','when','where','which','who','will','with','you']);
@@ -1228,26 +1412,95 @@ async function doSearch(query) {
   statsBar.style.display = 'none';
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
   searchMeta.style.display = 'none';
-  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Searching...</div>';
+  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Searching titles\u2026</div>';
   updateTopbar();
 
-  const zimParam = scope ? '&zim=' + encodeURIComponent(scope) : '';
+  let zimParam = scope ? '&zim=' + encodeURIComponent(scope) : '';
+  if (!scope && homeScope) {
+    zimParam = '&zim=' + encodeURIComponent(homeScope.zimNames.join(','));
+  }
   const searchT0 = performance.now();
+  const searchUrl = scope ? '/w/' + encodeURIComponent(scope) + '?q=' + encodeURIComponent(query) : '/?q=' + encodeURIComponent(query);
 
   try {
-    const res = await fetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam,
+    // ── Progressive two-phase search: fast title matches first, then full FTS ──
+    // Phase 1: fast title search (parallel per-ZIM, no lock contention)
+    const r1 = await fetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam + '&fast=1',
       { signal: searchController.signal });
-    allResults = await res.json();
-    allResults._clientElapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
-    allResults._query = query;
-    // Push search state so browser back from reader returns here
-    const searchUrl = scope ? '/w/' + encodeURIComponent(scope) + '?q=' + encodeURIComponent(query) : '/?q=' + encodeURIComponent(query);
+    const d1 = await r1.json();
+    const phase1Elapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
+    d1._clientElapsed = phase1Elapsed;
+    d1._query = query;
+    allResults = d1;
     history.pushState({ mode: 'search', query: query, source: scope }, '', searchUrl);
     renderSearchResults(allResults, scope);
+
+    if (d1.partial) {
+      // Show honest progress: "N title matches (Xs) — searching content..."
+      const titleCount = (d1.results || []).length;
+      const indicator = document.createElement('div');
+      indicator.className = 'content-search-indicator';
+      indicator.id = 'fts-indicator';
+      const msg = titleCount > 0
+        ? titleCount + ' title match' + (titleCount !== 1 ? 'es' : '') + ' (' + phase1Elapsed + 's) \u2014 '
+        : '';
+      indicator.innerHTML = '<span class="spinner-inline"></span>' + msg + 'Searching article content\u2026';
+      output.prepend(indicator);
+
+      // Live elapsed timer
+      const timerInterval = setInterval(() => {
+        const el = document.getElementById('fts-indicator');
+        if (!el) { clearInterval(timerInterval); return; }
+        const now = ((performance.now() - searchT0) / 1000).toFixed(0);
+        el.innerHTML = '<span class="spinner-inline"></span>' + msg + 'Searching article content\u2026 (' + now + 's)';
+      }, 1000);
+
+      // Phase 2: full Xapian FTS (sequential under _zim_lock, searches every ZIM)
+      const r2 = await fetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam,
+        { signal: searchController.signal });
+      const d2 = await r2.json();
+      clearInterval(timerInterval);
+      d2._clientElapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
+      d2._query = query;
+      allResults = mergeSearchResults(d1, d2);
+      renderSearchResults(allResults, scope);
+    }
   } catch(e) {
     if (e.name === 'AbortError') return;
     output.innerHTML = '<div class="empty"><p>Search failed</p><p class="hint">Try again in a moment.</p></div>';
   }
+}
+
+function mergeSearchResults(phase1, phase2) {
+  // Deduplicate by zim+path, keeping higher-scored version
+  const seen = new Map();
+  for (const r of (phase1.results || [])) {
+    const key = r.zim + ':' + r.path;
+    const existing = seen.get(key);
+    if (!existing || r.score > existing.score) seen.set(key, r);
+  }
+  for (const r of (phase2.results || [])) {
+    const key = r.zim + ':' + r.path;
+    const existing = seen.get(key);
+    if (!existing || r.score > existing.score) seen.set(key, r);
+  }
+  const merged = Array.from(seen.values()).sort((a, b) => b.score - a.score);
+
+  // Merge by_source counts (take max from either phase)
+  const bySource = { ...(phase1.by_source || {}) };
+  for (const [k, v] of Object.entries(phase2.by_source || {})) {
+    bySource[k] = Math.max(bySource[k] || 0, v);
+  }
+
+  return {
+    results: merged,
+    by_source: bySource,
+    total: merged.length,
+    elapsed: phase2.elapsed,
+    partial: false,
+    _clientElapsed: phase2._clientElapsed,
+    _query: phase2._query,
+  };
 }
 
 function _sourceIconHtml(zimName, size) {
@@ -1495,6 +1748,7 @@ function showSuggest() {
 function hideSuggest() {
   suggestDropdown.style.display = 'none';
   suggestIndex = -1;
+  if (suggestController) { suggestController.abort(); suggestController = null; }
 }
 
 function highlightSuggest() {
@@ -1970,8 +2224,244 @@ function switchManageTab(tab) {
   if (tab === 'installed') {
     q.placeholder = 'Filter installed ZIMs...';
     renderInstalled();
+  } else if (tab === 'collections') {
+    q.placeholder = 'Search everything...';
+    renderCollectionsTab();
+  } else if (tab === 'activity') {
+    q.placeholder = 'Search everything...';
+    renderActivityTab();
   } else {
     renderBrowseGallery();
+  }
+}
+
+// ── Collections tab ──
+async function renderCollectionsTab() {
+  const el = document.getElementById('manage-collections');
+  if (!el) return;
+  // Fetch fresh collections
+  try {
+    const res = await fetch('/collections');
+    if (res.ok) collectionsCache = await res.json();
+  } catch(e) {}
+  const data = collectionsCache || {favorites: [], collections: {}};
+  const colls = data.collections || {};
+  const zims = zimsCache || [];
+
+  let h = '';
+
+  // Create collection form
+  h += '<div class="manage-card"><h2>Collections</h2>';
+  h += '<div class="coll-form">' +
+    '<input id="coll-label" placeholder="Collection name (e.g. Dev Docs)" autocomplete="off">' +
+    '<button onclick="createCollection()">Create</button>' +
+  '</div>';
+
+  // Each collection with inline ZIM picker
+  for (const [name, coll] of Object.entries(colls)) {
+    const label = coll.label || name;
+    const collZims = coll.zims || [];
+    const expanded = _expandedCollection === name;
+    h += '<div class="coll-item" style="flex-direction:column;align-items:stretch">';
+    h += '<div style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="toggleCollExpand(\'' + escAttr(name) + '\')">' +
+      '<span class="coll-name" style="flex:1">' + esc(label) +
+      ' <span style="font-weight:400;color:var(--text2);font-size:12px">(' + collZims.length + ' source' + (collZims.length !== 1 ? 's' : '') + ')</span></span>' +
+      '<button class="coll-del" onclick="event.stopPropagation();deleteCollection(\'' + escAttr(name) + '\', this)" title="Delete collection">\u00D7</button>' +
+    '</div>';
+    if (expanded) {
+      // Group ZIMs by category (same names + order as homepage)
+      const catMap = {};
+      for (const z of zims) {
+        const cat = z.category || categorizeZim(z.name);
+        if (!catMap[cat]) catMap[cat] = [];
+        catMap[cat].push(z);
+      }
+      h += '<div style="margin-top:10px">';
+      for (const cat of Object.keys(catMap).sort()) {
+        const catZims = catMap[cat];
+        h += '<div style="margin-bottom:8px"><div style="font-size:11px;color:var(--text2);margin-bottom:4px">' + esc(cat) + '</div>';
+        h += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+        for (const z of catZims) {
+          const inColl = collZims.includes(z.name);
+          const title = z.title || z.name;
+          h += '<span class="pill' + (inColl ? ' active' : '') + '" style="cursor:pointer;font-size:12px" ' +
+            'onclick="event.stopPropagation();toggleCollZim(\'' + escAttr(name) + '\',\'' + escAttr(z.name) + '\')">' +
+            esc(title) + '</span>';
+        }
+        h += '</div></div>';
+      }
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+
+  if (!Object.keys(colls).length) {
+    h += '<div style="font-size:13px;color:var(--text2)">No collections yet. Create one to group ZIMs for scoped search.</div>';
+  }
+  h += '<div style="font-size:12px;color:var(--text2);margin-top:12px;opacity:0.7">Click a collection to add or remove sources. Collections with sources appear as homepage sections.</div>';
+  h += '</div>';
+
+  el.innerHTML = h;
+}
+
+async function createCollection() {
+  const labelEl = document.getElementById('coll-label');
+  if (!labelEl || !labelEl.value.trim()) return;
+  const label = labelEl.value.trim();
+  try {
+    const opts = {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({label, zims: []})};
+    if (_manageToken) opts.headers['Authorization'] = 'Bearer ' + _manageToken;
+    const res = await fetch('/collections', opts);
+    if (res.ok) {
+      labelEl.value = '';
+      renderCollectionsTab();
+    }
+  } catch(e) {}
+}
+
+async function deleteCollection(name, btn) {
+  if (!btn) return;
+  // Two-click confirmation
+  if (!btn.classList.contains('confirming')) {
+    btn.classList.add('confirming');
+    btn.textContent = 'Delete?';
+    btn.style.fontSize = '11px';
+    btn.style.color = 'var(--amber)';
+    setTimeout(() => { if (btn.classList.contains('confirming')) { btn.classList.remove('confirming'); btn.textContent = '\u00D7'; btn.style.fontSize = ''; btn.style.color = ''; }}, 3000);
+    return;
+  }
+  try {
+    const opts = {method: 'DELETE'};
+    if (_manageToken) opts.headers = {'Authorization': 'Bearer ' + _manageToken};
+    const res = await fetch('/collections?name=' + encodeURIComponent(name), opts);
+    if (res.ok) renderCollectionsTab();
+  } catch(e) {}
+}
+
+function toggleCollExpand(name) {
+  _expandedCollection = _expandedCollection === name ? null : name;
+  renderCollectionsTab();
+}
+
+async function toggleCollZim(collName, zimName) {
+  const data = collectionsCache || {favorites: [], collections: {}};
+  const coll = data.collections[collName];
+  if (!coll) return;
+  const zims = coll.zims || [];
+  const idx = zims.indexOf(zimName);
+  if (idx >= 0) zims.splice(idx, 1);
+  else zims.push(zimName);
+  try {
+    const opts = {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: collName, label: coll.label || collName, zims})};
+    if (_manageToken) opts.headers['Authorization'] = 'Bearer ' + _manageToken;
+    const res = await fetch('/collections', opts);
+    if (res.ok) {
+      // Update cache in place so re-render is instant
+      coll.zims = zims;
+      renderCollectionsTab();
+    }
+  } catch(e) {}
+}
+
+// ── Stats tab (merged server stats + usage) ──
+async function renderActivityTab() {
+  const el = document.getElementById('manage-activity');
+  if (!el) return;
+  el.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading...</div>';
+  try {
+    const [statsRes, usageRes] = await Promise.all([
+      manageFetch('/manage/stats').catch(() => null),
+      manageFetch('/manage/usage').catch(() => null)
+    ]);
+    let h = '';
+
+    // Server stats section
+    if (statsRes && statsRes.ok) {
+      const sdata = await statsRes.json();
+      const m = sdata.metrics || {};
+      const d = sdata.disk || {};
+      const au = sdata.auto_update || {};
+      // Sync auto-update dropdown on Library Status card
+      const freqSel = document.getElementById('auto-update-freq');
+      if (freqSel) freqSel.value = au.enabled ? (au.frequency || 'weekly') : 'disabled';
+      const uptime = m.uptime_seconds || 0;
+      const uptimeStr = uptime < 3600 ? Math.round(uptime / 60) + 'm' :
+                        uptime < 86400 ? Math.round(uptime / 3600) + 'h' :
+                        Math.round(uptime / 86400) + 'd';
+      h += '<div class="manage-card"><h2>Server</h2>';
+      h += '<div class="mc-row"><span class="mc-label">Uptime</span><span class="mc-value">' + uptimeStr + '</span></div>';
+      h += '<div class="mc-row"><span class="mc-label">Requests</span><span class="mc-value">' + (m.total_requests || 0) + '</span></div>';
+      if (m.endpoints) {
+        const eps = Object.entries(m.endpoints).sort((a,b) => b[1].count - a[1].count).slice(0, 5);
+        for (const [ep, info] of eps) {
+          h += '<div class="mc-row" style="padding-left:16px"><span class="mc-label" style="font-size:12px">' + esc(ep) + '</span><span class="mc-value" style="font-size:12px">' + info.count + ' (' + info.avg_latency_ms + 'ms avg)</span></div>';
+        }
+      }
+      if (m.rate_limited) h += '<div class="mc-row"><span class="mc-label">Rate limited</span><span class="mc-value" style="color:var(--amber)">' + m.rate_limited + '</span></div>';
+      if (d.zim_size_gb) h += '<div class="mc-row"><span class="mc-label">ZIM disk usage</span><span class="mc-value">' + d.zim_size_gb + ' GB</span></div>';
+      if (d.disk_free_gb) h += '<div class="mc-row"><span class="mc-label">Disk free</span><span class="mc-value">' + d.disk_free_gb + ' GB</span></div>';
+      h += '</div>';
+
+      // Save title_index data for rendering after usage
+      var _ti = sdata.title_index;
+    }
+
+    // Usage stats section (above title index — more relevant to user)
+    if (usageRes && usageRes.ok) {
+      const data = await usageRes.json();
+      h += '<div class="manage-card"><h2>Usage</h2>';
+      h += '<div class="mc-row"><span class="mc-label">Total searches</span><span class="mc-value">' + (data.searches || 0) + '</span></div>';
+      h += '<div class="mc-row"><span class="mc-label">Total article reads</span><span class="mc-value">' + (data.article_reads || 0) + '</span></div>';
+      h += '</div>';
+
+      const topZims = data.top_zims || [];
+      if (topZims.length > 0) {
+        h += '<div class="manage-card"><h2>Top Sources</h2>';
+        for (const z of topZims) {
+          const info = zimsCache && zimsCache.find(x => x.name === z.name);
+          const title = info ? (info.title || z.name) : z.name;
+          const total = (z.reads || 0) + (z.searches || 0);
+          h += '<div class="mc-row"><span class="mc-label">' + esc(title) + '</span>' +
+            '<span class="mc-value">' + total + ' <span style="font-weight:400;color:var(--text2);font-size:11px">(' + (z.reads || 0) + ' reads, ' + (z.searches || 0) + ' searches)</span></span></div>';
+        }
+        h += '</div>';
+      }
+    }
+
+    // Title Index card (compact, below usage)
+    if (typeof _ti !== 'undefined' && _ti) {
+      const ti = _ti;
+      h += '<div class="manage-card"><h2>Title Index</h2>';
+      const stateLabel = ti.state === 'building'
+        ? '<span style="color:var(--amber)">Building' + (ti.building_now ? ' ' + esc(ti.building_now) : '') + '</span>'
+        : (ti.ready + '/' + ti.total);
+      h += '<div class="mc-row"><span class="mc-label">Indexes</span><span class="mc-value">' + stateLabel + ' &middot; ' + ti.total_size_gb + ' GB</span></div>';
+      if (ti.errors && ti.errors.length > 0) {
+        for (const [name, err] of ti.errors) {
+          h += '<div class="mc-row"><span class="mc-label" style="color:var(--amber)">' + esc(name) + '</span><span class="mc-value" style="font-size:11px;color:var(--text2)">' + esc(err) + '</span></div>';
+        }
+      }
+      // Show indexes without FTS5 — user can opt-in
+      const noFts = (ti.indexes || []).filter(x => !x.has_fts && x.entries > 0);
+      if (noFts.length > 0) {
+        for (const idx of noFts) {
+          const sizeLbl = idx.size_mb >= 1024 ? (idx.size_mb / 1024).toFixed(1) + ' GB' : Math.round(idx.size_mb) + ' MB';
+          h += '<div class="mc-row"><span class="mc-label">' + esc(idx.name) + '</span>';
+          h += '<span class="mc-value">' + sizeLbl + ' (' + idx.entries.toLocaleString() + ') ';
+          h += '<button onclick="buildFts(\'' + escAttr(idx.name) + '\', this)" style="font-size:11px;padding:2px 8px;margin-left:6px;cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text1)">Enable deep search</button>';
+          h += '</span></div>';
+        }
+      }
+      h += '</div>';
+    }
+
+    if (!h) {
+      h = '<div style="text-align:center;padding:24px;color:var(--text2);font-size:13px">No stats available yet. Start searching and reading articles!</div>';
+    }
+    h += '<div style="text-align:center;padding:8px;font-size:11px;color:var(--text2);opacity:0.5">Stats are in-memory only and reset when the server restarts.</div>';
+    el.innerHTML = h;
+  } catch(e) {
+    el.innerHTML = '<div class="empty"><p>Could not load stats</p></div>';
   }
 }
 
@@ -2011,8 +2501,12 @@ async function renderManage() {
     '<div class="manage-tabs">' +
       '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">Installed (' + installedCount + ')</button>' +
       '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">Browse Library</button>' +
+      '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">Collections</button>' +
+      '<button class="manage-tab' + (manageTab === 'activity' ? ' active' : '') + '" data-tab="activity" onclick="switchManageTab(\'activity\')">Stats</button>' +
     '</div>' +
     '<div id="manage-installed" class="manage-tab-content' + (manageTab === 'installed' ? ' active' : '') + '"></div>' +
+    '<div id="manage-collections" class="manage-tab-content' + (manageTab === 'collections' ? ' active' : '') + '"></div>' +
+    '<div id="manage-activity" class="manage-tab-content' + (manageTab === 'activity' ? ' active' : '') + '"></div>' +
     '<div id="manage-browse" class="manage-tab-content' + (manageTab === 'browse' ? ' active' : '') + '">' +
       '<div class="manage-search" style="justify-content:flex-end">' +
         '<select id="catalog-lang" onchange="_catalogCache=null;if(_browseView===\'drilldown\'&&manageCategoryFilter)drillCategory(manageCategoryFilter);else if(_browseView===\'search\'){var v=q.value.trim();if(v)browseCatalogFilter(v);else renderBrowseGallery();}else renderBrowseGallery();" style="max-width:140px"><option value="">All languages</option><option value="eng">English</option><option value="fra">French</option><option value="deu">German</option><option value="spa">Spanish</option></select>' +
@@ -2057,6 +2551,10 @@ async function renderManage() {
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
   if (manageTab === 'installed') {
     renderInstalled();
+  } else if (manageTab === 'collections') {
+    renderCollectionsTab();
+  } else if (manageTab === 'activity') {
+    renderActivityTab();
   } else {
     if (manageCategoryFilter) {
       drillCategory(manageCategoryFilter);
@@ -2071,39 +2569,6 @@ async function renderManage() {
   }
 }
 
-async function loadManageStats() {
-  try {
-    const res = await manageFetch('/manage/stats');
-    const data = await res.json();
-    const el = document.getElementById('manage-stats');
-    if (!el) return;
-    const m = data.metrics || {};
-    const d = data.disk || {};
-    const au = data.auto_update || {};
-    // Set auto-update dropdown state
-    const freqSel = document.getElementById('auto-update-freq');
-    if (freqSel) freqSel.value = au.enabled ? (au.frequency || 'weekly') : 'disabled';
-    // Build compact stats
-    const uptime = m.uptime_seconds || 0;
-    const uptimeStr = uptime < 3600 ? Math.round(uptime / 60) + 'm' :
-                      uptime < 86400 ? Math.round(uptime / 3600) + 'h' :
-                      Math.round(uptime / 86400) + 'd';
-    let h = '';
-    h += '<div class="mc-row"><span class="mc-label">Uptime</span><span class="mc-value">' + uptimeStr + '</span></div>';
-    h += '<div class="mc-row"><span class="mc-label">Requests</span><span class="mc-value">' + (m.total_requests || 0) + '</span></div>';
-    if (m.endpoints) {
-      const eps = Object.entries(m.endpoints).sort((a,b) => b[1].count - a[1].count).slice(0, 5);
-      for (const [ep, info] of eps) {
-        h += '<div class="mc-row" style="padding-left:16px"><span class="mc-label" style="font-size:12px">' + esc(ep) + '</span><span class="mc-value" style="font-size:12px">' + info.count + ' (' + info.avg_latency_ms + 'ms avg)</span></div>';
-      }
-    }
-    if (m.rate_limited) h += '<div class="mc-row"><span class="mc-label">Rate limited</span><span class="mc-value" style="color:var(--amber)">' + m.rate_limited + '</span></div>';
-    if (d.zim_size_gb) {
-      h += '<div class="mc-row"><span class="mc-label">ZIM files</span><span class="mc-value">' + d.zim_size_gb + ' GB</span></div>';
-    }
-    el.innerHTML = h;
-  } catch(e) { /* stats are optional */ }
-}
 
 async function toggleAutoUpdate() {
   const freqSel = document.getElementById('auto-update-freq');
@@ -2417,11 +2882,8 @@ async function deleteZim(filename, btn) {
     });
     const data = await res.json();
     if (data.error) { btn.textContent = 'Error: ' + data.error; return; }
-    // Animate card out
-    if (card) {
-      card.classList.add('ci-removing');
-      await new Promise(r => setTimeout(r, 350));
-    }
+    // Remove card immediately
+    if (card) card.remove();
     _catalogCache = null;
     const lr = await fetch('/list');
     zimsCache = await lr.json();
@@ -2434,6 +2896,24 @@ async function deleteZim(filename, btn) {
     if (manageTab === 'installed') renderInstalled();
     else if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
     else if (_browseView === 'gallery') renderBrowseGallery();
+  } catch(e) {
+    btn.textContent = 'Error';
+  }
+}
+
+async function buildFts(name, btn) {
+  if (!btn) return;
+  btn.textContent = 'Building...';
+  btn.disabled = true;
+  try {
+    const res = await manageFetch('/manage/build-fts', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name})
+    });
+    const data = await res.json();
+    if (data.error) { btn.textContent = 'Error'; btn.title = data.error; return; }
+    if (data.status === 'already_exists') { btn.textContent = 'Already built'; return; }
+    btn.textContent = 'Done (' + (data.elapsed || '?') + 's)';
   } catch(e) {
     btn.textContent = 'Error';
   }

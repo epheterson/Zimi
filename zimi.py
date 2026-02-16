@@ -37,6 +37,7 @@ import ast
 import gzip
 import glob
 import hashlib
+import hmac
 import html
 import json
 import logging
@@ -65,20 +66,42 @@ try:
 except ImportError:
     HAS_PYMUPDF = False
 
-ZIMI_VERSION = "1.1.0"
+ZIMI_VERSION = "1.2.0"
 
 log = logging.getLogger("zimi")
 logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S", level=logging.INFO)
 
 ZIM_DIR = os.environ.get("ZIM_DIR", "/zims")
 ZIMI_MANAGE = os.environ.get("ZIMI_MANAGE", "0") == "1"
+ZIMI_DATA_DIR = os.environ.get("ZIMI_DATA_DIR", os.path.join(ZIM_DIR, ".zimi"))
+try:
+    os.makedirs(ZIMI_DATA_DIR, exist_ok=True)
+except OSError:
+    pass  # ZIM_DIR may not exist yet (e.g. during import in tests)
+
+def _migrate_data_files():
+    """Move legacy .zimi_* files from ZIM_DIR root into ZIMI_DATA_DIR."""
+    migrations = [
+        (".zimi_password", "password"),
+        (".zimi_collections.json", "collections.json"),
+        (".zimi_cache.json", "cache.json"),
+    ]
+    for old_name, new_name in migrations:
+        old_path = os.path.join(ZIM_DIR, old_name)
+        new_path = os.path.join(ZIMI_DATA_DIR, new_name)
+        if os.path.exists(old_path) and not os.path.exists(new_path):
+            try:
+                os.makedirs(ZIMI_DATA_DIR, exist_ok=True)
+                os.rename(old_path, new_path)
+                log.info("Migrated %s → %s", old_name, new_name)
+            except OSError:
+                pass
+
+_migrate_data_files()
+
 def _password_file():
-    """Password file path — try ZIM_DIR first, fall back to script directory."""
-    for d in [ZIM_DIR, os.path.dirname(os.path.abspath(__file__))]:
-        pf = os.path.join(d, ".zimi_password")
-        if os.path.exists(pf) or os.access(d, os.W_OK):
-            return pf
-    return os.path.join(ZIM_DIR, ".zimi_password")  # last resort
+    """Password file path inside ZIMI_DATA_DIR."""
+    return os.path.join(ZIMI_DATA_DIR, "password")
 
 def _hash_pw(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
@@ -106,7 +129,7 @@ def _check_manage_auth(handler):
     if not stored:
         return None  # no password set, allow access
     auth = handler.headers.get("Authorization", "")
-    if auth.startswith("Bearer ") and _hash_pw(auth[7:]) == stored:
+    if auth.startswith("Bearer ") and hmac.compare_digest(_hash_pw(auth[7:]), stored):
         return None  # valid
     return True  # unauthorized
 MAX_CONTENT_LENGTH = 8000  # chars returned per article, keeps responses manageable for LLMs
@@ -177,6 +200,41 @@ def _get_metrics():
             "errors": _metrics["errors"],
             "rate_limited": _metrics["rate_limited"],
             "endpoints": endpoints,
+        }
+
+# ── Usage Stats (in-memory, resets on restart) ──
+_usage_stats = {
+    "searches": 0,
+    "article_reads": 0,
+    "by_zim": {},  # {zim_name: {"reads": N, "searches": N}}
+}
+_usage_lock = threading.Lock()
+
+def _record_usage(event_type, zim_name=None):
+    """Record a usage event. Thread-safe. Only tracks known ZIM names."""
+    with _usage_lock:
+        if event_type == "search":
+            _usage_stats["searches"] += 1
+        elif event_type in ("read", "iframe"):
+            _usage_stats["article_reads"] += 1
+        if zim_name and zim_name in get_zim_files():
+            if zim_name not in _usage_stats["by_zim"]:
+                _usage_stats["by_zim"][zim_name] = {"reads": 0, "searches": 0}
+            bucket = _usage_stats["by_zim"][zim_name]
+            if event_type == "search":
+                bucket["searches"] += 1
+            else:
+                bucket["reads"] += 1
+
+def _get_usage_stats():
+    """Return usage snapshot: top ZIMs, totals."""
+    with _usage_lock:
+        by_zim = dict(_usage_stats["by_zim"])
+        top = sorted(by_zim.items(), key=lambda x: x[1]["reads"] + x[1]["searches"], reverse=True)[:10]
+        return {
+            "searches": _usage_stats["searches"],
+            "article_reads": _usage_stats["article_reads"],
+            "top_zims": [{"name": n, **v} for n, v in top],
         }
 
 def _get_disk_usage():
@@ -252,34 +310,69 @@ def _auto_update_loop(initial_delay=0):
             time.sleep(60)
 
 # ── Search Cache ──
-_search_cache = {}       # {(query, zim, limit): (result, timestamp)}
+_search_cache = {}       # {key: {"result": ..., "created": float, "accesses": int}}
 _search_cache_lock = threading.Lock()
 SEARCH_CACHE_MAX = 100
-SEARCH_CACHE_TTL = 300   # 5 minutes
+SEARCH_CACHE_TTL = 900          # 15 minutes base
+SEARCH_CACHE_TTL_ACTIVE = 1800  # 30 minutes if re-accessed
 
 def _search_cache_get(key):
-    """Get cached search result if still valid."""
+    """Get cached search result if still valid. Re-accessed entries get extended TTL."""
     with _search_cache_lock:
         entry = _search_cache.get(key)
-        if entry and time.time() - entry[1] < SEARCH_CACHE_TTL:
-            return entry[0]
-        if entry:
-            del _search_cache[key]
+        if not entry:
+            return None
+        ttl = SEARCH_CACHE_TTL_ACTIVE if entry["accesses"] > 0 else SEARCH_CACHE_TTL
+        if time.time() - entry["created"] < ttl:
+            entry["accesses"] += 1
+            return entry["result"]
+        del _search_cache[key]
     return None
 
 def _search_cache_put(key, result):
     """Store search result in cache, evicting oldest if full."""
+    now = time.time()
     with _search_cache_lock:
         if len(_search_cache) >= SEARCH_CACHE_MAX:
-            # Evict oldest entry
-            oldest_key = min(_search_cache, key=lambda k: _search_cache[k][1])
+            oldest_key = min(_search_cache, key=lambda k: _search_cache[k]["created"])
             del _search_cache[oldest_key]
-        _search_cache[key] = (result, time.time())
+        _search_cache[key] = {"result": result, "created": now, "accesses": 0}
 
 def _search_cache_clear():
     """Clear all cached search results (e.g. after library changes)."""
     with _search_cache_lock:
         _search_cache.clear()
+
+# ── Suggestion Cache (per-ZIM title search) ──
+_suggest_cache = {}       # {(query_lower, zim_name): {"results": [...], "ts": float}}
+_suggest_cache_lock = threading.Lock()
+_SUGGEST_CACHE_TTL = 900   # 15 minutes
+_SUGGEST_CACHE_MAX = 500
+
+def _suggest_cache_get(query_lower, zim_name):
+    key = (query_lower, zim_name)
+    with _suggest_cache_lock:
+        entry = _suggest_cache.get(key)
+        if not entry:
+            return None
+        if time.time() - entry["ts"] < _SUGGEST_CACHE_TTL:
+            return entry["results"]
+        del _suggest_cache[key]
+    return None
+
+def _suggest_cache_put(query_lower, zim_name, results):
+    with _suggest_cache_lock:
+        if len(_suggest_cache) >= _SUGGEST_CACHE_MAX:
+            oldest = min(_suggest_cache, key=lambda k: _suggest_cache[k]["ts"])
+            del _suggest_cache[oldest]
+        _suggest_cache[(query_lower, zim_name)] = {"results": results, "ts": time.time()}
+
+def _suggest_cache_clear():
+    with _suggest_cache_lock:
+        _suggest_cache.clear()
+    with _suggest_pool_lock:
+        _suggest_pool.clear()
+        _suggest_zim_locks.clear()
 
 # MIME type fallback for ZIM entries with empty mimetype
 MIME_FALLBACK = {
@@ -324,6 +417,37 @@ def _categorize_zim(name):
         return "Books"
     return None
 
+# ── Collections & Favorites ──
+# Stored in .zimi_collections.json alongside ZIM files (persists across container rebuilds).
+_collections_lock = threading.Lock()
+
+def _collections_file_path():
+    """Path to the collections/favorites JSON file."""
+    return os.path.join(ZIMI_DATA_DIR, "collections.json")
+
+def _load_collections():
+    """Load collections from disk. Returns default structure if missing."""
+    try:
+        with open(_collections_file_path()) as f:
+            data = json.load(f)
+        if data.get("version") != 1:
+            return {"version": 1, "favorites": [], "collections": {}}
+        return data
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return {"version": 1, "favorites": [], "collections": {}}
+
+def _save_collections(data):
+    """Save collections to disk (atomic write via rename)."""
+    data["version"] = 1
+    path = _collections_file_path()
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, path)
+    except OSError as e:
+        log.warning("Could not save collections: %s", e)
+
 # ── Startup cache ──
 # Opening ZIM archives is expensive (~0.3s each on NAS spinning disks).
 # Persistent cache in .zimi_cache.json enables instant startup on subsequent runs.
@@ -334,6 +458,382 @@ _zim_files_cache = None  # {name: path} — cached at startup, ZIM dir is read-o
 _archive_pool = {}  # {name: Archive} — kept open for fast search
 _archive_lock = threading.Lock()  # protects _archive_pool writes in threaded mode
 _zim_lock = threading.Lock()      # serializes all libzim operations (C library is NOT thread-safe)
+
+# Separate archive handles for suggestion search — allows title lookups to run in
+# parallel with Xapian FTS by using independent C++ Archive objects + their own lock.
+# Each ZIM gets its own lock so multi-ZIM scoped searches can query in parallel.
+_suggest_pool = {}   # {name: Archive} — independent handles for SuggestionSearcher
+_suggest_pool_lock = threading.Lock()  # protects _suggest_pool writes
+_suggest_zim_locks = {}  # {name: Lock} — per-ZIM lock for suggestion operations
+
+# ── SQLite Title Index ──
+# Persistent title index per ZIM for instant prefix search (<10ms vs 40s for large ZIMs).
+# Built in background on startup using dedicated Archive handles (no _zim_lock needed).
+import sqlite3
+
+_TITLE_INDEX_DIR = os.path.join(ZIMI_DATA_DIR, "titles")
+_TITLE_INDEX_VERSION = "4"  # bump to force rebuild (v4: add FTS5 for multi-word search)
+_FTS5_ENTRY_THRESHOLD = 2_000_000  # skip FTS5 build for ZIMs above this (can be triggered manually)
+
+# Connection pool: keep SQLite connections open to avoid per-query disk seeks.
+# On spinning disk, each sqlite3.connect() is ~10ms (inode seek + first page read).
+# With 54 ZIMs, that's 540ms+ of pure overhead per multi-word query.
+_title_db_pool = {}       # {zim_name: sqlite3.Connection}
+_title_db_pool_lock = threading.Lock()
+
+def _get_title_db(zim_name):
+    """Get a pooled SQLite connection for a title index, or None if no index."""
+    with _title_db_pool_lock:
+        conn = _title_db_pool.get(zim_name)
+        if conn is not None:
+            return conn
+    db_path = _title_index_path(zim_name)
+    if not os.path.exists(db_path):
+        return None
+    try:
+        conn = sqlite3.connect(db_path, timeout=5, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA mmap_size=67108864")  # 64MB mmap for read perf
+        with _title_db_pool_lock:
+            # Another thread may have raced us — use theirs, close ours
+            if zim_name in _title_db_pool:
+                conn.close()
+                return _title_db_pool[zim_name]
+            _title_db_pool[zim_name] = conn
+        return conn
+    except Exception:
+        return None
+
+def _close_title_db(zim_name):
+    """Close and remove a pooled connection (e.g. when index is rebuilt or ZIM deleted)."""
+    with _title_db_pool_lock:
+        conn = _title_db_pool.pop(zim_name, None)
+    if conn:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+def _title_index_path(zim_name):
+    return os.path.join(_TITLE_INDEX_DIR, f"{zim_name}.db")
+
+def _title_index_is_current(zim_name, zim_path):
+    """Check if title index exists, matches ZIM mtime, and is current schema version."""
+    db_path = _title_index_path(zim_name)
+    if not os.path.exists(db_path):
+        return False
+    try:
+        zim_mtime = str(os.path.getmtime(zim_path))
+        conn = sqlite3.connect(db_path, timeout=5)
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key='zim_mtime'").fetchone()
+            ver = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            return (row is not None and row[0] == zim_mtime
+                    and ver is not None and ver[0] == _TITLE_INDEX_VERSION)
+        finally:
+            conn.close()
+    except Exception:
+        return False
+
+def _build_title_index(zim_name, zim_path):
+    """Build SQLite title index for a ZIM file.
+
+    Opens a dedicated Archive handle (not from _archive_pool) so this is safe
+    to run without _zim_lock. Commits in batches to keep memory low.
+    """
+    os.makedirs(_TITLE_INDEX_DIR, exist_ok=True)
+    db_path = _title_index_path(zim_name)
+    tmp_path = db_path + ".tmp"
+    t0 = time.time()
+    count = 0
+
+    # Open dedicated archive handle — never touches shared pool
+    archive = open_archive(zim_path)
+    conn = sqlite3.connect(tmp_path)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=OFF")  # safe: tmp file, rebuilt on failure
+        conn.execute("CREATE TABLE titles (path TEXT PRIMARY KEY, title TEXT, title_lower TEXT)")
+        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+
+        # Asset extensions to skip — these are images, fonts, scripts, not articles
+        _asset_exts = frozenset((
+            '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.avif',
+            '.css', '.js', '.json', '.woff', '.woff2', '.ttf', '.eot', '.otf',
+            '.mp3', '.mp4', '.ogg', '.wav', '.webm',
+        ))
+        batch = []
+        total_entries = archive.all_entry_count
+        for i in range(total_entries):
+            try:
+                entry = archive._get_entry_by_id(i)
+                if entry.is_redirect:
+                    continue
+                path = entry.path
+                # Skip asset paths by extension
+                dot = path.rfind('.')
+                if dot != -1 and path[dot:].lower() in _asset_exts:
+                    continue
+                title = entry.title
+                if not title:
+                    continue
+                batch.append((path, title, title.lower()))
+                if len(batch) >= 10000:
+                    conn.executemany("INSERT OR IGNORE INTO titles VALUES (?,?,?)", batch)
+                    conn.commit()
+                    count += len(batch)
+                    batch.clear()
+            except Exception:
+                continue
+
+        if batch:
+            conn.executemany("INSERT OR IGNORE INTO titles VALUES (?,?,?)", batch)
+            count += len(batch)
+
+        if count == 0:
+            conn.close()
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            log.warning("Title index: %s has 0 indexable entries, skipping", zim_name)
+            return
+
+        conn.execute("CREATE INDEX idx_prefix ON titles(title_lower)")
+        # FTS5 inverted index for multi-word search (finds words anywhere in title)
+        # Skip for very large ZIMs — user can trigger manually from UI
+        has_fts = "0"
+        if count <= _FTS5_ENTRY_THRESHOLD:
+            conn.execute("CREATE VIRTUAL TABLE titles_fts USING fts5(path UNINDEXED, title, tokenize='unicode61')")
+            conn.execute("INSERT INTO titles_fts(path, title) SELECT path, title FROM titles")
+            has_fts = "1"
+        else:
+            log.info("Title index: %s has %d entries, skipping FTS5 (above %d threshold)", zim_name, count, _FTS5_ENTRY_THRESHOLD)
+        zim_mtime = str(os.path.getmtime(zim_path))
+        conn.execute("INSERT INTO meta VALUES ('schema_version', ?)", (_TITLE_INDEX_VERSION,))
+        conn.execute("INSERT INTO meta VALUES ('zim_mtime', ?)", (zim_mtime,))
+        conn.execute("INSERT INTO meta VALUES ('built_at', ?)", (str(time.time()),))
+        conn.execute("INSERT INTO meta VALUES ('entry_count', ?)", (str(count),))
+        conn.execute("INSERT INTO meta VALUES ('has_fts', ?)", (has_fts,))
+        conn.commit()
+    except Exception:
+        conn.close()
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+    else:
+        conn.close()
+        # Evict stale pooled connection before atomic replace
+        _close_title_db(zim_name)
+        # Atomic replace (os.replace is atomic on POSIX, avoids remove+rename race)
+        os.replace(tmp_path, db_path)
+        dt = time.time() - t0
+        log.info("Title index: built %s (%d entries%s, %.1fs)", zim_name, count,
+                 "" if has_fts == "1" else ", no FTS5", dt)
+
+def _build_fts_for_index(zim_name):
+    """Add FTS5 table to an existing title index that was built without one.
+    This avoids re-scanning the ZIM file — just reads from the titles table."""
+    _close_title_db(zim_name)
+    db_path = _title_index_path(zim_name)
+    if not os.path.exists(db_path):
+        raise FileNotFoundError(f"No title index for {zim_name}")
+    t0 = time.time()
+    conn = sqlite3.connect(db_path, timeout=30)
+    try:
+        # Check if FTS5 already exists
+        existing = conn.execute("SELECT name FROM sqlite_master WHERE name='titles_fts'").fetchone()
+        if existing:
+            conn.close()
+            return {"status": "already_exists"}
+        count = conn.execute("SELECT COUNT(*) FROM titles").fetchone()[0]
+        conn.execute("CREATE VIRTUAL TABLE titles_fts USING fts5(path UNINDEXED, title, tokenize='unicode61')")
+        conn.execute("INSERT INTO titles_fts(path, title) SELECT path, title FROM titles")
+        conn.execute("INSERT OR REPLACE INTO meta VALUES ('has_fts', '1')")
+        conn.commit()
+        conn.close()
+        _close_title_db(zim_name)  # evict stale pooled connection
+        dt = time.time() - t0
+        log.info("Title index: built FTS5 for %s (%d entries, %.1fs)", zim_name, count, dt)
+        return {"status": "built", "entries": count, "elapsed": round(dt, 1)}
+    except Exception:
+        conn.close()
+        raise
+
+def _title_index_search(zim_name, query, limit=10):
+    """Search title index. Returns list or None if no index.
+
+    For single-word queries: B-tree prefix range scan (instant, <1ms).
+    For multi-word queries: FTS5 inverted index search — finds titles
+    containing ALL query words regardless of position.
+
+    Uses pooled connections to avoid per-query sqlite3.connect() overhead.
+    """
+    conn = _get_title_db(zim_name)
+    if conn is None:
+        return None  # no index or DB error → fallback to SuggestionSearcher
+    q = query.lower().strip()
+    if not q:
+        return []
+    words = q.split()
+    try:
+        if len(words) == 1:
+            # Single word: B-tree prefix range scan
+            q_upper = q[:-1] + chr(ord(q[-1]) + 1)
+            rows = conn.execute(
+                "SELECT path, title FROM titles WHERE title_lower >= ? AND title_lower < ? LIMIT ?",
+                (q, q_upper, limit)
+            ).fetchall()
+            return [{"path": r[0], "title": r[1], "snippet": ""} for r in rows]
+        else:
+            # Multi-word: FTS5 search — each word as prefix, all must match
+            # "dislocated joint" → 'dislocated* AND joint*' (prefix match on each)
+            # If no FTS5 table, return None to fall through to Phase 2 (Xapian)
+            try:
+                fts_query = " AND ".join(w + "*" for w in words)
+                rows = conn.execute(
+                    "SELECT path, title FROM titles_fts WHERE titles_fts MATCH ? LIMIT ?",
+                    (fts_query, limit)
+                ).fetchall()
+                return [{"path": r[0], "title": r[1], "snippet": ""} for r in rows]
+            except Exception:
+                return None  # no FTS5 table → fallback to Phase 2
+    except Exception:
+        # Connection may be stale (e.g. DB was rebuilt) — evict and retry once
+        _close_title_db(zim_name)
+        return None  # fallback on DB error
+
+_title_index_status = {
+    "state": "idle",       # idle | building | ready
+    "building_now": None,  # zim name currently being built
+    "built": 0,            # count built this session
+    "total": 0,            # total ZIMs to index
+    "ready": 0,            # indexes currently available
+    "started_at": None,
+    "finished_at": None,
+    "errors": [],          # [(name, error_str)]
+}
+_title_index_status_lock = threading.Lock()
+
+def _get_title_index_stats():
+    """Return title index status + per-ZIM details for the stats API."""
+    with _title_index_status_lock:
+        status = dict(_title_index_status)
+        status["errors"] = list(status["errors"])  # copy
+
+    # Gather per-index file sizes and entry counts
+    total_size = 0
+    indexes = []
+    if os.path.exists(_TITLE_INDEX_DIR):
+        for f in sorted(os.listdir(_TITLE_INDEX_DIR)):
+            if not f.endswith(".db"):
+                continue
+            db_path = os.path.join(_TITLE_INDEX_DIR, f)
+            size = os.path.getsize(db_path)
+            total_size += size
+            name = f[:-3]
+            # Read entry count and FTS5 status from meta (uses pool if available)
+            entry_count = 0
+            has_fts = False
+            try:
+                c = _get_title_db(name)
+                if c:
+                    row = c.execute("SELECT value FROM meta WHERE key='entry_count'").fetchone()
+                    if row:
+                        entry_count = int(row[0])
+                    fts_row = c.execute("SELECT value FROM meta WHERE key='has_fts'").fetchone()
+                    if fts_row:
+                        has_fts = fts_row[0] == "1"
+                    else:
+                        # Legacy v4 indexes don't have has_fts key — check for table
+                        tbl = c.execute("SELECT name FROM sqlite_master WHERE name='titles_fts'").fetchone()
+                        has_fts = tbl is not None
+            except Exception:
+                pass
+            indexes.append({"name": name, "size_mb": round(size / (1024 * 1024), 1), "entries": entry_count, "has_fts": has_fts})
+
+    status["total_size_gb"] = round(total_size / (1024 ** 3), 1)
+    status["index_count"] = len(indexes)
+    # Use live counts: ready = indexes on disk, total = ZIM files
+    status["ready"] = len(indexes)
+    status["total"] = len(get_zim_files())
+    status["indexes"] = sorted(indexes, key=lambda x: -x["size_mb"])[:10]  # top 10 by size
+    return status
+
+def _build_all_title_indexes():
+    """Build missing/stale title indexes for all ZIM files (background task)."""
+    os.makedirs(_TITLE_INDEX_DIR, exist_ok=True)
+    zims = get_zim_files()
+
+    # Count how many are already current
+    need_build = []
+    current = 0
+    for name, path in zims.items():
+        if _title_index_is_current(name, path):
+            current += 1
+        else:
+            need_build.append((name, path))
+
+    with _title_index_status_lock:
+        _title_index_status["total"] = len(zims)
+        _title_index_status["ready"] = current
+        if not need_build:
+            _title_index_status["state"] = "ready"
+            return
+        _title_index_status["state"] = "building"
+        _title_index_status["started_at"] = time.time()
+
+    built = 0
+    for name, path in need_build:
+        with _title_index_status_lock:
+            _title_index_status["building_now"] = name
+        try:
+            _build_title_index(name, path)
+            built += 1
+            with _title_index_status_lock:
+                _title_index_status["ready"] += 1
+                _title_index_status["built"] += 1
+        except Exception as e:
+            log.warning("Title index build failed for %s: %s", name, e)
+            with _title_index_status_lock:
+                _title_index_status["errors"].append((name, str(e)))
+
+    with _title_index_status_lock:
+        _title_index_status["state"] = "ready"
+        _title_index_status["building_now"] = None
+        _title_index_status["finished_at"] = time.time()
+
+    if built:
+        log.info("Title index: built %d new indexes", built)
+    # Clean up indexes for ZIMs that no longer exist
+    _clean_stale_title_indexes()
+    # Pre-warm connection pool: open all DBs and touch B-tree root pages
+    # so first search doesn't pay ~20s of cold disk seeks across 54 ZIMs
+    t0 = time.time()
+    warmed = 0
+    for name in zims:
+        conn = _get_title_db(name)
+        if conn:
+            try:
+                conn.execute("SELECT 1 FROM titles LIMIT 1").fetchone()
+                warmed += 1
+            except Exception:
+                pass
+    log.info("Title index pool warmed: %d connections (%.1fs)", warmed, time.time() - t0)
+
+def _clean_stale_title_indexes():
+    """Remove title index DBs for ZIM files that no longer exist."""
+    if not os.path.exists(_TITLE_INDEX_DIR):
+        return
+    zims = get_zim_files()
+    for f in os.listdir(_TITLE_INDEX_DIR):
+        if f.endswith(".db"):
+            name = f[:-3]  # strip .db
+            if name not in zims:
+                _close_title_db(name)
+                try:
+                    os.remove(os.path.join(_TITLE_INDEX_DIR, f))
+                    log.info("Removed stale title index: %s", f)
+                except OSError:
+                    pass
 
 # Load UI template from file (next to this script)
 _TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
@@ -420,6 +920,44 @@ def open_archive(path):
     return Archive(path)
 
 
+def _get_suggest_archive(name):
+    """Get a suggestion-dedicated Archive handle and per-ZIM lock.
+
+    Each ZIM gets its own Archive + Lock, allowing parallel suggestion searches
+    across different ZIMs while keeping each ZIM's C++ object single-threaded.
+    """
+    if name in _suggest_pool:
+        return _suggest_pool[name], _suggest_zim_locks[name]
+    zims = get_zim_files()
+    if name in zims:
+        with _suggest_pool_lock:
+            if name in _suggest_pool:
+                return _suggest_pool[name], _suggest_zim_locks[name]
+            archive = open_archive(zims[name])
+            _suggest_pool[name] = archive
+            _suggest_zim_locks[name] = threading.Lock()
+            return archive, _suggest_zim_locks[name]
+    return None, None
+
+
+def suggest_search_zim(archive, query_str, limit=5):
+    """Fast title search via SuggestionSearcher (B-tree, ~10-50ms any ZIM size)."""
+    results = []
+    try:
+        ss = SuggestionSearcher(archive)
+        suggestion = ss.suggest(query_str)
+        count = min(suggestion.getEstimatedMatches(), limit)
+        for path in suggestion.getResults(0, count):
+            try:
+                entry = archive.get_entry_by_path(path)
+                results.append({"path": path, "title": entry.title, "snippet": ""})
+            except Exception:
+                results.append({"path": path, "title": path, "snippet": ""})
+    except Exception:
+        pass
+    return results
+
+
 def search_zim(archive, query_str, limit=10, snippets=True):
     """Full-text search within a ZIM file. Returns list of {path, title, snippet}.
 
@@ -462,10 +1000,6 @@ def search_zim(archive, query_str, limit=10, snippets=True):
     return results
 
 
-MAX_SEARCH_SOURCES = 20     # stop after results from this many ZIMs
-MAX_SEARCH_TOTAL = 200      # stop after this many total results
-MAX_SEARCH_SECONDS = 4.0    # time budget for a full search across all ZIMs
-
 STOP_WORDS = {"a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
               "has", "have", "how", "i", "in", "is", "it", "its", "my", "not",
               "of", "on", "or", "so", "that", "the", "this", "to", "was", "we",
@@ -502,85 +1036,133 @@ def _score_result(title, query_words, rank, entry_count):
     return title_score + rank_score + auth_score
 
 
-def search_all(query_str, limit=5, filter_zim=None):
-    """Search across all ZIM files (or a specific one).
+def search_all(query_str, limit=5, filter_zim=None, fast=False):
+    """Search across all ZIM files, a specific one, or a list.
+
+    filter_zim can be None (all), a string (single ZIM), or a list of strings.
+    fast=True: title-only search via SuggestionSearcher (~10-50ms), returns partial=True.
 
     Returns unified ranked format:
     {
       "results": [{"zim": ..., "path": ..., "title": ..., "snippet": ..., "score": ...}],
       "by_source": {"zim_name": count, ...},
       "total": N,
-      "elapsed": seconds
+      "elapsed": seconds,
+      "partial": bool  (True when fast=True, False otherwise)
     }
 
-    When searching all ZIMs: searches smallest first (fast results from focused
-    ZIMs) and skips huge ZIMs when time budget is low to keep response times fast.
+    Searches smallest ZIMs first. No time budgets or skipping — every ZIM is
+    searched fully. Use fast=True for instant title matches, then full FTS for
+    complete results (progressive two-phase pattern).
     """
     zims = get_zim_files()
     cache_meta = {z["name"]: (z.get("entries") if isinstance(z.get("entries"), int) else 0) for z in (_zim_list_cache or [])}
+
+    # Normalize filter_zim to None or list
+    if isinstance(filter_zim, str):
+        filter_zim = [filter_zim]
     scoped = bool(filter_zim)
+    single_zim = scoped and len(filter_zim) == 1  # single-ZIM: no time limits
 
     if filter_zim:
-        if filter_zim in zims:
-            target_names = [filter_zim]
-        else:
+        missing = [z for z in filter_zim if z not in zims]
+        if missing:
             return {"results": [], "by_source": {}, "total": 0, "elapsed": 0,
-                    "error": f"ZIM '{filter_zim}' not found"}
+                    "partial": fast, "error": f"ZIM(s) not found: {', '.join(missing)}"}
+        # Sort multi-ZIM scopes smallest-first (like global) for speed
+        if single_zim:
+            target_names = filter_zim
+        else:
+            target_names = sorted(filter_zim, key=lambda n: cache_meta.get(n, 0))
     else:
         target_names = sorted(zims.keys(), key=lambda n: cache_meta.get(n, 0))
 
-    # Clean query for Xapian (strip stop words for global search)
-    cleaned = _clean_query(query_str) if not scoped else query_str
+    # Clean query for Xapian (only pass raw query for single-ZIM scope)
+    cleaned = _clean_query(query_str) if not single_zim else query_str
     query_words = [w.lower() for w in cleaned.split() if w.lower() not in STOP_WORDS] or [w.lower() for w in query_str.split()]
-    # How many to fetch per ZIM
-    per_zim = limit if scoped else 20
 
     raw_results = []
     by_source = {}
     timings = []
     search_start = time.time()
-    sources_hit = 0
 
     # Junk path patterns (SE tag index pages, etc.)
     _junk_re = re.compile(r'questions/tagged/|/tags$|/tags/page')
 
-    for name in target_names:
-        # Skip huge ZIMs when time budget is running low
-        elapsed_so_far = time.time() - search_start
-        remaining = MAX_SEARCH_SECONDS - elapsed_so_far
-        entry_count = cache_meta.get(name, 0)
-        if not scoped and remaining < 2.0 and entry_count > 1_000_000:
-            timings.append(f"{name}=skipped({entry_count // 1_000_000}M)")
-            continue
+    if fast:
+        # ── Fast path: title-only via SuggestionSearcher ──
+        # Uses dedicated archive handles with per-ZIM locks so multiple ZIMs
+        # can be searched in parallel (and independently of _zim_lock FTS).
+        q_lower = query_str.lower().strip()
+        thread_results = {}  # {name: [results]}
 
-        try:
-            t0 = time.time()
-            archive = get_archive(name)
-            if archive is None:
-                archive = open_archive(zims[name])
-            results = search_zim(archive, cleaned, limit=per_zim, snippets=scoped)
-            dt = time.time() - t0
-            if dt > 0.3:
-                timings.append(f"{name}={dt:.1f}s")
-            valid = [r for r in results if "error" not in r and not _junk_re.search(r.get("path", ""))]
+        def _search_one_zim(name):
+            try:
+                cached_suggest = _suggest_cache_get(q_lower, name)
+                if cached_suggest is not None:
+                    thread_results[name] = cached_suggest
+                    return
+                # Try SQLite title index first (instant, <10ms)
+                idx_results = _title_index_search(name, query_str, limit=limit)
+                if idx_results is not None:
+                    _suggest_cache_put(q_lower, name, idx_results)
+                    thread_results[name] = idx_results
+                    return
+                # Fallback: SuggestionSearcher (slow for large ZIMs on spinning disk)
+                archive, lock = _get_suggest_archive(name)
+                if archive is None or lock is None:
+                    return
+                with lock:
+                    results = suggest_search_zim(archive, query_str, limit=limit)
+                _suggest_cache_put(q_lower, name, results)
+                thread_results[name] = results
+            except Exception:
+                pass
+
+        if len(target_names) == 1:
+            _search_one_zim(target_names[0])
+        else:
+            threads = [threading.Thread(target=_search_one_zim, args=(n,), daemon=True) for n in target_names]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+        for name, results in thread_results.items():
+            valid = [r for r in results if not _junk_re.search(r.get("path", ""))]
             if valid:
                 entry_count = cache_meta.get(name, 1)
                 for rank, r in enumerate(valid):
                     score = _score_result(r["title"], query_words, rank, entry_count)
                     raw_results.append({
                         "zim": name, "path": r["path"], "title": r["title"],
-                        "snippet": r.get("snippet", ""), "score": round(score, 1),
+                        "snippet": "", "score": round(score, 1),
                     })
                 by_source[name] = len(valid)
-                sources_hit += 1
-                if not scoped and sources_hit >= MAX_SEARCH_SOURCES:
-                    break
-                if not scoped and len(raw_results) >= MAX_SEARCH_TOTAL:
-                    break
-                if not scoped and (time.time() - search_start) > MAX_SEARCH_SECONDS:
-                    break
-        except Exception:
-            pass
+    else:
+        # ── Full path: Xapian FTS — search every ZIM, no budgets ──
+        for name in target_names:
+            try:
+                t0 = time.time()
+                archive = get_archive(name)
+                if archive is None:
+                    archive = open_archive(zims[name])
+                results = search_zim(archive, cleaned, limit=limit)
+                dt = time.time() - t0
+                if dt > 0.3:
+                    timings.append(f"{name}={dt:.1f}s")
+                valid = [r for r in results if "error" not in r and not _junk_re.search(r.get("path", ""))]
+                if valid:
+                    entry_count = cache_meta.get(name, 1)
+                    for rank, r in enumerate(valid):
+                        score = _score_result(r["title"], query_words, rank, entry_count)
+                        raw_results.append({
+                            "zim": name, "path": r["path"], "title": r["title"],
+                            "snippet": r.get("snippet", ""), "score": round(score, 1),
+                        })
+                    by_source[name] = len(valid)
+            except Exception:
+                pass
 
     if timings:
         log.info("  slow zims: %s", ", ".join(timings))
@@ -603,6 +1185,7 @@ def search_all(query_str, limit=5, filter_zim=None):
         "by_source": by_source,
         "total": len(deduped),
         "elapsed": elapsed,
+        "partial": fast,
     }
 
 
@@ -827,7 +1410,7 @@ def get_archive(name):
 
 def _cache_file_path():
     """Path to the persistent metadata cache file."""
-    return os.path.join(ZIM_DIR, ".zimi_cache.json")
+    return os.path.join(ZIMI_DATA_DIR, "cache.json")
 
 
 def _load_disk_cache():
@@ -1286,6 +1869,8 @@ def _download_thread(dl):
         with _zim_lock:
             load_cache(force=True)
         _search_cache_clear()
+        _suggest_cache_clear()
+        _clean_stale_title_indexes()
         dl["done"] = True
     except Exception as e:
         # Keep .tmp for resume on transient network errors; delete on validation failures
@@ -1432,19 +2017,42 @@ class ZimHandler(BaseHTTPRequestHandler):
                     limit = max(1, min(int(param("limit", "5")), MAX_SEARCH_LIMIT))
                 except (ValueError, TypeError):
                     limit = 5
-                zim = param("zim")
-                cache_key = (q.lower().strip(), zim or "", limit)
+                zim_param = param("zim")
+                collection = param("collection")
+                # Resolve collection → zim list
+                if collection:
+                    cdata = _load_collections()
+                    coll = cdata.get("collections", {}).get(collection)
+                    if not coll:
+                        return self._json(400, {"error": f"Collection '{collection}' not found"})
+                    filter_zim = coll.get("zims", []) or None
+                elif zim_param:
+                    filter_zim = [z.strip() for z in zim_param.split(",") if z.strip()]
+                    if len(filter_zim) == 1:
+                        filter_zim = filter_zim[0]
+                else:
+                    filter_zim = None
+                fast = param("fast") == "1"
+                zim_scope_str = ",".join(sorted(filter_zim)) if isinstance(filter_zim, list) else (filter_zim or "")
+                cache_key = (q.lower().strip(), zim_scope_str, limit, fast)
                 cached = _search_cache_get(cache_key)
                 if cached is not None:
                     _record_metric("/search", 0)
+                    _record_usage("search")
                     return self._json(200, cached)
                 t0 = time.time()
-                with _zim_lock:
-                    result = search_all(q, limit=limit, filter_zim=zim)
+                if fast:
+                    # Fast path uses _suggest_op_lock internally, no _zim_lock needed
+                    result = search_all(q, limit=limit, filter_zim=filter_zim, fast=True)
+                else:
+                    with _zim_lock:
+                        result = search_all(q, limit=limit, filter_zim=filter_zim)
                 dt = time.time() - t0
                 _search_cache_put(cache_key, result)
                 _record_metric("/search", dt)
-                log.info("search q=%r limit=%d zim=%s %.1fs", q, limit, zim or "all", dt)
+                _record_usage("search")
+                zim_label = ",".join(filter_zim) if isinstance(filter_zim, list) else (filter_zim or "all")
+                log.info("search q=%r limit=%d zim=%s fast=%s %.1fs", q, limit, zim_label, fast, dt)
                 return self._json(200, result)
 
             elif parsed.path == "/read":
@@ -1460,6 +2068,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 with _zim_lock:
                     result = read_article(zim, path, max_length=max_len)
                 _record_metric("/read", time.time() - t0)
+                _record_usage("read", zim)
                 return self._json(200, result)
 
             elif parsed.path == "/suggest":
@@ -1470,10 +2079,27 @@ class ZimHandler(BaseHTTPRequestHandler):
                     limit = max(1, min(int(param("limit", "10")), MAX_SEARCH_LIMIT))
                 except (ValueError, TypeError):
                     limit = 10
-                zim = param("zim")
+                zim_param = param("zim")
+                collection = param("collection")
+                # Resolve collection → zim list
+                if collection:
+                    cdata = _load_collections()
+                    coll = cdata.get("collections", {}).get(collection)
+                    zim_names = coll.get("zims", []) if coll else None
+                elif zim_param:
+                    zim_names = [z.strip() for z in zim_param.split(",") if z.strip()]
+                else:
+                    zim_names = None
                 t0 = time.time()
                 with _zim_lock:
-                    result = suggest(q, zim_name=zim, limit=limit)
+                    if zim_names:
+                        # Suggest across multiple specific ZIMs
+                        result = {}
+                        for zn in zim_names:
+                            r = suggest(q, zim_name=zn, limit=limit)
+                            result.update(r)
+                    else:
+                        result = suggest(q, zim_name=None, limit=limit)
                 _record_metric("/suggest", time.time() - t0)
                 return self._json(200, result)
 
@@ -1513,6 +2139,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                         snippet = ""
                 _record_metric("/snippet", time.time() - t0)
                 return self._json(200, {"snippet": snippet})
+
+            elif parsed.path == "/collections":
+                data = _load_collections()
+                return self._json(200, data)
 
             elif parsed.path == "/health":
                 zim_count = len(get_zim_files())
@@ -1569,7 +2199,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                         "frequency": _auto_update_freq,
                         "last_check": _auto_update_last_check,
                     }
-                    return self._json(200, {"metrics": metrics, "disk": disk, "auto_update": auto_update})
+                    title_index = _get_title_index_stats()
+                    return self._json(200, {"metrics": metrics, "disk": disk, "auto_update": auto_update, "title_index": title_index})
+
+                elif parsed.path == "/manage/usage":
+                    return self._json(200, _get_usage_stats())
 
                 elif parsed.path == "/manage/catalog":
                     query = param("q", "")
@@ -1615,6 +2249,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 fetch_dest = self.headers.get("Sec-Fetch-Dest", "")
                 if fetch_dest == "document" or not entry_path:
                     return self._serve_index()
+                # Track iframe article loads
+                if fetch_dest == "iframe":
+                    _record_usage("iframe", zim_name)
                 return self._serve_zim_content(zim_name, entry_path)
 
             else:
@@ -1652,7 +2289,54 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if _check_manage_auth(self):
                     return self._json(401, {"error": "unauthorized", "needs_password": True})
 
-            if parsed.path == "/manage/download" and ZIMI_MANAGE:
+            if parsed.path == "/collections":
+                # Auth: only enforce password when manage mode is on (collections are
+                # user-facing features that work without manage mode enabled)
+                if ZIMI_MANAGE and _check_manage_auth(self):
+                    return self._json(401, {"error": "unauthorized", "needs_password": True})
+                name = data.get("name", "").strip()[:64]
+                label = data.get("label", "").strip()[:128]
+                # Auto-generate name from label if not provided
+                if not name and label:
+                    name = re.sub(r'[^a-z0-9]+', '-', label.lower()).strip('-')[:64]
+                if not name:
+                    return self._json(400, {"error": "missing 'name' or 'label' field"})
+                if not label:
+                    label = name
+                zim_list = data.get("zims", [])
+                if not isinstance(zim_list, list) or len(zim_list) > 200:
+                    return self._json(400, {"error": "'zims' must be a list (max 200 items)"})
+                with _collections_lock:
+                    cdata = _load_collections()
+                    cdata["collections"][name] = {"label": label or name, "zims": zim_list}
+                    _save_collections(cdata)
+                return self._json(200, {"status": "ok", "collection": name})
+
+            elif parsed.path == "/favorites":
+                # Auth: same as collections — only when manage mode is on
+                if ZIMI_MANAGE and _check_manage_auth(self):
+                    return self._json(401, {"error": "unauthorized", "needs_password": True})
+                zim_name = data.get("zim", "").strip()
+                if not zim_name:
+                    return self._json(400, {"error": "missing 'zim' field"})
+                if zim_name not in get_zim_files():
+                    return self._json(400, {"error": f"ZIM '{zim_name}' not found"})
+                with _collections_lock:
+                    cdata = _load_collections()
+                    favs = cdata.get("favorites", [])
+                    if zim_name in favs:
+                        favs.remove(zim_name)
+                        action = "removed"
+                    elif len(favs) >= 100:
+                        return self._json(400, {"error": "Favorites list is full (max 100)"})
+                    else:
+                        favs.append(zim_name)
+                        action = "added"
+                    cdata["favorites"] = favs
+                    _save_collections(cdata)
+                return self._json(200, {"status": action, "zim": zim_name, "favorites": cdata["favorites"]})
+
+            elif parsed.path == "/manage/download" and ZIMI_MANAGE:
                 url = data.get("url", "")
                 if not url:
                     return self._json(400, {"error": "missing 'url' in request body"})
@@ -1686,7 +2370,21 @@ class ZimHandler(BaseHTTPRequestHandler):
                     load_cache(force=True)
                     count = len(_zim_list_cache or [])
                 _search_cache_clear()
+                _suggest_cache_clear()
+                _clean_stale_title_indexes()
                 return self._json(200, {"status": "refreshed", "zim_count": count})
+
+            elif parsed.path == "/manage/build-fts" and ZIMI_MANAGE:
+                zim_name = data.get("name", "")
+                if not zim_name:
+                    return self._json(400, {"error": "Missing 'name' parameter"})
+                try:
+                    result = _build_fts_for_index(zim_name)
+                    return self._json(200, result)
+                except FileNotFoundError as e:
+                    return self._json(404, {"error": str(e)})
+                except Exception as e:
+                    return self._json(500, {"error": f"FTS5 build failed: {e}"})
 
             elif parsed.path == "/manage/delete" and ZIMI_MANAGE:
                 filename = data.get("filename", "")
@@ -1703,6 +2401,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                     with _zim_lock:
                         load_cache(force=True)
                     _search_cache_clear()
+                    _suggest_cache_clear()
+                    _clean_stale_title_indexes()
                     return self._json(200, {"status": "deleted", "filename": filename})
                 except OSError as e:
                     return self._json(500, {"error": f"Failed to delete: {e}"})
@@ -1743,6 +2443,35 @@ class ZimHandler(BaseHTTPRequestHandler):
             else:
                 return self._json(404, {"error": "not found"})
 
+        except Exception as e:
+            traceback.print_exc()
+            return self._json(500, {"error": str(e)})
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        # Rate limit write endpoints
+        retry_after = _check_rate_limit(self._client_ip())
+        if retry_after > 0:
+            with _metrics_lock:
+                _metrics["rate_limited"] += 1
+            return self._json(429, {"error": "rate limited", "retry_after": retry_after})
+        try:
+            if parsed.path == "/collections":
+                name = params.get("name", [None])[0]
+                if not name:
+                    return self._json(400, {"error": "missing ?name= parameter"})
+                if ZIMI_MANAGE and _check_manage_auth(self):
+                    return self._json(401, {"error": "unauthorized", "needs_password": True})
+                with _collections_lock:
+                    cdata = _load_collections()
+                    if name not in cdata.get("collections", {}):
+                        return self._json(404, {"error": f"Collection '{name}' not found"})
+                    del cdata["collections"][name]
+                    _save_collections(cdata)
+                return self._json(200, {"status": "deleted", "collection": name})
+            else:
+                return self._json(404, {"error": "not found"})
         except Exception as e:
             traceback.print_exc()
             return self._json(500, {"error": str(e)})
@@ -1993,6 +2722,38 @@ def main():
             except Exception as e:
                 log.warning("Skipping %s: %s", name, e)
         log.info("All archives ready")
+        # Pre-warm suggestion indexes in background (loads B-tree pages into OS cache).
+        # Uses throwaway Archive handles so it never holds _suggest_op_lock — user
+        # fast searches can proceed immediately even while warm-up is running.
+        def _warm_suggest_indexes():
+            from concurrent.futures import ThreadPoolExecutor
+            zim_files = get_zim_files()
+            warmed = [0]
+            count_lock = threading.Lock()
+
+            def _warm_one(name, path):
+                try:
+                    # Pre-open suggest pool handle (fast, no index I/O)
+                    _get_suggest_archive(name)
+                    # Warm B-tree pages into OS page cache via throwaway handle
+                    archive = open_archive(path)
+                    ss = SuggestionSearcher(archive)
+                    s = ss.suggest("a")
+                    s.getResults(0, 1)
+                    with count_lock:
+                        warmed[0] += 1
+                except Exception:
+                    pass
+
+            # Parallel warmup — 4 workers keeps disk busy without
+            # overwhelming spinning disk seek capacity
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                for name, path in zim_files.items():
+                    pool.submit(_warm_one, name, path)
+            log.info("Suggestion indexes warmed: %d/%d", warmed[0], len(zim_files))
+        threading.Thread(target=_warm_suggest_indexes, daemon=True).start()
+        # Build SQLite title indexes in background (one-time per ZIM, enables <10ms title search)
+        threading.Thread(target=_build_all_title_indexes, daemon=True).start()
         # Start auto-update thread if enabled
         if _auto_update_enabled:
             _auto_update_thread = threading.Thread(target=_auto_update_loop, daemon=True)
