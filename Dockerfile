@@ -11,6 +11,7 @@ RUN useradd -m -u 1000 zimi && chown -R zimi:zimi /app
 USER zimi
 
 ENV ZIM_DIR=/zims
+ENV ZIMI_DATA_DIR=/zims/.zimi
 ENV ZIMI_MANAGE=1
 EXPOSE 8899
 
