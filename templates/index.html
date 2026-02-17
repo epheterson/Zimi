@@ -3690,7 +3690,9 @@ function openReader(url) {
       }
     } catch(e) { /* cross-origin or closed */ }
   };
-  frame.src = url;
+  // Use location.replace to avoid polluting parent history stack
+  // (setting iframe.src adds a session history entry that breaks the back button)
+  try { frame.contentWindow.location.replace(url); } catch(e) { frame.src = url; }
   updateTopbar();
 }
 
@@ -3731,7 +3733,9 @@ function closeReader() {
   readerOpen = false;
   readerSource = null;
   document.getElementById('reader').classList.remove('open');
-  document.getElementById('reader-frame').src = 'about:blank';
+  // Use location.replace to avoid adding a history entry (iframe.src pollutes back button)
+  var f = document.getElementById('reader-frame');
+  try { f.contentWindow.location.replace('about:blank'); } catch(e) { f.src = 'about:blank'; }
   mainView.classList.remove('hidden');
   updateTopbar();
   _setWindowTitle('Zimi');
