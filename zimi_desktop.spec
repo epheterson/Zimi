@@ -102,10 +102,11 @@ exe = EXE(
     upx=True,
     console=False,
     icon='assets/icon.icns' if platform.system() == 'Darwin' else 'assets/icon.ico',
+    # Flatten _internal/ on Windows/Linux so Zimi.exe sits with its libs
+    # macOS uses .app bundle which hides internals anyway
+    contents_directory='.' if platform.system() != 'Darwin' else '_internal',
 )
 
-# contents_directory='.' flattens the _internal/ subfolder on Windows/Linux
-# so users see Zimi.exe + libs in one clean folder (macOS uses .app bundle)
 coll = COLLECT(
     exe,
     a.binaries,
@@ -114,7 +115,6 @@ coll = COLLECT(
     upx=True,
     upx_exclude=[],
     name='Zimi',
-    contents_directory='.' if platform.system() != 'Darwin' else '_internal',
 )
 
 # macOS: wrap into .app bundle

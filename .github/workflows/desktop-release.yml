@@ -49,11 +49,34 @@ jobs:
       - name: Generate icons
         run: python assets/generate_icons.py
 
-      - name: Verify libzim installed
-        run: python -c "import libzim; print('libzim OK')"
+      - name: Inspect libzim package
+        shell: bash
+        run: |
+          python -c "import libzim; print('libzim OK')"
+          python -c "
+          import importlib.util, os, sysconfig
+          spec = importlib.util.find_spec('libzim')
+          print(f'libzim origin: {spec.origin}')
+          print(f'submodule_search_locations: {spec.submodule_search_locations}')
+          for base in [sysconfig.get_path('purelib'), sysconfig.get_path('platlib')]:
+              d = os.path.join(base, 'libzim')
+              if os.path.isdir(d):
+                  print(f'libzim dir ({d}):')
+                  for f in sorted(os.listdir(d)):
+                      full = os.path.join(d, f)
+                      sz = os.path.getsize(full) if os.path.isfile(full) else '-'
+                      print(f'  {f}  ({sz})')
+          "
 
       - name: Build with PyInstaller
         run: pyinstaller --noconfirm zimi_desktop.spec
+
+      - name: Test launch (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # Try launching with --help or just check it starts without segfault
+          timeout 10 dist/Zimi/Zimi --help 2>&1 || echo "Exit code: $?"
+          echo "Binary exists and was attempted"
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
@@ -78,16 +101,17 @@ jobs:
             --no-internet-enable \
             ../${{ matrix.asset }} Zimi.app
 
-      - name: Smoke test (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
+      - name: Smoke test
+        shell: bash
         run: |
-          Write-Host "Contents of dist/Zimi/:"
-          Get-ChildItem dist/Zimi/ | Format-Table Name, Length
-          Write-Host "Checking for python DLLs..."
-          Get-ChildItem dist/Zimi/ -Filter "python*.dll" -Recurse | Format-Table FullName
-          Write-Host "Checking for libzim..."
-          Get-ChildItem dist/Zimi/ -Filter "libzim*" -Recurse | Format-Table FullName
+          echo "=== Top-level contents of dist/Zimi/ ==="
+          ls -la dist/Zimi/ | head -30
+          echo ""
+          echo "=== Looking for libzim files ==="
+          find dist/Zimi/ -name "libzim*" -o -name "zim*" 2>/dev/null || true
+          echo ""
+          echo "=== Looking for python shared libs ==="
+          find dist/Zimi/ -name "python*" -type f 2>/dev/null | head -10 || true
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
