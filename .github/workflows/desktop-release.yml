@@ -95,12 +95,15 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Find the .NET 6 runtime (needed by pythonnet/clr_loader)
+          # Find .NET runtime (6, 7, or 8 — needed by pythonnet/clr_loader)
           $dotnetRoot = (Get-Command dotnet).Source | Split-Path
-          $runtimeDir = Get-ChildItem "$dotnetRoot\shared\Microsoft.NETCore.App\6.*" |
+          Write-Host "dotnet root: $dotnetRoot"
+          Write-Host "Available runtimes:"
+          dotnet --list-runtimes
+          $runtimeDir = Get-ChildItem "$dotnetRoot\shared\Microsoft.NETCore.App" -Directory |
             Sort-Object Name -Descending | Select-Object -First 1
           if (-not $runtimeDir) {
-            Write-Error ".NET 6 runtime not found"
+            Write-Error "No .NET runtime found"
             exit 1
           }
           Write-Host "Bundling .NET runtime from: $($runtimeDir.FullName)"

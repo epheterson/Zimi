@@ -69,7 +69,7 @@ a = Analysis(
         'PIL',
         'webview',
     ] + (['gi'] if platform.system() == 'Linux' else [])
-      + (['pythonnet', 'clr', 'clr_loader', 'clr_loader.ffi', 'clr_loader.util.coreclr'] if platform.system() == 'Windows' else []),
+      + (['pythonnet', 'clr', 'clr_loader', 'clr_loader.ffi'] if platform.system() == 'Windows' else []),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=['rthook_pythonnet.py'],
