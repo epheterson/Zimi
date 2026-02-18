@@ -277,11 +277,6 @@ Windows and Linux builds are coming in a future release.
 
 On first launch, Zimi prompts you to choose a folder for storing ZIM files.
 
-**macOS Gatekeeper note:** Until the app is code-signed, macOS may block it. To open:
-```bash
-xattr -rd com.apple.quarantine /Applications/Zimi.app
-```
-
 ### Run from Source (all platforms)
 
 ```bash
