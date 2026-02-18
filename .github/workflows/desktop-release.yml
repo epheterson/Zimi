@@ -21,8 +21,11 @@ jobs:
             artifact: zimi-linux-amd64
             asset: zimi-linux-amd64.tar.gz
           - os: macos-13
-            artifact: zimi-macos
-            asset: Zimi.dmg
+            artifact: zimi-macos-intel
+            asset: Zimi-Intel.dmg
+          - os: macos-latest
+            artifact: zimi-macos-arm64
+            asset: Zimi-AppleSilicon.dmg
           - os: windows-latest
             artifact: zimi-windows-amd64
             asset: zimi-windows-amd64.zip
@@ -59,9 +62,9 @@ jobs:
         working-directory: dist
         run: |
           if command -v create-dmg &>/dev/null; then
-            create-dmg --volname "Zimi" --no-internet-enable ../Zimi.dmg Zimi.app
+            create-dmg --volname "Zimi" --no-internet-enable ../${{ matrix.asset }} Zimi.app
           else
-            hdiutil create -volname Zimi -srcfolder Zimi.app -ov -format UDZO ../Zimi.dmg
+            hdiutil create -volname Zimi -srcfolder Zimi.app -ov -format UDZO ../${{ matrix.asset }}
           fi
 
       - name: Package (Windows)
@@ -94,5 +97,6 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           files: |
             zimi-linux-amd64/zimi-linux-amd64.tar.gz
-            zimi-macos/Zimi.dmg
+            zimi-macos-intel/Zimi-Intel.dmg
+            zimi-macos-arm64/Zimi-AppleSilicon.dmg
             zimi-windows-amd64/zimi-windows-amd64.zip

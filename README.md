@@ -35,7 +35,7 @@ Search and read 100M+ articles offline. Wikipedia, Stack Overflow, dev docs, Wik
 
 Download the latest release for your platform from [GitHub Releases](https://github.com/epheterson/Zimi/releases):
 
-- **macOS:** `Zimi.dmg` — open the DMG, drag to Applications, launch.
+- **macOS:** `Zimi-AppleSilicon.dmg` (M1+) or `Zimi-Intel.dmg` — open the DMG, drag to Applications, launch.
 - **Windows:** `zimi-windows-amd64.zip` — extract and run `Zimi.exe`.
 - **Linux:** `zimi-linux-amd64.tar.gz` — extract and run `./Zimi`.
 
