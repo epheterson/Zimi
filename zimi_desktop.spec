@@ -83,6 +83,9 @@ a = Analysis(
         'jupyter',
         'tkinter',
         'pystray',
+        'pythonnet',
+        'clr',
+        'clr_loader',
     ],
     noarchive=False,
     cipher=block_cipher,
@@ -102,9 +105,6 @@ exe = EXE(
     upx=True,
     console=False,
     icon='assets/icon.icns' if platform.system() == 'Darwin' else 'assets/icon.ico',
-    # Flatten _internal/ on Windows/Linux so Zimi.exe sits with its libs
-    # macOS uses .app bundle which hides internals anyway
-    contents_directory='.' if platform.system() != 'Darwin' else '_internal',
 )
 
 coll = COLLECT(

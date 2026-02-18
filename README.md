@@ -23,10 +23,6 @@ Search and read 100M+ articles offline. API-first knowledge server for [ZIM file
 |----------------|----------------|
 | ![Reader](screenshots/reader.png) | ![Browse Library](screenshots/browse-library.png) |
 
-| Library Manager |
-|-----------------|
-| ![Library](screenshots/manage-page.png) |
-
 ## Quick Start (Docker)
 
 **Have ZIM files already?** Mount them and go:
@@ -206,32 +202,6 @@ zims/
   ...
 ```
 
-## Library Manager
-
-The built-in library manager is enabled by default (gear icon in the web UI). You can:
-
-- Browse the Kiwix catalog
-- Download ZIMs directly
-- Check for updates to installed ZIMs
-- Refresh the library cache
-
-Management API endpoints:
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /manage/status` | Library status (count, total size) |
-| `GET /manage/catalog?q=...` | Browse Kiwix catalog |
-| `GET /manage/check-updates` | Check for ZIM updates |
-| `GET /manage/downloads` | Active download status |
-| `POST /manage/download` | Start a ZIM download |
-| `POST /manage/refresh` | Re-scan and rebuild cache |
-| `GET /manage/stats` | Server metrics (requests, latency, cache, title index status) |
-| `POST /manage/delete` | Delete a ZIM file |
-| `POST /manage/update` | Update a ZIM to latest version |
-| `POST /manage/cancel` | Cancel an active download |
-| `POST /manage/build-fts` | Build FTS5 index for a ZIM (on-demand deep search) |
-| `POST /manage/auto-update` | Configure auto-update (enable/disable, frequency) |
-
 ## Collections
 
 Collections let you group ZIMs into named sets for scoped search. For example, create a "Dev" collection with Stack Overflow and DevDocs, then search only those sources.
@@ -264,25 +234,28 @@ Place `.zim` files in your ZIM directory and restart Zimi (or use the refresh en
 
 Run Zimi as a native desktop application — no Docker or terminal required.
 
-### Install
+### Download
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/epheterson/Zimi/releases):
+Download the latest release from [GitHub Releases](https://github.com/epheterson/Zimi/releases):
 
-- **macOS:** `Zimi.dmg`
-- **Windows:** `zimi-windows-amd64.zip`
-- **Linux:** `zimi-linux-amd64.tar.gz`
+- **macOS (Apple Silicon):** `Zimi-AppleSilicon.dmg`
+- **macOS (Intel):** `Zimi-Intel.dmg`
+- **Windows:** `Zimi-Windows-amd64.zip`
+- **Linux:** `Zimi-Linux-amd64.tar.gz` (requires GTK3 + WebKit2)
 
-On first launch, Zimi prompts you to choose a folder for storing ZIM files, then opens the full web UI in a native window.
+On first launch, Zimi prompts you to choose a folder for storing ZIM files.
 
-### Build from Source
+**macOS Gatekeeper note:** Until the app is code-signed, macOS may block it. To open:
+```bash
+xattr -rd com.apple.quarantine /Applications/Zimi.app
+```
+
+### Run from Source
 
 ```bash
 pip install -r requirements-desktop.txt
-pyinstaller --noconfirm zimi_desktop.spec
-open dist/Zimi.app  # macOS
+python3 zimi_desktop.py
 ```
-
-See [RELEASING.md](RELEASING.md) for detailed build instructions and platform notes.
 
 ## Architecture
 

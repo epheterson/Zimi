@@ -452,7 +452,9 @@ def _run():
     # Start server in background after window is shown
     window.events.shown += _on_webview_ready
 
-    webview.start()
+    # On Windows, force Edge WebView2 backend (avoids pythonnet/.NET issues)
+    gui = 'edgechromium' if platform.system() == 'Windows' else None
+    webview.start(gui=gui)
 
 
 def main():
