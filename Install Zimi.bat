@@ -1,0 +1,3 @@
+@echo off
+echo Starting Zimi installer...
+powershell -ExecutionPolicy Bypass -File "%~dp0install-windows.ps1"
