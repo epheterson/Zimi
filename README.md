@@ -1,17 +1,23 @@
 # Zimi
 
-Search and read 100M+ articles offline. API-first knowledge server for [ZIM files](https://wiki.openzim.org/wiki/ZIM_file_format).
+Search and read 100M+ articles offline. Wikipedia, Stack Overflow, dev docs, WikiHow, and thousands more — all on your machine, no internet required.
 
-[Kiwix](https://kiwix.org) packages the world's knowledge into ZIM files — offline archives of Wikipedia, Stack Overflow, dev docs, and thousands of other sources. Zimi makes them fly:
+[Kiwix](https://kiwix.org) packages the world's knowledge into [ZIM files](https://wiki.openzim.org/wiki/ZIM_file_format) — compressed offline archives of entire websites. Zimi is the fastest way to search and read them.
 
-- **JSON API** for AI agents — search, read, and browse articles programmatically
-- **MCP server** for Claude Code and other AI tool integrations
-- **Web UI** for humans — dark theme, cross-source search, in-browser reader
-- **Library manager** — browse the Kiwix catalog and download ZIMs from the UI
-- **Browse library** — visual category gallery for discovering ZIMs across 9 curated categories
-- **Desktop app** — native window for macOS, Windows, and Linux (no Docker required)
-- **Collections** — group ZIMs into named sets for scoped search
-- **Fast search** — sub-second title matches across all sources, then full-text results
+**Three ways to run it:**
+
+- **Docker** — self-host on a NAS, server, or anywhere with one command.
+- **Desktop app** — native macOS window with built-in catalog browser. [Download here.](https://github.com/epheterson/Zimi/releases)
+- **Python CLI** — run directly if you already have Python installed.
+
+**What you get:**
+
+- **Catalog browser** — visual gallery of 1,000+ available ZIM archives across 10 categories. One-click install.
+- **Cross-source search** — search across all your sources at once, with sub-second title matches.
+- **Article reader** — clean dark-theme reader with full-text rendering, right in the app.
+- **JSON API** — every feature accessible programmatically for scripts, bots, and integrations.
+- **MCP server** — plug into Claude Code and other AI agents as a knowledge tool.
+- **Collections** — group sources into named sets for scoped search (e.g. "Dev Docs", "Medical").
 
 ## Screenshots
 
@@ -266,8 +272,8 @@ Download the latest release from [GitHub Releases](https://github.com/epheterson
 
 - **macOS (Apple Silicon):** `Zimi-AppleSilicon.dmg`
 - **macOS (Intel):** `Zimi-Intel.dmg`
-- **Windows:** `Zimi-Windows-amd64.zip`
-- **Linux:** `Zimi-Linux-amd64.tar.gz` (requires GTK3 + WebKit2)
+
+Windows and Linux builds are coming in a future release.
 
 On first launch, Zimi prompts you to choose a folder for storing ZIM files.
 
@@ -276,7 +282,7 @@ On first launch, Zimi prompts you to choose a folder for storing ZIM files.
 xattr -rd com.apple.quarantine /Applications/Zimi.app
 ```
 
-### Run from Source
+### Run from Source (all platforms)
 
 ```bash
 pip install -r requirements-desktop.txt
