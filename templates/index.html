@@ -23,8 +23,8 @@
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
   }
 
-  html { overflow: hidden; height: 100%; }
-  body { background: var(--bg); color: var(--text); min-height: 100vh; padding-top: 56px; overflow: hidden; height: 100%; }
+  html { height: 100%; overscroll-behavior-y: contain; }
+  body { background: var(--bg); color: var(--text); min-height: 100vh; padding-top: 56px; overscroll-behavior-y: contain; }
 
   /* ── Topbar ── */
   .topbar {
@@ -324,7 +324,7 @@
     border-color: var(--amber-border); background: var(--surface);
     outline: none;
   }
-  #main-view { overflow-y: auto; height: calc(100vh - 56px); overscroll-behavior: contain; }
+  #main-view { min-height: calc(100vh - 56px); }
   #main-view.hidden { display: none; }
 
   /* ── Manage page ── */
@@ -379,7 +379,8 @@
     font-size: 12px; color: var(--text2); line-height: 1.4; margin-bottom: 4px;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
-  .catalog-item .ci-meta { font-size: 12px; color: var(--text2); opacity: 0.5; }
+  .catalog-item .ci-meta { font-size: 12px; color: var(--text2); opacity: 0.5; word-spacing: 0.1em; }
+  .catalog-item .ci-meta > span { white-space: nowrap; }
   .catalog-item .ci-actions { flex-shrink: 0; display: flex; align-items: center; gap: 6px; margin-left: 8px; }
   .ci-installed-badge {
     font-size: 11px; color: var(--amber); font-weight: 600; padding: 4px 10px;
@@ -2178,8 +2179,7 @@ function autoCategorize(item) {
   if (/freecodecamp|mdn_|^docs\.|^peps\.|php\.net|archlinux|alpinelinux/.test(n)) return 'devdocs';
   if (/gentoo|termux|postmarketos|neos-wiki|unrealircd|bitcoin|cheatography/.test(n)) return 'devdocs';
   if (/devhints|cloudflare|getbootstrap|gobyexample|dart\.dev|lesscss/.test(n)) return 'devdocs';
-  if (/lua\.org|100r\.co|htdp\.org|opendatastructures|jeffe\.cs/.test(n)) return 'devdocs';
-  if (/anonymousplanet|openzim|thalesdoc|mankier/.test(n)) return 'devdocs';
+  if (/lua\.org/.test(n)) return 'devdocs';
   // Q&A
   if (/stackoverflow|stackexchange|askubuntu|superuser|serverfault/.test(n)) return 'stack_exchange';
   // Education (broad — catches tutorials, courses, how-to, reference)
@@ -2189,12 +2189,10 @@ function autoCategorize(item) {
   if (/edutechwiki|womenshistory|chopin\.lib|hitchwiki|football/.test(n)) return 'education';
   if (/biology|statistic|stats|learning|genomics|energypedia|proofwiki|ethanweed/.test(n)) return 'education';
   if (/stacks\.math|ncase\.me|encyclopedie|diksha|ghana-bece|ncert/.test(n)) return 'education';
-  if (/oer4schools|scienceinthebath|edu\.gcf|project-fuel|citizensinformation/.test(n)) return 'education';
-  if (/ifixit|wikihow|cooking|publicdomainrecipes|restarters|grimgrains/.test(n)) return 'education';
-  if (/music|mutopia|ragajunglism|tonedear|dalitio|fretmap|blender\.org|tomlehr/.test(n)) return 'education';
-  if (/milneopentextbooks|theworldfactbook/.test(n)) return 'education';
+  if (/ifixit|wikihow|cooking|publicdomainrecipes/.test(n)) return 'education';
+  if (/mutopia|blender\.org|theworldfactbook/.test(n)) return 'education';
   // Books & literature
-  if (/gutenberg|rationalwiki|booksdash|xkcd|smbc-comics|noted\.lol|incognitocat/.test(n)) return 'gutenberg';
+  if (/gutenberg|booksdash|xkcd/.test(n)) return 'gutenberg';
   // TED & video
   if (/^ted_/.test(n)) return 'ted';
   // Medical
@@ -2204,7 +2202,7 @@ function autoCategorize(item) {
   if (/canadian_prep|armypubs|cd3wd|selfreliance|s2underground|usda-2015/.test(n)) return 'survival';
   // Gaming & fandom
   if (/dandwiki|evageeks|frackinuniverse|granbluefantasy/.test(n)) return 'gaming';
-  if (/the_infosphere|zdoom|ibanezwiki|allthetropes|westeros/.test(n)) return 'gaming';
+  if (/the_infosphere|zdoom|westeros/.test(n)) return 'gaming';
   if (/minecraft|pokemon|bulba|stardew|rimworld|riskofrain|whitewolf/.test(n)) return 'gaming';
   return 'other';
 }
@@ -2310,15 +2308,14 @@ function renderBrowseGallery() {
       }
     }
 
-    const visibleCats = BROWSE_CATEGORIES.filter(c => (catCounts[c.key] || 0) > 0);
     let h = '<div class="browse-gallery">';
     h += '<div class="browse-subtitle" style="text-align:center;margin:12px 0 8px">' + items.length.toLocaleString() + ' ZIMs available across ' +
-      visibleCats.length + ' categories</div>';
+      BROWSE_CATEGORIES.length + ' categories</div>';
     h += '<div class="browse-grid">';
 
     for (const cat of BROWSE_CATEGORIES) {
       const count = catCounts[cat.key] || 0;
-      if (count === 0) continue;
+      if (count === 0 && cat.key !== 'other') continue;
       const installed = catInstalled[cat.key] || 0;
       const countLine = count + ' available' + (installed > 0 ? ' \u00B7 ' + installed + ' installed' : '');
       h += '<div class="browse-cat-card" onclick="drillCategory(\'' + escAttr(cat.key) + '\')">' +
@@ -2516,7 +2513,7 @@ function renderCatalogItem(group) {
     '<div class="ci-info">' +
       '<div class="ci-title">' + esc(item.title || item.name) + '</div>' +
       (item.summary ? '<div class="ci-summary">' + esc(item.summary) + '</div>' : '') +
-      '<div class="ci-meta">' + meta.join(' &middot; ') + '</div>' +
+      '<div class="ci-meta">' + meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
     '</div>' +
     '<div class="ci-actions">' + actionsHtml + '</div>' +
   '</div>';
@@ -2743,7 +2740,7 @@ async function renderHistoryTab() {
           '<div class="ci-icon">' + iconHtml + '</div>' +
           '<div class="ci-info">' +
             '<div class="ci-title">' + esc(title) + '</div>' +
-            '<div class="ci-meta">' + meta.join(' &middot; ') + '</div>' +
+            '<div class="ci-meta">' + meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
           '</div>' +
           '<div class="ci-actions"><span style="font-size:12px;font-weight:600;color:' + labelColor + '">' + label + '</span></div>' +
         '</div>';
@@ -2962,13 +2959,14 @@ async function renderManage() {
             '</select>' +
           '</span>' +
         '</div>' +
-        '<div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
-          (IS_DESKTOP
-            ? '<button class="manage-btn-action" onclick="openSettings()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">&#x2699;&#xFE0F; Settings</button>'
-            : '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">&#x1F504; Refresh Cache</button>') +
-          '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">&#x1F512; Password</button>' +
-          (sessionStorage.getItem('zimi_manage_pw') ? '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" title="Log out and return to home">Log Out</button>' : '') +
-          '<span style="flex:1"></span>' +
+        '<div style="margin-top:12px;display:flex;gap:8px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+            (IS_DESKTOP
+              ? '<button class="manage-btn-action" onclick="openSettings()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">&#x2699;&#xFE0F; Settings</button>'
+              : '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">&#x1F504; Refresh Cache</button>') +
+            '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">&#x1F512; Password</button>' +
+            (sessionStorage.getItem('zimi_manage_pw') ? '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" title="Log out and return to home">Log Out</button>' : '') +
+          '</div>' +
           '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none">Update All</button>' +
         '</div>' +
         '';
@@ -3117,7 +3115,7 @@ function renderInstalled(filterText) {
         '<div class="ci-icon">' + iconHtml + '</div>' +
         '<div class="ci-info">' +
           '<div class="ci-title">' + esc(z.title || z.name) + '</div>' +
-          '<div class="ci-meta">' + meta.join(' &middot; ') + '</div>' +
+          '<div class="ci-meta">' + meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
         '</div>' +
         '<div class="ci-actions">' + actionsHtml + '</div>' +
       '</div>';
