@@ -7,7 +7,7 @@ on:
     inputs:
       tag:
         description: 'Tag to build (e.g. v1.3.0)'
-        required: true
+        required: false
 
 permissions:
   contents: write
