@@ -3,6 +3,11 @@ name: Desktop Release
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v1.3.0)'
+        required: true
 
 permissions:
   contents: write
@@ -14,20 +19,15 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: zimi-linux-amd64
-            package_cmd: tar -czf ../zimi-linux-amd64.tar.gz Zimi
             asset: zimi-linux-amd64.tar.gz
+          - os: macos-15-intel
+            artifact: zimi-macos-intel
+            asset: Zimi-Intel.dmg
           - os: macos-latest
-            artifact: zimi-macos
-            package_cmd: |
-              if command -v create-dmg &>/dev/null; then
-                create-dmg --volname "Zimi" --no-internet-enable ../Zimi.dmg Zimi.app
-              else
-                hdiutil create -volname Zimi -srcfolder Zimi.app -ov -format UDZO ../Zimi.dmg
-              fi
-            asset: Zimi.dmg
+            artifact: zimi-macos-arm64
+            asset: Zimi-AppleSilicon.dmg
           - os: windows-latest
             artifact: zimi-windows-amd64
-            package_cmd: Compress-Archive -Path Zimi -DestinationPath ../zimi-windows-amd64.zip
             asset: zimi-windows-amd64.zip
 
     runs-on: ${{ matrix.os }}
@@ -35,6 +35,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -50,10 +52,30 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller zimi_desktop.spec
 
-      - name: Package
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
         working-directory: dist
-        run: ${{ matrix.package_cmd }}
-        shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
+        run: tar -czf ../zimi-linux-amd64.tar.gz Zimi
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        working-directory: dist
+        run: |
+          if command -v create-dmg &>/dev/null; then
+            create-dmg --volname "Zimi" --no-internet-enable ../${{ matrix.asset }} Zimi.app
+          else
+            hdiutil create -volname Zimi -srcfolder Zimi.app -ov -format UDZO ../${{ matrix.asset }}
+          fi
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        working-directory: dist
+        shell: pwsh
+        run: Compress-Archive -Path Zimi -DestinationPath ../zimi-windows-amd64.zip
+
+      - name: Move asset to dist
+        run: mv ${{ matrix.asset }} dist/ 2>/dev/null || true
+        shell: bash
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -69,11 +91,12 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
-      - name: Create GitHub Release
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           files: |
             zimi-linux-amd64/zimi-linux-amd64.tar.gz
-            zimi-macos/Zimi.dmg
+            zimi-macos-intel/Zimi-Intel.dmg
+            zimi-macos-arm64/Zimi-AppleSilicon.dmg
             zimi-windows-amd64/zimi-windows-amd64.zip
