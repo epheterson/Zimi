@@ -54,8 +54,11 @@ import traceback
 import xml.etree.ElementTree as ET
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote, urlencode
+import ssl
 import urllib.error
 import urllib.request
+
+import certifi
 
 from libzim.reader import Archive
 from libzim.search import Query, Searcher
@@ -66,6 +69,9 @@ try:
     HAS_PYMUPDF = True
 except ImportError:
     HAS_PYMUPDF = False
+
+# SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
+SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
 ZIMI_VERSION = "1.3.0"
 
@@ -1648,7 +1654,7 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
 
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Zimi/1.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=15, context=SSL_CTX) as resp:
             xml_bytes = resp.read()
     except Exception as e:
         return 0, [], str(e)
@@ -1844,7 +1850,7 @@ def _download_thread(dl):
             req.add_header("Range", f"bytes={existing_size}-")
             log.info("Resuming download of %s from %d bytes", dl["filename"], existing_size)
         try:
-            resp = urllib.request.urlopen(req, timeout=600)
+            resp = urllib.request.urlopen(req, timeout=600, context=SSL_CTX)
         except urllib.error.HTTPError as e:
             if e.code == 416 and existing_size > 0:
                 # Range not satisfiable — file already complete, just rename

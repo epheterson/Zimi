@@ -65,6 +65,7 @@ a = Analysis(
     hiddenimports=[
         'zimi',
         'libzim',
+        'certifi',
         'fitz',
         'PIL',
         'webview',

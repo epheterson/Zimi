@@ -107,10 +107,11 @@ jobs:
             exit 1
           }
           Write-Host "Bundling .NET runtime from: $($runtimeDir.FullName)"
-          $dest = "dist\Zimi\_internal\dotnet_runtime"
+          # Preserve standard .NET layout: dotnet_runtime/shared/Microsoft.NETCore.App/{version}/
+          $dest = "dist\Zimi\_internal\dotnet_runtime\shared\Microsoft.NETCore.App\$($runtimeDir.Name)"
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
           Copy-Item "$($runtimeDir.FullName)\*" -Destination $dest -Recurse
-          Write-Host "Bundled $(Get-ChildItem $dest | Measure-Object | Select-Object -Expand Count) files"
+          Write-Host "Bundled $(Get-ChildItem $dest -Recurse -File | Measure-Object | Select-Object -Expand Count) files"
 
       - name: Test launch (Linux)
         if: runner.os == 'Linux'
