@@ -68,10 +68,11 @@ a = Analysis(
         'fitz',
         'PIL',
         'webview',
-    ] + (['gi'] if platform.system() == 'Linux' else []),
+    ] + (['gi'] if platform.system() == 'Linux' else [])
+      + (['pythonnet', 'clr', 'clr_loader', 'clr_loader.ffi', 'clr_loader.util.coreclr'] if platform.system() == 'Windows' else []),
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['rthook_pythonnet.py'],
     excludes=[
         'mcp',
         'zimi_mcp',
@@ -83,9 +84,6 @@ a = Analysis(
         'jupyter',
         'tkinter',
         'pystray',
-        'pythonnet',
-        'clr',
-        'clr_loader',
     ],
     noarchive=False,
     cipher=block_cipher,

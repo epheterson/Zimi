@@ -87,10 +87,12 @@ Progressive search, SQLite title index, collections. See git tag v1.2.0.
 - [ ] Add notarytool step (submit, wait, staple)
 - [ ] Test: download DMG, double-click, no Gatekeeper warning
 - [ ] Ships two DMGs: `Zimi-AppleSilicon.dmg` + `Zimi-Intel.dmg`
+- [x] DMG with Applications shortcut (create-dmg --app-drop-link)
 
-### Windows Python DLL fix
-- [ ] Debug "failed to load python dll" — PyInstaller not bundling python311.dll correctly
-- [ ] libzim hidden imports not found (`_libzim`, `reader`, `search`, `suggestion`) — may need explicit `binaries=[]` in spec
+### Windows fix
+- [x] Remove incorrect libzim hidden imports (stubs, not real modules)
+- [x] Add collect_libzim_binaries() for explicit native DLL bundling
+- [x] Flatten _internal/ folder (contents_directory='.')
 - [ ] Test .exe build launches and runs on clean Windows machine
 - [ ] Consider Windows code signing (optional, suppresses SmartScreen)
 
@@ -118,9 +120,12 @@ Progressive search, SQLite title index, collections. See git tag v1.2.0.
 - [ ] Minimize to tray instead of quitting on window close
 - [ ] Tray icon with quick actions (open window, quit)
 
+### Distribution
+- [ ] Homebrew cask (`brew install --cask zimi`) — needs signed .dmg first
+- [ ] Linux packaging (.AppImage or .deb)
+- [ ] Auto-update for the desktop app itself
+
 ### Other
 - [ ] Create ZIM from website (integrate zim-tools/zimwriterfs)
 - [ ] bcrypt password hashing (replace SHA-256)
 - [ ] HTTPS / reverse proxy documentation
-- [ ] Linux packaging (.AppImage or .deb)
-- [ ] Auto-update for the desktop app itself

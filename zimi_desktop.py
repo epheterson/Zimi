@@ -14,6 +14,14 @@ import subprocess
 import sys
 import threading
 
+# ---------------------------------------------------------------------------
+# Windows: configure pythonnet to use CoreCLR (.NET 6+) before any imports
+# that trigger pywebview → pythonnet. Without this, clr_loader defaults to
+# .NET Framework 4.x which can't load the .NET 6 Python.Runtime.dll.
+# ---------------------------------------------------------------------------
+if platform.system() == "Windows":
+    os.environ.setdefault("PYTHONNET_RUNTIME", "coreclr")
+
 
 # ---------------------------------------------------------------------------
 # Icon path — resolve relative to this script (works in dev and PyInstaller)

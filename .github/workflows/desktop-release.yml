@@ -54,6 +54,11 @@ jobs:
             gir1.2-webkit2-4.1 \
             gcc libcairo2-dev pkg-config python3-dev
 
+      - name: Set pythonnet runtime (Windows)
+        if: runner.os == 'Windows'
+        run: echo "PYTHONNET_RUNTIME=coreclr" >> $env:GITHUB_ENV
+        shell: pwsh
+
       - name: Install dependencies
         run: pip install -r requirements-desktop.txt
 
@@ -134,7 +139,8 @@ jobs:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          IDENTITY="Developer ID Application: $(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | sed 's/.*"\(.*\)"/\1/')"
+          # Use whatever signing identity is in the keychain
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | sed 's/.*"\(.*\)"/\1/')
           echo "Signing with: $IDENTITY"
 
           # Sign all binaries inside the app bundle
