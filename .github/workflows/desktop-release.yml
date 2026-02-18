@@ -19,17 +19,17 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact: zimi-linux-amd64
-            asset: zimi-linux-amd64.tar.gz
+            artifact: Zimi-Linux-amd64
+            asset: Zimi-Linux-amd64.tar.gz
           - os: macos-15-intel
-            artifact: zimi-macos-intel
+            artifact: Zimi-Intel
             asset: Zimi-Intel.dmg
           - os: macos-latest
-            artifact: zimi-macos-arm64
+            artifact: Zimi-AppleSilicon
             asset: Zimi-AppleSilicon.dmg
           - os: windows-latest
-            artifact: zimi-windows-amd64
-            asset: zimi-windows-amd64.zip
+            artifact: Zimi-Windows-amd64
+            asset: Zimi-Windows-amd64.zip
 
     runs-on: ${{ matrix.os }}
 
@@ -89,18 +89,67 @@ jobs:
       - name: Test launch (Linux)
         if: runner.os == 'Linux'
         run: |
-          # Try launching with --help or just check it starts without segfault
           timeout 10 dist/Zimi/Zimi --help 2>&1 || echo "Exit code: $?"
           echo "Binary exists and was attempted"
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
         working-directory: dist
-        run: tar -czf ../zimi-linux-amd64.tar.gz Zimi
+        run: tar -czf ../${{ matrix.asset }} Zimi
 
       - name: Install create-dmg (macOS)
         if: runner.os == 'macOS'
         run: brew install create-dmg
+
+      - name: Import signing certificate (macOS)
+        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE_BASE64 != ''
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          # Create temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 12)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          # Allow codesign to access the keychain
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+
+      - name: Code sign app (macOS)
+        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE_BASE64 != ''
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          IDENTITY="Developer ID Application: $(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | sed 's/.*"\(.*\)"/\1/')"
+          echo "Signing with: $IDENTITY"
+
+          # Sign all binaries inside the app bundle
+          find dist/Zimi.app -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.pyd" \) -exec \
+            codesign --force --options runtime --sign "$IDENTITY" --timestamp {} \;
+
+          # Sign the main executable
+          codesign --force --options runtime --sign "$IDENTITY" --timestamp dist/Zimi.app/Contents/MacOS/Zimi
+
+          # Sign the app bundle itself
+          codesign --force --deep --options runtime --sign "$IDENTITY" --timestamp dist/Zimi.app
+
+          # Verify
+          codesign --verify --deep --strict dist/Zimi.app
+          echo "Code signing successful"
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
@@ -115,6 +164,24 @@ jobs:
             --app-drop-link 450 185 \
             --no-internet-enable \
             ../${{ matrix.asset }} Zimi.app
+
+      - name: Notarize DMG (macOS)
+        if: runner.os == 'macOS' && env.APPLE_ID != ''
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          echo "Submitting for notarization..."
+          xcrun notarytool submit ${{ matrix.asset }} \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait --timeout 10m
+
+          echo "Stapling notarization ticket..."
+          xcrun stapler staple ${{ matrix.asset }}
+          echo "Notarization complete"
 
       - name: Smoke test
         shell: bash
@@ -132,7 +199,7 @@ jobs:
         if: runner.os == 'Windows'
         working-directory: dist
         shell: pwsh
-        run: Compress-Archive -Path Zimi -DestinationPath ../zimi-windows-amd64.zip
+        run: Compress-Archive -Path Zimi -DestinationPath ../${{ matrix.asset }}
 
       - name: Move asset to dist
         run: mv ${{ matrix.asset }} dist/ 2>/dev/null || true
@@ -157,7 +224,7 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           files: |
-            zimi-linux-amd64/zimi-linux-amd64.tar.gz
-            zimi-macos-intel/Zimi-Intel.dmg
-            zimi-macos-arm64/Zimi-AppleSilicon.dmg
-            zimi-windows-amd64/zimi-windows-amd64.zip
+            Zimi-Linux-amd64/Zimi-Linux-amd64.tar.gz
+            Zimi-Intel/Zimi-Intel.dmg
+            Zimi-AppleSilicon/Zimi-AppleSilicon.dmg
+            Zimi-Windows-amd64/Zimi-Windows-amd64.zip
