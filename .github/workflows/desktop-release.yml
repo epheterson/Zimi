@@ -20,7 +20,7 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: Zimi-Linux-amd64
-            asset: Zimi-Linux-amd64.tar.gz
+            asset: Zimi-Linux-amd64.AppImage
           - os: macos-15-intel
             artifact: Zimi-Intel
             asset: Zimi-Intel.dmg
@@ -78,6 +78,14 @@ jobs:
         run: python -m pytest tests/test_server.py -v
 
       # ── Build ─────────────────────────────────────────────────────────
+
+      - name: Download Sparkle.framework (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          curl -sL "https://github.com/sparkle-project/Sparkle/releases/download/2.8.1/Sparkle-2.8.1.tar.xz" -o /tmp/sparkle.tar.xz
+          cd /tmp && tar -xf sparkle.tar.xz
+          cp -R /tmp/Sparkle.framework Sparkle.framework
+          echo "Sparkle.framework ready ($(du -sh Sparkle.framework | cut -f1))"
 
       - name: Generate icons
         run: python assets/generate_icons.py
@@ -291,10 +299,26 @@ jobs:
 
       # ── Packaging ─────────────────────────────────────────────────────
 
-      - name: Package (Linux)
+      - name: Package AppImage (Linux)
         if: runner.os == 'Linux'
-        working-directory: dist
-        run: tar -czf ../${{ matrix.asset }} Zimi
+        run: |
+          # Build AppDir from PyInstaller output
+          APPDIR=dist/Zimi.AppDir
+          mv dist/Zimi "$APPDIR"
+
+          # Add AppImage metadata
+          cp linux/AppRun "$APPDIR/"
+          chmod +x "$APPDIR/AppRun"
+          cp linux/zimi.desktop "$APPDIR/"
+          cp assets/icon.png "$APPDIR/zimi.png"
+          ln -sf zimi.png "$APPDIR/.DirIcon"
+
+          # Download appimagetool
+          curl -sL "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" -o /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+
+          # Build the AppImage (--appimage-extract-and-run avoids FUSE requirement in CI)
+          ARCH=x86_64 /tmp/appimagetool --appimage-extract-and-run "$APPDIR" "${{ matrix.asset }}"
 
       - name: Install create-dmg (macOS)
         if: runner.os == 'macOS'
@@ -327,6 +351,20 @@ jobs:
 
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
 
+      - name: Copy Sparkle.framework into app bundle (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # PyInstaller spec copies Sparkle.framework, but only if it exists at build time.
+          # Ensure it's in place for signing (CI downloads it fresh).
+          FWDIR="dist/Zimi.app/Contents/Frameworks"
+          if [ ! -d "$FWDIR/Sparkle.framework" ] && [ -d "Sparkle.framework" ]; then
+            mkdir -p "$FWDIR"
+            cp -R Sparkle.framework "$FWDIR/"
+            echo "Copied Sparkle.framework to Frameworks/"
+          else
+            echo "Sparkle.framework already in place"
+          fi
+
       - name: Code sign app (macOS)
         if: runner.os == 'macOS' && env.APPLE_CERTIFICATE_BASE64 != ''
         env:
@@ -336,6 +374,17 @@ jobs:
           # Use whatever signing identity is in the keychain
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | sed 's/.*"\(.*\)"/\1/')
           echo "Signing with: $IDENTITY"
+
+          # Sign Sparkle.framework's nested binaries first
+          SPARKLE="dist/Zimi.app/Contents/Frameworks/Sparkle.framework"
+          if [ -d "$SPARKLE" ]; then
+            # Sign Autoupdate (XPC service inside Sparkle)
+            find "$SPARKLE" -type f \( -name "*.xpc" -o -name "Autoupdate" -o -name "Updater" \) -exec \
+              codesign --force --options runtime --sign "$IDENTITY" --timestamp {} \;
+            # Sign the framework binary itself
+            codesign --force --options runtime --sign "$IDENTITY" --timestamp "$SPARKLE/Versions/Current/Sparkle"
+            codesign --force --options runtime --sign "$IDENTITY" --timestamp "$SPARKLE"
+          fi
 
           # Sign all binaries inside the app bundle
           find dist/Zimi.app -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.pyd" \) -exec \
@@ -420,7 +469,7 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: true
           files: |
-            Zimi-Linux-amd64/Zimi-Linux-amd64.tar.gz
+            Zimi-Linux-amd64/Zimi-Linux-amd64.AppImage
             Zimi-Intel/Zimi-Intel.dmg
             Zimi-AppleSilicon/Zimi-AppleSilicon.dmg
             Zimi-Windows-amd64/Zimi-Windows-amd64.zip

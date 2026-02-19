@@ -13,3 +13,4 @@ CLAUDE.md
 /build/
 /dist/
 *.spec.bak
+Sparkle.framework/

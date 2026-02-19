@@ -99,9 +99,9 @@ Progressive search, SQLite title index, collections. See git tag v1.2.0.
 - [x] Fixed header elastic scrolling (overscroll-behavior: none)
 
 ### Phase 3: Distribution
-- [ ] Homebrew cask (separate repo epheterson/homebrew-zimi)
-- [ ] Linux AppImage (replace tar.gz in CI)
-- [ ] Sparkle auto-updater for macOS (EdDSA signing, appcast.xml)
+- [x] Homebrew cask (separate repo epheterson/homebrew-zimi)
+- [x] Linux AppImage (replace tar.gz in CI)
+- [x] Sparkle auto-updater for macOS (EdDSA signing, appcast.xml)
 
 ### Phase 4: Release Quality Gates — DONE
 - [x] `--serve` headless flag for CI testing (zimi_desktop.py)

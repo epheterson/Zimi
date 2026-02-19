@@ -117,8 +117,11 @@ coll = COLLECT(
     name='Zimi',
 )
 
-# macOS: wrap into .app bundle
+# macOS: wrap into .app bundle with Sparkle.framework for auto-updates
 if platform.system() == 'Darwin':
+    # Embed Sparkle.framework in the app bundle's Frameworks/ directory
+    sparkle_framework = 'Sparkle.framework'
+
     app = BUNDLE(
         coll,
         name='Zimi.app',
@@ -131,5 +134,17 @@ if platform.system() == 'Darwin':
             'NSAppTransportSecurity': {
                 'NSAllowsArbitraryLoads': True,  # needed for localhost HTTP
             },
+            'SUFeedURL': 'https://raw.githubusercontent.com/epheterson/Zimi/main/appcast.xml',
+            'SUPublicEDKey': 'YPy3VF5Yv4ajGgz3HKvkeBOqhTkZXZyoFYsLhLq9Cpc=',
         },
     )
+
+    # Copy Sparkle.framework into the app bundle's Frameworks/ directory
+    import shutil
+    frameworks_dir = os.path.join('dist', 'Zimi.app', 'Contents', 'Frameworks')
+    os.makedirs(frameworks_dir, exist_ok=True)
+    dest = os.path.join(frameworks_dir, 'Sparkle.framework')
+    if os.path.exists(dest):
+        shutil.rmtree(dest)
+    if os.path.exists(sparkle_framework):
+        shutil.copytree(sparkle_framework, dest, symlinks=True)

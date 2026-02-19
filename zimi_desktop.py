@@ -270,6 +270,43 @@ def _set_macos_app_identity(window_ref=None):
             pass
 
 
+def _init_sparkle_updater():
+    """Initialize Sparkle auto-updater on macOS. Must be called on the main thread."""
+    if platform.system() != "Darwin":
+        return
+    try:
+        import objc
+        # Load Sparkle.framework from the app bundle's Frameworks/ directory
+        bundle_path = None
+        if getattr(sys, '_MEIPASS', None):
+            # PyInstaller bundle: framework is in Contents/Frameworks/
+            app_bundle_path = os.path.dirname(os.path.dirname(sys._MEIPASS))
+            bundle_path = os.path.join(app_bundle_path, "Frameworks", "Sparkle.framework")
+        if not bundle_path or not os.path.exists(bundle_path):
+            # Dev mode: framework in repo root
+            bundle_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Sparkle.framework")
+        if not os.path.exists(bundle_path):
+            return
+
+        sparkle_bundle = objc.loadBundle(
+            "Sparkle", bundle_path=bundle_path,
+            module_globals=globals()
+        )
+
+        # SPUStandardUpdaterController manages the full update lifecycle
+        SPUStandardUpdaterController = objc.lookUpClass("SPUStandardUpdaterController")
+        controller = SPUStandardUpdaterController.alloc().initWithStartingUpdater_updaterDelegate_userDriverDelegate_(
+            True,  # startingUpdater: begin checking for updates immediately
+            None,  # updaterDelegate
+            None,  # userDriverDelegate
+        )
+        # Keep a strong reference to prevent garbage collection
+        _init_sparkle_updater._controller = controller
+    except Exception as e:
+        # Sparkle is optional — app works fine without it
+        pass
+
+
 def _setup_macos_menu(window_ref):
     """Add Settings... to the Zimi app menu (Cmd+,). Must dispatch to main thread."""
     import objc
@@ -409,6 +446,14 @@ def _run():
         """Called when the webview window is shown — start server and navigate."""
         # Add native macOS menu items now that the app menu bar exists
         _set_macos_app_identity(window_ref)
+
+        # Initialize Sparkle auto-updater (macOS only, must run on main thread)
+        if platform.system() == "Darwin":
+            try:
+                from PyObjCTools import AppHelper
+                AppHelper.callAfter(_init_sparkle_updater)
+            except Exception:
+                pass
 
         server = ServerThread(zim_dir, config.get("port"))
         server.start()
