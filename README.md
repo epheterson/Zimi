@@ -7,7 +7,7 @@ Search and read 100M+ articles offline. Wikipedia, Stack Overflow, dev docs, Wik
 **Three ways to run it:**
 
 - **Docker** — self-host on a NAS, server, or anywhere with one command.
-- **Desktop app** — native macOS window with built-in catalog browser. [Download here.](https://github.com/epheterson/Zimi/releases)
+- **Desktop app** (macOS) — native window with built-in catalog browser. [Download here.](https://github.com/epheterson/Zimi/releases)
 - **Python CLI** — run directly if you already have Python installed.
 
 **What you get:**
@@ -266,18 +266,16 @@ Place `.zim` files in your ZIM directory and restart Zimi (or use the refresh en
 
 Run Zimi as a native desktop application — no Docker or terminal required.
 
-### Download
+### macOS
 
 Download the latest release from [GitHub Releases](https://github.com/epheterson/Zimi/releases):
 
-- **macOS (Apple Silicon):** `Zimi-AppleSilicon.dmg`
-- **macOS (Intel):** `Zimi-Intel.dmg`
+- **Apple Silicon:** `Zimi-AppleSilicon.dmg`
+- **Intel:** `Zimi-Intel.dmg`
 
-Windows and Linux builds are coming in a future release.
+Signed and notarized — drag to Applications and go. On first launch, Zimi prompts you to choose a folder for storing ZIM files.
 
-On first launch, Zimi prompts you to choose a folder for storing ZIM files.
-
-### Run from Source (all platforms)
+### Python (any platform)
 
 ```bash
 pip install -r requirements-desktop.txt
