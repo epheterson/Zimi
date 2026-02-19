@@ -80,34 +80,42 @@ Progressive search, SQLite title index, collections. See git tag v1.2.0.
 - [x] README polished, release notes updated
 - [x] Merged to main, v1.3 branch deleted
 
-## v1.4 — Backlog / Ideas
+## v1.4 — PDF Viewer, Navigation, Distribution
 
-### Windows + Linux desktop packaging
+### Phase 1: Embedded PDF Viewer — DONE
+- [x] `/static/<path>` route with path traversal protection, MIME detection, in-memory cache
+- [x] pdf.js v5.4.624 vendor files (stripped to 8MB, English locale only)
+- [x] PDFs render in reader iframe via pdf.js (back button, breadcrumbs, title sync all work)
+- [x] EPUBs still download (Gutenberg has HTML equivalents)
+- [x] Dockerfile: COPY static/, PyInstaller spec: static/ in datas
+- [x] .gitignore: anchor /build/ and /dist/ to repo root
+
+### Phase 2: Navigation History — DONE
+- [x] articleHistory array (max 50 entries) tracks {zim, path, title, timestamp}
+- [x] Iframe click interceptor catches all /w/ links for history tracking
+- [x] Long-press (500ms) or right-click back button shows history trail dropdown
+- [x] Step-back through articles within a ZIM before closing reader
+- [x] Title quality: uses document.title from previous onload
+- [x] Fixed header elastic scrolling (overscroll-behavior: none)
+
+### Phase 3: Distribution
+- [ ] Homebrew cask (separate repo epheterson/homebrew-zimi)
+- [ ] Linux AppImage (replace tar.gz in CI)
+- [ ] Sparkle auto-updater for macOS (EdDSA signing, appcast.xml)
+
+### Phase 4: Release Quality Gates — DONE
+- [x] `--serve` headless flag for CI testing (zimi_desktop.py)
+- [x] 54 integration tests in `tests/test_server.py` (all endpoints, collections CRUD, password lifecycle, path traversal, static files)
+- [x] CI runs pytest before build, smoke tests built binary after build
+- [x] Two-phase release workflow (build → draft → manual QA → publish)
+- [x] Pre-release QA checklist in RELEASING.md
+
+### Comparison section in README — DONE
+- [x] Compare/contrast with kiwix-serve (GitHub issue #1)
+
+### Backlog
 - [ ] Windows: proper NSIS/WiX installer (bundles .NET runtime correctly)
 - [ ] Windows: code signing certificate (suppresses SmartScreen)
-- [ ] Linux: verify tar.gz or .AppImage on clean Ubuntu/Debian
-- [ ] Test all platforms end-to-end before shipping
-
-### Built-in document viewers
-- [ ] Embed pdf.js for native PDF rendering in reader iframe (no system viewer needed)
-- [ ] Embed epub.js for EPUB rendering (Project Gutenberg, etc.)
-- [ ] Goal: Zimi is fully standalone — ZIM folder + Zimi = everything you need
-
-### Navigation
-- [ ] Back arrow breadcrumb history (long press / right click to see trail)
-- [ ] Step back through articles within a ZIM, not just to homepage
-
-### System tray / background
-- [ ] Minimize to tray instead of quitting on window close
-- [ ] Tray icon with quick actions (open window, quit)
-
-### Distribution
-- [ ] Homebrew cask (`brew install --cask zimi`) — needs signed .dmg first
-- [ ] Linux packaging (.AppImage or .deb)
-- [ ] Sparkle auto-updater for macOS (appcast.xml on GitHub Pages, EdDSA signing)
-- [ ] Windows auto-updater (WinSparkle or custom update check)
-
-### Other
+- [ ] System tray / minimize to tray instead of quitting
 - [ ] Create ZIM from website (integrate zim-tools/zimwriterfs)
 - [ ] bcrypt password hashing (replace SHA-256)
-- [ ] HTTPS / reverse proxy documentation

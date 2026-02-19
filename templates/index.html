@@ -968,8 +968,12 @@ function submitPw() {
 // ── Topbar ──
 function updateTopbar() {
   const activeSource = currentSource || readerSource;
-  // Back button: show when not on home (between breadcrumb and search bar — logo never moves)
-  const showBack = (readerOpen && !sourceAutoReader) || mode === 'search' || homeScope;
+  // Back button: show when user has navigated deep enough that the breadcrumb
+  // icons (Zimi logo = home, source icon = ZIM top-level) aren't sufficient.
+  // That means: article history exists (stepped into articles), scoped home
+  // view, or search results. NOT shown for basic reader-open-from-source
+  // (back = click source icon or Escape).
+  const showBack = articleHistory.length > 0 || mode === 'search' || homeScope;
   backBtn.style.display = showBack ? 'flex' : 'none';
 
   // Breadcrumb: Zimi / [icon] — search bar shows source name as placeholder
@@ -1207,9 +1211,8 @@ var _histLongPressTimer = null;
 var _histLongPressActive = false; // true after long-press fires — suppresses the following click
 
 function _showHistoryTrail() {
-  if (articleHistory.length === 0) {
-    _historyTrail.innerHTML = '<div class="history-empty">No history yet</div>';
-  } else {
+  if (articleHistory.length === 0) return; // nothing to show
+  {
     var h = '';
     // Show most recent first
     for (var i = articleHistory.length - 1; i >= 0; i--) {
@@ -1286,6 +1289,8 @@ function enterHome(push) {
   readerSource = null;
   sourceAutoReader = false;
   homeScope = null;
+  articleHistory = [];
+  currentArticle = null;
   q.value = '';
   searchMeta.style.display = 'none';
   sourceHeaderEl.style.display = 'none';
@@ -3753,9 +3758,11 @@ async function manageClearPassword() {
 
 // ── PDF viewer helper ──
 function _pdfViewerUrl(pdfUrl) {
-  // Build pdf.js viewer URL for an in-ZIM PDF
-  var rawUrl = pdfUrl + (pdfUrl.includes('?') ? '&' : '?') + 'raw=1';
-  return '/static/pdfjs/web/viewer.html?file=' + encodeURIComponent(rawUrl);
+  // Build pdf.js viewer URL for an in-ZIM PDF.
+  // pdf.js fetches via XHR (Sec-Fetch-Dest: empty) so the server serves raw
+  // PDF content without needing ?raw=1. Don't encodeURIComponent — the URL is
+  // already properly percent-encoded and double-encoding breaks pdf.js.
+  return '/static/pdfjs/web/viewer.html?file=' + pdfUrl;
 }
 
 // ── Reader ──
@@ -3783,7 +3790,13 @@ function openReader(url) {
   reader.classList.add('open');
   loading.classList.remove('hidden');
 
-  newtabBtn.href = url;
+  // Punch-out button: for pdf.js viewer URLs, link to the raw PDF for download
+  if (url.startsWith('/static/pdfjs/')) {
+    var fileParam = new URL(url, location.origin).searchParams.get('file');
+    newtabBtn.href = fileParam ? fileParam + (fileParam.includes('?') ? '&' : '?') + 'raw=1' : url;
+  } else {
+    newtabBtn.href = url;
+  }
 
   frame.onload = function() {
     loading.classList.add('hidden');
@@ -3890,6 +3903,7 @@ function closeReader() {
   readerOpen = false;
   readerSource = null;
   currentArticle = null;
+  articleHistory = [];
   document.getElementById('reader').classList.remove('open');
   // Use location.replace to avoid adding a history entry (iframe.src pollutes back button)
   var f = document.getElementById('reader-frame');
