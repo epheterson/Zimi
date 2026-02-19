@@ -1293,7 +1293,7 @@ document.addEventListener('mouseup', function(e) {
 });
 
 backBtn.addEventListener('click', function(e) {
-  if (_historyTrail.classList.contains('visible')) { e.preventDefault(); return; }
+  if (_historyTrail.classList.contains('visible')) { _hideHistoryTrail(); e.preventDefault(); return; }
   goBack();
 });
 
@@ -3989,6 +3989,21 @@ document.addEventListener('keydown', e => {
 // ── History ──
 window.addEventListener('popstate', (e) => {
   hideSuggest();
+  _hideHistoryTrail();
+  // Step through article history when reader is open (mirrors in-app back button)
+  if (readerOpen && articleHistory.length > 0) {
+    var prev = articleHistory.pop();
+    currentArticle = prev;
+    var t = (prev.title || prev.path) + ' — Zimi';
+    document.title = t;
+    _setWindowTitle(t);
+    updateTopbar();
+    // Navigate iframe to the previous article
+    var url = '/w/' + encodeURIComponent(prev.zim) + '/' + prev.path;
+    if (prev.path.toLowerCase().endsWith('.pdf')) url = _pdfViewerUrl(url);
+    openReader(url);
+    return;
+  }
   if (readerOpen) closeReader();
   q.value = '';
   activeCategories.clear();
