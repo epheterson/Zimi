@@ -7,7 +7,7 @@ on:
     inputs:
       tag:
         description: 'Tag to build (e.g. v1.3.0)'
-        required: true
+        required: false
 
 permissions:
   contents: write
@@ -15,20 +15,21 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            artifact: zimi-linux-amd64
-            asset: zimi-linux-amd64.tar.gz
+            artifact: Zimi-Linux-amd64
+            asset: Zimi-Linux-amd64.tar.gz
           - os: macos-15-intel
-            artifact: zimi-macos-intel
+            artifact: Zimi-Intel
             asset: Zimi-Intel.dmg
           - os: macos-latest
-            artifact: zimi-macos-arm64
+            artifact: Zimi-AppleSilicon
             asset: Zimi-AppleSilicon.dmg
           - os: windows-latest
-            artifact: zimi-windows-amd64
-            asset: zimi-windows-amd64.zip
+            artifact: Zimi-Windows-amd64
+            asset: Zimi-Windows-amd64.zip
 
     runs-on: ${{ matrix.os }}
 
@@ -43,35 +44,209 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgirepository-2.0-dev \
+            gir1.2-gtk-3.0 \
+            gir1.2-webkit2-4.1 \
+            gcc libcairo2-dev pkg-config python3-dev
+
+      - name: Set pythonnet runtime (Windows)
+        if: runner.os == 'Windows'
+        run: echo "PYTHONNET_RUNTIME=coreclr" >> $env:GITHUB_ENV
+        shell: pwsh
+
       - name: Install dependencies
         run: pip install -r requirements-desktop.txt
+
+      - name: Install PyGObject (Linux)
+        if: runner.os == 'Linux'
+        run: pip install PyGObject
 
       - name: Generate icons
         run: python assets/generate_icons.py
 
+      - name: Inspect libzim package
+        shell: bash
+        run: |
+          python -c "import libzim; print('libzim OK')"
+          python -c "
+          import importlib.util, os, sysconfig
+          spec = importlib.util.find_spec('libzim')
+          print(f'libzim origin: {spec.origin}')
+          print(f'submodule_search_locations: {spec.submodule_search_locations}')
+          for base in [sysconfig.get_path('purelib'), sysconfig.get_path('platlib')]:
+              d = os.path.join(base, 'libzim')
+              if os.path.isdir(d):
+                  print(f'libzim dir ({d}):')
+                  for f in sorted(os.listdir(d)):
+                      full = os.path.join(d, f)
+                      sz = os.path.getsize(full) if os.path.isfile(full) else '-'
+                      print(f'  {f}  ({sz})')
+          "
+
       - name: Build with PyInstaller
-        run: pyinstaller zimi_desktop.spec
+        run: pyinstaller --noconfirm zimi_desktop.spec
+
+      - name: Bundle .NET runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Find .NET runtime (6, 7, or 8 — needed by pythonnet/clr_loader)
+          $dotnetRoot = (Get-Command dotnet).Source | Split-Path
+          Write-Host "dotnet root: $dotnetRoot"
+          Write-Host "Available runtimes:"
+          dotnet --list-runtimes
+          $runtimeDir = Get-ChildItem "$dotnetRoot\shared\Microsoft.NETCore.App" -Directory |
+            Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $runtimeDir) {
+            Write-Error "No .NET runtime found"
+            exit 1
+          }
+          Write-Host "Bundling .NET runtime from: $dotnetRoot"
+          $dest = "dist\Zimi\_internal\dotnet_runtime"
+          # Copy shared/Microsoft.NETCore.App/{version}/ (CoreCLR runtime)
+          $sharedDest = "$dest\shared\Microsoft.NETCore.App\$($runtimeDir.Name)"
+          New-Item -ItemType Directory -Force -Path $sharedDest | Out-Null
+          Copy-Item "$($runtimeDir.FullName)\*" -Destination $sharedDest -Recurse
+          # Copy host/fxr/{version}/ (hostfxr.dll — required by clr_loader)
+          $fxrDir = Get-ChildItem "$dotnetRoot\host\fxr" -Directory |
+            Sort-Object Name -Descending | Select-Object -First 1
+          if ($fxrDir) {
+            $fxrDest = "$dest\host\fxr\$($fxrDir.Name)"
+            New-Item -ItemType Directory -Force -Path $fxrDest | Out-Null
+            Copy-Item "$($fxrDir.FullName)\*" -Destination $fxrDest -Recurse
+            Write-Host "Bundled hostfxr from: $($fxrDir.FullName)"
+          } else {
+            Write-Warning "No hostfxr directory found"
+          }
+          Write-Host "Bundled $(Get-ChildItem $dest -Recurse -File | Measure-Object | Select-Object -Expand Count) files total"
+
+      - name: Test launch (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          timeout 10 dist/Zimi/Zimi --help 2>&1 || echo "Exit code: $?"
+          echo "Binary exists and was attempted"
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
         working-directory: dist
-        run: tar -czf ../zimi-linux-amd64.tar.gz Zimi
+        run: tar -czf ../${{ matrix.asset }} Zimi
+
+      - name: Install create-dmg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install create-dmg
+
+      - name: Import signing certificate (macOS)
+        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE_BASE64 != ''
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          # Create temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 12)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          # Allow codesign to access the keychain
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+
+      - name: Code sign app (macOS)
+        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE_BASE64 != ''
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Use whatever signing identity is in the keychain
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "Signing with: $IDENTITY"
+
+          # Sign all binaries inside the app bundle
+          find dist/Zimi.app -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.pyd" \) -exec \
+            codesign --force --options runtime --sign "$IDENTITY" --timestamp {} \;
+
+          # Sign the main executable
+          codesign --force --options runtime --sign "$IDENTITY" --timestamp dist/Zimi.app/Contents/MacOS/Zimi
+
+          # Sign the app bundle itself
+          codesign --force --deep --options runtime --sign "$IDENTITY" --timestamp dist/Zimi.app
+
+          # Verify
+          codesign --verify --deep --strict dist/Zimi.app
+          echo "Code signing successful"
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
         working-directory: dist
         run: |
-          if command -v create-dmg &>/dev/null; then
-            create-dmg --volname "Zimi" --no-internet-enable ../${{ matrix.asset }} Zimi.app
-          else
-            hdiutil create -volname Zimi -srcfolder Zimi.app -ov -format UDZO ../${{ matrix.asset }}
-          fi
+          create-dmg \
+            --volname "Zimi" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "Zimi.app" 150 185 \
+            --app-drop-link 450 185 \
+            --no-internet-enable \
+            ../${{ matrix.asset }} Zimi.app
+
+      - name: Notarize DMG (macOS)
+        if: runner.os == 'macOS' && env.APPLE_ID != ''
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          echo "Submitting for notarization..."
+          xcrun notarytool submit ${{ matrix.asset }} \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait --timeout 10m
+
+          echo "Waiting for notarization ticket to propagate..."
+          sleep 15
+
+          echo "Stapling notarization ticket..."
+          for i in 1 2 3; do
+            xcrun stapler staple ${{ matrix.asset }} && break
+            echo "Staple attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
+          echo "Notarization complete"
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          echo "=== Top-level contents of dist/Zimi/ ==="
+          ls -la dist/Zimi/ | head -30
+          echo ""
+          echo "=== Looking for libzim files ==="
+          find dist/Zimi/ -name "libzim*" -o -name "zim*" 2>/dev/null || true
+          echo ""
+          echo "=== Looking for python shared libs ==="
+          find dist/Zimi/ -name "python*" -type f 2>/dev/null | head -10 || true
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         working-directory: dist
         shell: pwsh
-        run: Compress-Archive -Path Zimi -DestinationPath ../zimi-windows-amd64.zip
+        run: Compress-Archive -Path Zimi -DestinationPath ../${{ matrix.asset }}
 
       - name: Move asset to dist
         run: mv ${{ matrix.asset }} dist/ 2>/dev/null || true
@@ -96,7 +271,7 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           files: |
-            zimi-linux-amd64/zimi-linux-amd64.tar.gz
-            zimi-macos-intel/Zimi-Intel.dmg
-            zimi-macos-arm64/Zimi-AppleSilicon.dmg
-            zimi-windows-amd64/zimi-windows-amd64.zip
+            Zimi-Linux-amd64/Zimi-Linux-amd64.tar.gz
+            Zimi-Intel/Zimi-Intel.dmg
+            Zimi-AppleSilicon/Zimi-AppleSilicon.dmg
+            Zimi-Windows-amd64/Zimi-Windows-amd64.zip

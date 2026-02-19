@@ -14,6 +14,19 @@ import subprocess
 import sys
 import threading
 
+# ---------------------------------------------------------------------------
+# Windows: configure pythonnet to use CoreCLR (.NET 6+) before any imports
+# that trigger pywebview → pythonnet. Without this, clr_loader defaults to
+# .NET Framework 4.x which can't load the .NET 6 Python.Runtime.dll.
+# In PyInstaller bundles, also point at the bundled .NET runtime.
+# ---------------------------------------------------------------------------
+if platform.system() == "Windows":
+    os.environ.setdefault("PYTHONNET_RUNTIME", "coreclr")
+    if getattr(sys, '_MEIPASS', None):
+        _dotnet = os.path.join(sys._MEIPASS, "dotnet_runtime")
+        if os.path.isdir(_dotnet):
+            os.environ.setdefault("DOTNET_ROOT", _dotnet)
+
 
 # ---------------------------------------------------------------------------
 # Icon path — resolve relative to this script (works in dev and PyInstaller)
@@ -123,7 +136,7 @@ class ServerThread(threading.Thread):
             os.environ["ZIMI_MANAGE"] = "1"
 
             # Try the configured port, fall back if in use
-            port = _find_open_port(self.port, self.port + 11)
+            port = _find_open_port(self.port)
             if port is None:
                 self.error = f"No available port in range {self.port}-{self.port + 11}"
                 self.ready.set()
@@ -210,8 +223,6 @@ class DesktopAPI:
 
     def open_external(self, url):
         """Open a URL in the system's default browser/app."""
-        if not isinstance(url, str) or not url.lower().startswith(("http://", "https://")):
-            return
         import webbrowser
         webbrowser.open(url)
 
@@ -404,11 +415,10 @@ def _run():
         server.ready.wait(timeout=60)
 
         if server.error:
-            import html as _html
             window.load_html(
                 f'<html><body style="font-family:system-ui;background:#0a0a0b;color:#e8e8ed;padding:40px">'
                 f'<h2 style="color:#f59e0b">Failed to start server</h2>'
-                f'<pre style="color:#6e6e7a;margin-top:16px">{_html.escape(str(server.error))}</pre>'
+                f'<pre style="color:#6e6e7a;margin-top:16px">{server.error}</pre>'
                 f'</body></html>'
             )
             return
@@ -455,7 +465,9 @@ def _run():
     # Start server in background after window is shown
     window.events.shown += _on_webview_ready
 
-    webview.start()
+    # On Windows, force Edge WebView2 backend (avoids pythonnet/.NET issues)
+    gui = 'edgechromium' if platform.system() == 'Windows' else None
+    webview.start(gui=gui)
 
 
 def main():
