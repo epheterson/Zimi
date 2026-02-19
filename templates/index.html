@@ -1310,6 +1310,10 @@ document.addEventListener('click', function(e) {
     _hideHistoryTrail();
   }
 });
+// Close history trail when iframe gets focus (clicks inside iframe don't bubble to parent)
+window.addEventListener('blur', function() {
+  if (_historyTrail.classList.contains('visible')) _hideHistoryTrail();
+});
 
 function enterHome(push) {
   mode = 'home';
