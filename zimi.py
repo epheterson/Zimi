@@ -1888,10 +1888,7 @@ def _download_thread(dl):
                 dl["downloaded_bytes"] = dl.get("downloaded_bytes", 0) + len(chunk)
         resp.close()
         if dl.get("cancelled"):
-            try:
-                os.remove(tmp_dest)
-            except OSError:
-                pass
+            # Keep .tmp file for resume — don't delete partial downloads
             dl["done"] = True
             dl["error"] = "Cancelled"
             return

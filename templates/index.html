@@ -2391,6 +2391,7 @@ async function loadFullCatalog() {
           const m = fb.match(/(\d{4}-\d{2})$/);
           item._installedDate = m ? m[1] : null;
           item._installedFile = z.file;
+          item._installedName = z.name;
           item._installedSizeGb = z.size_gb;
           break;
         }
@@ -2653,7 +2654,9 @@ function renderCatalogItem(group) {
     if (btns.length) actionsHtml = '<div class="ci-variants">' + btns.join('') + '</div>';
   }
   const catAttr = item.category ? ' data-category="' + escAttr(item.category) + '"' : '';
-  return '<div class="catalog-item' + (anyInstalled ? ' ci-installed-item' : '') + '"' + catAttr + '>' +
+  const instName = anyInstalled ? (variants.find(v => v.installed && v._installedName) || {})._installedName || '' : '';
+  const openAttr = instName ? ' style="cursor:pointer" onclick="if(!event.target.closest(\'button\')){enterSource(\'' + escJs(instName) + '\',true)}"' : '';
+  return '<div class="catalog-item' + (anyInstalled ? ' ci-installed-item' : '') + '"' + catAttr + openAttr + '>' +
     '<div class="ci-icon">' + iconHtml + '</div>' +
     '<div class="ci-info">' +
       '<div class="ci-title">' + esc(item.title || item.name) + '</div>' +
@@ -2881,7 +2884,8 @@ async function renderHistoryTab() {
         if (ev.size_bytes) meta.push(fmtSize(ev.size_bytes / (1024 * 1024 * 1024)));
         meta.push(time);
 
-        h += '<div class="catalog-item">' +
+        const clickable = zim && !zim._fromEvent;
+        h += '<div class="catalog-item"' + (clickable ? ' style="cursor:pointer" onclick="enterSource(\'' + escJs(zim.name) + '\',true)"' : '') + '>' +
           '<div class="ci-icon">' + iconHtml + '</div>' +
           '<div class="ci-info">' +
             '<div class="ci-title">' + esc(title) + '</div>' +
@@ -3256,7 +3260,7 @@ function renderInstalled(filterText) {
         actionsHtml = '<span class="ci-installed-badge">Installed</span>' +
           '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="Delete">\u00D7</button>';
       }
-      items_h += '<div class="catalog-item' + (upd ? ' ci-has-update' : '') + '">' +
+      items_h += '<div class="catalog-item' + (upd ? ' ci-has-update' : '') + '" style="cursor:pointer" onclick="if(!event.target.closest(\'button\')){enterSource(\'' + escJs(z.name) + '\',true)}">' +
         '<div class="ci-icon">' + iconHtml + '</div>' +
         '<div class="ci-info">' +
           '<div class="ci-title">' + esc(z.title || z.name) + '</div>' +
@@ -3592,11 +3596,51 @@ async function refreshDownloads() {
     for (const dl of dls) {
       const btns = document.querySelectorAll('[data-dl-url]');
       for (const btn of btns) {
-        if (btn.dataset.dlUrl === dl.url) {
+        if (btn.dataset.dlUrl === dl.url || btn.dataset.dlUrl.replace(/\.meta4$/, '') === dl.url) {
           if (dl.done) { btn.textContent = 'Installed'; }
           else if (dl.error) { btn.textContent = 'Error'; btn.disabled = false; }
           else if (dl.percent > 0) { btn.textContent = Math.round(dl.percent) + '%'; }
           else { btn.textContent = dl.is_update ? 'Updating...' : 'Downloading...'; }
+        }
+      }
+    }
+    // Track update progress — count downloads still in-flight
+    if (Object.keys(_availableUpdates).length > 0) {
+      const doneUrls = new Set();
+      for (const dl of dls) {
+        if (dl.done) doneUrls.add(dl.url);
+      }
+      // Count updates whose download is still active (not done)
+      let stillRunning = 0;
+      for (const u of Object.values(_availableUpdates)) {
+        if (!u.download_url) continue;
+        const stripped = u.download_url.replace(/\.meta4$/, '');
+        if (!doneUrls.has(stripped) && !doneUrls.has(u.download_url)) stillRunning++;
+      }
+      const anyActive = dls.some(d => !d.done);
+      const updateEl = document.getElementById('update-status');
+      const updateBtn = document.getElementById('update-all-btn');
+      if (anyActive) {
+        // Downloads still running — show how many remain
+        if (updateEl) updateEl.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--amber)">' + stillRunning + ' remaining</span>';
+        if (updateBtn && updateBtn.disabled) updateBtn.textContent = 'Updating ' + stillRunning + '...';
+      } else {
+        // All downloads finished — remove successful ones from _availableUpdates
+        for (const dl of dls) {
+          if (dl.done && !dl.error) {
+            for (const [key, u] of Object.entries(_availableUpdates)) {
+              const stripped = (u.download_url || '').replace(/\.meta4$/, '');
+              if (dl.url === stripped || dl.url === u.download_url) { delete _availableUpdates[key]; break; }
+            }
+          }
+        }
+        const remaining = Object.keys(_availableUpdates).length;
+        if (remaining > 0) {
+          if (updateEl) updateEl.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--amber)">' + remaining + ' available</span>';
+          if (updateBtn) { updateBtn.style.display = ''; updateBtn.disabled = false; updateBtn.textContent = 'Update All'; }
+        } else {
+          if (updateEl) updateEl.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--text2)">All up to date</span>';
+          if (updateBtn) updateBtn.style.display = 'none';
         }
       }
     }
@@ -3659,8 +3703,18 @@ async function cancelDownload(id) {
 async function triggerUpdate() {
   const updates = Object.values(_availableUpdates);
   if (!updates.length) return;
-  const btn = document.querySelector('.manage-btn-action[onclick*="triggerUpdate"]');
+  const btn = document.getElementById('update-all-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Updating ' + updates.length + '...'; }
+  // Mark individual Update buttons so refreshDownloads() can show per-row progress
+  for (const u of updates) {
+    document.querySelectorAll('.ci-update-btn').forEach(b => {
+      if (b.getAttribute('onclick') && b.getAttribute('onclick').includes(u.download_url)) {
+        b.dataset.dlUrl = u.download_url;
+        b.disabled = true;
+        b.textContent = 'Queued...';
+      }
+    });
+  }
   let started = 0;
   for (const u of updates) {
     try {
@@ -3669,8 +3723,9 @@ async function triggerUpdate() {
       if (data.id) started++;
     } catch(e) {}
   }
-  if (btn) { btn.disabled = false; btn.textContent = 'Update All'; }
-  if (started > 0) refreshDownloads();
+  // Don't reset button — refreshDownloads() will track progress and update it
+  if (started > 0) { _dlPrevAllDone = false; refreshDownloads(); }
+  else if (btn) { btn.disabled = false; btn.textContent = 'Update All'; }
 }
 
 async function checkForUpdates() {
