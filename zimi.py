@@ -266,8 +266,33 @@ def _get_disk_usage():
         return {}
 
 # ── Auto-Update ──
-_auto_update_enabled = os.environ.get("ZIMI_AUTO_UPDATE", "0") == "1"
-_auto_update_freq = os.environ.get("ZIMI_UPDATE_FREQ", "weekly")  # daily, weekly, monthly
+# If ZIMI_AUTO_UPDATE env var is set, it's an admin override (UI locked).
+# If not set, the UI controls it and settings persist to disk.
+_AUTO_UPDATE_CONFIG = os.path.join(ZIMI_DATA_DIR, "auto_update.json")
+_auto_update_env_locked = "ZIMI_AUTO_UPDATE" in os.environ
+
+def _load_auto_update_config():
+    """Load auto-update settings. Env var overrides; otherwise use persisted config."""
+    if _auto_update_env_locked:
+        enabled = os.environ.get("ZIMI_AUTO_UPDATE", "0") == "1"
+        freq = os.environ.get("ZIMI_UPDATE_FREQ", "weekly")
+        return enabled, freq
+    try:
+        with open(_AUTO_UPDATE_CONFIG) as f:
+            cfg = json.loads(f.read())
+            return cfg.get("enabled", False), cfg.get("frequency", "weekly")
+    except (OSError, json.JSONDecodeError, KeyError):
+        return False, "weekly"
+
+def _save_auto_update_config(enabled, freq):
+    """Persist auto-update settings to disk."""
+    try:
+        with open(_AUTO_UPDATE_CONFIG, "w") as f:
+            f.write(json.dumps({"enabled": enabled, "frequency": freq}))
+    except OSError:
+        pass
+
+_auto_update_enabled, _auto_update_freq = _load_auto_update_config()
 _auto_update_last_check = None
 _auto_update_thread = None
 
@@ -2261,6 +2286,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                         "zim_count": zim_count,
                         "total_size_gb": round(total_gb, 1),
                         "manage_enabled": True,
+                        "auto_update": {
+                            "enabled": _auto_update_enabled,
+                            "frequency": _auto_update_freq,
+                            "locked": _auto_update_env_locked,
+                        },
                     })
 
                 elif parsed.path == "/manage/stats":
@@ -2525,6 +2555,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._json(200, {"status": "started", "count": len(started), "downloads": started})
 
             elif parsed.path == "/manage/auto-update" and ZIMI_MANAGE:
+                if _auto_update_env_locked:
+                    return self._json(403, {"error": "Auto-update is controlled by ZIMI_AUTO_UPDATE env var"})
                 global _auto_update_enabled, _auto_update_freq, _auto_update_thread
                 enabled = data.get("enabled", _auto_update_enabled)
                 freq = data.get("frequency", _auto_update_freq)
@@ -2543,6 +2575,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 elif not enabled and _auto_update_enabled:
                     _auto_update_enabled = False
                     log.info("Auto-update disabled")
+                _save_auto_update_config(_auto_update_enabled, _auto_update_freq)
                 return self._json(200, {"enabled": _auto_update_enabled, "frequency": _auto_update_freq})
 
             else:

@@ -113,6 +113,25 @@ Progressive search, SQLite title index, collections. See git tag v1.2.0.
 ### Comparison section in README — DONE
 - [x] Compare/contrast with kiwix-serve (GitHub issue #1)
 
+### Polish (this session)
+- [x] Favicon: edge-to-edge rounded square, large Z (crop glyph bbox, 4x render + downscale)
+- [x] Update All: button stays disabled, counter decrements live, re-enables after cancel
+- [x] Per-row Update buttons show progress % during bulk Update All
+- [x] Clickable ZIM cards in Installed, History, Catalog views
+- [x] Download resume: cancelled downloads preserve .tmp for HTTP Range resume
+- [x] Fix in-ZIM navigation for ZIMs with original-domain baseURI (xkcd, etc.)
+- [x] Cloudflare cache purge via API (token rescoped)
+- [x] Auto-update frequency persists on reload (added to /manage/status response)
+- [x] Timer icon (⏰) next to update count when auto-update enabled
+
+## v1.5 — Ideas
+
+### Cross-ZIM linking
+- [ ] Build domain→ZIM routing table from installed library (e.g., en.wikipedia.org → wikipedia)
+- [ ] Intercept external link clicks in reader, check if target domain has a local ZIM
+- [ ] Map URL paths to ZIM entry paths (e.g., /wiki/Binary_star → A/Binary_star)
+- [ ] Show "Available locally" indicator on intercepted links
+
 ### Backlog
 - [ ] Windows: proper NSIS/WiX installer (bundles .NET runtime correctly)
 - [ ] Windows: code signing certificate (suppresses SmartScreen)

@@ -3120,6 +3120,17 @@ async function renderManage() {
         '</div>' +
         '';
     }
+    // Sync auto-update dropdown from server
+    const au = data.auto_update || {};
+    const freqSel = document.getElementById('auto-update-freq');
+    if (freqSel) {
+      freqSel.value = au.enabled ? (au.frequency || 'weekly') : 'disabled';
+      if (au.locked) {
+        freqSel.disabled = true;
+        freqSel.title = 'Controlled by ZIMI_AUTO_UPDATE env var';
+        freqSel.style.opacity = '0.5';
+      }
+    }
     checkForUpdates();
   } catch(e) {
     const statusEl = document.getElementById('manage-status');
@@ -3163,6 +3174,21 @@ async function toggleAutoUpdate() {
       body: JSON.stringify({enabled: enabled, frequency: enabled ? val : 'weekly'})
     });
   } catch(e) { /* ignore */ }
+  // Update timer icon next to update count
+  const el = document.getElementById('update-status');
+  if (el) {
+    const timer = _autoUpdateTimerHtml();
+    const count = Object.keys(_availableUpdates).length;
+    if (count > 0) {
+      el.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--amber)">' + timer + count + ' available</span>';
+    } else {
+      el.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--text2)">All up to date</span>';
+    }
+  }
+  // Start fast polling when enabling — server starts downloads after 30s delay
+  if (enabled && !_dlTimer) {
+    _dlTimer = setTimeout(refreshDownloads, 3000);
+  }
 }
 
 function getInstalledPillsHtml() {
@@ -3555,7 +3581,13 @@ async function refreshDownloads() {
     const res = await manageFetch('/manage/downloads');
     const data = await res.json();
     const dls = data.downloads || [];
-    if (!dls.length) { dlEl.innerHTML = ''; _dlPrevAllDone = true; return; }
+    if (!dls.length) {
+      dlEl.innerHTML = ''; _dlPrevAllDone = true;
+      // Keep polling if auto-update may start downloads
+      const sel = document.getElementById('auto-update-freq');
+      if (sel && sel.value !== 'disabled' && mode === 'manage') _dlTimer = setTimeout(refreshDownloads, 5000);
+      return;
+    }
     const anyActive = dls.some(d => !d.done);
     const allDone = !anyActive;
     let h = '<div class="manage-card"><h2>Downloads</h2>';
@@ -3635,8 +3667,9 @@ async function refreshDownloads() {
           }
         }
         const remaining = Object.keys(_availableUpdates).length;
+        const timer = _autoUpdateTimerHtml();
         if (remaining > 0) {
-          if (updateEl) updateEl.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--amber)">' + remaining + ' available</span>';
+          if (updateEl) updateEl.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--amber)">' + timer + remaining + ' available</span>';
           if (updateBtn) { updateBtn.style.display = ''; updateBtn.disabled = false; updateBtn.textContent = 'Update All'; }
         } else {
           if (updateEl) updateEl.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--text2)">All up to date</span>';
@@ -3676,8 +3709,12 @@ async function refreshDownloads() {
       } catch(e) {}
     }
     _dlPrevAllDone = allDone;
-    if (anyActive && mode === 'manage') {
-      _dlTimer = setTimeout(refreshDownloads, 2000);
+    if (mode === 'manage') {
+      // Poll fast while downloads active, slow-poll when auto-update enabled (server may start downloads)
+      const sel = document.getElementById('auto-update-freq');
+      const autoOn = sel && sel.value !== 'disabled';
+      if (anyActive) _dlTimer = setTimeout(refreshDownloads, 2000);
+      else if (autoOn) _dlTimer = setTimeout(refreshDownloads, 10000);
     }
   } catch(e) {}
 }
@@ -3728,6 +3765,12 @@ async function triggerUpdate() {
   else if (btn) { btn.disabled = false; btn.textContent = 'Update All'; }
 }
 
+function _autoUpdateTimerHtml() {
+  const sel = document.getElementById('auto-update-freq');
+  if (!sel || sel.value === 'disabled') return '';
+  return '<svg title="Auto-update ' + sel.value + '" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;opacity:0.5;margin-right:5px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+}
+
 async function checkForUpdates() {
   const el = document.getElementById('update-status');
   if (!el) return;
@@ -3742,8 +3785,9 @@ async function checkForUpdates() {
     }
     const count = Object.keys(_availableUpdates).length;
     const updateBtn = document.getElementById('update-all-btn');
+    const timer = _autoUpdateTimerHtml();
     if (count > 0) {
-      el.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--amber)">' + count + ' available</span>';
+      el.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--amber)">' + timer + count + ' available</span>';
       if (updateBtn) { updateBtn.style.display = ''; updateBtn.textContent = 'Update All'; }
     } else {
       el.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--text2)">All up to date</span>';
