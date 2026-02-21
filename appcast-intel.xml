@@ -6,16 +6,16 @@
     <description>Offline knowledge server for ZIM files</description>
     <language>en</language>
     <item>
-      <title>Version 1.4.0-rc6</title>
-      <sparkle:version>1.4.0-rc6</sparkle:version>
-      <sparkle:shortVersionString>1.4.0-rc6</sparkle:shortVersionString>
+      <title>Version 1.4.0-rc7</title>
+      <sparkle:version>1.4.0-rc7</sparkle:version>
+      <sparkle:shortVersionString>1.4.0-rc7</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-      <pubDate>Sat, 21 Feb 2026 18:29:56 +0000</pubDate>
+      <pubDate>Sat, 21 Feb 2026 19:43:12 +0000</pubDate>
       <enclosure
-        url="https://github.com/epheterson/Zimi/releases/download/v1.4.0-rc6/Zimi-Intel.dmg"
-        length="48690732"
+        url="https://github.com/epheterson/Zimi/releases/download/v1.4.0-rc7/Zimi-Intel.dmg"
+        length="48692966"
         type="application/octet-stream"
-        sparkle:edSignature="de5LhiSMUrw/0ZF3rQ7cQsyyG6WnZwCaSWAoGI15I/zn0OHdekM9XhE537K9kXg5XMcbvCt5wKUa4fBZNG11AA=="
+        sparkle:edSignature="Plf+Rowh76E2L/Hrnptf1mlxrJH3/U4vAitJVxja57x85u6yWV3n0B7UYxfLUkcGFW7AZpY6WHitT1pCcmtRCw=="
       />
     </item>
   </channel>
