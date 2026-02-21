@@ -71,11 +71,10 @@ a = Analysis(
         'fitz',
         'PIL',
         'webview',
-    ] + (['gi'] if platform.system() == 'Linux' else [])
-      + (['pythonnet', 'clr', 'clr_loader', 'clr_loader.ffi'] if platform.system() == 'Windows' else []),
+    ] + (['gi'] if platform.system() == 'Linux' else []),
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=['rthook_pythonnet.py'],
+    runtime_hooks=[],
     excludes=[
         'mcp',
         'zimi.mcp_server',

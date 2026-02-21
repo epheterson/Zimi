@@ -74,16 +74,6 @@ pyinstaller --noconfirm zimi_desktop.spec
 # Test:   open dist/Zimi.app
 ```
 
-### Build on other platforms
-
-```bash
-# Windows → dist/Zimi/ folder (zip for distribution)
-pyinstaller --noconfirm zimi_desktop.spec
-
-# Linux → dist/Zimi/ folder (tar.gz for distribution)
-pyinstaller --noconfirm zimi_desktop.spec
-```
-
 ### Create DMG (macOS distribution)
 
 ```bash
@@ -94,7 +84,7 @@ hdiutil create -volname Zimi -srcfolder dist/Zimi.app -ov -format UDZO dist/Zimi
 
 ### GitHub Actions
 
-The `.github/workflows/desktop-release.yml` workflow builds for macOS, Windows, and Linux automatically when a `v*.*.*` tag is pushed. It:
+The `.github/workflows/desktop-release.yml` workflow builds for macOS and Linux automatically when a `v*.*.*` tag is pushed. It:
 
 1. Runs unit tests and integration tests (pre-build)
 2. Builds with PyInstaller
@@ -102,9 +92,9 @@ The `.github/workflows/desktop-release.yml` workflow builds for macOS, Windows, 
 4. Creates a **draft** GitHub Release with artifacts
 
 Release artifacts:
-- `Zimi-AppleSilicon.dmg` and `Zimi-Intel.dmg` (macOS)
-- `Zimi-Windows-amd64.zip` (Windows)
+- `Zimi-AppleSilicon.dmg` and `Zimi-Intel.dmg` (macOS, signed + notarized)
 - `Zimi-Linux-amd64.AppImage` (Linux)
+- Snap package (Linux, published to Snap Store on release)
 
 After manual QA, publish the draft to make it visible to users.
 
@@ -148,7 +138,7 @@ Requires an Apple Developer account ($99/yr). One-time setup:
 - The `.spec` file includes `zimi/templates/`, `zimi/assets/`, and `zimi/static/` as data files
 - macOS: the BUNDLE section creates the `.app` with proper `Info.plist` (CFBundleName=Zimi, icon, bundle ID)
 - The `_set_macos_app_identity()` function in `zimi_desktop.py` is a fallback for dev mode (`python zimi_desktop.py`) but the proper .app build handles Dock icon/name natively via Info.plist
-- Windows build needs a Windows machine or VM (cross-compilation not supported by PyInstaller)
+- Windows: use `pip install zimi` (no desktop build currently)
 
 ## Rules
 

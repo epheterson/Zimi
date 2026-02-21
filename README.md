@@ -25,9 +25,9 @@ Search and read 100M+ articles offline. Wikipedia, Stack Overflow, dev docs, Wik
 |----------|---------------|
 | ![Homepage](screenshots/homepage.png) | ![Search](screenshots/search.png) |
 
-| Article Reader | Browse Library |
-|----------------|----------------|
-| ![Reader](screenshots/reader.png) | ![Browse Library](screenshots/browse-library.png) |
+| Article Reader | Catalog |
+|----------------|---------|
+| ![Reader](screenshots/reader.png) | ![Catalog](screenshots/browse-library.png) |
 
 ## Install
 
@@ -159,7 +159,7 @@ services:
 | **Library management** | Built-in catalog browser, downloads, updates | Separate CLI tool (kiwix-manage) |
 | **AI integration** | MCP server for Claude Code | None |
 | **Desktop app** | Native macOS app | None |
-| **Runtime** | Python (~1,600 lines) | C++ (libkiwix) |
+| **Runtime** | Python (~2,900 lines) | C++ (libkiwix) |
 | **Memory** | Higher (Python + SQLite indexes) | Lower (native C++) |
 
 **Use kiwix-serve** for lightweight, proven ZIM serving on low-memory devices. **Use Zimi** for JSON APIs, cross-source search, library management, AI integration, or a desktop app.
