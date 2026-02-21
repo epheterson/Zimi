@@ -30,7 +30,7 @@ Kiwix packages the world's knowledge into ZIM files — compressed offline copie
 brew tap epheterson/zimi && brew install --cask zimi
 ```
 
-Or download directly from [GitHub Releases](https://github.com/epheterson/Zimi/releases) — Apple Silicon and Intel DMGs, signed and notarized.
+Or download directly from [GitHub Releases](https://github.com/epheterson/Zimi/releases).
 
 ### Linux
 
