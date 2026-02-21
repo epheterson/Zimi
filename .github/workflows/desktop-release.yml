@@ -75,7 +75,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           curl -sL "https://github.com/sparkle-project/Sparkle/releases/download/2.8.1/Sparkle-2.8.1.tar.xz" -o /tmp/sparkle.tar.xz
-          cd /tmp && tar -xf sparkle.tar.xz
+          tar -xf /tmp/sparkle.tar.xz -C /tmp
           cp -R /tmp/Sparkle.framework Sparkle.framework
           echo "Sparkle.framework ready ($(du -sh Sparkle.framework | cut -f1))"
 
