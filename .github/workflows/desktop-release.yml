@@ -27,9 +27,6 @@ jobs:
           - os: macos-latest
             artifact: Zimi-AppleSilicon
             asset: Zimi-AppleSilicon.dmg
-          - os: windows-latest
-            artifact: Zimi-Windows-amd64
-            asset: Zimi-Windows-amd64.zip
 
     runs-on: ${{ matrix.os }}
 
@@ -53,11 +50,6 @@ jobs:
             gir1.2-gtk-3.0 \
             gir1.2-webkit2-4.1 \
             gcc libcairo2-dev pkg-config python3-dev
-
-      - name: Set pythonnet runtime (Windows)
-        if: runner.os == 'Windows'
-        run: echo "PYTHONNET_RUNTIME=coreclr" >> $env:GITHUB_ENV
-        shell: pwsh
 
       - name: Install dependencies
         run: pip install -r requirements-desktop.txt
@@ -111,40 +103,6 @@ jobs:
 
       - name: Build with PyInstaller
         run: pyinstaller --noconfirm zimi_desktop.spec
-
-      - name: Bundle .NET runtime (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          # Find .NET runtime (6, 7, or 8 — needed by pythonnet/clr_loader)
-          $dotnetRoot = (Get-Command dotnet).Source | Split-Path
-          Write-Host "dotnet root: $dotnetRoot"
-          Write-Host "Available runtimes:"
-          dotnet --list-runtimes
-          $runtimeDir = Get-ChildItem "$dotnetRoot\shared\Microsoft.NETCore.App" -Directory |
-            Sort-Object Name -Descending | Select-Object -First 1
-          if (-not $runtimeDir) {
-            Write-Error "No .NET runtime found"
-            exit 1
-          }
-          Write-Host "Bundling .NET runtime from: $dotnetRoot"
-          $dest = "dist\Zimi\_internal\dotnet_runtime"
-          # Copy shared/Microsoft.NETCore.App/{version}/ (CoreCLR runtime)
-          $sharedDest = "$dest\shared\Microsoft.NETCore.App\$($runtimeDir.Name)"
-          New-Item -ItemType Directory -Force -Path $sharedDest | Out-Null
-          Copy-Item "$($runtimeDir.FullName)\*" -Destination $sharedDest -Recurse
-          # Copy host/fxr/{version}/ (hostfxr.dll — required by clr_loader)
-          $fxrDir = Get-ChildItem "$dotnetRoot\host\fxr" -Directory |
-            Sort-Object Name -Descending | Select-Object -First 1
-          if ($fxrDir) {
-            $fxrDest = "$dest\host\fxr\$($fxrDir.Name)"
-            New-Item -ItemType Directory -Force -Path $fxrDest | Out-Null
-            Copy-Item "$($fxrDir.FullName)\*" -Destination $fxrDest -Recurse
-            Write-Host "Bundled hostfxr from: $($fxrDir.FullName)"
-          } else {
-            Write-Warning "No hostfxr directory found"
-          }
-          Write-Host "Bundled $(Get-ChildItem $dest -Recurse -File | Measure-Object | Select-Object -Expand Count) files total"
 
       # ── Post-build smoke tests ────────────────────────────────────────
 
@@ -246,56 +204,6 @@ jobs:
           echo "All smoke tests passed!"
           kill $PID 2>/dev/null || true
           rm -rf "$TMPZIM"
-
-      - name: Smoke test built binary (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $BINARY = "dist\Zimi\Zimi.exe"
-          $TMPZIM = New-TemporaryFile | ForEach-Object { Remove-Item $_; New-Item -ItemType Directory -Path $_ }
-          Write-Host "Starting Zimi with --serve --port 0 ..."
-
-          $proc = Start-Process -FilePath $BINARY -ArgumentList "--serve","--port","0","--zim-dir",$TMPZIM.FullName `
-            -RedirectStandardOutput "$env:TEMP\zimi_out.txt" -RedirectStandardError "$env:TEMP\zimi_err.txt" `
-            -PassThru -NoNewWindow
-
-          $PORT = $null
-          for ($i = 0; $i -lt 60; $i++) {
-            Start-Sleep -Milliseconds 500
-            if (Test-Path "$env:TEMP\zimi_out.txt") {
-              $content = Get-Content "$env:TEMP\zimi_out.txt" -ErrorAction SilentlyContinue
-              $ready = $content | Where-Object { $_ -match "^READY (\d+)" }
-              if ($ready) {
-                $PORT = $Matches[1]
-                break
-              }
-            }
-          }
-
-          if (-not $PORT) {
-            Write-Host "ERROR: Server did not start within 30s"
-            Get-Content "$env:TEMP\zimi_out.txt" -ErrorAction SilentlyContinue
-            Get-Content "$env:TEMP\zimi_err.txt" -ErrorAction SilentlyContinue
-            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            exit 1
-          }
-
-          Write-Host "Server ready on port $PORT"
-          $BASE = "http://127.0.0.1:$PORT"
-
-          Write-Host "Testing /health..."
-          $resp = Invoke-RestMethod "$BASE/health"
-          if ($resp.status -ne "ok") { Write-Error "Health check failed"; exit 1 }
-          Write-Host "  OK: v$($resp.version)"
-
-          Write-Host "Testing /static/pdfjs/web/viewer.html..."
-          $r = Invoke-WebRequest "$BASE/static/pdfjs/web/viewer.html" -UseBasicParsing
-          if ($r.StatusCode -ne 200) { Write-Error "pdf.js viewer not found"; exit 1 }
-          Write-Host "  OK: pdf.js viewer"
-
-          Write-Host "All smoke tests passed!"
-          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-          Remove-Item $TMPZIM.FullName -Recurse -Force -ErrorAction SilentlyContinue
 
       # ── Packaging ─────────────────────────────────────────────────────
 
@@ -452,12 +360,6 @@ jobs:
           done
           echo "Notarization complete"
 
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
-        working-directory: dist
-        shell: pwsh
-        run: Compress-Archive -Path Zimi -DestinationPath ../${{ matrix.asset }}
-
       - name: Move asset to dist
         run: mv ${{ matrix.asset }} dist/ 2>/dev/null || true
         shell: bash
@@ -486,4 +388,3 @@ jobs:
             Zimi-Linux-snap/*.snap
             Zimi-Intel/Zimi-Intel.dmg
             Zimi-AppleSilicon/Zimi-AppleSilicon.dmg
-            Zimi-Windows-amd64/Zimi-Windows-amd64.zip
