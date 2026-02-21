@@ -280,7 +280,11 @@ jobs:
           mkdir -p "$FWDIR"
           rm -rf "$FWDIR/Sparkle.framework"
           cp -R Sparkle.framework "$FWDIR/"
-          echo "Copied Sparkle.framework to $FWDIR/"
+
+          # Remove XPC services — not needed for non-sandboxed apps, and they
+          # fail to launch from inside a PyInstaller bundle ("updater failed to start")
+          rm -rf "$FWDIR/Sparkle.framework/Versions/B/XPCServices"
+          echo "Copied Sparkle.framework (XPC services removed for non-sandboxed app)"
           ls -la "$FWDIR/Sparkle.framework/Versions/Current/Sparkle"
 
       - name: Code sign app (macOS)

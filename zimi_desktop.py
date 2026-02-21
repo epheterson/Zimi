@@ -306,7 +306,7 @@ def _init_sparkle_updater():
         _init_sparkle_updater._controller = controller
     except Exception as e:
         # Sparkle is optional — app works fine without it
-        pass
+        print(f"Sparkle init failed: {e}")
 
 
 def _setup_macos_menu(window_ref):
@@ -363,6 +363,15 @@ def _setup_macos_menu(window_ref):
         insert_idx = min(2, app_menu.numberOfItems())
         app_menu.insertItem_atIndex_(NSMenuItem.separatorItem(), insert_idx)
         app_menu.insertItem_atIndex_(settings_item, insert_idx + 1)
+
+        # Add "Check for Updates..." if Sparkle is initialized
+        controller = getattr(_init_sparkle_updater, '_controller', None)
+        if controller:
+            update_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                "Check for Updates\u2026", "checkForUpdates:", ""
+            )
+            update_item.setTarget_(controller)
+            app_menu.insertItem_atIndex_(update_item, insert_idx + 2)
 
     # AppKit menu ops must run on the main thread
     AppHelper.callAfter(_add_menu)
@@ -446,16 +455,16 @@ def _run():
 
     def _on_webview_ready():
         """Called when the webview window is shown — start server and navigate."""
-        # Add native macOS menu items now that the app menu bar exists
-        _set_macos_app_identity(window_ref)
-
-        # Initialize Sparkle auto-updater (macOS only, must run on main thread)
+        # Initialize Sparkle first (so the menu setup can find the controller)
         if platform.system() == "Darwin":
             try:
                 from PyObjCTools import AppHelper
                 AppHelper.callAfter(_init_sparkle_updater)
             except Exception:
                 pass
+
+        # Add native macOS menu items now that the app menu bar exists
+        _set_macos_app_identity(window_ref)
 
         server = ServerThread(zim_dir, config.get("port"))
         server.start()

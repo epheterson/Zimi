@@ -129,6 +129,7 @@ if platform.system() == 'Darwin':
         bundle_identifier='io.zosia.zimi',
         info_plist={
             'CFBundleShortVersionString': '1.4.0',
+            'CFBundleVersion': '1.4.0',
             'LSUIElement': False,  # show in Dock (native window app)
             'NSLocalNetworkUsageDescription': 'Zimi runs a local server on this computer to display your offline library. It does not access other devices.',
             'NSAppTransportSecurity': {
