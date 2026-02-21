@@ -2,7 +2,7 @@
 
 The offline internet — searchable, browsable, and self-updating.
 
-Kiwix packages the world's knowledge into ZIM files — compressed offline copies of Wikipedia, Stack Overflow, dev docs, and thousands of other sites. Zimi is a modern server that makes them feel like the real thing.
+Kiwix packages the world's knowledge into ZIM files — compressed offline copies of Wikipedia, Stack Overflow, dev docs, and more. Zimi is a modern server that makes them feel like the real thing.
 
 **What makes it different:**
 
