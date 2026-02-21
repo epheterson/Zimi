@@ -138,13 +138,7 @@ if platform.system() == 'Darwin':
             'SUPublicEDKey': 'YPy3VF5Yv4ajGgz3HKvkeBOqhTkZXZyoFYsLhLq9Cpc=',
         },
     )
-
-    # Copy Sparkle.framework into the app bundle's Frameworks/ directory
-    import shutil
-    frameworks_dir = os.path.join('dist', 'Zimi.app', 'Contents', 'Frameworks')
-    os.makedirs(frameworks_dir, exist_ok=True)
-    dest = os.path.join(frameworks_dir, 'Sparkle.framework')
-    if os.path.exists(dest):
-        shutil.rmtree(dest)
-    if os.path.exists(sparkle_framework):
-        shutil.copytree(sparkle_framework, dest, symlinks=True)
+    # NOTE: Sparkle.framework is copied into the .app by the CI workflow
+    # AFTER PyInstaller finishes. Cannot do it here because BUNDLE() is
+    # lazy — it builds the .app after spec evaluation completes, so any
+    # files copied here would be overwritten.

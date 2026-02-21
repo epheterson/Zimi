@@ -275,16 +275,13 @@ jobs:
       - name: Copy Sparkle.framework into app bundle (macOS)
         if: runner.os == 'macOS'
         run: |
-          # PyInstaller spec copies Sparkle.framework, but only if it exists at build time.
-          # Ensure it's in place for signing (CI downloads it fresh).
+          # Must copy AFTER PyInstaller — BUNDLE() overwrites dist/Zimi.app
           FWDIR="dist/Zimi.app/Contents/Frameworks"
-          if [ ! -d "$FWDIR/Sparkle.framework" ] && [ -d "Sparkle.framework" ]; then
-            mkdir -p "$FWDIR"
-            cp -R Sparkle.framework "$FWDIR/"
-            echo "Copied Sparkle.framework to Frameworks/"
-          else
-            echo "Sparkle.framework already in place"
-          fi
+          mkdir -p "$FWDIR"
+          rm -rf "$FWDIR/Sparkle.framework"
+          cp -R Sparkle.framework "$FWDIR/"
+          echo "Copied Sparkle.framework to $FWDIR/"
+          ls -la "$FWDIR/Sparkle.framework/Versions/Current/Sparkle"
 
       - name: Code sign app (macOS)
         if: runner.os == 'macOS' && env.APPLE_CERTIFICATE_BASE64 != ''
