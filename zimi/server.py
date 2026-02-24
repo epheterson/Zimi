@@ -146,7 +146,7 @@ READ_MAX_LENGTH = 50000    # longer limit for the web UI reader
 MAX_SEARCH_LIMIT = 50      # upper bound for search results per ZIM to prevent resource exhaustion
 MAX_CONTENT_BYTES = 10 * 1024 * 1024  # 10 MB — skip snippet extraction for entries larger than this
 MAX_SERVE_BYTES = 50 * 1024 * 1024    # 50 MB — refuse to serve entries larger than this (prevents OOM)
-MAX_POST_BODY = 4096                  # max bytes accepted in POST requests
+MAX_POST_BODY = 65536                 # max bytes accepted in POST requests (64KB — handles ~500 URLs for batch resolve)
 
 # ── Rate Limiting ──
 RATE_LIMIT = int(os.environ.get("ZIMI_RATE_LIMIT", "60"))  # requests per minute per IP (0 = disabled)
@@ -1044,12 +1044,17 @@ def _build_domain_zim_map():
             www = "www." + domain
             if www not in dmap:
                 dmap[www] = name
-        # Mobile Wikimedia variant: en.X.org → en.m.X.org
-        m = re.match(r'^(en)\.(wiki\w+\.org)$', domain)
+        # Mobile Wikimedia variant: XX.wiki*.org → XX.m.wiki*.org (all languages)
+        m = re.match(r'^(\w{2,3})\.(wiki\w+\.org)$', domain)
         if m:
             mobile = f"{m.group(1)}.m.{m.group(2)}"
             if mobile not in dmap:
                 dmap[mobile] = name
+        # Common mobile variants for non-wiki sites
+        if domain in ("stackoverflow.com", "stackexchange.com"):
+            mob = "m." + domain
+            if mob not in dmap:
+                dmap[mob] = name
 
     # 1. Extract domains from ZIM filenames
     for name, path in zims.items():

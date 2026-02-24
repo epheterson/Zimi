@@ -629,6 +629,9 @@
     .manage-card { padding: 16px 12px; }
     .manage-tab { padding: 8px 14px; font-size: 12px; }
     body { overflow-x: hidden; }
+    .topbar.search-focused .random-btn,
+    .topbar.search-focused .library-btn,
+    .topbar.search-focused .manage-btn { display: none !important; }
   }
 
   /* ── Password modal ── */
@@ -774,36 +777,35 @@
   .coll-item .coll-del:hover { opacity: 1; color: #f44; border-color: #f44; }
 
   /* ── History panel ── */
-  .bookmark-btn {
-    display: flex; align-items: center; justify-content: center;
-    opacity: 0; pointer-events: none;
-    color: var(--text2); text-decoration: none; flex-shrink: 0;
-    padding: 6px 10px; border-radius: var(--radius); transition: opacity 0.2s, color 0.2s, border-color 0.2s, background 0.2s;
-    border: 1px solid transparent; font-size: 16px; cursor: pointer; background: none;
-  }
-  .bookmark-btn.active { opacity: 1; pointer-events: auto; }
-  .bookmark-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
-  .bookmark-btn.bookmarked { color: var(--amber); }
-  .bookmark-btn.bookmarked svg { fill: var(--amber); }
-  .history-btn {
+  .library-btn {
     display: flex; align-items: center; justify-content: center;
     color: var(--text2); text-decoration: none; flex-shrink: 0;
     padding: 6px 10px; border-radius: var(--radius); transition: all 0.2s;
     border: 1px solid transparent; font-size: 16px; cursor: pointer; background: none;
   }
-  .history-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .library-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .library-btn.panel-open { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .history-panel {
     display: none; position: fixed; top: 56px; right: 0; bottom: 0; width: 360px; max-width: 100vw;
     background: var(--surface); border-left: 1px solid var(--border); z-index: 180;
     overflow-y: auto; box-shadow: -4px 0 24px rgba(0,0,0,0.4);
   }
   .history-panel.open { display: block; }
-  .history-panel-header {
+  .library-panel-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    padding: 12px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0;
     background: var(--surface); z-index: 1;
   }
-  .history-panel-header h3 { font-size: 14px; font-weight: 600; color: var(--text); margin: 0; }
+  .library-tabs {
+    display: flex; gap: 0; background: var(--bg); border-radius: 8px; padding: 2px; flex: 1;
+  }
+  .library-tab {
+    flex: 1; padding: 6px 12px; font-size: 13px; font-weight: 500; color: var(--text2);
+    background: none; border: none; border-radius: 6px; cursor: pointer; transition: all 0.15s;
+    text-align: center; white-space: nowrap;
+  }
+  .library-tab:hover { color: var(--text); }
+  .library-tab.active { background: var(--surface2); color: var(--text); font-weight: 600; }
   .hp-clear { background: none; border: 1px solid var(--border); border-radius: var(--radius); color: var(--text2); font-size: 12px; padding: 4px 10px; cursor: pointer; transition: all 0.15s; }
   .hp-clear:hover { color: #ef4444; border-color: #ef4444; }
   .hp-group { padding: 0 16px; }
@@ -827,30 +829,6 @@
   .hp-item-del:hover { opacity: 1 !important; color: #ef4444; }
   .hp-empty { padding: 32px 16px; text-align: center; color: var(--text2); font-size: 13px; }
 
-  /* ── Bookmarks section on home ── */
-  .bookmarks-section { margin-bottom: 20px; }
-  .bookmarks-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 6px;
-  }
-  .bookmark-card {
-    display: flex; gap: 10px; align-items: center; padding: 10px 14px;
-    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    cursor: pointer; transition: all 0.2s; overflow: hidden;
-  }
-  .bookmark-card:hover { background: var(--surface2); border-color: var(--amber-border); }
-  .bookmark-card .bk-icon { flex-shrink: 0; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
-  .bookmark-card .bk-icon img { width: 24px; height: 24px; border-radius: 4px; background: #fff; }
-  .bookmark-card .bk-detail { flex: 1; min-width: 0; }
-  .bookmark-card .bk-title { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
-  .bookmark-card .bk-source { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .bookmark-card .bk-remove {
-    opacity: 0; flex-shrink: 0; background: none; border: none; color: var(--text2);
-    font-size: 14px; cursor: pointer; padding: 2px 4px; border-radius: 4px; transition: all 0.15s;
-  }
-  .bookmark-card:hover .bk-remove { opacity: 0.4; }
-  .bookmark-card .bk-remove:hover { opacity: 1; color: #ef4444; }
-
   /* ── Discover homepage — horizontal scroll row ── */
   .discover-section { margin-bottom: 20px; }
   .discover-label {
@@ -868,12 +846,12 @@
   }
   .dc-teaser a { color: var(--amber); text-decoration: none; font-weight: 500; display: inline-block; margin-top: 8px; }
   .dc-teaser a:hover { text-decoration: underline; }
-  .discover-scroll { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 8px 2px; margin: -8px -2px; }
+  .discover-scroll { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 8px 2px; margin: -8px -2px; will-change: transform; }
   .discover-scroll::-webkit-scrollbar { height: 4px; }
   .discover-scroll::-webkit-scrollbar-track { background: transparent; }
   .discover-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
   .discover-card {
-    flex: 0 0 260px; scroll-snap-align: start;
+    flex: 0 0 260px; min-height: 200px; scroll-snap-align: start;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
     cursor: pointer; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden; display: flex; flex-direction: column;
@@ -885,7 +863,7 @@
   }
   .discover-card.dc-no-click { cursor: default; }
   .discover-card.dc-no-click:hover { background: var(--surface); border-color: var(--border); box-shadow: none; transform: none; }
-  .dc-thumb { width: 100%; height: 120px; object-fit: cover; display: block; background: var(--surface2); }
+  .dc-thumb { width: 100%; min-height: 120px; height: 120px; object-fit: cover; display: block; background: var(--surface2); }
   .dc-body { padding: 8px 12px 10px; flex: 1; display: flex; flex-direction: column; gap: 2px; }
   .dc-source { font-size: 11px; color: var(--text2); display: flex; align-items: center; gap: 6px; }
   .dc-zim-icon { width: 16px; height: 16px; border-radius: 3px; background: #fff; flex-shrink: 0; }
@@ -943,8 +921,7 @@
     <div id="suggest-dropdown" class="suggest-dropdown"></div>
   </div>
   <a href="#" id="random-btn" class="random-btn" title="Random article (R)" onclick="randomArticle(event)"><span class="dice">&#x1F3B2;</span></a>
-  <button id="bookmark-btn" class="bookmark-btn" title="Bookmark (B)" onclick="toggleBookmark()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>
-  <button id="history-btn" class="history-btn" title="History (H)" onclick="toggleHistoryPanel()" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
+  <button id="library-btn" class="library-btn" title="Library (H)" onclick="toggleLibraryPanel()"></button>
   <a href="#" id="manage-btn" class="manage-btn" title="Library Manager" onclick="toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
   <a id="newtab-btn" class="newtab-btn" href="#" target="_blank" rel="noopener" title="Open in browser" onclick="event.preventDefault();_openInBrowser()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
 
@@ -1002,8 +979,8 @@
       <input type="number" id="settings-port" min="1024" max="65535" value="8899">
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer;text-transform:none;letter-spacing:0">
-      <input type="checkbox" id="settings-discover" onchange="if(this.checked)localStorage.removeItem('zimi_hide_discover');else localStorage.setItem('zimi_hide_discover','1')" style="accent-color:var(--amber)">
-      <span style="font-size:13px;color:var(--text)">Show Discover on home page</span>
+      <input type="checkbox" id="settings-hide-xzim" onchange="if(this.checked)localStorage.setItem('zimi_hide_cross_zim_links','1');else localStorage.removeItem('zimi_hide_cross_zim_links')" style="accent-color:var(--amber)">
+      <span style="font-size:13px;color:var(--text)">Hide cross-source link highlights</span>
     </label>
     <div class="hint" id="settings-hint">Changes require a server restart to take effect.</div>
     <div id="settings-browser-link" style="display:none;margin-top:8px;margin-bottom:16px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius)">
@@ -1217,8 +1194,8 @@ function updateTopbar() {
 
   newtabBtn.style.display = readerOpen ? 'flex' : 'none';
   randomBtn.style.display = 'flex';
-  document.getElementById('history-btn').style.display = (mode !== 'manage') ? 'flex' : 'none';
-  _updateBookmarkBtn();
+  document.getElementById('library-btn').style.display = (mode !== 'manage') ? 'flex' : 'none';
+  _updateLibraryBtnIcon();
 
   // Search placeholder
   if (currentSource) {
@@ -1695,10 +1672,7 @@ function renderHome(filter) {
     h += '<div id="discover-row"></div>';
   }
 
-  // Bookmarks (only on unscoped, unfiltered home)
-  if (!homeScope && !filter) {
-    h += renderBookmarksSection();
-  }
+  // Bookmarks moved to library panel (H/B key or topbar icon)
 
   // Favorites section at top (only on unscoped home)
   if (!homeScope) {
@@ -1831,23 +1805,21 @@ function _dismissDiscover() {
   localStorage.setItem('zimi_hide_discover', '1');
   var el = document.getElementById('discover-row');
   if (el) el.innerHTML = '';
-  // Show undo toast in Docker mode (no settings overlay available)
-  if (!IS_DESKTOP) {
-    var toast = document.createElement('div');
-    toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
-    toast.innerHTML = 'Discover hidden. <a href="#" style="color:var(--amber);text-decoration:none" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');this.parentNode.remove();renderHome()">Undo</a>';
-    document.body.appendChild(toast);
-    setTimeout(function() { if (toast.parentNode) toast.remove(); }, 5000);
-  }
+  // Show undo toast
+  var toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
+  toast.innerHTML = 'Discover hidden. <a href="#" style="color:var(--amber);text-decoration:none" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');this.parentNode.remove();renderHome()">Undo</a>';
+  document.body.appendChild(toast);
+  setTimeout(function() { if (toast.parentNode) toast.remove(); }, 5000);
 }
 
 function _loadDiscover() {
   if (_discoverLoading) return;
+  var el = document.getElementById('discover-row');
   if (localStorage.getItem('zimi_hide_discover') === '1') {
     if (el) el.innerHTML = '<div style="text-align:center;padding:8px 0"><a href="#" style="color:var(--text2);font-size:12px;text-decoration:none;opacity:0.5" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');renderHome()">Show Discover</a></div>';
     return;
   }
-  var el = document.getElementById('discover-row');
   if (!el) return;
   var now = new Date();
   var today = now.toISOString().substring(0, 10);
@@ -1937,24 +1909,36 @@ function _loadDiscover() {
   _renderDiscover(el, loadingItems);
   _discoverLoading = true;
 
-  Promise.all(serverSlots.map(function(s) {
+  // Track resolved results as they arrive so the timeout path can collect partial results
+  var _discoverResults = [];
+  var _discoverFetches = serverSlots.map(function(s, idx) {
+    _discoverResults.push(null);
     var url = '/random?zim=' + encodeURIComponent(s.name) + '&thumb=1&require_thumb=1';
     if (s.dated) url += '&date=' + mmdd;
     url += '&seed=' + mmdd;
     return fetch(url)
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(d) {
-        if (!d || d.error) return null;
-        return { zim: s.name, path: d.path, title: d.title || _titleFromPath(d.path || ''),
+        if (!d || d.error) { return null; }
+        var item = { zim: s.name, path: d.path, title: d.title || _titleFromPath(d.path || ''),
                  thumbnail: d.thumbnail || null, blurb: d.blurb || null,
                  attribution: d.attribution || null, speaker: d.speaker || null, author: d.author || null, part_of_speech: d.part_of_speech || null,
                  date: d.date || null, type: s.type, label: s.label || null, icon: s.icon || null };
+        _discoverResults[idx] = item; // Store immediately on resolve
+        return item;
       })
       .catch(function() { return null; });
-  })).then(function(results) {
+  });
+  var _discoverTimeout = new Promise(function(resolve) { setTimeout(function() { resolve('timeout'); }, 8000); });
+  Promise.race([Promise.all(_discoverFetches), _discoverTimeout]).then(function(results) {
+    if (results === 'timeout') {
+      // On timeout: use whatever resolved so far from the side-channel array
+      results = _discoverResults.slice();
+    }
     _discoverLoading = false;
     // Named slots (have label) show even without thumbnails; random fill requires thumbnails
-    var items = results.filter(function(r) { return r && (r.thumbnail || r.label); });
+    // Skip items with no title AND no path (failed dated entry lookups)
+    var items = results.filter(function(r) { return r && (r.thumbnail || r.label) && (r.title || r.path); });
     // Move Today card to position 2 if there's content to show first
     var all;
     if (items.length > 0) {
@@ -1973,6 +1957,7 @@ function _renderDiscover(el, items) {
   var h = '<div class="discover-section"><div class="discover-label"><span>Discover</span><button class="dc-dismiss" onclick="event.stopPropagation();_dismissDiscover()" title="Hide Discover">\u00D7</button></div><div class="discover-scroll">';
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
+    if (!it) continue; // Skip null results (e.g. failed dated entry lookups)
     // Loading skeleton placeholder
     if (it.type === 'loading') {
       h += '<div class="discover-card dc-no-click dc-loading">' +
@@ -2345,6 +2330,12 @@ async function renderSource(name) {
 // ── History-in-dropdown: show recent history when search bar is focused ──
 q.addEventListener('focus', function() {
   if (!q.value.trim() && mode !== 'manage') showHistoryDropdown();
+  if (window.matchMedia('(max-width: 600px)').matches) {
+    document.querySelector('.topbar').classList.add('search-focused');
+  }
+});
+q.addEventListener('blur', function() {
+  document.querySelector('.topbar').classList.remove('search-focused');
 });
 
 q.addEventListener('input', () => {
@@ -3093,8 +3084,8 @@ async function loadFullCatalog() {
 }
 
 const FEATURED_ZIMS = [
-  { match: 'wikipedia',     type: 'onthisday', label: 'On This Day',        icon: '\uD83C\uDF0D', promo: 'Wikipedia',           unlock: 'Discover: On This Day' },
   { match: 'apod.nasa', type: 'apod', label: 'Picture of the Day', icon: '\uD83D\uDD2D', promo: 'NASA APOD', unlock: 'Discover: Picture of the Day' },
+  { match: 'wikipedia',     type: 'onthisday', label: 'On This Day',        icon: '\uD83C\uDF0D', promo: 'Wikipedia',           unlock: 'Discover: On This Day' },
   { match: 'wiktionary',    type: 'random',    label: 'Word of the Day',    icon: '\uD83D\uDCD6', promo: 'Wiktionary',          unlock: 'Discover: Word of the Day' },
   { match: 'wikivoyage',    type: 'random',    label: 'Destination of the Day', icon: '\u2708\uFE0F', promo: 'Wikivoyage',      unlock: 'Discover: Destination of the Day' },
   { match: 'gutenberg',     type: 'random',    label: 'Book of the Day',    icon: '\uD83D\uDCDA', promo: 'Project Gutenberg',   unlock: 'Discover: Book of the Day' },
@@ -4894,10 +4885,11 @@ function openReader(url) {
     } catch(e) { /* cross-origin — ZIM content loaded from a different origin */ }
     // Classify links: batch-resolve external URLs to find which ones are available locally
     // Only highlight links that actually resolve to a different installed ZIM
+    // Feature flag: enabled by default, user can hide via Settings checkbox
     var _currentZim = readerSource || (currentArticle && currentArticle.zim) || '';
-    if (Object.keys(_domainZimMap).length > 0 && !_frameLoc.startsWith('/static/')) try {
+    if (localStorage.getItem('zimi_hide_cross_zim_links') !== '1' && Object.keys(_domainZimMap).length > 0 && !_frameLoc.startsWith('/static/')) try {
       var styleEl = frame.contentDocument.createElement('style');
-      styleEl.textContent = '.zimi-xzim{text-decoration-style:dotted;text-decoration-color:var(--amber,#f59e0b)}.zimi-ext{opacity:0.55}';
+      styleEl.textContent = '.zimi-xzim{text-decoration-style:dotted;text-decoration-color:var(--amber,#f59e0b)}';
       frame.contentDocument.head.appendChild(styleEl);
       // Collect external URLs that might resolve to installed ZIMs
       var urlMap = {}; // url → [anchor elements]
@@ -4916,33 +4908,72 @@ function openReader(url) {
             // This domain has a matching ZIM — collect for batch resolve
             if (!urlMap[full2]) urlMap[full2] = [];
             urlMap[full2].push(a);
-          } else {
-            a.classList.add('zimi-ext');
           }
+          // Unresolved external links: no special styling (leave as normal links)
         } catch(ex) {}
       });
-      // Batch resolve collected URLs (max 50)
+      // Batch resolve collected URLs — chunked to stay under body limits
       _resolveCache = {}; // Reset per page load
-      var extUrls = Object.keys(urlMap).slice(0, 100);
+      var extUrls = Object.keys(urlMap).slice(0, 300); // Cap to prevent pathological load on large articles
       if (extUrls.length > 0) {
-        fetch('/resolve', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({urls: extUrls})
-        }).then(function(r) { return r.json(); }).then(function(data) {
-          var results = data.results || {};
+        var CHUNK_SIZE = 30;
+        var chunks = [];
+        for (var ci2 = 0; ci2 < extUrls.length; ci2 += CHUNK_SIZE) {
+          chunks.push(extUrls.slice(ci2, ci2 + CHUNK_SIZE));
+        }
+        var _applyResults = function(results) {
           for (var u in results) {
-            _resolveCache[u] = results[u]; // Cache for instant click resolution
+            _resolveCache[u] = results[u];
             var anchors = urlMap[u];
             if (!anchors) continue;
             if (results[u].found && results[u].zim !== _currentZim) {
               anchors.forEach(function(a) { a.classList.add('zimi-xzim'); });
-            } else if (!results[u].found) {
-              anchors.forEach(function(a) { a.classList.add('zimi-ext'); });
             }
-            // Same-ZIM links → leave unstyled
+            // Unresolved links: no special styling (leave as normal links)
           }
-        }).catch(function() {});
+        };
+        var _missedDomains = {};
+        var _resolvedCount = 0, _totalCount = extUrls.length;
+        var _chunksCompleted = 0;
+        // Process chunks in parallel (max 3 concurrent)
+        var _chunkIdx = 0;
+        var _runChunk = function() {
+          if (_chunkIdx >= chunks.length) {
+            // Log summary once when all chains have finished
+            _chunksCompleted++;
+            if (_chunksCompleted === Math.min(3, chunks.length)) {
+              var missedKeys = Object.keys(_missedDomains);
+              if (missedKeys.length > 0) {
+                console.log('[Zimi] Cross-ZIM: ' + _resolvedCount + '/' + _totalCount + ' links resolved, ' + missedKeys.length + ' unique domains missed');
+                console.log('[Zimi] Unresolved domains: ' + missedKeys.join(', '));
+              } else if (_resolvedCount > 0) {
+                console.log('[Zimi] Cross-ZIM: ' + _resolvedCount + '/' + _totalCount + ' links resolved');
+              }
+            }
+            return Promise.resolve();
+          }
+          var chunk = chunks[_chunkIdx++];
+          return fetch('/resolve', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({urls: chunk})
+          }).then(function(r) {
+            if (!r.ok) throw new Error('resolve returned ' + r.status);
+            return r.json();
+          }).then(function(data) {
+            var results = data.results || {};
+            _applyResults(results);
+            for (var u2 in results) {
+              if (results[u2].found) { _resolvedCount++; }
+              else { try { _missedDomains[new URL(u2).hostname] = true; } catch(ex) {} }
+            }
+          }).catch(function(err) {
+            console.warn('[Zimi] Cross-ZIM resolve chunk failed:', err.message || err);
+          }).then(_runChunk);
+        };
+        // Launch up to 3 parallel chains
+        var _parallel = Math.min(3, chunks.length);
+        for (var pi = 0; pi < _parallel; pi++) _runChunk();
       }
     } catch(e) { /* cross-origin */ }
     // Update document/window title from iframe content (skip for pdf.js — it reports
@@ -4968,7 +4999,7 @@ function openReader(url) {
         var _navZim = decodeURIComponent(_wm[1]);
         var _navPath = decodeURIComponent(_wm[2]);
         currentArticle = { zim: _navZim, path: _navPath };
-        _updateBookmarkBtn();
+        _updateLibraryBtnIcon();
       }
     } catch(e) {}
   };
@@ -5020,7 +5051,7 @@ function _histPushSearch(query, zimName, resultCount) {
 function _histClear() {
   _persistHist = [];
   try { localStorage.removeItem(_HIST_KEY); } catch(e) {}
-  renderHistoryPanel();
+  renderLibraryPanel();
 }
 function _histRemove(idx) {
   var h = _histLoad();
@@ -5028,7 +5059,7 @@ function _histRemove(idx) {
     h.splice(idx, 1);
     _histSave();
   }
-  renderHistoryPanel();
+  renderLibraryPanel();
 }
 function _histDateGroup(ts) {
   var now = new Date();
@@ -5041,27 +5072,58 @@ function _histDateGroup(ts) {
   if (d >= weekAgo) return 'This Week';
   return 'Older';
 }
-function toggleHistoryPanel() {
+function toggleLibraryPanel(forceTab) {
   var panel = document.getElementById('history-panel');
-  if (panel.classList.contains('open')) {
+  var btn = document.getElementById('library-btn');
+  var isOpen = panel.classList.contains('open');
+  if (isOpen && (!forceTab || forceTab === _getLibraryTab())) {
+    // Close if already open on same tab (or no tab specified)
     panel.classList.remove('open');
+    if (btn) btn.classList.remove('panel-open');
   } else {
-    renderHistoryPanel();
+    // Open (or switch tabs if already open on different tab)
+    if (forceTab) { _setLibraryTab(forceTab); _updateLibraryBtnIcon(); }
+    renderLibraryPanel();
     panel.classList.add('open');
+    if (btn) btn.classList.add('panel-open');
   }
 }
-function renderHistoryPanel() {
+function _closeLibraryPanel() {
   var panel = document.getElementById('history-panel');
+  var btn = document.getElementById('library-btn');
+  if (panel) panel.classList.remove('open');
+  if (btn) btn.classList.remove('panel-open');
+}
+function _switchLibraryTab(tab) {
+  _setLibraryTab(tab);
+  _updateLibraryBtnIcon();
+  renderLibraryPanel();
+}
+function renderLibraryPanel() {
+  var panel = document.getElementById('history-panel');
+  var tab = _getLibraryTab();
+  var isHistory = (tab === 'history');
+  var html = '<div class="library-panel-header">' +
+    '<div class="library-tabs">' +
+    '<button class="library-tab' + (isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'history\')">History</button>' +
+    '<button class="library-tab' + (!isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'bookmarks\')">Bookmarks</button>' +
+    '</div>' +
+    '<button class="hp-clear" style="margin-left:8px" onclick="_closeLibraryPanel()">\u2715</button>' +
+    '</div>';
+  if (isHistory) {
+    html += _renderHistoryContent();
+  } else {
+    html += _renderBookmarksContent();
+  }
+  panel.innerHTML = html;
+}
+function _renderHistoryContent() {
   var h = _histLoad();
   if (h.length === 0) {
-    panel.innerHTML = '<div class="history-panel-header"><h3>History</h3><button class="hp-clear" onclick="toggleHistoryPanel()">\u2715</button></div>' +
-      '<div class="hp-empty">No history yet. Browse articles and search to build your history.</div>';
-    return;
+    return '<div class="hp-empty">No history yet. Browse articles and search to build your history.</div>';
   }
-  var html = '<div class="history-panel-header"><h3>History</h3><div style="display:flex;gap:8px"><button class="hp-clear" onclick="_histClear()">Clear</button><button class="hp-clear" onclick="toggleHistoryPanel()">\u2715</button></div></div>';
+  var html = '<div style="padding:8px 16px 0;text-align:right"><button class="hp-clear" onclick="_histClear()">Clear</button></div>';
   var currentGroup = '';
-  // Build hierarchical structure: group articles under their parent search
-  // Walk entries and collect runs of articles that share a fromQuery with the preceding search
   var i = 0;
   while (i < h.length) {
     var item = h[i];
@@ -5072,21 +5134,19 @@ function renderHistoryPanel() {
       currentGroup = group;
     }
     if (item.type === 'search') {
-      // Render search header
       var searchSub = item.zim ? _zimTitle(item.zim) : 'All sources';
       if (item.resultCount) searchSub += ' \u00B7 ' + item.resultCount + ' results';
-      html += '<div class="hp-item" onclick="toggleHistoryPanel();' + (item.zim ? 'enterSource(\'' + escJs(item.zim) + '\',false);' : '') + 'q.value=\'' + escJs(item.query) + '\';doSearch(\'' + escJs(item.query) + '\')">' +
+      html += '<div class="hp-item" onclick="_closeLibraryPanel();' + (item.zim ? 'enterSource(\'' + escJs(item.zim) + '\',false);' : '') + 'q.value=\'' + escJs(item.query) + '\';doSearch(\'' + escJs(item.query) + '\')">' +
         '<div class="hp-icon">\uD83D\uDD0D</div>' +
         '<div class="hp-detail"><div class="hp-title">' + esc(item.query) + '</div>' +
         '<div class="hp-sub">' + esc(searchSub) + '</div></div>' +
         '<button class="hp-item-del" onclick="event.stopPropagation();_histRemove(' + i + ')">\u2715</button></div>';
-      // Collect child articles that came from this search
       var j = i + 1;
       while (j < h.length && h[j].type === 'article' && h[j].fromQuery === item.query) {
         var child = h[j];
         var cIcon = child.zim ? _sourceIconHtml(child.zim, 16) : '';
         var cSub = child.zim ? _zimTitle(child.zim) : '';
-        html += '<div class="hp-item" style="padding-left:38px" onclick="toggleHistoryPanel();openArticle(\'' + escJs(child.zim) + '\',\'' + escJs(child.path) + '\',\'' + escJs(child.title || '') + '\')">' +
+        html += '<div class="hp-item" style="padding-left:38px" onclick="_closeLibraryPanel();openArticle(\'' + escJs(child.zim) + '\',\'' + escJs(child.path) + '\',\'' + escJs(child.title || '') + '\')">' +
           '<div class="hp-icon" style="width:22px;height:22px">' + cIcon + '</div>' +
           '<div class="hp-detail"><div class="hp-title">' + esc(child.title || child.path) + '</div>' +
           '<div class="hp-sub">' + esc(cSub) + '</div></div>' +
@@ -5095,10 +5155,9 @@ function renderHistoryPanel() {
       }
       i = j;
     } else if (item.type === 'article') {
-      // Standalone article (no parent search, or fromQuery doesn't match previous search)
       var aIcon = item.zim ? _sourceIconHtml(item.zim, 20) : '\uD83D\uDCC4';
       var aSub = item.zim ? _zimTitle(item.zim) : '';
-      html += '<div class="hp-item" onclick="toggleHistoryPanel();openArticle(\'' + escJs(item.zim) + '\',\'' + escJs(item.path) + '\',\'' + escJs(item.title || '') + '\')">' +
+      html += '<div class="hp-item" onclick="_closeLibraryPanel();openArticle(\'' + escJs(item.zim) + '\',\'' + escJs(item.path) + '\',\'' + escJs(item.title || '') + '\')">' +
         '<div class="hp-icon">' + aIcon + '</div>' +
         '<div class="hp-detail"><div class="hp-title">' + esc(item.title || item.path) + '</div>' +
         '<div class="hp-sub">' + esc(aSub) + '</div></div>' +
@@ -5109,7 +5168,26 @@ function renderHistoryPanel() {
     }
   }
   if (currentGroup) html += '</div>';
-  panel.innerHTML = html;
+  return html;
+}
+function _renderBookmarksContent() {
+  var bk = _bkLoad();
+  if (!bk.length) {
+    return '<div class="hp-empty">No bookmarks yet. Open an article and press B to bookmark it.</div>';
+  }
+  var html = '<div class="hp-group">';
+  for (var i = 0; i < bk.length; i++) {
+    var b = bk[i];
+    var icon = b.zim ? _sourceIconHtml(b.zim, 20) : '\uD83D\uDCC4';
+    var sub = b.zim ? _zimTitle(b.zim) : '';
+    html += '<div class="hp-item" onclick="_closeLibraryPanel();openArticle(\'' + escJs(b.zim) + '\',\'' + escJs(b.path) + '\',\'' + escJs(b.title || '') + '\')">' +
+      '<div class="hp-icon">' + icon + '</div>' +
+      '<div class="hp-detail"><div class="hp-title">' + esc(b.title || _titleFromPath(b.path)) + '</div>' +
+      '<div class="hp-sub">' + esc(sub) + '</div></div>' +
+      '<button class="hp-item-del" onclick="event.stopPropagation();_bkRemove(\'' + escJs(b.zim) + '\',\'' + escJs(b.path) + '\');renderLibraryPanel()">\u2715</button></div>';
+  }
+  html += '</div>';
+  return html;
 }
 
 function _pushArticleHistory(zim, path) {
@@ -5162,44 +5240,27 @@ function toggleBookmark() {
   } else {
     _bkAdd(zim, path, title);
   }
-  _updateBookmarkBtn();
+  _updateLibraryBtnIcon();
 }
-function _updateBookmarkBtn() {
-  var btn = document.getElementById('bookmark-btn');
+var _libClockSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+var _libBookmarkSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+var _libBookmarkFilledSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+function _getLibraryTab() { return localStorage.getItem('zimi_library_tab') || 'history'; }
+function _setLibraryTab(tab) { localStorage.setItem('zimi_library_tab', tab); }
+function _updateLibraryBtnIcon() {
+  var btn = document.getElementById('library-btn');
   if (!btn) return;
-  if (readerOpen && currentArticle) {
-    btn.classList.add('active');
-    var isB = _bkIsBookmarked(currentArticle.zim, currentArticle.path);
-    btn.classList.toggle('bookmarked', isB);
-    btn.title = isB ? 'Remove bookmark (B)' : 'Bookmark (B)';
+  var tab = _getLibraryTab();
+  if (readerOpen && currentArticle && _bkIsBookmarked(currentArticle.zim, currentArticle.path)) {
+    btn.innerHTML = _libBookmarkFilledSvg;
+    btn.style.color = 'var(--amber)';
+    btn.title = 'Bookmarked (B to remove)';
   } else {
-    btn.classList.remove('active');
+    btn.innerHTML = (tab === 'bookmarks') ? _libBookmarkSvg : _libClockSvg;
+    btn.style.color = '';
+    btn.title = (tab === 'bookmarks') ? 'Bookmarks (B)' : 'History (H)';
   }
 }
-function renderBookmarksSection() {
-  var bk = _bkLoad();
-  if (!bk.length) return '';
-  var html = '<div class="bookmarks-section">' +
-    '<div class="discover-label">Bookmarks</div>' +
-    '<div class="bookmarks-grid">';
-  var shown = Math.min(bk.length, 8);
-  for (var i = 0; i < shown; i++) {
-    var b = bk[i];
-    var icon = _sourceIconHtml(b.zim, 24);
-    html += '<div class="bookmark-card" onclick="openArticle(\'' + escJs(b.zim) + '\',\'' + escJs(b.path) + '\',\'' + escJs(b.title || '') + '\')">' +
-      '<div class="bk-icon">' + icon + '</div>' +
-      '<div class="bk-detail"><div class="bk-title">' + esc(b.title || _titleFromPath(b.path)) + '</div>' +
-      '<div class="bk-source">' + esc(_zimTitle(b.zim)) + '</div></div>' +
-      '<button class="bk-remove" onclick="event.stopPropagation();_bkRemove(\'' + escJs(b.zim) + '\',\'' + escJs(b.path) + '\');renderHome()" title="Remove">\u2715</button></div>';
-  }
-  html += '</div>';
-  if (bk.length > 8) {
-    html += '<div style="text-align:center;padding:8px"><button class="hp-clear" onclick="toggleHistoryPanel()" style="font-size:12px">View all ' + bk.length + ' bookmarks</button></div>';
-  }
-  html += '</div>';
-  return html;
-}
-
 function openArticle(zim, path, title) {
   // Save discover scroll position before navigating away
   var discScroll = document.querySelector('.discover-scroll');
@@ -5288,7 +5349,7 @@ async function randomArticle(event) {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     var _hp = document.getElementById('history-panel');
-    if (_hp && _hp.classList.contains('open')) { _hp.classList.remove('open'); return; }
+    if (_hp && _hp.classList.contains('open')) { _closeLibraryPanel(); return; }
     if (suggestDropdown.style.display !== 'none') { hideSuggest(); return; }
     if (readerOpen) { goBack(); return; }
     if (q.value) { q.value = ''; hideSuggest(); clearSearch(); return; }
@@ -5299,8 +5360,12 @@ document.addEventListener('keydown', e => {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   if (e.key === '/' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); q.focus(); }
   if (e.key === 'r' && !e.metaKey && !e.ctrlKey && !e.altKey && mode !== 'manage') { e.preventDefault(); randomArticle(e); }
-  if (e.key === 'h' && !e.metaKey && !e.ctrlKey && !e.altKey && mode !== 'manage') { e.preventDefault(); toggleHistoryPanel(); }
-  if (e.key === 'b' && !e.metaKey && !e.ctrlKey && !e.altKey && readerOpen) { e.preventDefault(); toggleBookmark(); }
+  if (e.key === 'h' && !e.metaKey && !e.ctrlKey && !e.altKey && mode !== 'manage') { e.preventDefault(); toggleLibraryPanel('history'); }
+  if (e.key === 'b' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    if (readerOpen) { toggleBookmark(); _updateLibraryBtnIcon(); }
+    else if (mode !== 'manage') toggleLibraryPanel('bookmarks');
+  }
 });
 
 // ── History ──
@@ -5510,9 +5575,9 @@ async function openSettings() {
     browserLink.style.display = 'none';  // Not useful in browser mode
   }
 
-  // Sync Discover toggle
-  var discoverCb = document.getElementById('settings-discover');
-  if (discoverCb) discoverCb.checked = localStorage.getItem('zimi_hide_discover') !== '1';
+  // Sync cross-ZIM toggle
+  var xzimCb = document.getElementById('settings-hide-xzim');
+  if (xzimCb) xzimCb.checked = localStorage.getItem('zimi_hide_cross_zim_links') === '1';
 
   overlay.classList.add('open');
 }
