@@ -1935,16 +1935,36 @@ def _extract_preview(archive, zim_name, path):
                     continue
                 result["blurb"] = "\u201c" + text[:250] + "\u201d"
                 # Attribution: prefer page title (the person being quoted).
-                # Wikiquote nested <li> is usually a citation/source, not an author name.
-                # Only override with nested text if it clearly looks like a person's name.
+                # Wikiquote nested <li> often has "Author, Source (Year), Ch." format.
+                # Extract the author name: text before first comma or parenthesis.
                 author = result.get("title") or entry_title
                 inner_block = block[inner_ul_pos:]
                 attr_raw = strip_html(inner_block).strip()
                 attr_raw = re.sub(r'^[\u2014\u2013\-~]+\s*', '', attr_raw).strip().split('\n')[0].strip()
-                if (attr_raw and 3 < len(attr_raw) < 50
-                    and not re.search(r'[\[\]{}()/]|https?:|www\.|^\d|^p\.\s', attr_raw, re.IGNORECASE)
-                    and re.match(r'^[A-Z][\w.\'\u2019-]+(\s+[A-Za-z][\w.\'\u2019-]+){0,4}$', attr_raw)):
-                    author = attr_raw
+                if attr_raw and 3 < len(attr_raw) < 200:
+                    if not re.search(r'[\[\]{}]|https?:|www\.|^\d', attr_raw, re.IGNORECASE):
+                        # Extract name: everything before first comma or opening paren
+                        # e.g. "Henry Adams, Mont Saint Michel and Chartres (1904)" → "Henry Adams"
+                        name_part = re.split(r'[,(]', attr_raw)[0].strip()
+                        # Handle honorifics with commas: "Adams, Henry" or "King, Jr., Martin Luther"
+                        # If name_part is a single word and next part also looks like a name, rejoin
+                        if name_part and ',' in attr_raw:
+                            parts = [p.strip() for p in attr_raw.split(',')]
+                            # "Last, First" pattern: single capitalized word, then capitalized word(s)
+                            if (len(parts) >= 2 and re.match(r'^[A-Z][a-z]+$', parts[0])
+                                    and re.match(r'^(Jr\.|Sr\.|[A-Z])', parts[1])):
+                                # Check for Jr./Sr. suffix
+                                if parts[1] in ('Jr.', 'Sr.', 'III', 'II', 'IV') and len(parts) >= 3:
+                                    name_part = parts[2].strip() + ' ' + parts[0] + ', ' + parts[1]
+                                elif re.match(r'^[A-Z][a-z]', parts[1]):
+                                    # "Last, First ..." — but only if second part is short (a name, not a book title)
+                                    if len(parts[1].split()) <= 3:
+                                        name_part = parts[1] + ' ' + parts[0]
+                        # Validate: must start with uppercase letter, reasonable length
+                        if (name_part and 2 < len(name_part) < 60
+                                and re.match(r'^[A-Z]', name_part)
+                                and not re.match(r'^(p\.|ch\.|vol\.|see |ibid)', name_part, re.IGNORECASE)):
+                            author = name_part
                 if author:
                     result["attribution"] = author[:100]
                 break
