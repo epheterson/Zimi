@@ -2328,8 +2328,12 @@ async function renderSource(name) {
 
 // ── Search ──
 // ── History-in-dropdown: show recent history when search bar is focused ──
+var _searchFocusedByUser = false;
+q.addEventListener('mousedown', function() { _searchFocusedByUser = true; });
+q.addEventListener('touchstart', function() { _searchFocusedByUser = true; });
 q.addEventListener('focus', function() {
-  if (!q.value.trim() && mode !== 'manage') showHistoryDropdown();
+  if (_searchFocusedByUser && !q.value.trim() && mode !== 'manage') showHistoryDropdown();
+  _searchFocusedByUser = false;
   if (window.matchMedia('(max-width: 600px)').matches) {
     document.querySelector('.topbar').classList.add('search-focused');
   }
@@ -3260,7 +3264,7 @@ function renderBrowseGallery() {
     // Footer: count centered, language dropdown moved below
     var activeCats = BROWSE_CATEGORIES.filter(function(c) { return (catCounts[c.key] || 0) > 0; }).length;
     h += '<div class="browse-footer">' +
-      '<div class="browse-footer-count">' + items.length.toLocaleString() + ' ZIMs available \u00B7 ' + activeCats + ' categories</div>' +
+      '<div class="browse-footer-count">' + groupVariants(items).length.toLocaleString() + ' ZIMs available \u00B7 ' + activeCats + ' categories</div>' +
       '<div class="browse-footer-lang"></div>' +
     '</div>';
     h += '</div>';
@@ -5255,6 +5259,10 @@ function _updateLibraryBtnIcon() {
     btn.innerHTML = _libBookmarkFilledSvg;
     btn.style.color = 'var(--amber)';
     btn.title = 'Bookmarked (B to remove)';
+  } else if (readerOpen) {
+    btn.innerHTML = _libBookmarkSvg;
+    btn.style.color = '';
+    btn.title = 'Bookmark (B)';
   } else {
     btn.innerHTML = (tab === 'bookmarks') ? _libBookmarkSvg : _libClockSvg;
     btn.style.color = '';
@@ -5358,7 +5366,7 @@ document.addEventListener('keydown', e => {
   }
   const tag = document.activeElement && document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-  if (e.key === '/' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); q.focus(); }
+  if (e.key === '/' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); _searchFocusedByUser = true; q.focus(); }
   if (e.key === 'r' && !e.metaKey && !e.ctrlKey && !e.altKey && mode !== 'manage') { e.preventDefault(); randomArticle(e); }
   if (e.key === 'h' && !e.metaKey && !e.ctrlKey && !e.altKey && mode !== 'manage') { e.preventDefault(); toggleLibraryPanel('history'); }
   if (e.key === 'b' && !e.metaKey && !e.ctrlKey && !e.altKey) {
