@@ -154,7 +154,8 @@
   .stats-bar .num { color: var(--amber); font-weight: 600; }
 
   /* ── Pills (categories + search source filters) ── */
-  .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 20px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 20px; max-height: 120px; overflow-y: auto; }
+  .pills.pills-scroll { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; max-height: none; justify-content: flex-start; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
   .pill {
     padding: 6px 14px; font-size: 12px; font-weight: 500;
     background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
@@ -1646,7 +1647,7 @@ async function enterSource(name, push) {
 function renderHome(filter) {
   if (!zimsCache || zimsCache.length === 0) {
     statsBar.innerHTML = ''; statsBar.style.display = 'none';
-    pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+    pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
     output.innerHTML = '<div id="discover-row"></div>'
       + '<div class="empty"><p>No knowledge sources found</p><p class="hint">Add ZIM files to get started</p>'
       + (manageEnabled ? '<a href="/?manage" onclick="event.preventDefault();enterManage();setTimeout(function(){switchManageTab(\'browse\')},50)" style="display:inline-block;margin-top:16px;color:var(--amber);font-weight:500;font-size:14px;text-decoration:none;border-bottom:1px solid var(--amber-border)">Catalog \u2192</a>' : '')
@@ -1698,7 +1699,7 @@ function renderHome(filter) {
   const cats = Object.keys(groups).filter(c => c !== '_uncategorized').sort();
 
   // No pills on home — sections provide the organization
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
 
   let h = '';
 
@@ -2346,7 +2347,7 @@ async function renderSource(name) {
   if (!info) return;
 
   statsBar.style.display = 'none';
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
 
   // Build source header HTML (shown only for catalog/empty ZIMs)
   const iconHtml = info.has_icon
@@ -2522,7 +2523,7 @@ async function doSearch(query, push) {
   if (!meaningful.length) {
     mode = 'search';
     statsBar.style.display = 'none';
-    pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+    pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
     searchMeta.style.display = 'none';
     output.innerHTML = '<div class="empty"><p>Try more specific keywords</p><p class="hint">Common words like \u201c' + esc(query) + '\u201d match too many articles</p></div>';
     updateTopbar();
@@ -2543,7 +2544,7 @@ async function doSearch(query, push) {
   mainView.classList.remove('hidden');
   if (!scope) sourceHeaderEl.style.display = 'none';
   statsBar.style.display = 'none';
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   searchMeta.style.display = 'none';
   output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Searching titles\u2026</div>';
   updateTopbar();
@@ -2665,6 +2666,7 @@ function renderSearchResults(data, scope) {
   // Source filter pills (global search only, multiple sources)
   const sourceNames = Object.keys(bySource);
   if (!scope && sourceNames.length > 1) {
+    pillsBar.className = 'pills' + (sourceNames.length > 12 ? ' pills-scroll' : '');
     pillsBar.innerHTML = sourceNames.sort().map(s => {
       return '<button class="pill' + (activeSourceFilters.has(s) ? ' active' : '') +
         '" aria-pressed="' + activeSourceFilters.has(s) + '" onclick="toggleSourceFilter(\'' + escAttr(s) + '\')">' +
@@ -3009,7 +3011,7 @@ function enterManage(e) {
   q.value = '';
   closeReader();
   statsBar.style.display = 'none';
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   searchMeta.style.display = 'none';
   sourceHeaderEl.style.display = 'none';
   hideSuggest();
@@ -3283,7 +3285,7 @@ function renderBrowseGallery() {
   if (!results) return;
   _browseView = 'gallery';
   manageCategoryFilter = null;
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   q.placeholder = 'Search catalog...';
 
   // Detach language select before destroying DOM (it may have been moved into footer)
@@ -3379,7 +3381,7 @@ function drillCategory(catKey) {
   if (!results) return;
   _browseView = 'drilldown';
   manageCategoryFilter = catKey;
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
 
   const catMeta = BROWSE_CATEGORIES.find(c => c.key === catKey);
   const catName = catMeta ? catMeta.name : catKey;
@@ -3424,7 +3426,7 @@ function browseCatalogFilter(query) {
   const results = document.getElementById('catalog-results');
   if (!results) return;
   _browseView = 'search';
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
 
   if (!_catalogCache) {
     results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading...</div>';
@@ -3583,7 +3585,7 @@ function switchManageTab(tab) {
   document.querySelectorAll('.manage-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.manage-tab-content').forEach(c => c.classList.toggle('active', c.id === 'manage-' + tab));
   q.value = '';
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   if (tab === 'installed') {
     q.placeholder = 'Filter installed ZIMs...';
     renderInstalled();
@@ -4049,7 +4051,7 @@ async function renderManage() {
   }
 
   // Render active tab content
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   if (manageTab === 'installed') {
     renderInstalled();
   } else if (manageTab === 'collections') {
