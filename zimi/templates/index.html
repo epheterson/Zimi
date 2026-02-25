@@ -5113,7 +5113,15 @@ function openReader(url) {
             if (results[u].found && results[u].zim !== _currentZim) {
               anchors.forEach(function(a) { a.classList.add('zimi-xzim'); });
             } else if (!results[u].found) {
-              anchors.forEach(function(a) { a.classList.add('zimi-dead'); });
+              // Only dim links to a different ZIM's domain — missing paths in
+              // the same source are expected (subset ZIMs don't have every article)
+              try {
+                var _dh = new URL(u).hostname.replace(/^www\./, '');
+                var _dz = _domainZimMap[_dh] || _domainZimMap[new URL(u).hostname];
+                if (_dz && _dz !== _currentZim) {
+                  anchors.forEach(function(a) { a.classList.add('zimi-dead'); });
+                }
+              } catch(ex) {}
             }
           }
         };
