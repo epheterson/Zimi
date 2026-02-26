@@ -1833,21 +1833,34 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
             except KeyError:
                 continue
         if date_page_html:
-            # Extract article links from the date page (href="./Title" or href="A/Title")
-            links = re.findall(r'href=["\'](?:\./|A/)([^"\'#]+)["\']', date_page_html)
-            # Filter out year pages (just digits), meta pages, and duplicates
+            # Extract article links from the date page (href="./Title", href="A/Title", or bare href="Title")
+            links = re.findall(r'href=["\'](?:\./|A/)?([^"\'#/][^"\'#]*)["\']', date_page_html)
+            # Filter out year pages (just digits), meta pages, resources, and duplicates
             seen = set()
             candidates = []
             for link in links:
                 clean = unquote(link).replace("_", " ")
                 if clean in seen or re.match(r'^\d+$', clean):
                     continue
-                if any(clean.startswith(ns) for ns in ["Category:", "Wikipedia:", "Template:", "Help:", "Portal:", "File:", "Special:"]):
+                if any(clean.startswith(ns) for ns in ["Category:", "Wikipedia:", "Template:", "Help:", "Portal:", "File:", "Special:", "_"]):
+                    continue
+                # Skip resource/CSS/JS files, external URLs, and month names (calendar nav)
+                if re.search(r'\.(css|js|png|jpg|gif|svg|ico)$', link, re.IGNORECASE) or link.startswith(("http", "//")):
+                    continue
+                if clean in ("January", "February", "March", "April", "May", "June",
+                             "July", "August", "September", "October", "November", "December",
+                             "Gregorian calendar", "Leap year"):
+                    continue
+                # Skip links to other date pages (calendar nav: "February 3", "March 15", etc.)
+                if re.match(r'^(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}$', clean):
                     continue
                 seen.add(clean)
                 candidates.append(link)
             _rng = rng or _random
             _rng.shuffle(candidates)
+            # First pass: find an article with a thumbnail (higher quality)
+            best_with_thumb = None
+            best_fallback = None
             for link in candidates[:30]:
                 for prefix in ["A/", ""]:
                     try:
@@ -1860,9 +1873,20 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
                         title = entry.title or ""
                         if _meta_title_re.search(title) or len(title) < 3:
                             continue
-                        return {"path": entry.path, "title": title}
+                        result = {"path": entry.path, "title": title}
+                        if best_fallback is None:
+                            best_fallback = result
+                        # Check content length as quality signal (skip stubs)
+                        content_len = item.size
+                        if content_len > 5000 and not best_with_thumb:
+                            # Good enough — has substance
+                            best_with_thumb = result
+                            break
                     except (KeyError, Exception):
                         continue
+                if best_with_thumb:
+                    break
+            return best_with_thumb or best_fallback
 
     # World Factbook: pick a country page by day-of-year index
     if "theworldfactbook" in zim_name.lower():
@@ -2004,6 +2028,17 @@ def _extract_preview(archive, zim_name, path):
 
     # -- Wikiquote: extract an actual quote from <ul><li> blocks --
     if "wikiquote" in zim_name.lower():
+        def _is_real_quote(text):
+            """Filter out non-quote text: credits, citations, references, metadata."""
+            if re.match(r'^(Directed|Written|Produced|Edited|Narrated|Adapted|Translated|Music)\s+by\b', text, re.IGNORECASE):
+                return False
+            if re.match(r'^(In response to|Based on|See also|Main article)\b', text, re.IGNORECASE):
+                return False
+            if re.search(r'\bRetrieved\s+(on|from)\b|\bISBN\b|\bAssociated Press\b|^\d{4}\s+film\b', text, re.IGNORECASE):
+                return False
+            if re.match(r'^[\w\s,]+\(\s*\d{4}\s*\)', text):  # "Author Name (Year)" citation
+                return False
+            return len(text.split()) > 6
         # Wikiquote structure: <ul><li>Quote text<ul><li>Attribution</li></ul></li></ul>
         # Strategy: find <ul> blocks that contain nested <ul> (quote + attribution).
         # Use a simple stack-based approach to find balanced top-level <ul> blocks.
@@ -2037,7 +2072,7 @@ def _extract_preview(archive, zim_name, path):
             # Strip the wrapping <li> tag
             quote_html = re.sub(r'^\s*<li[^>]*>', '', quote_html)
             text = strip_html(quote_html).strip()
-            if 20 < len(text) < 400 and len(text.split()) > 4:
+            if 20 < len(text) < 400 and _is_real_quote(text):
                 if text.startswith(("Category:", "See also", "External links", "Retrieved")):
                     continue
                 result["blurb"] = "\u201c" + text[:250] + "\u201d"
@@ -2075,6 +2110,28 @@ def _extract_preview(archive, zim_name, path):
                 if author:
                     result["attribution"] = author[:100]
                 break
+        # Fallback: if <ul><li> parsing found nothing, try <dd> blocks or <li> after "Quotes" heading
+        if not result.get("blurb"):
+            # Try <dd> blocks (definition list format used on some wikiquote pages)
+            for dd_m in re.finditer(r'<dd>(.*?)</dd>', html_str, re.DOTALL):
+                dd_text = strip_html(dd_m.group(1)).strip()
+                if 30 < len(dd_text) < 400 and _is_real_quote(dd_text):
+                    if not dd_text.startswith(("Category:", "See also", "External", "Retrieved", "Source")):
+                        result["blurb"] = "\u201c" + dd_text[:250] + "\u201d"
+                        result["attribution"] = result.get("title") or entry_title
+                        break
+        if not result.get("blurb"):
+            # Try text after a "Quotes" section heading
+            quotes_section = re.search(r'<h[23][^>]*>(?:<[^>]*>)*\s*Quotes?\s*(?:<[^>]*>)*</h[23]>(.*?)(?:<h[23]|$)',
+                                       html_str, re.DOTALL | re.IGNORECASE)
+            if quotes_section:
+                for li_m in re.finditer(r'<li>(.*?)</li>', quotes_section.group(1), re.DOTALL):
+                    li_text = strip_html(li_m.group(1)).strip()
+                    if 30 < len(li_text) < 400 and _is_real_quote(li_text):
+                        if not li_text.startswith(("Category:", "See also", "External", "Retrieved")):
+                            result["blurb"] = "\u201c" + li_text[:250] + "\u201d"
+                            result["attribution"] = result.get("title") or entry_title
+                            break
 
     # -- TED Talks: extract speaker name and photo --
     if "ted" in zim_name.lower():
@@ -3326,13 +3383,15 @@ class ZimHandler(BaseHTTPRequestHandler):
                 require_thumb = param("require_thumb") == "1"
                 is_wiktionary = "wiktionary" in pick_name.lower()
                 is_gutenberg = "gutenberg" in pick_name.lower()
-                max_tries = 50 if is_wiktionary else (20 if is_gutenberg else (5 if require_thumb else 1))
+                is_wikipedia = "wikipedia" in pick_name.lower()
+                date_param = param("date")  # MMDD format
+                is_wikiquote = "wikiquote" in pick_name.lower()
+                max_tries = 50 if is_wiktionary else (30 if (is_gutenberg or is_wikiquote) else (5 if (require_thumb or (is_wikipedia and date_param)) else 1))
                 t0 = time.time()
                 with _zim_lock:
                     archive = get_archive(pick_name)
                     if archive is None:
                         return self._json(200, {"error": "archive not available"})
-                date_param = param("date")  # MMDD format
                 seed_param = param("seed")  # For deterministic daily picks
                 rng = None
                 if seed_param:
@@ -3370,6 +3429,18 @@ class ZimHandler(BaseHTTPRequestHandler):
                         best_result = result
                         best_preview = preview
                         break
+                    # Wikiquote: require an actual quote (blurb starting with open-quote)
+                    if is_wikiquote and preview:
+                        blurb = preview.get("blurb") or ""
+                        if blurb and blurb[0] in ('\u201c', '"'):
+                            best_result = result
+                            best_preview = preview
+                            break
+                        # No quote found — save as fallback, try another page
+                        if best_result is None:
+                            best_result = result
+                            best_preview = preview
+                        continue
                     if not require_thumb or (preview and preview["thumbnail"]):
                         best_result = result
                         best_preview = preview

@@ -1241,7 +1241,7 @@ function updateTopbar() {
   }
 
   newtabBtn.style.display = readerOpen ? 'flex' : 'none';
-  randomBtn.style.display = 'flex';
+  randomBtn.style.display = (mode !== 'manage') ? 'flex' : 'none';
   document.getElementById('library-btn').style.display = (mode !== 'manage') ? 'flex' : 'none';
   _updateLibraryBtnIcon();
 
@@ -3375,7 +3375,7 @@ function renderBrowseGallery() {
     // Footer: count centered, language dropdown moved below
     var activeCats = BROWSE_CATEGORIES.filter(function(c) { return (catCounts[c.key] || 0) > 0; }).length;
     h += '<div class="browse-footer">' +
-      '<div class="browse-footer-count">' + groupVariants(items).length.toLocaleString() + ' ZIMs available \u00B7 ' + activeCats + ' categories</div>' +
+      '<div class="browse-footer-count">' + groupVariants(items).length.toLocaleString() + ' sources \u00B7 ' + activeCats + ' categories</div>' +
       '<div class="browse-footer-lang"></div>' +
     '</div>';
     h += '</div>';
@@ -4032,12 +4032,10 @@ async function renderManage() {
       '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">Catalog</button>' +
       '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">Collections</button>' +
       '<button class="manage-tab' + (manageTab === 'history' ? ' active' : '') + '" data-tab="history" onclick="switchManageTab(\'history\')">History</button>' +
-      '<button class="manage-tab' + (manageTab === 'activity' ? ' active' : '') + '" data-tab="activity" onclick="switchManageTab(\'activity\')">Stats</button>' +
     '</div>' +
     '<div id="manage-installed" class="manage-tab-content' + (manageTab === 'installed' ? ' active' : '') + '"></div>' +
     '<div id="manage-collections" class="manage-tab-content' + (manageTab === 'collections' ? ' active' : '') + '"></div>' +
     '<div id="manage-history" class="manage-tab-content' + (manageTab === 'history' ? ' active' : '') + '"></div>' +
-    '<div id="manage-activity" class="manage-tab-content' + (manageTab === 'activity' ? ' active' : '') + '"></div>' +
     '<div id="manage-browse" class="manage-tab-content' + (manageTab === 'browse' ? ' active' : '') + '">' +
       '<div class="manage-search" style="justify-content:flex-end">' +
         '<select id="catalog-lang" onchange="_catalogCache=null;if(_browseView===\'drilldown\'&&manageCategoryFilter)drillCategory(manageCategoryFilter);else if(_browseView===\'search\'){var v=q.value.trim();if(v)browseCatalogFilter(v);else renderBrowseGallery();}else renderBrowseGallery();" style="max-width:140px"><option value="">All languages</option><option value="eng" selected>English</option><option value="fra">French</option><option value="deu">German</option><option value="spa">Spanish</option></select>' +
@@ -4133,12 +4131,12 @@ function _msLibraryHtml() {
 }
 
 function _msDisplayHtml() {
-  var hideXzim = localStorage.getItem('zimi_hide_cross_zim_links') === '1';
-  var hideDiscover = localStorage.getItem('zimi_hide_discover') === '1';
-  return '<label class="ms-check"><input type="checkbox"' + (hideXzim ? ' checked' : '') +
-      ' onchange="if(this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> Hide cross-source link highlights</label>' +
-    '<label class="ms-check"><input type="checkbox"' + (hideDiscover ? ' checked' : '') +
-      ' onchange="if(this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> Hide Discover</label>';
+  var showXzim = localStorage.getItem('zimi_hide_cross_zim_links') !== '1';
+  var showDiscover = localStorage.getItem('zimi_hide_discover') !== '1';
+  return '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> Show cross-source link highlights</label>' +
+    '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> Show Discover</label>';
 }
 
 function _msServerHtml() {
