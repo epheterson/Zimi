@@ -788,18 +788,31 @@ def _title_index_search(zim_name, query, limit=10):
             ).fetchall()
             return [{"path": r[0], "title": r[1], "snippet": ""} for r in rows]
         else:
-            # Multi-word: FTS5 search — each word as prefix, all must match
-            # "dislocated joint" → 'dislocated* AND joint*' (prefix match on each)
-            # If no FTS5 table, return None to fall through to Phase 2 (Xapian)
-            try:
-                fts_query = " AND ".join(w + "*" for w in words)
-                rows = conn.execute(
-                    "SELECT path, title FROM titles_fts WHERE titles_fts MATCH ? LIMIT ?",
-                    (fts_query, limit)
-                ).fetchall()
-                return [{"path": r[0], "title": r[1], "snippet": ""} for r in rows]
-            except Exception:
-                return None  # no FTS5 table → fallback to Phase 2
+            # Multi-word: B-tree prefix on first word, then filter in Python.
+            # FTS5 wildcard intersection is 5-6s/ZIM on spinning disk — too slow.
+            # Strategy: prefix-scan the first word (fast via B-tree index), read more
+            # rows than needed, then filter for titles containing all other words.
+            first_word = words[0]
+            other_words = [w for w in words[1:]]
+            first_upper = first_word[:-1] + chr(ord(first_word[-1]) + 1)
+            # Fetch more candidates (10x limit) to filter down
+            fetch_limit = limit * 20
+            rows = conn.execute(
+                "SELECT path, title FROM titles WHERE title_lower >= ? AND title_lower < ? LIMIT ?",
+                (first_word, first_upper, fetch_limit)
+            ).fetchall()
+            # Filter: title must contain all other words
+            results = []
+            for path, title in rows:
+                tl = title.lower()
+                if all(w in tl for w in other_words):
+                    results.append({"path": path, "title": title, "snippet": ""})
+                    if len(results) >= limit:
+                        break
+            if results:
+                return results
+            # Prefix on first word found nothing — skip to SuggestionSearcher fallback
+            return None
     except Exception:
         # Connection may be stale (e.g. DB was rebuilt) — evict and retry once
         _close_title_db(zim_name)
