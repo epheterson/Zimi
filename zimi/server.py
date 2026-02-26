@@ -3091,15 +3091,16 @@ class ZimHandler(BaseHTTPRequestHandler):
                 else:
                     zim_names = None
                 t0 = time.time()
-                with _zim_lock:
-                    if zim_names:
-                        # Suggest across multiple specific ZIMs
-                        result = {}
-                        for zn in zim_names:
-                            r = suggest(q, zim_name=zn, limit=limit)
-                            result.update(r)
-                    else:
-                        result = suggest(q, zim_name=None, limit=limit)
+                # Use the fast search path (parallel, FTS5 title indexes)
+                # then reformat to suggest's {zim: [{path, title}, ...]} shape
+                filter_zim = ",".join(zim_names) if zim_names else None
+                search_result = search_all(q, fast=True, limit=limit, filter_zim=filter_zim)
+                result = {}
+                for r in search_result.get("results", []):
+                    zn = r["zim"]
+                    if zn not in result:
+                        result[zn] = []
+                    result[zn].append({"path": r["path"], "title": r["title"]})
                 _record_metric("/suggest", time.time() - t0)
                 return self._json(200, result)
 
