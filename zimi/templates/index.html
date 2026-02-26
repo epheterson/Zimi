@@ -1331,6 +1331,8 @@ async function _initSecondary() {
   ]);
   // Re-render homepage if manage/collections changed (adds collection sections, manage button)
   if (needsRerender && !readerOpen && !activeSource) renderHome();
+  // Always update topbar after secondary data (manage status determines gear visibility)
+  updateTopbar();
 }
 
 function route(push) {
@@ -1689,15 +1691,32 @@ function renderHome(filter) {
   const totalGb = baseZims.reduce((s, z) => s + z.size_gb, 0);
 
   const n = baseZims.length;
+  var statsHtml;
   if (filter && zims.length !== baseZims.length) {
-    statsBar.innerHTML = '<span class="num">' + zims.length + '</span> of ' + n + ' source' + (n !== 1 ? 's' : '') +
+    statsHtml = '<span class="num">' + zims.length + '</span> of ' + n + ' source' + (n !== 1 ? 's' : '') +
       ' matching &ldquo;' + esc(filter) + '&rdquo;';
   } else {
-    statsBar.innerHTML = '<span class="num">' + n + '</span> source' + (n !== 1 ? 's' : '') + ' &middot; ' +
+    statsHtml = '<span class="num">' + n + '</span> source' + (n !== 1 ? 's' : '') + ' &middot; ' +
       '<span class="num">' + totalEntries.toLocaleString() + '</span> article' + (totalEntries !== 1 ? 's' : '') + ' &middot; ' +
       fmtSizeHtml(totalGb);
   }
-  statsBar.style.display = '';
+
+  // Check if Discover will be active (not hidden and not filtered/scoped)
+  var discoverHidden = localStorage.getItem('zimi_hide_discover') === '1';
+  var discoverWillShow = !homeScope && !filter && !discoverHidden;
+
+  if (discoverWillShow) {
+    // Discover on top — hide stats bar (will show at bottom)
+    statsBar.innerHTML = ''; statsBar.style.display = 'none';
+  } else if (!homeScope && !filter && discoverHidden) {
+    // Discover hidden — show stats at top with re-enable link
+    statsBar.innerHTML = statsHtml +
+      ' <span style="color:var(--border)">&middot;</span> <a href="#" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');renderHome()" style="color:var(--text2);text-decoration:none;font-size:13px;opacity:0.6" title="Show Discover cards">Discover \u25B8</a>';
+    statsBar.style.display = '';
+  } else {
+    statsBar.innerHTML = statsHtml;
+    statsBar.style.display = '';
+  }
 
   const groups = {};
   const sorted = zims.filter(z => z.entries !== '?').sort((a, b) => (b.entries || 0) - (a.entries || 0));
@@ -1780,6 +1799,11 @@ function renderHome(filter) {
       h += '<div class="cat-heading" style="opacity:0.5">Other</div>';
       h += renderCardGrid(groups._uncategorized, true);
     }
+  }
+
+  // When Discover is active, show stats at bottom instead of top
+  if (discoverWillShow) {
+    h += '<div class="stats-bar" style="padding:20px 0 8px">' + statsHtml + '</div>';
   }
 
   output.innerHTML = h;
@@ -1895,8 +1919,8 @@ function _renderTodayCard() {
 
 function _dismissDiscover() {
   localStorage.setItem('zimi_hide_discover', '1');
-  var el = document.getElementById('discover-row');
-  if (el) el.innerHTML = '';
+  _discoverLoading = false;
+  renderHome();  // Re-render to move stats bar to top
   // Show undo toast
   var toast = document.createElement('div');
   toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
