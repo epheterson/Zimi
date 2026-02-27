@@ -350,13 +350,21 @@ def _auto_update_loop(initial_delay=0):
                     url = upd.get("download_url")
                     if not url:
                         continue
+                    # Strip .meta4 suffix to get the actual filename
+                    raw_name = url.rsplit("/", 1)[-1] if "/" in url else url
+                    if raw_name.endswith(".meta4"):
+                        raw_name = raw_name[:-len(".meta4")]
+                    filename = raw_name
                     # Skip if already downloading this file
-                    filename = url.rsplit("/", 1)[-1] if "/" in url else url
                     with _download_lock:
                         already = any(d["filename"] == filename and not d.get("done")
                                       for d in _active_downloads.values())
                     if already:
                         log.info("Auto-update: skipping %s (already downloading)", filename)
+                        continue
+                    # Skip if file already exists on disk (prevents infinite re-download loop)
+                    if os.path.exists(os.path.join(ZIM_DIR, filename)):
+                        log.info("Auto-update: skipping %s (already on disk)", filename)
                         continue
                     dl_id, err = _start_download(url)
                     if err:
@@ -1077,23 +1085,51 @@ except FileNotFoundError:
     SEARCH_UI_HTML = "<html><body><h1>Zimi</h1><p>UI template not found. API endpoints are still available.</p></body></html>"
 
 
+def _zim_short_name(filename):
+    """Derive short display name from a ZIM filename.
+    e.g. stackoverflow.com_en_all_2023-11.zim → stackoverflow
+         wikipedia_en_all_maxi_2026-02.zim → wikipedia
+    """
+    name = filename.split(".zim")[0]
+    name = re.sub(r"\.com_en_all.*", "", name)
+    name = re.sub(r"\.stackexchange\.com_en_all.*", "", name)
+    name = re.sub(r"_en_all_maxi.*", "", name)
+    name = re.sub(r"_en_all.*", "", name)
+    name = re.sub(r"_en_maxi.*", "", name)
+    name = re.sub(r"_en_2\d{3}.*", "", name)
+    name = re.sub(r"_maxi_2\d{3}.*", "", name)
+    name = re.sub(r"_2\d{3}-\d{2}$", "", name)
+    return name
+
+
 def _scan_zim_files():
-    """Scan filesystem for ZIM files. Returns {short_name: path} mapping."""
+    """Scan filesystem for ZIM files. Returns {short_name: path} mapping.
+
+    When two files produce the same short name (e.g. maxi vs mini flavors),
+    the larger file wins so the richest content is served.
+    """
     zims = {}
     for path in sorted(glob.glob(os.path.join(ZIM_DIR, "*.zim"))):
         filename = os.path.basename(path)
-        # Create short name: stackoverflow.com_en_all_2023-11.zim → stackoverflow
-        name = filename.split(".zim")[0]
-        # Simplify common patterns
-        name = re.sub(r"\.com_en_all.*", "", name)
-        name = re.sub(r"\.stackexchange\.com_en_all.*", "", name)
-        name = re.sub(r"_en_all_maxi.*", "", name)
-        name = re.sub(r"_en_all.*", "", name)
-        name = re.sub(r"_en_maxi.*", "", name)
-        name = re.sub(r"_en_2\d{3}.*", "", name)
-        name = re.sub(r"_maxi_2\d{3}.*", "", name)
-        name = re.sub(r"_2\d{3}-\d{2}$", "", name)
-        zims[name] = path
+        name = _zim_short_name(filename)
+        if name in zims:
+            existing = zims[name]
+            try:
+                existing_size = os.path.getsize(existing)
+                new_size = os.path.getsize(path)
+            except OSError:
+                existing_size = new_size = 0
+            if new_size > existing_size:
+                log.info("ZIM name collision '%s': %s (%.1f GB) replaces %s (%.1f GB)",
+                         name, filename, new_size / (1024**3),
+                         os.path.basename(existing), existing_size / (1024**3))
+                zims[name] = path
+            else:
+                log.info("ZIM name collision '%s': keeping %s (%.1f GB), skipping %s (%.1f GB)",
+                         name, os.path.basename(existing), existing_size / (1024**3),
+                         filename, new_size / (1024**3))
+        else:
+            zims[name] = path
     return zims
 
 
@@ -2903,50 +2939,49 @@ def _check_updates():
     return updates
 
 
-def _download_thread(dl):
-    """Background thread that downloads a file via urllib.
+def _download_from_url(dl, url, tmp_dest):
+    """Attempt to download from a single URL. Returns (success, error_msg).
 
-    Downloads to a .zim.tmp file first, then atomically renames on completion.
-    Supports resuming partial downloads via HTTP Range header.
+    Downloads to a .zim.tmp file first. Supports resuming via HTTP Range header.
+    On transient failure, keeps the .tmp file for resume on the next mirror.
     """
-    tmp_dest = dl["dest"] + ".tmp"
+    existing_size = 0
+    if os.path.exists(tmp_dest):
+        existing_size = os.path.getsize(tmp_dest)
+    req = urllib.request.Request(url, headers={"User-Agent": "Zimi/1.0"})
+    if existing_size > 0:
+        req.add_header("Range", f"bytes={existing_size}-")
+        log.info("Resuming download of %s from %d bytes via %s",
+                 dl["filename"], existing_size, urlparse(url).hostname)
+    else:
+        log.info("Downloading %s from %s", dl["filename"], urlparse(url).hostname)
     try:
-        # Resume from existing partial download if present
-        existing_size = 0
-        if os.path.exists(tmp_dest):
-            existing_size = os.path.getsize(tmp_dest)
-        req = urllib.request.Request(dl["url"], headers={"User-Agent": "Zimi/1.0"})
-        if existing_size > 0:
-            req.add_header("Range", f"bytes={existing_size}-")
-            log.info("Resuming download of %s from %d bytes", dl["filename"], existing_size)
+        resp = urllib.request.urlopen(req, timeout=600, context=SSL_CTX)
+    except urllib.error.HTTPError as e:
+        if e.code == 416 and existing_size > 0:
+            # Range not satisfiable — file already complete
+            return True, None
+        return False, f"HTTP {e.code} from {urlparse(url).hostname}"
+    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+        return False, f"{type(e).__name__} from {urlparse(url).hostname}: {e}"
+    if resp.status == 206:
+        content_range = resp.headers.get("Content-Range", "")
         try:
-            resp = urllib.request.urlopen(req, timeout=600, context=SSL_CTX)
-        except urllib.error.HTTPError as e:
-            if e.code == 416 and existing_size > 0:
-                # Range not satisfiable — file already complete, just rename
-                os.replace(tmp_dest, dl["dest"])
-                dl["done"] = True
-                return
-            raise
-        if resp.status == 206:
-            # Partial content — server supports resume
-            content_range = resp.headers.get("Content-Range", "")
-            # Content-Range: bytes 1234-5678/9999
-            try:
-                if "/" in content_range:
-                    total = int(content_range.split("/")[1])
-                else:
-                    total = existing_size + int(resp.headers.get("Content-Length", 0))
-            except (ValueError, IndexError):
+            if "/" in content_range:
+                total = int(content_range.split("/")[1])
+            else:
                 total = existing_size + int(resp.headers.get("Content-Length", 0))
-            dl["total_bytes"] = total
-            dl["downloaded_bytes"] = existing_size
-            mode = "ab"  # append
-        else:
-            total = int(resp.headers.get("Content-Length", 0))
-            dl["total_bytes"] = total
-            existing_size = 0  # server didn't support range, start over
-            mode = "wb"
+        except (ValueError, IndexError):
+            total = existing_size + int(resp.headers.get("Content-Length", 0))
+        dl["total_bytes"] = total
+        dl["downloaded_bytes"] = existing_size
+        mode = "ab"
+    else:
+        total = int(resp.headers.get("Content-Length", 0))
+        dl["total_bytes"] = total
+        existing_size = 0
+        mode = "wb"
+    try:
         with open(tmp_dest, mode) as f:
             while not dl.get("cancelled"):
                 chunk = resp.read(65536)
@@ -2954,23 +2989,60 @@ def _download_thread(dl):
                     break
                 f.write(chunk)
                 dl["downloaded_bytes"] = dl.get("downloaded_bytes", 0) + len(chunk)
+    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
         resp.close()
-        if dl.get("cancelled"):
-            # Keep .tmp file for resume — don't delete partial downloads
-            dl["done"] = True
-            dl["error"] = "Cancelled"
-            return
-        # Verify download completed (size matches if known)
-        if total > 0:
-            actual = os.path.getsize(tmp_dest)
-            if actual != total:
-                os.remove(tmp_dest)
+        return False, f"Transfer error from {urlparse(url).hostname}: {e}"
+    resp.close()
+    if dl.get("cancelled"):
+        return True, "Cancelled"
+    # Verify size
+    if total > 0:
+        actual = os.path.getsize(tmp_dest)
+        if actual != total:
+            return False, f"Size mismatch from {urlparse(url).hostname}: expected {total}, got {actual}"
+    return True, None
+
+
+def _download_thread(dl):
+    """Background thread that downloads a file with mirror rotation.
+
+    Tries mirrors in random order for load distribution. On failure, rotates
+    to the next mirror. Downloads to a .zim.tmp file first, then atomically
+    renames on completion. The .tmp file is preserved across mirror attempts
+    so resume works even when switching mirrors.
+    """
+    tmp_dest = dl["dest"] + ".tmp"
+    mirrors = list(dl.get("mirrors", [dl["url"]]))
+    _random.shuffle(mirrors)
+    try:
+        success = False
+        last_error = None
+        for mirror_url in mirrors:
+            if dl.get("cancelled"):
                 dl["done"] = True
-                dl["error"] = f"Size mismatch: expected {total}, got {actual}"
+                dl["error"] = "Cancelled"
                 return
+            ok, err = _download_from_url(dl, mirror_url, tmp_dest)
+            if ok:
+                if err == "Cancelled":
+                    dl["done"] = True
+                    dl["error"] = "Cancelled"
+                    return
+                success = True
+                dl["url"] = mirror_url  # record which mirror succeeded
+                break
+            last_error = err
+            log.warning("Mirror failed for %s: %s", dl["filename"], err)
+        if not success:
+            dl["done"] = True
+            dl["error"] = f"All {len(mirrors)} mirror(s) failed. Last: {last_error}"
+            _append_history({"event": "download_failed", "ts": time.time(), "filename": dl["filename"],
+                             "error": dl["error"]})
+            return
         # Atomic rename: tmp → final
         os.replace(tmp_dest, dl["dest"])
-        log.info(f"Download complete: {dl['filename']}, refreshing library")
+        log.info("Download complete: %s via %s, refreshing library",
+                 dl["filename"], urlparse(dl["url"]).hostname)
         # Remove older versions of the same ZIM
         base = re.match(r'^(.+?)_\d{4}-\d{2}\.zim$', dl["filename"])
         if base:
@@ -3001,7 +3073,6 @@ def _download_thread(dl):
         _append_history({"event": event_type, "ts": time.time(), "filename": dl["filename"],
                          "size_bytes": dl.get("total_bytes", 0), **zim_info})
     except Exception as e:
-        # Keep .tmp for resume on transient network errors; delete on validation failures
         is_transient = isinstance(e, (urllib.error.URLError, TimeoutError, ConnectionError, OSError))
         if not is_transient:
             try:
@@ -3015,6 +3086,36 @@ def _download_thread(dl):
                              "error": str(e)})
 
 
+def _fetch_mirrors(meta4_url):
+    """Fetch mirror URLs from a Metalink .meta4 file. Returns list of URLs sorted by priority."""
+    try:
+        req = urllib.request.Request(meta4_url, headers={"User-Agent": "Zimi/1.0"})
+        with urllib.request.urlopen(req, timeout=15, context=SSL_CTX) as resp:
+            xml_bytes = resp.read()
+        root = ET.fromstring(xml_bytes)
+        ns = "urn:ietf:params:xml:ns:metalink"
+        mirrors = []
+        for file_el in root.findall(f"{{{ns}}}file"):
+            for url_el in file_el.findall(f"{{{ns}}}url"):
+                href = (url_el.text or "").strip()
+                if not href or not href.startswith("https://"):
+                    continue
+                # Skip publisher URL (kiwix.org root)
+                if href.rstrip("/") == "https://kiwix.org":
+                    continue
+                try:
+                    priority = int(url_el.get("priority", "99"))
+                except (ValueError, TypeError):
+                    priority = 99
+                location = url_el.get("location", "")
+                mirrors.append((priority, location, href))
+        mirrors.sort(key=lambda x: x[0])
+        return [m[2] for m in mirrors]
+    except Exception as e:
+        log.warning("Failed to fetch mirrors from %s: %s", meta4_url, e)
+        return []
+
+
 def _start_download(url):
     """Start a background download via urllib. Returns download ID."""
     global _download_counter
@@ -3022,9 +3123,17 @@ def _start_download(url):
     if not url.startswith("https://download.kiwix.org/"):
         return None, "URL must be from download.kiwix.org"
 
-    # OPDS catalog provides .meta4 metalink URLs — strip to get direct .zim URL
+    # OPDS catalog provides .meta4 metalink URLs — fetch mirrors from it
+    mirrors = []
     if url.endswith(".meta4"):
-        url = url[:-len(".meta4")]
+        mirrors = _fetch_mirrors(url)
+        url = url[:-len(".meta4")]  # direct URL as primary fallback
+
+    # If we got mirrors, use them; otherwise fall back to the direct URL
+    if not mirrors:
+        mirrors = [url]
+    elif url not in mirrors:
+        mirrors.append(url)  # ensure direct URL is always a fallback
 
     filename = url.split("/")[-1]
     # Prevent path traversal and validate filename
@@ -3051,6 +3160,7 @@ def _start_download(url):
         dl = {
             "id": dl_id,
             "url": url,
+            "mirrors": mirrors,
             "filename": filename,
             "dest": dest,
             "started": time.time(),
@@ -3061,6 +3171,8 @@ def _start_download(url):
         _active_downloads[dl_id] = dl
         t = threading.Thread(target=_download_thread, args=(dl,), daemon=True)
         t.start()
+    log.info("Download started: %s (%d mirror%s available)", filename, len(mirrors),
+             "s" if len(mirrors) != 1 else "")
     return dl_id, None
 
 
@@ -3118,10 +3230,14 @@ def _get_downloads():
             total = dl.get("total_bytes", 0)
             downloaded = dl.get("downloaded_bytes", 0)
             pct = round(downloaded / total * 100, 1) if total > 0 else 0
+            mirror_host = urlparse(dl["url"]).hostname or ""
+            mirror_count = len(dl.get("mirrors", []))
             results.append({
                 "id": dl_id,
                 "filename": dl["filename"],
                 "url": dl["url"],
+                "mirror_host": mirror_host,
+                "mirror_count": mirror_count,
                 "size_bytes": size,
                 "total_bytes": total,
                 "downloaded_bytes": downloaded,

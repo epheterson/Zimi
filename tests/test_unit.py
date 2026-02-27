@@ -427,8 +427,8 @@ class TestTitleIndex(unittest.TestCase):
         finally:
             self.zimi._title_index_path = orig
 
-    def test_multiword_search_without_fts5_returns_none(self):
-        """Multi-word queries return None (fallback) when no FTS5 table exists."""
+    def test_multiword_search_without_fts5_uses_btree(self):
+        """Multi-word queries use B-tree fallback when no FTS5 table exists."""
         self._create_test_db([
             ("A/WP", "Water purification methods"),
             ("A/WS", "Water safety guidelines"),
@@ -437,7 +437,9 @@ class TestTitleIndex(unittest.TestCase):
         self.zimi._title_index_path = lambda name: self.db_path
         try:
             results = self.zimi._title_index_search("test", "water purification", limit=10)
-            self.assertIsNone(results)
+            self.assertIsNotNone(results)
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0]["title"], "Water purification methods")
         finally:
             self.zimi._title_index_path = orig
 

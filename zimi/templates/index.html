@@ -539,6 +539,7 @@
     font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
   .dl-cancel-btn:hover { border-color: #f44; color: #f44; }
   .dl-retry-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .dl-mirror { font-size: 11px; color: var(--text2); opacity: 0.6; flex: 1; }
   .dl-meta { font-size: 11px; color: var(--text2); opacity: 0.6; }
   .dl-clear-btn {
     float: right; background: none; border: 1px solid var(--border); color: var(--text2);
@@ -1335,10 +1336,16 @@ async function _initSecondary() {
       if (dres.ok) _domainZimMap = await dres.json();
     }).catch(function(){})
   ]);
-  // Re-render homepage if manage/collections changed (adds collection sections, manage button)
-  if (needsRerender && !readerOpen && !activeSource) renderHome();
   // Always update topbar after secondary data (manage status determines gear visibility)
   updateTopbar();
+  // Re-check URL for ?manage now that manageEnabled is known (route() ran before this resolved)
+  var params = new URLSearchParams(location.search);
+  if (params.get('manage') !== null && manageEnabled && mode !== 'manage') {
+    enterManage();
+    return;
+  }
+  // Re-render homepage if manage/collections changed (adds collection sections, manage button)
+  if (needsRerender && !readerOpen && !activeSource) renderHome();
 }
 
 function route(push) {
@@ -4715,7 +4722,8 @@ async function refreshDownloads() {
 
       if (!dl.done && !dl.error) {
         h += '<div class="dl-progress"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>';
-        h += '<div class="dl-actions"><button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">Cancel</button></div>';
+        var mirrorInfo = dl.mirror_host ? '<span class="dl-mirror" title="' + esc(dl.mirror_host) + '">' + esc(dl.mirror_host) + (dl.mirror_count > 1 ? ' (' + dl.mirror_count + ' mirrors)' : '') + '</span>' : '';
+        h += '<div class="dl-actions">' + mirrorInfo + '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">Cancel</button></div>';
       }
       if (dl.error && dl.error !== 'Cancelled') {
         h += '<div class="dl-actions"><button class="dl-retry-btn" onclick="downloadZim(\'' + escAttr(dl.url) + '\')">Retry</button></div>';
