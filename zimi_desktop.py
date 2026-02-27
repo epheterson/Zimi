@@ -65,6 +65,7 @@ class ConfigManager:
 
     DEFAULTS = {
         "zim_dir": os.path.join(os.path.expanduser("~"), "Zimi"),
+        "data_dir": "",  # empty = use ZIM_DIR/.zimi (backward compat)
         "port": 8899,
         "auto_open_browser": True,
         "window_width": 1200,
@@ -123,10 +124,11 @@ def _find_open_port(start=8899, end=8910):
 class ServerThread(threading.Thread):
     """Starts the Zimi server in a background thread."""
 
-    def __init__(self, zim_dir, port):
+    def __init__(self, zim_dir, port, data_dir=None):
         super().__init__(daemon=True)
         self.zim_dir = zim_dir
         self.port = port
+        self.data_dir = data_dir or os.path.join(zim_dir, ".zimi")
         self.actual_port = port
         self.ready = threading.Event()
         self.error = None
@@ -148,7 +150,7 @@ class ServerThread(threading.Thread):
             # Import zimi here so env vars are set first
             import zimi
             zimi.ZIM_DIR = self.zim_dir
-            zimi.ZIMI_DATA_DIR = os.path.join(self.zim_dir, ".zimi")
+            zimi.ZIMI_DATA_DIR = self.data_dir
             os.makedirs(zimi.ZIMI_DATA_DIR, exist_ok=True)
             zimi.ZIMI_MANAGE = True
             zimi._TITLE_INDEX_DIR = os.path.join(zimi.ZIMI_DATA_DIR, "titles")
@@ -220,6 +222,7 @@ class DesktopAPI:
         """Return current config for the settings UI."""
         return {
             "zim_dir": self._config.get("zim_dir"),
+            "data_dir": self._config.get("data_dir"),
             "port": self._config.get("port"),
             "auto_open_browser": self._config.get("auto_open_browser"),
             "is_first_run": self._config.is_first_run,
@@ -228,7 +231,7 @@ class DesktopAPI:
     def save_config(self, updates):
         """Save config updates. Returns True if restart is needed."""
         needs_restart = False
-        for key in ("zim_dir", "port"):
+        for key in ("zim_dir", "data_dir", "port"):
             if key in updates and updates[key] != self._config.get(key):
                 self._config.set(key, updates[key])
                 needs_restart = True
@@ -517,7 +520,8 @@ def _run():
         # Add native macOS menu items now that the app menu bar exists
         _set_macos_app_identity(window_ref)
 
-        server = ServerThread(zim_dir, config.get("port"))
+        data_dir = config.get("data_dir") or os.path.join(zim_dir, ".zimi")
+        server = ServerThread(zim_dir, config.get("port"), data_dir=data_dir)
         server.start()
         server.ready.wait(timeout=60)
 
@@ -607,9 +611,11 @@ def _serve_headless():
     os.environ["ZIMI_MANAGE"] = "1"
     os.makedirs(zim_dir, exist_ok=True)
 
+    data_dir = os.environ.get("ZIMI_DATA_DIR") or os.path.join(zim_dir, ".zimi")
+
     import zimi
     zimi.ZIM_DIR = zim_dir
-    zimi.ZIMI_DATA_DIR = os.path.join(zim_dir, ".zimi")
+    zimi.ZIMI_DATA_DIR = data_dir
     os.makedirs(zimi.ZIMI_DATA_DIR, exist_ok=True)
     zimi.ZIMI_MANAGE = True
     zimi._TITLE_INDEX_DIR = os.path.join(zimi.ZIMI_DATA_DIR, "titles")

@@ -48,6 +48,7 @@ import math
 import os
 import random as _random
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -89,7 +90,8 @@ except OSError:
     pass  # ZIM_DIR may not exist yet (e.g. during import in tests)
 
 def _migrate_data_files():
-    """Move legacy .zimi_* files from ZIM_DIR root into ZIMI_DATA_DIR."""
+    """Migrate data files from old locations into ZIMI_DATA_DIR."""
+    # 1. Legacy flat files (v1.3 → v1.4): .zimi_* in ZIM_DIR root
     migrations = [
         (".zimi_password", "password"),
         (".zimi_collections.json", "collections.json"),
@@ -101,10 +103,38 @@ def _migrate_data_files():
         if os.path.exists(old_path) and not os.path.exists(new_path):
             try:
                 os.makedirs(ZIMI_DATA_DIR, exist_ok=True)
-                os.rename(old_path, new_path)
+                shutil.copy2(old_path, new_path)
+                os.remove(old_path)
                 log.info("Migrated %s → %s", old_name, new_name)
             except OSError:
                 pass
+
+    # 2. Cross-directory migration: ZIM_DIR/.zimi → new ZIMI_DATA_DIR
+    #    Triggered when ZIMI_DATA_DIR is set to a different path (e.g. Docker /data)
+    old_data_dir = os.path.join(ZIM_DIR, ".zimi")
+    if os.path.normpath(ZIMI_DATA_DIR) != os.path.normpath(old_data_dir) and os.path.isdir(old_data_dir):
+        # Only migrate if new data dir has no cache yet (fresh destination)
+        if not os.path.exists(os.path.join(ZIMI_DATA_DIR, "cache.json")):
+            data_files = ["cache.json", "collections.json", "history.json",
+                          "suggest_cache.json", "auto_update.json", "password"]
+            for fname in data_files:
+                old = os.path.join(old_data_dir, fname)
+                new = os.path.join(ZIMI_DATA_DIR, fname)
+                if os.path.exists(old) and not os.path.exists(new):
+                    try:
+                        shutil.copy2(old, new)
+                        log.info("Migrated %s → %s", old, new)
+                    except OSError:
+                        pass
+            # Migrate titles/ directory (title indexes)
+            old_titles = os.path.join(old_data_dir, "titles")
+            new_titles = os.path.join(ZIMI_DATA_DIR, "titles")
+            if os.path.isdir(old_titles) and not os.path.isdir(new_titles):
+                try:
+                    shutil.copytree(old_titles, new_titles)
+                    log.info("Migrated titles/ → %s", new_titles)
+                except OSError:
+                    pass
 
 _migrate_data_files()
 
@@ -249,7 +279,6 @@ def _get_usage_stats():
 def _get_disk_usage():
     """Get disk usage info for ZIM directory. Works on all platforms."""
     try:
-        import shutil
         usage = shutil.disk_usage(ZIM_DIR)
         total = usage.total
         free = usage.free
@@ -258,6 +287,7 @@ def _get_disk_usage():
                        for f in os.listdir(ZIM_DIR) if f.endswith(".zim"))
         return {
             "zim_dir": ZIM_DIR,
+            "data_dir": ZIMI_DATA_DIR,
             "disk_total_gb": round(total / (1024**3), 1),
             "disk_free_gb": round(free / (1024**3), 1),
             "disk_used_gb": round(used / (1024**3), 1),

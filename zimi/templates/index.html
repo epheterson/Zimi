@@ -1026,6 +1026,12 @@
       <input type="text" id="settings-dir" readonly placeholder="/path/to/zims">
       <button class="btn-browse" id="settings-browse-btn" onclick="settingsChooseFolder()" style="display:none">Choose Folder</button>
     </div>
+    <label>Data folder</label>
+    <div class="field-row">
+      <input type="text" id="settings-data-dir" readonly placeholder="(same as ZIM folder)">
+      <button class="btn-browse" id="settings-data-browse-btn" onclick="settingsChooseDataFolder()" style="display:none">Choose Folder</button>
+    </div>
+    <div class="hint">Cache, collections, bookmarks, and history. Leave blank to store alongside ZIMs.</div>
     <label id="settings-port-label">Port</label>
     <div class="field-row" id="settings-port-row">
       <input type="number" id="settings-port" min="1024" max="65535" value="8899">
@@ -1709,9 +1715,8 @@ function renderHome(filter) {
     // Discover on top — hide stats bar (will show at bottom)
     statsBar.innerHTML = ''; statsBar.style.display = 'none';
   } else if (!homeScope && !filter && discoverHidden) {
-    // Discover hidden — show stats at top with re-enable link
-    statsBar.innerHTML = statsHtml +
-      ' <span style="color:var(--border)">&middot;</span> <a href="#" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');renderHome()" style="color:var(--text2);text-decoration:none;font-size:13px;opacity:0.6" title="Show Discover cards">Discover \u25B8</a>';
+    // Discover hidden — stats clickable to re-enable
+    statsBar.innerHTML = '<a href="#" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');renderHome()" style="color:inherit;text-decoration:none" title="Show Discover">' + statsHtml + '</a>';
     statsBar.style.display = '';
   } else {
     statsBar.innerHTML = statsHtml;
@@ -4168,17 +4173,23 @@ function _msServerHtml() {
     return '<div class="ms-hint">Server configuration is available via the Settings overlay.</div>' +
       '<div class="ms-actions"><button class="manage-btn-action" onclick="openSettings()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Open Server Settings</button></div>';
   }
-  // Docker/server: fetch zim_dir from stats endpoint
+  // Docker/server: fetch zim_dir + data_dir from stats endpoint
   var h = '<div class="ms-field"><label>ZIM folder</label><input type="text" id="ms-zim-dir" readonly value="Loading\u2026"></div>' +
+    '<div class="ms-field"><label>Data folder</label><input type="text" id="ms-data-dir" readonly value="Loading\u2026"></div>' +
     '<div class="ms-hint">Configured via environment variables or Docker.</div>';
   // Async fill
   manageFetch('/manage/stats').then(function(r) { return r.json(); }).then(function(s) {
     var el = document.getElementById('ms-zim-dir');
     if (el && s.disk && s.disk.zim_dir) el.value = s.disk.zim_dir;
     else if (el) el.value = '(unknown)';
+    var el2 = document.getElementById('ms-data-dir');
+    if (el2 && s.disk && s.disk.data_dir) el2.value = s.disk.data_dir;
+    else if (el2) el2.value = '(unknown)';
   }).catch(function() {
     var el = document.getElementById('ms-zim-dir');
     if (el) el.value = '(unavailable)';
+    var el2 = document.getElementById('ms-data-dir');
+    if (el2) el2.value = '(unavailable)';
   });
   return h;
 }
@@ -5760,6 +5771,7 @@ async function openSettings() {
   msgEl.textContent = '';
 
   browseBtn.style.display = '';
+  document.getElementById('settings-data-browse-btn').style.display = '';
   portInput.readOnly = false;
   document.getElementById('settings-save-btn').style.display = '';
   document.getElementById('settings-port-label').style.display = '';
@@ -5768,8 +5780,9 @@ async function openSettings() {
   try {
     const cfg = await pywebview.api.get_config();
     dirInput.value = cfg.zim_dir || '';
+    document.getElementById('settings-data-dir').value = cfg.data_dir || '';
     portInput.value = cfg.port || 8899;
-    _settingsOriginal = { zim_dir: cfg.zim_dir, port: cfg.port };
+    _settingsOriginal = { zim_dir: cfg.zim_dir, data_dir: cfg.data_dir || '', port: cfg.port };
   } catch(e) {}
 
   // Show "Open in browser" link
@@ -5796,6 +5809,15 @@ async function settingsChooseFolder() {
   } catch(e) {}
 }
 
+async function settingsChooseDataFolder() {
+  if (!IS_DESKTOP) return;
+  const input = document.getElementById('settings-data-dir');
+  try {
+    const folder = await pywebview.api.choose_folder(input.value || null);
+    if (folder) input.value = folder;
+  } catch(e) {}
+}
+
 async function settingsSave() {
   const dirInput = document.getElementById('settings-dir');
   const portInput = document.getElementById('settings-port');
@@ -5805,6 +5827,8 @@ async function settingsSave() {
   if (IS_DESKTOP) {
     const updates = {};
     if (dirInput.value !== _settingsOriginal.zim_dir) updates.zim_dir = dirInput.value;
+    const dataDirVal = document.getElementById('settings-data-dir').value || '';
+    if (dataDirVal !== _settingsOriginal.data_dir) updates.data_dir = dataDirVal;
     if (port !== _settingsOriginal.port) updates.port = port;
     if (Object.keys(updates).length === 0) { closeSettings(); return; }
     try {
