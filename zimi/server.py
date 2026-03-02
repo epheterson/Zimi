@@ -1208,13 +1208,14 @@ def _build_domain_zim_map():
     for name, path in zims.items():
         if name in mapped_names:
             continue
-        archive = get_archive(name)
-        if not archive:
-            continue
-        try:
-            source = bytes(archive.get_metadata("Source")).decode("utf-8", "replace").strip()
-        except Exception:
-            continue
+        with _zim_lock:
+            archive = get_archive(name)
+            if not archive:
+                continue
+            try:
+                source = bytes(archive.get_metadata("Source")).decode("utf-8", "replace").strip()
+            except Exception:
+                continue
         if not source:
             continue
         try:
@@ -1296,6 +1297,10 @@ def _resolve_url_to_zim(url_str):
     elif "rationalwiki.org" in host or "appropedia.org" in host:
         # MediaWiki sites: /wiki/Article → Article (no A/ prefix)
         rest = re.sub(r'^wiki/', '', url_path)
+        # Handle ?title=Article&oldid=... style URLs
+        qs = parse_qs(parsed.query)
+        if qs.get("title") and (not rest or rest in ("wiki", "w/index.php", "index.php")):
+            rest = qs["title"][0]
         candidates.append(rest)
         candidates.append("A/" + rest)
     elif "explainxkcd.com" in host:
@@ -3819,15 +3824,15 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if not isinstance(urls, list) or len(urls) > 100:
                     return self._json(400, {"error": "'urls' must be a list (max 100)"})
                 results = {}
-                with _zim_lock:
-                    for url_str in urls:
-                        if not isinstance(url_str, str):
-                            continue
+                for url_str in urls:
+                    if not isinstance(url_str, str):
+                        continue
+                    with _zim_lock:
                         resolved = _resolve_url_to_zim(url_str)
-                        if resolved:
-                            results[url_str] = {"found": True, "zim": resolved["zim"], "path": resolved["path"]}
-                        else:
-                            results[url_str] = {"found": False}
+                    if resolved:
+                        results[url_str] = {"found": True, "zim": resolved["zim"], "path": resolved["path"]}
+                    else:
+                        results[url_str] = {"found": False}
                 return self._json(200, {"results": results})
 
             elif parsed.path == "/collections":

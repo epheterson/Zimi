@@ -2197,7 +2197,7 @@ function _renderDiscover(el, items) {
       var attrLine = (attrName && attrName !== cleanQuote)
         ? '<div class="dc-attribution">\u2014 ' + esc(attrName) + '</div>'
         : '';
-      h += '<div class="discover-card dc-quote-card" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+      h += '<div class="discover-card dc-quote-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
         '<div class="dc-body">' +
           '<div class="dc-header">' + iconHtml + '<span>' + esc(it.label || 'Quote of the Day') + '</span></div>' +
           '<div class="dc-quote-mark">\u201C</div>' +
@@ -2206,7 +2206,7 @@ function _renderDiscover(el, items) {
         '</div></div>';
     } else if (it.label === 'Word of the Day') {
       // Word card: full-width like quote — title as headword, part of speech, definition as blurb
-      h += '<div class="discover-card dc-quote-card dc-word-card" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+      h += '<div class="discover-card dc-quote-card dc-word-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
         '<div class="dc-body">' +
           '<div class="dc-header">' + iconHtml + '<span>' + esc(it.label) + '</span></div>' +
           '<div class="dc-headword">' + esc(displayTitle) + '</div>' +
@@ -2230,7 +2230,7 @@ function _renderDiscover(el, items) {
           showBlurb = '';
         }
       }
-      h += '<div class="discover-card" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+      h += '<div class="discover-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
         thumbHtml +
         '<div class="dc-body">' +
           '<div class="dc-source">' + iconHtml + '<span>' + esc(sourceLabel) + '</span>' + badgeHtml + dateHtml + '</div>' +
