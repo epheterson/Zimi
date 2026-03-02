@@ -154,10 +154,10 @@
   .stats-bar .num { color: var(--amber); font-weight: 600; }
 
   /* ── Pills (categories + search source filters) ── */
-  .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 20px; max-height: 120px; overflow-y: auto; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 20px; max-height: 68px; overflow-y: auto; }
   .pills.pills-scroll { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; max-height: none; justify-content: flex-start; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
   .pill {
-    padding: 6px 14px; font-size: 12px; font-weight: 500;
+    padding: 6px 14px; font-size: 12px; font-weight: 500; white-space: nowrap;
     background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
     color: var(--text2); cursor: pointer; transition: all 0.2s;
   }
@@ -2199,7 +2199,7 @@ function _renderDiscover(el, items) {
     var blurbHtml = it.blurb ? '<div class="dc-blurb' + (isQuote ? ' dc-quote' : '') + '">' + esc(it.blurb) + '</div>' : '';
     // Quote cards: header + decorative quote mark + serif quote + attribution
     if (isQuote) {
-      var attrName = it.attribution || it.speaker || displayTitle;
+      var attrName = it.attribution || it.speaker || (/^[A-Z][a-z]+ [A-Z]/.test(displayTitle) ? displayTitle : '');
       var cleanQuote = it.blurb ? it.blurb.replace(/^[\u201c\u201d"]+\s*/, '').replace(/[\u201d"]+\s*$/, '') : displayTitle;
       var attrLine = (attrName && attrName !== cleanQuote)
         ? '<div class="dc-attribution">\u2014 ' + esc(attrName) + '</div>'

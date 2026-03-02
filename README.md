@@ -157,7 +157,7 @@ services:
 | | Zimi | kiwix-serve |
 |---|---|---|
 | **Search API** | JSON responses | HTML responses |
-| **Search performance** | Parallel Xapian FTS (per-ZIM threads) | Sequential |
+| **Search performance** | 4–6x faster: parallel B-tree + FTS across all ZIMs | Sequential single-ZIM search |
 | **Cross-source search** | Unified results with relevance ranking | Per-ZIM or combined unranked |
 | **Library management** | Built-in catalog browser, downloads, updates | Separate CLI tool (kiwix-manage) |
 | **AI integration** | MCP server for Claude Code | None |

@@ -2183,6 +2183,8 @@ def _extract_preview(archive, zim_name, path):
                     author = page_title
                 inner_block = block[inner_ul_pos:]
                 attr_raw = strip_html(inner_block).strip()
+                # Normalize double spaces around punctuation (strip_html replaces tags with spaces)
+                attr_raw = re.sub(r'\s+([,;:.!?])', r'\1', attr_raw)
                 attr_raw = re.sub(r'^[\u2014\u2013\-~]+\s*', '', attr_raw).strip().split('\n')[0].strip()
                 if attr_raw and 3 < len(attr_raw) < 200:
                     if not re.search(r'[\[\]{}]|https?:|www\.|^\d', attr_raw, re.IGNORECASE):
@@ -2193,7 +2195,7 @@ def _extract_preview(archive, zim_name, path):
                         _is_source = bool(
                             re.search(r'\w:\s+\w', attr_raw)  # colon in middle
                             or re.search(r'(?i)\b(Agency|News|Times|Post|Tribune|Journal|Gazette|Herald|Magazine|Review|Report|Press|Daily)\b', attr_raw)
-                            or (len(attr_raw.split()) > 6 and not re.match(r'^[A-Z][a-z]+ [A-Z][a-z]+$', attr_raw.split('(')[0].split(',')[0].strip()))
+                            or (len(attr_raw.split()) > 6 and not re.match(r'^[A-Z][a-z]+(?:\s+[a-z]+)*\s+[A-Z][a-z]+$', attr_raw.split('(')[0].split(',')[0].strip()))
                         )
                         if not _is_source:
                             # Extract name: everything before first comma or opening paren

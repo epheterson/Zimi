@@ -528,6 +528,18 @@ class TestQuoteExtraction(unittest.TestCase):
         # "Image" is a single word — should NOT be used as attribution
         self.assertIsNone(result.get("attribution"))
 
+    def test_html_linked_attribution_with_multiword_name(self):
+        """Attribution with HTML links (strip_html adds spaces around tags) and multi-word names."""
+        # Real-world case: Wikiquote "Image" page — Akiba ben Joseph attribution
+        html = """<html><head><title>Image</title></head><body>
+        <ul><li>Beloved is man, for he was created in the image of God.
+        <ul><li><a href="Akiba_ben_Joseph" title="Akiba ben Joseph">Akiba ben Joseph</a>, <a href="Pirkei_Avot" title="Pirkei Avot">Pirkei Avot</a>, 3:18.</li></ul></li></ul>
+        </body></html>"""
+        result = self._extract(html, entry_title="Image")
+        self.assertIn("Beloved is man", result.get("blurb") or "")
+        # Should extract "Akiba ben Joseph" even though page title is "Image"
+        self.assertEqual(result.get("attribution"), "Akiba ben Joseph")
+
     def test_multiword_concept_title_not_used_as_attribution(self):
         """Concept titles that don't look like person names should be rejected."""
         html = """<html><head><title>artificial intelligence</title></head><body>
