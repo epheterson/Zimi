@@ -2176,7 +2176,11 @@ def _extract_preview(archive, zim_name, path):
                 if tilde_author and 2 < len(tilde_author) < 60 and re.match(r'^[A-Z]', tilde_author):
                     result["attribution"] = tilde_author[:100]
                     break
-                author = result.get("title") or entry_title
+                author = None
+                # Use page title as fallback only if it looks like a person name (has a space)
+                page_title = result.get("title") or entry_title
+                if ' ' in page_title and re.match(r'^[A-Z][a-z]+ [A-Z]', page_title):
+                    author = page_title
                 inner_block = block[inner_ul_pos:]
                 attr_raw = strip_html(inner_block).strip()
                 attr_raw = re.sub(r'^[\u2014\u2013\-~]+\s*', '', attr_raw).strip().split('\n')[0].strip()
@@ -2225,7 +2229,9 @@ def _extract_preview(archive, zim_name, path):
                 if 30 < len(dd_text) < 400 and _is_real_quote(dd_text):
                     if not dd_text.startswith(("Category:", "See also", "External", "Retrieved", "Source")):
                         result["blurb"] = "\u201c" + dd_text[:250] + "\u201d"
-                        result["attribution"] = result.get("title") or entry_title
+                        _pg = result.get("title") or entry_title
+                        if ' ' in _pg and re.match(r'^[A-Z][a-z]+ [A-Z]', _pg):
+                            result["attribution"] = _pg
                         break
         if not result.get("blurb"):
             # Try text after a "Quotes" section heading
@@ -2237,7 +2243,9 @@ def _extract_preview(archive, zim_name, path):
                     if 30 < len(li_text) < 400 and _is_real_quote(li_text):
                         if not li_text.startswith(("Category:", "See also", "External", "Retrieved")):
                             result["blurb"] = "\u201c" + li_text[:250] + "\u201d"
-                            result["attribution"] = result.get("title") or entry_title
+                            _pg = result.get("title") or entry_title
+                            if ' ' in _pg and re.match(r'^[A-Z][a-z]+ [A-Z]', _pg):
+                                result["attribution"] = _pg
                             break
 
     # -- TED Talks: extract speaker name and photo --

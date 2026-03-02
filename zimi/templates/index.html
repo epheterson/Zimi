@@ -3238,28 +3238,36 @@ async function loadFullCatalog() {
     item.category = autoCategorize(item);
   }
 
-  // Enrich with installed ZIM metadata by matching filename prefix to catalog name
-  // OPDS catalog name: "wiktionary_en_all", installed filename: "wiktionary_en_all_maxi_2024-05.zim"
-  if (zimsCache) {
-    for (const item of items) {
-      for (const z of zimsCache) {
-        const fb = (z.file || '').replace(/\.zim$/, '');
-        if (fb.startsWith(item.name + '_') || fb === item.name) {
-          item.installed = true;
-          const m = fb.match(/(\d{4}-\d{2})$/);
-          item._installedDate = m ? m[1] : null;
-          item._installedFile = z.file;
-          item._installedName = z.name;
-          item._installedSizeGb = z.size_gb;
-          break;
-        }
-      }
-    }
-  }
+  _enrichCatalogInstalled(items);
 
   _catalogCache = items;
   _catalogCacheLang = lang;
   return _catalogCache;
+}
+
+function _enrichCatalogInstalled(items) {
+  // Enrich with installed ZIM metadata by matching filename prefix to catalog name
+  // OPDS catalog name: "wiktionary_en_all", installed filename: "wiktionary_en_all_maxi_2024-05.zim"
+  if (!zimsCache) return;
+  for (const item of items) {
+    item.installed = false;
+    item._installedDate = null;
+    item._installedFile = null;
+    item._installedName = null;
+    item._installedSizeGb = null;
+    for (const z of zimsCache) {
+      const fb = (z.file || '').replace(/\.zim$/, '');
+      if (fb.startsWith(item.name + '_') || fb === item.name) {
+        item.installed = true;
+        const m = fb.match(/(\d{4}-\d{2})$/);
+        item._installedDate = m ? m[1] : null;
+        item._installedFile = z.file;
+        item._installedName = z.name;
+        item._installedSizeGb = z.size_gb;
+        break;
+      }
+    }
+  }
 }
 
 const FEATURED_ZIMS = [
@@ -4234,13 +4242,13 @@ async function cleanupTmpFiles() {
   try {
     var r = await manageFetch('/manage/cleanup-tmp', {method: 'POST'});
     var data = await r.json();
+    var el = document.getElementById('tmp-files-section');
+    if (el) { el.style.opacity = '0.3'; setTimeout(function() { el.innerHTML = ''; el.style.opacity = ''; }, 300); }
     if (data.removed && data.removed.length) {
       showToast(data.removed.length + ' partial download' + (data.removed.length > 1 ? 's' : '') + ' removed');
     } else {
       showToast('No partial downloads found');
     }
-    var el = document.getElementById('tmp-files-section');
-    if (el) el.innerHTML = '';
   } catch(e) {
     showToast('Failed to clean up');
     if (btn) { btn.disabled = false; btn.textContent = 'Clean Up Partial Downloads'; }
@@ -4872,9 +4880,9 @@ async function refreshDownloads() {
       try {
         const lr = await fetch('/list');
         zimsCache = await lr.json();
-        _catalogCache = null;
         _availableUpdates = {};
-        await loadFullCatalog().catch(() => {});
+        // Re-merge install status into existing catalog (no OPDS re-fetch needed)
+        if (_catalogCache) _enrichCatalogInstalled(_catalogCache);
         renderInstalled();
         checkForUpdates();
         // Update status card counts
@@ -4890,11 +4898,9 @@ async function refreshDownloads() {
         const tabBtn = document.querySelector('.manage-tab[data-tab="installed"]');
         if (tabBtn) tabBtn.textContent = 'Installed';
         // Re-render browse view so download buttons update to "Installed"
-        if (manageTab === 'browse') {
-          if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
-          else if (_browseView === 'search') { var sq = q.value.trim(); if (sq) browseCatalogFilter(sq); }
-          else if (_browseView === 'gallery') renderBrowseGallery();
-        }
+        if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
+        else if (_browseView === 'search') { var sq = q.value.trim(); if (sq) browseCatalogFilter(sq); }
+        else if (_browseView === 'gallery') renderBrowseGallery();
       } catch(e) {}
     }
     _dlPrevAllDone = allDone;
