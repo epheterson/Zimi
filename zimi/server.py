@@ -285,6 +285,19 @@ def _get_disk_usage():
         used = usage.used
         zim_size = sum(os.path.getsize(os.path.join(ZIM_DIR, f))
                        for f in os.listdir(ZIM_DIR) if f.endswith(".zim"))
+        # List partial (.tmp) downloads
+        tmp_files = []
+        for f in os.listdir(ZIM_DIR):
+            if f.endswith(".zim.tmp"):
+                try:
+                    fpath = os.path.join(ZIM_DIR, f)
+                    tmp_files.append({
+                        "filename": f,
+                        "size_bytes": os.path.getsize(fpath),
+                        "age_hours": round((time.time() - os.path.getmtime(fpath)) / 3600, 1),
+                    })
+                except OSError:
+                    pass
         return {
             "zim_dir": ZIM_DIR,
             "data_dir": ZIMI_DATA_DIR,
@@ -293,6 +306,7 @@ def _get_disk_usage():
             "disk_used_gb": round(used / (1024**3), 1),
             "disk_pct": round(used / total * 100, 1) if total > 0 else 0,
             "zim_size_gb": round(zim_size / (1024**3), 1),
+            "tmp_files": tmp_files,
         }
     except (OSError, AttributeError):
         return {}
@@ -1208,14 +1222,14 @@ def _build_domain_zim_map():
     for name, path in zims.items():
         if name in mapped_names:
             continue
-        with _zim_lock:
-            archive = get_archive(name)
-            if not archive:
-                continue
-            try:
-                source = bytes(archive.get_metadata("Source")).decode("utf-8", "replace").strip()
-            except Exception:
-                continue
+        # Note: caller (load_cache) already holds _zim_lock
+        archive = get_archive(name)
+        if not archive:
+            continue
+        try:
+            source = bytes(archive.get_metadata("Source")).decode("utf-8", "replace").strip()
+        except Exception:
+            continue
         if not source:
             continue
         try:
@@ -2147,13 +2161,21 @@ def _extract_preview(archive, zim_name, path):
             # Strip the wrapping <li> tag
             quote_html = re.sub(r'^\s*<li[^>]*>', '', quote_html)
             text = strip_html(quote_html).strip()
+            # Check for inline tilde attribution: "Quote text. ~ Author Name"
+            tilde_match = re.search(r'\s*~\s*(.+)$', text)
+            tilde_author = None
+            if tilde_match:
+                text = text[:tilde_match.start()].rstrip()
+                tilde_author = tilde_match.group(1).strip()
             if 20 < len(text) < 400 and _is_real_quote(text):
                 if text.startswith(("Category:", "See also", "External links", "Retrieved")):
                     continue
                 result["blurb"] = "\u201c" + text[:250] + "\u201d"
-                # Attribution: prefer page title (the person being quoted).
-                # Wikiquote nested <li> often has "Author, Source (Year), Ch." format.
-                # Extract the author name: text before first comma or parenthesis.
+                # Attribution: tilde author takes priority (inline convention),
+                # then try nested <ul> for author name, fall back to page title.
+                if tilde_author and 2 < len(tilde_author) < 60 and re.match(r'^[A-Z]', tilde_author):
+                    result["attribution"] = tilde_author[:100]
+                    break
                 author = result.get("title") or entry_title
                 inner_block = block[inner_ul_pos:]
                 attr_raw = strip_html(inner_block).strip()
@@ -2964,6 +2986,7 @@ def _download_from_url(dl, url, tmp_dest):
     Downloads to a .zim.tmp file first. Supports resuming via HTTP Range header.
     On transient failure, keeps the .tmp file for resume on the next mirror.
     """
+    dl["_mirror_url"] = url  # track current mirror for UI display
     existing_size = 0
     if os.path.exists(tmp_dest):
         existing_size = os.path.getsize(tmp_dest)
@@ -2998,6 +3021,7 @@ def _download_from_url(dl, url, tmp_dest):
     else:
         total = int(resp.headers.get("Content-Length", 0))
         dl["total_bytes"] = total
+        dl["downloaded_bytes"] = 0  # reset: mirror doesn't support resume
         existing_size = 0
         mode = "wb"
     try:
@@ -3048,7 +3072,6 @@ def _download_thread(dl):
                     dl["error"] = "Cancelled"
                     return
                 success = True
-                dl["url"] = mirror_url  # record which mirror succeeded
                 break
             last_error = err
             log.warning("Mirror failed for %s: %s", dl["filename"], err)
@@ -3060,8 +3083,9 @@ def _download_thread(dl):
             return
         # Atomic rename: tmp → final
         os.replace(tmp_dest, dl["dest"])
+        dl["done"] = True  # Mark done immediately so UI shows completion
         log.info("Download complete: %s via %s, refreshing library",
-                 dl["filename"], urlparse(dl["url"]).hostname)
+                 dl["filename"], urlparse(dl.get("_mirror_url", dl["url"])).hostname)
         # Remove older versions of the same ZIM
         base = re.match(r'^(.+?)_\d{4}-\d{2}\.zim$', dl["filename"])
         if base:
@@ -3078,7 +3102,6 @@ def _download_thread(dl):
         _search_cache_clear()
         _suggest_cache_clear()
         _clean_stale_title_indexes()
-        dl["done"] = True
         # Cache ZIM metadata in history so entries survive deletion
         zim_info = {}
         try:
@@ -3248,8 +3271,8 @@ def _get_downloads():
                 pass
             total = dl.get("total_bytes", 0)
             downloaded = dl.get("downloaded_bytes", 0)
-            pct = round(downloaded / total * 100, 1) if total > 0 else 0
-            mirror_host = urlparse(dl["url"]).hostname or ""
+            pct = min(100.0, round(downloaded / total * 100, 1)) if total > 0 else 0
+            mirror_host = urlparse(dl.get("_mirror_url", dl["url"])).hostname or ""
             mirror_count = len(dl.get("mirrors", []))
             results.append({
                 "id": dl_id,
@@ -3977,6 +4000,21 @@ class ZimHandler(BaseHTTPRequestHandler):
                     return self._json(200, {"status": "deleted", "filename": filename})
                 except OSError as e:
                     return self._json(500, {"error": f"Failed to delete: {e}"})
+
+            elif parsed.path == "/manage/cleanup-tmp" and ZIMI_MANAGE:
+                # Remove partial (.tmp) downloads
+                removed = []
+                for f in os.listdir(ZIM_DIR):
+                    if f.endswith(".zim.tmp"):
+                        try:
+                            fpath = os.path.join(ZIM_DIR, f)
+                            size = os.path.getsize(fpath)
+                            os.remove(fpath)
+                            removed.append({"filename": f, "size_bytes": size})
+                            log.info("Cleaned up partial download: %s", f)
+                        except OSError:
+                            pass
+                return self._json(200, {"removed": removed})
 
             elif parsed.path == "/manage/update" and ZIMI_MANAGE:
                 # Trigger manual update: check for updates and start downloads
