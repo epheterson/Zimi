@@ -1277,6 +1277,10 @@ def _resolve_url_to_zim(url_str):
        or "wikinews.org" in host:
         # Wikimedia: /wiki/Article_Name → A/Article_Name
         rest = re.sub(r'^wiki/', '', url_path)
+        # Handle ?title=Article&oldid=... style URLs (MediaWiki index.php format)
+        qs = parse_qs(parsed.query)
+        if qs.get("title") and (not rest or rest in ("wiki", "w/index.php", "index.php")):
+            rest = qs["title"][0]
         candidates.append("A/" + rest)
         candidates.append(rest)
         # Strip Wikimedia namespaces (Topic:, Category:, Portal:, etc.)
@@ -2151,28 +2155,38 @@ def _extract_preview(archive, zim_name, path):
                 attr_raw = re.sub(r'^[\u2014\u2013\-~]+\s*', '', attr_raw).strip().split('\n')[0].strip()
                 if attr_raw and 3 < len(attr_raw) < 200:
                     if not re.search(r'[\[\]{}]|https?:|www\.|^\d', attr_raw, re.IGNORECASE):
-                        # Extract name: everything before first comma or opening paren
-                        # e.g. "Henry Adams, Mont Saint Michel and Chartres (1904)" → "Henry Adams"
-                        name_part = re.split(r'[,(]', attr_raw)[0].strip()
-                        # Handle honorifics with commas: "Adams, Henry" or "King, Jr., Martin Luther"
-                        # If name_part is a single word and next part also looks like a name, rejoin
-                        if name_part and ',' in attr_raw:
-                            parts = [p.strip() for p in attr_raw.split(',')]
-                            # "Last, First" pattern: single capitalized word, then capitalized word(s)
-                            if (len(parts) >= 2 and re.match(r'^[A-Z][a-z]+$', parts[0])
-                                    and re.match(r'^(Jr\.|Sr\.|[A-Z])', parts[1])):
-                                # Check for Jr./Sr. suffix
-                                if parts[1] in ('Jr.', 'Sr.', 'III', 'II', 'IV') and len(parts) >= 3:
-                                    name_part = parts[2].strip() + ' ' + parts[0] + ', ' + parts[1]
-                                elif re.match(r'^[A-Z][a-z]', parts[1]):
-                                    # "Last, First ..." — but only if second part is short (a name, not a book title)
-                                    if len(parts[1].split()) <= 3:
-                                        name_part = parts[1] + ' ' + parts[0]
-                        # Validate: must start with uppercase letter, reasonable length
-                        if (name_part and 2 < len(name_part) < 60
-                                and re.match(r'^[A-Z]', name_part)
-                                and not re.match(r'^(p\.|ch\.|vol\.|see |ibid)', name_part, re.IGNORECASE)):
-                            author = name_part
+                        # Detect source citations (not person names):
+                        # - Contains ":" mid-text (e.g. "StoptheWarNow: Third peace convoy")
+                        # - Looks like a title/headline (many capitalized words, >5 words)
+                        # - Contains news agency / publication markers
+                        _is_source = bool(
+                            re.search(r'\w:\s+\w', attr_raw)  # colon in middle
+                            or re.search(r'(?i)\b(Agency|News|Times|Post|Tribune|Journal|Gazette|Herald|Magazine|Review|Report|Press|Daily)\b', attr_raw)
+                            or (len(attr_raw.split()) > 6 and not re.match(r'^[A-Z][a-z]+ [A-Z][a-z]+$', attr_raw.split('(')[0].split(',')[0].strip()))
+                        )
+                        if not _is_source:
+                            # Extract name: everything before first comma or opening paren
+                            # e.g. "Henry Adams, Mont Saint Michel and Chartres (1904)" → "Henry Adams"
+                            name_part = re.split(r'[,(]', attr_raw)[0].strip()
+                            # Handle honorifics with commas: "Adams, Henry" or "King, Jr., Martin Luther"
+                            # If name_part is a single word and next part also looks like a name, rejoin
+                            if name_part and ',' in attr_raw:
+                                parts = [p.strip() for p in attr_raw.split(',')]
+                                # "Last, First" pattern: single capitalized word, then capitalized word(s)
+                                if (len(parts) >= 2 and re.match(r'^[A-Z][a-z]+$', parts[0])
+                                        and re.match(r'^(Jr\.|Sr\.|[A-Z])', parts[1])):
+                                    # Check for Jr./Sr. suffix
+                                    if parts[1] in ('Jr.', 'Sr.', 'III', 'II', 'IV') and len(parts) >= 3:
+                                        name_part = parts[2].strip() + ' ' + parts[0] + ', ' + parts[1]
+                                    elif re.match(r'^[A-Z][a-z]', parts[1]):
+                                        # "Last, First ..." — but only if second part is short (a name, not a book title)
+                                        if len(parts[1].split()) <= 3:
+                                            name_part = parts[1] + ' ' + parts[0]
+                            # Validate: must start with uppercase letter, reasonable length
+                            if (name_part and 2 < len(name_part) < 60
+                                    and re.match(r'^[A-Z]', name_part)
+                                    and not re.match(r'^(p\.|ch\.|vol\.|see |ibid)', name_part, re.IGNORECASE)):
+                                author = name_part
                 if author:
                     result["attribution"] = author[:100]
                 break

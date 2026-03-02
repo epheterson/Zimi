@@ -301,6 +301,21 @@
   .reader-view.open { display: flex; animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   #reader-frame { flex: 1; border: none; width: 100%; background: #fff; }
+
+  /* ── Context Menu ── */
+  .zimi-ctx {
+    position: fixed; z-index: 10000; min-width: 180px;
+    background: var(--card-bg, #1a1a1a); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px 0; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    font-size: 13px; color: var(--text); display: none;
+  }
+  .zimi-ctx.open { display: block; }
+  .zimi-ctx-item {
+    padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  }
+  .zimi-ctx-item:hover { background: var(--hover); }
+  .zimi-ctx-item .ctx-key { margin-left: auto; font-size: 11px; color: var(--text2); }
+  .zimi-ctx-sep { height: 1px; background: var(--border); margin: 4px 0; }
   .reader-loading {
     position: absolute; inset: 0; display: flex; align-items: center;
     justify-content: center; flex-direction: column; gap: 12px;
@@ -900,7 +915,7 @@
   .discover-scroll::-webkit-scrollbar-track { background: transparent; }
   .discover-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
   .discover-card {
-    flex: 0 0 260px; min-height: 200px; scroll-snap-align: start;
+    flex: 0 0 260px; min-height: 200px; max-height: 320px; scroll-snap-align: start;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
     cursor: pointer; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden; display: flex; flex-direction: column;
@@ -921,7 +936,7 @@
   .dc-date { font-size: 11px; color: var(--text2); margin-left: auto; flex-shrink: 0; }
   .dc-title { font-size: 13px; color: var(--text); font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
   .dc-blurb { font-size: 11px; color: var(--text2); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .dc-blurb.dc-quote { font-family: Georgia, "Times New Roman", serif; font-style: italic; color: var(--text); font-weight: 400; font-size: 14px; -webkit-line-clamp: 7; line-height: 1.6; flex: 1; letter-spacing: 0.01em; }
+  .dc-blurb.dc-quote { font-family: Georgia, "Times New Roman", serif; font-style: italic; color: var(--text); font-weight: 400; font-size: 14px; -webkit-line-clamp: 6; line-height: 1.6; flex: 1; letter-spacing: 0.01em; }
   .dc-quote-card { display: flex; flex-direction: column; }
   .dc-quote-card .dc-body { padding: 20px 20px 16px; gap: 0; flex: 1; justify-content: space-between; }
   .dc-quote-card .dc-header { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
@@ -1084,6 +1099,7 @@
   <iframe id="reader-frame" title="Article content" sandbox="allow-same-origin allow-scripts allow-popups allow-downloads"></iframe>
 </div>
 <div id="zim-ctx-menu"></div>
+<div id="link-ctx-menu" class="zimi-ctx"></div>
 
 <script>
 // ── State ──
@@ -1255,6 +1271,8 @@ function updateTopbar() {
   // Search placeholder
   if (currentSource) {
     q.placeholder = _zimTitle(currentSource);
+  } else if (readerOpen && readerSource) {
+    q.placeholder = _zimTitle(readerSource);
   } else if (mode === 'manage') {
     if (manageTab === 'installed') {
       q.placeholder = 'Filter installed ZIMs...';
@@ -1345,7 +1363,7 @@ async function _initSecondary() {
     return;
   }
   // Re-render homepage if manage/collections changed (adds collection sections, manage button)
-  if (needsRerender && !readerOpen && !activeSource) renderHome();
+  if (needsRerender && !readerOpen && !currentSource && !readerSource) renderHome();
 }
 
 function route(push) {
@@ -1652,6 +1670,12 @@ function enterScope(type, label, zimNames, push) {
 async function enterSource(name, push) {
   const info = zimsCache && zimsCache.find(z => z.name === name);
   if (!info) { enterHome(push); return; }
+  // Modifier-click: open in new browser tab
+  if (_isModClick()) {
+    _lastMouseEvent = null;
+    window.open('/w/' + encodeURIComponent(name), '_blank');
+    return;
+  }
   mode = 'source';
   currentSource = name;
   readerSource = null;
@@ -2442,10 +2466,11 @@ async function renderSource(name) {
         '<div class="results">' + data.documents.map((d, i) => {
           const hasPath = !!d.path;
           const clickAttr = hasPath ? ' onclick="openArticle(\'' + escJs(name) + '\', \'' + escJs(d.path) + '\', \'' + escJs(d.title || '') + '\')" onkeydown="if(event.key===\'Enter\')openArticle(\'' + escJs(name) + '\', \'' + escJs(d.path) + '\', \'' + escJs(d.title || '') + '\')"' : '';
-          return '<div class="result"' + (hasPath ? ' tabindex="0" role="button"' : '') + ' style="animation-delay:' + (i * 0.04) + 's"' + clickAttr + '>' +
+          return '<div class="result"' + (hasPath ? ' tabindex="0" role="button" data-zim="' + escAttr(name) + '" data-path="' + escAttr(d.path) + '"' : '') + ' style="animation-delay:' + (i * 0.04) + 's"' + clickAttr + '>' +
+            '<div class="result-body">' +
             '<div class="title">' + esc(d.title) + '</div>' +
             (d.description ? '<div class="snippet">' + esc(d.description) + '</div>' : '') +
-          '</div>';
+            '</div></div>';
         }).join('') + '</div>';
       return;
     }
@@ -4982,7 +5007,10 @@ async function manageClearPassword() {
 function _pdfViewerUrl(pdfUrl) {
   // pdfUrl is already percent-encoded (/w/zim/path%20name.pdf).
   // Don't encodeURIComponent — pdf.js passes file param directly to fetch.
-  return '/static/pdfjs/web/viewer.html?file=' + pdfUrl;
+  // Append ?raw=1 so the server bypasses the SPA shell check and CDN caches
+  // the raw PDF separately from the HTML deep-link URL.
+  var raw = pdfUrl + (pdfUrl.includes('?') ? '&' : '?') + 'raw=1';
+  return '/static/pdfjs/web/viewer.html?file=' + raw;
 }
 function _articleUrl(zim, path) {
   return '/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/');
@@ -5044,7 +5072,7 @@ function openReader(url) {
   // Punch-out button: for pdf.js viewer URLs, link to the raw PDF for download
   if (url.startsWith('/static/pdfjs/')) {
     var fileParam = new URL(url, location.origin).searchParams.get('file');
-    newtabBtn.href = fileParam ? fileParam + (fileParam.includes('?') ? '&' : '?') + 'raw=1' : url;
+    newtabBtn.href = fileParam || url;
   } else {
     newtabBtn.href = url;
   }
@@ -5052,6 +5080,10 @@ function openReader(url) {
   frame.onload = function() {
     loading.classList.add('hidden');
     if (!readerOpen) return; // reader was closed — don't update title
+    // Capture mousedown inside iframe for modifier-click detection + dismiss context menu
+    try {
+      frame.contentDocument.addEventListener('mousedown', function(e) { _lastMouseEvent = e; _lastMouseTime = Date.now(); _hideLinkCtxMenu(); }, true);
+    } catch(e) {}
     // Inject responsive CSS + scroll-to-top button for mobile
     try {
       var _rStyle = frame.contentDocument.createElement('style');
@@ -5070,7 +5102,7 @@ function openReader(url) {
     // Only intercept clicks in ZIM content, not in static viewer pages (pdf.js)
     var _frameLoc = ''; try { _frameLoc = frame.contentWindow.location.pathname; } catch(e) {}
     if (!_frameLoc.startsWith('/static/')) try {
-      frame.contentDocument.addEventListener('click', function(e) {
+      var _handleFrameLink = function(e) {
         var a = e.target.closest('a[href]');
         if (!a) return;
         var href = a.getAttribute('href') || '';
@@ -5124,6 +5156,33 @@ function openReader(url) {
               else window.open(fullUrl, '_blank');
             })
             .catch(function() { window.open(fullUrl, '_blank'); });
+        }
+      };
+      frame.contentDocument.addEventListener('click', _handleFrameLink);
+      // Middle-click fires auxclick, not click — handle it for new-tab support
+      frame.contentDocument.addEventListener('auxclick', function(e) {
+        if (e.button === 1) _handleFrameLink(e);
+      });
+      // Right-click context menu for links inside iframe
+      frame.contentDocument.addEventListener('contextmenu', function(e) {
+        var a = e.target.closest('a[href]');
+        if (!a) return;
+        var href = a.getAttribute('href') || '';
+        if (href.startsWith('#')) return;
+        var frameLoc = frame.contentWindow.location;
+        var fullUrl;
+        try { fullUrl = new URL(href, frameLoc.href).href; } catch(ex) { fullUrl = a.href; }
+        var wMatch = fullUrl.startsWith(location.origin) && fullUrl.match(/\/w\/([^\/]+)\/(.+)/);
+        if (wMatch) {
+          e.preventDefault();
+          e.stopPropagation();
+          var linkZim = decodeURIComponent(wMatch[1]);
+          var linkPath = decodeURIComponent(wMatch[2]).replace(/\?.*$/, '');
+          // Calculate position relative to parent window
+          var frameRect = frame.getBoundingClientRect();
+          _showLinkCtxMenu(e.clientX + frameRect.left, e.clientY + frameRect.top, {
+            zim: linkZim, path: linkPath, title: a.textContent.trim(), url: fullUrl
+          });
         }
       });
     } catch(e) { /* cross-origin — ZIM content loaded from a different origin */ }
@@ -5509,6 +5568,12 @@ function _updateLibraryBtnIcon() {
   }
 }
 function openArticle(zim, path, title) {
+  // Modifier-click: open in new browser tab
+  if (_isModClick()) {
+    _lastMouseEvent = null;
+    window.open('/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/'), '_blank');
+    return;
+  }
   // Save discover scroll position before navigating away
   var discScroll = document.querySelector('.discover-scroll');
   if (discScroll && discScroll.scrollLeft > 0) {
@@ -5680,6 +5745,114 @@ function escJs(s) { return (s || '').replace(/\\/g, '\\\\').replace(/`/g, '\\`')
 // pywebview injects window.pywebview AFTER page load, so we can't check at parse time.
 // Instead, listen for the 'pywebviewready' event and set IS_DESKTOP then.
 let IS_DESKTOP = false;
+
+// ── Modifier-click detection ──
+// Track last mousedown so openArticle() can detect cmd/ctrl/middle-click
+// even from inline onclick="" handlers that don't pass the event.
+var _lastMouseEvent = null;
+var _lastMouseTime = 0;
+document.addEventListener('mousedown', function(e) {
+  _lastMouseEvent = e;
+  _lastMouseTime = Date.now();
+}, true);
+function _isModClick() {
+  var e = _lastMouseEvent;
+  if (!e) return false;
+  // Stale check: ignore if mousedown was >500ms ago (e.g. keyboard-triggered)
+  if (Date.now() - _lastMouseTime > 500) return false;
+  return e.metaKey || e.ctrlKey || e.button === 1;
+}
+
+// ── Link Context Menu ──
+var _linkCtxMenu = document.getElementById('link-ctx-menu');
+var _linkCtxData = null; // {zim, path, title, url}
+
+function _showLinkCtxMenu(x, y, data) {
+  _linkCtxData = data;
+  var isMac = /Mac/.test(navigator.platform);
+  var mod = isMac ? '\u2318' : 'Ctrl+';
+  var items = '';
+  items += '<div class="zimi-ctx-item" onclick="_ctxOpenNewWindow()">Open in New Tab<span class="ctx-key">' + mod + 'Click</span></div>';
+  items += '<div class="zimi-ctx-item" onclick="_ctxCopyLink()">Copy Link</div>';
+  if (data.title) {
+    items += '<div class="zimi-ctx-item" onclick="_ctxCopyTitle()">Copy Title</div>';
+  }
+  _linkCtxMenu.innerHTML = items;
+  _linkCtxMenu.classList.add('open');
+  // Position: keep within viewport
+  var rect = _linkCtxMenu.getBoundingClientRect();
+  var menuW = _linkCtxMenu.offsetWidth || 200;
+  var menuH = _linkCtxMenu.offsetHeight || 100;
+  if (x + menuW > window.innerWidth) x = window.innerWidth - menuW - 8;
+  if (y + menuH > window.innerHeight) y = window.innerHeight - menuH - 8;
+  _linkCtxMenu.style.left = x + 'px';
+  _linkCtxMenu.style.top = y + 'px';
+}
+
+function _hideLinkCtxMenu() {
+  _linkCtxMenu.classList.remove('open');
+  _linkCtxData = null;
+}
+
+function _ctxOpenNewWindow() {
+  var data = _linkCtxData;
+  _hideLinkCtxMenu();
+  if (!data) return;
+  var url = data.url || ('/w/' + encodeURIComponent(data.zim) + '/' + data.path.split('/').map(encodeURIComponent).join('/'));
+  window.open(url, '_blank');
+}
+
+function _ctxCopyLink() {
+  var data = _linkCtxData;
+  _hideLinkCtxMenu();
+  if (!data) return;
+  var url = data.url || (location.origin + '/w/' + encodeURIComponent(data.zim) + '/' + data.path.split('/').map(encodeURIComponent).join('/'));
+  navigator.clipboard.writeText(url).catch(function() {});
+}
+
+function _ctxCopyTitle() {
+  var data = _linkCtxData;
+  _hideLinkCtxMenu();
+  if (!data) return;
+  navigator.clipboard.writeText(data.title).catch(function() {});
+}
+
+// Close context menu on click anywhere
+document.addEventListener('click', function() { _hideLinkCtxMenu(); });
+document.addEventListener('contextmenu', function(e) {
+  // If clicking outside existing menu, close it
+  if (_linkCtxMenu.classList.contains('open') && !_linkCtxMenu.contains(e.target)) {
+    _hideLinkCtxMenu();
+  }
+});
+
+// Attach context menu to article links in the main page
+// Uses event delegation — checks data attributes first, then parses onclick
+document.addEventListener('contextmenu', function(e) {
+  var el = e.target.closest('[onclick*="openArticle"]');
+  if (!el) return;
+  var zim, path, title;
+  // Prefer data attributes (search results have data-zim/data-path)
+  if (el.dataset.zim && el.dataset.path) {
+    zim = el.dataset.zim;
+    path = el.dataset.path;
+    // Try to get title from the result title element
+    var titleEl = el.querySelector('.result-title, .dc-title, .hp-title');
+    title = titleEl ? titleEl.textContent.trim() : null;
+  } else {
+    // Parse from onclick attribute
+    var onclick = el.getAttribute('onclick') || '';
+    var m = onclick.match(/openArticle\s*\(\s*'([^']*)'\s*,\s*'([^']*)'\s*(?:,\s*'([^']*)')?\s*\)/);
+    if (!m) return;
+    zim = m[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+    path = m[2].replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+    title = m[3] ? m[3].replace(/\\'/g, "'").replace(/\\\\/g, '\\') : null;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  _showLinkCtxMenu(e.clientX, e.clientY, { zim: zim, path: path, title: title });
+});
+
 
 function _desktopInit() {
   IS_DESKTOP = true;
