@@ -629,42 +629,7 @@ var _MAP_CITIES = [
   { name: 'Honolulu', lat: 21.31, lon: -157.86 }
 ];
 
-// ── Detailed coastline data (equirectangular, [lon, lat]) ──
-var _MAP_COASTS = [
-  // North America (detailed)
-  [[-168,66],[-162,64],[-155,60],[-150,61],[-147,61],[-140,60],[-137,59],[-135,57],[-132,55],[-130,52],[-127,49],[-124,46],[-123,42],[-120,36],[-117,33],[-115,31],[-112,30],[-108,28],[-105,26],[-100,26],[-97,26],[-95,29],[-90,29],[-88,30],[-85,30],[-83,28],[-81,25],[-80,26],[-82,28],[-82,30],[-80,32],[-77,35],[-75,38],[-74,40],[-72,41],[-70,42],[-68,44],[-67,45],[-65,44],[-63,46],[-60,47],[-58,48],[-55,47],[-53,48],[-56,50],[-58,52],[-60,54],[-58,56],[-62,58],[-65,60],[-68,62],[-72,64],[-78,68],[-85,70],[-95,72],[-105,73],[-115,72],[-125,72],[-135,70],[-145,68],[-155,70],[-160,68]],
-  // Central America + Caribbean connector
-  [[-100,20],[-97,18],[-96,16],[-92,15],[-88,16],[-85,14],[-83,12],[-82,10],[-80,8],[-78,7],[-77,8],[-79,10],[-82,11],[-84,12],[-86,14],[-88,15],[-90,16],[-92,16],[-95,17],[-98,19]],
-  // South America (detailed)
-  [[-80,10],[-77,7],[-73,4],[-70,2],[-68,-1],[-70,-4],[-66,-4],[-62,-3],[-55,2],[-52,3],[-50,0],[-48,-2],[-45,-3],[-42,-3],[-40,-8],[-38,-12],[-36,-10],[-35,-8],[-37,-13],[-39,-17],[-40,-20],[-42,-23],[-44,-23],[-47,-25],[-48,-27],[-49,-29],[-50,-30],[-52,-33],[-55,-34],[-57,-36],[-60,-37],[-63,-39],[-65,-41],[-66,-46],[-68,-48],[-70,-50],[-72,-52],[-74,-50],[-75,-46],[-73,-42],[-72,-38],[-71,-34],[-71,-30],[-70,-27],[-70,-22],[-70,-18],[-75,-15],[-77,-12],[-80,-6],[-80,-2],[-80,2],[-78,4],[-77,6]],
-  // Europe (detailed)
-  [[-10,36],[-8,37],[-6,37],[-5,36],[-3,36],[0,38],[1,40],[3,43],[5,44],[3,46],[1,46],[-2,48],[-5,48],[-6,50],[-5,51],[-3,52],[0,51],[2,51],[4,52],[5,53],[8,54],[10,54],[12,55],[10,57],[8,57],[10,58],[12,56],[14,55],[18,55],[20,54],[22,54],[24,55],[22,58],[20,58],[18,60],[15,60],[12,58],[10,60],[12,62],[16,64],[18,66],[20,68],[22,70],[26,70],[28,68],[30,68],[28,66],[26,64],[24,62],[26,58],[28,56],[24,56],[20,56],[18,55]],
-  // UK + Ireland
-  [[-10,52],[-7,52],[-5,52],[-5,54],[-3,55],[-5,57],[-6,58],[-5,58],[-3,57],[-2,56],[0,53],[1,52],[0,51],[-2,50],[-5,50],[-6,52],[-8,52],[-10,52]],
-  // Africa (detailed)
-  [[-17,15],[-16,12],[-15,11],[-12,8],[-8,5],[-5,5],[0,5],[2,6],[5,4],[8,4],[10,4],[10,2],[9,1],[10,-1],[12,-3],[12,-6],[14,-8],[16,-12],[18,-18],[20,-22],[22,-26],[25,-30],[27,-33],[29,-34],[32,-33],[35,-30],[37,-25],[40,-20],[42,-15],[44,-12],[48,-10],[50,-5],[50,5],[48,8],[46,10],[44,12],[42,14],[38,15],[35,20],[32,25],[32,30],[30,32],[25,32],[20,34],[15,37],[10,37],[5,36],[0,35],[-5,34],[-8,33],[-12,32],[-13,28],[-16,22],[-17,18]],
-  // Madagascar
-  [[44,-12],[48,-14],[49,-18],[48,-22],[47,-24],[44,-25],[43,-22],[44,-17],[44,-14]],
-  // Asia (detailed - split into segments)
-  // Middle East + South Asia
-  [[32,32],[34,30],[36,28],[38,25],[40,22],[44,20],[48,25],[52,24],[56,25],[58,24],[60,25],[62,25],[64,26],[66,25],[68,24],[70,22],[72,18],[74,15],[76,10],[78,8],[80,8],[82,10],[85,12],[88,15],[90,18],[92,16],[95,16],[98,15],[100,14],[102,12],[104,10],[104,2],[105,5],[108,12],[110,15],[113,15],[115,16],[118,20],[120,22],[122,25]],
-  // East Asia
-  [[122,25],[125,30],[127,33],[128,36],[130,38],[130,40],[132,42],[135,44],[138,46],[140,50],[142,52],[145,55],[148,58],[153,60],[158,62],[162,64],[170,66],[175,68],[180,68]],
-  // Japan
-  [[130,31],[131,33],[133,34],[135,35],[137,36],[140,38],[140,40],[142,42],[143,44],[145,45],[145,43],[144,40],[141,38],[140,36],[137,34],[135,33],[132,32]],
-  // Southeast Asian islands
-  [[95,6],[98,3],[100,1],[103,1],[104,-2],[106,-6],[108,-7],[110,-8],[112,-8],[114,-7],[116,-4],[118,-3],[119,-5],[120,-8],[118,-9],[116,-9],[114,-8],[112,-7],[110,-7],[108,-6],[106,-6],[105,-3],[103,1],[100,2],[98,4]],
-  // Philippines
-  [[118,10],[119,12],[120,14],[121,16],[122,18],[122,16],[124,14],[125,12],[126,10],[124,8],[122,8],[120,10]],
-  // Australia (detailed)
-  [[115,-14],[117,-13],[120,-14],[123,-14],[127,-13],[130,-12],[133,-12],[136,-12],[138,-14],[140,-14],[142,-12],[145,-15],[148,-18],[150,-20],[152,-24],[153,-27],[152,-30],[150,-34],[148,-37],[146,-39],[144,-38],[140,-36],[138,-35],[136,-34],[134,-33],[132,-32],[130,-31],[128,-30],[126,-28],[122,-24],[118,-20],[116,-18],[115,-16]],
-  // New Zealand
-  [[170,-35],[172,-37],[174,-40],[172,-42],[170,-44],[168,-45],[167,-44],[168,-42],[170,-40],[172,-38],[174,-36]],
-  // Greenland
-  [[-55,60],[-48,62],[-42,64],[-38,66],[-30,68],[-22,72],[-18,76],[-20,78],[-28,80],[-35,82],[-45,82],[-52,80],[-55,78],[-58,76],[-60,74],[-58,72],[-55,68],[-52,64],[-52,62]],
-  // Iceland
-  [[-24,64],[-22,64],[-18,65],[-15,66],[-18,66],[-22,66],[-24,65]]
-];
+// Coastline data removed — using Natural Earth SVG map (/static/world-map.svg)
 
 function _promptSpaceLocation() {
   var overlay = document.createElement('div');
@@ -675,9 +640,17 @@ function _promptSpaceLocation() {
     ? '<button id="space-map-gps" style="padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:6px;font-size:12px;cursor:pointer;opacity:0.8">\uD83D\uDCCD Use GPS</button>'
     : '';
 
+  // Map uses Natural Earth 110m SVG (public domain) as background
   overlay.innerHTML = '<div style="color:var(--text);font-size:16px;font-weight:600;margin-bottom:4px">Set Your Location</div>' +
-    '<div style="color:var(--text3);font-size:12px;margin-bottom:12px">Click a city, tap the map, or enter coordinates</div>' +
-    '<canvas id="space-map-canvas" style="border-radius:10px;cursor:crosshair;max-width:560px;width:100%;border:1px solid var(--border)"></canvas>' +
+    '<div style="color:var(--text3);font-size:12px;margin-bottom:12px">Tap a city or click the map</div>' +
+    '<div id="space-map-wrap" style="position:relative;max-width:560px;width:100%;border-radius:10px;overflow:hidden;border:1px solid var(--border);cursor:crosshair">' +
+      '<img src="/static/world-map.svg?v=1" style="display:block;width:100%;height:auto" draggable="false" alt="World map">' +
+      '<div id="space-map-marker" style="display:none;position:absolute;pointer-events:none">' +
+        '<div style="width:20px;height:20px;border:2px solid rgba(210,170,100,0.7);border-radius:50%;position:absolute;left:-10px;top:-10px"></div>' +
+        '<div style="width:6px;height:6px;background:#d4aa64;border-radius:50%;position:absolute;left:-3px;top:-3px"></div>' +
+      '</div>' +
+      '<div id="space-map-cities" style="position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none"></div>' +
+    '</div>' +
     '<div id="space-map-hint" style="color:var(--text2);font-size:12px;margin-top:8px;min-height:18px"></div>' +
     '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center">' +
       '<input id="space-map-lat" type="text" placeholder="Latitude" style="width:90px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;text-align:center">' +
@@ -688,132 +661,67 @@ function _promptSpaceLocation() {
     '</div>';
   document.body.appendChild(overlay);
 
-  var canvas = document.getElementById('space-map-canvas');
-  var dpr = window.devicePixelRatio || 1;
-  var w = Math.min(560, window.innerWidth - 32);
-  var h = Math.round(w * 0.5);
-  canvas.width = w * dpr;
-  canvas.height = h * dpr;
-  canvas.style.width = w + 'px';
-  canvas.style.height = h + 'px';
-  var ctx = canvas.getContext('2d');
+  var wrap = document.getElementById('space-map-wrap');
+  var marker = document.getElementById('space-map-marker');
+  var citiesEl = document.getElementById('space-map-cities');
 
-  function lonToX(lon) { return (lon + 180) / 360 * w; }
-  function latToY(lat) { return (90 - lat) / 180 * h; }
-
-  function drawMap(selLat, selLon) {
-    ctx.save();
-    ctx.scale(dpr, dpr);
-
-    // Deep ocean gradient
-    var oceanGrad = ctx.createLinearGradient(0, 0, 0, h);
-    oceanGrad.addColorStop(0, '#06101e');
-    oceanGrad.addColorStop(0.3, '#0a1828');
-    oceanGrad.addColorStop(0.5, '#0c1e30');
-    oceanGrad.addColorStop(0.7, '#0a1828');
-    oceanGrad.addColorStop(1, '#06101e');
-    ctx.fillStyle = oceanGrad;
-    ctx.fillRect(0, 0, w, h);
-
-    // Coastlines — filled continents
-    for (var ci = 0; ci < _MAP_COASTS.length; ci++) {
-      var coast = _MAP_COASTS[ci];
-      ctx.beginPath();
-      for (var pi = 0; pi < coast.length; pi++) {
-        var px = lonToX(coast[pi][0]), py = latToY(coast[pi][1]);
-        if (pi === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-      // Land fill with subtle gradient
-      ctx.fillStyle = '#14261a';
-      ctx.fill();
-      // Coastline stroke
-      ctx.strokeStyle = 'rgba(40,90,60,0.5)';
-      ctx.lineWidth = 0.5;
-      ctx.stroke();
-    }
-
-    // Grid lines — subtle
-    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-    ctx.lineWidth = 0.5;
-    for (var gl = -150; gl <= 180; gl += 30) {
-      ctx.beginPath(); ctx.moveTo(lonToX(gl), 0); ctx.lineTo(lonToX(gl), h); ctx.stroke();
-    }
-    for (var gl = -60; gl <= 60; gl += 30) {
-      ctx.beginPath(); ctx.moveTo(0, latToY(gl)); ctx.lineTo(w, latToY(gl)); ctx.stroke();
-    }
-    // Equator — slightly brighter
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
-
-    // City dots
-    var fontSize = w < 400 ? 8 : 9;
-    ctx.font = fontSize + 'px -apple-system, sans-serif';
+  // Draw city dots on the map
+  function drawCities() {
+    var rect = wrap.getBoundingClientRect();
+    var w = rect.width, h = rect.height;
+    var html = '';
     for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
       var c = _MAP_CITIES[ci];
-      var cx = lonToX(c.lon), cy = latToY(c.lat);
-      // Glow
-      ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(210,170,100,0.12)';
-      ctx.fill();
-      // Dot
-      ctx.beginPath(); ctx.arc(cx, cy, 1.5, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(210,180,120,0.6)';
-      ctx.fill();
-      // Label — offset to avoid overlap, only on wider maps
-      if (w >= 350) {
-        ctx.fillStyle = 'rgba(180,170,150,0.4)';
-        ctx.fillText(c.name, cx + 4, cy + 3);
-      }
+      var x = ((c.lon + 180) / 360 * 100).toFixed(2);
+      var y = ((90 - c.lat) / 180 * 100).toFixed(2);
+      html += '<div style="position:absolute;left:' + x + '%;top:' + y + '%;pointer-events:auto;cursor:pointer;padding:6px;margin:-6px" data-city="' + ci + '">' +
+        '<div style="width:4px;height:4px;background:rgba(210,180,120,0.6);border-radius:50%;box-shadow:0 0 6px rgba(210,170,100,0.2)"></div></div>';
     }
+    citiesEl.innerHTML = html;
+  }
+  drawCities();
 
-    // Selected location marker
-    if (selLat !== null && selLon !== null) {
-      var mx = lonToX(selLon), my = latToY(selLat);
-      // Pulse ring
-      ctx.beginPath(); ctx.arc(mx, my, 10, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(210,170,100,0.25)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      // Crosshair
-      ctx.strokeStyle = 'rgba(210,170,100,0.8)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(mx - 7, my); ctx.lineTo(mx + 7, my); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(mx, my - 7); ctx.lineTo(mx, my + 7); ctx.stroke();
-      // Center dot
-      ctx.beginPath(); ctx.arc(mx, my, 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#d4aa64';
-      ctx.fill();
-    }
-
-    ctx.restore();
+  function showMarker(lat, lon) {
+    var x = (lon + 180) / 360 * 100;
+    var y = (90 - lat) / 180 * 100;
+    marker.style.display = 'block';
+    marker.style.left = x + '%';
+    marker.style.top = y + '%';
   }
 
-  drawMap(null, null);
-
-  // Click map to set location — snap to nearby city if close
-  canvas.onclick = function(e) {
-    var rect = canvas.getBoundingClientRect();
-    var clickX = e.clientX - rect.left, clickY = e.clientY - rect.top;
-    var lon = (clickX / rect.width) * 360 - 180;
-    var lat = 90 - (clickY / rect.height) * 180;
-    // Snap to city if within ~15px
-    var snapDist = 15 / rect.width * 360;
-    for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
-      var c = _MAP_CITIES[ci];
-      var dlat = lat - c.lat, dlon = lon - c.lon;
-      if (Math.sqrt(dlat * dlat + dlon * dlon) < snapDist) {
-        lat = c.lat; lon = c.lon;
-        document.getElementById('space-map-hint').textContent = c.name + ' (' + c.lat.toFixed(2) + '\u00b0, ' + c.lon.toFixed(2) + '\u00b0)';
-        break;
+  // Click map or city dot
+  wrap.onclick = function(e) {
+    var cityIdx = e.target.closest('[data-city]');
+    var rect = wrap.getBoundingClientRect();
+    var lat, lon;
+    if (cityIdx) {
+      var c = _MAP_CITIES[parseInt(cityIdx.dataset.city)];
+      lat = c.lat; lon = c.lon;
+      document.getElementById('space-map-hint').textContent = c.name + ' (' + c.lat.toFixed(2) + '\u00b0, ' + c.lon.toFixed(2) + '\u00b0)';
+    } else {
+      var clickX = e.clientX - rect.left, clickY = e.clientY - rect.top;
+      lon = (clickX / rect.width) * 360 - 180;
+      lat = 90 - (clickY / rect.height) * 180;
+      // Snap to nearby city
+      var snapDist = 15 / rect.width * 360;
+      var snapped = false;
+      for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
+        var c = _MAP_CITIES[ci];
+        var dlat = lat - c.lat, dlon = lon - c.lon;
+        if (Math.sqrt(dlat * dlat + dlon * dlon) < snapDist) {
+          lat = c.lat; lon = c.lon;
+          document.getElementById('space-map-hint').textContent = c.name + ' (' + c.lat.toFixed(2) + '\u00b0, ' + c.lon.toFixed(2) + '\u00b0)';
+          snapped = true;
+          break;
+        }
       }
-      if (ci === _MAP_CITIES.length - 1) {
+      if (!snapped) {
         document.getElementById('space-map-hint').textContent = lat.toFixed(2) + '\u00b0, ' + lon.toFixed(2) + '\u00b0';
       }
     }
     document.getElementById('space-map-lat').value = lat.toFixed(2);
     document.getElementById('space-map-lon').value = lon.toFixed(2);
-    drawMap(lat, lon);
+    showMarker(lat, lon);
   };
 
   document.getElementById('space-map-ok').onclick = function() {
@@ -821,7 +729,6 @@ function _promptSpaceLocation() {
     var lon = parseFloat(document.getElementById('space-map-lon').value);
     if (!isNaN(lat) && !isNaN(lon)) {
       var locData = { lat: lat, lon: lon };
-      // Save city name if one was snapped to
       var hint = document.getElementById('space-map-hint').textContent;
       for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
         if (hint.indexOf(_MAP_CITIES[ci].name) === 0) { locData.name = _MAP_CITIES[ci].name; break; }
@@ -843,7 +750,7 @@ function _promptSpaceLocation() {
         document.getElementById('space-map-lon').value = lon.toFixed(2);
         document.getElementById('space-map-hint').textContent = 'GPS: ' + lat.toFixed(2) + '\u00b0, ' + lon.toFixed(2) + '\u00b0';
         gpsEl.textContent = '\uD83D\uDCCD GPS';
-        drawMap(lat, lon);
+        showMarker(lat, lon);
       }, function() {
         gpsEl.textContent = 'GPS unavailable';
         setTimeout(function() { gpsEl.textContent = '\uD83D\uDCCD Use GPS'; }, 2000);
