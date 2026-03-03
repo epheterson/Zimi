@@ -2116,24 +2116,7 @@ function _renderWorldCalendars(now) {
   if (_calSelectedJDN === 0) _calSelectedJDN = todayJDN;
   if (_calYear === 0) { _calYear = y; _calMonth = m; }
 
-  // Static calendar rows (Chinese, Buddhist, Unix — not browsable)
-  var chinese = _chineseZodiac(y);
-  var moonAge = Math.floor((_moonPhase(now).phase * 29.53) + 1);
-  if (moonAge > 30) moonAge = 30;
-  var buddhist = y + 543;
-  var buddhistMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  var unix = Math.floor(now.getTime() / 1000);
-
-  var html = '<div class="space-cal-list">';
-  html += _calRow('Chinese', chinese.animal + ' \u00b7 ' + chinese.element + ' \u00b7 Day ' + moonAge, chinese.year + ' (' + chinese.cycle + ')');
-  html += _calRow('Buddhist', buddhistMonths[m - 1] + ' ' + d, buddhist + ' BE');
-  html += _calRow('Unix', '', unix.toLocaleString());
-  html += '</div>';
-
-  // Interactive calendar browser
-  html += '<div id="space-cal-browser" style="margin-top:20px"></div>';
-
-  el.innerHTML = html;
+  el.innerHTML = '<div id="space-cal-browser"></div>';
   _renderCalBrowser();
 }
 
@@ -2252,6 +2235,7 @@ function _calToday() {
 
 function _renderCalCrossRef(jdn) {
   var html = '<div class="space-cal-crossref">';
+  // Browsable calendars
   for (var i = 0; i < _CAL_SYSTEMS.length; i++) {
     var sys = _CAL_SYSTEMS[i];
     var cal = _jdnToCalendar(sys, jdn);
@@ -2265,6 +2249,19 @@ function _renderCalCrossRef(jdn) {
       '<span class="space-cal-crossref-date">' + monthName + ' ' + cal.day + ', ' + yearStr + '</span>' +
       '</div>';
   }
+  // Non-browsable calendars — derived from Gregorian date
+  var greg = _jdnToGregorian(jdn);
+  var chinese = _chineseZodiac(greg.year);
+  var moonAge = Math.floor((_moonPhase(new Date(greg.year, greg.month - 1, greg.day)).phase * 29.53) + 1);
+  if (moonAge > 30) moonAge = 30;
+  html += '<div class="space-cal-crossref-row">' +
+    '<span class="space-cal-crossref-label">Chinese</span>' +
+    '<span class="space-cal-crossref-date">' + chinese.animal + ' \u00b7 ' + chinese.element + ' \u00b7 Day ' + moonAge + ', ' + chinese.year + '</span>' +
+    '</div>';
+  html += '<div class="space-cal-crossref-row">' +
+    '<span class="space-cal-crossref-label">Buddhist</span>' +
+    '<span class="space-cal-crossref-date">' + _GREGORIAN_MONTHS[greg.month - 1] + ' ' + greg.day + ', ' + (greg.year + 543) + ' BE</span>' +
+    '</div>';
   html += '</div>';
   return html;
 }

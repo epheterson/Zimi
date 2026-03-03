@@ -4283,10 +4283,12 @@ class ZimHandler(BaseHTTPRequestHandler):
             return None, None
         return start, end
 
-    def _send(self, code, body_bytes, content_type, vary=None):
+    def _send(self, code, body_bytes, content_type, vary=None, cache=None):
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Access-Control-Allow-Origin", "*")
+        if cache:
+            self.send_header("Cache-Control", cache)
         if vary:
             self.send_header("Vary", vary)
         if self._accepts_gzip() and len(body_bytes) > 256:
@@ -4416,10 +4418,11 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.wfile.write(ZimHandler._apple_touch_icon_data)
 
     def _serve_index(self, vary=None):
-        return self._html(200, SEARCH_UI_HTML, vary=vary)
+        # Short TTL: browser revalidates every 5 min, picks up new ?v=N on static assets
+        return self._html(200, SEARCH_UI_HTML, vary=vary, cache="public, max-age=300")
 
-    def _html(self, code, content, vary=None):
-        self._send(code, content.encode(), "text/html; charset=utf-8", vary=vary)
+    def _html(self, code, content, vary=None, cache=None):
+        self._send(code, content.encode(), "text/html; charset=utf-8", vary=vary, cache=cache)
 
     def _json(self, code, data):
         self._send(code, json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode(), "application/json")
