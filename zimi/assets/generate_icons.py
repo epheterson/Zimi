@@ -192,53 +192,34 @@ def create_icon(size=1024):
 
 
 def create_favicon(size=32):
-    """Create favicon — gradient Z on solid dark background, no padding or rounded corners.
+    """Create favicon — same macOS icon look (rounded rect + gradient Z) for browser tabs.
 
-    Browser tab favicons are tiny (16-32px). Font metrics add invisible padding
-    around glyphs (ascender/descender space), so we render the Z at 4x resolution,
-    crop to the glyph bounding box, then scale it to fill the canvas with ~2px margin.
+    Renders the full 1024px icon, crops to the rounded-rect content area, scales down
+    to the favicon size. Semi-transparent edge pixels are pre-multiplied toward dark
+    so Safari doesn't render white fringe around transparent corners.
     """
-    # Render at 4x for crisp crop, then downscale
-    render_size = size * 4
-    font_size = int(render_size * 0.95)
-    mask = None
-    if platform.system() == "Darwin":
-        mask = _render_z_mask_coretext(render_size, font_size)
-    if mask is None:
-        mask = _render_z_mask_pillow(render_size, font_size)
+    # Render full icon at high res, crop to content (remove macOS padding)
+    icon = create_icon(1024)
+    padding = int(1024 * 0.1)  # matches create_icon padding
+    icon = icon.crop((padding, padding, 1024 - padding, 1024 - padding))
+    # Scale to favicon size
+    icon = icon.resize((size, size), Image.LANCZOS)
 
-    # Crop to glyph bounding box (remove font metric padding)
-    bbox = mask.getbbox()
-    if bbox:
-        mask = mask.crop(bbox)
-
-    # Scale glyph to fill canvas with small margin
-    margin = max(1, size // 16)  # ~2px at 32x32
-    target = size - 2 * margin
-    gw, gh = mask.size
-    scale = min(target / gw, target / gh)
-    new_w, new_h = int(gw * scale), int(gh * scale)
-    mask = mask.resize((new_w, new_h), Image.LANCZOS)
-
-    # Edge-to-edge rounded square background
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    corner_radius = max(2, size // 5)  # ~6px at 32x32
-    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=corner_radius, fill=BG_DARK)
-    gradient = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    grad_pixels = gradient.load()
-    ox = (size - new_w) // 2
-    oy = (size - new_h) // 2
-    for y in range(new_h):
-        for x in range(new_w):
-            alpha = mask.getpixel((x, y))
-            if alpha > 0:
-                px, py = ox + x, oy + y
-                color = _gradient_at(px, py, size, GRADIENT_COLORS)
-                grad_pixels[px, py] = (*color, alpha)
-
-    img = Image.alpha_composite(img, gradient)
-    return img
+    # Pre-multiply semi-transparent edges toward dark (prevents Safari white fringe)
+    # Fully transparent pixels stay transparent (rounded corners visible),
+    # but anti-aliased edge pixels blend to dark instead of white
+    pixels = icon.load()
+    for y in range(size):
+        for x in range(size):
+            r, g, b, a = pixels[x, y]
+            if 0 < a < 255:
+                # Blend RGB toward dark background proportional to transparency
+                t = a / 255.0
+                r = int(r * t + BG_DARK[0] * (1 - t))
+                g = int(g * t + BG_DARK[1] * (1 - t))
+                b = int(b * t + BG_DARK[2] * (1 - t))
+                pixels[x, y] = (r, g, b, a)
+    return icon
 
 
 def save_icns_with_iconutil(icon, icns_path):
