@@ -192,34 +192,24 @@ def create_icon(size=1024):
 
 
 def create_favicon(size=32):
-    """Create favicon — same macOS icon look (rounded rect + gradient Z) for browser tabs.
+    """Create favicon — same macOS icon design scaled down for browser tabs.
 
-    Renders the full 1024px icon, crops to the rounded-rect content area, scales down
-    to the favicon size. Semi-transparent edge pixels are pre-multiplied toward dark
-    so Safari doesn't render white fringe around transparent corners.
+    Renders the full 1024px icon, crops to the rounded-rect content area, scales down,
+    then composites on a slightly lighter background. Safari has an undocumented contrast
+    detector that adds a white background behind favicons it considers too dark against
+    the tab bar (~#282828 in dark mode). Using #1a1a1e instead of #0a0a0b gives enough
+    contrast to avoid triggering it while still looking dark.
     """
+    FAVICON_BG = BG_DARK  # same as icon background
     # Render full icon at high res, crop to content (remove macOS padding)
     icon = create_icon(1024)
     padding = int(1024 * 0.1)  # matches create_icon padding
     icon = icon.crop((padding, padding, 1024 - padding, 1024 - padding))
     # Scale to favicon size
     icon = icon.resize((size, size), Image.LANCZOS)
-
-    # Pre-multiply semi-transparent edges toward dark (prevents Safari white fringe)
-    # Fully transparent pixels stay transparent (rounded corners visible),
-    # but anti-aliased edge pixels blend to dark instead of white
-    pixels = icon.load()
-    for y in range(size):
-        for x in range(size):
-            r, g, b, a = pixels[x, y]
-            if 0 < a < 255:
-                # Blend RGB toward dark background proportional to transparency
-                t = a / 255.0
-                r = int(r * t + BG_DARK[0] * (1 - t))
-                g = int(g * t + BG_DARK[1] * (1 - t))
-                b = int(b * t + BG_DARK[2] * (1 - t))
-                pixels[x, y] = (r, g, b, a)
-    return icon
+    # Composite on solid background — no transparency
+    bg = Image.new("RGBA", (size, size), FAVICON_BG + (255,))
+    return Image.alpha_composite(bg, icon)
 
 
 def save_icns_with_iconutil(icon, icns_path):
