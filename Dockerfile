@@ -6,11 +6,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 WORKDIR /app
 COPY zimi/ ./zimi/
 
-RUN useradd -m -u 1000 zimi && chown -R zimi:zimi /app
+RUN useradd -m -u 1000 zimi && mkdir -p /data && chown -R zimi:zimi /app /data
 USER zimi
 
 ENV ZIM_DIR=/zims
-ENV ZIMI_DATA_DIR=/zims/.zimi
+ENV ZIMI_DATA_DIR=/data
 ENV ZIMI_MANAGE=1
 EXPOSE 8899
 

@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zimi</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon.png?v=5">
+<link rel="shortcut icon" type="image/png" href="/favicon.png?v=5">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Zimi">
-<link rel="shortcut icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAADo0lEQVR4nM1XS4scVRT+zrm3qh+ZyQMaRxMQdBgNRM1iCAhqjIuIe/GBuIpxEcV/4MJNAmYniAuZ7LJL1IW4EomoqEEHt0oYxTct4xhH01Ndj3vk3Krq1Ey6x+r0JJMD1Y9Tt873ne/ec+4tYJuNNrlnivsOgEwQn4vns7oEqAKcO2gznqNNZB3vksg6Jw0B9wNmZmaORFH8lHPZfoACovFUENFYkjCbb5vN8Fy32/14I8ZGAj7z+fl5s7T0w1tpmhwXcRpoIlPxiBjWBguzs3e9tLi4mFWVoA0Sud279ywkSfKCiJQDr0//q+ZjEJEJguDM5ct/HS+xqgR0wWWdzh2PRNG/nzjn0soi3Arzi5CZbbM5dXh5+fdPS0wuBnigJFl73jlXik7D5fyfazgB79bYilH12eKPl0MEc5UquMbizI8ZKYsyZwIsjyRBBcYA05bP5qUmKstIu32KYIahF5ppCCW5EvkSGEXTKJYUNWo3Ayxp66RYA7z3TIC5PYR+QuByHUv+O3NA0xK++s3hiXciBFyve1mMYZ0mYWdb0yyoFT0yjgFxhEYItA2QCRBiiwhIIa1zwLPvJmjZXBGSfL6vxILXDzfw0D5CEhNOXkwgTkBW+9AWEChNY335ixsENZppX/D0fRYP7mVYQzh1McH7l1JMt8irgK2egqmwAGegFwP372MsPN5AwzIufJ/htS9i7GiSV6iu8TgENLCu3SQDQgbePtrAdIPQ/Vvw4kfRYLrG6d6MMc1nHwlOPxri0F4DlzJeudDH0opDO8hJ4kYRsAysrgmeO2Bx4qCiMd78Jsa57xLsbBHSwQZ+AwgYyuf93g7jjccaIGZ8/avDq5/3Md2kwZihjWrSRUiAz07lP3O0gU7b4OcVwZMf9PDPmgOCoicUg1sB1d7FbC0CBPQTwWlf79bX+4c/prhnl8Gh2yySLAfUz9gJPusmSDLxz01MgAiIUuDOXYyXHwiBlMEZ4dj+Jo4daANOs+f8mwx6PcHc+S6WM0FQoxvaOgp4IgB+WgV2aAPyLVjgMj0xadN3vhVrsD8jGasSbBk/353ompOrekMD/NETPHz+yrq5rR6Xqke3XioY3YkpKzZCv/3awuuPSES4BODIMOXUsRrXS21EJeR7Z44xwOTKTQRB6yyzbjFXfVXTrOpcI8ChsRWj6qPtPpTyhoE8O3v3iSAIF5jZUL6uzCSXxtBYGlNjV15Qbr0Xk1vi1QwVuykvp9tu/wHSK47GCFrSNAAAAABJRU5ErkJggg==">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -20,11 +20,12 @@
     --accent: #f5f5f7; --amber: #f59e0b; --amber2: #d97706;
     --amber-glow: rgba(245, 158, 11, 0.08); --amber-border: rgba(245, 158, 11, 0.25);
     --radius: 10px;
+    color-scheme: dark;
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
   }
 
-  html { height: 100%; overflow: hidden; }
-  body { background: var(--bg); color: var(--text); height: 100%; padding-top: 56px; overflow-y: auto; overscroll-behavior-y: none; }
+  html { height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
+  body { background: var(--bg); color: var(--text); min-height: 100%; padding-top: 56px; overflow: visible; }
 
   /* ── Topbar ── */
   .topbar {
@@ -149,13 +150,14 @@
   .container { max-width: 820px; margin: 0 auto; padding: 28px 16px; }
 
   /* ── Stats bar ── */
-  .stats-bar { text-align: center; padding: 8px 0 20px; font-size: 14px; color: var(--text2); }
+  .stats-bar { text-align: center; padding: 8px 0 12px; font-size: 14px; color: var(--text2); }
   .stats-bar .num { color: var(--amber); font-weight: 600; }
 
   /* ── Pills (categories + search source filters) ── */
-  .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 20px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 20px; max-height: 68px; overflow-y: auto; }
+  .pills.pills-scroll { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; max-height: none; justify-content: flex-start; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
   .pill {
-    padding: 6px 14px; font-size: 12px; font-weight: 500;
+    padding: 6px 14px; font-size: 12px; font-weight: 500; white-space: nowrap;
     background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
     color: var(--text2); cursor: pointer; transition: all 0.2s;
   }
@@ -234,7 +236,7 @@
 
   .results { display: flex; flex-direction: column; gap: 3px; }
   .result {
-    padding: 14px 16px; background: var(--surface); border-radius: var(--radius);
+    display: flex; gap: 12px; padding: 14px 16px; background: var(--surface); border-radius: var(--radius);
     cursor: pointer; border: 1px solid transparent;
     transition: all 0.2s; opacity: 0; animation: fadeUp 0.3s ease forwards;
   }
@@ -243,6 +245,14 @@
     box-shadow: 0 2px 12px var(--amber-glow);
     transform: translateX(4px); outline: none;
   }
+  .result-thumb {
+    flex-shrink: 0; width: 72px; height: 72px; border-radius: 8px; overflow: hidden;
+    background: var(--surface2); display: none; align-self: center; order: 1;
+  }
+  .result-thumb.loaded { display: block; }
+  .result-body { order: 0; }
+  .result-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .result-body { flex: 1; min-width: 0; }
   .result-source {
     display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
   }
@@ -291,6 +301,21 @@
   .reader-view.open { display: flex; animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   #reader-frame { flex: 1; border: none; width: 100%; background: #fff; }
+
+  /* ── Context Menu ── */
+  .zimi-ctx {
+    position: fixed; z-index: 10000; min-width: 180px;
+    background: var(--card-bg, #1a1a1a); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px 0; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    font-size: 13px; color: var(--text); display: none;
+  }
+  .zimi-ctx.open { display: block; }
+  .zimi-ctx-item {
+    padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  }
+  .zimi-ctx-item:hover { background: var(--hover); }
+  .zimi-ctx-item .ctx-key { margin-left: auto; font-size: 11px; color: var(--text2); }
+  .zimi-ctx-sep { height: 1px; background: var(--border); margin: 4px 0; }
   .reader-loading {
     position: absolute; inset: 0; display: flex; align-items: center;
     justify-content: center; flex-direction: column; gap: 12px;
@@ -307,9 +332,9 @@
 
   /* ── Footer ── */
   .footer {
-    text-align: center; padding: 32px 16px 24px;
+    text-align: center; padding: 20px 16px 16px;
     font-size: 12px; color: var(--text2); opacity: 0.5;
-    border-top: 1px solid var(--border); margin-top: 40px;
+    border-top: 1px solid var(--border); margin-top: 24px;
   }
   .footer .footer-brand {
     background: linear-gradient(135deg, #f59e0b, #f97316);
@@ -374,6 +399,44 @@
   }
   .manage-btn-action:hover { opacity: 0.85; }
   .manage-btn-action:disabled { opacity: 0.4; cursor: default; }
+  /* macOS-style settings panel */
+  .manage-settings {
+    display: flex; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 16px; min-height: 180px; overflow: hidden;
+  }
+  .ms-nav {
+    width: 140px; flex-shrink: 0; border-right: 1px solid var(--border);
+    padding: 8px 0; display: flex; flex-direction: column;
+  }
+  .ms-nav-item {
+    padding: 8px 16px; font-size: 13px; color: var(--text2); cursor: pointer;
+    border: none; background: none; text-align: left; transition: all 0.15s;
+    font-family: inherit;
+  }
+  .ms-nav-item:hover { color: var(--text); background: var(--amber-glow); }
+  .ms-nav-item.active { color: var(--amber); background: var(--amber-glow); }
+  .ms-pane { flex: 1; padding: 16px 20px; }
+  .ms-pane .mc-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: var(--text2); padding: 4px 0;
+  }
+  .ms-pane .mc-label { color: var(--text2); }
+  .ms-pane .mc-value { color: var(--text); font-weight: 500; }
+  .ms-pane .ms-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .ms-pane .ms-check {
+    display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer;
+    font-size: 13px; color: var(--text);
+  }
+  .ms-pane .ms-check input { accent-color: var(--amber); }
+  .ms-pane .ms-field { margin-bottom: 10px; }
+  .ms-pane .ms-field label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .ms-pane .ms-field input {
+    width: 100%; padding: 7px 10px; border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 13px; box-sizing: border-box;
+  }
+  .ms-pane .ms-field input:focus { outline: none; border-color: var(--amber-border); }
+  .ms-pane .ms-field input[readonly] { opacity: 0.6; }
+  .ms-pane .ms-hint { font-size: 12px; color: var(--text2); opacity: 0.7; margin-top: 8px; }
   .manage-search { margin-bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
   .manage-search input {
     flex: 1; padding: 9px 14px; background: var(--surface); border: 1px solid var(--border);
@@ -431,7 +494,14 @@
     border-radius: var(--radius); transition: all 0.2s;
   }
   .ci-add-btn:hover { border-color: var(--amber-border); background: var(--amber-glow); }
-  .ci-variants { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .ci-variants { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; align-items: center; }
+  .ci-flavor-row { flex-wrap: nowrap; }
+  .ci-flavor-select {
+    padding: 4px 8px; font-size: 11px; background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius); outline: none; cursor: pointer;
+    max-width: 160px;
+  }
+  .ci-flavor-select:focus { border-color: var(--amber-border); }
   .ci-variant-btn {
     padding: 3px 10px; font-size: 11px; font-weight: 500; cursor: pointer;
     background: var(--surface2); color: var(--text2); border: 1px solid var(--border);
@@ -484,6 +554,7 @@
     font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
   .dl-cancel-btn:hover { border-color: #f44; color: #f44; }
   .dl-retry-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .dl-mirror { font-size: 11px; color: var(--text2); opacity: 0.6; flex: 1; }
   .dl-meta { font-size: 11px; color: var(--text2); opacity: 0.6; }
   .dl-clear-btn {
     float: right; background: none; border: 1px solid var(--border); color: var(--text2);
@@ -514,9 +585,41 @@
 
   /* ── Browse category gallery ── */
   .browse-gallery { }
+
+  /* ── Featured Living Carousel ── */
+  .featured-section { margin-bottom: 20px; }
+  .featured-scroll { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0; }
+  .featured-card {
+    flex: 1 1 calc(50% - 4px); min-width: 200px; max-width: 100%;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .featured-card:hover { border-color: var(--amber-border); background: var(--surface2); transform: translateY(-1px); box-shadow: 0 4px 24px var(--amber-glow); }
+  .fc-promo { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+  .fc-promo-icon { font-size: 20px; flex-shrink: 0; }
+  .fc-promo-label { font-size: 13px; font-weight: 600; color: var(--accent); }
+  .fc-promo-tagline { font-size: 11px; color: var(--text2); }
+  .fc-promo-unlock { font-size: 10px; color: var(--amber); opacity: 0.8; }
+  .fc-actions { display: flex; flex-wrap: nowrap; gap: 4px; flex-shrink: 0; align-items: center; }
+  .fc-flavor-select {
+    padding: 4px 8px; font-size: 11px; background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius); outline: none; cursor: pointer;
+  }
+  .fc-flavor-select:focus { border-color: var(--amber-border); }
+  .fc-pack { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; margin-bottom: 10px; background: linear-gradient(135deg, rgba(232,168,56,0.08), rgba(232,168,56,0.02)); border: 1px solid var(--amber-border); border-radius: var(--radius); }
+  .fc-pack-label { font-size: 13px; color: var(--text); font-weight: 600; }
+  .fc-pack-btn { white-space: nowrap; }
+  .browse-footer { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px 0 4px; color: var(--text2); font-size: 13px; }
+  .browse-footer-count { text-align: center; }
+  .browse-footer-lang select {
+    max-width: 180px; padding: 6px 10px; font-size: 13px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); outline: none; cursor: pointer;
+  }
+  .browse-footer-lang select:focus { border-color: var(--amber-border); box-shadow: 0 0 0 2px var(--amber-glow); }
   .browse-header { text-align: center; margin-bottom: 24px; }
   .browse-title { font-size: 18px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
-  .browse-subtitle { font-size: 13px; color: var(--text2); }
   .browse-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px;
   }
@@ -581,8 +684,18 @@
     .manage-search input { min-width: 0; }
     .manage-search select { flex-shrink: 0; }
     .manage-card { padding: 16px 12px; }
+    .manage-settings { flex-direction: column; min-height: auto; }
+    .ms-nav {
+      width: auto; flex-shrink: 0; border-right: none; border-bottom: 1px solid var(--border);
+      flex-direction: row; padding: 4px 8px; gap: 2px; overflow-x: auto;
+    }
+    .ms-nav-item { padding: 6px 12px; white-space: nowrap; border-radius: var(--radius); font-size: 12px; }
+    .ms-pane { padding: 14px 12px; }
     .manage-tab { padding: 8px 14px; font-size: 12px; }
     body { overflow-x: hidden; }
+    .topbar.search-focused .random-btn,
+    .topbar.search-focused .library-btn,
+    .topbar.search-focused .manage-btn { display: none !important; }
   }
 
   /* ── Password modal ── */
@@ -727,6 +840,178 @@
   }
   .coll-item .coll-del:hover { opacity: 1; color: #f44; border-color: #f44; }
 
+  /* ── History panel ── */
+  .library-btn {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text2); text-decoration: none; flex-shrink: 0;
+    padding: 6px 10px; border-radius: var(--radius); transition: all 0.2s;
+    border: 1px solid transparent; font-size: 16px; cursor: pointer; background: none;
+  }
+  .library-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .library-btn.panel-open { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .history-panel {
+    display: none; position: fixed; top: 56px; right: 0; bottom: 0; width: 360px; max-width: 100vw;
+    background: var(--surface); border-left: 1px solid var(--border); z-index: 180;
+    overflow-y: auto; box-shadow: -4px 0 24px rgba(0,0,0,0.4);
+  }
+  .history-panel.open { display: block; }
+  .library-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    background: var(--surface); z-index: 1;
+  }
+  .library-tabs {
+    display: flex; gap: 0; background: var(--bg); border-radius: 8px; padding: 2px; flex: 1;
+  }
+  .library-tab {
+    flex: 1; padding: 6px 12px; font-size: 13px; font-weight: 500; color: var(--text2);
+    background: none; border: none; border-radius: 6px; cursor: pointer; transition: all 0.15s;
+    text-align: center; white-space: nowrap;
+  }
+  .library-tab:hover { color: var(--text); }
+  .library-tab.active { background: var(--surface2); color: var(--text); font-weight: 600; }
+  .hp-clear { background: none; border: 1px solid var(--border); border-radius: var(--radius); color: var(--text2); font-size: 12px; padding: 4px 10px; cursor: pointer; transition: all 0.15s; }
+  .hp-clear:hover { color: #ef4444; border-color: #ef4444; }
+  .hp-group { padding: 0 16px; }
+  .hp-group-label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; padding: 12px 0 6px; }
+  .hp-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 0;
+    cursor: pointer; transition: opacity 0.15s; border-bottom: 1px solid var(--border);
+  }
+  .hp-item:last-child { border-bottom: none; }
+  .hp-item:hover { opacity: 0.8; }
+  .hp-icon { flex-shrink: 0; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--surface2); font-size: 14px; }
+  .hp-icon img { width: 20px; height: 20px; border-radius: 3px; }
+  .hp-detail { flex: 1; min-width: 0; }
+  .hp-title { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hp-sub { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hp-item-del {
+    opacity: 0; background: none; border: none; color: var(--text2); font-size: 14px; cursor: pointer;
+    padding: 2px 6px; border-radius: 4px; transition: all 0.15s; flex-shrink: 0; line-height: 1;
+  }
+  .hp-item:hover .hp-item-del { opacity: 0.4; }
+  .hp-item-del:hover { opacity: 1 !important; color: #ef4444; }
+  .hp-empty { padding: 32px 16px; text-align: center; color: var(--text2); font-size: 13px; }
+
+  /* ── Discover homepage — horizontal scroll row ── */
+  .discover-section { margin-bottom: 20px; }
+  .discover-label {
+    font-size: 13px; font-weight: 600; color: var(--text2); text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .dc-dismiss {
+    background: none; border: none; color: var(--text2); font-size: 16px; cursor: pointer;
+    padding: 0 4px; opacity: 0.4; transition: opacity 0.2s; line-height: 1;
+  }
+  .dc-dismiss:hover { opacity: 1; color: var(--text); }
+  .dc-teaser {
+    padding: 16px 20px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); font-size: 13px; color: var(--text2); line-height: 1.5;
+  }
+  .dc-teaser a { color: var(--amber); text-decoration: none; font-weight: 500; display: inline-block; margin-top: 8px; }
+  .dc-teaser a:hover { text-decoration: underline; }
+  .discover-scroll { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 8px 2px; margin: -8px -2px; will-change: transform; }
+  .discover-scroll::-webkit-scrollbar { height: 4px; }
+  .discover-scroll::-webkit-scrollbar-track { background: transparent; }
+  .discover-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .discover-card {
+    flex: 0 0 260px; min-height: 200px; max-height: 320px; scroll-snap-align: start;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    cursor: pointer; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .discover-card:hover {
+    background: var(--surface2); border-color: var(--amber-border);
+    box-shadow: 0 4px 24px var(--amber-glow), 0 0 0 1px var(--amber-glow);
+    transform: translateY(-2px);
+  }
+  .discover-card.dc-no-click { cursor: default; }
+  .discover-card.dc-no-click:hover { background: var(--surface); border-color: var(--border); box-shadow: none; transform: none; }
+  .dc-thumb { width: 100%; min-height: 120px; height: 120px; object-fit: cover; display: block; background: var(--surface2); }
+  .dc-thumb.dc-book-cover { object-fit: contain; background: #1a1a1e; }
+  .dc-body { padding: 8px 12px 10px; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .dc-source { font-size: 11px; color: var(--text2); display: flex; align-items: center; gap: 6px; }
+  .dc-zim-icon { width: 16px; height: 16px; border-radius: 3px; background: #fff; flex-shrink: 0; }
+  .dc-source span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dc-date { font-size: 11px; color: var(--text2); margin-left: auto; flex-shrink: 0; }
+  .dc-title { font-size: 13px; color: var(--text); font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
+  .dc-blurb { font-size: 11px; color: var(--text2); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .dc-blurb.dc-quote { font-family: Georgia, "Times New Roman", serif; font-style: italic; color: var(--text); font-weight: 400; font-size: 14px; -webkit-line-clamp: 6; line-height: 1.6; flex: 1; letter-spacing: 0.01em; }
+  .dc-quote-card { display: flex; flex-direction: column; }
+  .dc-quote-card .dc-body { padding: 20px 20px 16px; gap: 0; flex: 1; justify-content: space-between; }
+  .dc-quote-card .dc-header { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+  .dc-quote-card .dc-quote-mark { font-family: Georgia, "Times New Roman", serif; font-size: 48px; line-height: 1; color: var(--amber); opacity: 0.4; margin-bottom: -8px; user-select: none; }
+  .dc-quote-card .dc-attribution { font-size: 11px; color: var(--text2); margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px; }
+  .dc-speaker { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dc-word-card .dc-body { padding: 20px 20px 16px; }
+  .dc-word-card .dc-header { margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-size: 10px; }
+  .dc-word-card .dc-headword { font-family: Georgia, "Times New Roman", serif; font-size: 24px; font-weight: 700; color: var(--text); margin: 0 0 4px; letter-spacing: -0.5px; line-height: 1.2; }
+  .dc-word-card .dc-pos { display: inline-block; font-size: 11px; color: var(--amber); font-style: italic; font-family: Georgia, "Times New Roman", serif; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); width: 100%; }
+  .dc-word-card .dc-def { font-size: 13px; color: var(--text2); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .dc-icon-thumb { width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: var(--surface2); }
+  .dc-icon-thumb img { width: 48px; height: 48px; opacity: 0.6; }
+  .dc-dice { font-size: 12px; flex-shrink: 0; opacity: 0.7; }
+  /* ── Today card — moon phase + star field ── */
+  .dc-today { width: 100%; height: 120px; position: relative; background: linear-gradient(135deg, #0a0e1a 0%, #141c2e 50%, #0d1220 100%); overflow: hidden; }
+  .dc-star { position: absolute; width: 2px; height: 2px; background: #fff; border-radius: 50%; animation: dc-twinkle 3s ease-in-out infinite; }
+  @keyframes dc-twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+  .dc-moon-wrap { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 48px; height: 48px; border-radius: 50%; overflow: hidden; background: #0a0e1a; }
+  .dc-moon-half { position: absolute; top: 0; width: 50%; height: 100%; }
+  .dc-moon-half.left { left: 0; }
+  .dc-moon-half.right { right: 0; }
+  .dc-moon-term { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 50%; }
+  .dc-moon-texture { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 50%; background: url('/static/moon.png?v=1') center/cover; pointer-events: none; mix-blend-mode: soft-light; opacity: 1; }
+  .dc-moon-glow { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 64px; height: 64px; border-radius: 50%; background: radial-gradient(circle, rgba(232,224,208,0.15) 0%, transparent 70%); }
+
+  /* ── Space mini-app ── */
+  .space-view { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
+  .space-view.open { display: flex; animation: fadeIn 0.15s ease; }
+  .space-header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(17,17,21,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .space-title { font-size: 16px; font-weight: 600; color: var(--text); letter-spacing: 0.5px; }
+  .space-close { background: none; border: none; color: var(--text2); font-size: 24px; cursor: pointer; padding: 0 4px; line-height: 1; }
+  .space-close:hover { color: var(--text); }
+  .space-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 24px 16px 40px; }
+  .space-inner { max-width: 600px; margin: 0 auto; }
+  .space-hero { display: flex; flex-direction: column; align-items: center; margin-bottom: 32px; }
+  .space-moon { position: relative; width: 200px; height: 200px; border-radius: 50%; overflow: hidden; }
+  .space-moon .dc-moon-half { position: absolute; top: 0; width: 50%; height: 100%; }
+  .space-moon .dc-moon-half.left { left: 0; }
+  .space-moon .dc-moon-half.right { right: 0; }
+  .space-moon .dc-moon-term { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 50%; }
+  .space-moon-texture { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; pointer-events: none; }
+  .space-moon-glow { position: absolute; width: 280px; height: 280px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: -1; }
+  .space-moon-name { margin-top: 16px; font-size: 18px; font-weight: 500; color: var(--text); }
+  .space-moon-data { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; width: 100%; max-width: 320px; }
+  .space-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; text-align: center; }
+  .space-stat-val { font-size: 20px; font-weight: 600; color: var(--amber); }
+  .space-stat-lbl { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .space-section { margin-top: 32px; border-top: 1px solid var(--border); padding-top: 24px; }
+  .space-section-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .space-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .space-info-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+  .space-info-val { font-size: 16px; font-weight: 600; color: var(--text); }
+  .space-info-lbl { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .space-progress { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  .space-progress-bar { height: 100%; background: var(--amber); border-radius: 2px; }
+  .space-orrery-wrap { width: 100%; max-width: 500px; aspect-ratio: 1; margin: 0 auto; }
+  .space-orrery-wrap canvas { width: 100%; height: 100%; display: block; }
+  .space-sky-wrap { width: 100%; max-width: 600px; aspect-ratio: 2.5; margin: 0 auto; border-radius: var(--radius); overflow: hidden; position: relative; }
+  .space-sky-wrap canvas { width: 100%; height: 100%; display: block; }
+  .space-sky-label { font-size: 11px; color: var(--text2); text-align: center; margin-top: 8px; }
+  .space-location-link { color: var(--amber); cursor: pointer; text-decoration: none; font-size: 12px; }
+  .space-location-link:hover { text-decoration: underline; }
+  .space-eclipse-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .space-eclipse-row:last-child { border-bottom: none; }
+  .space-eclipse-type { font-weight: 500; color: var(--text); }
+  .space-eclipse-date { color: var(--text2); font-size: 12px; }
+  .space-eclipse-until { color: var(--amber); font-size: 12px; font-weight: 500; }
+
+  /* ── Discover loading skeletons ── */
+  .dc-loading { pointer-events: none; }
+  .dc-skel { background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: dc-shimmer 1.5s ease-in-out infinite; }
+  .dc-skel-line { height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: dc-shimmer 1.5s ease-in-out infinite; margin-bottom: 6px; }
+  @keyframes dc-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
   /* ── Reduced motion ── */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
@@ -750,10 +1035,13 @@
     <div id="suggest-dropdown" class="suggest-dropdown"></div>
   </div>
   <a href="#" id="random-btn" class="random-btn" title="Random article (R)" onclick="randomArticle(event)"><span class="dice">&#x1F3B2;</span></a>
+  <button id="library-btn" class="library-btn" title="Library (H)" onclick="if(readerOpen){toggleBookmark();_updateLibraryBtnIcon()}else{toggleLibraryPanel()}"></button>
   <a href="#" id="manage-btn" class="manage-btn" title="Library Manager" onclick="toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
-  <a id="newtab-btn" class="newtab-btn" href="#" target="_blank" rel="noopener" title="Open in new tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+  <a id="newtab-btn" class="newtab-btn" href="#" target="_blank" rel="noopener" title="Open in browser" onclick="event.preventDefault();_openInBrowser()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
 
 </nav>
+
+<div id="history-panel" class="history-panel"></div>
 
 <div id="pw-overlay" class="pw-overlay" onclick="if(event.target===this)closePwModal()">
   <form class="pw-box" onsubmit="event.preventDefault();submitPw()" autocomplete="off">
@@ -800,6 +1088,12 @@
       <input type="text" id="settings-dir" readonly placeholder="/path/to/zims">
       <button class="btn-browse" id="settings-browse-btn" onclick="settingsChooseFolder()" style="display:none">Choose Folder</button>
     </div>
+    <label>Data folder</label>
+    <div class="field-row">
+      <input type="text" id="settings-data-dir" readonly placeholder="(same as ZIM folder)">
+      <button class="btn-browse" id="settings-data-browse-btn" onclick="settingsChooseDataFolder()" style="display:none">Choose Folder</button>
+    </div>
+    <div class="hint">Cache, collections, bookmarks, and history. Leave blank to store alongside ZIMs.</div>
     <label id="settings-port-label">Port</label>
     <div class="field-row" id="settings-port-row">
       <input type="number" id="settings-port" min="1024" max="65535" value="8899">
@@ -841,8 +1135,8 @@
     <div id="output"></div>
   </div>
   <footer id="footer" class="footer" style="display:none">
-    <a href="https://github.com/epheterson/zimi" target="_blank" rel="noopener" class="footer-brand">Zimi</a> <span id="footer-version"></span>&middot; Powered by <a href="https://kiwix.org" target="_blank" rel="noopener">Kiwix</a>
-    <div class="footer-sub"><span class="kbd-hints"><kbd>/</kbd> Search &middot; <kbd>R</kbd> Random &middot; <kbd>Esc</kbd> Back</span></div>
+    <a href="https://github.com/epheterson/Zimi" target="_blank" rel="noopener" class="footer-brand">Zimi</a> <span id="footer-version"></span>&middot; Powered by <a href="https://kiwix.org" target="_blank" rel="noopener">Kiwix</a>
+    <div class="footer-sub"><span class="kbd-hints"><kbd>/</kbd> Search &middot; <kbd>R</kbd> Random &middot; <kbd>B</kbd> Bookmark &middot; <kbd>H</kbd> History &middot; <kbd>Esc</kbd> Back</span></div>
   </footer>
 </main>
 
@@ -850,7 +1144,15 @@
   <div class="reader-loading" id="reader-loading"><div class="spinner"></div><span>Loading...</span></div>
   <iframe id="reader-frame" title="Article content" sandbox="allow-same-origin allow-scripts allow-popups allow-downloads"></iframe>
 </div>
+<div id="space" class="space-view">
+  <div class="space-header">
+    <span class="space-title">Space</span>
+    <button class="space-close" onclick="closeSpace()">&times;</button>
+  </div>
+  <div class="space-content" id="space-content"></div>
+</div>
 <div id="zim-ctx-menu"></div>
+<div id="link-ctx-menu" class="zimi-ctx"></div>
 
 <script>
 // ── State ──
@@ -862,6 +1164,8 @@ let sourceAutoReader = false; // true when enterSource auto-opened the reader (n
 let _popstateNoAutoReader = false; // suppress auto-reader on popstate navigation
 let articleHistory = []; // [{zim, path, title, timestamp}] — max 50 entries
 let currentArticle = null; // {zim, path} — what's currently in the reader
+let _domainZimMap = {}; // {domain: zim_name} — for cross-ZIM link classification
+let _resolveCache = {}; // {url: {found, zim, path}} — cached batch resolve results
 let zimsCache = null;
 let manageEnabled = false;
 let activeCategories = new Set();
@@ -1013,11 +1317,15 @@ function updateTopbar() {
   }
 
   newtabBtn.style.display = readerOpen ? 'flex' : 'none';
-  randomBtn.style.display = 'flex';
+  randomBtn.style.display = (mode !== 'manage') ? 'flex' : 'none';
+  document.getElementById('library-btn').style.display = (mode !== 'manage') ? 'flex' : 'none';
+  _updateLibraryBtnIcon();
 
   // Search placeholder
   if (currentSource) {
     q.placeholder = _zimTitle(currentSource);
+  } else if (readerOpen && readerSource) {
+    q.placeholder = _zimTitle(readerSource);
   } else if (mode === 'manage') {
     if (manageTab === 'installed') {
       q.placeholder = 'Filter installed ZIMs...';
@@ -1057,36 +1365,58 @@ function updateFooter() {
 // ── Init ──
 async function init() {
   output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading library\u2026</div>';
+  // Only block on /list — everything else loads in background
   try {
     const res = await fetch('/list');
     zimsCache = await res.json();
   } catch(e) { zimsCache = []; }
-  try {
-    const mres = await fetch('/manage/status');  // plain fetch — don't prompt for password on homepage
-    if (mres.ok) {
-      const mdata = await mres.json();
-      manageEnabled = !!mdata.manage_enabled;
-    } else if (mres.status === 401) {
-      manageEnabled = true;  // manage exists but needs password
-    }
-  } catch(e) {}
-  // Fetch collections/favorites (public, no auth needed)
-  try {
-    const cres = await fetch('/collections');
-    if (cres.ok) collectionsCache = await cres.json();
-  } catch(e) {}
-  // Fetch version for footer
-  try {
-    const hres = await fetch('/health');
-    if (hres.ok) {
-      const hdata = await hres.json();
-      if (hdata.version) document.getElementById('footer-version').textContent = hdata.version + ' ';
-    }
-  } catch(e) {}
-  // Set initial history state so browser back always has a valid SPA state
+  // Render immediately with what we have
   if (!history.state) history.replaceState({ mode: 'home' }, '', location.href);
   route(false);
   _desktopCheckOnboarding();
+  // Fetch secondary data in parallel, update UI as each arrives
+  _initSecondary();
+}
+
+async function _initSecondary() {
+  var needsRerender = false;
+  await Promise.allSettled([
+    // Manage status
+    fetch('/manage/status').then(async mres => {
+      if (mres.ok) {
+        const mdata = await mres.json();
+        manageEnabled = !!mdata.manage_enabled;
+      } else if (mres.status === 401) {
+        manageEnabled = true;
+      }
+      needsRerender = true;
+    }).catch(function(){}),
+    // Collections/favorites
+    fetch('/collections').then(async cres => {
+      if (cres.ok) { collectionsCache = await cres.json(); needsRerender = true; }
+    }).catch(function(){}),
+    // Version for footer
+    fetch('/health').then(async hres => {
+      if (hres.ok) {
+        const hdata = await hres.json();
+        if (hdata.version) document.getElementById('footer-version').textContent = hdata.version + ' ';
+      }
+    }).catch(function(){}),
+    // Domain→ZIM map for cross-ZIM links
+    fetch('/resolve?domains=1').then(async dres => {
+      if (dres.ok) _domainZimMap = await dres.json();
+    }).catch(function(){})
+  ]);
+  // Always update topbar after secondary data (manage status determines gear visibility)
+  updateTopbar();
+  // Re-check URL for ?manage now that manageEnabled is known (route() ran before this resolved)
+  var params = new URLSearchParams(location.search);
+  if (params.get('manage') !== null && manageEnabled && mode !== 'manage') {
+    enterManage();
+    return;
+  }
+  // Re-render homepage if manage/collections changed (adds collection sections, manage button)
+  if (needsRerender && !readerOpen && !currentSource && !readerSource) renderHome();
 }
 
 function route(push) {
@@ -1155,18 +1485,59 @@ function route(push) {
   enterHome(push);
 }
 
+function _showToast(msg, duration) {
+  var toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(function() { if (toast.parentNode) toast.remove(); }, duration || 3000);
+}
+
+// ── Open in browser (escape PWA standalone mode) ──
+function _openInBrowser() {
+  var url = location.href;
+  var isPWA = window.matchMedia('(display-mode:standalone)').matches || navigator.standalone;
+  if (isPWA) {
+    // iOS PWA can't window.open to Safari — copy URL to clipboard instead
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function() {
+        var toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
+        toast.textContent = 'Link copied \u2014 paste in Safari to open';
+        document.body.appendChild(toast);
+        setTimeout(function() { if (toast.parentNode) toast.remove(); }, 3000);
+      });
+    } else {
+      // Fallback: prompt with the URL
+      prompt('Copy this link to open in Safari:', url);
+    }
+  } else {
+    // Normal browser: open in new tab
+    window.open(url, '_blank', 'noopener');
+  }
+}
+
 // ── Navigation ──
 function goHome(e) {
   if (e) e.preventDefault();
+  if (_spaceOpen) closeSpace();
+  // Already on clean home page → scroll to top
+  if (mode === 'home' && !readerOpen && !currentSource && !homeScope) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
   closeReader();
   currentSource = null;
   readerSource = null;
   sourceAutoReader = false;
   activeCategories.clear();
   enterHome(true);
+  // Scroll to top after navigating home
+  setTimeout(function() { window.scrollTo({ top: 0 }); }, 0);
 }
 
 function goBack() {
+  if (_spaceOpen) { closeSpace(); return; }
   if (readerOpen) {
     // Step back through article history before closing reader
     if (articleHistory.length > 0) {
@@ -1304,6 +1675,7 @@ function enterHome(push) {
   readerSource = null;
   sourceAutoReader = false;
   homeScope = null;
+  _currentSearchQuery = null;
   articleHistory = [];
   currentArticle = null;
   q.value = '';
@@ -1353,9 +1725,16 @@ function enterScope(type, label, zimNames, push) {
 async function enterSource(name, push) {
   const info = zimsCache && zimsCache.find(z => z.name === name);
   if (!info) { enterHome(push); return; }
+  // Modifier-click: open in new browser tab
+  if (_isModClick()) {
+    _lastMouseEvent = null;
+    window.open('/w/' + encodeURIComponent(name), '_blank');
+    return;
+  }
   mode = 'source';
   currentSource = name;
   readerSource = null;
+  _currentSearchQuery = null;
   sourceAutoReader = false;
   q.value = '';
   searchMeta.style.display = 'none';
@@ -1373,10 +1752,12 @@ async function enterSource(name, push) {
 function renderHome(filter) {
   if (!zimsCache || zimsCache.length === 0) {
     statsBar.innerHTML = ''; statsBar.style.display = 'none';
-    pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
-    output.innerHTML = '<div class="empty"><p>No knowledge sources found</p><p class="hint">Add ZIM files to get started</p>'
+    pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
+    output.innerHTML = '<div id="discover-row"></div>'
+      + '<div class="empty"><p>No knowledge sources found</p><p class="hint">Add ZIM files to get started</p>'
       + (manageEnabled ? '<a href="/?manage" onclick="event.preventDefault();enterManage();setTimeout(function(){switchManageTab(\'browse\')},50)" style="display:inline-block;margin-top:16px;color:var(--amber);font-weight:500;font-size:14px;text-decoration:none;border-bottom:1px solid var(--amber-border)">Catalog \u2192</a>' : '')
       + '</div>';
+    _loadDiscover();
     return;
   }
 
@@ -1402,15 +1783,31 @@ function renderHome(filter) {
   const totalGb = baseZims.reduce((s, z) => s + z.size_gb, 0);
 
   const n = baseZims.length;
+  var statsHtml;
   if (filter && zims.length !== baseZims.length) {
-    statsBar.innerHTML = '<span class="num">' + zims.length + '</span> of ' + n + ' source' + (n !== 1 ? 's' : '') +
+    statsHtml = '<span class="num">' + zims.length + '</span> of ' + n + ' source' + (n !== 1 ? 's' : '') +
       ' matching &ldquo;' + esc(filter) + '&rdquo;';
   } else {
-    statsBar.innerHTML = '<span class="num">' + n + '</span> source' + (n !== 1 ? 's' : '') + ' &middot; ' +
+    statsHtml = '<span class="num">' + n + '</span> source' + (n !== 1 ? 's' : '') + ' &middot; ' +
       '<span class="num">' + totalEntries.toLocaleString() + '</span> article' + (totalEntries !== 1 ? 's' : '') + ' &middot; ' +
       fmtSizeHtml(totalGb);
   }
-  statsBar.style.display = '';
+
+  // Check if Discover will be active (not hidden and not filtered/scoped)
+  var discoverHidden = localStorage.getItem('zimi_hide_discover') === '1';
+  var discoverWillShow = !homeScope && !filter && !discoverHidden;
+
+  if (discoverWillShow) {
+    // Discover on top — hide stats bar (will show at bottom)
+    statsBar.innerHTML = ''; statsBar.style.display = 'none';
+  } else if (!homeScope && !filter && discoverHidden) {
+    // Discover hidden — stats clickable to re-enable
+    statsBar.innerHTML = '<a href="#" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');renderHome()" style="color:inherit;text-decoration:none" title="Show Discover">' + statsHtml + '</a>';
+    statsBar.style.display = '';
+  } else {
+    statsBar.innerHTML = statsHtml;
+    statsBar.style.display = '';
+  }
 
   const groups = {};
   const sorted = zims.filter(z => z.entries !== '?').sort((a, b) => (b.entries || 0) - (a.entries || 0));
@@ -1423,7 +1820,7 @@ function renderHome(filter) {
   const cats = Object.keys(groups).filter(c => c !== '_uncategorized').sort();
 
   // No pills on home — sections provide the organization
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
 
   let h = '';
 
@@ -1443,6 +1840,14 @@ function renderHome(filter) {
       'onkeydown="if(event.key===\'Enter\')doSearch(\'' + escAttr(filter) + '\')">' +
       'Search ' + scopeEntries.toLocaleString() + ' articles for &ldquo;' + esc(filter) + '&rdquo; \u2192</div>';
   }
+
+  // Discover (only on unscoped, unfiltered home)
+  var _showDiscover = !homeScope && !filter;
+  if (_showDiscover) {
+    h += '<div id="discover-row"></div>';
+  }
+
+  // Bookmarks moved to library panel (H/B key or topbar icon)
 
   // Favorites section at top (only on unscoped home)
   if (!homeScope) {
@@ -1487,7 +1892,13 @@ function renderHome(filter) {
     }
   }
 
+  // When Discover is active, show stats at bottom instead of top
+  if (discoverWillShow) {
+    h += '<div class="stats-bar" style="padding:20px 0 8px">' + statsHtml + '</div>';
+  }
+
   output.innerHTML = h;
+  if (_showDiscover) _loadDiscover();
 }
 
 function renderCardGrid(items, showStars, showCategory) {
@@ -1509,9 +1920,441 @@ function renderCardGrid(items, showStars, showCategory) {
         '<div class="name">' + esc(z.title || z.name) + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
         '<div class="detail">' + catPrefix + (typeof z.entries === 'number' ? z.entries.toLocaleString() + ' entries' : '') +
-        ' &middot; ' + fmtSize(z.size_gb) + '</div>' +
+        ' &middot; ' + fmtSize(z.size_gb) +
+        '</div>' +
       '</div></div>';
   }).join('') + '</div>';
+}
+
+// ── Discover: computed cards first, random fill to ~4 ──
+// Slot order: 1) Today (always), 2) APOD (if installed), 3) On This Day (if Wikipedia), 4+) 🎲 Random
+var _discoverLoading = false;
+
+function _moonPhase(date) {
+  // Synodic period: 29.53 days. Reference new moon: Jan 6 2000 18:14 UTC
+  var ref = new Date(Date.UTC(2000, 0, 6, 18, 14, 0));
+  var days = (date.getTime() - ref.getTime()) / 86400000;
+  var cycle = days % 29.53;
+  if (cycle < 0) cycle += 29.53;
+  var phase = cycle / 29.53; // 0=new, 0.5=full
+  var illum = Math.round((1 - Math.cos(phase * 2 * Math.PI)) / 2 * 100);
+  var names = ['New Moon','Waxing Crescent','First Quarter','Waxing Gibbous',
+               'Full Moon','Waning Gibbous','Last Quarter','Waning Crescent'];
+  var idx = Math.floor(phase * 8 + 0.5) % 8;
+  return { phase: phase, name: names[idx], illumination: illum };
+}
+
+function _renderTodayCard() {
+  var now = new Date();
+  var m = _moonPhase(now);
+  var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var dateStr = days[now.getDay()] + ', ' + months[now.getMonth()] + ' ' + now.getDate();
+  // Season + progress (Northern Hemisphere)
+  var y = now.getFullYear();
+  var seasonBounds = [
+    { name: 'Winter', start: new Date(y - 1, 11, 21), end: new Date(y, 2, 20) },
+    { name: 'Spring', start: new Date(y, 2, 20), end: new Date(y, 5, 21) },
+    { name: 'Summer', start: new Date(y, 5, 21), end: new Date(y, 8, 22) },
+    { name: 'Autumn', start: new Date(y, 8, 22), end: new Date(y, 11, 21) },
+    { name: 'Winter', start: new Date(y, 11, 21), end: new Date(y + 1, 2, 20) }
+  ];
+  var seasonStr = '';
+  for (var si = 0; si < seasonBounds.length; si++) {
+    if (now >= seasonBounds[si].start && now < seasonBounds[si].end) {
+      var elapsed = now - seasonBounds[si].start;
+      var total = seasonBounds[si].end - seasonBounds[si].start;
+      seasonStr = seasonBounds[si].name + ' ' + Math.round(elapsed / total * 100) + '%';
+      break;
+    }
+  }
+  var subLine = m.name + ' \u00b7 ' + seasonStr;
+  // Moon phase: original 4-quadrant approach for correct crescents, texture overlaid
+  var litColor = '#e8e0d0', darkColor = '#0a0e1a';
+  var illumFrac = m.illumination / 100;
+  var leftColor, rightColor, overlayColor, overlayScaleX;
+  if (m.phase <= 0.25) {
+    leftColor = darkColor; rightColor = litColor;
+    overlayColor = darkColor; overlayScaleX = 1 - illumFrac * 2;
+  } else if (m.phase <= 0.5) {
+    leftColor = darkColor; rightColor = litColor;
+    overlayColor = litColor; overlayScaleX = (illumFrac - 0.5) * 2;
+  } else if (m.phase <= 0.75) {
+    leftColor = litColor; rightColor = darkColor;
+    overlayColor = litColor; overlayScaleX = (illumFrac - 0.5) * 2;
+  } else {
+    leftColor = litColor; rightColor = darkColor;
+    overlayColor = darkColor; overlayScaleX = 1 - illumFrac * 2;
+  }
+  // Stars
+  var stars = '';
+  for (var i = 0; i < 18; i++) {
+    var sx = Math.floor(Math.random() * 100);
+    var sy = Math.floor(Math.random() * 100);
+    var delay = (Math.random() * 3).toFixed(1);
+    var size = Math.random() > 0.7 ? 3 : 2;
+    stars += '<div class="dc-star" style="left:' + sx + '%;top:' + sy + '%;width:' + size + 'px;height:' + size + 'px;animation-delay:' + delay + 's"></div>';
+  }
+  var glowOpacity = (m.illumination / 100 * 0.2 + 0.05).toFixed(2);
+  var moonHtml = '<div class="dc-moon-wrap">' +
+    '<div class="dc-moon-half left" style="background:' + leftColor + '"></div>' +
+    '<div class="dc-moon-half right" style="background:' + rightColor + '"></div>' +
+    '<div class="dc-moon-term" style="background:' + overlayColor + ';transform:scaleX(' + overlayScaleX.toFixed(3) + ')"></div>' +
+    '<div class="dc-moon-texture"></div>' +
+    '</div>';
+  return '<div class="dc-today">' + stars +
+    '<div class="dc-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + glowOpacity + ') 0%, transparent 70%)"></div>' +
+    moonHtml +
+    '</div>';
+}
+
+// -- Space mini-app (lazy-loaded from /static/space.js) --
+var _spaceOpen = false;
+var _spaceLoaded = false;
+
+function openSpace() {
+  if (!_spaceLoaded) {
+    var s = document.createElement('script');
+    s.src = '/static/space.js?v=2';
+    s.onload = function() { _spaceLoaded = true; _openSpaceInner(); };
+    s.onerror = function() { console.error('Failed to load space.js'); };
+    document.head.appendChild(s);
+    return;
+  }
+  _openSpaceInner();
+}
+
+// (Space rendering code lives in /static/space.js)
+// closeSpace is defined there but referenced by the HTML close button,
+// so we provide a stub that delegates once loaded.
+function closeSpace() {
+  // Will be overridden when space.js loads
+  if (!_spaceOpen) return;
+  _spaceOpen = false;
+  document.getElementById('space').classList.remove('open');
+  mainView.classList.remove('hidden');
+  _setWindowTitle('Zimi');
+}
+
+function _dismissDiscover() {
+  localStorage.setItem('zimi_hide_discover', '1');
+  _discoverLoading = false;
+  renderHome();  // Re-render to move stats bar to top
+  // Show undo toast
+  var toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
+  toast.innerHTML = 'Discover hidden. <a href="#" style="color:var(--amber);text-decoration:none" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');this.parentNode.remove();renderHome()">Undo</a>';
+  document.body.appendChild(toast);
+  setTimeout(function() { if (toast.parentNode) toast.remove(); }, 5000);
+}
+
+function _loadDiscover() {
+  if (_discoverLoading) return;
+  var el = document.getElementById('discover-row');
+  if (localStorage.getItem('zimi_hide_discover') === '1') {
+    if (el) el.innerHTML = '';
+    return;
+  }
+  if (!el) return;
+  var now = new Date();
+  var today = now.toISOString().substring(0, 10);
+  var cacheKey = 'zimi_disc6_' + today;
+  // Clean up old Discover cache keys (from previous days)
+  try {
+    for (var si = 0; si < localStorage.length; si++) {
+      var k = localStorage.key(si);
+      if (k && k.indexOf('zimi_disc6_') === 0 && k !== cacheKey) { localStorage.removeItem(k); si--; }
+    }
+  } catch(e) {}
+  try {
+    var cached = JSON.parse(localStorage.getItem(cacheKey));
+    if (cached && cached.length > 1) {
+      // Ensure Today card is not first if content cards exist
+      if (cached[0] && cached[0].type === 'today' && cached.length > 1 && cached[1] && cached[1].type !== 'today') {
+        cached = [cached[1], cached[0]].concat(cached.slice(2));
+      }
+      _renderDiscover(el, cached);
+      return;
+    }
+  } catch(e) {}
+
+  // Today card is always first (computed, no server call)
+  var computed = [{ type: 'today' }];
+  var names = (zimsCache || []).map(function(z) { return z.name; });
+  var mmdd = ('0' + (now.getMonth() + 1)).slice(-2) + ('0' + now.getDate()).slice(-2);
+
+  // Named content slots from FEATURED_ZIMS — match installed ZIMs
+  var serverSlots = [];
+  var usedNames = {};
+  for (var fi = 0; fi < FEATURED_ZIMS.length; fi++) {
+    var feat = FEATURED_ZIMS[fi];
+    var zimName = null;
+    var zimEntries = -1;
+    for (var ni = 0; ni < names.length; ni++) {
+      var n = names[ni];
+      if (n === feat.match || n.indexOf(feat.match) === 0) {
+        // For wikipedia, prefer _en_all or exact match (skip _en_medicine etc.)
+        if (feat.match === 'wikipedia' && n !== 'wikipedia' && !/^wikipedia_en_all/i.test(n)) continue;
+        // For wiktionary, prefer simple (English-only — no language filtering needed)
+        if (feat.match === 'wiktionary' && /simple/i.test(n)) { zimName = n; zimEntries = Infinity; continue; }
+        // Prefer ZIM with most entries (richest content)
+        var zInfo = zimsCache && zimsCache.find(function(z) { return z.name === n; });
+        var ec = (zInfo && typeof zInfo.entries === 'number') ? zInfo.entries : 0;
+        if (ec > zimEntries) { zimName = n; zimEntries = ec; }
+      }
+    }
+    if (!zimName) continue;
+    usedNames[zimName] = true;
+    var dated = feat.type === 'apod' || feat.type === 'onthisday' || feat.type === 'country';
+    serverSlots.push({name: zimName, dated: dated, type: feat.type, label: feat.label, icon: feat.icon});
+  }
+
+  // Random fill: pick visual ZIMs not already used as named slots
+  var TARGET = 6;
+  var randomNeeded = Math.max(0, TARGET - computed.length - serverSlots.length);
+  var skipCats = {'Stack Exchange':1, 'Dev Docs':1};
+  var skipPattern = /^zimgit/i;
+  var visualZims = (zimsCache || []).filter(function(z) {
+    return typeof z.entries === 'number' && z.entries > 100
+      && !skipPattern.test(z.name) && !skipCats[z.category] && !usedNames[z.name];
+  });
+  // Shuffle and pick
+  for (var ri = visualZims.length - 1; ri > 0; ri--) {
+    var rj = Math.floor(Math.random() * (ri + 1));
+    var tmp = visualZims[ri]; visualZims[ri] = visualZims[rj]; visualZims[rj] = tmp;
+  }
+  for (var k = 0; k < randomNeeded && k < visualZims.length; k++) {
+    serverSlots.push({name: visualZims[k].name, dated: false, type: 'random'});
+  }
+
+  if (serverSlots.length === 0) {
+    // No ZIM content — show Today card + teaser
+    _renderDiscover(el, computed);
+    return;
+  }
+
+  // Show loading skeletons first, then Today card at position 2 (matching final layout)
+  var loadingCount = Math.min(serverSlots.length, 3);
+  var loadingItems = [];
+  loadingItems.push({ type: 'loading' });  // Position 1: skeleton (will become first content card)
+  for (var ci = 0; ci < computed.length; ci++) loadingItems.push(computed[ci]);  // Position 2: Today/moon
+  for (var li = 1; li < loadingCount; li++) loadingItems.push({ type: 'loading' });  // Remaining skeletons
+  _renderDiscover(el, loadingItems);
+  _discoverLoading = true;
+
+  // Track resolved results as they arrive so the timeout path can collect partial results
+  var _discoverResults = [];
+  var _discoverFetches = serverSlots.map(function(s, idx) {
+    _discoverResults.push(null);
+    var url = '/random?zim=' + encodeURIComponent(s.name) + '&thumb=1&require_thumb=1';
+    if (s.dated) url += '&date=' + mmdd;
+    url += '&seed=' + mmdd;
+    return fetch(url)
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) {
+        if (!d || d.error) { return null; }
+        var item = { zim: s.name, path: d.path, title: d.title || _titleFromPath(d.path || ''),
+                 thumbnail: d.thumbnail || null, blurb: d.blurb || null,
+                 attribution: d.attribution || null, speaker: d.speaker || null, author: d.author || null, part_of_speech: d.part_of_speech || null,
+                 date: d.date || null, type: s.type, label: s.label || null, icon: s.icon || null };
+        _discoverResults[idx] = item; // Store immediately on resolve
+        return item;
+      })
+      .catch(function() { return null; });
+  });
+  var _discoverTimeout = new Promise(function(resolve) { setTimeout(function() { resolve('timeout'); }, 8000); });
+  Promise.race([Promise.all(_discoverFetches), _discoverTimeout]).then(function(results) {
+    if (results === 'timeout') {
+      // On timeout: use whatever resolved so far from the side-channel array
+      results = _discoverResults.slice();
+    }
+    _discoverLoading = false;
+    // Named slots (have label) show even without thumbnails; random fill requires thumbnails
+    // Skip items with no title AND no path (failed dated entry lookups)
+    var items = results.filter(function(r) { return r && (r.thumbnail || r.label) && (r.title || r.path); });
+    // Move Today card to position 2 if there's content to show first
+    var all;
+    if (items.length > 0) {
+      all = [items[0]].concat(computed).concat(items.slice(1));
+    } else {
+      all = computed.concat(items);
+    }
+    if (items.length > 0) {
+      try { localStorage.setItem(cacheKey, JSON.stringify(all)); } catch(e) {}
+    }
+    var el2 = document.getElementById('discover-row');
+    if (el2) _renderDiscover(el2, all);
+  });
+}
+function _renderDiscover(el, items) {
+  var h = '<div class="discover-section"><div class="discover-label"><span>Discover</span><button class="dc-dismiss" onclick="event.stopPropagation();_dismissDiscover()" title="Hide Discover">\u00D7</button></div><div class="discover-scroll">';
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    if (!it) continue; // Skip null results (e.g. failed dated entry lookups)
+    // Loading skeleton placeholder
+    if (it.type === 'loading') {
+      h += '<div class="discover-card dc-no-click dc-loading">' +
+        '<div class="dc-thumb dc-skel"></div>' +
+        '<div class="dc-body">' +
+          '<div class="dc-skel-line" style="width:60%"></div>' +
+          '<div class="dc-skel-line" style="width:80%"></div>' +
+        '</div></div>';
+      continue;
+    }
+    // Today card — opens Space mini-app
+    if (it.type === 'today') {
+      var _m = _moonPhase(new Date());
+      var _now = new Date();
+      var _days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      var _months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      var _dateTitle = _days[_now.getDay()] + ', ' + _months[_now.getMonth()] + ' ' + _now.getDate() + ', ' + _now.getFullYear();
+      // Season + progress
+      var _y = _now.getFullYear();
+      var _sBounds = [
+        { n: 'Winter', s: new Date(_y - 1, 11, 21), e: new Date(_y, 2, 20) },
+        { n: 'Spring', s: new Date(_y, 2, 20), e: new Date(_y, 5, 21) },
+        { n: 'Summer', s: new Date(_y, 5, 21), e: new Date(_y, 8, 22) },
+        { n: 'Autumn', s: new Date(_y, 8, 22), e: new Date(_y, 11, 21) },
+        { n: 'Winter', s: new Date(_y, 11, 21), e: new Date(_y + 1, 2, 20) }
+      ];
+      var _seasonStr = '';
+      for (var _si = 0; _si < _sBounds.length; _si++) {
+        if (_now >= _sBounds[_si].s && _now < _sBounds[_si].e) {
+          _seasonStr = _sBounds[_si].n + ' ' + Math.round((_now - _sBounds[_si].s) / (_sBounds[_si].e - _sBounds[_si].s) * 100) + '%';
+          break;
+        }
+      }
+      h += '<div class="discover-card" onclick="openSpace()">' +
+        _renderTodayCard() +
+        '<div class="dc-body">' +
+          '<div class="dc-title">' + _dateTitle + '</div>' +
+          '<div class="dc-blurb">' + _m.name + (_seasonStr ? ' \u00b7 ' + _seasonStr : '') + '</div>' +
+          '<div class="dc-blurb">' + _m.illumination + '% illuminated</div>' +
+        '</div></div>';
+      continue;
+    }
+    // Date: only for APOD
+    var dateStr = null;
+    if (it.type === 'apod') {
+      dateStr = it.date || null;
+      if (!dateStr) {
+        var apMatch = (it.path || '').match(/ap(\d{2})(\d{2})(\d{2})/);
+        if (apMatch) {
+          var yr = parseInt(apMatch[1],10);
+          dateStr = (yr >= 90 ? '19' : '20') + apMatch[1] + '-' + apMatch[2] + '-' + apMatch[3];
+        }
+      }
+    }
+    var dateHtml = dateStr ? '<span class="dc-date">' + esc(_fmtDiscoverDate(dateStr)) + '</span>' : '';
+    // ZIM icon
+    var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === it.zim; });
+    var iconHtml = '';
+    if (zimInfo && zimInfo.has_icon) {
+      iconHtml = '<img class="dc-zim-icon" src="/w/' + encodeURIComponent(it.zim) + '/-/icon" loading="lazy">';
+    }
+    // Source label: named slots show ZIM icon + label, random shows dice
+    var sourceLabel, badgeHtml = '';
+    if (it.label) {
+      sourceLabel = it.label;
+      // Named slots: no emoji badge, ZIM icon is shown instead
+    } else if (it.type === 'random') {
+      sourceLabel = _zimTitle(it.zim);
+      badgeHtml = '<span class="dc-dice">\uD83C\uDFB2</span>';
+    } else {
+      sourceLabel = _zimTitle(it.zim);
+    }
+    // Thumbnail — filter out generic site chrome images
+    var thumbHtml;
+    var hasGoodThumb = it.thumbnail && !/home_on\.png|banner_ext|photo_on\.gif/i.test(it.thumbnail);
+    if (hasGoodThumb) {
+      var thumbClass = 'dc-thumb' + (/gutenberg/i.test(it.zim || '') ? ' dc-book-cover' : '');
+      thumbHtml = '<img class="' + thumbClass + '" src="' + escAttr(it.thumbnail) + '" loading="lazy" onerror="this.style.display=\'none\'" onload="if(this.naturalWidth<80||this.naturalHeight<60)this.style.display=\'none\'">';
+    } else if (it.label === 'Country of the Day') {
+      thumbHtml = '<div class="dc-icon-thumb" style="background:linear-gradient(135deg,#0a1628,#162040)"><span style="font-size:40px;line-height:1">&#x1F30D;</span></div>';
+    } else {
+      thumbHtml = '<div class="dc-icon-thumb">' + iconHtml + '</div>';
+    }
+    // Show actual article title — never vague labels
+    var displayTitle = it.title || it.path;
+    // APOD: strip "APOD: YYYY Month DD – " date prefix from title (date shown as badge)
+    if (it.type === 'apod' && displayTitle) {
+      displayTitle = displayTitle.replace(/^APOD:\s*\d{4}\s+\w+\s+\d+\s*[\u2013\-]\s*/i, '');
+    }
+    if (it.type === 'onthisday' && displayTitle) {
+      // Clean portal prefixes but keep the real content
+      displayTitle = displayTitle.replace(/^Portal:Current events\/?/, '').replace(/_/g, ' ');
+      if (!displayTitle) displayTitle = it.title || 'Historical event';
+    }
+    var isQuote = it.blurb && (it.blurb.charAt(0) === '\u201c' || it.blurb.charAt(0) === '"');
+    // Named Quote of the Day slot always uses quote card template
+    if (!isQuote && it.label === 'Quote of the Day' && (it.blurb || it.title)) isQuote = true;
+    var blurbHtml = it.blurb ? '<div class="dc-blurb' + (isQuote ? ' dc-quote' : '') + '">' + esc(it.blurb) + '</div>' : '';
+    // Quote cards: header + decorative quote mark + serif quote + attribution
+    if (isQuote) {
+      var attrName = it.attribution || it.speaker || (/^[A-Z][a-z]+ [A-Z]/.test(displayTitle) ? displayTitle : '');
+      var cleanQuote = it.blurb ? it.blurb.replace(/^[\u201c\u201d"]+\s*/, '').replace(/[\u201d"]+\s*$/, '') : displayTitle;
+      var attrLine = (attrName && attrName !== cleanQuote)
+        ? '<div class="dc-attribution">\u2014 ' + esc(attrName) + '</div>'
+        : '';
+      h += '<div class="discover-card dc-quote-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+        '<div class="dc-body">' +
+          '<div class="dc-header">' + iconHtml + '<span>' + esc(it.label || 'Quote of the Day') + '</span></div>' +
+          '<div class="dc-quote-mark">\u201C</div>' +
+          '<div class="dc-blurb dc-quote">' + esc(cleanQuote) + '</div>' +
+          attrLine +
+        '</div></div>';
+    } else if (it.label === 'Word of the Day') {
+      // Word card: full-width like quote — title as headword, part of speech, definition as blurb
+      h += '<div class="discover-card dc-quote-card dc-word-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+        '<div class="dc-body">' +
+          '<div class="dc-header">' + iconHtml + '<span>' + esc(it.label) + '</span></div>' +
+          '<div class="dc-headword">' + esc(displayTitle) + '</div>' +
+          (it.part_of_speech ? '<div class="dc-pos">' + esc(it.part_of_speech) + '</div>' : '') +
+          (it.blurb ? '<div class="dc-def">' + esc(it.blurb) + '</div>' : '') +
+        '</div></div>';
+    } else {
+      // Speaker line (for TED talks) or author line (for books)
+      var speakerHtml = '';
+      if (it.speaker && it.speaker !== displayTitle) {
+        speakerHtml = '<div class="dc-speaker">' + esc(it.speaker) + '</div>';
+      } else if (it.author) {
+        speakerHtml = '<div class="dc-speaker">' + esc(it.author) + '</div>';
+      }
+      // Skip blurb if it essentially duplicates the title
+      var showBlurb = blurbHtml;
+      if (it.blurb && displayTitle) {
+        var blurbNorm = it.blurb.replace(/[^\w\s]/g, '').toLowerCase().trim();
+        var titleNorm = displayTitle.replace(/[^\w\s]/g, '').toLowerCase().trim();
+        if (blurbNorm === titleNorm || titleNorm.indexOf(blurbNorm) >= 0 || blurbNorm.indexOf(titleNorm) >= 0) {
+          showBlurb = '';
+        }
+      }
+      h += '<div class="discover-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+        thumbHtml +
+        '<div class="dc-body">' +
+          '<div class="dc-source">' + iconHtml + '<span>' + esc(sourceLabel) + '</span>' + badgeHtml + dateHtml + '</div>' +
+          '<div class="dc-title">' + esc(displayTitle) + '</div>' +
+          speakerHtml +
+          showBlurb +
+        '</div></div>';
+    }
+  }
+  h += '</div></div>';
+  el.innerHTML = h;
+  // Restore saved scroll position (e.g., after navigating back from an article)
+  try {
+    var savedScroll = sessionStorage.getItem('zimi_disc_scroll');
+    if (savedScroll) {
+      var scrollEl = el.querySelector('.discover-scroll');
+      if (scrollEl) scrollEl.scrollLeft = parseInt(savedScroll, 10);
+      sessionStorage.removeItem('zimi_disc_scroll');
+    }
+  } catch(e) {}
+}
+function _fmtDiscoverDate(dateStr) {
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var p = dateStr.split('-');
+  return months[parseInt(p[1], 10) - 1] + ' ' + parseInt(p[2], 10) + ', ' + p[0];
 }
 
 async function toggleFavorite(zimName) {
@@ -1680,7 +2523,7 @@ async function renderSource(name) {
   if (!info) return;
 
   statsBar.style.display = 'none';
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
 
   // Build source header HTML (shown only for catalog/empty ZIMs)
   const iconHtml = info.has_icon
@@ -1702,6 +2545,7 @@ async function renderSource(name) {
     sourceHeaderEl.style.display = 'none';
     output.innerHTML = '';
     sourceAutoReader = true;
+    currentArticle = { zim: name, path: info.main_path };
     openReader('/w/' + encodeURIComponent(name) + '/' + info.main_path);
     return;
   }
@@ -1721,10 +2565,11 @@ async function renderSource(name) {
         '<div class="results">' + data.documents.map((d, i) => {
           const hasPath = !!d.path;
           const clickAttr = hasPath ? ' onclick="openArticle(\'' + escJs(name) + '\', \'' + escJs(d.path) + '\', \'' + escJs(d.title || '') + '\')" onkeydown="if(event.key===\'Enter\')openArticle(\'' + escJs(name) + '\', \'' + escJs(d.path) + '\', \'' + escJs(d.title || '') + '\')"' : '';
-          return '<div class="result"' + (hasPath ? ' tabindex="0" role="button"' : '') + ' style="animation-delay:' + (i * 0.04) + 's"' + clickAttr + '>' +
+          return '<div class="result"' + (hasPath ? ' tabindex="0" role="button" data-zim="' + escAttr(name) + '" data-path="' + escAttr(d.path) + '"' : '') + ' style="animation-delay:' + (i * 0.04) + 's"' + clickAttr + '>' +
+            '<div class="result-body">' +
             '<div class="title">' + esc(d.title) + '</div>' +
             (d.description ? '<div class="snippet">' + esc(d.description) + '</div>' : '') +
-          '</div>';
+            '</div></div>';
         }).join('') + '</div>';
       return;
     }
@@ -1735,6 +2580,7 @@ async function renderSource(name) {
   // No catalog and no main_path — show empty source page
   if (info.main_path) {
     sourceAutoReader = true;
+    currentArticle = { zim: name, path: info.main_path };
     output.innerHTML = '';
     sourceHeaderEl.style.display = 'none';
     openReader('/w/' + encodeURIComponent(name) + '/' + info.main_path);
@@ -1746,13 +2592,33 @@ async function renderSource(name) {
 }
 
 // ── Search ──
+// ── History-in-dropdown: show recent history when search bar is focused ──
+var _searchFocusedByUser = false;
+q.addEventListener('mousedown', function() { _searchFocusedByUser = true; });
+q.addEventListener('touchstart', function() { _searchFocusedByUser = true; });
+q.addEventListener('focus', function() {
+  if (_searchFocusedByUser && !q.value.trim() && mode !== 'manage') showHistoryDropdown();
+  // Only hide topbar icons on mobile when user tapped the search box (not autofocus on load)
+  if (_searchFocusedByUser && window.matchMedia('(max-width: 600px)').matches) {
+    document.querySelector('.topbar').classList.add('search-focused');
+  }
+  _searchFocusedByUser = false;
+});
+q.addEventListener('blur', function() {
+  document.querySelector('.topbar').classList.remove('search-focused');
+});
+
 q.addEventListener('input', () => {
   clearTimeout(searchTimer);
   const val = q.value.trim();
-  // Suggest (200ms debounce)
+  // Suggest (200ms debounce) — include history items when typing
   clearTimeout(suggestTimer);
-  if (val && val.length >= 2 && mode !== 'manage') {
-    suggestTimer = setTimeout(() => fetchSuggestions(val), 200);
+  if (val && val.length >= 1 && mode !== 'manage') {
+    // Show filtered history immediately, then fetch remote suggestions
+    showHistoryDropdown(val);
+    if (val.length >= 2) suggestTimer = setTimeout(() => fetchSuggestions(val), 200);
+  } else if (!val && mode !== 'manage') {
+    showHistoryDropdown();
   } else {
     hideSuggest();
   }
@@ -1825,6 +2691,7 @@ q.addEventListener('keydown', e => {
 async function doSearch(query, push) {
   if (push === undefined) push = true;
   if (!query) return;
+  _currentSearchQuery = query;
   clearTimeout(suggestTimer);
   hideSuggest();
 
@@ -1834,7 +2701,7 @@ async function doSearch(query, push) {
   if (!meaningful.length) {
     mode = 'search';
     statsBar.style.display = 'none';
-    pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+    pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
     searchMeta.style.display = 'none';
     output.innerHTML = '<div class="empty"><p>Try more specific keywords</p><p class="hint">Common words like \u201c' + esc(query) + '\u201d match too many articles</p></div>';
     updateTopbar();
@@ -1855,7 +2722,7 @@ async function doSearch(query, push) {
   mainView.classList.remove('hidden');
   if (!scope) sourceHeaderEl.style.display = 'none';
   statsBar.style.display = 'none';
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   searchMeta.style.display = 'none';
   output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Searching titles\u2026</div>';
   updateTopbar();
@@ -1888,6 +2755,8 @@ async function doSearch(query, push) {
       }
     }
     renderSearchResults(allResults, scope);
+    // Persist search to browse history
+    _histPushSearch(query, scope, (d1.results || []).length);
 
     if (d1.partial) {
       // Show honest progress: "N title matches (Xs) — searching content..."
@@ -1975,6 +2844,7 @@ function renderSearchResults(data, scope) {
   // Source filter pills (global search only, multiple sources)
   const sourceNames = Object.keys(bySource);
   if (!scope && sourceNames.length > 1) {
+    pillsBar.className = 'pills' + (sourceNames.length > 12 ? ' pills-scroll' : '');
     pillsBar.innerHTML = sourceNames.sort().map(s => {
       return '<button class="pill' + (activeSourceFilters.has(s) ? ' active' : '') +
         '" aria-pressed="' + activeSourceFilters.has(s) + '" onclick="toggleSourceFilter(\'' + escAttr(s) + '\')">' +
@@ -2033,10 +2903,11 @@ function renderSearchResults(data, scope) {
         '<span class="rs-name">' + esc(_zimTitle(r.zim)) + '</span></div>'
       : '';
     return '<div class="result" tabindex="0" role="button" data-zim="' + escAttr(r.zim) + '" data-path="' + escAttr(r.path) + '" style="animation-delay:' + (Math.min(i, 5) * 0.04) + 's" onclick="openArticle(\'' + escJs(r.zim) + '\', \'' + escJs(r.path) + '\', \'' + escJs(r.title || '') + '\')" onkeydown="if(event.key===\'Enter\')openArticle(\'' + escJs(r.zim) + '\', \'' + escJs(r.path) + '\', \'' + escJs(r.title || '') + '\')">' +
-      sourceRow +
+      '<div class="result-thumb" data-needs-thumb="1"></div>' +
+      '<div class="result-body">' + sourceRow +
       '<div class="title">' + esc(r.title) + '</div>' +
       (r.snippet ? '<div class="snippet">' + esc(r.snippet) + '</div>' : '<div class="snippet" data-needs-snippet="1"></div>') +
-      '</div>';
+      '</div></div>';
   }).join('') + '</div>';
 
   if (remaining > 0) {
@@ -2063,49 +2934,74 @@ function _zimTitle(name) {
   return (info && info.title) || name;
 }
 
-// ── Async Snippets ──
+// ── Async Snippets + Thumbnails ──
 async function loadSnippets() {
   if (snippetController) snippetController.abort();
   snippetController = new AbortController();
   const signal = snippetController.signal;
 
-  const els = document.querySelectorAll('.result [data-needs-snippet="1"]');
-  if (!els.length) return;
+  // Collect all result cards that need either snippets or thumbnails
+  const cards = document.querySelectorAll('.result[data-zim][data-path]');
+  const queue = [];
+  cards.forEach(function(card) {
+    const needsSnippet = card.querySelector('[data-needs-snippet="1"]');
+    const needsThumb = card.querySelector('[data-needs-thumb]');
+    if (needsSnippet || needsThumb) queue.push(card);
+  });
+  if (!queue.length) return;
 
-  const queue = Array.from(els);
   const concurrency = 4;
   let active = 0;
   let idx = 0;
 
   function next() {
     while (active < concurrency && idx < queue.length) {
-      const el = queue[idx++];
-      const card = el.closest('.result');
-      if (!card) continue;
+      const card = queue[idx++];
       const zim = card.dataset.zim;
       const path = card.dataset.path;
       if (!zim || !path) continue;
+      const snippetEl = card.querySelector('[data-needs-snippet="1"]');
       active++;
-      fetchSnippet(el, zim, path, signal).finally(() => { active--; next(); });
+      fetchSnippet(snippetEl || card.querySelector('.snippet'), zim, path, signal, card)
+        .finally(() => { active--; next(); });
     }
   }
   next();
 }
 
-async function fetchSnippet(el, zim, path, signal) {
+async function fetchSnippet(snippetEl, zim, path, signal, card) {
   try {
     const res = await fetch('/snippet?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path), { signal });
     const data = await res.json();
-    if (data.snippet) {
-      el.textContent = data.snippet;
-      el.removeAttribute('data-needs-snippet');
-      el.style.opacity = '0';
-      requestAnimationFrame(() => { el.style.opacity = '1'; });
-    } else {
-      el.remove();
+    // Populate snippet text if needed
+    if (snippetEl && snippetEl.hasAttribute('data-needs-snippet')) {
+      if (data.snippet) {
+        snippetEl.textContent = data.snippet;
+        snippetEl.removeAttribute('data-needs-snippet');
+        snippetEl.style.opacity = '0';
+        requestAnimationFrame(() => { snippetEl.style.opacity = '1'; });
+      } else {
+        snippetEl.remove();
+      }
+    }
+    // Populate thumbnail if returned
+    if (data.thumbnail && card) {
+      var thumbEl = card.querySelector('.result-thumb[data-needs-thumb]');
+      if (thumbEl) {
+        var img = new Image();
+        img.onload = function() {
+          if (img.naturalWidth >= 60 && img.naturalHeight >= 40) {
+            thumbEl.innerHTML = '';
+            thumbEl.appendChild(img);
+            thumbEl.classList.add('loaded');
+            thumbEl.removeAttribute('data-needs-thumb');
+          }
+        };
+        img.src = data.thumbnail;
+      }
     }
   } catch(e) {
-    if (e.name !== 'AbortError') el.remove();
+    if (e.name !== 'AbortError' && snippetEl && snippetEl.hasAttribute('data-needs-snippet')) snippetEl.remove();
   }
 }
 
@@ -2188,6 +3084,52 @@ document.addEventListener('mousedown', (e) => {
   }
 });
 
+function showHistoryDropdown(filter) {
+  var h = _histLoad();
+  if (!h.length) { if (!filter) return; }
+  var fl = filter ? filter.toLowerCase() : '';
+  var items = [];
+  var seen = new Set();
+  for (var i = 0; i < h.length && items.length < 8; i++) {
+    var entry = h[i];
+    var label, sub, key;
+    if (entry.type === 'search') {
+      label = entry.query;
+      sub = entry.zim ? _zimTitle(entry.zim) : 'All sources';
+      key = 's:' + label.toLowerCase();
+    } else {
+      label = entry.title || _titleFromPath(entry.path || '');
+      sub = entry.zim ? _zimTitle(entry.zim) : '';
+      key = 'a:' + (entry.zim || '') + ':' + (entry.path || '');
+    }
+    if (fl && !label.toLowerCase().includes(fl) && !sub.toLowerCase().includes(fl)) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({ entry: entry, label: label, sub: sub, isSearch: entry.type === 'search', idx: i });
+  }
+  if (!items.length) {
+    if (!filter) hideSuggest();
+    return;
+  }
+  // Merge into suggestItems for keyboard navigation
+  suggestItems = items.map(function(it) {
+    return it.isSearch
+      ? { _hist: true, _histSearch: true, query: it.entry.query, zim: it.entry.zim || '', label: it.label, sub: it.sub }
+      : { _hist: true, zim: it.entry.zim, path: it.entry.path, title: it.label, label: it.label, sub: it.sub };
+  });
+  suggestIndex = -1;
+  var icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+  var searchIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.5"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>';
+  suggestDropdown.innerHTML = (filter ? '' : '<div style="padding:6px 14px 2px;font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Recent</div>') +
+    items.map(function(it, i) {
+      return '<div class="suggest-item" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')" style="display:flex;align-items:center;gap:8px">' +
+        (it.isSearch ? searchIcon : icon) +
+        '<div style="flex:1;min-width:0"><div class="sg-title">' + esc(it.label) + '</div>' +
+        '<div class="sg-source">' + esc(it.sub) + '</div></div></div>';
+    }).join('');
+  suggestDropdown.style.display = 'block';
+}
+
 function showSuggest() {
   suggestIndex = -1;
   suggestDropdown.innerHTML = suggestItems.map((s, i) =>
@@ -2215,6 +3157,14 @@ function selectSuggest(i) {
   const s = suggestItems[i];
   if (!s) return;
   hideSuggest();
+  // History search item: re-execute the search
+  if (s._histSearch) {
+    q.value = s.query;
+    if (s.zim) { enterSource(s.zim); }
+    doSearch(s.query);
+    return;
+  }
+  // Regular suggestion or history article
   q.value = s.title;
   openArticle(s.zim, s.path, s.title);
 }
@@ -2239,7 +3189,7 @@ function enterManage(e) {
   q.value = '';
   closeReader();
   statsBar.style.display = 'none';
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   searchMeta.style.display = 'none';
   sourceHeaderEl.style.display = 'none';
   hideSuggest();
@@ -2380,28 +3330,140 @@ async function loadFullCatalog() {
     item.category = autoCategorize(item);
   }
 
-  // Enrich with installed ZIM metadata by matching filename prefix to catalog name
-  // OPDS catalog name: "wiktionary_en_all", installed filename: "wiktionary_en_all_maxi_2024-05.zim"
-  if (zimsCache) {
-    for (const item of items) {
-      for (const z of zimsCache) {
-        const fb = (z.file || '').replace(/\.zim$/, '');
-        if (fb.startsWith(item.name + '_') || fb === item.name) {
-          item.installed = true;
-          const m = fb.match(/(\d{4}-\d{2})$/);
-          item._installedDate = m ? m[1] : null;
-          item._installedFile = z.file;
-          item._installedName = z.name;
-          item._installedSizeGb = z.size_gb;
-          break;
-        }
-      }
-    }
-  }
+  _enrichCatalogInstalled(items);
 
   _catalogCache = items;
   _catalogCacheLang = lang;
   return _catalogCache;
+}
+
+function _enrichCatalogInstalled(items) {
+  // Enrich with installed ZIM metadata by matching filename prefix to catalog name
+  // OPDS catalog name: "wiktionary_en_all", installed filename: "wiktionary_en_all_maxi_2024-05.zim"
+  if (!zimsCache) return;
+  for (const item of items) {
+    item.installed = false;
+    item._installedDate = null;
+    item._installedFile = null;
+    item._installedName = null;
+    item._installedSizeGb = null;
+    for (const z of zimsCache) {
+      const fb = (z.file || '').replace(/\.zim$/, '');
+      if (fb.startsWith(item.name + '_') || fb === item.name) {
+        item.installed = true;
+        const m = fb.match(/(\d{4}-\d{2})$/);
+        item._installedDate = m ? m[1] : null;
+        item._installedFile = z.file;
+        item._installedName = z.name;
+        item._installedSizeGb = z.size_gb;
+        break;
+      }
+    }
+  }
+}
+
+const FEATURED_ZIMS = [
+  { match: 'apod.nasa', type: 'apod', label: 'Picture of the Day', icon: '\uD83D\uDD2D', promo: 'NASA APOD', unlock: 'Discover: Picture of the Day' },
+  { match: 'wikipedia',     type: 'onthisday', label: 'On This Day',        icon: '\uD83C\uDF0D', promo: 'Wikipedia',           unlock: 'Discover: On This Day' },
+  { match: 'wiktionary',    type: 'random',    label: 'Word of the Day',    icon: '\uD83D\uDCD6', promo: 'Wiktionary',          unlock: 'Discover: Word of the Day' },
+  { match: 'wikivoyage',    type: 'random',    label: 'Destination of the Day', icon: '\u2708\uFE0F', promo: 'Wikivoyage',      unlock: 'Discover: Destination of the Day' },
+  { match: 'gutenberg',     type: 'random',    label: 'Book of the Day',    icon: '\uD83D\uDCDA', promo: 'Project Gutenberg',   unlock: 'Discover: Book of the Day' },
+  { match: 'wikiquote',     type: 'random',    label: 'Quote of the Day',   icon: '\uD83D\uDCAC', promo: 'Wikiquote',           unlock: 'Discover: Quote of the Day' },
+  { match: 'ted',           type: 'random',    label: 'Talk of the Day',    icon: '\uD83C\uDFAC', promo: 'TED Talks',           unlock: 'Discover: Talk of the Day' },
+  { match: 'xkcd',          type: 'random',    label: 'Comic of the Day',   icon: '\uD83C\uDFA8', promo: 'xkcd',                unlock: 'Discover: Comic of the Day' },
+  { match: 'theworldfactbook', type: 'country', label: 'Country of the Day', icon: '\uD83D\uDDFA\uFE0F', promo: 'CIA World Factbook', unlock: 'Discover: Country of the Day' },
+];
+
+function _isFeaturedInstalled(feat, grouped) {
+  // Check ALL matching catalog groups — if any variant in any group is installed, this featured ZIM is installed
+  // Also check zimsCache directly: installed ZIM names often don't match catalog names exactly
+  if (zimsCache) {
+    for (var z of zimsCache) {
+      if (z.name === feat.match || z.name.startsWith(feat.match + '_') || (z.name.indexOf(feat.match) >= 0 && z.name.indexOf('_') >= 0)) {
+        return true;
+      }
+    }
+  }
+  return grouped.some(g => (g.name === feat.match || g.name.startsWith(feat.match + '_')) && (g.variants || [g]).some(v => v.installed));
+}
+
+function buildFeaturedCarousel(items) {
+  const grouped = groupVariants(items);
+  let cards = '';
+  for (const feat of FEATURED_ZIMS) {
+    if (_isFeaturedInstalled(feat, grouped)) continue; // Skip installed — they show on homepage Discover
+    const group = grouped.find(g => g.name === feat.match || g.name.startsWith(feat.match + '_'));
+    if (!group) continue;
+    const variants = group.variants || [group];
+    const withLabels = variants.filter(v => v.download_url).map(v => ({
+      label: variantLabel(v.download_url) || 'Full',
+      size: formatSize(v.size_bytes),
+      url: v.download_url
+    })).filter(v => v.label !== 'No images');  // Don't offer "No images" in featured
+    // Default to Full — images matter for Discover (APOD, xkcd, Wikipedia)
+    const order = { 'Full': 0, 'Mini': 1 };
+    withLabels.sort((a, b) => (order[a.label] ?? 0) - (order[b.label] ?? 0));
+    if (withLabels.length === 0) continue;
+    // Compact banner: icon + label + download action
+    var actionsHtml;
+    if (withLabels.length > 1) {
+      var fcSelId = 'fc-sel-' + Math.random().toString(36).substr(2, 6);
+      var opts = withLabels.map(v =>
+        '<option value="' + escAttr(v.url) + '">' + esc(v.label + ' (' + v.size + ')') + '</option>'
+      ).join('');
+      actionsHtml = '<select id="' + fcSelId + '" class="fc-flavor-select fc-pack-select">' + opts + '</select>' +
+        '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(document.getElementById(\'' + fcSelId + '\').value, this)" title="Download">\u2B07</button>';
+    } else {
+      actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)" title="Download ' + escAttr(withLabels[0].size) + '">\u2B07 ' +
+        esc(withLabels[0].size) + '</button>';
+    }
+    // "Unlocks" hint: what Discover feature this ZIM enables
+    var unlockHtml = feat.unlock ? '<div class="fc-promo-unlock">' + esc(feat.unlock) + '</div>' : '';
+    cards += '<div class="featured-card">' +
+      '<div class="fc-promo">' +
+        '<div class="fc-promo-icon">' + feat.icon + '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:1px">' +
+          '<div class="fc-promo-label">' + esc(feat.promo) + '</div>' +
+          unlockHtml +
+        '</div>' +
+      '</div>' +
+      '<div class="fc-actions">' + actionsHtml + '</div>' +
+    '</div>';
+  }
+  if (!cards) return '';
+  // Discovery Pack: collect each uninstalled featured ZIM using the user's selected flavor
+  var packHtml = '';
+  var _packCount = 0;
+  var _packTotalBytes = 0;
+  for (const feat of FEATURED_ZIMS) {
+    if (!_isFeaturedInstalled(feat, grouped)) {
+      const group = grouped.find(g => g.name === feat.match || g.name.startsWith(feat.match + '_'));
+      if (group) {
+        _packCount++;
+        var pvariants = group.variants || [group];
+        if (pvariants[0] && pvariants[0].size_bytes) _packTotalBytes += pvariants[0].size_bytes;
+      }
+    }
+  }
+  if (_packCount >= 3) {
+    var packSizeStr = _packTotalBytes > 0 ? ' \u00b7 ' + formatSize(_packTotalBytes) : '';
+    packHtml = '<div class="fc-pack">' +
+      '<div style="display:flex;flex-direction:column;gap:2px"><span class="fc-pack-label">\u2728 Discovery Pack</span>' +
+      '<span style="font-size:11px;color:var(--text2)">Download all ' + _packCount + ' sources to unlock Discover</span></div>' +
+      '<button class="ci-add-btn fc-pack-btn" onclick="event.stopPropagation();_downloadPackFromSelects(this)">\u2B07 All' + packSizeStr + '</button>' +
+    '</div>';
+  }
+  return '<div class="featured-section">' + packHtml + '<div class="featured-scroll">' + cards + '</div></div>';
+}
+
+function _restoreCatalogLang() {
+  // Move language select back to manage-search bar if it was moved to footer
+  var sel = document.getElementById('catalog-lang');
+  if (!sel) return;
+  var bar = document.querySelector('#manage-browse .manage-search');
+  if (bar && !bar.contains(sel)) { bar.appendChild(sel); bar.style.display = ''; }
+  // Re-show the manage-search bar
+  if (bar) bar.style.display = '';
 }
 
 function renderBrowseGallery() {
@@ -2409,8 +3471,12 @@ function renderBrowseGallery() {
   if (!results) return;
   _browseView = 'gallery';
   manageCategoryFilter = null;
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   q.placeholder = 'Search catalog...';
+
+  // Detach language select before destroying DOM (it may have been moved into footer)
+  var _langSel = document.getElementById('catalog-lang');
+  if (_langSel && _langSel.parentNode) _langSel.parentNode.removeChild(_langSel);
 
   results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading library...</div>';
 
@@ -2455,8 +3521,7 @@ function renderBrowseGallery() {
     }
 
     let h = '<div class="browse-gallery">';
-    h += '<div class="browse-subtitle" style="text-align:center;margin:12px 0 8px">' + items.length.toLocaleString() + ' ZIMs available across ' +
-      BROWSE_CATEGORIES.length + ' categories</div>';
+    h += buildFeaturedCarousel(items);
     h += '<div class="browse-grid">';
 
     for (const cat of BROWSE_CATEGORIES) {
@@ -2474,19 +3539,35 @@ function renderBrowseGallery() {
         '<div class="bcc-arrow">\u203A</div>' +
       '</div>';
     }
-    h += '</div></div>';
+    h += '</div>';
+    // Footer: count centered, language dropdown moved below
+    var activeCats = BROWSE_CATEGORIES.filter(function(c) { return (catCounts[c.key] || 0) > 0; }).length;
+    h += '<div class="browse-footer">' +
+      '<div class="browse-footer-count">' + groupVariants(items).length.toLocaleString() + ' sources \u00B7 ' + activeCats + ' categories</div>' +
+      '<div class="browse-footer-lang"></div>' +
+    '</div>';
+    h += '</div>';
     results.innerHTML = h;
+    // Re-append the detached language select into the footer
+    var langTarget = results.querySelector('.browse-footer-lang');
+    if (_langSel && langTarget) {
+      langTarget.appendChild(_langSel);
+      // Hide the now-empty manage-search bar
+      var searchBar = document.querySelector('#manage-browse .manage-search');
+      if (searchBar) searchBar.style.display = 'none';
+    }
   }).catch(err => {
     results.innerHTML = '<div class="empty"><p>Failed to load library</p><div class="hint">' + esc(String(err)) + '</div></div>';
   });
 }
 
 function drillCategory(catKey) {
+  _restoreCatalogLang();
   const results = document.getElementById('catalog-results');
   if (!results) return;
   _browseView = 'drilldown';
   manageCategoryFilter = catKey;
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
 
   const catMeta = BROWSE_CATEGORIES.find(c => c.key === catKey);
   const catName = catMeta ? catMeta.name : catKey;
@@ -2516,6 +3597,10 @@ function drillCategory(catKey) {
     for (const item of grouped) h += renderCatalogItem(item);
     if (!grouped.length) h += '<div class="empty"><p>No ZIMs in this category</p></div>';
     results.innerHTML = h;
+    // Move language picker into drill-down header for easy access
+    var _langEl = document.getElementById('catalog-lang');
+    var _drillHeader = results.querySelector('.browse-drilldown-header');
+    if (_langEl && _drillHeader) _drillHeader.appendChild(_langEl);
   }).catch(err => {
     results.innerHTML = '<div class="empty"><p>Failed to load category</p></div>';
   });
@@ -2523,10 +3608,11 @@ function drillCategory(catKey) {
 
 function browseCatalogFilter(query) {
   if (!query) { renderBrowseGallery(); return; }
+  _restoreCatalogLang();
   const results = document.getElementById('catalog-results');
   if (!results) return;
   _browseView = 'search';
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
 
   if (!_catalogCache) {
     results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading...</div>';
@@ -2581,8 +3667,9 @@ function categorizeZim(name) {
 
 function formatSize(bytes) {
   if (!bytes) return '0 MB';
-  const gb = bytes / (1024 ** 3);
-  return gb >= 1 ? gb.toFixed(1) + ' GB' : (bytes / (1024 ** 2)).toFixed(0) + ' MB';
+  const mb = bytes / (1024 ** 2);
+  if (mb >= 900) return (bytes / (1024 ** 3)).toFixed(1) + ' GB';
+  return Math.round(mb) + ' MB';
 }
 
 function groupVariants(items) {
@@ -2648,14 +3735,23 @@ function renderCatalogItem(group) {
     });
     const order = { 'Mini': 0, 'No images': 1, 'Full': 2 };
     withLabels.sort((a, b) => (order[a.label] ?? 1) - (order[b.label] ?? 1));
-    const btns = withLabels.map(v =>
-      '<button class="ci-variant-btn" onclick="downloadZim(\'' + escAttr(v.url) + '\', this)">' + esc(v.label + ' (' + v.size + ')') + '</button>'
-    );
-    if (btns.length) actionsHtml = '<div class="ci-variants">' + btns.join('') + '</div>';
+    if (withLabels.length > 1) {
+      // Dropdown + single download button
+      const selId = 'ci-flavor-' + Math.random().toString(36).substr(2, 6);
+      const opts = withLabels.map(v =>
+        '<option value="' + escAttr(v.url) + '">' + esc(v.label + ' (' + v.size + ')') + '</option>'
+      ).join('');
+      actionsHtml = '<div class="ci-variants ci-flavor-row">' +
+        '<select id="' + selId + '" class="ci-flavor-select" onclick="event.stopPropagation()">' + opts + '</select>' +
+        '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(document.getElementById(\'' + selId + '\').value, this)">Download</button>' +
+      '</div>';
+    } else if (withLabels.length === 1) {
+      actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' + esc('Download ' + withLabels[0].label + ' (' + withLabels[0].size + ')') + '</button>';
+    }
   }
   const catAttr = item.category ? ' data-category="' + escAttr(item.category) + '"' : '';
   const instName = anyInstalled ? (variants.find(v => v.installed && v._installedName) || {})._installedName || '' : '';
-  const openAttr = instName ? ' style="cursor:pointer" onclick="if(!event.target.closest(\'button\')){enterSource(\'' + escJs(instName) + '\',true)}"' : '';
+  const openAttr = instName ? ' style="cursor:pointer" onclick="if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(instName) + '\',true)}"' : '';
   return '<div class="catalog-item' + (anyInstalled ? ' ci-installed-item' : '') + '"' + catAttr + openAttr + '>' +
     '<div class="ci-icon">' + iconHtml + '</div>' +
     '<div class="ci-info">' +
@@ -2675,7 +3771,7 @@ function switchManageTab(tab) {
   document.querySelectorAll('.manage-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.manage-tab-content').forEach(c => c.classList.toggle('active', c.id === 'manage-' + tab));
   q.value = '';
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   if (tab === 'installed') {
     q.placeholder = 'Filter installed ZIMs...';
     renderInstalled();
@@ -2939,10 +4035,12 @@ async function renderActivityTab() {
       if (m.rate_limited) h += '<div class="mc-row"><span class="mc-label">Rate limited</span><span class="mc-value" style="color:var(--amber)">' + m.rate_limited + '</span></div>';
       if (d.zim_size_gb) h += '<div class="mc-row"><span class="mc-label">ZIM disk usage</span><span class="mc-value">' + d.zim_size_gb + ' GB</span></div>';
       if (d.disk_free_gb) h += '<div class="mc-row"><span class="mc-label">Disk free</span><span class="mc-value">' + d.disk_free_gb + ' GB</span></div>';
+      if (sdata.linked_zims) h += '<div class="mc-row"><span class="mc-label">Cross-linked</span><span class="mc-value">' + sdata.linked_zims + ' of ' + sdata.zim_count + ' sources <span style="color:var(--text2);font-size:11px">(' + sdata.domain_count + ' domains)</span></span></div>';
       h += '</div>';
 
       // Save title_index data for rendering after usage
       var _ti = sdata.title_index;
+      var _xzimRefs = sdata.cross_zim_refs;
     }
 
     // Usage stats section (above title index — more relevant to user)
@@ -3029,6 +4127,23 @@ async function renderActivityTab() {
       h += '</div>';
     }
 
+    // Cross-ZIM references
+    var xrefs = (typeof _xzimRefs !== 'undefined') ? _xzimRefs : null;
+    if (xrefs && xrefs.length > 0) {
+      h += '<div class="manage-card"><h2>Cross-ZIM Navigation</h2>';
+      h += '<div style="display:flex;flex-direction:column;gap:4px">';
+      for (var xi = 0; xi < xrefs.length && xi < 20; xi++) {
+        var xr = xrefs[xi];
+        h += '<div style="display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 8px;background:var(--surface);border-radius:6px">';
+        h += '<span style="color:var(--text)">' + esc(xr.from) + '</span>';
+        h += '<span style="color:var(--text2)">\u2192</span>';
+        h += '<span style="color:var(--text)">' + esc(xr.to) + '</span>';
+        h += '<span style="margin-left:auto;color:var(--text2);font-size:11px">' + xr.count + ' link' + (xr.count !== 1 ? 's' : '') + '</span>';
+        h += '</div>';
+      }
+      h += '</div></div>';
+    }
+
     if (!h) {
       h = '<div style="text-align:center;padding:24px;color:var(--text2);font-size:13px">No stats available yet. Start searching and reading articles!</div>';
     }
@@ -3070,56 +4185,38 @@ async function renderManage() {
   const installedCount = zimsCache ? zimsCache.length : 0;
 
   output.innerHTML =
-    '<div id="manage-status" class="manage-card"><h2>Library Status</h2><div class="loading"><span class="spinner-inline"></span>Loading...</div></div>' +
+    '<div id="manage-status" class="manage-settings">' +
+      '<div class="ms-nav" id="ms-nav">' +
+        '<button class="ms-nav-item active" data-ms="library" onclick="switchMs(\'library\')">Library</button>' +
+        '<button class="ms-nav-item" data-ms="display" onclick="switchMs(\'display\')">Display</button>' +
+        '<button class="ms-nav-item" data-ms="server" onclick="switchMs(\'server\')">Server</button>' +
+        '<button class="ms-nav-item" data-ms="security" onclick="switchMs(\'security\')">Security</button>' +
+      '</div>' +
+      '<div id="ms-pane" class="ms-pane"><div class="loading"><span class="spinner-inline"></span>Loading\u2026</div></div>' +
+    '</div>' +
     '<div id="manage-downloads"></div>' +
     '<div class="manage-tabs">' +
       '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">Installed</button>' +
       '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">Catalog</button>' +
       '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">Collections</button>' +
       '<button class="manage-tab' + (manageTab === 'history' ? ' active' : '') + '" data-tab="history" onclick="switchManageTab(\'history\')">History</button>' +
-      '<button class="manage-tab' + (manageTab === 'activity' ? ' active' : '') + '" data-tab="activity" onclick="switchManageTab(\'activity\')">Stats</button>' +
     '</div>' +
     '<div id="manage-installed" class="manage-tab-content' + (manageTab === 'installed' ? ' active' : '') + '"></div>' +
     '<div id="manage-collections" class="manage-tab-content' + (manageTab === 'collections' ? ' active' : '') + '"></div>' +
     '<div id="manage-history" class="manage-tab-content' + (manageTab === 'history' ? ' active' : '') + '"></div>' +
-    '<div id="manage-activity" class="manage-tab-content' + (manageTab === 'activity' ? ' active' : '') + '"></div>' +
     '<div id="manage-browse" class="manage-tab-content' + (manageTab === 'browse' ? ' active' : '') + '">' +
       '<div class="manage-search" style="justify-content:flex-end">' +
-        '<select id="catalog-lang" onchange="_catalogCache=null;if(_browseView===\'drilldown\'&&manageCategoryFilter)drillCategory(manageCategoryFilter);else if(_browseView===\'search\'){var v=q.value.trim();if(v)browseCatalogFilter(v);else renderBrowseGallery();}else renderBrowseGallery();" style="max-width:140px"><option value="">All languages</option><option value="eng">English</option><option value="fra">French</option><option value="deu">German</option><option value="spa">Spanish</option></select>' +
+        '<select id="catalog-lang" onchange="_catalogCache=null;if(_browseView===\'drilldown\'&&manageCategoryFilter)drillCategory(manageCategoryFilter);else if(_browseView===\'search\'){var v=q.value.trim();if(v)browseCatalogFilter(v);else renderBrowseGallery();}else renderBrowseGallery();" style="max-width:140px"><option value="">All languages</option><option value="eng" selected>English</option><option value="fra">French</option><option value="deu">German</option><option value="spa">Spanish</option></select>' +
       '</div>' +
       '<div id="catalog-results"></div>' +
     '</div>';
 
-  // Status card
+  // Status card — fetch data and render into settings panel
   try {
     const res = await manageFetch('/manage/status');
     const data = await res.json();
-    const statusEl = document.getElementById('manage-status');
-    if (statusEl) {
-      statusEl.innerHTML = '<h2>Library Status</h2>' +
-        '<div class="mc-row"><span class="mc-label">ZIM files</span><span class="mc-value">' + esc(String(data.zim_count)) + '</span></div>' +
-        '<div class="mc-row"><span class="mc-label">Total size</span><span class="mc-value">' + fmtSize(data.total_size_gb) + '</span></div>' +
-        '<div id="update-status" class="mc-row"><span class="mc-label">Updates</span><span class="mc-value" style="color:var(--text2)">Checking\u2026</span></div>' +
-        '<div class="mc-row" style="align-items:center">' +
-          '<span class="mc-label">Auto-update</span>' +
-          '<span class="mc-value">' +
-            '<select id="auto-update-freq" onchange="toggleAutoUpdate()" style="font-size:12px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">' +
-              '<option value="disabled">Disabled</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>' +
-            '</select>' +
-          '</span>' +
-        '</div>' +
-        '<div style="margin-top:12px;display:flex;gap:8px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">' +
-          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-            (IS_DESKTOP
-              ? '<button class="manage-btn-action" onclick="openSettings()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">&#x2699;&#xFE0F; Settings</button>'
-              : '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">&#x1F504; Refresh Cache</button>') +
-            '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">&#x1F512; Password</button>' +
-            (sessionStorage.getItem('zimi_manage_pw') ? '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" title="Log out and return to home">Log Out</button>' : '') +
-          '</div>' +
-          '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none">Update All</button>' +
-        '</div>' +
-        '';
-    }
+    _manageStatusData = data;
+    switchMs('library');
     // Sync auto-update dropdown from server
     const au = data.auto_update || {};
     const freqSel = document.getElementById('auto-update-freq');
@@ -3133,12 +4230,12 @@ async function renderManage() {
     }
     checkForUpdates();
   } catch(e) {
-    const statusEl = document.getElementById('manage-status');
-    if (statusEl) statusEl.innerHTML = '<h2>Library Status</h2><div style="color:var(--text2);font-size:13px">Could not load library status</div>';
+    var pane = document.getElementById('ms-pane');
+    if (pane) pane.innerHTML = '<div style="color:var(--text2);font-size:13px">Could not load library status</div>';
   }
 
   // Render active tab content
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none';
+  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   if (manageTab === 'installed') {
     renderInstalled();
   } else if (manageTab === 'collections') {
@@ -3161,6 +4258,138 @@ async function renderManage() {
   }
 }
 
+// ── macOS-style settings panel sections ──
+var _msSection = 'library';
+var _manageStatusData = null;
+
+function switchMs(section) {
+  _msSection = section;
+  document.querySelectorAll('.ms-nav-item').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.ms === section);
+  });
+  var pane = document.getElementById('ms-pane');
+  if (!pane) return;
+  switch(section) {
+    case 'library': pane.innerHTML = _msLibraryHtml(); break;
+    case 'display': pane.innerHTML = _msDisplayHtml(); break;
+    case 'server': pane.innerHTML = _msServerHtml(); break;
+    case 'security': pane.innerHTML = _msSecurityHtml(); break;
+  }
+}
+
+function _msLibraryHtml() {
+  var d = _manageStatusData;
+  if (!d) return '<div class="loading"><span class="spinner-inline"></span>Loading\u2026</div>';
+  var h = '<div class="mc-row"><span class="mc-label">ZIM files</span><span class="mc-value">' + esc(String(d.zim_count)) + '</span></div>' +
+    '<div class="mc-row"><span class="mc-label">Total size</span><span class="mc-value">' + fmtSize(d.total_size_gb) + '</span></div>' +
+    '<div id="update-status" class="mc-row"><span class="mc-label">Updates</span><span class="mc-value" style="color:var(--text2)">Checking\u2026</span></div>' +
+    '<div class="mc-row" style="align-items:center">' +
+      '<span class="mc-label">Auto-update</span>' +
+      '<span class="mc-value">' +
+        (function() {
+          var au = (d.auto_update || {});
+          var cur = au.enabled ? (au.frequency || 'weekly') : 'disabled';
+          var opts = [['disabled','Disabled'],['daily','Daily'],['weekly','Weekly'],['monthly','Monthly']];
+          var optHtml = opts.map(function(o) { return '<option value="' + o[0] + '"' + (o[0] === cur ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
+          var extra = au.locked ? ' disabled title="Controlled by ZIMI_AUTO_UPDATE env var" style="font-size:12px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);opacity:0.5"' : ' style="font-size:12px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"';
+          return '<select id="auto-update-freq" onchange="toggleAutoUpdate()"' + extra + '>' + optHtml + '</select>';
+        })() +
+      '</span>' +
+    '</div>' +
+    '<div class="ms-actions">' +
+      '<button class="manage-btn-action" onclick="manageImportZim()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Import ZIM</button>' +
+      '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Refresh Cache</button>' +
+      '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none">Update All</button>' +
+    '</div>' +
+    '<div id="tmp-files-section"></div>';
+  // Async-load tmp file info
+  manageFetch('/manage/stats').then(function(r) { return r.json(); }).then(function(s) {
+    var el = document.getElementById('tmp-files-section');
+    if (!el || !s.disk || !s.disk.tmp_files || !s.disk.tmp_files.length) return;
+    var files = s.disk.tmp_files;
+    var totalBytes = files.reduce(function(a, f) { return a + f.size_bytes; }, 0);
+    var html = '<div class="mc-row" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">' +
+      '<span class="mc-label">Partial downloads</span>' +
+      '<span class="mc-value" style="color:var(--text2)">' + files.length + ' file' + (files.length > 1 ? 's' : '') + ' · ' + _fmtBytes(totalBytes) + '</span></div>';
+    files.forEach(function(f) {
+      html += '<div class="mc-row" style="padding-left:8px"><span class="mc-label" style="font-size:12px;color:var(--text2)">' + esc(f.filename.replace('.zim.tmp','')) + '</span>' +
+        '<span class="mc-value" style="font-size:12px;color:var(--text2)">' + _fmtBytes(f.size_bytes) + ' · ' + f.age_hours + 'h ago</span></div>';
+    });
+    html += '<div class="ms-actions"><button class="manage-btn-action" onclick="cleanupTmpFiles()" id="cleanup-tmp-btn" style="background:var(--surface2);color:var(--amber);border:1px solid var(--border);font-size:12px">Clean Up Partial Downloads</button></div>';
+    el.innerHTML = html;
+  }).catch(function() {});
+  return h;
+}
+
+function _fmtBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+  return (b / 1073741824).toFixed(1) + ' GB';
+}
+
+async function cleanupTmpFiles() {
+  var btn = document.getElementById('cleanup-tmp-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Cleaning\u2026'; }
+  try {
+    var r = await manageFetch('/manage/cleanup-tmp', {method: 'POST'});
+    var data = await r.json();
+    var el = document.getElementById('tmp-files-section');
+    if (el) { el.style.opacity = '0.3'; setTimeout(function() { el.innerHTML = ''; el.style.opacity = ''; }, 300); }
+    if (data.removed && data.removed.length) {
+      showToast(data.removed.length + ' partial download' + (data.removed.length > 1 ? 's' : '') + ' removed');
+    } else {
+      showToast('No partial downloads found');
+    }
+  } catch(e) {
+    showToast('Failed to clean up');
+    if (btn) { btn.disabled = false; btn.textContent = 'Clean Up Partial Downloads'; }
+  }
+}
+
+function _msDisplayHtml() {
+  var showXzim = localStorage.getItem('zimi_hide_cross_zim_links') !== '1';
+  var showDiscover = localStorage.getItem('zimi_hide_discover') !== '1';
+  return '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> Show cross-source link highlights</label>' +
+    '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> Show Discover</label>';
+}
+
+function _msServerHtml() {
+  if (IS_DESKTOP) {
+    return '<div class="ms-hint">Server configuration is available via the Settings overlay.</div>' +
+      '<div class="ms-actions"><button class="manage-btn-action" onclick="openSettings()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Open Server Settings</button></div>';
+  }
+  // Docker/server: fetch zim_dir + data_dir from stats endpoint
+  var h = '<div class="ms-field"><label>ZIM folder</label><input type="text" id="ms-zim-dir" readonly value="Loading\u2026"></div>' +
+    '<div class="ms-field"><label>Data folder</label><input type="text" id="ms-data-dir" readonly value="Loading\u2026"></div>' +
+    '<div class="ms-hint">Configured via environment variables or Docker.</div>';
+  // Async fill
+  manageFetch('/manage/stats').then(function(r) { return r.json(); }).then(function(s) {
+    var el = document.getElementById('ms-zim-dir');
+    if (el && s.disk && s.disk.zim_dir) el.value = s.disk.zim_dir;
+    else if (el) el.value = '(unknown)';
+    var el2 = document.getElementById('ms-data-dir');
+    if (el2 && s.disk && s.disk.data_dir) el2.value = s.disk.data_dir;
+    else if (el2) el2.value = '(unknown)';
+  }).catch(function() {
+    var el = document.getElementById('ms-zim-dir');
+    if (el) el.value = '(unavailable)';
+    var el2 = document.getElementById('ms-data-dir');
+    if (el2) el2.value = '(unavailable)';
+  });
+  return h;
+}
+
+function _msSecurityHtml() {
+  var h = '<div class="ms-actions">' +
+    '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Set / Change Password</button>';
+  if (sessionStorage.getItem('zimi_manage_pw')) {
+    h += '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Log Out</button>';
+  }
+  return h + '</div>';
+}
 
 async function toggleAutoUpdate() {
   const freqSel = document.getElementById('auto-update-freq');
@@ -3269,7 +4498,7 @@ function renderInstalled(filterText) {
       if (variants.length > 1) {
         const vid = '_fv_' + z.name;
         window[vid] = variants;
-        meta.push('<span class="flavor-pill" onclick="showFlavorPicker(this, \'' + escAttr(z.name) + '\', window[\'' + vid + '\'])">' +
+        meta.push('<span class="flavor-pill" onclick="event.stopPropagation();showFlavorPicker(this, \'' + escAttr(z.name) + '\', window[\'' + vid + '\'])">' +
           esc(flavor || 'Full') +
           '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>' +
         '</span>');
@@ -3286,7 +4515,7 @@ function renderInstalled(filterText) {
         actionsHtml = '<span class="ci-installed-badge">Installed</span>' +
           '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="Delete">\u00D7</button>';
       }
-      items_h += '<div class="catalog-item' + (upd ? ' ci-has-update' : '') + '" style="cursor:pointer" onclick="if(!event.target.closest(\'button\')){enterSource(\'' + escJs(z.name) + '\',true)}">' +
+      items_h += '<div class="catalog-item' + (upd ? ' ci-has-update' : '') + '" style="cursor:pointer" onclick="if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(z.name) + '\',true)}">' +
         '<div class="ci-icon">' + iconHtml + '</div>' +
         '<div class="ci-info">' +
           '<div class="ci-title">' + esc(z.title || z.name) + '</div>' +
@@ -3436,6 +4665,65 @@ async function searchCatalog(append) {
     }
   } catch(e) {
     if (!append) results.innerHTML = '<div class="empty"><p>Failed to fetch catalog</p></div>';
+  }
+}
+
+async function _downloadPack(btn, urls) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Starting...'; }
+  var started = 0;
+  for (var i = 0; i < urls.length; i++) {
+    try {
+      const res = await manageFetch('/manage/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urls[i] }),
+      });
+      const data = await res.json();
+      if (!data.error) started++;
+    } catch(e) {}
+  }
+  if (btn) { btn.textContent = started + ' queued'; btn.classList.add('ci-installed-badge'); }
+}
+async function _downloadPackFromSelects(btn) {
+  // Collect URLs from each featured card's flavor dropdown (or single-button cards)
+  var urls = [];
+  document.querySelectorAll('.featured-card').forEach(function(card) {
+    var sel = card.querySelector('.fc-pack-select');
+    if (sel) { urls.push(sel.value); return; }
+    var singleBtn = card.querySelector('.ci-add-btn');
+    if (singleBtn) {
+      var oc = singleBtn.getAttribute('onclick') || '';
+      var m = oc.match(/downloadZim\('([^']+)'/);
+      if (m) urls.push(m[1]);
+    }
+  });
+  if (urls.length) await _downloadPack(btn, urls);
+}
+
+async function manageImportZim() {
+  var url = prompt('Enter the HTTPS URL of a .zim file to import:');
+  if (!url || !url.trim()) return;
+  url = url.trim();
+  if (!url.startsWith('https://')) {
+    _showToast('URL must start with https://');
+    return;
+  }
+  if (!/\.zim(\?|#|$)/.test(url)) {
+    _showToast('URL must point to a .zim file');
+    return;
+  }
+  try {
+    var resp = await manageFetch('/manage/import', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url: url})
+    });
+    var data = await resp.json();
+    if (!resp.ok) { _showToast(data.error || 'Import failed'); return; }
+    _showToast('Import started: ' + url.split('/').pop().split('?')[0]);
+    renderManage();
+  } catch(e) {
+    _showToast('Import failed: ' + e.message);
   }
 }
 
@@ -3615,7 +4903,8 @@ async function refreshDownloads() {
 
       if (!dl.done && !dl.error) {
         h += '<div class="dl-progress"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>';
-        h += '<div class="dl-actions"><button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">Cancel</button></div>';
+        var mirrorInfo = dl.mirror_host ? '<span class="dl-mirror" title="' + esc(dl.mirror_host) + '">' + esc(dl.mirror_host) + (dl.mirror_count > 1 ? ' (' + dl.mirror_count + ' mirrors)' : '') + '</span>' : '';
+        h += '<div class="dl-actions">' + mirrorInfo + '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">Cancel</button></div>';
       }
       if (dl.error && dl.error !== 'Cancelled') {
         h += '<div class="dl-actions"><button class="dl-retry-btn" onclick="downloadZim(\'' + escAttr(dl.url) + '\')">Retry</button></div>';
@@ -3683,9 +4972,9 @@ async function refreshDownloads() {
       try {
         const lr = await fetch('/list');
         zimsCache = await lr.json();
-        _catalogCache = null;
         _availableUpdates = {};
-        await loadFullCatalog().catch(() => {});
+        // Re-merge install status into existing catalog (no OPDS re-fetch needed)
+        if (_catalogCache) _enrichCatalogInstalled(_catalogCache);
         renderInstalled();
         checkForUpdates();
         // Update status card counts
@@ -3701,11 +4990,9 @@ async function refreshDownloads() {
         const tabBtn = document.querySelector('.manage-tab[data-tab="installed"]');
         if (tabBtn) tabBtn.textContent = 'Installed';
         // Re-render browse view so download buttons update to "Installed"
-        if (manageTab === 'browse') {
-          if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
-          else if (_browseView === 'search') { var sq = q.value.trim(); if (sq) browseCatalogFilter(sq); }
-          else if (_browseView === 'gallery') renderBrowseGallery();
-        }
+        if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
+        else if (_browseView === 'search') { var sq = q.value.trim(); if (sq) browseCatalogFilter(sq); }
+        else if (_browseView === 'gallery') renderBrowseGallery();
       } catch(e) {}
     }
     _dlPrevAllDone = allDone;
@@ -3874,7 +5161,10 @@ async function manageClearPassword() {
 function _pdfViewerUrl(pdfUrl) {
   // pdfUrl is already percent-encoded (/w/zim/path%20name.pdf).
   // Don't encodeURIComponent — pdf.js passes file param directly to fetch.
-  return '/static/pdfjs/web/viewer.html?file=' + pdfUrl;
+  // Append ?raw=1 so the server bypasses the SPA shell check and CDN caches
+  // the raw PDF separately from the HTML deep-link URL.
+  var raw = pdfUrl + (pdfUrl.includes('?') ? '&' : '?') + 'raw=1';
+  return '/static/pdfjs/web/viewer.html?file=' + raw;
 }
 function _articleUrl(zim, path) {
   return '/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/');
@@ -3929,12 +5219,14 @@ function openReader(url) {
 
   mainView.classList.add('hidden');
   reader.classList.add('open');
+  // Hide main document scroll so iframe becomes primary scroller (iOS tap-to-top)
+  document.documentElement.style.overflowY = 'hidden';
   loading.classList.remove('hidden');
 
   // Punch-out button: for pdf.js viewer URLs, link to the raw PDF for download
   if (url.startsWith('/static/pdfjs/')) {
     var fileParam = new URL(url, location.origin).searchParams.get('file');
-    newtabBtn.href = fileParam ? fileParam + (fileParam.includes('?') ? '&' : '?') + 'raw=1' : url;
+    newtabBtn.href = fileParam || url;
   } else {
     newtabBtn.href = url;
   }
@@ -3942,13 +5234,34 @@ function openReader(url) {
   frame.onload = function() {
     loading.classList.add('hidden');
     if (!readerOpen) return; // reader was closed — don't update title
+    // Capture mousedown inside iframe for modifier-click detection + dismiss context menu
+    try {
+      frame.contentDocument.addEventListener('mousedown', function(e) { _lastMouseEvent = e; _lastMouseTime = Date.now(); _hideLinkCtxMenu(); }, true);
+    } catch(e) {}
+    // Inject responsive CSS + scroll-to-top button for mobile
+    try {
+      var _rStyle = frame.contentDocument.createElement('style');
+      _rStyle.textContent = 'img{max-width:100%;height:auto}table{max-width:100%;overflow-x:auto;display:block}pre{overflow-x:auto;max-width:100%}' +
+        '#zimi-top{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;border:none;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:9999;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}';
+      frame.contentDocument.head.appendChild(_rStyle);
+      var _topBtn = frame.contentDocument.createElement('button');
+      _topBtn.id = 'zimi-top';
+      _topBtn.innerHTML = '\u2191';
+      _topBtn.onclick = function() { frame.contentWindow.scrollTo({top:0,behavior:'smooth'}); };
+      frame.contentDocument.body.appendChild(_topBtn);
+      frame.contentWindow.addEventListener('scroll', function() {
+        _topBtn.style.display = frame.contentWindow.scrollY > 300 ? 'flex' : 'none';
+      });
+    } catch(e) {}
     // Only intercept clicks in ZIM content, not in static viewer pages (pdf.js)
     var _frameLoc = ''; try { _frameLoc = frame.contentWindow.location.pathname; } catch(e) {}
     if (!_frameLoc.startsWith('/static/')) try {
-      frame.contentDocument.addEventListener('click', function(e) {
+      var _handleFrameLink = function(e) {
         var a = e.target.closest('a[href]');
         if (!a) return;
         var href = a.getAttribute('href') || '';
+        // Hash-only links (#/route, #heading): let iframe handle natively (SPA routing, anchors)
+        if (href.startsWith('#')) return;
         var lhref = href.toLowerCase();
         // Resolve URL against iframe's location (not document.baseURI which may point to original domain)
         var frameLoc = frame.contentWindow.location;
@@ -3966,17 +5279,159 @@ function openReader(url) {
         if (wMatch) {
           e.preventDefault();
           var linkZim = decodeURIComponent(wMatch[1]);
-          var linkPath = decodeURIComponent(wMatch[2]).replace(/[?#].*$/, ''); // strip query and fragment
+          var linkPath = decodeURIComponent(wMatch[2]).replace(/\?.*$/, ''); // strip query params, keep hash
           openArticle(linkZim, linkPath);
           return;
         }
-        // External links: open in new tab
-        if (/^https?:\/\//.test(href) && !fullUrl.startsWith(location.origin)) {
+        // External links: try cross-ZIM resolution, fall back to new tab
+        // Check both raw href (https://...) and protocol-relative (//domain/...)
+        if ((/^https?:\/\//.test(href) || /^\/\//.test(href)) && !fullUrl.startsWith(location.origin)) {
           e.preventDefault();
-          window.open(fullUrl, '_blank');
+          // Quick client-side check: skip /resolve if domain isn't in any installed ZIM
+          try {
+            var linkHost = new URL(fullUrl).hostname;
+            var linkBare = linkHost.replace(/^www\./, '');
+            if (!_domainZimMap[linkHost] && !_domainZimMap[linkBare]) {
+              window.open(fullUrl, '_blank');
+              return;
+            }
+          } catch(ex) {}
+          // Check cached resolve results first (populated by batch resolve on load)
+          var _cached = _resolveCache && _resolveCache[fullUrl];
+          if (_cached && _cached.found) {
+            openArticle(_cached.zim, _cached.path);
+            return;
+          }
+          var fromZim = readerSource || (currentArticle && currentArticle.zim) || '';
+          fetch('/resolve?url=' + encodeURIComponent(fullUrl) + (fromZim ? '&from=' + encodeURIComponent(fromZim) : ''))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              if (data.found) openArticle(data.zim, data.path);
+              else window.open(fullUrl, '_blank');
+            })
+            .catch(function() { window.open(fullUrl, '_blank'); });
+        }
+      };
+      frame.contentDocument.addEventListener('click', _handleFrameLink);
+      // Middle-click fires auxclick, not click — handle it for new-tab support
+      frame.contentDocument.addEventListener('auxclick', function(e) {
+        if (e.button === 1) _handleFrameLink(e);
+      });
+      // Right-click context menu for links inside iframe
+      frame.contentDocument.addEventListener('contextmenu', function(e) {
+        var a = e.target.closest('a[href]');
+        if (!a) return;
+        var href = a.getAttribute('href') || '';
+        if (href.startsWith('#')) return;
+        var frameLoc = frame.contentWindow.location;
+        var fullUrl;
+        try { fullUrl = new URL(href, frameLoc.href).href; } catch(ex) { fullUrl = a.href; }
+        var wMatch = fullUrl.startsWith(location.origin) && fullUrl.match(/\/w\/([^\/]+)\/(.+)/);
+        if (wMatch) {
+          e.preventDefault();
+          e.stopPropagation();
+          var linkZim = decodeURIComponent(wMatch[1]);
+          var linkPath = decodeURIComponent(wMatch[2]).replace(/\?.*$/, '');
+          // Calculate position relative to parent window
+          var frameRect = frame.getBoundingClientRect();
+          _showLinkCtxMenu(e.clientX + frameRect.left, e.clientY + frameRect.top, {
+            zim: linkZim, path: linkPath, title: a.textContent.trim(), url: fullUrl
+          });
         }
       });
     } catch(e) { /* cross-origin — ZIM content loaded from a different origin */ }
+    // Classify links: batch-resolve external URLs to find which ones are available locally
+    // Only highlight links that actually resolve to a different installed ZIM
+    // Feature flag: enabled by default, user can hide via Settings checkbox
+    var _currentZim = readerSource || (currentArticle && currentArticle.zim) || '';
+    if (localStorage.getItem('zimi_hide_cross_zim_links') !== '1' && Object.keys(_domainZimMap).length > 0 && !_frameLoc.startsWith('/static/')) try {
+      var styleEl = frame.contentDocument.createElement('style');
+      styleEl.textContent = '.zimi-xzim{text-decoration-style:dotted;text-decoration-color:var(--amber,#f59e0b)}';
+      frame.contentDocument.head.appendChild(styleEl);
+      // Collect external URLs that might resolve to installed ZIMs
+      var urlMap = {}; // url → [anchor elements]
+      var links = frame.contentDocument.querySelectorAll('a[href]');
+      var frameLoc2 = frame.contentWindow.location;
+      links.forEach(function(a) {
+        var h2 = a.getAttribute('href') || '';
+        var full2;
+        try { full2 = new URL(h2, frameLoc2.href).href; } catch(ex) { return; }
+        if (full2.startsWith(location.origin)) return;
+        if (!/^https?:\/\//.test(full2)) return;
+        try {
+          var host2 = new URL(full2).hostname;
+          var bare2 = host2.replace(/^www\./, '');
+          if (_domainZimMap[host2] || _domainZimMap[bare2]) {
+            // This domain has a matching ZIM — collect for batch resolve
+            if (!urlMap[full2]) urlMap[full2] = [];
+            urlMap[full2].push(a);
+          }
+          // Unresolved external links: no special styling (leave as normal links)
+        } catch(ex) {}
+      });
+      // Batch resolve collected URLs — chunked to stay under body limits
+      _resolveCache = {}; // Reset per page load
+      var extUrls = Object.keys(urlMap).slice(0, 300); // Cap to prevent pathological load on large articles
+      if (extUrls.length > 0) {
+        var CHUNK_SIZE = 30;
+        var chunks = [];
+        for (var ci2 = 0; ci2 < extUrls.length; ci2 += CHUNK_SIZE) {
+          chunks.push(extUrls.slice(ci2, ci2 + CHUNK_SIZE));
+        }
+        var _applyResults = function(results) {
+          for (var u in results) {
+            _resolveCache[u] = results[u];
+            var anchors = urlMap[u];
+            if (!anchors) continue;
+            if (results[u].found && results[u].zim !== _currentZim) {
+              anchors.forEach(function(a) { a.classList.add('zimi-xzim'); });
+            }
+          }
+        };
+        var _missedDomains = {};
+        var _resolvedCount = 0, _totalCount = extUrls.length;
+        var _chunksCompleted = 0;
+        // Process chunks in parallel (max 3 concurrent)
+        var _chunkIdx = 0;
+        var _runChunk = function() {
+          if (_chunkIdx >= chunks.length) {
+            // Log summary once when all chains have finished
+            _chunksCompleted++;
+            if (_chunksCompleted === Math.min(3, chunks.length)) {
+              var missedKeys = Object.keys(_missedDomains);
+              if (missedKeys.length > 0) {
+                console.log('[Zimi] Cross-ZIM: ' + _resolvedCount + '/' + _totalCount + ' links resolved, ' + missedKeys.length + ' unique domains missed');
+                console.log('[Zimi] Unresolved domains: ' + missedKeys.join(', '));
+              } else if (_resolvedCount > 0) {
+                console.log('[Zimi] Cross-ZIM: ' + _resolvedCount + '/' + _totalCount + ' links resolved');
+              }
+            }
+            return Promise.resolve();
+          }
+          var chunk = chunks[_chunkIdx++];
+          return fetch('/resolve', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({urls: chunk})
+          }).then(function(r) {
+            if (!r.ok) throw new Error('resolve returned ' + r.status);
+            return r.json();
+          }).then(function(data) {
+            var results = data.results || {};
+            _applyResults(results);
+            for (var u2 in results) {
+              if (results[u2].found) { _resolvedCount++; }
+              else { try { _missedDomains[new URL(u2).hostname] = true; } catch(ex) {} }
+            }
+          }).catch(function(err) {
+            console.warn('[Zimi] Cross-ZIM resolve chunk failed:', err.message || err);
+          }).then(_runChunk);
+        };
+        // Launch up to 3 parallel chains
+        var _parallel = Math.min(3, chunks.length);
+        for (var pi = 0; pi < _parallel; pi++) _runChunk();
+      }
+    } catch(e) { /* cross-origin */ }
     // Update document/window title from iframe content (skip for pdf.js — it reports
     // "PDF.js viewer" which overwrites the good title already set by openArticle)
     if (!_frameLoc.startsWith('/static/')) try {
@@ -3992,11 +5447,203 @@ function openReader(url) {
         _setWindowTitle(t);
       }
     } catch(e) { /* cross-origin or closed */ }
+    // Track current article for bookmark button (iframe may have navigated via relative link)
+    try {
+      var _fPath = frame.contentWindow.location.pathname;
+      var _wm = _fPath.match(/^\/w\/([^\/]+)\/(.+)/);
+      if (_wm) {
+        var _navZim = decodeURIComponent(_wm[1]);
+        var _navPath = decodeURIComponent(_wm[2]);
+        currentArticle = { zim: _navZim, path: _navPath };
+        _updateLibraryBtnIcon();
+      }
+    } catch(e) {}
   };
   // Use location.replace to avoid polluting parent history stack
   // (setting iframe.src adds a session history entry that breaks the back button)
   try { frame.contentWindow.location.replace(url); } catch(e) { frame.src = url; }
   updateTopbar();
+}
+
+// ── Persistent History (localStorage) ──
+var _persistHist = null; // lazy-loaded
+var _currentSearchQuery = null; // tracks which search led to article clicks
+var _HIST_KEY = 'zimi_history';
+var _HIST_MAX = 200;
+
+function _histLoad() {
+  if (_persistHist !== null) return _persistHist;
+  try { _persistHist = JSON.parse(localStorage.getItem(_HIST_KEY)) || []; }
+  catch(e) { _persistHist = []; }
+  return _persistHist;
+}
+function _histSave() {
+  if (!_persistHist) return;
+  try { localStorage.setItem(_HIST_KEY, JSON.stringify(_persistHist)); } catch(e) {}
+}
+function _histPushArticle(zim, path, title) {
+  var h = _histLoad();
+  // Deduplicate: remove if same zim+path exists recently (within last 5 entries)
+  for (var i = 0; i < Math.min(5, h.length); i++) {
+    if (h[i].type === 'article' && h[i].zim === zim && h[i].path === path) {
+      h.splice(i, 1);
+      break;
+    }
+  }
+  var entry = { type: 'article', zim: zim, path: path, title: title || _titleFromPath(path), timestamp: Date.now() };
+  if (_currentSearchQuery) entry.fromQuery = _currentSearchQuery;
+  h.unshift(entry);
+  if (h.length > _HIST_MAX) h.length = _HIST_MAX;
+  _histSave();
+}
+function _histPushSearch(query, zimName, resultCount) {
+  var h = _histLoad();
+  // Deduplicate recent identical searches
+  if (h.length > 0 && h[0].type === 'search' && h[0].query === query && h[0].zim === (zimName || '')) return;
+  h.unshift({ type: 'search', zim: zimName || '', query: query, resultCount: resultCount || 0, timestamp: Date.now() });
+  if (h.length > _HIST_MAX) h.length = _HIST_MAX;
+  _histSave();
+}
+function _histClear() {
+  _persistHist = [];
+  try { localStorage.removeItem(_HIST_KEY); } catch(e) {}
+  renderLibraryPanel();
+}
+function _histRemove(idx) {
+  var h = _histLoad();
+  if (idx >= 0 && idx < h.length) {
+    h.splice(idx, 1);
+    _histSave();
+  }
+  renderLibraryPanel();
+}
+function _histDateGroup(ts) {
+  var now = new Date();
+  var d = new Date(ts);
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var yesterday = new Date(today - 86400000);
+  var weekAgo = new Date(today - 6 * 86400000);
+  if (d >= today) return 'Today';
+  if (d >= yesterday) return 'Yesterday';
+  if (d >= weekAgo) return 'This Week';
+  return 'Older';
+}
+function toggleLibraryPanel(forceTab) {
+  var panel = document.getElementById('history-panel');
+  var btn = document.getElementById('library-btn');
+  var isOpen = panel.classList.contains('open');
+  if (isOpen && (!forceTab || forceTab === _getLibraryTab())) {
+    // Close if already open on same tab (or no tab specified)
+    panel.classList.remove('open');
+    if (btn) btn.classList.remove('panel-open');
+  } else {
+    // Open (or switch tabs if already open on different tab)
+    if (forceTab) { _setLibraryTab(forceTab); _updateLibraryBtnIcon(); }
+    renderLibraryPanel();
+    panel.classList.add('open');
+    if (btn) btn.classList.add('panel-open');
+  }
+}
+function _closeLibraryPanel() {
+  var panel = document.getElementById('history-panel');
+  var btn = document.getElementById('library-btn');
+  if (panel) panel.classList.remove('open');
+  if (btn) btn.classList.remove('panel-open');
+}
+function _switchLibraryTab(tab) {
+  _setLibraryTab(tab);
+  _updateLibraryBtnIcon();
+  renderLibraryPanel();
+}
+function renderLibraryPanel() {
+  var panel = document.getElementById('history-panel');
+  var tab = _getLibraryTab();
+  var isHistory = (tab === 'history');
+  var html = '<div class="library-panel-header">' +
+    '<div class="library-tabs">' +
+    '<button class="library-tab' + (isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'history\')">History</button>' +
+    '<button class="library-tab' + (!isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'bookmarks\')">Bookmarks</button>' +
+    '</div>' +
+    '<button class="hp-clear" style="margin-left:8px" onclick="_closeLibraryPanel()">\u2715</button>' +
+    '</div>';
+  if (isHistory) {
+    html += _renderHistoryContent();
+  } else {
+    html += _renderBookmarksContent();
+  }
+  panel.innerHTML = html;
+}
+function _renderHistoryContent() {
+  var h = _histLoad();
+  if (h.length === 0) {
+    return '<div class="hp-empty">No history yet. Browse articles and search to build your history.</div>';
+  }
+  var html = '<div style="padding:8px 16px 0;text-align:right"><button class="hp-clear" onclick="_histClear()">Clear</button></div>';
+  var currentGroup = '';
+  var i = 0;
+  while (i < h.length) {
+    var item = h[i];
+    var group = _histDateGroup(item.timestamp);
+    if (group !== currentGroup) {
+      if (currentGroup) html += '</div>';
+      html += '<div class="hp-group"><div class="hp-group-label">' + esc(group) + '</div>';
+      currentGroup = group;
+    }
+    if (item.type === 'search') {
+      var searchSub = item.zim ? _zimTitle(item.zim) : 'All sources';
+      if (item.resultCount) searchSub += ' \u00B7 ' + item.resultCount + ' results';
+      html += '<div class="hp-item" onclick="_closeLibraryPanel();' + (item.zim ? 'enterSource(\'' + escJs(item.zim) + '\',false);' : '') + 'q.value=\'' + escJs(item.query) + '\';doSearch(\'' + escJs(item.query) + '\')">' +
+        '<div class="hp-icon">\uD83D\uDD0D</div>' +
+        '<div class="hp-detail"><div class="hp-title">' + esc(item.query) + '</div>' +
+        '<div class="hp-sub">' + esc(searchSub) + '</div></div>' +
+        '<button class="hp-item-del" onclick="event.stopPropagation();_histRemove(' + i + ')">\u2715</button></div>';
+      var j = i + 1;
+      while (j < h.length && h[j].type === 'article' && h[j].fromQuery === item.query) {
+        var child = h[j];
+        var cIcon = child.zim ? _sourceIconHtml(child.zim, 16) : '';
+        var cSub = child.zim ? _zimTitle(child.zim) : '';
+        html += '<div class="hp-item" style="padding-left:38px" onclick="_closeLibraryPanel();openArticle(\'' + escJs(child.zim) + '\',\'' + escJs(child.path) + '\',\'' + escJs(child.title || '') + '\')">' +
+          '<div class="hp-icon" style="width:22px;height:22px">' + cIcon + '</div>' +
+          '<div class="hp-detail"><div class="hp-title">' + esc(child.title || child.path) + '</div>' +
+          '<div class="hp-sub">' + esc(cSub) + '</div></div>' +
+          '<button class="hp-item-del" onclick="event.stopPropagation();_histRemove(' + j + ')">\u2715</button></div>';
+        j++;
+      }
+      i = j;
+    } else if (item.type === 'article') {
+      var aIcon = item.zim ? _sourceIconHtml(item.zim, 20) : '\uD83D\uDCC4';
+      var aSub = item.zim ? _zimTitle(item.zim) : '';
+      html += '<div class="hp-item" onclick="_closeLibraryPanel();openArticle(\'' + escJs(item.zim) + '\',\'' + escJs(item.path) + '\',\'' + escJs(item.title || '') + '\')">' +
+        '<div class="hp-icon">' + aIcon + '</div>' +
+        '<div class="hp-detail"><div class="hp-title">' + esc(item.title || item.path) + '</div>' +
+        '<div class="hp-sub">' + esc(aSub) + '</div></div>' +
+        '<button class="hp-item-del" onclick="event.stopPropagation();_histRemove(' + i + ')">\u2715</button></div>';
+      i++;
+    } else {
+      i++;
+    }
+  }
+  if (currentGroup) html += '</div>';
+  return html;
+}
+function _renderBookmarksContent() {
+  var bk = _bkLoad();
+  if (!bk.length) {
+    return '<div class="hp-empty">No bookmarks yet. Open an article and press B to bookmark it.</div>';
+  }
+  var html = '<div class="hp-group">';
+  for (var i = 0; i < bk.length; i++) {
+    var b = bk[i];
+    var icon = b.zim ? _sourceIconHtml(b.zim, 20) : '\uD83D\uDCC4';
+    var sub = b.zim ? _zimTitle(b.zim) : '';
+    html += '<div class="hp-item" onclick="_closeLibraryPanel();openArticle(\'' + escJs(b.zim) + '\',\'' + escJs(b.path) + '\',\'' + escJs(b.title || '') + '\')">' +
+      '<div class="hp-icon">' + icon + '</div>' +
+      '<div class="hp-detail"><div class="hp-title">' + esc(b.title || _titleFromPath(b.path)) + '</div>' +
+      '<div class="hp-sub">' + esc(sub) + '</div></div>' +
+      '<button class="hp-item-del" onclick="event.stopPropagation();_bkRemove(\'' + escJs(b.zim) + '\',\'' + escJs(b.path) + '\');renderLibraryPanel()">\u2715</button></div>';
+  }
+  html += '</div>';
+  return html;
 }
 
 function _pushArticleHistory(zim, path) {
@@ -4009,7 +5656,83 @@ function _pushArticleHistory(zim, path) {
   if (articleHistory.length > 50) articleHistory.shift();
 }
 
+// ── Bookmarks (localStorage) ──
+var _bookmarks = null;
+var _BK_KEY = 'zimi_bookmarks';
+var _BK_MAX = 200;
+
+function _bkLoad() {
+  if (_bookmarks !== null) return _bookmarks;
+  try { _bookmarks = JSON.parse(localStorage.getItem(_BK_KEY)) || []; }
+  catch(e) { _bookmarks = []; }
+  return _bookmarks;
+}
+function _bkSave() {
+  if (!_bookmarks) return;
+  try { localStorage.setItem(_BK_KEY, JSON.stringify(_bookmarks)); } catch(e) {}
+}
+function _bkFind(zim, path) {
+  return _bkLoad().findIndex(function(b) { return b.zim === zim && b.path === path; });
+}
+function _bkIsBookmarked(zim, path) { return _bkFind(zim, path) >= 0; }
+function _bkAdd(zim, path, title) {
+  var bk = _bkLoad();
+  if (_bkFind(zim, path) >= 0) return; // already bookmarked
+  bk.unshift({ zim: zim, path: path, title: title || _titleFromPath(path), timestamp: Date.now() });
+  if (bk.length > _BK_MAX) bk.length = _BK_MAX;
+  _bkSave();
+}
+function _bkRemove(zim, path) {
+  var idx = _bkFind(zim, path);
+  if (idx >= 0) { _bkLoad().splice(idx, 1); _bkSave(); }
+}
+function toggleBookmark() {
+  if (!currentArticle) return;
+  var zim = currentArticle.zim, path = currentArticle.path;
+  var title = document.title.replace(/ — Zimi$/, '');
+  if (title === 'Zimi' || !title) title = _titleFromPath(path);
+  if (_bkIsBookmarked(zim, path)) {
+    _bkRemove(zim, path);
+  } else {
+    _bkAdd(zim, path, title);
+  }
+  _updateLibraryBtnIcon();
+}
+var _libClockSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+var _libBookmarkSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+var _libBookmarkFilledSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+function _getLibraryTab() { return localStorage.getItem('zimi_library_tab') || 'history'; }
+function _setLibraryTab(tab) { localStorage.setItem('zimi_library_tab', tab); }
+function _updateLibraryBtnIcon() {
+  var btn = document.getElementById('library-btn');
+  if (!btn) return;
+  var tab = _getLibraryTab();
+  if (readerOpen && currentArticle && _bkIsBookmarked(currentArticle.zim, currentArticle.path)) {
+    btn.innerHTML = _libBookmarkFilledSvg;
+    btn.style.color = 'var(--amber)';
+    btn.title = 'Bookmarked (B to remove)';
+  } else if (readerOpen) {
+    btn.innerHTML = _libBookmarkSvg;
+    btn.style.color = '';
+    btn.title = 'Bookmark (B)';
+  } else {
+    btn.innerHTML = (tab === 'bookmarks') ? _libBookmarkSvg : _libClockSvg;
+    btn.style.color = '';
+    btn.title = (tab === 'bookmarks') ? 'Bookmarks (B)' : 'History (H)';
+  }
+}
 function openArticle(zim, path, title) {
+  // Modifier-click: open in new browser tab
+  if (_isModClick()) {
+    _lastMouseEvent = null;
+    window.open('/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/'), '_blank');
+    return;
+  }
+  // Save discover scroll position before navigating away
+  var discScroll = document.querySelector('.discover-scroll');
+  if (discScroll && discScroll.scrollLeft > 0) {
+    try { sessionStorage.setItem('zimi_disc_scroll', String(Math.round(discScroll.scrollLeft))); } catch(e) {}
+  }
   var url = _articleUrl(zim, path);
   readerSource = zim;
   // EPUB: download (Gutenberg has HTML equivalents for all EPUBs)
@@ -4022,6 +5745,8 @@ function openArticle(zim, path, title) {
   // Track article history: push current article before navigating away
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
   currentArticle = { zim: zim, path: path };
+  // Persist to browse history (localStorage)
+  _histPushArticle(zim, path, title || _titleFromPath(path));
   // Push state with the original /w/ URL (not the viewer URL) so reload serves SPA shell.
   // PDFs get ?view=1 so CDN caches don't serve raw PDF binary on reload.
   var pushUrl = lurl.endsWith('.pdf') ? url + (url.includes('?') ? '&' : '?') + 'view=1' : url;
@@ -4052,6 +5777,8 @@ function closeReader() {
   var f = document.getElementById('reader-frame');
   try { f.contentWindow.location.replace('about:blank'); } catch(e) { f.src = 'about:blank'; }
   mainView.classList.remove('hidden');
+  // Restore main document scroll (iOS tap-to-top for home page)
+  document.documentElement.style.overflowY = 'auto';
   updateTopbar();
   _setWindowTitle('Zimi');
 }
@@ -4087,7 +5814,10 @@ async function randomArticle(event) {
 // ── Keyboard ──
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    var _hp = document.getElementById('history-panel');
+    if (_hp && _hp.classList.contains('open')) { _closeLibraryPanel(); return; }
     if (suggestDropdown.style.display !== 'none') { hideSuggest(); return; }
+    if (_spaceOpen) { closeSpace(); return; }
     if (readerOpen) { goBack(); return; }
     if (q.value) { q.value = ''; hideSuggest(); clearSearch(); return; }
     if (mode === 'source' || mode === 'manage') { enterHome(true); return; }
@@ -4095,14 +5825,22 @@ document.addEventListener('keydown', e => {
   }
   const tag = document.activeElement && document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-  if (e.key === '/' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); q.focus(); }
+  if (e.key === '/' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); _searchFocusedByUser = true; q.focus(); }
   if (e.key === 'r' && !e.metaKey && !e.ctrlKey && !e.altKey && mode !== 'manage') { e.preventDefault(); randomArticle(e); }
+  if (e.key === 'h' && !e.metaKey && !e.ctrlKey && !e.altKey && mode !== 'manage') { e.preventDefault(); toggleLibraryPanel('history'); }
+  if (e.key === 'b' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    if (readerOpen) { toggleBookmark(); _updateLibraryBtnIcon(); }
+    else if (mode !== 'manage') toggleLibraryPanel('bookmarks');
+  }
 });
 
 // ── History ──
 window.addEventListener('popstate', (e) => {
   hideSuggest();
   _hideHistoryTrail();
+  // Close Space if open
+  if (_spaceOpen) { closeSpace(); return; }
   // Step through article history when reader is open (mirrors in-app back button)
   if (readerOpen && articleHistory.length > 0) {
     _stepBackToArticle(articleHistory.pop(), false);
@@ -4158,12 +5896,120 @@ window.addEventListener('popstate', (e) => {
 function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 function escAttr(s) { return esc(s).replace(/'/g, '&#39;').replace(/"/g, '&quot;'); }
 // Escape for JS string literal inside HTML onclick attribute (survives HTML decode then JS parse)
-function escJs(s) { return (s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+function escJs(s) { return (s || '').replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/'/g, "\\'").replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
 
 // ── Desktop app integration (pywebview) ──
 // pywebview injects window.pywebview AFTER page load, so we can't check at parse time.
 // Instead, listen for the 'pywebviewready' event and set IS_DESKTOP then.
 let IS_DESKTOP = false;
+
+// ── Modifier-click detection ──
+// Track last mousedown so openArticle() can detect cmd/ctrl/middle-click
+// even from inline onclick="" handlers that don't pass the event.
+var _lastMouseEvent = null;
+var _lastMouseTime = 0;
+document.addEventListener('mousedown', function(e) {
+  _lastMouseEvent = e;
+  _lastMouseTime = Date.now();
+}, true);
+function _isModClick() {
+  var e = _lastMouseEvent;
+  if (!e) return false;
+  // Stale check: ignore if mousedown was >500ms ago (e.g. keyboard-triggered)
+  if (Date.now() - _lastMouseTime > 500) return false;
+  return e.metaKey || e.ctrlKey || e.button === 1;
+}
+
+// ── Link Context Menu ──
+var _linkCtxMenu = document.getElementById('link-ctx-menu');
+var _linkCtxData = null; // {zim, path, title, url}
+
+function _showLinkCtxMenu(x, y, data) {
+  _linkCtxData = data;
+  var isMac = /Mac/.test(navigator.platform);
+  var mod = isMac ? '\u2318' : 'Ctrl+';
+  var items = '';
+  items += '<div class="zimi-ctx-item" onclick="_ctxOpenNewWindow()">Open in New Tab<span class="ctx-key">' + mod + 'Click</span></div>';
+  items += '<div class="zimi-ctx-item" onclick="_ctxCopyLink()">Copy Link</div>';
+  if (data.title) {
+    items += '<div class="zimi-ctx-item" onclick="_ctxCopyTitle()">Copy Title</div>';
+  }
+  _linkCtxMenu.innerHTML = items;
+  _linkCtxMenu.classList.add('open');
+  // Position: keep within viewport
+  var rect = _linkCtxMenu.getBoundingClientRect();
+  var menuW = _linkCtxMenu.offsetWidth || 200;
+  var menuH = _linkCtxMenu.offsetHeight || 100;
+  if (x + menuW > window.innerWidth) x = window.innerWidth - menuW - 8;
+  if (y + menuH > window.innerHeight) y = window.innerHeight - menuH - 8;
+  _linkCtxMenu.style.left = x + 'px';
+  _linkCtxMenu.style.top = y + 'px';
+}
+
+function _hideLinkCtxMenu() {
+  _linkCtxMenu.classList.remove('open');
+  _linkCtxData = null;
+}
+
+function _ctxOpenNewWindow() {
+  var data = _linkCtxData;
+  _hideLinkCtxMenu();
+  if (!data) return;
+  var url = data.url || ('/w/' + encodeURIComponent(data.zim) + '/' + data.path.split('/').map(encodeURIComponent).join('/'));
+  window.open(url, '_blank');
+}
+
+function _ctxCopyLink() {
+  var data = _linkCtxData;
+  _hideLinkCtxMenu();
+  if (!data) return;
+  var url = data.url || (location.origin + '/w/' + encodeURIComponent(data.zim) + '/' + data.path.split('/').map(encodeURIComponent).join('/'));
+  navigator.clipboard.writeText(url).catch(function() {});
+}
+
+function _ctxCopyTitle() {
+  var data = _linkCtxData;
+  _hideLinkCtxMenu();
+  if (!data) return;
+  navigator.clipboard.writeText(data.title).catch(function() {});
+}
+
+// Close context menu on click anywhere
+document.addEventListener('click', function() { _hideLinkCtxMenu(); });
+document.addEventListener('contextmenu', function(e) {
+  // If clicking outside existing menu, close it
+  if (_linkCtxMenu.classList.contains('open') && !_linkCtxMenu.contains(e.target)) {
+    _hideLinkCtxMenu();
+  }
+});
+
+// Attach context menu to article links in the main page
+// Uses event delegation — checks data attributes first, then parses onclick
+document.addEventListener('contextmenu', function(e) {
+  var el = e.target.closest('[onclick*="openArticle"]');
+  if (!el) return;
+  var zim, path, title;
+  // Prefer data attributes (search results have data-zim/data-path)
+  if (el.dataset.zim && el.dataset.path) {
+    zim = el.dataset.zim;
+    path = el.dataset.path;
+    // Try to get title from the result title element
+    var titleEl = el.querySelector('.result-title, .dc-title, .hp-title');
+    title = titleEl ? titleEl.textContent.trim() : null;
+  } else {
+    // Parse from onclick attribute
+    var onclick = el.getAttribute('onclick') || '';
+    var m = onclick.match(/openArticle\s*\(\s*'([^']*)'\s*,\s*'([^']*)'\s*(?:,\s*'([^']*)')?\s*\)/);
+    if (!m) return;
+    zim = m[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+    path = m[2].replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+    title = m[3] ? m[3].replace(/\\'/g, "'").replace(/\\\\/g, '\\') : null;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  _showLinkCtxMenu(e.clientX, e.clientY, { zim: zim, path: path, title: title });
+});
+
 
 function _desktopInit() {
   IS_DESKTOP = true;
@@ -4252,6 +6098,8 @@ window.addEventListener('pywebviewready', function() { _desktopInit(); });
 let _settingsOriginal = {};
 
 async function openSettings() {
+  // Desktop-only: settings overlay for folder/port/save
+  if (!IS_DESKTOP) return;
   const overlay = document.getElementById('settings-overlay');
   const dirInput = document.getElementById('settings-dir');
   const portInput = document.getElementById('settings-port');
@@ -4260,51 +6108,28 @@ async function openSettings() {
   msgEl.className = 'settings-restart-msg';
   msgEl.textContent = '';
 
-  if (IS_DESKTOP) {
-    // Desktop mode: get config from pywebview bridge
-    browseBtn.style.display = '';
-    portInput.readOnly = false;
-    document.getElementById('settings-save-btn').style.display = '';
-    document.getElementById('settings-port-label').style.display = '';
-    document.getElementById('settings-port-row').style.display = '';
-    document.getElementById('settings-hint').style.display = '';
-    try {
-      const cfg = await pywebview.api.get_config();
-      dirInput.value = cfg.zim_dir || '';
-      portInput.value = cfg.port || 8899;
-      _settingsOriginal = { zim_dir: cfg.zim_dir, port: cfg.port };
-    } catch(e) {}
-  } else {
-    // Server mode: show read-only info + useful actions
-    browseBtn.style.display = 'none';
-    dirInput.readOnly = true;
-    document.getElementById('settings-save-btn').style.display = 'none';
-    document.getElementById('settings-port-label').style.display = 'none';
-    document.getElementById('settings-port-row').style.display = 'none';
-    document.getElementById('settings-hint').textContent = 'Settings are configured via environment variables or Docker.';
-    try {
-      const r = await manageFetch('/manage/stats');
-      if (r.ok) {
-        const s = await r.json();
-        if (s.disk && s.disk.zim_dir) dirInput.value = s.disk.zim_dir;
-      }
-    } catch(e) {}
-    _settingsOriginal = {};
-  }
+  browseBtn.style.display = '';
+  document.getElementById('settings-data-browse-btn').style.display = '';
+  portInput.readOnly = false;
+  document.getElementById('settings-save-btn').style.display = '';
+  document.getElementById('settings-port-label').style.display = '';
+  document.getElementById('settings-port-row').style.display = '';
+  document.getElementById('settings-hint').style.display = '';
+  try {
+    const cfg = await pywebview.api.get_config();
+    dirInput.value = cfg.zim_dir || '';
+    document.getElementById('settings-data-dir').value = cfg.data_dir || '';
+    portInput.value = cfg.port || 8899;
+    _settingsOriginal = { zim_dir: cfg.zim_dir, data_dir: cfg.data_dir || '', port: cfg.port };
+  } catch(e) {}
 
   // Show "Open in browser" link
   const browserLink = document.getElementById('settings-browser-link');
   const browserUrl = document.getElementById('settings-browser-url');
-  const browserLabel = document.getElementById('settings-browser-label');
-  if (IS_DESKTOP) {
-    const url = 'http://localhost:' + (portInput.value || 8899);
-    browserUrl.href = url;
-    browserUrl.textContent = url;
-    browserLabel.textContent = 'Access from any browser on this computer';
-    browserLink.style.display = '';
-  } else {
-    browserLink.style.display = 'none';  // Not useful in browser mode
-  }
+  const url = 'http://localhost:' + (portInput.value || 8899);
+  browserUrl.href = url;
+  browserUrl.textContent = url;
+  browserLink.style.display = '';
 
   overlay.classList.add('open');
 }
@@ -4322,6 +6147,15 @@ async function settingsChooseFolder() {
   } catch(e) {}
 }
 
+async function settingsChooseDataFolder() {
+  if (!IS_DESKTOP) return;
+  const input = document.getElementById('settings-data-dir');
+  try {
+    const folder = await pywebview.api.choose_folder(input.value || null);
+    if (folder) input.value = folder;
+  } catch(e) {}
+}
+
 async function settingsSave() {
   const dirInput = document.getElementById('settings-dir');
   const portInput = document.getElementById('settings-port');
@@ -4331,6 +6165,8 @@ async function settingsSave() {
   if (IS_DESKTOP) {
     const updates = {};
     if (dirInput.value !== _settingsOriginal.zim_dir) updates.zim_dir = dirInput.value;
+    const dataDirVal = document.getElementById('settings-data-dir').value || '';
+    if (dataDirVal !== _settingsOriginal.data_dir) updates.data_dir = dataDirVal;
     if (port !== _settingsOriginal.port) updates.port = port;
     if (Object.keys(updates).length === 0) { closeSettings(); return; }
     try {
@@ -4350,11 +6186,10 @@ let _refreshing = false;
 async function settingsRefreshCache() {
   if (_refreshing) return;
   _refreshing = true;
-  // Works both from settings overlay and standalone (manage view button)
+  // Works from settings overlay (desktop) or inline settings panel
   const msgEl = document.getElementById('settings-restart-msg');
   const btn = document.getElementById('refresh-cache-btn');
-  const zimRow = document.querySelector('#manage-status .mc-value');
-  if (btn) { btn.disabled = true; btn.textContent = '\u23F3 Refreshing\u2026'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Refreshing\u2026'; }
   if (msgEl) {
     msgEl.textContent = 'Refreshing cache\u2026';
     msgEl.className = 'settings-restart-msg show';
@@ -4364,17 +6199,18 @@ async function settingsRefreshCache() {
     if (msgEl) msgEl.textContent = 'Cache refreshed.';
     // Reload ZIM list
     try { const lr = await fetch('/list'); zimsCache = await lr.json(); } catch(e) {}
-    if (btn) btn.textContent = '\u2705 Refreshed';
-    if (msgEl && document.getElementById('settings-overlay').classList.contains('open')) {
-      setTimeout(() => { closeSettings(); renderManage(); }, 800);
+    if (btn) btn.textContent = 'Refreshed';
+    var overlay = document.getElementById('settings-overlay');
+    if (msgEl && overlay && overlay.classList.contains('open')) {
+      setTimeout(function() { closeSettings(); renderManage(); }, 800);
     } else {
       renderManage();
     }
   } catch(e) {
     if (msgEl) msgEl.textContent = 'Failed to refresh cache.';
-    if (btn) btn.textContent = '\u274C Failed';
+    if (btn) btn.textContent = 'Failed';
   } finally {
-    setTimeout(() => { _refreshing = false; }, 2000);
+    setTimeout(function() { _refreshing = false; }, 2000);
   }
 }
 

@@ -380,6 +380,40 @@ class TestServerEndpoints(unittest.TestCase):
         data, status = self._post("/manage/delete", {"filename": "readme.txt"})
         self.assertEqual(status, 400)
 
+    # ── Tmp file cleanup ──
+
+    def test_manage_cleanup_tmp_empty(self):
+        """Cleanup with no tmp files returns empty list."""
+        data, status = self._post("/manage/cleanup-tmp")
+        self.assertEqual(status, 200)
+        self.assertIn("removed", data)
+        self.assertEqual(len(data["removed"]), 0)
+
+    def test_manage_cleanup_tmp_removes_files(self):
+        """Cleanup removes .zim.tmp files."""
+        import tempfile
+        # Create a tmp file in the ZIM dir
+        tmp_path = os.path.join(self._tmpdir, "test_dl.zim.tmp")
+        with open(tmp_path, "wb") as f:
+            f.write(b"partial" * 100)
+        # Verify it shows in stats
+        data, _ = self._get("/manage/stats")
+        self.assertTrue(any(t["filename"] == "test_dl.zim.tmp" for t in data.get("disk", {}).get("tmp_files", [])))
+        # Clean up
+        data, status = self._post("/manage/cleanup-tmp")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(data["removed"]), 1)
+        self.assertFalse(os.path.exists(tmp_path))
+
+    def test_manage_stats_disk_fields(self):
+        """Stats disk section includes tmp_files array."""
+        data, status = self._get("/manage/stats")
+        self.assertEqual(status, 200)
+        self.assertIn("disk", data)
+        self.assertIn("tmp_files", data["disk"])
+        self.assertIn("zim_dir", data["disk"])
+        self.assertIn("data_dir", data["disk"])
+
     # ── Password management ──
 
     def test_set_and_clear_password(self):

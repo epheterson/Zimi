@@ -7,6 +7,8 @@ services:
       - "8899:8899"
     volumes:
       - ./zims:/zims
+      - ./zimi-data:/data
     environment:
       - ZIM_DIR=/zims
+      - ZIMI_DATA_DIR=/data
       - ZIMI_MANAGE=1

@@ -192,53 +192,24 @@ def create_icon(size=1024):
 
 
 def create_favicon(size=32):
-    """Create favicon — gradient Z on solid dark background, no padding or rounded corners.
+    """Create favicon — same macOS icon design scaled down for browser tabs.
 
-    Browser tab favicons are tiny (16-32px). Font metrics add invisible padding
-    around glyphs (ascender/descender space), so we render the Z at 4x resolution,
-    crop to the glyph bounding box, then scale it to fill the canvas with ~2px margin.
+    Renders the full 1024px icon, crops to the rounded-rect content area, scales down,
+    then composites on a slightly lighter background. Safari has an undocumented contrast
+    detector that adds a white background behind favicons it considers too dark against
+    the tab bar (~#282828 in dark mode). Using #1a1a1e instead of #0a0a0b gives enough
+    contrast to avoid triggering it while still looking dark.
     """
-    # Render at 4x for crisp crop, then downscale
-    render_size = size * 4
-    font_size = int(render_size * 0.95)
-    mask = None
-    if platform.system() == "Darwin":
-        mask = _render_z_mask_coretext(render_size, font_size)
-    if mask is None:
-        mask = _render_z_mask_pillow(render_size, font_size)
-
-    # Crop to glyph bounding box (remove font metric padding)
-    bbox = mask.getbbox()
-    if bbox:
-        mask = mask.crop(bbox)
-
-    # Scale glyph to fill canvas with small margin
-    margin = max(1, size // 16)  # ~2px at 32x32
-    target = size - 2 * margin
-    gw, gh = mask.size
-    scale = min(target / gw, target / gh)
-    new_w, new_h = int(gw * scale), int(gh * scale)
-    mask = mask.resize((new_w, new_h), Image.LANCZOS)
-
-    # Edge-to-edge rounded square background
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    corner_radius = max(2, size // 5)  # ~6px at 32x32
-    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=corner_radius, fill=BG_DARK)
-    gradient = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    grad_pixels = gradient.load()
-    ox = (size - new_w) // 2
-    oy = (size - new_h) // 2
-    for y in range(new_h):
-        for x in range(new_w):
-            alpha = mask.getpixel((x, y))
-            if alpha > 0:
-                px, py = ox + x, oy + y
-                color = _gradient_at(px, py, size, GRADIENT_COLORS)
-                grad_pixels[px, py] = (*color, alpha)
-
-    img = Image.alpha_composite(img, gradient)
-    return img
+    FAVICON_BG = BG_DARK  # same as icon background
+    # Render full icon at high res, crop to content (remove macOS padding)
+    icon = create_icon(1024)
+    padding = int(1024 * 0.1)  # matches create_icon padding
+    icon = icon.crop((padding, padding, 1024 - padding, 1024 - padding))
+    # Scale to favicon size
+    icon = icon.resize((size, size), Image.LANCZOS)
+    # Composite on solid background — no transparency
+    bg = Image.new("RGBA", (size, size), FAVICON_BG + (255,))
+    return Image.alpha_composite(bg, icon)
 
 
 def save_icns_with_iconutil(icon, icns_path):

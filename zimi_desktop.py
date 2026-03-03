@@ -65,6 +65,7 @@ class ConfigManager:
 
     DEFAULTS = {
         "zim_dir": os.path.join(os.path.expanduser("~"), "Zimi"),
+        "data_dir": "",  # empty = use ZIM_DIR/.zimi (backward compat)
         "port": 8899,
         "auto_open_browser": True,
         "window_width": 1200,
@@ -123,10 +124,11 @@ def _find_open_port(start=8899, end=8910):
 class ServerThread(threading.Thread):
     """Starts the Zimi server in a background thread."""
 
-    def __init__(self, zim_dir, port):
+    def __init__(self, zim_dir, port, data_dir=None):
         super().__init__(daemon=True)
         self.zim_dir = zim_dir
         self.port = port
+        self.data_dir = data_dir or os.path.join(zim_dir, ".zimi")
         self.actual_port = port
         self.ready = threading.Event()
         self.error = None
@@ -148,27 +150,48 @@ class ServerThread(threading.Thread):
             # Import zimi here so env vars are set first
             import zimi
             zimi.ZIM_DIR = self.zim_dir
-            zimi.ZIMI_DATA_DIR = os.path.join(self.zim_dir, ".zimi")
+            zimi.ZIMI_DATA_DIR = self.data_dir
             os.makedirs(zimi.ZIMI_DATA_DIR, exist_ok=True)
             zimi.ZIMI_MANAGE = True
             zimi._TITLE_INDEX_DIR = os.path.join(zimi.ZIMI_DATA_DIR, "titles")
             zimi.load_cache()
             zimi._migrate_data_files()
 
-            # Pre-warm archives and suggestion indexes
-            zims = zimi.get_zim_files()
-            for name in zims:
-                try:
-                    zimi.get_archive(name)
-                except Exception:
-                    pass
-
-            # Build title indexes in background (enables fast <10ms title search)
-            threading.Thread(target=zimi._build_all_title_indexes, daemon=True).start()
-
             from http.server import ThreadingHTTPServer
             server = ThreadingHTTPServer(("127.0.0.1", port), zimi.ZimHandler)
-            self.ready.set()
+            self.ready.set()  # UI can load now — /list works from cache
+
+            # Restore suggest cache (instant, from JSON file)
+            loaded = zimi._suggest_cache_restore()
+
+            # Pre-warm archives and indexes in background (non-blocking)
+            def _warm():
+                zims = zimi.get_zim_files()
+                for name in zims:
+                    try:
+                        zimi.get_archive(name)
+                    except Exception:
+                        pass
+                zimi._build_all_title_indexes()
+                # Warm suggest/FTS pools and title index connections
+                for name in zims:
+                    try:
+                        zimi._get_suggest_archive(name)
+                    except Exception:
+                        pass
+                    try:
+                        zimi._get_fts_archive(name)
+                    except Exception:
+                        pass
+                    conn = zimi._get_title_db(name)
+                    if conn:
+                        try:
+                            for prefix in ("a", "m", "s"):
+                                conn.execute("SELECT title FROM titles WHERE title_lower >= ? LIMIT 1", (prefix,)).fetchone()
+                        except Exception:
+                            pass
+            threading.Thread(target=_warm, daemon=True).start()
+
             server.serve_forever()
         except Exception as e:
             self.error = str(e)
@@ -199,6 +222,7 @@ class DesktopAPI:
         """Return current config for the settings UI."""
         return {
             "zim_dir": self._config.get("zim_dir"),
+            "data_dir": self._config.get("data_dir"),
             "port": self._config.get("port"),
             "auto_open_browser": self._config.get("auto_open_browser"),
             "is_first_run": self._config.is_first_run,
@@ -207,7 +231,7 @@ class DesktopAPI:
     def save_config(self, updates):
         """Save config updates. Returns True if restart is needed."""
         needs_restart = False
-        for key in ("zim_dir", "port"):
+        for key in ("zim_dir", "data_dir", "port"):
             if key in updates and updates[key] != self._config.get(key):
                 self._config.set(key, updates[key])
                 needs_restart = True
@@ -358,6 +382,15 @@ def _setup_macos_menu(window_ref):
                         daemon=True,
                     ).start()
 
+            def reloadPage_(self, sender):
+                window = window_ref.get("window")
+                if window:
+                    threading.Thread(
+                        target=window.evaluate_js,
+                        args=("location.reload()",),
+                        daemon=True,
+                    ).start()
+
         delegate = ZimiMenuDelegate.alloc().init()
         # Keep a strong reference so it doesn't get garbage-collected
         window_ref["_menu_delegate"] = delegate
@@ -372,6 +405,18 @@ def _setup_macos_menu(window_ref):
         insert_idx = min(2, app_menu.numberOfItems())
         app_menu.insertItem_atIndex_(NSMenuItem.separatorItem(), insert_idx)
         app_menu.insertItem_atIndex_(settings_item, insert_idx + 1)
+
+        # Add View menu with Reload (Cmd+R)
+        from AppKit import NSMenu
+        view_menu = NSMenu.alloc().initWithTitle_("View")
+        reload_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Reload", "reloadPage:", "r"
+        )
+        reload_item.setTarget_(delegate)
+        view_menu.addItem_(reload_item)
+        view_menu_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("View", None, "")
+        view_menu_item.setSubmenu_(view_menu)
+        main_menu.addItem_(view_menu_item)
 
         # Add "Check for Updates..." if Sparkle is initialized
         controller = getattr(_init_sparkle_updater, '_controller', None)
@@ -475,7 +520,8 @@ def _run():
         # Add native macOS menu items now that the app menu bar exists
         _set_macos_app_identity(window_ref)
 
-        server = ServerThread(zim_dir, config.get("port"))
+        data_dir = config.get("data_dir") or os.path.join(zim_dir, ".zimi")
+        server = ServerThread(zim_dir, config.get("port"), data_dir=data_dir)
         server.start()
         server.ready.wait(timeout=60)
 
@@ -565,9 +611,11 @@ def _serve_headless():
     os.environ["ZIMI_MANAGE"] = "1"
     os.makedirs(zim_dir, exist_ok=True)
 
+    data_dir = os.environ.get("ZIMI_DATA_DIR") or os.path.join(zim_dir, ".zimi")
+
     import zimi
     zimi.ZIM_DIR = zim_dir
-    zimi.ZIMI_DATA_DIR = os.path.join(zim_dir, ".zimi")
+    zimi.ZIMI_DATA_DIR = data_dir
     os.makedirs(zimi.ZIMI_DATA_DIR, exist_ok=True)
     zimi.ZIMI_MANAGE = True
     zimi._TITLE_INDEX_DIR = os.path.join(zimi.ZIMI_DATA_DIR, "titles")
