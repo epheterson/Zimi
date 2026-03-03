@@ -5,15 +5,21 @@
 var _spaceOrreryRAF = null;
 var _spaceSkyRAF = null;
 var _moonTexImg = new Image();
+var _moonTexLoaded = false;
+_moonTexImg.onload = function() { _moonTexLoaded = true; };
+_moonTexImg.onerror = function() { _moonTexLoaded = false; };
 _moonTexImg.src = '/static/moon.png?v=1';
 
-function _openSpaceInner() {
+function _openSpaceInner(replaceState) {
   _spaceOpen = true;
-  history.pushState({ mode: 'space' }, '', location.pathname + location.search);
+  var url = location.pathname + location.search + '#almanac';
+  if (replaceState) history.replaceState({ mode: 'space' }, '', url);
+  else history.pushState({ mode: 'space' }, '', url);
   var el = document.getElementById('space');
   el.classList.add('open');
-  mainView.classList.add('hidden');
-  _setWindowTitle('Space');
+  var mv = document.getElementById('main-view');
+  if (mv) mv.classList.add('hidden');
+  _setWindowTitle('Almanac');
   _renderSpaceContent();
 }
 
@@ -23,7 +29,12 @@ function closeSpace() {
   if (_spaceOrreryRAF) { cancelAnimationFrame(_spaceOrreryRAF); _spaceOrreryRAF = null; }
   if (_spaceSkyRAF) { cancelAnimationFrame(_spaceSkyRAF); _spaceSkyRAF = null; }
   document.getElementById('space').classList.remove('open');
-  mainView.classList.remove('hidden');
+  var mv = document.getElementById('main-view');
+  if (mv) mv.classList.remove('hidden');
+  // Remove #almanac hash without adding history entry
+  if (location.hash === '#almanac') {
+    history.replaceState(history.state, '', location.pathname + location.search);
+  }
   _setWindowTitle('Zimi');
 }
 
@@ -73,7 +84,7 @@ function _renderSpaceContent() {
 
   // Live sky scene
   html += '<div class="space-section">';
-  html += '<div class="space-section-title">Live Sky</div>';
+  html += '<div class="space-section-title">Simulated Sky</div>';
   html += '<div class="space-sky-wrap"><canvas id="space-sky-canvas"></canvas></div>';
   html += '<div class="space-sky-label" id="space-sky-label">Calculating...</div>';
   html += '</div>';
@@ -84,10 +95,10 @@ function _renderSpaceContent() {
   html += '<div class="space-orrery-wrap"><canvas id="space-orrery"></canvas></div>';
   html += '</div>';
 
-  // Astro data
+  // Tonight's sky — planet visibility
   html += '<div class="space-section">';
-  html += '<div class="space-section-title">Astronomical Data</div>';
-  html += '<div id="space-astro"></div>';
+  html += '<div class="space-section-title">Tonight\u2019s Sky</div>';
+  html += '<div id="space-tonight"></div>';
   html += '</div>';
 
   // Sunrise/Sunset
@@ -96,10 +107,50 @@ function _renderSpaceContent() {
   html += '<div id="space-sun">Loading location...</div>';
   html += '</div>';
 
+  // Meteor showers
+  html += '<div class="space-section">';
+  html += '<div class="space-section-title">Meteor Showers</div>';
+  html += '<div id="space-meteors"></div>';
+  html += '</div>';
+
+  // Celestial events — conjunctions, oppositions
+  html += '<div class="space-section">';
+  html += '<div class="space-section-title">Celestial Events</div>';
+  html += '<div id="space-events"></div>';
+  html += '</div>';
+
+  // Astro data
+  html += '<div class="space-section">';
+  html += '<div class="space-section-title">Astronomical Data</div>';
+  html += '<div id="space-astro"></div>';
+  html += '</div>';
+
+  // World calendars
+  html += '<div class="space-section">';
+  html += '<div class="space-section-title">World Calendars</div>';
+  html += '<div id="space-calendars"></div>';
+  html += '</div>';
+
+  // Deep time
+  html += '<div class="space-section">';
+  html += '<div class="space-section-title">Deep Time</div>';
+  html += '<div id="space-deeptime"></div>';
+  html += '</div>';
+
+  // Footer
+  html += '<div style="margin-top:40px;text-align:center;font-size:11px;color:var(--text3)">' +
+    'All calculations are math-driven and work offline forever.' +
+    '</div>';
+
   html += '</div>';
   document.getElementById('space-content').innerHTML = html;
 
+  _renderTonightSky(now);
   _renderAstroPanel(now);
+  _renderMeteorShowers(now, m);
+  _renderCelestialEvents(now);
+  _renderWorldCalendars(now);
+  _renderDeepTime(now);
   _initOrrery();
   _loadSunData(now);
 }
@@ -393,6 +444,8 @@ function _drawOrrery(canvas, dpr) {
 
     // Record position for hover (in CSS pixels)
     _orreryPlanetPositions.push({ name: names[i], x: px / dpr, y: py / dpr, r: pr / dpr });
+
+    // No labels — clean Apple Watch aesthetic, hover tooltip on desktop
   }
 
 }
@@ -532,23 +585,279 @@ function _loadSunData(now) {
   _initSkyScene(now, estLat, estLon);
 }
 
-function _useGPSLocation() {
-  if (!navigator.geolocation) return;
-  navigator.geolocation.getCurrentPosition(function(pos) {
-    var lat = pos.coords.latitude, lon = pos.coords.longitude;
-    localStorage.setItem('zimi_space_location', JSON.stringify({ lat: lat, lon: lon }));
-    _renderSpaceContent();
-  }, function() {}, { timeout: 8000 });
+function _shareSpaceLocation() {
+  // Try GPS first (works in browsers, fails silently in pywebview/desktop)
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function(pos) {
+      var lat = pos.coords.latitude, lon = pos.coords.longitude;
+      localStorage.setItem('zimi_space_location', JSON.stringify({ lat: lat, lon: lon }));
+      _renderSpaceContent();
+    }, function() {
+      // GPS denied or unavailable — fall back to manual entry
+      _promptSpaceLocation();
+    }, { timeout: 5000 });
+  } else {
+    _promptSpaceLocation();
+  }
 }
 
+// ── Major cities for map picker ──
+var _MAP_CITIES = [
+  { name: 'New York', lat: 40.71, lon: -74.01 },
+  { name: 'Los Angeles', lat: 34.05, lon: -118.24 },
+  { name: 'Chicago', lat: 41.88, lon: -87.63 },
+  { name: 'London', lat: 51.51, lon: -0.13 },
+  { name: 'Paris', lat: 48.86, lon: 2.35 },
+  { name: 'Berlin', lat: 52.52, lon: 13.40 },
+  { name: 'Moscow', lat: 55.76, lon: 37.62 },
+  { name: 'Dubai', lat: 25.20, lon: 55.27 },
+  { name: 'Mumbai', lat: 19.08, lon: 72.88 },
+  { name: 'Beijing', lat: 39.90, lon: 116.40 },
+  { name: 'Tokyo', lat: 35.68, lon: 139.69 },
+  { name: 'Sydney', lat: -33.87, lon: 151.21 },
+  { name: 'S\u00e3o Paulo', lat: -23.55, lon: -46.63 },
+  { name: 'Cairo', lat: 30.04, lon: 31.24 },
+  { name: 'Lagos', lat: 6.52, lon: 3.38 },
+  { name: 'Cape Town', lat: -33.93, lon: 18.42 },
+  { name: 'Mexico City', lat: 19.43, lon: -99.13 },
+  { name: 'Toronto', lat: 43.65, lon: -79.38 },
+  { name: 'Singapore', lat: 1.35, lon: 103.82 },
+  { name: 'Seoul', lat: 37.57, lon: 126.98 },
+  { name: 'Bangkok', lat: 13.76, lon: 100.50 },
+  { name: 'Istanbul', lat: 41.01, lon: 28.98 },
+  { name: 'Buenos Aires', lat: -34.60, lon: -58.38 },
+  { name: 'Honolulu', lat: 21.31, lon: -157.86 }
+];
+
+// ── Detailed coastline data (equirectangular, [lon, lat]) ──
+var _MAP_COASTS = [
+  // North America (detailed)
+  [[-168,66],[-162,64],[-155,60],[-150,61],[-147,61],[-140,60],[-137,59],[-135,57],[-132,55],[-130,52],[-127,49],[-124,46],[-123,42],[-120,36],[-117,33],[-115,31],[-112,30],[-108,28],[-105,26],[-100,26],[-97,26],[-95,29],[-90,29],[-88,30],[-85,30],[-83,28],[-81,25],[-80,26],[-82,28],[-82,30],[-80,32],[-77,35],[-75,38],[-74,40],[-72,41],[-70,42],[-68,44],[-67,45],[-65,44],[-63,46],[-60,47],[-58,48],[-55,47],[-53,48],[-56,50],[-58,52],[-60,54],[-58,56],[-62,58],[-65,60],[-68,62],[-72,64],[-78,68],[-85,70],[-95,72],[-105,73],[-115,72],[-125,72],[-135,70],[-145,68],[-155,70],[-160,68]],
+  // Central America + Caribbean connector
+  [[-100,20],[-97,18],[-96,16],[-92,15],[-88,16],[-85,14],[-83,12],[-82,10],[-80,8],[-78,7],[-77,8],[-79,10],[-82,11],[-84,12],[-86,14],[-88,15],[-90,16],[-92,16],[-95,17],[-98,19]],
+  // South America (detailed)
+  [[-80,10],[-77,7],[-73,4],[-70,2],[-68,-1],[-70,-4],[-66,-4],[-62,-3],[-55,2],[-52,3],[-50,0],[-48,-2],[-45,-3],[-42,-3],[-40,-8],[-38,-12],[-36,-10],[-35,-8],[-37,-13],[-39,-17],[-40,-20],[-42,-23],[-44,-23],[-47,-25],[-48,-27],[-49,-29],[-50,-30],[-52,-33],[-55,-34],[-57,-36],[-60,-37],[-63,-39],[-65,-41],[-66,-46],[-68,-48],[-70,-50],[-72,-52],[-74,-50],[-75,-46],[-73,-42],[-72,-38],[-71,-34],[-71,-30],[-70,-27],[-70,-22],[-70,-18],[-75,-15],[-77,-12],[-80,-6],[-80,-2],[-80,2],[-78,4],[-77,6]],
+  // Europe (detailed)
+  [[-10,36],[-8,37],[-6,37],[-5,36],[-3,36],[0,38],[1,40],[3,43],[5,44],[3,46],[1,46],[-2,48],[-5,48],[-6,50],[-5,51],[-3,52],[0,51],[2,51],[4,52],[5,53],[8,54],[10,54],[12,55],[10,57],[8,57],[10,58],[12,56],[14,55],[18,55],[20,54],[22,54],[24,55],[22,58],[20,58],[18,60],[15,60],[12,58],[10,60],[12,62],[16,64],[18,66],[20,68],[22,70],[26,70],[28,68],[30,68],[28,66],[26,64],[24,62],[26,58],[28,56],[24,56],[20,56],[18,55]],
+  // UK + Ireland
+  [[-10,52],[-7,52],[-5,52],[-5,54],[-3,55],[-5,57],[-6,58],[-5,58],[-3,57],[-2,56],[0,53],[1,52],[0,51],[-2,50],[-5,50],[-6,52],[-8,52],[-10,52]],
+  // Africa (detailed)
+  [[-17,15],[-16,12],[-15,11],[-12,8],[-8,5],[-5,5],[0,5],[2,6],[5,4],[8,4],[10,4],[10,2],[9,1],[10,-1],[12,-3],[12,-6],[14,-8],[16,-12],[18,-18],[20,-22],[22,-26],[25,-30],[27,-33],[29,-34],[32,-33],[35,-30],[37,-25],[40,-20],[42,-15],[44,-12],[48,-10],[50,-5],[50,5],[48,8],[46,10],[44,12],[42,14],[38,15],[35,20],[32,25],[32,30],[30,32],[25,32],[20,34],[15,37],[10,37],[5,36],[0,35],[-5,34],[-8,33],[-12,32],[-13,28],[-16,22],[-17,18]],
+  // Madagascar
+  [[44,-12],[48,-14],[49,-18],[48,-22],[47,-24],[44,-25],[43,-22],[44,-17],[44,-14]],
+  // Asia (detailed - split into segments)
+  // Middle East + South Asia
+  [[32,32],[34,30],[36,28],[38,25],[40,22],[44,20],[48,25],[52,24],[56,25],[58,24],[60,25],[62,25],[64,26],[66,25],[68,24],[70,22],[72,18],[74,15],[76,10],[78,8],[80,8],[82,10],[85,12],[88,15],[90,18],[92,16],[95,16],[98,15],[100,14],[102,12],[104,10],[104,2],[105,5],[108,12],[110,15],[113,15],[115,16],[118,20],[120,22],[122,25]],
+  // East Asia
+  [[122,25],[125,30],[127,33],[128,36],[130,38],[130,40],[132,42],[135,44],[138,46],[140,50],[142,52],[145,55],[148,58],[153,60],[158,62],[162,64],[170,66],[175,68],[180,68]],
+  // Japan
+  [[130,31],[131,33],[133,34],[135,35],[137,36],[140,38],[140,40],[142,42],[143,44],[145,45],[145,43],[144,40],[141,38],[140,36],[137,34],[135,33],[132,32]],
+  // Southeast Asian islands
+  [[95,6],[98,3],[100,1],[103,1],[104,-2],[106,-6],[108,-7],[110,-8],[112,-8],[114,-7],[116,-4],[118,-3],[119,-5],[120,-8],[118,-9],[116,-9],[114,-8],[112,-7],[110,-7],[108,-6],[106,-6],[105,-3],[103,1],[100,2],[98,4]],
+  // Philippines
+  [[118,10],[119,12],[120,14],[121,16],[122,18],[122,16],[124,14],[125,12],[126,10],[124,8],[122,8],[120,10]],
+  // Australia (detailed)
+  [[115,-14],[117,-13],[120,-14],[123,-14],[127,-13],[130,-12],[133,-12],[136,-12],[138,-14],[140,-14],[142,-12],[145,-15],[148,-18],[150,-20],[152,-24],[153,-27],[152,-30],[150,-34],[148,-37],[146,-39],[144,-38],[140,-36],[138,-35],[136,-34],[134,-33],[132,-32],[130,-31],[128,-30],[126,-28],[122,-24],[118,-20],[116,-18],[115,-16]],
+  // New Zealand
+  [[170,-35],[172,-37],[174,-40],[172,-42],[170,-44],[168,-45],[167,-44],[168,-42],[170,-40],[172,-38],[174,-36]],
+  // Greenland
+  [[-55,60],[-48,62],[-42,64],[-38,66],[-30,68],[-22,72],[-18,76],[-20,78],[-28,80],[-35,82],[-45,82],[-52,80],[-55,78],[-58,76],[-60,74],[-58,72],[-55,68],[-52,64],[-52,62]],
+  // Iceland
+  [[-24,64],[-22,64],[-18,65],[-15,66],[-18,66],[-22,66],[-24,65]]
+];
+
 function _promptSpaceLocation() {
-  var input = prompt('Enter latitude, longitude (e.g. 34.05, -118.25 for LA):');
-  if (!input) return;
-  var parts = input.split(',').map(function(s) { return parseFloat(s.trim()); });
-  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-    localStorage.setItem('zimi_space_location', JSON.stringify({ lat: parts[0], lon: parts[1] }));
-    _renderSpaceContent();
+  var overlay = document.createElement('div');
+  overlay.id = 'space-map-overlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+
+  var gpsBtn = navigator.geolocation
+    ? '<button id="space-map-gps" style="padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:6px;font-size:12px;cursor:pointer;opacity:0.8">\uD83D\uDCCD Use GPS</button>'
+    : '';
+
+  overlay.innerHTML = '<div style="color:var(--text);font-size:16px;font-weight:600;margin-bottom:4px">Set Your Location</div>' +
+    '<div style="color:var(--text3);font-size:12px;margin-bottom:12px">Click a city, tap the map, or enter coordinates</div>' +
+    '<canvas id="space-map-canvas" style="border-radius:10px;cursor:crosshair;max-width:560px;width:100%;border:1px solid var(--border)"></canvas>' +
+    '<div id="space-map-hint" style="color:var(--text2);font-size:12px;margin-top:8px;min-height:18px"></div>' +
+    '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center">' +
+      '<input id="space-map-lat" type="text" placeholder="Latitude" style="width:90px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;text-align:center">' +
+      '<input id="space-map-lon" type="text" placeholder="Longitude" style="width:90px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;text-align:center">' +
+      '<button id="space-map-ok" style="padding:6px 18px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Set</button>' +
+      gpsBtn +
+      '<button id="space-map-cancel" style="padding:6px 14px;background:transparent;color:var(--text3);border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer">Cancel</button>' +
+    '</div>';
+  document.body.appendChild(overlay);
+
+  var canvas = document.getElementById('space-map-canvas');
+  var dpr = window.devicePixelRatio || 1;
+  var w = Math.min(560, window.innerWidth - 32);
+  var h = Math.round(w * 0.5);
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  var ctx = canvas.getContext('2d');
+
+  function lonToX(lon) { return (lon + 180) / 360 * w; }
+  function latToY(lat) { return (90 - lat) / 180 * h; }
+
+  function drawMap(selLat, selLon) {
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    // Deep ocean gradient
+    var oceanGrad = ctx.createLinearGradient(0, 0, 0, h);
+    oceanGrad.addColorStop(0, '#06101e');
+    oceanGrad.addColorStop(0.3, '#0a1828');
+    oceanGrad.addColorStop(0.5, '#0c1e30');
+    oceanGrad.addColorStop(0.7, '#0a1828');
+    oceanGrad.addColorStop(1, '#06101e');
+    ctx.fillStyle = oceanGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Coastlines — filled continents
+    for (var ci = 0; ci < _MAP_COASTS.length; ci++) {
+      var coast = _MAP_COASTS[ci];
+      ctx.beginPath();
+      for (var pi = 0; pi < coast.length; pi++) {
+        var px = lonToX(coast[pi][0]), py = latToY(coast[pi][1]);
+        if (pi === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      // Land fill with subtle gradient
+      ctx.fillStyle = '#14261a';
+      ctx.fill();
+      // Coastline stroke
+      ctx.strokeStyle = 'rgba(40,90,60,0.5)';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+
+    // Grid lines — subtle
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 0.5;
+    for (var gl = -150; gl <= 180; gl += 30) {
+      ctx.beginPath(); ctx.moveTo(lonToX(gl), 0); ctx.lineTo(lonToX(gl), h); ctx.stroke();
+    }
+    for (var gl = -60; gl <= 60; gl += 30) {
+      ctx.beginPath(); ctx.moveTo(0, latToY(gl)); ctx.lineTo(w, latToY(gl)); ctx.stroke();
+    }
+    // Equator — slightly brighter
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
+
+    // City dots
+    var fontSize = w < 400 ? 8 : 9;
+    ctx.font = fontSize + 'px -apple-system, sans-serif';
+    for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
+      var c = _MAP_CITIES[ci];
+      var cx = lonToX(c.lon), cy = latToY(c.lat);
+      // Glow
+      ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(210,170,100,0.12)';
+      ctx.fill();
+      // Dot
+      ctx.beginPath(); ctx.arc(cx, cy, 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(210,180,120,0.6)';
+      ctx.fill();
+      // Label — offset to avoid overlap, only on wider maps
+      if (w >= 350) {
+        ctx.fillStyle = 'rgba(180,170,150,0.4)';
+        ctx.fillText(c.name, cx + 4, cy + 3);
+      }
+    }
+
+    // Selected location marker
+    if (selLat !== null && selLon !== null) {
+      var mx = lonToX(selLon), my = latToY(selLat);
+      // Pulse ring
+      ctx.beginPath(); ctx.arc(mx, my, 10, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(210,170,100,0.25)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // Crosshair
+      ctx.strokeStyle = 'rgba(210,170,100,0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(mx - 7, my); ctx.lineTo(mx + 7, my); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx, my - 7); ctx.lineTo(mx, my + 7); ctx.stroke();
+      // Center dot
+      ctx.beginPath(); ctx.arc(mx, my, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#d4aa64';
+      ctx.fill();
+    }
+
+    ctx.restore();
   }
+
+  drawMap(null, null);
+
+  // Click map to set location — snap to nearby city if close
+  canvas.onclick = function(e) {
+    var rect = canvas.getBoundingClientRect();
+    var clickX = e.clientX - rect.left, clickY = e.clientY - rect.top;
+    var lon = (clickX / rect.width) * 360 - 180;
+    var lat = 90 - (clickY / rect.height) * 180;
+    // Snap to city if within ~15px
+    var snapDist = 15 / rect.width * 360;
+    for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
+      var c = _MAP_CITIES[ci];
+      var dlat = lat - c.lat, dlon = lon - c.lon;
+      if (Math.sqrt(dlat * dlat + dlon * dlon) < snapDist) {
+        lat = c.lat; lon = c.lon;
+        document.getElementById('space-map-hint').textContent = c.name + ' (' + c.lat.toFixed(2) + '\u00b0, ' + c.lon.toFixed(2) + '\u00b0)';
+        break;
+      }
+      if (ci === _MAP_CITIES.length - 1) {
+        document.getElementById('space-map-hint').textContent = lat.toFixed(2) + '\u00b0, ' + lon.toFixed(2) + '\u00b0';
+      }
+    }
+    document.getElementById('space-map-lat').value = lat.toFixed(2);
+    document.getElementById('space-map-lon').value = lon.toFixed(2);
+    drawMap(lat, lon);
+  };
+
+  document.getElementById('space-map-ok').onclick = function() {
+    var lat = parseFloat(document.getElementById('space-map-lat').value);
+    var lon = parseFloat(document.getElementById('space-map-lon').value);
+    if (!isNaN(lat) && !isNaN(lon)) {
+      var locData = { lat: lat, lon: lon };
+      // Save city name if one was snapped to
+      var hint = document.getElementById('space-map-hint').textContent;
+      for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
+        if (hint.indexOf(_MAP_CITIES[ci].name) === 0) { locData.name = _MAP_CITIES[ci].name; break; }
+      }
+      localStorage.setItem('zimi_space_location', JSON.stringify(locData));
+      document.body.removeChild(overlay);
+      _renderSpaceContent();
+    }
+  };
+
+  // GPS button
+  var gpsEl = document.getElementById('space-map-gps');
+  if (gpsEl) {
+    gpsEl.onclick = function() {
+      gpsEl.textContent = 'Locating\u2026';
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        var lat = pos.coords.latitude, lon = pos.coords.longitude;
+        document.getElementById('space-map-lat').value = lat.toFixed(2);
+        document.getElementById('space-map-lon').value = lon.toFixed(2);
+        document.getElementById('space-map-hint').textContent = 'GPS: ' + lat.toFixed(2) + '\u00b0, ' + lon.toFixed(2) + '\u00b0';
+        gpsEl.textContent = '\uD83D\uDCCD GPS';
+        drawMap(lat, lon);
+      }, function() {
+        gpsEl.textContent = 'GPS unavailable';
+        setTimeout(function() { gpsEl.textContent = '\uD83D\uDCCD Use GPS'; }, 2000);
+      }, { timeout: 8000 });
+    };
+  }
+
+  document.getElementById('space-map-cancel').onclick = function() {
+    document.body.removeChild(overlay);
+  };
+
+  overlay.onclick = function(e) {
+    if (e.target === overlay) document.body.removeChild(overlay);
+  };
 }
 
 function _renderSunInfo(el, now, lat, lon, locName) {
@@ -605,7 +914,7 @@ function _renderSunInfo(el, now, lat, lon, locName) {
       locStr + ' &middot; <a class="space-location-link" onclick="_promptSpaceLocation()">change</a></div>';
   } else {
     html += '<div style="margin-top:12px;text-align:center;font-size:11px;color:var(--text3)">' +
-      '<a class="space-location-link" onclick="' + (navigator.geolocation ? '_useGPSLocation()' : '_promptSpaceLocation()') + '">Set your location</a></div>';
+      '<a class="space-location-link" onclick="_shareSpaceLocation()">Share your location</a></div>';
   }
   el.innerHTML = html;
 }
@@ -828,7 +1137,7 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t) {
       // Draw moon with NASA texture
       ctx.save();
       ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.clip();
-      if (_moonTexImg && _moonTexImg.complete) {
+      if (_moonTexLoaded) {
         ctx.drawImage(_moonTexImg, moonX - moonR, moonY - moonR, moonR * 2, moonR * 2);
         // Brighten proportional to illumination — full moon should be bright
         var brighten = 0.10 + (m.illumination / 100) * 0.30;
@@ -837,11 +1146,12 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t) {
         ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.fill();
         ctx.globalCompositeOperation = 'source-over';
       } else {
-        // Fallback while loading
-        var moonGrad = ctx.createRadialGradient(moonX - moonR * 0.2, moonY - moonR * 0.2, 0, moonX, moonY, moonR);
-        moonGrad.addColorStop(0, '#f0e8d8');
-        moonGrad.addColorStop(0.8, '#e0d4c0');
-        moonGrad.addColorStop(1, '#c8bca8');
+        // Fallback: off-white moon with subtle shading
+        var moonGrad = ctx.createRadialGradient(moonX - moonR * 0.25, moonY - moonR * 0.2, 0, moonX, moonY, moonR);
+        moonGrad.addColorStop(0, '#f0ead8');
+        moonGrad.addColorStop(0.5, '#e4dcc8');
+        moonGrad.addColorStop(0.85, '#d4c8b0');
+        moonGrad.addColorStop(1, '#c0b498');
         ctx.fillStyle = moonGrad;
         ctx.fill();
       }
@@ -1189,6 +1499,969 @@ function _drawPalmTree(ctx, x, baseY, height, dpr, sunAlt, lean, t) {
       ctx.stroke();
     }
   }
+}
+
+// ── Tonight's Sky — planet visibility ──
+
+var _PLANET_V0 = { Mercury: -0.61, Venus: -4.40, Mars: -1.60, Jupiter: -9.40, Saturn: -8.88, Uranus: -7.19, Neptune: -6.87 };
+var _VISIBLE_PLANETS = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'];
+
+function _planetVisibility(now) {
+  var JD = 2440587.5 + now.getTime() / 86400000;
+  var T = (JD - 2451545.0) / 36525;
+  var earth = _planetPosition('Earth', T);
+  var sunLon = (Math.atan2(-earth.y, -earth.x) * 180 / Math.PI + 360) % 360;
+  var results = [];
+  for (var i = 0; i < _VISIBLE_PLANETS.length; i++) {
+    var name = _VISIBLE_PLANETS[i];
+    var pos = _planetPosition(name, T);
+    var dx = pos.x - earth.x, dy = pos.y - earth.y;
+    var delta = Math.sqrt(dx * dx + dy * dy);
+    var geoLon = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+    var elong = ((geoLon - sunLon) + 540) % 360 - 180; // signed, -180 to +180
+    var elongAbs = Math.abs(elong);
+    var mag = _PLANET_V0[name] + 5 * Math.log10(pos.r * delta);
+    // Phase angle correction for inner planets (rough)
+    if (name === 'Venus' || name === 'Mercury') {
+      var cosPA = (pos.r * pos.r + delta * delta - earth.r * earth.r) / (2 * pos.r * delta);
+      cosPA = Math.max(-1, Math.min(1, cosPA));
+      var phaseAngle = Math.acos(cosPA);
+      var phaseFrac = (1 + Math.cos(phaseAngle)) / 2;
+      mag += -2.5 * Math.log10(Math.max(0.01, phaseFrac));
+    }
+    var visible = mag < 5.5 && elongAbs > 12;
+    var sky = elong > 0 ? 'Evening' : 'Morning';
+    var dir = elong > 0 ? (elongAbs > 120 ? 'East' : elongAbs > 60 ? 'South' : 'West') :
+                          (elongAbs > 120 ? 'West' : elongAbs > 60 ? 'South' : 'East');
+    results.push({ name: name, elongation: elongAbs, magnitude: mag, visible: visible, sky: sky, direction: dir, distance: delta, color: _PLANETS[name].color });
+  }
+  return results;
+}
+
+function _renderTonightSky(now) {
+  var el = document.getElementById('space-tonight');
+  if (!el) return;
+  var planets = _planetVisibility(now);
+  var visible = planets.filter(function(p) { return p.visible; });
+  visible.sort(function(a, b) { return a.magnitude - b.magnitude; }); // brightest first
+  var notVisible = planets.filter(function(p) { return !p.visible; });
+  var html = '';
+  if (visible.length === 0) {
+    html = '<div class="space-info-item" style="text-align:center"><div class="space-info-val">No planets visible</div><div class="space-info-lbl">All planets are too close to the sun right now</div></div>';
+  } else {
+    for (var i = 0; i < visible.length; i++) {
+      var p = visible[i];
+      var magStr = p.magnitude.toFixed(1);
+      // Brightness indicator: dots based on magnitude
+      var brightness = p.magnitude < -3 ? 'Brilliant' : p.magnitude < -1 ? 'Very bright' : p.magnitude < 1 ? 'Bright' : p.magnitude < 3 ? 'Visible' : 'Faint';
+      html += '<div class="space-eclipse-row">' +
+        '<div>' +
+        '<span class="space-eclipse-type" style="color:' + p.color + '">' + p.name + '</span>' +
+        '<br><span class="space-eclipse-date">' + brightness + ' &middot; mag ' + magStr + ' &middot; ' + p.elongation.toFixed(0) + '\u00b0 from Sun</span>' +
+        '</div>' +
+        '<div class="space-eclipse-until" style="font-size:11px">' + p.sky + '<br>' + p.direction + '</div></div>';
+    }
+    if (notVisible.length > 0) {
+      var names = notVisible.map(function(p) { return p.name; });
+      html += '<div style="margin-top:8px;font-size:11px;color:var(--text3);text-align:center">' + names.join(', ') + ' \u2014 not visible tonight</div>';
+    }
+  }
+  el.innerHTML = html;
+}
+
+// ── Meteor Showers ──
+
+var _METEOR_SHOWERS = [
+  { name: 'Quadrantids', peak: [1, 3], zhr: 120, parent: '2003 EH\u2081', radiant: 'Bo\u00f6tes', speed: 'Medium' },
+  { name: 'Lyrids', peak: [4, 22], zhr: 18, parent: 'C/1861 G1 Thatcher', radiant: 'Lyra', speed: 'Fast' },
+  { name: 'Eta Aquariids', peak: [5, 6], zhr: 50, parent: '1P/Halley', radiant: 'Aquarius', speed: 'Fast' },
+  { name: 'Southern Delta Aquariids', peak: [7, 30], zhr: 25, parent: '96P/Machholz', radiant: 'Aquarius', speed: 'Medium' },
+  { name: 'Alpha Capricornids', peak: [7, 30], zhr: 5, parent: '169P/NEAT', radiant: 'Capricornus', speed: 'Slow' },
+  { name: 'Perseids', peak: [8, 12], zhr: 100, parent: '109P/Swift\u2013Tuttle', radiant: 'Perseus', speed: 'Fast' },
+  { name: 'Draconids', peak: [10, 8], zhr: 10, parent: '21P/Giacobini\u2013Zinner', radiant: 'Draco', speed: 'Slow' },
+  { name: 'Orionids', peak: [10, 21], zhr: 20, parent: '1P/Halley', radiant: 'Orion', speed: 'Fast' },
+  { name: 'Taurids', peak: [11, 5], zhr: 10, parent: '2P/Encke', radiant: 'Taurus', speed: 'Slow' },
+  { name: 'Leonids', peak: [11, 17], zhr: 15, parent: '55P/Tempel\u2013Tuttle', radiant: 'Leo', speed: 'Fast' },
+  { name: 'Geminids', peak: [12, 14], zhr: 150, parent: '3200 Phaethon', radiant: 'Gemini', speed: 'Medium' },
+  { name: 'Ursids', peak: [12, 22], zhr: 10, parent: '8P/Tuttle', radiant: 'Ursa Minor', speed: 'Medium' }
+];
+
+function _renderMeteorShowers(now, moon) {
+  var el = document.getElementById('space-meteors');
+  if (!el) return;
+  var y = now.getFullYear();
+  var upcoming = [];
+  // Check this year and next for upcoming showers
+  for (var yr = y; yr <= y + 1; yr++) {
+    for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
+      var s = _METEOR_SHOWERS[si];
+      var peakDate = new Date(yr, s.peak[0] - 1, s.peak[1]);
+      var daysUntil = Math.round((peakDate - now) / 86400000);
+      if (daysUntil >= -1 && daysUntil <= 365) {
+        // Moon interference: check moon illumination on peak night
+        var peakMoon = _moonPhase(peakDate);
+        var moonInterference = peakMoon.illumination > 60 ? 'Poor' : peakMoon.illumination > 30 ? 'Fair' : 'Ideal';
+        var moonIcon = peakMoon.illumination > 60 ? '\u{1F315}' : peakMoon.illumination > 30 ? '\u{1F313}' : '\u{1F311}';
+        upcoming.push({
+          name: s.name, zhr: s.zhr, parent: s.parent, radiant: s.radiant,
+          speed: s.speed, date: peakDate, daysUntil: daysUntil,
+          moonCondition: moonInterference, moonIcon: moonIcon,
+          moonIllum: peakMoon.illumination
+        });
+      }
+    }
+  }
+  upcoming.sort(function(a, b) { return a.daysUntil - b.daysUntil; });
+  upcoming = upcoming.slice(0, 5);
+
+  var html = '';
+  for (var i = 0; i < upcoming.length; i++) {
+    var s = upcoming[i];
+    var untilStr = s.daysUntil < 0 ? 'Peak!' : s.daysUntil === 0 ? 'Tonight!' : s.daysUntil === 1 ? 'Tomorrow' : s.daysUntil + ' days';
+    var rateDesc = s.zhr >= 100 ? 'Major' : s.zhr >= 25 ? 'Moderate' : 'Minor';
+    var condColor = s.moonCondition === 'Ideal' ? 'var(--accent)' : s.moonCondition === 'Fair' ? 'var(--text2)' : 'var(--text3)';
+    html += '<div class="space-eclipse-row">' +
+      '<div>' +
+      '<span class="space-eclipse-type">' + s.name + '</span>' +
+      '<br><span class="space-eclipse-date">~' + s.zhr + '/hr &middot; ' + s.radiant + ' &middot; ' + s.speed +
+      ' &middot; <span style="color:' + condColor + '">' + s.moonIcon + ' ' + s.moonCondition + '</span></span>' +
+      '</div>' +
+      '<div class="space-eclipse-until">' + untilStr + '</div></div>';
+  }
+  html += '<div style="margin-top:10px;font-size:11px;color:var(--text3)">Moon conditions: ' +
+    '\u{1F311} Ideal (dark sky) &middot; \u{1F313} Fair &middot; \u{1F315} Poor (moonlight washes out faint meteors)</div>';
+  el.innerHTML = html;
+}
+
+// ── Celestial Events — conjunctions, oppositions, elongations ──
+
+function _scanCelestialEvents(now) {
+  var JD0 = 2440587.5 + now.getTime() / 86400000;
+  var scanNames = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn'];
+  var events = [];
+
+  // Precompute positions at 2-day intervals for 400 days (speed vs accuracy tradeoff)
+  var DAYS = 400, STEP = 2;
+  var cache = {};
+  for (var d = 0; d <= DAYS; d += STEP) {
+    var T = (JD0 + d - 2451545.0) / 36525;
+    cache[d] = { Earth: _planetPosition('Earth', T) };
+    for (var pi = 0; pi < scanNames.length; pi++) {
+      cache[d][scanNames[pi]] = _planetPosition(scanNames[pi], T);
+    }
+  }
+
+  // Scan for conjunctions (angular separation < 5° between planet pairs)
+  for (var i = 0; i < scanNames.length - 1; i++) {
+    for (var j = i + 1; j < scanNames.length; j++) {
+      var bestSep = 999, bestDay = 0;
+      for (var d = STEP; d <= DAYS; d += STEP) {
+        var e = cache[d].Earth;
+        var p1 = cache[d][scanNames[i]], p2 = cache[d][scanNames[j]];
+        var lon1 = Math.atan2(p1.y - e.y, p1.x - e.x);
+        var lon2 = Math.atan2(p2.y - e.y, p2.x - e.x);
+        var sep = Math.abs(((lon1 - lon2) * 180 / Math.PI + 540) % 360 - 180);
+        if (sep < bestSep) { bestSep = sep; bestDay = d; }
+      }
+      if (bestSep < 5) {
+        events.push({ type: 'conjunction', planets: [scanNames[i], scanNames[j]],
+          separation: bestSep, daysUntil: bestDay,
+          date: new Date(now.getTime() + bestDay * 86400000) });
+      }
+    }
+  }
+
+  // Scan for oppositions (Mars, Jupiter, Saturn — elongation nearest 180°)
+  var outerPlanets = ['Mars', 'Jupiter', 'Saturn'];
+  for (var pi = 0; pi < outerPlanets.length; pi++) {
+    var bestDiff = 999, bestDay = 0;
+    for (var d = STEP; d <= DAYS; d += STEP) {
+      var e = cache[d].Earth;
+      var p = cache[d][outerPlanets[pi]];
+      if (!p) continue;
+      var sunLon = Math.atan2(-e.y, -e.x);
+      var geoLon = Math.atan2(p.y - e.y, p.x - e.x);
+      var elong = Math.abs(((geoLon - sunLon) * 180 / Math.PI + 540) % 360 - 180);
+      var diff = Math.abs(180 - elong);
+      if (diff < bestDiff) { bestDiff = diff; bestDay = d; }
+    }
+    if (bestDiff < 8 && bestDay > 0) {
+      events.push({ type: 'opposition', planet: outerPlanets[pi], daysUntil: bestDay,
+        date: new Date(now.getTime() + bestDay * 86400000) });
+    }
+  }
+
+  // Scan for greatest elongation (Mercury, Venus — max angular distance from sun)
+  var innerPlanets = ['Mercury', 'Venus'];
+  for (var pi = 0; pi < innerPlanets.length; pi++) {
+    // Find local maxima in elongation
+    var prevElong = 0, rising = false, bestElong = 0, bestDay = 0, foundCount = 0;
+    for (var d = STEP; d <= DAYS && foundCount < 2; d += STEP) {
+      var e = cache[d].Earth;
+      var p = cache[d][innerPlanets[pi]];
+      if (!p) continue;
+      var sunLon = Math.atan2(-e.y, -e.x);
+      var geoLon = Math.atan2(p.y - e.y, p.x - e.x);
+      var elong = Math.abs(((geoLon - sunLon) * 180 / Math.PI + 540) % 360 - 180);
+      if (elong > prevElong) {
+        rising = true; bestElong = elong; bestDay = d;
+      } else if (rising && elong < prevElong && bestElong > 15) {
+        // Determine if evening or morning
+        var signedElong = ((geoLon - sunLon) * 180 / Math.PI + 540) % 360 - 180;
+        var sky = signedElong > 0 ? 'evening' : 'morning';
+        events.push({ type: 'elongation', planet: innerPlanets[pi], elongation: bestElong,
+          sky: sky, daysUntil: bestDay, date: new Date(now.getTime() + bestDay * 86400000) });
+        rising = false; bestElong = 0; foundCount++;
+      }
+      prevElong = elong;
+    }
+  }
+
+  events.sort(function(a, b) { return a.daysUntil - b.daysUntil; });
+  return events;
+}
+
+function _renderCelestialEvents(now) {
+  var el = document.getElementById('space-events');
+  if (!el) return;
+  var events = _scanCelestialEvents(now);
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  var html = '';
+  if (events.length === 0) {
+    html = '<div style="text-align:center;color:var(--text3);font-size:13px;padding:12px 0">No notable events in the next year</div>';
+  } else {
+    var soonEvents = [], laterEvents = [];
+    for (var i = 0; i < events.length; i++) {
+      if (events[i].daysUntil <= 60) soonEvents.push(events[i]);
+      else laterEvents.push(events[i]);
+    }
+    var allVisible = soonEvents.concat(laterEvents);
+    for (var i = 0; i < allVisible.length; i++) {
+      var ev = allVisible[i];
+      var dateStr = months[ev.date.getMonth()] + ' ' + ev.date.getDate() + ', ' + ev.date.getFullYear();
+      var untilStr = ev.daysUntil <= 1 ? 'Now!' : ev.daysUntil + ' days';
+      var title, detail;
+      if (ev.type === 'conjunction') {
+        title = ev.planets[0] + ' \u2013 ' + ev.planets[1] + ' Conjunction';
+        detail = ev.separation.toFixed(1) + '\u00b0 apart &middot; ' + dateStr;
+      } else if (ev.type === 'opposition') {
+        title = ev.planet + ' at Opposition';
+        detail = 'Closest &amp; brightest &middot; ' + dateStr;
+      } else if (ev.type === 'elongation') {
+        title = ev.planet + ' Greatest Elongation';
+        detail = ev.elongation.toFixed(1) + '\u00b0 &middot; ' + ev.sky + ' sky &middot; ' + dateStr;
+      }
+      var hidden = (i >= soonEvents.length && laterEvents.length > 0) ? ' style="display:none" class="space-eclipse-row space-event-later"' : ' class="space-eclipse-row"';
+      html += '<div' + hidden + '>' +
+        '<div><span class="space-eclipse-type">' + title + '</span><br>' +
+        '<span class="space-eclipse-date">' + detail + '</span></div>' +
+        '<div class="space-eclipse-until">' + untilStr + '</div></div>';
+    }
+    if (laterEvents.length > 0) {
+      html += '<div style="text-align:center;margin-top:8px">' +
+        '<a class="space-location-link" onclick="var els=document.querySelectorAll(\'.space-event-later\');for(var i=0;i<els.length;i++)els[i].style.display=\'\';this.parentElement.style.display=\'none\'">' +
+        'Show ' + laterEvents.length + ' more\u2026</a></div>';
+    }
+  }
+  el.innerHTML = html;
+}
+
+// ── World Calendars — every date across civilizations ──
+
+// Shared JDN utilities — used by all calendar conversions
+function _gregorianToJDN(year, month, day) {
+  var a = Math.floor((14 - month) / 12);
+  var y = year + 4800 - a;
+  var m = month + 12 * a - 3;
+  return day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) - 32045;
+}
+
+function _jdnToGregorian(jdn) {
+  var a = jdn + 32044;
+  var b = Math.floor((4 * a + 3) / 146097);
+  var c = a - Math.floor(146097 * b / 4);
+  var d = Math.floor((4 * c + 3) / 1461);
+  var e = c - Math.floor(1461 * d / 4);
+  var m = Math.floor((5 * e + 2) / 153);
+  var day = e - Math.floor((153 * m + 2) / 5) + 1;
+  var month = m + 3 - 12 * Math.floor(m / 10);
+  var year = 100 * b + d - 4800 + Math.floor(m / 10);
+  return { year: year, month: month, day: day };
+}
+
+// Hebrew calendar helpers (module scope — needed for reverse conversion + month grid)
+var _HEBREW_EPOCH = 347995.5; // Hebrew epoch in JDN
+
+function _hebrewDelay1(yr) {
+  var months = Math.floor((235 * yr - 234) / 19);
+  var parts = 12084 + 13753 * months;
+  var day0 = months * 29 + Math.floor(parts / 25920);
+  if ((3 * (day0 + 1)) % 7 < 3) day0++;
+  return day0;
+}
+function _hebrewDelay2(yr) {
+  var last = _hebrewDelay1(yr - 1);
+  var present = _hebrewDelay1(yr);
+  var next = _hebrewDelay1(yr + 1);
+  if (next - present === 356) return 2;
+  if (present - last === 382) return 1;
+  return 0;
+}
+function _hebrewNewYear(yr) {
+  return _HEBREW_EPOCH + _hebrewDelay1(yr) + _hebrewDelay2(yr);
+}
+function _hebrewDaysInYear(yr) {
+  return Math.round(_hebrewNewYear(yr + 1) - _hebrewNewYear(yr));
+}
+function _hebrewMonthDays(yr, mo) {
+  var diy = _hebrewDaysInYear(yr);
+  if (mo === 2) return (diy % 10 === 5) ? 30 : 29;     // Marcheshvan
+  if (mo === 3) return (diy % 10 === 3) ? 29 : 30;     // Kislev
+  if (mo === 5) return 30;                               // Shevat
+  if (mo === 6) return _hebrewLeapYear(yr) ? 30 : 0;   // Adar I
+  if (mo === 7) return 29;                               // Adar (or Adar II)
+  if (mo === 8) return 30; if (mo === 9) return 29;
+  if (mo === 10) return 30; if (mo === 11) return 29;
+  if (mo === 12) return 30; if (mo === 13) return 29;
+  if (mo === 1) return 30;                               // Nisan (month 1)
+  return 29;
+}
+function _hebrewLeapYear(yr) { return ((7 * yr + 1) % 19) < 7; }
+
+// Hebrew calendar (Maimonides algorithm)
+function _gregorianToHebrew(year, month, day) {
+  var jdn = _gregorianToJDN(year, month, day);
+
+  // Hebrew calendar from JDN (algorithm based on Reingold & Dershowitz)
+  var approx = Math.floor((jdn - _HEBREW_EPOCH) / 365.25) + 1;
+
+  // Find the Hebrew year, then count days from Tishrei 1
+  var hYear = approx;
+  while (_hebrewNewYear(hYear) > jdn + 0.5) hYear--;
+  while (_hebrewNewYear(hYear + 1) <= jdn + 0.5) hYear++;
+
+  var dayInYear = Math.round(jdn + 0.5 - _hebrewNewYear(hYear));
+  // Months from Tishrei: Tishrei(30), Marcheshvan(29/30), Kislev(29/30), Tevet(29),
+  // Shevat(30), Adar I(30/0), Adar(29), Nisan(30), Iyar(29), Sivan(30),
+  // Tammuz(29), Av(30), Elul(29)
+  var hMonthNames = ['Tishrei','Marcheshvan','Kislev','Tevet','Shevat'];
+  if (_hebrewLeapYear(hYear)) hMonthNames.push('Adar I', 'Adar II');
+  else hMonthNames.push('Adar');
+  hMonthNames = hMonthNames.concat(['Nisan','Iyar','Sivan','Tammuz','Av','Elul']);
+
+  // Civil month indices for days calculation
+  var civilMonths = [30, 0, 0, 29, 30, 0, 29, 30, 29, 30, 29, 30, 29];
+  var diy = _hebrewDaysInYear(hYear);
+  civilMonths[1] = (diy % 10 === 5) ? 30 : 29; // Marcheshvan
+  civilMonths[2] = (diy % 10 === 3) ? 29 : 30; // Kislev
+  civilMonths[5] = _hebrewLeapYear(hYear) ? 30 : 0; // Adar I
+
+  var hMonth = 0, remaining = dayInYear;
+  for (var mi = 0; mi < civilMonths.length; mi++) {
+    if (civilMonths[mi] === 0) continue;
+    if (remaining < civilMonths[mi]) { hMonth = mi; break; }
+    remaining -= civilMonths[mi];
+  }
+  var hDay = remaining + 1;
+
+  // Map month index to name (skip zero-length months)
+  var nameIdx = 0;
+  for (var mi = 0; mi <= hMonth; mi++) {
+    if (civilMonths[mi] === 0 && mi < hMonth) continue;
+    if (mi === hMonth) break;
+    if (civilMonths[mi] > 0) nameIdx++;
+  }
+
+  return { year: hYear, month: hMonthNames[nameIdx] || 'Tishrei', day: hDay };
+}
+
+// Islamic (Hijri) Tabular Calendar — arithmetic approximation
+function _gregorianToHijri(year, month, day) {
+  var jdn = _gregorianToJDN(year, month, day);
+
+  var l = jdn - 1948440 + 10632;
+  var n = Math.floor((l - 1) / 10631);
+  l = l - 10631 * n + 354;
+  var j = Math.floor((10985 - l) / 5316) * Math.floor((50 * l) / 17719) + Math.floor(l / 5670) * Math.floor((43 * l) / 15238);
+  l = l - Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) - Math.floor(j / 16) * Math.floor((15238 * j) / 43) + 29;
+  var hm = Math.floor((24 * l) / 709);
+  var hd = l - Math.floor((709 * hm) / 24);
+  var hy = 30 * n + j - 30;
+  var hijriMonths = ['Muharram','Safar','Rabi\u2019 al-Awwal','Rabi\u2019 al-Thani',
+    'Jumada al-Ula','Jumada al-Thani','Rajab','Sha\u2019ban',
+    'Ramadan','Shawwal','Dhu al-Qi\u2019dah','Dhu al-Hijjah'];
+  return { year: hy, month: hijriMonths[hm - 1] || 'Muharram', day: hd };
+}
+
+// Persian (Solar Hijri) Calendar — algorithmic
+function _gregorianToPersian(gy, gm, gd) {
+  // 33-year subcycle algorithm (jalaali-js, well-tested)
+  var gdm = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+  var gy2 = (gm > 2) ? (gy + 1) : gy;
+  var days = 355666 + (365 * gy) + Math.floor((gy2 + 3) / 4) -
+    Math.floor((gy2 + 99) / 100) + Math.floor((gy2 + 399) / 400) + gd + gdm[gm - 1];
+
+  var jy = -1595 + 33 * Math.floor(days / 12053);
+  days = days % 12053;
+  jy += 4 * Math.floor(days / 1461);
+  days = days % 1461;
+  if (days > 365) {
+    jy += Math.floor((days - 1) / 365);
+    days = (days - 1) % 365;
+  }
+
+  var jm, jd;
+  if (days < 186) { jm = 1 + Math.floor(days / 31); jd = 1 + (days % 31); }
+  else { jm = 7 + Math.floor((days - 186) / 30); jd = 1 + ((days - 186) % 30); }
+
+  var persianMonths = ['Farvardin','Ordibehesht','Khordad','Tir','Mordad','Shahrivar',
+    'Mehr','Aban','Azar','Dey','Bahman','Esfand'];
+  return { year: jy, month: persianMonths[jm - 1], day: jd };
+}
+
+// Chinese calendar — 60-year cycle (Heavenly Stems + Earthly Branches)
+function _chineseZodiac(year) {
+  var stems = ['\u7532','\u4e59','\u4e19','\u4e01','\u620a','\u5df1','\u5e9a','\u8f9b','\u58ec','\u7678'];
+  var branches = ['\u5b50','\u4e11','\u5bc5','\u536f','\u8fb0','\u5df3','\u5348','\u672a','\u7533','\u9149','\u620c','\u4ea5'];
+  var animals = ['Rat','Ox','Tiger','Rabbit','Dragon','Snake','Horse','Goat','Monkey','Rooster','Dog','Pig'];
+  var elements = ['Wood','Wood','Fire','Fire','Earth','Earth','Metal','Metal','Water','Water'];
+  var offset = year - 4; // 4 CE was a Jia-Zi year
+  var stemIdx = ((offset % 10) + 10) % 10;
+  var branchIdx = ((offset % 12) + 12) % 12;
+  var cycleYear = ((offset % 60) + 60) % 60 + 1;
+  // Chinese year number (approximate — Chinese New Year is Jan/Feb)
+  var chineseYear = year + 2697; // Huang Di epoch (approximate)
+  return {
+    stem: stems[stemIdx], branch: branches[branchIdx],
+    animal: animals[branchIdx], element: elements[stemIdx],
+    cycle: stems[stemIdx] + branches[branchIdx],
+    cycleYear: cycleYear, year: chineseYear
+  };
+}
+
+// Julian calendar (Gregorian - offset)
+function _gregorianToJulian(year, month, day) {
+  var jdn = _gregorianToJDN(year, month, day);
+
+  // JDN to Julian calendar
+  var b = 0;
+  var c = jdn + 32082;
+  var d = Math.floor((4 * c + 3) / 1461);
+  var e = c - Math.floor(1461 * d / 4);
+  var mm = Math.floor((5 * e + 2) / 153);
+  var jDay = e - Math.floor((153 * mm + 2) / 5) + 1;
+  var jMonth = mm + 3 - 12 * Math.floor(mm / 10);
+  var jYear = d - 4800 + Math.floor(mm / 10);
+  var julianMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return { year: jYear, month: julianMonths[jMonth - 1], day: jDay };
+}
+
+// ── Reverse conversions — calendar date → JDN ──
+
+// Hebrew → JDN: sum days from Tishrei 1
+function _hebrewToJDN(year, monthIdx, day) {
+  // monthIdx is civil order: 0=Tishrei, 1=Marcheshvan, ...
+  var civilOrder = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]; // internal month codes
+  var jdn = Math.floor(_hebrewNewYear(year)) + day - 1;
+  for (var i = 0; i < monthIdx; i++) {
+    var days = _hebrewMonthDays(year, civilOrder[i]);
+    if (days > 0) jdn += days;
+  }
+  return jdn;
+}
+
+// Hebrew month list for a given year — [{name, days, idx}] in civil order
+function _hebrewMonthList(year) {
+  var names = ['Tishrei','Marcheshvan','Kislev','Tevet','Shevat'];
+  if (_hebrewLeapYear(year)) names.push('Adar I', 'Adar II');
+  else names.push('Adar');
+  names = names.concat(['Nisan','Iyar','Sivan','Tammuz','Av','Elul']);
+  var codes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+  var result = [];
+  var ni = 0;
+  for (var i = 0; i < codes.length; i++) {
+    var d = _hebrewMonthDays(year, codes[i]);
+    if (d > 0) {
+      result.push({ name: names[ni], days: d, idx: i });
+      ni++;
+    }
+  }
+  return result;
+}
+
+// Islamic → JDN: arithmetic tabular formula
+var _HIJRI_EPOCH = 1948439.5;
+function _hijriToJDN(year, month, day) {
+  return Math.floor((11 * year + 3) / 30) + 354 * year + 30 * month - Math.floor((month - 1) / 2) + day + 1948440 - 385;
+}
+function _hijriDaysInMonth(year, month) {
+  // Odd months have 30 days, even months 29, except month 12 in leap years gets 30
+  if (month % 2 === 1) return 30;
+  if (month === 12 && (11 * year + 14) % 30 < 11) return 30;
+  return 29;
+}
+function _jdnToHijri(jdn) {
+  var l = jdn - 1948440 + 10632;
+  var n = Math.floor((l - 1) / 10631);
+  l = l - 10631 * n + 354;
+  var j = Math.floor((10985 - l) / 5316) * Math.floor((50 * l) / 17719) + Math.floor(l / 5670) * Math.floor((43 * l) / 15238);
+  l = l - Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) - Math.floor(j / 16) * Math.floor((15238 * j) / 43) + 29;
+  var m = Math.floor((24 * l) / 709);
+  var d = l - Math.floor((709 * m) / 24);
+  var y = 30 * n + j - 30;
+  return { year: y, month: m, day: d };
+}
+
+// Persian → Gregorian (reverse of 33-year subcycle)
+function _persianToGregorian(jy, jm, jd) {
+  var jy2 = jy + 1595;
+  var days = -355668 + (365 * jy2) + Math.floor(jy2 / 33) * 8 + Math.floor((jy2 % 33 + 3) / 4) + jd;
+  days += (jm < 7) ? (jm - 1) * 31 : ((jm - 7) * 30 + 186);
+  var gy = 400 * Math.floor(days / 146097);
+  days = days % 146097;
+  if (days > 36524) {
+    gy += 100 * Math.floor(--days / 36524);
+    days = days % 36524;
+    if (days >= 365) days++;
+  }
+  gy += 4 * Math.floor(days / 1461);
+  days = days % 1461;
+  if (days > 365) {
+    gy += Math.floor((days - 1) / 365);
+    days = (days - 1) % 365;
+  }
+  var gdm = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  var isLeap = (gy % 4 === 0 && gy % 100 !== 0) || gy % 400 === 0;
+  gdm[2] = isLeap ? 29 : 28;
+  var gm = 0;
+  for (gm = 1; gm <= 12; gm++) {
+    if (days < gdm[gm]) break;
+    days -= gdm[gm];
+  }
+  return { year: gy, month: gm, day: days + 1 };
+}
+function _persianDaysInMonth(year, month) {
+  if (month <= 6) return 31;
+  if (month <= 11) return 30;
+  return _persianLeapYear(year) ? 30 : 29;
+}
+function _persianLeapYear(year) {
+  var breaks = [1, 5, 9, 13, 17, 22, 26, 30];
+  var r = ((year + 2346) % 2820 + 2820) % 2820;
+  var m33 = r % 33;
+  for (var i = 0; i < breaks.length; i++) {
+    if (m33 === breaks[i]) return true;
+  }
+  return false;
+}
+function _persianToJDN(jy, jm, jd) {
+  var g = _persianToGregorian(jy, jm, jd);
+  return _gregorianToJDN(g.year, g.month, g.day);
+}
+
+// Julian → JDN
+function _julianToJDN(year, month, day) {
+  var a = Math.floor((14 - month) / 12);
+  var y = year + 4800 - a;
+  var m = month + 12 * a - 3;
+  return day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - 32083;
+}
+function _jdnToJulian(jdn) {
+  var c = jdn + 32082;
+  var d = Math.floor((4 * c + 3) / 1461);
+  var e = c - Math.floor(1461 * d / 4);
+  var m = Math.floor((5 * e + 2) / 153);
+  return {
+    year: d - 4800 + Math.floor(m / 10),
+    month: m + 3 - 12 * Math.floor(m / 10),
+    day: e - Math.floor((153 * m + 2) / 5) + 1
+  };
+}
+
+// ── Calendar dispatchers — uniform interface for any calendar system ──
+
+var _CAL_SYSTEMS = ['gregorian', 'hebrew', 'islamic', 'persian', 'julian'];
+var _CAL_LABELS = { gregorian: 'Gregorian', hebrew: 'Hebrew', islamic: 'Islamic', persian: 'Persian', julian: 'Julian' };
+
+var _GREGORIAN_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+var _HIJRI_MONTHS = ['Muharram','Safar','Rabi\u2019 al-Awwal','Rabi\u2019 al-Thani',
+  'Jumada al-Ula','Jumada al-Thani','Rajab','Sha\u2019ban',
+  'Ramadan','Shawwal','Dhu al-Qi\u2019dah','Dhu al-Hijjah'];
+var _PERSIAN_MONTHS = ['Farvardin','Ordibehesht','Khordad','Tir','Mordad','Shahrivar',
+  'Mehr','Aban','Azar','Dey','Bahman','Esfand'];
+var _JULIAN_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+// Convert JDN → {year, month, day} in the given calendar system (month is 1-based)
+function _jdnToCalendar(sys, jdn) {
+  if (sys === 'gregorian') {
+    var g = _jdnToGregorian(jdn);
+    return { year: g.year, month: g.month, day: g.day };
+  }
+  if (sys === 'hebrew') {
+    // Find Hebrew year
+    var approx = Math.floor((jdn - _HEBREW_EPOCH) / 365.25) + 1;
+    var hYear = approx;
+    while (_hebrewNewYear(hYear) > jdn + 0.5) hYear--;
+    while (_hebrewNewYear(hYear + 1) <= jdn + 0.5) hYear++;
+    var months = _hebrewMonthList(hYear);
+    var dayInYear = Math.round(jdn + 0.5 - _hebrewNewYear(hYear));
+    var remaining = dayInYear;
+    for (var i = 0; i < months.length; i++) {
+      if (remaining < months[i].days) {
+        return { year: hYear, month: i + 1, day: remaining + 1 };
+      }
+      remaining -= months[i].days;
+    }
+    return { year: hYear, month: months.length, day: remaining + 1 };
+  }
+  if (sys === 'islamic') {
+    var h = _jdnToHijri(jdn);
+    return { year: h.year, month: h.month, day: h.day };
+  }
+  if (sys === 'persian') {
+    var g = _jdnToGregorian(jdn);
+    var p = _gregorianToPersian(g.year, g.month, g.day);
+    return { year: p.year, month: _PERSIAN_MONTHS.indexOf(p.month) + 1, day: p.day };
+  }
+  if (sys === 'julian') {
+    var j = _jdnToJulian(jdn);
+    return { year: j.year, month: j.month, day: j.day };
+  }
+  return { year: 0, month: 1, day: 1 };
+}
+
+// Get JDN for first day of a given month
+function _calFirstDayJDN(sys, year, month) {
+  if (sys === 'gregorian') return _gregorianToJDN(year, month, 1);
+  if (sys === 'hebrew') {
+    var months = _hebrewMonthList(year);
+    var jdn = Math.floor(_hebrewNewYear(year));
+    for (var i = 0; i < month - 1 && i < months.length; i++) {
+      jdn += months[i].days;
+    }
+    return jdn;
+  }
+  if (sys === 'islamic') return _hijriToJDN(year, month, 1);
+  if (sys === 'persian') return _persianToJDN(year, month, 1);
+  if (sys === 'julian') return _julianToJDN(year, month, 1);
+  return 0;
+}
+
+// Get number of days in a given month
+function _calDaysInMonth(sys, year, month) {
+  if (sys === 'gregorian') {
+    var daysPerMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if (month === 2 && ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0)) return 29;
+    return daysPerMonth[month - 1];
+  }
+  if (sys === 'hebrew') {
+    var months = _hebrewMonthList(year);
+    if (month >= 1 && month <= months.length) return months[month - 1].days;
+    return 30;
+  }
+  if (sys === 'islamic') return _hijriDaysInMonth(year, month);
+  if (sys === 'persian') return _persianDaysInMonth(year, month);
+  if (sys === 'julian') {
+    var daysPerMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if (month === 2 && year % 4 === 0) return 29;
+    return daysPerMonth[month - 1];
+  }
+  return 30;
+}
+
+// Get month name
+function _calMonthName(sys, year, month) {
+  if (sys === 'gregorian') return _GREGORIAN_MONTHS[month - 1] || '';
+  if (sys === 'hebrew') {
+    var months = _hebrewMonthList(year);
+    if (month >= 1 && month <= months.length) return months[month - 1].name;
+    return '';
+  }
+  if (sys === 'islamic') return _HIJRI_MONTHS[month - 1] || '';
+  if (sys === 'persian') return _PERSIAN_MONTHS[month - 1] || '';
+  if (sys === 'julian') return _JULIAN_MONTHS[month - 1] || '';
+  return '';
+}
+
+// Get number of months in a year
+function _calMonthCount(sys, year) {
+  if (sys === 'hebrew') return _hebrewMonthList(year).length;
+  if (sys === 'islamic' || sys === 'persian' || sys === 'gregorian' || sys === 'julian') return 12;
+  return 12;
+}
+
+// ── Interactive Calendar Browser ──
+
+var _calSystem = 'gregorian';
+var _calYear = 0, _calMonth = 0;
+var _calSelectedJDN = 0;
+var _calTodayJDN = 0;
+
+function _renderWorldCalendars(now) {
+  var el = document.getElementById('space-calendars');
+  if (!el) return;
+  var y = now.getFullYear(), m = now.getMonth() + 1, d = now.getDate();
+
+  // Initialize calendar browser state on first render
+  var todayJDN = _gregorianToJDN(y, m, d);
+  _calTodayJDN = todayJDN;
+  if (_calSelectedJDN === 0) _calSelectedJDN = todayJDN;
+  if (_calYear === 0) { _calYear = y; _calMonth = m; }
+
+  // Static calendar rows (Chinese, Buddhist, Unix — not browsable)
+  var chinese = _chineseZodiac(y);
+  var moonAge = Math.floor((_moonPhase(now).phase * 29.53) + 1);
+  if (moonAge > 30) moonAge = 30;
+  var buddhist = y + 543;
+  var buddhistMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var unix = Math.floor(now.getTime() / 1000);
+
+  var html = '<div class="space-cal-list">';
+  html += _calRow('Chinese', chinese.animal + ' \u00b7 ' + chinese.element + ' \u00b7 Day ' + moonAge, chinese.year + ' (' + chinese.cycle + ')');
+  html += _calRow('Buddhist', buddhistMonths[m - 1] + ' ' + d, buddhist + ' BE');
+  html += _calRow('Unix', '', unix.toLocaleString());
+  html += '</div>';
+
+  // Interactive calendar browser
+  html += '<div id="space-cal-browser" style="margin-top:20px"></div>';
+
+  el.innerHTML = html;
+  _renderCalBrowser();
+}
+
+function _calRow(name, dateStr, yearStr) {
+  return '<div class="space-eclipse-row">' +
+    '<div><span class="space-eclipse-type">' + name + '</span>' +
+    (dateStr ? '<br><span class="space-eclipse-date">' + dateStr + '</span>' : '') +
+    '</div>' +
+    '<div class="space-eclipse-until">' + yearStr + '</div></div>';
+}
+
+function _renderCalBrowser() {
+  var el = document.getElementById('space-cal-browser');
+  if (!el) return;
+
+  var html = '';
+
+  // System tabs
+  html += '<div class="space-cal-tabs">';
+  for (var i = 0; i < _CAL_SYSTEMS.length; i++) {
+    var sys = _CAL_SYSTEMS[i];
+    var active = sys === _calSystem ? ' active' : '';
+    html += '<button class="space-cal-tab' + active + '" onclick="_switchCalSystem(\'' + sys + '\')">' + _CAL_LABELS[sys] + '</button>';
+  }
+  html += '</div>';
+
+  // Month navigation
+  var monthName = _calMonthName(_calSystem, _calYear, _calMonth);
+  var yearSuffix = '';
+  if (_calSystem === 'islamic') yearSuffix = ' AH';
+  else if (_calSystem === 'persian') yearSuffix = ' SH';
+  html += '<div class="space-cal-nav">';
+  html += '<button class="space-cal-arrow" onclick="_calPrev()">\u25C0</button>';
+  html += '<div class="space-cal-title">' + monthName + ' ' + _calYear + yearSuffix + '</div>';
+  html += '<button class="space-cal-arrow" onclick="_calNext()">\u25B6</button>';
+  if (_calSelectedJDN !== _calTodayJDN) {
+    html += '<button class="space-cal-today-link" onclick="_calToday()" title="Jump to today">\u25CF</button>';
+  }
+  html += '</div>';
+
+  // Month grid
+  var daysInMonth = _calDaysInMonth(_calSystem, _calYear, _calMonth);
+  var firstJDN = _calFirstDayJDN(_calSystem, _calYear, _calMonth);
+  // Weekday of first day: JDN % 7 → 0=Mon, 1=Tue, ... 6=Sun → convert to 0=Sun
+  var firstWeekday = ((firstJDN + 1) % 7); // 0=Sun, 1=Mon, ..., 6=Sat
+
+  html += '<div class="space-cal-grid">';
+  var dayLabels = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  for (var i = 0; i < 7; i++) {
+    html += '<div class="space-cal-hdr">' + dayLabels[i] + '</div>';
+  }
+  for (var i = 0; i < firstWeekday; i++) {
+    html += '<div class="space-cal-cell"></div>';
+  }
+  for (var d = 1; d <= daysInMonth; d++) {
+    var cellJDN = firstJDN + d - 1;
+    var cls = 'space-cal-cell space-cal-day';
+    if (cellJDN === _calTodayJDN) cls += ' space-cal-today';
+    if (cellJDN === _calSelectedJDN) cls += ' space-cal-selected';
+    html += '<div class="' + cls + '" onclick="_calSelect(' + cellJDN + ')">' + d + '</div>';
+  }
+  html += '</div>';
+
+  // Cross-reference panel
+  html += _renderCalCrossRef(_calSelectedJDN);
+
+  el.innerHTML = html;
+}
+
+function _switchCalSystem(sys) {
+  _calSystem = sys;
+  // Convert selected JDN to the new system's year/month
+  var cal = _jdnToCalendar(sys, _calSelectedJDN);
+  _calYear = cal.year;
+  _calMonth = cal.month;
+  _renderCalBrowser();
+}
+
+function _calPrev() {
+  _calMonth--;
+  if (_calMonth < 1) {
+    _calYear--;
+    _calMonth = _calMonthCount(_calSystem, _calYear);
+  }
+  _renderCalBrowser();
+}
+
+function _calNext() {
+  var max = _calMonthCount(_calSystem, _calYear);
+  _calMonth++;
+  if (_calMonth > max) {
+    _calYear++;
+    _calMonth = 1;
+  }
+  _renderCalBrowser();
+}
+
+function _calSelect(jdn) {
+  _calSelectedJDN = jdn;
+  // If clicked day is outside current month view, navigate to it
+  var cal = _jdnToCalendar(_calSystem, jdn);
+  if (cal.year !== _calYear || cal.month !== _calMonth) {
+    _calYear = cal.year;
+    _calMonth = cal.month;
+  }
+  _renderCalBrowser();
+}
+
+function _calToday() {
+  _calSelectedJDN = _calTodayJDN;
+  var cal = _jdnToCalendar(_calSystem, _calTodayJDN);
+  _calYear = cal.year;
+  _calMonth = cal.month;
+  _renderCalBrowser();
+}
+
+function _renderCalCrossRef(jdn) {
+  var html = '<div class="space-cal-crossref">';
+  for (var i = 0; i < _CAL_SYSTEMS.length; i++) {
+    var sys = _CAL_SYSTEMS[i];
+    var cal = _jdnToCalendar(sys, jdn);
+    var monthName = _calMonthName(sys, cal.year, cal.month);
+    var yearStr = cal.year.toString();
+    if (sys === 'islamic') yearStr += ' AH';
+    else if (sys === 'persian') yearStr += ' SH';
+    var isActive = sys === _calSystem ? ' style="color:var(--amber)"' : '';
+    html += '<div class="space-cal-crossref-row">' +
+      '<span class="space-cal-crossref-label"' + isActive + '>' + _CAL_LABELS[sys] + '</span>' +
+      '<span class="space-cal-crossref-date">' + monthName + ' ' + cal.day + ', ' + yearStr + '</span>' +
+      '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// ── Deep Time — facts that transcend centuries ──
+
+function _renderDeepTime(now) {
+  var el = document.getElementById('space-deeptime');
+  if (!el) return;
+  var JD = 2440587.5 + now.getTime() / 86400000;
+  var T = (JD - 2451545.0) / 36525; // Julian centuries from J2000
+
+  // Axial tilt (obliquity of ecliptic)
+  // IAU formula: ε = 23°26'21.448" - 46.8150"T - 0.00059"T² + 0.001813"T³
+  var obliquityAS = 84381.448 - 46.8150 * T - 0.00059 * T * T + 0.001813 * T * T * T; // arcseconds
+  var obliquityDeg = obliquityAS / 3600;
+  var obliquityRate = -46.8150 / 3600; // degrees per century (negative = decreasing)
+  // Milankovitch: tilt oscillates between 22.1° and 24.5° over ~41,000 years
+  var tiltInCycle = ((obliquityDeg - 22.1) / (24.5 - 22.1) * 100).toFixed(0);
+
+  // Precession — angle of celestial pole from Polaris
+  // Polaris is at roughly RA 2h31m, Dec +89°15'50" (J2000)
+  // Precession rate: ~50.29"/yr = 1.397°/century
+  // Current pole-to-Polaris distance: ~0.7° in 2026, minimum ~0.45° around 2100
+  var yearsSince2000 = (now.getFullYear() - 2000) + now.getMonth() / 12;
+  // Simplified: distance decreases until ~2100 then increases
+  // Rough model: d = 0.45 + 0.003 * |year - 2100|  (good enough for display)
+  var polarisDist = (0.45 + 0.003 * Math.abs(now.getFullYear() - 2100)).toFixed(2);
+  var precessionCyclePct = ((yearsSince2000 % 25772) / 25772 * 100).toFixed(1);
+
+  // Day length change
+  // Earth's rotation slows ~1.8ms per century due to tidal friction (Morrison & Stephenson 2004)
+  var centuriesFromNow = 0;
+  var dayLengthChange = (1.8 * centuriesFromNow).toFixed(1); // ms
+  var dayLengthIn1000 = (1.8 * 10).toFixed(0); // 10 centuries = 1000 years
+
+  // Julian Date — universal time reference that survives all calendar reforms
+  var julianDate = JD.toFixed(2);
+
+  // Earth's orbital eccentricity — currently decreasing
+  var earthEcc = (0.0167086 - 0.0000420 * T).toFixed(6);
+
+  // Human-scale season direction
+  var tiltDir = obliquityAS < 84381.448 ? 'decreasing' : 'increasing';
+  var seasonImpact = tiltDir === 'decreasing' ? 'Seasons are slowly becoming milder' : 'Seasons are slowly becoming more extreme';
+
+  var html = '<div class="space-info-grid">';
+
+  // Axial tilt — why it matters: it's what gives us seasons
+  html += '<div class="space-info-item"><div class="space-info-val">' + obliquityDeg.toFixed(2) + '\u00b0</div>' +
+    '<div class="space-info-lbl">Earth\u2019s Tilt</div>' +
+    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
+    'This tilt is why seasons exist. It\u2019s currently ' + tiltDir + ', meaning: ' + seasonImpact.toLowerCase() + '. ' +
+    'Cycles between 22.1\u00b0 and 24.5\u00b0 over 41,000 years (Milankovi\u0107 cycle). ' +
+    'Currently ' + tiltInCycle + '% through the cycle.</div></div>';
+
+  // North Star — why it matters: navigation for millennia
+  html += '<div class="space-info-item"><div class="space-info-val">' + polarisDist + '\u00b0 from true north</div>' +
+    '<div class="space-info-lbl">Polaris Accuracy</div>' +
+    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
+    'Earth wobbles like a spinning top. Polaris happens to be near the axis right now, but it\u2019s drifting. ' +
+    'Closest alignment ~2100 (0.45\u00b0), then it drifts away. In 12,000 years, Vega will be the \u201cNorth Star.\u201d ' +
+    'Full wobble cycle: 25,772 years.</div></div>';
+
+  // Day getting longer — why it matters: the moon is stealing our spin
+  html += '<div class="space-info-item"><div class="space-info-val">+1.8 ms / century</div>' +
+    '<div class="space-info-lbl">Day Length Change</div>' +
+    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
+    'The Moon\u2019s gravity creates tides that act like brakes on Earth\u2019s spin. Days get 1.8 milliseconds longer each century. ' +
+    'In 1,000 years, a day will be ' + dayLengthIn1000 + 'ms longer. 600 million years ago, a day was only ~21 hours. ' +
+    'The Moon moves 3.8 cm farther from Earth each year as a result.</div></div>';
+
+  // Orbital eccentricity — why it matters: ice ages
+  html += '<div class="space-info-item"><div class="space-info-val">' + earthEcc + '</div>' +
+    '<div class="space-info-lbl">Orbit Shape</div>' +
+    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
+    'How elliptical Earth\u2019s orbit is (0 = perfect circle, 1 = extremely stretched). ' +
+    'Currently near-circular and decreasing. This affects how much solar energy Earth receives over a year. ' +
+    'Combined with tilt and precession, these three cycles drive ice ages (Milankovi\u0107 theory).</div></div>';
+
+  // Julian Date — why it matters: time that never resets
+  html += '<div class="space-info-item"><div class="space-info-val">JD ' + julianDate + '</div>' +
+    '<div class="space-info-lbl">Julian Date</div>' +
+    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
+    'A continuous count of days since January 1, 4713 BC. Used by astronomers because it never resets, ' +
+    'skips, or changes with calendar reforms. Every event in human history has exactly one Julian Date. ' +
+    'Immune to leap seconds, timezone changes, and political calendars.</div></div>';
+
+  // Galactic Year — Sun's orbit around Milky Way
+  var galacticPeriod = 225; // million years
+  var sunAge = 4600; // million years
+  var orbitsCompleted = Math.floor(sunAge / galacticPeriod);
+  var currentOrbitPct = ((sunAge % galacticPeriod) / galacticPeriod * 100).toFixed(1);
+
+  html += '<div class="space-info-item"><div class="space-info-val">~' + orbitsCompleted + ' orbits completed</div>' +
+    '<div class="space-info-lbl">Galactic Year</div>' +
+    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
+    'The Sun orbits the Milky Way\u2019s center every ~225 million years at 828,000 km/h. ' +
+    'In 4.6 billion years, we\u2019ve completed about ' + orbitsCompleted + ' orbits. ' +
+    'Currently ' + currentOrbitPct + '% through orbit #' + (orbitsCompleted + 1) + '. ' +
+    'Last time we were here, dinosaurs ruled the Earth.</div></div>';
+
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 // ── Resize handler ──
