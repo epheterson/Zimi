@@ -395,7 +395,6 @@ function _drawOrrery(canvas, dpr) {
     _orreryPlanetPositions.push({ name: names[i], x: px / dpr, y: py / dpr, r: pr / dpr });
   }
 
-  _spaceOrreryRAF = requestAnimationFrame(function() { _drawOrrery(canvas, dpr); });
 }
 
 // ── Color helpers ──
@@ -601,7 +600,7 @@ function _renderSunInfo(el, now, lat, lon, locName) {
   var hasStored = localStorage.getItem('zimi_space_location');
   if (hasStored) {
     var locStr = lat.toFixed(2) + '\u00b0, ' + lon.toFixed(2) + '\u00b0';
-    if (locName && locName !== 'Estimated from timezone') locStr = locName;
+    if (locName && locName !== 'Estimated from timezone') locStr = locName.replace(/</g, '&lt;');
     html += '<div style="margin-top:12px;text-align:center;font-size:11px;color:var(--text3)">' +
       locStr + ' &middot; <a class="space-location-link" onclick="_promptSpaceLocation()">change</a></div>';
   } else {
