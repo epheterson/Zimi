@@ -10,12 +10,12 @@
       <sparkle:version>1.5.0</sparkle:version>
       <sparkle:shortVersionString>1.5.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-      <pubDate>Tue, 03 Mar 2026 08:29:43 +0000</pubDate>
+      <pubDate>Wed, 04 Mar 2026 09:09:00 +0000</pubDate>
       <enclosure
         url="https://github.com/epheterson/Zimi/releases/download/v1.5.0/Zimi-AppleSilicon.dmg"
-        length="46194568"
+        length="46230301"
         type="application/octet-stream"
-        sparkle:edSignature="ZNT3ByyrzJc5CzNFLA3kaHCdOYupVrgDoSmB6SPXs1h923iRu49GE+fygxb5aWoLW/CCkWyrFgBry3nMhz6+Ag=="
+        sparkle:edSignature="Cq1NhsMYveAxyY53feTTm267QNjJklYG0FIhWSpYsFcNEkXDF1Y3hBvBhgvVYqFE31GU4vTE81YGPLRxFWtkAA=="
       />
     </item>
   </channel>
