@@ -857,7 +857,15 @@ function _initSkyScene(now, lat, lon) {
   var label = document.getElementById('space-sky-label');
   if (label) {
     var altStr = sunPos.altitude.toFixed(1);
-    var desc = sunPos.altitude > 0 ? 'Sun altitude: ' + altStr + '\u00b0' : 'Sun below horizon (' + altStr + '\u00b0)';
+    var desc = sunPos.altitude > 0 ? 'Sun ' + altStr + '\u00b0' : 'Sun below horizon (' + altStr + '\u00b0)';
+    // Add moon info
+    var moonPos = _moonPosition(now, lat, lon);
+    var moonM = _moonPhase(now);
+    if (moonPos.altitude > -2) {
+      desc += ' \u00b7 Moon ' + moonPos.altitude.toFixed(1) + '\u00b0 (' + moonM.illumination + '%)';
+    } else {
+      desc += ' \u00b7 Moon below horizon';
+    }
     label.textContent = desc;
   }
 
@@ -2405,10 +2413,13 @@ function _renderDeepTime(now) {
 
   // Day length change
   // Earth's rotation slows ~1.8ms per century due to tidal friction (Morrison & Stephenson 2004)
-  // Cumulative since year 2000: days are already ~X ms longer than in 2000
+  // Base: 86400.000s in year 2000. Current excess grows at 1.8ms/century.
   var centuriesSince2000 = yearsSince2000 / 100;
-  var dayLengthCumulative = (1.8 * centuriesSince2000).toFixed(1); // ms gained since 2000
-  var dayLengthIn1000 = (1.8 * 10).toFixed(0); // always 18ms per 1000 years
+  var excessMs = 1.8 * centuriesSince2000; // ms longer than year-2000 day
+  var daySeconds = 86400 + excessMs / 1000;
+  var dayH = Math.floor(daySeconds / 3600);
+  var dayMin = Math.floor((daySeconds % 3600) / 60);
+  var daySec = (daySeconds % 60).toFixed(3);
 
   // Julian Date — universal time reference that survives all calendar reforms
   var julianDate = JD.toFixed(2);
@@ -2442,11 +2453,11 @@ function _renderDeepTime(now) {
     'Full wobble cycle: 25,772 years.</div></div>';
 
   // Day getting longer — why it matters: the moon is stealing our spin
-  html += '<div class="space-info-item"><div class="space-info-val">+1.8 ms / century</div>' +
-    '<div class="space-info-lbl">Day Length Change</div>' +
+  html += '<div class="space-info-item"><div class="space-info-val">' + dayH + 'h ' + dayMin + 'm ' + daySec + 's</div>' +
+    '<div class="space-info-lbl">True Day Length</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
     'The Moon\u2019s gravity creates tides that act like brakes on Earth\u2019s spin. Days get 1.8 milliseconds longer each century. ' +
-    'In 1,000 years, a day will be ' + dayLengthIn1000 + 'ms longer. 600 million years ago, a day was only ~21 hours. ' +
+    'That\u2019s ' + excessMs.toFixed(1) + 'ms longer than in the year 2000. 600 million years ago, a day was only ~21 hours. ' +
     'The Moon moves 3.8 cm farther from Earth each year as a result.</div></div>';
 
   // Orbital eccentricity — why it matters: ice ages
