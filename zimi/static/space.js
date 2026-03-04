@@ -2056,8 +2056,8 @@ function _jdnToJulian(jdn) {
 
 // ── Calendar dispatchers — uniform interface for any calendar system ──
 
-var _CAL_SYSTEMS = ['gregorian', 'hebrew', 'islamic', 'persian', 'julian'];
-var _CAL_LABELS = { gregorian: 'Gregorian', hebrew: 'Hebrew', islamic: 'Islamic', persian: 'Persian', julian: 'Julian' };
+var _CAL_SYSTEMS = ['gregorian', 'hebrew', 'islamic', 'persian', 'julian', 'buddhist', 'chinese'];
+var _CAL_LABELS = { gregorian: 'Gregorian', hebrew: 'Hebrew', islamic: 'Islamic', persian: 'Persian', julian: 'Julian', buddhist: 'Buddhist', chinese: 'Chinese' };
 
 var _GREGORIAN_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 var _HIJRI_MONTHS = ['Muharram','Safar','Rabi\u2019 al-Awwal','Rabi\u2019 al-Thani',
@@ -2103,7 +2103,45 @@ function _jdnToCalendar(sys, jdn) {
     var j = _jdnToJulian(jdn);
     return { year: j.year, month: j.month, day: j.day };
   }
+  if (sys === 'buddhist') {
+    var g = _jdnToGregorian(jdn);
+    return { year: g.year + 543, month: g.month, day: g.day };
+  }
+  if (sys === 'chinese') {
+    return _jdnToChineseLunar(jdn);
+  }
   return { year: 0, month: 1, day: 1 };
+}
+
+// Chinese lunar calendar — approximate using synodic month cycle
+// Reference new moon: Jan 6 2000 18:14 UTC = JDN 2451551.26
+var _CHINESE_NEW_MOON_JDN = 2451551.26;
+var _SYNODIC_MONTH = 29.53059;
+var _CHINESE_MONTHS = ['Zh\u0113ngyue','Eryue','S\u0101nyue','S\u00ecyue','W\u01d4yue','Li\u00f9yue',
+  'Q\u012byue','B\u0101yue','Ji\u01d4yue','Sh\u00edyue','Sh\u00edy\u012byue','L\u00e0yue'];
+
+function _jdnToChineseLunar(jdn) {
+  // Find which lunation we're in
+  var lunationsSinceRef = (jdn - _CHINESE_NEW_MOON_JDN) / _SYNODIC_MONTH;
+  var currentLunation = Math.floor(lunationsSinceRef);
+  var dayInMonth = Math.floor(jdn - (_CHINESE_NEW_MOON_JDN + currentLunation * _SYNODIC_MONTH)) + 1;
+  if (dayInMonth < 1) { currentLunation--; dayInMonth = Math.floor(jdn - (_CHINESE_NEW_MOON_JDN + currentLunation * _SYNODIC_MONTH)) + 1; }
+  if (dayInMonth > 30) dayInMonth = 30;
+  // Approximate Chinese year and month from Gregorian new year alignment
+  // Chinese New Year falls between Jan 21 and Feb 20; month 1 starts at the new moon nearest
+  var greg = _jdnToGregorian(jdn);
+  var chineseYear = greg.year + 2697; // Huangdi era (approximate)
+  // Month within the year: 1-12 based on lunation offset from Chinese New Year
+  // Chinese New Year 2000 was Feb 5 = JDN 2451580. Lunation 0 is Jan 6.
+  // So CNY 2000 starts at lunation ~1 from our reference.
+  var cnyLunation2000 = 1; // lunation index of CNY 2000
+  var yearsSince2000 = greg.year - 2000;
+  // ~12.37 lunations per solar year; Chinese year has 12 or 13 months
+  var cnyLunation = cnyLunation2000 + Math.round(yearsSince2000 * 12.3685);
+  var monthInYear = currentLunation - cnyLunation + 1;
+  if (monthInYear < 1) { monthInYear += 12; chineseYear--; }
+  if (monthInYear > 12) { monthInYear -= 12; chineseYear++; }
+  return { year: chineseYear, month: Math.max(1, Math.min(12, monthInYear)), day: dayInMonth };
 }
 
 // Get JDN for first day of a given month
@@ -2120,6 +2158,15 @@ function _calFirstDayJDN(sys, year, month) {
   if (sys === 'islamic') return _hijriToJDN(year, month, 1);
   if (sys === 'persian') return _persianToJDN(year, month, 1);
   if (sys === 'julian') return _julianToJDN(year, month, 1);
+  if (sys === 'buddhist') return _gregorianToJDN(year - 543, month, 1);
+  if (sys === 'chinese') {
+    // Find JDN of first day of this Chinese month
+    var greg = _jdnToGregorian(_calTodayJDN || _gregorianToJDN(2026, 1, 1));
+    var yearsSince2000 = (year - 2697) - 2000;
+    var cnyLunation = 1 + Math.round(yearsSince2000 * 12.3685);
+    var lunation = cnyLunation + month - 1;
+    return Math.round(_CHINESE_NEW_MOON_JDN + lunation * _SYNODIC_MONTH);
+  }
   return 0;
 }
 
@@ -2142,6 +2189,13 @@ function _calDaysInMonth(sys, year, month) {
     if (month === 2 && year % 4 === 0) return 29;
     return daysPerMonth[month - 1];
   }
+  if (sys === 'buddhist') {
+    var gYear = year - 543;
+    var daysPerMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if (month === 2 && ((gYear % 4 === 0 && gYear % 100 !== 0) || gYear % 400 === 0)) return 29;
+    return daysPerMonth[month - 1];
+  }
+  if (sys === 'chinese') return 29 + (month % 2 === 1 ? 1 : 0); // alternating 30/29
   return 30;
 }
 
@@ -2156,13 +2210,15 @@ function _calMonthName(sys, year, month) {
   if (sys === 'islamic') return _HIJRI_MONTHS[month - 1] || '';
   if (sys === 'persian') return _PERSIAN_MONTHS[month - 1] || '';
   if (sys === 'julian') return _JULIAN_MONTHS[month - 1] || '';
+  if (sys === 'buddhist') return _GREGORIAN_MONTHS[month - 1] || '';
+  if (sys === 'chinese') return _CHINESE_MONTHS[month - 1] || ('Month ' + month);
   return '';
 }
 
 // Get number of months in a year
 function _calMonthCount(sys, year) {
   if (sys === 'hebrew') return _hebrewMonthList(year).length;
-  if (sys === 'islamic' || sys === 'persian' || sys === 'gregorian' || sys === 'julian') return 12;
+  if (sys === 'chinese') return 12; // simplified (ignoring leap months)
   return 12;
 }
 
@@ -2205,19 +2261,13 @@ function _renderCalBrowser() {
   // Cross-reference — selected date in all calendars, shown first as the primary info
   html += _renderCalCrossRef(_calSelectedJDN);
 
-  // System tabs + month navigation in one compact bar
+  // Month navigation for active system
   html += '<div class="space-cal-controls">';
-  html += '<div class="space-cal-tabs">';
-  for (var i = 0; i < _CAL_SYSTEMS.length; i++) {
-    var sys = _CAL_SYSTEMS[i];
-    var active = sys === _calSystem ? ' active' : '';
-    html += '<button class="space-cal-tab' + active + '" onclick="_switchCalSystem(\'' + sys + '\')">' + _CAL_LABELS[sys] + '</button>';
-  }
-  html += '</div>';
   var monthName = _calMonthName(_calSystem, _calYear, _calMonth);
   var yearSuffix = '';
   if (_calSystem === 'islamic') yearSuffix = ' AH';
   else if (_calSystem === 'persian') yearSuffix = ' SH';
+  else if (_calSystem === 'buddhist') yearSuffix = ' BE';
   html += '<div class="space-cal-nav">';
   html += '<button class="space-cal-arrow" onclick="_calPrev()">\u25C0</button>';
   html += '<div class="space-cal-title">' + monthName + ' ' + _calYear + yearSuffix + '</div>';
@@ -2302,42 +2352,24 @@ function _calToday() {
 
 function _renderCalCrossRef(jdn) {
   var html = '<div class="space-cal-crossref">';
-  // All 7 calendars — browsable ones are clickable to switch
-  var allSystems = [
-    { sys: 'gregorian', browsable: true },
-    { sys: 'hebrew', browsable: true },
-    { sys: 'islamic', browsable: true },
-    { sys: 'persian', browsable: true },
-    { sys: 'julian', browsable: true },
-    { sys: 'chinese', browsable: false },
-    { sys: 'buddhist', browsable: false }
-  ];
   var greg = _jdnToGregorian(jdn);
-  for (var i = 0; i < allSystems.length; i++) {
-    var entry = allSystems[i];
-    var label, dateStr;
-    if (entry.browsable) {
-      var cal = _jdnToCalendar(entry.sys, jdn);
-      var monthName = _calMonthName(entry.sys, cal.year, cal.month);
-      var yearStr = cal.year.toString();
-      if (entry.sys === 'islamic') yearStr += ' AH';
-      else if (entry.sys === 'persian') yearStr += ' SH';
-      label = _CAL_LABELS[entry.sys];
-      dateStr = monthName + ' ' + cal.day + ', ' + yearStr;
-    } else if (entry.sys === 'chinese') {
+  for (var i = 0; i < _CAL_SYSTEMS.length; i++) {
+    var sys = _CAL_SYSTEMS[i];
+    var cal = _jdnToCalendar(sys, jdn);
+    var monthName = _calMonthName(sys, cal.year, cal.month);
+    var yearStr = cal.year.toString();
+    if (sys === 'islamic') yearStr += ' AH';
+    else if (sys === 'persian') yearStr += ' SH';
+    else if (sys === 'buddhist') yearStr += ' BE';
+    var dateStr = monthName + ' ' + cal.day + ', ' + yearStr;
+    // Chinese: append zodiac info
+    if (sys === 'chinese') {
       var chinese = _chineseZodiac(greg.year);
-      var moonAge = Math.floor((_moonPhase(new Date(greg.year, greg.month - 1, greg.day)).phase * 29.53) + 1);
-      if (moonAge > 30) moonAge = 30;
-      label = 'Chinese';
-      dateStr = chinese.animal + ' \u00b7 ' + chinese.element + ' \u00b7 Day ' + moonAge + ', ' + chinese.year;
-    } else {
-      label = 'Buddhist';
-      dateStr = _GREGORIAN_MONTHS[greg.month - 1] + ' ' + greg.day + ', ' + (greg.year + 543) + ' BE';
+      dateStr = monthName + ' ' + cal.day + ' \u00b7 ' + chinese.animal + ' \u00b7 ' + yearStr;
     }
-    var isActive = entry.sys === _calSystem ? ' space-cal-active-row' : '';
-    var clickAttr = entry.browsable ? ' onclick="_switchCalSystem(\'' + entry.sys + '\')" style="cursor:pointer"' : '';
-    html += '<div class="space-cal-crossref-row' + isActive + '"' + clickAttr + '>' +
-      '<span class="space-cal-crossref-label">' + label + '</span>' +
+    var isActive = sys === _calSystem ? ' space-cal-active-row' : '';
+    html += '<div class="space-cal-crossref-row' + isActive + '" onclick="_switchCalSystem(\'' + sys + '\')" style="cursor:pointer">' +
+      '<span class="space-cal-crossref-label">' + _CAL_LABELS[sys] + '</span>' +
       '<span class="space-cal-crossref-date">' + dateStr + '</span>' +
       '</div>';
   }
@@ -2373,15 +2405,19 @@ function _renderDeepTime(now) {
 
   // Day length change
   // Earth's rotation slows ~1.8ms per century due to tidal friction (Morrison & Stephenson 2004)
-  var centuriesFromNow = 0;
-  var dayLengthChange = (1.8 * centuriesFromNow).toFixed(1); // ms
-  var dayLengthIn1000 = (1.8 * 10).toFixed(0); // 10 centuries = 1000 years
+  // Cumulative since year 2000: days are already ~X ms longer than in 2000
+  var centuriesSince2000 = yearsSince2000 / 100;
+  var dayLengthCumulative = (1.8 * centuriesSince2000).toFixed(1); // ms gained since 2000
+  var dayLengthIn1000 = (1.8 * 10).toFixed(0); // always 18ms per 1000 years
 
   // Julian Date — universal time reference that survives all calendar reforms
   var julianDate = JD.toFixed(2);
 
-  // Earth's orbital eccentricity — currently decreasing
+  // Earth's orbital eccentricity
   var earthEcc = (0.0167086 - 0.0000420 * T).toFixed(6);
+  // Rate of change: compare eccentricity now vs 1 century ago
+  var eccPrev = 0.0167086 - 0.0000420 * (T - 1);
+  var eccTrend = parseFloat(earthEcc) < eccPrev ? 'decreasing' : 'increasing';
 
   // Human-scale season direction
   var tiltDir = obliquityAS < 84381.448 ? 'decreasing' : 'increasing';
@@ -2418,7 +2454,7 @@ function _renderDeepTime(now) {
     '<div class="space-info-lbl">Orbit Shape</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
     'How elliptical Earth\u2019s orbit is (0 = perfect circle, 1 = extremely stretched). ' +
-    'Currently near-circular and decreasing. This affects how much solar energy Earth receives over a year. ' +
+    'Currently near-circular and ' + eccTrend + '. This affects how much solar energy Earth receives over a year. ' +
     'Combined with tilt and precession, these three cycles drive ice ages (Milankovi\u0107 theory).</div></div>';
 
   // Julian Date — why it matters: time that never resets

@@ -1013,10 +1013,6 @@
   .space-cal-active-row { background: var(--surface2); }
   .space-cal-active-row .space-cal-crossref-label { color: var(--amber); }
   .space-cal-controls { margin-bottom: 12px; }
-  .space-cal-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 10px; }
-  .space-cal-tab { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); border-radius: 16px; padding: 5px 14px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
-  .space-cal-tab:hover { border-color: var(--amber); color: var(--text); }
-  .space-cal-tab.active { background: var(--amber); color: #000; border-color: var(--amber); font-weight: 600; }
   .space-cal-nav { display: flex; align-items: center; justify-content: center; gap: 12px; }
   .space-cal-arrow { background: none; border: none; color: var(--amber); font-size: 12px; cursor: pointer; padding: 4px 8px; border-radius: 4px; opacity: 0.7; transition: opacity 0.15s; }
   .space-cal-arrow:hover { opacity: 1; background: var(--surface2); }
@@ -2049,7 +2045,7 @@ var _spaceLoaded = false;
 function openSpace(replaceState) {
   if (!_spaceLoaded) {
     var s = document.createElement('script');
-    s.src = '/static/space.js?v=7';
+    s.src = '/static/space.js?v=8';
     s.onload = function() { _spaceLoaded = true; _openSpaceInner(replaceState); };
     s.onerror = function() { console.error('Failed to load space.js'); };
     document.head.appendChild(s);
