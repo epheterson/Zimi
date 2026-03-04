@@ -10,12 +10,12 @@
       <sparkle:version>1.5.0</sparkle:version>
       <sparkle:shortVersionString>1.5.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-      <pubDate>Wed, 04 Mar 2026 09:08:59 +0000</pubDate>
+      <pubDate>Wed, 04 Mar 2026 16:18:54 +0000</pubDate>
       <enclosure
         url="https://github.com/epheterson/Zimi/releases/download/v1.5.0/Zimi-Intel.dmg"
-        length="48906558"
+        length="48904981"
         type="application/octet-stream"
-        sparkle:edSignature="bvklI4w9+7f3yaRRlP5izR2AWfP8hb00CaN6jBbWua2fNtkRbGdNJFiT0bzJL/odgTWLgNdJpTl6Jg1fcCWOBQ=="
+        sparkle:edSignature="P8i1j2UhcOJPR+1ZU9R6hEwHT3MvjrjEiMGHfTek5jVuDj1HtHJsLwC7UCpYSdOhZFrQVu1PVcHispF6mQllDg=="
       />
     </item>
   </channel>
