@@ -892,6 +892,7 @@ function _sunPosition(date, lat, lon) {
   var altitude = Math.asin(sinAlt) * 180 / Math.PI;
   var cosAz = (Math.sin(decl) - Math.sin(latRad) * sinAlt) / (Math.cos(latRad) * Math.cos(Math.asin(sinAlt)));
   cosAz = Math.max(-1, Math.min(1, cosAz));
+  if (isNaN(cosAz)) cosAz = 0; // zenith/nadir at poles — azimuth undefined
   var azimuth = Math.acos(cosAz) * 180 / Math.PI;
   if (hourAngle > 0) azimuth = 360 - azimuth;
   return { altitude: altitude, azimuth: azimuth };
@@ -939,6 +940,7 @@ function _moonPosition(date, lat, lon) {
   var GMST = (280.46061837 + 360.98564736629 * (JD - 2451545.0)) % 360;
   var LST = (GMST + lon) * D2R;
   var HA = LST - ra;
+  HA = ((HA % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI; // normalize to [-pi, pi]
 
   // Horizontal coordinates
   var latR2 = lat * D2R;
@@ -946,6 +948,7 @@ function _moonPosition(date, lat, lon) {
   var altitude = Math.asin(sinAlt) * 180 / Math.PI;
   var cosAz = (Math.sin(dec) - Math.sin(latR2) * sinAlt) / (Math.cos(latR2) * Math.cos(Math.asin(sinAlt)));
   cosAz = Math.max(-1, Math.min(1, cosAz));
+  if (isNaN(cosAz)) cosAz = 0; // zenith/nadir at poles — azimuth undefined
   var azimuth = Math.acos(cosAz) * 180 / Math.PI;
   if (HA > 0) azimuth = 360 - azimuth;
   return { altitude: altitude, azimuth: azimuth };
@@ -1807,76 +1810,12 @@ function _hebrewMonthDays(yr, mo) {
   if (mo === 8) return 30; if (mo === 9) return 29;
   if (mo === 10) return 30; if (mo === 11) return 29;
   if (mo === 12) return 30; if (mo === 13) return 29;
-  if (mo === 1) return 30;                               // Nisan (month 1)
+  if (mo === 1) return 30;                               // Tishrei (civil month 1)
   return 29;
 }
 function _hebrewLeapYear(yr) { return ((7 * yr + 1) % 19) < 7; }
 
 // Hebrew calendar (Maimonides algorithm)
-function _gregorianToHebrew(year, month, day) {
-  var jdn = _gregorianToJDN(year, month, day);
-
-  // Hebrew calendar from JDN (algorithm based on Reingold & Dershowitz)
-  var approx = Math.floor((jdn - _HEBREW_EPOCH) / 365.25) + 1;
-
-  // Find the Hebrew year, then count days from Tishrei 1
-  var hYear = approx;
-  while (_hebrewNewYear(hYear) > jdn + 0.5) hYear--;
-  while (_hebrewNewYear(hYear + 1) <= jdn + 0.5) hYear++;
-
-  var dayInYear = Math.round(jdn + 0.5 - _hebrewNewYear(hYear));
-  // Months from Tishrei: Tishrei(30), Marcheshvan(29/30), Kislev(29/30), Tevet(29),
-  // Shevat(30), Adar I(30/0), Adar(29), Nisan(30), Iyar(29), Sivan(30),
-  // Tammuz(29), Av(30), Elul(29)
-  var hMonthNames = ['Tishrei','Marcheshvan','Kislev','Tevet','Shevat'];
-  if (_hebrewLeapYear(hYear)) hMonthNames.push('Adar I', 'Adar II');
-  else hMonthNames.push('Adar');
-  hMonthNames = hMonthNames.concat(['Nisan','Iyar','Sivan','Tammuz','Av','Elul']);
-
-  // Civil month indices for days calculation
-  var civilMonths = [30, 0, 0, 29, 30, 0, 29, 30, 29, 30, 29, 30, 29];
-  var diy = _hebrewDaysInYear(hYear);
-  civilMonths[1] = (diy % 10 === 5) ? 30 : 29; // Marcheshvan
-  civilMonths[2] = (diy % 10 === 3) ? 29 : 30; // Kislev
-  civilMonths[5] = _hebrewLeapYear(hYear) ? 30 : 0; // Adar I
-
-  var hMonth = 0, remaining = dayInYear;
-  for (var mi = 0; mi < civilMonths.length; mi++) {
-    if (civilMonths[mi] === 0) continue;
-    if (remaining < civilMonths[mi]) { hMonth = mi; break; }
-    remaining -= civilMonths[mi];
-  }
-  var hDay = remaining + 1;
-
-  // Map month index to name (skip zero-length months)
-  var nameIdx = 0;
-  for (var mi = 0; mi <= hMonth; mi++) {
-    if (civilMonths[mi] === 0 && mi < hMonth) continue;
-    if (mi === hMonth) break;
-    if (civilMonths[mi] > 0) nameIdx++;
-  }
-
-  return { year: hYear, month: hMonthNames[nameIdx] || 'Tishrei', day: hDay };
-}
-
-// Islamic (Hijri) Tabular Calendar — arithmetic approximation
-function _gregorianToHijri(year, month, day) {
-  var jdn = _gregorianToJDN(year, month, day);
-
-  var l = jdn - 1948440 + 10632;
-  var n = Math.floor((l - 1) / 10631);
-  l = l - 10631 * n + 354;
-  var j = Math.floor((10985 - l) / 5316) * Math.floor((50 * l) / 17719) + Math.floor(l / 5670) * Math.floor((43 * l) / 15238);
-  l = l - Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) - Math.floor(j / 16) * Math.floor((15238 * j) / 43) + 29;
-  var hm = Math.floor((24 * l) / 709);
-  var hd = l - Math.floor((709 * hm) / 24);
-  var hy = 30 * n + j - 30;
-  var hijriMonths = ['Muharram','Safar','Rabi\u2019 al-Awwal','Rabi\u2019 al-Thani',
-    'Jumada al-Ula','Jumada al-Thani','Rajab','Sha\u2019ban',
-    'Ramadan','Shawwal','Dhu al-Qi\u2019dah','Dhu al-Hijjah'];
-  return { year: hy, month: hijriMonths[hm - 1] || 'Muharram', day: hd };
-}
-
 // Persian (Solar Hijri) Calendar — algorithmic
 function _gregorianToPersian(gy, gm, gd) {
   // 33-year subcycle algorithm (jalaali-js, well-tested)
@@ -1921,23 +1860,6 @@ function _chineseZodiac(year) {
     cycle: stems[stemIdx] + branches[branchIdx],
     cycleYear: cycleYear, year: chineseYear
   };
-}
-
-// Julian calendar (Gregorian - offset)
-function _gregorianToJulian(year, month, day) {
-  var jdn = _gregorianToJDN(year, month, day);
-
-  // JDN to Julian calendar
-  var b = 0;
-  var c = jdn + 32082;
-  var d = Math.floor((4 * c + 3) / 1461);
-  var e = c - Math.floor(1461 * d / 4);
-  var mm = Math.floor((5 * e + 2) / 153);
-  var jDay = e - Math.floor((153 * mm + 2) / 5) + 1;
-  var jMonth = mm + 3 - 12 * Math.floor(mm / 10);
-  var jYear = d - 4800 + Math.floor(mm / 10);
-  var julianMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  return { year: jYear, month: julianMonths[jMonth - 1], day: jDay };
 }
 
 // ── Reverse conversions — calendar date → JDN ──
@@ -2252,13 +2174,6 @@ function _renderWorldCalendars(now) {
   _renderCalBrowser();
 }
 
-function _calRow(name, dateStr, yearStr) {
-  return '<div class="space-eclipse-row">' +
-    '<div><span class="space-eclipse-type">' + name + '</span>' +
-    (dateStr ? '<br><span class="space-eclipse-date">' + dateStr + '</span>' : '') +
-    '</div>' +
-    '<div class="space-eclipse-until">' + yearStr + '</div></div>';
-}
 
 function _renderCalBrowser() {
   var el = document.getElementById('space-cal-browser');
