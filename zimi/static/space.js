@@ -2438,7 +2438,7 @@ function _renderDeepTime(now) {
     '<div class="space-info-lbl">Polaris Accuracy</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
     'Earth wobbles like a spinning top. Polaris happens to be near the axis right now, but it\u2019s drifting. ' +
-    'Closest alignment ~2100 (0.45\u00b0), then it drifts away. In 12,000 years, Vega will be the \u201cNorth Star.\u201d ' +
+    'Closest alignment ~2100 (0.45\u00b0), then it drifts away. In ~' + Math.round((14000 - now.getFullYear()) / 1000) + ',000 years, Vega will be the \u201cNorth Star.\u201d ' +
     'Full wobble cycle: 25,772 years.</div></div>';
 
   // Day getting longer — why it matters: the moon is stealing our spin
