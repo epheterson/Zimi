@@ -929,7 +929,7 @@
   .discover-card.dc-no-click:hover { background: var(--surface); border-color: var(--border); box-shadow: none; transform: none; }
   .dc-thumb { width: 100%; min-height: 120px; height: 120px; object-fit: cover; display: block; background: var(--surface2); }
   .dc-thumb.dc-book-cover { object-fit: contain; background: #1a1a1e; }
-  .dc-body { padding: 8px 12px 10px; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .dc-body { padding: 10px 12px; flex: 1; display: flex; flex-direction: column; gap: 2px; }
   .dc-source { font-size: 11px; color: var(--text2); display: flex; align-items: center; gap: 6px; }
   .dc-zim-icon { width: 16px; height: 16px; border-radius: 3px; background: #fff; flex-shrink: 0; }
   .dc-source span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -938,12 +938,12 @@
   .dc-blurb { font-size: 11px; color: var(--text2); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .dc-blurb.dc-quote { font-family: Georgia, "Times New Roman", serif; font-style: italic; color: var(--text); font-weight: 400; font-size: 14px; -webkit-line-clamp: 6; line-height: 1.6; flex: 1; letter-spacing: 0.01em; }
   .dc-quote-card { display: flex; flex-direction: column; }
-  .dc-quote-card .dc-body { padding: 20px 20px 16px; gap: 0; flex: 1; justify-content: space-between; }
+  .dc-quote-card .dc-body { padding: 20px; gap: 0; flex: 1; justify-content: space-between; }
   .dc-quote-card .dc-header { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
   .dc-quote-card .dc-quote-mark { font-family: Georgia, "Times New Roman", serif; font-size: 48px; line-height: 1; color: var(--amber); opacity: 0.4; margin-bottom: -8px; user-select: none; }
   .dc-quote-card .dc-attribution { font-size: 11px; color: var(--text2); margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px; }
   .dc-speaker { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dc-word-card .dc-body { padding: 20px 20px 16px; }
+  .dc-word-card .dc-body { padding: 20px; }
   .dc-word-card .dc-header { margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-size: 10px; }
   .dc-word-card .dc-headword { font-family: Georgia, "Times New Roman", serif; font-size: 24px; font-weight: 700; color: var(--text); margin: 0 0 4px; letter-spacing: -0.5px; line-height: 1.2; }
   .dc-word-card .dc-pos { display: inline-block; font-size: 11px; color: var(--amber); font-style: italic; font-family: Georgia, "Times New Roman", serif; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); width: 100%; }
@@ -963,48 +963,96 @@
   .dc-moon-texture { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 50%; background: url('/static/moon.png?v=1') center/cover; pointer-events: none; mix-blend-mode: soft-light; opacity: 1; }
   .dc-moon-glow { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 64px; height: 64px; border-radius: 50%; background: radial-gradient(circle, rgba(232,224,208,0.15) 0%, transparent 70%); }
 
-  /* ── Space mini-app ── */
-  .space-view { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
-  .space-view.open { display: flex; animation: fadeIn 0.15s ease; }
-  .space-header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(17,17,21,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
-  .space-title { font-size: 16px; font-weight: 600; color: var(--text); letter-spacing: 0.5px; }
-  .space-close { background: none; border: none; color: var(--text2); font-size: 24px; cursor: pointer; padding: 0 4px; line-height: 1; }
-  .space-close:hover { color: var(--text); }
-  .space-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 24px 16px 40px; }
-  .space-inner { max-width: 600px; margin: 0 auto; }
-  .space-hero { display: flex; flex-direction: column; align-items: center; margin-bottom: 32px; }
-  .space-moon { position: relative; width: 200px; height: 200px; border-radius: 50%; overflow: hidden; }
-  .space-moon .dc-moon-half { position: absolute; top: 0; width: 50%; height: 100%; }
-  .space-moon .dc-moon-half.left { left: 0; }
-  .space-moon .dc-moon-half.right { right: 0; }
-  .space-moon .dc-moon-term { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 50%; }
-  .space-moon-texture { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; pointer-events: none; }
-  .space-moon-glow { position: absolute; width: 280px; height: 280px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: -1; }
-  .space-moon-name { margin-top: 16px; font-size: 18px; font-weight: 500; color: var(--text); }
-  .space-moon-data { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; width: 100%; max-width: 320px; }
-  .space-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; text-align: center; }
-  .space-stat-val { font-size: 20px; font-weight: 600; color: var(--amber); }
-  .space-stat-lbl { font-size: 11px; color: var(--text2); margin-top: 2px; }
-  .space-section { margin-top: 32px; border-top: 1px solid var(--border); padding-top: 24px; }
-  .space-section-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .space-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .space-info-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
-  .space-info-val { font-size: 16px; font-weight: 600; color: var(--text); }
-  .space-info-lbl { font-size: 11px; color: var(--text2); margin-top: 2px; }
-  .space-progress { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 6px; overflow: hidden; }
-  .space-progress-bar { height: 100%; background: var(--amber); border-radius: 2px; }
-  .space-orrery-wrap { width: 100%; max-width: 500px; aspect-ratio: 1; margin: 0 auto; }
-  .space-orrery-wrap canvas { width: 100%; height: 100%; display: block; }
-  .space-sky-wrap { width: 100%; max-width: 600px; aspect-ratio: 2.5; margin: 0 auto; border-radius: var(--radius); overflow: hidden; position: relative; }
-  .space-sky-wrap canvas { width: 100%; height: 100%; display: block; }
-  .space-sky-label { font-size: 11px; color: var(--text2); text-align: center; margin-top: 8px; }
-  .space-location-link { color: var(--amber); cursor: pointer; text-decoration: none; font-size: 12px; }
-  .space-location-link:hover { text-decoration: underline; }
-  .space-eclipse-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--border); }
-  .space-eclipse-row:last-child { border-bottom: none; }
-  .space-eclipse-type { font-weight: 500; color: var(--text); }
-  .space-eclipse-date { color: var(--text2); font-size: 12px; }
-  .space-eclipse-until { color: var(--amber); font-size: 12px; font-weight: 500; }
+  /* ── Almanac mini-app ── */
+  .almanac-view { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
+  .almanac-view.open { display: flex; animation: fadeIn 0.15s ease; }
+  .almanac-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 24px 16px 80px; }
+  .almanac-inner { max-width: 600px; margin: 0 auto; }
+  .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
+  .alm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
+  .alm-card-lbl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .alm-card-val { font-size: 14px; font-weight: 500; color: var(--text); white-space: nowrap; }
+  .alm-tz-wrap { margin-top: 24px; display: flex; gap: 20px; align-items: flex-start; }
+  .alm-tz-clock-side { flex: 0 0 auto; text-align: center; }
+  .alm-tz-list { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+  .alm-tz-city-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; cursor: pointer; transition: all 0.1s; text-align: center; }
+  .alm-tz-city-card:hover { background: var(--surface2); border-color: var(--text3); }
+  .alm-tz-city-active { border-color: var(--amber-border); background: var(--amber-glow); }
+  .alm-tz-city-name { font-size: 11px; color: var(--text2); display: block; }
+  .alm-tz-city-time { font-size: 13px; font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; display: block; margin-top: 2px; }
+  .alm-tz-city-offset { font-size: 9px; color: var(--text3); display: block; margin-top: 1px; }
+  .alm-tz-city-night .alm-tz-city-time { color: var(--text2); }
+  .alm-tz-city-active .alm-tz-city-name { color: var(--amber); }
+  .almanac-hero { display: flex; flex-direction: column; align-items: center; margin-bottom: 32px; position: relative; }
+  .almanac-moon { position: relative; width: 200px; height: 200px; border-radius: 50%; overflow: hidden; }
+  .almanac-moon .dc-moon-half { position: absolute; top: 0; width: 50%; height: 100%; }
+  .almanac-moon .dc-moon-half.left { left: 0; }
+  .almanac-moon .dc-moon-half.right { right: 0; }
+  .almanac-moon .dc-moon-term { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 50%; }
+  .almanac-moon-texture { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; pointer-events: none; }
+  .almanac-moon-glow { position: absolute; width: 280px; height: 280px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: -1; }
+  .almanac-moon-name { margin-top: 16px; font-size: 18px; font-weight: 500; color: var(--text); }
+  .almanac-moon-line { font-size: 13px; color: var(--text2); margin-top: 8px; text-align: center; }
+  .almanac-section { margin-top: 32px; border-top: 1px solid var(--border); padding-top: 24px; }
+  .almanac-section-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .almanac-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .almanac-info-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+  .almanac-info-val { font-size: 16px; font-weight: 600; color: var(--text); }
+  .almanac-info-lbl { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .almanac-progress { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  .almanac-progress-bar { height: 100%; background: var(--amber); border-radius: 2px; }
+  .almanac-orrery-wrap { width: 100%; max-width: 500px; aspect-ratio: 1; margin: 0 auto; }
+  .almanac-orrery-wrap canvas { width: 100%; height: 100%; display: block; }
+  .almanac-sky-wrap { width: 100%; max-width: 600px; margin: 0 auto; border-radius: 12px; overflow: hidden; position: relative; }
+  .almanac-sky-wrap canvas { width: 100%; display: block; }
+  .almanac-location-link { color: var(--amber); cursor: pointer; text-decoration: none; font-size: 12px; }
+  .almanac-location-link:hover { text-decoration: underline; }
+  .almanac-eclipse-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .almanac-eclipse-row:last-child { border-bottom: none; }
+  .almanac-eclipse-type { font-weight: 500; color: var(--text); }
+  .almanac-eclipse-date { color: var(--text2); font-size: 12px; }
+  .almanac-eclipse-until { color: var(--amber); font-size: 12px; font-weight: 500; }
+  /* Almanac calendar — wall calendar grid with events */
+  .alm-nav { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 16px 0 10px; position: relative; }
+  .alm-arrow { background: none; border: none; color: var(--amber); font-size: 13px; cursor: pointer; padding: 6px 10px; border-radius: 6px; opacity: 0.7; transition: opacity 0.15s, background 0.15s; }
+  .alm-arrow:hover { opacity: 1; background: var(--surface2); }
+  .alm-title { font-size: 17px; font-weight: 600; color: var(--text); min-width: 200px; text-align: center; }
+  .alm-today-btn { position: absolute; right: 0; background: none; border: 1px solid var(--border); color: var(--amber); font-size: 11px; cursor: pointer; padding: 3px 10px; border-radius: 10px; opacity: 0.7; transition: opacity 0.15s; }
+  .alm-today-btn:hover { opacity: 1; background: var(--surface2); }
+  .alm-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+  .alm-hdr { font-size: 11px; color: var(--text3); padding: 8px 0; font-weight: 500; text-align: center; background: var(--surface); }
+  .alm-cell { background: var(--surface); min-height: 64px; padding: 4px 5px; font-size: 12px; overflow: hidden; }
+  .alm-empty { background: transparent; }
+  .alm-day { cursor: pointer; transition: background 0.15s; }
+  .alm-day:hover { background: var(--surface2); }
+  .alm-today .alm-num { background: var(--amber); color: #000; font-weight: 700; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+  .alm-num { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+  .alm-selected { background: rgba(245,158,11,0.10); }
+  .alm-selected .alm-num { color: var(--amber); font-weight: 600; }
+  .alm-today.alm-selected { background: rgba(245,158,11,0.10); }
+  .alm-today.alm-selected .alm-num { background: var(--amber); color: #000; }
+  .alm-ev { font-size: 9px; line-height: 1.3; padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .alm-ev-holiday { color: #f59e0b; }
+  .alm-ev-seasonal { color: #68d391; }
+  .alm-ev-astro { color: #63b3ed; }
+  .alm-ev-moon { color: #a0aec0; }
+  .alm-ev-meteor { color: #fc8181; }
+  .alm-ev-more { color: var(--text3); font-style: italic; }
+  .alm-day-detail { padding: 8px 14px; margin-top: 8px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border); }
+  .alm-crossref { padding: 10px 14px; background: var(--surface); border-radius: 10px; border: 1px solid var(--border); margin-top: 10px; }
+  .alm-crossref-row { display: flex; justify-content: space-between; padding: 5px 6px; font-size: 12px; border-radius: 6px; cursor: pointer; transition: background 0.1s; }
+  .alm-crossref-row:hover { background: var(--surface2); }
+  .alm-crossref-label { color: var(--text2); font-weight: 500; }
+  .alm-crossref-date { color: var(--text); }
+  .alm-crossref-active { background: var(--surface2); }
+  .alm-crossref-active .alm-crossref-label { color: var(--amber); }
+  @media (max-width: 500px) {
+    .alm-cell { min-height: 52px; padding: 3px 3px; }
+    .alm-num { font-size: 12px; }
+    .alm-ev { font-size: 8px; }
+    .alm-title { font-size: 15px; min-width: 140px; }
+  }
+
 
   /* ── Discover loading skeletons ── */
   .dc-loading { pointer-events: none; }
@@ -1144,12 +1192,8 @@
   <div class="reader-loading" id="reader-loading"><div class="spinner"></div><span>Loading...</span></div>
   <iframe id="reader-frame" title="Article content" sandbox="allow-same-origin allow-scripts allow-popups allow-downloads"></iframe>
 </div>
-<div id="space" class="space-view">
-  <div class="space-header">
-    <span class="space-title">Space</span>
-    <button class="space-close" onclick="closeSpace()">&times;</button>
-  </div>
-  <div class="space-content" id="space-content"></div>
+<div id="almanac-view" class="almanac-view">
+  <div class="almanac-content" id="almanac-content"></div>
 </div>
 <div id="zim-ctx-menu"></div>
 <div id="link-ctx-menu" class="zimi-ctx"></div>
@@ -1299,14 +1343,17 @@ function updateTopbar() {
     bcIcon.title = '';
   }
 
-  // Manage: gear → X close button, keep breadcrumb as-is
-  if (mode === 'manage') {
+  // Manage or Almanac: gear → X close button
+  if (mode === 'manage' || _almanacOpen) {
     manageBtnEl.style.display = 'flex';
     manageBtnEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     manageBtnEl.title = 'Close';
     manageBtnEl.style.color = 'var(--amber)';
     manageBtnEl.style.borderColor = 'var(--amber-border)';
     manageBtnEl.style.background = 'var(--amber-glow)';
+    if (_almanacOpen) {
+      manageBtnEl.onclick = closeAlmanac;
+    }
   } else {
     manageBtnEl.style.display = manageEnabled && !activeSource ? 'flex' : 'none';
     manageBtnEl.innerHTML = _gearSvg;
@@ -1314,15 +1361,18 @@ function updateTopbar() {
     manageBtnEl.style.color = '';
     manageBtnEl.style.borderColor = '';
     manageBtnEl.style.background = '';
+    manageBtnEl.onclick = function(e) { toggleManage(e); };
   }
 
   newtabBtn.style.display = readerOpen ? 'flex' : 'none';
-  randomBtn.style.display = (mode !== 'manage') ? 'flex' : 'none';
-  document.getElementById('library-btn').style.display = (mode !== 'manage') ? 'flex' : 'none';
+  randomBtn.style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
+  document.getElementById('library-btn').style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
   _updateLibraryBtnIcon();
 
   // Search placeholder
-  if (currentSource) {
+  if (_almanacOpen) {
+    q.placeholder = 'Almanac';
+  } else if (currentSource) {
     q.placeholder = _zimTitle(currentSource);
   } else if (readerOpen && readerSource) {
     q.placeholder = _zimTitle(readerSource);
@@ -1423,6 +1473,12 @@ function route(push) {
   const path = location.pathname;
   const search = location.search;
   const params = new URLSearchParams(search);
+  // Restore Almanac on reload if #almanac hash is present
+  if (location.hash === '#almanac') {
+    enterHome(false);
+    openAlmanac(true);
+    return;
+  }
   if (params.get('manage') !== null && manageEnabled) { enterManage(); return; }
   if (path.startsWith('/w/')) {
     let rest;
@@ -1520,7 +1576,7 @@ function _openInBrowser() {
 // ── Navigation ──
 function goHome(e) {
   if (e) e.preventDefault();
-  if (_spaceOpen) closeSpace();
+  if (_almanacOpen) closeAlmanac();
   // Already on clean home page → scroll to top
   if (mode === 'home' && !readerOpen && !currentSource && !homeScope) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1537,7 +1593,7 @@ function goHome(e) {
 }
 
 function goBack() {
-  if (_spaceOpen) { closeSpace(); return; }
+  if (_almanacOpen) { closeAlmanac(); return; }
   if (readerOpen) {
     // Step back through article history before closing reader
     if (articleHistory.length > 0) {
@@ -1937,7 +1993,8 @@ function _moonPhase(date) {
   var cycle = days % 29.53;
   if (cycle < 0) cycle += 29.53;
   var phase = cycle / 29.53; // 0=new, 0.5=full
-  var illum = Math.round((1 - Math.cos(phase * 2 * Math.PI)) / 2 * 100);
+  var illumExact = (1 - Math.cos(phase * 2 * Math.PI)) / 2 * 100;
+  var illum = Math.round(illumExact * 10) / 10; // one decimal place
   var names = ['New Moon','Waxing Crescent','First Quarter','Waxing Gibbous',
                'Full Moon','Waning Gibbous','Last Quarter','Waning Crescent'];
   var idx = Math.floor(phase * 8 + 0.5) % 8;
@@ -2008,32 +2065,33 @@ function _renderTodayCard() {
     '</div>';
 }
 
-// -- Space mini-app (lazy-loaded from /static/space.js) --
-var _spaceOpen = false;
-var _spaceLoaded = false;
+// -- Almanac mini-app (lazy-loaded from /static/almanac.js) --
+var _almanacOpen = false;
+var _almanacLoaded = false;
 
-function openSpace() {
-  if (!_spaceLoaded) {
+function openAlmanac(replaceState) {
+  if (!_almanacLoaded) {
     var s = document.createElement('script');
-    s.src = '/static/space.js?v=2';
-    s.onload = function() { _spaceLoaded = true; _openSpaceInner(); };
-    s.onerror = function() { console.error('Failed to load space.js'); };
+    s.src = '/static/almanac.js?v=28';
+    s.onload = function() { _almanacLoaded = true; _openAlmanacInner(replaceState); };
+    s.onerror = function() { console.error('Failed to load almanac.js'); };
     document.head.appendChild(s);
     return;
   }
-  _openSpaceInner();
+  _openAlmanacInner(replaceState);
 }
 
-// (Space rendering code lives in /static/space.js)
-// closeSpace is defined there but referenced by the HTML close button,
+// (Almanac rendering code lives in /static/almanac.js)
+// closeAlmanac is defined there but referenced by the HTML close button,
 // so we provide a stub that delegates once loaded.
-function closeSpace() {
-  // Will be overridden when space.js loads
-  if (!_spaceOpen) return;
-  _spaceOpen = false;
-  document.getElementById('space').classList.remove('open');
+function closeAlmanac() {
+  // Will be overridden when almanac.js loads
+  if (!_almanacOpen) return;
+  _almanacOpen = false;
+  document.getElementById('almanac-view').classList.remove('open');
   mainView.classList.remove('hidden');
   _setWindowTitle('Zimi');
+  updateTopbar();
 }
 
 function _dismissDiscover() {
@@ -2048,6 +2106,27 @@ function _dismissDiscover() {
   setTimeout(function() { if (toast.parentNode) toast.remove(); }, 5000);
 }
 
+// ─── Discover Card Pipeline ─────────────────────────────────────────────
+// Cards come from two sources:
+//   1. Computed (client-side only): Today card — moon, date, season
+//   2. Server slots: Content cards from FEATURED_ZIMS — matched against
+//      installed ZIM files, fetched via /random?zim=...&thumb=1
+// Remaining slots filled with random picks from visual ZIMs (>100 entries).
+// Results cached in localStorage per day. Card order: first content card,
+// then Today, then remaining content cards.
+//
+// Card types (see _renderDiscover for rendering):
+//   'loading'   — skeleton placeholder while fetching
+//   'today'     — computed moon/date/season → opens Almanac mini-app
+//   'apod'      — NASA Astronomy Picture of the Day (dated lookup)
+//   'onthisday' — Wikipedia historical events for today's date
+//   'country'   — CIA World Factbook country (dated)
+//   'random'    — random article from a ZIM (Word, Quote, Book, Talk, Comic, or random fill)
+//
+// Future: Card definitions could be extracted to a plugin system where
+// each card type is a separate file with its own render/fetch logic.
+// See FEATURED_ZIMS for the content slot registry.
+// ─────────────────────────────────────────────────────────────────────────
 function _loadDiscover() {
   if (_discoverLoading) return;
   var el = document.getElementById('discover-row');
@@ -2078,7 +2157,7 @@ function _loadDiscover() {
     }
   } catch(e) {}
 
-  // Today card is always first (computed, no server call)
+  // Today card is always present (computed client-side, no server call needed)
   var computed = [{ type: 'today' }];
   var names = (zimsCache || []).map(function(z) { return z.name; });
   var mmdd = ('0' + (now.getMonth() + 1)).slice(-2) + ('0' + now.getDate()).slice(-2);
@@ -2191,7 +2270,9 @@ function _renderDiscover(el, items) {
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
     if (!it) continue; // Skip null results (e.g. failed dated entry lookups)
-    // Loading skeleton placeholder
+
+    // ─── Card: Loading Skeleton ───────────────────────────────────────
+    // Shown while fetch requests are in-flight. Replaced by real cards once data arrives.
     if (it.type === 'loading') {
       h += '<div class="discover-card dc-no-click dc-loading">' +
         '<div class="dc-thumb dc-skel"></div>' +
@@ -2201,14 +2282,16 @@ function _renderDiscover(el, items) {
         '</div></div>';
       continue;
     }
-    // Today card — opens Space mini-app
+
+    // ─── Card: Today ──────────────────────────────────────────────────
+    // Moon phase + date + season. Clicking opens the Almanac mini-app (almanac.js).
+    // Content is fully computed client-side — no server call needed.
     if (it.type === 'today') {
       var _m = _moonPhase(new Date());
       var _now = new Date();
       var _days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
       var _months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
       var _dateTitle = _days[_now.getDay()] + ', ' + _months[_now.getMonth()] + ' ' + _now.getDate() + ', ' + _now.getFullYear();
-      // Season + progress
       var _y = _now.getFullYear();
       var _sBounds = [
         { n: 'Winter', s: new Date(_y - 1, 11, 21), e: new Date(_y, 2, 20) },
@@ -2224,16 +2307,21 @@ function _renderDiscover(el, items) {
           break;
         }
       }
-      h += '<div class="discover-card" onclick="openSpace()">' +
+      h += '<div class="discover-card" onclick="openAlmanac()">' +
         _renderTodayCard() +
         '<div class="dc-body">' +
+          '<div class="dc-source"><span>\uD83D\uDCC5 Today</span></div>' +
           '<div class="dc-title">' + _dateTitle + '</div>' +
           '<div class="dc-blurb">' + _m.name + (_seasonStr ? ' \u00b7 ' + _seasonStr : '') + '</div>' +
           '<div class="dc-blurb">' + _m.illumination + '% illuminated</div>' +
         '</div></div>';
       continue;
     }
-    // Date: only for APOD
+
+    // ─── Shared: metadata extraction ──────────────────────────────────
+    // Common fields used by Quote, Word, and Standard card types.
+
+    // Date badge: only for APOD cards (extracted from path or response)
     var dateStr = null;
     if (it.type === 'apod') {
       dateStr = it.date || null;
@@ -2246,50 +2334,43 @@ function _renderDiscover(el, items) {
       }
     }
     var dateHtml = dateStr ? '<span class="dc-date">' + esc(_fmtDiscoverDate(dateStr)) + '</span>' : '';
-    // ZIM icon
+
+    // ZIM icon (small favicon shown in source line)
     var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === it.zim; });
     var iconHtml = '';
     if (zimInfo && zimInfo.has_icon) {
       iconHtml = '<img class="dc-zim-icon" src="/w/' + encodeURIComponent(it.zim) + '/-/icon" loading="lazy">';
     }
-    // Source label: named slots show ZIM icon + label, random shows dice
+
+    // Source label: named slots show their label, random shows ZIM title + dice emoji
     var sourceLabel, badgeHtml = '';
     if (it.label) {
       sourceLabel = it.label;
-      // Named slots: no emoji badge, ZIM icon is shown instead
     } else if (it.type === 'random') {
       sourceLabel = _zimTitle(it.zim);
       badgeHtml = '<span class="dc-dice">\uD83C\uDFB2</span>';
     } else {
       sourceLabel = _zimTitle(it.zim);
     }
-    // Thumbnail — filter out generic site chrome images
-    var thumbHtml;
-    var hasGoodThumb = it.thumbnail && !/home_on\.png|banner_ext|photo_on\.gif/i.test(it.thumbnail);
-    if (hasGoodThumb) {
-      var thumbClass = 'dc-thumb' + (/gutenberg/i.test(it.zim || '') ? ' dc-book-cover' : '');
-      thumbHtml = '<img class="' + thumbClass + '" src="' + escAttr(it.thumbnail) + '" loading="lazy" onerror="this.style.display=\'none\'" onload="if(this.naturalWidth<80||this.naturalHeight<60)this.style.display=\'none\'">';
-    } else if (it.label === 'Country of the Day') {
-      thumbHtml = '<div class="dc-icon-thumb" style="background:linear-gradient(135deg,#0a1628,#162040)"><span style="font-size:40px;line-height:1">&#x1F30D;</span></div>';
-    } else {
-      thumbHtml = '<div class="dc-icon-thumb">' + iconHtml + '</div>';
-    }
-    // Show actual article title — never vague labels
+
+    // Display title: cleaned for each content type
     var displayTitle = it.title || it.path;
-    // APOD: strip "APOD: YYYY Month DD – " date prefix from title (date shown as badge)
     if (it.type === 'apod' && displayTitle) {
       displayTitle = displayTitle.replace(/^APOD:\s*\d{4}\s+\w+\s+\d+\s*[\u2013\-]\s*/i, '');
     }
     if (it.type === 'onthisday' && displayTitle) {
-      // Clean portal prefixes but keep the real content
       displayTitle = displayTitle.replace(/^Portal:Current events\/?/, '').replace(/_/g, ' ');
       if (!displayTitle) displayTitle = it.title || 'Historical event';
     }
+
+    // Detect quote content (for special card template)
     var isQuote = it.blurb && (it.blurb.charAt(0) === '\u201c' || it.blurb.charAt(0) === '"');
-    // Named Quote of the Day slot always uses quote card template
     if (!isQuote && it.label === 'Quote of the Day' && (it.blurb || it.title)) isQuote = true;
     var blurbHtml = it.blurb ? '<div class="dc-blurb' + (isQuote ? ' dc-quote' : '') + '">' + esc(it.blurb) + '</div>' : '';
-    // Quote cards: header + decorative quote mark + serif quote + attribution
+
+    // ─── Card: Quote ────────────────────────────────────────────────
+    // Full-width card with decorative quote mark, serif text, and attribution.
+    // Used for Wikiquote and any content that starts with a quote character.
     if (isQuote) {
       var attrName = it.attribution || it.speaker || (/^[A-Z][a-z]+ [A-Z]/.test(displayTitle) ? displayTitle : '');
       var cleanQuote = it.blurb ? it.blurb.replace(/^[\u201c\u201d"]+\s*/, '').replace(/[\u201d"]+\s*$/, '') : displayTitle;
@@ -2303,8 +2384,11 @@ function _renderDiscover(el, items) {
           '<div class="dc-blurb dc-quote">' + esc(cleanQuote) + '</div>' +
           attrLine +
         '</div></div>';
+
+    // ─── Card: Word of the Day ──────────────────────────────────────
+    // Full-width card with headword, part of speech, and definition.
+    // Used for Wiktionary content.
     } else if (it.label === 'Word of the Day') {
-      // Word card: full-width like quote — title as headword, part of speech, definition as blurb
       h += '<div class="discover-card dc-quote-card dc-word-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
         '<div class="dc-body">' +
           '<div class="dc-header">' + iconHtml + '<span>' + esc(it.label) + '</span></div>' +
@@ -2312,8 +2396,23 @@ function _renderDiscover(el, items) {
           (it.part_of_speech ? '<div class="dc-pos">' + esc(it.part_of_speech) + '</div>' : '') +
           (it.blurb ? '<div class="dc-def">' + esc(it.blurb) + '</div>' : '') +
         '</div></div>';
+
+    // ─── Card: Standard ─────────────────────────────────────────────
+    // Thumbnail + source + title + blurb. Used for APOD, On This Day,
+    // Country of the Day, TED Talks, Books, Comics, and random picks.
     } else {
-      // Speaker line (for TED talks) or author line (for books)
+      // Thumbnail — filter out generic site chrome images
+      var thumbHtml;
+      var hasGoodThumb = it.thumbnail && !/home_on\.png|banner_ext|photo_on\.gif/i.test(it.thumbnail);
+      if (hasGoodThumb) {
+        var thumbClass = 'dc-thumb' + (/gutenberg/i.test(it.zim || '') ? ' dc-book-cover' : '');
+        thumbHtml = '<img class="' + thumbClass + '" src="' + escAttr(it.thumbnail) + '" loading="lazy" onerror="this.style.display=\'none\'" onload="if(this.naturalWidth<80||this.naturalHeight<60)this.style.display=\'none\'">';
+      } else if (it.label === 'Country of the Day') {
+        thumbHtml = '<div class="dc-icon-thumb" style="background:linear-gradient(135deg,#0a1628,#162040)"><span style="font-size:40px;line-height:1">&#x1F30D;</span></div>';
+      } else {
+        thumbHtml = '<div class="dc-icon-thumb">' + iconHtml + '</div>';
+      }
+      // Speaker/author line (TED talks, books)
       var speakerHtml = '';
       if (it.speaker && it.speaker !== displayTitle) {
         speakerHtml = '<div class="dc-speaker">' + esc(it.speaker) + '</div>';
@@ -3362,6 +3461,21 @@ function _enrichCatalogInstalled(items) {
   }
 }
 
+// ─── Featured ZIM Registry ────────────────────────────────────────────
+// Each entry maps a ZIM name prefix to a Discover card slot.
+// Fields:
+//   match  — ZIM name prefix to match against installed ZIMs
+//   type   — card type: 'apod' (dated), 'onthisday' (dated), 'country' (dated), 'random'
+//   label  — display name shown on the card (e.g. "Quote of the Day")
+//   icon   — emoji shown in catalog promo when ZIM not installed
+//   promo  — source name shown in catalog install prompt
+//   unlock — description of what installing this ZIM unlocks
+//
+// To add a new featured card: add an entry here, ensure _renderDiscover
+// handles the type, and the card will appear automatically when the ZIM
+// is installed. Future: this registry could live in a separate file or
+// even be embedded in ZIM metadata.
+// ──────────────────────────────────────────────────────────────────────
 const FEATURED_ZIMS = [
   { match: 'apod.nasa', type: 'apod', label: 'Picture of the Day', icon: '\uD83D\uDD2D', promo: 'NASA APOD', unlock: 'Discover: Picture of the Day' },
   { match: 'wikipedia',     type: 'onthisday', label: 'On This Day',        icon: '\uD83C\uDF0D', promo: 'Wikipedia',           unlock: 'Discover: On This Day' },
@@ -5817,7 +5931,7 @@ document.addEventListener('keydown', e => {
     var _hp = document.getElementById('history-panel');
     if (_hp && _hp.classList.contains('open')) { _closeLibraryPanel(); return; }
     if (suggestDropdown.style.display !== 'none') { hideSuggest(); return; }
-    if (_spaceOpen) { closeSpace(); return; }
+    if (_almanacOpen) { closeAlmanac(); return; }
     if (readerOpen) { goBack(); return; }
     if (q.value) { q.value = ''; hideSuggest(); clearSearch(); return; }
     if (mode === 'source' || mode === 'manage') { enterHome(true); return; }
@@ -5840,7 +5954,7 @@ window.addEventListener('popstate', (e) => {
   hideSuggest();
   _hideHistoryTrail();
   // Close Space if open
-  if (_spaceOpen) { closeSpace(); return; }
+  if (_almanacOpen) { closeAlmanac(); return; }
   // Step through article history when reader is open (mirrors in-app back button)
   if (readerOpen && articleHistory.length > 0) {
     _stepBackToArticle(articleHistory.pop(), false);

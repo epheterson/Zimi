@@ -161,19 +161,15 @@ services:
 | **Cross-source search** | Unified results with relevance ranking | Per-ZIM or combined unranked |
 | **Library management** | Built-in catalog browser, downloads, updates | Separate CLI tool (kiwix-manage) |
 | **AI integration** | MCP server for Claude Code | None |
-| **Desktop app** | Native macOS app | None |
+| **Desktop app** | Native macOS app with auto-update | kiwix-desktop (separate project) |
 | **Runtime** | Python (~4,200 lines) | C++ (libkiwix) |
 | **Memory** | Higher (Python + SQLite indexes) | Lower (native C++) |
 
 **Use kiwix-serve** for lightweight, proven ZIM serving on low-memory devices. **Use Zimi** for JSON APIs, cross-source search, library management, AI integration, or a desktop app.
 
-## Tests
+## Contributing
 
-```bash
-python3 tests/test_unit.py                          # Unit tests
-python3 -m pytest tests/test_server.py -v           # Integration tests
-python3 tests/test_unit.py --perf                   # Performance tests (requires running server)
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and release process.
 
 ## License
 
