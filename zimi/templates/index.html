@@ -2072,7 +2072,7 @@ var _almanacLoaded = false;
 function openAlmanac(replaceState) {
   if (!_almanacLoaded) {
     var s = document.createElement('script');
-    s.src = '/static/almanac.js?v=27';
+    s.src = '/static/almanac.js?v=28';
     s.onload = function() { _almanacLoaded = true; _openAlmanacInner(replaceState); };
     s.onerror = function() { console.error('Failed to load almanac.js'); };
     document.head.appendChild(s);
