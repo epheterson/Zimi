@@ -889,6 +889,60 @@ function _sunPosition(date, lat, lon) {
   return { altitude: altitude, azimuth: azimuth };
 }
 
+// ── Moon position — simplified lunar alt/az ──
+// Uses mean orbital elements to estimate the Moon's equatorial position,
+// then converts to horizontal coordinates (same pipeline as the sun).
+function _moonPosition(date, lat, lon) {
+  var JD = 2440587.5 + date.getTime() / 86400000;
+  var T = (JD - 2451545.0) / 36525;
+  var D2R = Math.PI / 180;
+
+  // Mean orbital elements (degrees)
+  var L0 = (218.3165 + 481267.8813 * T) % 360;         // mean longitude
+  var M  = (134.9634 + 477198.8676 * T) % 360;          // mean anomaly
+  var Ms = (357.5291 +  35999.0503 * T) % 360;          // sun mean anomaly
+  var F  = (93.2720  + 483202.0175 * T) % 360;          // argument of latitude
+  var D  = (297.8502 + 445267.1115 * T) % 360;          // mean elongation
+
+  // Ecliptic longitude (principal terms only)
+  var lng = L0
+    + 6.289 * Math.sin(M * D2R)
+    - 1.274 * Math.sin((2*D - M) * D2R)
+    - 0.658 * Math.sin(2*D * D2R)
+    - 0.214 * Math.sin(2*M * D2R)
+    - 0.186 * Math.sin(Ms * D2R);
+
+  // Ecliptic latitude
+  var lat_ec = 5.128 * Math.sin(F * D2R)
+    + 0.281 * Math.sin((M + F) * D2R)
+    + 0.278 * Math.sin((F - M) * D2R);
+
+  // Ecliptic to equatorial (obliquity ≈ 23.44°)
+  var eps = 23.44 * D2R;
+  var lngR = lng * D2R, latR = lat_ec * D2R;
+  var sinDec = Math.sin(latR) * Math.cos(eps) + Math.cos(latR) * Math.sin(eps) * Math.sin(lngR);
+  var dec = Math.asin(sinDec);
+  var ra = Math.atan2(
+    Math.sin(lngR) * Math.cos(eps) - Math.tan(latR) * Math.sin(eps),
+    Math.cos(lngR)
+  );
+
+  // Local sidereal time
+  var GMST = (280.46061837 + 360.98564736629 * (JD - 2451545.0)) % 360;
+  var LST = (GMST + lon) * D2R;
+  var HA = LST - ra;
+
+  // Horizontal coordinates
+  var latR2 = lat * D2R;
+  var sinAlt = Math.sin(latR2) * Math.sin(dec) + Math.cos(latR2) * Math.cos(dec) * Math.cos(HA);
+  var altitude = Math.asin(sinAlt) * 180 / Math.PI;
+  var cosAz = (Math.sin(dec) - Math.sin(latR2) * sinAlt) / (Math.cos(latR2) * Math.cos(Math.asin(sinAlt)));
+  cosAz = Math.max(-1, Math.min(1, cosAz));
+  var azimuth = Math.acos(cosAz) * 180 / Math.PI;
+  if (HA > 0) azimuth = 360 - azimuth;
+  return { altitude: altitude, azimuth: azimuth };
+}
+
 // ── Constellation data — star positions + connecting lines ──
 // Coordinates are [x%, y%] within the sky area (0-100, 0-55% of canvas height)
 
@@ -1031,44 +1085,58 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t) {
       _drawConstellations(ctx, W, H, starOpacity, t);
     }
 
-    // Moon at night
-    if (alt < 0) {
-      var m = _moonPhase(now);
-      var moonX = W * 0.78, moonY = H * 0.14;
-      var moonR = 14 * dpr;
+  }
+
+  // Moon — visible day and night when above the horizon
+  var moonPos = _moonPosition(now, lat, lon);
+  var moonAlt = moonPos.altitude;
+  var moonAz = moonPos.azimuth;
+  if (moonAlt > -2) {
+    var m = _moonPhase(now);
+    // Position from actual alt/az (same projection as the sun)
+    var moonXFrac = Math.max(0.05, Math.min(0.95, (moonAz - 60) / 240));
+    var moonX = moonXFrac * W;
+    var moonY = H * 0.66 - (moonAlt / 90) * H * 0.56;
+    moonY = Math.max(H * 0.04, Math.min(H * 0.68, moonY));
+    var moonR = 14 * dpr;
+    // Daytime: moon is faint and pale; nighttime: bright and glowing
+    var isDaytime = alt > 0;
+    var moonAlpha = isDaytime ? Math.max(0.15, 0.5 - alt / 60) : 1.0;
+    if (!isDaytime) {
       var mgOuter = ctx.createRadialGradient(moonX, moonY, moonR, moonX, moonY, moonR * 4);
       mgOuter.addColorStop(0, 'rgba(220,215,200,' + (m.illumination / 500).toFixed(3) + ')');
       mgOuter.addColorStop(1, 'transparent');
       ctx.fillStyle = mgOuter;
       ctx.beginPath(); ctx.arc(moonX, moonY, moonR * 4, 0, Math.PI * 2); ctx.fill();
-      // Draw moon with NASA texture
+    }
+    ctx.save();
+    ctx.globalAlpha = moonAlpha;
+    ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.clip();
+    if (_moonTexLoaded) {
+      ctx.drawImage(_moonTexImg, moonX - moonR, moonY - moonR, moonR * 2, moonR * 2);
+      var brighten = isDaytime ? 0.25 + (m.illumination / 100) * 0.15 : 0.10 + (m.illumination / 100) * 0.30;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = 'rgba(220,210,195,' + brighten.toFixed(2) + ')';
+      ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+    } else {
+      var moonGrad = ctx.createRadialGradient(moonX - moonR * 0.25, moonY - moonR * 0.2, 0, moonX, moonY, moonR);
+      moonGrad.addColorStop(0, isDaytime ? '#d8dce6' : '#f0ead8');
+      moonGrad.addColorStop(0.5, isDaytime ? '#c8ccd6' : '#e4dcc8');
+      moonGrad.addColorStop(0.85, isDaytime ? '#b8bcc6' : '#d4c8b0');
+      moonGrad.addColorStop(1, isDaytime ? '#a8acb6' : '#c0b498');
+      ctx.fillStyle = moonGrad;
+      ctx.fill();
+    }
+    ctx.restore();
+    if (m.illumination < 95) {
       ctx.save();
-      ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.clip();
-      if (_moonTexLoaded) {
-        ctx.drawImage(_moonTexImg, moonX - moonR, moonY - moonR, moonR * 2, moonR * 2);
-        // Brighten proportional to illumination — full moon should be bright
-        var brighten = 0.10 + (m.illumination / 100) * 0.30;
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.fillStyle = 'rgba(220,210,195,' + brighten.toFixed(2) + ')';
-        ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.fill();
-        ctx.globalCompositeOperation = 'source-over';
-      } else {
-        // Fallback: off-white moon with subtle shading
-        var moonGrad = ctx.createRadialGradient(moonX - moonR * 0.25, moonY - moonR * 0.2, 0, moonX, moonY, moonR);
-        moonGrad.addColorStop(0, '#f0ead8');
-        moonGrad.addColorStop(0.5, '#e4dcc8');
-        moonGrad.addColorStop(0.85, '#d4c8b0');
-        moonGrad.addColorStop(1, '#c0b498');
-        ctx.fillStyle = moonGrad;
-        ctx.fill();
-      }
+      ctx.globalAlpha = moonAlpha;
+      var shadowOffset = moonR * (1 - m.illumination / 50);
+      ctx.beginPath(); ctx.arc(moonX + shadowOffset, moonY, moonR * 0.97, 0, Math.PI * 2);
+      ctx.fillStyle = isDaytime ? 'rgba(135,170,210,0.7)' : 'rgba(5,8,12,0.92)';
+      ctx.fill();
       ctx.restore();
-      if (m.illumination < 95) {
-        var shadowOffset = moonR * (1 - m.illumination / 50);
-        ctx.beginPath(); ctx.arc(moonX + shadowOffset, moonY, moonR * 0.97, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(5,8,12,0.92)';
-        ctx.fill();
-      }
     }
   }
 
@@ -2134,7 +2202,11 @@ function _renderCalBrowser() {
 
   var html = '';
 
-  // System tabs
+  // Cross-reference — selected date in all calendars, shown first as the primary info
+  html += _renderCalCrossRef(_calSelectedJDN);
+
+  // System tabs + month navigation in one compact bar
+  html += '<div class="space-cal-controls">';
   html += '<div class="space-cal-tabs">';
   for (var i = 0; i < _CAL_SYSTEMS.length; i++) {
     var sys = _CAL_SYSTEMS[i];
@@ -2142,8 +2214,6 @@ function _renderCalBrowser() {
     html += '<button class="space-cal-tab' + active + '" onclick="_switchCalSystem(\'' + sys + '\')">' + _CAL_LABELS[sys] + '</button>';
   }
   html += '</div>';
-
-  // Month navigation
   var monthName = _calMonthName(_calSystem, _calYear, _calMonth);
   var yearSuffix = '';
   if (_calSystem === 'islamic') yearSuffix = ' AH';
@@ -2156,11 +2226,11 @@ function _renderCalBrowser() {
     html += '<button class="space-cal-today-link" onclick="_calToday()" title="Jump to today">\u25CF</button>';
   }
   html += '</div>';
+  html += '</div>';
 
   // Month grid
   var daysInMonth = _calDaysInMonth(_calSystem, _calYear, _calMonth);
   var firstJDN = _calFirstDayJDN(_calSystem, _calYear, _calMonth);
-  // Weekday of first day: JDN % 7 → 0=Mon, 1=Tue, ... 6=Sun → convert to 0=Sun
   var firstWeekday = ((firstJDN + 1) % 7); // 0=Sun, 1=Mon, ..., 6=Sat
 
   html += '<div class="space-cal-grid">';
@@ -2179,9 +2249,6 @@ function _renderCalBrowser() {
     html += '<div class="' + cls + '" onclick="_calSelect(' + cellJDN + ')">' + d + '</div>';
   }
   html += '</div>';
-
-  // Cross-reference panel
-  html += _renderCalCrossRef(_calSelectedJDN);
 
   el.innerHTML = html;
 }
@@ -2235,33 +2302,45 @@ function _calToday() {
 
 function _renderCalCrossRef(jdn) {
   var html = '<div class="space-cal-crossref">';
-  // Browsable calendars
-  for (var i = 0; i < _CAL_SYSTEMS.length; i++) {
-    var sys = _CAL_SYSTEMS[i];
-    var cal = _jdnToCalendar(sys, jdn);
-    var monthName = _calMonthName(sys, cal.year, cal.month);
-    var yearStr = cal.year.toString();
-    if (sys === 'islamic') yearStr += ' AH';
-    else if (sys === 'persian') yearStr += ' SH';
-    var isActive = sys === _calSystem ? ' style="color:var(--amber)"' : '';
-    html += '<div class="space-cal-crossref-row">' +
-      '<span class="space-cal-crossref-label"' + isActive + '>' + _CAL_LABELS[sys] + '</span>' +
-      '<span class="space-cal-crossref-date">' + monthName + ' ' + cal.day + ', ' + yearStr + '</span>' +
+  // All 7 calendars — browsable ones are clickable to switch
+  var allSystems = [
+    { sys: 'gregorian', browsable: true },
+    { sys: 'hebrew', browsable: true },
+    { sys: 'islamic', browsable: true },
+    { sys: 'persian', browsable: true },
+    { sys: 'julian', browsable: true },
+    { sys: 'chinese', browsable: false },
+    { sys: 'buddhist', browsable: false }
+  ];
+  var greg = _jdnToGregorian(jdn);
+  for (var i = 0; i < allSystems.length; i++) {
+    var entry = allSystems[i];
+    var label, dateStr;
+    if (entry.browsable) {
+      var cal = _jdnToCalendar(entry.sys, jdn);
+      var monthName = _calMonthName(entry.sys, cal.year, cal.month);
+      var yearStr = cal.year.toString();
+      if (entry.sys === 'islamic') yearStr += ' AH';
+      else if (entry.sys === 'persian') yearStr += ' SH';
+      label = _CAL_LABELS[entry.sys];
+      dateStr = monthName + ' ' + cal.day + ', ' + yearStr;
+    } else if (entry.sys === 'chinese') {
+      var chinese = _chineseZodiac(greg.year);
+      var moonAge = Math.floor((_moonPhase(new Date(greg.year, greg.month - 1, greg.day)).phase * 29.53) + 1);
+      if (moonAge > 30) moonAge = 30;
+      label = 'Chinese';
+      dateStr = chinese.animal + ' \u00b7 ' + chinese.element + ' \u00b7 Day ' + moonAge + ', ' + chinese.year;
+    } else {
+      label = 'Buddhist';
+      dateStr = _GREGORIAN_MONTHS[greg.month - 1] + ' ' + greg.day + ', ' + (greg.year + 543) + ' BE';
+    }
+    var isActive = entry.sys === _calSystem ? ' space-cal-active-row' : '';
+    var clickAttr = entry.browsable ? ' onclick="_switchCalSystem(\'' + entry.sys + '\')" style="cursor:pointer"' : '';
+    html += '<div class="space-cal-crossref-row' + isActive + '"' + clickAttr + '>' +
+      '<span class="space-cal-crossref-label">' + label + '</span>' +
+      '<span class="space-cal-crossref-date">' + dateStr + '</span>' +
       '</div>';
   }
-  // Non-browsable calendars — derived from Gregorian date
-  var greg = _jdnToGregorian(jdn);
-  var chinese = _chineseZodiac(greg.year);
-  var moonAge = Math.floor((_moonPhase(new Date(greg.year, greg.month - 1, greg.day)).phase * 29.53) + 1);
-  if (moonAge > 30) moonAge = 30;
-  html += '<div class="space-cal-crossref-row">' +
-    '<span class="space-cal-crossref-label">Chinese</span>' +
-    '<span class="space-cal-crossref-date">' + chinese.animal + ' \u00b7 ' + chinese.element + ' \u00b7 Day ' + moonAge + ', ' + chinese.year + '</span>' +
-    '</div>';
-  html += '<div class="space-cal-crossref-row">' +
-    '<span class="space-cal-crossref-label">Buddhist</span>' +
-    '<span class="space-cal-crossref-date">' + _GREGORIAN_MONTHS[greg.month - 1] + ' ' + greg.day + ', ' + (greg.year + 543) + ' BE</span>' +
-    '</div>';
   html += '</div>';
   return html;
 }
@@ -2351,8 +2430,9 @@ function _renderDeepTime(now) {
     'Immune to leap seconds, timezone changes, and political calendars.</div></div>';
 
   // Galactic Year — Sun's orbit around Milky Way
-  var galacticPeriod = 225; // million years
-  var sunAge = 4600; // million years
+  // Sun formed ~4.6 Gya; advance by elapsed time so this stays accurate forever
+  var galacticPeriod = 225; // million years per orbit
+  var sunAge = 4600 + (now.getFullYear() - 2000) / 1e6; // million years, advances with time
   var orbitsCompleted = Math.floor(sunAge / galacticPeriod);
   var currentOrbitPct = ((sunAge % galacticPeriod) / galacticPeriod * 100).toFixed(1);
 
@@ -2360,7 +2440,7 @@ function _renderDeepTime(now) {
     '<div class="space-info-lbl">Galactic Year</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
     'The Sun orbits the Milky Way\u2019s center every ~225 million years at 828,000 km/h. ' +
-    'In 4.6 billion years, we\u2019ve completed about ' + orbitsCompleted + ' orbits. ' +
+    'In ' + (sunAge / 1000).toFixed(1) + ' billion years, we\u2019ve completed about ' + orbitsCompleted + ' orbits. ' +
     'Currently ' + currentOrbitPct + '% through orbit #' + (orbitsCompleted + 1) + '. ' +
     'Last time we were here, dinosaurs ruled the Earth.</div></div>';
 
