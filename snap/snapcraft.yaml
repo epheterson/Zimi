@@ -1,6 +1,6 @@
 name: zimi
 base: core22
-version: '1.4.0'
+version: '1.5.0'
 summary: Offline knowledge server for ZIM files
 description: |
   Search and read 100M+ articles offline. Wikipedia, Stack Overflow,

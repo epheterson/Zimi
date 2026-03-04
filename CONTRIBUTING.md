@@ -24,7 +24,7 @@ python3 tests/test_unit.py --perf             # Performance benchmarks
 
 ### Phase 1: Build
 
-1. Ensure versions match: `ZIMI_VERSION` in `server.py` and `version` in `pyproject.toml`
+1. Ensure versions match: `ZIMI_VERSION` in `server.py`, `version` in `pyproject.toml`, and `version` in `snap/snapcraft.yaml`
 2. Merge feature branch PR to `main`
 3. Tag on main: `git tag v1.X.0 && git push origin v1.X.0`
 4. CI builds desktop apps (DMGs, AppImage) and creates a **draft** release
