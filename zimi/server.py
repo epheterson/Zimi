@@ -27,6 +27,8 @@ Usage (HTTP API):
   GET /suggest?q=...&limit=10          Title autocomplete
   GET /snippet?zim=...&path=...        Short text snippet
   GET /list                            List all ZIM sources with metadata
+  GET /languages                       Installed language summary
+  GET /article-languages?zim=...&path=... Available translations for article
   GET /catalog?zim=...                 PDF catalog for zimgit-style ZIMs
   GET /random                          Random article
   GET /resolve?url=...                 Cross-ZIM URL resolution
@@ -648,11 +650,38 @@ def _save_collections(data):
     except OSError as e:
         log.warning("Could not save collections: %s", e)
 
+# ── ISO 639-3 → 639-1 language code mapping ──
+# ZIM files use ISO 639-3 (3-letter codes). APIs and web use ISO 639-1 (2-letter).
+_ISO639_3_TO_1 = {
+    "eng": "en", "fra": "fr", "deu": "de", "spa": "es", "por": "pt",
+    "rus": "ru", "zho": "zh", "jpn": "ja", "kor": "ko", "ara": "ar",
+    "hin": "hi", "ita": "it", "nld": "nl", "pol": "pl", "tur": "tr",
+    "vie": "vi", "tha": "th", "swe": "sv", "nor": "no", "dan": "da",
+    "fin": "fi", "ces": "cs", "ron": "ro", "hun": "hu", "ell": "el",
+    "heb": "he", "ukr": "uk", "cat": "ca", "ind": "id", "msa": "ms",
+    "fas": "fa", "ben": "bn", "tam": "ta", "tel": "te", "urd": "ur",
+    "mul": "mul",  # multiple languages (keep as-is)
+}
+
+# Native language names for display
+_LANG_NATIVE_NAMES = {
+    "en": "English", "fr": "Français", "de": "Deutsch", "es": "Español",
+    "pt": "Português", "ru": "Русский", "zh": "中文", "ja": "日本語",
+    "ko": "한국어", "ar": "العربية", "hi": "हिन्दी", "it": "Italiano",
+    "nl": "Nederlands", "pl": "Polski", "tr": "Türkçe", "vi": "Tiếng Việt",
+    "th": "ไทย", "sv": "Svenska", "no": "Norsk", "da": "Dansk",
+    "fi": "Suomi", "cs": "Čeština", "ro": "Română", "hu": "Magyar",
+    "el": "Ελληνικά", "he": "עברית", "uk": "Українська", "ca": "Català",
+    "id": "Bahasa Indonesia", "ms": "Bahasa Melayu", "fa": "فارسی",
+    "bn": "বাংলা", "ta": "தமிழ்", "te": "తెలుగు", "ur": "اردو",
+    "mul": "Multiple",
+}
+
 # ── Startup cache ──
 # Opening ZIM archives is expensive (~0.3s each on NAS spinning disks).
 # Persistent cache in .zimi_cache.json enables instant startup on subsequent runs.
 # Archives are opened lazily (on first search/read) instead of all at once.
-_CACHE_VERSION = 1
+_CACHE_VERSION = 2  # bumped for language metadata
 _zim_list_cache = None
 _zim_files_cache = None  # {name: path} — cached at startup, ZIM dir is read-only
 _archive_pool = {}  # {name: Archive} — kept open for fast search
@@ -1101,19 +1130,41 @@ except FileNotFoundError:
 
 def _zim_short_name(filename):
     """Derive short display name from a ZIM filename.
-    e.g. stackoverflow.com_en_all_2023-11.zim → stackoverflow
-         wikipedia_en_all_maxi_2026-02.zim → wikipedia
+
+    English ZIMs strip the language code (backward-compatible):
+      stackoverflow.com_en_all_2023-11.zim → stackoverflow
+      wikipedia_en_all_maxi_2026-02.zim → wikipedia
+
+    Non-English ZIMs preserve the language suffix:
+      wikipedia_fr_all_maxi_2026-02.zim → wikipedia_fr
+      stackoverflow.com_es_all_2024-01.zim → stackoverflow_es
     """
     name = filename.split(".zim")[0]
-    name = re.sub(r"\.com_en_all.*", "", name)
-    name = re.sub(r"\.stackexchange\.com_en_all.*", "", name)
-    name = re.sub(r"_en_all_maxi.*", "", name)
-    name = re.sub(r"_en_all.*", "", name)
-    name = re.sub(r"_en_maxi.*", "", name)
-    name = re.sub(r"_en_2\d{3}.*", "", name)
+    # Extract language code before stripping (e.g. _fr_, _de_, _es_)
+    lang_match = re.search(r'(?:\.com)?_([a-z]{2,3})_(?:all|maxi|2\d{3})', name)
+    lang_code = lang_match.group(1) if lang_match else ""
+    is_english = lang_code in ("en", "eng", "")
+    # Strip domain suffixes
+    name = re.sub(r"\.com_[a-z]{2,3}_all.*", "", name)
+    name = re.sub(r"\.stackexchange\.com_[a-z]{2,3}_all.*", "", name)
+    # Strip language + flavor + date patterns
+    name = re.sub(r"_[a-z]{2,3}_all_maxi.*", "", name)
+    name = re.sub(r"_[a-z]{2,3}_all.*", "", name)
+    name = re.sub(r"_[a-z]{2,3}_maxi.*", "", name)
+    name = re.sub(r"_[a-z]{2,3}_2\d{3}.*", "", name)
     name = re.sub(r"_maxi_2\d{3}.*", "", name)
     name = re.sub(r"_2\d{3}-\d{2}$", "", name)
+    # Append language suffix for non-English ZIMs
+    if not is_english and lang_code:
+        # Normalize 3-letter to 2-letter
+        short_lang = _ISO639_3_TO_1.get(lang_code, lang_code if len(lang_code) == 2 else "")
+        if short_lang and short_lang != "en":
+            name = name + "_" + short_lang
     return name
+
+# Legacy name map: old short names → new short names (for bookmark/history migration)
+# Populated at load time when renamed ZIMs are detected
+_LEGACY_NAME_MAP = {}  # {old_name: new_name}
 
 
 def _scan_zim_files():
@@ -1346,6 +1397,152 @@ def _resolve_url_to_zim(url_str):
     return None
 
 
+# ── Query language detection ──
+# Two-tier, zero dependencies: script detection (instant) + stopword scoring (Latin scripts)
+
+_SCRIPT_RANGES = [
+    # (start, end, lang_code)
+    (0x4E00, 0x9FFF, "zh"),    # CJK Unified Ideographs
+    (0x3400, 0x4DBF, "zh"),    # CJK Extension A
+    (0x3040, 0x309F, "ja"),    # Hiragana
+    (0x30A0, 0x30FF, "ja"),    # Katakana
+    (0xAC00, 0xD7AF, "ko"),    # Hangul Syllables
+    (0x0400, 0x04FF, "ru"),    # Cyrillic (default to Russian — most content)
+    (0x0600, 0x06FF, "ar"),    # Arabic
+    (0x0900, 0x097F, "hi"),    # Devanagari
+    (0x0980, 0x09FF, "bn"),    # Bengali
+    (0x0A80, 0x0AFF, "gu"),    # Gujarati
+    (0x0B80, 0x0BFF, "ta"),    # Tamil
+    (0x0C00, 0x0C7F, "te"),    # Telugu
+]
+
+_STOPWORDS = {
+    "en": {"the", "is", "in", "at", "of", "and", "to", "a", "for", "on"},
+    "fr": {"le", "la", "les", "de", "des", "un", "une", "du", "est", "et"},
+    "de": {"der", "die", "das", "und", "ist", "ein", "eine", "von", "den", "zu"},
+    "es": {"el", "la", "los", "las", "de", "en", "un", "una", "del", "es"},
+    "pt": {"o", "a", "os", "as", "de", "do", "da", "em", "um", "uma"},
+    "it": {"il", "la", "le", "di", "un", "una", "del", "che", "in", "per"},
+    "nl": {"de", "het", "een", "van", "en", "is", "in", "op", "dat", "voor"},
+    "ru": {"и", "в", "на", "не", "что", "он", "это", "как", "по", "с"},
+    "ar": {"في", "من", "على", "إلى", "هذا", "أن", "هو", "ما", "مع", "لا"},
+    "hi": {"है", "के", "में", "का", "की", "और", "को", "से", "एक", "पर"},
+}
+
+
+def _detect_query_language(query):
+    """Detect the language of a search query. Returns ISO 639-1 code or empty string.
+
+    Two-tier detection:
+    1. Script detection (instant): non-Latin scripts → language
+    2. Stopword scoring (Latin scripts): match against common words
+    """
+    # Tier 1: Script detection
+    script_hits = {}
+    for ch in query:
+        cp = ord(ch)
+        for start, end, lang in _SCRIPT_RANGES:
+            if start <= cp <= end:
+                script_hits[lang] = script_hits.get(lang, 0) + 1
+                break
+    if script_hits:
+        return max(script_hits, key=script_hits.get)
+
+    # Tier 2: Stopword scoring for Latin-script languages
+    words = set(query.lower().split())
+    if not words:
+        return ""
+    best_lang = ""
+    best_score = 0
+    for lang, stops in _STOPWORDS.items():
+        hits = len(words & stops)
+        score = hits / len(words)
+        if score > best_score and score > 0.3:
+            best_score = score
+            best_lang = lang
+    return best_lang
+
+
+def get_article_languages(zim_name, article_path):
+    """Find available translations for a Wikipedia/Wikimedia article.
+
+    Scans article HTML for interlanguage links (href="https://XX.wikipedia.org/wiki/...").
+    Returns {"languages": [...installed...], "available": [...not installed...]}.
+    Must be called with _zim_lock held.
+    """
+    archive = get_archive(zim_name)
+    if archive is None:
+        return {"languages": [], "available": []}
+
+    try:
+        entry = archive.get_entry_by_path(article_path)
+        item = entry.get_item()
+        if item.mimetype not in ("text/html", "application/xhtml+xml"):
+            return {"languages": [], "available": []}
+        content = bytes(item.content).decode("utf-8", errors="replace")
+    except Exception:
+        return {"languages": [], "available": []}
+
+    # Find interlanguage links: <a href="https://XX.wikipedia.org/wiki/Title">
+    # Also handles XX.m.wikipedia.org and other Wikimedia projects
+    pattern = re.compile(
+        r'href="https?://([a-z]{2,3})(?:\.m)?'
+        r'\.(wikipedia|wiktionary|wikivoyage|wikibooks|wikiquote|wikinews|wikiversity|wikisource)'
+        r'\.org/wiki/([^"#]+)"'
+    )
+    seen = set()
+    installed = []
+    available = []
+
+    for m in pattern.finditer(content):
+        lang = m.group(1)
+        project = m.group(2)
+        wiki_path = unquote(m.group(3))
+        if lang in seen:
+            continue
+        seen.add(lang)
+
+        # Check if we have a ZIM for this language+project
+        domain = f"{lang}.{project}.org"
+        target_zim = _domain_zim_map.get(domain)
+        if target_zim and target_zim != zim_name:
+            # Try to resolve the path in the target ZIM
+            target_archive = get_archive(target_zim)
+            resolved_path = None
+            if target_archive:
+                for candidate in [f"A/{wiki_path}", wiki_path]:
+                    try:
+                        target_archive.get_entry_by_path(candidate)
+                        resolved_path = candidate
+                        break
+                    except KeyError:
+                        continue
+            installed.append({
+                "lang": lang,
+                "name": _LANG_NATIVE_NAMES.get(lang, lang),
+                "zim": target_zim,
+                "path": resolved_path or f"A/{wiki_path}",
+            })
+        else:
+            # Build catalog name for download prompt
+            base = zim_name.split("_")[0] if "_" in zim_name else zim_name
+            catalog_name = f"{base}_{lang}" if lang != "en" else base
+            available.append({
+                "lang": lang,
+                "name": _LANG_NATIVE_NAMES.get(lang, lang),
+                "catalog_name": catalog_name,
+            })
+
+        if len(seen) >= 30:  # cap to avoid excessive scanning
+            break
+
+    # Sort: installed by language name, available alphabetically
+    installed.sort(key=lambda x: x["name"])
+    available.sort(key=lambda x: x["name"])
+
+    return {"languages": installed[:20], "available": available[:20]}
+
+
 def strip_html(text):
     """Remove HTML tags and decode entities, return plain text."""
     text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL)
@@ -1509,7 +1706,7 @@ def _clean_query(q):
     return ' '.join(phrases + words).strip() or q
 
 
-def _score_result(title, query_words, rank, entry_count):
+def _score_result(title, query_words, rank, entry_count, lang_match=False):
     """Score a search result for cross-ZIM ranking."""
     tl = title.lower()
     hits = sum(1 for w in query_words if w in tl)
@@ -1528,7 +1725,9 @@ def _score_result(title, query_words, rank, entry_count):
         rank_score = min(rank_score, 5)
     # Source authority: slight boost for larger ZIMs (log scale)
     auth_score = min(5, math.log10(max(entry_count, 1)) / 2)
-    return title_score + rank_score + auth_score
+    # Language match: boost results from ZIMs matching detected query language
+    lang_score = 10 if lang_match else 0
+    return title_score + rank_score + auth_score + lang_score
 
 
 def search_all(query_str, limit=5, filter_zim=None, fast=False):
@@ -1552,6 +1751,10 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     """
     zims = get_zim_files()
     cache_meta = {z["name"]: (z.get("entries") if isinstance(z.get("entries"), int) else 0) for z in (_zim_list_cache or [])}
+    cache_lang = {z["name"]: z.get("language", "") for z in (_zim_list_cache or [])}
+
+    # Detect query language for scoring boost
+    detected_lang = _detect_query_language(query_str)
 
     # Normalize filter_zim to None or list
     if isinstance(filter_zim, str):
@@ -1628,7 +1831,8 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
             if valid:
                 entry_count = cache_meta.get(name, 1)
                 for rank, r in enumerate(valid):
-                    score = _score_result(r["title"], query_words, rank, entry_count)
+                    lm = bool(detected_lang and cache_lang.get(name) == detected_lang)
+                    score = _score_result(r["title"], query_words, rank, entry_count, lang_match=lm)
                     raw_results.append({
                         "zim": name, "path": r["path"], "title": r["title"],
                         "snippet": "", "score": round(score, 1),
@@ -1666,7 +1870,8 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
             if valid:
                 entry_count = cache_meta.get(name, 1)
                 for rank, r in enumerate(valid):
-                    score = _score_result(r["title"], query_words, rank, entry_count)
+                    lm = bool(detected_lang and cache_lang.get(name) == detected_lang)
+                    score = _score_result(r["title"], query_words, rank, entry_count, lang_match=lm)
                     raw_results.append({
                         "zim": name, "path": r["path"], "title": r["title"],
                         "snippet": r.get("snippet", ""), "score": round(score, 1),
@@ -1688,14 +1893,26 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
             seen_titles.add(key)
             deduped.append(r)
 
+    # Build by_language counts from result ZIM names
+    cache_lang = {z["name"]: z.get("language", "") for z in (_zim_list_cache or [])}
+    by_language = {}
+    for r in deduped:
+        lang = cache_lang.get(r["zim"], "")
+        if lang:
+            by_language[lang] = by_language.get(lang, 0) + 1
+
     elapsed = round(time.time() - search_start, 2)
-    return {
+    result = {
         "results": deduped,
         "by_source": by_source,
+        "by_language": by_language,
         "total": len(deduped),
         "elapsed": elapsed,
         "partial": fast,
     }
+    if detected_lang:
+        result["detected_language"] = detected_lang
+    return result
 
 
 def read_article(zim_name, article_path, max_length=MAX_CONTENT_LENGTH):
@@ -2660,6 +2877,7 @@ def _extract_zim_metadata(name, path):
     meta_title = name
     meta_desc = ""
     meta_date = ""
+    meta_lang = ""
     has_icon = False
     main_path = ""
     archive = None
@@ -2675,6 +2893,10 @@ def _extract_zim_metadata(name, path):
                     meta_desc = val.decode("utf-8", errors="replace").strip()
                 elif key == "Date":
                     meta_date = val.decode("utf-8", errors="replace").strip()
+                elif key == "Language":
+                    raw_lang = val.decode("utf-8", errors="replace").strip().lower()
+                    # Convert ISO 639-3 to 639-1, or keep 2-letter codes as-is
+                    meta_lang = _ISO639_3_TO_1.get(raw_lang, raw_lang if len(raw_lang) == 2 else "")
                 elif key.startswith("Illustration_48x48"):
                     has_icon = True
             except Exception:
@@ -2693,6 +2915,12 @@ def _extract_zim_metadata(name, path):
         _, file_date = _extract_zim_date(os.path.basename(path))
         if file_date:
             meta_date = file_date
+    # Fall back to language from filename (e.g. wikipedia_fr_all → "fr")
+    if not meta_lang:
+        m = re.match(r'^[a-zA-Z]+(?:\.\w+)*_([a-z]{2,3})_', os.path.basename(path))
+        if m:
+            code = m.group(1)
+            meta_lang = _ISO639_3_TO_1.get(code, code if len(code) == 2 else "")
     info = {
         "name": name,
         "file": os.path.basename(path),
@@ -2701,6 +2929,7 @@ def _extract_zim_metadata(name, path):
         "title": meta_title,
         "description": meta_desc,
         "date": meta_date,
+        "language": meta_lang,
         "has_icon": has_icon,
         "category": _categorize_zim(name),
         "main_path": main_path,
@@ -2746,6 +2975,7 @@ def load_cache(force=False):
                 "title": cached.get("title", name),
                 "description": cached.get("description", ""),
                 "date": cached.get("date", ""),
+                "language": cached.get("language", ""),
                 "has_icon": cached.get("has_icon", False),
                 "category": _categorize_zim(name),
                 "main_path": cached.get("main_path", ""),
@@ -2768,6 +2998,7 @@ def load_cache(force=False):
                 "title": entry["title"],
                 "description": entry["description"],
                 "date": entry.get("date", ""),
+                "language": entry.get("language", ""),
                 "has_icon": entry["has_icon"],
                 "main_path": entry["main_path"],
             }
@@ -3452,6 +3683,32 @@ class ZimHandler(BaseHTTPRequestHandler):
 
             elif parsed.path == "/list":
                 result = list_zims()
+                return self._json(200, result)
+
+            elif parsed.path == "/languages":
+                # Installed language summary with native names and ZIM counts
+                lang_zims = {}  # {lang_code: [zim_name, ...]}
+                for z in (_zim_list_cache or []):
+                    lang = z.get("language", "")
+                    if lang:
+                        lang_zims.setdefault(lang, []).append(z["name"])
+                result = []
+                for lang, zim_names in sorted(lang_zims.items()):
+                    result.append({
+                        "code": lang,
+                        "name": _LANG_NATIVE_NAMES.get(lang, lang),
+                        "zim_count": len(zim_names),
+                        "zims": zim_names,
+                    })
+                return self._json(200, result)
+
+            elif parsed.path == "/article-languages":
+                zim = param("zim")
+                path = param("path")
+                if not zim or not path:
+                    return self._json(400, {"error": "missing ?zim= and ?path= parameters"})
+                with _zim_lock:
+                    result = get_article_languages(zim, path)
                 return self._json(200, result)
 
             elif parsed.path == "/catalog":
