@@ -3708,6 +3708,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if not zim or not path:
                     return self._json(400, {"error": "missing ?zim= and ?path= parameters"})
                 with _zim_lock:
+                    if get_archive(zim) is None:
+                        return self._json(404, {"error": f"ZIM '{zim}' not found"})
                     result = get_article_languages(zim, path)
                 return self._json(200, result)
 

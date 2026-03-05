@@ -68,7 +68,8 @@ self.addEventListener('fetch', event => {
   if (path.startsWith('/search') || path.startsWith('/read') ||
       path.startsWith('/list') || path.startsWith('/suggest') ||
       path.startsWith('/random') || path.startsWith('/health') ||
-      path.startsWith('/manage')) {
+      path.startsWith('/manage') || path.startsWith('/article-languages') ||
+      path.startsWith('/languages')) {
     event.respondWith(networkFirst(event.request));
     return;
   }
@@ -131,8 +132,8 @@ async function staleWhileRevalidate(request) {
   }).catch(() => null);
 
   if (cached) {
-    // Fire off revalidation in background, return cached immediately
-    fetchPromise;
+    // Revalidation already running in background (initiated above), return cached immediately
+    fetchPromise.catch(() => {}); // suppress unhandled rejection
     return cached;
   }
   // Nothing cached, must wait for network

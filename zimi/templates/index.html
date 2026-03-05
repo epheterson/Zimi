@@ -1419,6 +1419,11 @@ function t(key, vars) {
   if (vars) for (var k in vars) s = s.replace('{' + k + '}', vars[k]);
   return s;
 }
+// HTML-escaped version of t() for use in innerHTML/attribute contexts
+function tH(key, vars) {
+  var s = t(key, vars);
+  var d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+}
 
 async function _loadI18n(lang) {
   if (lang === 'en') {
@@ -1697,7 +1702,7 @@ async function init() {
   _applyRTL(_currentLang);
   await _loadI18n(_currentLang);
 
-  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + t('loading_library') + '</div>';
+  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
   // Only block on /list — everything else loads in background
   try {
     const res = await fetch('/list');
@@ -3291,7 +3296,7 @@ function renderSearchResults(data, scope) {
   searchMeta.style.display = items.length ? 'flex' : 'none';
 
   if (!items.length) {
-    output.innerHTML = '<div class="empty"><p>' + t('no_results') + '</p><p class="hint">' + t('try_different') + '</p></div>';
+    output.innerHTML = '<div class="empty"><p>' + tH('no_results') + '</p><p class="hint">' + tH('try_different') + '</p></div>';
     return;
   }
 
@@ -6267,18 +6272,18 @@ function _renderLangBar(data, currentZim) {
   var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === currentZim; });
   var currentLangCode = (zimInfo && zimInfo.language) || 'en';
 
-  var html = '<span class="lang-bar-label">' + t('language') + '</span>';
+  var html = '<span class="lang-bar-label">' + tH('language') + '</span>';
   // Current language first
-  html += '<button class="lang-btn current">' + currentLangCode.toUpperCase() + '</button>';
+  html += '<button class="lang-btn current">' + esc(currentLangCode.toUpperCase()) + '</button>';
   // Installed languages
   installed.forEach(function(l) {
     html += '<button class="lang-btn" onclick="openArticle(\'' + escJs(l.zim) + '\', \'' + escJs(l.path) + '\')" title="' + escAttr(l.name) + '">' + esc(l.lang.toUpperCase()) + '</button>';
   });
   // Show more indicator
   if (available.length > 0) {
-    html += '<span class="lang-bar-more" onclick="_showAvailableLangs(event)" title="' + t('lang_available', {n: available.length}) + '">+ ' + available.length + '</span>';
+    html += '<span class="lang-bar-more" onclick="_showAvailableLangs(event)" title="' + escAttr(tH('lang_available', {n: available.length})) + '">+ ' + available.length + '</span>';
   }
-  html += '<button class="lang-bar-close" onclick="_dismissLangBar()" title="' + t('close') + '">&times;</button>';
+  html += '<button class="lang-bar-close" onclick="_dismissLangBar()" title="' + escAttr(t('close')) + '">&times;</button>';
   bar.innerHTML = html;
   bar.classList.add('visible');
   bar._availableLangs = available;
@@ -6307,7 +6312,7 @@ function _showAvailableLangs(event) {
   var moreEl = event.target;
   var html = '';
   available.forEach(function(l) {
-    html += '<button class="lang-btn unavailable" onclick="_promptDownloadLang(\'' + escJs(l.catalog_name) + '\', \'' + escJs(l.name) + '\')" title="' + t('lang_download', {lang: escAttr(l.name)}) + '">' + esc(l.lang.toUpperCase()) + '</button>';
+    html += '<button class="lang-btn unavailable" onclick="_promptDownloadLang(\'' + escJs(l.catalog_name) + '\', \'' + escJs(l.name) + '\')" title="' + escAttr(t('lang_download', {lang: l.name})) + '">' + esc(l.lang.toUpperCase()) + '</button>';
   });
   moreEl.outerHTML = html;
 }
@@ -6643,6 +6648,7 @@ function _buildArticleMap(zim, path, centerTitle) {
         var dx2 = _mapNodes[other].x - n.x;
         var dy2 = _mapNodes[other].y - n.y;
         var dist = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+        if (dist < 1) dist = 1;
         var ideal = 140;
         fx += (dx2 / dist) * (dist - ideal) * k;
         fy += (dy2 / dist) * (dist - ideal) * k;
