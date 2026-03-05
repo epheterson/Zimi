@@ -216,12 +216,16 @@
   "switch_to_lang_available": "доступна — переключить?",
   "switch": "Переключить",
   "not_installed": "не установлена",
-
   "cal_gregorian": "Григорианский",
   "cal_hebrew": "Еврейский",
   "cal_islamic": "Исламский",
   "cal_persian": "Персидский",
   "cal_julian": "Юлианский",
   "cal_buddhist": "Буддийский",
-  "cal_chinese": "Китайский"
+  "cal_chinese": "Китайский",
+  "click_to_confirm": "Нажмите ещё раз для подтверждения",
+  "delete_zim": "Удалить этот ZIM-файл",
+  "change_password": "Изменить пароль",
+  "set_password": "Установить пароль",
+  "new_password": "Новый пароль"
 }

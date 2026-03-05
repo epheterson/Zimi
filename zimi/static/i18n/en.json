@@ -265,5 +265,11 @@
   "cal_persian": "Persian",
   "cal_julian": "Julian",
   "cal_buddhist": "Buddhist",
-  "cal_chinese": "Chinese"
+  "cal_chinese": "Chinese",
+
+  "click_to_confirm": "Click again to confirm deletion",
+  "delete_zim": "Delete this ZIM file",
+  "change_password": "Change password",
+  "set_password": "Set password",
+  "new_password": "New password"
 }

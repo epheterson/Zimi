@@ -216,12 +216,16 @@
   "switch_to_lang_available": "उपलब्ध है — बदलें?",
   "switch": "बदलें",
   "not_installed": "स्थापित नहीं",
-
   "cal_gregorian": "ग्रेगोरियन",
   "cal_hebrew": "हिब्रू",
   "cal_islamic": "इस्लामी",
   "cal_persian": "फ़ारसी",
   "cal_julian": "जूलियन",
   "cal_buddhist": "बौद्ध",
-  "cal_chinese": "चीनी"
+  "cal_chinese": "चीनी",
+  "click_to_confirm": "पुष्टि के लिए फिर से क्लिक करें",
+  "delete_zim": "यह ZIM फ़ाइल हटाएं",
+  "change_password": "पासवर्ड बदलें",
+  "set_password": "पासवर्ड सेट करें",
+  "new_password": "नया पासवर्ड"
 }

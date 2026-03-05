@@ -216,12 +216,16 @@
   "switch_to_lang_available": "est disponible — changer ?",
   "switch": "Changer",
   "not_installed": "n’est pas installé",
-
   "cal_gregorian": "Grégorien",
   "cal_hebrew": "Hébraïque",
   "cal_islamic": "Islamique",
   "cal_persian": "Persan",
   "cal_julian": "Julien",
   "cal_buddhist": "Bouddhiste",
-  "cal_chinese": "Chinois"
+  "cal_chinese": "Chinois",
+  "click_to_confirm": "Cliquez à nouveau pour confirmer",
+  "delete_zim": "Supprimer ce fichier ZIM",
+  "change_password": "Changer le mot de passe",
+  "set_password": "Définir un mot de passe",
+  "new_password": "Nouveau mot de passe"
 }

@@ -216,12 +216,16 @@
   "switch_to_lang_available": "可用 — 切换？",
   "switch": "切换",
   "not_installed": "未安装",
-
   "cal_gregorian": "公历",
   "cal_hebrew": "希伯来历",
   "cal_islamic": "伊斯兰历",
   "cal_persian": "波斯历",
   "cal_julian": "儒略历",
   "cal_buddhist": "佛历",
-  "cal_chinese": "农历"
+  "cal_chinese": "农历",
+  "click_to_confirm": "再次点击确认删除",
+  "delete_zim": "删除此 ZIM 文件",
+  "change_password": "更改密码",
+  "set_password": "设置密码",
+  "new_password": "新密码"
 }

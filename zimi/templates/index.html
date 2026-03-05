@@ -5246,9 +5246,9 @@ async function deleteZim(filename, btn) {
   if (!btn.classList.contains('confirming')) {
     btn.classList.add('confirming');
     btn.textContent = t('delete_confirm');
-    btn.title = 'Click again to confirm deletion';
+    btn.title = t('click_to_confirm');
     // Reset after 4 seconds if not confirmed
-    setTimeout(() => { if (btn.classList.contains('confirming')) { btn.classList.remove('confirming'); btn.textContent = '\u00D7'; btn.title = 'Delete this ZIM file'; }}, 4000);
+    setTimeout(() => { if (btn.classList.contains('confirming')) { btn.classList.remove('confirming'); btn.textContent = '\u00D7'; btn.title = t('delete_zim'); }}, 4000);
     return;
   }
   btn.textContent = t('deleting');
@@ -5590,7 +5590,7 @@ async function managePassword() {
   const errEl = document.getElementById('pw-error');
   const overlay = document.getElementById('pw-overlay');
 
-  openPwModal(has.has_password ? 'Change password' : 'Set password', {placeholder: 'New password', hideRemember: true});
+  openPwModal(has.has_password ? t('change_password') : t('set_password'), {placeholder: t('new_password'), hideRemember: true});
   document.getElementById('pw-remove-btn').style.display = has.has_password ? '' : 'none';
 
   _pwResolve = async function(newPw) {

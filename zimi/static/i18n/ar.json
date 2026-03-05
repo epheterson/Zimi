@@ -216,12 +216,16 @@
   "switch_to_lang_available": "متاحة — التبديل؟",
   "switch": "تبديل",
   "not_installed": "غير مثبتة",
-
   "cal_gregorian": "ميلادي",
   "cal_hebrew": "عبري",
   "cal_islamic": "هجري",
   "cal_persian": "فارسي",
   "cal_julian": "يولياني",
   "cal_buddhist": "بوذي",
-  "cal_chinese": "صيني"
+  "cal_chinese": "صيني",
+  "click_to_confirm": "انقر مرة أخرى للتأكيد",
+  "delete_zim": "حذف ملف ZIM هذا",
+  "change_password": "تغيير كلمة المرور",
+  "set_password": "تعيين كلمة المرور",
+  "new_password": "كلمة مرور جديدة"
 }
