@@ -257,5 +257,13 @@
 
   "switch_to_lang_available": "is available \u2014 switch?",
   "switch": "Switch",
-  "not_installed": "is not installed"
+  "not_installed": "is not installed",
+
+  "cal_gregorian": "Gregorian",
+  "cal_hebrew": "Hebrew",
+  "cal_islamic": "Islamic",
+  "cal_persian": "Persian",
+  "cal_julian": "Julian",
+  "cal_buddhist": "Buddhist",
+  "cal_chinese": "Chinese"
 }

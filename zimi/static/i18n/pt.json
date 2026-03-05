@@ -215,5 +215,13 @@
   "done_elapsed": "Pronto ({time}s)",
   "switch_to_lang_available": "está disponível — mudar?",
   "switch": "Mudar",
-  "not_installed": "não está instalado"
+  "not_installed": "não está instalado",
+
+  "cal_gregorian": "Gregoriano",
+  "cal_hebrew": "Hebraico",
+  "cal_islamic": "Islâmico",
+  "cal_persian": "Persa",
+  "cal_julian": "Juliano",
+  "cal_buddhist": "Budista",
+  "cal_chinese": "Chinês"
 }

@@ -215,5 +215,13 @@
   "done_elapsed": "Готово ({time} с)",
   "switch_to_lang_available": "доступна — переключить?",
   "switch": "Переключить",
-  "not_installed": "не установлена"
+  "not_installed": "не установлена",
+
+  "cal_gregorian": "Григорианский",
+  "cal_hebrew": "Еврейский",
+  "cal_islamic": "Исламский",
+  "cal_persian": "Персидский",
+  "cal_julian": "Юлианский",
+  "cal_buddhist": "Буддийский",
+  "cal_chinese": "Китайский"
 }

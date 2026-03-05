@@ -215,5 +215,13 @@
   "done_elapsed": "पूर्ण ({time} से.)",
   "switch_to_lang_available": "उपलब्ध है — बदलें?",
   "switch": "बदलें",
-  "not_installed": "स्थापित नहीं"
+  "not_installed": "स्थापित नहीं",
+
+  "cal_gregorian": "ग्रेगोरियन",
+  "cal_hebrew": "हिब्रू",
+  "cal_islamic": "इस्लामी",
+  "cal_persian": "फ़ारसी",
+  "cal_julian": "जूलियन",
+  "cal_buddhist": "बौद्ध",
+  "cal_chinese": "चीनी"
 }

@@ -2961,7 +2961,7 @@ function _jdnToJulian(jdn) {
 // ── Calendar dispatchers — uniform interface for any calendar system ──
 
 var _CAL_SYSTEMS = ['gregorian', 'hebrew', 'islamic', 'persian', 'julian', 'buddhist', 'chinese'];
-var _CAL_LABELS = { gregorian: 'Gregorian', hebrew: 'Hebrew', islamic: 'Islamic', persian: 'Persian', julian: 'Julian', buddhist: 'Buddhist', chinese: 'Chinese' };
+var _CAL_LABELS = { gregorian: t('cal_gregorian'), hebrew: t('cal_hebrew'), islamic: t('cal_islamic'), persian: t('cal_persian'), julian: t('cal_julian'), buddhist: t('cal_buddhist'), chinese: t('cal_chinese') };
 
 var _GREGORIAN_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 var _HIJRI_MONTHS = ['Muharram','Safar','Rabi\u2019 al-Awwal','Rabi\u2019 al-Thani',

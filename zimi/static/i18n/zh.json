@@ -215,5 +215,13 @@
   "done_elapsed": "完成（{time}秒）",
   "switch_to_lang_available": "可用 — 切换？",
   "switch": "切换",
-  "not_installed": "未安装"
+  "not_installed": "未安装",
+
+  "cal_gregorian": "公历",
+  "cal_hebrew": "希伯来历",
+  "cal_islamic": "伊斯兰历",
+  "cal_persian": "波斯历",
+  "cal_julian": "儒略历",
+  "cal_buddhist": "佛历",
+  "cal_chinese": "农历"
 }

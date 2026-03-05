@@ -215,5 +215,13 @@
   "done_elapsed": "تم ({time} ث.)",
   "switch_to_lang_available": "متاحة — التبديل؟",
   "switch": "تبديل",
-  "not_installed": "غير مثبتة"
+  "not_installed": "غير مثبتة",
+
+  "cal_gregorian": "ميلادي",
+  "cal_hebrew": "عبري",
+  "cal_islamic": "هجري",
+  "cal_persian": "فارسي",
+  "cal_julian": "يولياني",
+  "cal_buddhist": "بوذي",
+  "cal_chinese": "صيني"
 }
