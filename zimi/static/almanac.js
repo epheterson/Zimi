@@ -109,7 +109,7 @@ function _renderAlmanacContent() {
     html += '<div class="alm-card"><div class="alm-card-lbl">sunset</div><div class="alm-card-val">' + sunInfo0.sunset + '</div></div>';
     html += '<div class="alm-card"><div class="alm-card-lbl">daylight</div><div class="alm-card-val">' + sunInfo0.dayLength + '</div></div>';
     if (sunInfo0.goldenHour) {
-      html += '<div class="alm-card"><div class="alm-card-lbl">golden hour</div><div class="alm-card-val" style="color:#d4aa64">' + sunInfo0.goldenHour + '</div></div>';
+      html += '<div class="alm-card"><div class="alm-card-lbl">golden</div><div class="alm-card-val" style="color:#d4aa64">' + sunInfo0.goldenHour + '</div></div>';
     }
   }
   html += '</div>';
