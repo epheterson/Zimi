@@ -845,6 +845,19 @@
     .topbar.search-focused .random-btn,
     .topbar.search-focused .library-btn,
     .topbar.search-focused .manage-btn { display: none !important; }
+    /* v1.6: Almanac clock — stack vertically on mobile */
+    .alm-tz-wrap { flex-direction: column; gap: 12px; }
+    .alm-tz-list { grid-template-columns: repeat(3, 1fr); }
+    .alm-cards { grid-template-columns: repeat(2, 1fr); }
+    /* v1.6: Language bar — smaller on mobile */
+    .lang-bar { padding: 4px 8px; gap: 4px; }
+    .lang-btn { padding: 2px 8px; font-size: 11px; }
+    /* v1.6: Tab bar — compact on mobile */
+    .tab-item { max-width: 120px; font-size: 11px; padding: 4px 8px; }
+    /* v1.6: Language dropdown — full width on mobile */
+    .lang-dropdown { min-width: 160px; }
+    /* v1.6: Map button — hide label, keep icon */
+    .map-btn { padding: 4px; }
   }
 
   /* ── Password modal ── */
