@@ -78,7 +78,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.5.0"
+ZIMI_VERSION = "1.6.0"
 
 log = logging.getLogger("zimi")
 logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S", level=logging.INFO)
@@ -4613,7 +4613,14 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        # Service worker needs scope override; i18n files change between versions
+        if rel_path == "sw.js":
+            self.send_header("Service-Worker-Allowed", "/")
+            self.send_header("Cache-Control", "no-cache")
+        elif rel_path.startswith("i18n/"):
+            self.send_header("Cache-Control", "public, max-age=86400")
+        else:
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
         self.send_header("Access-Control-Allow-Origin", "*")
         if is_gzipped:
             self.send_header("Content-Encoding", "gzip")
