@@ -196,5 +196,66 @@
   "lang_download": "Download {lang}?",
 
   "settings": "Settings",
-  "language": "Language"
+  "language": "Language",
+
+  "open": "Open",
+  "open_new_tab": "Open in New Tab",
+  "copy_title": "Copy Title",
+  "add_to_favorites": "Add to Favorites",
+  "remove_from_favorites": "Remove from Favorites",
+  "new_collection": "New Collection\u2026",
+  "delete": "Delete",
+  "clear": "Clear",
+
+  "bookmarks": "Bookmarks (B)",
+  "history": "History (H)",
+  "bookmark_add": "Bookmark (B)",
+  "bookmarked_remove": "Bookmarked (B to remove)",
+  "no_bookmarks": "No bookmarks yet. Open an article and press B to bookmark it.",
+  "no_history_panel": "No history yet. Browse articles and search to build your history.",
+
+  "downloads": "Downloads",
+  "remaining": "remaining",
+  "all_languages": "All languages",
+
+  "delete_zim_confirm": "Delete \"{name}\"?",
+  "remove_password_confirm": "Remove password protection?",
+  "import_url_prompt": "Enter the HTTPS URL of a .zim file to import:",
+  "url_must_https": "URL must start with https://",
+  "url_must_zim": "URL must point to a .zim file",
+  "import_started": "Import started: {name}",
+  "import_failed": "Import failed: {error}",
+  "import_zim": "Import ZIM",
+
+  "partial_removed": "{n} partial download(s) removed",
+  "no_partial": "No partial downloads found",
+  "failed_clean": "Failed to clean up",
+  "partial_downloads": "Partial downloads",
+
+  "auto_update": "Auto-update",
+  "cross_zim_nav": "Cross-ZIM Navigation",
+  "show_cross_links": "Show cross-source link highlights",
+
+  "server_config_hint": "Server configuration is available via the Settings overlay.",
+  "open_server_settings": "Open Server Settings",
+  "configured_via_env": "Configured via environment variables or Docker.",
+  "set_change_password": "Set / Change Password",
+  "log_out": "Log Out",
+
+  "refreshing": "Refreshing\u2026",
+  "refreshing_cache": "Refreshing cache\u2026",
+  "cache_refreshed": "Cache refreshed.",
+  "refreshed": "Refreshed",
+  "refresh_failed": "Failed to refresh cache.",
+
+  "no_stats_yet": "No stats available yet. Start searching and reading articles!",
+  "stats_in_memory": "Stats are in-memory only and reset when the server restarts.",
+
+  "building": "Building...",
+  "already_built": "Already built",
+  "done_elapsed": "Done ({time}s)",
+
+  "switch_to_lang_available": "is available \u2014 switch?",
+  "switch": "Switch",
+  "not_installed": "is not installed"
 }

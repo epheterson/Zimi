@@ -217,6 +217,21 @@
     padding: 3px 8px; border-radius: 4px;
   }
   .lang-bar-more:hover { color: var(--amber); background: var(--amber-glow); }
+  .lang-banner {
+    display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+    background: var(--amber-glow); border-bottom: 1px solid var(--amber-border);
+    font-size: 13px; color: var(--text);
+  }
+  .lang-banner-btn {
+    padding: 3px 10px; border-radius: 4px; border: 1px solid var(--amber-border);
+    background: var(--amber); color: #000; font-size: 12px; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+  }
+  .lang-banner-dismiss {
+    margin-left: auto; background: none; border: none; color: var(--text2);
+    cursor: pointer; font-size: 14px; padding: 2px 6px;
+  }
+  .lang-banner-dismiss:hover { color: var(--text); }
 
   /* ── Tab bar ── */
   .tab-bar {
@@ -253,7 +268,7 @@
   .lang-selector-btn {
     display: flex; align-items: center; justify-content: center;
     background: none; border: 1px solid transparent; border-radius: var(--radius);
-    color: var(--text2); font-size: 16px; padding: 4px 6px; cursor: pointer;
+    color: var(--text2); padding: 4px 6px; cursor: pointer;
     flex-shrink: 0; transition: all 0.15s; line-height: 1;
   }
   .lang-selector-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
@@ -283,38 +298,6 @@
   [dir="rtl"] .bc-sep { transform: scaleX(-1); }
   [dir="rtl"] .result-source { flex-direction: row-reverse; }
   [dir="rtl"] .footer-sub { direction: ltr; } /* keep kbd hints LTR */
-
-  /* ── Article Map ── */
-  .article-map-overlay {
-    position: fixed; inset: 0; z-index: 10000;
-    background: rgba(0,0,0,0.85); display: none;
-    flex-direction: column; align-items: center; justify-content: center;
-  }
-  .article-map-overlay.visible { display: flex; }
-  .article-map-header {
-    display: flex; align-items: center; justify-content: space-between;
-    width: min(900px, 95vw); padding: 12px 0; color: var(--text);
-  }
-  .article-map-header h3 { margin: 0; font-size: 15px; font-weight: 600; }
-  .article-map-close {
-    background: none; border: none; color: var(--text2); font-size: 20px;
-    cursor: pointer; padding: 4px 8px; border-radius: var(--radius);
-  }
-  .article-map-close:hover { color: var(--amber); background: var(--amber-glow); }
-  #article-map-canvas {
-    border-radius: 8px; background: var(--bg);
-    border: 1px solid var(--border);
-    cursor: grab;
-  }
-  #article-map-canvas:active { cursor: grabbing; }
-  .map-btn {
-    display: none; align-items: center; justify-content: center;
-    background: none; border: 1px solid transparent; border-radius: var(--radius);
-    color: var(--text2); font-size: 14px; padding: 4px 8px; cursor: pointer;
-    flex-shrink: 0; transition: all 0.15s; gap: 4px; line-height: 1;
-  }
-  .map-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
-  .map-btn.visible { display: inline-flex; }
 
   /* ── Category headings ── */
   .cat-heading {
@@ -845,9 +828,10 @@
     .topbar.search-focused .random-btn,
     .topbar.search-focused .library-btn,
     .topbar.search-focused .manage-btn { display: none !important; }
-    /* v1.6: Almanac clock — stack vertically on mobile */
-    .alm-tz-wrap { flex-direction: column; gap: 12px; }
-    .alm-tz-list { grid-template-columns: repeat(3, 1fr); }
+    /* v1.6: Almanac clock — stack vertically on mobile, scale canvas */
+    .alm-tz-wrap { flex-direction: column; gap: 12px; align-items: center; width: 100%; }
+    .alm-tz-clock-side canvas { width: 180px; height: 180px; }
+    .alm-tz-list { grid-template-columns: repeat(3, 1fr); gap: 4px; }
     /* v1.6: Language bar — smaller on mobile */
     .lang-bar { padding: 4px 8px; gap: 4px; }
     .lang-btn { padding: 2px 8px; font-size: 11px; }
@@ -855,8 +839,6 @@
     .tab-item { max-width: 120px; font-size: 11px; padding: 4px 8px; }
     /* v1.6: Language dropdown — full width on mobile */
     .lang-dropdown { min-width: 160px; }
-    /* v1.6: Map button — hide label, keep icon */
-    .map-btn { padding: 4px; }
   }
 
   /* ── Password modal ── */
@@ -1235,21 +1217,20 @@
     <span id="bc-sep" class="bc-sep" style="display:none">/</span>
     <span id="bc-icon" class="bc-icon" style="display:none"></span>
   </div>
-  <button id="back-btn" class="back-btn" aria-label="Go back" style="display:none">&#x2190;</button>
+  <button id="back-btn" class="back-btn" aria-label="Go back" data-i18n-aria="go_back" style="display:none">&#x2190;</button>
   <div id="history-trail"></div>
   <div class="topbar-search">
-    <input type="text" id="q" placeholder="Search everything..." autofocus aria-label="Search" autocomplete="off">
+    <input type="text" id="q" placeholder="Search everything..." data-i18n-placeholder="search_placeholder" autofocus aria-label="Search" autocomplete="off">
     <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>
     <span class="kbd">/</span>
     <div id="suggest-dropdown" class="suggest-dropdown"></div>
   </div>
-  <a href="#" id="random-btn" class="random-btn" title="Random article (R)" onclick="randomArticle(event)"><span class="dice">&#x1F3B2;</span></a>
-  <button id="library-btn" class="library-btn" title="Library (H)" onclick="if(readerOpen){toggleBookmark();_updateLibraryBtnIcon()}else{toggleLibraryPanel()}"></button>
-  <button id="lang-selector-btn" class="lang-selector-btn" title="Language" onclick="toggleLangDropdown(event)" aria-label="Language">&#x1F310;</button>
+  <a href="#" id="random-btn" class="random-btn" title="Random article (R)" data-i18n-title="random_article" onclick="randomArticle(event)"><span class="dice">&#x1F3B2;</span></a>
+  <button id="library-btn" class="library-btn" title="Library (H)" data-i18n-title="library" onclick="if(readerOpen){toggleBookmark();_updateLibraryBtnIcon()}else{toggleLibraryPanel()}"></button>
+  <button id="lang-selector-btn" class="lang-selector-btn" title="Language" data-i18n-title="language" onclick="toggleLangDropdown(event)" aria-label="Language" data-i18n-aria="language"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg></button>
   <div id="lang-dropdown" class="lang-dropdown"></div>
-  <a href="#" id="manage-btn" class="manage-btn" title="Library Manager" onclick="toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
-  <button id="map-btn" class="map-btn" title="Article Map" onclick="_openArticleMap()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><line x1="7" y1="7" x2="10" y2="11"/><line x1="17" y1="7" x2="14" y2="11"/><line x1="7" y1="17" x2="10" y2="13"/><line x1="17" y1="17" x2="14" y2="13"/></svg></button>
-  <a id="newtab-btn" class="newtab-btn" href="#" target="_blank" rel="noopener" title="Open in browser" onclick="event.preventDefault();_openInBrowser()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+  <a href="#" id="manage-btn" class="manage-btn" title="Library Manager" data-i18n-title="library_manager" onclick="toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
+  <a id="newtab-btn" class="newtab-btn" href="#" target="_blank" rel="noopener" title="Open in browser" data-i18n-title="open_in_browser" onclick="event.preventDefault();_openInBrowser()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
 
 </nav>
 
@@ -1259,18 +1240,18 @@
 
 <div id="pw-overlay" class="pw-overlay" onclick="if(event.target===this)closePwModal()">
   <form class="pw-box" onsubmit="event.preventDefault();submitPw()" autocomplete="off">
-    <h3 id="pw-title">Enter password</h3>
+    <h3 id="pw-title" data-i18n="enter_password">Enter password</h3>
     <input style="display:none" type="text" name="fakeuser" tabindex="-1" autocomplete="off">
-    <input id="pw-input" type="password" placeholder="Password" autocomplete="new-password" data-1p-ignore onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
+    <input id="pw-input" type="password" placeholder="Password" data-i18n-placeholder="password" autocomplete="new-password" data-1p-ignore onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
     <div class="pw-error" id="pw-error"></div>
     <label id="pw-remember-row" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--text2);cursor:pointer">
-      <input type="checkbox" id="pw-remember" style="accent-color:var(--amber);flex-shrink:0"> <span>Remember me</span>
+      <input type="checkbox" id="pw-remember" style="accent-color:var(--amber);flex-shrink:0"> <span data-i18n="remember_me">Remember me</span>
     </label>
     <div class="pw-actions" style="justify-content:space-between">
-      <button type="button" id="pw-remove-btn" onclick="manageClearPassword()" style="display:none;color:var(--text2);font-size:12px">Remove</button>
+      <button type="button" id="pw-remove-btn" onclick="manageClearPassword()" style="display:none;color:var(--text2);font-size:12px" data-i18n="remove">Remove</button>
       <span style="flex:1"></span>
-      <button type="button" onclick="closePwModal()">Cancel</button>
-      <button type="submit" class="pw-primary">OK</button>
+      <button type="button" onclick="closePwModal()" data-i18n="cancel">Cancel</button>
+      <button type="submit" class="pw-primary" data-i18n="ok">OK</button>
     </div>
   </form>
 </div>
@@ -1278,16 +1259,16 @@
 <!-- Desktop: Onboarding overlay (first-run) -->
 <div id="desktop-onboarding" class="desktop-overlay" onclick="if(event.target===this)return">
   <div class="desktop-card">
-    <h2>Welcome to Zimi</h2>
-    <p class="subtitle">Choose where to keep your offline knowledge archives.</p>
-    <p class="subtitle" style="font-size:11px;opacity:0.5;margin-top:-16px;margin-bottom:24px">ZIM files can be large (Wikipedia is ~100 GB) — pick a drive with plenty of space.</p>
-    <label>ZIM folder</label>
+    <h2 data-i18n="welcome">Welcome to Zimi</h2>
+    <p class="subtitle" data-i18n="choose_folder_hint">Choose where to keep your offline knowledge archives.</p>
+    <p class="subtitle" style="font-size:11px;opacity:0.5;margin-top:-16px;margin-bottom:24px" data-i18n="large_files_hint">ZIM files can be large (Wikipedia is ~100 GB) — pick a drive with plenty of space.</p>
+    <label data-i18n="zim_folder">ZIM folder</label>
     <div class="field-row">
       <input type="text" id="onboard-path" readonly placeholder="Choose a folder...">
-      <button class="btn-browse" onclick="desktopChooseFolder('onboard-path')">Choose Folder</button>
+      <button class="btn-browse" onclick="desktopChooseFolder('onboard-path')" data-i18n="choose_folder">Choose Folder</button>
     </div>
     <div class="btn-row">
-      <button class="btn-primary" id="onboard-start" onclick="desktopFinishOnboarding()" disabled>Get Started</button>
+      <button class="btn-primary" id="onboard-start" onclick="desktopFinishOnboarding()" disabled data-i18n="get_started">Get Started</button>
     </div>
   </div>
 </div>
@@ -1295,36 +1276,36 @@
 <!-- Server Settings overlay -->
 <div id="settings-overlay" class="desktop-overlay" onclick="if(event.target===this)closeSettings()">
   <div class="desktop-card">
-    <h2>Server Settings</h2>
-    <p class="subtitle">Configure your Zimi server.</p>
-    <label>ZIM folder</label>
+    <h2 data-i18n="server_settings">Server Settings</h2>
+    <p class="subtitle" data-i18n="configure_hint">Configure your Zimi server.</p>
+    <label data-i18n="zim_folder">ZIM folder</label>
     <div class="field-row">
       <input type="text" id="settings-dir" readonly placeholder="/path/to/zims">
-      <button class="btn-browse" id="settings-browse-btn" onclick="settingsChooseFolder()" style="display:none">Choose Folder</button>
+      <button class="btn-browse" id="settings-browse-btn" onclick="settingsChooseFolder()" style="display:none" data-i18n="choose_folder">Choose Folder</button>
     </div>
-    <label>Data folder</label>
+    <label data-i18n="data_folder">Data folder</label>
     <div class="field-row">
-      <input type="text" id="settings-data-dir" readonly placeholder="(same as ZIM folder)">
-      <button class="btn-browse" id="settings-data-browse-btn" onclick="settingsChooseDataFolder()" style="display:none">Choose Folder</button>
+      <input type="text" id="settings-data-dir" readonly placeholder="(same as ZIM folder)" data-i18n-placeholder="same_as_zim">
+      <button class="btn-browse" id="settings-data-browse-btn" onclick="settingsChooseDataFolder()" style="display:none" data-i18n="choose_folder">Choose Folder</button>
     </div>
-    <div class="hint">Cache, collections, bookmarks, and history. Leave blank to store alongside ZIMs.</div>
-    <label id="settings-port-label">Port</label>
+    <div class="hint" data-i18n="data_folder_hint">Cache, collections, bookmarks, and history. Leave blank to store alongside ZIMs.</div>
+    <label id="settings-port-label" data-i18n="port">Port</label>
     <div class="field-row" id="settings-port-row">
       <input type="number" id="settings-port" min="1024" max="65535" value="8899">
     </div>
-    <div class="hint" id="settings-hint">Changes require a server restart to take effect.</div>
+    <div class="hint" id="settings-hint" data-i18n="restart_hint">Changes require a server restart to take effect.</div>
     <div id="settings-browser-link" style="display:none;margin-top:8px;margin-bottom:16px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius)">
       <div style="display:flex;align-items:center;justify-content:space-between">
-        <span id="settings-browser-label" style="font-size:12px;color:var(--text2)">Access from any browser on this computer</span>
+        <span id="settings-browser-label" style="font-size:12px;color:var(--text2)" data-i18n="browser_access">Access from any browser on this computer</span>
         <a id="settings-browser-url" href="#" target="_blank" rel="noopener" style="color:var(--amber);font-size:13px;font-weight:600;text-decoration:none"></a>
       </div>
     </div>
     <div class="settings-restart-msg" id="settings-restart-msg"></div>
     <div class="btn-row">
-      <button class="btn-secondary" onclick="settingsRefreshCache()">Refresh Cache</button>
+      <button class="btn-secondary" onclick="settingsRefreshCache()" data-i18n="refresh_cache">Refresh Cache</button>
       <span style="flex:1"></span>
-      <button class="btn-secondary" onclick="closeSettings()">Cancel</button>
-      <button class="btn-primary" id="settings-save-btn" onclick="settingsSave()">Save</button>
+      <button class="btn-secondary" onclick="closeSettings()" data-i18n="cancel">Cancel</button>
+      <button class="btn-primary" id="settings-save-btn" onclick="settingsSave()" data-i18n="save">Save</button>
     </div>
   </div>
 </div>
@@ -1350,23 +1331,16 @@
   </div>
   <footer id="footer" class="footer" style="display:none">
     <a href="https://github.com/epheterson/Zimi" target="_blank" rel="noopener" class="footer-brand">Zimi</a> <span id="footer-version"></span>&middot; Powered by <a href="https://kiwix.org" target="_blank" rel="noopener">Kiwix</a>
-    <div class="footer-sub"><span class="kbd-hints"><kbd>/</kbd> Search &middot; <kbd>R</kbd> Random &middot; <kbd>B</kbd> Bookmark &middot; <kbd>H</kbd> History &middot; <kbd>Esc</kbd> Back</span></div>
+    <div class="footer-sub"><span class="kbd-hints"><kbd>/</kbd> <span data-i18n="kbd_search">Search</span> &middot; <kbd>R</kbd> <span data-i18n="kbd_random">Random</span> &middot; <kbd>B</kbd> <span data-i18n="kbd_bookmark">Bookmark</span> &middot; <kbd>H</kbd> <span data-i18n="kbd_history">History</span> &middot; <kbd>Esc</kbd> <span data-i18n="kbd_back">Back</span></span></div>
   </footer>
 </main>
 
 <div id="reader" class="reader-view">
-  <div class="reader-loading" id="reader-loading"><div class="spinner"></div><span>Loading...</span></div>
+  <div class="reader-loading" id="reader-loading"><div class="spinner"></div><span data-i18n="loading">Loading...</span></div>
   <iframe id="reader-frame" title="Article content" sandbox="allow-same-origin allow-scripts allow-popups allow-downloads"></iframe>
 </div>
 <div id="almanac-view" class="almanac-view">
   <div class="almanac-content" id="almanac-content"></div>
-</div>
-<div id="article-map-overlay" class="article-map-overlay" onclick="if(event.target===this)_closeArticleMap()">
-  <div class="article-map-header">
-    <h3 id="article-map-title">Article Map</h3>
-    <button class="article-map-close" onclick="_closeArticleMap()">&times;</button>
-  </div>
-  <canvas id="article-map-canvas" width="880" height="560"></canvas>
 </div>
 <div id="zim-ctx-menu"></div>
 <div id="link-ctx-menu" class="zimi-ctx"></div>
@@ -1484,6 +1458,58 @@ async function setLanguage(lang) {
   _applyRTL(lang);
   _applyI18nToDOM();
   _renderLangDropdown();
+  _checkLanguageBanner(lang);
+}
+
+// ── Language-experience banner ──
+// When switching UI language, suggest matching Wikipedia ZIM or offer download
+function _checkLanguageBanner(lang) {
+  // Remove any existing banner
+  var old = document.getElementById('lang-banner');
+  if (old) old.remove();
+  // English is default — no banner needed
+  if (lang === 'en') return;
+  // Don't show if user dismissed for this language
+  if (localStorage.getItem('zimi_lang_banner_' + lang) === '0') return;
+  // Map UI lang code to ZIM name patterns
+  var zims = zimsCache || [];
+  var matchZim = zims.find(function(z) {
+    return z.name && /^wikipedia/.test(z.name) && z.language === lang;
+  });
+  var langName = (_AVAILABLE_LANGS.find(function(l) { return l.code === lang; }) || {}).name || lang;
+  var banner = document.createElement('div');
+  banner.id = 'lang-banner';
+  banner.className = 'lang-banner';
+  if (matchZim) {
+    // Matching Wikipedia found — offer to switch
+    banner.innerHTML = '<span>' + esc(langName) + ' Wikipedia ' + t('switch_to_lang_available') + '</span>' +
+      '<button class="lang-banner-btn" onclick="_langBannerSwitch(\'' + escJs(matchZim.name) + '\')">' + tH('switch') + '</button>' +
+      '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(lang) + '\')">\u2715</button>';
+  } else {
+    // No matching Wikipedia — offer download
+    banner.innerHTML = '<span>' + esc(langName) + ' Wikipedia ' + t('not_installed') + '</span>' +
+      '<button class="lang-banner-btn" onclick="_langBannerDownload(\'' + escJs(lang) + '\')">' + tH('download') + '</button>' +
+      '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(lang) + '\')">\u2715</button>';
+  }
+  // Insert after topbar
+  var topbar = document.querySelector('.topbar');
+  if (topbar && topbar.parentNode) topbar.parentNode.insertBefore(banner, topbar.nextSibling);
+}
+function _langBannerSwitch(zimName) {
+  var banner = document.getElementById('lang-banner');
+  if (banner) banner.remove();
+  enterSource(zimName, true);
+}
+function _langBannerDownload(lang) {
+  var banner = document.getElementById('lang-banner');
+  if (banner) banner.remove();
+  enterManage(true);
+  setTimeout(function() { switchManageTab('browse'); }, 100);
+}
+function _langBannerDismiss(lang) {
+  localStorage.setItem('zimi_lang_banner_' + lang, '0');
+  var banner = document.getElementById('lang-banner');
+  if (banner) banner.remove();
 }
 
 function _applyI18nToDOM() {
@@ -1580,9 +1606,9 @@ function manageLogout() {
 }
 
 function openPwModal(title, opts) {
-  document.getElementById('pw-title').textContent = title || 'Enter password';
+  document.getElementById('pw-title').textContent = title || t('enter_password');
   document.getElementById('pw-input').value = '';
-  document.getElementById('pw-input').placeholder = (opts && opts.placeholder) || 'Password';
+  document.getElementById('pw-input').placeholder = (opts && opts.placeholder) || t('password');
   document.getElementById('pw-input').autocomplete = (opts && opts.hideRemember) ? 'new-password' : 'current-password';
   document.getElementById('pw-error').style.display = 'none';
   document.getElementById('pw-remember-row').style.display = (opts && opts.hideRemember) ? 'none' : 'flex';
@@ -1640,7 +1666,7 @@ function updateTopbar() {
   if (mode === 'manage' || _almanacOpen) {
     manageBtnEl.style.display = 'flex';
     manageBtnEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    manageBtnEl.title = 'Close';
+    manageBtnEl.title = t('close');
     manageBtnEl.style.color = 'var(--amber)';
     manageBtnEl.style.borderColor = 'var(--amber-border)';
     manageBtnEl.style.background = 'var(--amber-glow)';
@@ -1650,7 +1676,7 @@ function updateTopbar() {
   } else {
     manageBtnEl.style.display = manageEnabled && !activeSource ? 'flex' : 'none';
     manageBtnEl.innerHTML = _gearSvg;
-    manageBtnEl.title = 'Library Manager';
+    manageBtnEl.title = t('library_manager');
     manageBtnEl.style.color = '';
     manageBtnEl.style.borderColor = '';
     manageBtnEl.style.background = '';
@@ -1658,8 +1684,6 @@ function updateTopbar() {
   }
 
   newtabBtn.style.display = readerOpen ? 'flex' : 'none';
-  var mapBtn = document.getElementById('map-btn');
-  mapBtn.classList.toggle('visible', readerOpen && !!currentArticle);
   randomBtn.style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
   document.getElementById('library-btn').style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
   _updateLibraryBtnIcon();
@@ -1673,17 +1697,17 @@ function updateTopbar() {
     q.placeholder = _zimTitle(readerSource);
   } else if (mode === 'manage') {
     if (manageTab === 'installed') {
-      q.placeholder = 'Filter installed ZIMs...';
+      q.placeholder = t('filter_installed');
     } else if (manageCategoryFilter) {
       const catMeta = BROWSE_CATEGORIES.find(c => c.key === manageCategoryFilter);
-      q.placeholder = 'Search in ' + (catMeta ? catMeta.name : manageCategoryFilter) + '...';
+      q.placeholder = t('search_in', {source: catMeta ? catMeta.name : manageCategoryFilter});
     } else {
-      q.placeholder = 'Search catalog...';
+      q.placeholder = t('search_catalog');
     }
   } else if (homeScope) {
-    q.placeholder = 'Search ' + homeScope.label + '...';
+    q.placeholder = t('search_in', {source: homeScope.label});
   } else {
-    q.placeholder = 'Search everything...';
+    q.placeholder = t('search_placeholder');
   }
 
   // Footer
@@ -1866,13 +1890,13 @@ function _openInBrowser() {
       navigator.clipboard.writeText(url).then(function() {
         var toast = document.createElement('div');
         toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
-        toast.textContent = 'Link copied \u2014 paste in Safari to open';
+        toast.textContent = t('link_copied');
         document.body.appendChild(toast);
         setTimeout(function() { if (toast.parentNode) toast.remove(); }, 3000);
       });
     } else {
       // Fallback: prompt with the URL
-      prompt('Copy this link to open in Safari:', url);
+      prompt(t('copy_link'), url);
     }
   } else {
     // Normal browser: open in new tab
@@ -2117,8 +2141,8 @@ function renderHome(filter) {
     statsBar.innerHTML = ''; statsBar.style.display = 'none';
     pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
     output.innerHTML = '<div id="discover-row"></div>'
-      + '<div class="empty"><p>No knowledge sources found</p><p class="hint">Add ZIM files to get started</p>'
-      + (manageEnabled ? '<a href="/?manage" onclick="event.preventDefault();enterManage();setTimeout(function(){switchManageTab(\'browse\')},50)" style="display:inline-block;margin-top:16px;color:var(--amber);font-weight:500;font-size:14px;text-decoration:none;border-bottom:1px solid var(--amber-border)">Catalog \u2192</a>' : '')
+      + '<div class="empty"><p>' + tH('no_sources_found') + '</p><p class="hint">' + tH('add_zims') + '</p>'
+      + (manageEnabled ? '<a href="/?manage" onclick="event.preventDefault();enterManage();setTimeout(function(){switchManageTab(\'browse\')},50)" style="display:inline-block;margin-top:16px;color:var(--amber);font-weight:500;font-size:14px;text-decoration:none;border-bottom:1px solid var(--amber-border)">' + tH('catalog_link') + '</a>' : '')
       + '</div>';
     _loadDiscover();
     return;
@@ -2148,11 +2172,10 @@ function renderHome(filter) {
   const n = baseZims.length;
   var statsHtml;
   if (filter && zims.length !== baseZims.length) {
-    statsHtml = '<span class="num">' + zims.length + '</span> of ' + n + ' source' + (n !== 1 ? 's' : '') +
-      ' matching &ldquo;' + esc(filter) + '&rdquo;';
+    statsHtml = '<span class="num">' + zims.length + '</span> ' + tH('sources_matching', {n: zims.length, total: n, query: filter});
   } else {
-    statsHtml = '<span class="num">' + n + '</span> source' + (n !== 1 ? 's' : '') + ' &middot; ' +
-      '<span class="num">' + totalEntries.toLocaleString() + '</span> article' + (totalEntries !== 1 ? 's' : '') + ' &middot; ' +
+    statsHtml = '<span class="num">' + n + '</span> ' + tH('sources_count', {n: n}) + ' &middot; ' +
+      '<span class="num">' + totalEntries.toLocaleString() + '</span> ' + tH('articles_count', {n: totalEntries.toLocaleString()}) + ' &middot; ' +
       fmtSizeHtml(totalGb);
   }
 
@@ -2165,7 +2188,7 @@ function renderHome(filter) {
     statsBar.innerHTML = ''; statsBar.style.display = 'none';
   } else if (!homeScope && !filter && discoverHidden) {
     // Discover hidden — stats clickable to re-enable
-    statsBar.innerHTML = '<a href="#" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');renderHome()" style="color:inherit;text-decoration:none" title="Show Discover">' + statsHtml + '</a>';
+    statsBar.innerHTML = '<a href="#" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');renderHome()" style="color:inherit;text-decoration:none" title="' + escAttr(t('show_discover')) + '">' + statsHtml + '</a>';
     statsBar.style.display = '';
   } else {
     statsBar.innerHTML = statsHtml;
@@ -2190,7 +2213,7 @@ function renderHome(filter) {
   // Scope header with back link
   if (homeScope) {
     h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">' +
-      '<a href="#" onclick="event.preventDefault();enterHome(true)" style="color:var(--text2);text-decoration:none;font-size:13px">\u2190 All Sources</a>' +
+      '<a href="#" onclick="event.preventDefault();enterHome(true)" style="color:var(--text2);text-decoration:none;font-size:13px">' + tH('all_sources') + '</a>' +
       '<span style="color:var(--border)">/</span>' +
       '<span style="font-size:13px;font-weight:600;color:var(--amber)">' + esc(homeScope.label) + '</span>' +
     '</div>';
@@ -2238,7 +2261,7 @@ function renderHome(filter) {
   }
 
   if (filter && zims.length === 0) {
-    h += '<div class="empty"><p>No sources matching &ldquo;' + esc(filter) + '&rdquo;</p></div>';
+    h += '<div class="empty"><p>' + tH('no_sources_matching', {query: filter}) + '</p></div>';
   } else {
     cats.forEach(cat => {
       if (!homeScope) {
@@ -2408,7 +2431,7 @@ function _dismissDiscover() {
   // Show undo toast
   var toast = document.createElement('div');
   toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
-  toast.innerHTML = 'Discover hidden. <a href="#" style="color:var(--amber);text-decoration:none" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');this.parentNode.remove();renderHome()">Undo</a>';
+  toast.innerHTML = tH('discover_hidden') + ' <a href="#" style="color:var(--amber);text-decoration:none" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');this.parentNode.remove();renderHome()">' + tH('undo') + '</a>';
   document.body.appendChild(toast);
   setTimeout(function() { if (toast.parentNode) toast.remove(); }, 5000);
 }
@@ -2573,7 +2596,7 @@ function _loadDiscover() {
   });
 }
 function _renderDiscover(el, items) {
-  var h = '<div class="discover-section"><div class="discover-label"><span>Discover</span><button class="dc-dismiss" onclick="event.stopPropagation();_dismissDiscover()" title="Hide Discover">\u00D7</button></div><div class="discover-scroll">';
+  var h = '<div class="discover-section"><div class="discover-label"><span>' + tH('discover') + '</span><button class="dc-dismiss" onclick="event.stopPropagation();_dismissDiscover()" title="' + escAttr(t('hide_discover')) + '">\u00D7</button></div><div class="discover-scroll">';
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
     if (!it) continue; // Skip null results (e.g. failed dated entry lookups)
@@ -2684,7 +2707,7 @@ function _renderDiscover(el, items) {
       var attrLine = (attrName && attrName !== cleanQuote)
         ? '<div class="dc-attribution">\u2014 ' + esc(attrName) + '</div>'
         : '';
-      h += '<div class="discover-card dc-quote-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+      h += '<div class="discover-card dc-quote-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
         '<div class="dc-body">' +
           '<div class="dc-header">' + iconHtml + '<span>' + esc(it.label || 'Quote of the Day') + '</span></div>' +
           '<div class="dc-quote-mark">\u201C</div>' +
@@ -2696,7 +2719,7 @@ function _renderDiscover(el, items) {
     // Full-width card with headword, part of speech, and definition.
     // Used for Wiktionary content.
     } else if (it.label === 'Word of the Day') {
-      h += '<div class="discover-card dc-quote-card dc-word-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+      h += '<div class="discover-card dc-quote-card dc-word-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
         '<div class="dc-body">' +
           '<div class="dc-header">' + iconHtml + '<span>' + esc(it.label) + '</span></div>' +
           '<div class="dc-headword">' + esc(displayTitle) + '</div>' +
@@ -2735,7 +2758,7 @@ function _renderDiscover(el, items) {
           showBlurb = '';
         }
       }
-      h += '<div class="discover-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+      h += '<div class="discover-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
         thumbHtml +
         '<div class="dc-body">' +
           '<div class="dc-source">' + iconHtml + '<span>' + esc(sourceLabel) + '</span>' + badgeHtml + dateHtml + '</div>' +
@@ -2817,12 +2840,12 @@ function toggleCategory(cat) {
     var favs = (collectionsCache && collectionsCache.favorites) || [];
     var isFav = favs.includes(zim);
     var colls = (collectionsCache && collectionsCache.collections) || {};
-    var h = '<div class="ctx-item" data-action="open">Open</div>';
-    h += '<div class="ctx-item" data-action="newtab">Open in New Tab</div>';
+    var h = '<div class="ctx-item" data-action="open">' + tH('open') + '</div>';
+    h += '<div class="ctx-item" data-action="newtab">' + tH('open_new_tab') + '</div>';
     h += '<div class="ctx-sep"></div>';
-    h += '<div class="ctx-item" data-action="favorite">' + (isFav ? 'Remove from Favorites' : 'Add to Favorites') + '</div>';
+    h += '<div class="ctx-item" data-action="favorite">' + (isFav ? tH('remove_from_favorites') : tH('add_to_favorites')) + '</div>';
     // Collections submenu (hover to expand)
-    h += '<div class="ctx-item">Collections \u203A<div class="ctx-sub">';
+    h += '<div class="ctx-item">' + tH('collections_tab') + ' \u203A<div class="ctx-sub">';
     for (var cName in colls) {
       var coll = colls[cName];
       var inColl = (coll.zims || []).indexOf(zim) >= 0;
@@ -2830,11 +2853,11 @@ function toggleCategory(cat) {
         (inColl ? '\u2713 ' : '') + esc(coll.label || cName) + '</div>';
     }
     if (Object.keys(colls).length > 0) h += '<div class="ctx-sep"></div>';
-    h += '<div class="ctx-item" data-action="new-collection">New Collection\u2026</div>';
+    h += '<div class="ctx-item" data-action="new-collection">' + tH('new_collection') + '</div>';
     h += '</div></div>';
     if (manageEnabled) {
       h += '<div class="ctx-sep"></div>';
-      h += '<div class="ctx-item danger" data-action="delete">Delete</div>';
+      h += '<div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
     }
     menu.innerHTML = h;
     posMenu(_ctxX, _ctxY);
@@ -2891,7 +2914,7 @@ function toggleCategory(cat) {
       }).then(function(res) { if (res.ok) { coll.zims = zims; renderHome(); } });
     } else if (action === 'new-collection') {
       closeCtx();
-      var name = prompt('Collection name:');
+      var name = prompt(t('collection_placeholder'));
       if (!name || !name.trim()) return;
       var slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
       manageFetch('/collections', {
@@ -2906,7 +2929,7 @@ function toggleCategory(cat) {
       closeCtx();
       var zinfo = zimsCache && zimsCache.find(function(z) { return z.name === zim; });
       if (!zinfo || !zinfo.file) return;
-      if (!confirm('Delete "' + (zinfo.title || zim) + '"?')) return;
+      if (!confirm(t('delete_zim_confirm', {name: zinfo.title || zim}))) return;
       // Optimistic: remove card immediately
       if (card) card.style.display = 'none';
       zimsCache = zimsCache.filter(function(z) { return z.name !== zim; });
@@ -2959,7 +2982,7 @@ async function renderSource(name) {
   // Catalog ZIMs or ZIMs without main_path — show source header
   sourceHeaderEl.innerHTML = headerHtml;
   sourceHeaderEl.style.display = '';
-  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading...</div>';
+  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '</div>';
 
   // Try catalog (zimgit PDF collections show document list)
   try {
@@ -2967,11 +2990,11 @@ async function renderSource(name) {
     const data = await res.json();
     if (mode !== 'source' || currentSource !== name) return; // stale
     if (data.documents && data.documents.length) {
-      output.innerHTML = '<div class="cat-heading">' + esc(String(data.count)) + ' Documents</div>' +
+      output.innerHTML = '<div class="cat-heading">' + tH('documents', {n: data.count}) + '</div>' +
         '<div class="results">' + data.documents.map((d, i) => {
           const hasPath = !!d.path;
           const clickAttr = hasPath ? ' onclick="openArticle(\'' + escJs(name) + '\', \'' + escJs(d.path) + '\', \'' + escJs(d.title || '') + '\')" onkeydown="if(event.key===\'Enter\')openArticle(\'' + escJs(name) + '\', \'' + escJs(d.path) + '\', \'' + escJs(d.title || '') + '\')"' : '';
-          return '<div class="result"' + (hasPath ? ' tabindex="0" role="button" data-zim="' + escAttr(name) + '" data-path="' + escAttr(d.path) + '"' : '') + ' style="animation-delay:' + (i * 0.04) + 's"' + clickAttr + '>' +
+          return '<div class="result"' + (hasPath ? ' tabindex="0" role="button" data-zim="' + escAttr(name) + '" data-path="' + escAttr(d.path) + '" data-title="' + escAttr(d.title || '') + '"' : '') + ' style="animation-delay:' + (i * 0.04) + 's"' + clickAttr + '>' +
             '<div class="result-body">' +
             '<div class="title">' + esc(d.title) + '</div>' +
             (d.description ? '<div class="snippet">' + esc(d.description) + '</div>' : '') +
@@ -2991,7 +3014,7 @@ async function renderSource(name) {
     sourceHeaderEl.style.display = 'none';
     openReader('/w/' + encodeURIComponent(name) + '/' + info.main_path);
   } else if (info.entries === 0 || info.entries === '?') {
-    output.innerHTML = '<div class="empty"><p>This source has no content</p><p class="hint">The ZIM file may be corrupted or empty</p></div>';
+    output.innerHTML = '<div class="empty"><p>' + tH('no_content') + '</p><p class="hint">' + tH('zim_corrupted') + '</p></div>';
   } else {
     output.innerHTML = '';
   }
@@ -3109,7 +3132,7 @@ async function doSearch(query, push) {
     statsBar.style.display = 'none';
     pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
     searchMeta.style.display = 'none';
-    output.innerHTML = '<div class="empty"><p>Try more specific keywords</p><p class="hint">Common words like \u201c' + esc(query) + '\u201d match too many articles</p></div>';
+    output.innerHTML = '<div class="empty"><p>' + tH('try_specific') + '</p><p class="hint">' + tH('common_words', {word: query}) + '</p></div>';
     updateTopbar();
     return;
   }
@@ -3130,7 +3153,7 @@ async function doSearch(query, push) {
   statsBar.style.display = 'none';
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   searchMeta.style.display = 'none';
-  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Searching titles\u2026</div>';
+  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('searching_titles') + '</div>';
   updateTopbar();
 
   let zimParam = scope ? '&zim=' + encodeURIComponent(scope) : '';
@@ -3173,7 +3196,7 @@ async function doSearch(query, push) {
       const msg = titleCount > 0
         ? titleCount + ' title match' + (titleCount !== 1 ? 'es' : '') + ' (' + phase1Elapsed + 's) \u2014 '
         : '';
-      indicator.innerHTML = '<span class="spinner-inline"></span>' + msg + 'Searching article content\u2026';
+      indicator.innerHTML = '<span class="spinner-inline"></span>' + msg + tH('searching_content');
       output.prepend(indicator);
 
       // Live elapsed timer
@@ -3181,7 +3204,7 @@ async function doSearch(query, push) {
         const el = document.getElementById('fts-indicator');
         if (!el) { clearInterval(timerInterval); return; }
         const now = ((performance.now() - searchT0) / 1000).toFixed(0);
-        el.innerHTML = '<span class="spinner-inline"></span>' + msg + 'Searching article content\u2026 (' + now + 's)';
+        el.innerHTML = '<span class="spinner-inline"></span>' + msg + tH('searching_content_time', {time: now});
       }, 1000);
 
       // Phase 2: full Xapian FTS (sequential under _zim_lock, searches every ZIM)
@@ -3196,7 +3219,7 @@ async function doSearch(query, push) {
     }
   } catch(e) {
     if (e.name === 'AbortError') return;
-    output.innerHTML = '<div class="empty"><p>Search failed</p><p class="hint">Try again in a moment.</p></div>';
+    output.innerHTML = '<div class="empty"><p>' + tH('search_failed') + '</p><p class="hint">' + tH('try_again') + '</p></div>';
   }
 }
 
@@ -3347,7 +3370,7 @@ function renderSearchResults(data, scope) {
       ? '<div class="result-source">' + _sourceIconHtml(r.zim, 20) +
         '<span class="rs-name">' + esc(_zimTitle(r.zim)) + '</span></div>'
       : '';
-    return '<div class="result" tabindex="0" role="button" data-zim="' + escAttr(r.zim) + '" data-path="' + escAttr(r.path) + '" style="animation-delay:' + (Math.min(i, 5) * 0.04) + 's" onclick="openArticle(\'' + escJs(r.zim) + '\', \'' + escJs(r.path) + '\', \'' + escJs(r.title || '') + '\')" onkeydown="if(event.key===\'Enter\')openArticle(\'' + escJs(r.zim) + '\', \'' + escJs(r.path) + '\', \'' + escJs(r.title || '') + '\')">' +
+    return '<div class="result" tabindex="0" role="button" data-zim="' + escAttr(r.zim) + '" data-path="' + escAttr(r.path) + '" data-title="' + escAttr(r.title || '') + '" style="animation-delay:' + (Math.min(i, 5) * 0.04) + 's" onclick="openArticle(\'' + escJs(r.zim) + '\', \'' + escJs(r.path) + '\', \'' + escJs(r.title || '') + '\')" onkeydown="if(event.key===\'Enter\')openArticle(\'' + escJs(r.zim) + '\', \'' + escJs(r.path) + '\', \'' + escJs(r.title || '') + '\')">' +
       '<div class="result-thumb" data-needs-thumb="1"></div>' +
       '<div class="result-body">' + sourceRow +
       '<div class="title">' + esc(r.title) + '</div>' +
@@ -4034,7 +4057,7 @@ function drillCategory(catKey) {
   q.placeholder = 'Search in ' + catName + '...';
   q.value = '';
 
-  results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading...</div>';
+  results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '</div>';
 
   loadFullCatalog().then(items => {
     // Filter to this category (+ unknown/merged cats go to "other")
@@ -4055,14 +4078,14 @@ function drillCategory(catKey) {
       '<span class="browse-drilldown-count">' + grouped.length + ' available</span>' +
     '</div>';
     for (const item of grouped) h += renderCatalogItem(item);
-    if (!grouped.length) h += '<div class="empty"><p>No ZIMs in this category</p></div>';
+    if (!grouped.length) h += '<div class="empty"><p>' + tH('no_zims_category') + '</p></div>';
     results.innerHTML = h;
     // Move language picker into drill-down header for easy access
     var _langEl = document.getElementById('catalog-lang');
     var _drillHeader = results.querySelector('.browse-drilldown-header');
     if (_langEl && _drillHeader) _drillHeader.appendChild(_langEl);
   }).catch(err => {
-    results.innerHTML = '<div class="empty"><p>Failed to load category</p></div>';
+    results.innerHTML = '<div class="empty"><p>' + tH('failed_load_category') + '</p></div>';
   });
 }
 
@@ -4075,7 +4098,7 @@ function browseCatalogFilter(query) {
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
 
   if (!_catalogCache) {
-    results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading...</div>';
+    results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '</div>';
   }
   loadFullCatalog().then(items => {
     const lq = query.toLowerCase();
@@ -4101,10 +4124,10 @@ function browseCatalogFilter(query) {
       '<span class="browse-drilldown-count">' + filtered.length + ' results for \u201C' + esc(query) + '\u201D</span>' +
     '</div>';
     for (const item of grouped) h += renderCatalogItem(item);
-    if (!grouped.length) h += '<div class="empty"><p>No matching ZIMs</p></div>';
+    if (!grouped.length) h += '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
     results.innerHTML = h;
   }).catch(() => {
-    results.innerHTML = '<div class="empty"><p>Failed to search catalog</p></div>';
+    results.innerHTML = '<div class="empty"><p>' + tH('failed_search_catalog') + '</p></div>';
   });
 }
 
@@ -4265,10 +4288,10 @@ async function renderCollectionsTab() {
   let h = '';
 
   // Create collection form
-  h += '<div class="manage-card"><h2>Collections</h2>';
+  h += '<div class="manage-card"><h2>' + tH('collections_tab') + '</h2>';
   h += '<div class="coll-form">' +
-    '<input id="coll-label" placeholder="Collection name (e.g. Dev Docs)" autocomplete="off">' +
-    '<button onclick="createCollection()">Create</button>' +
+    '<input id="coll-label" placeholder="' + escAttr(t('collection_placeholder')) + '" autocomplete="off">' +
+    '<button onclick="createCollection()">' + tH('create') + '</button>' +
   '</div>';
 
   // Each collection with inline ZIM picker
@@ -4279,7 +4302,7 @@ async function renderCollectionsTab() {
     h += '<div class="coll-item" style="flex-direction:column;align-items:stretch" onclick="toggleCollExpand(\'' + escAttr(name) + '\')">';
     h += '<div style="display:flex;align-items:center;gap:12px">' +
       '<span class="coll-name" style="flex:1">' + esc(label) +
-      ' <span style="font-weight:400;color:var(--text2);font-size:12px">(' + collZims.length + ' source' + (collZims.length !== 1 ? 's' : '') + ')</span></span>' +
+      ' <span style="font-weight:400;color:var(--text2);font-size:12px">(' + tH('n_sources', {n: collZims.length}) + ')</span></span>' +
       '<button class="coll-del" onclick="event.stopPropagation();deleteCollection(\'' + escAttr(name) + '\', this)" title="Delete collection">\u00D7</button>' +
     '</div>';
     if (expanded) {
@@ -4310,9 +4333,9 @@ async function renderCollectionsTab() {
   }
 
   if (!Object.keys(colls).length) {
-    h += '<div style="font-size:13px;color:var(--text2)">No collections yet. Create one to group ZIMs for scoped search.</div>';
+    h += '<div style="font-size:13px;color:var(--text2)">' + tH('no_collections') + '</div>';
   }
-  h += '<div style="font-size:12px;color:var(--text2);margin-top:12px;opacity:0.7">Click a collection to add or remove sources. Collections with sources appear as homepage sections.</div>';
+  h += '<div style="font-size:12px;color:var(--text2);margin-top:12px;opacity:0.7">' + tH('collection_hint') + '</div>';
   h += '</div>';
 
   el.innerHTML = h;
@@ -4338,7 +4361,7 @@ async function deleteCollection(name, btn) {
   // Two-click confirmation
   if (!btn.classList.contains('confirming')) {
     btn.classList.add('confirming');
-    btn.textContent = 'Delete?';
+    btn.textContent = t('delete_confirm');
     btn.style.fontSize = '11px';
     btn.style.color = 'var(--amber)';
     setTimeout(() => { if (btn.classList.contains('confirming')) { btn.classList.remove('confirming'); btn.textContent = '\u00D7'; btn.style.fontSize = ''; btn.style.color = ''; }}, 3000);
@@ -4399,13 +4422,13 @@ function _historyZimInfo(ev) {
 async function renderHistoryTab() {
   const el = document.getElementById('manage-history');
   if (!el) return;
-  el.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading...</div>';
+  el.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '</div>';
   try {
     const res = await manageFetch('/manage/history');
     const data = await res.json();
     const events = data.history || [];
     if (!events.length) {
-      el.innerHTML = '<div class="empty"><p>No history yet</p><p class="hint">Downloads, updates, and deletions will appear here</p></div>';
+      el.innerHTML = '<div class="empty"><p>' + tH('no_history') + '</p><p class="hint">' + tH('history_hint') + '</p></div>';
       return;
     }
     // Group by day
@@ -4430,10 +4453,10 @@ async function renderHistoryTab() {
           : '<span class="ci-letter">' + (esc(title)[0] || '?').toUpperCase() + '</span>';
 
         let label = '', labelColor = 'var(--text2)';
-        if (ev.event === 'updated') { label = 'Updated'; }
-        else if (ev.event === 'download') { label = 'Downloaded'; }
-        else if (ev.event === 'download_failed') { label = 'Failed'; labelColor = '#ef4444'; }
-        else if (ev.event === 'deleted') { label = 'Deleted'; }
+        if (ev.event === 'updated') { label = t('event_updated'); }
+        else if (ev.event === 'download') { label = t('event_downloaded'); }
+        else if (ev.event === 'download_failed') { label = t('event_failed'); labelColor = '#ef4444'; }
+        else if (ev.event === 'deleted') { label = t('event_deleted'); }
         else { label = ev.event; }
 
         const meta = [];
@@ -4454,7 +4477,7 @@ async function renderHistoryTab() {
     }
     el.innerHTML = h;
   } catch(e) {
-    el.innerHTML = '<div class="empty"><p>Could not load history</p></div>';
+    el.innerHTML = '<div class="empty"><p>' + tH('could_not_load') + '</p></div>';
   }
 }
 
@@ -4462,7 +4485,7 @@ async function renderHistoryTab() {
 async function renderActivityTab() {
   const el = document.getElementById('manage-activity');
   if (!el) return;
-  el.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading...</div>';
+  el.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '</div>';
   try {
     const [statsRes, usageRes] = await Promise.all([
       manageFetch('/manage/stats').catch(() => null),
@@ -4590,7 +4613,7 @@ async function renderActivityTab() {
     // Cross-ZIM references
     var xrefs = (typeof _xzimRefs !== 'undefined') ? _xzimRefs : null;
     if (xrefs && xrefs.length > 0) {
-      h += '<div class="manage-card"><h2>Cross-ZIM Navigation</h2>';
+      h += '<div class="manage-card"><h2>' + tH('cross_zim_nav') + '</h2>';
       h += '<div style="display:flex;flex-direction:column;gap:4px">';
       for (var xi = 0; xi < xrefs.length && xi < 20; xi++) {
         var xr = xrefs[xi];
@@ -4605,12 +4628,12 @@ async function renderActivityTab() {
     }
 
     if (!h) {
-      h = '<div style="text-align:center;padding:24px;color:var(--text2);font-size:13px">No stats available yet. Start searching and reading articles!</div>';
+      h = '<div style="text-align:center;padding:24px;color:var(--text2);font-size:13px">' + tH('no_stats_yet') + '</div>';
     }
-    h += '<div style="text-align:center;padding:8px;font-size:11px;color:var(--text2);opacity:0.5">Stats are in-memory only and reset when the server restarts.</div>';
+    h += '<div style="text-align:center;padding:8px;font-size:11px;color:var(--text2);opacity:0.5">' + tH('stats_in_memory') + '</div>';
     el.innerHTML = h;
   } catch(e) {
-    el.innerHTML = '<div class="empty"><p>Could not load stats</p></div>';
+    el.innerHTML = '<div class="empty"><p>' + tH('could_not_load_stats') + '</p></div>';
   }
 }
 
@@ -4656,17 +4679,17 @@ async function renderManage() {
     '</div>' +
     '<div id="manage-downloads"></div>' +
     '<div class="manage-tabs">' +
-      '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">Installed</button>' +
-      '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">Catalog</button>' +
-      '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">Collections</button>' +
-      '<button class="manage-tab' + (manageTab === 'history' ? ' active' : '') + '" data-tab="history" onclick="switchManageTab(\'history\')">History</button>' +
+      '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">' + tH('installed_tab') + '</button>' +
+      '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">' + tH('catalog_tab') + '</button>' +
+      '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">' + tH('collections_tab') + '</button>' +
+      '<button class="manage-tab' + (manageTab === 'history' ? ' active' : '') + '" data-tab="history" onclick="switchManageTab(\'history\')">' + tH('activity_tab') + '</button>' +
     '</div>' +
     '<div id="manage-installed" class="manage-tab-content' + (manageTab === 'installed' ? ' active' : '') + '"></div>' +
     '<div id="manage-collections" class="manage-tab-content' + (manageTab === 'collections' ? ' active' : '') + '"></div>' +
     '<div id="manage-history" class="manage-tab-content' + (manageTab === 'history' ? ' active' : '') + '"></div>' +
     '<div id="manage-browse" class="manage-tab-content' + (manageTab === 'browse' ? ' active' : '') + '">' +
       '<div class="manage-search" style="justify-content:flex-end">' +
-        '<select id="catalog-lang" onchange="_catalogCache=null;if(_browseView===\'drilldown\'&&manageCategoryFilter)drillCategory(manageCategoryFilter);else if(_browseView===\'search\'){var v=q.value.trim();if(v)browseCatalogFilter(v);else renderBrowseGallery();}else renderBrowseGallery();" style="max-width:140px"><option value="">All languages</option><option value="eng" selected>English</option><option value="fra">French</option><option value="deu">German</option><option value="spa">Spanish</option></select>' +
+        '<select id="catalog-lang" onchange="_catalogCache=null;if(_browseView===\'drilldown\'&&manageCategoryFilter)drillCategory(manageCategoryFilter);else if(_browseView===\'search\'){var v=q.value.trim();if(v)browseCatalogFilter(v);else renderBrowseGallery();}else renderBrowseGallery();" style="max-width:140px"><option value="">' + tH('all_languages') + '</option><option value="eng" selected>English</option><option value="fra">French</option><option value="deu">German</option><option value="spa">Spanish</option></select>' +
       '</div>' +
       '<div id="catalog-results"></div>' +
     '</div>';
@@ -4691,7 +4714,7 @@ async function renderManage() {
     checkForUpdates();
   } catch(e) {
     var pane = document.getElementById('ms-pane');
-    if (pane) pane.innerHTML = '<div style="color:var(--text2);font-size:13px">Could not load library status</div>';
+    if (pane) pane.innerHTML = '<div style="color:var(--text2);font-size:13px">' + tH('could_not_load_stats') + '</div>';
   }
 
   // Render active tab content
@@ -4742,9 +4765,9 @@ function _msLibraryHtml() {
   if (!d) return '<div class="loading"><span class="spinner-inline"></span>Loading\u2026</div>';
   var h = '<div class="mc-row"><span class="mc-label">ZIM files</span><span class="mc-value">' + esc(String(d.zim_count)) + '</span></div>' +
     '<div class="mc-row"><span class="mc-label">Total size</span><span class="mc-value">' + fmtSize(d.total_size_gb) + '</span></div>' +
-    '<div id="update-status" class="mc-row"><span class="mc-label">Updates</span><span class="mc-value" style="color:var(--text2)">Checking\u2026</span></div>' +
+    '<div id="update-status" class="mc-row"><span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('loading') + '</span></div>' +
     '<div class="mc-row" style="align-items:center">' +
-      '<span class="mc-label">Auto-update</span>' +
+      '<span class="mc-label">' + tH('auto_update') + '</span>' +
       '<span class="mc-value">' +
         (function() {
           var au = (d.auto_update || {});
@@ -4757,9 +4780,9 @@ function _msLibraryHtml() {
       '</span>' +
     '</div>' +
     '<div class="ms-actions">' +
-      '<button class="manage-btn-action" onclick="manageImportZim()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Import ZIM</button>' +
-      '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Refresh Cache</button>' +
-      '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none">Update All</button>' +
+      '<button class="manage-btn-action" onclick="manageImportZim()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('import_zim') + '</button>' +
+      '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('refresh_cache') + '</button>' +
+      '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none">' + tH('update_all') + '</button>' +
     '</div>' +
     '<div id="tmp-files-section"></div>';
   // Async-load tmp file info
@@ -4769,13 +4792,13 @@ function _msLibraryHtml() {
     var files = s.disk.tmp_files;
     var totalBytes = files.reduce(function(a, f) { return a + f.size_bytes; }, 0);
     var html = '<div class="mc-row" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">' +
-      '<span class="mc-label">Partial downloads</span>' +
+      '<span class="mc-label">' + tH('partial_downloads') + '</span>' +
       '<span class="mc-value" style="color:var(--text2)">' + files.length + ' file' + (files.length > 1 ? 's' : '') + ' · ' + _fmtBytes(totalBytes) + '</span></div>';
     files.forEach(function(f) {
       html += '<div class="mc-row" style="padding-left:8px"><span class="mc-label" style="font-size:12px;color:var(--text2)">' + esc(f.filename.replace('.zim.tmp','')) + '</span>' +
         '<span class="mc-value" style="font-size:12px;color:var(--text2)">' + _fmtBytes(f.size_bytes) + ' · ' + f.age_hours + 'h ago</span></div>';
     });
-    html += '<div class="ms-actions"><button class="manage-btn-action" onclick="cleanupTmpFiles()" id="cleanup-tmp-btn" style="background:var(--surface2);color:var(--amber);border:1px solid var(--border);font-size:12px">Clean Up Partial Downloads</button></div>';
+    html += '<div class="ms-actions"><button class="manage-btn-action" onclick="cleanupTmpFiles()" id="cleanup-tmp-btn" style="background:var(--surface2);color:var(--amber);border:1px solid var(--border);font-size:12px">' + tH('clean_up') + '</button></div>';
     el.innerHTML = html;
   }).catch(function() {});
   return h;
@@ -4790,20 +4813,20 @@ function _fmtBytes(b) {
 
 async function cleanupTmpFiles() {
   var btn = document.getElementById('cleanup-tmp-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Cleaning\u2026'; }
+  if (btn) { btn.disabled = true; btn.textContent = t('cleaning'); }
   try {
     var r = await manageFetch('/manage/cleanup-tmp', {method: 'POST'});
     var data = await r.json();
     var el = document.getElementById('tmp-files-section');
     if (el) { el.style.opacity = '0.3'; setTimeout(function() { el.innerHTML = ''; el.style.opacity = ''; }, 300); }
     if (data.removed && data.removed.length) {
-      showToast(data.removed.length + ' partial download' + (data.removed.length > 1 ? 's' : '') + ' removed');
+      showToast(t('partial_removed', {n: data.removed.length}));
     } else {
-      showToast('No partial downloads found');
+      showToast(t('no_partial'));
     }
   } catch(e) {
-    showToast('Failed to clean up');
-    if (btn) { btn.disabled = false; btn.textContent = 'Clean Up Partial Downloads'; }
+    showToast(t('failed_clean'));
+    if (btn) { btn.disabled = false; btn.textContent = t('clean_up'); }
   }
 }
 
@@ -4811,20 +4834,20 @@ function _msDisplayHtml() {
   var showXzim = localStorage.getItem('zimi_hide_cross_zim_links') !== '1';
   var showDiscover = localStorage.getItem('zimi_hide_discover') !== '1';
   return '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> Show cross-source link highlights</label>' +
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
     '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> Show Discover</label>';
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>';
 }
 
 function _msServerHtml() {
   if (IS_DESKTOP) {
-    return '<div class="ms-hint">Server configuration is available via the Settings overlay.</div>' +
-      '<div class="ms-actions"><button class="manage-btn-action" onclick="openSettings()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Open Server Settings</button></div>';
+    return '<div class="ms-hint">' + tH('server_config_hint') + '</div>' +
+      '<div class="ms-actions"><button class="manage-btn-action" onclick="openSettings()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('open_server_settings') + '</button></div>';
   }
   // Docker/server: fetch zim_dir + data_dir from stats endpoint
-  var h = '<div class="ms-field"><label>ZIM folder</label><input type="text" id="ms-zim-dir" readonly value="Loading\u2026"></div>' +
-    '<div class="ms-field"><label>Data folder</label><input type="text" id="ms-data-dir" readonly value="Loading\u2026"></div>' +
-    '<div class="ms-hint">Configured via environment variables or Docker.</div>';
+  var h = '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
+    '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
+    '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
   // Async fill
   manageFetch('/manage/stats').then(function(r) { return r.json(); }).then(function(s) {
     var el = document.getElementById('ms-zim-dir');
@@ -4844,9 +4867,9 @@ function _msServerHtml() {
 
 function _msSecurityHtml() {
   var h = '<div class="ms-actions">' +
-    '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Set / Change Password</button>';
+    '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('set_change_password') + '</button>';
   if (sessionStorage.getItem('zimi_manage_pw')) {
-    h += '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Log Out</button>';
+    h += '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('log_out') + '</button>';
   }
   return h + '</div>';
 }
@@ -4869,9 +4892,9 @@ async function toggleAutoUpdate() {
     const timer = _autoUpdateTimerHtml();
     const count = Object.keys(_availableUpdates).length;
     if (count > 0) {
-      el.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--amber)">' + timer + count + ' available</span>';
+      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--amber)">' + timer + tH('updates_available', {n: count}) + '</span>';
     } else {
-      el.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--text2)">All up to date</span>';
+      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('all_up_to_date') + '</span>';
     }
   }
   // Start fast polling when enabling — server starts downloads after 30s delay
@@ -4904,7 +4927,7 @@ function renderInstalled(filterText) {
   if (!el) return;
   const zims = zimsCache || [];
   if (!zims.length) {
-    el.innerHTML = '<div class="empty"><p>No ZIMs installed</p><div class="hint">Switch to Catalog to add some</div></div>';
+    el.innerHTML = '<div class="empty"><p>' + tH('no_zims_installed') + '</p><div class="hint">' + tH('switch_to_catalog') + '</div></div>';
     return;
   }
 
@@ -4986,7 +5009,7 @@ function renderInstalled(filterText) {
     }
     items_h += '</div>';
   }
-  if (!items_h) items_h = '<div class="empty"><p>No matching ZIMs</p></div>';
+  if (!items_h) items_h = '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
   el.innerHTML = getInstalledPillsHtml() + items_h;
 }
 
@@ -5075,7 +5098,7 @@ async function searchCatalog(append) {
   _browseView = 'search';
   if (!append) {
     catalogPage = 0;
-    results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Searching Kiwix catalog...</div>';
+    results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('searching_catalog') + '</div>';
     if (_catalogObserver) { _catalogObserver.disconnect(); _catalogObserver = null; }
   }
 
@@ -5112,7 +5135,7 @@ async function searchCatalog(append) {
     if (loaded < _catalogTotal) {
       const sentinel = document.createElement('div');
       sentinel.id = 'catalog-sentinel';
-      sentinel.innerHTML = '<div class="loading" style="padding:16px"><span class="spinner-inline"></span>Loading more...</div>';
+      sentinel.innerHTML = '<div class="loading" style="padding:16px"><span class="spinner-inline"></span>' + tH('loading_more') + '</div>';
       results.appendChild(sentinel);
       _catalogObserver = new IntersectionObserver((entries) => {
         if (entries[0].isIntersecting) {
@@ -5124,12 +5147,12 @@ async function searchCatalog(append) {
       _catalogObserver.observe(sentinel);
     }
   } catch(e) {
-    if (!append) results.innerHTML = '<div class="empty"><p>Failed to fetch catalog</p></div>';
+    if (!append) results.innerHTML = '<div class="empty"><p>' + tH('failed_fetch_catalog') + '</p></div>';
   }
 }
 
 async function _downloadPack(btn, urls) {
-  if (btn) { btn.disabled = true; btn.textContent = 'Starting...'; }
+  if (btn) { btn.disabled = true; btn.textContent = t('starting'); }
   var started = 0;
   for (var i = 0; i < urls.length; i++) {
     try {
@@ -5161,15 +5184,15 @@ async function _downloadPackFromSelects(btn) {
 }
 
 async function manageImportZim() {
-  var url = prompt('Enter the HTTPS URL of a .zim file to import:');
+  var url = prompt(t('import_url_prompt'));
   if (!url || !url.trim()) return;
   url = url.trim();
   if (!url.startsWith('https://')) {
-    _showToast('URL must start with https://');
+    _showToast(t('url_must_https'));
     return;
   }
   if (!/\.zim(\?|#|$)/.test(url)) {
-    _showToast('URL must point to a .zim file');
+    _showToast(t('url_must_zim'));
     return;
   }
   try {
@@ -5179,16 +5202,16 @@ async function manageImportZim() {
       body: JSON.stringify({url: url})
     });
     var data = await resp.json();
-    if (!resp.ok) { _showToast(data.error || 'Import failed'); return; }
-    _showToast('Import started: ' + url.split('/').pop().split('?')[0]);
+    if (!resp.ok) { _showToast(data.error || t('import_failed', {error: ''})); return; }
+    _showToast(t('import_started', {name: url.split('/').pop().split('?')[0]}));
     renderManage();
   } catch(e) {
-    _showToast('Import failed: ' + e.message);
+    _showToast(t('import_failed', {error: e.message}));
   }
 }
 
 async function downloadZim(url, btn, isUpdate) {
-  if (btn) { btn.disabled = true; btn.textContent = 'Starting...'; }
+  if (btn) { btn.disabled = true; btn.textContent = t('starting'); }
   try {
     const res = await manageFetch('/manage/download', {
       method: 'POST',
@@ -5196,10 +5219,10 @@ async function downloadZim(url, btn, isUpdate) {
       body: JSON.stringify({ url }),
     });
     const data = await res.json();
-    if (data.error) { if (btn) { btn.textContent = 'Error'; btn.disabled = false; } return; }
+    if (data.error) { if (btn) { btn.textContent = t('error'); btn.disabled = false; } return; }
     if (btn) {
       btn.dataset.dlUrl = url;
-      btn.textContent = isUpdate ? 'Updating...' : 'Downloading...';
+      btn.textContent = isUpdate ? t('updating') : t('downloading');
       btn.classList.add('ci-installed-badge');
       // Hide sibling variant buttons (only show the one being downloaded)
       const variantsDiv = btn.closest('.ci-variants');
@@ -5212,7 +5235,7 @@ async function downloadZim(url, btn, isUpdate) {
     _dlPrevAllDone = false; // ensure completion transition fires even for fast downloads
     refreshDownloads();
   } catch(e) {
-    if (btn) { btn.textContent = 'Error'; btn.disabled = false; }
+    if (btn) { btn.textContent = t('error'); btn.disabled = false; }
   }
 }
 
@@ -5221,13 +5244,13 @@ async function deleteZim(filename, btn) {
   // Two-click confirmation: first click shows "Delete?", second click confirms
   if (!btn.classList.contains('confirming')) {
     btn.classList.add('confirming');
-    btn.textContent = 'Delete?';
+    btn.textContent = t('delete_confirm');
     btn.title = 'Click again to confirm deletion';
     // Reset after 4 seconds if not confirmed
     setTimeout(() => { if (btn.classList.contains('confirming')) { btn.classList.remove('confirming'); btn.textContent = '\u00D7'; btn.title = 'Delete this ZIM file'; }}, 4000);
     return;
   }
-  btn.textContent = 'Deleting...';
+  btn.textContent = t('deleting');
   btn.disabled = true;
   const card = btn.closest('.catalog-item');
   // Optimistic: hide card immediately
@@ -5250,7 +5273,7 @@ async function deleteZim(filename, btn) {
     const lr = await fetch('/list');
     zimsCache = await lr.json();
     const tabBtn = document.querySelector('.manage-tab[data-tab="installed"]');
-    if (tabBtn) tabBtn.textContent = 'Installed';
+    if (tabBtn) tabBtn.textContent = t('installed_tab');
     // Update status card count
     const statusVal = document.querySelector('#manage-status .mc-value');
     if (statusVal) statusVal.textContent = String(zimsCache ? zimsCache.length : 0);
@@ -5259,13 +5282,13 @@ async function deleteZim(filename, btn) {
     else if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
     else if (_browseView === 'gallery') renderBrowseGallery();
   } catch(e) {
-    btn.textContent = 'Error';
+    btn.textContent = t('error');
   }
 }
 
 async function buildFts(name, btn) {
   if (!btn) return;
-  btn.textContent = 'Building...';
+  btn.textContent = t('building');
   btn.disabled = true;
   try {
     const res = await manageFetch('/manage/build-fts', {
@@ -5273,11 +5296,11 @@ async function buildFts(name, btn) {
       body: JSON.stringify({name})
     });
     const data = await res.json();
-    if (data.error) { btn.textContent = 'Error'; btn.title = data.error; return; }
-    if (data.status === 'already_exists') { btn.textContent = 'Already built'; return; }
-    btn.textContent = 'Done (' + (data.elapsed || '?') + 's)';
+    if (data.error) { btn.textContent = t('error'); btn.title = data.error; return; }
+    if (data.status === 'already_exists') { btn.textContent = t('already_built'); return; }
+    btn.textContent = t('done_elapsed', {time: data.elapsed || '?'});
   } catch(e) {
-    btn.textContent = 'Error';
+    btn.textContent = t('error');
   }
 }
 
@@ -5338,9 +5361,9 @@ async function refreshDownloads() {
     }
     const anyActive = dls.some(d => !d.done);
     const allDone = !anyActive;
-    let h = '<div class="manage-card"><h2>Downloads</h2>';
+    let h = '<div class="manage-card"><h2>' + tH('downloads') + '</h2>';
     if (allDone) {
-      h += '<button class="dl-clear-btn" onclick="clearDownloads()">Clear</button>';
+      h += '<button class="dl-clear-btn" onclick="clearDownloads()">' + tH('clear') + '</button>';
     }
     for (const dl of dls) {
       const title = dlTitle(dl);
@@ -5378,10 +5401,10 @@ async function refreshDownloads() {
       const btns = document.querySelectorAll('[data-dl-url]');
       for (const btn of btns) {
         if (btn.dataset.dlUrl === dl.url || btn.dataset.dlUrl.replace(/\.meta4$/, '') === dl.url) {
-          if (dl.done) { btn.textContent = 'Installed'; }
-          else if (dl.error) { btn.textContent = 'Error'; btn.disabled = false; }
+          if (dl.done) { btn.textContent = t('installed_badge'); }
+          else if (dl.error) { btn.textContent = t('error'); btn.disabled = false; }
           else if (dl.percent > 0) { btn.textContent = Math.round(dl.percent) + '%'; }
-          else { btn.textContent = dl.is_update ? 'Updating...' : 'Downloading...'; }
+          else { btn.textContent = dl.is_update ? t('updating') : t('downloading'); }
         }
       }
     }
@@ -5403,8 +5426,8 @@ async function refreshDownloads() {
       const updateBtn = document.getElementById('update-all-btn');
       if (anyActive) {
         // Downloads still running — show how many remain
-        if (updateEl) updateEl.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--amber)">' + stillRunning + ' remaining</span>';
-        if (updateBtn && updateBtn.disabled) updateBtn.textContent = 'Updating ' + stillRunning + '...';
+        if (updateEl) updateEl.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--amber)">' + stillRunning + ' ' + tH('remaining') + '</span>';
+        if (updateBtn && updateBtn.disabled) updateBtn.textContent = t('updating_n', {n: stillRunning});
       } else {
         // All downloads finished — remove successful ones from _availableUpdates
         for (const dl of dls) {
@@ -5419,9 +5442,9 @@ async function refreshDownloads() {
         const timer = _autoUpdateTimerHtml();
         if (remaining > 0) {
           if (updateEl) updateEl.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--amber)">' + timer + remaining + ' available</span>';
-          if (updateBtn) { updateBtn.style.display = ''; updateBtn.disabled = false; updateBtn.textContent = 'Update All'; }
+          if (updateBtn) { updateBtn.style.display = ''; updateBtn.disabled = false; updateBtn.textContent = t('update_all'); }
         } else {
-          if (updateEl) updateEl.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--text2)">All up to date</span>';
+          if (updateEl) updateEl.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('all_up_to_date') + '</span>';
           if (updateBtn) updateBtn.style.display = 'none';
         }
       }
@@ -5448,7 +5471,7 @@ async function refreshDownloads() {
         }
         // Update tab count
         const tabBtn = document.querySelector('.manage-tab[data-tab="installed"]');
-        if (tabBtn) tabBtn.textContent = 'Installed';
+        if (tabBtn) tabBtn.textContent = t('installed_tab');
         // Re-render browse view so download buttons update to "Installed"
         if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
         else if (_browseView === 'search') { var sq = q.value.trim(); if (sq) browseCatalogFilter(sq); }
@@ -5488,14 +5511,14 @@ async function triggerUpdate() {
   const updates = Object.values(_availableUpdates);
   if (!updates.length) return;
   const btn = document.getElementById('update-all-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Updating ' + updates.length + '...'; }
+  if (btn) { btn.disabled = true; btn.textContent = t('updating_n', {n: updates.length}); }
   // Mark individual Update buttons so refreshDownloads() can show per-row progress
   for (const u of updates) {
     document.querySelectorAll('.ci-update-btn').forEach(b => {
       if (b.getAttribute('onclick') && b.getAttribute('onclick').includes(u.download_url)) {
         b.dataset.dlUrl = u.download_url;
         b.disabled = true;
-        b.textContent = 'Queued...';
+        b.textContent = t('queued');
       }
     });
   }
@@ -5509,7 +5532,7 @@ async function triggerUpdate() {
   }
   // Don't reset button — refreshDownloads() will track progress and update it
   if (started > 0) { _dlPrevAllDone = false; refreshDownloads(); }
-  else if (btn) { btn.disabled = false; btn.textContent = 'Update All'; }
+  else if (btn) { btn.disabled = false; btn.textContent = t('update_all'); }
 }
 
 function _autoUpdateTimerHtml() {
@@ -5534,10 +5557,10 @@ async function checkForUpdates() {
     const updateBtn = document.getElementById('update-all-btn');
     const timer = _autoUpdateTimerHtml();
     if (count > 0) {
-      el.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--amber)">' + timer + count + ' available</span>';
-      if (updateBtn) { updateBtn.style.display = ''; updateBtn.textContent = 'Update All'; }
+      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--amber)">' + timer + tH('updates_available', {n: count}) + '</span>';
+      if (updateBtn) { updateBtn.style.display = ''; updateBtn.textContent = t('update_all'); }
     } else {
-      el.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--text2)">All up to date</span>';
+      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('all_up_to_date') + '</span>';
       if (updateBtn) updateBtn.style.display = 'none';
     }
     // Re-render installed tab to show inline update buttons
@@ -5601,7 +5624,7 @@ async function managePassword() {
 }
 
 async function manageClearPassword() {
-  if (!confirm('Remove password protection?')) return;
+  if (!confirm(t('remove_password_confirm'))) return;
   const body = {password: ''};
   if (_manageToken) body.current = _manageToken;
   const res = await manageFetch('/manage/set-password', {
@@ -6023,8 +6046,8 @@ function renderLibraryPanel() {
   var isHistory = (tab === 'history');
   var html = '<div class="library-panel-header">' +
     '<div class="library-tabs">' +
-    '<button class="library-tab' + (isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'history\')">History</button>' +
-    '<button class="library-tab' + (!isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'bookmarks\')">Bookmarks</button>' +
+    '<button class="library-tab' + (isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'history\')">' + tH('kbd_history') + '</button>' +
+    '<button class="library-tab' + (!isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'bookmarks\')">' + tH('kbd_bookmark') + '</button>' +
     '</div>' +
     '<button class="hp-clear" style="margin-left:8px" onclick="_closeLibraryPanel()">\u2715</button>' +
     '</div>';
@@ -6038,9 +6061,9 @@ function renderLibraryPanel() {
 function _renderHistoryContent() {
   var h = _histLoad();
   if (h.length === 0) {
-    return '<div class="hp-empty">No history yet. Browse articles and search to build your history.</div>';
+    return '<div class="hp-empty">' + tH('no_history_panel') + '</div>';
   }
-  var html = '<div style="padding:8px 16px 0;text-align:right"><button class="hp-clear" onclick="_histClear()">Clear</button></div>';
+  var html = '<div style="padding:8px 16px 0;text-align:right"><button class="hp-clear" onclick="_histClear()">' + tH('clear') + '</button></div>';
   var currentGroup = '';
   var i = 0;
   while (i < h.length) {
@@ -6091,7 +6114,7 @@ function _renderHistoryContent() {
 function _renderBookmarksContent() {
   var bk = _bkLoad();
   if (!bk.length) {
-    return '<div class="hp-empty">No bookmarks yet. Open an article and press B to bookmark it.</div>';
+    return '<div class="hp-empty">' + tH('no_bookmarks') + '</div>';
   }
   var html = '<div class="hp-group">';
   for (var i = 0; i < bk.length; i++) {
@@ -6172,15 +6195,15 @@ function _updateLibraryBtnIcon() {
   if (readerOpen && currentArticle && _bkIsBookmarked(currentArticle.zim, currentArticle.path)) {
     btn.innerHTML = _libBookmarkFilledSvg;
     btn.style.color = 'var(--amber)';
-    btn.title = 'Bookmarked (B to remove)';
+    btn.title = t('bookmarked_remove');
   } else if (readerOpen) {
     btn.innerHTML = _libBookmarkSvg;
     btn.style.color = '';
-    btn.title = 'Bookmark (B)';
+    btn.title = t('bookmark_add');
   } else {
     btn.innerHTML = (tab === 'bookmarks') ? _libBookmarkSvg : _libClockSvg;
     btn.style.color = '';
-    btn.title = (tab === 'bookmarks') ? 'Bookmarks (B)' : 'History (H)';
+    btn.title = (tab === 'bookmarks') ? t('bookmarks') : t('history');
   }
 }
 function openArticle(zim, path, title) {
@@ -6248,7 +6271,6 @@ function closeReader() {
   // Restore main document scroll (iOS tap-to-top for home page)
   document.documentElement.style.overflowY = 'auto';
   _hideLangBar();
-  _closeArticleMap();
   updateTopbar();
   _setWindowTitle('Zimi');
 }
@@ -6514,286 +6536,6 @@ function _migrateBookmarks() {
   } catch(e) {}
 }
 
-// ── Article Map (force-directed graph) ──
-var _mapNodes = [];
-var _mapEdges = [];
-var _mapAnimId = null;
-var _mapDrag = null; // {node, offsetX, offsetY}
-var _mapPan = {x: 0, y: 0};
-var _mapPanStart = null; // {mx, my, px, py}
-var _mapHover = null;
-
-function _openArticleMap() {
-  if (!currentArticle) return;
-  var overlay = document.getElementById('article-map-overlay');
-  overlay.classList.add('visible');
-  document.getElementById('article-map-title').textContent = 'Article Map — ' + (currentArticle.title || _titleFromPath(currentArticle.path));
-  _buildArticleMap(currentArticle.zim, currentArticle.path, currentArticle.title || '');
-}
-
-function _closeArticleMap() {
-  document.getElementById('article-map-overlay').classList.remove('visible');
-  if (_mapAnimId) { cancelAnimationFrame(_mapAnimId); _mapAnimId = null; }
-}
-
-function _buildArticleMap(zim, path, centerTitle) {
-  var canvas = document.getElementById('article-map-canvas');
-  var dpr = window.devicePixelRatio || 1;
-  var w = Math.min(880, window.innerWidth - 40);
-  var h = Math.min(560, window.innerHeight - 120);
-  canvas.style.width = w + 'px';
-  canvas.style.height = h + 'px';
-  canvas.width = w * dpr;
-  canvas.height = h * dpr;
-  var ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-
-  // Center node
-  _mapNodes = [{id: zim + '/' + path, label: centerTitle || _titleFromPath(path), x: w/2, y: h/2, vx: 0, vy: 0, fixed: true, zim: zim, path: path, radius: 8, color: '#f4a825'}];
-  _mapEdges = [];
-  _mapPan = {x: 0, y: 0};
-  _mapHover = null;
-
-  // Get links from iframe
-  var frame = document.getElementById('reader-frame');
-  var urls = [];
-  try {
-    var doc = frame.contentDocument;
-    var links = doc.querySelectorAll('a[href*="://"]');
-    links.forEach(function(a) { if (urls.length < 80) urls.push(a.href); });
-  } catch(e) {}
-
-  // Also resolve internal ZIM links
-  try {
-    var doc2 = frame.contentDocument;
-    var internalLinks = doc2.querySelectorAll('a[href^="/w/"]');
-    internalLinks.forEach(function(a) {
-      var m = a.pathname.match(/^\/w\/([^/]+)\/(.+)/);
-      if (m && _mapNodes.length + urls.length < 60) {
-        var linkZim = decodeURIComponent(m[1]);
-        var linkPath = decodeURIComponent(m[2]);
-        var title = a.textContent.trim().substring(0, 40);
-        if (title && linkPath && linkZim) {
-          var nodeId = linkZim + '/' + linkPath;
-          if (!_mapNodes.find(function(n) { return n.id === nodeId; })) {
-            var angle = Math.random() * Math.PI * 2;
-            var dist = 100 + Math.random() * 80;
-            _mapNodes.push({
-              id: nodeId, label: title, zim: linkZim, path: linkPath,
-              x: w/2 + Math.cos(angle) * dist, y: h/2 + Math.sin(angle) * dist,
-              vx: 0, vy: 0, fixed: false, radius: 5,
-              color: linkZim === zim ? '#8b8b8b' : '#5e9ed6'
-            });
-            _mapEdges.push({source: 0, target: _mapNodes.length - 1});
-          }
-        }
-      }
-    });
-  } catch(e) {}
-
-  // Batch resolve external URLs for cross-ZIM links
-  if (urls.length > 0) {
-    var chunks = [];
-    for (var i = 0; i < urls.length; i += 30) chunks.push(urls.slice(i, i + 30));
-    var resolvedCount = 0;
-    chunks.forEach(function(chunk) {
-      fetch('/resolve', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({urls: chunk})})
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          var results = data.results || {};
-          Object.keys(results).forEach(function(url) {
-            var r = results[url];
-            if (r && r.found) {
-              var nodeId = r.zim + '/' + r.path;
-              if (!_mapNodes.find(function(n) { return n.id === nodeId; }) && _mapNodes.length < 40) {
-                // Extract title from URL
-                var urlTitle = r.path.split('/').pop().replace(/_/g, ' ');
-                try { urlTitle = decodeURIComponent(urlTitle); } catch(e) {}
-                var angle = Math.random() * Math.PI * 2;
-                var dist = 120 + Math.random() * 100;
-                _mapNodes.push({
-                  id: nodeId, label: urlTitle.substring(0, 40), zim: r.zim, path: r.path,
-                  x: w/2 + Math.cos(angle) * dist, y: h/2 + Math.sin(angle) * dist,
-                  vx: 0, vy: 0, fixed: false, radius: 5,
-                  color: r.zim === zim ? '#8b8b8b' : '#5e9ed6'
-                });
-                _mapEdges.push({source: 0, target: _mapNodes.length - 1});
-              }
-            }
-          });
-        })
-        .catch(function() {});
-    });
-  }
-
-  // Physics simulation
-  function tick() {
-    var k = 0.01; // spring constant
-    var repulsion = 2000;
-    var damping = 0.85;
-    var centerPull = 0.002;
-
-    for (var i = 0; i < _mapNodes.length; i++) {
-      if (_mapNodes[i].fixed && _mapDrag && _mapDrag.node === _mapNodes[i]) continue;
-      var n = _mapNodes[i];
-      var fx = 0, fy = 0;
-
-      // Repulsion from other nodes
-      for (var j = 0; j < _mapNodes.length; j++) {
-        if (i === j) continue;
-        var dx = n.x - _mapNodes[j].x;
-        var dy = n.y - _mapNodes[j].y;
-        var dist2 = dx * dx + dy * dy;
-        if (dist2 < 1) dist2 = 1;
-        var f = repulsion / dist2;
-        fx += dx * f;
-        fy += dy * f;
-      }
-
-      // Spring attraction along edges
-      for (var e = 0; e < _mapEdges.length; e++) {
-        var edge = _mapEdges[e];
-        var other = -1;
-        if (edge.source === i) other = edge.target;
-        else if (edge.target === i) other = edge.source;
-        if (other < 0) continue;
-        var dx2 = _mapNodes[other].x - n.x;
-        var dy2 = _mapNodes[other].y - n.y;
-        var dist = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-        if (dist < 1) dist = 1;
-        var ideal = 140;
-        fx += (dx2 / dist) * (dist - ideal) * k;
-        fy += (dy2 / dist) * (dist - ideal) * k;
-      }
-
-      // Pull toward center
-      fx += (w/2 - n.x) * centerPull;
-      fy += (h/2 - n.y) * centerPull;
-
-      if (!n.fixed) {
-        n.vx = (n.vx + fx) * damping;
-        n.vy = (n.vy + fy) * damping;
-        n.x += n.vx;
-        n.y += n.vy;
-        // Keep in bounds
-        n.x = Math.max(30, Math.min(w - 30, n.x));
-        n.y = Math.max(30, Math.min(h - 30, n.y));
-      }
-    }
-  }
-
-  function draw() {
-    ctx.clearRect(0, 0, w, h);
-    ctx.save();
-    ctx.translate(_mapPan.x, _mapPan.y);
-
-    // Draw edges
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-    ctx.lineWidth = 1;
-    for (var e = 0; e < _mapEdges.length; e++) {
-      var s = _mapNodes[_mapEdges[e].source];
-      var t = _mapNodes[_mapEdges[e].target];
-      ctx.beginPath();
-      ctx.moveTo(s.x, s.y);
-      ctx.lineTo(t.x, t.y);
-      ctx.stroke();
-    }
-
-    // Draw nodes
-    for (var i = 0; i < _mapNodes.length; i++) {
-      var n = _mapNodes[i];
-      var isHover = _mapHover === n;
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, isHover ? n.radius + 2 : n.radius, 0, Math.PI * 2);
-      ctx.fillStyle = n.color;
-      ctx.fill();
-      if (isHover) {
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
-
-      // Label
-      ctx.fillStyle = isHover ? '#fff' : 'rgba(255,255,255,0.7)';
-      ctx.font = (i === 0 ? 'bold 12px' : '11px') + ' -apple-system, system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      var label = n.label.length > 25 ? n.label.substring(0, 24) + '\u2026' : n.label;
-      ctx.fillText(label, n.x, n.y + n.radius + 14);
-    }
-
-    ctx.restore();
-    tick();
-    _mapAnimId = requestAnimationFrame(draw);
-  }
-
-  // Mouse interaction
-  canvas.onmousedown = function(e) {
-    var rect = canvas.getBoundingClientRect();
-    var mx = e.clientX - rect.left - _mapPan.x;
-    var my = e.clientY - rect.top - _mapPan.y;
-    for (var i = _mapNodes.length - 1; i >= 0; i--) {
-      var n = _mapNodes[i];
-      var dx = mx - n.x, dy = my - n.y;
-      if (dx * dx + dy * dy < (n.radius + 4) * (n.radius + 4)) {
-        _mapDrag = {node: n, offsetX: dx, offsetY: dy};
-        n.fixed = true;
-        return;
-      }
-    }
-    // Pan
-    _mapPanStart = {mx: e.clientX, my: e.clientY, px: _mapPan.x, py: _mapPan.y};
-  };
-  canvas.onmousemove = function(e) {
-    var rect = canvas.getBoundingClientRect();
-    var mx = e.clientX - rect.left - _mapPan.x;
-    var my = e.clientY - rect.top - _mapPan.y;
-    if (_mapDrag) {
-      _mapDrag.node.x = mx - _mapDrag.offsetX;
-      _mapDrag.node.y = my - _mapDrag.offsetY;
-    } else if (_mapPanStart) {
-      _mapPan.x = _mapPanStart.px + (e.clientX - _mapPanStart.mx);
-      _mapPan.y = _mapPanStart.py + (e.clientY - _mapPanStart.my);
-    } else {
-      // Hover detection
-      _mapHover = null;
-      for (var i = _mapNodes.length - 1; i >= 0; i--) {
-        var n = _mapNodes[i];
-        var dx = mx - n.x, dy = my - n.y;
-        if (dx * dx + dy * dy < (n.radius + 4) * (n.radius + 4)) {
-          _mapHover = n;
-          canvas.style.cursor = 'pointer';
-          break;
-        }
-      }
-      if (!_mapHover) canvas.style.cursor = 'grab';
-    }
-  };
-  canvas.onmouseup = function(e) {
-    if (_mapDrag) {
-      if (_mapDrag.node !== _mapNodes[0]) _mapDrag.node.fixed = false;
-      _mapDrag = null;
-    }
-    _mapPanStart = null;
-  };
-  canvas.ondblclick = function(e) {
-    var rect = canvas.getBoundingClientRect();
-    var mx = e.clientX - rect.left - _mapPan.x;
-    var my = e.clientY - rect.top - _mapPan.y;
-    for (var i = 0; i < _mapNodes.length; i++) {
-      var n = _mapNodes[i];
-      var dx = mx - n.x, dy = my - n.y;
-      if (dx * dx + dy * dy < (n.radius + 4) * (n.radius + 4)) {
-        _closeArticleMap();
-        openArticle(n.zim, n.path, n.label);
-        return;
-      }
-    }
-  };
-
-  if (_mapAnimId) cancelAnimationFrame(_mapAnimId);
-  draw();
-}
-
 // ── Random ──
 async function randomArticle(event) {
   if (event) event.preventDefault();
@@ -6931,6 +6673,19 @@ function _isModClick() {
   return e.metaKey || e.ctrlKey || e.button === 1;
 }
 
+// ── Middle-click (auxclick) handler for search results, discover cards, etc. ──
+// onclick doesn't fire on middle-click — auxclick does.
+document.addEventListener('auxclick', function(e) {
+  if (e.button !== 1) return; // Only handle middle-click
+  var el = e.target.closest('[data-zim][data-path]');
+  if (!el) return;
+  e.preventDefault();
+  var zim = el.getAttribute('data-zim');
+  var path = el.getAttribute('data-path');
+  var title = el.getAttribute('data-title') || _titleFromPath(path);
+  _openTab(zim, path, title, true);
+});
+
 // ── Link Context Menu ──
 var _linkCtxMenu = document.getElementById('link-ctx-menu');
 var _linkCtxData = null; // {zim, path, title, url}
@@ -6940,10 +6695,10 @@ function _showLinkCtxMenu(x, y, data) {
   var isMac = /Mac/.test(navigator.platform);
   var mod = isMac ? '\u2318' : 'Ctrl+';
   var items = '';
-  items += '<div class="zimi-ctx-item" onclick="_ctxOpenNewWindow()">Open in New Tab<span class="ctx-key">' + mod + 'Click</span></div>';
-  items += '<div class="zimi-ctx-item" onclick="_ctxCopyLink()">Copy Link</div>';
+  items += '<div class="zimi-ctx-item" onclick="_ctxOpenNewWindow()">' + tH('open_new_tab') + '<span class="ctx-key">' + mod + 'Click</span></div>';
+  items += '<div class="zimi-ctx-item" onclick="_ctxCopyLink()">' + tH('copy_link') + '</div>';
   if (data.title) {
-    items += '<div class="zimi-ctx-item" onclick="_ctxCopyTitle()">Copy Title</div>';
+    items += '<div class="zimi-ctx-item" onclick="_ctxCopyTitle()">' + tH('copy_title') + '</div>';
   }
   _linkCtxMenu.innerHTML = items;
   _linkCtxMenu.classList.add('open');
@@ -7183,7 +6938,7 @@ async function settingsSave() {
     try {
       const needsRestart = await pywebview.api.save_config(updates);
       if (needsRestart) {
-        msgEl.textContent = 'Restarting with new settings\u2026';
+        msgEl.textContent = t('restarting');
         msgEl.className = 'settings-restart-msg show';
         setTimeout(() => pywebview.api.restart(), 500);
         return;
@@ -7200,17 +6955,17 @@ async function settingsRefreshCache() {
   // Works from settings overlay (desktop) or inline settings panel
   const msgEl = document.getElementById('settings-restart-msg');
   const btn = document.getElementById('refresh-cache-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Refreshing\u2026'; }
+  if (btn) { btn.disabled = true; btn.textContent = t('refreshing'); }
   if (msgEl) {
-    msgEl.textContent = 'Refreshing cache\u2026';
+    msgEl.textContent = t('refreshing_cache');
     msgEl.className = 'settings-restart-msg show';
   }
   try {
     await manageFetch('/manage/refresh', { method: 'POST' });
-    if (msgEl) msgEl.textContent = 'Cache refreshed.';
+    if (msgEl) msgEl.textContent = t('cache_refreshed');
     // Reload ZIM list
     try { const lr = await fetch('/list'); zimsCache = await lr.json(); } catch(e) {}
-    if (btn) btn.textContent = 'Refreshed';
+    if (btn) btn.textContent = t('refreshed');
     var overlay = document.getElementById('settings-overlay');
     if (msgEl && overlay && overlay.classList.contains('open')) {
       setTimeout(function() { closeSettings(); renderManage(); }, 800);
@@ -7218,8 +6973,8 @@ async function settingsRefreshCache() {
       renderManage();
     }
   } catch(e) {
-    if (msgEl) msgEl.textContent = 'Failed to refresh cache.';
-    if (btn) btn.textContent = 'Failed';
+    if (msgEl) msgEl.textContent = t('refresh_failed');
+    if (btn) btn.textContent = t('error');
   } finally {
     setTimeout(function() { _refreshing = false; }, 2000);
   }
