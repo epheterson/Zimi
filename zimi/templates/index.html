@@ -1512,17 +1512,29 @@ async function setLanguage(lang) {
 // Offers up to 3 actions: Translate (Chrome API), View in [lang], Download [lang].
 var _chromeTranslatorAvailable = null; // null = unknown, true/false after check
 var _activeTranslator = null; // Chrome Translator instance when translating
+var _translatedState = null; // {origNodes: [{node, text}], fromLang, toLang} when article is translated
 
 function _checkReaderLangBanner() {
   var old = document.getElementById('lang-banner');
   if (old) old.remove();
   if (!readerOpen || !currentArticle) return;
+
+  // If article is currently translated, show translated-state banner
+  if (_translatedState) {
+    _showTranslatedBanner();
+    return;
+  }
+
   var lang = _currentLang;
   // Don't show if dismissed for this language this session
   if (sessionStorage.getItem('zimi_lang_banner_' + lang) === '0') return;
   // Check if the current ZIM is already in the user's language
   var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === currentArticle.zim; });
   if (zimInfo && zimInfo.language === lang) return; // Already reading in their language
+  _buildLangBanner(lang, zimInfo);
+}
+
+function _buildLangBanner(lang, zimInfo) {
   var langName = (_AVAILABLE_LANGS.find(function(l) { return l.code === lang; }) || {}).name || lang;
   var zimCat = (zimInfo && zimInfo.category) || '';
 
@@ -1531,7 +1543,6 @@ function _checkReaderLangBanner() {
 
   // 1. Translate button (Chrome Translator API) — detect availability
   if (_chromeTranslatorAvailable === null) {
-    // First check — async, will re-render banner when ready
     _detectChromeTranslator().then(function() { _checkReaderLangBanner(); });
     return;
   }
@@ -1550,7 +1561,6 @@ function _checkReaderLangBanner() {
     });
   }
   if (!matchZim) {
-    // Fallback: any Wikipedia in user's language
     matchZim = (zimsCache || []).find(function(z) {
       return z.language === lang && /^wikipedia/i.test(z.name || '');
     });
@@ -1572,13 +1582,27 @@ function _checkReaderLangBanner() {
   }
 
   if (!actions) return; // Nothing to offer
+  _insertLangBanner(actions + '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(lang) + '\')">\u2715</button>');
+}
 
+function _showTranslatedBanner() {
+  var toLangName = (_AVAILABLE_LANGS.find(function(l) { return l.code === _translatedState.toLang; }) || {}).name || _translatedState.toLang;
+  var actions = '<span style="opacity:0.7">' + tH('translated_to', {lang: toLangName}) + '</span>' +
+    '<button class="lang-banner-btn" onclick="_untranslateArticle()">' + tH('view_original') + '</button>';
+  // If UI language changed to something different than the translation target, offer re-translate
+  if (_currentLang !== _translatedState.toLang && _currentLang !== _translatedState.fromLang && _chromeTranslatorAvailable) {
+    var curLangName = (_AVAILABLE_LANGS.find(function(l) { return l.code === _currentLang; }) || {}).name || _currentLang;
+    actions += '<button class="lang-banner-btn lang-banner-translate" onclick="_retranslateArticle()">' +
+      tH('translate_to', {lang: curLangName}) + '</button>';
+  }
+  _insertLangBanner(actions + '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(_currentLang) + '\')">\u2715</button>');
+}
+
+function _insertLangBanner(html) {
   var banner = document.createElement('div');
   banner.id = 'lang-banner';
   banner.className = 'lang-banner';
-  banner.innerHTML = actions +
-    '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(lang) + '\')">\u2715</button>';
-  // Insert inside reader-view, before the iframe
+  banner.innerHTML = html;
   var reader = document.getElementById('reader');
   var frame = document.getElementById('reader-frame');
   if (reader && frame) reader.insertBefore(banner, frame);
@@ -1605,14 +1629,11 @@ async function _translateArticle() {
   var btn = document.querySelector('.lang-banner-translate');
   if (btn) { btn.disabled = true; btn.textContent = tH('translating') + '\u2026'; }
   try {
-    // Detect source language from ZIM
     var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === currentArticle.zim; });
     var srcLang = (zimInfo && zimInfo.language) || 'en';
     var tgtLang = _currentLang;
     if (srcLang === tgtLang) return;
-    // Create translator (downloads language pack if needed)
     _activeTranslator = await Translator.create({sourceLanguage: srcLang, targetLanguage: tgtLang});
-    // Walk text nodes in the article body
     var body = frame.contentDocument.body;
     if (!body) return;
     var walker = frame.contentDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
@@ -1621,6 +1642,8 @@ async function _translateArticle() {
       var n = walker.currentNode;
       if (n.textContent.trim().length > 2) nodes.push(n);
     }
+    // Save originals for untranslate
+    var origNodes = nodes.map(function(n) { return {node: n, text: n.textContent}; });
     // Translate in batches
     var BATCH = 20;
     for (var i = 0; i < nodes.length; i += BATCH) {
@@ -1632,16 +1655,32 @@ async function _translateArticle() {
       }
       if (btn) btn.textContent = tH('translating') + '\u2026 ' + Math.min(100, Math.round((i + BATCH) / nodes.length * 100)) + '%';
     }
-    // Done — remove banner
-    var banner = document.getElementById('lang-banner');
-    if (banner) { banner.remove(); _adjustBodyPadding(); }
+    // Store translation state and show translated banner
+    _translatedState = {origNodes: origNodes, fromLang: srcLang, toLang: tgtLang};
+    _checkReaderLangBanner();
   } catch(e) {
     console.warn('[Zimi] Translation failed:', e);
     if (btn) { btn.disabled = false; btn.textContent = tH('translate'); }
   }
 }
 
+function _untranslateArticle() {
+  if (!_translatedState || !_translatedState.origNodes) return;
+  _translatedState.origNodes.forEach(function(item) {
+    try { item.node.textContent = item.text; } catch(e) {}
+  });
+  _translatedState = null;
+  _checkReaderLangBanner(); // Re-show translate/view-in-lang options
+}
+
+async function _retranslateArticle() {
+  // Restore originals first, then translate to new language
+  _untranslateArticle();
+  await _translateArticle();
+}
+
 function _langBannerSwitch(zimName) {
+  _translatedState = null; // Clear translation state on ZIM switch
   var banner = document.getElementById('lang-banner');
   if (banner) { banner.remove(); _adjustBodyPadding(); }
   if (currentArticle) {
@@ -1844,6 +1883,7 @@ function updateTopbar() {
   newtabBtn.style.display = readerOpen ? 'flex' : 'none';
   randomBtn.style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
   document.getElementById('library-btn').style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
+  document.getElementById('lang-selector-btn').style.display = _almanacOpen ? 'none' : '';
   _updateLibraryBtnIcon();
 
   // Search placeholder
@@ -6483,6 +6523,7 @@ function closeReader() {
   // Restore main document scroll (iOS tap-to-top for home page)
   document.documentElement.style.overflowY = 'auto';
   _hideLangBar();
+  _translatedState = null; // Clear translation state
   var langBanner = document.getElementById('lang-banner');
   if (langBanner) { langBanner.remove(); _adjustBodyPadding(); }
   updateTopbar();

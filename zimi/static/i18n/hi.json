@@ -272,6 +272,9 @@
   "older": "पुराना",
   "translate": "अनुवाद करें",
   "translating": "अनुवाद हो रहा है",
+  "translated_to": "{lang} में अनुवादित",
+  "view_original": "मूल देखें",
+  "translate_to": "{lang} में अनुवाद करें",
   "view_in_lang": "{lang} में देखें",
   "download_lang": "{lang} डाउनलोड करें"
 }

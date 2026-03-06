@@ -272,6 +272,9 @@
   "older": "أقدم",
   "translate": "ترجمة",
   "translating": "جارٍ الترجمة",
+  "translated_to": "تمت الترجمة إلى {lang}",
+  "view_original": "عرض الأصل",
+  "translate_to": "ترجمة إلى {lang}",
   "view_in_lang": "عرض بـ{lang}",
   "download_lang": "تنزيل {lang}"
 }

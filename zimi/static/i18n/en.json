@@ -324,6 +324,9 @@
   "older": "Older",
   "translate": "Translate",
   "translating": "Translating",
+  "translated_to": "Translated to {lang}",
+  "view_original": "View Original",
+  "translate_to": "Translate to {lang}",
   "view_in_lang": "View in {lang}",
   "download_lang": "Download {lang}"
 }

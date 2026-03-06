@@ -272,6 +272,9 @@
   "older": "更早",
   "translate": "翻译",
   "translating": "翻译中",
+  "translated_to": "已翻译为{lang}",
+  "view_original": "查看原文",
+  "translate_to": "翻译为{lang}",
   "view_in_lang": "查看{lang}版",
   "download_lang": "下载{lang}"
 }

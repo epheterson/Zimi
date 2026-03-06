@@ -272,6 +272,9 @@
   "older": "ישן יותר",
   "translate": "תרגם",
   "translating": "מתרגם",
+  "translated_to": "תורגם ל{lang}",
+  "view_original": "הצג מקור",
+  "translate_to": "תרגם ל{lang}",
   "view_in_lang": "הצג ב{lang}",
   "download_lang": "הורד {lang}"
 }

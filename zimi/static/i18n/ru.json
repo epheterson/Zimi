@@ -272,6 +272,9 @@
   "older": "Ранее",
   "translate": "Перевести",
   "translating": "Перевод",
+  "translated_to": "Переведено на {lang}",
+  "view_original": "Показать оригинал",
+  "translate_to": "Перевести на {lang}",
   "view_in_lang": "Просмотр на {lang}",
   "download_lang": "Скачать {lang}"
 }
