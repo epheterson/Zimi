@@ -227,5 +227,20 @@
   "delete_zim": "Eliminar este archivo ZIM",
   "change_password": "Cambiar contraseña",
   "set_password": "Establecer contraseña",
-  "new_password": "Nueva contraseña"
+  "new_password": "Nueva contraseña",
+  "au_disabled": "Desactivado",
+  "au_daily": "Diario",
+  "au_weekly": "Semanal",
+  "au_monthly": "Mensual",
+  "fts_hint": "La búsqueda de texto completo encuentra resultados <em>dentro</em> de los artículos, no solo en los títulos:",
+  "build": "Crear",
+  "ms_library": "Biblioteca",
+  "ms_display": "Pantalla",
+  "ms_server": "Servidor",
+  "ms_security": "Seguridad",
+  "welcome_lang_title": "¿Buscas contenido en {lang}?",
+  "welcome_lang_body": "Zimi almacena enciclopedias enteras sin conexión. Explora el Catálogo para descargar Wikipedia en {lang} y más.",
+  "welcome_lang_browse": "Explorar Catálogo",
+  "welcome_lang_have": "Tienes {n} fuentes en {lang}",
+  "welcome_lang_view": "Ver"
 }

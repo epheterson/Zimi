@@ -227,5 +227,20 @@
   "delete_zim": "यह ZIM फ़ाइल हटाएं",
   "change_password": "पासवर्ड बदलें",
   "set_password": "पासवर्ड सेट करें",
-  "new_password": "नया पासवर्ड"
+  "new_password": "नया पासवर्ड",
+  "au_disabled": "अक्षम",
+  "au_daily": "दैनिक",
+  "au_weekly": "साप्ताहिक",
+  "au_monthly": "मासिक",
+  "fts_hint": "पूर्ण-पाठ खोज लेखों के <em>अंदर</em> परिणाम खोजती है, न कि केवल शीर्षकों में:",
+  "build": "बनाएं",
+  "ms_library": "पुस्तकालय",
+  "ms_display": "प्रदर्शन",
+  "ms_server": "सर्वर",
+  "ms_security": "सुरक्षा",
+  "welcome_lang_title": "{lang} सामग्री खोज रहे हैं?",
+  "welcome_lang_body": "Zimi पूरे विश्वकोश ऑफ़लाइन संग्रहीत करता है। {lang} विकिपीडिया और अधिक डाउनलोड करने के लिए कैटलॉग ब्राउज़ करें।",
+  "welcome_lang_browse": "कैटलॉग ब्राउज़ करें",
+  "welcome_lang_have": "आपके पास {n} {lang} स्रोत हैं",
+  "welcome_lang_view": "देखें"
 }

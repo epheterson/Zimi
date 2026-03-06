@@ -227,5 +227,20 @@
   "delete_zim": "Diese ZIM-Datei löschen",
   "change_password": "Passwort ändern",
   "set_password": "Passwort festlegen",
-  "new_password": "Neues Passwort"
+  "new_password": "Neues Passwort",
+  "au_disabled": "Deaktiviert",
+  "au_daily": "Täglich",
+  "au_weekly": "Wöchentlich",
+  "au_monthly": "Monatlich",
+  "fts_hint": "Volltextsuche findet Ergebnisse <em>in</em> Artikeln, nicht nur in Titeln:",
+  "build": "Erstellen",
+  "ms_library": "Bibliothek",
+  "ms_display": "Anzeige",
+  "ms_server": "Server",
+  "ms_security": "Sicherheit",
+  "welcome_lang_title": "Suchen Sie {lang} Inhalte?",
+  "welcome_lang_body": "Zimi speichert ganze Enzyklopädien offline. Durchsuchen Sie den Katalog, um {lang} Wikipedia und mehr herunterzuladen.",
+  "welcome_lang_browse": "Katalog durchsuchen",
+  "welcome_lang_have": "Sie haben {n} {lang} Quellen",
+  "welcome_lang_view": "Anzeigen"
 }

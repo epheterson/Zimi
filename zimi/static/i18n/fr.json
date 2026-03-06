@@ -227,5 +227,20 @@
   "delete_zim": "Supprimer ce fichier ZIM",
   "change_password": "Changer le mot de passe",
   "set_password": "Définir un mot de passe",
-  "new_password": "Nouveau mot de passe"
+  "new_password": "Nouveau mot de passe",
+  "au_disabled": "Désactivé",
+  "au_daily": "Quotidien",
+  "au_weekly": "Hebdomadaire",
+  "au_monthly": "Mensuel",
+  "fts_hint": "La recherche plein texte trouve des résultats <em>dans</em> les articles, pas seulement les titres :",
+  "build": "Créer",
+  "ms_library": "Bibliothèque",
+  "ms_display": "Affichage",
+  "ms_server": "Serveur",
+  "ms_security": "Sécurité",
+  "welcome_lang_title": "Vous cherchez du contenu en {lang} ?",
+  "welcome_lang_body": "Zimi stocke des encyclopédies entières hors ligne. Parcourez le Catalogue pour télécharger Wikipédia en {lang} et plus.",
+  "welcome_lang_browse": "Parcourir le Catalogue",
+  "welcome_lang_have": "Vous avez {n} sources en {lang}",
+  "welcome_lang_view": "Voir"
 }

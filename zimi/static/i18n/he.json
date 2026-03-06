@@ -227,5 +227,20 @@
   "delete_zim": "מחק קובץ ZIM זה",
   "change_password": "שנה סיסמה",
   "set_password": "הגדר סיסמה",
-  "new_password": "סיסמה חדשה"
+  "new_password": "סיסמה חדשה",
+  "au_disabled": "מושבת",
+  "au_daily": "יומי",
+  "au_weekly": "שבועי",
+  "au_monthly": "חודשי",
+  "fts_hint": "חיפוש טקסט מלא מוצא תוצאות <em>בתוך</em> מאמרים, לא רק בכותרות:",
+  "build": "בנה",
+  "ms_library": "ספרייה",
+  "ms_display": "תצוגה",
+  "ms_server": "שרת",
+  "ms_security": "אבטחה",
+  "welcome_lang_title": "מחפש תוכן ב{lang}?",
+  "welcome_lang_body": "Zimi מאחסן אנציקלופדיות שלמות במצב לא מקוון. דפדף בקטלוג כדי להוריד את ויקיפדיה ב{lang} ועוד.",
+  "welcome_lang_browse": "דפדף בקטלוג",
+  "welcome_lang_have": "יש לך {n} מקורות ב{lang}",
+  "welcome_lang_view": "צפה"
 }

@@ -227,5 +227,20 @@
   "delete_zim": "حذف ملف ZIM هذا",
   "change_password": "تغيير كلمة المرور",
   "set_password": "تعيين كلمة المرور",
-  "new_password": "كلمة مرور جديدة"
+  "new_password": "كلمة مرور جديدة",
+  "au_disabled": "معطل",
+  "au_daily": "يومي",
+  "au_weekly": "أسبوعي",
+  "au_monthly": "شهري",
+  "fts_hint": "البحث النصي الكامل يجد نتائج <em>داخل</em> المقالات، وليس فقط العناوين:",
+  "build": "إنشاء",
+  "ms_library": "المكتبة",
+  "ms_display": "العرض",
+  "ms_server": "الخادم",
+  "ms_security": "الأمان",
+  "welcome_lang_title": "تبحث عن محتوى بـ{lang}؟",
+  "welcome_lang_body": "Zimi يخزن موسوعات كاملة دون اتصال. تصفح الكتالوج لتحميل ويكيبيديا بـ{lang} والمزيد.",
+  "welcome_lang_browse": "تصفح الكتالوج",
+  "welcome_lang_have": "لديك {n} مصادر بـ{lang}",
+  "welcome_lang_view": "عرض"
 }

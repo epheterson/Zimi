@@ -227,5 +227,20 @@
   "delete_zim": "Удалить этот ZIM-файл",
   "change_password": "Изменить пароль",
   "set_password": "Установить пароль",
-  "new_password": "Новый пароль"
+  "new_password": "Новый пароль",
+  "au_disabled": "Отключено",
+  "au_daily": "Ежедневно",
+  "au_weekly": "Еженедельно",
+  "au_monthly": "Ежемесячно",
+  "fts_hint": "Полнотекстовый поиск находит результаты <em>внутри</em> статей, а не только в заголовках:",
+  "build": "Создать",
+  "ms_library": "Библиотека",
+  "ms_display": "Отображение",
+  "ms_server": "Сервер",
+  "ms_security": "Безопасность",
+  "welcome_lang_title": "Ищете контент на {lang}?",
+  "welcome_lang_body": "Zimi хранит целые энциклопедии офлайн. Просмотрите Каталог, чтобы скачать Википедию на {lang} и другие источники.",
+  "welcome_lang_browse": "Просмотр Каталога",
+  "welcome_lang_have": "У вас {n} источников на {lang}",
+  "welcome_lang_view": "Просмотр"
 }

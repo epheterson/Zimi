@@ -271,5 +271,24 @@
   "delete_zim": "Delete this ZIM file",
   "change_password": "Change password",
   "set_password": "Set password",
-  "new_password": "New password"
+  "new_password": "New password",
+
+  "au_disabled": "Disabled",
+  "au_daily": "Daily",
+  "au_weekly": "Weekly",
+  "au_monthly": "Monthly",
+
+  "fts_hint": "Full-text search finds results <em>inside</em> articles, not just titles:",
+  "build": "Build",
+
+  "ms_library": "Library",
+  "ms_display": "Display",
+  "ms_server": "Server",
+  "ms_security": "Security",
+
+  "welcome_lang_title": "Looking for {lang} content?",
+  "welcome_lang_body": "Zimi stores entire encyclopedias offline. Browse the Catalog to download {lang} Wikipedia and more.",
+  "welcome_lang_browse": "Browse Catalog",
+  "welcome_lang_have": "You have {n} {lang} sources",
+  "welcome_lang_view": "View"
 }
