@@ -242,5 +242,22 @@
   "welcome_lang_body": "Zimi يخزن موسوعات كاملة دون اتصال. تصفح الكتالوج لتحميل ويكيبيديا بـ{lang} والمزيد.",
   "welcome_lang_browse": "تصفح الكتالوج",
   "welcome_lang_have": "لديك {n} مصادر بـ{lang}",
-  "welcome_lang_view": "عرض"
+  "welcome_lang_view": "عرض",
+  "update": "تحديث",
+  "n_available": "{n} متاح",
+  "n_installed_count": "{n} مثبت",
+  "multilingual": "متعدد اللغات ({n} لغة)",
+  "back_to_catalog": "\u2190 الفهرس",
+  "cat_encyclopedias": "موسوعات",
+  "cat_qa": "مجتمعات الأسئلة والأجوبة",
+  "cat_devdocs": "وثائق تقنية وتطوير",
+  "cat_video": "فيديو ومحاضرات",
+  "cat_education": "تعليم وإرشادات",
+  "cat_books": "كتب وأدب",
+  "cat_medical": "طب وصحة",
+  "cat_survival": "بقاء واستعداد",
+  "cat_gaming": "ألعاب ومعجبين",
+  "cat_other": "أخرى",
+  "articles": "مقالة",
+  "from_to_update": "من {from} \u2192 {to}"
 }

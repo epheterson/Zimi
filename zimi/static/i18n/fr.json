@@ -242,5 +242,22 @@
   "welcome_lang_body": "Zimi stocke des encyclopédies entières hors ligne. Parcourez le Catalogue pour télécharger Wikipédia en {lang} et plus.",
   "welcome_lang_browse": "Parcourir le Catalogue",
   "welcome_lang_have": "Vous avez {n} sources en {lang}",
-  "welcome_lang_view": "Voir"
+  "welcome_lang_view": "Voir",
+  "update": "Mettre à jour",
+  "n_available": "{n} disponibles",
+  "n_installed_count": "{n} installés",
+  "multilingual": "Multilingue ({n} langues)",
+  "back_to_catalog": "\u2190 Catalogue",
+  "cat_encyclopedias": "Encyclopédies",
+  "cat_qa": "Communautés Q&R",
+  "cat_devdocs": "Docs dev & tech",
+  "cat_video": "Vidéo & Conférences",
+  "cat_education": "Éducation & Tutoriels",
+  "cat_books": "Livres & Littérature",
+  "cat_medical": "Médecine & Santé",
+  "cat_survival": "Survie & Préparation",
+  "cat_gaming": "Jeux & Fandom",
+  "cat_other": "Autre",
+  "articles": "articles",
+  "from_to_update": "De {from} \u2192 {to}"
 }

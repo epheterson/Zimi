@@ -242,5 +242,22 @@
   "welcome_lang_body": "Zimi хранит целые энциклопедии офлайн. Просмотрите Каталог, чтобы скачать Википедию на {lang} и другие источники.",
   "welcome_lang_browse": "Просмотр Каталога",
   "welcome_lang_have": "У вас {n} источников на {lang}",
-  "welcome_lang_view": "Просмотр"
+  "welcome_lang_view": "Просмотр",
+  "update": "Обновить",
+  "n_available": "{n} доступно",
+  "n_installed_count": "{n} установлено",
+  "multilingual": "Многоязычный ({n} языков)",
+  "back_to_catalog": "\u2190 Каталог",
+  "cat_encyclopedias": "Энциклопедии",
+  "cat_qa": "Сообщества Q&A",
+  "cat_devdocs": "Документация для разработчиков",
+  "cat_video": "Видео и Лекции",
+  "cat_education": "Образование и Руководства",
+  "cat_books": "Книги и Литература",
+  "cat_medical": "Медицина и Здоровье",
+  "cat_survival": "Выживание и Подготовка",
+  "cat_gaming": "Игры и Фандом",
+  "cat_other": "Прочее",
+  "articles": "статей",
+  "from_to_update": "С {from} \u2192 {to}"
 }

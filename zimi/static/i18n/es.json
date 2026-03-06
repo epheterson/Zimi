@@ -242,5 +242,22 @@
   "welcome_lang_body": "Zimi almacena enciclopedias enteras sin conexión. Explora el Catálogo para descargar Wikipedia en {lang} y más.",
   "welcome_lang_browse": "Explorar Catálogo",
   "welcome_lang_have": "Tienes {n} fuentes en {lang}",
-  "welcome_lang_view": "Ver"
+  "welcome_lang_view": "Ver",
+  "update": "Actualizar",
+  "n_available": "{n} disponibles",
+  "n_installed_count": "{n} instalados",
+  "multilingual": "Multilingüe ({n} idiomas)",
+  "back_to_catalog": "\u2190 Catálogo",
+  "cat_encyclopedias": "Enciclopedias",
+  "cat_qa": "Comunidades Q&A",
+  "cat_devdocs": "Docs de dev y tech",
+  "cat_video": "Vídeo y Charlas",
+  "cat_education": "Educación y Tutoriales",
+  "cat_books": "Libros y Literatura",
+  "cat_medical": "Medicina y Salud",
+  "cat_survival": "Supervivencia y Preparación",
+  "cat_gaming": "Juegos y Fandom",
+  "cat_other": "Otros",
+  "articles": "artículos",
+  "from_to_update": "De {from} \u2192 {to}"
 }

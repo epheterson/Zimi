@@ -1749,7 +1749,7 @@ function updateTopbar() {
       q.placeholder = t('filter_installed');
     } else if (manageCategoryFilter) {
       const catMeta = BROWSE_CATEGORIES.find(c => c.key === manageCategoryFilter);
-      q.placeholder = t('search_in', {source: catMeta ? catMeta.name : manageCategoryFilter});
+      q.placeholder = t('search_in', {source: catMeta ? t(catMeta.i18n) : manageCategoryFilter});
     } else {
       q.placeholder = t('search_catalog');
     }
@@ -3779,16 +3779,16 @@ function _buildCatalogLangSelect() {
 
 // ── Browse category gallery metadata ──
 const BROWSE_CATEGORIES = [
-  { key: 'wikipedia',      name: 'Encyclopedias',       icon: '\u{1F30D}', desc: 'Wikipedia, Wiktionary, Wikiquote, and Wikimedia projects' },
-  { key: 'stack_exchange', name: 'Q&A Communities',      icon: '\u{1F4AC}', desc: 'Stack Overflow, Ask Ubuntu, cooking, DIY, science' },
-  { key: 'devdocs',        name: 'Dev & Tech Docs',      icon: '\u{1F4BB}', desc: 'Language references, Linux wikis, programming tutorials' },
-  { key: 'ted',            name: 'Video & Talks',        icon: '\u{1F3AC}', desc: 'TED talks by topic \u2014 multilingual' },
-  { key: 'education',      name: 'Education & How-To',   icon: '\u{1F393}', desc: 'Khan Academy, iFixit, WikiHow, CrashCourse, and more' },
-  { key: 'gutenberg',      name: 'Books & Literature',   icon: '\u{1F4DA}', desc: 'Project Gutenberg \u2014 public domain books' },
-  { key: 'medical',        name: 'Medical & Health',     icon: '\u{1FA7A}', desc: 'WikiMed, MedlinePlus, CDC, NHS, field medicine' },
-  { key: 'survival',       name: 'Survival & Preparedness', icon: '\u{1F9ED}', desc: 'Emergency guides, prepping, off-grid, water treatment' },
-  { key: 'gaming',         name: 'Gaming & Fandom',      icon: '\u{1F3AE}', desc: 'Minecraft, Pok\u00E9mon, D&D, Stardew Valley, and more' },
-  { key: 'other',          name: 'Other',                icon: '\u{1F4E6}', desc: 'Miscellaneous and uncategorized archives' },
+  { key: 'wikipedia',      i18n: 'cat_encyclopedias',  icon: '\u{1F30D}', desc: 'Wikipedia, Wiktionary, Wikiquote, and Wikimedia projects' },
+  { key: 'stack_exchange', i18n: 'cat_qa',             icon: '\u{1F4AC}', desc: 'Stack Overflow, Ask Ubuntu, cooking, DIY, science' },
+  { key: 'devdocs',        i18n: 'cat_devdocs',        icon: '\u{1F4BB}', desc: 'Language references, Linux wikis, programming tutorials' },
+  { key: 'ted',            i18n: 'cat_video',          icon: '\u{1F3AC}', desc: 'TED talks by topic \u2014 multilingual' },
+  { key: 'education',      i18n: 'cat_education',      icon: '\u{1F393}', desc: 'Khan Academy, iFixit, WikiHow, CrashCourse, and more' },
+  { key: 'gutenberg',      i18n: 'cat_books',          icon: '\u{1F4DA}', desc: 'Project Gutenberg \u2014 public domain books' },
+  { key: 'medical',        i18n: 'cat_medical',        icon: '\u{1FA7A}', desc: 'WikiMed, MedlinePlus, CDC, NHS, field medicine' },
+  { key: 'survival',       i18n: 'cat_survival',       icon: '\u{1F9ED}', desc: 'Emergency guides, prepping, off-grid, water treatment' },
+  { key: 'gaming',         i18n: 'cat_gaming',         icon: '\u{1F3AE}', desc: 'Minecraft, Pok\u00E9mon, D&D, Stardew Valley, and more' },
+  { key: 'other',          i18n: 'cat_other',          icon: '\u{1F4E6}', desc: 'Miscellaneous and uncategorized archives' },
 ];
 
 // Language display: "Multilingual (24 langs)" or "French" instead of raw codes
@@ -3810,7 +3810,7 @@ function formatLanguage(langStr) {
   }
   // Multilingual
   if (codes.length <= 3) return codes.map(c => LANG_NAMES[c] || c.toUpperCase()).join(', ');
-  return 'Multilingual (' + codes.length + ' langs)';
+  return t('multilingual', {n: codes.length});
 }
 
 // OPDS category → browse category mapping (case-insensitive)
@@ -3976,13 +3976,12 @@ function buildFeaturedCarousel(items) {
     if (!group) continue;
     const variants = group.variants || [group];
     const withLabels = variants.filter(v => v.download_url).map(v => ({
-      label: variantLabel(v.download_url) || 'Full',
+      label: variantLabel(v.download_url) || t('full'),
       size: formatSize(v.size_bytes),
       url: v.download_url
-    })).filter(v => v.label !== 'No images');  // Don't offer "No images" in featured
+    })).filter(v => !v.url.includes('_nopic_'));  // Don't offer nopic in featured — images matter for Discover
     // Default to Full — images matter for Discover (APOD, xkcd, Wikipedia)
-    const order = { 'Full': 0, 'Mini': 1 };
-    withLabels.sort((a, b) => (order[a.label] ?? 0) - (order[b.label] ?? 0));
+    withLabels.sort((a, b) => _flavorOrder(b.url) - _flavorOrder(a.url));
     if (withLabels.length === 0) continue;
     // Compact banner: icon + label + download action
     var actionsHtml;
@@ -3992,9 +3991,9 @@ function buildFeaturedCarousel(items) {
         '<option value="' + escAttr(v.url) + '">' + esc(v.label + ' (' + v.size + ')') + '</option>'
       ).join('');
       actionsHtml = '<select id="' + fcSelId + '" class="fc-flavor-select fc-pack-select">' + opts + '</select>' +
-        '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(document.getElementById(\'' + fcSelId + '\').value, this)" title="Download">\u2B07</button>';
+        '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(document.getElementById(\'' + fcSelId + '\').value, this)" title="' + escAttr(t('download')) + '">\u2B07</button>';
     } else {
-      actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)" title="Download ' + escAttr(withLabels[0].size) + '">\u2B07 ' +
+      actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)" title="' + escAttr(t('download_size', {size: withLabels[0].size})) + '">\u2B07 ' +
         esc(withLabels[0].size) + '</button>';
     }
     // "Unlocks" hint: what Discover feature this ZIM enables
@@ -4108,11 +4107,11 @@ function renderBrowseGallery() {
       const count = catCounts[cat.key] || 0;
       if (count === 0 && cat.key !== 'other') continue;
       const installed = catInstalled[cat.key] || 0;
-      const countLine = count + ' available' + (installed > 0 ? ' \u00B7 ' + installed + ' installed' : '');
+      const countLine = t('n_available', {n: count}) + (installed > 0 ? ' \u00B7 ' + t('n_installed_count', {n: installed}) : '');
       h += '<div class="browse-cat-card" onclick="drillCategory(\'' + escAttr(cat.key) + '\')">' +
         '<div class="bcc-icon">' + cat.icon + '</div>' +
         '<div class="bcc-info">' +
-          '<div class="bcc-name">' + esc(cat.name) + '</div>' +
+          '<div class="bcc-name">' + tH(cat.i18n) + '</div>' +
           '<div class="bcc-desc">' + esc(cat.desc) + '</div>' +
           '<div class="bcc-count">' + esc(countLine) + '</div>' +
         '</div>' +
@@ -4150,7 +4149,7 @@ function drillCategory(catKey) {
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
 
   const catMeta = BROWSE_CATEGORIES.find(c => c.key === catKey);
-  const catName = catMeta ? catMeta.name : catKey;
+  const catName = catMeta ? t(catMeta.i18n) : catKey;
   q.placeholder = 'Search in ' + catName + '...';
   q.value = '';
 
@@ -4170,9 +4169,9 @@ function drillCategory(catKey) {
     grouped.sort((a, b) => (a.title || a.name || '').localeCompare(b.title || b.name || ''));
 
     let h = '<div class="browse-drilldown-header">' +
-      '<button class="browse-back" onclick="renderBrowseGallery()">\u2190 Catalog</button>' +
+      '<button class="browse-back" onclick="renderBrowseGallery()">' + tH('back_to_catalog') + '</button>' +
       '<span class="browse-drilldown-title">' + (catMeta ? catMeta.icon + ' ' : '') + esc(catName) + '</span>' +
-      '<span class="browse-drilldown-count">' + grouped.length + ' available</span>' +
+      '<span class="browse-drilldown-count">' + tH('n_available', {n: grouped.length}) + '</span>' +
     '</div>';
     for (const item of grouped) h += renderCatalogItem(item);
     if (!grouped.length) h += '<div class="empty"><p>' + tH('no_zims_category') + '</p></div>';
@@ -4268,17 +4267,19 @@ function groupVariants(items) {
 function variantLabel(url) {
   if (!url) return '';
   const f = url.split('/').pop() || '';
-  if (f.includes('_maxi_')) return 'Full';
-  if (f.includes('_nopic_')) return 'No images';
-  if (f.includes('_mini_')) return 'Mini';
+  if (f.includes('_maxi_')) return t('full');
+  if (f.includes('_nopic_')) return t('no_images');
+  if (f.includes('_mini_')) return t('mini');
   return '';
 }
+
+function _flavorOrder(url) { return url.includes('_mini_') ? 0 : url.includes('_nopic_') ? 1 : 2; }
 
 function renderCatalogItem(group) {
   const item = group;
   const variants = group.variants || [item];
   const meta = [];
-  if (item.article_count) meta.push(item.article_count.toLocaleString() + ' articles');
+  if (item.article_count) meta.push(item.article_count.toLocaleString() + ' ' + t('articles'));
   const langDisplay = formatLanguage(item.language);
   if (langDisplay) meta.push(langDisplay);
   if (item.date) meta.push(item.date);
@@ -4299,22 +4300,21 @@ function renderCatalogItem(group) {
     if (hasUpdate) {
       // Update available — show update button (same style as manage view)
       const updUrl = variants.find(v => v.download_url && !v.installed);
-      actionsHtml = '<button class="ci-update-btn" onclick="downloadZim(\'' + escAttr((updUrl || item).download_url) + '\', this, true)" title="From ' + escAttr(instVariant._installedDate) + ' \u2192 ' + escAttr(item.date) + '">' +
-        'Update</button>';
+      actionsHtml = '<button class="ci-update-btn" onclick="downloadZim(\'' + escAttr((updUrl || item).download_url) + '\', this, true)" title="' + escAttr(t('from_to_update', {from: instVariant._installedDate, to: item.date})) + '">' +
+        tH('update') + '</button>';
     } else {
-      actionsHtml = '<span class="ci-installed-badge">Installed</span>';
+      actionsHtml = '<span class="ci-installed-badge">' + tH('installed_badge') + '</span>';
     }
     if (instVariant._installedFile) {
-      actionsHtml += '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(instVariant._installedFile) + '\', this)" title="Delete this ZIM file">\u00D7</button>';
+      actionsHtml += '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(instVariant._installedFile) + '\', this)" title="' + escAttr(t('delete_zim')) + '">\u00D7</button>';
     }
   } else {
     const withLabels = variants.filter(v => v.download_url).map(v => {
-      const label = variantLabel(v.download_url) || 'Full';
+      const label = variantLabel(v.download_url) || t('full');
       const size = formatSize(v.size_bytes);
       return { label, size, url: v.download_url };
     });
-    const order = { 'Mini': 0, 'No images': 1, 'Full': 2 };
-    withLabels.sort((a, b) => (order[a.label] ?? 1) - (order[b.label] ?? 1));
+    withLabels.sort((a, b) => _flavorOrder(a.url) - _flavorOrder(b.url));
     if (withLabels.length > 1) {
       // Dropdown + single download button
       const selId = 'ci-flavor-' + Math.random().toString(36).substr(2, 6);
@@ -4323,10 +4323,10 @@ function renderCatalogItem(group) {
       ).join('');
       actionsHtml = '<div class="ci-variants ci-flavor-row">' +
         '<select id="' + selId + '" class="ci-flavor-select" onclick="event.stopPropagation()">' + opts + '</select>' +
-        '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(document.getElementById(\'' + selId + '\').value, this)">Download</button>' +
+        '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(document.getElementById(\'' + selId + '\').value, this)">' + tH('download') + '</button>' +
       '</div>';
     } else if (withLabels.length === 1) {
-      actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' + esc('Download ' + withLabels[0].label + ' (' + withLabels[0].size + ')') + '</button>';
+      actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' + tH('download_size', {size: withLabels[0].label + ' (' + withLabels[0].size + ')'}) + '</button>';
     }
   }
   const catAttr = item.category ? ' data-category="' + escAttr(item.category) + '"' : '';
@@ -4353,16 +4353,16 @@ function switchManageTab(tab) {
   q.value = '';
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   if (tab === 'installed') {
-    q.placeholder = 'Filter installed ZIMs...';
+    q.placeholder = t('filter_installed');
     renderInstalled();
   } else if (tab === 'collections') {
-    q.placeholder = 'Search everything...';
+    q.placeholder = t('search_placeholder');
     renderCollectionsTab();
   } else if (tab === 'history') {
-    q.placeholder = 'Search everything...';
+    q.placeholder = t('search_placeholder');
     renderHistoryTab();
   } else if (tab === 'activity') {
-    q.placeholder = 'Search everything...';
+    q.placeholder = t('search_placeholder');
     renderActivityTab();
   } else {
     renderBrowseGallery();
@@ -4603,19 +4603,19 @@ async function renderActivityTab() {
       const uptimeStr = uptime < 3600 ? Math.round(uptime / 60) + 'm' :
                         uptime < 86400 ? Math.round(uptime / 3600) + 'h' :
                         Math.round(uptime / 86400) + 'd';
-      h += '<div class="manage-card"><h2>Server</h2>';
-      h += '<div class="mc-row"><span class="mc-label">Uptime</span><span class="mc-value">' + uptimeStr + '</span></div>';
-      h += '<div class="mc-row"><span class="mc-label">Requests</span><span class="mc-value">' + (m.total_requests || 0) + '</span></div>';
+      h += '<div class="manage-card"><h2>' + tH('server') + '</h2>';
+      h += '<div class="mc-row"><span class="mc-label">' + tH('uptime') + '</span><span class="mc-value">' + uptimeStr + '</span></div>';
+      h += '<div class="mc-row"><span class="mc-label">' + tH('requests') + '</span><span class="mc-value">' + (m.total_requests || 0) + '</span></div>';
       if (m.endpoints) {
         const eps = Object.entries(m.endpoints).sort((a,b) => b[1].count - a[1].count).slice(0, 5);
         for (const [ep, info] of eps) {
           h += '<div class="mc-row" style="padding-left:16px"><span class="mc-label" style="font-size:12px">' + esc(ep) + '</span><span class="mc-value" style="font-size:12px">' + info.count + ' (' + info.avg_latency_ms + 'ms avg)</span></div>';
         }
       }
-      if (m.rate_limited) h += '<div class="mc-row"><span class="mc-label">Rate limited</span><span class="mc-value" style="color:var(--amber)">' + m.rate_limited + '</span></div>';
-      if (d.zim_size_gb) h += '<div class="mc-row"><span class="mc-label">ZIM disk usage</span><span class="mc-value">' + d.zim_size_gb + ' GB</span></div>';
-      if (d.disk_free_gb) h += '<div class="mc-row"><span class="mc-label">Disk free</span><span class="mc-value">' + d.disk_free_gb + ' GB</span></div>';
-      if (sdata.linked_zims) h += '<div class="mc-row"><span class="mc-label">Cross-linked</span><span class="mc-value">' + sdata.linked_zims + ' of ' + sdata.zim_count + ' sources <span style="color:var(--text2);font-size:11px">(' + sdata.domain_count + ' domains)</span></span></div>';
+      if (m.rate_limited) h += '<div class="mc-row"><span class="mc-label">' + tH('rate_limited') + '</span><span class="mc-value" style="color:var(--amber)">' + m.rate_limited + '</span></div>';
+      if (d.zim_size_gb) h += '<div class="mc-row"><span class="mc-label">' + tH('zim_disk_usage') + '</span><span class="mc-value">' + d.zim_size_gb + ' GB</span></div>';
+      if (d.disk_free_gb) h += '<div class="mc-row"><span class="mc-label">' + tH('disk_free') + '</span><span class="mc-value">' + d.disk_free_gb + ' GB</span></div>';
+      if (sdata.linked_zims) h += '<div class="mc-row"><span class="mc-label">' + tH('cross_linked') + '</span><span class="mc-value">' + sdata.linked_zims + ' of ' + sdata.zim_count + ' sources <span style="color:var(--text2);font-size:11px">(' + sdata.domain_count + ' ' + tH('domains') + ')</span></span></div>';
       h += '</div>';
 
       // Save title_index data for rendering after usage
@@ -4626,14 +4626,14 @@ async function renderActivityTab() {
     // Usage stats section (above title index — more relevant to user)
     if (usageRes && usageRes.ok) {
       const data = await usageRes.json();
-      h += '<div class="manage-card"><h2>Usage</h2>';
-      h += '<div class="mc-row"><span class="mc-label">Total searches</span><span class="mc-value">' + (data.searches || 0) + '</span></div>';
-      h += '<div class="mc-row"><span class="mc-label">Total article reads</span><span class="mc-value">' + (data.article_reads || 0) + '</span></div>';
+      h += '<div class="manage-card"><h2>' + tH('usage') + '</h2>';
+      h += '<div class="mc-row"><span class="mc-label">' + tH('total_searches') + '</span><span class="mc-value">' + (data.searches || 0) + '</span></div>';
+      h += '<div class="mc-row"><span class="mc-label">' + tH('total_reads') + '</span><span class="mc-value">' + (data.article_reads || 0) + '</span></div>';
       h += '</div>';
 
       const topZims = data.top_zims || [];
       if (topZims.length > 0) {
-        h += '<div class="manage-card"><h2>Top Sources</h2>';
+        h += '<div class="manage-card"><h2>' + tH('top_sources') + '</h2>';
         for (const z of topZims) {
           const info = zimsCache && zimsCache.find(x => x.name === z.name);
           const title = info ? (info.title || z.name) : z.name;
@@ -4648,12 +4648,12 @@ async function renderActivityTab() {
     // Search index card (compact, below usage)
     if (typeof _ti !== 'undefined' && _ti) {
       const ti = _ti;
-      h += '<div class="manage-card"><h2>Search Index</h2>';
+      h += '<div class="manage-card"><h2>' + tH('search_index') + '</h2>';
 
       // Building state
       if (ti.state === 'building') {
-        h += '<div class="mc-row"><span class="mc-label">Building indexes</span><span class="mc-value" style="color:var(--amber)">' +
-          (ti.building_now ? esc(ti.building_now) + '&hellip;' : 'In progress&hellip;') + '</span></div>';
+        h += '<div class="mc-row"><span class="mc-label">' + tH('building_indexes') + '</span><span class="mc-value" style="color:var(--amber)">' +
+          (ti.building_now ? esc(ti.building_now) + '&hellip;' : tH('in_progress')) + '</span></div>';
       }
 
       // Categorize indexes — use ti.total (all ZIMs) as denominator, not just indexed ones
@@ -5079,7 +5079,7 @@ function renderInstalled(filterText) {
         const vid = '_fv_' + z.name;
         window[vid] = variants;
         meta.push('<span class="flavor-pill" onclick="event.stopPropagation();showFlavorPicker(this, \'' + escAttr(z.name) + '\', window[\'' + vid + '\'])">' +
-          esc(flavor || 'Full') +
+          esc(flavor || t('full')) +
           '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>' +
         '</span>');
       } else if (flavor) {
@@ -5088,12 +5088,12 @@ function renderInstalled(filterText) {
       const upd = _availableUpdates[z.file];
       let actionsHtml = '';
       if (upd) {
-        actionsHtml = '<button class="ci-update-btn" onclick="downloadZim(\'' + escAttr(upd.download_url) + '\', this, true)" title="From ' + escAttr(dateStr || '?') + ' \u2192 ' + escAttr(upd.latest_date) + '">' +
-          'Update</button>' +
-          '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="Delete">\u00D7</button>';
+        actionsHtml = '<button class="ci-update-btn" onclick="downloadZim(\'' + escAttr(upd.download_url) + '\', this, true)" title="' + escAttr(t('from_to_update', {from: dateStr || '?', to: upd.latest_date})) + '">' +
+          tH('update') + '</button>' +
+          '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="' + escAttr(t('delete_zim')) + '">\u00D7</button>';
       } else {
-        actionsHtml = '<span class="ci-installed-badge">Installed</span>' +
-          '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="Delete">\u00D7</button>';
+        actionsHtml = '<span class="ci-installed-badge">' + tH('installed_badge') + '</span>' +
+          '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="' + escAttr(t('delete_zim')) + '">\u00D7</button>';
       }
       items_h += '<div class="catalog-item' + (upd ? ' ci-has-update' : '') + '" style="cursor:pointer" onclick="if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(z.name) + '\',true)}">' +
         '<div class="ci-icon">' + iconHtml + '</div>' +
@@ -5538,7 +5538,7 @@ async function refreshDownloads() {
         const remaining = Object.keys(_availableUpdates).length;
         const timer = _autoUpdateTimerHtml();
         if (remaining > 0) {
-          if (updateEl) updateEl.innerHTML = '<span class="mc-label">Updates</span><span class="mc-value" style="color:var(--amber)">' + timer + remaining + ' available</span>';
+          if (updateEl) updateEl.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--amber)">' + timer + tH('updates_available', {n: remaining}) + '</span>';
           if (updateBtn) { updateBtn.style.display = ''; updateBtn.disabled = false; updateBtn.textContent = t('update_all'); }
         } else {
           if (updateEl) updateEl.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('all_up_to_date') + '</span>';

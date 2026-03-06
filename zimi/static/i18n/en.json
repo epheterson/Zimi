@@ -290,5 +290,25 @@
   "welcome_lang_body": "Zimi stores entire encyclopedias offline. Browse the Catalog to download {lang} Wikipedia and more.",
   "welcome_lang_browse": "Browse Catalog",
   "welcome_lang_have": "You have {n} {lang} sources",
-  "welcome_lang_view": "View"
+  "welcome_lang_view": "View",
+
+  "update": "Update",
+  "n_available": "{n} available",
+  "n_installed_count": "{n} installed",
+  "multilingual": "Multilingual ({n} languages)",
+  "back_to_catalog": "\u2190 Catalog",
+
+  "cat_encyclopedias": "Encyclopedias",
+  "cat_qa": "Q&A Communities",
+  "cat_devdocs": "Dev & Tech Docs",
+  "cat_video": "Video & Talks",
+  "cat_education": "Education & How-To",
+  "cat_books": "Books & Literature",
+  "cat_medical": "Medical & Health",
+  "cat_survival": "Survival & Preparedness",
+  "cat_gaming": "Gaming & Fandom",
+  "cat_other": "Other",
+
+  "articles": "articles",
+  "from_to_update": "From {from} \u2192 {to}"
 }

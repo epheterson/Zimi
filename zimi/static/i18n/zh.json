@@ -242,5 +242,22 @@
   "welcome_lang_body": "Zimi 可离线存储整部百科全书。浏览目录下载{lang}维基百科等资源。",
   "welcome_lang_browse": "浏览目录",
   "welcome_lang_have": "您有 {n} 个{lang}资源",
-  "welcome_lang_view": "查看"
+  "welcome_lang_view": "查看",
+  "update": "更新",
+  "n_available": "{n} 个可用",
+  "n_installed_count": "{n} 个已安装",
+  "multilingual": "多语言（{n} 种语言）",
+  "back_to_catalog": "\u2190 目录",
+  "cat_encyclopedias": "百科全书",
+  "cat_qa": "问答社区",
+  "cat_devdocs": "开发与技术文档",
+  "cat_video": "视频与演讲",
+  "cat_education": "教育与教程",
+  "cat_books": "书籍与文学",
+  "cat_medical": "医疗与健康",
+  "cat_survival": "生存与应急准备",
+  "cat_gaming": "游戏与粉丝文化",
+  "cat_other": "其他",
+  "articles": "篇文章",
+  "from_to_update": "从 {from} \u2192 {to}"
 }

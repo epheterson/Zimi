@@ -242,5 +242,22 @@
   "welcome_lang_body": "Zimi מאחסן אנציקלופדיות שלמות במצב לא מקוון. דפדף בקטלוג כדי להוריד את ויקיפדיה ב{lang} ועוד.",
   "welcome_lang_browse": "דפדף בקטלוג",
   "welcome_lang_have": "יש לך {n} מקורות ב{lang}",
-  "welcome_lang_view": "צפה"
+  "welcome_lang_view": "צפה",
+  "update": "עדכון",
+  "n_available": "{n} זמינים",
+  "n_installed_count": "{n} מותקנים",
+  "multilingual": "רב־לשוני ({n} שפות)",
+  "back_to_catalog": "\u2190 קטלוג",
+  "cat_encyclopedias": "אנציקלופדיות",
+  "cat_qa": "קהילות שאלות ותשובות",
+  "cat_devdocs": "תיעוד טכני ופיתוח",
+  "cat_video": "וידאו והרצאות",
+  "cat_education": "חינוך ומדריכים",
+  "cat_books": "ספרים וספרות",
+  "cat_medical": "רפואה ובריאות",
+  "cat_survival": "הישרדות והיערכות",
+  "cat_gaming": "משחקים ופנדום",
+  "cat_other": "אחר",
+  "articles": "מאמרים",
+  "from_to_update": "מ־{from} \u2192 {to}"
 }

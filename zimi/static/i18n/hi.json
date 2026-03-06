@@ -242,5 +242,22 @@
   "welcome_lang_body": "Zimi पूरे विश्वकोश ऑफ़लाइन संग्रहीत करता है। {lang} विकिपीडिया और अधिक डाउनलोड करने के लिए कैटलॉग ब्राउज़ करें।",
   "welcome_lang_browse": "कैटलॉग ब्राउज़ करें",
   "welcome_lang_have": "आपके पास {n} {lang} स्रोत हैं",
-  "welcome_lang_view": "देखें"
+  "welcome_lang_view": "देखें",
+  "update": "अपडेट",
+  "n_available": "{n} उपलब्ध",
+  "n_installed_count": "{n} इंस्टॉल्ड",
+  "multilingual": "बहुभाषी ({n} भाषाएं)",
+  "back_to_catalog": "\u2190 कैटलॉग",
+  "cat_encyclopedias": "विश्वकोश",
+  "cat_qa": "प्रश्नोत्तर समुदाय",
+  "cat_devdocs": "डेव और तकनीकी दस्तावेज़",
+  "cat_video": "वीडियो और व्याख्यान",
+  "cat_education": "शिक्षा और कैसे करें",
+  "cat_books": "किताबें और साहित्य",
+  "cat_medical": "चिकित्सा और स्वास्थ्य",
+  "cat_survival": "उत्तरजीविता और तैयारी",
+  "cat_gaming": "गेमिंग और फ़ैनडम",
+  "cat_other": "अन्य",
+  "articles": "लेख",
+  "from_to_update": "{from} से \u2192 {to}"
 }

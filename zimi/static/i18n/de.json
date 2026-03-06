@@ -242,5 +242,22 @@
   "welcome_lang_body": "Zimi speichert ganze Enzyklopädien offline. Durchsuchen Sie den Katalog, um {lang} Wikipedia und mehr herunterzuladen.",
   "welcome_lang_browse": "Katalog durchsuchen",
   "welcome_lang_have": "Sie haben {n} {lang} Quellen",
-  "welcome_lang_view": "Anzeigen"
+  "welcome_lang_view": "Anzeigen",
+  "update": "Aktualisieren",
+  "n_available": "{n} verfügbar",
+  "n_installed_count": "{n} installiert",
+  "multilingual": "Mehrsprachig ({n} Sprachen)",
+  "back_to_catalog": "\u2190 Katalog",
+  "cat_encyclopedias": "Enzyklopädien",
+  "cat_qa": "Q&A-Communitys",
+  "cat_devdocs": "Dev- & Tech-Docs",
+  "cat_video": "Video & Vorträge",
+  "cat_education": "Bildung & Anleitungen",
+  "cat_books": "Bücher & Literatur",
+  "cat_medical": "Medizin & Gesundheit",
+  "cat_survival": "Überleben & Vorsorge",
+  "cat_gaming": "Gaming & Fandom",
+  "cat_other": "Sonstiges",
+  "articles": "Artikel",
+  "from_to_update": "Von {from} \u2192 {to}"
 }
