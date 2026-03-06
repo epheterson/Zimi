@@ -259,5 +259,12 @@
   "cat_gaming": "Игры и Фандом",
   "cat_other": "Прочее",
   "articles": "статей",
-  "from_to_update": "С {from} \u2192 {to}"
+  "from_to_update": "С {from} \u2192 {to}",
+  "title_index": "Индекс заголовков",
+  "fulltext_index": "Полнотекстовый индекс",
+  "n_of_total": "{n} из {total}",
+  "favorites": "Избранное",
+  "zim_files": "Файлы ZIM",
+  "total_size": "Общий размер",
+  "powered_by": "Работает на"
 }

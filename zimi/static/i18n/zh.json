@@ -259,5 +259,12 @@
   "cat_gaming": "游戏与粉丝文化",
   "cat_other": "其他",
   "articles": "篇文章",
-  "from_to_update": "从 {from} \u2192 {to}"
+  "from_to_update": "从 {from} \u2192 {to}",
+  "title_index": "标题索引",
+  "fulltext_index": "全文索引",
+  "n_of_total": "{n} / {total}",
+  "favorites": "收藏",
+  "zim_files": "ZIM 文件",
+  "total_size": "总大小",
+  "powered_by": "由以下技术驱动"
 }

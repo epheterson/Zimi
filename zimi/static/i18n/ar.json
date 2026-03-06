@@ -259,5 +259,12 @@
   "cat_gaming": "ألعاب ومعجبين",
   "cat_other": "أخرى",
   "articles": "مقالة",
-  "from_to_update": "من {from} \u2192 {to}"
+  "from_to_update": "من {from} \u2192 {to}",
+  "title_index": "فهرس العناوين",
+  "fulltext_index": "فهرس النص الكامل",
+  "n_of_total": "{n} من {total}",
+  "favorites": "المفضلة",
+  "zim_files": "ملفات ZIM",
+  "total_size": "الحجم الإجمالي",
+  "powered_by": "مدعوم بواسطة"
 }

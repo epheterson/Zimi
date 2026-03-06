@@ -310,5 +310,13 @@
   "cat_other": "Other",
 
   "articles": "articles",
-  "from_to_update": "From {from} \u2192 {to}"
+  "from_to_update": "From {from} \u2192 {to}",
+
+  "title_index": "Title index",
+  "fulltext_index": "Full-text index",
+  "n_of_total": "{n} of {total}",
+  "favorites": "Favorites",
+  "zim_files": "ZIM files",
+  "total_size": "Total size",
+  "powered_by": "Powered by"
 }

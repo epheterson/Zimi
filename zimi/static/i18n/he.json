@@ -259,5 +259,12 @@
   "cat_gaming": "משחקים ופנדום",
   "cat_other": "אחר",
   "articles": "מאמרים",
-  "from_to_update": "מ־{from} \u2192 {to}"
+  "from_to_update": "מ־{from} \u2192 {to}",
+  "title_index": "אינדקס כותרות",
+  "fulltext_index": "אינדקס טקסט מלא",
+  "n_of_total": "{n} מתוך {total}",
+  "favorites": "מועדפים",
+  "zim_files": "קבצי ZIM",
+  "total_size": "גודל כולל",
+  "powered_by": "מופעל על ידי"
 }

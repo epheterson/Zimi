@@ -259,5 +259,12 @@
   "cat_gaming": "Jogos e Fandom",
   "cat_other": "Outros",
   "articles": "artigos",
-  "from_to_update": "De {from} \u2192 {to}"
+  "from_to_update": "De {from} \u2192 {to}",
+  "title_index": "Índice de títulos",
+  "fulltext_index": "Índice de texto completo",
+  "n_of_total": "{n} de {total}",
+  "favorites": "Favoritos",
+  "zim_files": "Arquivos ZIM",
+  "total_size": "Tamanho total",
+  "powered_by": "Desenvolvido com"
 }

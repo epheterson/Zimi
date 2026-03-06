@@ -259,5 +259,12 @@
   "cat_gaming": "गेमिंग और फ़ैनडम",
   "cat_other": "अन्य",
   "articles": "लेख",
-  "from_to_update": "{from} से \u2192 {to}"
+  "from_to_update": "{from} से \u2192 {to}",
+  "title_index": "शीर्षक अनुक्रमणिका",
+  "fulltext_index": "पूर्ण-पाठ अनुक्रमणिका",
+  "n_of_total": "{n} / {total}",
+  "favorites": "पसंदीदा",
+  "zim_files": "ZIM फ़ाइलें",
+  "total_size": "कुल आकार",
+  "powered_by": "द्वारा संचालित"
 }

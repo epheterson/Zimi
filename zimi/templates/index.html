@@ -205,8 +205,9 @@
     background: linear-gradient(135deg, var(--amber), var(--amber2));
     color: #000; border-color: transparent;
   }
-  .lang-btn.unavailable { opacity: 0.5; border-style: dashed; }
-  .lang-btn.unavailable:hover { opacity: 0.8; }
+  .lang-btn.unavailable { opacity: 0.5; border-style: dashed; display: inline-flex; align-items: center; gap: 2px; }
+  .lang-btn.unavailable:hover { opacity: 1; border-color: var(--amber-border); color: var(--amber); background: var(--amber-glow); }
+  .lang-btn.unavailable svg { opacity: 0.6; }
   .lang-bar-close {
     margin-left: auto; padding: 2px 8px; background: none; border: none;
     color: var(--text2); cursor: pointer; font-size: 14px; flex-shrink: 0;
@@ -1360,7 +1361,7 @@
     <div id="output"></div>
   </div>
   <footer id="footer" class="footer" style="display:none">
-    <a href="https://github.com/epheterson/Zimi" target="_blank" rel="noopener" class="footer-brand">Zimi</a> <span id="footer-version"></span>&middot; Powered by <a href="https://kiwix.org" target="_blank" rel="noopener">Kiwix</a>
+    <a href="https://github.com/epheterson/Zimi" target="_blank" rel="noopener" class="footer-brand">Zimi</a> <span id="footer-version"></span>&middot; <span data-i18n="powered_by">Powered by</span> <a href="https://kiwix.org" target="_blank" rel="noopener">Kiwix</a>
     <div class="footer-sub"><span class="kbd-hints"><kbd>/</kbd> <span data-i18n="kbd_search">Search</span> &middot; <kbd>R</kbd> <span data-i18n="kbd_random">Random</span> &middot; <kbd>B</kbd> <span data-i18n="kbd_bookmark">Bookmark</span> &middot; <kbd>H</kbd> <span data-i18n="kbd_history">History</span> &middot; <kbd>Esc</kbd> <span data-i18n="kbd_back">Back</span></span></div>
   </footer>
 </main>
@@ -1489,6 +1490,13 @@ async function setLanguage(lang) {
   _applyRTL(lang);
   _applyI18nToDOM();
   _renderLangDropdown();
+  // Re-render current view so all dynamic strings update
+  if (mode === 'manage') {
+    switchManageTab(manageTab || 'installed');
+  } else if (!readerOpen) {
+    renderHome();
+  }
+  updateTopbar();
   // If reading an article, re-check language banner in reader context
   if (readerOpen && currentArticle) _checkReaderLangBanner();
 }
@@ -2223,8 +2231,8 @@ function renderHome(filter) {
   if (filter && zims.length !== baseZims.length) {
     statsHtml = '<span class="num">' + zims.length + '</span> ' + tH('sources_matching', {n: zims.length, total: n, query: filter});
   } else {
-    statsHtml = '<span class="num">' + n + '</span> ' + tH('sources_count', {n: n}) + ' &middot; ' +
-      '<span class="num">' + totalEntries.toLocaleString() + '</span> ' + tH('articles_count', {n: totalEntries.toLocaleString()}) + ' &middot; ' +
+    statsHtml = t('sources_count', {n: '<span class="num">' + n + '</span>'}) + ' &middot; ' +
+      t('articles_count', {n: '<span class="num">' + totalEntries.toLocaleString() + '</span>'}) + ' &middot; ' +
       fmtSizeHtml(totalGb);
   }
 
@@ -2273,7 +2281,7 @@ function renderHome(filter) {
     const scopeEntries = baseZims.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
     h += '<div class="search-deeper" onclick="doSearch(\'' + escAttr(filter) + '\')" tabindex="0" ' +
       'onkeydown="if(event.key===\'Enter\')doSearch(\'' + escAttr(filter) + '\')">' +
-      'Search ' + scopeEntries.toLocaleString() + ' articles for &ldquo;' + esc(filter) + '&rdquo; \u2192</div>';
+      tH('search_articles', {n: scopeEntries.toLocaleString(), query: filter}) + '</div>';
   }
 
   // Discover (only on unscoped, unfiltered home)
@@ -2318,7 +2326,7 @@ function renderHome(filter) {
       const favZims = favNames.map(n => zimsCache.find(z => z.name === n)).filter(Boolean);
       if (favZims.length > 0) {
         const favZimNames = favZims.map(z => z.name);
-        h += '<div class="cat-heading clickable" onclick="enterScope(\'favorites\',\'\u2605 Favorites\',' + escJs(JSON.stringify(favZimNames)) + ',true)">\u2605 Favorites</div>';
+        h += '<div class="cat-heading clickable" onclick="enterScope(\'favorites\',\'\u2605 ' + escJs(t('favorites')) + '\',' + escJs(JSON.stringify(favZimNames)) + ',true)">\u2605 ' + tH('favorites') + '</div>';
         h += renderCardGrid(favZims, true, true);
       }
     }
@@ -2349,7 +2357,7 @@ function renderHome(filter) {
       h += renderCardGrid(groups[cat], true);
     });
     if (groups._uncategorized) {
-      h += '<div class="cat-heading" style="opacity:0.5">Other</div>';
+      h += '<div class="cat-heading" style="opacity:0.5">' + tH('cat_other') + '</div>';
       h += renderCardGrid(groups._uncategorized, true);
     }
   }
@@ -2372,7 +2380,7 @@ function renderCardGrid(items, showStars, showCategory) {
       : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
     const isFav = favs.includes(z.name);
     const starHtml = showStars
-      ? '<button class="star-btn' + (isFav ? ' starred' : '') + '" onclick="event.stopPropagation();toggleFavorite(\'' + escAttr(z.name) + '\')" title="' + (isFav ? 'Remove from favorites' : 'Add to favorites') + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
+      ? '<button class="star-btn' + (isFav ? ' starred' : '') + '" onclick="event.stopPropagation();toggleFavorite(\'' + escAttr(z.name) + '\')" title="' + escAttr(isFav ? t('remove_from_favorites') : t('add_to_favorites')) + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
       : '';
     const catPrefix = showCategory && z.category ? '<span class="card-cat">' + esc(z.category) + '</span> &middot; ' : '';
     return '<div class="stat-card" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
@@ -2381,7 +2389,7 @@ function renderCardGrid(items, showStars, showCategory) {
       '<div class="card-info">' +
         '<div class="name">' + esc(z.title || z.name) + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
-        '<div class="detail">' + catPrefix + (typeof z.entries === 'number' ? z.entries.toLocaleString() + ' entries' : '') +
+        '<div class="detail">' + catPrefix + (typeof z.entries === 'number' ? t('n_entries', {n: z.entries.toLocaleString()}) : '') +
         ' &middot; ' + fmtSize(z.size_gb) +
         '</div>' +
       '</div></div>';
@@ -2591,7 +2599,7 @@ function _loadDiscover() {
     if (!zimName) continue;
     usedNames[zimName] = true;
     var dated = feat.type === 'apod' || feat.type === 'onthisday' || feat.type === 'country';
-    serverSlots.push({name: zimName, dated: dated, type: feat.type, label: feat.label, icon: feat.icon});
+    serverSlots.push({name: zimName, dated: dated, type: feat.type, label: t(feat.i18nLabel), icon: feat.icon});
   }
 
   // Random fill: pick visual ZIMs not already used as named slots
@@ -2771,7 +2779,7 @@ function _renderDiscover(el, items) {
 
     // Detect quote content (for special card template)
     var isQuote = it.blurb && (it.blurb.charAt(0) === '\u201c' || it.blurb.charAt(0) === '"');
-    if (!isQuote && it.label === 'Quote of the Day' && (it.blurb || it.title)) isQuote = true;
+    if (!isQuote && /wikiquote/i.test(it.zim || '') && (it.blurb || it.title)) isQuote = true;
     var blurbHtml = it.blurb ? '<div class="dc-blurb' + (isQuote ? ' dc-quote' : '') + '">' + esc(it.blurb) + '</div>' : '';
 
     // ─── Card: Quote ────────────────────────────────────────────────
@@ -2785,7 +2793,7 @@ function _renderDiscover(el, items) {
         : '';
       h += '<div class="discover-card dc-quote-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
         '<div class="dc-body">' +
-          '<div class="dc-header">' + iconHtml + '<span>' + esc(it.label || 'Quote of the Day') + '</span></div>' +
+          '<div class="dc-header">' + iconHtml + '<span>' + esc(it.label || t('quote_of_day')) + '</span></div>' +
           '<div class="dc-quote-mark">\u201C</div>' +
           '<div class="dc-blurb dc-quote">' + esc(cleanQuote) + '</div>' +
           attrLine +
@@ -2794,7 +2802,7 @@ function _renderDiscover(el, items) {
     // ─── Card: Word of the Day ──────────────────────────────────────
     // Full-width card with headword, part of speech, and definition.
     // Used for Wiktionary content.
-    } else if (it.label === 'Word of the Day') {
+    } else if (/wiktionary/i.test(it.zim || '')) {
       h += '<div class="discover-card dc-quote-card dc-word-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
         '<div class="dc-body">' +
           '<div class="dc-header">' + iconHtml + '<span>' + esc(it.label) + '</span></div>' +
@@ -2813,7 +2821,7 @@ function _renderDiscover(el, items) {
       if (hasGoodThumb) {
         var thumbClass = 'dc-thumb' + (/gutenberg/i.test(it.zim || '') ? ' dc-book-cover' : '');
         thumbHtml = '<img class="' + thumbClass + '" src="' + escAttr(it.thumbnail) + '" loading="lazy" onerror="this.style.display=\'none\'" onload="if(this.naturalWidth<80||this.naturalHeight<60)this.style.display=\'none\'">';
-      } else if (it.label === 'Country of the Day') {
+      } else if (it.type === 'country') {
         thumbHtml = '<div class="dc-icon-thumb" style="background:linear-gradient(135deg,#0a1628,#162040)"><span style="font-size:40px;line-height:1">&#x1F30D;</span></div>';
       } else {
         thumbHtml = '<div class="dc-icon-thumb">' + iconHtml + '</div>';
@@ -3943,15 +3951,15 @@ function _enrichCatalogInstalled(items) {
 // even be embedded in ZIM metadata.
 // ──────────────────────────────────────────────────────────────────────
 const FEATURED_ZIMS = [
-  { match: 'apod.nasa', type: 'apod', label: 'Picture of the Day', icon: '\uD83D\uDD2D', promo: 'NASA APOD', unlock: 'Discover: Picture of the Day' },
-  { match: 'wikipedia',     type: 'onthisday', label: 'On This Day',        icon: '\uD83C\uDF0D', promo: 'Wikipedia',           unlock: 'Discover: On This Day' },
-  { match: 'wiktionary',    type: 'random',    label: 'Word of the Day',    icon: '\uD83D\uDCD6', promo: 'Wiktionary',          unlock: 'Discover: Word of the Day' },
-  { match: 'wikivoyage',    type: 'random',    label: 'Destination of the Day', icon: '\u2708\uFE0F', promo: 'Wikivoyage',      unlock: 'Discover: Destination of the Day' },
-  { match: 'gutenberg',     type: 'random',    label: 'Book of the Day',    icon: '\uD83D\uDCDA', promo: 'Project Gutenberg',   unlock: 'Discover: Book of the Day' },
-  { match: 'wikiquote',     type: 'random',    label: 'Quote of the Day',   icon: '\uD83D\uDCAC', promo: 'Wikiquote',           unlock: 'Discover: Quote of the Day' },
-  { match: 'ted',           type: 'random',    label: 'Talk of the Day',    icon: '\uD83C\uDFAC', promo: 'TED Talks',           unlock: 'Discover: Talk of the Day' },
-  { match: 'xkcd',          type: 'random',    label: 'Comic of the Day',   icon: '\uD83C\uDFA8', promo: 'xkcd',                unlock: 'Discover: Comic of the Day' },
-  { match: 'theworldfactbook', type: 'country', label: 'Country of the Day', icon: '\uD83D\uDDFA\uFE0F', promo: 'CIA World Factbook', unlock: 'Discover: Country of the Day' },
+  { match: 'apod.nasa', type: 'apod', i18nLabel: 'picture_of_day', icon: '\uD83D\uDD2D', promo: 'NASA APOD' },
+  { match: 'wikipedia',     type: 'onthisday', i18nLabel: 'on_this_day',        icon: '\uD83C\uDF0D', promo: 'Wikipedia' },
+  { match: 'wiktionary',    type: 'random',    i18nLabel: 'word_of_day',        icon: '\uD83D\uDCD6', promo: 'Wiktionary' },
+  { match: 'wikivoyage',    type: 'random',    i18nLabel: 'destination_of_day', icon: '\u2708\uFE0F', promo: 'Wikivoyage' },
+  { match: 'gutenberg',     type: 'random',    i18nLabel: 'book_of_day',        icon: '\uD83D\uDCDA', promo: 'Project Gutenberg' },
+  { match: 'wikiquote',     type: 'random',    i18nLabel: 'quote_of_day',       icon: '\uD83D\uDCAC', promo: 'Wikiquote' },
+  { match: 'ted',           type: 'random',    i18nLabel: 'talk_of_day',        icon: '\uD83C\uDFAC', promo: 'TED Talks' },
+  { match: 'xkcd',          type: 'random',    i18nLabel: 'comic_of_day',       icon: '\uD83C\uDFA8', promo: 'xkcd' },
+  { match: 'theworldfactbook', type: 'country', i18nLabel: 'country_of_day',    icon: '\uD83D\uDDFA\uFE0F', promo: 'CIA World Factbook' },
 ];
 
 function _isFeaturedInstalled(feat, grouped) {
@@ -3997,7 +4005,7 @@ function buildFeaturedCarousel(items) {
         esc(withLabels[0].size) + '</button>';
     }
     // "Unlocks" hint: what Discover feature this ZIM enables
-    var unlockHtml = feat.unlock ? '<div class="fc-promo-unlock">' + esc(feat.unlock) + '</div>' : '';
+    var unlockHtml = feat.i18nLabel ? '<div class="fc-promo-unlock">' + tH('unlocks', {feature: t(feat.i18nLabel)}) + '</div>' : '';
     cards += '<div class="featured-card">' +
       '<div class="fc-promo">' +
         '<div class="fc-promo-icon">' + feat.icon + '</div>' +
@@ -4665,22 +4673,22 @@ async function renderActivityTab() {
 
       // Title index row
       if (building) {
-        h += '<div class="mc-row"><span class="mc-label">Title index</span><span class="mc-value" style="color:var(--amber)">' +
-          ti.ready + ' of ' + totalZims +
+        h += '<div class="mc-row"><span class="mc-label">' + tH('title_index') + '</span><span class="mc-value" style="color:var(--amber)">' +
+          tH('n_of_total', {n: ti.ready, total: totalZims}) +
           (ti.building_now ? ' <span style="font-size:11px">(' + esc(ti.building_now) + '&hellip;)</span>' : '') +
           '</span></div>';
       } else if (ti.ready < totalZims) {
-        h += '<div class="mc-row"><span class="mc-label">Title index</span><span class="mc-value">' + ti.ready + ' of ' + totalZims + '</span></div>';
+        h += '<div class="mc-row"><span class="mc-label">' + tH('title_index') + '</span><span class="mc-value">' + tH('n_of_total', {n: ti.ready, total: totalZims}) + '</span></div>';
       } else {
-        h += '<div class="mc-row"><span class="mc-label">Title index</span><span class="mc-value">' + pl(totalZims, 'source') + '</span></div>';
+        h += '<div class="mc-row"><span class="mc-label">' + tH('title_index') + '</span><span class="mc-value">' + t('n_sources', {n: totalZims}) + '</span></div>';
       }
 
       // Full-text index row — denominator is total ZIMs, not just ones with title indexes
       const ftsTotal = building ? totalZims : totalZims;  // always use total ZIMs
       if (withFts.length >= ftsTotal && ftsTotal > 0 && !building) {
-        h += '<div class="mc-row"><span class="mc-label">Full-text index</span><span class="mc-value">' + pl(ftsTotal, 'source') + '</span></div>';
+        h += '<div class="mc-row"><span class="mc-label">' + tH('fulltext_index') + '</span><span class="mc-value">' + t('n_sources', {n: ftsTotal}) + '</span></div>';
       } else {
-        h += '<div class="mc-row"><span class="mc-label">Full-text index</span><span class="mc-value">' + withFts.length + ' of ' + ftsTotal + '</span></div>';
+        h += '<div class="mc-row"><span class="mc-label">' + tH('fulltext_index') + '</span><span class="mc-value">' + tH('n_of_total', {n: withFts.length, total: ftsTotal}) + '</span></div>';
       }
 
       // Errors
@@ -4860,8 +4868,8 @@ function switchMs(section) {
 function _msLibraryHtml() {
   var d = _manageStatusData;
   if (!d) return '<div class="loading"><span class="spinner-inline"></span>Loading\u2026</div>';
-  var h = '<div class="mc-row"><span class="mc-label">ZIM files</span><span class="mc-value">' + esc(String(d.zim_count)) + '</span></div>' +
-    '<div class="mc-row"><span class="mc-label">Total size</span><span class="mc-value">' + fmtSize(d.total_size_gb) + '</span></div>' +
+  var h = '<div class="mc-row"><span class="mc-label">' + tH('zim_files') + '</span><span class="mc-value">' + esc(String(d.zim_count)) + '</span></div>' +
+    '<div class="mc-row"><span class="mc-label">' + tH('total_size') + '</span><span class="mc-value">' + fmtSize(d.total_size_gb) + '</span></div>' +
     '<div id="update-status" class="mc-row"><span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('loading') + '</span></div>' +
     '<div class="mc-row" style="align-items:center">' +
       '<span class="mc-label">' + tH('auto_update') + '</span>' +
@@ -6412,18 +6420,18 @@ function _renderLangBar(data, currentZim) {
   var html = '<span class="lang-bar-label">' + tH('language') + '</span>';
   // Current language first
   html += '<button class="lang-btn current">' + esc(currentLangCode.toUpperCase()) + '</button>';
-  // Installed languages
+  // Installed languages — switch to same article
   installed.forEach(function(l) {
     html += '<button class="lang-btn" onclick="openArticle(\'' + escJs(l.zim) + '\', \'' + escJs(l.path) + '\')" title="' + escAttr(l.name) + '">' + esc(l.lang.toUpperCase()) + '</button>';
   });
-  // Show more indicator
-  if (available.length > 0) {
-    html += '<span class="lang-bar-more" onclick="_showAvailableLangs(event)" title="' + escAttr(tH('lang_available', {n: available.length})) + '">+ ' + available.length + '</span>';
-  }
+  // Available (not installed) languages — show inline with download icon
+  available.forEach(function(l) {
+    html += '<button class="lang-btn unavailable" onclick="_promptDownloadLang(\'' + escJs(l.catalog_name) + '\', \'' + escJs(l.name) + '\')" title="' + escAttr(t('lang_download', {lang: l.name})) + '">' +
+      esc(l.lang.toUpperCase()) + ' <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>';
+  });
   html += '<button class="lang-bar-close" onclick="_dismissLangBar()" title="' + escAttr(t('close')) + '">&times;</button>';
   bar.innerHTML = html;
   bar.classList.add('visible');
-  bar._availableLangs = available;
   // Adjust body padding
   _adjustBodyPadding();
 }
@@ -6440,27 +6448,14 @@ function _dismissLangBar() {
   _hideLangBar();
 }
 
-function _showAvailableLangs(event) {
-  event.stopPropagation();
-  var bar = document.getElementById('lang-bar');
-  var available = bar._availableLangs || [];
-  if (available.length === 0) return;
-  // Replace the "+N" with actual dashed buttons
-  var moreEl = event.target;
-  var html = '';
-  available.forEach(function(l) {
-    html += '<button class="lang-btn unavailable" onclick="_promptDownloadLang(\'' + escJs(l.catalog_name) + '\', \'' + escJs(l.name) + '\')" title="' + escAttr(t('lang_download', {lang: l.name})) + '">' + esc(l.lang.toUpperCase()) + '</button>';
-  });
-  moreEl.outerHTML = html;
-}
+// Available languages now shown inline in lang bar (no +N click needed)
 
 function _promptDownloadLang(catalogName, langName) {
-  if (confirm(t('lang_download', {lang: langName}))) {
-    // Try to navigate to manage/catalog view for this ZIM
-    if (manageEnabled) {
-      enterManage();
-      setTimeout(function() { q.value = catalogName; q.dispatchEvent(new Event('input')); }, 300);
-    }
+  // Navigate to catalog filtered for this ZIM
+  if (manageEnabled) {
+    closeReader();
+    enterManage();
+    setTimeout(function() { switchManageTab('browse'); setTimeout(function() { q.value = catalogName; q.dispatchEvent(new Event('input')); }, 200); }, 100);
   }
 }
 
