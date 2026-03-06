@@ -1515,19 +1515,25 @@ function _buildLangBanner(lang, zimInfo) {
   }
 
   // 2. View in [lang] — find best matching ZIM in target language
-  // Priority: full encyclopedia > _all variant > largest themed subset
-  var wikiCandidates = (zimsCache || []).filter(function(z) {
-    return z.language === lang && /^wikipedia/i.test(z.name || '') && z.name !== (zimInfo && zimInfo.name);
+  // First try same project type (e.g., wikipedia→wikipedia), then any ZIM in that language
+  var currentProject = _zimProject(zimInfo);
+  var langZims = (zimsCache || []).filter(function(z) {
+    return z.language === lang && z.name !== (zimInfo && zimInfo.name);
   });
-  // Sort: full encyclopedia first, then _all, then by size (largest first)
-  wikiCandidates.sort(function(a, b) {
-    if (a.name === 'wikipedia_' + lang || a.name === 'wikipedia') return -1;
-    if (b.name === 'wikipedia_' + lang || b.name === 'wikipedia') return 1;
+  // Sort: same project first, then full encyclopedia, then _all, then by size
+  langZims.sort(function(a, b) {
+    var ap = _zimProject(a), bp = _zimProject(b);
+    // Same project as current article gets priority
+    if (currentProject) {
+      if (ap === currentProject && bp !== currentProject) return -1;
+      if (ap !== currentProject && bp === currentProject) return 1;
+    }
+    // Within same project or across: prefer full > _all > largest
     if (/_all/.test(a.name) && !/_all/.test(b.name)) return -1;
     if (!/_all/.test(a.name) && /_all/.test(b.name)) return 1;
     return (b.entry_count || 0) - (a.entry_count || 0);
   });
-  var matchZim = wikiCandidates[0] || null;
+  var matchZim = langZims[0] || null;
   if (matchZim) {
     // Use globe icon (not ZIM-specific icon — chemistry beaker is confusing for language switch)
     var viewIcon = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" style="vertical-align:-2px;margin-right:3px">' +
@@ -1697,8 +1703,21 @@ function _langBannerDownload(lang, catMatch) {
   var banner = document.getElementById('lang-banner');
   if (banner) { banner.remove(); _adjustBodyPadding(); }
   closeReader();
-  enterManage(true);
-  setTimeout(function() { switchManageTab('browse'); setTimeout(function() { q.value = catMatch + ' ' + lang; q.dispatchEvent(new Event('input')); }, 200); }, 100);
+  enterManage();
+  // Switch to browse tab and filter by language via the catalog-lang dropdown
+  setTimeout(function() {
+    switchManageTab('browse');
+    setTimeout(function() {
+      // Set the language dropdown to filter catalog by target language
+      var langSel = document.getElementById('catalog-lang');
+      if (langSel) {
+        var catalogLang = _UI_TO_CATALOG[lang] || lang;
+        langSel.value = catalogLang;
+        _catalogCache = null; // Force refetch with new language
+        renderBrowseGallery();
+      }
+    }, 300);
+  }, 100);
 }
 function _langBannerDismiss(lang) {
   sessionStorage.setItem('zimi_lang_banner_' + lang, '0');
@@ -2441,7 +2460,7 @@ function renderHome(filter) {
             '<p>' + tH('welcome_lang_body', {lang: _welcomeLang}) + '</p>' +
           '</div>' +
           '<div class="lang-welcome-actions">' +
-            '<button class="lang-banner-btn" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');enterManage(true);setTimeout(function(){switchManageTab(\'browse\')},100)">' + tH('welcome_lang_browse') + '</button>' +
+            '<button class="lang-banner-btn" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');_langBannerDownload(_currentLang,\'wikipedia\')">' + tH('welcome_lang_browse') + '</button>' +
             '<button class="lang-banner-dismiss" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');var el=document.getElementById(\'lang-welcome\');if(el)el.remove()">\u2715</button>' +
           '</div>' +
         '</div>';
@@ -3913,7 +3932,7 @@ function toggleManage(e) {
 }
 
 function enterManage(e) {
-  if (e) e.preventDefault();
+  if (e && e.preventDefault) e.preventDefault();
   if (!manageEnabled) return;
   mode = 'manage';
   currentSource = null;
