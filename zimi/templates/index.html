@@ -1452,7 +1452,6 @@ function _applyRTL(lang) {
 var _langLoadId = 0; // Guard against race conditions on rapid language switching
 async function setLanguage(lang) {
   _currentLang = lang;
-  _chromeTranslatorAvailable = null; // Reset — availability varies per language pair
   localStorage.setItem('zimi_ui_lang', lang);
   var myId = ++_langLoadId;
   await _loadI18n(lang);
@@ -1472,11 +1471,8 @@ async function setLanguage(lang) {
 }
 
 // ── Language-experience banner (reader context) ──
-// ── Language action banner ──
 // Shows when reading content in a different language than UI language.
-// Offers up to 3 actions: Translate (Chrome API), View in [lang], Download [lang].
-var _chromeTranslatorAvailable = null; // null = unknown, true/false after check
-var _activeTranslator = null; // Chrome Translator instance when translating
+// Offers: Translate (via server /translate endpoint), View in [lang], Download [lang].
 var _translatedState = null; // {origNodes: [{node, text}], fromLang, toLang} when article is translated
 
 function _checkReaderLangBanner() {
@@ -1506,40 +1502,29 @@ function _buildLangBanner(lang, zimInfo) {
   // Build action buttons
   var actions = '';
 
-  // 1. Translate button (Chrome Translator API) — detect availability
-  if (_chromeTranslatorAvailable === null) {
-    _detectChromeTranslator().then(function() { _checkReaderLangBanner(); });
-    return;
-  }
-  if (_chromeTranslatorAvailable) {
-    actions += '<button class="lang-banner-btn lang-banner-translate" onclick="_translateArticle()">' +
-      '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" style="vertical-align:-2px;margin-right:3px">' +
-      '<circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>' +
-      tH('translate') + '</button>';
-  }
+  // 1. Translate button — always available (uses server-side /translate endpoint)
+  actions += '<button class="lang-banner-btn lang-banner-translate" onclick="_translateArticle()">' +
+    '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" style="vertical-align:-2px;margin-right:3px">' +
+    '<circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>' +
+    tH('translate') + '</button>';
 
   // 2. View in [lang] — find best matching ZIM in target language
-  // First try same project type (e.g., wikipedia→wikipedia), then any ZIM in that language
   var currentProject = _zimProject(zimInfo);
   var langZims = (zimsCache || []).filter(function(z) {
     return z.language === lang && z.name !== (zimInfo && zimInfo.name);
   });
-  // Sort: same project first, then full encyclopedia, then _all, then by size
   langZims.sort(function(a, b) {
     var ap = _zimProject(a), bp = _zimProject(b);
-    // Same project as current article gets priority
     if (currentProject) {
       if (ap === currentProject && bp !== currentProject) return -1;
       if (ap !== currentProject && bp === currentProject) return 1;
     }
-    // Within same project or across: prefer full > _all > largest
     if (/_all/.test(a.name) && !/_all/.test(b.name)) return -1;
     if (!/_all/.test(a.name) && /_all/.test(b.name)) return 1;
     return (b.entry_count || 0) - (a.entry_count || 0);
   });
   var matchZim = langZims[0] || null;
   if (matchZim) {
-    // Use globe icon (not ZIM-specific icon — chemistry beaker is confusing for language switch)
     var viewIcon = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" style="vertical-align:-2px;margin-right:3px">' +
       '<circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>';
     actions += '<button class="lang-banner-btn" onclick="_langBannerSwitch(\'' + escJs(matchZim.name) + '\')">' +
@@ -1554,7 +1539,6 @@ function _buildLangBanner(lang, zimInfo) {
       tH('download_lang', {lang: langName}) + '</button>';
   }
 
-  if (!actions) return; // Nothing to offer
   _insertLangBanner(actions + '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(lang) + '\')">\u2715</button>');
 }
 
@@ -1563,7 +1547,7 @@ function _showTranslatedBanner() {
   var actions = '<span style="opacity:0.7">' + tH('translated_to', {lang: toLangName}) + '</span>' +
     '<button class="lang-banner-btn" onclick="_untranslateArticle()">' + tH('view_original') + '</button>';
   // If UI language changed to something different than the translation target, offer re-translate
-  if (_currentLang !== _translatedState.toLang && _currentLang !== _translatedState.fromLang && _chromeTranslatorAvailable) {
+  if (_currentLang !== _translatedState.toLang && _currentLang !== _translatedState.fromLang) {
     var curLangName = (_AVAILABLE_LANGS.find(function(l) { return l.code === _currentLang; }) || {}).name || _currentLang;
     actions += '<button class="lang-banner-btn lang-banner-translate" onclick="_retranslateArticle()">' +
       tH('translate_to', {lang: curLangName}) + '</button>';
@@ -1571,7 +1555,6 @@ function _showTranslatedBanner() {
   _insertLangBanner(actions + '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(_currentLang) + '\')">\u2715</button>');
 }
 
-// Extract project type from ZIM info (wikipedia, wiktionary, wikivoyage, etc.)
 function _zimProject(info) {
   if (!info) return '';
   var n = (info.name || '').toLowerCase();
@@ -1594,20 +1577,6 @@ function _insertLangBanner(html) {
   if (reader && frame) reader.insertBefore(banner, frame);
 }
 
-async function _detectChromeTranslator() {
-  if (_chromeTranslatorAvailable !== null) return;
-  try {
-    if (typeof Translator !== 'undefined' && Translator.availability) {
-      var avail = await Translator.availability({sourceLanguage: 'en', targetLanguage: _currentLang});
-      _chromeTranslatorAvailable = (avail === 'available' || avail === 'downloadable' || avail === 'downloading');
-    } else {
-      _chromeTranslatorAvailable = false;
-    }
-  } catch(e) {
-    _chromeTranslatorAvailable = false;
-  }
-}
-
 async function _translateArticle() {
   if (!readerOpen || !currentArticle) return;
   var frame = document.getElementById('reader-frame');
@@ -1619,7 +1588,6 @@ async function _translateArticle() {
     var srcLang = (zimInfo && zimInfo.language) || 'en';
     var tgtLang = _currentLang;
     if (srcLang === tgtLang) return;
-    _activeTranslator = await Translator.create({sourceLanguage: srcLang, targetLanguage: tgtLang});
     var body = frame.contentDocument.body;
     if (!body) return;
     var walker = frame.contentDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
@@ -1630,18 +1598,27 @@ async function _translateArticle() {
     }
     // Save originals for untranslate
     var origNodes = nodes.map(function(n) { return {node: n, text: n.textContent}; });
-    // Translate in batches
-    var BATCH = 20;
+    // Translate via server endpoint in batches
+    var BATCH = 50;
     for (var i = 0; i < nodes.length; i += BATCH) {
       var batch = nodes.slice(i, i + BATCH);
       var texts = batch.map(function(n) { return n.textContent; });
-      var results = await Promise.all(texts.map(function(t) { return _activeTranslator.translate(t); }));
-      for (var j = 0; j < batch.length; j++) {
-        batch[j].textContent = results[j];
+      var resp = await fetch('/translate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({texts: texts, source: srcLang, target: tgtLang})
+      });
+      if (!resp.ok) {
+        var errData = await resp.json().catch(function() { return {}; });
+        throw new Error(errData.error || 'Translation request failed');
+      }
+      var result = await resp.json();
+      var translated = result.translations || [];
+      for (var j = 0; j < batch.length && j < translated.length; j++) {
+        if (translated[j]) batch[j].textContent = translated[j];
       }
       if (btn) btn.textContent = tH('translating') + '\u2026 ' + Math.min(100, Math.round((i + BATCH) / nodes.length * 100)) + '%';
     }
-    // Store translation state and show translated banner
     _translatedState = {origNodes: origNodes, fromLang: srcLang, toLang: tgtLang};
     _checkReaderLangBanner();
   } catch(e) {
@@ -1656,11 +1633,10 @@ function _untranslateArticle() {
     try { item.node.textContent = item.text; } catch(e) {}
   });
   _translatedState = null;
-  _checkReaderLangBanner(); // Re-show translate/view-in-lang options
+  _checkReaderLangBanner();
 }
 
 async function _retranslateArticle() {
-  // Restore originals first, then translate to new language
   _untranslateArticle();
   await _translateArticle();
 }

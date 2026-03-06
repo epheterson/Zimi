@@ -1463,6 +1463,42 @@ def _detect_query_language(query):
     return best_lang
 
 
+def _translate_texts(texts, source="auto", target="en"):
+    """Translate a list of text strings using Google Translate's free API."""
+    import urllib.request
+    import urllib.parse
+    results = []
+    # Batch into chunks of 20 to avoid URL length limits
+    for i in range(0, len(texts), 20):
+        batch = texts[i:i+20]
+        # Build multi-q request
+        params = [("client", "gtx"), ("sl", source), ("tl", target), ("dt", "t")]
+        for text in batch:
+            params.append(("q", text if isinstance(text, str) else ""))
+        url = "https://translate.googleapis.com/translate_a/t?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = json.loads(resp.read().decode("utf-8"))
+        # Response format: list of [translated, source_lang] pairs, or single pair
+        if isinstance(raw, list):
+            if len(batch) == 1 and isinstance(raw[0], str):
+                results.append(raw[0])
+            else:
+                for item in raw:
+                    if isinstance(item, list) and len(item) >= 1:
+                        results.append(item[0])
+                    elif isinstance(item, str):
+                        results.append(item)
+                    else:
+                        results.append("")
+        else:
+            results.extend([""] * len(batch))
+    return results
+
+
 def get_article_languages(zim_name, article_path):
     """Find available translations for a Wikipedia/Wikimedia article.
 
@@ -4126,6 +4162,21 @@ class ZimHandler(BaseHTTPRequestHandler):
                     else:
                         results[url_str] = {"found": False}
                 return self._json(200, {"results": results})
+
+            elif parsed.path == "/translate":
+                texts = data.get("texts", [])
+                source = data.get("source", "auto")
+                target = data.get("target", "en")
+                if not isinstance(texts, list) or not texts or len(texts) > 200:
+                    return self._json(400, {"error": "'texts' must be a non-empty list (max 200)"})
+                total_chars = sum(len(t) for t in texts if isinstance(t, str))
+                if total_chars > 50000:
+                    return self._json(400, {"error": "total text too large (max 50000 chars)"})
+                try:
+                    translated = _translate_texts(texts, source, target)
+                    return self._json(200, {"translations": translated})
+                except Exception as e:
+                    return self._json(502, {"error": f"Translation failed: {e}"})
 
             elif parsed.path == "/collections":
                 # Auth: only enforce password when manage mode is on (collections are
