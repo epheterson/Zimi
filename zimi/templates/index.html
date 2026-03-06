@@ -1449,10 +1449,14 @@ function _applyRTL(lang) {
   }
 }
 
+var _langLoadId = 0; // Guard against race conditions on rapid language switching
 async function setLanguage(lang) {
   _currentLang = lang;
+  _chromeTranslatorAvailable = null; // Reset — availability varies per language pair
   localStorage.setItem('zimi_ui_lang', lang);
+  var myId = ++_langLoadId;
   await _loadI18n(lang);
+  if (_langLoadId !== myId) return; // Superseded by a newer setLanguage call
   _applyRTL(lang);
   _applyI18nToDOM();
   _renderLangDropdown();
@@ -2453,7 +2457,7 @@ function renderHome(filter) {
     var _hasLangZims = (zimsCache || []).some(function(z) { return z.language === _currentLang; });
     var _welcomeDismissed = localStorage.getItem('zimi_welcome_' + _currentLang) === '0';
     if (!_welcomeDismissed) {
-      if (!_hasLangZims) {
+      if (!_hasLangZims && manageEnabled) {
         h += '<div class="lang-welcome-card" id="lang-welcome">' +
           '<div class="lang-welcome-text">' +
             '<strong>' + tH('welcome_lang_title', {lang: _welcomeLang}) + '</strong>' +
@@ -2557,12 +2561,15 @@ function _langBadge(z) {
   var lang = z.language || '';
   if (!lang) return '';
   // Multi-language ZIMs (e.g., TED mul_*)
-  if (lang.includes(',') || /^mul/i.test(z.name)) {
-    var count = lang.split(',').length;
-    return '<span class="lang-badge multi" title="' + escAttr(count + ' languages') + '">' + count + ' lang</span>';
+  if (lang.includes(',') || (/^mul/i.test(z.name) && !lang.includes(','))) {
+    var count = lang.includes(',') ? lang.split(',').length : 0;
+    if (count > 1) {
+      return '<span class="lang-badge multi" title="' + escAttr(t('multilingual', {n: count})) + '">' + count + ' ' + tH('language').toLowerCase() + '</span>';
+    }
+    return '<span class="lang-badge multi">' + tH('language') + '</span>';
   }
-  // Single language — show native name if non-English, or code badge
-  if (lang === 'en') return '';  // Don't badge English (it's the default)
+  // Don't badge ZIMs that match the current UI language
+  if (lang === _currentLang) return '';
   var native = (_AVAILABLE_LANGS.find(function(l) { return l.code === lang; }) || {}).name || lang.toUpperCase();
   return '<span class="lang-badge" title="' + escAttr(native) + '">' + esc(native) + '</span>';
 }
@@ -2925,7 +2932,7 @@ function _renderDiscover(el, items) {
           '<div class="dc-source"><span>\uD83D\uDCC5 ' + tH('today') + '</span></div>' +
           '<div class="dc-title">' + _dateTitle + '</div>' +
           '<div class="dc-blurb">' + _m.name + (_seasonStr ? ' \u00b7 ' + _seasonStr : '') + '</div>' +
-          '<div class="dc-blurb">' + _m.illumination + '% illuminated</div>' +
+          '<div class="dc-blurb">' + _m.illumination + '% ' + tH('illuminated') + '</div>' +
         '</div></div>';
       continue;
     }
@@ -3847,7 +3854,7 @@ function showHistoryDropdown(filter) {
     var label, sub, key;
     if (entry.type === 'search') {
       label = entry.query;
-      sub = entry.zim ? _zimTitle(entry.zim) : 'All sources';
+      sub = entry.zim ? _zimTitle(entry.zim) : t('all_sources').replace(/^\u2190\s*/, '');
       key = 's:' + label.toLowerCase();
     } else {
       label = entry.title || _titleFromPath(entry.path || '');
@@ -3987,16 +3994,16 @@ function _buildCatalogLangSelect() {
 
 // ── Browse category gallery metadata ──
 const BROWSE_CATEGORIES = [
-  { key: 'wikipedia',      i18n: 'cat_encyclopedias',  icon: '\u{1F30D}', desc: 'Wikipedia, Wiktionary, Wikiquote, and Wikimedia projects' },
-  { key: 'stack_exchange', i18n: 'cat_qa',             icon: '\u{1F4AC}', desc: 'Stack Overflow, Ask Ubuntu, cooking, DIY, science' },
-  { key: 'devdocs',        i18n: 'cat_devdocs',        icon: '\u{1F4BB}', desc: 'Language references, Linux wikis, programming tutorials' },
-  { key: 'ted',            i18n: 'cat_video',          icon: '\u{1F3AC}', desc: 'TED talks by topic \u2014 multilingual' },
-  { key: 'education',      i18n: 'cat_education',      icon: '\u{1F393}', desc: 'Khan Academy, iFixit, WikiHow, CrashCourse, and more' },
-  { key: 'gutenberg',      i18n: 'cat_books',          icon: '\u{1F4DA}', desc: 'Project Gutenberg \u2014 public domain books' },
-  { key: 'medical',        i18n: 'cat_medical',        icon: '\u{1FA7A}', desc: 'WikiMed, MedlinePlus, CDC, NHS, field medicine' },
-  { key: 'survival',       i18n: 'cat_survival',       icon: '\u{1F9ED}', desc: 'Emergency guides, prepping, off-grid, water treatment' },
-  { key: 'gaming',         i18n: 'cat_gaming',         icon: '\u{1F3AE}', desc: 'Minecraft, Pok\u00E9mon, D&D, Stardew Valley, and more' },
-  { key: 'other',          i18n: 'cat_other',          icon: '\u{1F4E6}', desc: 'Miscellaneous and uncategorized archives' },
+  { key: 'wikipedia',      i18n: 'cat_encyclopedias',  icon: '\u{1F30D}', descKey: 'cat_encyclopedias_desc' },
+  { key: 'stack_exchange', i18n: 'cat_qa',             icon: '\u{1F4AC}', descKey: 'cat_qa_desc' },
+  { key: 'devdocs',        i18n: 'cat_devdocs',        icon: '\u{1F4BB}', descKey: 'cat_devdocs_desc' },
+  { key: 'ted',            i18n: 'cat_video',          icon: '\u{1F3AC}', descKey: 'cat_video_desc' },
+  { key: 'education',      i18n: 'cat_education',      icon: '\u{1F393}', descKey: 'cat_education_desc' },
+  { key: 'gutenberg',      i18n: 'cat_books',          icon: '\u{1F4DA}', descKey: 'cat_books_desc' },
+  { key: 'medical',        i18n: 'cat_medical',        icon: '\u{1FA7A}', descKey: 'cat_medical_desc' },
+  { key: 'survival',       i18n: 'cat_survival',       icon: '\u{1F9ED}', descKey: 'cat_survival_desc' },
+  { key: 'gaming',         i18n: 'cat_gaming',         icon: '\u{1F3AE}', descKey: 'cat_gaming_desc' },
+  { key: 'other',          i18n: 'cat_other',          icon: '\u{1F4E6}', descKey: 'cat_other_desc' },
 ];
 
 // Language display: "Multilingual (24 langs)" or "French" instead of raw codes
@@ -4259,13 +4266,13 @@ function renderBrowseGallery() {
   _browseView = 'gallery';
   manageCategoryFilter = null;
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
-  q.placeholder = 'Search catalog...';
+  q.placeholder = t('search_catalog');
 
   // Detach language select before destroying DOM (it may have been moved into footer)
   var _langSel = document.getElementById('catalog-lang');
   if (_langSel && _langSel.parentNode) _langSel.parentNode.removeChild(_langSel);
 
-  results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>Loading library...</div>';
+  results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
 
   loadFullCatalog().then(items => {
     // Count unique ZIMs per category (group variants by name)
@@ -4320,7 +4327,7 @@ function renderBrowseGallery() {
         '<div class="bcc-icon">' + cat.icon + '</div>' +
         '<div class="bcc-info">' +
           '<div class="bcc-name">' + tH(cat.i18n) + '</div>' +
-          '<div class="bcc-desc">' + esc(cat.desc) + '</div>' +
+          '<div class="bcc-desc">' + tH(cat.descKey) + '</div>' +
           '<div class="bcc-count">' + esc(countLine) + '</div>' +
         '</div>' +
         '<div class="bcc-arrow">\u203A</div>' +
@@ -4358,7 +4365,7 @@ function drillCategory(catKey) {
 
   const catMeta = BROWSE_CATEGORIES.find(c => c.key === catKey);
   const catName = catMeta ? t(catMeta.i18n) : catKey;
-  q.placeholder = 'Search in ' + catName + '...';
+  q.placeholder = t('search_in', {source: catName});
   q.value = '';
 
   results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '</div>';
@@ -4425,7 +4432,7 @@ function browseCatalogFilter(query) {
     grouped.sort((a, b) => (a.title || a.name || '').localeCompare(b.title || b.name || ''));
     let h = '<div class="browse-drilldown-header">' +
       '<button class="browse-back" onclick="' + (manageCategoryFilter ? "drillCategory('" + escAttr(manageCategoryFilter) + "')" : 'renderBrowseGallery()') + '">\u2190 Back</button>' +
-      '<span class="browse-drilldown-count">' + filtered.length + ' results for \u201C' + esc(query) + '\u201D</span>' +
+      '<span class="browse-drilldown-count">' + t('n_results', {n: filtered.length}) + ' \u2014 \u201C' + esc(query) + '\u201D</span>' +
     '</div>';
     for (const item of grouped) h += renderCatalogItem(item);
     if (!grouped.length) h += '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
@@ -5907,7 +5914,7 @@ async function managePassword() {
     });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      errEl.textContent = d.error || 'Failed';
+      errEl.textContent = d.error || t('error');
       errEl.style.display = 'block';
       overlay.classList.add('open');
       return;
@@ -6246,6 +6253,8 @@ function openReader(url) {
         _updateLibraryBtnIcon();
       }
     } catch(e) {}
+    // Clear stale translation state when navigating to a new article
+    _translatedState = null;
     // Check language banner for translate/view-in-lang options
     if (currentArticle) {
       _checkReaderLangBanner();
@@ -6382,7 +6391,7 @@ function _renderHistoryContent() {
       currentGroup = group;
     }
     if (item.type === 'search') {
-      var searchSub = item.zim ? _zimTitle(item.zim) : 'All sources';
+      var searchSub = item.zim ? _zimTitle(item.zim) : t('all_sources').replace(/^\u2190\s*/, '');
       if (item.resultCount) searchSub += ' \u00B7 ' + item.resultCount + ' results';
       html += '<div class="hp-item" onclick="_closeLibraryPanel();' + (item.zim ? 'enterSource(\'' + escJs(item.zim) + '\',false);' : '') + 'q.value=\'' + escJs(item.query) + '\';doSearch(\'' + escJs(item.query) + '\')">' +
         '<div class="hp-icon">\uD83D\uDD0D</div>' +

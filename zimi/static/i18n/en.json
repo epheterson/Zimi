@@ -309,6 +309,17 @@
   "cat_gaming": "Gaming & Fandom",
   "cat_other": "Other",
 
+  "cat_encyclopedias_desc": "Wikipedia, Wiktionary, Wikiquote, and Wikimedia projects",
+  "cat_qa_desc": "Stack Overflow, Ask Ubuntu, cooking, DIY, science",
+  "cat_devdocs_desc": "Language references, Linux wikis, programming tutorials",
+  "cat_video_desc": "TED talks by topic \u2014 multilingual",
+  "cat_education_desc": "Khan Academy, iFixit, WikiHow, CrashCourse, and more",
+  "cat_books_desc": "Project Gutenberg \u2014 public domain books",
+  "cat_medical_desc": "WikiMed, MedlinePlus, CDC, NHS, field medicine",
+  "cat_survival_desc": "Emergency guides, prepping, off-grid, water treatment",
+  "cat_gaming_desc": "Minecraft, Pok\u00E9mon, D&D, Stardew Valley, and more",
+  "cat_other_desc": "Miscellaneous and uncategorized archives",
+
   "articles": "articles",
   "from_to_update": "From {from} \u2192 {to}",
 
