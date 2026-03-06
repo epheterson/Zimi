@@ -501,6 +501,7 @@ def _run():
         js_api=api,
         width=win_w, height=win_h, min_size=(800, 600),
         x=win_x, y=win_y,
+        background_color='#0a0a0b',
     )
     window_ref["window"] = window
 
