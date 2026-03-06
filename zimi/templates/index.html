@@ -1553,22 +1553,24 @@ function _buildLangBanner(lang, zimInfo) {
       tH('translate') + '</button>';
   }
 
-  // 2. View in [lang] — check if matching ZIM is installed (same category preferred)
-  var matchZim = null;
-  if (zimCat) {
-    matchZim = (zimsCache || []).find(function(z) {
-      return z.language === lang && z.category === zimCat;
-    });
-  }
-  if (!matchZim) {
-    matchZim = (zimsCache || []).find(function(z) {
-      return z.language === lang && /^wikipedia/i.test(z.name || '');
-    });
-  }
+  // 2. View in [lang] — find best matching ZIM in target language
+  // Priority: full encyclopedia > _all variant > largest themed subset
+  var wikiCandidates = (zimsCache || []).filter(function(z) {
+    return z.language === lang && /^wikipedia/i.test(z.name || '') && z.name !== (zimInfo && zimInfo.name);
+  });
+  // Sort: full encyclopedia first, then _all, then by size (largest first)
+  wikiCandidates.sort(function(a, b) {
+    if (a.name === 'wikipedia_' + lang || a.name === 'wikipedia') return -1;
+    if (b.name === 'wikipedia_' + lang || b.name === 'wikipedia') return 1;
+    if (/_all/.test(a.name) && !/_all/.test(b.name)) return -1;
+    if (!/_all/.test(a.name) && /_all/.test(b.name)) return 1;
+    return (b.entry_count || 0) - (a.entry_count || 0);
+  });
+  var matchZim = wikiCandidates[0] || null;
   if (matchZim) {
-    var viewIcon = (zimInfo && zimInfo.has_icon)
-      ? '<img src="/w/' + encodeURIComponent(matchZim.name) + '/-/icon" width="14" height="14" style="vertical-align:-2px;margin-right:3px;border-radius:2px">'
-      : '';
+    // Use globe icon (not ZIM-specific icon — chemistry beaker is confusing for language switch)
+    var viewIcon = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" style="vertical-align:-2px;margin-right:3px">' +
+      '<circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>';
     actions += '<button class="lang-banner-btn" onclick="_langBannerSwitch(\'' + escJs(matchZim.name) + '\')">' +
       viewIcon + tH('view_in_lang', {lang: langName}) + '</button>';
   }
@@ -1596,6 +1598,19 @@ function _showTranslatedBanner() {
       tH('translate_to', {lang: curLangName}) + '</button>';
   }
   _insertLangBanner(actions + '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(_currentLang) + '\')">\u2715</button>');
+}
+
+// Extract project type from ZIM info (wikipedia, wiktionary, wikivoyage, etc.)
+function _zimProject(info) {
+  if (!info) return '';
+  var n = (info.name || '').toLowerCase();
+  if (/^wikipedia/.test(n)) return 'wikipedia';
+  if (/^wiktionary/.test(n)) return 'wiktionary';
+  if (/^wikivoyage/.test(n)) return 'wikivoyage';
+  if (/^wikibooks/.test(n)) return 'wikibooks';
+  if (/^wikiquote/.test(n)) return 'wikiquote';
+  if (/^stackoverflow/.test(n)) return 'stackoverflow';
+  return '';
 }
 
 function _insertLangBanner(html) {
@@ -1680,21 +1695,42 @@ async function _retranslateArticle() {
 }
 
 function _langBannerSwitch(zimName) {
-  _translatedState = null; // Clear translation state on ZIM switch
+  _translatedState = null;
   var banner = document.getElementById('lang-banner');
   if (banner) { banner.remove(); _adjustBodyPadding(); }
-  if (currentArticle) {
-    fetch('/article-languages?zim=' + encodeURIComponent(currentArticle.zim) + '&path=' + encodeURIComponent(currentArticle.path))
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        var match = (data.languages || []).find(function(l) { return l.zim === zimName; });
-        if (match) { openArticle(match.zim, match.path); }
-        else { enterSource(zimName, true); }
-      })
-      .catch(function() { enterSource(zimName, true); });
-  } else {
-    enterSource(zimName, true);
-  }
+  if (!currentArticle) { enterSource(zimName, true); return; }
+
+  // Strategy: try multiple approaches to find the same article in the target ZIM
+  // 1. Try interlanguage links (works if ZIM has them)
+  // 2. Try same article path (works when title is identical across languages, e.g. "Europe")
+  // 3. Try title-based search in target ZIM
+  // 4. Fall back to ZIM main page
+  var articleTitle = currentArticle.title || currentArticle.path.replace(/^A\//, '').replace(/_/g, ' ');
+  var articlePath = currentArticle.path;
+
+  fetch('/article-languages?zim=' + encodeURIComponent(currentArticle.zim) + '&path=' + encodeURIComponent(articlePath))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var match = (data.languages || []).find(function(l) { return l.zim === zimName; });
+      if (match) { openArticle(match.zim, match.path); return; }
+
+      // Try same path in target ZIM (titles like "Europe", "Berlin" are identical)
+      return fetch('/w/' + encodeURIComponent(zimName) + '/' + articlePath, {method: 'HEAD'})
+        .then(function(r) {
+          if (r.ok) { openArticle(zimName, articlePath); return; }
+          // Try title-based search
+          return fetch('/search?q=' + encodeURIComponent(articleTitle) + '&zim=' + encodeURIComponent(zimName) + '&limit=1')
+            .then(function(r) { return r.json(); })
+            .then(function(sr) {
+              if (sr.results && sr.results.length > 0) {
+                openArticle(sr.results[0].zim, sr.results[0].path);
+              } else {
+                enterSource(zimName, true);
+              }
+            });
+        });
+    })
+    .catch(function() { enterSource(zimName, true); });
 }
 function _langBannerDownload(lang, catMatch) {
   var banner = document.getElementById('lang-banner');
