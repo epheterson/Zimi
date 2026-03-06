@@ -181,43 +181,7 @@
     color: #fff; border-color: transparent; font-weight: 600;
   }
 
-  /* ── Language bar (article translations) ── */
-  .lang-bar {
-    display: none; align-items: center; gap: 6px; padding: 6px 16px;
-    background: rgba(10, 10, 11, 0.92); backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--border);
-    position: fixed; top: 56px; left: 0; right: 0; z-index: 199;
-    overflow-x: auto; -webkit-overflow-scrolling: touch;
-    scrollbar-width: none; font-size: 12px;
-  }
-  .lang-bar::-webkit-scrollbar { display: none; }
-  .lang-bar.visible { display: flex; }
-  .lang-bar-label { color: var(--text2); font-size: 11px; flex-shrink: 0; margin-right: 2px; }
-  .lang-btn {
-    padding: 3px 10px; font-size: 12px; font-weight: 600;
-    background: var(--surface2); border: 1px solid var(--border); border-radius: 4px;
-    color: var(--text2); cursor: pointer; transition: all 0.15s;
-    text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0;
-  }
-  .lang-btn:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
-  .lang-btn.current {
-    background: linear-gradient(135deg, var(--amber), var(--amber2));
-    color: #000; border-color: transparent;
-  }
-  .lang-btn.unavailable { opacity: 0.5; border-style: dashed; display: inline-flex; align-items: center; gap: 2px; }
-  .lang-btn.unavailable:hover { opacity: 1; border-color: var(--amber-border); color: var(--amber); background: var(--amber-glow); }
-  .lang-btn.unavailable svg { opacity: 0.6; }
-  .lang-bar-close {
-    margin-left: auto; padding: 2px 8px; background: none; border: none;
-    color: var(--text2); cursor: pointer; font-size: 14px; flex-shrink: 0;
-  }
-  .lang-bar-close:hover { color: var(--text); }
-  .lang-bar-more {
-    color: var(--text2); font-size: 11px; flex-shrink: 0; cursor: pointer;
-    padding: 3px 8px; border-radius: 4px;
-  }
-  .lang-bar-more:hover { color: var(--amber); background: var(--amber-glow); }
+  /* ── Language banner (translate / view-in-lang) ── */
   .lang-banner {
     display: flex; align-items: center; gap: 6px; padding: 5px 12px;
     background: var(--amber-glow); border-bottom: 1px solid var(--amber-border);
@@ -274,7 +238,6 @@
   }
   .tab-bar::-webkit-scrollbar { display: none; }
   .tab-bar.visible { display: flex; }
-  .tab-bar.shifted { top: 90px; } /* below language bar */
   .tab-item {
     display: flex; align-items: center; gap: 4px;
     padding: 4px 12px 4px 14px; font-size: 12px; white-space: nowrap;
@@ -866,9 +829,6 @@
     .alm-tz-wrap { flex-direction: column; gap: 12px; align-items: center; width: 100%; }
     .alm-tz-clock-side canvas { width: 180px; height: 180px; }
     .alm-tz-list { grid-template-columns: repeat(3, 1fr); gap: 4px; width: 100%; }
-    /* v1.6: Language bar — smaller on mobile */
-    .lang-bar { padding: 4px 8px; gap: 4px; }
-    .lang-btn { padding: 2px 8px; font-size: 11px; }
     /* v1.6: Tab bar — compact on mobile */
     .tab-item { max-width: 120px; font-size: 11px; padding: 4px 8px; }
     /* v1.6: Language dropdown — full width on mobile */
@@ -954,6 +914,8 @@
 
   /* ── Card category badge (inline in detail row) ── */
   .card-cat { font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .lang-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 5px; margin-left: 6px; border-radius: 3px; background: var(--surface2); color: var(--text2); vertical-align: middle; letter-spacing: 0.3px; }
+  .lang-badge.multi { background: var(--amber-glow); color: var(--amber); border: 1px solid var(--amber-border); }
 
   /* ── Star (favorite) toggle ── */
   .star-btn {
@@ -1270,7 +1232,6 @@
 
 </nav>
 
-<div id="lang-bar" class="lang-bar"></div>
 <div id="tab-bar" class="tab-bar"></div>
 <div id="history-panel" class="history-panel"></div>
 
@@ -2521,21 +2482,46 @@ function renderHome(filter) {
     }
   }
 
+  // Language auto-collection: when UI is non-English, show matching-language ZIMs as their own section
+  var _langSectionNames = new Set();
+  if (!homeScope && !filter && _currentLang !== 'en') {
+    var _uiLangName = (_AVAILABLE_LANGS.find(function(l) { return l.code === _currentLang; }) || {}).name || _currentLang;
+    var _langZims = sorted.filter(function(z) { return z.language === _currentLang; });
+    if (_langZims.length > 0) {
+      _langZims.forEach(function(z) { _langSectionNames.add(z.name); });
+      var _langZimNames = _langZims.map(function(z) { return z.name; });
+      h += '<div class="cat-heading clickable" onclick="enterScope(\'language\',\'' + escJs(_uiLangName) + '\',' + escJs(JSON.stringify(_langZimNames)) + ',true)">' +
+        '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" style="vertical-align:-2px;margin-right:4px"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>' +
+        esc(_uiLangName) + '</div>';
+      h += renderCardGrid(_langZims, true, true);
+    }
+  }
+
   if (filter && zims.length === 0) {
     h += '<div class="empty"><p>' + tH('no_sources_matching', {query: filter}) + '</p></div>';
   } else {
     cats.forEach(cat => {
+      // Deduplicate: skip ZIMs already shown in language auto-collection
+      var catItems = _langSectionNames.size > 0
+        ? groups[cat].filter(function(z) { return !_langSectionNames.has(z.name); })
+        : groups[cat];
+      if (catItems.length === 0) return; // Skip empty categories after dedup
       if (!homeScope) {
-        const catZimNames = groups[cat].map(z => z.name);
+        const catZimNames = catItems.map(z => z.name);
         h += '<div class="cat-heading clickable" onclick="enterScope(\'category\',\'' + escJs(cat) + '\',' + escJs(JSON.stringify(catZimNames)) + ',true)">' + esc(cat) + '</div>';
       } else {
         h += '<div class="cat-heading">' + esc(cat) + '</div>';
       }
-      h += renderCardGrid(groups[cat], true);
+      h += renderCardGrid(catItems, true);
     });
     if (groups._uncategorized) {
-      h += '<div class="cat-heading" style="opacity:0.5">' + tH('cat_other') + '</div>';
-      h += renderCardGrid(groups._uncategorized, true);
+      var uncatItems = _langSectionNames.size > 0
+        ? groups._uncategorized.filter(function(z) { return !_langSectionNames.has(z.name); })
+        : groups._uncategorized;
+      if (uncatItems.length > 0) {
+        h += '<div class="cat-heading" style="opacity:0.5">' + tH('cat_other') + '</div>';
+        h += renderCardGrid(uncatItems, true);
+      }
     }
   }
 
@@ -2546,6 +2532,20 @@ function renderHome(filter) {
 
   output.innerHTML = h;
   if (_showDiscover) _loadDiscover();
+}
+
+function _langBadge(z) {
+  var lang = z.language || '';
+  if (!lang) return '';
+  // Multi-language ZIMs (e.g., TED mul_*)
+  if (lang.includes(',') || /^mul/i.test(z.name)) {
+    var count = lang.split(',').length;
+    return '<span class="lang-badge multi" title="' + escAttr(count + ' languages') + '">' + count + ' lang</span>';
+  }
+  // Single language — show native name if non-English, or code badge
+  if (lang === 'en') return '';  // Don't badge English (it's the default)
+  var native = (_AVAILABLE_LANGS.find(function(l) { return l.code === lang; }) || {}).name || lang.toUpperCase();
+  return '<span class="lang-badge" title="' + escAttr(native) + '">' + esc(native) + '</span>';
 }
 
 function renderCardGrid(items, showStars, showCategory) {
@@ -2560,11 +2560,12 @@ function renderCardGrid(items, showStars, showCategory) {
       ? '<button class="star-btn' + (isFav ? ' starred' : '') + '" onclick="event.stopPropagation();toggleFavorite(\'' + escAttr(z.name) + '\')" title="' + escAttr(isFav ? t('remove_from_favorites') : t('add_to_favorites')) + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
       : '';
     const catPrefix = showCategory && z.category ? '<span class="card-cat">' + esc(z.category) + '</span> &middot; ' : '';
+    const badge = _langBadge(z);
     return '<div class="stat-card" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
       starHtml +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info">' +
-        '<div class="name">' + esc(z.title || z.name) + '</div>' +
+        '<div class="name">' + esc(z.title || z.name) + badge + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
         '<div class="detail">' + catPrefix + (typeof z.entries === 'number' ? t('n_entries', {n: z.entries.toLocaleString()}) : '') +
         ' &middot; ' + fmtSize(z.size_gb) +
@@ -6226,9 +6227,8 @@ function openReader(url) {
         _updateLibraryBtnIcon();
       }
     } catch(e) {}
-    // Fetch article languages for the language bar + check banner
+    // Check language banner for translate/view-in-lang options
     if (currentArticle) {
-      _fetchArticleLanguages(currentArticle.zim, currentArticle.path);
       _checkReaderLangBanner();
     }
   };
@@ -6558,86 +6558,11 @@ function closeReader() {
   mainView.classList.remove('hidden');
   // Restore main document scroll (iOS tap-to-top for home page)
   document.documentElement.style.overflowY = 'auto';
-  _hideLangBar();
   _translatedState = null; // Clear translation state
   var langBanner = document.getElementById('lang-banner');
   if (langBanner) { langBanner.remove(); _adjustBodyPadding(); }
   updateTopbar();
   _setWindowTitle('Zimi');
-}
-
-// ── Language bar (article translations) ──
-localStorage.removeItem('zimi_lang_bar_dismissed');
-var _langBarDismissed = sessionStorage.getItem('zimi_lang_bar_dismissed') === '1';
-
-function _fetchArticleLanguages(zim, path) {
-  if (_langBarDismissed) return;
-  // Only for Wikimedia ZIMs
-  var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === zim; });
-  var cat = zimInfo && zimInfo.category;
-  if (cat !== 'wikipedia' && cat !== 'wiktionary' && cat !== 'wikivoyage' && cat !== 'wikibooks') {
-    _hideLangBar();
-    return;
-  }
-  fetch('/article-languages?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path))
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (!readerOpen) return;
-      _renderLangBar(data, zim);
-    })
-    .catch(function() { _hideLangBar(); });
-}
-
-function _renderLangBar(data, currentZim) {
-  var bar = document.getElementById('lang-bar');
-  var installed = data.languages || [];
-  var available = (data.available || []).slice(0, 5);
-  if (installed.length === 0 && available.length === 0) { _hideLangBar(); return; }
-
-  // Find current ZIM's language
-  var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === currentZim; });
-  var currentLangCode = (zimInfo && zimInfo.language) || 'en';
-
-  var html = '<span class="lang-bar-label">' + tH('language') + '</span>';
-  // Current language first
-  html += '<button class="lang-btn current">' + esc(currentLangCode.toUpperCase()) + '</button>';
-  // Installed languages — switch to same article
-  installed.forEach(function(l) {
-    html += '<button class="lang-btn" onclick="openArticle(\'' + escJs(l.zim) + '\', \'' + escJs(l.path) + '\')" title="' + escAttr(l.name) + '">' + esc(l.lang.toUpperCase()) + '</button>';
-  });
-  // Available (not installed) languages — show inline with download icon
-  available.forEach(function(l) {
-    html += '<button class="lang-btn unavailable" onclick="_promptDownloadLang(\'' + escJs(l.catalog_name) + '\', \'' + escJs(l.name) + '\')" title="' + escAttr(t('lang_download', {lang: l.name})) + '">' +
-      esc(l.lang.toUpperCase()) + ' <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>';
-  });
-  html += '<button class="lang-bar-close" onclick="_dismissLangBar()" title="' + escAttr(t('close')) + '">&times;</button>';
-  bar.innerHTML = html;
-  bar.classList.add('visible');
-  // Adjust body padding
-  _adjustBodyPadding();
-}
-
-function _hideLangBar() {
-  var bar = document.getElementById('lang-bar');
-  bar.classList.remove('visible');
-  _adjustBodyPadding();
-}
-
-function _dismissLangBar() {
-  _langBarDismissed = true;
-  sessionStorage.setItem('zimi_lang_bar_dismissed', '1');
-  _hideLangBar();
-}
-
-// Available languages now shown inline in lang bar (no +N click needed)
-
-function _promptDownloadLang(catalogName, langName) {
-  // Navigate to catalog filtered for this ZIM
-  if (manageEnabled) {
-    closeReader();
-    enterManage();
-    setTimeout(function() { switchManageTab('browse'); setTimeout(function() { q.value = catalogName; q.dispatchEvent(new Event('input')); }, 200); }, 100);
-  }
 }
 
 // ── Tab bar ──
@@ -6722,19 +6647,9 @@ function _renderTabBar() {
 }
 
 function _adjustBodyPadding() {
-  var langBarVisible = document.getElementById('lang-bar').classList.contains('visible');
   var tabBarVisible = document.getElementById('tab-bar').classList.contains('visible');
-  var extra = 0;
-  if (langBarVisible) extra += 34;
-  if (tabBarVisible) extra += 34;
+  var extra = tabBarVisible ? 34 : 0;
   document.body.style.paddingTop = (56 + extra) + 'px';
-  // Position tab bar below language bar if both visible
-  var tabBar = document.getElementById('tab-bar');
-  if (langBarVisible && tabBarVisible) {
-    tabBar.classList.add('shifted');
-  } else {
-    tabBar.classList.remove('shifted');
-  }
 }
 
 // ── Language selector dropdown ──
