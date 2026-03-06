@@ -1,5 +1,5 @@
 // Zimi Service Worker
-const CACHE_VERSION = 'zimi-v1.6.0';
+const CACHE_VERSION = 'zimi-v1.6.1';
 const PRECACHE_URLS = ['/', '/favicon.png', '/apple-touch-icon.png'];
 
 const OFFLINE_HTML = `<!DOCTYPE html>

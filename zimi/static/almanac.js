@@ -180,7 +180,7 @@ function _renderAlmanacContent() {
 // ── Moon rendering ──
 
 function _renderAlmanacMoon(m) {
-  var litColor = '#e8e0d0', darkColor = '#0a0e1a';
+  var litColor = '#e8e0d0', darkColor = 'rgba(10,14,26,0.82)';
   var illumFrac = m.illumination / 100;
   var leftColor, rightColor, overlayColor, overlayScaleX;
   if (m.phase <= 0.25) {
@@ -199,9 +199,12 @@ function _renderAlmanacMoon(m) {
   var glowOpacity = (illumFrac * 0.3 + 0.05).toFixed(2);
   return '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + glowOpacity + ') 0%, transparent 70%)"></div>' +
     '<div class="almanac-moon">' +
+    // Earthshine: faint texture always visible on the dark side
+    '<div class="almanac-moon-texture" style="background:url(\'/static/moon.png?v=1\') center/cover;opacity:0.12"></div>' +
     '<div class="dc-moon-half left" style="background:' + leftColor + '"></div>' +
     '<div class="dc-moon-half right" style="background:' + rightColor + '"></div>' +
     '<div class="dc-moon-term" style="background:' + overlayColor + ';transform:scaleX(' + overlayScaleX.toFixed(3) + ')"></div>' +
+    // Bright texture on the lit portion via soft-light blend
     '<div class="almanac-moon-texture" style="background:url(\'/static/moon.png?v=1\') center/cover;mix-blend-mode:soft-light;opacity:1"></div>' +
     '</div>';
 }
@@ -1720,11 +1723,24 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, labelText) {
     }
     ctx.restore();
     if (m.illumination < 95) {
+      // Draw proper terminator shadow matching the hero moon's half+ellipse technique.
+      // Semicircle on the shadow side + elliptical terminator arc closing the shape.
       ctx.save();
       ctx.globalAlpha = moonAlpha;
-      var shadowOffset = moonR * (1 - m.illumination / 50);
-      ctx.beginPath(); ctx.arc(moonX + shadowOffset, moonY, moonR * 0.97, 0, Math.PI * 2);
-      ctx.fillStyle = isDaytime ? 'rgba(135,170,210,0.7)' : 'rgba(5,8,12,0.92)';
+      var shadowCol = isDaytime ? 'rgba(135,170,210,0.65)' : 'rgba(5,8,12,0.78)';
+      var illumF = m.illumination / 100;
+      var R = moonR * 0.97;
+      var waxing = m.phase <= 0.5;
+      var termScaleX = Math.max(0.01, Math.abs(illumF * 2 - 1));
+      // Terminator direction: matches arc direction when illum<50%, reverses when >=50%
+      var termCCW = (illumF < 0.5) === waxing;
+      ctx.beginPath();
+      // Semicircle: waxing→left (CCW), waning→right (CW)
+      ctx.arc(moonX, moonY, R, -Math.PI / 2, Math.PI / 2, waxing);
+      // Terminator ellipse from bottom back to top
+      ctx.ellipse(moonX, moonY, termScaleX * R, R, 0, Math.PI / 2, -Math.PI / 2, termCCW);
+      ctx.closePath();
+      ctx.fillStyle = shadowCol;
       ctx.fill();
       ctx.restore();
     }

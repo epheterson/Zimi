@@ -222,7 +222,7 @@
     display: flex; align-items: center; gap: 6px; padding: 5px 12px;
     background: var(--amber-glow); border-bottom: 1px solid var(--amber-border);
     font-size: 12px; color: var(--text); flex-wrap: wrap;
-    position: fixed; top: 56px; left: 0; right: 0; z-index: 90;
+    flex-shrink: 0;
   }
   .lang-banner-btn {
     padding: 3px 10px; border-radius: 4px; border: 1px solid var(--amber-border);
@@ -1132,7 +1132,7 @@
   .dc-today { width: 100%; height: 120px; position: relative; background: linear-gradient(135deg, #0a0e1a 0%, #141c2e 50%, #0d1220 100%); overflow: hidden; }
   .dc-star { position: absolute; width: 2px; height: 2px; background: #fff; border-radius: 50%; animation: dc-twinkle 3s ease-in-out infinite; }
   @keyframes dc-twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
-  .dc-moon-wrap { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 48px; height: 48px; border-radius: 50%; overflow: hidden; background: #0a0e1a; }
+  .dc-moon-wrap { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 48px; height: 48px; border-radius: 50%; overflow: hidden; background: #080c16; }
   .dc-moon-half { position: absolute; top: 0; width: 50%; height: 100%; }
   .dc-moon-half.left { left: 0; }
   .dc-moon-half.right { right: 0; }
@@ -1161,7 +1161,7 @@
   .alm-tz-city-night .alm-tz-city-time { color: var(--text2); }
   .alm-tz-city-active .alm-tz-city-name { color: var(--amber); }
   .almanac-hero { display: flex; flex-direction: column; align-items: center; margin-bottom: 32px; position: relative; }
-  .almanac-moon { position: relative; width: 200px; height: 200px; border-radius: 50%; overflow: hidden; }
+  .almanac-moon { position: relative; width: 200px; height: 200px; border-radius: 50%; overflow: hidden; background: #080c16; }
   .almanac-moon .dc-moon-half { position: absolute; top: 0; width: 50%; height: 100%; }
   .almanac-moon .dc-moon-half.left { left: 0; }
   .almanac-moon .dc-moon-half.right { right: 0; }
@@ -1578,10 +1578,10 @@ function _checkReaderLangBanner() {
   banner.className = 'lang-banner';
   banner.innerHTML = actions +
     '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(lang) + '\')">\u2715</button>';
-  // Insert after topbar
-  var topbar = document.querySelector('.topbar');
-  if (topbar && topbar.parentNode) topbar.parentNode.insertBefore(banner, topbar.nextSibling);
-  _adjustBodyPadding();
+  // Insert inside reader-view, before the iframe
+  var reader = document.getElementById('reader');
+  var frame = document.getElementById('reader-frame');
+  if (reader && frame) reader.insertBefore(banner, frame);
 }
 
 async function _detectChromeTranslator() {
@@ -2542,7 +2542,7 @@ function _renderTodayCard() {
   }
   var subLine = m.name + ' \u00b7 ' + seasonStr;
   // Moon phase: original 4-quadrant approach for correct crescents, texture overlaid
-  var litColor = '#e8e0d0', darkColor = '#0a0e1a';
+  var litColor = '#e8e0d0', darkColor = 'rgba(10,14,26,0.82)';
   var illumFrac = m.illumination / 100;
   var leftColor, rightColor, overlayColor, overlayScaleX;
   if (m.phase <= 0.25) {
@@ -2569,6 +2569,7 @@ function _renderTodayCard() {
   }
   var glowOpacity = (m.illumination / 100 * 0.2 + 0.05).toFixed(2);
   var moonHtml = '<div class="dc-moon-wrap">' +
+    '<div class="dc-moon-texture" style="opacity:0.15"></div>' +
     '<div class="dc-moon-half left" style="background:' + leftColor + '"></div>' +
     '<div class="dc-moon-half right" style="background:' + rightColor + '"></div>' +
     '<div class="dc-moon-term" style="background:' + overlayColor + ';transform:scaleX(' + overlayScaleX.toFixed(3) + ')"></div>' +
@@ -2896,7 +2897,7 @@ function _renderDiscover(el, items) {
         : '';
       h += '<div class="discover-card dc-quote-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
         '<div class="dc-body">' +
-          '<div class="dc-header">' + iconHtml + '<span>' + esc(it.label || t('quote_of_day')) + '</span></div>' +
+          '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel || t('quote_of_day')) + '</span></div>' +
           '<div class="dc-quote-mark">\u201C</div>' +
           '<div class="dc-blurb dc-quote">' + esc(cleanQuote) + '</div>' +
           attrLine +
@@ -2908,7 +2909,7 @@ function _renderDiscover(el, items) {
     } else if (/wiktionary/i.test(it.zim || '')) {
       h += '<div class="discover-card dc-quote-card dc-word-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
         '<div class="dc-body">' +
-          '<div class="dc-header">' + iconHtml + '<span>' + esc(it.label) + '</span></div>' +
+          '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel) + '</span></div>' +
           '<div class="dc-headword">' + esc(displayTitle) + '</div>' +
           (it.part_of_speech ? '<div class="dc-pos">' + esc(it.part_of_speech) + '</div>' : '') +
           (it.blurb ? '<div class="dc-def">' + esc(it.blurb) + '</div>' : '') +
@@ -6646,17 +6647,10 @@ function _renderTabBar() {
 function _adjustBodyPadding() {
   var langBarVisible = document.getElementById('lang-bar').classList.contains('visible');
   var tabBarVisible = document.getElementById('tab-bar').classList.contains('visible');
-  var bannerEl = document.getElementById('lang-banner');
-  var bannerVisible = bannerEl && bannerEl.offsetHeight > 0;
   var extra = 0;
-  if (bannerVisible) extra += 34;
   if (langBarVisible) extra += 34;
   if (tabBarVisible) extra += 34;
   document.body.style.paddingTop = (56 + extra) + 'px';
-  // Stack fixed bars: banner → lang-bar → tab-bar
-  if (bannerEl) bannerEl.style.top = '56px';
-  var langBar = document.getElementById('lang-bar');
-  if (langBarVisible) langBar.style.top = (56 + (bannerVisible ? 34 : 0)) + 'px';
   // Position tab bar below language bar if both visible
   var tabBar = document.getElementById('tab-bar');
   if (langBarVisible && tabBarVisible) {
