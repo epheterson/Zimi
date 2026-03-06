@@ -269,5 +269,9 @@
   "powered_by": "Работает на",
   "yesterday": "Вчера",
   "this_week": "На этой неделе",
-  "older": "Ранее"
+  "older": "Ранее",
+  "translate": "Перевести",
+  "translating": "Перевод",
+  "view_in_lang": "Просмотр на {lang}",
+  "download_lang": "Скачать {lang}"
 }

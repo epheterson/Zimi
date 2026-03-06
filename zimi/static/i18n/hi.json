@@ -269,5 +269,9 @@
   "powered_by": "द्वारा संचालित",
   "yesterday": "कल",
   "this_week": "इस सप्ताह",
-  "older": "पुराना"
+  "older": "पुराना",
+  "translate": "अनुवाद करें",
+  "translating": "अनुवाद हो रहा है",
+  "view_in_lang": "{lang} में देखें",
+  "download_lang": "{lang} डाउनलोड करें"
 }

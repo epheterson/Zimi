@@ -269,5 +269,9 @@
   "powered_by": "由以下技术驱动",
   "yesterday": "昨天",
   "this_week": "本周",
-  "older": "更早"
+  "older": "更早",
+  "translate": "翻译",
+  "translating": "翻译中",
+  "view_in_lang": "查看{lang}版",
+  "download_lang": "下载{lang}"
 }

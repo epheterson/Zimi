@@ -269,5 +269,9 @@
   "powered_by": "מופעל על ידי",
   "yesterday": "אתמול",
   "this_week": "השבוע",
-  "older": "ישן יותר"
+  "older": "ישן יותר",
+  "translate": "תרגם",
+  "translating": "מתרגם",
+  "view_in_lang": "הצג ב{lang}",
+  "download_lang": "הורד {lang}"
 }

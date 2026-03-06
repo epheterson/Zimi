@@ -321,5 +321,9 @@
   "powered_by": "Powered by",
   "yesterday": "Yesterday",
   "this_week": "This Week",
-  "older": "Older"
+  "older": "Older",
+  "translate": "Translate",
+  "translating": "Translating",
+  "view_in_lang": "View in {lang}",
+  "download_lang": "Download {lang}"
 }

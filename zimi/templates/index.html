@@ -219,15 +219,19 @@
   }
   .lang-bar-more:hover { color: var(--amber); background: var(--amber-glow); }
   .lang-banner {
-    display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+    display: flex; align-items: center; gap: 6px; padding: 5px 12px;
     background: var(--amber-glow); border-bottom: 1px solid var(--amber-border);
-    font-size: 13px; color: var(--text);
+    font-size: 12px; color: var(--text); flex-wrap: wrap;
   }
   .lang-banner-btn {
     padding: 3px 10px; border-radius: 4px; border: 1px solid var(--amber-border);
-    background: var(--amber); color: #000; font-size: 12px; font-weight: 500;
-    cursor: pointer; white-space: nowrap;
+    background: var(--surface2); color: var(--text); font-size: 12px; font-weight: 500;
+    cursor: pointer; white-space: nowrap; transition: all 0.15s;
   }
+  .lang-banner-btn:hover { background: var(--amber); color: #000; border-color: transparent; }
+  .lang-banner-translate { background: var(--amber); color: #000; border-color: transparent; }
+  .lang-banner-translate:hover { background: var(--amber2); }
+  .lang-banner-dl { border-style: dashed; }
   .lang-banner-dismiss {
     margin-left: auto; background: none; border: none; color: var(--text2);
     cursor: pointer; font-size: 14px; padding: 2px 6px;
@@ -1502,48 +1506,142 @@ async function setLanguage(lang) {
 }
 
 // ── Language-experience banner (reader context) ──
-// Shows when reading a Wikipedia article and the ZIM language differs from UI language.
-// Suggests switching to same article in user's language, or downloading matching Wikipedia.
+// ── Language action banner ──
+// Shows when reading content in a different language than UI language.
+// Offers up to 3 actions: Translate (Chrome API), View in [lang], Download [lang].
+var _chromeTranslatorAvailable = null; // null = unknown, true/false after check
+var _activeTranslator = null; // Chrome Translator instance when translating
+
 function _checkReaderLangBanner() {
   var old = document.getElementById('lang-banner');
   if (old) old.remove();
   if (!readerOpen || !currentArticle) return;
   var lang = _currentLang;
-  if (lang === 'en') return; // English is default, no prompt needed
-  // Don't show if dismissed for this language
+  // Don't show if dismissed for this language this session
   if (sessionStorage.getItem('zimi_lang_banner_' + lang) === '0') return;
   // Check if the current ZIM is already in the user's language
   var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === currentArticle.zim; });
   if (zimInfo && zimInfo.language === lang) return; // Already reading in their language
-  // Only for Wikimedia ZIMs
-  var cat = zimInfo && zimInfo.category;
-  if (cat !== 'wikipedia' && cat !== 'wiktionary' && cat !== 'wikivoyage' && cat !== 'wikibooks') return;
-  // Check if we have a matching Wikipedia in the user's language
-  var zims = zimsCache || [];
-  var matchZim = zims.find(function(z) {
-    return z.name && /^wikipedia/.test(z.name) && z.language === lang;
-  });
   var langName = (_AVAILABLE_LANGS.find(function(l) { return l.code === lang; }) || {}).name || lang;
+  var zimCat = (zimInfo && zimInfo.category) || '';
+
+  // Build action buttons
+  var actions = '';
+
+  // 1. Translate button (Chrome Translator API) — detect availability
+  if (_chromeTranslatorAvailable === null) {
+    // First check — async, will re-render banner when ready
+    _detectChromeTranslator().then(function() { _checkReaderLangBanner(); });
+    return;
+  }
+  if (_chromeTranslatorAvailable) {
+    actions += '<button class="lang-banner-btn lang-banner-translate" onclick="_translateArticle()">' +
+      '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" style="vertical-align:-2px;margin-right:3px">' +
+      '<circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>' +
+      tH('translate') + '</button>';
+  }
+
+  // 2. View in [lang] — check if matching ZIM is installed (same category preferred)
+  var matchZim = null;
+  if (zimCat) {
+    matchZim = (zimsCache || []).find(function(z) {
+      return z.language === lang && z.category === zimCat;
+    });
+  }
+  if (!matchZim) {
+    // Fallback: any Wikipedia in user's language
+    matchZim = (zimsCache || []).find(function(z) {
+      return z.language === lang && /^wikipedia/i.test(z.name || '');
+    });
+  }
+  if (matchZim) {
+    var viewIcon = (zimInfo && zimInfo.has_icon)
+      ? '<img src="/w/' + encodeURIComponent(matchZim.name) + '/-/icon" width="14" height="14" style="vertical-align:-2px;margin-right:3px;border-radius:2px">'
+      : '';
+    actions += '<button class="lang-banner-btn" onclick="_langBannerSwitch(\'' + escJs(matchZim.name) + '\')">' +
+      viewIcon + tH('view_in_lang', {lang: langName}) + '</button>';
+  }
+
+  // 3. Download [lang] — if no matching ZIM installed, offer download
+  if (!matchZim && manageEnabled) {
+    var catMatch = zimCat || 'wikipedia';
+    actions += '<button class="lang-banner-btn lang-banner-dl" onclick="_langBannerDownload(\'' + escJs(lang) + '\', \'' + escJs(catMatch) + '\')">' +
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px;margin-right:3px"><path d="M12 5v14M5 12l7 7 7-7"/></svg>' +
+      tH('download_lang', {lang: langName}) + '</button>';
+  }
+
+  if (!actions) return; // Nothing to offer
+
   var banner = document.createElement('div');
   banner.id = 'lang-banner';
   banner.className = 'lang-banner';
-  if (matchZim) {
-    banner.innerHTML = '<span>' + esc(langName) + ' Wikipedia ' + t('switch_to_lang_available') + '</span>' +
-      '<button class="lang-banner-btn" onclick="_langBannerSwitch(\'' + escJs(matchZim.name) + '\')">' + tH('switch') + '</button>' +
-      '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(lang) + '\')">\u2715</button>';
-  } else {
-    banner.innerHTML = '<span>' + esc(langName) + ' Wikipedia ' + t('not_installed') + '</span>' +
-      '<button class="lang-banner-btn" onclick="_langBannerDownload(\'' + escJs(lang) + '\')">' + tH('download') + '</button>' +
-      '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(lang) + '\')">\u2715</button>';
-  }
-  // Insert after topbar (inside reader view)
+  banner.innerHTML = actions +
+    '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(lang) + '\')">\u2715</button>';
+  // Insert after topbar
   var topbar = document.querySelector('.topbar');
   if (topbar && topbar.parentNode) topbar.parentNode.insertBefore(banner, topbar.nextSibling);
 }
+
+async function _detectChromeTranslator() {
+  if (_chromeTranslatorAvailable !== null) return;
+  try {
+    if (typeof Translator !== 'undefined' && Translator.availability) {
+      var avail = await Translator.availability({sourceLanguage: 'en', targetLanguage: _currentLang});
+      _chromeTranslatorAvailable = (avail === 'available' || avail === 'downloadable' || avail === 'downloading');
+    } else {
+      _chromeTranslatorAvailable = false;
+    }
+  } catch(e) {
+    _chromeTranslatorAvailable = false;
+  }
+}
+
+async function _translateArticle() {
+  if (!readerOpen || !currentArticle) return;
+  var frame = document.getElementById('reader-frame');
+  if (!frame || !frame.contentDocument) return;
+  var btn = document.querySelector('.lang-banner-translate');
+  if (btn) { btn.disabled = true; btn.textContent = tH('translating') + '\u2026'; }
+  try {
+    // Detect source language from ZIM
+    var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === currentArticle.zim; });
+    var srcLang = (zimInfo && zimInfo.language) || 'en';
+    var tgtLang = _currentLang;
+    if (srcLang === tgtLang) return;
+    // Create translator (downloads language pack if needed)
+    _activeTranslator = await Translator.create({sourceLanguage: srcLang, targetLanguage: tgtLang});
+    // Walk text nodes in the article body
+    var body = frame.contentDocument.body;
+    if (!body) return;
+    var walker = frame.contentDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+    var nodes = [];
+    while (walker.nextNode()) {
+      var n = walker.currentNode;
+      if (n.textContent.trim().length > 2) nodes.push(n);
+    }
+    // Translate in batches
+    var BATCH = 20;
+    for (var i = 0; i < nodes.length; i += BATCH) {
+      var batch = nodes.slice(i, i + BATCH);
+      var texts = batch.map(function(n) { return n.textContent; });
+      var results = await Promise.all(texts.map(function(t) { return _activeTranslator.translate(t); }));
+      for (var j = 0; j < batch.length; j++) {
+        batch[j].textContent = results[j];
+      }
+      if (btn) btn.textContent = tH('translating') + '\u2026 ' + Math.min(100, Math.round((i + BATCH) / nodes.length * 100)) + '%';
+    }
+    // Done — update banner
+    var banner = document.getElementById('lang-banner');
+    if (banner) banner.remove();
+  } catch(e) {
+    console.warn('[Zimi] Translation failed:', e);
+    if (btn) { btn.disabled = false; btn.textContent = tH('translate'); }
+  }
+}
+
 function _langBannerSwitch(zimName) {
   var banner = document.getElementById('lang-banner');
   if (banner) banner.remove();
-  // Try to find same article in the target language via article-languages
   if (currentArticle) {
     fetch('/article-languages?zim=' + encodeURIComponent(currentArticle.zim) + '&path=' + encodeURIComponent(currentArticle.path))
       .then(function(r) { return r.json(); })
@@ -1557,11 +1655,12 @@ function _langBannerSwitch(zimName) {
     enterSource(zimName, true);
   }
 }
-function _langBannerDownload(lang) {
+function _langBannerDownload(lang, catMatch) {
   var banner = document.getElementById('lang-banner');
   if (banner) banner.remove();
+  closeReader();
   enterManage(true);
-  setTimeout(function() { switchManageTab('browse'); }, 100);
+  setTimeout(function() { switchManageTab('browse'); setTimeout(function() { q.value = catMatch + ' ' + lang; q.dispatchEvent(new Event('input')); }, 200); }, 100);
 }
 function _langBannerDismiss(lang) {
   sessionStorage.setItem('zimi_lang_banner_' + lang, '0');

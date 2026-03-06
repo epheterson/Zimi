@@ -269,5 +269,9 @@
   "powered_by": "Desenvolvido com",
   "yesterday": "Ontem",
   "this_week": "Esta semana",
-  "older": "Mais antigo"
+  "older": "Mais antigo",
+  "translate": "Traduzir",
+  "translating": "Traduzindo",
+  "view_in_lang": "Ver em {lang}",
+  "download_lang": "Baixar {lang}"
 }

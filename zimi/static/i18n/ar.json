@@ -269,5 +269,9 @@
   "powered_by": "مدعوم بواسطة",
   "yesterday": "أمس",
   "this_week": "هذا الأسبوع",
-  "older": "أقدم"
+  "older": "أقدم",
+  "translate": "ترجمة",
+  "translating": "جارٍ الترجمة",
+  "view_in_lang": "عرض بـ{lang}",
+  "download_lang": "تنزيل {lang}"
 }
