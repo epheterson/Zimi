@@ -266,5 +266,8 @@
   "favorites": "पसंदीदा",
   "zim_files": "ZIM फ़ाइलें",
   "total_size": "कुल आकार",
-  "powered_by": "द्वारा संचालित"
+  "powered_by": "द्वारा संचालित",
+  "yesterday": "कल",
+  "this_week": "इस सप्ताह",
+  "older": "पुराना"
 }

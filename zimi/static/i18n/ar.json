@@ -266,5 +266,8 @@
   "favorites": "المفضلة",
   "zim_files": "ملفات ZIM",
   "total_size": "الحجم الإجمالي",
-  "powered_by": "مدعوم بواسطة"
+  "powered_by": "مدعوم بواسطة",
+  "yesterday": "أمس",
+  "this_week": "هذا الأسبوع",
+  "older": "أقدم"
 }

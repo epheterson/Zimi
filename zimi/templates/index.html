@@ -2724,7 +2724,7 @@ function _renderDiscover(el, items) {
       h += '<div class="discover-card" onclick="openAlmanac()">' +
         _renderTodayCard() +
         '<div class="dc-body">' +
-          '<div class="dc-source"><span>\uD83D\uDCC5 Today</span></div>' +
+          '<div class="dc-source"><span>\uD83D\uDCC5 ' + tH('today') + '</span></div>' +
           '<div class="dc-title">' + _dateTitle + '</div>' +
           '<div class="dc-blurb">' + _m.name + (_seasonStr ? ' \u00b7 ' + _seasonStr : '') + '</div>' +
           '<div class="dc-blurb">' + _m.illumination + '% illuminated</div>' +
@@ -2756,10 +2756,12 @@ function _renderDiscover(el, items) {
       iconHtml = '<img class="dc-zim-icon" src="/w/' + encodeURIComponent(it.zim) + '/-/icon" loading="lazy">';
     }
 
-    // Source label: named slots show their label, random shows ZIM title + dice emoji
+    // Source label: re-resolve from ZIM name (not cached label) so language switches work
     var sourceLabel, badgeHtml = '';
     if (it.label) {
-      sourceLabel = it.label;
+      // Re-resolve label from FEATURED_ZIMS if possible (cached label may be in old language)
+      var _feat = it.zim && FEATURED_ZIMS.find(function(f) { return it.zim.indexOf(f.match) !== -1; });
+      sourceLabel = _feat ? t(_feat.i18nLabel) : it.label;
     } else if (it.type === 'random') {
       sourceLabel = _zimTitle(it.zim);
       badgeHtml = '<span class="dc-dice">\uD83C\uDFB2</span>';
@@ -3046,7 +3048,7 @@ async function renderSource(name) {
     '<div class="sh-icon">' + iconHtml + '</div>' +
     '<div class="sh-info">' +
       '<h1>' + esc(info.title || name) + '</h1>' +
-      '<div class="sh-meta">' + (typeof info.entries === 'number' ? info.entries.toLocaleString() + ' entries' : '') +
+      '<div class="sh-meta">' + (typeof info.entries === 'number' ? t('n_entries', {n: info.entries.toLocaleString()}) : '') +
       ' &middot; ' + fmtSize(info.size_gb) + '</div>' +
       (info.description ? '<div class="sh-desc">' + esc(info.description) + '</div>' : '') +
     '</div></div>';
@@ -3438,7 +3440,7 @@ function renderSearchResults(data, scope) {
           '<div class="card-info">' +
             '<div class="name">' + esc(z.title || z.name) + '</div>' +
             (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
-            '<div class="detail">' + (typeof z.entries === 'number' ? z.entries.toLocaleString() + ' entries' : '') +
+            '<div class="detail">' + (typeof z.entries === 'number' ? t('n_entries', {n: z.entries.toLocaleString()}) : '') +
             ' &middot; ' + fmtSize(z.size_gb) + '</div>' +
           '</div></div>';
       }).join('') + '</div>';
@@ -5074,7 +5076,7 @@ function renderInstalled(filterText) {
         ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" width="40" height="40" loading="lazy">'
         : '<span class="ci-letter">' + (esc(z.title || z.name)[0] || '?').toUpperCase() + '</span>';
       const meta = [];
-      if (typeof z.entries === 'number') meta.push(z.entries.toLocaleString() + ' entries');
+      if (typeof z.entries === 'number') meta.push(t('n_entries', {n: z.entries.toLocaleString()}));
       meta.push(fmtSize(z.size_gb));
       // Show date from ZIM metadata
       const dateStr = z.date ? z.date.substring(0, 7) : null;
@@ -6116,10 +6118,10 @@ function _histDateGroup(ts) {
   var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   var yesterday = new Date(today - 86400000);
   var weekAgo = new Date(today - 6 * 86400000);
-  if (d >= today) return 'Today';
-  if (d >= yesterday) return 'Yesterday';
-  if (d >= weekAgo) return 'This Week';
-  return 'Older';
+  if (d >= today) return t('today');
+  if (d >= yesterday) return t('yesterday');
+  if (d >= weekAgo) return t('this_week');
+  return t('older');
 }
 function toggleLibraryPanel(forceTab) {
   var panel = document.getElementById('history-panel');

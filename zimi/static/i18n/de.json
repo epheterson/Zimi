@@ -266,5 +266,8 @@
   "favorites": "Favoriten",
   "zim_files": "ZIM-Dateien",
   "total_size": "Gesamtgröße",
-  "powered_by": "Betrieben von"
+  "powered_by": "Betrieben von",
+  "yesterday": "Gestern",
+  "this_week": "Diese Woche",
+  "older": "Älter"
 }

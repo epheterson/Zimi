@@ -266,5 +266,8 @@
   "favorites": "收藏",
   "zim_files": "ZIM 文件",
   "total_size": "总大小",
-  "powered_by": "由以下技术驱动"
+  "powered_by": "由以下技术驱动",
+  "yesterday": "昨天",
+  "this_week": "本周",
+  "older": "更早"
 }

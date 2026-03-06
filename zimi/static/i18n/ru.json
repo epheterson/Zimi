@@ -266,5 +266,8 @@
   "favorites": "Избранное",
   "zim_files": "Файлы ZIM",
   "total_size": "Общий размер",
-  "powered_by": "Работает на"
+  "powered_by": "Работает на",
+  "yesterday": "Вчера",
+  "this_week": "На этой неделе",
+  "older": "Ранее"
 }

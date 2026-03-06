@@ -318,5 +318,8 @@
   "favorites": "Favorites",
   "zim_files": "ZIM files",
   "total_size": "Total size",
-  "powered_by": "Powered by"
+  "powered_by": "Powered by",
+  "yesterday": "Yesterday",
+  "this_week": "This Week",
+  "older": "Older"
 }

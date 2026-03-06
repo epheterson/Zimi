@@ -266,5 +266,8 @@
   "favorites": "מועדפים",
   "zim_files": "קבצי ZIM",
   "total_size": "גודל כולל",
-  "powered_by": "מופעל על ידי"
+  "powered_by": "מופעל על ידי",
+  "yesterday": "אתמול",
+  "this_week": "השבוע",
+  "older": "ישן יותר"
 }
