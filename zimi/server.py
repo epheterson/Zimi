@@ -1464,83 +1464,216 @@ def _detect_query_language(query):
 
 
 def get_article_languages(zim_name, article_path):
-    """Find available translations for a Wikipedia/Wikimedia article.
+    """Find available translations for an article across all installed ZIMs.
 
-    Scans article HTML for interlanguage links (href="https://XX.wikipedia.org/wiki/...").
-    Returns {"languages": [...installed...], "available": [...not installed...]}.
+    Uses two strategies:
+    1. Interlanguage links in HTML (fast, if present — many ZIMs strip these)
+    2. Title-based path lookup across same-project ZIMs in other languages
+
+    Returns {"languages": [{lang, name, zim, path}]} — only VERIFIED entries.
     Must be called with _zim_lock held.
     """
     archive = get_archive(zim_name)
     if archive is None:
-        return {"languages": [], "available": []}
+        return {"languages": []}
+
+    # Get article title from path
+    title = article_path
+    if title.startswith("A/"):
+        title = title[2:]
 
     try:
         entry = archive.get_entry_by_path(article_path)
         item = entry.get_item()
         if item.mimetype not in ("text/html", "application/xhtml+xml"):
-            return {"languages": [], "available": []}
-        content = bytes(item.content).decode("utf-8", errors="replace")
+            return {"languages": []}
     except Exception:
-        return {"languages": [], "available": []}
+        return {"languages": []}
 
-    # Find interlanguage links: <a href="https://XX.wikipedia.org/wiki/Title">
-    # Also handles XX.m.wikipedia.org and other Wikimedia projects
-    pattern = re.compile(
-        r'href="https?://([a-z]{2,3})(?:\.m)?'
-        r'\.(wikipedia|wiktionary|wikivoyage|wikibooks|wikiquote|wikinews|wikiversity|wikisource)'
-        r'\.org/wiki/([^"#]+)"'
-    )
-    seen = set()
+    # Determine the source ZIM's project type and language
+    src_info = next((z for z in (_zim_list_cache or []) if z.get("name") == zim_name), None)
+    src_lang = src_info.get("language", "en") if src_info else "en"
+
+    # Find all same-project ZIMs in other languages
+    zim_list = _zim_list_cache or []
+    src_project = _zim_project_name(zim_name)
+
     installed = []
-    available = []
+    seen_langs = {src_lang}  # skip source language
 
-    for m in pattern.finditer(content):
-        lang = m.group(1)
-        project = m.group(2)
-        wiki_path = unquote(m.group(3))
-        if lang in seen:
+    # Strategy 1: Try interlanguage links first (fastest, most accurate)
+    try:
+        content = bytes(item.content).decode("utf-8", errors="replace")
+        pattern = re.compile(
+            r'href="https?://([a-z]{2,3})(?:\.m)?'
+            r'\.(wikipedia|wiktionary|wikivoyage|wikibooks|wikiquote|wikinews|wikiversity|wikisource)'
+            r'\.org/wiki/([^"#]+)"'
+        )
+        for m in pattern.finditer(content):
+            lang = m.group(1)
+            if lang in seen_langs:
+                continue
+            wiki_path = unquote(m.group(3))
+            # Find best installed ZIM for this lang
+            match = _find_article_in_lang_zims(lang, src_project, wiki_path, zim_name, zim_list)
+            if match:
+                seen_langs.add(lang)
+                installed.append(match)
+            if len(seen_langs) >= 30:
+                break
+    except Exception:
+        pass
+
+    # Strategy 2: Search-based lookup for languages not found via interlanguage links
+    # Group candidate ZIMs by language, pick best per language
+    lang_candidates = {}  # {lang: [(zim_name, quality_score)]}
+    for zi in zim_list:
+        lang = zi.get("language", "")
+        if lang in seen_langs or not lang:
             continue
-        seen.add(lang)
+        n = zi.get("name", "")
+        if n == zim_name:
+            continue
+        if src_project and _zim_project_name(n) != src_project:
+            continue
+        if not src_project:
+            continue
+        if lang not in lang_candidates:
+            lang_candidates[lang] = []
+        lang_candidates[lang].append((n, _zim_quality_score(n)))
 
-        # Check if we have a ZIM for this language+project
-        domain = f"{lang}.{project}.org"
-        target_zim = _domain_zim_map.get(domain)
-        if target_zim and target_zim != zim_name:
-            # Try to resolve the path in the target ZIM
-            target_archive = get_archive(target_zim)
-            resolved_path = None
-            if target_archive:
-                for candidate in [f"A/{wiki_path}", wiki_path]:
-                    try:
-                        target_archive.get_entry_by_path(candidate)
-                        resolved_path = candidate
+    # For each unseen language, try exact path first, then search
+    human_title = title.replace("_", " ")
+    for lang, candidates in lang_candidates.items():
+        if lang in seen_langs:
+            continue
+        # Sort by quality (best first)
+        candidates.sort(key=lambda x: -x[1])
+        found = False
+        for cand_name, _ in candidates:
+            cand_archive = get_archive(cand_name)
+            if not cand_archive:
+                continue
+            # Try exact path (works when titles are identical: "Europe", "Berlin")
+            for try_path in [f"A/{title}", title]:
+                try:
+                    cand_archive.get_entry_by_path(try_path)
+                    seen_langs.add(lang)
+                    installed.append({
+                        "lang": lang,
+                        "name": _LANG_NATIVE_NAMES.get(lang, lang),
+                        "zim": cand_name,
+                        "path": try_path,
+                    })
+                    found = True
+                    break
+                except KeyError:
+                    continue
+            if found:
+                break
+            # Try search — find the article by title (handles "Oxygen" → "Oxygène")
+            try:
+                results = suggest_search_zim(cand_archive, human_title, 3)
+                for r in results:
+                    # Accept if title starts with our search term or is very similar
+                    rt = (r.get("title") or "").lower()
+                    ht = human_title.lower()
+                    if rt == ht or rt.startswith(ht) or ht in rt:
+                        seen_langs.add(lang)
+                        installed.append({
+                            "lang": lang,
+                            "name": _LANG_NATIVE_NAMES.get(lang, lang),
+                            "zim": cand_name,
+                            "path": r["path"],
+                        })
+                        found = True
                         break
-                    except KeyError:
-                        continue
-            installed.append({
-                "lang": lang,
-                "name": _LANG_NATIVE_NAMES.get(lang, lang),
-                "zim": target_zim,
-                "path": resolved_path or f"A/{wiki_path}",
-            })
-        else:
-            # Build catalog name for download prompt
-            base = zim_name.split("_")[0] if "_" in zim_name else zim_name
-            catalog_name = f"{base}_{lang}" if lang != "en" else base
-            available.append({
-                "lang": lang,
-                "name": _LANG_NATIVE_NAMES.get(lang, lang),
-                "catalog_name": catalog_name,
-            })
-
-        if len(seen) >= 30:  # cap to avoid excessive scanning
+            except Exception:
+                pass
+            if found:
+                break
+        if len(seen_langs) >= 30:
             break
 
-    # Sort: installed by language name, available alphabetically
     installed.sort(key=lambda x: x["name"])
-    available.sort(key=lambda x: x["name"])
+    return {"languages": installed[:20]}
 
-    return {"languages": installed[:20], "available": available[:20]}
+
+def _zim_project_name(zim_name):
+    """Extract project name from ZIM name for cross-language matching."""
+    n = zim_name.lower()
+    for proj in ("wikipedia", "wiktionary", "wikivoyage", "wikibooks", "wikiquote", "wikiversity"):
+        if n.startswith(proj) or proj in n:
+            return proj
+    return ""
+
+
+def _find_article_in_lang_zims(lang, src_project, wiki_path, exclude_zim, zim_list):
+    """Find an article across all installed ZIMs for a given language+project.
+
+    Prefers _all variants over subsets, and higher quality (maxi > nopic > mini).
+    Returns dict with {lang, name, zim, path} or None.
+    """
+    candidates = []
+    # Domain map entry
+    domain = f"{lang}.{src_project}.org" if src_project else ""
+    if domain:
+        domain_zim = _domain_zim_map.get(domain)
+        if domain_zim and domain_zim != exclude_zim:
+            candidates.append(domain_zim)
+    # All ZIMs matching language + project
+    for zi in zim_list:
+        n = zi.get("name", "")
+        if n == exclude_zim or n in candidates:
+            continue
+        if zi.get("language") == lang and src_project and src_project in n.lower():
+            candidates.append(n)
+
+    best = None
+    for cand_name in candidates:
+        cand_archive = get_archive(cand_name)
+        if not cand_archive:
+            continue
+        resolved = None
+        for try_path in [f"A/{wiki_path}", wiki_path]:
+            try:
+                cand_archive.get_entry_by_path(try_path)
+                resolved = try_path
+                break
+            except KeyError:
+                continue
+        if resolved:
+            quality = _zim_quality_score(cand_name)
+            zi_info = next((z for z in zim_list if z.get("name") == cand_name), None)
+            entry_count = zi_info.get("entry_count", 0) if zi_info else 0
+            if best is None or quality > best[2] or (quality == best[2] and entry_count > best[3]):
+                best = (cand_name, resolved, quality, entry_count)
+
+    if best:
+        return {
+            "lang": lang,
+            "name": _LANG_NATIVE_NAMES.get(lang, lang),
+            "zim": best[0],
+            "path": best[1],
+        }
+    return None
+
+
+def _zim_quality_score(name):
+    """Score a ZIM by quality for preferring _all over subsets, full over mini."""
+    n = name.lower()
+    score = 0
+    if "_all" in n:
+        score += 100
+    if "maxi" in n:
+        score += 30
+    elif "nopic" in n:
+        score += 20
+    elif "mini" in n:
+        score += 10
+    else:
+        score += 25
+    return score
 
 
 def strip_html(text):
