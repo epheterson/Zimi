@@ -1571,28 +1571,42 @@ def get_article_languages(zim_name, article_path):
                     continue
             if found:
                 break
-            # Try search — find the article by title (handles "Oxygen" → "Oxygène")
-            try:
-                results = suggest_search_zim(cand_archive, human_title, 1)
-                for r in results:
-                    # Only accept the FIRST search result (SuggestionSearcher ranks by
-                    # relevance). Verify it's not wildly different in length — this
-                    # catches "Europe" → "European Chemicals Agency" false positives
-                    # while allowing "Oxygen" → "Oxygène" (same-length translations).
-                    rt = (r.get("title") or "").lower()
-                    ht = human_title.lower()
-                    if len(rt) <= len(ht) * 1.5 + 5:
-                        seen_langs.add(lang)
-                        installed.append({
-                            "lang": lang,
-                            "name": _LANG_NATIVE_NAMES.get(lang, lang),
-                            "zim": cand_name,
-                            "path": r["path"],
-                        })
-                        found = True
-                        break
-            except Exception:
-                pass
+            # Try title search, then full-text search as fallback.
+            # SuggestionSearcher does prefix matching ("Carbon" → "Carbonacé")
+            # so it can miss translations like "Carbone". Full-text search
+            # catches those via content-based ranking.
+            ht = human_title.lower()
+            for search_fn in [
+                lambda: suggest_search_zim(cand_archive, human_title, 5),
+                lambda: search_zim(cand_archive, human_title, limit=3, snippets=False),
+            ]:
+                try:
+                    results = search_fn()
+                    for r in results:
+                        rt = (r.get("title") or "").lower()
+                        # Accept if:
+                        # 1. Length within ±1 char, AND
+                        # 2. Shares ≥50% characters (handles script changes)
+                        # "Oxygen"→"Oxygène" ✓  "Carbon"→"Carbone" ✓
+                        # "Oxygen"→"महासागर" ✗  "Plutonium"→"PuTTY" ✗
+                        len_ok = max(len(ht) - 1, 3) <= len(rt) <= len(ht) + 1
+                        # Character overlap: at least half the chars should be shared
+                        shared = sum(1 for c in set(ht) if c in rt)
+                        char_ok = shared >= len(set(ht)) * 0.5
+                        if rt == ht or (len_ok and char_ok):
+                            seen_langs.add(lang)
+                            installed.append({
+                                "lang": lang,
+                                "name": _LANG_NATIVE_NAMES.get(lang, lang),
+                                "zim": cand_name,
+                                "path": r["path"],
+                            })
+                            found = True
+                            break
+                except Exception:
+                    pass
+                if found:
+                    break
             if found:
                 break
         if len(seen_langs) >= 30:
