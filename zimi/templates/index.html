@@ -6773,22 +6773,35 @@ function _showLangDownloadSection(langCode) {
     return bc - ac;
   });
 
+  // Limit: show _all group with all flavors, then up to 2 subsets (best flavor only)
+  var mainName = names.find(function(n) { return /_all/.test(n); }) || names[0];
+  var showNames = [mainName];
+  for (var si = 0; si < names.length && showNames.length < 4; si++) {
+    if (names[si] !== mainName) showNames.push(names[si]);
+  }
+
   var section = document.createElement('div');
   section.className = 'ld-section';
   var langName = (_AVAILABLE_LANGS.find(function(l) { return l.code === langCode; }) || {}).name || langCode;
   var sh = '<div class="ld-section-title">' + tH('download_lang', {lang: langName}) + '</div>';
 
-  for (var ni = 0; ni < names.length; ni++) {
-    var g = groups[names[ni]];
+  for (var ni = 0; ni < showNames.length; ni++) {
+    var g = groups[showNames[ni]];
+    if (!g) continue;
     g.items.sort(function(a, b) { return _flavorOrder(a.download_url || '') - _flavorOrder(b.download_url || ''); });
-    for (var vi = 0; vi < g.items.length; vi++) {
-      var v = g.items[vi];
+    // Main group: show all flavors. Subsets: show only smallest (mini or first)
+    var showItems = showNames[ni] === mainName ? g.items : [g.items[0]];
+    for (var vi = 0; vi < showItems.length; vi++) {
+      var v = showItems[vi];
       var vl = variantLabel(v.download_url) || t('full');
       var vid = 'ld-v-' + Math.random().toString(36).substr(2, 6);
+      var isMain = showNames[ni] === mainName;
+      var titleText = isMain ? esc(vl) : esc(g.title);
+      var sizeText = formatSize(v.size_bytes);
       sh += '<div class="ld-variant" onclick="event.stopPropagation()">' +
         '<div class="ld-variant-info">' +
-          '<div class="ld-variant-name">' + esc(g.title) + ' <span style="color:var(--text2);font-weight:400">\u00B7 ' + esc(vl) + '</span></div>' +
-          '<div class="ld-variant-size">' + formatSize(v.size_bytes) + '</div>' +
+          '<div class="ld-variant-name">' + titleText + '</div>' +
+          '<div class="ld-variant-size">' + sizeText + '</div>' +
         '</div>' +
         '<button class="ld-variant-btn" id="' + vid + '" onclick="event.stopPropagation();_ldDownload(\'' + escAttr(v.download_url) + '\',\'' + vid + '\',\'' + escJs(langCode) + '\')" title="' + escAttr(t('download')) + '">' +
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>' +
