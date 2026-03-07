@@ -195,26 +195,11 @@
     cursor: pointer; white-space: nowrap; transition: all 0.15s;
   }
   .lang-banner-btn:hover { background: var(--amber); color: #000; border-color: transparent; }
-  .lang-banner-dl { border-style: dashed; }
   .lang-banner-dismiss {
     margin-left: auto; background: none; border: none; color: var(--text2);
     cursor: pointer; font-size: 14px; padding: 2px 6px;
   }
   .lang-banner-dismiss:hover { color: var(--text); }
-  .lang-banner-progress {
-    display: flex; align-items: center; gap: 8px; flex: 1; min-width: 120px;
-  }
-  .lang-banner-progress-bar {
-    flex: 1; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden;
-  }
-  .lang-banner-progress-fill {
-    height: 100%; background: var(--amber); border-radius: 2px; transition: width 0.3s;
-  }
-  .lang-banner-progress-text { font-size: 11px; color: var(--text2); white-space: nowrap; }
-  .lang-banner select {
-    padding: 2px 6px; border-radius: 4px; border: 1px solid var(--amber-border);
-    background: var(--surface2); color: var(--text); font-size: 11px; max-width: 180px;
-  }
   .manage-badge {
     position: absolute; top: 2px; right: 2px; width: 8px; height: 8px;
     background: var(--amber); border-radius: 50%; pointer-events: none;
@@ -284,20 +269,42 @@
   }
   .lang-selector-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .lang-dropdown {
-    position: fixed; z-index: 9999; min-width: 180px;
+    position: fixed; z-index: 9999; min-width: 220px;
     background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-    padding: 4px 0; display: none; max-height: 320px; overflow-y: auto;
+    padding: 4px 0; display: none; max-height: 420px; overflow-y: auto;
   }
   .lang-dropdown.visible { display: block; }
   .lang-dropdown-item {
     padding: 8px 14px; cursor: pointer; font-size: 13px;
     color: var(--text); transition: background 0.1s;
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
   }
   .lang-dropdown-item:hover { background: var(--amber-glow); color: var(--amber); }
   .lang-dropdown-item.active { color: var(--amber); font-weight: 600; }
   .lang-dropdown-item .check { font-size: 14px; }
+  .lang-dropdown-item .ld-meta { font-size: 11px; color: var(--text2); white-space: nowrap; }
+  .lang-dropdown-item:hover .ld-meta { color: inherit; }
+  .ld-download-section {
+    padding: 6px 14px 8px; border-top: 1px solid var(--border);
+    background: var(--surface2); font-size: 12px;
+  }
+  .ld-download-section select {
+    width: 100%; padding: 4px 6px; margin: 4px 0;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; color: var(--text); font-size: 11px;
+  }
+  .ld-dl-row { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+  .ld-dl-btn {
+    padding: 4px 12px; border-radius: 4px; border: 1px solid var(--amber-border);
+    background: var(--amber-glow); color: var(--amber); font-size: 11px;
+    font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.15s;
+  }
+  .ld-dl-btn:hover { background: var(--amber); color: #000; }
+  .ld-progress { flex: 1; }
+  .ld-progress-bar { height: 3px; background: var(--surface); border-radius: 2px; overflow: hidden; }
+  .ld-progress-fill { height: 100%; background: var(--amber); border-radius: 2px; transition: width 0.3s; }
+  .ld-progress-text { font-size: 10px; color: var(--text2); margin-top: 2px; }
 
   /* ── RTL support ── */
   [dir="rtl"] .topbar { flex-direction: row-reverse; }
@@ -1533,12 +1540,11 @@ function _buildLangBanner(lang, zimInfo) {
       viewIcon + tH('view_in_lang', {lang: langName}) + '</button>';
   }
 
-  // 2. Download [lang] — if no matching ZIM installed, offer inline download
+  // 2. No matching ZIM — banner just shows a subtle hint, download is in language dropdown
   if (!matchZim && manageEnabled) {
-    actions += '<span id="lang-banner-dl-area" data-lang="' + escAttr(lang) + '" data-cat="' + escAttr(zimCat || 'wikipedia') + '">' +
-      '<button class="lang-banner-btn lang-banner-dl" onclick="_langBannerFetchVariants(this)">' +
-      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px;margin-right:3px"><path d="M12 5v14M5 12l7 7 7-7"/></svg>' +
-      tH('download_lang', {lang: langName}) + '</button></span>';
+    actions += '<span style="color:var(--text2);font-size:11px">' +
+      tH('not_installed') +
+      '</span>';
   }
 
   if (!actions) return; // No matching ZIMs and no manage mode
@@ -1604,157 +1610,49 @@ function _langBannerSwitch(zimName) {
     })
     .catch(function() { enterSource(zimName, true); });
 }
-var _bannerDlTimer = null;
-var _bannerDlUrl = null;
+// ── Language dropdown download integration ──
+// Catalog data is cached globally so the language dropdown can show
+// source counts and download options instantly.
+var _globalCatalogCache = null; // [{name, language, category, download_url, size_bytes, ...}]
+var _globalCatalogFetching = false;
+var _ldDlTimer = null;
+var _ldDlUrl = null;
 
-function _langBannerFetchVariants(btn) {
-  var area = document.getElementById('lang-banner-dl-area');
-  if (!area) return;
-  var lang = area.dataset.lang;
-  var cat = area.dataset.cat || 'wikipedia';
-  var catalogLang = _UI_TO_CATALOG[lang] || lang;
-  btn.disabled = true;
-  btn.textContent = t('loading');
-  // Fetch catalog filtered by language
-  manageFetch('/manage/catalog?lang=' + encodeURIComponent(catalogLang) + '&count=500&start=0')
+function _prefetchCatalog() {
+  if (_globalCatalogCache || _globalCatalogFetching || !manageEnabled) return;
+  _globalCatalogFetching = true;
+  fetch('/manage/catalog?lang=&count=500&start=0')
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      var items = (data.items || []).filter(function(it) {
-        var itCat = autoCategorize(it);
-        return itCat === cat;
-      });
-      if (!items.length) {
-        // Fallback: show all items for this language
-        items = data.items || [];
-      }
-      // Group by name, pick best variant per group
-      var groups = {};
-      for (var i = 0; i < items.length; i++) {
-        var it = items[i];
-        if (!groups[it.name]) groups[it.name] = [];
-        groups[it.name].push(it);
-      }
-      // Flatten: for each group, include all download variants
-      var variants = [];
-      var names = Object.keys(groups);
-      // Sort: prefer `_all` names, then by article count
-      names.sort(function(a, b) {
-        var aAll = /_all/.test(a), bAll = /_all/.test(b);
-        if (aAll && !bAll) return -1;
-        if (!aAll && bAll) return 1;
-        var aCount = Math.max.apply(null, groups[a].map(function(v) { return v.article_count || 0; }));
-        var bCount = Math.max.apply(null, groups[b].map(function(v) { return v.article_count || 0; }));
-        return bCount - aCount;
-      });
-      // Build select options from top group's variants (or top few groups)
-      var opts = [];
-      var topNames = names.slice(0, 5); // show up to 5 sources
-      for (var ni = 0; ni < topNames.length; ni++) {
-        var gItems = groups[topNames[ni]];
-        gItems.sort(function(a, b) { return _flavorOrder(a.download_url || '') - _flavorOrder(b.download_url || ''); });
-        for (var vi = 0; vi < gItems.length; vi++) {
-          var v = gItems[vi];
-          if (!v.download_url) continue;
-          var label = (v.title || v.name);
-          var vl = variantLabel(v.download_url);
-          if (vl) label += ' · ' + vl;
-          label += ' (' + formatSize(v.size_bytes) + ')';
-          opts.push({ label: label, url: v.download_url });
+      var items = data.items || [];
+      var total = data.total || 0;
+      if (total > 500) {
+        var fetches = [];
+        for (var s = 500; s < total; s += 500) {
+          fetches.push(fetch('/manage/catalog?lang=&count=500&start=' + s).then(function(r) { return r.json(); }).then(function(d) { return d.items || []; }));
         }
+        Promise.all(fetches).then(function(pages) {
+          for (var p = 0; p < pages.length; p++) items = items.concat(pages[p]);
+          _globalCatalogCache = items;
+          _globalCatalogFetching = false;
+        });
+      } else {
+        _globalCatalogCache = items;
+        _globalCatalogFetching = false;
       }
-      if (!opts.length) {
-        area.innerHTML = '<span style="color:var(--text2);font-size:11px">' + tH('no_matching_zims') + '</span>';
-        return;
-      }
-      // Render inline variant picker
-      var selId = 'banner-dl-sel';
-      var h = '<select id="' + selId + '">';
-      for (var oi = 0; oi < opts.length; oi++) {
-        h += '<option value="' + escAttr(opts[oi].url) + '">' + esc(opts[oi].label) + '</option>';
-      }
-      h += '</select>';
-      h += '<button class="lang-banner-btn" onclick="_bannerStartDownload()">' + tH('download') + '</button>';
-      area.innerHTML = h;
     })
-    .catch(function() {
-      btn.disabled = false;
-      btn.textContent = t('error');
-    });
+    .catch(function() { _globalCatalogFetching = false; });
 }
 
-function _bannerStartDownload() {
-  var sel = document.getElementById('banner-dl-sel');
-  if (!sel) return;
-  var url = sel.value;
-  if (!url) return;
-  _bannerDlUrl = url;
-  var area = document.getElementById('lang-banner-dl-area');
-  if (area) {
-    area.innerHTML = '<div class="lang-banner-progress">' +
-      '<div class="lang-banner-progress-bar"><div class="lang-banner-progress-fill" id="banner-dl-fill" style="width:0%"></div></div>' +
-      '<span class="lang-banner-progress-text" id="banner-dl-text">' + tH('starting') + '</span></div>';
-  }
-  // Start download
-  manageFetch('/manage/download', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: url }),
-  }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.error) {
-      var txt = document.getElementById('banner-dl-text');
-      if (txt) txt.textContent = t('error');
-      return;
-    }
-    _dlPrevAllDone = false;
-    _showManageBadge(true);
-    _bannerDlPoll();
-  }).catch(function() {
-    var txt = document.getElementById('banner-dl-text');
-    if (txt) txt.textContent = t('error');
-  });
+function _langSourceCount(langCode) {
+  return (zimsCache || []).filter(function(z) { return z.language === langCode; }).length;
 }
 
-function _bannerDlPoll() {
-  if (_bannerDlTimer) clearTimeout(_bannerDlTimer);
-  manageFetch('/manage/downloads').then(function(r) { return r.json(); }).then(function(data) {
-    var dls = data.downloads || [];
-    var dl = null;
-    for (var i = 0; i < dls.length; i++) {
-      var u = (_bannerDlUrl || '').replace(/\.meta4$/, '');
-      if (dls[i].url === _bannerDlUrl || dls[i].url === u) { dl = dls[i]; break; }
-    }
-    var fill = document.getElementById('banner-dl-fill');
-    var txt = document.getElementById('banner-dl-text');
-    var anyActive = dls.some(function(d) { return !d.done; });
-    if (!dl) {
-      // Download not found — might have finished instantly
-      if (txt) txt.textContent = t('installed_badge');
-      _showManageBadge(false);
-      return;
-    }
-    if (dl.done) {
-      if (fill) fill.style.width = '100%';
-      if (txt) txt.textContent = '\u2713';
-      _showManageBadge(anyActive);
-      // Refresh library to pick up new ZIM
-      fetch('/list').then(function(r) { return r.json(); }).then(function(z) {
-        zimsCache = z;
-        if (mode === 'home') renderSources();
-      }).catch(function() {});
-      return;
-    }
-    if (dl.error) {
-      if (txt) txt.textContent = t('error');
-      _showManageBadge(anyActive);
-      return;
-    }
-    var pct = dl.percent || 0;
-    if (fill) fill.style.width = pct + '%';
-    var fmtBytes = function(b) { var gb = b / (1024 * 1024 * 1024); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 * 1024)).toFixed(0) + ' MB'; };
-    if (txt) txt.textContent = Math.round(pct) + '% · ' + fmtBytes(dl.downloaded_bytes);
-    _bannerDlTimer = setTimeout(_bannerDlPoll, 2000);
-  }).catch(function() {
-    _bannerDlTimer = setTimeout(_bannerDlPoll, 5000);
+function _catalogItemsForLang(langCode) {
+  if (!_globalCatalogCache) return [];
+  var catLang = _UI_TO_CATALOG[langCode] || langCode;
+  return _globalCatalogCache.filter(function(it) {
+    return (it.language || '').toLowerCase() === catLang.toLowerCase();
   });
 }
 
@@ -2068,6 +1966,8 @@ async function _initSecondary() {
   ]);
   // Always update topbar after secondary data (manage status determines gear visibility)
   updateTopbar();
+  // Pre-fetch catalog in background so language dropdown can show download options instantly
+  _prefetchCatalog();
   // Re-check URL for ?manage now that manageEnabled is known (route() ran before this resolved)
   var params = new URLSearchParams(location.search);
   if (params.get('manage') !== null && manageEnabled && mode !== 'manage') {
@@ -4147,6 +4047,27 @@ async function loadFullCatalog() {
   const lang = (document.getElementById('catalog-lang') || {}).value || '';
   if (_catalogCache && _catalogCacheLang === lang) return _catalogCache;
 
+  // Reuse global catalog cache if fetching all languages (no filter)
+  if (!lang && _globalCatalogCache) {
+    let items = _globalCatalogCache.slice();
+    for (const item of items) item.category = autoCategorize(item);
+    _enrichCatalogInstalled(items);
+    _catalogCache = items;
+    _catalogCacheLang = lang;
+    return _catalogCache;
+  }
+  // Reuse global cache with language filter applied client-side
+  if (lang && _globalCatalogCache) {
+    let items = _globalCatalogCache.filter(function(it) {
+      return (it.language || '').toLowerCase() === lang.toLowerCase();
+    });
+    for (const item of items) item.category = autoCategorize(item);
+    _enrichCatalogInstalled(items);
+    _catalogCache = items;
+    _catalogCacheLang = lang;
+    return _catalogCache;
+  }
+
   const res = await manageFetch('/manage/catalog?lang=' + encodeURIComponent(lang) + '&count=500&start=0');
   const data = await res.json();
   if (data.error) throw new Error(data.error);
@@ -4303,8 +4224,8 @@ function buildFeaturedCarousel(items) {
   if (_packCount >= 3) {
     var packSizeStr = _packTotalBytes > 0 ? ' \u00b7 ' + formatSize(_packTotalBytes) : '';
     packHtml = '<div class="fc-pack">' +
-      '<div style="display:flex;flex-direction:column;gap:2px"><span class="fc-pack-label">\u2728 Discovery Pack</span>' +
-      '<span style="font-size:11px;color:var(--text2)">Download all ' + _packCount + ' sources to unlock Discover</span></div>' +
+      '<div style="display:flex;flex-direction:column;gap:2px"><span class="fc-pack-label">\u2728 ' + tH('discovery_pack') + '</span>' +
+      '<span style="font-size:11px;color:var(--text2)">' + tH('download_to_unlock', {n: _packCount}) + '</span></div>' +
       '<button class="ci-add-btn fc-pack-btn" onclick="event.stopPropagation();_downloadPackFromSelects(this)">\u2B07 All' + packSizeStr + '</button>' +
     '</div>';
   }
@@ -6753,17 +6674,177 @@ function _adjustBodyPadding() {
 
 function _renderLangDropdown() {
   var dd = document.getElementById('lang-dropdown');
-  dd.innerHTML = _AVAILABLE_LANGS.map(function(l) {
+  var h = '';
+  for (var i = 0; i < _AVAILABLE_LANGS.length; i++) {
+    var l = _AVAILABLE_LANGS[i];
     var active = l.code === _currentLang ? ' active' : '';
-    return '<div class="lang-dropdown-item' + active + '" onclick="setLanguage(\'' + l.code + '\');_closeLangDropdown()">' +
-      '<span>' + esc(l.name) + '</span>' +
-      (l.code === _currentLang ? '<span class="check">✓</span>' : '') +
-    '</div>';
-  }).join('');
+    var count = _langSourceCount(l.code);
+    var meta = '';
+    if (l.code === _currentLang) {
+      meta = '<span class="check">\u2713</span>';
+    } else if (count > 0) {
+      meta = '<span class="ld-meta">' + count + ' ' + (count === 1 ? t('source_singular') : t('sources_count', {n: count}).replace(/^\d+\s*/, '')) + '</span>';
+    } else if (manageEnabled && _globalCatalogCache) {
+      var catCount = _catalogItemsForLang(l.code).length;
+      if (catCount > 0) meta = '<span class="ld-meta" style="color:var(--amber)">\u2B07</span>';
+    }
+    h += '<div class="lang-dropdown-item' + active + '" onclick="_selectLang(\'' + l.code + '\')">' +
+      '<span>' + esc(l.name) + '</span>' + meta + '</div>';
+  }
+  dd.innerHTML = h;
+}
+
+function _selectLang(code) {
+  var hadZims = _langSourceCount(code) > 0;
+  setLanguage(code);
+  // If no ZIMs for this language and catalog is available, show download section
+  if (!hadZims && manageEnabled && _globalCatalogCache) {
+    _showLangDownloadSection(code);
+  } else {
+    _closeLangDropdown();
+  }
+}
+
+function _showLangDownloadSection(langCode) {
+  var dd = document.getElementById('lang-dropdown');
+  // Re-render with active state updated
+  _renderLangDropdown();
+  // Remove any existing download section
+  var old = dd.querySelector('.ld-download-section');
+  if (old) old.remove();
+  // Find matching catalog items — prefer wikipedia
+  var items = _catalogItemsForLang(langCode);
+  var wikiItems = items.filter(function(it) { return /^wikipedia/i.test(it.name || ''); });
+  var useItems = wikiItems.length ? wikiItems : items;
+  if (!useItems.length) return;
+  // Group by name, build variant options
+  var groups = {};
+  for (var i = 0; i < useItems.length; i++) {
+    var it = useItems[i];
+    if (!it.download_url) continue;
+    if (!groups[it.name]) groups[it.name] = [];
+    groups[it.name].push(it);
+  }
+  var names = Object.keys(groups);
+  names.sort(function(a, b) {
+    var aAll = /_all/.test(a), bAll = /_all/.test(b);
+    if (aAll && !bAll) return -1;
+    if (!aAll && bAll) return 1;
+    var ac = Math.max.apply(null, groups[a].map(function(v) { return v.article_count || 0; }));
+    var bc = Math.max.apply(null, groups[b].map(function(v) { return v.article_count || 0; }));
+    return bc - ac;
+  });
+  var opts = [];
+  var topNames = names.slice(0, 3);
+  for (var ni = 0; ni < topNames.length; ni++) {
+    var gItems = groups[topNames[ni]];
+    gItems.sort(function(a, b) { return _flavorOrder(a.download_url || '') - _flavorOrder(b.download_url || ''); });
+    for (var vi = 0; vi < gItems.length; vi++) {
+      var v = gItems[vi];
+      if (!v.download_url) continue;
+      var label = (v.title || v.name);
+      var vl = variantLabel(v.download_url);
+      if (vl) label += ' \u00B7 ' + vl;
+      label += ' (' + formatSize(v.size_bytes) + ')';
+      opts.push({ label: label, url: v.download_url });
+    }
+  }
+  if (!opts.length) return;
+  var langName = (_AVAILABLE_LANGS.find(function(l) { return l.code === langCode; }) || {}).name || langCode;
+  var section = document.createElement('div');
+  section.className = 'ld-download-section';
+  var sh = '<div style="color:var(--text2);margin-bottom:2px">' + tH('download_lang', {lang: langName}) + '</div>';
+  sh += '<select id="ld-dl-sel" onclick="event.stopPropagation()">';
+  for (var oi = 0; oi < opts.length; oi++) {
+    sh += '<option value="' + escAttr(opts[oi].url) + '">' + esc(opts[oi].label) + '</option>';
+  }
+  sh += '</select>';
+  sh += '<div class="ld-dl-row" id="ld-dl-row">';
+  sh += '<button class="ld-dl-btn" onclick="event.stopPropagation();_ldStartDownload()">' + tH('download') + '</button>';
+  sh += '</div>';
+  section.innerHTML = sh;
+  dd.appendChild(section);
+  // Scroll dropdown to show download section
+  dd.scrollTop = dd.scrollHeight;
+}
+
+function _ldStartDownload() {
+  var sel = document.getElementById('ld-dl-sel');
+  if (!sel) return;
+  var url = sel.value;
+  if (!url) return;
+  _ldDlUrl = url;
+  sel.disabled = true;
+  var row = document.getElementById('ld-dl-row');
+  if (row) {
+    row.innerHTML = '<div class="ld-progress" style="flex:1">' +
+      '<div class="ld-progress-bar"><div class="ld-progress-fill" id="ld-dl-fill" style="width:0%"></div></div>' +
+      '<div class="ld-progress-text" id="ld-dl-text">' + tH('starting') + '</div></div>';
+  }
+  manageFetch('/manage/download', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: url }),
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.error) {
+      var txt = document.getElementById('ld-dl-text');
+      if (txt) txt.textContent = t('error');
+      return;
+    }
+    _dlPrevAllDone = false;
+    _showManageBadge(true);
+    _ldDlPoll();
+  }).catch(function() {
+    var txt = document.getElementById('ld-dl-text');
+    if (txt) txt.textContent = t('error');
+  });
+}
+
+function _ldDlPoll() {
+  if (_ldDlTimer) clearTimeout(_ldDlTimer);
+  manageFetch('/manage/downloads').then(function(r) { return r.json(); }).then(function(data) {
+    var dls = data.downloads || [];
+    var dl = null;
+    for (var i = 0; i < dls.length; i++) {
+      var u = (_ldDlUrl || '').replace(/\.meta4$/, '');
+      if (dls[i].url === _ldDlUrl || dls[i].url === u) { dl = dls[i]; break; }
+    }
+    var fill = document.getElementById('ld-dl-fill');
+    var txt = document.getElementById('ld-dl-text');
+    var anyActive = dls.some(function(d) { return !d.done; });
+    if (!dl) {
+      if (txt) txt.textContent = '\u2713 ' + t('installed_badge');
+      _showManageBadge(false);
+      return;
+    }
+    if (dl.done) {
+      if (fill) fill.style.width = '100%';
+      if (txt) txt.textContent = '\u2713 ' + t('installed_badge');
+      _showManageBadge(anyActive);
+      fetch('/list').then(function(r) { return r.json(); }).then(function(z) {
+        zimsCache = z;
+        if (mode === 'home') renderSources();
+      }).catch(function() {});
+      return;
+    }
+    if (dl.error) {
+      if (txt) txt.textContent = t('error');
+      _showManageBadge(anyActive);
+      return;
+    }
+    var pct = dl.percent || 0;
+    if (fill) fill.style.width = pct + '%';
+    var fmtBytes = function(b) { var gb = b / (1024 * 1024 * 1024); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 * 1024)).toFixed(0) + ' MB'; };
+    if (txt) txt.textContent = Math.round(pct) + '% \u00B7 ' + fmtBytes(dl.downloaded_bytes);
+    _ldDlTimer = setTimeout(_ldDlPoll, 2000);
+  }).catch(function() {
+    _ldDlTimer = setTimeout(_ldDlPoll, 5000);
+  });
 }
 
 function toggleLangDropdown(event) {
   event.stopPropagation();
+  _prefetchCatalog();
   var dd = document.getElementById('lang-dropdown');
   if (dd.classList.contains('visible')) {
     _closeLangDropdown();
@@ -6777,7 +6858,15 @@ function toggleLangDropdown(event) {
   dd.style.left = 'auto';
   dd.classList.add('visible');
   setTimeout(function() {
-    document.addEventListener('click', _closeLangDropdown, { once: true });
+    document.addEventListener('click', function _maybeClose(e) {
+      var dd2 = document.getElementById('lang-dropdown');
+      // Don't close if clicking inside the download section
+      if (dd2 && dd2.contains(e.target)) {
+        document.addEventListener('click', _maybeClose, { once: true });
+        return;
+      }
+      _closeLangDropdown();
+    }, { once: true });
   }, 0);
 }
 
