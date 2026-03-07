@@ -1573,12 +1573,15 @@ def get_article_languages(zim_name, article_path):
                 break
             # Try search — find the article by title (handles "Oxygen" → "Oxygène")
             try:
-                results = suggest_search_zim(cand_archive, human_title, 3)
+                results = suggest_search_zim(cand_archive, human_title, 1)
                 for r in results:
-                    # Accept if title starts with our search term or is very similar
+                    # Only accept the FIRST search result (SuggestionSearcher ranks by
+                    # relevance). Verify it's not wildly different in length — this
+                    # catches "Europe" → "European Chemicals Agency" false positives
+                    # while allowing "Oxygen" → "Oxygène" (same-length translations).
                     rt = (r.get("title") or "").lower()
                     ht = human_title.lower()
-                    if rt == ht or rt.startswith(ht) or ht in rt:
+                    if len(rt) <= len(ht) * 1.5 + 5:
                         seen_langs.add(lang)
                         installed.append({
                             "lang": lang,
