@@ -1589,21 +1589,14 @@ function _langBannerDownload(lang, catMatch) {
   var banner = document.getElementById('lang-banner');
   if (banner) { banner.remove(); _adjustBodyPadding(); }
   closeReader();
+  // Pre-set state so manage opens on browse tab drilled into the right category
+  var catalogLang = _UI_TO_CATALOG[lang] || lang;
+  _catalogCache = null;
+  _catalogCacheLang = '';
+  manageTab = 'browse';
+  // Queue a drill-into after browse tab renders
+  _pendingDrill = { catKey: catMatch || 'wikipedia', lang: catalogLang };
   enterManage();
-  // Switch to browse tab and filter by language via the catalog-lang dropdown
-  setTimeout(function() {
-    switchManageTab('browse');
-    setTimeout(function() {
-      // Set the language dropdown to filter catalog by target language
-      var langSel = document.getElementById('catalog-lang');
-      if (langSel) {
-        var catalogLang = _UI_TO_CATALOG[lang] || lang;
-        langSel.value = catalogLang;
-        _catalogCache = null; // Force refetch with new language
-        renderBrowseGallery();
-      }
-    }, 300);
-  }, 100);
 }
 function _langBannerDismiss(lang) {
   sessionStorage.setItem('zimi_lang_banner_' + lang, '0');
@@ -3852,6 +3845,7 @@ let _catalogCacheLang = null;   // Language of cached data
 let _browseView = 'gallery';   // 'gallery' | 'drilldown' | 'search'
 let _availableUpdates = {};    // keyed by installed filename → update info
 let _mergedToOther = new Set(); // categories merged into Other (< MIN_BROWSE_CAT items)
+var _pendingDrill = null; // { catKey, lang } — set by _langBannerDownload to drill on first render
 
 // Map UI language codes to ISO 639-3 catalog codes
 var _UI_TO_CATALOG = {en:'eng',fr:'fra',de:'deu',es:'spa',pt:'por',ru:'rus',zh:'zho',ar:'ara',hi:'hin',he:'heb'};
@@ -4143,6 +4137,15 @@ function _restoreCatalogLang() {
 }
 
 function renderBrowseGallery() {
+  // If a pending drill was queued (e.g. from language banner download), execute it instead
+  if (_pendingDrill) {
+    var drill = _pendingDrill;
+    _pendingDrill = null;
+    var langSel = document.getElementById('catalog-lang');
+    if (langSel) { langSel.value = drill.lang; _catalogCache = null; }
+    drillCategory(drill.catKey);
+    return;
+  }
   const results = document.getElementById('catalog-results');
   if (!results) return;
   _browseView = 'gallery';
