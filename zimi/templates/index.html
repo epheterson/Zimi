@@ -181,7 +181,7 @@
     color: #fff; border-color: transparent; font-weight: 600;
   }
 
-  /* ── Language banner (translate / view-in-lang) ── */
+  /* ── Language banner (view-in-lang / download) ── */
   .lang-banner {
     display: flex; align-items: center; gap: 6px; padding: 5px 12px;
     background: var(--amber-glow); border-bottom: 1px solid var(--amber-border);
@@ -194,8 +194,6 @@
     cursor: pointer; white-space: nowrap; transition: all 0.15s;
   }
   .lang-banner-btn:hover { background: var(--amber); color: #000; border-color: transparent; }
-  .lang-banner-translate { background: var(--amber); color: #000; border-color: transparent; }
-  .lang-banner-translate:hover { background: var(--amber2); }
   .lang-banner-dl { border-style: dashed; }
   .lang-banner-dismiss {
     margin-left: auto; background: none; border: none; color: var(--text2);
@@ -1472,19 +1470,12 @@ async function setLanguage(lang) {
 
 // ── Language-experience banner (reader context) ──
 // Shows when reading content in a different language than UI language.
-// Offers: Translate (via server /translate endpoint), View in [lang], Download [lang].
-var _translatedState = null; // {origNodes: [{node, text}], fromLang, toLang} when article is translated
+// Offers: View in [lang] (if matching ZIM installed), Download [lang] (if not).
 
 function _checkReaderLangBanner() {
   var old = document.getElementById('lang-banner');
   if (old) old.remove();
   if (!readerOpen || !currentArticle) return;
-
-  // If article is currently translated, show translated-state banner
-  if (_translatedState) {
-    _showTranslatedBanner();
-    return;
-  }
 
   var lang = _currentLang;
   // Don't show if dismissed for this language this session
@@ -1498,17 +1489,9 @@ function _checkReaderLangBanner() {
 function _buildLangBanner(lang, zimInfo) {
   var langName = (_AVAILABLE_LANGS.find(function(l) { return l.code === lang; }) || {}).name || lang;
   var zimCat = (zimInfo && zimInfo.category) || '';
-
-  // Build action buttons
   var actions = '';
 
-  // 1. Translate button — always available (uses server-side /translate endpoint)
-  actions += '<button class="lang-banner-btn lang-banner-translate" onclick="_translateArticle()">' +
-    '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" style="vertical-align:-2px;margin-right:3px">' +
-    '<circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>' +
-    tH('translate') + '</button>';
-
-  // 2. View in [lang] — find best matching ZIM in target language
+  // 1. View in [lang] — find best matching ZIM in target language
   var currentProject = _zimProject(zimInfo);
   var langZims = (zimsCache || []).filter(function(z) {
     return z.language === lang && z.name !== (zimInfo && zimInfo.name);
@@ -1531,7 +1514,7 @@ function _buildLangBanner(lang, zimInfo) {
       viewIcon + tH('view_in_lang', {lang: langName}) + '</button>';
   }
 
-  // 3. Download [lang] — if no matching ZIM installed, offer download
+  // 2. Download [lang] — if no matching ZIM installed, offer download
   if (!matchZim && manageEnabled) {
     var catMatch = zimCat || 'wikipedia';
     actions += '<button class="lang-banner-btn lang-banner-dl" onclick="_langBannerDownload(\'' + escJs(lang) + '\', \'' + escJs(catMatch) + '\')">' +
@@ -1539,20 +1522,8 @@ function _buildLangBanner(lang, zimInfo) {
       tH('download_lang', {lang: langName}) + '</button>';
   }
 
+  if (!actions) return; // No matching ZIMs and no manage mode
   _insertLangBanner(actions + '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(lang) + '\')">\u2715</button>');
-}
-
-function _showTranslatedBanner() {
-  var toLangName = (_AVAILABLE_LANGS.find(function(l) { return l.code === _translatedState.toLang; }) || {}).name || _translatedState.toLang;
-  var actions = '<span style="opacity:0.7">' + tH('translated_to', {lang: toLangName}) + '</span>' +
-    '<button class="lang-banner-btn" onclick="_untranslateArticle()">' + tH('view_original') + '</button>';
-  // If UI language changed to something different than the translation target, offer re-translate
-  if (_currentLang !== _translatedState.toLang && _currentLang !== _translatedState.fromLang) {
-    var curLangName = (_AVAILABLE_LANGS.find(function(l) { return l.code === _currentLang; }) || {}).name || _currentLang;
-    actions += '<button class="lang-banner-btn lang-banner-translate" onclick="_retranslateArticle()">' +
-      tH('translate_to', {lang: curLangName}) + '</button>';
-  }
-  _insertLangBanner(actions + '<button class="lang-banner-dismiss" onclick="_langBannerDismiss(\'' + escJs(_currentLang) + '\')">\u2715</button>');
 }
 
 function _zimProject(info) {
@@ -1577,72 +1548,7 @@ function _insertLangBanner(html) {
   if (reader && frame) reader.insertBefore(banner, frame);
 }
 
-async function _translateArticle() {
-  if (!readerOpen || !currentArticle) return;
-  var frame = document.getElementById('reader-frame');
-  if (!frame || !frame.contentDocument) return;
-  var btn = document.querySelector('.lang-banner-translate');
-  if (btn) { btn.disabled = true; btn.textContent = tH('translating') + '\u2026'; }
-  try {
-    var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === currentArticle.zim; });
-    var srcLang = (zimInfo && zimInfo.language) || 'en';
-    var tgtLang = _currentLang;
-    if (srcLang === tgtLang) return;
-    var body = frame.contentDocument.body;
-    if (!body) return;
-    var walker = frame.contentDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
-    var nodes = [];
-    while (walker.nextNode()) {
-      var n = walker.currentNode;
-      if (n.textContent.trim().length > 2) nodes.push(n);
-    }
-    // Save originals for untranslate
-    var origNodes = nodes.map(function(n) { return {node: n, text: n.textContent}; });
-    // Translate via server endpoint in batches
-    var BATCH = 50;
-    for (var i = 0; i < nodes.length; i += BATCH) {
-      var batch = nodes.slice(i, i + BATCH);
-      var texts = batch.map(function(n) { return n.textContent; });
-      var resp = await fetch('/translate', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({texts: texts, source: srcLang, target: tgtLang})
-      });
-      if (!resp.ok) {
-        var errData = await resp.json().catch(function() { return {}; });
-        throw new Error(errData.error || 'Translation request failed');
-      }
-      var result = await resp.json();
-      var translated = result.translations || [];
-      for (var j = 0; j < batch.length && j < translated.length; j++) {
-        if (translated[j]) batch[j].textContent = translated[j];
-      }
-      if (btn) btn.textContent = tH('translating') + '\u2026 ' + Math.min(100, Math.round((i + BATCH) / nodes.length * 100)) + '%';
-    }
-    _translatedState = {origNodes: origNodes, fromLang: srcLang, toLang: tgtLang};
-    _checkReaderLangBanner();
-  } catch(e) {
-    console.warn('[Zimi] Translation failed:', e);
-    if (btn) { btn.disabled = false; btn.textContent = tH('translate'); }
-  }
-}
-
-function _untranslateArticle() {
-  if (!_translatedState || !_translatedState.origNodes) return;
-  _translatedState.origNodes.forEach(function(item) {
-    try { item.node.textContent = item.text; } catch(e) {}
-  });
-  _translatedState = null;
-  _checkReaderLangBanner();
-}
-
-async function _retranslateArticle() {
-  _untranslateArticle();
-  await _translateArticle();
-}
-
 function _langBannerSwitch(zimName) {
-  _translatedState = null;
   var banner = document.getElementById('lang-banner');
   if (banner) { banner.remove(); _adjustBodyPadding(); }
   if (!currentArticle) { enterSource(zimName, true); return; }
@@ -6229,9 +6135,7 @@ function openReader(url) {
         _updateLibraryBtnIcon();
       }
     } catch(e) {}
-    // Clear stale translation state when navigating to a new article
-    _translatedState = null;
-    // Check language banner for translate/view-in-lang options
+    // Check language banner for view-in-lang options
     if (currentArticle) {
       _checkReaderLangBanner();
     }
@@ -6562,7 +6466,6 @@ function closeReader() {
   mainView.classList.remove('hidden');
   // Restore main document scroll (iOS tap-to-top for home page)
   document.documentElement.style.overflowY = 'auto';
-  _translatedState = null; // Clear translation state
   var langBanner = document.getElementById('lang-banner');
   if (langBanner) { langBanner.remove(); _adjustBodyPadding(); }
   updateTopbar();
