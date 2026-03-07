@@ -6740,15 +6740,16 @@ function _renderLangDropdown() {
   dd.innerHTML = h;
 }
 
-function _selectLang(code) {
-  setLanguage(code);
+async function _selectLang(code) {
+  _langDropdownLocked = true;
+  await setLanguage(code);
+  _langDropdownLocked = false;
   var hasZims = _langSourceCount(code) > 0;
   if (hasZims || !manageEnabled || !_globalCatalogCache) {
     _closeLangDropdown();
     return;
   }
-  // No ZIMs for this language — show download options inline
-  _renderLangDropdown(); // update active state
+  // No ZIMs for this language — show download section inline
   _showLangDownloadSection(code);
 }
 
@@ -6941,7 +6942,9 @@ function toggleLangDropdown(event) {
   }, 0);
 }
 
+var _langDropdownLocked = false;
 function _closeLangDropdown() {
+  if (_langDropdownLocked) return;
   document.getElementById('lang-dropdown').classList.remove('visible');
 }
 
