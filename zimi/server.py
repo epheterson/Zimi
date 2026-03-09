@@ -1984,10 +1984,16 @@ def get_article_languages(zim_name, article_path):
                     results = search_fn()
                     for r in results:
                         rt = (r.get("title") or "").lower()
-                        len_ok = max(len(ht) - 1, 3) <= len(rt) <= len(ht) + 1
-                        shared = sum(1 for c in set(ht) if c in rt)
-                        char_ok = shared >= len(set(ht)) * 0.5
-                        if rt == ht or (len_ok and char_ok):
+                        # Strict heuristic: either exact match, or very close title
+                        # (prevents "Isaac Newton" → "Apple Newton" false positives)
+                        if rt != ht:
+                            # Require: same length ±2, AND >70% bigram overlap
+                            if abs(len(rt) - len(ht)) > 2:
+                                continue
+                            ht_bi = set(ht[i:i+2] for i in range(max(len(ht)-1, 1)))
+                            rt_bi = set(rt[i:i+2] for i in range(max(len(rt)-1, 1)))
+                            if len(ht_bi & rt_bi) / max(len(ht_bi), 1) < 0.7:
+                                continue
                             # Q-ID verification: if source has Q-ID, verify candidate
                             if qid is not None:
                                 cand_qid = _qid_extract_from_html(cand_archive, r["path"])

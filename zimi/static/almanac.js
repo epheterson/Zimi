@@ -135,20 +135,22 @@ function _renderAlmanacContent() {
   html += '<div class="almanac-section-title">' + t('alm_solar_system') + '</div>';
   html += '<div class="almanac-orrery-wrap"><canvas id="almanac-orrery"></canvas></div>';
   html += '<div class="orrery-controls">';
-  html += '<button id="orrery-play" class="orrery-ctrl-btn" onclick="_orreryTogglePlay()" title="Play/Pause">▶</button>';
-  html += '<input id="orrery-slider" type="range" min="0" max="60" value="0" class="orrery-slider" oninput="_orrerySliderInput(this.value)" />';
+  // Bidirectional speed slider: left = rewind, center = 1×, right = fast forward
+  html += '<span class="orrery-speed-end">◀</span>';
+  html += '<input id="orrery-slider" type="range" min="-60" max="60" value="0" class="orrery-slider" oninput="_orrerySliderInput(this.value)" />';
+  html += '<span class="orrery-speed-end">▶</span>';
   html += '<span id="orrery-speed-label" class="orrery-speed-label">1×</span>';
   html += '<span id="orrery-date" class="orrery-date"></span>';
   html += '<button id="orrery-now" class="orrery-ctrl-btn orrery-now" onclick="_orrerySnapToNow()" title="Back to now" style="display:none">Now</button>';
   html += '</div>';
-  // Transit slider — appears when a rocket is in flight
+  // Transit slider — appears when a rocket is in flight (aligned with main controls)
   html += '<div id="orrery-transit-wrap" class="orrery-transit-wrap">';
-  html += '<span style="font-size:11px;color:var(--text3)">Transit</span>';
+  html += '<span class="orrery-transit-end">Transit</span>';
   html += '<input id="orrery-transit-slider" type="range" min="0" max="1000" value="0" class="orrery-slider" style="flex:1" oninput="_orreryTransitSlider(this.value)" />';
   html += '<span id="orrery-transit-label" class="orrery-transit-label"></span>';
   html += '</div>';
-  // Missions panel — shows all launched rockets
-  html += '<div id="orrery-missions" style="display:none;margin-top:8px;font-size:11px;color:var(--text3)"></div>';
+  // Missions panel — inline with controls
+  html += '<div id="orrery-missions" style="display:none;margin-top:4px;font-size:11px;color:var(--text3)"></div>';
   html += '</div>';
 
   // Tonight's sky — planet visibility
@@ -780,30 +782,48 @@ function _auToVis(au) {
   return s.c0 + u * (s.c1 + u * (s.c2 + u * s.c3));
 }
 
-// ── Logarithmic speed slider ──
-// Slider range 0-60 maps to 1× - 1,000,000× on log scale
+// ── Bidirectional logarithmic speed slider ──
+// Slider range -60 to 60: negative = rewind, 0 = 1× real-time, positive = fast forward
+// |val| maps: 0→1×, 10→10×, 20→100×, 30→1K×, 40→10K×, 50→100K×, 60→1M×
 function _sliderToSpeed(val) {
-  // 0 → 1×, 10 → 10×, 20 → 100×, 30 → 1000×, 40 → 10000×, 50 → 100000×, 60 → 1000000×
-  return Math.round(Math.pow(10, val / 10));
+  var absVal = Math.abs(val);
+  var mag = absVal < 1 ? 1 : Math.round(Math.pow(10, absVal / 10));
+  return val < -0.5 ? -mag : mag;
 }
 
 function _speedToSlider(speed) {
-  if (speed <= 1) return 0;
-  return Math.round(Math.log10(speed) * 10);
+  var absSpeed = Math.abs(speed);
+  var val = absSpeed <= 1 ? 0 : Math.round(Math.log10(absSpeed) * 10);
+  return speed < 0 ? -val : val;
 }
 
 function _formatSpeed(speed) {
-  if (speed >= 1000000) return (speed / 1000000).toFixed(0) + 'M×';
-  if (speed >= 1000) return (speed / 1000).toFixed(speed >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'K×';
-  return speed + '×';
+  var abs = Math.abs(speed);
+  var prefix = speed < -1 ? '◀ ' : '';
+  var suffix = speed > 1 ? ' ▶' : '';
+  var num;
+  if (abs >= 1000000) num = (abs / 1000000).toFixed(0) + 'M×';
+  else if (abs >= 1000) num = (abs / 1000).toFixed(abs >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'K×';
+  else num = abs + '×';
+  return prefix + num + suffix;
 }
 
 function _orrerySliderInput(val) {
-  _orrerySpeed = _sliderToSpeed(parseInt(val));
+  var intVal = parseInt(val);
+  _orrerySpeed = _sliderToSpeed(intVal);
   var label = document.getElementById('orrery-speed-label');
   if (label) label.textContent = _formatSpeed(_orrerySpeed);
-  // Auto-start playing if slider moved from 1×
-  if (_orrerySpeed > 1 && !_orreryPlaying) _orreryTogglePlay();
+  // Always animating — start if not already
+  if (Math.abs(_orrerySpeed) > 1 && !_orreryPlaying) {
+    _orreryPlaying = true;
+    _orreryLastFrame = performance.now();
+    _orreryAnimate();
+  }
+  // Back to 1× = stop fast-forwarding but keep real-time ticking
+  if (Math.abs(_orrerySpeed) <= 1) {
+    _orrerySpeed = 1;
+    _orreryPlaying = false;
+  }
 }
 
 function _orrerySetSlider(speed) {
@@ -814,23 +834,11 @@ function _orrerySetSlider(speed) {
   if (label) label.textContent = _formatSpeed(speed);
 }
 
-function _orreryTogglePlay() {
-  _orreryPlaying = !_orreryPlaying;
-  var btn = document.getElementById('orrery-play');
-  if (btn) btn.textContent = _orreryPlaying ? '▎▎' : '▶';
-  if (_orreryPlaying) {
-    _orreryLastFrame = performance.now();
-    _orreryAnimate();
-  }
-}
-
 function _orrerySnapToNow() {
   _orreryTimeOffset = 0;
   _orreryRockets = [];
   _orrerySetSlider(1);
   _orreryPlaying = false;
-  var playBtn = document.getElementById('orrery-play');
-  if (playBtn) playBtn.textContent = '▶';
   var nowBtn = document.getElementById('orrery-now');
   if (nowBtn) nowBtn.style.display = 'none';
   _orreryShowTransit(false);
@@ -932,7 +940,10 @@ function _orreryAnimate() {
   for (var ri = 0; ri < _orreryRockets.length; ri++) {
     var rk = _orreryRockets[ri];
     rk.elapsed += dt * _orrerySpeed;
+    if (rk.elapsed < 0) rk.elapsed = 0;
     var prog = rk.elapsed / rk.duration;
+    // Un-arrive if rewinding past arrival
+    if (prog < 1 && rk.arrived) { rk.arrived = false; rk.pathFade = 1.0; }
     if (prog >= 1 && !rk.arrived) {
       rk.arrived = true;
       rk.arrivalGlow = 1.0;
@@ -1021,7 +1032,9 @@ function _orreryLaunchRocket(targetName) {
     var desiredRealMs = 12000;
     var neededSpeed = Math.max(10, Math.round(transitMs / desiredRealMs));
     _orrerySetSlider(neededSpeed);
-    _orreryTogglePlay();
+    _orreryPlaying = true;
+    _orreryLastFrame = performance.now();
+    _orreryAnimate();
   }
 }
 
@@ -1138,17 +1151,19 @@ function _computeEclipses(fromDate, count) {
         else if (gam < 1.0128) type = 'Partial Lunar';
         else type = 'Penumbral Lunar';
       }
-      // Approximate visibility region from gamma + sub-solar/lunar longitude
-      var subLon = ((eclJDE - 0.5) % 1) * 360 - 180; // rough sub-point longitude
+      // Compute sub-solar point longitude at eclipse time
+      // Greenwich Sidereal Time approximation from JDE
+      var T0 = (Math.floor(eclJDE - 0.5) + 0.5 - 2451545.0) / 36525;
+      var GST0 = 280.46061837 + 360.98564736629 * (eclJDE - 2451545.0) + 0.000387933 * T0 * T0;
+      GST0 = ((GST0 % 360) + 360) % 360;
+      var subLon = ((180 - GST0) % 360 + 540) % 360 - 180; // sub-solar longitude
       var region;
       if (isSolar) {
-        // Solar eclipses visible near the sub-solar point
         if (subLon > -30 && subLon < 60) region = 'Europe, Africa';
         else if (subLon >= 60 && subLon < 150) region = 'Asia, Australia';
         else if (subLon >= 150 || subLon < -120) region = 'Pacific';
         else region = 'Americas';
       } else {
-        // Lunar eclipses visible from night side (opposite sub-solar)
         var nightLon = ((subLon + 180 + 360) % 360) - 180;
         if (nightLon > -30 && nightLon < 60) region = 'Europe, Africa';
         else if (nightLon >= 60 && nightLon < 150) region = 'Asia, Australia';
@@ -1237,20 +1252,11 @@ function _renderAstroPanel(now) {
       var ec = nextEclipses[ei];
       var ecDate = new Date(ec.date + 'T00:00:00');
       var daysUntil = Math.ceil((ecDate - now) / 86400000);
-      var untilStr = daysUntil === 0 ? 'Today!' : daysUntil === 1 ? 'Tomorrow' : daysUntil + ' days';
-      html += '<div class="almanac-eclipse-row" style="cursor:pointer" onclick="_openEclipseSim(\'' + ec.type + '\',\'' + ec.date + '\')">' +
+      var untilStr = daysUntil <= 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : daysUntil + ' days';
+      html += '<div class="almanac-eclipse-row">' +
         '<div><span class="almanac-eclipse-type">' + ec.type + '</span><br><span class="almanac-eclipse-date">' + ec.region + '</span></div>' +
-        '<div class="almanac-eclipse-until">' + untilStr + ' ▸</div></div>';
+        '<div class="almanac-eclipse-until">' + untilStr + '</div></div>';
     }
-    html += '</div>';
-    // Eclipse simulator canvas — hidden until user clicks an eclipse
-    html += '<div id="eclipse-sim-wrap" style="display:none;margin-top:16px;text-align:center">';
-    html += '<canvas id="eclipse-sim-canvas" width="300" height="300" style="width:100%;max-width:300px;border-radius:12px;background:#000"></canvas>';
-    html += '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;justify-content:center">';
-    html += '<span style="font-size:11px;color:var(--text3)">Progress</span>';
-    html += '<input id="eclipse-sim-slider" type="range" min="0" max="100" value="50" class="orrery-slider" style="flex:1;max-width:200px" oninput="_drawEclipseSim(this.value/100)" />';
-    html += '</div>';
-    html += '<div id="eclipse-sim-label" style="font-size:12px;color:var(--text2);margin-top:4px"></div>';
     html += '</div>';
   }
 
@@ -1259,196 +1265,8 @@ function _renderAstroPanel(now) {
 
 // ── Sun Map — world map with day/night terminator ──
 
-// ── Eclipse Simulator — interactive slider-driven eclipse animation ──
-
-var _eclipseSimType = '';
-var _eclipseSimDate = '';
-
-function _openEclipseSim(type, dateStr) {
-  _eclipseSimType = type;
-  _eclipseSimDate = dateStr;
-  var wrap = document.getElementById('eclipse-sim-wrap');
-  if (wrap) {
-    wrap.style.display = 'block';
-    var slider = document.getElementById('eclipse-sim-slider');
-    if (slider) slider.value = 50;
-    _drawEclipseSim(0.5);
-    wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
-}
-
-function _drawEclipseSim(progress) {
-  var canvas = document.getElementById('eclipse-sim-canvas');
-  var label = document.getElementById('eclipse-sim-label');
-  if (!canvas) return;
-  var dpr = window.devicePixelRatio || 1;
-  var size = 300;
-  canvas.width = size * dpr;
-  canvas.height = size * dpr;
-  var ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-  var cx = size / 2, cy = size / 2;
-  var isSolar = _eclipseSimType.indexOf('Solar') >= 0 || _eclipseSimType.indexOf('Hybrid') >= 0;
-  var isTotal = _eclipseSimType.indexOf('Total') >= 0;
-  var isAnnular = _eclipseSimType.indexOf('Annular') >= 0;
-
-  // Background — dark sky with stars
-  ctx.fillStyle = '#0a0c14';
-  ctx.fillRect(0, 0, size, size);
-  for (var si = 0; si < 40; si++) {
-    var sx = (Math.sin(si * 127.1 + 311.7) * 0.5 + 0.5) * size;
-    var sy = (Math.sin(si * 269.5 + 183.3) * 0.5 + 0.5) * size;
-    ctx.fillStyle = 'rgba(255,255,255,' + (0.2 + Math.random() * 0.4).toFixed(2) + ')';
-    ctx.beginPath(); ctx.arc(sx, sy, 0.5 + Math.random(), 0, Math.PI * 2); ctx.fill();
-  }
-
-  if (isSolar) {
-    // Solar eclipse: Sun is background disk, Moon passes across it
-    var sunR = 50;
-    var moonR = isAnnular ? 45 : 52; // Annular: moon appears smaller than sun
-
-    // Sun with corona
-    var coronaGrad = ctx.createRadialGradient(cx, cy, sunR * 0.8, cx, cy, sunR * 3);
-    coronaGrad.addColorStop(0, 'rgba(255,240,200,0.3)');
-    coronaGrad.addColorStop(0.3, 'rgba(255,200,100,0.08)');
-    coronaGrad.addColorStop(1, 'transparent');
-    ctx.fillStyle = coronaGrad;
-    ctx.beginPath(); ctx.arc(cx, cy, sunR * 3, 0, Math.PI * 2); ctx.fill();
-
-    // Sun disk
-    var sunGrad = ctx.createRadialGradient(cx - sunR * 0.15, cy - sunR * 0.1, 0, cx, cy, sunR);
-    sunGrad.addColorStop(0, '#fffbe8');
-    sunGrad.addColorStop(0.7, '#ffd866');
-    sunGrad.addColorStop(1, '#e8a030');
-    ctx.fillStyle = sunGrad;
-    ctx.beginPath(); ctx.arc(cx, cy, sunR, 0, Math.PI * 2); ctx.fill();
-
-    // Moon path — sweeps from left to right across the sun
-    var moonTravel = sunR * 4; // total travel distance
-    var moonX = cx - moonTravel / 2 + progress * moonTravel;
-    var moonY = cy + (Math.sin(progress * Math.PI) * -3); // slight arc
-
-    // Moon disk (dark)
-    ctx.fillStyle = '#0a0c14';
-    ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.fill();
-
-    // Corona visibility at peak — dramatic during totality
-    var overlap = Math.max(0, sunR + moonR - Math.abs(moonX - cx)) / (sunR + moonR);
-    if (overlap > 0.85 && isTotal) {
-      // Draw corona streamers
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      for (var ci = 0; ci < 16; ci++) {
-        var angle = (ci / 16) * Math.PI * 2;
-        var streamLen = sunR * (1.5 + Math.sin(ci * 2.7) * 0.8);
-        var sGrad = ctx.createLinearGradient(cx, cy, cx + Math.cos(angle) * streamLen, cy + Math.sin(angle) * streamLen);
-        sGrad.addColorStop(0, 'rgba(255,240,220,0.15)');
-        sGrad.addColorStop(1, 'transparent');
-        ctx.strokeStyle = sGrad;
-        ctx.lineWidth = 3 + Math.sin(ci * 1.3) * 2;
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(angle) * sunR, cy + Math.sin(angle) * sunR);
-        ctx.lineTo(cx + Math.cos(angle) * streamLen, cy + Math.sin(angle) * streamLen);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    // Diamond ring effect near 2nd/3rd contact
-    var dist = Math.abs(moonX - cx);
-    if (dist > sunR * 0.7 && dist < sunR * 1.2 && isTotal) {
-      var diamondSide = moonX > cx ? -1 : 1;
-      var dX = cx + diamondSide * sunR * 0.95;
-      var dGrad = ctx.createRadialGradient(dX, cy, 0, dX, cy, sunR * 0.4);
-      dGrad.addColorStop(0, 'rgba(255,255,240,0.9)');
-      dGrad.addColorStop(0.3, 'rgba(255,240,200,0.3)');
-      dGrad.addColorStop(1, 'transparent');
-      ctx.fillStyle = dGrad;
-      ctx.beginPath(); ctx.arc(dX, cy, sunR * 0.4, 0, Math.PI * 2); ctx.fill();
-    }
-
-    // Annular "ring of fire"
-    if (isAnnular && dist < sunR * 0.3) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      var ringGrad = ctx.createRadialGradient(moonX, moonY, moonR * 0.9, moonX, moonY, sunR * 1.1);
-      ringGrad.addColorStop(0, 'rgba(255,180,50,0.3)');
-      ringGrad.addColorStop(0.5, 'rgba(255,120,30,0.1)');
-      ringGrad.addColorStop(1, 'transparent');
-      ctx.fillStyle = ringGrad;
-      ctx.beginPath(); ctx.arc(cx, cy, sunR * 1.1, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    }
-  } else {
-    // Lunar eclipse: Moon with Earth's shadow passing across
-    var moonR2 = 55;
-    var shadowR = 70; // Earth's umbral shadow is ~1.3x moon diameter
-
-    // Moon — lit surface
-    if (_moonTexLoaded) {
-      ctx.save();
-      ctx.beginPath(); ctx.arc(cx, cy, moonR2, 0, Math.PI * 2); ctx.clip();
-      ctx.drawImage(_moonTexImg, cx - moonR2, cy - moonR2, moonR2 * 2, moonR2 * 2);
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = 'rgba(220,210,195,0.25)';
-      ctx.beginPath(); ctx.arc(cx, cy, moonR2, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    } else {
-      var mGrad = ctx.createRadialGradient(cx - moonR2 * 0.2, cy - moonR2 * 0.15, 0, cx, cy, moonR2);
-      mGrad.addColorStop(0, '#f0ead8');
-      mGrad.addColorStop(0.5, '#e4dcc8');
-      mGrad.addColorStop(1, '#c0b498');
-      ctx.fillStyle = mGrad;
-      ctx.beginPath(); ctx.arc(cx, cy, moonR2, 0, Math.PI * 2); ctx.fill();
-    }
-
-    // Earth's shadow sweeps from right to left
-    var shadowTravel = (shadowR + moonR2) * 3;
-    var shX = cx + shadowTravel / 2 - progress * shadowTravel;
-
-    // Umbral shadow with reddish tint (blood moon)
-    ctx.save();
-    ctx.beginPath(); ctx.arc(cx, cy, moonR2, 0, Math.PI * 2); ctx.clip();
-    // Dark umbra
-    var uGrad = ctx.createRadialGradient(shX, cy, 0, shX, cy, shadowR);
-    uGrad.addColorStop(0, 'rgba(5,2,8,0.92)');
-    uGrad.addColorStop(0.6, 'rgba(20,5,5,0.85)');
-    uGrad.addColorStop(0.85, 'rgba(60,15,10,0.6)');
-    uGrad.addColorStop(1, 'rgba(120,30,20,0.15)');
-    ctx.fillStyle = uGrad;
-    ctx.beginPath(); ctx.arc(shX, cy, shadowR, 0, Math.PI * 2); ctx.fill();
-    // Blood moon reddish light in shadow (Rayleigh scattering)
-    if (isTotal) {
-      var bGrad = ctx.createRadialGradient(shX, cy, 0, shX, cy, shadowR * 0.7);
-      bGrad.addColorStop(0, 'rgba(180,50,30,0.15)');
-      bGrad.addColorStop(0.5, 'rgba(140,30,20,0.08)');
-      bGrad.addColorStop(1, 'transparent');
-      ctx.fillStyle = bGrad;
-      ctx.beginPath(); ctx.arc(shX, cy, shadowR * 0.7, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore();
-
-    // Atmospheric glow around moon
-    var glowGrad = ctx.createRadialGradient(cx, cy, moonR2, cx, cy, moonR2 * 1.5);
-    glowGrad.addColorStop(0, 'rgba(220,215,200,0.08)');
-    glowGrad.addColorStop(1, 'transparent');
-    ctx.fillStyle = glowGrad;
-    ctx.beginPath(); ctx.arc(cx, cy, moonR2 * 1.5, 0, Math.PI * 2); ctx.fill();
-  }
-
-  // Phase label
-  if (label) {
-    var phaseText;
-    if (progress < 0.15) phaseText = 'Before eclipse';
-    else if (progress < 0.35) phaseText = isSolar ? '1st contact — partial phase' : 'Penumbral shadow entering';
-    else if (progress < 0.45) phaseText = isSolar ? '2nd contact' : 'Partial phase';
-    else if (progress < 0.55) phaseText = isTotal ? (isSolar ? 'Totality' : 'Total eclipse — blood moon') : (isAnnular ? 'Annularity — ring of fire' : 'Maximum eclipse');
-    else if (progress < 0.65) phaseText = isSolar ? '3rd contact' : 'Partial phase';
-    else if (progress < 0.85) phaseText = isSolar ? 'Partial phase ending' : 'Penumbral shadow exiting';
-    else phaseText = 'After eclipse';
-    label.textContent = _eclipseSimType + ' — ' + _eclipseSimDate + ' — ' + phaseText;
-  }
-}
+// Eclipse simulator removed — needs proper Besselian elements for accuracy.
+// See git history for the canvas-based eclipse visualization code.
 
 var _sunMapImg = new Image();
 var _sunMapLoaded = false;
