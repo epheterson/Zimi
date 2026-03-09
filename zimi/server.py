@@ -1119,6 +1119,358 @@ def _clean_stale_title_indexes():
                 except OSError:
                     pass
 
+# ── Wikidata Q-ID Matching ──
+# Direct cross-language article matching via Wikidata identifiers.
+# Wikipedia ZIMs embed Q-IDs (e.g., Q629 for Oxygen) in each article's
+# authority control section. We use these for exact cross-language matching.
+#
+# Two-tier approach:
+#   1. SMALL ZIMs (< 200K entries): Full background scan at startup.
+#      Builds per-ZIM SQLite indexes for instant lookup.
+#   2. LARGE ZIMs (full Wikipedia): On-demand extraction + verification.
+#      When matching, read source article HTML → extract Q-ID → use heuristic
+#      search to find candidates in target → verify by reading candidate HTML.
+#      Cache every verified match for instant future lookups.
+#
+# This avoids a 24-hour upfront scan of the 115GB English Wikipedia while
+# still providing authoritative Q-ID matching on first use.
+
+_QID_INDEX_DIR = os.path.join(ZIMI_DATA_DIR, "qids")
+_QID_INDEX_VERSION = "3"
+_QID_RE = re.compile(rb'wikidata\.org/wiki/(Q\d+)')
+# Authority control Q-ID pattern (article's own Q-ID, not cited references)
+_QID_AUTH_RE = re.compile(rb'wikidata\.org/wiki/(Q\d+)#identifiers')
+_QID_FULL_SCAN_MAX_ENTRIES = 200_000  # Only full-scan ZIMs smaller than this
+
+# Connection pool for Q-ID databases
+_qid_db_pool = {}          # {zim_name: sqlite3.Connection}
+_qid_db_pool_lock = threading.Lock()
+
+
+def _qid_index_path(zim_name):
+    return os.path.join(_QID_INDEX_DIR, f"{zim_name}.qid.db")
+
+
+def _qid_cache_path():
+    return os.path.join(_QID_INDEX_DIR, "_qid_cache.db")
+
+
+def _get_qid_db(zim_name):
+    """Get a pooled SQLite connection for a Q-ID index, or None if no index."""
+    with _qid_db_pool_lock:
+        conn = _qid_db_pool.get(zim_name)
+        if conn is not None:
+            return conn
+    db_path = _qid_index_path(zim_name)
+    if not os.path.exists(db_path):
+        return None
+    try:
+        conn = sqlite3.connect(db_path, timeout=5, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA mmap_size=67108864")
+        with _qid_db_pool_lock:
+            if zim_name in _qid_db_pool:
+                conn.close()
+                return _qid_db_pool[zim_name]
+            _qid_db_pool[zim_name] = conn
+        return conn
+    except Exception:
+        return None
+
+
+def _close_qid_db(zim_name):
+    with _qid_db_pool_lock:
+        conn = _qid_db_pool.pop(zim_name, None)
+    if conn:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _qid_index_is_current(zim_name, zim_path):
+    """Check if Q-ID index exists and matches ZIM mtime."""
+    db_path = _qid_index_path(zim_name)
+    if not os.path.exists(db_path):
+        return False
+    try:
+        zim_mtime = str(os.path.getmtime(zim_path))
+        conn = sqlite3.connect(db_path, timeout=5)
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key='zim_mtime'").fetchone()
+            ver = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            return (row is not None and row[0] == zim_mtime
+                    and ver is not None and ver[0] == _QID_INDEX_VERSION)
+        finally:
+            conn.close()
+    except Exception:
+        return False
+
+
+def _build_qid_index(zim_name, zim_path):
+    """Scan a ZIM file and extract Wikidata Q-IDs from article HTML.
+
+    Opens a dedicated Archive handle (not from the pool) so this is safe
+    to run without _zim_lock. Only used for small ZIMs (< 200K entries).
+    """
+    os.makedirs(_QID_INDEX_DIR, exist_ok=True)
+    db_path = _qid_index_path(zim_name)
+    tmp_path = db_path + ".tmp"
+    for suffix in ("", "-shm", "-wal"):
+        try:
+            os.remove(tmp_path + suffix)
+        except OSError:
+            pass
+    t0 = time.time()
+    count = 0
+    scanned = 0
+
+    archive = open_archive(zim_path)
+    conn = sqlite3.connect(tmp_path)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=OFF")
+        conn.execute("CREATE TABLE qids (path TEXT PRIMARY KEY, qid INTEGER)")
+        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+
+        _asset_exts = frozenset((
+            '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.avif',
+            '.css', '.js', '.json', '.woff', '.woff2', '.ttf', '.eot', '.otf',
+            '.mp3', '.mp4', '.ogg', '.wav', '.webm',
+        ))
+
+        batch = []
+        total_entries = archive.all_entry_count
+        log_interval = min(max(total_entries // 20, 5000), 25000)
+
+        for i in range(total_entries):
+            try:
+                entry = archive._get_entry_by_id(i)
+                if entry.is_redirect:
+                    continue
+                path = entry.path
+                dot = path.rfind('.')
+                if dot != -1 and path[dot:].lower() in _asset_exts:
+                    continue
+                item = entry.get_item()
+                mimetype = item.mimetype or ""
+                if not mimetype.startswith("text/html") and mimetype != "application/xhtml+xml":
+                    continue
+                if item.size < 2000:
+                    continue
+                scanned += 1
+                content = item.content
+                # Prefer authority control Q-ID (#identifiers) over cited references
+                m = _QID_AUTH_RE.search(content) or _QID_RE.search(content)
+                if m:
+                    qid_int = int(m.group(1).decode()[1:])
+                    batch.append((path, qid_int))
+
+                if len(batch) >= 5000:
+                    conn.executemany("INSERT OR IGNORE INTO qids VALUES (?,?)", batch)
+                    conn.commit()
+                    count += len(batch)
+                    batch.clear()
+
+                if scanned % log_interval == 0:
+                    pct = round(100 * i / total_entries)
+                    rate = scanned / max(time.time() - t0, 0.1)
+                    log.info("Q-ID index: %s %d%% (%d scanned, %d found, %.0f/s)",
+                             zim_name, pct, scanned, count + len(batch), rate)
+            except Exception:
+                continue
+
+        if batch:
+            conn.executemany("INSERT OR IGNORE INTO qids VALUES (?,?)", batch)
+            count += len(batch)
+
+        conn.execute("CREATE INDEX idx_qid ON qids(qid)")
+
+        zim_mtime = str(os.path.getmtime(zim_path))
+        conn.execute("INSERT INTO meta VALUES ('schema_version', ?)", (_QID_INDEX_VERSION,))
+        conn.execute("INSERT INTO meta VALUES ('zim_mtime', ?)", (zim_mtime,))
+        conn.execute("INSERT INTO meta VALUES ('built_at', ?)", (str(time.time()),))
+        conn.execute("INSERT INTO meta VALUES ('entry_count', ?)", (str(count),))
+        conn.commit()
+    except Exception:
+        conn.close()
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+    else:
+        conn.close()
+        _close_qid_db(zim_name)
+        os.replace(tmp_path, db_path)
+        dt = time.time() - t0
+        log.info("Q-ID index: built %s (%d Q-IDs from %d articles, %.1fs)", zim_name, count, scanned, dt)
+
+
+# ── On-demand Q-ID cache for large ZIMs ──
+# Single shared SQLite DB that grows organically as users browse articles.
+# Stores (zim_name, path) → qid mappings discovered during article viewing.
+
+_qid_cache_conn = None
+_qid_cache_lock = threading.Lock()
+
+
+def _get_qid_cache():
+    """Get or create the shared Q-ID cache database."""
+    global _qid_cache_conn
+    if _qid_cache_conn is not None:
+        return _qid_cache_conn
+    with _qid_cache_lock:
+        if _qid_cache_conn is not None:
+            return _qid_cache_conn
+        os.makedirs(_QID_INDEX_DIR, exist_ok=True)
+        conn = sqlite3.connect(_qid_cache_path(), timeout=5, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("CREATE TABLE IF NOT EXISTS qid_cache (zim TEXT, path TEXT, qid INTEGER, PRIMARY KEY(zim, path))")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cache_qid ON qid_cache(qid)")
+        _qid_cache_conn = conn
+        return conn
+
+
+def _qid_extract_from_html(archive, article_path):
+    """Extract Q-ID from a single article's HTML. Returns int or None.
+
+    Reads the article content and searches for the Wikidata Q-ID pattern.
+    Fast for a single article (~10-50ms depending on article size and I/O).
+    """
+    try:
+        entry = archive.get_entry_by_path(article_path)
+        item = entry.get_item()
+        if item.size < 2000:
+            return None
+        content = item.content
+        # Prefer authority control Q-ID (#identifiers) — that's the article's own ID.
+        # Fall back to first wikidata link (may be a cited reference in some ZIMs).
+        m = _QID_AUTH_RE.search(content) or _QID_RE.search(content)
+        if m:
+            return int(m.group(1).decode()[1:])
+    except Exception:
+        pass
+    return None
+
+
+def _qid_cache_store(zim_name, path, qid):
+    """Store a Q-ID mapping in the on-demand cache."""
+    try:
+        conn = _get_qid_cache()
+        conn.execute("INSERT OR REPLACE INTO qid_cache VALUES (?,?,?)", (zim_name, path, qid))
+        conn.commit()
+    except Exception:
+        pass
+
+
+def _qid_cache_lookup(zim_name, path):
+    """Look up Q-ID from the on-demand cache. Returns int or None."""
+    try:
+        conn = _get_qid_cache()
+        row = conn.execute("SELECT qid FROM qid_cache WHERE zim=? AND path=?", (zim_name, path)).fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def _qid_cache_find(zim_name, qid):
+    """Find article path by Q-ID in the on-demand cache. Returns path or None."""
+    try:
+        conn = _get_qid_cache()
+        row = conn.execute("SELECT path FROM qid_cache WHERE zim=? AND qid=?", (zim_name, qid)).fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def _qid_lookup(zim_name, article_path):
+    """Look up the Q-ID for an article. Checks full index first, then cache."""
+    # Check full index (for small ZIMs that were fully scanned)
+    conn = _get_qid_db(zim_name)
+    if conn is not None:
+        try:
+            row = conn.execute("SELECT qid FROM qids WHERE path=?", (article_path,)).fetchone()
+            if row:
+                return row[0]
+        except Exception:
+            pass
+    # Check on-demand cache (for large ZIMs)
+    return _qid_cache_lookup(zim_name, article_path)
+
+
+def _qid_find_in_zim(zim_name, qid_int):
+    """Find an article path by Q-ID in a specific ZIM. Checks index then cache."""
+    # Check full index
+    conn = _get_qid_db(zim_name)
+    if conn is not None:
+        try:
+            row = conn.execute("SELECT path FROM qids WHERE qid=?", (qid_int,)).fetchone()
+            return row[0] if row else None
+        except Exception:
+            pass
+    # Check on-demand cache
+    return _qid_cache_find(zim_name, qid_int)
+
+
+def _qid_has_index(zim_name):
+    """Check if a ZIM has a full Q-ID index (was fully scanned)."""
+    return _get_qid_db(zim_name) is not None
+
+
+def _build_all_qid_indexes():
+    """Build Q-ID indexes for small Wikipedia ZIMs (background task).
+
+    Only full-scans ZIMs with < 200K entries (takes seconds each).
+    Large ZIMs (full Wikipedia) use on-demand Q-ID extraction instead.
+    """
+    os.makedirs(_QID_INDEX_DIR, exist_ok=True)
+    zims = get_zim_files()
+    zim_info = {z.get("name"): z.get("entries", 0) for z in (_zim_list_cache or [])}
+
+    wiki_zims = [(n, p) for n, p in zims.items() if _zim_project_name(n) == "wikipedia"]
+
+    need_build = []
+    current = 0
+    skipped_large = 0
+    for name, path in wiki_zims:
+        entries = zim_info.get(name, 0) or 0
+        if entries > _QID_FULL_SCAN_MAX_ENTRIES:
+            skipped_large += 1
+            continue
+        if _qid_index_is_current(name, path):
+            current += 1
+        else:
+            need_build.append((name, path))
+
+    if not need_build:
+        if skipped_large:
+            log.info("Q-ID indexes: %d ready, %d large ZIMs use on-demand matching", current, skipped_large)
+        return
+
+    need_build.sort(key=lambda x: zim_info.get(x[0], 0) if isinstance(zim_info.get(x[0], 0), int) else 0)
+
+    for name, path in need_build:
+        try:
+            _build_qid_index(name, path)
+            current += 1
+        except Exception as e:
+            log.warning("Q-ID index build failed for %s: %s", name, e)
+
+    # Clean stale indexes
+    for f in os.listdir(_QID_INDEX_DIR):
+        if f.endswith(".qid.db"):
+            zn = f[:-7]
+            if zn not in zims:
+                _close_qid_db(zn)
+                try:
+                    os.remove(os.path.join(_QID_INDEX_DIR, f))
+                    log.info("Removed stale Q-ID index: %s", f)
+                except OSError:
+                    pass
+
+    log.info("Q-ID indexes: %d ready, %d large ZIMs use on-demand matching", current, skipped_large)
+
+
 # Load UI template from file (next to this script)
 _TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 try:
@@ -1466,9 +1818,16 @@ def _detect_query_language(query):
 def get_article_languages(zim_name, article_path):
     """Find available translations for an article across all installed ZIMs.
 
-    Uses two strategies:
-    1. Interlanguage links in HTML (fast, if present — many ZIMs strip these)
-    2. Title-based path lookup across same-project ZIMs in other languages
+    Uses three strategies (in order):
+    0. Wikidata Q-ID matching — checks index/cache, extracts on-demand, verifies candidates
+    1. Interlanguage links in HTML (for languages not found via Q-ID)
+    2. Title-based heuristic search (fallback for ZIMs without Q-IDs)
+
+    Strategy 0 uses on-demand Q-ID disambiguation for large ZIMs:
+    - Extract source Q-ID from HTML (one read, ~50ms)
+    - Find candidates via heuristic search
+    - Verify candidates by reading their HTML for matching Q-ID
+    - Cache verified matches for instant future lookups
 
     Returns {"languages": [{lang, name, zim, path}]} — only VERIFIED entries.
     Must be called with _zim_lock held.
@@ -1494,14 +1853,52 @@ def get_article_languages(zim_name, article_path):
     src_info = next((z for z in (_zim_list_cache or []) if z.get("name") == zim_name), None)
     src_lang = src_info.get("language", "en") if src_info else "en"
 
-    # Find all same-project ZIMs in other languages
     zim_list = _zim_list_cache or []
     src_project = _zim_project_name(zim_name)
 
     installed = []
-    seen_langs = {src_lang}  # skip source language
+    seen_langs = {src_lang}
 
-    # Strategy 1: Try interlanguage links first (fastest, most accurate)
+    # Strategy 0: Wikidata Q-ID matching (authoritative)
+    # Step 0a: Get source article's Q-ID (from index, cache, or on-demand extraction)
+    qid = _qid_lookup(zim_name, article_path)
+    if qid is None and article_path != title:
+        qid = _qid_lookup(zim_name, title)
+    if qid is None:
+        # On-demand: extract Q-ID from this article's HTML
+        qid = _qid_extract_from_html(archive, article_path)
+        if qid is not None:
+            _qid_cache_store(zim_name, article_path, qid)
+
+    # Step 0b: Check all target ZIMs for this Q-ID
+    qid_checked_zims = set()  # ZIMs we definitively checked via Q-ID
+    if qid is not None:
+        for zi in zim_list:
+            lang = zi.get("language", "")
+            if lang in seen_langs or not lang:
+                continue
+            n = zi.get("name", "")
+            if n == zim_name:
+                continue
+            if src_project and _zim_project_name(n) != src_project:
+                continue
+            # Check full index (small ZIMs) or on-demand cache (large ZIMs)
+            matched_path = _qid_find_in_zim(n, qid)
+            if matched_path:
+                seen_langs.add(lang)
+                installed.append({
+                    "lang": lang,
+                    "name": _LANG_NATIVE_NAMES.get(lang, lang),
+                    "zim": n,
+                    "path": matched_path,
+                })
+            # Mark ZIMs with full indexes as definitively checked
+            if _qid_has_index(n):
+                qid_checked_zims.add(n)
+            if len(seen_langs) >= 30:
+                break
+
+    # Strategy 1: Interlanguage links from HTML
     try:
         content = bytes(item.content).decode("utf-8", errors="replace")
         pattern = re.compile(
@@ -1514,7 +1911,6 @@ def get_article_languages(zim_name, article_path):
             if lang in seen_langs:
                 continue
             wiki_path = unquote(m.group(3))
-            # Find best installed ZIM for this lang
             match = _find_article_in_lang_zims(lang, src_project, wiki_path, zim_name, zim_list)
             if match:
                 seen_langs.add(lang)
@@ -1524,9 +1920,11 @@ def get_article_languages(zim_name, article_path):
     except Exception:
         pass
 
-    # Strategy 2: Search-based lookup for languages not found via interlanguage links
-    # Group candidate ZIMs by language, pick best per language
-    lang_candidates = {}  # {lang: [(zim_name, quality_score)]}
+    # Strategy 2: Heuristic search with Q-ID verification
+    # Find candidates via title/search matching, then verify with Q-ID when possible.
+    # If source has Q-ID and candidate also has Q-ID → must match (authoritative).
+    # If candidate has no Q-ID (common in nopic subsets) → use heuristic guards.
+    lang_candidates = {}
     for zi in zim_list:
         lang = zi.get("language", "")
         if lang in seen_langs or not lang:
@@ -1542,22 +1940,27 @@ def get_article_languages(zim_name, article_path):
             lang_candidates[lang] = []
         lang_candidates[lang].append((n, _zim_quality_score(n)))
 
-    # For each unseen language, try exact path first, then search
     human_title = title.replace("_", " ")
     for lang, candidates in lang_candidates.items():
         if lang in seen_langs:
             continue
-        # Sort by quality (best first)
         candidates.sort(key=lambda x: -x[1])
         found = False
         for cand_name, _ in candidates:
             cand_archive = get_archive(cand_name)
             if not cand_archive:
                 continue
-            # Try exact path (works when titles are identical: "Europe", "Berlin")
+            # Try exact path first
             for try_path in [f"A/{title}", title]:
                 try:
                     cand_archive.get_entry_by_path(try_path)
+                    # If source has Q-ID, verify candidate matches
+                    if qid is not None:
+                        cand_qid = _qid_extract_from_html(cand_archive, try_path)
+                        if cand_qid is not None:
+                            _qid_cache_store(cand_name, try_path, cand_qid)
+                        if cand_qid is not None and cand_qid != qid:
+                            continue  # Same title but different article
                     seen_langs.add(lang)
                     installed.append({
                         "lang": lang,
@@ -1571,10 +1974,7 @@ def get_article_languages(zim_name, article_path):
                     continue
             if found:
                 break
-            # Try title search, then full-text search as fallback.
-            # SuggestionSearcher does prefix matching ("Carbon" → "Carbonacé")
-            # so it can miss translations like "Carbone". Full-text search
-            # catches those via content-based ranking.
+            # Search-based matching with Q-ID verification
             ht = human_title.lower()
             for search_fn in [
                 lambda: suggest_search_zim(cand_archive, human_title, 5),
@@ -1584,16 +1984,17 @@ def get_article_languages(zim_name, article_path):
                     results = search_fn()
                     for r in results:
                         rt = (r.get("title") or "").lower()
-                        # Accept if:
-                        # 1. Length within ±1 char, AND
-                        # 2. Shares ≥50% characters (handles script changes)
-                        # "Oxygen"→"Oxygène" ✓  "Carbon"→"Carbone" ✓
-                        # "Oxygen"→"महासागर" ✗  "Plutonium"→"PuTTY" ✗
                         len_ok = max(len(ht) - 1, 3) <= len(rt) <= len(ht) + 1
-                        # Character overlap: at least half the chars should be shared
                         shared = sum(1 for c in set(ht) if c in rt)
                         char_ok = shared >= len(set(ht)) * 0.5
                         if rt == ht or (len_ok and char_ok):
+                            # Q-ID verification: if source has Q-ID, verify candidate
+                            if qid is not None:
+                                cand_qid = _qid_extract_from_html(cand_archive, r["path"])
+                                if cand_qid is not None:
+                                    _qid_cache_store(cand_name, r["path"], cand_qid)
+                                if cand_qid is not None and cand_qid != qid:
+                                    continue  # Heuristic false positive
                             seen_langs.add(lang)
                             installed.append({
                                 "lang": lang,
@@ -4983,6 +5384,8 @@ def main():
         threading.Thread(target=_warm_fts_pool, daemon=True).start()
         # Build SQLite title indexes in background (one-time per ZIM, enables <10ms title search)
         threading.Thread(target=_build_all_title_indexes, daemon=True).start()
+        # Build Wikidata Q-ID indexes for direct cross-language article matching
+        threading.Thread(target=_build_all_qid_indexes, daemon=True).start()
         # Pre-warm title index B-tree pages for fast first queries
         # For each ZIM, read a few rows at scattered prefixes (a, m, s) to pull
         # B-tree branch pages into OS page cache. Reads ~10-50KB per ZIM total

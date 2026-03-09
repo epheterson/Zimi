@@ -1,5 +1,5 @@
 // Zimi Service Worker
-const CACHE_VERSION = 'zimi-v1.6.1';
+const CACHE_VERSION = 'zimi-v1.6.2';
 const PRECACHE_URLS = ['/', '/favicon.png', '/apple-touch-icon.png'];
 
 const OFFLINE_HTML = `<!DOCTYPE html>
@@ -50,7 +50,7 @@ async function checkVersion() {
     const resp = await fetch('/health', { cache: 'no-store' });
     if (resp.ok) {
       const data = await resp.json();
-      if (data.version && !CACHE_VERSION.includes(data.version)) {
+      if (data.version && 'zimi-v' + data.version !== CACHE_VERSION) {
         self.registration.unregister();
       }
     }
@@ -74,9 +74,18 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // ZIM content: cache-first
+  // ZIM content: top-level navigation (reload/bookmark) needs the SPA shell
+  // so the client-side router handles the deep link. Fetch from network; if
+  // offline, fall back to the cached root '/' (same SPA shell).
+  // Sub-resource requests (iframe, images, CSS) use cache-first for speed.
   if (path.startsWith('/w/')) {
-    event.respondWith(cacheFirst(event.request));
+    if (event.request.mode === 'navigate') {
+      event.respondWith(
+        fetch(event.request).catch(() => caches.match('/').then(r => r || offlineResponse()))
+      );
+    } else {
+      event.respondWith(cacheFirst(event.request));
+    }
     return;
   }
 
