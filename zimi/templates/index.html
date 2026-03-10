@@ -129,17 +129,16 @@
   .suggest-item .sg-title { color: var(--text); }
   .suggest-item .sg-source { font-size: 11px; color: var(--text2); margin-top: 1px; }
 
-  .random-btn, .manage-btn, .newtab-btn {
+  .random-btn, .manage-btn, .newtab-btn, .library-btn {
     display: flex; align-items: center; justify-content: center;
     color: var(--text2); text-decoration: none;
     flex-shrink: 0; padding: 6px 10px;
-    border-radius: var(--radius); transition: all 0.2s; border: 1px solid transparent;
+    border-radius: var(--radius); transition: color 0.2s, background 0.2s, border-color 0.2s; border: 1px solid transparent;
+    background: none; cursor: pointer; font-size: 16px;
   }
-  .random-btn { font-size: 18px; }
-  .manage-btn { font-size: 16px; }
-  .newtab-btn { display: none; font-size: 16px; }
+  .newtab-btn { display: none; }
   .manage-btn { position: relative; }
-  .random-btn:hover, .manage-btn:hover, .newtab-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .random-btn:hover, .manage-btn:hover, .newtab-btn:hover, .library-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .random-btn .dice { display: inline-block; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
   .random-btn:hover .dice { transform: rotate(20deg) scale(1.15); }
   .random-btn.rolling .dice { animation: diceRoll 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
@@ -154,16 +153,35 @@
   .container { max-width: 820px; margin: 0 auto; padding: 28px 16px; }
 
   /* ── Stats bar ── */
-  .stats-bar { text-align: center; padding: 8px 0 12px; font-size: 14px; color: var(--text2); }
+  .stats-bar { text-align: center; padding: 12px 0; font-size: 14px; color: var(--text2); }
   .stats-bar .num { color: var(--amber); font-weight: 600; }
 
   /* ── Pills (categories + search source filters) ── */
   .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 20px; max-height: 68px; overflow-y: auto; }
-  .pills.pills-scroll { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; max-height: none; justify-content: flex-start; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+  .pills.pills-scroll { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; max-height: none; justify-content: flex-start; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  /* ── Catalog lang row (single-row scroll with search icon) ── */
+  .catalog-lang-row { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; overflow: hidden; }
+  .catalog-lang-scroll { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; flex: 1; min-width: 0; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 2px 0; }
+  .catalog-lang-scroll::-webkit-scrollbar { display: none; }
+  .catalog-lang-search-btn {
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 30px; height: 30px; border-radius: 20px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text2); cursor: pointer;
+    transition: color 0.2s, border-color 0.2s, background 0.2s, width 0.25s;
+  }
+  .catalog-lang-search-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .catalog-lang-search-btn.expanded {
+    width: 140px; border-color: var(--amber-border); background: var(--surface);
+    justify-content: flex-start; gap: 6px; padding: 0 10px;
+  }
+  .catalog-lang-search-btn.expanded input {
+    border: none; background: transparent; color: var(--text); font-size: 11px;
+    outline: none; width: 100%; font-weight: 500;
+  }
   .pill {
     padding: 6px 14px; font-size: 12px; font-weight: 500; white-space: nowrap;
     background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
-    color: var(--text2); cursor: pointer; transition: all 0.2s;
+    color: var(--text2); cursor: pointer; transition: color 0.2s, background 0.2s, border-color 0.2s;
   }
   .pill:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
   .pill.active {
@@ -176,13 +194,13 @@
   .lang-pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 8px; }
   .lang-pill {
     padding: 4px 12px; font-size: 11px; font-weight: 500; white-space: nowrap;
-    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-    color: var(--text2); cursor: pointer; transition: all 0.2s;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    color: var(--text2); cursor: pointer; transition: color 0.2s, background 0.2s, border-color 0.2s;
   }
   .lang-pill:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
   .lang-pill.active {
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
-    color: #fff; border-color: transparent; font-weight: 600;
+    background: linear-gradient(135deg, var(--amber), var(--amber2));
+    color: #000; border-color: transparent; font-weight: 600;
   }
 
   /* ── Language banner (view-in-lang / download) ── */
@@ -299,8 +317,8 @@
   .lang-selector-btn {
     display: flex; align-items: center; justify-content: center;
     background: none; border: 1px solid transparent; border-radius: var(--radius);
-    color: var(--text2); padding: 4px 6px; cursor: pointer;
-    flex-shrink: 0; transition: all 0.15s; line-height: 1;
+    color: var(--text2); padding: 6px 10px; cursor: pointer;
+    flex-shrink: 0; transition: color 0.2s, background 0.2s, border-color 0.2s; line-height: 1;
   }
   .lang-selector-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .lang-dropdown {
@@ -380,7 +398,7 @@
 
   /* ── Category headings ── */
   .cat-heading {
-    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
     margin: 32px 0 10px; padding-left: 2px;
     background: linear-gradient(90deg, var(--amber), var(--text2));
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
@@ -412,7 +430,8 @@
   .stat-card {
     background: var(--surface); border-radius: var(--radius); padding: 14px;
     border: 1px solid var(--border);
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background 0.25s, border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     display: flex; gap: 14px; align-items: stretch; text-decoration: none; color: inherit; cursor: pointer;
   }
   .stat-card:hover, .stat-card:focus-visible {
@@ -449,7 +468,7 @@
   .result {
     display: flex; gap: 12px; padding: 14px 16px; background: var(--surface); border-radius: var(--radius);
     cursor: pointer; border: 1px solid transparent;
-    transition: all 0.2s; opacity: 0; animation: fadeUp 0.3s ease forwards;
+    transition: background 0.2s, border-color 0.2s; opacity: 0; animation: fadeUp 0.3s ease forwards;
   }
   .result:hover, .result:focus-visible {
     background: var(--surface2); border-color: var(--amber-border);
@@ -475,7 +494,7 @@
   .result-source .rs-name { font-size: 12px; color: var(--text2); font-weight: 500; }
   .result .title { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
   .result .snippet {
-    font-size: 13px; color: var(--text2); line-height: 1.5;
+    font-size: 12px; color: var(--text2); line-height: 1.5;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
     transition: opacity 0.3s;
   }
@@ -545,7 +564,7 @@
   .footer {
     text-align: center; padding: 20px 16px 16px;
     font-size: 12px; color: var(--text2); opacity: 0.5;
-    border-top: 1px solid var(--border); margin-top: 24px;
+    border-top: 1px solid var(--border); margin-top: 16px;
   }
   .footer .footer-brand {
     background: linear-gradient(135deg, #f59e0b, #f97316);
@@ -603,7 +622,7 @@
   .manage-card .mc-row .mc-label { color: var(--text2); }
   .manage-card .mc-row .mc-value { color: var(--text); font-weight: 500; }
   .manage-btn-action {
-    padding: 8px 14px; font-size: 12px; font-weight: 500; cursor: pointer;
+    padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer;
     background: linear-gradient(135deg, var(--amber), var(--amber2));
     color: #000; border: none; border-radius: var(--radius);
     transition: opacity 0.2s; white-space: nowrap;
@@ -640,7 +659,7 @@
   }
   .ms-pane .ms-check input { accent-color: var(--amber); }
   .ms-pane .ms-field { margin-bottom: 10px; }
-  .ms-pane .ms-field label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .ms-pane .ms-field label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
   .ms-pane .ms-field input {
     width: 100%; padding: 7px 10px; border-radius: var(--radius); border: 1px solid var(--border);
     background: var(--bg); color: var(--text); font-size: 13px; box-sizing: border-box;
@@ -660,9 +679,9 @@
     border-radius: var(--radius); color: var(--text); font-size: 13px; outline: none;
   }
   .catalog-item {
-    display: flex; gap: 14px; align-items: center; padding: 14px 16px;
+    display: flex; gap: 14px; align-items: center; padding: 16px;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    margin-bottom: 6px; transition: border-color 0.2s, opacity 0.3s, max-height 0.3s, padding 0.3s, margin 0.3s;
+    margin-bottom: 10px; transition: border-color 0.2s, opacity 0.3s;
     max-height: 200px; overflow: hidden;
   }
   .catalog-item:hover { border-color: var(--amber-border); }
@@ -675,17 +694,17 @@
   }
   .catalog-item .ci-info { flex: 1; min-width: 0; }
   .catalog-item .ci-title { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .ci-lang-tag { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; background: var(--surface2); color: var(--text2); border: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0; }
+  .ci-lang-tag { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 4px; background: var(--surface2); color: var(--text2); border: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0; }
   .catalog-item .ci-summary {
     font-size: 12px; color: var(--text2); line-height: 1.4; margin-bottom: 4px;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
-  .catalog-item .ci-meta { font-size: 12px; color: var(--text2); opacity: 0.5; word-spacing: 0.1em; }
-  .catalog-item .ci-meta > span { white-space: nowrap; }
+  .catalog-item .ci-meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 2px; }
+  .ci-meta-tag { font-size: 11px; color: var(--text2); opacity: 0.7; padding: 1px 6px; background: var(--bg); border-radius: 4px; white-space: nowrap; }
   .catalog-item .ci-actions { flex-shrink: 0; display: flex; align-items: center; gap: 6px; margin-left: 8px; }
   .ci-installed-badge {
     font-size: 11px; color: var(--amber); font-weight: 600; padding: 4px 10px;
-    border: 1px solid var(--amber-border); border-radius: 12px; background: var(--amber-glow);
+    border: 1px solid var(--amber-border); border-radius: 20px; background: var(--amber-glow);
   }
   .ci-delete-btn {
     background: none; border: 1px solid transparent; color: var(--text2); opacity: 0.3;
@@ -696,7 +715,7 @@
   .ci-delete-btn.confirming { opacity: 1; color: #f44; border-color: #f44; font-size: 11px; padding: 4px 10px; }
   .ci-update-btn {
     font-size: 11px; font-weight: 600; padding: 4px 12px; cursor: pointer;
-    color: #fff; background: var(--amber2); border: none; border-radius: 12px;
+    color: #fff; background: var(--amber2); border: none; border-radius: 20px;
     transition: all 0.2s; white-space: nowrap;
   }
   .ci-update-btn:hover { background: var(--amber); }
@@ -718,14 +737,14 @@
   .ci-variant-btn {
     padding: 3px 10px; font-size: 11px; font-weight: 500; cursor: pointer;
     background: var(--surface2); color: var(--text2); border: 1px solid var(--border);
-    border-radius: 12px; transition: all 0.2s; white-space: nowrap;
+    border-radius: 20px; transition: all 0.2s; white-space: nowrap;
   }
   .ci-variant-btn:hover { border-color: var(--amber-border); background: var(--amber-glow); color: var(--text); }
   /* Flavor picker pill + popup */
   .flavor-pill {
     display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500;
     color: var(--text2); background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 12px; padding: 2px 8px 2px 8px; cursor: pointer; transition: all 0.2s;
+    border-radius: 20px; padding: 2px 8px 2px 8px; cursor: pointer; transition: all 0.2s;
     white-space: nowrap; position: relative;
   }
   .flavor-pill:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
@@ -748,8 +767,8 @@
   .flavor-option-check { width: 16px; color: var(--amber); font-weight: bold; text-align: center; flex-shrink: 0; }
   .flavor-popup-backdrop { position: fixed; inset: 0; z-index: 999; }
   .ci-section-label {
-    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
-    color: var(--text2); padding: 16px 0 8px; opacity: 0.7;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text2); padding: 16px 0 8px;
   }
   .dl-item {
     padding: 12px 14px; background: var(--surface); border: 1px solid var(--border);
@@ -784,7 +803,7 @@
   .manage-tab {
     padding: 10px 20px; font-size: 13px; font-weight: 500; cursor: pointer;
     background: none; border: none; border-bottom: 2px solid transparent;
-    color: var(--text2); transition: all 0.2s; white-space: nowrap;
+    color: var(--text2); transition: color 0.2s, border-color 0.2s; white-space: nowrap;
   }
   .manage-tab:hover { color: var(--text); }
   .manage-tab.active {
@@ -838,12 +857,12 @@
   }
   .browse-cat-card {
     display: flex; gap: 14px; align-items: stretch;
-    padding: 18px; cursor: pointer;
+    padding: 14px; cursor: pointer;
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); transition: all 0.2s;
+    border-radius: var(--radius); transition: background 0.2s, border-color 0.2s, transform 0.2s;
   }
   .browse-cat-card:hover {
-    border-color: var(--amber-border); background: var(--surface2); transform: translateY(-1px);
+    border-color: var(--amber-border); background: var(--surface2); transform: translateY(-2px);
   }
   .bcc-icon {
     font-size: 28px; width: 48px; height: 48px;
@@ -852,7 +871,7 @@
     align-self: center;
   }
   .bcc-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .bcc-name { font-size: 15px; font-weight: 600; color: var(--accent); margin-bottom: 2px; }
+  .bcc-name { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 2px; }
   .bcc-desc { font-size: 12px; color: var(--text2); line-height: 1.4; }
   .bcc-count { font-size: 11px; color: var(--text2); opacity: 0.6; margin-top: auto; }
   .bcc-arrow {
@@ -937,7 +956,8 @@
   .pw-box input[type="password"]:focus { outline:none; border-color:var(--amber); }
   .pw-box .pw-actions { display:flex; gap:8px; margin-top:12px; justify-content:flex-end; }
   .pw-box button { padding:6px 14px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; font-size:13px; }
-  .pw-box button.pw-primary { background:var(--amber); color:#000; border-color:var(--amber); font-weight:600; }
+  .pw-box button.pw-primary { background:linear-gradient(135deg, var(--amber), var(--amber2)); color:#000; border-color:transparent; font-weight:600; }
+  .pw-box button.pw-primary:hover { opacity:0.85; }
   .pw-box .pw-error { color:#ef4444; font-size:12px; margin-top:8px; display:none; }
 
   /* ── Desktop: onboarding + settings overlays ── */
@@ -958,7 +978,7 @@
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
   }
   .desktop-card .subtitle { font-size: 13px; color: var(--text2); line-height: 1.5; margin-bottom: 24px; }
-  .desktop-card label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .desktop-card label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
   .desktop-card .field-row { display: flex; gap: 8px; margin-bottom: 16px; }
   .desktop-card input[type="text"], .desktop-card input[type="number"] {
     flex: 1; padding: 9px 12px; background: var(--bg); border: 1px solid var(--border);
@@ -1006,8 +1026,8 @@
   .settings-restart-msg.show { display: block; }
 
   /* ── Card category badge (inline in detail row) ── */
-  .card-cat { font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-  .lang-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 5px; margin-left: 6px; border-radius: 3px; background: var(--surface2); color: var(--text2); vertical-align: middle; letter-spacing: 0.3px; }
+  .card-cat { font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .lang-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 5px; margin-left: 6px; border-radius: 4px; background: var(--surface2); color: var(--text2); vertical-align: middle; letter-spacing: 0.06em; }
   .lang-badge.multi { background: var(--amber-glow); color: var(--amber); border: 1px solid var(--amber-border); }
 
   /* ── Star (favorite) toggle ── */
@@ -1073,13 +1093,7 @@
   .coll-item .coll-del:hover { opacity: 1; color: #f44; border-color: #f44; }
 
   /* ── History panel ── */
-  .library-btn {
-    display: flex; align-items: center; justify-content: center;
-    color: var(--text2); text-decoration: none; flex-shrink: 0;
-    padding: 6px 10px; border-radius: var(--radius); transition: all 0.2s;
-    border: 1px solid transparent; font-size: 16px; cursor: pointer; background: none;
-  }
-  .library-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  /* .library-btn base styles in shared .random-btn,.manage-btn,.newtab-btn,.library-btn rule above */
   .library-btn.panel-open { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .history-panel {
     display: none; position: fixed; top: 56px; right: 0; bottom: 0; width: 360px; max-width: 100vw;
@@ -1105,7 +1119,7 @@
   .hp-clear { background: none; border: 1px solid var(--border); border-radius: var(--radius); color: var(--text2); font-size: 12px; padding: 4px 10px; cursor: pointer; transition: all 0.15s; }
   .hp-clear:hover { color: #ef4444; border-color: #ef4444; }
   .hp-group { padding: 0 16px; }
-  .hp-group-label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; padding: 12px 0 6px; }
+  .hp-group-label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; padding: 12px 0 6px; }
   .hp-item {
     display: flex; align-items: center; gap: 10px; padding: 8px 0;
     cursor: pointer; transition: opacity 0.15s; border-bottom: 1px solid var(--border);
@@ -1129,7 +1143,7 @@
   .discover-section { margin-bottom: 20px; }
   .discover-label {
     font-size: 13px; font-weight: 600; color: var(--text2); text-transform: uppercase;
-    letter-spacing: 0.5px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;
+    letter-spacing: 0.06em; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;
   }
   .dc-dismiss {
     background: none; border: none; color: var(--text2); font-size: 16px; cursor: pointer;
@@ -1171,12 +1185,12 @@
   .dc-blurb.dc-quote { font-family: Georgia, "Times New Roman", serif; font-style: italic; color: var(--text); font-weight: 400; font-size: 14px; -webkit-line-clamp: 4; line-height: 1.5; flex: 1; letter-spacing: 0.01em; }
   .dc-quote-card { display: flex; flex-direction: column; }
   .dc-quote-card .dc-body { padding: 20px; gap: 0; flex: 1; justify-content: space-between; }
-  .dc-quote-card .dc-header { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+  .dc-quote-card .dc-header { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
   .dc-quote-card .dc-quote-mark { font-family: Georgia, "Times New Roman", serif; font-size: 48px; line-height: 1; color: var(--amber); opacity: 0.4; margin-bottom: -8px; user-select: none; }
   .dc-quote-card .dc-attribution { font-size: 11px; color: var(--text2); margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px; }
   .dc-speaker { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dc-word-card .dc-body { padding: 20px; }
-  .dc-word-card .dc-header { margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-size: 10px; }
+  .dc-word-card .dc-header { margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
   .dc-word-card .dc-headword { font-family: Georgia, "Times New Roman", serif; font-size: 24px; font-weight: 700; color: var(--text); margin: 0 0 4px; letter-spacing: -0.5px; line-height: 1.2; }
   .dc-word-card .dc-pos { display: inline-block; font-size: 11px; color: var(--amber); font-style: italic; font-family: Georgia, "Times New Roman", serif; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); width: 100%; }
   .dc-word-card .dc-def { font-size: 13px; color: var(--text2); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
@@ -1202,7 +1216,7 @@
   .almanac-inner { max-width: 600px; margin: 0 auto; }
   .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
   .alm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
-  .alm-card-lbl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .alm-card-lbl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
   .alm-card-val { font-size: 14px; font-weight: 500; color: var(--text); white-space: nowrap; }
   .alm-tz-wrap { margin-top: 24px; display: flex; gap: 20px; align-items: flex-start; }
   .alm-tz-clock-side { flex: 0 0 auto; text-align: center; }
@@ -1226,7 +1240,7 @@
   .almanac-moon-name { margin-top: 16px; font-size: 18px; font-weight: 500; color: var(--text); }
   .almanac-moon-line { font-size: 13px; color: var(--text2); margin-top: 8px; text-align: center; }
   .almanac-section { margin-top: 32px; border-top: 1px solid var(--border); padding-top: 24px; }
-  .almanac-section-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .almanac-section-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.06em; }
   .almanac-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .almanac-info-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
   .almanac-info-val { font-size: 16px; font-weight: 600; color: var(--text); }
@@ -1874,7 +1888,7 @@ function _prefetchCatalog() {
           fetches.push(fetch('/manage/catalog?lang=&count=500&start=' + s).then(function(r) { return r.json(); }).then(function(d) { return d.items || []; }));
         }
         Promise.all(fetches).then(function(pages) {
-          for (var p = 0; p < pages.length; p++) items = items.concat(pages[p]);
+          for (var p = 0; p < pages.length; p++) items.push.apply(items, pages[p]);
           _globalCatalogCache = items;
           _globalCatalogFetching = false;
         });
@@ -2159,7 +2173,7 @@ function updateTopbar() {
       manageBtnEl.onclick = closeAlmanac;
     }
   } else {
-    manageBtnEl.style.display = 'flex';
+    manageBtnEl.style.display = readerOpen ? 'none' : 'flex';
     manageBtnEl.innerHTML = _gearSvg;
     manageBtnEl.title = t('library_manager');
     manageBtnEl.style.color = '';
@@ -2820,7 +2834,7 @@ function renderHome(filter) {
 
   // When Discover is active, show stats at bottom instead of top
   if (discoverWillShow) {
-    h += '<div class="stats-bar" style="padding:20px 0 8px">' + statsHtml + '</div>';
+    h += '<div class="stats-bar" style="padding:28px 0 0">' + statsHtml + '</div>';
   }
 
   output.innerHTML = h;
@@ -4183,7 +4197,7 @@ function showHistoryDropdown(filter) {
   suggestIndex = -1;
   var icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
   var searchIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.5"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>';
-  suggestDropdown.innerHTML = (filter ? '' : '<div style="padding:6px 14px 2px;font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Recent</div>') +
+  suggestDropdown.innerHTML = (filter ? '' : '<div style="padding:6px 14px 2px;font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">Recent</div>') +
     items.map(function(it, i) {
       return '<div class="suggest-item" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')" style="display:flex;align-items:center;gap:8px">' +
         (it.isSearch ? searchIcon : icon) +
@@ -4292,18 +4306,73 @@ var _CATALOG_LANGS = [
 function _renderLangPills(counts, onclick, validSet) {
   var langs = Object.keys(counts).sort(function(a, b) { return (counts[b] || 0) - (counts[a] || 0); });
   if (langs.length < 2) return '';
-  var h = '<div class="pills" style="margin-bottom:12px;justify-content:center">';
+  var searchSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>';
+  var h = '<div class="catalog-lang-row">' +
+    '<div class="catalog-lang-search-btn" onclick="_toggleLangSearch(this)" title="Filter languages">' + searchSvg + '</div>' +
+    '<div class="catalog-lang-scroll" id="catalog-lang-scroll">';
   for (var j = 0; j < langs.length; j++) {
     var lc = langs[j];
     var name = _langDisplayName(lc) || lc;
     var active = manageLangFilter === lc;
     var dimmed = validSet && !validSet.has(lc);
+    var count = counts[lc] || 0;
     h += '<button class="pill' + (active ? ' active' : '') + (dimmed ? ' dimmed' : '') +
-      '" onclick="' + onclick + '(\'' + escAttr(lc) + '\')">' +
-      esc(name) + '</button>';
+      '" data-lang="' + escAttr(lc) + '" data-lang-name="' + escAttr(name.toLowerCase()) + '"' +
+      ' onclick="' + onclick + '(\'' + escAttr(lc) + '\')">' +
+      esc(name) + ' <span style="opacity:0.5;font-size:10px">' + count + '</span></button>';
   }
-  h += '</div>';
+  h += '</div></div>';
   return h;
+}
+
+function _toggleLangSearch(btn) {
+  if (btn.classList.contains('expanded')) {
+    btn.classList.remove('expanded');
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>';
+    // Show all pills again
+    var scroll = btn.nextElementSibling;
+    if (scroll) Array.from(scroll.children).forEach(function(p) { p.style.display = ''; });
+    return;
+  }
+  btn.classList.add('expanded');
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>' +
+    '<input type="text" placeholder="Filter…" oninput="_filterLangPills(this)" autofocus>';
+  var inp = btn.querySelector('input');
+  if (inp) { inp.focus(); inp.addEventListener('click', function(e) { e.stopPropagation(); }); }
+}
+
+function _filterLangPills(inp) {
+  var val = inp.value.toLowerCase().trim();
+  var scroll = inp.closest('.catalog-lang-row').querySelector('.catalog-lang-scroll');
+  if (!scroll) return;
+  Array.from(scroll.children).forEach(function(pill) {
+    var langName = pill.getAttribute('data-lang-name') || '';
+    var langCode = pill.getAttribute('data-lang') || '';
+    pill.style.display = (!val || langName.indexOf(val) >= 0 || langCode.indexOf(val) >= 0) ? '' : 'none';
+  });
+}
+
+// Normalize a single language code to 2-letter
+function _normLang(c) {
+  if (!c) return '';
+  c = c.trim().toLowerCase();
+  if (c === 'mul') return '';  // "multilingual" — skip, not a real language
+  return _LANG3TO2[c] || (c.length === 2 ? c : c.substring(0, 2));
+}
+
+// Parse ZIM language string into array of normalized 2-letter codes
+function _parseLangs(langStr) {
+  if (!langStr) return [];
+  return langStr.toLowerCase().split(',').map(function(c) {
+    return _normLang(c);
+  }).filter(Boolean);
+}
+
+// Check if ZIM matches a language filter (handles multilingual + mixed code lengths)
+function _zimMatchesLang(item, lang) {
+  if (!lang) return true;
+  var norm = _normLang(lang);
+  return _parseLangs(item.language).indexOf(norm) >= 0;
 }
 
 function _countLangsByCategory(items, catKey) {
@@ -4316,18 +4385,28 @@ function _countLangsByCategory(items, catKey) {
       if (catKey === 'other') { if (cat !== 'other' && knownKeys.has(cat) && !_mergedToOther.has(cat)) continue; }
       else if (cat !== catKey) continue;
     }
-    var lang = (item.language || '').toLowerCase();
-    if (lang) counts[lang] = (counts[lang] || 0) + 1;
+    var langs = _parseLangs(item.language);
+    for (var j = 0; j < langs.length; j++) {
+      counts[langs[j]] = (counts[langs[j]] || 0) + 1;
+    }
   }
   return counts;
 }
 
 function filterCatalogLang(lang) {
+  // Save lang pill scroll position before re-render
+  var scrollEl = document.getElementById('catalog-lang-scroll');
+  var savedScroll = scrollEl ? scrollEl.scrollLeft : 0;
   manageLangFilter = (manageLangFilter === lang) ? null : lang;
   _catalogCache = null;
   if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
   else if (_browseView === 'search') { var v = q.value.trim(); if (v) browseCatalogFilter(v); else renderBrowseGallery(); }
   else renderBrowseGallery();
+  // Restore scroll position after re-render
+  requestAnimationFrame(function() {
+    var newScrollEl = document.getElementById('catalog-lang-scroll');
+    if (newScrollEl) newScrollEl.scrollLeft = savedScroll;
+  });
 }
 
 // ── Browse category gallery metadata ──
@@ -4459,7 +4538,7 @@ async function loadFullCatalog() {
   // Reuse global catalog cache (filter client-side)
   if (_globalCatalogCache) {
     let items = lang
-      ? _globalCatalogCache.filter(function(it) { return (it.language || '').toLowerCase() === lang.toLowerCase(); })
+      ? _globalCatalogCache.filter(function(it) { return _zimMatchesLang(it, lang); })
       : _globalCatalogCache.slice();
     for (const item of items) item.category = autoCategorize(item);
     _enrichCatalogInstalled(items);
@@ -4484,7 +4563,7 @@ async function loadFullCatalog() {
       );
     }
     const pages = await Promise.all(fetches);
-    for (const page of pages) items = items.concat(page);
+    for (const page of pages) items.push(...page);
   }
 
   // Auto-categorize uncategorized items
@@ -4566,70 +4645,62 @@ function _isFeaturedInstalled(feat, grouped) {
 
 function buildFeaturedCarousel(items) {
   const grouped = groupVariants(items);
-  let cards = '';
+  let sections = '';
   for (const feat of FEATURED_ZIMS) {
-    if (_isFeaturedInstalled(feat, grouped)) continue; // Skip installed — they show on homepage Discover
-    const group = grouped.find(g => g.name === feat.match || g.name.startsWith(feat.match + '_'));
-    if (!group) continue;
-    const variants = group.variants || [group];
-    const withLabels = variants.filter(v => v.download_url).map(v => ({
-      label: variantLabel(v.download_url) || t('full'),
-      size: formatSize(v.size_bytes),
-      url: v.download_url
-    })).filter(v => !v.url.includes('_nopic_'));  // Don't offer nopic in featured — images matter for Discover
-    // Default to Full — images matter for Discover (APOD, xkcd, Wikipedia)
-    withLabels.sort((a, b) => _flavorOrder(b.url) - _flavorOrder(a.url));
-    if (withLabels.length === 0) continue;
-    // Compact banner: icon + label + download action
-    var actionsHtml;
-    if (withLabels.length > 1) {
-      var fcSelId = 'fc-sel-' + Math.random().toString(36).substr(2, 6);
-      var opts = withLabels.map(v =>
-        '<option value="' + escAttr(v.url) + '">' + esc(v.label + ' (' + v.size + ')') + '</option>'
-      ).join('');
-      actionsHtml = '<select id="' + fcSelId + '" class="fc-flavor-select fc-pack-select">' + opts + '</select>' +
-        '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(document.getElementById(\'' + fcSelId + '\').value, this)" title="' + escAttr(t('download')) + '">\u2B07</button>';
-    } else {
-      actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)" title="' + escAttr(t('download_size', {size: withLabels[0].size})) + '">\u2B07 ' +
-        esc(withLabels[0].size) + '</button>';
-    }
-    // "Unlocks" hint: what Discover feature this ZIM enables
-    var unlockHtml = feat.i18nLabel ? '<div class="fc-promo-unlock">' + tH('unlocks', {feature: t(feat.i18nLabel)}) + '</div>' : '';
-    cards += '<div class="featured-card">' +
-      '<div class="fc-promo">' +
-        '<div class="fc-promo-icon">' + feat.icon + '</div>' +
-        '<div style="display:flex;flex-direction:column;gap:1px">' +
-          '<div class="fc-promo-label">' + esc(feat.promo) + '</div>' +
-          unlockHtml +
-        '</div>' +
-      '</div>' +
-      '<div class="fc-actions">' + actionsHtml + '</div>' +
-    '</div>';
-  }
-  if (!cards) return '';
-  // Discovery Pack: collect each uninstalled featured ZIM using the user's selected flavor
-  var packHtml = '';
-  var _packCount = 0;
-  var _packTotalBytes = 0;
-  for (const feat of FEATURED_ZIMS) {
-    if (!_isFeaturedInstalled(feat, grouped)) {
-      const group = grouped.find(g => g.name === feat.match || g.name.startsWith(feat.match + '_'));
-      if (group) {
-        _packCount++;
-        var pvariants = group.variants || [group];
-        if (pvariants[0] && pvariants[0].size_bytes) _packTotalBytes += pvariants[0].size_bytes;
+    if (_isFeaturedInstalled(feat, grouped)) continue;
+    // Find ALL matching catalog groups for this Discover card type
+    var matchingGroups = grouped.filter(g => g.name === feat.match || g.name.startsWith(feat.match + '_'));
+    if (!matchingGroups.length) continue;
+    // Sort: English _en_ first, then by article count
+    matchingGroups.sort(function(a, b) {
+      var aEn = a.name.includes('_en') ? 1 : 0, bEn = b.name.includes('_en') ? 1 : 0;
+      if (aEn !== bEn) return bEn - aEn;
+      return (b.article_count || 0) - (a.article_count || 0);
+    });
+    // Build rows for each matching ZIM
+    var rows = '';
+    for (var gi = 0; gi < matchingGroups.length; gi++) {
+      var group = matchingGroups[gi];
+      var variants = group.variants || [group];
+      var withLabels = variants.filter(function(v) { return v.download_url; }).map(function(v) {
+        return { label: variantLabel(v.download_url) || t('full'), size: formatSize(v.size_bytes), url: v.download_url, bytes: v.size_bytes || 0 };
+      });
+      withLabels.sort(function(a, b) { return _flavorOrder(b.url) - _flavorOrder(a.url); }); // Full first
+      if (!withLabels.length) continue;
+      var langTag = _catLangTag(group.language);
+      var actionsHtml;
+      if (withLabels.length > 1) {
+        var fcSelId = 'fc-sel-' + Math.random().toString(36).substr(2, 6);
+        var opts = withLabels.map(function(v) {
+          return '<option value="' + escAttr(v.url) + '">' + esc(v.label + ' (' + v.size + ')') + '</option>';
+        }).join('');
+        actionsHtml = '<select id="' + fcSelId + '" class="ci-flavor-select" onclick="event.stopPropagation()">' + opts + '</select>' +
+          '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(document.getElementById(\'' + fcSelId + '\').value, this)">' + tH('download') + '</button>';
+      } else {
+        actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' +
+          tH('download_size', {size: withLabels[0].size}) + '</button>';
       }
+      rows += '<div class="catalog-item" style="margin-bottom:4px">' +
+        '<div class="ci-info" style="flex:1;min-width:0">' +
+          '<div class="ci-title" style="font-size:13px">' + esc(group.title || group.name) + langTag + '</div>' +
+        '</div>' +
+        '<div class="ci-actions">' + actionsHtml + '</div>' +
+      '</div>';
     }
-  }
-  if (_packCount >= 3) {
-    var packSizeStr = _packTotalBytes > 0 ? ' \u00b7 ' + formatSize(_packTotalBytes) : '';
-    packHtml = '<div class="fc-pack">' +
-      '<div style="display:flex;flex-direction:column;gap:2px"><span class="fc-pack-label">\u2728 ' + tH('discovery_pack') + '</span>' +
-      '<span style="font-size:11px;color:var(--text2)">' + tH('download_to_unlock', {n: _packCount}) + '</span></div>' +
-      '<button class="ci-add-btn fc-pack-btn" onclick="event.stopPropagation();_downloadPackFromSelects(this)">\u2B07 All' + packSizeStr + '</button>' +
+    sections += '<div style="margin-bottom:16px">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+        '<span style="font-size:20px">' + feat.icon + '</span>' +
+        '<div><div style="font-size:13px;font-weight:600;color:var(--text)">' + tH(feat.i18nLabel) + '</div>' +
+        '<div style="font-size:11px;color:var(--text2)">' + esc(feat.promo) + '</div></div>' +
+      '</div>' +
+      rows +
     '</div>';
   }
-  return '<div class="featured-section">' + packHtml + '<div class="featured-scroll">' + cards + '</div></div>';
+  if (!sections) return '';
+  return '<div class="featured-section" style="padding:0 0 8px">' +
+    '<div class="ci-section-label">' + tH('discover') + '</div>' +
+    sections +
+  '</div>';
 }
 
 function _restoreCatalogLang() {
@@ -4868,16 +4939,14 @@ function _flavorOrder(url) { return url.includes('_mini_') ? 0 : url.includes('_
 function renderCatalogItem(group) {
   const item = group;
   const variants = group.variants || [item];
-  const meta = [];
-  if (item.article_count) meta.push(item.article_count.toLocaleString() + ' ' + t('articles'));
-  const langDisplay = formatLanguage(item.language);
-  if (langDisplay) meta.push(langDisplay);
-  if (item.date) meta.push(item.date);
+  const metaTags = [];
+  if (item.article_count) metaTags.push(item.article_count.toLocaleString() + ' ' + t('articles'));
+  if (item.date) metaTags.push(item.date);
   const sizes = variants.map(v => v.size_bytes).sort((a, b) => a - b);
   if (sizes.length > 1) {
-    meta.push(formatSize(sizes[0]) + ' \u2013 ' + formatSize(sizes[sizes.length - 1]));
+    metaTags.push(formatSize(sizes[0]) + ' – ' + formatSize(sizes[sizes.length - 1]));
   } else {
-    meta.push(formatSize(sizes[0]));
+    metaTags.push(formatSize(sizes[0]));
   }
   const iconHtml = item.icon_url
     ? '<img src="/manage/thumb?url=' + encodeURIComponent(item.icon_url) + '" width="40" height="40" loading="lazy">'
@@ -4927,7 +4996,7 @@ function renderCatalogItem(group) {
     '<div class="ci-info">' +
       '<div class="ci-title">' + esc(item.title || item.name) + _catLangTag(item.language) + '</div>' +
       (item.summary ? '<div class="ci-summary">' + esc(item.summary) + '</div>' : '') +
-      '<div class="ci-meta">' + meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
+      '<div class="ci-meta">' + metaTags.map(function(m){return '<span class="ci-meta-tag">'+m+'</span>'}).join('') + '</div>' +
     '</div>' +
     '<div class="ci-actions">' + actionsHtml + '</div>' +
   '</div>';
@@ -4956,6 +5025,9 @@ function switchManageTab(tab) {
     q.placeholder = t('search_placeholder');
     renderActivityTab();
   } else {
+    // Default catalog language filter to user's UI language
+    var catalogLang = _UI_TO_CATALOG[_currentLang];
+    if (catalogLang) manageLangFilter = catalogLang;
     renderBrowseGallery();
   }
 }
@@ -5149,20 +5221,15 @@ async function renderHistoryTab() {
 
         const meta = [];
         if (ev.size_bytes) meta.push(fmtSize(ev.size_bytes / (1024 * 1024 * 1024)));
-        if (zim && typeof zim.entries === 'number') meta.push(t('n_entries', {n: zim.entries.toLocaleString()}));
-        if (zim && zim.language) meta.push(_langDisplayName(zim.language));
-        var flavor = variantLabel(ev.filename || (zim && zim.file) || '');
-        if (flavor) meta.push(flavor);
         meta.push(time);
 
         const clickable = zim && !zim._fromEvent;
-        var desc = (zim && zim.description) ? '<div class="ci-meta" style="margin-top:2px;opacity:0.6">' + esc(zim.description) + '</div>' : '';
+        var evLangTag = zim ? _catLangTag(zim.language) : '';
         h += '<div class="catalog-item"' + (clickable ? ' style="cursor:pointer" onclick="enterSource(\'' + escJs(zim.name) + '\',true)"' : '') + '>' +
           '<div class="ci-icon">' + iconHtml + '</div>' +
           '<div class="ci-info">' +
-            '<div class="ci-title">' + esc(title) + '</div>' +
-            '<div class="ci-meta">' + meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
-            desc +
+            '<div class="ci-title">' + esc(title) + evLangTag + '</div>' +
+            '<div class="ci-meta">' + meta.map(function(m){return '<span class="ci-meta-tag">'+m+'</span>'}).join('') + '</div>' +
           '</div>' +
           '<div class="ci-actions"><span style="font-size:12px;font-weight:600;color:' + labelColor + '">' + label + '</span></div>' +
         '</div>';
@@ -5539,15 +5606,26 @@ function _msPreferencesHtml() {
 }
 
 function _msServerHtml() {
-  if (IS_DESKTOP) {
-    return '<div class="ms-hint">' + tH('server_config_hint') + '</div>' +
-      '<div class="ms-actions"><button class="manage-btn-action" onclick="openSettings()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('open_server_settings') + '</button></div>';
-  }
-  // Docker/server: fetch zim_dir + data_dir from stats endpoint
   var h = '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
-    '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
-    '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
-  // Async fill
+    '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>';
+  if (IS_DESKTOP) {
+    // Desktop: add browse buttons for folder selection + port + save
+    h = '<div class="ms-field"><label>' + tH('zim_folder') + '</label>' +
+      '<div style="display:flex;gap:8px"><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
+      '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseZimFolder()">' + tH('choose_folder') + '</button></div></div>' +
+      '<div class="ms-field"><label>' + tH('data_folder') + '</label>' +
+      '<div style="display:flex;gap:8px"><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
+      '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseDataFolder()">' + tH('choose_folder') + '</button></div></div>' +
+      '<div class="ms-hint">' + tH('data_folder_hint') + '</div>' +
+      '<div class="ms-field"><label>' + tH('port') + '</label><input type="number" id="ms-port" min="1024" max="65535" value="8899"></div>' +
+      '<div class="ms-hint">' + tH('restart_hint') + '</div>' +
+      '<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' +
+        '<button class="manage-btn-action" onclick="settingsSaveInline()">' + tH('save') + '</button>' +
+      '</div>';
+  } else {
+    h += '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
+  }
+  // Async fill from stats
   manageFetch('/manage/stats').then(function(r) { return r.json(); }).then(function(s) {
     var el = document.getElementById('ms-zim-dir');
     if (el && s.disk && s.disk.zim_dir) el.value = s.disk.zim_dir;
@@ -5555,6 +5633,9 @@ function _msServerHtml() {
     var el2 = document.getElementById('ms-data-dir');
     if (el2 && s.disk && s.disk.data_dir) el2.value = s.disk.data_dir;
     else if (el2) el2.value = '(unknown)';
+    // For desktop, fill port
+    var portEl = document.getElementById('ms-port');
+    if (portEl && s.port) portEl.value = s.port;
   }).catch(function() {
     var el = document.getElementById('ms-zim-dir');
     if (el) el.value = '(unavailable)';
@@ -5602,12 +5683,14 @@ function getInstalledPillsHtml() {
   const langCounts = {};  // lang → count
   for (const z of zims) {
     const cat = z.category || categorizeZim(z.name);
-    const lang = z.language || '';
-    if (!catsByLang[lang]) catsByLang[lang] = new Set();
-    catsByLang[lang].add(cat);
-    if (!langsByCat[cat]) langsByCat[cat] = new Set();
-    langsByCat[cat].add(lang);
-    langCounts[lang] = (langCounts[lang] || 0) + 1;
+    const langs = _parseLangs(z.language);
+    for (const lang of langs) {
+      if (!catsByLang[lang]) catsByLang[lang] = new Set();
+      catsByLang[lang].add(cat);
+      if (!langsByCat[cat]) langsByCat[cat] = new Set();
+      langsByCat[cat].add(lang);
+      langCounts[lang] = (langCounts[lang] || 0) + 1;
+    }
   }
   const allCats = [...new Set(Object.keys(langsByCat))].sort();
   let h = '';
@@ -5654,7 +5737,7 @@ function renderInstalled(filterText) {
   for (const z of zims) {
     const cat = z.category || categorizeZim(z.name);
     if (manageCategoryFilter && cat !== manageCategoryFilter) continue;
-    if (manageLangFilter && z.language !== manageLangFilter) continue;
+    if (manageLangFilter && !_zimMatchesLang(z, manageLangFilter)) continue;
     if (filterText) {
       const ft = filterText.toLowerCase();
       const title = (z.title || z.name).toLowerCase();
@@ -5705,6 +5788,7 @@ function renderInstalled(filterText) {
           '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>' +
         '</span>');
       } else if (flavor) {
+        // Only show non-default flavors (Mini, No images) for single-variant ZIMs
         meta.push('<span style="color:var(--text2);font-weight:500">' + esc(flavor) + '</span>');
       }
       const upd = _availableUpdates[z.file];
@@ -5722,7 +5806,7 @@ function renderInstalled(filterText) {
         '<div class="ci-icon">' + iconHtml + '</div>' +
         '<div class="ci-info">' +
           '<div class="ci-title">' + esc(z.title || z.name) + langTag + '</div>' +
-          '<div class="ci-meta">' + meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
+          '<div class="ci-meta">' + meta.map(function(m){return '<span class="ci-meta-tag">'+m+'</span>'}).join('') + '</div>' +
         '</div>' +
         '<div class="ci-actions">' + actionsHtml + '</div>' +
       '</div>';
@@ -6483,9 +6567,13 @@ function openReader(url) {
       _topBtn.innerHTML = '\u2191';
       _topBtn.onclick = function() { frame.contentWindow.scrollTo({top:0,behavior:'smooth'}); };
       frame.contentDocument.body.appendChild(_topBtn);
+      var _scrollTicking = false;
       frame.contentWindow.addEventListener('scroll', function() {
-        _topBtn.style.display = frame.contentWindow.scrollY > 300 ? 'flex' : 'none';
-      });
+        if (!_scrollTicking) { _scrollTicking = true; requestAnimationFrame(function() {
+          _topBtn.style.display = frame.contentWindow.scrollY > 300 ? 'flex' : 'none';
+          _scrollTicking = false;
+        }); }
+      }, {passive: true});
     } catch(e) {}
     // Only intercept clicks in ZIM content, not in static viewer pages (pdf.js)
     var _frameLoc = ''; try { _frameLoc = frame.contentWindow.location.pathname; } catch(e) {}
@@ -7927,6 +8015,36 @@ async function settingsSave() {
     } catch(e) {}
   }
   closeSettings();
+}
+
+async function settingsSaveInline() {
+  if (!IS_DESKTOP || !window.pywebview) return;
+  const updates = {};
+  const zimDir = document.getElementById('ms-zim-dir');
+  const dataDir = document.getElementById('ms-data-dir');
+  const portInput = document.getElementById('ms-port');
+  if (zimDir && zimDir.value !== _settingsOriginal.zim_dir) updates.zim_dir = zimDir.value;
+  if (dataDir && dataDir.value !== (_settingsOriginal.data_dir || '')) updates.data_dir = dataDir.value;
+  if (portInput) { var p = parseInt(portInput.value, 10); if (p !== _settingsOriginal.port) updates.port = p; }
+  if (Object.keys(updates).length === 0) return;
+  try {
+    const needsRestart = await pywebview.api.save_config(updates);
+    if (needsRestart) setTimeout(() => pywebview.api.restart(), 500);
+  } catch(e) {}
+}
+async function msChooseZimFolder() {
+  if (!IS_DESKTOP || !window.pywebview) return;
+  try {
+    var path = await pywebview.api.choose_folder();
+    if (path) document.getElementById('ms-zim-dir').value = path;
+  } catch(e) {}
+}
+async function msChooseDataFolder() {
+  if (!IS_DESKTOP || !window.pywebview) return;
+  try {
+    var path = await pywebview.api.choose_folder();
+    if (path) document.getElementById('ms-data-dir').value = path;
+  } catch(e) {}
 }
 
 let _refreshing = false;

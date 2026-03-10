@@ -3528,8 +3528,12 @@ def _extract_zim_metadata(name, path):
                     meta_date = val.decode("utf-8", errors="replace").strip()
                 elif key == "Language":
                     raw_lang = val.decode("utf-8", errors="replace").strip().lower()
-                    # Convert ISO 639-3 to 639-1, or keep 2-letter codes as-is
-                    meta_lang = _ISO639_3_TO_1.get(raw_lang, raw_lang if len(raw_lang) == 2 else "")
+                    # Handle multilingual ZIMs (comma-separated codes)
+                    if "," in raw_lang:
+                        parts = [p.strip() for p in raw_lang.split(",") if p.strip()]
+                        meta_lang = ",".join(_ISO639_3_TO_1.get(p, p if len(p) == 2 else p[:2]) for p in parts)
+                    else:
+                        meta_lang = _ISO639_3_TO_1.get(raw_lang, raw_lang if len(raw_lang) == 2 else "")
                 elif key.startswith("Illustration_48x48"):
                     has_icon = True
             except Exception:
