@@ -317,9 +317,10 @@
   "build": "Build",
 
   "ms_library": "Library",
-  "ms_display": "Display",
+  "ms_display": "Preferences",
   "ms_server": "Server",
   "ms_security": "Security",
+  "ms_display_section": "Display",
 
   "welcome_lang_title": "Looking for {lang} content?",
   "welcome_lang_body": "Zimi stores entire encyclopedias offline. Browse the Catalog to download {lang} Wikipedia and more.",

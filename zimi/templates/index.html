@@ -170,6 +170,7 @@
     background: linear-gradient(135deg, var(--amber), var(--amber2));
     color: #000; border-color: transparent; font-weight: 600;
   }
+  .pill.dimmed { opacity: 0.35; pointer-events: none; }
 
   /* ── Language pills (above source pills in search results) ── */
   .lang-pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 8px; }
@@ -647,6 +648,7 @@
   .ms-pane .ms-field input:focus { outline: none; border-color: var(--amber-border); }
   .ms-pane .ms-field input[readonly] { opacity: 0.6; }
   .ms-pane .ms-hint { font-size: 12px; color: var(--text2); opacity: 0.7; margin-top: 8px; }
+  .ms-section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); margin-bottom: 8px; }
   .manage-search { margin-bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
   .manage-search input {
     flex: 1; padding: 9px 14px; background: var(--surface); border: 1px solid var(--border);
@@ -4284,16 +4286,48 @@ var _CATALOG_LANGS = [
   ['kor','Korean'],['hin','Hindi'],['tur','Turkish'],['pol','Polish'],['nld','Dutch'],
   ['swe','Swedish'],['vie','Vietnamese'],['heb','Hebrew'],['fas','Persian'],['ukr','Ukrainian']
 ];
-function _buildCatalogLangSelect() {
-  var defaultLang = _UI_TO_CATALOG[_currentLang] || 'eng';
-  var h = '<select id="catalog-lang" onchange="_catalogCache=null;if(_browseView===\'drilldown\'&&manageCategoryFilter)drillCategory(manageCategoryFilter);else if(_browseView===\'search\'){var v=q.value.trim();if(v)browseCatalogFilter(v);else renderBrowseGallery();}else renderBrowseGallery();" style="max-width:160px">';
-  h += '<option value="">' + tH('all_languages') + '</option>';
-  for (var i = 0; i < _CATALOG_LANGS.length; i++) {
-    var code = _CATALOG_LANGS[i][0], name = _CATALOG_LANGS[i][1];
-    h += '<option value="' + code + '"' + (code === defaultLang ? ' selected' : '') + '>' + esc(name) + '</option>';
+
+// Shared language pill renderer — used by both Installed and Catalog tabs
+// counts: {langCode: n}, onclick: function name, validSet: optional Set of valid lang codes (others dimmed)
+function _renderLangPills(counts, onclick, validSet) {
+  var langs = Object.keys(counts).sort(function(a, b) { return (counts[b] || 0) - (counts[a] || 0); });
+  if (langs.length < 2) return '';
+  var h = '<div class="pills" style="margin-bottom:12px;justify-content:center">';
+  for (var j = 0; j < langs.length; j++) {
+    var lc = langs[j];
+    var name = _langDisplayName(lc) || lc;
+    var active = manageLangFilter === lc;
+    var dimmed = validSet && !validSet.has(lc);
+    h += '<button class="pill' + (active ? ' active' : '') + (dimmed ? ' dimmed' : '') +
+      '" onclick="' + onclick + '(\'' + escAttr(lc) + '\')">' +
+      esc(name) + '</button>';
   }
-  h += '</select>';
+  h += '</div>';
   return h;
+}
+
+function _countLangsByCategory(items, catKey) {
+  var counts = {};
+  var knownKeys = new Set(BROWSE_CATEGORIES.map(function(c) { return c.key; }));
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    if (catKey) {
+      var cat = item.category || 'other';
+      if (catKey === 'other') { if (cat !== 'other' && knownKeys.has(cat) && !_mergedToOther.has(cat)) continue; }
+      else if (cat !== catKey) continue;
+    }
+    var lang = (item.language || '').toLowerCase();
+    if (lang) counts[lang] = (counts[lang] || 0) + 1;
+  }
+  return counts;
+}
+
+function filterCatalogLang(lang) {
+  manageLangFilter = (manageLangFilter === lang) ? null : lang;
+  _catalogCache = null;
+  if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
+  else if (_browseView === 'search') { var v = q.value.trim(); if (v) browseCatalogFilter(v); else renderBrowseGallery(); }
+  else renderBrowseGallery();
 }
 
 // ── Browse category gallery metadata ──
@@ -4419,23 +4453,14 @@ function autoCategorize(item) {
 }
 
 async function loadFullCatalog() {
-  const lang = (document.getElementById('catalog-lang') || {}).value || '';
+  const lang = manageLangFilter || '';
   if (_catalogCache && _catalogCacheLang === lang) return _catalogCache;
 
-  // Reuse global catalog cache if fetching all languages (no filter)
-  if (!lang && _globalCatalogCache) {
-    let items = _globalCatalogCache.slice();
-    for (const item of items) item.category = autoCategorize(item);
-    _enrichCatalogInstalled(items);
-    _catalogCache = items;
-    _catalogCacheLang = lang;
-    return _catalogCache;
-  }
-  // Reuse global cache with language filter applied client-side
-  if (lang && _globalCatalogCache) {
-    let items = _globalCatalogCache.filter(function(it) {
-      return (it.language || '').toLowerCase() === lang.toLowerCase();
-    });
+  // Reuse global catalog cache (filter client-side)
+  if (_globalCatalogCache) {
+    let items = lang
+      ? _globalCatalogCache.filter(function(it) { return (it.language || '').toLowerCase() === lang.toLowerCase(); })
+      : _globalCatalogCache.slice();
     for (const item of items) item.category = autoCategorize(item);
     _enrichCatalogInstalled(items);
     _catalogCache = items;
@@ -4443,7 +4468,7 @@ async function loadFullCatalog() {
     return _catalogCache;
   }
 
-  const res = await manageFetch('/manage/catalog?lang=' + encodeURIComponent(lang) + '&count=500&start=0');
+  const res = await manageFetch('/manage/catalog?lang=&count=500&start=0');
   const data = await res.json();
   if (data.error) throw new Error(data.error);
   const total = data.total || 0;
@@ -4608,13 +4633,7 @@ function buildFeaturedCarousel(items) {
 }
 
 function _restoreCatalogLang() {
-  // Move language select back to manage-search bar if it was moved to footer
-  var sel = document.getElementById('catalog-lang');
-  if (!sel) return;
-  var bar = document.querySelector('#manage-browse .manage-search');
-  if (bar && !bar.contains(sel)) { bar.appendChild(sel); bar.style.display = ''; }
-  // Re-show the manage-search bar
-  if (bar) bar.style.display = '';
+  // No-op: language pills are inline now (no dropdown to move)
 }
 
 function renderBrowseGallery() {
@@ -4622,8 +4641,8 @@ function renderBrowseGallery() {
   if (_pendingDrill) {
     var drill = _pendingDrill;
     _pendingDrill = null;
-    var langSel = document.getElementById('catalog-lang');
-    if (langSel) { langSel.value = drill.lang; _catalogCache = null; }
+    manageLangFilter = drill.lang || null;
+    _catalogCache = null;
     drillCategory(drill.catKey);
     return;
   }
@@ -4633,10 +4652,6 @@ function renderBrowseGallery() {
   manageCategoryFilter = null;
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   q.placeholder = t('search_catalog');
-
-  // Detach language select before destroying DOM (it may have been moved into footer)
-  var _langSel = document.getElementById('catalog-lang');
-  if (_langSel && _langSel.parentNode) _langSel.parentNode.removeChild(_langSel);
 
   results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
 
@@ -4681,6 +4696,9 @@ function renderBrowseGallery() {
     }
 
     let h = '<div class="browse-gallery">';
+    // Language pills from full (unfiltered) catalog
+    var allItems = _globalCatalogCache || items;
+    h += _renderLangPills(_countLangsByCategory(allItems, null), 'filterCatalogLang');
     h += buildFeaturedCarousel(items);
     h += '<div class="browse-grid">';
 
@@ -4704,18 +4722,9 @@ function renderBrowseGallery() {
     var activeCats = BROWSE_CATEGORIES.filter(function(c) { return (catCounts[c.key] || 0) > 0; }).length;
     h += '<div class="browse-footer">' +
       '<div class="browse-footer-count">' + groupVariants(items).length.toLocaleString() + ' sources \u00B7 ' + activeCats + ' categories</div>' +
-      '<div class="browse-footer-lang"></div>' +
     '</div>';
     h += '</div>';
     results.innerHTML = h;
-    // Re-append the detached language select into the footer
-    var langTarget = results.querySelector('.browse-footer-lang');
-    if (_langSel && langTarget) {
-      langTarget.appendChild(_langSel);
-      // Hide the now-empty manage-search bar
-      var searchBar = document.querySelector('#manage-browse .manage-search');
-      if (searchBar) searchBar.style.display = 'none';
-    }
   }).catch(err => {
     results.innerHTML = '<div class="empty"><p>' + tH('failed_load_library') + '</p><div class="hint">' + esc(String(err)) + '</div></div>';
   });
@@ -4749,18 +4758,18 @@ function drillCategory(catKey) {
     // Sort: installed first, then alphabetical
     grouped.sort((a, b) => (a.title || a.name || '').localeCompare(b.title || b.name || ''));
 
+    // Language pills scoped to this category (counts from unfiltered global cache)
+    var allItems = _globalCatalogCache || filtered;
+    var langPills = _renderLangPills(_countLangsByCategory(allItems, catKey), 'filterCatalogLang');
     let h = '<div class="browse-drilldown-header">' +
       '<button class="browse-back" onclick="renderBrowseGallery()">' + tH('back_to_catalog') + '</button>' +
       '<span class="browse-drilldown-title">' + (catMeta ? catMeta.icon + ' ' : '') + esc(catName) + '</span>' +
       '<span class="browse-drilldown-count">' + tH('n_available', {n: grouped.length}) + '</span>' +
     '</div>';
+    h += langPills;
     for (const item of grouped) h += renderCatalogItem(item);
     if (!grouped.length) h += '<div class="empty"><p>' + tH('no_zims_category') + '</p></div>';
     results.innerHTML = h;
-    // Move language picker into drill-down header for easy access
-    var _langEl = document.getElementById('catalog-lang');
-    var _drillHeader = results.querySelector('.browse-drilldown-header');
-    if (_langEl && _drillHeader) _drillHeader.appendChild(_langEl);
   }).catch(err => {
     results.innerHTML = '<div class="empty"><p>' + tH('failed_load_category') + '</p></div>';
   });
@@ -5140,14 +5149,20 @@ async function renderHistoryTab() {
 
         const meta = [];
         if (ev.size_bytes) meta.push(fmtSize(ev.size_bytes / (1024 * 1024 * 1024)));
+        if (zim && typeof zim.entries === 'number') meta.push(t('n_entries', {n: zim.entries.toLocaleString()}));
+        if (zim && zim.language) meta.push(_langDisplayName(zim.language));
+        var flavor = variantLabel(ev.filename || (zim && zim.file) || '');
+        if (flavor) meta.push(flavor);
         meta.push(time);
 
         const clickable = zim && !zim._fromEvent;
+        var desc = (zim && zim.description) ? '<div class="ci-meta" style="margin-top:2px;opacity:0.6">' + esc(zim.description) + '</div>' : '';
         h += '<div class="catalog-item"' + (clickable ? ' style="cursor:pointer" onclick="enterSource(\'' + escJs(zim.name) + '\',true)"' : '') + '>' +
           '<div class="ci-icon">' + iconHtml + '</div>' +
           '<div class="ci-info">' +
             '<div class="ci-title">' + esc(title) + '</div>' +
             '<div class="ci-meta">' + meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
+            desc +
           '</div>' +
           '<div class="ci-actions"><span style="font-size:12px;font-weight:600;color:' + labelColor + '">' + label + '</span></div>' +
         '</div>';
@@ -5350,9 +5365,8 @@ async function renderManage() {
     '<div id="manage-status" class="manage-settings">' +
       '<div class="ms-nav" id="ms-nav">' +
         '<button class="ms-nav-item active" data-ms="library" onclick="switchMs(\'library\')">' + tH('ms_library') + '</button>' +
-        '<button class="ms-nav-item" data-ms="display" onclick="switchMs(\'display\')">' + tH('ms_display') + '</button>' +
+        '<button class="ms-nav-item" data-ms="preferences" onclick="switchMs(\'preferences\')">' + tH('ms_display') + '</button>' +
         '<button class="ms-nav-item" data-ms="server" onclick="switchMs(\'server\')">' + tH('ms_server') + '</button>' +
-        '<button class="ms-nav-item" data-ms="security" onclick="switchMs(\'security\')">' + tH('ms_security') + '</button>' +
       '</div>' +
       '<div id="ms-pane" class="ms-pane"><div class="loading"><span class="spinner-inline"></span>Loading\u2026</div></div>' +
     '</div>' +
@@ -5367,9 +5381,6 @@ async function renderManage() {
     '<div id="manage-collections" class="manage-tab-content' + (manageTab === 'collections' ? ' active' : '') + '"></div>' +
     '<div id="manage-history" class="manage-tab-content' + (manageTab === 'history' ? ' active' : '') + '"></div>' +
     '<div id="manage-browse" class="manage-tab-content' + (manageTab === 'browse' ? ' active' : '') + '">' +
-      '<div class="manage-search" style="justify-content:flex-end">' +
-        _buildCatalogLangSelect() +
-      '</div>' +
       '<div id="catalog-results"></div>' +
     '</div>';
 
@@ -5433,9 +5444,8 @@ function switchMs(section) {
   if (!pane) return;
   switch(section) {
     case 'library': pane.innerHTML = _msLibraryHtml(); break;
-    case 'display': pane.innerHTML = _msDisplayHtml(); break;
+    case 'preferences': pane.innerHTML = _msPreferencesHtml(); break;
     case 'server': pane.innerHTML = _msServerHtml(); break;
-    case 'security': pane.innerHTML = _msSecurityHtml(); break;
   }
 }
 
@@ -5509,13 +5519,23 @@ async function cleanupTmpFiles() {
   }
 }
 
-function _msDisplayHtml() {
+function _msPreferencesHtml() {
   var showXzim = localStorage.getItem('zimi_hide_cross_zim_links') !== '1';
   var showDiscover = localStorage.getItem('zimi_hide_discover') !== '1';
-  return '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
+  var h = '<div class="ms-section-label">' + tH('ms_display_section') + '</div>' +
+    '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
     '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>';
+  // Security section
+  h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_security') + '</div>' +
+    '<div class="ms-actions">' +
+      '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('set_change_password') + '</button>';
+  if (sessionStorage.getItem('zimi_manage_pw')) {
+    h += '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('log_out') + '</button>';
+  }
+  h += '</div>';
+  return h;
 }
 
 function _msServerHtml() {
@@ -5544,14 +5564,6 @@ function _msServerHtml() {
   return h;
 }
 
-function _msSecurityHtml() {
-  var h = '<div class="ms-actions">' +
-    '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('set_change_password') + '</button>';
-  if (sessionStorage.getItem('zimi_manage_pw')) {
-    h += '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('log_out') + '</button>';
-  }
-  return h + '</div>';
-}
 
 async function toggleAutoUpdate() {
   const freqSel = document.getElementById('auto-update-freq');
@@ -5584,40 +5596,46 @@ async function toggleAutoUpdate() {
 
 function getInstalledPillsHtml() {
   const zims = zimsCache || [];
-  const cats = new Set();
-  const langs = new Set();
+  // Build cross-reference: which cats exist per lang, which langs exist per cat
+  const catsByLang = {};  // lang → Set of cats
+  const langsByCat = {};  // cat → Set of langs
+  const langCounts = {};  // lang → count
   for (const z of zims) {
-    cats.add(z.category || categorizeZim(z.name));
-    if (z.language) langs.add(z.language);
+    const cat = z.category || categorizeZim(z.name);
+    const lang = z.language || '';
+    if (!catsByLang[lang]) catsByLang[lang] = new Set();
+    catsByLang[lang].add(cat);
+    if (!langsByCat[cat]) langsByCat[cat] = new Set();
+    langsByCat[cat].add(lang);
+    langCounts[lang] = (langCounts[lang] || 0) + 1;
   }
-  const sorted = [...cats].sort();
+  const allCats = [...new Set(Object.keys(langsByCat))].sort();
   let h = '';
-  if (sorted.length > 1) {
-    h += '<div class="pills" style="margin-bottom:8px"><button class="pill' + (!manageCategoryFilter ? ' active' : '') + '" onclick="filterManageCategory(null)">All</button>';
-    for (const cat of sorted) {
-      h += '<button class="pill' + (manageCategoryFilter === cat ? ' active' : '') + '" onclick="filterManageCategory(\'' + escAttr(cat) + '\')">' + esc(cat) + '</button>';
+  // Category pills — dimmed if no items match the active language filter
+  if (allCats.length > 1) {
+    h += '<div class="pills" style="margin-bottom:8px">';
+    for (const cat of allCats) {
+      const dimmed = manageLangFilter && !langsByCat[cat].has(manageLangFilter);
+      h += '<button class="pill' + (manageCategoryFilter === cat ? ' active' : '') + (dimmed ? ' dimmed' : '') +
+        '" onclick="filterManageCategory(\'' + escAttr(cat) + '\')">' + esc(cat) + '</button>';
     }
     h += '</div>';
   }
-  // Language filter row — only show when multiple languages present
-  if (langs.size > 1) {
-    const sortedLangs = [...langs].sort((a, b) => _langDisplayName(a).localeCompare(_langDisplayName(b)));
-    h += '<div class="pills" style="margin-bottom:12px"><button class="pill' + (!manageLangFilter ? ' active' : '') + '" onclick="filterManageLang(null)">' + tH('all_languages') + '</button>';
-    for (const lang of sortedLangs) {
-      h += '<button class="pill' + (manageLangFilter === lang ? ' active' : '') + '" onclick="filterManageLang(\'' + escAttr(lang) + '\')">' + esc(_langDisplayName(lang)) + '</button>';
-    }
-    h += '</div>';
+  // Language pills — shared renderer, dimmed if no items in active category
+  if (Object.keys(langCounts).length > 1) {
+    var validLangs = manageCategoryFilter ? new Set(langsByCat[manageCategoryFilter] || []) : null;
+    h += _renderLangPills(langCounts, 'filterManageLang', validLangs);
   }
   return h;
 }
 
 function filterManageCategory(cat) {
-  manageCategoryFilter = cat;
+  manageCategoryFilter = (manageCategoryFilter === cat) ? null : cat;
   renderInstalled();
 }
 
 function filterManageLang(lang) {
-  manageLangFilter = lang;
+  manageLangFilter = (manageLangFilter === lang) ? null : lang;
   renderInstalled();
 }
 
@@ -5794,7 +5812,6 @@ function switchToFlavor(downloadUrl, zimName) {
 // ── Browse tab: explicit server-side catalog search (Search button / Enter in catalog-q) ──
 async function searchCatalog(append) {
   const cq = document.getElementById('catalog-q');
-  const lang = document.getElementById('catalog-lang');
   const results = document.getElementById('catalog-results');
   if (!results) return;
   _browseView = 'search';
@@ -5805,7 +5822,7 @@ async function searchCatalog(append) {
   }
 
   const query = (cq && cq.value) || '';
-  const langVal = (lang && lang.value) || 'eng';
+  const langVal = manageLangFilter || '';
   const pageSize = 50;
   try {
     const res = await manageFetch('/manage/catalog?q=' + encodeURIComponent(query) + '&lang=' + encodeURIComponent(langVal) + '&count=' + pageSize + '&start=' + (catalogPage * pageSize));
@@ -6162,7 +6179,7 @@ async function refreshDownloads() {
         // Re-merge install status into existing catalog (no OPDS re-fetch needed)
         if (_catalogCache) _enrichCatalogInstalled(_catalogCache);
         renderInstalled();
-        checkForUpdates();
+        checkForUpdates(true);
         // Update status card counts
         const sr = await manageFetch('/manage/status');
         const sd = await sr.json();
@@ -6245,11 +6262,30 @@ function _autoUpdateTimerHtml() {
   return '<svg title="Auto-update ' + sel.value + '" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;opacity:0.5;margin-right:5px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
 }
 
-async function checkForUpdates() {
+var _lastUpdateCheck = 0;
+var _UPDATE_CHECK_INTERVAL = 3600000;  // 1 hour
+
+async function checkForUpdates(force) {
   const el = document.getElementById('update-status');
   if (!el) return;
+  // Use cached results if checked recently
+  var now = Date.now();
+  if (!force && _lastUpdateCheck && (now - _lastUpdateCheck < _UPDATE_CHECK_INTERVAL)) {
+    // Just re-render with cached _availableUpdates
+    var count = Object.keys(_availableUpdates).length;
+    var timer = _autoUpdateTimerHtml();
+    if (count > 0) {
+      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--amber)">' + timer + tH('updates_available', {n: count}) + '</span>';
+      var updateBtn = document.getElementById('update-all-btn');
+      if (updateBtn) { updateBtn.style.display = ''; updateBtn.textContent = t('update_all'); }
+    } else {
+      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('all_up_to_date') + '</span>';
+    }
+    return;
+  }
   try {
     const res = await manageFetch('/manage/check-updates');
+    _lastUpdateCheck = now;
     const data = await res.json();
     _availableUpdates = {};
     if (data.updates) {
