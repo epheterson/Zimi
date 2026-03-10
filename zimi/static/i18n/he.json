@@ -322,5 +322,20 @@
   "view_original": "הצג מקור",
   "translate_to": "תרגם ל{lang}",
   "view_in_lang": "הצג ב{lang}",
-  "download_lang": "הורד {lang}"
+  "download_lang": "הורד {lang}",
+  "delete_collection": "מחק אוסף",
+  "au_controlled_by_env": "נשלט על ידי משתנה ZIMI_AUTO_UPDATE",
+  "n_mirrors": "{n} מראות",
+  "retry": "נסה שוב",
+  "almanac": "לוח שנה",
+  "choose_folder_placeholder": "בחר תיקייה...",
+  "lang_searching": "מחפש מאמר ב{lang}...",
+  "lang_not_found": "לא זמין ב{lang}",
+  "lang_go_home": "לדף הבית",
+  "lang_search_for": "חפש \"{title}\"",
+  "lang_did_you_mean": "מאמרים דומים ב{lang}",
+  "lang_exact_match": "התאמה מדויקת",
+  "lang_close_match": "התאמה קרובה",
+  "lang_possible_match": "התאמה אפשרית",
+  "lang_no_zim": "אין מקורות ב{lang} מותקנים"
 }

@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zimi</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon.png?v=5">
-<link rel="shortcut icon" type="image/png" href="/favicon.png?v=5">
+<link rel="icon" type="image/png" sizes="64x64" href="/favicon-64.png?v=6">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon.png?v=6">
+<link rel="shortcut icon" type="image/png" href="/favicon.png?v=6">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -135,7 +136,8 @@
     border-radius: var(--radius); transition: all 0.2s; border: 1px solid transparent;
   }
   .random-btn { font-size: 18px; }
-  .manage-btn, .newtab-btn { display: none; font-size: 16px; }
+  .manage-btn { font-size: 16px; }
+  .newtab-btn { display: none; font-size: 16px; }
   .manage-btn { position: relative; }
   .random-btn:hover, .manage-btn:hover, .newtab-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .random-btn .dice { display: inline-block; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
@@ -200,6 +202,38 @@
     cursor: pointer; font-size: 14px; padding: 2px 6px;
   }
   .lang-banner-dismiss:hover { color: var(--text); }
+
+  /* ── Language switch panel (ephemeral, bottom of reader) ── */
+  .lang-switch-panel {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 201;
+    background: var(--surface); border-top: 1px solid var(--border);
+    padding: 12px 16px; animation: langPanelIn 0.2s ease;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+  }
+  @keyframes langPanelIn { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .lang-switch-panel.dismissing { animation: langPanelOut 0.15s ease forwards; }
+  @keyframes langPanelOut { to { transform: translateY(100%); opacity: 0; } }
+  .lsp-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .lsp-title { font-size: 13px; color: var(--text); font-weight: 500; }
+  .lsp-close { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 4px; }
+  .lsp-close:hover { color: var(--text); background: var(--surface2); }
+  .lsp-status { font-size: 12px; color: var(--text2); display: flex; align-items: center; gap: 6px; }
+  .lsp-spinner { width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.6s linear infinite; }
+  .lsp-candidates { margin-top: 6px; }
+  .lsp-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; border-radius: 6px; font-size: 13px; color: var(--text); transition: background 0.1s; }
+  .lsp-item:hover { background: var(--surface2); }
+  .lsp-confidence { font-size: 10px; padding: 1px 6px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
+  .lsp-confidence.exact { background: var(--amber-glow); color: var(--amber); border: 1px solid var(--amber-border); }
+  .lsp-confidence.close { background: rgba(100,160,255,0.1); color: #6aa0ff; border: 1px solid rgba(100,160,255,0.2); }
+  .lsp-confidence.weak { background: var(--surface2); color: var(--text3); border: 1px solid var(--border); }
+  .lsp-actions { margin-top: 8px; display: flex; gap: 8px; }
+  .lsp-action { padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 12px; cursor: pointer; transition: all 0.15s; }
+  .lsp-action:hover { background: var(--surface3, var(--surface2)); border-color: var(--text3); }
+  .lsp-action.primary { background: var(--amber-glow); border-color: var(--amber-border); color: var(--text); }
+  .lsp-action.primary:hover { background: var(--amber); color: #000; }
+  .lsp-action { position: relative; overflow: hidden; }
+  .lsp-action .ld-ring { width: 20px; height: 20px; position: static; display: inline-block; vertical-align: middle; margin-left: 6px; border-radius: 0; }
+  .lsp-action.downloading { pointer-events: none; opacity: 0.8; }
   .manage-badge {
     position: absolute; top: 2px; right: 2px; width: 8px; height: 8px;
     background: var(--amber); border-radius: 50%; pointer-events: none;
@@ -324,15 +358,24 @@
   .ld-variant-btn.done svg { display: flex; }
 
   /* ── RTL support ── */
-  [dir="rtl"] .topbar { flex-direction: row-reverse; }
-  [dir="rtl"] .topbar-search { margin-left: 0; margin-right: 4px; }
-  [dir="rtl"] .topbar-search input { padding: 9px 36px 9px 14px; }
-  [dir="rtl"] .search-icon { left: auto; right: 12px; }
-  [dir="rtl"] .kbd { left: auto; right: auto; }
+  [dir="rtl"] .topbar { direction: rtl; }
+  [dir="rtl"] .topbar-search input { text-align: right; padding: 9px 14px 9px 36px; }
+  [dir="rtl"] .search-icon { left: 12px; right: auto; }
+  [dir="rtl"] .kbd { right: auto; left: 8px; }
   [dir="rtl"] .back-btn { transform: scaleX(-1); }
   [dir="rtl"] .bc-sep { transform: scaleX(-1); }
+  [dir="rtl"] .result { direction: rtl; }
+  [dir="rtl"] .result-body { text-align: right; }
   [dir="rtl"] .result-source { flex-direction: row-reverse; }
+  [dir="rtl"] .result-thumb { order: 1; }
+  [dir="rtl"] .footer { direction: rtl; }
   [dir="rtl"] .footer-sub { direction: ltr; } /* keep kbd hints LTR */
+  [dir="rtl"] .lang-switch-panel { direction: rtl; text-align: right; }
+  [dir="rtl"] .lang-banner { direction: rtl; }
+  [dir="rtl"] .lang-dropdown { direction: rtl; text-align: right; }
+  [dir="rtl"] .stat-card { direction: rtl; }
+  [dir="rtl"] .manage-tab { direction: rtl; }
+  [dir="rtl"] .empty { direction: rtl; }
 
   /* ── Category headings ── */
   .cat-heading {
@@ -629,7 +672,8 @@
     width: 40px; height: 40px; font-size: 16px; font-weight: 700; color: var(--accent);
   }
   .catalog-item .ci-info { flex: 1; min-width: 0; }
-  .catalog-item .ci-title { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 3px; }
+  .catalog-item .ci-title { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .ci-lang-tag { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; background: var(--surface2); color: var(--text2); border: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0; }
   .catalog-item .ci-summary {
     font-size: 12px; color: var(--text2); line-height: 1.4; margin-bottom: 4px;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
@@ -1282,7 +1326,7 @@
     <div id="suggest-dropdown" class="suggest-dropdown"></div>
   </div>
   <a href="#" id="random-btn" class="random-btn" title="Random article (R)" data-i18n-title="random_article" onclick="randomArticle(event)"><span class="dice">&#x1F3B2;</span></a>
-  <button id="library-btn" class="library-btn" title="Library (H)" data-i18n-title="library" onclick="if(readerOpen){toggleBookmark();_updateLibraryBtnIcon()}else{toggleLibraryPanel()}"></button>
+  <button id="library-btn" class="library-btn" title="Library (H)" data-i18n-title="library" onclick="if(readerOpen){toggleBookmark();_updateLibraryBtnIcon()}else{toggleLibraryPanel()}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
   <button id="lang-selector-btn" class="lang-selector-btn" title="Language" data-i18n-title="language" onclick="toggleLangDropdown(event)" aria-label="Language" data-i18n-aria="language"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg></button>
   <div id="lang-dropdown" class="lang-dropdown"></div>
   <a href="#" id="manage-btn" class="manage-btn" title="Library Manager" data-i18n-title="library_manager" onclick="toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
@@ -1321,7 +1365,7 @@
     <p class="subtitle" style="font-size:11px;opacity:0.5;margin-top:-16px;margin-bottom:24px" data-i18n="large_files_hint">ZIM files can be large (Wikipedia is ~100 GB) — pick a drive with plenty of space.</p>
     <label data-i18n="zim_folder">ZIM folder</label>
     <div class="field-row">
-      <input type="text" id="onboard-path" readonly placeholder="Choose a folder...">
+      <input type="text" id="onboard-path" readonly placeholder="Choose a folder..." data-i18n-placeholder="choose_folder_placeholder">
       <button class="btn-browse" onclick="desktopChooseFolder('onboard-path')" data-i18n="choose_folder">Choose Folder</button>
     </div>
     <div class="btn-row">
@@ -1394,7 +1438,7 @@
 
 <div id="reader" class="reader-view">
   <div class="reader-loading" id="reader-loading"><div class="spinner"></div><span data-i18n="loading">Loading...</span></div>
-  <iframe id="reader-frame" title="Article content" sandbox="allow-same-origin allow-scripts allow-popups allow-downloads"></iframe>
+  <iframe id="reader-frame" title="Article content" data-i18n-title="article_content" sandbox="allow-same-origin allow-scripts allow-popups allow-downloads"></iframe>
 </div>
 <div id="almanac-view" class="almanac-view">
   <div class="almanac-content" id="almanac-content"></div>
@@ -1407,6 +1451,7 @@
 let mode = 'home'; // 'home' | 'source' | 'search' | 'manage'
 let currentSource = null;
 let readerOpen = false;
+let _readerTimeout = null;
 let readerSource = null; // ZIM name of what's in reader (for topbar badge when no explicit source)
 let sourceAutoReader = false; // true when enterSource auto-opened the reader (non-zimgit homepage)
 let _popstateNoAutoReader = false; // suppress auto-reader on popstate navigation
@@ -1460,7 +1505,7 @@ let _currentLang = 'en';
 
 function t(key, vars) {
   var s = _i18n[key] || _i18nFallback[key] || key;
-  if (vars) for (var k in vars) s = s.replace('{' + k + '}', vars[k]);
+  if (vars) for (var k in vars) s = s.replaceAll('{' + k + '}', vars[k]);
   return s;
 }
 // HTML-escaped version of t() for use in innerHTML/attribute contexts
@@ -1626,64 +1671,196 @@ function _insertLangBanner(html) {
 function _langBannerSwitch(zimName) {
   var banner = document.getElementById('lang-banner');
   if (banner) { banner.remove(); _adjustBodyPadding(); }
-  _dismissLangCandidates();
+  _dismissLangSwitchPanel();
   if (!currentArticle) { enterSource(zimName, true); return; }
 
   var articleTitle = currentArticle.title || currentArticle.path.replace(/^A\//, '').replace(/_/g, ' ');
   var articlePath = currentArticle.path;
+  var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === zimName; });
+  var langName = _langNameForZim(zimInfo);
+
+  // Show searching state
+  _showLangSwitchPanel('searching', { langName: langName });
 
   // 1. Try Q-ID / interlanguage links (high confidence → navigate directly)
   fetch('/article-languages?zim=' + encodeURIComponent(currentArticle.zim) + '&path=' + encodeURIComponent(articlePath))
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var match = (data.languages || []).find(function(l) { return l.zim === zimName; });
-      if (match) { openArticle(match.zim, match.path); return; }
+      if (match) { _dismissLangSwitchPanel(); openArticle(match.zim, match.path); return; }
 
       // 2. Search by title — show candidates if ambiguous
       return fetch('/search?q=' + encodeURIComponent(articleTitle) + '&zim=' + encodeURIComponent(zimName) + '&limit=5')
         .then(function(r) { return r.json(); })
         .then(function(sr) {
-          if (!sr.results || sr.results.length === 0) return;
+          if (!sr.results || sr.results.length === 0) {
+            _showLangSwitchPanel('not-found', { langName: langName, zimName: zimName, articleTitle: articleTitle });
+            return;
+          }
           // Exact title match → navigate directly
           var exact = sr.results.find(function(r) {
             return r.title && r.title.toLowerCase() === articleTitle.toLowerCase();
           });
-          if (exact) { openArticle(exact.zim, exact.path); return; }
-          // Ambiguous — show candidate picker so user decides
-          _showLangCandidates(sr.results, zimName);
+          if (exact) { _dismissLangSwitchPanel(); openArticle(exact.zim, exact.path); return; }
+          // Check if any result is a close+ match
+          var hasGoodMatch = sr.results.some(function(r) {
+            var c = _matchConfidence(r, articleTitle);
+            return c === 'exact' || c === 'close';
+          });
+          if (hasGoodMatch) {
+            _showLangSwitchPanel('candidates', { langName: langName, zimName: zimName, articleTitle: articleTitle, results: sr.results });
+          } else {
+            // All weak matches — show as "not found" with optional related articles
+            _showLangSwitchPanel('not-found', { langName: langName, zimName: zimName, articleTitle: articleTitle, weakResults: sr.results });
+          }
         });
     })
-    .catch(function() {});
+    .catch(function() {
+      _showLangSwitchPanel('not-found', { langName: langName, zimName: zimName, articleTitle: articleTitle });
+    });
 }
 
-// Show candidate articles when cross-language match is ambiguous
-function _showLangCandidates(results, zimName) {
-  _dismissLangCandidates();
+function _langNameForZim(zimInfo) {
+  if (!zimInfo) return '';
+  return ((_AVAILABLE_LANGS.find(function(l) { return l.code === zimInfo.language; }) || {}).name || zimInfo.language);
+}
+
+// Confidence scoring for cross-language article matches
+function _matchConfidence(result, articleTitle) {
+  var rt = (result.title || '').toLowerCase();
+  var at = articleTitle.toLowerCase();
+  if (rt === at) return 'exact';
+  // Close: one contains the other, or >60% word overlap
+  if (rt.indexOf(at) >= 0 || at.indexOf(rt) >= 0) return 'close';
+  var rWords = rt.split(/\s+/), aWords = at.split(/\s+/);
+  var overlap = rWords.filter(function(w) { return aWords.indexOf(w) >= 0; }).length;
+  if (overlap / Math.max(aWords.length, 1) > 0.5) return 'close';
+  return 'weak';
+}
+
+function _showLangSwitchPanel(state, opts) {
+  _dismissLangSwitchPanel();
   var el = document.createElement('div');
-  el.id = 'lang-candidates';
-  el.style.cssText = 'position:fixed;top:56px;left:0;right:0;z-index:201;background:var(--surface);' +
-    'border-bottom:1px solid var(--amber-border);padding:8px 12px;animation:fadeIn 0.15s ease';
-  var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === zimName; });
-  var langName = zimInfo ? ((_AVAILABLE_LANGS.find(function(l) { return l.code === zimInfo.language; }) || {}).name || zimInfo.language) : '';
-  var html = '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">' +
-    (langName ? esc(langName) + ' — ' : '') + 'Did you mean:</div>';
-  for (var i = 0; i < Math.min(results.length, 5); i++) {
-    var r = results[i];
-    html += '<div style="padding:5px 8px;cursor:pointer;border-radius:4px;font-size:13px;color:var(--text);' +
-      'transition:background 0.1s" onmouseenter="this.style.background=\'var(--surface2)\'" ' +
-      'onmouseleave="this.style.background=\'none\'" ' +
-      'onclick="_dismissLangCandidates();openArticle(\'' + escJs(r.zim) + '\',\'' + escJs(r.path) + '\')">' +
-      esc(r.title || r.path) + '</div>';
+  el.id = 'lang-switch-panel';
+  el.className = 'lang-switch-panel';
+  var h = '';
+
+  if (state === 'searching') {
+    h = '<div class="lsp-status"><div class="lsp-spinner"></div> ' + tH('lang_searching', {lang: esc(opts.langName)}) + '</div>';
+  } else if (state === 'not-found') {
+    // Check if current ZIM is a mini/nopic variant — suggest upgrading
+    var zimFlavor = '';
+    if (opts.zimName) {
+      var zn = opts.zimName.toLowerCase();
+      if (zn.includes('mini')) zimFlavor = 'mini';
+      else if (zn.includes('nopic')) zimFlavor = 'nopic';
+    }
+    var upgradeHtml = '';
+    if (zimFlavor && manageEnabled) {
+      _prefetchCatalog();
+      var upgrades = _globalCatalogCache ? _catalogUpgradesForZim(opts.zimName) : [];
+      if (upgrades.length) {
+        var flavorName = zimFlavor === 'mini' ? t('mini') : t('no_images');
+        upgradeHtml = '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;color:var(--text2)">' +
+          '<div style="margin-bottom:6px">' + tH('lang_mini_hint', {flavor: esc(flavorName)}) + '</div>';
+        for (var ui = 0; ui < Math.min(upgrades.length, 2); ui++) {
+          var ug = upgrades[ui];
+          var ugVid = 'lsp-ug-' + Math.random().toString(36).substr(2, 6);
+          var ugLabel = variantLabel(ug.download_url) || t('full');
+          var ugSize = ug.size_bytes ? formatSize(ug.size_bytes) : '';
+          upgradeHtml += '<div class="lsp-item" style="cursor:default">' +
+            '<span style="flex:1"><strong>' + esc(ugLabel) + '</strong>' +
+            (ugSize ? ' <span style="color:var(--text3);font-size:11px">' + esc(ugSize) + '</span>' : '') + '</span>' +
+            '<button class="lsp-action primary" id="' + ugVid + '" onclick="event.stopPropagation();_ldDownload(\'' + escAttr(ug.download_url) + '\',\'' + ugVid + '\',\'\')">' + tH('download') + '</button></div>';
+        }
+        upgradeHtml += '</div>';
+      }
+    }
+    h += '<div class="lsp-header"><span class="lsp-title">' + tH('lang_not_found', {lang: esc(opts.langName)}) + '</span>' +
+      '<button class="lsp-close" onclick="_dismissLangSwitchPanel()">\u2715</button></div>';
+    h += '<div class="lsp-actions">';
+    h += '<button class="lsp-action primary" onclick="_dismissLangSwitchPanel();enterSource(\'' + escJs(opts.zimName) + '\', true)">' + tH('lang_go_home') + '</button>';
+    h += '<button class="lsp-action" onclick="_dismissLangSwitchPanel();_langSwitchSearch(\'' + escJs(opts.zimName) + '\',\'' + escJs(opts.articleTitle) + '\')">' + tH('lang_search_for', {title: esc(opts.articleTitle.length > 30 ? opts.articleTitle.slice(0, 30) + '\u2026' : opts.articleTitle)}) + '</button>';
+    h += '</div>';
+    // Show weak matches as optional "related" list
+    if (opts.weakResults && opts.weakResults.length) {
+      h += '<div class="lsp-candidates" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px">';
+      for (var wi = 0; wi < Math.min(opts.weakResults.length, 3); wi++) {
+        var wr = opts.weakResults[wi];
+        h += '<div class="lsp-item" onclick="_dismissLangSwitchPanel();openArticle(\'' + escJs(wr.zim) + '\',\'' + escJs(wr.path) + '\')">' +
+          '<span style="flex:1;color:var(--text2)">' + esc(wr.title || wr.path) + '</span></div>';
+      }
+      h += '</div>';
+    }
+    h += upgradeHtml;
+  } else if (state === 'not-found-no-zim') {
+    h += '<div class="lsp-header"><span class="lsp-title">' + tH('lang_no_zim', {lang: esc(opts.langName)}) + '</span>' +
+      '<button class="lsp-close" onclick="_dismissLangSwitchPanel()">\u2715</button></div>';
+    if (manageEnabled) {
+      // Show inline download options if catalog is loaded
+      _prefetchCatalog();
+      var dlItems = _globalCatalogCache ? _catalogMatchesForLang(opts.langCode) : [];
+      if (dlItems.length) {
+        h += '<div class="lsp-candidates">';
+        for (var di = 0; di < Math.min(dlItems.length, 3); di++) {
+          var dl = dlItems[di];
+          if (!dl.download_url) continue;
+          var dlVid = 'lsp-dl-' + Math.random().toString(36).substr(2, 6);
+          var dlLabel = variantLabel(dl.download_url) || (dl.title || dl.name);
+          var dlDetail = (dl.article_count ? dl.article_count.toLocaleString() + ' ' + t('articles') : '') +
+            (dl.size_bytes ? ' \u00b7 ' + formatSize(dl.size_bytes) : '');
+          h += '<div class="lsp-item" style="cursor:default">' +
+            '<span style="flex:1"><strong>' + esc(dlLabel) + '</strong>' +
+            (dlDetail ? ' <span style="color:var(--text3);font-size:11px">' + esc(dlDetail) + '</span>' : '') + '</span>' +
+            '<button class="lsp-action primary" id="' + dlVid + '" onclick="event.stopPropagation();_ldDownload(\'' + escAttr(dl.download_url) + '\',\'' + dlVid + '\',\'' + escJs(opts.langCode) + '\')">' + tH('download') + '</button></div>';
+        }
+        h += '</div>';
+      } else {
+        h += '<div class="lsp-actions">';
+        h += '<button class="lsp-action primary" onclick="_dismissLangSwitchPanel();switchManageTab(\'browse\')">' + tH('catalog_tab') + '</button>';
+        h += '</div>';
+      }
+    }
+  } else if (state === 'candidates') {
+    h += '<div class="lsp-header"><span class="lsp-title">' + tH('lang_did_you_mean', {lang: esc(opts.langName)}) + '</span>' +
+      '<button class="lsp-close" onclick="_dismissLangSwitchPanel()">\u2715</button></div>';
+    h += '<div class="lsp-candidates">';
+    for (var i = 0; i < Math.min(opts.results.length, 5); i++) {
+      var r = opts.results[i];
+      var conf = _matchConfidence(r, opts.articleTitle);
+      var confLabel = conf === 'exact' ? t('lang_exact_match') : conf === 'close' ? t('lang_close_match') : t('lang_possible_match');
+      h += '<div class="lsp-item" onclick="_dismissLangSwitchPanel();openArticle(\'' + escJs(r.zim) + '\',\'' + escJs(r.path) + '\')">' +
+        '<span style="flex:1">' + esc(r.title || r.path) + '</span>' +
+        '<span class="lsp-confidence ' + conf + '">' + esc(confLabel) + '</span></div>';
+    }
+    h += '</div>';
   }
-  html += '<div style="padding:4px 8px;cursor:pointer;font-size:11px;color:var(--text3)" ' +
-    'onclick="_dismissLangCandidates()">Cancel</div>';
-  el.innerHTML = html;
+
+  el.innerHTML = h;
   document.body.appendChild(el);
+
+  // Auto-dismiss searching state after 10s (safety net)
+  if (state === 'searching') {
+    el._timeout = setTimeout(function() { _dismissLangSwitchPanel(); }, 10000);
+  }
 }
 
-function _dismissLangCandidates() {
-  var el = document.getElementById('lang-candidates');
-  if (el) el.remove();
+function _dismissLangSwitchPanel() {
+  var el = document.getElementById('lang-switch-panel');
+  if (!el) return;
+  if (el._timeout) clearTimeout(el._timeout);
+  el.classList.add('dismissing');
+  setTimeout(function() { if (el.parentNode) el.remove(); }, 150);
+}
+
+function _langSwitchSearch(zimName, query) {
+  // Switch to the source and search within it
+  var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === zimName; });
+  if (zimInfo) {
+    closeReader();
+    currentSource = zimName;
+    doSearch(query);
+  }
 }
 // ── Language dropdown download integration ──
 // Catalog data is cached globally for instant language dropdown.
@@ -1777,9 +1954,31 @@ function _catalogMatchesForLang(langCode) {
   return result;
 }
 
+function _catalogUpgradesForZim(zimName) {
+  // Find larger catalog variants for a mini/nopic ZIM
+  if (!_globalCatalogCache) return [];
+  var zn = zimName.toLowerCase();
+  // Extract base: "wikipedia_he_all_mini" → "wikipedia_he_all"
+  var base = zn.replace(/_mini$|_nopic$|_maxi$/, '').replace(/_mini_|_nopic_|_maxi_/, '_');
+  return _globalCatalogCache.filter(function(it) {
+    var n = (it.name || '').toLowerCase();
+    if (n === zn) return false; // skip same
+    // Must be same project+lang base
+    var itBase = n.replace(/_mini$|_nopic$|_maxi$/, '').replace(/_mini_|_nopic_|_maxi_/, '_');
+    if (itBase !== base) return false;
+    // Must be higher quality (nopic > mini, full/maxi > nopic)
+    var isMini = zn.includes('mini'), isNopic = zn.includes('nopic');
+    if (isMini) return !n.includes('mini'); // anything bigger than mini
+    if (isNopic) return !n.includes('nopic') && !n.includes('mini'); // full/maxi only
+    return false;
+  }).sort(function(a, b) { return (a.size_bytes || 0) - (b.size_bytes || 0); });
+}
+
 function _showManageBadge(show) {
   var btn = document.getElementById('manage-btn');
   if (!btn) return;
+  // Don't show badge when manage view is already open (button is close X)
+  if (mode === 'manage' || _almanacOpen) show = false;
   var badge = btn.querySelector('.manage-badge');
   if (show && !badge) {
     badge = document.createElement('span');
@@ -1970,7 +2169,7 @@ function updateTopbar() {
       manageBtnEl.onclick = closeAlmanac;
     }
   } else {
-    manageBtnEl.style.display = manageEnabled && !activeSource ? 'flex' : 'none';
+    manageBtnEl.style.display = 'flex';
     manageBtnEl.innerHTML = _gearSvg;
     manageBtnEl.title = t('library_manager');
     manageBtnEl.style.color = '';
@@ -1987,7 +2186,7 @@ function updateTopbar() {
 
   // Search placeholder
   if (_almanacOpen) {
-    q.placeholder = 'Almanac';
+    q.placeholder = t('almanac');
   } else if (currentSource) {
     q.placeholder = _zimTitle(currentSource);
   } else if (readerOpen && readerSource) {
@@ -2401,9 +2600,9 @@ function enterScope(type, label, zimNames, push) {
   activeSourceFilters.clear();
   hideSuggest();
   if (push) history.pushState({ mode: 'home', scope: homeScope }, '', '/?scope=' + encodeURIComponent(type + ':' + label));
-  var t = label + ' \u2014 Zimi';
-  document.title = t;
-  _setWindowTitle(t);
+  var docTitle = label + ' \u2014 Zimi';
+  document.title = docTitle;
+  _setWindowTitle(docTitle);
   updateTopbar();
   renderHome();
 }
@@ -2427,9 +2626,9 @@ async function enterSource(name, push) {
   activeSourceFilters.clear();
   hideSuggest();
   if (push) history.pushState({ mode: 'source', source: name }, '', '/w/' + encodeURIComponent(name));
-  var t = (info.title || name) + ' \u2014 Zimi';
-  document.title = t;
-  _setWindowTitle(t);
+  var docTitle = (info.title || name) + ' \u2014 Zimi';
+  document.title = docTitle;
+  _setWindowTitle(docTitle);
   updateTopbar();
   await renderSource(name);
 }
@@ -2798,7 +2997,7 @@ var _almanacLoaded = false;
 function openAlmanac(replaceState) {
   if (!_almanacLoaded) {
     var s = document.createElement('script');
-    s.src = '/static/almanac.js?v=38';
+    s.src = '/static/almanac.js?v=39';
     s.onload = function() { _almanacLoaded = true; _openAlmanacInner(replaceState); };
     s.onerror = function() { console.error('Failed to load almanac.js'); };
     document.head.appendChild(s);
@@ -3185,9 +3384,12 @@ function _renderDiscover(el, items) {
   } catch(e) {}
 }
 function _fmtDiscoverDate(dateStr) {
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var p = dateStr.split('-');
-  return months[parseInt(p[1], 10) - 1] + ' ' + parseInt(p[2], 10) + ', ' + p[0];
+  try {
+    var d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString(_currentLang || 'en', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch(e) {
+    return dateStr;
+  }
 }
 
 async function toggleFavorite(zimName) {
@@ -3783,17 +3985,17 @@ function renderSearchResults(data, scope) {
   }).join('') + '</div>';
 
   if (remaining > 0) {
-    html += '<div class="load-more"><button onclick="showMoreResults()">Show ' +
-      Math.min(RESULTS_PER_PAGE, remaining) + ' more results</button></div>';
+    html += '<div class="load-more"><button onclick="showMoreResults()">' +
+      tH('show_more', {n: Math.min(RESULTS_PER_PAGE, remaining)}) + '</button></div>';
   }
 
   if (displayElapsed) {
-    html += '<div class="results-summary">Found ' + totalCount + ' results in ' + displayElapsed + 's</div>';
+    html += '<div class="results-summary">' + tH('found_results_in', {n: totalCount, time: displayElapsed}) + '</div>';
   }
 
   output.innerHTML = html;
 
-  if (!scope) loadSnippets();
+  loadSnippets();
 }
 
 function showMoreResults() {
@@ -3894,7 +4096,6 @@ function clearSearch() {
       if (manageCategoryFilter) drillCategory(manageCategoryFilter);
       else renderBrowseGallery();
     } else {
-      renderInstalledPills();
       renderInstalled();
     }
   } else if (currentSource) {
@@ -4072,6 +4273,7 @@ function enterManage(e) {
 
 let manageTab = 'installed';
 let manageCategoryFilter = null;
+let manageLangFilter = null;
 let catalogPage = 0;
 let _catalogObserver = null;
 let _catalogTotal = 0;
@@ -4120,6 +4322,20 @@ const BROWSE_CATEGORIES = [
   { key: 'other',          i18n: 'cat_other',          icon: '\u{1F4E6}', descKey: 'cat_other_desc' },
 ];
 
+// 2-letter code → display name (uses Intl API with fallback)
+var _langDisplayCache = {};
+function _langDisplayName(code) {
+  if (!code) return '';
+  if (_langDisplayCache[code]) return _langDisplayCache[code];
+  try {
+    var dn = new Intl.DisplayNames(['en'], { type: 'language' });
+    _langDisplayCache[code] = dn.of(code);
+  } catch(e) {
+    _langDisplayCache[code] = code.toUpperCase();
+  }
+  return _langDisplayCache[code];
+}
+
 // Language display: "Multilingual (24 langs)" or "French" instead of raw codes
 const LANG_NAMES = {
   eng:'English',fra:'French',deu:'German',spa:'Spanish',por:'Portuguese',ita:'Italian',
@@ -4140,6 +4356,24 @@ function formatLanguage(langStr) {
   // Multilingual
   if (codes.length <= 3) return codes.map(c => LANG_NAMES[c] || c.toUpperCase()).join(', ');
   return t('multilingual', {n: codes.length});
+}
+
+// 3-letter → 2-letter language code for tags
+const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru',ara:'ar',zho:'zh',jpn:'ja',kor:'ko',hin:'hi',tur:'tr',pol:'pl',nld:'nl',swe:'sv',vie:'vi',tha:'th',heb:'he',ell:'el',ron:'ro',hun:'hu',fas:'fa',ind:'id',ukr:'uk',ces:'cs',dan:'da',fin:'fi',nor:'no',cat:'ca',mul:'mul'};
+function _catLangTag(langStr) {
+  if (!langStr) return '';
+  var codes = langStr.toLowerCase().split(',').map(c => c.trim()).filter(Boolean);
+  if (codes.length === 0 || (codes.length === 1 && codes[0] === 'eng')) return '';
+  if (codes.length === 1) {
+    var c2 = _LANG3TO2[codes[0]] || codes[0].substring(0, 2);
+    return '<span class="ci-lang-tag">' + esc(_langDisplayName(c2)) + '</span>';
+  }
+  // Multilingual — show "Multilingual" tag
+  if (codes.length > 3) return '<span class="ci-lang-tag">' + esc(t('multilingual', {n: codes.length})) + '</span>';
+  return codes.map(c => {
+    var c2 = _LANG3TO2[c] || c.substring(0, 2);
+    return '<span class="ci-lang-tag">' + esc(_langDisplayName(c2)) + '</span>';
+  }).join('');
 }
 
 // OPDS category → browse category mapping (case-insensitive)
@@ -4495,7 +4729,7 @@ function renderBrowseGallery() {
       if (searchBar) searchBar.style.display = 'none';
     }
   }).catch(err => {
-    results.innerHTML = '<div class="empty"><p>Failed to load library</p><div class="hint">' + esc(String(err)) + '</div></div>';
+    results.innerHTML = '<div class="empty"><p>' + tH('failed_load_library') + '</p><div class="hint">' + esc(String(err)) + '</div></div>';
   });
 }
 
@@ -4694,7 +4928,7 @@ function renderCatalogItem(group) {
   return '<div class="catalog-item' + (anyInstalled ? ' ci-installed-item' : '') + '"' + catAttr + openAttr + '>' +
     '<div class="ci-icon">' + iconHtml + '</div>' +
     '<div class="ci-info">' +
-      '<div class="ci-title">' + esc(item.title || item.name) + '</div>' +
+      '<div class="ci-title">' + esc(item.title || item.name) + _catLangTag(item.language) + '</div>' +
       (item.summary ? '<div class="ci-summary">' + esc(item.summary) + '</div>' : '') +
       '<div class="ci-meta">' + meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
     '</div>' +
@@ -4706,6 +4940,7 @@ function renderCatalogItem(group) {
 function switchManageTab(tab) {
   manageTab = tab;
   manageCategoryFilter = null;
+  manageLangFilter = null;
   _browseView = 'gallery';
   document.querySelectorAll('.manage-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.manage-tab-content').forEach(c => c.classList.toggle('active', c.id === 'manage-' + tab));
@@ -4759,7 +4994,7 @@ async function renderCollectionsTab() {
     h += '<div style="display:flex;align-items:center;gap:12px">' +
       '<span class="coll-name" style="flex:1">' + esc(label) +
       ' <span style="font-weight:400;color:var(--text2);font-size:12px">(' + tH('n_sources', {n: collZims.length}) + ')</span></span>' +
-      '<button class="coll-del" onclick="event.stopPropagation();deleteCollection(\'' + escAttr(name) + '\', this)" title="Delete collection">\u00D7</button>' +
+      '<button class="coll-del" onclick="event.stopPropagation();deleteCollection(\'' + escAttr(name) + '\', this)" title="' + escAttr(t('delete_collection')) + '">\u00D7</button>' +
     '</div>';
     if (expanded) {
       // Group ZIMs by category (same names + order as homepage)
@@ -5163,7 +5398,7 @@ async function renderManage() {
       freqSel.value = au.enabled ? (au.frequency || 'weekly') : 'disabled';
       if (au.locked) {
         freqSel.disabled = true;
-        freqSel.title = 'Controlled by ZIMI_AUTO_UPDATE env var';
+        freqSel.title = t('au_controlled_by_env');
         freqSel.style.opacity = '0.5';
       }
     }
@@ -5230,7 +5465,7 @@ function _msLibraryHtml() {
           var cur = au.enabled ? (au.frequency || 'weekly') : 'disabled';
           var opts = [['disabled',t('au_disabled')],['daily',t('au_daily')],['weekly',t('au_weekly')],['monthly',t('au_monthly')]];
           var optHtml = opts.map(function(o) { return '<option value="' + o[0] + '"' + (o[0] === cur ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
-          var extra = au.locked ? ' disabled title="Controlled by ZIMI_AUTO_UPDATE env var" style="font-size:12px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);opacity:0.5"' : ' style="font-size:12px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"';
+          var extra = au.locked ? ' disabled title="' + escAttr(t('au_controlled_by_env')) + '" style="font-size:12px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);opacity:0.5"' : ' style="font-size:12px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"';
           return '<select id="auto-update-freq" onchange="toggleAutoUpdate()"' + extra + '>' + optHtml + '</select>';
         })() +
       '</span>' +
@@ -5276,12 +5511,12 @@ async function cleanupTmpFiles() {
     var el = document.getElementById('tmp-files-section');
     if (el) { el.style.opacity = '0.3'; setTimeout(function() { el.innerHTML = ''; el.style.opacity = ''; }, 300); }
     if (data.removed && data.removed.length) {
-      showToast(t('partial_removed', {n: data.removed.length}));
+      _showToast(t('partial_removed', {n: data.removed.length}));
     } else {
-      showToast(t('no_partial'));
+      _showToast(t('no_partial'));
     }
   } catch(e) {
-    showToast(t('failed_clean'));
+    _showToast(t('failed_clean'));
     if (btn) { btn.disabled = false; btn.textContent = t('clean_up'); }
   }
 }
@@ -5362,18 +5597,39 @@ async function toggleAutoUpdate() {
 function getInstalledPillsHtml() {
   const zims = zimsCache || [];
   const cats = new Set();
-  for (const z of zims) cats.add(z.category || categorizeZim(z.name));
-  const sorted = [...cats].sort();
-  if (sorted.length <= 1) return '';
-  let h = '<div class="pills" style="margin-bottom:12px"><button class="pill' + (!manageCategoryFilter ? ' active' : '') + '" onclick="filterManageCategory(null)">All</button>';
-  for (const cat of sorted) {
-    h += '<button class="pill' + (manageCategoryFilter === cat ? ' active' : '') + '" onclick="filterManageCategory(\'' + escAttr(cat) + '\')">' + esc(cat) + '</button>';
+  const langs = new Set();
+  for (const z of zims) {
+    cats.add(z.category || categorizeZim(z.name));
+    if (z.language) langs.add(z.language);
   }
-  return h + '</div>';
+  const sorted = [...cats].sort();
+  let h = '';
+  if (sorted.length > 1) {
+    h += '<div class="pills" style="margin-bottom:8px"><button class="pill' + (!manageCategoryFilter ? ' active' : '') + '" onclick="filterManageCategory(null)">All</button>';
+    for (const cat of sorted) {
+      h += '<button class="pill' + (manageCategoryFilter === cat ? ' active' : '') + '" onclick="filterManageCategory(\'' + escAttr(cat) + '\')">' + esc(cat) + '</button>';
+    }
+    h += '</div>';
+  }
+  // Language filter row — only show when multiple languages present
+  if (langs.size > 1) {
+    const sortedLangs = [...langs].sort((a, b) => _langDisplayName(a).localeCompare(_langDisplayName(b)));
+    h += '<div class="pills" style="margin-bottom:12px"><button class="pill' + (!manageLangFilter ? ' active' : '') + '" onclick="filterManageLang(null)">' + tH('all_languages') + '</button>';
+    for (const lang of sortedLangs) {
+      h += '<button class="pill' + (manageLangFilter === lang ? ' active' : '') + '" onclick="filterManageLang(\'' + escAttr(lang) + '\')">' + esc(_langDisplayName(lang)) + '</button>';
+    }
+    h += '</div>';
+  }
+  return h;
 }
 
 function filterManageCategory(cat) {
   manageCategoryFilter = cat;
+  renderInstalled();
+}
+
+function filterManageLang(lang) {
+  manageLangFilter = lang;
   renderInstalled();
 }
 
@@ -5392,6 +5648,7 @@ function renderInstalled(filterText) {
   for (const z of zims) {
     const cat = z.category || categorizeZim(z.name);
     if (manageCategoryFilter && cat !== manageCategoryFilter) continue;
+    if (manageLangFilter && z.language !== manageLangFilter) continue;
     if (filterText) {
       const ft = filterText.toLowerCase();
       const title = (z.title || z.name).toLowerCase();
@@ -5454,10 +5711,11 @@ function renderInstalled(filterText) {
         actionsHtml = '<span class="ci-installed-badge">' + tH('installed_badge') + '</span>' +
           '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="' + escAttr(t('delete_zim')) + '">\u00D7</button>';
       }
+      var langTag = (z.language && z.language !== 'en') ? '<span class="ci-lang-tag">' + esc(_langDisplayName(z.language)) + '</span>' : '';
       items_h += '<div class="catalog-item' + (upd ? ' ci-has-update' : '') + '" style="cursor:pointer" onclick="if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(z.name) + '\',true)}">' +
         '<div class="ci-icon">' + iconHtml + '</div>' +
         '<div class="ci-info">' +
-          '<div class="ci-title">' + esc(z.title || z.name) + '</div>' +
+          '<div class="ci-title">' + esc(z.title || z.name) + langTag + '</div>' +
           '<div class="ci-meta">' + meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
         '</div>' +
         '<div class="ci-actions">' + actionsHtml + '</div>' +
@@ -5722,7 +5980,7 @@ async function deleteZim(filename, btn) {
     if (data.error) {
       // Restore card on error
       if (card) card.style.display = '';
-      btn.textContent = 'Error: ' + data.error;
+      btn.textContent = t('error') + ': ' + data.error;
       return;
     }
     if (card) card.remove();
@@ -5843,11 +6101,11 @@ async function refreshDownloads() {
 
       if (!dl.done && !dl.error) {
         h += '<div class="dl-progress"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>';
-        var mirrorInfo = dl.mirror_host ? '<span class="dl-mirror" title="' + esc(dl.mirror_host) + '">' + esc(dl.mirror_host) + (dl.mirror_count > 1 ? ' (' + dl.mirror_count + ' mirrors)' : '') + '</span>' : '';
-        h += '<div class="dl-actions">' + mirrorInfo + '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">Cancel</button></div>';
+        var mirrorInfo = dl.mirror_host ? '<span class="dl-mirror" title="' + esc(dl.mirror_host) + '">' + esc(dl.mirror_host) + (dl.mirror_count > 1 ? ' (' + tH('n_mirrors', {n: dl.mirror_count}) + ')' : '') + '</span>' : '';
+        h += '<div class="dl-actions">' + mirrorInfo + '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">' + tH('cancel') + '</button></div>';
       }
       if (dl.error && dl.error !== 'Cancelled') {
-        h += '<div class="dl-actions"><button class="dl-retry-btn" onclick="downloadZim(\'' + escAttr(dl.url) + '\')">Retry</button></div>';
+        h += '<div class="dl-actions"><button class="dl-retry-btn" onclick="downloadZim(\'' + escAttr(dl.url) + '\')">' + tH('retry') + '</button></div>';
       }
       h += '</div>';
     }
@@ -6132,9 +6390,9 @@ function _stepBackToArticle(prev, replaceState) {
     history.replaceState({ mode: 'reader', zim: prev.zim, path: prev.path }, '', stateUrl);
   }
   if (lurl.endsWith('.pdf')) url = _pdfViewerUrl(url);
-  var t = (prev.title || _titleFromPath(prev.path)) + ' \u2014 Zimi';
-  document.title = t;
-  _setWindowTitle(t);
+  var docTitle = (prev.title || _titleFromPath(prev.path)) + ' \u2014 Zimi';
+  document.title = docTitle;
+  _setWindowTitle(docTitle);
   updateTopbar();
   openReader(url);
 }
@@ -6172,7 +6430,18 @@ function openReader(url) {
     newtabBtn.href = url;
   }
 
+  frame.onerror = function() {
+    loading.classList.add('hidden');
+  };
+  // Safety timeout: if iframe doesn't load within 15s, hide spinner
+  if (_readerTimeout) clearTimeout(_readerTimeout);
+  _readerTimeout = setTimeout(function() {
+    if (readerOpen && !loading.classList.contains('hidden')) {
+      loading.classList.add('hidden');
+    }
+  }, 15000);
   frame.onload = function() {
+    clearTimeout(_readerTimeout);
     loading.classList.add('hidden');
     if (!readerOpen) return; // reader was closed — don't update title
     // Capture mousedown inside iframe for modifier-click detection + dismiss context menu
@@ -6383,9 +6652,9 @@ function openReader(url) {
         if (seg && seg !== 'blank') iTitle = seg;
       }
       if (iTitle) {
-        var t = iTitle + ' \u2014 Zimi';
-        document.title = t;
-        _setWindowTitle(t);
+        var docTitle = iTitle + ' \u2014 Zimi';
+        document.title = docTitle;
+        _setWindowTitle(docTitle);
       }
     } catch(e) { /* cross-origin or closed */ }
     // Track current article for bookmark button (iframe may have navigated via relative link)
@@ -6733,7 +7002,7 @@ function closeReader() {
   document.documentElement.style.overflowY = 'auto';
   var langBanner = document.getElementById('lang-banner');
   if (langBanner) { langBanner.remove(); _adjustBodyPadding(); }
-  _dismissLangCandidates();
+  _dismissLangSwitchPanel();
   _articleLangData = null; _articleLangKey = '';
   updateTopbar();
   _setWindowTitle('Zimi');
@@ -6874,6 +7143,9 @@ function _renderLangDropdown() {
       meta = '<span class="check">\u2713</span>';
     } else if (canSwitch) {
       meta = '<span class="ld-switch" title="' + escAttr(t('view_in_lang', {lang: l.name})) + '">' + switchIcon + '</span>';
+    } else if (inReader && count > 0) {
+      // Has ZIM but this article not confirmed — show source count as hint
+      meta = '<span class="ld-meta">' + count + '</span>';
     } else if (inReader && manageEnabled && count === 0) {
       // In reader: offer to download this language so user can read this article in it
       meta = '<span class="ld-dl-hint">' + t('download') + '</span>';
@@ -6899,6 +7171,10 @@ async function _selectLangAndSwitch(code, zim, path) {
 }
 
 async function _selectLang(code) {
+  // If already on this language, just close
+  if (code === _currentLang) { _closeLangDropdown(); return; }
+  // Dismiss any open language switch panel from a previous selection
+  _dismissLangSwitchPanel();
   _langDropdownLocked = true;
   // If reading an article, try to navigate to same article in target language
   // (suppress the banner — user already expressed intent via dropdown)
@@ -6911,11 +7187,16 @@ async function _selectLang(code) {
   if (wasReading && prevArticle) {
     var targetZim = _bestZimForLang(code, prevArticle.zim);
     _closeLangDropdown();
-    if (targetZim) {
+    if (targetZim && targetZim === prevArticle.zim) {
+      // Already reading in this language's ZIM — nothing to do
+    } else if (targetZim) {
       // Navigate to same article in target language
       _langBannerSwitch(targetZim);
+    } else {
+      // No ZIM for that language — show feedback
+      var langName = (_AVAILABLE_LANGS.find(function(ll) { return ll.code === code; }) || {}).name || code;
+      _showLangSwitchPanel('not-found-no-zim', { langName: langName, langCode: code });
     }
-    // If no ZIM for that language, just stay on current article (UI already switched)
     return;
   }
   var hasZims = _langSourceCount(code) > 0;
@@ -6993,9 +7274,15 @@ function _showLangDownloadSection(langCode) {
 function _ldDownload(url, btnId, langCode) {
   var btn = document.getElementById(btnId);
   if (!btn || btn.classList.contains('downloading')) return;
+  // Prevent duplicate downloads of the same URL
+  if (_ldDlUrl && _ldDlUrl === url) return;
   btn.classList.add('downloading');
   _ldDlUrl = url;
   _ldDlLang = langCode;
+  // For panel buttons (lsp-action), replace text with "Downloading..."
+  if (btn.classList.contains('lsp-action')) {
+    btn.textContent = t('downloading');
+  }
   // Show SVG ring progress
   var ring = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   ring.setAttribute('class', 'ld-ring');
@@ -7039,7 +7326,8 @@ function _ldPollBtn(btnId) {
     var anyActive = dls.some(function(d) { return !d.done; });
 
     if (!dl || dl.done) {
-      // Complete — show checkmark
+      // Complete — show checkmark, allow future downloads
+      _ldDlUrl = null;
       _showManageBadge(anyActive);
       if (btn) {
         btn.classList.remove('downloading');
@@ -7050,7 +7338,7 @@ function _ldPollBtn(btnId) {
       // Refresh library and auto-navigate
       fetch('/list').then(function(r) { return r.json(); }).then(function(z) {
         zimsCache = z;
-        if (mode === 'home') renderSources();
+        if (mode === 'home') renderHome();
         // Auto-navigate: find the new ZIM and open the same article
         if (_ldDlLang && readerOpen && currentArticle) {
           var newZim = z.find(function(zi) { return zi.language === _ldDlLang; });
@@ -7067,6 +7355,7 @@ function _ldPollBtn(btnId) {
       return;
     }
     if (dl.error) {
+      _ldDlUrl = null;
       _showManageBadge(anyActive);
       if (btn) {
         btn.classList.remove('downloading');
@@ -7109,8 +7398,14 @@ function toggleLangDropdown(event) {
     if (moreBtn) rect = moreBtn.getBoundingClientRect();
   }
   dd.style.top = (rect.bottom + 4) + 'px';
-  dd.style.right = Math.max(4, window.innerWidth - rect.right) + 'px';
-  dd.style.left = 'auto';
+  var isRTL = document.documentElement.getAttribute('dir') === 'rtl';
+  if (isRTL) {
+    dd.style.left = Math.max(4, rect.left) + 'px';
+    dd.style.right = 'auto';
+  } else {
+    dd.style.right = Math.max(4, window.innerWidth - rect.right) + 'px';
+    dd.style.left = 'auto';
+  }
   dd.classList.add('visible');
   setTimeout(function() {
     document.addEventListener('click', function _maybeClose(e) {

@@ -322,5 +322,20 @@
   "view_original": "Показать оригинал",
   "translate_to": "Перевести на {lang}",
   "view_in_lang": "Просмотр на {lang}",
-  "download_lang": "Скачать {lang}"
+  "download_lang": "Скачать {lang}",
+  "delete_collection": "Удалить коллекцию",
+  "au_controlled_by_env": "Управляется переменной ZIMI_AUTO_UPDATE",
+  "n_mirrors": "{n} зеркал",
+  "retry": "Повторить",
+  "almanac": "Альманах",
+  "choose_folder_placeholder": "Выберите папку...",
+  "lang_searching": "Поиск статьи на {lang}...",
+  "lang_not_found": "Недоступно на {lang}",
+  "lang_go_home": "На главную",
+  "lang_search_for": "Искать \"{title}\"",
+  "lang_did_you_mean": "Похожие статьи на {lang}",
+  "lang_exact_match": "Точное совпадение",
+  "lang_close_match": "Близкое совпадение",
+  "lang_possible_match": "Возможное совпадение",
+  "lang_no_zim": "Нет установленных источников на {lang}"
 }

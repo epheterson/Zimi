@@ -322,5 +322,20 @@
   "view_original": "查看原文",
   "translate_to": "翻译为{lang}",
   "view_in_lang": "查看{lang}版",
-  "download_lang": "下载{lang}"
+  "download_lang": "下载{lang}",
+  "delete_collection": "删除合集",
+  "au_controlled_by_env": "由 ZIMI_AUTO_UPDATE 环境变量控制",
+  "n_mirrors": "{n} 个镜像",
+  "retry": "重试",
+  "almanac": "年鉴",
+  "choose_folder_placeholder": "选择文件夹...",
+  "lang_searching": "正在查找{lang}文章...",
+  "lang_not_found": "{lang}版本不可用",
+  "lang_go_home": "前往首页",
+  "lang_search_for": "搜索\"{title}\"",
+  "lang_did_you_mean": "{lang}中的相似文章",
+  "lang_exact_match": "精确匹配",
+  "lang_close_match": "接近匹配",
+  "lang_possible_match": "可能匹配",
+  "lang_no_zim": "未安装{lang}源"
 }

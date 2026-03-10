@@ -322,5 +322,20 @@
   "view_original": "Original anzeigen",
   "translate_to": "Übersetzen auf {lang}",
   "view_in_lang": "Auf {lang} anzeigen",
-  "download_lang": "{lang} herunterladen"
+  "download_lang": "{lang} herunterladen",
+  "delete_collection": "Sammlung löschen",
+  "au_controlled_by_env": "Gesteuert durch ZIMI_AUTO_UPDATE",
+  "n_mirrors": "{n} Spiegel",
+  "retry": "Erneut versuchen",
+  "almanac": "Almanach",
+  "choose_folder_placeholder": "Ordner auswählen...",
+  "lang_searching": "Artikel auf {lang} suchen...",
+  "lang_not_found": "Nicht verfügbar auf {lang}",
+  "lang_go_home": "Zur Startseite",
+  "lang_search_for": "Nach \"{title}\" suchen",
+  "lang_did_you_mean": "Ähnliche Artikel auf {lang}",
+  "lang_exact_match": "Genau",
+  "lang_close_match": "Ähnlich",
+  "lang_possible_match": "Möglich",
+  "lang_no_zim": "Keine {lang}-Quellen installiert"
 }

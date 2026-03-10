@@ -322,5 +322,20 @@
   "view_original": "Ver original",
   "translate_to": "Traduzir para {lang}",
   "view_in_lang": "Ver em {lang}",
-  "download_lang": "Baixar {lang}"
+  "download_lang": "Baixar {lang}",
+  "delete_collection": "Excluir coleção",
+  "au_controlled_by_env": "Controlado pela variável ZIMI_AUTO_UPDATE",
+  "n_mirrors": "{n} espelhos",
+  "retry": "Tentar novamente",
+  "almanac": "Almanaque",
+  "choose_folder_placeholder": "Escolher uma pasta...",
+  "lang_searching": "Procurando artigo em {lang}...",
+  "lang_not_found": "Não disponível em {lang}",
+  "lang_go_home": "Ir para o início",
+  "lang_search_for": "Pesquisar \"{title}\"",
+  "lang_did_you_mean": "Artigos similares em {lang}",
+  "lang_exact_match": "Correspondência exata",
+  "lang_close_match": "Correspondência próxima",
+  "lang_possible_match": "Possível correspondência",
+  "lang_no_zim": "Nenhuma fonte em {lang} instalada"
 }

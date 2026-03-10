@@ -10,14 +10,16 @@ cat zimi/__main__.py | ssh nas "cat > /volume1/docker/kiwix/zimi/__main__.py"
 cat zimi/mcp_server.py | ssh nas "cat > /volume1/docker/kiwix/zimi/mcp_server.py"
 cat zimi/templates/index.html | ssh nas "cat > /volume1/docker/kiwix/zimi/templates/index.html"
 cat zimi/assets/icon.png | ssh nas "cat > /volume1/docker/kiwix/zimi/assets/icon.png"
+cat zimi/assets/favicon.png | ssh nas "cat > /volume1/docker/kiwix/zimi/assets/favicon.png"
+cat zimi/assets/favicon-64.png | ssh nas "cat > /volume1/docker/kiwix/zimi/assets/favicon-64.png"
 cat zimi/assets/apple-touch-icon.png | ssh nas "cat > /volume1/docker/kiwix/zimi/assets/apple-touch-icon.png"
 tar cf - zimi/static/ | ssh nas "cd /volume1/docker/kiwix && tar xf -"
 cat requirements.txt | ssh nas "cat > /volume1/docker/kiwix/requirements.txt"
 cat Dockerfile | ssh nas "cat > /volume1/docker/kiwix/Dockerfile"
 echo "  Files copied"
 
-ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker compose build --no-cache" 2>&1 | tail -3
-ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker compose down && /usr/local/bin/docker compose up -d" 2>&1 | tail -3
+ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose build --no-cache" 2>&1 | tail -3
+ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose down && /usr/local/bin/docker-compose up -d" 2>&1 | tail -3
 echo "  NAS deployed"
 
 echo ""

@@ -322,5 +322,20 @@
   "view_original": "عرض الأصل",
   "translate_to": "ترجمة إلى {lang}",
   "view_in_lang": "عرض بـ{lang}",
-  "download_lang": "تنزيل {lang}"
+  "download_lang": "تنزيل {lang}",
+  "delete_collection": "حذف المجموعة",
+  "au_controlled_by_env": "يتم التحكم بواسطة متغير ZIMI_AUTO_UPDATE",
+  "n_mirrors": "{n} مرايا",
+  "retry": "إعادة المحاولة",
+  "almanac": "التقويم",
+  "choose_folder_placeholder": "اختر مجلداً...",
+  "lang_searching": "جاري البحث عن المقال بـ{lang}...",
+  "lang_not_found": "غير متوفر بـ{lang}",
+  "lang_go_home": "الذهاب إلى الرئيسية",
+  "lang_search_for": "البحث عن \"{title}\"",
+  "lang_did_you_mean": "مقالات مشابهة بـ{lang}",
+  "lang_exact_match": "تطابق تام",
+  "lang_close_match": "تطابق قريب",
+  "lang_possible_match": "تطابق محتمل",
+  "lang_no_zim": "لا توجد مصادر بـ{lang} مثبتة"
 }

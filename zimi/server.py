@@ -144,8 +144,20 @@ def _password_file():
     """Password file path inside ZIMI_DATA_DIR."""
     return os.path.join(ZIMI_DATA_DIR, "password")
 
-def _hash_pw(pw):
-    return hashlib.sha256(pw.encode()).hexdigest()
+_PW_ITERATIONS = 600_000  # OWASP 2023 recommendation for PBKDF2-SHA256
+
+def _hash_pw(pw, salt=None):
+    """Hash password with PBKDF2-SHA256 + random salt. Returns 'salt$hash'."""
+    if salt is None:
+        salt = os.urandom(16)
+    else:
+        salt = bytes.fromhex(salt)
+    dk = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, _PW_ITERATIONS)
+    return salt.hex() + "$" + dk.hex()
+
+def _is_legacy_hash(stored):
+    """Detect old-style raw SHA-256 hashes (no salt separator)."""
+    return stored and "$" not in stored and len(stored) == 64
 
 def _get_manage_password_hash():
     """Get stored password hash from env var or file."""
@@ -153,7 +165,8 @@ def _get_manage_password_hash():
     if pw:
         return _hash_pw(pw)  # env var stores plaintext, hash on read
     try:
-        return open(_password_file()).read().strip()
+        with open(_password_file()) as f:
+            return f.read().strip()
     except (FileNotFoundError, OSError):
         return ""
 
@@ -170,7 +183,22 @@ def _check_manage_auth(handler):
     if not stored:
         return None  # no password set, allow access
     auth = handler.headers.get("Authorization", "")
-    if auth.startswith("Bearer ") and hmac.compare_digest(_hash_pw(auth[7:]), stored):
+    if not auth.startswith("Bearer "):
+        return True  # unauthorized
+    candidate = auth[7:]
+    # Migrate legacy SHA-256 hashes: verify with old method, then upgrade in place
+    if _is_legacy_hash(stored):
+        old_hash = hashlib.sha256(candidate.encode()).hexdigest()
+        if hmac.compare_digest(old_hash, stored):
+            _set_manage_password(candidate)  # upgrade to PBKDF2
+            log.info("Migrated password hash from SHA-256 to PBKDF2")
+            return None  # valid
+        return True  # unauthorized
+    # PBKDF2 verification
+    if "$" not in stored:
+        return True
+    salt = stored.split("$")[0]
+    if hmac.compare_digest(_hash_pw(candidate, salt), stored):
         return None  # valid
     return True  # unauthorized
 MAX_CONTENT_LENGTH = 8000  # chars returned per article, keeps responses manageable for LLMs
@@ -464,6 +492,7 @@ def _suggest_cache_put(query_lower, zim_name, results):
         threading.Thread(target=_suggest_cache_persist, daemon=True).start()
 
 def _suggest_cache_clear():
+    global _factbook_countries_cache, _xkcd_date_cache_built
     with _suggest_cache_lock:
         _suggest_cache.clear()
     _suggest_cache_persist()
@@ -473,6 +502,11 @@ def _suggest_cache_clear():
     with _fts_pool_lock:
         _fts_pool.clear()
         _fts_zim_locks.clear()
+    with _archive_lock:
+        _archive_pool.clear()
+    # Invalidate content-specific caches that depend on ZIM file contents
+    _factbook_countries_cache = None
+    _xkcd_date_cache_built = False
 
 _SUGGEST_CACHE_PATH = os.path.join(ZIMI_DATA_DIR, "suggest_cache.json")
 
@@ -684,6 +718,7 @@ _LANG_NATIVE_NAMES = {
 _CACHE_VERSION = 2  # bumped for language metadata
 _zim_list_cache = None
 _zim_files_cache = None  # {name: path} — cached at startup, ZIM dir is read-only
+_cache_generation = 0   # incremented on load_cache(force=True) — used in ETags
 _archive_pool = {}  # {name: Archive} — kept open for fast search
 _archive_lock = threading.Lock()  # protects _archive_pool writes in threaded mode
 _zim_lock = threading.Lock()      # serializes all libzim operations (C library is NOT thread-safe)
@@ -1353,12 +1388,16 @@ def _qid_extract_from_html(archive, article_path):
     return None
 
 
+_qid_cache_op_lock = threading.Lock()  # protects execute+commit on shared _qid_cache_conn
+
+
 def _qid_cache_store(zim_name, path, qid):
     """Store a Q-ID mapping in the on-demand cache."""
     try:
         conn = _get_qid_cache()
-        conn.execute("INSERT OR REPLACE INTO qid_cache VALUES (?,?,?)", (zim_name, path, qid))
-        conn.commit()
+        with _qid_cache_op_lock:
+            conn.execute("INSERT OR REPLACE INTO qid_cache VALUES (?,?,?)", (zim_name, path, qid))
+            conn.commit()
     except Exception:
         pass
 
@@ -1367,7 +1406,8 @@ def _qid_cache_lookup(zim_name, path):
     """Look up Q-ID from the on-demand cache. Returns int or None."""
     try:
         conn = _get_qid_cache()
-        row = conn.execute("SELECT qid FROM qid_cache WHERE zim=? AND path=?", (zim_name, path)).fetchone()
+        with _qid_cache_op_lock:
+            row = conn.execute("SELECT qid FROM qid_cache WHERE zim=? AND path=?", (zim_name, path)).fetchone()
         return row[0] if row else None
     except Exception:
         return None
@@ -1377,7 +1417,8 @@ def _qid_cache_find(zim_name, qid):
     """Find article path by Q-ID in the on-demand cache. Returns path or None."""
     try:
         conn = _get_qid_cache()
-        row = conn.execute("SELECT path FROM qid_cache WHERE zim=? AND qid=?", (zim_name, qid)).fetchone()
+        with _qid_cache_op_lock:
+            row = conn.execute("SELECT path FROM qid_cache WHERE zim=? AND qid=?", (zim_name, qid)).fetchone()
         return row[0] if row else None
     except Exception:
         return None
@@ -2160,7 +2201,11 @@ def _get_suggest_archive(name):
         with _suggest_pool_lock:
             if name in _suggest_pool:
                 return _suggest_pool[name], _suggest_zim_locks[name]
-            archive = open_archive(zims[name])
+            try:
+                archive = open_archive(zims[name])
+            except (RuntimeError, Exception) as e:
+                log.warning(f"Suggest pool: skipping corrupt ZIM '{name}': {e}")
+                return None, None
             _suggest_pool[name] = archive
             _suggest_zim_locks[name] = threading.Lock()
             return archive, _suggest_zim_locks[name]
@@ -2180,7 +2225,11 @@ def _get_fts_archive(name):
         with _fts_pool_lock:
             if name in _fts_pool:
                 return _fts_pool[name], _fts_zim_locks[name]
-            archive = open_archive(zims[name])
+            try:
+                archive = open_archive(zims[name])
+            except (RuntimeError, Exception) as e:
+                log.warning(f"FTS pool: skipping corrupt ZIM '{name}': {e}")
+                return None, None
             _fts_pool[name] = archive
             _fts_zim_locks[name] = threading.Lock()
             return archive, _fts_zim_locks[name]
@@ -3379,7 +3428,11 @@ def get_archive(name):
             # Double-check after acquiring lock
             if name in _archive_pool:
                 return _archive_pool[name]
-            archive = open_archive(zims[name])
+            try:
+                archive = open_archive(zims[name])
+            except (RuntimeError, Exception) as e:
+                log.warning(f"Skipping corrupt ZIM '{name}': {e}")
+                return None
             _archive_pool[name] = archive
             return archive
     return None
@@ -3501,9 +3554,11 @@ def load_cache(force=False):
     On subsequent runs: reads cache, validates mtimes, only re-scans changed files.
     Archives are opened lazily on first access, not at startup.
     """
-    global _zim_list_cache, _zim_files_cache
+    global _zim_list_cache, _zim_files_cache, _cache_generation
     t0 = time.time()
     _zim_files_cache = _scan_zim_files()
+    if force:
+        _cache_generation += 1
     zims = _zim_files_cache
 
     disk_cache = None if force else _load_disk_cache()
@@ -3542,7 +3597,7 @@ def load_cache(force=False):
         else:
             # Cache miss — scan this ZIM
             entry, archive = _extract_zim_metadata(name, path)
-            if archive:
+            if archive and entry.get("entries") != "?":
                 _archive_pool[name] = archive
             info.append(entry)
             scanned += 1
@@ -4412,10 +4467,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                     import hashlib
                     seed_val = int(hashlib.md5((pick_name + seed_param).encode()).hexdigest()[:8], 16)
                     rng = _random.Random(seed_val)
-                best_result = None
-                best_preview = None
-                for _try in range(max_tries):
-                    with _zim_lock:
+                # Batch all ZIM reads under a single lock acquisition
+                candidates = []
+                with _zim_lock:
+                    for _try in range(max_tries):
                         result = None
                         if date_param and len(date_param) == 4 and _try == 0:
                             result = _get_dated_entry(archive, pick_name, date_param, rng=rng)
@@ -4426,31 +4481,35 @@ class ZimHandler(BaseHTTPRequestHandler):
                         preview = None
                         if want_thumb:
                             preview = _extract_preview(archive, pick_name, result["path"])
-                    # Gutenberg: prefer cover pages (book landing pages, not author indexes)
+                        candidates.append((result, preview))
+                # Filter candidates outside the lock
+                best_result = None
+                best_preview = None
+                for result, preview in candidates:
+                    # Gutenberg: prefer cover pages
                     if is_gutenberg and "_cover" not in result.get("path", ""):
                         if best_result is None:
                             best_result = result
                             best_preview = preview
                         continue
-                    # Skip non-English or boring wiktionary entries (retry)
+                    # Skip non-English or boring wiktionary entries
                     if is_wiktionary and preview and (preview.get("non_english") or preview.get("boring")):
                         if best_result is None:
                             best_result = result
                             best_preview = preview
                         continue
-                    # Wiktionary: accept interesting English entry even without thumbnail
+                    # Wiktionary: accept interesting English entry
                     if is_wiktionary and preview and not preview.get("non_english") and not preview.get("boring"):
                         best_result = result
                         best_preview = preview
                         break
-                    # Wikiquote: require an actual quote (blurb starting with open-quote)
+                    # Wikiquote: require an actual quote
                     if is_wikiquote and preview:
                         blurb = preview.get("blurb") or ""
                         if blurb and blurb[0] in ('\u201c', '"'):
                             best_result = result
                             best_preview = preview
                             break
-                        # No quote found — save as fallback, try another page
                         if best_result is None:
                             best_result = result
                             best_preview = preview
@@ -4459,7 +4518,6 @@ class ZimHandler(BaseHTTPRequestHandler):
                         best_result = result
                         best_preview = preview
                         break
-                    # Keep first result as fallback even without image
                     if best_result is None:
                         best_result = result
                         best_preview = preview
@@ -4593,8 +4651,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path.startswith("/static/"):
                 return self._serve_static(parsed.path[8:])  # strip "/static/"
 
-            elif parsed.path in ("/favicon.ico", "/favicon.png"):
-                return self._serve_favicon()
+            elif parsed.path in ("/favicon.ico", "/favicon.png", "/favicon-64.png"):
+                return self._serve_favicon(parsed.path)
 
             elif parsed.path == "/apple-touch-icon.png":
                 return self._serve_apple_touch_icon()
@@ -4994,55 +5052,59 @@ class ZimHandler(BaseHTTPRequestHandler):
                 mimetype = ext_mime
             # Force EPUB download (browsers can't render EPUB inline)
             is_epub = entry_path.lower().endswith(".epub") or mimetype in ("application/epub+zip", "application/epub")
+            epub_filename = None
             if is_epub:
                 mimetype = "application/epub+zip"
                 epub_filename = os.path.basename(entry_path)
                 if not epub_filename.endswith(".epub"):
                     epub_filename += ".epub"
-                self.send_response(200)
-                self.send_header("Content-Type", mimetype)
-                self.send_header("Content-Length", str(total_size))
-                self.send_header("Content-Disposition", f'attachment; filename="{epub_filename}"')
-                self.end_headers()
-                self.wfile.write(bytes(item.content))
-                return
-
-            # Streamable types support Range requests (no size limit)
-            is_streamable = any(mimetype.startswith(t) for t in ("video/", "audio/", "application/ogg"))
-
-            range_start = range_end = None
-            if is_streamable:
-                range_header = self.headers.get("Range")
-                if range_header:
-                    range_start, range_end = self._parse_range(range_header, total_size)
-                if range_start is not None and range_end is not None:
-                    content = bytes(item.content[range_start:range_end + 1])
-                else:
-                    content = bytes(item.content)
-            else:
-                if total_size > MAX_SERVE_BYTES:
-                    self.send_response(413)
-                    self.send_header("Content-Type", "text/plain")
-                    msg = f"Entry too large ({total_size // (1024*1024)} MB). Max: {MAX_SERVE_BYTES // (1024*1024)} MB.".encode()
-                    self.send_header("Content-Length", str(len(msg)))
-                    self.end_headers()
-                    self.wfile.write(msg)
-                    return
                 content = bytes(item.content)
+            else:
+                # ETag check BEFORE reading content — avoids materializing large
+                # blobs when client already has a cached copy
+                is_streamable = any(mimetype.startswith(t) for t in ("video/", "audio/", "application/ogg"))
+                etag = '"' + hashlib.md5(f"{zim_name}/{entry_path}/{_cache_generation}".encode()).hexdigest()[:16] + '"'
+                if self.headers.get("If-None-Match") == etag:
+                    self.send_response(304)
+                    self.end_headers()
+                    return
+
+                range_start = range_end = None
+                if is_streamable:
+                    range_header = self.headers.get("Range")
+                    if range_header:
+                        range_start, range_end = self._parse_range(range_header, total_size)
+                    if range_start is not None and range_end is not None:
+                        content = bytes(item.content[range_start:range_end + 1])
+                    else:
+                        content = bytes(item.content)
+                else:
+                    if total_size > MAX_SERVE_BYTES:
+                        self.send_response(413)
+                        self.send_header("Content-Type", "text/plain")
+                        msg = f"Entry too large ({total_size // (1024*1024)} MB). Max: {MAX_SERVE_BYTES // (1024*1024)} MB.".encode()
+                        self.send_header("Content-Length", str(len(msg)))
+                        self.end_headers()
+                        self.wfile.write(msg)
+                        return
+                    content = bytes(item.content)
         # Lock released — safe to do slow I/O
+
+        # EPUB: write download response outside lock
+        if epub_filename:
+            self.send_response(200)
+            self.send_header("Content-Type", mimetype)
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Content-Disposition", f'attachment; filename="{epub_filename}"')
+            self.end_headers()
+            self.wfile.write(content)
+            return
 
         # Strip <base> tags from HTML
         if mimetype.startswith("text/html"):
             text = content.decode("UTF-8", errors="replace")
             text = re.sub(r'<base\s[^>]*>', '', text, flags=re.IGNORECASE)
             content = text.encode("UTF-8")
-
-        # ETag for caching
-        etag = '"' + hashlib.md5(f"{zim_name}/{entry_path}".encode()).hexdigest()[:16] + '"'
-        if self.headers.get("If-None-Match") == etag:
-            self.send_response(304)
-            self.end_headers()
-            return
 
         if range_start is not None and range_end is not None:
             self.send_response(206)
@@ -5186,37 +5248,39 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    _favicon_data = None
+    _favicon_cache = {}
 
-    def _serve_favicon(self):
-        if ZimHandler._favicon_data is None:
-            # Serve 32x32 favicon for browser tabs (not the full 256px icon)
+    def _serve_favicon(self, path="/favicon.png"):
+        filename = "favicon-64.png" if "64" in path else "favicon.png"
+        if filename not in ZimHandler._favicon_cache:
+            assets_dir = os.path.dirname(os.path.abspath(__file__))
             icon_paths = [
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "favicon.png"),
-                os.path.join(getattr(sys, '_MEIPASS', ''), "assets", "favicon.png") if getattr(sys, '_MEIPASS', None) else "",
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.png"),
+                os.path.join(assets_dir, "assets", filename),
+                os.path.join(getattr(sys, '_MEIPASS', ''), "assets", filename) if getattr(sys, '_MEIPASS', None) else "",
+                os.path.join(assets_dir, "assets", "icon.png"),
                 os.path.join(getattr(sys, '_MEIPASS', ''), "assets", "icon.png") if getattr(sys, '_MEIPASS', None) else "",
             ]
             for p in icon_paths:
                 if p and os.path.exists(p):
                     with open(p, "rb") as f:
-                        ZimHandler._favicon_data = f.read()
+                        ZimHandler._favicon_cache[filename] = f.read()
                     break
-            if not ZimHandler._favicon_data:
+            if filename not in ZimHandler._favicon_cache:
                 # Fallback: extract from HTML template's base64 data URI
                 import re as _re
                 m = _re.search(r'data:image/png;base64,([A-Za-z0-9+/=]+)', SEARCH_UI_HTML)
-                ZimHandler._favicon_data = base64.b64decode(m.group(1)) if m else b''
-        if not ZimHandler._favicon_data:
+                ZimHandler._favicon_cache[filename] = base64.b64decode(m.group(1)) if m else b''
+        data = ZimHandler._favicon_cache.get(filename, b'')
+        if not data:
             self.send_response(404)
             self.end_headers()
             return
         self.send_response(200)
         self.send_header("Content-Type", "image/png")
-        self.send_header("Content-Length", str(len(ZimHandler._favicon_data)))
+        self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "public, max-age=86400")
         self.end_headers()
-        self.wfile.write(ZimHandler._favicon_data)
+        self.wfile.write(data)
 
     _apple_touch_icon_data = None
 

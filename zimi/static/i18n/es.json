@@ -322,5 +322,20 @@
   "view_original": "Ver original",
   "translate_to": "Traducir a {lang}",
   "view_in_lang": "Ver en {lang}",
-  "download_lang": "Descargar {lang}"
+  "download_lang": "Descargar {lang}",
+  "delete_collection": "Eliminar colección",
+  "au_controlled_by_env": "Controlado por la variable ZIMI_AUTO_UPDATE",
+  "n_mirrors": "{n} espejos",
+  "retry": "Reintentar",
+  "almanac": "Almanaque",
+  "choose_folder_placeholder": "Elegir una carpeta...",
+  "lang_searching": "Buscando artículo en {lang}...",
+  "lang_not_found": "No disponible en {lang}",
+  "lang_go_home": "Ir al inicio",
+  "lang_search_for": "Buscar \"{title}\"",
+  "lang_did_you_mean": "Artículos similares en {lang}",
+  "lang_exact_match": "Coincidencia exacta",
+  "lang_close_match": "Coincidencia cercana",
+  "lang_possible_match": "Posible coincidencia",
+  "lang_no_zim": "No hay fuentes en {lang} instaladas"
 }

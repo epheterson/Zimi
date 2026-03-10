@@ -322,5 +322,20 @@
   "view_original": "मूल देखें",
   "translate_to": "{lang} में अनुवाद करें",
   "view_in_lang": "{lang} में देखें",
-  "download_lang": "{lang} डाउनलोड करें"
+  "download_lang": "{lang} डाउनलोड करें",
+  "delete_collection": "संग्रह हटाएँ",
+  "au_controlled_by_env": "ZIMI_AUTO_UPDATE वातावरण चर द्वारा नियंत्रित",
+  "n_mirrors": "{n} मिरर",
+  "retry": "पुनः प्रयास करें",
+  "almanac": "पंचांग",
+  "choose_folder_placeholder": "एक फ़ोल्डर चुनें...",
+  "lang_searching": "{lang} में लेख खोज रहे हैं...",
+  "lang_not_found": "{lang} में उपलब्ध नहीं",
+  "lang_go_home": "मुखपृष्ठ पर जाएँ",
+  "lang_search_for": "\"{title}\" खोजें",
+  "lang_did_you_mean": "{lang} में समान लेख",
+  "lang_exact_match": "सटीक मिलान",
+  "lang_close_match": "निकट मिलान",
+  "lang_possible_match": "संभावित मिलान",
+  "lang_no_zim": "कोई {lang} स्रोत स्थापित नहीं"
 }

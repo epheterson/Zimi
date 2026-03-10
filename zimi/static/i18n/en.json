@@ -374,5 +374,23 @@
   "view_original": "View Original",
   "translate_to": "Translate to {lang}",
   "view_in_lang": "View in {lang}",
-  "download_lang": "Download {lang}"
+  "download_lang": "Download {lang}",
+
+  "delete_collection": "Delete collection",
+  "au_controlled_by_env": "Controlled by ZIMI_AUTO_UPDATE env var",
+  "n_mirrors": "{n} mirrors",
+  "retry": "Retry",
+  "almanac": "Almanac",
+  "choose_folder_placeholder": "Choose a folder...",
+
+  "lang_searching": "Finding article in {lang}...",
+  "lang_not_found": "Not available in {lang}",
+  "lang_go_home": "Go to homepage",
+  "lang_search_for": "Search for \"{title}\"",
+  "lang_did_you_mean": "Similar articles in {lang}",
+  "lang_exact_match": "Exact match",
+  "lang_close_match": "Close match",
+  "lang_possible_match": "Possible match",
+  "lang_no_zim": "No {lang} sources installed",
+  "lang_mini_hint": "{flavor} edition may not include this article. Try a larger version:"
 }
