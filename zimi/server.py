@@ -86,10 +86,21 @@ logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S", level=
 ZIM_DIR = os.environ.get("ZIM_DIR", "/zims")
 ZIMI_MANAGE = os.environ.get("ZIMI_MANAGE", "0") == "1"
 ZIMI_DATA_DIR = os.environ.get("ZIMI_DATA_DIR", os.path.join(ZIM_DIR, ".zimi"))
-try:
-    os.makedirs(ZIMI_DATA_DIR, exist_ok=True)
-except OSError:
-    pass  # ZIM_DIR may not exist yet (e.g. during import in tests)
+_initialized = False
+
+def _init():
+    """Initialize data directory and run migrations. Called lazily on first use."""
+    global _initialized
+    if _initialized:
+        return
+    _initialized = True
+    try:
+        os.makedirs(ZIMI_DATA_DIR, exist_ok=True)
+    except OSError:
+        pass  # ZIM_DIR may not exist yet (e.g. during import in tests)
+    _migrate_data_files()
+    global _auto_update_enabled, _auto_update_freq
+    _auto_update_enabled, _auto_update_freq = _load_auto_update_config()
 
 def _migrate_data_files():
     """Migrate data files from old locations into ZIMI_DATA_DIR."""
@@ -137,8 +148,6 @@ def _migrate_data_files():
                     log.info("Migrated titles/ → %s", new_titles)
                 except OSError:
                     pass
-
-_migrate_data_files()
 
 def _password_file():
     """Password file path inside ZIMI_DATA_DIR."""
@@ -229,11 +238,14 @@ def _check_rate_limit(ip):
             return retry_after
         timestamps.append(now)
         _rate_buckets[ip] = timestamps
-        # Periodic cleanup of stale IPs (every ~100 requests)
+        # Periodic cleanup of stale IPs
         if len(_rate_buckets) > 1000:
             stale = [k for k, v in _rate_buckets.items() if not v or now - v[-1] > window]
             for k in stale:
                 del _rate_buckets[k]
+        # Hard cap: prevent unbounded memory growth from IP spoofing
+        if len(_rate_buckets) > 10000:
+            _rate_buckets.clear()
     return 0
 
 # ── Metrics ──
@@ -368,7 +380,7 @@ def _save_auto_update_config(enabled, freq):
     except OSError:
         pass
 
-_auto_update_enabled, _auto_update_freq = _load_auto_update_config()
+_auto_update_enabled, _auto_update_freq = False, "weekly"  # defaults; loaded by _init()
 _auto_update_last_check = None
 _auto_update_thread = None
 
@@ -643,14 +655,16 @@ def _append_history(event):
         entries.insert(0, event)
         if len(entries) > _HISTORY_MAX:
             entries = entries[:_HISTORY_MAX]
-        path = _history_file_path()
-        tmp = path + ".tmp"
-        try:
-            with open(tmp, "w") as f:
-                json.dump(entries, f, ensure_ascii=False)
-            os.replace(tmp, path)
-        except OSError as e:
-            log.warning("Failed to write history: %s", e)
+        blob = json.dumps(entries, ensure_ascii=False)
+    # Write outside lock — I/O can be slow on NAS spinning disks
+    path = _history_file_path()
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            f.write(blob)
+        os.replace(tmp, path)
+    except OSError as e:
+        log.warning("Failed to write history: %s", e)
 
 
 # ── Collections & Favorites ──
@@ -2298,10 +2312,11 @@ def search_zim(archive, query_str, limit=10, snippets=True):
 
 _meta_title_re = re.compile(r'^(Portal:|Category:|Wikipedia:|Template:|Help:|File:|Special:|List of |Index of |Outline of )', re.IGNORECASE)
 
-STOP_WORDS = {"a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
-              "has", "have", "how", "i", "in", "is", "it", "its", "my", "not",
-              "of", "on", "or", "so", "that", "the", "this", "to", "was", "we",
-              "what", "when", "where", "which", "who", "will", "with", "you"}
+STOP_WORDS = _STOPWORDS.get("en", set()) | {
+    "an", "are", "as", "be", "by", "from", "has", "have", "how", "i",
+    "it", "its", "my", "not", "on", "or", "so", "that", "this", "was",
+    "we", "what", "when", "where", "which", "who", "will", "with", "you",
+}
 
 
 def _clean_query(q):
@@ -3554,6 +3569,7 @@ def load_cache(force=False):
     On subsequent runs: reads cache, validates mtimes, only re-scans changed files.
     Archives are opened lazily on first access, not at startup.
     """
+    _init()
     global _zim_list_cache, _zim_files_cache, _cache_generation
     t0 = time.time()
     _zim_files_cache = _scan_zim_files()
@@ -4157,9 +4173,14 @@ class ZimHandler(BaseHTTPRequestHandler):
     timeout = 30  # seconds — prevents slow-client DoS on POST bodies
 
     def do_HEAD(self):
-        """Handle HEAD requests (Traefik health checks)."""
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html")
+        """Handle HEAD requests (Traefik health checks, uptime monitors)."""
+        parsed = urlparse(self.path)
+        if parsed.path == "/health":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+        else:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
         self.end_headers()
 
     # IPs allowed to set X-Forwarded-For (reverse proxies)
@@ -4183,7 +4204,7 @@ class ZimHandler(BaseHTTPRequestHandler):
 
         # Rate limit API endpoints (not UI, static, or manage)
         rate_limited_paths = ("/search", "/read", "/suggest", "/snippet", "/random")
-        if parsed.path in rate_limited_paths:
+        if parsed.path in rate_limited_paths or parsed.path.startswith("/w/"):
             retry_after = _check_rate_limit(self._client_ip())
             if retry_after > 0:
                 with _metrics_lock:
@@ -5178,6 +5199,7 @@ class ZimHandler(BaseHTTPRequestHandler):
     # ── Static file serving ──
     # In-memory cache for static files (vendor files like pdf.js are immutable)
     _static_cache = {}
+    _static_cache_lock = threading.Lock()
 
     @staticmethod
     def _static_base_dir():
@@ -5202,7 +5224,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "invalid path"})
 
         # Check cache first, then read from disk
-        cached = ZimHandler._static_cache.get(rel_path)
+        with ZimHandler._static_cache_lock:
+            cached = ZimHandler._static_cache.get(rel_path)
         if cached:
             body, content_type = cached
         else:
@@ -5220,7 +5243,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             with open(file_path, "rb") as f:
                 body = f.read()
             # Cache in memory (vendor files are immutable, ~8MB total for pdf.js)
-            ZimHandler._static_cache[rel_path] = (body, content_type)
+            with ZimHandler._static_cache_lock:
+                ZimHandler._static_cache[rel_path] = (body, content_type)
 
         # Compress text-based static files (viewer.mjs, viewer.css, etc.)
         ct_base = content_type.split(";")[0]

@@ -1621,20 +1621,8 @@ function _buildLangBanner(lang, zimInfo) {
 
   // 1. View in [lang] — find best matching ZIM in target language
   var currentProject = _zimProject(zimInfo);
-  var langZims = (zimsCache || []).filter(function(z) {
-    return z.language === lang && z.name !== (zimInfo && zimInfo.name);
-  });
-  langZims.sort(function(a, b) {
-    var ap = _zimProject(a), bp = _zimProject(b);
-    if (currentProject) {
-      if (ap === currentProject && bp !== currentProject) return -1;
-      if (ap !== currentProject && bp === currentProject) return 1;
-    }
-    if (/_all/.test(a.name) && !/_all/.test(b.name)) return -1;
-    if (!/_all/.test(a.name) && /_all/.test(b.name)) return 1;
-    return (b.entry_count || 0) - (a.entry_count || 0);
-  });
-  var matchZim = langZims[0] || null;
+  var matchZimName = _bestZimForLang(lang, zimInfo && zimInfo.name);
+  var matchZim = matchZimName && zimsCache && zimsCache.find(function(z) { return z.name === matchZimName; }) || null;
   if (matchZim) {
     var viewIcon = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" style="vertical-align:-2px;margin-right:3px">' +
       '<circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>';
