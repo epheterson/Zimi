@@ -4464,7 +4464,6 @@ class ZimHandler(BaseHTTPRequestHandler):
                 seed_param = param("seed")  # For deterministic daily picks
                 rng = None
                 if seed_param:
-                    import hashlib
                     seed_val = int(hashlib.md5((pick_name + seed_param).encode()).hexdigest()[:8], 16)
                     rng = _random.Random(seed_val)
                 # Batch all ZIM reads under a single lock acquisition
@@ -4712,7 +4711,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     stored = _get_manage_password_hash()
                     if stored:
                         cur = data.get("current", "")
-                        if not cur or _hash_pw(cur) != stored:
+                        if not cur or "$" not in stored or not hmac.compare_digest(_hash_pw(cur, stored.split("$")[0]), stored):
                             return self._json(401, {"error": "Current password is incorrect"})
                     new_pw = data.get("password", "").strip()
                     _set_manage_password(new_pw)
