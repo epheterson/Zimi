@@ -218,34 +218,38 @@ MAX_SERVE_BYTES = 50 * 1024 * 1024    # 50 MB — refuse to serve entries larger
 MAX_POST_BODY = 65536                 # max bytes accepted in POST requests (64KB — handles ~500 URLs for batch resolve)
 
 # ── Rate Limiting ──
-RATE_LIMIT = int(os.environ.get("ZIMI_RATE_LIMIT", "60"))  # requests per minute per IP (0 = disabled)
-_rate_buckets = {}  # {ip: [timestamps]}
+RATE_LIMIT = int(os.environ.get("ZIMI_RATE_LIMIT", "60"))  # API requests per minute per IP (0 = disabled)
+RATE_LIMIT_CONTENT = RATE_LIMIT * 20  # /w/ sub-resources: icons, CSS, images (1200/min default)
+_rate_buckets = {}       # {ip: [timestamps]} — API endpoints
+_rate_buckets_content = {}  # {ip: [timestamps]} — /w/ content
 _rate_lock = threading.Lock()
 
-def _check_rate_limit(ip):
+def _check_rate_limit(ip, content=False):
     """Check if IP has exceeded rate limit. Returns seconds to wait, or 0 if OK."""
-    if RATE_LIMIT <= 0:
+    limit = RATE_LIMIT_CONTENT if content else RATE_LIMIT
+    if limit <= 0:
         return 0
+    buckets = _rate_buckets_content if content else _rate_buckets
     now = time.time()
     window = 60.0  # 1 minute window
     with _rate_lock:
-        timestamps = _rate_buckets.get(ip, [])
+        timestamps = buckets.get(ip, [])
         # Prune old entries
         timestamps = [t for t in timestamps if now - t < window]
-        if len(timestamps) >= RATE_LIMIT:
+        if len(timestamps) >= limit:
             retry_after = max(1, int(timestamps[0] + window - now) + 1)
-            _rate_buckets[ip] = timestamps
+            buckets[ip] = timestamps
             return retry_after
         timestamps.append(now)
-        _rate_buckets[ip] = timestamps
+        buckets[ip] = timestamps
         # Periodic cleanup of stale IPs
-        if len(_rate_buckets) > 1000:
-            stale = [k for k, v in _rate_buckets.items() if not v or now - v[-1] > window]
+        if len(buckets) > 1000:
+            stale = [k for k, v in buckets.items() if not v or now - v[-1] > window]
             for k in stale:
-                del _rate_buckets[k]
+                del buckets[k]
         # Hard cap: prevent unbounded memory growth from IP spoofing
-        if len(_rate_buckets) > 10000:
-            _rate_buckets.clear()
+        if len(buckets) > 10000:
+            buckets.clear()
     return 0
 
 # ── Metrics ──
@@ -519,6 +523,10 @@ def _suggest_cache_clear():
     # Invalidate content-specific caches that depend on ZIM file contents
     _factbook_countries_cache = None
     _xkcd_date_cache_built = False
+    # Clear OPDS catalog cache (forces re-fetch from Kiwix)
+    _opds_cache.clear()
+    # Clear thumbnail disk cache
+    _clear_thumb_cache()
 
 _SUGGEST_CACHE_PATH = os.path.join(ZIMI_DATA_DIR, "suggest_cache.json")
 
@@ -3658,9 +3666,71 @@ _download_lock = threading.Lock()
 
 KIWIX_OPDS_BASE = "https://library.kiwix.org/catalog/search"
 
+# Server-side catalog cache: {cache_key: (timestamp, total, items)}
+_opds_cache = {}
+_OPDS_CACHE_TTL = 86400  # 24 hours — catalog changes rarely
+
+
+def _thumb_dir():
+    """Lazily create and return thumbnail cache directory."""
+    d = os.path.join(ZIMI_DATA_DIR, "thumbs")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _fetch_thumb(url):
+    """Fetch a thumbnail from Kiwix, caching to disk. Returns (bytes, content_type) or (None, None)."""
+    # Only allow library.kiwix.org
+    if not url.startswith("https://library.kiwix.org/"):
+        return None, None
+    # Use URL hash as filename
+    import hashlib as _hl
+    key = _hl.md5(url.encode()).hexdigest()
+    cache_path = os.path.join(_thumb_dir(), key)
+    meta_path = cache_path + ".meta"
+    # Serve from disk cache if exists
+    if os.path.exists(cache_path) and os.path.exists(meta_path):
+        with open(meta_path) as f:
+            ct = f.read().strip() or "image/png"
+        with open(cache_path, "rb") as f:
+            return f.read(), ct
+    # Fetch from Kiwix
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Zimi/1.0"})
+        with urllib.request.urlopen(req, timeout=10, context=SSL_CTX) as resp:
+            data = resp.read()
+            ct = resp.headers.get("Content-Type", "image/png")
+        # Write to disk cache
+        with open(cache_path, "wb") as f:
+            f.write(data)
+        with open(meta_path, "w") as f:
+            f.write(ct)
+        return data, ct
+    except Exception:
+        return None, None
+
+
+def _clear_thumb_cache():
+    """Remove all cached thumbnails."""
+    d = os.path.join(ZIMI_DATA_DIR, "thumbs")
+    if os.path.isdir(d):
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
+
 
 def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
-    """Fetch and parse the Kiwix OPDS catalog. Returns (total, items, error)."""
+    """Fetch and parse the Kiwix OPDS catalog. Returns (total, items, error).
+    Results are cached server-side for 1 hour to avoid hammering Kiwix."""
+    cache_key = f"{query}|{lang}|{count}|{start}"
+    cached = _opds_cache.get(cache_key)
+    if cached:
+        ts, total, items = cached
+        if time.time() - ts < _OPDS_CACHE_TTL:
+            return total, items, None
+        del _opds_cache[cache_key]
+    # Cap cache size
+    if len(_opds_cache) > 100:
+        _opds_cache.clear()
     params = {"count": str(count), "start": str(start)}
     if query:
         params["q"] = query
@@ -3778,6 +3848,7 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
             "installed": installed,
         })
 
+    _opds_cache[cache_key] = (time.time(), total, items)
     return total, items, None
 
 
@@ -4202,10 +4273,11 @@ class ZimHandler(BaseHTTPRequestHandler):
         def param(key, default=None):
             return params.get(key, [default])[0]
 
-        # Rate limit API endpoints (not UI, static, or manage)
+        # Rate limit: API endpoints at RATE_LIMIT, /w/ content at 20x higher
         rate_limited_paths = ("/search", "/read", "/suggest", "/snippet", "/random")
-        if parsed.path in rate_limited_paths or parsed.path.startswith("/w/"):
-            retry_after = _check_rate_limit(self._client_ip())
+        is_w_content = parsed.path.startswith("/w/")
+        if parsed.path in rate_limited_paths or is_w_content:
+            retry_after = _check_rate_limit(self._client_ip(), content=is_w_content)
             if retry_after > 0:
                 with _metrics_lock:
                     _metrics["rate_limited"] += 1
@@ -4664,6 +4736,21 @@ class ZimHandler(BaseHTTPRequestHandler):
 
                 elif parsed.path == "/manage/history":
                     return self._json(200, {"history": _load_history()})
+
+                elif parsed.path == "/manage/thumb":
+                    url = param("url", "")
+                    if not url or not url.startswith("https://library.kiwix.org/"):
+                        return self._json(400, {"error": "invalid thumbnail URL"})
+                    data, ct = _fetch_thumb(url)
+                    if data is None:
+                        return self._json(502, {"error": "failed to fetch thumbnail"})
+                    self.send_response(200)
+                    self.send_header("Content-Type", ct)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Cache-Control", "public, max-age=604800")  # 7 days browser cache
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
 
                 else:
                     return self._json(404, {"error": "not found"})

@@ -4880,7 +4880,7 @@ function renderCatalogItem(group) {
     meta.push(formatSize(sizes[0]));
   }
   const iconHtml = item.icon_url
-    ? '<img src="' + escAttr(item.icon_url) + '" width="40" height="40" loading="lazy">'
+    ? '<img src="/manage/thumb?url=' + encodeURIComponent(item.icon_url) + '" width="40" height="40" loading="lazy">'
     : '<span class="ci-letter">' + (esc(item.title || item.name)[0] || '?').toUpperCase() + '</span>';
   const anyInstalled = variants.some(v => v.installed);
   let actionsHtml = '';
@@ -6263,7 +6263,7 @@ function _autoUpdateTimerHtml() {
 }
 
 var _lastUpdateCheck = 0;
-var _UPDATE_CHECK_INTERVAL = 3600000;  // 1 hour
+var _UPDATE_CHECK_INTERVAL = 86400000;  // 24 hours
 
 async function checkForUpdates(force) {
   const el = document.getElementById('update-status');
