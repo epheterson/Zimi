@@ -223,7 +223,6 @@
   "cal_julian": "يولياني",
   "cal_buddhist": "بوذي",
   "cal_chinese": "صيني",
-
   "alm_illuminated": "مضاء",
   "alm_moon_age": "عمر القمر",
   "alm_distance": "المسافة",
@@ -245,7 +244,6 @@
   "season_spring": "ربيع",
   "season_summer": "صيف",
   "season_autumn": "خريف",
-
   "moon_new": "قمر جديد",
   "moon_waxing_crescent": "هلال متزايد",
   "moon_first_quarter": "الربع الأول",
@@ -254,11 +252,9 @@
   "moon_waning_gibbous": "أحدب متناقص",
   "moon_last_quarter": "الربع الأخير",
   "moon_waning_crescent": "هلال متناقص",
-
   "alm_sun": "الشمس",
   "alm_moon": "القمر",
   "alm_below_horizon": "تحت الأفق",
-
   "click_to_confirm": "انقر مرة أخرى للتأكيد",
   "delete_zim": "حذف ملف ZIM هذا",
   "change_password": "تغيير كلمة المرور",
@@ -283,7 +279,7 @@
   "n_available": "{n} متاح",
   "n_installed_count": "{n} مثبت",
   "multilingual": "متعدد اللغات ({n} لغة)",
-  "back_to_catalog": "\u2190 الفهرس",
+  "back_to_catalog": "← الفهرس",
   "cat_encyclopedias": "موسوعات",
   "cat_qa": "مجتمعات الأسئلة والأجوبة",
   "cat_devdocs": "وثائق تقنية وتطوير",
@@ -305,7 +301,7 @@
   "cat_gaming_desc": "Minecraft و Pokémon و D&D و Stardew Valley والمزيد",
   "cat_other_desc": "أرشيفات متنوعة وغير مصنفة",
   "articles": "مقالة",
-  "from_to_update": "من {from} \u2192 {to}",
+  "from_to_update": "من {from} → {to}",
   "title_index": "فهرس العناوين",
   "fulltext_index": "فهرس النص الكامل",
   "n_of_total": "{n} من {total}",
@@ -337,5 +333,6 @@
   "lang_exact_match": "تطابق تام",
   "lang_close_match": "تطابق قريب",
   "lang_possible_match": "تطابق محتمل",
-  "lang_no_zim": "لا توجد مصادر بـ{lang} مثبتة"
+  "lang_no_zim": "لا توجد مصادر بـ{lang} مثبتة",
+  "show_lang_chooser": "إظهار منتقي اللغة"
 }

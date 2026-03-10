@@ -223,7 +223,6 @@
   "cal_julian": "Juliano",
   "cal_buddhist": "Budista",
   "cal_chinese": "Chino",
-
   "alm_illuminated": "iluminado",
   "alm_moon_age": "edad lunar",
   "alm_distance": "distancia",
@@ -245,7 +244,6 @@
   "season_spring": "Primavera",
   "season_summer": "Verano",
   "season_autumn": "Otoño",
-
   "moon_new": "Luna Nueva",
   "moon_waxing_crescent": "Creciente",
   "moon_first_quarter": "Cuarto Creciente",
@@ -254,11 +252,9 @@
   "moon_waning_gibbous": "Gibosa Menguante",
   "moon_last_quarter": "Cuarto Menguante",
   "moon_waning_crescent": "Menguante",
-
   "alm_sun": "Sol",
   "alm_moon": "Luna",
   "alm_below_horizon": "bajo el horizonte",
-
   "click_to_confirm": "Haga clic de nuevo para confirmar",
   "delete_zim": "Eliminar este archivo ZIM",
   "change_password": "Cambiar contraseña",
@@ -283,7 +279,7 @@
   "n_available": "{n} disponibles",
   "n_installed_count": "{n} instalados",
   "multilingual": "Multilingüe ({n} idiomas)",
-  "back_to_catalog": "\u2190 Catálogo",
+  "back_to_catalog": "← Catálogo",
   "cat_encyclopedias": "Enciclopedias",
   "cat_qa": "Comunidades Q&A",
   "cat_devdocs": "Docs de dev y tech",
@@ -305,7 +301,7 @@
   "cat_gaming_desc": "Minecraft, Pokémon, D&D, Stardew Valley y más",
   "cat_other_desc": "Archivos diversos y sin categorizar",
   "articles": "artículos",
-  "from_to_update": "De {from} \u2192 {to}",
+  "from_to_update": "De {from} → {to}",
   "title_index": "Índice de títulos",
   "fulltext_index": "Índice de texto completo",
   "n_of_total": "{n} de {total}",
@@ -337,5 +333,6 @@
   "lang_exact_match": "Coincidencia exacta",
   "lang_close_match": "Coincidencia cercana",
   "lang_possible_match": "Posible coincidencia",
-  "lang_no_zim": "No hay fuentes en {lang} instaladas"
+  "lang_no_zim": "No hay fuentes en {lang} instaladas",
+  "show_lang_chooser": "Mostrar selector de idioma"
 }

@@ -223,7 +223,6 @@
   "cal_julian": "Julien",
   "cal_buddhist": "Bouddhiste",
   "cal_chinese": "Chinois",
-
   "alm_illuminated": "illuminé",
   "alm_moon_age": "âge lunaire",
   "alm_distance": "distance",
@@ -245,7 +244,6 @@
   "season_spring": "Printemps",
   "season_summer": "Été",
   "season_autumn": "Automne",
-
   "moon_new": "Nouvelle Lune",
   "moon_waxing_crescent": "Premier Croissant",
   "moon_first_quarter": "Premier Quartier",
@@ -254,11 +252,9 @@
   "moon_waning_gibbous": "Gibbeuse Décroissante",
   "moon_last_quarter": "Dernier Quartier",
   "moon_waning_crescent": "Dernier Croissant",
-
   "alm_sun": "Soleil",
   "alm_moon": "Lune",
   "alm_below_horizon": "sous l'horizon",
-
   "click_to_confirm": "Cliquez à nouveau pour confirmer",
   "delete_zim": "Supprimer ce fichier ZIM",
   "change_password": "Changer le mot de passe",
@@ -283,7 +279,7 @@
   "n_available": "{n} disponibles",
   "n_installed_count": "{n} installés",
   "multilingual": "Multilingue ({n} langues)",
-  "back_to_catalog": "\u2190 Catalogue",
+  "back_to_catalog": "← Catalogue",
   "cat_encyclopedias": "Encyclopédies",
   "cat_qa": "Communautés Q&R",
   "cat_devdocs": "Docs dev & tech",
@@ -305,7 +301,7 @@
   "cat_gaming_desc": "Minecraft, Pokémon, D&D, Stardew Valley et plus",
   "cat_other_desc": "Archives diverses et non classées",
   "articles": "articles",
-  "from_to_update": "De {from} \u2192 {to}",
+  "from_to_update": "De {from} → {to}",
   "title_index": "Index des titres",
   "fulltext_index": "Index plein texte",
   "n_of_total": "{n} sur {total}",
@@ -337,5 +333,6 @@
   "lang_exact_match": "Correspondance exacte",
   "lang_close_match": "Correspondance proche",
   "lang_possible_match": "Correspondance possible",
-  "lang_no_zim": "Aucune source en {lang} installée"
+  "lang_no_zim": "Aucune source en {lang} installée",
+  "show_lang_chooser": "Afficher le sélecteur de langue"
 }

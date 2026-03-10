@@ -223,7 +223,6 @@
   "cal_julian": "जूलियन",
   "cal_buddhist": "बौद्ध",
   "cal_chinese": "चीनी",
-
   "alm_illuminated": "प्रकाशित",
   "alm_moon_age": "चंद्र आयु",
   "alm_distance": "दूरी",
@@ -245,7 +244,6 @@
   "season_spring": "वसंत",
   "season_summer": "गर्मी",
   "season_autumn": "शरद",
-
   "moon_new": "अमावस्या",
   "moon_waxing_crescent": "शुक्ल पक्ष",
   "moon_first_quarter": "शुक्ल अष्टमी",
@@ -254,11 +252,9 @@
   "moon_waning_gibbous": "कृष्ण गिबस",
   "moon_last_quarter": "कृष्ण अष्टमी",
   "moon_waning_crescent": "कृष्ण पक्ष",
-
   "alm_sun": "सूर्य",
   "alm_moon": "चंद्रमा",
   "alm_below_horizon": "क्षितिज के नीचे",
-
   "click_to_confirm": "पुष्टि के लिए फिर से क्लिक करें",
   "delete_zim": "यह ZIM फ़ाइल हटाएं",
   "change_password": "पासवर्ड बदलें",
@@ -283,7 +279,7 @@
   "n_available": "{n} उपलब्ध",
   "n_installed_count": "{n} इंस्टॉल्ड",
   "multilingual": "बहुभाषी ({n} भाषाएं)",
-  "back_to_catalog": "\u2190 कैटलॉग",
+  "back_to_catalog": "← कैटलॉग",
   "cat_encyclopedias": "विश्वकोश",
   "cat_qa": "प्रश्नोत्तर समुदाय",
   "cat_devdocs": "डेव और तकनीकी दस्तावेज़",
@@ -305,7 +301,7 @@
   "cat_gaming_desc": "Minecraft, Pokémon, D&D, Stardew Valley और अधिक",
   "cat_other_desc": "विविध और अवर्गीकृत संग्रह",
   "articles": "लेख",
-  "from_to_update": "{from} से \u2192 {to}",
+  "from_to_update": "{from} से → {to}",
   "title_index": "शीर्षक अनुक्रमणिका",
   "fulltext_index": "पूर्ण-पाठ अनुक्रमणिका",
   "n_of_total": "{n} / {total}",
@@ -337,5 +333,6 @@
   "lang_exact_match": "सटीक मिलान",
   "lang_close_match": "निकट मिलान",
   "lang_possible_match": "संभावित मिलान",
-  "lang_no_zim": "कोई {lang} स्रोत स्थापित नहीं"
+  "lang_no_zim": "कोई {lang} स्रोत स्थापित नहीं",
+  "show_lang_chooser": "भाषा चयनकर्ता दिखाएँ"
 }

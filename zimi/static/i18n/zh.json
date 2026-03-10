@@ -223,7 +223,6 @@
   "cal_julian": "儒略历",
   "cal_buddhist": "佛历",
   "cal_chinese": "农历",
-
   "alm_illuminated": "光照",
   "alm_moon_age": "月龄",
   "alm_distance": "距离",
@@ -245,7 +244,6 @@
   "season_spring": "春",
   "season_summer": "夏",
   "season_autumn": "秋",
-
   "moon_new": "新月",
   "moon_waxing_crescent": "眉月",
   "moon_first_quarter": "上弦月",
@@ -254,11 +252,9 @@
   "moon_waning_gibbous": "亏凸月",
   "moon_last_quarter": "下弦月",
   "moon_waning_crescent": "残月",
-
   "alm_sun": "太阳",
   "alm_moon": "月亮",
   "alm_below_horizon": "在地平线以下",
-
   "click_to_confirm": "再次点击确认删除",
   "delete_zim": "删除此 ZIM 文件",
   "change_password": "更改密码",
@@ -283,7 +279,7 @@
   "n_available": "{n} 个可用",
   "n_installed_count": "{n} 个已安装",
   "multilingual": "多语言（{n} 种语言）",
-  "back_to_catalog": "\u2190 目录",
+  "back_to_catalog": "← 目录",
   "cat_encyclopedias": "百科全书",
   "cat_qa": "问答社区",
   "cat_devdocs": "开发与技术文档",
@@ -305,7 +301,7 @@
   "cat_gaming_desc": "Minecraft、Pokémon、D&D、Stardew Valley 等",
   "cat_other_desc": "杂项及未分类档案",
   "articles": "篇文章",
-  "from_to_update": "从 {from} \u2192 {to}",
+  "from_to_update": "从 {from} → {to}",
   "title_index": "标题索引",
   "fulltext_index": "全文索引",
   "n_of_total": "{n} / {total}",
@@ -337,5 +333,6 @@
   "lang_exact_match": "精确匹配",
   "lang_close_match": "接近匹配",
   "lang_possible_match": "可能匹配",
-  "lang_no_zim": "未安装{lang}源"
+  "lang_no_zim": "未安装{lang}源",
+  "show_lang_chooser": "显示语言选择器"
 }

@@ -11,6 +11,7 @@
   "open_in_browser": "Open in browser",
   "go_back": "Go back",
   "show_discover": "Show Discover",
+  "show_lang_chooser": "Show language chooser",
   "hide_discover": "Hide Discover",
 
   "sources_count": "{n} sources",

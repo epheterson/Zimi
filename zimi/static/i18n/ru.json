@@ -223,7 +223,6 @@
   "cal_julian": "Юлианский",
   "cal_buddhist": "Буддийский",
   "cal_chinese": "Китайский",
-
   "alm_illuminated": "освещённость",
   "alm_moon_age": "возраст Луны",
   "alm_distance": "расстояние",
@@ -245,7 +244,6 @@
   "season_spring": "Весна",
   "season_summer": "Лето",
   "season_autumn": "Осень",
-
   "moon_new": "Новолуние",
   "moon_waxing_crescent": "Молодая Луна",
   "moon_first_quarter": "Первая четверть",
@@ -254,11 +252,9 @@
   "moon_waning_gibbous": "Убывающая Луна",
   "moon_last_quarter": "Последняя четверть",
   "moon_waning_crescent": "Старая Луна",
-
   "alm_sun": "Солнце",
   "alm_moon": "Луна",
   "alm_below_horizon": "за горизонтом",
-
   "click_to_confirm": "Нажмите ещё раз для подтверждения",
   "delete_zim": "Удалить этот ZIM-файл",
   "change_password": "Изменить пароль",
@@ -283,7 +279,7 @@
   "n_available": "{n} доступно",
   "n_installed_count": "{n} установлено",
   "multilingual": "Многоязычный ({n} языков)",
-  "back_to_catalog": "\u2190 Каталог",
+  "back_to_catalog": "← Каталог",
   "cat_encyclopedias": "Энциклопедии",
   "cat_qa": "Сообщества Q&A",
   "cat_devdocs": "Документация для разработчиков",
@@ -305,7 +301,7 @@
   "cat_gaming_desc": "Minecraft, Pokémon, D&D, Stardew Valley и другие",
   "cat_other_desc": "Разные и некатегоризированные архивы",
   "articles": "статей",
-  "from_to_update": "С {from} \u2192 {to}",
+  "from_to_update": "С {from} → {to}",
   "title_index": "Индекс заголовков",
   "fulltext_index": "Полнотекстовый индекс",
   "n_of_total": "{n} из {total}",
@@ -337,5 +333,6 @@
   "lang_exact_match": "Точное совпадение",
   "lang_close_match": "Близкое совпадение",
   "lang_possible_match": "Возможное совпадение",
-  "lang_no_zim": "Нет установленных источников на {lang}"
+  "lang_no_zim": "Нет установленных источников на {lang}",
+  "show_lang_chooser": "Показать выбор языка"
 }

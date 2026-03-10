@@ -223,7 +223,6 @@
   "cal_julian": "יוליאני",
   "cal_buddhist": "בודהיסטי",
   "cal_chinese": "סיני",
-
   "alm_illuminated": "מואר",
   "alm_moon_age": "גיל הירח",
   "alm_distance": "מרחק",
@@ -245,7 +244,6 @@
   "season_spring": "אביב",
   "season_summer": "קיץ",
   "season_autumn": "סתיו",
-
   "moon_new": "ירח חדש",
   "moon_waxing_crescent": "סהר הולך וגדל",
   "moon_first_quarter": "רבע ראשון",
@@ -254,11 +252,9 @@
   "moon_waning_gibbous": "הולך ומתמעט",
   "moon_last_quarter": "רבע אחרון",
   "moon_waning_crescent": "סהר הולך ופוחת",
-
   "alm_sun": "שמש",
   "alm_moon": "ירח",
   "alm_below_horizon": "מתחת לאופק",
-
   "click_to_confirm": "לחץ שוב לאישור",
   "delete_zim": "מחק קובץ ZIM זה",
   "change_password": "שנה סיסמה",
@@ -283,7 +279,7 @@
   "n_available": "{n} זמינים",
   "n_installed_count": "{n} מותקנים",
   "multilingual": "רב־לשוני ({n} שפות)",
-  "back_to_catalog": "\u2190 קטלוג",
+  "back_to_catalog": "← קטלוג",
   "cat_encyclopedias": "אנציקלופדיות",
   "cat_qa": "קהילות שאלות ותשובות",
   "cat_devdocs": "תיעוד טכני ופיתוח",
@@ -305,7 +301,7 @@
   "cat_gaming_desc": "Minecraft, Pokémon, D&D, Stardew Valley ועוד",
   "cat_other_desc": "ארכיונים שונים ולא מסווגים",
   "articles": "מאמרים",
-  "from_to_update": "מ־{from} \u2192 {to}",
+  "from_to_update": "מ־{from} → {to}",
   "title_index": "אינדקס כותרות",
   "fulltext_index": "אינדקס טקסט מלא",
   "n_of_total": "{n} מתוך {total}",
@@ -337,5 +333,6 @@
   "lang_exact_match": "התאמה מדויקת",
   "lang_close_match": "התאמה קרובה",
   "lang_possible_match": "התאמה אפשרית",
-  "lang_no_zim": "אין מקורות ב{lang} מותקנים"
+  "lang_no_zim": "אין מקורות ב{lang} מותקנים",
+  "show_lang_chooser": "הצג בורר שפה"
 }
