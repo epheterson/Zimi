@@ -197,7 +197,7 @@
   "partial_downloads": "Téléchargements partiels",
   "auto_update": "Mise à jour automatique",
   "cross_zim_nav": "Navigation inter-ZIM",
-  "show_cross_links": "Afficher les liens inter-sources en surbrillance",
+  "show_cross_links": "Surligner les liens inter-ZIM",
   "server_config_hint": "La configuration du serveur est disponible via le panneau Paramètres.",
   "open_server_settings": "Ouvrir les paramètres du serveur",
   "configured_via_env": "Configuré via les variables d'environnement ou Docker.",
@@ -334,5 +334,5 @@
   "lang_close_match": "Correspondance proche",
   "lang_possible_match": "Correspondance possible",
   "lang_no_zim": "Aucune source en {lang} installée",
-  "show_lang_chooser": "Afficher le sélecteur de langue"
+  "show_lang_chooser": "Afficher les langues"
 }

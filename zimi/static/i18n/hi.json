@@ -197,7 +197,7 @@
   "partial_downloads": "अधूरे डाउनलोड",
   "auto_update": "स्वतः अपडेट",
   "cross_zim_nav": "क्रॉस-ZIM नेविगेशन",
-  "show_cross_links": "क्रॉस-सोर्स लिंक हाइलाइट दिखाएं",
+  "show_cross_links": "क्रॉस-ZIM लिंक हाइलाइट करें",
   "server_config_hint": "सर्वर कॉन्फ़िगरेशन सेटिंग्स पैनल से उपलब्ध है।",
   "open_server_settings": "सर्वर सेटिंग्स खोलें",
   "configured_via_env": "एनवायरनमेंट वेरिएबल्स या Docker द्वारा कॉन्फ़िगर किया गया।",
@@ -334,5 +334,5 @@
   "lang_close_match": "निकट मिलान",
   "lang_possible_match": "संभावित मिलान",
   "lang_no_zim": "कोई {lang} स्रोत स्थापित नहीं",
-  "show_lang_chooser": "भाषा चयनकर्ता दिखाएँ"
+  "show_lang_chooser": "भाषाएँ दिखाएँ"
 }

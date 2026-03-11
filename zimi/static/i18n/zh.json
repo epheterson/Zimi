@@ -197,7 +197,7 @@
   "partial_downloads": "未完成的下载",
   "auto_update": "自动更新",
   "cross_zim_nav": "跨 ZIM 导航",
-  "show_cross_links": "显示跨来源链接高亮",
+  "show_cross_links": "高亮跨 ZIM 链接",
   "server_config_hint": "服务器配置可通过“设置”面板访问。",
   "open_server_settings": "打开服务器设置",
   "configured_via_env": "通过环境变量或 Docker 配置。",
@@ -334,5 +334,5 @@
   "lang_close_match": "接近匹配",
   "lang_possible_match": "可能匹配",
   "lang_no_zim": "未安装{lang}源",
-  "show_lang_chooser": "显示语言选择器"
+  "show_lang_chooser": "显示语言"
 }

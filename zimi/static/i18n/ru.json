@@ -197,7 +197,7 @@
   "partial_downloads": "Незавершённые загрузки",
   "auto_update": "Автообновление",
   "cross_zim_nav": "Навигация между ZIM",
-  "show_cross_links": "Показывать ссылки на другие источники",
+  "show_cross_links": "Подсвечивать ссылки между ZIM",
   "server_config_hint": "Настройки сервера доступны через панель «Настройки».",
   "open_server_settings": "Открыть настройки сервера",
   "configured_via_env": "Настроено через переменные окружения или Docker.",
@@ -334,5 +334,5 @@
   "lang_close_match": "Близкое совпадение",
   "lang_possible_match": "Возможное совпадение",
   "lang_no_zim": "Нет установленных источников на {lang}",
-  "show_lang_chooser": "Показать выбор языка"
+  "show_lang_chooser": "Показать языки"
 }

@@ -197,7 +197,7 @@
   "partial_downloads": "הורדות חלקיות",
   "auto_update": "עדכון אוטומטי",
   "cross_zim_nav": "ניווט בין קבצי ZIM",
-  "show_cross_links": "הצגת קישורים בין מקורות",
+  "show_cross_links": "הדגשת קישורים בין קבצי ZIM",
   "server_config_hint": "הגדרות שרת זמינות דרך חלון ההגדרות.",
   "open_server_settings": "פתיחת הגדרות שרת",
   "configured_via_env": "מוגדר דרך משתני סביבה או Docker.",
@@ -334,5 +334,5 @@
   "lang_close_match": "התאמה קרובה",
   "lang_possible_match": "התאמה אפשרית",
   "lang_no_zim": "אין מקורות ב{lang} מותקנים",
-  "show_lang_chooser": "הצג בורר שפה"
+  "show_lang_chooser": "הצג שפות"
 }

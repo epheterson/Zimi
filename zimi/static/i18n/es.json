@@ -197,7 +197,7 @@
   "partial_downloads": "Descargas parciales",
   "auto_update": "Actualización automática",
   "cross_zim_nav": "Navegación entre ZIMs",
-  "show_cross_links": "Mostrar enlaces entre fuentes resaltados",
+  "show_cross_links": "Resaltar enlaces entre ZIMs",
   "server_config_hint": "La configuración del servidor está disponible en el panel de Ajustes.",
   "open_server_settings": "Abrir ajustes del servidor",
   "configured_via_env": "Configurado mediante variables de entorno o Docker.",
@@ -334,5 +334,5 @@
   "lang_close_match": "Coincidencia cercana",
   "lang_possible_match": "Posible coincidencia",
   "lang_no_zim": "No hay fuentes en {lang} instaladas",
-  "show_lang_chooser": "Mostrar selector de idioma"
+  "show_lang_chooser": "Mostrar idiomas"
 }

@@ -11,7 +11,7 @@
   "open_in_browser": "Open in browser",
   "go_back": "Go back",
   "show_discover": "Show Discover",
-  "show_lang_chooser": "Show language chooser",
+  "show_lang_chooser": "Show Languages",
   "hide_discover": "Hide Discover",
 
   "sources_count": "{n} sources",
@@ -235,7 +235,7 @@
 
   "auto_update": "Auto-update",
   "cross_zim_nav": "Cross-ZIM Navigation",
-  "show_cross_links": "Show cross-source link highlights",
+  "show_cross_links": "Highlight Cross-ZIM Links",
 
   "server_config_hint": "Server configuration is available via the Settings overlay.",
   "open_server_settings": "Open Server Settings",

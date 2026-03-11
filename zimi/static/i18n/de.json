@@ -197,7 +197,7 @@
   "partial_downloads": "Unvollständige Downloads",
   "auto_update": "Automatische Aktualisierung",
   "cross_zim_nav": "ZIM-übergreifende Navigation",
-  "show_cross_links": "Quellenübergreifende Link-Hervorhebung anzeigen",
+  "show_cross_links": "ZIM-übergreifende Links hervorheben",
   "server_config_hint": "Die Serverkonfiguration ist über das Einstellungsfenster verfügbar.",
   "open_server_settings": "Servereinstellungen öffnen",
   "configured_via_env": "Konfiguriert über Umgebungsvariablen oder Docker.",
@@ -334,5 +334,5 @@
   "lang_close_match": "Ähnlich",
   "lang_possible_match": "Möglich",
   "lang_no_zim": "Keine {lang}-Quellen installiert",
-  "show_lang_chooser": "Sprachauswahl anzeigen"
+  "show_lang_chooser": "Sprachen anzeigen"
 }

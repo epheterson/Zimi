@@ -197,7 +197,7 @@
   "partial_downloads": "تنزيلات جزئية",
   "auto_update": "تحديث تلقائي",
   "cross_zim_nav": "التنقل بين ملفات ZIM",
-  "show_cross_links": "إظهار تمييز الروابط بين المصادر",
+  "show_cross_links": "تمييز الروابط بين ملفات ZIM",
   "server_config_hint": "إعدادات الخادم متاحة عبر لوحة الإعدادات.",
   "open_server_settings": "فتح إعدادات الخادم",
   "configured_via_env": "تم الإعداد عبر متغيرات البيئة أو Docker.",
@@ -334,5 +334,5 @@
   "lang_close_match": "تطابق قريب",
   "lang_possible_match": "تطابق محتمل",
   "lang_no_zim": "لا توجد مصادر بـ{lang} مثبتة",
-  "show_lang_chooser": "إظهار منتقي اللغة"
+  "show_lang_chooser": "إظهار اللغات"
 }

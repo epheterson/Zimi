@@ -5619,16 +5619,16 @@ function _msPreferencesHtml() {
   var showDiscover = localStorage.getItem('zimi_hide_discover') !== '1';
   var showLangChooser = localStorage.getItem('zimi_hide_lang_chooser') !== '1';
   var h = '<div class="ms-section-label">' + tH('ms_display_section') + '</div>' +
-    '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
     '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
     '<label class="ms-check"><input type="checkbox"' + (showLangChooser ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\')"> ' + tH('show_lang_chooser') + '</label>';
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\')"> ' + tH('show_lang_chooser') + '</label>' +
+    '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>';
   // Security section
   h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_security') + '</div>' +
     '<div class="ms-actions">' +
-      '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('set_change_password') + '</button>';
+      '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('password') + '</button>';
   if (sessionStorage.getItem('zimi_manage_pw')) {
     h += '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('log_out') + '</button>';
   }
@@ -5648,11 +5648,9 @@ function _msServerHtml() {
       '<div style="display:flex;gap:8px"><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
       '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseDataFolder()">' + tH('choose_folder') + '</button></div></div>' +
       '<div class="ms-hint">' + tH('data_folder_hint') + '</div>' +
-      '<div class="ms-field"><label>' + tH('port') + '</label><input type="number" id="ms-port" min="1024" max="65535" value="8899"></div>' +
-      '<div class="ms-hint">' + tH('restart_hint') + '</div>' +
-      '<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' +
-        '<button class="manage-btn-action" onclick="settingsSaveInline()">' + tH('save') + '</button>' +
-      '</div>';
+      '<div class="ms-field" style="display:flex;align-items:center;gap:8px"><label style="margin:0">' + tH('port') + '</label><input type="number" id="ms-port" min="1024" max="65535" value="8899" style="width:90px">' +
+        '<button class="manage-btn-action" onclick="settingsSaveInline()" style="margin-left:auto">' + tH('save') + '</button></div>' +
+      '<div class="ms-hint">' + tH('restart_hint') + '</div>';
   } else {
     h += '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
   }
@@ -7650,28 +7648,40 @@ function _migrateBookmarks() {
 async function randomArticle(event) {
   if (event) event.preventDefault();
   if (mode === 'manage') { mode = 'home'; updateTopbar(); }
-  const btn = document.getElementById('random-btn');
+  var btn = document.getElementById('random-btn');
+  if (btn._randomBusy) return;
+  btn._randomBusy = true;
   btn.classList.add('rolling');
-  setTimeout(() => btn.classList.remove('rolling'), 600);
-  const zimParam = currentSource ? '?zim=' + encodeURIComponent(currentSource) : '';
   try {
-    const res = await fetch('/random' + zimParam);
-    const data = await res.json();
+    var zimParam = currentSource ? '?zim=' + encodeURIComponent(currentSource) : '';
+    var res = await fetch('/random' + zimParam);
+    var data = await res.json();
     if (!data.error) { openArticle(data.zim, data.path, data.title); return; }
     // Fallback for zimgit/PDF ZIMs: pick random doc from catalog
     if (currentSource) {
-      const catRes = await fetch('/catalog?zim=' + encodeURIComponent(currentSource));
-      const catData = await catRes.json();
+      var catRes = await fetch('/catalog?zim=' + encodeURIComponent(currentSource));
+      var catData = await catRes.json();
       if (catData.documents && catData.documents.length) {
-        const docs = catData.documents.filter(d => d.path);
+        var docs = catData.documents.filter(function(d) { return d.path; });
         if (docs.length) {
-          const pick = docs[Math.floor(Math.random() * docs.length)];
+          var pick = docs[Math.floor(Math.random() * docs.length)];
           openArticle(currentSource, pick.path, pick.title);
           return;
         }
       }
     }
-  } catch(e) {}
+    // Current source failed — try global random
+    if (currentSource) {
+      res = await fetch('/random');
+      data = await res.json();
+      if (!data.error) { openArticle(data.zim, data.path, data.title); }
+    }
+  } catch(e) {
+    console.warn('Random article failed:', e);
+  } finally {
+    btn.classList.remove('rolling');
+    btn._randomBusy = false;
+  }
 }
 
 // ── Keyboard ──
