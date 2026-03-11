@@ -4488,7 +4488,7 @@ function formatLanguage(langStr) {
 }
 
 // 3-letter → 2-letter language code for tags
-const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru',ara:'ar',zho:'zh',jpn:'ja',kor:'ko',hin:'hi',tur:'tr',pol:'pl',nld:'nl',swe:'sv',vie:'vi',tha:'th',heb:'he',ell:'el',ron:'ro',hun:'hu',fas:'fa',ind:'id',ukr:'uk',ces:'cs',dan:'da',fin:'fi',nor:'no',cat:'ca',mul:'mul'};
+const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru',ara:'ar',zho:'zh',jpn:'ja',kor:'ko',hin:'hi',tur:'tr',pol:'pl',nld:'nl',swe:'sv',vie:'vi',tha:'th',heb:'he',ell:'el',ron:'ro',hun:'hu',fas:'fa',ind:'id',ukr:'uk',ces:'cs',dan:'da',fin:'fi',nor:'no',cat:'ca',mul:'mul',msa:'ms',ben:'bn',tam:'ta',tel:'te',urd:'ur',srp:'sr',hrv:'hr',bos:'bs',slk:'sk',slv:'sl',bul:'bg',lit:'lt',lav:'lv',est:'et',swa:'sw',amh:'am',hau:'ha',yor:'yo',zul:'zu',afr:'af',gle:'ga',cym:'cy',eus:'eu',glg:'gl',kat:'ka',hye:'hy',mkd:'mk',sqi:'sq',bel:'be',kaz:'kk',uzb:'uz',tgl:'tl',mal:'ml',kan:'kn',guj:'gu',mar:'mr',mya:'my',khm:'km',lao:'lo',sin:'si',nep:'ne',pan:'pa',aze:'az',mon:'mn',tgk:'tg',kir:'ky'};
 function _catLangTag(langStr) {
   if (!langStr) return '';
   var codes = langStr.toLowerCase().split(',').map(c => c.trim()).filter(Boolean);
@@ -5191,7 +5191,7 @@ async function toggleCollZim(collName, zimName) {
 // ── History tab ──
 function _historyZimInfo(ev) {
   // Use cached ZIM info from event if available (survives deletion)
-  if (ev.title) return { title: ev.title, name: ev.name || '', has_icon: ev.has_icon, _fromEvent: true };
+  if (ev.title) return { title: ev.title, name: ev.name || '', has_icon: ev.has_icon, language: ev.language || '', _fromEvent: true };
   var filename = ev.filename;
   // Try to find ZIM in current library by filename
   if (zimsCache) {
@@ -5203,6 +5203,13 @@ function _historyZimInfo(ev) {
   if (zimsCache) {
     var z2 = zimsCache.find(function(z) { return z.name === name; });
     if (z2) return z2;
+  }
+  // Try catalog cache for downloads that never completed
+  if (_globalCatalogCache) {
+    var catMatch = _globalCatalogCache.find(function(it) {
+      return it.download_url && it.download_url.split('/').pop() === filename;
+    });
+    if (catMatch) return { title: catMatch.title, name: catMatch.name || name, has_icon: false, language: catMatch.language || '', _fromEvent: true };
   }
   return null;
 }
@@ -5566,7 +5573,7 @@ function _msLibraryHtml() {
     '<div class="ms-actions">' +
       '<button class="manage-btn-action" onclick="manageImportZim()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('import_zim') + '</button>' +
       '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('refresh_cache') + '</button>' +
-      '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none">' + tH('update_all') + '</button>' +
+      '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none;margin-left:auto">' + tH('update_all') + '</button>' +
     '</div>' +
     '<div id="tmp-files-section"></div>';
   // Async-load tmp file info
@@ -5733,20 +5740,23 @@ function getInstalledPillsHtml() {
     }
     h += '</div>';
   }
-  // Language pills — simple pills for installed (no search icon or counts — too few items)
+  // Language pills — horizontal scroll with counts, no search button
   var langKeys = Object.keys(langCounts).sort(function(a, b) { return (langCounts[b] || 0) - (langCounts[a] || 0); });
   if (langKeys.length > 1 && localStorage.getItem('zimi_hide_lang_chooser') !== '1') {
     var validLangs = manageCategoryFilter ? new Set(langsByCat[manageCategoryFilter] || []) : null;
-    h += '<div class="pills" style="margin-bottom:8px;justify-content:center">';
+    h += '<div class="catalog-lang-row" oncontextmenu="_langChooserCtxMenu(event)" style="justify-content:center">';
+    h += '<div class="catalog-lang-scroll">';
     for (var li = 0; li < langKeys.length; li++) {
       var lc = langKeys[li];
       var lname = _langDisplayName(lc) || lc;
       var active = manageLangFilter === lc;
       var dimmed = validLangs && !validLangs.has(lc);
+      var count = langCounts[lc] || 0;
       h += '<button class="pill' + (active ? ' active' : '') + (dimmed ? ' dimmed' : '') +
-        '" onclick="filterManageLang(\'' + escAttr(lc) + '\')">' + esc(lname) + '</button>';
+        '" onclick="filterManageLang(\'' + escAttr(lc) + '\')">' +
+        esc(lname) + ' <span style="opacity:0.5;font-size:10px">' + count + '</span></button>';
     }
-    h += '</div>';
+    h += '</div></div>';
   }
   return h;
 }

@@ -3836,6 +3836,14 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
             dl_base, _ = _extract_zim_date(dl_fn)
             installed = dl_base.lower() in local_bases
 
+        # Normalize language to 2-letter codes (OPDS uses 3-letter)
+        if language:
+            norm_parts = []
+            for lp in language.split(","):
+                lp = lp.strip().lower()
+                if lp:
+                    norm_parts.append(_ISO639_3_TO_1.get(lp, lp if len(lp) == 2 else lp[:2]))
+            language = ",".join(norm_parts)
         items.append({
             "name": name,
             "title": title,
@@ -3990,6 +3998,19 @@ def _download_from_url(dl, url, tmp_dest):
     return True, None
 
 
+def _title_from_filename(filename):
+    """Extract a readable title from a ZIM filename for history events."""
+    name = re.sub(r'_\d{4}-\d{2}\.zim$', '', filename).replace('.zim', '')
+    # Try OPDS cache for a proper title
+    for _ts, _total, items in _opds_cache.values():
+        for it in items:
+            dl_fn = (it.get("download_url") or "").split("/")[-1]
+            if dl_fn == filename:
+                return {"title": it.get("title", ""), "name": it.get("name", name)}
+    # Fallback: humanize filename
+    return {"title": name.replace("_", " ").title(), "name": name}
+
+
 def _download_thread(dl):
     """Background thread that downloads a file with mirror rotation.
 
@@ -4023,7 +4044,7 @@ def _download_thread(dl):
             dl["done"] = True
             dl["error"] = f"All {len(mirrors)} mirror(s) failed. Last: {last_error}"
             _append_history({"event": "download_failed", "ts": time.time(), "filename": dl["filename"],
-                             "error": dl["error"]})
+                             "error": dl["error"], **_title_from_filename(dl["filename"])})
             return
         # Atomic rename: tmp → final
         os.replace(tmp_dest, dl["dest"])
@@ -4069,7 +4090,7 @@ def _download_thread(dl):
         dl["error"] = str(e)
         if not dl.get("cancelled"):
             _append_history({"event": "download_failed", "ts": time.time(), "filename": dl["filename"],
-                             "error": str(e)})
+                             "error": str(e), **_title_from_filename(dl["filename"])})
 
 
 def _fetch_mirrors(meta4_url):
