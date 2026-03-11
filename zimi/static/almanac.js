@@ -137,7 +137,7 @@ function _renderAlmanacContent() {
   html += '<div class="orrery-controls">';
   // Bidirectional speed slider: left = rewind, center = 1×, right = fast forward
   html += '<span class="orrery-speed-end">◀</span>';
-  html += '<input id="orrery-slider" type="range" min="-60" max="60" value="0" class="orrery-slider" oninput="_orrerySliderInput(this.value)" />';
+  html += '<input id="orrery-slider" type="range" min="-80" max="80" value="0" class="orrery-slider" oninput="_orrerySliderInput(this.value)" />';
   html += '<span class="orrery-speed-end">▶</span>';
   html += '<span id="orrery-speed-label" class="orrery-speed-label">1×</span>';
   html += '<span id="orrery-date" class="orrery-date"></span>';
