@@ -3709,9 +3709,9 @@ function _jdnToJulian(jdn) {
 
 // ── Calendar dispatchers — uniform interface for any calendar system ──
 
-// Gregorian first (default), then by historical origin: Chinese (~2637 BCE), Hebrew (~359 CE),
-// Julian (45 BCE), Buddhist (~543 BCE), Islamic (622 CE), Persian (1925 CE modern)
-var _CAL_SYSTEMS = ['gregorian', 'julian', 'chinese', 'hebrew', 'buddhist', 'islamic', 'persian'];
+// Chronological by origin: Chinese (~2637 BCE), Hebrew (~359 CE codified),
+// Buddhist (543 BCE epoch), Julian (45 BCE), Islamic (622 CE), Gregorian (1582 CE), Persian (1925 CE)
+var _CAL_SYSTEMS = ['chinese', 'hebrew', 'buddhist', 'julian', 'islamic', 'gregorian', 'persian'];
 function _calLabel(sys) { return t('cal_' + sys); }
 
 var _GREGORIAN_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
