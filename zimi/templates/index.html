@@ -7101,6 +7101,14 @@ function openArticle(zim, path, title) {
   // Modifier-click: open in background tab (Ctrl/Cmd+click)
   if (_isModClick()) {
     _lastMouseEvent = null;
+    // First background tab: promote current article to active tab so bar appears
+    if (_tabs.length === 0 && readerOpen && currentArticle) {
+      var curTitle = document.title !== 'Zimi' ? document.title : _titleFromPath(currentArticle.path);
+      var curTab = { id: _tabId(), zim: currentArticle.zim, path: currentArticle.path, title: curTitle, scrollY: 0 };
+      try { curTab.scrollY = document.getElementById('reader-frame').contentWindow.scrollY || 0; } catch(e) {}
+      _tabs.push(curTab);
+      _activeTabId = curTab.id;
+    }
     _openTab(zim, path, title || _titleFromPath(path), true);
     return;
   }
@@ -7813,6 +7821,14 @@ document.addEventListener('auxclick', function(e) {
   var zim = el.getAttribute('data-zim');
   var path = el.getAttribute('data-path');
   var title = el.getAttribute('data-title') || _titleFromPath(path);
+  // Promote current article to tab if this is the first background tab
+  if (_tabs.length === 0 && readerOpen && currentArticle) {
+    var curTitle = document.title !== 'Zimi' ? document.title : _titleFromPath(currentArticle.path);
+    var curTab = { id: _tabId(), zim: currentArticle.zim, path: currentArticle.path, title: curTitle, scrollY: 0 };
+    try { curTab.scrollY = document.getElementById('reader-frame').contentWindow.scrollY || 0; } catch(e2) {}
+    _tabs.push(curTab);
+    _activeTabId = curTab.id;
+  }
   _openTab(zim, path, title, true);
 });
 
