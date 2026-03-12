@@ -141,16 +141,18 @@ function _renderAlmanacContent() {
   html += '<span class="orrery-speed-end">▶</span>';
   html += '<span id="orrery-speed-label" class="orrery-speed-label">1×</span>';
   html += '<span id="orrery-date" class="orrery-date"></span>';
-  html += '<button id="orrery-now" class="orrery-ctrl-btn orrery-now" onclick="_orrerySnapToNow()" title="Back to now" style="display:none">Now</button>';
+  html += '<button id="orrery-now" class="orrery-ctrl-btn orrery-now" onclick="_orrerySnapToNow()" title="' + t('alm_back_to_now') + '" style="display:none">' + t('alm_now') + '</button>';
   html += '</div>';
   // Transit slider — appears when a rocket is in flight (aligned with main controls)
   html += '<div id="orrery-transit-wrap" class="orrery-transit-wrap">';
-  html += '<span class="orrery-transit-end">Transit</span>';
+  html += '<span class="orrery-transit-end">' + t('alm_transit') + '</span>';
   html += '<input id="orrery-transit-slider" type="range" min="0" max="1000" value="0" class="orrery-slider" style="flex:1" oninput="_orreryTransitSlider(this.value)" />';
   html += '<span id="orrery-transit-label" class="orrery-transit-label"></span>';
   html += '</div>';
   // Missions panel — inline with controls
   html += '<div id="orrery-missions" style="display:none;margin-top:4px;font-size:11px;color:var(--text3)"></div>';
+  // Voyager detail card — appears on click
+  html += '<div id="voyager-card" style="display:none"></div>';
   html += '</div>';
 
   // Tonight's sky — planet visibility
@@ -183,6 +185,13 @@ function _renderAlmanacContent() {
   html += '<div id="almanac-deeptime"></div>';
   html += '</div>';
 
+  // Messages Across Time — enduring inscriptions in every language
+  html += '<div class="almanac-section">';
+  html += '<div class="almanac-section-title">Messages Across Time</div>';
+  html += '<div id="almanac-rosetta"></div>';
+  html += '</div>';
+
+
   // Footer
   html += '<div style="margin-top:40px;text-align:center;font-size:11px;color:var(--text3)">' +
     t('alm_footer') +
@@ -198,9 +207,68 @@ function _renderAlmanacContent() {
   _renderMeteorShowers(now, m);
   _renderCelestialEvents(now);
   _renderDeepTime(now);
+  _renderRosettaStone(now);
   _initOrrery();
+  // Start orrery with gentle animation so planets visibly orbit
+  if (!_orreryPlaying) {
+    _orrerySpeed = 50;
+    _orreryPlaying = true;
+    _orreryLastFrame = performance.now();
+    _orreryAnimate();
+    // Update speed label + slider to reflect auto-play
+    var lbl = document.getElementById('orrery-speed-label');
+    if (lbl) lbl.textContent = '50\u00d7';
+    var slider = document.getElementById('orrery-slider');
+    if (slider) slider.value = 50;
+  }
   _loadSunData(now);
   _startTzClock();
+  _cacheAlmanacHighlights(now, m);
+}
+
+// Cache computed almanac highlights for the Today discover card.
+// Next time _todayTeaser() runs (in index.html), it picks up this richer data.
+function _cacheAlmanacHighlights(now, moon) {
+  try {
+    var highlights = [];
+    var y = now.getFullYear(), mm = now.getMonth(), dd = now.getDate();
+    // Meteor showers — next peak within 10 days
+    for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
+      var s = _METEOR_SHOWERS[si];
+      var peak = new Date(y, s.peak[0]-1, s.peak[1]);
+      if (peak < now) peak = new Date(y+1, s.peak[0]-1, s.peak[1]);
+      var days = Math.ceil((peak - now) / 86400000);
+      if (days <= 10) highlights.push({ type: 'meteor', name: s.name, days: days, zhr: s.zhr, priority: days === 0 ? 0 : days });
+    }
+    // Eclipses — check rendered eclipse elements for upcoming dates
+    var eclipseEl = document.getElementById('almanac-events');
+    if (eclipseEl) {
+      var eclRows = eclipseEl.querySelectorAll('.almanac-eclipse-type');
+      for (var ei = 0; ei < Math.min(3, eclRows.length); ei++) {
+        var untilEl = eclRows[ei].closest('.almanac-eclipse-row');
+        if (untilEl) {
+          var untilSpan = untilEl.querySelector('.almanac-eclipse-until');
+          highlights.push({ type: 'eclipse', name: eclRows[ei].textContent, until: untilSpan ? untilSpan.textContent : '', priority: 5 + ei });
+        }
+      }
+    }
+    // Calendar events today
+    var calEvents = document.querySelectorAll('#almanac-calendar .cal-holiday, #almanac-calendar .cal-event');
+    var todayEvents = [];
+    calEvents.forEach(function(ev) {
+      var dayCell = ev.closest('.cal-day');
+      if (dayCell) {
+        var dayNum = parseInt(dayCell.querySelector('.cal-day-num')?.textContent);
+        if (dayNum === dd) todayEvents.push(ev.getAttribute('title') || ev.textContent);
+      }
+    });
+    if (todayEvents.length > 0) highlights.push({ type: 'holiday', name: todayEvents[0], days: 0, priority: -1 });
+    // Sort by priority (lower = more interesting)
+    highlights.sort(function(a, b) { return a.priority - b.priority; });
+    // Cache top 3
+    var today = now.toISOString().substring(0, 10);
+    localStorage.setItem('zimi_almanac_highlights', JSON.stringify({ date: today, items: highlights.slice(0, 3) }));
+  } catch(e) { /* non-critical */ }
 }
 
 // ── Moon rendering ──
@@ -237,6 +305,18 @@ var _PLANETS = {
   Uranus:  { a: 19.1884, e: 0.04638, I: 0.773, L: 314.055, LP: 173.005, N: 74.006, da: -0.00002, de: -0.00002, dI: -0.0023, dL: 428.467, dLP: 0.009, dN: 0.074, color: '#78c8c8', glow: '#a0e8e8', vr: 0.018 },
   Neptune: { a: 30.0699, e: 0.00895, I: 1.770, L: 304.223, LP: 46.682, N: 131.784, da: 0.00003, de: 0.00001, dI: 0.0001, dL: 218.460, dLP: 0.010, dN: -0.005, color: '#3868c8', glow: '#5888f0', vr: 0.016 }
 };
+
+// ── Voyager probes — hyperbolic escape trajectories ──
+var _VOYAGERS = [
+  { name: 'Voyager 1', launch: Date.UTC(1977, 8, 5), refEpoch: Date.UTC(2025, 0, 1), refDist: 164.0, vel: 3.59, lon: 260.5 },
+  { name: 'Voyager 2', launch: Date.UTC(1977, 7, 20), refEpoch: Date.UTC(2025, 0, 1), refDist: 137.0, vel: 3.25, lon: 296.2 }
+];
+var _voyagerPositions = []; // [{name, x, y, r, dist, idx}] in CSS pixels
+
+function _voyagerDist(v, simTime) {
+  var yearsFromRef = (simTime - v.refEpoch) / (365.25 * 86400000);
+  return Math.max(0, v.refDist + v.vel * yearsFromRef);
+}
 
 function _solveKepler(M, e) {
   var E = M;
@@ -289,79 +369,83 @@ function _initOrrery() {
     wrap.style.position = 'relative';
     wrap.appendChild(tooltip);
   }
-  canvas.onmousemove = function(e) {
-    var rect = canvas.getBoundingClientRect();
-    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    var hit = null;
+  // Helper: find hit target (planet or voyager) at mouse position
+  function _orreryHitTest(mx, my, tolerance) {
     for (var i = 0; i < _orreryPlanetPositions.length; i++) {
       var p = _orreryPlanetPositions[i];
       var dx = mx - p.x, dy = my - p.y;
-      if (dx * dx + dy * dy < (p.r + 8) * (p.r + 8)) { hit = p; break; }
+      if (dx * dx + dy * dy < (p.r + tolerance) * (p.r + tolerance)) return { type: 'planet', data: p };
     }
-    if (hit) {
-      var label = hit.name;
-      if (hit.name !== 'Earth') {
-        var days = Math.round(_hohmannDays(_PLANETS['Earth'].a, _PLANETS[hit.name].a));
-        if (days < 365) label += ' · ' + days + 'd transfer';
-        else label += ' · ' + (days / 365.25).toFixed(1) + 'yr transfer';
+    for (var i = 0; i < _voyagerPositions.length; i++) {
+      var v = _voyagerPositions[i];
+      var dx = mx - v.x, dy = my - v.y;
+      if (dx * dx + dy * dy < (v.r + tolerance + 6) * (v.r + tolerance + 6)) return { type: 'voyager', data: v };
+    }
+    return null;
+  }
+
+  canvas.onmousemove = function(e) {
+    var rect = canvas.getBoundingClientRect();
+    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    var hit = _orreryHitTest(mx, my, 8);
+    if (hit && hit.type === 'planet') {
+      var label = hit.data.name;
+      if (hit.data.name !== 'Earth') {
+        var days = Math.round(_hohmannDays(_PLANETS['Earth'].a, _PLANETS[hit.data.name].a));
+        if (days < 365) label += ' · ' + t('alm_transfer_days', { n: days });
+        else label += ' · ' + t('alm_transfer_years', { n: (days / 365.25).toFixed(1) });
       }
       tooltip.textContent = label;
       tooltip.style.display = 'block';
-      tooltip.style.left = (hit.x + hit.r + 8) + 'px';
-      tooltip.style.top = (hit.y - 10) + 'px';
+      tooltip.style.left = (hit.data.x + hit.data.r + 8) + 'px';
+      tooltip.style.top = (hit.data.y - 10) + 'px';
+      canvas.style.cursor = hit.data.name !== 'Earth' ? 'pointer' : 'default';
+    } else if (hit && hit.type === 'voyager') {
+      var d = hit.data.dist;
+      var signalMin = Math.round(d * 499 / 60);
+      var signalH = Math.floor(signalMin / 60);
+      var signalM = signalMin % 60;
+      tooltip.textContent = hit.data.name + ' · ' + d.toFixed(1) + ' AU · ' + signalH + 'h ' + signalM + 'm ' + t('alm_signal_delay');
+      tooltip.style.display = 'block';
+      tooltip.style.left = (hit.data.x + hit.data.r + 8) + 'px';
+      tooltip.style.top = (hit.data.y - 10) + 'px';
+      canvas.style.cursor = 'pointer';
     } else {
       tooltip.style.display = 'none';
+      canvas.style.cursor = 'default';
     }
   };
   canvas.onmouseleave = function() { tooltip.style.display = 'none'; };
 
-  // Click planet to launch rocket
+  // Click planet to launch rocket, or Voyager to show detail card
   canvas.onclick = function(e) {
     var rect = canvas.getBoundingClientRect();
     var mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    for (var i = 0; i < _orreryPlanetPositions.length; i++) {
-      var p = _orreryPlanetPositions[i];
-      var dx = mx - p.x, dy = my - p.y;
-      if (dx * dx + dy * dy < (p.r + 10) * (p.r + 10)) {
-        _orreryLaunchRocket(p.name);
-        canvas.style.cursor = 'default';
-        tooltip.style.display = 'none';
-        return;
-      }
+    var hit = _orreryHitTest(mx, my, 10);
+    if (hit && hit.type === 'planet' && hit.data.name !== 'Earth') {
+      _orreryLaunchRocket(hit.data.name);
+      tooltip.style.display = 'none';
+    } else if (hit && hit.type === 'voyager') {
+      _showVoyagerCard(hit.data.idx);
+      tooltip.style.display = 'none';
+    } else {
+      _hideVoyagerCard();
     }
   };
-  // Pointer cursor on planet hover
-  canvas.onmousemove = (function(origMove) {
-    return function(e) {
-      origMove(e);
-      var rect = canvas.getBoundingClientRect();
-      var mx = e.clientX - rect.left, my = e.clientY - rect.top;
-      var overPlanet = false;
-      for (var i = 0; i < _orreryPlanetPositions.length; i++) {
-        var p = _orreryPlanetPositions[i];
-        var dx = mx - p.x, dy = my - p.y;
-        if (dx * dx + dy * dy < (p.r + 10) * (p.r + 10) && p.name !== 'Earth') {
-          overPlanet = true; break;
-        }
-      }
-      canvas.style.cursor = overPlanet ? 'pointer' : 'default';
-    };
-  })(canvas.onmousemove);
 
-  // Touch support for mobile — tap planet to launch
+  // Touch support for mobile — tap planet to launch, tap Voyager for detail
   canvas.addEventListener('touchend', function(e) {
     if (e.changedTouches.length === 0) return;
     var touch = e.changedTouches[0];
     var rect = canvas.getBoundingClientRect();
     var mx = touch.clientX - rect.left, my = touch.clientY - rect.top;
-    for (var i = 0; i < _orreryPlanetPositions.length; i++) {
-      var p = _orreryPlanetPositions[i];
-      var dx = mx - p.x, dy = my - p.y;
-      if (dx * dx + dy * dy < (p.r + 14) * (p.r + 14)) {
-        e.preventDefault();
-        _orreryLaunchRocket(p.name);
-        return;
-      }
+    var hit = _orreryHitTest(mx, my, 14);
+    if (hit && hit.type === 'planet') {
+      e.preventDefault();
+      _orreryLaunchRocket(hit.data.name);
+    } else if (hit && hit.type === 'voyager') {
+      e.preventDefault();
+      _showVoyagerCard(hit.data.idx);
     }
   });
 
@@ -541,6 +625,39 @@ function _drawOrrery(canvas, dpr) {
     _orreryPlanetPositions.push({ name: names[i], x: px / dpr, y: py / dpr, r: pr / dpr });
 
     // No labels — clean Apple Watch aesthetic, hover tooltip on desktop
+  }
+
+  // ── Voyager probes — tiny amber diamonds beyond Neptune ──
+  _voyagerPositions = [];
+  for (var vi = 0; vi < _VOYAGERS.length; vi++) {
+    var v = _VOYAGERS[vi];
+    var dist = _voyagerDist(v, simTime);
+    if (dist <= 0) continue; // pre-launch
+    var angle = v.lon * Math.PI / 180;
+    // Visual radius scales with distance (log-compressed so it stays on canvas)
+    var visR = Math.min(0.46, 0.44 + 0.02 * Math.log(Math.max(1, dist / 30.07))) * W;
+    var vx = cx + Math.cos(angle) * visR;
+    var vy = cy + Math.sin(angle) * visR;
+    var vs = 2.5 * dpr;
+    // Subtle amber glow
+    var vGlow = ctx.createRadialGradient(vx, vy, 0, vx, vy, vs * 4);
+    vGlow.addColorStop(0, 'rgba(255,180,60,0.15)');
+    vGlow.addColorStop(1, 'transparent');
+    ctx.fillStyle = vGlow;
+    ctx.beginPath(); ctx.arc(vx, vy, vs * 4, 0, Math.PI * 2); ctx.fill();
+    // Diamond shape (rotated square)
+    ctx.save();
+    ctx.translate(vx, vy);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = '#ffb83c';
+    ctx.fillRect(-vs, -vs, vs * 2, vs * 2);
+    ctx.restore();
+    // Small label
+    ctx.font = (8 * dpr) + 'px -apple-system, system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,184,60,0.5)';
+    ctx.textAlign = 'left';
+    ctx.fillText('V' + (vi + 1), vx + vs * 2.5, vy + vs * 0.5);
+    _voyagerPositions.push({ name: v.name, x: vx / dpr, y: vy / dpr, r: vs * 1.5 / dpr, dist: dist, idx: vi });
   }
 
   // ── Draw Hohmann transfer orbits + rockets (supports multiple simultaneous) ──
@@ -899,7 +1016,7 @@ function _orreryUpdateMissions() {
     var color = _PLANETS[rk.target] ? _PLANETS[rk.target].color : '#888';
     if (rk.arrived) {
       html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0">' +
-        '<span style="color:' + color + '">●</span> ' + rk.target + ' — orbiting' +
+        '<span style="color:' + color + '">●</span> ' + rk.target + ' \u2014 ' + t('alm_orbiting') +
         ' <span style="color:var(--text3);font-size:10px">(' + totalD + 'd transit)</span></div>';
     } else {
       var elapsedD = Math.round(rk.elapsed / 86400000);
@@ -921,6 +1038,70 @@ function _orreryUpdateDate() {
   el.textContent = d.toLocaleDateString(lang, { year: 'numeric', month: 'short', day: 'numeric' });
   var nowBtn = document.getElementById('orrery-now');
   if (nowBtn) nowBtn.style.display = Math.abs(_orreryTimeOffset) > 86400000 ? '' : 'none';
+}
+
+// ── Voyager detail card ──
+
+var _SAGAN_QUOTES = [
+  { text: 'Look again at that dot. That\u2019s here. That\u2019s home. That\u2019s us.', src: 'Pale Blue Dot' },
+  { text: 'Every saint and sinner in the history of our species lived there \u2014 on a mote of dust suspended in a sunbeam.', src: 'Pale Blue Dot' },
+  { text: 'The Earth is a very small stage in a vast cosmic arena.', src: 'Pale Blue Dot' },
+  { text: 'For small creatures such as we, the vastness is bearable only through love.', src: 'Contact' },
+  { text: 'Somewhere, something incredible is waiting to be known.', src: 'Cosmos' },
+  { text: 'We are a way for the cosmos to know itself.', src: 'Cosmos' },
+  { text: 'The nitrogen in our DNA, the calcium in our teeth, the iron in our blood, the carbon in our apple pies were made in the interiors of collapsing stars. We are made of starstuff.', src: 'Cosmos' },
+  { text: 'If you wish to make an apple pie from scratch, you must first invent the universe.', src: 'Cosmos' },
+  { text: 'Extinction is the rule. Survival is the exception.', src: 'The Varieties of Scientific Experience' },
+  { text: 'We are like butterflies who flutter for a day and think it is forever.', src: 'Cosmos' },
+  { text: 'The cosmos is within us. We are made of star-stuff. We are a way for the universe to know itself.', src: 'Cosmos' },
+  { text: 'Science is not only compatible with spirituality; it is a profound source of spirituality.', src: 'The Demon-Haunted World' }
+];
+
+var _voyagerCardIdx = -1;
+var _voyagerCardQuote = null;
+
+function _showVoyagerCard(idx) {
+  _voyagerCardIdx = idx;
+  _voyagerCardQuote = _SAGAN_QUOTES[Math.floor(Math.random() * _SAGAN_QUOTES.length)];
+  _updateVoyagerCard();
+}
+
+function _updateVoyagerCard() {
+  if (_voyagerCardIdx < 0) return;
+  var el = document.getElementById('voyager-card');
+  if (!el) return;
+  var v = _VOYAGERS[_voyagerCardIdx];
+  var simTime = Date.now() + _orreryTimeOffset;
+  var dist = _voyagerDist(v, simTime);
+  var yearsInSpace = ((simTime - v.launch) / (365.25 * 86400000));
+  var speed = v.vel * 149597870.7 / (365.25 * 24 * 3600);
+  var signalSec = dist * 499.0;
+  var signalH = Math.floor(signalSec / 3600);
+  var signalM = Math.floor((signalSec % 3600) / 60);
+
+  var html = '<div class="voyager-card-inner">';
+  html += '<div class="voyager-card-header">';
+  html += '<span class="voyager-card-name">' + v.name + '</span>';
+  html += '<button class="voyager-card-close" onclick="_hideVoyagerCard()">×</button>';
+  html += '</div>';
+  html += '<div class="voyager-card-stats">';
+  html += '<div class="voyager-stat"><span class="voyager-stat-val">' + dist.toFixed(1) + ' AU</span><span class="voyager-stat-lbl">' + t('alm_from_sun') + '</span></div>';
+  html += '<div class="voyager-stat"><span class="voyager-stat-val">' + speed.toFixed(1) + ' km/s</span><span class="voyager-stat-lbl">' + t('alm_velocity') + '</span></div>';
+  html += '<div class="voyager-stat"><span class="voyager-stat-val">' + signalH + 'h ' + signalM + 'm</span><span class="voyager-stat-lbl">' + t('alm_signal_delay') + '</span></div>';
+  html += '<div class="voyager-stat"><span class="voyager-stat-val">' + yearsInSpace.toFixed(1) + '</span><span class="voyager-stat-lbl">' + t('alm_years_in_space') + '</span></div>';
+  html += '</div>';
+  var q = _voyagerCardQuote;
+  html += '<div class="voyager-card-quote">\u201c' + q.text + '\u201d<br><span style="color:var(--text3)">\u2014 Carl Sagan, ' + q.src + '</span></div>';
+  html += '<button class="voyager-record-btn" onclick="_scrollToGoldenRecord()">View Golden Record</button>';
+  html += '</div>';
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+function _hideVoyagerCard() {
+  _voyagerCardIdx = -1;
+  var el = document.getElementById('voyager-card');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
 }
 
 function _orreryAnimate() {
@@ -978,6 +1159,9 @@ function _orreryAnimate() {
 
   var canvas = document.getElementById('almanac-orrery');
   if (canvas) _drawOrrery(canvas, window.devicePixelRatio || 1);
+
+  // Live-update Voyager stats card if open
+  if (_voyagerCardIdx >= 0) _updateVoyagerCard();
 
   _almanacOrreryRAF = requestAnimationFrame(_orreryAnimate);
 }
@@ -1140,16 +1324,16 @@ function _computeEclipses(fromDate, count) {
         if (gam < 0.9972) {
           // Check if annular or total using Moon's horizontal parallax vs semidiameter
           var u = 0.0059 + 0.0046 * Math.cos(Mrad) - 0.0182 * Math.cos(Mprad) + 0.0004 * Math.cos(2 * Mprad) - 0.0005 * Math.cos(Mrad + Mprad);
-          if (u < 0) type = 'Total Solar';
-          else if (u > 0.0047) type = 'Annular Solar';
-          else type = (gam < 0.9972 && u > 0 && u < 0.0047) ? 'Hybrid Solar' : 'Annular Solar';
+          if (u < 0) type = t('alm_eclipse_total_solar');
+          else if (u > 0.0047) type = t('alm_eclipse_annular_solar');
+          else type = (gam < 0.9972 && u > 0 && u < 0.0047) ? t('alm_eclipse_hybrid_solar') : t('alm_eclipse_annular_solar');
         } else {
-          type = 'Partial Solar';
+          type = t('alm_eclipse_partial_solar');
         }
       } else {
-        if (gam < 0.4678) type = 'Total Lunar';
-        else if (gam < 1.0128) type = 'Partial Lunar';
-        else type = 'Penumbral Lunar';
+        if (gam < 0.4678) type = t('alm_eclipse_total_lunar');
+        else if (gam < 1.0128) type = t('alm_eclipse_partial_lunar');
+        else type = t('alm_eclipse_penumbral_lunar');
       }
       // Compute sub-solar point longitude at eclipse time
       // Greenwich Sidereal Time approximation from JDE
@@ -1159,16 +1343,16 @@ function _computeEclipses(fromDate, count) {
       var subLon = ((180 - GST0) % 360 + 540) % 360 - 180; // sub-solar longitude
       var region;
       if (isSolar) {
-        if (subLon > -30 && subLon < 60) region = 'Europe, Africa';
-        else if (subLon >= 60 && subLon < 150) region = 'Asia, Australia';
-        else if (subLon >= 150 || subLon < -120) region = 'Pacific';
-        else region = 'Americas';
+        if (subLon > -30 && subLon < 60) region = t('alm_region_europe_africa');
+        else if (subLon >= 60 && subLon < 150) region = t('alm_region_asia_australia');
+        else if (subLon >= 150 || subLon < -120) region = t('alm_region_pacific');
+        else region = t('alm_region_americas');
       } else {
         var nightLon = ((subLon + 180 + 360) % 360) - 180;
-        if (nightLon > -30 && nightLon < 60) region = 'Europe, Africa';
-        else if (nightLon >= 60 && nightLon < 150) region = 'Asia, Australia';
-        else if (nightLon >= 150 || nightLon < -120) region = 'Pacific';
-        else region = 'Americas';
+        if (nightLon > -30 && nightLon < 60) region = t('alm_region_europe_africa');
+        else if (nightLon >= 60 && nightLon < 150) region = t('alm_region_asia_australia');
+        else if (nightLon >= 150 || nightLon < -120) region = t('alm_region_pacific');
+        else region = t('alm_region_americas');
       }
       var dateStr = eclDate.getFullYear() + '-' + String(eclDate.getMonth() + 1).padStart(2, '0') + '-' + String(eclDate.getDate()).padStart(2, '0');
       results.push({ date: dateStr, type: type, region: region });
@@ -1191,14 +1375,15 @@ function _renderAstroPanel(now) {
   var obsLat = 34; // default northern
   if (stored) { try { obsLat = JSON.parse(stored).lat || 34; } catch(e) {} }
   var south = obsLat < 0;
-  var W = south ? 'Summer' : 'Winter', Sp = south ? 'Autumn' : 'Spring';
-  var Su = south ? 'Winter' : 'Summer', Au = south ? 'Spring' : 'Autumn';
+  var W = south ? t('season_summer') : t('season_winter'), Sp = south ? t('season_autumn') : t('season_spring');
+  var Su = south ? t('season_winter') : t('season_summer'), Au = south ? t('season_spring') : t('season_autumn');
+  var _eq = t('alm_equinox'), _sol = t('alm_solstice');
   var seasonBounds = [
-    { name: W, start: new Date(y - 1, 11, 21), end: new Date(y, 2, 20), next: Sp + ' Equinox' },
-    { name: Sp, start: new Date(y, 2, 20), end: new Date(y, 5, 21), next: Su + ' Solstice' },
-    { name: Su, start: new Date(y, 5, 21), end: new Date(y, 8, 22), next: Au + ' Equinox' },
-    { name: Au, start: new Date(y, 8, 22), end: new Date(y, 11, 21), next: W + ' Solstice' },
-    { name: W, start: new Date(y, 11, 21), end: new Date(y + 1, 2, 20), next: Sp + ' Equinox' }
+    { name: W, start: new Date(y - 1, 11, 21), end: new Date(y, 2, 20), next: Sp + ' ' + _eq },
+    { name: Sp, start: new Date(y, 2, 20), end: new Date(y, 5, 21), next: Su + ' ' + _sol },
+    { name: Su, start: new Date(y, 5, 21), end: new Date(y, 8, 22), next: Au + ' ' + _eq },
+    { name: Au, start: new Date(y, 8, 22), end: new Date(y, 11, 21), next: W + ' ' + _sol },
+    { name: W, start: new Date(y, 11, 21), end: new Date(y + 1, 2, 20), next: Sp + ' ' + _eq }
   ];
   var season = null;
   for (var si = 0; si < seasonBounds.length; si++) {
@@ -1252,7 +1437,7 @@ function _renderAstroPanel(now) {
       var ec = nextEclipses[ei];
       var ecDate = new Date(ec.date + 'T00:00:00');
       var daysUntil = Math.ceil((ecDate - now) / 86400000);
-      var untilStr = daysUntil <= 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : daysUntil + ' days';
+      var untilStr = daysUntil <= 0 ? t('alm_today') : daysUntil === 1 ? t('alm_tomorrow') : t('alm_n_days', { n: daysUntil });
       html += '<div class="almanac-eclipse-row">' +
         '<div><span class="almanac-eclipse-type">' + ec.type + '</span><br><span class="almanac-eclipse-date">' + ec.region + '</span></div>' +
         '<div class="almanac-eclipse-until">' + untilStr + '</div></div>';
@@ -1315,12 +1500,12 @@ function _renderSunMap(now) {
     var locStr = _sunMapLocName ? _sunMapLocName.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : _sunMapLat.toFixed(1) + '\u00b0, ' + _sunMapLon.toFixed(1) + '\u00b0';
     html += '<span id="almanac-loc-name" style="font-size:12px;color:var(--text2);cursor:pointer;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block" onclick="_almShowCitySearch()" title="' + locStr + '">' + locStr + '</span>';
   } else {
-    html += '<span id="almanac-loc-name" style="font-size:12px;color:var(--text3);cursor:pointer" onclick="_almShowCitySearch()" title="Set location">Set location</span>';
+    html += '<span id="almanac-loc-name" style="font-size:12px;color:var(--text3);cursor:pointer" onclick="_almShowCitySearch()" title="' + t('alm_set_location') + '">' + t('alm_set_location') + '</span>';
   }
-  html += '<span onclick="_shareAlmanacLocation()" style="cursor:pointer;font-size:13px;color:var(--text3);opacity:0.7" title="Use browser location">\uD83D\uDCCD</span>';
+  html += '<span onclick="_shareAlmanacLocation()" style="cursor:pointer;font-size:13px;color:var(--text3);opacity:0.7" title="' + t('alm_use_location') + '">\uD83D\uDCCD</span>';
   // Hidden city search — revealed on click
   html += '<div id="almanac-city-search-wrap" style="display:none;position:absolute;top:-2px;left:50%;transform:translateX(-50%);z-index:10">';
-  html += '<input id="almanac-city-search" type="text" placeholder="Search city\u2026" ' +
+  html += '<input id="almanac-city-search" type="text" placeholder="' + t('alm_search_city') + '" ' +
     'style="width:260px;padding:5px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px" autocomplete="off">';
   html += '<div id="almanac-city-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-top:2px;max-height:200px;overflow-y:auto;z-index:10"></div>';
   html += '</div>';
@@ -1661,8 +1846,8 @@ function _computeSunTimes(now, lat, lon) {
   var latRad = lat * Math.PI / 180;
   var cosHA = (Math.cos(90.833 * Math.PI / 180) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
 
-  if (cosHA > 1) return { polar: 'Polar Night \u2014 the sun does not rise today' };
-  if (cosHA < -1) return { polar: 'Midnight Sun \u2014 24 hours of daylight' };
+  if (cosHA > 1) return { polar: t('alm_polar_night') };
+  if (cosHA < -1) return { polar: t('alm_midnight_sun') };
 
   var HA = Math.acos(cosHA) * 180 / Math.PI;
   var sunrise = 720 - 4 * (lon + HA) - EoT;
@@ -2168,9 +2353,11 @@ function _initSkyScene(now, lat, lon) {
     _skyLabelText += ' \u00b7 ' + t('alm_moon') + ' ' + t('alm_below_horizon');
   }
 
+  var projStars = _projectStars(now, lat, lon, canvas.width, canvas.height);
+
   function _skyLoop(ts) {
     var t = (ts - _skyStartTime) / 1000;
-    _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, _skyLabelText);
+    _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, _skyLabelText, projStars);
     _almanacSkyRAF = requestAnimationFrame(_skyLoop);
   }
   if (_almanacSkyRAF) cancelAnimationFrame(_almanacSkyRAF);
@@ -2256,66 +2443,104 @@ function _moonPosition(date, lat, lon) {
   return { altitude: altitude, azimuth: azimuth, parallactic: parallactic * 180 / Math.PI };
 }
 
-// ── Constellation data — star positions + connecting lines ──
-// Coordinates are [x%, y%] within the sky area (0-100, 0-55% of canvas height)
+// ── Star catalog — bright stars with real RA/Dec coordinates ──
+// [RA hours, Dec degrees, visual magnitude]
+// 59 stars: major constellations + bright field stars
 
-var _CONSTELLATIONS = [
-  { name: 'Orion', stars: [
-    [18, 12], [22, 10], [25, 14],  // shoulders + head
-    [20, 22], [20, 26], [20, 30],  // belt
-    [16, 38], [24, 36]             // feet
-  ], lines: [[0,2],[2,1],[0,3],[2,3],[3,4],[4,5],[5,6],[5,7]] },
-  { name: 'Big Dipper', stars: [
-    [55, 8], [58, 6], [62, 7], [65, 10],  // bowl
-    [68, 12], [73, 10], [78, 8]            // handle
-  ], lines: [[0,1],[1,2],[2,3],[3,0],[3,4],[4,5],[5,6]] },
-  { name: 'Cassiopeia', stars: [
-    [82, 18], [85, 12], [88, 16], [91, 10], [94, 15]
-  ], lines: [[0,1],[1,2],[2,3],[3,4]] },
-  { name: 'Scorpius', stars: [
-    [38, 32], [40, 28], [42, 24], [44, 22],  // body
-    [43, 18], [45, 16],                        // claws
-    [36, 36], [34, 40], [33, 44]               // tail
-  ], lines: [[0,1],[1,2],[2,3],[3,4],[4,5],[0,6],[6,7],[7,8]] },
-  { name: 'Leo', stars: [
-    [65, 30], [68, 26], [72, 28], [70, 32],  // head
-    [74, 34], [78, 36]                         // body
-  ], lines: [[0,1],[1,2],[2,3],[3,0],[3,4],[4,5]] }
+var _STARS = [
+  // Orion (0-6): Betelgeuse, Rigel, Bellatrix, Mintaka, Alnilam, Alnitak, Saiph
+  [5.92,7.41,.42],[5.24,-8.20,.13],[5.42,6.35,1.64],[5.53,-.30,2.23],[5.60,-1.20,1.69],[5.68,-1.94,1.77],[5.80,-9.67,2.06],
+  // Ursa Major (7-13): Dubhe, Merak, Phecda, Megrez, Alioth, Mizar, Alkaid
+  [11.06,61.75,1.79],[11.03,56.38,2.37],[11.90,53.69,2.44],[12.26,57.03,3.31],[12.90,55.96,1.77],[13.40,54.93,2.27],[13.79,49.31,1.86],
+  // Cassiopeia (14-18): Caph, Schedar, Gamma, Ruchbah, Segin
+  [.15,59.15,2.27],[.68,56.54,2.23],[.95,60.72,2.47],[1.43,60.24,2.68],[1.91,63.67,3.38],
+  // Scorpius (19-25): Antares, Pi, Dschubba, Graffias, Epsilon, Shaula, Sargas
+  [16.49,-26.43,1.09],[15.98,-26.11,2.89],[16.01,-22.62,2.32],[16.09,-19.81,2.62],[16.84,-34.29,2.29],[17.56,-37.10,1.63],[17.62,-43.00,1.87],
+  // Leo (26-29): Regulus, Algieba, Zosma, Denebola
+  [10.14,11.97,1.35],[10.33,19.84,2.01],[11.24,20.52,2.56],[11.82,14.57,2.14],
+  // Cygnus (30-34): Deneb, Sadr, Delta, Gienah, Albireo
+  [20.69,45.28,1.25],[20.37,40.26,2.23],[19.75,45.13,2.87],[20.77,33.97,2.48],[19.51,27.96,3.08],
+  // Crux (35-38): Acrux, Mimosa, Gacrux, Delta
+  [12.44,-63.10,.77],[12.80,-59.69,1.25],[12.52,-57.11,1.63],[12.25,-58.75,2.80],
+  // Gemini (39-40): Castor, Pollux
+  [7.58,31.89,1.58],[7.76,28.03,1.14],
+  // Canis Major (41-44): Sirius, Mirzam, Adhara, Wezen
+  [6.75,-16.72,-1.46],[6.38,-17.96,1.98],[6.98,-28.97,1.50],[7.14,-26.39,1.84],
+  // Taurus (45-46): Aldebaran, Elnath
+  [4.60,16.51,.85],[5.44,28.61,1.65],
+  // Field stars (47-58): Canopus, Arcturus, Rigil Kent, Vega, Capella, Procyon,
+  // Altair, Spica, Fomalhaut, Polaris, Hamal, Epsilon Leo
+  [6.40,-52.70,-.72],[14.26,19.18,-.05],[14.66,-60.84,-.04],[18.62,38.78,.03],
+  [5.28,46.00,.08],[7.66,5.22,.34],[19.85,8.87,.77],[13.42,-11.16,.98],
+  [22.96,-29.62,1.16],[2.53,89.26,1.98],[2.12,23.46,2.00],[9.76,23.77,2.98]
 ];
 
-function _drawConstellations(ctx, W, H, alpha, t) {
-  var skyH = H * 0.55;
+// Constellation connecting lines — pairs of _STARS indices
+var _CONST_LINES = [
+  [0,2],[0,5],[2,3],[3,4],[4,5],[3,1],[5,6],           // Orion
+  [7,8],[8,9],[9,10],[10,7],[10,11],[11,12],[12,13],    // Big Dipper
+  [14,15],[15,16],[16,17],[17,18],                      // Cassiopeia
+  [22,21],[21,20],[21,19],[19,23],[23,24],[24,25],      // Scorpius
+  [26,27],[27,28],[28,29],[27,58],                      // Leo
+  [30,31],[31,34],[32,31],[31,33],                      // Cygnus
+  [35,37],[36,38],                                      // Crux
+  [39,40],                                              // Gemini
+  [41,42],[41,43],[43,44],                              // Canis Major
+  [45,46]                                               // Taurus
+];
+
+// Red/orange giants and supergiants — warm color rendering
+var _WARM_STARS = {0:1, 19:1, 40:1, 45:1, 48:1};
+
+// Project catalog stars to canvas coordinates for current time/location
+function _projectStars(now, lat, lon, W, H) {
+  var JD = 2440587.5 + now.getTime() / 86400000;
+  var D2R = Math.PI / 180;
+  var GMST = (280.46061837 + 360.98564736629 * (JD - 2451545.0)) % 360;
+  var LST = (GMST + lon) * D2R;
+  var latR = lat * D2R;
+  var result = [];
+  for (var i = 0; i < _STARS.length; i++) {
+    var s = _STARS[i];
+    var ra = s[0] * 15 * D2R;
+    var dec = s[1] * D2R;
+    var HA = LST - ra;
+    HA = ((HA % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+    var sinAlt = Math.sin(latR) * Math.sin(dec) + Math.cos(latR) * Math.cos(dec) * Math.cos(HA);
+    var altitude = Math.asin(sinAlt) * 180 / Math.PI;
+    if (altitude < -2) continue;
+    var cosAz = (Math.sin(dec) - Math.sin(latR) * sinAlt) / (Math.cos(latR) * Math.cos(Math.asin(sinAlt)));
+    cosAz = Math.max(-1, Math.min(1, cosAz));
+    if (isNaN(cosAz)) cosAz = 0;
+    var azimuth = Math.acos(cosAz) * 180 / Math.PI;
+    if (HA > 0) azimuth = 360 - azimuth;
+    var xFrac = (azimuth - 60) / 240;
+    if (xFrac < -0.05 || xFrac > 1.05) continue;
+    xFrac = Math.max(0, Math.min(1, xFrac));
+    result.push({ x: xFrac * W, y: Math.max(0, Math.min(H * 0.66, H * 0.66 - (altitude / 90) * H * 0.56)), mag: s[2], idx: i });
+  }
+  return result;
+}
+
+function _drawConstellations(ctx, alpha, t, projStars) {
+  var byIdx = {};
+  for (var i = 0; i < projStars.length; i++) byIdx[projStars[i].idx] = projStars[i];
   ctx.save();
-  for (var ci = 0; ci < _CONSTELLATIONS.length; ci++) {
-    var c = _CONSTELLATIONS[ci];
-    var pts = [];
-    for (var si = 0; si < c.stars.length; si++) {
-      pts.push({ x: c.stars[si][0] / 100 * W, y: c.stars[si][1] / 100 * skyH });
-    }
-    // Connecting lines — barely perceptible, only visible on close inspection
-    ctx.strokeStyle = 'rgba(100,130,180,' + (alpha * 0.06).toFixed(3) + ')';
-    ctx.lineWidth = 0.5;
-    for (var li = 0; li < c.lines.length; li++) {
-      var a = c.lines[li][0], b = c.lines[li][1];
+  ctx.strokeStyle = 'rgba(100,130,180,' + (alpha * 0.08).toFixed(3) + ')';
+  ctx.lineWidth = 0.5;
+  for (var i = 0; i < _CONST_LINES.length; i++) {
+    var a = byIdx[_CONST_LINES[i][0]], b = byIdx[_CONST_LINES[i][1]];
+    if (a && b) {
       ctx.beginPath();
-      ctx.moveTo(pts[a].x, pts[a].y);
-      ctx.lineTo(pts[b].x, pts[b].y);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
       ctx.stroke();
-    }
-    // Stars — slightly brighter than background, subtle twinkle
-    for (var si = 0; si < pts.length; si++) {
-      var twinkle = Math.sin(t * (1.5 + si * 0.3 + ci * 0.7)) * 0.1;
-      var starAlpha = alpha * (0.25 + twinkle);
-      ctx.beginPath();
-      ctx.arc(pts[si].x, pts[si].y, 1.0, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(160,180,220,' + starAlpha.toFixed(3) + ')';
-      ctx.fill();
     }
   }
   ctx.restore();
 }
 
-function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, labelText) {
+function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, labelText, projStars) {
   t = t || 0;
   var ctx = canvas.getContext('2d');
   var W = canvas.width, H = canvas.height;
@@ -2369,33 +2594,61 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, labelText) {
     ctx.fillRect(0, hazeY, W, H * 0.68 - hazeY);
   }
 
-  // Stars — with real twinkling
+  // Stars — real catalog positions + dim background fill
   if (alt < 8) {
     var starOpacity = alt < -14 ? 1 : alt < -2 ? (-2 - alt) / 12 : Math.max(0, (8 - alt) / 20);
+
+    // Dim background stars — seeded PRNG for faint ambiance
     var _seed = 42;
     function _srand() { _seed = (_seed * 16807 + 0) % 2147483647; return _seed / 2147483647; }
-    for (var si = 0; si < 100; si++) {
+    for (var si = 0; si < 45; si++) {
       var sx = _srand() * W;
       var sy = _srand() * H * 0.55;
-      var brightness = _srand();
-      var sr = (0.4 + brightness * 1.0) * dpr;
-      // Twinkling: each star has its own frequency and phase
+      _srand();
+      var sr = 0.4 * dpr;
       var twinkleFreq = 0.8 + _srand() * 2.0;
       var twinklePhase = _srand() * 6.28;
-      var twinkle = Math.sin(t * twinkleFreq + twinklePhase) * 0.25;
-      var alpha = starOpacity * Math.max(0.05, 0.3 + brightness * 0.5 + twinkle);
-      var warm = _srand() > 0.7;
+      var twinkle = Math.sin(t * twinkleFreq + twinklePhase) * 0.15;
+      var bsa = starOpacity * Math.max(0.03, 0.15 + twinkle);
+      _srand();
       ctx.beginPath();
       ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-      ctx.fillStyle = warm
-        ? 'rgba(255,235,210,' + alpha.toFixed(3) + ')'
-        : 'rgba(220,230,255,' + alpha.toFixed(3) + ')';
+      ctx.fillStyle = 'rgba(200,210,230,' + bsa.toFixed(3) + ')';
       ctx.fill();
     }
 
-    // Constellations — visible when dark enough
-    if (alt < -2) {
-      _drawConstellations(ctx, W, H, starOpacity, t);
+    // Catalog stars at astronomically correct positions
+    if (projStars) {
+      for (var si = 0; si < projStars.length; si++) {
+        var ps = projStars[si];
+        var sr = Math.max(0.5, (3.5 - ps.mag) * 0.5) * dpr;
+        var twinkle = Math.sin(t * (1.2 + si * 0.37) + si * 2.1) * 0.12;
+        var sa = starOpacity * Math.max(0.1, 0.4 + (3.5 - ps.mag) / 5 + twinkle);
+        var warm = _WARM_STARS[ps.idx];
+        ctx.beginPath();
+        ctx.arc(ps.x, ps.y, sr, 0, Math.PI * 2);
+        ctx.fillStyle = warm
+          ? 'rgba(255,210,160,' + sa.toFixed(3) + ')'
+          : 'rgba(220,230,255,' + sa.toFixed(3) + ')';
+        ctx.fill();
+        // Subtle glow for very bright stars (mag < 0.5)
+        if (ps.mag < 0.5 && starOpacity > 0.3) {
+          var glowR = sr * 3;
+          var ga = starOpacity * 0.06;
+          var gg = ctx.createRadialGradient(ps.x, ps.y, sr, ps.x, ps.y, glowR);
+          gg.addColorStop(0, warm ? 'rgba(255,210,160,' + ga.toFixed(3) + ')' : 'rgba(200,210,240,' + ga.toFixed(3) + ')');
+          gg.addColorStop(1, 'transparent');
+          ctx.fillStyle = gg;
+          ctx.beginPath();
+          ctx.arc(ps.x, ps.y, glowR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Constellation lines — visible when dark enough
+      if (alt < -2) {
+        _drawConstellations(ctx, starOpacity, t, projStars);
+      }
     }
 
   }
@@ -3711,7 +3964,7 @@ function _jdnToJulian(jdn) {
 
 // Chronological by origin: Chinese (~2637 BCE), Hebrew (~359 CE codified),
 // Buddhist (543 BCE epoch), Julian (45 BCE), Islamic (622 CE), Gregorian (1582 CE), Persian (1925 CE)
-var _CAL_SYSTEMS = ['chinese', 'hebrew', 'buddhist', 'julian', 'islamic', 'gregorian', 'persian'];
+var _CAL_SYSTEMS = ['persian', 'gregorian', 'islamic', 'julian', 'buddhist', 'hebrew', 'chinese'];
 function _calLabel(sys) { return t('cal_' + sys); }
 
 var _GREGORIAN_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -3922,76 +4175,325 @@ function _renderDeepTime(now) {
   var earthEcc = (0.0167086 - 0.0000420 * T).toFixed(6);
   // Rate of change: compare eccentricity now vs 1 century ago
   var eccPrev = 0.0167086 - 0.0000420 * (T - 1);
-  var eccTrend = parseFloat(earthEcc) < eccPrev ? 'decreasing' : 'increasing';
-
   // Human-scale season direction
-  var tiltDir = obliquityAS < 84381.448 ? 'decreasing' : 'increasing';
-  var seasonImpact = tiltDir === 'decreasing' ? 'Seasons are slowly becoming milder' : 'Seasons are slowly becoming more extreme';
+  var tiltDir = obliquityAS < 84381.448 ? t('alm_decreasing') : t('alm_increasing');
+  var seasonImpact = obliquityAS < 84381.448 ? t('alm_seasons_milder') : t('alm_seasons_extreme');
 
   var html = '<div class="almanac-info-grid">';
 
-  // Axial tilt — why it matters: it's what gives us seasons
+  // Axial tilt
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + obliquityDeg.toFixed(2) + '\u00b0</div>' +
-    '<div class="almanac-info-lbl">Earth\u2019s Tilt</div>' +
+    '<div class="almanac-info-lbl">' + t('alm_dt_tilt') + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    'This tilt is why seasons exist. It\u2019s currently ' + tiltDir + ', meaning: ' + seasonImpact.toLowerCase() + '. ' +
-    'Cycles between 22.1\u00b0 and 24.5\u00b0 over 41,000 years (Milankovi\u0107 cycle). ' +
-    'Currently ' + tiltInCycle + '% through the cycle.</div></div>';
+    t('alm_dt_tilt_desc', { trend: tiltDir, impact: seasonImpact, pct: tiltInCycle }) + '</div></div>';
 
-  // North Star — why it matters: navigation for millennia
+  // North Star
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + polarisDist + '\u00b0 from true north</div>' +
-    '<div class="almanac-info-lbl">Polaris Accuracy</div>' +
+    '<div class="almanac-info-lbl">' + t('alm_dt_polaris') + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    'Earth wobbles like a spinning top. Polaris happens to be near the axis right now, but it\u2019s drifting. ' +
-    'Closest alignment ~2100 (0.45\u00b0), then it drifts away. In ~' + Math.round((14000 - now.getFullYear()) / 1000) + ',000 years, Vega will be the \u201cNorth Star.\u201d ' +
-    'Full wobble cycle: 25,772 years.</div></div>';
+    t('alm_dt_polaris_desc', { years: (14000 - now.getFullYear()).toLocaleString() }) + '</div></div>';
 
-  // Day getting longer — why it matters: the moon is stealing our spin
-  // Show excess over 24h in microseconds for drama
-  var excessUs = excessMs * 1000; // microseconds
+  // Day getting longer
   var totalExcessMs = (daySeconds - 86400) * 1000;
-  var dayStr = totalExcessMs > 1 ? '+' + totalExcessMs.toFixed(1) + 'ms over 24h' :
-               totalExcessMs > 0.01 ? '+' + (totalExcessMs * 1000).toFixed(0) + '\u00b5s over 24h' :
-               '~24h (gaining fast)';
+  var dayStr = totalExcessMs > 1 ? '+' + totalExcessMs.toFixed(1) + 'ms ' + t('alm_over_24h') :
+               totalExcessMs > 0.01 ? '+' + (totalExcessMs * 1000).toFixed(0) + '\u00b5s ' + t('alm_over_24h') :
+               '~24h';
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + dayStr + '</div>' +
-    '<div class="almanac-info-lbl">Today Is Longer Than Yesterday</div>' +
+    '<div class="almanac-info-lbl">' + t('alm_dt_daylen') + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    'The Moon\u2019s gravity creates tides that act like brakes on Earth\u2019s spin. Each century, days grow 1.8ms longer. ' +
-    'Since the year 2000, days have stretched ' + excessMs.toFixed(1) + 'ms. Doesn\u2019t sound like much \u2014 but ' +
-    '600 million years ago, a day was only 21 hours. The Moon drifts 3.8 cm farther each year, slowly releasing its grip.</div></div>';
+    t('alm_dt_daylen_desc', { ms: excessMs.toFixed(1) }) + '</div></div>';
 
-  // Orbital eccentricity — why it matters: ice ages
+  // Orbital eccentricity
+  var eccTrendStr = parseFloat(earthEcc) < eccPrev ? t('alm_decreasing') : t('alm_increasing');
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + earthEcc + '</div>' +
-    '<div class="almanac-info-lbl">Orbit Shape</div>' +
+    '<div class="almanac-info-lbl">' + t('alm_dt_orbit') + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    'How elliptical Earth\u2019s orbit is (0 = perfect circle, 1 = extremely stretched). ' +
-    'Currently near-circular and ' + eccTrend + '. This affects how much solar energy Earth receives over a year. ' +
-    'Combined with tilt and precession, these three cycles drive ice ages (Milankovi\u0107 theory).</div></div>';
+    t('alm_dt_orbit_desc', { trend: eccTrendStr }) + '</div></div>';
 
-  // Julian Date — why it matters: time that never resets
+  // Julian Date
   html += '<div class="almanac-info-item"><div class="almanac-info-val">JD ' + julianDate + '</div>' +
-    '<div class="almanac-info-lbl">Julian Date</div>' +
+    '<div class="almanac-info-lbl">' + t('alm_dt_julian') + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    'A continuous count of days since January 1, 4713 BC. Used by astronomers because it never resets, ' +
-    'skips, or changes with calendar reforms. Every event in human history has exactly one Julian Date. ' +
-    'Immune to leap seconds, timezone changes, and political calendars.</div></div>';
+    t('alm_dt_julian_desc') + '</div></div>';
 
-  // Galactic Year — Sun's orbit around Milky Way
-  // Sun formed ~4.6 Gya; advance by elapsed time so this stays accurate forever
-  var galacticPeriod = 225; // million years per orbit
-  var sunAge = 4600 + (now.getFullYear() - 2000) / 1e6; // million years, advances with time
+  // Galactic Year
+  var galacticPeriod = 225;
+  var sunAge = 4600 + (now.getFullYear() - 2000) / 1e6;
   var orbitsCompleted = Math.floor(sunAge / galacticPeriod);
   var currentOrbitPct = ((sunAge % galacticPeriod) / galacticPeriod * 100).toFixed(1);
 
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + currentOrbitPct + '% through orbit #' + (orbitsCompleted + 1) + '</div>' +
-    '<div class="almanac-info-lbl">Galactic Year</div>' +
+  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + t('alm_galactic_orbit', { pct: currentOrbitPct, n: orbitsCompleted + 1 }) + '</div>' +
+    '<div class="almanac-info-lbl">' + t('alm_dt_galactic') + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    'The Sun orbits the Milky Way\u2019s center every ~225 million years at 828,000 km/h. ' +
-    'In ' + (sunAge / 1000).toFixed(1) + ' billion years, we\u2019ve completed roughly ' + orbitsCompleted + ' orbits. ' +
-    'Last time we were here, dinosaurs ruled the Earth.</div></div>';
+    t('alm_dt_galactic_desc', { age: (sunAge / 1000).toFixed(1), orbits: orbitsCompleted }) + '</div></div>';
 
   html += '</div>';
   el.innerHTML = html;
+}
+
+// ── Messages Across Time — enduring inscriptions in every language ──
+// Texts loaded async from /static/rosetta/*.json (manifest + per-inscription files)
+// Golden Record gallery images from /static/golden-record/ (NASA public domain)
+// Future: this section could become its own ZIM — see project_zim_format.md breadcrumb
+
+var _rosettaManifest = null;
+var _rosettaCache = {};
+var _rosettaLangs = [(typeof _currentLang !== 'undefined') ? _currentLang : 'en'];
+var _rosettaTextIdx = 0;
+
+var _ALL_LANGS = [
+  {code:'en',name:'English'},{code:'fr',name:'Français'},{code:'de',name:'Deutsch'},
+  {code:'es',name:'Español'},{code:'pt',name:'Português'},{code:'ru',name:'Русский'},
+  {code:'zh',name:'中文'},{code:'ar',name:'العربية'},{code:'hi',name:'हिन्दी'},{code:'he',name:'עברית'}
+];
+var _RTL_CODES = ['ar','he'];
+
+// Golden Record image gallery — ordered as encoded on the record
+var _GR_IMAGES = [
+  {file:'cover.jpg',cap:'Record Cover — playback instructions for finders'},
+  {file:'calibration-circle.gif',cap:'Calibration Circle'},
+  {file:'math-definitions.gif',cap:'Mathematical Definitions'},
+  {file:'physical-units.gif',cap:'Physical Unit Definitions'},
+  {file:'solar-location-map.gif',cap:'Solar Location Map — 14 pulsars'},
+  {file:'solar-system-inner.gif',cap:'Solar System — Inner Planets'},
+  {file:'solar-system-outer.gif',cap:'Solar System — Outer Planets'},
+  {file:'solar-spectrum.gif',cap:'Solar Spectrum'},
+  {file:'mercury.gif',cap:'Mercury'},
+  {file:'mars.gif',cap:'Mars'},
+  {file:'jupiter.gif',cap:'Jupiter'},
+  {file:'earth.gif',cap:'Earth — 12,756 km'},
+  {file:'egypt-nile.gif',cap:'Egypt, Sinai Peninsula & the Nile'},
+  {file:'chemical-definitions.gif',cap:'Chemical Definitions'},
+  {file:'dna-structure.gif',cap:'DNA Structure'},
+  {file:'dna-magnified.gif',cap:'DNA Magnified — 34 Ångströms'},
+  {file:'structure-of-earth.gif',cap:'Structure of Earth'},
+  {file:'continental-drift.gif',cap:'Continental Drift'},
+  {file:'heron-island.jpg',cap:'Heron Island, Great Barrier Reef'},
+  {file:'vertebrate-evolution.gif',cap:'Vertebrate Evolution'},
+  {file:'bushmen-sketch.gif',cap:'Sketch of Bushmen Hunters'},
+  {file:'man-guatemala.gif',cap:'Man from Guatemala'},
+  {file:'human-anatomy.gif',cap:'Human Anatomy — Male & Female'},
+  {file:'conception.gif',cap:'Diagram of Conception'},
+  {file:'fetus.gif',cap:'Fetal Development'},
+  {file:'family-ages.gif',cap:'Family Ages — 4, 12, 30, 80'},
+  {file:'nursing-mother.gif',cap:'Nursing Mother'},
+  {file:'eating-drinking.gif',cap:'Licking, Eating & Drinking'},
+  {file:'children-globe.gif',cap:'Children with Globe'},
+  {file:'schoolroom.gif',cap:'Schoolroom'},
+  {file:'fishing-boat.gif',cap:'Fishing Boat with Nets'},
+  {file:'house-africa.gif',cap:'House — Africa'},
+  {file:'house-construction.gif',cap:'House Construction — Africa'},
+  {file:'house-new-mexico.gif',cap:'Modern House — Cloudcroft, NM'},
+  {file:'supermarket.gif',cap:'Supermarket'},
+  {file:'un-building-day.gif',cap:'United Nations — Day'},
+  {file:'un-building-night.gif',cap:'United Nations — Night'},
+  {file:'olympians.gif',cap:'Olympic Sprinters — Valeri Borzov'},
+  {file:'microscope.gif',cap:'Woman with Microscope'},
+  {file:'xray-hand.gif',cap:'X-Ray of Hand'},
+  {file:'street-scene.gif',cap:'Street Scene — Early 20th Century'},
+  {file:'rush-hour.gif',cap:'Rush Hour Traffic — Thailand'},
+  {file:'highway.gif',cap:'Modern Highway'},
+  {file:'airplane.gif',cap:'Airplane in Flight'},
+  {file:'arecibo.gif',cap:'Arecibo Radio Telescope — 305m'},
+  {file:'newton-book.gif',cap:'Newton — System of the World'},
+  {file:'violin-cavatina.gif',cap:'Violin with Cavatina Score'},
+  {file:'titan-launch.gif',cap:'Titan Centaur Launch'},
+  {file:'astronaut.gif',cap:'Astronaut — Ed White, Gemini IV'}
+];
+
+var _grLightboxIdx = -1;
+var _grTouchStartX = 0;
+
+async function _loadRosettaManifest() {
+  if (_rosettaManifest) return _rosettaManifest;
+  try {
+    var resp = await fetch('/static/rosetta/manifest.json');
+    _rosettaManifest = await resp.json();
+  } catch(e) { _rosettaManifest = []; }
+  return _rosettaManifest;
+}
+
+async function _loadInscription(id) {
+  if (_rosettaCache[id]) return _rosettaCache[id];
+  try {
+    var resp = await fetch('/static/rosetta/' + id + '.json');
+    _rosettaCache[id] = await resp.json();
+  } catch(e) { _rosettaCache[id] = {texts:{}}; }
+  return _rosettaCache[id];
+}
+
+async function _renderRosettaStone(now) {
+  var el = document.getElementById('almanac-rosetta');
+  if (!el) return;
+
+  var manifest = await _loadRosettaManifest();
+  if (!manifest.length) { el.innerHTML = ''; return; }
+
+  var entry = manifest[_rosettaTextIdx] || manifest[0];
+  var data = await _loadInscription(entry.id);
+  var availLangs = Object.keys(data.texts || {});
+
+  // Inscription pills (top row)
+  var html = '<div class="rosetta-pills">';
+  for (var si = 0; si < manifest.length; si++) {
+    var cls = si === _rosettaTextIdx ? 'pill active' : 'pill';
+    html += '<button class="' + cls + '" onclick="_selectRosettaText(' + si + ')">' + manifest[si].title + '</button>';
+  }
+  html += '</div>';
+
+  // Metadata
+  html += '<div class="rosetta-meta">' + entry.date + ' · ' + entry.place + ' · ' + entry.medium + '</div>';
+  html += '<div class="rosetta-context">' + entry.context + '</div>';
+
+  // Language pills (bottom row)
+  html += '<div class="rosetta-pills">';
+  for (var li = 0; li < _ALL_LANGS.length; li++) {
+    var lc = _ALL_LANGS[li].code;
+    var avail = availLangs.indexOf(lc) !== -1;
+    var isActive = _rosettaLangs.indexOf(lc) !== -1;
+    if (avail) {
+      html += '<button class="' + (isActive ? 'pill active' : 'pill') + '" onclick="_toggleRosettaLang(\'' + lc + '\')">' + _ALL_LANGS[li].name + '</button>';
+    } else {
+      html += '<button class="pill disabled" disabled>' + _ALL_LANGS[li].name + '</button>';
+    }
+  }
+  html += '</div>';
+
+  // Text block(s) — one or two-up comparison
+  var twoUp = _rosettaLangs.length === 2;
+  if (twoUp) html += '<div class="rosetta-compare">';
+  for (var ri = 0; ri < _rosettaLangs.length; ri++) {
+    var langCode = _rosettaLangs[ri];
+    var text = (data.texts || {})[langCode] || (data.texts || {})['en'] || '';
+    var isRtl = _RTL_CODES.indexOf(langCode) !== -1;
+    var dir = isRtl ? ' dir="rtl"' : '';
+    var align = isRtl ? 'text-align:right' : '';
+    var langName = langCode;
+    for (var ln = 0; ln < _ALL_LANGS.length; ln++) {
+      if (_ALL_LANGS[ln].code === langCode) { langName = _ALL_LANGS[ln].name; break; }
+    }
+    html += '<div class="alm-rosetta-block"' + dir + ' style="' + align + '">' +
+      '<div class="alm-rosetta-title">' + langName + '</div>' +
+      '<div class="alm-rosetta-text">' + text.replace(/\n/g, '<br>') + '</div>' +
+      '</div>';
+  }
+  if (twoUp) html += '</div>';
+
+  // Golden Record image gallery (only when that inscription is selected)
+  if (entry.id === 'golden-record') {
+    html += _renderGoldenRecordGallery();
+  }
+
+  el.innerHTML = html;
+}
+
+function _renderGoldenRecordGallery() {
+  var html = '<div class="gr-gallery">';
+  html += '<div class="gr-gallery-title">Images Encoded on the Record</div>';
+  html += '<div class="gr-gallery-sub">49 images selected by Carl Sagan\'s team — decoded from analog video signals on a gold-plated phonograph record, now 24+ billion km from Earth.</div>';
+  html += '<div class="gr-grid">';
+  for (var i = 0; i < _GR_IMAGES.length; i++) {
+    html += '<div class="gr-thumb" onclick="_openGrLightbox(' + i + ')">' +
+      '<img src="/static/golden-record/' + _GR_IMAGES[i].file + '" alt="' + _GR_IMAGES[i].cap + '" loading="lazy">' +
+      '</div>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function _openGrLightbox(idx) {
+  _grLightboxIdx = idx;
+  _renderGrLightbox();
+  document.addEventListener('keydown', _grKeyHandler);
+}
+
+function _closeGrLightbox() {
+  _grLightboxIdx = -1;
+  var lb = document.getElementById('gr-lightbox');
+  if (lb) lb.remove();
+  document.removeEventListener('keydown', _grKeyHandler);
+}
+
+function _grKeyHandler(e) {
+  if (e.key === 'Escape') _closeGrLightbox();
+  else if (e.key === 'ArrowRight') { e.preventDefault(); _grNav(1); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); _grNav(-1); }
+}
+
+function _grNav(dir) {
+  _grLightboxIdx = (_grLightboxIdx + dir + _GR_IMAGES.length) % _GR_IMAGES.length;
+  _renderGrLightbox();
+}
+
+function _renderGrLightbox() {
+  var img = _GR_IMAGES[_grLightboxIdx];
+  var lb = document.getElementById('gr-lightbox');
+  if (!lb) {
+    lb = document.createElement('div');
+    lb.id = 'gr-lightbox';
+    lb.className = 'gr-lightbox';
+    document.body.appendChild(lb);
+    // Swipe support
+    lb.addEventListener('touchstart', function(e) {
+      _grTouchStartX = e.touches[0].clientX;
+    }, {passive:true});
+    lb.addEventListener('touchend', function(e) {
+      var dx = e.changedTouches[0].clientX - _grTouchStartX;
+      if (Math.abs(dx) > 50) _grNav(dx < 0 ? 1 : -1);
+    }, {passive:true});
+  }
+  lb.innerHTML =
+    '<div class="gr-lb-bg" onclick="_closeGrLightbox()"></div>' +
+    '<button class="gr-lb-close" onclick="_closeGrLightbox()">&times;</button>' +
+    '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)">\u2039</button>' +
+    '<div class="gr-lb-main" onclick="event.stopPropagation()">' +
+      '<img src="/static/golden-record/' + img.file + '" alt="' + img.cap + '">' +
+      '<div class="gr-lb-cap">' + img.cap + '</div>' +
+      '<div class="gr-lb-num">' + (_grLightboxIdx + 1) + ' / ' + _GR_IMAGES.length + '</div>' +
+    '</div>' +
+    '<button class="gr-lb-arrow gr-lb-next" onclick="event.stopPropagation();_grNav(1)">\u203a</button>';
+}
+
+function _selectRosettaText(idx) {
+  _rosettaTextIdx = idx;
+  _renderRosettaStone(new Date());
+}
+
+function _toggleRosettaLang(code) {
+  var idx = _rosettaLangs.indexOf(code);
+  if (idx !== -1) {
+    if (_rosettaLangs.length > 1) _rosettaLangs.splice(idx, 1);
+  } else {
+    if (_rosettaLangs.length >= 2) _rosettaLangs.shift();
+    _rosettaLangs.push(code);
+  }
+  _renderRosettaStone(new Date());
+}
+
+// Scroll to Messages Across Time and select Golden Record (called from Voyager card)
+function _scrollToGoldenRecord() {
+  var manifest = _rosettaManifest || [];
+  for (var i = 0; i < manifest.length; i++) {
+    if (manifest[i].id === 'golden-record') { _rosettaTextIdx = i; break; }
+  }
+  _renderRosettaStone(new Date());
+  setTimeout(function() {
+    var el = document.getElementById('almanac-rosetta');
+    if (el) el.scrollIntoView({behavior:'smooth',block:'start'});
+  }, 100);
+}
+
+var _LANG_TO_CALENDAR = {
+  en:'gregorian', fr:'gregorian', de:'gregorian', es:'gregorian', pt:'gregorian',
+  ru:'julian', zh:'chinese', ar:'islamic', hi:'buddhist', he:'hebrew'
+};
+
+// Called from setLanguage() in index.html when the global UI language changes
+function _onGlobalLanguageChanged(langCode) {
+  var cal = _LANG_TO_CALENDAR[langCode] || 'gregorian';
+  if (cal !== _almSystem) _almSwitchSystem(cal);
+  _rosettaLangs = [langCode];
+  if (_almanacOpen) _renderRosettaStone(new Date());
 }
 
 // ── Resize handler ──

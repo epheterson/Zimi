@@ -941,6 +941,16 @@
     .alm-tz-clock-side { display: flex; flex-direction: column; align-items: center; width: 100%; }
     .alm-tz-clock-side canvas { width: 160px; height: 160px; }
     .alm-tz-list { grid-template-columns: repeat(3, 1fr); gap: 4px; width: 100%; }
+    /* v1.6: Messages Across Time — mobile adjustments */
+    .alm-rosetta-block { padding: 12px 14px; }
+    .alm-rosetta-text { font-size: 13px; }
+    .rosetta-compare { grid-template-columns: 1fr; }
+    .gr-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 4px; }
+    .gr-lb-arrow { width: 36px; height: 36px; font-size: 20px; }
+    .gr-lb-prev { left: 8px; }
+    .gr-lb-next { right: 8px; }
+    /* v1.6: Voyager card — 2-col stats on mobile */
+    .voyager-card-stats { grid-template-columns: repeat(2, 1fr); }
     /* v1.6: Tab bar — compact on mobile */
     .tab-item { max-width: 120px; font-size: 11px; padding: 4px 8px; }
     /* v1.6: Language dropdown — full width on mobile */
@@ -1212,7 +1222,7 @@
   /* ── Almanac mini-app ── */
   .almanac-view { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
   .almanac-view.open { display: flex; animation: fadeIn 0.15s ease; }
-  .almanac-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 24px 16px 80px; }
+  .almanac-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 24px 16px 80px; overscroll-behavior: contain; }
   .almanac-inner { max-width: 600px; margin: 0 auto; }
   .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
   .alm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
@@ -1271,6 +1281,49 @@
   .almanac-eclipse-type { font-weight: 500; color: var(--text); }
   .almanac-eclipse-date { color: var(--text2); font-size: 12px; }
   .almanac-eclipse-until { color: var(--amber); font-size: 12px; font-weight: 500; }
+  /* Messages Across Time — inscription pills, metadata, text blocks */
+  .rosetta-pills { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .rosetta-meta { text-align: center; font-size: 12px; color: var(--amber); font-weight: 500; letter-spacing: 0.03em; margin-bottom: 6px; }
+  .rosetta-context { text-align: center; font-size: 13px; color: var(--text3); line-height: 1.5; margin-bottom: 14px; max-width: 560px; margin-left: auto; margin-right: auto; }
+  .rosetta-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pill.disabled { opacity: 0.35; cursor: not-allowed; }
+  .alm-rosetta-block { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin-bottom: 10px; }
+  .alm-rosetta-title { font-size: 11px; font-weight: 600; color: var(--amber); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 8px; }
+  .alm-rosetta-text { font-size: 14px; font-weight: 400; color: var(--text); line-height: 1.6; }
+  /* Golden Record gallery */
+  .gr-gallery { margin-top: 20px; }
+  .gr-gallery-title { font-size: 13px; font-weight: 600; color: var(--text); text-align: center; margin-bottom: 4px; }
+  .gr-gallery-sub { font-size: 12px; color: var(--text3); text-align: center; line-height: 1.4; margin-bottom: 14px; max-width: 480px; margin-left: auto; margin-right: auto; }
+  .gr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
+  .gr-thumb { aspect-ratio: 4/3; overflow: hidden; border-radius: 6px; cursor: pointer; position: relative; border: 1px solid var(--border); transition: border-color 0.2s, transform 0.15s; }
+  .gr-thumb:hover { border-color: var(--amber-border); transform: scale(1.03); }
+  .gr-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* Golden Record lightbox */
+  .gr-lightbox { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; }
+  .gr-lb-bg { position: absolute; inset: 0; background: rgba(0,0,0,0.92); }
+  .gr-lb-close { position: absolute; top: 16px; right: 20px; z-index: 2; background: none; border: none; color: #fff; font-size: 28px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s; line-height: 1; }
+  .gr-lb-close:hover { opacity: 1; }
+  .gr-lb-arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 50%; width: 44px; height: 44px; color: #fff; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
+  .gr-lb-arrow:hover { background: rgba(255,255,255,0.16); }
+  .gr-lb-prev { left: 16px; }
+  .gr-lb-next { right: 16px; }
+  .gr-lb-main { position: relative; z-index: 1; max-width: 90vw; max-height: 85vh; display: flex; flex-direction: column; align-items: center; }
+  .gr-lb-main img { max-width: 100%; max-height: 75vh; object-fit: contain; border-radius: 4px; }
+  .gr-lb-cap { color: #fff; font-size: 14px; font-weight: 500; margin-top: 12px; text-align: center; }
+  .gr-lb-num { color: rgba(255,255,255,0.45); font-size: 12px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  /* Voyager "View Golden Record" button */
+  .voyager-record-btn { display: block; width: 100%; margin-top: 10px; padding: 8px 0; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 6px; color: var(--amber); font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: 0.03em; transition: background 0.2s, border-color 0.2s; }
+  .voyager-record-btn:hover { background: var(--amber-glow); border-color: var(--amber-border); }
+  /* Voyager detail card */
+  .voyager-card-inner { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-top: 10px; }
+  .voyager-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .voyager-card-name { font-size: 14px; font-weight: 600; color: var(--amber); letter-spacing: 0.04em; }
+  .voyager-card-close { background: none; border: none; color: var(--text3); font-size: 16px; cursor: pointer; padding: 0 4px; line-height: 1; }
+  .voyager-card-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  .voyager-stat { text-align: center; }
+  .voyager-stat-val { display: block; font-size: 14px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+  .voyager-stat-lbl { display: block; font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+  .voyager-card-quote { font-size: 12px; color: var(--text2); font-style: italic; line-height: 1.5; border-top: 1px solid var(--border); padding-top: 10px; }
   /* Almanac calendar — wall calendar grid with events */
   .alm-nav { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 16px 0 10px; position: relative; }
   .alm-arrow { background: none; border: none; color: var(--amber); font-size: 13px; cursor: pointer; padding: 6px 10px; border-radius: 6px; opacity: 0.7; transition: opacity 0.15s, background 0.15s; }
@@ -1583,12 +1636,16 @@ async function setLanguage(lang) {
   // Re-render current view so all dynamic strings update
   if (mode === 'manage') {
     switchManageTab(manageTab || 'installed');
+  } else if (mode === 'source' && currentSource) {
+    renderSource(currentSource);
   } else if (!readerOpen) {
     renderHome();
   }
   updateTopbar();
   // If reading an article, re-check language banner in reader context
   if (readerOpen && currentArticle) _checkReaderLangBanner();
+  // Sync almanac calendar system + Rosetta Stone to global language
+  if (typeof _onGlobalLanguageChanged === 'function') _onGlobalLanguageChanged(lang);
 }
 
 // ── Language-experience banner (reader context) ──
@@ -2185,7 +2242,7 @@ function updateTopbar() {
   newtabBtn.style.display = readerOpen ? 'flex' : 'none';
   randomBtn.style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
   document.getElementById('library-btn').style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
-  document.getElementById('lang-selector-btn').style.display = _almanacOpen ? 'none' : '';
+  document.getElementById('lang-selector-btn').style.display = '';
   _updateLibraryBtnIcon();
 
   // Search placeholder
@@ -2837,8 +2894,22 @@ function renderHome(filter) {
     h += '<div class="stats-bar" style="padding:28px 0 0">' + statsHtml + '</div>';
   }
 
+  // Preserve existing discover content to avoid flash (pop-in → disappear → reappear)
+  var _prevDiscoverHtml = null;
+  if (_showDiscover) {
+    var _prevRow = document.getElementById('discover-row');
+    if (_prevRow && _prevRow.innerHTML) _prevDiscoverHtml = _prevRow.innerHTML;
+  }
   output.innerHTML = h;
-  if (_showDiscover) _loadDiscover();
+  if (_showDiscover) {
+    if (_prevDiscoverHtml) {
+      // Restore cached discover DOM — avoid re-fetch flash
+      var newRow = document.getElementById('discover-row');
+      if (newRow) newRow.innerHTML = _prevDiscoverHtml;
+    } else {
+      _loadDiscover();
+    }
+  }
 }
 
 function _langBadge(z) {
@@ -2917,7 +2988,7 @@ function _localMoonName(name) { return _MOON_PHASE_I18N[name] ? t(_MOON_PHASE_I1
 // tiltDeg: parallactic angle in degrees (0 = upright)
 // blurScale: multiplier for terminator blur (1.0 = hero moon, 0.5 = today card)
 function _renderMoonHTML(m, wrapClass, tiltDeg, blurScale) {
-  var litColor = '#e8e0d0', darkColor = 'rgba(10,14,26,0.82)';
+  var litColor = '#e8e0d0', darkColor = '#0a0e1a';
   var illumFrac = m.illumination / 100;
   var leftColor, rightColor, overlayColor, overlayScaleX;
   if (m.phase <= 0.25) {
@@ -2935,11 +3006,9 @@ function _renderMoonHTML(m, wrapClass, tiltDeg, blurScale) {
   }
   var tilt = (tiltDeg || 0).toFixed(1);
   var isHero = wrapClass === 'almanac-moon';
-  var rotateStyle = tiltDeg
-    ? (wrapClass === 'dc-moon-wrap'
-      ? 'transform:translate(-50%,-50%) rotate(' + tilt + 'deg)'
-      : 'transform:rotate(' + tilt + 'deg)')
-    : '';
+  var rotateStyle = wrapClass === 'dc-moon-wrap'
+    ? 'transform:translate(-50%,-50%)' + (tiltDeg ? ' rotate(' + tilt + 'deg)' : '')
+    : (tiltDeg ? 'transform:rotate(' + tilt + 'deg)' : '');
   return '<div class="' + wrapClass + '"' + (rotateStyle ? ' style="' + rotateStyle + '"' : '') + '>' +
     '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=1\') center/cover;opacity:0.12"></div>' +
     '<div class="dc-moon-half left" style="background:' + leftColor + '"></div>' +
@@ -2973,6 +3042,65 @@ function _quickMoonTilt(date) {
   var HA = LST - ra;
   var latR2 = obsLat * D2R;
   return Math.atan2(Math.sin(HA), Math.tan(latR2)*Math.cos(dec) - Math.sin(dec)*Math.cos(HA)) * 180 / Math.PI;
+}
+
+// Lightweight almanac teaser for the Today discover card.
+// Checks cached highlights (from almanac.js) first, falls back to simple computation.
+function _todayTeaser() {
+  var now = new Date(), y = now.getFullYear(), m = now.getMonth() + 1, d = now.getDate();
+  // Check cache from full almanac computation
+  try {
+    var cache = JSON.parse(localStorage.getItem('zimi_almanac_highlights'));
+    if (cache && cache.date === now.toISOString().substring(0, 10) && cache.items && cache.items.length > 0) {
+      var it = cache.items[0];
+      if (it.type === 'holiday') return it.name;
+      if (it.type === 'meteor') return it.days === 0 ? t('teaser_peak_tonight', { name: it.name }) + ' \u00b7 ZHR ' + it.zhr
+        : t('teaser_in_days', { name: it.name, n: it.days }) + ' \u00b7 ZHR ' + it.zhr;
+      if (it.type === 'eclipse') return it.name + (it.until ? ' \u00b7 ' + it.until : '');
+    }
+  } catch(e) {}
+  var todayMidnight = new Date(y, now.getMonth(), d);
+  // Collect ALL upcoming events, then pick the nearest
+  var events = [];
+  // Meteor shower peaks — [month, day, name, ZHR]
+  var showers = [[1,3,'Quadrantids',120],[4,22,'Lyrids',18],[5,6,'Eta Aquariids',50],
+    [8,12,'Perseids',100],[10,21,'Orionids',20],[11,17,'Leonids',15],
+    [12,14,'Geminids',150],[12,22,'Ursids',10]];
+  for (var i = 0; i < showers.length; i++) {
+    var s = showers[i], peak = new Date(y, s[0]-1, s[1]);
+    if (peak < todayMidnight) peak = new Date(y+1, s[0]-1, s[1]);
+    var days = Math.round((peak - todayMidnight) / 86400000);
+    events.push({ days: days, name: s[2], extra: ' \u00b7 ZHR ' + s[3], tonight: true });
+  }
+  // Equinoxes & solstices — use season-aware names for Southern Hemisphere
+  var _tLoc = null;
+  try { _tLoc = JSON.parse(localStorage.getItem('zimi_almanac_location')); } catch(e) {}
+  var _tSouth = _tLoc && _tLoc.lat < 0;
+  var eqNames = _tSouth
+    ? [t('season_autumn') + ' ' + t('alm_equinox'), t('season_winter') + ' ' + t('alm_solstice'), t('season_spring') + ' ' + t('alm_equinox'), t('season_summer') + ' ' + t('alm_solstice')]
+    : [t('season_spring') + ' ' + t('alm_equinox'), t('season_summer') + ' ' + t('alm_solstice'), t('season_autumn') + ' ' + t('alm_equinox'), t('season_winter') + ' ' + t('alm_solstice')];
+  var eqs = [[3,20,eqNames[0]],[6,21,eqNames[1]],[9,22,eqNames[2]],[12,21,eqNames[3]]];
+  for (var j = 0; j < eqs.length; j++) {
+    var eq = eqs[j], eqDate = new Date(y, eq[0]-1, eq[1]);
+    if (eqDate < todayMidnight) eqDate = new Date(y+1, eq[0]-1, eq[1]);
+    events.push({ days: Math.round((eqDate - todayMidnight) / 86400000), name: eq[2], extra: '' });
+  }
+  // Notable holidays
+  var holidays = [[1,1,"New Year's Day"],[2,14,"Valentine's Day"],[3,17,"St. Patrick's Day"],
+    [3,8,"Int'l Women's Day"],[4,22,'Earth Day'],[5,1,'May Day'],
+    [7,4,'Independence Day'],[10,31,'Halloween'],
+    [12,25,'Christmas Day'],[12,31,"New Year's Eve"]];
+  for (var k = 0; k < holidays.length; k++) {
+    var h = holidays[k], hDate = new Date(y, h[0]-1, h[1]);
+    if (hDate < todayMidnight) hDate = new Date(y+1, h[0]-1, h[1]);
+    events.push({ days: Math.round((hDate - todayMidnight) / 86400000), name: h[2], extra: '' });
+  }
+  // Sort by nearest
+  events.sort(function(a, b) { return a.days - b.days; });
+  var ev = events[0];
+  if (!ev) return null;
+  if (ev.days === 0) return (ev.tonight ? t('teaser_peak_tonight', { name: ev.name }) : t('teaser_today', { name: ev.name })) + ev.extra;
+  return t('teaser_in_days', { name: ev.name, n: ev.days }) + ev.extra;
 }
 
 function _renderTodayCard() {
@@ -3067,11 +3195,11 @@ function _loadDiscover() {
   var now = new Date();
   var today = now.toISOString().substring(0, 10);
   var cacheKey = 'zimi_disc6_' + today;
-  // Clean up old Discover cache keys (from previous days)
+  // Clean up old Discover cache keys (from previous days or old versions)
   try {
     for (var si = 0; si < localStorage.length; si++) {
       var k = localStorage.key(si);
-      if (k && k.indexOf('zimi_disc6_') === 0 && k !== cacheKey) { localStorage.removeItem(k); si--; }
+      if (k && k.indexOf('zimi_d') === 0 && k !== cacheKey) { localStorage.removeItem(k); si--; }
     }
   } catch(e) {}
   try {
@@ -3242,13 +3370,15 @@ function _renderDiscover(el, items) {
           break;
         }
       }
+      var _teaser = _todayTeaser();
       h += '<div class="discover-card" onclick="openAlmanac()">' +
         _renderTodayCard() +
         '<div class="dc-body">' +
-          '<div class="dc-source"><span>\uD83D\uDCC5 ' + tH('today') + '</span></div>' +
+          '<div class="dc-source"><span>' + tH('today') + '</span></div>' +
           '<div class="dc-title">' + esc(_dateTitle) + '</div>' +
           '<div class="dc-blurb">' + _localMoonName(_m.name) + (_seasonStr ? ' \u00b7 ' + _seasonStr : '') + '</div>' +
           '<div class="dc-blurb">' + _m.illumination + '% ' + tH('alm_illuminated') + '</div>' +
+          (_teaser ? '<div class="dc-blurb" style="color:var(--amber)">' + _teaser + '</div>' : '') +
         '</div></div>';
       continue;
     }
