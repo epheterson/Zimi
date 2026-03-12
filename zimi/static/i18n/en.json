@@ -6,8 +6,10 @@
   "filter_installed": "Filter installed ZIMs...",
 
   "random_article": "Random article (R)",
+  "random": "Random",
   "library": "Library (H)",
   "library_manager": "Library Manager",
+  "manage": "Manage",
   "open_in_browser": "Open in browser",
   "go_back": "Go back",
   "show_discover": "Show Discover",

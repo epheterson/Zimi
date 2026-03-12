@@ -343,8 +343,18 @@
   .lang-dropdown-item .ld-switch { display: flex; align-items: center; }
   .ld-switch-icon { opacity: 0.5; transition: opacity 0.15s; }
   .lang-dropdown-item.switchable:hover .ld-switch-icon { opacity: 1; color: var(--amber); }
-  .lang-dropdown-item.switchable { border-left: 2px solid transparent; }
+  .lang-dropdown-item.switchable { border-left: 2px solid transparent; padding: 8px 14px; }
   .lang-dropdown-item.switchable:hover { border-left-color: var(--amber); }
+  .ld-group-header {
+    padding: 8px 14px 4px; font-size: 11px; font-weight: 600; color: var(--text3);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ld-switch-label { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .ld-switch-lang { font-weight: 500; }
+  .ld-switch-article { font-size: 11px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lang-dropdown-item.switchable:hover .ld-switch-article { color: var(--amber); opacity: 0.7; }
+  .ld-divider { height: 1px; background: var(--border); margin: 4px 0; }
   .ld-section {
     margin: 0; padding: 8px 14px 10px; border-top: 1px solid var(--border);
     animation: fadeSlideIn 0.2s ease;
@@ -392,6 +402,8 @@
   [dir="rtl"] .lang-switch-panel { direction: rtl; text-align: right; }
   [dir="rtl"] .lang-banner { direction: rtl; }
   [dir="rtl"] .lang-dropdown { direction: rtl; text-align: right; }
+  [dir="rtl"] .lang-dropdown-item.switchable { border-left: none; border-right: 2px solid transparent; }
+  [dir="rtl"] .lang-dropdown-item.switchable:hover { border-right-color: var(--amber); }
   [dir="rtl"] .stat-card { direction: rtl; }
   [dir="rtl"] .manage-tab { direction: rtl; }
   [dir="rtl"] .empty { direction: rtl; }
@@ -7409,7 +7421,12 @@ function _prefetchArticleLangs() {
   fetch('/article-languages?zim=' + encodeURIComponent(currentArticle.zim) + '&path=' + encodeURIComponent(currentArticle.path))
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      if (_articleLangKey === key) _articleLangData = data; // only set if still same article
+      if (_articleLangKey === key) {
+        _articleLangData = data;
+        // Re-render dropdown if it's open (data arrived after user opened it)
+        var dd = document.getElementById('lang-dropdown');
+        if (dd && dd.classList.contains('visible')) _renderLangDropdown();
+      }
     })
     .catch(function() {});
 }
@@ -7423,7 +7440,6 @@ function _renderLangDropdown() {
     var langs = _articleLangData.languages || [];
     for (var ai = 0; ai < langs.length; ai++) {
       var al = langs[ai];
-      // Map 2-letter wiki lang to UI lang code (they usually match)
       switchMap[al.lang] = { zim: al.zim, path: al.path };
     }
   }
@@ -7431,31 +7447,44 @@ function _renderLangDropdown() {
   var switchIcon = '<svg class="ld-switch-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">' +
     '<path d="M4 6l-3 3 3 3"/><path d="M1 9h10"/><path d="M12 10l3-3-3-3"/><path d="M15 7H5"/></svg>';
 
+  var inReader = readerOpen && currentArticle;
+  var switchKeys = Object.keys(switchMap).filter(function(k) { return k !== _currentLang; });
+
+  // When reading an article with cross-language matches: show them first
+  if (inReader && switchKeys.length > 0) {
+    var articleTitle = currentArticle.title || currentArticle.path.replace(/^A\//, '').replace(/_/g, ' ');
+    h += '<div class="ld-group-header">' + esc(articleTitle) + '</div>';
+    for (var si = 0; si < switchKeys.length; si++) {
+      var sk = switchKeys[si];
+      var sl = _AVAILABLE_LANGS.find(function(ll) { return ll.code === sk; });
+      var sName = sl ? sl.name : sk;
+      // Show the target article path as subtitle (decoded)
+      var targetPath = switchMap[sk].path.replace(/^A\//, '').replace(/_/g, ' ');
+      try { targetPath = decodeURIComponent(targetPath); } catch(e) {}
+      h += '<div class="lang-dropdown-item switchable" onclick="_selectLangAndSwitch(\'' + sk + '\',\'' + escJs(switchMap[sk].zim) + '\',\'' + escJs(switchMap[sk].path) + '\')">' +
+        '<span class="ld-switch-label"><span class="ld-switch-lang">' + esc(sName) + '</span>' +
+        '<span class="ld-switch-article">' + esc(targetPath) + '</span></span>' +
+        '<span class="ld-switch">' + switchIcon + '</span></div>';
+    }
+    h += '<div class="ld-divider"></div>';
+  }
+
+  // All languages (UI language selector)
   for (var i = 0; i < _AVAILABLE_LANGS.length; i++) {
     var l = _AVAILABLE_LANGS[i];
     var active = l.code === _currentLang ? ' active' : '';
     var count = _langSourceCount(l.code);
     var meta = '';
-    var canSwitch = switchMap[l.code] && l.code !== _currentLang;
-    var inReader = readerOpen && currentArticle;
     if (l.code === _currentLang) {
       meta = '<span class="check">\u2713</span>';
-    } else if (canSwitch) {
-      meta = '<span class="ld-switch" title="' + escAttr(t('view_in_lang', {lang: l.name})) + '">' + switchIcon + '</span>';
-    } else if (inReader && count > 0) {
-      // Has ZIM but this article not confirmed — show source count as hint
+    } else if (inReader && count > 0 && !switchMap[l.code]) {
       meta = '<span class="ld-meta">' + count + '</span>';
     } else if (inReader && manageEnabled && count === 0) {
-      // In reader: offer to download this language so user can read this article in it
       meta = '<span class="ld-dl-hint">' + t('download') + '</span>';
     } else if (!inReader && count > 0) {
-      // Home: show how many sources exist in this language
       meta = '<span class="ld-meta">' + count + '</span>';
     }
-    var onclick = canSwitch
-      ? '_selectLangAndSwitch(\'' + l.code + '\',\'' + escJs(switchMap[l.code].zim) + '\',\'' + escJs(switchMap[l.code].path) + '\')'
-      : '_selectLang(\'' + l.code + '\')';
-    h += '<div class="lang-dropdown-item' + active + (canSwitch ? ' switchable' : '') + '" onclick="' + onclick + '">' +
+    h += '<div class="lang-dropdown-item' + active + '" onclick="_selectLang(\'' + l.code + '\')">' +
       '<span>' + esc(l.name) + '</span>' + meta + '</div>';
   }
   dd.innerHTML = h;
@@ -7735,9 +7764,9 @@ function _toggleTopbarMenu(event) {
   }
   // Build menu items
   var h = '';
-  h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random_article').replace(/ \(R\)$/, '') + '</button>';
+  h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
   h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
-  h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> ' + tH('library_manager') + '</button>';
+  h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> ' + tH('manage') + '</button>';
   menu.innerHTML = h;
   menu.classList.add('visible');
   // Close on outside click
