@@ -23,6 +23,20 @@ ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose down && /usr/
 echo "  NAS deployed"
 
 echo ""
+echo "=== Purging Cloudflare cache ==="
+CF_ZONE=$(yq '.config.cf_zone_id' ~/vault/secrets/services.yml)
+CF_TOKEN=$(yq '.config.cf_token' ~/vault/secrets/services.yml)
+if [ -n "$CF_ZONE" ] && [ "$CF_ZONE" != "null" ] && [ -n "$CF_TOKEN" ] && [ "$CF_TOKEN" != "null" ]; then
+  curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/purge_cache" \
+    -H "Authorization: Bearer ${CF_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data '{"files":["https://knowledge.zosia.io/","https://knowledge.zosia.io/static/almanac.js"]}' \
+    | python3 -c "import sys,json; r=json.load(sys.stdin); print('  Purged' if r.get('success') else f'  Failed: {r}')"
+else
+  echo "  Skipped (no Cloudflare credentials)"
+fi
+
+echo ""
 echo "=== Syncing vault ==="
 mkdir -p ~/vault/infra/zim-reader/zimi/templates
 cp zimi/server.py ~/vault/infra/zim-reader/zimi/server.py
