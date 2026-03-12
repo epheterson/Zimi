@@ -27,6 +27,8 @@ Usage (HTTP API):
   GET /suggest?q=...&limit=10          Title autocomplete
   GET /snippet?zim=...&path=...        Short text snippet
   GET /list                            List all ZIM sources with metadata
+  GET /languages                       Installed language summary
+  GET /article-languages?zim=...&path=... Available translations for article
   GET /catalog?zim=...                 PDF catalog for zimgit-style ZIMs
   GET /random                          Random article
   GET /resolve?url=...                 Cross-ZIM URL resolution
@@ -76,7 +78,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.5.0"
+ZIMI_VERSION = "1.6.0"
 
 log = logging.getLogger("zimi")
 logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S", level=logging.INFO)
@@ -84,10 +86,21 @@ logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S", level=
 ZIM_DIR = os.environ.get("ZIM_DIR", "/zims")
 ZIMI_MANAGE = os.environ.get("ZIMI_MANAGE", "0") == "1"
 ZIMI_DATA_DIR = os.environ.get("ZIMI_DATA_DIR", os.path.join(ZIM_DIR, ".zimi"))
-try:
-    os.makedirs(ZIMI_DATA_DIR, exist_ok=True)
-except OSError:
-    pass  # ZIM_DIR may not exist yet (e.g. during import in tests)
+_initialized = False
+
+def _init():
+    """Initialize data directory and run migrations. Called lazily on first use."""
+    global _initialized
+    if _initialized:
+        return
+    _initialized = True
+    try:
+        os.makedirs(ZIMI_DATA_DIR, exist_ok=True)
+    except OSError:
+        pass  # ZIM_DIR may not exist yet (e.g. during import in tests)
+    _migrate_data_files()
+    global _auto_update_enabled, _auto_update_freq
+    _auto_update_enabled, _auto_update_freq = _load_auto_update_config()
 
 def _migrate_data_files():
     """Migrate data files from old locations into ZIMI_DATA_DIR."""
@@ -136,14 +149,24 @@ def _migrate_data_files():
                 except OSError:
                     pass
 
-_migrate_data_files()
-
 def _password_file():
     """Password file path inside ZIMI_DATA_DIR."""
     return os.path.join(ZIMI_DATA_DIR, "password")
 
-def _hash_pw(pw):
-    return hashlib.sha256(pw.encode()).hexdigest()
+_PW_ITERATIONS = 600_000  # OWASP 2023 recommendation for PBKDF2-SHA256
+
+def _hash_pw(pw, salt=None):
+    """Hash password with PBKDF2-SHA256 + random salt. Returns 'salt$hash'."""
+    if salt is None:
+        salt = os.urandom(16)
+    else:
+        salt = bytes.fromhex(salt)
+    dk = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, _PW_ITERATIONS)
+    return salt.hex() + "$" + dk.hex()
+
+def _is_legacy_hash(stored):
+    """Detect old-style raw SHA-256 hashes (no salt separator)."""
+    return stored and "$" not in stored and len(stored) == 64
 
 def _get_manage_password_hash():
     """Get stored password hash from env var or file."""
@@ -151,7 +174,8 @@ def _get_manage_password_hash():
     if pw:
         return _hash_pw(pw)  # env var stores plaintext, hash on read
     try:
-        return open(_password_file()).read().strip()
+        with open(_password_file()) as f:
+            return f.read().strip()
     except (FileNotFoundError, OSError):
         return ""
 
@@ -168,7 +192,22 @@ def _check_manage_auth(handler):
     if not stored:
         return None  # no password set, allow access
     auth = handler.headers.get("Authorization", "")
-    if auth.startswith("Bearer ") and hmac.compare_digest(_hash_pw(auth[7:]), stored):
+    if not auth.startswith("Bearer "):
+        return True  # unauthorized
+    candidate = auth[7:]
+    # Migrate legacy SHA-256 hashes: verify with old method, then upgrade in place
+    if _is_legacy_hash(stored):
+        old_hash = hashlib.sha256(candidate.encode()).hexdigest()
+        if hmac.compare_digest(old_hash, stored):
+            _set_manage_password(candidate)  # upgrade to PBKDF2
+            log.info("Migrated password hash from SHA-256 to PBKDF2")
+            return None  # valid
+        return True  # unauthorized
+    # PBKDF2 verification
+    if "$" not in stored:
+        return True
+    salt = stored.split("$")[0]
+    if hmac.compare_digest(_hash_pw(candidate, salt), stored):
         return None  # valid
     return True  # unauthorized
 MAX_CONTENT_LENGTH = 8000  # chars returned per article, keeps responses manageable for LLMs
@@ -179,31 +218,38 @@ MAX_SERVE_BYTES = 50 * 1024 * 1024    # 50 MB — refuse to serve entries larger
 MAX_POST_BODY = 65536                 # max bytes accepted in POST requests (64KB — handles ~500 URLs for batch resolve)
 
 # ── Rate Limiting ──
-RATE_LIMIT = int(os.environ.get("ZIMI_RATE_LIMIT", "60"))  # requests per minute per IP (0 = disabled)
-_rate_buckets = {}  # {ip: [timestamps]}
+RATE_LIMIT = int(os.environ.get("ZIMI_RATE_LIMIT", "60"))  # API requests per minute per IP (0 = disabled)
+RATE_LIMIT_CONTENT = RATE_LIMIT * 20  # /w/ sub-resources: icons, CSS, images (1200/min default)
+_rate_buckets = {}       # {ip: [timestamps]} — API endpoints
+_rate_buckets_content = {}  # {ip: [timestamps]} — /w/ content
 _rate_lock = threading.Lock()
 
-def _check_rate_limit(ip):
+def _check_rate_limit(ip, content=False):
     """Check if IP has exceeded rate limit. Returns seconds to wait, or 0 if OK."""
-    if RATE_LIMIT <= 0:
+    limit = RATE_LIMIT_CONTENT if content else RATE_LIMIT
+    if limit <= 0:
         return 0
+    buckets = _rate_buckets_content if content else _rate_buckets
     now = time.time()
     window = 60.0  # 1 minute window
     with _rate_lock:
-        timestamps = _rate_buckets.get(ip, [])
+        timestamps = buckets.get(ip, [])
         # Prune old entries
         timestamps = [t for t in timestamps if now - t < window]
-        if len(timestamps) >= RATE_LIMIT:
+        if len(timestamps) >= limit:
             retry_after = max(1, int(timestamps[0] + window - now) + 1)
-            _rate_buckets[ip] = timestamps
+            buckets[ip] = timestamps
             return retry_after
         timestamps.append(now)
-        _rate_buckets[ip] = timestamps
-        # Periodic cleanup of stale IPs (every ~100 requests)
-        if len(_rate_buckets) > 1000:
-            stale = [k for k, v in _rate_buckets.items() if not v or now - v[-1] > window]
+        buckets[ip] = timestamps
+        # Periodic cleanup of stale IPs
+        if len(buckets) > 1000:
+            stale = [k for k, v in buckets.items() if not v or now - v[-1] > window]
             for k in stale:
-                del _rate_buckets[k]
+                del buckets[k]
+        # Hard cap: prevent unbounded memory growth from IP spoofing
+        if len(buckets) > 10000:
+            buckets.clear()
     return 0
 
 # ── Metrics ──
@@ -338,7 +384,7 @@ def _save_auto_update_config(enabled, freq):
     except OSError:
         pass
 
-_auto_update_enabled, _auto_update_freq = _load_auto_update_config()
+_auto_update_enabled, _auto_update_freq = False, "weekly"  # defaults; loaded by _init()
 _auto_update_last_check = None
 _auto_update_thread = None
 
@@ -462,6 +508,7 @@ def _suggest_cache_put(query_lower, zim_name, results):
         threading.Thread(target=_suggest_cache_persist, daemon=True).start()
 
 def _suggest_cache_clear():
+    global _factbook_countries_cache, _xkcd_date_cache_built
     with _suggest_cache_lock:
         _suggest_cache.clear()
     _suggest_cache_persist()
@@ -471,6 +518,15 @@ def _suggest_cache_clear():
     with _fts_pool_lock:
         _fts_pool.clear()
         _fts_zim_locks.clear()
+    with _archive_lock:
+        _archive_pool.clear()
+    # Invalidate content-specific caches that depend on ZIM file contents
+    _factbook_countries_cache = None
+    _xkcd_date_cache_built = False
+    # Clear OPDS catalog cache (forces re-fetch from Kiwix)
+    _opds_cache.clear()
+    # Clear thumbnail disk cache
+    _clear_thumb_cache()
 
 _SUGGEST_CACHE_PATH = os.path.join(ZIMI_DATA_DIR, "suggest_cache.json")
 
@@ -607,14 +663,16 @@ def _append_history(event):
         entries.insert(0, event)
         if len(entries) > _HISTORY_MAX:
             entries = entries[:_HISTORY_MAX]
-        path = _history_file_path()
-        tmp = path + ".tmp"
-        try:
-            with open(tmp, "w") as f:
-                json.dump(entries, f, ensure_ascii=False)
-            os.replace(tmp, path)
-        except OSError as e:
-            log.warning("Failed to write history: %s", e)
+        blob = json.dumps(entries, ensure_ascii=False)
+    # Write outside lock — I/O can be slow on NAS spinning disks
+    path = _history_file_path()
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            f.write(blob)
+        os.replace(tmp, path)
+    except OSError as e:
+        log.warning("Failed to write history: %s", e)
 
 
 # ── Collections & Favorites ──
@@ -648,13 +706,41 @@ def _save_collections(data):
     except OSError as e:
         log.warning("Could not save collections: %s", e)
 
+# ── ISO 639-3 → 639-1 language code mapping ──
+# ZIM files use ISO 639-3 (3-letter codes). APIs and web use ISO 639-1 (2-letter).
+_ISO639_3_TO_1 = {
+    "eng": "en", "fra": "fr", "deu": "de", "spa": "es", "por": "pt",
+    "rus": "ru", "zho": "zh", "jpn": "ja", "kor": "ko", "ara": "ar",
+    "hin": "hi", "ita": "it", "nld": "nl", "pol": "pl", "tur": "tr",
+    "vie": "vi", "tha": "th", "swe": "sv", "nor": "no", "dan": "da",
+    "fin": "fi", "ces": "cs", "ron": "ro", "hun": "hu", "ell": "el",
+    "heb": "he", "ukr": "uk", "cat": "ca", "ind": "id", "msa": "ms",
+    "fas": "fa", "ben": "bn", "tam": "ta", "tel": "te", "urd": "ur",
+    "mul": "mul",  # multiple languages (keep as-is)
+}
+
+# Native language names for display
+_LANG_NATIVE_NAMES = {
+    "en": "English", "fr": "Français", "de": "Deutsch", "es": "Español",
+    "pt": "Português", "ru": "Русский", "zh": "中文", "ja": "日本語",
+    "ko": "한국어", "ar": "العربية", "hi": "हिन्दी", "it": "Italiano",
+    "nl": "Nederlands", "pl": "Polski", "tr": "Türkçe", "vi": "Tiếng Việt",
+    "th": "ไทย", "sv": "Svenska", "no": "Norsk", "da": "Dansk",
+    "fi": "Suomi", "cs": "Čeština", "ro": "Română", "hu": "Magyar",
+    "el": "Ελληνικά", "he": "עברית", "uk": "Українська", "ca": "Català",
+    "id": "Bahasa Indonesia", "ms": "Bahasa Melayu", "fa": "فارسی",
+    "bn": "বাংলা", "ta": "தமிழ்", "te": "తెలుగు", "ur": "اردو",
+    "mul": "Multiple",
+}
+
 # ── Startup cache ──
 # Opening ZIM archives is expensive (~0.3s each on NAS spinning disks).
 # Persistent cache in .zimi_cache.json enables instant startup on subsequent runs.
 # Archives are opened lazily (on first search/read) instead of all at once.
-_CACHE_VERSION = 1
+_CACHE_VERSION = 2  # bumped for language metadata
 _zim_list_cache = None
 _zim_files_cache = None  # {name: path} — cached at startup, ZIM dir is read-only
+_cache_generation = 0   # incremented on load_cache(force=True) — used in ETags
 _archive_pool = {}  # {name: Archive} — kept open for fast search
 _archive_lock = threading.Lock()  # protects _archive_pool writes in threaded mode
 _zim_lock = threading.Lock()      # serializes all libzim operations (C library is NOT thread-safe)
@@ -1090,6 +1176,364 @@ def _clean_stale_title_indexes():
                 except OSError:
                     pass
 
+# ── Wikidata Q-ID Matching ──
+# Direct cross-language article matching via Wikidata identifiers.
+# Wikipedia ZIMs embed Q-IDs (e.g., Q629 for Oxygen) in each article's
+# authority control section. We use these for exact cross-language matching.
+#
+# Two-tier approach:
+#   1. SMALL ZIMs (< 200K entries): Full background scan at startup.
+#      Builds per-ZIM SQLite indexes for instant lookup.
+#   2. LARGE ZIMs (full Wikipedia): On-demand extraction + verification.
+#      When matching, read source article HTML → extract Q-ID → use heuristic
+#      search to find candidates in target → verify by reading candidate HTML.
+#      Cache every verified match for instant future lookups.
+#
+# This avoids a 24-hour upfront scan of the 115GB English Wikipedia while
+# still providing authoritative Q-ID matching on first use.
+
+_QID_INDEX_DIR = os.path.join(ZIMI_DATA_DIR, "qids")
+_QID_INDEX_VERSION = "3"
+_QID_RE = re.compile(rb'wikidata\.org/wiki/(Q\d+)')
+# Authority control Q-ID pattern (article's own Q-ID, not cited references)
+_QID_AUTH_RE = re.compile(rb'wikidata\.org/wiki/(Q\d+)#identifiers')
+_QID_FULL_SCAN_MAX_ENTRIES = 200_000  # Only full-scan ZIMs smaller than this
+
+# Connection pool for Q-ID databases
+_qid_db_pool = {}          # {zim_name: sqlite3.Connection}
+_qid_db_pool_lock = threading.Lock()
+
+
+def _qid_index_path(zim_name):
+    return os.path.join(_QID_INDEX_DIR, f"{zim_name}.qid.db")
+
+
+def _qid_cache_path():
+    return os.path.join(_QID_INDEX_DIR, "_qid_cache.db")
+
+
+def _get_qid_db(zim_name):
+    """Get a pooled SQLite connection for a Q-ID index, or None if no index."""
+    with _qid_db_pool_lock:
+        conn = _qid_db_pool.get(zim_name)
+        if conn is not None:
+            return conn
+    db_path = _qid_index_path(zim_name)
+    if not os.path.exists(db_path):
+        return None
+    try:
+        conn = sqlite3.connect(db_path, timeout=5, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA mmap_size=67108864")
+        with _qid_db_pool_lock:
+            if zim_name in _qid_db_pool:
+                conn.close()
+                return _qid_db_pool[zim_name]
+            _qid_db_pool[zim_name] = conn
+        return conn
+    except Exception:
+        return None
+
+
+def _close_qid_db(zim_name):
+    with _qid_db_pool_lock:
+        conn = _qid_db_pool.pop(zim_name, None)
+    if conn:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _qid_index_is_current(zim_name, zim_path):
+    """Check if Q-ID index exists and matches ZIM mtime."""
+    db_path = _qid_index_path(zim_name)
+    if not os.path.exists(db_path):
+        return False
+    try:
+        zim_mtime = str(os.path.getmtime(zim_path))
+        conn = sqlite3.connect(db_path, timeout=5)
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key='zim_mtime'").fetchone()
+            ver = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            return (row is not None and row[0] == zim_mtime
+                    and ver is not None and ver[0] == _QID_INDEX_VERSION)
+        finally:
+            conn.close()
+    except Exception:
+        return False
+
+
+def _build_qid_index(zim_name, zim_path):
+    """Scan a ZIM file and extract Wikidata Q-IDs from article HTML.
+
+    Opens a dedicated Archive handle (not from the pool) so this is safe
+    to run without _zim_lock. Only used for small ZIMs (< 200K entries).
+    """
+    os.makedirs(_QID_INDEX_DIR, exist_ok=True)
+    db_path = _qid_index_path(zim_name)
+    tmp_path = db_path + ".tmp"
+    for suffix in ("", "-shm", "-wal"):
+        try:
+            os.remove(tmp_path + suffix)
+        except OSError:
+            pass
+    t0 = time.time()
+    count = 0
+    scanned = 0
+
+    archive = open_archive(zim_path)
+    conn = sqlite3.connect(tmp_path)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=OFF")
+        conn.execute("CREATE TABLE qids (path TEXT PRIMARY KEY, qid INTEGER)")
+        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+
+        _asset_exts = frozenset((
+            '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.avif',
+            '.css', '.js', '.json', '.woff', '.woff2', '.ttf', '.eot', '.otf',
+            '.mp3', '.mp4', '.ogg', '.wav', '.webm',
+        ))
+
+        batch = []
+        total_entries = archive.all_entry_count
+        log_interval = min(max(total_entries // 20, 5000), 25000)
+
+        for i in range(total_entries):
+            try:
+                entry = archive._get_entry_by_id(i)
+                if entry.is_redirect:
+                    continue
+                path = entry.path
+                dot = path.rfind('.')
+                if dot != -1 and path[dot:].lower() in _asset_exts:
+                    continue
+                item = entry.get_item()
+                mimetype = item.mimetype or ""
+                if not mimetype.startswith("text/html") and mimetype != "application/xhtml+xml":
+                    continue
+                if item.size < 2000:
+                    continue
+                scanned += 1
+                content = item.content
+                # Prefer authority control Q-ID (#identifiers) over cited references
+                m = _QID_AUTH_RE.search(content) or _QID_RE.search(content)
+                if m:
+                    qid_int = int(m.group(1).decode()[1:])
+                    batch.append((path, qid_int))
+
+                if len(batch) >= 5000:
+                    conn.executemany("INSERT OR IGNORE INTO qids VALUES (?,?)", batch)
+                    conn.commit()
+                    count += len(batch)
+                    batch.clear()
+
+                if scanned % log_interval == 0:
+                    pct = round(100 * i / total_entries)
+                    rate = scanned / max(time.time() - t0, 0.1)
+                    log.info("Q-ID index: %s %d%% (%d scanned, %d found, %.0f/s)",
+                             zim_name, pct, scanned, count + len(batch), rate)
+            except Exception:
+                continue
+
+        if batch:
+            conn.executemany("INSERT OR IGNORE INTO qids VALUES (?,?)", batch)
+            count += len(batch)
+
+        conn.execute("CREATE INDEX idx_qid ON qids(qid)")
+
+        zim_mtime = str(os.path.getmtime(zim_path))
+        conn.execute("INSERT INTO meta VALUES ('schema_version', ?)", (_QID_INDEX_VERSION,))
+        conn.execute("INSERT INTO meta VALUES ('zim_mtime', ?)", (zim_mtime,))
+        conn.execute("INSERT INTO meta VALUES ('built_at', ?)", (str(time.time()),))
+        conn.execute("INSERT INTO meta VALUES ('entry_count', ?)", (str(count),))
+        conn.commit()
+    except Exception:
+        conn.close()
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+    else:
+        conn.close()
+        _close_qid_db(zim_name)
+        os.replace(tmp_path, db_path)
+        dt = time.time() - t0
+        log.info("Q-ID index: built %s (%d Q-IDs from %d articles, %.1fs)", zim_name, count, scanned, dt)
+
+
+# ── On-demand Q-ID cache for large ZIMs ──
+# Single shared SQLite DB that grows organically as users browse articles.
+# Stores (zim_name, path) → qid mappings discovered during article viewing.
+
+_qid_cache_conn = None
+_qid_cache_lock = threading.Lock()
+
+
+def _get_qid_cache():
+    """Get or create the shared Q-ID cache database."""
+    global _qid_cache_conn
+    if _qid_cache_conn is not None:
+        return _qid_cache_conn
+    with _qid_cache_lock:
+        if _qid_cache_conn is not None:
+            return _qid_cache_conn
+        os.makedirs(_QID_INDEX_DIR, exist_ok=True)
+        conn = sqlite3.connect(_qid_cache_path(), timeout=5, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("CREATE TABLE IF NOT EXISTS qid_cache (zim TEXT, path TEXT, qid INTEGER, PRIMARY KEY(zim, path))")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cache_qid ON qid_cache(qid)")
+        _qid_cache_conn = conn
+        return conn
+
+
+def _qid_extract_from_html(archive, article_path):
+    """Extract Q-ID from a single article's HTML. Returns int or None.
+
+    Reads the article content and searches for the Wikidata Q-ID pattern.
+    Fast for a single article (~10-50ms depending on article size and I/O).
+    """
+    try:
+        entry = archive.get_entry_by_path(article_path)
+        item = entry.get_item()
+        if item.size < 2000:
+            return None
+        content = item.content
+        # Prefer authority control Q-ID (#identifiers) — that's the article's own ID.
+        # Fall back to first wikidata link (may be a cited reference in some ZIMs).
+        m = _QID_AUTH_RE.search(content) or _QID_RE.search(content)
+        if m:
+            return int(m.group(1).decode()[1:])
+    except Exception:
+        pass
+    return None
+
+
+_qid_cache_op_lock = threading.Lock()  # protects execute+commit on shared _qid_cache_conn
+
+
+def _qid_cache_store(zim_name, path, qid):
+    """Store a Q-ID mapping in the on-demand cache."""
+    try:
+        conn = _get_qid_cache()
+        with _qid_cache_op_lock:
+            conn.execute("INSERT OR REPLACE INTO qid_cache VALUES (?,?,?)", (zim_name, path, qid))
+            conn.commit()
+    except Exception:
+        pass
+
+
+def _qid_cache_lookup(zim_name, path):
+    """Look up Q-ID from the on-demand cache. Returns int or None."""
+    try:
+        conn = _get_qid_cache()
+        with _qid_cache_op_lock:
+            row = conn.execute("SELECT qid FROM qid_cache WHERE zim=? AND path=?", (zim_name, path)).fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def _qid_cache_find(zim_name, qid):
+    """Find article path by Q-ID in the on-demand cache. Returns path or None."""
+    try:
+        conn = _get_qid_cache()
+        with _qid_cache_op_lock:
+            row = conn.execute("SELECT path FROM qid_cache WHERE zim=? AND qid=?", (zim_name, qid)).fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def _qid_lookup(zim_name, article_path):
+    """Look up the Q-ID for an article. Checks full index first, then cache."""
+    # Check full index (for small ZIMs that were fully scanned)
+    conn = _get_qid_db(zim_name)
+    if conn is not None:
+        try:
+            row = conn.execute("SELECT qid FROM qids WHERE path=?", (article_path,)).fetchone()
+            if row:
+                return row[0]
+        except Exception:
+            pass
+    # Check on-demand cache (for large ZIMs)
+    return _qid_cache_lookup(zim_name, article_path)
+
+
+def _qid_find_in_zim(zim_name, qid_int):
+    """Find an article path by Q-ID in a specific ZIM. Checks index then cache."""
+    # Check full index
+    conn = _get_qid_db(zim_name)
+    if conn is not None:
+        try:
+            row = conn.execute("SELECT path FROM qids WHERE qid=?", (qid_int,)).fetchone()
+            return row[0] if row else None
+        except Exception:
+            pass
+    # Check on-demand cache
+    return _qid_cache_find(zim_name, qid_int)
+
+
+def _qid_has_index(zim_name):
+    """Check if a ZIM has a full Q-ID index (was fully scanned)."""
+    return _get_qid_db(zim_name) is not None
+
+
+def _build_all_qid_indexes():
+    """Build Q-ID indexes for small Wikipedia ZIMs (background task).
+
+    Only full-scans ZIMs with < 200K entries (takes seconds each).
+    Large ZIMs (full Wikipedia) use on-demand Q-ID extraction instead.
+    """
+    os.makedirs(_QID_INDEX_DIR, exist_ok=True)
+    zims = get_zim_files()
+    zim_info = {z.get("name"): z.get("entries", 0) for z in (_zim_list_cache or [])}
+
+    wiki_zims = [(n, p) for n, p in zims.items() if _zim_project_name(n) == "wikipedia"]
+
+    need_build = []
+    current = 0
+    skipped_large = 0
+    for name, path in wiki_zims:
+        entries = zim_info.get(name, 0) or 0
+        if entries > _QID_FULL_SCAN_MAX_ENTRIES:
+            skipped_large += 1
+            continue
+        if _qid_index_is_current(name, path):
+            current += 1
+        else:
+            need_build.append((name, path))
+
+    if not need_build:
+        if skipped_large:
+            log.info("Q-ID indexes: %d ready, %d large ZIMs use on-demand matching", current, skipped_large)
+        return
+
+    need_build.sort(key=lambda x: zim_info.get(x[0], 0) if isinstance(zim_info.get(x[0], 0), int) else 0)
+
+    for name, path in need_build:
+        try:
+            _build_qid_index(name, path)
+            current += 1
+        except Exception as e:
+            log.warning("Q-ID index build failed for %s: %s", name, e)
+
+    # Clean stale indexes
+    for f in os.listdir(_QID_INDEX_DIR):
+        if f.endswith(".qid.db"):
+            zn = f[:-7]
+            if zn not in zims:
+                _close_qid_db(zn)
+                try:
+                    os.remove(os.path.join(_QID_INDEX_DIR, f))
+                    log.info("Removed stale Q-ID index: %s", f)
+                except OSError:
+                    pass
+
+    log.info("Q-ID indexes: %d ready, %d large ZIMs use on-demand matching", current, skipped_large)
+
+
 # Load UI template from file (next to this script)
 _TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 try:
@@ -1098,22 +1542,83 @@ try:
 except FileNotFoundError:
     SEARCH_UI_HTML = "<html><body><h1>Zimi</h1><p>UI template not found. API endpoints are still available.</p></body></html>"
 
+# Auto-version static assets: replace ?v=N with content-hash so deploys bust caches.
+# This eliminates manual version bumping — any file change gets a new URL automatically.
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+if os.path.isdir(_STATIC_DIR):
+    import re as _re_ver
+    def _static_hash(fname):
+        """Short content hash for a static file."""
+        p = os.path.join(_STATIC_DIR, fname)
+        if os.path.exists(p):
+            return hashlib.md5(open(p, "rb").read()).hexdigest()[:8]
+        return "0"
+    # Replace versioned references: /static/foo.js?v=39 → /static/foo.js?v=a1b2c3d4
+    def _replace_static_ver(m):
+        fname = m.group(1)
+        return f"/static/{fname}?v={_static_hash(fname)}"
+    SEARCH_UI_HTML = _re_ver.sub(
+        r'/static/([\w./-]+)\?v=\d+',
+        _replace_static_ver,
+        SEARCH_UI_HTML
+    )
+    # Inject build stamp into discover cache key so deploys invalidate stale cards.
+    # Template has: var cacheKey = 'zimi_disc6_' + today;
+    # We replace 'disc6' with 'disc_<hash>' where hash = short hash of template content.
+    _build_stamp = hashlib.md5(SEARCH_UI_HTML.encode()).hexdigest()[:6]
+    SEARCH_UI_HTML = SEARCH_UI_HTML.replace("'zimi_disc6_'", f"'zimi_d{_build_stamp}_'")
+    # Inject build stamp into i18n fetch URLs for cache busting
+    _i18n_hash = hashlib.md5(
+        b"".join(open(os.path.join(_STATIC_DIR, "i18n", f), "rb").read()
+                 for f in sorted(os.listdir(os.path.join(_STATIC_DIR, "i18n")))
+                 if f.endswith(".json"))
+    ).hexdigest()[:8] if os.path.isdir(os.path.join(_STATIC_DIR, "i18n")) else "0"
+    SEARCH_UI_HTML = SEARCH_UI_HTML.replace(
+        "'/static/i18n/' + lang + '.json'",
+        f"'/static/i18n/' + lang + '.json?v={_i18n_hash}'"
+    ).replace(
+        "'/static/i18n/en.json'",
+        f"'/static/i18n/en.json?v={_i18n_hash}'"
+    )  # cleanup loop too
+
 
 def _zim_short_name(filename):
     """Derive short display name from a ZIM filename.
-    e.g. stackoverflow.com_en_all_2023-11.zim → stackoverflow
-         wikipedia_en_all_maxi_2026-02.zim → wikipedia
+
+    English ZIMs strip the language code (backward-compatible):
+      stackoverflow.com_en_all_2023-11.zim → stackoverflow
+      wikipedia_en_all_maxi_2026-02.zim → wikipedia
+
+    Non-English ZIMs preserve the language suffix:
+      wikipedia_fr_all_maxi_2026-02.zim → wikipedia_fr
+      stackoverflow.com_es_all_2024-01.zim → stackoverflow_es
     """
     name = filename.split(".zim")[0]
-    name = re.sub(r"\.com_en_all.*", "", name)
-    name = re.sub(r"\.stackexchange\.com_en_all.*", "", name)
-    name = re.sub(r"_en_all_maxi.*", "", name)
-    name = re.sub(r"_en_all.*", "", name)
-    name = re.sub(r"_en_maxi.*", "", name)
-    name = re.sub(r"_en_2\d{3}.*", "", name)
+    # Extract language code before stripping (e.g. _fr_, _de_, _es_)
+    lang_match = re.search(r'(?:\.com)?_([a-z]{2,3})_(?:all|maxi|2\d{3})', name)
+    lang_code = lang_match.group(1) if lang_match else ""
+    is_english = lang_code in ("en", "eng", "")
+    # Strip domain suffixes
+    name = re.sub(r"\.com_[a-z]{2,3}_all.*", "", name)
+    name = re.sub(r"\.stackexchange\.com_[a-z]{2,3}_all.*", "", name)
+    # Strip language + flavor + date patterns
+    name = re.sub(r"_[a-z]{2,3}_all_maxi.*", "", name)
+    name = re.sub(r"_[a-z]{2,3}_all.*", "", name)
+    name = re.sub(r"_[a-z]{2,3}_maxi.*", "", name)
+    name = re.sub(r"_[a-z]{2,3}_2\d{3}.*", "", name)
     name = re.sub(r"_maxi_2\d{3}.*", "", name)
     name = re.sub(r"_2\d{3}-\d{2}$", "", name)
+    # Append language suffix for non-English ZIMs
+    if not is_english and lang_code:
+        # Normalize 3-letter to 2-letter
+        short_lang = _ISO639_3_TO_1.get(lang_code, lang_code if len(lang_code) == 2 else "")
+        if short_lang and short_lang != "en":
+            name = name + "_" + short_lang
     return name
+
+# Legacy name map: old short names → new short names (for bookmark/history migration)
+# Populated at load time when renamed ZIMs are detected
+_LEGACY_NAME_MAP = {}  # {old_name: new_name}
 
 
 def _scan_zim_files():
@@ -1346,6 +1851,357 @@ def _resolve_url_to_zim(url_str):
     return None
 
 
+# ── Query language detection ──
+# Two-tier, zero dependencies: script detection (instant) + stopword scoring (Latin scripts)
+
+_SCRIPT_RANGES = [
+    # (start, end, lang_code)
+    (0x4E00, 0x9FFF, "zh"),    # CJK Unified Ideographs
+    (0x3400, 0x4DBF, "zh"),    # CJK Extension A
+    (0x3040, 0x309F, "ja"),    # Hiragana
+    (0x30A0, 0x30FF, "ja"),    # Katakana
+    (0xAC00, 0xD7AF, "ko"),    # Hangul Syllables
+    (0x0400, 0x04FF, "ru"),    # Cyrillic (default to Russian — most content)
+    (0x0600, 0x06FF, "ar"),    # Arabic
+    (0x0900, 0x097F, "hi"),    # Devanagari
+    (0x0980, 0x09FF, "bn"),    # Bengali
+    (0x0A80, 0x0AFF, "gu"),    # Gujarati
+    (0x0B80, 0x0BFF, "ta"),    # Tamil
+    (0x0C00, 0x0C7F, "te"),    # Telugu
+]
+
+_STOPWORDS = {
+    "en": {"the", "is", "in", "at", "of", "and", "to", "a", "for", "on"},
+    "fr": {"le", "la", "les", "de", "des", "un", "une", "du", "est", "et"},
+    "de": {"der", "die", "das", "und", "ist", "ein", "eine", "von", "den", "zu"},
+    "es": {"el", "la", "los", "las", "de", "en", "un", "una", "del", "es"},
+    "pt": {"o", "a", "os", "as", "de", "do", "da", "em", "um", "uma"},
+    "it": {"il", "la", "le", "di", "un", "una", "del", "che", "in", "per"},
+    "nl": {"de", "het", "een", "van", "en", "is", "in", "op", "dat", "voor"},
+    "ru": {"и", "в", "на", "не", "что", "он", "это", "как", "по", "с"},
+    "ar": {"في", "من", "على", "إلى", "هذا", "أن", "هو", "ما", "مع", "لا"},
+    "hi": {"है", "के", "में", "का", "की", "और", "को", "से", "एक", "पर"},
+}
+
+
+def _detect_query_language(query):
+    """Detect the language of a search query. Returns ISO 639-1 code or empty string.
+
+    Two-tier detection:
+    1. Script detection (instant): non-Latin scripts → language
+    2. Stopword scoring (Latin scripts): match against common words
+    """
+    # Tier 1: Script detection
+    script_hits = {}
+    for ch in query:
+        cp = ord(ch)
+        for start, end, lang in _SCRIPT_RANGES:
+            if start <= cp <= end:
+                script_hits[lang] = script_hits.get(lang, 0) + 1
+                break
+    if script_hits:
+        return max(script_hits, key=script_hits.get)
+
+    # Tier 2: Stopword scoring for Latin-script languages
+    words = set(query.lower().split())
+    if not words:
+        return ""
+    best_lang = ""
+    best_score = 0
+    for lang, stops in _STOPWORDS.items():
+        hits = len(words & stops)
+        score = hits / len(words)
+        if score > best_score and score > 0.3:
+            best_score = score
+            best_lang = lang
+    return best_lang
+
+
+def get_article_languages(zim_name, article_path):
+    """Find available translations for an article across all installed ZIMs.
+
+    Uses three strategies (in order):
+    0. Wikidata Q-ID matching — checks index/cache, extracts on-demand, verifies candidates
+    1. Interlanguage links in HTML (for languages not found via Q-ID)
+    2. Title-based heuristic search (fallback for ZIMs without Q-IDs)
+
+    Strategy 0 uses on-demand Q-ID disambiguation for large ZIMs:
+    - Extract source Q-ID from HTML (one read, ~50ms)
+    - Find candidates via heuristic search
+    - Verify candidates by reading their HTML for matching Q-ID
+    - Cache verified matches for instant future lookups
+
+    Returns {"languages": [{lang, name, zim, path}]} — only VERIFIED entries.
+    Must be called with _zim_lock held.
+    """
+    archive = get_archive(zim_name)
+    if archive is None:
+        return {"languages": []}
+
+    # Get article title from path
+    title = article_path
+    if title.startswith("A/"):
+        title = title[2:]
+
+    try:
+        entry = archive.get_entry_by_path(article_path)
+        item = entry.get_item()
+        if item.mimetype not in ("text/html", "application/xhtml+xml"):
+            return {"languages": []}
+    except Exception:
+        return {"languages": []}
+
+    # Determine the source ZIM's project type and language
+    src_info = next((z for z in (_zim_list_cache or []) if z.get("name") == zim_name), None)
+    src_lang = src_info.get("language", "en") if src_info else "en"
+
+    zim_list = _zim_list_cache or []
+    src_project = _zim_project_name(zim_name)
+
+    installed = []
+    seen_langs = {src_lang}
+
+    # Strategy 0: Wikidata Q-ID matching (authoritative)
+    # Step 0a: Get source article's Q-ID (from index, cache, or on-demand extraction)
+    qid = _qid_lookup(zim_name, article_path)
+    if qid is None and article_path != title:
+        qid = _qid_lookup(zim_name, title)
+    if qid is None:
+        # On-demand: extract Q-ID from this article's HTML
+        qid = _qid_extract_from_html(archive, article_path)
+        if qid is not None:
+            _qid_cache_store(zim_name, article_path, qid)
+
+    # Step 0b: Check all target ZIMs for this Q-ID
+    qid_checked_zims = set()  # ZIMs we definitively checked via Q-ID
+    if qid is not None:
+        for zi in zim_list:
+            lang = zi.get("language", "")
+            if lang in seen_langs or not lang:
+                continue
+            n = zi.get("name", "")
+            if n == zim_name:
+                continue
+            if src_project and _zim_project_name(n) != src_project:
+                continue
+            # Check full index (small ZIMs) or on-demand cache (large ZIMs)
+            matched_path = _qid_find_in_zim(n, qid)
+            if matched_path:
+                seen_langs.add(lang)
+                installed.append({
+                    "lang": lang,
+                    "name": _LANG_NATIVE_NAMES.get(lang, lang),
+                    "zim": n,
+                    "path": matched_path,
+                })
+            # Mark ZIMs with full indexes as definitively checked
+            if _qid_has_index(n):
+                qid_checked_zims.add(n)
+            if len(seen_langs) >= 30:
+                break
+
+    # Strategy 1: Interlanguage links from HTML
+    try:
+        content = bytes(item.content).decode("utf-8", errors="replace")
+        pattern = re.compile(
+            r'href="https?://([a-z]{2,3})(?:\.m)?'
+            r'\.(wikipedia|wiktionary|wikivoyage|wikibooks|wikiquote|wikinews|wikiversity|wikisource)'
+            r'\.org/wiki/([^"#]+)"'
+        )
+        for m in pattern.finditer(content):
+            lang = m.group(1)
+            if lang in seen_langs:
+                continue
+            wiki_path = unquote(m.group(3))
+            match = _find_article_in_lang_zims(lang, src_project, wiki_path, zim_name, zim_list)
+            if match:
+                seen_langs.add(lang)
+                installed.append(match)
+            if len(seen_langs) >= 30:
+                break
+    except Exception:
+        pass
+
+    # Strategy 2: Heuristic search with Q-ID verification
+    # Find candidates via title/search matching, then verify with Q-ID when possible.
+    # If source has Q-ID and candidate also has Q-ID → must match (authoritative).
+    # If candidate has no Q-ID (common in nopic subsets) → use heuristic guards.
+    lang_candidates = {}
+    for zi in zim_list:
+        lang = zi.get("language", "")
+        if lang in seen_langs or not lang:
+            continue
+        n = zi.get("name", "")
+        if n == zim_name:
+            continue
+        if src_project and _zim_project_name(n) != src_project:
+            continue
+        if not src_project:
+            continue
+        if lang not in lang_candidates:
+            lang_candidates[lang] = []
+        lang_candidates[lang].append((n, _zim_quality_score(n)))
+
+    human_title = title.replace("_", " ")
+    for lang, candidates in lang_candidates.items():
+        if lang in seen_langs:
+            continue
+        candidates.sort(key=lambda x: -x[1])
+        found = False
+        for cand_name, _ in candidates:
+            cand_archive = get_archive(cand_name)
+            if not cand_archive:
+                continue
+            # Try exact path first
+            for try_path in [f"A/{title}", title]:
+                try:
+                    cand_archive.get_entry_by_path(try_path)
+                    # If source has Q-ID, verify candidate matches
+                    if qid is not None:
+                        cand_qid = _qid_extract_from_html(cand_archive, try_path)
+                        if cand_qid is not None:
+                            _qid_cache_store(cand_name, try_path, cand_qid)
+                        if cand_qid is not None and cand_qid != qid:
+                            continue  # Same title but different article
+                    seen_langs.add(lang)
+                    installed.append({
+                        "lang": lang,
+                        "name": _LANG_NATIVE_NAMES.get(lang, lang),
+                        "zim": cand_name,
+                        "path": try_path,
+                    })
+                    found = True
+                    break
+                except KeyError:
+                    continue
+            if found:
+                break
+            # Search-based matching with Q-ID verification
+            ht = human_title.lower()
+            for search_fn in [
+                lambda: suggest_search_zim(cand_archive, human_title, 5),
+                lambda: search_zim(cand_archive, human_title, limit=3, snippets=False),
+            ]:
+                try:
+                    results = search_fn()
+                    for r in results:
+                        rt = (r.get("title") or "").lower()
+                        # Strict heuristic: either exact match, or very close title
+                        # (prevents "Isaac Newton" → "Apple Newton" false positives)
+                        if rt != ht:
+                            # Require: same length ±2, AND >70% bigram overlap
+                            if abs(len(rt) - len(ht)) > 2:
+                                continue
+                            ht_bi = set(ht[i:i+2] for i in range(max(len(ht)-1, 1)))
+                            rt_bi = set(rt[i:i+2] for i in range(max(len(rt)-1, 1)))
+                            if len(ht_bi & rt_bi) / max(len(ht_bi), 1) < 0.7:
+                                continue
+                            # Q-ID verification: if source has Q-ID, verify candidate
+                            if qid is not None:
+                                cand_qid = _qid_extract_from_html(cand_archive, r["path"])
+                                if cand_qid is not None:
+                                    _qid_cache_store(cand_name, r["path"], cand_qid)
+                                if cand_qid is not None and cand_qid != qid:
+                                    continue  # Heuristic false positive
+                            seen_langs.add(lang)
+                            installed.append({
+                                "lang": lang,
+                                "name": _LANG_NATIVE_NAMES.get(lang, lang),
+                                "zim": cand_name,
+                                "path": r["path"],
+                            })
+                            found = True
+                            break
+                except Exception:
+                    pass
+                if found:
+                    break
+            if found:
+                break
+        if len(seen_langs) >= 30:
+            break
+
+    installed.sort(key=lambda x: x["name"])
+    return {"languages": installed[:20]}
+
+
+def _zim_project_name(zim_name):
+    """Extract project name from ZIM name for cross-language matching."""
+    n = zim_name.lower()
+    for proj in ("wikipedia", "wiktionary", "wikivoyage", "wikibooks", "wikiquote", "wikiversity"):
+        if n.startswith(proj) or proj in n:
+            return proj
+    return ""
+
+
+def _find_article_in_lang_zims(lang, src_project, wiki_path, exclude_zim, zim_list):
+    """Find an article across all installed ZIMs for a given language+project.
+
+    Prefers _all variants over subsets, and higher quality (maxi > nopic > mini).
+    Returns dict with {lang, name, zim, path} or None.
+    """
+    candidates = []
+    # Domain map entry
+    domain = f"{lang}.{src_project}.org" if src_project else ""
+    if domain:
+        domain_zim = _domain_zim_map.get(domain)
+        if domain_zim and domain_zim != exclude_zim:
+            candidates.append(domain_zim)
+    # All ZIMs matching language + project
+    for zi in zim_list:
+        n = zi.get("name", "")
+        if n == exclude_zim or n in candidates:
+            continue
+        if zi.get("language") == lang and src_project and src_project in n.lower():
+            candidates.append(n)
+
+    best = None
+    for cand_name in candidates:
+        cand_archive = get_archive(cand_name)
+        if not cand_archive:
+            continue
+        resolved = None
+        for try_path in [f"A/{wiki_path}", wiki_path]:
+            try:
+                cand_archive.get_entry_by_path(try_path)
+                resolved = try_path
+                break
+            except KeyError:
+                continue
+        if resolved:
+            quality = _zim_quality_score(cand_name)
+            zi_info = next((z for z in zim_list if z.get("name") == cand_name), None)
+            entry_count = zi_info.get("entry_count", 0) if zi_info else 0
+            if best is None or quality > best[2] or (quality == best[2] and entry_count > best[3]):
+                best = (cand_name, resolved, quality, entry_count)
+
+    if best:
+        return {
+            "lang": lang,
+            "name": _LANG_NATIVE_NAMES.get(lang, lang),
+            "zim": best[0],
+            "path": best[1],
+        }
+    return None
+
+
+def _zim_quality_score(name):
+    """Score a ZIM by quality for preferring _all over subsets, full over mini."""
+    n = name.lower()
+    score = 0
+    if "_all" in n:
+        score += 100
+    if "maxi" in n:
+        score += 30
+    elif "nopic" in n:
+        score += 20
+    elif "mini" in n:
+        score += 10
+    else:
+        score += 25
+    return score
+
+
 def strip_html(text):
     """Remove HTML tags and decode entities, return plain text."""
     text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL)
@@ -1406,7 +2262,11 @@ def _get_suggest_archive(name):
         with _suggest_pool_lock:
             if name in _suggest_pool:
                 return _suggest_pool[name], _suggest_zim_locks[name]
-            archive = open_archive(zims[name])
+            try:
+                archive = open_archive(zims[name])
+            except (RuntimeError, Exception) as e:
+                log.warning(f"Suggest pool: skipping corrupt ZIM '{name}': {e}")
+                return None, None
             _suggest_pool[name] = archive
             _suggest_zim_locks[name] = threading.Lock()
             return archive, _suggest_zim_locks[name]
@@ -1426,7 +2286,11 @@ def _get_fts_archive(name):
         with _fts_pool_lock:
             if name in _fts_pool:
                 return _fts_pool[name], _fts_zim_locks[name]
-            archive = open_archive(zims[name])
+            try:
+                archive = open_archive(zims[name])
+            except (RuntimeError, Exception) as e:
+                log.warning(f"FTS pool: skipping corrupt ZIM '{name}': {e}")
+                return None, None
             _fts_pool[name] = archive
             _fts_zim_locks[name] = threading.Lock()
             return archive, _fts_zim_locks[name]
@@ -1495,10 +2359,11 @@ def search_zim(archive, query_str, limit=10, snippets=True):
 
 _meta_title_re = re.compile(r'^(Portal:|Category:|Wikipedia:|Template:|Help:|File:|Special:|List of |Index of |Outline of )', re.IGNORECASE)
 
-STOP_WORDS = {"a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
-              "has", "have", "how", "i", "in", "is", "it", "its", "my", "not",
-              "of", "on", "or", "so", "that", "the", "this", "to", "was", "we",
-              "what", "when", "where", "which", "who", "will", "with", "you"}
+STOP_WORDS = _STOPWORDS.get("en", set()) | {
+    "an", "are", "as", "be", "by", "from", "has", "have", "how", "i",
+    "it", "its", "my", "not", "on", "or", "so", "that", "this", "was",
+    "we", "what", "when", "where", "which", "who", "will", "with", "you",
+}
 
 
 def _clean_query(q):
@@ -1509,7 +2374,7 @@ def _clean_query(q):
     return ' '.join(phrases + words).strip() or q
 
 
-def _score_result(title, query_words, rank, entry_count):
+def _score_result(title, query_words, rank, entry_count, lang_match=False):
     """Score a search result for cross-ZIM ranking."""
     tl = title.lower()
     hits = sum(1 for w in query_words if w in tl)
@@ -1528,7 +2393,9 @@ def _score_result(title, query_words, rank, entry_count):
         rank_score = min(rank_score, 5)
     # Source authority: slight boost for larger ZIMs (log scale)
     auth_score = min(5, math.log10(max(entry_count, 1)) / 2)
-    return title_score + rank_score + auth_score
+    # Language match: boost results from ZIMs matching detected query language
+    lang_score = 10 if lang_match else 0
+    return title_score + rank_score + auth_score + lang_score
 
 
 def search_all(query_str, limit=5, filter_zim=None, fast=False):
@@ -1552,6 +2419,10 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     """
     zims = get_zim_files()
     cache_meta = {z["name"]: (z.get("entries") if isinstance(z.get("entries"), int) else 0) for z in (_zim_list_cache or [])}
+    cache_lang = {z["name"]: z.get("language", "") for z in (_zim_list_cache or [])}
+
+    # Detect query language for scoring boost
+    detected_lang = _detect_query_language(query_str)
 
     # Normalize filter_zim to None or list
     if isinstance(filter_zim, str):
@@ -1628,7 +2499,8 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
             if valid:
                 entry_count = cache_meta.get(name, 1)
                 for rank, r in enumerate(valid):
-                    score = _score_result(r["title"], query_words, rank, entry_count)
+                    lm = bool(detected_lang and cache_lang.get(name) == detected_lang)
+                    score = _score_result(r["title"], query_words, rank, entry_count, lang_match=lm)
                     raw_results.append({
                         "zim": name, "path": r["path"], "title": r["title"],
                         "snippet": "", "score": round(score, 1),
@@ -1666,7 +2538,8 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
             if valid:
                 entry_count = cache_meta.get(name, 1)
                 for rank, r in enumerate(valid):
-                    score = _score_result(r["title"], query_words, rank, entry_count)
+                    lm = bool(detected_lang and cache_lang.get(name) == detected_lang)
+                    score = _score_result(r["title"], query_words, rank, entry_count, lang_match=lm)
                     raw_results.append({
                         "zim": name, "path": r["path"], "title": r["title"],
                         "snippet": r.get("snippet", ""), "score": round(score, 1),
@@ -1688,14 +2561,26 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
             seen_titles.add(key)
             deduped.append(r)
 
+    # Build by_language counts from result ZIM names
+    cache_lang = {z["name"]: z.get("language", "") for z in (_zim_list_cache or [])}
+    by_language = {}
+    for r in deduped:
+        lang = cache_lang.get(r["zim"], "")
+        if lang:
+            by_language[lang] = by_language.get(lang, 0) + 1
+
     elapsed = round(time.time() - search_start, 2)
-    return {
+    result = {
         "results": deduped,
         "by_source": by_source,
+        "by_language": by_language,
         "total": len(deduped),
         "elapsed": elapsed,
         "partial": fast,
     }
+    if detected_lang:
+        result["detected_language"] = detected_lang
+    return result
 
 
 def read_article(zim_name, article_path, max_length=MAX_CONTENT_LENGTH):
@@ -2605,7 +3490,11 @@ def get_archive(name):
             # Double-check after acquiring lock
             if name in _archive_pool:
                 return _archive_pool[name]
-            archive = open_archive(zims[name])
+            try:
+                archive = open_archive(zims[name])
+            except (RuntimeError, Exception) as e:
+                log.warning(f"Skipping corrupt ZIM '{name}': {e}")
+                return None
             _archive_pool[name] = archive
             return archive
     return None
@@ -2660,6 +3549,7 @@ def _extract_zim_metadata(name, path):
     meta_title = name
     meta_desc = ""
     meta_date = ""
+    meta_lang = ""
     has_icon = False
     main_path = ""
     archive = None
@@ -2675,6 +3565,14 @@ def _extract_zim_metadata(name, path):
                     meta_desc = val.decode("utf-8", errors="replace").strip()
                 elif key == "Date":
                     meta_date = val.decode("utf-8", errors="replace").strip()
+                elif key == "Language":
+                    raw_lang = val.decode("utf-8", errors="replace").strip().lower()
+                    # Handle multilingual ZIMs (comma-separated codes)
+                    if "," in raw_lang:
+                        parts = [p.strip() for p in raw_lang.split(",") if p.strip()]
+                        meta_lang = ",".join(_ISO639_3_TO_1.get(p, p if len(p) == 2 else p[:2]) for p in parts)
+                    else:
+                        meta_lang = _ISO639_3_TO_1.get(raw_lang, raw_lang if len(raw_lang) == 2 else "")
                 elif key.startswith("Illustration_48x48"):
                     has_icon = True
             except Exception:
@@ -2693,6 +3591,12 @@ def _extract_zim_metadata(name, path):
         _, file_date = _extract_zim_date(os.path.basename(path))
         if file_date:
             meta_date = file_date
+    # Fall back to language from filename (e.g. wikipedia_fr_all → "fr")
+    if not meta_lang:
+        m = re.match(r'^[a-zA-Z]+(?:\.\w+)*_([a-z]{2,3})_', os.path.basename(path))
+        if m:
+            code = m.group(1)
+            meta_lang = _ISO639_3_TO_1.get(code, code if len(code) == 2 else "")
     info = {
         "name": name,
         "file": os.path.basename(path),
@@ -2701,6 +3605,7 @@ def _extract_zim_metadata(name, path):
         "title": meta_title,
         "description": meta_desc,
         "date": meta_date,
+        "language": meta_lang,
         "has_icon": has_icon,
         "category": _categorize_zim(name),
         "main_path": main_path,
@@ -2715,9 +3620,12 @@ def load_cache(force=False):
     On subsequent runs: reads cache, validates mtimes, only re-scans changed files.
     Archives are opened lazily on first access, not at startup.
     """
-    global _zim_list_cache, _zim_files_cache
+    _init()
+    global _zim_list_cache, _zim_files_cache, _cache_generation
     t0 = time.time()
     _zim_files_cache = _scan_zim_files()
+    if force:
+        _cache_generation += 1
     zims = _zim_files_cache
 
     disk_cache = None if force else _load_disk_cache()
@@ -2746,6 +3654,7 @@ def load_cache(force=False):
                 "title": cached.get("title", name),
                 "description": cached.get("description", ""),
                 "date": cached.get("date", ""),
+                "language": cached.get("language", ""),
                 "has_icon": cached.get("has_icon", False),
                 "category": _categorize_zim(name),
                 "main_path": cached.get("main_path", ""),
@@ -2755,7 +3664,7 @@ def load_cache(force=False):
         else:
             # Cache miss — scan this ZIM
             entry, archive = _extract_zim_metadata(name, path)
-            if archive:
+            if archive and entry.get("entries") != "?":
                 _archive_pool[name] = archive
             info.append(entry)
             scanned += 1
@@ -2768,6 +3677,7 @@ def load_cache(force=False):
                 "title": entry["title"],
                 "description": entry["description"],
                 "date": entry.get("date", ""),
+                "language": entry.get("language", ""),
                 "has_icon": entry["has_icon"],
                 "main_path": entry["main_path"],
             }
@@ -2799,9 +3709,71 @@ _download_lock = threading.Lock()
 
 KIWIX_OPDS_BASE = "https://library.kiwix.org/catalog/search"
 
+# Server-side catalog cache: {cache_key: (timestamp, total, items)}
+_opds_cache = {}
+_OPDS_CACHE_TTL = 86400  # 24 hours — catalog changes rarely
+
+
+def _thumb_dir():
+    """Lazily create and return thumbnail cache directory."""
+    d = os.path.join(ZIMI_DATA_DIR, "thumbs")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _fetch_thumb(url):
+    """Fetch a thumbnail from Kiwix, caching to disk. Returns (bytes, content_type) or (None, None)."""
+    # Only allow library.kiwix.org
+    if not url.startswith("https://library.kiwix.org/"):
+        return None, None
+    # Use URL hash as filename
+    import hashlib as _hl
+    key = _hl.md5(url.encode()).hexdigest()
+    cache_path = os.path.join(_thumb_dir(), key)
+    meta_path = cache_path + ".meta"
+    # Serve from disk cache if exists
+    if os.path.exists(cache_path) and os.path.exists(meta_path):
+        with open(meta_path) as f:
+            ct = f.read().strip() or "image/png"
+        with open(cache_path, "rb") as f:
+            return f.read(), ct
+    # Fetch from Kiwix
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Zimi/1.0"})
+        with urllib.request.urlopen(req, timeout=10, context=SSL_CTX) as resp:
+            data = resp.read()
+            ct = resp.headers.get("Content-Type", "image/png")
+        # Write to disk cache
+        with open(cache_path, "wb") as f:
+            f.write(data)
+        with open(meta_path, "w") as f:
+            f.write(ct)
+        return data, ct
+    except Exception:
+        return None, None
+
+
+def _clear_thumb_cache():
+    """Remove all cached thumbnails."""
+    d = os.path.join(ZIMI_DATA_DIR, "thumbs")
+    if os.path.isdir(d):
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
+
 
 def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
-    """Fetch and parse the Kiwix OPDS catalog. Returns (total, items, error)."""
+    """Fetch and parse the Kiwix OPDS catalog. Returns (total, items, error).
+    Results are cached server-side for 1 hour to avoid hammering Kiwix."""
+    cache_key = f"{query}|{lang}|{count}|{start}"
+    cached = _opds_cache.get(cache_key)
+    if cached:
+        ts, total, items = cached
+        if time.time() - ts < _OPDS_CACHE_TTL:
+            return total, items, None
+        del _opds_cache[cache_key]
+    # Cap cache size
+    if len(_opds_cache) > 100:
+        _opds_cache.clear()
     params = {"count": str(count), "start": str(start)}
     if query:
         params["q"] = query
@@ -2903,6 +3875,14 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
             dl_base, _ = _extract_zim_date(dl_fn)
             installed = dl_base.lower() in local_bases
 
+        # Normalize language to 2-letter codes (OPDS uses 3-letter)
+        if language:
+            norm_parts = []
+            for lp in language.split(","):
+                lp = lp.strip().lower()
+                if lp:
+                    norm_parts.append(_ISO639_3_TO_1.get(lp, lp if len(lp) == 2 else lp[:2]))
+            language = ",".join(norm_parts)
         items.append({
             "name": name,
             "title": title,
@@ -2919,6 +3899,7 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
             "installed": installed,
         })
 
+    _opds_cache[cache_key] = (time.time(), total, items)
     return total, items, None
 
 
@@ -3056,6 +4037,19 @@ def _download_from_url(dl, url, tmp_dest):
     return True, None
 
 
+def _title_from_filename(filename):
+    """Extract a readable title from a ZIM filename for history events."""
+    name = re.sub(r'_\d{4}-\d{2}\.zim$', '', filename).replace('.zim', '')
+    # Try OPDS cache for a proper title
+    for _ts, _total, items in _opds_cache.values():
+        for it in items:
+            dl_fn = (it.get("download_url") or "").split("/")[-1]
+            if dl_fn == filename:
+                return {"title": it.get("title", ""), "name": it.get("name", name)}
+    # Fallback: humanize filename
+    return {"title": name.replace("_", " ").title(), "name": name}
+
+
 def _download_thread(dl):
     """Background thread that downloads a file with mirror rotation.
 
@@ -3089,7 +4083,7 @@ def _download_thread(dl):
             dl["done"] = True
             dl["error"] = f"All {len(mirrors)} mirror(s) failed. Last: {last_error}"
             _append_history({"event": "download_failed", "ts": time.time(), "filename": dl["filename"],
-                             "error": dl["error"]})
+                             "error": dl["error"], **_title_from_filename(dl["filename"])})
             return
         # Atomic rename: tmp → final
         os.replace(tmp_dest, dl["dest"])
@@ -3135,7 +4129,7 @@ def _download_thread(dl):
         dl["error"] = str(e)
         if not dl.get("cancelled"):
             _append_history({"event": "download_failed", "ts": time.time(), "filename": dl["filename"],
-                             "error": str(e)})
+                             "error": str(e), **_title_from_filename(dl["filename"])})
 
 
 def _fetch_mirrors(meta4_url):
@@ -3314,9 +4308,14 @@ class ZimHandler(BaseHTTPRequestHandler):
     timeout = 30  # seconds — prevents slow-client DoS on POST bodies
 
     def do_HEAD(self):
-        """Handle HEAD requests (Traefik health checks)."""
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html")
+        """Handle HEAD requests (Traefik health checks, uptime monitors)."""
+        parsed = urlparse(self.path)
+        if parsed.path == "/health":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+        else:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
         self.end_headers()
 
     # IPs allowed to set X-Forwarded-For (reverse proxies)
@@ -3338,10 +4337,11 @@ class ZimHandler(BaseHTTPRequestHandler):
         def param(key, default=None):
             return params.get(key, [default])[0]
 
-        # Rate limit API endpoints (not UI, static, or manage)
+        # Rate limit: API endpoints at RATE_LIMIT, /w/ content at 20x higher
         rate_limited_paths = ("/search", "/read", "/suggest", "/snippet", "/random")
-        if parsed.path in rate_limited_paths:
-            retry_after = _check_rate_limit(self._client_ip())
+        is_w_content = parsed.path.startswith("/w/")
+        if parsed.path in rate_limited_paths or is_w_content:
+            retry_after = _check_rate_limit(self._client_ip(), content=is_w_content)
             if retry_after > 0:
                 with _metrics_lock:
                     _metrics["rate_limited"] += 1
@@ -3452,6 +4452,34 @@ class ZimHandler(BaseHTTPRequestHandler):
 
             elif parsed.path == "/list":
                 result = list_zims()
+                return self._json(200, result)
+
+            elif parsed.path == "/languages":
+                # Installed language summary with native names and ZIM counts
+                lang_zims = {}  # {lang_code: [zim_name, ...]}
+                for z in (_zim_list_cache or []):
+                    lang = z.get("language", "")
+                    if lang:
+                        lang_zims.setdefault(lang, []).append(z["name"])
+                result = []
+                for lang, zim_names in sorted(lang_zims.items()):
+                    result.append({
+                        "code": lang,
+                        "name": _LANG_NATIVE_NAMES.get(lang, lang),
+                        "zim_count": len(zim_names),
+                        "zims": zim_names,
+                    })
+                return self._json(200, result)
+
+            elif parsed.path == "/article-languages":
+                zim = param("zim")
+                path = param("path")
+                if not zim or not path:
+                    return self._json(400, {"error": "missing ?zim= and ?path= parameters"})
+                with _zim_lock:
+                    if get_archive(zim) is None:
+                        return self._json(404, {"error": f"ZIM '{zim}' not found"})
+                    result = get_article_languages(zim, path)
                 return self._json(200, result)
 
             elif parsed.path == "/catalog":
@@ -3593,13 +4621,12 @@ class ZimHandler(BaseHTTPRequestHandler):
                 seed_param = param("seed")  # For deterministic daily picks
                 rng = None
                 if seed_param:
-                    import hashlib
                     seed_val = int(hashlib.md5((pick_name + seed_param).encode()).hexdigest()[:8], 16)
                     rng = _random.Random(seed_val)
-                best_result = None
-                best_preview = None
-                for _try in range(max_tries):
-                    with _zim_lock:
+                # Batch all ZIM reads under a single lock acquisition
+                candidates = []
+                with _zim_lock:
+                    for _try in range(max_tries):
                         result = None
                         if date_param and len(date_param) == 4 and _try == 0:
                             result = _get_dated_entry(archive, pick_name, date_param, rng=rng)
@@ -3610,31 +4637,35 @@ class ZimHandler(BaseHTTPRequestHandler):
                         preview = None
                         if want_thumb:
                             preview = _extract_preview(archive, pick_name, result["path"])
-                    # Gutenberg: prefer cover pages (book landing pages, not author indexes)
+                        candidates.append((result, preview))
+                # Filter candidates outside the lock
+                best_result = None
+                best_preview = None
+                for result, preview in candidates:
+                    # Gutenberg: prefer cover pages
                     if is_gutenberg and "_cover" not in result.get("path", ""):
                         if best_result is None:
                             best_result = result
                             best_preview = preview
                         continue
-                    # Skip non-English or boring wiktionary entries (retry)
+                    # Skip non-English or boring wiktionary entries
                     if is_wiktionary and preview and (preview.get("non_english") or preview.get("boring")):
                         if best_result is None:
                             best_result = result
                             best_preview = preview
                         continue
-                    # Wiktionary: accept interesting English entry even without thumbnail
+                    # Wiktionary: accept interesting English entry
                     if is_wiktionary and preview and not preview.get("non_english") and not preview.get("boring"):
                         best_result = result
                         best_preview = preview
                         break
-                    # Wikiquote: require an actual quote (blurb starting with open-quote)
+                    # Wikiquote: require an actual quote
                     if is_wikiquote and preview:
                         blurb = preview.get("blurb") or ""
                         if blurb and blurb[0] in ('\u201c', '"'):
                             best_result = result
                             best_preview = preview
                             break
-                        # No quote found — save as fallback, try another page
                         if best_result is None:
                             best_result = result
                             best_preview = preview
@@ -3643,7 +4674,6 @@ class ZimHandler(BaseHTTPRequestHandler):
                         best_result = result
                         best_preview = preview
                         break
-                    # Keep first result as fallback even without image
                     if best_result is None:
                         best_result = result
                         best_preview = preview
@@ -3771,14 +4801,29 @@ class ZimHandler(BaseHTTPRequestHandler):
                 elif parsed.path == "/manage/history":
                     return self._json(200, {"history": _load_history()})
 
+                elif parsed.path == "/manage/thumb":
+                    url = param("url", "")
+                    if not url or not url.startswith("https://library.kiwix.org/"):
+                        return self._json(400, {"error": "invalid thumbnail URL"})
+                    data, ct = _fetch_thumb(url)
+                    if data is None:
+                        return self._json(502, {"error": "failed to fetch thumbnail"})
+                    self.send_response(200)
+                    self.send_header("Content-Type", ct)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Cache-Control", "public, max-age=604800")  # 7 days browser cache
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+
                 else:
                     return self._json(404, {"error": "not found"})
 
             elif parsed.path.startswith("/static/"):
                 return self._serve_static(parsed.path[8:])  # strip "/static/"
 
-            elif parsed.path in ("/favicon.ico", "/favicon.png"):
-                return self._serve_favicon()
+            elif parsed.path in ("/favicon.ico", "/favicon.png", "/favicon-64.png"):
+                return self._serve_favicon(parsed.path)
 
             elif parsed.path == "/apple-touch-icon.png":
                 return self._serve_apple_touch_icon()
@@ -3838,7 +4883,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     stored = _get_manage_password_hash()
                     if stored:
                         cur = data.get("current", "")
-                        if not cur or _hash_pw(cur) != stored:
+                        if not cur or "$" not in stored or not hmac.compare_digest(_hash_pw(cur, stored.split("$")[0]), stored):
                             return self._json(401, {"error": "Current password is incorrect"})
                     new_pw = data.get("password", "").strip()
                     _set_manage_password(new_pw)
@@ -4178,55 +5223,59 @@ class ZimHandler(BaseHTTPRequestHandler):
                 mimetype = ext_mime
             # Force EPUB download (browsers can't render EPUB inline)
             is_epub = entry_path.lower().endswith(".epub") or mimetype in ("application/epub+zip", "application/epub")
+            epub_filename = None
             if is_epub:
                 mimetype = "application/epub+zip"
                 epub_filename = os.path.basename(entry_path)
                 if not epub_filename.endswith(".epub"):
                     epub_filename += ".epub"
-                self.send_response(200)
-                self.send_header("Content-Type", mimetype)
-                self.send_header("Content-Length", str(total_size))
-                self.send_header("Content-Disposition", f'attachment; filename="{epub_filename}"')
-                self.end_headers()
-                self.wfile.write(bytes(item.content))
-                return
-
-            # Streamable types support Range requests (no size limit)
-            is_streamable = any(mimetype.startswith(t) for t in ("video/", "audio/", "application/ogg"))
-
-            range_start = range_end = None
-            if is_streamable:
-                range_header = self.headers.get("Range")
-                if range_header:
-                    range_start, range_end = self._parse_range(range_header, total_size)
-                if range_start is not None and range_end is not None:
-                    content = bytes(item.content[range_start:range_end + 1])
-                else:
-                    content = bytes(item.content)
-            else:
-                if total_size > MAX_SERVE_BYTES:
-                    self.send_response(413)
-                    self.send_header("Content-Type", "text/plain")
-                    msg = f"Entry too large ({total_size // (1024*1024)} MB). Max: {MAX_SERVE_BYTES // (1024*1024)} MB.".encode()
-                    self.send_header("Content-Length", str(len(msg)))
-                    self.end_headers()
-                    self.wfile.write(msg)
-                    return
                 content = bytes(item.content)
+            else:
+                # ETag check BEFORE reading content — avoids materializing large
+                # blobs when client already has a cached copy
+                is_streamable = any(mimetype.startswith(t) for t in ("video/", "audio/", "application/ogg"))
+                etag = '"' + hashlib.md5(f"{zim_name}/{entry_path}/{_cache_generation}".encode()).hexdigest()[:16] + '"'
+                if self.headers.get("If-None-Match") == etag:
+                    self.send_response(304)
+                    self.end_headers()
+                    return
+
+                range_start = range_end = None
+                if is_streamable:
+                    range_header = self.headers.get("Range")
+                    if range_header:
+                        range_start, range_end = self._parse_range(range_header, total_size)
+                    if range_start is not None and range_end is not None:
+                        content = bytes(item.content[range_start:range_end + 1])
+                    else:
+                        content = bytes(item.content)
+                else:
+                    if total_size > MAX_SERVE_BYTES:
+                        self.send_response(413)
+                        self.send_header("Content-Type", "text/plain")
+                        msg = f"Entry too large ({total_size // (1024*1024)} MB). Max: {MAX_SERVE_BYTES // (1024*1024)} MB.".encode()
+                        self.send_header("Content-Length", str(len(msg)))
+                        self.end_headers()
+                        self.wfile.write(msg)
+                        return
+                    content = bytes(item.content)
         # Lock released — safe to do slow I/O
+
+        # EPUB: write download response outside lock
+        if epub_filename:
+            self.send_response(200)
+            self.send_header("Content-Type", mimetype)
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Content-Disposition", f'attachment; filename="{epub_filename}"')
+            self.end_headers()
+            self.wfile.write(content)
+            return
 
         # Strip <base> tags from HTML
         if mimetype.startswith("text/html"):
             text = content.decode("UTF-8", errors="replace")
             text = re.sub(r'<base\s[^>]*>', '', text, flags=re.IGNORECASE)
             content = text.encode("UTF-8")
-
-        # ETag for caching
-        etag = '"' + hashlib.md5(f"{zim_name}/{entry_path}".encode()).hexdigest()[:16] + '"'
-        if self.headers.get("If-None-Match") == etag:
-            self.send_response(304)
-            self.end_headers()
-            return
 
         if range_start is not None and range_end is not None:
             self.send_response(206)
@@ -4283,12 +5332,14 @@ class ZimHandler(BaseHTTPRequestHandler):
             return None, None
         return start, end
 
-    def _send(self, code, body_bytes, content_type, vary=None, cache=None):
+    def _send(self, code, body_bytes, content_type, vary=None, cache=None, etag=None):
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Access-Control-Allow-Origin", "*")
         if cache:
             self.send_header("Cache-Control", cache)
+        if etag:
+            self.send_header("ETag", etag)
         if vary:
             self.send_header("Vary", vary)
         if self._accepts_gzip() and len(body_bytes) > 256:
@@ -4301,6 +5352,7 @@ class ZimHandler(BaseHTTPRequestHandler):
     # ── Static file serving ──
     # In-memory cache for static files (vendor files like pdf.js are immutable)
     _static_cache = {}
+    _static_cache_lock = threading.Lock()
 
     @staticmethod
     def _static_base_dir():
@@ -4325,7 +5377,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "invalid path"})
 
         # Check cache first, then read from disk
-        cached = ZimHandler._static_cache.get(rel_path)
+        with ZimHandler._static_cache_lock:
+            cached = ZimHandler._static_cache.get(rel_path)
         if cached:
             body, content_type = cached
         else:
@@ -4343,7 +5396,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             with open(file_path, "rb") as f:
                 body = f.read()
             # Cache in memory (vendor files are immutable, ~8MB total for pdf.js)
-            ZimHandler._static_cache[rel_path] = (body, content_type)
+            with ZimHandler._static_cache_lock:
+                ZimHandler._static_cache[rel_path] = (body, content_type)
 
         # Compress text-based static files (viewer.mjs, viewer.css, etc.)
         ct_base = content_type.split(";")[0]
@@ -4356,44 +5410,53 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        # Service worker needs scope override; i18n files change between versions
+        if rel_path == "sw.js":
+            self.send_header("Service-Worker-Allowed", "/")
+            self.send_header("Cache-Control", "no-cache")
+        elif rel_path.startswith("i18n/"):
+            self.send_header("Cache-Control", "public, max-age=86400")
+        else:
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
         self.send_header("Access-Control-Allow-Origin", "*")
         if is_gzipped:
             self.send_header("Content-Encoding", "gzip")
         self.end_headers()
         self.wfile.write(body)
 
-    _favicon_data = None
+    _favicon_cache = {}
 
-    def _serve_favicon(self):
-        if ZimHandler._favicon_data is None:
-            # Serve 32x32 favicon for browser tabs (not the full 256px icon)
+    def _serve_favicon(self, path="/favicon.png"):
+        filename = "favicon-64.png" if "64" in path else "favicon.png"
+        if filename not in ZimHandler._favicon_cache:
+            assets_dir = os.path.dirname(os.path.abspath(__file__))
             icon_paths = [
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "favicon.png"),
-                os.path.join(getattr(sys, '_MEIPASS', ''), "assets", "favicon.png") if getattr(sys, '_MEIPASS', None) else "",
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.png"),
+                os.path.join(assets_dir, "assets", filename),
+                os.path.join(getattr(sys, '_MEIPASS', ''), "assets", filename) if getattr(sys, '_MEIPASS', None) else "",
+                os.path.join(assets_dir, "assets", "icon.png"),
                 os.path.join(getattr(sys, '_MEIPASS', ''), "assets", "icon.png") if getattr(sys, '_MEIPASS', None) else "",
             ]
             for p in icon_paths:
                 if p and os.path.exists(p):
                     with open(p, "rb") as f:
-                        ZimHandler._favicon_data = f.read()
+                        ZimHandler._favicon_cache[filename] = f.read()
                     break
-            if not ZimHandler._favicon_data:
+            if filename not in ZimHandler._favicon_cache:
                 # Fallback: extract from HTML template's base64 data URI
                 import re as _re
                 m = _re.search(r'data:image/png;base64,([A-Za-z0-9+/=]+)', SEARCH_UI_HTML)
-                ZimHandler._favicon_data = base64.b64decode(m.group(1)) if m else b''
-        if not ZimHandler._favicon_data:
+                ZimHandler._favicon_cache[filename] = base64.b64decode(m.group(1)) if m else b''
+        data = ZimHandler._favicon_cache.get(filename, b'')
+        if not data:
             self.send_response(404)
             self.end_headers()
             return
         self.send_response(200)
         self.send_header("Content-Type", "image/png")
-        self.send_header("Content-Length", str(len(ZimHandler._favicon_data)))
+        self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "public, max-age=86400")
         self.end_headers()
-        self.wfile.write(ZimHandler._favicon_data)
+        self.wfile.write(data)
 
     _apple_touch_icon_data = None
 
@@ -4417,12 +5480,30 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(ZimHandler._apple_touch_icon_data)
 
-    def _serve_index(self, vary=None):
-        # Short TTL: browser revalidates every 5 min, picks up new ?v=N on static assets
-        return self._html(200, SEARCH_UI_HTML, vary=vary, cache="public, max-age=300")
+    # ETag for the HTML page — computed once at startup from content hash.
+    # Changes on every deploy (new content = new hash = new ETag).
+    _index_etag = '"z-' + hashlib.md5(SEARCH_UI_HTML.encode()).hexdigest()[:12] + '"'
 
-    def _html(self, code, content, vary=None, cache=None):
-        self._send(code, content.encode(), "text/html; charset=utf-8", vary=vary, cache=cache)
+    def _serve_index(self, vary=None):
+        # ETag revalidation: if browser has current version, return 304 (no body).
+        # This is what makes Safari work — must-revalidate forces the check.
+        if self.headers.get("If-None-Match") == ZimHandler._index_etag:
+            self.send_response(304)
+            self.send_header("ETag", ZimHandler._index_etag)
+            self.send_header("Cache-Control", "public, max-age=0, must-revalidate, s-maxage=3600")
+            self.end_headers()
+            return
+        # Cache strategy:
+        #   max-age=0, must-revalidate — browser always revalidates (Safari-safe)
+        #   s-maxage=3600 — Cloudflare edge caches 1 hour (fast for users worldwide)
+        #   ETag — efficient revalidation (304 = no body, instant response)
+        #   deploy.sh purges Cloudflare edge after each deploy.
+        return self._html(200, SEARCH_UI_HTML, vary=vary,
+                          cache="public, max-age=0, must-revalidate, s-maxage=3600",
+                          etag=ZimHandler._index_etag)
+
+    def _html(self, code, content, vary=None, cache=None, etag=None):
+        self._send(code, content.encode(), "text/html; charset=utf-8", vary=vary, cache=cache, etag=etag)
 
     def _json(self, code, data):
         self._send(code, json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode(), "application/json")
@@ -4567,6 +5648,8 @@ def main():
         threading.Thread(target=_warm_fts_pool, daemon=True).start()
         # Build SQLite title indexes in background (one-time per ZIM, enables <10ms title search)
         threading.Thread(target=_build_all_title_indexes, daemon=True).start()
+        # Build Wikidata Q-ID indexes for direct cross-language article matching
+        threading.Thread(target=_build_all_qid_indexes, daemon=True).start()
         # Pre-warm title index B-tree pages for fast first queries
         # For each ZIM, read a few rows at scattered prefixes (a, m, s) to pull
         # B-tree branch pages into OS page cache. Reads ~10-50KB per ZIM total

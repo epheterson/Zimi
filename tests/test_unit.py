@@ -981,24 +981,28 @@ class TestHashPassword(unittest.TestCase):
         import zimi
         self.hash = zimi._hash_pw
 
-    def test_deterministic(self):
-        self.assertEqual(self.hash("test"), self.hash("test"))
+    def test_deterministic_with_same_salt(self):
+        result = self.hash("test")
+        salt = result.split("$")[0]
+        self.assertEqual(self.hash("test", salt), result)
 
     def test_different_passwords_different_hashes(self):
-        self.assertNotEqual(self.hash("abc"), self.hash("xyz"))
+        h1 = self.hash("abc")
+        salt = h1.split("$")[0]
+        self.assertNotEqual(h1, self.hash("xyz", salt))
 
     def test_empty_string(self):
         result = self.hash("")
-        self.assertEqual(len(result), 64)  # SHA256 hex
+        self.assertEqual(len(result), 97)  # 32 hex salt + '$' + 64 hex hash
 
     def test_unicode(self):
         result = self.hash("café☕")
-        self.assertEqual(len(result), 64)
+        self.assertEqual(len(result), 97)
 
-    def test_hex_output(self):
-        """Hash should be lowercase hex."""
+    def test_salted_format(self):
+        """Hash should be salt$hash in lowercase hex."""
         import re
-        self.assertRegex(self.hash("test"), r'^[0-9a-f]{64}$')
+        self.assertRegex(self.hash("test"), r'^[0-9a-f]{32}\$[0-9a-f]{64}$')
 
 
 class TestHistoryPersistence(unittest.TestCase):
