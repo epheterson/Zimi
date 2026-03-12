@@ -1,23 +1,25 @@
 # Zimi
 
-The offline internet — searchable, browsable, and self-updating.
+Offline knowledge server for ZIM files. Search and read Wikipedia, Stack Overflow, dev docs, and 50+ other sources — no internet required.
 
-Kiwix packages the world's knowledge into ZIM files — compressed offline copies of Wikipedia, Stack Overflow, dev docs, and more. Zimi is a modern server that makes them feel like the real thing.
+Kiwix packages the world's knowledge into ZIM files. Zimi serves them with a fast JSON API, a modern web UI, and an MCP server for AI agents.
 
-**What you get:**
+## What's in the box
 
-- **Cross-source search** — two-stage search: instant title matches first, then deep full-text results across all ZIMs in parallel. Results ranked by title relevance, source authority, and position — with thumbnails and smart snippets.
-- **Discover** — daily highlights from your installed sources: Picture of the Day, On This Day, Quote of the Day, Country of the Day, and more. Content rotates daily.
-- **Cross-source links** — reading Wikipedia and it links to Wiktionary? Or Stack Overflow to a GitHub repo? If you have both installed, the link lights up — click and stay in Zimi.
-- **Bookmarks & history** — save articles while reading, search your history, pick up where you left off.
-- **Catalog browser** — visual gallery of 1,000+ Kiwix archives across 10+ categories. One-click install with flavor picker (Mini / No images / Full).
-- **Article reader** — clean dark-theme reader with navigation history, PDF viewer, and cross-ZIM link resolution.
-- **Library management** — auto-update on a schedule, password protection, download queue with progress tracking.
-- **Collections** — group sources into named sets for scoped search and homepage sections.
-- **JSON API** — every feature accessible programmatically for scripts, bots, and integrations.
-- **MCP server** — plug into Claude Code and other AI agents as a knowledge tool.
-- **Desktop app** — native macOS window with system tray, configurable ZIM folder, and browser access.
-- **Runs anywhere** — Homebrew, Snap, Docker, pip, AppImage, or standalone binary.
+- **Cross-source search** — title matches first, then full-text across all sources in parallel. Ranked by relevance, with thumbnails and snippets.
+- **Discover** — daily cards from your installed sources. Picture of the Day, On This Day, Quote of the Day, random articles. Rotates daily.
+- **10 languages** — full UI localization in English, French, German, Spanish, Portuguese, Russian, Chinese, Arabic, Hindi, and Hebrew. RTL layout for Arabic and Hebrew.
+- **Cross-language navigation** — reading about water in English Wikipedia? Switch to French and it finds the same article. Download missing languages right from the reader.
+- **Almanac** — real-time sun, moon, and planet positions computed from orbital mechanics. Simulated sky with 59 real stars projected to their correct positions. Interactive orrery. Seven calendar systems. No API calls, works forever offline.
+- **Messages Across Time** — 10 inscriptions spanning 3,700 years, from the Code of Hammurabi to the Georgia Guidestones. Each rendered in all 10 UI languages. Includes the 49 images from the Voyager Golden Record.
+- **Tabbed browsing** — Cmd+click or middle-click any link to open in a background tab.
+- **Bookmarks & history** — save articles, search your history, pick up where you left off.
+- **Catalog browser** — 1,000+ Kiwix archives across 10+ categories. One-click install with flavor picker.
+- **Library management** — auto-updates on a schedule, password protection, download queue with progress.
+- **Collections** — group sources for scoped search and homepage sections.
+- **JSON API** — every feature accessible programmatically.
+- **MCP server** — plug into Claude Code or other AI agents as a knowledge tool.
+- **Desktop app** — native macOS window with system tray.
 
 ## Screenshots
 
@@ -37,7 +39,7 @@ Kiwix packages the world's knowledge into ZIM files — compressed offline copie
 brew tap epheterson/zimi && brew install --cask zimi
 ```
 
-Or download directly from [GitHub Releases](https://github.com/epheterson/Zimi/releases).
+Or download from [GitHub Releases](https://github.com/epheterson/Zimi/releases).
 
 ### Linux
 
@@ -45,7 +47,7 @@ Or download directly from [GitHub Releases](https://github.com/epheterson/Zimi/r
 sudo snap install zimi
 ```
 
-Or download the [AppImage](https://github.com/epheterson/Zimi/releases).
+Or grab the [AppImage](https://github.com/epheterson/Zimi/releases).
 
 ### Docker
 
@@ -53,9 +55,9 @@ Or download the [AppImage](https://github.com/epheterson/Zimi/releases).
 docker run -v ./zims:/zims -p 8899:8899 epheterson/zimi
 ```
 
-Open http://localhost:8899. Starting fresh? Browse and download ZIMs from the built-in catalog.
+Open http://localhost:8899. No ZIM files yet? Browse and download from the built-in catalog.
 
-### Python (any platform)
+### Python
 
 ```bash
 pip install zimi
@@ -66,20 +68,20 @@ zimi serve --port 8899
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /search?q=...&limit=5&zim=...&fast=1` | Full-text search (cross-ZIM or scoped). `fast=1` returns title matches only. |
+| `GET /search?q=...&limit=5&zim=...&fast=1` | Full-text search. `fast=1` for title matches only. |
 | `GET /read?zim=...&path=...&max_length=8000` | Read article as plain text |
 | `GET /suggest?q=...&limit=10&zim=...` | Title autocomplete |
-| `GET /list` | List all ZIM sources with metadata |
-| `GET /catalog?zim=...` | PDF catalog for zimgit-style ZIMs |
+| `GET /list` | List all sources with metadata |
+| `GET /catalog?zim=...` | PDF catalog for zimgit ZIMs |
 | `GET /snippet?zim=...&path=...` | Short text snippet |
 | `GET /random?zim=...` | Random article |
-| `GET /collections` | List all collections |
+| `GET /collections` | List collections |
 | `POST /collections` | Create/update a collection |
 | `DELETE /collections?name=...` | Delete a collection |
-| `GET /resolve?url=...` | Resolve external URL to ZIM source + path |
-| `POST /resolve` | Batch resolve: `{"urls": [...]}` → `{"results": {...}}` |
-| `GET /health` | Health check (includes version) |
-| `GET /w/<zim>/<path>` | Serve raw ZIM content (HTML, images) |
+| `GET /resolve?url=...` | Resolve external URL to ZIM path |
+| `POST /resolve` | Batch resolve: `{"urls": [...]}` |
+| `GET /health` | Health check with version |
+| `GET /w/<zim>/<path>` | Serve raw ZIM content |
 
 ### Examples
 
@@ -96,7 +98,7 @@ curl "http://localhost:8899/suggest?q=pytho&limit=5"
 
 ## MCP Server
 
-Zimi includes an MCP server for AI agents like Claude Code.
+Zimi includes an MCP server for AI agents.
 
 ```json
 {
@@ -110,7 +112,7 @@ Zimi includes an MCP server for AI agents like Claude Code.
 }
 ```
 
-For Docker on a remote host, use SSH:
+For Docker on a remote host:
 
 ```json
 {
@@ -144,32 +146,31 @@ services:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ZIM_DIR` | `/zims` | Path to ZIM files |
-| `ZIMI_MANAGE` | `1` | Library manager. Set to `0` to disable. |
+| `ZIMI_MANAGE` | `1` | Library manager. `0` to disable. |
 | `ZIMI_MANAGE_PASSWORD` | _(none)_ | Protect library management |
 | `ZIMI_AUTO_UPDATE` | `0` | Auto-update ZIMs (`1` to enable) |
 | `ZIMI_UPDATE_FREQ` | `weekly` | `daily`, `weekly`, or `monthly` |
-| `ZIMI_RATE_LIMIT` | `60` | API rate limit (requests/min/IP). `0` to disable. |
+| `ZIMI_RATE_LIMIT` | `60` | Requests/min/IP. `0` to disable. |
 
 ## Zimi vs kiwix-serve
 
-[kiwix-serve](https://github.com/kiwix/kiwix-tools) is the official ZIM server from the Kiwix project. Both serve ZIM files over HTTP — here's how they differ:
+[kiwix-serve](https://github.com/kiwix/kiwix-tools) is the official Kiwix server. Both serve ZIM files — here's how they differ:
 
 | | Zimi | kiwix-serve |
 |---|---|---|
-| **Search API** | JSON responses | HTML responses |
-| **Search performance** | 4–6x faster: parallel B-tree + FTS across all ZIMs | Sequential single-ZIM search |
-| **Cross-source search** | Unified results with relevance ranking | Per-ZIM or combined unranked |
-| **Library management** | Built-in catalog browser, downloads, updates | Separate CLI tool (kiwix-manage) |
-| **AI integration** | MCP server for Claude Code | None |
-| **Desktop app** | Native macOS app with auto-update | kiwix-desktop (separate project) |
-| **Runtime** | Python (~4,200 lines) | C++ (libkiwix) |
-| **Memory** | Higher (Python + SQLite indexes) | Lower (native C++) |
+| **Search** | JSON API, 4–6x faster parallel search, cross-source ranking | HTML responses, sequential |
+| **Library** | Built-in catalog browser, downloads, auto-updates | Separate CLI tool |
+| **Languages** | 10-language UI, cross-language article navigation | English only |
+| **AI** | MCP server for Claude Code | None |
+| **Desktop** | Native macOS app | kiwix-desktop (separate) |
+| **Runtime** | Python (~4,500 lines) | C++ (libkiwix) |
+| **Memory** | Higher (Python + indexes) | Lower (native C++) |
 
-**Use kiwix-serve** for lightweight, proven ZIM serving on low-memory devices. **Use Zimi** for JSON APIs, cross-source search, library management, AI integration, or a desktop app.
+Use kiwix-serve for lightweight serving on low-memory devices. Use Zimi for APIs, multi-language, library management, AI integration, or a desktop app.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and release process.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
