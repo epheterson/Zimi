@@ -1542,6 +1542,45 @@ try:
 except FileNotFoundError:
     SEARCH_UI_HTML = "<html><body><h1>Zimi</h1><p>UI template not found. API endpoints are still available.</p></body></html>"
 
+# Auto-version static assets: replace ?v=N with content-hash so deploys bust caches.
+# This eliminates manual version bumping — any file change gets a new URL automatically.
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+if os.path.isdir(_STATIC_DIR):
+    import re as _re_ver
+    def _static_hash(fname):
+        """Short content hash for a static file."""
+        p = os.path.join(_STATIC_DIR, fname)
+        if os.path.exists(p):
+            return hashlib.md5(open(p, "rb").read()).hexdigest()[:8]
+        return "0"
+    # Replace versioned references: /static/foo.js?v=39 → /static/foo.js?v=a1b2c3d4
+    def _replace_static_ver(m):
+        fname = m.group(1)
+        return f"/static/{fname}?v={_static_hash(fname)}"
+    SEARCH_UI_HTML = _re_ver.sub(
+        r'/static/([\w./-]+)\?v=\d+',
+        _replace_static_ver,
+        SEARCH_UI_HTML
+    )
+    # Inject build stamp into discover cache key so deploys invalidate stale cards.
+    # Template has: var cacheKey = 'zimi_disc6_' + today;
+    # We replace 'disc6' with 'disc_<hash>' where hash = short hash of template content.
+    _build_stamp = hashlib.md5(SEARCH_UI_HTML.encode()).hexdigest()[:6]
+    SEARCH_UI_HTML = SEARCH_UI_HTML.replace("'zimi_disc6_'", f"'zimi_d{_build_stamp}_'")
+    # Inject build stamp into i18n fetch URLs for cache busting
+    _i18n_hash = hashlib.md5(
+        b"".join(open(os.path.join(_STATIC_DIR, "i18n", f), "rb").read()
+                 for f in sorted(os.listdir(os.path.join(_STATIC_DIR, "i18n")))
+                 if f.endswith(".json"))
+    ).hexdigest()[:8] if os.path.isdir(os.path.join(_STATIC_DIR, "i18n")) else "0"
+    SEARCH_UI_HTML = SEARCH_UI_HTML.replace(
+        "'/static/i18n/' + lang + '.json'",
+        f"'/static/i18n/' + lang + '.json?v={_i18n_hash}'"
+    ).replace(
+        "'/static/i18n/en.json'",
+        f"'/static/i18n/en.json?v={_i18n_hash}'"
+    )  # cleanup loop too
+
 
 def _zim_short_name(filename):
     """Derive short display name from a ZIM filename.
@@ -5293,12 +5332,14 @@ class ZimHandler(BaseHTTPRequestHandler):
             return None, None
         return start, end
 
-    def _send(self, code, body_bytes, content_type, vary=None, cache=None):
+    def _send(self, code, body_bytes, content_type, vary=None, cache=None, etag=None):
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Access-Control-Allow-Origin", "*")
         if cache:
             self.send_header("Cache-Control", cache)
+        if etag:
+            self.send_header("ETag", etag)
         if vary:
             self.send_header("Vary", vary)
         if self._accepts_gzip() and len(body_bytes) > 256:
@@ -5439,12 +5480,30 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(ZimHandler._apple_touch_icon_data)
 
-    def _serve_index(self, vary=None):
-        # Short TTL: browser revalidates every 5 min, picks up new ?v=N on static assets
-        return self._html(200, SEARCH_UI_HTML, vary=vary, cache="public, max-age=300")
+    # ETag for the HTML page — computed once at startup from content hash.
+    # Changes on every deploy (new content = new hash = new ETag).
+    _index_etag = '"z-' + hashlib.md5(SEARCH_UI_HTML.encode()).hexdigest()[:12] + '"'
 
-    def _html(self, code, content, vary=None, cache=None):
-        self._send(code, content.encode(), "text/html; charset=utf-8", vary=vary, cache=cache)
+    def _serve_index(self, vary=None):
+        # ETag revalidation: if browser has current version, return 304 (no body).
+        # This is what makes Safari work — must-revalidate forces the check.
+        if self.headers.get("If-None-Match") == ZimHandler._index_etag:
+            self.send_response(304)
+            self.send_header("ETag", ZimHandler._index_etag)
+            self.send_header("Cache-Control", "public, max-age=0, must-revalidate, s-maxage=3600")
+            self.end_headers()
+            return
+        # Cache strategy:
+        #   max-age=0, must-revalidate — browser always revalidates (Safari-safe)
+        #   s-maxage=3600 — Cloudflare edge caches 1 hour (fast for users worldwide)
+        #   ETag — efficient revalidation (304 = no body, instant response)
+        #   deploy.sh purges Cloudflare edge after each deploy.
+        return self._html(200, SEARCH_UI_HTML, vary=vary,
+                          cache="public, max-age=0, must-revalidate, s-maxage=3600",
+                          etag=ZimHandler._index_etag)
+
+    def _html(self, code, content, vary=None, cache=None, etag=None):
+        self._send(code, content.encode(), "text/html; charset=utf-8", vary=vary, cache=cache, etag=etag)
 
     def _json(self, code, data):
         self._send(code, json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode(), "application/json")
