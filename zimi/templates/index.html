@@ -338,8 +338,14 @@
   .lang-dropdown-item .check { font-size: 14px; }
   .lang-dropdown-item .ld-meta { font-size: 11px; color: var(--text2); white-space: nowrap; }
   .lang-dropdown-item:hover .ld-meta { color: inherit; }
-  .lang-dropdown-item .ld-dl-hint { font-size: 10px; color: var(--text2); opacity: 0.5; }
-  .lang-dropdown-item:hover .ld-dl-hint { opacity: 1; color: var(--amber); }
+  .ld-dl-btn {
+    width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--border);
+    background: none; color: var(--text3); cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+    padding: 0;
+  }
+  .ld-dl-btn:hover { border-color: var(--amber); color: var(--amber); background: var(--amber-glow); }
+  .ld-dl-btn svg { width: 12px; height: 12px; }
   .lang-dropdown-item .ld-switch { display: flex; align-items: center; }
   .ld-switch-icon { opacity: 0.5; transition: opacity 0.15s; }
   .lang-dropdown-item.switchable:hover .ld-switch-icon { opacity: 1; color: var(--amber); }
@@ -7453,6 +7459,8 @@ function _renderLangDropdown() {
   var switchIcon = '<svg class="ld-switch-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">' +
     '<path d="M4 6l-3 3 3 3"/><path d="M1 9h10"/><path d="M12 10l3-3-3-3"/><path d="M15 7H5"/></svg>';
 
+  var dlIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>';
+
   var inReader = readerOpen && currentArticle;
   var switchKeys = Object.keys(switchMap).filter(function(k) { return k !== _currentLang; });
 
@@ -7464,7 +7472,6 @@ function _renderLangDropdown() {
       var sk = switchKeys[si];
       var sl = _AVAILABLE_LANGS.find(function(ll) { return ll.code === sk; });
       var sName = sl ? sl.name : sk;
-      // Show the target article path as subtitle (decoded)
       var targetPath = switchMap[sk].path.replace(/^A\//, '').replace(/_/g, ' ');
       try { targetPath = decodeURIComponent(targetPath); } catch(e) {}
       h += '<div class="lang-dropdown-item switchable" onclick="_selectLangAndSwitch(\'' + sk + '\',\'' + escJs(switchMap[sk].zim) + '\',\'' + escJs(switchMap[sk].path) + '\')">' +
@@ -7475,23 +7482,22 @@ function _renderLangDropdown() {
     h += '<div class="ld-divider"></div>';
   }
 
-  // All languages (UI language selector)
+  // All languages — click name to switch UI language, click download icon to get ZIM
   for (var i = 0; i < _AVAILABLE_LANGS.length; i++) {
     var l = _AVAILABLE_LANGS[i];
     var active = l.code === _currentLang ? ' active' : '';
     var count = _langSourceCount(l.code);
-    var meta = '';
+    var right = '';
     if (l.code === _currentLang) {
-      meta = '<span class="check">\u2713</span>';
-    } else if (inReader && count > 0 && !switchMap[l.code]) {
-      meta = '<span class="ld-meta">' + count + '</span>';
-    } else if (inReader && manageEnabled && count === 0) {
-      meta = '<span class="ld-dl-hint">' + t('download') + '</span>';
-    } else if (!inReader && count > 0) {
-      meta = '<span class="ld-meta">' + count + '</span>';
+      right = '<span class="check">\u2713</span>';
+    } else if (count > 0) {
+      right = '<span class="ld-meta">' + count + '</span>';
+    } else if (manageEnabled && _globalCatalogCache && count === 0) {
+      // No ZIM — show download button (explicit action, separate from lang switch)
+      right = '<button class="ld-dl-btn" onclick="event.stopPropagation();_showLangDownloadSection(\'' + l.code + '\')" title="' + escAttr(t('download')) + '">' + dlIcon + '</button>';
     }
     h += '<div class="lang-dropdown-item' + active + '" onclick="_selectLang(\'' + l.code + '\')">' +
-      '<span>' + esc(l.name) + '</span>' + meta + '</div>';
+      '<span>' + esc(l.name) + '</span>' + right + '</div>';
   }
   dd.innerHTML = h;
 }
@@ -7507,41 +7513,25 @@ async function _selectLangAndSwitch(code, zim, path) {
 async function _selectLang(code) {
   // If already on this language, just close
   if (code === _currentLang) { _closeLangDropdown(); return; }
-  // Dismiss any open language switch panel from a previous selection
   _dismissLangSwitchPanel();
   _langDropdownLocked = true;
-  // If reading an article, try to navigate to same article in target language
-  // (suppress the banner — user already expressed intent via dropdown)
+  // Switch UI language (suppress banner — user is using the dropdown directly)
   var wasReading = readerOpen && currentArticle;
   var prevArticle = wasReading ? { zim: currentArticle.zim, path: currentArticle.path, title: currentArticle.title } : null;
   _suppressLangBanner = true;
   await setLanguage(code);
   _suppressLangBanner = false;
   _langDropdownLocked = false;
+  // Re-render dropdown to show updated checkmark, then try interlang
+  _renderLangDropdown();
   if (wasReading && prevArticle) {
     var targetZim = _bestZimForLang(code, prevArticle.zim);
-    if (targetZim && targetZim === prevArticle.zim) {
-      // Already reading in this language's ZIM — nothing to do
-      _closeLangDropdown();
-    } else if (targetZim) {
-      // Navigate to same article in target language
+    if (targetZim && targetZim !== prevArticle.zim) {
       _closeLangDropdown();
       _langBannerSwitch(targetZim);
-    } else if (manageEnabled && _globalCatalogCache) {
-      // No ZIM — show download options inline in the dropdown
-      _showLangDownloadSection(code);
-    } else {
-      _closeLangDropdown();
     }
-    return;
+    // If no ZIM or same ZIM — dropdown stays open, user can see download button
   }
-  var hasZims = _langSourceCount(code) > 0;
-  if (hasZims || !manageEnabled || !_globalCatalogCache) {
-    _closeLangDropdown();
-    return;
-  }
-  // No ZIMs for this language — show download options inline
-  _showLangDownloadSection(code);
 }
 
 function _showLangDownloadSection(langCode) {
