@@ -2262,7 +2262,7 @@ function updateTopbar() {
     manageBtnEl.onclick = function(e) { toggleManage(e); };
   }
 
-  newtabBtn.style.display = readerOpen ? 'flex' : 'none';
+  newtabBtn.style.display = (readerOpen && !IS_DESKTOP) ? 'flex' : 'none';
   randomBtn.style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
   document.getElementById('library-btn').style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
   document.getElementById('lang-selector-btn').style.display = '';
@@ -7490,9 +7490,13 @@ function _renderLangDropdown() {
     var right = '';
     if (l.code === _currentLang) {
       right = '<span class="check">\u2713</span>';
+      // Also show download button if current lang has no installed ZIM
+      if (manageEnabled && count === 0) {
+        right += '<button class="ld-dl-btn" onclick="event.stopPropagation();_showLangDownloadSection(\'' + l.code + '\')" title="' + escAttr(t('download')) + '">' + dlIcon + '</button>';
+      }
     } else if (count > 0) {
       right = '<span class="ld-meta">' + count + '</span>';
-    } else if (manageEnabled && _globalCatalogCache && count === 0) {
+    } else if (manageEnabled && count === 0) {
       // No ZIM — show download button (explicit action, separate from lang switch)
       right = '<button class="ld-dl-btn" onclick="event.stopPropagation();_showLangDownloadSection(\'' + l.code + '\')" title="' + escAttr(t('download')) + '">' + dlIcon + '</button>';
     }
@@ -7522,22 +7526,37 @@ async function _selectLang(code) {
   await setLanguage(code);
   _suppressLangBanner = false;
   _langDropdownLocked = false;
-  // Re-render dropdown to show updated checkmark, then try interlang
-  _renderLangDropdown();
   if (wasReading && prevArticle) {
     var targetZim = _bestZimForLang(code, prevArticle.zim);
     if (targetZim && targetZim !== prevArticle.zim) {
       _closeLangDropdown();
       _langBannerSwitch(targetZim);
+      return;
     }
-    // If no ZIM or same ZIM — dropdown stays open, user can see download button
   }
+  _closeLangDropdown();
 }
 
 function _showLangDownloadSection(langCode) {
   var dd = document.getElementById('lang-dropdown');
   var old = dd.querySelector('.ld-section');
   if (old) old.remove();
+
+  // If catalog hasn't loaded yet, fetch it and retry
+  if (!_globalCatalogCache) {
+    _prefetchCatalog();
+    var spinner = document.createElement('div');
+    spinner.className = 'ld-section';
+    spinner.innerHTML = '<div class="ld-section-title" style="text-align:center;color:var(--text3)">' + t('loading') + '…</div>';
+    dd.appendChild(spinner);
+    var _waitForCatalog = setInterval(function() {
+      if (_globalCatalogCache) {
+        clearInterval(_waitForCatalog);
+        _showLangDownloadSection(langCode);
+      }
+    }, 200);
+    return;
+  }
 
   var items = _catalogMatchesForLang(langCode);
   if (!items.length) return;
@@ -7999,7 +8018,9 @@ function _showLinkCtxMenu(x, y, data) {
   var isMac = /Mac/.test(navigator.platform);
   var mod = isMac ? '\u2318' : 'Ctrl+';
   var items = '';
-  items += '<div class="zimi-ctx-item" onclick="_ctxOpenNewWindow()">' + tH('open_new_tab') + '<span class="ctx-key">' + mod + 'Click</span></div>';
+  if (!IS_DESKTOP) {
+    items += '<div class="zimi-ctx-item" onclick="_ctxOpenNewWindow()">' + tH('open_new_tab') + '<span class="ctx-key">' + mod + 'Click</span></div>';
+  }
   items += '<div class="zimi-ctx-item" onclick="_ctxCopyLink()">' + tH('copy_link') + '</div>';
   if (data.title) {
     items += '<div class="zimi-ctx-item" onclick="_ctxCopyTitle()">' + tH('copy_title') + '</div>';
