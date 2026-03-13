@@ -1971,7 +1971,7 @@ function _prefetchCatalog() {
           for (var p = 0; p < pages.length; p++) items.push.apply(items, pages[p]);
           _globalCatalogCache = items;
           _globalCatalogFetching = false;
-        });
+        }).catch(function() { _globalCatalogFetching = false; });
       } else {
         _globalCatalogCache = items;
         _globalCatalogFetching = false;
@@ -7508,8 +7508,11 @@ function _renderLangDropdown() {
 
 async function _selectLangAndSwitch(code, zim, path) {
   _langDropdownLocked = true;
-  await setLanguage(code);
-  _langDropdownLocked = false;
+  try {
+    await setLanguage(code);
+  } finally {
+    _langDropdownLocked = false;
+  }
   _closeLangDropdown();
   openArticle(zim, path);
 }
@@ -7523,9 +7526,12 @@ async function _selectLang(code) {
   var wasReading = readerOpen && currentArticle;
   var prevArticle = wasReading ? { zim: currentArticle.zim, path: currentArticle.path, title: currentArticle.title } : null;
   _suppressLangBanner = true;
-  await setLanguage(code);
-  _suppressLangBanner = false;
-  _langDropdownLocked = false;
+  try {
+    await setLanguage(code);
+  } finally {
+    _suppressLangBanner = false;
+    _langDropdownLocked = false;
+  }
   if (wasReading && prevArticle) {
     var targetZim = _bestZimForLang(code, prevArticle.zim);
     if (targetZim && targetZim !== prevArticle.zim) {
@@ -7549,9 +7555,11 @@ function _showLangDownloadSection(langCode) {
     spinner.className = 'ld-section';
     spinner.innerHTML = '<div class="ld-section-title" style="text-align:center;color:var(--text3)">' + t('loading') + '…</div>';
     dd.appendChild(spinner);
-    var _waitForCatalog = setInterval(function() {
+    if (_ldCatalogWaitTimer) clearInterval(_ldCatalogWaitTimer);
+    _ldCatalogWaitTimer = setInterval(function() {
       if (_globalCatalogCache) {
-        clearInterval(_waitForCatalog);
+        clearInterval(_ldCatalogWaitTimer);
+        _ldCatalogWaitTimer = null;
         _showLangDownloadSection(langCode);
       }
     }, 200);
@@ -7645,6 +7653,8 @@ function _ldDownload(url, btnId, langCode) {
     body: JSON.stringify({ url: url }),
   }).then(function(r) { return r.json(); }).then(function(data) {
     if (data.error) {
+      _ldDlUrl = null;
+      _ldDlLang = null;
       btn.classList.remove('downloading');
       var r2 = btn.querySelector('.ld-ring'); if (r2) r2.remove();
       btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>';
@@ -7653,6 +7663,8 @@ function _ldDownload(url, btnId, langCode) {
     _dlPrevAllDone = false;
     _ldPollBtn(btnId);
   }).catch(function() {
+    _ldDlUrl = null;
+    _ldDlLang = null;
     btn.classList.remove('downloading');
     var r3 = btn.querySelector('.ld-ring'); if (r3) r3.remove();
   });
@@ -7701,6 +7713,7 @@ function _ldPollBtn(btnId) {
     }
     if (dl.error) {
       _ldDlUrl = null;
+      _ldDlLang = null;
       _showManageBadge(anyActive);
       if (btn) {
         btn.classList.remove('downloading');
@@ -7766,8 +7779,10 @@ function toggleLangDropdown(event) {
 }
 
 var _langDropdownLocked = false;
+var _ldCatalogWaitTimer = null; // interval for catalog loading in download section
 function _closeLangDropdown() {
   if (_langDropdownLocked) return;
+  if (_ldCatalogWaitTimer) { clearInterval(_ldCatalogWaitTimer); _ldCatalogWaitTimer = null; }
   document.getElementById('lang-dropdown').classList.remove('visible');
 }
 
@@ -8105,6 +8120,8 @@ document.addEventListener('contextmenu', function(e) {
 function _desktopInit() {
   IS_DESKTOP = true;
   console.log('[Zimi] Desktop mode enabled, pywebview bridge ready');
+  // Refresh topbar — newtab button visibility depends on IS_DESKTOP
+  updateTopbar();
   // Check onboarding if init already ran (zimsCache populated)
   if (zimsCache !== null) _desktopCheckOnboarding();
 }
