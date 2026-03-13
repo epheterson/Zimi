@@ -940,6 +940,10 @@
     /* Mobile: hide secondary actions, show overflow menu */
     .random-btn, .lang-selector-btn, .manage-btn { display: none !important; }
     .topbar-more { display: flex !important; }
+    /* Almanac mode: show globe + X, hide ... */
+    body.almanac-mode .topbar-more { display: none !important; }
+    body.almanac-mode .lang-selector-btn { display: flex !important; }
+    body.almanac-mode .manage-btn { display: flex !important; }
     .topbar.search-focused .topbar-more,
     .topbar.search-focused .library-btn { display: none !important; }
     .topbar.search-focused .lang-dropdown { display: none !important; }
@@ -1307,9 +1311,10 @@
   .gr-gallery-title { font-size: 13px; font-weight: 600; color: var(--text); text-align: center; margin-bottom: 4px; }
   .gr-gallery-sub { font-size: 12px; color: var(--text3); text-align: center; line-height: 1.4; margin-bottom: 14px; max-width: 480px; margin-left: auto; margin-right: auto; }
   .gr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
-  .gr-thumb { aspect-ratio: 4/3; overflow: hidden; border-radius: 6px; cursor: pointer; position: relative; border: 1px solid var(--border); transition: border-color 0.2s, transform 0.15s; }
+  .gr-thumb { aspect-ratio: 4/3; overflow: hidden; border-radius: 6px; cursor: pointer; position: relative; border: 1px solid var(--border); transition: border-color 0.2s, transform 0.15s; -webkit-touch-callout: none; }
   .gr-thumb:hover { border-color: var(--amber-border); transform: scale(1.03); }
-  .gr-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .gr-thumb:active { transform: scale(0.97); }
+  .gr-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
   /* Golden Record lightbox */
   .gr-lightbox { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; }
   .gr-lb-bg { position: absolute; inset: 0; background: rgba(0,0,0,0.92); }
@@ -3897,8 +3902,9 @@ async function doSearch(query, push) {
   sourceAutoReader = false; // user searched — don't auto-home on back
   visibleResultCount = RESULTS_PER_PAGE;
 
-  // Close reader if open
+  // Close reader or almanac if open
   if (readerOpen) closeReader();
+  if (_almanacOpen) closeAlmanac();
 
   mainView.classList.remove('hidden');
   if (!scope) sourceHeaderEl.style.display = 'none';
@@ -7514,16 +7520,18 @@ async function _selectLang(code) {
   _langDropdownLocked = false;
   if (wasReading && prevArticle) {
     var targetZim = _bestZimForLang(code, prevArticle.zim);
-    _closeLangDropdown();
     if (targetZim && targetZim === prevArticle.zim) {
       // Already reading in this language's ZIM — nothing to do
+      _closeLangDropdown();
     } else if (targetZim) {
       // Navigate to same article in target language
+      _closeLangDropdown();
       _langBannerSwitch(targetZim);
+    } else if (manageEnabled && _globalCatalogCache) {
+      // No ZIM — show download options inline in the dropdown
+      _showLangDownloadSection(code);
     } else {
-      // No ZIM for that language — show feedback
-      var langName = (_AVAILABLE_LANGS.find(function(ll) { return ll.code === code; }) || {}).name || code;
-      _showLangSwitchPanel('not-found-no-zim', { langName: langName, langCode: code });
+      _closeLangDropdown();
     }
     return;
   }
@@ -7824,6 +7832,7 @@ function _migrateBookmarks() {
 // ── Random ──
 async function randomArticle(event) {
   if (event) event.preventDefault();
+  if (_almanacOpen) closeAlmanac();
   if (mode === 'manage') { mode = 'home'; updateTopbar(); }
   var btn = document.getElementById('random-btn');
   if (btn._randomBusy) return;

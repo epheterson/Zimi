@@ -14,6 +14,7 @@ _moonTexImg.src = '/static/moon.png?v=1';
 
 function _openAlmanacInner(replaceState) {
   _almanacOpen = true;
+  document.body.classList.add('almanac-mode');
   var url = location.pathname + location.search + '#almanac';
   if (replaceState) history.replaceState({ mode: 'almanac' }, '', url);
   else history.pushState({ mode: 'almanac' }, '', url);
@@ -32,6 +33,7 @@ function _openAlmanacInner(replaceState) {
 function closeAlmanac() {
   if (!_almanacOpen) return;
   _almanacOpen = false;
+  document.body.classList.remove('almanac-mode');
   if (_almanacOrreryRAF) { cancelAnimationFrame(_almanacOrreryRAF); _almanacOrreryRAF = null; }
   if (_almanacSkyRAF) { cancelAnimationFrame(_almanacSkyRAF); _almanacSkyRAF = null; }
   if (_tzClockRAF) { cancelAnimationFrame(_tzClockRAF); _tzClockRAF = null; }
@@ -4471,16 +4473,14 @@ function _toggleRosettaLang(code) {
 }
 
 // Scroll to Messages Across Time and select Golden Record (called from Voyager card)
-function _scrollToGoldenRecord() {
+async function _scrollToGoldenRecord() {
   var manifest = _rosettaManifest || [];
   for (var i = 0; i < manifest.length; i++) {
     if (manifest[i].id === 'golden-record') { _rosettaTextIdx = i; break; }
   }
-  _renderRosettaStone(new Date());
-  setTimeout(function() {
-    var el = document.getElementById('almanac-rosetta');
-    if (el) el.scrollIntoView({behavior:'smooth',block:'start'});
-  }, 100);
+  await _renderRosettaStone(new Date());
+  var el = document.getElementById('almanac-rosetta');
+  if (el) el.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 var _LANG_TO_CALENDAR = {
