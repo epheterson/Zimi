@@ -3605,9 +3605,9 @@ def _extract_zim_metadata(name, path):
                     # Handle multilingual ZIMs (comma-separated codes)
                     if "," in raw_lang:
                         parts = [p.strip() for p in raw_lang.split(",") if p.strip()]
-                        meta_lang = ",".join(_ISO639_3_TO_1.get(p, p if len(p) == 2 else p[:2]) for p in parts)
+                        meta_lang = ",".join(_ISO639_3_TO_1.get(p, p) for p in parts)
                     else:
-                        meta_lang = _ISO639_3_TO_1.get(raw_lang, raw_lang if len(raw_lang) == 2 else "")
+                        meta_lang = _ISO639_3_TO_1.get(raw_lang, raw_lang)
                 elif key.startswith("Illustration_48x48"):
                     has_icon = True
             except Exception:
@@ -3631,7 +3631,7 @@ def _extract_zim_metadata(name, path):
         m = re.match(r'^[a-zA-Z]+(?:\.\w+)*_([a-z]{2,3})_', os.path.basename(path))
         if m:
             code = m.group(1)
-            meta_lang = _ISO639_3_TO_1.get(code, code if len(code) == 2 else "")
+            meta_lang = _ISO639_3_TO_1.get(code, code)
     info = {
         "name": name,
         "file": os.path.basename(path),
@@ -3925,7 +3925,7 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
             for lp in language.split(","):
                 lp = lp.strip().lower()
                 if lp:
-                    norm_parts.append(_ISO639_3_TO_1.get(lp, lp if len(lp) == 2 else lp[:2]))
+                    norm_parts.append(_ISO639_3_TO_1.get(lp, lp))
             language = ",".join(norm_parts)
         items.append({
             "name": name,
