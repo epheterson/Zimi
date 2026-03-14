@@ -2884,17 +2884,18 @@ function renderHome(filter) {
   }
 
   // Preserve existing discover content to avoid flash (pop-in → disappear → reappear)
+  // But invalidate if the language changed (cached HTML has baked-in translated strings)
   var _prevDiscoverHtml = null;
   if (_showDiscover) {
     var _prevRow = document.getElementById('discover-row');
-    if (_prevRow && _prevRow.innerHTML) _prevDiscoverHtml = _prevRow.innerHTML;
+    if (_prevRow && _prevRow.innerHTML && _prevRow.dataset.lang === _currentLang) _prevDiscoverHtml = _prevRow.innerHTML;
   }
   output.innerHTML = h;
   if (_showDiscover) {
     if (_prevDiscoverHtml) {
       // Restore cached discover DOM — avoid re-fetch flash
       var newRow = document.getElementById('discover-row');
-      if (newRow) newRow.innerHTML = _prevDiscoverHtml;
+      if (newRow) { newRow.innerHTML = _prevDiscoverHtml; newRow.dataset.lang = _currentLang; }
     } else {
       _loadDiscover();
     }
@@ -3496,6 +3497,7 @@ function _renderDiscover(el, items) {
   }
   h += '</div></div>';
   el.innerHTML = h;
+  el.dataset.lang = _currentLang; // Track language for cache invalidation on lang switch
   // Restore saved scroll position (e.g., after navigating back from an article)
   try {
     var savedScroll = sessionStorage.getItem('zimi_disc_scroll');
@@ -4411,8 +4413,8 @@ let _availableUpdates = {};    // keyed by installed filename → update info
 let _mergedToOther = new Set(); // categories merged into Other (< MIN_BROWSE_CAT items)
 var _pendingDrill = null; // { catKey, lang } — set by _langBannerDownload to drill on first render
 
-// Map UI language codes to ISO 639-3 catalog codes
-var _UI_TO_CATALOG = {en:'eng',fr:'fra',de:'deu',es:'spa',pt:'por',ru:'rus',zh:'zho',ar:'ara',hi:'hin',he:'heb'};
+// UI language codes match catalog codes (both ISO 639-1 two-letter)
+var _UI_TO_CATALOG = {};
 // Common catalog languages for the dropdown (sorted by ZIM availability)
 var _CATALOG_LANGS = [
   ['eng','English'],['fra','French'],['deu','German'],['spa','Spanish'],['por','Portuguese'],
@@ -4587,23 +4589,27 @@ function _langDisplayName(code) {
 
 // Language display: "Multilingual (24 langs)" or "French" instead of raw codes
 const LANG_NAMES = {
+  en:'English',fr:'French',de:'German',es:'Spanish',pt:'Portuguese',it:'Italian',
+  ru:'Russian',ar:'Arabic',zh:'Chinese',ja:'Japanese',ko:'Korean',hi:'Hindi',
+  tr:'Turkish',pl:'Polish',nl:'Dutch',sv:'Swedish',vi:'Vietnamese',th:'Thai',
+  he:'Hebrew',el:'Greek',ro:'Romanian',hu:'Hungarian',fa:'Persian',id:'Indonesian',
+  uk:'Ukrainian',cs:'Czech',da:'Danish',fi:'Finnish',no:'Norwegian',ca:'Catalan',
+  mul:'Multilingual',
+  // 3-letter fallbacks for any un-normalized legacy data
   eng:'English',fra:'French',deu:'German',spa:'Spanish',por:'Portuguese',ita:'Italian',
   rus:'Russian',ara:'Arabic',zho:'Chinese',jpn:'Japanese',kor:'Korean',hin:'Hindi',
-  tur:'Turkish',pol:'Polish',nld:'Dutch',swe:'Swedish',vie:'Vietnamese',tha:'Thai',
-  heb:'Hebrew',ell:'Greek',ron:'Romanian',hun:'Hungarian',fas:'Persian',ind:'Indonesian',
-  ukr:'Ukrainian',ces:'Czech',dan:'Danish',fin:'Finnish',nor:'Norwegian',cat:'Catalan',
-  mul:'Multilingual'
+  heb:'Hebrew'
 };
 function formatLanguage(langStr) {
   if (!langStr) return '';
   const codes = langStr.toLowerCase().split(',').map(c => c.trim()).filter(Boolean);
   if (codes.length === 0) return '';
   if (codes.length === 1) {
-    if (codes[0] === 'eng') return ''; // Don't show English when it's the only language
-    return LANG_NAMES[codes[0]] || codes[0].toUpperCase();
+    if (codes[0] === 'en' || codes[0] === 'eng') return ''; // Don't show English when it's the only language
+    return LANG_NAMES[codes[0]] || _langDisplayName(codes[0]) || codes[0].toUpperCase();
   }
   // Multilingual
-  if (codes.length <= 3) return codes.map(c => LANG_NAMES[c] || c.toUpperCase()).join(', ');
+  if (codes.length <= 3) return codes.map(c => LANG_NAMES[c] || _langDisplayName(c) || c.toUpperCase()).join(', ');
   return t('multilingual', {n: codes.length});
 }
 
@@ -4612,7 +4618,7 @@ const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru
 function _catLangTag(langStr) {
   if (!langStr) return '';
   var codes = langStr.toLowerCase().split(',').map(c => c.trim()).filter(Boolean);
-  if (codes.length === 0 || (codes.length === 1 && codes[0] === 'eng')) return '';
+  if (codes.length === 0 || (codes.length === 1 && (codes[0] === 'en' || codes[0] === 'eng'))) return '';
   if (codes.length === 1) {
     var c2 = _LANG3TO2[codes[0]] || codes[0].substring(0, 2);
     return '<span class="ci-lang-tag">' + esc(_langDisplayName(c2)) + '</span>';
