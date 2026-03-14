@@ -1951,57 +1951,27 @@ function _langSourceCount(langCode) {
 }
 
 function _catalogMatchesForLang(langCode) {
-  // Returns catalog items we're confident we can cross-navigate to.
-  // Only shows _all variants of the same project type (wikipedia_XX_all,
-  // wiktionary_XX_all, etc.) — these share article structure so the
-  // 4-step cascade (interlang → same path → title search → main page) works.
+  // Returns catalog items for the SAME project in another language.
+  // Only relevant when reading an article — matches the current ZIM's project
+  // (e.g. reading Wikipedia → only wikipedia_XX_all variants).
+  // No fallback to other projects — download is only useful for the same content.
   if (!_globalCatalogCache) return [];
+  if (!readerOpen || !currentArticle) return []; // No downloads from home screen
+
   var catLang = (_UI_TO_CATALOG[langCode] || langCode).toLowerCase();
+  var info = zimsCache && zimsCache.find(function(z) { return z.name === currentArticle.zim; });
+  var project = _zimProject(info);
+  if (!project) return [];
+
   var allForLang = _globalCatalogCache.filter(function(it) {
     return (it.language || '').toLowerCase() === catLang;
   });
 
-  // Determine project context from what user is reading
-  var project = '';
-  if (readerOpen && currentArticle) {
-    var info = zimsCache && zimsCache.find(function(z) { return z.name === currentArticle.zim; });
-    project = _zimProject(info);
-  }
-
-  if (project) {
-    // Only show the _all variant of the same project (e.g. wikipedia_es_all)
-    // These have the full article set so cross-ZIM navigation will work
-    var matched = allForLang.filter(function(it) {
-      var n = (it.name || '').toLowerCase();
-      return n.indexOf(project) === 0 && /_all/.test(n);
-    });
-    if (matched.length) return matched;
-    // If no _all variant, try any matching project
-    matched = allForLang.filter(function(it) {
-      return (it.name || '').toLowerCase().indexOf(project) === 0;
-    });
-    if (matched.length) return matched;
-  }
-
-  // No reader context — show the main _all encyclopedias
-  var encyclopedias = allForLang.filter(function(it) {
+  // Only show _all variants of the same project (e.g. wikipedia_es_all)
+  return allForLang.filter(function(it) {
     var n = (it.name || '').toLowerCase();
-    return /^wikipedia/.test(n) && /_all/.test(n);
+    return n.indexOf(project) === 0 && /_all/.test(n);
   });
-  if (encyclopedias.length) return encyclopedias;
-
-  // Last fallback: any _all variant, up to 3 groups
-  var allVariants = allForLang.filter(function(it) { return /_all/.test(it.name || ''); });
-  var seen = new Set();
-  var result = [];
-  for (var i = 0; i < allVariants.length; i++) {
-    if (!seen.has(allVariants[i].name)) {
-      if (seen.size >= 3) break;
-      seen.add(allVariants[i].name);
-    }
-    result.push(allVariants[i]);
-  }
-  return result;
 }
 
 function _catalogUpgradesForZim(zimName) {
@@ -7462,14 +7432,14 @@ function _renderLangDropdown() {
     var right = '';
     if (l.code === _currentLang) {
       right = '<span class="check">\u2713</span>';
-      // Also show download button if current lang has no installed ZIM
-      if (manageEnabled && count === 0) {
+      // Show download button only when reading an article (so we know which project to match)
+      if (readerOpen && manageEnabled && count === 0) {
         right += '<button class="ld-dl-btn" onclick="event.stopPropagation();_showLangDownloadSection(\'' + l.code + '\')" title="' + escAttr(t('download')) + '">' + dlIcon + '</button>';
       }
     } else if (count > 0) {
       right = '<span class="ld-meta">' + count + '</span>';
-    } else if (manageEnabled && count === 0) {
-      // No ZIM — show download button (explicit action, separate from lang switch)
+    } else if (readerOpen && manageEnabled && count === 0) {
+      // No ZIM for this lang — show download button (only when reading, so project is known)
       right = '<button class="ld-dl-btn" onclick="event.stopPropagation();_showLangDownloadSection(\'' + l.code + '\')" title="' + escAttr(t('download')) + '">' + dlIcon + '</button>';
     }
     h += '<div class="lang-dropdown-item' + active + '" onclick="_selectLang(\'' + l.code + '\')">' +
