@@ -2,6 +2,38 @@
 // Lazy-loaded when user clicks the Today card in Discover.
 // _almanacOpen is declared in index.html (shared state).
 
+var JD_UNIX_EPOCH = 2440587.5;
+var JD_J2000 = 2451545.0;
+var MS_PER_DAY = 86400000;
+var JULIAN_CENTURY = 36525;
+var DEG_TO_RAD = Math.PI / 180;
+
+function _dateToJD(ms) { return JD_UNIX_EPOCH + ms / MS_PER_DAY; }
+function _jdToJulianCentury(JD) { return (JD - JD_J2000) / JULIAN_CENTURY; }
+
+function _getLocation() {
+  var stored = localStorage.getItem('zimi_almanac_location');
+  if (stored) {
+    try { var loc = JSON.parse(stored); return { lat: loc.lat, lon: loc.lon, name: loc.name || '' }; } catch(e) {}
+  }
+  return { lat: 34, lon: -new Date().getTimezoneOffset() / 60 * 15, name: '' };
+}
+
+function _dayOfYear(date) {
+  var start = new Date(date.getFullYear(), 0, 1);
+  return Math.floor((date - start) / MS_PER_DAY) + 1;
+}
+
+function _solarB(dayOfYear) { return (dayOfYear - 1) * 2 * Math.PI / 365; }
+
+function _solarDeclination(B) {
+  return 0.006918 - 0.399912 * Math.cos(B) + 0.070257 * Math.sin(B) - 0.006758 * Math.cos(2 * B) + 0.000907 * Math.sin(2 * B) - 0.002697 * Math.cos(3 * B) + 0.00148 * Math.sin(3 * B);
+}
+
+function _eqOfTime(B) {
+  return 229.18 * (0.000075 + 0.001868 * Math.cos(B) - 0.032077 * Math.sin(B) - 0.014615 * Math.cos(2 * B) - 0.04089 * Math.sin(2 * B));
+}
+
 function _almEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 var _almanacOrreryRAF = null;
@@ -91,10 +123,8 @@ function _renderAlmanacContent() {
   html += '</div>';
 
   // Hero moon — tilted by parallactic angle (how the terminator appears from observer's location)
-  var stored_loc = localStorage.getItem('zimi_almanac_location');
-  var hero_lat = 34, hero_lon = -new Date().getTimezoneOffset() / 60 * 15;
-  if (stored_loc) { try { var hl = JSON.parse(stored_loc); hero_lat = hl.lat; hero_lon = hl.lon; } catch(e) {} }
-  var moonPos = _moonPosition(now, hero_lat, hero_lon);
+  var loc = _getLocation();
+  var moonPos = _moonPosition(now, loc.lat, loc.lon);
   var moonTilt = moonPos.parallactic || 0;
   html += '<div class="almanac-hero">';
   html += _renderAlmanacMoon(m, moonTilt);
@@ -102,10 +132,7 @@ function _renderAlmanacContent() {
   html += '</div>';
 
   // Sun + Moon data cards — all below the moon
-  var stored0 = localStorage.getItem('zimi_almanac_location');
-  var lat0 = 34, lon0 = -new Date().getTimezoneOffset() / 60 * 15;
-  if (stored0) { try { var l0 = JSON.parse(stored0); lat0 = l0.lat; lon0 = l0.lon; } catch(e) {} }
-  var sunInfo0 = _computeSunTimes(now, lat0, lon0);
+  var sunInfo0 = _computeSunTimes(now, loc.lat, loc.lon);
 
   // Moon data cards (right under moon hero), then sun data cards (right above sky scene)
   html += '<div class="alm-cards">';
@@ -239,7 +266,7 @@ function _cacheAlmanacHighlights(now, moon) {
       var s = _METEOR_SHOWERS[si];
       var peak = new Date(y, s.peak[0]-1, s.peak[1]);
       if (peak < now) peak = new Date(y+1, s.peak[0]-1, s.peak[1]);
-      var days = Math.ceil((peak - now) / 86400000);
+      var days = Math.ceil((peak - now) / MS_PER_DAY);
       if (days <= 10) highlights.push({ type: 'meteor', name: s.name, days: days, zhr: s.zhr, priority: days === 0 ? 0 : days });
     }
     // Eclipses — check rendered eclipse elements for upcoming dates
@@ -286,10 +313,10 @@ function _renderAlmanacMoon(m, tiltDeg) {
 
 function _moonDistance(date) {
   // Distance from Moon's mean anomaly (anomalistic period 27.55d, independent of phase)
-  var JD = 2440587.5 + date.getTime() / 86400000;
-  var T = (JD - 2451545.0) / 36525;
+  var JD = _dateToJD(date.getTime());
+  var T = _jdToJulianCentury(JD);
   var M = (134.9634 + 477198.8676 * T) % 360;
-  var Mrad = M * Math.PI / 180;
+  var Mrad = M * DEG_TO_RAD;
   // Truncated Meeus series: mean + 1st + 2nd harmonic
   return 385001 - 20905 * Math.cos(Mrad) - 3699 * Math.cos(2 * Mrad);
 }
@@ -316,7 +343,7 @@ var _VOYAGERS = [
 var _voyagerPositions = []; // [{name, x, y, r, dist, idx}] in CSS pixels
 
 function _voyagerDist(v, simTime) {
-  var yearsFromRef = (simTime - v.refEpoch) / (365.25 * 86400000);
+  var yearsFromRef = (simTime - v.refEpoch) / (365.25 * MS_PER_DAY);
   return Math.max(0, v.refDist + v.vel * yearsFromRef);
 }
 
@@ -337,11 +364,11 @@ function _planetPosition(name, T) {
   var L = (p.L + p.dL * T) % 360;
   var LP = (p.LP + p.dLP * T) % 360;
   var M = ((L - LP) % 360 + 360) % 360;
-  var Mrad = M * Math.PI / 180;
+  var Mrad = M * DEG_TO_RAD;
   var E = _solveKepler(Mrad, e);
   var xp = a * (Math.cos(E) - e);
   var yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
-  var LPrad = LP * Math.PI / 180;
+  var LPrad = LP * DEG_TO_RAD;
   var x = xp * Math.cos(LPrad) - yp * Math.sin(LPrad);
   var y = xp * Math.sin(LPrad) + yp * Math.cos(LPrad);
   return { x: x, y: y, r: Math.sqrt(x * x + y * y) };
@@ -467,8 +494,8 @@ function _drawOrrery(canvas, dpr) {
   var cx = W / 2, cy = W / 2;
 
   var simTime = Date.now() + _orreryTimeOffset;
-  var JD = 2440587.5 + simTime / 86400000;
-  var T = (JD - 2451545.0) / 36525;
+  var JD = _dateToJD(simTime);
+  var T = _jdToJulianCentury(JD);
 
   ctx.clearRect(0, 0, W, W);
 
@@ -635,7 +662,7 @@ function _drawOrrery(canvas, dpr) {
     var v = _VOYAGERS[vi];
     var dist = _voyagerDist(v, simTime);
     if (dist <= 0) continue; // pre-launch
-    var angle = v.lon * Math.PI / 180;
+    var angle = v.lon * DEG_TO_RAD;
     // Visual radius scales with distance (log-compressed so it stays on canvas)
     var visR = Math.min(0.46, 0.44 + 0.02 * Math.log(Math.max(1, dist / 30.07))) * W;
     var vx = cx + Math.cos(angle) * visR;
@@ -766,8 +793,8 @@ function _drawOrrery(canvas, dpr) {
 
       // Transit label (only for the newest in-flight rocket)
       if (ri === _orreryRockets.length - 1 && progress > 0.05 && progress < 0.95) {
-        var daysElapsed = Math.round(rk.elapsed / 86400000);
-        var totalDays = Math.round(rk.duration / 86400000);
+        var daysElapsed = Math.round(rk.elapsed / MS_PER_DAY);
+        var totalDays = Math.round(rk.duration / MS_PER_DAY);
         ctx.font = (10 * dpr) + 'px -apple-system, system-ui, sans-serif';
         ctx.fillStyle = 'rgba(255,200,100,0.6)';
         ctx.textAlign = 'left';
@@ -999,8 +1026,8 @@ function _orreryUpdateTransitLabel() {
   var slider = document.getElementById('orrery-transit-slider');
   var rk = _orreryGetActiveRocket();
   if (!label || !rk) return;
-  var daysElapsed = Math.round(rk.elapsed / 86400000);
-  var totalDays = Math.round(rk.duration / 86400000);
+  var daysElapsed = Math.round(rk.elapsed / MS_PER_DAY);
+  var totalDays = Math.round(rk.duration / MS_PER_DAY);
   label.textContent = rk.target + ' · ' + daysElapsed + 'd / ' + totalDays + 'd';
   if (slider) {
     slider.value = Math.round((rk.elapsed / rk.duration) * 1000);
@@ -1014,14 +1041,14 @@ function _orreryUpdateMissions() {
   var html = '';
   for (var i = 0; i < _orreryRockets.length; i++) {
     var rk = _orreryRockets[i];
-    var totalD = Math.round(rk.duration / 86400000);
+    var totalD = Math.round(rk.duration / MS_PER_DAY);
     var color = _PLANETS[rk.target] ? _PLANETS[rk.target].color : '#888';
     if (rk.arrived) {
       html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0">' +
         '<span style="color:' + color + '">●</span> ' + rk.target + ' \u2014 ' + t('alm_orbiting') +
         ' <span style="color:var(--text3);font-size:10px">(' + totalD + 'd transit)</span></div>';
     } else {
-      var elapsedD = Math.round(rk.elapsed / 86400000);
+      var elapsedD = Math.round(rk.elapsed / MS_PER_DAY);
       var pct = Math.round((rk.elapsed / rk.duration) * 100);
       html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0">' +
         '<span style="color:' + color + '">●</span> → ' + rk.target +
@@ -1039,7 +1066,7 @@ function _orreryUpdateDate() {
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   el.textContent = d.toLocaleDateString(lang, { year: 'numeric', month: 'short', day: 'numeric' });
   var nowBtn = document.getElementById('orrery-now');
-  if (nowBtn) nowBtn.style.display = Math.abs(_orreryTimeOffset) > 86400000 ? '' : 'none';
+  if (nowBtn) nowBtn.style.display = Math.abs(_orreryTimeOffset) > MS_PER_DAY ? '' : 'none';
 }
 
 // ── Voyager detail card ──
@@ -1075,7 +1102,7 @@ function _updateVoyagerCard() {
   var v = _VOYAGERS[_voyagerCardIdx];
   var simTime = Date.now() + _orreryTimeOffset;
   var dist = _voyagerDist(v, simTime);
-  var yearsInSpace = ((simTime - v.launch) / (365.25 * 86400000));
+  var yearsInSpace = ((simTime - v.launch) / (365.25 * MS_PER_DAY));
   var speed = v.vel * 149597870.7 / (365.25 * 24 * 3600);
   var signalSec = dist * 499.0;
   var signalH = Math.floor(signalSec / 3600);
@@ -1174,18 +1201,18 @@ function _orreryLaunchRocket(targetName) {
   var earthA = _PLANETS['Earth'].a;
   var targetA = _PLANETS[targetName].a;
   var transitDays = _hohmannDays(earthA, targetA);
-  var transitMs = transitDays * 86400000;
+  var transitMs = transitDays * MS_PER_DAY;
 
   // Compute launch and arrival positions
   var simNow = Date.now() + _orreryTimeOffset;
-  var JD = 2440587.5 + simNow / 86400000;
-  var T = (JD - 2451545.0) / 36525;
+  var JD = _dateToJD(simNow);
+  var T = _jdToJulianCentury(JD);
   var earthPos = _planetPosition('Earth', T);
   var launchAngle = Math.atan2(earthPos.y, earthPos.x);
 
   // Compute where the target planet will be at arrival time
   var arrivalJD = JD + transitDays;
-  var T_arr = (arrivalJD - 2451545.0) / 36525;
+  var T_arr = _jdToJulianCentury(arrivalJD);
   var targetPosArr = _planetPosition(targetName, T_arr);
   var arrivalAngle = Math.atan2(targetPosArr.y, targetPosArr.x);
 
@@ -1252,7 +1279,7 @@ function _darken(hex, amount) {
 // Compute upcoming eclipses using Meeus's lunation-based algorithm (Ch. 54)
 // Works for any date — no hardcoded lists needed
 function _computeEclipses(fromDate, count) {
-  var JD0 = 2440587.5 + fromDate.getTime() / 86400000;
+  var JD0 = _dateToJD(fromDate.getTime());
   // Find approximate lunation number (new moon count since J2000)
   var k0 = Math.floor((JD0 - 2451550.1) / 29.530588853);
   var results = [];
@@ -1273,14 +1300,14 @@ function _computeEclipses(fromDate, count) {
       var F = (160.7108 + 390.67050284 * k - 0.0016118 * T2 - 0.00000227 * T3 + 0.000000011 * T4) % 360;
       // Longitude of ascending node
       var O = (124.7746 - 1.56375588 * k + 0.0020672 * T2 + 0.00000215 * T3) % 360;
-      var Frad = F * Math.PI / 180;
+      var Frad = F * DEG_TO_RAD;
       var sinF = Math.sin(Frad);
       // Eclipse condition: |sin(F)| < 0.36 (rough filter)
       if (Math.abs(sinF) > 0.36) continue;
-      var Mrad = M * Math.PI / 180, Mprad = Mp * Math.PI / 180, Orad = O * Math.PI / 180;
+      var Mrad = M * DEG_TO_RAD, Mprad = Mp * DEG_TO_RAD, Orad = O * DEG_TO_RAD;
       var F1 = F - 0.02665 * Math.sin(Orad);
-      var F1rad = F1 * Math.PI / 180;
-      var A1 = (299.77 + 0.107408 * k - 0.009173 * T2) * Math.PI / 180;
+      var F1rad = F1 * DEG_TO_RAD;
+      var A1 = (299.77 + 0.107408 * k - 0.009173 * T2) * DEG_TO_RAD;
       // Compute gamma (distance of shadow axis from Earth center)
       var P = 0.2070 * Math.sin(Mrad) + 0.0024 * Math.sin(2 * Mrad)
             - 0.0392 * Math.sin(Mprad) + 0.0116 * Math.sin(2 * Mprad)
@@ -1290,7 +1317,7 @@ function _computeEclipses(fromDate, count) {
             - 0.3299 * Math.cos(Mprad) + 0.0041 * Math.cos(Mrad + Mprad);
       var gamma = (F1 % 360 + 360) % 360;
       if (gamma > 180) gamma = 360 - gamma;
-      gamma = gamma * Math.PI / 180;
+      gamma = gamma * DEG_TO_RAD;
       var W2 = Math.abs(Math.cos(F1rad));
       var gam = Math.abs(sinF) / Math.sqrt(1 - 0.0048 * W2 * W2);
       // Must be within eclipse range
@@ -1318,7 +1345,7 @@ function _computeEclipses(fromDate, count) {
              - 0.0002 * Math.sin(2 * Mprad - Mrad) + 0.0002 * Math.sin(Orad);
       }
       var eclJDE = JDE + dJDE;
-      var eclDate = new Date((eclJDE - 2440587.5) * 86400000);
+      var eclDate = new Date((eclJDE - JD_UNIX_EPOCH) * MS_PER_DAY);
       if (eclDate < fromDate) continue;
       // Determine type
       var type;
@@ -1339,8 +1366,8 @@ function _computeEclipses(fromDate, count) {
       }
       // Compute sub-solar point longitude at eclipse time
       // Greenwich Sidereal Time approximation from JDE
-      var T0 = (Math.floor(eclJDE - 0.5) + 0.5 - 2451545.0) / 36525;
-      var GST0 = 280.46061837 + 360.98564736629 * (eclJDE - 2451545.0) + 0.000387933 * T0 * T0;
+      var T0 = (Math.floor(eclJDE - 0.5) + 0.5 - JD_J2000) / JULIAN_CENTURY;
+      var GST0 = 280.46061837 + 360.98564736629 * (eclJDE - JD_J2000) + 0.000387933 * T0 * T0;
       GST0 = ((GST0 % 360) + 360) % 360;
       var subLon = ((180 - GST0) % 360 + 540) % 360 - 180; // sub-solar longitude
       var region;
@@ -1368,14 +1395,11 @@ function _renderAstroPanel(now) {
   if (!el) return;
 
   var y = now.getFullYear();
-  var startOfYear = new Date(y, 0, 1);
-  var dayOfYear = Math.floor((now - startOfYear) / 86400000) + 1;
+  var dayOfYear = _dayOfYear(now);
   var daysInYear = ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365;
 
   // Hemisphere-aware seasons: flip for southern hemisphere observers
-  var stored = localStorage.getItem('zimi_almanac_location');
-  var obsLat = 34; // default northern
-  if (stored) { try { obsLat = JSON.parse(stored).lat || 34; } catch(e) {} }
+  var obsLat = _getLocation().lat;
   var south = obsLat < 0;
   var W = south ? t('season_summer') : t('season_winter'), Sp = south ? t('season_autumn') : t('season_spring');
   var Su = south ? t('season_winter') : t('season_summer'), Au = south ? t('season_spring') : t('season_autumn');
@@ -1392,18 +1416,18 @@ function _renderAstroPanel(now) {
     if (now >= seasonBounds[si].start && now < seasonBounds[si].end) {
       season = seasonBounds[si];
       season.progress = (now - season.start) / (season.end - season.start);
-      season.daysUntilNext = Math.ceil((season.end - now) / 86400000);
+      season.daysUntilNext = Math.ceil((season.end - now) / MS_PER_DAY);
       break;
     }
   }
 
   var perihelion = new Date(y, 0, 3);
-  var daysSincePeri = (now - perihelion) / 86400000;
+  var daysSincePeri = (now - perihelion) / MS_PER_DAY;
   var earthSunDist = 149598023 * (1 - 0.0167 * Math.cos(daysSincePeri / 365.25 * 2 * Math.PI));
   var earthSunAU = (earthSunDist / 149597870.7).toFixed(4);
 
-  var JD = 2440587.5 + now.getTime() / 86400000;
-  var T = (JD - 2451545.0) / 36525;
+  var JD = _dateToJD(now.getTime());
+  var T = _jdToJulianCentury(JD);
   var sunLon = (280.46646 + 36000.76983 * T + 0.0003032 * T * T) % 360;
   if (sunLon < 0) sunLon += 360;
   var zodiac = [
@@ -1438,7 +1462,7 @@ function _renderAstroPanel(now) {
     for (var ei = 0; ei < nextEclipses.length; ei++) {
       var ec = nextEclipses[ei];
       var ecDate = new Date(ec.date + 'T00:00:00');
-      var daysUntil = Math.ceil((ecDate - now) / 86400000);
+      var daysUntil = Math.ceil((ecDate - now) / MS_PER_DAY);
       var untilStr = daysUntil <= 0 ? t('alm_today') : daysUntil === 1 ? t('alm_tomorrow') : t('alm_n_days', { n: daysUntil });
       html += '<div class="almanac-eclipse-row">' +
         '<div><span class="almanac-eclipse-type">' + ec.type + '</span><br><span class="almanac-eclipse-date">' + ec.region + '</span></div>' +
@@ -1475,18 +1499,10 @@ function _renderSunMap(now) {
 
   // Get location
   var stored = localStorage.getItem('zimi_almanac_location');
-  if (stored) {
-    try {
-      var loc = JSON.parse(stored);
-      _sunMapLat = loc.lat; _sunMapLon = loc.lon;
-      _sunMapLocName = loc.name || '';
-      _sunMapHasLocation = true;
-    } catch(e) { _sunMapHasLocation = false; }
-  } else {
-    _sunMapLat = 34; _sunMapLon = -new Date().getTimezoneOffset() / 60 * 15;
-    _sunMapLocName = '';
-    _sunMapHasLocation = false;
-  }
+  var smLoc = _getLocation();
+  _sunMapLat = smLoc.lat; _sunMapLon = smLoc.lon;
+  _sunMapLocName = smLoc.name;
+  _sunMapHasLocation = !!stored;
 
   // Compute sun info for the info line
   var sunInfo = _computeSunTimes(_sunMapNow, _sunMapLat, _sunMapLon);
@@ -1548,7 +1564,7 @@ function _renderSunMap(now) {
       var snappedName = '';
       for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
         var c = _MAP_CITIES[ci];
-        var dlat = lat - c.lat, dlon = (lon - c.lon) * Math.cos(lat * Math.PI / 180);
+        var dlat = lat - c.lat, dlon = (lon - c.lon) * Math.cos(lat * DEG_TO_RAD);
         if (Math.sqrt(dlat * dlat + dlon * dlon) < snapDist) {
           lat = c.lat; lon = c.lon;
           snappedName = c.name;
@@ -1719,14 +1735,11 @@ function _drawTzClock(now) {
     if (_TZ_CITIES[i].tz === tz) { tzLabel = _TZ_CITIES[i].label; break; }
   }
   // If the user searched a specific city whose timezone matches, use their city name
-  try {
-    var storedLoc = JSON.parse(localStorage.getItem('zimi_almanac_location') || '{}');
-    if (storedLoc.name && (!_almSelectedTz || _almSelectedTz === tz)) {
-      // Extract just the city name (first part before comma) for compact display
-      var cityOnly = storedLoc.name.split(',')[0].trim();
-      if (cityOnly) tzLabel = cityOnly;
-    }
-  } catch(e) {}
+  var storedLoc = _getLocation();
+  if (storedLoc.name && (!_almSelectedTz || _almSelectedTz === tz)) {
+    var cityOnly = storedLoc.name.split(',')[0].trim();
+    if (cityOnly) tzLabel = cityOnly;
+  }
 
   // Get time in selected timezone — use fractional seconds for smooth hand
   var h24 = 0, mins = 0, secs = 0;
@@ -1750,7 +1763,7 @@ function _drawTzClock(now) {
 
   // Hour markers
   for (var i = 0; i < 12; i++) {
-    var angle = (i * 30 - 90) * Math.PI / 180;
+    var angle = (i * 30 - 90) * DEG_TO_RAD;
     var isMajor = i % 3 === 0;
     var outerR = r - 4;
     var innerR = isMajor ? r - 14 : r - 9;
@@ -1775,7 +1788,7 @@ function _drawTzClock(now) {
 
   // Hour hand
   var hourAngle = ((h24 % 12) + mins / 60) * 30 - 90;
-  var hourRad = hourAngle * Math.PI / 180;
+  var hourRad = hourAngle * DEG_TO_RAD;
   ctx.beginPath();
   ctx.moveTo(cx, cy);
   ctx.lineTo(cx + Math.cos(hourRad) * (r * 0.5), cy + Math.sin(hourRad) * (r * 0.5));
@@ -1786,7 +1799,7 @@ function _drawTzClock(now) {
 
   // Minute hand
   var minAngle = (mins + secs / 60) * 6 - 90;
-  var minRad = minAngle * Math.PI / 180;
+  var minRad = minAngle * DEG_TO_RAD;
   ctx.beginPath();
   ctx.moveTo(cx, cy);
   ctx.lineTo(cx + Math.cos(minRad) * (r * 0.72), cy + Math.sin(minRad) * (r * 0.72));
@@ -1796,7 +1809,7 @@ function _drawTzClock(now) {
 
   // Second hand
   var secAngle = secs * 6 - 90;
-  var secRad = secAngle * Math.PI / 180;
+  var secRad = secAngle * DEG_TO_RAD;
   ctx.beginPath();
   ctx.moveTo(cx, cy);
   ctx.lineTo(cx + Math.cos(secRad) * (r * 0.78), cy + Math.sin(secRad) * (r * 0.78));
@@ -1839,14 +1852,12 @@ function _startTzClock() {
 }
 
 function _computeSunTimes(now, lat, lon) {
-  var y = now.getFullYear();
-  var start = new Date(y, 0, 1);
-  var dayOfYear = Math.floor((now - start) / 86400000) + 1;
-  var B = (dayOfYear - 1) * 2 * Math.PI / 365;
-  var EoT = 229.18 * (0.000075 + 0.001868 * Math.cos(B) - 0.032077 * Math.sin(B) - 0.014615 * Math.cos(2 * B) - 0.04089 * Math.sin(2 * B));
-  var decl = 0.006918 - 0.399912 * Math.cos(B) + 0.070257 * Math.sin(B) - 0.006758 * Math.cos(2 * B) + 0.000907 * Math.sin(2 * B) - 0.002697 * Math.cos(3 * B) + 0.00148 * Math.sin(3 * B);
-  var latRad = lat * Math.PI / 180;
-  var cosHA = (Math.cos(90.833 * Math.PI / 180) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
+  var doy = _dayOfYear(now);
+  var B = _solarB(doy);
+  var EoT = _eqOfTime(B);
+  var decl = _solarDeclination(B);
+  var latRad = lat * DEG_TO_RAD;
+  var cosHA = (Math.cos(90.833 * DEG_TO_RAD) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
 
   if (cosHA > 1) return { polar: t('alm_polar_night') };
   if (cosHA < -1) return { polar: t('alm_midnight_sun') };
@@ -1866,7 +1877,7 @@ function _computeSunTimes(now, lat, lon) {
     dayLength: dayH + 'h ' + dayM + 'm'
   };
 
-  var cosGH = (Math.cos(84 * Math.PI / 180) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
+  var cosGH = (Math.cos(84 * DEG_TO_RAD) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
   if (cosGH >= -1 && cosGH <= 1) {
     var HAgh = Math.acos(cosGH) * 180 / Math.PI;
     result.goldenHour = _fmtMinutes(720 - 4 * (lon - HAgh) - EoT + tzOffset);
@@ -1893,11 +1904,9 @@ function _drawSunMap() {
 
   // Compute sun subsolar point
   var now = _sunMapNow;
-  var y = now.getFullYear();
-  var start = new Date(y, 0, 1);
-  var dayOfYear = Math.floor((now - start) / 86400000) + 1;
-  var B = (dayOfYear - 1) * 2 * Math.PI / 365;
-  var decl = 0.006918 - 0.399912 * Math.cos(B) + 0.070257 * Math.sin(B) - 0.006758 * Math.cos(2 * B) + 0.000907 * Math.sin(2 * B) - 0.002697 * Math.cos(3 * B) + 0.00148 * Math.sin(3 * B);
+  var doy = _dayOfYear(now);
+  var B = _solarB(doy);
+  var decl = _solarDeclination(B);
   var declDeg = decl * 180 / Math.PI;
   var utcH = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
   var sunLon = -(utcH - 12) * 15;
@@ -1906,7 +1915,7 @@ function _drawSunMap() {
   var termPoints = [];
   for (var px = 0; px < W; px++) {
     var lon = (px / W) * 360 - 180;
-    var dlon = (lon - sunLon) * Math.PI / 180;
+    var dlon = (lon - sunLon) * DEG_TO_RAD;
     var termLat = Math.atan(-Math.cos(dlon) / Math.tan(decl)) * 180 / Math.PI;
     var termY = (90 - termLat) / 180 * H;
     termPoints.push({ x: px, y: termY });
@@ -1983,19 +1992,8 @@ function _drawSunMap() {
 // ── Sky scene init (uses location for sun/moon position) ──
 
 function _loadSunData(now) {
-  var stored = localStorage.getItem('zimi_almanac_location');
-  var lat, lon;
-  if (stored) {
-    try {
-      var loc = JSON.parse(stored);
-      lat = loc.lat; lon = loc.lon;
-    } catch(e) {
-      lat = 34; lon = -new Date().getTimezoneOffset() / 60 * 15;
-    }
-  } else {
-    lat = 34; lon = -new Date().getTimezoneOffset() / 60 * 15;
-  }
-  _initSkyScene(now, lat, lon);
+  var loc = _getLocation();
+  _initSkyScene(now, loc.lat, loc.lon);
 }
 
 function _almShowCitySearch() {
@@ -2017,7 +2015,7 @@ function _shareAlmanacLocation() {
       var bestDist = Infinity;
       for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
         var dlat = lat - _MAP_CITIES[ci].lat;
-        var dlon = (lon - _MAP_CITIES[ci].lon) * Math.cos(lat * Math.PI / 180);
+        var dlon = (lon - _MAP_CITIES[ci].lon) * Math.cos(lat * DEG_TO_RAD);
         var d = dlat * dlat + dlon * dlon;
         if (d < bestDist) { bestDist = d; locData.name = _MAP_CITIES[ci].name; }
       }
@@ -2255,7 +2253,7 @@ function _promptAlmanacLocation() {
       var snapped = false;
       for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
         var c = _MAP_CITIES[ci];
-        var dlat = lat - c.lat, dlon = (lon - c.lon) * Math.cos(lat * Math.PI / 180);
+        var dlat = lat - c.lat, dlon = (lon - c.lon) * Math.cos(lat * DEG_TO_RAD);
         if (Math.sqrt(dlat * dlat + dlon * dlon) < snapDist) {
           lat = c.lat; lon = c.lon;
           document.getElementById('almanac-map-hint').textContent = c.name + ' (' + c.lat.toFixed(2) + '\u00b0, ' + c.lon.toFixed(2) + '\u00b0)';
@@ -2367,15 +2365,13 @@ function _initSkyScene(now, lat, lon) {
 }
 
 function _sunPosition(date, lat, lon) {
-  var y = date.getFullYear();
-  var start = new Date(y, 0, 1);
-  var dayOfYear = Math.floor((date - start) / 86400000) + 1;
-  var B = (dayOfYear - 1) * 2 * Math.PI / 365;
-  var EoT = 229.18 * (0.000075 + 0.001868 * Math.cos(B) - 0.032077 * Math.sin(B) - 0.014615 * Math.cos(2 * B) - 0.04089 * Math.sin(2 * B));
-  var decl = 0.006918 - 0.399912 * Math.cos(B) + 0.070257 * Math.sin(B) - 0.006758 * Math.cos(2 * B) + 0.000907 * Math.sin(2 * B) - 0.002697 * Math.cos(3 * B) + 0.00148 * Math.sin(3 * B);
+  var doy = _dayOfYear(date);
+  var B = _solarB(doy);
+  var EoT = _eqOfTime(B);
+  var decl = _solarDeclination(B);
   var solarTime = date.getUTCHours() * 60 + date.getUTCMinutes() + date.getUTCSeconds() / 60 + EoT + lon * 4;
-  var hourAngle = (solarTime / 4 - 180) * Math.PI / 180;
-  var latRad = lat * Math.PI / 180;
+  var hourAngle = (solarTime / 4 - 180) * DEG_TO_RAD;
+  var latRad = lat * DEG_TO_RAD;
   var sinAlt = Math.sin(latRad) * Math.sin(decl) + Math.cos(latRad) * Math.cos(decl) * Math.cos(hourAngle);
   var altitude = Math.asin(sinAlt) * 180 / Math.PI;
   var cosAz = (Math.sin(decl) - Math.sin(latRad) * sinAlt) / (Math.cos(latRad) * Math.cos(Math.asin(sinAlt)));
@@ -2390,9 +2386,8 @@ function _sunPosition(date, lat, lon) {
 // Uses mean orbital elements to estimate the Moon's equatorial position,
 // then converts to horizontal coordinates (same pipeline as the sun).
 function _moonPosition(date, lat, lon) {
-  var JD = 2440587.5 + date.getTime() / 86400000;
-  var T = (JD - 2451545.0) / 36525;
-  var D2R = Math.PI / 180;
+  var JD = _dateToJD(date.getTime());
+  var T = _jdToJulianCentury(JD);
 
   // Mean orbital elements (degrees)
   var L0 = (218.3165 + 481267.8813 * T) % 360;         // mean longitude
@@ -2403,20 +2398,20 @@ function _moonPosition(date, lat, lon) {
 
   // Ecliptic longitude (principal terms only)
   var lng = L0
-    + 6.289 * Math.sin(M * D2R)
-    - 1.274 * Math.sin((2*D - M) * D2R)
-    - 0.658 * Math.sin(2*D * D2R)
-    - 0.214 * Math.sin(2*M * D2R)
-    - 0.186 * Math.sin(Ms * D2R);
+    + 6.289 * Math.sin(M * DEG_TO_RAD)
+    - 1.274 * Math.sin((2*D - M) * DEG_TO_RAD)
+    - 0.658 * Math.sin(2*D * DEG_TO_RAD)
+    - 0.214 * Math.sin(2*M * DEG_TO_RAD)
+    - 0.186 * Math.sin(Ms * DEG_TO_RAD);
 
   // Ecliptic latitude
-  var lat_ec = 5.128 * Math.sin(F * D2R)
-    + 0.281 * Math.sin((M + F) * D2R)
-    + 0.278 * Math.sin((F - M) * D2R);
+  var lat_ec = 5.128 * Math.sin(F * DEG_TO_RAD)
+    + 0.281 * Math.sin((M + F) * DEG_TO_RAD)
+    + 0.278 * Math.sin((F - M) * DEG_TO_RAD);
 
   // Ecliptic to equatorial (obliquity ≈ 23.44°)
-  var eps = 23.44 * D2R;
-  var lngR = lng * D2R, latR = lat_ec * D2R;
+  var eps = 23.44 * DEG_TO_RAD;
+  var lngR = lng * DEG_TO_RAD, latR = lat_ec * DEG_TO_RAD;
   var sinDec = Math.sin(latR) * Math.cos(eps) + Math.cos(latR) * Math.sin(eps) * Math.sin(lngR);
   var dec = Math.asin(sinDec);
   var ra = Math.atan2(
@@ -2425,13 +2420,13 @@ function _moonPosition(date, lat, lon) {
   );
 
   // Local sidereal time
-  var GMST = (280.46061837 + 360.98564736629 * (JD - 2451545.0)) % 360;
-  var LST = (GMST + lon) * D2R;
+  var GMST = (280.46061837 + 360.98564736629 * (JD - JD_J2000)) % 360;
+  var LST = (GMST + lon) * DEG_TO_RAD;
   var HA = LST - ra;
   HA = ((HA % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI; // normalize to [-pi, pi]
 
   // Horizontal coordinates
-  var latR2 = lat * D2R;
+  var latR2 = lat * DEG_TO_RAD;
   var sinAlt = Math.sin(latR2) * Math.sin(dec) + Math.cos(latR2) * Math.cos(dec) * Math.cos(HA);
   var altitude = Math.asin(sinAlt) * 180 / Math.PI;
   var cosAz = (Math.sin(dec) - Math.sin(latR2) * sinAlt) / (Math.cos(latR2) * Math.cos(Math.asin(sinAlt)));
@@ -2496,16 +2491,15 @@ var _WARM_STARS = {0:1, 19:1, 40:1, 45:1, 48:1};
 
 // Project catalog stars to canvas coordinates for current time/location
 function _projectStars(now, lat, lon, W, H) {
-  var JD = 2440587.5 + now.getTime() / 86400000;
-  var D2R = Math.PI / 180;
-  var GMST = (280.46061837 + 360.98564736629 * (JD - 2451545.0)) % 360;
-  var LST = (GMST + lon) * D2R;
-  var latR = lat * D2R;
+  var JD = _dateToJD(now.getTime());
+  var GMST = (280.46061837 + 360.98564736629 * (JD - JD_J2000)) % 360;
+  var LST = (GMST + lon) * DEG_TO_RAD;
+  var latR = lat * DEG_TO_RAD;
   var result = [];
   for (var i = 0; i < _STARS.length; i++) {
     var s = _STARS[i];
-    var ra = s[0] * 15 * D2R;
-    var dec = s[1] * D2R;
+    var ra = s[0] * 15 * DEG_TO_RAD;
+    var dec = s[1] * DEG_TO_RAD;
     var HA = LST - ra;
     HA = ((HA % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
     var sinAlt = Math.sin(latR) * Math.sin(dec) + Math.cos(latR) * Math.cos(dec) * Math.cos(HA);
@@ -2680,7 +2674,7 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, labelText, projSta
       ctx.beginPath(); ctx.arc(moonX, moonY, moonR * 2.5, 0, Math.PI * 2); ctx.fill();
     }
     // Rotate entire moon (texture + terminator) by parallactic angle
-    var pAngleBody = (moonPos.parallactic || 0) * Math.PI / 180;
+    var pAngleBody = (moonPos.parallactic || 0) * DEG_TO_RAD;
     ctx.save();
     ctx.globalAlpha = moonAlpha;
     ctx.translate(moonX, moonY);
@@ -2706,7 +2700,7 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, labelText, projSta
     if (m.illumination < 95) {
       // Draw proper terminator shadow matching the hero moon's half+ellipse technique.
       // Rotated by parallactic angle so terminator tilt matches real sky.
-      var pAngle = (moonPos.parallactic || 0) * Math.PI / 180;
+      var pAngle = (moonPos.parallactic || 0) * DEG_TO_RAD;
       ctx.save();
       ctx.globalAlpha = moonAlpha;
       // Rotate around moon center for parallactic tilt
@@ -3107,8 +3101,8 @@ var _PLANET_V0 = { Mercury: -0.61, Venus: -4.40, Mars: -1.60, Jupiter: -9.40, Sa
 var _VISIBLE_PLANETS = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'];
 
 function _planetVisibility(now) {
-  var JD = 2440587.5 + now.getTime() / 86400000;
-  var T = (JD - 2451545.0) / 36525;
+  var JD = _dateToJD(now.getTime());
+  var T = _jdToJulianCentury(JD);
   var earth = _planetPosition('Earth', T);
   var sunLon = (Math.atan2(-earth.y, -earth.x) * 180 / Math.PI + 360) % 360;
   var results = [];
@@ -3196,7 +3190,7 @@ function _renderMeteorShowers(now, moon) {
     for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
       var s = _METEOR_SHOWERS[si];
       var peakDate = new Date(yr, s.peak[0] - 1, s.peak[1]);
-      var daysUntil = Math.round((peakDate - now) / 86400000);
+      var daysUntil = Math.round((peakDate - now) / MS_PER_DAY);
       if (daysUntil >= -1 && daysUntil <= 365) {
         // Moon interference: check moon illumination on peak night
         var peakMoon = _moonPhase(peakDate);
@@ -3236,7 +3230,7 @@ function _renderMeteorShowers(now, moon) {
 // ── Celestial Events — conjunctions, oppositions, elongations ──
 
 function _scanCelestialEvents(now) {
-  var JD0 = 2440587.5 + now.getTime() / 86400000;
+  var JD0 = _dateToJD(now.getTime());
   var scanNames = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn'];
   var events = [];
 
@@ -3244,7 +3238,7 @@ function _scanCelestialEvents(now) {
   var DAYS = 400, STEP = 2;
   var cache = {};
   for (var d = 0; d <= DAYS; d += STEP) {
-    var T = (JD0 + d - 2451545.0) / 36525;
+    var T = _jdToJulianCentury(JD0 + d);
     cache[d] = { Earth: _planetPosition('Earth', T) };
     for (var pi = 0; pi < scanNames.length; pi++) {
       cache[d][scanNames[pi]] = _planetPosition(scanNames[pi], T);
@@ -3266,7 +3260,7 @@ function _scanCelestialEvents(now) {
       if (bestSep < 5) {
         events.push({ type: 'conjunction', planets: [scanNames[i], scanNames[j]],
           separation: bestSep, daysUntil: bestDay,
-          date: new Date(now.getTime() + bestDay * 86400000) });
+          date: new Date(now.getTime() + bestDay * MS_PER_DAY) });
       }
     }
   }
@@ -3287,7 +3281,7 @@ function _scanCelestialEvents(now) {
     }
     if (bestDiff < 8 && bestDay > 0) {
       events.push({ type: 'opposition', planet: outerPlanets[pi], daysUntil: bestDay,
-        date: new Date(now.getTime() + bestDay * 86400000) });
+        date: new Date(now.getTime() + bestDay * MS_PER_DAY) });
     }
   }
 
@@ -3310,7 +3304,7 @@ function _scanCelestialEvents(now) {
         var signedElong = ((geoLon - sunLon) * 180 / Math.PI + 540) % 360 - 180;
         var sky = signedElong > 0 ? 'evening' : 'morning';
         events.push({ type: 'elongation', planet: innerPlanets[pi], elongation: bestElong,
-          sky: sky, daysUntil: bestDay, date: new Date(now.getTime() + bestDay * 86400000) });
+          sky: sky, daysUntil: bestDay, date: new Date(now.getTime() + bestDay * MS_PER_DAY) });
         rising = false; bestElong = 0; foundCount++;
       }
       prevElong = elong;
@@ -4139,8 +4133,8 @@ function _calMonthCount(sys, year) {
 function _renderDeepTime(now) {
   var el = document.getElementById('almanac-deeptime');
   if (!el) return;
-  var JD = 2440587.5 + now.getTime() / 86400000;
-  var T = (JD - 2451545.0) / 36525; // Julian centuries from J2000
+  var JD = _dateToJD(now.getTime());
+  var T = _jdToJulianCentury(JD);
 
   // Axial tilt (obliquity of ecliptic)
   // IAU formula: ε = 23°26'21.448" - 46.8150"T - 0.00059"T² + 0.001813"T³
@@ -4503,9 +4497,7 @@ window.addEventListener('resize', function() {
   clearTimeout(_almanacResizeTimer);
   _almanacResizeTimer = setTimeout(function() {
     _initOrrery();
-    var stored = localStorage.getItem('zimi_almanac_location');
-    var lat = 34, lon = -new Date().getTimezoneOffset() / 60 * 15;
-    if (stored) { try { var loc = JSON.parse(stored); lat = loc.lat; lon = loc.lon; } catch(e) {} }
-    _initSkyScene(new Date(), lat, lon);
+    var loc = _getLocation();
+    _initSkyScene(new Date(), loc.lat, loc.lon);
   }, 200);
 });

@@ -8,6 +8,26 @@ HTTP server with JSON API + web UI for browsing offline knowledge archives.
 Requires: libzim (pip install libzim)
 Optional: PyMuPDF (pip install PyMuPDF) for PDF-in-ZIM text extraction
 
+Table of contents
+-----------------
+  1. Imports & Configuration .............. ~59
+  2. Password & Authentication ............ ~176
+  3. Rate Limiting, Metrics & Usage ....... ~300
+  4. Auto-Update .......................... ~448
+  5. Caches & State Management ............ ~550
+  6. History, Favorites & Collections ..... ~741
+  7. ZIM Loading & Title Index ............ ~823
+  8. Wikidata Q-ID Matching ............... ~1278
+  9. UI Templates & ZIM File Discovery .... ~1579
+  10. Cross-ZIM Resolution & Language ...... ~1708
+  11. Article Language Matching ............ ~1959
+  12. Content Reading & Search ............. ~2248
+  13. Content Serving & Previews ........... ~2661
+  14. ZIM Listing & Metadata Cache ......... ~3496
+  15. Library Management ................... ~3738
+  16. HTTP Request Handler ................. ~4347
+  17. CLI & Entry Points ................... ~5579
+
 Configuration:
   ZIM_DIR      Path to directory containing *.zim files (default: /zims)
   ZIMI_MANAGE  Set to "1" to enable library management endpoints
@@ -35,6 +55,10 @@ Usage (HTTP API):
   GET /resolve?domains=1               Domain→ZIM map for installed sources
   GET /health                          Health check
 """
+
+# ============================================================================
+# Imports & Configuration
+# ============================================================================
 
 import argparse
 import ast
@@ -148,6 +172,10 @@ def _migrate_data_files():
                     log.info("Migrated titles/ → %s", new_titles)
                 except OSError:
                     pass
+
+# ============================================================================
+# Password & Authentication
+# ============================================================================
 
 def _password_file():
     """Password file path inside ZIMI_DATA_DIR."""
@@ -269,6 +297,11 @@ def _check_manage_auth(handler):
         if hmac.compare_digest(auth[7:], stored_token):
             return None  # valid
         return True
+
+# ============================================================================
+# Rate Limiting, Metrics & Usage
+# ============================================================================
+
 MAX_CONTENT_LENGTH = 8000  # chars returned per article, keeps responses manageable for LLMs
 READ_MAX_LENGTH = 50000    # longer limit for the web UI reader
 MAX_SEARCH_LIMIT = 50      # upper bound for search results per ZIM to prevent resource exhaustion
@@ -276,7 +309,6 @@ MAX_CONTENT_BYTES = 10 * 1024 * 1024  # 10 MB — skip snippet extraction for en
 MAX_SERVE_BYTES = 50 * 1024 * 1024    # 50 MB — refuse to serve entries larger than this (prevents OOM)
 MAX_POST_BODY = 65536                 # max bytes accepted in POST requests (64KB — handles ~500 URLs for batch resolve)
 
-# ── Rate Limiting ──
 RATE_LIMIT = int(os.environ.get("ZIMI_RATE_LIMIT", "60"))  # API requests per minute per IP (0 = disabled)
 RATE_LIMIT_CONTENT = RATE_LIMIT * 20  # /w/ sub-resources: icons, CSS, images (1200/min default)
 _rate_buckets = {}       # {ip: [timestamps]} — API endpoints
@@ -311,7 +343,6 @@ def _check_rate_limit(ip, content=False):
             buckets.clear()
     return 0
 
-# ── Metrics ──
 _metrics = {
     "start_time": time.time(),
     "requests": {},       # {endpoint: count}
@@ -346,7 +377,6 @@ def _get_metrics():
             "endpoints": endpoints,
         }
 
-# ── Usage Stats (in-memory, resets on restart) ──
 _usage_stats = {
     "searches": 0,
     "article_reads": 0,
@@ -416,7 +446,10 @@ def _get_disk_usage():
     except (OSError, AttributeError):
         return {}
 
-# ── Auto-Update ──
+# ============================================================================
+# Auto-Update
+# ============================================================================
+
 # If ZIMI_AUTO_UPDATE env var is set, it's an admin override (UI locked).
 # If not set, the UI controls it and settings persist to disk.
 _AUTO_UPDATE_CONFIG = os.path.join(ZIMI_DATA_DIR, "auto_update.json")
@@ -434,6 +467,20 @@ def _load_auto_update_config():
             return cfg.get("enabled", False), cfg.get("frequency", "weekly")
     except (OSError, json.JSONDecodeError, KeyError):
         return False, "weekly"
+
+def _atomic_write_json(path, data, indent=None):
+    """Write JSON data to a file atomically via temp file + os.replace().
+
+    Used for all persistent state files to prevent corruption from
+    crashes or concurrent writes. indent=None for compact output.
+    """
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(data, f, ensure_ascii=False, indent=indent, separators=(",", ":") if indent is None else None)
+        os.replace(tmp, path)
+    except OSError as e:
+        log.warning("Atomic write failed for %s: %s", path, e)
 
 def _save_auto_update_config(enabled, freq):
     """Persist auto-update settings to disk."""
@@ -501,7 +548,10 @@ def _auto_update_loop(initial_delay=0):
                 break
             time.sleep(60)
 
-# ── Search Cache ──
+# ============================================================================
+# Caches & State Management
+# ============================================================================
+
 _search_cache = {}       # {key: {"result": ..., "created": float, "accesses": int}}
 _search_cache_lock = threading.Lock()
 SEARCH_CACHE_MAX = 100
@@ -535,7 +585,6 @@ def _search_cache_clear():
     with _search_cache_lock:
         _search_cache.clear()
 
-# ── Suggestion Cache (per-ZIM title search) ──
 _suggest_cache = {}       # {(query_lower, zim_name): {"results": [...], "ts": float}}
 _suggest_cache_lock = threading.Lock()
 _SUGGEST_CACHE_TTL = 900   # 15 minutes
@@ -601,9 +650,7 @@ def _suggest_cache_persist():
             if os.path.exists(_SUGGEST_CACHE_PATH):
                 os.remove(_SUGGEST_CACHE_PATH)
             return
-        with open(_SUGGEST_CACHE_PATH + ".tmp", "w") as f:
-            json.dump(data, f)
-        os.replace(_SUGGEST_CACHE_PATH + ".tmp", _SUGGEST_CACHE_PATH)
+        _atomic_write_json(_SUGGEST_CACHE_PATH, data)
         log.debug("Suggest cache persisted: %d entries", len(data))
     except Exception as e:
         log.debug("Suggest cache persist failed: %s", e)
@@ -692,8 +739,9 @@ def _categorize_zim(name):
     return None
 
 
-# ── History Log ──
-# Persistent event log for downloads, deletions, etc. Stored in ZIMI_DATA_DIR/history.json.
+# ============================================================================
+# History, Favorites & Collections
+# ============================================================================
 
 _history_lock = threading.Lock()
 _HISTORY_MAX = 500
@@ -722,20 +770,10 @@ def _append_history(event):
         entries.insert(0, event)
         if len(entries) > _HISTORY_MAX:
             entries = entries[:_HISTORY_MAX]
-        blob = json.dumps(entries, ensure_ascii=False)
     # Write outside lock — I/O can be slow on NAS spinning disks
-    path = _history_file_path()
-    tmp = path + ".tmp"
-    try:
-        with open(tmp, "w") as f:
-            f.write(blob)
-        os.replace(tmp, path)
-    except OSError as e:
-        log.warning("Failed to write history: %s", e)
+    _atomic_write_json(_history_file_path(), entries)
 
 
-# ── Collections & Favorites ──
-# Stored in .zimi_collections.json alongside ZIM files (persists across container rebuilds).
 _collections_lock = threading.Lock()
 
 def _collections_file_path():
@@ -756,17 +794,8 @@ def _load_collections():
 def _save_collections(data):
     """Save collections to disk (atomic write via rename)."""
     data["version"] = 1
-    path = _collections_file_path()
-    tmp = path + ".tmp"
-    try:
-        with open(tmp, "w") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(tmp, path)
-    except OSError as e:
-        log.warning("Could not save collections: %s", e)
+    _atomic_write_json(_collections_file_path(), data, indent=2)
 
-# ── ISO 639-3 → 639-1 language code mapping ──
-# ZIM files use ISO 639-3 (3-letter codes). APIs and web use ISO 639-1 (2-letter).
 _ISO639_3_TO_1 = {
     "eng": "en", "fra": "fr", "deu": "de", "spa": "es", "por": "pt",
     "rus": "ru", "zho": "zh", "jpn": "ja", "kor": "ko", "ara": "ar",
@@ -792,7 +821,10 @@ _LANG_NATIVE_NAMES = {
     "mul": "Multiple",
 }
 
-# ── Startup cache ──
+# ============================================================================
+# ZIM Loading & Title Index
+# ============================================================================
+
 # Opening ZIM archives is expensive (~0.3s each on NAS spinning disks).
 # Persistent cache in .zimi_cache.json enables instant startup on subsequent runs.
 # Archives are opened lazily (on first search/read) instead of all at once.
@@ -818,10 +850,14 @@ _fts_pool = {}       # {name: Archive}
 _fts_pool_lock = threading.Lock()
 _fts_zim_locks = {}  # {name: Lock}
 
-# ── SQLite Title Index ──
-# Persistent title index per ZIM for instant prefix search (<10ms vs 40s for large ZIMs).
-# Built in background on startup using dedicated Archive handles (no _zim_lock needed).
 import sqlite3
+
+# Asset extensions to skip when indexing — images, fonts, scripts, not articles
+_ASSET_EXTS = frozenset((
+    '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.avif',
+    '.css', '.js', '.json', '.woff', '.woff2', '.ttf', '.eot', '.otf',
+    '.mp3', '.mp4', '.ogg', '.wav', '.webm',
+))
 
 _TITLE_INDEX_DIR = os.path.join(ZIMI_DATA_DIR, "titles")
 _TITLE_INDEX_VERSION = "4"  # bump to force rebuild (v4: add FTS5 for multi-word search)
@@ -833,45 +869,52 @@ _FTS5_ENTRY_THRESHOLD = 2_000_000  # skip FTS5 build for ZIMs above this (can be
 _title_db_pool = {}       # {zim_name: sqlite3.Connection}
 _title_db_pool_lock = threading.Lock()
 
-def _get_title_db(zim_name):
-    """Get a pooled SQLite connection for a title index, or None if no index."""
-    with _title_db_pool_lock:
-        conn = _title_db_pool.get(zim_name)
+def _get_pooled_db(zim_name, pool, pool_lock, path_fn):
+    """Get a pooled SQLite connection, or None if no DB at path_fn(zim_name)."""
+    with pool_lock:
+        conn = pool.get(zim_name)
         if conn is not None:
             return conn
-    db_path = _title_index_path(zim_name)
+    db_path = path_fn(zim_name)
     if not os.path.exists(db_path):
         return None
     try:
         conn = sqlite3.connect(db_path, timeout=5, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA mmap_size=67108864")  # 64MB mmap for read perf
-        with _title_db_pool_lock:
+        with pool_lock:
             # Another thread may have raced us — use theirs, close ours
-            if zim_name in _title_db_pool:
+            if zim_name in pool:
                 conn.close()
-                return _title_db_pool[zim_name]
-            _title_db_pool[zim_name] = conn
+                return pool[zim_name]
+            pool[zim_name] = conn
         return conn
     except Exception:
         return None
 
-def _close_title_db(zim_name):
+def _close_pooled_db(zim_name, pool, pool_lock):
     """Close and remove a pooled connection (e.g. when index is rebuilt or ZIM deleted)."""
-    with _title_db_pool_lock:
-        conn = _title_db_pool.pop(zim_name, None)
+    with pool_lock:
+        conn = pool.pop(zim_name, None)
     if conn:
         try:
             conn.close()
         except Exception:
             pass
 
+def _get_title_db(zim_name):
+    """Get a pooled SQLite connection for a title index, or None if no index."""
+    return _get_pooled_db(zim_name, _title_db_pool, _title_db_pool_lock, _title_index_path)
+
+def _close_title_db(zim_name):
+    """Close and remove a pooled title index connection."""
+    _close_pooled_db(zim_name, _title_db_pool, _title_db_pool_lock)
+
 def _title_index_path(zim_name):
     return os.path.join(_TITLE_INDEX_DIR, f"{zim_name}.db")
 
-def _title_index_is_current(zim_name, zim_path):
-    """Check if title index exists, matches ZIM mtime, and is current schema version."""
-    db_path = _title_index_path(zim_name)
+def _index_is_current(db_path, zim_path, schema_version):
+    """Check if a SQLite index exists, matches ZIM mtime, and is current schema version."""
     if not os.path.exists(db_path):
         return False
     try:
@@ -881,11 +924,15 @@ def _title_index_is_current(zim_name, zim_path):
             row = conn.execute("SELECT value FROM meta WHERE key='zim_mtime'").fetchone()
             ver = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
             return (row is not None and row[0] == zim_mtime
-                    and ver is not None and ver[0] == _TITLE_INDEX_VERSION)
+                    and ver is not None and ver[0] == schema_version)
         finally:
             conn.close()
     except Exception:
         return False
+
+def _title_index_is_current(zim_name, zim_path):
+    """Check if title index exists, matches ZIM mtime, and is current schema version."""
+    return _index_is_current(_title_index_path(zim_name), zim_path, _TITLE_INDEX_VERSION)
 
 def _build_title_index(zim_name, zim_path):
     """Build SQLite title index for a ZIM file.
@@ -908,12 +955,6 @@ def _build_title_index(zim_name, zim_path):
         conn.execute("CREATE TABLE titles (path TEXT PRIMARY KEY, title TEXT, title_lower TEXT)")
         conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
 
-        # Asset extensions to skip — these are images, fonts, scripts, not articles
-        _asset_exts = frozenset((
-            '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.avif',
-            '.css', '.js', '.json', '.woff', '.woff2', '.ttf', '.eot', '.otf',
-            '.mp3', '.mp4', '.ogg', '.wav', '.webm',
-        ))
         batch = []
         total_entries = archive.all_entry_count
         for i in range(total_entries):
@@ -924,7 +965,7 @@ def _build_title_index(zim_name, zim_path):
                 path = entry.path
                 # Skip asset paths by extension
                 dot = path.rfind('.')
-                if dot != -1 and path[dot:].lower() in _asset_exts:
+                if dot != -1 and path[dot:].lower() in _ASSET_EXTS:
                     continue
                 title = entry.title
                 if not title:
@@ -1235,19 +1276,9 @@ def _clean_stale_title_indexes():
                 except OSError:
                     pass
 
-# ── Wikidata Q-ID Matching ──
-# Direct cross-language article matching via Wikidata identifiers.
-# Wikipedia ZIMs embed Q-IDs (e.g., Q629 for Oxygen) in each article's
-# authority control section. We use these for exact cross-language matching.
-#
-# Two-tier approach:
-#   1. SMALL ZIMs (< 200K entries): Full background scan at startup.
-#      Builds per-ZIM SQLite indexes for instant lookup.
-#   2. LARGE ZIMs (full Wikipedia): On-demand extraction + verification.
-#      When matching, read source article HTML → extract Q-ID → use heuristic
-#      search to find candidates in target → verify by reading candidate HTML.
-#      Cache every verified match for instant future lookups.
-#
+# ============================================================================
+# Wikidata Q-ID Matching
+# ============================================================================
 # This avoids a 24-hour upfront scan of the 115GB English Wikipedia while
 # still providing authoritative Q-ID matching on first use.
 
@@ -1273,54 +1304,17 @@ def _qid_cache_path():
 
 def _get_qid_db(zim_name):
     """Get a pooled SQLite connection for a Q-ID index, or None if no index."""
-    with _qid_db_pool_lock:
-        conn = _qid_db_pool.get(zim_name)
-        if conn is not None:
-            return conn
-    db_path = _qid_index_path(zim_name)
-    if not os.path.exists(db_path):
-        return None
-    try:
-        conn = sqlite3.connect(db_path, timeout=5, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA mmap_size=67108864")
-        with _qid_db_pool_lock:
-            if zim_name in _qid_db_pool:
-                conn.close()
-                return _qid_db_pool[zim_name]
-            _qid_db_pool[zim_name] = conn
-        return conn
-    except Exception:
-        return None
+    return _get_pooled_db(zim_name, _qid_db_pool, _qid_db_pool_lock, _qid_index_path)
 
 
 def _close_qid_db(zim_name):
-    with _qid_db_pool_lock:
-        conn = _qid_db_pool.pop(zim_name, None)
-    if conn:
-        try:
-            conn.close()
-        except Exception:
-            pass
+    """Close and remove a pooled Q-ID index connection."""
+    _close_pooled_db(zim_name, _qid_db_pool, _qid_db_pool_lock)
 
 
 def _qid_index_is_current(zim_name, zim_path):
     """Check if Q-ID index exists and matches ZIM mtime."""
-    db_path = _qid_index_path(zim_name)
-    if not os.path.exists(db_path):
-        return False
-    try:
-        zim_mtime = str(os.path.getmtime(zim_path))
-        conn = sqlite3.connect(db_path, timeout=5)
-        try:
-            row = conn.execute("SELECT value FROM meta WHERE key='zim_mtime'").fetchone()
-            ver = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
-            return (row is not None and row[0] == zim_mtime
-                    and ver is not None and ver[0] == _QID_INDEX_VERSION)
-        finally:
-            conn.close()
-    except Exception:
-        return False
+    return _index_is_current(_qid_index_path(zim_name), zim_path, _QID_INDEX_VERSION)
 
 
 def _build_qid_index(zim_name, zim_path):
@@ -1349,12 +1343,6 @@ def _build_qid_index(zim_name, zim_path):
         conn.execute("CREATE TABLE qids (path TEXT PRIMARY KEY, qid INTEGER)")
         conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
 
-        _asset_exts = frozenset((
-            '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.avif',
-            '.css', '.js', '.json', '.woff', '.woff2', '.ttf', '.eot', '.otf',
-            '.mp3', '.mp4', '.ogg', '.wav', '.webm',
-        ))
-
         batch = []
         total_entries = archive.all_entry_count
         log_interval = min(max(total_entries // 20, 5000), 25000)
@@ -1366,7 +1354,7 @@ def _build_qid_index(zim_name, zim_path):
                     continue
                 path = entry.path
                 dot = path.rfind('.')
-                if dot != -1 and path[dot:].lower() in _asset_exts:
+                if dot != -1 and path[dot:].lower() in _ASSET_EXTS:
                     continue
                 item = entry.get_item()
                 mimetype = item.mimetype or ""
@@ -1420,10 +1408,6 @@ def _build_qid_index(zim_name, zim_path):
         dt = time.time() - t0
         log.info("Q-ID index: built %s (%d Q-IDs from %d articles, %.1fs)", zim_name, count, scanned, dt)
 
-
-# ── On-demand Q-ID cache for large ZIMs ──
-# Single shared SQLite DB that grows organically as users browse articles.
-# Stores (zim_name, path) → qid mappings discovered during article viewing.
 
 _qid_cache_conn = None
 _qid_cache_lock = threading.Lock()
@@ -1593,7 +1577,9 @@ def _build_all_qid_indexes():
     log.info("Q-ID indexes: %d ready, %d large ZIMs use on-demand matching", current, skipped_large)
 
 
-# Load UI template from file (next to this script)
+# ============================================================================
+# UI Templates & ZIM File Discovery
+# ============================================================================
 _TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 try:
     with open(os.path.join(_TEMPLATE_DIR, "index.html")) as f:
@@ -1720,11 +1706,9 @@ def get_zim_files():
     return _zim_files_cache
 
 
-# ── Cross-ZIM Domain Map ──
-# Maps external domains → installed ZIM short names, enabling cross-ZIM navigation.
-# Built once at startup (or on cache reload), lives in memory.
-
-# Wellknown domains where filename ≠ domain (Wikimedia projects, etc.)
+# ============================================================================
+# Cross-ZIM Resolution & Language
+# ============================================================================
 
 _domain_zim_map = {}  # {domain: zim_name} — only installed ZIMs
 _xzim_refs = {}  # {(source_zim, target_zim): count} — cross-ZIM reference tracking
@@ -1910,9 +1894,6 @@ def _resolve_url_to_zim(url_str):
     return None
 
 
-# ── Query language detection ──
-# Two-tier, zero dependencies: script detection (instant) + stopword scoring (Latin scripts)
-
 _SCRIPT_RANGES = [
     # (start, end, lang_code)
     (0x4E00, 0x9FFF, "zh"),    # CJK Unified Ideographs
@@ -1975,6 +1956,10 @@ def _detect_query_language(query):
             best_lang = lang
     return best_lang
 
+
+# ============================================================================
+# Article Language Matching
+# ============================================================================
 
 def get_article_languages(zim_name, article_path):
     """Find available translations for an article across all installed ZIMs.
@@ -2261,6 +2246,10 @@ def _zim_quality_score(name):
     return score
 
 
+# ============================================================================
+# Content Reading & Search
+# ============================================================================
+
 def strip_html(text):
     """Remove HTML tags and decode entities, return plain text."""
     text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL)
@@ -2308,52 +2297,38 @@ def open_archive(path):
     return Archive(path)
 
 
-def _get_suggest_archive(name):
-    """Get a suggestion-dedicated Archive handle and per-ZIM lock.
+def _get_pooled_archive(name, pool, pool_lock, zim_locks, pool_label):
+    """Get a dedicated Archive handle and per-ZIM lock from a named pool.
 
-    Each ZIM gets its own Archive + Lock, allowing parallel suggestion searches
+    Each ZIM gets its own Archive + Lock, allowing parallel operations
     across different ZIMs while keeping each ZIM's C++ object single-threaded.
     """
-    if name in _suggest_pool:
-        return _suggest_pool[name], _suggest_zim_locks[name]
+    if name in pool:
+        return pool[name], zim_locks[name]
     zims = get_zim_files()
     if name in zims:
-        with _suggest_pool_lock:
-            if name in _suggest_pool:
-                return _suggest_pool[name], _suggest_zim_locks[name]
+        with pool_lock:
+            if name in pool:
+                return pool[name], zim_locks[name]
             try:
                 archive = open_archive(zims[name])
             except (RuntimeError, Exception) as e:
-                log.warning(f"Suggest pool: skipping corrupt ZIM '{name}': {e}")
+                log.warning(f"{pool_label} pool: skipping corrupt ZIM '{name}': {e}")
                 return None, None
-            _suggest_pool[name] = archive
-            _suggest_zim_locks[name] = threading.Lock()
-            return archive, _suggest_zim_locks[name]
+            pool[name] = archive
+            zim_locks[name] = threading.Lock()
+            return archive, zim_locks[name]
     return None, None
+
+
+def _get_suggest_archive(name):
+    """Get a suggestion-dedicated Archive handle and per-ZIM lock."""
+    return _get_pooled_archive(name, _suggest_pool, _suggest_pool_lock, _suggest_zim_locks, "Suggest")
 
 
 def _get_fts_archive(name):
-    """Get an FTS-dedicated Archive handle and per-ZIM lock.
-
-    Same pattern as _get_suggest_archive: each ZIM gets its own Archive + Lock,
-    allowing parallel Xapian full-text searches across different ZIMs.
-    """
-    if name in _fts_pool:
-        return _fts_pool[name], _fts_zim_locks[name]
-    zims = get_zim_files()
-    if name in zims:
-        with _fts_pool_lock:
-            if name in _fts_pool:
-                return _fts_pool[name], _fts_zim_locks[name]
-            try:
-                archive = open_archive(zims[name])
-            except (RuntimeError, Exception) as e:
-                log.warning(f"FTS pool: skipping corrupt ZIM '{name}': {e}")
-                return None, None
-            _fts_pool[name] = archive
-            _fts_zim_locks[name] = threading.Lock()
-            return archive, _fts_zim_locks[name]
-    return None, None
+    """Get an FTS-dedicated Archive handle and per-ZIM lock."""
+    return _get_pooled_archive(name, _fts_pool, _fts_pool_lock, _fts_zim_locks, "FTS")
 
 
 def suggest_search_zim(archive, query_str, limit=5):
@@ -2683,6 +2658,10 @@ def read_article(zim_name, article_path, max_length=MAX_CONTENT_LENGTH):
     except KeyError:
         return {"error": f"Article '{article_path}' not found in {zim_name}"}
 
+
+# ============================================================================
+# Content Serving & Previews
+# ============================================================================
 
 def get_catalog(zim_name):
     """Get the document catalog for zimgit-style ZIMs (PDF collections with metadata)."""
@@ -3515,6 +3494,10 @@ def suggest(query_str, zim_name=None, limit=10):
     return all_suggestions
 
 
+# ============================================================================
+# ZIM Listing & Metadata Cache
+# ============================================================================
+
 def list_zims(use_cache=True):
     """List all available ZIM files with metadata. Uses startup cache when available."""
     global _zim_list_cache
@@ -3583,14 +3566,7 @@ def _save_disk_cache(file_cache):
         "generated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "files": file_cache,
     }
-    try:
-        path = _cache_file_path()
-        tmp = path + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(tmp, path)
-    except OSError as e:
-        log.warning("Could not save cache: %s", e)
+    _atomic_write_json(_cache_file_path(), data, indent=2)
 
 
 def _extract_zim_date(filename):
@@ -3760,7 +3736,9 @@ def load_cache(force=False):
     _build_domain_zim_map()
 
 
-# ── Library Management (gated by ZIMI_MANAGE=1) ──
+# ============================================================================
+# Library Management
+# ============================================================================
 
 _active_downloads = {}  # {id: {"url": ..., "filename": ..., "pid": ..., "started": ...}}
 _download_counter = 0
@@ -4367,7 +4345,9 @@ def _get_downloads():
     return results
 
 
-# ── HTTP API ──
+# ============================================================================
+# HTTP Request Handler
+# ============================================================================
 
 class ZimHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -5597,7 +5577,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         log.info(format, *args)
 
 
-# ── CLI ──
+# ============================================================================
+# CLI & Entry Points
+# ============================================================================
 
 def main():
     parser = argparse.ArgumentParser(description="ZIM Knowledge Base Reader")
