@@ -168,11 +168,16 @@ def _is_legacy_hash(stored):
     """Detect old-style raw SHA-256 hashes (no salt separator)."""
     return stored and "$" not in stored and len(stored) == 64
 
+_env_pw_hash_cache = None  # cached hash for ZIMI_MANAGE_PASSWORD env var
+
 def _get_manage_password_hash():
     """Get stored password hash from env var or file."""
+    global _env_pw_hash_cache
     pw = os.environ.get("ZIMI_MANAGE_PASSWORD", "")
     if pw:
-        return _hash_pw(pw)  # env var stores plaintext, hash on read
+        if _env_pw_hash_cache is None:
+            _env_pw_hash_cache = _hash_pw(pw)  # hash once with stable salt
+        return _env_pw_hash_cache
     try:
         with open(_password_file()) as f:
             return f.read().strip()
@@ -186,30 +191,84 @@ def _set_manage_password(pw):
         f.write(_hash_pw(pw) if pw else "")
     log.info("Manage password %s", "set" if pw else "cleared")
 
+def _api_token_file():
+    """API token file path inside ZIMI_DATA_DIR."""
+    return os.path.join(ZIMI_DATA_DIR, "api_token")
+
+def _get_api_token():
+    """Get stored API token (plaintext, for constant-time comparison)."""
+    env_token = os.environ.get("ZIMI_API_TOKEN", "")
+    if env_token:
+        return env_token
+    try:
+        with open(_api_token_file()) as f:
+            return f.read().strip()
+    except (FileNotFoundError, OSError):
+        return ""
+
+def _generate_api_token():
+    """Generate a new random API token, save to disk, return it."""
+    import secrets
+    token = secrets.token_urlsafe(32)
+    with open(_api_token_file(), "w") as f:
+        f.write(token)
+    log.info("API token generated")
+    return token
+
+def _revoke_api_token():
+    """Delete the API token file."""
+    try:
+        os.remove(_api_token_file())
+        log.info("API token revoked")
+    except FileNotFoundError:
+        pass
+
 def _check_manage_auth(handler):
-    """Check authorization for manage endpoints. Returns True if unauthorized."""
-    stored = _get_manage_password_hash()
-    if not stored:
-        return None  # no password set, allow access
-    auth = handler.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        return True  # unauthorized
-    candidate = auth[7:]
-    # Migrate legacy SHA-256 hashes: verify with old method, then upgrade in place
-    if _is_legacy_hash(stored):
-        old_hash = hashlib.sha256(candidate.encode()).hexdigest()
-        if hmac.compare_digest(old_hash, stored):
-            _set_manage_password(candidate)  # upgrade to PBKDF2
-            log.info("Migrated password hash from SHA-256 to PBKDF2")
-            return None  # valid
-        return True  # unauthorized
-    # PBKDF2 verification
-    if "$" not in stored:
+    """Check authorization for manage endpoints. Returns True if unauthorized.
+
+    Auth model:
+    - Browser (same-origin): password check if password is set, otherwise open
+    - API (everything else): ALWAYS requires a valid Bearer token
+
+    Browser detection uses Sec-Fetch-Site header (set by all modern browsers,
+    can't be spoofed by JavaScript — it's a "forbidden" header).
+    """
+    sec_fetch = handler.headers.get("Sec-Fetch-Site", "")
+    is_browser = sec_fetch == "same-origin"
+
+    if is_browser:
+        # Browser request — check password if one is set, otherwise allow
+        stored_pw = _get_manage_password_hash()
+        if not stored_pw:
+            return None  # no password, browser access is open
+        auth = handler.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return True
+        candidate = auth[7:]
+        if _is_legacy_hash(stored_pw):
+            old_hash = hashlib.sha256(candidate.encode()).hexdigest()
+            if hmac.compare_digest(old_hash, stored_pw):
+                _set_manage_password(candidate)
+                log.info("Migrated password hash from SHA-256 to PBKDF2")
+                return None
+            return True
+        if "$" not in stored_pw:
+            return True
+        salt = stored_pw.split("$")[0]
+        if hmac.compare_digest(_hash_pw(candidate, salt), stored_pw):
+            return None
         return True
-    salt = stored.split("$")[0]
-    if hmac.compare_digest(_hash_pw(candidate, salt), stored):
-        return None  # valid
-    return True  # unauthorized
+    else:
+        # API request — always require a valid token
+        stored_token = _get_api_token()
+        if not stored_token:
+            return True  # no token generated yet — API access denied
+        auth = handler.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return True
+        if hmac.compare_digest(auth[7:], stored_token):
+            return None  # valid
+        return True
 MAX_CONTENT_LENGTH = 8000  # chars returned per article, keeps responses manageable for LLMs
 READ_MAX_LENGTH = 50000    # longer limit for the web UI reader
 MAX_SEARCH_LIMIT = 50      # upper bound for search results per ZIM to prevent resource exhaustion
@@ -3737,12 +3796,19 @@ def _fetch_thumb(url):
             ct = f.read().strip() or "image/png"
         with open(cache_path, "rb") as f:
             return f.read(), ct
-    # Fetch from Kiwix
+    # Fetch from Kiwix (no redirects to prevent SSRF)
     try:
+        class _NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                raise urllib.error.HTTPError(req.full_url, code, "Redirect blocked", headers, fp)
+        opener = urllib.request.build_opener(_NoRedirect)
         req = urllib.request.Request(url, headers={"User-Agent": "Zimi/1.0"})
-        with urllib.request.urlopen(req, timeout=10, context=SSL_CTX) as resp:
-            data = resp.read()
+        with opener.open(req, timeout=10) as resp:
             ct = resp.headers.get("Content-Type", "image/png")
+            # Only serve image content types
+            if not ct.startswith("image/"):
+                return None, None
+            data = resp.read()
         # Write to disk cache
         with open(cache_path, "wb") as f:
             f.write(data)
@@ -4337,10 +4403,11 @@ class ZimHandler(BaseHTTPRequestHandler):
         def param(key, default=None):
             return params.get(key, [default])[0]
 
-        # Rate limit: API endpoints at RATE_LIMIT, /w/ content at 20x higher
+        # Rate limit: API endpoints at RATE_LIMIT, /w/ content at 20x, /manage/ at base rate
         rate_limited_paths = ("/search", "/read", "/suggest", "/snippet", "/random")
         is_w_content = parsed.path.startswith("/w/")
-        if parsed.path in rate_limited_paths or is_w_content:
+        is_manage = parsed.path.startswith("/manage/")
+        if parsed.path in rate_limited_paths or is_w_content or is_manage:
             retry_after = _check_rate_limit(self._client_ip(), content=is_w_content)
             if retry_after > 0:
                 with _metrics_lock:
@@ -4731,9 +4798,11 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path.startswith("/manage/"):
                 if not ZIMI_MANAGE:
                     return self._json(404, {"error": "Library management is disabled. Set ZIMI_MANAGE=1 to enable."})
-                # has-password is public so the UI knows whether to prompt
+                # Public auth info so the UI knows what to prompt
                 if parsed.path == "/manage/has-password":
                     return self._json(200, {"has_password": bool(_get_manage_password_hash())})
+                if parsed.path == "/manage/has-token":
+                    return self._json(200, {"has_token": bool(_get_api_token())})
                 if _check_manage_auth(self):
                     return self._json(401, {"error": "unauthorized", "needs_password": True})
 
@@ -4861,7 +4930,7 @@ class ZimHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             traceback.print_exc()
-            return self._json(500, {"error": str(e)})
+            return self._json(500, {"error": "Internal server error"})
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -4888,6 +4957,17 @@ class ZimHandler(BaseHTTPRequestHandler):
                     new_pw = data.get("password", "").strip()
                     _set_manage_password(new_pw)
                     return self._json(200, {"status": "password set" if new_pw else "password cleared"})
+                # API token management — requires existing auth (password or token)
+                if parsed.path == "/manage/generate-token":
+                    if _check_manage_auth(self):
+                        return self._json(401, {"error": "unauthorized", "needs_password": True})
+                    token = _generate_api_token()
+                    return self._json(200, {"token": token})
+                if parsed.path == "/manage/revoke-token":
+                    if _check_manage_auth(self):
+                        return self._json(401, {"error": "unauthorized", "needs_password": True})
+                    _revoke_api_token()
+                    return self._json(200, {"status": "token revoked"})
                 if _check_manage_auth(self):
                     return self._json(401, {"error": "unauthorized", "needs_password": True})
 
@@ -5112,7 +5192,7 @@ class ZimHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             traceback.print_exc()
-            return self._json(500, {"error": str(e)})
+            return self._json(500, {"error": "Internal server error"})
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
@@ -5141,7 +5221,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._json(404, {"error": "not found"})
         except Exception as e:
             traceback.print_exc()
-            return self._json(500, {"error": str(e)})
+            return self._json(500, {"error": "Internal server error"})
 
     def _serve_zim_icon(self, zim_name, archive):
         """Serve the ZIM's 48x48 illustration as a PNG."""
@@ -5336,6 +5416,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "same-origin")
         if cache:
             self.send_header("Cache-Control", cache)
         if etag:
@@ -5680,6 +5762,11 @@ def main():
             _auto_update_thread = threading.Thread(target=_auto_update_loop, daemon=True)
             _auto_update_thread.start()
         print(f"Endpoints: /search, /read, /suggest, /list, /health")
+        if ZIMI_MANAGE:
+            if _get_manage_password_hash():
+                log.info("Library management enabled (password protected)")
+            else:
+                log.info("Library management enabled (no password — set one in Settings for public servers)")
         server = ThreadingHTTPServer(("0.0.0.0", args.port), ZimHandler)
         try:
             server.serve_forever()
