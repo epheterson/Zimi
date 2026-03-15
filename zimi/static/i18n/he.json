@@ -90,6 +90,7 @@
   "failed_search_catalog": "החיפוש בקטלוג נכשל",
   "no_matching_zims": "אין קבצי ZIM תואמים",
   "download": "הורדה",
+  "get_lang_content": "הורד תוכן ב{lang}",
   "download_size": "הורדה {size}",
   "starting": "מתחיל...",
   "n_queued": "{n} בתור",

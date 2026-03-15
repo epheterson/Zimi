@@ -90,6 +90,7 @@
   "failed_search_catalog": "Échec de la recherche dans le catalogue",
   "no_matching_zims": "Aucun ZIM correspondant",
   "download": "Télécharger",
+  "get_lang_content": "Obtenir du contenu en {lang}",
   "download_size": "Télécharger {size}",
   "starting": "Démarrage...",
   "n_queued": "{n} en attente",

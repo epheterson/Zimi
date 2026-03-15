@@ -90,6 +90,7 @@
   "failed_search_catalog": "فشل البحث في الفهرس",
   "no_matching_zims": "لا توجد ملفات ZIM مطابقة",
   "download": "تحميل",
+  "get_lang_content": "الحصول على محتوى {lang}",
   "download_size": "تحميل {size}",
   "starting": "جارٍ البدء...",
   "n_queued": "{n} في الانتظار",

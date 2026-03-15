@@ -90,6 +90,7 @@
   "failed_search_catalog": "搜索目录失败",
   "no_matching_zims": "没有匹配的 ZIM",
   "download": "下载",
+  "get_lang_content": "获取{lang}内容",
   "download_size": "下载 {size}",
   "starting": "启动中...",
   "n_queued": "{n} 个排队中",

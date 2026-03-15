@@ -90,6 +90,7 @@
   "failed_search_catalog": "Katalogsuche fehlgeschlagen",
   "no_matching_zims": "Keine passenden ZIMs",
   "download": "Herunterladen",
+  "get_lang_content": "{lang}-Inhalte herunterladen",
   "download_size": "{size} herunterladen",
   "starting": "Wird gestartet...",
   "n_queued": "{n} in Warteschlange",

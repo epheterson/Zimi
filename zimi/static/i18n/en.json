@@ -109,6 +109,7 @@
   "no_matching_zims": "No matching ZIMs",
 
   "download": "Download",
+  "get_lang_content": "Get {lang} content",
   "download_size": "Download {size}",
   "starting": "Starting...",
   "n_queued": "{n} queued",

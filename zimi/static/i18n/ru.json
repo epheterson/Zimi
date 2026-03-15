@@ -90,6 +90,7 @@
   "failed_search_catalog": "Ошибка поиска в каталоге",
   "no_matching_zims": "Нет подходящих ZIM",
   "download": "Скачать",
+  "get_lang_content": "Загрузить контент на {lang}",
   "download_size": "Скачать {size}",
   "starting": "Запуск...",
   "n_queued": "{n} в очереди",

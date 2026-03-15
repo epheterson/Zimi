@@ -328,14 +328,11 @@
   .lang-dropdown-item .check { font-size: 14px; }
   .lang-dropdown-item .ld-meta { font-size: 11px; color: var(--text2); white-space: nowrap; }
   .lang-dropdown-item:hover .ld-meta { color: inherit; }
-  .ld-dl-btn {
-    width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--border);
-    background: none; color: var(--text3); cursor: pointer; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
-    padding: 0;
-  }
-  .ld-dl-btn:hover { border-color: var(--amber); color: var(--amber); background: var(--amber-glow); }
-  .ld-dl-btn svg { width: 12px; height: 12px; }
+  .ld-dl-section { padding: 2px 0 4px; }
+  .ld-dl-option { font-size: 12px; color: var(--text3); }
+  .ld-dl-option:hover { color: var(--amber); }
+  .ld-dl-option svg { width: 12px; height: 12px; opacity: 0.5; flex-shrink: 0; }
+  .ld-dl-option:hover svg { opacity: 1; color: var(--amber); }
   .lang-dropdown-item .ld-switch { display: flex; align-items: center; }
   .ld-switch-icon { opacity: 0.5; transition: opacity 0.15s; }
   .lang-dropdown-item.switchable:hover .ld-switch-icon { opacity: 1; color: var(--amber); }
@@ -7597,7 +7594,8 @@ function _renderLangDropdown() {
     h += '<div class="ld-divider"></div>';
   }
 
-  // All languages — click name to switch UI language, click download icon to get ZIM
+  // All languages — click name to switch UI language
+  var downloadable = []; // langs with no installed ZIMs (for bottom section)
   for (var i = 0; i < _AVAILABLE_LANGS.length; i++) {
     var l = _AVAILABLE_LANGS[i];
     var active = l.code === _currentLang ? ' active' : '';
@@ -7605,18 +7603,27 @@ function _renderLangDropdown() {
     var right = '';
     if (l.code === _currentLang) {
       right = '<span class="check">\u2713</span>';
-      // Show download button only when reading an article (so we know which project to match)
-      if (readerOpen && manageEnabled && count === 0) {
-        right += '<button class="ld-dl-btn" onclick="event.stopPropagation();_showLangDownloadSection(\'' + l.code + '\')" title="' + escAttr(t('download')) + '">' + dlIcon + '</button>';
-      }
     } else if (count > 0) {
       right = '<span class="ld-meta">' + count + '</span>';
-    } else if (readerOpen && manageEnabled && count === 0) {
-      // No ZIM for this lang — show download button (only when reading, so project is known)
-      right = '<button class="ld-dl-btn" onclick="event.stopPropagation();_showLangDownloadSection(\'' + l.code + '\')" title="' + escAttr(t('download')) + '">' + dlIcon + '</button>';
     }
+    if (manageEnabled && count === 0) downloadable.push(l);
     h += '<div class="lang-dropdown-item' + active + '" onclick="_selectLang(\'' + l.code + '\')">' +
       '<span>' + esc(l.name) + '</span>' + right + '</div>';
+  }
+
+  // Bottom section: download options for languages without installed ZIMs
+  // TODO: Future enhancement — download inline within dropdown instead of navigating to Manage.
+  //       See _showLangDownloadSection() (preserved below) for the catalog-matching logic.
+  if (downloadable.length > 0) {
+    h += '<div class="ld-divider"></div>';
+    h += '<div class="ld-dl-section">';
+    for (var di = 0; di < downloadable.length; di++) {
+      var dl = downloadable[di];
+      h += '<div class="lang-dropdown-item ld-dl-option" onclick="_langDropdownDownload(\'' + dl.code + '\')">' +
+        '<span>' + esc(t('get_lang_content').replace('{lang}', dl.name)) + '</span>' +
+        dlIcon + '</div>';
+    }
+    h += '</div>';
   }
   dd.innerHTML = h;
 }
@@ -7658,6 +7665,20 @@ async function _selectLang(code) {
   _closeLangDropdown();
 }
 
+function _langDropdownDownload(langCode) {
+  // Navigate to Manage → Catalog tab, filtered to this language
+  _closeLangDropdown();
+  var catalogLang = _UI_TO_CATALOG[langCode] || langCode;
+  _catalogCache = null;
+  _catalogCacheLang = '';
+  manageTab = 'browse';
+  _pendingDrill = { catKey: 'wikipedia', lang: catalogLang };
+  enterManage();
+}
+
+// TODO: Re-enable inline download in dropdown once UX is designed.
+//       This function matches catalog items for a language and renders download variants
+//       directly in the dropdown. Preserved for future in-page download flow.
 function _showLangDownloadSection(langCode) {
   var dd = document.getElementById('lang-dropdown');
   var old = dd.querySelector('.ld-section');
