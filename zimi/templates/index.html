@@ -6773,7 +6773,7 @@ function _pdfViewerUrl(pdfUrl) {
   // serves raw content without needing ?raw=1 (that's only for browser navigation).
   // Don't append ?raw=1 — it gets parsed as a separate query param by URLSearchParams
   // and breaks the file path extraction in PDF.js's parseQueryString.
-  return '/static/pdfjs/web/viewer.html?file=' + encodeURIComponent(pdfUrl);
+  return '/static/pdfjs/web/viewer.html?file=' + pdfUrl;
 }
 function _articleUrl(zim, path) {
   return '/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/');
