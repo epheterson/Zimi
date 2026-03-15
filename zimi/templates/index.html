@@ -1967,10 +1967,14 @@ function _catalogMatchesForLang(langCode) {
     return (it.language || '').toLowerCase() === catLang;
   });
 
-  // Only show _all variants of the same project (e.g. wikipedia_es_all)
+  // Only show _all variants of the same project (e.g. wikipedia_es_all), deduplicated
+  var seen = {};
   return allForLang.filter(function(it) {
     var n = (it.name || '').toLowerCase();
-    return n.indexOf(project) === 0 && /_all/.test(n);
+    if (seen[n]) return false;
+    var match = n.indexOf(project) === 0 && /_all/.test(n);
+    if (match) seen[n] = true;
+    return match;
   });
 }
 
@@ -7413,7 +7417,7 @@ function _renderLangDropdown() {
     for (var si = 0; si < switchKeys.length; si++) {
       var sk = switchKeys[si];
       var sl = _AVAILABLE_LANGS.find(function(ll) { return ll.code === sk; });
-      var sName = sl ? sl.name : sk;
+      var sName = sl ? sl.name : (_NATIVE_LANG_NAMES[sk] || sk);
       var targetPath = switchMap[sk].path.replace(/^A\//, '').replace(/_/g, ' ');
       try { targetPath = decodeURIComponent(targetPath); } catch(e) {}
       h += '<div class="lang-dropdown-item switchable" onclick="_selectLangAndSwitch(\'' + sk + '\',\'' + escJs(switchMap[sk].zim) + '\',\'' + escJs(switchMap[sk].path) + '\')">' +
@@ -7533,7 +7537,7 @@ function _showLangDownloadSection(langCode) {
 
   var section = document.createElement('div');
   section.className = 'ld-section';
-  var langName = (_AVAILABLE_LANGS.find(function(l) { return l.code === langCode; }) || {}).name || langCode;
+  var langName = (_AVAILABLE_LANGS.find(function(l) { return l.code === langCode; }) || {}).name || _NATIVE_LANG_NAMES[langCode] || langCode;
   // Find the main group title (first group)
   var mainTitle = groups[names[0]] ? groups[names[0]].title : langName;
   var sh = '<div class="ld-section-title">' + esc(mainTitle) + '</div>';
