@@ -737,6 +737,89 @@ test.describe('9 — UI Polish', () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
+// 9b. PDF VIEWER
+// ═════════════════════════════════════════════════════════════════════════════
+
+test.describe('9b — PDF Viewer', () => {
+  test('9b.1 — _pdfViewerUrl does not double-encode percent-encoded paths', async ({ page }) => {
+    await waitForApp(page);
+    // _articleUrl encodes "Water (1).pdf" → "Water%20(1).pdf"
+    // _pdfViewerUrl must NOT re-encode %20 → %2520
+    const result = await page.evaluate(() => {
+      const articleUrl = _articleUrl('zimgit-water', 'files/Water (1).pdf');
+      const viewerUrl = _pdfViewerUrl(articleUrl);
+      return { articleUrl, viewerUrl };
+    });
+    // articleUrl should have %20 (encoded space)
+    expect(result.articleUrl).toContain('Water%20(1).pdf');
+    // viewerUrl should preserve %20, NOT double-encode to %2520
+    expect(result.viewerUrl).toContain('Water%20(1).pdf');
+    expect(result.viewerUrl).not.toContain('%2520');
+    // Should start with the viewer path
+    expect(result.viewerUrl).toMatch(/^\/static\/pdfjs\/web\/viewer\.html\?file=/);
+  });
+
+  test('9b.2 — PDF with spaces in filename fetches 200 (not 404)', async ({ page }) => {
+    // Verify the server serves a PDF whose path contains spaces.
+    // Double-encoding (%2520) would cause a 404; correct encoding (%20) returns 200.
+    // Also verifies _pdfViewerUrl produces the correct URL via the SPA's own functions.
+    await waitForApp(page);
+    const result = await page.evaluate(async () => {
+      // Build URL the same way the SPA does (encodes space → %20)
+      const url = _articleUrl('zimgit-water', 'files/Water (1).pdf');
+      const viewerUrl = _pdfViewerUrl(url);
+      const fileParam = viewerUrl.split('?file=')[1];
+      // Fetch as PDF.js XHR would
+      try {
+        const res = await fetch(fileParam);
+        return {
+          url: fileParam,
+          status: res.status,
+          contentType: res.headers.get('content-type'),
+          hasDoubleEncoding: fileParam.includes('%2520'),
+        };
+      } catch (e) { return { url: fileParam, error: e.message }; }
+    });
+    if (result.error) { test.skip(true, result.error); return; }
+    if (result.status === 404 && !result.hasDoubleEncoding) {
+      test.skip(true, 'zimgit-water not installed'); return;
+    }
+    expect(result.hasDoubleEncoding).toBe(false);
+    expect(result.status).toBe(200);
+    expect(result.contentType).toContain('pdf');
+  });
+
+  test('9b.3 — PDF viewer URL preserves encoding (no double-encode)', async ({ page }) => {
+    await waitForApp(page);
+    // _pdfViewerUrl must pass the URL through unchanged.
+    // Double-encoding turns %20→%2520, %26→%2526, etc.
+    const results = await page.evaluate(() => {
+      const cases = [
+        { path: 'files/Water (1).pdf', desc: 'space+parens' },
+        { path: 'files/Guide & Manual.pdf', desc: 'ampersand' },
+        { path: 'files/Simple.pdf', desc: 'no special chars' },
+      ];
+      return cases.map(c => {
+        const articleUrl = _articleUrl('test-zim', c.path);
+        const viewerUrl = _pdfViewerUrl(articleUrl);
+        const fileParam = viewerUrl.split('?file=')[1];
+        return {
+          desc: c.desc,
+          articleUrl,
+          fileParam,
+          // The file= param should exactly equal the articleUrl
+          preserved: fileParam === articleUrl,
+        };
+      });
+    });
+
+    for (const r of results) {
+      expect(r.preserved, `${r.desc}: _pdfViewerUrl altered the URL — got "${r.fileParam}" expected "${r.articleUrl}"`).toBe(true);
+    }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
 // 10. VISUAL SCREENSHOTS — Full-page captures for manual review
 // ═════════════════════════════════════════════════════════════════════════════
 
