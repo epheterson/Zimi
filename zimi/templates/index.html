@@ -1648,18 +1648,10 @@ async function setLanguage(lang) {
 var _suppressLangBanner = false;
 
 function _checkReaderLangBanner() {
+  // Language switching is handled entirely via the language dropdown now.
+  // No auto-banner — it was confusing and redundant.
   var old = document.getElementById('lang-banner');
   if (old) old.remove();
-  if (_suppressLangBanner) return; // Caller is handling navigation directly
-  if (!readerOpen || !currentArticle) return;
-
-  var lang = _currentLang;
-  // Don't show if dismissed for this language this session
-  if (sessionStorage.getItem('zimi_lang_banner_' + lang) === '0') return;
-  // Check if the current ZIM is already in the user's language
-  var zimInfo = zimsCache && zimsCache.find(function(z) { return z.name === currentArticle.zim; });
-  if (zimInfo && zimInfo.language === lang) return; // Already reading in their language
-  _buildLangBanner(lang, zimInfo);
 }
 
 // Find best installed ZIM for a target language, preferring same project as source
@@ -7566,23 +7558,19 @@ function _renderLangDropdown() {
   var dlIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>';
 
   var inReader = readerOpen && currentArticle;
-  var switchKeys = Object.keys(switchMap).filter(function(k) { return k !== _currentLang; });
 
-  // When reading an article with cross-language matches: show them first
-  if (inReader && switchKeys.length > 0) {
-    var articleTitle = currentArticle.title || currentArticle.path.replace(/^A\//, '').replace(/_/g, ' ');
-    h += '<div class="ld-group-header">' + esc(articleTitle) + '</div>';
-    for (var si = 0; si < switchKeys.length; si++) {
-      var sk = switchKeys[si];
-      var sl = _AVAILABLE_LANGS.find(function(ll) { return ll.code === sk; });
-      var sName = sl ? sl.name : (_NATIVE_LANG_NAMES[sk] || sk);
-      var targetPath = switchMap[sk].path.replace(/^A\//, '').replace(/_/g, ' ');
-      try { targetPath = decodeURIComponent(targetPath); } catch(e) {}
-      h += '<div class="lang-dropdown-item switchable" onclick="_selectLangAndSwitch(\'' + sk + '\',\'' + escJs(switchMap[sk].zim) + '\',\'' + escJs(switchMap[sk].path) + '\')">' +
-        '<span class="ld-switch-label"><span class="ld-switch-lang">' + esc(sName) + '</span>' +
-        '<span class="ld-switch-article">' + esc(targetPath) + '</span></span>' +
-        '<span class="ld-switch">' + switchIcon + '</span></div>';
-    }
+  // When reading: if article exists in current UI language's ZIM, show one switch option
+  var zimInfo = inReader && zimsCache && zimsCache.find(function(z) { return z.name === currentArticle.zim; });
+  var articleLang = zimInfo ? zimInfo.language : null;
+  if (inReader && articleLang && articleLang !== _currentLang && switchMap[_currentLang]) {
+    var sl = _AVAILABLE_LANGS.find(function(ll) { return ll.code === _currentLang; });
+    var sName = sl ? sl.name : _currentLang;
+    var targetPath = switchMap[_currentLang].path.replace(/^A\//, '').replace(/_/g, ' ');
+    try { targetPath = decodeURIComponent(targetPath); } catch(e) {}
+    h += '<div class="lang-dropdown-item switchable" onclick="_selectLangAndSwitch(\'' + _currentLang + '\',\'' + escJs(switchMap[_currentLang].zim) + '\',\'' + escJs(switchMap[_currentLang].path) + '\')">' +
+      '<span class="ld-switch-label"><span class="ld-switch-lang">' + esc(tH('view_in_lang', {lang: sName})) + '</span>' +
+      '<span class="ld-switch-article">' + esc(targetPath) + '</span></span>' +
+      '<span class="ld-switch">' + switchIcon + '</span></div>';
     h += '<div class="ld-divider"></div>';
   }
 
@@ -7595,8 +7583,6 @@ function _renderLangDropdown() {
     var right = '';
     if (l.code === _currentLang) {
       right = '<span class="check">\u2713</span>';
-    } else if (count > 0) {
-      right = '<span class="ld-meta">' + count + '</span>';
     }
     if (manageEnabled && count === 0) downloadable.push(l);
     h += '<div class="lang-dropdown-item' + active + '" onclick="_selectLang(\'' + l.code + '\')">' +
@@ -7634,11 +7620,15 @@ async function _selectLangAndSwitch(code, zim, path) {
 async function _selectLang(code) {
   // If already on this language, just close
   if (code === _currentLang) { _closeLangDropdown(); return; }
-  _dismissLangSwitchPanel();
   _langDropdownLocked = true;
-  // Switch UI language (suppress banner — user is using the dropdown directly)
-  var wasReading = readerOpen && currentArticle;
-  var prevArticle = wasReading ? { zim: currentArticle.zim, path: currentArticle.path, title: currentArticle.title } : null;
+  // Check if we have a direct article match from prefetched data
+  var directMatch = null;
+  if (readerOpen && currentArticle && _articleLangData) {
+    var langs = _articleLangData.languages || [];
+    for (var ai = 0; ai < langs.length; ai++) {
+      if (langs[ai].lang === code) { directMatch = langs[ai]; break; }
+    }
+  }
   _suppressLangBanner = true;
   try {
     await setLanguage(code);
@@ -7646,15 +7636,11 @@ async function _selectLang(code) {
     _suppressLangBanner = false;
     _langDropdownLocked = false;
   }
-  if (wasReading && prevArticle) {
-    var targetZim = _bestZimForLang(code, prevArticle.zim);
-    if (targetZim && targetZim !== prevArticle.zim) {
-      _closeLangDropdown();
-      _langBannerSwitch(targetZim);
-      return;
-    }
-  }
   _closeLangDropdown();
+  // Navigate directly to the article in the new language if we have a match
+  if (directMatch) {
+    openArticle(directMatch.zim, directMatch.path);
+  }
 }
 
 function _langDropdownDownload(langCode) {
