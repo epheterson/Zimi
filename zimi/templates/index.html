@@ -298,11 +298,6 @@
   .lang-dropdown-item .check { font-size: 14px; }
   .lang-dropdown-item .ld-meta { font-size: 11px; color: var(--text2); white-space: nowrap; }
   .lang-dropdown-item:hover .ld-meta { color: inherit; }
-  .ld-dl-section { padding: 2px 0 4px; }
-  .ld-dl-option { font-size: 12px; color: var(--text3); }
-  .ld-dl-option:hover { color: var(--amber); }
-  .ld-dl-option svg { width: 12px; height: 12px; opacity: 0.5; flex-shrink: 0; }
-  .ld-dl-option:hover svg { opacity: 1; color: var(--amber); }
   .lang-dropdown-item .ld-switch { display: flex; align-items: center; }
   .ld-switch-icon { opacity: 0.5; transition: opacity 0.15s; }
   .lang-dropdown-item.switchable:hover .ld-switch-icon { opacity: 1; color: var(--amber); }
@@ -331,6 +326,7 @@
   [dir="rtl"] .lang-dropdown-item.switchable { border-left: none; border-right: 2px solid transparent; }
   [dir="rtl"] .lang-dropdown-item.switchable:hover { border-right-color: var(--amber); }
   [dir="rtl"] .stat-card { direction: rtl; }
+  [dir="rtl"] .star-btn { right: auto; left: 8px; }
   [dir="rtl"] .manage-tab { direction: rtl; }
   [dir="rtl"] .empty { direction: rtl; }
 
@@ -1148,7 +1144,7 @@
   .almanac-inner { max-width: 600px; margin: 0 auto; }
   .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
   .alm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
-  .alm-card-lbl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .alm-card-lbl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .alm-card-val { font-size: 14px; font-weight: 500; color: var(--text); white-space: nowrap; }
   .alm-tz-wrap { margin-top: 24px; display: flex; gap: 20px; align-items: flex-start; }
   .alm-tz-clock-side { flex: 0 0 auto; text-align: center; }
@@ -1583,39 +1579,8 @@ function _checkReaderLangBanner() {
   if (old) old.remove();
 }
 
-// ── Language dropdown download integration ──
-var _globalCatalogCache = null;
-var _globalCatalogFetching = false;
 
-function _prefetchCatalog() {
-  if (_globalCatalogCache || _globalCatalogFetching || !manageEnabled) return;
-  _globalCatalogFetching = true;
-  fetch('/manage/catalog?lang=&count=500&start=0')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      var items = data.items || [];
-      var total = data.total || 0;
-      if (total > 500) {
-        var fetches = [];
-        for (var s = 500; s < total; s += 500) {
-          fetches.push(fetch('/manage/catalog?lang=&count=500&start=' + s).then(function(r) { return r.json(); }).then(function(d) { return d.items || []; }));
-        }
-        Promise.all(fetches).then(function(pages) {
-          for (var p = 0; p < pages.length; p++) items.push.apply(items, pages[p]);
-          _globalCatalogCache = items;
-          _globalCatalogFetching = false;
-        }).catch(function() { _globalCatalogFetching = false; });
-      } else {
-        _globalCatalogCache = items;
-        _globalCatalogFetching = false;
-      }
-    })
-    .catch(function() { _globalCatalogFetching = false; });
-}
 
-function _langSourceCount(langCode) {
-  return (zimsCache || []).filter(function(z) { return z.language === langCode; }).length;
-}
 
 function _showManageBadge(show) {
   var btn = document.getElementById('manage-btn');
@@ -1936,8 +1901,6 @@ async function _initSecondary() {
   ]);
   // Always update topbar after secondary data (manage status determines gear visibility)
   updateTopbar();
-  // Pre-fetch catalog in background so language dropdown can show download options instantly
-  _prefetchCatalog();
   // Re-check URL for ?manage now that manageEnabled is known (route() ran before this resolved)
   var params = new URLSearchParams(location.search);
   if (params.get('manage') !== null && manageEnabled && mode !== 'manage') {
@@ -2515,8 +2478,8 @@ function _langBadge(z) {
   }
   // Don't badge ZIMs that match the current UI language
   if (lang === _currentLang) return '';
-  var native = (_AVAILABLE_LANGS.find(function(l) { return l.code === lang; }) || {}).name || lang.toUpperCase();
-  return '<span class="lang-badge" title="' + escAttr(native) + '">' + esc(native) + '</span>';
+  var name = _langDisplayName(lang) || lang.toUpperCase();
+  return '<span class="lang-badge" title="' + escAttr(name) + '">' + esc(name) + '</span>';
 }
 
 function renderCardGrid(items, showStars, showCategory) {
@@ -2967,7 +2930,6 @@ function _renderDiscover(el, items) {
           '<div class="dc-source"><span>' + tH('today') + '</span></div>' +
           '<div class="dc-title">' + esc(_dateTitle) + '</div>' +
           '<div class="dc-blurb">' + _localMoonName(_m.name) + (_seasonStr ? ' \u00b7 ' + _seasonStr : '') + '</div>' +
-          '<div class="dc-blurb">' + _m.illumination + '% ' + tH('alm_illuminated') + '</div>' +
           (_teaser ? '<div class="dc-blurb" style="color:var(--amber)">' + _teaser + '</div>' : '') +
         '</div></div>';
       continue;
@@ -4362,18 +4324,6 @@ async function loadFullCatalog() {
   const lang = manageLangFilter || '';
   if (_catalogCache && _catalogCacheLang === lang) return _catalogCache;
 
-  // Reuse global catalog cache (filter client-side)
-  if (_globalCatalogCache) {
-    let items = lang
-      ? _globalCatalogCache.filter(function(it) { return _zimMatchesLang(it, lang); })
-      : _globalCatalogCache.slice();
-    for (const item of items) item.category = autoCategorize(item);
-    _enrichCatalogInstalled(items);
-    _catalogCache = items;
-    _catalogCacheLang = lang;
-    return _catalogCache;
-  }
-
   const res = await manageFetch('/manage/catalog?lang=&count=500&start=0');
   const data = await res.json();
   if (data.error) throw new Error(data.error);
@@ -4597,8 +4547,7 @@ function renderBrowseGallery() {
 
     let h = '<div class="browse-gallery">';
     // Language pills from full (unfiltered) catalog
-    var allItems = _globalCatalogCache || items;
-    h += _renderLangPills(_countLangsByCategory(allItems, null), 'filterCatalogLang');
+    h += _renderLangPills(_countLangsByCategory(items, null), 'filterCatalogLang');
     h += buildFeaturedCarousel(items);
     h += '<div class="browse-grid">';
 
@@ -4658,8 +4607,7 @@ function drillCategory(catKey) {
     grouped.sort((a, b) => (a.title || a.name || '').localeCompare(b.title || b.name || ''));
 
     // Language pills scoped to this category (counts from unfiltered global cache)
-    var allItems = _globalCatalogCache || filtered;
-    var langPills = _renderLangPills(_countLangsByCategory(allItems, catKey), 'filterCatalogLang');
+    var langPills = _renderLangPills(_countLangsByCategory(filtered, catKey), 'filterCatalogLang');
     let h = '<div class="browse-drilldown-header">' +
       '<button class="browse-back" onclick="renderBrowseGallery()">' + tH('back_to_catalog') + '</button>' +
       '<span class="browse-drilldown-title">' + (catMeta ? catMeta.icon + ' ' : '') + esc(catName) + '</span>' +
@@ -5007,8 +4955,8 @@ function _historyZimInfo(ev) {
     if (z2) return z2;
   }
   // Try catalog cache for downloads that never completed
-  if (_globalCatalogCache) {
-    var catMatch = _globalCatalogCache.find(function(it) {
+  if (_catalogCache) {
+    var catMatch = _catalogCache.find(function(it) {
       return it.download_url && it.download_url.split('/').pop() === filename;
     });
     if (catMatch) return { title: catMatch.title, name: catMatch.name || name, has_icon: false, language: catMatch.language || '', _fromEvent: true };
@@ -7108,8 +7056,6 @@ function _renderLangDropdown() {
   var switchIcon = '<svg class="ld-switch-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">' +
     '<path d="M4 6l-3 3 3 3"/><path d="M1 9h10"/><path d="M12 10l3-3-3-3"/><path d="M15 7H5"/></svg>';
 
-  var dlIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>';
-
   var inReader = readerOpen && currentArticle;
 
   // When reading: if article exists in current UI language's ZIM, show one switch option
@@ -7128,33 +7074,15 @@ function _renderLangDropdown() {
   }
 
   // All languages — click name to switch UI language
-  var downloadable = []; // langs with no installed ZIMs (for bottom section)
   for (var i = 0; i < _AVAILABLE_LANGS.length; i++) {
     var l = _AVAILABLE_LANGS[i];
     var active = l.code === _currentLang ? ' active' : '';
-    var count = _langSourceCount(l.code);
     var right = '';
     if (l.code === _currentLang) {
       right = '<span class="check">\u2713</span>';
     }
-    if (manageEnabled && count === 0) downloadable.push(l);
     h += '<div class="lang-dropdown-item' + active + '" onclick="_selectLang(\'' + l.code + '\')">' +
       '<span>' + esc(l.name) + '</span>' + right + '</div>';
-  }
-
-  // Bottom section: download options for languages without installed ZIMs
-  // TODO: Future enhancement — download inline within dropdown instead of navigating to Manage.
-  //       See _showLangDownloadSection() (preserved below) for the catalog-matching logic.
-  if (downloadable.length > 0) {
-    h += '<div class="ld-divider"></div>';
-    h += '<div class="ld-dl-section">';
-    for (var di = 0; di < downloadable.length; di++) {
-      var dl = downloadable[di];
-      h += '<div class="lang-dropdown-item ld-dl-option" onclick="_langDropdownDownload(\'' + dl.code + '\')">' +
-        '<span>' + esc(t('get_lang_content').replace('{lang}', dl.name)) + '</span>' +
-        dlIcon + '</div>';
-    }
-    h += '</div>';
   }
   dd.innerHTML = h;
 }
@@ -7194,20 +7122,8 @@ async function _selectLang(code) {
   }
 }
 
-function _langDropdownDownload(langCode) {
-  // Navigate to Manage → Catalog tab, filtered to this language
-  _closeLangDropdown();
-  var catalogLang = langCode;
-  _catalogCache = null;
-  _catalogCacheLang = '';
-  manageTab = 'browse';
-  _pendingDrill = { catKey: 'wikipedia', lang: catalogLang };
-  enterManage();
-}
-
 function toggleLangDropdown(event) {
   event.stopPropagation();
-  _prefetchCatalog();
   _prefetchArticleLangs();
   var dd = document.getElementById('lang-dropdown');
   if (dd.classList.contains('visible')) {

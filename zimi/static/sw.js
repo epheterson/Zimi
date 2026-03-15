@@ -1,5 +1,5 @@
 // Zimi Service Worker
-const CACHE_VERSION = 'zimi-v1.6.0';
+const CACHE_VERSION = 'zimi-v1.6.1';
 const PRECACHE_URLS = ['/', '/favicon.png', '/apple-touch-icon.png'];
 
 const OFFLINE_HTML = `<!DOCTYPE html>
@@ -95,8 +95,13 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Everything else (/, favicon, etc.): stale-while-revalidate
-  event.respondWith(staleWhileRevalidate(event.request));
+  // Root page: network-first (always serve latest after deploy)
+  // Favicons/other assets: stale-while-revalidate
+  if (path === '/' || event.request.mode === 'navigate') {
+    event.respondWith(networkFirst(event.request));
+  } else {
+    event.respondWith(staleWhileRevalidate(event.request));
+  }
 });
 
 // Network-first: try network, fall back to cache, then offline page
