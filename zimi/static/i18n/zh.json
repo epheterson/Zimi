@@ -92,6 +92,7 @@
   "download": "下载",
   "get_lang_content": "获取{lang}内容",
   "download_size": "下载 {size}",
+  "choose_flavor": "选择版本",
   "starting": "启动中...",
   "n_queued": "{n} 个排队中",
   "downloading": "下载中...",

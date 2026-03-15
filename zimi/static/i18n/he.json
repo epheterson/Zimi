@@ -92,6 +92,7 @@
   "download": "הורדה",
   "get_lang_content": "הורד תוכן ב{lang}",
   "download_size": "הורדה {size}",
+  "choose_flavor": "בחר גרסה",
   "starting": "מתחיל...",
   "n_queued": "{n} בתור",
   "downloading": "מוריד...",

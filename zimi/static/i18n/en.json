@@ -111,6 +111,7 @@
   "download": "Download",
   "get_lang_content": "Get {lang} content",
   "download_size": "Download {size}",
+  "choose_flavor": "Choose flavor",
   "starting": "Starting...",
   "n_queued": "{n} queued",
   "downloading": "Downloading...",

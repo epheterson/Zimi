@@ -92,6 +92,7 @@
   "download": "Télécharger",
   "get_lang_content": "Obtenir du contenu en {lang}",
   "download_size": "Télécharger {size}",
+  "choose_flavor": "Choisir la variante",
   "starting": "Démarrage...",
   "n_queued": "{n} en attente",
   "downloading": "Téléchargement...",

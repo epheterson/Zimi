@@ -1624,7 +1624,7 @@ async function setLanguage(lang) {
   _renderLangDropdown();
   // Re-render current view so all dynamic strings update
   if (mode === 'manage') {
-    renderManage(); // Full re-render including tab labels
+    switchManageTab(manageTab || 'installed');
   } else if (mode === 'source' && currentSource) {
     renderSource(currentSource);
   } else if (!readerOpen) {
@@ -4402,14 +4402,6 @@ var _pendingDrill = null; // { catKey, lang } — set by _langBannerDownload to 
 
 // UI language codes match catalog codes (both ISO 639-1 two-letter)
 var _UI_TO_CATALOG = {};
-// Common catalog languages for the dropdown (sorted by ZIM availability)
-var _CATALOG_LANGS = [
-  ['eng','English'],['fra','French'],['deu','German'],['spa','Spanish'],['por','Portuguese'],
-  ['ita','Italian'],['rus','Russian'],['ara','Arabic'],['zho','Chinese'],['jpn','Japanese'],
-  ['kor','Korean'],['hin','Hindi'],['tur','Turkish'],['pol','Polish'],['nld','Dutch'],
-  ['swe','Swedish'],['vie','Vietnamese'],['heb','Hebrew'],['fas','Persian'],['ukr','Ukrainian']
-];
-
 // Shared language pill renderer — used by both Installed and Catalog tabs
 // counts: {langCode: n}, onclick: function name, validSet: optional Set of valid lang codes (others dimmed)
 function _renderLangPills(counts, onclick, validSet) {
@@ -4596,7 +4588,7 @@ var _LANG3_NAMES = {
   chr:'Cherokee',nav:'Navajo',iku:'Inuktitut',kal:'Kalaallisut',que:'Quechua',
   aym:'Aymara',grn:'Guarani',sco:'Scots',nno:'Norwegian Nynorsk',nob:'Norwegian Bokmål',
   srn:'Sranan Tongo',jav:'Javanese',sun:'Sundanese',mlg:'Malagasy',tet:'Tetum',
-  tah:'Tahitian',aar:'Afar',oss:'Ossetian',vol:'Volapük',ido:'Ido',ina:'Interlingua',
+  tah:'Tahitian',aar:'Afar',vol:'Volapük',ido:'Ido',ina:'Interlingua',
   epo:'Esperanto',lat:'Latin',san:'Sanskrit',pli:'Pali',bod:'Tibetan',zsm:'Malay',
   // Codes that Intl.DisplayNames can't resolve (from Kiwix OPDS catalog)
   ami:'Amis',blk:'Pa\'O',far:'Farsian',kbp:'Kabiyé',kld:'Gamilaraay',lbe:'Lak',
@@ -4898,7 +4890,7 @@ function buildFeaturedCarousel(items) {
     var langTag = _catLangTag(best.language, best.name);
     var actionsHtml;
     if (withLabels.length > 1) {
-      var fvid = '_dfv_' + Math.random().toString(36).substr(2, 6);
+      var fvid = '_dfv_' + feat.match;
       window[fvid] = withLabels;
       var top = withLabels[0];
       actionsHtml = '<div class="ci-dl-split" data-variants="' + fvid + '" data-selected="0">' +
@@ -5202,14 +5194,14 @@ function renderCatalogItem(group) {
     withLabels.sort((a, b) => _flavorOrder(a.url) - _flavorOrder(b.url));
     if (withLabels.length > 1) {
       // Integrated button: "Download Full (size) ▾" — click chevron to change flavor
-      var vid = '_cfv_' + Math.random().toString(36).substr(2, 6);
+      var vid = '_cfv_' + group.name.replace(/[^a-z0-9_]/gi, '_');
       window[vid] = withLabels;
       var best = withLabels[0]; // Full is sorted first
       actionsHtml = '<div class="ci-dl-split" data-variants="' + vid + '" data-selected="0">' +
         '<button class="ci-add-btn ci-dl-main" onclick="event.stopPropagation();var s=this.closest(\'.ci-dl-split\');downloadZim(window[s.dataset.variants][+s.dataset.selected].url, this)">' +
           tH('download_size', {size: esc(best.label + ' (' + best.size + ')')}) +
         '</button>' +
-        '<button class="ci-dl-chevron" onclick="event.stopPropagation();showCatalogFlavorPicker(this)" title="' + escAttr(t('choose_flavor') || 'Choose flavor') + '">' +
+        '<button class="ci-dl-chevron" onclick="event.stopPropagation();showCatalogFlavorPicker(this)" title="' + escAttr(t('choose_flavor')) + '">' +
           '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>' +
         '</button>' +
       '</div>';
@@ -5255,7 +5247,7 @@ function switchManageTab(tab) {
     renderActivityTab();
   } else {
     // Default catalog language filter to user's UI language
-    var catalogLang = _UI_TO_CATALOG[_currentLang];
+    var catalogLang = _UI_TO_CATALOG[_currentLang] || _currentLang;
     if (catalogLang) manageLangFilter = catalogLang;
     renderBrowseGallery();
   }
@@ -7821,6 +7813,7 @@ function _ldPollBtn(btnId) {
     if (!dl || dl.done) {
       // Complete — show checkmark, allow future downloads
       _ldDlUrl = null;
+      _ldDlLang = null;
       _showManageBadge(anyActive);
       if (btn) {
         btn.classList.remove('downloading');

@@ -92,6 +92,7 @@
   "download": "تحميل",
   "get_lang_content": "الحصول على محتوى {lang}",
   "download_size": "تحميل {size}",
+  "choose_flavor": "اختيار النسخة",
   "starting": "جارٍ البدء...",
   "n_queued": "{n} في الانتظار",
   "downloading": "جارٍ التحميل...",

@@ -92,6 +92,7 @@
   "download": "Скачать",
   "get_lang_content": "Загрузить контент на {lang}",
   "download_size": "Скачать {size}",
+  "choose_flavor": "Выбрать вариант",
   "starting": "Запуск...",
   "n_queued": "{n} в очереди",
   "downloading": "Скачивание...",
