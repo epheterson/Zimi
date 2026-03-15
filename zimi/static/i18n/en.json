@@ -28,7 +28,7 @@
   "all_sources": "\u2190 All Sources",
 
   "discover": "Discover",
-  "discover_hidden": "Discover hidden.",
+  "discover_hidden": "Discover hidden",
   "undo": "Undo",
   "today": "Today",
   "illuminated": "illuminated",
@@ -43,8 +43,6 @@
   "comic_of_day": "Comic of the Day",
   "country_of_day": "Country of the Day",
 
-  "discovery_pack": "Discovery Pack",
-  "download_to_unlock": "Download all {n} sources to unlock Discover",
 
   "n_results": "{n} results",
   "in_time": "in {time}s",
@@ -64,14 +62,14 @@
   "show_more": "Show {n} more results",
   "found_results_in": "Found {n} results in {time}s",
 
-  "documents": "{n} Documents",
+  "documents": "{n} documents",
   "no_content": "This source has no content",
   "zim_corrupted": "The ZIM file may be corrupted or empty",
 
   "loading": "Loading...",
   "article_content": "Article content",
   "copy_link": "Copy link",
-  "link_copied": "Link copied \u2014 paste in Safari to open",
+  "link_copied": "Link copied to clipboard",
 
   "installed_tab": "Installed",
   "catalog_tab": "Catalog",
@@ -117,7 +115,6 @@
   "downloading": "Downloading...",
   "from_to_date": "From {from} \u2192 {to}",
 
-  "unlocks": "Unlocks: {feature}",
   "full": "Full",
   "mini": "Mini",
   "no_images": "No images",
@@ -260,9 +257,7 @@
   "already_built": "Already built",
   "done_elapsed": "Done ({time}s)",
 
-  "switch_to_lang_available": "is available \u2014 switch?",
   "switch": "Switch",
-  "not_installed": "is not installed",
 
   "cal_gregorian": "Gregorian",
   "cal_hebrew": "Hebrew",
