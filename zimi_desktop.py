@@ -252,6 +252,46 @@ class DesktopAPI:
         import webbrowser
         webbrowser.open(url)
 
+    def download_file(self, url, suggested_name="download"):
+        """Download a file from the embedded server to a user-chosen location.
+
+        Opens a native save-file dialog, then downloads the URL to that path.
+        Returns the saved path on success, or None if cancelled/failed.
+        """
+        import webview
+        import urllib.request
+        import urllib.error
+
+        # Determine file type filter from extension
+        ext = os.path.splitext(suggested_name)[1].lower()
+        file_types = ("All files (*.*)",)
+        if ext == ".pdf":
+            file_types = ("PDF files (*.pdf)", "All files (*.*)")
+        elif ext in (".epub", ".mobi"):
+            file_types = ("eBook files (*.epub;*.mobi)", "All files (*.*)")
+        elif ext in (".zip", ".tar", ".gz"):
+            file_types = ("Archive files (*.zip;*.tar;*.gz)", "All files (*.*)")
+
+        result = webview.windows[0].create_file_dialog(
+            webview.SAVE_DIALOG,
+            directory=os.path.expanduser("~/Downloads"),
+            save_filename=suggested_name,
+            file_types=file_types,
+        )
+        if not result:
+            return None
+
+        save_path = result if isinstance(result, str) else result[0]
+        try:
+            # URL is relative to our embedded server
+            if url.startswith("/"):
+                port = self._config.get("port") or 8899
+                url = f"http://127.0.0.1:{port}{url}"
+            urllib.request.urlretrieve(url, save_path)
+            return save_path
+        except Exception as e:
+            return None
+
     def restart(self):
         """Restart the app (caught by restart loop in wrapper)."""
         os._exit(42)

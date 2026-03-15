@@ -215,7 +215,7 @@
   }
   .lang-banner-btn:hover { background: var(--amber); color: #000; border-color: transparent; }
   .lang-banner-dismiss {
-    margin-left: auto; background: none; border: none; color: var(--text2);
+    margin-inline-start: auto; background: none; border: none; color: var(--text2);
     cursor: pointer; font-size: 14px; padding: 2px 6px;
   }
   .lang-banner-dismiss:hover { color: var(--text); }
@@ -553,7 +553,7 @@
     padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 8px;
   }
   .zimi-ctx-item:hover { background: var(--hover); }
-  .zimi-ctx-item .ctx-key { margin-left: auto; font-size: 11px; color: var(--text2); }
+  .zimi-ctx-item .ctx-key { margin-inline-start: auto; font-size: 11px; color: var(--text2); }
   .zimi-ctx-sep { height: 1px; background: var(--border); margin: 4px 0; }
   .reader-loading {
     position: absolute; inset: 0; display: flex; align-items: center;
@@ -734,12 +734,14 @@
   }
   .ci-variants { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; align-items: center; }
   .ci-flavor-row { flex-wrap: nowrap; }
-  .ci-flavor-select, .fc-flavor-select {
-    padding: 4px 8px; font-size: 11px; background: var(--surface2); color: var(--text);
-    border: 1px solid var(--border); border-radius: var(--radius); outline: none; cursor: pointer;
+  .ci-dl-split { display: inline-flex; align-items: stretch; border-radius: var(--radius); overflow: hidden; }
+  .ci-dl-split .ci-dl-main { border-radius: var(--radius) 0 0 var(--radius); border-right: none; }
+  .ci-dl-split .ci-dl-chevron {
+    display: flex; align-items: center; padding: 0 8px; cursor: pointer;
+    background: var(--surface2); border: 1px solid var(--border); border-left: none;
+    border-radius: 0 var(--radius) var(--radius) 0; color: var(--text2); transition: all 0.2s;
   }
-  .ci-flavor-select { max-width: 160px; }
-  .ci-flavor-select:focus, .fc-flavor-select:focus { border-color: var(--amber-border); }
+  .ci-dl-split .ci-dl-chevron:hover { background: var(--amber-glow); color: var(--text); }
   .ci-variant-btn {
     padding: 3px 10px; font-size: 11px; font-weight: 500; cursor: pointer;
     background: var(--surface2); color: var(--text2); border: 1px solid var(--border);
@@ -887,7 +889,7 @@
   }
   .browse-back:hover { text-decoration: underline; }
   .browse-drilldown-title { font-size: 15px; font-weight: 600; color: var(--accent); }
-  .browse-drilldown-count { font-size: 12px; color: var(--text2); margin-left: auto; }
+  .browse-drilldown-count { font-size: 12px; color: var(--text2); margin-inline-start: auto; }
 
   /* ── Mobile ── */
   /* ── Results summary ── */
@@ -1179,7 +1181,7 @@
   .dc-source { font-size: 11px; color: var(--text2); display: flex; align-items: center; gap: 6px; }
   .dc-zim-icon { width: 16px; height: 16px; border-radius: 3px; background: #fff; flex-shrink: 0; }
   .dc-source span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dc-date { font-size: 11px; color: var(--text2); margin-left: auto; flex-shrink: 0; }
+  .dc-date { font-size: 11px; color: var(--text2); margin-inline-start: auto; flex-shrink: 0; }
   .dc-title { font-size: 13px; color: var(--text); font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
   .dc-blurb { font-size: 11px; color: var(--text2); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .dc-blurb.dc-quote { font-family: Georgia, "Times New Roman", serif; font-style: italic; color: var(--text); font-weight: 400; font-size: 14px; -webkit-line-clamp: 4; line-height: 1.5; flex: 1; letter-spacing: 0.01em; }
@@ -1389,6 +1391,7 @@
   <div id="lang-dropdown" class="lang-dropdown"></div>
   <a href="#" id="manage-btn" class="manage-btn" title="Library Manager" data-i18n-title="library_manager" onclick="toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
   <a id="newtab-btn" class="newtab-btn" href="#" target="_blank" rel="noopener" title="Open in browser" data-i18n-title="open_in_browser" onclick="event.preventDefault();_openInBrowser()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+  <button id="save-btn" class="newtab-btn" style="display:none" title="Save to disk" onclick="_saveCurrentFile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
   <button class="topbar-more" onclick="_toggleTopbarMenu(event)" aria-label="More">&#x22EF;</button>
   <div id="topbar-menu" class="topbar-menu"></div>
 
@@ -1624,17 +1627,21 @@ async function setLanguage(lang) {
   _renderLangDropdown();
   // Re-render current view so all dynamic strings update
   if (mode === 'manage') {
-    switchManageTab(manageTab || 'installed');
+    renderManage(); // Full re-render including tab labels
   } else if (mode === 'source' && currentSource) {
     renderSource(currentSource);
   } else if (!readerOpen) {
     renderHome();
   }
   updateTopbar();
+  // Re-render library panel if open
+  var libPanel = document.getElementById('history-panel');
+  if (libPanel && libPanel.classList.contains('open')) renderLibraryPanel();
   // If reading an article, re-check language banner in reader context
   if (readerOpen && currentArticle) _checkReaderLangBanner();
-  // Sync almanac calendar system + Rosetta Stone to global language
+  // Sync almanac: re-render all content with new translations
   if (typeof _onGlobalLanguageChanged === 'function') _onGlobalLanguageChanged(lang);
+  if (_almanacOpen && typeof _renderAlmanacContent === 'function') _renderAlmanacContent();
 }
 
 // ── Language-experience banner (reader context) ──
@@ -2203,6 +2210,13 @@ function updateTopbar() {
   }
 
   newtabBtn.style.display = (readerOpen && !IS_DESKTOP) ? 'flex' : 'none';
+  // Desktop: show save button when viewing a downloadable file (PDF, EPUB)
+  var saveBtn = document.getElementById('save-btn');
+  if (saveBtn) {
+    var showSave = IS_DESKTOP && readerOpen && currentArticle &&
+      /\.(pdf|epub)$/i.test(currentArticle.path || '');
+    saveBtn.style.display = showSave ? 'flex' : 'none';
+  }
   randomBtn.style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
   document.getElementById('library-btn').style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
   document.getElementById('lang-selector-btn').style.display = '';
@@ -3546,7 +3560,7 @@ function toggleCategory(cat) {
     var isFav = favs.includes(zim);
     var colls = (collectionsCache && collectionsCache.collections) || {};
     var h = '<div class="ctx-item" data-action="open">' + tH('open') + '</div>';
-    h += '<div class="ctx-item" data-action="newtab">' + tH('open_new_tab') + '</div>';
+    if (!IS_DESKTOP) h += '<div class="ctx-item" data-action="newtab">' + tH('open_new_tab') + '</div>';
     h += '<div class="ctx-sep"></div>';
     h += '<div class="ctx-item" data-action="favorite">' + (isFav ? tH('remove_from_favorites') : tH('add_to_favorites')) + '</div>';
     // Collections submenu (hover to expand)
@@ -4267,14 +4281,15 @@ function showHistoryDropdown(filter) {
     var entry = h[i];
     var label, sub, key;
     if (entry.type === 'search') {
-      label = entry.query;
+      label = typeof entry.query === 'string' ? entry.query : '';
       sub = entry.zim ? _zimTitle(entry.zim) : t('all_sources').replace(/^\u2190\s*/, '');
       key = 's:' + label.toLowerCase();
     } else {
-      label = entry.title || _titleFromPath(entry.path || '');
+      label = (typeof entry.title === 'string' && entry.title) || _titleFromPath(entry.path || '');
       sub = entry.zim ? _zimTitle(entry.zim) : '';
       key = 'a:' + (entry.zim || '') + ':' + (entry.path || '');
     }
+    if (!label) continue;
     if (fl && !label.toLowerCase().includes(fl) && !sub.toLowerCase().includes(fl)) continue;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -4346,7 +4361,8 @@ function selectSuggest(i) {
 function toggleManage(e) {
   if (e) e.preventDefault();
   if (mode === 'manage') {
-    if (!sessionStorage.getItem('zimi_manage_pw')) _manageToken = '';
+    // Always clear in-memory token on exit; sessionStorage restores it on re-entry if "remember me" was used
+    _manageToken = '';
     goHome(e); return;
   }
   enterManage(e);
@@ -4400,7 +4416,7 @@ var _CATALOG_LANGS = [
 // Shared language pill renderer — used by both Installed and Catalog tabs
 // counts: {langCode: n}, onclick: function name, validSet: optional Set of valid lang codes (others dimmed)
 function _renderLangPills(counts, onclick, validSet) {
-  var langs = Object.keys(counts).sort(function(a, b) { return (counts[b] || 0) - (counts[a] || 0); });
+  var langs = Object.keys(counts).filter(_isValidLangCode).sort(function(a, b) { return (counts[b] || 0) - (counts[a] || 0); });
   if (langs.length < 2) return '';
   if (localStorage.getItem('zimi_hide_lang_chooser') === '1') return '';
   var searchSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>';
@@ -4481,7 +4497,7 @@ function _normLang(c) {
   if (!c) return '';
   c = c.trim().toLowerCase();
   if (c === 'mul') return '';  // "multilingual" — skip, not a real language
-  return _LANG3TO2[c] || (c.length === 2 ? c : c.substring(0, 2));
+  return _LANG3TO2[c] || c;   // Keep original if no mapping (don't truncate)
 }
 
 // Parse ZIM language string into array of normalized 2-letter codes
@@ -4547,18 +4563,81 @@ const BROWSE_CATEGORIES = [
   { key: 'other',          i18n: 'cat_other',          icon: '\u{1F4E6}', descKey: 'cat_other_desc' },
 ];
 
-// 2-letter code → display name (uses Intl API with fallback)
+// Category key → localized display name
+function _catDisplayName(key) {
+  var meta = BROWSE_CATEGORIES.find(function(c) { return c.key === key; });
+  return meta ? t(meta.i18n) : key;
+}
+
+// Language code → display name (handles ISO 639-1, 639-3, multi-lang, special codes)
 var _langDisplayCache = {};
+var _langDisplayCacheLang = '';
+var _SPECIAL_LANG = { mul:'Multilingual', mis:'Other', und:'Unknown', zxx:'No language' };
+// Fallback names for ISO 639-3 codes that Intl.DisplayNames doesn't handle
+var _LANG3_NAMES = {
+  stq:'Saterland Frisian',nds:'Low German',szl:'Silesian',lmo:'Lombard',scn:'Sicilian',
+  vec:'Venetian',pms:'Piedmontese',nap:'Neapolitan',eml:'Emilian-Romagnol',lij:'Ligurian',
+  frr:'North Frisian',bar:'Bavarian',ksh:'Colognian',pfl:'Palatinate German',als:'Alemannic',
+  gsw:'Swiss German',wuu:'Wu Chinese',yue:'Cantonese',min:'Minangkabau',ace:'Acehnese',
+  bjn:'Banjar',bug:'Buginese',gor:'Gorontalo',ban:'Balinese',bew:'Betawi',mad:'Madurese',
+  nso:'Northern Sotho',ssw:'Swazi',tsn:'Tswana',xho:'Xhosa',ven:'Venda',tso:'Tsonga',
+  nbl:'Southern Ndebele',sot:'Southern Sotho',din:'Dinka',lug:'Ganda',run:'Rundi',
+  kin:'Kinyarwanda',nya:'Chichewa',sna:'Shona',wol:'Wolof',ful:'Fula',bam:'Bambara',
+  orm:'Oromo',tir:'Tigrinya',som:'Somali',ibo:'Igbo',lin:'Lingala',twi:'Twi',
+  ckb:'Central Kurdish',pnb:'Western Punjabi',arz:'Egyptian Arabic',azb:'South Azerbaijani',
+  ceb:'Cebuano',war:'Waray',ilo:'Ilocano',bcl:'Central Bicolano',pag:'Pangasinan',
+  tuk:'Turkmen',tat:'Tatar',bak:'Bashkir',chv:'Chuvash',sah:'Yakut',tyv:'Tuvan',
+  kbd:'Kabardian',ady:'Adyghe',oss:'Ossetian',che:'Chechen',ava:'Avar',lez:'Lezgian',
+  dag:'Dagbani',nia:'Nias',diq:'Zazaki',lad:'Ladino',roh:'Romansh',fur:'Friulian',
+  ext:'Extremaduran',ast:'Asturian',arg:'Aragonese',oci:'Occitan',cos:'Corsican',
+  srd:'Sardinian',ltz:'Luxembourgish',fry:'Western Frisian',bre:'Breton',glv:'Manx',
+  gla:'Scottish Gaelic',cor:'Cornish',hak:'Hakka Chinese',gan:'Gan Chinese',
+  cdo:'Min Dong',nan:'Min Nan',bho:'Bhojpuri',mai:'Maithili',mag:'Magahi',
+  new:'Newari',dzo:'Dzongkha',div:'Divehi',mlt:'Maltese',hat:'Haitian Creole',
+  pap:'Papiamento',tpi:'Tok Pisin',bis:'Bislama',smo:'Samoan',ton:'Tongan',
+  fij:'Fijian',mri:'Maori',haw:'Hawaiian',cha:'Chamorro',mah:'Marshallese',
+  chr:'Cherokee',nav:'Navajo',iku:'Inuktitut',kal:'Kalaallisut',que:'Quechua',
+  aym:'Aymara',grn:'Guarani',sco:'Scots',nno:'Norwegian Nynorsk',nob:'Norwegian Bokmål',
+  srn:'Sranan Tongo',jav:'Javanese',sun:'Sundanese',mlg:'Malagasy',tet:'Tetum',
+  tah:'Tahitian',aar:'Afar',oss:'Ossetian',vol:'Volapük',ido:'Ido',ina:'Interlingua',
+  epo:'Esperanto',lat:'Latin',san:'Sanskrit',pli:'Pali',bod:'Tibetan',zsm:'Malay',
+  // Codes that Intl.DisplayNames can't resolve (from Kiwix OPDS catalog)
+  ami:'Amis',blk:'Pa\'O',far:'Farsian',kbp:'Kabiyé',kld:'Gamilaraay',lbe:'Lak',
+  lld:'Ladin',mnw:'Mon',nah:'Nahuatl',nhe:'Eastern Huasteca Nahuatl',nrf:'Jèrriais',
+  olo:'Livvi-Karelian',pih:'Norfuk',pwn:'Paiwan',rmq:'Caló',roa:'Romance',
+  szy:'Sakizaya',tay:'Atayal',tsz:'Purépecha'
+};
 function _langDisplayName(code) {
   if (!code) return '';
+  var uiLang = _currentLang || 'en';
+  if (_langDisplayCacheLang !== uiLang) { _langDisplayCache = {}; _langDisplayCacheLang = uiLang; }
   if (_langDisplayCache[code]) return _langDisplayCache[code];
+  // Special codes
+  if (_SPECIAL_LANG[code]) { _langDisplayCache[code] = _SPECIAL_LANG[code]; return _SPECIAL_LANG[code]; }
+  // Multi-language codes (TED talks etc.) → "Multilingual"
+  if (code.includes(',')) { _langDisplayCache[code] = 'Multilingual'; return 'Multilingual'; }
+  // Try Intl.DisplayNames: first with 2-letter mapping, then raw code
+  var c2 = _LANG3TO2[code];
+  var tries = c2 ? [c2, code] : [code];
   try {
-    var dn = new Intl.DisplayNames(['en'], { type: 'language' });
-    _langDisplayCache[code] = dn.of(code);
-  } catch(e) {
-    _langDisplayCache[code] = code.toUpperCase();
-  }
+    var dn = new Intl.DisplayNames([uiLang, 'en'], { type: 'language' });
+    for (var i = 0; i < tries.length; i++) {
+      try {
+        var name = dn.of(tries[i]);
+        if (name && name !== tries[i] && name !== code) { _langDisplayCache[code] = name; return name; }
+      } catch(e2) {}
+    }
+  } catch(e) {}
+  // Fallback: hardcoded name table for ISO 639-3 codes
+  if (_LANG3_NAMES[code]) { _langDisplayCache[code] = _LANG3_NAMES[code]; return _LANG3_NAMES[code]; }
+  // Last resort: capitalize
+  _langDisplayCache[code] = code.toUpperCase();
   return _langDisplayCache[code];
+}
+
+// Filter out truly invalid language entries (empty, single char, numeric)
+function _isValidLangCode(code) {
+  return code && code.length >= 2 && /[a-z]/i.test(code);
 }
 
 // Language display: "Multilingual (24 langs)" or "French" instead of raw codes
@@ -4588,19 +4667,36 @@ function formatLanguage(langStr) {
 }
 
 // 3-letter → 2-letter language code for tags
-const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru',ara:'ar',zho:'zh',jpn:'ja',kor:'ko',hin:'hi',tur:'tr',pol:'pl',nld:'nl',swe:'sv',vie:'vi',tha:'th',heb:'he',ell:'el',ron:'ro',hun:'hu',fas:'fa',ind:'id',ukr:'uk',ces:'cs',dan:'da',fin:'fi',nor:'no',cat:'ca',mul:'mul',msa:'ms',ben:'bn',tam:'ta',tel:'te',urd:'ur',srp:'sr',hrv:'hr',bos:'bs',slk:'sk',slv:'sl',bul:'bg',lit:'lt',lav:'lv',est:'et',swa:'sw',amh:'am',hau:'ha',yor:'yo',zul:'zu',afr:'af',gle:'ga',cym:'cy',eus:'eu',glg:'gl',kat:'ka',hye:'hy',mkd:'mk',sqi:'sq',bel:'be',kaz:'kk',uzb:'uz',tgl:'tl',mal:'ml',kan:'kn',guj:'gu',mar:'mr',mya:'my',khm:'km',lao:'lo',sin:'si',nep:'ne',pan:'pa',aze:'az',mon:'mn',tgk:'tg',kir:'ky'};
-function _catLangTag(langStr) {
+const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru',ara:'ar',zho:'zh',jpn:'ja',kor:'ko',hin:'hi',tur:'tr',pol:'pl',nld:'nl',swe:'sv',vie:'vi',tha:'th',heb:'he',ell:'el',ron:'ro',hun:'hu',fas:'fa',far:'fa',ind:'id',ukr:'uk',ces:'cs',dan:'da',fin:'fi',nor:'no',cat:'ca',mul:'mul',msa:'ms',ben:'bn',tam:'ta',tel:'te',urd:'ur',srp:'sr',hrv:'hr',bos:'bs',slk:'sk',slv:'sl',bul:'bg',lit:'lt',lav:'lv',est:'et',swa:'sw',amh:'am',hau:'ha',yor:'yo',zul:'zu',afr:'af',gle:'ga',cym:'cy',eus:'eu',glg:'gl',kat:'ka',hye:'hy',mkd:'mk',sqi:'sq',bel:'be',kaz:'kk',uzb:'uz',tgl:'tl',mal:'ml',kan:'kn',guj:'gu',mar:'mr',mya:'my',khm:'km',lao:'lo',sin:'si',nep:'ne',pan:'pa',aze:'az',mon:'mn',tgk:'tg',kir:'ky',isl:'is',fao:'fo',kur:'ku',ori:'or',jav:'jv',sun:'su'};
+// Extract actual language from ZIM name when catalog says "mul" or comma-separated
+// e.g. "ted_fr_design" → "fr", "wikipedia_de_all" → "de"
+function _langFromName(name) {
+  if (!name) return '';
+  var parts = name.toLowerCase().split('_');
+  if (parts.length >= 2) {
+    var code = parts[1];
+    if (code.length === 2 && /^[a-z]{2}$/.test(code) && code !== 'en') return code;
+    if (code.length === 3 && _LANG3TO2[code] && _LANG3TO2[code] !== 'en') return _LANG3TO2[code];
+  }
+  return '';
+}
+function _catLangTag(langStr, itemName) {
   if (!langStr) return '';
   var codes = langStr.toLowerCase().split(',').map(c => c.trim()).filter(Boolean);
   if (codes.length === 0 || (codes.length === 1 && (codes[0] === 'en' || codes[0] === 'eng'))) return '';
+  // For multilingual items (TED, etc.), try to extract actual language from name
+  if (codes.length > 1 || codes[0] === 'mul') {
+    var nameLang = _langFromName(itemName);
+    if (nameLang) return '<span class="ci-lang-tag">' + esc(_langDisplayName(nameLang)) + '</span>';
+  }
   if (codes.length === 1) {
-    var c2 = _LANG3TO2[codes[0]] || codes[0].substring(0, 2);
+    var c2 = _LANG3TO2[codes[0]] || codes[0];
     return '<span class="ci-lang-tag">' + esc(_langDisplayName(c2)) + '</span>';
   }
   // Multilingual — show "Multilingual" tag
   if (codes.length > 3) return '<span class="ci-lang-tag">' + esc(t('multilingual', {n: codes.length})) + '</span>';
   return codes.map(c => {
-    var c2 = _LANG3TO2[c] || c.substring(0, 2);
+    var c2 = _LANG3TO2[c] || c;
     return '<span class="ci-lang-tag">' + esc(_langDisplayName(c2)) + '</span>';
   }).join('');
 }
@@ -4773,61 +4869,66 @@ function _isFeaturedInstalled(feat, grouped) {
 
 function buildFeaturedCarousel(items) {
   const grouped = groupVariants(items);
-  let sections = '';
+  var uiLang = (_currentLang || 'en').substring(0, 2);
+  let cards = '';
   for (const feat of FEATURED_ZIMS) {
     if (_isFeaturedInstalled(feat, grouped)) continue;
-    // Find ALL matching catalog groups for this Discover card type
-    var matchingGroups = grouped.filter(g => g.name === feat.match || g.name.startsWith(feat.match + '_'));
-    if (!matchingGroups.length) continue;
-    // Sort: English _en_ first, then by article count
-    matchingGroups.sort(function(a, b) {
-      var aEn = a.name.includes('_en') ? 1 : 0, bEn = b.name.includes('_en') ? 1 : 0;
-      if (aEn !== bEn) return bEn - aEn;
-      return (b.article_count || 0) - (a.article_count || 0);
-    });
-    // Build rows for each matching ZIM
-    var rows = '';
-    for (var gi = 0; gi < matchingGroups.length; gi++) {
-      var group = matchingGroups[gi];
-      var variants = group.variants || [group];
-      var withLabels = variants.filter(function(v) { return v.download_url; }).map(function(v) {
-        return { label: variantLabel(v.download_url) || t('full'), size: formatSize(v.size_bytes), url: v.download_url, bytes: v.size_bytes || 0 };
-      });
-      withLabels.sort(function(a, b) { return _flavorOrder(b.url) - _flavorOrder(a.url); }); // Full first
-      if (!withLabels.length) continue;
-      var langTag = _catLangTag(group.language);
-      var actionsHtml;
-      if (withLabels.length > 1) {
-        var fcSelId = 'fc-sel-' + Math.random().toString(36).substr(2, 6);
-        var opts = withLabels.map(function(v) {
-          return '<option value="' + escAttr(v.url) + '">' + esc(v.label + ' (' + v.size + ')') + '</option>';
-        }).join('');
-        actionsHtml = '<select id="' + fcSelId + '" class="ci-flavor-select" onclick="event.stopPropagation()">' + opts + '</select>' +
-          '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(document.getElementById(\'' + fcSelId + '\').value, this)">' + tH('download') + '</button>';
-      } else {
-        actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' +
-          tH('download_size', {size: withLabels[0].size}) + '</button>';
+    // Find ONE best match: prefer user's UI language, fall back to English, then largest
+    var allMatches = grouped.filter(function(g) {
+      var n = g.name;
+      if (n === feat.match) return true;
+      if (!n.startsWith(feat.match + '_')) return false;
+      // Skip specialized subsets (medicine, wp_one, etc.)
+      if (feat.match === 'wikipedia') {
+        var suffix = n.substring(feat.match.length + 1);
+        var lang = suffix.split('_')[0];
+        return suffix === lang || suffix.startsWith(lang + '_all');
       }
-      rows += '<div class="catalog-item" style="margin-bottom:4px">' +
-        '<div class="ci-info" style="flex:1;min-width:0">' +
-          '<div class="ci-title" style="font-size:13px">' + esc(group.title || group.name) + langTag + '</div>' +
-        '</div>' +
-        '<div class="ci-actions">' + actionsHtml + '</div>' +
+      return true;
+    });
+    if (!allMatches.length) continue;
+    // Pick best: UI language > English > largest
+    var best = allMatches.find(function(g) { return (g.language || '').startsWith(uiLang); })
+      || allMatches.find(function(g) { return (g.language || '').startsWith('en'); })
+      || allMatches.sort(function(a, b) { return (b.article_count || 0) - (a.article_count || 0); })[0];
+    if (!best) continue;
+    var variants = best.variants || [best];
+    var withLabels = variants.filter(function(v) { return v.download_url; }).map(function(v) {
+      return { label: variantLabel(v.download_url) || t('full'), size: formatSize(v.size_bytes), url: v.download_url, bytes: v.size_bytes || 0 };
+    });
+    withLabels.sort(function(a, b) { return _flavorOrder(b.url) - _flavorOrder(a.url); }); // Full first
+    if (!withLabels.length) continue;
+    var langTag = _catLangTag(best.language, best.name);
+    var actionsHtml;
+    if (withLabels.length > 1) {
+      var fvid = '_dfv_' + Math.random().toString(36).substr(2, 6);
+      window[fvid] = withLabels;
+      var top = withLabels[0];
+      actionsHtml = '<div class="ci-dl-split" data-variants="' + fvid + '" data-selected="0">' +
+        '<button class="ci-add-btn ci-dl-main" onclick="event.stopPropagation();var s=this.closest(\'.ci-dl-split\');downloadZim(window[s.dataset.variants][+s.dataset.selected].url, this)">' +
+          tH('download_size', {size: esc(top.label + ' (' + top.size + ')')}) +
+        '</button>' +
+        '<button class="ci-dl-chevron" onclick="event.stopPropagation();showCatalogFlavorPicker(this)">' +
+          '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>' +
+        '</button>' +
       '</div>';
+    } else {
+      actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' +
+        tH('download_size', {size: withLabels[0].size}) + '</button>';
     }
-    sections += '<div style="margin-bottom:16px">' +
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
-        '<span style="font-size:20px">' + feat.icon + '</span>' +
-        '<div><div style="font-size:13px;font-weight:600;color:var(--text)">' + tH(feat.i18nLabel) + '</div>' +
-        '<div style="font-size:11px;color:var(--text2)">' + esc(feat.promo) + '</div></div>' +
+    cards += '<div class="catalog-item" style="margin-bottom:4px">' +
+      '<div class="ci-icon" style="font-size:20px;width:32px;text-align:center">' + feat.icon + '</div>' +
+      '<div class="ci-info" style="flex:1;min-width:0">' +
+        '<div class="ci-title" style="font-size:13px">' + esc(best.title || best.name) + langTag + '</div>' +
+        '<div class="ci-meta"><span>' + tH(feat.i18nLabel) + '</span></div>' +
       '</div>' +
-      rows +
+      '<div class="ci-actions">' + actionsHtml + '</div>' +
     '</div>';
   }
-  if (!sections) return '';
+  if (!cards) return '';
   return '<div class="featured-section" style="padding:0 0 8px">' +
     '<div class="ci-section-label">' + tH('discover') + '</div>' +
-    sections +
+    cards +
   '</div>';
 }
 
@@ -5103,14 +5204,17 @@ function renderCatalogItem(group) {
     });
     withLabels.sort((a, b) => _flavorOrder(a.url) - _flavorOrder(b.url));
     if (withLabels.length > 1) {
-      // Dropdown + single download button
-      const selId = 'ci-flavor-' + Math.random().toString(36).substr(2, 6);
-      const opts = withLabels.map(v =>
-        '<option value="' + escAttr(v.url) + '">' + esc(v.label + ' (' + v.size + ')') + '</option>'
-      ).join('');
-      actionsHtml = '<div class="ci-variants ci-flavor-row">' +
-        '<select id="' + selId + '" class="ci-flavor-select" onclick="event.stopPropagation()">' + opts + '</select>' +
-        '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(document.getElementById(\'' + selId + '\').value, this)">' + tH('download') + '</button>' +
+      // Integrated button: "Download Full (size) ▾" — click chevron to change flavor
+      var vid = '_cfv_' + Math.random().toString(36).substr(2, 6);
+      window[vid] = withLabels;
+      var best = withLabels[0]; // Full is sorted first
+      actionsHtml = '<div class="ci-dl-split" data-variants="' + vid + '" data-selected="0">' +
+        '<button class="ci-add-btn ci-dl-main" onclick="event.stopPropagation();var s=this.closest(\'.ci-dl-split\');downloadZim(window[s.dataset.variants][+s.dataset.selected].url, this)">' +
+          tH('download_size', {size: esc(best.label + ' (' + best.size + ')')}) +
+        '</button>' +
+        '<button class="ci-dl-chevron" onclick="event.stopPropagation();showCatalogFlavorPicker(this)" title="' + escAttr(t('choose_flavor') || 'Choose flavor') + '">' +
+          '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>' +
+        '</button>' +
       '</div>';
     } else if (withLabels.length === 1) {
       actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' + tH('download_size', {size: withLabels[0].label + ' (' + withLabels[0].size + ')'}) + '</button>';
@@ -5122,7 +5226,7 @@ function renderCatalogItem(group) {
   return '<div class="catalog-item' + (anyInstalled ? ' ci-installed-item' : '') + '"' + catAttr + openAttr + '>' +
     '<div class="ci-icon">' + iconHtml + '</div>' +
     '<div class="ci-info">' +
-      '<div class="ci-title">' + esc(item.title || item.name) + _catLangTag(item.language) + '</div>' +
+      '<div class="ci-title">' + esc(item.title || item.name) + _catLangTag(item.language, item.name) + '</div>' +
       (item.summary ? '<div class="ci-summary">' + esc(item.summary) + '</div>' : '') +
       '<div class="ci-meta">' + metaTags.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
     '</div>' +
@@ -5359,7 +5463,7 @@ async function renderHistoryTab() {
         meta.push(time);
 
         const clickable = zim && !zim._fromEvent;
-        var evLangTag = zim ? _catLangTag(zim.language) : '';
+        var evLangTag = zim ? _catLangTag(zim.language, zim.name) : '';
         h += '<div class="catalog-item"' + (clickable ? ' style="cursor:pointer" onclick="enterSource(\'' + escJs(zim.name) + '\',true)"' : '') + '>' +
           '<div class="ci-icon">' + iconHtml + '</div>' +
           '<div class="ci-info">' +
@@ -5517,7 +5621,7 @@ async function renderActivityTab() {
         h += '<span style="color:var(--text)">' + esc(xr.from) + '</span>';
         h += '<span style="color:var(--text2)">\u2192</span>';
         h += '<span style="color:var(--text)">' + esc(xr.to) + '</span>';
-        h += '<span style="margin-left:auto;color:var(--text2);font-size:11px">' + xr.count + ' link' + (xr.count !== 1 ? 's' : '') + '</span>';
+        h += '<span style="margin-inline-start:auto;color:var(--text2);font-size:11px">' + xr.count + ' link' + (xr.count !== 1 ? 's' : '') + '</span>';
         h += '</div>';
       }
       h += '</div></div>';
@@ -5673,7 +5777,7 @@ function _msLibraryHtml() {
     '<div class="ms-actions">' +
       '<button class="manage-btn-action" onclick="manageImportZim()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('import_zim') + '</button>' +
       '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('refresh_cache') + '</button>' +
-      '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none;margin-left:auto">' + tH('update_all') + '</button>' +
+      '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none;margin-inline-start:auto">' + tH('update_all') + '</button>' +
     '</div>' +
     '<div id="tmp-files-section"></div>';
   // Async-load tmp file info
@@ -5756,7 +5860,7 @@ function _msServerHtml() {
       '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseDataFolder()">' + tH('choose_folder') + '</button></div></div>' +
       '<div class="ms-hint">' + tH('data_folder_hint') + '</div>' +
       '<div class="ms-field" style="display:flex;align-items:center;gap:8px"><label style="margin:0">' + tH('port') + '</label><input type="number" id="ms-port" min="1024" max="65535" value="8899" style="width:90px">' +
-        '<button class="manage-btn-action" onclick="settingsSaveInline()" style="margin-left:auto">' + tH('save') + '</button></div>' +
+        '<button class="manage-btn-action" onclick="settingsSaveInline()" style="margin-inline-start:auto">' + tH('save') + '</button></div>' +
       '<div class="ms-hint">' + tH('restart_hint') + '</div>';
   } else {
     h += '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
@@ -5836,12 +5940,12 @@ function getInstalledPillsHtml() {
     for (const cat of allCats) {
       const dimmed = manageLangFilter && !langsByCat[cat].has(manageLangFilter);
       h += '<button class="pill' + (manageCategoryFilter === cat ? ' active' : '') + (dimmed ? ' dimmed' : '') +
-        '" onclick="filterManageCategory(\'' + escAttr(cat) + '\')">' + esc(cat) + '</button>';
+        '" onclick="filterManageCategory(\'' + escAttr(cat) + '\')">' + esc(_catDisplayName(cat)) + '</button>';
     }
     h += '</div>';
   }
   // Language pills — horizontal scroll with counts, no search button
-  var langKeys = Object.keys(langCounts).sort(function(a, b) { return (langCounts[b] || 0) - (langCounts[a] || 0); });
+  var langKeys = Object.keys(langCounts).filter(_isValidLangCode).sort(function(a, b) { return (langCounts[b] || 0) - (langCounts[a] || 0); });
   if (langKeys.length > 1 && localStorage.getItem('zimi_hide_lang_chooser') !== '1') {
     var validLangs = manageCategoryFilter ? new Set(langsByCat[manageCategoryFilter] || []) : null;
     h += '<div class="catalog-lang-row" oncontextmenu="_langChooserCtxMenu(event)" style="justify-content:center">';
@@ -6040,6 +6144,55 @@ function switchToFlavor(downloadUrl, zimName) {
   closeFlavorPopup();
   // Find a nearby download button or create a virtual one for progress tracking
   downloadZim(downloadUrl, null);
+}
+
+function showCatalogFlavorPicker(chevronBtn) {
+  closeFlavorPopup();
+  var split = chevronBtn.closest('.ci-dl-split');
+  var variants = window[split.dataset.variants];
+  var selected = +split.dataset.selected;
+  var rect = chevronBtn.getBoundingClientRect();
+  var backdrop = document.createElement('div');
+  backdrop.className = 'flavor-popup-backdrop';
+  backdrop.onclick = closeFlavorPopup;
+  document.body.appendChild(backdrop);
+  var popup = document.createElement('div');
+  popup.className = 'flavor-popup';
+  popup.id = 'flavor-popup';
+  var html = '';
+  for (var i = 0; i < variants.length; i++) {
+    var v = variants[i];
+    var isCurrent = (i === selected);
+    html += '<div class="flavor-option' + (isCurrent ? ' current' : '') + '"' +
+      (isCurrent ? '' : ' onclick="selectCatalogFlavor(this,' + i + ')"') + '>' +
+      '<div class="flavor-option-check">' + (isCurrent ? '\u2713' : '') + '</div>' +
+      '<div class="flavor-option-label">' + esc(v.label) + '</div>' +
+      '<div class="flavor-option-size">' + esc(v.size) + '</div>' +
+    '</div>';
+  }
+  popup.innerHTML = html;
+  popup.dataset.splitId = split.dataset.variants;
+  document.body.appendChild(popup);
+  var left = rect.right - popup.offsetWidth;
+  if (left < 8) left = 8;
+  var top = rect.bottom + 6;
+  if (top + popup.offsetHeight > window.innerHeight - 8) top = rect.top - popup.offsetHeight - 6;
+  popup.style.left = left + 'px';
+  popup.style.top = top + 'px';
+}
+
+function selectCatalogFlavor(optionEl, index) {
+  var popup = optionEl.closest('.flavor-popup');
+  var splitId = popup.dataset.splitId;
+  closeFlavorPopup();
+  // Find the split button and update it
+  var split = document.querySelector('.ci-dl-split[data-variants="' + splitId + '"]');
+  if (!split) return;
+  var variants = window[splitId];
+  var v = variants[index];
+  split.dataset.selected = index;
+  var mainBtn = split.querySelector('.ci-dl-main');
+  mainBtn.textContent = t('download_size', {size: v.label + ' (' + v.size + ')'});
 }
 
 // ── Browse tab: explicit server-side catalog search (Search button / Enter in catalog-q) ──
@@ -6616,11 +6769,11 @@ async function manageClearPassword() {
 // ── Helpers ──
 function _pdfViewerUrl(pdfUrl) {
   // pdfUrl is already percent-encoded (/w/zim/path%20name.pdf).
-  // Don't encodeURIComponent — pdf.js passes file param directly to fetch.
-  // Append ?raw=1 so the server bypasses the SPA shell check and CDN caches
-  // the raw PDF separately from the HTML deep-link URL.
-  var raw = pdfUrl + (pdfUrl.includes('?') ? '&' : '?') + 'raw=1';
-  return '/static/pdfjs/web/viewer.html?file=' + raw;
+  // PDF.js viewer fetches via XHR (Sec-Fetch-Dest: empty), so the server
+  // serves raw content without needing ?raw=1 (that's only for browser navigation).
+  // Don't append ?raw=1 — it gets parsed as a separate query param by URLSearchParams
+  // and breaks the file path extraction in PDF.js's parseQueryString.
+  return '/static/pdfjs/web/viewer.html?file=' + encodeURIComponent(pdfUrl);
 }
 function _articleUrl(zim, path) {
   return '/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/');
@@ -6628,7 +6781,22 @@ function _articleUrl(zim, path) {
 function _titleFromPath(path) {
   return decodeURIComponent(path.split('/').pop() || '').replace(/_/g, ' ');
 }
+function _saveCurrentFile() {
+  // Desktop: save the currently viewed file (PDF, EPUB) to disk
+  if (!currentArticle) return;
+  var url = _articleUrl(currentArticle.zim, currentArticle.path) + '?raw=1';
+  _downloadFile(url);
+}
 function _downloadFile(url) {
+  // Desktop app: use native save dialog via pywebview bridge
+  if (IS_DESKTOP && window.pywebview && window.pywebview.api && window.pywebview.api.download_file) {
+    var filename = decodeURIComponent((url.split('?')[0]).split('/').pop() || 'download');
+    window.pywebview.api.download_file(url, filename).then(function(path) {
+      if (path) console.log('[Zimi] Saved to:', path);
+    }).catch(function(e) { console.warn('[Zimi] Download failed:', e); });
+    return;
+  }
+  // Browser: trigger standard download
   var a = document.createElement('a');
   a.href = url; a.download = ''; a.style.display = 'none';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -6682,7 +6850,8 @@ function openReader(url) {
   // Punch-out button: for pdf.js viewer URLs, link to the raw PDF for download
   if (url.startsWith('/static/pdfjs/')) {
     var fileParam = new URL(url, location.origin).searchParams.get('file');
-    newtabBtn.href = fileParam || url;
+    // Add ?raw=1 for direct browser download (bypasses SPA shell)
+    newtabBtn.href = fileParam ? (fileParam + (fileParam.includes('?') ? '&' : '?') + 'raw=1') : url;
   } else {
     newtabBtn.href = url;
   }

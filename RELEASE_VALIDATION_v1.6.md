@@ -42,7 +42,7 @@
 - [ ] 3.4 — Launch orrery transfer → path drawn as smooth curve
 - [ ] 3.5 — Drag orrery speed slider to max → shows 100M×
 - [ ] 3.6 — Orrery controls are responsive and functional at all sizes
-- [ ] 3.7 — Calendar picker order: Gregorian, Hebrew, Islamic, Persian, Julian, Buddhist, Chinese
+- [ ] 3.7 — Calendar picker order: Persian, Gregorian, Islamic, Julian, Buddhist, Hebrew, Chinese
 - [ ] 3.8 — Moon shows earthshine glow, sky has day/night terminator
 - [ ] 3.9 — No eclipse simulation visible anywhere
 - [ ] 3.10 — Mobile viewport: clock and timezone grid fit without horizontal scroll

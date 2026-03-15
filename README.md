@@ -6,13 +6,10 @@ Kiwix packages the world's knowledge into ZIM files. Zimi serves them with a fas
 
 ## What's in the box
 
+- **10 languages** — full UI in English, French, German, Spanish, Portuguese, Russian, Chinese, Arabic, Hindi, and Hebrew. RTL layout for Arabic and Hebrew.
+- **Cross-language navigation** — reading about water in English Wikipedia? Open the language dropdown and switch to French — Zimi finds the same article via Wikidata Q-IDs. Don't have French Wikipedia? Download it right from the dropdown, and Zimi auto-navigates when it's done.
 - **Cross-source search** — title matches first, then full-text across all sources in parallel. Ranked by relevance, with thumbnails and snippets.
 - **Discover** — daily cards from your installed sources. Picture of the Day, On This Day, Quote of the Day, random articles. Rotates daily.
-- **10 languages** — full UI localization in English, French, German, Spanish, Portuguese, Russian, Chinese, Arabic, Hindi, and Hebrew. RTL layout for Arabic and Hebrew.
-- **Cross-language navigation** — reading about water in English Wikipedia? Switch to French and it finds the same article. Download missing languages right from the reader.
-- **Almanac** — real-time sun, moon, and planet positions computed from orbital mechanics. Simulated sky with 59 real stars projected to their correct positions. Interactive orrery. Seven calendar systems. No API calls, works forever offline.
-- **Messages Across Time** — 10 inscriptions spanning 3,700 years, from the Code of Hammurabi to the Georgia Guidestones. Each rendered in all 10 UI languages. Includes the 49 images from the Voyager Golden Record.
-- **Tabbed browsing** — Cmd+click or middle-click any link to open in a background tab.
 - **Bookmarks & history** — save articles, search your history, pick up where you left off.
 - **Catalog browser** — 1,000+ Kiwix archives across 10+ categories. One-click install with flavor picker.
 - **Library management** — auto-updates on a schedule, password protection, download queue with progress.
