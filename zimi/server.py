@@ -686,7 +686,7 @@ MIME_FALLBACK = {
     ".eot": "application/vnd.ms-fontobject", ".otf": "font/otf",
     ".xml": "application/xml", ".txt": "text/plain",
     ".wasm": "application/wasm", ".bcmap": "application/octet-stream",
-    ".properties": "text/plain",
+    ".properties": "text/plain", ".ftl": "text/plain",
     ".mp4": "video/mp4", ".webm": "video/webm", ".ogv": "video/ogg",
     ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav",
     ".opus": "audio/opus", ".flac": "audio/flac",

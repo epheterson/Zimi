@@ -4882,7 +4882,10 @@ function _pdfViewerUrl(pdfUrl) {
   // serves raw content without needing ?raw=1 (that's only for browser navigation).
   // Don't append ?raw=1 — it gets parsed as a separate query param by URLSearchParams
   // and breaks the file path extraction in PDF.js's parseQueryString.
-  return '/static/pdfjs/web/viewer.html?file=' + pdfUrl;
+  var lang = (typeof _currentLang !== 'undefined' && _currentLang) ? _currentLang : '';
+  var localeMap = { 'en': 'en-US', 'fr': 'fr', 'de': 'de', 'es': 'es-ES', 'pt': 'pt-BR', 'ru': 'ru', 'zh': 'zh-CN', 'ar': 'ar', 'he': 'he', 'hi': 'hi-IN' };
+  var locale = localeMap[lang] || '';
+  return '/static/pdfjs/web/viewer.html?file=' + pdfUrl + (locale ? '&locale=' + locale : '');
 }
 function _articleUrl(zim, path) {
   return '/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/');

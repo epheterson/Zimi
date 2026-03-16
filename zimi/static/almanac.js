@@ -4526,19 +4526,16 @@ function _renderGrLightbox() {
       if (Math.abs(dx) > 50) _grNav(dx < 0 ? 1 : -1);
     }, {passive:true});
   }
-  var isRTL = _RTL_CODES.indexOf((typeof _currentLang !== 'undefined') ? _currentLang : 'en') !== -1;
-  var prevArrow = isRTL ? '\u203a' : '\u2039';
-  var nextArrow = isRTL ? '\u2039' : '\u203a';
   lb.innerHTML =
     '<div class="gr-lb-bg" onclick="_closeGrLightbox()"></div>' +
     '<button class="gr-lb-close" onclick="_closeGrLightbox()">&times;</button>' +
-    '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)">' + prevArrow + '</button>' +
+    '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)">\u2039</button>' +
     '<div class="gr-lb-main" onclick="event.stopPropagation()">' +
       '<img src="/static/golden-record/' + file + '" alt="' + cap + '">' +
       '<div class="gr-lb-cap">' + cap + '</div>' +
       '<div class="gr-lb-num">' + (_grLightboxIdx + 1) + ' / ' + _GR_IMAGES.length + '</div>' +
     '</div>' +
-    '<button class="gr-lb-arrow gr-lb-next" onclick="event.stopPropagation();_grNav(1)">' + nextArrow + '</button>';
+    '<button class="gr-lb-arrow gr-lb-next" onclick="event.stopPropagation();_grNav(1)">\u203a</button>';
 }
 
 function _selectRosettaText(idx) {
