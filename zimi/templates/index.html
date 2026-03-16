@@ -2947,6 +2947,7 @@ function _renderDiscover(el, items) {
           '<div class="dc-source"><span>' + tH('today') + '</span></div>' +
           '<div class="dc-title">' + esc(_dateTitle) + '</div>' +
           '<div class="dc-blurb">' + _localMoonName(_m.name) + (_seasonStr ? ' \u00b7 ' + _seasonStr : '') + '</div>' +
+          '<div class="dc-blurb">' + _m.illumination + '% ' + tH('alm_illuminated') + '</div>' +
           (_teaser ? '<div class="dc-blurb" style="color:var(--amber)">' + _teaser + '</div>' : '') +
         '</div></div>';
       continue;
