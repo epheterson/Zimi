@@ -89,6 +89,7 @@
   "no_matching_zims": "Нет подходящих ZIM",
   "download": "Скачать",
   "get_lang_content": "Скачать материалы на {lang}",
+  "download_lang_wiki": "Скачать Википедию на {lang}",
   "download_size": "Скачать {size}",
   "choose_flavor": "Выбрать вариант",
   "starting": "Запуск...",

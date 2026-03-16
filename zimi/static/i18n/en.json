@@ -108,6 +108,7 @@
 
   "download": "Download",
   "get_lang_content": "Get {lang} content",
+  "download_lang_wiki": "Get {lang} Wikipedia",
   "download_size": "Download {size}",
   "choose_flavor": "Choose flavor",
   "starting": "Starting...",

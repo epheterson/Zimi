@@ -89,6 +89,7 @@
   "no_matching_zims": "Keine passenden ZIMs",
   "download": "Herunterladen",
   "get_lang_content": "{lang}-Inhalte herunterladen",
+  "download_lang_wiki": "{lang}-Wikipedia herunterladen",
   "download_size": "{size} herunterladen",
   "choose_flavor": "Variante wählen",
   "starting": "Wird gestartet...",

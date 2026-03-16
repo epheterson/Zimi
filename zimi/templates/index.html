@@ -308,6 +308,10 @@
   .ld-switch-article { font-size: 11px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lang-dropdown-item.switchable:hover .ld-switch-article { color: var(--amber); opacity: 0.7; }
   .ld-divider { height: 1px; background: var(--border); margin: 4px 0; }
+  .ld-download { font-size: 12px; color: var(--text3); }
+  .ld-download:hover { color: var(--amber); }
+  .ld-download svg { opacity: 0.5; flex-shrink: 0; }
+  .ld-download:hover svg { opacity: 1; color: var(--amber); }
 
   /* ── RTL support ── */
   [dir="rtl"] .topbar { direction: rtl; }
@@ -1448,6 +1452,7 @@ let _domainZimMap = {}; // {domain: zim_name} — for cross-ZIM link classificat
 let _resolveCache = {}; // {url: {found, zim, path}} — cached batch resolve results
 let zimsCache = null;
 let manageEnabled = false;
+let _manageUnlocked = false; // true when manage is usable without password prompt
 let activeCategories = new Set();
 let activeSourceFilters = new Set();
 let allResults = {};
@@ -1873,7 +1878,7 @@ async function init() {
 async function _initSecondary() {
   var needsRerender = false;
   await Promise.allSettled([
-    // Manage status
+    // Manage status + password check
     fetch('/manage/status').then(async mres => {
       if (mres.ok) {
         const mdata = await mres.json();
@@ -1882,6 +1887,14 @@ async function _initSecondary() {
         manageEnabled = true;
       }
       needsRerender = true;
+    }).catch(function(){}),
+    fetch('/manage/has-password').then(async pres => {
+      if (pres.ok) {
+        var pd = await pres.json();
+        var saved = sessionStorage.getItem('zimi_manage_pw');
+        _manageUnlocked = !pd.has_password || !!saved;
+        if (saved) _manageToken = saved;
+      }
     }).catch(function(){}),
     // Collections/favorites
     fetch('/collections').then(async cres => {
@@ -7084,7 +7097,34 @@ function _renderLangDropdown() {
     h += '<div class="lang-dropdown-item' + active + '" onclick="_selectLang(\'' + l.code + '\')">' +
       '<span>' + esc(l.name) + '</span>' + right + '</div>';
   }
+
+  // Contextual Wikipedia download: only when reading Wikipedia and UI language has no Wikipedia installed
+  if (inReader && manageEnabled && _manageUnlocked) {
+    var isWiki = zimInfo && /^wikipedia/i.test(zimInfo.name || '');
+    if (isWiki) {
+      var hasLangWiki = (zimsCache || []).some(function(z) {
+        return z.language === _currentLang && /^wikipedia/i.test(z.name);
+      });
+      if (!hasLangWiki) {
+        var dlLang = _AVAILABLE_LANGS.find(function(ll) { return ll.code === _currentLang; });
+        var dlName = dlLang ? dlLang.name : _currentLang;
+        h += '<div class="ld-divider"></div>';
+        h += '<div class="lang-dropdown-item ld-download" onclick="_langDropdownGetWiki()">' +
+          '<span>' + esc(tH('download_lang_wiki', {lang: dlName})) + '</span>' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg></div>';
+      }
+    }
+  }
   dd.innerHTML = h;
+}
+
+function _langDropdownGetWiki() {
+  _closeLangDropdown();
+  _catalogCache = null;
+  _catalogCacheLang = '';
+  manageTab = 'browse';
+  _pendingDrill = { catKey: 'wikipedia', lang: _currentLang };
+  enterManage();
 }
 
 async function _selectLangAndSwitch(code, zim, path) {

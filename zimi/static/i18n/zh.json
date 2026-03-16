@@ -89,6 +89,7 @@
   "no_matching_zims": "没有匹配的 ZIM",
   "download": "下载",
   "get_lang_content": "获取{lang}内容",
+  "download_lang_wiki": "下载{lang}维基百科",
   "download_size": "下载 {size}",
   "choose_flavor": "选择版本",
   "starting": "启动中...",

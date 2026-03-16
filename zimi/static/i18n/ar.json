@@ -89,6 +89,7 @@
   "no_matching_zims": "لا توجد ملفات ZIM مطابقة",
   "download": "تنزيل",
   "get_lang_content": "الحصول على محتوى {lang}",
+  "download_lang_wiki": "تنزيل ويكيبيديا {lang}",
   "download_size": "تنزيل {size}",
   "choose_flavor": "اختيار النسخة",
   "starting": "جارٍ البدء...",

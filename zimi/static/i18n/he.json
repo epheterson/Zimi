@@ -89,6 +89,7 @@
   "no_matching_zims": "אין קבצי ZIM תואמים",
   "download": "הורדה",
   "get_lang_content": "הורד תוכן ב{lang}",
+  "download_lang_wiki": "הורד את ויקיפדיה ב{lang}",
   "download_size": "הורדה {size}",
   "choose_flavor": "בחרו גרסה",
   "starting": "מתחיל...",

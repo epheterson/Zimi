@@ -89,6 +89,7 @@
   "no_matching_zims": "कोई मेल खाता ZIM नहीं",
   "download": "डाउनलोड",
   "get_lang_content": "{lang} कंटेंट पाएं",
+  "download_lang_wiki": "{lang} विकिपीडिया डाउनलोड करें",
   "download_size": "डाउनलोड {size}",
   "choose_flavor": "संस्करण चुनें",
   "starting": "शुरू हो रहा है...",
