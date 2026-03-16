@@ -1557,11 +1557,15 @@ async function setLanguage(lang) {
   _applyI18nToDOM();
   _renderLangDropdown();
   // Re-render current view so all dynamic strings update
-  if (mode === 'manage') {
+  // Skip re-rendering when reader is open — renderSource auto-opens the ZIM homepage,
+  // which would overwrite the article the user is reading.
+  if (readerOpen) {
+    // Just update topbar/labels — reader iframe content stays put
+  } else if (mode === 'manage') {
     switchManageTab(manageTab || 'installed');
   } else if (mode === 'source' && currentSource) {
     renderSource(currentSource);
-  } else if (!readerOpen) {
+  } else {
     renderHome();
   }
   updateTopbar();
@@ -3707,6 +3711,14 @@ function showMoreResults() {
 function _zimTitle(name) {
   const info = zimsCache && zimsCache.find(z => z.name === name);
   return (info && info.title) || name;
+}
+function _zimTitleWithLang(name) {
+  var info = zimsCache && zimsCache.find(function(z) { return z.name === name; });
+  var title = (info && info.title) || name;
+  if (info && info.language && info.language !== _currentLang) {
+    title += ' (' + _langDisplayName(info.language) + ')';
+  }
+  return title;
 }
 
 // ── Async Snippets + Thumbnails ──
@@ -6744,7 +6756,7 @@ function _renderHistoryContent() {
       while (j < h.length && h[j].type === 'article' && h[j].fromQuery === item.query) {
         var child = h[j];
         var cIcon = child.zim ? _sourceIconHtml(child.zim, 16) : '';
-        var cSub = child.zim ? _zimTitle(child.zim) : '';
+        var cSub = child.zim ? _zimTitleWithLang(child.zim) : '';
         html += '<div class="hp-item" style="padding-left:38px" onclick="_closeLibraryPanel();openArticle(\'' + escJs(child.zim) + '\',\'' + escJs(child.path) + '\',\'' + escJs(child.title || '') + '\')">' +
           '<div class="hp-icon" style="width:22px;height:22px">' + cIcon + '</div>' +
           '<div class="hp-detail"><div class="hp-title">' + esc(child.title || child.path) + '</div>' +
@@ -6755,7 +6767,7 @@ function _renderHistoryContent() {
       i = j;
     } else if (item.type === 'article') {
       var aIcon = item.zim ? _sourceIconHtml(item.zim, 20) : '\uD83D\uDCC4';
-      var aSub = item.zim ? _zimTitle(item.zim) : '';
+      var aSub = item.zim ? _zimTitleWithLang(item.zim) : '';
       html += '<div class="hp-item" onclick="_closeLibraryPanel();openArticle(\'' + escJs(item.zim) + '\',\'' + escJs(item.path) + '\',\'' + escJs(item.title || '') + '\')">' +
         '<div class="hp-icon">' + aIcon + '</div>' +
         '<div class="hp-detail"><div class="hp-title">' + esc(item.title || item.path) + '</div>' +
@@ -6778,7 +6790,7 @@ function _renderBookmarksContent() {
   for (var i = 0; i < bk.length; i++) {
     var b = bk[i];
     var icon = b.zim ? _sourceIconHtml(b.zim, 20) : '\uD83D\uDCC4';
-    var sub = b.zim ? _zimTitle(b.zim) : '';
+    var sub = b.zim ? _zimTitleWithLang(b.zim) : '';
     html += '<div class="hp-item" onclick="_closeLibraryPanel();openArticle(\'' + escJs(b.zim) + '\',\'' + escJs(b.path) + '\',\'' + escJs(b.title || '') + '\')">' +
       '<div class="hp-icon">' + icon + '</div>' +
       '<div class="hp-detail"><div class="hp-title">' + esc(b.title || _titleFromPath(b.path)) + '</div>' +
