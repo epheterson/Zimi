@@ -32,6 +32,14 @@ function _signalDelay(au) {
   return { h: Math.floor(sec / 3600), m: Math.floor((sec % 3600) / 60) };
 }
 
+function _fmtDuration(h, m) {
+  return h + t('alm_h_abbr') + ' ' + m + t('alm_m_abbr');
+}
+
+function _tp(name) { return t('alm_planet_' + name.toLowerCase()) || name; }
+var _CONST_KEYS = {'Pisces':'pisces','Aries':'aries','Taurus':'taurus','Gemini':'gemini','Cancer':'cancer','Leo':'leo','Virgo':'virgo','Libra':'libra','Scorpius':'scorpius','Sagittarius':'sagittarius','Capricornus':'capricornus','Aquarius':'aquarius','Bo\u00f6tes':'bootes','Lyra':'lyra','Perseus':'perseus','Draco':'draco','Orion':'orion','Ursa Minor':'ursa_minor'};
+function _tc(name) { var k = _CONST_KEYS[name]; return k ? (t('alm_const_' + k) || name) : name; }
+
 function _dayOfYear(date) {
   var start = new Date(date.getFullYear(), 0, 1);
   return Math.floor((date - start) / MS_PER_DAY) + 1;
@@ -458,7 +466,7 @@ function _initOrrery() {
     var mx = e.clientX - rect.left, my = e.clientY - rect.top;
     var hit = _orreryHitTest(mx, my, 8);
     if (hit && hit.type === 'planet') {
-      var label = hit.data.name;
+      var label = _tp(hit.data.name);
       if (hit.data.name !== 'Earth') {
         var days = Math.round(_hohmannDays(_PLANETS['Earth'].a, _PLANETS[hit.data.name].a));
         if (days < 365) label += ' · ' + t('alm_transfer_days', { n: days });
@@ -472,7 +480,7 @@ function _initOrrery() {
     } else if (hit && hit.type === 'voyager') {
       var d = hit.data.dist;
       var sig = _signalDelay(d);
-      tooltip.textContent = hit.data.name + ' · ' + d.toFixed(1) + ' AU · ' + sig.h + 'h ' + sig.m + 'm ' + t('alm_signal_delay');
+      tooltip.textContent = hit.data.name + ' · ' + d.toFixed(1) + ' AU · ' + _fmtDuration(sig.h, sig.m) + ' ' + t('alm_signal_delay');
       tooltip.style.display = 'block';
       tooltip.style.left = (hit.data.x + hit.data.r + 8) + 'px';
       tooltip.style.top = (hit.data.y - 10) + 'px';
@@ -1189,7 +1197,7 @@ function _updateVoyagerCard() {
   html += '<div class="voyager-card-stats">';
   html += '<div class="voyager-stat"><span class="voyager-stat-val">' + dist.toFixed(1) + ' AU</span><span class="voyager-stat-lbl">' + t('alm_from_sun') + '</span></div>';
   html += '<div class="voyager-stat"><span class="voyager-stat-val">' + speed.toFixed(1) + ' km/s</span><span class="voyager-stat-lbl">' + t('alm_velocity') + '</span></div>';
-  html += '<div class="voyager-stat"><span class="voyager-stat-val">' + sig.h + 'h ' + sig.m + 'm</span><span class="voyager-stat-lbl">' + t('alm_signal_delay') + '</span></div>';
+  html += '<div class="voyager-stat"><span class="voyager-stat-val">' + _fmtDuration(sig.h, sig.m) + '</span><span class="voyager-stat-lbl">' + t('alm_signal_delay') + '</span></div>';
   html += '<div class="voyager-stat"><span class="voyager-stat-val">' + yearsInSpace.toFixed(1) + '</span><span class="voyager-stat-lbl">' + t('alm_years_in_space') + '</span></div>';
   html += '</div>';
   var q = _voyagerCardQuote;
@@ -1528,9 +1536,9 @@ function _renderAstroPanel(now) {
     { name: 'Scorpius', start: 241.1 }, { name: 'Sagittarius', start: 266.6 },
     { name: 'Capricornus', start: 300.0 }, { name: 'Aquarius', start: 327.9 }
   ];
-  var constellation = zodiac[zodiac.length - 1].name;
+  var constellation = _tc(zodiac[zodiac.length - 1].name);
   for (var zi = zodiac.length - 1; zi >= 0; zi--) {
-    if (sunLon >= zodiac[zi].start) { constellation = zodiac[zi].name; break; }
+    if (sunLon >= zodiac[zi].start) { constellation = _tc(zodiac[zi].name); break; }
   }
 
   // Compute eclipses algorithmically — works for any date, forever
@@ -1933,8 +1941,9 @@ function _drawTzClock(now) {
 // Cached Intl.DateTimeFormat objects — avoid 180+ allocations/sec in the RAF loop
 var _tzFmtCache = {};
 function _tzFmt(tz, opts) {
-  var key = tz + '|' + Object.values(opts).join(',');
-  if (!_tzFmtCache[key]) _tzFmtCache[key] = new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: tz }, opts));
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  var key = lang + '|' + tz + '|' + Object.values(opts).join(',');
+  if (!_tzFmtCache[key]) _tzFmtCache[key] = new Intl.DateTimeFormat(lang, Object.assign({ timeZone: tz }, opts));
   return _tzFmtCache[key];
 }
 
@@ -1974,7 +1983,7 @@ function _computeSunTimes(now, lat, lon) {
   var result = {
     sunrise: _fmtMinutes(sunrise),
     sunset: _fmtMinutes(sunset),
-    dayLength: dayH + 'h ' + dayM + 'm'
+    dayLength: _fmtDuration(dayH, dayM)
   };
 
   var cosGH = (Math.cos(84 * DEG_TO_RAD) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
@@ -2415,11 +2424,9 @@ function _promptAlmanacLocation() {
 
 function _fmtMinutes(m) {
   m = ((m % 1440) + 1440) % 1440;
-  var h = Math.floor(m / 60);
-  var min = Math.round(m % 60);
-  var ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  return h + ':' + (min < 10 ? '0' : '') + min + ' ' + ampm;
+  var d = new Date(2023, 0, 1, Math.floor(m / 60), Math.round(m % 60));
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  return d.toLocaleTimeString(lang, { hour: 'numeric', minute: '2-digit' });
 }
 
 // ── Live Sky Scene ──
@@ -3254,13 +3261,13 @@ function _renderTonightSky(now) {
       var brightness = p.magnitude < -3 ? t('alm_brightness_brilliant') : p.magnitude < -1 ? t('alm_brightness_very_bright') : p.magnitude < 1 ? t('alm_brightness_bright') : p.magnitude < 3 ? t('alm_brightness_visible') : t('alm_brightness_faint');
       html += '<div class="almanac-eclipse-row">' +
         '<div>' +
-        '<span class="almanac-eclipse-type" style="color:' + p.color + '">' + p.name + '</span>' +
+        '<span class="almanac-eclipse-type" style="color:' + p.color + '">' + _tp(p.name) + '</span>' +
         '<br><span class="almanac-eclipse-date">' + brightness + ' &middot; mag ' + magStr + ' &middot; ' + p.elongation.toFixed(0) + '\u00b0 ' + t('alm_from_sun') + '</span>' +
         '</div>' +
         '<div class="almanac-eclipse-until" style="font-size:11px">' + p.sky + '<br>' + p.direction + '</div></div>';
     }
     if (notVisible.length > 0) {
-      var names = notVisible.map(function(p) { return p.name; });
+      var names = notVisible.map(function(p) { return _tp(p.name); });
       html += '<div style="margin-top:8px;font-size:11px;color:var(--text3);text-align:center">' + names.join(', ') + ' \u2014 ' + t('alm_not_visible_tonight') + '</div>';
     }
   }
@@ -3270,18 +3277,18 @@ function _renderTonightSky(now) {
 // ── Meteor Showers ──
 
 var _METEOR_SHOWERS = [
-  { name: 'Quadrantids', peak: [1, 3], zhr: 120, parent: '2003 EH\u2081', radiant: 'Bo\u00f6tes', speed: 'Medium' },
-  { name: 'Lyrids', peak: [4, 22], zhr: 18, parent: 'C/1861 G1 Thatcher', radiant: 'Lyra', speed: 'Fast' },
-  { name: 'Eta Aquariids', peak: [5, 6], zhr: 50, parent: '1P/Halley', radiant: 'Aquarius', speed: 'Fast' },
-  { name: 'Southern Delta Aquariids', peak: [7, 30], zhr: 25, parent: '96P/Machholz', radiant: 'Aquarius', speed: 'Medium' },
-  { name: 'Alpha Capricornids', peak: [7, 30], zhr: 5, parent: '169P/NEAT', radiant: 'Capricornus', speed: 'Slow' },
-  { name: 'Perseids', peak: [8, 12], zhr: 100, parent: '109P/Swift\u2013Tuttle', radiant: 'Perseus', speed: 'Fast' },
-  { name: 'Draconids', peak: [10, 8], zhr: 10, parent: '21P/Giacobini\u2013Zinner', radiant: 'Draco', speed: 'Slow' },
-  { name: 'Orionids', peak: [10, 21], zhr: 20, parent: '1P/Halley', radiant: 'Orion', speed: 'Fast' },
-  { name: 'Taurids', peak: [11, 5], zhr: 10, parent: '2P/Encke', radiant: 'Taurus', speed: 'Slow' },
-  { name: 'Leonids', peak: [11, 17], zhr: 15, parent: '55P/Tempel\u2013Tuttle', radiant: 'Leo', speed: 'Fast' },
-  { name: 'Geminids', peak: [12, 14], zhr: 150, parent: '3200 Phaethon', radiant: 'Gemini', speed: 'Medium' },
-  { name: 'Ursids', peak: [12, 22], zhr: 10, parent: '8P/Tuttle', radiant: 'Ursa Minor', speed: 'Medium' }
+  { key: 'quadrantids', peak: [1, 3], zhr: 120, parent: '2003 EH\u2081', radiant: 'Bo\u00f6tes', speed: 'Medium' },
+  { key: 'lyrids', peak: [4, 22], zhr: 18, parent: 'C/1861 G1 Thatcher', radiant: 'Lyra', speed: 'Fast' },
+  { key: 'eta_aquariids', peak: [5, 6], zhr: 50, parent: '1P/Halley', radiant: 'Aquarius', speed: 'Fast' },
+  { key: 's_delta_aquariids', peak: [7, 30], zhr: 25, parent: '96P/Machholz', radiant: 'Aquarius', speed: 'Medium' },
+  { key: 'alpha_capricornids', peak: [7, 30], zhr: 5, parent: '169P/NEAT', radiant: 'Capricornus', speed: 'Slow' },
+  { key: 'perseids', peak: [8, 12], zhr: 100, parent: '109P/Swift\u2013Tuttle', radiant: 'Perseus', speed: 'Fast' },
+  { key: 'draconids', peak: [10, 8], zhr: 10, parent: '21P/Giacobini\u2013Zinner', radiant: 'Draco', speed: 'Slow' },
+  { key: 'orionids', peak: [10, 21], zhr: 20, parent: '1P/Halley', radiant: 'Orion', speed: 'Fast' },
+  { key: 'taurids', peak: [11, 5], zhr: 10, parent: '2P/Encke', radiant: 'Taurus', speed: 'Slow' },
+  { key: 'leonids', peak: [11, 17], zhr: 15, parent: '55P/Tempel\u2013Tuttle', radiant: 'Leo', speed: 'Fast' },
+  { key: 'geminids', peak: [12, 14], zhr: 150, parent: '3200 Phaethon', radiant: 'Gemini', speed: 'Medium' },
+  { key: 'ursids', peak: [12, 22], zhr: 10, parent: '8P/Tuttle', radiant: 'Ursa Minor', speed: 'Medium' }
 ];
 
 function _renderMeteorShowers(now, moon) {
@@ -3301,7 +3308,7 @@ function _renderMeteorShowers(now, moon) {
         var moonInterference = peakMoon.illumination > 60 ? t('alm_moon_poor') : peakMoon.illumination > 30 ? t('alm_moon_fair') : t('alm_moon_ideal');
         var moonIcon = peakMoon.illumination > 60 ? '\u{1F315}' : peakMoon.illumination > 30 ? '\u{1F313}' : '\u{1F311}';
         upcoming.push({
-          name: s.name, zhr: s.zhr, parent: s.parent, radiant: s.radiant,
+          key: s.key, zhr: s.zhr, parent: s.parent, radiant: s.radiant,
           speed: s.speed, date: peakDate, daysUntil: daysUntil,
           moonCondition: moonInterference, moonIcon: moonIcon,
           moonIllum: peakMoon.illumination
@@ -3320,8 +3327,8 @@ function _renderMeteorShowers(now, moon) {
     var condColor = s.moonCondition === t('alm_moon_ideal') ? 'var(--accent)' : s.moonCondition === t('alm_moon_fair') ? 'var(--text2)' : 'var(--text3)';
     html += '<div class="almanac-eclipse-row">' +
       '<div>' +
-      '<span class="almanac-eclipse-type">' + s.name + '</span>' +
-      '<br><span class="almanac-eclipse-date">~' + s.zhr + '/hr &middot; ' + s.radiant + ' &middot; ' + s.speed +
+      '<span class="almanac-eclipse-type">' + t('alm_shower_' + s.key) + '</span>' +
+      '<br><span class="almanac-eclipse-date">~' + s.zhr + '/hr &middot; ' + _tc(s.radiant) + ' &middot; ' + t('alm_speed_' + s.speed.toLowerCase()) +
       ' &middot; <span style="color:' + condColor + '">' + s.moonIcon + ' ' + s.moonCondition + '</span></span>' +
       '</div>' +
       '<div class="almanac-eclipse-until">' + untilStr + '</div></div>';
@@ -3441,13 +3448,13 @@ function _renderCelestialEvents(now) {
       var untilStr = ev.daysUntil <= 1 ? t('alm_now_exclaim') : ev.daysUntil + ' ' + t('alm_days');
       var title, detail;
       if (ev.type === 'conjunction') {
-        title = ev.planets[0] + ' \u2013 ' + ev.planets[1] + ' ' + t('alm_conjunction');
+        title = _tp(ev.planets[0]) + ' \u2013 ' + _tp(ev.planets[1]) + ' ' + t('alm_conjunction');
         detail = ev.separation.toFixed(1) + '\u00b0 ' + t('alm_apart') + ' &middot; ' + dateStr;
       } else if (ev.type === 'opposition') {
-        title = ev.planet + ' ' + t('alm_at_opposition');
+        title = _tp(ev.planet) + ' ' + t('alm_at_opposition');
         detail = t('alm_closest_brightest') + ' &middot; ' + dateStr;
       } else if (ev.type === 'elongation') {
-        title = ev.planet + ' ' + t('alm_greatest_elongation');
+        title = _tp(ev.planet) + ' ' + t('alm_greatest_elongation');
         var skyLabel = ev.sky === 'evening' ? t('alm_evening') : t('alm_morning');
         detail = ev.elongation.toFixed(1) + '\u00b0 &middot; ' + skyLabel + ' ' + t('alm_sky') + ' &middot; ' + dateStr;
       }
@@ -4356,56 +4363,20 @@ var _RTL_CODES = ['ar','he'];
 
 // Golden Record image gallery — ordered as encoded on the record
 var _GR_IMAGES = [
-  {file:'cover.jpg',cap:'Record Cover — playback instructions for finders'},
-  {file:'calibration-circle.gif',cap:'Calibration Circle'},
-  {file:'math-definitions.gif',cap:'Mathematical Definitions'},
-  {file:'physical-units.gif',cap:'Physical Unit Definitions'},
-  {file:'solar-location-map.gif',cap:'Solar Location Map — 14 pulsars'},
-  {file:'solar-system-inner.gif',cap:'Solar System — Inner Planets'},
-  {file:'solar-system-outer.gif',cap:'Solar System — Outer Planets'},
-  {file:'solar-spectrum.gif',cap:'Solar Spectrum'},
-  {file:'mercury.gif',cap:'Mercury'},
-  {file:'mars.gif',cap:'Mars'},
-  {file:'jupiter.gif',cap:'Jupiter'},
-  {file:'earth.gif',cap:'Earth — 12,756 km'},
-  {file:'egypt-nile.gif',cap:'Egypt, Sinai Peninsula & the Nile'},
-  {file:'chemical-definitions.gif',cap:'Chemical Definitions'},
-  {file:'dna-structure.gif',cap:'DNA Structure'},
-  {file:'dna-magnified.gif',cap:'DNA Magnified — 34 Ångströms'},
-  {file:'structure-of-earth.gif',cap:'Structure of Earth'},
-  {file:'continental-drift.gif',cap:'Continental Drift'},
-  {file:'heron-island.jpg',cap:'Heron Island, Great Barrier Reef'},
-  {file:'vertebrate-evolution.gif',cap:'Vertebrate Evolution'},
-  {file:'bushmen-sketch.gif',cap:'Sketch of Bushmen Hunters'},
-  {file:'man-guatemala.gif',cap:'Man from Guatemala'},
-  {file:'human-anatomy.gif',cap:'Human Anatomy — Male & Female'},
-  {file:'conception.gif',cap:'Diagram of Conception'},
-  {file:'fetus.gif',cap:'Fetal Development'},
-  {file:'family-ages.gif',cap:'Family Ages — 4, 12, 30, 80'},
-  {file:'nursing-mother.gif',cap:'Nursing Mother'},
-  {file:'eating-drinking.gif',cap:'Licking, Eating & Drinking'},
-  {file:'children-globe.gif',cap:'Children with Globe'},
-  {file:'schoolroom.gif',cap:'Schoolroom'},
-  {file:'fishing-boat.gif',cap:'Fishing Boat with Nets'},
-  {file:'house-africa.gif',cap:'House — Africa'},
-  {file:'house-construction.gif',cap:'House Construction — Africa'},
-  {file:'house-new-mexico.gif',cap:'Modern House — Cloudcroft, NM'},
-  {file:'supermarket.gif',cap:'Supermarket'},
-  {file:'un-building-day.gif',cap:'United Nations — Day'},
-  {file:'un-building-night.gif',cap:'United Nations — Night'},
-  {file:'olympians.gif',cap:'Olympic Sprinters — Valeri Borzov'},
-  {file:'microscope.gif',cap:'Woman with Microscope'},
-  {file:'xray-hand.gif',cap:'X-Ray of Hand'},
-  {file:'street-scene.gif',cap:'Street Scene — Early 20th Century'},
-  {file:'rush-hour.gif',cap:'Rush Hour Traffic — Thailand'},
-  {file:'highway.gif',cap:'Modern Highway'},
-  {file:'airplane.gif',cap:'Airplane in Flight'},
-  {file:'arecibo.gif',cap:'Arecibo Radio Telescope — 305m'},
-  {file:'newton-book.gif',cap:'Newton — System of the World'},
-  {file:'violin-cavatina.gif',cap:'Violin with Cavatina Score'},
-  {file:'titan-launch.gif',cap:'Titan Centaur Launch'},
-  {file:'astronaut.gif',cap:'Astronaut — Ed White, Gemini IV'}
+  'cover.jpg', 'calibration-circle.gif', 'math-definitions.gif', 'physical-units.gif',
+  'solar-location-map.gif', 'solar-system-inner.gif', 'solar-system-outer.gif', 'solar-spectrum.gif',
+  'mercury.gif', 'mars.gif', 'jupiter.gif', 'earth.gif', 'egypt-nile.gif',
+  'chemical-definitions.gif', 'dna-structure.gif', 'dna-magnified.gif', 'structure-of-earth.gif',
+  'continental-drift.gif', 'heron-island.jpg', 'vertebrate-evolution.gif', 'bushmen-sketch.gif',
+  'man-guatemala.gif', 'human-anatomy.gif', 'conception.gif', 'fetus.gif', 'family-ages.gif',
+  'nursing-mother.gif', 'eating-drinking.gif', 'children-globe.gif', 'schoolroom.gif',
+  'fishing-boat.gif', 'house-africa.gif', 'house-construction.gif', 'house-new-mexico.gif',
+  'supermarket.gif', 'un-building-day.gif', 'un-building-night.gif', 'olympians.gif',
+  'microscope.gif', 'xray-hand.gif', 'street-scene.gif', 'rush-hour.gif', 'highway.gif',
+  'airplane.gif', 'arecibo.gif', 'newton-book.gif', 'violin-cavatina.gif',
+  'titan-launch.gif', 'astronaut.gif'
 ];
+function _grCap(idx) { return t('gr_cap_' + idx); }
 
 var _grLightboxIdx = -1;
 var _grTouchStartX = 0;
@@ -4506,7 +4477,7 @@ function _renderGoldenRecordGallery() {
   html += '<div class="gr-grid">';
   for (var i = 0; i < _GR_IMAGES.length; i++) {
     html += '<div class="gr-thumb" onclick="_openGrLightbox(' + i + ')">' +
-      '<img src="/static/golden-record/' + _GR_IMAGES[i].file + '" alt="' + _GR_IMAGES[i].cap + '" loading="lazy">' +
+      '<img src="/static/golden-record/' + _GR_IMAGES[i] + '" alt="' + _grCap(i) + '" loading="lazy">' +
       '</div>';
   }
   html += '</div></div>';
@@ -4538,7 +4509,8 @@ function _grNav(dir) {
 }
 
 function _renderGrLightbox() {
-  var img = _GR_IMAGES[_grLightboxIdx];
+  var file = _GR_IMAGES[_grLightboxIdx];
+  var cap = _grCap(_grLightboxIdx);
   var lb = document.getElementById('gr-lightbox');
   if (!lb) {
     lb = document.createElement('div');
@@ -4554,16 +4526,19 @@ function _renderGrLightbox() {
       if (Math.abs(dx) > 50) _grNav(dx < 0 ? 1 : -1);
     }, {passive:true});
   }
+  var isRTL = _RTL_CODES.indexOf((typeof _currentLang !== 'undefined') ? _currentLang : 'en') !== -1;
+  var prevArrow = isRTL ? '\u203a' : '\u2039';
+  var nextArrow = isRTL ? '\u2039' : '\u203a';
   lb.innerHTML =
     '<div class="gr-lb-bg" onclick="_closeGrLightbox()"></div>' +
     '<button class="gr-lb-close" onclick="_closeGrLightbox()">&times;</button>' +
-    '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)">\u2039</button>' +
+    '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)">' + prevArrow + '</button>' +
     '<div class="gr-lb-main" onclick="event.stopPropagation()">' +
-      '<img src="/static/golden-record/' + img.file + '" alt="' + img.cap + '">' +
-      '<div class="gr-lb-cap">' + img.cap + '</div>' +
+      '<img src="/static/golden-record/' + file + '" alt="' + cap + '">' +
+      '<div class="gr-lb-cap">' + cap + '</div>' +
       '<div class="gr-lb-num">' + (_grLightboxIdx + 1) + ' / ' + _GR_IMAGES.length + '</div>' +
     '</div>' +
-    '<button class="gr-lb-arrow gr-lb-next" onclick="event.stopPropagation();_grNav(1)">\u203a</button>';
+    '<button class="gr-lb-arrow gr-lb-next" onclick="event.stopPropagation();_grNav(1)">' + nextArrow + '</button>';
 }
 
 function _selectRosettaText(idx) {
