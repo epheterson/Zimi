@@ -11,12 +11,25 @@ var DEG_TO_RAD = Math.PI / 180;
 function _dateToJD(ms) { return JD_UNIX_EPOCH + ms / MS_PER_DAY; }
 function _jdToJulianCentury(JD) { return (JD - JD_J2000) / JULIAN_CENTURY; }
 
+var _ALM_LOC_KEY = 'zimi_almanac_location';
+
 function _getLocation() {
-  var stored = localStorage.getItem('zimi_almanac_location');
+  var stored = localStorage.getItem(_ALM_LOC_KEY);
   if (stored) {
     try { var loc = JSON.parse(stored); return { lat: loc.lat, lon: loc.lon, name: loc.name || '' }; } catch(e) {}
   }
   return { lat: 34, lon: -new Date().getTimezoneOffset() / 60 * 15, name: '' };
+}
+
+function _saveLocation(lat, lon, name) {
+  var data = { lat: lat, lon: lon };
+  if (name) data.name = name;
+  localStorage.setItem(_ALM_LOC_KEY, JSON.stringify(data));
+}
+
+function _signalDelay(au) {
+  var sec = au * 499;
+  return { h: Math.floor(sec / 3600), m: Math.floor((sec % 3600) / 60) };
 }
 
 function _dayOfYear(date) {
@@ -388,6 +401,11 @@ function _initOrrery() {
   canvas.style.width = w + 'px';
   canvas.style.height = w + 'px';
   canvas.style.borderRadius = '12px';
+  // Cache DOM refs for RAF loop (avoids getElementById per frame)
+  _orreryCanvas = canvas;
+  _orreryDpr = dpr;
+  _orrerySpeedLabel = document.getElementById('orrery-speed-label');
+  _orrerySliderEl = document.getElementById('orrery-slider');
   _drawOrrery(canvas, dpr);
 
   // Hover tooltip for planet names
@@ -432,10 +450,8 @@ function _initOrrery() {
       canvas.style.cursor = hit.data.name !== 'Earth' ? 'pointer' : 'default';
     } else if (hit && hit.type === 'voyager') {
       var d = hit.data.dist;
-      var signalMin = Math.round(d * 499 / 60);
-      var signalH = Math.floor(signalMin / 60);
-      var signalM = signalMin % 60;
-      tooltip.textContent = hit.data.name + ' · ' + d.toFixed(1) + ' AU · ' + signalH + 'h ' + signalM + 'm ' + t('alm_signal_delay');
+      var sig = _signalDelay(d);
+      tooltip.textContent = hit.data.name + ' · ' + d.toFixed(1) + ' AU · ' + sig.h + 'h ' + sig.m + 'm ' + t('alm_signal_delay');
       tooltip.style.display = 'block';
       tooltip.style.left = (hit.data.x + hit.data.r + 8) + 'px';
       tooltip.style.top = (hit.data.y - 10) + 'px';
@@ -868,6 +884,10 @@ var _orreryTimeOffset = 0;       // milliseconds offset from real time
 var _orreryLastFrame = 0;        // last rAF timestamp
 var _orreryRockets = [];         // all rocket missions (in-flight + orbiting)
 var _orreryAutoTransit = false;  // true when rocket launch controls speed profile
+var _orreryCanvas = null;        // cached DOM refs for RAF loop
+var _orrerySpeedLabel = null;
+var _orrerySliderEl = null;
+var _orreryDpr = 1;
 
 // Hohmann transfer transit time in days
 // Half-period of transfer ellipse: t = (T/2) where T = a^(3/2) years (Kepler's 3rd law)
@@ -1126,9 +1146,7 @@ function _updateVoyagerCard() {
   var dist = _voyagerDist(v, simTime);
   var yearsInSpace = ((simTime - v.launch) / (365.25 * MS_PER_DAY));
   var speed = v.vel * 149597870.7 / (365.25 * 24 * 3600);
-  var signalSec = dist * 499.0;
-  var signalH = Math.floor(signalSec / 3600);
-  var signalM = Math.floor((signalSec % 3600) / 60);
+  var sig = _signalDelay(dist);
 
   var html = '<div class="voyager-card-inner">';
   html += '<div class="voyager-card-header">';
@@ -1138,7 +1156,7 @@ function _updateVoyagerCard() {
   html += '<div class="voyager-card-stats">';
   html += '<div class="voyager-stat"><span class="voyager-stat-val">' + dist.toFixed(1) + ' AU</span><span class="voyager-stat-lbl">' + t('alm_from_sun') + '</span></div>';
   html += '<div class="voyager-stat"><span class="voyager-stat-val">' + speed.toFixed(1) + ' km/s</span><span class="voyager-stat-lbl">' + t('alm_velocity') + '</span></div>';
-  html += '<div class="voyager-stat"><span class="voyager-stat-val">' + signalH + 'h ' + signalM + 'm</span><span class="voyager-stat-lbl">' + t('alm_signal_delay') + '</span></div>';
+  html += '<div class="voyager-stat"><span class="voyager-stat-val">' + sig.h + 'h ' + sig.m + 'm</span><span class="voyager-stat-lbl">' + t('alm_signal_delay') + '</span></div>';
   html += '<div class="voyager-stat"><span class="voyager-stat-val">' + yearsInSpace.toFixed(1) + '</span><span class="voyager-stat-lbl">' + t('alm_years_in_space') + '</span></div>';
   html += '</div>';
   var q = _voyagerCardQuote;
@@ -1169,10 +1187,8 @@ function _orreryAnimate() {
     var autoRk = _orreryGetActiveRocket();
     if (autoRk && !autoRk.arrived) {
       _orrerySpeed = _transitEffectiveSpeed(autoRk);
-      var sLbl = document.getElementById('orrery-speed-label');
-      if (sLbl) sLbl.textContent = _formatSpeed(_orrerySpeed);
-      var sSl = document.getElementById('orrery-slider');
-      if (sSl) sSl.value = Math.min(_speedToSlider(_orrerySpeed), parseInt(sSl.max) || 60);
+      if (_orrerySpeedLabel) _orrerySpeedLabel.textContent = _formatSpeed(_orrerySpeed);
+      if (_orrerySliderEl) _orrerySliderEl.value = Math.min(_speedToSlider(_orrerySpeed), parseInt(_orrerySliderEl.max) || 60);
     }
   }
 
@@ -1224,8 +1240,7 @@ function _orreryAnimate() {
   _orreryUpdateDate();
   _orreryUpdateMissions();
 
-  var canvas = document.getElementById('almanac-orrery');
-  if (canvas) _drawOrrery(canvas, window.devicePixelRatio || 1);
+  if (_orreryCanvas) _drawOrrery(_orreryCanvas, _orreryDpr);
 
   // Live-update Voyager stats card if open
   if (_voyagerCardIdx >= 0) _updateVoyagerCard();
@@ -1297,25 +1312,23 @@ function _orreryLaunchRocket(targetName) {
 
 // ── Color helpers ──
 
+function _parseHex(hex) {
+  return [parseInt(hex.slice(1,3), 16), parseInt(hex.slice(3,5), 16), parseInt(hex.slice(5,7), 16)];
+}
+
 function _hexToRgba(hex, alpha) {
-  var r = parseInt(hex.slice(1,3), 16);
-  var g = parseInt(hex.slice(3,5), 16);
-  var b = parseInt(hex.slice(5,7), 16);
-  return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  var c = _parseHex(hex);
+  return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + alpha + ')';
 }
 
 function _lighten(hex, amount) {
-  var r = Math.min(255, parseInt(hex.slice(1,3), 16) + amount);
-  var g = Math.min(255, parseInt(hex.slice(3,5), 16) + amount);
-  var b = Math.min(255, parseInt(hex.slice(5,7), 16) + amount);
-  return 'rgb(' + r + ',' + g + ',' + b + ')';
+  var c = _parseHex(hex);
+  return 'rgb(' + Math.min(255, c[0] + amount) + ',' + Math.min(255, c[1] + amount) + ',' + Math.min(255, c[2] + amount) + ')';
 }
 
 function _darken(hex, amount) {
-  var r = Math.max(0, parseInt(hex.slice(1,3), 16) - amount);
-  var g = Math.max(0, parseInt(hex.slice(3,5), 16) - amount);
-  var b = Math.max(0, parseInt(hex.slice(5,7), 16) - amount);
-  return 'rgb(' + r + ',' + g + ',' + b + ')';
+  var c = _parseHex(hex);
+  return 'rgb(' + Math.max(0, c[0] - amount) + ',' + Math.max(0, c[1] - amount) + ',' + Math.max(0, c[2] - amount) + ')';
 }
 
 // ── Astro data panel ──
@@ -1542,11 +1555,10 @@ function _renderSunMap(now) {
   _sunMapNow = now;
 
   // Get location
-  var stored = localStorage.getItem('zimi_almanac_location');
   var smLoc = _getLocation();
   _sunMapLat = smLoc.lat; _sunMapLon = smLoc.lon;
   _sunMapLocName = smLoc.name;
-  _sunMapHasLocation = !!stored;
+  _sunMapHasLocation = !!smLoc.name;
 
   // Compute sun info for the info line
   var sunInfo = _computeSunTimes(_sunMapNow, _sunMapLat, _sunMapLon);
@@ -1615,9 +1627,7 @@ function _renderSunMap(now) {
           break;
         }
       }
-      var locData = { lat: lat, lon: lon };
-      if (snappedName) locData.name = snappedName;
-      localStorage.setItem('zimi_almanac_location', JSON.stringify(locData));
+      _saveLocation(lat, lon, snappedName);
       _renderAlmanacContent();
     };
   }
@@ -1656,7 +1666,7 @@ function _renderSunMap(now) {
       for (var i = 0; i < items.length; i++) {
         (function(city) {
           items[i].onclick = function() {
-            localStorage.setItem('zimi_almanac_location', JSON.stringify({ lat: city.lat, lon: city.lon, name: city.name }));
+            _saveLocation(city.lat, city.lon, city.name);
             _renderAlmanacContent();
           };
         })(matches[i]);
@@ -1753,7 +1763,7 @@ function _almSelectTz(tz, idx) {
       fullName = _MAP_CITIES[ci].name; break;
     }
   }
-  localStorage.setItem('zimi_almanac_location', JSON.stringify({ lat: city.lat, lon: city.lon, name: fullName }));
+  _saveLocation(city.lat, city.lon, fullName);
   // Re-render but preserve scroll position (avoids annoying jump)
   var scrollEl = document.getElementById('almanac-content');
   var savedScroll = scrollEl ? scrollEl.scrollTop : 0;
@@ -2065,7 +2075,7 @@ function _shareAlmanacLocation() {
       }
       // Only use city name if reasonably close (within ~2 degrees)
       if (bestDist > 4) delete locData.name;
-      localStorage.setItem('zimi_almanac_location', JSON.stringify(locData));
+      _saveLocation(locData.lat, locData.lon, locData.name);
       _renderAlmanacContent();
     }, function() {
       // GPS denied or unavailable — fall back to manual entry
@@ -2323,7 +2333,7 @@ function _promptAlmanacLocation() {
       for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
         if (hint.indexOf(_MAP_CITIES[ci].name) === 0) { locData.name = _MAP_CITIES[ci].name; break; }
       }
-      localStorage.setItem('zimi_almanac_location', JSON.stringify(locData));
+      _saveLocation(locData.lat, locData.lon, locData.name);
       document.body.removeChild(overlay);
       _renderAlmanacContent();
     }
@@ -2399,9 +2409,12 @@ function _initSkyScene(now, lat, lon) {
 
   var projStars = _projectStars(now, lat, lon, canvas.width, canvas.height);
 
+  // Pre-compute moon data (constant for this sky scene — now is frozen)
+  var moonData = { pos: moonPos0, phase: moonM0 };
+
   function _skyLoop(ts) {
     var t = (ts - _skyStartTime) / 1000;
-    _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, _skyLabelText, projStars);
+    _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, _skyLabelText, projStars, moonData);
     _almanacSkyRAF = requestAnimationFrame(_skyLoop);
   }
   if (_almanacSkyRAF) cancelAnimationFrame(_almanacSkyRAF);
@@ -2580,7 +2593,7 @@ function _drawConstellations(ctx, alpha, t, projStars) {
   ctx.restore();
 }
 
-function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, labelText, projStars) {
+function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, labelText, projStars, moonData) {
   t = t || 0;
   var ctx = canvas.getContext('2d');
   var W = canvas.width, H = canvas.height;
@@ -2693,12 +2706,12 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, labelText, projSta
 
   }
 
-  // Moon — visible day and night when above the horizon
-  var moonPos = _moonPosition(now, lat, lon);
+  // Moon — visible day and night when above the horizon (pre-computed in _initSkyScene)
+  var moonPos = moonData ? moonData.pos : _moonPosition(now, lat, lon);
   var moonAlt = moonPos.altitude;
   var moonAz = moonPos.azimuth;
   if (moonAlt > -2) {
-    var m = _moonPhase(now);
+    var m = moonData ? moonData.phase : _moonPhase(now);
     // Position from actual alt/az (same projection as the sun)
     var moonXFrac = Math.max(0.05, Math.min(0.95, (moonAz - 60) / 240));
     var moonX = moonXFrac * W;

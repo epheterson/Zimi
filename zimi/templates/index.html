@@ -1502,8 +1502,7 @@ function t(key, vars) {
 }
 // HTML-escaped version of t() for use in innerHTML/attribute contexts
 function tH(key, vars) {
-  var s = t(key, vars);
-  var d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+  return t(key, vars).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 async function _loadI18n(lang) {
@@ -1579,17 +1578,11 @@ async function setLanguage(lang) {
   if (_almanacOpen && typeof _renderAlmanacContent === 'function') _renderAlmanacContent();
 }
 
-// ── Language-experience banner (reader context) ──
-// Shows when reading content in a different language than UI language.
-// Offers: View in [lang] (if matching ZIM installed), Download [lang] (if not).
-
+// Remove any stale language banner (actual banner logic lives in _renderLangDropdown)
 function _checkReaderLangBanner() {
   var old = document.getElementById('lang-banner');
   if (old) old.remove();
 }
-
-
-
 
 function _showManageBadge(show) {
   var btn = document.getElementById('manage-btn');
@@ -2014,11 +2007,7 @@ function _openInBrowser() {
     // iOS PWA can't window.open to Safari — copy URL to clipboard instead
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(url).then(function() {
-        var toast = document.createElement('div');
-        toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
-        toast.textContent = t('link_copied');
-        document.body.appendChild(toast);
-        setTimeout(function() { if (toast.parentNode) toast.remove(); }, 3000);
+        _showToast(t('link_copied'));
       });
     } else {
       // Fallback: prompt with the URL
@@ -6634,6 +6623,7 @@ var _persistHist = null; // lazy-loaded
 var _currentSearchQuery = null; // tracks which search led to article clicks
 var _HIST_KEY = 'zimi_history';
 var _HIST_MAX = 200;
+var _MS_PER_DAY = 86400000;
 
 function _histLoad() {
   if (_persistHist !== null) return _persistHist;
@@ -6685,8 +6675,8 @@ function _histDateGroup(ts) {
   var now = new Date();
   var d = new Date(ts);
   var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  var yesterday = new Date(today - 86400000);
-  var weekAgo = new Date(today - 6 * 86400000);
+  var yesterday = new Date(today - _MS_PER_DAY);
+  var weekAgo = new Date(today - 6 * _MS_PER_DAY);
   if (d >= today) return t('today');
   if (d >= yesterday) return t('yesterday');
   if (d >= weekAgo) return t('this_week');

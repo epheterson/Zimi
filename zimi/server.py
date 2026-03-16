@@ -308,6 +308,7 @@ MAX_SEARCH_LIMIT = 50      # upper bound for search results per ZIM to prevent r
 MAX_CONTENT_BYTES = 10 * 1024 * 1024  # 10 MB — skip snippet extraction for entries larger than this
 MAX_SERVE_BYTES = 50 * 1024 * 1024    # 50 MB — refuse to serve entries larger than this (prevents OOM)
 MAX_POST_BODY = 65536                 # max bytes accepted in POST requests (64KB — handles ~500 URLs for batch resolve)
+_BYTES_PER_GB = 1024 ** 3
 
 RATE_LIMIT = int(os.environ.get("ZIMI_RATE_LIMIT", "60"))  # API requests per minute per IP (0 = disabled)
 RATE_LIMIT_CONTENT = RATE_LIMIT * 20  # /w/ sub-resources: icons, CSS, images (1200/min default)
@@ -436,11 +437,11 @@ def _get_disk_usage():
         return {
             "zim_dir": ZIM_DIR,
             "data_dir": ZIMI_DATA_DIR,
-            "disk_total_gb": round(total / (1024**3), 1),
-            "disk_free_gb": round(free / (1024**3), 1),
-            "disk_used_gb": round(used / (1024**3), 1),
+            "disk_total_gb": round(total / _BYTES_PER_GB, 1),
+            "disk_free_gb": round(free / _BYTES_PER_GB, 1),
+            "disk_used_gb": round(used / _BYTES_PER_GB, 1),
             "disk_pct": round(used / total * 100, 1) if total > 0 else 0,
-            "zim_size_gb": round(zim_size / (1024**3), 1),
+            "zim_size_gb": round(zim_size / _BYTES_PER_GB, 1),
             "tmp_files": tmp_files,
         }
     except (OSError, AttributeError):
@@ -484,11 +485,7 @@ def _atomic_write_json(path, data, indent=None):
 
 def _save_auto_update_config(enabled, freq):
     """Persist auto-update settings to disk."""
-    try:
-        with open(_AUTO_UPDATE_CONFIG, "w") as f:
-            f.write(json.dumps({"enabled": enabled, "frequency": freq}))
-    except OSError:
-        pass
+    _atomic_write_json(_AUTO_UPDATE_CONFIG, {"enabled": enabled, "frequency": freq})
 
 _auto_update_enabled, _auto_update_freq = False, "weekly"  # defaults; loaded by _init()
 _auto_update_last_check = None
@@ -1685,13 +1682,13 @@ def _scan_zim_files():
                 existing_size = new_size = 0
             if new_size > existing_size:
                 log.info("ZIM name collision '%s': %s (%.1f GB) replaces %s (%.1f GB)",
-                         name, filename, new_size / (1024**3),
-                         os.path.basename(existing), existing_size / (1024**3))
+                         name, filename, new_size / _BYTES_PER_GB,
+                         os.path.basename(existing), existing_size / _BYTES_PER_GB)
                 zims[name] = path
             else:
                 log.info("ZIM name collision '%s': keeping %s (%.1f GB), skipping %s (%.1f GB)",
-                         name, os.path.basename(existing), existing_size / (1024**3),
-                         filename, new_size / (1024**3))
+                         name, os.path.basename(existing), existing_size / _BYTES_PER_GB,
+                         filename, new_size / _BYTES_PER_GB)
         else:
             zims[name] = path
     return zims
@@ -2392,6 +2389,7 @@ def search_zim(archive, query_str, limit=10, snippets=True):
 
 
 _meta_title_re = re.compile(r'^(Portal:|Category:|Wikipedia:|Template:|Help:|File:|Special:|List of |Index of |Outline of )', re.IGNORECASE)
+_junk_re = re.compile(r'questions/tagged/|/tags$|/tags/page')  # SE tag index pages
 
 STOP_WORDS = _STOPWORDS.get("en", set()) | {
     "an", "are", "as", "be", "by", "from", "has", "have", "how", "i",
@@ -2486,8 +2484,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     timings = []
     search_start = time.time()
 
-    # Junk path patterns (SE tag index pages, etc.)
-    _junk_re = re.compile(r'questions/tagged/|/tags$|/tags/page')
+    # Junk path patterns (SE tag index pages, etc.) — compiled at module scope
 
     if fast:
         # ── Fast path: title-only via SuggestionSearcher ──
@@ -3830,7 +3827,8 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
         with urllib.request.urlopen(req, timeout=15, context=SSL_CTX) as resp:
             xml_bytes = resp.read()
     except Exception as e:
-        return 0, [], str(e)
+        log.warning("OPDS fetch failed: %s", e)
+        return 0, [], "Catalog fetch failed"
 
     # Parse OPDS (Atom) XML
     ns = {
@@ -3841,7 +3839,8 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
     try:
         root = ET.fromstring(xml_bytes)
     except ET.ParseError as e:
-        return 0, [], str(e)
+        log.warning("OPDS parse failed: %s", e)
+        return 0, [], "Catalog parse failed"
 
     # Total results — Kiwix puts this in the Atom namespace (not OpenSearch)
     atom_ns = ns["atom"]
@@ -5075,9 +5074,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                     result = _build_fts_for_index(zim_name)
                     return self._json(200, result)
                 except FileNotFoundError as e:
-                    return self._json(404, {"error": str(e)})
+                    log.warning("FTS build: ZIM not found: %s", e)
+                    return self._json(404, {"error": "ZIM not found"})
                 except Exception as e:
-                    return self._json(500, {"error": f"FTS5 build failed: {e}"})
+                    log.error("FTS build failed for %s: %s", zim_name, e)
+                    return self._json(500, {"error": "FTS build failed"})
 
             elif parsed.path == "/manage/delete" and ZIMI_MANAGE:
                 filename = data.get("filename", "")
@@ -5114,7 +5115,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                     _clean_stale_title_indexes()
                     return self._json(200, {"status": "deleted", "filename": filename})
                 except OSError as e:
-                    return self._json(500, {"error": f"Failed to delete: {e}"})
+                    log.error("Failed to delete %s: %s", filename, e)
+                    return self._json(500, {"error": "Failed to delete file"})
 
             elif parsed.path == "/manage/cleanup-tmp" and ZIMI_MANAGE:
                 # Remove partial (.tmp) downloads
