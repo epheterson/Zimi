@@ -24,7 +24,8 @@ The Language Release — multilingual UI, cross-language navigation, and securit
 
 ### Changed
 - Separated browser auth (password) from API auth (token) into independent mechanisms
-- Extended orrery speed slider to 100M× (was 1M×) and ordered calendar systems chronologically
+- Extended orrery speed slider to 100M× (was 1M×) with adaptive 3-phase speed profile for smooth rocket launches
+- Ordered almanac calendar systems chronologically
 - Replaced random star dots with astronomically accurate positions; corrected moon parallactic angle
 - Proxied Kiwix catalog thumbnails server-side with 24-hour caching and tiered rate limits
 - Sanitized all 500 error responses to prevent leaking internal details
@@ -36,6 +37,8 @@ The Language Release — multilingual UI, cross-language navigation, and securit
 - Fixed cross-language article matching false positives with character overlap guard
 - Fixed language dropdown async/await race conditions and download button persistence
 - Fixed Discover card flash/pop on re-render by preserving DOM content
+- Fixed PDF download from viewer showing white page instead of saving file
+- Fixed catalog language filter not drilling down into full catalog results
 
 ### Security
 - Added rate limiting on /manage/ endpoints to prevent brute-force and CPU DoS

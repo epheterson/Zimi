@@ -160,7 +160,7 @@ services:
 | **Languages** | 10-language UI, cross-language article navigation | English only |
 | **AI** | MCP server for Claude Code | None |
 | **Desktop** | Native macOS app | kiwix-desktop (separate) |
-| **Runtime** | Python (~4,500 lines) | C++ (libkiwix) |
+| **Runtime** | Python (~6,300 lines) + JS (~12,400 lines) | C++ (libkiwix) |
 | **Memory** | Higher (Python + indexes) | Lower (native C++) |
 
 Use kiwix-serve for lightweight serving on low-memory devices. Use Zimi for APIs, multi-language, library management, AI integration, or a desktop app.

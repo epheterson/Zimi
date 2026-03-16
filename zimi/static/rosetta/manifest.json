@@ -1,12 +1,732 @@
 [
-  { "id": "code-of-hammurabi", "title": "Code of Hammurabi", "date": "c. 1754 BCE", "place": "Babylon", "medium": "Basalt stela", "context": "One of the earliest written legal codes — 282 laws carved in stone so no ruler could claim ignorance of justice." },
-  { "id": "cyrus-cylinder", "title": "Cyrus Cylinder", "date": "539 BCE", "place": "Babylon", "medium": "Clay cylinder", "context": "Cyrus the Great's declaration upon conquering Babylon — religious tolerance, freedom from bondage, and restoration of temples. Sometimes called the first charter of human rights." },
-  { "id": "behistun-inscription", "title": "Behistun Inscription", "date": "c. 520 BCE", "place": "Kermanshah, Persia", "medium": "Limestone cliff face", "context": "Darius I's trilingual proclamation carved 100 meters up a sheer cliff — the 'Rosetta Stone of cuneiform' that unlocked Mesopotamian languages." },
-  { "id": "rosetta-stone", "title": "Rosetta Stone", "date": "196 BCE", "place": "Memphis, Egypt", "medium": "Granodiorite stela", "context": "Decree honoring Ptolemy V, inscribed in three scripts — the key that unlocked Egyptian hieroglyphs." },
-  { "id": "magna-carta", "title": "Magna Carta", "date": "1215 CE", "place": "Runnymede, England", "medium": "Parchment", "context": "Charter of rights forced upon King John — the foundation of constitutional law and individual liberty." },
-  { "id": "universal-declaration", "title": "Universal Declaration of Human Rights", "date": "1948", "place": "Paris, France", "medium": "Document", "context": "Adopted by the UN General Assembly — the most translated document in human history, existing in 500+ languages." },
-  { "id": "pioneer-plaque", "title": "Pioneer Plaque", "date": "1972", "place": "Cape Canaveral, USA", "medium": "Gold-anodized aluminum", "context": "Attached to Pioneer 10 — a message to extraterrestrials using no human language, only universal symbols." },
-  { "id": "arecibo-message", "title": "Arecibo Message", "date": "1974", "place": "Arecibo, Puerto Rico", "medium": "Radio signal (1,679 bits)", "context": "Three-minute binary transmission beamed at star cluster M13, 25,000 light-years away — a message designed never to be received, aimed at proving we could send one." },
-  { "id": "golden-record", "title": "Voyager Golden Record", "date": "1977", "place": "Cape Canaveral, USA", "medium": "Gold-plated copper disc", "context": "Kurt Waldheim's greeting aboard Voyagers 1 and 2 — now the most distant human-made objects in existence." },
-  { "id": "georgia-guidestones", "title": "Georgia Guidestones", "date": "1980", "place": "Elbert County, Georgia", "medium": "Granite", "context": "Anonymously commissioned guidelines for rebuilding civilization — destroyed by bombing in 2022, preserved only in text." }
+  {
+    "id": "code-of-hammurabi",
+    "title": "Code of Hammurabi",
+    "date": "c. 1754 BCE",
+    "place": "Babylon",
+    "medium": "Basalt stela",
+    "context": "One of the earliest written legal codes — 282 laws carved in stone so no ruler could claim ignorance of justice.",
+    "i18n": {
+      "fr": {
+        "title": "Code de Hammourabi",
+        "date": "v. 1754 av. J.-C.",
+        "place": "Babylone",
+        "medium": "Stèle de basalte",
+        "context": "L'un des plus anciens codes juridiques écrits — 282 lois gravées dans la pierre pour qu'aucun souverain ne puisse prétendre ignorer la justice."
+      },
+      "de": {
+        "title": "Codex Hammurapi",
+        "date": "ca. 1754 v. Chr.",
+        "place": "Babylon",
+        "medium": "Basaltstele",
+        "context": "Eines der ältesten schriftlichen Gesetzeswerke — 282 Gesetze in Stein gemeißelt, damit kein Herrscher Unkenntnis der Gerechtigkeit behaupten konnte."
+      },
+      "es": {
+        "title": "Código de Hammurabi",
+        "date": "c. 1754 a.C.",
+        "place": "Babilonia",
+        "medium": "Estela de basalto",
+        "context": "Uno de los primeros códigos legales escritos — 282 leyes talladas en piedra para que ningún gobernante pudiera alegar desconocimiento de la justicia."
+      },
+      "pt": {
+        "title": "Código de Hamurabi",
+        "date": "c. 1754 a.C.",
+        "place": "Babilônia",
+        "medium": "Estela de basalto",
+        "context": "Um dos mais antigos códigos jurídicos escritos — 282 leis esculpidas em pedra para que nenhum governante pudesse alegar desconhecimento da justiça."
+      },
+      "ru": {
+        "title": "Кодекс Хаммурапи",
+        "date": "ок. 1754 до н.э.",
+        "place": "Вавилон",
+        "medium": "Базальтовая стела",
+        "context": "Один из древнейших письменных сводов законов — 282 закона, высеченных в камне, чтобы ни один правитель не мог притвориться незнающим справедливости."
+      },
+      "zh": {
+        "title": "汉谟拉比法典",
+        "date": "约公元前1754年",
+        "place": "巴比伦",
+        "medium": "玄武岩石碑",
+        "context": "最早的成文法典之一——282条法律刻于石上，使任何统治者都不能以不知正义为借口。"
+      },
+      "ar": {
+        "title": "شريعة حمورابي",
+        "date": "حوالي 1754 ق.م.",
+        "place": "بابل",
+        "medium": "مسلّة بازلتية",
+        "context": "واحد من أقدم القوانين المكتوبة — 282 قانونًا محفورًا في الحجر حتى لا يستطيع أي حاكم ادّعاء الجهل بالعدالة."
+      },
+      "hi": {
+        "title": "हम्मूराबी की संहिता",
+        "date": "लगभग 1754 ई.पू.",
+        "place": "बेबीलोन",
+        "medium": "बेसाल्ट स्तंभ",
+        "context": "प्राचीनतम लिखित विधि संहिताओं में से एक — 282 नियम पत्थर पर उत्कीर्ण किए गए ताकि कोई भी शासक न्याय से अनभिज्ञता का दावा न कर सके।"
+      },
+      "he": {
+        "title": "חוקי חמורבי",
+        "date": "בערך 1754 לפנה\"ס",
+        "place": "בבל",
+        "medium": "אנדרטת בזלת",
+        "context": "אחד מקובצי החוקים הכתובים הקדומים ביותר — 282 חוקים שנחצבו באבן כדי שאף שליט לא יוכל לטעון לאי-ידיעת הצדק."
+      }
+    }
+  },
+  {
+    "id": "cyrus-cylinder",
+    "title": "Cyrus Cylinder",
+    "date": "539 BCE",
+    "place": "Babylon",
+    "medium": "Clay cylinder",
+    "context": "Cyrus the Great's declaration upon conquering Babylon — religious tolerance, freedom from bondage, and restoration of temples. Sometimes called the first charter of human rights.",
+    "i18n": {
+      "fr": {
+        "title": "Cylindre de Cyrus",
+        "date": "539 av. J.-C.",
+        "place": "Babylone",
+        "medium": "Cylindre d'argile",
+        "context": "Déclaration de Cyrus le Grand après la conquête de Babylone — tolérance religieuse, libération des captifs et restauration des temples. Parfois qualifié de première charte des droits de l'homme."
+      },
+      "de": {
+        "title": "Kyros-Zylinder",
+        "date": "539 v. Chr.",
+        "place": "Babylon",
+        "medium": "Tonzylinder",
+        "context": "Erklärung Kyros' des Großen nach der Eroberung Babylons — religiöse Toleranz, Befreiung aus der Knechtschaft und Wiederherstellung der Tempel. Manchmal als erste Menschenrechtserklärung bezeichnet."
+      },
+      "es": {
+        "title": "Cilindro de Ciro",
+        "date": "539 a.C.",
+        "place": "Babilonia",
+        "medium": "Cilindro de arcilla",
+        "context": "Declaración de Ciro el Grande tras conquistar Babilonia — tolerancia religiosa, liberación de cautivos y restauración de templos. A veces considerada la primera carta de derechos humanos."
+      },
+      "pt": {
+        "title": "Cilindro de Ciro",
+        "date": "539 a.C.",
+        "place": "Babilônia",
+        "medium": "Cilindro de argila",
+        "context": "Declaração de Ciro, o Grande, após a conquista da Babilônia — tolerância religiosa, libertação dos cativos e restauração dos templos. Às vezes chamado de primeira carta dos direitos humanos."
+      },
+      "ru": {
+        "title": "Цилиндр Кира",
+        "date": "539 до н.э.",
+        "place": "Вавилон",
+        "medium": "Глиняный цилиндр",
+        "context": "Декларация Кира Великого после завоевания Вавилона — религиозная терпимость, освобождение от рабства и восстановление храмов. Иногда называется первой хартией прав человека."
+      },
+      "zh": {
+        "title": "居鲁士圆柱",
+        "date": "公元前539年",
+        "place": "巴比伦",
+        "medium": "泥质圆柱",
+        "context": "居鲁士大帝征服巴比伦后的宣言——宗教宽容、解放奴役、修复神庙。有时被称为最早的人权宪章。"
+      },
+      "ar": {
+        "title": "أسطوانة قورش",
+        "date": "539 ق.م.",
+        "place": "بابل",
+        "medium": "أسطوانة طينية",
+        "context": "إعلان قورش الكبير بعد فتح بابل — التسامح الديني والتحرّر من العبودية وترميم المعابد. يُطلق عليه أحيانًا أول ميثاق لحقوق الإنسان."
+      },
+      "hi": {
+        "title": "साइरस सिलिंडर",
+        "date": "539 ई.पू.",
+        "place": "बेबीलोन",
+        "medium": "मिट्टी का बेलनाकार पात्र",
+        "context": "बेबीलोन पर विजय के बाद साइरस महान की घोषणा — धार्मिक सहिष्णुता, दासता से मुक्ति और मंदिरों की पुनर्स्थापना। कभी-कभी इसे मानवाधिकारों का पहला अधिकारपत्र कहा जाता है।"
+      },
+      "he": {
+        "title": "גליל כורש",
+        "date": "539 לפנה\"ס",
+        "place": "בבל",
+        "medium": "גליל חרס",
+        "context": "הכרזתו של כורש הגדול לאחר כיבוש בבל — סובלנות דתית, שחרור מעבדות ושיקום מקדשות. לעיתים מכונה אמנת זכויות האדם הראשונה."
+      }
+    }
+  },
+  {
+    "id": "behistun-inscription",
+    "title": "Behistun Inscription",
+    "date": "c. 520 BCE",
+    "place": "Kermanshah, Persia",
+    "medium": "Limestone cliff face",
+    "context": "Darius I's trilingual proclamation carved 100 meters up a sheer cliff — the 'Rosetta Stone of cuneiform' that unlocked Mesopotamian languages.",
+    "i18n": {
+      "fr": {
+        "title": "Inscription de Behistun",
+        "date": "v. 520 av. J.-C.",
+        "place": "Kermanshah, Perse",
+        "medium": "Paroi calcaire",
+        "context": "Proclamation trilingue de Darius Ier gravée à 100 mètres de hauteur sur une falaise abrupte — la « pierre de Rosette du cunéiforme » qui a permis de déchiffrer les langues mésopotamiennes."
+      },
+      "de": {
+        "title": "Behistun-Inschrift",
+        "date": "ca. 520 v. Chr.",
+        "place": "Kermanshah, Persien",
+        "medium": "Kalksteinfelsen",
+        "context": "Dreisprachige Proklamation Darius' I., 100 Meter hoch in eine steile Felswand gemeißelt — der ‚Stein von Rosette der Keilschrift', der die mesopotamischen Sprachen entschlüsselte."
+      },
+      "es": {
+        "title": "Inscripción de Behistún",
+        "date": "c. 520 a.C.",
+        "place": "Kermanshah, Persia",
+        "medium": "Pared de roca caliza",
+        "context": "Proclamación trilingüe de Darío I tallada a 100 metros de altura en un acantilado — la 'piedra de Rosetta del cuneiforme' que descifró las lenguas mesopotámicas."
+      },
+      "pt": {
+        "title": "Inscrição de Behistun",
+        "date": "c. 520 a.C.",
+        "place": "Kermanshah, Pérsia",
+        "medium": "Paredão de calcário",
+        "context": "Proclamação trilíngue de Dario I esculpida a 100 metros de altura numa falésia — a 'Pedra de Roseta do cuneiforme' que decifrou as línguas mesopotâmicas."
+      },
+      "ru": {
+        "title": "Бехистунская надпись",
+        "date": "ок. 520 до н.э.",
+        "place": "Керманшах, Персия",
+        "medium": "Известняковая скала",
+        "context": "Трёхъязычная прокламация Дария I, высеченная на высоте 100 метров на отвесной скале — «Розеттский камень клинописи», позволивший расшифровать месопотамские языки."
+      },
+      "zh": {
+        "title": "贝希斯敦铭文",
+        "date": "约公元前520年",
+        "place": "克尔曼沙赫，波斯",
+        "medium": "石灰岩崖壁",
+        "context": "大流士一世的三语诏书，刻于百米高的峭壁之上——被称为\u201c楔形文字的罗塞塔石碑\u201d，由此解读了美索不达米亚语言。"
+      },
+      "ar": {
+        "title": "نقش بيستون",
+        "date": "حوالي 520 ق.م.",
+        "place": "كرمانشاه، فارس",
+        "medium": "جدار صخري من الحجر الجيري",
+        "context": "إعلان داريوس الأول المنقوش بثلاث لغات على ارتفاع 100 متر في جرف شاهق — «حجر رشيد الكتابة المسمارية» الذي كشف أسرار لغات بلاد الرافدين."
+      },
+      "hi": {
+        "title": "बेहिस्तुन शिलालेख",
+        "date": "लगभग 520 ई.पू.",
+        "place": "केरमानशाह, फारस",
+        "medium": "चूना पत्थर की चट्टान",
+        "context": "दारा प्रथम की त्रिभाषी उद्घोषणा, 100 मीटर ऊँची खड़ी चट्टान पर उत्कीर्ण — 'कीलाक्षर लिपि का रोसेटा स्टोन' जिसने मेसोपोटामिया की भाषाओं को समझने का मार्ग खोला।"
+      },
+      "he": {
+        "title": "כתובת בהיסתון",
+        "date": "בערך 520 לפנה\"ס",
+        "place": "כרמנשאה, פרס",
+        "medium": "מצוק גיר",
+        "context": "הכרזתו התלת-לשונית של דריווש הראשון, שנחצבה בגובה 100 מטר על צוק תלול — ה'אבן רוזטה של הכתב היתדי' שפענחה את שפות מסופוטמיה."
+      }
+    }
+  },
+  {
+    "id": "rosetta-stone",
+    "title": "Rosetta Stone",
+    "date": "196 BCE",
+    "place": "Memphis, Egypt",
+    "medium": "Granodiorite stela",
+    "context": "Decree honoring Ptolemy V, inscribed in three scripts — the key that unlocked Egyptian hieroglyphs.",
+    "i18n": {
+      "fr": {
+        "title": "Pierre de Rosette",
+        "date": "196 av. J.-C.",
+        "place": "Memphis, Égypte",
+        "medium": "Stèle de granodiorite",
+        "context": "Décret en l'honneur de Ptolémée V, inscrit en trois écritures — la clé qui a permis de déchiffrer les hiéroglyphes égyptiens."
+      },
+      "de": {
+        "title": "Stein von Rosette",
+        "date": "196 v. Chr.",
+        "place": "Memphis, Ägypten",
+        "medium": "Granodiorit-Stele",
+        "context": "Dekret zu Ehren Ptolemaios' V., eingeschrieben in drei Schriften — der Schlüssel zur Entschlüsselung der ägyptischen Hieroglyphen."
+      },
+      "es": {
+        "title": "Piedra de Rosetta",
+        "date": "196 a.C.",
+        "place": "Menfis, Egipto",
+        "medium": "Estela de granodiorita",
+        "context": "Decreto en honor a Ptolomeo V, inscrito en tres escrituras — la clave que descifró los jeroglíficos egipcios."
+      },
+      "pt": {
+        "title": "Pedra de Roseta",
+        "date": "196 a.C.",
+        "place": "Mênfis, Egito",
+        "medium": "Estela de granodiorito",
+        "context": "Decreto em honra a Ptolemeu V, inscrito em três escritas — a chave que decifrou os hieróglifos egípcios."
+      },
+      "ru": {
+        "title": "Розеттский камень",
+        "date": "196 до н.э.",
+        "place": "Мемфис, Египет",
+        "medium": "Гранодиоритовая стела",
+        "context": "Указ в честь Птолемея V, записанный тремя видами письма — ключ к расшифровке египетских иероглифов."
+      },
+      "zh": {
+        "title": "罗塞塔石碑",
+        "date": "公元前196年",
+        "place": "孟菲斯，埃及",
+        "medium": "花岗闪长岩石碑",
+        "context": "纪念托勒密五世的法令，以三种文字铭刻——解开埃及象形文字之谜的钥匙。"
+      },
+      "ar": {
+        "title": "حجر رشيد",
+        "date": "196 ق.م.",
+        "place": "ممفيس، مصر",
+        "medium": "لوح من الغرانوديوريت",
+        "context": "مرسوم تكريم بطليموس الخامس، منقوش بثلاثة خطوط — المفتاح الذي كشف أسرار الهيروغليفية المصرية."
+      },
+      "hi": {
+        "title": "रोसेटा स्टोन",
+        "date": "196 ई.पू.",
+        "place": "मेम्फिस, मिस्र",
+        "medium": "ग्रैनोडायोराइट स्तंभ",
+        "context": "टॉलेमी पंचम के सम्मान में जारी आदेश, तीन लिपियों में उत्कीर्ण — वह कुंजी जिसने मिस्र की चित्रलिपि का रहस्य खोला।"
+      },
+      "he": {
+        "title": "אבן רוזטה",
+        "date": "196 לפנה\"ס",
+        "place": "ממפיס, מצרים",
+        "medium": "אנדרטת גרנודיוריט",
+        "context": "צו לכבוד תלמי החמישי, חרוט בשלושה כתבים — המפתח שפענח את ההירוגליפים המצריים."
+      }
+    }
+  },
+  {
+    "id": "magna-carta",
+    "title": "Magna Carta",
+    "date": "1215 CE",
+    "place": "Runnymede, England",
+    "medium": "Parchment",
+    "context": "Charter of rights forced upon King John — the foundation of constitutional law and individual liberty.",
+    "i18n": {
+      "fr": {
+        "title": "Magna Carta",
+        "date": "1215 apr. J.-C.",
+        "place": "Runnymede, Angleterre",
+        "medium": "Parchemin",
+        "context": "Charte de droits imposée au roi Jean — le fondement du droit constitutionnel et des libertés individuelles."
+      },
+      "de": {
+        "title": "Magna Carta",
+        "date": "1215 n. Chr.",
+        "place": "Runnymede, England",
+        "medium": "Pergament",
+        "context": "Freiheitsurkunde, die König Johann abgerungen wurde — die Grundlage des Verfassungsrechts und der individuellen Freiheit."
+      },
+      "es": {
+        "title": "Carta Magna",
+        "date": "1215 d.C.",
+        "place": "Runnymede, Inglaterra",
+        "medium": "Pergamino",
+        "context": "Carta de derechos impuesta al rey Juan — el fundamento del derecho constitucional y la libertad individual."
+      },
+      "pt": {
+        "title": "Magna Carta",
+        "date": "1215 d.C.",
+        "place": "Runnymede, Inglaterra",
+        "medium": "Pergaminho",
+        "context": "Carta de direitos imposta ao rei João — o fundamento do direito constitucional e da liberdade individual."
+      },
+      "ru": {
+        "title": "Великая хартия вольностей",
+        "date": "1215 н.э.",
+        "place": "Раннимид, Англия",
+        "medium": "Пергамент",
+        "context": "Хартия прав, навязанная королю Иоанну — основа конституционного права и личной свободы."
+      },
+      "zh": {
+        "title": "大宪章",
+        "date": "1215年",
+        "place": "兰尼米德，英格兰",
+        "medium": "羊皮纸",
+        "context": "迫使约翰王签署的权利宪章——宪政法治与个人自由的基石。"
+      },
+      "ar": {
+        "title": "الماغنا كارتا",
+        "date": "1215 م",
+        "place": "رانيميد، إنجلترا",
+        "medium": "رقّ",
+        "context": "ميثاق حقوق أُجبر الملك جون على التوقيع عليه — أساس القانون الدستوري والحرية الفردية."
+      },
+      "hi": {
+        "title": "मैग्ना कार्टा",
+        "date": "1215 ई.",
+        "place": "रनीमीड, इंग्लैंड",
+        "medium": "चर्मपत्र",
+        "context": "राजा जॉन पर थोपा गया अधिकारपत्र — संवैधानिक कानून और व्यक्तिगत स्वतंत्रता की नींव।"
+      },
+      "he": {
+        "title": "המגנא כרטא",
+        "date": "1215 לספירה",
+        "place": "ראנימיד, אנגליה",
+        "medium": "קלף",
+        "context": "אמנת זכויות שנכפתה על המלך ג'ון — היסוד של המשפט החוקתי והחירות האישית."
+      }
+    }
+  },
+  {
+    "id": "universal-declaration",
+    "title": "Universal Declaration of Human Rights",
+    "date": "1948",
+    "place": "Paris, France",
+    "medium": "Document",
+    "context": "Adopted by the UN General Assembly — the most translated document in human history, existing in 500+ languages.",
+    "i18n": {
+      "fr": {
+        "title": "Déclaration universelle des droits de l'homme",
+        "date": "1948",
+        "place": "Paris, France",
+        "medium": "Document",
+        "context": "Adoptée par l'Assemblée générale des Nations unies — le document le plus traduit de l'histoire de l'humanité, existant en plus de 500 langues."
+      },
+      "de": {
+        "title": "Allgemeine Erklärung der Menschenrechte",
+        "date": "1948",
+        "place": "Paris, Frankreich",
+        "medium": "Dokument",
+        "context": "Von der UN-Generalversammlung verabschiedet — das meistübersetzte Dokument der Menschheitsgeschichte, vorliegend in über 500 Sprachen."
+      },
+      "es": {
+        "title": "Declaración Universal de los Derechos Humanos",
+        "date": "1948",
+        "place": "París, Francia",
+        "medium": "Documento",
+        "context": "Adoptada por la Asamblea General de la ONU — el documento más traducido de la historia de la humanidad, existente en más de 500 idiomas."
+      },
+      "pt": {
+        "title": "Declaração Universal dos Direitos Humanos",
+        "date": "1948",
+        "place": "Paris, França",
+        "medium": "Documento",
+        "context": "Adotada pela Assembleia Geral da ONU — o documento mais traduzido da história da humanidade, existente em mais de 500 línguas."
+      },
+      "ru": {
+        "title": "Всеобщая декларация прав человека",
+        "date": "1948",
+        "place": "Париж, Франция",
+        "medium": "Документ",
+        "context": "Принята Генеральной Ассамблеей ООН — самый переводимый документ в истории человечества, существующий на более чем 500 языках."
+      },
+      "zh": {
+        "title": "世界人权宣言",
+        "date": "1948",
+        "place": "巴黎，法国",
+        "medium": "文件",
+        "context": "由联合国大会通过——人类历史上被翻译最多的文件，已有500多种语言版本。"
+      },
+      "ar": {
+        "title": "الإعلان العالمي لحقوق الإنسان",
+        "date": "1948",
+        "place": "باريس، فرنسا",
+        "medium": "وثيقة",
+        "context": "اعتمدته الجمعية العامة للأمم المتحدة — الوثيقة الأكثر ترجمةً في تاريخ البشرية، متوفّرة بأكثر من 500 لغة."
+      },
+      "hi": {
+        "title": "मानवाधिकारों की सार्वभौम घोषणा",
+        "date": "1948",
+        "place": "पेरिस, फ्रांस",
+        "medium": "दस्तावेज़",
+        "context": "संयुक्त राष्ट्र महासभा द्वारा अपनाया गया — मानव इतिहास का सबसे अधिक अनूदित दस्तावेज़, 500 से अधिक भाषाओं में उपलब्ध।"
+      },
+      "he": {
+        "title": "ההכרזה לכל באי עולם בדבר זכויות האדם",
+        "date": "1948",
+        "place": "פריז, צרפת",
+        "medium": "מסמך",
+        "context": "אומצה על ידי העצרת הכללית של האו\"ם — המסמך המתורגם ביותר בהיסטוריה האנושית, קיים ביותר מ-500 שפות."
+      }
+    }
+  },
+  {
+    "id": "pioneer-plaque",
+    "title": "Pioneer Plaque",
+    "date": "1972",
+    "place": "Cape Canaveral, USA",
+    "medium": "Gold-anodized aluminum",
+    "context": "Attached to Pioneer 10 — a message to extraterrestrials using no human language, only universal symbols.",
+    "i18n": {
+      "fr": {
+        "title": "Plaque de Pioneer",
+        "date": "1972",
+        "place": "Cap Canaveral, États-Unis",
+        "medium": "Aluminium anodisé or",
+        "context": "Fixée sur Pioneer 10 — un message destiné aux extraterrestres n'utilisant aucune langue humaine, seulement des symboles universels."
+      },
+      "de": {
+        "title": "Pioneer-Plakette",
+        "date": "1972",
+        "place": "Cape Canaveral, USA",
+        "medium": "Goldeloxiertes Aluminium",
+        "context": "An Pioneer 10 befestigt — eine Botschaft an Außerirdische, die keine menschliche Sprache verwendet, sondern nur universelle Symbole."
+      },
+      "es": {
+        "title": "Placa de la Pioneer",
+        "date": "1972",
+        "place": "Cabo Cañaveral, EE.UU.",
+        "medium": "Aluminio anodizado en oro",
+        "context": "Fijada en la Pioneer 10 — un mensaje para extraterrestres que no usa ningún idioma humano, solo símbolos universales."
+      },
+      "pt": {
+        "title": "Placa da Pioneer",
+        "date": "1972",
+        "place": "Cabo Canaveral, EUA",
+        "medium": "Alumínio anodizado dourado",
+        "context": "Afixada na Pioneer 10 — uma mensagem para extraterrestres sem nenhuma língua humana, apenas símbolos universais."
+      },
+      "ru": {
+        "title": "Пластинка «Пионера»",
+        "date": "1972",
+        "place": "Мыс Канаверал, США",
+        "medium": "Анодированный алюминий с золотым покрытием",
+        "context": "Прикреплена к «Пионеру-10» — послание внеземным цивилизациям без использования человеческих языков, только универсальные символы."
+      },
+      "zh": {
+        "title": "先驱者镀金铝板",
+        "date": "1972",
+        "place": "卡纳维拉尔角，美国",
+        "medium": "镀金阳极氧化铝板",
+        "context": "安装在先驱者10号上——一封致外星生命的信息，不使用任何人类语言，仅用通用符号。"
+      },
+      "ar": {
+        "title": "لوحة بايونير",
+        "date": "1972",
+        "place": "كيب كانافيرال، الولايات المتحدة",
+        "medium": "ألمنيوم مطلي بالذهب",
+        "context": "مثبّتة على المسبار بايونير 10 — رسالة إلى كائنات خارج الأرض لا تستخدم أي لغة بشرية، بل رموزًا كونية فقط."
+      },
+      "hi": {
+        "title": "पायनियर पट्टिका",
+        "date": "1972",
+        "place": "केप कैनेवरल, अमेरिका",
+        "medium": "स्वर्ण-एनोडाइज़्ड एल्युमीनियम",
+        "context": "पायनियर 10 पर लगाई गई — बाह्यग्रही जीवन के लिए एक संदेश जिसमें कोई मानव भाषा नहीं, केवल सार्वभौमिक प्रतीक हैं।"
+      },
+      "he": {
+        "title": "לוחית פיוניר",
+        "date": "1972",
+        "place": "כף קנוורל, ארה\"ב",
+        "medium": "אלומיניום מצופה זהב",
+        "context": "הוצמדה לחללית פיוניר 10 — מסר ליצורים מכוכבים אחרים ללא שימוש בשפה אנושית כלשהי, אלא בסמלים אוניברסליים בלבד."
+      }
+    }
+  },
+  {
+    "id": "arecibo-message",
+    "title": "Arecibo Message",
+    "date": "1974",
+    "place": "Arecibo, Puerto Rico",
+    "medium": "Radio signal (1,679 bits)",
+    "context": "Three-minute binary transmission beamed at star cluster M13, 25,000 light-years away — a message designed never to be received, aimed at proving we could send one.",
+    "i18n": {
+      "fr": {
+        "title": "Message d'Arecibo",
+        "date": "1974",
+        "place": "Arecibo, Porto Rico",
+        "medium": "Signal radio (1 679 bits)",
+        "context": "Transmission binaire de trois minutes dirigée vers l'amas stellaire M13, à 25 000 années-lumière — un message conçu pour ne jamais être reçu, destiné à prouver que nous pouvions en envoyer un."
+      },
+      "de": {
+        "title": "Arecibo-Botschaft",
+        "date": "1974",
+        "place": "Arecibo, Puerto Rico",
+        "medium": "Funksignal (1.679 Bit)",
+        "context": "Dreiminütige Binärübertragung, gerichtet auf den Sternhaufen M13 in 25.000 Lichtjahren Entfernung — eine Botschaft, die nie empfangen werden sollte, nur um zu beweisen, dass wir eine senden konnten."
+      },
+      "es": {
+        "title": "Mensaje de Arecibo",
+        "date": "1974",
+        "place": "Arecibo, Puerto Rico",
+        "medium": "Señal de radio (1.679 bits)",
+        "context": "Transmisión binaria de tres minutos dirigida al cúmulo estelar M13, a 25.000 años luz — un mensaje diseñado para no ser recibido jamás, con el fin de demostrar que podíamos enviarlo."
+      },
+      "pt": {
+        "title": "Mensagem de Arecibo",
+        "date": "1974",
+        "place": "Arecibo, Porto Rico",
+        "medium": "Sinal de rádio (1.679 bits)",
+        "context": "Transmissão binária de três minutos direcionada ao aglomerado estelar M13, a 25.000 anos-luz — uma mensagem concebida para nunca ser recebida, com o objetivo de provar que podíamos enviá-la."
+      },
+      "ru": {
+        "title": "Послание Аресибо",
+        "date": "1974",
+        "place": "Аресибо, Пуэрто-Рико",
+        "medium": "Радиосигнал (1 679 бит)",
+        "context": "Трёхминутная двоичная передача, направленная на звёздное скопление M13 на расстоянии 25 000 световых лет — послание, которое никогда не будет получено, призванное доказать, что мы способны его отправить."
+      },
+      "zh": {
+        "title": "阿雷西博信息",
+        "date": "1974",
+        "place": "阿雷西博，波多黎各",
+        "medium": "无线电信号（1,679比特）",
+        "context": "历时三分钟的二进制信号，射向25,000光年外的M13星团——一条注定不会被接收的信息，旨在证明我们有能力发送它。"
+      },
+      "ar": {
+        "title": "رسالة أريسيبو",
+        "date": "1974",
+        "place": "أريسيبو، بورتوريكو",
+        "medium": "إشارة راديوية (1,679 بت)",
+        "context": "بثّ ثنائي استمر ثلاث دقائق موجّه نحو العنقود النجمي M13 على بعد 25,000 سنة ضوئية — رسالة صُمّمت لتبقى بلا مُتلقٍّ، هدفها إثبات أننا نستطيع إرسال واحدة."
+      },
+      "hi": {
+        "title": "अरेसिबो संदेश",
+        "date": "1974",
+        "place": "अरेसिबो, प्वेर्तो रीको",
+        "medium": "रेडियो संकेत (1,679 बिट)",
+        "context": "तीन मिनट का बाइनरी प्रसारण, 25,000 प्रकाश-वर्ष दूर M13 तारा समूह की ओर प्रेषित — एक ऐसा संदेश जो कभी प्राप्त नहीं होगा, केवल यह साबित करने के लिए कि हम भेज सकते हैं।"
+      },
+      "he": {
+        "title": "מסר ארסיבו",
+        "date": "1974",
+        "place": "ארסיבו, פוארטו ריקו",
+        "medium": "אות רדיו (1,679 סיביות)",
+        "context": "שידור בינארי בן שלוש דקות שכוון לצביר הכוכבים M13 במרחק 25,000 שנות אור — מסר שתוכנן שלעולם לא יתקבל, במטרה להוכיח שאנו מסוגלים לשלוח אחד כזה."
+      }
+    }
+  },
+  {
+    "id": "golden-record",
+    "title": "Voyager Golden Record",
+    "date": "1977",
+    "place": "Cape Canaveral, USA",
+    "medium": "Gold-plated copper disc",
+    "context": "Kurt Waldheim's greeting aboard Voyagers 1 and 2 — now the most distant human-made objects in existence.",
+    "i18n": {
+      "fr": {
+        "title": "Disque d'or de Voyager",
+        "date": "1977",
+        "place": "Cap Canaveral, États-Unis",
+        "medium": "Disque de cuivre plaqué or",
+        "context": "Le message de Kurt Waldheim à bord de Voyager 1 et 2 — aujourd'hui les objets fabriqués par l'homme les plus éloignés de la Terre."
+      },
+      "de": {
+        "title": "Voyager Golden Record",
+        "date": "1977",
+        "place": "Cape Canaveral, USA",
+        "medium": "Vergoldete Kupferscheibe",
+        "context": "Kurt Waldheims Grußbotschaft an Bord von Voyager 1 und 2 — heute die am weitesten von der Erde entfernten von Menschen geschaffenen Objekte."
+      },
+      "es": {
+        "title": "Disco de Oro de las Voyager",
+        "date": "1977",
+        "place": "Cabo Cañaveral, EE.UU.",
+        "medium": "Disco de cobre bañado en oro",
+        "context": "El saludo de Kurt Waldheim a bordo de las Voyager 1 y 2 — ahora los objetos fabricados por el ser humano más distantes que existen."
+      },
+      "pt": {
+        "title": "Disco de Ouro da Voyager",
+        "date": "1977",
+        "place": "Cabo Canaveral, EUA",
+        "medium": "Disco de cobre banhado a ouro",
+        "context": "A saudação de Kurt Waldheim a bordo das Voyager 1 e 2 — atualmente os objetos mais distantes já fabricados pelo ser humano."
+      },
+      "ru": {
+        "title": "Золотая пластинка «Вояджера»",
+        "date": "1977",
+        "place": "Мыс Канаверал, США",
+        "medium": "Позолоченный медный диск",
+        "context": "Приветствие Курта Вальдхайма на борту «Вояджера-1» и «Вояджера-2» — ныне самых удалённых рукотворных объектов во Вселенной."
+      },
+      "zh": {
+        "title": "旅行者金唱片",
+        "date": "1977",
+        "place": "卡纳维拉尔角，美国",
+        "medium": "镀金铜唱片",
+        "context": "库尔特·瓦尔德海姆的问候随旅行者1号和2号飞向太空——如今它们是距地球最远的人造物体。"
+      },
+      "ar": {
+        "title": "التسجيل الذهبي لفوياجر",
+        "date": "1977",
+        "place": "كيب كانافيرال، الولايات المتحدة",
+        "medium": "قرص نحاسي مطلي بالذهب",
+        "context": "تحية كورت فالدهايم على متن فوياجر 1 و2 — وهما الآن أبعد الأجسام التي صنعها الإنسان على الإطلاق."
+      },
+      "hi": {
+        "title": "वॉयेजर गोल्डन रिकॉर्ड",
+        "date": "1977",
+        "place": "केप कैनेवरल, अमेरिका",
+        "medium": "स्वर्ण-लेपित ताम्र डिस्क",
+        "context": "वॉयेजर 1 और 2 पर कर्ट वाल्डहाइम का अभिवादन — अब तक मनुष्य द्वारा बनाई गई सबसे दूरस्थ वस्तुएँ।"
+      },
+      "he": {
+        "title": "תקליט הזהב של וויאג'ר",
+        "date": "1977",
+        "place": "כף קנוורל, ארה\"ב",
+        "medium": "דיסק נחושת מצופה זהב",
+        "context": "ברכתו של קורט ולדהיים על סיפון וויאג'ר 1 ו-2 — כיום העצמים הרחוקים ביותר שנוצרו בידי אדם."
+      }
+    }
+  },
+  {
+    "id": "georgia-guidestones",
+    "title": "Georgia Guidestones",
+    "date": "1980",
+    "place": "Elbert County, Georgia",
+    "medium": "Granite",
+    "context": "Anonymously commissioned guidelines for rebuilding civilization — destroyed by bombing in 2022, preserved only in text.",
+    "i18n": {
+      "fr": {
+        "title": "Pierres guides de Géorgie",
+        "date": "1980",
+        "place": "Comté d'Elbert, Géorgie",
+        "medium": "Granit",
+        "context": "Directives anonymes pour la reconstruction de la civilisation — détruites par un attentat à la bombe en 2022, préservées uniquement sous forme de texte."
+      },
+      "de": {
+        "title": "Georgia Guidestones",
+        "date": "1980",
+        "place": "Elbert County, Georgia",
+        "medium": "Granit",
+        "context": "Anonym in Auftrag gegebene Leitlinien für den Wiederaufbau der Zivilisation — 2022 durch einen Bombenanschlag zerstört, nur noch als Text erhalten."
+      },
+      "es": {
+        "title": "Piedras Guía de Georgia",
+        "date": "1980",
+        "place": "Condado de Elbert, Georgia",
+        "medium": "Granito",
+        "context": "Directrices encargadas anónimamente para reconstruir la civilización — destruidas por un atentado con bomba en 2022, conservadas solo en texto."
+      },
+      "pt": {
+        "title": "Pedras Guias da Geórgia",
+        "date": "1980",
+        "place": "Condado de Elbert, Geórgia",
+        "medium": "Granito",
+        "context": "Diretrizes encomendadas anonimamente para a reconstrução da civilização — destruídas por um atentado a bomba em 2022, preservadas apenas em texto."
+      },
+      "ru": {
+        "title": "Скрижали Джорджии",
+        "date": "1980",
+        "place": "Округ Элберт, Джорджия",
+        "medium": "Гранит",
+        "context": "Анонимно заказанные руководящие принципы для восстановления цивилизации — уничтожены взрывом в 2022 году, сохранились только в виде текста."
+      },
+      "zh": {
+        "title": "佐治亚引导石",
+        "date": "1980",
+        "place": "埃尔伯特县，佐治亚州",
+        "medium": "花岗岩",
+        "context": "匿名委托建造的文明重建指南——2022年被炸弹摧毁，仅以文字形式留存。"
+      },
+      "ar": {
+        "title": "أحجار جورجيا الإرشادية",
+        "date": "1980",
+        "place": "مقاطعة إلبرت، جورجيا",
+        "medium": "غرانيت",
+        "context": "إرشادات لإعادة بناء الحضارة كُلِّف بها مجهولون — دُمّرت بتفجير عام 2022، ولم يبقَ منها سوى النص."
+      },
+      "hi": {
+        "title": "जॉर्जिया गाइडस्टोन्स",
+        "date": "1980",
+        "place": "एल्बर्ट काउंटी, जॉर्जिया",
+        "medium": "ग्रेनाइट",
+        "context": "सभ्यता के पुनर्निर्माण के लिए गुमनाम रूप से बनवाए गए दिशानिर्देश — 2022 में बम विस्फोट से नष्ट हो गए, केवल पाठ के रूप में संरक्षित।"
+      },
+      "he": {
+        "title": "אבני ההנחיה של ג'ורג'יה",
+        "date": "1980",
+        "place": "מחוז אלברט, ג'ורג'יה",
+        "medium": "גרניט",
+        "context": "הנחיות לבניית הציוויליזציה מחדש, שהוזמנו באופן אנונימי — נהרסו בפיצוץ ב-2022, ונשמרו בטקסט בלבד."
+      }
+    }
+  }
 ]
