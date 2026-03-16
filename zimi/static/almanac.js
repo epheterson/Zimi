@@ -36,10 +36,13 @@ function _fmtDuration(h, m) {
   return h + t('alm_h_abbr') + ' ' + m + t('alm_m_abbr');
 }
 
-function _tp(name) { return t('alm_planet_' + name.toLowerCase()) || name; }
-function _th(name) { var k = 'alm_hol_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, ''); return t(k) || name; }
+// Translation helpers — t() returns the key itself for missing translations,
+// so we must check result !== key to detect misses and fall back to English name.
+function _tLookup(k, fallback) { var v = t(k); return v !== k ? v : fallback; }
+function _tp(name) { return _tLookup('alm_planet_' + name.toLowerCase(), name); }
+function _th(name) { var k = 'alm_hol_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, ''); return _tLookup(k, name); }
 var _CONST_KEYS = {'Pisces':'pisces','Aries':'aries','Taurus':'taurus','Gemini':'gemini','Cancer':'cancer','Leo':'leo','Virgo':'virgo','Libra':'libra','Scorpius':'scorpius','Sagittarius':'sagittarius','Capricornus':'capricornus','Aquarius':'aquarius','Bo\u00f6tes':'bootes','Lyra':'lyra','Perseus':'perseus','Draco':'draco','Orion':'orion','Ursa Minor':'ursa_minor'};
-function _tc(name) { var k = _CONST_KEYS[name]; return k ? (t('alm_const_' + k) || name) : name; }
+function _tc(name) { var k = _CONST_KEYS[name]; return k ? _tLookup('alm_const_' + k, name) : name; }
 
 function _dayOfYear(date) {
   var start = new Date(date.getFullYear(), 0, 1);
@@ -114,8 +117,8 @@ function closeAlmanac() {
   _activeSkyLoop = null;
   _almSelectedTz = null;
   // Reset orrery state
-  _orreryPlaying = false;
-  _orrerySpeed = 1;
+  _orreryPlaying = true;
+  _orrerySpeed = 100000;
   _orreryAutoTransit = false;
   _orreryTimeOffset = 0;
   _orreryRockets = [];
@@ -209,9 +212,9 @@ function _renderAlmanacContent() {
   html += '<div class="orrery-controls">';
   // Bidirectional speed slider: left = rewind, center = 1×, right = fast forward
   html += '<span class="orrery-speed-end">◀</span>';
-  html += '<input id="orrery-slider" type="range" min="-80" max="80" value="0" class="orrery-slider" oninput="_orrerySliderInput(this.value)" />';
+  html += '<input id="orrery-slider" type="range" min="-80" max="80" value="50" class="orrery-slider" oninput="_orrerySliderInput(this.value)" />';
   html += '<span class="orrery-speed-end">▶</span>';
-  html += '<span id="orrery-speed-label" class="orrery-speed-label">1×</span>';
+  html += '<span id="orrery-speed-label" class="orrery-speed-label">100K× ▶</span>';
   html += '<span id="orrery-date" class="orrery-date"></span>';
   html += '<button id="orrery-now" class="orrery-ctrl-btn orrery-now" onclick="_orrerySnapToNow()" title="' + t('alm_back_to_now') + '" style="display:none">' + t('alm_now') + '</button>';
   html += '</div>';
@@ -281,18 +284,9 @@ function _renderAlmanacContent() {
   _renderDeepTime(now);
   _renderRosettaStone(now);
   _initOrrery();
-  // Start orrery with gentle animation so planets visibly orbit
-  if (!_orreryPlaying) {
-    _orrerySpeed = 50;
-    _orreryPlaying = true;
-    _orreryLastFrame = performance.now();
-    _orreryAnimate();
-    // Update speed label + slider to reflect auto-play
-    var lbl = document.getElementById('orrery-speed-label');
-    if (lbl) lbl.textContent = '50\u00d7';
-    var slider = document.getElementById('orrery-slider');
-    if (slider) slider.value = 50;
-  }
+  // Start orrery at 100K× so planets visibly orbit on load
+  _orreryLastFrame = performance.now();
+  _orreryAnimate();
   _loadSunData(now);
   _startTzClock();
   _cacheAlmanacHighlights(now, m);
@@ -919,8 +913,8 @@ function _drawOrrery(canvas, dpr) {
 
 // ── Orrery time controls & rocket easter egg ──
 
-var _orreryPlaying = false;
-var _orrerySpeed = 1;
+var _orreryPlaying = true;
+var _orrerySpeed = 100000;
 var _orreryTimeOffset = 0;       // milliseconds offset from real time
 var _orreryLastFrame = 0;        // last rAF timestamp
 var _orreryRockets = [];         // all rocket missions (in-flight + orbiting)
@@ -1767,10 +1761,11 @@ function _initTzClock(now) {
     var isActive = (i === localMatch && _almSelectedTz === null) || (_almSelectedTz === tzc.tz);
     var tzTime = '';
     try { tzTime = _tzFmt(tzc.tz, { hour: 'numeric', minute: '2-digit', hour12: true }).format(now); } catch(e) { continue; }
-    // Compute UTC offset — use en-US for Date parsing (non-Latin digits break new Date())
+    // Compute UTC offset — use en-US with full date+time for accurate diff
     var utcOff = '';
     try {
-      var enFmt = function(tz) { return new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(now); };
+      var _tzOffFmt = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false };
+      var enFmt = function(tz) { return new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: tz }, _tzOffFmt)).format(now); };
       var diffMin = Math.round((new Date(enFmt(tzc.tz)) - new Date(enFmt('UTC'))) / 60000);
       var sign = diffMin >= 0 ? '+' : '\u2212';
       var absH = Math.floor(Math.abs(diffMin) / 60);

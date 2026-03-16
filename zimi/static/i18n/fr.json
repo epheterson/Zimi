@@ -504,7 +504,7 @@
   "alm_const_ursa_minor": "Petite Ourse",
   "alm_shower_quadrantids": "Quadrantides",
   "alm_shower_lyrids": "Lyrides",
-  "alm_shower_eta_aquariids": "Êta Aquarides",
+  "alm_shower_eta_aquariids": "Eta Aquarides",
   "alm_shower_s_delta_aquariids": "Delta Aquarides australes",
   "alm_shower_alpha_capricornids": "Alpha Capricornides",
   "alm_shower_perseids": "Perséides",
@@ -752,5 +752,7 @@
   "alm_hol_yom_hazikaron": "Yom HaZikaron",
   "alm_hol_yom_kippur": "Yom Kippour",
   "alm_hol_yom_yerushalayim": "Yom Yeroushalayim",
-  "alm_hol_zhonghe_festival": "Fête de Zhonghe"
+  "alm_hol_zhonghe_festival": "Fête de Zhonghe",
+  "alm_hol_spring_forward": "Passage à l’heure d’été",
+  "alm_hol_fall_back": "Passage à l’heure d’hiver"
 }
