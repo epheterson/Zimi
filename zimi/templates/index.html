@@ -1611,11 +1611,9 @@ function _langBannerDownload(lang, catMatch) {
   var banner = document.getElementById('lang-banner');
   if (banner) { banner.remove(); _adjustBodyPadding(); }
   closeReader();
-  var catalogLang = lang;
-  _catalogCache = null;
-  _catalogCacheLang = '';
   manageTab = 'browse';
-  _pendingDrill = { catKey: catMatch || 'wikipedia', lang: catalogLang };
+  var prefix = (catMatch === 'wikipedia' || !catMatch) ? 'wikipedia' : null;
+  _pendingDrill = { catKey: catMatch || 'wikipedia', lang: lang, namePrefix: prefix };
   enterManage();
 }
 function _langBannerDismiss(lang) {
@@ -3997,7 +3995,6 @@ let _dlTimer = null;
 
 // ── Browse gallery data layer ──
 let _catalogCache = null;      // All catalog items (fetched once)
-let _catalogCacheLang = null;   // Language of cached data
 let _browseView = 'gallery';   // 'gallery' | 'drilldown' | 'search'
 let _availableUpdates = {};    // keyed by installed filename → update info
 let _mergedToOther = new Set(); // categories merged into Other (< MIN_BROWSE_CAT items)
@@ -4347,8 +4344,10 @@ function autoCategorize(item) {
 }
 
 async function loadFullCatalog() {
-  const lang = manageLangFilter || '';
-  if (_catalogCache && _catalogCacheLang === lang) return _catalogCache;
+  // Always fetch full catalog (no server-side lang filter — Kiwix OPDS uses 3-letter
+  // ISO 639-3 codes but our UI uses 2-letter codes). Language filtering happens
+  // client-side via _zimMatchesLang in drillCategory/browseCatalogFilter.
+  if (_catalogCache) return _catalogCache;
 
   const res = await manageFetch('/manage/catalog?lang=&count=500&start=0');
   const data = await res.json();
@@ -4361,7 +4360,7 @@ async function loadFullCatalog() {
     const fetches = [];
     for (let start = 500; start < total; start += 500) {
       fetches.push(
-        manageFetch('/manage/catalog?lang=' + encodeURIComponent(lang) + '&count=500&start=' + start)
+        manageFetch('/manage/catalog?lang=&count=500&start=' + start)
           .then(r => r.json()).then(d => d.items || [])
       );
     }
@@ -4377,7 +4376,6 @@ async function loadFullCatalog() {
   _enrichCatalogInstalled(items);
 
   _catalogCache = items;
-  _catalogCacheLang = lang;
   return _catalogCache;
 }
 
@@ -4519,7 +4517,7 @@ function renderBrowseGallery() {
     _pendingDrill = null;
     manageLangFilter = drill.lang || null;
     _catalogCache = null;
-    drillCategory(drill.catKey);
+    drillCategory(drill.catKey, drill.namePrefix);
     return;
   }
   const results = document.getElementById('catalog-results');
@@ -4605,7 +4603,7 @@ function renderBrowseGallery() {
   });
 }
 
-function drillCategory(catKey) {
+function drillCategory(catKey, namePrefix) {
   const results = document.getElementById('catalog-results');
   if (!results) return;
   _browseView = 'drilldown';
@@ -4622,18 +4620,28 @@ function drillCategory(catKey) {
   loadFullCatalog().then(items => {
     // Filter to this category (+ unknown/merged cats go to "other")
     const knownKeys = new Set(BROWSE_CATEGORIES.map(c => c.key));
-    const filtered = items.filter(item => {
+    let filtered = items.filter(item => {
       const cat = item.category || 'other';
       if (catKey === 'other') return cat === 'other' || !knownKeys.has(cat) || _mergedToOther.has(cat);
       return cat === catKey;
     });
 
+    // Optional name prefix filter (e.g. "wikipedia" to exclude wiktionary/wikisource/etc.)
+    if (namePrefix) {
+      var pfx = namePrefix.toLowerCase();
+      filtered = filtered.filter(function(item) { return (item.name || '').toLowerCase().startsWith(pfx); });
+    }
+
+    // Language pills scoped to this category (counts from unfiltered items)
+    var langPills = _renderLangPills(_countLangsByCategory(filtered, catKey), 'filterCatalogLang');
+
+    // Apply language filter after computing pill counts (so pills show all available languages)
+    if (manageLangFilter) {
+      filtered = filtered.filter(function(item) { return _zimMatchesLang(item, manageLangFilter); });
+    }
     const grouped = groupVariants(filtered);
     // Sort: installed first, then alphabetical
     grouped.sort((a, b) => (a.title || a.name || '').localeCompare(b.title || b.name || ''));
-
-    // Language pills scoped to this category (counts from unfiltered global cache)
-    var langPills = _renderLangPills(_countLangsByCategory(filtered, catKey), 'filterCatalogLang');
     let h = '<div class="browse-drilldown-header">' +
       '<button class="browse-back" onclick="renderBrowseGallery()">' + tH('back_to_catalog') + '</button>' +
       '<span class="browse-drilldown-title">' + (catMeta ? catMeta.icon + ' ' : '') + esc(catName) + '</span>' +
@@ -7133,10 +7141,8 @@ function _renderLangDropdown() {
 
 function _langDropdownGetWiki() {
   _closeLangDropdown();
-  _catalogCache = null;
-  _catalogCacheLang = '';
   manageTab = 'browse';
-  _pendingDrill = { catKey: 'wikipedia', lang: _currentLang };
+  _pendingDrill = { catKey: 'wikipedia', lang: _currentLang, namePrefix: 'wikipedia' };
   enterManage();
 }
 
