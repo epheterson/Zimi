@@ -5537,7 +5537,8 @@ function download(blobUrl, filename) {
     throw new Error('DownloadManager: "a.click()" is not supported.');
   }
   a.href = blobUrl;
-  a.target = "_parent";
+  // Zimi: removed target="_parent" — it navigates the sandboxed parent
+  // frame to a blob URL (white page) instead of triggering a download.
   if ("download" in a) {
     a.download = filename;
   }
