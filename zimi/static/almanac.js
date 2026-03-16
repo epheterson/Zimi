@@ -73,6 +73,7 @@ function closeAlmanac() {
   // Reset orrery state
   _orreryPlaying = false;
   _orrerySpeed = 1;
+  _orreryAutoTransit = false;
   _orreryTimeOffset = 0;
   _orreryRockets = [];
   document.getElementById('almanac-view').classList.remove('open');
@@ -866,6 +867,7 @@ var _orrerySpeed = 1;
 var _orreryTimeOffset = 0;       // milliseconds offset from real time
 var _orreryLastFrame = 0;        // last rAF timestamp
 var _orreryRockets = [];         // all rocket missions (in-flight + orbiting)
+var _orreryAutoTransit = false;  // true when rocket launch controls speed profile
 
 // Hohmann transfer transit time in days
 // Half-period of transfer ellipse: t = (T/2) where T = a^(3/2) years (Kepler's 3rd law)
@@ -928,6 +930,24 @@ function _auToVis(au) {
   return s.c0 + u * (s.c1 + u * (s.c2 + u * s.c3));
 }
 
+// ── Transit speed profile ──
+// Rockets use an adaptive 3-phase speed profile:
+//   Departure (first 5%) → smooth ramp up → Cruise (middle 90%) → smooth ramp down → Approach (last 5%)
+// Speeds scale to transit duration so every launch feels ~12 seconds regardless of planet.
+
+function _smoothstep(edge0, edge1, x) {
+  var t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+function _transitEffectiveSpeed(rk) {
+  var p = Math.max(0, Math.min(1, rk.elapsed / rk.duration));
+  var rampUp = _smoothstep(0, 0.05, p);
+  var rampDown = 1 - _smoothstep(0.95, 1.0, p);
+  var blend = Math.min(rampUp, rampDown);
+  return rk.departSpeed + blend * (rk.cruiseSpeed - rk.departSpeed);
+}
+
 // ── Bidirectional logarithmic speed slider ──
 // Slider range -60 to 60: negative = rewind, 0 = 1× real-time, positive = fast forward
 // |val| maps: 0→1×, 10→10×, 20→100×, 30→1K×, 40→10K×, 50→100K×, 60→1M×
@@ -948,13 +968,14 @@ function _formatSpeed(speed) {
   var prefix = speed < -1 ? '◀ ' : '';
   var suffix = speed > 1 ? ' ▶' : '';
   var num;
-  if (abs >= 1000000) num = (abs / 1000000).toFixed(0) + 'M×';
+  if (abs >= 1000000) num = (abs / 1000000).toFixed(abs >= 10000000 ? 0 : 1).replace(/\.0$/, '') + 'M×';
   else if (abs >= 1000) num = (abs / 1000).toFixed(abs >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'K×';
   else num = abs + '×';
   return prefix + num + suffix;
 }
 
 function _orrerySliderInput(val) {
+  _orreryAutoTransit = false; // Manual control disengages auto-transit
   var intVal = parseInt(val);
   _orrerySpeed = _sliderToSpeed(intVal);
   var label = document.getElementById('orrery-speed-label');
@@ -981,6 +1002,7 @@ function _orrerySetSlider(speed) {
 }
 
 function _orrerySnapToNow() {
+  _orreryAutoTransit = false;
   _orreryTimeOffset = 0;
   _orreryRockets = [];
   _orrerySetSlider(1);
@@ -1142,6 +1164,18 @@ function _orreryAnimate() {
   var dt = now - _orreryLastFrame;
   _orreryLastFrame = now;
 
+  // Auto-transit: modulate speed based on active rocket's flight progress
+  if (_orreryAutoTransit) {
+    var autoRk = _orreryGetActiveRocket();
+    if (autoRk && !autoRk.arrived) {
+      _orrerySpeed = _transitEffectiveSpeed(autoRk);
+      var sLbl = document.getElementById('orrery-speed-label');
+      if (sLbl) sLbl.textContent = _formatSpeed(_orrerySpeed);
+      var sSl = document.getElementById('orrery-slider');
+      if (sSl) sSl.value = Math.min(_speedToSlider(_orrerySpeed), parseInt(sSl.max) || 60);
+    }
+  }
+
   // Advance simulated time
   _orreryTimeOffset += dt * _orrerySpeed;
 
@@ -1181,6 +1215,10 @@ function _orreryAnimate() {
   }
   if (!hasInFlight && _orreryRockets.length > 0) {
     _orreryShowTransit(false);
+    if (_orreryAutoTransit) {
+      _orreryAutoTransit = false;
+      _orrerySetSlider(50); // Gentle orbit speed after arrival
+    }
   }
 
   _orreryUpdateDate();
@@ -1222,6 +1260,10 @@ function _orreryLaunchRocket(targetName) {
       _orreryRockets.splice(ri, 1); // replace in-flight mission to same target
     }
   }
+  // Speed profile: departure covers 2% of distance in ~1.5s, cruise covers 96% in ~9s
+  var departSpeed = Math.max(10, Math.round(0.02 * transitMs / 1500));
+  var cruiseSpeed = Math.max(departSpeed, Math.round(0.96 * transitMs / 9000));
+
   _orreryRockets.push({
     target: targetName,
     earthOrbit: earthA,
@@ -1235,16 +1277,18 @@ function _orreryLaunchRocket(targetName) {
     arrivalGlow: 0,
     pathFade: 1.0,
     trail: [],
-    _launchRealTime: Date.now() + _orreryTimeOffset
+    _launchRealTime: Date.now() + _orreryTimeOffset,
+    departSpeed: departSpeed,
+    cruiseSpeed: cruiseSpeed
   });
   _orreryShowTransit(true);
   _orreryUpdateTransitLabel();
 
-  // Auto-set speed: only on first launch. If already playing, don't hijack speed.
+  // Enable auto-transit speed profile
+  _orreryAutoTransit = true;
   if (!_orreryPlaying) {
-    var desiredRealMs = 12000;
-    var neededSpeed = Math.max(10, Math.round(transitMs / desiredRealMs));
-    _orrerySetSlider(neededSpeed);
+    _orrerySpeed = departSpeed;
+    _orrerySetSlider(departSpeed);
     _orreryPlaying = true;
     _orreryLastFrame = performance.now();
     _orreryAnimate();
