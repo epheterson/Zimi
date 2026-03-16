@@ -4885,7 +4885,7 @@ function _pdfViewerUrl(pdfUrl) {
   var lang = (typeof _currentLang !== 'undefined' && _currentLang) ? _currentLang : '';
   var localeMap = { 'en': 'en-US', 'fr': 'fr', 'de': 'de', 'es': 'es-ES', 'pt': 'pt-BR', 'ru': 'ru', 'zh': 'zh-CN', 'ar': 'ar', 'he': 'he', 'hi': 'hi-IN' };
   var locale = localeMap[lang] || '';
-  return '/static/pdfjs/web/viewer.html?file=' + pdfUrl + (locale ? '&locale=' + locale : '');
+  return '/static/pdfjs/web/viewer.html?file=' + pdfUrl + (locale ? '#locale=' + locale : '');
 }
 function _articleUrl(zim, path) {
   return '/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/');

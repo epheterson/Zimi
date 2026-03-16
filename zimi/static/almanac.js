@@ -37,6 +37,7 @@ function _fmtDuration(h, m) {
 }
 
 function _tp(name) { return t('alm_planet_' + name.toLowerCase()) || name; }
+function _th(name) { var k = 'alm_hol_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, ''); return t(k) || name; }
 var _CONST_KEYS = {'Pisces':'pisces','Aries':'aries','Taurus':'taurus','Gemini':'gemini','Cancer':'cancer','Leo':'leo','Virgo':'virgo','Libra':'libra','Scorpius':'scorpius','Sagittarius':'sagittarius','Capricornus':'capricornus','Aquarius':'aquarius','Bo\u00f6tes':'bootes','Lyra':'lyra','Perseus':'perseus','Draco':'draco','Orion':'orion','Ursa Minor':'ursa_minor'};
 function _tc(name) { var k = _CONST_KEYS[name]; return k ? (t('alm_const_' + k) || name) : name; }
 
@@ -132,17 +133,16 @@ function closeAlmanac() {
 }
 
 // ── Timezone formatting ──
-function _formatTimezone() {
+function _formatTimezone(lang) {
   try {
-    // Try short timezone name first (e.g., "PST", "EST")
-    var short = new Date().toLocaleTimeString('en-US', { timeZoneName: 'short' });
-    var match = short.match(/[A-Z]{2,5}$/);
-    if (match) return match[0];
-    // Fall back to long name, extract readable part
-    var tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-    // "America/Los_Angeles" → "Los Angeles"
-    var parts = tz.split('/');
-    return parts[parts.length - 1].replace(/_/g, ' ');
+    var loc = lang || ((typeof _currentLang !== 'undefined') ? _currentLang : 'en');
+    // Use locale-aware short timezone name (e.g., "PST" in English, "heure du Pacifique" in French)
+    var fmt = new Intl.DateTimeFormat(loc, { timeZoneName: 'short' });
+    var parts = fmt.formatToParts(new Date());
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].type === 'timeZoneName') return parts[i].value;
+    }
+    return '';
   } catch(e) { return ''; }
 }
 
@@ -158,8 +158,8 @@ function _renderAlmanacContent() {
   // Date header
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   var dateStr = now.toLocaleDateString(lang, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  var timeStr = now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  var tzName = _formatTimezone();
+  var timeStr = now.toLocaleTimeString(lang, { hour: 'numeric', minute: '2-digit' });
+  var tzName = _formatTimezone(lang);
   html += '<div style="text-align:center;margin-bottom:16px">';
   html += '<div style="font-size:22px;font-weight:600;color:var(--text)">' + dateStr + '</div>';
   html += '<div style="font-size:16px;color:var(--text2);margin-top:4px">' + timeStr + (tzName ? ' &middot; ' + tzName : '') + '</div>';
@@ -1729,22 +1729,22 @@ function _renderSunMap(now) {
 // ── Timezone analog clock ──
 
 var _TZ_CITIES = [
-  { label: 'Honolulu', tz: 'Pacific/Honolulu', lat: 21.31, lon: -157.86 },
-  { label: 'Los Angeles', tz: 'America/Los_Angeles', lat: 34.05, lon: -118.24 },
-  { label: 'Denver', tz: 'America/Denver', lat: 39.74, lon: -104.98 },
-  { label: 'Chicago', tz: 'America/Chicago', lat: 41.88, lon: -87.63 },
-  { label: 'New York', tz: 'America/New_York', lat: 40.71, lon: -74.01 },
-  { label: 'São Paulo', tz: 'America/Sao_Paulo', lat: -23.55, lon: -46.63 },
-  { label: 'London', tz: 'Europe/London', lat: 51.51, lon: -0.13 },
-  { label: 'Cairo', tz: 'Africa/Cairo', lat: 30.04, lon: 31.24 },
-  { label: 'Moscow', tz: 'Europe/Moscow', lat: 55.76, lon: 37.62 },
-  { label: 'Dubai', tz: 'Asia/Dubai', lat: 25.20, lon: 55.27 },
-  { label: 'Mumbai', tz: 'Asia/Kolkata', lat: 19.08, lon: 72.88 },
-  { label: 'Bangkok', tz: 'Asia/Bangkok', lat: 13.76, lon: 100.50 },
-  { label: 'Shanghai', tz: 'Asia/Shanghai', lat: 31.23, lon: 121.47 },
-  { label: 'Tokyo', tz: 'Asia/Tokyo', lat: 35.68, lon: 139.69 },
-  { label: 'Sydney', tz: 'Australia/Sydney', lat: -33.87, lon: 151.21 },
-  { label: 'Auckland', tz: 'Pacific/Auckland', lat: -36.85, lon: 174.76 }
+  { key: 'honolulu', tz: 'Pacific/Honolulu', lat: 21.31, lon: -157.86 },
+  { key: 'los_angeles', tz: 'America/Los_Angeles', lat: 34.05, lon: -118.24 },
+  { key: 'denver', tz: 'America/Denver', lat: 39.74, lon: -104.98 },
+  { key: 'chicago', tz: 'America/Chicago', lat: 41.88, lon: -87.63 },
+  { key: 'new_york', tz: 'America/New_York', lat: 40.71, lon: -74.01 },
+  { key: 'sao_paulo', tz: 'America/Sao_Paulo', lat: -23.55, lon: -46.63 },
+  { key: 'london', tz: 'Europe/London', lat: 51.51, lon: -0.13 },
+  { key: 'cairo', tz: 'Africa/Cairo', lat: 30.04, lon: 31.24 },
+  { key: 'moscow', tz: 'Europe/Moscow', lat: 55.76, lon: 37.62 },
+  { key: 'dubai', tz: 'Asia/Dubai', lat: 25.20, lon: 55.27 },
+  { key: 'mumbai', tz: 'Asia/Kolkata', lat: 19.08, lon: 72.88 },
+  { key: 'bangkok', tz: 'Asia/Bangkok', lat: 13.76, lon: 100.50 },
+  { key: 'shanghai', tz: 'Asia/Shanghai', lat: 31.23, lon: 121.47 },
+  { key: 'tokyo', tz: 'Asia/Tokyo', lat: 35.68, lon: 139.69 },
+  { key: 'sydney', tz: 'Australia/Sydney', lat: -33.87, lon: 151.21 },
+  { key: 'auckland', tz: 'Pacific/Auckland', lat: -36.85, lon: 174.76 }
 ];
 
 var _almSelectedTz = null; // null = local timezone
@@ -1767,22 +1767,21 @@ function _initTzClock(now) {
     var isActive = (i === localMatch && _almSelectedTz === null) || (_almSelectedTz === tzc.tz);
     var tzTime = '';
     try { tzTime = _tzFmt(tzc.tz, { hour: 'numeric', minute: '2-digit', hour12: true }).format(now); } catch(e) { continue; }
-    // Compute UTC offset for this timezone
+    // Compute UTC offset — use en-US for Date parsing (non-Latin digits break new Date())
     var utcOff = '';
     try {
-      var here = new Date(_tzFmt('UTC', {}).format(now));
-      var there = new Date(_tzFmt(tzc.tz, {}).format(now));
-      var diffMin = Math.round((there - here) / 60000);
+      var enFmt = function(tz) { return new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(now); };
+      var diffMin = Math.round((new Date(enFmt(tzc.tz)) - new Date(enFmt('UTC'))) / 60000);
       var sign = diffMin >= 0 ? '+' : '\u2212';
       var absH = Math.floor(Math.abs(diffMin) / 60);
       var absM = Math.abs(diffMin) % 60;
       utcOff = 'UTC' + sign + absH + (absM ? ':' + (absM < 10 ? '0' : '') + absM : '');
     } catch(e) {}
     var tzHour = 0;
-    try { tzHour = parseInt(_tzFmt(tzc.tz, { hour: 'numeric', hour12: false }).format(now)); } catch(e) {}
+    try { tzHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: tzc.tz, hour: 'numeric', hour12: false }).format(now)); } catch(e) {}
     var isNight = tzHour < 6 || tzHour >= 20;
     html += '<div class="alm-tz-city-card' + (isActive ? ' alm-tz-city-active' : '') + (isNight ? ' alm-tz-city-night' : '') + '" onclick="_almSelectTz(\'' + tzc.tz + '\',' + i + ')">';
-    html += '<span class="alm-tz-city-name">' + tzc.label + '</span>';
+    html += '<span class="alm-tz-city-name">' + t('alm_city_' + tzc.key) + '</span>';
     html += '<span class="alm-tz-city-time">' + tzTime + '</span>';
     html += '<span class="alm-tz-city-offset">' + utcOff + '</span>';
     html += '</div>';
@@ -1798,7 +1797,7 @@ function _almSelectTz(tz, idx) {
   // Also set location to this city for sun/map calculations
   var city = _TZ_CITIES[idx];
   // Look up full name from _MAP_CITIES (includes state/country)
-  var fullName = city.label;
+  var fullName = t('alm_city_' + city.key);
   for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
     if (Math.abs(_MAP_CITIES[ci].lat - city.lat) < 0.1 && Math.abs(_MAP_CITIES[ci].lon - city.lon) < 0.1) {
       fullName = _MAP_CITIES[ci].name; break;
@@ -1827,7 +1826,7 @@ function _drawTzClock(now) {
   var tz = _almSelectedTz || Intl.DateTimeFormat().resolvedOptions().timeZone;
   var tzLabel = '';
   for (var i = 0; i < _TZ_CITIES.length; i++) {
-    if (_TZ_CITIES[i].tz === tz) { tzLabel = _TZ_CITIES[i].label; break; }
+    if (_TZ_CITIES[i].tz === tz) { tzLabel = t('alm_city_' + _TZ_CITIES[i].key); break; }
   }
   // If the user searched a specific city whose timezone matches, use their city name
   var storedLoc = _getLocation();
@@ -3328,7 +3327,7 @@ function _renderMeteorShowers(now, moon) {
     html += '<div class="almanac-eclipse-row">' +
       '<div>' +
       '<span class="almanac-eclipse-type">' + t('alm_shower_' + s.key) + '</span>' +
-      '<br><span class="almanac-eclipse-date">~' + s.zhr + '/hr &middot; ' + _tc(s.radiant) + ' &middot; ' + t('alm_speed_' + s.speed.toLowerCase()) +
+      '<br><span class="almanac-eclipse-date">~' + s.zhr + t('alm_per_hour') + ' &middot; ' + _tc(s.radiant) + ' &middot; ' + t('alm_speed_' + s.speed.toLowerCase()) +
       ' &middot; <span style="color:' + condColor + '">' + s.moonIcon + ' ' + s.moonCondition + '</span></span>' +
       '</div>' +
       '<div class="almanac-eclipse-until">' + untilStr + '</div></div>';
@@ -3734,7 +3733,7 @@ function _drawAlmanacGrid() {
     var shown = Math.min(dayEvents.length, 2);
     for (var ei = 0; ei < shown; ei++) {
       var ev = dayEvents[ei];
-      var escapedLabel = ev.label.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      var escapedLabel = _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       html += '<div class="alm-ev alm-ev-' + ev.type + '">' +
         (ev.icon ? ev.icon + ' ' : '') + escapedLabel + '</div>';
     }
@@ -3760,7 +3759,7 @@ function _drawAlmanacGrid() {
       for (var ei = 0; ei < selEvents.length; ei++) {
         var ev = selEvents[ei];
         html += '<div class="alm-ev alm-ev-' + ev.type + '" style="font-size:12px;padding:2px 0">' +
-          (ev.icon ? ev.icon + ' ' : '') + ev.label.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+          (ev.icon ? ev.icon + ' ' : '') + _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
       }
       html += '</div>';
     }
@@ -4529,13 +4528,13 @@ function _renderGrLightbox() {
   lb.innerHTML =
     '<div class="gr-lb-bg" onclick="_closeGrLightbox()"></div>' +
     '<button class="gr-lb-close" onclick="_closeGrLightbox()">&times;</button>' +
-    '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)">\u2039</button>' +
+    '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,2 4,8 10,14"/></svg></button>' +
     '<div class="gr-lb-main" onclick="event.stopPropagation()">' +
       '<img src="/static/golden-record/' + file + '" alt="' + cap + '">' +
       '<div class="gr-lb-cap">' + cap + '</div>' +
       '<div class="gr-lb-num">' + (_grLightboxIdx + 1) + ' / ' + _GR_IMAGES.length + '</div>' +
     '</div>' +
-    '<button class="gr-lb-arrow gr-lb-next" onclick="event.stopPropagation();_grNav(1)">\u203a</button>';
+    '<button class="gr-lb-arrow gr-lb-next" onclick="event.stopPropagation();_grNav(1)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,2 12,8 6,14"/></svg></button>';
 }
 
 function _selectRosettaText(idx) {
