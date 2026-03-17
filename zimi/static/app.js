@@ -273,6 +273,7 @@ const footerEl = document.getElementById('footer');
 
 // ── Manage password ──
 let _manageToken = '';
+let _manageSavedReader = null; // saved reader state when entering manage
 let _pwResolve = null;
 let _pwReject = null;
 
@@ -1404,7 +1405,7 @@ function _loadDiscover() {
   // Random fill: pick visual ZIMs not already used as named slots
   var TARGET = 6;
   var randomNeeded = Math.max(0, TARGET - computed.length - serverSlots.length);
-  var skipCats = {'Stack Exchange':1, 'Dev Docs':1};
+  var skipCats = {'stack_exchange':1, 'devdocs':1};
   var skipPattern = /^zimgit/i;
   var visualZims = (zimsCache || []).filter(function(z) {
     return typeof z.entries === 'number' && z.entries > 100
@@ -2549,20 +2550,58 @@ function toggleManage(e) {
   if (mode === 'manage') {
     // Always clear in-memory token on exit; sessionStorage restores it on re-entry if "remember me" was used
     _manageToken = '';
+    if (_restoreSavedReader()) { history.back(); return; }
     goHome(e); return;
   }
   enterManage(e);
 }
 
+function _restoreSavedReader() {
+  var s = _manageSavedReader;
+  if (!s) return false;
+  _manageSavedReader = null;
+  readerOpen = true;
+  currentArticle = s.currentArticle;
+  articleHistory = s.articleHistory;
+  readerSource = s.readerSource;
+  currentSource = s.currentSource;
+  _articleLangData = s.langData;
+  _articleLangKey = s.langKey;
+  var reader = document.getElementById('reader');
+  reader.classList.add('open');
+  mainView.classList.add('hidden');
+  document.documentElement.style.overflowY = 'hidden';
+  updateTopbar();
+  if (currentArticle) _setWindowTitle(currentArticle.title || 'Zimi');
+  return true;
+}
+
 function enterManage(e) {
   if (e && e.preventDefault) e.preventDefault();
   if (!manageEnabled) return;
+  // Save reader state so back navigation can restore the article
+  if (readerOpen) {
+    _manageSavedReader = {
+      currentArticle: currentArticle,
+      articleHistory: articleHistory.slice(),
+      readerSource: readerSource,
+      currentSource: currentSource,
+      langData: _articleLangData,
+      langKey: _articleLangKey
+    };
+    // Hide reader visually but keep iframe loaded
+    readerOpen = false;
+    document.getElementById('reader').classList.remove('open');
+    mainView.classList.remove('hidden');
+    document.documentElement.style.overflowY = 'auto';
+  } else {
+    _manageSavedReader = null;
+  }
   mode = 'manage';
   currentSource = null;
   readerSource = null;
   sourceAutoReader = false;
   q.value = '';
-  closeReader();
   statsBar.style.display = 'none';
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   searchMeta.style.display = 'none';
@@ -3285,21 +3324,21 @@ function browseCatalogFilter(query) {
   });
 }
 
-// ── Category mapping (mirrors server _categorize_zim) ──
+// ── Category mapping (mirrors server _categorize_zim, uses BROWSE_CATEGORIES keys) ──
 const MANAGE_CATEGORIES = [
-  'Wikimedia', 'Stack Exchange', 'Dev Docs', 'Education', 'Medical', 'How-To', 'Books', 'Other'
+  'wikipedia', 'stack_exchange', 'devdocs', 'education', 'medical', 'survival', 'gutenberg', 'other'
 ];
 
 function categorizeZim(name) {
   const n = name.toLowerCase();
-  if (/medicine|wikem|ready\.gov/.test(n) || (n.startsWith('zimgit-') && /water|food|disaster|knots/.test(n))) return 'Medical';
-  if (/stackoverflow|askubuntu|superuser|serverfault|stackexchange/.test(n)) return 'Stack Exchange';
-  if (n.startsWith('devdocs_') || n === 'freecodecamp') return 'Dev Docs';
-  if (/^ted_|^phzh_/.test(n) || /crashcourse|phet|appropedia|artofproblemsolving|edutechwiki|explainxkcd|coreeng/.test(n)) return 'Education';
-  if (/wikihow|ifixit|off-the-grid/.test(n)) return 'How-To';
-  if (/^wiki|^wikt/.test(n) || n === 'openstreetmap-wiki') return 'Wikimedia';
-  if (/gutenberg|rationalwiki|theworldfactbook/.test(n)) return 'Books';
-  return 'Other';
+  if (/medicine|wikem|ready\.gov/.test(n) || (n.startsWith('zimgit-') && /water|food|disaster|knots/.test(n))) return 'medical';
+  if (/stackoverflow|askubuntu|superuser|serverfault|stackexchange/.test(n)) return 'stack_exchange';
+  if (n.startsWith('devdocs_') || n === 'freecodecamp') return 'devdocs';
+  if (/^ted_|^phzh_/.test(n) || /crashcourse|phet|appropedia|artofproblemsolving|edutechwiki|explainxkcd|coreeng/.test(n)) return 'education';
+  if (/wikihow|ifixit|off-the-grid/.test(n)) return 'survival';
+  if (/^wiki|^wikt/.test(n) || n === 'openstreetmap-wiki') return 'wikipedia';
+  if (/gutenberg|rationalwiki|theworldfactbook/.test(n)) return 'gutenberg';
+  return 'other';
 }
 
 function formatSize(bytes) {
@@ -4167,12 +4206,12 @@ function renderInstalled(filterText) {
     groups[cat].push(z);
   }
 
-  // Merge small categories (<3 items) into Other
+  // Merge small categories (<3 items) into other
   const MIN_CAT = 3;
   for (const cat of Object.keys(groups)) {
-    if (cat !== 'Other' && groups[cat].length < MIN_CAT) {
-      if (!groups['Other']) groups['Other'] = [];
-      groups['Other'].push(...groups[cat]);
+    if (cat !== 'other' && groups[cat].length < MIN_CAT) {
+      if (!groups['other']) groups['other'] = [];
+      groups['other'].push(...groups[cat]);
       delete groups[cat];
     }
   }
@@ -4184,7 +4223,7 @@ function renderInstalled(filterText) {
     if (!items || !items.length) continue;
     items.sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
     items_h += '<div class="manage-installed-group">';
-    items_h += '<div class="ci-section-label">' + esc(cat) + ' (' + items.length + ')</div>';
+    items_h += '<div class="ci-section-label">' + esc(_catDisplayName(cat)) + ' (' + items.length + ')</div>';
     for (const z of items) {
       const iconHtml = z.has_icon
         ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" width="40" height="40" loading="lazy">'
@@ -5544,6 +5583,7 @@ function closeReader() {
   readerSource = null;
   currentArticle = null;
   articleHistory = [];
+  _manageSavedReader = null; // discard saved state when reader is explicitly closed
   document.getElementById('reader').classList.remove('open');
   // Use location.replace to avoid adding a history entry (iframe.src pollutes back button)
   var f = document.getElementById('reader-frame');
@@ -5919,6 +5959,7 @@ document.addEventListener('keydown', e => {
     if (_almanacOpen) { closeAlmanac(); return; }
     if (readerOpen) { goBack(); return; }
     if (q.value) { q.value = ''; hideSuggest(); clearSearch(); return; }
+    if (mode === 'manage' && _manageSavedReader) { _manageToken = ''; _restoreSavedReader(); history.back(); return; }
     if (mode === 'source' || mode === 'manage') { enterHome(true); return; }
     return;
   }
@@ -5940,6 +5981,12 @@ window.addEventListener('popstate', (e) => {
   _hideHistoryTrail();
   // Close Space if open
   if (_almanacOpen) { closeAlmanac(); return; }
+  // Restore reader when navigating back from manage view
+  if (mode === 'manage' && _manageSavedReader) {
+    _manageToken = '';
+    _restoreSavedReader();
+    return;
+  }
   // Step through article history when reader is open (mirrors in-app back button)
   if (readerOpen && articleHistory.length > 0) {
     _stepBackToArticle(articleHistory.pop(), false);
