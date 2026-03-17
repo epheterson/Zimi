@@ -593,3 +593,42 @@ pdfjs-editor-add-signature-edit-button-label = عدّل الوصف
 ## Edit signature description dialog
 
 pdfjs-editor-edit-signature-dialog-title = عدّل الوصف
+
+## Views Manager (Sidebar)
+
+pdfjs-toggle-views-manager-button =
+    .title = بدّل ظهور الشريط الجانبي
+pdfjs-toggle-views-manager-notification-button =
+    .title = بدّل ظهور الشريط الجانبي (يحتوي المستند على مصغّرات/فهرس/مرفقات/طبقات)
+pdfjs-toggle-views-manager-button-label = بدّل ظهور الشريط الجانبي
+
+pdfjs-views-manager-sidebar =
+    .aria-label = الشريط الجانبي
+pdfjs-views-manager-view-selector-button =
+    .title = العروض
+pdfjs-views-manager-view-selector-button-label = العروض
+pdfjs-views-manager-pages-title = الصفحات
+pdfjs-views-manager-outlines-title = فهرس المستند
+pdfjs-views-manager-attachments-title = المرفقات
+pdfjs-views-manager-layers-title = الطبقات
+
+pdfjs-views-manager-pages-option-label = الصفحات
+pdfjs-views-manager-outlines-option-label = فهرس المستند
+pdfjs-views-manager-attachments-option-label = المرفقات
+pdfjs-views-manager-layers-option-label = الطبقات
+
+pdfjs-views-manager-add-file-button =
+    .title = أضِف ملفًا
+pdfjs-views-manager-add-file-button-label = أضِف ملفًا
+
+pdfjs-views-manager-pages-status-none-action-label = حدّد الصفحات
+pdfjs-views-manager-pages-status-action-button-label = إدارة
+pdfjs-views-manager-pages-status-copy-button-label = نسخ
+pdfjs-views-manager-pages-status-cut-button-label = قصّ
+pdfjs-views-manager-pages-status-delete-button-label = حذف
+pdfjs-views-manager-pages-status-save-as-button-label = حفظ باسم…
+
+pdfjs-views-manager-status-undo-button-label = تراجع
+pdfjs-views-manager-status-close-button =
+    .title = أغلق
+pdfjs-views-manager-status-close-button-label = أغلق

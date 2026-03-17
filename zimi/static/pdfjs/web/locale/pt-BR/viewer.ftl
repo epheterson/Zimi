@@ -646,3 +646,42 @@ pdfjs-editor-add-signature-edit-button-label = Mudar descrição
 ## Edit signature description dialog
 
 pdfjs-editor-edit-signature-dialog-title = Mudar descrição
+
+## Views Manager (Sidebar)
+
+pdfjs-toggle-views-manager-button =
+    .title = Exibir/ocultar painel lateral
+pdfjs-toggle-views-manager-notification-button =
+    .title = Exibir/ocultar painel lateral (documento contém miniaturas/estrutura/anexos/camadas)
+pdfjs-toggle-views-manager-button-label = Exibir/ocultar painel lateral
+
+pdfjs-views-manager-sidebar =
+    .aria-label = Painel lateral
+pdfjs-views-manager-view-selector-button =
+    .title = Visualizações
+pdfjs-views-manager-view-selector-button-label = Visualizações
+pdfjs-views-manager-pages-title = Páginas
+pdfjs-views-manager-outlines-title = Estrutura do documento
+pdfjs-views-manager-attachments-title = Anexos
+pdfjs-views-manager-layers-title = Camadas
+
+pdfjs-views-manager-pages-option-label = Páginas
+pdfjs-views-manager-outlines-option-label = Estrutura do documento
+pdfjs-views-manager-attachments-option-label = Anexos
+pdfjs-views-manager-layers-option-label = Camadas
+
+pdfjs-views-manager-add-file-button =
+    .title = Adicionar arquivo
+pdfjs-views-manager-add-file-button-label = Adicionar arquivo
+
+pdfjs-views-manager-pages-status-none-action-label = Selecionar páginas
+pdfjs-views-manager-pages-status-action-button-label = Gerenciar
+pdfjs-views-manager-pages-status-copy-button-label = Copiar
+pdfjs-views-manager-pages-status-cut-button-label = Recortar
+pdfjs-views-manager-pages-status-delete-button-label = Excluir
+pdfjs-views-manager-pages-status-save-as-button-label = Salvar como…
+
+pdfjs-views-manager-status-undo-button-label = Desfazer
+pdfjs-views-manager-status-close-button =
+    .title = Fechar
+pdfjs-views-manager-status-close-button-label = Fechar

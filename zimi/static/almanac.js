@@ -3638,10 +3638,6 @@ function _getAlmanacEvents(sys, year, month) {
     for (var _hi = 0; _hi < _hsh.length; _hi++) {
       if (_hsh[_hi].m === month) add(_hsh[_hi].d, _hsh[_hi].name, 'holiday');
     }
-    // Space history milestones
-    if (month === 4) { add(12, "Yuri's Night", 'holiday'); }       // First human spaceflight (1961)
-    if (month === 7) { add(20, 'Moon Landing Day', 'holiday'); }   // Apollo 11 (1969)
-    if (month === 10) { add(4, 'World Space Week', 'holiday'); }   // Sputnik launch (1957)
     // DST (US)
     if (month === 3) { add(_nthWeekday(year, 3, 0, 2), 'Spring Forward', 'seasonal'); }
     if (month === 11) { add(_nthWeekday(year, 11, 0, 1), 'Fall Back', 'seasonal'); }

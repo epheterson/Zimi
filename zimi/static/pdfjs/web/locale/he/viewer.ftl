@@ -646,3 +646,42 @@ pdfjs-editor-add-signature-edit-button-label = עריכת תיאור
 ## Edit signature description dialog
 
 pdfjs-editor-edit-signature-dialog-title = עריכת תיאור
+
+## Views Manager (Sidebar)
+
+pdfjs-toggle-views-manager-button =
+    .title = הצגה/הסתרה של סרגל הצד
+pdfjs-toggle-views-manager-notification-button =
+    .title = הצגה/הסתרה של סרגל הצד (המסמך מכיל תצוגות מקדימות/תוכן עניינים/צרופות/שכבות)
+pdfjs-toggle-views-manager-button-label = הצגה/הסתרה של סרגל הצד
+
+pdfjs-views-manager-sidebar =
+    .aria-label = סרגל הצד
+pdfjs-views-manager-view-selector-button =
+    .title = תצוגות
+pdfjs-views-manager-view-selector-button-label = תצוגות
+pdfjs-views-manager-pages-title = עמודים
+pdfjs-views-manager-outlines-title = תוכן העניינים של המסמך
+pdfjs-views-manager-attachments-title = צרופות
+pdfjs-views-manager-layers-title = שכבות
+
+pdfjs-views-manager-pages-option-label = עמודים
+pdfjs-views-manager-outlines-option-label = תוכן העניינים של המסמך
+pdfjs-views-manager-attachments-option-label = צרופות
+pdfjs-views-manager-layers-option-label = שכבות
+
+pdfjs-views-manager-add-file-button =
+    .title = הוספת קובץ
+pdfjs-views-manager-add-file-button-label = הוספת קובץ
+
+pdfjs-views-manager-pages-status-none-action-label = בחירת עמודים
+pdfjs-views-manager-pages-status-action-button-label = ניהול
+pdfjs-views-manager-pages-status-copy-button-label = העתקה
+pdfjs-views-manager-pages-status-cut-button-label = גזירה
+pdfjs-views-manager-pages-status-delete-button-label = מחיקה
+pdfjs-views-manager-pages-status-save-as-button-label = שמירה בשם…
+
+pdfjs-views-manager-status-undo-button-label = ביטול פעולה
+pdfjs-views-manager-status-close-button =
+    .title = סגירה
+pdfjs-views-manager-status-close-button-label = סגירה

@@ -219,3 +219,42 @@ pdfjs-web-fonts-disabled = वेब फॉन्ट्स निष्क्र
 
 # Editor Parameters
 pdfjs-editor-free-text-color-input = रंग
+
+## Views Manager (Sidebar)
+
+pdfjs-toggle-views-manager-button =
+    .title = साइडबार टॉगल करें
+pdfjs-toggle-views-manager-notification-button =
+    .title = साइडबार टॉगल करें (दस्तावेज़ में लघुचित्र/रूपरेखा/संलग्नक/परतें हैं)
+pdfjs-toggle-views-manager-button-label = साइडबार टॉगल करें
+
+pdfjs-views-manager-sidebar =
+    .aria-label = साइडबार
+pdfjs-views-manager-view-selector-button =
+    .title = दृश्य
+pdfjs-views-manager-view-selector-button-label = दृश्य
+pdfjs-views-manager-pages-title = पृष्ठ
+pdfjs-views-manager-outlines-title = दस्तावेज़ रूपरेखा
+pdfjs-views-manager-attachments-title = संलग्नक
+pdfjs-views-manager-layers-title = परतें
+
+pdfjs-views-manager-pages-option-label = पृष्ठ
+pdfjs-views-manager-outlines-option-label = दस्तावेज़ रूपरेखा
+pdfjs-views-manager-attachments-option-label = संलग्नक
+pdfjs-views-manager-layers-option-label = परतें
+
+pdfjs-views-manager-add-file-button =
+    .title = फ़ाइल जोड़ें
+pdfjs-views-manager-add-file-button-label = फ़ाइल जोड़ें
+
+pdfjs-views-manager-pages-status-none-action-label = पृष्ठ चुनें
+pdfjs-views-manager-pages-status-action-button-label = प्रबंधित करें
+pdfjs-views-manager-pages-status-copy-button-label = प्रतिलिपि
+pdfjs-views-manager-pages-status-cut-button-label = काटें
+pdfjs-views-manager-pages-status-delete-button-label = हटाएँ
+pdfjs-views-manager-pages-status-save-as-button-label = इस रूप में सहेजें…
+
+pdfjs-views-manager-status-undo-button-label = पूर्ववत करें
+pdfjs-views-manager-status-close-button =
+    .title = बंद करें
+pdfjs-views-manager-status-close-button-label = बंद करें

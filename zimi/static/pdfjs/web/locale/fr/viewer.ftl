@@ -642,3 +642,42 @@ pdfjs-editor-add-signature-edit-button-label = Modifier la description
 ## Edit signature description dialog
 
 pdfjs-editor-edit-signature-dialog-title = Modifier la description
+
+## Views Manager (Sidebar)
+
+pdfjs-toggle-views-manager-button =
+    .title = Afficher/Masquer le panneau latéral
+pdfjs-toggle-views-manager-notification-button =
+    .title = Afficher/Masquer le panneau latéral (le document contient des vignettes/signets/pièces jointes/calques)
+pdfjs-toggle-views-manager-button-label = Afficher/Masquer le panneau latéral
+
+pdfjs-views-manager-sidebar =
+    .aria-label = Panneau latéral
+pdfjs-views-manager-view-selector-button =
+    .title = Vues
+pdfjs-views-manager-view-selector-button-label = Vues
+pdfjs-views-manager-pages-title = Pages
+pdfjs-views-manager-outlines-title = Signets du document
+pdfjs-views-manager-attachments-title = Pièces jointes
+pdfjs-views-manager-layers-title = Calques
+
+pdfjs-views-manager-pages-option-label = Pages
+pdfjs-views-manager-outlines-option-label = Signets du document
+pdfjs-views-manager-attachments-option-label = Pièces jointes
+pdfjs-views-manager-layers-option-label = Calques
+
+pdfjs-views-manager-add-file-button =
+    .title = Ajouter un fichier
+pdfjs-views-manager-add-file-button-label = Ajouter un fichier
+
+pdfjs-views-manager-pages-status-none-action-label = Sélectionner des pages
+pdfjs-views-manager-pages-status-action-button-label = Gérer
+pdfjs-views-manager-pages-status-copy-button-label = Copier
+pdfjs-views-manager-pages-status-cut-button-label = Couper
+pdfjs-views-manager-pages-status-delete-button-label = Supprimer
+pdfjs-views-manager-pages-status-save-as-button-label = Enregistrer sous…
+
+pdfjs-views-manager-status-undo-button-label = Annuler
+pdfjs-views-manager-status-close-button =
+    .title = Fermer
+pdfjs-views-manager-status-close-button-label = Fermer

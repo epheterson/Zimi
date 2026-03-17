@@ -630,3 +630,42 @@ pdfjs-editor-add-signature-edit-button-label = 编辑描述
 ## Edit signature description dialog
 
 pdfjs-editor-edit-signature-dialog-title = 编辑描述
+
+## Views Manager (Sidebar)
+
+pdfjs-toggle-views-manager-button =
+    .title = 切换侧栏
+pdfjs-toggle-views-manager-notification-button =
+    .title = 切换侧栏（文档包含缩略图/大纲/附件/图层）
+pdfjs-toggle-views-manager-button-label = 切换侧栏
+
+pdfjs-views-manager-sidebar =
+    .aria-label = 侧栏
+pdfjs-views-manager-view-selector-button =
+    .title = 视图
+pdfjs-views-manager-view-selector-button-label = 视图
+pdfjs-views-manager-pages-title = 页面
+pdfjs-views-manager-outlines-title = 文档大纲
+pdfjs-views-manager-attachments-title = 附件
+pdfjs-views-manager-layers-title = 图层
+
+pdfjs-views-manager-pages-option-label = 页面
+pdfjs-views-manager-outlines-option-label = 文档大纲
+pdfjs-views-manager-attachments-option-label = 附件
+pdfjs-views-manager-layers-option-label = 图层
+
+pdfjs-views-manager-add-file-button =
+    .title = 添加文件
+pdfjs-views-manager-add-file-button-label = 添加文件
+
+pdfjs-views-manager-pages-status-none-action-label = 选择页面
+pdfjs-views-manager-pages-status-action-button-label = 管理
+pdfjs-views-manager-pages-status-copy-button-label = 复制
+pdfjs-views-manager-pages-status-cut-button-label = 剪切
+pdfjs-views-manager-pages-status-delete-button-label = 删除
+pdfjs-views-manager-pages-status-save-as-button-label = 另存为…
+
+pdfjs-views-manager-status-undo-button-label = 撤销
+pdfjs-views-manager-status-close-button =
+    .title = 关闭
+pdfjs-views-manager-status-close-button-label = 关闭

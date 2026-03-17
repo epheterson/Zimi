@@ -650,3 +650,42 @@ pdfjs-editor-add-signature-edit-button-label = Изменить описание
 ## Edit signature description dialog
 
 pdfjs-editor-edit-signature-dialog-title = Изменить описание
+
+## Views Manager (Sidebar)
+
+pdfjs-toggle-views-manager-button =
+    .title = Показать/скрыть боковую панель
+pdfjs-toggle-views-manager-notification-button =
+    .title = Показать/скрыть боковую панель (документ содержит миниатюры/содержание/вложения/слои)
+pdfjs-toggle-views-manager-button-label = Показать/скрыть боковую панель
+
+pdfjs-views-manager-sidebar =
+    .aria-label = Боковая панель
+pdfjs-views-manager-view-selector-button =
+    .title = Представления
+pdfjs-views-manager-view-selector-button-label = Представления
+pdfjs-views-manager-pages-title = Страницы
+pdfjs-views-manager-outlines-title = Содержание документа
+pdfjs-views-manager-attachments-title = Вложения
+pdfjs-views-manager-layers-title = Слои
+
+pdfjs-views-manager-pages-option-label = Страницы
+pdfjs-views-manager-outlines-option-label = Содержание документа
+pdfjs-views-manager-attachments-option-label = Вложения
+pdfjs-views-manager-layers-option-label = Слои
+
+pdfjs-views-manager-add-file-button =
+    .title = Добавить файл
+pdfjs-views-manager-add-file-button-label = Добавить файл
+
+pdfjs-views-manager-pages-status-none-action-label = Выбрать страницы
+pdfjs-views-manager-pages-status-action-button-label = Управление
+pdfjs-views-manager-pages-status-copy-button-label = Копировать
+pdfjs-views-manager-pages-status-cut-button-label = Вырезать
+pdfjs-views-manager-pages-status-delete-button-label = Удалить
+pdfjs-views-manager-pages-status-save-as-button-label = Сохранить как…
+
+pdfjs-views-manager-status-undo-button-label = Отменить
+pdfjs-views-manager-status-close-button =
+    .title = Закрыть
+pdfjs-views-manager-status-close-button-label = Закрыть

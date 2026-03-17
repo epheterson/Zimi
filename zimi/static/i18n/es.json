@@ -679,7 +679,6 @@
   "alm_hol_navratri_begins": "Navratri comienza",
   "alm_hol_memorial_day": "Día de los Caídos",
   "alm_hol_mid_autumn": "Festival del Medio Otoño",
-  "alm_hol_moon_landing_day": "Día del Alunizaje",
   "alm_hol_mother_s_day": "Día de la Madre",
   "alm_hol_nativity_of_mary": "Natividad de María",
   "alm_hol_new_year_s": "Año Nuevo",
@@ -757,7 +756,6 @@
   "alm_hol_vesak": "Vesak",
   "alm_hol_veterans_day": "Día de los Veteranos",
   "alm_hol_winter_solstice": "Solsticio de invierno",
-  "alm_hol_world_space_week": "Semana Mundial del Espacio",
   "alm_hol_xiayuan_fest": "Festival de Xiayuan",
   "alm_hol_yalda_night": "Noche de Yalda",
   "alm_hol_yom_ha_atzmaut": "Yom HaAtzmaut",
@@ -765,6 +763,5 @@
   "alm_hol_yom_hazikaron": "Yom HaZikarón",
   "alm_hol_yom_kippur": "Yom Kipur",
   "alm_hol_yom_yerushalayim": "Yom Yerushalayim",
-  "alm_hol_yuri_s_night": "Noche de Yuri",
   "alm_hol_zhonghe_festival": "Festival de Zhonghe"
 }
