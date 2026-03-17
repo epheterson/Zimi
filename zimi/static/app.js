@@ -198,7 +198,7 @@ function _langBannerDownload(lang, catMatch) {
   if (banner) { banner.remove(); _adjustBodyPadding(); }
   closeReader();
   manageTab = 'browse';
-  var prefix = (catMatch === 'wikipedia' || !catMatch) ? 'wikipedia' : null;
+  var prefix = (catMatch === 'wikipedia' || !catMatch) ? 'wikipedia_' + lang + '_all' : null;
   _pendingDrill = { catKey: catMatch || 'wikipedia', lang: lang, namePrefix: prefix };
   enterManage();
 }
@@ -5758,20 +5758,26 @@ function _renderLangDropdown() {
 
   var inReader = readerOpen && currentArticle;
 
-  // When reading: if article exists in current UI language's ZIM, show one switch option
+  // When reading: show switch buttons for ALL languages where article exists
   var zimInfo = inReader && _zimInfo(currentArticle.zim);
   var articleLang = zimInfo ? zimInfo.language : null;
-  if (inReader && articleLang && articleLang !== _currentLang && switchMap[_currentLang]) {
-    var sl = _AVAILABLE_LANGS.find(function(ll) { return ll.code === _currentLang; });
-    var sName = sl ? sl.name : _currentLang;
-    var targetPath = switchMap[_currentLang].path.replace(/^A\//, '').replace(/_/g, ' ');
+  var switchKeys = Object.keys(switchMap).sort();
+  var showedSwitch = false;
+  for (var si = 0; si < switchKeys.length; si++) {
+    var sCode = switchKeys[si];
+    if (sCode === articleLang) continue; // skip current article's language
+    var sl = _AVAILABLE_LANGS.find(function(ll) { return ll.code === sCode; });
+    var sName = sl ? sl.name : sCode.toUpperCase();
+    var sw = switchMap[sCode];
+    var targetPath = sw.path.replace(/^A\//, '').replace(/_/g, ' ');
     try { targetPath = decodeURIComponent(targetPath); } catch(e) {}
-    h += '<div class="lang-dropdown-item switchable" onclick="_selectLangAndSwitch(\'' + _currentLang + '\',\'' + escJs(switchMap[_currentLang].zim) + '\',\'' + escJs(switchMap[_currentLang].path) + '\')">' +
-      '<span class="ld-switch-label"><span class="ld-switch-lang">' + esc(tH('view_in_lang', {lang: sName})) + '</span>' +
+    h += '<div class="lang-dropdown-item switchable" onclick="_langSwitchArticle(\'' + escJs(sw.zim) + '\',\'' + escJs(sw.path) + '\')">' +
+      '<span class="ld-switch-label"><span class="ld-switch-lang">' + esc(sName) + '</span>' +
       '<span class="ld-switch-article">' + esc(targetPath) + '</span></span>' +
       '<span class="ld-switch">' + switchIcon + '</span></div>';
-    h += '<div class="ld-divider"></div>';
+    showedSwitch = true;
   }
+  if (showedSwitch) h += '<div class="ld-divider"></div>';
 
   // All languages — click name to switch UI language
   for (var i = 0; i < _AVAILABLE_LANGS.length; i++) {
@@ -5785,40 +5791,37 @@ function _renderLangDropdown() {
       '<span>' + esc(l.name) + '</span>' + right + '</div>';
   }
 
-  // Contextual Wikipedia download: only when reading Wikipedia and UI language has no Wikipedia installed
-  if (inReader && manageEnabled && _manageUnlocked) {
-    var isWiki = zimInfo && /^wikipedia/i.test(zimInfo.name || '');
-    if (isWiki) {
-      var hasLangWiki = (zimsCache || []).some(function(z) {
-        return z.language === _currentLang && /^wikipedia/i.test(z.name);
+  // Download suggestions: show for ALL UI languages without Wikipedia installed
+  if (manageEnabled) {
+    var dlItems = '';
+    for (var di = 0; di < _AVAILABLE_LANGS.length; di++) {
+      var dl = _AVAILABLE_LANGS[di];
+      var hasWiki = (zimsCache || []).some(function(z) {
+        return z.language === dl.code && /^wikipedia/i.test(z.name);
       });
-      if (!hasLangWiki) {
-        var dlLang = _AVAILABLE_LANGS.find(function(ll) { return ll.code === _currentLang; });
-        var dlName = dlLang ? dlLang.name : _currentLang;
-        h += '<div class="ld-divider"></div>';
-        h += '<div class="lang-dropdown-item ld-download" onclick="_langDropdownGetWiki()">' +
-          '<span>' + esc(tH('download_lang_wiki', {lang: dlName})) + '</span>' +
+      if (!hasWiki) {
+        dlItems += '<div class="lang-dropdown-item ld-download" onclick="_langDropdownGetWiki(\'' + dl.code + '\')">' +
+          '<span>' + esc(tH('download_lang_wiki', {lang: dl.name})) + '</span>' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg></div>';
       }
+    }
+    if (dlItems) {
+      h += '<div class="ld-divider"></div>';
+      h += dlItems;
     }
   }
   dd.innerHTML = h;
 }
 
-function _langDropdownGetWiki() {
+function _langDropdownGetWiki(lang) {
   _closeLangDropdown();
   manageTab = 'browse';
-  _pendingDrill = { catKey: 'wikipedia', lang: _currentLang, namePrefix: 'wikipedia' };
+  // Strict prefix: "wikipedia_fr_all" matches only the main encyclopedia, not medicine/wp1 subsets
+  _pendingDrill = { catKey: 'wikipedia', lang: lang, namePrefix: 'wikipedia_' + lang + '_all' };
   enterManage();
 }
 
-async function _selectLangAndSwitch(code, zim, path) {
-  _langDropdownLocked = true;
-  try {
-    await setLanguage(code);
-  } finally {
-    _langDropdownLocked = false;
-  }
+function _langSwitchArticle(zim, path) {
   _closeLangDropdown();
   openArticle(zim, path);
 }
