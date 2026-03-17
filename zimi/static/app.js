@@ -1028,9 +1028,9 @@ function renderHome(filter) {
       if (catItems.length === 0) return; // Skip empty categories after dedup
       if (!homeScope) {
         const catZimNames = catItems.map(z => z.name);
-        h += '<div class="cat-heading clickable" onclick="enterScope(\'category\',\'' + escJs(cat) + '\',' + escJs(JSON.stringify(catZimNames)) + ',true)">' + esc(cat) + '</div>';
+        h += '<div class="cat-heading clickable" onclick="enterScope(\'category\',\'' + escJs(_catDisplayName(cat)) + '\',' + escJs(JSON.stringify(catZimNames)) + ',true)">' + esc(_catDisplayName(cat)) + '</div>';
       } else {
-        h += '<div class="cat-heading">' + esc(cat) + '</div>';
+        h += '<div class="cat-heading">' + esc(_catDisplayName(cat)) + '</div>';
       }
       h += renderCardGrid(catItems, true);
     });
