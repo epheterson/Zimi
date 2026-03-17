@@ -1254,7 +1254,7 @@ function _orreryAnimate() {
         rk.pathFade -= dt / 3000;
         if (rk.pathFade < 0) rk.pathFade = 0;
       }
-      rk.orbitAngle += dt * 0.003;
+      rk.orbitAngle += dt * 0.001;
     } else {
       hasInFlight = true;
     }

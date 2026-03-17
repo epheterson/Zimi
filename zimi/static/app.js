@@ -5600,6 +5600,8 @@ function openArticle(zim, path, title) {
   // Track article history: push current article before navigating away
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
   currentArticle = { zim: zim, path: path };
+  // Start interlang prefetch immediately (don't wait for iframe load)
+  _prefetchArticleLangs();
   // Persist to browse history (localStorage)
   _histPushArticle(zim, path, title || _titleFromPath(path));
   // Push state with the original /w/ URL (not the viewer URL) so reload serves SPA shell.
@@ -5734,7 +5736,9 @@ var _articleLangData = null; // {languages: [{lang, zim, path}], available: [{la
 var _articleLangKey = '';    // "zim:path" key to invalidate cache on article change
 
 function _prefetchArticleLangs() {
-  if (!readerOpen || !currentArticle) { _articleLangData = null; _articleLangKey = ''; return; }
+  // Skip if language chooser is hidden (no dropdown to show interlang in)
+  if (_getStorageFlag(SK.HIDE_LANG_CHOOSER)) return;
+  if (!currentArticle) { _articleLangData = null; _articleLangKey = ''; return; }
   var key = currentArticle.zim + ':' + currentArticle.path;
   if (key === _articleLangKey) return; // already cached
   _articleLangKey = key;

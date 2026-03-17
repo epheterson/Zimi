@@ -30,7 +30,7 @@ if [ -n "$CF_ZONE" ] && [ "$CF_ZONE" != "null" ] && [ -n "$CF_TOKEN" ] && [ "$CF
   curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/purge_cache" \
     -H "Authorization: Bearer ${CF_TOKEN}" \
     -H "Content-Type: application/json" \
-    --data '{"files":["https://knowledge.zosia.io/","https://knowledge.zosia.io/static/almanac.js"]}' \
+    --data '{"purge_everything":true}' \
     | python3 -c "import sys,json; r=json.load(sys.stdin); print('  Purged' if r.get('success') else f'  Failed: {r}')"
 else
   echo "  Skipped (no Cloudflare credentials)"
