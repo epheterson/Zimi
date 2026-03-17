@@ -709,31 +709,31 @@ def _namespace_fallbacks(path):
 COMPRESSIBLE_TYPES = {"text/", "application/javascript", "application/json", "application/xml", "image/svg+xml"}
 
 def _categorize_zim(name):
-    """Auto-categorize a ZIM by name pattern. Returns BROWSE_CATEGORIES key. None if unknown."""
+    """Auto-categorize a ZIM by name pattern. Ordered rules, first match wins. None if unknown."""
     n = name.lower()
-    # medical — before wikipedia so wikipedia_en_medicine categorizes correctly
+    # Medical — before Wikimedia so wikipedia_en_medicine categorizes correctly
     if ("medicine" in n or n == "wikem" or "ready.gov" in n
             or (n.startswith("zimgit-") and any(k in n for k in ("water", "food", "disaster")))):
-        return "medical"
-    # stack_exchange — check before wikipedia (some SEs have wiki-adjacent names)
+        return "Medical"
+    # Stack Exchange — check before Wikimedia (some SEs have wiki-adjacent names)
     if n in ("stackoverflow", "askubuntu", "superuser", "serverfault") or "stackexchange" in n:
-        return "stack_exchange"
-    # devdocs
+        return "Stack Exchange"
+    # Dev Docs
     if n.startswith("devdocs_") or n == "freecodecamp":
-        return "devdocs"
-    # education
+        return "Dev Docs"
+    # Education
     if (n.startswith("ted_") or n.startswith("phzh_")
             or n in ("crashcourse", "phet", "appropedia", "artofproblemsolving", "edutechwiki", "explainxkcd", "coreeng1")):
-        return "education"
-    # survival — before wikipedia so wikihow doesn't match wiki*
+        return "Education"
+    # How-To — before Wikimedia so wikihow doesn't match wiki*
     if n in ("wikihow", "ifixit") or "off-the-grid" in n or "knots" in n:
-        return "survival"
-    # wikipedia — broad wiki* catch-all (wikt* for wiktionary)
+        return "How-To"
+    # Wikimedia — broad wiki* catch-all (wikt* for wiktionary)
     if n.startswith(("wiki", "wikt")) or n == "openstreetmap-wiki":
-        return "wikipedia"
-    # gutenberg/books
+        return "Wikimedia"
+    # Books
     if n in ("gutenberg", "rationalwiki", "theworldfactbook"):
-        return "gutenberg"
+        return "Books"
     return None
 
 

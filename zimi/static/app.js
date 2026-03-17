@@ -1405,7 +1405,7 @@ function _loadDiscover() {
   // Random fill: pick visual ZIMs not already used as named slots
   var TARGET = 6;
   var randomNeeded = Math.max(0, TARGET - computed.length - serverSlots.length);
-  var skipCats = {'stack_exchange':1, 'devdocs':1};
+  var skipCats = {'Stack Exchange':1, 'Dev Docs':1};
   var skipPattern = /^zimgit/i;
   var visualZims = (zimsCache || []).filter(function(z) {
     return typeof z.entries === 'number' && z.entries > 100
@@ -2548,9 +2548,9 @@ function selectSuggest(i) {
 function toggleManage(e) {
   if (e) e.preventDefault();
   if (mode === 'manage') {
-    // Always clear in-memory token on exit; sessionStorage restores it on re-entry if "remember me" was used
     _manageToken = '';
-    if (_restoreSavedReader()) { history.back(); return; }
+    // Use history.back() to trigger popstate, which restores reader if saved
+    if (_manageSavedReader) { history.back(); return; }
     goHome(e); return;
   }
   enterManage(e);
@@ -2560,6 +2560,7 @@ function _restoreSavedReader() {
   var s = _manageSavedReader;
   if (!s) return false;
   _manageSavedReader = null;
+  mode = 'home'; // restore mode from manage
   readerOpen = true;
   currentArticle = s.currentArticle;
   articleHistory = s.articleHistory;
@@ -2572,7 +2573,7 @@ function _restoreSavedReader() {
   mainView.classList.add('hidden');
   document.documentElement.style.overflowY = 'hidden';
   updateTopbar();
-  if (currentArticle) _setWindowTitle(currentArticle.title || 'Zimi');
+  _setWindowTitle(s.windowTitle || (currentArticle && currentArticle.title) || 'Zimi');
   return true;
 }
 
@@ -2587,7 +2588,8 @@ function enterManage(e) {
       readerSource: readerSource,
       currentSource: currentSource,
       langData: _articleLangData,
-      langKey: _articleLangKey
+      langKey: _articleLangKey,
+      windowTitle: document.title
     };
     // Hide reader visually but keep iframe loaded
     readerOpen = false;
@@ -2780,7 +2782,9 @@ const BROWSE_CATEGORIES = [
 
 // Category key → localized display name
 function _catDisplayName(key) {
-  var meta = BROWSE_CATEGORIES.find(function(c) { return c.key === key; });
+  // Accept both BROWSE_CATEGORIES keys ('wikipedia') and English names ('Wikimedia')
+  var browseKey = _CAT_TO_BROWSE_KEY[key] || key;
+  var meta = BROWSE_CATEGORIES.find(function(c) { return c.key === browseKey; });
   return meta ? t(meta.i18n) : key;
 }
 
@@ -3046,16 +3050,28 @@ function _enrichCatalogInstalled(items) {
 // is installed. Future: this registry could live in a separate file or
 // even be embedded in ZIM metadata.
 // ──────────────────────────────────────────────────────────────────────
+// Monochrome SVG icons for Discover cards (match navbar icon style)
+const _FEAT_SVG = {
+  telescope: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 21l6-11"/><path d="M12 21l-6-11"/><circle cx="12" cy="4" r="2"/><path d="M14 4l7 4-3 1"/><path d="M10 4L3 8l3 1"/></svg>',
+  globe: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18"/></svg>',
+  book: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M4 4.5A2.5 2.5 0 016.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15z"/></svg>',
+  plane: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.8 19.2L16 11l3.5-3.5C20.3 6.7 21 5.4 21 4.6c0-.4-.1-.6-.3-.8s-.4-.3-.8-.3c-.8 0-2.1.7-2.9 1.5L13.5 8.5 5 6.7l-1 1 6.2 3.5-3.5 3.5-2.2-.7-1 1 3.2 2 2 3.2 1-1-.7-2.2 3.5-3.5 3.5 6.2 1-1z"/></svg>',
+  books: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 016.5 17H11v-14H6.5A2.5 2.5 0 004 5.5v14z"/><path d="M13 17h4.5a2.5 2.5 0 002.5-2.5v-14H13v17z"/></svg>',
+  quote: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.76-2-1.88-2H3.88C2.76 3 2 3.75 2 5v6c0 1.25.76 2 1.88 2H8c0 4-3 5-5 5v3z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.76-2-1.88-2h-4.24C14.76 3 14 3.75 14 5v6c0 1.25.76 2 1.88 2H20c0 4-3 5-5 5v3z"/></svg>',
+  play: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
+  pen: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
+  map: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>',
+};
 const FEATURED_ZIMS = [
-  { match: 'apod.nasa', type: 'apod', i18nLabel: 'picture_of_day', icon: '\uD83D\uDD2D', promo: 'NASA APOD' },
-  { match: 'wikipedia',     type: 'onthisday', i18nLabel: 'on_this_day',        icon: '\uD83C\uDF0D', promo: 'Wikipedia' },
-  { match: 'wiktionary',    type: 'random',    i18nLabel: 'word_of_day',        icon: '\uD83D\uDCD6', promo: 'Wiktionary' },
-  { match: 'wikivoyage',    type: 'random',    i18nLabel: 'destination_of_day', icon: '\u2708\uFE0F', promo: 'Wikivoyage' },
-  { match: 'gutenberg',     type: 'random',    i18nLabel: 'book_of_day',        icon: '\uD83D\uDCDA', promo: 'Project Gutenberg' },
-  { match: 'wikiquote',     type: 'random',    i18nLabel: 'quote_of_day',       icon: '\uD83D\uDCAC', promo: 'Wikiquote' },
-  { match: 'ted',           type: 'random',    i18nLabel: 'talk_of_day',        icon: '\uD83C\uDFAC', promo: 'TED Talks' },
-  { match: 'xkcd',          type: 'random',    i18nLabel: 'comic_of_day',       icon: '\uD83C\uDFA8', promo: 'xkcd' },
-  { match: 'theworldfactbook', type: 'country', i18nLabel: 'country_of_day',    icon: '\uD83D\uDDFA\uFE0F', promo: 'CIA World Factbook' },
+  { match: 'apod.nasa', type: 'apod', i18nLabel: 'picture_of_day', icon: _FEAT_SVG.telescope, promo: 'NASA APOD' },
+  { match: 'wikipedia',     type: 'onthisday', i18nLabel: 'on_this_day',        icon: _FEAT_SVG.globe, promo: 'Wikipedia' },
+  { match: 'wiktionary',    type: 'random',    i18nLabel: 'word_of_day',        icon: _FEAT_SVG.book, promo: 'Wiktionary' },
+  { match: 'wikivoyage',    type: 'random',    i18nLabel: 'destination_of_day', icon: _FEAT_SVG.plane, promo: 'Wikivoyage' },
+  { match: 'gutenberg',     type: 'random',    i18nLabel: 'book_of_day',        icon: _FEAT_SVG.books, promo: 'Project Gutenberg' },
+  { match: 'wikiquote',     type: 'random',    i18nLabel: 'quote_of_day',       icon: _FEAT_SVG.quote, promo: 'Wikiquote' },
+  { match: 'ted',           type: 'random',    i18nLabel: 'talk_of_day',        icon: _FEAT_SVG.play, promo: 'TED Talks' },
+  { match: 'xkcd',          type: 'random',    i18nLabel: 'comic_of_day',       icon: _FEAT_SVG.pen, promo: 'xkcd' },
+  { match: 'theworldfactbook', type: 'country', i18nLabel: 'country_of_day',    icon: _FEAT_SVG.map, promo: 'CIA World Factbook' },
 ];
 
 function _isFeaturedInstalled(feat, grouped) {
@@ -3077,24 +3093,27 @@ function buildFeaturedCarousel(items) {
   let cards = '';
   for (const feat of FEATURED_ZIMS) {
     if (_isFeaturedInstalled(feat, grouped)) continue;
-    // Find ONE best match: prefer user's UI language, fall back to English, then largest
+    // Find ONE best match: prefer user's UI language, fall back to English
+    // Exclude multilingual ZIMs (language contains commas or is 'mul')
     var allMatches = grouped.filter(function(g) {
       var n = g.name;
+      var lang = g.language || '';
+      // Skip multilingual entries
+      if (lang.includes(',') || lang === 'mul' || lang.startsWith('mul')) return false;
       if (n === feat.match) return true;
       if (!n.startsWith(feat.match + '_')) return false;
       // Skip specialized subsets (medicine, wp_one, etc.)
       if (feat.match === 'wikipedia') {
         var suffix = n.substring(feat.match.length + 1);
-        var lang = suffix.split('_')[0];
-        return suffix === lang || suffix.startsWith(lang + '_all');
+        var sl = suffix.split('_')[0];
+        return suffix === sl || suffix.startsWith(sl + '_all');
       }
       return true;
     });
     if (!allMatches.length) continue;
-    // Pick best: UI language > English > largest
+    // Only show UI language or English — don't fall back to random languages
     var best = allMatches.find(function(g) { return (g.language || '').startsWith(uiLang); })
-      || allMatches.find(function(g) { return (g.language || '').startsWith('en'); })
-      || allMatches.sort(function(a, b) { return (b.article_count || 0) - (a.article_count || 0); })[0];
+      || allMatches.find(function(g) { return (g.language || '').startsWith('en'); });
     if (!best) continue;
     var variants = best.variants || [best];
     var withLabels = variants.filter(function(v) { return v.download_url; }).map(function(v) {
@@ -3121,7 +3140,7 @@ function buildFeaturedCarousel(items) {
         tH('download_size', {size: withLabels[0].size}) + '</button>';
     }
     cards += '<div class="catalog-item" style="margin-bottom:4px">' +
-      '<div class="ci-icon" style="font-size:20px;width:32px;text-align:center">' + feat.icon + '</div>' +
+      '<div class="ci-icon" style="width:32px;text-align:center;display:flex;align-items:center;justify-content:center;color:var(--text2)">' + feat.icon + '</div>' +
       '<div class="ci-info" style="flex:1;min-width:0">' +
         '<div class="ci-title" style="font-size:13px">' + esc(best.title || best.name) + langTag + '</div>' +
         '<div class="ci-meta"><span>' + tH(feat.i18nLabel) + '</span></div>' +
@@ -3225,6 +3244,9 @@ function renderBrowseGallery() {
     '</div>';
     h += '</div>';
     results.innerHTML = h;
+    // Auto-scroll pill bar so the active language pill is visible
+    var activePill = results.querySelector('.catalog-lang-scroll .pill.active');
+    if (activePill) activePill.scrollIntoView({inline: 'center', block: 'nearest'});
   }).catch(err => {
     results.innerHTML = '<div class="empty"><p>' + tH('failed_load_library') + '</p><div class="hint">' + esc(String(err)) + '</div></div>';
   });
@@ -3278,6 +3300,9 @@ function drillCategory(catKey, namePrefix) {
     for (const item of grouped) h += renderCatalogItem(item);
     if (!grouped.length) h += '<div class="empty"><p>' + tH('no_zims_category') + '</p></div>';
     results.innerHTML = h;
+    // Auto-scroll pill bar so the active language pill is visible
+    var activePill = results.querySelector('.catalog-lang-scroll .pill.active');
+    if (activePill) activePill.scrollIntoView({inline: 'center', block: 'nearest'});
   }).catch(err => {
     results.innerHTML = '<div class="empty"><p>' + tH('failed_load_category') + '</p></div>';
   });
@@ -3324,21 +3349,28 @@ function browseCatalogFilter(query) {
   });
 }
 
-// ── Category mapping (mirrors server _categorize_zim, uses BROWSE_CATEGORIES keys) ──
+// ── Category mapping (mirrors server _categorize_zim) ──
 const MANAGE_CATEGORIES = [
-  'wikipedia', 'stack_exchange', 'devdocs', 'education', 'medical', 'survival', 'gutenberg', 'other'
+  'Wikimedia', 'Stack Exchange', 'Dev Docs', 'Education', 'Medical', 'How-To', 'Books', 'Other'
 ];
+
+// Map English category names from categorizeZim() → BROWSE_CATEGORIES keys for localization
+const _CAT_TO_BROWSE_KEY = {
+  'Wikimedia': 'wikipedia', 'Stack Exchange': 'stack_exchange', 'Dev Docs': 'devdocs',
+  'Education': 'education', 'Medical': 'medical', 'How-To': 'survival',
+  'Books': 'gutenberg', 'Other': 'other'
+};
 
 function categorizeZim(name) {
   const n = name.toLowerCase();
-  if (/medicine|wikem|ready\.gov/.test(n) || (n.startsWith('zimgit-') && /water|food|disaster|knots/.test(n))) return 'medical';
-  if (/stackoverflow|askubuntu|superuser|serverfault|stackexchange/.test(n)) return 'stack_exchange';
-  if (n.startsWith('devdocs_') || n === 'freecodecamp') return 'devdocs';
-  if (/^ted_|^phzh_/.test(n) || /crashcourse|phet|appropedia|artofproblemsolving|edutechwiki|explainxkcd|coreeng/.test(n)) return 'education';
-  if (/wikihow|ifixit|off-the-grid/.test(n)) return 'survival';
-  if (/^wiki|^wikt/.test(n) || n === 'openstreetmap-wiki') return 'wikipedia';
-  if (/gutenberg|rationalwiki|theworldfactbook/.test(n)) return 'gutenberg';
-  return 'other';
+  if (/medicine|wikem|ready\.gov/.test(n) || (n.startsWith('zimgit-') && /water|food|disaster|knots/.test(n))) return 'Medical';
+  if (/stackoverflow|askubuntu|superuser|serverfault|stackexchange/.test(n)) return 'Stack Exchange';
+  if (n.startsWith('devdocs_') || n === 'freecodecamp') return 'Dev Docs';
+  if (/^ted_|^phzh_/.test(n) || /crashcourse|phet|appropedia|artofproblemsolving|edutechwiki|explainxkcd|coreeng/.test(n)) return 'Education';
+  if (/wikihow|ifixit|off-the-grid/.test(n)) return 'How-To';
+  if (/^wiki|^wikt/.test(n) || n === 'openstreetmap-wiki') return 'Wikimedia';
+  if (/gutenberg|rationalwiki|theworldfactbook/.test(n)) return 'Books';
+  return 'Other';
 }
 
 function formatSize(bytes) {
@@ -4206,12 +4238,12 @@ function renderInstalled(filterText) {
     groups[cat].push(z);
   }
 
-  // Merge small categories (<3 items) into other
+  // Merge small categories (<3 items) into Other
   const MIN_CAT = 3;
   for (const cat of Object.keys(groups)) {
-    if (cat !== 'other' && groups[cat].length < MIN_CAT) {
-      if (!groups['other']) groups['other'] = [];
-      groups['other'].push(...groups[cat]);
+    if (cat !== 'Other' && groups[cat].length < MIN_CAT) {
+      if (!groups['Other']) groups['Other'] = [];
+      groups['Other'].push(...groups[cat]);
       delete groups[cat];
     }
   }
@@ -5959,7 +5991,7 @@ document.addEventListener('keydown', e => {
     if (_almanacOpen) { closeAlmanac(); return; }
     if (readerOpen) { goBack(); return; }
     if (q.value) { q.value = ''; hideSuggest(); clearSearch(); return; }
-    if (mode === 'manage' && _manageSavedReader) { _manageToken = ''; _restoreSavedReader(); history.back(); return; }
+    if (mode === 'manage' && _manageSavedReader) { _manageToken = ''; history.back(); return; }
     if (mode === 'source' || mode === 'manage') { enterHome(true); return; }
     return;
   }
