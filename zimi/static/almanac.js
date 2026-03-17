@@ -3498,6 +3498,99 @@ function _lastWeekday(year, month, weekday) {
   return lastDay - diff;
 }
 
+// Hindu & Sikh holidays — verified dates from drikpanchang.com (New Delhi panchang)
+// Lookup table used for accuracy: Hindu calendar dates depend on tithi-at-sunrise in IST,
+// which can't be reliably computed from astronomical data alone (±1 day errors).
+// For years outside the table, falls back to lunar approximation.
+var _HINDU_SIKH_DATES = {
+  //       Holi        Ram Navami  Raksha B.   Janmasht.   Ganesh Ch.  Navratri    Dussehra    Diwali      Guru Nanak
+  2024: [[3,25],      [4,17],     [8,19],     [8,26],     [9,7],      [10,3],     [10,12],    [11,1],     [11,15]],
+  2025: [[3,14],      [4,6],      [8,9],      [8,15],     [8,27],     [9,22],     [10,2],     [10,20],    [11,5]],
+  2026: [[3,4],       [3,26],     [8,28],     [9,4],      [9,14],     [10,11],    [10,20],    [11,8],     [11,24]],
+  2027: [[3,22],      [4,15],     [8,17],     [8,25],     [9,3],      [9,30],     [10,9],     [10,28],    [11,14]],
+  2028: [[3,11],      [4,3],      [8,5],      [8,13],     [8,23],     [9,19],     [9,27],     [10,17],    [11,2]],
+  2029: [[3,1],       [4,23],     [8,23],     [9,1],      [9,11],     [10,8],     [10,16],    [11,5],     [11,21]],
+  2030: [[3,20],      [4,12],     [8,13],     [8,21],     [9,1],      [9,28],     [10,6],     [10,25],    [11,10]]
+};
+var _HINDU_SIKH_NAMES = [
+  'Holi', 'Ram Navami', 'Raksha Bandhan', 'Janmashtami', 'Ganesh Chaturthi',
+  'Navratri begins', 'Dussehra', 'Diwali', 'Guru Nanak Jayanti'
+];
+var _hinduSikhCache = { year: 0, holidays: [] };
+function _hinduSikhHolidays(year) {
+  if (_hinduSikhCache.year === year) return _hinduSikhCache.holidays;
+  var h = [];
+  // Fixed Gregorian dates (solar, not lunar — same every year)
+  h.push({m: 1, d: 14, name: 'Makar Sankranti'});
+  h.push({m: 4, d: 14, name: 'Vaisakhi'});
+  // Use lookup table for verified years
+  var table = _HINDU_SIKH_DATES[year];
+  if (table) {
+    for (var i = 0; i < table.length; i++) {
+      h.push({m: table[i][0], d: table[i][1], name: _HINDU_SIKH_NAMES[i]});
+    }
+  } else {
+    // Fallback for years outside table: approximate from lunar phase
+    h = h.concat(_hinduSikhApprox(year));
+  }
+  _hinduSikhCache = { year: year, holidays: h };
+  return h;
+}
+
+// Approximate Hindu holidays from lunar phases (fallback for years without verified dates)
+function _findMoonNear(year, anchorMonth, anchorDay, type) {
+  var target = type === 'full' ? 0.5 : 0;
+  var anchor = new Date(year, anchorMonth - 1, anchorDay);
+  var best = null, bestDist = 1;
+  for (var i = -15; i <= 15; i++) {
+    var d = new Date(anchor.getTime() + i * 86400000);
+    var p = _moonPhase(d).phase;
+    var dist = Math.abs(p - target);
+    if (dist > 0.5) dist = 1 - dist;
+    if (dist < bestDist) { bestDist = dist; best = d; }
+  }
+  return best ? { month: best.getMonth() + 1, day: best.getDate() } : null;
+}
+function _hinduSikhApprox(year) {
+  var h = [];
+  var chaitra = _findMoonNear(year, 3, 29, 'new');
+  if (!chaitra) return h;
+  var _nmBase = new Date(year, chaitra.month - 1, chaitra.day);
+  function _nthNM(n) {
+    var approx = new Date(_nmBase.getTime() + Math.round(n * 29.53) * 86400000);
+    return _findMoonNear(approx.getFullYear(), approx.getMonth() + 1, approx.getDate(), 'new');
+  }
+  function _purnima(nm) {
+    if (!nm) return null;
+    var approx = new Date(year, nm.month - 1, nm.day + 15);
+    return _findMoonNear(approx.getFullYear(), approx.getMonth() + 1, approx.getDate(), 'full');
+  }
+  var preC = new Date(year, chaitra.month - 1, chaitra.day - 15);
+  var holi = _findMoonNear(preC.getFullYear(), preC.getMonth() + 1, preC.getDate(), 'full');
+  if (holi) h.push({m: holi.month, d: holi.day, name: 'Holi'});
+  var rn = new Date(year, chaitra.month - 1, chaitra.day + 9);
+  h.push({m: rn.getMonth() + 1, d: rn.getDate(), name: 'Ram Navami'});
+  var nm4 = _nthNM(4);
+  var sp = _purnima(nm4);
+  if (sp) {
+    h.push({m: sp.month, d: sp.day, name: 'Raksha Bandhan'});
+    var jk = new Date(year, sp.month - 1, sp.day + 8);
+    h.push({m: jk.getMonth() + 1, d: jk.getDate(), name: 'Janmashtami'});
+  }
+  var nm5 = _nthNM(5);
+  if (nm5) { var gc = new Date(year, nm5.month - 1, nm5.day + 4); h.push({m: gc.getMonth() + 1, d: gc.getDate(), name: 'Ganesh Chaturthi'}); }
+  var nm6 = _nthNM(6);
+  if (nm6) {
+    var nv = new Date(year, nm6.month - 1, nm6.day + 1); h.push({m: nv.getMonth() + 1, d: nv.getDate(), name: 'Navratri begins'});
+    var ds = new Date(year, nm6.month - 1, nm6.day + 10); h.push({m: ds.getMonth() + 1, d: ds.getDate(), name: 'Dussehra'});
+  }
+  var nm7 = _nthNM(7);
+  if (nm7) h.push({m: nm7.month, d: nm7.day, name: 'Diwali'});
+  var kp = _purnima(nm7);
+  if (kp) h.push({m: kp.month, d: kp.day, name: 'Guru Nanak Jayanti'});
+  return h;
+}
+
 // Get almanac events for a given calendar system's month, keyed by day number
 function _getAlmanacEvents(sys, year, month) {
   var events = {};
@@ -3540,6 +3633,15 @@ function _getAlmanacEvents(sys, year, month) {
     if (ascension.getMonth() + 1 === month) { add(ascension.getDate(), 'Ascension', 'holiday'); }
     var pentecost = new Date(year, easter.month - 1, easter.day + 49);
     if (pentecost.getMonth() + 1 === month) { add(pentecost.getDate(), 'Pentecost', 'holiday'); }
+    // Hindu & Sikh holidays (lookup table for 2024-2030, lunar approx fallback)
+    var _hsh = _hinduSikhHolidays(year);
+    for (var _hi = 0; _hi < _hsh.length; _hi++) {
+      if (_hsh[_hi].m === month) add(_hsh[_hi].d, _hsh[_hi].name, 'holiday');
+    }
+    // Space history milestones
+    if (month === 4) { add(12, "Yuri's Night", 'holiday'); }       // First human spaceflight (1961)
+    if (month === 7) { add(20, 'Moon Landing Day', 'holiday'); }   // Apollo 11 (1969)
+    if (month === 10) { add(4, 'World Space Week', 'holiday'); }   // Sputnik launch (1957)
     // DST (US)
     if (month === 3) { add(_nthWeekday(year, 3, 0, 2), 'Spring Forward', 'seasonal'); }
     if (month === 11) { add(_nthWeekday(year, 11, 0, 1), 'Fall Back', 'seasonal'); }
@@ -3582,10 +3684,9 @@ function _getAlmanacEvents(sys, year, month) {
 
   else if (sys === 'persian') {
     // Persian months: 1=Farvardin..12=Esfand
-    if (month === 1) { add(1, 'Nowruz', 'holiday'); add(2, 'Nowruz II', 'holiday'); add(3, 'Nowruz III', 'holiday'); add(4, 'Nowruz IV', 'holiday'); add(6, 'Jashn-e Tirgan', 'holiday'); add(12, 'Islamic Republic', 'holiday'); add(13, 'Sizdah Bedar', 'holiday'); }
+    if (month === 1) { add(1, 'Nowruz', 'holiday'); add(2, 'Nowruz II', 'holiday'); add(3, 'Nowruz III', 'holiday'); add(4, 'Nowruz IV', 'holiday'); add(12, 'Islamic Republic', 'holiday'); add(13, 'Sizdah Bedar', 'holiday'); }
     if (month === 3) { add(14, 'Khordad Uprising', 'holiday'); }
-    if (month === 4) { add(1, 'Tirgan', 'holiday'); }
-    if (month === 5) { add(10, 'Mehrgan', 'holiday'); }
+    if (month === 4) { add(13, 'Tirgan', 'holiday'); }
     if (month === 7) { add(10, 'Mehregan', 'holiday'); }
     if (month === 8) { add(10, 'Aban Festival', 'holiday'); }
     if (month === 9) { add(1, 'Azar Festival', 'holiday'); add(30, 'Yalda Night', 'holiday'); }
