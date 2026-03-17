@@ -254,6 +254,8 @@
   }
   .lang-dropdown-item.active { color: var(--amber); font-weight: 600; }
   .lang-dropdown-item .check { font-size: 14px; }
+  .ld-interlang { display: flex; align-items: center; padding: 4px 6px; border-radius: 4px; cursor: pointer; opacity: 0.4; transition: all 0.15s; }
+  .ld-interlang:hover { opacity: 1; color: var(--amber); background: var(--amber-glow); }
   .lang-dropdown-item .ld-switch { display: flex; align-items: center; }
   .ld-switch-icon { opacity: 0.5; transition: opacity 0.15s; }
   .lang-dropdown-item.switchable:hover .ld-switch-icon { opacity: 1; color: var(--amber); }

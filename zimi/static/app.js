@@ -5770,56 +5770,54 @@ function _renderLangDropdown() {
 
   var inReader = readerOpen && currentArticle;
 
-  // When reading: show switch buttons for ALL languages where article exists
+  // When reading article in a different language than UI: show quick switch at top
   var zimInfo = inReader && _zimInfo(currentArticle.zim);
   var articleLang = zimInfo ? zimInfo.language : null;
-  var switchKeys = Object.keys(switchMap).sort();
-  var showedSwitch = false;
-  for (var si = 0; si < switchKeys.length; si++) {
-    var sCode = switchKeys[si];
-    if (sCode === articleLang) continue; // skip current article's language
-    var sl = _AVAILABLE_LANGS.find(function(ll) { return ll.code === sCode; });
-    var sName = sl ? sl.name : sCode.toUpperCase();
-    var sw = switchMap[sCode];
+  if (inReader && articleLang && articleLang !== _currentLang && switchMap[_currentLang]) {
+    var sl = _AVAILABLE_LANGS.find(function(ll) { return ll.code === _currentLang; });
+    var sName = sl ? sl.name : _currentLang;
+    var sw = switchMap[_currentLang];
     var targetPath = sw.path.replace(/^A\//, '').replace(/_/g, ' ');
     try { targetPath = decodeURIComponent(targetPath); } catch(e) {}
     h += '<div class="lang-dropdown-item switchable" onclick="_langSwitchArticle(\'' + escJs(sw.zim) + '\',\'' + escJs(sw.path) + '\')">' +
-      '<span class="ld-switch-label"><span class="ld-switch-lang">' + esc(sName) + '</span>' +
+      '<span class="ld-switch-label"><span class="ld-switch-lang">' + esc(tH('view_in_lang', {lang: sName})) + '</span>' +
       '<span class="ld-switch-article">' + esc(targetPath) + '</span></span>' +
       '<span class="ld-switch">' + switchIcon + '</span></div>';
-    showedSwitch = true;
+    h += '<div class="ld-divider"></div>';
   }
-  if (showedSwitch) h += '<div class="ld-divider"></div>';
 
-  // All languages — click name to switch UI language
+  // All languages — click name to switch UI language; interlang icon inline when article has translation
   for (var i = 0; i < _AVAILABLE_LANGS.length; i++) {
     var l = _AVAILABLE_LANGS[i];
     var active = l.code === _currentLang ? ' active' : '';
     var right = '';
     if (l.code === _currentLang) {
       right = '<span class="check">\u2713</span>';
+    } else if (inReader && switchMap[l.code]) {
+      // Article exists in this language — show inline switch icon
+      right = '<span class="ld-interlang" onclick="event.stopPropagation();_langSwitchArticle(\'' +
+        escJs(switchMap[l.code].zim) + '\',\'' + escJs(switchMap[l.code].path) + '\')" title="' +
+        escAttr(t('view_in_lang', {lang: l.name})) + '">' + switchIcon + '</span>';
     }
     h += '<div class="lang-dropdown-item' + active + '" onclick="_selectLang(\'' + l.code + '\')">' +
       '<span>' + esc(l.name) + '</span>' + right + '</div>';
   }
 
-  // Download suggestions: show for ALL UI languages without Wikipedia installed
-  if (manageEnabled) {
-    var dlItems = '';
-    for (var di = 0; di < _AVAILABLE_LANGS.length; di++) {
-      var dl = _AVAILABLE_LANGS[di];
-      var hasWiki = (zimsCache || []).some(function(z) {
-        return z.language === dl.code && /^wikipedia/i.test(z.name);
+  // Download suggestion: current UI language only, when reading Wikipedia without that language installed
+  if (inReader && manageEnabled) {
+    var isWiki = zimInfo && /^wikipedia/i.test(zimInfo.name || '');
+    if (isWiki) {
+      var hasLangWiki = (zimsCache || []).some(function(z) {
+        return z.language === _currentLang && /^wikipedia/i.test(z.name);
       });
-      if (!hasWiki) {
-        dlItems += '<div class="lang-dropdown-item ld-download" onclick="_langDropdownGetWiki(\'' + dl.code + '\')">' +
-          '<span>' + esc(tH('download_lang_wiki', {lang: dl.name})) + '</span>' +
+      if (!hasLangWiki) {
+        var dlLang = _AVAILABLE_LANGS.find(function(ll) { return ll.code === _currentLang; });
+        var dlName = dlLang ? dlLang.name : _currentLang;
+        h += '<div class="ld-divider"></div>';
+        h += '<div class="lang-dropdown-item ld-download" onclick="_langDropdownGetWiki(\'' + _currentLang + '\')">' +
+          '<span>' + esc(tH('download_lang_wiki', {lang: dlName})) + '</span>' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg></div>';
       }
-    }
-    if (dlItems) {
-      h += '<div class="ld-divider"></div>';
-      h += dlItems;
     }
   }
   dd.innerHTML = h;
