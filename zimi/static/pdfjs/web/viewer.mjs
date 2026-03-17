@@ -3261,7 +3261,17 @@ class Preferences extends BasePreferences {
 }
 class ExternalServices extends BaseExternalServices {
   async createL10n() {
-    return new genericl10n_GenericL10n(AppOptions.get("localeProperties")?.lang);
+    // [Zimi patch] Read locale from URL hash (#locale=fr) for embedded viewer.
+    // The parent app passes the desired locale via the hash parameter.
+    let lang = AppOptions.get("localeProperties")?.lang;
+    const hash = document.location.hash.substring(1);
+    if (hash) {
+      const params = parseQueryString(hash);
+      if (params.has("locale")) {
+        lang = params.get("locale");
+      }
+    }
+    return new genericl10n_GenericL10n(lang);
   }
   createScripting() {
     return new GenericScripting(AppOptions.get("sandboxBundleSrc"));
