@@ -510,6 +510,16 @@
     background: var(--surface2); color: var(--text); border: 1px solid var(--border);
     border-radius: var(--radius); transition: all 0.2s;
   }
+  /* Circular download progress indicator */
+  .ci-dl-circle { background: none !important; border: none !important; padding: 2px !important; }
+  .ci-dl-ring { position: relative; display: inline-flex; cursor: pointer; }
+  .ci-dl-ring svg { display: block; }
+  .ci-dl-x {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 600; color: var(--text2); opacity: 0; transition: opacity 0.15s;
+  }
+  .ci-dl-ring:hover .ci-dl-x { opacity: 1; }
+  .ci-dl-ring:hover svg circle:last-child { opacity: 0.3; }
   .ci-variants { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; align-items: center; }
   .ci-dl-split { display: inline-flex; align-items: stretch; border-radius: var(--radius); overflow: hidden; }
   .ci-dl-split .ci-dl-main { border-radius: var(--radius) 0 0 var(--radius); border-right: none; }

@@ -4685,10 +4685,22 @@ async function refreshDownloads() {
       const btns = document.querySelectorAll('[data-dl-url]');
       for (const btn of btns) {
         if (btn.dataset.dlUrl === dl.url || btn.dataset.dlUrl.replace(/\.meta4$/, '') === dl.url) {
-          if (dl.done) { btn.textContent = t('installed_badge'); }
-          else if (dl.error) { btn.textContent = t('error'); btn.disabled = false; }
-          else if (dl.percent > 0) { btn.textContent = Math.round(dl.percent) + '%'; }
-          else { btn.textContent = dl.is_update ? t('updating') : t('downloading'); }
+          if (dl.done) { btn.textContent = t('installed_badge'); btn.classList.remove('ci-dl-circle'); btn.onclick = null; }
+          else if (dl.error) { btn.textContent = t('error'); btn.disabled = false; btn.classList.remove('ci-dl-circle'); }
+          else if (dl.percent > 0) {
+            var pct = Math.round(dl.percent);
+            var circ = 2 * Math.PI * 10; // circumference for r=10
+            var offset = circ * (1 - pct / 100);
+            btn.innerHTML = '<span class="ci-dl-ring" title="' + pct + '% — click to cancel">' +
+              '<svg viewBox="0 0 24 24" width="24" height="24">' +
+              '<circle cx="12" cy="12" r="10" stroke="var(--border)" stroke-width="2" fill="none"/>' +
+              '<circle cx="12" cy="12" r="10" stroke="var(--amber)" stroke-width="2" fill="none" stroke-dasharray="' + circ.toFixed(2) + '" stroke-dashoffset="' + offset.toFixed(2) + '" stroke-linecap="round" transform="rotate(-90 12 12)"/>' +
+              '</svg>' +
+              '<span class="ci-dl-x">\u00d7</span></span>';
+            btn.classList.add('ci-dl-circle');
+            btn.onclick = function(e) { e.stopPropagation(); cancelDownload(dl.id); };
+          }
+          else { btn.textContent = dl.is_update ? t('updating') : t('downloading'); btn.classList.remove('ci-dl-circle'); }
         }
       }
     }
