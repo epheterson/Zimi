@@ -5,6 +5,12 @@ set -e
 echo "=== Deploying to NAS ==="
 ssh nas "mkdir -p /volume1/docker/kiwix/zimi/templates /volume1/docker/kiwix/zimi/assets /volume1/docker/kiwix/zimi/static"
 cat zimi/server.py | ssh nas "cat > /volume1/docker/kiwix/zimi/server.py"
+cat zimi/search.py | ssh nas "cat > /volume1/docker/kiwix/zimi/search.py"
+cat zimi/interlang.py | ssh nas "cat > /volume1/docker/kiwix/zimi/interlang.py"
+cat zimi/library.py | ssh nas "cat > /volume1/docker/kiwix/zimi/library.py"
+cat zimi/http.py | ssh nas "cat > /volume1/docker/kiwix/zimi/http.py"
+cat zimi/manage.py | ssh nas "cat > /volume1/docker/kiwix/zimi/manage.py"
+cat zimi/previews.py | ssh nas "cat > /volume1/docker/kiwix/zimi/previews.py"
 cat zimi/__init__.py | ssh nas "cat > /volume1/docker/kiwix/zimi/__init__.py"
 cat zimi/__main__.py | ssh nas "cat > /volume1/docker/kiwix/zimi/__main__.py"
 cat zimi/mcp_server.py | ssh nas "cat > /volume1/docker/kiwix/zimi/mcp_server.py"
@@ -40,8 +46,9 @@ fi
 echo ""
 echo "=== Syncing vault ==="
 mkdir -p ~/vault/infra/zim-reader/zimi/templates
-cp zimi/server.py ~/vault/infra/zim-reader/zimi/server.py
-cp zimi/__init__.py ~/vault/infra/zim-reader/zimi/__init__.py
+for f in server.py search.py interlang.py library.py http.py manage.py previews.py __init__.py __main__.py mcp_server.py; do
+  cp "zimi/$f" ~/vault/infra/zim-reader/zimi/"$f"
+done
 cp zimi/templates/index.html ~/vault/infra/zim-reader/zimi/templates/index.html
 echo "  Vault synced"
 
