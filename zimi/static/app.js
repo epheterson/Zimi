@@ -1099,11 +1099,14 @@ function renderCardGrid(items, showStars, showCategory) {
       : '';
     const catPrefix = showCategory && z.category ? '<span class="card-cat">' + esc(z.category) + '</span> &middot; ' : '';
     const badge = _langBadge(z);
+    const qidIcon = z.has_qids
+      ? '<span class="qid-badge" title="' + escAttr(t('cross_lang_linking')) + '"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l-3 3 3 3"/><path d="M1 9h10"/><path d="M12 10l3-3-3-3"/><path d="M15 7H5"/></svg></span>'
+      : '';
     return '<div class="stat-card" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
       starHtml +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info">' +
-        '<div class="name">' + esc(z.title || z.name) + badge + '</div>' +
+        '<div class="name">' + esc(z.title || z.name) + badge + qidIcon + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
         '<div class="detail">' + catPrefix + (typeof z.entries === 'number' ? t('n_entries', {n: z.entries.toLocaleString()}) : '') +
         ' &middot; ' + fmtSize(z.size_gb) +
@@ -4685,8 +4688,9 @@ async function refreshDownloads() {
       const btns = document.querySelectorAll('[data-dl-url]');
       for (const btn of btns) {
         if (btn.dataset.dlUrl === dl.url || btn.dataset.dlUrl.replace(/\.meta4$/, '') === dl.url) {
-          if (dl.done) { btn.textContent = t('installed_badge'); btn.classList.remove('ci-dl-circle'); btn.onclick = null; }
-          else if (dl.error) { btn.textContent = t('error'); btn.disabled = false; btn.classList.remove('ci-dl-circle'); }
+          var chevron = btn.parentElement && btn.parentElement.querySelector('.ci-dl-chevron');
+          if (dl.done) { btn.textContent = t('installed_badge'); btn.classList.remove('ci-dl-circle'); btn.onclick = null; if (chevron) chevron.style.display = 'none'; }
+          else if (dl.error) { btn.textContent = t('error'); btn.disabled = false; btn.classList.remove('ci-dl-circle'); if (chevron) chevron.style.display = ''; }
           else if (dl.percent > 0) {
             var pct = Math.round(dl.percent);
             var circ = 2 * Math.PI * 10; // circumference for r=10
@@ -4699,8 +4703,9 @@ async function refreshDownloads() {
               '<span class="ci-dl-x">\u00d7</span></span>';
             btn.classList.add('ci-dl-circle');
             btn.onclick = function(e) { e.stopPropagation(); cancelDownload(dl.id); };
+            if (chevron) chevron.style.display = 'none';
           }
-          else { btn.textContent = dl.is_update ? t('updating') : t('downloading'); btn.classList.remove('ci-dl-circle'); }
+          else { btn.textContent = dl.is_update ? t('updating') : t('downloading'); btn.classList.remove('ci-dl-circle'); if (chevron) chevron.style.display = 'none'; }
         }
       }
     }
@@ -5807,20 +5812,26 @@ function _renderLangDropdown() {
       '<span>' + esc(l.name) + '</span>' + right + '</div>';
   }
 
-  // Download suggestion: current UI language only, when reading Wikipedia without that language installed
+  // Download suggestions: when reading Wikipedia, show for each UI language missing the MAIN encyclopedia
+  // Only count full Wikipedia (name = "wikipedia" or "wikipedia_XX"), not topic subsets like "wikipedia_es_medicine"
   if (inReader && manageEnabled) {
     var isWiki = zimInfo && /^wikipedia/i.test(zimInfo.name || '');
     if (isWiki) {
-      var hasLangWiki = (zimsCache || []).some(function(z) {
-        return z.language === _currentLang && /^wikipedia/i.test(z.name);
-      });
-      if (!hasLangWiki) {
-        var dlLang = _AVAILABLE_LANGS.find(function(ll) { return ll.code === _currentLang; });
-        var dlName = dlLang ? dlLang.name : _currentLang;
+      var dlItems = '';
+      for (var di = 0; di < _AVAILABLE_LANGS.length; di++) {
+        var dl = _AVAILABLE_LANGS[di];
+        var hasMainWiki = (zimsCache || []).some(function(z) {
+          return z.language === dl.code && /^wikipedia(_[a-z]{2,3})?$/i.test(z.name);
+        });
+        if (!hasMainWiki) {
+          dlItems += '<div class="lang-dropdown-item ld-download" onclick="_langDropdownGetWiki(\'' + dl.code + '\')">' +
+            '<span>' + esc(tH('download_lang_wiki', {lang: dl.name})) + '</span>' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg></div>';
+        }
+      }
+      if (dlItems) {
         h += '<div class="ld-divider"></div>';
-        h += '<div class="lang-dropdown-item ld-download" onclick="_langDropdownGetWiki(\'' + _currentLang + '\')">' +
-          '<span>' + esc(tH('download_lang_wiki', {lang: dlName})) + '</span>' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg></div>';
+        h += dlItems;
       }
     }
   }

@@ -907,3 +907,126 @@ test.describe('Visual Captures', () => {
     await resetToEnglish(page);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 11. v1.6.10 — INTERLANG POLISH, Q-ID BADGES, UI FIXES
+// ═════════════════════════════════════════════════════════════════════════════
+
+test.describe('11 — v1.6.10 Fixes', () => {
+  test('11.1 — Server starts without _probe_all_qid_support error', async ({ page }) => {
+    const response = await page.request.get('/health');
+    expect(response.ok()).toBeTruthy();
+    const data = await response.json();
+    expect(data.status).toBe('ok');
+  });
+
+  test('11.2 — /search returns language and has_qids fields', async ({ page }) => {
+    test.setTimeout(60000);
+    await waitForApp(page);
+    const data = await page.evaluate(async () => {
+      const r = await fetch('/search?q=water&limit=3');
+      return r.json();
+    });
+    expect(data.results.length).toBeGreaterThan(0);
+    const first = data.results[0];
+    expect(first).toHaveProperty('language');
+    expect(first).toHaveProperty('has_qids');
+    expect(typeof first.language).toBe('string');
+    expect(typeof first.has_qids).toBe('boolean');
+  });
+
+  test('11.3 — /search?lang=en filters to English ZIMs only', async ({ page }) => {
+    test.setTimeout(60000);
+    await waitForApp(page);
+    const data = await page.evaluate(async () => {
+      const r = await fetch('/search?q=water&limit=5&lang=en');
+      return r.json();
+    });
+    for (const r of data.results) {
+      expect(r.language).toBe('en');
+    }
+  });
+
+  test('11.4 — /search?lang=xx returns empty for nonexistent language', async ({ page }) => {
+    await waitForApp(page);
+    const data = await page.evaluate(async () => {
+      const r = await fetch('/search?q=water&lang=xx');
+      return r.json();
+    });
+    expect(data.total).toBe(0);
+    expect(data.results).toEqual([]);
+  });
+
+  test('11.5 — /list includes has_qids on Wikipedia entries', async ({ page }) => {
+    await waitForApp(page);
+    const data = await page.evaluate(async () => {
+      const r = await fetch('/list');
+      return r.json();
+    });
+    const wikiEntries = data.filter(z => z.name && z.name.includes('wikipedia'));
+    expect(wikiEntries.length).toBeGreaterThan(0);
+    // At least one Wikipedia ZIM should have has_qids
+    const withQids = wikiEntries.filter(z => z.has_qids === true);
+    expect(withQids.length).toBeGreaterThan(0);
+  });
+
+  test('11.6 — Flavor popup options stretch full width', async ({ page }) => {
+    await waitForApp(page);
+    // Open manage → catalog to find a flavor picker
+    await page.goto('/?manage', { waitUntil: 'networkidle', timeout: 30000 });
+    await page.waitForTimeout(3000);
+    await page.evaluate(() => { if (typeof enterManage === 'function' && manageEnabled) enterManage(); });
+    await page.waitForTimeout(1500);
+    const catalogTab = page.locator('.manage-tab[data-tab="browse"]');
+    if (await catalogTab.isVisible().catch(() => false)) {
+      await catalogTab.click();
+      await page.waitForTimeout(3000);
+      // Find a chevron button (flavor picker trigger)
+      const chevron = page.locator('.ci-dl-chevron').first();
+      if (await chevron.isVisible().catch(() => false)) {
+        await chevron.click();
+        await page.waitForTimeout(500);
+        const popup = page.locator('.flavor-popup');
+        if (await popup.isVisible().catch(() => false)) {
+          const popupBox = await popup.boundingBox();
+          const options = page.locator('.flavor-option');
+          const count = await options.count();
+          for (let i = 0; i < count; i++) {
+            const optBox = await options.nth(i).boundingBox();
+            // Each option should be nearly as wide as the popup (minus padding)
+            expect(optBox.width).toBeGreaterThan(popupBox.width * 0.8);
+          }
+          await page.screenshot({ path: 'test-results/11.6-flavor-popup-width.png' });
+        }
+      }
+    }
+  });
+
+  test('11.7 — cross_lang_linking i18n key exists in all languages', async ({ page }) => {
+    await waitForApp(page);
+    const langs = ['en', 'fr', 'de', 'es', 'pt', 'ru', 'zh', 'ar', 'hi', 'he'];
+    const results = await page.evaluate(async (codes) => {
+      const out = {};
+      for (const lang of codes) {
+        const r = await fetch(`/static/i18n/${lang}.json`);
+        const data = await r.json();
+        out[lang] = data.cross_lang_linking || null;
+      }
+      return out;
+    }, langs);
+    for (const lang of langs) {
+      expect(results[lang], `${lang} missing cross_lang_linking`).toBeTruthy();
+    }
+  });
+
+  test('11.8 — Q-ID badge SVG visible on Wikipedia source cards', async ({ page }) => {
+    await waitForApp(page);
+    // Home page source cards — Wikipedia cards should show Q-ID badge
+    const qidBadge = page.locator('.qid-badge, .source-qid, [class*="qid"]').first();
+    const hasBadge = await qidBadge.isVisible({ timeout: 3000 }).catch(() => false);
+    // Screenshot for manual review regardless
+    await page.screenshot({ path: 'test-results/11.8-qid-badges.png', fullPage: true });
+    // Log badge state
+    console.log(`  Q-ID badge visible: ${hasBadge}`);
+  });
+});

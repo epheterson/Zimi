@@ -19,7 +19,8 @@ cat Dockerfile | ssh nas "cat > /volume1/docker/kiwix/Dockerfile"
 echo "  Files copied"
 
 ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose build --no-cache" 2>&1 | tail -3
-ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose down && /usr/local/bin/docker-compose up -d" 2>&1 | tail -3
+ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose down" 2>&1 | tail -3
+ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose up -d" 2>&1 | tail -3
 echo "  NAS deployed"
 
 echo ""
