@@ -143,16 +143,16 @@ test.describe('2 — Language Experience', () => {
   });
 
   test('2.2 — Globe shows article translations when reading', async ({ page }) => {
+    test.setTimeout(60000);
     await waitForApp(page);
     await openArticleViaJS(page, 'wikipedia', 'Albert_Einstein');
+    // Wait for interlang prefetch to complete (async API call to /article-languages)
+    await page.waitForFunction(() => _articleLangData !== null, { timeout: 30000 });
     await page.click('#lang-selector-btn');
-    await page.waitForTimeout(1500);
-    // Should have a divider separating article translations from UI languages
-    const divider = page.locator('#lang-dropdown .ld-divider');
-    await expect(divider.first()).toBeAttached();
-    // Should have article translation items with "switchable" class
-    const switchable = page.locator('#lang-dropdown .lang-dropdown-item.switchable');
-    const count = await switchable.count();
+    await page.waitForTimeout(500);
+    // Should have interlang switch icons (ld-interlang) in the dropdown
+    const interlang = page.locator('#lang-dropdown .ld-interlang');
+    const count = await interlang.count();
     expect(count).toBeGreaterThan(0);
     await page.screenshot({ path: 'test-results/2.2-article-translations.png' });
     await closeReaderViaJS(page);
