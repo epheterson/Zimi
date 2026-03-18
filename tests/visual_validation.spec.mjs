@@ -716,7 +716,7 @@ test.describe('9 — UI Polish', () => {
     expect(count).toBeGreaterThan(0);
   });
 
-  test('9.6 — Almanac daylight says "Golden" not "Golden Hour"', async ({ page }) => {
+  test('9.6 — Almanac daylight shows "Golden Hour" label', async ({ page }) => {
     await waitForApp(page);
     const todayCard = page.locator('.discover-card:has-text("Today")').first();
     if (!(await todayCard.isVisible({ timeout: 3000 }).catch(() => false))) {
@@ -729,9 +729,8 @@ test.describe('9 — UI Polish', () => {
       const daylight = document.querySelector('.alm-daylight, [class*="daylight"]');
       return daylight ? daylight.textContent : document.body.textContent;
     });
-    // Should say "Golden" not "Golden Hour"
-    expect(text).not.toMatch(/Golden\s+Hour/);
-    await page.screenshot({ path: 'test-results/9.6-golden-not-golden-hour.png' });
+    expect(text).toMatch(/Golden\s+Hour/);
+    await page.screenshot({ path: 'test-results/9.6-golden-hour.png' });
     await closeReaderViaJS(page);
   });
 });
