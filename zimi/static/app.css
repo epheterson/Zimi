@@ -136,8 +136,10 @@
   .stats-bar .num { color: var(--amber); font-weight: 600; }
 
   /* ── Pills (categories + search source filters) ── */
-  .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 20px; }
-  .pills.pills-scroll { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; max-height: none; justify-content: flex-start; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .pills { display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; }
+  .pills-row { display: flex; gap: 6px; justify-content: center; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: var(--border) transparent; padding-bottom: 2px; }
+  .pills-row::-webkit-scrollbar { height: 4px; }
+  .pills-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
   /* ── Catalog lang row (single-row scroll with search icon) ── */
   .catalog-lang-row { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; overflow: hidden; }
   .catalog-lang-scroll { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; flex: 1; min-width: 0; justify-content: center; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 2px 0; }
@@ -164,7 +166,8 @@
   .pills-divider { width: 60px; height: 1px; background: var(--border); margin: 0 auto 4px; opacity: 0.5; }
 
   /* ── Language pills (above source pills in search results) ── */
-  .lang-pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 8px; }
+  .lang-pills { display: flex; gap: 6px; justify-content: center; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
+  .lang-pills::-webkit-scrollbar { display: none; }
 
   /* ── Language banner (view-in-lang / download) ── */
   .lang-banner {

@@ -2227,21 +2227,19 @@ function renderSearchResults(data, scope) {
   // Source filter pills (global search only, multiple sources)
   const sourceNames = Object.keys(bySource);
   if (!scope && sourceNames.length > 1) {
-    var sourcePillsHtml = sourceNames.sort().map(function(s) {
+    // Sort by count descending so most relevant sources are visible first
+    var sourcePillsHtml = sourceNames.sort(function(a, b) { return (bySource[b] || 0) - (bySource[a] || 0); }).map(function(s) {
       // Dim source pills when a language filter is active and this source has no results in that language
       var dimmed = activeLanguageFilters.size > 0 && ![...activeLanguageFilters].some(function(lang) { return sourcesByLang[lang] && sourcesByLang[lang].has(s); });
       return '<button class="pill' + (activeSourceFilters.has(s) ? ' active' : '') + (dimmed ? ' dimmed' : '') +
         '" aria-pressed="' + activeSourceFilters.has(s) + '" onclick="toggleSourceFilter(\'' + escAttr(s) + '\')">' +
         esc(_zimTitle(s)) + ' (' + bySource[s] + ')</button>';
     }).join('');
-    pillsBar.className = 'pills' + (sourceNames.length > 12 ? ' pills-scroll' : '');
-    if (langPillsHtml && sourceNames.length > 1) {
-      pillsBar.innerHTML = langPillsHtml + '<div class="pills-divider"></div>' + sourcePillsHtml;
-    } else {
-      pillsBar.innerHTML = langPillsHtml + sourcePillsHtml;
-    }
+    pillsBar.className = 'pills';
+    pillsBar.innerHTML = langPillsHtml + '<div class="pills-row">' + sourcePillsHtml + '</div>';
     pillsBar.style.display = '';
   } else if (langPillsHtml) {
+    pillsBar.className = 'pills';
     pillsBar.innerHTML = langPillsHtml;
     pillsBar.style.display = '';
   }
