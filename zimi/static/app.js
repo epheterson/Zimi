@@ -1473,7 +1473,9 @@ function _loadDiscover() {
     } else {
       all = computed.concat(items);
     }
-    if (items.length > 0) {
+    // Only cache if all (or nearly all) cards resolved — prevents partial results
+    // from persisting all day when some ZIMs were temporarily unavailable
+    if (items.length > 0 && items.length >= serverSlots.length - 1) {
       try { localStorage.setItem(cacheKey, JSON.stringify(all)); } catch(e) {}
     }
     var el2 = document.getElementById('discover-row');
@@ -2861,7 +2863,12 @@ var _LANG3_NAMES = {
   ami:'Amis',blk:'Pa\'O',far:'Farsian',kbp:'Kabiyé',kld:'Gamilaraay',lbe:'Lak',
   lld:'Ladin',mnw:'Mon',nah:'Nahuatl',nhe:'Eastern Huasteca Nahuatl',nrf:'Jèrriais',
   olo:'Livvi-Karelian',pih:'Norfuk',pwn:'Paiwan',rmq:'Caló',roa:'Romance',
-  szy:'Sakizaya',tay:'Atayal',tsz:'Purépecha'
+  szy:'Sakizaya',tay:'Atayal',tsz:'Purépecha',
+  // Additional codes from Kiwix OPDS catalog
+  hif:'Fiji Hindi',bpy:'Bishnupriya',pcm:'Nigerian Pidgin',fat:'Fanti',
+  vls:'West Flemish',dsb:'Lower Sorbian',csb:'Kashubian',anp:'Angika',
+  sgs:'Samogitian',alt:'Southern Altai',mhr:'Eastern Mari',frp:'Arpitan',
+  udm:'Udmurt',crh:'Crimean Tatar',nqo:"N'Ko",ang:'Old English'
 };
 function _langDisplayName(code) {
   if (!code) return '';
@@ -2923,7 +2930,7 @@ function formatLanguage(langStr) {
 }
 
 // 3-letter → 2-letter language code for tags
-const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru',ara:'ar',zho:'zh',jpn:'ja',kor:'ko',hin:'hi',tur:'tr',pol:'pl',nld:'nl',swe:'sv',vie:'vi',tha:'th',heb:'he',ell:'el',ron:'ro',hun:'hu',fas:'fa',far:'fa',ind:'id',ukr:'uk',ces:'cs',dan:'da',fin:'fi',nor:'no',cat:'ca',mul:'mul',msa:'ms',ben:'bn',tam:'ta',tel:'te',urd:'ur',srp:'sr',hrv:'hr',bos:'bs',slk:'sk',slv:'sl',bul:'bg',lit:'lt',lav:'lv',est:'et',swa:'sw',amh:'am',hau:'ha',yor:'yo',zul:'zu',afr:'af',gle:'ga',cym:'cy',eus:'eu',glg:'gl',kat:'ka',hye:'hy',mkd:'mk',sqi:'sq',bel:'be',kaz:'kk',uzb:'uz',tgl:'tl',mal:'ml',kan:'kn',guj:'gu',mar:'mr',mya:'my',khm:'km',lao:'lo',sin:'si',nep:'ne',pan:'pa',aze:'az',mon:'mn',tgk:'tg',kir:'ky',isl:'is',fao:'fo',kur:'ku',ori:'or',jav:'jv',sun:'su'};
+const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru',ara:'ar',zho:'zh',jpn:'ja',kor:'ko',hin:'hi',tur:'tr',pol:'pl',nld:'nl',swe:'sv',vie:'vi',tha:'th',heb:'he',ell:'el',ron:'ro',hun:'hu',fas:'fa',far:'fa',ind:'id',ukr:'uk',ces:'cs',dan:'da',fin:'fi',nor:'no',cat:'ca',mul:'mul',msa:'ms',ben:'bn',tam:'ta',tel:'te',urd:'ur',srp:'sr',hrv:'hr',bos:'bs',slk:'sk',slv:'sl',bul:'bg',lit:'lt',lav:'lv',est:'et',swa:'sw',amh:'am',hau:'ha',yor:'yo',zul:'zu',afr:'af',gle:'ga',cym:'cy',eus:'eu',glg:'gl',kat:'ka',hye:'hy',mkd:'mk',sqi:'sq',bel:'be',kaz:'kk',uzb:'uz',tgl:'tl',mal:'ml',kan:'kn',guj:'gu',mar:'mr',mya:'my',khm:'km',lao:'lo',sin:'si',nep:'ne',pan:'pa',aze:'az',mon:'mn',tgk:'tg',kir:'ky',isl:'is',fao:'fo',kur:'ku',ori:'or',jav:'jv',sun:'su',asm:'as',snd:'sd',kas:'ks',kik:'ki',sme:'se',lim:'li',pam:'pam',tir:'ti',lin:'ln',wol:'wo',som:'so',run:'rn',bis:'bi',nav:'nv',dzo:'dz',vol:'vo',ina:'ia',tat:'tt',bak:'ba',chv:'cv',oss:'os',tuk:'tk',sah:'sah'};
 // Extract actual language from ZIM name when catalog says "mul" or comma-separated
 // e.g. "ted_fr_design" → "fr", "wikipedia_de_all" → "de"
 function _langFromName(name) {
