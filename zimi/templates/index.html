@@ -56,9 +56,7 @@
     <label id="pw-remember-row" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--text2);cursor:pointer">
       <input type="checkbox" id="pw-remember" style="accent-color:var(--amber);flex-shrink:0"> <span data-i18n="remember_me">Remember me</span>
     </label>
-    <div class="pw-actions" style="justify-content:space-between">
-      <button type="button" id="pw-remove-btn" onclick="manageClearPassword()" style="display:none;color:var(--text2);font-size:12px" data-i18n="remove">Remove</button>
-      <span style="flex:1"></span>
+    <div class="pw-actions">
       <button type="button" onclick="closePwModal()" data-i18n="cancel">Cancel</button>
       <button type="submit" class="pw-primary" data-i18n="ok">OK</button>
     </div>

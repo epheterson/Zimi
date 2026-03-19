@@ -304,10 +304,10 @@ class TestDataDir(unittest.TestCase):
         self.assertTrue(path.startswith(self.zimi.ZIMI_DATA_DIR))
         self.assertTrue(path.endswith("collections.json"))
 
-    def test_password_file_in_data_dir(self):
-        path = self.zimi._password_file()
-        self.assertTrue(path.startswith(self.zimi.ZIMI_DATA_DIR))
-        self.assertTrue(path.endswith("password"))
+    def test_password_via_env_only(self):
+        """Password is only set via ZIMI_MANAGE_PASSWORD env var — no file storage."""
+        self.assertFalse(hasattr(self.zimi, '_password_file'),
+                         "File-based password storage was removed")
 
 
 class TestTitleIndex(unittest.TestCase):

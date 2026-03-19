@@ -28,7 +28,7 @@ Table of contents (this file: ~980 lines)
 
 Configuration:
   ZIM_DIR      Path to directory containing *.zim files (default: /zims)
-  ZIMI_MANAGE  Set to "1" to enable library management endpoints
+  ZIMI_MANAGE  Enabled by default; set to "0" to disable management endpoints
 
 Usage (CLI):
   zimi search "water purification" --limit 10
@@ -91,7 +91,7 @@ log = logging.getLogger("zimi")
 logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S", level=logging.INFO)
 
 ZIM_DIR = os.environ.get("ZIM_DIR", "/zims")
-ZIMI_MANAGE = os.environ.get("ZIMI_MANAGE", "0") == "1"
+ZIMI_MANAGE = os.environ.get("ZIMI_MANAGE", "1") == "1"
 ZIMI_DATA_DIR = os.environ.get("ZIMI_DATA_DIR", os.path.join(ZIM_DIR, ".zimi"))
 _initialized = False
 
@@ -953,8 +953,8 @@ from zimi.library import (  # noqa: E402, F401
 
 from zimi.manage import (  # noqa: E402, F401
     # Password & authentication
-    _password_file, _hash_pw, _is_legacy_hash, _PW_ITERATIONS,
-    _env_pw_hash_cache, _get_manage_password_hash, _set_manage_password,
+    _hash_pw, _PW_ITERATIONS,
+    _env_pw_hash_cache, _get_manage_password_hash,
     _api_token_file, _get_api_token, _generate_api_token, _revoke_api_token,
     _check_manage_auth,
     # Manage route handlers

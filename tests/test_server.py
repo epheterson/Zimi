@@ -325,11 +325,10 @@ class TestServerEndpoints(unittest.TestCase):
         data, status = self._get("/manage/usage")
         self.assertEqual(status, 200)
 
-    def test_manage_has_password(self):
-        data, status = self._get("/manage/has-password")
-        self.assertEqual(status, 200)
-        self.assertIn("has_password", data)
-        self.assertFalse(data["has_password"])  # no password set in test
+    def test_manage_has_password_removed(self):
+        """has-password is covered by test_has_password_endpoint_removed."""
+        status = self._get_status("/manage/has-password")
+        self.assertEqual(status, 404)
 
     def test_manage_downloads_empty(self):
         data, status = self._get("/manage/downloads")
@@ -426,28 +425,17 @@ class TestServerEndpoints(unittest.TestCase):
         self.assertIn("zim_dir", data["disk"])
         self.assertIn("data_dir", data["disk"])
 
-    # ── Password management ──
+    # ── Password removed (v1.6) ──
 
-    def test_set_and_clear_password(self):
-        """Test the full password lifecycle: set → verify → clear."""
-        # Set password
+    def test_set_password_endpoint_removed(self):
+        """set-password endpoint was removed — auth is via env var only."""
         data, status = self._post("/manage/set-password", {"password": "test123"})
-        self.assertEqual(status, 200)
+        self.assertEqual(status, 404)
 
-        # Verify password is set
-        data, status = self._get("/manage/has-password")
-        self.assertTrue(data["has_password"])
-
-        # Clear password (requires current password)
-        data, status = self._post("/manage/set-password", {
-            "current": "test123",
-            "password": ""
-        })
-        self.assertEqual(status, 200)
-
-        # Verify cleared
-        data, status = self._get("/manage/has-password")
-        self.assertFalse(data["has_password"])
+    def test_has_password_endpoint_removed(self):
+        """has-password endpoint was removed."""
+        status = self._get_status("/manage/has-password")
+        self.assertEqual(status, 404)
 
     # ── Auto-update config ──
 

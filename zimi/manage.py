@@ -10,7 +10,6 @@ import hmac
 import json
 import logging
 import os
-import re
 import threading
 import time
 import traceback
@@ -24,10 +23,6 @@ log = logging.getLogger("zimi")
 # Password & Authentication
 # ============================================================================
 
-def _password_file():
-    """Password file path inside ZIMI_DATA_DIR."""
-    return os.path.join(_srv.ZIMI_DATA_DIR, "password")
-
 _PW_ITERATIONS = 600_000  # OWASP 2023 recommendation for PBKDF2-SHA256
 
 def _hash_pw(pw, salt=None):
@@ -39,32 +34,17 @@ def _hash_pw(pw, salt=None):
     dk = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, _PW_ITERATIONS)
     return salt.hex() + "$" + dk.hex()
 
-def _is_legacy_hash(stored):
-    """Detect old-style raw SHA-256 hashes (no salt separator)."""
-    return stored and "$" not in stored and len(stored) == 64
-
 _env_pw_hash_cache = None  # cached hash for ZIMI_MANAGE_PASSWORD env var
 
 def _get_manage_password_hash():
-    """Get stored password hash from env var or file."""
+    """Get password hash from ZIMI_MANAGE_PASSWORD env var (only auth source)."""
     global _env_pw_hash_cache
     pw = os.environ.get("ZIMI_MANAGE_PASSWORD", "")
     if pw:
         if _env_pw_hash_cache is None:
-            _env_pw_hash_cache = _hash_pw(pw)  # hash once with stable salt
+            _env_pw_hash_cache = _hash_pw(pw)
         return _env_pw_hash_cache
-    try:
-        with open(_password_file()) as f:
-            return f.read().strip()
-    except (FileNotFoundError, OSError):
-        return ""
-
-def _set_manage_password(pw):
-    """Save hashed password to file."""
-    pf = _password_file()
-    with open(pf, "w") as f:
-        f.write(_hash_pw(pw) if pw else "")
-    log.info("Manage password %s", "set" if pw else "cleared")
+    return ""
 
 def _api_token_file():
     """API token file path inside ZIMI_DATA_DIR."""
@@ -102,7 +82,7 @@ def _check_manage_auth(handler):
     """Check authorization for manage endpoints. Returns True if unauthorized.
 
     Auth model:
-    - Browser (same-origin): password check if password is set, otherwise open
+    - Browser (same-origin): password check via ZIMI_MANAGE_PASSWORD env var
     - API (everything else): ALWAYS requires a valid Bearer token
 
     Browser detection uses Sec-Fetch-Site header (set by all modern browsers,
@@ -112,21 +92,13 @@ def _check_manage_auth(handler):
     is_browser = sec_fetch == "same-origin"
 
     if is_browser:
-        # Browser request — check password if one is set, otherwise allow
         stored_pw = _get_manage_password_hash()
         if not stored_pw:
-            return None  # no password, browser access is open
+            return None  # no password set, browser access is open
         auth = handler.headers.get("Authorization", "")
         if not auth.startswith("Bearer "):
             return True
         candidate = auth[7:]
-        if _is_legacy_hash(stored_pw):
-            old_hash = hashlib.sha256(candidate.encode()).hexdigest()
-            if hmac.compare_digest(old_hash, stored_pw):
-                _set_manage_password(candidate)
-                log.info("Migrated password hash from SHA-256 to PBKDF2")
-                return None
-            return True
         if "$" not in stored_pw:
             return True
         salt = stored_pw.split("$")[0]
@@ -156,9 +128,7 @@ def handle_manage_get(handler, parsed, params):
 
     if not _srv.ZIMI_MANAGE:
         return handler._json(404, {"error": "Library management is disabled. Set ZIMI_MANAGE=1 to enable."})
-    # Public auth info so the UI knows what to prompt
-    if parsed.path == "/manage/has-password":
-        return handler._json(200, {"has_password": bool(_get_manage_password_hash())})
+    # Public pre-auth endpoint so UI can check token availability
     if parsed.path == "/manage/has-token":
         return handler._json(200, {"has_token": bool(_get_api_token())})
     if _check_manage_auth(handler):
@@ -254,16 +224,6 @@ def handle_manage_post(handler, parsed, data):
     """Handle all POST /manage/* requests. Called from ZimHandler.do_POST."""
     if not _srv.ZIMI_MANAGE:
         return handler._json(404, {"error": "Library management is disabled."})
-    # set-password: special — requires current password if one exists
-    if parsed.path == "/manage/set-password":
-        stored = _get_manage_password_hash()
-        if stored:
-            cur = data.get("current", "")
-            if not cur or "$" not in stored or not hmac.compare_digest(_hash_pw(cur, stored.split("$")[0]), stored):
-                return handler._json(401, {"error": "Current password is incorrect"})
-        new_pw = data.get("password", "").strip()
-        _set_manage_password(new_pw)
-        return handler._json(200, {"status": "password set" if new_pw else "password cleared"})
     # API token management — requires existing auth (password or token)
     if parsed.path == "/manage/generate-token":
         if _check_manage_auth(handler):

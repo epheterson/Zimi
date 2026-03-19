@@ -44,7 +44,7 @@ let _zimsByName = new Map();
 function _rebuildZimsMap() { _zimsByName = new Map((zimsCache || []).map(z => [z.name, z])); }
 function _zimInfo(name) { return _zimsByName.get(name) || null; }
 let manageEnabled = false;
-let _manageUnlocked = false; // true when manage is usable without password prompt
+let _manageUnlocked = true; // manage is always available (auth via env var only)
 let activeCategories = new Set();
 let activeSourceFilters = new Set();
 let allResults = {};
@@ -483,14 +483,10 @@ async function _initSecondary() {
       }
       needsRerender = true;
     }).catch(function(){}),
-    fetch('/manage/has-password').then(async pres => {
-      if (pres.ok) {
-        var pd = await pres.json();
-        var saved = sessionStorage.getItem('zimi_manage_pw');
-        _manageUnlocked = !pd.has_password || !!saved;
-        if (saved) _manageToken = saved;
-      }
-    }).catch(function(){}),
+    Promise.resolve().then(() => {
+      var saved = sessionStorage.getItem('zimi_manage_pw');
+      if (saved) _manageToken = saved;
+    }),
     // Collections/favorites
     fetch('/collections').then(async cres => {
       if (cres.ok) { collectionsCache = await cres.json(); needsRerender = true; }
@@ -3879,32 +3875,6 @@ async function renderActivityTab() {
 
 // ── Manage entry point ──
 async function renderManage() {
-  // If password is set, prompt before showing manage (use saved token only if "remember me" was used)
-  const hasPw = await fetch('/manage/has-password').then(r => r.json()).catch(() => ({}));
-  if (hasPw.has_password) {
-    const saved = sessionStorage.getItem('zimi_manage_pw');
-    if (saved) {
-      _manageToken = saved;
-    } else if (!_manageToken) {
-      try {
-        await new Promise(function(resolve, reject) {
-          _pwResolve = function(token) {
-            _manageToken = token;
-            if (document.getElementById('pw-remember').checked) {
-              sessionStorage.setItem('zimi_manage_pw', token);
-            }
-            _pwReject = null;
-            resolve();
-          };
-          _pwReject = reject;
-          openPwModal(t('enter_password'));
-        });
-      } catch(e) {
-        // Cancelled — go back to home
-        toggleManage(); return;
-      }
-    }
-  }
   const installedCount = zimsCache ? zimsCache.length : 0;
 
   output.innerHTML =
@@ -4076,14 +4046,6 @@ function _msPreferencesHtml() {
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\')"> ' + tH('show_lang_chooser') + '</label>' +
     '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>';
-  // Security section
-  h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_security') + '</div>' +
-    '<div class="ms-actions">' +
-      '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('password') + '</button>';
-  if (sessionStorage.getItem('zimi_manage_pw')) {
-    h += '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('log_out') + '</button>';
-  }
-  h += '</div>';
   return h;
 }
 
@@ -4907,61 +4869,6 @@ async function refreshLibrary() {
   } catch(e) {}
 }
 
-async function managePassword() {
-  const has = await manageFetch('/manage/has-password').then(r => r.json()).catch(() => ({}));
-  const errEl = document.getElementById('pw-error');
-  const overlay = document.getElementById('pw-overlay');
-
-  openPwModal(has.has_password ? t('change_password') : t('set_password'), {placeholder: t('new_password'), hideRemember: true});
-  document.getElementById('pw-remove-btn').style.display = has.has_password ? '' : 'none';
-
-  _pwResolve = async function(newPw) {
-    const body = {password: newPw};
-    if (has.has_password && _manageToken) body.current = _manageToken;
-    const res = await manageFetch('/manage/set-password', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body)
-    });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      errEl.textContent = d.error || t('error');
-      errEl.style.display = 'block';
-      overlay.classList.add('open');
-      return;
-    }
-    if (newPw) {
-      _manageToken = newPw;
-      if (document.getElementById('pw-remember').checked) {
-        sessionStorage.setItem('zimi_manage_pw', newPw);
-      } else {
-        sessionStorage.removeItem('zimi_manage_pw');
-      }
-    } else {
-      _manageToken = '';
-      sessionStorage.removeItem('zimi_manage_pw');
-    }
-    closePwModal();
-    renderManage();
-  };
-}
-
-async function manageClearPassword() {
-  if (!confirm(t('remove_password_confirm'))) return;
-  const body = {password: ''};
-  if (_manageToken) body.current = _manageToken;
-  const res = await manageFetch('/manage/set-password', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(body)
-  });
-  if (res.ok) {
-    _manageToken = '';
-    sessionStorage.removeItem('zimi_manage_pw');
-    closePwModal();
-    renderManage();
-  }
-}
 
 // ── Helpers ──
 function _pdfViewerUrl(pdfUrl) {
