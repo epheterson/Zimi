@@ -4443,7 +4443,7 @@ function _renderDeepTime(now) {
 var _rosettaManifest = null;
 var _rosettaCache = {};
 var _rosettaLangs = [(typeof _currentLang !== 'undefined') ? _currentLang : 'en'];
-var _rosettaTextIdx = 0;
+var _rosettaTextIdx = 9; // Georgia Guidestones — thematically fitting default for Zimi
 
 var _ALL_LANGS = [
   {code:'en',name:'English'},{code:'fr',name:'Français'},{code:'de',name:'Deutsch'},
