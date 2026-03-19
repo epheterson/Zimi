@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Fixed language pills disappearing after deep search completes (by_language merge in two-phase search)
+- Fixed three-letter language codes showing as raw abbreviations in catalog (expanded _LANG3TO2 and _LANG3_NAMES)
+- Fixed partial Discover cards caching all day (now requires near-complete results before caching)
+- Fixed Georgia Guidestones not appearing as default Messages Across Time selection (almanac.js cache bust)
+- Fixed category pills going full-width in library view (CSS regression from pills layout refactor)
+- Fixed catalog language filter hitting Kiwix OPDS server on every click (now filters from cached data)
+- Fixed Hebrew Wikipedia not matching for cross-language interlinking (3-letter code normalization in interlang)
+
+### Changed
+- Search filter pills now show in two compact scrollable rows: sources sorted by result count, languages below
+- Catalog language filtering is now instant (no loading spinner, no server re-fetch)
+
 ## [1.6.0] — 2026-03-14
 
 The Language Release — multilingual UI, cross-language navigation, and security hardening.
@@ -14,6 +27,9 @@ The Language Release — multilingual UI, cross-language navigation, and securit
 ### Added
 - Internationalized the entire UI into 10 languages (en, fr, de, es, pt, ru, ar, hi, zh, he) with auto-detection and RTL support
 - Added cross-language article navigation with language dropdown and inline ZIM download
+- Added Q-ID badge on source cards indicating cross-language linking support (Wikipedia, Wikivoyage)
+- Added `language` and `has_qids` fields to `/search` API response
+- Added `/search?lang=XX` parameter to filter results by language
 - Added tab bar with Cmd/Ctrl+click to open articles in background tabs (max 10)
 - Added PWA support: service worker with offline fallback, web app manifest for Add to Home Screen
 - Added "Messages Across Time" almanac section with 10 historical inscriptions spanning 3,700 years
@@ -39,6 +55,9 @@ The Language Release — multilingual UI, cross-language navigation, and securit
 - Fixed Discover card flash/pop on re-render by preserving DOM content
 - Fixed PDF download from viewer showing white page instead of saving file
 - Fixed catalog language filter not drilling down into full catalog results
+- Fixed flavor popup hover only highlighting left half (now full-width)
+- Fixed download arrow persisting after download starts
+- Fixed PDF.js appending unnecessary locale suffix for English
 
 ### Security
 - Added rate limiting on /manage/ endpoints to prevent brute-force and CPU DoS

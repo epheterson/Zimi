@@ -366,19 +366,29 @@ function updateTopbar() {
     bcIcon.title = '';
   }
 
-  // Manage or Almanac: gear → X close button
-  if (mode === 'manage' || _almanacOpen) {
+  // Manage/Almanac: gear → X close. Reader open: gear → X close reader.
+  // Always show this button so topbar has a stable 4-icon layout.
+  var _closeSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  if (mode === 'manage') {
     manageBtnEl.style.display = 'flex';
-    manageBtnEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    manageBtnEl.innerHTML = _closeSvg;
     manageBtnEl.title = t('close');
     manageBtnEl.style.color = 'var(--amber)';
     manageBtnEl.style.borderColor = 'var(--amber-border)';
     manageBtnEl.style.background = 'var(--amber-glow)';
-    if (_almanacOpen) {
-      manageBtnEl.onclick = closeAlmanac;
-    }
+    manageBtnEl.onclick = function(e) { toggleManage(e); };
+  } else if (_almanacOpen || readerOpen) {
+    // Hide X when save button is visible (PDF/EPUB) to keep 4 icons max
+    var hasSaveBtn = !_almanacOpen && IS_DESKTOP && currentArticle && /\.(pdf|epub)$/i.test(currentArticle.path || '');
+    manageBtnEl.style.display = hasSaveBtn ? 'none' : 'flex';
+    manageBtnEl.innerHTML = _closeSvg;
+    manageBtnEl.title = t('close');
+    manageBtnEl.style.color = '';
+    manageBtnEl.style.borderColor = '';
+    manageBtnEl.style.background = '';
+    manageBtnEl.onclick = _almanacOpen ? closeAlmanac : function() { closeReader(); goHome(); };
   } else {
-    manageBtnEl.style.display = readerOpen ? 'none' : 'flex';
+    manageBtnEl.style.display = 'flex';
     manageBtnEl.innerHTML = _gearSvg;
     manageBtnEl.title = t('library_manager');
     manageBtnEl.style.color = '';
