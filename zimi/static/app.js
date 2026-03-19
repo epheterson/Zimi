@@ -2144,9 +2144,16 @@ function mergeSearchResults(phase1, phase2) {
     bySource[k] = Math.max(bySource[k] || 0, v);
   }
 
+  // Merge by_language counts (take max from either phase)
+  const byLanguage = { ...(phase1.by_language || {}) };
+  for (const [k, v] of Object.entries(phase2.by_language || {})) {
+    byLanguage[k] = Math.max(byLanguage[k] || 0, v);
+  }
+
   return {
     results: merged,
     by_source: bySource,
+    by_language: byLanguage,
     total: merged.length,
     elapsed: phase2.elapsed,
     partial: false,
