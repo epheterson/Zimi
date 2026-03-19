@@ -1285,7 +1285,7 @@ var _almanacLoaded = false;
 function openAlmanac(replaceState) {
   if (!_almanacLoaded) {
     var s = document.createElement('script');
-    s.src = '/static/almanac.js?v=39';
+    s.src = '/static/almanac.js?v=40';
     s.onload = function() { _almanacLoaded = true; _openAlmanacInner(replaceState); };
     s.onerror = function() { console.error('Failed to load almanac.js'); };
     document.head.appendChild(s);
@@ -2214,11 +2214,12 @@ function renderSearchResults(data, scope) {
   var langPillsHtml = '';
   const langCodes = Object.keys(byLanguage);
   if (!scope && langCodes.length > 1) {
-    langPillsHtml = '<div class="lang-pills">' + langCodes.sort().map(function(lang) {
+    // Sort by count descending, same as source pills
+    langPillsHtml = '<div class="lang-pills">' + langCodes.sort(function(a, b) { return (byLanguage[b] || 0) - (byLanguage[a] || 0); }).map(function(lang) {
       var name = _NATIVE_LANG_NAMES[lang] || lang;
       // Dim language pills when a source filter is active and that source has no results in this language
       var dimmed = activeSourceFilters.size > 0 && ![...activeSourceFilters].some(function(s) { return langsBySource[s] && langsBySource[s].has(lang); });
-      return '<button class="lang-pill' + (activeLanguageFilters.has(lang) ? ' active' : '') + (dimmed ? ' dimmed' : '') +
+      return '<button class="pill' + (activeLanguageFilters.has(lang) ? ' active' : '') + (dimmed ? ' dimmed' : '') +
         '" onclick="toggleLanguageFilter(\'' + escAttr(lang) + '\')">' +
         esc(name) + ' (' + byLanguage[lang] + ')</button>';
     }).join('') + '</div>';
@@ -2236,7 +2237,8 @@ function renderSearchResults(data, scope) {
         esc(_zimTitle(s)) + ' (' + bySource[s] + ')</button>';
     }).join('');
     pillsBar.className = 'pills';
-    pillsBar.innerHTML = langPillsHtml + '<div class="pills-row">' + sourcePillsHtml + '</div>';
+    // Source pills first, then language pills below (consistent with catalog)
+    pillsBar.innerHTML = '<div class="pills-row">' + sourcePillsHtml + '</div>' + langPillsHtml;
     pillsBar.style.display = '';
   } else if (langPillsHtml) {
     pillsBar.className = 'pills';
@@ -2792,7 +2794,8 @@ function filterCatalogLang(lang) {
   var scrollEl = document.getElementById('catalog-lang-scroll');
   var savedScroll = scrollEl ? scrollEl.scrollLeft : 0;
   manageLangFilter = (manageLangFilter === lang) ? null : lang;
-  _catalogCache = null;
+  // Don't clear _catalogCache — catalog data doesn't change, only the filter does.
+  // Clearing it forces a server re-fetch (which can be rate-limited by Kiwix OPDS).
   if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
   else if (_browseView === 'search') { var v = q.value.trim(); if (v) browseCatalogFilter(v); else renderBrowseGallery(); }
   else renderBrowseGallery();
@@ -3215,7 +3218,8 @@ function renderBrowseGallery() {
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   q.placeholder = t('search_catalog');
 
-  results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
+  // Only show loading spinner if catalog hasn't been fetched yet
+  if (!_catalogCache) results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
 
   loadFullCatalog().then(items => {
     // Count unique ZIMs per category (group variants by name)
@@ -3342,7 +3346,7 @@ function drillCategory(catKey, namePrefix) {
   q.placeholder = t('search_in', {source: catName});
   q.value = '';
 
-  results.innerHTML = _loadingHtml();
+  if (!_catalogCache) results.innerHTML = _loadingHtml();
 
   loadFullCatalog().then(items => {
     // Filter to this category (+ unknown/merged cats go to "other")

@@ -795,6 +795,8 @@ def get_article_languages(zim_name, article_path):
         )
         for m in pattern.finditer(content):
             lang = m.group(1)
+            # Normalize 3-letter codes to 2-letter (e.g., "heb" → "he")
+            lang = _srv._ISO639_3_TO_1.get(lang, lang)
             if lang in seen_langs:
                 continue
             wiki_path = unquote(m.group(3))
