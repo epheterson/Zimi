@@ -160,7 +160,8 @@
   .pill:hover, .lang-pill:hover,
   .ci-variant-btn:hover, .flavor-pill:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
   .pill.active, .lang-pill.active { background: linear-gradient(135deg, var(--amber), var(--amber2)); color: #000; border-color: transparent; font-weight: 600; }
-  .pill.dimmed { opacity: 0.35; pointer-events: none; }
+  .pill.dimmed, .lang-pill.dimmed { opacity: 0.35; pointer-events: none; }
+  .pills-divider { width: 60px; height: 1px; background: var(--border); margin: 0 auto 4px; opacity: 0.5; }
 
   /* ── Language pills (above source pills in search results) ── */
   .lang-pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 8px; }
@@ -610,6 +611,7 @@
     border-radius: var(--radius); transition: background 0.2s, border-color 0.2s, transform 0.2s;
   }
   .browse-cat-card:hover { border-color: var(--amber-border); background: var(--surface2); transform: translateY(-2px); }
+  .browse-cat-card.dimmed { opacity: 0.3; pointer-events: none; }
   .bcc-icon {
     font-size: 28px; width: 48px; height: 48px;
     display: flex; align-items: center; justify-content: center;

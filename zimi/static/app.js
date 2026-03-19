@@ -2187,13 +2187,29 @@ function renderSearchResults(data, scope) {
   const byLanguage = data.by_language || {};
   const totalCount = data.total || items.length;
 
+  // Build cross-reference: which languages per source, which sources per language
+  var cache_lang_map = {};
+  (zimsCache || []).forEach(function(z) { cache_lang_map[z.name] = z.language || ''; });
+  var langsBySource = {};  // source → Set of lang codes
+  var sourcesByLang = {};  // lang → Set of sources
+  for (var ri = 0; ri < items.length; ri++) {
+    var rItem = items[ri];
+    var rLang = cache_lang_map[rItem.zim] || '';
+    if (!langsBySource[rItem.zim]) langsBySource[rItem.zim] = new Set();
+    langsBySource[rItem.zim].add(rLang);
+    if (!sourcesByLang[rLang]) sourcesByLang[rLang] = new Set();
+    sourcesByLang[rLang].add(rItem.zim);
+  }
+
   // Language filter pills (global search only, multiple languages)
   var langPillsHtml = '';
   const langCodes = Object.keys(byLanguage);
   if (!scope && langCodes.length > 1) {
     langPillsHtml = '<div class="lang-pills">' + langCodes.sort().map(function(lang) {
       var name = _NATIVE_LANG_NAMES[lang] || lang;
-      return '<button class="lang-pill' + (activeLanguageFilters.has(lang) ? ' active' : '') +
+      // Dim language pills when a source filter is active and that source has no results in this language
+      var dimmed = activeSourceFilters.size > 0 && ![...activeSourceFilters].some(function(s) { return langsBySource[s] && langsBySource[s].has(lang); });
+      return '<button class="lang-pill' + (activeLanguageFilters.has(lang) ? ' active' : '') + (dimmed ? ' dimmed' : '') +
         '" onclick="toggleLanguageFilter(\'' + escAttr(lang) + '\')">' +
         esc(name) + ' (' + byLanguage[lang] + ')</button>';
     }).join('') + '</div>';
@@ -2202,12 +2218,19 @@ function renderSearchResults(data, scope) {
   // Source filter pills (global search only, multiple sources)
   const sourceNames = Object.keys(bySource);
   if (!scope && sourceNames.length > 1) {
-    pillsBar.className = 'pills' + (sourceNames.length > 12 ? ' pills-scroll' : '');
-    pillsBar.innerHTML = langPillsHtml + sourceNames.sort().map(s => {
-      return '<button class="pill' + (activeSourceFilters.has(s) ? ' active' : '') +
+    var sourcePillsHtml = sourceNames.sort().map(function(s) {
+      // Dim source pills when a language filter is active and this source has no results in that language
+      var dimmed = activeLanguageFilters.size > 0 && ![...activeLanguageFilters].some(function(lang) { return sourcesByLang[lang] && sourcesByLang[lang].has(s); });
+      return '<button class="pill' + (activeSourceFilters.has(s) ? ' active' : '') + (dimmed ? ' dimmed' : '') +
         '" aria-pressed="' + activeSourceFilters.has(s) + '" onclick="toggleSourceFilter(\'' + escAttr(s) + '\')">' +
         esc(_zimTitle(s)) + ' (' + bySource[s] + ')</button>';
     }).join('');
+    pillsBar.className = 'pills' + (sourceNames.length > 12 ? ' pills-scroll' : '');
+    if (langPillsHtml && sourceNames.length > 1) {
+      pillsBar.innerHTML = langPillsHtml + '<div class="pills-divider"></div>' + sourcePillsHtml;
+    } else {
+      pillsBar.innerHTML = langPillsHtml + sourcePillsHtml;
+    }
     pillsBar.style.display = '';
   } else if (langPillsHtml) {
     pillsBar.innerHTML = langPillsHtml;
@@ -3222,18 +3245,51 @@ function renderBrowseGallery() {
       }
     }
 
+    // When a language filter is active, compute per-category filtered counts
+    var filteredCatCounts = catCounts;
+    var filteredCatInstalled = catInstalled;
+    if (manageLangFilter) {
+      filteredCatCounts = {};
+      filteredCatInstalled = {};
+      var filteredCatNames = {};
+      for (const item of items) {
+        if (!_zimMatchesLang(item, manageLangFilter)) continue;
+        const cat = item.category || 'other';
+        if (!filteredCatNames[cat]) filteredCatNames[cat] = new Set();
+        filteredCatNames[cat].add(item.name);
+        if (item.installed) filteredCatInstalled[cat] = (filteredCatInstalled[cat] || 0) + 1;
+      }
+      for (const [cat, names] of Object.entries(filteredCatNames)) filteredCatCounts[cat] = names.size;
+      // Merge unknown cats into 'other'
+      for (const [cat, count] of Object.entries(filteredCatCounts)) {
+        if (!knownKeys.has(cat)) {
+          filteredCatCounts['other'] = (filteredCatCounts['other'] || 0) + count;
+          filteredCatInstalled['other'] = (filteredCatInstalled['other'] || 0) + (filteredCatInstalled[cat] || 0);
+        }
+      }
+      for (const cat of _mergedToOther) {
+        if (filteredCatCounts[cat]) {
+          filteredCatCounts['other'] = (filteredCatCounts['other'] || 0) + filteredCatCounts[cat];
+          filteredCatInstalled['other'] = (filteredCatInstalled['other'] || 0) + (filteredCatInstalled[cat] || 0);
+          filteredCatCounts[cat] = 0;
+        }
+      }
+    }
+
     let h = '<div class="browse-gallery">';
     // Language pills from full (unfiltered) catalog
     h += _renderLangPills(_countLangsByCategory(items, null), 'filterCatalogLang');
-    h += buildFeaturedCarousel(items);
+    if (!manageLangFilter) h += buildFeaturedCarousel(items);
     h += '<div class="browse-grid">';
 
     for (const cat of BROWSE_CATEGORIES) {
-      const count = catCounts[cat.key] || 0;
-      if (count === 0 && cat.key !== 'other') continue;
-      const installed = catInstalled[cat.key] || 0;
+      const totalCount = catCounts[cat.key] || 0;
+      if (totalCount === 0 && cat.key !== 'other') continue;
+      const count = filteredCatCounts[cat.key] || 0;
+      const installed = filteredCatInstalled[cat.key] || 0;
+      const dimmed = manageLangFilter && count === 0;
       const countLine = t('n_available', {n: count}) + (installed > 0 ? ' \u00B7 ' + t('n_installed_count', {n: installed}) : '');
-      h += '<div class="browse-cat-card" onclick="drillCategory(\'' + escAttr(cat.key) + '\')">' +
+      h += '<div class="browse-cat-card' + (dimmed ? ' dimmed' : '') + '" onclick="drillCategory(\'' + escAttr(cat.key) + '\')">' +
         '<div class="bcc-icon">' + cat.icon + '</div>' +
         '<div class="bcc-info">' +
           '<div class="bcc-name">' + tH(cat.i18n) + '</div>' +
@@ -3245,9 +3301,12 @@ function renderBrowseGallery() {
     }
     h += '</div>';
     // Footer: count centered, language dropdown moved below
-    var activeCats = BROWSE_CATEGORIES.filter(function(c) { return (catCounts[c.key] || 0) > 0; }).length;
+    var activeCats = BROWSE_CATEGORIES.filter(function(c) { return (filteredCatCounts[c.key] || 0) > 0; }).length;
+    var totalSources = manageLangFilter
+      ? groupVariants(items.filter(function(it) { return _zimMatchesLang(it, manageLangFilter); })).length
+      : groupVariants(items).length;
     h += '<div class="browse-footer">' +
-      '<div class="browse-footer-count">' + groupVariants(items).length.toLocaleString() + ' sources \u00B7 ' + activeCats + ' categories</div>' +
+      '<div class="browse-footer-count">' + totalSources.toLocaleString() + ' sources \u00B7 ' + activeCats + ' categories</div>' +
     '</div>';
     h += '</div>';
     results.innerHTML = h;
@@ -4156,6 +4215,9 @@ function getInstalledPillsHtml() {
   }
   // Language pills — horizontal scroll with counts, no search button
   var langKeys = Object.keys(langCounts).filter(_isValidLangCode).sort(function(a, b) { return (langCounts[b] || 0) - (langCounts[a] || 0); });
+  if (langKeys.length > 1 && !_getStorageFlag(SK.HIDE_LANG_CHOOSER) && allCats.length > 1) {
+    h += '<div class="pills-divider"></div>';
+  }
   if (langKeys.length > 1 && !_getStorageFlag(SK.HIDE_LANG_CHOOSER)) {
     var validLangs = manageCategoryFilter ? new Set(langsByCat[manageCategoryFilter] || []) : null;
     h += '<div class="catalog-lang-row" oncontextmenu="_langChooserCtxMenu(event)" style="justify-content:center">';
