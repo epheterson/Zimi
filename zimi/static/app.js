@@ -177,7 +177,7 @@ function _checkReaderLangBanner() {
   if (old) old.remove();
 }
 
-function _showManageBadge(show) {
+function _showManageBadge(show, count) {
   var btn = document.getElementById('manage-btn');
   if (!btn) return;
   // Don't show badge when manage view is already open (button is close X)
@@ -189,7 +189,9 @@ function _showManageBadge(show) {
     btn.appendChild(badge);
   } else if (!show && badge) {
     badge.remove();
+    return;
   }
+  if (badge && count > 0) badge.textContent = count;
 }
 
 function _langBannerDownload(lang, catMatch) {
@@ -2292,7 +2294,13 @@ function renderSearchResults(data, scope) {
 
 function showMoreResults() {
   visibleResultCount += RESULTS_PER_PAGE;
+  // Preserve the FTS progress indicator if phase 2 is still running
+  var indicator = document.getElementById('fts-indicator');
+  var savedIndicator = indicator ? indicator.cloneNode(true) : null;
   renderSearchResults(allResults, currentSource);
+  if (savedIndicator && !document.getElementById('fts-indicator')) {
+    output.prepend(savedIndicator);
+  }
 }
 
 function _zimTitle(name) {
@@ -4479,7 +4487,8 @@ async function downloadZim(url, btn, isUpdate) {
       }
     }
     _dlPrevAllDone = false; // ensure completion transition fires even for fast downloads
-    _showManageBadge(true);
+    _dlRecentStart = Date.now();
+    _showManageBadge(true, 1);
     refreshDownloads();
   } catch(e) {
     if (btn) { btn.textContent = t('error'); btn.disabled = false; }
@@ -4592,6 +4601,7 @@ function dlTitle(dl) {
 }
 
 let _dlPrevAllDone = true; // track when downloads finish to trigger refresh
+let _dlRecentStart = 0;   // timestamp of last download start (grace period for server lag)
 
 async function refreshDownloads() {
   if (_dlTimer) { clearTimeout(_dlTimer); _dlTimer = null; }
@@ -4602,12 +4612,19 @@ async function refreshDownloads() {
     const data = await res.json();
     const dls = data.downloads || [];
     if (!dls.length) {
+      // Grace period: keep polling fast for 10s after a download was started
+      // (server may not have registered it yet)
+      if (_dlRecentStart && Date.now() - _dlRecentStart < 10000) {
+        _dlTimer = setTimeout(refreshDownloads, 1000);
+        return;
+      }
       dlEl.innerHTML = ''; _dlPrevAllDone = true; _showManageBadge(false);
       // Keep polling if auto-update may start downloads
       const sel = document.getElementById('auto-update-freq');
       if (sel && sel.value !== 'disabled' && mode === 'manage') _dlTimer = setTimeout(refreshDownloads, 5000);
       return;
     }
+    _dlRecentStart = 0; // clear grace once server reports downloads
     const anyActive = dls.some(d => !d.done);
     const allDone = !anyActive;
     let h = '<div class="manage-card"><h2>' + tH('downloads') + '</h2>';
@@ -4743,7 +4760,7 @@ async function refreshDownloads() {
       } catch(e) {}
     }
     _dlPrevAllDone = allDone;
-    _showManageBadge(anyActive);
+    _showManageBadge(anyActive, dls.filter(d => !d.done).length);
     if (mode === 'manage') {
       // Poll fast while downloads active, slow-poll when auto-update enabled (server may start downloads)
       const sel = document.getElementById('auto-update-freq');
@@ -5719,26 +5736,21 @@ function _renderLangDropdown() {
       '<span>' + esc(l.name) + '</span>' + right + '</div>';
   }
 
-  // Download suggestions: when reading Wikipedia, show for each UI language missing the MAIN encyclopedia
-  // Only count full Wikipedia (name = "wikipedia" or "wikipedia_XX"), not topic subsets like "wikipedia_es_medicine"
+  // Download suggestion: only for the current UI language's Wikipedia, if not installed
   if (inReader && manageEnabled) {
     var isWiki = zimInfo && /^wikipedia/i.test(zimInfo.name || '');
     if (isWiki) {
-      var dlItems = '';
-      for (var di = 0; di < _AVAILABLE_LANGS.length; di++) {
-        var dl = _AVAILABLE_LANGS[di];
+      var dlLang = _AVAILABLE_LANGS.find(function(l) { return l.code === _currentLang; });
+      if (dlLang) {
         var hasMainWiki = (zimsCache || []).some(function(z) {
-          return z.language === dl.code && /^wikipedia(_[a-z]{2,3})?$/i.test(z.name);
+          return z.language === dlLang.code && /^wikipedia(_[a-z]{2,3})?$/i.test(z.name);
         });
         if (!hasMainWiki) {
-          dlItems += '<div class="lang-dropdown-item ld-download" onclick="_langDropdownGetWiki(\'' + dl.code + '\')">' +
-            '<span>' + esc(tH('download_lang_wiki', {lang: dl.name})) + '</span>' +
+          h += '<div class="ld-divider"></div>';
+          h += '<div class="lang-dropdown-item ld-download" onclick="_langDropdownGetWiki(\'' + dlLang.code + '\')">' +
+            '<span>' + esc(tH('download_lang_wiki', {lang: dlLang.name})) + '</span>' +
             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg></div>';
         }
-      }
-      if (dlItems) {
-        h += '<div class="ld-divider"></div>';
-        h += dlItems;
       }
     }
   }

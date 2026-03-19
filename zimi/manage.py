@@ -128,9 +128,24 @@ def handle_manage_get(handler, parsed, params):
 
     if not _srv.ZIMI_MANAGE:
         return handler._json(404, {"error": "Library management is disabled. Set ZIMI_MANAGE=1 to enable."})
-    # Public pre-auth endpoint so UI can check token availability
+    # Public pre-auth endpoints (no Authorization header available)
     if parsed.path == "/manage/has-token":
         return handler._json(200, {"has_token": bool(_get_api_token())})
+    if parsed.path == "/manage/thumb":
+        # Thumbnails are public catalog data; <img> tags can't send Authorization headers
+        url = param("url", "")
+        if not url or not url.startswith("https://library.kiwix.org/"):
+            return handler._json(400, {"error": "invalid thumbnail URL"})
+        data, ct = _srv._fetch_thumb(url)
+        if data is None:
+            return handler._json(502, {"error": "failed to fetch thumbnail"})
+        handler.send_response(200)
+        handler.send_header("Content-Type", ct)
+        handler.send_header("Content-Length", str(len(data)))
+        handler.send_header("Cache-Control", "public, max-age=604800")  # 7 days browser cache
+        handler.end_headers()
+        handler.wfile.write(data)
+        return
     if _check_manage_auth(handler):
         return handler._json(401, {"error": "unauthorized", "needs_password": True})
 
@@ -197,21 +212,6 @@ def handle_manage_get(handler, parsed, params):
 
     elif parsed.path == "/manage/history":
         return handler._json(200, {"history": _srv._load_history()})
-
-    elif parsed.path == "/manage/thumb":
-        url = param("url", "")
-        if not url or not url.startswith("https://library.kiwix.org/"):
-            return handler._json(400, {"error": "invalid thumbnail URL"})
-        data, ct = _srv._fetch_thumb(url)
-        if data is None:
-            return handler._json(502, {"error": "failed to fetch thumbnail"})
-        handler.send_response(200)
-        handler.send_header("Content-Type", ct)
-        handler.send_header("Content-Length", str(len(data)))
-        handler.send_header("Cache-Control", "public, max-age=604800")  # 7 days browser cache
-        handler.end_headers()
-        handler.wfile.write(data)
-        return
 
     else:
         return handler._json(404, {"error": "not found"})
