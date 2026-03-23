@@ -7,8 +7,8 @@ services:
       - "8899:8899"
     volumes:
       - ./zims:/zims
-      - ./zimi-data:/data
+      - ./zimi-config:/config
     environment:
       - ZIM_DIR=/zims
-      - ZIMI_DATA_DIR=/data
+      - ZIMI_DATA_DIR=/config
       - ZIMI_MANAGE=1

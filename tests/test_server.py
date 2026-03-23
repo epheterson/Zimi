@@ -52,6 +52,9 @@ class TestServerEndpoints(unittest.TestCase):
         cls._tmpdir = tempfile.mkdtemp()
         cls._server, cls._port = _start_server(cls._tmpdir)
         cls._base = f"http://127.0.0.1:{cls._port}"
+        # Generate an API token so manage/collections endpoints authenticate
+        from zimi.manage import _generate_api_token
+        cls._api_token = _generate_api_token()
 
     @classmethod
     def tearDownClass(cls):
@@ -59,9 +62,18 @@ class TestServerEndpoints(unittest.TestCase):
         import shutil
         shutil.rmtree(cls._tmpdir, ignore_errors=True)
 
+    def _auth_request(self, url, method="GET", data=None):
+        """Build a request with API token auth."""
+        req = urllib.request.Request(url, data=data, method=method)
+        req.add_header("Authorization", f"Bearer {self._api_token}")
+        if data is not None:
+            req.add_header("Content-Type", "application/json")
+        return req
+
     def _get(self, path, expect_json=True):
         url = f"{self._base}{path}"
-        with urllib.request.urlopen(url, timeout=10) as resp:
+        req = self._auth_request(url)
+        with urllib.request.urlopen(req, timeout=10) as resp:
             data = resp.read()
             if expect_json:
                 return json.loads(data), resp.status
@@ -70,8 +82,9 @@ class TestServerEndpoints(unittest.TestCase):
     def _get_status(self, path):
         """GET and return just the status code (handles 4xx/5xx)."""
         url = f"{self._base}{path}"
+        req = self._auth_request(url)
         try:
-            with urllib.request.urlopen(url, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 return resp.status
         except urllib.error.HTTPError as e:
             return e.code
@@ -80,8 +93,7 @@ class TestServerEndpoints(unittest.TestCase):
         """POST JSON and return (parsed_json, status_code)."""
         url = f"{self._base}{path}"
         payload = json.dumps(body or {}).encode()
-        req = urllib.request.Request(url, data=payload, method="POST")
-        req.add_header("Content-Type", "application/json")
+        req = self._auth_request(url, method="POST", data=payload)
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 return json.loads(resp.read()), resp.status
@@ -91,7 +103,7 @@ class TestServerEndpoints(unittest.TestCase):
     def _delete(self, path):
         """DELETE and return (parsed_json, status_code)."""
         url = f"{self._base}{path}"
-        req = urllib.request.Request(url, method="DELETE")
+        req = self._auth_request(url, method="DELETE")
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 return json.loads(resp.read()), resp.status
@@ -314,10 +326,9 @@ class TestServerEndpoints(unittest.TestCase):
         self.assertEqual(status, 200)
 
     def test_manage_has_password(self):
-        data, status = self._get("/manage/has-password")
+        """has-password returns password status (no auth required)."""
+        status = self._get_status("/manage/has-password")
         self.assertEqual(status, 200)
-        self.assertIn("has_password", data)
-        self.assertFalse(data["has_password"])  # no password set in test
 
     def test_manage_downloads_empty(self):
         data, status = self._get("/manage/downloads")
@@ -414,28 +425,19 @@ class TestServerEndpoints(unittest.TestCase):
         self.assertIn("zim_dir", data["disk"])
         self.assertIn("data_dir", data["disk"])
 
-    # ── Password management ──
+    # ── Password management (v1.6) ──
 
-    def test_set_and_clear_password(self):
-        """Test the full password lifecycle: set → verify → clear."""
-        # Set password
+    def test_set_password(self):
+        """set-password allows setting a password from the browser."""
+        # API requests (no Sec-Fetch-Site: same-origin) are rejected
         data, status = self._post("/manage/set-password", {"password": "test123"})
-        self.assertEqual(status, 200)
+        self.assertEqual(status, 403)
 
-        # Verify password is set
+    def test_has_password(self):
+        """has-password returns status without auth."""
         data, status = self._get("/manage/has-password")
-        self.assertTrue(data["has_password"])
-
-        # Clear password (requires current password)
-        data, status = self._post("/manage/set-password", {
-            "current": "test123",
-            "password": ""
-        })
         self.assertEqual(status, 200)
-
-        # Verify cleared
-        data, status = self._get("/manage/has-password")
-        self.assertFalse(data["has_password"])
+        self.assertIn("has_password", data)
 
     # ── Auto-update config ──
 

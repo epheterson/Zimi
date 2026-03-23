@@ -1,17 +1,42 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
+
+# Environment
 .env
+
+# ZIM data
 zims/
 *.zim
 .zimi_cache.json
+
+# OS
 .DS_Store
-PLAN.md
-RELEASE_DRAFT.md
-CLAUDE.md
-.claude/*.local.md
-.playwright-mcp/
+
+# Build artifacts
 /build/
 /dist/
+*.spec
 *.spec.bak
 Sparkle.framework/
+
+# Node (desktop app deps)
+node_modules/
+package.json
+package-lock.json
+
+# Testing & tooling
+.playwright-mcp/
+screenshots/
+test-results/
+tmp/
+
+# Root-level dev screenshots (don't block images elsewhere)
+/*.png
+/*.jpg
+
+# Working docs (not shipped)
+PLAN.md
+CLAUDE.md
+.claude/*.local.md

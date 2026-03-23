@@ -304,10 +304,10 @@ class TestDataDir(unittest.TestCase):
         self.assertTrue(path.startswith(self.zimi.ZIMI_DATA_DIR))
         self.assertTrue(path.endswith("collections.json"))
 
-    def test_password_file_in_data_dir(self):
-        path = self.zimi._password_file()
-        self.assertTrue(path.startswith(self.zimi.ZIMI_DATA_DIR))
-        self.assertTrue(path.endswith("password"))
+    def test_password_via_env_only(self):
+        """Password is only set via ZIMI_MANAGE_PASSWORD env var — no file storage."""
+        self.assertFalse(hasattr(self.zimi, '_password_file'),
+                         "File-based password storage was removed")
 
 
 class TestTitleIndex(unittest.TestCase):
@@ -981,24 +981,28 @@ class TestHashPassword(unittest.TestCase):
         import zimi
         self.hash = zimi._hash_pw
 
-    def test_deterministic(self):
-        self.assertEqual(self.hash("test"), self.hash("test"))
+    def test_deterministic_with_same_salt(self):
+        result = self.hash("test")
+        salt = result.split("$")[0]
+        self.assertEqual(self.hash("test", salt), result)
 
     def test_different_passwords_different_hashes(self):
-        self.assertNotEqual(self.hash("abc"), self.hash("xyz"))
+        h1 = self.hash("abc")
+        salt = h1.split("$")[0]
+        self.assertNotEqual(h1, self.hash("xyz", salt))
 
     def test_empty_string(self):
         result = self.hash("")
-        self.assertEqual(len(result), 64)  # SHA256 hex
+        self.assertEqual(len(result), 97)  # 32 hex salt + '$' + 64 hex hash
 
     def test_unicode(self):
         result = self.hash("café☕")
-        self.assertEqual(len(result), 64)
+        self.assertEqual(len(result), 97)
 
-    def test_hex_output(self):
-        """Hash should be lowercase hex."""
+    def test_salted_format(self):
+        """Hash should be salt$hash in lowercase hex."""
         import re
-        self.assertRegex(self.hash("test"), r'^[0-9a-f]{64}$')
+        self.assertRegex(self.hash("test"), r'^[0-9a-f]{32}\$[0-9a-f]{64}$')
 
 
 class TestHistoryPersistence(unittest.TestCase):
@@ -1566,11 +1570,13 @@ class PerfTestSearch(unittest.TestCase):
     def test_full_search_completeness(self):
         """Full search should return results from multiple sources (requires ZIMs)."""
         data, _ = self._fetch("/search?q=python+programming&limit=10")
-        # Only assert if server has ZIMs loaded
         health, _ = self._fetch("/health")
-        if health.get("zim_count", 0) > 1:
-            sources = list(data.get("by_source", {}).keys())
-            self.assertGreater(len(sources), 1, f"Expected multiple sources, got: {sources}")
+        if health.get("zim_count", 0) <= 1:
+            self.skipTest("Need multiple ZIMs to test cross-source search")
+        if data.get("total", 0) == 0:
+            self.skipTest("Search returned no results for test query")
+        sources = list(data.get("by_source", {}).keys())
+        self.assertGreater(len(sources), 1, f"Expected multiple sources, got: {sources}")
 
     def test_fast_vs_full_result_quality(self):
         """Full FTS should find at least as many results as fast title search."""

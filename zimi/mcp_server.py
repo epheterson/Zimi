@@ -44,7 +44,7 @@ mcp = FastMCP("zimi", instructions="Search and read articles from offline ZIM kn
 
 
 @mcp.tool()
-def search(query: str, zim: str = "", collection: str = "", limit: int = 5) -> str:
+def search(query: str, zim: str = "", collection: str = "", language: str = "", limit: int = 5) -> str:
     """Full-text search across offline knowledge sources.
 
     Searches Wikipedia, Stack Overflow, dev docs, and other ZIM archives.
@@ -54,6 +54,7 @@ def search(query: str, zim: str = "", collection: str = "", limit: int = 5) -> s
         query: Search query (e.g. "water purification", "Python asyncio")
         zim: Optional — scope to specific source(s), comma-separated (e.g. "wikipedia,stackoverflow")
         collection: Optional — search within a named collection (overrides zim)
+        language: Optional — filter results by language code (e.g. "en", "fr", "de")
         limit: Max results to return (default 5, max 50)
     """
     limit = max(1, min(limit, 50))
@@ -67,6 +68,25 @@ def search(query: str, zim: str = "", collection: str = "", limit: int = 5) -> s
     elif zim:
         parts = [z.strip() for z in zim.split(",") if z.strip()]
         filter_zim = parts if len(parts) > 1 else (parts[0] if parts else None)
+
+    # If language filter, narrow to ZIMs matching that language
+    if language:
+        lang_zims = []
+        for z in (zimi._zim_list_cache or []):
+            if z.get("language") == language:
+                lang_zims.append(z["name"])
+        if not lang_zims:
+            return f"No sources found for language '{language}'."
+        if filter_zim:
+            # Intersect with existing filter
+            if isinstance(filter_zim, str):
+                filter_zim = [filter_zim]
+            filter_zim = [z for z in filter_zim if z in lang_zims] or None
+            if not filter_zim:
+                return f"No matching sources for language '{language}' in the specified scope."
+        else:
+            filter_zim = lang_zims if len(lang_zims) > 1 else lang_zims[0]
+
     with zimi._zim_lock:
         result = zimi.search_all(query, limit=limit, filter_zim=filter_zim)
 
@@ -301,6 +321,156 @@ def manage_favorites(action: str, zim: str) -> str:
             return f"Removed '{zim}' from favorites."
 
     return f"Unknown action '{action}'. Use add or remove."
+
+
+@mcp.tool()
+def article_languages(zim: str, path: str) -> str:
+    """Find available translations for a Wikipedia/Wikimedia article.
+
+    Shows which languages the article is available in, distinguishing between
+    installed ZIMs (can read immediately) and available ones (can be downloaded).
+
+    Args:
+        zim: Source name (e.g. "wikipedia")
+        path: Article path (e.g. "A/Water")
+    """
+    with zimi._zim_lock:
+        result = zimi.get_article_languages(zim, path)
+
+    installed = result.get("languages", [])
+    available = result.get("available", [])
+
+    if not installed and not available:
+        return "No translations found for this article."
+
+    lines = []
+    if installed:
+        lines.append(f"**Installed translations ({len(installed)}):**")
+        for lang in installed:
+            lines.append(f"- {lang['name']} ({lang['lang']}) → read(zim=\"{lang['zim']}\", path=\"{lang['path']}\")")
+    if available:
+        lines.append(f"\n**Available for download ({len(available)}):**")
+        for lang in available:
+            lines.append(f"- {lang['name']} ({lang['lang']})")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def read_with_links(zim: str, path: str, max_length: int = 8000) -> str:
+    """Read an article and show cross-ZIM links found in it.
+
+    Returns article text plus a list of links to other installed ZIM sources.
+    Useful for exploring connections between knowledge sources.
+
+    Args:
+        zim: Source name (e.g. "wikipedia")
+        path: Article path (from search results)
+        max_length: Max characters for article text (default 8000, max 50000)
+    """
+    max_length = max(100, min(max_length, 50000))
+    with zimi._zim_lock:
+        result = zimi.read_article(zim, path, max_length=max_length)
+        if "error" in result:
+            return f"Error: {result['error']}"
+
+        # Get the raw HTML to extract links
+        archive = zimi.get_archive(zim)
+        cross_links = []
+        if archive:
+            try:
+                entry = archive.get_entry_by_path(path)
+                item = entry.get_item()
+                if item.mimetype in ("text/html", "application/xhtml+xml"):
+                    import re
+                    html = bytes(item.content).decode("utf-8", errors="replace")
+                    # Find external links
+                    urls = re.findall(r'href="(https?://[^"]+)"', html)
+                    seen = set()
+                    for url in urls[:100]:
+                        resolved = zimi._resolve_url_to_zim(url)
+                        if resolved and resolved["zim"] != zim:
+                            key = f"{resolved['zim']}/{resolved['path']}"
+                            if key not in seen:
+                                seen.add(key)
+                                cross_links.append(resolved)
+                                if len(cross_links) >= 20:
+                                    break
+            except Exception:
+                pass
+
+    header = f"# {result['title']}\nSource: {result['zim']} / {result['path']}"
+    if result.get("truncated"):
+        header += f"\n(Showing {max_length} of {result['full_length']} chars)"
+
+    output = f"{header}\n\n{result['content']}"
+
+    if cross_links:
+        output += "\n\n---\n**Cross-source links found:**"
+        for link in cross_links:
+            output += f"\n- [{link['zim']}] {link['path']}"
+    return output
+
+
+@mcp.tool()
+def deep_search(query: str, zim: str = "", language: str = "", max_results: int = 3) -> str:
+    """Search and auto-read top results for comprehensive context.
+
+    Performs a search, then reads the top results and returns a synthesized
+    summary with article contents. Ideal for research queries where you need
+    substance, not just titles.
+
+    Args:
+        query: Search query (e.g. "quantum entanglement applications")
+        zim: Optional — scope to specific source(s), comma-separated
+        language: Optional — filter by language code (e.g. "en", "fr")
+        max_results: Number of top results to read (default 3, max 5)
+    """
+    max_results = max(1, min(max_results, 5))
+
+    # Build filter
+    filter_zim = None
+    if zim:
+        parts = [z.strip() for z in zim.split(",") if z.strip()]
+        filter_zim = parts if len(parts) > 1 else (parts[0] if parts else None)
+
+    if language:
+        lang_zims = [z["name"] for z in (zimi._zim_list_cache or []) if z.get("language") == language]
+        if lang_zims:
+            if filter_zim:
+                if isinstance(filter_zim, str):
+                    filter_zim = [filter_zim]
+                filter_zim = [z for z in filter_zim if z in lang_zims] or lang_zims
+            else:
+                filter_zim = lang_zims if len(lang_zims) > 1 else lang_zims[0]
+
+    with zimi._zim_lock:
+        search_result = zimi.search_all(query, limit=max_results * 2, filter_zim=filter_zim)
+
+    items = search_result.get("results", [])
+    if not items:
+        return f"No results found for '{query}'."
+
+    lines = [f"# Deep Search: {query}\n"]
+    lines.append(f"Found {search_result['total']} results. Reading top {min(max_results, len(items))}:\n")
+
+    read_count = 0
+    for r in items:
+        if read_count >= max_results:
+            break
+        with zimi._zim_lock:
+            article = zimi.read_article(r["zim"], r["path"], max_length=4000)
+        if "error" in article:
+            continue
+        read_count += 1
+        lines.append(f"## {read_count}. {article['title']} [{r['zim']}]")
+        lines.append(f"Path: {r['zim']}/{r['path']}")
+        content = article["content"][:3000]
+        lines.append(f"\n{content}\n")
+
+    if read_count == 0:
+        return f"Found results but could not read any articles for '{query}'."
+
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

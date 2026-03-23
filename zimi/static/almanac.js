@@ -2,10 +2,89 @@
 // Lazy-loaded when user clicks the Today card in Discover.
 // _almanacOpen is declared in index.html (shared state).
 
+var JD_UNIX_EPOCH = 2440587.5;
+var JD_J2000 = 2451545.0;
+var MS_PER_DAY = 86400000;
+var JULIAN_CENTURY = 36525;
+var DEG_TO_RAD = Math.PI / 180;
+
+function _dateToJD(ms) { return JD_UNIX_EPOCH + ms / MS_PER_DAY; }
+function _jdToJulianCentury(JD) { return (JD - JD_J2000) / JULIAN_CENTURY; }
+
+var _ALM_LOC_KEY = 'zimi_almanac_location';
+
+function _getLocation() {
+  var stored = localStorage.getItem(_ALM_LOC_KEY);
+  if (stored) {
+    try { var loc = JSON.parse(stored); return { lat: loc.lat, lon: loc.lon, name: loc.name || '' }; } catch(e) {}
+  }
+  return { lat: 34, lon: -new Date().getTimezoneOffset() / 60 * 15, name: '' };
+}
+
+function _saveLocation(lat, lon, name) {
+  var data = { lat: lat, lon: lon };
+  if (name) data.name = name;
+  localStorage.setItem(_ALM_LOC_KEY, JSON.stringify(data));
+}
+
+function _signalDelay(au) {
+  var sec = au * 499;
+  return { h: Math.floor(sec / 3600), m: Math.floor((sec % 3600) / 60) };
+}
+
+function _fmtDuration(h, m) {
+  return h + t('alm_h_abbr') + ' ' + m + t('alm_m_abbr');
+}
+
+// Translation helpers — t() returns the key itself for missing translations,
+// so we must check result !== key to detect misses and fall back to English name.
+function _tLookup(k, fallback) { var v = t(k); return v !== k ? v : fallback; }
+function _tp(name) { return _tLookup('alm_planet_' + name.toLowerCase(), name); }
+function _th(name) { var k = 'alm_hol_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, ''); return _tLookup(k, name); }
+var _CONST_KEYS = {'Pisces':'pisces','Aries':'aries','Taurus':'taurus','Gemini':'gemini','Cancer':'cancer','Leo':'leo','Virgo':'virgo','Libra':'libra','Scorpius':'scorpius','Sagittarius':'sagittarius','Capricornus':'capricornus','Aquarius':'aquarius','Bo\u00f6tes':'bootes','Lyra':'lyra','Perseus':'perseus','Draco':'draco','Orion':'orion','Ursa Minor':'ursa_minor'};
+function _tc(name) { var k = _CONST_KEYS[name]; return k ? _tLookup('alm_const_' + k, name) : name; }
+
+function _dayOfYear(date) {
+  var start = new Date(date.getFullYear(), 0, 1);
+  return Math.floor((date - start) / MS_PER_DAY) + 1;
+}
+
+function _solarB(dayOfYear) { return (dayOfYear - 1) * 2 * Math.PI / 365; }
+
+function _solarDeclination(B) {
+  return 0.006918 - 0.399912 * Math.cos(B) + 0.070257 * Math.sin(B) - 0.006758 * Math.cos(2 * B) + 0.000907 * Math.sin(2 * B) - 0.002697 * Math.cos(3 * B) + 0.00148 * Math.sin(3 * B);
+}
+
+function _eqOfTime(B) {
+  return 229.18 * (0.000075 + 0.001868 * Math.cos(B) - 0.032077 * Math.sin(B) - 0.014615 * Math.cos(2 * B) - 0.04089 * Math.sin(2 * B));
+}
+
 function _almEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 var _almanacOrreryRAF = null;
 var _almanacSkyRAF = null;
+var _activeSkyLoop = null;  // reference to the closure-bound _skyLoop inside _initSkyScene
+
+function _cancelAllRAF() {
+  if (_almanacOrreryRAF) { cancelAnimationFrame(_almanacOrreryRAF); _almanacOrreryRAF = null; }
+  if (_almanacSkyRAF) { cancelAnimationFrame(_almanacSkyRAF); _almanacSkyRAF = null; }
+  if (_tzClockRAF) { cancelAnimationFrame(_tzClockRAF); _tzClockRAF = null; }
+}
+function _resumeAllRAF() {
+  _orreryLastFrame = performance.now();  // prevent time-jump after tab was hidden
+  if (typeof _orreryAnimate === 'function') _orreryAnimate();
+  if (_activeSkyLoop) _almanacSkyRAF = requestAnimationFrame(_activeSkyLoop);
+  if (typeof _startTzClock === 'function') _startTzClock();
+}
+// Pause all animation loops when tab is backgrounded
+document.addEventListener('visibilitychange', function() {
+  if (!_almanacOpen) return;
+  if (document.hidden) {
+    _cancelAllRAF();
+  } else {
+    _resumeAllRAF();
+  }
+});
 var _moonTexImg = new Image();
 var _moonTexLoaded = false;
 _moonTexImg.onload = function() { _moonTexLoaded = true; };
@@ -14,6 +93,7 @@ _moonTexImg.src = '/static/moon.png?v=1';
 
 function _openAlmanacInner(replaceState) {
   _almanacOpen = true;
+  document.body.classList.add('almanac-mode');
   var url = location.pathname + location.search + '#almanac';
   if (replaceState) history.replaceState({ mode: 'almanac' }, '', url);
   else history.pushState({ mode: 'almanac' }, '', url);
@@ -25,17 +105,23 @@ function _openAlmanacInner(replaceState) {
   // Integrate with topbar like manage view
   if (typeof updateTopbar === 'function') updateTopbar();
   var qEl = document.getElementById('q');
-  if (qEl) qEl.placeholder = 'Almanac';
+  if (qEl) qEl.placeholder = t('almanac');
   _renderAlmanacContent();
 }
 
 function closeAlmanac() {
   if (!_almanacOpen) return;
   _almanacOpen = false;
-  if (_almanacOrreryRAF) { cancelAnimationFrame(_almanacOrreryRAF); _almanacOrreryRAF = null; }
-  if (_almanacSkyRAF) { cancelAnimationFrame(_almanacSkyRAF); _almanacSkyRAF = null; }
-  if (_tzClockRAF) { cancelAnimationFrame(_tzClockRAF); _tzClockRAF = null; }
+  document.body.classList.remove('almanac-mode');
+  _cancelAllRAF();
+  _activeSkyLoop = null;
   _almSelectedTz = null;
+  // Reset orrery state
+  _orreryPlaying = true;
+  _orrerySpeed = 100000;
+  _orreryAutoTransit = false;
+  _orreryTimeOffset = 0;
+  _orreryRockets = [];
   document.getElementById('almanac-view').classList.remove('open');
   var mv = document.getElementById('main-view');
   if (mv) mv.classList.remove('hidden');
@@ -46,70 +132,68 @@ function closeAlmanac() {
   _setWindowTitle('Zimi');
   if (typeof updateTopbar === 'function') updateTopbar();
   var qEl = document.getElementById('q');
-  if (qEl) qEl.placeholder = 'Search everything...';
+  if (qEl) qEl.placeholder = t('search_placeholder');
 }
 
 // ── Timezone formatting ──
-function _formatTimezone() {
+function _formatTimezone(lang) {
   try {
-    // Try short timezone name first (e.g., "PST", "EST")
-    var short = new Date().toLocaleTimeString('en-US', { timeZoneName: 'short' });
-    var match = short.match(/[A-Z]{2,5}$/);
-    if (match) return match[0];
-    // Fall back to long name, extract readable part
-    var tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-    // "America/Los_Angeles" → "Los Angeles"
-    var parts = tz.split('/');
-    return parts[parts.length - 1].replace(/_/g, ' ');
+    var loc = lang || ((typeof _currentLang !== 'undefined') ? _currentLang : 'en');
+    // Use locale-aware short timezone name (e.g., "PST" in English, "heure du Pacifique" in French)
+    var fmt = new Intl.DateTimeFormat(loc, { timeZoneName: 'short' });
+    var parts = fmt.formatToParts(new Date());
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].type === 'timeZoneName') return parts[i].value;
+    }
+    return '';
   } catch(e) { return ''; }
 }
 
 function _renderAlmanacContent() {
   var now = new Date();
   var m = _moonPhase(now);
-  var dist = _moonDistance(m.phase);
+  var dist = _moonDistance(now);
   var age = (m.phase * 29.53).toFixed(1);
   var untilNew = ((1 - m.phase) * 29.53).toFixed(1);
 
   var html = '<div class="almanac-inner">';
 
   // Date header
-  var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  var dateStr = days[now.getDay()] + ', ' + months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
-  var timeStr = now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  var tzName = _formatTimezone();
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  var dateStr = now.toLocaleDateString(lang, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  var timeStr = now.toLocaleTimeString(lang, { hour: 'numeric', minute: '2-digit' });
+  var tzName = _formatTimezone(lang);
   html += '<div style="text-align:center;margin-bottom:16px">';
   html += '<div style="font-size:22px;font-weight:600;color:var(--text)">' + dateStr + '</div>';
   html += '<div style="font-size:16px;color:var(--text2);margin-top:4px">' + timeStr + (tzName ? ' &middot; ' + tzName : '') + '</div>';
   html += '</div>';
 
-  // Hero moon
+  // Hero moon — tilted by parallactic angle (how the terminator appears from observer's location)
+  var loc = _getLocation();
+  var moonPos = _moonPosition(now, loc.lat, loc.lon);
+  var moonTilt = moonPos.parallactic || 0;
   html += '<div class="almanac-hero">';
-  html += _renderAlmanacMoon(m);
-  html += '<div class="almanac-moon-name">' + m.name + '</div>';
+  html += _renderAlmanacMoon(m, moonTilt);
+  html += '<div class="almanac-moon-name">' + _localMoonName(m.name) + '</div>';
   html += '</div>';
 
   // Sun + Moon data cards — all below the moon
-  var stored0 = localStorage.getItem('zimi_almanac_location');
-  var lat0 = 34, lon0 = -new Date().getTimezoneOffset() / 60 * 15;
-  if (stored0) { try { var l0 = JSON.parse(stored0); lat0 = l0.lat; lon0 = l0.lon; } catch(e) {} }
-  var sunInfo0 = _computeSunTimes(now, lat0, lon0);
+  var sunInfo0 = _computeSunTimes(now, loc.lat, loc.lon);
 
   // Moon data cards (right under moon hero), then sun data cards (right above sky scene)
   html += '<div class="alm-cards">';
-  html += '<div class="alm-card"><div class="alm-card-lbl">illuminated</div><div class="alm-card-val">' + m.illumination + '%</div></div>';
-  html += '<div class="alm-card"><div class="alm-card-lbl">moon age</div><div class="alm-card-val">' + age + ' days</div></div>';
-  html += '<div class="alm-card"><div class="alm-card-lbl">distance</div><div class="alm-card-val">' + Math.round(dist).toLocaleString() + ' km</div></div>';
-  html += '<div class="alm-card"><div class="alm-card-lbl">new moon</div><div class="alm-card-val">' + untilNew + ' days</div></div>';
+  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_illuminated') + '</div><div class="alm-card-val">' + m.illumination + '%</div></div>';
+  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_moon_age') + '</div><div class="alm-card-val">' + age + ' ' + t('alm_days') + '</div></div>';
+  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_distance') + '</div><div class="alm-card-val">' + Math.round(dist).toLocaleString() + ' ' + t('alm_km') + '</div></div>';
+  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_new_moon') + '</div><div class="alm-card-val">' + untilNew + ' ' + t('alm_days') + '</div></div>';
   if (sunInfo0.polar) {
     html += '<div class="alm-card" style="grid-column:span 4"><div class="alm-card-val">' + sunInfo0.polar + '</div></div>';
   } else {
-    html += '<div class="alm-card"><div class="alm-card-lbl">sunrise</div><div class="alm-card-val">' + sunInfo0.sunrise + '</div></div>';
-    html += '<div class="alm-card"><div class="alm-card-lbl">sunset</div><div class="alm-card-val">' + sunInfo0.sunset + '</div></div>';
-    html += '<div class="alm-card"><div class="alm-card-lbl">daylight</div><div class="alm-card-val">' + sunInfo0.dayLength + '</div></div>';
+    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_sunrise') + '</div><div class="alm-card-val">' + sunInfo0.sunrise + '</div></div>';
+    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_sunset') + '</div><div class="alm-card-val">' + sunInfo0.sunset + '</div></div>';
+    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_daylight') + '</div><div class="alm-card-val">' + sunInfo0.dayLength + '</div></div>';
     if (sunInfo0.goldenHour) {
-      html += '<div class="alm-card"><div class="alm-card-lbl">golden hour</div><div class="alm-card-val" style="color:#d4aa64">' + sunInfo0.goldenHour + '</div></div>';
+      html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_golden') + '</div><div class="alm-card-val" style="color:#d4aa64">' + sunInfo0.goldenHour + '</div></div>';
     }
   }
   html += '</div>';
@@ -123,43 +207,69 @@ function _renderAlmanacContent() {
 
   // Orrery
   html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">Solar System</div>';
+  html += '<div class="almanac-section-title">' + t('alm_solar_system') + '</div>';
   html += '<div class="almanac-orrery-wrap"><canvas id="almanac-orrery"></canvas></div>';
+  html += '<div class="orrery-controls">';
+  // Bidirectional speed slider: left = rewind, center = 1×, right = fast forward
+  html += '<span class="orrery-speed-end">◀</span>';
+  html += '<input id="orrery-slider" type="range" min="-80" max="80" value="50" class="orrery-slider" oninput="_orrerySliderInput(this.value)" />';
+  html += '<span class="orrery-speed-end">▶</span>';
+  html += '<span id="orrery-speed-label" class="orrery-speed-label">100K× ▶</span>';
+  html += '<span id="orrery-date" class="orrery-date"></span>';
+  html += '<button id="orrery-now" class="orrery-ctrl-btn orrery-now" onclick="_orrerySnapToNow()" title="' + t('alm_back_to_now') + '" style="display:none">' + t('alm_now') + '</button>';
+  html += '</div>';
+  // Transit slider — appears when a rocket is in flight (aligned with main controls)
+  html += '<div id="orrery-transit-wrap" class="orrery-transit-wrap">';
+  html += '<span class="orrery-transit-end">' + t('alm_transit') + '</span>';
+  html += '<input id="orrery-transit-slider" type="range" min="0" max="1000" value="0" class="orrery-slider" style="flex:1" oninput="_orreryTransitSlider(this.value)" />';
+  html += '<span id="orrery-transit-label" class="orrery-transit-label"></span>';
+  html += '</div>';
+  // Missions panel — inline with controls
+  html += '<div id="orrery-missions" style="display:none;margin-top:4px;font-size:11px;color:var(--text3)"></div>';
+  // Voyager detail card — appears on click
+  html += '<div id="voyager-card" style="display:none"></div>';
   html += '</div>';
 
   // Tonight's sky — planet visibility
   html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">Tonight\u2019s Sky</div>';
+  html += '<div class="almanac-section-title">' + t('alm_tonights_sky') + '</div>';
   html += '<div id="almanac-tonight"></div>';
   html += '</div>';
 
   // Meteor showers
   html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">Meteor Showers</div>';
+  html += '<div class="almanac-section-title">' + t('alm_meteor_showers') + '</div>';
   html += '<div id="almanac-meteors"></div>';
   html += '</div>';
 
   // Celestial events — conjunctions, oppositions
   html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">Celestial Events</div>';
+  html += '<div class="almanac-section-title">' + t('alm_celestial_events') + '</div>';
   html += '<div id="almanac-events"></div>';
   html += '</div>';
 
   // Astro data
   html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">Astronomical Data</div>';
+  html += '<div class="almanac-section-title">' + t('alm_astro_data') + '</div>';
   html += '<div id="almanac-astro"></div>';
   html += '</div>';
 
   // Deep time
   html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">Deep Time</div>';
+  html += '<div class="almanac-section-title">' + t('alm_deep_time') + '</div>';
   html += '<div id="almanac-deeptime"></div>';
   html += '</div>';
 
+  // Messages Across Time — enduring inscriptions in every language
+  html += '<div class="almanac-section">';
+  html += '<div class="almanac-section-title">' + t('alm_messages_across_time') + '</div>';
+  html += '<div id="almanac-rosetta"></div>';
+  html += '</div>';
+
+
   // Footer
   html += '<div style="margin-top:40px;text-align:center;font-size:11px;color:var(--text3)">' +
-    'All calculations are math-driven and work offline forever.' +
+    t('alm_footer') +
     '</div>';
 
   html += '</div>';
@@ -172,42 +282,80 @@ function _renderAlmanacContent() {
   _renderMeteorShowers(now, m);
   _renderCelestialEvents(now);
   _renderDeepTime(now);
+  _renderRosettaStone(now);
   _initOrrery();
+  // Start orrery at 100K× so planets visibly orbit on load
+  _orreryLastFrame = performance.now();
+  _orreryAnimate();
   _loadSunData(now);
   _startTzClock();
+  _cacheAlmanacHighlights(now, m);
+}
+
+// Cache computed almanac highlights for the Today discover card.
+// Next time _todayTeaser() runs (in index.html), it picks up this richer data.
+function _cacheAlmanacHighlights(now, moon) {
+  try {
+    var highlights = [];
+    var y = now.getFullYear(), mm = now.getMonth(), dd = now.getDate();
+    // Meteor showers — next peak within 10 days
+    for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
+      var s = _METEOR_SHOWERS[si];
+      var peak = new Date(y, s.peak[0]-1, s.peak[1]);
+      if (peak < now) peak = new Date(y+1, s.peak[0]-1, s.peak[1]);
+      var days = Math.ceil((peak - now) / MS_PER_DAY);
+      if (days <= 10) highlights.push({ type: 'meteor', name: s.name, days: days, zhr: s.zhr, priority: days === 0 ? 0 : days });
+    }
+    // Eclipses — check rendered eclipse elements for upcoming dates
+    var eclipseEl = document.getElementById('almanac-events');
+    if (eclipseEl) {
+      var eclRows = eclipseEl.querySelectorAll('.almanac-eclipse-type');
+      for (var ei = 0; ei < Math.min(3, eclRows.length); ei++) {
+        var untilEl = eclRows[ei].closest('.almanac-eclipse-row');
+        if (untilEl) {
+          var untilSpan = untilEl.querySelector('.almanac-eclipse-until');
+          highlights.push({ type: 'eclipse', name: eclRows[ei].textContent, until: untilSpan ? untilSpan.textContent : '', priority: 5 + ei });
+        }
+      }
+    }
+    // Calendar events today
+    var calEvents = document.querySelectorAll('#almanac-calendar .cal-holiday, #almanac-calendar .cal-event');
+    var todayEvents = [];
+    calEvents.forEach(function(ev) {
+      var dayCell = ev.closest('.cal-day');
+      if (dayCell) {
+        var dayNum = parseInt(dayCell.querySelector('.cal-day-num')?.textContent);
+        if (dayNum === dd) todayEvents.push(ev.getAttribute('title') || ev.textContent);
+      }
+    });
+    if (todayEvents.length > 0) highlights.push({ type: 'holiday', name: todayEvents[0], days: 0, priority: -1 });
+    // Sort by priority (lower = more interesting)
+    highlights.sort(function(a, b) { return a.priority - b.priority; });
+    // Cache top 3
+    var today = now.toISOString().substring(0, 10);
+    localStorage.setItem('zimi_almanac_highlights', JSON.stringify({ date: today, items: highlights.slice(0, 3) }));
+  } catch(e) { /* non-critical */ }
 }
 
 // ── Moon rendering ──
 
-function _renderAlmanacMoon(m) {
-  var litColor = '#e8e0d0', darkColor = '#0a0e1a';
+// Almanac hero moon — delegates to shared _renderMoonHTML (defined in index.html)
+// Adds the almanac-specific glow wrapper
+function _renderAlmanacMoon(m, tiltDeg) {
   var illumFrac = m.illumination / 100;
-  var leftColor, rightColor, overlayColor, overlayScaleX;
-  if (m.phase <= 0.25) {
-    leftColor = darkColor; rightColor = litColor;
-    overlayColor = darkColor; overlayScaleX = 1 - illumFrac * 2;
-  } else if (m.phase <= 0.5) {
-    leftColor = darkColor; rightColor = litColor;
-    overlayColor = litColor; overlayScaleX = (illumFrac - 0.5) * 2;
-  } else if (m.phase <= 0.75) {
-    leftColor = litColor; rightColor = darkColor;
-    overlayColor = litColor; overlayScaleX = (illumFrac - 0.5) * 2;
-  } else {
-    leftColor = litColor; rightColor = darkColor;
-    overlayColor = darkColor; overlayScaleX = 1 - illumFrac * 2;
-  }
-  var glowOpacity = (illumFrac * 0.3 + 0.05).toFixed(2);
-  return '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + glowOpacity + ') 0%, transparent 70%)"></div>' +
-    '<div class="almanac-moon">' +
-    '<div class="dc-moon-half left" style="background:' + leftColor + '"></div>' +
-    '<div class="dc-moon-half right" style="background:' + rightColor + '"></div>' +
-    '<div class="dc-moon-term" style="background:' + overlayColor + ';transform:scaleX(' + overlayScaleX.toFixed(3) + ')"></div>' +
-    '<div class="almanac-moon-texture" style="background:url(\'/static/moon.png?v=1\') center/cover;mix-blend-mode:soft-light;opacity:1"></div>' +
-    '</div>';
+  var glowOpacity = (illumFrac * 0.15 + 0.02).toFixed(2);
+  return '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + glowOpacity + ') 0%, transparent 65%)"></div>' +
+    _renderMoonHTML(m, 'almanac-moon', tiltDeg, 1.0);
 }
 
-function _moonDistance(phase) {
-  return 384400 - 25150 * Math.cos(phase * 4 * Math.PI);
+function _moonDistance(date) {
+  // Distance from Moon's mean anomaly (anomalistic period 27.55d, independent of phase)
+  var JD = _dateToJD(date.getTime());
+  var T = _jdToJulianCentury(JD);
+  var M = (134.9634 + 477198.8676 * T) % 360;
+  var Mrad = M * DEG_TO_RAD;
+  // Truncated Meeus series: mean + 1st + 2nd harmonic
+  return 385001 - 20905 * Math.cos(Mrad) - 3699 * Math.cos(2 * Mrad);
 }
 
 // ── Orrery: JPL Keplerian elements (J2000 epoch) ──
@@ -223,6 +371,18 @@ var _PLANETS = {
   Uranus:  { a: 19.1884, e: 0.04638, I: 0.773, L: 314.055, LP: 173.005, N: 74.006, da: -0.00002, de: -0.00002, dI: -0.0023, dL: 428.467, dLP: 0.009, dN: 0.074, color: '#78c8c8', glow: '#a0e8e8', vr: 0.018 },
   Neptune: { a: 30.0699, e: 0.00895, I: 1.770, L: 304.223, LP: 46.682, N: 131.784, da: 0.00003, de: 0.00001, dI: 0.0001, dL: 218.460, dLP: 0.010, dN: -0.005, color: '#3868c8', glow: '#5888f0', vr: 0.016 }
 };
+
+// ── Voyager probes — hyperbolic escape trajectories ──
+var _VOYAGERS = [
+  { name: 'Voyager 1', launch: Date.UTC(1977, 8, 5), refEpoch: Date.UTC(2025, 0, 1), refDist: 164.0, vel: 3.59, lon: 260.5 },
+  { name: 'Voyager 2', launch: Date.UTC(1977, 7, 20), refEpoch: Date.UTC(2025, 0, 1), refDist: 137.0, vel: 3.25, lon: 296.2 }
+];
+var _voyagerPositions = []; // [{name, x, y, r, dist, idx}] in CSS pixels
+
+function _voyagerDist(v, simTime) {
+  var yearsFromRef = (simTime - v.refEpoch) / (365.25 * MS_PER_DAY);
+  return Math.max(0, v.refDist + v.vel * yearsFromRef);
+}
 
 function _solveKepler(M, e) {
   var E = M;
@@ -241,11 +401,11 @@ function _planetPosition(name, T) {
   var L = (p.L + p.dL * T) % 360;
   var LP = (p.LP + p.dLP * T) % 360;
   var M = ((L - LP) % 360 + 360) % 360;
-  var Mrad = M * Math.PI / 180;
+  var Mrad = M * DEG_TO_RAD;
   var E = _solveKepler(Mrad, e);
   var xp = a * (Math.cos(E) - e);
   var yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
-  var LPrad = LP * Math.PI / 180;
+  var LPrad = LP * DEG_TO_RAD;
   var x = xp * Math.cos(LPrad) - yp * Math.sin(LPrad);
   var y = xp * Math.sin(LPrad) + yp * Math.cos(LPrad);
   return { x: x, y: y, r: Math.sqrt(x * x + y * y) };
@@ -264,6 +424,11 @@ function _initOrrery() {
   canvas.style.width = w + 'px';
   canvas.style.height = w + 'px';
   canvas.style.borderRadius = '12px';
+  // Cache DOM refs for RAF loop (avoids getElementById per frame)
+  _orreryCanvas = canvas;
+  _orreryDpr = dpr;
+  _orrerySpeedLabel = document.getElementById('orrery-speed-label');
+  _orrerySliderEl = document.getElementById('orrery-slider');
   _drawOrrery(canvas, dpr);
 
   // Hover tooltip for planet names
@@ -275,25 +440,100 @@ function _initOrrery() {
     wrap.style.position = 'relative';
     wrap.appendChild(tooltip);
   }
-  canvas.onmousemove = function(e) {
-    var rect = canvas.getBoundingClientRect();
-    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    var hit = null;
+  // Helper: find hit target (planet or voyager) at mouse position
+  function _orreryHitTest(mx, my, tolerance) {
     for (var i = 0; i < _orreryPlanetPositions.length; i++) {
       var p = _orreryPlanetPositions[i];
       var dx = mx - p.x, dy = my - p.y;
-      if (dx * dx + dy * dy < (p.r + 8) * (p.r + 8)) { hit = p; break; }
+      if (dx * dx + dy * dy < (p.r + tolerance) * (p.r + tolerance)) return { type: 'planet', data: p };
     }
-    if (hit) {
-      tooltip.textContent = hit.name;
+    for (var i = 0; i < _voyagerPositions.length; i++) {
+      var v = _voyagerPositions[i];
+      var dx = mx - v.x, dy = my - v.y;
+      if (dx * dx + dy * dy < (v.r + tolerance + 6) * (v.r + tolerance + 6)) return { type: 'voyager', data: v };
+    }
+    return null;
+  }
+
+  canvas.onmousemove = function(e) {
+    var rect = canvas.getBoundingClientRect();
+    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    var hit = _orreryHitTest(mx, my, 8);
+    if (hit && hit.type === 'planet') {
+      var label = _tp(hit.data.name);
+      if (hit.data.name !== 'Earth') {
+        var days = Math.round(_hohmannDays(_PLANETS['Earth'].a, _PLANETS[hit.data.name].a));
+        if (days < 365) label += ' · ' + t('alm_transfer_days', { n: days });
+        else label += ' · ' + t('alm_transfer_years', { n: (days / 365.25).toFixed(1) });
+      }
+      tooltip.textContent = label;
       tooltip.style.display = 'block';
-      tooltip.style.left = (hit.x + hit.r + 8) + 'px';
-      tooltip.style.top = (hit.y - 10) + 'px';
+      tooltip.style.left = (hit.data.x + hit.data.r + 8) + 'px';
+      tooltip.style.top = (hit.data.y - 10) + 'px';
+      canvas.style.cursor = hit.data.name !== 'Earth' ? 'pointer' : 'default';
+    } else if (hit && hit.type === 'voyager') {
+      var d = hit.data.dist;
+      var sig = _signalDelay(d);
+      tooltip.textContent = hit.data.name + ' · ' + d.toFixed(1) + ' AU · ' + _fmtDuration(sig.h, sig.m) + ' ' + t('alm_signal_delay');
+      tooltip.style.display = 'block';
+      tooltip.style.left = (hit.data.x + hit.data.r + 8) + 'px';
+      tooltip.style.top = (hit.data.y - 10) + 'px';
+      canvas.style.cursor = 'pointer';
     } else {
       tooltip.style.display = 'none';
+      canvas.style.cursor = 'default';
     }
   };
   canvas.onmouseleave = function() { tooltip.style.display = 'none'; };
+
+  // Click planet to launch rocket, or Voyager to show detail card
+  canvas.onclick = function(e) {
+    var rect = canvas.getBoundingClientRect();
+    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    var hit = _orreryHitTest(mx, my, 10);
+    if (hit && hit.type === 'planet' && hit.data.name !== 'Earth') {
+      _orreryLaunchRocket(hit.data.name);
+      tooltip.style.display = 'none';
+    } else if (hit && hit.type === 'voyager') {
+      _showVoyagerCard(hit.data.idx);
+      tooltip.style.display = 'none';
+    } else {
+      _hideVoyagerCard();
+    }
+  };
+
+  // Touch support for mobile — tap planet to launch, tap Voyager for detail
+  canvas.addEventListener('touchend', function(e) {
+    if (e.changedTouches.length === 0) return;
+    var touch = e.changedTouches[0];
+    var rect = canvas.getBoundingClientRect();
+    var mx = touch.clientX - rect.left, my = touch.clientY - rect.top;
+    var hit = _orreryHitTest(mx, my, 14);
+    if (hit && hit.type === 'planet') {
+      e.preventDefault();
+      _orreryLaunchRocket(hit.data.name);
+    } else if (hit && hit.type === 'voyager') {
+      e.preventDefault();
+      _showVoyagerCard(hit.data.idx);
+    }
+  });
+
+  // Initial date display
+  _orreryUpdateDate();
+}
+
+// Pre-computed orrery background stars (computed once, not per frame)
+var _orreryBgStars = null;
+function _ensureOrreryStars(W, dpr) {
+  if (_orreryBgStars && _orreryBgStars.W === W) return _orreryBgStars.stars;
+  var ss = 73;
+  function sr() { ss = (ss * 16807) % 2147483647; return ss / 2147483647; }
+  var stars = [];
+  for (var i = 0; i < 40; i++) {
+    stars.push({ x: sr() * W, y: sr() * W, b: 0.03 + sr() * 0.06, r: (0.3 + sr() * 0.4) * dpr });
+  }
+  _orreryBgStars = { W: W, stars: stars };
+  return stars;
 }
 
 // Orbit radii as fraction of canvas half-width (max ~0.46 to fit within square)
@@ -307,9 +547,9 @@ function _drawOrrery(canvas, dpr) {
   var W = canvas.width;
   var cx = W / 2, cy = W / 2;
 
-  var now = new Date();
-  var JD = 2440587.5 + now.getTime() / 86400000;
-  var T = (JD - 2451545.0) / 36525;
+  var simTime = Date.now() + _orreryTimeOffset;
+  var JD = _dateToJD(simTime);
+  var T = _jdToJulianCentury(JD);
 
   ctx.clearRect(0, 0, W, W);
 
@@ -317,15 +557,13 @@ function _drawOrrery(canvas, dpr) {
   ctx.fillStyle = '#0a0a0b';
   ctx.fillRect(0, 0, W, W);
 
-  // Background stars — very faint
-  var _ss = 73;
-  function _sr() { _ss = (_ss * 16807) % 2147483647; return _ss / 2147483647; }
-  for (var si = 0; si < 40; si++) {
-    var sx = _sr() * W, sy = _sr() * W;
-    var sb = 0.03 + _sr() * 0.06;
+  // Background stars — pre-computed positions, drawn every frame
+  var bgStars = _ensureOrreryStars(W, dpr);
+  for (var si = 0; si < bgStars.length; si++) {
+    var st = bgStars[si];
     ctx.beginPath();
-    ctx.arc(sx, sy, (0.3 + _sr() * 0.4) * dpr, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,' + sb.toFixed(3) + ')';
+    ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,' + st.b.toFixed(3) + ')';
     ctx.fill();
   }
 
@@ -470,66 +708,818 @@ function _drawOrrery(canvas, dpr) {
     // No labels — clean Apple Watch aesthetic, hover tooltip on desktop
   }
 
+  // ── Voyager probes — tiny amber diamonds beyond Neptune ──
+  _voyagerPositions = [];
+  for (var vi = 0; vi < _VOYAGERS.length; vi++) {
+    var v = _VOYAGERS[vi];
+    var dist = _voyagerDist(v, simTime);
+    if (dist <= 0) continue; // pre-launch
+    var angle = v.lon * DEG_TO_RAD;
+    // Visual radius scales with distance (log-compressed so it stays on canvas)
+    var visR = Math.min(0.46, 0.44 + 0.02 * Math.log(Math.max(1, dist / 30.07))) * W;
+    var vx = cx + Math.cos(angle) * visR;
+    var vy = cy + Math.sin(angle) * visR;
+    var vs = 2.5 * dpr;
+    // Subtle amber glow
+    var vGlow = ctx.createRadialGradient(vx, vy, 0, vx, vy, vs * 4);
+    vGlow.addColorStop(0, 'rgba(255,180,60,0.15)');
+    vGlow.addColorStop(1, 'transparent');
+    ctx.fillStyle = vGlow;
+    ctx.beginPath(); ctx.arc(vx, vy, vs * 4, 0, Math.PI * 2); ctx.fill();
+    // Diamond shape (rotated square)
+    ctx.save();
+    ctx.translate(vx, vy);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = '#ffb83c';
+    ctx.fillRect(-vs, -vs, vs * 2, vs * 2);
+    ctx.restore();
+    // Small label
+    ctx.font = (8 * dpr) + 'px -apple-system, system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,184,60,0.5)';
+    ctx.textAlign = 'left';
+    ctx.fillText('V' + (vi + 1), vx + vs * 2.5, vy + vs * 0.5);
+    _voyagerPositions.push({ name: v.name, x: vx / dpr, y: vy / dpr, r: vs * 1.5 / dpr, dist: dist, idx: vi });
+  }
+
+  // ── Draw Hohmann transfer orbits + rockets (supports multiple simultaneous) ──
+  for (var ri = 0; ri < _orreryRockets.length; ri++) {
+    var rk = _orreryRockets[ri];
+    var progress = Math.min(1, rk.elapsed / rk.duration);
+
+    // Angular sweep
+    var angSweep = rk.arrivalAngle - rk.launchAngle;
+    if (rk.outbound) {
+      while (angSweep <= 0) angSweep += 2 * Math.PI;
+    } else {
+      while (angSweep >= 0) angSweep -= 2 * Math.PI;
+    }
+
+    // Smooth visual-space path: cosine-eased radius between orbits.
+    // The orrery uses compressed distances, so a physical Kepler ellipse looks
+    // warped. Instead, interpolate directly in visual space with cosine easing
+    // (tangent to both orbits at endpoints — matches real Hohmann geometry).
+    var earthVisR = _ORBIT_VIS['Earth'] * W;
+    var targetVisR = _ORBIT_VIS[rk.target] * W;
+    var _rocketPoint = (function(angSweep, rk, earthVisR, targetVisR, cx, cy) {
+      return function(frac) {
+        var angle = rk.launchAngle + frac * angSweep;
+        var t = 0.5 - 0.5 * Math.cos(frac * Math.PI);
+        var vr = earthVisR + (targetVisR - earthVisR) * t;
+        return { x: cx + Math.cos(angle) * vr, y: cy - Math.sin(angle) * vr };
+      };
+    })(angSweep, rk, earthVisR, targetVisR, cx, cy);
+
+    // Draw transfer path (fades after arrival)
+    var pathAlpha = (rk.pathFade !== undefined ? rk.pathFade : 1) * 0.18;
+    if (pathAlpha > 0.001) {
+      ctx.save();
+      ctx.setLineDash([4 * dpr, 6 * dpr]);
+      ctx.strokeStyle = 'rgba(255,180,60,' + pathAlpha.toFixed(3) + ')';
+      ctx.lineWidth = 1 * dpr;
+      ctx.beginPath();
+      for (var ai = 0; ai <= 80; ai++) {
+        var pt = _rocketPoint(ai / 80);
+        if (ai === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // In-flight rocket
+    if (!rk.arrived) {
+      var rp = _rocketPoint(progress);
+      var rkX = rp.x, rkY = rp.y;
+
+      // Trail
+      rk.trail.push({ x: rkX, y: rkY, age: 0 });
+      for (var ti = rk.trail.length - 1; ti >= 0; ti--) {
+        rk.trail[ti].age++;
+        if (rk.trail[ti].age > 80) rk.trail.splice(ti, 1);
+      }
+      for (var ti = 0; ti < rk.trail.length; ti++) {
+        var dot = rk.trail[ti];
+        var tAlpha = (1 - dot.age / 80) * 0.55;
+        var tR2 = (1 - dot.age / 80) * 2.5 * dpr;
+        ctx.beginPath(); ctx.arc(dot.x, dot.y, tR2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,180,60,' + tAlpha.toFixed(3) + ')';
+        ctx.fill();
+      }
+
+      // Heading
+      var rpPrev = _rocketPoint(Math.max(0, progress - 0.005));
+      var hdx = rkX - rpPrev.x, hdy = rkY - rpPrev.y;
+      var heading = Math.atan2(-hdy, hdx);
+
+      // Exhaust glow
+      var exBX = rkX - Math.cos(heading) * 6 * dpr;
+      var exBY = rkY + Math.sin(heading) * 6 * dpr;
+      var exGlow = ctx.createRadialGradient(exBX, exBY, 0, exBX, exBY, 10 * dpr);
+      exGlow.addColorStop(0, 'rgba(255,200,80,0.35)');
+      exGlow.addColorStop(0.5, 'rgba(255,140,40,0.12)');
+      exGlow.addColorStop(1, 'transparent');
+      ctx.fillStyle = exGlow;
+      ctx.beginPath(); ctx.arc(exBX, exBY, 10 * dpr, 0, Math.PI * 2); ctx.fill();
+
+      // Rocket body + flame
+      ctx.save();
+      ctx.translate(rkX, rkY);
+      ctx.rotate(-heading + Math.PI / 2);
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(0, -5 * dpr);
+      ctx.lineTo(-2.2 * dpr, 3.5 * dpr);
+      ctx.lineTo(2.2 * dpr, 3.5 * dpr);
+      ctx.closePath();
+      ctx.fill();
+      var flameLen = (7 + Math.random() * 4) * dpr;
+      ctx.fillStyle = 'rgba(255,160,40,0.85)';
+      ctx.beginPath();
+      ctx.moveTo(-1.5 * dpr, 3.5 * dpr); ctx.lineTo(0, flameLen); ctx.lineTo(1.5 * dpr, 3.5 * dpr);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,240,180,0.6)';
+      ctx.beginPath();
+      ctx.moveTo(-0.8 * dpr, 3.5 * dpr); ctx.lineTo(0, flameLen * 0.6); ctx.lineTo(0.8 * dpr, 3.5 * dpr);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+
+      // Transit label (only for the newest in-flight rocket)
+      if (ri === _orreryRockets.length - 1 && progress > 0.05 && progress < 0.95) {
+        var daysElapsed = Math.round(rk.elapsed / MS_PER_DAY);
+        var totalDays = Math.round(rk.duration / MS_PER_DAY);
+        ctx.font = (10 * dpr) + 'px -apple-system, system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(255,200,100,0.6)';
+        ctx.textAlign = 'left';
+        ctx.fillText(daysElapsed + 'd / ' + totalDays + 'd', rkX + 10 * dpr, rkY + 4 * dpr);
+      }
+    }
+
+    // Arrived — orbiting target planet
+    if (rk.arrived) {
+      var targetPos = null;
+      for (var pi = 0; pi < _orreryPlanetPositions.length; pi++) {
+        if (_orreryPlanetPositions[pi].name === rk.target) { targetPos = _orreryPlanetPositions[pi]; break; }
+      }
+      if (targetPos) {
+        var tpx = targetPos.x * dpr, tpy = targetPos.y * dpr;
+        var glowColor = _PLANETS[rk.target] ? _PLANETS[rk.target].glow : '#ffffff';
+
+        if (rk.arrivalGlow > 0) {
+          var glowR = (targetPos.r * dpr + 25 * dpr) * rk.arrivalGlow;
+          ctx.beginPath(); ctx.arc(tpx, tpy, glowR * 0.8, 0, Math.PI * 2);
+          ctx.strokeStyle = _hexToRgba(glowColor, 0.4 * rk.arrivalGlow);
+          ctx.lineWidth = 2 * dpr; ctx.stroke();
+          var arrGlow = ctx.createRadialGradient(tpx, tpy, targetPos.r * dpr * 0.5, tpx, tpy, glowR);
+          arrGlow.addColorStop(0, _hexToRgba(glowColor, 0.5 * rk.arrivalGlow));
+          arrGlow.addColorStop(0.4, _hexToRgba(glowColor, 0.2 * rk.arrivalGlow));
+          arrGlow.addColorStop(1, 'transparent');
+          ctx.fillStyle = arrGlow;
+          ctx.beginPath(); ctx.arc(tpx, tpy, glowR, 0, Math.PI * 2); ctx.fill();
+          for (var si = 0; si < 8; si++) {
+            var sa = (si / 8) * Math.PI * 2 + rk.arrivalGlow * 3;
+            var sd = glowR * (0.5 + 0.5 * rk.arrivalGlow);
+            ctx.beginPath(); ctx.arc(tpx + Math.cos(sa) * sd, tpy + Math.sin(sa) * sd, 1.5 * dpr * rk.arrivalGlow, 0, Math.PI * 2);
+            ctx.fillStyle = _hexToRgba(glowColor, 0.6 * rk.arrivalGlow); ctx.fill();
+          }
+        }
+
+        // Rocket orbits the planet — small circular orbit, no flame
+        var orbitDist = (targetPos.r * dpr + 8 * dpr);
+        var orbAngle = rk.orbitAngle || 0;
+        var orbX = tpx + Math.cos(orbAngle) * orbitDist;
+        var orbY = tpy + Math.sin(orbAngle) * orbitDist;
+
+        ctx.beginPath(); ctx.arc(tpx, tpy, orbitDist, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.lineWidth = 0.5 * dpr; ctx.stroke();
+
+        var orbHeading = orbAngle + Math.PI / 2;
+        ctx.save();
+        ctx.translate(orbX, orbY);
+        ctx.rotate(-orbHeading + Math.PI / 2);
+        ctx.fillStyle = '#ddd';
+        ctx.beginPath();
+        ctx.moveTo(0, -4 * dpr);
+        ctx.lineTo(-1.8 * dpr, 3 * dpr);
+        ctx.lineTo(1.8 * dpr, 3 * dpr);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
+}
+
+// ── Orrery time controls & rocket easter egg ──
+
+var _orreryPlaying = true;
+var _orrerySpeed = 100000;
+var _orreryTimeOffset = 0;       // milliseconds offset from real time
+var _orreryLastFrame = 0;        // last rAF timestamp
+var _orreryRockets = [];         // all rocket missions (in-flight + orbiting)
+var _orreryAutoTransit = false;  // true when rocket launch controls speed profile
+var _orreryCanvas = null;        // cached DOM refs for RAF loop
+var _orrerySpeedLabel = null;
+var _orrerySliderEl = null;
+var _orreryDpr = 1;
+
+// Hohmann transfer transit time in days
+// Half-period of transfer ellipse: t = (T/2) where T = a^(3/2) years (Kepler's 3rd law)
+function _hohmannDays(r1, r2) {
+  return (365.25 / 2) * Math.pow((r1 + r2) / 2, 1.5);
+}
+
+// AU → visual radius mapping: monotone cubic Hermite (Fritsch-Carlson) through
+// planet data points. Smooth C1 curve with no kinks at planet boundaries, while
+// preserving exact planet positions and guaranteeing monotonicity (no overshoot).
+var _AU_VIS_X = [0, 0.387, 0.723, 1.000, 1.524, 5.203, 9.555, 19.19, 30.07];
+var _AU_VIS_Y = [0, 0.06,  0.10,  0.14,  0.19,  0.27,  0.34,  0.41,  0.47 ];
+
+// Precompute Fritsch-Carlson monotone tangents + cubic coefficients
+var _AU_VIS_C = (function() {
+  var n = _AU_VIS_X.length;
+  var dx = [], dy = [], m = [], t = [];
+  for (var i = 0; i < n - 1; i++) {
+    dx[i] = _AU_VIS_X[i + 1] - _AU_VIS_X[i];
+    dy[i] = (_AU_VIS_Y[i + 1] - _AU_VIS_Y[i]) / dx[i];
+  }
+  // Tangents at each point
+  t[0] = dy[0];
+  for (var i = 1; i < n - 1; i++) {
+    if (dy[i - 1] * dy[i] <= 0) { t[i] = 0; }
+    else { t[i] = (dy[i - 1] + dy[i]) / 2; }
+  }
+  t[n - 1] = dy[n - 2];
+  // Fritsch-Carlson: clamp tangents for monotonicity
+  for (var i = 0; i < n - 1; i++) {
+    if (Math.abs(dy[i]) < 1e-12) { t[i] = t[i + 1] = 0; continue; }
+    var a = t[i] / dy[i], b = t[i + 1] / dy[i];
+    var s = a * a + b * b;
+    if (s > 9) { var tau = 3 / Math.sqrt(s); t[i] = tau * a * dy[i]; t[i + 1] = tau * b * dy[i]; }
+  }
+  // Cubic Hermite coefficients per segment: c0 + c1*u + c2*u^2 + c3*u^3
+  var segs = [];
+  for (var i = 0; i < n - 1; i++) {
+    var h = dx[i];
+    segs.push({
+      x0: _AU_VIS_X[i], h: h,
+      c0: _AU_VIS_Y[i],
+      c1: t[i] * h,
+      c2: 3 * (_AU_VIS_Y[i + 1] - _AU_VIS_Y[i]) - 2 * t[i] * h - t[i + 1] * h,
+      c3: 2 * (_AU_VIS_Y[i] - _AU_VIS_Y[i + 1]) + t[i] * h + t[i + 1] * h
+    });
+  }
+  return segs;
+})();
+
+function _auToVis(au) {
+  if (au <= 0) return 0;
+  var segs = _AU_VIS_C;
+  if (au >= _AU_VIS_X[_AU_VIS_X.length - 1]) return _AU_VIS_Y[_AU_VIS_Y.length - 1];
+  // Binary search for segment
+  var lo = 0, hi = segs.length - 1;
+  while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (segs[mid].x0 <= au) lo = mid; else hi = mid - 1; }
+  var s = segs[lo];
+  var u = (au - s.x0) / s.h;
+  return s.c0 + u * (s.c1 + u * (s.c2 + u * s.c3));
+}
+
+// ── Transit speed profile ──
+// Rockets use an adaptive 3-phase speed profile:
+//   Departure (first 5%) → smooth ramp up → Cruise (middle 90%) → smooth ramp down → Approach (last 5%)
+// Speeds scale to transit duration so every launch feels ~12 seconds regardless of planet.
+
+function _smoothstep(edge0, edge1, x) {
+  var t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+function _transitEffectiveSpeed(rk) {
+  var p = Math.max(0, Math.min(1, rk.elapsed / rk.duration));
+  var rampUp = _smoothstep(0, 0.05, p);
+  var rampDown = 1 - _smoothstep(0.95, 1.0, p);
+  var blend = Math.min(rampUp, rampDown);
+  return rk.departSpeed + blend * (rk.cruiseSpeed - rk.departSpeed);
+}
+
+// ── Bidirectional logarithmic speed slider ──
+// Slider range -60 to 60: negative = rewind, 0 = 1× real-time, positive = fast forward
+// |val| maps: 0→1×, 10→10×, 20→100×, 30→1K×, 40→10K×, 50→100K×, 60→1M×
+function _sliderToSpeed(val) {
+  var absVal = Math.abs(val);
+  var mag = absVal < 1 ? 1 : Math.round(Math.pow(10, absVal / 10));
+  return val < -0.5 ? -mag : mag;
+}
+
+function _speedToSlider(speed) {
+  var absSpeed = Math.abs(speed);
+  var val = absSpeed <= 1 ? 0 : Math.round(Math.log10(absSpeed) * 10);
+  return speed < 0 ? -val : val;
+}
+
+function _formatSpeed(speed) {
+  var abs = Math.abs(speed);
+  var prefix = speed < -1 ? '◀ ' : '';
+  var suffix = speed > 1 ? ' ▶' : '';
+  var num;
+  if (abs >= 1000000) num = (abs / 1000000).toFixed(abs >= 10000000 ? 0 : 1).replace(/\.0$/, '') + 'M×';
+  else if (abs >= 1000) num = (abs / 1000).toFixed(abs >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'K×';
+  else num = abs + '×';
+  return prefix + num + suffix;
+}
+
+function _orrerySliderInput(val) {
+  _orreryAutoTransit = false; // Manual control disengages auto-transit
+  var intVal = parseInt(val);
+  _orrerySpeed = _sliderToSpeed(intVal);
+  var label = document.getElementById('orrery-speed-label');
+  if (label) label.textContent = _formatSpeed(_orrerySpeed);
+  // Always animating — start if not already
+  if (Math.abs(_orrerySpeed) > 1 && !_orreryPlaying) {
+    _orreryPlaying = true;
+    _orreryLastFrame = performance.now();
+    _orreryAnimate();
+  }
+  // Back to 1× = stop fast-forwarding but keep real-time ticking
+  if (Math.abs(_orrerySpeed) <= 1) {
+    _orrerySpeed = 1;
+    _orreryPlaying = false;
+  }
+}
+
+function _orrerySetSlider(speed) {
+  _orrerySpeed = speed;
+  var slider = document.getElementById('orrery-slider');
+  if (slider) slider.value = _speedToSlider(speed);
+  var label = document.getElementById('orrery-speed-label');
+  if (label) label.textContent = _formatSpeed(speed);
+}
+
+function _orrerySnapToNow() {
+  _orreryAutoTransit = false;
+  _orreryTimeOffset = 0;
+  _orreryRockets = [];
+  _orrerySetSlider(1);
+  _orreryPlaying = false;
+  var nowBtn = document.getElementById('orrery-now');
+  if (nowBtn) nowBtn.style.display = 'none';
+  _orreryShowTransit(false);
+  _orreryUpdateDate();
+  var canvas = document.getElementById('almanac-orrery');
+  if (canvas) _drawOrrery(canvas, window.devicePixelRatio || 1);
+}
+
+function _orreryShowTransit(show) {
+  var wrap = document.getElementById('orrery-transit-wrap');
+  if (wrap) wrap.style.display = show ? 'flex' : 'none';
+}
+
+// Get the newest in-flight rocket (for transit slider control)
+function _orreryGetActiveRocket() {
+  for (var i = _orreryRockets.length - 1; i >= 0; i--) {
+    if (!_orreryRockets[i].arrived) return _orreryRockets[i];
+  }
+  return null;
+}
+
+function _orreryTransitSlider(val) {
+  var rk = _orreryGetActiveRocket();
+  if (!rk) return;
+  var frac = val / 1000;
+  rk.elapsed = frac * rk.duration;
+  var simLaunchTime = rk._launchRealTime || Date.now();
+  _orreryTimeOffset = (simLaunchTime - Date.now()) + rk.elapsed;
+  _orreryUpdateDate();
+  _orreryUpdateTransitLabel();
+  if (!_orreryPlaying) {
+    var canvas = document.getElementById('almanac-orrery');
+    if (canvas) _drawOrrery(canvas, window.devicePixelRatio || 1);
+  }
+}
+
+function _orreryUpdateTransitLabel() {
+  var label = document.getElementById('orrery-transit-label');
+  var slider = document.getElementById('orrery-transit-slider');
+  var rk = _orreryGetActiveRocket();
+  if (!label || !rk) return;
+  var daysElapsed = Math.round(rk.elapsed / MS_PER_DAY);
+  var totalDays = Math.round(rk.duration / MS_PER_DAY);
+  label.textContent = rk.target + ' · ' + daysElapsed + 'd / ' + totalDays + 'd';
+  if (slider) {
+    slider.value = Math.round((rk.elapsed / rk.duration) * 1000);
+  }
+}
+
+function _orreryUpdateMissions() {
+  var el = document.getElementById('orrery-missions');
+  if (!el || _orreryRockets.length === 0) { if (el) el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  var html = '';
+  for (var i = 0; i < _orreryRockets.length; i++) {
+    var rk = _orreryRockets[i];
+    var totalD = Math.round(rk.duration / MS_PER_DAY);
+    var color = _PLANETS[rk.target] ? _PLANETS[rk.target].color : '#888';
+    if (rk.arrived) {
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0">' +
+        '<span style="color:' + color + '">●</span> ' + rk.target + ' \u2014 ' + t('alm_orbiting') +
+        ' <span style="color:var(--text3);font-size:10px">(' + totalD + 'd transit)</span></div>';
+    } else {
+      var elapsedD = Math.round(rk.elapsed / MS_PER_DAY);
+      var pct = Math.round((rk.elapsed / rk.duration) * 100);
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0">' +
+        '<span style="color:' + color + '">●</span> → ' + rk.target +
+        ' <span style="color:var(--amber)">' + pct + '%</span>' +
+        ' <span style="color:var(--text3);font-size:10px">' + elapsedD + 'd / ' + totalD + 'd</span></div>';
+    }
+  }
+  el.innerHTML = html;
+}
+
+function _orreryUpdateDate() {
+  var el = document.getElementById('orrery-date');
+  if (!el) return;
+  var d = new Date(Date.now() + _orreryTimeOffset);
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  el.textContent = d.toLocaleDateString(lang, { year: 'numeric', month: 'short', day: 'numeric' });
+  var nowBtn = document.getElementById('orrery-now');
+  if (nowBtn) nowBtn.style.display = Math.abs(_orreryTimeOffset) > MS_PER_DAY ? '' : 'none';
+}
+
+// ── Voyager detail card ──
+
+var _SAGAN_QUOTES = [
+  { text: 'Look again at that dot. That\u2019s here. That\u2019s home. That\u2019s us.', src: 'Pale Blue Dot' },
+  { text: 'Every saint and sinner in the history of our species lived there \u2014 on a mote of dust suspended in a sunbeam.', src: 'Pale Blue Dot' },
+  { text: 'The Earth is a very small stage in a vast cosmic arena.', src: 'Pale Blue Dot' },
+  { text: 'For small creatures such as we, the vastness is bearable only through love.', src: 'Contact' },
+  { text: 'Somewhere, something incredible is waiting to be known.', src: 'Cosmos' },
+  { text: 'We are a way for the cosmos to know itself.', src: 'Cosmos' },
+  { text: 'The nitrogen in our DNA, the calcium in our teeth, the iron in our blood, the carbon in our apple pies were made in the interiors of collapsing stars. We are made of starstuff.', src: 'Cosmos' },
+  { text: 'If you wish to make an apple pie from scratch, you must first invent the universe.', src: 'Cosmos' },
+  { text: 'Extinction is the rule. Survival is the exception.', src: 'The Varieties of Scientific Experience' },
+  { text: 'We are like butterflies who flutter for a day and think it is forever.', src: 'Cosmos' },
+  { text: 'The cosmos is within us. We are made of star-stuff. We are a way for the universe to know itself.', src: 'Cosmos' },
+  { text: 'Science is not only compatible with spirituality; it is a profound source of spirituality.', src: 'The Demon-Haunted World' }
+];
+
+var _voyagerCardIdx = -1;
+var _voyagerCardQuote = null;
+
+function _showVoyagerCard(idx) {
+  _voyagerCardIdx = idx;
+  _voyagerCardQuote = _SAGAN_QUOTES[Math.floor(Math.random() * _SAGAN_QUOTES.length)];
+  _updateVoyagerCard();
+}
+
+function _updateVoyagerCard() {
+  if (_voyagerCardIdx < 0) return;
+  var el = document.getElementById('voyager-card');
+  if (!el) return;
+  var v = _VOYAGERS[_voyagerCardIdx];
+  var simTime = Date.now() + _orreryTimeOffset;
+  var dist = _voyagerDist(v, simTime);
+  var yearsInSpace = ((simTime - v.launch) / (365.25 * MS_PER_DAY));
+  var speed = v.vel * 149597870.7 / (365.25 * 24 * 3600);
+  var sig = _signalDelay(dist);
+
+  var html = '<div class="voyager-card-inner">';
+  html += '<div class="voyager-card-header">';
+  html += '<span class="voyager-card-name">' + v.name + '</span>';
+  html += '<button class="voyager-card-close" onclick="_hideVoyagerCard()">×</button>';
+  html += '</div>';
+  html += '<div class="voyager-card-stats">';
+  html += '<div class="voyager-stat"><span class="voyager-stat-val">' + dist.toFixed(1) + ' AU</span><span class="voyager-stat-lbl">' + t('alm_from_sun') + '</span></div>';
+  html += '<div class="voyager-stat"><span class="voyager-stat-val">' + speed.toFixed(1) + ' km/s</span><span class="voyager-stat-lbl">' + t('alm_velocity') + '</span></div>';
+  html += '<div class="voyager-stat"><span class="voyager-stat-val">' + _fmtDuration(sig.h, sig.m) + '</span><span class="voyager-stat-lbl">' + t('alm_signal_delay') + '</span></div>';
+  html += '<div class="voyager-stat"><span class="voyager-stat-val">' + yearsInSpace.toFixed(1) + '</span><span class="voyager-stat-lbl">' + t('alm_years_in_space') + '</span></div>';
+  html += '</div>';
+  var q = _voyagerCardQuote;
+  html += '<div class="voyager-card-quote">\u201c' + q.text + '\u201d<br><span style="color:var(--text3)">\u2014 Carl Sagan, ' + q.src + '</span></div>';
+  html += '<button class="voyager-record-btn" onclick="_scrollToGoldenRecord()">' + t('alm_view_golden_record') + '</button>';
+  html += '</div>';
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+function _hideVoyagerCard() {
+  _voyagerCardIdx = -1;
+  var el = document.getElementById('voyager-card');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+}
+
+function _orreryAnimate() {
+  if (!_orreryPlaying || !_almanacOpen) {
+    _almanacOrreryRAF = null;
+    return;
+  }
+  var now = performance.now();
+  var dt = now - _orreryLastFrame;
+  _orreryLastFrame = now;
+
+  // Auto-transit: modulate speed based on active rocket's flight progress
+  if (_orreryAutoTransit) {
+    var autoRk = _orreryGetActiveRocket();
+    if (autoRk && !autoRk.arrived) {
+      _orrerySpeed = _transitEffectiveSpeed(autoRk);
+      if (_orrerySpeedLabel) _orrerySpeedLabel.textContent = _formatSpeed(_orrerySpeed);
+      if (_orrerySliderEl) _orrerySliderEl.value = Math.min(_speedToSlider(_orrerySpeed), parseInt(_orrerySliderEl.max) || 60);
+    }
+  }
+
+  // Advance simulated time
+  _orreryTimeOffset += dt * _orrerySpeed;
+
+  // Update all rocket missions
+  var hasInFlight = false;
+  for (var ri = 0; ri < _orreryRockets.length; ri++) {
+    var rk = _orreryRockets[ri];
+    rk.elapsed += dt * _orrerySpeed;
+    if (rk.elapsed < 0) rk.elapsed = 0;
+    var prog = rk.elapsed / rk.duration;
+    // Un-arrive if rewinding past arrival
+    if (prog < 1 && rk.arrived) { rk.arrived = false; rk.pathFade = 1.0; }
+    if (prog >= 1 && !rk.arrived) {
+      rk.arrived = true;
+      rk.arrivalGlow = 1.0;
+      rk.orbitAngle = 0;
+      rk.trail = [];
+    }
+    if (rk.arrived) {
+      if (rk.arrivalGlow > 0) {
+        rk.arrivalGlow -= dt / 1500;
+        if (rk.arrivalGlow < 0) rk.arrivalGlow = 0;
+      }
+      if (rk.pathFade > 0) {
+        rk.pathFade -= dt / 3000;
+        if (rk.pathFade < 0) rk.pathFade = 0;
+      }
+      rk.orbitAngle += dt * 0.001;
+    } else {
+      hasInFlight = true;
+    }
+  }
+  // Transit slider tracks the newest in-flight rocket
+  var activeRocket = _orreryGetActiveRocket();
+  if (activeRocket) {
+    _orreryUpdateTransitLabel();
+  }
+  if (!hasInFlight && _orreryRockets.length > 0) {
+    _orreryShowTransit(false);
+    if (_orreryAutoTransit) {
+      _orreryAutoTransit = false;
+      _orrerySetSlider(100000); // Return to default speed after arrival
+    }
+  }
+
+  _orreryUpdateDate();
+  _orreryUpdateMissions();
+
+  if (_orreryCanvas) _drawOrrery(_orreryCanvas, _orreryDpr);
+
+  // Live-update Voyager stats card if open
+  if (_voyagerCardIdx >= 0) _updateVoyagerCard();
+
+  _almanacOrreryRAF = requestAnimationFrame(_orreryAnimate);
+}
+
+function _orreryLaunchRocket(targetName) {
+  if (targetName === 'Earth') return;
+
+  var earthA = _PLANETS['Earth'].a;
+  var targetA = _PLANETS[targetName].a;
+  var transitDays = _hohmannDays(earthA, targetA);
+  var transitMs = transitDays * MS_PER_DAY;
+
+  // Compute launch and arrival positions
+  var simNow = Date.now() + _orreryTimeOffset;
+  var JD = _dateToJD(simNow);
+  var T = _jdToJulianCentury(JD);
+  var earthPos = _planetPosition('Earth', T);
+  var launchAngle = Math.atan2(earthPos.y, earthPos.x);
+
+  // Compute where the target planet will be at arrival time
+  var arrivalJD = JD + transitDays;
+  var T_arr = _jdToJulianCentury(arrivalJD);
+  var targetPosArr = _planetPosition(targetName, T_arr);
+  var arrivalAngle = Math.atan2(targetPosArr.y, targetPosArr.x);
+
+  // Don't allow duplicate missions to the same planet
+  for (var ri = _orreryRockets.length - 1; ri >= 0; ri--) {
+    if (_orreryRockets[ri].target === targetName && !_orreryRockets[ri].arrived) {
+      _orreryRockets.splice(ri, 1); // replace in-flight mission to same target
+    }
+  }
+  // Speed profile: departure covers 2% of distance in ~1.5s, cruise covers 96% in ~9s
+  var departSpeed = Math.max(10, Math.round(0.02 * transitMs / 1500));
+  var cruiseSpeed = Math.max(departSpeed, Math.round(0.96 * transitMs / 9000));
+
+  _orreryRockets.push({
+    target: targetName,
+    earthOrbit: earthA,
+    targetOrbit: targetA,
+    duration: transitMs,
+    elapsed: 0,
+    launchAngle: launchAngle,
+    arrivalAngle: arrivalAngle,
+    outbound: targetA > earthA,
+    arrived: false,
+    arrivalGlow: 0,
+    pathFade: 1.0,
+    trail: [],
+    _launchRealTime: Date.now() + _orreryTimeOffset,
+    departSpeed: departSpeed,
+    cruiseSpeed: cruiseSpeed
+  });
+  _orreryShowTransit(true);
+  _orreryUpdateTransitLabel();
+
+  // Enable auto-transit speed profile
+  _orreryAutoTransit = true;
+  if (!_orreryPlaying) {
+    _orrerySpeed = departSpeed;
+    _orrerySetSlider(departSpeed);
+    _orreryPlaying = true;
+    _orreryLastFrame = performance.now();
+    _orreryAnimate();
+  }
 }
 
 // ── Color helpers ──
 
+function _parseHex(hex) {
+  return [parseInt(hex.slice(1,3), 16), parseInt(hex.slice(3,5), 16), parseInt(hex.slice(5,7), 16)];
+}
+
 function _hexToRgba(hex, alpha) {
-  var r = parseInt(hex.slice(1,3), 16);
-  var g = parseInt(hex.slice(3,5), 16);
-  var b = parseInt(hex.slice(5,7), 16);
-  return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  var c = _parseHex(hex);
+  return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + alpha + ')';
 }
 
 function _lighten(hex, amount) {
-  var r = Math.min(255, parseInt(hex.slice(1,3), 16) + amount);
-  var g = Math.min(255, parseInt(hex.slice(3,5), 16) + amount);
-  var b = Math.min(255, parseInt(hex.slice(5,7), 16) + amount);
-  return 'rgb(' + r + ',' + g + ',' + b + ')';
+  var c = _parseHex(hex);
+  return 'rgb(' + Math.min(255, c[0] + amount) + ',' + Math.min(255, c[1] + amount) + ',' + Math.min(255, c[2] + amount) + ')';
 }
 
 function _darken(hex, amount) {
-  var r = Math.max(0, parseInt(hex.slice(1,3), 16) - amount);
-  var g = Math.max(0, parseInt(hex.slice(3,5), 16) - amount);
-  var b = Math.max(0, parseInt(hex.slice(5,7), 16) - amount);
-  return 'rgb(' + r + ',' + g + ',' + b + ')';
+  var c = _parseHex(hex);
+  return 'rgb(' + Math.max(0, c[0] - amount) + ',' + Math.max(0, c[1] - amount) + ',' + Math.max(0, c[2] - amount) + ')';
 }
 
 // ── Astro data panel ──
+
+// Compute upcoming eclipses using Meeus's lunation-based algorithm (Ch. 54)
+// Works for any date — no hardcoded lists needed
+function _computeEclipses(fromDate, count) {
+  var JD0 = _dateToJD(fromDate.getTime());
+  // Find approximate lunation number (new moon count since J2000)
+  var k0 = Math.floor((JD0 - 2451550.1) / 29.530588853);
+  var results = [];
+  // Check both new moons (solar) and full moons (lunar) for ~100 lunations
+  for (var dk = 0; dk < 100 && results.length < count; dk++) {
+    for (var half = 0; half < 2; half++) {
+      var k = k0 + dk + half * 0.5; // integer=new moon, +0.5=full moon
+      var isSolar = (half === 0);
+      var T = k / 1236.85;
+      var T2 = T * T, T3 = T2 * T, T4 = T3 * T;
+      // Mean phase JDE
+      var JDE = 2451550.09766 + 29.530588861 * k + 0.00015437 * T2 - 0.000000150 * T3 + 0.00000000073 * T4;
+      // Sun's mean anomaly
+      var M = (2.5534 + 29.10535670 * k - 0.0000014 * T2 - 0.00000011 * T3) % 360;
+      // Moon's mean anomaly
+      var Mp = (201.5643 + 385.81693528 * k + 0.0107582 * T2 + 0.00001238 * T3 - 0.000000058 * T4) % 360;
+      // Moon's argument of latitude
+      var F = (160.7108 + 390.67050284 * k - 0.0016118 * T2 - 0.00000227 * T3 + 0.000000011 * T4) % 360;
+      // Longitude of ascending node
+      var O = (124.7746 - 1.56375588 * k + 0.0020672 * T2 + 0.00000215 * T3) % 360;
+      var Frad = F * DEG_TO_RAD;
+      var sinF = Math.sin(Frad);
+      // Eclipse condition: |sin(F)| < 0.36 (rough filter)
+      if (Math.abs(sinF) > 0.36) continue;
+      var Mrad = M * DEG_TO_RAD, Mprad = Mp * DEG_TO_RAD, Orad = O * DEG_TO_RAD;
+      var F1 = F - 0.02665 * Math.sin(Orad);
+      var F1rad = F1 * DEG_TO_RAD;
+      var A1 = (299.77 + 0.107408 * k - 0.009173 * T2) * DEG_TO_RAD;
+      // Compute gamma (distance of shadow axis from Earth center)
+      var P = 0.2070 * Math.sin(Mrad) + 0.0024 * Math.sin(2 * Mrad)
+            - 0.0392 * Math.sin(Mprad) + 0.0116 * Math.sin(2 * Mprad)
+            - 0.0073 * Math.sin(Mrad + Mprad) + 0.0067 * Math.sin(Mprad - Mrad)
+            + 0.0118 * Math.sin(2 * F1rad);
+      var Q = 5.2207 - 0.0048 * Math.cos(Mrad) + 0.0020 * Math.cos(2 * Mrad)
+            - 0.3299 * Math.cos(Mprad) + 0.0041 * Math.cos(Mrad + Mprad);
+      var gamma = (F1 % 360 + 360) % 360;
+      if (gamma > 180) gamma = 360 - gamma;
+      gamma = gamma * DEG_TO_RAD;
+      var W2 = Math.abs(Math.cos(F1rad));
+      var gam = Math.abs(sinF) / Math.sqrt(1 - 0.0048 * W2 * W2);
+      // Must be within eclipse range
+      if (isSolar && gam > 1.5433) continue;
+      if (!isSolar && gam > 1.0944) continue;
+      // Compute JDE corrections for the eclipse
+      var dJDE;
+      if (isSolar) {
+        dJDE = -0.4075 * Math.sin(Mprad) + 0.1721 * Math.sin(Mrad)
+             + 0.0161 * Math.sin(2 * Mprad) - 0.0097 * Math.sin(2 * F1rad)
+             + 0.0073 * Math.sin(Mprad - Mrad) - 0.0050 * Math.sin(Mprad + Mrad)
+             - 0.0023 * Math.sin(Mprad - 2 * F1rad) + 0.0021 * Math.sin(2 * Mrad)
+             + 0.0012 * Math.sin(Mprad + 2 * F1rad) + 0.0006 * Math.sin(2 * Mprad + Mrad)
+             - 0.0004 * Math.sin(3 * Mprad) - 0.0003 * Math.sin(Mrad + 2 * F1rad)
+             + 0.0003 * Math.sin(A1) - 0.0002 * Math.sin(Mrad - 2 * F1rad)
+             - 0.0002 * Math.sin(2 * Mprad - Mrad) + 0.0002 * Math.sin(Orad);
+      } else {
+        dJDE = -0.4065 * Math.sin(Mprad) + 0.1727 * Math.sin(Mrad)
+             + 0.0161 * Math.sin(2 * Mprad) - 0.0097 * Math.sin(2 * F1rad)
+             + 0.0073 * Math.sin(Mprad - Mrad) - 0.0050 * Math.sin(Mprad + Mrad)
+             - 0.0023 * Math.sin(Mprad - 2 * F1rad) + 0.0021 * Math.sin(2 * Mrad)
+             + 0.0012 * Math.sin(Mprad + 2 * F1rad) + 0.0006 * Math.sin(2 * Mprad + Mrad)
+             - 0.0004 * Math.sin(3 * Mprad) - 0.0003 * Math.sin(Mrad + 2 * F1rad)
+             + 0.0003 * Math.sin(A1) - 0.0002 * Math.sin(Mrad - 2 * F1rad)
+             - 0.0002 * Math.sin(2 * Mprad - Mrad) + 0.0002 * Math.sin(Orad);
+      }
+      var eclJDE = JDE + dJDE;
+      var eclDate = new Date((eclJDE - JD_UNIX_EPOCH) * MS_PER_DAY);
+      if (eclDate < fromDate) continue;
+      // Determine type
+      var type;
+      if (isSolar) {
+        if (gam < 0.9972) {
+          // Check if annular or total using Moon's horizontal parallax vs semidiameter
+          var u = 0.0059 + 0.0046 * Math.cos(Mrad) - 0.0182 * Math.cos(Mprad) + 0.0004 * Math.cos(2 * Mprad) - 0.0005 * Math.cos(Mrad + Mprad);
+          if (u < 0) type = t('alm_eclipse_total_solar');
+          else if (u > 0.0047) type = t('alm_eclipse_annular_solar');
+          else type = (gam < 0.9972 && u > 0 && u < 0.0047) ? t('alm_eclipse_hybrid_solar') : t('alm_eclipse_annular_solar');
+        } else {
+          type = t('alm_eclipse_partial_solar');
+        }
+      } else {
+        if (gam < 0.4678) type = t('alm_eclipse_total_lunar');
+        else if (gam < 1.0128) type = t('alm_eclipse_partial_lunar');
+        else type = t('alm_eclipse_penumbral_lunar');
+      }
+      // Compute sub-solar point longitude at eclipse time
+      // Greenwich Sidereal Time approximation from JDE
+      var T0 = (Math.floor(eclJDE - 0.5) + 0.5 - JD_J2000) / JULIAN_CENTURY;
+      var GST0 = 280.46061837 + 360.98564736629 * (eclJDE - JD_J2000) + 0.000387933 * T0 * T0;
+      GST0 = ((GST0 % 360) + 360) % 360;
+      var subLon = ((180 - GST0) % 360 + 540) % 360 - 180; // sub-solar longitude
+      var region;
+      if (isSolar) {
+        if (subLon > -30 && subLon < 60) region = t('alm_region_europe_africa');
+        else if (subLon >= 60 && subLon < 150) region = t('alm_region_asia_australia');
+        else if (subLon >= 150 || subLon < -120) region = t('alm_region_pacific');
+        else region = t('alm_region_americas');
+      } else {
+        var nightLon = ((subLon + 180 + 360) % 360) - 180;
+        if (nightLon > -30 && nightLon < 60) region = t('alm_region_europe_africa');
+        else if (nightLon >= 60 && nightLon < 150) region = t('alm_region_asia_australia');
+        else if (nightLon >= 150 || nightLon < -120) region = t('alm_region_pacific');
+        else region = t('alm_region_americas');
+      }
+      var dateStr = eclDate.getFullYear() + '-' + String(eclDate.getMonth() + 1).padStart(2, '0') + '-' + String(eclDate.getDate()).padStart(2, '0');
+      results.push({ date: dateStr, type: type, region: region });
+    }
+  }
+  return results.slice(0, count);
+}
 
 function _renderAstroPanel(now) {
   var el = document.getElementById('almanac-astro');
   if (!el) return;
 
   var y = now.getFullYear();
-  var startOfYear = new Date(y, 0, 1);
-  var dayOfYear = Math.floor((now - startOfYear) / 86400000) + 1;
+  var dayOfYear = _dayOfYear(now);
   var daysInYear = ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365;
 
+  // Hemisphere-aware seasons: flip for southern hemisphere observers
+  var obsLat = _getLocation().lat;
+  var south = obsLat < 0;
+  var W = south ? t('season_summer') : t('season_winter'), Sp = south ? t('season_autumn') : t('season_spring');
+  var Su = south ? t('season_winter') : t('season_summer'), Au = south ? t('season_spring') : t('season_autumn');
+  var _eq = t('alm_equinox'), _sol = t('alm_solstice');
   var seasonBounds = [
-    { name: 'Winter', start: new Date(y - 1, 11, 21), end: new Date(y, 2, 20), next: 'Spring Equinox' },
-    { name: 'Spring', start: new Date(y, 2, 20), end: new Date(y, 5, 21), next: 'Summer Solstice' },
-    { name: 'Summer', start: new Date(y, 5, 21), end: new Date(y, 8, 22), next: 'Autumn Equinox' },
-    { name: 'Autumn', start: new Date(y, 8, 22), end: new Date(y, 11, 21), next: 'Winter Solstice' },
-    { name: 'Winter', start: new Date(y, 11, 21), end: new Date(y + 1, 2, 20), next: 'Spring Equinox' }
+    { name: W, start: new Date(y - 1, 11, 21), end: new Date(y, 2, 20), next: Sp + ' ' + _eq },
+    { name: Sp, start: new Date(y, 2, 20), end: new Date(y, 5, 21), next: Su + ' ' + _sol },
+    { name: Su, start: new Date(y, 5, 21), end: new Date(y, 8, 22), next: Au + ' ' + _eq },
+    { name: Au, start: new Date(y, 8, 22), end: new Date(y, 11, 21), next: W + ' ' + _sol },
+    { name: W, start: new Date(y, 11, 21), end: new Date(y + 1, 2, 20), next: Sp + ' ' + _eq }
   ];
   var season = null;
   for (var si = 0; si < seasonBounds.length; si++) {
     if (now >= seasonBounds[si].start && now < seasonBounds[si].end) {
       season = seasonBounds[si];
       season.progress = (now - season.start) / (season.end - season.start);
-      season.daysUntilNext = Math.ceil((season.end - now) / 86400000);
+      season.daysUntilNext = Math.ceil((season.end - now) / MS_PER_DAY);
       break;
     }
   }
 
   var perihelion = new Date(y, 0, 3);
-  var daysSincePeri = (now - perihelion) / 86400000;
+  var daysSincePeri = (now - perihelion) / MS_PER_DAY;
   var earthSunDist = 149598023 * (1 - 0.0167 * Math.cos(daysSincePeri / 365.25 * 2 * Math.PI));
   var earthSunAU = (earthSunDist / 149597870.7).toFixed(4);
 
-  var JD = 2440587.5 + now.getTime() / 86400000;
-  var T = (JD - 2451545.0) / 36525;
+  var JD = _dateToJD(now.getTime());
+  var T = _jdToJulianCentury(JD);
   var sunLon = (280.46646 + 36000.76983 * T + 0.0003032 * T * T) % 360;
   if (sunLon < 0) sunLon += 360;
   var zodiac = [
@@ -540,42 +1530,32 @@ function _renderAstroPanel(now) {
     { name: 'Scorpius', start: 241.1 }, { name: 'Sagittarius', start: 266.6 },
     { name: 'Capricornus', start: 300.0 }, { name: 'Aquarius', start: 327.9 }
   ];
-  var constellation = zodiac[zodiac.length - 1].name;
+  var constellation = _tc(zodiac[zodiac.length - 1].name);
   for (var zi = zodiac.length - 1; zi >= 0; zi--) {
-    if (sunLon >= zodiac[zi].start) { constellation = zodiac[zi].name; break; }
+    if (sunLon >= zodiac[zi].start) { constellation = _tc(zodiac[zi].name); break; }
   }
 
-  var eclipses = [
-    { date: '2026-03-03', type: 'Total Lunar', region: 'Americas, Europe, Africa' },
-    { date: '2026-08-12', type: 'Total Solar', region: 'N. Russia, Greenland' },
-    { date: '2026-08-28', type: 'Partial Lunar', region: 'Americas, Europe, Africa' },
-    { date: '2027-02-06', type: 'Annular Solar', region: 'S. America, Africa' },
-    { date: '2027-08-02', type: 'Total Solar', region: 'N. Africa, Middle East' },
-    { date: '2028-01-12', type: 'Partial Lunar', region: 'Americas, Europe' },
-    { date: '2028-07-22', type: 'Total Solar', region: 'Australia, NZ' }
-  ];
-  var nextEclipses = eclipses.filter(function(ec) {
-    return new Date(ec.date + 'T00:00:00') >= now;
-  }).slice(0, 3);
+  // Compute eclipses algorithmically — works for any date, forever
+  var nextEclipses = _computeEclipses(now, 3);
 
   var html = '<div class="almanac-info-grid">';
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + dayOfYear + ' / ' + daysInYear + '</div><div class="almanac-info-lbl">Day of Year</div></div>';
+  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + dayOfYear + ' / ' + daysInYear + '</div><div class="almanac-info-lbl">' + t('alm_day_of_year') + '</div></div>';
   if (season) {
-    html += '<div class="almanac-info-item"><div class="almanac-info-val">' + season.name + '</div><div class="almanac-info-lbl">' + season.daysUntilNext + ' days to ' + season.next + '</div>' +
+    html += '<div class="almanac-info-item"><div class="almanac-info-val">' + season.name + '</div><div class="almanac-info-lbl">' + t('alm_days_to_next', { n: season.daysUntilNext, next: season.next }) + '</div>' +
       '<div class="almanac-progress"><div class="almanac-progress-bar" style="width:' + Math.round(season.progress * 100) + '%"></div></div></div>';
   }
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + earthSunAU + ' AU</div><div class="almanac-info-lbl">Earth\u2013Sun Distance</div></div>';
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + constellation + '</div><div class="almanac-info-lbl">Sun Constellation</div></div>';
+  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + earthSunAU + ' AU</div><div class="almanac-info-lbl">' + t('alm_earth_sun_dist') + '</div></div>';
+  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + constellation + '</div><div class="almanac-info-lbl">' + t('alm_sun_constellation') + '</div></div>';
   html += '</div>';
 
   if (nextEclipses.length > 0) {
     html += '<div style="margin-top:16px">';
-    html += '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">Upcoming Eclipses</div>';
+    html += '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">' + t('alm_upcoming_eclipses') + '</div>';
     for (var ei = 0; ei < nextEclipses.length; ei++) {
       var ec = nextEclipses[ei];
       var ecDate = new Date(ec.date + 'T00:00:00');
-      var daysUntil = Math.ceil((ecDate - now) / 86400000);
-      var untilStr = daysUntil === 0 ? 'Today!' : daysUntil === 1 ? 'Tomorrow' : daysUntil + ' days';
+      var daysUntil = Math.ceil((ecDate - now) / MS_PER_DAY);
+      var untilStr = daysUntil <= 0 ? t('alm_today') : daysUntil === 1 ? t('alm_tomorrow') : t('alm_n_days', { n: daysUntil });
       html += '<div class="almanac-eclipse-row">' +
         '<div><span class="almanac-eclipse-type">' + ec.type + '</span><br><span class="almanac-eclipse-date">' + ec.region + '</span></div>' +
         '<div class="almanac-eclipse-until">' + untilStr + '</div></div>';
@@ -587,6 +1567,9 @@ function _renderAstroPanel(now) {
 }
 
 // ── Sun Map — world map with day/night terminator ──
+
+// Eclipse simulator removed — needs proper Besselian elements for accuracy.
+// See git history for the canvas-based eclipse visualization code.
 
 var _sunMapImg = new Image();
 var _sunMapLoaded = false;
@@ -607,19 +1590,10 @@ function _renderSunMap(now) {
   _sunMapNow = now;
 
   // Get location
-  var stored = localStorage.getItem('zimi_almanac_location');
-  if (stored) {
-    try {
-      var loc = JSON.parse(stored);
-      _sunMapLat = loc.lat; _sunMapLon = loc.lon;
-      _sunMapLocName = loc.name || '';
-      _sunMapHasLocation = true;
-    } catch(e) { _sunMapHasLocation = false; }
-  } else {
-    _sunMapLat = 34; _sunMapLon = -new Date().getTimezoneOffset() / 60 * 15;
-    _sunMapLocName = '';
-    _sunMapHasLocation = false;
-  }
+  var smLoc = _getLocation();
+  _sunMapLat = smLoc.lat; _sunMapLon = smLoc.lon;
+  _sunMapLocName = smLoc.name;
+  _sunMapHasLocation = !!smLoc.name;
 
   // Compute sun info for the info line
   var sunInfo = _computeSunTimes(_sunMapNow, _sunMapLat, _sunMapLon);
@@ -633,16 +1607,16 @@ function _renderSunMap(now) {
   html += '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;position:relative">';
   if (_sunMapHasLocation) {
     var locStr = _sunMapLocName ? _sunMapLocName.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : _sunMapLat.toFixed(1) + '\u00b0, ' + _sunMapLon.toFixed(1) + '\u00b0';
-    html += '<span id="almanac-loc-name" style="font-size:12px;color:var(--text2);cursor:pointer" onclick="_almShowCitySearch()" title="Change location">' + locStr + '</span>';
+    html += '<span id="almanac-loc-name" style="font-size:12px;color:var(--text2);cursor:pointer;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block" onclick="_almShowCitySearch()" title="' + locStr + '">' + locStr + '</span>';
   } else {
-    html += '<span id="almanac-loc-name" style="font-size:12px;color:var(--text3);cursor:pointer" onclick="_almShowCitySearch()" title="Set location">Set location</span>';
+    html += '<span id="almanac-loc-name" style="font-size:12px;color:var(--text3);cursor:pointer" onclick="_almShowCitySearch()" title="' + t('alm_set_location') + '">' + t('alm_set_location') + '</span>';
   }
-  html += '<span onclick="_shareAlmanacLocation()" style="cursor:pointer;font-size:13px;color:var(--text3);opacity:0.7" title="Use browser location">\uD83D\uDCCD</span>';
+  html += '<span onclick="_shareAlmanacLocation()" style="cursor:pointer;font-size:13px;color:var(--text3);opacity:0.7" title="' + t('alm_use_location') + '">\uD83D\uDCCD</span>';
   // Hidden city search — revealed on click
   html += '<div id="almanac-city-search-wrap" style="display:none;position:absolute;top:-2px;left:50%;transform:translateX(-50%);z-index:10">';
-  html += '<input id="almanac-city-search" type="text" placeholder="Search city\u2026" ' +
-    'style="width:180px;padding:5px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px" autocomplete="off">';
-  html += '<div id="almanac-city-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-top:2px;max-height:160px;overflow-y:auto;z-index:10"></div>';
+  html += '<input id="almanac-city-search" type="text" placeholder="' + t('alm_search_city') + '" ' +
+    'style="width:260px;padding:5px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px" autocomplete="off">';
+  html += '<div id="almanac-city-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-top:2px;max-height:200px;overflow-y:auto;z-index:10"></div>';
   html += '</div>';
   html += '</div>';
 
@@ -681,16 +1655,14 @@ function _renderSunMap(now) {
       var snappedName = '';
       for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
         var c = _MAP_CITIES[ci];
-        var dlat = lat - c.lat, dlon = lon - c.lon;
+        var dlat = lat - c.lat, dlon = (lon - c.lon) * Math.cos(lat * DEG_TO_RAD);
         if (Math.sqrt(dlat * dlat + dlon * dlon) < snapDist) {
           lat = c.lat; lon = c.lon;
           snappedName = c.name;
           break;
         }
       }
-      var locData = { lat: lat, lon: lon };
-      if (snappedName) locData.name = snappedName;
-      localStorage.setItem('zimi_almanac_location', JSON.stringify(locData));
+      _saveLocation(lat, lon, snappedName);
       _renderAlmanacContent();
     };
   }
@@ -702,10 +1674,19 @@ function _renderSunMap(now) {
     searchInput.oninput = function() {
       var q = searchInput.value.toLowerCase().trim();
       if (q.length < 2) { resultsDiv.style.display = 'none'; return; }
-      var matches = [];
-      for (var i = 0; i < _MAP_CITIES.length && matches.length < 8; i++) {
-        if (_MAP_CITIES[i].name.toLowerCase().indexOf(q) !== -1) matches.push(_MAP_CITIES[i]);
+      var all = [];
+      for (var i = 0; i < _MAP_CITIES.length; i++) {
+        var name = _MAP_CITIES[i].name.toLowerCase();
+        var idx = name.indexOf(q);
+        if (idx === -1) continue;
+        // Rank: 0 = city name starts with query, 1 = any part starts with, 2 = substring
+        var rank = 2;
+        if (idx === 0) rank = 0;
+        else if (name.charAt(idx - 1) === ' ' || name.charAt(idx - 1) === ',') rank = 1;
+        all.push({ city: _MAP_CITIES[i], rank: rank });
       }
+      all.sort(function(a, b) { return a.rank - b.rank; });
+      var matches = all.slice(0, 8).map(function(m) { return m.city; });
       if (matches.length === 0) { resultsDiv.style.display = 'none'; return; }
       var rhtml = '';
       for (var i = 0; i < matches.length; i++) {
@@ -720,7 +1701,7 @@ function _renderSunMap(now) {
       for (var i = 0; i < items.length; i++) {
         (function(city) {
           items[i].onclick = function() {
-            localStorage.setItem('zimi_almanac_location', JSON.stringify({ lat: city.lat, lon: city.lon, name: city.name }));
+            _saveLocation(city.lat, city.lon, city.name);
             _renderAlmanacContent();
           };
         })(matches[i]);
@@ -742,22 +1723,22 @@ function _renderSunMap(now) {
 // ── Timezone analog clock ──
 
 var _TZ_CITIES = [
-  { label: 'Honolulu', tz: 'Pacific/Honolulu', lat: 21.31, lon: -157.86 },
-  { label: 'Los Angeles', tz: 'America/Los_Angeles', lat: 34.05, lon: -118.24 },
-  { label: 'Denver', tz: 'America/Denver', lat: 39.74, lon: -104.98 },
-  { label: 'Chicago', tz: 'America/Chicago', lat: 41.88, lon: -87.63 },
-  { label: 'New York', tz: 'America/New_York', lat: 40.71, lon: -74.01 },
-  { label: 'São Paulo', tz: 'America/Sao_Paulo', lat: -23.55, lon: -46.63 },
-  { label: 'London', tz: 'Europe/London', lat: 51.51, lon: -0.13 },
-  { label: 'Cairo', tz: 'Africa/Cairo', lat: 30.04, lon: 31.24 },
-  { label: 'Moscow', tz: 'Europe/Moscow', lat: 55.76, lon: 37.62 },
-  { label: 'Dubai', tz: 'Asia/Dubai', lat: 25.20, lon: 55.27 },
-  { label: 'Mumbai', tz: 'Asia/Kolkata', lat: 19.08, lon: 72.88 },
-  { label: 'Bangkok', tz: 'Asia/Bangkok', lat: 13.76, lon: 100.50 },
-  { label: 'Shanghai', tz: 'Asia/Shanghai', lat: 31.23, lon: 121.47 },
-  { label: 'Tokyo', tz: 'Asia/Tokyo', lat: 35.68, lon: 139.69 },
-  { label: 'Sydney', tz: 'Australia/Sydney', lat: -33.87, lon: 151.21 },
-  { label: 'Auckland', tz: 'Pacific/Auckland', lat: -36.85, lon: 174.76 }
+  { key: 'honolulu', tz: 'Pacific/Honolulu', lat: 21.31, lon: -157.86 },
+  { key: 'los_angeles', tz: 'America/Los_Angeles', lat: 34.05, lon: -118.24 },
+  { key: 'denver', tz: 'America/Denver', lat: 39.74, lon: -104.98 },
+  { key: 'chicago', tz: 'America/Chicago', lat: 41.88, lon: -87.63 },
+  { key: 'new_york', tz: 'America/New_York', lat: 40.71, lon: -74.01 },
+  { key: 'sao_paulo', tz: 'America/Sao_Paulo', lat: -23.55, lon: -46.63 },
+  { key: 'london', tz: 'Europe/London', lat: 51.51, lon: -0.13 },
+  { key: 'cairo', tz: 'Africa/Cairo', lat: 30.04, lon: 31.24 },
+  { key: 'moscow', tz: 'Europe/Moscow', lat: 55.76, lon: 37.62 },
+  { key: 'dubai', tz: 'Asia/Dubai', lat: 25.20, lon: 55.27 },
+  { key: 'mumbai', tz: 'Asia/Kolkata', lat: 19.08, lon: 72.88 },
+  { key: 'bangkok', tz: 'Asia/Bangkok', lat: 13.76, lon: 100.50 },
+  { key: 'shanghai', tz: 'Asia/Shanghai', lat: 31.23, lon: 121.47 },
+  { key: 'tokyo', tz: 'Asia/Tokyo', lat: 35.68, lon: 139.69 },
+  { key: 'sydney', tz: 'Australia/Sydney', lat: -33.87, lon: 151.21 },
+  { key: 'auckland', tz: 'Pacific/Auckland', lat: -36.85, lon: 174.76 }
 ];
 
 var _almSelectedTz = null; // null = local timezone
@@ -779,23 +1760,23 @@ function _initTzClock(now) {
     var tzc = _TZ_CITIES[i];
     var isActive = (i === localMatch && _almSelectedTz === null) || (_almSelectedTz === tzc.tz);
     var tzTime = '';
-    try { tzTime = now.toLocaleTimeString('en-US', { timeZone: tzc.tz, hour: 'numeric', minute: '2-digit', hour12: true }); } catch(e) { continue; }
-    // Compute UTC offset for this timezone
+    try { tzTime = _tzFmt(tzc.tz, { hour: 'numeric', minute: '2-digit', hour12: true }).format(now); } catch(e) { continue; }
+    // Compute UTC offset — use en-US with full date+time for accurate diff
     var utcOff = '';
     try {
-      var here = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
-      var there = new Date(now.toLocaleString('en-US', { timeZone: tzc.tz }));
-      var diffMin = Math.round((there - here) / 60000);
+      var _tzOffFmt = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false };
+      var enFmt = function(tz) { return new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: tz }, _tzOffFmt)).format(now); };
+      var diffMin = Math.round((new Date(enFmt(tzc.tz)) - new Date(enFmt('UTC'))) / 60000);
       var sign = diffMin >= 0 ? '+' : '\u2212';
       var absH = Math.floor(Math.abs(diffMin) / 60);
       var absM = Math.abs(diffMin) % 60;
       utcOff = 'UTC' + sign + absH + (absM ? ':' + (absM < 10 ? '0' : '') + absM : '');
     } catch(e) {}
     var tzHour = 0;
-    try { tzHour = parseInt(now.toLocaleTimeString('en-US', { timeZone: tzc.tz, hour: 'numeric', hour12: false })); } catch(e) {}
+    try { tzHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: tzc.tz, hour: 'numeric', hour12: false }).format(now)); } catch(e) {}
     var isNight = tzHour < 6 || tzHour >= 20;
     html += '<div class="alm-tz-city-card' + (isActive ? ' alm-tz-city-active' : '') + (isNight ? ' alm-tz-city-night' : '') + '" onclick="_almSelectTz(\'' + tzc.tz + '\',' + i + ')">';
-    html += '<span class="alm-tz-city-name">' + tzc.label + '</span>';
+    html += '<span class="alm-tz-city-name">' + t('alm_city_' + tzc.key) + '</span>';
     html += '<span class="alm-tz-city-time">' + tzTime + '</span>';
     html += '<span class="alm-tz-city-offset">' + utcOff + '</span>';
     html += '</div>';
@@ -810,8 +1791,19 @@ function _almSelectTz(tz, idx) {
   _almSelectedTz = tz;
   // Also set location to this city for sun/map calculations
   var city = _TZ_CITIES[idx];
-  localStorage.setItem('zimi_almanac_location', JSON.stringify({ lat: city.lat, lon: city.lon, name: city.label }));
+  // Look up full name from _MAP_CITIES (includes state/country)
+  var fullName = t('alm_city_' + city.key);
+  for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
+    if (Math.abs(_MAP_CITIES[ci].lat - city.lat) < 0.1 && Math.abs(_MAP_CITIES[ci].lon - city.lon) < 0.1) {
+      fullName = _MAP_CITIES[ci].name; break;
+    }
+  }
+  _saveLocation(city.lat, city.lon, fullName);
+  // Re-render but preserve scroll position (avoids annoying jump)
+  var scrollEl = document.getElementById('almanac-content');
+  var savedScroll = scrollEl ? scrollEl.scrollTop : 0;
   _renderAlmanacContent();
+  if (scrollEl) scrollEl.scrollTop = savedScroll;
 }
 
 function _drawTzClock(now) {
@@ -829,14 +1821,20 @@ function _drawTzClock(now) {
   var tz = _almSelectedTz || Intl.DateTimeFormat().resolvedOptions().timeZone;
   var tzLabel = '';
   for (var i = 0; i < _TZ_CITIES.length; i++) {
-    if (_TZ_CITIES[i].tz === tz) { tzLabel = _TZ_CITIES[i].label; break; }
+    if (_TZ_CITIES[i].tz === tz) { tzLabel = t('alm_city_' + _TZ_CITIES[i].key); break; }
+  }
+  // If the user searched a specific city whose timezone matches, use their city name
+  var storedLoc = _getLocation();
+  if (storedLoc.name && (!_almSelectedTz || _almSelectedTz === tz)) {
+    var cityOnly = storedLoc.name.split(',')[0].trim();
+    if (cityOnly) tzLabel = cityOnly;
   }
 
   // Get time in selected timezone — use fractional seconds for smooth hand
   var h24 = 0, mins = 0, secs = 0;
   try {
-    h24 = parseInt(now.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', hour12: false }));
-    mins = parseInt(now.toLocaleTimeString('en-US', { timeZone: tz, minute: '2-digit' }).replace(/[^0-9]/g, ''));
+    h24 = parseInt(_tzFmt(tz, { hour: 'numeric', hour12: false }).format(now));
+    mins = parseInt(_tzFmt(tz, { minute: '2-digit' }).format(now).replace(/[^0-9]/g, ''));
     secs = now.getSeconds() + now.getMilliseconds() / 1000;
   } catch(e) { return; }
   var isNight = h24 < 6 || h24 >= 20;
@@ -854,7 +1852,7 @@ function _drawTzClock(now) {
 
   // Hour markers
   for (var i = 0; i < 12; i++) {
-    var angle = (i * 30 - 90) * Math.PI / 180;
+    var angle = (i * 30 - 90) * DEG_TO_RAD;
     var isMajor = i % 3 === 0;
     var outerR = r - 4;
     var innerR = isMajor ? r - 14 : r - 9;
@@ -866,20 +1864,24 @@ function _drawTzClock(now) {
     ctx.stroke();
   }
 
-  // Resolve CSS colors for canvas
-  var textColor = '#e0e0e0';
-  var amberColor = '#f59e0b';
-  try {
-    var cs = getComputedStyle(canvas);
-    var t = cs.getPropertyValue('--text').trim();
-    if (t) textColor = t;
-    var a = cs.getPropertyValue('--amber').trim();
-    if (a) amberColor = a;
-  } catch(e) {}
+  // Resolve CSS colors (cached — theme never changes without page reload)
+  if (!_tzClockColors) {
+    var textColor = '#e0e0e0', amberColor = '#f59e0b';
+    try {
+      var cs = getComputedStyle(canvas);
+      var cv = cs.getPropertyValue('--text').trim();
+      if (cv) textColor = cv;
+      var av = cs.getPropertyValue('--amber').trim();
+      if (av) amberColor = av;
+    } catch(e) {}
+    _tzClockColors = { text: textColor, amber: amberColor };
+  }
+  var textColor = _tzClockColors.text;
+  var amberColor = _tzClockColors.amber;
 
   // Hour hand
   var hourAngle = ((h24 % 12) + mins / 60) * 30 - 90;
-  var hourRad = hourAngle * Math.PI / 180;
+  var hourRad = hourAngle * DEG_TO_RAD;
   ctx.beginPath();
   ctx.moveTo(cx, cy);
   ctx.lineTo(cx + Math.cos(hourRad) * (r * 0.5), cy + Math.sin(hourRad) * (r * 0.5));
@@ -890,7 +1892,7 @@ function _drawTzClock(now) {
 
   // Minute hand
   var minAngle = (mins + secs / 60) * 6 - 90;
-  var minRad = minAngle * Math.PI / 180;
+  var minRad = minAngle * DEG_TO_RAD;
   ctx.beginPath();
   ctx.moveTo(cx, cy);
   ctx.lineTo(cx + Math.cos(minRad) * (r * 0.72), cy + Math.sin(minRad) * (r * 0.72));
@@ -900,7 +1902,7 @@ function _drawTzClock(now) {
 
   // Second hand
   var secAngle = secs * 6 - 90;
-  var secRad = secAngle * Math.PI / 180;
+  var secRad = secAngle * DEG_TO_RAD;
   ctx.beginPath();
   ctx.moveTo(cx, cy);
   ctx.lineTo(cx + Math.cos(secRad) * (r * 0.78), cy + Math.sin(secRad) * (r * 0.78));
@@ -919,19 +1921,29 @@ function _drawTzClock(now) {
   if (labelEl) {
     var timeStr = '';
     try {
-      timeStr = now.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+      timeStr = _tzFmt(tz, { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).format(now);
     } catch(e) {}
     var dateStr = '';
     try {
-      dateStr = now.toLocaleDateString('en-US', { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' });
+      dateStr = _tzFmt(tz, { weekday: 'short', month: 'short', day: 'numeric' }).format(now);
     } catch(e) {}
     labelEl.innerHTML = '<div style="font-size:18px;font-weight:500;color:var(--text)">' + timeStr + '</div>' +
       (tzLabel ? '<div style="font-size:12px;color:var(--text3);margin-top:2px">' + tzLabel + (dateStr ? ' \u00b7 ' + dateStr : '') + '</div>' : '');
   }
 }
 
+// Cached Intl.DateTimeFormat objects — avoid 180+ allocations/sec in the RAF loop
+var _tzFmtCache = {};
+function _tzFmt(tz, opts) {
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  var key = lang + '|' + tz + '|' + Object.values(opts).join(',');
+  if (!_tzFmtCache[key]) _tzFmtCache[key] = new Intl.DateTimeFormat(lang, Object.assign({ timeZone: tz }, opts));
+  return _tzFmtCache[key];
+}
+
 // Smooth clock animation using requestAnimationFrame
 var _tzClockRAF = null;
+var _tzClockColors = null;
 function _startTzClock() {
   if (_tzClockRAF) cancelAnimationFrame(_tzClockRAF);
   function tick() {
@@ -943,17 +1955,15 @@ function _startTzClock() {
 }
 
 function _computeSunTimes(now, lat, lon) {
-  var y = now.getFullYear();
-  var start = new Date(y, 0, 1);
-  var dayOfYear = Math.floor((now - start) / 86400000) + 1;
-  var B = (dayOfYear - 1) * 2 * Math.PI / 365;
-  var EoT = 229.18 * (0.000075 + 0.001868 * Math.cos(B) - 0.032077 * Math.sin(B) - 0.014615 * Math.cos(2 * B) - 0.04089 * Math.sin(2 * B));
-  var decl = 0.006918 - 0.399912 * Math.cos(B) + 0.070257 * Math.sin(B) - 0.006758 * Math.cos(2 * B) + 0.000907 * Math.sin(2 * B) - 0.002697 * Math.cos(3 * B) + 0.00148 * Math.sin(3 * B);
-  var latRad = lat * Math.PI / 180;
-  var cosHA = (Math.cos(90.833 * Math.PI / 180) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
+  var doy = _dayOfYear(now);
+  var B = _solarB(doy);
+  var EoT = _eqOfTime(B);
+  var decl = _solarDeclination(B);
+  var latRad = lat * DEG_TO_RAD;
+  var cosHA = (Math.cos(90.833 * DEG_TO_RAD) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
 
-  if (cosHA > 1) return { polar: 'Polar Night \u2014 the sun does not rise today' };
-  if (cosHA < -1) return { polar: 'Midnight Sun \u2014 24 hours of daylight' };
+  if (cosHA > 1) return { polar: t('alm_polar_night') };
+  if (cosHA < -1) return { polar: t('alm_midnight_sun') };
 
   var HA = Math.acos(cosHA) * 180 / Math.PI;
   var sunrise = 720 - 4 * (lon + HA) - EoT;
@@ -967,10 +1977,10 @@ function _computeSunTimes(now, lat, lon) {
   var result = {
     sunrise: _fmtMinutes(sunrise),
     sunset: _fmtMinutes(sunset),
-    dayLength: dayH + 'h ' + dayM + 'm'
+    dayLength: _fmtDuration(dayH, dayM)
   };
 
-  var cosGH = (Math.cos(84 * Math.PI / 180) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
+  var cosGH = (Math.cos(84 * DEG_TO_RAD) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
   if (cosGH >= -1 && cosGH <= 1) {
     var HAgh = Math.acos(cosGH) * 180 / Math.PI;
     result.goldenHour = _fmtMinutes(720 - 4 * (lon - HAgh) - EoT + tzOffset);
@@ -997,11 +2007,9 @@ function _drawSunMap() {
 
   // Compute sun subsolar point
   var now = _sunMapNow;
-  var y = now.getFullYear();
-  var start = new Date(y, 0, 1);
-  var dayOfYear = Math.floor((now - start) / 86400000) + 1;
-  var B = (dayOfYear - 1) * 2 * Math.PI / 365;
-  var decl = 0.006918 - 0.399912 * Math.cos(B) + 0.070257 * Math.sin(B) - 0.006758 * Math.cos(2 * B) + 0.000907 * Math.sin(2 * B) - 0.002697 * Math.cos(3 * B) + 0.00148 * Math.sin(3 * B);
+  var doy = _dayOfYear(now);
+  var B = _solarB(doy);
+  var decl = _solarDeclination(B);
   var declDeg = decl * 180 / Math.PI;
   var utcH = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
   var sunLon = -(utcH - 12) * 15;
@@ -1010,7 +2018,7 @@ function _drawSunMap() {
   var termPoints = [];
   for (var px = 0; px < W; px++) {
     var lon = (px / W) * 360 - 180;
-    var dlon = (lon - sunLon) * Math.PI / 180;
+    var dlon = (lon - sunLon) * DEG_TO_RAD;
     var termLat = Math.atan(-Math.cos(dlon) / Math.tan(decl)) * 180 / Math.PI;
     var termY = (90 - termLat) / 180 * H;
     termPoints.push({ x: px, y: termY });
@@ -1087,19 +2095,8 @@ function _drawSunMap() {
 // ── Sky scene init (uses location for sun/moon position) ──
 
 function _loadSunData(now) {
-  var stored = localStorage.getItem('zimi_almanac_location');
-  var lat, lon;
-  if (stored) {
-    try {
-      var loc = JSON.parse(stored);
-      lat = loc.lat; lon = loc.lon;
-    } catch(e) {
-      lat = 34; lon = -new Date().getTimezoneOffset() / 60 * 15;
-    }
-  } else {
-    lat = 34; lon = -new Date().getTimezoneOffset() / 60 * 15;
-  }
-  _initSkyScene(now, lat, lon);
+  var loc = _getLocation();
+  _initSkyScene(now, loc.lat, loc.lon);
 }
 
 function _almShowCitySearch() {
@@ -1116,7 +2113,18 @@ function _shareAlmanacLocation() {
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(function(pos) {
       var lat = pos.coords.latitude, lon = pos.coords.longitude;
-      localStorage.setItem('zimi_almanac_location', JSON.stringify({ lat: lat, lon: lon }));
+      // Find nearest city for a descriptive name
+      var locData = { lat: lat, lon: lon };
+      var bestDist = Infinity;
+      for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
+        var dlat = lat - _MAP_CITIES[ci].lat;
+        var dlon = (lon - _MAP_CITIES[ci].lon) * Math.cos(lat * DEG_TO_RAD);
+        var d = dlat * dlat + dlon * dlon;
+        if (d < bestDist) { bestDist = d; locData.name = _MAP_CITIES[ci].name; }
+      }
+      // Only use city name if reasonably close (within ~2 degrees)
+      if (bestDist > 4) delete locData.name;
+      _saveLocation(locData.lat, locData.lon, locData.name);
       _renderAlmanacContent();
     }, function() {
       // GPS denied or unavailable — fall back to manual entry
@@ -1130,144 +2138,144 @@ function _shareAlmanacLocation() {
 // ── Cities for map picker (200+ world cities) ──
 var _MAP_CITIES = [
   // North America
-  { name: 'New York', lat: 40.71, lon: -74.01 },
-  { name: 'Los Angeles', lat: 34.05, lon: -118.24 },
-  { name: 'Chicago', lat: 41.88, lon: -87.63 },
-  { name: 'Houston', lat: 29.76, lon: -95.37 },
-  { name: 'Phoenix', lat: 33.45, lon: -112.07 },
-  { name: 'Philadelphia', lat: 39.95, lon: -75.17 },
-  { name: 'San Antonio', lat: 29.42, lon: -98.49 },
-  { name: 'San Diego', lat: 32.72, lon: -117.16 },
-  { name: 'Dallas', lat: 32.78, lon: -96.80 },
-  { name: 'San Francisco', lat: 37.77, lon: -122.42 },
-  { name: 'Seattle', lat: 47.61, lon: -122.33 },
-  { name: 'Denver', lat: 39.74, lon: -104.99 },
-  { name: 'Washington DC', lat: 38.91, lon: -77.04 },
-  { name: 'Boston', lat: 42.36, lon: -71.06 },
-  { name: 'Atlanta', lat: 33.75, lon: -84.39 },
-  { name: 'Miami', lat: 25.76, lon: -80.19 },
-  { name: 'Minneapolis', lat: 44.98, lon: -93.27 },
-  { name: 'Portland', lat: 45.52, lon: -122.68 },
-  { name: 'Las Vegas', lat: 36.17, lon: -115.14 },
-  { name: 'Honolulu', lat: 21.31, lon: -157.86 },
-  { name: 'Anchorage', lat: 61.22, lon: -149.90 },
-  { name: 'Toronto', lat: 43.65, lon: -79.38 },
-  { name: 'Montreal', lat: 45.50, lon: -73.57 },
-  { name: 'Vancouver', lat: 49.28, lon: -123.12 },
-  { name: 'Mexico City', lat: 19.43, lon: -99.13 },
-  { name: 'Guadalajara', lat: 20.67, lon: -103.35 },
-  { name: 'Havana', lat: 23.11, lon: -82.37 },
-  { name: 'San Juan', lat: 18.47, lon: -66.11 },
+  { name: 'New York, New York, United States', lat: 40.71, lon: -74.01 },
+  { name: 'Los Angeles, California, United States', lat: 34.05, lon: -118.24 },
+  { name: 'Chicago, Illinois, United States', lat: 41.88, lon: -87.63 },
+  { name: 'Houston, Texas, United States', lat: 29.76, lon: -95.37 },
+  { name: 'Phoenix, Arizona, United States', lat: 33.45, lon: -112.07 },
+  { name: 'Philadelphia, Pennsylvania, United States', lat: 39.95, lon: -75.17 },
+  { name: 'San Antonio, Texas, United States', lat: 29.42, lon: -98.49 },
+  { name: 'San Diego, California, United States', lat: 32.72, lon: -117.16 },
+  { name: 'Dallas, Texas, United States', lat: 32.78, lon: -96.80 },
+  { name: 'San Francisco, California, United States', lat: 37.77, lon: -122.42 },
+  { name: 'Seattle, Washington, United States', lat: 47.61, lon: -122.33 },
+  { name: 'Denver, Colorado, United States', lat: 39.74, lon: -104.99 },
+  { name: 'Washington DC, United States', lat: 38.91, lon: -77.04 },
+  { name: 'Boston, Massachusetts, United States', lat: 42.36, lon: -71.06 },
+  { name: 'Atlanta, Georgia, United States', lat: 33.75, lon: -84.39 },
+  { name: 'Miami, Florida, United States', lat: 25.76, lon: -80.19 },
+  { name: 'Minneapolis, Minnesota, United States', lat: 44.98, lon: -93.27 },
+  { name: 'Portland, Oregon, United States', lat: 45.52, lon: -122.68 },
+  { name: 'Las Vegas, Nevada, United States', lat: 36.17, lon: -115.14 },
+  { name: 'Honolulu, Hawaii, United States', lat: 21.31, lon: -157.86 },
+  { name: 'Anchorage, Alaska, United States', lat: 61.22, lon: -149.90 },
+  { name: 'Toronto, Ontario, Canada', lat: 43.65, lon: -79.38 },
+  { name: 'Montreal, Quebec, Canada', lat: 45.50, lon: -73.57 },
+  { name: 'Vancouver, British Columbia, Canada', lat: 49.28, lon: -123.12 },
+  { name: 'Mexico City, Mexico', lat: 19.43, lon: -99.13 },
+  { name: 'Guadalajara, Jalisco, Mexico', lat: 20.67, lon: -103.35 },
+  { name: 'Havana, Cuba', lat: 23.11, lon: -82.37 },
+  { name: 'San Juan, Puerto Rico', lat: 18.47, lon: -66.11 },
   // South America
-  { name: 'S\u00e3o Paulo', lat: -23.55, lon: -46.63 },
-  { name: 'Rio de Janeiro', lat: -22.91, lon: -43.17 },
-  { name: 'Buenos Aires', lat: -34.60, lon: -58.38 },
-  { name: 'Bogot\u00e1', lat: 4.71, lon: -74.07 },
-  { name: 'Lima', lat: -12.05, lon: -77.04 },
-  { name: 'Santiago', lat: -33.45, lon: -70.67 },
-  { name: 'Caracas', lat: 10.49, lon: -66.90 },
-  { name: 'Quito', lat: -0.18, lon: -78.47 },
-  { name: 'Montevideo', lat: -34.88, lon: -56.17 },
-  { name: 'Medell\u00edn', lat: 6.25, lon: -75.56 },
+  { name: 'S\u00e3o Paulo, Brazil', lat: -23.55, lon: -46.63 },
+  { name: 'Rio de Janeiro, Brazil', lat: -22.91, lon: -43.17 },
+  { name: 'Buenos Aires, Argentina', lat: -34.60, lon: -58.38 },
+  { name: 'Bogot\u00e1, Colombia', lat: 4.71, lon: -74.07 },
+  { name: 'Lima, Peru', lat: -12.05, lon: -77.04 },
+  { name: 'Santiago, Chile', lat: -33.45, lon: -70.67 },
+  { name: 'Caracas, Venezuela', lat: 10.49, lon: -66.90 },
+  { name: 'Quito, Ecuador', lat: -0.18, lon: -78.47 },
+  { name: 'Montevideo, Uruguay', lat: -34.88, lon: -56.17 },
+  { name: 'Medell\u00edn, Colombia', lat: 6.25, lon: -75.56 },
   // Europe
-  { name: 'London', lat: 51.51, lon: -0.13 },
-  { name: 'Paris', lat: 48.86, lon: 2.35 },
-  { name: 'Berlin', lat: 52.52, lon: 13.40 },
-  { name: 'Madrid', lat: 40.42, lon: -3.70 },
-  { name: 'Rome', lat: 41.90, lon: 12.50 },
-  { name: 'Amsterdam', lat: 52.37, lon: 4.90 },
-  { name: 'Vienna', lat: 48.21, lon: 16.37 },
-  { name: 'Prague', lat: 50.08, lon: 14.44 },
-  { name: 'Brussels', lat: 50.85, lon: 4.35 },
-  { name: 'Stockholm', lat: 59.33, lon: 18.07 },
-  { name: 'Oslo', lat: 59.91, lon: 10.75 },
-  { name: 'Copenhagen', lat: 55.68, lon: 12.57 },
-  { name: 'Helsinki', lat: 60.17, lon: 24.94 },
-  { name: 'Dublin', lat: 53.35, lon: -6.26 },
-  { name: 'Lisbon', lat: 38.72, lon: -9.14 },
-  { name: 'Barcelona', lat: 41.39, lon: 2.17 },
-  { name: 'Munich', lat: 48.14, lon: 11.58 },
-  { name: 'Milan', lat: 45.46, lon: 9.19 },
-  { name: 'Zurich', lat: 47.38, lon: 8.54 },
-  { name: 'Warsaw', lat: 52.23, lon: 21.01 },
-  { name: 'Budapest', lat: 47.50, lon: 19.04 },
-  { name: 'Athens', lat: 37.98, lon: 23.73 },
-  { name: 'Bucharest', lat: 44.43, lon: 26.10 },
-  { name: 'Moscow', lat: 55.76, lon: 37.62 },
-  { name: 'St. Petersburg', lat: 59.93, lon: 30.32 },
-  { name: 'Kyiv', lat: 50.45, lon: 30.52 },
-  { name: 'Istanbul', lat: 41.01, lon: 28.98 },
-  { name: 'Edinburgh', lat: 55.95, lon: -3.19 },
-  { name: 'Reykjavik', lat: 64.15, lon: -21.94 },
+  { name: 'London, England, United Kingdom', lat: 51.51, lon: -0.13 },
+  { name: 'Paris, France', lat: 48.86, lon: 2.35 },
+  { name: 'Berlin, Germany', lat: 52.52, lon: 13.40 },
+  { name: 'Madrid, Spain', lat: 40.42, lon: -3.70 },
+  { name: 'Rome, Italy', lat: 41.90, lon: 12.50 },
+  { name: 'Amsterdam, Netherlands', lat: 52.37, lon: 4.90 },
+  { name: 'Vienna, Austria', lat: 48.21, lon: 16.37 },
+  { name: 'Prague, Czech Republic', lat: 50.08, lon: 14.44 },
+  { name: 'Brussels, Belgium', lat: 50.85, lon: 4.35 },
+  { name: 'Stockholm, Sweden', lat: 59.33, lon: 18.07 },
+  { name: 'Oslo, Norway', lat: 59.91, lon: 10.75 },
+  { name: 'Copenhagen, Denmark', lat: 55.68, lon: 12.57 },
+  { name: 'Helsinki, Finland', lat: 60.17, lon: 24.94 },
+  { name: 'Dublin, Ireland', lat: 53.35, lon: -6.26 },
+  { name: 'Lisbon, Portugal', lat: 38.72, lon: -9.14 },
+  { name: 'Barcelona, Spain', lat: 41.39, lon: 2.17 },
+  { name: 'Munich, Bavaria, Germany', lat: 48.14, lon: 11.58 },
+  { name: 'Milan, Italy', lat: 45.46, lon: 9.19 },
+  { name: 'Zurich, Switzerland', lat: 47.38, lon: 8.54 },
+  { name: 'Warsaw, Poland', lat: 52.23, lon: 21.01 },
+  { name: 'Budapest, Hungary', lat: 47.50, lon: 19.04 },
+  { name: 'Athens, Greece', lat: 37.98, lon: 23.73 },
+  { name: 'Bucharest, Romania', lat: 44.43, lon: 26.10 },
+  { name: 'Moscow, Russia', lat: 55.76, lon: 37.62 },
+  { name: 'St. Petersburg, Russia', lat: 59.93, lon: 30.32 },
+  { name: 'Kyiv, Ukraine', lat: 50.45, lon: 30.52 },
+  { name: 'Istanbul, Turkey', lat: 41.01, lon: 28.98 },
+  { name: 'Edinburgh, Scotland, United Kingdom', lat: 55.95, lon: -3.19 },
+  { name: 'Reykjavik, Iceland', lat: 64.15, lon: -21.94 },
   // Middle East
-  { name: 'Dubai', lat: 25.20, lon: 55.27 },
-  { name: 'Riyadh', lat: 24.71, lon: 46.67 },
-  { name: 'Doha', lat: 25.29, lon: 51.53 },
-  { name: 'Tehran', lat: 35.69, lon: 51.39 },
-  { name: 'Baghdad', lat: 33.31, lon: 44.37 },
-  { name: 'Tel Aviv', lat: 32.09, lon: 34.78 },
-  { name: 'Jerusalem', lat: 31.77, lon: 35.23 },
-  { name: 'Amman', lat: 31.95, lon: 35.93 },
-  { name: 'Beirut', lat: 33.89, lon: 35.50 },
-  { name: 'Muscat', lat: 23.59, lon: 58.54 },
+  { name: 'Dubai, United Arab Emirates', lat: 25.20, lon: 55.27 },
+  { name: 'Riyadh, Saudi Arabia', lat: 24.71, lon: 46.67 },
+  { name: 'Doha, Qatar', lat: 25.29, lon: 51.53 },
+  { name: 'Tehran, Iran', lat: 35.69, lon: 51.39 },
+  { name: 'Baghdad, Iraq', lat: 33.31, lon: 44.37 },
+  { name: 'Tel Aviv, Israel', lat: 32.09, lon: 34.78 },
+  { name: 'Jerusalem, Israel', lat: 31.77, lon: 35.23 },
+  { name: 'Amman, Jordan', lat: 31.95, lon: 35.93 },
+  { name: 'Beirut, Lebanon', lat: 33.89, lon: 35.50 },
+  { name: 'Muscat, Oman', lat: 23.59, lon: 58.54 },
   // Africa
-  { name: 'Cairo', lat: 30.04, lon: 31.24 },
-  { name: 'Lagos', lat: 6.52, lon: 3.38 },
-  { name: 'Nairobi', lat: -1.29, lon: 36.82 },
-  { name: 'Cape Town', lat: -33.93, lon: 18.42 },
-  { name: 'Johannesburg', lat: -26.20, lon: 28.04 },
-  { name: 'Casablanca', lat: 33.59, lon: -7.62 },
-  { name: 'Accra', lat: 5.56, lon: -0.19 },
-  { name: 'Addis Ababa', lat: 9.02, lon: 38.75 },
-  { name: 'Dar es Salaam', lat: -6.79, lon: 39.28 },
-  { name: 'Kinshasa', lat: -4.32, lon: 15.31 },
-  { name: 'Algiers', lat: 36.75, lon: 3.04 },
-  { name: 'Tunis', lat: 36.81, lon: 10.18 },
-  { name: 'Dakar', lat: 14.69, lon: -17.44 },
-  { name: 'Kampala', lat: 0.35, lon: 32.58 },
+  { name: 'Cairo, Egypt', lat: 30.04, lon: 31.24 },
+  { name: 'Lagos, Nigeria', lat: 6.52, lon: 3.38 },
+  { name: 'Nairobi, Kenya', lat: -1.29, lon: 36.82 },
+  { name: 'Cape Town, South Africa', lat: -33.93, lon: 18.42 },
+  { name: 'Johannesburg, South Africa', lat: -26.20, lon: 28.04 },
+  { name: 'Casablanca, Morocco', lat: 33.59, lon: -7.62 },
+  { name: 'Accra, Ghana', lat: 5.56, lon: -0.19 },
+  { name: 'Addis Ababa, Ethiopia', lat: 9.02, lon: 38.75 },
+  { name: 'Dar es Salaam, Tanzania', lat: -6.79, lon: 39.28 },
+  { name: 'Kinshasa, Democratic Republic of the Congo', lat: -4.32, lon: 15.31 },
+  { name: 'Algiers, Algeria', lat: 36.75, lon: 3.04 },
+  { name: 'Tunis, Tunisia', lat: 36.81, lon: 10.18 },
+  { name: 'Dakar, Senegal', lat: 14.69, lon: -17.44 },
+  { name: 'Kampala, Uganda', lat: 0.35, lon: 32.58 },
   // South Asia
-  { name: 'Mumbai', lat: 19.08, lon: 72.88 },
-  { name: 'Delhi', lat: 28.61, lon: 77.21 },
-  { name: 'Bangalore', lat: 12.97, lon: 77.59 },
-  { name: 'Chennai', lat: 13.08, lon: 80.27 },
-  { name: 'Kolkata', lat: 22.57, lon: 88.36 },
-  { name: 'Karachi', lat: 24.86, lon: 67.01 },
-  { name: 'Lahore', lat: 31.55, lon: 74.35 },
-  { name: 'Dhaka', lat: 23.81, lon: 90.41 },
-  { name: 'Colombo', lat: 6.93, lon: 79.85 },
-  { name: 'Kathmandu', lat: 27.72, lon: 85.32 },
+  { name: 'Mumbai, Maharashtra, India', lat: 19.08, lon: 72.88 },
+  { name: 'Delhi, India', lat: 28.61, lon: 77.21 },
+  { name: 'Bangalore, Karnataka, India', lat: 12.97, lon: 77.59 },
+  { name: 'Chennai, Tamil Nadu, India', lat: 13.08, lon: 80.27 },
+  { name: 'Kolkata, West Bengal, India', lat: 22.57, lon: 88.36 },
+  { name: 'Karachi, Sindh, Pakistan', lat: 24.86, lon: 67.01 },
+  { name: 'Lahore, Punjab, Pakistan', lat: 31.55, lon: 74.35 },
+  { name: 'Dhaka, Bangladesh', lat: 23.81, lon: 90.41 },
+  { name: 'Colombo, Sri Lanka', lat: 6.93, lon: 79.85 },
+  { name: 'Kathmandu, Nepal', lat: 27.72, lon: 85.32 },
   // East & Southeast Asia
-  { name: 'Beijing', lat: 39.90, lon: 116.40 },
-  { name: 'Shanghai', lat: 31.23, lon: 121.47 },
-  { name: 'Guangzhou', lat: 23.13, lon: 113.26 },
-  { name: 'Shenzhen', lat: 22.54, lon: 114.06 },
-  { name: 'Hong Kong', lat: 22.32, lon: 114.17 },
-  { name: 'Tokyo', lat: 35.68, lon: 139.69 },
-  { name: 'Osaka', lat: 34.69, lon: 135.50 },
-  { name: 'Seoul', lat: 37.57, lon: 126.98 },
-  { name: 'Taipei', lat: 25.03, lon: 121.57 },
+  { name: 'Beijing, China', lat: 39.90, lon: 116.40 },
+  { name: 'Shanghai, China', lat: 31.23, lon: 121.47 },
+  { name: 'Guangzhou, Guangdong, China', lat: 23.13, lon: 113.26 },
+  { name: 'Shenzhen, Guangdong, China', lat: 22.54, lon: 114.06 },
+  { name: 'Hong Kong, China', lat: 22.32, lon: 114.17 },
+  { name: 'Tokyo, Japan', lat: 35.68, lon: 139.69 },
+  { name: 'Osaka, Japan', lat: 34.69, lon: 135.50 },
+  { name: 'Seoul, South Korea', lat: 37.57, lon: 126.98 },
+  { name: 'Taipei, Taiwan', lat: 25.03, lon: 121.57 },
   { name: 'Singapore', lat: 1.35, lon: 103.82 },
-  { name: 'Bangkok', lat: 13.76, lon: 100.50 },
-  { name: 'Jakarta', lat: -6.21, lon: 106.85 },
-  { name: 'Manila', lat: 14.60, lon: 120.98 },
-  { name: 'Ho Chi Minh', lat: 10.82, lon: 106.63 },
-  { name: 'Hanoi', lat: 21.03, lon: 105.85 },
-  { name: 'Kuala Lumpur', lat: 3.14, lon: 101.69 },
-  { name: 'Yangon', lat: 16.87, lon: 96.20 },
-  { name: 'Phnom Penh', lat: 11.56, lon: 104.93 },
+  { name: 'Bangkok, Thailand', lat: 13.76, lon: 100.50 },
+  { name: 'Jakarta, Indonesia', lat: -6.21, lon: 106.85 },
+  { name: 'Manila, Philippines', lat: 14.60, lon: 120.98 },
+  { name: 'Ho Chi Minh City, Vietnam', lat: 10.82, lon: 106.63 },
+  { name: 'Hanoi, Vietnam', lat: 21.03, lon: 105.85 },
+  { name: 'Kuala Lumpur, Malaysia', lat: 3.14, lon: 101.69 },
+  { name: 'Yangon, Myanmar', lat: 16.87, lon: 96.20 },
+  { name: 'Phnom Penh, Cambodia', lat: 11.56, lon: 104.93 },
   // Central Asia
-  { name: 'Tashkent', lat: 41.30, lon: 69.28 },
-  { name: 'Almaty', lat: 43.24, lon: 76.95 },
-  { name: 'Tbilisi', lat: 41.69, lon: 44.80 },
-  { name: 'Baku', lat: 40.41, lon: 49.87 },
+  { name: 'Tashkent, Uzbekistan', lat: 41.30, lon: 69.28 },
+  { name: 'Almaty, Kazakhstan', lat: 43.24, lon: 76.95 },
+  { name: 'Tbilisi, Georgia', lat: 41.69, lon: 44.80 },
+  { name: 'Baku, Azerbaijan', lat: 40.41, lon: 49.87 },
   // Oceania
-  { name: 'Sydney', lat: -33.87, lon: 151.21 },
-  { name: 'Melbourne', lat: -37.81, lon: 144.96 },
-  { name: 'Brisbane', lat: -27.47, lon: 153.03 },
-  { name: 'Perth', lat: -31.95, lon: 115.86 },
-  { name: 'Auckland', lat: -36.85, lon: 174.76 },
-  { name: 'Wellington', lat: -41.29, lon: 174.78 },
-  { name: 'Fiji', lat: -17.77, lon: 177.97 }
+  { name: 'Sydney, New South Wales, Australia', lat: -33.87, lon: 151.21 },
+  { name: 'Melbourne, Victoria, Australia', lat: -37.81, lon: 144.96 },
+  { name: 'Brisbane, Queensland, Australia', lat: -27.47, lon: 153.03 },
+  { name: 'Perth, Western Australia, Australia', lat: -31.95, lon: 115.86 },
+  { name: 'Auckland, New Zealand', lat: -36.85, lon: 174.76 },
+  { name: 'Wellington, New Zealand', lat: -41.29, lon: 174.78 },
+  { name: 'Suva, Fiji', lat: -17.77, lon: 177.97 }
 ];
 
 // Coastline data removed — using Natural Earth SVG map (/static/world-map.svg)
@@ -1278,12 +2286,12 @@ function _promptAlmanacLocation() {
   overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
 
   var gpsBtn = navigator.geolocation
-    ? '<button id="almanac-map-gps" style="padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:6px;font-size:12px;cursor:pointer;opacity:0.8">\uD83D\uDCCD Use GPS</button>'
+    ? '<button id="almanac-map-gps" style="padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:6px;font-size:12px;cursor:pointer;opacity:0.8">\uD83D\uDCCD ' + t('alm_use_gps') + '</button>'
     : '';
 
   // Map uses Natural Earth 110m SVG (public domain) as background
-  overlay.innerHTML = '<div style="color:var(--text);font-size:16px;font-weight:600;margin-bottom:4px">Set Your Location</div>' +
-    '<div style="color:var(--text3);font-size:12px;margin-bottom:12px">Tap a city or click the map</div>' +
+  overlay.innerHTML = '<div style="color:var(--text);font-size:16px;font-weight:600;margin-bottom:4px">' + t('alm_set_location_title') + '</div>' +
+    '<div style="color:var(--text3);font-size:12px;margin-bottom:12px">' + t('alm_tap_city') + '</div>' +
     '<div id="almanac-map-wrap" style="position:relative;max-width:560px;width:100%;border-radius:10px;overflow:hidden;border:1px solid var(--border);cursor:crosshair">' +
       '<img src="/static/world-map.svg?v=1" style="display:block;width:100%;height:auto" draggable="false" alt="World map">' +
       '<div id="almanac-map-marker" style="display:none;position:absolute;pointer-events:none">' +
@@ -1294,11 +2302,11 @@ function _promptAlmanacLocation() {
     '</div>' +
     '<div id="almanac-map-hint" style="color:var(--text2);font-size:12px;margin-top:8px;min-height:18px"></div>' +
     '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center">' +
-      '<input id="almanac-map-lat" type="text" placeholder="Latitude" style="width:90px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;text-align:center">' +
-      '<input id="almanac-map-lon" type="text" placeholder="Longitude" style="width:90px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;text-align:center">' +
-      '<button id="almanac-map-ok" style="padding:6px 18px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Set</button>' +
+      '<input id="almanac-map-lat" type="text" placeholder="' + t('alm_latitude') + '" style="width:90px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;text-align:center">' +
+      '<input id="almanac-map-lon" type="text" placeholder="' + t('alm_longitude') + '" style="width:90px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;text-align:center">' +
+      '<button id="almanac-map-ok" style="padding:6px 18px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">' + t('alm_set') + '</button>' +
       gpsBtn +
-      '<button id="almanac-map-cancel" style="padding:6px 14px;background:transparent;color:var(--text3);border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer">Cancel</button>' +
+      '<button id="almanac-map-cancel" style="padding:6px 14px;background:transparent;color:var(--text3);border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer">' + t('alm_cancel') + '</button>' +
     '</div>';
   document.body.appendChild(overlay);
 
@@ -1348,7 +2356,7 @@ function _promptAlmanacLocation() {
       var snapped = false;
       for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
         var c = _MAP_CITIES[ci];
-        var dlat = lat - c.lat, dlon = lon - c.lon;
+        var dlat = lat - c.lat, dlon = (lon - c.lon) * Math.cos(lat * DEG_TO_RAD);
         if (Math.sqrt(dlat * dlat + dlon * dlon) < snapDist) {
           lat = c.lat; lon = c.lon;
           document.getElementById('almanac-map-hint').textContent = c.name + ' (' + c.lat.toFixed(2) + '\u00b0, ' + c.lon.toFixed(2) + '\u00b0)';
@@ -1374,7 +2382,7 @@ function _promptAlmanacLocation() {
       for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
         if (hint.indexOf(_MAP_CITIES[ci].name) === 0) { locData.name = _MAP_CITIES[ci].name; break; }
       }
-      localStorage.setItem('zimi_almanac_location', JSON.stringify(locData));
+      _saveLocation(locData.lat, locData.lon, locData.name);
       document.body.removeChild(overlay);
       _renderAlmanacContent();
     }
@@ -1384,17 +2392,17 @@ function _promptAlmanacLocation() {
   var gpsEl = document.getElementById('almanac-map-gps');
   if (gpsEl) {
     gpsEl.onclick = function() {
-      gpsEl.textContent = 'Locating\u2026';
+      gpsEl.textContent = t('alm_locating');
       navigator.geolocation.getCurrentPosition(function(pos) {
         var lat = pos.coords.latitude, lon = pos.coords.longitude;
         document.getElementById('almanac-map-lat').value = lat.toFixed(2);
         document.getElementById('almanac-map-lon').value = lon.toFixed(2);
-        document.getElementById('almanac-map-hint').textContent = 'GPS: ' + lat.toFixed(2) + '\u00b0, ' + lon.toFixed(2) + '\u00b0';
-        gpsEl.textContent = '\uD83D\uDCCD GPS';
+        document.getElementById('almanac-map-hint').textContent = t('alm_gps_coords', { lat: lat.toFixed(2) + '\u00b0', lon: lon.toFixed(2) + '\u00b0' });
+        gpsEl.textContent = '\uD83D\uDCCD ' + t('alm_use_gps');
         showMarker(lat, lon);
       }, function() {
-        gpsEl.textContent = 'GPS unavailable';
-        setTimeout(function() { gpsEl.textContent = '\uD83D\uDCCD Use GPS'; }, 2000);
+        gpsEl.textContent = t('alm_gps_unavailable');
+        setTimeout(function() { gpsEl.textContent = '\uD83D\uDCCD ' + t('alm_use_gps'); }, 2000);
       }, { timeout: 8000 });
     };
   }
@@ -1410,11 +2418,9 @@ function _promptAlmanacLocation() {
 
 function _fmtMinutes(m) {
   m = ((m % 1440) + 1440) % 1440;
-  var h = Math.floor(m / 60);
-  var min = Math.round(m % 60);
-  var ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  return h + ':' + (min < 10 ? '0' : '') + min + ' ' + ampm;
+  var d = new Date(2023, 0, 1, Math.floor(m / 60), Math.round(m % 60));
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  return d.toLocaleTimeString(lang, { hour: 'numeric', minute: '2-digit' });
 }
 
 // ── Live Sky Scene ──
@@ -1439,34 +2445,38 @@ function _initSkyScene(now, lat, lon) {
   // Build sky label text (rendered on the beach inside canvas)
   var _skyLabelText = '';
   var altStr = sunPos.altitude.toFixed(1);
-  _skyLabelText = sunPos.altitude > 0 ? 'Sun ' + altStr + '\u00b0' : 'Sun below horizon (' + altStr + '\u00b0)';
+  _skyLabelText = sunPos.altitude > 0 ? t('alm_sun') + ' ' + altStr + '\u00b0' : t('alm_sun') + ' ' + t('alm_below_horizon') + ' (' + altStr + '\u00b0)';
   var moonPos0 = _moonPosition(now, lat, lon);
   var moonM0 = _moonPhase(now);
   if (moonPos0.altitude > -2) {
-    _skyLabelText += ' \u00b7 Moon ' + moonPos0.altitude.toFixed(1) + '\u00b0 (' + moonM0.illumination + '%)';
+    _skyLabelText += ' \u00b7 ' + t('alm_moon') + ' ' + moonPos0.altitude.toFixed(1) + '\u00b0 (' + moonM0.illumination + '%)';
   } else {
-    _skyLabelText += ' \u00b7 Moon below horizon';
+    _skyLabelText += ' \u00b7 ' + t('alm_moon') + ' ' + t('alm_below_horizon');
   }
 
+  var projStars = _projectStars(now, lat, lon, canvas.width, canvas.height);
+
+  // Pre-compute moon data (constant for this sky scene — now is frozen)
+  var moonData = { pos: moonPos0, phase: moonM0 };
+
   function _skyLoop(ts) {
-    var t = (ts - _skyStartTime) / 1000;
-    _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, _skyLabelText);
+    var elapsed = (ts - _skyStartTime) / 1000;
+    _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, elapsed, _skyLabelText, projStars, moonData);
     _almanacSkyRAF = requestAnimationFrame(_skyLoop);
   }
+  _activeSkyLoop = _skyLoop;  // expose to _resumeAllRAF
   if (_almanacSkyRAF) cancelAnimationFrame(_almanacSkyRAF);
   _almanacSkyRAF = requestAnimationFrame(_skyLoop);
 }
 
 function _sunPosition(date, lat, lon) {
-  var y = date.getFullYear();
-  var start = new Date(y, 0, 1);
-  var dayOfYear = Math.floor((date - start) / 86400000) + 1;
-  var B = (dayOfYear - 1) * 2 * Math.PI / 365;
-  var EoT = 229.18 * (0.000075 + 0.001868 * Math.cos(B) - 0.032077 * Math.sin(B) - 0.014615 * Math.cos(2 * B) - 0.04089 * Math.sin(2 * B));
-  var decl = 0.006918 - 0.399912 * Math.cos(B) + 0.070257 * Math.sin(B) - 0.006758 * Math.cos(2 * B) + 0.000907 * Math.sin(2 * B) - 0.002697 * Math.cos(3 * B) + 0.00148 * Math.sin(3 * B);
+  var doy = _dayOfYear(date);
+  var B = _solarB(doy);
+  var EoT = _eqOfTime(B);
+  var decl = _solarDeclination(B);
   var solarTime = date.getUTCHours() * 60 + date.getUTCMinutes() + date.getUTCSeconds() / 60 + EoT + lon * 4;
-  var hourAngle = (solarTime / 4 - 180) * Math.PI / 180;
-  var latRad = lat * Math.PI / 180;
+  var hourAngle = (solarTime / 4 - 180) * DEG_TO_RAD;
+  var latRad = lat * DEG_TO_RAD;
   var sinAlt = Math.sin(latRad) * Math.sin(decl) + Math.cos(latRad) * Math.cos(decl) * Math.cos(hourAngle);
   var altitude = Math.asin(sinAlt) * 180 / Math.PI;
   var cosAz = (Math.sin(decl) - Math.sin(latRad) * sinAlt) / (Math.cos(latRad) * Math.cos(Math.asin(sinAlt)));
@@ -1481,9 +2491,8 @@ function _sunPosition(date, lat, lon) {
 // Uses mean orbital elements to estimate the Moon's equatorial position,
 // then converts to horizontal coordinates (same pipeline as the sun).
 function _moonPosition(date, lat, lon) {
-  var JD = 2440587.5 + date.getTime() / 86400000;
-  var T = (JD - 2451545.0) / 36525;
-  var D2R = Math.PI / 180;
+  var JD = _dateToJD(date.getTime());
+  var T = _jdToJulianCentury(JD);
 
   // Mean orbital elements (degrees)
   var L0 = (218.3165 + 481267.8813 * T) % 360;         // mean longitude
@@ -1494,20 +2503,20 @@ function _moonPosition(date, lat, lon) {
 
   // Ecliptic longitude (principal terms only)
   var lng = L0
-    + 6.289 * Math.sin(M * D2R)
-    - 1.274 * Math.sin((2*D - M) * D2R)
-    - 0.658 * Math.sin(2*D * D2R)
-    - 0.214 * Math.sin(2*M * D2R)
-    - 0.186 * Math.sin(Ms * D2R);
+    + 6.289 * Math.sin(M * DEG_TO_RAD)
+    - 1.274 * Math.sin((2*D - M) * DEG_TO_RAD)
+    - 0.658 * Math.sin(2*D * DEG_TO_RAD)
+    - 0.214 * Math.sin(2*M * DEG_TO_RAD)
+    - 0.186 * Math.sin(Ms * DEG_TO_RAD);
 
   // Ecliptic latitude
-  var lat_ec = 5.128 * Math.sin(F * D2R)
-    + 0.281 * Math.sin((M + F) * D2R)
-    + 0.278 * Math.sin((F - M) * D2R);
+  var lat_ec = 5.128 * Math.sin(F * DEG_TO_RAD)
+    + 0.281 * Math.sin((M + F) * DEG_TO_RAD)
+    + 0.278 * Math.sin((F - M) * DEG_TO_RAD);
 
   // Ecliptic to equatorial (obliquity ≈ 23.44°)
-  var eps = 23.44 * D2R;
-  var lngR = lng * D2R, latR = lat_ec * D2R;
+  var eps = 23.44 * DEG_TO_RAD;
+  var lngR = lng * DEG_TO_RAD, latR = lat_ec * DEG_TO_RAD;
   var sinDec = Math.sin(latR) * Math.cos(eps) + Math.cos(latR) * Math.sin(eps) * Math.sin(lngR);
   var dec = Math.asin(sinDec);
   var ra = Math.atan2(
@@ -1516,13 +2525,13 @@ function _moonPosition(date, lat, lon) {
   );
 
   // Local sidereal time
-  var GMST = (280.46061837 + 360.98564736629 * (JD - 2451545.0)) % 360;
-  var LST = (GMST + lon) * D2R;
+  var GMST = (280.46061837 + 360.98564736629 * (JD - JD_J2000)) % 360;
+  var LST = (GMST + lon) * DEG_TO_RAD;
   var HA = LST - ra;
   HA = ((HA % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI; // normalize to [-pi, pi]
 
   // Horizontal coordinates
-  var latR2 = lat * D2R;
+  var latR2 = lat * DEG_TO_RAD;
   var sinAlt = Math.sin(latR2) * Math.sin(dec) + Math.cos(latR2) * Math.cos(dec) * Math.cos(HA);
   var altitude = Math.asin(sinAlt) * 180 / Math.PI;
   var cosAz = (Math.sin(dec) - Math.sin(latR2) * sinAlt) / (Math.cos(latR2) * Math.cos(Math.asin(sinAlt)));
@@ -1530,70 +2539,110 @@ function _moonPosition(date, lat, lon) {
   if (isNaN(cosAz)) cosAz = 0; // zenith/nadir at poles — azimuth undefined
   var azimuth = Math.acos(cosAz) * 180 / Math.PI;
   if (HA > 0) azimuth = 360 - azimuth;
-  return { altitude: altitude, azimuth: azimuth };
+  // Parallactic angle: tilt of the moon's bright limb from vertical as seen by observer
+  // q = atan2(sin(HA), tan(lat)*cos(dec) - sin(dec)*cos(HA))
+  var parallactic = Math.atan2(Math.sin(HA), Math.tan(latR2) * Math.cos(dec) - Math.sin(dec) * Math.cos(HA));
+  return { altitude: altitude, azimuth: azimuth, parallactic: parallactic * 180 / Math.PI };
 }
 
-// ── Constellation data — star positions + connecting lines ──
-// Coordinates are [x%, y%] within the sky area (0-100, 0-55% of canvas height)
+// ── Star catalog — bright stars with real RA/Dec coordinates ──
+// [RA hours, Dec degrees, visual magnitude]
+// 59 stars: major constellations + bright field stars
 
-var _CONSTELLATIONS = [
-  { name: 'Orion', stars: [
-    [18, 12], [22, 10], [25, 14],  // shoulders + head
-    [20, 22], [20, 26], [20, 30],  // belt
-    [16, 38], [24, 36]             // feet
-  ], lines: [[0,2],[2,1],[0,3],[2,3],[3,4],[4,5],[5,6],[5,7]] },
-  { name: 'Big Dipper', stars: [
-    [55, 8], [58, 6], [62, 7], [65, 10],  // bowl
-    [68, 12], [73, 10], [78, 8]            // handle
-  ], lines: [[0,1],[1,2],[2,3],[3,0],[3,4],[4,5],[5,6]] },
-  { name: 'Cassiopeia', stars: [
-    [82, 18], [85, 12], [88, 16], [91, 10], [94, 15]
-  ], lines: [[0,1],[1,2],[2,3],[3,4]] },
-  { name: 'Scorpius', stars: [
-    [38, 32], [40, 28], [42, 24], [44, 22],  // body
-    [43, 18], [45, 16],                        // claws
-    [36, 36], [34, 40], [33, 44]               // tail
-  ], lines: [[0,1],[1,2],[2,3],[3,4],[4,5],[0,6],[6,7],[7,8]] },
-  { name: 'Leo', stars: [
-    [65, 30], [68, 26], [72, 28], [70, 32],  // head
-    [74, 34], [78, 36]                         // body
-  ], lines: [[0,1],[1,2],[2,3],[3,0],[3,4],[4,5]] }
+var _STARS = [
+  // Orion (0-6): Betelgeuse, Rigel, Bellatrix, Mintaka, Alnilam, Alnitak, Saiph
+  [5.92,7.41,.42],[5.24,-8.20,.13],[5.42,6.35,1.64],[5.53,-.30,2.23],[5.60,-1.20,1.69],[5.68,-1.94,1.77],[5.80,-9.67,2.06],
+  // Ursa Major (7-13): Dubhe, Merak, Phecda, Megrez, Alioth, Mizar, Alkaid
+  [11.06,61.75,1.79],[11.03,56.38,2.37],[11.90,53.69,2.44],[12.26,57.03,3.31],[12.90,55.96,1.77],[13.40,54.93,2.27],[13.79,49.31,1.86],
+  // Cassiopeia (14-18): Caph, Schedar, Gamma, Ruchbah, Segin
+  [.15,59.15,2.27],[.68,56.54,2.23],[.95,60.72,2.47],[1.43,60.24,2.68],[1.91,63.67,3.38],
+  // Scorpius (19-25): Antares, Pi, Dschubba, Graffias, Epsilon, Shaula, Sargas
+  [16.49,-26.43,1.09],[15.98,-26.11,2.89],[16.01,-22.62,2.32],[16.09,-19.81,2.62],[16.84,-34.29,2.29],[17.56,-37.10,1.63],[17.62,-43.00,1.87],
+  // Leo (26-29): Regulus, Algieba, Zosma, Denebola
+  [10.14,11.97,1.35],[10.33,19.84,2.01],[11.24,20.52,2.56],[11.82,14.57,2.14],
+  // Cygnus (30-34): Deneb, Sadr, Delta, Gienah, Albireo
+  [20.69,45.28,1.25],[20.37,40.26,2.23],[19.75,45.13,2.87],[20.77,33.97,2.48],[19.51,27.96,3.08],
+  // Crux (35-38): Acrux, Mimosa, Gacrux, Delta
+  [12.44,-63.10,.77],[12.80,-59.69,1.25],[12.52,-57.11,1.63],[12.25,-58.75,2.80],
+  // Gemini (39-40): Castor, Pollux
+  [7.58,31.89,1.58],[7.76,28.03,1.14],
+  // Canis Major (41-44): Sirius, Mirzam, Adhara, Wezen
+  [6.75,-16.72,-1.46],[6.38,-17.96,1.98],[6.98,-28.97,1.50],[7.14,-26.39,1.84],
+  // Taurus (45-46): Aldebaran, Elnath
+  [4.60,16.51,.85],[5.44,28.61,1.65],
+  // Field stars (47-58): Canopus, Arcturus, Rigil Kent, Vega, Capella, Procyon,
+  // Altair, Spica, Fomalhaut, Polaris, Hamal, Epsilon Leo
+  [6.40,-52.70,-.72],[14.26,19.18,-.05],[14.66,-60.84,-.04],[18.62,38.78,.03],
+  [5.28,46.00,.08],[7.66,5.22,.34],[19.85,8.87,.77],[13.42,-11.16,.98],
+  [22.96,-29.62,1.16],[2.53,89.26,1.98],[2.12,23.46,2.00],[9.76,23.77,2.98]
 ];
 
-function _drawConstellations(ctx, W, H, alpha, t) {
-  var skyH = H * 0.55;
+// Constellation connecting lines — pairs of _STARS indices
+var _CONST_LINES = [
+  [0,2],[0,5],[2,3],[3,4],[4,5],[3,1],[5,6],           // Orion
+  [7,8],[8,9],[9,10],[10,7],[10,11],[11,12],[12,13],    // Big Dipper
+  [14,15],[15,16],[16,17],[17,18],                      // Cassiopeia
+  [22,21],[21,20],[21,19],[19,23],[23,24],[24,25],      // Scorpius
+  [26,27],[27,28],[28,29],[27,58],                      // Leo
+  [30,31],[31,34],[32,31],[31,33],                      // Cygnus
+  [35,37],[36,38],                                      // Crux
+  [39,40],                                              // Gemini
+  [41,42],[41,43],[43,44],                              // Canis Major
+  [45,46]                                               // Taurus
+];
+
+// Red/orange giants and supergiants — warm color rendering
+var _WARM_STARS = {0:1, 19:1, 40:1, 45:1, 48:1};
+
+// Project catalog stars to canvas coordinates for current time/location
+function _projectStars(now, lat, lon, W, H) {
+  var JD = _dateToJD(now.getTime());
+  var GMST = (280.46061837 + 360.98564736629 * (JD - JD_J2000)) % 360;
+  var LST = (GMST + lon) * DEG_TO_RAD;
+  var latR = lat * DEG_TO_RAD;
+  var result = [];
+  for (var i = 0; i < _STARS.length; i++) {
+    var s = _STARS[i];
+    var ra = s[0] * 15 * DEG_TO_RAD;
+    var dec = s[1] * DEG_TO_RAD;
+    var HA = LST - ra;
+    HA = ((HA % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+    var sinAlt = Math.sin(latR) * Math.sin(dec) + Math.cos(latR) * Math.cos(dec) * Math.cos(HA);
+    var altitude = Math.asin(sinAlt) * 180 / Math.PI;
+    if (altitude < -2) continue;
+    var cosAz = (Math.sin(dec) - Math.sin(latR) * sinAlt) / (Math.cos(latR) * Math.cos(Math.asin(sinAlt)));
+    cosAz = Math.max(-1, Math.min(1, cosAz));
+    if (isNaN(cosAz)) cosAz = 0;
+    var azimuth = Math.acos(cosAz) * 180 / Math.PI;
+    if (HA > 0) azimuth = 360 - azimuth;
+    var xFrac = (azimuth - 60) / 240;
+    if (xFrac < -0.05 || xFrac > 1.05) continue;
+    xFrac = Math.max(0, Math.min(1, xFrac));
+    result.push({ x: xFrac * W, y: Math.max(0, Math.min(H * 0.66, H * 0.66 - (altitude / 90) * H * 0.56)), mag: s[2], idx: i });
+  }
+  return result;
+}
+
+function _drawConstellations(ctx, alpha, t, projStars) {
+  var byIdx = {};
+  for (var i = 0; i < projStars.length; i++) byIdx[projStars[i].idx] = projStars[i];
   ctx.save();
-  for (var ci = 0; ci < _CONSTELLATIONS.length; ci++) {
-    var c = _CONSTELLATIONS[ci];
-    var pts = [];
-    for (var si = 0; si < c.stars.length; si++) {
-      pts.push({ x: c.stars[si][0] / 100 * W, y: c.stars[si][1] / 100 * skyH });
-    }
-    // Connecting lines — barely perceptible, only visible on close inspection
-    ctx.strokeStyle = 'rgba(100,130,180,' + (alpha * 0.06).toFixed(3) + ')';
-    ctx.lineWidth = 0.5;
-    for (var li = 0; li < c.lines.length; li++) {
-      var a = c.lines[li][0], b = c.lines[li][1];
+  ctx.strokeStyle = 'rgba(100,130,180,' + (alpha * 0.08).toFixed(3) + ')';
+  ctx.lineWidth = 0.5;
+  for (var i = 0; i < _CONST_LINES.length; i++) {
+    var a = byIdx[_CONST_LINES[i][0]], b = byIdx[_CONST_LINES[i][1]];
+    if (a && b) {
       ctx.beginPath();
-      ctx.moveTo(pts[a].x, pts[a].y);
-      ctx.lineTo(pts[b].x, pts[b].y);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
       ctx.stroke();
-    }
-    // Stars — slightly brighter than background, subtle twinkle
-    for (var si = 0; si < pts.length; si++) {
-      var twinkle = Math.sin(t * (1.5 + si * 0.3 + ci * 0.7)) * 0.1;
-      var starAlpha = alpha * (0.25 + twinkle);
-      ctx.beginPath();
-      ctx.arc(pts[si].x, pts[si].y, 1.0, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(160,180,220,' + starAlpha.toFixed(3) + ')';
-      ctx.fill();
     }
   }
   ctx.restore();
 }
 
-function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, labelText) {
-  t = t || 0;
+function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, elapsed, labelText, projStars, moonData) {
+  var t = elapsed || 0;  // 't' is animation time in seconds — not the i18n t() function
   var ctx = canvas.getContext('2d');
   var W = canvas.width, H = canvas.height;
   var alt = sunPos.altitude;
@@ -1646,43 +2695,71 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, labelText) {
     ctx.fillRect(0, hazeY, W, H * 0.68 - hazeY);
   }
 
-  // Stars — with real twinkling
+  // Stars — real catalog positions + dim background fill
   if (alt < 8) {
     var starOpacity = alt < -14 ? 1 : alt < -2 ? (-2 - alt) / 12 : Math.max(0, (8 - alt) / 20);
+
+    // Dim background stars — seeded PRNG for faint ambiance
     var _seed = 42;
     function _srand() { _seed = (_seed * 16807 + 0) % 2147483647; return _seed / 2147483647; }
-    for (var si = 0; si < 100; si++) {
+    for (var si = 0; si < 45; si++) {
       var sx = _srand() * W;
       var sy = _srand() * H * 0.55;
-      var brightness = _srand();
-      var sr = (0.4 + brightness * 1.0) * dpr;
-      // Twinkling: each star has its own frequency and phase
+      _srand();
+      var sr = 0.4 * dpr;
       var twinkleFreq = 0.8 + _srand() * 2.0;
       var twinklePhase = _srand() * 6.28;
-      var twinkle = Math.sin(t * twinkleFreq + twinklePhase) * 0.25;
-      var alpha = starOpacity * Math.max(0.05, 0.3 + brightness * 0.5 + twinkle);
-      var warm = _srand() > 0.7;
+      var twinkle = Math.sin(t * twinkleFreq + twinklePhase) * 0.15;
+      var bsa = starOpacity * Math.max(0.03, 0.15 + twinkle);
+      _srand();
       ctx.beginPath();
       ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-      ctx.fillStyle = warm
-        ? 'rgba(255,235,210,' + alpha.toFixed(3) + ')'
-        : 'rgba(220,230,255,' + alpha.toFixed(3) + ')';
+      ctx.fillStyle = 'rgba(200,210,230,' + bsa.toFixed(3) + ')';
       ctx.fill();
     }
 
-    // Constellations — visible when dark enough
-    if (alt < -2) {
-      _drawConstellations(ctx, W, H, starOpacity, t);
+    // Catalog stars at astronomically correct positions
+    if (projStars) {
+      for (var si = 0; si < projStars.length; si++) {
+        var ps = projStars[si];
+        var sr = Math.max(0.5, (3.5 - ps.mag) * 0.5) * dpr;
+        var twinkle = Math.sin(t * (1.2 + si * 0.37) + si * 2.1) * 0.12;
+        var sa = starOpacity * Math.max(0.1, 0.4 + (3.5 - ps.mag) / 5 + twinkle);
+        var warm = _WARM_STARS[ps.idx];
+        ctx.beginPath();
+        ctx.arc(ps.x, ps.y, sr, 0, Math.PI * 2);
+        ctx.fillStyle = warm
+          ? 'rgba(255,210,160,' + sa.toFixed(3) + ')'
+          : 'rgba(220,230,255,' + sa.toFixed(3) + ')';
+        ctx.fill();
+        // Subtle glow for very bright stars (mag < 0.5)
+        if (ps.mag < 0.5 && starOpacity > 0.3) {
+          var glowR = sr * 3;
+          var ga = starOpacity * 0.06;
+          var gg = ctx.createRadialGradient(ps.x, ps.y, sr, ps.x, ps.y, glowR);
+          gg.addColorStop(0, warm ? 'rgba(255,210,160,' + ga.toFixed(3) + ')' : 'rgba(200,210,240,' + ga.toFixed(3) + ')');
+          gg.addColorStop(1, 'transparent');
+          ctx.fillStyle = gg;
+          ctx.beginPath();
+          ctx.arc(ps.x, ps.y, glowR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Constellation lines — visible when dark enough
+      if (alt < -2) {
+        _drawConstellations(ctx, starOpacity, t, projStars);
+      }
     }
 
   }
 
-  // Moon — visible day and night when above the horizon
-  var moonPos = _moonPosition(now, lat, lon);
+  // Moon — visible day and night when above the horizon (pre-computed in _initSkyScene)
+  var moonPos = moonData ? moonData.pos : _moonPosition(now, lat, lon);
   var moonAlt = moonPos.altitude;
   var moonAz = moonPos.azimuth;
   if (moonAlt > -2) {
-    var m = _moonPhase(now);
+    var m = moonData ? moonData.phase : _moonPhase(now);
     // Position from actual alt/az (same projection as the sun)
     var moonXFrac = Math.max(0.05, Math.min(0.95, (moonAz - 60) / 240));
     var moonX = moonXFrac * W;
@@ -1693,24 +2770,30 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, labelText) {
     var isDaytime = alt > 0;
     var moonAlpha = isDaytime ? Math.max(0.15, 0.5 - alt / 60) : 1.0;
     if (!isDaytime) {
-      var mgOuter = ctx.createRadialGradient(moonX, moonY, moonR, moonX, moonY, moonR * 4);
-      mgOuter.addColorStop(0, 'rgba(220,215,200,' + (m.illumination / 500).toFixed(3) + ')');
+      // Subtle centered atmospheric glow — no offset (scatter is omnidirectional)
+      var glowAlpha = (m.illumination / 800).toFixed(3);
+      var mgOuter = ctx.createRadialGradient(moonX, moonY, moonR, moonX, moonY, moonR * 2.5);
+      mgOuter.addColorStop(0, 'rgba(220,215,200,' + glowAlpha + ')');
       mgOuter.addColorStop(1, 'transparent');
       ctx.fillStyle = mgOuter;
-      ctx.beginPath(); ctx.arc(moonX, moonY, moonR * 4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(moonX, moonY, moonR * 2.5, 0, Math.PI * 2); ctx.fill();
     }
+    // Rotate entire moon (texture + terminator) by parallactic angle
+    var pAngleBody = (moonPos.parallactic || 0) * DEG_TO_RAD;
     ctx.save();
     ctx.globalAlpha = moonAlpha;
-    ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.clip();
+    ctx.translate(moonX, moonY);
+    ctx.rotate(pAngleBody);
+    ctx.beginPath(); ctx.arc(0, 0, moonR, 0, Math.PI * 2); ctx.clip();
     if (_moonTexLoaded) {
-      ctx.drawImage(_moonTexImg, moonX - moonR, moonY - moonR, moonR * 2, moonR * 2);
+      ctx.drawImage(_moonTexImg, -moonR, -moonR, moonR * 2, moonR * 2);
       var brighten = isDaytime ? 0.25 + (m.illumination / 100) * 0.15 : 0.10 + (m.illumination / 100) * 0.30;
       ctx.globalCompositeOperation = 'lighter';
       ctx.fillStyle = 'rgba(220,210,195,' + brighten.toFixed(2) + ')';
-      ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, 0, moonR, 0, Math.PI * 2); ctx.fill();
       ctx.globalCompositeOperation = 'source-over';
     } else {
-      var moonGrad = ctx.createRadialGradient(moonX - moonR * 0.25, moonY - moonR * 0.2, 0, moonX, moonY, moonR);
+      var moonGrad = ctx.createRadialGradient(-moonR * 0.25, -moonR * 0.2, 0, 0, 0, moonR);
       moonGrad.addColorStop(0, isDaytime ? '#d8dce6' : '#f0ead8');
       moonGrad.addColorStop(0.5, isDaytime ? '#c8ccd6' : '#e4dcc8');
       moonGrad.addColorStop(0.85, isDaytime ? '#b8bcc6' : '#d4c8b0');
@@ -1720,11 +2803,31 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, t, labelText) {
     }
     ctx.restore();
     if (m.illumination < 95) {
+      // Draw proper terminator shadow matching the hero moon's half+ellipse technique.
+      // Rotated by parallactic angle so terminator tilt matches real sky.
+      var pAngle = (moonPos.parallactic || 0) * DEG_TO_RAD;
       ctx.save();
       ctx.globalAlpha = moonAlpha;
-      var shadowOffset = moonR * (1 - m.illumination / 50);
-      ctx.beginPath(); ctx.arc(moonX + shadowOffset, moonY, moonR * 0.97, 0, Math.PI * 2);
-      ctx.fillStyle = isDaytime ? 'rgba(135,170,210,0.7)' : 'rgba(5,8,12,0.92)';
+      // Rotate around moon center for parallactic tilt
+      ctx.translate(moonX, moonY);
+      ctx.rotate(pAngle);
+      var shadowCol = isDaytime ? 'rgba(135,170,210,0.65)' : 'rgba(5,8,12,0.82)';
+      var illumF = m.illumination / 100;
+      var R = moonR;
+      var waxing = m.phase <= 0.5;
+      var termScaleX = Math.max(0.01, Math.abs(illumF * 2 - 1));
+      var termCCW = (illumF < 0.5) === waxing;
+      // Penumbral softening — blur the terminator edge
+      var termBlur = Math.max(0.5, (1 - Math.abs(illumF * 2 - 1)) * 4);
+      ctx.shadowColor = shadowCol;
+      ctx.shadowBlur = termBlur * dpr;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.beginPath();
+      ctx.arc(0, 0, R, -Math.PI / 2, Math.PI / 2, waxing);
+      ctx.ellipse(0, 0, termScaleX * R, R, 0, Math.PI / 2, -Math.PI / 2, termCCW);
+      ctx.closePath();
+      ctx.fillStyle = shadowCol;
       ctx.fill();
       ctx.restore();
     }
@@ -2103,8 +3206,8 @@ var _PLANET_V0 = { Mercury: -0.61, Venus: -4.40, Mars: -1.60, Jupiter: -9.40, Sa
 var _VISIBLE_PLANETS = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'];
 
 function _planetVisibility(now) {
-  var JD = 2440587.5 + now.getTime() / 86400000;
-  var T = (JD - 2451545.0) / 36525;
+  var JD = _dateToJD(now.getTime());
+  var T = _jdToJulianCentury(JD);
   var earth = _planetPosition('Earth', T);
   var sunLon = (Math.atan2(-earth.y, -earth.x) * 180 / Math.PI + 360) % 360;
   var results = [];
@@ -2126,9 +3229,9 @@ function _planetVisibility(now) {
       mag += -2.5 * Math.log10(Math.max(0.01, phaseFrac));
     }
     var visible = mag < 5.5 && elongAbs > 12;
-    var sky = elong > 0 ? 'Evening' : 'Morning';
-    var dir = elong > 0 ? (elongAbs > 120 ? 'East' : elongAbs > 60 ? 'South' : 'West') :
-                          (elongAbs > 120 ? 'West' : elongAbs > 60 ? 'South' : 'East');
+    var sky = elong > 0 ? t('alm_evening') : t('alm_morning');
+    var dir = elong > 0 ? (elongAbs > 120 ? t('alm_east') : elongAbs > 60 ? t('alm_south') : t('alm_west')) :
+                          (elongAbs > 120 ? t('alm_west') : elongAbs > 60 ? t('alm_south') : t('alm_east'));
     results.push({ name: name, elongation: elongAbs, magnitude: mag, visible: visible, sky: sky, direction: dir, distance: delta, color: _PLANETS[name].color });
   }
   return results;
@@ -2143,23 +3246,23 @@ function _renderTonightSky(now) {
   var notVisible = planets.filter(function(p) { return !p.visible; });
   var html = '';
   if (visible.length === 0) {
-    html = '<div class="almanac-info-item" style="text-align:center"><div class="almanac-info-val">No planets visible</div><div class="almanac-info-lbl">All planets are too close to the sun right now</div></div>';
+    html = '<div class="almanac-info-item" style="text-align:center"><div class="almanac-info-val">' + t('alm_no_planets') + '</div><div class="almanac-info-lbl">' + t('alm_planets_near_sun') + '</div></div>';
   } else {
     for (var i = 0; i < visible.length; i++) {
       var p = visible[i];
       var magStr = p.magnitude.toFixed(1);
       // Brightness indicator: dots based on magnitude
-      var brightness = p.magnitude < -3 ? 'Brilliant' : p.magnitude < -1 ? 'Very bright' : p.magnitude < 1 ? 'Bright' : p.magnitude < 3 ? 'Visible' : 'Faint';
+      var brightness = p.magnitude < -3 ? t('alm_brightness_brilliant') : p.magnitude < -1 ? t('alm_brightness_very_bright') : p.magnitude < 1 ? t('alm_brightness_bright') : p.magnitude < 3 ? t('alm_brightness_visible') : t('alm_brightness_faint');
       html += '<div class="almanac-eclipse-row">' +
         '<div>' +
-        '<span class="almanac-eclipse-type" style="color:' + p.color + '">' + p.name + '</span>' +
-        '<br><span class="almanac-eclipse-date">' + brightness + ' &middot; mag ' + magStr + ' &middot; ' + p.elongation.toFixed(0) + '\u00b0 from Sun</span>' +
+        '<span class="almanac-eclipse-type" style="color:' + p.color + '">' + _tp(p.name) + '</span>' +
+        '<br><span class="almanac-eclipse-date">' + brightness + ' &middot; mag ' + magStr + ' &middot; ' + p.elongation.toFixed(0) + '\u00b0 ' + t('alm_from_sun') + '</span>' +
         '</div>' +
         '<div class="almanac-eclipse-until" style="font-size:11px">' + p.sky + '<br>' + p.direction + '</div></div>';
     }
     if (notVisible.length > 0) {
-      var names = notVisible.map(function(p) { return p.name; });
-      html += '<div style="margin-top:8px;font-size:11px;color:var(--text3);text-align:center">' + names.join(', ') + ' \u2014 not visible tonight</div>';
+      var names = notVisible.map(function(p) { return _tp(p.name); });
+      html += '<div style="margin-top:8px;font-size:11px;color:var(--text3);text-align:center">' + names.join(', ') + ' \u2014 ' + t('alm_not_visible_tonight') + '</div>';
     }
   }
   el.innerHTML = html;
@@ -2168,18 +3271,18 @@ function _renderTonightSky(now) {
 // ── Meteor Showers ──
 
 var _METEOR_SHOWERS = [
-  { name: 'Quadrantids', peak: [1, 3], zhr: 120, parent: '2003 EH\u2081', radiant: 'Bo\u00f6tes', speed: 'Medium' },
-  { name: 'Lyrids', peak: [4, 22], zhr: 18, parent: 'C/1861 G1 Thatcher', radiant: 'Lyra', speed: 'Fast' },
-  { name: 'Eta Aquariids', peak: [5, 6], zhr: 50, parent: '1P/Halley', radiant: 'Aquarius', speed: 'Fast' },
-  { name: 'Southern Delta Aquariids', peak: [7, 30], zhr: 25, parent: '96P/Machholz', radiant: 'Aquarius', speed: 'Medium' },
-  { name: 'Alpha Capricornids', peak: [7, 30], zhr: 5, parent: '169P/NEAT', radiant: 'Capricornus', speed: 'Slow' },
-  { name: 'Perseids', peak: [8, 12], zhr: 100, parent: '109P/Swift\u2013Tuttle', radiant: 'Perseus', speed: 'Fast' },
-  { name: 'Draconids', peak: [10, 8], zhr: 10, parent: '21P/Giacobini\u2013Zinner', radiant: 'Draco', speed: 'Slow' },
-  { name: 'Orionids', peak: [10, 21], zhr: 20, parent: '1P/Halley', radiant: 'Orion', speed: 'Fast' },
-  { name: 'Taurids', peak: [11, 5], zhr: 10, parent: '2P/Encke', radiant: 'Taurus', speed: 'Slow' },
-  { name: 'Leonids', peak: [11, 17], zhr: 15, parent: '55P/Tempel\u2013Tuttle', radiant: 'Leo', speed: 'Fast' },
-  { name: 'Geminids', peak: [12, 14], zhr: 150, parent: '3200 Phaethon', radiant: 'Gemini', speed: 'Medium' },
-  { name: 'Ursids', peak: [12, 22], zhr: 10, parent: '8P/Tuttle', radiant: 'Ursa Minor', speed: 'Medium' }
+  { key: 'quadrantids', peak: [1, 3], zhr: 120, parent: '2003 EH\u2081', radiant: 'Bo\u00f6tes', speed: 'Medium' },
+  { key: 'lyrids', peak: [4, 22], zhr: 18, parent: 'C/1861 G1 Thatcher', radiant: 'Lyra', speed: 'Fast' },
+  { key: 'eta_aquariids', peak: [5, 6], zhr: 50, parent: '1P/Halley', radiant: 'Aquarius', speed: 'Fast' },
+  { key: 's_delta_aquariids', peak: [7, 30], zhr: 25, parent: '96P/Machholz', radiant: 'Aquarius', speed: 'Medium' },
+  { key: 'alpha_capricornids', peak: [7, 30], zhr: 5, parent: '169P/NEAT', radiant: 'Capricornus', speed: 'Slow' },
+  { key: 'perseids', peak: [8, 12], zhr: 100, parent: '109P/Swift\u2013Tuttle', radiant: 'Perseus', speed: 'Fast' },
+  { key: 'draconids', peak: [10, 8], zhr: 10, parent: '21P/Giacobini\u2013Zinner', radiant: 'Draco', speed: 'Slow' },
+  { key: 'orionids', peak: [10, 21], zhr: 20, parent: '1P/Halley', radiant: 'Orion', speed: 'Fast' },
+  { key: 'taurids', peak: [11, 5], zhr: 10, parent: '2P/Encke', radiant: 'Taurus', speed: 'Slow' },
+  { key: 'leonids', peak: [11, 17], zhr: 15, parent: '55P/Tempel\u2013Tuttle', radiant: 'Leo', speed: 'Fast' },
+  { key: 'geminids', peak: [12, 14], zhr: 150, parent: '3200 Phaethon', radiant: 'Gemini', speed: 'Medium' },
+  { key: 'ursids', peak: [12, 22], zhr: 10, parent: '8P/Tuttle', radiant: 'Ursa Minor', speed: 'Medium' }
 ];
 
 function _renderMeteorShowers(now, moon) {
@@ -2192,14 +3295,14 @@ function _renderMeteorShowers(now, moon) {
     for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
       var s = _METEOR_SHOWERS[si];
       var peakDate = new Date(yr, s.peak[0] - 1, s.peak[1]);
-      var daysUntil = Math.round((peakDate - now) / 86400000);
+      var daysUntil = Math.round((peakDate - now) / MS_PER_DAY);
       if (daysUntil >= -1 && daysUntil <= 365) {
         // Moon interference: check moon illumination on peak night
         var peakMoon = _moonPhase(peakDate);
-        var moonInterference = peakMoon.illumination > 60 ? 'Poor' : peakMoon.illumination > 30 ? 'Fair' : 'Ideal';
+        var moonInterference = peakMoon.illumination > 60 ? t('alm_moon_poor') : peakMoon.illumination > 30 ? t('alm_moon_fair') : t('alm_moon_ideal');
         var moonIcon = peakMoon.illumination > 60 ? '\u{1F315}' : peakMoon.illumination > 30 ? '\u{1F313}' : '\u{1F311}';
         upcoming.push({
-          name: s.name, zhr: s.zhr, parent: s.parent, radiant: s.radiant,
+          key: s.key, zhr: s.zhr, parent: s.parent, radiant: s.radiant,
           speed: s.speed, date: peakDate, daysUntil: daysUntil,
           moonCondition: moonInterference, moonIcon: moonIcon,
           moonIllum: peakMoon.illumination
@@ -2213,26 +3316,26 @@ function _renderMeteorShowers(now, moon) {
   var html = '';
   for (var i = 0; i < upcoming.length; i++) {
     var s = upcoming[i];
-    var untilStr = s.daysUntil < 0 ? 'Peak!' : s.daysUntil === 0 ? 'Tonight!' : s.daysUntil === 1 ? 'Tomorrow' : s.daysUntil + ' days';
-    var rateDesc = s.zhr >= 100 ? 'Major' : s.zhr >= 25 ? 'Moderate' : 'Minor';
-    var condColor = s.moonCondition === 'Ideal' ? 'var(--accent)' : s.moonCondition === 'Fair' ? 'var(--text2)' : 'var(--text3)';
+    var untilStr = s.daysUntil < 0 ? t('alm_peak') : s.daysUntil === 0 ? t('alm_tonight') : s.daysUntil === 1 ? t('alm_tomorrow') : s.daysUntil + ' ' + t('alm_days');
+    var rateDesc = s.zhr >= 100 ? t('alm_meteor_major') : s.zhr >= 25 ? t('alm_meteor_moderate') : t('alm_meteor_minor');
+    var condColor = s.moonCondition === t('alm_moon_ideal') ? 'var(--accent)' : s.moonCondition === t('alm_moon_fair') ? 'var(--text2)' : 'var(--text3)';
     html += '<div class="almanac-eclipse-row">' +
       '<div>' +
-      '<span class="almanac-eclipse-type">' + s.name + '</span>' +
-      '<br><span class="almanac-eclipse-date">~' + s.zhr + '/hr &middot; ' + s.radiant + ' &middot; ' + s.speed +
+      '<span class="almanac-eclipse-type">' + t('alm_shower_' + s.key) + '</span>' +
+      '<br><span class="almanac-eclipse-date">~' + s.zhr + t('alm_per_hour') + ' &middot; ' + _tc(s.radiant) + ' &middot; ' + t('alm_speed_' + s.speed.toLowerCase()) +
       ' &middot; <span style="color:' + condColor + '">' + s.moonIcon + ' ' + s.moonCondition + '</span></span>' +
       '</div>' +
       '<div class="almanac-eclipse-until">' + untilStr + '</div></div>';
   }
-  html += '<div style="margin-top:10px;font-size:11px;color:var(--text3)">Moon conditions: ' +
-    '\u{1F311} Ideal (dark sky) &middot; \u{1F313} Fair &middot; \u{1F315} Poor (moonlight washes out faint meteors)</div>';
+  html += '<div style="margin-top:10px;font-size:11px;color:var(--text3)">' + t('alm_moon_conditions') + ': ' +
+    '\u{1F311} ' + t('alm_moon_ideal_desc') + ' &middot; \u{1F313} ' + t('alm_moon_fair') + ' &middot; \u{1F315} ' + t('alm_moon_poor_desc') + '</div>';
   el.innerHTML = html;
 }
 
 // ── Celestial Events — conjunctions, oppositions, elongations ──
 
 function _scanCelestialEvents(now) {
-  var JD0 = 2440587.5 + now.getTime() / 86400000;
+  var JD0 = _dateToJD(now.getTime());
   var scanNames = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn'];
   var events = [];
 
@@ -2240,7 +3343,7 @@ function _scanCelestialEvents(now) {
   var DAYS = 400, STEP = 2;
   var cache = {};
   for (var d = 0; d <= DAYS; d += STEP) {
-    var T = (JD0 + d - 2451545.0) / 36525;
+    var T = _jdToJulianCentury(JD0 + d);
     cache[d] = { Earth: _planetPosition('Earth', T) };
     for (var pi = 0; pi < scanNames.length; pi++) {
       cache[d][scanNames[pi]] = _planetPosition(scanNames[pi], T);
@@ -2262,7 +3365,7 @@ function _scanCelestialEvents(now) {
       if (bestSep < 5) {
         events.push({ type: 'conjunction', planets: [scanNames[i], scanNames[j]],
           separation: bestSep, daysUntil: bestDay,
-          date: new Date(now.getTime() + bestDay * 86400000) });
+          date: new Date(now.getTime() + bestDay * MS_PER_DAY) });
       }
     }
   }
@@ -2283,7 +3386,7 @@ function _scanCelestialEvents(now) {
     }
     if (bestDiff < 8 && bestDay > 0) {
       events.push({ type: 'opposition', planet: outerPlanets[pi], daysUntil: bestDay,
-        date: new Date(now.getTime() + bestDay * 86400000) });
+        date: new Date(now.getTime() + bestDay * MS_PER_DAY) });
     }
   }
 
@@ -2306,7 +3409,7 @@ function _scanCelestialEvents(now) {
         var signedElong = ((geoLon - sunLon) * 180 / Math.PI + 540) % 360 - 180;
         var sky = signedElong > 0 ? 'evening' : 'morning';
         events.push({ type: 'elongation', planet: innerPlanets[pi], elongation: bestElong,
-          sky: sky, daysUntil: bestDay, date: new Date(now.getTime() + bestDay * 86400000) });
+          sky: sky, daysUntil: bestDay, date: new Date(now.getTime() + bestDay * MS_PER_DAY) });
         rising = false; bestElong = 0; foundCount++;
       }
       prevElong = elong;
@@ -2321,11 +3424,11 @@ function _renderCelestialEvents(now) {
   var el = document.getElementById('almanac-events');
   if (!el) return;
   var events = _scanCelestialEvents(now);
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var _almLocale = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
 
   var html = '';
   if (events.length === 0) {
-    html = '<div style="text-align:center;color:var(--text3);font-size:13px;padding:12px 0">No notable events in the next year</div>';
+    html = '<div style="text-align:center;color:var(--text3);font-size:13px;padding:12px 0">' + t('alm_no_events') + '</div>';
   } else {
     var soonEvents = [], laterEvents = [];
     for (var i = 0; i < events.length; i++) {
@@ -2335,18 +3438,19 @@ function _renderCelestialEvents(now) {
     var allVisible = soonEvents.concat(laterEvents);
     for (var i = 0; i < allVisible.length; i++) {
       var ev = allVisible[i];
-      var dateStr = months[ev.date.getMonth()] + ' ' + ev.date.getDate() + ', ' + ev.date.getFullYear();
-      var untilStr = ev.daysUntil <= 1 ? 'Now!' : ev.daysUntil + ' days';
+      var dateStr = ev.date.toLocaleDateString(_almLocale, { month: 'short', day: 'numeric', year: 'numeric' });
+      var untilStr = ev.daysUntil <= 1 ? t('alm_now_exclaim') : ev.daysUntil + ' ' + t('alm_days');
       var title, detail;
       if (ev.type === 'conjunction') {
-        title = ev.planets[0] + ' \u2013 ' + ev.planets[1] + ' Conjunction';
-        detail = ev.separation.toFixed(1) + '\u00b0 apart &middot; ' + dateStr;
+        title = _tp(ev.planets[0]) + ' \u2013 ' + _tp(ev.planets[1]) + ' ' + t('alm_conjunction');
+        detail = ev.separation.toFixed(1) + '\u00b0 ' + t('alm_apart') + ' &middot; ' + dateStr;
       } else if (ev.type === 'opposition') {
-        title = ev.planet + ' at Opposition';
-        detail = 'Closest &amp; brightest &middot; ' + dateStr;
+        title = _tp(ev.planet) + ' ' + t('alm_at_opposition');
+        detail = t('alm_closest_brightest') + ' &middot; ' + dateStr;
       } else if (ev.type === 'elongation') {
-        title = ev.planet + ' Greatest Elongation';
-        detail = ev.elongation.toFixed(1) + '\u00b0 &middot; ' + ev.sky + ' sky &middot; ' + dateStr;
+        title = _tp(ev.planet) + ' ' + t('alm_greatest_elongation');
+        var skyLabel = ev.sky === 'evening' ? t('alm_evening') : t('alm_morning');
+        detail = ev.elongation.toFixed(1) + '\u00b0 &middot; ' + skyLabel + ' ' + t('alm_sky') + ' &middot; ' + dateStr;
       }
       var hidden = (i >= soonEvents.length && laterEvents.length > 0) ? ' style="display:none" class="almanac-eclipse-row almanac-event-later"' : ' class="almanac-eclipse-row"';
       html += '<div' + hidden + '>' +
@@ -2357,7 +3461,7 @@ function _renderCelestialEvents(now) {
     if (laterEvents.length > 0) {
       html += '<div style="text-align:center;margin-top:8px">' +
         '<a class="almanac-location-link" onclick="var els=document.querySelectorAll(\'.almanac-event-later\');for(var i=0;i<els.length;i++)els[i].style.display=\'\';this.parentElement.style.display=\'none\'">' +
-        'Show ' + laterEvents.length + ' more\u2026</a></div>';
+        t('alm_show_more', { n: laterEvents.length }) + '</a></div>';
     }
   }
   el.innerHTML = html;
@@ -2392,6 +3496,99 @@ function _lastWeekday(year, month, weekday) {
   var lastDow = last.getDay();
   var diff = (lastDow - weekday + 7) % 7;
   return lastDay - diff;
+}
+
+// Hindu & Sikh holidays — verified dates from drikpanchang.com (New Delhi panchang)
+// Lookup table used for accuracy: Hindu calendar dates depend on tithi-at-sunrise in IST,
+// which can't be reliably computed from astronomical data alone (±1 day errors).
+// For years outside the table, falls back to lunar approximation.
+var _HINDU_SIKH_DATES = {
+  //       Holi        Ram Navami  Raksha B.   Janmasht.   Ganesh Ch.  Navratri    Dussehra    Diwali      Guru Nanak
+  2024: [[3,25],      [4,17],     [8,19],     [8,26],     [9,7],      [10,3],     [10,12],    [11,1],     [11,15]],
+  2025: [[3,14],      [4,6],      [8,9],      [8,15],     [8,27],     [9,22],     [10,2],     [10,20],    [11,5]],
+  2026: [[3,4],       [3,26],     [8,28],     [9,4],      [9,14],     [10,11],    [10,20],    [11,8],     [11,24]],
+  2027: [[3,22],      [4,15],     [8,17],     [8,25],     [9,3],      [9,30],     [10,9],     [10,28],    [11,14]],
+  2028: [[3,11],      [4,3],      [8,5],      [8,13],     [8,23],     [9,19],     [9,27],     [10,17],    [11,2]],
+  2029: [[3,1],       [4,23],     [8,23],     [9,1],      [9,11],     [10,8],     [10,16],    [11,5],     [11,21]],
+  2030: [[3,20],      [4,12],     [8,13],     [8,21],     [9,1],      [9,28],     [10,6],     [10,25],    [11,10]]
+};
+var _HINDU_SIKH_NAMES = [
+  'Holi', 'Ram Navami', 'Raksha Bandhan', 'Janmashtami', 'Ganesh Chaturthi',
+  'Navratri begins', 'Dussehra', 'Diwali', 'Guru Nanak Jayanti'
+];
+var _hinduSikhCache = { year: 0, holidays: [] };
+function _hinduSikhHolidays(year) {
+  if (_hinduSikhCache.year === year) return _hinduSikhCache.holidays;
+  var h = [];
+  // Fixed Gregorian dates (solar, not lunar — same every year)
+  h.push({m: 1, d: 14, name: 'Makar Sankranti'});
+  h.push({m: 4, d: 14, name: 'Vaisakhi'});
+  // Use lookup table for verified years
+  var table = _HINDU_SIKH_DATES[year];
+  if (table) {
+    for (var i = 0; i < table.length; i++) {
+      h.push({m: table[i][0], d: table[i][1], name: _HINDU_SIKH_NAMES[i]});
+    }
+  } else {
+    // Fallback for years outside table: approximate from lunar phase
+    h = h.concat(_hinduSikhApprox(year));
+  }
+  _hinduSikhCache = { year: year, holidays: h };
+  return h;
+}
+
+// Approximate Hindu holidays from lunar phases (fallback for years without verified dates)
+function _findMoonNear(year, anchorMonth, anchorDay, type) {
+  var target = type === 'full' ? 0.5 : 0;
+  var anchor = new Date(year, anchorMonth - 1, anchorDay);
+  var best = null, bestDist = 1;
+  for (var i = -15; i <= 15; i++) {
+    var d = new Date(anchor.getTime() + i * 86400000);
+    var p = _moonPhase(d).phase;
+    var dist = Math.abs(p - target);
+    if (dist > 0.5) dist = 1 - dist;
+    if (dist < bestDist) { bestDist = dist; best = d; }
+  }
+  return best ? { month: best.getMonth() + 1, day: best.getDate() } : null;
+}
+function _hinduSikhApprox(year) {
+  var h = [];
+  var chaitra = _findMoonNear(year, 3, 29, 'new');
+  if (!chaitra) return h;
+  var _nmBase = new Date(year, chaitra.month - 1, chaitra.day);
+  function _nthNM(n) {
+    var approx = new Date(_nmBase.getTime() + Math.round(n * 29.53) * 86400000);
+    return _findMoonNear(approx.getFullYear(), approx.getMonth() + 1, approx.getDate(), 'new');
+  }
+  function _purnima(nm) {
+    if (!nm) return null;
+    var approx = new Date(year, nm.month - 1, nm.day + 15);
+    return _findMoonNear(approx.getFullYear(), approx.getMonth() + 1, approx.getDate(), 'full');
+  }
+  var preC = new Date(year, chaitra.month - 1, chaitra.day - 15);
+  var holi = _findMoonNear(preC.getFullYear(), preC.getMonth() + 1, preC.getDate(), 'full');
+  if (holi) h.push({m: holi.month, d: holi.day, name: 'Holi'});
+  var rn = new Date(year, chaitra.month - 1, chaitra.day + 9);
+  h.push({m: rn.getMonth() + 1, d: rn.getDate(), name: 'Ram Navami'});
+  var nm4 = _nthNM(4);
+  var sp = _purnima(nm4);
+  if (sp) {
+    h.push({m: sp.month, d: sp.day, name: 'Raksha Bandhan'});
+    var jk = new Date(year, sp.month - 1, sp.day + 8);
+    h.push({m: jk.getMonth() + 1, d: jk.getDate(), name: 'Janmashtami'});
+  }
+  var nm5 = _nthNM(5);
+  if (nm5) { var gc = new Date(year, nm5.month - 1, nm5.day + 4); h.push({m: gc.getMonth() + 1, d: gc.getDate(), name: 'Ganesh Chaturthi'}); }
+  var nm6 = _nthNM(6);
+  if (nm6) {
+    var nv = new Date(year, nm6.month - 1, nm6.day + 1); h.push({m: nv.getMonth() + 1, d: nv.getDate(), name: 'Navratri begins'});
+    var ds = new Date(year, nm6.month - 1, nm6.day + 10); h.push({m: ds.getMonth() + 1, d: ds.getDate(), name: 'Dussehra'});
+  }
+  var nm7 = _nthNM(7);
+  if (nm7) h.push({m: nm7.month, d: nm7.day, name: 'Diwali'});
+  var kp = _purnima(nm7);
+  if (kp) h.push({m: kp.month, d: kp.day, name: 'Guru Nanak Jayanti'});
+  return h;
 }
 
 // Get almanac events for a given calendar system's month, keyed by day number
@@ -2436,6 +3633,11 @@ function _getAlmanacEvents(sys, year, month) {
     if (ascension.getMonth() + 1 === month) { add(ascension.getDate(), 'Ascension', 'holiday'); }
     var pentecost = new Date(year, easter.month - 1, easter.day + 49);
     if (pentecost.getMonth() + 1 === month) { add(pentecost.getDate(), 'Pentecost', 'holiday'); }
+    // Hindu & Sikh holidays (lookup table for 2024-2030, lunar approx fallback)
+    var _hsh = _hinduSikhHolidays(year);
+    for (var _hi = 0; _hi < _hsh.length; _hi++) {
+      if (_hsh[_hi].m === month) add(_hsh[_hi].d, _hsh[_hi].name, 'holiday');
+    }
     // DST (US)
     if (month === 3) { add(_nthWeekday(year, 3, 0, 2), 'Spring Forward', 'seasonal'); }
     if (month === 11) { add(_nthWeekday(year, 11, 0, 1), 'Fall Back', 'seasonal'); }
@@ -2452,7 +3654,7 @@ function _getAlmanacEvents(sys, year, month) {
     var isLeap = _hebrewLeapYear(year);
     var adar = isLeap ? 7 : 6; // Adar (or Adar II in leap year)
     if (month === 1) { add(1, 'Rosh Hashanah', 'holiday'); add(2, 'Rosh Hashanah II', 'holiday'); add(3, 'Tzom Gedaliah', 'holiday'); add(10, 'Yom Kippur', 'holiday'); add(15, 'Sukkot', 'holiday'); add(16, 'Sukkot II', 'holiday'); add(21, 'Hoshana Rabbah', 'holiday'); add(22, "Sh'mini Atzeret", 'holiday'); add(23, 'Simchat Torah', 'holiday'); }
-    if (month === 3) { add(25, 'Hanukkah I', 'holiday'); add(26, 'Hanukkah II', 'holiday'); add(27, 'Hanukkah III', 'holiday'); add(28, 'Hanukkah IV', 'holiday'); add(29, 'Hanukkah V', 'holiday'); }
+    if (month === 3) { add(25, 'Hanukkah I', 'holiday'); add(26, 'Hanukkah II', 'holiday'); add(27, 'Hanukkah III', 'holiday'); add(28, 'Hanukkah IV', 'holiday'); add(29, 'Hanukkah V', 'holiday'); add(30, 'Hanukkah VI', 'holiday'); }
     if (month === 4) { add(1, 'Hanukkah VII', 'holiday'); add(2, 'Hanukkah VIII', 'holiday'); add(10, 'Asara B\'Tevet', 'holiday'); }
     if (month === 5) { add(15, "Tu BiShvat", 'holiday'); }
     if (month === adar) { add(13, 'Fast of Esther', 'holiday'); add(14, 'Purim', 'holiday'); add(15, 'Shushan Purim', 'holiday'); }
@@ -2478,10 +3680,9 @@ function _getAlmanacEvents(sys, year, month) {
 
   else if (sys === 'persian') {
     // Persian months: 1=Farvardin..12=Esfand
-    if (month === 1) { add(1, 'Nowruz', 'holiday'); add(2, 'Nowruz II', 'holiday'); add(3, 'Nowruz III', 'holiday'); add(4, 'Nowruz IV', 'holiday'); add(6, 'Jashn-e Tirgan', 'holiday'); add(12, 'Islamic Republic', 'holiday'); add(13, 'Sizdah Bedar', 'holiday'); }
+    if (month === 1) { add(1, 'Nowruz', 'holiday'); add(2, 'Nowruz II', 'holiday'); add(3, 'Nowruz III', 'holiday'); add(4, 'Nowruz IV', 'holiday'); add(12, 'Islamic Republic', 'holiday'); add(13, 'Sizdah Bedar', 'holiday'); }
     if (month === 3) { add(14, 'Khordad Uprising', 'holiday'); }
-    if (month === 4) { add(1, 'Tirgan', 'holiday'); }
-    if (month === 5) { add(10, 'Mehrgan', 'holiday'); }
+    if (month === 4) { add(13, 'Tirgan', 'holiday'); }
     if (month === 7) { add(10, 'Mehregan', 'holiday'); }
     if (month === 8) { add(10, 'Aban Festival', 'holiday'); }
     if (month === 9) { add(1, 'Azar Festival', 'holiday'); add(30, 'Yalda Night', 'holiday'); }
@@ -2584,10 +3785,7 @@ function _drawAlmanacGrid() {
   var events = _getAlmanacEvents(_almSystem, _almYear, _almMonth);
 
   // Year suffix
-  var yearStr = _almYear.toString();
-  if (_almSystem === 'islamic') yearStr += ' AH';
-  else if (_almSystem === 'persian') yearStr += ' SH';
-  else if (_almSystem === 'buddhist') yearStr += ' BE';
+  var yearStr = _almYear + _calYearSuffix(_almSystem);
 
   var html = '';
 
@@ -2599,12 +3797,17 @@ function _drawAlmanacGrid() {
   var todayCal = _jdnToCalendar(_almSystem, todayJDN);
   var isCurrentMonth = (_almYear === todayCal.year && _almMonth === todayCal.month);
   var isToSelected = (_almSelectedJDN === _almTodayJDN);
-  html += '<button class="alm-today-btn" onclick="_almToday()"' + (isCurrentMonth && isToSelected ? ' style="visibility:hidden"' : '') + '>Today</button>';
+  html += '<button class="alm-today-btn" onclick="_almToday()"' + (isCurrentMonth && isToSelected ? ' style="visibility:hidden"' : '') + '>' + t('alm_today') + '</button>';
   html += '</div>';
 
   // Grid
   html += '<div class="alm-grid">';
-  var dayLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var _dlLocale = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  var dayLabels = [];
+  for (var di = 0; di < 7; di++) {
+    var _d = new Date(2023, 0, di + 1); // Jan 1, 2023 = Sunday
+    dayLabels.push(_d.toLocaleDateString(_dlLocale, { weekday: 'short' }));
+  }
   for (var i = 0; i < 7; i++) {
     html += '<div class="alm-hdr">' + dayLabels[i] + '</div>';
   }
@@ -2622,7 +3825,7 @@ function _drawAlmanacGrid() {
     var shown = Math.min(dayEvents.length, 2);
     for (var ei = 0; ei < shown; ei++) {
       var ev = dayEvents[ei];
-      var escapedLabel = ev.label.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      var escapedLabel = _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       html += '<div class="alm-ev alm-ev-' + ev.type + '">' +
         (ev.icon ? ev.icon + ' ' : '') + escapedLabel + '</div>';
     }
@@ -2648,7 +3851,7 @@ function _drawAlmanacGrid() {
       for (var ei = 0; ei < selEvents.length; ei++) {
         var ev = selEvents[ei];
         html += '<div class="alm-ev alm-ev-' + ev.type + '" style="font-size:12px;padding:2px 0">' +
-          (ev.icon ? ev.icon + ' ' : '') + ev.label.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+          (ev.icon ? ev.icon + ' ' : '') + _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
       }
       html += '</div>';
     }
@@ -2687,10 +3890,7 @@ function _almRenderCrossRef(jdn) {
     var sys = _CAL_SYSTEMS[i];
     var cal = _jdnToCalendar(sys, jdn);
     var monthName = _calMonthName(sys, cal.year, cal.month);
-    var yearStr = cal.year.toString();
-    if (sys === 'islamic') yearStr += ' AH';
-    else if (sys === 'persian') yearStr += ' SH';
-    else if (sys === 'buddhist') yearStr += ' BE';
+    var yearStr = cal.year + _calYearSuffix(sys);
     var dateStr = monthName + ' ' + cal.day + ', ' + yearStr;
     if (sys === 'chinese') {
       var chinese = _chineseZodiac(greg.year);
@@ -2698,7 +3898,7 @@ function _almRenderCrossRef(jdn) {
     }
     var isActive = sys === _almSystem ? ' alm-crossref-active' : '';
     html += '<div class="alm-crossref-row' + isActive + '" onclick="_almSwitchSystem(\'' + sys + '\')">' +
-      '<span class="alm-crossref-label">' + _CAL_LABELS[sys] + '</span>' +
+      '<span class="alm-crossref-label">' + _calLabel(sys) + '</span>' +
       '<span class="alm-crossref-date">' + dateStr + '</span>' +
       '</div>';
   }
@@ -2811,17 +4011,15 @@ function _gregorianToPersian(gy, gm, gd) {
   if (days < 186) { jm = 1 + Math.floor(days / 31); jd = 1 + (days % 31); }
   else { jm = 7 + Math.floor((days - 186) / 30); jd = 1 + ((days - 186) % 30); }
 
-  var persianMonths = ['Farvardin','Ordibehesht','Khordad','Tir','Mordad','Shahrivar',
-    'Mehr','Aban','Azar','Dey','Bahman','Esfand'];
-  return { year: jy, month: persianMonths[jm - 1], day: jd };
+  return { year: jy, month: jm, day: jd };
 }
 
 // Chinese calendar — 60-year cycle (Heavenly Stems + Earthly Branches)
 function _chineseZodiac(year) {
   var stems = ['\u7532','\u4e59','\u4e19','\u4e01','\u620a','\u5df1','\u5e9a','\u8f9b','\u58ec','\u7678'];
   var branches = ['\u5b50','\u4e11','\u5bc5','\u536f','\u8fb0','\u5df3','\u5348','\u672a','\u7533','\u9149','\u620c','\u4ea5'];
-  var animals = ['Rat','Ox','Tiger','Rabbit','Dragon','Snake','Horse','Goat','Monkey','Rooster','Dog','Pig'];
-  var elements = ['Wood','Wood','Fire','Fire','Earth','Earth','Metal','Metal','Water','Water'];
+  var animals = [t('alm_zodiac_rat'),t('alm_zodiac_ox'),t('alm_zodiac_tiger'),t('alm_zodiac_rabbit'),t('alm_zodiac_dragon'),t('alm_zodiac_snake'),t('alm_zodiac_horse'),t('alm_zodiac_goat'),t('alm_zodiac_monkey'),t('alm_zodiac_rooster'),t('alm_zodiac_dog'),t('alm_zodiac_pig')];
+  var elements = [t('alm_element_wood'),t('alm_element_wood'),t('alm_element_fire'),t('alm_element_fire'),t('alm_element_earth'),t('alm_element_earth'),t('alm_element_metal'),t('alm_element_metal'),t('alm_element_water'),t('alm_element_water')];
   var offset = year - 4; // 4 CE was a Jia-Zi year
   var stemIdx = ((offset % 10) + 10) % 10;
   var branchIdx = ((offset % 12) + 12) % 12;
@@ -2960,16 +4158,29 @@ function _jdnToJulian(jdn) {
 
 // ── Calendar dispatchers — uniform interface for any calendar system ──
 
-var _CAL_SYSTEMS = ['gregorian', 'hebrew', 'islamic', 'persian', 'julian', 'buddhist', 'chinese'];
-var _CAL_LABELS = { gregorian: 'Gregorian', hebrew: 'Hebrew', islamic: 'Islamic', persian: 'Persian', julian: 'Julian', buddhist: 'Buddhist', chinese: 'Chinese' };
+// Chronological by origin: Chinese (~2637 BCE), Hebrew (~359 CE codified),
+// Buddhist (543 BCE epoch), Julian (45 BCE), Islamic (622 CE), Gregorian (1582 CE), Persian (1925 CE)
+var _CAL_SYSTEMS = ['persian', 'gregorian', 'islamic', 'julian', 'buddhist', 'hebrew', 'chinese'];
+var _GREGORIAN_DAYS_PER_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+function _calLabel(sys) { return t('cal_' + sys); }
+function _calYearSuffix(sys) {
+  if (sys === 'islamic') return ' ' + t('alm_year_ah');
+  if (sys === 'persian') return ' ' + t('alm_year_sh');
+  if (sys === 'buddhist') return ' ' + t('alm_year_be');
+  return '';
+}
 
-var _GREGORIAN_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+// Gregorian month name — locale-aware
+function _gregorianMonthName(month1based) {
+  var loc = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  return new Date(2023, month1based - 1, 1).toLocaleDateString(loc, { month: 'long' });
+}
 var _HIJRI_MONTHS = ['Muharram','Safar','Rabi\u2019 al-Awwal','Rabi\u2019 al-Thani',
   'Jumada al-Ula','Jumada al-Thani','Rajab','Sha\u2019ban',
   'Ramadan','Shawwal','Dhu al-Qi\u2019dah','Dhu al-Hijjah'];
 var _PERSIAN_MONTHS = ['Farvardin','Ordibehesht','Khordad','Tir','Mordad','Shahrivar',
   'Mehr','Aban','Azar','Dey','Bahman','Esfand'];
-var _JULIAN_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+// _JULIAN_MONTHS removed — Julian calendar uses the same month names as Gregorian
 
 // Convert JDN → {year, month, day} in the given calendar system (month is 1-based)
 function _jdnToCalendar(sys, jdn) {
@@ -3001,7 +4212,7 @@ function _jdnToCalendar(sys, jdn) {
   if (sys === 'persian') {
     var g = _jdnToGregorian(jdn);
     var p = _gregorianToPersian(g.year, g.month, g.day);
-    return { year: p.year, month: _PERSIAN_MONTHS.indexOf(p.month) + 1, day: p.day };
+    return { year: p.year, month: p.month, day: p.day };
   }
   if (sys === 'julian') {
     var j = _jdnToJulian(jdn);
@@ -3076,9 +4287,8 @@ function _calFirstDayJDN(sys, year, month) {
 // Get number of days in a given month
 function _calDaysInMonth(sys, year, month) {
   if (sys === 'gregorian') {
-    var daysPerMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     if (month === 2 && ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0)) return 29;
-    return daysPerMonth[month - 1];
+    return _GREGORIAN_DAYS_PER_MONTH[month - 1];
   }
   if (sys === 'hebrew') {
     var months = _hebrewMonthList(year);
@@ -3088,15 +4298,13 @@ function _calDaysInMonth(sys, year, month) {
   if (sys === 'islamic') return _hijriDaysInMonth(year, month);
   if (sys === 'persian') return _persianDaysInMonth(year, month);
   if (sys === 'julian') {
-    var daysPerMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     if (month === 2 && year % 4 === 0) return 29;
-    return daysPerMonth[month - 1];
+    return _GREGORIAN_DAYS_PER_MONTH[month - 1];
   }
   if (sys === 'buddhist') {
     var gYear = year - 543;
-    var daysPerMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     if (month === 2 && ((gYear % 4 === 0 && gYear % 100 !== 0) || gYear % 400 === 0)) return 29;
-    return daysPerMonth[month - 1];
+    return _GREGORIAN_DAYS_PER_MONTH[month - 1];
   }
   if (sys === 'chinese') return 29 + (month % 2 === 1 ? 1 : 0); // alternating 30/29
   return 30;
@@ -3104,7 +4312,7 @@ function _calDaysInMonth(sys, year, month) {
 
 // Get month name
 function _calMonthName(sys, year, month) {
-  if (sys === 'gregorian') return _GREGORIAN_MONTHS[month - 1] || '';
+  if (sys === 'gregorian') return _gregorianMonthName(month);
   if (sys === 'hebrew') {
     var months = _hebrewMonthList(year);
     if (month >= 1 && month <= months.length) return months[month - 1].name;
@@ -3112,9 +4320,9 @@ function _calMonthName(sys, year, month) {
   }
   if (sys === 'islamic') return _HIJRI_MONTHS[month - 1] || '';
   if (sys === 'persian') return _PERSIAN_MONTHS[month - 1] || '';
-  if (sys === 'julian') return _JULIAN_MONTHS[month - 1] || '';
-  if (sys === 'buddhist') return _GREGORIAN_MONTHS[month - 1] || '';
-  if (sys === 'chinese') return _CHINESE_MONTHS[month - 1] || ('Month ' + month);
+  if (sys === 'julian') return _gregorianMonthName(month);
+  if (sys === 'buddhist') return _gregorianMonthName(month);
+  if (sys === 'chinese') return _CHINESE_MONTHS[month - 1] || t('alm_month_n', { n: month });
   return '';
 }
 
@@ -3133,8 +4341,8 @@ function _calMonthCount(sys, year) {
 function _renderDeepTime(now) {
   var el = document.getElementById('almanac-deeptime');
   if (!el) return;
-  var JD = 2440587.5 + now.getTime() / 86400000;
-  var T = (JD - 2451545.0) / 36525; // Julian centuries from J2000
+  var JD = _dateToJD(now.getTime());
+  var T = _jdToJulianCentury(JD);
 
   // Axial tilt (obliquity of ecliptic)
   // IAU formula: ε = 23°26'21.448" - 46.8150"T - 0.00059"T² + 0.001813"T³
@@ -3171,76 +4379,294 @@ function _renderDeepTime(now) {
   var earthEcc = (0.0167086 - 0.0000420 * T).toFixed(6);
   // Rate of change: compare eccentricity now vs 1 century ago
   var eccPrev = 0.0167086 - 0.0000420 * (T - 1);
-  var eccTrend = parseFloat(earthEcc) < eccPrev ? 'decreasing' : 'increasing';
-
   // Human-scale season direction
-  var tiltDir = obliquityAS < 84381.448 ? 'decreasing' : 'increasing';
-  var seasonImpact = tiltDir === 'decreasing' ? 'Seasons are slowly becoming milder' : 'Seasons are slowly becoming more extreme';
+  var tiltDir = obliquityAS < 84381.448 ? t('alm_decreasing') : t('alm_increasing');
+  var seasonImpact = obliquityAS < 84381.448 ? t('alm_seasons_milder') : t('alm_seasons_extreme');
 
   var html = '<div class="almanac-info-grid">';
 
-  // Axial tilt — why it matters: it's what gives us seasons
+  // Axial tilt
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + obliquityDeg.toFixed(2) + '\u00b0</div>' +
-    '<div class="almanac-info-lbl">Earth\u2019s Tilt</div>' +
+    '<div class="almanac-info-lbl">' + t('alm_dt_tilt') + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    'This tilt is why seasons exist. It\u2019s currently ' + tiltDir + ', meaning: ' + seasonImpact.toLowerCase() + '. ' +
-    'Cycles between 22.1\u00b0 and 24.5\u00b0 over 41,000 years (Milankovi\u0107 cycle). ' +
-    'Currently ' + tiltInCycle + '% through the cycle.</div></div>';
+    t('alm_dt_tilt_desc', { trend: tiltDir, impact: seasonImpact, pct: tiltInCycle }) + '</div></div>';
 
-  // North Star — why it matters: navigation for millennia
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + polarisDist + '\u00b0 from true north</div>' +
-    '<div class="almanac-info-lbl">Polaris Accuracy</div>' +
+  // North Star
+  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + polarisDist + '\u00b0 ' + t('alm_from_true_north') + '</div>' +
+    '<div class="almanac-info-lbl">' + t('alm_dt_polaris') + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    'Earth wobbles like a spinning top. Polaris happens to be near the axis right now, but it\u2019s drifting. ' +
-    'Closest alignment ~2100 (0.45\u00b0), then it drifts away. In ~' + Math.round((14000 - now.getFullYear()) / 1000) + ',000 years, Vega will be the \u201cNorth Star.\u201d ' +
-    'Full wobble cycle: 25,772 years.</div></div>';
+    t('alm_dt_polaris_desc', { years: (14000 - now.getFullYear()).toLocaleString() }) + '</div></div>';
 
-  // Day getting longer — why it matters: the moon is stealing our spin
-  // Show excess over 24h in microseconds for drama
-  var excessUs = excessMs * 1000; // microseconds
+  // Day getting longer
   var totalExcessMs = (daySeconds - 86400) * 1000;
-  var dayStr = totalExcessMs > 1 ? '+' + totalExcessMs.toFixed(1) + 'ms over 24h' :
-               totalExcessMs > 0.01 ? '+' + (totalExcessMs * 1000).toFixed(0) + '\u00b5s over 24h' :
-               '~24h (gaining fast)';
+  var dayStr = totalExcessMs > 1 ? '+' + totalExcessMs.toFixed(1) + 'ms ' + t('alm_over_24h') :
+               totalExcessMs > 0.01 ? '+' + (totalExcessMs * 1000).toFixed(0) + '\u00b5s ' + t('alm_over_24h') :
+               '~24h';
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + dayStr + '</div>' +
-    '<div class="almanac-info-lbl">Today Is Longer Than Yesterday</div>' +
+    '<div class="almanac-info-lbl">' + t('alm_dt_daylen') + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    'The Moon\u2019s gravity creates tides that act like brakes on Earth\u2019s spin. Each century, days grow 1.8ms longer. ' +
-    'Since the year 2000, days have stretched ' + excessMs.toFixed(1) + 'ms. Doesn\u2019t sound like much \u2014 but ' +
-    '600 million years ago, a day was only 21 hours. The Moon drifts 3.8 cm farther each year, slowly releasing its grip.</div></div>';
+    t('alm_dt_daylen_desc', { ms: excessMs.toFixed(1) }) + '</div></div>';
 
-  // Orbital eccentricity — why it matters: ice ages
+  // Orbital eccentricity
+  var eccTrendStr = parseFloat(earthEcc) < eccPrev ? t('alm_decreasing') : t('alm_increasing');
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + earthEcc + '</div>' +
-    '<div class="almanac-info-lbl">Orbit Shape</div>' +
+    '<div class="almanac-info-lbl">' + t('alm_dt_orbit') + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    'How elliptical Earth\u2019s orbit is (0 = perfect circle, 1 = extremely stretched). ' +
-    'Currently near-circular and ' + eccTrend + '. This affects how much solar energy Earth receives over a year. ' +
-    'Combined with tilt and precession, these three cycles drive ice ages (Milankovi\u0107 theory).</div></div>';
+    t('alm_dt_orbit_desc', { trend: eccTrendStr }) + '</div></div>';
 
-  // Julian Date — why it matters: time that never resets
+  // Julian Date
   html += '<div class="almanac-info-item"><div class="almanac-info-val">JD ' + julianDate + '</div>' +
-    '<div class="almanac-info-lbl">Julian Date</div>' +
+    '<div class="almanac-info-lbl">' + t('alm_dt_julian') + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    'A continuous count of days since January 1, 4713 BC. Used by astronomers because it never resets, ' +
-    'skips, or changes with calendar reforms. Every event in human history has exactly one Julian Date. ' +
-    'Immune to leap seconds, timezone changes, and political calendars.</div></div>';
+    t('alm_dt_julian_desc') + '</div></div>';
 
-  // Galactic Year — Sun's orbit around Milky Way
-  // Sun formed ~4.6 Gya; advance by elapsed time so this stays accurate forever
-  var galacticPeriod = 225; // million years per orbit
-  var sunAge = 4600 + (now.getFullYear() - 2000) / 1e6; // million years, advances with time
+  // Galactic Year
+  var galacticPeriod = 225;
+  var sunAge = 4600 + (now.getFullYear() - 2000) / 1e6;
   var orbitsCompleted = Math.floor(sunAge / galacticPeriod);
   var currentOrbitPct = ((sunAge % galacticPeriod) / galacticPeriod * 100).toFixed(1);
 
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + currentOrbitPct + '% through orbit #' + (orbitsCompleted + 1) + '</div>' +
-    '<div class="almanac-info-lbl">Galactic Year</div>' +
+  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + t('alm_galactic_orbit', { pct: currentOrbitPct, n: orbitsCompleted + 1 }) + '</div>' +
+    '<div class="almanac-info-lbl">' + t('alm_dt_galactic') + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    'The Sun orbits the Milky Way\u2019s center every ~225 million years at 828,000 km/h. ' +
-    'In ' + (sunAge / 1000).toFixed(1) + ' billion years, we\u2019ve completed roughly ' + orbitsCompleted + ' orbits. ' +
-    'Last time we were here, dinosaurs ruled the Earth.</div></div>';
+    t('alm_dt_galactic_desc', { age: (sunAge / 1000).toFixed(1), orbits: orbitsCompleted }) + '</div></div>';
 
   html += '</div>';
   el.innerHTML = html;
+}
+
+// ── Messages Across Time — enduring inscriptions in every language ──
+// Texts loaded async from /static/rosetta/*.json (manifest + per-inscription files)
+// Golden Record gallery images from /static/golden-record/ (NASA public domain)
+// Future: this section could become its own ZIM — see project_zim_format.md breadcrumb
+
+var _rosettaManifest = null;
+var _rosettaCache = {};
+var _rosettaLangs = [(typeof _currentLang !== 'undefined') ? _currentLang : 'en'];
+var _rosettaTextIdx = 9; // Georgia Guidestones — thematically fitting default for Zimi
+
+var _ALL_LANGS = [
+  {code:'en',name:'English'},{code:'fr',name:'Français'},{code:'de',name:'Deutsch'},
+  {code:'es',name:'Español'},{code:'pt',name:'Português'},{code:'ru',name:'Русский'},
+  {code:'zh',name:'中文'},{code:'ar',name:'العربية'},{code:'hi',name:'हिन्दी'},{code:'he',name:'עברית'}
+];
+var _RTL_CODES = ['ar','he'];
+
+// Golden Record image gallery — ordered as encoded on the record
+var _GR_IMAGES = [
+  'cover.jpg', 'calibration-circle.gif', 'math-definitions.gif', 'physical-units.gif',
+  'solar-location-map.gif', 'solar-system-inner.gif', 'solar-system-outer.gif', 'solar-spectrum.gif',
+  'mercury.gif', 'mars.gif', 'jupiter.gif', 'earth.gif', 'egypt-nile.gif',
+  'chemical-definitions.gif', 'dna-structure.gif', 'dna-magnified.gif', 'structure-of-earth.gif',
+  'continental-drift.gif', 'heron-island.jpg', 'vertebrate-evolution.gif', 'bushmen-sketch.gif',
+  'man-guatemala.gif', 'human-anatomy.gif', 'conception.gif', 'fetus.gif', 'family-ages.gif',
+  'nursing-mother.gif', 'eating-drinking.gif', 'children-globe.gif', 'schoolroom.gif',
+  'fishing-boat.gif', 'house-africa.gif', 'house-construction.gif', 'house-new-mexico.gif',
+  'supermarket.gif', 'un-building-day.gif', 'un-building-night.gif', 'olympians.gif',
+  'microscope.gif', 'xray-hand.gif', 'street-scene.gif', 'rush-hour.gif', 'highway.gif',
+  'airplane.gif', 'arecibo.gif', 'newton-book.gif', 'violin-cavatina.gif',
+  'titan-launch.gif', 'astronaut.gif'
+];
+function _grCap(idx) { return t('gr_cap_' + idx); }
+
+var _grLightboxIdx = -1;
+var _grTouchStartX = 0;
+
+async function _loadRosettaManifest() {
+  if (_rosettaManifest) return _rosettaManifest;
+  try {
+    var resp = await fetch('/static/rosetta/manifest.json');
+    _rosettaManifest = await resp.json();
+  } catch(e) { _rosettaManifest = []; }
+  return _rosettaManifest;
+}
+
+async function _loadInscription(id) {
+  if (_rosettaCache[id]) return _rosettaCache[id];
+  try {
+    var resp = await fetch('/static/rosetta/' + id + '.json');
+    _rosettaCache[id] = await resp.json();
+  } catch(e) { _rosettaCache[id] = {texts:{}}; }
+  return _rosettaCache[id];
+}
+
+async function _renderRosettaStone(now) {
+  var el = document.getElementById('almanac-rosetta');
+  if (!el) return;
+
+  var manifest = await _loadRosettaManifest();
+  if (!manifest.length) { el.innerHTML = ''; return; }
+
+  var entry = manifest[_rosettaTextIdx] || manifest[0];
+  var data = await _loadInscription(entry.id);
+  var availLangs = Object.keys(data.texts || {});
+
+  // Localized field helper — reads i18n object from manifest, falls back to English
+  var _cl = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  function _rf(e, f) { return (e.i18n && e.i18n[_cl] && e.i18n[_cl][f]) || e[f]; }
+
+  // Inscription pills (top row)
+  var html = '<div class="rosetta-pills">';
+  for (var si = 0; si < manifest.length; si++) {
+    var cls = si === _rosettaTextIdx ? 'pill active' : 'pill';
+    html += '<button class="' + cls + '" onclick="_selectRosettaText(' + si + ')">' + _rf(manifest[si], 'title') + '</button>';
+  }
+  html += '</div>';
+
+  // Metadata
+  html += '<div class="rosetta-meta">' + _rf(entry, 'date') + ' \u00b7 ' + _rf(entry, 'place') + ' \u00b7 ' + _rf(entry, 'medium') + '</div>';
+  html += '<div class="rosetta-context">' + _rf(entry, 'context') + '</div>';
+
+  // Language pills (bottom row) — show language names in current UI language
+  html += '<div class="rosetta-pills">';
+  for (var li = 0; li < _ALL_LANGS.length; li++) {
+    var lc = _ALL_LANGS[li].code;
+    var langLabel = t('lang_name_' + lc);
+    if (langLabel === 'lang_name_' + lc) langLabel = _ALL_LANGS[li].name; // fallback to native name
+    var avail = availLangs.indexOf(lc) !== -1;
+    var isActive = _rosettaLangs.indexOf(lc) !== -1;
+    if (avail) {
+      html += '<button class="' + (isActive ? 'pill active' : 'pill') + '" onclick="_toggleRosettaLang(\'' + lc + '\')">' + langLabel + '</button>';
+    } else {
+      html += '<button class="pill disabled" disabled>' + langLabel + '</button>';
+    }
+  }
+  html += '</div>';
+
+  // Text block(s) — one or two-up comparison
+  var twoUp = _rosettaLangs.length === 2;
+  if (twoUp) html += '<div class="rosetta-compare">';
+  for (var ri = 0; ri < _rosettaLangs.length; ri++) {
+    var langCode = _rosettaLangs[ri];
+    var text = (data.texts || {})[langCode] || (data.texts || {})['en'] || '';
+    var isRtl = _RTL_CODES.indexOf(langCode) !== -1;
+    var dir = isRtl ? ' dir="rtl"' : '';
+    var align = isRtl ? 'text-align:right' : '';
+    var langName = langCode;
+    for (var ln = 0; ln < _ALL_LANGS.length; ln++) {
+      if (_ALL_LANGS[ln].code === langCode) { langName = _ALL_LANGS[ln].name; break; }
+    }
+    html += '<div class="alm-rosetta-block"' + dir + ' style="' + align + '">' +
+      '<div class="alm-rosetta-title">' + langName + '</div>' +
+      '<div class="alm-rosetta-text">' + text.replace(/\n/g, '<br>') + '</div>' +
+      '</div>';
+  }
+  if (twoUp) html += '</div>';
+
+  // Golden Record image gallery (only when that inscription is selected)
+  if (entry.id === 'golden-record') {
+    html += _renderGoldenRecordGallery();
+  }
+
+  el.innerHTML = html;
+}
+
+function _renderGoldenRecordGallery() {
+  var html = '<div class="gr-gallery">';
+  html += '<div class="gr-gallery-title">' + t('alm_gr_title') + '</div>';
+  html += '<div class="gr-gallery-sub">' + t('alm_gr_subtitle') + '</div>';
+  html += '<div class="gr-grid">';
+  for (var i = 0; i < _GR_IMAGES.length; i++) {
+    html += '<div class="gr-thumb" onclick="_openGrLightbox(' + i + ')">' +
+      '<img src="/static/golden-record/' + _GR_IMAGES[i] + '" alt="' + _grCap(i) + '" loading="lazy">' +
+      '</div>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function _openGrLightbox(idx) {
+  _grLightboxIdx = idx;
+  _renderGrLightbox();
+  document.addEventListener('keydown', _grKeyHandler);
+}
+
+function _closeGrLightbox() {
+  _grLightboxIdx = -1;
+  var lb = document.getElementById('gr-lightbox');
+  if (lb) lb.remove();
+  document.removeEventListener('keydown', _grKeyHandler);
+}
+
+function _grKeyHandler(e) {
+  if (e.key === 'Escape') _closeGrLightbox();
+  else if (e.key === 'ArrowRight') { e.preventDefault(); _grNav(1); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); _grNav(-1); }
+}
+
+function _grNav(dir) {
+  _grLightboxIdx = (_grLightboxIdx + dir + _GR_IMAGES.length) % _GR_IMAGES.length;
+  _renderGrLightbox();
+}
+
+function _renderGrLightbox() {
+  var file = _GR_IMAGES[_grLightboxIdx];
+  var cap = _grCap(_grLightboxIdx);
+  var lb = document.getElementById('gr-lightbox');
+  if (!lb) {
+    lb = document.createElement('div');
+    lb.id = 'gr-lightbox';
+    lb.className = 'gr-lightbox';
+    document.body.appendChild(lb);
+    // Swipe support
+    lb.addEventListener('touchstart', function(e) {
+      _grTouchStartX = e.touches[0].clientX;
+    }, {passive:true});
+    lb.addEventListener('touchend', function(e) {
+      var dx = e.changedTouches[0].clientX - _grTouchStartX;
+      if (Math.abs(dx) > 50) _grNav(dx < 0 ? 1 : -1);
+    }, {passive:true});
+  }
+  lb.innerHTML =
+    '<div class="gr-lb-bg" onclick="_closeGrLightbox()"></div>' +
+    '<button class="gr-lb-close" onclick="_closeGrLightbox()">&times;</button>' +
+    '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,2 4,8 10,14"/></svg></button>' +
+    '<div class="gr-lb-main" onclick="event.stopPropagation()">' +
+      '<img src="/static/golden-record/' + file + '" alt="' + cap + '">' +
+      '<div class="gr-lb-cap">' + cap + '</div>' +
+      '<div class="gr-lb-num">' + (_grLightboxIdx + 1) + ' / ' + _GR_IMAGES.length + '</div>' +
+    '</div>' +
+    '<button class="gr-lb-arrow gr-lb-next" onclick="event.stopPropagation();_grNav(1)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,2 12,8 6,14"/></svg></button>';
+}
+
+function _selectRosettaText(idx) {
+  _rosettaTextIdx = idx;
+  _renderRosettaStone(new Date());
+}
+
+function _toggleRosettaLang(code) {
+  var idx = _rosettaLangs.indexOf(code);
+  if (idx !== -1) {
+    if (_rosettaLangs.length > 1) _rosettaLangs.splice(idx, 1);
+  } else {
+    if (_rosettaLangs.length >= 2) _rosettaLangs.shift();
+    _rosettaLangs.push(code);
+  }
+  _renderRosettaStone(new Date());
+}
+
+// Scroll to Messages Across Time and select Golden Record (called from Voyager card)
+async function _scrollToGoldenRecord() {
+  var manifest = _rosettaManifest || [];
+  for (var i = 0; i < manifest.length; i++) {
+    if (manifest[i].id === 'golden-record') { _rosettaTextIdx = i; break; }
+  }
+  await _renderRosettaStone(new Date());
+  var el = document.getElementById('almanac-rosetta');
+  if (el) el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+var _LANG_TO_CALENDAR = {
+  en:'gregorian', fr:'gregorian', de:'gregorian', es:'gregorian', pt:'gregorian',
+  ru:'julian', zh:'chinese', ar:'islamic', hi:'buddhist', he:'hebrew'
+};
+
+// Called from setLanguage() in index.html when the global UI language changes
+function _onGlobalLanguageChanged(langCode) {
+  var cal = _LANG_TO_CALENDAR[langCode] || 'gregorian';
+  if (cal !== _almSystem) _almSwitchSystem(cal);
+  _rosettaLangs = [langCode];
+  if (_almanacOpen) _renderRosettaStone(new Date());
 }
 
 // ── Resize handler ──
@@ -3250,9 +4676,7 @@ window.addEventListener('resize', function() {
   clearTimeout(_almanacResizeTimer);
   _almanacResizeTimer = setTimeout(function() {
     _initOrrery();
-    var stored = localStorage.getItem('zimi_almanac_location');
-    var lat = 34, lon = -new Date().getTimezoneOffset() / 60 * 15;
-    if (stored) { try { var loc = JSON.parse(stored); lat = loc.lat; lon = loc.lon; } catch(e) {} }
-    _initSkyScene(new Date(), lat, lon);
+    var loc = _getLocation();
+    _initSkyScene(new Date(), loc.lat, loc.lon);
   }, 200);
 });

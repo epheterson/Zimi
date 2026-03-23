@@ -3261,7 +3261,17 @@ class Preferences extends BasePreferences {
 }
 class ExternalServices extends BaseExternalServices {
   async createL10n() {
-    return new genericl10n_GenericL10n(AppOptions.get("localeProperties")?.lang);
+    // [Zimi patch] Read locale from URL hash (#locale=fr) for embedded viewer.
+    // The parent app passes the desired locale via the hash parameter.
+    let lang = AppOptions.get("localeProperties")?.lang;
+    const hash = document.location.hash.substring(1);
+    if (hash) {
+      const params = parseQueryString(hash);
+      if (params.has("locale")) {
+        lang = params.get("locale");
+      }
+    }
+    return new genericl10n_GenericL10n(lang);
   }
   createScripting() {
     return new GenericScripting(AppOptions.get("sandboxBundleSrc"));
@@ -5537,7 +5547,8 @@ function download(blobUrl, filename) {
     throw new Error('DownloadManager: "a.click()" is not supported.');
   }
   a.href = blobUrl;
-  a.target = "_parent";
+  // Zimi: removed target="_parent" — it navigates the sandboxed parent
+  // frame to a blob URL (white page) instead of triggering a download.
   if ("download" in a) {
     a.download = filename;
   }
