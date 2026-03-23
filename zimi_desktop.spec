@@ -66,6 +66,12 @@ a = Analysis(
     hiddenimports=[
         'zimi',
         'zimi.server',
+        'zimi.http',
+        'zimi.search',
+        'zimi.interlang',
+        'zimi.library',
+        'zimi.manage',
+        'zimi.previews',
         'libzim',
         'certifi',
         'fitz',
