@@ -22,9 +22,9 @@ A modern experience for your ZIM files.
 |----------|---------------|
 | ![Homepage](screenshots/homepage.png) | ![Search](screenshots/search.png) |
 
-| Article Reader | Catalog |
-|----------------|---------|
-| ![Reader](screenshots/reader.png) | ![Catalog](screenshots/browse-library.png) |
+| Language Switching | Catalog |
+|-------------------|---------|
+| ![Languages](screenshots/language-dropdown.png) | ![Catalog](screenshots/browse-library.png) |
 
 ## Languages
 

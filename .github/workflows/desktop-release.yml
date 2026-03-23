@@ -151,7 +151,7 @@ jobs:
           [ "$STATUS" = "200" ] && echo "  OK: pdf.js viewer" || { echo "FAIL: got $STATUS"; exit 1; }
 
           echo "Testing /manage/status..."
-          curl -sf "$BASE/manage/status" | python -c "import sys,json; d=json.load(sys.stdin); assert 'zim_count' in d; print(f'  OK: {d[\"zim_count\"]} ZIMs, manage={d[\"manage_enabled\"]}')"
+          curl -sf -H "Sec-Fetch-Site: same-origin" "$BASE/manage/status" | python -c "import sys,json; d=json.load(sys.stdin); assert 'zim_count' in d; print(f'  OK: {d[\"zim_count\"]} ZIMs, manage={d[\"manage_enabled\"]}')"
 
           echo "Testing / (web UI)..."
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/")
