@@ -132,7 +132,7 @@
   "building_indexes": "Construindo índices",
   "in_progress": "Em andamento…",
   "reads": "leituras",
-  "searches": "buscas",
+  "searches": "pesquisas",
   "enter_password": "Digite a senha",
   "password": "Senha",
   "remember_me": "Lembrar de mim",
@@ -764,7 +764,21 @@
   "alm_hol_yom_kippur": "Yom Kippur",
   "alm_hol_yom_yerushalayim": "Yom Yerushalayim",
   "alm_hol_zhonghe_festival": "Festival Zhonghe",
-  "cross_lang_linking": "Ligação de artigos entre idiomas"
-  ,"wrong_password": "Senha incorreta"
-  ,"confirm_remove": "Tem certeza?"
+  "cross_lang_linking": "Ligação de artigos entre idiomas",
+  "wrong_password": "Senha incorreta",
+  "confirm_remove": "Tem certeza?",
+  "api_token": "Token API",
+  "roll": "Renovar",
+  "revoke": "Revogar",
+  "generate": "Gerar",
+  "title_indexes": "Índices de títulos",
+  "qid_indexes": "Índices Q-ID",
+  "total_cache": "Cache total",
+  "copy_token_now": "Copie este token agora. Ele não será exibido novamente.",
+  "copy": "Copiar",
+  "copied": "Copiado",
+  "done": "Pronto",
+  "confirm_regenerate_token": "Renovar token? O antigo deixará de funcionar.",
+  "confirm_revoke_token": "Revogar token API?",
+  "use_zimi_tabs": "Usar abas integradas em vez de abas do navegador"
 }

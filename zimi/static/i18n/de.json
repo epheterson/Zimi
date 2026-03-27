@@ -764,7 +764,21 @@
   "alm_hol_yom_kippur": "Jom Kippur",
   "alm_hol_yom_yerushalayim": "Jom Jeruschalajim",
   "alm_hol_zhonghe_festival": "Zhonghe-Fest",
-  "cross_lang_linking": "Sprachübergreifende Artikelverknüpfung"
-  ,"wrong_password": "Falsches Passwort"
-  ,"confirm_remove": "Sind Sie sicher?"
+  "cross_lang_linking": "Sprachübergreifende Artikelverknüpfung",
+  "wrong_password": "Falsches Passwort",
+  "confirm_remove": "Sind Sie sicher?",
+  "api_token": "API-Token",
+  "roll": "Erneuern",
+  "revoke": "Widerrufen",
+  "generate": "Generieren",
+  "title_indexes": "Titelindizes",
+  "qid_indexes": "Q-ID-Indizes",
+  "total_cache": "Gesamter Cache",
+  "copy_token_now": "Kopieren Sie diesen Token jetzt. Er wird nicht erneut angezeigt.",
+  "copy": "Kopieren",
+  "copied": "Kopiert",
+  "done": "Fertig",
+  "confirm_regenerate_token": "Token erneuern? Der alte Token wird ungültig.",
+  "confirm_revoke_token": "API-Token widerrufen?",
+  "use_zimi_tabs": "In-App-Tabs statt Browser-Tabs verwenden"
 }

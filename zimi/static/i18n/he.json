@@ -764,7 +764,21 @@
   "alm_hol_yom_kippur": "יום כיפור",
   "alm_hol_yom_yerushalayim": "יום ירושלים",
   "alm_hol_zhonghe_festival": "חג ג׳ונגחה",
-  "cross_lang_linking": "קישור מאמרים בין שפות"
-  ,"wrong_password": "סיסמה שגויה"
-  ,"confirm_remove": "בטוח?"
+  "cross_lang_linking": "קישור מאמרים בין שפות",
+  "wrong_password": "סיסמה שגויה",
+  "confirm_remove": "בטוח?",
+  "api_token": "אסימון API",
+  "roll": "חידוש",
+  "revoke": "ביטול",
+  "generate": "יצירה",
+  "title_indexes": "אינדקסי כותרות",
+  "qid_indexes": "אינדקסי Q-ID",
+  "total_cache": "סה\"כ מטמון",
+  "copy_token_now": "העתק את האסימון הזה עכשיו. הוא לא יוצג שוב.",
+  "copy": "העתק",
+  "copied": "הועתק",
+  "done": "סיום",
+  "confirm_regenerate_token": "לחדש אסימון? הישן יפסיק לעבוד.",
+  "confirm_revoke_token": "לבטל אסימון API?",
+  "use_zimi_tabs": "שימוש בלשוניות מובנות במקום לשוניות דפדפן"
 }

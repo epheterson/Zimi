@@ -131,7 +131,7 @@
   "search_index": "Поисковый индекс",
   "building_indexes": "Построение индексов",
   "in_progress": "Выполняется…",
-  "reads": "прочтений",
+  "reads": "чтений",
   "searches": "поисков",
   "enter_password": "Введите пароль",
   "password": "Пароль",
@@ -764,7 +764,21 @@
   "alm_hol_yom_kippur": "Йом Кипур",
   "alm_hol_yom_yerushalayim": "Йом Йерушалаим",
   "alm_hol_zhonghe_festival": "Праздник Чжунхэ",
-  "cross_lang_linking": "Связывание статей на разных языках"
-  ,"wrong_password": "Неверный пароль"
-  ,"confirm_remove": "Вы уверены?"
+  "cross_lang_linking": "Связывание статей на разных языках",
+  "wrong_password": "Неверный пароль",
+  "confirm_remove": "Вы уверены?",
+  "api_token": "API-токен",
+  "roll": "Обновить",
+  "revoke": "Отозвать",
+  "generate": "Создать",
+  "title_indexes": "Индексы заголовков",
+  "qid_indexes": "Индексы Q-ID",
+  "total_cache": "Всего кэша",
+  "copy_token_now": "Скопируйте этот токен сейчас. Он больше не будет показан.",
+  "copy": "Копировать",
+  "copied": "Скопировано",
+  "done": "Готово",
+  "confirm_regenerate_token": "Обновить токен? Старый перестанет работать.",
+  "confirm_revoke_token": "Отозвать API-токен?",
+  "use_zimi_tabs": "Встроенные вкладки вместо вкладок браузера"
 }

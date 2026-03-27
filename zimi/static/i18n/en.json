@@ -764,7 +764,21 @@
   "alm_hol_yom_kippur": "Yom Kippur",
   "alm_hol_yom_yerushalayim": "Yom Yerushalayim",
   "alm_hol_zhonghe_festival": "Zhonghe Festival",
-  "cross_lang_linking": "Cross-language article linking"
-  ,"wrong_password": "Wrong password"
-  ,"confirm_remove": "Are you sure?"
+  "cross_lang_linking": "Cross-language article linking",
+  "wrong_password": "Wrong password",
+  "confirm_remove": "Are you sure?",
+  "api_token": "API Token",
+  "roll": "Roll",
+  "revoke": "Revoke",
+  "generate": "Generate",
+  "title_indexes": "Title indexes",
+  "qid_indexes": "Q-ID indexes",
+  "total_cache": "Total cache",
+  "copy_token_now": "Copy this token now. It won't be shown again.",
+  "copy": "Copy",
+  "copied": "Copied",
+  "done": "Done",
+  "confirm_regenerate_token": "Regenerate token? The old token will stop working.",
+  "confirm_revoke_token": "Revoke API token?",
+  "use_zimi_tabs": "Use Zimi tabs"
 }

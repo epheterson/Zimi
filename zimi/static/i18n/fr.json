@@ -764,7 +764,21 @@
   "alm_hol_yom_kippur": "Yom Kippour",
   "alm_hol_yom_yerushalayim": "Yom Yeroushalayim",
   "alm_hol_zhonghe_festival": "Fête de Zhonghe",
-  "cross_lang_linking": "Liaison d'articles inter-langues"
-  ,"wrong_password": "Mot de passe incorrect"
-  ,"confirm_remove": "Êtes-vous sûr ?"
+  "cross_lang_linking": "Liaison d'articles inter-langues",
+  "wrong_password": "Mot de passe incorrect",
+  "confirm_remove": "Êtes-vous sûr ?",
+  "api_token": "Jeton API",
+  "roll": "Renouveler",
+  "revoke": "Révoquer",
+  "generate": "Générer",
+  "title_indexes": "Index de titres",
+  "qid_indexes": "Index Q-ID",
+  "total_cache": "Cache total",
+  "copy_token_now": "Copiez ce jeton maintenant. Il ne sera plus affiché.",
+  "copy": "Copier",
+  "copied": "Copié",
+  "done": "Terminé",
+  "confirm_regenerate_token": "Renouveler le jeton ? L'ancien cessera de fonctionner.",
+  "confirm_revoke_token": "Révoquer le jeton API ?",
+  "use_zimi_tabs": "Utiliser les onglets intégrés au lieu des onglets du navigateur"
 }

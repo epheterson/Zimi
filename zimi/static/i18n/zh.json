@@ -131,8 +131,8 @@
   "search_index": "搜索索引",
   "building_indexes": "正在构建索引",
   "in_progress": "进行中…",
-  "reads": "次阅读",
-  "searches": "次搜索",
+  "reads": "阅读",
+  "searches": "搜索",
   "enter_password": "请输入密码",
   "password": "密码",
   "remember_me": "记住我",
@@ -764,7 +764,21 @@
   "alm_hol_yom_kippur": "赎罪日",
   "alm_hol_yom_yerushalayim": "耶路撒冷日",
   "alm_hol_zhonghe_festival": "中和节",
-  "cross_lang_linking": "跨语言文章链接"
-  ,"wrong_password": "密码错误"
-  ,"confirm_remove": "确定吗？"
+  "cross_lang_linking": "跨语言文章链接",
+  "wrong_password": "密码错误",
+  "confirm_remove": "确定吗？",
+  "api_token": "API令牌",
+  "roll": "更新",
+  "revoke": "撤销",
+  "generate": "生成",
+  "title_indexes": "标题索引",
+  "qid_indexes": "Q-ID索引",
+  "total_cache": "总缓存",
+  "copy_token_now": "立即复制此令牌，之后将不再显示。",
+  "copy": "复制",
+  "copied": "已复制",
+  "done": "完成",
+  "confirm_regenerate_token": "更新令牌？旧令牌将失效。",
+  "confirm_revoke_token": "撤销API令牌？",
+  "use_zimi_tabs": "使用内置标签页代替浏览器标签页"
 }

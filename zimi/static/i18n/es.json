@@ -764,7 +764,21 @@
   "alm_hol_yom_kippur": "Yom Kipur",
   "alm_hol_yom_yerushalayim": "Yom Yerushalayim",
   "alm_hol_zhonghe_festival": "Festival de Zhonghe",
-  "cross_lang_linking": "Enlace de artículos entre idiomas"
-  ,"wrong_password": "Contraseña incorrecta"
-  ,"confirm_remove": "¿Está seguro?"
+  "cross_lang_linking": "Enlace de artículos entre idiomas",
+  "wrong_password": "Contraseña incorrecta",
+  "confirm_remove": "¿Está seguro?",
+  "api_token": "Token API",
+  "roll": "Renovar",
+  "revoke": "Revocar",
+  "generate": "Generar",
+  "title_indexes": "Índices de títulos",
+  "qid_indexes": "Índices Q-ID",
+  "total_cache": "Caché total",
+  "copy_token_now": "Copie este token ahora. No se mostrará de nuevo.",
+  "copy": "Copiar",
+  "copied": "Copiado",
+  "done": "Listo",
+  "confirm_regenerate_token": "¿Renovar token? El anterior dejará de funcionar.",
+  "confirm_revoke_token": "¿Revocar token API?",
+  "use_zimi_tabs": "Usar pestañas integradas en lugar de pestañas del navegador"
 }

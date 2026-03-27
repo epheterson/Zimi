@@ -764,7 +764,21 @@
   "alm_hol_yom_kippur": "योम किपुर",
   "alm_hol_yom_yerushalayim": "योम येरुशलायिम",
   "alm_hol_zhonghe_festival": "झोंगहे उत्सव",
-  "cross_lang_linking": "क्रॉस-भाषा लेख लिंकिंग"
-  ,"wrong_password": "गलत पासवर्ड"
-  ,"confirm_remove": "क्या आप सुनिश्चित हैं?"
+  "cross_lang_linking": "क्रॉस-भाषा लेख लिंकिंग",
+  "wrong_password": "गलत पासवर्ड",
+  "confirm_remove": "क्या आप सुनिश्चित हैं?",
+  "api_token": "API टोकन",
+  "roll": "नवीनीकरण",
+  "revoke": "रद्द करें",
+  "generate": "बनाएं",
+  "title_indexes": "शीर्षक अनुक्रमणिका",
+  "qid_indexes": "Q-ID अनुक्रमणिका",
+  "total_cache": "कुल कैश",
+  "copy_token_now": "इस टोकन को अभी कॉपी करें। यह दोबारा नहीं दिखाया जाएगा।",
+  "copy": "कॉपी",
+  "copied": "कॉपी हो गया",
+  "done": "हो गया",
+  "confirm_regenerate_token": "टोकन नवीनीकरण करें? पुराना काम करना बंद कर देगा।",
+  "confirm_revoke_token": "API टोकन रद्द करें?",
+  "use_zimi_tabs": "ब्राउज़र टैब के बजाय इन-ऐप टैब का उपयोग करें"
 }

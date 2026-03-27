@@ -58,10 +58,6 @@ let collectionsCache = null; // {version, favorites, collections}
 let _expandedCollection = null; // which collection is expanded for ZIM picking
 let homeScope = null; // {type:'favorites'|'category'|'collection', label, zimNames:[]}
 
-// ── Tabs ──
-let _tabs = []; // [{id, zim, path, title, scrollY}]
-let _activeTabId = null;
-let _tabCounter = 0;
 
 // ── Language filter ──
 let activeLanguageFilters = new Set();
@@ -197,7 +193,7 @@ function _showManageBadge(show, count) {
 function _langBannerDownload(lang, catMatch) {
   // Fallback for welcome card — drill into catalog
   var banner = document.getElementById('lang-banner');
-  if (banner) { banner.remove(); _adjustBodyPadding(); }
+  if (banner) { banner.remove(); }
   closeReader();
   manageTab = 'browse';
   var prefix = (catMatch === 'wikipedia' || !catMatch) ? 'wikipedia_' + lang + '_all' : null;
@@ -248,8 +244,6 @@ function fmtSize(gb, html) {
   else { n = Math.round(gb); u = ' GB'; }
   return html ? '<span class="num">' + n + '</span>' + u : n + u;
 }
-function pl(n, singular, plural) { return n + ' ' + (n === 1 ? singular : (plural || singular + 's')); }
-
 // ── DOM refs ──
 const q = document.getElementById('q');
 const output = document.getElementById('output');
@@ -858,7 +852,7 @@ async function enterSource(name, push) {
   // Modifier-click: open in new browser tab
   if (_isModClick()) {
     _lastMouseEvent = null;
-    window.open('/w/' + encodeURIComponent(name), '_blank');
+    window.open('/w/' + encodeURIComponent(name) + '?view=1', '_blank');
     return;
   }
   mode = 'source';
@@ -1313,6 +1307,12 @@ var _almanacOpen = false;
 var _almanacLoaded = false;
 
 function openAlmanac(replaceState) {
+  // Modifier-click: open Almanac in new browser tab
+  if (_isModClick()) {
+    _lastMouseEvent = null;
+    window.open('/#almanac', '_blank');
+    return;
+  }
   if (!_almanacLoaded) {
     var s = document.createElement('script');
     s.src = '/static/almanac.js?v=40';
@@ -1486,7 +1486,7 @@ function _loadDiscover() {
       })
       .catch(function() { return null; });
   });
-  var _discoverTimeout = new Promise(function(resolve) { setTimeout(function() { resolve('timeout'); }, 8000); });
+  var _discoverTimeout = new Promise(function(resolve) { setTimeout(function() { resolve('timeout'); }, 15000); });
   Promise.race([Promise.all(_discoverFetches), _discoverTimeout]).then(function(results) {
     if (results === 'timeout') {
       // On timeout: use whatever resolved so far from the side-channel array
@@ -1507,6 +1507,11 @@ function _loadDiscover() {
     // from persisting all day when some ZIMs were temporarily unavailable
     if (items.length > 0 && items.length >= serverSlots.length - 1) {
       try { localStorage.setItem(cacheKey, JSON.stringify(all)); } catch(e) {}
+    }
+    // If we got partial results (cold start), auto-retry after 10s
+    var missing = serverSlots.length - items.length;
+    if (missing > 1 && !localStorage.getItem(cacheKey)) {
+      setTimeout(function() { if (!localStorage.getItem(cacheKey)) renderHome(); }, 10000);
     }
     var el2 = document.getElementById('discover-row');
     if (el2) _renderDiscover(el2, all);
@@ -3891,7 +3896,7 @@ async function renderActivityTab() {
           const title = info ? (info.title || z.name) : z.name;
           const total = (z.reads || 0) + (z.searches || 0);
           h += '<div class="mc-row"><span class="mc-label">' + esc(title) + '</span>' +
-            '<span class="mc-value">' + total + ' <span style="font-weight:400;color:var(--text2);font-size:11px">(' + pl(z.reads || 0, 'read') + ', ' + pl(z.searches || 0, 'search', 'searches') + ')</span></span></div>';
+            '<span class="mc-value">' + total + ' <span style="font-weight:400;color:var(--text2);font-size:11px">(' + (z.reads || 0) + ' ' + t('reads') + ', ' + (z.searches || 0) + ' ' + t('searches') + ')</span></span></div>';
         }
         h += '</div>';
       }
@@ -4201,16 +4206,31 @@ function _msServerHtml() {
     var hasToken = results[1].has_token;
     var el = document.getElementById('ms-security');
     if (!el) return;
-    var sh = '<div class="mc-row"><span class="mc-label">API Token</span><span class="mc-value">';
+    var sh = '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">';
     if (hasToken) {
-      sh += '<button class="pill" onclick="_regenerateToken()">Roll</button> ' +
-        '<button class="pill" onclick="_revokeToken()">Revoke</button>';
+      sh += '<button class="pill" onclick="_regenerateToken()">' + tH('roll') + '</button> ' +
+        '<button class="pill" onclick="_revokeToken()">' + tH('revoke') + '</button>';
     } else {
-      sh += '<button class="pill" onclick="_generateToken()">Generate</button>';
+      sh += '<button class="pill" onclick="_generateToken()">' + tH('generate') + '</button>';
     }
     sh += '</span></div>';
     el.innerHTML = sh;
   });
+  // Cache info section
+  h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
+    '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
+  manageFetch('/manage/cache-info').then(function(r) { return r.json(); }).then(function(d) {
+    var el = document.getElementById('ms-cache-info');
+    if (!el || !d.caches) return;
+    var c = d.caches;
+    var fmt = function(b) { return b > 1e9 ? (b/1e9).toFixed(1)+' GB' : b > 1e6 ? (b/1e6).toFixed(0)+' MB' : b > 1e3 ? (b/1e3).toFixed(0)+' KB' : b+' B'; };
+    var sh = '<div class="mc-row"><span class="mc-label">' + tH('title_indexes') + '</span><span class="mc-value">' +
+      (c.title_indexes.count || 0) + ' files, ' + fmt(c.title_indexes.size_bytes) + '</span></div>' +
+      '<div class="mc-row"><span class="mc-label">' + tH('qid_indexes') + '</span><span class="mc-value">' +
+      (c.qid_indexes.count || 0) + ' files, ' + fmt(c.qid_indexes.size_bytes) + '</span></div>' +
+      '<div class="mc-row"><span class="mc-label">' + tH('total_cache') + '</span><span class="mc-value">' + fmt(d.total_bytes) + '</span></div>';
+    el.innerHTML = sh;
+  }).catch(function() {});
   // Async fill from stats
   manageFetch('/manage/stats').then(function(r) { return r.json(); }).then(function(s) {
     var el = document.getElementById('ms-zim-dir');
@@ -4495,23 +4515,23 @@ async function _generateToken() {
   var el = document.getElementById('ms-security');
   if (el) {
     el.innerHTML = '<div style="padding:10px;background:var(--surface);border:1px solid var(--amber-border);border-radius:8px;font-family:monospace;font-size:12px;word-break:break-all">' +
-      '<div style="color:var(--text2);font-size:11px;margin-bottom:4px">Copy this token now. It won\'t be shown again.</div>' +
+      '<div style="color:var(--text2);font-size:11px;margin-bottom:4px">' + tH('copy_token_now') + '</div>' +
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
       '<span>' + esc(data.token) + '</span>' +
-      '<button class="pill" onclick="navigator.clipboard.writeText(\'' + escAttr(data.token) + '\');this.textContent=\'Copied\'">Copy</button>' +
+      '<button class="pill" onclick="navigator.clipboard.writeText(\'' + escAttr(data.token) + '\');this.textContent=t(\'copied\')">' + tH('copy') + '</button>' +
       '</div></div>' +
-      '<button class="pill" style="margin-top:8px" onclick="switchMs(\'server\')">Done</button>';
+      '<button class="pill" style="margin-top:8px" onclick="switchMs(\'server\')">' + tH('done') + '</button>';
   }
 }
 
 async function _regenerateToken() {
-  if (!confirm('Regenerate token? The old token will stop working.')) return;
+  if (!confirm(t('confirm_regenerate_token'))) return;
   await manageFetch('/manage/revoke-token', { method: 'POST' });
   _generateToken();
 }
 
 async function _revokeToken() {
-  if (!confirm('Revoke API token?')) return;
+  if (!confirm(t('confirm_revoke_token'))) return;
   await manageFetch('/manage/revoke-token', { method: 'POST' });
   switchMs('server');
 }
@@ -5728,25 +5748,12 @@ function _updateLibraryBtnIcon() {
   }
 }
 function openArticle(zim, path, title) {
-  // Modifier-click: open in background tab (Ctrl/Cmd+click)
+  // Modifier-click: always open in new browser tab
   if (_isModClick()) {
     _lastMouseEvent = null;
-    // First background tab: promote current article to active tab so bar appears
-    if (_tabs.length === 0 && readerOpen && currentArticle) {
-      var curTitle = document.title !== 'Zimi' ? document.title : _titleFromPath(currentArticle.path);
-      var curTab = { id: _tabId(), zim: currentArticle.zim, path: currentArticle.path, title: curTitle, scrollY: 0 };
-      try { curTab.scrollY = document.getElementById('reader-frame').contentWindow.scrollY || 0; } catch(e) {}
-      _tabs.push(curTab);
-      _activeTabId = curTab.id;
-    }
-    _openTab(zim, path, title || _titleFromPath(path), true);
+    var url = '/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/') + '?view=1';
+    window.open(url, '_blank');
     return;
-  }
-  // Track current article as a tab if tabs are active
-  if (_tabs.length > 0 && _activeTabId) {
-    var activeTab = _tabs.find(function(t) { return t.id === _activeTabId; });
-    if (activeTab) { activeTab.zim = zim; activeTab.path = path; activeTab.title = title || _titleFromPath(path); }
-    _renderTabBar();
   }
   // Save discover scroll position before navigating away
   var discScroll = document.querySelector('.discover-scroll');
@@ -5807,92 +5814,6 @@ function closeReader() {
   _setWindowTitle('Zimi');
 }
 
-// ── Tab bar ──
-
-function _tabId() { return ++_tabCounter; }
-
-function _openTab(zim, path, title, background) {
-  if (_tabs.length >= 10) {
-    // Remove oldest non-active tab
-    var oldest = _tabs.find(function(t) { return t.id !== _activeTabId; });
-    if (oldest) _closeTab(oldest.id, true);
-  }
-  var tab = { id: _tabId(), zim: zim, path: path, title: title || _titleFromPath(path), scrollY: 0 };
-  _tabs.push(tab);
-  if (!background) {
-    _switchTab(tab.id);
-  }
-  _renderTabBar();
-  return tab.id;
-}
-
-function _switchTab(tabId) {
-  // Save current tab's scroll position
-  if (_activeTabId) {
-    var current = _tabs.find(function(t) { return t.id === _activeTabId; });
-    if (current) {
-      try { current.scrollY = document.getElementById('reader-frame').contentWindow.scrollY || 0; } catch(e) {}
-    }
-  }
-  _activeTabId = tabId;
-  var tab = _tabs.find(function(t) { return t.id === tabId; });
-  if (tab) {
-    openArticle(tab.zim, tab.path, tab.title);
-    // Restore scroll position after load
-    var frame = document.getElementById('reader-frame');
-    var origOnload = frame.onload;
-    frame.addEventListener('load', function restoreScroll() {
-      frame.removeEventListener('load', restoreScroll);
-      if (tab.scrollY > 0) {
-        try { frame.contentWindow.scrollTo(0, tab.scrollY); } catch(e) {}
-      }
-    }, { once: true });
-  }
-  _renderTabBar();
-}
-
-function _closeTab(tabId, silent) {
-  var idx = _tabs.findIndex(function(t) { return t.id === tabId; });
-  if (idx === -1) return;
-  _tabs.splice(idx, 1);
-  if (_tabs.length === 0) {
-    _activeTabId = null;
-    if (!silent) closeReader();
-    _renderTabBar();
-    return;
-  }
-  if (_activeTabId === tabId) {
-    // Switch to adjacent tab
-    var newIdx = Math.min(idx, _tabs.length - 1);
-    if (!silent) _switchTab(_tabs[newIdx].id);
-  }
-  _renderTabBar();
-}
-
-function _renderTabBar() {
-  var bar = document.getElementById('tab-bar');
-  if (_tabs.length <= 1) {
-    bar.classList.remove('visible');
-    _adjustBodyPadding();
-    return;
-  }
-  var html = _tabs.map(function(tab) {
-    var active = tab.id === _activeTabId ? ' active' : '';
-    return '<div class="tab-item' + active + '" onclick="_switchTab(' + tab.id + ')" title="' + escAttr(tab.title) + '">' +
-      '<span class="tab-title">' + esc(tab.title) + '</span>' +
-      '<button class="tab-close" onclick="event.stopPropagation();_closeTab(' + tab.id + ')">&times;</button>' +
-    '</div>';
-  }).join('');
-  bar.innerHTML = html;
-  bar.classList.add('visible');
-  _adjustBodyPadding();
-}
-
-function _adjustBodyPadding() {
-  var tabBarVisible = document.getElementById('tab-bar').classList.contains('visible');
-  var extra = tabBarVisible ? 34 : 0;
-  document.body.style.paddingTop = (56 + extra) + 'px';
-}
 
 // ── Language selector dropdown ──
 
@@ -6301,16 +6222,9 @@ document.addEventListener('auxclick', function(e) {
   e.preventDefault();
   var zim = el.getAttribute('data-zim');
   var path = el.getAttribute('data-path');
-  var title = el.getAttribute('data-title') || _titleFromPath(path);
-  // Promote current article to tab if this is the first background tab
-  if (_tabs.length === 0 && readerOpen && currentArticle) {
-    var curTitle = document.title !== 'Zimi' ? document.title : _titleFromPath(currentArticle.path);
-    var curTab = { id: _tabId(), zim: currentArticle.zim, path: currentArticle.path, title: curTitle, scrollY: 0 };
-    try { curTab.scrollY = document.getElementById('reader-frame').contentWindow.scrollY || 0; } catch(e2) {}
-    _tabs.push(curTab);
-    _activeTabId = curTab.id;
-  }
-  _openTab(zim, path, title, true);
+  // Always open in new browser tab
+  var url = '/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/') + '?view=1';
+  window.open(url, '_blank');
 });
 
 // ── Link Context Menu ──

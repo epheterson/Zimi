@@ -137,12 +137,12 @@
 
   /* ── Pills (categories + search source filters) ── */
   .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 20px; }
-  .pills-row { display: flex; gap: 6px; justify-content: center; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: var(--border) transparent; padding-bottom: 2px; width: 100%; }
+  .pills-row { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: var(--border) transparent; padding-bottom: 2px; width: 100%; }
   .pills-row::-webkit-scrollbar { height: 4px; }
   .pills-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
   /* ── Catalog lang row (single-row scroll with search icon) ── */
   .catalog-lang-row { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; overflow: hidden; }
-  .catalog-lang-scroll { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; flex: 1; min-width: 0; justify-content: center; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 2px 0; }
+  .catalog-lang-scroll { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; flex: 1; min-width: 0; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 2px 0; }
   .catalog-lang-scroll::-webkit-scrollbar { display: none; }
   .catalog-lang-search-btn {
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
@@ -166,7 +166,7 @@
   .pills-divider { width: 60px; height: 1px; background: var(--border); margin: 0 auto 4px; opacity: 0.5; }
 
   /* ── Language pills (above source pills in search results) ── */
-  .lang-pills { display: flex; gap: 6px; justify-content: center; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; width: 100%; }
+  .lang-pills { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; width: 100%; }
   .lang-pills::-webkit-scrollbar { display: none; }
 
   /* ── Language banner (view-in-lang / download) ── */
@@ -214,35 +214,6 @@
   .lang-welcome-subtle { padding: 8px 12px; font-size: 13px; color: var(--text2); }
 
   /* ── Tab bar ── */
-  .tab-bar {
-    display: none; align-items: center; gap: 0;
-    background: var(--bg); border-bottom: 1px solid var(--border);
-    position: fixed; top: 56px; left: 0; right: 0; z-index: 198;
-    overflow-x: auto; -webkit-overflow-scrolling: touch;
-    scrollbar-width: none; height: 34px; padding: 0 4px;
-  }
-  .tab-bar::-webkit-scrollbar { display: none; }
-  .tab-bar.visible { display: flex; }
-  .tab-item {
-    display: flex; align-items: center; gap: 4px;
-    padding: 4px 12px 4px 14px; font-size: 12px; white-space: nowrap;
-    color: var(--text2); cursor: pointer; transition: all 0.15s;
-    border-bottom: 2px solid transparent; flex-shrink: 0;
-    max-width: 180px; overflow: hidden;
-  }
-  .tab-item:hover { color: var(--text); background: var(--surface); }
-  .tab-item.active { color: var(--amber); border-bottom-color: var(--amber); }
-  .tab-title { overflow: hidden; text-overflow: ellipsis; }
-  .tab-close {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 16px; height: 16px; border-radius: 3px;
-    background: none; border: none; color: var(--text2);
-    font-size: 12px; cursor: pointer; opacity: 0; transition: opacity 0.15s;
-    flex-shrink: 0; line-height: 1;
-  }
-  .tab-item:hover .tab-close { opacity: 1; }
-  .tab-close:hover { background: var(--surface2); color: var(--text); }
-
   /* ── Language selector (globe icon) ── */
   .lang-dropdown {
     position: fixed; z-index: 9999; min-width: 240px;
@@ -667,8 +638,6 @@
     .topbar.search-focused .topbar-more,
     .topbar.search-focused .library-btn { display: none !important; }
     .topbar.search-focused .lang-dropdown { display: none !important; }
-    /* v1.6: Tab bar — compact on mobile */
-    .tab-item { max-width: 120px; font-size: 11px; padding: 4px 8px; }
     /* v1.6: Language dropdown — full width on mobile */
     .lang-dropdown { min-width: 160px; }
   }

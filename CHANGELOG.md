@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.1] — 2026-03-27
+
+### Fixed
+- Ctrl+click and middle-click now open articles in new browser tabs everywhere
+- Search/catalog filter pills left-aligned when overflowing (highest count visible first)
+- devdocs name collision: CSS and Git no longer parsed as language codes
+- Empty password file no longer triggers false auth prompt
+- Discover cards more reliable on cold start (15s timeout + auto-retry)
+- Auth unchanged: browser requests use password, API requests require token
+
+### Changed
+- Removed in-app tab bar (deferred to future release)
+- Browser tabs open with full Zimi UI (`?view=1`)
+- Cmd+click on Today card opens Almanac in new tab
+- Cache info section in Server settings (title/Q-ID index sizes)
+- 15 remaining hardcoded strings localized in all 10 languages
+
 ## [1.6.0] — 2026-03-19
 
 The Language Release.
@@ -154,7 +171,8 @@ Initial release — offline knowledge server for ZIM files.
 - Added Docker support
 - Added support for regular ZIMs, zimgit PDF collections, and OPDS catalog
 
-[Unreleased]: https://github.com/epheterson/zimi/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/epheterson/zimi/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/epheterson/zimi/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/epheterson/zimi/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/epheterson/zimi/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/epheterson/zimi/compare/v1.3.0...v1.4.0

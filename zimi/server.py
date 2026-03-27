@@ -85,7 +85,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.6.0"
+ZIMI_VERSION = "1.6.1"
 
 log = logging.getLogger("zimi")
 logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S", level=logging.INFO)
@@ -404,10 +404,11 @@ def _zim_short_name(filename):
     name = re.sub(r"\.com_[a-z]{2,3}_all.*", "", name)
     name = re.sub(r"\.stackexchange\.com_[a-z]{2,3}_all.*", "", name)
     # Strip language + flavor + date patterns
+    # Only strip _XX_ or _XXX_ when followed by all/maxi/nopic/mini/date (not arbitrary words like css/git)
     name = re.sub(r"_[a-z]{2,3}_all_maxi.*", "", name)
     name = re.sub(r"_[a-z]{2,3}_all.*", "", name)
-    name = re.sub(r"_[a-z]{2,3}_maxi.*", "", name)
-    name = re.sub(r"_[a-z]{2,3}_2\d{3}.*", "", name)
+    name = re.sub(r"_[a-z]{2,3}_(?:maxi|nopic|mini).*", "", name)
+    name = re.sub(r"_[a-z]{2}_2\d{3}.*", "", name)  # Only 2-letter codes before dates (avoids css/git)
     name = re.sub(r"_maxi_2\d{3}.*", "", name)
     name = re.sub(r"_2\d{3}-\d{2}$", "", name)
     # Append language suffix for non-English ZIMs

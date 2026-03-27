@@ -131,8 +131,8 @@
   "search_index": "فهرس البحث",
   "building_indexes": "جارٍ بناء الفهارس",
   "in_progress": "قيد التنفيذ…",
-  "reads": "قراءة",
-  "searches": "بحث",
+  "reads": "قراءات",
+  "searches": "عمليات بحث",
   "enter_password": "أدخل كلمة المرور",
   "password": "كلمة المرور",
   "remember_me": "تذكرني",
@@ -764,7 +764,21 @@
   "alm_hol_yom_kippur": "يوم الغفران",
   "alm_hol_yom_yerushalayim": "يوم القدس",
   "alm_hol_zhonghe_festival": "مهرجان تشونغخه",
-  "cross_lang_linking": "ربط المقالات عبر اللغات"
-  ,"wrong_password": "كلمة المرور خاطئة"
-  ,"confirm_remove": "هل أنت متأكد؟"
+  "cross_lang_linking": "ربط المقالات عبر اللغات",
+  "wrong_password": "كلمة المرور خاطئة",
+  "confirm_remove": "هل أنت متأكد؟",
+  "api_token": "رمز API",
+  "roll": "تجديد",
+  "revoke": "إلغاء",
+  "generate": "إنشاء",
+  "title_indexes": "فهارس العناوين",
+  "qid_indexes": "فهارس Q-ID",
+  "total_cache": "إجمالي التخزين المؤقت",
+  "copy_token_now": "انسخ هذا الرمز الآن. لن يظهر مرة أخرى.",
+  "copy": "نسخ",
+  "copied": "تم النسخ",
+  "done": "تم",
+  "confirm_regenerate_token": "تجديد الرمز؟ سيتوقف الرمز القديم عن العمل.",
+  "confirm_revoke_token": "إلغاء رمز API؟",
+  "use_zimi_tabs": "استخدام علامات تبويب مدمجة بدلاً من علامات تبويب المتصفح"
 }

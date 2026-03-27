@@ -63,6 +63,9 @@ def _get_manage_password_hash():
     try:
         with open(_password_file()) as f:
             stored = f.read().strip()
+        # Empty or too-short to be a valid hash — treat as no password
+        if not stored or len(stored) < 10:
+            return ""
         return stored
     except (FileNotFoundError, OSError):
         return ""
@@ -115,7 +118,7 @@ def _check_manage_auth(handler):
     """Check authorization for manage endpoints. Returns True if unauthorized.
 
     Auth model:
-    - Browser (same-origin): password check via ZIMI_MANAGE_PASSWORD env var
+    - Browser (Sec-Fetch-Site: same-origin): password check, open if no password set
     - API (everything else): ALWAYS requires a valid Bearer token
 
     Browser detection uses Sec-Fetch-Site header (set by all modern browsers,
@@ -256,6 +259,30 @@ def handle_manage_get(handler, parsed, params):
 
     elif parsed.path == "/manage/history":
         return handler._json(200, {"history": _srv._load_history()})
+
+    elif parsed.path == "/manage/cache-info":
+        import glob as _glob
+        data_dir = _srv.ZIMI_DATA_DIR
+        def _dir_size(path):
+            total = 0
+            for f in _glob.glob(os.path.join(path, '**'), recursive=True):
+                if os.path.isfile(f):
+                    total += os.path.getsize(f)
+            return total
+        titles_dir = os.path.join(data_dir, "titles")
+        qids_dir = os.path.join(data_dir, "qids")
+        caches = {
+            "title_indexes": {"path": "titles/", "size_bytes": _dir_size(titles_dir) if os.path.isdir(titles_dir) else 0,
+                              "count": len(_glob.glob(os.path.join(titles_dir, "*.db"))) if os.path.isdir(titles_dir) else 0},
+            "qid_indexes": {"path": "qids/", "size_bytes": _dir_size(qids_dir) if os.path.isdir(qids_dir) else 0,
+                            "count": len(_glob.glob(os.path.join(qids_dir, "*.db"))) if os.path.isdir(qids_dir) else 0},
+            "metadata_cache": {"path": "cache.json",
+                               "size_bytes": os.path.getsize(os.path.join(data_dir, "cache.json")) if os.path.exists(os.path.join(data_dir, "cache.json")) else 0},
+            "suggest_cache": {"path": "suggest_cache.json",
+                              "size_bytes": os.path.getsize(os.path.join(data_dir, "suggest_cache.json")) if os.path.exists(os.path.join(data_dir, "suggest_cache.json")) else 0},
+        }
+        total = sum(c["size_bytes"] for c in caches.values())
+        return handler._json(200, {"caches": caches, "total_bytes": total})
 
     else:
         return handler._json(404, {"error": "not found"})
