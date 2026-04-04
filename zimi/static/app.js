@@ -4493,13 +4493,17 @@ function _confirmRemovePassword(btn) {
 }
 
 async function manageClearPassword() {
-  const body = {password: ''};
-  if (_manageToken) body.current = _manageToken;
+  const body = {password: '', current: _manageToken || ''};
   const res = await manageFetch('/manage/set-password', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(body)
   });
+  if (!res.ok) {
+    var err = await res.json().catch(function() { return {}; });
+    if (err.error) _showToast(err.error);
+    return;
+  }
   if (res.ok) {
     _manageToken = '';
     sessionStorage.removeItem('zimi_manage_pw');
@@ -4510,7 +4514,11 @@ async function manageClearPassword() {
 
 async function _generateToken() {
   var res = await manageFetch('/manage/generate-token', { method: 'POST' });
-  if (!res.ok) return;
+  if (!res.ok) {
+    var err = await res.json().catch(function() { return {}; });
+    if (err.error) _showToast(err.error);
+    return;
+  }
   var data = await res.json();
   var el = document.getElementById('ms-security');
   if (el) {

@@ -428,10 +428,14 @@ class TestServerEndpoints(unittest.TestCase):
     # ── Password management (v1.6) ──
 
     def test_set_password(self):
-        """set-password allows setting a password from the browser."""
-        # API requests (no Sec-Fetch-Site: same-origin) are rejected
+        """set-password works when no password is set (first-time setup)."""
         data, status = self._post("/manage/set-password", {"password": "test123"})
-        self.assertEqual(status, 403)
+        self.assertEqual(status, 200)
+        # Changing requires current password
+        data, status = self._post("/manage/set-password", {"password": "changed"})
+        self.assertEqual(status, 401)
+        # Clear for other tests
+        self._post("/manage/set-password", {"password": "", "current": "test123"})
 
     def test_has_password(self):
         """has-password returns status without auth."""

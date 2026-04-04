@@ -85,7 +85,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.6.1"
+ZIMI_VERSION = "1.6.2"
 
 log = logging.getLogger("zimi")
 logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S", level=logging.INFO)

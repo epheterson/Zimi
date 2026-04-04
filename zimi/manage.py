@@ -114,50 +114,46 @@ def _revoke_api_token():
     except FileNotFoundError:
         pass
 
+def _verify_password(candidate, stored_pw):
+    """Verify a password against the stored hash. Handles legacy and PBKDF2."""
+    if _is_legacy_hash(stored_pw):
+        if _verify_legacy(candidate, stored_pw):
+            _upgrade_legacy_hash(candidate)
+            return True
+        return False
+    if "$" not in stored_pw:
+        return False
+    salt = stored_pw.split("$")[0]
+    return hmac.compare_digest(_hash_pw(candidate, salt), stored_pw)
+
 def _check_manage_auth(handler):
     """Check authorization for manage endpoints. Returns True if unauthorized.
 
     Auth model:
-    - Browser (Sec-Fetch-Site: same-origin): password check, open if no password set
-    - API (everything else): ALWAYS requires a valid Bearer token
-
-    Browser detection uses Sec-Fetch-Site header (set by all modern browsers,
-    can't be spoofed by JavaScript — it's a "forbidden" header).
+    - No password set → open access
+    - Password set → Bearer token must match password or API token
+    - API token is optional (requires password to be set first)
     """
-    sec_fetch = handler.headers.get("Sec-Fetch-Site", "")
-    is_browser = sec_fetch == "same-origin"
+    stored_pw = _get_manage_password_hash()
+    if not stored_pw:
+        return None  # no password = open
 
-    if is_browser:
-        stored_pw = _get_manage_password_hash()
-        if not stored_pw:
-            return None  # no password set, browser access is open
-        auth = handler.headers.get("Authorization", "")
-        if not auth.startswith("Bearer "):
-            return True
-        candidate = auth[7:]
-        # v1.5 legacy: unsalted SHA-256 hex (64 chars, no '$')
-        if _is_legacy_hash(stored_pw):
-            if _verify_legacy(candidate, stored_pw):
-                _upgrade_legacy_hash(candidate)
-                return None
-            return True
-        if "$" not in stored_pw:
-            return True
-        salt = stored_pw.split("$")[0]
-        if hmac.compare_digest(_hash_pw(candidate, salt), stored_pw):
-            return None
-        return True
-    else:
-        # API request — always require a valid token
-        stored_token = _get_api_token()
-        if not stored_token:
-            return True  # no token generated yet — API access denied
-        auth = handler.headers.get("Authorization", "")
-        if not auth.startswith("Bearer "):
-            return True
-        if hmac.compare_digest(auth[7:], stored_token):
-            return None  # valid
-        return True
+    auth = handler.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return True  # password required, no credentials
+
+    candidate = auth[7:]
+
+    # Accept API token (cheap constant-time check first)
+    stored_token = _get_api_token()
+    if stored_token and hmac.compare_digest(candidate, stored_token):
+        return None
+
+    # Accept password
+    if _verify_password(candidate, stored_pw):
+        return None
+
+    return True
 
 # ============================================================================
 # Manage GET Routes
@@ -297,36 +293,26 @@ def handle_manage_post(handler, parsed, data):
         return handler._json(404, {"error": "Library management is disabled."})
     # Password management — browser only, not accessible via API
     if parsed.path == "/manage/set-password":
-        sec_fetch = handler.headers.get("Sec-Fetch-Site", "")
-        if sec_fetch != "same-origin":
-            return handler._json(403, {"error": "Password changes are only allowed from the browser"})
         # Env var controls password — UI changes would be silently overridden
         if os.environ.get("ZIMI_MANAGE_PASSWORD", ""):
             return handler._json(403, {"error": "Password is controlled by ZIMI_MANAGE_PASSWORD environment variable"})
         stored = _get_manage_password_hash()
         if stored:
             cur = data.get("current", "")
-            if not cur:
-                return handler._json(401, {"error": "Current password is required"})
-            # v1.5 legacy: unsalted SHA-256 hex (64 chars, no '$')
-            if _is_legacy_hash(stored):
-                if not _verify_legacy(cur, stored):
-                    return handler._json(401, {"error": "Current password is incorrect"})
-                # Legacy hash verified — will be overwritten by the new password below
-            elif "$" not in stored:
+            if not cur or not _verify_password(cur, stored):
                 return handler._json(401, {"error": "Current password is incorrect"})
-            else:
-                salt = stored.split("$")[0]
-                if not hmac.compare_digest(_hash_pw(cur, salt), stored):
-                    return handler._json(401, {"error": "Current password is incorrect"})
         new_pw = data.get("password", "").strip()
+        if not new_pw and _get_api_token():
+            return handler._json(400, {"error": "Revoke the API token before removing the password"})
         _set_manage_password(new_pw)
         return handler._json(200, {"status": "password set" if new_pw else "password cleared"})
 
-    # API token management — requires existing auth (password or token)
+    # API token management — requires existing auth + password must be set
     if parsed.path == "/manage/generate-token":
         if _check_manage_auth(handler):
             return handler._json(401, {"error": "unauthorized", "needs_password": True})
+        if not _get_manage_password_hash():
+            return handler._json(400, {"error": "Set a password before generating an API token"})
         token = _generate_api_token()
         return handler._json(200, {"token": token})
     if parsed.path == "/manage/revoke-token":
