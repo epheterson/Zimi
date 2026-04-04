@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.2] — 2026-04-04
+
+### Fixed
+- Fresh Docker installs locked behind password prompt with no password to enter (#12)
+- Removed `Sec-Fetch-Site` header dependency from all auth decisions
+- Token generation and password removal errors now show user-facing messages
+
+### Changed
+- Auth accepts password or API token as Bearer on all requests (no header sniffing)
+- API token requires a password to be set first
+- Password can't be removed while an API token is active
+
+### Removed
+- 15 unused screenshots from repository
+- Stale RELEASE_NOTES_v1.6.md
+
 ## [1.6.1] — 2026-03-27
 
 ### Fixed
@@ -171,7 +187,8 @@ Initial release — offline knowledge server for ZIM files.
 - Added Docker support
 - Added support for regular ZIMs, zimgit PDF collections, and OPDS catalog
 
-[Unreleased]: https://github.com/epheterson/zimi/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/epheterson/zimi/compare/v1.6.2...HEAD
+[1.6.2]: https://github.com/epheterson/zimi/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/epheterson/zimi/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/epheterson/zimi/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/epheterson/zimi/compare/v1.4.0...v1.5.0
