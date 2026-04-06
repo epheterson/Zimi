@@ -28,7 +28,6 @@ package-lock.json
 
 # Testing & tooling
 .playwright-mcp/
-screenshots/
 test-results/
 tmp/
 
@@ -39,4 +38,4 @@ tmp/
 # Working docs (not shipped)
 PLAN.md
 CLAUDE.md
-.claude/*.local.md
+.claude/

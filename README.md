@@ -31,6 +31,10 @@ A modern experience for your ZIM files.
 |-------------------|---------|
 | ![Languages](screenshots/language-dropdown.png) | ![Catalog](screenshots/browse-library.png) |
 
+| Article Reader |
+|----------------|
+| ![Reader](screenshots/reader.png) |
+
 ## Languages
 
 Not an afterthought. Language is deeply integrated into every aspect of Zimi so you can focus on your content and feel at home. Enjoy filtered lists, labeled sources, RTL support and no rock left unturned.

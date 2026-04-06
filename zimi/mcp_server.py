@@ -37,8 +37,12 @@ from mcp.server.fastmcp import FastMCP
 
 from zimi import server as zimi
 
-# Initialize: load ZIM metadata (uses persistent cache for instant startup)
+# Initialize: load ZIM metadata (fast — reads JSON cache from disk),
+# then warm search indexes in background so MCP transport starts immediately.
+# First search may be slightly slower; subsequent searches are instant.
+import threading
 zimi.load_cache()
+threading.Thread(target=zimi.warm_indexes, daemon=True).start()
 
 mcp = FastMCP("zimi", instructions="Search and read articles from offline ZIM knowledge archives.")
 
