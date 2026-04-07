@@ -1,5 +1,10 @@
 # Zimi
 
+[![CI](https://github.com/epheterson/Zimi/actions/workflows/ci.yml/badge.svg)](https://github.com/epheterson/Zimi/actions/workflows/ci.yml)
+[![Docker Pulls](https://img.shields.io/docker/pulls/epheterson/zimi)](https://hub.docker.com/r/epheterson/zimi)
+[![PyPI](https://img.shields.io/pypi/v/zimi)](https://pypi.org/project/zimi/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A modern experience for your ZIM files.
 
 [Kiwix](https://kiwix.org) packages the world's knowledge into ZIM files. Zimi makes them feel like the real internet with a rich web UI, fast JSON API, and an MCP server for AI agents. Everything works offline, in your language.
@@ -25,6 +30,10 @@ A modern experience for your ZIM files.
 | Language Switching | Catalog |
 |-------------------|---------|
 | ![Languages](screenshots/language-dropdown.png) | ![Catalog](screenshots/browse-library.png) |
+
+| Article Reader |
+|----------------|
+| ![Reader](screenshots/reader.png) |
 
 ## Languages
 

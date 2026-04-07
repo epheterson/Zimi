@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.3] — 2026-04-05
+
+### Fixed
+- MCP server now warms search indexes on startup (search was returning empty results)
+
+### Changed
+- Extracted `warm_indexes()` from `serve()` so MCP and HTTP servers share the same startup path
+
 ## [1.6.2] — 2026-04-04
 
 ### Fixed
@@ -187,7 +195,8 @@ Initial release — offline knowledge server for ZIM files.
 - Added Docker support
 - Added support for regular ZIMs, zimgit PDF collections, and OPDS catalog
 
-[Unreleased]: https://github.com/epheterson/zimi/compare/v1.6.2...HEAD
+[Unreleased]: https://github.com/epheterson/zimi/compare/v1.6.3...HEAD
+[1.6.3]: https://github.com/epheterson/zimi/compare/v1.6.2...v1.6.3
 [1.6.2]: https://github.com/epheterson/zimi/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/epheterson/zimi/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/epheterson/zimi/compare/v1.5.0...v1.6.0

@@ -85,7 +85,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.6.2"
+ZIMI_VERSION = "1.6.3"
 
 log = logging.getLogger("zimi")
 logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S", level=logging.INFO)
@@ -815,89 +815,8 @@ def main():
                     log.info("Partial download found (resumable): %s", os.path.basename(tmp))
             except OSError:
                 pass
-        # Pre-warm all archive handles so first search is fast
-        zims = get_zim_files()
-        log.info("Pre-warming %d archives...", len(zims))
-        for name in zims:
-            try:
-                get_archive(name)
-            except Exception as e:
-                log.warning("Skipping %s: %s", name, e)
-        log.info("All archives ready")
-        # Pre-warm suggestion indexes in background (loads B-tree pages into OS cache).
-        # Uses throwaway Archive handles so it never holds _suggest_op_lock — user
-        # fast searches can proceed immediately even while warm-up is running.
-        def _warm_suggest_indexes():
-            from concurrent.futures import ThreadPoolExecutor
-            zim_files = get_zim_files()
-            warmed = [0]
-            count_lock = threading.Lock()
-
-            def _warm_one(name, path):
-                try:
-                    # Pre-open suggest pool handle (fast, no index I/O)
-                    _get_suggest_archive(name)
-                    # Warm B-tree pages into OS page cache via throwaway handle
-                    archive = open_archive(path)
-                    ss = SuggestionSearcher(archive)
-                    s = ss.suggest("a")
-                    s.getResults(0, 1)
-                    with count_lock:
-                        warmed[0] += 1
-                except Exception as e:
-                    log.debug("Failed to warm suggest index for %s: %s", name, e)
-                    pass
-
-            # Parallel warmup — 4 workers keeps disk busy without
-            # overwhelming spinning disk seek capacity
-            with ThreadPoolExecutor(max_workers=4) as pool:
-                for name, path in zim_files.items():
-                    pool.submit(_warm_one, name, path)
-            log.info("Suggestion indexes warmed: %d/%d", warmed[0], len(zim_files))
-        threading.Thread(target=_warm_suggest_indexes, daemon=True).start()
-        # Pre-warm FTS pool in background (opens per-ZIM Archive handles for parallel Xapian search)
-        def _warm_fts_pool():
-            zim_files = get_zim_files()
-            for name in zim_files:
-                try:
-                    _get_fts_archive(name)
-                except Exception as e:
-                    log.debug("Failed to warm FTS archive for %s: %s", name, e)
-                    pass
-            log.info("FTS pool warmed: %d archives", len(_fts_pool))
-        threading.Thread(target=_warm_fts_pool, daemon=True).start()
-        # Build SQLite title indexes in background (one-time per ZIM, enables <10ms title search)
-        threading.Thread(target=_build_all_title_indexes, daemon=True).start()
-        # Build Wikidata Q-ID indexes + detect has_qids for all ZIMs (background)
-        threading.Thread(target=_build_all_qid_indexes, daemon=True).start()
-        # Pre-warm title index B-tree pages for fast first queries
-        # For each ZIM, read a few rows at scattered prefixes (a, m, s) to pull
-        # B-tree branch pages into OS page cache. Reads ~10-50KB per ZIM total
-        # (3 branch paths × a few pages each) — far less than the full indexes.
-        def _warm_title_indexes():
-            zim_files = get_zim_files()
-            opened = 0
-            for name in zim_files:
-                conn = _get_title_db(name)
-                if conn is not None:
-                    try:
-                        for prefix in ("a", "m", "s"):
-                            conn.execute(
-                                "SELECT title FROM titles WHERE title_lower >= ? LIMIT 1",
-                                (prefix,)
-                            ).fetchone()
-                    except Exception as e:
-                        log.debug("Failed to warm title index B-tree for %s: %s", name, e)
-                        pass
-                    opened += 1
-            log.info("Title indexes warmed: %d/%d", opened, len(zim_files))
-        threading.Thread(target=_warm_title_indexes, daemon=True).start()
-        # Restore suggest cache from disk (instant warm queries after restart)
-        loaded = _suggest_cache_restore()
-        if loaded:
-            log.info("Suggest cache restored: %d entries", loaded)
+        warm_indexes()
         # Start auto-update thread if enabled
-        # Use module-level assignment so manage.py can check _srv._auto_update_thread
         global _auto_update_thread
         if _auto_update_enabled:
             _auto_update_thread = threading.Thread(target=_auto_update_loop, daemon=True)
@@ -919,6 +838,79 @@ def main():
 
     else:
         parser.print_help()
+
+
+def warm_indexes():
+    """Pre-warm all indexes for fast first queries.
+
+    Called by serve() at startup and by mcp_server.py on init.
+    Opens archive handles, warms suggest/FTS/title indexes in background threads.
+    """
+    zims = get_zim_files()
+    log.info("Pre-warming %d archives...", len(zims))
+    for name in zims:
+        try:
+            get_archive(name)
+        except Exception as e:
+            log.warning("Skipping %s: %s", name, e)
+    log.info("All archives ready")
+
+    def _warm_suggest_indexes():
+        from concurrent.futures import ThreadPoolExecutor
+        zim_files = get_zim_files()
+        warmed = [0]
+        count_lock = threading.Lock()
+        def _warm_one(name, path):
+            try:
+                _get_suggest_archive(name)
+                archive = open_archive(path)
+                ss = SuggestionSearcher(archive)
+                s = ss.suggest("a")
+                s.getResults(0, 1)
+                with count_lock:
+                    warmed[0] += 1
+            except Exception as e:
+                log.debug("Failed to warm suggest index for %s: %s", name, e)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for name, path in zim_files.items():
+                pool.submit(_warm_one, name, path)
+        log.info("Suggestion indexes warmed: %d/%d", warmed[0], len(zim_files))
+    threading.Thread(target=_warm_suggest_indexes, daemon=True).start()
+
+    def _warm_fts_pool():
+        zim_files = get_zim_files()
+        for name in zim_files:
+            try:
+                _get_fts_archive(name)
+            except Exception as e:
+                log.debug("Failed to warm FTS archive for %s: %s", name, e)
+        log.info("FTS pool warmed: %d archives", len(_fts_pool))
+    threading.Thread(target=_warm_fts_pool, daemon=True).start()
+
+    threading.Thread(target=_build_all_title_indexes, daemon=True).start()
+    threading.Thread(target=_build_all_qid_indexes, daemon=True).start()
+
+    def _warm_title_indexes():
+        zim_files = get_zim_files()
+        opened = 0
+        for name in zim_files:
+            conn = _get_title_db(name)
+            if conn is not None:
+                try:
+                    for prefix in ("a", "m", "s"):
+                        conn.execute(
+                            "SELECT title FROM titles WHERE title_lower >= ? LIMIT 1",
+                            (prefix,)
+                        ).fetchone()
+                except Exception as e:
+                    log.debug("Failed to warm title index B-tree for %s: %s", name, e)
+                opened += 1
+        log.info("Title indexes warmed: %d/%d", opened, len(zim_files))
+    threading.Thread(target=_warm_title_indexes, daemon=True).start()
+
+    loaded = _suggest_cache_restore()
+    if loaded:
+        log.info("Suggest cache restored: %d entries", loaded)
 
 
 # ============================================================================
