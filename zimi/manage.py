@@ -289,6 +289,16 @@ def handle_manage_get(handler, parsed, params):
         total, items, err = _srv._fetch_kiwix_catalog(query, lang, count, start)
         if err:
             return handler._json(502, {"error": f"Kiwix catalog fetch failed: {err}"})
+        # Optional client-side language filter — `ui_languages=en,fr` returns
+        # only items whose normalized language code is in the set.
+        ui_langs_raw = param("ui_languages", "")
+        if ui_langs_raw:
+            wanted = {x.strip().lower() for x in ui_langs_raw.split(",") if x.strip()}
+            if wanted:
+                items = [
+                    it for it in items if str(it.get("language", "")).lower() in wanted
+                ]
+                total = len(items)
         return handler._json(200, {"total": total, "items": items})
 
     elif parsed.path == "/manage/check-updates":
