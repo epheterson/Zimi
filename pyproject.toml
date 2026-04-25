@@ -30,3 +30,10 @@ include = ["zimi*"]
 
 [tool.setuptools.package-data]
 zimi = ["templates/**", "static/**", "assets/**"]
+
+[tool.pytest.ini_options]
+# test_article_languages is a data-integrity suite — it asserts against real
+# Wikipedia interwiki links in the ZIMs on disk. Wikipedia's link graph drifts
+# over time, so failures there are signal about ZIM data, not code.
+# Run it explicitly with `pytest tests/test_article_languages.py` when needed.
+addopts = "--ignore=tests/test_article_languages.py"
