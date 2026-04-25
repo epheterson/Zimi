@@ -4891,6 +4891,18 @@ function dlTitle(dl) {
 let _dlPrevAllDone = true; // track when downloads finish to trigger refresh
 let _dlRecentStart = 0;   // timestamp of last download start (grace period for server lag)
 
+function _updateDownloadsTabBadge(activeCount) {
+  const badge = document.getElementById('dl-tab-badge');
+  if (!badge) return;
+  if (activeCount > 0) {
+    badge.textContent = String(activeCount);
+    badge.style.display = '';
+  } else {
+    badge.textContent = '';
+    badge.style.display = 'none';
+  }
+}
+
 async function refreshDownloads() {
   if (_dlTimer) { clearTimeout(_dlTimer); _dlTimer = null; }
   const dlEl = document.getElementById('manage-downloads');
