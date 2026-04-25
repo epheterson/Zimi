@@ -22,7 +22,10 @@ curl -s "https://your-zimi.example.com/search?q=paris&limit=10"
       "path": "A/Paris",
       "title": "Paris",
       "snippet": "",
-      "score": 122.5
+      "score": 122.5,
+      "language": "en",
+      "has_qids": false,
+      "category": "general"
     }
   ],
   "by_source": {"wikipedia_en_top": 1},
@@ -32,9 +35,9 @@ curl -s "https://your-zimi.example.com/search?q=paris&limit=10"
 }
 ```
 
-Stable fields per result: `zim`, `path`, `title`, `snippet`, `score`.
+Stable fields per result: `zim`, `path`, `title`, `snippet`, `score`, `language`, `has_qids`, `category`.
 
-The `score` field is a float — higher is better. `total` is the sum across all ZIMs searched. `partial: true` is set when the response is from the fast title-only path (`?fast=1`); SearXNG should generally let you set `timeout: 20.0` and use the full FTS path.
+`score` is a float — higher is better. `total` is the sum across all ZIMs searched. `partial: true` is set when the response is from the fast title-only path (`?fast=1`); SearXNG should generally let you set `timeout: 20.0` and use the full FTS path.
 
 ## SearXNG engine
 
@@ -92,23 +95,21 @@ Use the shortcut to scope queries: `!zm relativity` only hits Zimi.
 
 ## Routing results to images / videos categories
 
-By default every Zimi hit lands in the `general` category. Starting in Zimi 1.7, `/search` results include a `category` hint that maps the ZIM source to one of `general`, `images`, or `video`. To route hits to the appropriate SearXNG tab, use the `category` field in your engine's `response()`:
+`/search` results include a `category` hint — one of `general`, `images`, or `video` — derived from the ZIM source name. Use it to route hits into the right SearXNG tab:
 
 ```python
-result_category = result.get('category', 'general')
 results.append({
     # ...
-    'category': result_category,   # SearXNG groups by this
+    'category': result.get('category', 'general'),
 })
 ```
 
-Examples of the mapping:
-- `wikipedia_*`, `stackexchange_*`, `gutenberg_*`, `devdocs_*` → `general`
-- `ted_*`, any video-archive ZIM → `video`
-- `wikimedia_commons_*` → `images`
-- `zimgit-*` (PDF collections) → `general`
+The mapping is a small prefix table in `zimi/search.py:_zim_category()`:
+- `ted_*` → `video`
+- `wikimedia_commons*`, `apod.nasa.gov*` → `images`
+- everything else → `general`
 
-The mapping is heuristic and can be overridden in `zimi/search.py:_zim_category()`.
+Add prefixes there if you have a ZIM that should land somewhere different.
 
 ## Performance tips
 

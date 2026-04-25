@@ -145,7 +145,12 @@ def _normalize_query(q):
 
 
 def _record_usage(event_type, zim_name=None, query=None):
-    """Record a usage event. Thread-safe. Only tracks known ZIM names."""
+    """Record a usage event. Thread-safe.
+
+    For searches, also buckets the normalized query string (capped at
+    _SEARCH_QUERY_CAP keys to bound memory). Per-ZIM stats are only kept
+    for known ZIM names, so deleted ZIMs stop accumulating.
+    """
     with _usage_lock:
         if event_type == "search":
             _usage_stats["searches"] += 1
