@@ -23,7 +23,9 @@ from urllib.parse import urlparse, parse_qs, unquote
 
 import zimi.server as _srv
 from zimi.manage import (
-    _check_manage_auth, handle_manage_get, handle_manage_post,
+    _check_manage_auth,
+    handle_manage_get,
+    handle_manage_post,
 )
 
 log = logging.getLogger("zimi")
@@ -32,9 +34,13 @@ log = logging.getLogger("zimi")
 # Rate Limiting
 # ============================================================================
 
-RATE_LIMIT = int(os.environ.get("ZIMI_RATE_LIMIT", "60"))  # API requests per minute per IP (0 = disabled)
-RATE_LIMIT_CONTENT = RATE_LIMIT * 20  # /w/ sub-resources: icons, CSS, images (1200/min default)
-_rate_buckets = {}       # {ip: [timestamps]} — API endpoints
+RATE_LIMIT = int(
+    os.environ.get("ZIMI_RATE_LIMIT", "60")
+)  # API requests per minute per IP (0 = disabled)
+RATE_LIMIT_CONTENT = (
+    RATE_LIMIT * 20
+)  # /w/ sub-resources: icons, CSS, images (1200/min default)
+_rate_buckets = {}  # {ip: [timestamps]} — API endpoints
 _rate_buckets_content = {}  # {ip: [timestamps]} — /w/ content
 _rate_lock = threading.Lock()
 
@@ -74,8 +80,8 @@ def _check_rate_limit(ip, content=False):
 
 _metrics = {
     "start_time": time.time(),
-    "requests": {},       # {endpoint: count}
-    "latency_sum": {},    # {endpoint: total_seconds}
+    "requests": {},  # {endpoint: count}
+    "latency_sum": {},  # {endpoint: total_seconds}
     "errors": 0,
     "rate_limited": 0,
 }
@@ -86,7 +92,9 @@ def _record_metric(endpoint, latency, error=False):
     """Record a request metric."""
     with _metrics_lock:
         _metrics["requests"][endpoint] = _metrics["requests"].get(endpoint, 0) + 1
-        _metrics["latency_sum"][endpoint] = _metrics["latency_sum"].get(endpoint, 0) + latency
+        _metrics["latency_sum"][endpoint] = (
+            _metrics["latency_sum"].get(endpoint, 0) + latency
+        )
         if error:
             _metrics["errors"] += 1
 
@@ -99,7 +107,10 @@ def _get_metrics():
         endpoints = {}
         for ep, count in _metrics["requests"].items():
             avg_latency = _metrics["latency_sum"].get(ep, 0) / count if count > 0 else 0
-            endpoints[ep] = {"count": count, "avg_latency_ms": round(avg_latency * 1000, 1)}
+            endpoints[ep] = {
+                "count": count,
+                "avg_latency_ms": round(avg_latency * 1000, 1),
+            }
         return {
             "uptime_seconds": round(uptime),
             "total_requests": total_reqs,
@@ -113,19 +124,39 @@ def _get_metrics():
 # Usage Stats
 # ============================================================================
 
+# Bound the search-query counter so it can't grow unbounded under attack
+# or simply many distinct queries. Once we hit the cap we stop adding new
+# keys; existing keys keep counting.
+_SEARCH_QUERY_CAP = 5000
+_TOP_SEARCHES_LIMIT = 10
+
 _usage_stats = {
     "searches": 0,
     "article_reads": 0,
     "by_zim": {},  # {zim_name: {"reads": N, "searches": N}}
+    "by_query": {},  # {normalized_query: count}
 }
 _usage_lock = threading.Lock()
 
 
-def _record_usage(event_type, zim_name=None):
+def _normalize_query(q):
+    """Lowercase + collapse whitespace so 'Paris' and 'paris  ' bucket together."""
+    return " ".join((q or "").lower().split())
+
+
+def _record_usage(event_type, zim_name=None, query=None):
     """Record a usage event. Thread-safe. Only tracks known ZIM names."""
     with _usage_lock:
         if event_type == "search":
             _usage_stats["searches"] += 1
+            norm = _normalize_query(query)
+            if norm:
+                if norm in _usage_stats["by_query"]:
+                    _usage_stats["by_query"][norm] += 1
+                elif len(_usage_stats["by_query"]) < _SEARCH_QUERY_CAP:
+                    _usage_stats["by_query"][norm] = 1
+                # Otherwise: bucket cap reached, drop silently rather than
+                # evict so the established top-N stays stable.
         elif event_type in ("read", "iframe"):
             _usage_stats["article_reads"] += 1
         if zim_name and zim_name in _srv.get_zim_files():
@@ -139,14 +170,23 @@ def _record_usage(event_type, zim_name=None):
 
 
 def _get_usage_stats():
-    """Return usage snapshot: top ZIMs, totals."""
+    """Return usage snapshot: top ZIMs, totals, top search queries."""
     with _usage_lock:
         by_zim = dict(_usage_stats["by_zim"])
-        top = sorted(by_zim.items(), key=lambda x: x[1]["reads"] + x[1]["searches"], reverse=True)[:10]
+        top = sorted(
+            by_zim.items(),
+            key=lambda x: x[1]["reads"] + x[1]["searches"],
+            reverse=True,
+        )[:10]
+        top_queries = sorted(
+            _usage_stats["by_query"].items(), key=lambda x: x[1], reverse=True
+        )[:_TOP_SEARCHES_LIMIT]
         return {
             "searches": _usage_stats["searches"],
             "article_reads": _usage_stats["article_reads"],
             "top_zims": [{"name": n, **v} for n, v in top],
+            "top_searches": [{"query": q, "count": c} for q, c in top_queries],
+            "tracked_queries": len(_usage_stats["by_query"]),
         }
 
 
@@ -157,19 +197,26 @@ def _get_disk_usage():
         total = usage.total
         free = usage.free
         used = usage.used
-        zim_size = sum(os.path.getsize(os.path.join(_srv.ZIM_DIR, f))
-                       for f in os.listdir(_srv.ZIM_DIR) if f.endswith(".zim"))
+        zim_size = sum(
+            os.path.getsize(os.path.join(_srv.ZIM_DIR, f))
+            for f in os.listdir(_srv.ZIM_DIR)
+            if f.endswith(".zim")
+        )
         # List partial (.tmp) downloads
         tmp_files = []
         for f in os.listdir(_srv.ZIM_DIR):
             if f.endswith(".zim.tmp"):
                 try:
                     fpath = os.path.join(_srv.ZIM_DIR, f)
-                    tmp_files.append({
-                        "filename": f,
-                        "size_bytes": os.path.getsize(fpath),
-                        "age_hours": round((time.time() - os.path.getmtime(fpath)) / 3600, 1),
-                    })
+                    tmp_files.append(
+                        {
+                            "filename": f,
+                            "size_bytes": os.path.getsize(fpath),
+                            "age_hours": round(
+                                (time.time() - os.path.getmtime(fpath)) / 3600, 1
+                            ),
+                        }
+                    )
                 except OSError:
                     pass
         return {
@@ -191,7 +238,13 @@ def _get_disk_usage():
 # ============================================================================
 
 # MIME types that benefit from gzip (text-based, not already compressed)
-COMPRESSIBLE_TYPES = {"text/", "application/javascript", "application/json", "application/xml", "image/svg+xml"}
+COMPRESSIBLE_TYPES = {
+    "text/",
+    "application/javascript",
+    "application/json",
+    "application/xml",
+    "image/svg+xml",
+}
 
 _TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 try:
@@ -204,39 +257,45 @@ except FileNotFoundError:
 # This eliminates manual version bumping — any file change gets a new URL automatically.
 _STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 if os.path.isdir(_STATIC_DIR):
+
     def _static_hash(fname):
         """Short content hash for a static file."""
         p = os.path.join(_STATIC_DIR, fname)
         if os.path.exists(p):
             return hashlib.md5(open(p, "rb").read()).hexdigest()[:8]
         return "0"
+
     # Replace versioned references: /static/foo.js?v=39 → /static/foo.js?v=a1b2c3d4
     def _replace_static_ver(m):
         fname = m.group(1)
         return f"/static/{fname}?v={_static_hash(fname)}"
+
     SEARCH_UI_HTML = re.sub(
-        r'/static/([\w./-]+)\?v=\d+',
-        _replace_static_ver,
-        SEARCH_UI_HTML
+        r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, SEARCH_UI_HTML
     )
     # Inject build config into inline script so app.js can read versioned values.
     # Template has: var __ZIMI_CONFIG = {discoverStamp:'disc6',i18nHash:'0'};
     _build_stamp = _static_hash("app.js")[:6]
-    _i18n_hash = hashlib.md5(
-        b"".join(open(os.path.join(_STATIC_DIR, "i18n", f), "rb").read()
-                 for f in sorted(os.listdir(os.path.join(_STATIC_DIR, "i18n")))
-                 if f.endswith(".json"))
-    ).hexdigest()[:8] if os.path.isdir(os.path.join(_STATIC_DIR, "i18n")) else "0"
+    _i18n_hash = (
+        hashlib.md5(
+            b"".join(
+                open(os.path.join(_STATIC_DIR, "i18n", f), "rb").read()
+                for f in sorted(os.listdir(os.path.join(_STATIC_DIR, "i18n")))
+                if f.endswith(".json")
+            )
+        ).hexdigest()[:8]
+        if os.path.isdir(os.path.join(_STATIC_DIR, "i18n"))
+        else "0"
+    )
     SEARCH_UI_HTML = SEARCH_UI_HTML.replace(
         "discoverStamp:'disc6'", f"discoverStamp:'d{_build_stamp}'"
-    ).replace(
-        "i18nHash:'0'", f"i18nHash:'{_i18n_hash}'"
-    )
+    ).replace("i18nHash:'0'", f"i18nHash:'{_i18n_hash}'")
 
 
 # ============================================================================
 # HTTP Request Handler
 # ============================================================================
+
 
 class ZimHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -284,7 +343,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 self.send_response(429)
                 self.send_header("Retry-After", str(retry_after))
                 self.send_header("Content-Type", "application/json")
-                msg = json.dumps({"error": "rate limited", "retry_after": retry_after}).encode()
+                msg = json.dumps(
+                    {"error": "rate limited", "retry_after": retry_after}
+                ).encode()
                 self.send_header("Content-Length", str(len(msg)))
                 self.end_headers()
                 self.wfile.write(msg)
@@ -307,7 +368,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     cdata = _srv._load_collections()
                     coll = cdata.get("collections", {}).get(collection)
                     if not coll:
-                        return self._json(400, {"error": f"Collection '{collection}' not found"})
+                        return self._json(
+                            400, {"error": f"Collection '{collection}' not found"}
+                        )
                     filter_zim = coll.get("zims", []) or None
                 elif zim_param:
                     filter_zim = [z.strip() for z in zim_param.split(",") if z.strip()]
@@ -317,47 +380,101 @@ class ZimHandler(BaseHTTPRequestHandler):
                     filter_zim = None
                 # Apply language filter: restrict to ZIMs matching the given language
                 if lang_filter:
-                    lang_zims = [z["name"] for z in (_srv._zim_list_cache or []) if z.get("language", "") == lang_filter]
+                    lang_zims = [
+                        z["name"]
+                        for z in (_srv._zim_list_cache or [])
+                        if z.get("language", "") == lang_filter
+                    ]
                     if not lang_zims:
-                        return self._json(200, {"results": [], "by_source": {}, "by_language": {}, "total": 0, "elapsed": 0, "partial": False})
+                        return self._json(
+                            200,
+                            {
+                                "results": [],
+                                "by_source": {},
+                                "by_language": {},
+                                "total": 0,
+                                "elapsed": 0,
+                                "partial": False,
+                            },
+                        )
                     if filter_zim is None:
                         filter_zim = lang_zims
                     else:
                         # Intersect with existing filter
                         allowed = set(lang_zims)
-                        filter_zim = [z for z in (filter_zim if isinstance(filter_zim, list) else [filter_zim]) if z in allowed]
+                        filter_zim = [
+                            z
+                            for z in (
+                                filter_zim
+                                if isinstance(filter_zim, list)
+                                else [filter_zim]
+                            )
+                            if z in allowed
+                        ]
                         if not filter_zim:
-                            return self._json(200, {"results": [], "by_source": {}, "by_language": {}, "total": 0, "elapsed": 0, "partial": False})
+                            return self._json(
+                                200,
+                                {
+                                    "results": [],
+                                    "by_source": {},
+                                    "by_language": {},
+                                    "total": 0,
+                                    "elapsed": 0,
+                                    "partial": False,
+                                },
+                            )
                 fast = param("fast") == "1"
-                zim_scope_str = ",".join(sorted(filter_zim)) if isinstance(filter_zim, list) else (filter_zim or "")
+                zim_scope_str = (
+                    ",".join(sorted(filter_zim))
+                    if isinstance(filter_zim, list)
+                    else (filter_zim or "")
+                )
                 cache_key = (q.lower().strip(), zim_scope_str, limit, fast)
                 cached = _srv._search_cache_get(cache_key)
                 if cached is not None:
                     _record_metric("/search", 0)
-                    _record_usage("search")
+                    _record_usage("search", query=q)
                     return self._json(200, cached)
                 t0 = time.time()
                 if fast:
                     # Fast path uses _suggest_pool internally, no _zim_lock needed
-                    result = _srv.search_all(q, limit=limit, filter_zim=filter_zim, fast=True)
+                    result = _srv.search_all(
+                        q, limit=limit, filter_zim=filter_zim, fast=True
+                    )
                 else:
                     # FTS path uses _fts_pool (per-ZIM locks), no _zim_lock needed
                     result = _srv.search_all(q, limit=limit, filter_zim=filter_zim)
                 dt = time.time() - t0
                 _srv._search_cache_put(cache_key, result)
                 _record_metric("/search", dt)
-                _record_usage("search")
-                zim_label = ",".join(filter_zim) if isinstance(filter_zim, list) else (filter_zim or "all")
-                log.info("search q=%r limit=%d zim=%s fast=%s %.1fs", q, limit, zim_label, fast, dt)
+                _record_usage("search", query=q)
+                zim_label = (
+                    ",".join(filter_zim)
+                    if isinstance(filter_zim, list)
+                    else (filter_zim or "all")
+                )
+                log.info(
+                    "search q=%r limit=%d zim=%s fast=%s %.1fs",
+                    q,
+                    limit,
+                    zim_label,
+                    fast,
+                    dt,
+                )
                 return self._json(200, result)
 
             elif parsed.path == "/read":
                 zim = param("zim")
                 path = param("path")
                 if not zim or not path:
-                    return self._json(400, {"error": "missing ?zim= and ?path= parameters"})
+                    return self._json(
+                        400, {"error": "missing ?zim= and ?path= parameters"}
+                    )
                 try:
-                    max_len = min(int(param("max_length", str(_srv.MAX_CONTENT_LENGTH))), _srv.READ_MAX_LENGTH)
+                    max_len = min(
+                        int(param("max_length", str(_srv.MAX_CONTENT_LENGTH))),
+                        _srv.READ_MAX_LENGTH,
+                    )
                 except ValueError:
                     max_len = _srv.MAX_CONTENT_LENGTH
                 t0 = time.time()
@@ -372,7 +489,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if not q:
                     return self._json(400, {"error": "missing ?q= parameter"})
                 try:
-                    limit = max(1, min(int(param("limit", "10")), _srv.MAX_SEARCH_LIMIT))
+                    limit = max(
+                        1, min(int(param("limit", "10")), _srv.MAX_SEARCH_LIMIT)
+                    )
                 except (ValueError, TypeError):
                     limit = 10
                 zim_param = param("zim")
@@ -390,7 +509,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Use the fast search path (parallel, FTS5 title indexes)
                 # then reformat to suggest's {zim: [{path, title}, ...]} shape
                 filter_zim = ",".join(zim_names) if zim_names else None
-                search_result = _srv.search_all(q, fast=True, limit=limit, filter_zim=filter_zim)
+                search_result = _srv.search_all(
+                    q, fast=True, limit=limit, filter_zim=filter_zim
+                )
                 result = {}
                 for r in search_result.get("results", []):
                     zn = r["zim"]
@@ -407,30 +528,39 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path == "/languages":
                 # Installed language summary with native names and ZIM counts
                 lang_zims = {}  # {lang_code: [zim_name, ...]}
-                for z in (_srv._zim_list_cache or []):
+                for z in _srv._zim_list_cache or []:
                     lang = z.get("language", "")
                     if lang:
                         lang_zims.setdefault(lang, []).append(z["name"])
                 result = []
                 for lang, zim_names in sorted(lang_zims.items()):
-                    result.append({
-                        "code": lang,
-                        "name": _srv._LANG_NATIVE_NAMES.get(lang, lang),
-                        "zim_count": len(zim_names),
-                        "zims": zim_names,
-                    })
+                    result.append(
+                        {
+                            "code": lang,
+                            "name": _srv._LANG_NATIVE_NAMES.get(lang, lang),
+                            "zim_count": len(zim_names),
+                            "zims": zim_names,
+                        }
+                    )
                 return self._json(200, result)
 
             elif parsed.path == "/article-languages":
                 zim = param("zim")
                 path = param("path")
                 if not zim or not path:
-                    return self._json(400, {"error": "missing ?zim= and ?path= parameters"})
+                    return self._json(
+                        400, {"error": "missing ?zim= and ?path= parameters"}
+                    )
                 with _srv._zim_lock:
                     if _srv.get_archive(zim) is None:
                         return self._json(404, {"error": f"ZIM '{zim}' not found"})
                     result = _srv.get_article_languages(zim, path)
-                    log.info("article-languages %s/%s: %d results", zim, path, len(result.get("languages", [])))
+                    log.info(
+                        "article-languages %s/%s: %d results",
+                        zim,
+                        path,
+                        len(result.get("languages", [])),
+                    )
                 return self._json(200, result)
 
             elif parsed.path == "/catalog":
@@ -445,7 +575,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 zim = param("zim")
                 path = param("path")
                 if not zim or not path:
-                    return self._json(400, {"error": "missing ?zim= and ?path= parameters"})
+                    return self._json(
+                        400, {"error": "missing ?zim= and ?path= parameters"}
+                    )
                 t0 = time.time()
                 snippet = ""
                 thumbnail = None
@@ -473,10 +605,12 @@ class ZimHandler(BaseHTTPRequestHandler):
                                 break
                         # Fallback: extract from <main> or <article> body (skip nav boilerplate)
                         if not snippet:
-                            for tag in ['main', 'article']:
-                                tag_m = re.search(r'<' + tag + r'[\s>]', text, re.IGNORECASE)
+                            for tag in ["main", "article"]:
+                                tag_m = re.search(
+                                    r"<" + tag + r"[\s>]", text, re.IGNORECASE
+                                )
                                 if tag_m:
-                                    plain = _srv.strip_html(text[tag_m.start():])
+                                    plain = _srv.strip_html(text[tag_m.start() :])
                                     snippet = plain[:300].strip()
                                     break
                         # Last resort: full page text
@@ -492,23 +626,34 @@ class ZimHandler(BaseHTTPRequestHandler):
                             img_m = re.search(img_pat, text[:8000], re.IGNORECASE)
                             if img_m:
                                 src = img_m.group(1)
-                                if not src.startswith(("http", "//", "data:")) and not src.lower().endswith(".svg"):
-                                    resolved = _srv._resolve_img_path(archive, path, src)
+                                if not src.startswith(
+                                    ("http", "//", "data:")
+                                ) and not src.lower().endswith(".svg"):
+                                    resolved = _srv._resolve_img_path(
+                                        archive, path, src
+                                    )
                                     if resolved:
                                         thumbnail = f"/w/{zim}/{resolved}"
                                         break
                         # Fallback: best <img> in content — skip icons/badges, prefer larger images
                         if not thumbnail:
-                            _skip_img = re.compile(r'icon|badge|logo|arrow|button|sprite|spacer|1x1|pixel|emoji|flag.*\.svg', re.IGNORECASE)
+                            _skip_img = re.compile(
+                                r"icon|badge|logo|arrow|button|sprite|spacer|1x1|pixel|emoji|flag.*\.svg",
+                                re.IGNORECASE,
+                            )
                             best_img = None
                             best_area = 0
-                            for img_m2 in re.finditer(r'<img\b([^>]*)>', text[:15000], re.IGNORECASE):
+                            for img_m2 in re.finditer(
+                                r"<img\b([^>]*)>", text[:15000], re.IGNORECASE
+                            ):
                                 attrs = img_m2.group(1)
                                 src_m = re.search(r'src=["\']([^"\']+)["\']', attrs)
                                 if not src_m:
                                     continue
                                 src = src_m.group(1)
-                                if src.startswith(("data:", "http", "//")) or src.lower().endswith(".svg"):
+                                if src.startswith(
+                                    ("data:", "http", "//")
+                                ) or src.lower().endswith(".svg"):
                                     continue
                                 if _skip_img.search(src) or _skip_img.search(attrs):
                                     continue
@@ -521,7 +666,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                                     continue
                                 area = (w or 200) * (h or 150)
                                 if area > best_area:
-                                    resolved = _srv._resolve_img_path(archive, path, src)
+                                    resolved = _srv._resolve_img_path(
+                                        archive, path, src
+                                    )
                                     if resolved:
                                         best_img = f"/w/{zim}/{resolved}"
                                         best_area = area
@@ -543,7 +690,15 @@ class ZimHandler(BaseHTTPRequestHandler):
 
             elif parsed.path == "/health":
                 zim_count = len(_srv.get_zim_files())
-                return self._json(200, {"status": "ok", "version": _srv.ZIMI_VERSION, "zim_count": zim_count, "pdf_support": _srv.HAS_PYMUPDF})
+                return self._json(
+                    200,
+                    {
+                        "status": "ok",
+                        "version": _srv.ZIMI_VERSION,
+                        "zim_count": zim_count,
+                        "pdf_support": _srv.HAS_PYMUPDF,
+                    },
+                )
 
             elif parsed.path == "/random":
                 zim = param("zim")  # optional: scope to specific ZIM
@@ -552,7 +707,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                         return self._json(404, {"error": f"ZIM '{zim}' not found"})
                     pick_name = zim
                 else:
-                    eligible = [z for z in (_srv._zim_list_cache or []) if isinstance(z.get("entries"), int) and z["entries"] > 100]
+                    eligible = [
+                        z
+                        for z in (_srv._zim_list_cache or [])
+                        if isinstance(z.get("entries"), int) and z["entries"] > 100
+                    ]
                     if not eligible:
                         return self._json(200, {"error": "no ZIMs available"})
                     pick_name = _random.choice(eligible)["name"]
@@ -563,7 +722,17 @@ class ZimHandler(BaseHTTPRequestHandler):
                 is_wikipedia = "wikipedia" in pick_name.lower()
                 date_param = param("date")  # MMDD format
                 is_wikiquote = "wikiquote" in pick_name.lower()
-                max_tries = 50 if is_wiktionary else (30 if (is_gutenberg or is_wikiquote) else (5 if (require_thumb or (is_wikipedia and date_param)) else 1))
+                max_tries = (
+                    50
+                    if is_wiktionary
+                    else (
+                        30
+                        if (is_gutenberg or is_wikiquote)
+                        else (
+                            5 if (require_thumb or (is_wikipedia and date_param)) else 1
+                        )
+                    )
+                )
                 t0 = time.time()
                 with _srv._zim_lock:
                     archive = _srv.get_archive(pick_name)
@@ -572,7 +741,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                 seed_param = param("seed")  # For deterministic daily picks
                 rng = None
                 if seed_param:
-                    seed_val = int(hashlib.md5((pick_name + seed_param).encode()).hexdigest()[:8], 16)
+                    seed_val = int(
+                        hashlib.md5((pick_name + seed_param).encode()).hexdigest()[:8],
+                        16,
+                    )
                     rng = _random.Random(seed_val)
                 # Batch all ZIM reads under a single lock acquisition
                 candidates = []
@@ -580,14 +752,18 @@ class ZimHandler(BaseHTTPRequestHandler):
                     for _try in range(max_tries):
                         result = None
                         if date_param and len(date_param) == 4 and _try == 0:
-                            result = _srv._get_dated_entry(archive, pick_name, date_param, rng=rng)
+                            result = _srv._get_dated_entry(
+                                archive, pick_name, date_param, rng=rng
+                            )
                         if not result:
                             result = _srv.random_entry(archive, rng=rng)
                         if not result:
                             continue
                         preview = None
                         if want_thumb:
-                            preview = _srv._extract_preview(archive, pick_name, result["path"])
+                            preview = _srv._extract_preview(
+                                archive, pick_name, result["path"]
+                            )
                         candidates.append((result, preview))
                 # Filter candidates outside the lock
                 best_result = None
@@ -600,20 +776,29 @@ class ZimHandler(BaseHTTPRequestHandler):
                             best_preview = preview
                         continue
                     # Skip non-English or boring wiktionary entries
-                    if is_wiktionary and preview and (preview.get("non_english") or preview.get("boring")):
+                    if (
+                        is_wiktionary
+                        and preview
+                        and (preview.get("non_english") or preview.get("boring"))
+                    ):
                         if best_result is None:
                             best_result = result
                             best_preview = preview
                         continue
                     # Wiktionary: accept interesting English entry
-                    if is_wiktionary and preview and not preview.get("non_english") and not preview.get("boring"):
+                    if (
+                        is_wiktionary
+                        and preview
+                        and not preview.get("non_english")
+                        and not preview.get("boring")
+                    ):
                         best_result = result
                         best_preview = preview
                         break
                     # Wikiquote: require an actual quote
                     if is_wikiquote and preview:
                         blurb = preview.get("blurb") or ""
-                        if blurb and blurb[0] in ('\u201c', '"'):
+                        if blurb and blurb[0] in ("\u201c", '"'):
                             best_result = result
                             best_preview = preview
                             break
@@ -631,7 +816,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if not best_result:
                     return self._json(200, {"error": "no articles found"})
                 dt = time.time() - t0
-                chosen = {"zim": pick_name, "path": best_result["path"], "title": best_result["title"]}
+                chosen = {
+                    "zim": pick_name,
+                    "path": best_result["path"],
+                    "title": best_result["title"],
+                }
                 if best_preview:
                     # Use extracted title if the entry title looks like a slug
                     if best_preview.get("title"):
@@ -656,7 +845,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     if xkcd_date:
                         chosen["date"] = xkcd_date
                 _record_metric("/random", dt)
-                log.info("random zim=%s title=%r %.1fs", pick_name, best_result["title"], dt)
+                log.info(
+                    "random zim=%s title=%r %.1fs", pick_name, best_result["title"], dt
+                )
                 return self._json(200, chosen)
 
             elif parsed.path == "/resolve":
@@ -702,7 +893,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     zim_name, entry_path = unquote(rest), ""
                 else:
                     zim_name = unquote(rest[:slash])
-                    entry_path = unquote(rest[slash + 1:])
+                    entry_path = unquote(rest[slash + 1 :])
                 # Top-level browser navigation (reload/bookmark) → serve SPA shell
                 # so client-side router can handle the deep link.
                 # ?raw=1 bypasses SPA shell (used for PDF new-tab opening).
@@ -712,7 +903,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                 is_raw = "raw" in qs
                 is_view = "view" in qs
                 fetch_dest = self.headers.get("Sec-Fetch-Dest", "")
-                if is_view or ((fetch_dest == "document" or not entry_path) and not is_raw and not entry_path.lower().endswith(".epub")):
+                if is_view or (
+                    (fetch_dest == "document" or not entry_path)
+                    and not is_raw
+                    and not entry_path.lower().endswith(".epub")
+                ):
                     return self._serve_index(vary="Sec-Fetch-Dest")
                 # Track iframe article loads + passively cache Q-ID
                 if fetch_dest == "iframe":
@@ -720,11 +915,30 @@ class ZimHandler(BaseHTTPRequestHandler):
                     # Background Q-ID extraction builds the cache over time
                     if entry_path and _srv._qid_passive_cache:
                         import threading
-                        threading.Thread(target=_srv._qid_passive_extract, args=(zim_name, entry_path), daemon=True).start()
+
+                        threading.Thread(
+                            target=_srv._qid_passive_extract,
+                            args=(zim_name, entry_path),
+                            daemon=True,
+                        ).start()
                 return self._serve_zim_content(zim_name, entry_path)
 
             else:
-                return self._json(404, {"error": "not found", "endpoints": ["/search", "/read", "/suggest", "/list", "/catalog", "/health", "/w/"]})
+                return self._json(
+                    404,
+                    {
+                        "error": "not found",
+                        "endpoints": [
+                            "/search",
+                            "/read",
+                            "/suggest",
+                            "/list",
+                            "/catalog",
+                            "/health",
+                            "/w/",
+                        ],
+                    },
+                )
 
         except Exception as e:
             traceback.print_exc()
@@ -735,7 +949,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         try:
             content_len = int(self.headers.get("Content-Length", "0"))
             if content_len > _srv.MAX_POST_BODY:
-                return self._json(413, {"error": f"Request body too large (max {_srv.MAX_POST_BODY} bytes)"})
+                return self._json(
+                    413,
+                    {
+                        "error": f"Request body too large (max {_srv.MAX_POST_BODY} bytes)"
+                    },
+                )
             body = self.rfile.read(content_len) if content_len > 0 else b"{}"
             try:
                 data = json.loads(body)
@@ -750,7 +969,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if retry_after > 0:
                     with _metrics_lock:
                         _metrics["rate_limited"] += 1
-                    return self._json(429, {"error": "rate limited", "retry_after": retry_after})
+                    return self._json(
+                        429, {"error": "rate limited", "retry_after": retry_after}
+                    )
                 # Batch cross-ZIM URL resolution: POST {"urls": [...]} → {"results": {...}}
                 urls = data.get("urls", [])
                 if not isinstance(urls, list) or len(urls) > 100:
@@ -762,7 +983,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                     with _srv._zim_lock:
                         resolved = _srv._resolve_url_to_zim(url_str)
                     if resolved:
-                        results[url_str] = {"found": True, "zim": resolved["zim"], "path": resolved["path"]}
+                        results[url_str] = {
+                            "found": True,
+                            "zim": resolved["zim"],
+                            "path": resolved["path"],
+                        }
                     else:
                         results[url_str] = {"found": False}
                 return self._json(200, {"results": results})
@@ -771,29 +996,38 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Auth: only enforce password when manage mode is on (collections are
                 # user-facing features that work without manage mode enabled)
                 if _srv.ZIMI_MANAGE and _check_manage_auth(self):
-                    return self._json(401, {"error": "unauthorized", "needs_password": True})
+                    return self._json(
+                        401, {"error": "unauthorized", "needs_password": True}
+                    )
                 name = data.get("name", "").strip()[:64]
                 label = data.get("label", "").strip()[:128]
                 # Auto-generate name from label if not provided
                 if not name and label:
-                    name = re.sub(r'[^a-z0-9]+', '-', label.lower()).strip('-')[:64]
+                    name = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")[:64]
                 if not name:
                     return self._json(400, {"error": "missing 'name' or 'label' field"})
                 if not label:
                     label = name
                 zim_list = data.get("zims", [])
                 if not isinstance(zim_list, list) or len(zim_list) > 200:
-                    return self._json(400, {"error": "'zims' must be a list (max 200 items)"})
+                    return self._json(
+                        400, {"error": "'zims' must be a list (max 200 items)"}
+                    )
                 with _srv._collections_lock:
                     cdata = _srv._load_collections()
-                    cdata["collections"][name] = {"label": label or name, "zims": zim_list}
+                    cdata["collections"][name] = {
+                        "label": label or name,
+                        "zims": zim_list,
+                    }
                     _srv._save_collections(cdata)
                 return self._json(200, {"status": "ok", "collection": name})
 
             elif parsed.path == "/favorites":
                 # Auth: same as collections — only when manage mode is on
                 if _srv.ZIMI_MANAGE and _check_manage_auth(self):
-                    return self._json(401, {"error": "unauthorized", "needs_password": True})
+                    return self._json(
+                        401, {"error": "unauthorized", "needs_password": True}
+                    )
                 zim_name = data.get("zim", "").strip()
                 if not zim_name:
                     return self._json(400, {"error": "missing 'zim' field"})
@@ -806,13 +1040,22 @@ class ZimHandler(BaseHTTPRequestHandler):
                         favs.remove(zim_name)
                         action = "removed"
                     elif len(favs) >= 100:
-                        return self._json(400, {"error": "Favorites list is full (max 100)"})
+                        return self._json(
+                            400, {"error": "Favorites list is full (max 100)"}
+                        )
                     else:
                         favs.append(zim_name)
                         action = "added"
                     cdata["favorites"] = favs
                     _srv._save_collections(cdata)
-                return self._json(200, {"status": action, "zim": zim_name, "favorites": cdata["favorites"]})
+                return self._json(
+                    200,
+                    {
+                        "status": action,
+                        "zim": zim_name,
+                        "favorites": cdata["favorites"],
+                    },
+                )
 
             else:
                 return self._json(404, {"error": "not found"})
@@ -829,18 +1072,24 @@ class ZimHandler(BaseHTTPRequestHandler):
         if retry_after > 0:
             with _metrics_lock:
                 _metrics["rate_limited"] += 1
-            return self._json(429, {"error": "rate limited", "retry_after": retry_after})
+            return self._json(
+                429, {"error": "rate limited", "retry_after": retry_after}
+            )
         try:
             if parsed.path == "/collections":
                 name = params.get("name", [None])[0]
                 if not name:
                     return self._json(400, {"error": "missing ?name= parameter"})
                 if _srv.ZIMI_MANAGE and _check_manage_auth(self):
-                    return self._json(401, {"error": "unauthorized", "needs_password": True})
+                    return self._json(
+                        401, {"error": "unauthorized", "needs_password": True}
+                    )
                 with _srv._collections_lock:
                     cdata = _srv._load_collections()
                     if name not in cdata.get("collections", {}):
-                        return self._json(404, {"error": f"Collection '{name}' not found"})
+                        return self._json(
+                            404, {"error": f"Collection '{name}' not found"}
+                        )
                     del cdata["collections"][name]
                     _srv._save_collections(cdata)
                 return self._json(200, {"status": "deleted", "collection": name})
@@ -901,7 +1150,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     except KeyError:
                         continue
             if entry is None:
-                return self._json(404, {"error": f"Entry '{entry_path}' not found in {zim_name}"})
+                return self._json(
+                    404, {"error": f"Entry '{entry_path}' not found in {zim_name}"}
+                )
 
             # ZIM redirects → HTTP 302 so browser URL updates to canonical path
             if entry.is_redirect:
@@ -930,7 +1181,10 @@ class ZimHandler(BaseHTTPRequestHandler):
             if ext_mime and mimetype == "text/html" and ext not in (".html", ".htm"):
                 mimetype = ext_mime
             # Force EPUB download (browsers can't render EPUB inline)
-            is_epub = entry_path.lower().endswith(".epub") or mimetype in ("application/epub+zip", "application/epub")
+            is_epub = entry_path.lower().endswith(".epub") or mimetype in (
+                "application/epub+zip",
+                "application/epub",
+            )
             epub_filename = None
             if is_epub:
                 mimetype = "application/epub+zip"
@@ -941,8 +1195,17 @@ class ZimHandler(BaseHTTPRequestHandler):
             else:
                 # ETag check BEFORE reading content — avoids materializing large
                 # blobs when client already has a cached copy
-                is_streamable = any(mimetype.startswith(t) for t in ("video/", "audio/", "application/ogg"))
-                etag = '"' + hashlib.md5(f"{zim_name}/{entry_path}/{_srv._cache_generation}".encode()).hexdigest()[:16] + '"'
+                is_streamable = any(
+                    mimetype.startswith(t)
+                    for t in ("video/", "audio/", "application/ogg")
+                )
+                etag = (
+                    '"'
+                    + hashlib.md5(
+                        f"{zim_name}/{entry_path}/{_srv._cache_generation}".encode()
+                    ).hexdigest()[:16]
+                    + '"'
+                )
                 if self.headers.get("If-None-Match") == etag:
                     self.send_response(304)
                     self.end_headers()
@@ -952,9 +1215,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if is_streamable:
                     range_header = self.headers.get("Range")
                     if range_header:
-                        range_start, range_end = self._parse_range(range_header, total_size)
+                        range_start, range_end = self._parse_range(
+                            range_header, total_size
+                        )
                     if range_start is not None and range_end is not None:
-                        content = bytes(item.content[range_start:range_end + 1])
+                        content = bytes(item.content[range_start : range_end + 1])
                     else:
                         content = bytes(item.content)
                 else:
@@ -974,7 +1239,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", mimetype)
             self.send_header("Content-Length", str(len(content)))
-            self.send_header("Content-Disposition", f'attachment; filename="{epub_filename}"')
+            self.send_header(
+                "Content-Disposition", f'attachment; filename="{epub_filename}"'
+            )
             self.end_headers()
             self.wfile.write(content)
             return
@@ -982,12 +1249,14 @@ class ZimHandler(BaseHTTPRequestHandler):
         # Strip <base> tags from HTML
         if mimetype.startswith("text/html"):
             text = content.decode("UTF-8", errors="replace")
-            text = re.sub(r'<base\s[^>]*>', '', text, flags=re.IGNORECASE)
+            text = re.sub(r"<base\s[^>]*>", "", text, flags=re.IGNORECASE)
             content = text.encode("UTF-8")
 
         if range_start is not None and range_end is not None:
             self.send_response(206)
-            self.send_header("Content-Range", f"bytes {range_start}-{range_end}/{total_size}")
+            self.send_header(
+                "Content-Range", f"bytes {range_start}-{range_end}/{total_size}"
+            )
         else:
             self.send_response(200)
 
@@ -1002,12 +1271,16 @@ class ZimHandler(BaseHTTPRequestHandler):
         # Sandbox ZIM HTML: allow inline styles/scripts (ZIM content uses them)
         # but block external requests and prevent framing outside Zimi
         if mimetype.startswith("text/html"):
-            self.send_header("Content-Security-Policy",
+            self.send_header(
+                "Content-Security-Policy",
                 "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; "
-                "frame-ancestors 'self'")
+                "frame-ancestors 'self'",
+            )
 
         # Gzip text-based content only (images/PDFs are already compressed)
-        compressible = any(mimetype.startswith(t) or mimetype == t for t in COMPRESSIBLE_TYPES)
+        compressible = any(
+            mimetype.startswith(t) or mimetype == t for t in COMPRESSIBLE_TYPES
+        )
         if compressible and self._accepts_gzip() and len(content) > 256:
             content = gzip.compress(content, compresslevel=4)
             self.send_header("Content-Encoding", "gzip")
@@ -1068,7 +1341,11 @@ class ZimHandler(BaseHTTPRequestHandler):
     def _static_base_dir():
         """Resolve the static/ directory, checking PyInstaller bundle first."""
         candidates = [
-            os.path.join(getattr(sys, '_MEIPASS', ''), "static") if getattr(sys, '_MEIPASS', None) else "",
+            (
+                os.path.join(getattr(sys, "_MEIPASS", ""), "static")
+                if getattr(sys, "_MEIPASS", None)
+                else ""
+            ),
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "static"),
         ]
         for d in candidates:
@@ -1097,7 +1374,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._json(404, {"error": "static directory not found"})
             file_path = os.path.normpath(os.path.join(base, rel_path))
             # Ensure resolved path is still inside the static dir
-            if not file_path.startswith(os.path.normpath(base) + os.sep) and file_path != os.path.normpath(base):
+            if not file_path.startswith(
+                os.path.normpath(base) + os.sep
+            ) and file_path != os.path.normpath(base):
                 return self._json(403, {"error": "forbidden"})
             if not os.path.isfile(file_path):
                 return self._json(404, {"error": "not found"})
@@ -1111,7 +1390,9 @@ class ZimHandler(BaseHTTPRequestHandler):
 
         # Compress text-based static files (viewer.mjs, viewer.css, etc.)
         ct_base = content_type.split(";")[0]
-        compressible = any(ct_base.startswith(t) or ct_base == t for t in COMPRESSIBLE_TYPES)
+        compressible = any(
+            ct_base.startswith(t) or ct_base == t for t in COMPRESSIBLE_TYPES
+        )
         if self._accepts_gzip() and compressible and len(body) > 256:
             body = gzip.compress(body, compresslevel=4)
             is_gzipped = True
@@ -1142,9 +1423,17 @@ class ZimHandler(BaseHTTPRequestHandler):
             assets_dir = os.path.dirname(os.path.abspath(__file__))
             icon_paths = [
                 os.path.join(assets_dir, "assets", filename),
-                os.path.join(getattr(sys, '_MEIPASS', ''), "assets", filename) if getattr(sys, '_MEIPASS', None) else "",
+                (
+                    os.path.join(getattr(sys, "_MEIPASS", ""), "assets", filename)
+                    if getattr(sys, "_MEIPASS", None)
+                    else ""
+                ),
                 os.path.join(assets_dir, "assets", "icon.png"),
-                os.path.join(getattr(sys, '_MEIPASS', ''), "assets", "icon.png") if getattr(sys, '_MEIPASS', None) else "",
+                (
+                    os.path.join(getattr(sys, "_MEIPASS", ""), "assets", "icon.png")
+                    if getattr(sys, "_MEIPASS", None)
+                    else ""
+                ),
             ]
             for p in icon_paths:
                 if p and os.path.exists(p):
@@ -1153,9 +1442,13 @@ class ZimHandler(BaseHTTPRequestHandler):
                     break
             if filename not in ZimHandler._favicon_cache:
                 # Fallback: extract from HTML template's base64 data URI
-                m = re.search(r'data:image/png;base64,([A-Za-z0-9+/=]+)', SEARCH_UI_HTML)
-                ZimHandler._favicon_cache[filename] = base64.b64decode(m.group(1)) if m else b''
-        data = ZimHandler._favicon_cache.get(filename, b'')
+                m = re.search(
+                    r"data:image/png;base64,([A-Za-z0-9+/=]+)", SEARCH_UI_HTML
+                )
+                ZimHandler._favicon_cache[filename] = (
+                    base64.b64decode(m.group(1)) if m else b""
+                )
+        data = ZimHandler._favicon_cache.get(filename, b"")
         if not data:
             self.send_response(404)
             self.end_headers()
@@ -1172,8 +1465,18 @@ class ZimHandler(BaseHTTPRequestHandler):
     def _serve_apple_touch_icon(self):
         if ZimHandler._apple_touch_icon_data is None:
             icon_paths = [
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "apple-touch-icon.png"),
-                os.path.join(getattr(sys, '_MEIPASS', ''), "assets", "apple-touch-icon.png") if getattr(sys, '_MEIPASS', None) else "",
+                os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "assets",
+                    "apple-touch-icon.png",
+                ),
+                (
+                    os.path.join(
+                        getattr(sys, "_MEIPASS", ""), "assets", "apple-touch-icon.png"
+                    )
+                    if getattr(sys, "_MEIPASS", None)
+                    else ""
+                ),
             ]
             for p in icon_paths:
                 if p and os.path.exists(p):
@@ -1199,7 +1502,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         if self.headers.get("If-None-Match") == ZimHandler._index_etag:
             self.send_response(304)
             self.send_header("ETag", ZimHandler._index_etag)
-            self.send_header("Cache-Control", "public, max-age=0, must-revalidate, s-maxage=3600")
+            self.send_header(
+                "Cache-Control", "public, max-age=0, must-revalidate, s-maxage=3600"
+            )
             self.end_headers()
             return
         # Cache strategy:
@@ -1207,15 +1512,30 @@ class ZimHandler(BaseHTTPRequestHandler):
         #   s-maxage=3600 — Cloudflare edge caches 1 hour (fast for users worldwide)
         #   ETag — efficient revalidation (304 = no body, instant response)
         #   deploy.sh purges Cloudflare edge after each deploy.
-        return self._html(200, SEARCH_UI_HTML, vary=vary,
-                          cache="public, max-age=0, must-revalidate, s-maxage=3600",
-                          etag=ZimHandler._index_etag)
+        return self._html(
+            200,
+            SEARCH_UI_HTML,
+            vary=vary,
+            cache="public, max-age=0, must-revalidate, s-maxage=3600",
+            etag=ZimHandler._index_etag,
+        )
 
     def _html(self, code, content, vary=None, cache=None, etag=None):
-        self._send(code, content.encode(), "text/html; charset=utf-8", vary=vary, cache=cache, etag=etag)
+        self._send(
+            code,
+            content.encode(),
+            "text/html; charset=utf-8",
+            vary=vary,
+            cache=cache,
+            etag=etag,
+        )
 
     def _json(self, code, data):
-        self._send(code, json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode(), "application/json")
+        self._send(
+            code,
+            json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode(),
+            "application/json",
+        )
 
     def log_message(self, format, *args):
         # Light logging: errors + slow requests. Suppress 200/304 noise.
