@@ -174,6 +174,7 @@ Tools: `search` (with `lang` filter), `read`, `suggest`, `list_sources`, `random
 ## Integrations
 
 - **[SearXNG](docs/integrations/searxng.md)** — route queries through Zimi from a self-hosted SearXNG metasearch instance.
+- **[OpenWebUI / generic AI](docs/integrations/openwebui.md)** — wire the MCP server into any AI client for offline research.
 
 ## Contributing
 
