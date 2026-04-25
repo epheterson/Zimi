@@ -171,6 +171,10 @@ For Docker on a remote host:
 
 Tools: `search` (with `lang` filter), `read`, `suggest`, `list_sources`, `random`, `article_languages`, `read_with_links`, `deep_search`, `list_collections`, `manage_collection`, `manage_favorites`
 
+## Integrations
+
+- **[SearXNG](docs/integrations/searxng.md)** — route queries through Zimi from a self-hosted SearXNG metasearch instance.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
