@@ -780,5 +780,6 @@
   "done": "סיום",
   "confirm_regenerate_token": "לחדש אסימון? הישן יפסיק לעבוד.",
   "confirm_revoke_token": "לבטל אסימון API?",
-  "use_zimi_tabs": "שימוש בלשוניות מובנות במקום לשוניות דפדפן"
+  "use_zimi_tabs": "שימוש בלשוניות מובנות במקום לשוניות דפדפן",
+  "no_active_downloads": "אין הורדות פעילות"
 }

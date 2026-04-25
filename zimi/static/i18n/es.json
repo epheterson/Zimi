@@ -780,5 +780,6 @@
   "done": "Listo",
   "confirm_regenerate_token": "¿Renovar token? El anterior dejará de funcionar.",
   "confirm_revoke_token": "¿Revocar token API?",
-  "use_zimi_tabs": "Usar pestañas integradas en lugar de pestañas del navegador"
+  "use_zimi_tabs": "Usar pestañas integradas en lugar de pestañas del navegador",
+  "no_active_downloads": "No hay descargas activas"
 }

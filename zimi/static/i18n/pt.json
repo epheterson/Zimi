@@ -780,5 +780,6 @@
   "done": "Pronto",
   "confirm_regenerate_token": "Renovar token? O antigo deixará de funcionar.",
   "confirm_revoke_token": "Revogar token API?",
-  "use_zimi_tabs": "Usar abas integradas em vez de abas do navegador"
+  "use_zimi_tabs": "Usar abas integradas em vez de abas do navegador",
+  "no_active_downloads": "Nenhum download ativo"
 }

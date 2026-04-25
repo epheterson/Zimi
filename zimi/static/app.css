@@ -561,6 +561,15 @@
   }
   .manage-tab:hover { color: var(--text); }
   .manage-tab.active { color: var(--amber); border-bottom-color: var(--amber); font-weight: 600; }
+  .dl-tab-badge {
+    display: inline-block; margin-left: 6px; padding: 1px 7px;
+    background: var(--amber); color: #000; border-radius: 10px;
+    font-size: 11px; font-weight: 600; line-height: 1.4; min-width: 8px; text-align: center;
+  }
+  .dl-empty {
+    padding: 32px 16px; color: var(--text2); font-size: 13px;
+    text-align: center; border: 1px dashed var(--border); border-radius: var(--radius);
+  }
   .manage-tab-content { display: none; }
   .manage-tab-content.active { display: block; }
   .manage-installed-group { margin-bottom: 24px; }

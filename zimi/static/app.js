@@ -3623,6 +3623,9 @@ function switchManageTab(tab) {
   if (tab === 'installed') {
     q.placeholder = t('filter_installed');
     renderInstalled();
+  } else if (tab === 'downloads') {
+    q.placeholder = t('search_placeholder');
+    refreshDownloads();
   } else if (tab === 'collections') {
     q.placeholder = t('search_placeholder');
     renderCollectionsTab();
@@ -4024,14 +4027,15 @@ async function renderManage() {
       '</div>' +
       '<div id="ms-pane" class="ms-pane"><div class="loading"><span class="spinner-inline"></span>Loading\u2026</div></div>' +
     '</div>' +
-    '<div id="manage-downloads"></div>' +
     '<div class="manage-tabs">' +
       '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">' + tH('installed_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">' + tH('catalog_tab') + '</button>' +
+      '<button class="manage-tab' + (manageTab === 'downloads' ? ' active' : '') + '" data-tab="downloads" onclick="switchManageTab(\'downloads\')">' + tH('downloads') + '<span id="dl-tab-badge" class="dl-tab-badge" style="display:none"></span></button>' +
       '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">' + tH('collections_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'history' ? ' active' : '') + '" data-tab="history" onclick="switchManageTab(\'history\')">' + tH('activity_tab') + '</button>' +
     '</div>' +
     '<div id="manage-installed" class="manage-tab-content' + (manageTab === 'installed' ? ' active' : '') + '"></div>' +
+    '<div id="manage-downloads" class="manage-tab-content' + (manageTab === 'downloads' ? ' active' : '') + '"></div>' +
     '<div id="manage-collections" class="manage-tab-content' + (manageTab === 'collections' ? ' active' : '') + '"></div>' +
     '<div id="manage-history" class="manage-tab-content' + (manageTab === 'history' ? ' active' : '') + '"></div>' +
     '<div id="manage-browse" class="manage-tab-content' + (manageTab === 'browse' ? ' active' : '') + '">' +
@@ -4902,7 +4906,14 @@ async function refreshDownloads() {
         _dlTimer = setTimeout(refreshDownloads, 1000);
         return;
       }
-      dlEl.innerHTML = ''; _dlPrevAllDone = true; _showManageBadge(false);
+      while (dlEl.firstChild) dlEl.removeChild(dlEl.firstChild);
+      const emptyEl = document.createElement('div');
+      emptyEl.className = 'dl-empty';
+      emptyEl.textContent = t('no_active_downloads');
+      dlEl.appendChild(emptyEl);
+      _dlPrevAllDone = true;
+      _showManageBadge(false);
+      _updateDownloadsTabBadge(0);
       // Keep polling if auto-update may start downloads
       const sel = document.getElementById('auto-update-freq');
       if (sel && sel.value !== 'disabled' && mode === 'manage') _dlTimer = setTimeout(refreshDownloads, 5000);
@@ -5044,7 +5055,9 @@ async function refreshDownloads() {
       } catch(e) {}
     }
     _dlPrevAllDone = allDone;
-    _showManageBadge(anyActive, dls.filter(d => !d.done).length);
+    const activeCount = dls.filter(d => !d.done).length;
+    _showManageBadge(anyActive, activeCount);
+    _updateDownloadsTabBadge(activeCount);
     if (mode === 'manage') {
       // Poll fast while downloads active, slow-poll when auto-update enabled (server may start downloads)
       const sel = document.getElementById('auto-update-freq');

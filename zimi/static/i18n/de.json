@@ -780,5 +780,6 @@
   "done": "Fertig",
   "confirm_regenerate_token": "Token erneuern? Der alte Token wird ungültig.",
   "confirm_revoke_token": "API-Token widerrufen?",
-  "use_zimi_tabs": "In-App-Tabs statt Browser-Tabs verwenden"
+  "use_zimi_tabs": "In-App-Tabs statt Browser-Tabs verwenden",
+  "no_active_downloads": "Keine aktiven Downloads"
 }

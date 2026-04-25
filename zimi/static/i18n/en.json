@@ -780,5 +780,6 @@
   "done": "Done",
   "confirm_regenerate_token": "Regenerate token? The old token will stop working.",
   "confirm_revoke_token": "Revoke API token?",
-  "use_zimi_tabs": "Use Zimi tabs"
+  "use_zimi_tabs": "Use Zimi tabs",
+  "no_active_downloads": "No active downloads"
 }

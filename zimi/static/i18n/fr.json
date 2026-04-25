@@ -780,5 +780,6 @@
   "done": "Terminé",
   "confirm_regenerate_token": "Renouveler le jeton ? L'ancien cessera de fonctionner.",
   "confirm_revoke_token": "Révoquer le jeton API ?",
-  "use_zimi_tabs": "Utiliser les onglets intégrés au lieu des onglets du navigateur"
+  "use_zimi_tabs": "Utiliser les onglets intégrés au lieu des onglets du navigateur",
+  "no_active_downloads": "Aucun téléchargement en cours"
 }
