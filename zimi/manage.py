@@ -412,12 +412,38 @@ def handle_manage_post(handler, parsed, data):
 
     if parsed.path == "/manage/download":
         url = data.get("url", "")
+        size_bytes = data.get("size_bytes")
         if not url:
             return handler._json(400, {"error": "missing 'url' in request body"})
-        dl_id, err = _srv._start_download(url)
+        dl_id, err = _srv._start_download(url, size_bytes=size_bytes)
         if err:
             return handler._json(400, {"error": err})
         return handler._json(200, {"status": "started", "id": dl_id})
+
+    elif parsed.path == "/manage/download-batch":
+        urls = data.get("urls")
+        if not isinstance(urls, list):
+            return handler._json(400, {"error": "missing 'urls' array in request body"})
+        sizes = data.get("sizes") or []
+        if not isinstance(sizes, list):
+            sizes = []
+        ids = []
+        errors = []
+        for i, url in enumerate(urls):
+            if not isinstance(url, str) or not url:
+                ids.append(None)
+                errors.append("invalid url at index %d" % i)
+                continue
+            sz = (
+                sizes[i]
+                if i < len(sizes) and isinstance(sizes[i], (int, float))
+                else None
+            )
+            dl_id, err = _srv._start_download(url, size_bytes=sz)
+            ids.append(dl_id)
+            errors.append(err)
+        succeeded = sum(1 for x in ids if x is not None)
+        return handler._json(200, {"ids": ids, "errors": errors, "started": succeeded})
 
     elif parsed.path == "/manage/import":
         url = data.get("url", "")
