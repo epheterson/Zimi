@@ -13,6 +13,7 @@ var SK = {
   LIBRARY_TAB: 'zimi_library_tab',
   BROWSE_HISTORY: 'zimi_browse_history',
   BOOKMARKS: 'zimi_bookmarks',
+  MANAGE_PW: 'zimi_manage_pw',
 };
 
 // ── Storage Helpers ──
@@ -25,6 +26,27 @@ function _setStorageJSON(key, value) {
 }
 function _getStorageFlag(key) {
   return localStorage.getItem(key) === '1';
+}
+
+// ── Manage token storage ──
+// localStorage = persistent ("Remember me" checked).
+// sessionStorage = current-tab-only (default). Read both, prefer persistent.
+function _readManageToken() {
+  return localStorage.getItem(SK.MANAGE_PW) || sessionStorage.getItem(SK.MANAGE_PW) || '';
+}
+function _saveManageToken(token, remember) {
+  // Clear both first so toggling "remember me" never leaves stale copies.
+  localStorage.removeItem(SK.MANAGE_PW);
+  sessionStorage.removeItem(SK.MANAGE_PW);
+  if (!token) return;
+  (remember ? localStorage : sessionStorage).setItem(SK.MANAGE_PW, token);
+}
+function _clearManageToken() {
+  localStorage.removeItem(SK.MANAGE_PW);
+  sessionStorage.removeItem(SK.MANAGE_PW);
+}
+function _hasStoredManageToken() {
+  return !!_readManageToken();
 }
 
 // ── State ──
@@ -298,9 +320,7 @@ function manageFetch(url, opts) {
             }
             // Correct password
             _manageToken = token;
-            if (document.getElementById('pw-remember').checked) {
-              sessionStorage.setItem('zimi_manage_pw', token);
-            }
+            _saveManageToken(token, document.getElementById('pw-remember').checked);
             closePwModal();
             resolve(retryRes);
           });
@@ -315,7 +335,7 @@ function manageFetch(url, opts) {
 
 function manageLogout() {
   _manageToken = '';
-  sessionStorage.removeItem('zimi_manage_pw');
+  _clearManageToken();
   toggleManage();
 }
 
@@ -508,7 +528,7 @@ async function _initSecondary() {
       needsRerender = true;
     }).catch(function(){}),
     Promise.resolve().then(() => {
-      var saved = sessionStorage.getItem('zimi_manage_pw');
+      var saved = _readManageToken();
       if (saved) _manageToken = saved;
     }),
     // Collections/favorites
@@ -644,7 +664,7 @@ function goHome(e) {
   if (e) e.preventDefault();
   if (_almanacOpen) closeAlmanac();
   // Clear manage auth when leaving manage
-  if (mode === 'manage' && !sessionStorage.getItem('zimi_manage_pw')) _manageToken = '';
+  if (mode === 'manage' && !_hasStoredManageToken()) _manageToken = '';
   // Already on clean home page → scroll to top
   if (mode === 'home' && !readerOpen && !currentSource && !homeScope) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -4169,7 +4189,7 @@ function _msPreferencesHtml() {
   h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_security') + '</div>' +
     '<div class="ms-actions">' +
       '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">\uD83D\uDD12 ' + tH('password') + '</button>';
-  if (sessionStorage.getItem('zimi_manage_pw')) {
+  if (_hasStoredManageToken()) {
     h += '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('log_out') + '</button>';
   }
   h += '</div>';
@@ -4468,9 +4488,9 @@ async function managePassword() {
       return;
     }
     // After setting/changing password, keep current session authenticated
-    // but don't persist to sessionStorage — force fresh login next visit
+    // but don't persist — force fresh login next visit.
     _manageToken = newPw || '';
-    sessionStorage.removeItem('zimi_manage_pw');
+    _clearManageToken();
     closePwModal();
     renderManage();
   };
@@ -4506,7 +4526,7 @@ async function manageClearPassword() {
   }
   if (res.ok) {
     _manageToken = '';
-    sessionStorage.removeItem('zimi_manage_pw');
+    _clearManageToken();
     closePwModal();
     renderManage();
   }
