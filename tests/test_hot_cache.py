@@ -1,4 +1,4 @@
-"""Tests for the Pro hot-cache (W2.3).
+"""Tests for the Pro hot-cache.
 
 Hot ZIMs are designated by name (env var or hot.json) and get
 pre-warmed at startup. Cold ZIMs stay lazy. Aimed at users with

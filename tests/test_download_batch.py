@@ -1,7 +1,4 @@
-"""Tests for /manage/download-batch (W2.2).
-
-Backend half of multi-select downloads. UI half is in W3.1.
-"""
+"""Tests for the /manage/download-batch endpoint (multi-select downloads)."""
 
 import json
 import os

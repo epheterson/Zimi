@@ -1,4 +1,4 @@
-"""Tests for OPDS catalog subset/superset detection (W2.5)."""
+"""Tests for OPDS catalog subset/superset detection."""
 
 import os
 import sys

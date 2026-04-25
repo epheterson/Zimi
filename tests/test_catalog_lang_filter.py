@@ -1,4 +1,4 @@
-"""Tests for the /manage/catalog ui_languages filter (W2.4)."""
+"""Tests for the /manage/catalog ui_languages filter."""
 
 import os
 import sys

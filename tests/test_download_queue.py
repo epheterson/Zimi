@@ -1,8 +1,8 @@
-"""Tests for the download queue (W2.1).
+"""Tests for the download queue.
 
-The queue caps concurrent downloads at MAX_CONCURRENT_DOWNLOADS (default 3,
-overridable via ZIMI_MAX_CONCURRENT_DOWNLOADS). Extras are queued and
-dispatched smallest-first as slots free up.
+Concurrent downloads cap at MAX_CONCURRENT_DOWNLOADS (default 3,
+overridable via ZIMI_MAX_CONCURRENT_DOWNLOADS). Extras queue and
+dispatch smallest-first as slots free up.
 """
 
 import os

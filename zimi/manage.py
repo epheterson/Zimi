@@ -299,8 +299,8 @@ def handle_manage_get(handler, parsed, params):
                     it for it in items if str(it.get("language", "")).lower() in wanted
                 ]
                 total = len(items)
-        # Optional bundle/subset hierarchy detection (W2.5). Off by default
-        # because the UI only needs it on the catalog drill-in page.
+        # Optional bundle/subset hierarchy detection. Off by default because
+        # the UI only needs it on the catalog drill-in page.
         if param("include_hierarchy", "") == "1":
             from zimi.catalog_hierarchy import bundle_relationships
 
@@ -310,6 +310,13 @@ def handle_manage_get(handler, parsed, params):
         return handler._json(200, {"total": total, "items": items})
 
     elif parsed.path == "/manage/check-updates":
+        updates = _srv._check_updates()
+        return handler._json(200, {"updates": updates, "count": len(updates)})
+
+    elif parsed.path == "/manage/updates":
+        # Same shape as /manage/check-updates — stable name without "check-"
+        # so callers reading last-known state aren't named for the side
+        # effect. Triggers a catalog fetch; fast when cached.
         updates = _srv._check_updates()
         return handler._json(200, {"updates": updates, "count": len(updates)})
 
