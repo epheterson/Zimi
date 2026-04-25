@@ -354,6 +354,17 @@ def handle_manage_get(handler, parsed, params):
         total = sum(c["size_bytes"] for c in caches.values())
         return handler._json(200, {"caches": caches, "total_bytes": total})
 
+    elif parsed.path == "/manage/hot":
+        # Pro: list of hot ZIMs + which env source controls them.
+        env_locked = "ZIMI_HOT_ZIMS" in os.environ
+        return handler._json(
+            200,
+            {
+                "hot_zims": _srv.get_hot_zims(),
+                "env_locked": env_locked,
+            },
+        )
+
     else:
         return handler._json(404, {"error": "not found"})
 
@@ -615,6 +626,31 @@ def handle_manage_post(handler, parsed, data):
             200,
             {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq},
         )
+
+    elif parsed.path == "/manage/hot":
+        # Pro hot-cache live update. Rejected when ZIMI_HOT_ZIMS env var is set
+        # (env wins, UI changes would be silently ignored on next read).
+        if "ZIMI_HOT_ZIMS" in os.environ:
+            return handler._json(
+                403,
+                {
+                    "error": "Hot ZIMs are controlled by ZIMI_HOT_ZIMS environment variable"
+                },
+            )
+        names = data.get("hot_zims")
+        if not isinstance(names, list):
+            return handler._json(
+                400, {"error": "missing 'hot_zims' array in request body"}
+            )
+        # Drop unknown ZIMs rather than 400 — UI can show warnings client-side.
+        zim_files = _srv.get_zim_files()
+        valid = [n for n in names if isinstance(n, str) and n in zim_files]
+        try:
+            _srv.set_hot_zims(valid)
+        except (TypeError, ValueError) as e:
+            log.warning("set_hot_zims rejected payload: %s", e)
+            return handler._json(400, {"error": "invalid hot_zims payload"})
+        return handler._json(200, {"hot_zims": valid, "saved": len(valid)})
 
     else:
         return handler._json(404, {"error": "not found"})
