@@ -299,6 +299,14 @@ def handle_manage_get(handler, parsed, params):
                     it for it in items if str(it.get("language", "")).lower() in wanted
                 ]
                 total = len(items)
+        # Optional bundle/subset hierarchy detection (W2.5). Off by default
+        # because the UI only needs it on the catalog drill-in page.
+        if param("include_hierarchy", "") == "1":
+            from zimi.catalog_hierarchy import bundle_relationships
+
+            rels = bundle_relationships(items)
+            for it in items:
+                it["hierarchy"] = rels.get(it.get("name"), {})
         return handler._json(200, {"total": total, "items": items})
 
     elif parsed.path == "/manage/check-updates":
