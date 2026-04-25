@@ -21,6 +21,7 @@ log = logging.getLogger("zimi")
 
 _PW_ITERATIONS = 600_000  # OWASP 2023 recommendation for PBKDF2-SHA256
 
+
 def _hash_pw(pw, salt=None):
     """Hash password with PBKDF2-SHA256 + random salt. Returns 'salt$hash'."""
     if salt is None:
@@ -30,14 +31,17 @@ def _hash_pw(pw, salt=None):
     dk = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, _PW_ITERATIONS)
     return salt.hex() + "$" + dk.hex()
 
+
 def _is_legacy_hash(stored):
     """Check if stored hash is a v1.5 unsalted SHA-256 hex string."""
     return stored and "$" not in stored and len(stored) == 64
+
 
 def _verify_legacy(candidate, stored):
     """Verify a password against a v1.5 unsalted SHA-256 hash."""
     legacy = hashlib.sha256(candidate.encode()).hexdigest()
     return hmac.compare_digest(legacy, stored)
+
 
 def _upgrade_legacy_hash(candidate):
     """Re-hash a verified password from v1.5 format to PBKDF2. Called after
@@ -45,10 +49,13 @@ def _upgrade_legacy_hash(candidate):
     _set_manage_password(candidate)
     log.info("Migrated password from v1.5 SHA-256 to PBKDF2")
 
+
 _env_pw_hash_cache = None  # cached hash for ZIMI_MANAGE_PASSWORD env var
+
 
 def _password_file():
     return os.path.join(_srv.ZIMI_DATA_DIR, "password")
+
 
 def _get_manage_password_hash():
     """Get password hash from env var or file."""
@@ -70,6 +77,7 @@ def _get_manage_password_hash():
     except (FileNotFoundError, OSError):
         return ""
 
+
 def _set_manage_password(pw):
     """Save hashed password to file, or clear it. Uses atomic write."""
     pf = _password_file()
@@ -79,9 +87,11 @@ def _set_manage_password(pw):
     os.replace(tmp, pf)
     log.info("Manage password %s", "set" if pw else "cleared")
 
+
 def _api_token_file():
     """API token file path inside ZIMI_DATA_DIR."""
     return os.path.join(_srv.ZIMI_DATA_DIR, "api_token")
+
 
 def _get_api_token():
     """Get stored API token (plaintext, for constant-time comparison)."""
@@ -94,9 +104,11 @@ def _get_api_token():
     except (FileNotFoundError, OSError):
         return ""
 
+
 def _generate_api_token():
     """Generate a new random API token, save to disk, return it. Uses atomic write."""
     import secrets
+
     token = secrets.token_urlsafe(32)
     tf = _api_token_file()
     tmp = tf + ".tmp"
@@ -106,6 +118,7 @@ def _generate_api_token():
     log.info("API token generated")
     return token
 
+
 def _revoke_api_token():
     """Delete the API token file."""
     try:
@@ -113,6 +126,7 @@ def _revoke_api_token():
         log.info("API token revoked")
     except FileNotFoundError:
         pass
+
 
 def _verify_password(candidate, stored_pw):
     """Verify a password against the stored hash. Handles legacy and PBKDF2."""
@@ -125,6 +139,7 @@ def _verify_password(candidate, stored_pw):
         return False
     salt = stored_pw.split("$")[0]
     return hmac.compare_digest(_hash_pw(candidate, salt), stored_pw)
+
 
 def _check_manage_auth(handler):
     """Check authorization for manage endpoints. Returns True if unauthorized.
@@ -155,23 +170,32 @@ def _check_manage_auth(handler):
 
     return True
 
+
 # ============================================================================
 # Manage GET Routes
 # ============================================================================
 
+
 def handle_manage_get(handler, parsed, params):
     """Handle all GET /manage/* requests. Called from ZimHandler.do_GET."""
+
     def param(key, default=None):
         return params.get(key, [default])[0]
 
     if not _srv.ZIMI_MANAGE:
-        return handler._json(404, {"error": "Library management is disabled. Set ZIMI_MANAGE=1 to enable."})
+        return handler._json(
+            404,
+            {"error": "Library management is disabled. Set ZIMI_MANAGE=1 to enable."},
+        )
     # Public pre-auth endpoints (no Authorization header available)
     if parsed.path == "/manage/has-password":
-        return handler._json(200, {
-            "has_password": bool(_get_manage_password_hash()),
-            "env_controlled": bool(os.environ.get("ZIMI_MANAGE_PASSWORD", "")),
-        })
+        return handler._json(
+            200,
+            {
+                "has_password": bool(_get_manage_password_hash()),
+                "env_controlled": bool(os.environ.get("ZIMI_MANAGE_PASSWORD", "")),
+            },
+        )
     if parsed.path == "/manage/has-token":
         return handler._json(200, {"has_token": bool(_get_api_token())})
     if parsed.path == "/manage/thumb":
@@ -185,7 +209,9 @@ def handle_manage_get(handler, parsed, params):
         handler.send_response(200)
         handler.send_header("Content-Type", ct)
         handler.send_header("Content-Length", str(len(data)))
-        handler.send_header("Cache-Control", "public, max-age=604800")  # 7 days browser cache
+        handler.send_header(
+            "Cache-Control", "public, max-age=604800"
+        )  # 7 days browser cache
         handler.end_headers()
         handler.wfile.write(data)
         return
@@ -196,18 +222,21 @@ def handle_manage_get(handler, parsed, params):
         zim_count = len(_srv.get_zim_files())
         total_gb = sum(z.get("size_gb", 0) for z in (_srv._zim_list_cache or []))
         linked_zims = len(set(_srv._domain_zim_map.values()))
-        return handler._json(200, {
-            "zim_count": zim_count,
-            "total_size_gb": round(total_gb, 1),
-            "manage_enabled": True,
-            "linked_zims": linked_zims,
-            "domain_count": len(_srv._domain_zim_map),
-            "auto_update": {
-                "enabled": _srv._auto_update_enabled,
-                "frequency": _srv._auto_update_freq,
-                "locked": _srv._auto_update_env_locked,
+        return handler._json(
+            200,
+            {
+                "zim_count": zim_count,
+                "total_size_gb": round(total_gb, 1),
+                "manage_enabled": True,
+                "linked_zims": linked_zims,
+                "domain_count": len(_srv._domain_zim_map),
+                "auto_update": {
+                    "enabled": _srv._auto_update_enabled,
+                    "frequency": _srv._auto_update_freq,
+                    "locked": _srv._auto_update_env_locked,
+                },
             },
-        })
+        )
 
     elif parsed.path == "/manage/stats":
         metrics = _srv._get_metrics()
@@ -220,12 +249,28 @@ def handle_manage_get(handler, parsed, params):
         title_index = _srv._get_title_index_stats()
         with _srv._xzim_refs_lock:
             xzim_refs = sorted(
-                [{"from": k[0], "to": k[1], "count": v} for k, v in _srv._xzim_refs.items()],
-                key=lambda x: x["count"], reverse=True
+                [
+                    {"from": k[0], "to": k[1], "count": v}
+                    for k, v in _srv._xzim_refs.items()
+                ],
+                key=lambda x: x["count"],
+                reverse=True,
             )
         linked_zims = len(set(_srv._domain_zim_map.values()))
         zim_count = len(_srv.get_zim_files())
-        return handler._json(200, {"metrics": metrics, "disk": disk, "auto_update": auto_update, "title_index": title_index, "cross_zim_refs": xzim_refs, "linked_zims": linked_zims, "zim_count": zim_count, "domain_count": len(_srv._domain_zim_map)})
+        return handler._json(
+            200,
+            {
+                "metrics": metrics,
+                "disk": disk,
+                "auto_update": auto_update,
+                "title_index": title_index,
+                "cross_zim_refs": xzim_refs,
+                "linked_zims": linked_zims,
+                "zim_count": zim_count,
+                "domain_count": len(_srv._domain_zim_map),
+            },
+        )
 
     elif parsed.path == "/manage/usage":
         return handler._json(200, _srv._get_usage_stats())
@@ -258,24 +303,53 @@ def handle_manage_get(handler, parsed, params):
 
     elif parsed.path == "/manage/cache-info":
         import glob as _glob
+
         data_dir = _srv.ZIMI_DATA_DIR
+
         def _dir_size(path):
             total = 0
-            for f in _glob.glob(os.path.join(path, '**'), recursive=True):
+            for f in _glob.glob(os.path.join(path, "**"), recursive=True):
                 if os.path.isfile(f):
                     total += os.path.getsize(f)
             return total
+
         titles_dir = os.path.join(data_dir, "titles")
         qids_dir = os.path.join(data_dir, "qids")
         caches = {
-            "title_indexes": {"path": "titles/", "size_bytes": _dir_size(titles_dir) if os.path.isdir(titles_dir) else 0,
-                              "count": len(_glob.glob(os.path.join(titles_dir, "*.db"))) if os.path.isdir(titles_dir) else 0},
-            "qid_indexes": {"path": "qids/", "size_bytes": _dir_size(qids_dir) if os.path.isdir(qids_dir) else 0,
-                            "count": len(_glob.glob(os.path.join(qids_dir, "*.db"))) if os.path.isdir(qids_dir) else 0},
-            "metadata_cache": {"path": "cache.json",
-                               "size_bytes": os.path.getsize(os.path.join(data_dir, "cache.json")) if os.path.exists(os.path.join(data_dir, "cache.json")) else 0},
-            "suggest_cache": {"path": "suggest_cache.json",
-                              "size_bytes": os.path.getsize(os.path.join(data_dir, "suggest_cache.json")) if os.path.exists(os.path.join(data_dir, "suggest_cache.json")) else 0},
+            "title_indexes": {
+                "path": "titles/",
+                "size_bytes": _dir_size(titles_dir) if os.path.isdir(titles_dir) else 0,
+                "count": (
+                    len(_glob.glob(os.path.join(titles_dir, "*.db")))
+                    if os.path.isdir(titles_dir)
+                    else 0
+                ),
+            },
+            "qid_indexes": {
+                "path": "qids/",
+                "size_bytes": _dir_size(qids_dir) if os.path.isdir(qids_dir) else 0,
+                "count": (
+                    len(_glob.glob(os.path.join(qids_dir, "*.db")))
+                    if os.path.isdir(qids_dir)
+                    else 0
+                ),
+            },
+            "metadata_cache": {
+                "path": "cache.json",
+                "size_bytes": (
+                    os.path.getsize(os.path.join(data_dir, "cache.json"))
+                    if os.path.exists(os.path.join(data_dir, "cache.json"))
+                    else 0
+                ),
+            },
+            "suggest_cache": {
+                "path": "suggest_cache.json",
+                "size_bytes": (
+                    os.path.getsize(os.path.join(data_dir, "suggest_cache.json"))
+                    if os.path.exists(os.path.join(data_dir, "suggest_cache.json"))
+                    else 0
+                ),
+            },
         }
         total = sum(c["size_bytes"] for c in caches.values())
         return handler._json(200, {"caches": caches, "total_bytes": total})
@@ -283,9 +357,11 @@ def handle_manage_get(handler, parsed, params):
     else:
         return handler._json(404, {"error": "not found"})
 
+
 # ============================================================================
 # Manage POST Routes
 # ============================================================================
+
 
 def handle_manage_post(handler, parsed, data):
     """Handle all POST /manage/* requests. Called from ZimHandler.do_POST."""
@@ -295,7 +371,12 @@ def handle_manage_post(handler, parsed, data):
     if parsed.path == "/manage/set-password":
         # Env var controls password — UI changes would be silently overridden
         if os.environ.get("ZIMI_MANAGE_PASSWORD", ""):
-            return handler._json(403, {"error": "Password is controlled by ZIMI_MANAGE_PASSWORD environment variable"})
+            return handler._json(
+                403,
+                {
+                    "error": "Password is controlled by ZIMI_MANAGE_PASSWORD environment variable"
+                },
+            )
         stored = _get_manage_password_hash()
         if stored:
             cur = data.get("current", "")
@@ -303,16 +384,22 @@ def handle_manage_post(handler, parsed, data):
                 return handler._json(401, {"error": "Current password is incorrect"})
         new_pw = data.get("password", "").strip()
         if not new_pw and _get_api_token():
-            return handler._json(400, {"error": "Revoke the API token before removing the password"})
+            return handler._json(
+                400, {"error": "Revoke the API token before removing the password"}
+            )
         _set_manage_password(new_pw)
-        return handler._json(200, {"status": "password set" if new_pw else "password cleared"})
+        return handler._json(
+            200, {"status": "password set" if new_pw else "password cleared"}
+        )
 
     # API token management — requires existing auth + password must be set
     if parsed.path == "/manage/generate-token":
         if _check_manage_auth(handler):
             return handler._json(401, {"error": "unauthorized", "needs_password": True})
         if not _get_manage_password_hash():
-            return handler._json(400, {"error": "Set a password before generating an API token"})
+            return handler._json(
+                400, {"error": "Set a password before generating an API token"}
+            )
         token = _generate_api_token()
         return handler._json(200, {"token": token})
     if parsed.path == "/manage/revoke-token":
@@ -343,14 +430,14 @@ def handle_manage_post(handler, parsed, data):
 
     elif parsed.path == "/manage/cancel":
         dl_id = data.get("id", "")
-        with _srv._download_lock:
-            dl = _srv._active_downloads.get(dl_id)
-            if not dl:
-                return handler._json(404, {"error": "Download not found"})
-            if dl.get("done"):
-                return handler._json(400, {"error": "Download already finished"})
-            dl["cancelled"] = True
-        return handler._json(200, {"status": "cancelling", "id": dl_id})
+        from zimi.library import _cancel_download
+
+        status, code = _cancel_download(dl_id)
+        if status == "not_found":
+            return handler._json(404, {"error": "Download not found"})
+        if status == "already_done":
+            return handler._json(400, {"error": "Download already finished"})
+        return handler._json(code, {"status": status, "id": dl_id})
 
     elif parsed.path == "/manage/clear-downloads":
         with _srv._download_lock:
@@ -402,17 +489,32 @@ def handle_manage_post(handler, parsed, data):
             # Cache ZIM info before deletion so history shows proper title/icon
             zim_info = {}
             try:
-                for z in (_srv._zim_list_cache or []):
+                for z in _srv._zim_list_cache or []:
                     if z.get("file") == filename:
-                        zim_info = {"title": z.get("title", ""), "name": z.get("name", ""), "has_icon": z.get("has_icon", False)}
+                        zim_info = {
+                            "title": z.get("title", ""),
+                            "name": z.get("name", ""),
+                            "has_icon": z.get("has_icon", False),
+                        }
                         break
             except Exception as e:
-                log.debug("Failed to cache ZIM metadata before deletion of %s: %s", filename, e)
+                log.debug(
+                    "Failed to cache ZIM metadata before deletion of %s: %s",
+                    filename,
+                    e,
+                )
                 pass
             os.remove(filepath)
             log.info(f"Deleted ZIM: {filename}")
-            _srv._append_history({"event": "deleted", "ts": time.time(), "filename": filename,
-                             "size_bytes": file_size, **zim_info})
+            _srv._append_history(
+                {
+                    "event": "deleted",
+                    "ts": time.time(),
+                    "filename": filename,
+                    "size_bytes": file_size,
+                    **zim_info,
+                }
+            )
             with _srv._zim_lock:
                 _srv.load_cache(force=True)
             _srv._search_cache_clear()
@@ -448,15 +550,24 @@ def handle_manage_post(handler, parsed, data):
                 dl_id, err = _srv._start_download(url)
                 if not err:
                     started.append({"name": upd.get("name", "?"), "id": dl_id})
-        return handler._json(200, {"status": "started", "count": len(started), "downloads": started})
+        return handler._json(
+            200, {"status": "started", "count": len(started), "downloads": started}
+        )
 
     elif parsed.path == "/manage/auto-update":
         if _srv._auto_update_env_locked:
-            return handler._json(403, {"error": "Auto-update is controlled by ZIMI_AUTO_UPDATE env var"})
+            return handler._json(
+                403, {"error": "Auto-update is controlled by ZIMI_AUTO_UPDATE env var"}
+            )
         enabled = data.get("enabled", _srv._auto_update_enabled)
         freq = data.get("frequency", _srv._auto_update_freq)
         if freq not in _srv._FREQ_SECONDS:
-            return handler._json(400, {"error": f"Invalid frequency. Use: {', '.join(_srv._FREQ_SECONDS.keys())}"})
+            return handler._json(
+                400,
+                {
+                    "error": f"Invalid frequency. Use: {', '.join(_srv._FREQ_SECONDS.keys())}"
+                },
+            )
         _srv._auto_update_freq = freq
         if enabled and not _srv._auto_update_enabled:
             _srv._auto_update_enabled = True
@@ -464,14 +575,20 @@ def handle_manage_post(handler, parsed, data):
                 log.info("Auto-update thread still running, reusing it")
             else:
                 _srv._auto_update_thread = threading.Thread(
-                    target=_srv._auto_update_loop, kwargs={"initial_delay": 30}, daemon=True)
+                    target=_srv._auto_update_loop,
+                    kwargs={"initial_delay": 30},
+                    daemon=True,
+                )
                 _srv._auto_update_thread.start()
             log.info("Auto-update enabled: %s (first check in 30s)", freq)
         elif not enabled and _srv._auto_update_enabled:
             _srv._auto_update_enabled = False
             log.info("Auto-update disabled")
         _srv._save_auto_update_config(_srv._auto_update_enabled, _srv._auto_update_freq)
-        return handler._json(200, {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq})
+        return handler._json(
+            200,
+            {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq},
+        )
 
     else:
         return handler._json(404, {"error": "not found"})
