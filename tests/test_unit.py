@@ -23,11 +23,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ── Unit Tests (no ZIM files needed) ──
 
+
 class TestCleanQuery(unittest.TestCase):
     """Test stop-word removal for Xapian queries."""
 
     def setUp(self):
         import zimi
+
         self.clean = zimi._clean_query
 
     def test_removes_stop_words(self):
@@ -36,7 +38,7 @@ class TestCleanQuery(unittest.TestCase):
     def test_preserves_quoted_phrases(self):
         result = self.clean('"python asyncio" is great')
         self.assertIn('"python asyncio"', result)
-        self.assertNotIn("is", result.replace('"python asyncio"', ''))
+        self.assertNotIn("is", result.replace('"python asyncio"', ""))
 
     def test_all_stop_words_returns_original(self):
         self.assertEqual(self.clean("what is the"), "what is the")
@@ -53,6 +55,7 @@ class TestScoreResult(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.score = zimi._score_result
 
     def test_exact_phrase_match_highest(self):
@@ -94,6 +97,7 @@ class TestSearchCache(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.zimi = zimi
         self.zimi._search_cache.clear()
 
@@ -139,6 +143,7 @@ class TestSuggestCache(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.zimi = zimi
         self.zimi._suggest_cache.clear()
 
@@ -178,6 +183,7 @@ class TestCategorizeZim(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.cat = zimi._categorize_zim
 
     def test_wikipedia(self):
@@ -204,6 +210,7 @@ class TestStripHtml(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.strip = zimi.strip_html
 
     def test_basic_tags(self):
@@ -227,9 +234,10 @@ class TestSearchAllContract(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.zimi = zimi
 
-    @patch.object(sys.modules.get('zimi', MagicMock()), 'get_zim_files', return_value={})
+    @patch("zimi.server.get_zim_files", return_value={})
     def test_empty_library(self, _):
         result = self.zimi.search_all("test")
         self.assertIn("results", result)
@@ -238,17 +246,17 @@ class TestSearchAllContract(unittest.TestCase):
         self.assertIn("partial", result)
         self.assertEqual(result["total"], 0)
 
-    @patch.object(sys.modules.get('zimi', MagicMock()), 'get_zim_files', return_value={})
+    @patch("zimi.server.get_zim_files", return_value={})
     def test_fast_returns_partial_true(self, _):
         result = self.zimi.search_all("test", fast=True)
         self.assertTrue(result["partial"])
 
-    @patch.object(sys.modules.get('zimi', MagicMock()), 'get_zim_files', return_value={})
+    @patch("zimi.server.get_zim_files", return_value={})
     def test_full_returns_partial_false(self, _):
         result = self.zimi.search_all("test", fast=False)
         self.assertFalse(result["partial"])
 
-    @patch.object(sys.modules.get('zimi', MagicMock()), 'get_zim_files', return_value={})
+    @patch("zimi.server.get_zim_files", return_value={})
     def test_missing_zim_returns_error(self, _):
         result = self.zimi.search_all("test", filter_zim="nonexistent")
         self.assertIn("error", result)
@@ -259,6 +267,7 @@ class TestRateLimiting(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.zimi = zimi
         self.zimi._rate_buckets.clear()
 
@@ -288,6 +297,7 @@ class TestDataDir(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.zimi = zimi
 
     def test_data_dir_defaults_to_zim_subdir(self):
@@ -306,8 +316,10 @@ class TestDataDir(unittest.TestCase):
 
     def test_password_via_env_only(self):
         """Password is only set via ZIMI_MANAGE_PASSWORD env var — no file storage."""
-        self.assertFalse(hasattr(self.zimi, '_password_file'),
-                         "File-based password storage was removed")
+        self.assertFalse(
+            hasattr(self.zimi, "_password_file"),
+            "File-based password storage was removed",
+        )
 
 
 class TestTitleIndex(unittest.TestCase):
@@ -317,6 +329,7 @@ class TestTitleIndex(unittest.TestCase):
         import zimi
         import tempfile
         import sqlite3
+
         self.zimi = zimi
         self.sqlite3 = sqlite3
         self.tmpdir = tempfile.mkdtemp()
@@ -324,17 +337,19 @@ class TestTitleIndex(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         self.zimi._close_title_db("test")  # evict pooled connection
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def _create_test_db(self, entries):
         """Create a test title index DB with given (path, title) pairs."""
         conn = self.sqlite3.connect(self.db_path)
-        conn.execute("CREATE TABLE titles (path TEXT PRIMARY KEY, title TEXT, title_lower TEXT)")
+        conn.execute(
+            "CREATE TABLE titles (path TEXT PRIMARY KEY, title TEXT, title_lower TEXT)"
+        )
         conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
         conn.executemany(
-            "INSERT INTO titles VALUES (?,?,?)",
-            [(p, t, t.lower()) for p, t in entries]
+            "INSERT INTO titles VALUES (?,?,?)", [(p, t, t.lower()) for p, t in entries]
         )
         conn.execute("CREATE INDEX idx_prefix ON titles(title_lower)")
         conn.execute("INSERT INTO meta VALUES ('zim_mtime', '12345')")
@@ -342,11 +357,13 @@ class TestTitleIndex(unittest.TestCase):
         conn.close()
 
     def test_search_prefix_match(self):
-        self._create_test_db([
-            ("A/Python", "Python programming"),
-            ("A/Perl", "Perl scripting"),
-            ("A/PyTorch", "PyTorch deep learning"),
-        ])
+        self._create_test_db(
+            [
+                ("A/Python", "Python programming"),
+                ("A/Perl", "Perl scripting"),
+                ("A/PyTorch", "PyTorch deep learning"),
+            ]
+        )
         # Monkey-patch path function
         orig = self.zimi._title_index_path
         self.zimi._title_index_path = lambda name: self.db_path
@@ -373,10 +390,12 @@ class TestTitleIndex(unittest.TestCase):
             self.zimi._title_index_path = orig
 
     def test_search_case_insensitive(self):
-        self._create_test_db([
-            ("A/Python", "Python Guide"),
-            ("A/PYTHON", "PYTHON FAQ"),
-        ])
+        self._create_test_db(
+            [
+                ("A/Python", "Python Guide"),
+                ("A/PYTHON", "PYTHON FAQ"),
+            ]
+        )
         orig = self.zimi._title_index_path
         self.zimi._title_index_path = lambda name: self.db_path
         try:
@@ -403,24 +422,35 @@ class TestTitleIndex(unittest.TestCase):
     def test_multiword_search_with_fts5(self):
         """Multi-word queries use FTS5 when available."""
         conn = self.sqlite3.connect(self.db_path)
-        conn.execute("CREATE TABLE titles (path TEXT PRIMARY KEY, title TEXT, title_lower TEXT)")
+        conn.execute(
+            "CREATE TABLE titles (path TEXT PRIMARY KEY, title TEXT, title_lower TEXT)"
+        )
         conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
         entries = [
             ("A/WP", "Water purification methods"),
             ("A/WS", "Water safety guidelines"),
             ("A/PM", "Purification of metals"),
         ]
-        conn.executemany("INSERT INTO titles VALUES (?,?,?)", [(p, t, t.lower()) for p, t in entries])
+        conn.executemany(
+            "INSERT INTO titles VALUES (?,?,?)", [(p, t, t.lower()) for p, t in entries]
+        )
         conn.execute("CREATE INDEX idx_prefix ON titles(title_lower)")
-        conn.execute("CREATE VIRTUAL TABLE titles_fts USING fts5(path UNINDEXED, title, tokenize='unicode61')")
-        conn.executemany("INSERT INTO titles_fts(path, title) SELECT ?, ? FROM (SELECT 1)", [(p, t) for p, t in entries])
+        conn.execute(
+            "CREATE VIRTUAL TABLE titles_fts USING fts5(path UNINDEXED, title, tokenize='unicode61')"
+        )
+        conn.executemany(
+            "INSERT INTO titles_fts(path, title) SELECT ?, ? FROM (SELECT 1)",
+            [(p, t) for p, t in entries],
+        )
         conn.execute("INSERT INTO meta VALUES ('has_fts', '1')")
         conn.commit()
         conn.close()
         orig = self.zimi._title_index_path
         self.zimi._title_index_path = lambda name: self.db_path
         try:
-            results = self.zimi._title_index_search("test", "water purification", limit=10)
+            results = self.zimi._title_index_search(
+                "test", "water purification", limit=10
+            )
             self.assertIsNotNone(results)
             self.assertEqual(len(results), 1)
             self.assertEqual(results[0]["title"], "Water purification methods")
@@ -429,14 +459,18 @@ class TestTitleIndex(unittest.TestCase):
 
     def test_multiword_search_without_fts5_uses_btree(self):
         """Multi-word queries use B-tree fallback when no FTS5 table exists."""
-        self._create_test_db([
-            ("A/WP", "Water purification methods"),
-            ("A/WS", "Water safety guidelines"),
-        ])
+        self._create_test_db(
+            [
+                ("A/WP", "Water purification methods"),
+                ("A/WS", "Water safety guidelines"),
+            ]
+        )
         orig = self.zimi._title_index_path
         self.zimi._title_index_path = lambda name: self.db_path
         try:
-            results = self.zimi._title_index_search("test", "water purification", limit=10)
+            results = self.zimi._title_index_search(
+                "test", "water purification", limit=10
+            )
             self.assertIsNotNone(results)
             self.assertEqual(len(results), 1)
             self.assertEqual(results[0]["title"], "Water purification methods")
@@ -445,10 +479,12 @@ class TestTitleIndex(unittest.TestCase):
 
     def test_build_fts_for_existing_index(self):
         """_build_fts_for_index adds FTS5 to an existing index without one."""
-        self._create_test_db([
-            ("A/WP", "Water purification"),
-            ("A/PM", "Purification of metals"),
-        ])
+        self._create_test_db(
+            [
+                ("A/WP", "Water purification"),
+                ("A/PM", "Purification of metals"),
+            ]
+        )
         orig_path = self.zimi._title_index_path
         orig_close = self.zimi._close_title_db
         self.zimi._title_index_path = lambda name: self.db_path
@@ -459,7 +495,9 @@ class TestTitleIndex(unittest.TestCase):
             self.assertEqual(result["entries"], 2)
             # Verify FTS5 table exists and works
             conn = self.sqlite3.connect(self.db_path)
-            rows = conn.execute("SELECT path FROM titles_fts WHERE titles_fts MATCH 'water'").fetchall()
+            rows = conn.execute(
+                "SELECT path FROM titles_fts WHERE titles_fts MATCH 'water'"
+            ).fetchall()
             conn.close()
             self.assertEqual(len(rows), 1)
         finally:
@@ -472,11 +510,13 @@ class TestQuoteExtraction(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.zimi = zimi
 
     def _extract(self, html, zim_name="wikiquote_en", entry_title="Test"):
         """Helper: extract preview from raw HTML via mocked archive."""
         from unittest.mock import MagicMock
+
         archive = MagicMock()
         entry = MagicMock()
         entry.is_redirect = False
@@ -602,6 +642,7 @@ class TestCrossZimUrlCandidates(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.zimi = zimi
 
     def test_wikipedia_standard_url(self):
@@ -610,6 +651,7 @@ class TestCrossZimUrlCandidates(unittest.TestCase):
         # but we can test the URL parsing by checking _domain_zim_map
         # and the candidate generation patterns.
         from urllib.parse import urlparse, unquote, parse_qs
+
         url = "https://en.wikipedia.org/wiki/Water_purification"
         parsed = urlparse(url)
         host = parsed.hostname.lower()
@@ -624,6 +666,7 @@ class TestCrossZimUrlCandidates(unittest.TestCase):
     def test_wikimedia_title_param(self):
         """MediaWiki ?title= parameter URL."""
         from urllib.parse import urlparse, unquote, parse_qs
+
         url = "https://en.wikiquote.org/w/index.php?title=Giovanni_Ricchiuti&oldid=123"
         parsed = urlparse(url)
         qs = parse_qs(parsed.query)
@@ -636,6 +679,7 @@ class TestCrossZimUrlCandidates(unittest.TestCase):
     def test_stackoverflow_url(self):
         """Stack Overflow URL format."""
         from urllib.parse import urlparse, unquote
+
         url = "https://stackoverflow.com/questions/12345/how-to-parse-json"
         parsed = urlparse(url)
         url_path = unquote(parsed.path).lstrip("/")
@@ -644,6 +688,7 @@ class TestCrossZimUrlCandidates(unittest.TestCase):
     def test_stackexchange_subdomain(self):
         """Stack Exchange subdomain URL."""
         from urllib.parse import urlparse
+
         url = "https://cooking.stackexchange.com/questions/99/best-knife"
         parsed = urlparse(url)
         host = parsed.hostname.lower()
@@ -655,6 +700,7 @@ class TestDomainZimMapBuilding(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.zimi = zimi
 
     def test_domain_map_is_dict(self):
@@ -667,6 +713,7 @@ class TestMetaTitleFilter(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.re = zimi._meta_title_re
 
     def test_filters_portal(self):
@@ -699,6 +746,7 @@ class TestIsRealQuote(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         # Access the nested function by extracting from source
         # We'll test via _extract_preview behavior instead
         self.zimi = zimi
@@ -712,6 +760,7 @@ class TestIsRealQuote(unittest.TestCase):
         <ul><li>Some Person</li></ul></li></ul>
         </body></html>"""
         from unittest.mock import MagicMock
+
         archive = MagicMock()
         entry = MagicMock()
         entry.is_redirect = False
@@ -730,6 +779,7 @@ class TestDiskStats(unittest.TestCase):
     def setUp(self):
         import zimi
         import tempfile
+
         self.zimi = zimi
         self.tmpdir = tempfile.mkdtemp()
         self._orig_zim_dir = self.zimi.ZIM_DIR
@@ -737,6 +787,7 @@ class TestDiskStats(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         self.zimi.ZIM_DIR = self._orig_zim_dir
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
@@ -772,6 +823,7 @@ class TestZimCategorization(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.cat = zimi._categorize_zim
 
     def test_wikivoyage(self):
@@ -802,6 +854,7 @@ class TestAutoUpdateConfig(unittest.TestCase):
     def setUp(self):
         import zimi
         import tempfile
+
         self.zimi = zimi
         self.tmpdir = tempfile.mkdtemp()
         self._orig = self.zimi._AUTO_UPDATE_CONFIG
@@ -811,6 +864,7 @@ class TestAutoUpdateConfig(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         self.zimi._AUTO_UPDATE_CONFIG = self._orig
         self.zimi._auto_update_env_locked = self._orig_locked
         shutil.rmtree(self.tmpdir, ignore_errors=True)
@@ -839,6 +893,7 @@ class TestCollectionsFile(unittest.TestCase):
     def setUp(self):
         import zimi
         import tempfile
+
         self.zimi = zimi
         self.tmpdir = tempfile.mkdtemp()
         self._orig = self.zimi.ZIMI_DATA_DIR
@@ -846,6 +901,7 @@ class TestCollectionsFile(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         self.zimi.ZIMI_DATA_DIR = self._orig
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
@@ -859,6 +915,7 @@ class TestZimShortName(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.short = zimi._zim_short_name
 
     def test_wikipedia_maxi(self):
@@ -868,10 +925,15 @@ class TestZimShortName(unittest.TestCase):
         self.assertEqual(self.short("wikipedia_en_all_mini_2026-02.zim"), "wikipedia")
 
     def test_stackoverflow(self):
-        self.assertEqual(self.short("stackoverflow.com_en_all_2023-11.zim"), "stackoverflow")
+        self.assertEqual(
+            self.short("stackoverflow.com_en_all_2023-11.zim"), "stackoverflow"
+        )
 
     def test_stackexchange_subdomain(self):
-        self.assertEqual(self.short("cooking.stackexchange.com_en_all_2023-08.zim"), "cooking.stackexchange")
+        self.assertEqual(
+            self.short("cooking.stackexchange.com_en_all_2023-08.zim"),
+            "cooking.stackexchange",
+        )
 
     def test_wiktionary(self):
         self.assertEqual(self.short("wiktionary_en_all_maxi_2026-01.zim"), "wiktionary")
@@ -893,7 +955,9 @@ class TestZimShortName(unittest.TestCase):
         self.assertEqual(self.short("zimgit-medicine_2024-01.zim"), "zimgit-medicine")
 
     def test_devdocs(self):
-        self.assertEqual(self.short("devdocs_en_python_2025-01.zim"), "devdocs_en_python")
+        self.assertEqual(
+            self.short("devdocs_en_python_2025-01.zim"), "devdocs_en_python"
+        )
 
 
 class TestExtractZimDate(unittest.TestCase):
@@ -901,6 +965,7 @@ class TestExtractZimDate(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.extract = zimi._extract_zim_date
 
     def test_standard_date(self):
@@ -932,6 +997,7 @@ class TestNamespaceFallbacks(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.fallbacks = zimi._namespace_fallbacks
 
     def test_strip_A_prefix(self):
@@ -955,12 +1021,15 @@ class TestNamespaceFallbacks(unittest.TestCase):
     def test_add_prefixes_no_namespace(self):
         """Unprefixed path → yields A/, I/, C/, -/ variants."""
         results = list(self.fallbacks("Water_purification"))
-        self.assertEqual(results, [
-            "A/Water_purification",
-            "I/Water_purification",
-            "C/Water_purification",
-            "-/Water_purification",
-        ])
+        self.assertEqual(
+            results,
+            [
+                "A/Water_purification",
+                "I/Water_purification",
+                "C/Water_purification",
+                "-/Water_purification",
+            ],
+        )
 
     def test_nested_path_only_strips_leading(self):
         """A/dir/file → strips A/ to get dir/file, doesn't recurse."""
@@ -979,6 +1048,7 @@ class TestHashPassword(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.hash = zimi._hash_pw
 
     def test_deterministic_with_same_salt(self):
@@ -1002,7 +1072,8 @@ class TestHashPassword(unittest.TestCase):
     def test_salted_format(self):
         """Hash should be salt$hash in lowercase hex."""
         import re
-        self.assertRegex(self.hash("test"), r'^[0-9a-f]{32}\$[0-9a-f]{64}$')
+
+        self.assertRegex(self.hash("test"), r"^[0-9a-f]{32}\$[0-9a-f]{64}$")
 
 
 class TestHistoryPersistence(unittest.TestCase):
@@ -1011,6 +1082,7 @@ class TestHistoryPersistence(unittest.TestCase):
     def setUp(self):
         import zimi
         import tempfile
+
         self.zimi = zimi
         self.tmpdir = tempfile.mkdtemp()
         self._orig_data_dir = self.zimi.ZIMI_DATA_DIR
@@ -1018,6 +1090,7 @@ class TestHistoryPersistence(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         self.zimi.ZIMI_DATA_DIR = self._orig_data_dir
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
@@ -1054,6 +1127,7 @@ class TestCollectionsPersistence(unittest.TestCase):
     def setUp(self):
         import zimi
         import tempfile
+
         self.zimi = zimi
         self.tmpdir = tempfile.mkdtemp()
         self._orig_data_dir = self.zimi.ZIMI_DATA_DIR
@@ -1061,6 +1135,7 @@ class TestCollectionsPersistence(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         self.zimi.ZIMI_DATA_DIR = self._orig_data_dir
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
@@ -1071,10 +1146,12 @@ class TestCollectionsPersistence(unittest.TestCase):
         self.assertEqual(data["collections"], {})
 
     def test_save_and_load_roundtrip(self):
-        self.zimi._save_collections({
-            "favorites": ["wikipedia"],
-            "collections": {"dev": {"label": "Dev", "zims": ["stackoverflow"]}}
-        })
+        self.zimi._save_collections(
+            {
+                "favorites": ["wikipedia"],
+                "collections": {"dev": {"label": "Dev", "zims": ["stackoverflow"]}},
+            }
+        )
         data = self.zimi._load_collections()
         self.assertEqual(data["version"], 1)  # save forces version=1
         self.assertEqual(data["favorites"], ["wikipedia"])
@@ -1101,6 +1178,7 @@ class TestDownloadValidation(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.zimi = zimi
 
     def test_kiwix_url_accepted(self):
@@ -1126,7 +1204,9 @@ class TestDownloadValidation(unittest.TestCase):
         self.assertIn("zim", err.lower())
 
     def test_import_rejects_path_traversal(self):
-        result, err = self.zimi._start_import("https://example.com/../../../etc/passwd.zim")
+        result, err = self.zimi._start_import(
+            "https://example.com/../../../etc/passwd.zim"
+        )
         # os.path.basename strips traversal, but the filename still needs to be valid
         # The actual filename after basename would be "passwd.zim" which is valid
         # This tests that basename prevents directory escape
@@ -1135,16 +1215,19 @@ class TestDownloadValidation(unittest.TestCase):
     def test_import_strips_query_string(self):
         """Query strings should be stripped before filename extraction."""
         # We can verify the URL cleaning logic indirectly
-        clean = "https://example.com/test.zim?token=abc#section".split("?")[0].split("#")[0]
+        clean = "https://example.com/test.zim?token=abc#section".split("?")[0].split(
+            "#"
+        )[0]
         filename = clean.split("/")[-1]
         self.assertEqual(filename, "test.zim")
 
     def test_import_rejects_special_chars(self):
         import re
+
         # Filenames with special chars should fail the regex
-        self.assertIsNone(re.match(r'^[\w.\-]+$', 'file name.zim'))  # space
-        self.assertIsNone(re.match(r'^[\w.\-]+$', 'file;rm -rf.zim'))  # semicolon
-        self.assertIsNotNone(re.match(r'^[\w.\-]+$', 'valid_file-name.zim'))  # ok
+        self.assertIsNone(re.match(r"^[\w.\-]+$", "file name.zim"))  # space
+        self.assertIsNone(re.match(r"^[\w.\-]+$", "file;rm -rf.zim"))  # semicolon
+        self.assertIsNotNone(re.match(r"^[\w.\-]+$", "valid_file-name.zim"))  # ok
 
 
 class TestDownloadStatusComputation(unittest.TestCase):
@@ -1152,6 +1235,7 @@ class TestDownloadStatusComputation(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.zimi = zimi
 
     def test_percentage_capped_at_100(self):
@@ -1172,19 +1256,25 @@ class TestDownloadStatusComputation(unittest.TestCase):
 
     def test_mirror_host_extraction(self):
         from urllib.parse import urlparse
+
         url = "https://ny.mirror.driftless.dev/zim/wikipedia.zim"
         host = urlparse(url).hostname
         self.assertEqual(host, "ny.mirror.driftless.dev")
 
     def test_mirror_host_fallback(self):
         from urllib.parse import urlparse
+
         dl = {"url": "https://download.kiwix.org/test.zim"}
         host = urlparse(dl.get("_mirror_url", dl["url"])).hostname
         self.assertEqual(host, "download.kiwix.org")
 
     def test_mirror_host_with_mirror_url(self):
         from urllib.parse import urlparse
-        dl = {"url": "https://download.kiwix.org/test.zim", "_mirror_url": "https://ny.mirror.driftless.dev/test.zim"}
+
+        dl = {
+            "url": "https://download.kiwix.org/test.zim",
+            "_mirror_url": "https://ny.mirror.driftless.dev/test.zim",
+        }
         host = urlparse(dl.get("_mirror_url", dl["url"])).hostname
         self.assertEqual(host, "ny.mirror.driftless.dev")
 
@@ -1195,6 +1285,7 @@ class TestFetchMirrorsParsing(unittest.TestCase):
     def test_parse_valid_metalink(self):
         """Parse a minimal Metalink .meta4 XML."""
         import xml.etree.ElementTree as ET
+
         ns = "urn:ietf:params:xml:ns:metalink"
         xml_str = f"""<?xml version="1.0" encoding="UTF-8"?>
         <metalink xmlns="{ns}">
@@ -1227,6 +1318,7 @@ class TestFetchMirrorsParsing(unittest.TestCase):
     def test_skip_http_urls(self):
         """HTTP URLs should be filtered out (only HTTPS)."""
         import xml.etree.ElementTree as ET
+
         ns = "urn:ietf:params:xml:ns:metalink"
         xml_str = f"""<?xml version="1.0"?>
         <metalink xmlns="{ns}">
@@ -1248,6 +1340,7 @@ class TestFetchMirrorsParsing(unittest.TestCase):
     def test_skip_kiwix_org_publisher(self):
         """https://kiwix.org should be filtered (publisher, not a mirror)."""
         import xml.etree.ElementTree as ET
+
         ns = "urn:ietf:params:xml:ns:metalink"
         xml_str = f"""<?xml version="1.0"?>
         <metalink xmlns="{ns}">
@@ -1261,7 +1354,10 @@ class TestFetchMirrorsParsing(unittest.TestCase):
         for file_el in root.findall(f"{{{ns}}}file"):
             for url_el in file_el.findall(f"{{{ns}}}url"):
                 href = (url_el.text or "").strip()
-                if not href.startswith("https://") or href.rstrip("/") == "https://kiwix.org":
+                if (
+                    not href.startswith("https://")
+                    or href.rstrip("/") == "https://kiwix.org"
+                ):
                     continue
                 mirrors.append(href)
         self.assertEqual(len(mirrors), 1)
@@ -1269,6 +1365,7 @@ class TestFetchMirrorsParsing(unittest.TestCase):
     def test_missing_priority_defaults_to_99(self):
         """Missing priority attr should default to 99."""
         import xml.etree.ElementTree as ET
+
         ns = "urn:ietf:params:xml:ns:metalink"
         xml_str = f"""<?xml version="1.0"?>
         <metalink xmlns="{ns}">
@@ -1302,32 +1399,48 @@ class TestCrossZimCandidatePaths(unittest.TestCase):
         """Extract candidate paths from URL using the same logic as _resolve_url_to_zim."""
         from urllib.parse import urlparse, unquote, parse_qs
         import re
+
         parsed = urlparse(url_str)
         host = (parsed.hostname or "").lower()
         url_path = unquote(parsed.path).lstrip("/")
         candidates = []
 
-        if "wikipedia.org" in host or "wiktionary.org" in host or "wikivoyage.org" in host \
-           or "wikibooks.org" in host or "wikiversity.org" in host or "wikiquote.org" in host \
-           or "wikinews.org" in host:
-            rest = re.sub(r'^wiki/', '', url_path)
+        if (
+            "wikipedia.org" in host
+            or "wiktionary.org" in host
+            or "wikivoyage.org" in host
+            or "wikibooks.org" in host
+            or "wikiversity.org" in host
+            or "wikiquote.org" in host
+            or "wikinews.org" in host
+        ):
+            rest = re.sub(r"^wiki/", "", url_path)
             qs = parse_qs(parsed.query)
-            if qs.get("title") and (not rest or rest in ("wiki", "w/index.php", "index.php")):
+            if qs.get("title") and (
+                not rest or rest in ("wiki", "w/index.php", "index.php")
+            ):
                 rest = qs["title"][0]
             candidates.append("A/" + rest)
             candidates.append(rest)
-            ns_stripped = re.sub(r'^[A-Z][a-z]+:', '', rest)
+            ns_stripped = re.sub(r"^[A-Z][a-z]+:", "", rest)
             if ns_stripped != rest:
                 candidates.append(ns_stripped)
                 candidates.append("A/" + ns_stripped)
-        elif "stackexchange.com" in host or "stackoverflow.com" in host \
-             or "serverfault.com" in host or "superuser.com" in host or "askubuntu.com" in host:
+        elif (
+            "stackexchange.com" in host
+            or "stackoverflow.com" in host
+            or "serverfault.com" in host
+            or "superuser.com" in host
+            or "askubuntu.com" in host
+        ):
             candidates.append("A/" + url_path)
             candidates.append(url_path)
         elif "rationalwiki.org" in host or "appropedia.org" in host:
-            rest = re.sub(r'^wiki/', '', url_path)
+            rest = re.sub(r"^wiki/", "", url_path)
             qs = parse_qs(parsed.query)
-            if qs.get("title") and (not rest or rest in ("wiki", "w/index.php", "index.php")):
+            if qs.get("title") and (
+                not rest or rest in ("wiki", "w/index.php", "index.php")
+            ):
                 rest = qs["title"][0]
             candidates.append(rest)
             candidates.append("A/" + rest)
@@ -1352,7 +1465,9 @@ class TestCrossZimCandidatePaths(unittest.TestCase):
         self.assertIn("A/Water_purification", c)
 
     def test_wikipedia_title_param(self):
-        c = self._candidates("https://en.wikiquote.org/w/index.php?title=Giovanni_Ricchiuti&oldid=123")
+        c = self._candidates(
+            "https://en.wikiquote.org/w/index.php?title=Giovanni_Ricchiuti&oldid=123"
+        )
         self.assertIn("A/Giovanni_Ricchiuti", c)
 
     def test_wikipedia_category_namespace(self):
@@ -1362,7 +1477,9 @@ class TestCrossZimCandidatePaths(unittest.TestCase):
         self.assertIn("A/Physics", c)
 
     def test_stackoverflow(self):
-        c = self._candidates("https://stackoverflow.com/questions/12345/how-to-parse-json")
+        c = self._candidates(
+            "https://stackoverflow.com/questions/12345/how-to-parse-json"
+        )
         self.assertIn("A/questions/12345/how-to-parse-json", c)
 
     def test_askubuntu(self):
@@ -1375,7 +1492,9 @@ class TestCrossZimCandidatePaths(unittest.TestCase):
         self.assertIn("A/Evolution", c)
 
     def test_rationalwiki_title_param(self):
-        c = self._candidates("https://rationalwiki.org/w/index.php?title=Science&oldid=456")
+        c = self._candidates(
+            "https://rationalwiki.org/w/index.php?title=Science&oldid=456"
+        )
         self.assertIn("Science", c)
         self.assertIn("A/Science", c)
 
@@ -1407,6 +1526,7 @@ class TestScoreResultEdgeCases(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.score = zimi._score_result
 
     def test_empty_title(self):
@@ -1446,6 +1566,7 @@ class TestStripHtmlEdgeCases(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.strip = zimi.strip_html
 
     def test_nested_tags(self):
@@ -1476,6 +1597,7 @@ class TestCategorizationExtended(unittest.TestCase):
 
     def setUp(self):
         import zimi
+
         self.cat = zimi._categorize_zim
 
     def test_medicine_takes_priority_over_wikimedia(self):
@@ -1517,6 +1639,7 @@ class TestCategorizationExtended(unittest.TestCase):
 
 # ── Performance Tests (require running server) ──
 
+
 class PerfTestSearch(unittest.TestCase):
     """Performance tests against a running Zimi server.
 
@@ -1529,6 +1652,7 @@ class PerfTestSearch(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         import urllib.request
+
         try:
             urllib.request.urlopen(f"{cls.host}/health", timeout=5)
         except Exception:
@@ -1536,6 +1660,7 @@ class PerfTestSearch(unittest.TestCase):
 
     def _fetch(self, path):
         import urllib.request
+
         url = f"{self.host}{path}"
         t0 = time.time()
         with urllib.request.urlopen(url, timeout=120) as resp:
@@ -1557,15 +1682,21 @@ class PerfTestSearch(unittest.TestCase):
         """Fast search should be <1s on cache hit."""
         self._fetch("/search?q=python&limit=5&fast=1")
         data, elapsed = self._fetch("/search?q=python&limit=5&fast=1")
-        self.assertLess(elapsed, 1.0, f"Cached fast search took {elapsed:.1f}s, expected <1s")
-        self.assertTrue(data.get("partial", True), "Fast search should return partial=True")
+        self.assertLess(
+            elapsed, 1.0, f"Cached fast search took {elapsed:.1f}s, expected <1s"
+        )
+        self.assertTrue(
+            data.get("partial", True), "Fast search should return partial=True"
+        )
 
     def test_full_search_cached(self):
         """Full FTS should be <1s on cache hit."""
         self._fetch("/search?q=python&limit=5")
         data, elapsed = self._fetch("/search?q=python&limit=5")
         self.assertLess(elapsed, 1.0, f"Cached FTS took {elapsed:.1f}s, expected <1s")
-        self.assertFalse(data.get("partial", False), "Full search should return partial=False")
+        self.assertFalse(
+            data.get("partial", False), "Full search should return partial=False"
+        )
 
     def test_full_search_completeness(self):
         """Full search should return results from multiple sources (requires ZIMs)."""
@@ -1576,15 +1707,18 @@ class PerfTestSearch(unittest.TestCase):
         if data.get("total", 0) == 0:
             self.skipTest("Search returned no results for test query")
         sources = list(data.get("by_source", {}).keys())
-        self.assertGreater(len(sources), 1, f"Expected multiple sources, got: {sources}")
+        self.assertGreater(
+            len(sources), 1, f"Expected multiple sources, got: {sources}"
+        )
 
     def test_fast_vs_full_result_quality(self):
         """Full FTS should find at least as many results as fast title search."""
         fast, _ = self._fetch("/search?q=memory+management&limit=10&fast=1")
         full, _ = self._fetch("/search?q=memory+management&limit=10")
         self.assertGreaterEqual(
-            full["total"], fast["total"],
-            f"FTS ({full['total']}) should find >= title search ({fast['total']})"
+            full["total"],
+            fast["total"],
+            f"FTS ({full['total']}) should find >= title search ({fast['total']})",
         )
 
     def test_scoped_search_single_zim(self):
@@ -1595,7 +1729,9 @@ class PerfTestSearch(unittest.TestCase):
         name = zims[0]["name"]
         data, _ = self._fetch(f"/search?q=help&limit=5&zim={name}")
         for r in data.get("results", []):
-            self.assertEqual(r["zim"], name, f"Result from {r['zim']} but scoped to {name}")
+            self.assertEqual(
+                r["zim"], name, f"Result from {r['zim']} but scoped to {name}"
+            )
 
     def test_scoped_search_multi_zim(self):
         """Scoped search across multiple ZIMs."""
