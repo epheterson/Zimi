@@ -1103,6 +1103,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                             "score": round(score, 1),
                             "language": cache_lang.get(name, ""),
                             "has_qids": cache_qids.get(name, False),
+                            "category": _zim_category(name),
                         }
                     )
                 by_source[name] = len(valid)
@@ -1157,6 +1158,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                             "score": round(score, 1),
                             "language": cache_lang.get(name, ""),
                             "has_qids": cache_qids.get(name, False),
+                            "category": _zim_category(name),
                         }
                     )
                 by_source[name] = len(valid)

@@ -51,3 +51,24 @@ def test_zim_category_is_case_insensitive():
 
 def test_zim_category_returns_string():
     assert isinstance(_zim_category("anything"), str)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Integration: the helper has to be wired into search_all's result dicts.
+# Both append sites (suggest path + FTS path) must include category.
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def test_search_all_results_include_category_field():
+    """Guard against the helper-defined-but-never-called gap."""
+    import zimi.search as search
+
+    src = open(search.__file__).read()
+    # Both append sites for raw_results must reference _zim_category
+    append_blocks = src.count("raw_results.append(")
+    category_calls = src.count('"category": _zim_category(')
+    assert category_calls >= append_blocks, (
+        f"Found {append_blocks} raw_results.append() sites but only "
+        f"{category_calls} include the category field. The /search response "
+        f"will be missing category on at least one code path."
+    )
