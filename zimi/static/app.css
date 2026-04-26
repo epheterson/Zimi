@@ -582,6 +582,8 @@
   }
   .hot-zims-row:hover { background: var(--surface2); }
   .hot-zims-row input[type="checkbox"] { accent-color: var(--amber); flex-shrink: 0; }
+  .hot-zims-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hot-zims-id { color: var(--text2); font-size: 11px; font-family: monospace; flex-shrink: 0; }
   .manage-tab-content { display: none; }
   .manage-tab-content.active { display: block; }
   .manage-installed-group { margin-bottom: 24px; }

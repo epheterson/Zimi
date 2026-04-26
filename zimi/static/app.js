@@ -4310,7 +4310,11 @@ async function _renderHotZimsSection() {
   }
 
   const hotSet = new Set(hotData.hot_zims || []);
-  const zimNames = Object.keys(zims).sort();
+  // /list returns an array of {name, title, ...} objects — pull names + sort.
+  const zimNames = (Array.isArray(zims) ? zims : []).map(z => z.name).filter(Boolean).sort();
+  const zimTitles = Object.fromEntries(
+    (Array.isArray(zims) ? zims : []).map(z => [z.name, z.title || z.name])
+  );
   if (zimNames.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'ms-hint';
@@ -4328,10 +4332,15 @@ async function _renderHotZimsSection() {
     cb.type = 'checkbox';
     cb.value = name;
     cb.checked = hotSet.has(name);
-    const label = document.createElement('span');
-    label.textContent = name;
+    const title = document.createElement('span');
+    title.className = 'hot-zims-title';
+    title.textContent = zimTitles[name] || name;
+    const id = document.createElement('span');
+    id.className = 'hot-zims-id';
+    id.textContent = name;
     row.appendChild(cb);
-    row.appendChild(label);
+    row.appendChild(title);
+    row.appendChild(id);
     list.appendChild(row);
   });
   container.appendChild(list);
