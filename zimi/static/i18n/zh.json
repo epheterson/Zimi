@@ -789,5 +789,12 @@
   "saved": "已保存",
   "covered_by": "已包含在 {name} 中",
   "part_of": "{name} 的一部分",
-  "includes_n_variants": "包含 {n} 个较小变体"
+  "includes_n_variants": "包含 {n} 个较小变体",
+  "clear_search_cache": "清除搜索缓存",
+  "clear_suggest_cache": "清除建议缓存",
+  "rebuild_title_indexes": "重建标题索引",
+  "rebuild_qid_indexes": "重建 Q-ID 索引",
+  "working": "处理中…",
+  "rebuild_started": "重建已开始 — 后台运行",
+  "cleared": "已清除"
 }

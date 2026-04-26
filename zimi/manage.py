@@ -519,6 +519,29 @@ def handle_manage_post(handler, parsed, data):
         _srv._clean_stale_title_indexes()
         return handler._json(200, {"status": "refreshed", "zim_count": count})
 
+    elif parsed.path == "/manage/cache-action":
+        # Lightweight cache maintenance for the Server-settings UI.
+        # action ∈ {clear-search, clear-suggest, rebuild-title, rebuild-qid}
+        action = data.get("action", "")
+        if action == "clear-search":
+            _srv._search_cache_clear()
+            return handler._json(200, {"status": "cleared", "target": "search"})
+        if action == "clear-suggest":
+            _srv._suggest_cache_clear()
+            return handler._json(200, {"status": "cleared", "target": "suggest"})
+        if action == "rebuild-title":
+            # Heavy — run in background so the request returns immediately.
+            import threading as _t
+
+            _t.Thread(target=_srv._build_all_title_indexes, daemon=True).start()
+            return handler._json(200, {"status": "started", "target": "title"})
+        if action == "rebuild-qid":
+            import threading as _t
+
+            _t.Thread(target=_srv._build_all_qid_indexes, daemon=True).start()
+            return handler._json(200, {"status": "started", "target": "qid"})
+        return handler._json(400, {"error": "unknown action"})
+
     elif parsed.path == "/manage/build-fts":
         zim_name = data.get("name", "")
         if not zim_name:

@@ -789,5 +789,12 @@
   "saved": "Salvo",
   "covered_by": "Já incluído em {name}",
   "part_of": "Parte de {name}",
-  "includes_n_variants": "Inclui {n} variantes menores"
+  "includes_n_variants": "Inclui {n} variantes menores",
+  "clear_search_cache": "Limpar cache de pesquisa",
+  "clear_suggest_cache": "Limpar cache de sugestões",
+  "rebuild_title_indexes": "Reconstruir índices de título",
+  "rebuild_qid_indexes": "Reconstruir índices Q-ID",
+  "working": "Trabalhando…",
+  "rebuild_started": "Reconstrução iniciada — em segundo plano",
+  "cleared": "Limpo"
 }

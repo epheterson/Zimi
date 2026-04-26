@@ -789,5 +789,12 @@
   "saved": "Сохранено",
   "covered_by": "Уже включено в {name}",
   "part_of": "Часть {name}",
-  "includes_n_variants": "Включает {n} меньших вариантов"
+  "includes_n_variants": "Включает {n} меньших вариантов",
+  "clear_search_cache": "Очистить кэш поиска",
+  "clear_suggest_cache": "Очистить кэш подсказок",
+  "rebuild_title_indexes": "Перестроить индексы заголовков",
+  "rebuild_qid_indexes": "Перестроить индексы Q-ID",
+  "working": "Работаю…",
+  "rebuild_started": "Перестроение запущено — в фоне",
+  "cleared": "Очищено"
 }

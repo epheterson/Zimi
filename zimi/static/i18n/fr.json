@@ -789,5 +789,12 @@
   "saved": "Enregistré",
   "covered_by": "Déjà inclus dans {name}",
   "part_of": "Partie de {name}",
-  "includes_n_variants": "Inclut {n} variantes plus petites"
+  "includes_n_variants": "Inclut {n} variantes plus petites",
+  "clear_search_cache": "Vider le cache de recherche",
+  "clear_suggest_cache": "Vider le cache de suggestion",
+  "rebuild_title_indexes": "Reconstruire les index de titre",
+  "rebuild_qid_indexes": "Reconstruire les index Q-ID",
+  "working": "En cours…",
+  "rebuild_started": "Reconstruction démarrée — en arrière-plan",
+  "cleared": "Effacé"
 }

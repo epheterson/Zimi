@@ -789,5 +789,12 @@
   "saved": "נשמר",
   "covered_by": "כבר כלול ב-{name}",
   "part_of": "חלק מ-{name}",
-  "includes_n_variants": "כולל {n} גרסאות קטנות יותר"
+  "includes_n_variants": "כולל {n} גרסאות קטנות יותר",
+  "clear_search_cache": "נקה מטמון חיפוש",
+  "clear_suggest_cache": "נקה מטמון הצעות",
+  "rebuild_title_indexes": "בנה מחדש אינדקסי כותרות",
+  "rebuild_qid_indexes": "בנה מחדש אינדקסי Q-ID",
+  "working": "עובד…",
+  "rebuild_started": "הבנייה מחדש התחילה — ברקע",
+  "cleared": "נוקה"
 }

@@ -4366,7 +4366,14 @@ function _msServerHtml() {
       (c.title_indexes.count || 0) + ' files, ' + fmt(c.title_indexes.size_bytes) + '</span></div>' +
       '<div class="mc-row"><span class="mc-label">' + tH('qid_indexes') + '</span><span class="mc-value">' +
       (c.qid_indexes.count || 0) + ' files, ' + fmt(c.qid_indexes.size_bytes) + '</span></div>' +
-      '<div class="mc-row"><span class="mc-label">' + tH('total_cache') + '</span><span class="mc-value">' + fmt(d.total_bytes) + '</span></div>';
+      '<div class="mc-row"><span class="mc-label">' + tH('total_cache') + '</span><span class="mc-value">' + fmt(d.total_bytes) + '</span></div>' +
+      '<div class="ms-cache-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' +
+        '<button class="pill" onclick="_cacheAction(this,\'clear-search\')">' + tH('clear_search_cache') + '</button>' +
+        '<button class="pill" onclick="_cacheAction(this,\'clear-suggest\')">' + tH('clear_suggest_cache') + '</button>' +
+        '<button class="pill" onclick="_cacheAction(this,\'rebuild-title\')">' + tH('rebuild_title_indexes') + '</button>' +
+        '<button class="pill" onclick="_cacheAction(this,\'rebuild-qid\')">' + tH('rebuild_qid_indexes') + '</button>' +
+        '<span id="ms-cache-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
+      '</div>';
     el.innerHTML = sh;
   }).catch(function() {});
   // Async fill from stats
@@ -4466,6 +4473,27 @@ async function _renderHotZimsSection() {
   actions.appendChild(status);
   container.appendChild(actions);
 }
+
+async function _cacheAction(btn, action) {
+  const status = document.getElementById('ms-cache-status');
+  btn.disabled = true;
+  if (status) status.textContent = t('working');
+  try {
+    const res = await manageFetch('/manage/cache-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'failed');
+    if (status) status.textContent = data.status === 'started' ? t('rebuild_started') : t('cleared');
+  } catch (e) {
+    if (status) status.textContent = t('error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 
 async function _saveHotZims(btn) {
   const checks = document.querySelectorAll('#ms-hot-zims input[type="checkbox"]:checked');

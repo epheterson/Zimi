@@ -789,5 +789,12 @@
   "saved": "Saved",
   "covered_by": "Already covered by {name}",
   "part_of": "Part of {name}",
-  "includes_n_variants": "Includes {n} smaller variants"
+  "includes_n_variants": "Includes {n} smaller variants",
+  "clear_search_cache": "Clear search cache",
+  "clear_suggest_cache": "Clear suggest cache",
+  "rebuild_title_indexes": "Rebuild title indexes",
+  "rebuild_qid_indexes": "Rebuild Q-ID indexes",
+  "working": "Working…",
+  "rebuild_started": "Rebuild started — runs in background",
+  "cleared": "Cleared"
 }

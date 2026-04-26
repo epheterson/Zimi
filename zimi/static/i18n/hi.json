@@ -789,5 +789,12 @@
   "saved": "सहेजा गया",
   "covered_by": "पहले से ही {name} में शामिल",
   "part_of": "{name} का हिस्सा",
-  "includes_n_variants": "{n} छोटे रूप शामिल हैं"
+  "includes_n_variants": "{n} छोटे रूप शामिल हैं",
+  "clear_search_cache": "खोज कैश साफ करें",
+  "clear_suggest_cache": "सुझाव कैश साफ करें",
+  "rebuild_title_indexes": "शीर्षक अनुक्रमणिका पुनर्निर्माण",
+  "rebuild_qid_indexes": "Q-ID अनुक्रमणिका पुनर्निर्माण",
+  "working": "कार्य चल रहा है…",
+  "rebuild_started": "पुनर्निर्माण शुरू — पृष्ठभूमि में चल रहा है",
+  "cleared": "साफ किया गया"
 }

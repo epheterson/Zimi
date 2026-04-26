@@ -789,5 +789,12 @@
   "saved": "Gespeichert",
   "covered_by": "Bereits enthalten in {name}",
   "part_of": "Teil von {name}",
-  "includes_n_variants": "Enthält {n} kleinere Varianten"
+  "includes_n_variants": "Enthält {n} kleinere Varianten",
+  "clear_search_cache": "Suchcache leeren",
+  "clear_suggest_cache": "Vorschlagscache leeren",
+  "rebuild_title_indexes": "Titel-Indizes neu erstellen",
+  "rebuild_qid_indexes": "Q-ID-Indizes neu erstellen",
+  "working": "Wird ausgeführt…",
+  "rebuild_started": "Neuaufbau gestartet — läuft im Hintergrund",
+  "cleared": "Gelöscht"
 }

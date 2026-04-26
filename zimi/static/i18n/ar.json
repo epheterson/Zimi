@@ -789,5 +789,12 @@
   "saved": "تم الحفظ",
   "covered_by": "مشمول بالفعل في {name}",
   "part_of": "جزء من {name}",
-  "includes_n_variants": "يتضمن {n} متغيرات أصغر"
+  "includes_n_variants": "يتضمن {n} متغيرات أصغر",
+  "clear_search_cache": "مسح ذاكرة البحث المؤقتة",
+  "clear_suggest_cache": "مسح ذاكرة الاقتراحات المؤقتة",
+  "rebuild_title_indexes": "إعادة بناء فهارس العناوين",
+  "rebuild_qid_indexes": "إعادة بناء فهارس Q-ID",
+  "working": "جارٍ التنفيذ…",
+  "rebuild_started": "بدأت إعادة البناء — في الخلفية",
+  "cleared": "تم المسح"
 }
