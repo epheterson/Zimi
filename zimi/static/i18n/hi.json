@@ -817,5 +817,10 @@
   "downloads_active": "सक्रिय",
   "downloads_completed": "पूर्ण",
   "all": "सभी",
-  "downloads_queued": "कतार में"
+  "downloads_queued": "कतार में",
+  "default_flavor": "डिफ़ॉल्ट डाउनलोड फ्लेवर",
+  "default_flavor_hint": "जब ZIM कई विकल्प प्रदान करता है तो पहले चुना जाता है।",
+  "flavor_full": "पूर्ण (छवियों के साथ)",
+  "flavor_nopic": "बिना छवियों",
+  "flavor_mini": "मिनी"
 }

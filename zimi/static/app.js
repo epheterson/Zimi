@@ -15,6 +15,7 @@ var SK = {
   BOOKMARKS: 'zimi_bookmarks',
   MANAGE_PW: 'zimi_manage_pw',
   PREF_LANGUAGES: 'zimi_pref_languages',
+  PREF_FLAVOR: 'zimi_pref_flavor',
 };
 
 // ── Storage Helpers ──
@@ -60,6 +61,20 @@ function _setPrefLanguages(langs) {
 function _savePrefLanguagesFromInput(raw) {
   const codes = (raw || '').toLowerCase().split(/[\s,]+/).filter(Boolean);
   _setPrefLanguages(codes);
+}
+
+// Preferred download flavor: "full" (with images), "nopic", or "mini".
+// Used to sort variant pickers so the user's default lands at the top.
+function _getPrefFlavor() {
+  return localStorage.getItem(SK.PREF_FLAVOR) || 'full';
+}
+function _setPrefFlavor(f) {
+  localStorage.setItem(SK.PREF_FLAVOR, f);
+}
+function _flavorRadio(value, label) {
+  const checked = _getPrefFlavor() === value ? ' checked' : '';
+  return '<label class="ms-flavor-pill"><input type="radio" name="zimi-flavor" value="' +
+    value + '"' + checked + ' onchange="_setPrefFlavor(\'' + value + '\')"> ' + label + '</label>';
 }
 
 // ── State ──
@@ -3705,7 +3720,28 @@ function variantLabel(url) {
   return '';
 }
 
-function _flavorOrder(url) { return url.includes('_mini_') ? 0 : url.includes('_nopic_') ? 1 : 2; }
+// Higher = preferred. Highest score belongs to the user's preferred flavor.
+// Used by sort callers — DESC sort puts the preferred flavor first.
+function _flavorOrder(url) {
+  const isMini = url.includes('_mini_');
+  const isNopic = url.includes('_nopic_');
+  const isFull = !isMini && !isNopic;
+  const pref = _getPrefFlavor();
+  if (pref === 'mini') {
+    if (isMini) return 3;
+    if (isNopic) return 2;
+    return 1;
+  }
+  if (pref === 'nopic') {
+    if (isNopic) return 3;
+    if (isFull) return 2;
+    return 1;
+  }
+  // default 'full'
+  if (isFull) return 3;
+  if (isNopic) return 2;
+  return 1;
+}
 
 function renderCatalogItem(group) {
   const item = group;
@@ -3744,7 +3780,7 @@ function renderCatalogItem(group) {
       const size = formatSize(v.size_bytes);
       return { label, size, url: v.download_url };
     });
-    withLabels.sort((a, b) => _flavorOrder(a.url) - _flavorOrder(b.url));
+    withLabels.sort((a, b) => _flavorOrder(b.url) - _flavorOrder(a.url));
     if (withLabels.length > 1) {
       // Integrated button: "Download Full (size) ▾" — click chevron to change flavor
       var vid = '_cfv_' + group.name.replace(/[^a-z0-9_]/gi, '_');
@@ -3771,7 +3807,7 @@ function renderCatalogItem(group) {
   if (!anyInstalled) {
     const dlVariants = variants.filter(v => v.download_url);
     if (dlVariants.length > 0) {
-      const sorted = dlVariants.slice().sort((a, b) => _flavorOrder(a.download_url) - _flavorOrder(b.download_url));
+      const sorted = dlVariants.slice().sort((a, b) => _flavorOrder(b.download_url) - _flavorOrder(a.download_url));
       const best = sorted[0];
       const checked = _selectedDownloads.has(best.download_url) ? ' checked' : '';
       selectHtml = '<input type="checkbox" class="ci-select"' + checked +
@@ -4455,7 +4491,14 @@ function _msPreferencesHtml() {
     '<div class="ms-hint">' + tH('catalog_languages_hint') + '</div>' +
     '<input type="text" class="ms-pref-langs" id="ms-pref-langs" value="' + escAttr(prefLangs) +
       '" placeholder="' + escAttr(t('catalog_languages_placeholder')) + '"' +
-      ' oninput="_savePrefLanguagesFromInput(this.value)">';
+      ' oninput="_savePrefLanguagesFromInput(this.value)">' +
+    '<div class="ms-section-label" style="margin-top:20px">' + tH('default_flavor') + '</div>' +
+    '<div class="ms-hint">' + tH('default_flavor_hint') + '</div>' +
+    '<div class="ms-flavor-row">' +
+      _flavorRadio('full', tH('flavor_full')) +
+      _flavorRadio('nopic', tH('flavor_nopic')) +
+      _flavorRadio('mini', tH('flavor_mini')) +
+    '</div>';
   // Security section
   h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_security') + '</div>' +
     '<div class="ms-actions">' +

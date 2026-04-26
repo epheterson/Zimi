@@ -817,5 +817,10 @@
   "downloads_active": "进行中",
   "downloads_completed": "已完成",
   "all": "全部",
-  "downloads_queued": "排队中"
+  "downloads_queued": "排队中",
+  "default_flavor": "默认下载版本",
+  "default_flavor_hint": "当 ZIM 提供多个版本时优先选择。",
+  "flavor_full": "完整（含图片）",
+  "flavor_nopic": "无图片",
+  "flavor_mini": "精简"
 }

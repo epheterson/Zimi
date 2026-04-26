@@ -817,5 +817,10 @@
   "downloads_active": "نشطة",
   "downloads_completed": "مكتملة",
   "all": "الكل",
-  "downloads_queued": "في الانتظار"
+  "downloads_queued": "في الانتظار",
+  "default_flavor": "النوع الافتراضي للتنزيل",
+  "default_flavor_hint": "يتم اختياره أولاً عندما يوفر ZIM عدة أنواع.",
+  "flavor_full": "كامل (مع الصور)",
+  "flavor_nopic": "بدون صور",
+  "flavor_mini": "مصغر"
 }

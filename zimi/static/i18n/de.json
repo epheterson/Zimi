@@ -817,5 +817,10 @@
   "downloads_active": "Aktiv",
   "downloads_completed": "Abgeschlossen",
   "all": "Alle",
-  "downloads_queued": "In Warteschlange"
+  "downloads_queued": "In Warteschlange",
+  "default_flavor": "Bevorzugte Variante",
+  "default_flavor_hint": "Wird zuerst gewählt, wenn ein ZIM mehrere Varianten anbietet.",
+  "flavor_full": "Voll (mit Bildern)",
+  "flavor_nopic": "Ohne Bilder",
+  "flavor_mini": "Mini"
 }

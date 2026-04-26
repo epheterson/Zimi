@@ -817,5 +817,10 @@
   "downloads_active": "Активные",
   "downloads_completed": "Завершено",
   "all": "Все",
-  "downloads_queued": "В очереди"
+  "downloads_queued": "В очереди",
+  "default_flavor": "Вариант по умолчанию",
+  "default_flavor_hint": "Выбирается первым, когда ZIM предлагает несколько вариантов.",
+  "flavor_full": "Полный (с изображениями)",
+  "flavor_nopic": "Без изображений",
+  "flavor_mini": "Мини"
 }

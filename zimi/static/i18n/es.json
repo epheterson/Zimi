@@ -817,5 +817,10 @@
   "downloads_active": "Activos",
   "downloads_completed": "Completados",
   "all": "Todos",
-  "downloads_queued": "En cola"
+  "downloads_queued": "En cola",
+  "default_flavor": "Variante por defecto",
+  "default_flavor_hint": "Elegida primero cuando un ZIM ofrece múltiples variantes.",
+  "flavor_full": "Completo (con imágenes)",
+  "flavor_nopic": "Sin imágenes",
+  "flavor_mini": "Mini"
 }
