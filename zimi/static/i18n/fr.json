@@ -806,5 +806,14 @@
   "catalog_languages_placeholder": "en, fr, multi",
   "select_all": "Tout sélectionner",
   "select_none": "Tout désélectionner",
-  "hot_zims_search_placeholder": "Rechercher des ZIMs…"
+  "hot_zims_search_placeholder": "Rechercher des ZIMs…",
+  "pause": "Pause",
+  "resume": "Reprendre",
+  "updates_show_detail": "Cliquez pour voir les détails",
+  "hot_zims_show_anyway": "Afficher quand même",
+  "coverage_advantage": "Contient strictement tout",
+  "coverage_advantage_explain": "Le bundle contient plus d'articles que la somme des sous-ensembles.",
+  "freshness_advantage": " sous-ensemble(s) plus récent(s)",
+  "downloads_active": "Actifs",
+  "downloads_completed": "Terminés"
 }

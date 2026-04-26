@@ -487,6 +487,24 @@ For things we won't build, document why so we don't re-litigate.
 
 ---
 
+## Polish & Gap Backlog (added 2026-04-26)
+
+Items missed in original Wave 1/2 triage of issue #15 that surfaced in design review:
+
+- **2f Pause button on downloads** — usable for prioritizing; backend (`cancelled` flag exists) + UI
+- **2g Split downloading vs completed within Downloads tab** — sub-headers or sub-pills
+- **3c UI for `freshness_advantage_subsets`** — backend ships the field; UI doesn't surface it
+- **3d UI for `coverage_advantage_bundle`** — same
+- **6c Image-variant preference** — `_maxi` vs `_nopic`; storage key + filter logic
+- **8b Updates detail UI** — `/manage/updates` returns the list; current UI only shows count + "Update All"
+- **Hot-zims threshold UX** — "hidden under 10 ZIMs" is wrong; should be "collapsed by default with a toggle" so a user with 10 large ZIMs can still pin them
+
+Cosmetic (deferred):
+- **2d** Multi-column download grid
+- **2d'** 3-column catalog detail block
+- **2e** Foldable downloads sections
+- **6b** "I have all files in my languages" indicator
+
 ## Out-of-Scope Reminders
 
 Things we explicitly will NOT do, lest scope creep:

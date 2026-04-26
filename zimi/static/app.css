@@ -543,6 +543,15 @@
   .dl-progress { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
   .dl-progress-bar { height: 100%; background: var(--amber); border-radius: 2px; transition: width 0.5s; }
   .dl-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  .dl-group-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--text2); margin: 12px 0 4px 0; padding: 0 4px;
+  }
+  .dl-group-label:first-of-type { margin-top: 0; }
+  .dl-pause-btn { background: none; border: 1px solid var(--border); color: var(--text2);
+    padding: 2px 10px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s; }
+  .dl-pause-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .dl-progress.dl-paused .dl-progress-bar { opacity: 0.5; }
   .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);
     font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
   .dl-cancel-btn:hover { border-color: var(--error); color: var(--error); }
@@ -598,6 +607,19 @@
     color: var(--text); font-size: 13px; box-sizing: border-box;
   }
   .ms-pref-langs:focus { outline: none; border-color: var(--amber); }
+  .ms-hot-show { margin-top: 6px; }
+  .updates-detail {
+    margin: 6px 0 12px 0; padding: 8px;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius);
+    max-height: 240px; overflow-y: auto;
+  }
+  .updates-detail-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 6px; font-size: 12px; gap: 8px;
+  }
+  .updates-detail-row + .updates-detail-row { border-top: 1px solid var(--border); }
+  .updates-detail-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .updates-detail-versions { color: var(--text2); font-family: monospace; font-size: 11px; flex-shrink: 0; }
 
   /* Multi-select checkbox + floating action bar */
   .ci-select {
@@ -631,6 +653,18 @@
   }
   .ci-hier-bundle {
     background: var(--amber-glow); color: var(--amber); border: 1px solid var(--amber-border);
+  }
+  .ci-hier-coverage {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; line-height: 1.4;
+    background: rgba(120, 200, 120, 0.08); color: #6ec56e;
+    border: 1px solid rgba(120, 200, 120, 0.25);
+  }
+  .ci-hier-freshness {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; line-height: 1.4;
+    background: rgba(255, 180, 80, 0.1); color: #ffb450;
+    border: 1px solid rgba(255, 180, 80, 0.3);
   }
   .manage-tab-content { display: none; }
   .manage-tab-content.active { display: block; }

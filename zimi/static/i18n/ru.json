@@ -806,5 +806,14 @@
   "catalog_languages_placeholder": "en, fr, multi",
   "select_all": "Выбрать все",
   "select_none": "Снять все",
-  "hot_zims_search_placeholder": "Поиск ZIM…"
+  "hot_zims_search_placeholder": "Поиск ZIM…",
+  "pause": "Пауза",
+  "resume": "Возобновить",
+  "updates_show_detail": "Нажмите для деталей",
+  "hot_zims_show_anyway": "Показать всё равно",
+  "coverage_advantage": "Содержит всё полностью",
+  "coverage_advantage_explain": "Бандл содержит больше статей, чем сумма подмножеств.",
+  "freshness_advantage": " более свежих подмножеств",
+  "downloads_active": "Активные",
+  "downloads_completed": "Завершено"
 }

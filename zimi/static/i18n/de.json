@@ -806,5 +806,14 @@
   "catalog_languages_placeholder": "en, fr, multi",
   "select_all": "Alle auswählen",
   "select_none": "Auswahl aufheben",
-  "hot_zims_search_placeholder": "ZIMs suchen…"
+  "hot_zims_search_placeholder": "ZIMs suchen…",
+  "pause": "Pause",
+  "resume": "Fortsetzen",
+  "updates_show_detail": "Klicken für Details",
+  "hot_zims_show_anyway": "Trotzdem anzeigen",
+  "coverage_advantage": "Enthält strikt alles",
+  "coverage_advantage_explain": "Bundle enthält mehr Artikel als die Summe seiner Teilmengen.",
+  "freshness_advantage": " aktuellere Teilmenge(n)",
+  "downloads_active": "Aktiv",
+  "downloads_completed": "Abgeschlossen"
 }

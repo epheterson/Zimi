@@ -575,6 +575,14 @@ def _download_from_url(dl, url, tmp_dest):
     try:
         with open(tmp_dest, mode) as f:
             while not dl.get("cancelled"):
+                # Pause = freeze the read loop without releasing the slot. The
+                # user can pause some active downloads to give bandwidth to
+                # another. The HTTP connection may idle-timeout while paused;
+                # if so, the next read fails and the mirror loop retries.
+                while dl.get("paused") and not dl.get("cancelled"):
+                    time.sleep(1)
+                if dl.get("cancelled"):
+                    break
                 chunk = resp.read(65536)
                 if not chunk:
                     break
@@ -920,6 +928,7 @@ def _get_downloads():
                     "elapsed": round(time.time() - dl["started"], 1),
                     "is_update": dl.get("is_update", False),
                     "queued": False,
+                    "paused": bool(dl.get("paused", False)),
                 }
             )
             # Clean up completed downloads older than 1 hour

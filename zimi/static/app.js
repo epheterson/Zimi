@@ -3150,10 +3150,22 @@ function _hierarchyHint(item) {
     return '<span class="ci-hier-subset" title="' + escAttr(h.is_subset_of.join(', ')) + '">' +
       tH('part_of', {name: esc(h.is_subset_of[0])}) + '</span>';
   }
-  // Bundle that supersedes others → tell users this is the comprehensive pick.
+  // Bundle that supersedes others.
   if (h.supersedes && h.supersedes.length) {
-    return '<span class="ci-hier-bundle">' +
+    let badges = '<span class="ci-hier-bundle">' +
       tH('includes_n_variants', {n: h.supersedes.length}) + '</span>';
+    // Coverage signal: bundle has more articles than sum of subsets.
+    if (h.coverage_advantage_bundle) {
+      badges += ' <span class="ci-hier-coverage" title="' + escAttr(t('coverage_advantage_explain')) + '">' +
+        tH('coverage_advantage') + '</span>';
+    }
+    // Freshness signal: subsets are newer than this bundle — the user might
+    // want a subset for the latest content even though the bundle is bigger.
+    if (h.freshness_advantage_subsets && h.freshness_advantage_subsets.length) {
+      badges += ' <span class="ci-hier-freshness" title="' + escAttr(h.freshness_advantage_subsets.join(', ')) + '">' +
+        tH('freshness_advantage', {n: h.freshness_advantage_subsets.length}) + '</span>';
+    }
+    return badges;
   }
   return '';
 }
@@ -4333,7 +4345,9 @@ function _msLibraryHtml() {
   if (!d) return '<div class="loading"><span class="spinner-inline"></span>Loading\u2026</div>';
   var h = '<div class="mc-row"><span class="mc-label">' + tH('zim_files') + '</span><span class="mc-value">' + esc(String(d.zim_count)) + '</span></div>' +
     '<div class="mc-row"><span class="mc-label">' + tH('total_size') + '</span><span class="mc-value">' + fmtSize(d.total_size_gb) + '</span></div>' +
-    '<div id="update-status" class="mc-row"><span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('loading') + '</span></div>' +
+    '<div id="update-status" class="mc-row" style="cursor:pointer" onclick="_toggleUpdatesDetail()" title="' + escAttr(t('updates_show_detail')) + '">' +
+      '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('loading') + '</span></div>' +
+    '<div id="updates-detail" class="updates-detail" style="display:none"></div>' +
     '<div class="mc-row" style="align-items:center">' +
       '<span class="mc-label">' + tH('auto_update') + '</span>' +
       '<span class="mc-value">' +
@@ -4517,9 +4531,11 @@ function _msServerHtml() {
 }
 
 
-// Below this many installed ZIMs, hot-cache is overkill — warming the whole
-// library is fast enough.
+// Below this many installed ZIMs, the warm-everything default is fine and
+// the hot-cache UI gets in the way. Render it collapsed under a "Show" toggle
+// so users with a small library can still pin if they want to.
 const _HOT_ZIMS_MIN = 10;
+let _hotZimsForceShow = false;
 
 async function _renderHotZimsSection() {
   let hotData, zims;
@@ -4537,16 +4553,24 @@ async function _renderHotZimsSection() {
   if (!container) return;
   while (container.firstChild) container.removeChild(container.firstChild);
 
-  // Hide the whole section (header + hint + body) when libraries are small —
-  // setting hot ZIMs makes no perf difference at that scale.
-  const sectionEl = container.parentElement;
   const hasHotConfigured = (hotData.hot_zims || []).length > 0;
   const zimCount = Array.isArray(zims) ? zims.length : 0;
-  if (sectionEl && zimCount < _HOT_ZIMS_MIN && !hasHotConfigured && !hotData.env_locked) {
-    sectionEl.style.display = 'none';
+  // Collapse the section when there are too few ZIMs to benefit from
+  // pinning. User can expand it via the toggle.
+  if (zimCount < _HOT_ZIMS_MIN && !hasHotConfigured && !hotData.env_locked && !_hotZimsForceShow) {
+    const toggle = document.createElement('button');
+    toggle.className = 'pill ms-hot-show';
+    toggle.textContent = t('hot_zims_show_anyway');
+    toggle.onclick = () => {
+      // Render expanded: same code as below but with the threshold bypassed.
+      // Easiest: temporarily mark "hot configured" so the second render
+      // takes the full path, then re-render.
+      _hotZimsForceShow = true;
+      _renderHotZimsSection();
+    };
+    container.appendChild(toggle);
     return;
   }
-  if (sectionEl) sectionEl.style.display = '';
 
   if (hotData.env_locked) {
     const note = document.createElement('div');
@@ -5346,11 +5370,24 @@ async function refreshDownloads() {
     _dlRecentStart = 0; // clear grace once server reports downloads
     const anyActive = dls.some(d => !d.done);
     const allDone = !anyActive;
+    // Split into two groups so users can see active vs finished at a glance.
+    const activeDls = dls.filter(d => !d.done);
+    const completedDls = dls.filter(d => d.done);
+    const orderedDls = activeDls.concat(completedDls);
     let h = '<div class="manage-card"><h2>' + tH('downloads') + '</h2>';
     if (allDone) {
       h += '<button class="dl-clear-btn" onclick="clearDownloads()">' + tH('clear') + '</button>';
     }
-    for (const dl of dls) {
+    // Group label (rendered before each group's first item)
+    let lastGroup = null;
+    for (const dl of orderedDls) {
+      const group = dl.done ? 'completed' : 'active';
+      if (group !== lastGroup) {
+        const labelKey = group === 'active' ? 'downloads_active' : 'downloads_completed';
+        const count = group === 'active' ? activeDls.length : completedDls.length;
+        h += '<div class="dl-group-label">' + tH(labelKey) + ' (' + count + ')</div>';
+        lastGroup = group;
+      }
       const title = dlTitle(dl);
       const fmtBytes = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
       const totalStr = dl.total_bytes ? fmtBytes(dl.total_bytes) : '?';
@@ -5370,9 +5407,13 @@ async function refreshDownloads() {
       h += '</div>';
 
       if (!dl.done && !dl.error) {
-        h += '<div class="dl-progress"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>';
+        h += '<div class="dl-progress' + (dl.paused ? ' dl-paused' : '') + '"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>';
         var mirrorInfo = dl.mirror_host ? '<span class="dl-mirror" title="' + esc(dl.mirror_host) + '">' + esc(dl.mirror_host) + (dl.mirror_count > 1 ? ' (' + tH('n_mirrors', {n: dl.mirror_count}) + ')' : '') + '</span>' : '';
-        h += '<div class="dl-actions">' + mirrorInfo + '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">' + tH('cancel') + '</button></div>';
+        var pauseBtn = dl.queued ? '' :
+          '<button class="dl-pause-btn" onclick="pauseDownload(\'' + escAttr(dl.id) + '\',' + (dl.paused ? 'false' : 'true') + ')">' +
+            (dl.paused ? tH('resume') : tH('pause')) + '</button>';
+        h += '<div class="dl-actions">' + mirrorInfo + pauseBtn +
+          '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">' + tH('cancel') + '</button></div>';
       }
       if (dl.error && dl.error !== 'Cancelled') {
         h += '<div class="dl-actions"><button class="dl-retry-btn" onclick="downloadZim(\'' + escAttr(dl.url) + '\')">' + tH('retry') + '</button></div>';
@@ -5498,6 +5539,65 @@ async function clearDownloads() {
     const dlEl = document.getElementById('manage-downloads');
     if (dlEl) dlEl.innerHTML = '';
   } catch(e) {}
+}
+
+async function _toggleUpdatesDetail() {
+  const el = document.getElementById('updates-detail');
+  if (!el) return;
+  if (el.style.display !== 'none') {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'block';
+  while (el.firstChild) el.removeChild(el.firstChild);
+  const loading = document.createElement('div');
+  loading.className = 'ms-hint';
+  loading.textContent = t('loading');
+  el.appendChild(loading);
+  try {
+    const res = await manageFetch('/manage/updates');
+    const data = await res.json();
+    while (el.firstChild) el.removeChild(el.firstChild);
+    const updates = data.updates || [];
+    if (!updates.length) {
+      const none = document.createElement('div');
+      none.className = 'ms-hint';
+      none.textContent = t('all_up_to_date');
+      el.appendChild(none);
+      return;
+    }
+    updates.forEach(u => {
+      const row = document.createElement('div');
+      row.className = 'updates-detail-row';
+      const name = document.createElement('span');
+      name.className = 'updates-detail-name';
+      name.textContent = u.title || u.name;
+      const versions = document.createElement('span');
+      versions.className = 'updates-detail-versions';
+      versions.textContent = u.installed_date + ' → ' + u.latest_date;
+      row.appendChild(name);
+      row.appendChild(versions);
+      el.appendChild(row);
+    });
+  } catch (e) {
+    while (el.firstChild) el.removeChild(el.firstChild);
+    const err = document.createElement('div');
+    err.className = 'ms-hint';
+    err.textContent = t('error');
+    el.appendChild(err);
+  }
+}
+
+async function pauseDownload(id, pause) {
+  const path = pause ? '/manage/pause' : '/manage/resume';
+  try {
+    await manageFetch(path, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id}),
+    });
+    refreshDownloads();
+  } catch (e) {}
 }
 
 async function cancelDownload(id) {

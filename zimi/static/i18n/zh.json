@@ -806,5 +806,14 @@
   "catalog_languages_placeholder": "en, fr, multi",
   "select_all": "全选",
   "select_none": "全不选",
-  "hot_zims_search_placeholder": "搜索 ZIM…"
+  "hot_zims_search_placeholder": "搜索 ZIM…",
+  "pause": "暂停",
+  "resume": "继续",
+  "updates_show_detail": "点击查看详情",
+  "hot_zims_show_anyway": "仍然显示",
+  "coverage_advantage": "严格包含所有部分",
+  "coverage_advantage_explain": "此包包含的文章数多于子集之和。",
+  "freshness_advantage": " 个更新的子集",
+  "downloads_active": "进行中",
+  "downloads_completed": "已完成"
 }

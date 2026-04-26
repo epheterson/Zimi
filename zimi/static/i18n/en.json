@@ -806,5 +806,14 @@
   "catalog_languages_placeholder": "en, fr, multi",
   "select_all": "Select all",
   "select_none": "Select none",
-  "hot_zims_search_placeholder": "Search ZIMs…"
+  "hot_zims_search_placeholder": "Search ZIMs…",
+  "pause": "Pause",
+  "resume": "Resume",
+  "updates_show_detail": "Click to view detail",
+  "hot_zims_show_anyway": "Show hot ZIMs anyway",
+  "coverage_advantage": "Strictly contains all parts",
+  "coverage_advantage_explain": "Bundle has more articles than the sum of its subsets — strictly comprehensive.",
+  "freshness_advantage": " fresher subset(s)",
+  "downloads_active": "Active",
+  "downloads_completed": "Completed"
 }

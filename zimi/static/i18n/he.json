@@ -806,5 +806,14 @@
   "catalog_languages_placeholder": "en, fr, multi",
   "select_all": "בחר הכל",
   "select_none": "בטל בחירה",
-  "hot_zims_search_placeholder": "חפש ZIMs…"
+  "hot_zims_search_placeholder": "חפש ZIMs…",
+  "pause": "השהה",
+  "resume": "המשך",
+  "updates_show_detail": "לחץ לפרטים",
+  "hot_zims_show_anyway": "הצג בכל זאת",
+  "coverage_advantage": "מכיל את הכל",
+  "coverage_advantage_explain": "החבילה מכילה יותר מאמרים מסכום קבוצות המשנה שלה.",
+  "freshness_advantage": " קבוצות משנה חדשות יותר",
+  "downloads_active": "פעילות",
+  "downloads_completed": "הושלמו"
 }

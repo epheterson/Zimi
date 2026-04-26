@@ -519,6 +519,19 @@ def handle_manage_post(handler, parsed, data):
         _srv._clean_stale_title_indexes()
         return handler._json(200, {"status": "refreshed", "zim_count": count})
 
+    elif parsed.path in ("/manage/pause", "/manage/resume"):
+        dl_id = data.get("id", "")
+        with _srv._download_lock:
+            dl = _srv._active_downloads.get(dl_id)
+            if not dl:
+                return handler._json(404, {"error": "Download not found"})
+            if dl.get("done"):
+                return handler._json(400, {"error": "Download already finished"})
+            dl["paused"] = parsed.path == "/manage/pause"
+        return handler._json(
+            200, {"status": "paused" if dl["paused"] else "resumed", "id": dl_id}
+        )
+
     elif parsed.path == "/manage/cache-action":
         # Lightweight cache maintenance for the Server-settings UI.
         # action ∈ {clear-search, clear-suggest, rebuild-title, rebuild-qid}

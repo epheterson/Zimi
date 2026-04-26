@@ -806,5 +806,14 @@
   "catalog_languages_placeholder": "en, fr, multi",
   "select_all": "सभी चुनें",
   "select_none": "कोई नहीं चुनें",
-  "hot_zims_search_placeholder": "ZIMs खोजें…"
+  "hot_zims_search_placeholder": "ZIMs खोजें…",
+  "pause": "रोकें",
+  "resume": "फिर से शुरू करें",
+  "updates_show_detail": "विवरण देखने के लिए क्लिक करें",
+  "hot_zims_show_anyway": "फिर भी दिखाएं",
+  "coverage_advantage": "सभी भागों को कड़ाई से समाहित",
+  "coverage_advantage_explain": "बंडल में उपसमूहों के योग से अधिक लेख हैं।",
+  "freshness_advantage": " ताज़ा उपसमूह",
+  "downloads_active": "सक्रिय",
+  "downloads_completed": "पूर्ण"
 }

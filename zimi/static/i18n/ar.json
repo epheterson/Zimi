@@ -806,5 +806,14 @@
   "catalog_languages_placeholder": "en, fr, multi",
   "select_all": "تحديد الكل",
   "select_none": "إلغاء التحديد",
-  "hot_zims_search_placeholder": "ابحث في ZIMs…"
+  "hot_zims_search_placeholder": "ابحث في ZIMs…",
+  "pause": "إيقاف مؤقت",
+  "resume": "استئناف",
+  "updates_show_detail": "انقر لعرض التفاصيل",
+  "hot_zims_show_anyway": "إظهار على أي حال",
+  "coverage_advantage": "يحتوي على كل الأجزاء",
+  "coverage_advantage_explain": "الحزمة بها مقالات أكثر من مجموع المجموعات الفرعية.",
+  "freshness_advantage": " مجموعة فرعية أحدث",
+  "downloads_active": "نشطة",
+  "downloads_completed": "مكتملة"
 }
