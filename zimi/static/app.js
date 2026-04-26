@@ -3500,7 +3500,7 @@ function renderBrowseGallery() {
     h += '</div>';
     // Footer: count centered, language dropdown moved below
     var activeCats = BROWSE_CATEGORIES.filter(function(c) { return (filteredCatCounts[c.key] || 0) > 0; }).length;
-    var totalSources = manageLangFilter
+    var totalSources = (manageLangFilter || _getPrefLanguages().length)
       ? groupVariants(items.filter(function(it) { return _zimMatchesLang(it, manageLangFilter); })).length
       : groupVariants(items).length;
     h += '<div class="browse-footer">' +
@@ -3548,8 +3548,9 @@ function drillCategory(catKey, namePrefix) {
     // Language pills scoped to this category (counts from unfiltered items)
     var langPills = _renderLangPills(_countLangsByCategory(filtered, catKey), 'filterCatalogLang');
 
-    // Apply language filter after computing pill counts (so pills show all available languages)
-    if (manageLangFilter) {
+    // Apply language filter after computing pill counts (so pills show all available languages).
+    // _zimMatchesLang internally falls back to user prefs when no pill is set.
+    if (manageLangFilter || _getPrefLanguages().length) {
       filtered = filtered.filter(function(item) { return _zimMatchesLang(item, manageLangFilter); });
     }
     const grouped = groupVariants(filtered);
