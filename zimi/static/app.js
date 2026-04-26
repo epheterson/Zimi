@@ -3250,8 +3250,11 @@ function _enrichCatalogHierarchy(items) {
 }
 
 function _enrichCatalogInstalled(items) {
-  // Enrich with installed ZIM metadata by matching filename prefix to catalog name
-  // OPDS catalog name: "wiktionary_en_all", installed filename: "wiktionary_en_all_maxi_2024-05.zim"
+  // Match installed ZIMs to catalog items. Two prefixes are tried because
+  // Kiwix's OPDS `name` field can be truncated/inconsistent (e.g. it returns
+  // "canadian_prep_winterprepping" for a file actually named
+  // "canadian_prepper_winterprepping_en_2026-02.zim"). Falling back to the
+  // prefix derived from the download URL recovers those cases.
   if (!zimsCache) return;
   for (const item of items) {
     item.installed = false;
@@ -3259,9 +3262,22 @@ function _enrichCatalogInstalled(items) {
     item._installedFile = null;
     item._installedName = null;
     item._installedSizeGb = null;
+
+    // Build candidate prefixes to match installed filenames against.
+    const prefixes = [item.name];
+    if (item.download_url) {
+      // Strip path, .meta4, .zim, and trailing _YYYY-MM date to get the
+      // project's stable prefix as Kiwix actually filenames it.
+      const fname = item.download_url.split('/').pop()
+        .replace(/\.meta4$/, '').replace(/\.zim$/, '');
+      const urlPrefix = fname.replace(/_\d{4}-\d{2}$/, '');
+      if (urlPrefix && urlPrefix !== item.name) prefixes.push(urlPrefix);
+    }
+
     for (const z of zimsCache) {
       const fb = (z.file || '').replace(/\.zim$/, '');
-      if (fb.startsWith(item.name + '_') || fb === item.name) {
+      const hit = prefixes.some(p => fb === p || fb.startsWith(p + '_'));
+      if (hit) {
         item.installed = true;
         const m = fb.match(/(\d{4}-\d{2})$/);
         item._installedDate = m ? m[1] : null;

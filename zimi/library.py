@@ -485,7 +485,11 @@ def _check_updates():
             break
         all_items.extend(more)
 
-    # Build index: for each catalog item, note its name and date
+    # Build index: for each catalog item, gather candidate prefixes to match
+    # installed filenames against. OPDS `name` field can be truncated/
+    # inconsistent (e.g. "canadian_prep_winterprepping" for a file actually
+    # named "canadian_prepper_winterprepping_en_2026-02.zim"). Falling back to
+    # the prefix derived from download_url recovers those cases.
     catalog_index = []
     for item in all_items:
         dl_url = item.get("download_url", "")
@@ -495,18 +499,28 @@ def _check_updates():
         cat_date = item.get("date", "")[:7] if item.get("date") else ""
         if not cat_date or not cat_name:
             continue
-        catalog_index.append((cat_name, cat_date, item))
+        # URL-derived prefix as a fallback match key.
+        url_fname = dl_url.rsplit("/", 1)[-1]
+        url_fname = re.sub(r"\.meta4$", "", url_fname)
+        url_fname = re.sub(r"\.zim$", "", url_fname)
+        url_prefix = re.sub(r"_\d{4}-\d{2}$", "", url_fname)
+        prefixes = [cat_name]
+        if url_prefix and url_prefix != cat_name:
+            prefixes.append(url_prefix)
+        catalog_index.append((prefixes, cat_date, item))
 
     # For each installed ZIM, find the best catalog match (longest prefix = exact flavor)
     updates = []
     for inst in installed_files:
         best = None
         best_len = 0
-        for cat_name, cat_date, item in catalog_index:
-            if inst["filebase"].startswith(cat_name + "_") and cat_date > inst["date"]:
-                if len(cat_name) > best_len:
-                    best = (cat_name, cat_date, item)
-                    best_len = len(cat_name)
+        for prefixes, cat_date, item in catalog_index:
+            if cat_date <= inst["date"]:
+                continue
+            for p in prefixes:
+                if inst["filebase"].startswith(p + "_") and len(p) > best_len:
+                    best = (p, cat_date, item)
+                    best_len = len(p)
         if best:
             _, cat_date, item = best
             updates.append(
