@@ -14,6 +14,7 @@ var SK = {
   BROWSE_HISTORY: 'zimi_browse_history',
   BOOKMARKS: 'zimi_bookmarks',
   MANAGE_PW: 'zimi_manage_pw',
+  PREF_LANGUAGES: 'zimi_pref_languages',
 };
 
 // ── Storage Helpers ──
@@ -47,6 +48,18 @@ function _clearManageToken() {
 }
 function _hasStoredManageToken() {
   return !!_readManageToken();
+}
+
+// User-preferred languages for the catalog. Empty = no filter (show all).
+function _getPrefLanguages() {
+  return _getStorageJSON(SK.PREF_LANGUAGES, []) || [];
+}
+function _setPrefLanguages(langs) {
+  _setStorageJSON(SK.PREF_LANGUAGES, langs);
+}
+function _savePrefLanguagesFromInput(raw) {
+  const codes = (raw || '').toLowerCase().split(/[\s,]+/).filter(Boolean);
+  _setPrefLanguages(codes);
 }
 
 // ── State ──
@@ -2821,9 +2834,18 @@ function _parseLangs(langStr) {
 
 // Check if ZIM matches a language filter (handles multilingual + mixed code lengths)
 function _zimMatchesLang(item, lang) {
-  if (!lang) return true;
-  var norm = _normLang(lang);
-  return _parseLangs(item.language).indexOf(norm) >= 0;
+  if (lang) {
+    var norm = _normLang(lang);
+    return _parseLangs(item.language).indexOf(norm) >= 0;
+  }
+  // No explicit language pill selected — fall back to user prefs if set.
+  var prefs = _getPrefLanguages();
+  if (!prefs.length) return true;
+  var langs = _parseLangs(item.language);
+  for (var i = 0; i < prefs.length; i++) {
+    if (langs.indexOf(_normLang(prefs[i])) >= 0) return true;
+  }
+  return false;
 }
 
 function _countLangsByCategory(items, catKey) {
@@ -3833,9 +3855,10 @@ function switchManageTab(tab) {
     q.placeholder = t('search_placeholder');
     renderActivityTab();
   } else {
-    // Default catalog language filter to user's UI language
-    var catalogLang = _currentLang;
-    if (catalogLang) manageLangFilter = catalogLang;
+    // Default catalog language pill to the UI language UNLESS the user has
+    // a multi-language preference — then leave the pill empty so the prefs
+    // filter is what's in effect.
+    if (!_getPrefLanguages().length && _currentLang) manageLangFilter = _currentLang;
     renderBrowseGallery();
   }
 }
@@ -4227,8 +4250,8 @@ async function renderManage() {
     '<div class="manage-tabs">' +
       '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">' + tH('installed_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">' + tH('catalog_tab') + '</button>' +
-      '<button class="manage-tab' + (manageTab === 'downloads' ? ' active' : '') + '" data-tab="downloads" onclick="switchManageTab(\'downloads\')">' + tH('downloads') + '<span id="dl-tab-badge" class="dl-tab-badge" style="display:none"></span></button>' +
       '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">' + tH('collections_tab') + '</button>' +
+      '<button class="manage-tab' + (manageTab === 'downloads' ? ' active' : '') + '" data-tab="downloads" onclick="switchManageTab(\'downloads\')">' + tH('downloads') + '<span id="dl-tab-badge" class="dl-tab-badge" style="display:none"></span></button>' +
       '<button class="manage-tab' + (manageTab === 'history' ? ' active' : '') + '" data-tab="history" onclick="switchManageTab(\'history\')">' + tH('activity_tab') + '</button>' +
     '</div>' +
     '<div id="manage-installed" class="manage-tab-content' + (manageTab === 'installed' ? ' active' : '') + '"></div>' +
@@ -4379,13 +4402,19 @@ function _msPreferencesHtml() {
   var showXzim = !_getStorageFlag(SK.HIDE_XZIM_LINKS);
   var showDiscover = !_getStorageFlag(SK.HIDE_DISCOVER);
   var showLangChooser = !_getStorageFlag(SK.HIDE_LANG_CHOOSER);
+  var prefLangs = _getPrefLanguages().join(', ');
   var h = '<div class="ms-section-label">' + tH('ms_display_section') + '</div>' +
     '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
     '<label class="ms-check"><input type="checkbox"' + (showLangChooser ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\')"> ' + tH('show_lang_chooser') + '</label>' +
     '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>';
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
+    '<div class="ms-section-label" style="margin-top:20px">' + tH('catalog_languages') + '</div>' +
+    '<div class="ms-hint">' + tH('catalog_languages_hint') + '</div>' +
+    '<input type="text" class="ms-pref-langs" id="ms-pref-langs" value="' + escAttr(prefLangs) +
+      '" placeholder="' + escAttr(t('catalog_languages_placeholder')) + '"' +
+      ' oninput="_savePrefLanguagesFromInput(this.value)">';
   // Security section
   h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_security') + '</div>' +
     '<div class="ms-actions">' +
@@ -4487,8 +4516,11 @@ function _msServerHtml() {
 }
 
 
+// Below this many installed ZIMs, hot-cache is overkill — warming the whole
+// library is fast enough.
+const _HOT_ZIMS_MIN = 10;
+
 async function _renderHotZimsSection() {
-  // Fetch the current hot list + the full ZIM list in parallel.
   let hotData, zims;
   try {
     [hotData, zims] = await Promise.all([
@@ -4504,6 +4536,17 @@ async function _renderHotZimsSection() {
   if (!container) return;
   while (container.firstChild) container.removeChild(container.firstChild);
 
+  // Hide the whole section (header + hint + body) when libraries are small —
+  // setting hot ZIMs makes no perf difference at that scale.
+  const sectionEl = container.parentElement;
+  const hasHotConfigured = (hotData.hot_zims || []).length > 0;
+  const zimCount = Array.isArray(zims) ? zims.length : 0;
+  if (sectionEl && zimCount < _HOT_ZIMS_MIN && !hasHotConfigured && !hotData.env_locked) {
+    sectionEl.style.display = 'none';
+    return;
+  }
+  if (sectionEl) sectionEl.style.display = '';
+
   if (hotData.env_locked) {
     const note = document.createElement('div');
     note.className = 'ms-hint';
@@ -4514,7 +4557,6 @@ async function _renderHotZimsSection() {
   }
 
   const hotSet = new Set(hotData.hot_zims || []);
-  // /list returns an array of {name, title, ...} objects — pull names + sort.
   const zimNames = (Array.isArray(zims) ? zims : []).map(z => z.name).filter(Boolean).sort();
   const zimTitles = Object.fromEntries(
     (Array.isArray(zims) ? zims : []).map(z => [z.name, z.title || z.name])
@@ -4527,11 +4569,33 @@ async function _renderHotZimsSection() {
     return;
   }
 
+  // Toolbar: search box + select-all / clear-all buttons.
+  const toolbar = document.createElement('div');
+  toolbar.className = 'hot-zims-toolbar';
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.className = 'hot-zims-search';
+  search.placeholder = t('hot_zims_search_placeholder');
+  search.addEventListener('input', () => _filterHotZimsList(search.value));
+  const allBtn = document.createElement('button');
+  allBtn.className = 'pill';
+  allBtn.textContent = t('select_all');
+  allBtn.onclick = () => _toggleAllHotZims(true);
+  const noneBtn = document.createElement('button');
+  noneBtn.className = 'pill';
+  noneBtn.textContent = t('select_none');
+  noneBtn.onclick = () => _toggleAllHotZims(false);
+  toolbar.appendChild(search);
+  toolbar.appendChild(allBtn);
+  toolbar.appendChild(noneBtn);
+  container.appendChild(toolbar);
+
   const list = document.createElement('div');
   list.className = 'hot-zims-list';
   zimNames.forEach(name => {
     const row = document.createElement('label');
     row.className = 'hot-zims-row';
+    row.dataset.search = (name + ' ' + (zimTitles[name] || '')).toLowerCase();
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.value = name;
@@ -4550,7 +4614,7 @@ async function _renderHotZimsSection() {
   container.appendChild(list);
 
   const actions = document.createElement('div');
-  actions.style.cssText = 'display:flex;gap:8px;align-items:center;margin-top:10px';
+  actions.className = 'hot-zims-actions';
   const saveBtn = document.createElement('button');
   saveBtn.className = 'manage-btn-action';
   saveBtn.textContent = t('save');
@@ -4562,6 +4626,22 @@ async function _renderHotZimsSection() {
   status.style.margin = '0';
   actions.appendChild(status);
   container.appendChild(actions);
+}
+
+function _filterHotZimsList(query) {
+  const q = query.trim().toLowerCase();
+  document.querySelectorAll('#ms-hot-zims .hot-zims-row').forEach(row => {
+    row.style.display = !q || row.dataset.search.includes(q) ? '' : 'none';
+  });
+}
+
+function _toggleAllHotZims(checked) {
+  // Apply to currently-visible rows only (so search-narrow then select-all works).
+  document.querySelectorAll('#ms-hot-zims .hot-zims-row').forEach(row => {
+    if (row.style.display === 'none') return;
+    const cb = row.querySelector('input[type="checkbox"]');
+    if (cb) cb.checked = checked;
+  });
 }
 
 async function _cacheAction(btn, action) {

@@ -800,5 +800,11 @@
   "select_for_batch": "בחר להורדה אצווה",
   "n_selected": "{n} נבחרו",
   "download_selected": "הורד את הנבחרים",
-  "downloads_started": "{n} הורדות בתור"
+  "downloads_started": "{n} הורדות בתור",
+  "catalog_languages": "שפות קטלוג",
+  "catalog_languages_hint": "קודים בני שתי אותיות מופרדים בפסיק (למשל en, fr, multi). ריק = הצג הכל.",
+  "catalog_languages_placeholder": "en, fr, multi",
+  "select_all": "בחר הכל",
+  "select_none": "בטל בחירה",
+  "hot_zims_search_placeholder": "חפש ZIMs…"
 }

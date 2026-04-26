@@ -800,5 +800,11 @@
   "select_for_batch": "Sélectionner pour téléchargement groupé",
   "n_selected": "{n} sélectionné(s)",
   "download_selected": "Télécharger la sélection",
-  "downloads_started": "{n} téléchargements en file"
+  "downloads_started": "{n} téléchargements en file",
+  "catalog_languages": "Langues du catalogue",
+  "catalog_languages_hint": "Codes à 2 lettres séparés par virgules (ex. en, fr, multi). Vide = tout afficher.",
+  "catalog_languages_placeholder": "en, fr, multi",
+  "select_all": "Tout sélectionner",
+  "select_none": "Tout désélectionner",
+  "hot_zims_search_placeholder": "Rechercher des ZIMs…"
 }

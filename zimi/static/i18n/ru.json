@@ -800,5 +800,11 @@
   "select_for_batch": "Выбрать для пакетной загрузки",
   "n_selected": "Выбрано: {n}",
   "download_selected": "Загрузить выбранное",
-  "downloads_started": "{n} загрузок в очереди"
+  "downloads_started": "{n} загрузок в очереди",
+  "catalog_languages": "Языки каталога",
+  "catalog_languages_hint": "2-буквенные коды через запятую (например, en, fr, multi). Пусто = показать все.",
+  "catalog_languages_placeholder": "en, fr, multi",
+  "select_all": "Выбрать все",
+  "select_none": "Снять все",
+  "hot_zims_search_placeholder": "Поиск ZIM…"
 }

@@ -800,5 +800,11 @@
   "select_for_batch": "Select for batch download",
   "n_selected": "{n} selected",
   "download_selected": "Download selected",
-  "downloads_started": "{n} downloads queued"
+  "downloads_started": "{n} downloads queued",
+  "catalog_languages": "Catalog languages",
+  "catalog_languages_hint": "Comma-separated 2-letter codes (e.g. en, fr, multi). Empty = show all.",
+  "catalog_languages_placeholder": "en, fr, multi",
+  "select_all": "Select all",
+  "select_none": "Select none",
+  "hot_zims_search_placeholder": "Search ZIMs…"
 }

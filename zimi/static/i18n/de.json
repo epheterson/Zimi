@@ -800,5 +800,11 @@
   "select_for_batch": "Für Stapeldownload auswählen",
   "n_selected": "{n} ausgewählt",
   "download_selected": "Auswahl herunterladen",
-  "downloads_started": "{n} Downloads in der Warteschlange"
+  "downloads_started": "{n} Downloads in der Warteschlange",
+  "catalog_languages": "Katalogsprachen",
+  "catalog_languages_hint": "Komma-getrennte 2-Buchstaben-Codes (z.B. en, fr, multi). Leer = alle anzeigen.",
+  "catalog_languages_placeholder": "en, fr, multi",
+  "select_all": "Alle auswählen",
+  "select_none": "Auswahl aufheben",
+  "hot_zims_search_placeholder": "ZIMs suchen…"
 }

@@ -800,5 +800,11 @@
   "select_for_batch": "बैच डाउनलोड के लिए चुनें",
   "n_selected": "{n} चयनित",
   "download_selected": "चुने गए डाउनलोड करें",
-  "downloads_started": "{n} डाउनलोड कतारबद्ध"
+  "downloads_started": "{n} डाउनलोड कतारबद्ध",
+  "catalog_languages": "कैटलॉग भाषाएं",
+  "catalog_languages_hint": "कॉमा-पृथक 2-अक्षर कोड (उदा. en, fr, multi)। खाली = सभी दिखाएं।",
+  "catalog_languages_placeholder": "en, fr, multi",
+  "select_all": "सभी चुनें",
+  "select_none": "कोई नहीं चुनें",
+  "hot_zims_search_placeholder": "ZIMs खोजें…"
 }

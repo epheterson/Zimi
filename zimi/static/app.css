@@ -584,6 +584,20 @@
   .hot-zims-row input[type="checkbox"] { accent-color: var(--amber); flex-shrink: 0; }
   .hot-zims-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hot-zims-id { color: var(--text2); font-size: 11px; font-family: monospace; flex-shrink: 0; }
+  .hot-zims-toolbar { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; }
+  .hot-zims-search {
+    flex: 1; min-width: 0; padding: 6px 10px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); font-size: 13px;
+  }
+  .hot-zims-search:focus { outline: none; border-color: var(--amber); }
+  .hot-zims-actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .ms-pref-langs {
+    width: 100%; padding: 8px 10px; margin-top: 4px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); font-size: 13px; box-sizing: border-box;
+  }
+  .ms-pref-langs:focus { outline: none; border-color: var(--amber); }
 
   /* Multi-select checkbox + floating action bar */
   .ci-select {

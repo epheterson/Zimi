@@ -800,5 +800,11 @@
   "select_for_batch": "选择批量下载",
   "n_selected": "已选 {n}",
   "download_selected": "下载所选",
-  "downloads_started": "{n} 个下载已排队"
+  "downloads_started": "{n} 个下载已排队",
+  "catalog_languages": "目录语言",
+  "catalog_languages_hint": "逗号分隔的 2 字母代码（如 en, fr, multi）。留空 = 显示全部。",
+  "catalog_languages_placeholder": "en, fr, multi",
+  "select_all": "全选",
+  "select_none": "全不选",
+  "hot_zims_search_placeholder": "搜索 ZIM…"
 }
