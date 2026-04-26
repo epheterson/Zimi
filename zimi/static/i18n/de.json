@@ -781,5 +781,10 @@
   "confirm_regenerate_token": "Token erneuern? Der alte Token wird ungültig.",
   "confirm_revoke_token": "API-Token widerrufen?",
   "use_zimi_tabs": "In-App-Tabs statt Browser-Tabs verwenden",
-  "no_active_downloads": "Keine aktiven Downloads"
+  "no_active_downloads": "Keine aktiven Downloads",
+  "hot_zims": "Bevorzugte ZIMs",
+  "hot_zims_hint": "Diese ZIMs beim Start vorladen für sofortige Suche. Andere ZIMs bleiben lazy.",
+  "hot_zims_env_locked": "Über ZIMI_HOT_ZIMS-Umgebungsvariable gesteuert.",
+  "saving": "Speichern…",
+  "saved": "Gespeichert"
 }

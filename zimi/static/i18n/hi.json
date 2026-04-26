@@ -781,5 +781,10 @@
   "confirm_regenerate_token": "टोकन नवीनीकरण करें? पुराना काम करना बंद कर देगा।",
   "confirm_revoke_token": "API टोकन रद्द करें?",
   "use_zimi_tabs": "ब्राउज़र टैब के बजाय इन-ऐप टैब का उपयोग करें",
-  "no_active_downloads": "कोई सक्रिय डाउनलोड नहीं"
+  "no_active_downloads": "कोई सक्रिय डाउनलोड नहीं",
+  "hot_zims": "हॉट ZIMs",
+  "hot_zims_hint": "तत्काल खोज के लिए स्टार्टअप पर इन ZIMs को प्री-वार्म करें। अन्य ZIMs आलसी रहेंगे।",
+  "hot_zims_env_locked": "ZIMI_HOT_ZIMS पर्यावरण चर द्वारा नियंत्रित।",
+  "saving": "सहेज रहा है…",
+  "saved": "सहेजा गया"
 }

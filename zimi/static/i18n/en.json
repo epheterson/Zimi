@@ -781,5 +781,10 @@
   "confirm_regenerate_token": "Regenerate token? The old token will stop working.",
   "confirm_revoke_token": "Revoke API token?",
   "use_zimi_tabs": "Use Zimi tabs",
-  "no_active_downloads": "No active downloads"
+  "no_active_downloads": "No active downloads",
+  "hot_zims": "Hot ZIMs",
+  "hot_zims_hint": "Pre-warm these ZIMs at startup for instant search. Other ZIMs stay lazy. Useful for libraries with many ZIMs.",
+  "hot_zims_env_locked": "Controlled by ZIMI_HOT_ZIMS environment variable.",
+  "saving": "Saving…",
+  "saved": "Saved"
 }

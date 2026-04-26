@@ -781,5 +781,10 @@
   "confirm_regenerate_token": "לחדש אסימון? הישן יפסיק לעבוד.",
   "confirm_revoke_token": "לבטל אסימון API?",
   "use_zimi_tabs": "שימוש בלשוניות מובנות במקום לשוניות דפדפן",
-  "no_active_downloads": "אין הורדות פעילות"
+  "no_active_downloads": "אין הורדות פעילות",
+  "hot_zims": "ZIMs חמים",
+  "hot_zims_hint": "טען מראש את ה-ZIMs הללו באתחול לחיפוש מיידי. שאר ה-ZIMs נשארים בטעינה עצלה.",
+  "hot_zims_env_locked": "נשלט על ידי משתנה הסביבה ZIMI_HOT_ZIMS.",
+  "saving": "שומר…",
+  "saved": "נשמר"
 }

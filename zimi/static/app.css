@@ -570,6 +570,18 @@
     padding: 32px 16px; color: var(--text2); font-size: 13px;
     text-align: center; border: 1px dashed var(--border); border-radius: var(--radius);
   }
+  .hot-zims-list {
+    max-height: 280px; overflow-y: auto;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 6px; background: var(--bg);
+  }
+  .hot-zims-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 8px; cursor: pointer; border-radius: 4px;
+    font-size: 13px; color: var(--text);
+  }
+  .hot-zims-row:hover { background: var(--surface2); }
+  .hot-zims-row input[type="checkbox"] { accent-color: var(--amber); flex-shrink: 0; }
   .manage-tab-content { display: none; }
   .manage-tab-content.active { display: block; }
   .manage-installed-group { margin-bottom: 24px; }

@@ -781,5 +781,10 @@
   "confirm_regenerate_token": "Renovar token? O antigo deixará de funcionar.",
   "confirm_revoke_token": "Revogar token API?",
   "use_zimi_tabs": "Usar abas integradas em vez de abas do navegador",
-  "no_active_downloads": "Nenhum download ativo"
+  "no_active_downloads": "Nenhum download ativo",
+  "hot_zims": "ZIMs prioritários",
+  "hot_zims_hint": "Pré-carregar esses ZIMs no início para busca instantânea. Outros ZIMs ficam em carga preguiçosa.",
+  "hot_zims_env_locked": "Controlado pela variável de ambiente ZIMI_HOT_ZIMS.",
+  "saving": "Salvando…",
+  "saved": "Salvo"
 }

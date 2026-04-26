@@ -781,5 +781,10 @@
   "confirm_regenerate_token": "Renouveler le jeton ? L'ancien cessera de fonctionner.",
   "confirm_revoke_token": "Révoquer le jeton API ?",
   "use_zimi_tabs": "Utiliser les onglets intégrés au lieu des onglets du navigateur",
-  "no_active_downloads": "Aucun téléchargement en cours"
+  "no_active_downloads": "Aucun téléchargement en cours",
+  "hot_zims": "ZIMs prioritaires",
+  "hot_zims_hint": "Pré-charger ces ZIMs au démarrage pour une recherche instantanée. Les autres ZIMs restent en chargement différé.",
+  "hot_zims_env_locked": "Contrôlé par la variable d'environnement ZIMI_HOT_ZIMS.",
+  "saving": "Enregistrement…",
+  "saved": "Enregistré"
 }

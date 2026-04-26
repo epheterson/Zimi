@@ -781,5 +781,10 @@
   "confirm_regenerate_token": "更新令牌？旧令牌将失效。",
   "confirm_revoke_token": "撤销API令牌？",
   "use_zimi_tabs": "使用内置标签页代替浏览器标签页",
-  "no_active_downloads": "无活动下载"
+  "no_active_downloads": "无活动下载",
+  "hot_zims": "热点 ZIM",
+  "hot_zims_hint": "启动时预热这些 ZIM 以便立即搜索。其他 ZIM 保持懒加载。",
+  "hot_zims_env_locked": "由 ZIMI_HOT_ZIMS 环境变量控制。",
+  "saving": "保存中…",
+  "saved": "已保存"
 }

@@ -4240,6 +4240,13 @@ function _msServerHtml() {
     sh += '</span></div>';
     el.innerHTML = sh;
   });
+  // Hot ZIMs section — pre-warmed at startup; cold ZIMs stay lazy.
+  h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
+    '<div class="ms-section-label">' + tH('hot_zims') + '</div>' +
+    '<div class="ms-hint">' + tH('hot_zims_hint') + '</div>' +
+    '<div id="ms-hot-zims" style="margin-top:10px">' + tH('loading') + '</div>' +
+    '</div>';
+  _renderHotZimsSection();
   // Cache info section
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
     '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
@@ -4273,6 +4280,96 @@ function _msServerHtml() {
     if (el2) el2.value = '(unavailable)';
   });
   return h;
+}
+
+
+async function _renderHotZimsSection() {
+  // Fetch the current hot list + the full ZIM list in parallel.
+  let hotData, zims;
+  try {
+    [hotData, zims] = await Promise.all([
+      manageFetch('/manage/hot').then(r => r.json()),
+      fetch('/list').then(r => r.json()),
+    ]);
+  } catch (e) {
+    const errEl = document.getElementById('ms-hot-zims');
+    if (errEl) errEl.textContent = t('error');
+    return;
+  }
+  const container = document.getElementById('ms-hot-zims');
+  if (!container) return;
+  while (container.firstChild) container.removeChild(container.firstChild);
+
+  if (hotData.env_locked) {
+    const note = document.createElement('div');
+    note.className = 'ms-hint';
+    note.style.color = 'var(--amber)';
+    note.textContent = t('hot_zims_env_locked');
+    container.appendChild(note);
+    return;
+  }
+
+  const hotSet = new Set(hotData.hot_zims || []);
+  const zimNames = Object.keys(zims).sort();
+  if (zimNames.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'ms-hint';
+    empty.textContent = t('no_zims_installed');
+    container.appendChild(empty);
+    return;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'hot-zims-list';
+  zimNames.forEach(name => {
+    const row = document.createElement('label');
+    row.className = 'hot-zims-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = name;
+    cb.checked = hotSet.has(name);
+    const label = document.createElement('span');
+    label.textContent = name;
+    row.appendChild(cb);
+    row.appendChild(label);
+    list.appendChild(row);
+  });
+  container.appendChild(list);
+
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;gap:8px;align-items:center;margin-top:10px';
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'manage-btn-action';
+  saveBtn.textContent = t('save');
+  saveBtn.onclick = () => _saveHotZims(saveBtn);
+  actions.appendChild(saveBtn);
+  const status = document.createElement('span');
+  status.id = 'ms-hot-status';
+  status.className = 'ms-hint';
+  status.style.margin = '0';
+  actions.appendChild(status);
+  container.appendChild(actions);
+}
+
+async function _saveHotZims(btn) {
+  const checks = document.querySelectorAll('#ms-hot-zims input[type="checkbox"]:checked');
+  const names = Array.from(checks).map(c => c.value);
+  const status = document.getElementById('ms-hot-status');
+  btn.disabled = true;
+  if (status) status.textContent = t('saving');
+  try {
+    const res = await manageFetch('/manage/hot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hot_zims: names }),
+    });
+    if (!res.ok) throw new Error('save failed');
+    if (status) status.textContent = t('saved') + ' — ' + t('restart_hint');
+  } catch (e) {
+    if (status) status.textContent = t('error');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 

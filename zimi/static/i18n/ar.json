@@ -781,5 +781,10 @@
   "confirm_regenerate_token": "تجديد الرمز؟ سيتوقف الرمز القديم عن العمل.",
   "confirm_revoke_token": "إلغاء رمز API؟",
   "use_zimi_tabs": "استخدام علامات تبويب مدمجة بدلاً من علامات تبويب المتصفح",
-  "no_active_downloads": "لا توجد تنزيلات نشطة"
+  "no_active_downloads": "لا توجد تنزيلات نشطة",
+  "hot_zims": "ZIM الساخنة",
+  "hot_zims_hint": "تحميل هذه الـ ZIM مسبقاً عند البدء للبحث الفوري. تبقى الباقي بالتحميل الكسول.",
+  "hot_zims_env_locked": "يتم التحكم بها بواسطة متغير البيئة ZIMI_HOT_ZIMS.",
+  "saving": "جارٍ الحفظ…",
+  "saved": "تم الحفظ"
 }
