@@ -3105,9 +3105,114 @@ async function loadFullCatalog() {
   }
 
   _enrichCatalogInstalled(items);
+  _enrichCatalogHierarchy(items);
+  _catalogInstalledNames = new Set(items.filter(it => it.installed).map(it => it.name));
 
   _catalogCache = items;
   return _catalogCache;
+}
+
+let _catalogInstalledNames = new Set();
+
+function _hierarchyHint(item) {
+  const h = item && item.hierarchy;
+  if (!h) return '';
+  // Subset whose bundle the user already has → reassure them.
+  const installedBundle = (h.is_subset_of || []).find(n => _catalogInstalledNames.has(n));
+  if (installedBundle) {
+    return '<span class="ci-hier-installed" title="' + escAttr(installedBundle) + '">' +
+      tH('covered_by', {name: esc(installedBundle)}) + '</span>';
+  }
+  // Subset whose bundle is uninstalled → flag the larger option.
+  if (h.is_subset_of && h.is_subset_of.length) {
+    return '<span class="ci-hier-subset" title="' + escAttr(h.is_subset_of.join(', ')) + '">' +
+      tH('part_of', {name: esc(h.is_subset_of[0])}) + '</span>';
+  }
+  // Bundle that supersedes others → tell users this is the comprehensive pick.
+  if (h.supersedes && h.supersedes.length) {
+    return '<span class="ci-hier-bundle">' +
+      tH('includes_n_variants', {n: h.supersedes.length}) + '</span>';
+  }
+  return '';
+}
+
+// Mirror of zimi/catalog_hierarchy.py:bundle_relationships in JS.
+// Runs over the merged full catalog so relationships can cross pagination.
+const _BUNDLE_RE = /(?:^|_)all(?:_|$)/;
+const _DATE_RE = /(\d{4})-(\d{2})/;
+
+function _hierarchyName(name) {
+  return _BUNDLE_RE.test((name || '').toLowerCase());
+}
+function _hierarchyDate(name) {
+  const m = (name || '').match(_DATE_RE);
+  return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : null;
+}
+function _hierarchyArticleCount(it) {
+  return parseInt(it.article_count || 0, 10) || 0;
+}
+
+function _enrichCatalogHierarchy(items) {
+  // Dedupe by name, keep highest article_count.
+  const byName = new Map();
+  for (const it of items) {
+    if (!it.name) continue;
+    const prev = byName.get(it.name);
+    if (!prev || _hierarchyArticleCount(it) > _hierarchyArticleCount(prev)) {
+      byName.set(it.name, it);
+    }
+  }
+
+  // Group by category + language.
+  const families = new Map();
+  for (const it of byName.values()) {
+    const cat = (it.category || '').toLowerCase();
+    const lang = (it.language || '').toLowerCase();
+    if (!cat || !lang) continue;
+    const key = cat + '_' + lang;
+    if (!families.has(key)) families.set(key, []);
+    families.get(key).push(it);
+  }
+
+  // Default empty hierarchy for every item, not just deduped/grouped ones.
+  for (const it of items) {
+    it.hierarchy = {is_subset_of: [], supersedes: [], freshness_advantage_subsets: [], coverage_advantage_bundle: false};
+  }
+
+  for (const members of families.values()) {
+    const bundles = members.filter(m => _hierarchyName(m.name));
+    const subsets = members.filter(m => !_hierarchyName(m.name));
+    if (!bundles.length || !subsets.length) continue;
+
+    const canonical = bundles.reduce((a, b) => _hierarchyArticleCount(b) > _hierarchyArticleCount(a) ? b : a);
+    const canonName = canonical.name;
+    const canonCount = _hierarchyArticleCount(canonical);
+    const canonDate = _hierarchyDate(canonName);
+
+    const validSubsets = subsets.filter(s => !canonCount || _hierarchyArticleCount(s) <= canonCount);
+    const subsetNames = validSubsets.map(s => s.name);
+    const fresher = validSubsets
+      .filter(s => {
+        const d = _hierarchyDate(s.name);
+        return canonDate && d && (d[0] > canonDate[0] || (d[0] === canonDate[0] && d[1] > canonDate[1]));
+      })
+      .map(s => s.name);
+    const sumSubsetArticles = validSubsets.reduce((sum, s) => sum + _hierarchyArticleCount(s), 0);
+    const coverageAdvantage = canonCount > 0 && canonCount > sumSubsetArticles;
+
+    // Apply to ALL items with these names (including dupes that didn't make it
+    // into byName — they share the relationship metadata).
+    for (const it of items) {
+      if (subsetNames.includes(it.name)) {
+        it.hierarchy.is_subset_of = [canonName];
+      }
+      if (it.name === canonName) {
+        it.hierarchy.supersedes = subsetNames.slice();
+        it.hierarchy.freshness_advantage_subsets = fresher.slice();
+        it.hierarchy.coverage_advantage_bundle = coverageAdvantage;
+      }
+    }
+  }
 }
 
 function _enrichCatalogInstalled(items) {
@@ -3599,12 +3704,14 @@ function renderCatalogItem(group) {
   const catAttr = item.category ? ' data-category="' + escAttr(item.category) + '"' : '';
   const instName = anyInstalled ? (variants.find(v => v.installed && v._installedName) || {})._installedName || '' : '';
   const openAttr = instName ? ' style="cursor:pointer" onclick="if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(instName) + '\',true)}"' : '';
+  const hierarchyHtml = _hierarchyHint(item);
   return '<div class="catalog-item' + (anyInstalled ? ' ci-installed-item' : '') + '"' + catAttr + openAttr + '>' +
     '<div class="ci-icon">' + iconHtml + '</div>' +
     '<div class="ci-info">' +
       '<div class="ci-title">' + esc(item.title || item.name) + _catLangTag(item.language, item.name) + '</div>' +
       (item.summary ? '<div class="ci-summary">' + esc(item.summary) + '</div>' : '') +
       '<div class="ci-meta">' + metaTags.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
+      (hierarchyHtml ? '<div class="ci-hier">' + hierarchyHtml + '</div>' : '') +
     '</div>' +
     '<div class="ci-actions">' + actionsHtml + '</div>' +
   '</div>';

@@ -786,5 +786,8 @@
   "hot_zims_hint": "Pré-carregar esses ZIMs no início para busca instantânea. Outros ZIMs ficam em carga preguiçosa.",
   "hot_zims_env_locked": "Controlado pela variável de ambiente ZIMI_HOT_ZIMS.",
   "saving": "Salvando…",
-  "saved": "Salvo"
+  "saved": "Salvo",
+  "covered_by": "Já incluído em {name}",
+  "part_of": "Parte de {name}",
+  "includes_n_variants": "Inclui {n} variantes menores"
 }

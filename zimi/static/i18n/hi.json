@@ -786,5 +786,8 @@
   "hot_zims_hint": "तत्काल खोज के लिए स्टार्टअप पर इन ZIMs को प्री-वार्म करें। अन्य ZIMs आलसी रहेंगे।",
   "hot_zims_env_locked": "ZIMI_HOT_ZIMS पर्यावरण चर द्वारा नियंत्रित।",
   "saving": "सहेज रहा है…",
-  "saved": "सहेजा गया"
+  "saved": "सहेजा गया",
+  "covered_by": "पहले से ही {name} में शामिल",
+  "part_of": "{name} का हिस्सा",
+  "includes_n_variants": "{n} छोटे रूप शामिल हैं"
 }

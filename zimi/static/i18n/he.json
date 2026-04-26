@@ -786,5 +786,8 @@
   "hot_zims_hint": "טען מראש את ה-ZIMs הללו באתחול לחיפוש מיידי. שאר ה-ZIMs נשארים בטעינה עצלה.",
   "hot_zims_env_locked": "נשלט על ידי משתנה הסביבה ZIMI_HOT_ZIMS.",
   "saving": "שומר…",
-  "saved": "נשמר"
+  "saved": "נשמר",
+  "covered_by": "כבר כלול ב-{name}",
+  "part_of": "חלק מ-{name}",
+  "includes_n_variants": "כולל {n} גרסאות קטנות יותר"
 }

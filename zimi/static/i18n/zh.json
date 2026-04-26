@@ -786,5 +786,8 @@
   "hot_zims_hint": "启动时预热这些 ZIM 以便立即搜索。其他 ZIM 保持懒加载。",
   "hot_zims_env_locked": "由 ZIMI_HOT_ZIMS 环境变量控制。",
   "saving": "保存中…",
-  "saved": "已保存"
+  "saved": "已保存",
+  "covered_by": "已包含在 {name} 中",
+  "part_of": "{name} 的一部分",
+  "includes_n_variants": "包含 {n} 个较小变体"
 }

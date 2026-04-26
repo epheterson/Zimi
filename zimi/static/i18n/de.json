@@ -786,5 +786,8 @@
   "hot_zims_hint": "Diese ZIMs beim Start vorladen für sofortige Suche. Andere ZIMs bleiben lazy.",
   "hot_zims_env_locked": "Über ZIMI_HOT_ZIMS-Umgebungsvariable gesteuert.",
   "saving": "Speichern…",
-  "saved": "Gespeichert"
+  "saved": "Gespeichert",
+  "covered_by": "Bereits enthalten in {name}",
+  "part_of": "Teil von {name}",
+  "includes_n_variants": "Enthält {n} kleinere Varianten"
 }
