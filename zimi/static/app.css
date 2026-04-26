@@ -449,12 +449,22 @@
   .ms-pane .ms-hint { font-size: 12px; color: var(--text2); opacity: 0.7; margin-top: 8px; }
   .ms-section-label, .ci-section-label, .hp-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); }
   .ms-section-label { margin-bottom: 8px; }
-  /* Auto-fit grid for catalog + downloads. At narrow widths it falls back
-     to a single column; on wide screens fits 2-3 cards per row. 320px min
-     gives 2 columns in the manage pane (~790px wide) and 3 on wide screens. */
+  /* Auto-fit grid for catalog + downloads. 320px min → 2 columns in the
+     manage pane (~790px wide), 3 on wide screens, 1 on mobile. Cards switch
+     to vertical stack inside grid cells so they don't get cramped. */
   .catalog-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 6px; align-items: stretch;
+    gap: 8px; align-items: stretch;
+  }
+  .catalog-grid .catalog-item {
+    flex-direction: column; align-items: stretch; gap: 8px;
+    max-height: none;
+  }
+  .catalog-grid .catalog-item .ci-actions {
+    margin-left: 0; justify-content: flex-end;
+  }
+  .catalog-grid .catalog-item .ci-icon {
+    align-self: flex-start;
   }
   .catalog-item {
     display: flex; gap: 14px; align-items: center; padding: 14px 16px;
