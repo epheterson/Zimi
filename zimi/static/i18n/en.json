@@ -796,5 +796,9 @@
   "rebuild_qid_indexes": "Rebuild Q-ID indexes",
   "working": "Working…",
   "rebuild_started": "Rebuild started — runs in background",
-  "cleared": "Cleared"
+  "cleared": "Cleared",
+  "select_for_batch": "Select for batch download",
+  "n_selected": "{n} selected",
+  "download_selected": "Download selected",
+  "downloads_started": "{n} downloads queued"
 }

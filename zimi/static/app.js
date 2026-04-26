@@ -3705,7 +3705,23 @@ function renderCatalogItem(group) {
   const instName = anyInstalled ? (variants.find(v => v.installed && v._installedName) || {})._installedName || '' : '';
   const openAttr = instName ? ' style="cursor:pointer" onclick="if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(instName) + '\',true)}"' : '';
   const hierarchyHtml = _hierarchyHint(item);
+  // Multi-select checkbox — only when there's something to download.
+  let selectHtml = '';
+  if (!anyInstalled) {
+    const dlVariants = variants.filter(v => v.download_url);
+    if (dlVariants.length > 0) {
+      const sorted = dlVariants.slice().sort((a, b) => _flavorOrder(a.download_url) - _flavorOrder(b.download_url));
+      const best = sorted[0];
+      const checked = _selectedDownloads.has(best.download_url) ? ' checked' : '';
+      selectHtml = '<input type="checkbox" class="ci-select"' + checked +
+        ' data-url="' + escAttr(best.download_url) + '"' +
+        ' data-size="' + (best.size_bytes || 0) + '"' +
+        ' onclick="event.stopPropagation();_toggleDownloadSelection(this)"' +
+        ' title="' + escAttr(t('select_for_batch')) + '">';
+    }
+  }
   return '<div class="catalog-item' + (anyInstalled ? ' ci-installed-item' : '') + '"' + catAttr + openAttr + '>' +
+    selectHtml +
     '<div class="ci-icon">' + iconHtml + '</div>' +
     '<div class="ci-info">' +
       '<div class="ci-title">' + esc(item.title || item.name) + _catLangTag(item.language, item.name) + '</div>' +
@@ -3715,6 +3731,80 @@ function renderCatalogItem(group) {
     '</div>' +
     '<div class="ci-actions">' + actionsHtml + '</div>' +
   '</div>';
+}
+
+// Selection state for the multi-select Download bar.
+const _selectedDownloads = new Map(); // url → size_bytes
+
+function _toggleDownloadSelection(cb) {
+  const url = cb.dataset.url;
+  const size = parseInt(cb.dataset.size, 10) || 0;
+  if (cb.checked) {
+    _selectedDownloads.set(url, size);
+  } else {
+    _selectedDownloads.delete(url);
+  }
+  _renderSelectionBar();
+}
+
+function _renderSelectionBar() {
+  let bar = document.getElementById('ci-selection-bar');
+  if (_selectedDownloads.size === 0) {
+    if (bar) bar.remove();
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'ci-selection-bar';
+    bar.className = 'ci-selection-bar';
+    document.body.appendChild(bar);
+  }
+  while (bar.firstChild) bar.removeChild(bar.firstChild);
+  const totalSize = Array.from(_selectedDownloads.values()).reduce((a, b) => a + b, 0);
+  const sizeStr = totalSize > 0 ? ' · ' + formatSize(totalSize) : '';
+  const count = document.createElement('span');
+  count.className = 'ci-sel-count';
+  count.textContent = t('n_selected', {n: _selectedDownloads.size}) + sizeStr;
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'pill';
+  clearBtn.textContent = t('clear');
+  clearBtn.onclick = _clearDownloadSelection;
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'manage-btn-action';
+  dlBtn.textContent = t('download_selected');
+  dlBtn.onclick = () => _downloadSelected(dlBtn);
+  bar.appendChild(count);
+  bar.appendChild(clearBtn);
+  bar.appendChild(dlBtn);
+}
+
+function _clearDownloadSelection() {
+  _selectedDownloads.clear();
+  document.querySelectorAll('.ci-select').forEach(cb => { cb.checked = false; });
+  _renderSelectionBar();
+}
+
+async function _downloadSelected(btn) {
+  const urls = Array.from(_selectedDownloads.keys());
+  const sizes = urls.map(u => _selectedDownloads.get(u) || 0);
+  btn.disabled = true;
+  try {
+    const res = await manageFetch('/manage/download-batch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({urls, sizes}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'failed');
+    _showToast(t('downloads_started', {n: data.started || 0}));
+    _dlRecentStart = Date.now();
+    _clearDownloadSelection();
+    refreshDownloads();
+  } catch (e) {
+    _showToast(t('error'));
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── Tab switching ──

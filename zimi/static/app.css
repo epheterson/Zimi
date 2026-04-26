@@ -585,6 +585,21 @@
   .hot-zims-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hot-zims-id { color: var(--text2); font-size: 11px; font-family: monospace; flex-shrink: 0; }
 
+  /* Multi-select checkbox + floating action bar */
+  .ci-select {
+    accent-color: var(--amber); flex-shrink: 0;
+    margin-right: 6px; align-self: center;
+  }
+  .ci-selection-bar {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+    padding: 8px 14px; display: flex; gap: 12px; align-items: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 100;
+    font-size: 13px; color: var(--text);
+  }
+  .ci-selection-bar .ci-sel-count { font-weight: 500; }
+  .ci-selection-bar button { white-space: nowrap; }
+
   /* Catalog hierarchy hints */
   .ci-hier { margin-top: 4px; font-size: 11px; }
   .ci-hier-installed,

@@ -796,5 +796,9 @@
   "rebuild_qid_indexes": "Q-ID-Indizes neu erstellen",
   "working": "Wird ausgeführt…",
   "rebuild_started": "Neuaufbau gestartet — läuft im Hintergrund",
-  "cleared": "Gelöscht"
+  "cleared": "Gelöscht",
+  "select_for_batch": "Für Stapeldownload auswählen",
+  "n_selected": "{n} ausgewählt",
+  "download_selected": "Auswahl herunterladen",
+  "downloads_started": "{n} Downloads in der Warteschlange"
 }

@@ -796,5 +796,9 @@
   "rebuild_qid_indexes": "Reconstruire les index Q-ID",
   "working": "En cours…",
   "rebuild_started": "Reconstruction démarrée — en arrière-plan",
-  "cleared": "Effacé"
+  "cleared": "Effacé",
+  "select_for_batch": "Sélectionner pour téléchargement groupé",
+  "n_selected": "{n} sélectionné(s)",
+  "download_selected": "Télécharger la sélection",
+  "downloads_started": "{n} téléchargements en file"
 }

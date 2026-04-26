@@ -796,5 +796,9 @@
   "rebuild_qid_indexes": "Q-ID अनुक्रमणिका पुनर्निर्माण",
   "working": "कार्य चल रहा है…",
   "rebuild_started": "पुनर्निर्माण शुरू — पृष्ठभूमि में चल रहा है",
-  "cleared": "साफ किया गया"
+  "cleared": "साफ किया गया",
+  "select_for_batch": "बैच डाउनलोड के लिए चुनें",
+  "n_selected": "{n} चयनित",
+  "download_selected": "चुने गए डाउनलोड करें",
+  "downloads_started": "{n} डाउनलोड कतारबद्ध"
 }

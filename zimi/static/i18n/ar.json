@@ -796,5 +796,9 @@
   "rebuild_qid_indexes": "إعادة بناء فهارس Q-ID",
   "working": "جارٍ التنفيذ…",
   "rebuild_started": "بدأت إعادة البناء — في الخلفية",
-  "cleared": "تم المسح"
+  "cleared": "تم المسح",
+  "select_for_batch": "اختر للتنزيل الجماعي",
+  "n_selected": "تم اختيار {n}",
+  "download_selected": "تنزيل المحدد",
+  "downloads_started": "{n} تنزيلات في الانتظار"
 }

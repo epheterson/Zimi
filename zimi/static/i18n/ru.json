@@ -796,5 +796,9 @@
   "rebuild_qid_indexes": "Перестроить индексы Q-ID",
   "working": "Работаю…",
   "rebuild_started": "Перестроение запущено — в фоне",
-  "cleared": "Очищено"
+  "cleared": "Очищено",
+  "select_for_batch": "Выбрать для пакетной загрузки",
+  "n_selected": "Выбрано: {n}",
+  "download_selected": "Загрузить выбранное",
+  "downloads_started": "{n} загрузок в очереди"
 }

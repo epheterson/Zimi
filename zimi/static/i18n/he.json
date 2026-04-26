@@ -796,5 +796,9 @@
   "rebuild_qid_indexes": "בנה מחדש אינדקסי Q-ID",
   "working": "עובד…",
   "rebuild_started": "הבנייה מחדש התחילה — ברקע",
-  "cleared": "נוקה"
+  "cleared": "נוקה",
+  "select_for_batch": "בחר להורדה אצווה",
+  "n_selected": "{n} נבחרו",
+  "download_selected": "הורד את הנבחרים",
+  "downloads_started": "{n} הורדות בתור"
 }
