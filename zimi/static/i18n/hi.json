@@ -815,5 +815,7 @@
   "coverage_advantage_explain": "बंडल में उपसमूहों के योग से अधिक लेख हैं।",
   "freshness_advantage": " ताज़ा उपसमूह",
   "downloads_active": "सक्रिय",
-  "downloads_completed": "पूर्ण"
+  "downloads_completed": "पूर्ण",
+  "all": "सभी",
+  "downloads_queued": "कतार में"
 }

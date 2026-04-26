@@ -449,10 +449,16 @@
   .ms-pane .ms-hint { font-size: 12px; color: var(--text2); opacity: 0.7; margin-top: 8px; }
   .ms-section-label, .ci-section-label, .hp-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); }
   .ms-section-label { margin-bottom: 8px; }
+  /* Auto-fit grid for catalog + downloads. At narrow widths it falls back
+     to a single column; on wide screens fits 2-3 cards per row. */
+  .catalog-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap: 6px; align-items: stretch;
+  }
   .catalog-item {
     display: flex; gap: 14px; align-items: center; padding: 14px 16px;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    margin-bottom: 6px; transition: border-color 0.2s, opacity 0.3s;
+    margin-bottom: 0; transition: border-color 0.2s, opacity 0.3s;
     max-height: 200px; overflow: hidden;
   }
   .catalog-item:hover { border-color: var(--amber-border); }
@@ -543,11 +549,24 @@
   .dl-progress { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
   .dl-progress-bar { height: 100%; background: var(--amber); border-radius: 2px; transition: width 0.5s; }
   .dl-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
-  .dl-group-label {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
-    color: var(--text2); margin: 12px 0 4px 0; padding: 0 4px;
+  /* Same auto-fit grid pattern as catalog so the two views feel consistent */
+  .dl-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 6px;
   }
-  .dl-group-label:first-of-type { margin-top: 0; }
+  .dl-filter-bar {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin: 0 0 10px 0;
+  }
+  .dl-filter-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .dl-filter-pill.active { color: var(--amber); border-color: var(--amber); }
+  .dl-pill-count {
+    background: var(--surface2); color: var(--text2); padding: 0 6px;
+    border-radius: 10px; font-size: 10px; font-weight: 600; min-width: 14px; text-align: center;
+  }
+  .dl-filter-pill.active .dl-pill-count { background: var(--amber); color: #000; }
   .dl-pause-btn { background: none; border: 1px solid var(--border); color: var(--text2);
     padding: 2px 10px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s; }
   .dl-pause-btn:hover { border-color: var(--amber); color: var(--amber); }

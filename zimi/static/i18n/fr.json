@@ -815,5 +815,7 @@
   "coverage_advantage_explain": "Le bundle contient plus d'articles que la somme des sous-ensembles.",
   "freshness_advantage": " sous-ensemble(s) plus récent(s)",
   "downloads_active": "Actifs",
-  "downloads_completed": "Terminés"
+  "downloads_completed": "Terminés",
+  "all": "Tous",
+  "downloads_queued": "En attente"
 }

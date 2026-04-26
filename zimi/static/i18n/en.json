@@ -815,5 +815,7 @@
   "coverage_advantage_explain": "Bundle has more articles than the sum of its subsets — strictly comprehensive.",
   "freshness_advantage": " fresher subset(s)",
   "downloads_active": "Active",
-  "downloads_completed": "Completed"
+  "downloads_completed": "Completed",
+  "all": "All",
+  "downloads_queued": "Queued"
 }

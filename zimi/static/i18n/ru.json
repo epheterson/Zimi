@@ -815,5 +815,7 @@
   "coverage_advantage_explain": "Бандл содержит больше статей, чем сумма подмножеств.",
   "freshness_advantage": " более свежих подмножеств",
   "downloads_active": "Активные",
-  "downloads_completed": "Завершено"
+  "downloads_completed": "Завершено",
+  "all": "Все",
+  "downloads_queued": "В очереди"
 }

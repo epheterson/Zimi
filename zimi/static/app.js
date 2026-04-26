@@ -3574,8 +3574,13 @@ function drillCategory(catKey, namePrefix) {
       '<span class="browse-drilldown-count">' + tH('n_available', {n: grouped.length}) + '</span>' +
     '</div>';
     h += langPills;
-    for (const item of grouped) h += renderCatalogItem(item);
-    if (!grouped.length) h += '<div class="empty"><p>' + tH('no_zims_category') + '</p></div>';
+    if (grouped.length) {
+      h += '<div class="catalog-grid">';
+      for (const item of grouped) h += renderCatalogItem(item);
+      h += '</div>';
+    } else {
+      h += '<div class="empty"><p>' + tH('no_zims_category') + '</p></div>';
+    }
     results.innerHTML = h;
     // Auto-scroll pill bar so the active language pill is visible
     var activePill = results.querySelector('.catalog-lang-scroll .pill.active');
@@ -3618,8 +3623,13 @@ function browseCatalogFilter(query) {
       '<button class="browse-back" onclick="' + (manageCategoryFilter ? "drillCategory('" + escAttr(manageCategoryFilter) + "')" : 'renderBrowseGallery()') + '">\u2190 Back</button>' +
       '<span class="browse-drilldown-count">' + t('n_results', {n: filtered.length}) + ' \u2014 \u201C' + esc(query) + '\u201D</span>' +
     '</div>';
-    for (const item of grouped) h += renderCatalogItem(item);
-    if (!grouped.length) h += '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
+    if (grouped.length) {
+      h += '<div class="catalog-grid">';
+      for (const item of grouped) h += renderCatalogItem(item);
+      h += '</div>';
+    } else {
+      h += '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
+    }
     results.innerHTML = h;
   }).catch(() => {
     results.innerHTML = '<div class="empty"><p>' + tH('failed_search_catalog') + '</p></div>';
@@ -5370,24 +5380,32 @@ async function refreshDownloads() {
     _dlRecentStart = 0; // clear grace once server reports downloads
     const anyActive = dls.some(d => !d.done);
     const allDone = !anyActive;
-    // Split into two groups so users can see active vs finished at a glance.
-    const activeDls = dls.filter(d => !d.done);
+    const queuedDls = dls.filter(d => d.queued);
+    const downloadingDls = dls.filter(d => !d.done && !d.queued);
     const completedDls = dls.filter(d => d.done);
-    const orderedDls = activeDls.concat(completedDls);
+    const filter = localStorage.getItem('zimi_dl_filter') || 'all';
+    const visibleDls = (filter === 'queued') ? queuedDls
+      : (filter === 'downloading') ? downloadingDls
+      : (filter === 'completed') ? completedDls
+      : downloadingDls.concat(queuedDls).concat(completedDls);
     let h = '<div class="manage-card"><h2>' + tH('downloads') + '</h2>';
     if (allDone) {
       h += '<button class="dl-clear-btn" onclick="clearDownloads()">' + tH('clear') + '</button>';
     }
-    // Group label (rendered before each group's first item)
-    let lastGroup = null;
-    for (const dl of orderedDls) {
-      const group = dl.done ? 'completed' : 'active';
-      if (group !== lastGroup) {
-        const labelKey = group === 'active' ? 'downloads_active' : 'downloads_completed';
-        const count = group === 'active' ? activeDls.length : completedDls.length;
-        h += '<div class="dl-group-label">' + tH(labelKey) + ' (' + count + ')</div>';
-        lastGroup = group;
-      }
+    // Filter pill bar — All / Downloading / Queued / Completed
+    const pill = (key, label, count) =>
+      '<button class="pill dl-filter-pill' + (filter === key ? ' active' : '') +
+      '" onclick="_setDownloadFilter(\'' + key + '\')">' +
+      label + (count > 0 ? ' <span class="dl-pill-count">' + count + '</span>' : '') +
+      '</button>';
+    h += '<div class="dl-filter-bar">' +
+      pill('all', tH('all'), dls.length) +
+      pill('downloading', tH('downloads_active'), downloadingDls.length) +
+      pill('queued', tH('downloads_queued'), queuedDls.length) +
+      pill('completed', tH('downloads_completed'), completedDls.length) +
+    '</div>';
+    h += '<div class="dl-grid">';
+    for (const dl of visibleDls) {
       const title = dlTitle(dl);
       const fmtBytes = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
       const totalStr = dl.total_bytes ? fmtBytes(dl.total_bytes) : '?';
@@ -5420,7 +5438,8 @@ async function refreshDownloads() {
       }
       h += '</div>';
     }
-    h += '</div>';
+    h += '</div>';  // close .dl-grid
+    h += '</div>';  // close .manage-card
     dlEl.innerHTML = h;
     // Update catalog item buttons with download progress
     for (const dl of dls) {
@@ -5586,6 +5605,11 @@ async function _toggleUpdatesDetail() {
     err.textContent = t('error');
     el.appendChild(err);
   }
+}
+
+function _setDownloadFilter(filter) {
+  localStorage.setItem('zimi_dl_filter', filter);
+  refreshDownloads();
 }
 
 async function pauseDownload(id, pause) {

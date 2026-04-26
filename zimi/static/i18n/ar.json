@@ -815,5 +815,7 @@
   "coverage_advantage_explain": "الحزمة بها مقالات أكثر من مجموع المجموعات الفرعية.",
   "freshness_advantage": " مجموعة فرعية أحدث",
   "downloads_active": "نشطة",
-  "downloads_completed": "مكتملة"
+  "downloads_completed": "مكتملة",
+  "all": "الكل",
+  "downloads_queued": "في الانتظار"
 }

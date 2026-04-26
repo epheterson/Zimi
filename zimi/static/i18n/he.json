@@ -815,5 +815,7 @@
   "coverage_advantage_explain": "החבילה מכילה יותר מאמרים מסכום קבוצות המשנה שלה.",
   "freshness_advantage": " קבוצות משנה חדשות יותר",
   "downloads_active": "פעילות",
-  "downloads_completed": "הושלמו"
+  "downloads_completed": "הושלמו",
+  "all": "הכל",
+  "downloads_queued": "בתור"
 }

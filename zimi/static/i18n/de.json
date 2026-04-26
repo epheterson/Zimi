@@ -815,5 +815,7 @@
   "coverage_advantage_explain": "Bundle enthält mehr Artikel als die Summe seiner Teilmengen.",
   "freshness_advantage": " aktuellere Teilmenge(n)",
   "downloads_active": "Aktiv",
-  "downloads_completed": "Abgeschlossen"
+  "downloads_completed": "Abgeschlossen",
+  "all": "Alle",
+  "downloads_queued": "In Warteschlange"
 }

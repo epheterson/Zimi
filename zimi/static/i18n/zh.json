@@ -815,5 +815,7 @@
   "coverage_advantage_explain": "此包包含的文章数多于子集之和。",
   "freshness_advantage": " 个更新的子集",
   "downloads_active": "进行中",
-  "downloads_completed": "已完成"
+  "downloads_completed": "已完成",
+  "all": "全部",
+  "downloads_queued": "排队中"
 }

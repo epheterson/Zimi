@@ -815,5 +815,7 @@
   "coverage_advantage_explain": "O pacote tem mais artigos que a soma dos subconjuntos.",
   "freshness_advantage": " subconjunto(s) mais recente(s)",
   "downloads_active": "Ativos",
-  "downloads_completed": "Concluídos"
+  "downloads_completed": "Concluídos",
+  "all": "Todos",
+  "downloads_queued": "Em fila"
 }
