@@ -450,9 +450,10 @@
   .ms-section-label, .ci-section-label, .hp-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); }
   .ms-section-label { margin-bottom: 8px; }
   /* Auto-fit grid for catalog + downloads. At narrow widths it falls back
-     to a single column; on wide screens fits 2-3 cards per row. */
+     to a single column; on wide screens fits 2-3 cards per row. 320px min
+     gives 2 columns in the manage pane (~790px wide) and 3 on wide screens. */
   .catalog-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 6px; align-items: stretch;
   }
   .catalog-item {
@@ -551,7 +552,7 @@
   .dl-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
   /* Same auto-fit grid pattern as catalog so the two views feel consistent */
   .dl-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 6px;
   }
   .dl-filter-bar {
