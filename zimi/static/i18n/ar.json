@@ -840,5 +840,6 @@
   "seeding_state_paused": "موقوف",
   "seeding_state_error": "خطأ",
   "dl_via_bt": "BT",
-  "dl_via_bt_tip": "تم التنزيل عبر BitTorrent — نقل من نظير إلى نظير."
+  "dl_via_bt_tip": "تم التنزيل عبر BitTorrent — نقل من نظير إلى نظير.",
+  "peer_has_zim": "يحتوي {peers} على شبكتك المحلية بالفعل على ملف ZIM هذا — يمكنك التنزيل منهم بسرعة الشبكة المحلية."
 }

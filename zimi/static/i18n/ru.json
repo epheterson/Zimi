@@ -840,5 +840,6 @@
   "seeding_state_paused": "на паузе",
   "seeding_state_error": "ошибка",
   "dl_via_bt": "BT",
-  "dl_via_bt_tip": "Загружено через BitTorrent — пиринговая передача."
+  "dl_via_bt_tip": "Загружено через BitTorrent — пиринговая передача.",
+  "peer_has_zim": "У {peers} в вашей локальной сети уже есть этот ZIM — скачайте у них на скорости LAN."
 }

@@ -840,5 +840,6 @@
   "seeding_state_paused": "paused",
   "seeding_state_error": "error",
   "dl_via_bt": "BT",
-  "dl_via_bt_tip": "Downloaded via BitTorrent — peer-to-peer transfer."
+  "dl_via_bt_tip": "Downloaded via BitTorrent — peer-to-peer transfer.",
+  "peer_has_zim": "{peers} on your LAN already has this ZIM — download from them at LAN speed."
 }

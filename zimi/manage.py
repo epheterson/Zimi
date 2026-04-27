@@ -337,6 +337,20 @@ def handle_manage_get(handler, parsed, params):
         except Exception:
             return handler._json(200, {"enabled": False, "peers": []})
 
+    elif parsed.path == "/manage/peers/list":
+        try:
+            from zimi import p2p_discovery as _disc
+
+            peer = param("peer", "")
+            if not peer:
+                return handler._json(400, {"error": "missing 'peer' param"})
+            data = _disc.fetch_peer_list(peer)
+            if data is None:
+                return handler._json(404, {"error": "peer not reachable or unknown"})
+            return handler._json(200, {"peer": peer, "list": data})
+        except Exception:
+            return handler._json(503, {"error": "peer fetch failed"})
+
     elif parsed.path == "/manage/history":
         return handler._json(200, {"history": _srv._load_history()})
 

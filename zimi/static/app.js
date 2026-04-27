@@ -3166,13 +3166,103 @@ async function loadFullCatalog() {
 
   _enrichCatalogInstalled(items);
   _enrichCatalogHierarchy(items);
+  _enrichCatalogPeers(items);
   _catalogInstalledNames = new Set(items.filter(it => it.installed).map(it => it.name));
 
   _catalogCache = items;
+  // Kick off peer-list discovery in the background. When it lands,
+  // enrich + re-render whichever catalog view is current.
+  _loadPeerData().then(loaded => {
+    if (!loaded || !_catalogCache) return;
+    _enrichCatalogPeers(_catalogCache);
+    if (manageTab === 'browse') {
+      if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
+      else if (_browseView !== 'gallery') return; // search view re-renders on its own
+      else renderBrowseGallery();
+    }
+  }).catch(() => {});
   return _catalogCache;
 }
 
 let _catalogInstalledNames = new Set();
+
+// LAN peer awareness: maps catalog name (or stripped filename stem) to
+// list of peer names that have it. Populated lazily by _loadPeerData
+// after catalog loads. Empty when no peers / not yet loaded.
+let _catalogPeerStems = new Map();  // stem → [peerName, ...]
+let _peersLoadedAt = 0;
+const PEER_LIST_REFRESH_MS = 60_000;
+
+async function _loadPeerData() {
+  // Don't refresh more than once a minute. Returns true on first-time
+  // load (caller may want to re-render); false otherwise.
+  if (Date.now() - _peersLoadedAt < PEER_LIST_REFRESH_MS && _peersLoadedAt > 0) {
+    return false;
+  }
+  let peers = [];
+  try {
+    const r = await fetch('/manage/peers');
+    if (!r.ok) return false;
+    const d = await r.json();
+    peers = d.peers || [];
+  } catch (e) {
+    return false;
+  }
+  const newMap = new Map();
+  if (!peers.length) {
+    _catalogPeerStems = newMap;
+    _peersLoadedAt = Date.now();
+    return false;
+  }
+  await Promise.all(peers.map(async p => {
+    try {
+      const lr = await manageFetch('/manage/peers/list?peer=' + encodeURIComponent(p.name));
+      if (!lr.ok) return;
+      const ld = await lr.json();
+      for (const z of (ld.list || [])) {
+        const fb = (z.file || '').replace(/\.zim$/, '');
+        const stem = fb.replace(/_\d{4}-\d{2}$/, '');
+        if (!stem) continue;
+        if (!newMap.has(stem)) newMap.set(stem, []);
+        newMap.get(stem).push(p.name);
+      }
+    } catch (_) {}
+  }));
+  _catalogPeerStems = newMap;
+  _peersLoadedAt = Date.now();
+  return true;
+}
+
+function _enrichCatalogPeers(items) {
+  if (!_catalogPeerStems.size) {
+    for (const it of items) it.peer_names = [];
+    return;
+  }
+  for (const it of items) {
+    const candidates = [it.name];
+    if (it.download_url) {
+      const fname = it.download_url.split('/').pop()
+        .replace(/\.meta4$/, '').replace(/\.zim$/, '');
+      const urlStem = fname.replace(/_\d{4}-\d{2}$/, '');
+      if (urlStem && urlStem !== it.name) candidates.push(urlStem);
+    }
+    let names = [];
+    for (const c of candidates) {
+      const hit = _catalogPeerStems.get(c);
+      if (hit && hit.length) { names = hit; break; }
+    }
+    it.peer_names = names;
+  }
+}
+
+function _peerHint(item) {
+  const peers = item && item.peer_names;
+  if (!peers || !peers.length) return '';
+  // Strip the "zimi-" prefix for readability ("zimi-elpnas" → "elpnas").
+  const display = peers.map(p => p.replace(/^zimi-/, '')).join(', ');
+  return '<span class="ci-peer-pill" title="' + escAttr(t('peer_has_zim', {peers: display})) + '">' +
+    '📡 ' + esc(display) + '</span>';
+}
 
 function _hierarchyHint(item) {
   const h = item && item.hierarchy;
@@ -3832,6 +3922,7 @@ function renderCatalogItem(group) {
   const instName = anyInstalled ? (variants.find(v => v.installed && v._installedName) || {})._installedName || '' : '';
   const openAttr = instName ? ' style="cursor:pointer" onclick="if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(instName) + '\',true)}"' : '';
   const hierarchyHtml = _hierarchyHint(item);
+  const peerHtml = _peerHint(item);
   // Multi-select checkbox — only when there's something to download.
   let selectHtml = '';
   if (!anyInstalled) {
@@ -3858,6 +3949,7 @@ function renderCatalogItem(group) {
       (item.summary ? '<div class="ci-summary">' + esc(item.summary) + '</div>' : '') +
       '<div class="ci-meta">' + metaTags.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
       (hierarchyHtml ? '<div class="ci-hier">' + hierarchyHtml + '</div>' : '') +
+      (peerHtml ? '<div class="ci-peer">' + peerHtml + '</div>' : '') +
     '</div>' +
     '<div class="ci-actions">' + actionsHtml + '</div>' +
   '</div>';

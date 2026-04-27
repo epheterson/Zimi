@@ -22,9 +22,14 @@ log = logging.getLogger(__name__)
 SERVICE_TYPE = "_zimi._tcp.local."
 PEER_STALE_SECONDS = 120
 BROWSE_REFRESH_SECONDS = 30
+PEER_LIST_TTL_SECONDS = 60
+PEER_LIST_MAX_BYTES = 5 * 1024 * 1024  # 5MB cap on a peer's /list response
 
 _peers: dict[str, dict] = {}
 _peers_lock = threading.Lock()
+# (timestamp, list_payload) keyed by full service name
+_peer_list_cache: dict[str, tuple] = {}
+_peer_list_lock = threading.Lock()
 _zc = None
 _service_info = None
 _browser = None
@@ -222,6 +227,48 @@ def stop() -> None:
     _service_info = None
     _browser = None
     _self_service_name = None
+
+
+def fetch_peer_list(peer_name: str):
+    """Proxy a peer's /list endpoint, cached for PEER_LIST_TTL_SECONDS.
+    Returns the parsed JSON list or None if the peer is unknown / the
+    fetch fails / the response is malformed."""
+    import json
+    import urllib.request
+
+    full_key = None
+    host = None
+    port = None
+    with _peers_lock:
+        for key, peer in _peers.items():
+            if peer["name"] == peer_name:
+                full_key = key
+                host = peer["host"]
+                port = peer["port"]
+                break
+    if full_key is None:
+        return None
+
+    now = time.time()
+    with _peer_list_lock:
+        cached = _peer_list_cache.get(full_key)
+    if cached and (now - cached[0]) < PEER_LIST_TTL_SECONDS:
+        return cached[1]
+
+    url = f"http://{host}:{port}/list"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Zimi-peer/1.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = resp.read(PEER_LIST_MAX_BYTES)
+        parsed = json.loads(data)
+        if not isinstance(parsed, list):
+            return None
+    except (OSError, ValueError):
+        return None
+
+    with _peer_list_lock:
+        _peer_list_cache[full_key] = (now, parsed)
+    return parsed
 
 
 def _reset_for_tests() -> None:

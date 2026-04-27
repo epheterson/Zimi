@@ -840,5 +840,6 @@
   "seeding_state_paused": "מושהה",
   "seeding_state_error": "שגיאה",
   "dl_via_bt": "BT",
-  "dl_via_bt_tip": "הורד דרך BitTorrent — העברה בין עמיתים."
+  "dl_via_bt_tip": "הורד דרך BitTorrent — העברה בין עמיתים.",
+  "peer_has_zim": "ל־{peers} ברשת המקומית כבר יש את ה־ZIM הזה — אפשר להוריד ממנו במהירות LAN."
 }
