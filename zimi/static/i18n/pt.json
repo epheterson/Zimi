@@ -841,5 +841,7 @@
   "seeding_state_error": "erro",
   "dl_via_bt": "BT",
   "dl_via_bt_tip": "Baixado via BitTorrent — transferência ponto a ponto.",
-  "peer_has_zim": "{peers} na sua LAN já tem este ZIM — baixe deles na velocidade da LAN."
+  "peer_has_zim": "{peers} na sua LAN já tem este ZIM — baixe deles na velocidade da LAN.",
+  "skip_to_main": "Ir para o conteúdo principal",
+  "search": "Pesquisar"
 }

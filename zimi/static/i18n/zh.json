@@ -841,5 +841,7 @@
   "seeding_state_error": "错误",
   "dl_via_bt": "BT",
   "dl_via_bt_tip": "通过 BitTorrent 下载 — 点对点传输。",
-  "peer_has_zim": "局域网中的 {peers} 已有此 ZIM — 以局域网速度从他们处下载。"
+  "peer_has_zim": "局域网中的 {peers} 已有此 ZIM — 以局域网速度从他们处下载。",
+  "skip_to_main": "跳到主要内容",
+  "search": "搜索"
 }

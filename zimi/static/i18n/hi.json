@@ -841,5 +841,7 @@
   "seeding_state_error": "त्रुटि",
   "dl_via_bt": "BT",
   "dl_via_bt_tip": "BitTorrent के माध्यम से डाउनलोड किया गया — पीयर-टू-पीयर ट्रांसफ़र।",
-  "peer_has_zim": "आपके LAN पर {peers} के पास यह ZIM पहले से है — LAN गति पर वहाँ से डाउनलोड करें।"
+  "peer_has_zim": "आपके LAN पर {peers} के पास यह ZIM पहले से है — LAN गति पर वहाँ से डाउनलोड करें।",
+  "skip_to_main": "मुख्य सामग्री पर जाएँ",
+  "search": "खोज"
 }

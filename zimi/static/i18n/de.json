@@ -841,5 +841,7 @@
   "seeding_state_error": "Fehler",
   "dl_via_bt": "BT",
   "dl_via_bt_tip": "Heruntergeladen via BitTorrent – Peer-to-Peer-Übertragung.",
-  "peer_has_zim": "{peers} im LAN hat dieses ZIM bereits — lade es im LAN-Tempo direkt von dort."
+  "peer_has_zim": "{peers} im LAN hat dieses ZIM bereits — lade es im LAN-Tempo direkt von dort.",
+  "skip_to_main": "Zum Hauptinhalt springen",
+  "search": "Suche"
 }

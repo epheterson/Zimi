@@ -687,6 +687,12 @@ function _showToast(msg, duration) {
   toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
   toast.textContent = msg;
   document.body.appendChild(toast);
+  // Mirror to the screen-reader live region so non-sighted users hear it too.
+  var live = document.getElementById('a11y-toast-region');
+  if (live) {
+    live.textContent = '';
+    setTimeout(function() { live.textContent = msg; }, 50);
+  }
   setTimeout(function() { if (toast.parentNode) toast.remove(); }, duration || 3000);
 }
 

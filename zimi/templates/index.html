@@ -18,6 +18,8 @@
 </head>
 <body>
 
+<a href="#main-view" class="skip-link" data-i18n="skip_to_main">Skip to main content</a>
+
 <nav class="topbar" aria-label="Main navigation">
   <div class="topbar-breadcrumb" onclick="bcClick(event)">
     <a id="logo" class="logo" onclick="goHome(event)">Zimi</a>
@@ -26,8 +28,9 @@
   </div>
   <button id="back-btn" class="back-btn" aria-label="Go back" data-i18n-aria="go_back" style="display:none">&#x2190;</button>
   <div id="history-trail"></div>
-  <div class="topbar-search">
-    <input type="text" id="q" placeholder="Search everything..." data-i18n-placeholder="search_placeholder" autofocus aria-label="Search" autocomplete="off">
+  <div class="topbar-search" role="search">
+    <label for="q" class="sr-only" data-i18n="search">Search</label>
+    <input type="text" id="q" placeholder="Search everything..." data-i18n-placeholder="search_placeholder" autofocus aria-label="Search" autocomplete="off" aria-autocomplete="list" aria-controls="suggest-dropdown">
     <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>
     <span class="kbd">/</span>
     <div id="suggest-dropdown" class="suggest-dropdown"></div>
@@ -46,7 +49,7 @@
 
 <div id="history-panel" class="history-panel"></div>
 
-<div id="pw-overlay" class="pw-overlay" onclick="if(event.target===this)closePwModal()">
+<div id="pw-overlay" class="pw-overlay" role="dialog" aria-modal="true" aria-labelledby="pw-title" onclick="if(event.target===this)closePwModal()">
   <form class="pw-box" onsubmit="event.preventDefault();submitPw()" autocomplete="off">
     <h3 id="pw-title" data-i18n="enter_password">Enter password</h3>
     <input style="display:none" type="text" name="fakeuser" tabindex="-1" autocomplete="off">
@@ -114,6 +117,9 @@
 </div>
 <div id="zim-ctx-menu"></div>
 <div id="link-ctx-menu" class="zimi-ctx"></div>
+
+<!-- Live region for toast notifications. Updated dynamically by _showToast(). -->
+<div id="a11y-toast-region" role="status" aria-live="polite" class="sr-only"></div>
 
 <script>var __ZIMI_CONFIG = {discoverStamp:'disc6',i18nHash:'0'};</script>
 <script src="/static/app.js?v=1"></script>

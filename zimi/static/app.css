@@ -15,6 +15,43 @@
   html { height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
   body { background: var(--bg); color: var(--text); min-height: 100%; padding-top: 56px; overflow: visible; }
 
+  /* ── Accessibility ── */
+  /* Visually-hide content but keep it readable for screen readers. */
+  .sr-only {
+    position: absolute !important;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0, 0, 0, 0);
+    white-space: nowrap; border: 0;
+  }
+  /* Skip link — visually hidden until keyboard focus brings it onto screen.
+     First tab-stop on the page so keyboard users can jump past the topbar. */
+  .skip-link {
+    position: absolute; top: -100px; left: 12px;
+    background: var(--amber); color: #000;
+    padding: 8px 16px; border-radius: 6px;
+    font-weight: 600; font-size: 14px;
+    z-index: 10000; text-decoration: none;
+    transition: top 0.15s ease;
+  }
+  .skip-link:focus,
+  .skip-link:focus-visible {
+    top: 12px; outline: 2px solid var(--amber); outline-offset: 2px;
+  }
+  /* Visible focus ring across the SPA. The default browser focus ring
+     is invisible-on-dark for many elements; this guarantees a high-
+     contrast outline that works on both light and dark themes. */
+  :focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+  }
+  /* Buttons / inputs that already style their own focus state opt out. */
+  button:focus:not(:focus-visible),
+  input:focus:not(:focus-visible),
+  textarea:focus:not(:focus-visible),
+  select:focus:not(:focus-visible),
+  a:focus:not(:focus-visible) { outline: none; }
+
   /* ── Topbar ── */
   .topbar {
     position: fixed; top: 0; left: 0; right: 0; z-index: 200;
