@@ -2,10 +2,13 @@
 
   :root {
     --bg: #0a0a0b; --surface: #141416; --surface2: #1c1c20;
-    --border: #27272b; --text: #e8e8ed; --text2: #6e6e7a;
+    --border: #27272b; --text: #e8e8ed; --text2: #8a8a94;
     --accent: #f5f5f7; --amber: #f59e0b; --amber2: #d97706;
     --amber-glow: rgba(245, 158, 11, 0.08); --amber-border: rgba(245, 158, 11, 0.25);
-    --text3: #4a4a54; --text-dim: #4a4a54; --hover: rgba(245, 158, 11, 0.08);
+    /* text3 is reserved for large-text (≥18px or ≥14px bold) only —
+       it's WCAG-AA compliant against --bg at large sizes (3:1) but
+       not at normal body text. Use --text2 for everything else. */
+    --text3: #6e6e7a; --text-dim: #6e6e7a; --hover: rgba(245, 158, 11, 0.08);
     --error: #ef4444;
     --radius: 10px; --shadow-popup: 0 8px 32px rgba(0,0,0,0.5);
     color-scheme: dark;
@@ -579,8 +582,9 @@
   .flavor-pill {
     display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500;
     color: var(--text2); background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 20px; padding: 2px 8px 2px 8px; cursor: pointer; transition: all 0.2s;
+    border-radius: 20px; padding: 4px 10px; cursor: pointer; transition: all 0.2s;
     white-space: nowrap; position: relative;
+    min-height: 24px;  /* WCAG 2.5.5 touch target */
   }
   .flavor-pill svg { opacity: 0.5; flex-shrink: 0; }
   .flavor-pill:hover svg { opacity: 0.8; }
@@ -626,11 +630,13 @@
   }
   .dl-filter-pill.active .dl-pill-count { background: var(--amber); color: #000; }
   .dl-pause-btn { background: none; border: 1px solid var(--border); color: var(--text2);
-    padding: 2px 10px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s; }
+    padding: 4px 12px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s;
+    min-height: 24px; }
   .dl-pause-btn:hover { border-color: var(--amber); color: var(--amber); }
   .dl-progress.dl-paused .dl-progress-bar { opacity: 0.5; }
   .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);
-    font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+    font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer;
+    min-height: 24px; }
   .dl-cancel-btn:hover { border-color: var(--error); color: var(--error); }
   .dl-retry-btn:hover { border-color: var(--amber); color: var(--amber); }
   .dl-mirror { font-size: 11px; color: var(--text2); opacity: 0.6; flex: 1; }
@@ -852,8 +858,10 @@
 
   /* ── Footer ── */
   .footer-sub { margin-top: 6px; font-size: 11px; opacity: 0.7; }
-  .footer a { color: var(--amber); text-decoration: none; }
-  .footer a:hover { text-decoration: underline; }
+  /* WCAG 1.4.1: links inside text need a non-color cue. Using a 1px
+     dotted underline keeps the visual difference subtle but present. */
+  .footer a { color: var(--amber); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }
+  .footer a:hover { text-decoration-style: solid; }
   .kbd-hints { opacity: 0.6; }
 
   /* ── Mobile ── */
@@ -950,9 +958,12 @@
 
   /* ── Star (favorite) toggle ── */
   .star-btn {
-    position: absolute; top: 8px; right: 8px; z-index: 2;
+    position: absolute; top: 4px; right: 4px; z-index: 2;
     background: none; border: none; cursor: pointer; font-size: 18px; line-height: 1;
-    color: var(--text2); opacity: 0.3; transition: all 0.2s; padding: 2px;
+    color: var(--text2); opacity: 0.3; transition: all 0.2s;
+    /* WCAG 2.5.5 minimum touch target — 24×24 on top of the visual icon */
+    min-width: 24px; min-height: 24px; padding: 4px;
+    display: inline-flex; align-items: center; justify-content: center;
   }
   .star-btn:hover { opacity: 1; color: var(--amber); transform: scale(1.2); }
   .star-btn.starred { opacity: 1; color: var(--amber); }

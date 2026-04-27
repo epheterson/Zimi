@@ -482,7 +482,7 @@ function updateTopbar() {
     const title = _zimTitle(activeSource);
     bcIcon.title = title;
     if (info && info.has_icon) {
-      bcIcon.innerHTML = '<img src="/w/' + encodeURIComponent(activeSource) + '/-/icon" width="22" height="22" alt="' + escAttr(title) + '">';
+      bcIcon.innerHTML = '<img src="/w/' + encodeURIComponent(activeSource) + '/-/icon" alt="" width="22" height="22" alt="' + escAttr(title) + '">';
     } else {
       bcIcon.innerHTML = '<span class="bc-letter">' + (esc(title)[0] || 'Z').toUpperCase() + '</span>';
     }
@@ -1234,7 +1234,7 @@ function renderCardGrid(items, showStars, showCategory) {
   const favs = (collectionsCache && collectionsCache.favorites) || [];
   return '<div class="stats-grid">' + items.map(z => {
     const icon = z.has_icon
-      ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" width="48" height="48" loading="lazy">'
+      ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
       : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
     const isFav = favs.includes(z.name);
     const starHtml = showStars
@@ -1719,7 +1719,8 @@ function _renderDiscover(el, items) {
     var zimInfo = _zimInfo(it.zim);
     var iconHtml = '';
     if (zimInfo && zimInfo.has_icon) {
-      iconHtml = '<img class="dc-zim-icon" src="/w/' + encodeURIComponent(it.zim) + '/-/icon" loading="lazy">';
+      // Decorative — the source label next to it conveys the same info
+      iconHtml = '<img class="dc-zim-icon" src="/w/' + encodeURIComponent(it.zim) + '/-/icon" loading="lazy" alt="">';
     }
 
     // Source label: re-resolve from ZIM name (not cached label) so language switches work
@@ -1788,7 +1789,7 @@ function _renderDiscover(el, items) {
       var hasGoodThumb = it.thumbnail && !/home_on\.png|banner_ext|photo_on\.gif/i.test(it.thumbnail);
       if (hasGoodThumb) {
         var thumbClass = 'dc-thumb' + (/gutenberg/i.test(it.zim || '') ? ' dc-book-cover' : '');
-        thumbHtml = '<img class="' + thumbClass + '" src="' + escAttr(it.thumbnail) + '" loading="lazy" onerror="this.style.display=\'none\'" onload="if(this.naturalWidth<80||this.naturalHeight<60)this.style.display=\'none\'">';
+        thumbHtml = '<img class="' + thumbClass + '" src="' + escAttr(it.thumbnail) + '" loading="lazy" alt="" onerror="this.style.display=\'none\'" onload="if(this.naturalWidth<80||this.naturalHeight<60)this.style.display=\'none\'">';
       } else if (it.type === 'country') {
         thumbHtml = '<div class="dc-icon-thumb" style="background:linear-gradient(135deg,#0a1628,#162040)"><span style="font-size:40px;line-height:1">&#x1F30D;</span></div>';
       } else {
@@ -2013,7 +2014,7 @@ async function renderSource(name) {
 
   // Build source header HTML (shown only for catalog/empty ZIMs)
   const iconHtml = info.has_icon
-    ? '<img src="/w/' + encodeURIComponent(name) + '/-/icon" width="64" height="64">'
+    ? '<img src="/w/' + encodeURIComponent(name) + '/-/icon" alt="" width="64" height="64">'
     : '<span class="icon-letter" style="font-size:28px">' + esc(info.title || name)[0].toUpperCase() + '</span>';
   const headerHtml = '<div class="source-header">' +
     '<div class="sh-icon">' + iconHtml + '</div>' +
@@ -2324,7 +2325,7 @@ function _sourceIconHtml(zimName, size) {
   const info = _zimInfo(zimName);
   const title = (info && info.title) || zimName;
   if (info && info.has_icon) {
-    return '<img src="/w/' + encodeURIComponent(zimName) + '/-/icon" width="' + size + '" height="' + size + '">';
+    return '<img src="/w/' + encodeURIComponent(zimName) + '/-/icon" alt="" width="' + size + '" height="' + size + '">';
   }
   return '<span class="rs-letter">' + (esc(title)[0] || 'Z').toUpperCase() + '</span>';
 }
@@ -2435,7 +2436,7 @@ function renderSearchResults(data, scope) {
     if (matches.length > 0 && matches.length <= 8) {
       zimMatchHtml = '<div class="stats-grid" style="margin-bottom:16px">' + matches.map(z => {
         const icon = z.has_icon
-          ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" width="48" height="48" loading="lazy">'
+          ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
           : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
         return '<div class="stat-card" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
           '<div class="card-icon">' + icon + '</div>' +
@@ -3926,7 +3927,7 @@ function renderCatalogItem(group) {
     metaTags.push(formatSize(sizes[0]));
   }
   const iconHtml = item.icon_url
-    ? '<img src="/manage/thumb?url=' + encodeURIComponent(item.icon_url) + '" width="40" height="40" loading="lazy">'
+    ? '<img src="/manage/thumb?url=' + encodeURIComponent(item.icon_url) + '" alt="" width="40" height="40" loading="lazy">'
     : '<span class="ci-letter">' + (esc(item.title || item.name)[0] || '?').toUpperCase() + '</span>';
   const anyInstalled = variants.some(v => v.installed);
   let actionsHtml = '';
@@ -4295,7 +4296,7 @@ async function renderHistoryTab() {
         const title = zim ? (zim.title || zim.name) : (ev.filename || '').replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '').replace(/_/g, ' ');
         const canShowIcon = zim && zim.has_icon && zim.name && !zim._fromEvent;
         const iconHtml = canShowIcon
-          ? '<img src="/w/' + encodeURIComponent(zim.name) + '/-/icon" width="40" height="40" loading="lazy">'
+          ? '<img src="/w/' + encodeURIComponent(zim.name) + '/-/icon" alt="" width="40" height="40" loading="lazy">'
           : '<span class="ci-letter">' + (esc(title)[0] || '?').toUpperCase() + '</span>';
 
         let label = '', labelColor = 'var(--text2)';
@@ -5209,7 +5210,7 @@ function renderInstalled(filterText) {
     items_h += '<div class="ci-section-label">' + esc(groupLabel) + ' (' + items.length + ')</div>';
     for (const z of items) {
       const iconHtml = z.has_icon
-        ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" width="40" height="40" loading="lazy">'
+        ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="40" height="40" loading="lazy">'
         : '<span class="ci-letter">' + (esc(z.title || z.name)[0] || '?').toUpperCase() + '</span>';
       const meta = [];
       if (typeof z.entries === 'number') meta.push(t('n_entries', {n: z.entries.toLocaleString()}));
