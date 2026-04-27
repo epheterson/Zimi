@@ -279,19 +279,19 @@ if os.path.isdir(_STATIC_DIR):
         r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, SEARCH_UI_HTML
     )
 
-    # Same rewrite for inline ?v=N refs inside app.js (e.g. almanac.js loader)
-    # so changing the file content updates the version automatically. Without
-    # this, hardcoded v= values get cached forever by the immutable-asset rule.
+    # Same rewrite for inline ?v=N refs inside app.js (e.g. almanac.js loader).
+    # Cached in memory so we don't write to a possibly-read-only filesystem;
+    # the static-asset handler serves _APP_JS_REWRITTEN when set.
     _app_js_path = os.path.join(_STATIC_DIR, "app.js")
+    APP_JS_REWRITTEN = None
     if os.path.exists(_app_js_path):
         with open(_app_js_path, "r") as _f:
             _app_js_src = _f.read()
-        _app_js_rewritten = re.sub(
+        _rewritten = re.sub(
             r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, _app_js_src
         )
-        if _app_js_rewritten != _app_js_src:
-            with open(_app_js_path, "w") as _f:
-                _f.write(_app_js_rewritten)
+        if _rewritten != _app_js_src:
+            APP_JS_REWRITTEN = _rewritten
     # Inject build config into inline script so app.js can read versioned values.
     # Template has: var __ZIMI_CONFIG = {discoverStamp:'disc6',i18nHash:'0'};
     _build_stamp = _static_hash("app.js")[:6]
@@ -1382,30 +1382,35 @@ class ZimHandler(BaseHTTPRequestHandler):
         if os.path.isabs(rel_path):
             return self._json(400, {"error": "invalid path"})
 
-        # Check cache first, then read from disk
-        with ZimHandler._static_cache_lock:
-            cached = ZimHandler._static_cache.get(rel_path)
-        if cached:
-            body, content_type = cached
+        # app.js gets the in-memory rewrite when present (auto-versioned ?v=
+        # references inside the file). Avoids touching the read-only filesystem.
+        if rel_path == "app.js" and APP_JS_REWRITTEN is not None:
+            body = APP_JS_REWRITTEN.encode("utf-8")
+            content_type = "application/javascript"
         else:
-            base = ZimHandler._static_base_dir()
-            if not base:
-                return self._json(404, {"error": "static directory not found"})
-            file_path = os.path.normpath(os.path.join(base, rel_path))
-            # Ensure resolved path is still inside the static dir
-            if not file_path.startswith(
-                os.path.normpath(base) + os.sep
-            ) and file_path != os.path.normpath(base):
-                return self._json(403, {"error": "forbidden"})
-            if not os.path.isfile(file_path):
-                return self._json(404, {"error": "not found"})
-            ext = os.path.splitext(file_path)[1].lower()
-            content_type = _srv.MIME_FALLBACK.get(ext, "application/octet-stream")
-            with open(file_path, "rb") as f:
-                body = f.read()
-            # Cache in memory (vendor files are immutable, ~8MB total for pdf.js)
             with ZimHandler._static_cache_lock:
-                ZimHandler._static_cache[rel_path] = (body, content_type)
+                cached = ZimHandler._static_cache.get(rel_path)
+            if cached:
+                body, content_type = cached
+            else:
+                base = ZimHandler._static_base_dir()
+                if not base:
+                    return self._json(404, {"error": "static directory not found"})
+                file_path = os.path.normpath(os.path.join(base, rel_path))
+                # Ensure resolved path is still inside the static dir
+                if not file_path.startswith(
+                    os.path.normpath(base) + os.sep
+                ) and file_path != os.path.normpath(base):
+                    return self._json(403, {"error": "forbidden"})
+                if not os.path.isfile(file_path):
+                    return self._json(404, {"error": "not found"})
+                ext = os.path.splitext(file_path)[1].lower()
+                content_type = _srv.MIME_FALLBACK.get(ext, "application/octet-stream")
+                with open(file_path, "rb") as f:
+                    body = f.read()
+                # Cache in memory (vendor files are immutable, ~8MB total for pdf.js)
+                with ZimHandler._static_cache_lock:
+                    ZimHandler._static_cache[rel_path] = (body, content_type)
 
         # Compress text-based static files (viewer.mjs, viewer.css, etc.)
         ct_base = content_type.split(";")[0]
