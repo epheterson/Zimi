@@ -130,6 +130,11 @@ plan docs in `docs/plans/`).
     (the per-frame visuals are decorative)
   - `prefers-reduced-motion: reduce` already gated transitions
     globally; left as-is
+  - **Topbar icon buttons** — every icon-only button (random,
+    library, language, manage, open-in-browser, save, more) now
+    has both an `aria-label` and a `data-i18n-aria` so screen
+    readers announce the action in the user's chosen UI language.
+    Decorative SVGs and emoji glyphs marked `aria-hidden="true"`
 - **Networking** — Default Docker compose flips to `network_mode: host`
   so mDNS + BT seeding work out of the box. New
   `docs/deployment-networking.md` covers tradeoffs (host / bridge /
