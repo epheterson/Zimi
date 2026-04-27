@@ -7,6 +7,119 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+The "Reach + Pro" release. Addresses issue #15 (the warlordattack feedback set
+covering UX at 1000+ ZIM scale) and issue #16 (Wikipedia maxi auto-updating to
+mini). Also lays groundwork for the Reach track (P2P/torrent + accessibility,
+plan docs in `docs/plans/`).
+
+### Added
+
+- **Pro hot-cache** — Pin selected ZIMs in memory at startup so cold ones stay
+  lazy. `ZIMI_HOT_ZIMS` env var (csv) overrides `ZIMI_DATA_DIR/hot.json`. New
+  `GET/POST /manage/hot` endpoints. UI in Server settings with search box,
+  select-all/none, and threshold-based collapse for small libraries (#15-5b)
+- **Download queue** — Concurrent-download cap (default 3, env-overridable via
+  `ZIMI_MAX_CONCURRENT_DOWNLOADS`); extras queue smallest-first to maximize
+  early throughput (#15-2c)
+- **Multi-select downloads** — Floating action bar with selection count, total
+  size, Clear, and Download Selected. Uses new `POST /manage/download-batch`
+  with size hints feeding the queue order (#15-2a)
+- **Pause / resume on downloads** — `/manage/pause` and `/manage/resume`
+  toggle a per-download flag the read loop respects. Slot stays held so
+  pausing some downloads redirects bandwidth to others (#15-2f)
+- **Filter pills on Downloads tab** — All / Downloading / Queued / Completed
+  with counts, persisted in localStorage (#15-2g)
+- **Catalog hierarchy detection** — Heuristic detects bundle/subset
+  relationships across catalog items (e.g. wikipedia_en_top is part of
+  wikipedia_en_all). Surfaced as badges: green "Already covered by ..." on
+  installed bundles, gray "Part of ...", amber "Includes N smaller variants",
+  green "Strictly contains all parts" coverage signal, orange "N fresher
+  subset(s)" freshness signal. `?include_hierarchy=1` on /manage/catalog
+  (#15-3)
+- **SearXNG integration** — `/search` results now include a `category` field
+  (general/images/video) so SearXNG can route hits to the right tab. Engine
+  template + setup guide at `docs/integrations/searxng.md` (#15-4)
+- **OpenWebUI / generic-AI** — MCP integration docs at
+  `docs/integrations/openwebui.md` (#15-7)
+- **Updates detail panel** — Click "N available" in Library card to expand a
+  list with installed-date → latest-date and full filename diff per ZIM. New
+  `/manage/updates` endpoint backs the UI (#15-7b, #16-2)
+- **Top-search analytics** — `/manage/usage` reports `top_searches` with
+  bounded LRU counter (5000 keys cap). Grafana-scrapeable as plain JSON
+  (#15-8)
+- **Cache management UI** — Server-settings buttons: Clear search cache,
+  Clear suggest cache, Rebuild title indexes, Rebuild Q-ID indexes. Backed
+  by `POST /manage/cache-action` (v1.6.1 follow-up)
+- **Languages preference** — Pill multi-select in Preferences (13 common
+  languages + multi). Catalog filter respects the choice when no per-tab
+  language pill is set (#15-6)
+- **Default download flavor preference** — Pill radio: Full (with images),
+  No images, Mini. The user's preference becomes the default in every
+  flavor-selector dropdown (#15-6c)
+- **Updates Available section** — Pending updates bubble to the top of the
+  Installed view in their own amber-headed group instead of mixing with
+  category sections
+- **Plan docs** — `docs/plans/2026-04-26-p2p-torrent-sharing.md` and
+  `docs/plans/2026-04-26-accessibility.md` for the Reach track
+
+### Changed
+
+- **Downloads is its own manage subtab** alongside Installed / Catalog /
+  Collections / Activity instead of rendering above them. Active-count
+  badge on the tab label. Subtab order optimized for frequency-of-use
+  (#15-2b)
+- **Catalog + Downloads use a responsive grid layout**
+  (`grid-template-columns: repeat(auto-fill, minmax(320px, 1fr))`) so wide
+  screens fit 2-3 cards per row, narrow screens fall back to 1. Catalog
+  cards stack icon + info + actions vertically inside grid cells for a
+  compact card aesthetic (#15-2d, #15-2d')
+- **Installed and already-covered catalog items** are dimmed and pushed to
+  the back of the sort so actionable items rise to the top (#15-3b)
+- **Catalog item-installed matching** now also tries the prefix derived from
+  the OPDS download_url. Recovers cases where Kiwix returns a truncated
+  `name` field (`canadian_prep_*` vs `canadian_prepper_*`) (#15-8a)
+- **Auto-version rewriter** now also processes inline `/static/X?v=N` refs
+  inside app.js, served from memory. Prevents Cloudflare-immutable cache
+  staleness on lazy-loaded sub-bundles (almanac.js)
+- 25+ new i18n keys localized in all 10 supported languages
+
+### Fixed
+
+- **Wikipedia maxi auto-updating to mini** (#16) — `_check_updates` now
+  filters catalog candidates to the SAME flavor as the installed file. A
+  newer mini will never silently replace a maxi. New `_detect_flavor()`
+  helper handles maxi/nopic/mini/None cases. Six new tests including the
+  exact bug scenario verbatim
+- **Almanac crash on render** — `_METEOR_SHOWERS` table only had `key`
+  fields, but two callers passed `s.name` (undefined) to `_th()`. New
+  `_showerName(s)` translator + defensive `_th()` against undefined input
+- **Bitwarden / 1Password ignoring the manage password input** —
+  `data-1p-ignore` was on the password modal field; removed. Form now
+  uses the standard `current-password` autocomplete contract (#15-1a)
+- **"Remember me" did not persist across tab close** — was using
+  `sessionStorage`. Now uses `localStorage` when checked, `sessionStorage`
+  when unchecked. Logout clears both (#15-1b)
+- **Pre-existing TestSearchAllContract no-op patches** — surfaced when new
+  test files imported zimi early; replaced with proper string-form
+  `@patch("zimi.server.get_zim_files")` so the patches actually patch
+
+### Performance
+
+- Search now searches only the user's preferred languages by default when
+  set, avoiding per-ZIM Xapian work on irrelevant ZIMs
+- Search-query counter for top-N is bounded so distinct-query patterns
+  can't grow it unboundedly
+
+### Tooling
+
+- `package.json`'s default `npm test` placeholder now runs `pytest -q`
+- `pyproject.toml` excludes the data-dependent `test_article_languages.py`
+  from default pytest runs (run explicitly when investigating ZIM-data
+  drift)
+- `deploy.sh` order is now `down → build → up` (was `build → down → up`,
+  which raced the container-name cleanup) and ships the entire `zimi/`
+  package via tar so new modules deploy automatically
+
 ## [1.6.3] — 2026-04-05
 
 ### Fixed
