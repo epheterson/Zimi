@@ -390,6 +390,79 @@ def handle_manage_get(handler, parsed, params):
             },
         )
 
+    elif parsed.path == "/manage/seeding":
+        # Surface what we're seeding right now: per-ZIM ratio, peers, speeds.
+        # Empty list when BT is off or no torrents are loaded.
+        from zimi import p2p
+
+        if not p2p.is_torrent_enabled():
+            return handler._json(
+                200,
+                {
+                    "enabled": False,
+                    "ratio_cap": p2p.get_seed_ratio_cap(),
+                    "torrents": [],
+                    "totals": {"uploaded": 0, "downloaded": 0, "ratio": 0.0},
+                },
+            )
+        backend = p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+        if not backend:
+            return handler._json(
+                200,
+                {
+                    "enabled": True,
+                    "ratio_cap": p2p.get_seed_ratio_cap(),
+                    "torrents": [],
+                    "totals": {"uploaded": 0, "downloaded": 0, "ratio": 0.0},
+                    "warning": "Seeding enabled but backend unavailable.",
+                },
+            )
+        torrents = []
+        total_up = 0
+        total_down = 0
+        try:
+            for raw in backend.list_managed():
+                completed = int(raw.get("completedLength", 0))
+                uploaded = int(raw.get("uploadLength", 0))
+                ratio = uploaded / max(completed, 1)
+                files = raw.get("files", [])
+                # Single-file torrent: take the first file's path
+                fname = ""
+                if files and isinstance(files, list) and files[0].get("path"):
+                    fname = os.path.basename(files[0]["path"])
+                torrents.append(
+                    {
+                        "id": raw.get("gid", ""),
+                        "filename": fname,
+                        "state": raw.get("status", "unknown"),
+                        "completed_bytes": completed,
+                        "uploaded_bytes": uploaded,
+                        "ratio": round(ratio, 3),
+                        "peers": int(raw.get("connections", 0)),
+                        "down_speed": int(raw.get("downloadSpeed", 0)),
+                        "up_speed": int(raw.get("uploadSpeed", 0)),
+                        "info_hash": raw.get("infoHash", ""),
+                    }
+                )
+                total_up += uploaded
+                total_down += completed
+        except Exception as e:
+            log.warning("seeding list failed: %s", e)
+        return handler._json(
+            200,
+            {
+                "enabled": p2p.is_seeding_enabled(),
+                "ratio_cap": p2p.get_seed_ratio_cap(),
+                "disk_pressure": p2p.should_pause_for_disk_pressure(_srv.ZIM_DIR),
+                "torrents": torrents,
+                "totals": {
+                    "uploaded": total_up,
+                    "downloaded": total_down,
+                    "ratio": round(total_up / max(total_down, 1), 3),
+                },
+            },
+        )
+
     elif parsed.path == "/manage/bt-status":
         # Surface the BT engine state so the user can self-diagnose:
         # is it enabled, did the binary start, is the port reachable?

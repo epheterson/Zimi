@@ -466,10 +466,17 @@ def _try_bt_download(
     bt_peers / bt_info_hash so the existing /manage/downloads UI surfaces
     BT progress without further wiring.
     """
-    try:
-        tid = backend.add_torrent(
-            torrent_url, dest_dir=staging_dir, options={"seed-time": "0"}
+    from zimi import p2p as _p2p
+
+    if _p2p.is_seeding_enabled():
+        seed_opts = _p2p.seed_options(
+            ratio_cap=_p2p.get_seed_ratio_cap(),
+            max_upload_kb=_p2p.DEFAULT_SEED_BANDWIDTH_KB,
         )
+    else:
+        seed_opts = _p2p.seed_options(ratio_cap=0, max_upload_kb=0)
+    try:
+        tid = backend.add_torrent(torrent_url, dest_dir=staging_dir, options=seed_opts)
     except Exception as e:
         log.warning(
             "BT add_torrent failed for %s: %s — falling back to HTTP", dl["filename"], e
@@ -529,10 +536,22 @@ def _try_bt_download(
                 except Exception as e2:
                     log.warning("BT staging→dest failed: %s / %s", e, e2)
                     return "fallback"
-            try:
-                backend.remove(tid)
-            except Exception:
-                pass
+            # Seeding policy decision: by default we KEEP the torrent in
+            # aria2 so it transitions to seeding mode automatically up to the
+            # ratio cap. Only remove when seeding is disabled — then this
+            # was a leech-only download and we're done.
+            if not _p2p.is_seeding_enabled():
+                try:
+                    backend.remove(tid)
+                except Exception:
+                    pass
+            else:
+                dl["bt_gid"] = tid  # keep so /manage/seeding can find it
+                log.info(
+                    "Seeding %s up to %.1fx ratio",
+                    dl["filename"],
+                    _p2p.get_seed_ratio_cap(),
+                )
             return "success"
 
         if state == "error":

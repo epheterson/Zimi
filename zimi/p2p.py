@@ -84,6 +84,65 @@ def get_backend_name() -> str:
 
 
 # ============================================================================
+# Seeding policy
+# ============================================================================
+
+
+def is_seeding_enabled() -> bool:
+    """Seed by default when BT is enabled. ZIMI_SEED=0 to opt out."""
+    raw = os.environ.get("ZIMI_SEED", "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def get_seed_ratio_cap() -> float:
+    """Stop seeding once we've uploaded N× the file size. Default 2.0."""
+    raw = os.environ.get("ZIMI_SEED_RATIO", str(DEFAULT_RATIO_CAP))
+    try:
+        return max(0.0, float(raw))
+    except (ValueError, TypeError):
+        return DEFAULT_RATIO_CAP
+
+
+def get_disk_pressure_pct() -> int:
+    """Pause seeding when free disk drops below this percent. Default 5."""
+    raw = os.environ.get("ZIMI_SEED_DISK_PCT", "5")
+    try:
+        return max(1, min(50, int(raw)))
+    except (ValueError, TypeError):
+        return 5
+
+
+def seed_options(*, ratio_cap: float, max_upload_kb: int) -> dict:
+    """aria2 per-torrent options for seeding behaviour.
+
+    ratio_cap=0 means leech-only (don't seed at all).
+    """
+    if ratio_cap <= 0:
+        return {
+            "seed-ratio": "0",
+            "seed-time": "0",
+            "bt-stop-timeout": "0",
+        }
+    return {
+        "seed-ratio": f"{ratio_cap:.1f}",
+        "seed-time": "0",  # cap by ratio, not time
+        "max-upload-limit": f"{int(max_upload_kb)}K",
+    }
+
+
+def should_pause_for_disk_pressure(zim_dir: str) -> bool:
+    """Free space below ZIMI_SEED_DISK_PCT → pause all seeds."""
+    try:
+        usage = shutil.disk_usage(zim_dir)
+    except OSError:
+        return False  # can't tell → don't pause
+    if usage.total == 0:
+        return False
+    pct_free = (usage.free / usage.total) * 100
+    return pct_free < get_disk_pressure_pct()
+
+
+# ============================================================================
 # Backend interface
 # ============================================================================
 
