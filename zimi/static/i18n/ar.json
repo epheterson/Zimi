@@ -838,5 +838,7 @@
   "seeding_state_complete": "مكتمل",
   "seeding_state_waiting": "انتظار",
   "seeding_state_paused": "موقوف",
-  "seeding_state_error": "خطأ"
+  "seeding_state_error": "خطأ",
+  "dl_via_bt": "BT",
+  "dl_via_bt_tip": "تم التنزيل عبر BitTorrent — نقل من نظير إلى نظير."
 }

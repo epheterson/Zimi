@@ -838,5 +838,7 @@
   "seeding_state_complete": "завершён",
   "seeding_state_waiting": "ожидание",
   "seeding_state_paused": "на паузе",
-  "seeding_state_error": "ошибка"
+  "seeding_state_error": "ошибка",
+  "dl_via_bt": "BT",
+  "dl_via_bt_tip": "Загружено через BitTorrent — пиринговая передача."
 }

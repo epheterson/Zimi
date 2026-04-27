@@ -597,6 +597,9 @@
   .dl-cancel-btn:hover { border-color: var(--error); color: var(--error); }
   .dl-retry-btn:hover { border-color: var(--amber); color: var(--amber); }
   .dl-mirror { font-size: 11px; color: var(--text2); opacity: 0.6; flex: 1; }
+  .dl-source { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
+    color: var(--text2); white-space: nowrap; }
+  .dl-source-bt { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .dl-clear-btn { float: right; background: none; border: 1px solid var(--border); color: var(--text2); font-size: 11px; padding: 2px 10px; border-radius: 4px; cursor: pointer; margin-top: -28px; }
   .dl-clear-btn:hover { border-color: var(--amber); color: var(--amber); }
 

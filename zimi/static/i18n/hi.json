@@ -838,5 +838,7 @@
   "seeding_state_complete": "पूर्ण",
   "seeding_state_waiting": "प्रतीक्षा",
   "seeding_state_paused": "रुका",
-  "seeding_state_error": "त्रुटि"
+  "seeding_state_error": "त्रुटि",
+  "dl_via_bt": "BT",
+  "dl_via_bt_tip": "BitTorrent के माध्यम से डाउनलोड किया गया — पीयर-टू-पीयर ट्रांसफ़र।"
 }

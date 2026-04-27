@@ -5599,11 +5599,17 @@ async function refreshDownloads() {
 
       if (!dl.done && !dl.error) {
         h += '<div class="dl-progress' + (dl.paused ? ' dl-paused' : '') + '"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>';
+        var sourcePill = dl.source === 'bt'
+          ? '<span class="dl-source dl-source-bt" title="' + escAttr(t('dl_via_bt_tip')) + '">' +
+              tH('dl_via_bt') +
+              (dl.bt_peers > 0 ? ' · ' + dl.bt_peers + 'p' : '') +
+            '</span>'
+          : '';
         var mirrorInfo = dl.mirror_host ? '<span class="dl-mirror" title="' + esc(dl.mirror_host) + '">' + esc(dl.mirror_host) + (dl.mirror_count > 1 ? ' (' + tH('n_mirrors', {n: dl.mirror_count}) + ')' : '') + '</span>' : '';
         var pauseBtn = dl.queued ? '' :
           '<button class="dl-pause-btn" onclick="pauseDownload(\'' + escAttr(dl.id) + '\',' + (dl.paused ? 'false' : 'true') + ')">' +
             (dl.paused ? tH('resume') : tH('pause')) + '</button>';
-        h += '<div class="dl-actions">' + mirrorInfo + pauseBtn +
+        h += '<div class="dl-actions">' + sourcePill + mirrorInfo + pauseBtn +
           '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">' + tH('cancel') + '</button></div>';
       }
       if (dl.error && dl.error !== 'Cancelled') {

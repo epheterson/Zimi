@@ -838,5 +838,7 @@
   "seeding_state_complete": "completo",
   "seeding_state_waiting": "esperando",
   "seeding_state_paused": "pausado",
-  "seeding_state_error": "error"
+  "seeding_state_error": "error",
+  "dl_via_bt": "BT",
+  "dl_via_bt_tip": "Descargado vía BitTorrent — transferencia entre pares."
 }

@@ -1172,6 +1172,8 @@ def _get_downloads():
                     "is_update": dl.get("is_update", False),
                     "queued": False,
                     "paused": bool(dl.get("paused", False)),
+                    "source": dl.get("_source", "http"),
+                    "bt_peers": dl.get("bt_peers", 0),
                 }
             )
             # Clean up completed downloads older than 1 hour

@@ -838,5 +838,7 @@
   "seeding_state_complete": "הושלם",
   "seeding_state_waiting": "ממתין",
   "seeding_state_paused": "מושהה",
-  "seeding_state_error": "שגיאה"
+  "seeding_state_error": "שגיאה",
+  "dl_via_bt": "BT",
+  "dl_via_bt_tip": "הורד דרך BitTorrent — העברה בין עמיתים."
 }
