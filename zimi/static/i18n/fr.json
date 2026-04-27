@@ -856,5 +856,7 @@
   "alm_a11y_no_stars": "Aucune étoile au-dessus de l’horizon pour le moment",
   "mirror_off_hint": "Définir ZIMI_MIRROR=1 pour ensemencer les ZIM installés en tant que miroir public — ratio sans limite + bande passante d’envoi accrue.",
   "mirror_active": "Miroir actif",
-  "mirror_active_hint": "Partage de tous les ZIM installés avec le swarm. Arrête avec ZIMI_MIRROR=0."
+  "mirror_active_hint": "Partage de tous les ZIM installés avec le swarm. Arrête avec ZIMI_MIRROR=0.",
+  "peer_pill_click_tip": "Télécharger depuis {peers} sur ton LAN — chemin le plus rapide, sans WAN.",
+  "downloading_from_peer": "Démarrage du téléchargement — {peer} sur ton LAN devrait servir les octets."
 }

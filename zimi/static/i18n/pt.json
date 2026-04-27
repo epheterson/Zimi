@@ -856,5 +856,7 @@
   "alm_a11y_no_stars": "Nenhuma estrela acima do horizonte no momento",
   "mirror_off_hint": "Defina ZIMI_MIRROR=1 para semear os ZIMs instalados como espelho público — proporção sem limite e maior largura de banda de upload.",
   "mirror_active": "Espelho ativo",
-  "mirror_active_hint": "Semeando tudo o que você tem instalado de volta para o enxame. Pare com ZIMI_MIRROR=0."
+  "mirror_active_hint": "Semeando tudo o que você tem instalado de volta para o enxame. Pare com ZIMI_MIRROR=0.",
+  "peer_pill_click_tip": "Baixar de {peers} na sua LAN — caminho mais rápido, sem WAN.",
+  "downloading_from_peer": "Iniciando download — {peer} na sua LAN deve enviar os bytes."
 }

@@ -856,5 +856,7 @@
   "alm_a11y_no_stars": "目前没有星星位于地平线以上",
   "mirror_off_hint": "设置 ZIMI_MIRROR=1 即可将已安装的 ZIM 作为公共镜像做种 — 不限分享率 + 更高上传带宽。",
   "mirror_active": "镜像已激活",
-  "mirror_active_hint": "正在将已安装的内容回传到种子集群。使用 ZIMI_MIRROR=0 停止。"
+  "mirror_active_hint": "正在将已安装的内容回传到种子集群。使用 ZIMI_MIRROR=0 停止。",
+  "peer_pill_click_tip": "从局域网中的 {peers} 下载 — 最快路径，不消耗 WAN 流量。",
+  "downloading_from_peer": "开始下载 — 局域网中的 {peer} 应该提供数据。"
 }

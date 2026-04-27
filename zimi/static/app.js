@@ -3311,8 +3311,41 @@ function _peerHint(item) {
   if (!peers || !peers.length) return '';
   // Strip the "zimi-" prefix for readability ("zimi-elpnas" → "elpnas").
   const display = peers.map(p => p.replace(/^zimi-/, '')).join(', ');
-  return '<span class="ci-peer-pill" title="' + escAttr(t('peer_has_zim', {peers: display})) + '">' +
-    '📡 ' + esc(display) + '</span>';
+  // Already installed? Show the pill but don't re-trigger a download.
+  if (item.installed) {
+    return '<span class="ci-peer-pill" title="' + escAttr(t('peer_has_zim', {peers: display})) + '">' +
+      '📡 ' + esc(display) + '</span>';
+  }
+  // Pick the best-flavor variant: same logic the catalog cards already use
+  // (full > nopic > mini, modulated by user preference).
+  const variants = (item.variants && item.variants.length ? item.variants : [item])
+    .filter(v => v.download_url);
+  if (!variants.length) {
+    return '<span class="ci-peer-pill" title="' + escAttr(t('peer_has_zim', {peers: display})) + '">' +
+      '📡 ' + esc(display) + '</span>';
+  }
+  const sorted = variants.slice().sort((a, b) => _flavorOrder(b.download_url) - _flavorOrder(a.download_url));
+  const url = sorted[0].download_url;
+  const peerName = peers[0];  // first peer that has it; BT picks best automatically
+  return '<button type="button" class="ci-peer-pill ci-peer-pill-clickable" ' +
+    'title="' + escAttr(t('peer_pill_click_tip', {peers: display})) + '" ' +
+    'aria-label="' + escAttr(t('peer_pill_click_tip', {peers: display})) + '" ' +
+    'onclick="event.stopPropagation();_downloadFromPeer(\'' + escAttr(url) + '\', \'' + escAttr(peerName) + '\')">' +
+    '📡 ' + esc(display) + '</button>';
+}
+
+function _downloadFromPeer(url, peerName) {
+  // BT engine naturally pulls from the LAN peer because TCP RTT is
+  // an order of magnitude lower than WAN. We just trigger the same
+  // downloadZim flow and surface the peer in a toast so the user
+  // knows the LAN advantage kicked in.
+  const shortPeer = (peerName || '').replace(/^zimi-/, '');
+  if (typeof _showToast === 'function') {
+    _showToast(t('downloading_from_peer', {peer: shortPeer}));
+  }
+  if (typeof downloadZim === 'function') {
+    downloadZim(url);
+  }
 }
 
 function _hierarchyHint(item) {

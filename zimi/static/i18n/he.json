@@ -856,5 +856,7 @@
   "alm_a11y_no_stars": "כעת אין כוכבים מעל האופק",
   "mirror_off_hint": "הגדר ZIMI_MIRROR=1 כדי לזרוע את ה־ZIM המותקנים כראי ציבורי — יחס לא מוגבל ורוחב פס העלאה גבוה יותר.",
   "mirror_active": "ראי פעיל",
-  "mirror_active_hint": "כל ה־ZIM המותקנים מועברים לרשת הנקודות. עצור בעזרת ZIMI_MIRROR=0."
+  "mirror_active_hint": "כל ה־ZIM המותקנים מועברים לרשת הנקודות. עצור בעזרת ZIMI_MIRROR=0.",
+  "peer_pill_click_tip": "הורדה מ־{peers} ברשת המקומית — הנתיב המהיר ביותר, ללא צריכת WAN.",
+  "downloading_from_peer": "מתחילה ההורדה — {peer} ברשת המקומית אמור להגיש את הנתונים."
 }

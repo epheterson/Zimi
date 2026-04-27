@@ -91,12 +91,23 @@ plan docs in `docs/plans/`).
   ratio + upload-cap visible. 12 unit tests cover env parsing,
   default caps, override fallback, status dict shape, and the
   effective-options branching
-- **Catalog peer pills** — when a discovered LAN peer already has a
-  ZIM, a small green "📡 peer-name" pill appears on its catalog card.
-  Clients fetch each peer's `/list` via the cached
-  `GET /manage/peers/list?peer=NAME` endpoint and match by stripped
-  filename stem. Phase 1 is informational; phase 2 will route the
-  download through the peer (BT preferred)
+- **Catalog peer pills (clickable)** — when a discovered LAN peer
+  already has a ZIM, a small green "📡 peer-name" pill appears on
+  its catalog card. Phase 1 (informational) and phase 2 (clickable)
+  both shipped this release.
+  - Phase 1: clients fetch each peer's `/list` via the cached
+    `GET /manage/peers/list?peer=NAME` endpoint and match by
+    stripped filename stem
+  - Phase 2: the pill is now a real button that triggers the
+    download for the user's preferred flavor (full → nopic → mini,
+    or whatever the Preferences default is). BT swarm naturally
+    pulls bytes from the LAN peer — TCP RTT is an order of
+    magnitude lower than WAN, so the swarm prefers the LAN path
+    automatically; we just trigger the download and surface a
+    toast: "Starting download — elpnas on your LAN should serve
+    the bytes."
+  - Pill is keyboard-focusable with a green focus ring; touch
+    target is 24×24 (WCAG 2.5.5)
 - **Accessibility track (#19)** — Reach goal: build once and benefit
   every screen-reader, keyboard, and low-vision user, forever.
   - Skip-to-main-content link, first tab-stop, hidden until focused

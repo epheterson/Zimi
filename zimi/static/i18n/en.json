@@ -856,5 +856,7 @@
   "alm_a11y_no_stars": "No stars currently above the horizon",
   "mirror_off_hint": "Set ZIMI_MIRROR=1 to seed installed ZIMs as a public mirror — uncapped ratio + higher upload bandwidth.",
   "mirror_active": "Mirror active",
-  "mirror_active_hint": "Seeding everything you have installed back to the swarm. Stop or restart with ZIMI_MIRROR=0."
+  "mirror_active_hint": "Seeding everything you have installed back to the swarm. Stop or restart with ZIMI_MIRROR=0.",
+  "peer_pill_click_tip": "Download from {peers} on your LAN — fastest route, no WAN bandwidth used.",
+  "downloading_from_peer": "Starting download — {peer} on your LAN should serve the bytes."
 }

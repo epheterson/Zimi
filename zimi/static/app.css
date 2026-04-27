@@ -760,6 +760,20 @@
     font-size: 11px; line-height: 1.4;
     background: rgba(120, 200, 120, 0.12); color: #6ec56e;
     border: 1px solid rgba(120, 200, 120, 0.3);
+    /* Touch target — bumped to 24px for clickable variant; the static
+       (already-installed) variant inherits the smaller size. */
+  }
+  .ci-peer-pill-clickable {
+    cursor: pointer; min-height: 24px; padding: 4px 10px;
+    font: inherit; font-size: 11px; transition: all 0.15s;
+  }
+  .ci-peer-pill-clickable:hover {
+    background: rgba(120, 200, 120, 0.22);
+    border-color: rgba(120, 200, 120, 0.55);
+    color: #84d684;
+  }
+  .ci-peer-pill-clickable:focus-visible {
+    outline: 2px solid #6ec56e; outline-offset: 2px;
   }
   .ci-hier-installed,
   .ci-hier-subset,
