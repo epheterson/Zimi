@@ -823,5 +823,8 @@
   "flavor_full": "كامل (مع الصور)",
   "flavor_nopic": "بدون صور",
   "flavor_mini": "مصغر",
-  "updates_available_section": "تحديثات متاحة"
+  "updates_available_section": "تحديثات متاحة",
+  "languages_section": "اللغات",
+  "catalog_languages_hint_short": "انقر للإضافة أو الإزالة من فلتر الكتالوج.",
+  "multi_lang": "متعدد اللغات"
 }

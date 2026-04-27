@@ -823,5 +823,8 @@
   "flavor_full": "מלא (עם תמונות)",
   "flavor_nopic": "ללא תמונות",
   "flavor_mini": "מיני",
-  "updates_available_section": "עדכונים זמינים"
+  "updates_available_section": "עדכונים זמינים",
+  "languages_section": "שפות",
+  "catalog_languages_hint_short": "לחץ כדי להוסיף או להסיר מסנן הקטלוג.",
+  "multi_lang": "רב-לשוני"
 }

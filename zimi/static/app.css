@@ -647,6 +647,18 @@
     color: var(--text); font-size: 13px; box-sizing: border-box;
   }
   .ms-pref-langs:focus { outline: none; border-color: var(--amber); }
+  .ms-lang-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .ms-lang-pill {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--bg); font-size: 13px; color: var(--text);
+  }
+  .ms-lang-pill.active { border-color: var(--amber); color: var(--amber); }
+  .ms-lang-pill .ms-lang-code {
+    font-family: monospace; font-size: 11px; color: var(--text2);
+    text-transform: uppercase;
+  }
+  .ms-lang-pill.active .ms-lang-code { color: var(--amber); }
   .ms-flavor-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   .ms-flavor-pill {
     display: inline-flex; align-items: center; gap: 6px; cursor: pointer;

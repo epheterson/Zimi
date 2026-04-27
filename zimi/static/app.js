@@ -63,6 +63,29 @@ function _savePrefLanguagesFromInput(raw) {
   _setPrefLanguages(codes);
 }
 
+// Common language pills for the Preferences UI. Order roughly by global Wikipedia use.
+const _LANG_PREF_OPTIONS = ['en', 'fr', 'de', 'es', 'pt', 'ru', 'zh', 'ar', 'hi', 'he', 'ja', 'it', 'multi'];
+
+function _renderLangPrefPills() {
+  const selected = new Set(_getPrefLanguages());
+  return _LANG_PREF_OPTIONS.map(function(code) {
+    const isOn = selected.has(code);
+    const label = code === 'multi' ? t('multi_lang') : (_langDisplayName(code) || code.toUpperCase());
+    return '<button class="ms-lang-pill' + (isOn ? ' active' : '') +
+      '" onclick="_togglePrefLanguage(\'' + code + '\')">' +
+      '<span class="ms-lang-code">' + code + '</span> ' + esc(label) + '</button>';
+  }).join('');
+}
+
+function _togglePrefLanguage(code) {
+  const current = new Set(_getPrefLanguages());
+  if (current.has(code)) current.delete(code);
+  else current.add(code);
+  _setPrefLanguages(Array.from(current));
+  const el = document.getElementById('ms-lang-pills');
+  if (el) el.innerHTML = _renderLangPrefPills();
+}
+
 // Preferred download flavor: "full" (with images), "nopic", or "mini".
 // Used to sort variant pickers so the user's default lands at the top.
 function _getPrefFlavor() {
@@ -4489,19 +4512,18 @@ function _msPreferencesHtml() {
   var showXzim = !_getStorageFlag(SK.HIDE_XZIM_LINKS);
   var showDiscover = !_getStorageFlag(SK.HIDE_DISCOVER);
   var showLangChooser = !_getStorageFlag(SK.HIDE_LANG_CHOOSER);
-  var prefLangs = _getPrefLanguages().join(', ');
   var h = '<div class="ms-section-label">' + tH('ms_display_section') + '</div>' +
     '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
-    '<label class="ms-check"><input type="checkbox"' + (showLangChooser ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\')"> ' + tH('show_lang_chooser') + '</label>' +
     '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
-    '<div class="ms-section-label" style="margin-top:20px">' + tH('catalog_languages') + '</div>' +
-    '<div class="ms-hint">' + tH('catalog_languages_hint') + '</div>' +
-    '<input type="text" class="ms-pref-langs" id="ms-pref-langs" value="' + escAttr(prefLangs) +
-      '" placeholder="' + escAttr(t('catalog_languages_placeholder')) + '"' +
-      ' oninput="_savePrefLanguagesFromInput(this.value)">' +
+    // Languages section combines display toggle + multi-select pref
+    '<div class="ms-section-label" style="margin-top:20px">' + tH('languages_section') + '</div>' +
+    '<label class="ms-check"><input type="checkbox"' + (showLangChooser ? ' checked' : '') +
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\')"> ' + tH('show_lang_chooser') + '</label>' +
+    '<div class="ms-hint" style="margin-top:8px">' + tH('catalog_languages_hint_short') + '</div>' +
+    '<div class="ms-lang-pills" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>' +
+    // Default download flavor
     '<div class="ms-section-label" style="margin-top:20px">' + tH('default_flavor') + '</div>' +
     '<div class="ms-hint">' + tH('default_flavor_hint') + '</div>' +
     '<div class="ms-flavor-row">' +

@@ -823,5 +823,8 @@
   "flavor_full": "完整（含图片）",
   "flavor_nopic": "无图片",
   "flavor_mini": "精简",
-  "updates_available_section": "可用更新"
+  "updates_available_section": "可用更新",
+  "languages_section": "语言",
+  "catalog_languages_hint_short": "点击添加或从目录筛选中移除。",
+  "multi_lang": "多语言"
 }

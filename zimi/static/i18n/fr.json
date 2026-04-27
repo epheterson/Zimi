@@ -823,5 +823,8 @@
   "flavor_full": "Complet (avec images)",
   "flavor_nopic": "Sans images",
   "flavor_mini": "Mini",
-  "updates_available_section": "Mises à jour disponibles"
+  "updates_available_section": "Mises à jour disponibles",
+  "languages_section": "Langues",
+  "catalog_languages_hint_short": "Cliquer pour ajouter ou retirer du filtre du catalogue.",
+  "multi_lang": "Multilingue"
 }
