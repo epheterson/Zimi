@@ -133,6 +133,25 @@ Power users with NAS setups will pick external. Casual users get the bundled pat
 
 **Recommended order:** Ship aria2 backend first (Tasks 1-7). Add qBittorrent backend later as a follow-up — same `BTBackend` interface, different impl. The interface is the important part.
 
+### 4b-bis. Reuse-the-UI pattern (the *arr trick)
+
+When `ZIMI_BT_BACKEND=qbittorrent` (or transmission/deluge), Zimi doesn't try to recreate qBT's deep torrent UI. Instead, mirroring how Sonarr/Radarr handle this:
+
+1. **Tag every torrent we add** with a category/label (`ZIMI_QBT_CATEGORY=zimi` default). All Zimi-managed downloads land in that category in qBT's WebUI.
+2. **Our Downloads tab still works the same** for the Zimi-curated view (queue, progress, pause, multi-select, etc.) — that's the user-friendly surface.
+3. **For deep BT operations, link out**. Server-settings "Seeding" panel includes:
+   - `Open in qBittorrent →` button → deep links to qBT's WebUI filtered by `category=zimi`
+   - "Show all torrents" link → opens qBT WebUI root
+   - One-line "Powered by qBittorrent at <url>" with a connection-status dot
+4. **Don't fight qBT's source of truth.** If user removes a torrent in qBT directly, our next status poll detects the disappearance and reconciles. We don't try to forbid that — qBT is the user's primary BT app.
+
+For the bundled-aria2 path, we expose the *full* UI ourselves since aria2 has no GUI of its own. The interface contract is the same; only the deep-debugging escape hatch differs.
+
+This keeps our scope sharp:
+- **We own:** the catalog → torrent connection, the user's curated download queue, ratio policy, hash verification, seeding decisions
+- **External BT client owns (when configured):** network tuning, peer management, low-level transport, crash recovery
+- **We never own:** trying to be a better qBittorrent than qBittorrent
+
 ### 4c. UI/UX patterns to borrow from established BT clients
 
 We're entering a category with strong UX conventions. Steal selectively, skip what doesn't apply to single-file ZIM torrents.
