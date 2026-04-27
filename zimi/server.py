@@ -1002,6 +1002,18 @@ def main():
             except OSError:
                 pass
         warm_indexes()
+        # Try to start the BT backend (no-op when ZIMI_TORRENT is unset or
+        # backend unavailable — Zimi keeps running with HTTP downloads).
+        try:
+            from zimi import p2p
+
+            backend = p2p.get_backend(data_dir=ZIMI_DATA_DIR)
+            if backend:
+                import atexit
+
+                atexit.register(p2p.shutdown_backend)
+        except Exception as e:
+            log.warning("BT backend init failed (HTTP downloads unaffected): %s", e)
         # Start auto-update thread if enabled
         global _auto_update_thread
         if _auto_update_enabled:

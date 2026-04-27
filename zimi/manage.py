@@ -390,6 +390,51 @@ def handle_manage_get(handler, parsed, params):
             },
         )
 
+    elif parsed.path == "/manage/bt-status":
+        # Surface the BT engine state so the user can self-diagnose:
+        # is it enabled, did the binary start, is the port reachable?
+        from zimi import p2p
+        import shutil as _shutil
+
+        enabled = p2p.is_torrent_enabled()
+        backend_name = p2p.get_backend_name()
+        binary_present = (
+            bool(_shutil.which("aria2c")) if backend_name == "aria2" else None
+        )
+
+        # Live state — only call get_backend if BT is actually enabled.
+        # Don't accidentally trigger sidecar startup from a status check.
+        backend = None
+        if enabled:
+            try:
+                backend = p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+            except Exception as e:
+                log.warning("bt-status: backend init failed: %s", e)
+
+        status = "off" if not enabled else "ready" if backend else "unavailable"
+        hint = None
+        if not enabled:
+            hint = "Set ZIMI_TORRENT=1 to enable. HTTP downloads work without it."
+        elif backend_name == "aria2" and binary_present is False:
+            hint = (
+                "aria2c not found in PATH. Install it or use the bundled Docker image."
+            )
+        elif not backend:
+            hint = "Backend failed to start; check logs. Falling back to HTTP."
+
+        return handler._json(
+            200,
+            {
+                "status": status,
+                "enabled": enabled,
+                "backend": backend_name,
+                "bt_port": p2p.get_bt_port(),
+                "staging_dir": p2p.get_staging_dir(_srv.ZIMI_DATA_DIR),
+                "binary_present": binary_present,
+                "hint": hint,
+            },
+        )
+
     else:
         return handler._json(404, {"error": "not found"})
 

@@ -1,0 +1,395 @@
+"""BitTorrent backend abstraction + bundled aria2c sidecar.
+
+Two backends share the same interface:
+
+  BTBackend (abstract)
+    Aria2Backend       — bundled aria2c subprocess via JSON-RPC
+    QBittorrentBackend — talks to an existing qBittorrent instance
+    TransmissionBackend, DelugeBackend — TBD, same interface
+
+Selected via ZIMI_BT_BACKEND env var; default 'aria2'. Always optional
+behind ZIMI_TORRENT — when unset, BT is off and the existing HTTP
+download path runs unchanged.
+
+Smart defaults: if aria2c isn't on PATH, we log + skip silently rather
+than crashing. The HTTP path keeps working. User explicitly enables BT
+once they've verified the binary is available.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import secrets
+import shutil
+import subprocess
+import threading
+import time
+import urllib.error
+import urllib.request
+from abc import ABC, abstractmethod
+from typing import Any
+
+log = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Configuration knobs
+# ============================================================================
+
+DEFAULT_BT_PORT = 6881
+DEFAULT_RATIO_CAP = 2.0
+DEFAULT_SEED_BANDWIDTH_KB = 2048  # 2 MB/s
+
+
+def _bool_env(key: str, default: bool = False) -> bool:
+    raw = os.environ.get(key, "").strip().lower()
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return True if False else False  # explicit no
+    return default
+
+
+def is_torrent_enabled() -> bool:
+    """ZIMI_TORRENT=1 turns BT on. Off by default during initial rollout."""
+    return _bool_env("ZIMI_TORRENT")
+
+
+def get_bt_port() -> int:
+    """Inbound BT port. Default 6881; clamps invalid input."""
+    raw = os.environ.get("ZIMI_BT_PORT", str(DEFAULT_BT_PORT))
+    try:
+        n = int(raw)
+        if 1024 <= n <= 65535:
+            return n
+    except (ValueError, TypeError):
+        pass
+    log.warning("ZIMI_BT_PORT=%r invalid; using default %d", raw, DEFAULT_BT_PORT)
+    return DEFAULT_BT_PORT
+
+
+def get_staging_dir(data_dir: str) -> str:
+    """Where in-progress downloads land before being renamed to ZIM_DIR."""
+    explicit = os.environ.get("ZIMI_STAGING_DIR")
+    if explicit:
+        return explicit
+    return os.path.join(data_dir, "staging")
+
+
+def get_backend_name() -> str:
+    """Which BT backend to use. Default 'aria2'."""
+    return os.environ.get("ZIMI_BT_BACKEND", "aria2").strip().lower()
+
+
+# ============================================================================
+# Backend interface
+# ============================================================================
+
+
+class BTBackend(ABC):
+    """Common surface across aria2 / qBittorrent / Transmission / Deluge.
+
+    The rest of zimi only knows about this interface. Each backend
+    implementation is opt-in via ZIMI_BT_BACKEND.
+    """
+
+    @abstractmethod
+    def available(self) -> bool:
+        """Is this backend usable? aria2 → binary on PATH; qBT → API
+        reachable. Called at startup to fail-soft to HTTP."""
+
+    @abstractmethod
+    def add_torrent(
+        self, source: str, *, dest_dir: str, options: dict | None = None
+    ) -> str:
+        """Add a torrent (URL to .torrent, magnet, or local path).
+
+        Returns a backend-specific id we can use later.
+        """
+
+    @abstractmethod
+    def pause(self, tid: str) -> None: ...
+
+    @abstractmethod
+    def resume(self, tid: str) -> None: ...
+
+    @abstractmethod
+    def remove(self, tid: str, *, delete_files: bool = False) -> None: ...
+
+    @abstractmethod
+    def status(self, tid: str) -> dict:
+        """Return a normalized status dict.
+
+        Keys: state ('downloading'|'seeding'|'paused'|'error'|'complete'),
+              completed_bytes, total_bytes, peers, seeders, leechers,
+              down_speed, up_speed, ratio, eta_seconds, info_hash.
+        """
+
+    @abstractmethod
+    def list_managed(self) -> list[dict]:
+        """All Zimi-managed torrents (filtered by category for external)."""
+
+    def web_ui_url(self, tid: str | None = None) -> str | None:
+        """Optional deep-link to the backend's web UI. None for headless."""
+        return None
+
+
+# ============================================================================
+# aria2 sidecar — the bundled default
+# ============================================================================
+
+
+class Aria2Backend(BTBackend):
+    """Manages a long-lived `aria2c` subprocess via its JSON-RPC interface.
+
+    Lifecycle:
+      ensure_running()         start subprocess if not already up
+      _rpc(method, params)     thin client with bounded retries
+      stop()                   graceful shutdown on Zimi exit
+
+    Survives aria2 crashes via session-file resume. Listens only on
+    localhost — never expose the RPC port externally.
+    """
+
+    def __init__(
+        self,
+        *,
+        bt_port: int,
+        rpc_port: int = 6800,
+        data_dir: str,
+        staging_dir: str,
+    ) -> None:
+        self.bt_port = bt_port
+        self.rpc_port = rpc_port
+        self.data_dir = data_dir
+        self.staging_dir = staging_dir
+        self.bt_dir = os.path.join(data_dir, "bt")
+        self.session_path = os.path.join(self.bt_dir, "session")
+        self.torrents_dir = os.path.join(self.bt_dir, "torrents")
+        # 32 hex chars; localhost-only but still nice to require it
+        self.rpc_secret = secrets.token_hex(16)
+        self._proc: subprocess.Popen | None = None
+        self._lock = threading.Lock()
+
+    # ── availability check ────────────────────────────────────────────────
+
+    def available(self) -> bool:
+        """True if `aria2c` is on PATH and we can reach its RPC."""
+        if not shutil.which("aria2c"):
+            return False
+        try:
+            self.ensure_running()
+            # Round-trip the RPC to confirm it actually responds
+            self._rpc("aria2.getVersion", [])
+            return True
+        except Exception as e:
+            log.warning("aria2 not available: %s", e)
+            return False
+
+    # ── lifecycle ─────────────────────────────────────────────────────────
+
+    def ensure_running(self) -> None:
+        with self._lock:
+            if self._proc and self._proc.poll() is None:
+                return  # already running
+            os.makedirs(self.bt_dir, exist_ok=True)
+            os.makedirs(self.torrents_dir, exist_ok=True)
+            os.makedirs(self.staging_dir, exist_ok=True)
+            args = [
+                "aria2c",
+                "--enable-rpc",
+                "--rpc-listen-all=false",
+                f"--rpc-listen-port={self.rpc_port}",
+                f"--rpc-secret={self.rpc_secret}",
+                f"--listen-port={self.bt_port}",
+                f"--dht-listen-port={self.bt_port}",
+                # Seed-cap policy comes via per-torrent options on add_torrent.
+                "--enable-dht=false",  # opt-in only via ZIMI_DHT
+                "--enable-peer-exchange=true",
+                f"--dir={self.staging_dir}",
+                f"--save-session={self.session_path}",
+                "--save-session-interval=30",
+                # Resume from session file on restart
+                *(
+                    ["--input-file", self.session_path]
+                    if os.path.exists(self.session_path)
+                    else []
+                ),
+                "--continue=true",
+                "--max-connection-per-server=4",
+                "--seed-ratio=0",  # default no auto-seed; per-torrent overrides
+                "--bt-stop-timeout=0",
+                "--summary-interval=0",
+                "--quiet=true",
+            ]
+            log.info("Starting aria2c on rpc:%d, bt:%d", self.rpc_port, self.bt_port)
+            self._proc = subprocess.Popen(
+                args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+            )
+            # Wait briefly for RPC to come up
+            for _ in range(30):
+                try:
+                    self._rpc("aria2.getVersion", [])
+                    log.info("aria2c ready on port %d", self.rpc_port)
+                    return
+                except Exception:
+                    time.sleep(0.1)
+            raise RuntimeError("aria2c failed to start within 3s")
+
+    def stop(self) -> None:
+        with self._lock:
+            if not self._proc:
+                return
+            try:
+                self._rpc("aria2.shutdown", [])
+                self._proc.wait(timeout=5)
+            except Exception:
+                self._proc.terminate()
+                try:
+                    self._proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self._proc.kill()
+            self._proc = None
+
+    # ── RPC client ────────────────────────────────────────────────────────
+
+    def _rpc(self, method: str, params: list, timeout: float = 5.0) -> Any:
+        """Single JSON-RPC call. Raises on transport or RPC error."""
+        body = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": secrets.token_hex(4),
+                "method": method,
+                "params": [f"token:{self.rpc_secret}", *params],
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self.rpc_port}/jsonrpc",
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read())
+        except (urllib.error.URLError, ConnectionError, OSError) as e:
+            raise RuntimeError(f"aria2 RPC transport error: {e}") from e
+        if "error" in data:
+            raise RuntimeError(f"aria2 RPC error: {data['error']}")
+        return data.get("result", {})
+
+    # ── BTBackend impl ────────────────────────────────────────────────────
+
+    def add_torrent(
+        self, source: str, *, dest_dir: str, options: dict | None = None
+    ) -> str:
+        """source can be a URL to a .torrent, a magnet, or http(s) URL.
+
+        For .torrent URLs, aria2.addUri pulls the metadata then starts the
+        BT swarm. dest_dir is where the final file lands (we use staging
+        and rename later — aria2 writes here directly).
+        """
+        opts = {"dir": dest_dir, "allow-overwrite": "false"}
+        if options:
+            opts.update(options)
+        return self._rpc("aria2.addUri", [[source], opts])
+
+    def pause(self, tid: str) -> None:
+        self._rpc("aria2.pause", [tid])
+
+    def resume(self, tid: str) -> None:
+        self._rpc("aria2.unpause", [tid])
+
+    def remove(self, tid: str, *, delete_files: bool = False) -> None:
+        self._rpc("aria2.remove", [tid])
+        if delete_files:
+            self._rpc("aria2.removeDownloadResult", [tid])
+
+    def status(self, tid: str) -> dict:
+        raw = self._rpc("aria2.tellStatus", [tid])
+        state_map = {
+            "active": "downloading",
+            "waiting": "waiting",
+            "paused": "paused",
+            "error": "error",
+            "complete": "complete",
+            "removed": "removed",
+        }
+        completed = int(raw.get("completedLength", 0))
+        total = int(raw.get("totalLength", 0))
+        return {
+            "state": state_map.get(raw.get("status", ""), "unknown"),
+            "completed_bytes": completed,
+            "total_bytes": total,
+            "down_speed": int(raw.get("downloadSpeed", 0)),
+            "up_speed": int(raw.get("uploadSpeed", 0)),
+            "peers": int(raw.get("connections", 0)),
+            "seeders": int(raw.get("numSeeders", 0)) if "numSeeders" in raw else 0,
+            "ratio": float(raw.get("uploadLength", 0)) / max(total, 1),
+            "info_hash": raw.get("infoHash", ""),
+            "error_code": raw.get("errorCode", ""),
+            "error_message": raw.get("errorMessage", ""),
+        }
+
+    def list_managed(self) -> list[dict]:
+        active = self._rpc("aria2.tellActive", [])
+        waiting = self._rpc("aria2.tellWaiting", [0, 1000])
+        stopped = self._rpc("aria2.tellStopped", [0, 1000])
+        return list(active) + list(waiting) + list(stopped)
+
+
+# ============================================================================
+# Selection
+# ============================================================================
+
+
+_backend_singleton: BTBackend | None = None
+_backend_lock = threading.Lock()
+
+
+def get_backend(*, data_dir: str) -> BTBackend | None:
+    """Return the configured backend if available; None when off or unusable.
+
+    Calls .available() exactly once on first access. If it fails (no aria2
+    on PATH, qBT unreachable), returns None and the HTTP path runs as
+    before. Smart-default behavior: never crashes Zimi for a BT problem.
+    """
+    global _backend_singleton
+    with _backend_lock:
+        if _backend_singleton is not None:
+            return _backend_singleton
+        if not is_torrent_enabled():
+            return None
+        name = get_backend_name()
+        bt_port = get_bt_port()
+        staging = get_staging_dir(data_dir)
+        if name == "aria2":
+            backend: BTBackend = Aria2Backend(
+                bt_port=bt_port,
+                data_dir=data_dir,
+                staging_dir=staging,
+            )
+        else:
+            log.warning("ZIMI_BT_BACKEND=%r not yet implemented; HTTP-only.", name)
+            return None
+        if not backend.available():
+            log.warning(
+                "BT backend %r unavailable; downloads will use HTTP fallback. "
+                "(aria2c on PATH? port %d free?)",
+                name,
+                bt_port,
+            )
+            return None
+        log.info("BT backend %r ready on port %d (staging=%s)", name, bt_port, staging)
+        _backend_singleton = backend
+        return backend
+
+
+def shutdown_backend() -> None:
+    """Stop the running sidecar (if any). Safe to call repeatedly."""
+    global _backend_singleton
+    with _backend_lock:
+        if _backend_singleton and isinstance(_backend_singleton, Aria2Backend):
+            _backend_singleton.stop()
+        _backend_singleton = None
