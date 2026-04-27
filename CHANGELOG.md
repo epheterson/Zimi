@@ -80,6 +80,25 @@ plan docs in `docs/plans/`).
   disables. Note: in Docker bridge mode, mDNS multicast doesn't reach
   the LAN — use `network_mode: host` to expose discovery beyond the
   container
+- **Catalog peer pills** — when a discovered LAN peer already has a
+  ZIM, a small green "📡 peer-name" pill appears on its catalog card.
+  Clients fetch each peer's `/list` via the cached
+  `GET /manage/peers/list?peer=NAME` endpoint and match by stripped
+  filename stem. Phase 1 is informational; phase 2 will route the
+  download through the peer (BT preferred)
+- **Accessibility — first batch (#19)** — Skip-to-main-content link
+  (first tab-stop, hidden until focused), `role="dialog"
+  aria-modal="true"` on the password modal, `role="search"` +
+  visually-hidden label on the topbar search,
+  `role="status" aria-live="polite"` toast region. `_showToast()`
+  now mirrors text into the live region for screen-reader users.
+  High-contrast amber `:focus-visible` ring across the SPA.
+  `prefers-reduced-motion` already gated transitions globally
+- **Networking** — Default Docker compose flips to `network_mode: host`
+  so mDNS + BT seeding work out of the box. New
+  `docs/deployment-networking.md` covers tradeoffs (host / bridge /
+  macvlan), Synology Avahi coexistence, Cloudflare Tunnel WAN-seeding
+  limits
 
 ### Changed
 
