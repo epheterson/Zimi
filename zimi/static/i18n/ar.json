@@ -853,5 +853,8 @@
   "alm_a11y_illuminated": "مضاء",
   "alm_a11y_altitude": "فوق الأفق",
   "alm_a11y_stars_visible": "نجوم مرئية فوق الأفق",
-  "alm_a11y_no_stars": "لا توجد نجوم فوق الأفق حاليًا"
+  "alm_a11y_no_stars": "لا توجد نجوم فوق الأفق حاليًا",
+  "mirror_off_hint": "اضبط ZIMI_MIRROR=1 لنشر ملفات ZIM المثبتة كمرآة عامة — نسبة غير محدودة + عرض نطاق رفع أعلى.",
+  "mirror_active": "المرآة نشطة",
+  "mirror_active_hint": "تتم مشاركة كل ملف ZIM مثبت مع السرب. أوقف أو أعد التشغيل بـ ZIMI_MIRROR=0."
 }

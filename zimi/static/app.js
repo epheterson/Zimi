@@ -4741,9 +4741,11 @@ function _msServerHtml() {
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
     '<div class="ms-section-label">' + tH('bt_seeding') + '</div>' +
     '<div id="ms-bt-status" style="margin-top:6px"></div>' +
+    '<div id="ms-mirror-status" style="margin-top:6px"></div>' +
     '<div id="ms-seeding-list" style="margin-top:10px"></div>' +
     '</div>';
   _renderSeedingSection();
+  _renderMirrorSection();
   // Cache info section
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
     '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
@@ -4985,6 +4987,32 @@ async function _renderSeedingSection() {
   }
   rows += '</div>';
   listEl.innerHTML = rows;
+}
+
+async function _renderMirrorSection() {
+  let m;
+  try {
+    const r = await fetch('/manage/mirror');
+    if (!r.ok) return;
+    m = await r.json();
+  } catch (e) {
+    return;
+  }
+  const el = document.getElementById('ms-mirror-status');
+  if (!el) return;
+  if (!m.enabled) {
+    el.innerHTML = '<div class="ms-hint">' + tH('mirror_off_hint') + '</div>';
+    return;
+  }
+  const fmtKb = m.upload_kb >= 1024
+    ? (m.upload_kb / 1024).toFixed(1) + ' MB/s'
+    : m.upload_kb + ' KB/s';
+  el.innerHTML = '<div class="mc-row">' +
+    '<span class="mc-label">📡 ' + tH('mirror_active') + '</span>' +
+    '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
+      'ratio ≤ ' + m.ratio_cap.toFixed(0) + 'x · ↑ ' + fmtKb +
+    '</span></div>' +
+    '<div class="ms-hint" style="margin-top:4px">' + tH('mirror_active_hint') + '</div>';
 }
 
 

@@ -853,5 +853,8 @@
   "alm_a11y_illuminated": "iluminada",
   "alm_a11y_altitude": "acima do horizonte",
   "alm_a11y_stars_visible": "estrelas visíveis acima do horizonte",
-  "alm_a11y_no_stars": "Nenhuma estrela acima do horizonte no momento"
+  "alm_a11y_no_stars": "Nenhuma estrela acima do horizonte no momento",
+  "mirror_off_hint": "Defina ZIMI_MIRROR=1 para semear os ZIMs instalados como espelho público — proporção sem limite e maior largura de banda de upload.",
+  "mirror_active": "Espelho ativo",
+  "mirror_active_hint": "Semeando tudo o que você tem instalado de volta para o enxame. Pare com ZIMI_MIRROR=0."
 }

@@ -853,5 +853,8 @@
   "alm_a11y_illuminated": "מוארת",
   "alm_a11y_altitude": "מעל האופק",
   "alm_a11y_stars_visible": "כוכבים נראים מעל האופק",
-  "alm_a11y_no_stars": "כעת אין כוכבים מעל האופק"
+  "alm_a11y_no_stars": "כעת אין כוכבים מעל האופק",
+  "mirror_off_hint": "הגדר ZIMI_MIRROR=1 כדי לזרוע את ה־ZIM המותקנים כראי ציבורי — יחס לא מוגבל ורוחב פס העלאה גבוה יותר.",
+  "mirror_active": "ראי פעיל",
+  "mirror_active_hint": "כל ה־ZIM המותקנים מועברים לרשת הנקודות. עצור בעזרת ZIMI_MIRROR=0."
 }

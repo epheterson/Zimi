@@ -80,6 +80,17 @@ plan docs in `docs/plans/`).
   disables. Note: in Docker bridge mode, mDNS multicast doesn't reach
   the LAN — use `network_mode: host` to expose discovery beyond the
   container
+- **Become-a-mirror toggle (#19, W3.6)** — `ZIMI_MIRROR=1` flips
+  Zimi from "personal seeder" (default 2× ratio cap) to "public
+  mirror" with effectively-uncapped ratio (1000×) and raised upload
+  bandwidth (default 10 MB/s, both env-overridable). New
+  `effective_seed_options()` returns mirror-or-personal aria2 caps;
+  `_try_bt_download` uses it transparently. New `/manage/mirror`
+  endpoint exposes `{enabled, ratio_cap, upload_kb}`. Server
+  settings shows a "📡 Mirror active" row when on, with the active
+  ratio + upload-cap visible. 12 unit tests cover env parsing,
+  default caps, override fallback, status dict shape, and the
+  effective-options branching
 - **Catalog peer pills** — when a discovered LAN peer already has a
   ZIM, a small green "📡 peer-name" pill appears on its catalog card.
   Clients fetch each peer's `/list` via the cached

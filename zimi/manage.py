@@ -337,6 +337,16 @@ def handle_manage_get(handler, parsed, params):
         except Exception:
             return handler._json(200, {"enabled": False, "peers": []})
 
+    elif parsed.path == "/manage/mirror":
+        try:
+            from zimi import p2p as _p2p
+
+            return handler._json(200, _p2p.get_mirror_status())
+        except Exception:
+            return handler._json(
+                200, {"enabled": False, "ratio_cap": 0.0, "upload_kb": 0}
+            )
+
     elif parsed.path == "/manage/peers/list":
         try:
             from zimi import p2p_discovery as _disc

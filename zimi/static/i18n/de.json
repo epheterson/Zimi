@@ -853,5 +853,8 @@
   "alm_a11y_illuminated": "beleuchtet",
   "alm_a11y_altitude": "über dem Horizont",
   "alm_a11y_stars_visible": "Sterne über dem Horizont sichtbar",
-  "alm_a11y_no_stars": "Derzeit keine Sterne über dem Horizont"
+  "alm_a11y_no_stars": "Derzeit keine Sterne über dem Horizont",
+  "mirror_off_hint": "ZIMI_MIRROR=1 setzen, um installierte ZIMs als öffentlicher Mirror zu seeden — unbegrenztes Verhältnis + mehr Upload-Bandbreite.",
+  "mirror_active": "Mirror aktiv",
+  "mirror_active_hint": "Alle installierten ZIMs werden in den Schwarm zurückgeseedet. Mit ZIMI_MIRROR=0 stoppen."
 }

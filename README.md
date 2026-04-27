@@ -134,6 +134,9 @@ ZIM_DIR=./zims zimi serve --port 8899
 | `ZIMI_SEED` | `1` | Seed completed ZIMs back to the swarm. `0` disables seeding. |
 | `ZIMI_SEED_RATIO` | `2.0` | Stop seeding once ratio (uploaded ÷ downloaded) reaches this. |
 | `ZIMI_PEER_DISCOVERY` | `1` | Advertise + browse `_zimi._tcp.local` over mDNS. `0` disables. |
+| `ZIMI_MIRROR` | `0` | Enable public-mirror mode: uncapped ratio + raised upload bandwidth. `1` to enable. |
+| `ZIMI_MIRROR_RATIO` | `1000` | Mirror-mode ratio cap (effectively uncapped). |
+| `ZIMI_MIRROR_UPLOAD_KB` | `10240` | Mirror-mode upload bandwidth in KB/s. |
 
 ## API
 

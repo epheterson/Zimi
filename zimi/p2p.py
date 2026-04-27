@@ -130,6 +130,76 @@ def seed_options(*, ratio_cap: float, max_upload_kb: int) -> dict:
     }
 
 
+# ============================================================================
+# Mirror mode (W3.6) — opt-in "I'm an active mirror" flag that lifts the
+# 2× ratio cap and raises upload bandwidth. Personal users keep the
+# default conservative caps; people running an actual public mirror
+# flip ZIMI_MIRROR=1 and accept they'll seed indefinitely.
+# ============================================================================
+
+DEFAULT_MIRROR_RATIO_CAP = 1000.0  # effectively uncapped — 1000× upload
+DEFAULT_MIRROR_UPLOAD_KB = 10240  # 10 MB/s
+
+
+def is_mirror_enabled() -> bool:
+    """ZIMI_MIRROR=1 turns Zimi into a public-mirror seeder."""
+    raw = os.environ.get("ZIMI_MIRROR", "0").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def get_mirror_ratio_cap() -> float:
+    """Mirror-mode ratio cap. ZIMI_MIRROR_RATIO override (default 1000)."""
+    raw = os.environ.get("ZIMI_MIRROR_RATIO", str(DEFAULT_MIRROR_RATIO_CAP))
+    try:
+        return max(1.0, float(raw))
+    except (ValueError, TypeError):
+        return DEFAULT_MIRROR_RATIO_CAP
+
+
+def get_mirror_upload_kb() -> int:
+    """Mirror-mode upload bandwidth in KB/s. ZIMI_MIRROR_UPLOAD_KB
+    override (default 10240 = 10 MB/s)."""
+    raw = os.environ.get("ZIMI_MIRROR_UPLOAD_KB", str(DEFAULT_MIRROR_UPLOAD_KB))
+    try:
+        return max(64, int(raw))
+    except (ValueError, TypeError):
+        return DEFAULT_MIRROR_UPLOAD_KB
+
+
+def get_mirror_status() -> dict:
+    """Serialize current mirror config for the /manage/mirror endpoint."""
+    return {
+        "enabled": is_mirror_enabled(),
+        "ratio_cap": get_mirror_ratio_cap(),
+        "upload_kb": get_mirror_upload_kb(),
+    }
+
+
+def effective_seed_options() -> dict:
+    """Return aria2 seed options reflecting mirror-or-personal caps.
+
+    Mirror mode raises ratio + upload caps. Personal mode uses the
+    user's `ZIMI_SEED_RATIO` (default 2.0) and `ZIMI_SEED_UPLOAD_KB`
+    (default DEFAULT_SEED_BANDWIDTH_KB).
+    """
+    if is_mirror_enabled():
+        return seed_options(
+            ratio_cap=get_mirror_ratio_cap(),
+            max_upload_kb=get_mirror_upload_kb(),
+        )
+    user_upload_raw = os.environ.get(
+        "ZIMI_SEED_UPLOAD_KB", str(DEFAULT_SEED_BANDWIDTH_KB)
+    )
+    try:
+        user_upload = max(64, int(user_upload_raw))
+    except (ValueError, TypeError):
+        user_upload = DEFAULT_SEED_BANDWIDTH_KB
+    return seed_options(
+        ratio_cap=get_seed_ratio_cap(),
+        max_upload_kb=user_upload,
+    )
+
+
 def should_pause_for_disk_pressure(zim_dir: str) -> bool:
     """Free space below ZIMI_SEED_DISK_PCT → pause all seeds."""
     try:

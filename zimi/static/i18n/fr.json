@@ -853,5 +853,8 @@
   "alm_a11y_illuminated": "illuminée",
   "alm_a11y_altitude": "au-dessus de l’horizon",
   "alm_a11y_stars_visible": "étoiles visibles au-dessus de l’horizon",
-  "alm_a11y_no_stars": "Aucune étoile au-dessus de l’horizon pour le moment"
+  "alm_a11y_no_stars": "Aucune étoile au-dessus de l’horizon pour le moment",
+  "mirror_off_hint": "Définir ZIMI_MIRROR=1 pour ensemencer les ZIM installés en tant que miroir public — ratio sans limite + bande passante d’envoi accrue.",
+  "mirror_active": "Miroir actif",
+  "mirror_active_hint": "Partage de tous les ZIM installés avec le swarm. Arrête avec ZIMI_MIRROR=0."
 }

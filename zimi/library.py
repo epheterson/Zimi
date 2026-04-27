@@ -469,10 +469,9 @@ def _try_bt_download(
     from zimi import p2p as _p2p
 
     if _p2p.is_seeding_enabled():
-        seed_opts = _p2p.seed_options(
-            ratio_cap=_p2p.get_seed_ratio_cap(),
-            max_upload_kb=_p2p.DEFAULT_SEED_BANDWIDTH_KB,
-        )
+        # effective_seed_options picks mirror caps when ZIMI_MIRROR=1,
+        # otherwise the user's personal cap (default 2× ratio).
+        seed_opts = _p2p.effective_seed_options()
     else:
         seed_opts = _p2p.seed_options(ratio_cap=0, max_upload_kb=0)
     try:
