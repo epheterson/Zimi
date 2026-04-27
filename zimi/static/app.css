@@ -348,7 +348,10 @@
   .card-info { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-right: 28px; }
   .stat-card .name { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 2px; }
   .stat-card .desc { font-size: 12px; color: var(--text2); line-height: 1.4; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .stat-card .detail { font-size: 11px; color: var(--text2); opacity: 0.6; margin-top: auto; }
+  /* Removed opacity here — multiplying the already-secondary --text2
+     by 0.6 dropped contrast below WCAG AA. --text2 alone is the
+     "secondary" cue. */
+  .stat-card .detail { font-size: 11px; color: var(--text2); margin-top: auto; }
 
   /* ── Search results ── */
   .meta { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; font-size: 12px; color: var(--text2); }
@@ -428,7 +431,7 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── Footer ── */
-  .footer { text-align: center; padding: 20px 16px 16px; font-size: 12px; color: var(--text2); opacity: 0.5; border-top: 1px solid var(--border); margin-top: 16px; }
+  .footer { text-align: center; padding: 20px 16px 16px; font-size: 12px; color: var(--text2); border-top: 1px solid var(--border); margin-top: 16px; }
   .footer .footer-brand {
     background: linear-gradient(135deg, #f59e0b, #f97316);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
@@ -439,7 +442,7 @@
   /* ── Utility ── */
   .loading { text-align: center; padding: 40px; color: var(--text2); font-size: 13px; }
   .loading .spinner-inline { display: inline-block; width: 14px; height: 14px; vertical-align: middle; margin-right: 8px; }
-  .content-search-indicator { text-align: center; padding: 12px; color: var(--text2); font-size: 12px; opacity: 0.7; animation: fadeIn 0.3s ease; }
+  .content-search-indicator { text-align: center; padding: 12px; color: var(--text2); font-size: 12px; animation: fadeIn 0.3s ease; }
   .content-search-indicator .spinner-inline { display: inline-block; width: 12px; height: 12px; vertical-align: middle; margin-right: 6px; }
   .empty { text-align: center; padding: 48px 20px; color: var(--text2); }
   .empty p { font-size: 14px; margin-bottom: 8px; }
@@ -486,7 +489,7 @@
   }
   .ms-pane .ms-field input:focus { outline: none; border-color: var(--amber-border); }
   .ms-pane .ms-field input[readonly] { opacity: 0.6; }
-  .ms-pane .ms-hint { font-size: 12px; color: var(--text2); opacity: 0.7; margin-top: 8px; }
+  .ms-pane .ms-hint { font-size: 12px; color: var(--text2); margin-top: 8px; }
   .ms-section-label, .ci-section-label, .hp-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); }
   .ms-section-label { margin-bottom: 8px; }
   /* Auto-fit grid for catalog + downloads. 320px min → 2 columns in the
@@ -531,7 +534,7 @@
   .catalog-item .ci-title { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .ci-lang-tag { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 4px; background: var(--surface2); color: var(--text2); border: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0; }
   .catalog-item .ci-summary { font-size: 12px; color: var(--text2); line-height: 1.4; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .catalog-item .ci-meta { font-size: 12px; color: var(--text2); opacity: 0.5; word-spacing: 0.1em; }
+  .catalog-item .ci-meta { font-size: 12px; color: var(--text2); word-spacing: 0.1em; }
   .catalog-item .ci-meta > span { white-space: nowrap; }
   .catalog-item .ci-actions { flex-shrink: 0; display: flex; align-items: center; gap: 6px; margin-left: 8px; }
   .ci-installed-badge { font-size: 11px; color: var(--amber); font-weight: 600; padding: 4px 10px; border: 1px solid var(--amber-border); border-radius: 20px; background: var(--amber-glow); }
@@ -639,7 +642,7 @@
     min-height: 24px; }
   .dl-cancel-btn:hover { border-color: var(--error); color: var(--error); }
   .dl-retry-btn:hover { border-color: var(--amber); color: var(--amber); }
-  .dl-mirror { font-size: 11px; color: var(--text2); opacity: 0.6; flex: 1; }
+  .dl-mirror { font-size: 11px; color: var(--text2); flex: 1; }
   .dl-source { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
     color: var(--text2); white-space: nowrap; }
   .dl-source-bt { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
