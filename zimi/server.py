@@ -1014,6 +1014,21 @@ def main():
                 atexit.register(p2p.shutdown_backend)
         except Exception as e:
             log.warning("BT backend init failed (HTTP downloads unaffected): %s", e)
+        # LAN peer discovery — best-effort, fails soft.
+        try:
+            from zimi import p2p_discovery as _disc
+
+            _disc.start(
+                http_port=args.port,
+                bt_port=int(os.environ.get("ZIMI_BT_PORT", "6881") or "6881"),
+                zim_count=len(list_zims()),
+                version=ZIMI_VERSION,
+            )
+            import atexit
+
+            atexit.register(_disc.stop)
+        except Exception as e:
+            log.warning("Peer discovery startup failed: %s", e)
         # Start auto-update thread if enabled
         global _auto_update_thread
         if _auto_update_enabled:

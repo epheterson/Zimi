@@ -323,6 +323,20 @@ def handle_manage_get(handler, parsed, params):
     elif parsed.path == "/manage/downloads":
         return handler._json(200, {"downloads": _srv._get_downloads()})
 
+    elif parsed.path == "/manage/peers":
+        try:
+            from zimi import p2p_discovery as _disc
+
+            return handler._json(
+                200,
+                {
+                    "enabled": _disc.is_enabled(),
+                    "peers": _disc.get_peers(),
+                },
+            )
+        except Exception:
+            return handler._json(200, {"enabled": False, "peers": []})
+
     elif parsed.path == "/manage/history":
         return handler._json(200, {"history": _srv._load_history()})
 
