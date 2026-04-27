@@ -86,14 +86,37 @@ plan docs in `docs/plans/`).
   `GET /manage/peers/list?peer=NAME` endpoint and match by stripped
   filename stem. Phase 1 is informational; phase 2 will route the
   download through the peer (BT preferred)
-- **Accessibility — first batch (#19)** — Skip-to-main-content link
-  (first tab-stop, hidden until focused), `role="dialog"
-  aria-modal="true"` on the password modal, `role="search"` +
-  visually-hidden label on the topbar search,
-  `role="status" aria-live="polite"` toast region. `_showToast()`
-  now mirrors text into the live region for screen-reader users.
-  High-contrast amber `:focus-visible` ring across the SPA.
-  `prefers-reduced-motion` already gated transitions globally
+- **Accessibility track (#19)** — Reach goal: build once and benefit
+  every screen-reader, keyboard, and low-vision user, forever.
+  - Skip-to-main-content link, first tab-stop, hidden until focused
+  - `role="dialog" aria-modal="true" aria-labelledby="pw-title"` on
+    the password modal, with Esc-to-close and Tab focus-trap that
+    cycles within the modal so keyboard users can't accidentally
+    escape into the background page. Focus is restored to the
+    previously-focused element on close
+  - `role="search"` + visually-hidden `<label>` on the topbar search,
+    plus `aria-autocomplete="list"` and `aria-controls="suggest-dropdown"`
+    so suggestions announce correctly
+  - `role="status" aria-live="polite"` toast region. `_showToast()`
+    now mirrors text into the live region so non-sighted users hear
+    the same feedback sighted users see
+  - High-contrast amber `:focus-visible` ring across the SPA (2px,
+    offset 2px). Buttons and inputs that style their own focus opt
+    out via `:not(:focus-visible)`
+  - `<label for>` association added to onboarding ZIM-folder field
+    and password input (was placeholder-only)
+  - **ZIM article HTML rewriter** (opt-in via Preferences →
+    "Improve ZIM article accessibility"): when on, every `/w/*`
+    article is run through `zimi.a11y.rewrite_html()`, which adds
+    missing `alt=""` to images (decorative-by-default per WCAG
+    1.1.1), promotes the first `<div class="title">` to `<h1>` when
+    no real `<h1>` exists, and fills `<html lang>` from the ZIM's
+    language metadata. 21 unit tests cover each transform plus
+    idempotency and malformed-input safety. Default off so byte-
+    purist users get the original HTML; toggle persists in
+    localStorage. Activated per-request via `?a11y=1` query param
+  - `prefers-reduced-motion: reduce` already gated transitions
+    globally; left as-is
 - **Networking** — Default Docker compose flips to `network_mode: host`
   so mDNS + BT seeding work out of the box. New
   `docs/deployment-networking.md` covers tradeoffs (host / bridge /

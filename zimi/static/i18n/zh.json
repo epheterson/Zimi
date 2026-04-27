@@ -843,5 +843,8 @@
   "dl_via_bt_tip": "通过 BitTorrent 下载 — 点对点传输。",
   "peer_has_zim": "局域网中的 {peers} 已有此 ZIM — 以局域网速度从他们处下载。",
   "skip_to_main": "跳到主要内容",
-  "search": "搜索"
+  "search": "搜索",
+  "ms_accessibility": "无障碍",
+  "a11y_rewrite_label": "提升 ZIM 文章无障碍体验",
+  "a11y_rewrite_hint": "为图片补全 alt 文本，确保每篇文章有一个标题，填写文档语言。对屏幕阅读器有帮助；文章 HTML 会有少量变化。"
 }

@@ -843,5 +843,8 @@
   "dl_via_bt_tip": "Heruntergeladen via BitTorrent – Peer-to-Peer-Übertragung.",
   "peer_has_zim": "{peers} im LAN hat dieses ZIM bereits — lade es im LAN-Tempo direkt von dort.",
   "skip_to_main": "Zum Hauptinhalt springen",
-  "search": "Suche"
+  "search": "Suche",
+  "ms_accessibility": "Barrierefreiheit",
+  "a11y_rewrite_label": "ZIM-Artikel-Barrierefreiheit verbessern",
+  "a11y_rewrite_hint": "Fügt fehlende Alt-Texte für Bilder hinzu, stellt eine Überschrift pro Artikel sicher und ergänzt die Dokumentsprache. Hilft Screenreadern; Artikel-HTML ändert sich leicht."
 }

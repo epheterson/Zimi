@@ -10,6 +10,10 @@ var SK = {
   ALMANAC_HL: 'zimi_almanac_highlights',
   HIDE_LANG_CHOOSER: 'zimi_hide_lang_chooser',
   HIDE_XZIM_LINKS: 'zimi_hide_cross_zim_links',
+  // When set, ZIM article HTML is run through the server-side a11y
+  // rewriter (alt="" on images, h1 promotion, html lang). Off by
+  // default to keep ZIM content byte-identical for purist users.
+  A11Y_REWRITE: 'zimi_a11y_rewrite',
   LIBRARY_TAB: 'zimi_library_tab',
   BROWSE_HISTORY: 'zimi_browse_history',
   BOOKMARKS: 'zimi_bookmarks',
@@ -390,6 +394,10 @@ function manageLogout() {
   toggleManage();
 }
 
+// Element that had focus before the modal opened; we restore focus
+// here on close so keyboard users don't lose their place.
+let _pwPreviousFocus = null;
+
 function openPwModal(title, opts) {
   document.getElementById('pw-title').textContent = title || t('enter_password');
   document.getElementById('pw-input').value = '';
@@ -398,14 +406,50 @@ function openPwModal(title, opts) {
   document.getElementById('pw-error').style.display = 'none';
   document.getElementById('pw-remember-row').style.display = (opts && opts.hideRemember) ? 'none' : 'flex';
   document.getElementById('pw-remove-btn').style.display = 'none';
-  document.getElementById('pw-overlay').classList.add('open');
+  _pwPreviousFocus = document.activeElement;
+  const overlay = document.getElementById('pw-overlay');
+  overlay.classList.add('open');
+  document.addEventListener('keydown', _pwKeyHandler);
   setTimeout(function() { document.getElementById('pw-input').focus(); }, 50);
 }
 
 function closePwModal() {
   document.getElementById('pw-overlay').classList.remove('open');
+  document.removeEventListener('keydown', _pwKeyHandler);
   if (_pwReject) { _pwReject(); _pwReject = null; }
   _pwResolve = null;
+  // Restore focus to where the user was before we hijacked it.
+  if (_pwPreviousFocus && typeof _pwPreviousFocus.focus === 'function') {
+    try { _pwPreviousFocus.focus(); } catch (_) {}
+  }
+  _pwPreviousFocus = null;
+}
+
+function _pwKeyHandler(e) {
+  // Esc closes the modal — standard a11y pattern for dialogs.
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closePwModal();
+    return;
+  }
+  // Tab focus-trap: cycle within the modal so keyboard users can't
+  // accidentally escape to the background page.
+  if (e.key !== 'Tab') return;
+  const overlay = document.getElementById('pw-overlay');
+  if (!overlay || !overlay.classList.contains('open')) return;
+  const focusables = overlay.querySelectorAll(
+    'input:not([type=hidden]):not([disabled]), button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+  );
+  if (!focusables.length) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 function submitPw() {
@@ -4629,6 +4673,12 @@ function _msPreferencesHtml() {
       _flavorRadio('nopic', tH('flavor_nopic')) +
       _flavorRadio('mini', tH('flavor_mini')) +
     '</div>';
+  // Accessibility section
+  var a11yOn = _getStorageFlag(SK.A11Y_REWRITE);
+  h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_accessibility') + '</div>' +
+    '<label class="ms-check"><input type="checkbox"' + (a11yOn ? ' checked' : '') +
+      ' onchange="if(this.checked)localStorage.setItem(\'zimi_a11y_rewrite\',\'1\');else localStorage.removeItem(\'zimi_a11y_rewrite\')"> ' + tH('a11y_rewrite_label') + '</label>' +
+    '<div class="ms-hint">' + tH('a11y_rewrite_hint') + '</div>';
   // Security section
   h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_security') + '</div>' +
     '<div class="ms-actions">' +
@@ -6095,6 +6145,10 @@ function openReader(url) {
   // PDFs: render in embedded pdf.js viewer (skip if already a viewer URL)
   if (lurl.endsWith('.pdf') && !url.startsWith('/static/pdfjs/')) {
     url = _pdfViewerUrl(url);
+  }
+  // A11y rewrite opt-in: only ZIM article URLs (/w/...), not PDFs or static.
+  if (_getStorageFlag(SK.A11Y_REWRITE) && url.startsWith('/w/') && !lurl.endsWith('.pdf')) {
+    url += (url.includes('?') ? '&' : '?') + 'a11y=1';
   }
   readerOpen = true;
   const reader = document.getElementById('reader');

@@ -940,7 +940,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                             args=(zim_name, entry_path),
                             daemon=True,
                         ).start()
-                return self._serve_zim_content(zim_name, entry_path)
+                a11y_on = "a11y" in qs and (qs.get("a11y", [""])[0] == "1")
+                return self._serve_zim_content(zim_name, entry_path, a11y=a11y_on)
 
             else:
                 return self._json(
@@ -1140,11 +1141,17 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(icon_data)
 
-    def _serve_zim_content(self, zim_name, entry_path):
+    def _serve_zim_content(self, zim_name, entry_path, *, a11y=False):
         """Serve raw ZIM content with correct MIME type for the /w/ endpoint.
 
         Manages _zim_lock internally — holds lock only during libzim reads,
         releases before writing to the socket (important for large video streams).
+
+        When a11y=True, HTML responses are passed through the
+        accessibility rewriter (zimi.a11y) before sending. The rewriter
+        adds missing alt="" on images, ensures one <h1>, and fills in
+        <html lang> from the ZIM's language metadata. Activated via the
+        ?a11y=1 query parameter on /w/ URLs.
         """
         # Phase 1: Read from ZIM under lock
         with _srv._zim_lock:
@@ -1269,6 +1276,26 @@ class ZimHandler(BaseHTTPRequestHandler):
         if mimetype.startswith("text/html"):
             text = content.decode("UTF-8", errors="replace")
             text = re.sub(r"<base\s[^>]*>", "", text, flags=re.IGNORECASE)
+            if a11y:
+                from zimi import a11y as _a11y
+
+                # Use the ZIM's language metadata as the lang hint when
+                # the article doesn't carry its own <html lang>.
+                lang_hint = ""
+                try:
+                    z_meta = next(
+                        (
+                            z
+                            for z in (_srv._zim_list_cache or [])
+                            if z.get("name") == zim_name
+                        ),
+                        None,
+                    )
+                    if z_meta:
+                        lang_hint = (z_meta.get("language") or "")[:8]
+                except Exception:
+                    lang_hint = ""
+                text = _a11y.rewrite_html(text, lang_hint=lang_hint)
             content = text.encode("UTF-8")
 
         if range_start is not None and range_end is not None:

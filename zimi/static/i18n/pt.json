@@ -843,5 +843,8 @@
   "dl_via_bt_tip": "Baixado via BitTorrent — transferência ponto a ponto.",
   "peer_has_zim": "{peers} na sua LAN já tem este ZIM — baixe deles na velocidade da LAN.",
   "skip_to_main": "Ir para o conteúdo principal",
-  "search": "Pesquisar"
+  "search": "Pesquisar",
+  "ms_accessibility": "Acessibilidade",
+  "a11y_rewrite_label": "Melhorar acessibilidade dos artigos ZIM",
+  "a11y_rewrite_hint": "Adiciona texto alternativo às imagens, garante um título por artigo e preenche o idioma do documento. Ajuda leitores de tela; o HTML muda um pouco."
 }

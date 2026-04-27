@@ -53,7 +53,8 @@
   <form class="pw-box" onsubmit="event.preventDefault();submitPw()" autocomplete="off">
     <h3 id="pw-title" data-i18n="enter_password">Enter password</h3>
     <input style="display:none" type="text" name="fakeuser" tabindex="-1" autocomplete="off">
-    <input id="pw-input" type="password" placeholder="Password" data-i18n-placeholder="password" autocomplete="current-password" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
+    <label for="pw-input" class="sr-only" data-i18n="password">Password</label>
+    <input id="pw-input" type="password" placeholder="Password" data-i18n-placeholder="password" autocomplete="current-password" aria-labelledby="pw-title" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
     <div class="pw-error" id="pw-error"></div>
     <label id="pw-remember-row" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--text2);cursor:pointer">
       <input type="checkbox" id="pw-remember" style="accent-color:var(--amber);flex-shrink:0"> <span data-i18n="remember_me">Remember me</span>
@@ -72,7 +73,7 @@
     <h2 data-i18n="welcome">Welcome to Zimi</h2>
     <p class="subtitle" data-i18n="choose_folder_hint">Choose where to keep your offline knowledge archives.</p>
     <p class="subtitle" style="font-size:11px;opacity:0.5;margin-top:-16px;margin-bottom:24px" data-i18n="large_files_hint">ZIM files can be large (Wikipedia is ~100 GB) — pick a drive with plenty of space.</p>
-    <label data-i18n="zim_folder">ZIM folder</label>
+    <label for="onboard-path" data-i18n="zim_folder">ZIM folder</label>
     <div class="field-row">
       <input type="text" id="onboard-path" readonly placeholder="Choose a folder..." data-i18n-placeholder="choose_folder_placeholder">
       <button class="btn-browse" onclick="desktopChooseFolder('onboard-path')" data-i18n="choose_folder">Choose Folder</button>
