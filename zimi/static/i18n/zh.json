@@ -826,5 +826,17 @@
   "updates_available_section": "可用更新",
   "languages_section": "语言",
   "catalog_languages_hint_short": "点击添加或从目录筛选中移除。",
-  "multi_lang": "多语言"
+  "multi_lang": "多语言",
+  "bt_seeding": "BitTorrent + 做种",
+  "bt_state_ready": "就绪",
+  "bt_state_unavailable": "不可用",
+  "bt_state_off": "关闭",
+  "seeding_empty": "尚无做种的种子。通过 BT 下载的文件将显示在此。",
+  "seeding_totals": "{n} 个活跃 · ↑ {up} · ↓ {down} · {ratio}x",
+  "peers": "对等节点",
+  "seeding_state_active": "活跃",
+  "seeding_state_complete": "完成",
+  "seeding_state_waiting": "等待",
+  "seeding_state_paused": "暂停",
+  "seeding_state_error": "错误"
 }

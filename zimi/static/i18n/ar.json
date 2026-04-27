@@ -826,5 +826,17 @@
   "updates_available_section": "تحديثات متاحة",
   "languages_section": "اللغات",
   "catalog_languages_hint_short": "انقر للإضافة أو الإزالة من فلتر الكتالوج.",
-  "multi_lang": "متعدد اللغات"
+  "multi_lang": "متعدد اللغات",
+  "bt_seeding": "BitTorrent + المشاركة",
+  "bt_state_ready": "جاهز",
+  "bt_state_unavailable": "غير متوفر",
+  "bt_state_off": "إيقاف",
+  "seeding_empty": "لا توجد تورنتات للمشاركة بعد. ستظهر الملفات هنا.",
+  "seeding_totals": "{n} نشط · ↑ {up} · ↓ {down} · {ratio}x",
+  "peers": "أقران",
+  "seeding_state_active": "نشط",
+  "seeding_state_complete": "مكتمل",
+  "seeding_state_waiting": "انتظار",
+  "seeding_state_paused": "موقوف",
+  "seeding_state_error": "خطأ"
 }

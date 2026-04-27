@@ -826,5 +826,17 @@
   "updates_available_section": "Updates verfügbar",
   "languages_section": "Sprachen",
   "catalog_languages_hint_short": "Klicken um zum Katalogfilter hinzuzufügen oder zu entfernen.",
-  "multi_lang": "Mehrsprachig"
+  "multi_lang": "Mehrsprachig",
+  "bt_seeding": "BitTorrent + Seeding",
+  "bt_state_ready": "bereit",
+  "bt_state_unavailable": "nicht verfügbar",
+  "bt_state_off": "aus",
+  "seeding_empty": "Keine Torrents werden geseedet. Über BT heruntergeladene Dateien erscheinen hier.",
+  "seeding_totals": "{n} aktiv · ↑ {up} · ↓ {down} · {ratio}x",
+  "peers": "Peers",
+  "seeding_state_active": "aktiv",
+  "seeding_state_complete": "abgeschlossen",
+  "seeding_state_waiting": "wartend",
+  "seeding_state_paused": "pausiert",
+  "seeding_state_error": "Fehler"
 }

@@ -4589,6 +4589,13 @@ function _msServerHtml() {
     '<div id="ms-hot-zims" style="margin-top:10px">' + tH('loading') + '</div>' +
     '</div>';
   _renderHotZimsSection();
+  // BT / Seeding section — shows when ZIMI_TORRENT is enabled.
+  h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
+    '<div class="ms-section-label">' + tH('bt_seeding') + '</div>' +
+    '<div id="ms-bt-status" style="margin-top:6px"></div>' +
+    '<div id="ms-seeding-list" style="margin-top:10px"></div>' +
+    '</div>';
+  _renderSeedingSection();
   // Cache info section
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
     '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
@@ -4769,6 +4776,68 @@ function _toggleAllHotZims(checked) {
     if (cb) cb.checked = checked;
   });
 }
+
+async function _renderSeedingSection() {
+  const statusEl = document.getElementById('ms-bt-status');
+  const listEl = document.getElementById('ms-seeding-list');
+  if (!statusEl || !listEl) return;
+  let bt, seeding;
+  try {
+    [bt, seeding] = await Promise.all([
+      manageFetch('/manage/bt-status').then(r => r.json()),
+      manageFetch('/manage/seeding').then(r => r.json()),
+    ]);
+  } catch (e) {
+    statusEl.textContent = t('error');
+    return;
+  }
+  // Status row: dot + state + hint
+  const dot = bt.status === 'ready' ? '🟢' : bt.status === 'unavailable' ? '🟡' : '⚪';
+  const stateLabel = t('bt_state_' + bt.status);
+  let html = '<div class="mc-row"><span class="mc-label">' + dot + ' ' + esc(stateLabel) + '</span>';
+  if (bt.bt_port) {
+    html += '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
+      'port ' + bt.bt_port + ' · ' + (bt.backend || 'aria2') + '</span>';
+  }
+  html += '</div>';
+  if (bt.hint) {
+    html += '<div class="ms-hint" style="margin-top:4px">' + esc(bt.hint) + '</div>';
+  }
+  statusEl.innerHTML = html;
+
+  // Seeding list — empty when BT is off OR nothing's seeding yet
+  const torrents = seeding.torrents || [];
+  if (!torrents.length) {
+    listEl.innerHTML = '<div class="ms-hint" style="margin-top:6px">' +
+      esc(bt.status === 'ready' ? t('seeding_empty') : '') + '</div>';
+    return;
+  }
+  const fmt = b => b > 1e9 ? (b/1e9).toFixed(1)+' GB' : b > 1e6 ? (b/1e6).toFixed(0)+' MB' : (b/1e3).toFixed(0)+' KB';
+  let rows = '<div class="seeding-totals">' +
+    tH('seeding_totals', {
+      n: torrents.length,
+      up: fmt(seeding.totals.uploaded),
+      down: fmt(seeding.totals.downloaded),
+      ratio: seeding.totals.ratio.toFixed(2),
+    }) + '</div>';
+  rows += '<div class="seeding-list">';
+  for (const tr of torrents) {
+    const ratioPct = Math.min(100, (tr.ratio / seeding.ratio_cap) * 100);
+    rows += '<div class="seeding-row">' +
+      '<div class="seeding-name" title="' + escAttr(tr.info_hash || '') + '">' + esc(tr.filename) + '</div>' +
+      '<div class="seeding-meta">' +
+        '<span>' + esc(t('seeding_state_' + tr.state, {default: tr.state})) + '</span>' +
+        ' · <span>' + tr.peers + ' ' + tH('peers') + '</span>' +
+        ' · <span>↑ ' + fmt(tr.uploaded_bytes) + '</span>' +
+        ' · <span>' + tr.ratio.toFixed(2) + 'x</span>' +
+      '</div>' +
+      '<div class="seeding-bar"><div class="seeding-bar-fill" style="width:' + ratioPct + '%"></div></div>' +
+    '</div>';
+  }
+  rows += '</div>';
+  listEl.innerHTML = rows;
+}
+
 
 async function _cacheAction(btn, action) {
   const status = document.getElementById('ms-cache-status');

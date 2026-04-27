@@ -826,5 +826,17 @@
   "updates_available_section": "עדכונים זמינים",
   "languages_section": "שפות",
   "catalog_languages_hint_short": "לחץ כדי להוסיף או להסיר מסנן הקטלוג.",
-  "multi_lang": "רב-לשוני"
+  "multi_lang": "רב-לשוני",
+  "bt_seeding": "BitTorrent + שידור",
+  "bt_state_ready": "מוכן",
+  "bt_state_unavailable": "לא זמין",
+  "bt_state_off": "כבוי",
+  "seeding_empty": "אין טורנטים פעילים בשידור. קבצים שהורדו דרך BT יופיעו כאן.",
+  "seeding_totals": "{n} פעילים · ↑ {up} · ↓ {down} · {ratio}x",
+  "peers": "עמיתים",
+  "seeding_state_active": "פעיל",
+  "seeding_state_complete": "הושלם",
+  "seeding_state_waiting": "ממתין",
+  "seeding_state_paused": "מושהה",
+  "seeding_state_error": "שגיאה"
 }

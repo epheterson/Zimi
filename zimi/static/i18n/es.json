@@ -826,5 +826,17 @@
   "updates_available_section": "Actualizaciones disponibles",
   "languages_section": "Idiomas",
   "catalog_languages_hint_short": "Haz clic para añadir o quitar del filtro del catálogo.",
-  "multi_lang": "Multi-idioma"
+  "multi_lang": "Multi-idioma",
+  "bt_seeding": "BitTorrent + Compartir",
+  "bt_state_ready": "listo",
+  "bt_state_unavailable": "no disponible",
+  "bt_state_off": "apagado",
+  "seeding_empty": "Sin torrents compartiendo aún. Los archivos descargados vía BT aparecerán aquí.",
+  "seeding_totals": "{n} activos · ↑ {up} · ↓ {down} · ratio {ratio}",
+  "peers": "pares",
+  "seeding_state_active": "activo",
+  "seeding_state_complete": "completo",
+  "seeding_state_waiting": "esperando",
+  "seeding_state_paused": "pausado",
+  "seeding_state_error": "error"
 }

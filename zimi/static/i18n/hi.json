@@ -826,5 +826,17 @@
   "updates_available_section": "अपडेट उपलब्ध",
   "languages_section": "भाषाएं",
   "catalog_languages_hint_short": "कैटलॉग फ़िल्टर में जोड़ने या हटाने के लिए क्लिक करें।",
-  "multi_lang": "बहुभाषी"
+  "multi_lang": "बहुभाषी",
+  "bt_seeding": "BitTorrent + सीडिंग",
+  "bt_state_ready": "तैयार",
+  "bt_state_unavailable": "अनुपलब्ध",
+  "bt_state_off": "बंद",
+  "seeding_empty": "अभी कोई टोरेंट सीड नहीं हो रहा। BT से डाउनलोड की गई फ़ाइलें यहां दिखेंगी।",
+  "seeding_totals": "{n} सक्रिय · ↑ {up} · ↓ {down} · {ratio}x",
+  "peers": "पीयर्स",
+  "seeding_state_active": "सक्रिय",
+  "seeding_state_complete": "पूर्ण",
+  "seeding_state_waiting": "प्रतीक्षा",
+  "seeding_state_paused": "रुका",
+  "seeding_state_error": "त्रुटि"
 }
