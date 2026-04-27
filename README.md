@@ -63,13 +63,33 @@ Or grab the [AppImage](https://github.com/epheterson/Zimi/releases).
 ### Docker
 
 ```bash
-docker run -v ./zims:/zims -v ./zimi-config:/config -p 8899:8899 epheterson/zimi
+docker run --network host -v ./zims:/zims -v ./zimi-config:/config epheterson/zimi
 ```
 
 `/zims` is where ZIM files live. `/config` persists cache, indexes, and settings. Open http://localhost:8899.
 
+`--network host` is recommended so LAN peer discovery (mDNS) and BitTorrent seeding work out of the box. If you can't use host networking, see "Bridge mode" below.
+
 <details>
-<summary>Docker Compose</summary>
+<summary>Docker Compose (recommended — host networking)</summary>
+
+```yaml
+services:
+  zimi:
+    image: epheterson/zimi
+    container_name: zimi
+    restart: unless-stopped
+    network_mode: host           # mDNS + BT seeding work without port plumbing
+    volumes:
+      - ./zims:/zims             # ZIM files go here
+      - ./zimi-config:/config    # cache, indexes, settings
+    environment:
+      - ZIMI_TORRENT=1           # opt in to BT-first downloads + seeding
+```
+</details>
+
+<details>
+<summary>Docker Compose (bridge mode — no LAN discovery)</summary>
 
 ```yaml
 services:
@@ -79,10 +99,16 @@ services:
     restart: unless-stopped
     ports:
       - "8899:8899"
+      - "6881:6881/tcp"          # BitTorrent (TCP)
+      - "6881:6881/udp"          # BitTorrent (UDP / DHT)
     volumes:
-      - ./zims:/zims          # ZIM files go here
-      - ./zimi-config:/config  # cache, indexes, settings
+      - ./zims:/zims
+      - ./zimi-config:/config
+    environment:
+      - ZIMI_TORRENT=1
 ```
+
+LAN peer discovery (`_zimi._tcp`) won't reach the LAN in bridge mode — multicast doesn't cross the docker bridge. BT seeding still works because aria2 binds the mapped port. See [docs/deployment-networking.md](docs/deployment-networking.md) for the full discussion.
 </details>
 
 ### Python
@@ -103,6 +129,11 @@ ZIM_DIR=./zims zimi serve --port 8899
 | `ZIMI_AUTO_UPDATE` | `0` | Auto-update ZIMs (`1` to enable) |
 | `ZIMI_UPDATE_FREQ` | `weekly` | `daily`, `weekly`, or `monthly` |
 | `ZIMI_RATE_LIMIT` | `60` | Requests/min/IP. `0` to disable. |
+| `ZIMI_TORRENT` | `0` | Enable bundled aria2 sidecar for BT-first downloads + seeding. `1` to enable. |
+| `ZIMI_BT_PORT` | `6881` | BitTorrent listen port (TCP+UDP). |
+| `ZIMI_SEED` | `1` | Seed completed ZIMs back to the swarm. `0` disables seeding. |
+| `ZIMI_SEED_RATIO` | `2.0` | Stop seeding once ratio (uploaded ÷ downloaded) reaches this. |
+| `ZIMI_PEER_DISCOVERY` | `1` | Advertise + browse `_zimi._tcp.local` over mDNS. `0` disables. |
 
 ## API
 
