@@ -422,14 +422,16 @@ def handle_manage_get(handler, parsed, params):
         total_down = 0
         try:
             for raw in backend.list_managed():
-                completed = int(raw.get("completedLength", 0))
-                uploaded = int(raw.get("uploadLength", 0))
-                ratio = uploaded / max(completed, 1)
                 files = raw.get("files", [])
-                # Single-file torrent: take the first file's path
                 fname = ""
                 if files and isinstance(files, list) and files[0].get("path"):
                     fname = os.path.basename(files[0]["path"])
+                # Skip aria2's own .torrent metadata fetches — noise.
+                if not fname.endswith(".zim"):
+                    continue
+                completed = int(raw.get("completedLength", 0))
+                uploaded = int(raw.get("uploadLength", 0))
+                ratio = uploaded / max(completed, 1)
                 torrents.append(
                     {
                         "id": raw.get("gid", ""),
