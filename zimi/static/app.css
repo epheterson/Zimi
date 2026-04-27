@@ -1105,3 +1105,22 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
+
+  /* ── Forced colors (Windows High Contrast, etc.) ──
+     When the OS forces a color scheme, our custom CSS variables get
+     overridden anyway. The wins here are: keep focus rings visible,
+     ensure border-only buttons stay distinguishable, and don't force
+     dark backgrounds that fight the user's chosen scheme. */
+  @media (forced-colors: active) {
+    :focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+    button, .btn-primary, .manage-btn-action, .ci-add-btn {
+      forced-color-adjust: none;
+      background: ButtonFace; color: ButtonText;
+      border: 1px solid ButtonBorder, ButtonText;
+    }
+    .skip-link { background: Highlight; color: HighlightText; }
+    /* Pills need to retain their border so they're still grouped visually */
+    .pill, .ci-peer-pill, .ci-hier-installed, .dl-source {
+      border: 1px solid ButtonText;
+    }
+  }

@@ -114,7 +114,20 @@ plan docs in `docs/plans/`).
     language metadata. 21 unit tests cover each transform plus
     idempotency and malformed-input safety. Default off so byte-
     purist users get the original HTML; toggle persists in
-    localStorage. Activated per-request via `?a11y=1` query param
+    localStorage. Activated per-request via `?a11y=1` query param.
+    Live measurement on the Wikipedia Albert Einstein article: 25
+    additional images announced (was 17/42 with alt; now 42/42)
+  - **`forced-colors` (Windows High Contrast) support** — system
+    colors (`Highlight`, `ButtonText`, `ButtonFace`, `ButtonBorder`)
+    applied to focus rings, buttons, and pills so the user's chosen
+    OS scheme is honored end-to-end
+  - **Almanac sky scene now described for screen readers** — the
+    canvas-based sky animation gets a sibling `<div class="sr-only">`
+    populated from the same astronomical data we render visually.
+    Reads like: "Almanac sky for Monday April 27, 1:45 PM. Sun 47°
+    above the horizon. Moon 83% illuminated, 23° above the horizon.
+    412 stars visible above the horizon." Updates once per render
+    (the per-frame visuals are decorative)
   - `prefers-reduced-motion: reduce` already gated transitions
     globally; left as-is
 - **Networking** — Default Docker compose flips to `network_mode: host`

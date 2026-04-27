@@ -846,5 +846,12 @@
   "search": "Suche",
   "ms_accessibility": "Barrierefreiheit",
   "a11y_rewrite_label": "ZIM-Artikel-Barrierefreiheit verbessern",
-  "a11y_rewrite_hint": "Fügt fehlende Alt-Texte für Bilder hinzu, stellt eine Überschrift pro Artikel sicher und ergänzt die Dokumentsprache. Hilft Screenreadern; Artikel-HTML ändert sich leicht."
+  "a11y_rewrite_hint": "Fügt fehlende Alt-Texte für Bilder hinzu, stellt eine Überschrift pro Artikel sicher und ergänzt die Dokumentsprache. Hilft Screenreadern; Artikel-HTML ändert sich leicht.",
+  "alm_a11y_sky_for": "Almanach-Himmel am {when}.",
+  "alm_a11y_above_horizon": "über dem Horizont",
+  "alm_a11y_below_horizon": "unter dem Horizont",
+  "alm_a11y_illuminated": "beleuchtet",
+  "alm_a11y_altitude": "über dem Horizont",
+  "alm_a11y_stars_visible": "Sterne über dem Horizont sichtbar",
+  "alm_a11y_no_stars": "Derzeit keine Sterne über dem Horizont"
 }

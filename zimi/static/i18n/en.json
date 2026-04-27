@@ -846,5 +846,12 @@
   "search": "Search",
   "ms_accessibility": "Accessibility",
   "a11y_rewrite_label": "Improve ZIM article accessibility",
-  "a11y_rewrite_hint": "Adds missing image alt text, ensures one heading per article, and fills in document language. Helps screen readers; some article HTML changes."
+  "a11y_rewrite_hint": "Adds missing image alt text, ensures one heading per article, and fills in document language. Helps screen readers; some article HTML changes.",
+  "alm_a11y_sky_for": "Almanac sky for {when}.",
+  "alm_a11y_above_horizon": "above the horizon",
+  "alm_a11y_below_horizon": "below the horizon",
+  "alm_a11y_illuminated": "illuminated",
+  "alm_a11y_altitude": "above the horizon",
+  "alm_a11y_stars_visible": "stars visible above the horizon",
+  "alm_a11y_no_stars": "No stars currently above the horizon"
 }

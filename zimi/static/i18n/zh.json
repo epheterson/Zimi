@@ -846,5 +846,12 @@
   "search": "搜索",
   "ms_accessibility": "无障碍",
   "a11y_rewrite_label": "提升 ZIM 文章无障碍体验",
-  "a11y_rewrite_hint": "为图片补全 alt 文本，确保每篇文章有一个标题，填写文档语言。对屏幕阅读器有帮助；文章 HTML 会有少量变化。"
+  "a11y_rewrite_hint": "为图片补全 alt 文本，确保每篇文章有一个标题，填写文档语言。对屏幕阅读器有帮助；文章 HTML 会有少量变化。",
+  "alm_a11y_sky_for": "{when} 的年鉴天空。",
+  "alm_a11y_above_horizon": "地平线以上",
+  "alm_a11y_below_horizon": "地平线以下",
+  "alm_a11y_illuminated": "被照亮",
+  "alm_a11y_altitude": "地平线以上",
+  "alm_a11y_stars_visible": "颗星可见于地平线以上",
+  "alm_a11y_no_stars": "目前没有星星位于地平线以上"
 }

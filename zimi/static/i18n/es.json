@@ -846,5 +846,12 @@
   "search": "Buscar",
   "ms_accessibility": "Accesibilidad",
   "a11y_rewrite_label": "Mejorar la accesibilidad de los artículos ZIM",
-  "a11y_rewrite_hint": "Añade texto alternativo a imágenes, asegura un encabezado por artículo y completa el idioma del documento. Ayuda a lectores de pantalla; cambia algo del HTML del artículo."
+  "a11y_rewrite_hint": "Añade texto alternativo a imágenes, asegura un encabezado por artículo y completa el idioma del documento. Ayuda a lectores de pantalla; cambia algo del HTML del artículo.",
+  "alm_a11y_sky_for": "Cielo del almanaque para {when}.",
+  "alm_a11y_above_horizon": "sobre el horizonte",
+  "alm_a11y_below_horizon": "bajo el horizonte",
+  "alm_a11y_illuminated": "iluminada",
+  "alm_a11y_altitude": "sobre el horizonte",
+  "alm_a11y_stars_visible": "estrellas visibles sobre el horizonte",
+  "alm_a11y_no_stars": "Ninguna estrella sobre el horizonte ahora mismo"
 }

@@ -846,5 +846,12 @@
   "search": "Rechercher",
   "ms_accessibility": "Accessibilité",
   "a11y_rewrite_label": "Améliorer l’accessibilité des articles ZIM",
-  "a11y_rewrite_hint": "Ajoute le texte alternatif manquant aux images, garantit un titre principal par article et précise la langue du document. Aide les lecteurs d’écran ; modifie un peu le HTML."
+  "a11y_rewrite_hint": "Ajoute le texte alternatif manquant aux images, garantit un titre principal par article et précise la langue du document. Aide les lecteurs d’écran ; modifie un peu le HTML.",
+  "alm_a11y_sky_for": "Ciel de l’almanach pour {when}.",
+  "alm_a11y_above_horizon": "au-dessus de l’horizon",
+  "alm_a11y_below_horizon": "sous l’horizon",
+  "alm_a11y_illuminated": "illuminée",
+  "alm_a11y_altitude": "au-dessus de l’horizon",
+  "alm_a11y_stars_visible": "étoiles visibles au-dessus de l’horizon",
+  "alm_a11y_no_stars": "Aucune étoile au-dessus de l’horizon pour le moment"
 }

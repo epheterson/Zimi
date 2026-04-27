@@ -207,7 +207,10 @@ function _renderAlmanacContent() {
   html += '</div>';
 
   // Sky scene + calendar — wall calendar: art above, month grid below
-  html += '<div class="almanac-sky-wrap"><canvas id="almanac-sky-canvas"></canvas></div>';
+  html += '<div class="almanac-sky-wrap">' +
+    '<canvas id="almanac-sky-canvas" aria-describedby="almanac-sky-desc" role="img"></canvas>' +
+    '<div id="almanac-sky-desc" class="sr-only"></div>' +
+    '</div>';
   html += '<div id="almanac-calendar"></div>';
 
   // Sun map — inline world map with day/night terminator + location picker
@@ -2466,6 +2469,32 @@ function _initSkyScene(now, lat, lon) {
 
   // Pre-compute moon data (constant for this sky scene — now is frozen)
   var moonData = { pos: moonPos0, phase: moonM0 };
+
+  // Screen-reader description of the sky scene. Updates once per
+  // render — the animation visuals are decorative; the values
+  // they're derived from are what matter.
+  var srEl = document.getElementById('almanac-sky-desc');
+  if (srEl) {
+    var when = now.toLocaleString(undefined, {
+      weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit'
+    });
+    var sunDesc = sunPos.altitude > 0
+      ? t('alm_sun') + ' ' + sunPos.altitude.toFixed(0) + '° ' + t('alm_a11y_above_horizon')
+      : t('alm_sun') + ' ' + t('alm_a11y_below_horizon');
+    var moonDesc;
+    if (moonPos0.altitude > -2) {
+      moonDesc = t('alm_moon') + ' ' + moonM0.illumination + '% ' + t('alm_a11y_illuminated') +
+        ', ' + moonPos0.altitude.toFixed(0) + '° ' + t('alm_a11y_altitude');
+    } else {
+      moonDesc = t('alm_moon') + ' ' + t('alm_a11y_below_horizon');
+    }
+    var starsVisible = (projStars || []).filter(function(s) { return s.alt > 0; }).length;
+    var starsDesc = starsVisible > 0
+      ? starsVisible + ' ' + t('alm_a11y_stars_visible')
+      : t('alm_a11y_no_stars');
+    srEl.textContent = t('alm_a11y_sky_for', {when: when}) +
+      ' ' + sunDesc + '. ' + moonDesc + '. ' + starsDesc + '.';
+  }
 
   function _skyLoop(ts) {
     var elapsed = (ts - _skyStartTime) / 1000;
