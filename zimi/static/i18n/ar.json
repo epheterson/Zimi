@@ -822,5 +822,6 @@
   "default_flavor_hint": "يتم اختياره أولاً عندما يوفر ZIM عدة أنواع.",
   "flavor_full": "كامل (مع الصور)",
   "flavor_nopic": "بدون صور",
-  "flavor_mini": "مصغر"
+  "flavor_mini": "مصغر",
+  "updates_available_section": "تحديثات متاحة"
 }

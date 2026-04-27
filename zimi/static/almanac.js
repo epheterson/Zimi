@@ -40,7 +40,15 @@ function _fmtDuration(h, m) {
 // so we must check result !== key to detect misses and fall back to English name.
 function _tLookup(k, fallback) { var v = t(k); return v !== k ? v : fallback; }
 function _tp(name) { return _tLookup('alm_planet_' + name.toLowerCase(), name); }
-function _th(name) { var k = 'alm_hol_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, ''); return _tLookup(k, name); }
+function _th(name) {
+  if (!name) return '';
+  var k = 'alm_hol_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, '');
+  return _tLookup(k, name);
+}
+function _showerName(s) {
+  if (!s) return '';
+  return _tLookup('alm_shower_' + s.key, s.key.replace(/_/g, ' '));
+}
 var _CONST_KEYS = {'Pisces':'pisces','Aries':'aries','Taurus':'taurus','Gemini':'gemini','Cancer':'cancer','Leo':'leo','Virgo':'virgo','Libra':'libra','Scorpius':'scorpius','Sagittarius':'sagittarius','Capricornus':'capricornus','Aquarius':'aquarius','Bo\u00f6tes':'bootes','Lyra':'lyra','Perseus':'perseus','Draco':'draco','Orion':'orion','Ursa Minor':'ursa_minor'};
 function _tc(name) { var k = _CONST_KEYS[name]; return k ? _tLookup('alm_const_' + k, name) : name; }
 
@@ -304,7 +312,7 @@ function _cacheAlmanacHighlights(now, moon) {
       var peak = new Date(y, s.peak[0]-1, s.peak[1]);
       if (peak < now) peak = new Date(y+1, s.peak[0]-1, s.peak[1]);
       var days = Math.ceil((peak - now) / MS_PER_DAY);
-      if (days <= 10) highlights.push({ type: 'meteor', name: s.name, days: days, zhr: s.zhr, priority: days === 0 ? 0 : days });
+      if (days <= 10) highlights.push({ type: 'meteor', name: _showerName(s), days: days, zhr: s.zhr, priority: days === 0 ? 0 : days });
     }
     // Eclipses — check rendered eclipse elements for upcoming dates
     var eclipseEl = document.getElementById('almanac-events');
@@ -3734,7 +3742,7 @@ function _getAlmanacEvents(sys, year, month) {
   if (sys === 'gregorian') {
     for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
       var s = _METEOR_SHOWERS[si];
-      if (s.peak[0] === month) { add(s.peak[1], s.name, 'meteor', '\u2604'); }
+      if (s.peak[0] === month) { add(s.peak[1], _showerName(s), 'meteor', '\u2604'); }
     }
   }
 

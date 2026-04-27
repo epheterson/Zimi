@@ -822,5 +822,6 @@
   "default_flavor_hint": "当 ZIM 提供多个版本时优先选择。",
   "flavor_full": "完整（含图片）",
   "flavor_nopic": "无图片",
-  "flavor_mini": "精简"
+  "flavor_mini": "精简",
+  "updates_available_section": "可用更新"
 }

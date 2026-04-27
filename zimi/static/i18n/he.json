@@ -822,5 +822,6 @@
   "default_flavor_hint": "נבחרת ראשונה כש-ZIM מציע מספר גרסאות.",
   "flavor_full": "מלא (עם תמונות)",
   "flavor_nopic": "ללא תמונות",
-  "flavor_mini": "מיני"
+  "flavor_mini": "מיני",
+  "updates_available_section": "עדכונים זמינים"
 }

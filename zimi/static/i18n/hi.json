@@ -822,5 +822,6 @@
   "default_flavor_hint": "जब ZIM कई विकल्प प्रदान करता है तो पहले चुना जाता है।",
   "flavor_full": "पूर्ण (छवियों के साथ)",
   "flavor_nopic": "बिना छवियों",
-  "flavor_mini": "मिनी"
+  "flavor_mini": "मिनी",
+  "updates_available_section": "अपडेट उपलब्ध"
 }

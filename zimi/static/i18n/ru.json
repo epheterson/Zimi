@@ -822,5 +822,6 @@
   "default_flavor_hint": "Выбирается первым, когда ZIM предлагает несколько вариантов.",
   "flavor_full": "Полный (с изображениями)",
   "flavor_nopic": "Без изображений",
-  "flavor_mini": "Мини"
+  "flavor_mini": "Мини",
+  "updates_available_section": "Доступны обновления"
 }

@@ -456,24 +456,34 @@
     display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 8px; align-items: stretch;
   }
+  /* Compact grid-card: icon top-left, title+summary right of icon, actions bottom-right.
+     Saves vertical space vs full-vertical-stack. */
   .catalog-grid .catalog-item {
-    flex-direction: column; align-items: stretch; gap: 8px;
-    max-height: none;
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    grid-template-areas: "icon info" "actions actions";
+    gap: 4px 12px; align-items: start;
+    max-height: none; padding: 12px 14px;
   }
+  .catalog-grid .catalog-item .ci-icon { grid-area: icon; }
+  .catalog-grid .catalog-item .ci-info { grid-area: info; min-width: 0; }
   .catalog-grid .catalog-item .ci-actions {
-    margin-left: 0; justify-content: flex-end;
+    grid-area: actions; justify-content: flex-end; margin-left: 0;
   }
-  .catalog-grid .catalog-item .ci-icon {
-    align-self: flex-start;
+  .catalog-grid .catalog-item .ci-summary {
+    -webkit-line-clamp: 1; line-clamp: 1;
   }
   .catalog-item {
     display: flex; gap: 14px; align-items: center; padding: 14px 16px;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    margin-bottom: 0; transition: border-color 0.2s, opacity 0.3s;
+    margin-bottom: 6px; transition: border-color 0.2s, opacity 0.3s;
     max-height: 200px; overflow: hidden;
   }
+  /* Grid-cell catalog-items don't need a margin — the grid gap handles spacing */
+  .catalog-grid .catalog-item { margin-bottom: 0; }
   .catalog-item:hover { border-color: var(--amber-border); }
-  .catalog-item.ci-installed-item { opacity: 0.6; }
+  .catalog-item.ci-installed-item { opacity: 0.5; }
+  .catalog-item.ci-covered { opacity: 0.6; }
   .ci-icon { flex-shrink: 0; width: 40px; height: 40px; border-radius: 8px; overflow: hidden; background: var(--surface2); }
   .ci-icon img { width: 34px; height: 34px; object-fit: cover; background: #fff; border-radius: 6px; padding: 2px; }
   .ci-icon .ci-letter { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; font-size: 16px; font-weight: 700; color: var(--accent); }
@@ -708,6 +718,7 @@
   .manage-tab-content.active { display: block; }
   .manage-installed-group { margin-bottom: 24px; }
   .manage-installed-group .ci-section-label { margin-top: 0; }
+  .mig-updates .ci-section-label { color: var(--amber); }
 
   /* ── Featured Living Carousel ── */
   .featured-section { margin-bottom: 20px; }

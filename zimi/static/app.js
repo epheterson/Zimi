@@ -3649,7 +3649,14 @@ function browseCatalogFilter(query) {
       return title.includes(lq) || summary.includes(lq) || (item.name || '').toLowerCase().includes(lq);
     });
     const grouped = groupVariants(filtered);
-    grouped.sort((a, b) => (a.title || a.name || '').localeCompare(b.title || b.name || ''));
+    // Sort: actionable items first (not installed, not covered by an installed bundle),
+    // then installed/covered items pushed to the back. Within each group, alphabetical.
+    grouped.sort((a, b) => {
+      const aDemoted = a.installed || (a.hierarchy && (a.hierarchy.is_subset_of || []).some(n => _catalogInstalledNames.has(n)));
+      const bDemoted = b.installed || (b.hierarchy && (b.hierarchy.is_subset_of || []).some(n => _catalogInstalledNames.has(n)));
+      if (aDemoted !== bDemoted) return aDemoted ? 1 : -1;
+      return (a.title || a.name || '').localeCompare(b.title || b.name || '');
+    });
     let h = '<div class="browse-drilldown-header">' +
       '<button class="browse-back" onclick="' + (manageCategoryFilter ? "drillCategory('" + escAttr(manageCategoryFilter) + "')" : 'renderBrowseGallery()') + '">\u2190 Back</button>' +
       '<span class="browse-drilldown-count">' + t('n_results', {n: filtered.length}) + ' \u2014 \u201C' + esc(query) + '\u201D</span>' +
@@ -3817,7 +3824,10 @@ function renderCatalogItem(group) {
         ' title="' + escAttr(t('select_for_batch')) + '">';
     }
   }
-  return '<div class="catalog-item' + (anyInstalled ? ' ci-installed-item' : '') + '"' + catAttr + openAttr + '>' +
+  const isCovered = !anyInstalled && item.hierarchy
+    && (item.hierarchy.is_subset_of || []).some(n => _catalogInstalledNames.has(n));
+  return '<div class="catalog-item' + (anyInstalled ? ' ci-installed-item' : '') +
+    (isCovered ? ' ci-covered' : '') + '"' + catAttr + openAttr + '>' +
     selectHtml +
     '<div class="ci-icon">' + iconHtml + '</div>' +
     '<div class="ci-info">' +
@@ -4883,8 +4893,10 @@ function renderInstalled(filterText) {
     return;
   }
 
-  // Group by category
+  // Group by category. ZIMs with pending updates are pulled into a separate
+  // "Updates available" pseudo-group rendered first so they're easy to spot.
   const groups = {};
+  const pendingUpdates = [];
   for (const z of zims) {
     const cat = z.category || categorizeZim(z.name);
     if (manageCategoryFilter && cat !== manageCategoryFilter) continue;
@@ -4894,6 +4906,10 @@ function renderInstalled(filterText) {
       const title = (z.title || z.name).toLowerCase();
       const catLower = cat.toLowerCase();
       if (!title.includes(ft) && !catLower.includes(ft) && !z.name.toLowerCase().includes(ft)) continue;
+    }
+    if (_availableUpdates[z.file]) {
+      pendingUpdates.push(z);
+      continue;
     }
     if (!groups[cat]) groups[cat] = [];
     groups[cat].push(z);
@@ -4910,13 +4926,19 @@ function renderInstalled(filterText) {
   }
 
   const catOrder = Object.keys(groups).sort();
+  // Render pending-updates pseudo-group first.
+  if (pendingUpdates.length) {
+    catOrder.unshift('__updates__');
+    groups['__updates__'] = pendingUpdates;
+  }
   let items_h = '';
   for (const cat of catOrder) {
     const items = groups[cat];
     if (!items || !items.length) continue;
     items.sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
-    items_h += '<div class="manage-installed-group">';
-    items_h += '<div class="ci-section-label">' + esc(_catDisplayName(cat)) + ' (' + items.length + ')</div>';
+    items_h += '<div class="manage-installed-group' + (cat === '__updates__' ? ' mig-updates' : '') + '">';
+    const groupLabel = cat === '__updates__' ? t('updates_available_section') : _catDisplayName(cat);
+    items_h += '<div class="ci-section-label">' + esc(groupLabel) + ' (' + items.length + ')</div>';
     for (const z of items) {
       const iconHtml = z.has_icon
         ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" width="40" height="40" loading="lazy">'

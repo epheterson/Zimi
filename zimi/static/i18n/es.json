@@ -822,5 +822,6 @@
   "default_flavor_hint": "Elegida primero cuando un ZIM ofrece múltiples variantes.",
   "flavor_full": "Completo (con imágenes)",
   "flavor_nopic": "Sin imágenes",
-  "flavor_mini": "Mini"
+  "flavor_mini": "Mini",
+  "updates_available_section": "Actualizaciones disponibles"
 }
