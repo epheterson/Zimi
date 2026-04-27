@@ -278,6 +278,20 @@ if os.path.isdir(_STATIC_DIR):
     SEARCH_UI_HTML = re.sub(
         r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, SEARCH_UI_HTML
     )
+
+    # Same rewrite for inline ?v=N refs inside app.js (e.g. almanac.js loader)
+    # so changing the file content updates the version automatically. Without
+    # this, hardcoded v= values get cached forever by the immutable-asset rule.
+    _app_js_path = os.path.join(_STATIC_DIR, "app.js")
+    if os.path.exists(_app_js_path):
+        with open(_app_js_path, "r") as _f:
+            _app_js_src = _f.read()
+        _app_js_rewritten = re.sub(
+            r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, _app_js_src
+        )
+        if _app_js_rewritten != _app_js_src:
+            with open(_app_js_path, "w") as _f:
+                _f.write(_app_js_rewritten)
     # Inject build config into inline script so app.js can read versioned values.
     # Template has: var __ZIMI_CONFIG = {discoverStamp:'disc6',i18nHash:'0'};
     _build_stamp = _static_hash("app.js")[:6]
