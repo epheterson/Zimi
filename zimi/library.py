@@ -445,6 +445,24 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
     return total, items, None
 
 
+def _detect_flavor(filename_or_base):
+    """Return 'maxi' / 'nopic' / 'mini' / None for a ZIM file basename.
+
+    Used by _check_updates to constrain matches to the same flavor — never
+    propose a mini as the update for an installed maxi (#16).
+    """
+    if not filename_or_base:
+        return None
+    s = filename_or_base.lower()
+    if "_maxi_" in s or s.endswith("_maxi"):
+        return "maxi"
+    if "_nopic_" in s or s.endswith("_nopic"):
+        return "nopic"
+    if "_mini_" in s or s.endswith("_mini"):
+        return "mini"
+    return None
+
+
 def _check_updates():
     """Compare installed ZIMs against Kiwix catalog to find available updates.
 
@@ -490,6 +508,10 @@ def _check_updates():
     # inconsistent (e.g. "canadian_prep_winterprepping" for a file actually
     # named "canadian_prepper_winterprepping_en_2026-02.zim"). Falling back to
     # the prefix derived from download_url recovers those cases.
+    #
+    # Each catalog entry also carries its detected flavor (maxi/nopic/mini/None)
+    # so we only suggest same-flavor updates. Crossing flavors would replace a
+    # maxi (with images) install with a mini (text-only) — issue #16.
     catalog_index = []
     for item in all_items:
         dl_url = item.get("download_url", "")
@@ -499,7 +521,6 @@ def _check_updates():
         cat_date = item.get("date", "")[:7] if item.get("date") else ""
         if not cat_date or not cat_name:
             continue
-        # URL-derived prefix as a fallback match key.
         url_fname = dl_url.rsplit("/", 1)[-1]
         url_fname = re.sub(r"\.meta4$", "", url_fname)
         url_fname = re.sub(r"\.zim$", "", url_fname)
@@ -507,15 +528,20 @@ def _check_updates():
         prefixes = [cat_name]
         if url_prefix and url_prefix != cat_name:
             prefixes.append(url_prefix)
-        catalog_index.append((prefixes, cat_date, item))
+        cat_flavor = _detect_flavor(url_fname)
+        catalog_index.append((prefixes, cat_date, cat_flavor, item))
 
-    # For each installed ZIM, find the best catalog match (longest prefix = exact flavor)
+    # For each installed ZIM, find the best catalog match. Match flavor
+    # first (only same-flavor updates considered), then longest prefix.
     updates = []
     for inst in installed_files:
+        inst_flavor = _detect_flavor(inst["filebase"])
         best = None
         best_len = 0
-        for prefixes, cat_date, item in catalog_index:
+        for prefixes, cat_date, cat_flavor, item in catalog_index:
             if cat_date <= inst["date"]:
+                continue
+            if cat_flavor != inst_flavor:
                 continue
             for p in prefixes:
                 if inst["filebase"].startswith(p + "_") and len(p) > best_len:

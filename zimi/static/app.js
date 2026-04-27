@@ -5691,14 +5691,28 @@ async function _toggleUpdatesDetail() {
     updates.forEach(u => {
       const row = document.createElement('div');
       row.className = 'updates-detail-row';
+      const top = document.createElement('div');
+      top.className = 'updates-detail-top';
       const name = document.createElement('span');
       name.className = 'updates-detail-name';
       name.textContent = u.title || u.name;
       const versions = document.createElement('span');
       versions.className = 'updates-detail-versions';
       versions.textContent = u.installed_date + ' → ' + u.latest_date;
-      row.appendChild(name);
-      row.appendChild(versions);
+      top.appendChild(name);
+      top.appendChild(versions);
+      row.appendChild(top);
+      // Filename diff so the user can spot weirdness (e.g. flavor changes that
+      // shouldn't happen — already filtered by _check_updates but visible if
+      // anything slips through).
+      const nextFname = (u.download_url || '').split('/').pop()
+        .replace(/\.meta4$/, '');
+      if (u.installed_file && nextFname && nextFname !== u.installed_file) {
+        const fnames = document.createElement('div');
+        fnames.className = 'updates-detail-fnames';
+        fnames.textContent = u.installed_file + '  →  ' + nextFname;
+        row.appendChild(fnames);
+      }
       el.appendChild(row);
     });
   } catch (e) {

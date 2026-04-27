@@ -674,12 +674,18 @@
     max-height: 240px; overflow-y: auto;
   }
   .updates-detail-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 4px 6px; font-size: 12px; gap: 8px;
+    padding: 6px; font-size: 12px;
   }
   .updates-detail-row + .updates-detail-row { border-top: 1px solid var(--border); }
+  .updates-detail-top {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
   .updates-detail-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .updates-detail-versions { color: var(--text2); font-family: monospace; font-size: 11px; flex-shrink: 0; }
+  .updates-detail-fnames {
+    color: var(--text2); font-family: monospace; font-size: 10.5px;
+    margin-top: 2px; opacity: 0.65; word-break: break-all;
+  }
 
   /* Multi-select checkbox + floating action bar */
   .ci-select {
