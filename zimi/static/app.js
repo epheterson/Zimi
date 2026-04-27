@@ -4778,9 +4778,6 @@ function _toggleAllHotZims(checked) {
 }
 
 async function _renderSeedingSection() {
-  const statusEl = document.getElementById('ms-bt-status');
-  const listEl = document.getElementById('ms-seeding-list');
-  if (!statusEl || !listEl) return;
   let bt, seeding;
   try {
     [bt, seeding] = await Promise.all([
@@ -4788,9 +4785,13 @@ async function _renderSeedingSection() {
       manageFetch('/manage/seeding').then(r => r.json()),
     ]);
   } catch (e) {
-    statusEl.textContent = t('error');
+    const errEl = document.getElementById('ms-bt-status');
+    if (errEl) errEl.textContent = t('error');
     return;
   }
+  const statusEl = document.getElementById('ms-bt-status');
+  const listEl = document.getElementById('ms-seeding-list');
+  if (!statusEl || !listEl) return;
   // Status row: dot + state + hint
   const dot = bt.status === 'ready' ? '🟢' : bt.status === 'unavailable' ? '🟡' : '⚪';
   const stateLabel = t('bt_state_' + bt.status);
