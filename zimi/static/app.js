@@ -1335,7 +1335,7 @@ function openAlmanac(replaceState) {
   }
   if (!_almanacLoaded) {
     var s = document.createElement('script');
-    s.src = '/static/almanac.js?v=40';
+    s.src = '/static/almanac.js?v=41';
     s.onload = function() { _almanacLoaded = true; _openAlmanacInner(replaceState); };
     s.onerror = function() { console.error('Failed to load almanac.js'); };
     document.head.appendChild(s);
