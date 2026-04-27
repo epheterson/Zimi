@@ -157,6 +157,30 @@ plan docs in `docs/plans/`).
     has both an `aria-label` and a `data-i18n-aria` so screen
     readers announce the action in the user's chosen UI language.
     Decorative SVGs and emoji glyphs marked `aria-hidden="true"`
+  - **Keyboard navigation audit (Task 2)** — programmatically walked
+    Tab order across home, manage, and reader views. Findings:
+    - 171 focusable elements on home, 114 in manage panel — **0
+      unnamed** (every interactive element has aria-label, title,
+      visible text, or a wrapping/associated label)
+    - First Tab stop is the skip-to-main-content link
+    - Esc cascades correctly: closes library panel → hides suggest
+      dropdown → closes almanac → exits reader → clears search
+      input → exits source/manage view, in that order, never trapping
+    - Two-step Esc on search (1st: hide dropdown, 2nd: clear input)
+      is intentional so users can see results before discarding
+  - **Two-machine LAN test** — spun up a second Zimi instance on the
+    Mac (`10.0.0.229:9000`), bound to 0.0.0.0 with 3 ZIMs. Verified:
+    - `dns-sd -B _zimi._tcp local.` from a third device on the LAN
+      sees both instances simultaneously
+    - NAS `/manage/peers` lists `zimi-Erics-iMac` with the right
+      host/port/zim-count
+    - Mac `/manage/peers` lists `zimi-elpnas` (69 ZIMs)
+    - 8 catalog cards on the Mac show clickable "📡 elpnas" pills
+      after drilling into the wikipedia category — first time
+      real-world peer pills rendered
+    - During the test, found and fixed one bug: peer-stem keys kept
+      the flavor suffix (`_nopic`) but catalog `name` doesn't.
+      Now indexing both flavor-stripped and dated stems
   - **Lighthouse a11y score: 84 → 100/100** in three deploys; every
     weighted audit passes. Specific fixes:
     - `--text2` color bumped from `#6e6e7a` (3.85:1) to `#8a8a94`
