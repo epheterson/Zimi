@@ -146,7 +146,8 @@ plan docs in `docs/plans/`).
     has both an `aria-label` and a `data-i18n-aria` so screen
     readers announce the action in the user's chosen UI language.
     Decorative SVGs and emoji glyphs marked `aria-hidden="true"`
-  - **Lighthouse-driven WCAG fixes** (baseline a11y score 84/100):
+  - **Lighthouse a11y score: 84 → 100/100** in three deploys; every
+    weighted audit passes. Specific fixes:
     - `--text2` color bumped from `#6e6e7a` (3.85:1) to `#8a8a94`
       (5.75:1) — passes WCAG AA against `--bg`. `--text3` reserved
       for large-text only with the contract documented in the CSS
