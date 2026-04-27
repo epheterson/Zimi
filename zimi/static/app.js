@@ -3272,10 +3272,18 @@ async function _loadPeerData() {
       const ld = await lr.json();
       for (const z of (ld.list || [])) {
         const fb = (z.file || '').replace(/\.zim$/, '');
-        const stem = fb.replace(/_\d{4}-\d{2}$/, '');
+        // Strip date and (optionally) flavor so the stem matches the
+        // catalog item's `name` field (e.g. wikipedia_ce_all_nopic_2026-01
+        // → wikipedia_ce_all).
+        const dated = fb.replace(/_\d{4}-\d{2}$/, '');
+        const stem = dated.replace(/_(maxi|nopic|mini)$/, '');
         if (!stem) continue;
-        if (!newMap.has(stem)) newMap.set(stem, []);
-        newMap.get(stem).push(p.name);
+        // Index BOTH the flavor-stripped stem and the dated form so
+        // either match path in _enrichCatalogPeers will hit.
+        for (const key of [stem, dated]) {
+          if (!newMap.has(key)) newMap.set(key, []);
+          if (!newMap.get(key).includes(p.name)) newMap.get(key).push(p.name);
+        }
       }
     } catch (_) {}
   }));
