@@ -445,6 +445,149 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
     return total, items, None
 
 
+def _try_bt_download(
+    backend,
+    dl,
+    *,
+    torrent_url,
+    staging_dir,
+    poll_interval=2.0,
+    no_peers_timeout=60.0,
+):
+    """Attempt to download via the BT backend, with explicit fallback.
+
+    Returns one of:
+      "success"   — file written to dl['dest']; caller is done
+      "fallback"  — BT didn't pan out; caller should run the HTTP path
+      "cancelled" — user cancelled; backend cleaned up; caller stops
+      "error"     — terminal (rare); caller should report
+
+    On every poll we update dl with downloaded_bytes / total_bytes /
+    bt_peers / bt_info_hash so the existing /manage/downloads UI surfaces
+    BT progress without further wiring.
+    """
+    try:
+        tid = backend.add_torrent(
+            torrent_url, dest_dir=staging_dir, options={"seed-time": "0"}
+        )
+    except Exception as e:
+        log.warning(
+            "BT add_torrent failed for %s: %s — falling back to HTTP", dl["filename"], e
+        )
+        return "fallback"
+
+    started = time.time()
+    while True:
+        if dl.get("cancelled"):
+            try:
+                backend.remove(tid, delete_files=True)
+            except Exception:
+                pass
+            return "cancelled"
+
+        try:
+            status = backend.status(tid)
+        except Exception as e:
+            log.warning(
+                "BT status poll failed for %s: %s — falling back", dl["filename"], e
+            )
+            try:
+                backend.remove(tid, delete_files=True)
+            except Exception:
+                pass
+            return "fallback"
+
+        # Surface progress to the existing UI.
+        dl["downloaded_bytes"] = status.get("completed_bytes", 0)
+        dl["total_bytes"] = status.get("total_bytes", 0)
+        dl["bt_peers"] = status.get("peers", 0)
+        dl["bt_info_hash"] = status.get("info_hash", "")
+        dl["_source"] = "bt"
+
+        state = status.get("state")
+        if state == "complete":
+            staged = os.path.join(staging_dir, dl["filename"])
+            if not os.path.exists(staged):
+                log.warning(
+                    "BT reported complete but file missing: %s — falling back", staged
+                )
+                try:
+                    backend.remove(tid, delete_files=True)
+                except Exception:
+                    pass
+                return "fallback"
+            try:
+                os.makedirs(os.path.dirname(dl["dest"]), exist_ok=True)
+                os.replace(staged, dl["dest"])
+            except OSError as e:
+                # Cross-filesystem rename — fall back to copy + remove
+                try:
+                    import shutil as _shutil
+
+                    _shutil.copyfile(staged, dl["dest"])
+                    os.remove(staged)
+                except Exception as e2:
+                    log.warning("BT staging→dest failed: %s / %s", e, e2)
+                    return "fallback"
+            try:
+                backend.remove(tid)
+            except Exception:
+                pass
+            return "success"
+
+        if state == "error":
+            log.warning(
+                "BT reported error for %s: %s — falling back",
+                dl["filename"],
+                status.get("error_message", ""),
+            )
+            try:
+                backend.remove(tid, delete_files=True)
+            except Exception:
+                pass
+            return "fallback"
+
+        # Stall detection: 0 peers AND <1% progress past the timeout.
+        elapsed = time.time() - started
+        total = status.get("total_bytes", 0) or 1
+        pct = status.get("completed_bytes", 0) / total
+        if elapsed >= no_peers_timeout and status.get("peers", 0) == 0 and pct < 0.01:
+            log.info(
+                "BT stalled for %s after %.0fs (0 peers, %.1f%%) — falling back",
+                dl["filename"],
+                elapsed,
+                pct * 100,
+            )
+            try:
+                backend.remove(tid, delete_files=True)
+            except Exception:
+                pass
+            return "fallback"
+
+        time.sleep(poll_interval)
+
+
+def _resolve_torrent_url(url):
+    """Return the Kiwix `.torrent` companion URL for a given download URL,
+    or None if no plausible companion exists.
+
+    Kiwix publishes `<file>.zim.torrent` next to every `<file>.zim`. We
+    trust only the official `download.kiwix.org` host to avoid attacker-
+    controlled metadata being injected via a third-party URL.
+    """
+    if not url:
+        return None
+    if not url.startswith("https://download.kiwix.org/"):
+        return None
+    if url.endswith(".torrent"):
+        return url
+    if url.endswith(".meta4"):
+        url = url[: -len(".meta4")]
+    if not url.endswith(".zim"):
+        return None
+    return url + ".torrent"
+
+
 def _detect_flavor(filename_or_base):
     """Return 'maxi' / 'nopic' / 'mini' / None for a ZIM file basename.
 
@@ -658,6 +801,60 @@ def _title_from_filename(filename):
     return {"title": name.replace("_", " ").title(), "name": name}
 
 
+def _post_download_finalize(dl):
+    """Bookkeeping shared by both the HTTP-mirror and BT success paths.
+
+    Removes older versions of the same ZIM, refreshes server caches,
+    appends to history. Idempotent — safe if dl['dest'] already exists.
+    """
+    # Remove older versions of the same ZIM
+    base = re.match(r"^(.+?)_\d{4}-\d{2}\.zim$", dl["filename"])
+    if base:
+        prefix = base.group(1)
+        try:
+            for f in os.listdir(_srv.ZIM_DIR):
+                if (
+                    f.startswith(prefix + "_")
+                    and f.endswith(".zim")
+                    and f != dl["filename"]
+                ):
+                    try:
+                        os.remove(os.path.join(_srv.ZIM_DIR, f))
+                        log.info("Removed old version: %s", f)
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+    with _srv._zim_lock:
+        _srv.load_cache(force=True)
+    _srv._search_cache_clear()
+    _srv._suggest_cache_clear()
+    _srv._clean_stale_title_indexes()
+    threading.Thread(target=_srv._build_all_qid_indexes, daemon=True).start()
+    zim_info = {}
+    try:
+        for z in _srv._zim_list_cache or []:
+            if z.get("file") == dl["filename"]:
+                zim_info = {
+                    "title": z.get("title", ""),
+                    "name": z.get("name", ""),
+                    "has_icon": z.get("has_icon", False),
+                }
+                break
+    except Exception as e:
+        log.debug("Failed to cache ZIM metadata for download history: %s", e)
+    event_type = "updated" if dl.get("is_update") else "download"
+    _srv._append_history(
+        {
+            "event": event_type,
+            "ts": time.time(),
+            "filename": dl["filename"],
+            "size_bytes": dl.get("total_bytes", 0),
+            **zim_info,
+        }
+    )
+
+
 def _download_thread(dl):
     """Background thread that downloads a file with mirror rotation.
 
@@ -672,6 +869,38 @@ def _download_thread(dl):
     mirrors = list(dl.get("mirrors", [dl["url"]]))
     _random.shuffle(mirrors)
     try:
+        # BT-first attempt when a backend is configured AND we can find a
+        # plausible torrent companion. Falls through to the HTTP mirror loop
+        # on any non-success outcome — never strands the user's download.
+        from zimi import p2p as _p2p
+
+        try:
+            _backend = _p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+        except Exception:
+            _backend = None
+        _torrent_url = _resolve_torrent_url(dl["url"]) if _backend else None
+        if _backend and _torrent_url:
+            try:
+                _bt_outcome = _try_bt_download(
+                    _backend,
+                    dl,
+                    torrent_url=_torrent_url,
+                    staging_dir=_p2p.get_staging_dir(_srv.ZIMI_DATA_DIR),
+                )
+            except Exception as e:
+                log.warning("BT path raised: %s — falling back to HTTP", e)
+                _bt_outcome = "fallback"
+            if _bt_outcome == "success":
+                dl["done"] = True
+                log.info("BT download complete: %s", dl["filename"])
+                _post_download_finalize(dl)
+                return
+            if _bt_outcome == "cancelled":
+                dl["done"] = True
+                dl["error"] = "Cancelled"
+                return
+            # Otherwise fall through to HTTP — nothing else to do here
+
         success = False
         last_error = None
         for mirror_url in mirrors:
@@ -710,52 +939,7 @@ def _download_thread(dl):
             dl["filename"],
             urlparse(dl.get("_mirror_url", dl["url"])).hostname,
         )
-        # Remove older versions of the same ZIM
-        base = re.match(r"^(.+?)_\d{4}-\d{2}\.zim$", dl["filename"])
-        if base:
-            prefix = base.group(1)
-            for f in os.listdir(_srv.ZIM_DIR):
-                if (
-                    f.startswith(prefix + "_")
-                    and f.endswith(".zim")
-                    and f != dl["filename"]
-                ):
-                    try:
-                        os.remove(os.path.join(_srv.ZIM_DIR, f))
-                        log.info(f"Removed old version: {f}")
-                    except OSError:
-                        pass
-        with _srv._zim_lock:
-            _srv.load_cache(force=True)
-        _srv._search_cache_clear()
-        _srv._suggest_cache_clear()
-        _srv._clean_stale_title_indexes()
-        # Rebuild Q-ID indexes and detect has_qids for the new ZIM
-        threading.Thread(target=_srv._build_all_qid_indexes, daemon=True).start()
-        # Cache ZIM metadata in history so entries survive deletion
-        zim_info = {}
-        try:
-            for z in _srv._zim_list_cache or []:
-                if z.get("file") == dl["filename"]:
-                    zim_info = {
-                        "title": z.get("title", ""),
-                        "name": z.get("name", ""),
-                        "has_icon": z.get("has_icon", False),
-                    }
-                    break
-        except Exception as e:
-            log.debug("Failed to cache ZIM metadata for download history: %s", e)
-            pass
-        event_type = "updated" if dl.get("is_update") else "download"
-        _srv._append_history(
-            {
-                "event": event_type,
-                "ts": time.time(),
-                "filename": dl["filename"],
-                "size_bytes": dl.get("total_bytes", 0),
-                **zim_info,
-            }
-        )
+        _post_download_finalize(dl)
     except Exception as e:
         is_transient = isinstance(
             e, (urllib.error.URLError, TimeoutError, ConnectionError, OSError)
