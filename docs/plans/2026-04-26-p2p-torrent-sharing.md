@@ -45,18 +45,121 @@ Three paths, three trust levels:
 
 ### 4. File layout
 
+User-visible `ZIM_DIR` stays clean — it only ever contains finished `.zim` files. In-progress downloads go to a separate **staging directory** (configurable):
+
 ```
-ZIM_DIR/                                      # User-visible
-  wikipedia_en_all_maxi_2026-02.zim           # Final file
-  wikipedia_en_all_maxi_2026-02.zim.aria2     # Control file (in-progress only)
+$ZIMI_STAGING_DIR/                            # In-progress only — Docker volume
+  wikipedia_en_all_maxi_2026-02.zim           # Partial file
+  wikipedia_en_all_maxi_2026-02.zim.aria2     # Control file
+
+ZIM_DIR/                                      # User-visible — only completed
+  wikipedia_en_all_maxi_2026-02.zim           # Atomically renamed on success
 
 ZIMI_DATA_DIR/bt/                             # Internal — never user-touched
-  torrents/wikipedia_en_all_maxi_2026-02.torrent   # Cached, used for seeding
-  session                                          # aria2 session state
-  pieces/                                          # Piece-cache if aria2 needs it
+  torrents/<name>.torrent                     # Cached, used for seeding
+  session                                     # aria2 session state
 ```
 
-`.torrent` files stay cached because seeding needs them — without it, every restart would have to re-fetch metadata from peers, which is fragile.
+Why staging matters:
+
+- A user listing `ZIM_DIR` never sees half-downloaded files. Cleaner mental model.
+- Different filesystems possible — staging on fast SSD, finals on slow large NAS array. The atomic rename only works on the same FS, but a copy-then-rename is acceptable for the cross-FS case.
+- Cleanup of failed/cancelled downloads is one `rm -rf $ZIMI_STAGING_DIR/*` away without risking installed ZIMs.
+
+Defaults:
+
+- `ZIMI_STAGING_DIR` env var, default `$ZIMI_DATA_DIR/staging`
+- Docker compose adds it as a separate mount so users can target a different volume:
+  ```yaml
+  volumes:
+    - /volume1/docker/kiwix:/zims              # final
+    - /volume1/docker/kiwix-staging:/staging   # in-progress (optional override)
+    - /volume1/docker/kiwix/zimi-data:/data    # control + .torrent cache
+  ```
+
+`.torrent` files stay cached in `bt/torrents/` because seeding needs them — without it, every restart would have to re-fetch metadata from peers.
+
+### 4a. Network — port and reachability
+
+BitTorrent needs an inbound port to accept connections. Without it, you can still leech but you're free-riding (and many peers throttle you).
+
+- `ZIMI_BT_PORT` env var, default 6881
+- Docker compose exposes it: `- "6881:6881"` (TCP + UDP)
+- aria2 sidecar uses that single port for all torrents
+- On startup: attempt uPnP via `aria2.changeOption {"bt-tracker-connect-timeout":"30","enable-peer-exchange":"true","listen-port":"6881"}`. If uPnP succeeds, log `BT port forwarded`. If not, log `BT inbound unavailable; leech-only mode`.
+- Surface state in `/manage/seeding` UI: green dot if port is reachable, amber if unreachable, with a one-line explanation
+- Optional: `/manage/bt-port-test` endpoint that pings a known reflector (e.g. `https://canyouseeme.org/check?port=6881` style) to confirm
+- For users behind CGNAT or strict firewalls: seeding to LAN peers still works regardless. WAN seeding is nice-to-have, not required.
+
+### 4b. Backend choice — bundle aria2, but support external clients
+
+We're becoming a torrent client, but we shouldn't ignore the *arr-stack reality: many users already run qBittorrent / Transmission / Deluge with port-forwarding + ratio policies + tracker preferences they've tuned. Make integration optional.
+
+**Tier 1 (default) — bundled aria2.** Zero config. Works out of the box. Container ships with `aria2c` and a known-good config.
+
+**Tier 2 (optional) — external BT client via API.** Same API surface inside Zimi, different transport behind the scenes. Configured via env:
+
+```
+ZIMI_BT_BACKEND=aria2          # default
+ZIMI_BT_BACKEND=qbittorrent    # use existing qBT
+  ZIMI_QBT_URL=http://nas:8080
+  ZIMI_QBT_USERNAME=admin
+  ZIMI_QBT_PASSWORD=...
+  ZIMI_QBT_CATEGORY=zimi       # so qBT shows our torrents grouped
+
+ZIMI_BT_BACKEND=transmission
+  ZIMI_TR_URL=http://nas:9091/transmission/rpc
+  ZIMI_TR_USERNAME=...
+  ZIMI_TR_PASSWORD=...
+
+ZIMI_BT_BACKEND=deluge
+  ZIMI_DELUGE_URL=...
+  ZIMI_DELUGE_PASSWORD=...
+```
+
+Abstract via a `BTBackend` Python interface (`add_torrent`, `pause`, `resume`, `remove`, `status`). Our seeding policy still applies — we tell the backend "seed to 2× ratio, then pause" via per-client config. qBT supports per-torrent ratio limits; Transmission too; Deluge has it via plugin.
+
+Trade-offs:
+
+| | aria2 (bundled) | External (qBT etc.) |
+|---|---|---|
+| Setup | Zero | Existing client must be configured |
+| Network tuning | Default | Inherits user's existing setup (port forward, NAT-PMP, etc.) |
+| UI | All in Zimi | Zimi shows status; qBT WebUI shows detail |
+| Maintenance | We own it | User's existing client gets the patches |
+| Disk locations | Constrained to ZIMI_STAGING_DIR | Whatever the external client does (we tell it) |
+
+Power users with NAS setups will pick external. Casual users get the bundled path.
+
+**Recommended order:** Ship aria2 backend first (Tasks 1-7). Add qBittorrent backend later as a follow-up — same `BTBackend` interface, different impl. The interface is the important part.
+
+### 4c. UI/UX patterns to borrow from established BT clients
+
+We're entering a category with strong UX conventions. Steal selectively, skip what doesn't apply to single-file ZIM torrents.
+
+**Worth borrowing:**
+
+- **Per-torrent stats**: ratio bar, ETA, peers (seeders/leechers), active time, downloaded/uploaded totals
+- **Speed graph**: small sparkline next to each active item (last 60s)
+- **Force re-check**: verify pieces against hash. Useful when something feels off
+- **Sequential download**: download in piece order (we don't really need this for ZIMs since they're not streamable, but cheap to expose)
+- **Per-torrent labels/categories**: not really needed for us — we already categorize by ZIM topic
+- **Trackers tab**: show tracker URLs + last announce status. Helps debug "no peers" issues
+- **Peer list**: client name, country flag (from IP geolocation), up/down rates per peer
+- **"Move to" on completion**: handled by our staging-then-rename pattern already
+
+**Skip:**
+
+- **RSS auto-download**: ZIMs don't have a feed convention
+- **File priorities within a torrent**: ZIMs are single-file
+- **Magnet link paste UI as primary entry point**: we mostly add via catalog
+- **DHT bootstrap UI**: opt-in env var is enough
+
+Concrete UI in Zimi terms:
+
+- Per-download card grows a small inline detail expansion: ratio bar, peers, trackers, speed graph
+- Server-settings "Seeding" panel: aggregate stats + per-ZIM rows
+- New optional `/manage/bt-debug` page (only with `ZIMI_DEBUG=1`) showing raw aria2 status — escape hatch for power users
 
 ### 5. Cleanup paths
 
