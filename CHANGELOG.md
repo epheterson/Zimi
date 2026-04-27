@@ -61,6 +61,25 @@ plan docs in `docs/plans/`).
   category sections
 - **Plan docs** — `docs/plans/2026-04-26-p2p-torrent-sharing.md` and
   `docs/plans/2026-04-26-accessibility.md` for the Reach track
+- **BitTorrent transport (opt-in)** — `ZIMI_TORRENT=1` enables the
+  bundled aria2 sidecar. Downloads with a Kiwix `.torrent` companion
+  use BT first; HTTP mirrors are tried on no-peers / hash mismatch.
+  Completed files seed by default (capped at 2× ratio, disk-pressure
+  auto-pause, `ZIMI_SEED=0` to disable). Active downloads show a small
+  amber `BT · Np` pill on their card.
+  - Server-settings shows live aria2 status (port, backend, ready/off
+    state) and a per-torrent list with peer count, uploaded bytes,
+    ratio, and a ratio progress bar
+  - `GET /manage/bt-status`, `GET /manage/seeding` expose the data
+  - Backend abstraction (`BTBackend`) keeps room for qBittorrent /
+    Transmission / Deluge as drop-in implementations (the *arr-stack
+    pattern: reuse the existing client's UI for power users)
+- **LAN peer discovery (opt-in)** — `_zimi._tcp.local` advertised via
+  Zeroconf with TXT records (version, zim_count, port, bt_port). New
+  `GET /manage/peers` returns discovered peers. `ZIMI_PEER_DISCOVERY=0`
+  disables. Note: in Docker bridge mode, mDNS multicast doesn't reach
+  the LAN — use `network_mode: host` to expose discovery beyond the
+  container
 
 ### Changed
 
