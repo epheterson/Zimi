@@ -858,5 +858,6 @@
   "mirror_active": "Espelho ativo",
   "mirror_active_hint": "Semeando tudo o que você tem instalado de volta para o enxame. Pare com ZIMI_MIRROR=0.",
   "peer_pill_click_tip": "Baixar de {peers} na sua LAN — caminho mais rápido, sem WAN.",
-  "downloading_from_peer": "Iniciando download — {peer} na sua LAN deve enviar os bytes."
+  "downloading_from_peer": "Iniciando download — {peer} na sua LAN deve enviar os bytes.",
+  "peer_advertising_as": "Anunciando como"
 }

@@ -858,5 +858,6 @@
   "mirror_active": "镜像已激活",
   "mirror_active_hint": "正在将已安装的内容回传到种子集群。使用 ZIMI_MIRROR=0 停止。",
   "peer_pill_click_tip": "从局域网中的 {peers} 下载 — 最快路径，不消耗 WAN 流量。",
-  "downloading_from_peer": "开始下载 — 局域网中的 {peer} 应该提供数据。"
+  "downloading_from_peer": "开始下载 — 局域网中的 {peer} 应该提供数据。",
+  "peer_advertising_as": "广播名称"
 }

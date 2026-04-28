@@ -858,5 +858,6 @@
   "mirror_active": "मिरर सक्रिय",
   "mirror_active_hint": "आपके द्वारा स्थापित सब कुछ स्वार्म में सीड किया जा रहा है। ZIMI_MIRROR=0 से रोकें।",
   "peer_pill_click_tip": "अपने LAN पर {peers} से डाउनलोड करें — सबसे तेज़ मार्ग, कोई WAN बैंडविड्थ नहीं।",
-  "downloading_from_peer": "डाउनलोड शुरू हो रहा है — आपके LAN पर {peer} को बाइट्स भेजने चाहिए।"
+  "downloading_from_peer": "डाउनलोड शुरू हो रहा है — आपके LAN पर {peer} को बाइट्स भेजने चाहिए।",
+  "peer_advertising_as": "इस नाम से प्रसारित कर रहे हैं"
 }

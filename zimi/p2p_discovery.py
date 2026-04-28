@@ -71,6 +71,20 @@ def _hostname() -> str:
         return "zimi"
 
 
+def _peer_instance_name() -> str:
+    """Friendly name advertised on mDNS. ZIMI_PEER_NAME env var
+    overrides the auto-detected `zimi-<hostname>` form. Sanitized to
+    `[a-zA-Z0-9-]+` to keep DNS-SD service names valid."""
+    raw = os.environ.get("ZIMI_PEER_NAME", "").strip()
+    if raw:
+        # DNS-SD instance names allow most printable chars, but we
+        # restrict to [a-zA-Z0-9-_ ] for safety + readability. Spaces
+        # in DNS-SD are technically OK but cause friction in CLI tools.
+        cleaned = "".join(c if (c.isalnum() or c in "-_ ") else "-" for c in raw)
+        return cleaned.strip("- ")[:63] or _hostname()
+    return f"zimi-{_hostname()}"
+
+
 class _PeerListener:
     """Zeroconf service listener. Caches add/update events into _peers and
     drops them on remove. Self-advertisements are skipped via self_name."""
@@ -168,8 +182,7 @@ def start(
         return False
 
     try:
-        host = _hostname()
-        instance = f"zimi-{host}"
+        instance = _peer_instance_name()
         full_name = f"{instance}.{SERVICE_TYPE}"
         _self_service_name = instance
 

@@ -4996,6 +4996,23 @@ async function _renderSeedingSection() {
   if (bt.hint) {
     html += '<div class="ms-hint" style="margin-top:4px">' + esc(bt.hint) + '</div>';
   }
+  // Surface the local peer instance name + a count of LAN peers if any.
+  // Lets users confirm "I'm advertising as ___" at a glance.
+  try {
+    const pr = await fetch('/manage/peers');
+    if (pr.ok) {
+      const pd = await pr.json();
+      if (pd.enabled) {
+        const self = pd.self || '';
+        const n = (pd.peers || []).length;
+        html += '<div class="mc-row" style="margin-top:6px">' +
+          '<span class="mc-label">' + tH('peer_advertising_as') + '</span>' +
+          '<span class="mc-value" style="font-family:monospace;font-size:11px">' + esc(self) +
+          (n > 0 ? ' · ' + n + ' ' + tH('peers') : '') +
+          '</span></div>';
+      }
+    }
+  } catch (e) { /* fail-soft */ }
   statusEl.innerHTML = html;
 
   // Seeding list — empty when BT is off OR nothing's seeding yet

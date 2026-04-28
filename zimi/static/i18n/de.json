@@ -858,5 +858,6 @@
   "mirror_active": "Mirror aktiv",
   "mirror_active_hint": "Alle installierten ZIMs werden in den Schwarm zurückgeseedet. Mit ZIMI_MIRROR=0 stoppen.",
   "peer_pill_click_tip": "Von {peers} im LAN herunterladen — schnellster Weg, kein WAN-Traffic.",
-  "downloading_from_peer": "Download startet — {peer} im LAN sollte die Bytes liefern."
+  "downloading_from_peer": "Download startet — {peer} im LAN sollte die Bytes liefern.",
+  "peer_advertising_as": "Wird angekündigt als"
 }

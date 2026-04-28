@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-04-27
+
 The "Reach + Pro" release. Addresses issue #15 (the warlordattack feedback set
 covering UX at 1000+ ZIM scale) and issue #16 (Wikipedia maxi auto-updating to
 mini). Also lays groundwork for the Reach track (P2P/torrent + accessibility,
@@ -91,6 +93,13 @@ plan docs in `docs/plans/`).
   ratio + upload-cap visible. 12 unit tests cover env parsing,
   default caps, override fallback, status dict shape, and the
   effective-options branching
+- **Custom peer name (`ZIMI_PEER_NAME`)** — override the auto-
+  detected `zimi-<hostname>` advertised on mDNS with a friendly
+  string ("Eric Home Mirror"). Sanitized to `[a-zA-Z0-9-_ ]`,
+  capped at 63 chars, falls back to hostname if empty after
+  sanitization. Server settings BT/Seeding panel now shows
+  "Advertising as ___ · N peers" so users can confirm what name
+  the LAN sees.
 - **Catalog peer pills (clickable)** — when a discovered LAN peer
   already has a ZIM, a small green "📡 peer-name" pill appears on
   its catalog card. Phase 1 (informational) and phase 2 (clickable)

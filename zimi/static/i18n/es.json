@@ -858,5 +858,6 @@
   "mirror_active": "Mirror activo",
   "mirror_active_hint": "Compartiendo todo lo instalado con el enjambre. Detén con ZIMI_MIRROR=0.",
   "peer_pill_click_tip": "Descargar de {peers} en tu LAN — la ruta más rápida, sin usar WAN.",
-  "downloading_from_peer": "Comenzando la descarga — {peer} en tu LAN debería servir los bytes."
+  "downloading_from_peer": "Comenzando la descarga — {peer} en tu LAN debería servir los bytes.",
+  "peer_advertising_as": "Anunciando como"
 }

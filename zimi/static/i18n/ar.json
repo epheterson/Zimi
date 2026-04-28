@@ -858,5 +858,6 @@
   "mirror_active": "المرآة نشطة",
   "mirror_active_hint": "تتم مشاركة كل ملف ZIM مثبت مع السرب. أوقف أو أعد التشغيل بـ ZIMI_MIRROR=0.",
   "peer_pill_click_tip": "التنزيل من {peers} على شبكتك المحلية — أسرع مسار، دون استهلاك نطاق WAN.",
-  "downloading_from_peer": "يبدأ التنزيل — من المفترض أن يقدم {peer} على شبكتك المحلية البيانات."
+  "downloading_from_peer": "يبدأ التنزيل — من المفترض أن يقدم {peer} على شبكتك المحلية البيانات.",
+  "peer_advertising_as": "يُعلن باسم"
 }

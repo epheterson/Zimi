@@ -858,5 +858,6 @@
   "mirror_active": "ראי פעיל",
   "mirror_active_hint": "כל ה־ZIM המותקנים מועברים לרשת הנקודות. עצור בעזרת ZIMI_MIRROR=0.",
   "peer_pill_click_tip": "הורדה מ־{peers} ברשת המקומית — הנתיב המהיר ביותר, ללא צריכת WAN.",
-  "downloading_from_peer": "מתחילה ההורדה — {peer} ברשת המקומית אמור להגיש את הנתונים."
+  "downloading_from_peer": "מתחילה ההורדה — {peer} ברשת המקומית אמור להגיש את הנתונים.",
+  "peer_advertising_as": "מפרסם כ"
 }

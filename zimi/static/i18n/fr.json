@@ -858,5 +858,6 @@
   "mirror_active": "Miroir actif",
   "mirror_active_hint": "Partage de tous les ZIM installés avec le swarm. Arrête avec ZIMI_MIRROR=0.",
   "peer_pill_click_tip": "Télécharger depuis {peers} sur ton LAN — chemin le plus rapide, sans WAN.",
-  "downloading_from_peer": "Démarrage du téléchargement — {peer} sur ton LAN devrait servir les octets."
+  "downloading_from_peer": "Démarrage du téléchargement — {peer} sur ton LAN devrait servir les octets.",
+  "peer_advertising_as": "Annoncé en tant que"
 }

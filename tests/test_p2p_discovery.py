@@ -212,6 +212,44 @@ def test_start_idempotent():
     assert fake_zc.register_service.call_count == 1
 
 
+def test_peer_name_default_is_hostname_prefixed(monkeypatch):
+    monkeypatch.delenv("ZIMI_PEER_NAME", raising=False)
+    name = disc._peer_instance_name()
+    assert name.startswith("zimi-")
+
+
+def test_peer_name_env_override(monkeypatch):
+    monkeypatch.setenv("ZIMI_PEER_NAME", "Eric Home Mirror")
+    assert disc._peer_instance_name() == "Eric Home Mirror"
+
+
+def test_peer_name_sanitizes_invalid_chars(monkeypatch):
+    monkeypatch.setenv("ZIMI_PEER_NAME", "Eric/Home@Mirror!")
+    name = disc._peer_instance_name()
+    # Slashes / @ / ! become dashes
+    assert "/" not in name
+    assert "@" not in name
+    assert "!" not in name
+    assert "Eric" in name
+
+
+def test_peer_name_strips_trailing_dashes(monkeypatch):
+    monkeypatch.setenv("ZIMI_PEER_NAME", "---hello---")
+    assert disc._peer_instance_name() == "hello"
+
+
+def test_peer_name_caps_at_63_chars(monkeypatch):
+    monkeypatch.setenv("ZIMI_PEER_NAME", "x" * 100)
+    assert len(disc._peer_instance_name()) == 63
+
+
+def test_peer_name_falls_back_when_empty_after_sanitize(monkeypatch):
+    monkeypatch.setenv("ZIMI_PEER_NAME", "@@@@")
+    name = disc._peer_instance_name()
+    # All invalid chars → falls back to hostname
+    assert name and "@" not in name
+
+
 def test_is_enabled_respects_env(monkeypatch):
     monkeypatch.setenv("ZIMI_PEER_DISCOVERY", "0")
     assert disc.is_enabled() is False

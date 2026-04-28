@@ -331,11 +331,12 @@ def handle_manage_get(handler, parsed, params):
                 200,
                 {
                     "enabled": _disc.is_enabled(),
+                    "self": _disc._self_service_name or _disc._peer_instance_name(),
                     "peers": _disc.get_peers(),
                 },
             )
         except Exception:
-            return handler._json(200, {"enabled": False, "peers": []})
+            return handler._json(200, {"enabled": False, "self": "", "peers": []})
 
     elif parsed.path == "/manage/mirror":
         try:
