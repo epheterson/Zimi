@@ -19,7 +19,7 @@ import threading
 import time
 import traceback
 from http.server import BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, unquote, quote
 
 import zimi.server as _srv
 from zimi.manage import (
@@ -1272,10 +1272,37 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.wfile.write(content)
             return
 
-        # Strip <base> tags from HTML
+        # Rewrite HTML so relative links resolve against the ZIM root,
+        # not against the article's URL directory. Without this fix,
+        # navigating from `/index` to `/docs/cli/run` makes a relative
+        # link like `docs/another` resolve to `/docs/cli/docs/another`
+        # — the `/docs/docs/` doubling bug (issue #17).
+        #
+        # Strategy: drop any existing <base> (often points to external
+        # URLs or disk paths), then inject `<base href="/w/{zim}/">`
+        # into <head>. Wikipedia-style ZIMs that use the `A/` namespace
+        # are rescued by `_namespace_fallbacks` when a bare link
+        # resolves to root.
         if mimetype.startswith("text/html"):
             text = content.decode("UTF-8", errors="replace")
             text = re.sub(r"<base\s[^>]*>", "", text, flags=re.IGNORECASE)
+            zim_url = f"/w/{quote(zim_name, safe='')}/"
+            base_tag = f'<base href="{zim_url}">'
+            # Inject after the first <head ...> tag. If <head> is
+            # missing (unusual but possible), prepend to <html>.
+            new_text, replaced = re.subn(
+                r"(<head\b[^>]*>)",
+                r"\1" + base_tag,
+                text,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            if replaced:
+                text = new_text
+            else:
+                # No <head> tag — put base at the very top so it's
+                # parsed before any <a> or <link>.
+                text = base_tag + text
             if a11y:
                 from zimi import a11y as _a11y
 
