@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.5] — 2026-04-28
+
+CI bite fix. Pure infrastructure — no user-facing changes from 1.6.4.
+
+### Fixed
+
+- **`READY <port>` not emitted by `zimi serve`** — the macOS / Linux
+  desktop release smoke test in CI grep'd stdout for `READY <port>`
+  to capture the bound port (needed when `--port 0` lets the OS
+  choose). Server never emitted that line, so every desktop release
+  build (v1.6.1 / v1.6.2 / v1.6.3 / v1.6.4) failed its push-trigger
+  smoke and required a manual `workflow_dispatch` re-run. Now `serve`
+  prints `READY <port>` immediately after the HTTP server binds —
+  with `flush=True` so stdout buffers don't hide it.
+
+### Tooling
+
+- **`tests/test_serve_smoke.py`** — five-test suite that subprocesses
+  `python -m zimi serve --port 0` with an empty ZIM dir and verifies
+  the contract end-to-end (READY emit, /health, /list, /search, /).
+  Runs in regular `pytest` so the failure that bit v1.6.4 surfaces
+  on the PR rather than after merge in the release pipeline.
+
 ## [1.6.4] — 2026-04-28
 
 A "hold-you-over" patch release with the most impactful bug fixes

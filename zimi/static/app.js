@@ -1212,11 +1212,11 @@ function _renderMoonHTML(m, wrapClass, tiltDeg, blurScale) {
     ? 'transform:translate(-50%,-50%)' + (tiltDeg ? ' rotate(' + tilt + 'deg)' : '')
     : (tiltDeg ? 'transform:rotate(' + tilt + 'deg)' : '');
   return '<div class="' + wrapClass + '"' + (rotateStyle ? ' style="' + rotateStyle + '"' : '') + '>' +
-    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=71c1b75bc1b75bc1b75b\') center/cover;opacity:0.12"></div>' +
+    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=71c1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75b\') center/cover;opacity:0.12"></div>' +
     '<div class="dc-moon-half left" style="background:' + leftColor + '"></div>' +
     '<div class="dc-moon-half right" style="background:' + rightColor + '"></div>' +
     '<div class="dc-moon-term" style="background:' + overlayColor + ';transform:scaleX(' + overlayScaleX.toFixed(3) + ')"></div>' +
-    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=71c1b75bc1b75bc1b75b\') center/cover;' +
+    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=71c1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75b\') center/cover;' +
     (isHero ? 'mix-blend-mode:soft-light;opacity:1' : '') + '"></div>' +
     '</div>';
 }
@@ -1335,7 +1335,7 @@ function openAlmanac(replaceState) {
   }
   if (!_almanacLoaded) {
     var s = document.createElement('script');
-    s.src = '/static/almanac.js?v=05a0b10aa0b10aa0b10a';
+    s.src = '/static/almanac.js?v=05a0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10a';
     s.onload = function() { _almanacLoaded = true; _openAlmanacInner(replaceState); };
     s.onerror = function() { console.error('Failed to load almanac.js'); };
     document.head.appendChild(s);
