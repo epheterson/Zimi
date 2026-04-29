@@ -1212,11 +1212,11 @@ function _renderMoonHTML(m, wrapClass, tiltDeg, blurScale) {
     ? 'transform:translate(-50%,-50%)' + (tiltDeg ? ' rotate(' + tilt + 'deg)' : '')
     : (tiltDeg ? 'transform:rotate(' + tilt + 'deg)' : '');
   return '<div class="' + wrapClass + '"' + (rotateStyle ? ' style="' + rotateStyle + '"' : '') + '>' +
-    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=1\') center/cover;opacity:0.12"></div>' +
+    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=71c1b75bc1b75bc1b75b\') center/cover;opacity:0.12"></div>' +
     '<div class="dc-moon-half left" style="background:' + leftColor + '"></div>' +
     '<div class="dc-moon-half right" style="background:' + rightColor + '"></div>' +
     '<div class="dc-moon-term" style="background:' + overlayColor + ';transform:scaleX(' + overlayScaleX.toFixed(3) + ')"></div>' +
-    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=1\') center/cover;' +
+    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=71c1b75bc1b75bc1b75b\') center/cover;' +
     (isHero ? 'mix-blend-mode:soft-light;opacity:1' : '') + '"></div>' +
     '</div>';
 }
@@ -1335,7 +1335,7 @@ function openAlmanac(replaceState) {
   }
   if (!_almanacLoaded) {
     var s = document.createElement('script');
-    s.src = '/static/almanac.js?v=41';
+    s.src = '/static/almanac.js?v=05a0b10aa0b10aa0b10a';
     s.onload = function() { _almanacLoaded = true; _openAlmanacInner(replaceState); };
     s.onerror = function() { console.error('Failed to load almanac.js'); };
     document.head.appendChild(s);
@@ -5416,9 +5416,19 @@ function openReader(url) {
         if (!a) return;
         var href = a.getAttribute('href') || '';
         if (href.startsWith('#')) return;
-        var frameLoc = frame.contentWindow.location;
+        // Same _no_rewrite trick as the click handler — wombat-rewritten
+        // anchors return the original URL via .href, but with the flag set
+        // they return the actual in-archive URL (issue #17).
         var fullUrl;
-        try { fullUrl = new URL(href, frameLoc.href).href; } catch(ex) { fullUrl = a.href; }
+        try {
+          var _prevNoRewrite = a._no_rewrite;
+          a._no_rewrite = true;
+          fullUrl = a.href;
+          a._no_rewrite = _prevNoRewrite;
+        } catch (ex) {
+          var frameLoc = frame.contentWindow.location;
+          try { fullUrl = new URL(href, frameLoc.href).href; } catch(ex2) { fullUrl = a.href; }
+        }
         var wMatch = fullUrl.startsWith(location.origin) && fullUrl.match(/\/w\/([^\/]+)\/(.+)/);
         if (wMatch) {
           e.preventDefault();

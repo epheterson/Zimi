@@ -285,8 +285,20 @@ if os.path.isdir(_STATIC_DIR):
             r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, _app_js_src
         )
         if _app_js_rewritten != _app_js_src:
-            with open(_app_js_path, "w") as _f:
-                _f.write(_app_js_rewritten)
+            # Best-effort write — fails gracefully when the static dir is
+            # read-only (Docker --read-only, distroless, etc.). The cache-
+            # bust still works on writable filesystems; on read-only the
+            # served content keeps its hardcoded ?v=N tokens. v1.7.0 will
+            # serve from memory to avoid this entirely.
+            try:
+                with open(_app_js_path, "w") as _f:
+                    _f.write(_app_js_rewritten)
+            except OSError as _e:
+                log.warning(
+                    "Could not auto-version app.js (filesystem read-only?): %s. "
+                    "Cache-busting falls back to hardcoded ?v=N tokens.",
+                    _e,
+                )
     # Inject build config into inline script so app.js can read versioned values.
     # Template has: var __ZIMI_CONFIG = {discoverStamp:'disc6',i18nHash:'0'};
     _build_stamp = _static_hash("app.js")[:6]

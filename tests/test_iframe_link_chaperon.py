@@ -69,6 +69,24 @@ def test_iframe_click_handler_uses_capture_phase():
     )
 
 
+def test_iframe_contextmenu_uses_no_rewrite_trick():
+    """The right-click contextmenu handler also resolves hrefs from the
+    iframe — must use the same `_no_rewrite=true` pattern as the left-
+    click handler, otherwise wombat ZIMs would have the same doubling
+    bug on right-click "Open article" (incomplete fix for #17)."""
+    src = _read_app_js()
+    # Both occurrences should share the pattern. Easy invariant: the
+    # number of "_no_rewrite = true" assignments matches the number of
+    # iframe-document listeners that read a.href (click + contextmenu).
+    flag_sets = src.count("_no_rewrite = true")
+    assert flag_sets >= 2, (
+        f"expected ≥2 `_no_rewrite = true` assignments (click + "
+        f"contextmenu handlers); found {flag_sets}. The contextmenu "
+        f"handler must also use the trick or right-click on wombat "
+        f"ZIMs will double the path."
+    )
+
+
 def test_app_js_documents_issue_17_intent():
     """Future maintainers should see the WHY when they read the code,
     not just the cryptic _no_rewrite flag flip."""
