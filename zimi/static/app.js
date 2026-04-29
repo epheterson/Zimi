@@ -5338,11 +5338,27 @@ function openReader(url) {
         var href = a.getAttribute('href') || '';
         // Hash-only links (#/route, #heading): let iframe handle natively (SPA routing, anchors)
         if (href.startsWith('#')) return;
-        var lhref = href.toLowerCase();
-        // Resolve URL against iframe's location (not document.baseURI which may point to original domain)
-        var frameLoc = frame.contentWindow.location;
+        // Wombat (zimit-scraped ZIMs) rewrites <a href> ATTRIBUTES to look
+        // like the original archived URL (e.g. "https://ersatztv.org/docs/")
+        // and ALSO installs its own click handler that re-resolves them.
+        // That re-resolution doubles the path (issue #17 — ersatztv ZIM).
+        // We borrow Kiwix's `_no_rewrite=true` trick: ask wombat to give us
+        // the actual in-archive URL it computed at page-load time, and use
+        // THAT for navigation.
         var fullUrl;
-        try { fullUrl = new URL(href, frameLoc.href).href; } catch(ex) { fullUrl = a.href; }
+        try {
+          var _prevNoRewrite = a._no_rewrite;
+          a._no_rewrite = true;
+          var realHref = a.href;
+          a._no_rewrite = _prevNoRewrite;
+          // If wombat rewrote, realHref is the actual archive URL. If
+          // there's no wombat, this is identical to the regular .href.
+          fullUrl = realHref;
+        } catch (ex) {
+          var frameLoc = frame.contentWindow.location;
+          try { fullUrl = new URL(href, frameLoc.href).href; } catch(ex2) { fullUrl = a.href; }
+        }
+        var lhref = href.toLowerCase();
         // EPUB: download
         if (lhref.endsWith('.epub')) {
           e.preventDefault();
@@ -5388,7 +5404,8 @@ function openReader(url) {
             .catch(function() { window.open(fullUrl, '_blank'); });
         }
       };
-      frame.contentDocument.addEventListener('click', _handleFrameLink);
+      // capture: true so we run before wombat's own click interceptor.
+      frame.contentDocument.addEventListener('click', _handleFrameLink, true);
       // Middle-click fires auxclick, not click — handle it for new-tab support
       frame.contentDocument.addEventListener('auxclick', function(e) {
         if (e.button === 1) _handleFrameLink(e);
