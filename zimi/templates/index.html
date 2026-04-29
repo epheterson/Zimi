@@ -50,7 +50,7 @@
   <form class="pw-box" onsubmit="event.preventDefault();submitPw()" autocomplete="off">
     <h3 id="pw-title" data-i18n="enter_password">Enter password</h3>
     <input style="display:none" type="text" name="fakeuser" tabindex="-1" autocomplete="off">
-    <input id="pw-input" type="password" placeholder="Password" data-i18n-placeholder="password" autocomplete="new-password" data-1p-ignore onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
+    <input id="pw-input" type="password" placeholder="Password" data-i18n-placeholder="password" autocomplete="current-password" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
     <div class="pw-error" id="pw-error"></div>
     <label id="pw-remember-row" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--text2);cursor:pointer">
       <input type="checkbox" id="pw-remember" style="accent-color:var(--amber);flex-shrink:0"> <span data-i18n="remember_me">Remember me</span>

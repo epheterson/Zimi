@@ -13,6 +13,7 @@ var SK = {
   LIBRARY_TAB: 'zimi_library_tab',
   BROWSE_HISTORY: 'zimi_browse_history',
   BOOKMARKS: 'zimi_bookmarks',
+  MANAGE_PW: 'zimi_manage_pw',
 };
 
 // ── Storage Helpers ──
@@ -25,6 +26,27 @@ function _setStorageJSON(key, value) {
 }
 function _getStorageFlag(key) {
   return localStorage.getItem(key) === '1';
+}
+
+// ── Manage token storage ──
+// localStorage = persistent ("Remember me" checked).
+// sessionStorage = current-tab-only (default). Read both, prefer persistent.
+function _readManageToken() {
+  return localStorage.getItem(SK.MANAGE_PW) || sessionStorage.getItem(SK.MANAGE_PW) || '';
+}
+function _saveManageToken(token, remember) {
+  // Clear both first so toggling "remember me" never leaves stale copies.
+  localStorage.removeItem(SK.MANAGE_PW);
+  sessionStorage.removeItem(SK.MANAGE_PW);
+  if (!token) return;
+  (remember ? localStorage : sessionStorage).setItem(SK.MANAGE_PW, token);
+}
+function _clearManageToken() {
+  localStorage.removeItem(SK.MANAGE_PW);
+  sessionStorage.removeItem(SK.MANAGE_PW);
+}
+function _hasStoredManageToken() {
+  return !!_readManageToken();
 }
 
 // ── State ──
@@ -298,9 +320,7 @@ function manageFetch(url, opts) {
             }
             // Correct password
             _manageToken = token;
-            if (document.getElementById('pw-remember').checked) {
-              sessionStorage.setItem('zimi_manage_pw', token);
-            }
+            _saveManageToken(token, document.getElementById('pw-remember').checked);
             closePwModal();
             resolve(retryRes);
           });
@@ -315,7 +335,7 @@ function manageFetch(url, opts) {
 
 function manageLogout() {
   _manageToken = '';
-  sessionStorage.removeItem('zimi_manage_pw');
+  _clearManageToken();
   toggleManage();
 }
 
@@ -508,7 +528,7 @@ async function _initSecondary() {
       needsRerender = true;
     }).catch(function(){}),
     Promise.resolve().then(() => {
-      var saved = sessionStorage.getItem('zimi_manage_pw');
+      var saved = _readManageToken();
       if (saved) _manageToken = saved;
     }),
     // Collections/favorites
@@ -644,7 +664,7 @@ function goHome(e) {
   if (e) e.preventDefault();
   if (_almanacOpen) closeAlmanac();
   // Clear manage auth when leaving manage
-  if (mode === 'manage' && !sessionStorage.getItem('zimi_manage_pw')) _manageToken = '';
+  if (mode === 'manage' && !_hasStoredManageToken()) _manageToken = '';
   // Already on clean home page → scroll to top
   if (mode === 'home' && !readerOpen && !currentSource && !homeScope) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1192,11 +1212,11 @@ function _renderMoonHTML(m, wrapClass, tiltDeg, blurScale) {
     ? 'transform:translate(-50%,-50%)' + (tiltDeg ? ' rotate(' + tilt + 'deg)' : '')
     : (tiltDeg ? 'transform:rotate(' + tilt + 'deg)' : '');
   return '<div class="' + wrapClass + '"' + (rotateStyle ? ' style="' + rotateStyle + '"' : '') + '>' +
-    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=1\') center/cover;opacity:0.12"></div>' +
+    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=71c1b75bc1b75bc1b75b\') center/cover;opacity:0.12"></div>' +
     '<div class="dc-moon-half left" style="background:' + leftColor + '"></div>' +
     '<div class="dc-moon-half right" style="background:' + rightColor + '"></div>' +
     '<div class="dc-moon-term" style="background:' + overlayColor + ';transform:scaleX(' + overlayScaleX.toFixed(3) + ')"></div>' +
-    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=1\') center/cover;' +
+    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=71c1b75bc1b75bc1b75b\') center/cover;' +
     (isHero ? 'mix-blend-mode:soft-light;opacity:1' : '') + '"></div>' +
     '</div>';
 }
@@ -1315,7 +1335,7 @@ function openAlmanac(replaceState) {
   }
   if (!_almanacLoaded) {
     var s = document.createElement('script');
-    s.src = '/static/almanac.js?v=40';
+    s.src = '/static/almanac.js?v=05a0b10aa0b10aa0b10a';
     s.onload = function() { _almanacLoaded = true; _openAlmanacInner(replaceState); };
     s.onerror = function() { console.error('Failed to load almanac.js'); };
     document.head.appendChild(s);
@@ -3091,8 +3111,11 @@ async function loadFullCatalog() {
 }
 
 function _enrichCatalogInstalled(items) {
-  // Enrich with installed ZIM metadata by matching filename prefix to catalog name
-  // OPDS catalog name: "wiktionary_en_all", installed filename: "wiktionary_en_all_maxi_2024-05.zim"
+  // Match installed ZIMs to catalog items. Two prefixes are tried because
+  // Kiwix's OPDS `name` field can be truncated/inconsistent (e.g. it returns
+  // "canadian_prep_winterprepping" for a file actually named
+  // "canadian_prepper_winterprepping_en_2026-02.zim"). Falling back to the
+  // prefix derived from the download URL recovers those cases.
   if (!zimsCache) return;
   for (const item of items) {
     item.installed = false;
@@ -3100,9 +3123,22 @@ function _enrichCatalogInstalled(items) {
     item._installedFile = null;
     item._installedName = null;
     item._installedSizeGb = null;
+
+    // Build candidate prefixes to match installed filenames against.
+    const prefixes = [item.name];
+    if (item.download_url) {
+      // Strip path, .meta4, .zim, and trailing _YYYY-MM date to get the
+      // project's stable prefix as Kiwix actually filenames it.
+      const fname = item.download_url.split('/').pop()
+        .replace(/\.meta4$/, '').replace(/\.zim$/, '');
+      const urlPrefix = fname.replace(/_\d{4}-\d{2}$/, '');
+      if (urlPrefix && urlPrefix !== item.name) prefixes.push(urlPrefix);
+    }
+
     for (const z of zimsCache) {
       const fb = (z.file || '').replace(/\.zim$/, '');
-      if (fb.startsWith(item.name + '_') || fb === item.name) {
+      const hit = prefixes.some(p => fb === p || fb.startsWith(p + '_'));
+      if (hit) {
         item.installed = true;
         const m = fb.match(/(\d{4}-\d{2})$/);
         item._installedDate = m ? m[1] : null;
@@ -4169,7 +4205,7 @@ function _msPreferencesHtml() {
   h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_security') + '</div>' +
     '<div class="ms-actions">' +
       '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">\uD83D\uDD12 ' + tH('password') + '</button>';
-  if (sessionStorage.getItem('zimi_manage_pw')) {
+  if (_hasStoredManageToken()) {
     h += '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('log_out') + '</button>';
   }
   h += '</div>';
@@ -4468,9 +4504,9 @@ async function managePassword() {
       return;
     }
     // After setting/changing password, keep current session authenticated
-    // but don't persist to sessionStorage — force fresh login next visit
+    // but don't persist — force fresh login next visit.
     _manageToken = newPw || '';
-    sessionStorage.removeItem('zimi_manage_pw');
+    _clearManageToken();
     closePwModal();
     renderManage();
   };
@@ -4506,7 +4542,7 @@ async function manageClearPassword() {
   }
   if (res.ok) {
     _manageToken = '';
-    sessionStorage.removeItem('zimi_manage_pw');
+    _clearManageToken();
     closePwModal();
     renderManage();
   }
@@ -4866,6 +4902,18 @@ function dlTitle(dl) {
 
 let _dlPrevAllDone = true; // track when downloads finish to trigger refresh
 let _dlRecentStart = 0;   // timestamp of last download start (grace period for server lag)
+
+function _updateDownloadsTabBadge(activeCount) {
+  const badge = document.getElementById('dl-tab-badge');
+  if (!badge) return;
+  if (activeCount > 0) {
+    badge.textContent = String(activeCount);
+    badge.style.display = '';
+  } else {
+    badge.textContent = '';
+    badge.style.display = 'none';
+  }
+}
 
 async function refreshDownloads() {
   if (_dlTimer) { clearTimeout(_dlTimer); _dlTimer = null; }
@@ -5290,11 +5338,27 @@ function openReader(url) {
         var href = a.getAttribute('href') || '';
         // Hash-only links (#/route, #heading): let iframe handle natively (SPA routing, anchors)
         if (href.startsWith('#')) return;
-        var lhref = href.toLowerCase();
-        // Resolve URL against iframe's location (not document.baseURI which may point to original domain)
-        var frameLoc = frame.contentWindow.location;
+        // Wombat (zimit-scraped ZIMs) rewrites <a href> ATTRIBUTES to look
+        // like the original archived URL (e.g. "https://ersatztv.org/docs/")
+        // and ALSO installs its own click handler that re-resolves them.
+        // That re-resolution doubles the path (issue #17 — ersatztv ZIM).
+        // We borrow Kiwix's `_no_rewrite=true` trick: ask wombat to give us
+        // the actual in-archive URL it computed at page-load time, and use
+        // THAT for navigation.
         var fullUrl;
-        try { fullUrl = new URL(href, frameLoc.href).href; } catch(ex) { fullUrl = a.href; }
+        try {
+          var _prevNoRewrite = a._no_rewrite;
+          a._no_rewrite = true;
+          var realHref = a.href;
+          a._no_rewrite = _prevNoRewrite;
+          // If wombat rewrote, realHref is the actual archive URL. If
+          // there's no wombat, this is identical to the regular .href.
+          fullUrl = realHref;
+        } catch (ex) {
+          var frameLoc = frame.contentWindow.location;
+          try { fullUrl = new URL(href, frameLoc.href).href; } catch(ex2) { fullUrl = a.href; }
+        }
+        var lhref = href.toLowerCase();
         // EPUB: download
         if (lhref.endsWith('.epub')) {
           e.preventDefault();
@@ -5340,7 +5404,8 @@ function openReader(url) {
             .catch(function() { window.open(fullUrl, '_blank'); });
         }
       };
-      frame.contentDocument.addEventListener('click', _handleFrameLink);
+      // capture: true so we run before wombat's own click interceptor.
+      frame.contentDocument.addEventListener('click', _handleFrameLink, true);
       // Middle-click fires auxclick, not click — handle it for new-tab support
       frame.contentDocument.addEventListener('auxclick', function(e) {
         if (e.button === 1) _handleFrameLink(e);
@@ -5351,9 +5416,19 @@ function openReader(url) {
         if (!a) return;
         var href = a.getAttribute('href') || '';
         if (href.startsWith('#')) return;
-        var frameLoc = frame.contentWindow.location;
+        // Same _no_rewrite trick as the click handler — wombat-rewritten
+        // anchors return the original URL via .href, but with the flag set
+        // they return the actual in-archive URL (issue #17).
         var fullUrl;
-        try { fullUrl = new URL(href, frameLoc.href).href; } catch(ex) { fullUrl = a.href; }
+        try {
+          var _prevNoRewrite = a._no_rewrite;
+          a._no_rewrite = true;
+          fullUrl = a.href;
+          a._no_rewrite = _prevNoRewrite;
+        } catch (ex) {
+          var frameLoc = frame.contentWindow.location;
+          try { fullUrl = new URL(href, frameLoc.href).href; } catch(ex2) { fullUrl = a.href; }
+        }
         var wMatch = fullUrl.startsWith(location.origin) && fullUrl.match(/\/w\/([^\/]+)\/(.+)/);
         if (wMatch) {
           e.preventDefault();
