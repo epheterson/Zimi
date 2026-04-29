@@ -269,6 +269,96 @@ plan docs in `docs/plans/`).
   which raced the container-name cleanup) and ships the entire `zimi/`
   package via tar so new modules deploy automatically
 
+## [1.6.5] — 2026-04-28
+
+CI bite fix. Pure infrastructure — no user-facing changes from 1.6.4.
+
+### Fixed
+
+- **`READY <port>` not emitted by `zimi serve`** — the macOS / Linux
+  desktop release smoke test in CI grep'd stdout for `READY <port>`
+  to capture the bound port (needed when `--port 0` lets the OS
+  choose). Server never emitted that line, so every desktop release
+  build (v1.6.1 / v1.6.2 / v1.6.3 / v1.6.4) failed its push-trigger
+  smoke and required a manual `workflow_dispatch` re-run. Now `serve`
+  prints `READY <port>` immediately after the HTTP server binds —
+  with `flush=True` so stdout buffers don't hide it.
+
+### Tooling
+
+- **`tests/test_serve_smoke.py`** — five-test suite that subprocesses
+  `python -m zimi serve --port 0` with an empty ZIM dir and verifies
+  the contract end-to-end (READY emit, /health, /list, /search, /).
+  Runs in regular `pytest` so the failure that bit v1.6.4 surfaces
+  on the PR rather than after merge in the release pipeline.
+
+## [1.6.4] — 2026-04-28
+
+A "hold-you-over" patch release with the most impactful bug fixes
+from the in-progress v1.7.0 Reach release. Cherry-picked individually,
+each one validated. Larger Reach work (P2P, mDNS, mirror toggle,
+accessibility, BT seeding, peer pills) ships separately when v1.7.0
+finishes its full validation pass.
+
+### Fixed
+
+- **`/docs/docs/` doubling on zimit-scraped ZIMs** (#17, ma-javaqueen)
+  — ZIMs scraped by `zimit` ship with wombat.js, which rewrites
+  `<a href>` ATTRIBUTES to look like the original archived URL
+  (e.g. `https://ersatztv.org/docs/`) AND installs its own click
+  handler that re-resolves them — doubling the path on every nested
+  navigation. The iframe click chaperon now uses Kiwix's
+  `_no_rewrite=true` trick to ask wombat for the actual in-archive
+  URL, and registers with `capture: true` so it runs before wombat's
+  interceptor. Verified end-to-end on the reporter's
+  `ersatztv_2026-04.zim`. Regression test in
+  `tests/test_iframe_link_chaperon.py` asserts the JS source keeps
+  the four invariants (`_no_rewrite=true`, prev-flag restore,
+  `capture:true`, the explanatory comment).
+
+- **Wikipedia maxi auto-updating to mini** (#16) — `_check_updates`
+  now filters catalog candidates to the SAME flavor as the installed
+  file. A newer mini will never silently replace a maxi. New
+  `_detect_flavor()` helper handles maxi/nopic/mini/None cases. Six
+  new tests including the exact bug scenario verbatim.
+
+- **Bitwarden / 1Password ignoring the manage password input**
+  (#15-1a) — `data-1p-ignore` was on the password modal field;
+  removed. Form now uses the standard `current-password` autocomplete
+  contract.
+
+- **"Remember me" did not persist across tab close** (#15-1b) — was
+  using `sessionStorage`. Now uses `localStorage` when checked,
+  `sessionStorage` when unchecked. Logout clears both.
+
+- **Catalog item-installed matching** (#15-8a) — now also tries the
+  prefix derived from the OPDS `download_url`. Recovers cases where
+  Kiwix returns a truncated `name` field (`canadian_prep_*` vs
+  `canadian_prepper_*`).
+
+- **Missing `_updateDownloadsTabBadge` function definition** —
+  internal call existed but the function body was missing on certain
+  code paths.
+
+### Added
+
+- **Search results carry a `category` field** (#15-4) — each result
+  is tagged general/images/video so SearXNG (and any future router)
+  can route hits to the right tab.
+
+- **Top-search analytics** (#15-9) — `/manage/usage` reports
+  `top_searches` with a bounded LRU counter (5000-key cap).
+
+### Changed
+
+- **Auto-version rewriter** now also processes inline `/static/X?v=N`
+  refs inside `app.js`. Prevents Cloudflare-immutable cache staleness
+  on lazy-loaded sub-bundles (e.g. `almanac.js`).
+
+- **`pyproject.toml`** excludes `tests/test_article_languages.py`
+  from default `pytest` runs (data-dependent suite; run explicitly
+  when investigating ZIM-data drift).
+
 ## [1.6.3] — 2026-04-05
 
 ### Fixed

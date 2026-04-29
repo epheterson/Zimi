@@ -281,7 +281,7 @@ if os.path.isdir(_STATIC_DIR):
 
     # Same rewrite for inline ?v=N refs inside app.js (e.g. almanac.js loader).
     # Cached in memory so we don't write to a possibly-read-only filesystem;
-    # the static-asset handler serves _APP_JS_REWRITTEN when set.
+    # the static-asset handler serves APP_JS_REWRITTEN when set.
     _app_js_path = os.path.join(_STATIC_DIR, "app.js")
     APP_JS_REWRITTEN = None
     if os.path.exists(_app_js_path):

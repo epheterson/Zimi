@@ -1,4 +1,4 @@
-"""Tests for the ZIM-name → SearXNG category mapping.
+"""Tests for the ZIM-name → SearXNG category mapping (W1.6).
 
 The category hint is a stable per-result field that lets external consumers
 (SearXNG, downstream tools) route Zimi hits into the right tab — general,

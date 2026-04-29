@@ -1045,6 +1045,11 @@ def main():
                     "Library management enabled (no password — set one in Settings for public servers)"
                 )
         server = ThreadingHTTPServer(("0.0.0.0", args.port), ZimHandler)
+        # Emit READY <actual-port> so wrapper scripts (CI smoke tests, the
+        # desktop launcher) can capture the bound port — important when
+        # --port 0 is used to let the OS pick a free port.
+        actual_port = server.server_address[1]
+        print(f"READY {actual_port}", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
