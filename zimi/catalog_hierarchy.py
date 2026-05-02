@@ -1,14 +1,25 @@
 """Detect bundle/subset relationships among catalog items.
 
-Full content overlap requires parsing every ZIM, which is impractical.
-Kiwix names are consistent enough that a name + metadata heuristic gets ~95%
-of the practical signal: which Wikipedia variants are subsets of which?
+Full content overlap requires parsing every ZIM, which is impractical. The
+heuristic uses two signals from the OPDS catalog: shared `category`+`language`
+("family"), and the convention that `_all` near the end of a name marks a
+universal bundle:
 
   wikipedia_en_all_maxi   ←──┐
   wikipedia_en_top        ───┤  same category + language
   wikipedia_en_medicine   ───┘
                               the _all_* variant is a strict superset
                               of the topical subsets.
+
+The `_all` token is overloaded across categories. For Wikipedia/TED/StackExchange
+it means "covers everything in the family"; for devdocs it means "full-quality
+variant of one specific topic" (`devdocs_en_all_cheatography` is NOT a superset
+of `devdocs_en_all_angular.js`). `_is_bundle` distinguishes the two cases by
+requiring tokens after `_all` to be display variants or dates, never topic names.
+
+Note: when a family contains ONLY bundle-named items (e.g., StackExchange where
+every site is `<site>.com_en_all`), no relationships emit. That's intentional —
+no real superset exists in that catalog shape.
 
 Per-item output:
 
@@ -26,12 +37,14 @@ import re
 from collections import defaultdict
 
 _DATE_RE = re.compile(r"(\d{4})-(\d{2})")
+_DATE_TOKEN_RE = re.compile(r"^\d{4}-\d{2}$")
 # Matches `_all` (or `all` at start) optionally followed by display-only suffix.
 # Must end at end-of-string so topic names after `_all_` (e.g. `_all_cheatography`)
 # are not mistaken for universal bundles.
 _BUNDLE_RE = re.compile(r"(?:^|_)all(_.*)?$")
 # Quality/display suffixes that may appear after `_all` in a true universal bundle.
-_DISPLAY_VARIANTS = frozenset({"maxi", "nopic", "mini", "novid"})
+# `nodet` = no-details (intro-only articles); the rest are size/media tradeoffs.
+_DISPLAY_VARIANTS = frozenset({"maxi", "mini", "nopic", "novid", "nodet"})
 
 
 def _name_date(name):
@@ -43,9 +56,6 @@ def _name_date(name):
         return int(m.group(1)), int(m.group(2))
     except (ValueError, TypeError):
         return None
-
-
-_DATE_TOKEN_RE = re.compile(r"^\d{4}-\d{2}$")
 
 
 def _is_bundle(name):

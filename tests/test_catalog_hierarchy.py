@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from zimi.catalog_hierarchy import bundle_relationships  # noqa: E402
+from zimi.catalog_hierarchy import _is_bundle, bundle_relationships  # noqa: E402
 
 
 def _item(name, category, language, article_count=1000):
@@ -200,3 +200,63 @@ def test_devdocs_all_topic_not_treated_as_bundle():
     rels = bundle_relationships(items)
     assert rels["devdocs_en_all_angular.js"]["is_subset_of"] == []
     assert rels["devdocs_en_all_cheatography"]["supersedes"] == []
+
+
+# Real names sampled from library.kiwix.org with synthetic edge cases mixed in.
+# Update this fixture when adding new variants — single source of truth for the
+# bundle-detection contract.
+_BUNDLE_FIXTURE = [
+    # Universal bundles — must be True
+    ("wikipedia_en_all", True),
+    ("wikipedia_en_all_maxi", True),
+    ("wikipedia_en_all_nopic", True),
+    ("wikipedia_en_all_mini", True),
+    ("wikipedia_en_all_nodet", True),
+    ("wikipedia_en_all_maxi_2024-04", True),
+    ("wikipedia_simple_all_maxi", True),
+    ("wiktionary_fr_all_nopic", True),
+    ("wikivoyage_en_all_maxi", True),
+    ("wikiquote_en_all_nopic", True),
+    ("ted_en_all", True),
+    ("ted_en_all_2024-01", True),
+    ("stackoverflow_en_all", True),
+    ("freecodecamp_en_all_2025-01", True),
+    ("appropedia_en_all_2024-04", True),
+    # Topic-specific (NOT bundles) — false-positive guard
+    ("devdocs_en_all_angular.js", False),
+    ("devdocs_en_all_cheatography", False),
+    ("devdocs_en_all_react", False),
+    ("devdocs_en_all_python", False),
+    (
+        "stackexchange_en_3dprinting.com_en_all",
+        True,
+    ),  # site-level bundle, leaf is `_all`
+    # Topical subsets — false negative guard
+    ("wikipedia_en_top", False),
+    ("wikipedia_en_medicine", False),
+    ("wikipedia_en_wp1-0.7", False),
+    ("ted_en_business", False),
+    ("ted_en_technology", False),
+    ("wikipedia_fr_top_2024-04", False),
+    # Substring traps — `all` appears but not as its own token
+    ("wikipedia_en_smallville", False),
+    ("wikipedia_en_dallas", False),
+    ("wikipedia_en_tallinn", False),
+    # Standalone non-bundle entries (no _all token)
+    ("gutenberg_en_all", True),
+    ("gutenberg_fr_2024-04", False),
+    ("zimit_en_kiwix.org_2024-04", False),
+    ("phet_en", False),
+    ("vikidia_fr_all", True),
+]
+
+
+def test_bundle_detection_fixture():
+    """Single source of truth for the _is_bundle contract.
+    Add new Kiwix naming patterns here when they show up in the wild."""
+    failures = []
+    for name, expected in _BUNDLE_FIXTURE:
+        got = _is_bundle(name)
+        if got != expected:
+            failures.append(f"  {name!r}: expected {expected}, got {got}")
+    assert not failures, "bundle detection mismatches:\n" + "\n".join(failures)

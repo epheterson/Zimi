@@ -3392,18 +3392,21 @@ function _hierarchyHint(item) {
 
 // Mirror of zimi/catalog_hierarchy.py:bundle_relationships in JS.
 // Runs over the merged full catalog so relationships can cross pagination.
+// Keep these constants in lockstep with catalog_hierarchy.py — drift = bugs.
 const _DATE_RE = /(\d{4})-(\d{2})/;
+const _DATE_TOKEN_RE = /^\d{4}-\d{2}$/;
+const _BUNDLE_RE = /(?:^|_)all(_.*)?$/;
 // Quality/display suffixes that can follow `_all` and still be a universal bundle.
 // Topic-specific names like `angular.js` or `cheatography` are NOT display variants.
-const _DISPLAY_VARIANTS = new Set(['maxi', 'nopic', 'mini', 'novid']);
+const _DISPLAY_VARIANTS = new Set(['maxi', 'mini', 'nopic', 'novid', 'nodet']);
 
 function _hierarchyName(name) {
   const lower = (name || '').toLowerCase();
-  const m = lower.match(/(?:^|_)all(_.*)?$/);
+  const m = lower.match(_BUNDLE_RE);
   if (!m) return false;
   if (!m[1]) return true; // ends exactly with `_all`
   const parts = m[1].slice(1).split('_').filter(Boolean);
-  return parts.every(p => _DISPLAY_VARIANTS.has(p) || /^\d{4}-\d{2}$/.test(p));
+  return parts.every(p => _DISPLAY_VARIANTS.has(p) || _DATE_TOKEN_RE.test(p));
 }
 function _hierarchyDate(name) {
   const m = (name || '').match(_DATE_RE);
