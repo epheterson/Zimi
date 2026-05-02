@@ -26,9 +26,12 @@ import re
 from collections import defaultdict
 
 _DATE_RE = re.compile(r"(\d{4})-(\d{2})")
-# `_all` either standalone, prefixed by `_`, or trailed by `_` — matches
-# bundle markers like "_all", "_all_maxi", "_all_nopic".
-_BUNDLE_RE = re.compile(r"(?:^|_)all(?:_|$)")
+# Matches `_all` (or `all` at start) optionally followed by display-only suffix.
+# Must end at end-of-string so topic names after `_all_` (e.g. `_all_cheatography`)
+# are not mistaken for universal bundles.
+_BUNDLE_RE = re.compile(r"(?:^|_)all(_.*)?$")
+# Quality/display suffixes that may appear after `_all` in a true universal bundle.
+_DISPLAY_VARIANTS = frozenset({"maxi", "nopic", "mini", "novid"})
 
 
 def _name_date(name):
@@ -42,8 +45,18 @@ def _name_date(name):
         return None
 
 
+_DATE_TOKEN_RE = re.compile(r"^\d{4}-\d{2}$")
+
+
 def _is_bundle(name):
-    return bool(_BUNDLE_RE.search(name.lower()))
+    m = _BUNDLE_RE.search(name.lower())
+    if not m:
+        return False
+    rest = m.group(1)  # None if name ends with `_all`, otherwise `_maxi` etc.
+    if rest is None:
+        return True
+    parts = [p for p in rest[1:].split("_") if p]
+    return all(p in _DISPLAY_VARIANTS or _DATE_TOKEN_RE.match(p) for p in parts)
 
 
 def _family_key(item):

@@ -188,3 +188,15 @@ def test_handles_missing_category_or_language():
 
 def test_empty_input():
     assert bundle_relationships([]) == {}
+
+
+def test_devdocs_all_topic_not_treated_as_bundle():
+    """devdocs_en_all_cheatography means full Cheatography collection, not all devdocs.
+    It must NOT be treated as a bundle covering other devdocs like angular.js."""
+    items = [
+        _item("devdocs_en_all_cheatography", "devdocs", "en", 5_000),
+        _item("devdocs_en_all_angular.js", "devdocs", "en", 3_000),
+    ]
+    rels = bundle_relationships(items)
+    assert rels["devdocs_en_all_angular.js"]["is_subset_of"] == []
+    assert rels["devdocs_en_all_cheatography"]["supersedes"] == []

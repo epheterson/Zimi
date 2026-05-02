@@ -3392,11 +3392,18 @@ function _hierarchyHint(item) {
 
 // Mirror of zimi/catalog_hierarchy.py:bundle_relationships in JS.
 // Runs over the merged full catalog so relationships can cross pagination.
-const _BUNDLE_RE = /(?:^|_)all(?:_|$)/;
 const _DATE_RE = /(\d{4})-(\d{2})/;
+// Quality/display suffixes that can follow `_all` and still be a universal bundle.
+// Topic-specific names like `angular.js` or `cheatography` are NOT display variants.
+const _DISPLAY_VARIANTS = new Set(['maxi', 'nopic', 'mini', 'novid']);
 
 function _hierarchyName(name) {
-  return _BUNDLE_RE.test((name || '').toLowerCase());
+  const lower = (name || '').toLowerCase();
+  const m = lower.match(/(?:^|_)all(_.*)?$/);
+  if (!m) return false;
+  if (!m[1]) return true; // ends exactly with `_all`
+  const parts = m[1].slice(1).split('_').filter(Boolean);
+  return parts.every(p => _DISPLAY_VARIANTS.has(p) || /^\d{4}-\d{2}$/.test(p));
 }
 function _hierarchyDate(name) {
   const m = (name || '').match(_DATE_RE);
