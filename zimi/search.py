@@ -289,26 +289,62 @@ def _title_index_path(zim_name):
     return os.path.join(_TITLE_INDEX_DIR, f"{zim_name}.db")
 
 
+def _read_zim_uuid(zim_path):
+    """Return the ZIM UUID as a stable content-address. Same content = same UUID,
+    so a redownload of the same release won't trigger spurious rebuilds.
+    Returns None if libzim can't open the file (caller falls back to mtime)."""
+    try:
+        archive = _srv.open_archive(zim_path)
+        try:
+            return str(archive.uuid)
+        finally:
+            del archive
+    except Exception as e:
+        log.debug("UUID read failed for %s: %s", zim_path, e)
+        return None
+
+
 def _index_is_current(db_path, zim_path, schema_version):
-    """Check if a SQLite index exists, matches ZIM mtime, and is current schema version."""
+    """Check if a SQLite index is current.
+
+    Prefers ZIM UUID (content-addressed: stable across redownloads of the same
+    release). Falls back to mtime for legacy indexes built before UUID was
+    tracked, and backfills the UUID into meta when it matches.
+    """
     if not os.path.exists(db_path):
         return False
     try:
-        zim_mtime = str(os.path.getmtime(zim_path))
         conn = sqlite3.connect(db_path, timeout=5)
         try:
-            row = conn.execute(
-                "SELECT value FROM meta WHERE key='zim_mtime'"
-            ).fetchone()
             ver = conn.execute(
                 "SELECT value FROM meta WHERE key='schema_version'"
             ).fetchone()
-            return (
-                row is not None
-                and row[0] == zim_mtime
-                and ver is not None
-                and ver[0] == schema_version
-            )
+            if ver is None or ver[0] != schema_version:
+                return False
+            uuid_row = conn.execute(
+                "SELECT value FROM meta WHERE key='zim_uuid'"
+            ).fetchone()
+            if uuid_row is not None:
+                current_uuid = _read_zim_uuid(zim_path)
+                return current_uuid is not None and uuid_row[0] == current_uuid
+            # Legacy index without UUID — fall back to mtime check, then backfill.
+            mtime_row = conn.execute(
+                "SELECT value FROM meta WHERE key='zim_mtime'"
+            ).fetchone()
+            zim_mtime = str(os.path.getmtime(zim_path))
+            if mtime_row is None or mtime_row[0] != zim_mtime:
+                return False
+            current_uuid = _read_zim_uuid(zim_path)
+            if current_uuid is not None:
+                try:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO meta VALUES ('zim_uuid', ?)",
+                        (current_uuid,),
+                    )
+                    conn.commit()
+                except Exception as e:
+                    log.debug("UUID backfill failed for %s: %s", db_path, e)
+            return True
         finally:
             conn.close()
     except Exception as e:
@@ -404,10 +440,17 @@ def _build_title_index(zim_name, zim_path):
                 _FTS5_ENTRY_THRESHOLD,
             )
         zim_mtime = str(os.path.getmtime(zim_path))
+        zim_uuid = ""
+        try:
+            zim_uuid = str(archive.uuid)
+        except Exception as e:
+            log.debug("UUID read during build failed for %s: %s", zim_name, e)
         conn.execute(
             "INSERT INTO meta VALUES ('schema_version', ?)", (_TITLE_INDEX_VERSION,)
         )
         conn.execute("INSERT INTO meta VALUES ('zim_mtime', ?)", (zim_mtime,))
+        if zim_uuid:
+            conn.execute("INSERT INTO meta VALUES ('zim_uuid', ?)", (zim_uuid,))
         conn.execute("INSERT INTO meta VALUES ('built_at', ?)", (str(time.time()),))
         conn.execute("INSERT INTO meta VALUES ('entry_count', ?)", (str(count),))
         conn.execute("INSERT INTO meta VALUES ('has_fts', ?)", (has_fts,))
