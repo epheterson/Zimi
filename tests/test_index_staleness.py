@@ -80,25 +80,25 @@ class IndexStalenessUUIDTests(unittest.TestCase):
                 )
             )
 
-    def test_legacy_index_with_matching_mtime_is_current_and_backfills_uuid(self):
-        """An index built before UUID tracking should be honored if mtime
-        still matches, AND the UUID should be backfilled into meta so we
-        only pay the libzim open once."""
+    def test_legacy_index_with_matching_mtime_is_current_no_libzim_open(self):
+        """Fast path: an index built before UUID tracking is honored on mtime
+        match WITHOUT opening libzim. Avoids paying a libzim open per ZIM on
+        every restart for the all-current case (was a perf regression in the
+        first cut of UUID staleness)."""
         zim_mtime = str(os.path.getmtime(self.zim_path))
         self._build_db(schema_version=self.schema_version, zim_mtime=zim_mtime)
-        with self._patch_archive("backfilled-uuid"):
+
+        # If the fast path works, _read_zim_uuid (which opens libzim) is
+        # never called. Patch it to fail loudly if anyone reaches it.
+        def _should_not_be_called(path):
+            raise AssertionError("fast path bypassed; libzim was opened")
+
+        with mock.patch.object(_search._srv, "open_archive", _should_not_be_called):
             self.assertTrue(
                 _search._index_is_current(
                     self.db_path, self.zim_path, self.schema_version
                 )
             )
-        # Verify backfill landed in meta
-        conn = sqlite3.connect(self.db_path)
-        try:
-            row = conn.execute("SELECT value FROM meta WHERE key='zim_uuid'").fetchone()
-            self.assertEqual(row[0], "backfilled-uuid")
-        finally:
-            conn.close()
 
     def test_legacy_index_with_mtime_mismatch_not_current(self):
         self._build_db(schema_version=self.schema_version, zim_mtime="9999999999")
@@ -116,6 +116,34 @@ class IndexStalenessUUIDTests(unittest.TestCase):
         # Simulate redownload: mtime changes, content identical
         os.utime(self.zim_path, (1234567890, 1234567890))
         with self._patch_archive("stable-uuid"):
+            self.assertTrue(
+                _search._index_is_current(
+                    self.db_path, self.zim_path, self.schema_version
+                )
+            )
+
+    def test_redownload_refreshes_mtime_so_next_check_is_fast(self):
+        """After UUID-tiebreaks a redownload, the stored mtime is updated.
+        Next check hits the fast path (no libzim open)."""
+        self._build_db(schema_version=self.schema_version, zim_uuid="stable-uuid")
+        os.utime(self.zim_path, (1234567890, 1234567890))
+        with self._patch_archive("stable-uuid"):
+            _search._index_is_current(self.db_path, self.zim_path, self.schema_version)
+        # Verify mtime was refreshed in meta.
+        conn = sqlite3.connect(self.db_path)
+        try:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key='zim_mtime'"
+            ).fetchone()
+            self.assertEqual(row[0], str(1234567890.0))
+        finally:
+            conn.close()
+
+        # Now any future call must hit the fast path — libzim must not open.
+        def _should_not_be_called(path):
+            raise AssertionError("fast path bypassed after mtime refresh")
+
+        with mock.patch.object(_search._srv, "open_archive", _should_not_be_called):
             self.assertTrue(
                 _search._index_is_current(
                     self.db_path, self.zim_path, self.schema_version

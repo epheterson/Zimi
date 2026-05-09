@@ -307,9 +307,15 @@ def _read_zim_uuid(zim_path):
 def _index_is_current(db_path, zim_path, schema_version):
     """Check if a SQLite index is current.
 
-    Prefers ZIM UUID (content-addressed: stable across redownloads of the same
-    release). Falls back to mtime for legacy indexes built before UUID was
-    tracked, and backfills the UUID into meta when it matches.
+    Fast path: if the stored mtime matches the file's mtime, the file hasn't
+    been touched since the index was built — no need to open libzim. UUID
+    is the tiebreaker for the case mtime *did* change (redownload of the
+    same release): same content yields the same UUID, so we can avoid a
+    spurious rebuild even though the file looks "newer."
+
+    For legacy indexes that lack `zim_uuid` in meta, the mtime fast path
+    still covers the common case; we backfill the UUID lazily only when
+    mtime mismatches (so the next check skips libzim again).
     """
     if not os.path.exists(db_path):
         return False
@@ -321,29 +327,36 @@ def _index_is_current(db_path, zim_path, schema_version):
             ).fetchone()
             if ver is None or ver[0] != schema_version:
                 return False
-            uuid_row = conn.execute(
-                "SELECT value FROM meta WHERE key='zim_uuid'"
-            ).fetchone()
-            if uuid_row is not None:
-                current_uuid = _read_zim_uuid(zim_path)
-                return current_uuid is not None and uuid_row[0] == current_uuid
-            # Legacy index without UUID — fall back to mtime check, then backfill.
             mtime_row = conn.execute(
                 "SELECT value FROM meta WHERE key='zim_mtime'"
             ).fetchone()
-            zim_mtime = str(os.path.getmtime(zim_path))
-            if mtime_row is None or mtime_row[0] != zim_mtime:
+            uuid_row = conn.execute(
+                "SELECT value FROM meta WHERE key='zim_uuid'"
+            ).fetchone()
+            try:
+                zim_mtime = str(os.path.getmtime(zim_path))
+            except OSError:
+                return False
+            # Fast path: mtime match — no libzim open needed.
+            if mtime_row is not None and mtime_row[0] == zim_mtime:
+                return True
+            # mtime mismatch: file was touched. UUID is the content-address
+            # tiebreaker. If UUIDs match, the content is unchanged
+            # (redownload of the same release) — refresh stored mtime so
+            # the next check hits the fast path.
+            if uuid_row is None:
                 return False
             current_uuid = _read_zim_uuid(zim_path)
-            if current_uuid is not None:
-                try:
-                    conn.execute(
-                        "INSERT OR REPLACE INTO meta VALUES ('zim_uuid', ?)",
-                        (current_uuid,),
-                    )
-                    conn.commit()
-                except Exception as e:
-                    log.debug("UUID backfill failed for %s: %s", db_path, e)
+            if current_uuid is None or uuid_row[0] != current_uuid:
+                return False
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO meta VALUES ('zim_mtime', ?)",
+                    (zim_mtime,),
+                )
+                conn.commit()
+            except Exception as e:
+                log.debug("mtime refresh failed for %s: %s", db_path, e)
             return True
         finally:
             conn.close()
@@ -666,8 +679,22 @@ def _loadavg_throttle(threshold_ratio=0.8, max_sleep=2.0):
     time.sleep(sleep_for)
 
 
+_build_all_title_lock = threading.Lock()
+
+
 def _build_all_title_indexes():
-    """Build missing/stale title indexes for all ZIM files (background task)."""
+    """Build missing/stale title indexes for all ZIM files (background task).
+
+    Serialized via _build_all_title_lock so concurrent invocations (startup
+    worker + post-download trigger) can't open Archive handles for the same
+    ZIM in parallel. Late callers wait, then run with a fresh zim list so
+    new ZIMs that arrived during the wait are picked up.
+    """
+    with _build_all_title_lock:
+        _build_all_title_indexes_inner()
+
+
+def _build_all_title_indexes_inner():
     os.makedirs(_TITLE_INDEX_DIR, exist_ok=True)
     zims = _srv.get_zim_files()
 
@@ -762,6 +789,9 @@ def _build_all_title_indexes():
                 auto_fts += 1
             except Exception as e:
                 log.warning("Auto FTS5 build failed for %s: %s", name, e)
+            # Yield to host between FTS builds (CREATE VIRTUAL TABLE +
+            # INSERT INTO ... SELECT is disk-heavy on a fragile system).
+            _loadavg_throttle()
     if auto_fts:
         log.info("Auto-built FTS5 for %d indexes", auto_fts)
     with _title_index_status_lock:
@@ -771,17 +801,31 @@ def _build_all_title_indexes():
 
 
 def _clean_stale_title_indexes():
-    """Remove title index DBs for ZIM files that no longer exist."""
+    """Remove title index DBs for ZIM files that no longer exist, plus any
+    .tmp orphans from interrupted builds (SIGKILL during build leaves
+    `<name>.db.tmp` files that aren't tracked by SQLite anymore)."""
     if not os.path.exists(_TITLE_INDEX_DIR):
         return
     zims = _srv.get_zim_files()
     for f in os.listdir(_TITLE_INDEX_DIR):
+        full = os.path.join(_TITLE_INDEX_DIR, f)
+        if (
+            f.endswith(".db.tmp")
+            or f.endswith(".db.tmp-shm")
+            or f.endswith(".db.tmp-wal")
+        ):
+            try:
+                os.remove(full)
+                log.info("Removed orphan title index tmp: %s", f)
+            except OSError:
+                pass
+            continue
         if f.endswith(".db"):
             name = f[:-3]  # strip .db
             if name not in zims:
                 _close_title_db(name)
                 try:
-                    os.remove(os.path.join(_TITLE_INDEX_DIR, f))
+                    os.remove(full)
                     log.info("Removed stale title index: %s", f)
                 except OSError:
                     pass

@@ -17,6 +17,7 @@ import time
 from urllib.parse import urlparse, parse_qs, unquote
 
 import zimi.server as _srv
+from zimi.search import _loadavg_throttle
 
 log = logging.getLogger("zimi")
 
@@ -513,7 +514,22 @@ def _persist_qid_flags(qid_flags):
         log.warning("Failed to persist Q-ID flags to cache: %s", e)
 
 
+_build_all_qid_lock = threading.Lock()
+
+
 def _build_all_qid_indexes():
+    """Build Q-ID indexes for small Wikipedia ZIMs and detect has_qids for all ZIMs.
+
+    Serialized via _build_all_qid_lock — startup worker, post-download
+    triggers (library.py), and manual rebuilds (manage.py) all funnel
+    through here. Late callers wait, then run with a fresh zim list so
+    a download that landed during the wait gets picked up.
+    """
+    with _build_all_qid_lock:
+        _build_all_qid_indexes_inner()
+
+
+def _build_all_qid_indexes_inner():
     """Build Q-ID indexes for small Wikipedia ZIMs and detect has_qids for all ZIMs.
 
     Phase 1: Full-scan small Wikipedia ZIMs (< 200K entries) to build SQLite indexes.
@@ -555,18 +571,29 @@ def _build_all_qid_indexes():
             except Exception as e:
                 log.warning("Q-ID index build failed for %s: %s", name, e)
             # Yield to host between ZIMs if loadavg is high.
-            from zimi.search import _loadavg_throttle
-
             _loadavg_throttle()
 
-    # Clean stale indexes
+    # Clean stale indexes + .tmp orphans from interrupted builds (SIGKILL
+    # mid-build leaves <name>.qid.db.tmp files that aren't tracked anymore).
     for f in os.listdir(_QID_INDEX_DIR):
+        full = os.path.join(_QID_INDEX_DIR, f)
+        if (
+            f.endswith(".qid.db.tmp")
+            or f.endswith(".qid.db.tmp-shm")
+            or f.endswith(".qid.db.tmp-wal")
+        ):
+            try:
+                os.remove(full)
+                log.info("Removed orphan Q-ID index tmp: %s", f)
+            except OSError:
+                pass
+            continue
         if f.endswith(".qid.db"):
             zn = f[:-7]
             if zn not in zims:
                 _close_qid_db(zn)
                 try:
-                    os.remove(os.path.join(_QID_INDEX_DIR, f))
+                    os.remove(full)
                     log.info("Removed stale Q-ID index: %s", f)
                 except OSError:
                     pass

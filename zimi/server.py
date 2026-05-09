@@ -1130,15 +1130,17 @@ def warm_indexes():
 
     Called by serve() at startup and by mcp_server.py on init.
 
-    If ZIMI_HOT_ZIMS / hot.json names a non-empty list, warm only those
-    ZIMs eagerly — other ZIMs stay lazy and open on first use. This is the
-    Pro path for users with hundreds or thousands of ZIMs who only search a
-    small subset frequently.
-
-    With no hot list, warm everything (existing behaviour).
+    Eager Archive pre-warm is gated on a non-empty hot list (env
+    `ZIMI_HOT_ZIMS` or `hot.json`). With no hot list — the default for
+    fragile / lightweight hosts — Archive handles open lazily on first
+    use. Search itself is unaffected: title indexes are SQLite, not
+    libzim, and the startup worker still builds them. The lazy default
+    keeps peak startup memory bounded regardless of ZIM count; users
+    with beefy hosts can opt back in by populating hot.json.
     """
     zims = get_zim_files()
     hot = get_hot_zims()
+    names_to_warm = []
     if hot:
         # Validate every named hot ZIM exists; warn on misses.
         unknown = [h for h in hot if h not in zims]
@@ -1150,16 +1152,18 @@ def warm_indexes():
             len(names_to_warm),
             len(zims),
         )
+        for name in names_to_warm:
+            try:
+                get_archive(name)
+            except Exception as e:
+                log.warning("Skipping %s: %s", name, e)
+        log.info("Hot archives ready")
     else:
-        names_to_warm = list(zims.keys())
-        log.info("Pre-warming %d archives...", len(zims))
-
-    for name in names_to_warm:
-        try:
-            get_archive(name)
-        except Exception as e:
-            log.warning("Skipping %s: %s", name, e)
-    log.info("All hot archives ready" if hot else "All archives ready")
+        log.info(
+            "%d ZIM(s) registered; archives open lazily on first use "
+            "(set ZIMI_HOT_ZIMS to pre-warm)",
+            len(zims),
+        )
 
     # Single sequential startup worker. Five parallel fan-out threads (with a
     # ThreadPoolExecutor inside one of them) used to open Archive handles for
@@ -1179,44 +1183,43 @@ def warm_indexes():
         except Exception as e:
             log.warning("Q-ID index build phase failed: %s", e)
 
-        # Phase 3: warm suggestion indexes serially (was 4-way ThreadPool).
-        try:
-            zim_files = get_zim_files()
-            targets = (
-                {n: zim_files[n] for n in names_to_warm if n in zim_files}
-                if hot
-                else zim_files
-            )
-            warmed = 0
-            for name, path in targets.items():
-                try:
-                    _get_suggest_archive(name)
-                    archive = open_archive(path)
+        # Phase 3: warm suggestion indexes for hot ZIMs only. With no hot
+        # list, suggest archives open lazily on first /suggest call —
+        # paying the open once per ZIM at first use is cheaper than
+        # holding N libzim mmaps continuously.
+        if hot:
+            try:
+                zim_files = get_zim_files()
+                targets = {n: zim_files[n] for n in names_to_warm if n in zim_files}
+                warmed = 0
+                for name, path in targets.items():
                     try:
-                        ss = SuggestionSearcher(archive)
-                        s = ss.suggest("a")
-                        s.getResults(0, 1)
-                    finally:
-                        del archive
-                    warmed += 1
-                except Exception as e:
-                    log.debug("Failed to warm suggest index for %s: %s", name, e)
-            log.info("Suggestion indexes warmed: %d/%d", warmed, len(targets))
-        except Exception as e:
-            log.warning("Suggest warm phase failed: %s", e)
+                        _get_suggest_archive(name)
+                        archive = open_archive(path)
+                        try:
+                            ss = SuggestionSearcher(archive)
+                            s = ss.suggest("a")
+                            s.getResults(0, 1)
+                        finally:
+                            del archive
+                        warmed += 1
+                    except Exception as e:
+                        log.debug("Failed to warm suggest index for %s: %s", name, e)
+                log.info("Suggestion indexes warmed: %d/%d", warmed, len(targets))
+            except Exception as e:
+                log.warning("Suggest warm phase failed: %s", e)
 
-        # Phase 4: warm FTS archive pool.
-        try:
-            zim_files = get_zim_files()
-            fts_targets = names_to_warm if hot else list(zim_files.keys())
-            for name in fts_targets:
-                try:
-                    _get_fts_archive(name)
-                except Exception as e:
-                    log.debug("Failed to warm FTS archive for %s: %s", name, e)
-            log.info("FTS pool warmed: %d archives", len(_fts_pool))
-        except Exception as e:
-            log.warning("FTS warm phase failed: %s", e)
+        # Phase 4: warm FTS archive pool — hot list only, same rationale.
+        if hot:
+            try:
+                for name in names_to_warm:
+                    try:
+                        _get_fts_archive(name)
+                    except Exception as e:
+                        log.debug("Failed to warm FTS archive for %s: %s", name, e)
+                log.info("FTS pool warmed: %d archives", len(_fts_pool))
+            except Exception as e:
+                log.warning("FTS warm phase failed: %s", e)
 
         # Phase 5: warm title-index SQLite B-trees (no Archive opens — cheap).
         try:
