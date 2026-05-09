@@ -1161,70 +1161,86 @@ def warm_indexes():
             log.warning("Skipping %s: %s", name, e)
     log.info("All hot archives ready" if hot else "All archives ready")
 
-    def _warm_suggest_indexes():
-        from concurrent.futures import ThreadPoolExecutor
+    # Single sequential startup worker. Five parallel fan-out threads (with a
+    # ThreadPoolExecutor inside one of them) used to open Archive handles for
+    # every ZIM concurrently, blowing memory on weak hosts. We now run the
+    # phases in order on one daemon thread — peak memory at startup is one
+    # Archive handle plus one SQLite tmp instead of N×5 mmaps.
+    def _startup_worker():
+        # Phase 1: build/refresh title indexes (one Archive open at a time).
+        try:
+            _build_all_title_indexes()
+        except Exception as e:
+            log.warning("Title index build phase failed: %s", e)
 
-        zim_files = get_zim_files()
-        targets = (
-            {n: zim_files[n] for n in names_to_warm if n in zim_files}
-            if hot
-            else zim_files
-        )
-        warmed = [0]
-        count_lock = threading.Lock()
+        # Phase 2: build/refresh Q-ID indexes (one Archive open at a time).
+        try:
+            _build_all_qid_indexes()
+        except Exception as e:
+            log.warning("Q-ID index build phase failed: %s", e)
 
-        def _warm_one(name, path):
-            try:
-                _get_suggest_archive(name)
-                archive = open_archive(path)
-                ss = SuggestionSearcher(archive)
-                s = ss.suggest("a")
-                s.getResults(0, 1)
-                with count_lock:
-                    warmed[0] += 1
-            except Exception as e:
-                log.debug("Failed to warm suggest index for %s: %s", name, e)
-
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        # Phase 3: warm suggestion indexes serially (was 4-way ThreadPool).
+        try:
+            zim_files = get_zim_files()
+            targets = (
+                {n: zim_files[n] for n in names_to_warm if n in zim_files}
+                if hot
+                else zim_files
+            )
+            warmed = 0
             for name, path in targets.items():
-                pool.submit(_warm_one, name, path)
-        log.info("Suggestion indexes warmed: %d/%d", warmed[0], len(targets))
-
-    threading.Thread(target=_warm_suggest_indexes, daemon=True).start()
-
-    def _warm_fts_pool():
-        zim_files = get_zim_files()
-        targets = names_to_warm if hot else list(zim_files.keys())
-        for name in targets:
-            try:
-                _get_fts_archive(name)
-            except Exception as e:
-                log.debug("Failed to warm FTS archive for %s: %s", name, e)
-        log.info("FTS pool warmed: %d archives", len(_fts_pool))
-
-    threading.Thread(target=_warm_fts_pool, daemon=True).start()
-
-    threading.Thread(target=_build_all_title_indexes, daemon=True).start()
-    threading.Thread(target=_build_all_qid_indexes, daemon=True).start()
-
-    def _warm_title_indexes():
-        zim_files = get_zim_files()
-        opened = 0
-        for name in zim_files:
-            conn = _get_title_db(name)
-            if conn is not None:
                 try:
-                    for prefix in ("a", "m", "s"):
-                        conn.execute(
-                            "SELECT title FROM titles WHERE title_lower >= ? LIMIT 1",
-                            (prefix,),
-                        ).fetchone()
+                    _get_suggest_archive(name)
+                    archive = open_archive(path)
+                    try:
+                        ss = SuggestionSearcher(archive)
+                        s = ss.suggest("a")
+                        s.getResults(0, 1)
+                    finally:
+                        del archive
+                    warmed += 1
                 except Exception as e:
-                    log.debug("Failed to warm title index B-tree for %s: %s", name, e)
-                opened += 1
-        log.info("Title indexes warmed: %d/%d", opened, len(zim_files))
+                    log.debug("Failed to warm suggest index for %s: %s", name, e)
+            log.info("Suggestion indexes warmed: %d/%d", warmed, len(targets))
+        except Exception as e:
+            log.warning("Suggest warm phase failed: %s", e)
 
-    threading.Thread(target=_warm_title_indexes, daemon=True).start()
+        # Phase 4: warm FTS archive pool.
+        try:
+            zim_files = get_zim_files()
+            fts_targets = names_to_warm if hot else list(zim_files.keys())
+            for name in fts_targets:
+                try:
+                    _get_fts_archive(name)
+                except Exception as e:
+                    log.debug("Failed to warm FTS archive for %s: %s", name, e)
+            log.info("FTS pool warmed: %d archives", len(_fts_pool))
+        except Exception as e:
+            log.warning("FTS warm phase failed: %s", e)
+
+        # Phase 5: warm title-index SQLite B-trees (no Archive opens — cheap).
+        try:
+            zim_files = get_zim_files()
+            opened = 0
+            for name in zim_files:
+                conn = _get_title_db(name)
+                if conn is not None:
+                    try:
+                        for prefix in ("a", "m", "s"):
+                            conn.execute(
+                                "SELECT title FROM titles WHERE title_lower >= ? LIMIT 1",
+                                (prefix,),
+                            ).fetchone()
+                    except Exception as e:
+                        log.debug("Failed to warm title B-tree for %s: %s", name, e)
+                    opened += 1
+            log.info("Title indexes warmed: %d/%d", opened, len(zim_files))
+        except Exception as e:
+            log.warning("Title B-tree warm phase failed: %s", e)
+
+    threading.Thread(
+        target=_startup_worker, daemon=True, name="zimi-startup-worker"
+    ).start()
 
     loaded = _suggest_cache_restore()
     if loaded:
