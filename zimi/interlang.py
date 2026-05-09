@@ -554,6 +554,10 @@ def _build_all_qid_indexes():
                 current += 1
             except Exception as e:
                 log.warning("Q-ID index build failed for %s: %s", name, e)
+            # Yield to host between ZIMs if loadavg is high.
+            from zimi.search import _loadavg_throttle
+
+            _loadavg_throttle()
 
     # Clean stale indexes
     for f in os.listdir(_QID_INDEX_DIR):

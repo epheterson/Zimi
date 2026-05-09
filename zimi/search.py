@@ -644,6 +644,28 @@ def _get_title_index_stats():
     return status
 
 
+def _loadavg_throttle(threshold_ratio=0.8, max_sleep=2.0):
+    """Sleep briefly when the host is loaded so index builds yield to the system.
+
+    Reads 5-min loadavg via os.getloadavg() (POSIX). If load / nproc exceeds
+    threshold_ratio, sleeps proportional to the overload, capped at max_sleep.
+    No-op on platforms without getloadavg or when load is low. Disabled
+    entirely when ZIMI_INDEX_THROTTLE=0.
+    """
+    if os.environ.get("ZIMI_INDEX_THROTTLE", "1") == "0":
+        return
+    try:
+        load_5min = os.getloadavg()[1]
+    except (AttributeError, OSError):
+        return
+    nproc = max(os.cpu_count() or 1, 1)
+    ratio = load_5min / nproc
+    if ratio <= threshold_ratio:
+        return
+    sleep_for = min((ratio - threshold_ratio) * max_sleep, max_sleep)
+    time.sleep(sleep_for)
+
+
 def _build_all_title_indexes():
     """Build missing/stale title indexes for all ZIM files (background task)."""
     os.makedirs(_TITLE_INDEX_DIR, exist_ok=True)
@@ -681,6 +703,8 @@ def _build_all_title_indexes():
             log.warning("Title index build failed for %s: %s", name, e)
             with _title_index_status_lock:
                 _title_index_status["errors"].append((name, str(e)))
+        # Yield to the host between ZIMs if loadavg is high (e.g., RAID rebuild).
+        _loadavg_throttle()
 
     with _title_index_status_lock:
         _title_index_status["state"] = "ready"

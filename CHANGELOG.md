@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Startup is now sequential and bounded.** The five parallel warmer threads
+  (`_warm_suggest_indexes` with a 4-way ThreadPool, `_warm_fts_pool`,
+  `_build_all_title_indexes`, `_build_all_qid_indexes`, `_warm_title_indexes`)
+  collapsed into one named worker (`zimi-startup-worker`) that runs phases
+  in order. Peak memory at startup ≈ one Archive handle + one SQLite tmp
+  regardless of ZIM count, instead of N × 9 simultaneous mmaps. Designed
+  for fragile hosts (NAS during RAID rebuild, Pi, lightweight devices).
+
+### Added
+
+- **ZIM UUID-based staleness** — title and Q-ID indexes now record the ZIM's
+  stable UUID (from libzim's archive header) instead of relying on file mtime.
+  Same content = same UUID, so a redownload of the same release no longer
+  triggers a full index rebuild. Legacy mtime-only indexes still pass on
+  match and get the UUID backfilled into meta on first hit.
+- **Loadavg-based throttle** — `_loadavg_throttle()` sleeps briefly between
+  per-ZIM index builds when 5-min loadavg / nproc exceeds 0.8. Yields to a
+  busy host (e.g., RAID rebuild) without slowing builds when the system is
+  idle. Disable with `ZIMI_INDEX_THROTTLE=0`.
+- **Docker `HEALTHCHECK --start-period=10m`** — first cold start may build
+  SQLite title indexes from scratch for every ZIM (Wikipedia EN can take
+  5+ min on a fragile host). The longer grace period prevents the
+  orchestrator from crash-looping the container during initial build.
+
 ## [1.7.0] — 2026-04-27
 
 The "Reach + Pro" release. Addresses issue #15 (the warlordattack feedback set
