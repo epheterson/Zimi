@@ -1,0 +1,170 @@
+"""UUID-based staleness checks for SQLite indexes (title + Q-ID).
+
+Why UUID over mtime: mtime changes on file redownload, backup restore, or
+metadata-touching filesystem operations even when content is identical.
+ZIM's stable UUID is content-addressed — same content = same UUID."""
+
+import os
+import shutil
+import sqlite3
+import sys
+import tempfile
+import unittest
+from unittest import mock
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from zimi import search as _search  # noqa: E402
+
+
+class _FakeArchive:
+    """Stand-in for libzim Archive with just a uuid attribute."""
+
+    def __init__(self, uuid):
+        self.uuid = uuid
+
+
+class IndexStalenessUUIDTests(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="zimi-stale-")
+        self.zim_path = os.path.join(self.tmpdir, "fake.zim")
+        with open(self.zim_path, "wb") as f:
+            f.write(b"\0" * 1024)
+        self.db_path = os.path.join(self.tmpdir, "fake.db")
+        self.schema_version = "4"
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _build_db(self, *, schema_version, zim_uuid=None, zim_mtime=None):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute("INSERT INTO meta VALUES ('schema_version', ?)", (schema_version,))
+        if zim_uuid is not None:
+            conn.execute("INSERT INTO meta VALUES ('zim_uuid', ?)", (zim_uuid,))
+        if zim_mtime is not None:
+            conn.execute("INSERT INTO meta VALUES ('zim_mtime', ?)", (zim_mtime,))
+        conn.commit()
+        conn.close()
+
+    def _patch_archive(self, uuid):
+        """Patch _srv.open_archive used in search.py to return our fake."""
+        return mock.patch.object(
+            _search._srv, "open_archive", lambda path: _FakeArchive(uuid)
+        )
+
+    def test_uuid_match_is_current(self):
+        self._build_db(schema_version=self.schema_version, zim_uuid="abc-123")
+        with self._patch_archive("abc-123"):
+            self.assertTrue(
+                _search._index_is_current(
+                    self.db_path, self.zim_path, self.schema_version
+                )
+            )
+
+    def test_uuid_mismatch_not_current(self):
+        self._build_db(schema_version=self.schema_version, zim_uuid="old-uuid")
+        with self._patch_archive("new-uuid"):
+            self.assertFalse(
+                _search._index_is_current(
+                    self.db_path, self.zim_path, self.schema_version
+                )
+            )
+
+    def test_schema_mismatch_not_current_even_if_uuid_matches(self):
+        self._build_db(schema_version="3", zim_uuid="abc")
+        with self._patch_archive("abc"):
+            self.assertFalse(
+                _search._index_is_current(
+                    self.db_path, self.zim_path, self.schema_version
+                )
+            )
+
+    def test_legacy_index_with_matching_mtime_is_current_no_libzim_open(self):
+        """Fast path: an index built before UUID tracking is honored on mtime
+        match WITHOUT opening libzim. Avoids paying a libzim open per ZIM on
+        every restart for the all-current case (was a perf regression in the
+        first cut of UUID staleness)."""
+        zim_mtime = str(os.path.getmtime(self.zim_path))
+        self._build_db(schema_version=self.schema_version, zim_mtime=zim_mtime)
+
+        # If the fast path works, _read_zim_uuid (which opens libzim) is
+        # never called. Patch it to fail loudly if anyone reaches it.
+        def _should_not_be_called(path):
+            raise AssertionError("fast path bypassed; libzim was opened")
+
+        with mock.patch.object(_search._srv, "open_archive", _should_not_be_called):
+            self.assertTrue(
+                _search._index_is_current(
+                    self.db_path, self.zim_path, self.schema_version
+                )
+            )
+
+    def test_legacy_index_with_mtime_mismatch_not_current(self):
+        self._build_db(schema_version=self.schema_version, zim_mtime="9999999999")
+        with self._patch_archive("any-uuid"):
+            self.assertFalse(
+                _search._index_is_current(
+                    self.db_path, self.zim_path, self.schema_version
+                )
+            )
+
+    def test_redownload_same_content_same_uuid_no_rebuild(self):
+        """The whole point of UUID-based staleness: redownloading the same
+        ZIM bumps mtime but content (and thus UUID) is unchanged. No rebuild."""
+        self._build_db(schema_version=self.schema_version, zim_uuid="stable-uuid")
+        # Simulate redownload: mtime changes, content identical
+        os.utime(self.zim_path, (1234567890, 1234567890))
+        with self._patch_archive("stable-uuid"):
+            self.assertTrue(
+                _search._index_is_current(
+                    self.db_path, self.zim_path, self.schema_version
+                )
+            )
+
+    def test_redownload_refreshes_mtime_so_next_check_is_fast(self):
+        """After UUID-tiebreaks a redownload, the stored mtime is updated.
+        Next check hits the fast path (no libzim open)."""
+        self._build_db(schema_version=self.schema_version, zim_uuid="stable-uuid")
+        os.utime(self.zim_path, (1234567890, 1234567890))
+        with self._patch_archive("stable-uuid"):
+            _search._index_is_current(self.db_path, self.zim_path, self.schema_version)
+        # Verify mtime was refreshed in meta.
+        conn = sqlite3.connect(self.db_path)
+        try:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key='zim_mtime'"
+            ).fetchone()
+            self.assertEqual(row[0], str(1234567890.0))
+        finally:
+            conn.close()
+
+        # Now any future call must hit the fast path — libzim must not open.
+        def _should_not_be_called(path):
+            raise AssertionError("fast path bypassed after mtime refresh")
+
+        with mock.patch.object(_search._srv, "open_archive", _should_not_be_called):
+            self.assertTrue(
+                _search._index_is_current(
+                    self.db_path, self.zim_path, self.schema_version
+                )
+            )
+
+    def test_uuid_read_failure_falls_back_safely(self):
+        """If libzim can't open the file at staleness-check time, we should
+        return False (treat as needing rebuild) rather than crash."""
+        self._build_db(schema_version=self.schema_version, zim_uuid="abc")
+
+        def _broken_open(path):
+            raise RuntimeError("simulated libzim failure")
+
+        with mock.patch.object(_search._srv, "open_archive", _broken_open):
+            self.assertFalse(
+                _search._index_is_current(
+                    self.db_path, self.zim_path, self.schema_version
+                )
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

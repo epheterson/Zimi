@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Startup is sequential and lazy by default.** Two changes drop peak
+  startup memory dramatically:
+  1. The five parallel warmer threads (one with a 4-way ThreadPool inside)
+     collapsed into one named worker (`zimi-startup-worker`) running
+     phases in order.
+  2. With no `hot.json` configured, Archive handles open lazily on first
+     use rather than being eagerly pooled at startup. Search is unaffected
+     — title indexes are SQLite, not libzim, and the worker still builds
+     them.
+  Synthetic measurement with 70 stub ZIMs × 10MB payload: peak RSS delta
+  dropped from ~700 MB to ~0 MB. Hot-list users (env `ZIMI_HOT_ZIMS` or
+  `hot.json`) still get pre-warming for the listed ZIMs only.
+- **Index staleness check is content-addressed with mtime fast-path.**
+  Stored ZIM mtime is checked first (matches → no libzim open). On
+  mismatch (e.g., redownload), the ZIM's stable UUID from libzim's
+  archive header is the tiebreaker — same content = same UUID, so a
+  redownload of the same release no longer triggers a rebuild. mtime
+  is refreshed on UUID match so subsequent checks hit the fast path.
+- **Concurrent index-build calls are serialized.** A completed download
+  used to trigger `_build_all_qid_indexes` on a fresh thread that could
+  race the startup worker (two threads opening the same Archive). Both
+  `_build_all_title_indexes` and `_build_all_qid_indexes` now serialize
+  through their own lock; late callers wait, then run with a fresh ZIM
+  list so newly-arrived ZIMs are picked up.
+- **Docker `HEALTHCHECK --start-period` 30s → 10m.** First cold start
+  may build SQLite title indexes from scratch for every ZIM
+  (Wikipedia EN can take 5+ min on a fragile host). The longer grace
+  prevents crash-looping during initial build.
+
+### Added
+
+- **`_loadavg_throttle()`** sleeps briefly between per-ZIM index builds
+  when 5-min loadavg / nproc exceeds 0.8. Covers title-index build,
+  Q-ID build, and FTS5 auto-build. Yields to a busy host (e.g., NAS
+  during RAID rebuild). Disable with `ZIMI_INDEX_THROTTLE=0`.
+- **Orphan `.tmp` cleanup.** `_clean_stale_title_indexes` and the
+  Q-ID cleanup loop now remove `<name>.db.tmp` and
+  `<name>.qid.db.tmp` artifacts left behind by interrupted builds
+  (SIGKILL during write).
+
 ## [1.7.0] — 2026-04-27
 
 The "Reach + Pro" release. Addresses issue #15 (the warlordattack feedback set
