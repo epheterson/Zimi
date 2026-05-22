@@ -4124,6 +4124,7 @@ async function _downloadSelected(btn) {
     _dlRecentStart = Date.now();
     _clearDownloadSelection();
     refreshDownloads();
+    if (window._nudgeActivityPoll) window._nudgeActivityPoll();
   } catch (e) {
     _showToast(t('error'));
   } finally {
@@ -5098,6 +5099,10 @@ async function _cacheAction(btn, action) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'failed');
     if (status) status.textContent = data.status === 'started' ? t('rebuild_started') : t('cleared');
+    // Rebuild kicks off background work — nudge the activity poller so
+    // the topbar bar surfaces within ~250ms instead of waiting up to 30s
+    // for the next idle-cadence poll.
+    if (window._nudgeActivityPoll) window._nudgeActivityPoll();
   } catch (e) {
     if (status) status.textContent = t('error');
   } finally {
@@ -5642,6 +5647,7 @@ async function downloadZim(url, btn, isUpdate) {
     _dlRecentStart = Date.now();
     _showManageBadge(true, 1);
     refreshDownloads();
+    if (window._nudgeActivityPoll) window._nudgeActivityPoll();
   } catch(e) {
     if (btn) { btn.textContent = t('error'); btn.disabled = false; }
   }
@@ -7529,15 +7535,24 @@ async function settingsRefreshCache() {
 }
 
 // ── Background activity bar ──────────────────────────────────────────
-// Polls /manage/activity every 5s while something is happening; stops
-// when idle. Hidden by default; only shown when there's actual work
-// (indexing, downloading, seeding > 0) to avoid permanent UI noise.
+// Polls /manage/activity every 5s while something is happening; pauses
+// (but doesn't permanently die) when idle. Hidden by default; only
+// shown when there's actual work to avoid permanent UI noise.
+//
+// Two intervals: ACTIVE_MS while building/downloading/seeding > 0,
+// IDLE_MS while quiet. Idle polling stays live so a manual rebuild or
+// download started AFTER initial idle still surfaces. _renderActivity
+// returns true when activity is showing, false when idle — the poller
+// uses that to swap intervals, never to stop.
 let _activityTimer = null;
-const _ACTIVITY_POLL_MS = 5000;
+let _activityIdle = false;
+let _activityLastSig = '';
+const _ACTIVITY_POLL_ACTIVE_MS = 5000;
+const _ACTIVITY_POLL_IDLE_MS = 30000;
 
 function _renderActivity(a) {
   const bar = document.getElementById('activity-bar');
-  if (!bar || !a) return;
+  if (!bar || !a) return false;
   const parts = [];
   if (a.indexing && a.indexing.state === 'building') {
     const cur = a.indexing.current
@@ -7563,43 +7578,66 @@ function _renderActivity(a) {
     bar.classList.remove('visible');
     bar.hidden = true;
     document.body.classList.remove('has-activity');
+    _activityLastSig = '';
     return false;
   }
-  bar.innerHTML = parts.join('<span class="ab-sep">·</span>');
-  bar.hidden = false;
-  // Force reflow before applying .visible so the slide-down animates
-  // on first show. Subsequent updates just swap innerHTML in place.
-  void bar.offsetHeight;
-  bar.classList.add('visible');
-  document.body.classList.add('has-activity');
+  // Only write the DOM when the rendered content actually changed.
+  // Avoids aria-live re-announcing the same string every 5s when nothing
+  // has ticked (screen-reader spam).
+  const sig = parts.join('|');
+  if (sig !== _activityLastSig) {
+    bar.innerHTML = parts.join('<span class="ab-sep">·</span>');
+    _activityLastSig = sig;
+  }
+  if (bar.hidden) {
+    bar.hidden = false;
+    void bar.offsetHeight; // force reflow so the slide-down animates
+    bar.classList.add('visible');
+    document.body.classList.add('has-activity');
+  }
   return true;
+}
+
+function _scheduleNextActivityPoll(idle) {
+  if (_activityTimer) clearTimeout(_activityTimer);
+  const delay = idle ? _ACTIVITY_POLL_IDLE_MS : _ACTIVITY_POLL_ACTIVE_MS;
+  _activityIdle = !!idle;
+  _activityTimer = setTimeout(_pollActivity, delay);
 }
 
 async function _pollActivity() {
   try {
     const res = await fetch('/manage/activity', { credentials: 'same-origin' });
-    if (!res.ok) return;
-    const data = await res.json();
-    const stillActive = _renderActivity(data);
-    if (!stillActive) {
-      clearInterval(_activityTimer);
-      _activityTimer = null;
+    if (res.ok) {
+      const data = await res.json();
+      const stillActive = _renderActivity(data);
+      _scheduleNextActivityPoll(!stillActive);
+      return;
     }
+    // Auth failure or manage disabled — back off to idle cadence (don't spam).
+    _scheduleNextActivityPoll(true);
   } catch (e) {
-    // network blip — stop the poller to avoid log spam; user can reload.
-    clearInterval(_activityTimer);
-    _activityTimer = null;
+    // Network blip (laptop sleep, etc.) — keep polling at idle cadence.
+    _scheduleNextActivityPoll(true);
   }
 }
 
 function _startActivityPolling() {
   if (_activityTimer) return;
-  _pollActivity(); // immediate first call
-  _activityTimer = setInterval(_pollActivity, _ACTIVITY_POLL_MS);
+  _pollActivity();
 }
 
+// Public hook: client code that triggers server work (cache-action,
+// download-start, etc.) can call this to make the bar appear within
+// seconds rather than waiting up to ACTIVITY_POLL_IDLE_MS.
+function _nudgeActivityPoll() {
+  if (_activityTimer) clearTimeout(_activityTimer);
+  _activityTimer = setTimeout(_pollActivity, 250);
+}
+window._nudgeActivityPoll = _nudgeActivityPoll;
+
 // Kick off the poller on load. Even if nothing is happening, one call
-// confirms the endpoint works; subsequent calls only continue if active.
+// confirms the endpoint works; subsequent calls follow active/idle cadence.
 window.addEventListener('load', _startActivityPolling);
 
 init();

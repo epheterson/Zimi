@@ -24,6 +24,23 @@ plan docs in `docs/plans/`).
   third-party hosts to prevent attacker-injected metadata. Affects
   `/manage/download` and the `.torrent` companion resolver.
 
+### Background activity bar (#15)
+
+- **New**: a thin status row below the topbar surfaces what the server
+  is doing in the background — indexing, downloads, queued items, and
+  seeding count — on one line. Reported by warlordattack (#15) who runs
+  Zimi with 1067 ZIMs and described the post-startup churn as invisible
+  ("perhaps there could be some way to show small information on what is
+  happening in the background"). Auto-hides when nothing is happening;
+  slides down on appear, slides up when idle. Polls `/manage/activity`
+  every 5s while active, every 30s while idle. Doesn't permanently die
+  on network blips; client paths that trigger work (`/manage/cache-action`,
+  `/manage/download`, `/manage/download-batch`) nudge the poller so the
+  bar surfaces within ~250ms. Designed precision-density / Linear style:
+  `var(--text2)` labels, single `var(--amber)` accent on the actively-
+  building ZIM name, no icons or shadows, `role=status aria-live=polite`
+  with re-announce only on content change.
+
 ### Startup performance & memory bound (efficient-startup)
 
 - **Startup is sequential and lazy by default.** Two changes drop peak

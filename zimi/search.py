@@ -597,11 +597,23 @@ _title_index_status = {
 _title_index_status_lock = threading.Lock()
 
 
-def _get_title_index_stats():
-    """Return title index status + per-ZIM details for the stats API."""
+def _get_title_index_status_brief():
+    """Cheap snapshot of the in-memory status dict — no disk walking, no
+    SQLite reads. Safe to call on a hot polling path (e.g., the activity
+    bar that hits /manage/activity every 5s). Returns the same keys as
+    `_title_index_status` but with the `errors` list copied so callers
+    can serialize safely."""
     with _title_index_status_lock:
         status = dict(_title_index_status)
-        status["errors"] = list(status["errors"])  # copy
+        status["errors"] = list(status["errors"])
+    return status
+
+
+def _get_title_index_stats():
+    """Return title index status + per-ZIM details for the stats API.
+    Walks _TITLE_INDEX_DIR and opens each index — DO NOT call on a hot
+    polling path. Use _get_title_index_status_brief() for that."""
+    status = _get_title_index_status_brief()
 
     # Gather per-index file sizes and entry counts
     total_size = 0

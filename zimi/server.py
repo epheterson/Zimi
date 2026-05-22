@@ -1282,6 +1282,7 @@ from zimi.search import (  # noqa: E402, F401
     _build_fts_for_index,
     _title_index_search,
     _get_title_index_stats,
+    _get_title_index_status_brief,
     _build_all_title_indexes,
     _clean_stale_title_indexes,
     # Archive pools for suggest/FTS

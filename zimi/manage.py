@@ -327,12 +327,19 @@ def handle_manage_get(handler, parsed, params):
         # Aggregated background-activity snapshot for the topbar status row.
         # Cheap to call — reads in-memory state only, no heavy I/O. Designed
         # for 5s polling. Returns small flat dict; client renders one line.
-        idx = _srv._get_title_index_stats()
+        idx = _srv._get_title_index_status_brief()
         downloads = _srv._get_downloads()
+        # _get_downloads() shape: queued items have queued=True, in-flight
+        # items have queued=False + done=False + paused=False (see
+        # library.py:1209,1234). Earlier draft filtered on a `status` key
+        # that doesn't exist on real download objects — the test stub had it
+        # wrong. Active = actively transferring; queued is a separate bucket.
         active_dl = sum(
-            1 for d in downloads if not d.get("done") and not d.get("paused")
+            1
+            for d in downloads
+            if not d.get("done") and not d.get("paused") and not d.get("queued")
         )
-        queued_dl = sum(1 for d in downloads if d.get("status") == "queued")
+        queued_dl = sum(1 for d in downloads if d.get("queued"))
         seeding_count = 0
         try:
             from zimi import p2p as _p2p

@@ -46,17 +46,19 @@ class ActivityEndpointTests(unittest.TestCase):
         _manage.handle_manage_get(h, parsed, _param)
         return h.status, h.body
 
+    def _idle_status(self):
+        return {
+            "state": "idle",
+            "ready": 0,
+            "total": 0,
+            "building_now": None,
+            "errors": [],
+        }
+
     def test_returns_expected_keys(self):
         with (
             mock.patch.object(
-                _srv,
-                "_get_title_index_stats",
-                return_value={
-                    "state": "idle",
-                    "ready": 0,
-                    "total": 0,
-                    "building_now": None,
-                },
+                _srv, "_get_title_index_status_brief", return_value=self._idle_status()
             ),
             mock.patch.object(_srv, "_get_downloads", return_value=[]),
         ):
@@ -73,43 +75,47 @@ class ActivityEndpointTests(unittest.TestCase):
         self.assertIn("queued", body["downloads"])
         self.assertIn("torrents", body["seeding"])
 
-    def test_counts_active_downloads(self):
+    def test_counts_match_real_download_shape(self):
+        """Mirrors the actual fields _get_downloads() returns (library.py:1209,
+        1234): in-flight items get queued=False, queued items get queued=True.
+        Earlier draft of the endpoint filtered on a non-existent `status` key
+        and silently always returned queued=0 — this locks the contract in."""
         downloads = [
-            {"done": False, "paused": False, "status": "downloading"},
-            {"done": False, "paused": False, "status": "downloading"},
-            {"done": True, "paused": False, "status": "complete"},
-            {"done": False, "paused": True, "status": "paused"},
-            {"done": False, "paused": False, "status": "queued"},
+            # in-flight
+            {"done": False, "paused": False, "queued": False},
+            {"done": False, "paused": False, "queued": False},
+            # finished
+            {"done": True, "paused": False, "queued": False},
+            # paused
+            {"done": False, "paused": True, "queued": False},
+            # queued (waiting for a slot)
+            {"done": False, "paused": False, "queued": True},
+            {"done": False, "paused": False, "queued": True},
         ]
         with (
             mock.patch.object(
-                _srv,
-                "_get_title_index_stats",
-                return_value={
-                    "state": "idle",
-                    "ready": 0,
-                    "total": 0,
-                    "building_now": None,
-                },
+                _srv, "_get_title_index_status_brief", return_value=self._idle_status()
             ),
             mock.patch.object(_srv, "_get_downloads", return_value=downloads),
         ):
             status, body = self._call()
         self.assertEqual(status, 200)
-        # 3 not-done not-paused: 2 downloading + 1 queued.
-        self.assertEqual(body["downloads"]["active"], 3)
-        self.assertEqual(body["downloads"]["queued"], 1)
+        # active = in-flight only (excludes done, paused, AND queued)
+        self.assertEqual(body["downloads"]["active"], 2)
+        # queued = items with queued=True
+        self.assertEqual(body["downloads"]["queued"], 2)
 
     def test_indexing_passthrough(self):
         with (
             mock.patch.object(
                 _srv,
-                "_get_title_index_stats",
+                "_get_title_index_status_brief",
                 return_value={
                     "state": "building",
                     "ready": 234,
                     "total": 1067,
                     "building_now": "wikipedia_en_all_maxi",
+                    "errors": [],
                 },
             ),
             mock.patch.object(_srv, "_get_downloads", return_value=[]),
@@ -120,6 +126,21 @@ class ActivityEndpointTests(unittest.TestCase):
         self.assertEqual(body["indexing"]["ready"], 234)
         self.assertEqual(body["indexing"]["total"], 1067)
         self.assertEqual(body["indexing"]["current"], "wikipedia_en_all_maxi")
+
+    def test_endpoint_does_no_disk_walking(self):
+        """At 1067 ZIMs polled every 5s, the activity endpoint must not call
+        _get_title_index_stats (which walks _TITLE_INDEX_DIR and opens SQLite
+        DBs for each entry). It must use the brief in-memory snapshot."""
+        with (
+            mock.patch.object(
+                _srv, "_get_title_index_status_brief", return_value=self._idle_status()
+            ) as brief_mock,
+            mock.patch.object(_srv, "_get_title_index_stats") as full_mock,
+            mock.patch.object(_srv, "_get_downloads", return_value=[]),
+        ):
+            self._call()
+        brief_mock.assert_called_once()
+        full_mock.assert_not_called()
 
 
 if __name__ == "__main__":

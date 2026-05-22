@@ -63,6 +63,16 @@ class TrustedKiwixUrlTests(unittest.TestCase):
             if "evil" in url or "attacker" in url or "notkiwix" in url:
                 self.assertFalse(_is_trusted_kiwix_url(url), url)
 
+    def test_http_downgrade_rejected_even_on_kiwix_host(self):
+        """A network-level attacker shouldn't be able to inject metadata
+        by downgrading to http on a trusted host."""
+        self.assertFalse(
+            _is_trusted_kiwix_url("http://download.kiwix.org/zim/wiki.zim")
+        )
+        self.assertFalse(
+            _is_trusted_kiwix_url("http://lbo.download.kiwix.org/zim/wiki.zim")
+        )
+
     def test_empty_or_malformed_rejected(self):
         self.assertFalse(_is_trusted_kiwix_url(""))
         self.assertFalse(_is_trusted_kiwix_url(None))
