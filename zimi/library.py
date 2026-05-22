@@ -25,6 +25,43 @@ import zimi.server as _srv
 log = logging.getLogger("zimi")
 
 
+# Hosts we trust to serve ZIM and .torrent companion URLs. Kiwix runs
+# multiple origins (`download.kiwix.org` for direct, `lbo.download.kiwix.org`
+# load-balanced, plus the Wikimedia dumps mirror for Wikimedia ZIMs). We
+# accept ANY subdomain of `kiwix.org`, plus the Wikimedia kiwix path on
+# `dumps.wikimedia.org`. Everything else is rejected so an attacker can't
+# inject metadata via a third-party URL.
+_TRUSTED_KIWIX_HOST_SUFFIXES = (".kiwix.org",)
+_TRUSTED_KIWIX_EXACT_HOSTS = ("kiwix.org",)
+_TRUSTED_MIRROR_PREFIXES = ("https://dumps.wikimedia.org/kiwix/",)
+
+
+def _is_trusted_kiwix_url(url):
+    """Return True if `url` points to a known-good Kiwix-controlled host.
+
+    Requires https — http URLs are rejected even on trusted hosts so a
+    network-level attacker can't downgrade and inject metadata.
+    """
+    if not url:
+        return False
+    for prefix in _TRUSTED_MIRROR_PREFIXES:
+        if url.startswith(prefix):
+            return True
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme != "https":
+        return False
+    host = parsed.hostname
+    if not host:
+        return False
+    host = host.lower()
+    if host in _TRUSTED_KIWIX_EXACT_HOSTS:
+        return True
+    return any(host.endswith(suffix) for suffix in _TRUSTED_KIWIX_HOST_SUFFIXES)
+
+
 # ============================================================================
 # Auto-Update
 # ============================================================================
@@ -590,12 +627,10 @@ def _resolve_torrent_url(url):
     or None if no plausible companion exists.
 
     Kiwix publishes `<file>.zim.torrent` next to every `<file>.zim`. We
-    trust only the official `download.kiwix.org` host to avoid attacker-
-    controlled metadata being injected via a third-party URL.
+    trust only Kiwix-controlled hosts to avoid attacker-controlled metadata
+    being injected via a third-party URL.
     """
-    if not url:
-        return None
-    if not url.startswith("https://download.kiwix.org/"):
+    if not _is_trusted_kiwix_url(url):
         return None
     if url.endswith(".torrent"):
         return url
@@ -1026,9 +1061,11 @@ def _start_download(url, size_bytes=None):
     catalog when available. Unknown sizes are dispatched after known ones.
     """
     global _download_counter
-    # Validate URL — only allow Kiwix official downloads
-    if not url.startswith("https://download.kiwix.org/"):
-        return None, "URL must be from download.kiwix.org"
+    # Validate URL — only allow Kiwix-controlled hosts (download.kiwix.org,
+    # lbo.download.kiwix.org load-balanced origin, dumps.wikimedia.org/kiwix
+    # mirror, any other *.kiwix.org). Prevents attacker-controlled metadata.
+    if not _is_trusted_kiwix_url(url):
+        return None, "URL not from a trusted Kiwix host"
 
     # OPDS catalog provides .meta4 metalink URLs — fetch mirrors from it
     mirrors = []

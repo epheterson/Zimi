@@ -14,6 +14,16 @@ covering UX at 1000+ ZIM scale) and issue #16 (Wikipedia maxi auto-updating to
 mini). Also lays groundwork for the Reach track (P2P/torrent + accessibility,
 plan docs in `docs/plans/`).
 
+### Auto-update host allowlist (#20)
+
+- **Fix**: auto-update rejected ~40 ZIMs with "URL must be from
+  download.kiwix.org" because Kiwix now serves catalog URLs from
+  `lbo.download.kiwix.org` (load-balanced origin). The validator now
+  accepts any `*.kiwix.org` subdomain plus the
+  `dumps.wikimedia.org/kiwix/` mirror. Still requires `https://`; rejects
+  third-party hosts to prevent attacker-injected metadata. Affects
+  `/manage/download` and the `.torrent` companion resolver.
+
 ### Startup performance & memory bound (efficient-startup)
 
 - **Startup is sequential and lazy by default.** Two changes drop peak
