@@ -7528,4 +7528,78 @@ async function settingsRefreshCache() {
   }
 }
 
+// ── Background activity bar ──────────────────────────────────────────
+// Polls /manage/activity every 5s while something is happening; stops
+// when idle. Hidden by default; only shown when there's actual work
+// (indexing, downloading, seeding > 0) to avoid permanent UI noise.
+let _activityTimer = null;
+const _ACTIVITY_POLL_MS = 5000;
+
+function _renderActivity(a) {
+  const bar = document.getElementById('activity-bar');
+  if (!bar || !a) return;
+  const parts = [];
+  if (a.indexing && a.indexing.state === 'building') {
+    const cur = a.indexing.current
+      ? '<span class="ab-current">' + esc(a.indexing.current) + '</span> · '
+      : '';
+    parts.push(
+      tH('activity_indexing') + ' ' + cur +
+      (a.indexing.ready || 0) + '/' + (a.indexing.total || 0)
+    );
+  }
+  const dl = a.downloads || {};
+  if ((dl.active || 0) > 0) {
+    parts.push(dl.active + ' ' + tH('activity_downloading'));
+  }
+  if ((dl.queued || 0) > 0) {
+    parts.push(dl.queued + ' ' + tH('activity_queued'));
+  }
+  const seed = (a.seeding || {}).torrents || 0;
+  if (seed > 0) {
+    parts.push(seed + ' ' + tH('activity_seeding'));
+  }
+  if (parts.length === 0) {
+    bar.classList.remove('visible');
+    bar.hidden = true;
+    document.body.classList.remove('has-activity');
+    return false;
+  }
+  bar.innerHTML = parts.join('<span class="ab-sep">·</span>');
+  bar.hidden = false;
+  // Force reflow before applying .visible so the slide-down animates
+  // on first show. Subsequent updates just swap innerHTML in place.
+  void bar.offsetHeight;
+  bar.classList.add('visible');
+  document.body.classList.add('has-activity');
+  return true;
+}
+
+async function _pollActivity() {
+  try {
+    const res = await fetch('/manage/activity', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const stillActive = _renderActivity(data);
+    if (!stillActive) {
+      clearInterval(_activityTimer);
+      _activityTimer = null;
+    }
+  } catch (e) {
+    // network blip — stop the poller to avoid log spam; user can reload.
+    clearInterval(_activityTimer);
+    _activityTimer = null;
+  }
+}
+
+function _startActivityPolling() {
+  if (_activityTimer) return;
+  _pollActivity(); // immediate first call
+  _activityTimer = setInterval(_pollActivity, _ACTIVITY_POLL_MS);
+}
+
+// Kick off the poller on load. Even if nothing is happening, one call
+// confirms the endpoint works; subsequent calls only continue if active.
+window.addEventListener('load', _startActivityPolling);
+
 init();

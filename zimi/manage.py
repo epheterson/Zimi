@@ -323,6 +323,44 @@ def handle_manage_get(handler, parsed, params):
     elif parsed.path == "/manage/downloads":
         return handler._json(200, {"downloads": _srv._get_downloads()})
 
+    elif parsed.path == "/manage/activity":
+        # Aggregated background-activity snapshot for the topbar status row.
+        # Cheap to call — reads in-memory state only, no heavy I/O. Designed
+        # for 5s polling. Returns small flat dict; client renders one line.
+        idx = _srv._get_title_index_stats()
+        downloads = _srv._get_downloads()
+        active_dl = sum(
+            1 for d in downloads if not d.get("done") and not d.get("paused")
+        )
+        queued_dl = sum(1 for d in downloads if d.get("status") == "queued")
+        seeding_count = 0
+        try:
+            from zimi import p2p as _p2p
+
+            if _p2p.is_torrent_enabled():
+                backend = _p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+                if backend:
+                    seeding_count = sum(
+                        1
+                        for raw in backend.list_managed()
+                        if raw.get("state") in ("seeding", "complete")
+                    )
+        except Exception:
+            pass
+        return handler._json(
+            200,
+            {
+                "indexing": {
+                    "state": idx.get("state", "idle"),
+                    "ready": idx.get("ready", 0),
+                    "total": idx.get("total", 0),
+                    "current": idx.get("building_now"),
+                },
+                "downloads": {"active": active_dl, "queued": queued_dl},
+                "seeding": {"torrents": seeding_count},
+            },
+        )
+
     elif parsed.path == "/manage/peers":
         try:
             from zimi import p2p_discovery as _disc
