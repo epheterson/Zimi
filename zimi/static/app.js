@@ -3240,7 +3240,8 @@ let _catalogInstalledNames = new Set();
 // LAN peer awareness: maps catalog name (or stripped filename stem) to
 // list of peer names that have it. Populated lazily by _loadPeerData
 // after catalog loads. Empty when no peers / not yet loaded.
-let _catalogPeerStems = new Map();  // stem → [peerName, ...]
+let _catalogPeerStems = new Map();  // stem → [peerName, ...]  (display)
+let _catalogPeerFiles = new Map();  // stem → [{peer, file, size}]  (download)
 let _peersLoadedAt = 0;
 const PEER_LIST_REFRESH_MS = 60_000;
 
@@ -3260,8 +3261,10 @@ async function _loadPeerData() {
     return false;
   }
   const newMap = new Map();
+  const newFiles = new Map();
   if (!peers.length) {
     _catalogPeerStems = newMap;
+    _catalogPeerFiles = newFiles;
     _peersLoadedAt = Date.now();
     return false;
   }
@@ -3271,7 +3274,8 @@ async function _loadPeerData() {
       if (!lr.ok) return;
       const ld = await lr.json();
       for (const z of (ld.list || [])) {
-        const fb = (z.file || '').replace(/\.zim$/, '');
+        const file = z.file || '';
+        const fb = file.replace(/\.zim$/, '');
         // Strip date and (optionally) flavor so the stem matches the
         // catalog item's `name` field (e.g. wikipedia_ce_all_nopic_2026-01
         // → wikipedia_ce_all).
@@ -3279,22 +3283,28 @@ async function _loadPeerData() {
         const stem = dated.replace(/_(maxi|nopic|mini)$/, '');
         if (!stem) continue;
         // Index BOTH the flavor-stripped stem and the dated form so
-        // either match path in _enrichCatalogPeers will hit.
+        // either match path in _enrichCatalogPeers will hit. Names drive
+        // the "📡 has it" pill; entries carry the exact file + peer so the
+        // pill can pull it directly over the LAN.
+        const entry = {peer: p.name, file: file, size: z.size_bytes};
         for (const key of [stem, dated]) {
           if (!newMap.has(key)) newMap.set(key, []);
           if (!newMap.get(key).includes(p.name)) newMap.get(key).push(p.name);
+          if (!newFiles.has(key)) newFiles.set(key, []);
+          if (file) newFiles.get(key).push(entry);
         }
       }
     } catch (_) {}
   }));
   _catalogPeerStems = newMap;
+  _catalogPeerFiles = newFiles;
   _peersLoadedAt = Date.now();
   return true;
 }
 
 function _enrichCatalogPeers(items) {
   if (!_catalogPeerStems.size) {
-    for (const it of items) it.peer_names = [];
+    for (const it of items) { it.peer_names = []; it.peer_entries = []; }
     return;
   }
   for (const it of items) {
@@ -3306,11 +3316,13 @@ function _enrichCatalogPeers(items) {
       if (urlStem && urlStem !== it.name) candidates.push(urlStem);
     }
     let names = [];
+    let entries = [];
     for (const c of candidates) {
       const hit = _catalogPeerStems.get(c);
-      if (hit && hit.length) { names = hit; break; }
+      if (hit && hit.length) { names = hit; entries = _catalogPeerFiles.get(c) || []; break; }
     }
     it.peer_names = names;
+    it.peer_entries = entries;
   }
 }
 
@@ -3324,35 +3336,48 @@ function _peerHint(item) {
     return '<span class="ci-peer-pill" title="' + escAttr(t('peer_has_zim', {peers: display})) + '">' +
       '📡 ' + esc(display) + '</span>';
   }
-  // Pick the best-flavor variant: same logic the catalog cards already use
-  // (full > nopic > mini, modulated by user preference).
-  const variants = (item.variants && item.variants.length ? item.variants : [item])
-    .filter(v => v.download_url);
-  if (!variants.length) {
+  // Not installed and a peer has it → pull the actual file straight from the
+  // peer over the LAN (works fully offline). Pick the best-flavor file among
+  // the peer's entries (full > nopic > mini, modulated by user preference).
+  const entries = (item.peer_entries || []).filter(e => e && e.file);
+  if (!entries.length) {
     return '<span class="ci-peer-pill" title="' + escAttr(t('peer_has_zim', {peers: display})) + '">' +
       '📡 ' + esc(display) + '</span>';
   }
-  const sorted = variants.slice().sort((a, b) => _flavorOrder(b.download_url) - _flavorOrder(a.download_url));
-  const url = sorted[0].download_url;
-  const peerName = peers[0];  // first peer that has it; BT picks best automatically
+  const best = entries.slice().sort((a, b) => _flavorOrder(b.file) - _flavorOrder(a.file))[0];
   return '<button type="button" class="ci-peer-pill ci-peer-pill-clickable" ' +
     'title="' + escAttr(t('peer_pill_click_tip', {peers: display})) + '" ' +
     'aria-label="' + escAttr(t('peer_pill_click_tip', {peers: display})) + '" ' +
-    'onclick="event.stopPropagation();_downloadFromPeer(\'' + escAttr(url) + '\', \'' + escAttr(peerName) + '\')">' +
+    'onclick="event.stopPropagation();_downloadFromPeer(\'' + escAttr(best.peer) + '\', \'' + escAttr(best.file) + '\')">' +
     '📡 ' + esc(display) + '</button>';
 }
 
-function _downloadFromPeer(url, peerName) {
-  // BT engine naturally pulls from the LAN peer because TCP RTT is
-  // an order of magnitude lower than WAN. We just trigger the same
-  // downloadZim flow and surface the peer in a toast so the user
-  // knows the LAN advantage kicked in.
+async function _downloadFromPeer(peerName, file) {
+  // Pull the ZIM directly from the LAN peer over HTTP — no internet/Kiwix
+  // needed. The server resolves peer→host:port from discovery state; we only
+  // pass the peer name + file.
   const shortPeer = (peerName || '').replace(/^zimi-/, '');
-  if (typeof _showToast === 'function') {
-    _showToast(t('downloading_from_peer', {peer: shortPeer}));
-  }
-  if (typeof downloadZim === 'function') {
-    downloadZim(url);
+  try {
+    const res = await manageFetch('/manage/download-from-peer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ peer: peerName, file: file }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      if (typeof _showToast === 'function') _showToast(t('error') + ': ' + data.error);
+      return;
+    }
+    if (typeof _showToast === 'function') {
+      _showToast(t('downloading_from_peer', {peer: shortPeer}));
+    }
+    _dlPrevAllDone = false;
+    _dlRecentStart = Date.now();
+    _showManageBadge(true, 1);
+    refreshDownloads();
+    if (window._nudgeActivityPoll) window._nudgeActivityPoll();
+  } catch (e) {
+    if (typeof _showToast === 'function') _showToast(t('error'));
   }
 }
 
