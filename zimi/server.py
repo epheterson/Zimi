@@ -826,6 +826,10 @@ def load_cache(force=False):
                 "name": name,
                 "file": filename,
                 "size_gb": cached.get("size_gb", round(size / (1024**3), 3)),
+                # Exact bytes straight from stat — peers verify pulled ZIMs
+                # against this, so it must be present even on a cache hit
+                # (older disk caches predate the field).
+                "size_bytes": size,
                 "entries": cached.get("entries", "?"),
                 "title": cached.get("title", name),
                 "description": cached.get("description", ""),
