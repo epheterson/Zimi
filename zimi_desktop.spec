@@ -15,7 +15,13 @@ import os
 import platform
 import sysconfig
 
+from PyInstaller.utils.hooks import collect_submodules
+
 block_cipher = None
+
+# zeroconf (LAN peer discovery) loads submodules dynamically, so PyInstaller's
+# static analysis misses them unless we collect the whole package.
+zeroconf_hiddenimports = collect_submodules("zeroconf")
 
 # ---------------------------------------------------------------------------
 # Collect libzim native libraries
@@ -72,12 +78,14 @@ a = Analysis(
         'zimi.library',
         'zimi.manage',
         'zimi.previews',
+        'zimi.p2p',
+        'zimi.p2p_discovery',
         'libzim',
         'certifi',
         'fitz',
         'PIL',
         'webview',
-    ] + (['gi'] if platform.system() == 'Linux' else []),
+    ] + zeroconf_hiddenimports + (['gi'] if platform.system() == 'Linux' else []),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
