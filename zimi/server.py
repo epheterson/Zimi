@@ -637,7 +637,7 @@ def list_zims(use_cache=True):
     zims = get_zim_files()
     info = []
     for name, path in zims.items():
-        size_gb = os.path.getsize(path) / (1024**3)
+        size_bytes = os.path.getsize(path)
         try:
             archive = open_archive(path)
             entry_count = archive.entry_count
@@ -648,7 +648,8 @@ def list_zims(use_cache=True):
             {
                 "name": name,
                 "file": os.path.basename(path),
-                "size_gb": round(size_gb, 3),
+                "size_gb": round(size_bytes / (1024**3), 3),
+                "size_bytes": size_bytes,
                 "entries": entry_count,
             }
         )
@@ -713,7 +714,8 @@ def _extract_zim_date(filename):
 
 def _extract_zim_metadata(name, path):
     """Open a ZIM archive and extract its metadata. Returns (info_dict, archive)."""
-    size_gb = os.path.getsize(path) / (1024**3)
+    size_bytes = os.path.getsize(path)
+    size_gb = size_bytes / (1024**3)
     meta_title = name
     meta_desc = ""
     meta_date = ""
@@ -772,6 +774,9 @@ def _extract_zim_metadata(name, path):
         "name": name,
         "file": os.path.basename(path),
         "size_gb": round(size_gb, 3),
+        # Exact byte size: peers verify a pulled .zim against this (a
+        # truncated transfer is the realistic LAN failure mode).
+        "size_bytes": size_bytes,
         "entries": entry_count,
         "title": meta_title,
         "description": meta_desc,
@@ -1357,6 +1362,7 @@ from zimi.library import (  # noqa: E402, F401
     _opds_cache,
     _OPDS_CACHE_TTL,
     _start_download,
+    _start_peer_download,
     _start_import,
     _get_downloads,
     _fetch_kiwix_catalog,

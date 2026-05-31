@@ -685,6 +685,21 @@ def handle_manage_post(handler, parsed, data):
         succeeded = sum(1 for x in ids if x is not None)
         return handler._json(200, {"ids": ids, "errors": errors, "started": succeeded})
 
+    elif parsed.path == "/manage/download-from-peer":
+        # Pull a ZIM straight from a discovered LAN peer over HTTP. The server
+        # resolves peer→host:port from discovery state, so the client only
+        # names the peer + file — it can't point us at an arbitrary URL.
+        peer = data.get("peer")
+        fname = data.get("file")
+        if not isinstance(peer, str) or not peer:
+            return handler._json(400, {"error": "missing 'peer'"})
+        if not isinstance(fname, str) or not fname:
+            return handler._json(400, {"error": "missing 'file'"})
+        dl_id, err = _srv._start_peer_download(peer, fname)
+        if err:
+            return handler._json(400, {"error": err})
+        return handler._json(200, {"status": "started", "id": dl_id})
+
     elif parsed.path == "/manage/import":
         url = data.get("url", "")
         if not url:

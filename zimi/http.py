@@ -8,6 +8,7 @@ and static/ZIM content serving. Manage routes delegate to zimi.manage.
 import base64
 import gzip
 import hashlib
+import ipaddress
 import json
 import logging
 import os
@@ -904,6 +905,14 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path == "/":
                 return self._serve_index()
 
+            elif parsed.path.startswith("/dl/"):
+                # /dl/<zim_name_or_file> — serve the whole raw .zim file to a
+                # LAN peer over HTTP+Range. This is the peer-to-peer sharing
+                # transport: another Zimi instance pulls a ZIM directly from
+                # us, no internet/Kiwix needed. Gated to private clients by
+                # default (see _serve_zim_file).
+                return self._serve_zim_file(unquote(parsed.path[4:]))
+
             elif parsed.path.startswith("/w/"):
                 # /w/<zim_name>/<entry_path> — serve raw ZIM content
                 rest = parsed.path[3:]  # strip "/w/"
@@ -1334,6 +1343,95 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
+
+    def _peer_share_allowed(self):
+        """True if this client may pull whole ZIMs from /dl/.
+
+        Sharing must be enabled (ZIMI_PEER_SHARE) and the client must be
+        on a private/loopback/link-local network — unless the operator
+        opted into public sharing (ZIMI_PEER_SHARE_PUBLIC=1). Uses
+        _client_ip() so it sees the real peer behind a trusted proxy
+        rather than the proxy itself.
+        """
+        from zimi import p2p_discovery as _disc
+
+        if not _disc.is_share_enabled():
+            return False
+        if _disc.is_public_share_enabled():
+            return True
+        try:
+            ip = ipaddress.ip_address(self._client_ip())
+        except ValueError:
+            return False
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+
+    def _serve_zim_file(self, name):
+        """Stream a whole local .zim file to a LAN peer with Range support.
+
+        Resolves `name` strictly against the known ZIM set (by ZIM name or
+        file basename) so a request can never escape ZIM_DIR — there is no
+        user-controlled path here. Streams from disk in chunks; never loads
+        a multi-GB file into memory.
+        """
+        if not self._peer_share_allowed():
+            return self._json(403, {"error": "peer sharing not available"})
+
+        zims = _srv.get_zim_files()  # {name: path}
+        path = zims.get(name)
+        if path is None:
+            for p in zims.values():
+                if os.path.basename(p) == name:
+                    path = p
+                    break
+        if path is None or not os.path.isfile(path):
+            return self._json(404, {"error": "ZIM not found"})
+
+        try:
+            total_size = os.path.getsize(path)
+        except OSError:
+            return self._json(404, {"error": "ZIM not found"})
+
+        range_start = range_end = None
+        range_header = self.headers.get("Range")
+        if range_header:
+            range_start, range_end = self._parse_range(range_header, total_size)
+
+        if range_start is not None and range_end is not None:
+            send_len = range_end - range_start + 1
+            self.send_response(206)
+            self.send_header(
+                "Content-Range", f"bytes {range_start}-{range_end}/{total_size}"
+            )
+        else:
+            range_start, send_len = 0, total_size
+            self.send_response(200)
+
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(send_len))
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header(
+            "Content-Disposition",
+            f'attachment; filename="{os.path.basename(path)}"',
+        )
+        self.end_headers()
+
+        # Stream in 1 MB chunks. A peer disconnecting mid-pull (BrokenPipe)
+        # is normal — swallow it rather than logging a stack trace.
+        chunk_size = 1024 * 1024
+        remaining = send_len
+        try:
+            with open(path, "rb") as f:
+                f.seek(range_start)
+                while remaining > 0:
+                    chunk = f.read(min(chunk_size, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except OSError as e:
+            log.warning("peer file stream failed for %s: %s", name, e)
 
     def _accepts_gzip(self):
         return "gzip" in self.headers.get("Accept-Encoding", "")

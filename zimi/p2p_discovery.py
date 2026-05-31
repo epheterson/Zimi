@@ -52,6 +52,24 @@ def is_enabled() -> bool:
     return val not in ("0", "false", "no", "off", "")
 
 
+def is_share_enabled() -> bool:
+    """Serve our local ZIMs to LAN peers over HTTP. On by default;
+    ZIMI_PEER_SHARE=0 disables the /dl/ raw-file endpoint entirely."""
+    val = os.environ.get("ZIMI_PEER_SHARE", "1").strip().lower()
+    return val not in ("0", "false", "no", "off", "")
+
+
+def is_public_share_enabled() -> bool:
+    """Allow non-private (WAN) clients to pull whole ZIMs from /dl/.
+
+    Off by default: a Zimi behind a public reverse proxy
+    (knowledge.zosia.io) should not let the open internet vacuum
+    multi-GB files. LAN/loopback peers are always allowed when sharing
+    is on; flip ZIMI_PEER_SHARE_PUBLIC=1 to also serve the public."""
+    val = os.environ.get("ZIMI_PEER_SHARE_PUBLIC", "0").strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+
 def _local_ip() -> str:
     """Best-effort: a routable IPv4 the LAN can reach. Falls back to 127.0.0.1."""
     try:

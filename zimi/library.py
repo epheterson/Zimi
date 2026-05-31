@@ -6,6 +6,7 @@ maintain a single source of truth.
 """
 
 import glob
+import ipaddress
 import json
 import logging
 import os
@@ -18,7 +19,7 @@ import time
 import xml.etree.ElementTree as ET
 import urllib.error
 import urllib.request
-from urllib.parse import urlparse, urlencode
+from urllib.parse import urlparse, urlencode, quote
 
 import zimi.server as _srv
 
@@ -34,6 +35,40 @@ log = logging.getLogger("zimi")
 _TRUSTED_KIWIX_HOST_SUFFIXES = (".kiwix.org",)
 _TRUSTED_KIWIX_EXACT_HOSTS = ("kiwix.org",)
 _TRUSTED_MIRROR_PREFIXES = ("https://dumps.wikimedia.org/kiwix/",)
+
+
+def _is_lan_host(host):
+    """True if `host` is an IP literal safe to pull a peer ZIM from.
+
+    Peers advertise IP literals via mDNS (unauthenticated multicast), so a
+    malicious responder could name any address. We allow only private
+    (RFC1918) and loopback IPs and explicitly reject link-local — that blocks
+    the cloud-metadata endpoint (169.254.169.254) and any public host, so a
+    pill click can't be turned into an SSRF against off-LAN targets. A
+    hostname (non-literal) is rejected outright so nothing re-resolves later.
+    """
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if ip.is_link_local:
+        return False
+    return ip.is_private or ip.is_loopback
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Refuse HTTP redirects. Used wherever following one would be an SSRF
+    risk: Kiwix thumbnail fetches and LAN peer pulls. A peer that passed the
+    LAN-host check can't 302 us to an off-LAN target after the fact — the
+    redirect surfaces as a normal HTTPError the caller treats as a failure."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(
+            req.full_url, code, "Redirect blocked", headers, fp
+        )
+
+
+_NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirectHandler)
 
 
 def _is_trusted_kiwix_url(url):
@@ -296,16 +331,9 @@ def _fetch_thumb(url):
             ct = f.read().strip() or "image/png"
         with open(cache_path, "rb") as f:
             return f.read(), ct
-    # Fetch from Kiwix (no redirects to prevent SSRF)
+    # Fetch from Kiwix (no redirects to prevent SSRF — shared opener)
     try:
-
-        class _NoRedirect(urllib.request.HTTPRedirectHandler):
-            def redirect_request(self, req, fp, code, msg, headers, newurl):
-                raise urllib.error.HTTPError(
-                    req.full_url, code, "Redirect blocked", headers, fp
-                )
-
-        opener = urllib.request.build_opener(_NoRedirect)
+        opener = _NO_REDIRECT_OPENER
         req = urllib.request.Request(url, headers={"User-Agent": "Zimi/1.0"})
         with opener.open(req, timeout=10) as resp:
             ct = resp.headers.get("Content-Type", "image/png")
@@ -782,7 +810,12 @@ def _download_from_url(dl, url, tmp_dest):
     else:
         log.info("Downloading %s from %s", dl["filename"], urlparse(url).hostname)
     try:
-        resp = urllib.request.urlopen(req, timeout=600, context=_srv.SSL_CTX)
+        if dl.get("_source") == "peer":
+            # Peer pulls are plain HTTP to a LAN IP literal; refuse redirects
+            # so a peer can't bounce us off-LAN. No SSL context needed.
+            resp = _NO_REDIRECT_OPENER.open(req, timeout=600)
+        else:
+            resp = urllib.request.urlopen(req, timeout=600, context=_srv.SSL_CTX)
     except urllib.error.HTTPError as e:
         if e.code == 416 and existing_size > 0:
             # Range not satisfiable — file already complete
@@ -1053,42 +1086,30 @@ def _fetch_mirrors(meta4_url):
         return []
 
 
-def _start_download(url, size_bytes=None):
-    """Start a background download via urllib. Returns (download_id, error).
+def _validate_zim_filename(filename):
+    """Validate a .zim filename for safe use as a download destination.
 
-    If the concurrent-download cap is reached, the download is queued.
-    `size_bytes` is used to order the queue smallest-first; pass it from the
-    catalog when available. Unknown sizes are dispatched after known ones.
+    Returns (clean_basename, None) or (None, error). Strips any directory
+    component so a crafted name can never escape ZIM_DIR.
     """
-    global _download_counter
-    # Validate URL — only allow Kiwix-controlled hosts (download.kiwix.org,
-    # lbo.download.kiwix.org load-balanced origin, dumps.wikimedia.org/kiwix
-    # mirror, any other *.kiwix.org). Prevents attacker-controlled metadata.
-    if not _is_trusted_kiwix_url(url):
-        return None, "URL not from a trusted Kiwix host"
-
-    # OPDS catalog provides .meta4 metalink URLs — fetch mirrors from it
-    mirrors = []
-    if url.endswith(".meta4"):
-        mirrors = _fetch_mirrors(url)
-        url = url[: -len(".meta4")]  # direct URL as primary fallback
-
-    # If we got mirrors, use them; otherwise fall back to the direct URL
-    if not mirrors:
-        mirrors = [url]
-    elif url not in mirrors:
-        mirrors.append(url)  # ensure direct URL is always a fallback
-
-    filename = url.split("/")[-1]
-    # Prevent path traversal and validate filename
-    filename = os.path.basename(filename)
+    filename = os.path.basename(filename or "")
     if not filename or ".." in filename:
         return None, "Invalid filename in URL"
     if not filename.endswith(".zim"):
         return None, "Only .zim files can be downloaded"
-    # Reject filenames with suspicious characters
     if not re.match(r"^[\w.\-]+$", filename):
         return None, "Invalid characters in filename"
+    return filename, None
+
+
+def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
+    """Build the download record and enqueue it.
+
+    Shared by the Kiwix-catalog and LAN-peer paths — each validates its own
+    source and filename before calling this. `extra` merges extra fields into
+    the download record (e.g. _source/peer_name for peer pulls).
+    """
+    global _download_counter
     dest = os.path.join(_srv.ZIM_DIR, filename)
 
     # Detect if this replaces an existing ZIM (update vs fresh download)
@@ -1120,6 +1141,8 @@ def _start_download(url, size_bytes=None):
             "is_update": is_update,
             "size_bytes": size_bytes,
         }
+        if extra:
+            dl.update(extra)
         queued = _enqueue_or_start(dl)
     log.info(
         "Download %s: %s (%d mirror%s available)",
@@ -1129,6 +1152,82 @@ def _start_download(url, size_bytes=None):
         "s" if len(mirrors) != 1 else "",
     )
     return dl_id, None
+
+
+def _start_download(url, size_bytes=None):
+    """Start a background download via urllib. Returns (download_id, error).
+
+    If the concurrent-download cap is reached, the download is queued.
+    `size_bytes` is used to order the queue smallest-first; pass it from the
+    catalog when available. Unknown sizes are dispatched after known ones.
+    """
+    # Validate URL — only allow Kiwix-controlled hosts (download.kiwix.org,
+    # lbo.download.kiwix.org load-balanced origin, dumps.wikimedia.org/kiwix
+    # mirror, any other *.kiwix.org). Prevents attacker-controlled metadata.
+    if not _is_trusted_kiwix_url(url):
+        return None, "URL not from a trusted Kiwix host"
+
+    # OPDS catalog provides .meta4 metalink URLs — fetch mirrors from it
+    mirrors = []
+    if url.endswith(".meta4"):
+        mirrors = _fetch_mirrors(url)
+        url = url[: -len(".meta4")]  # direct URL as primary fallback
+
+    # If we got mirrors, use them; otherwise fall back to the direct URL
+    if not mirrors:
+        mirrors = [url]
+    elif url not in mirrors:
+        mirrors.append(url)  # ensure direct URL is always a fallback
+
+    filename, err = _validate_zim_filename(url.split("/")[-1])
+    if err:
+        return None, err
+    return _enqueue_zim_download(url, mirrors, filename, size_bytes=size_bytes)
+
+
+def _start_peer_download(peer_name, filename, size_bytes=None):
+    """Download a ZIM directly from a discovered LAN peer over HTTP.
+
+    The target URL is built server-side from the *discovered* peer's
+    host/port — never from a client-supplied URL — so this can't be coerced
+    into fetching an arbitrary host (the peer equivalent of the Kiwix trust
+    check). The pull is plain HTTP from the peer's /dl/ endpoint and works
+    fully offline; the existing mirror loop handles range/resume and verifies
+    the transfer against the peer's Content-Length.
+    """
+    from zimi import p2p_discovery as _disc
+
+    filename, err = _validate_zim_filename(filename)
+    if err:
+        return None, err
+
+    peer = next((p for p in _disc.get_peers() if p.get("name") == peer_name), None)
+    if peer is None:
+        return None, "Peer not found"
+    host, port = peer.get("host"), peer.get("port")
+    if not host or not port:
+        return None, "Peer address unavailable"
+    # mDNS is unauthenticated — a hostile responder could advertise a peer at
+    # 169.254.169.254 (cloud metadata), a public host, or a localhost-only
+    # service. Only pull from LAN/loopback IP literals (see _is_lan_host).
+    if not _is_lan_host(host):
+        return None, "Peer host not on LAN"
+
+    # Prefer the size the peer advertises (queue ordering + truncation check).
+    if size_bytes is None:
+        for z in _disc.fetch_peer_list(peer_name) or []:
+            if z.get("file") == filename:
+                size_bytes = z.get("size_bytes")
+                break
+
+    url = f"http://{host}:{int(port)}/dl/{quote(filename)}"
+    return _enqueue_zim_download(
+        url,
+        [url],
+        filename,
+        size_bytes=size_bytes,
+        extra={"_source": "peer", "peer_name": peer_name},
+    )
 
 
 def _start_import(url, size_bytes=None):
