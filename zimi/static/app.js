@@ -346,6 +346,19 @@ let _manageSavedReader = null; // saved reader state when entering manage
 let _pwResolve = null;
 let _pwReject = null;
 
+// Token-adding fetch for *ambient* /manage/* calls (activity bar, peer
+// discovery, status/mirror polls). Sends the manage token when we have one
+// so these work on password-protected servers, but never prompts for a
+// password on 401 — background polling must fail silently, unlike the
+// interactive manageFetch below.
+function authedFetch(url, opts) {
+  opts = opts || {};
+  if (_manageToken) {
+    opts.headers = Object.assign({}, opts.headers, {'Authorization': 'Bearer ' + _manageToken});
+  }
+  return fetch(url, opts);
+}
+
 function manageFetch(url, opts) {
   opts = opts || {};
   if (_manageToken) {
@@ -613,7 +626,7 @@ async function _initSecondary() {
   var needsRerender = false;
   await Promise.allSettled([
     // Manage status + password check
-    fetch('/manage/status').then(async mres => {
+    authedFetch('/manage/status').then(async mres => {
       if (mres.ok) {
         const mdata = await mres.json();
         manageEnabled = !!mdata.manage_enabled;
@@ -3253,7 +3266,7 @@ async function _loadPeerData() {
   }
   let peers = [];
   try {
-    const r = await fetch('/manage/peers');
+    const r = await authedFetch('/manage/peers');
     if (!r.ok) return false;
     const d = await r.json();
     peers = d.peers || [];
@@ -5035,7 +5048,7 @@ async function _renderSeedingSection() {
   // Surface the local peer instance name + a count of LAN peers if any.
   // Lets users confirm "I'm advertising as ___" at a glance.
   try {
-    const pr = await fetch('/manage/peers');
+    const pr = await authedFetch('/manage/peers');
     if (pr.ok) {
       const pd = await pr.json();
       if (pd.enabled) {
@@ -5087,7 +5100,7 @@ async function _renderSeedingSection() {
 async function _renderMirrorSection() {
   let m;
   try {
-    const r = await fetch('/manage/mirror');
+    const r = await authedFetch('/manage/mirror');
     if (!r.ok) return;
     m = await r.json();
   } catch (e) {
@@ -7632,7 +7645,7 @@ function _scheduleNextActivityPoll(idle) {
 
 async function _pollActivity() {
   try {
-    const res = await fetch('/manage/activity', { credentials: 'same-origin' });
+    const res = await authedFetch('/manage/activity', { credentials: 'same-origin' });
     if (res.ok) {
       const data = await res.json();
       const stillActive = _renderActivity(data);
