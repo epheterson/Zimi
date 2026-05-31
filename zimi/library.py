@@ -71,6 +71,25 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 _NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirectHandler)
 
 
+class _KiwixRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follow redirects only to trusted Kiwix hosts. Used for thumbnail
+    fetches: Kiwix redirects library.kiwix.org → opds.library.kiwix.org, so a
+    blanket no-redirect policy breaks every catalog thumbnail. We follow the
+    redirect when it stays on *.kiwix.org and block it otherwise, so a
+    redirect to an arbitrary/internal host still can't be used for SSRF."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        host = (urlparse(newurl).hostname or "").lower()
+        if host == "kiwix.org" or host.endswith(".kiwix.org"):
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+        raise urllib.error.HTTPError(
+            req.full_url, code, "Redirect blocked (non-Kiwix host)", headers, fp
+        )
+
+
+_KIWIX_REDIRECT_OPENER = urllib.request.build_opener(_KiwixRedirectHandler)
+
+
 def _is_trusted_kiwix_url(url):
     """Return True if `url` points to a known-good Kiwix-controlled host.
 
@@ -331,9 +350,10 @@ def _fetch_thumb(url):
             ct = f.read().strip() or "image/png"
         with open(cache_path, "rb") as f:
             return f.read(), ct
-    # Fetch from Kiwix (no redirects to prevent SSRF — shared opener)
+    # Fetch from Kiwix. Follow redirects only within *.kiwix.org (Kiwix
+    # redirects library → opds); a redirect off-Kiwix is blocked (SSRF).
     try:
-        opener = _NO_REDIRECT_OPENER
+        opener = _KIWIX_REDIRECT_OPENER
         req = urllib.request.Request(url, headers={"User-Agent": "Zimi/1.0"})
         with opener.open(req, timeout=10) as resp:
             ct = resp.headers.get("Content-Type", "image/png")
