@@ -467,6 +467,15 @@ class Aria2Backend(BTBackend):
         stopped = self._rpc("aria2.tellStopped", [0, 1000])
         return list(active) + list(waiting) + list(stopped)
 
+    def purge_stopped(self) -> None:
+        """Clear finished/errored download results from aria2's session.
+
+        Errored torrents (e.g. broken/empty ZIMs whose .torrent won't resolve)
+        otherwise linger forever in the stopped list and clutter the seeding
+        panel. purgeDownloadResult only touches stopped results — active seeds
+        are untouched."""
+        self._rpc("aria2.purgeDownloadResult", [])
+
 
 # ============================================================================
 # Selection

@@ -504,8 +504,19 @@ def handle_manage_get(handler, parsed, params):
         torrents = []
         total_up = 0
         total_down = 0
+        # Drop finished/errored results (e.g. broken-ZIM torrents that can't
+        # resolve) so they don't linger in the seeding panel. Best-effort.
+        purge = getattr(backend, "purge_stopped", None)
+        if callable(purge):
+            try:
+                purge()
+            except Exception:
+                pass
         try:
             for raw in backend.list_managed():
+                # Errored torrents aren't seeding — never surface them as such.
+                if raw.get("status") == "error":
+                    continue
                 files = raw.get("files", [])
                 fname = ""
                 if files and isinstance(files, list) and files[0].get("path"):
