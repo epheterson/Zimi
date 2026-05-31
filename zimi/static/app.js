@@ -3348,7 +3348,7 @@ function _peerHint(item) {
   return '<button type="button" class="ci-peer-pill ci-peer-pill-clickable" ' +
     'title="' + escAttr(t('peer_pill_click_tip', {peers: display})) + '" ' +
     'aria-label="' + escAttr(t('peer_pill_click_tip', {peers: display})) + '" ' +
-    'onclick="event.stopPropagation();_downloadFromPeer(\'' + escAttr(best.peer) + '\', \'' + escAttr(best.file) + '\')">' +
+    'onclick="event.stopPropagation();_downloadFromPeer(\'' + escJs(best.peer) + '\', \'' + escJs(best.file) + '\')">' +
     '📡 ' + esc(display) + '</button>';
 }
 
