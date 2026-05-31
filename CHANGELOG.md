@@ -14,6 +14,30 @@ covering UX at 1000+ ZIM scale) and issue #16 (Wikipedia maxi auto-updating to
 mini). Also lays groundwork for the Reach track (P2P/torrent + accessibility,
 plan docs in `docs/plans/`).
 
+### LAN peer ZIM sharing (Reach)
+
+- **New**: download a ZIM directly from another Zimi instance on your LAN —
+  no internet, no Kiwix. A peer serves its raw `.zim` over HTTP+Range at a
+  new `/dl/<name>` endpoint; clicking the 📡 peer pill on an uninstalled
+  catalog item pulls it straight from that peer (`/manage/download-from-peer`).
+  Works fully offline. The puller reuses the existing download machinery
+  (range/resume/atomic-rename) and verifies the transfer against the peer's
+  advertised exact byte size.
+- **Design**: HTTP is the universal transport; the LAN path needs no extra
+  binary, so it works identically across Docker, `pip install`, and the
+  desktop app. BitTorrent (aria2) remains an optional accelerator for
+  internet/Kiwix-swarm downloads only. This replaces the previous peer pill,
+  which *claimed* to pull from the LAN peer but actually downloaded from
+  Kiwix over the internet (and failed offline).
+- **Safety**: `/dl/` serves only to private/loopback clients by default
+  (`ZIMI_PEER_SHARE`, on); `ZIMI_PEER_SHARE_PUBLIC=1` opts into serving the
+  public internet. The download URL is built server-side from discovered
+  peer state, so a client can't coerce a fetch of an arbitrary host.
+- **Packaging fix**: `zeroconf` is now a real install dependency (was only
+  in `requirements.txt`, so `pip install zimi` had no peer discovery), and
+  the desktop PyInstaller spec now bundles `zeroconf` + the `p2p`/
+  `p2p_discovery` modules (previously omitted).
+
 ### Auto-update host allowlist (#20)
 
 - **Fix**: auto-update rejected ~40 ZIMs with "URL must be from
