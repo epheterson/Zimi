@@ -121,7 +121,13 @@ let _zimsByName = new Map();
 function _rebuildZimsMap() { _zimsByName = new Map((zimsCache || []).map(z => [z.name, z])); }
 function _zimInfo(name) { return _zimsByName.get(name) || null; }
 let manageEnabled = false;
+let _managePwRequired = false; // server is password-protected and we have no token yet
 let _manageUnlocked = true; // manage is always available (auth via env var only)
+
+// May we hit ambient /manage/* endpoints (activity bar, peer discovery)?
+// Yes when we hold a token, or when the server isn't password-protected.
+// Avoids a stream of 401s (and console noise) before the operator logs in.
+function _canPollManage() { return !!_manageToken || !_managePwRequired; }
 let activeCategories = new Set();
 let activeSourceFilters = new Set();
 let allResults = {};
@@ -632,6 +638,7 @@ async function _initSecondary() {
         manageEnabled = !!mdata.manage_enabled;
       } else if (mres.status === 401) {
         manageEnabled = true;
+        _managePwRequired = true;  // protected + not yet authenticated
       }
       needsRerender = true;
     }).catch(function(){}),
@@ -2789,6 +2796,9 @@ function _restoreSavedReader() {
 function enterManage(e) {
   if (e && e.preventDefault) e.preventDefault();
   if (!manageEnabled) return;
+  // The History/Bookmarks side panel floats over the right edge; close it so
+  // it doesn't overlap and truncate the full Manage view.
+  _closeLibraryPanel();
   // Save reader state so back navigation can restore the article
   if (readerOpen) {
     _manageSavedReader = {
@@ -3264,6 +3274,8 @@ async function _loadPeerData() {
   if (Date.now() - _peersLoadedAt < PEER_LIST_REFRESH_MS && _peersLoadedAt > 0) {
     return false;
   }
+  // Skip peer discovery on a protected server until the operator is logged in.
+  if (!_canPollManage()) return false;
   let peers = [];
   try {
     const r = await authedFetch('/manage/peers');
@@ -7644,6 +7656,8 @@ function _scheduleNextActivityPoll(idle) {
 }
 
 async function _pollActivity() {
+  // On a password-protected server, don't poll (and 401-spam) until logged in.
+  if (!_canPollManage()) { _scheduleNextActivityPoll(true); return; }
   try {
     const res = await authedFetch('/manage/activity', { credentials: 'same-origin' });
     if (res.ok) {
