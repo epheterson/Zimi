@@ -3,13 +3,20 @@
 set -e
 
 echo "=== Deploying to NAS ==="
-ssh nas "mkdir -p /volume1/docker/kiwix/zimi"
+ssh nas "mkdir -p /volume1/docker/kiwix/zimi /volume1/docker/kiwix/zimi-data"
 # Ship the whole package as a tar so new modules deploy automatically.
 # Excludes pycache + tests so the image stays slim.
 tar cf - --exclude='__pycache__' --exclude='*.pyc' zimi/ | ssh nas "cd /volume1/docker/kiwix && tar xf -"
 cat requirements.txt | ssh nas "cat > /volume1/docker/kiwix/requirements.txt"
 cat Dockerfile | ssh nas "cat > /volume1/docker/kiwix/Dockerfile"
-echo "  Files copied"
+# Ship our own compose so the deploy is deterministic — never trust whatever
+# compose happens to be sitting in the NAS dir. A stale stock-kiwix compose left
+# there once hijacked a deploy (down --remove-orphans killed the live Zimi
+# container, up -d started the wrong image at 256m and crash-looped). Back up any
+# existing compose to .prev before overwriting, for a one-step manual rollback.
+ssh nas "cd /volume1/docker/kiwix && [ -f docker-compose.yml ] && cp -p docker-compose.yml docker-compose.yml.prev || true"
+cat docker-compose.nas.yml | ssh nas "cat > /volume1/docker/kiwix/docker-compose.yml"
+echo "  Files copied (incl. canonical NAS compose)"
 
 # Stop the running container first so the upcoming `up -d` doesn't hit a
 # name-conflict against a still-shutting-down old container.
