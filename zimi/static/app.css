@@ -68,9 +68,16 @@
     text-decoration: none; white-space: nowrap; flex-shrink: 0; cursor: pointer;
     background: linear-gradient(135deg, #f59e0b, #f97316, #ef4444);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    background-clip: text; transition: opacity 0.15s;
+    background-clip: text;
+    /* Stack the wordmark + house glyph in a single grid cell. The cell sizes to
+       the wider child ("Zimi"), so hover cross-fades them in place with zero
+       reflow — the "/" separator and source crumb never shift. */
+    display: inline-grid; place-items: center;
   }
-  .topbar .logo:hover { opacity: 0.8; }
+  .topbar .logo > span { grid-area: 1 / 1; transition: opacity 0.15s; }
+  .topbar .logo .logo-house { opacity: 0; font-size: 1.3em; line-height: 1; }
+  .topbar .logo:hover .logo-word { opacity: 0; }
+  .topbar .logo:hover .logo-house { opacity: 1; }
 
   .back-btn {
     display: none; align-items: center; justify-content: center;

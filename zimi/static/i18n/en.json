@@ -863,5 +863,6 @@
   "mirror_active_hint": "Seeding everything you have installed back to the swarm. Stop or restart with ZIMI_MIRROR=0.",
   "peer_pill_click_tip": "Download from {peers} on your LAN — fastest route, no WAN bandwidth used.",
   "downloading_from_peer": "Starting download — {peer} on your LAN should serve the bytes.",
-  "peer_advertising_as": "Advertising as"
+  "peer_advertising_as": "Advertising as",
+  "home": "Home"
 }

@@ -863,5 +863,6 @@
   "mirror_active_hint": "Все установленные ZIM раздаются обратно в рой. Остановите через ZIMI_MIRROR=0.",
   "peer_pill_click_tip": "Скачать у {peers} в локальной сети — самый быстрый путь, без WAN-трафика.",
   "downloading_from_peer": "Загрузка начинается — {peer} в локальной сети должен отдать байты.",
-  "peer_advertising_as": "Объявлено как"
+  "peer_advertising_as": "Объявлено как",
+  "home": "Главная"
 }
