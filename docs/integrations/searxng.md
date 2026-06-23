@@ -46,6 +46,17 @@ Save as `searx/engines/zimi.py` inside your SearXNG container or volume:
 ```python
 from searx.utils import urlencode
 
+# SearXNG requires every engine to expose an `about` dict. Recent SearXNG
+# versions crash at startup ("about" AttributeError) if it's missing.
+about = {
+    "website": 'https://github.com/epheterson/Zimi',
+    "wikidata_id": None,
+    "official_api_documentation": None,
+    "use_official_api": True,
+    "require_api_key": False,
+    "results": 'JSON',
+}
+
 # Replace with your Zimi instance URL
 search_url = 'https://your-zimi.example.com/search?'
 
@@ -129,6 +140,10 @@ If both SearXNG and Zimi sit behind Traefik / Caddy / nginx, use the internal ho
 - Relevance ranking across SearXNG engines: Zimi sets `score` per result, but SearXNG itself decides how to merge scores across engines. If Zimi results don't appear high enough, lower the priority of the noisier engines or use `!zm` to scope the query.
 - The `snippet` field is empty in the current Zimi release. Open an issue if you need previews surfaced via SearXNG.
 - AI-assisted re-ranking is intentionally out of scope for Zimi (offline-first principle). Re-rank in SearXNG or downstream of it if needed.
+
+## Troubleshooting
+
+- **SearXNG crashes at start with an `about` error referencing `zimi.py`** (typically right after a SearXNG container update): your engine file predates the `about` dict shown above. SearXNG now requires every engine to define a module-level `about = {...}`. Add the block near the top of `searx/engines/zimi.py` and restart the SearXNG container. Reported in [issue #21](https://github.com/epheterson/Zimi/issues/21).
 
 ## Reference deployment
 
