@@ -34,6 +34,7 @@ tmp/
 # Root-level dev screenshots (don't block images elsewhere)
 /*.png
 /*.jpg
+ui-review/
 
 # Working docs (not shipped)
 PLAN.md

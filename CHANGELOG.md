@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.7.0] — 2026-04-27
+## [1.7.0] — 2026-07-12
 
 The "Reach + Pro" release. Addresses issue #15 (the warlordattack feedback set
 covering UX at 1000+ ZIM scale) and issue #16 (Wikipedia maxi auto-updating to
