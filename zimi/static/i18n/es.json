@@ -870,6 +870,6 @@
   "mirror_toggle_hint": "Siembra tus descargas indefinidamente — sin límite de ratio y con mayor ancho de banda de subida, para ayudar a distribuir el contenido de Kiwix.",
   "env_controlled": "Controlado por la variable de entorno {v}",
   "save_failed": "No se pudo guardar",
-  "show_installed_covered": "Mostrar {n} instalados y cubiertos",
-  "hide_installed_covered": "Ocultar instalados y cubiertos"
+  "show_installed_covered": "Mostrar {n} que ya tienes",
+  "hide_installed_covered": "Ocultar los que ya tienes"
 }

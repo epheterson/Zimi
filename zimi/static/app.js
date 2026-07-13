@@ -3997,6 +3997,9 @@ function formatSize(bytes) {
   return Math.round(mb) + ' MB';
 }
 
+// Bold download arrow for catalog buttons — the ↓ glyph reads too thin.
+const _DL_ARROW_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px"><path d="M12 4v13M6 11l6 6 6-6"/></svg> ';
+
 // Installed and covered-by-an-installed-bundle rows are noise when browsing
 // for something new — collapse them behind a count button at the list end.
 let _showHiddenCatalog = false;
@@ -4127,7 +4130,7 @@ function renderCatalogItem(group) {
       actionsHtml = '<div class="ci-dl-split" data-variants="' + vid + '" data-selected="0">' +
         '<button class="ci-add-btn ci-dl-main" aria-label="' + escAttr(t('download_size', {size: best.label + ' (' + best.size + ')'})) + '"' +
           ' onclick="event.stopPropagation();var s=this.closest(\'.ci-dl-split\');downloadZim(window[s.dataset.variants][+s.dataset.selected].url, this)">' +
-          '↓ ' + esc(best.label + ' (' + best.size + ')') +
+          _DL_ARROW_SVG + esc(best.label + ' (' + best.size + ')') +
         '</button>' +
         '<button class="ci-dl-chevron" onclick="event.stopPropagation();showCatalogFlavorPicker(this)" title="' + escAttr(t('choose_flavor')) + '">' +
           '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>' +
@@ -4136,7 +4139,7 @@ function renderCatalogItem(group) {
     } else if (withLabels.length === 1) {
       actionsHtml = '<button class="ci-add-btn" aria-label="' + escAttr(t('download_size', {size: withLabels[0].label + ' (' + withLabels[0].size + ')'})) + '"' +
         ' onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' +
-        '↓ ' + esc(withLabels[0].label + ' (' + withLabels[0].size + ')') + '</button>';
+        _DL_ARROW_SVG + esc(withLabels[0].label + ' (' + withLabels[0].size + ')') + '</button>';
     }
   }
   const catAttr = item.category ? ' data-category="' + escAttr(item.category) + '"' : '';

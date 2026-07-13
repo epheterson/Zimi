@@ -870,6 +870,6 @@
   "mirror_toggle_hint": "זרעו את ההורדות ללא הגבלת יחס ועם רוחב פס העלאה גבוה יותר — כדי לעזור בהפצת תוכן Kiwix.",
   "env_controlled": "נשלט על ידי משתנה הסביבה {v}",
   "save_failed": "השמירה נכשלה",
-  "show_installed_covered": "הצג {n} מותקנים ומכוסים",
-  "hide_installed_covered": "הסתר מותקנים ומכוסים"
+  "show_installed_covered": "הצג {n} שכבר יש לך",
+  "hide_installed_covered": "הסתר את מה שכבר יש לך"
 }
