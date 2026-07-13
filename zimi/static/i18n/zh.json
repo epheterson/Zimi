@@ -871,5 +871,6 @@
   "env_controlled": "由环境变量 {v} 控制",
   "save_failed": "保存失败",
   "show_installed_covered": "显示 {n} 个已拥有的",
-  "hide_installed_covered": "隐藏已拥有的"
+  "hide_installed_covered": "隐藏已拥有的",
+  "bt_connecting": "正在连接节点…"
 }

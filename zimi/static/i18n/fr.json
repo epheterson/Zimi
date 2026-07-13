@@ -871,5 +871,6 @@
   "env_controlled": "Contrôlé par la variable d'environnement {v}",
   "save_failed": "Échec de l'enregistrement",
   "show_installed_covered": "Afficher {n} déjà possédés",
-  "hide_installed_covered": "Masquer ceux que vous avez déjà"
+  "hide_installed_covered": "Masquer ceux que vous avez déjà",
+  "bt_connecting": "Connexion à l'essaim…"
 }

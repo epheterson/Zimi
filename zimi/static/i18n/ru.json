@@ -871,5 +871,6 @@
   "env_controlled": "Управляется переменной окружения {v}",
   "save_failed": "Не удалось сохранить",
   "show_installed_covered": "Показать {n} уже имеющихся",
-  "hide_installed_covered": "Скрыть уже имеющиеся"
+  "hide_installed_covered": "Скрыть уже имеющиеся",
+  "bt_connecting": "Подключение к рою…"
 }

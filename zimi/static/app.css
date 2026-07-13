@@ -74,10 +74,13 @@
        reflow — the "/" separator and source crumb never shift. */
     display: inline-grid; place-items: center;
   }
-  .topbar .logo > span { grid-area: 1 / 1; transition: opacity 0.15s; }
-  .topbar .logo .logo-house { opacity: 0; font-size: 1.3em; line-height: 1; }
-  .topbar .logo:hover .logo-word { opacity: 0; }
-  .topbar .logo:hover .logo-house { opacity: 1; }
+  .topbar .logo > span {
+    grid-area: 1 / 1;
+    transition: opacity 0.12s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .topbar .logo .logo-house { opacity: 0; font-size: 1.3em; line-height: 1; transform: scale(0.55) rotate(-14deg); }
+  .topbar .logo:hover .logo-word { opacity: 0; transform: scale(0.82); }
+  .topbar .logo:hover .logo-house { opacity: 1; transform: scale(1) rotate(0deg); }
 
   .back-btn {
     display: none; align-items: center; justify-content: center;
@@ -209,6 +212,9 @@
   .pill:hover, .lang-pill:hover,
   .ci-variant-btn:hover, .flavor-pill:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
   .pill.active, .lang-pill.active { background: linear-gradient(135deg, var(--amber), var(--amber2)); color: #000; border-color: transparent; font-weight: 600; }
+  .pill .pill-count { opacity: 0.55; font-size: 10px; }
+  /* Dark chip on the amber active pill — amber-on-amber is unreadable */
+  .pill.active .pill-count { opacity: 1; background: rgba(0, 0, 0, 0.22); color: #000; padding: 0 5px; border-radius: 8px; }
   .pill.dimmed, .lang-pill.dimmed { opacity: 0.35; pointer-events: none; }
   .pills-divider { width: 60px; height: 1px; background: var(--border); margin: 0 auto 4px; opacity: 0.5; }
 
@@ -531,9 +537,12 @@
   }
   .catalog-grid .catalog-item .ci-hier,
   .catalog-grid .catalog-item .ci-peer { margin-top: 2px; }
-  /* Batch checkbox pins to the card's top-right corner (out of the title flow) */
+  /* Batch checkbox pins to the card's top-right corner (out of the title
+     flow). 18px control + generous padding = a comfortable touch target. */
   .catalog-grid .catalog-item .ci-select {
-    position: absolute; top: 8px; right: 10px; margin: 0;
+    position: absolute; top: 6px; right: 6px; margin: 0;
+    width: 18px; height: 18px; padding: 8px; box-sizing: content-box;
+    cursor: pointer;
   }
   .catalog-item {
     display: flex; gap: 14px; align-items: center; padding: 14px 16px;
@@ -575,6 +584,8 @@
     padding: 6px 14px; font-size: 12px; font-weight: 500; cursor: pointer;
     background: var(--surface2); color: var(--text); border: 1px solid var(--border);
     border-radius: var(--radius); transition: all 0.2s;
+    /* Centers the inline SVG download arrow with the label text */
+    display: inline-flex; align-items: center; gap: 5px; justify-content: center;
   }
   /* Circular download progress indicator */
   .ci-dl-circle { background: none !important; border: none !important; padding: 2px !important; }
@@ -650,12 +661,22 @@
     background: var(--surface2); color: var(--text2); padding: 0 6px;
     border-radius: 10px; font-size: 10px; font-weight: 600; min-width: 14px; text-align: center;
   }
-  .dl-filter-pill.active .dl-pill-count { background: var(--amber); color: #000; }
+  /* Dark chip on the amber active pill — amber-on-amber is unreadable */
+  .dl-filter-pill.active .dl-pill-count { background: rgba(0, 0, 0, 0.22); color: #000; }
   .dl-pause-btn { background: none; border: 1px solid var(--border); color: var(--text2);
     padding: 4px 12px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s;
     min-height: 24px; }
   .dl-pause-btn:hover { border-color: var(--amber); color: var(--amber); }
   .dl-progress.dl-paused .dl-progress-bar { opacity: 0.5; }
+  /* Total size unknown (BT metadata / finding peers) — sweeping indeterminate bar */
+  .dl-progress.dl-indeterminate .dl-progress-bar {
+    width: 30%; margin-left: -30%; transition: none;
+    animation: dl-indet 1.3s ease-in-out infinite;
+  }
+  @keyframes dl-indet { to { margin-left: 100%; } }
+  @media (prefers-reduced-motion: reduce) {
+    .dl-progress.dl-indeterminate .dl-progress-bar { animation: none; width: 100%; opacity: 0.35; }
+  }
   .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);
     font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer;
     min-height: 24px; }
@@ -1200,6 +1221,10 @@
   .activity-bar .ab-sep { opacity: 0.4; padding: 0 8px; }
   .activity-bar .ab-current { color: var(--amber); font-weight: 500; }
   body.has-activity { padding-top: 80px; } /* 56 topbar + 24 bar */
+  /* Manage view already surfaces downloads/indexing in its own tabs — the
+     ambient bar is redundant noise there. */
+  body.in-manage .activity-bar { display: none; }
+  body.in-manage.has-activity { padding-top: 56px; }
 
   @media (prefers-reduced-motion: reduce) {
     .activity-bar { transition: none; }

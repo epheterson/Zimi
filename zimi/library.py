@@ -588,6 +588,11 @@ def _try_bt_download(
                 pass
             return "fallback"
 
+        # Rebind to the followed content GID (see Aria2Backend.status): a
+        # .torrent URL's original GID is just the metadata fetch, and
+        # pause/cancel/remove must act on the real transfer.
+        tid = status.get("gid") or tid
+
         # Surface progress to the existing UI.
         dl["downloaded_bytes"] = status.get("completed_bytes", 0)
         dl["total_bytes"] = status.get("total_bytes", 0)
@@ -598,9 +603,30 @@ def _try_bt_download(
         state = status.get("state")
         if state == "complete":
             staged = os.path.join(staging_dir, dl["filename"])
-            if not os.path.exists(staged):
+            # aria2 keeps a .aria2 control file beside every unfinished
+            # download — if one exists, this "complete" is not our transfer.
+            if not os.path.exists(staged) or os.path.exists(staged + ".aria2"):
                 log.warning(
-                    "BT reported complete but file missing: %s — falling back", staged
+                    "BT reported complete but staged file missing/unfinished: %s"
+                    " — falling back",
+                    staged,
+                )
+                try:
+                    backend.remove(tid, delete_files=True)
+                except Exception:
+                    pass
+                return "fallback"
+            # Never install a structurally invalid file. aria2 preallocates
+            # the full file size, so existence and size prove nothing — the
+            # two-phase GID confusion this guards installed full-size
+            # garbage ZIMs before release.
+            try:
+                _srv.open_archive(staged)
+            except Exception as e:
+                log.warning(
+                    "BT staged file failed libzim validation (%s): %s — falling back",
+                    dl["filename"],
+                    e,
                 )
                 try:
                     backend.remove(tid, delete_files=True)

@@ -504,6 +504,16 @@ class Aria2Backend(BTBackend):
 
     def status(self, tid: str) -> dict:
         raw = self._rpc("aria2.tellStatus", [tid])
+        # A .torrent-URL download is two-phase in aria2: the GID addUri
+        # returns is the tiny metadata fetch, and the content transfer
+        # continues under a followedBy GID. Report the followed transfer —
+        # otherwise the caller sees "complete" the moment the .torrent file
+        # lands and installs a preallocated, mostly-empty staging file.
+        # (This exact bug shipped corrupt ZIMs; see test_bt_followed_gid.)
+        depth = 0
+        while raw.get("status") == "complete" and raw.get("followedBy") and depth < 4:
+            raw = self._rpc("aria2.tellStatus", [raw["followedBy"][0]])
+            depth += 1
         state_map = {
             "active": "downloading",
             "waiting": "waiting",
@@ -516,6 +526,9 @@ class Aria2Backend(BTBackend):
         total = int(raw.get("totalLength", 0))
         return {
             "state": state_map.get(raw.get("status", ""), "unknown"),
+            # Callers must rebind to this GID — pause/cancel/remove on the
+            # original metadata GID would not touch the content transfer.
+            "gid": raw.get("gid", tid),
             "completed_bytes": completed,
             "total_bytes": total,
             "down_speed": int(raw.get("downloadSpeed", 0)),

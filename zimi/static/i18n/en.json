@@ -871,5 +871,6 @@
   "env_controlled": "Controlled by the {v} environment variable",
   "save_failed": "Couldn't save",
   "show_installed_covered": "Show {n} you already have",
-  "hide_installed_covered": "Hide ones you already have"
+  "hide_installed_covered": "Hide ones you already have",
+  "bt_connecting": "Connecting to swarm…"
 }

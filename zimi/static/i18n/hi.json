@@ -871,5 +871,6 @@
   "env_controlled": "पर्यावरण चर {v} द्वारा नियंत्रित",
   "save_failed": "सहेजा नहीं जा सका",
   "show_installed_covered": "{n} जो आपके पास पहले से हैं दिखाएं",
-  "hide_installed_covered": "जो पहले से हैं उन्हें छिपाएं"
+  "hide_installed_covered": "जो पहले से हैं उन्हें छिपाएं",
+  "bt_connecting": "स्वार्म से जुड़ रहा है…"
 }

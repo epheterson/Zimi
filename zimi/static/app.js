@@ -584,6 +584,10 @@ function updateTopbar() {
   // Batch-download bar only belongs to the Catalog tab — hide elsewhere,
   // keeping the selection so it reappears when the user returns.
   _renderSelectionBar();
+
+  // Manage has its own downloads/indexing surfaces — the ambient activity
+  // bar is redundant there (CSS hides it via this class).
+  document.body.classList.toggle('in-manage', mode === 'manage');
 }
 
 function bcClick(e) {
@@ -2893,7 +2897,7 @@ function _renderLangPills(counts, onclick, validSet) {
     h += '<button class="pill' + (active ? ' active' : '') + (dimmed ? ' dimmed' : '') +
       '" data-lang="' + escAttr(lc) + '" data-lang-name="' + escAttr(name.toLowerCase()) + '"' +
       ' onclick="' + onclick + '(\'' + escAttr(lc) + '\')">' +
-      esc(name) + ' <span style="opacity:0.5;font-size:10px">' + count + '</span></button>';
+      esc(name) + ' <span class="pill-count">' + count + '</span></button>';
   }
   h += '</div></div>';
   return h;
@@ -4250,6 +4254,8 @@ async function _downloadSelected(btn) {
   const urls = Array.from(_selectedDownloads.keys());
   const sizes = urls.map(u => _selectedDownloads.get(u) || 0);
   btn.disabled = true;
+  const origLabel = btn.textContent;
+  btn.innerHTML = '<span class="spinner-inline"></span>' + tH('loading');
   try {
     const res = await manageFetch('/manage/download-batch', {
       method: 'POST',
@@ -4261,12 +4267,14 @@ async function _downloadSelected(btn) {
     _showToast(t('downloads_started', {n: data.started || 0}));
     _dlRecentStart = Date.now();
     _clearDownloadSelection();
-    refreshDownloads();
+    // The batch is now the user's focus — take them to it.
+    switchManageTab('downloads');
     if (window._nudgeActivityPoll) window._nudgeActivityPoll();
   } catch (e) {
     _showToast(t('error'));
   } finally {
     btn.disabled = false;
+    btn.textContent = origLabel;
   }
 }
 
@@ -6003,7 +6011,10 @@ async function refreshDownloads() {
       const fmtBytes = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
       const totalStr = dl.total_bytes ? fmtBytes(dl.total_bytes) : '?';
       const dlStr = fmtBytes(dl.downloaded_bytes);
-      const pct = dl.percent || 0;
+      // Total unknown = BT still fetching metadata / finding peers. Show a
+      // sweeping bar + label instead of a lying "0 MB / ? · 0.0 MB/s".
+      const indeterminate = !dl.total_bytes && !dl.queued && !dl.paused;
+      const pct = dl.total_bytes ? (dl.percent || 0) : 0;
       const speed = dl.elapsed > 0 && dl.downloaded_bytes > 0 ? ((dl.downloaded_bytes / 1024 / 1024) / dl.elapsed).toFixed(1) : '0';
 
       h += '<div class="dl-item">';
@@ -6012,13 +6023,16 @@ async function refreshDownloads() {
         h += '<span class="dl-error">' + esc(dl.error) + '</span>';
       } else if (dl.done) {
         h += '<span class="dl-done">\u2713 Complete</span>';
+      } else if (indeterminate) {
+        h += '<span class="dl-size">' + tH('bt_connecting') + '</span>';
       } else {
         h += '<span class="dl-size">' + dlStr + ' / ' + totalStr + ' · ' + speed + ' MB/s</span>';
       }
       h += '</div>';
 
       if (!dl.done && !dl.error) {
-        h += '<div class="dl-progress' + (dl.paused ? ' dl-paused' : '') + '"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>';
+        h += '<div class="dl-progress' + (dl.paused ? ' dl-paused' : '') + (indeterminate ? ' dl-indeterminate' : '') +
+          '"><div class="dl-progress-bar"' + (indeterminate ? '' : ' style="width:' + pct + '%"') + '></div></div>';
         var sourcePill = dl.source === 'bt'
           ? '<span class="dl-source dl-source-bt" title="' + escAttr(t('dl_via_bt_tip')) + '">' +
               tH('dl_via_bt') +

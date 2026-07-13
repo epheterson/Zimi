@@ -166,3 +166,57 @@ def test_mirror_status_reports_lock_state(_prefs, monkeypatch):
     assert status["seed_enabled"] is False
     assert status["seed_env_locked"] is True
     assert status["env_locked"] is False  # mirror env not set
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Two-phase GID (metadata → content) — the bug that installed corrupt ZIMs
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _mk_backend(monkeypatch, responses):
+    """Aria2Backend with a mocked RPC returning per-GID tellStatus dicts."""
+    b = p2p.Aria2Backend.__new__(p2p.Aria2Backend)
+    monkeypatch.setattr(
+        b, "_rpc", lambda method, params: responses[params[0]], raising=False
+    )
+    return b
+
+
+def test_status_follows_metadata_gid_to_content_transfer(monkeypatch):
+    """A .torrent URL's original GID completes the moment the tiny metadata
+    file lands; the content transfer continues under followedBy. status()
+    must report the content transfer — reporting the metadata GID made the
+    caller install a preallocated, mostly-empty staging file."""
+    b = _mk_backend(monkeypatch, {
+        "meta1": {"gid": "meta1", "status": "complete", "followedBy": ["content1"],
+                  "completedLength": "40960", "totalLength": "40960"},
+        "content1": {"gid": "content1", "status": "active",
+                     "completedLength": "1048576", "totalLength": "23000000000",
+                     "downloadSpeed": "9999", "connections": "12"},
+    })
+    st = b.status("meta1")
+    assert st["state"] == "downloading"
+    assert st["gid"] == "content1"          # caller must rebind to this
+    assert st["total_bytes"] == 23000000000  # real totals, not the .torrent's
+
+
+def test_status_reports_complete_only_when_content_done(monkeypatch):
+    b = _mk_backend(monkeypatch, {
+        "meta1": {"gid": "meta1", "status": "complete", "followedBy": ["c1"]},
+        "c1": {"gid": "c1", "status": "complete",
+               "completedLength": "100", "totalLength": "100"},
+    })
+    st = b.status("meta1")
+    assert st["state"] == "complete"
+    assert st["gid"] == "c1"
+
+
+def test_status_plain_download_unchanged(monkeypatch):
+    """Direct downloads (no followedBy) behave exactly as before."""
+    b = _mk_backend(monkeypatch, {
+        "g1": {"gid": "g1", "status": "active",
+               "completedLength": "5", "totalLength": "10"},
+    })
+    st = b.status("g1")
+    assert st["gid"] == "g1"
+    assert st["completed_bytes"] == 5

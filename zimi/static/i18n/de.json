@@ -871,5 +871,6 @@
   "env_controlled": "Gesteuert über die Umgebungsvariable {v}",
   "save_failed": "Speichern fehlgeschlagen",
   "show_installed_covered": "{n} bereits vorhandene anzeigen",
-  "hide_installed_covered": "Bereits vorhandene ausblenden"
+  "hide_installed_covered": "Bereits vorhandene ausblenden",
+  "bt_connecting": "Verbindung zum Schwarm…"
 }

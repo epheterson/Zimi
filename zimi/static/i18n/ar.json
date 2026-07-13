@@ -871,5 +871,6 @@
   "env_controlled": "يتحكم فيه متغير البيئة {v}",
   "save_failed": "تعذّر الحفظ",
   "show_installed_covered": "إظهار {n} لديك بالفعل",
-  "hide_installed_covered": "إخفاء ما لديك بالفعل"
+  "hide_installed_covered": "إخفاء ما لديك بالفعل",
+  "bt_connecting": "جارٍ الاتصال بالسرب…"
 }
