@@ -632,24 +632,41 @@ async function init() {
   _initSecondary();
 }
 
+// Resolves once we know whether the server wants a password. Ambient
+// pollers await this so they never fire an unauthenticated request (a 401
+// resource error in the console) during the bootstrap race.
+let _manageProbe = null;
+
+async function _probeManageAuth() {
+  try {
+    // Public pre-auth endpoint — learns password state without a 401 probe.
+    const hres = await fetch('/manage/has-password');
+    if (!hres.ok) { manageEnabled = false; return; }  // 404 = manage disabled
+    manageEnabled = true;
+    const h = await hres.json();
+    const saved = _readManageToken();
+    if (saved) _manageToken = saved;
+    if (h.has_password && !_manageToken) {
+      _managePwRequired = true;  // protected + not yet authenticated
+      return;
+    }
+    const mres = await authedFetch('/manage/status');
+    if (mres.ok) {
+      const mdata = await mres.json();
+      manageEnabled = !!mdata.manage_enabled;
+    } else if (mres.status === 401) {
+      // Stored token went stale — drop it and require a fresh login.
+      _manageToken = '';
+      _managePwRequired = true;
+    }
+  } catch (e) {}
+}
+
 async function _initSecondary() {
   var needsRerender = false;
+  _manageProbe = _probeManageAuth().then(() => { needsRerender = true; });
   await Promise.allSettled([
-    // Manage status + password check
-    authedFetch('/manage/status').then(async mres => {
-      if (mres.ok) {
-        const mdata = await mres.json();
-        manageEnabled = !!mdata.manage_enabled;
-      } else if (mres.status === 401) {
-        manageEnabled = true;
-        _managePwRequired = true;  // protected + not yet authenticated
-      }
-      needsRerender = true;
-    }).catch(function(){}),
-    Promise.resolve().then(() => {
-      var saved = _readManageToken();
-      if (saved) _manageToken = saved;
-    }),
+    _manageProbe,
     // Collections/favorites
     fetch('/collections').then(async cres => {
       if (cres.ok) { collectionsCache = await cres.json(); needsRerender = true; }
@@ -3282,7 +3299,9 @@ async function _loadPeerData() {
   if (Date.now() - _peersLoadedAt < PEER_LIST_REFRESH_MS && _peersLoadedAt > 0) {
     return false;
   }
-  // Skip peer discovery on a protected server until the operator is logged in.
+  // Skip peer discovery on a protected server until the operator is logged
+  // in (await the bootstrap probe — early callers race it on page load).
+  if (_manageProbe) { try { await _manageProbe; } catch (e) {} }
   if (!_canPollManage()) return false;
   let peers = [];
   try {
@@ -7712,7 +7731,9 @@ function _scheduleNextActivityPoll(idle) {
 }
 
 async function _pollActivity() {
-  // On a password-protected server, don't poll (and 401-spam) until logged in.
+  // On a password-protected server, don't poll (and 401-spam) until logged
+  // in. Await the bootstrap probe first — on load this poller races it.
+  if (_manageProbe) { try { await _manageProbe; } catch (e) {} }
   if (!_canPollManage()) { _scheduleNextActivityPoll(true); return; }
   try {
     const res = await authedFetch('/manage/activity', { credentials: 'same-origin' });
