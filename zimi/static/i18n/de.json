@@ -872,5 +872,8 @@
   "save_failed": "Speichern fehlgeschlagen",
   "show_installed_covered": "{n} bereits vorhandene anzeigen",
   "hide_installed_covered": "Bereits vorhandene ausblenden",
-  "bt_connecting": "Verbindung zum Schwarm…"
+  "bt_connecting": "Verbindung zum Schwarm…",
+  "seeding_tab": "Seeding",
+  "n_peers": "{n} Peers",
+  "seed_ratio": "Ratio {r}×"
 }

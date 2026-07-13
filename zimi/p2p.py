@@ -514,6 +514,13 @@ class Aria2Backend(BTBackend):
         while raw.get("status") == "complete" and raw.get("followedBy") and depth < 4:
             raw = self._rpc("aria2.tellStatus", [raw["followedBy"][0]])
             depth += 1
+        # aria2 keeps a finished torrent 'active' while it seeds — the
+        # download itself is done. Report 'complete' so the caller installs
+        # the file instead of waiting out the seed ratio; seeding continues
+        # inside aria2 either way.
+        raw_state = raw.get("status", "")
+        if raw_state == "active" and raw.get("seeder") in ("true", True):
+            raw_state = "complete"
         state_map = {
             "active": "downloading",
             "waiting": "waiting",
@@ -525,7 +532,7 @@ class Aria2Backend(BTBackend):
         completed = int(raw.get("completedLength", 0))
         total = int(raw.get("totalLength", 0))
         return {
-            "state": state_map.get(raw.get("status", ""), "unknown"),
+            "state": state_map.get(raw_state, "unknown"),
             # Callers must rebind to this GID — pause/cancel/remove on the
             # original metadata GID would not touch the content transfer.
             "gid": raw.get("gid", tid),

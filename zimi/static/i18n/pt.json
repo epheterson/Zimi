@@ -872,5 +872,8 @@
   "save_failed": "Não foi possível salvar",
   "show_installed_covered": "Mostrar {n} que você já tem",
   "hide_installed_covered": "Ocultar os que você já tem",
-  "bt_connecting": "Conectando ao enxame…"
+  "bt_connecting": "Conectando ao enxame…",
+  "seeding_tab": "Semeando",
+  "n_peers": "{n} pares",
+  "seed_ratio": "proporção {r}×"
 }

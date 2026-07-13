@@ -490,7 +490,8 @@ def handle_manage_get(handler, parsed, params):
                     "totals": {"uploaded": 0, "downloaded": 0, "ratio": 0.0},
                 },
             )
-        backend = p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+        # peek only — a list view must not spawn (or retry) the sidecar
+        backend = p2p.peek_backend()
         if not backend:
             return handler._json(
                 200,
@@ -499,7 +500,6 @@ def handle_manage_get(handler, parsed, params):
                     "ratio_cap": p2p.get_seed_ratio_cap(),
                     "torrents": [],
                     "totals": {"uploaded": 0, "downloaded": 0, "ratio": 0.0},
-                    "warning": "Seeding enabled but backend unavailable.",
                 },
             )
         torrents = []

@@ -872,5 +872,8 @@
   "save_failed": "Не удалось сохранить",
   "show_installed_covered": "Показать {n} уже имеющихся",
   "hide_installed_covered": "Скрыть уже имеющиеся",
-  "bt_connecting": "Подключение к рою…"
+  "bt_connecting": "Подключение к рою…",
+  "seeding_tab": "Раздача",
+  "n_peers": "{n} пиров",
+  "seed_ratio": "рейтинг {r}×"
 }

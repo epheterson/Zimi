@@ -220,3 +220,15 @@ def test_status_plain_download_unchanged(monkeypatch):
     st = b.status("g1")
     assert st["gid"] == "g1"
     assert st["completed_bytes"] == 5
+
+
+def test_status_seeding_torrent_reports_complete(monkeypatch):
+    """aria2 keeps a finished torrent 'active' while seeding — the download
+    itself is done and must report complete, or the UI sits at 100% until
+    the seed ratio caps."""
+    b = _mk_backend(monkeypatch, {
+        "g1": {"gid": "g1", "status": "active", "seeder": "true",
+               "completedLength": "100", "totalLength": "100"},
+    })
+    st = b.status("g1")
+    assert st["state"] == "complete"

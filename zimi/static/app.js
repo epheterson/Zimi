@@ -4002,7 +4002,7 @@ function formatSize(bytes) {
 }
 
 // Bold download arrow for catalog buttons — the ↓ glyph reads too thin.
-const _DL_ARROW_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px"><path d="M12 4v13M6 11l6 6 6-6"/></svg> ';
+const _DL_ARROW_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v13M6 11l6 6 6-6"/></svg>';
 
 // Installed and covered-by-an-installed-bundle rows are noise when browsing
 // for something new — collapse them behind a count button at the list end.
@@ -5955,10 +5955,21 @@ async function refreshDownloads() {
   const dlEl = document.getElementById('manage-downloads');
   if (!dlEl) return;
   try {
-    const res = await manageFetch('/manage/downloads');
+    const [res, seedRes] = await Promise.all([
+      manageFetch('/manage/downloads'),
+      authedFetch('/manage/seeding').catch(() => null),
+    ]);
     const data = await res.json();
     const dls = data.downloads || [];
-    if (!dls.length) {
+    let seedingTorrents = [], seedingCap = 2;
+    if (seedRes && seedRes.ok) {
+      try {
+        const sd = await seedRes.json();
+        seedingTorrents = (sd.torrents || []).filter(t => t.completed_bytes > 0);
+        seedingCap = sd.ratio_cap || 2;
+      } catch (e) {}
+    }
+    if (!dls.length && !seedingTorrents.length) {
       // Grace period: keep polling fast for 10s after a download was started
       // (server may not have registered it yet)
       if (_dlRecentStart && Date.now() - _dlRecentStart < 10000) {
@@ -5988,6 +5999,7 @@ async function refreshDownloads() {
     const visibleDls = (filter === 'queued') ? queuedDls
       : (filter === 'downloading') ? downloadingDls
       : (filter === 'completed') ? completedDls
+      : (filter === 'seeding') ? []
       : downloadingDls.concat(queuedDls).concat(completedDls);
     let h = '<div class="manage-card"><h2>' + tH('downloads') + '</h2>';
     if (allDone) {
@@ -6004,8 +6016,23 @@ async function refreshDownloads() {
       pill('downloading', tH('downloads_active'), downloadingDls.length) +
       pill('queued', tH('downloads_queued'), queuedDls.length) +
       pill('completed', tH('downloads_completed'), completedDls.length) +
+      (seedingTorrents.length ? pill('seeding', tH('seeding_tab'), seedingTorrents.length) : '') +
     '</div>';
     h += '<div class="dl-grid">';
+    if (filter === 'seeding') {
+      const fmtUp = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
+      for (const sd of seedingTorrents) {
+        const sName = (sd.filename || '').replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '').replace(/_/g, ' ');
+        const upSpeed = sd.up_speed > 1024 ? ' · ↑ ' + (sd.up_speed / (1024 * 1024)).toFixed(1) + ' MB/s' : '';
+        h += '<div class="dl-item">' +
+          '<div class="dl-row"><span class="dl-name">' + esc(sName) + '</span>' +
+          '<span class="dl-size">↑ ' + fmtUp(sd.uploaded_bytes) + ' · ' + tH('seed_ratio', {r: (sd.ratio || 0).toFixed(2)}) +
+            (sd.peers > 0 ? ' · ' + tH('n_peers', {n: sd.peers}) : '') + upSpeed + '</span></div>' +
+          '<div class="dl-progress"><div class="dl-progress-bar" style="width:' + Math.min(100, Math.round(((sd.ratio || 0) / seedingCap) * 100)) + '%"></div></div>' +
+          '</div>';
+      }
+      if (!seedingTorrents.length) h += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
+    }
     for (const dl of visibleDls) {
       const title = dlTitle(dl);
       const fmtBytes = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
@@ -6026,7 +6053,7 @@ async function refreshDownloads() {
       } else if (indeterminate) {
         h += '<span class="dl-size">' + tH('bt_connecting') + '</span>';
       } else {
-        h += '<span class="dl-size">' + dlStr + ' / ' + totalStr + ' · ' + speed + ' MB/s</span>';
+        h += '<span class="dl-size">' + dlStr + ' / ' + totalStr + ' · ' + Math.round(pct) + '% · ' + speed + ' MB/s</span>';
       }
       h += '</div>';
 
@@ -6036,10 +6063,12 @@ async function refreshDownloads() {
         var sourcePill = dl.source === 'bt'
           ? '<span class="dl-source dl-source-bt" title="' + escAttr(t('dl_via_bt_tip')) + '">' +
               tH('dl_via_bt') +
-              (dl.bt_peers > 0 ? ' · ' + dl.bt_peers + 'p' : '') +
+              (dl.bt_peers > 0 ? ' · ' + tH('n_peers', {n: dl.bt_peers}) : '') +
             '</span>'
           : '';
-        var mirrorInfo = dl.mirror_host ? '<span class="dl-mirror" title="' + esc(dl.mirror_host) + '">' + esc(dl.mirror_host) + (dl.mirror_count > 1 ? ' (' + tH('n_mirrors', {n: dl.mirror_count}) + ')' : '') + '</span>' : '';
+        // Mirror info describes the HTTP path — on a BT transfer it reads as
+        // nonsense next to the peer count, so show one or the other.
+        var mirrorInfo = (dl.source !== 'bt' && dl.mirror_host) ? '<span class="dl-mirror" title="' + esc(dl.mirror_host) + '">' + esc(dl.mirror_host) + (dl.mirror_count > 1 ? ' (' + tH('n_mirrors', {n: dl.mirror_count}) + ')' : '') + '</span>' : '';
         var pauseBtn = dl.queued ? '' :
           '<button class="dl-pause-btn" onclick="pauseDownload(\'' + escAttr(dl.id) + '\',' + (dl.paused ? 'false' : 'true') + ')">' +
             (dl.paused ? tH('resume') : tH('pause')) + '</button>';

@@ -872,5 +872,8 @@
   "save_failed": "No se pudo guardar",
   "show_installed_covered": "Mostrar {n} que ya tienes",
   "hide_installed_covered": "Ocultar los que ya tienes",
-  "bt_connecting": "Conectando al enjambre…"
+  "bt_connecting": "Conectando al enjambre…",
+  "seeding_tab": "Sembrando",
+  "n_peers": "{n} pares",
+  "seed_ratio": "ratio {r}×"
 }

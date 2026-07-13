@@ -872,5 +872,8 @@
   "save_failed": "تعذّر الحفظ",
   "show_installed_covered": "إظهار {n} لديك بالفعل",
   "hide_installed_covered": "إخفاء ما لديك بالفعل",
-  "bt_connecting": "جارٍ الاتصال بالسرب…"
+  "bt_connecting": "جارٍ الاتصال بالسرب…",
+  "seeding_tab": "البذر",
+  "n_peers": "{n} أقران",
+  "seed_ratio": "النسبة {r}×"
 }

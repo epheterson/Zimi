@@ -538,10 +538,10 @@
   .catalog-grid .catalog-item .ci-hier,
   .catalog-grid .catalog-item .ci-peer { margin-top: 2px; }
   /* Batch checkbox pins to the card's top-right corner (out of the title
-     flow). 18px control + generous padding = a comfortable touch target. */
+     flow). Modest 15px control, but padded to a ~35px touch target. */
   .catalog-grid .catalog-item .ci-select {
-    position: absolute; top: 6px; right: 6px; margin: 0;
-    width: 18px; height: 18px; padding: 8px; box-sizing: content-box;
+    position: absolute; top: 4px; right: 4px; margin: 0;
+    width: 15px; height: 15px; padding: 10px; box-sizing: content-box;
     cursor: pointer;
   }
   .catalog-item {
@@ -581,7 +581,7 @@
   .ci-update-btn:hover { background: var(--amber); }
   .ci-has-update { border-color: var(--amber-border); }
   .ci-add-btn {
-    padding: 6px 14px; font-size: 12px; font-weight: 500; cursor: pointer;
+    padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
     background: var(--surface2); color: var(--text); border: 1px solid var(--border);
     border-radius: var(--radius); transition: all 0.2s;
     /* Centers the inline SVG download arrow with the label text */
@@ -677,9 +677,10 @@
   @media (prefers-reduced-motion: reduce) {
     .dl-progress.dl-indeterminate .dl-progress-bar { animation: none; width: 100%; opacity: 0.35; }
   }
+  /* Same shape as .dl-pause-btn — one button family per card */
   .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);
-    font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer;
-    min-height: 24px; }
+    font-size: 11px; padding: 4px 12px; border-radius: 12px; cursor: pointer;
+    transition: all 0.15s; min-height: 24px; }
   .dl-cancel-btn:hover { border-color: var(--error); color: var(--error); }
   .dl-retry-btn:hover { border-color: var(--amber); color: var(--amber); }
   .dl-mirror { font-size: 11px; color: var(--text2); flex: 1; }

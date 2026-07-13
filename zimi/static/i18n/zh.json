@@ -872,5 +872,8 @@
   "save_failed": "保存失败",
   "show_installed_covered": "显示 {n} 个已拥有的",
   "hide_installed_covered": "隐藏已拥有的",
-  "bt_connecting": "正在连接节点…"
+  "bt_connecting": "正在连接节点…",
+  "seeding_tab": "做种中",
+  "n_peers": "{n} 个节点",
+  "seed_ratio": "分享率 {r}×"
 }

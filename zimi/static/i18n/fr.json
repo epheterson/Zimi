@@ -872,5 +872,8 @@
   "save_failed": "Échec de l'enregistrement",
   "show_installed_covered": "Afficher {n} déjà possédés",
   "hide_installed_covered": "Masquer ceux que vous avez déjà",
-  "bt_connecting": "Connexion à l'essaim…"
+  "bt_connecting": "Connexion à l'essaim…",
+  "seeding_tab": "Partage",
+  "n_peers": "{n} pairs",
+  "seed_ratio": "ratio {r}×"
 }

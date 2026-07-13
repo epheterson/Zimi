@@ -872,5 +872,8 @@
   "save_failed": "सहेजा नहीं जा सका",
   "show_installed_covered": "{n} जो आपके पास पहले से हैं दिखाएं",
   "hide_installed_covered": "जो पहले से हैं उन्हें छिपाएं",
-  "bt_connecting": "स्वार्म से जुड़ रहा है…"
+  "bt_connecting": "स्वार्म से जुड़ रहा है…",
+  "seeding_tab": "सीडिंग",
+  "n_peers": "{n} पीयर",
+  "seed_ratio": "अनुपात {r}×"
 }
