@@ -5936,6 +5936,7 @@ function dlTitle(dl) {
 }
 
 let _dlPrevAllDone = true; // track when downloads finish to trigger refresh
+let _dlPrevCompletedCount = 0; // per-download completion → refresh library list
 let _dlRecentStart = 0;   // timestamp of last download start (grace period for server lag)
 
 function _updateDownloadsTabBadge(activeCount) {
@@ -6001,6 +6002,18 @@ async function refreshDownloads() {
       : (filter === 'completed') ? completedDls
       : (filter === 'seeding') ? []
       : downloadingDls.concat(queuedDls).concat(completedDls);
+    // A download finished while others still run — refresh the library
+    // list NOW so the new ZIM is browsable without waiting for the batch.
+    // (The heavier status/updates refresh still runs on the final one.)
+    if (completedDls.length > _dlPrevCompletedCount && !allDone) {
+      try {
+        const lr = await fetch('/list');
+        zimsCache = await lr.json();
+        _rebuildZimsMap();
+        if (_catalogCache) _enrichCatalogInstalled(_catalogCache);
+      } catch (e) {}
+    }
+    _dlPrevCompletedCount = completedDls.length;
     let h = '<div class="manage-card"><h2>' + tH('downloads') + '</h2>';
     if (allDone) {
       h += '<button class="dl-clear-btn" onclick="clearDownloads()">' + tH('clear') + '</button>';
