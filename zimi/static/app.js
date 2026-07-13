@@ -3300,8 +3300,10 @@ async function _loadPeerData() {
     return false;
   }
   // Skip peer discovery on a protected server until the operator is logged
-  // in (await the bootstrap probe — early callers race it on page load).
-  if (_manageProbe) { try { await _manageProbe; } catch (e) {} }
+  // in. Callers retry periodically, so before the bootstrap auth probe
+  // exists just decline — never fetch unprobed.
+  if (!_manageProbe) return false;
+  try { await _manageProbe; } catch (e) {}
   if (!_canPollManage()) return false;
   let peers = [];
   try {
@@ -7732,8 +7734,10 @@ function _scheduleNextActivityPoll(idle) {
 
 async function _pollActivity() {
   // On a password-protected server, don't poll (and 401-spam) until logged
-  // in. Await the bootstrap probe first — on load this poller races it.
-  if (_manageProbe) { try { await _manageProbe; } catch (e) {} }
+  // in. The 'load' event can fire before init() reaches _initSecondary(),
+  // so when the probe doesn't exist yet, defer — never fetch unprobed.
+  if (!_manageProbe) { _scheduleNextActivityPoll(false); return; }
+  try { await _manageProbe; } catch (e) {}
   if (!_canPollManage()) { _scheduleNextActivityPoll(true); return; }
   try {
     const res = await authedFetch('/manage/activity', { credentials: 'same-origin' });

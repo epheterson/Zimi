@@ -1,5 +1,7 @@
 // Zimi Service Worker
-const CACHE_VERSION = 'zimi-v1.6.1';
+// Must match the served zimi version — checkVersion() unregisters this
+// worker when the server reports anything else. Bump on every release.
+const CACHE_VERSION = 'zimi-v1.7.0';
 const PRECACHE_URLS = ['/', '/favicon.png', '/apple-touch-icon.png'];
 
 const OFFLINE_HTML = `<!DOCTYPE html>
