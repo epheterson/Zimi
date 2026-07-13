@@ -51,6 +51,10 @@ def test_success_path_renames_to_dest(tmp_path, monkeypatch):
     staging_path = tmp_path / "staging" / dl["filename"]
     staging_path.parent.mkdir()
     staging_path.write_bytes(b"fake zim content")
+    # The completion guard libzim-validates the staged file before install;
+    # this test's stub isn't a real ZIM, so validation is mocked out. The
+    # guard itself is covered by test_complete_with_invalid_staged_file.
+    monkeypatch.setattr(library._srv, "open_archive", lambda path: object())
     backend = _mk_backend(
         status_sequence=[
             {
@@ -245,3 +249,72 @@ def test_add_failure_falls_back_cleanly(tmp_path):
         no_peers_timeout=10.0,
     )
     assert result == "fallback"
+
+
+def test_complete_with_invalid_staged_file(tmp_path, monkeypatch):
+    """A staged file that fails libzim validation must NEVER be installed —
+    fall back to HTTP instead. (The two-phase GID bug installed full-size
+    preallocated garbage exactly this way before release.)"""
+    name = "wikipedia_en_top_2026-02.zim"
+    dl = _mk_dl(tmp_path, name)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / name).write_bytes(b"\x00" * 4096)  # preallocated garbage
+    backend = _mk_backend(
+        status_sequence=[
+            {
+                "state": "complete",
+                "completed_bytes": 4096,
+                "total_bytes": 4096,
+                "down_speed": 0,
+                "up_speed": 0,
+                "peers": 0,
+                "info_hash": "abc",
+            },
+        ]
+    )
+    result = library._try_bt_download(
+        backend,
+        dl,
+        torrent_url="https://download.kiwix.org/zim/wikipedia/foo.zim.torrent",
+        staging_dir=str(staging),
+        poll_interval=0.001,
+        no_peers_timeout=10.0,
+    )
+    assert result == "fallback"
+    assert not os.path.exists(dl["dest"])  # garbage never installed
+
+
+def test_complete_with_aria2_control_file_falls_back(tmp_path, monkeypatch):
+    """A .aria2 control file beside the staged download means the transfer
+    is unfinished — 'complete' belongs to some other GID. Never install."""
+    name = "wikipedia_en_top_2026-02.zim"
+    dl = _mk_dl(tmp_path, name)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / name).write_bytes(b"partial")
+    (staging / (name + ".aria2")).write_bytes(b"ctl")
+    monkeypatch.setattr(library._srv, "open_archive", lambda path: object())
+    backend = _mk_backend(
+        status_sequence=[
+            {
+                "state": "complete",
+                "completed_bytes": 7,
+                "total_bytes": 7,
+                "down_speed": 0,
+                "up_speed": 0,
+                "peers": 0,
+                "info_hash": "abc",
+            },
+        ]
+    )
+    result = library._try_bt_download(
+        backend,
+        dl,
+        torrent_url="https://download.kiwix.org/zim/wikipedia/foo.zim.torrent",
+        staging_dir=str(staging),
+        poll_interval=0.001,
+        no_peers_timeout=10.0,
+    )
+    assert result == "fallback"
+    assert not os.path.exists(dl["dest"])
