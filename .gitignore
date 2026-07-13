@@ -31,10 +31,14 @@ package-lock.json
 test-results/
 tmp/
 
-# Root-level dev screenshots (don't block images elsewhere)
+# Root-level dev screenshots / QA artifacts (don't block images elsewhere)
 /*.png
 /*.jpg
+/*.jpeg
+/*.yml
+!/docker-compose*.yml
 ui-review/
+.playwright-mcp/
 
 # Working docs (not shipped)
 PLAN.md
