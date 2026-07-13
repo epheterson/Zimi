@@ -1762,9 +1762,10 @@ function _tzUtcOffsetMin(tz, now) {
 }
 
 // Best _TZ_CITIES match for an arbitrary lat/lon. No offline tz database, so
-// approximate: compare each city's current UTC offset against the location's
-// solar offset (lon/15 h), tie-breaking by angular distance. Offset dominates
-// (minutes, 0–720) over distance (degrees × 0.5, 0–90) by design.
+// approximate: geographic distance dominates (same-region cities usually
+// share a zone, DST included), with the gap between the city's civil offset
+// and the location's solar offset (lon/15 h) as a mild tie-break — 1 h of
+// offset mismatch costs the same as 1° of distance.
 function _almTzForLocation(lat, lon) {
   var now = new Date();
   var solarOffMin = (lon / 15) * 60;
@@ -1775,7 +1776,7 @@ function _almTzForLocation(lat, lon) {
     var dlat = lat - _TZ_CITIES[i].lat;
     var dlon = (lon - _TZ_CITIES[i].lon) * Math.cos(lat * DEG_TO_RAD);
     var distDeg = Math.sqrt(dlat * dlat + dlon * dlon);
-    var score = Math.abs(offMin - solarOffMin) + distDeg * 0.5;
+    var score = distDeg + Math.abs(offMin - solarOffMin) / 60;
     if (score < bestScore) { bestScore = score; best = _TZ_CITIES[i].tz; }
   }
   return best;

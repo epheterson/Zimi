@@ -276,10 +276,6 @@ if os.path.isdir(_STATIC_DIR):
         fname = m.group(1)
         return f"/static/{fname}?v={_static_hash(fname)}"
 
-    SEARCH_UI_HTML = re.sub(
-        r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, SEARCH_UI_HTML
-    )
-
     # Same rewrite for inline ?v=N refs inside app.js (e.g. almanac.js loader).
     # Cached in memory so we don't write to a possibly-read-only filesystem;
     # the static-asset handler serves APP_JS_REWRITTEN when set.
@@ -293,6 +289,25 @@ if os.path.isdir(_STATIC_DIR):
         )
         if _rewritten != _app_js_src:
             APP_JS_REWRITTEN = _rewritten
+
+            # app.js must be versioned by what we actually SERVE (the
+            # rewritten text), not the on-disk source. Otherwise a deploy
+            # that only changes a lazy-loaded asset (e.g. almanac.js) keeps
+            # app.js's URL identical while its embedded asset hash changed —
+            # immutable-cached clients would never see the new asset.
+            _app_js_served_hash = hashlib.md5(APP_JS_REWRITTEN.encode()).hexdigest()[:8]
+            _orig_static_hash = _static_hash
+
+            def _static_hash(fname):
+                if fname == "app.js":
+                    return _app_js_served_hash
+                return _orig_static_hash(fname)
+
+    # index.html references app.js — rewrite AFTER the served-hash override
+    # above so app.js's URL reflects the rewritten content.
+    SEARCH_UI_HTML = re.sub(
+        r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, SEARCH_UI_HTML
+    )
     # Inject build config into inline script so app.js can read versioned values.
     # Template has: var __ZIMI_CONFIG = {discoverStamp:'disc6',i18nHash:'0'};
     _build_stamp = _static_hash("app.js")[:6]
