@@ -7,12 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.7.0] — 2026-07-12
+## [1.7.0] — 2026-07-13
 
 The "Reach + Pro" release. Addresses issue #15 (the warlordattack feedback set
 covering UX at 1000+ ZIM scale) and issue #16 (Wikipedia maxi auto-updating to
 mini). Also lays groundwork for the Reach track (P2P/torrent + accessibility,
 plan docs in `docs/plans/`).
+
+### Release-candidate QA pass (2026-07-13)
+
+- **Seeding controls**: "Seed while downloading" and "Mirror mode" are now
+  real toggles in Server Settings, persisted server-side; an explicitly-set
+  `ZIMI_SEED`/`ZIMI_MIRROR` env var wins and locks its toggle. Previously
+  the UI told desktop users to set an env var.
+- **Catalog polish**: denser cards, batch-select checkbox moved to the card
+  corner, the batch-download bar hides outside the Catalog tab (selection
+  kept), thumbnail failures fall back to letter icons, hierarchy copy
+  humanized ("Most complete edition"), size-range tooltip.
+- **Almanac**: clicking the sun map (or searching a city / using GPS) now
+  syncs the highlighted timezone city to the new location.
+- **Fixed**: `app.js` cache-busting hash now reflects the served (rewritten)
+  content, so deploys that change only lazy-loaded assets propagate to
+  immutable-cached clients; service worker version bumped (a stale constant
+  made it unregister itself against a 1.7.0 server, disabling the PWA
+  shell); anonymous loads of password-protected servers no longer log 401
+  console errors; language-agnostic ZIMs no longer show an "ALL" badge.
 
 ### LAN peer ZIM sharing (Reach)
 
