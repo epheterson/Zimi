@@ -88,7 +88,6 @@ services:
       - ./zims:/zims             # ZIM files go here
       - ./zimi-config:/config    # cache, indexes, settings
     environment:
-      - ZIMI_TORRENT=1           # opt in to BT-first downloads + seeding
 ```
 </details>
 
@@ -109,7 +108,6 @@ services:
       - ./zims:/zims
       - ./zimi-config:/config
     environment:
-      - ZIMI_TORRENT=1
 ```
 
 LAN peer discovery (`_zimi._tcp`) won't reach the LAN in bridge mode — multicast doesn't cross the docker bridge. BT seeding still works because aria2 binds the mapped port. See [docs/deployment-networking.md](docs/deployment-networking.md) for the full discussion.
@@ -133,7 +131,7 @@ ZIM_DIR=./zims zimi serve --port 8899
 | `ZIMI_AUTO_UPDATE` | `0` | Auto-update ZIMs (`1` to enable) |
 | `ZIMI_UPDATE_FREQ` | `weekly` | `daily`, `weekly`, or `monthly` |
 | `ZIMI_RATE_LIMIT` | `60` | Requests/min/IP. `0` to disable. |
-| `ZIMI_TORRENT` | `0` | Enable bundled aria2 sidecar for BT-first downloads + seeding. `1` to enable. |
+| `ZIMI_TORRENT` | `1` | BT-first downloads + seeding via the aria2 sidecar (falls back to HTTP when aria2 is missing). `0` to opt out. |
 | `ZIMI_BT_PORT` | `6881` | BitTorrent listen port (TCP+UDP). |
 | `ZIMI_SEED` | `1` | Seed completed ZIMs back to the swarm. `0` disables seeding. |
 | `ZIMI_SEED_RATIO` | `2.0` | Stop seeding once ratio (uploaded ÷ downloaded) reaches this. |

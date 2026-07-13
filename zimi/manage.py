@@ -345,7 +345,8 @@ def handle_manage_get(handler, parsed, params):
             from zimi import p2p as _p2p
 
             if _p2p.is_torrent_enabled():
-                backend = _p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+                # peek only — a 5s poll must never spawn (or retry) the sidecar
+                backend = _p2p.peek_backend()
                 if backend:
                     seeding_count = sum(
                         1
@@ -572,25 +573,28 @@ def handle_manage_get(handler, parsed, params):
             bool(_shutil.which("aria2c")) if backend_name == "aria2" else None
         )
 
-        # Live state — only call get_backend if BT is actually enabled.
-        # Don't accidentally trigger sidecar startup from a status check.
-        backend = None
-        if enabled:
-            try:
-                backend = p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
-            except Exception as e:
-                log.warning("bt-status: backend init failed: %s", e)
+        # Live state — peek only. A status view must never spawn the sidecar
+        # (with BT on by default that would mean every settings visit).
+        backend = p2p.peek_backend() if enabled else None
 
-        status = "off" if not enabled else "ready" if backend else "unavailable"
+        if not enabled:
+            status = "off"
+        elif backend is not None:
+            status = "ready"
+        elif binary_present is False:
+            status = "unavailable"
+        else:
+            # Binary present, sidecar just not started yet — it spawns at
+            # boot or on first download, so report ready-to-torrent.
+            status = "ready"
         hint = None
         if not enabled:
-            hint = "Set ZIMI_TORRENT=1 to enable. HTTP downloads work without it."
-        elif backend_name == "aria2" and binary_present is False:
+            hint = "BT downloads disabled (ZIMI_TORRENT=0). HTTP is used instead."
+        elif status == "unavailable":
             hint = (
-                "aria2c not found in PATH. Install it or use the bundled Docker image."
+                "aria2c not found — downloads fall back to HTTP. "
+                "Install aria2 to torrent and share load with the Kiwix mirrors."
             )
-        elif not backend:
-            hint = "Backend failed to start; check logs. Falling back to HTTP."
 
         return handler._json(
             200,

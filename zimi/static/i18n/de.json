@@ -869,5 +869,7 @@
   "mirror_toggle_label": "Mirror-Modus",
   "mirror_toggle_hint": "Downloads unbegrenzt seeden — ohne Ratio-Limit und mit höherer Upload-Bandbreite, um Kiwix-Inhalte zu verteilen.",
   "env_controlled": "Gesteuert über die Umgebungsvariable {v}",
-  "save_failed": "Speichern fehlgeschlagen"
+  "save_failed": "Speichern fehlgeschlagen",
+  "show_installed_covered": "{n} installierte & abgedeckte anzeigen",
+  "hide_installed_covered": "Installierte & abgedeckte ausblenden"
 }

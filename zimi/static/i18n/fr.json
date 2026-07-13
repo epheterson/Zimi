@@ -869,5 +869,7 @@
   "mirror_toggle_label": "Mode miroir",
   "mirror_toggle_hint": "Partage vos téléchargements indéfiniment — sans limite de ratio et avec plus de bande passante montante, pour aider à distribuer le contenu Kiwix.",
   "env_controlled": "Contrôlé par la variable d'environnement {v}",
-  "save_failed": "Échec de l'enregistrement"
+  "save_failed": "Échec de l'enregistrement",
+  "show_installed_covered": "Afficher {n} installés et couverts",
+  "hide_installed_covered": "Masquer les installés et couverts"
 }

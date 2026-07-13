@@ -7,13 +7,12 @@ Two backends share the same interface:
     QBittorrentBackend — talks to an existing qBittorrent instance
     TransmissionBackend, DelugeBackend — TBD, same interface
 
-Selected via ZIMI_BT_BACKEND env var; default 'aria2'. Always optional
-behind ZIMI_TORRENT — when unset, BT is off and the existing HTTP
-download path runs unchanged.
+Selected via ZIMI_BT_BACKEND env var; default 'aria2'. BT-first
+downloads are ON by default so the install base shares distribution
+load with the Kiwix mirrors; ZIMI_TORRENT=0 opts out entirely.
 
 Smart defaults: if aria2c isn't on PATH, we log + skip silently rather
-than crashing. The HTTP path keeps working. User explicitly enables BT
-once they've verified the binary is available.
+than crashing. The HTTP path keeps working unchanged.
 """
 
 from __future__ import annotations
@@ -102,8 +101,10 @@ def _env_explicitly_set(key: str) -> bool:
 
 
 def is_torrent_enabled() -> bool:
-    """ZIMI_TORRENT=1 turns BT on. Off by default during initial rollout."""
-    return _bool_env("ZIMI_TORRENT")
+    """BT-first downloads are ON by default (v1.7.0) — every Zimi that can
+    torrent takes load off the Kiwix mirrors. ZIMI_TORRENT=0 opts out.
+    Installs without aria2c silently use HTTP; nothing breaks."""
+    return _bool_env("ZIMI_TORRENT", default=True)
 
 
 def get_bt_port() -> int:
@@ -588,6 +589,17 @@ def get_backend(*, data_dir: str) -> BTBackend | None:
         log.info("BT backend %r ready on port %d (staging=%s)", name, bt_port, staging)
         _backend_singleton = backend
         return backend
+
+
+def peek_backend() -> "BTBackend | None":
+    """Return the already-running backend, or None — never starts one.
+
+    Status views and ambient polls must use this instead of get_backend():
+    with BT on by default, get_backend() would spawn the sidecar (or retry
+    a missing binary) on every poll tick.
+    """
+    with _backend_lock:
+        return _backend_singleton
 
 
 def shutdown_backend() -> None:

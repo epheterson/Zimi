@@ -49,7 +49,10 @@
 
 <div id="history-panel" class="history-panel"></div>
 
-<div id="pw-overlay" class="pw-overlay" role="dialog" aria-modal="true" aria-labelledby="pw-title" onclick="if(event.target===this)closePwModal()">
+<!-- No backdrop-click dismiss: closing cancels login and bounces to home,
+     and on a zoomed-in phone almost every stray tap lands on the backdrop.
+     Cancel and Esc remain the explicit ways out. -->
+<div id="pw-overlay" class="pw-overlay" role="dialog" aria-modal="true" aria-labelledby="pw-title">
   <form class="pw-box" onsubmit="event.preventDefault();submitPw()" autocomplete="off">
     <h3 id="pw-title" data-i18n="enter_password">Enter password</h3>
     <input style="display:none" type="text" name="fakeuser" tabindex="-1" autocomplete="off">

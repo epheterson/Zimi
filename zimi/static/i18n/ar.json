@@ -869,5 +869,7 @@
   "mirror_toggle_label": "وضع المرآة",
   "mirror_toggle_hint": "ابذر تنزيلاتك إلى أجل غير مسمى — دون حد للنسبة ومع نطاق رفع أعلى، للمساعدة في توزيع محتوى Kiwix.",
   "env_controlled": "يتحكم فيه متغير البيئة {v}",
-  "save_failed": "تعذّر الحفظ"
+  "save_failed": "تعذّر الحفظ",
+  "show_installed_covered": "إظهار {n} مثبتة ومشمولة",
+  "hide_installed_covered": "إخفاء المثبتة والمشمولة"
 }

@@ -14,6 +14,18 @@ covering UX at 1000+ ZIM scale) and issue #16 (Wikipedia maxi auto-updating to
 mini). Also lays groundwork for the Reach track (P2P/torrent + accessibility,
 plan docs in `docs/plans/`).
 
+### BitTorrent-first by default (2026-07-13)
+
+- **Changed**: BT-first downloads are now ON by default — every Zimi that
+  can torrent shares distribution load with the Kiwix mirrors instead of
+  adding to it. Installs without `aria2c` fall back to plain HTTP
+  automatically; `ZIMI_TORRENT=0` opts out. Completed downloads keep
+  seeding to a 2× ratio cap (UI toggle, `ZIMI_SEED` env override).
+- Status views and the activity poll now *peek* at the BT sidecar instead
+  of lazily starting (or retry-spawning) it every tick.
+- Desktop app does not yet bundle aria2 — planned for v1.7.1; until then
+  desktop/pip users get BT by installing aria2 (`brew install aria2`).
+
 ### Release-candidate QA pass (2026-07-13)
 
 - **Seeding controls**: "Seed while downloading" and "Mirror mode" are now

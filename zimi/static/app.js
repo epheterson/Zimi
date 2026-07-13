@@ -3162,6 +3162,8 @@ function _catLangTag(langStr, itemName) {
   if (!langStr) return '';
   var codes = langStr.toLowerCase().split(',').map(c => c.trim()).filter(Boolean);
   if (codes.length === 0 || (codes.length === 1 && (codes[0] === 'en' || codes[0] === 'eng'))) return '';
+  // 'all' = language-agnostic content — an "ALL" tag conveys nothing.
+  if (codes.length === 1 && codes[0] === 'all') return '';
   // For multilingual items (TED, etc.), try to extract actual language from name
   if (codes.length > 1 || codes[0] === 'mul') {
     var nameLang = _langFromName(itemName);
@@ -3900,9 +3902,7 @@ function drillCategory(catKey, namePrefix) {
     '</div>';
     h += langPills;
     if (grouped.length) {
-      h += '<div class="catalog-grid">';
-      for (const item of grouped) h += renderCatalogItem(item);
-      h += '</div>';
+      h += _renderCatalogGrid(grouped);
     } else {
       h += '<div class="empty"><p>' + tH('no_zims_category') + '</p></div>';
     }
@@ -3956,9 +3956,7 @@ function browseCatalogFilter(query) {
       '<span class="browse-drilldown-count">' + t('n_results', {n: filtered.length}) + ' \u2014 \u201C' + esc(query) + '\u201D</span>' +
     '</div>';
     if (grouped.length) {
-      h += '<div class="catalog-grid">';
-      for (const item of grouped) h += renderCatalogItem(item);
-      h += '</div>';
+      h += _renderCatalogGrid(grouped);
     } else {
       h += '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
     }
@@ -3997,6 +3995,42 @@ function formatSize(bytes) {
   const mb = bytes / (1024 ** 2);
   if (mb >= 900) return (bytes / (1024 ** 3)).toFixed(1) + ' GB';
   return Math.round(mb) + ' MB';
+}
+
+// Installed and covered-by-an-installed-bundle rows are noise when browsing
+// for something new — collapse them behind a count button at the list end.
+let _showHiddenCatalog = false;
+
+function _catalogItemDemoted(g) {
+  const variants = g.variants || [g];
+  if (variants.some(v => v.installed)) return true;
+  return !!(g.hierarchy && (g.hierarchy.is_subset_of || []).some(n => _catalogInstalledNames.has(n)));
+}
+
+// Render a grouped catalog list with demoted rows collapsed. Returns HTML.
+function _renderCatalogGrid(grouped) {
+  const visible = grouped.filter(g => !_catalogItemDemoted(g));
+  const hidden = grouped.filter(_catalogItemDemoted);
+  let h = '';
+  if (visible.length || hidden.length) {
+    h += '<div class="catalog-grid">';
+    for (const item of visible) h += renderCatalogItem(item);
+    if (_showHiddenCatalog) for (const item of hidden) h += renderCatalogItem(item);
+    h += '</div>';
+  }
+  if (hidden.length) {
+    h += '<div style="text-align:center;margin-top:10px"><button class="pill" onclick="_toggleHiddenCatalog()">' +
+      tH(_showHiddenCatalog ? 'hide_installed_covered' : 'show_installed_covered', {n: hidden.length}) +
+      '</button></div>';
+  }
+  return h;
+}
+
+function _toggleHiddenCatalog() {
+  _showHiddenCatalog = !_showHiddenCatalog;
+  if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
+  else if (_browseView === 'search') { var v = q.value.trim(); if (v) browseCatalogFilter(v); }
+  else renderBrowseGallery();
 }
 
 function groupVariants(items) {
@@ -4091,15 +4125,18 @@ function renderCatalogItem(group) {
       window[vid] = withLabels;
       var best = withLabels[0]; // Full is sorted first
       actionsHtml = '<div class="ci-dl-split" data-variants="' + vid + '" data-selected="0">' +
-        '<button class="ci-add-btn ci-dl-main" onclick="event.stopPropagation();var s=this.closest(\'.ci-dl-split\');downloadZim(window[s.dataset.variants][+s.dataset.selected].url, this)">' +
-          tH('download_size', {size: esc(best.label + ' (' + best.size + ')')}) +
+        '<button class="ci-add-btn ci-dl-main" aria-label="' + escAttr(t('download_size', {size: best.label + ' (' + best.size + ')'})) + '"' +
+          ' onclick="event.stopPropagation();var s=this.closest(\'.ci-dl-split\');downloadZim(window[s.dataset.variants][+s.dataset.selected].url, this)">' +
+          '↓ ' + esc(best.label + ' (' + best.size + ')') +
         '</button>' +
         '<button class="ci-dl-chevron" onclick="event.stopPropagation();showCatalogFlavorPicker(this)" title="' + escAttr(t('choose_flavor')) + '">' +
           '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>' +
         '</button>' +
       '</div>';
     } else if (withLabels.length === 1) {
-      actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' + tH('download_size', {size: withLabels[0].label + ' (' + withLabels[0].size + ')'}) + '</button>';
+      actionsHtml = '<button class="ci-add-btn" aria-label="' + escAttr(t('download_size', {size: withLabels[0].label + ' (' + withLabels[0].size + ')'})) + '"' +
+        ' onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' +
+        '↓ ' + esc(withLabels[0].label + ' (' + withLabels[0].size + ')') + '</button>';
     }
   }
   const catAttr = item.category ? ' data-category="' + escAttr(item.category) + '"' : '';
@@ -4395,18 +4432,20 @@ async function toggleCollZim(collName, zimName) {
 
 // ── History tab ──
 function _historyZimInfo(ev) {
-  // Use cached ZIM info from event if available (survives deletion)
-  if (ev.title) return { title: ev.title, name: ev.name || '', has_icon: ev.has_icon, language: ev.language || '', _fromEvent: true };
+  // Prefer the live library record — it carries has_icon and a clickable
+  // name. The event's cached copy (_fromEvent) is the fallback for ZIMs
+  // that no longer exist; it renders a letter icon and isn't clickable.
   var filename = ev.filename;
-  // Try to find ZIM in current library by filename
   if (zimsCache) {
     var z = zimsCache.find(function(z) { return z.file === filename; });
     if (z) return z;
   }
   // Strip date suffix to match by name prefix
   var name = (filename || '').replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '');
-  var z2 = _zimInfo(name);
+  var z2 = _zimInfo(name) || (ev.name ? _zimInfo(ev.name) : null);
   if (z2) return z2;
+  // Cached ZIM info from the event (survives deletion)
+  if (ev.title) return { title: ev.title, name: ev.name || '', has_icon: ev.has_icon, language: ev.language || '', _fromEvent: true };
   // Try catalog cache for downloads that never completed
   if (_catalogCache) {
     var catMatch = _catalogCache.find(function(it) {

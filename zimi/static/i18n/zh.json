@@ -869,5 +869,7 @@
   "mirror_toggle_label": "镜像模式",
   "mirror_toggle_hint": "无限期做种您的下载 — 无分享率上限并提供更高上传带宽，帮助分发 Kiwix 内容。",
   "env_controlled": "由环境变量 {v} 控制",
-  "save_failed": "保存失败"
+  "save_failed": "保存失败",
+  "show_installed_covered": "显示 {n} 个已安装和已覆盖",
+  "hide_installed_covered": "隐藏已安装和已覆盖"
 }

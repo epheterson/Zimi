@@ -30,21 +30,31 @@ def _reset_singleton():
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def test_torrent_disabled_by_default(monkeypatch):
+def test_torrent_enabled_by_default(monkeypatch):
+    """v1.7.0: BT-first is the default so the install base shares load
+    with the Kiwix mirrors. Installs without aria2 fall back to HTTP."""
     monkeypatch.delenv("ZIMI_TORRENT", raising=False)
-    assert p2p.is_torrent_enabled() is False
+    assert p2p.is_torrent_enabled() is True
 
 
-@pytest.mark.parametrize("val", ["1", "true", "TRUE", "yes", "on"])
-def test_torrent_enabled_truthy(monkeypatch, val):
+@pytest.mark.parametrize("val", ["1", "true", "TRUE", "yes", "on", ""])
+def test_torrent_enabled_truthy_or_default(monkeypatch, val):
     monkeypatch.setenv("ZIMI_TORRENT", val)
     assert p2p.is_torrent_enabled() is True
 
 
-@pytest.mark.parametrize("val", ["0", "false", "no", "off", ""])
-def test_torrent_enabled_falsy(monkeypatch, val):
+@pytest.mark.parametrize("val", ["0", "false", "no", "off"])
+def test_torrent_opt_out(monkeypatch, val):
     monkeypatch.setenv("ZIMI_TORRENT", val)
     assert p2p.is_torrent_enabled() is False
+
+
+def test_peek_backend_never_starts(monkeypatch):
+    """Ambient polls use peek_backend — it must return None (not spawn a
+    sidecar) when nothing is running, even with BT enabled by default."""
+    monkeypatch.delenv("ZIMI_TORRENT", raising=False)
+    p2p._backend_singleton = None
+    assert p2p.peek_backend() is None
 
 
 def test_bt_port_default(monkeypatch):

@@ -869,5 +869,7 @@
   "mirror_toggle_label": "Modo espelho",
   "mirror_toggle_hint": "Semeia seus downloads indefinidamente — sem limite de proporção e com maior banda de upload, para ajudar a distribuir o conteúdo Kiwix.",
   "env_controlled": "Controlado pela variável de ambiente {v}",
-  "save_failed": "Não foi possível salvar"
+  "save_failed": "Não foi possível salvar",
+  "show_installed_covered": "Mostrar {n} instalados e cobertos",
+  "hide_installed_covered": "Ocultar instalados e cobertos"
 }

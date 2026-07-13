@@ -869,5 +869,7 @@
   "mirror_toggle_label": "Mirror mode",
   "mirror_toggle_hint": "Seed your downloads indefinitely — no ratio cap, higher upload bandwidth. For people who want to help distribute Kiwix content.",
   "env_controlled": "Controlled by the {v} environment variable",
-  "save_failed": "Couldn't save"
+  "save_failed": "Couldn't save",
+  "show_installed_covered": "Show {n} installed & covered",
+  "hide_installed_covered": "Hide installed & covered"
 }
