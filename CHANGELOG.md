@@ -14,6 +14,20 @@ covering UX at 1000+ ZIM scale) and issue #16 (Wikipedia maxi auto-updating to
 mini). Also lays groundwork for the Reach track (P2P/torrent + accessibility,
 plan docs in `docs/plans/`).
 
+### Critical fix: BT two-phase GID bug (2026-07-13)
+
+- **Fixed**: BT downloads via `.torrent` URL could install a full-size but
+  structurally invalid ZIM. aria2 splits such downloads into a metadata
+  fetch (the GID we polled) and a `followedBy` content transfer (which we
+  never looked at) — the poll saw "complete" instantly and installed
+  aria2's preallocated staging file. Status now follows the content GID,
+  and two guards make a repeat impossible: no install while a `.aria2`
+  control file exists, and every staged file must pass a libzim open
+  before the atomic rename. This was the root cause of all previously
+  observed ZIM corruption.
+- Download UI: indeterminate "Connecting to swarm…" bar while the torrent
+  resolves, real progress after — no more instant-100% lies.
+
 ### BitTorrent-first by default (2026-07-13)
 
 - **Changed**: BT-first downloads are now ON by default — every Zimi that
