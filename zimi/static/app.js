@@ -3860,6 +3860,8 @@ function renderBrowseGallery() {
 }
 
 function drillCategory(catKey, namePrefix) {
+  // New category = fresh view; don't carry the show-hidden expansion over.
+  if (manageCategoryFilter !== catKey) _showHiddenCatalog = false;
   const results = document.getElementById('catalog-results');
   if (!results) return;
   _browseView = 'drilldown';
@@ -4784,7 +4786,9 @@ function _msLibraryHtml() {
   if (!d) return '<div class="loading"><span class="spinner-inline"></span>Loading\u2026</div>';
   var h = '<div class="mc-row"><span class="mc-label">' + tH('zim_files') + '</span><span class="mc-value">' + esc(String(d.zim_count)) + '</span></div>' +
     '<div class="mc-row"><span class="mc-label">' + tH('total_size') + '</span><span class="mc-value">' + fmtSize(d.total_size_gb) + '</span></div>' +
-    '<div id="update-status" class="mc-row" style="cursor:pointer" onclick="_toggleUpdatesDetail()" title="' + escAttr(t('updates_show_detail')) + '">' +
+    '<div id="update-status" class="mc-row mc-row-clickable" role="button" tabindex="0" style="cursor:pointer"' +
+    ' onclick="_toggleUpdatesDetail()" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();_toggleUpdatesDetail()}"' +
+    ' title="' + escAttr(t('updates_show_detail')) + '">' +
       '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('loading') + '</span></div>' +
     '<div id="updates-detail" class="updates-detail" style="display:none"></div>' +
     '<div class="mc-row" style="align-items:center">' +
@@ -5153,8 +5157,13 @@ async function _renderSeedingSection() {
       'port ' + bt.bt_port + ' · ' + (bt.backend || 'aria2') + '</span>';
   }
   html += '</div>';
-  if (bt.hint) {
-    html += '<div class="ms-hint" style="margin-top:4px">' + esc(bt.hint) + '</div>';
+  // Friendly client-side copy for the known states; raw server hint only
+  // as a fallback for states added later.
+  const btHint = bt.status === 'off' ? t('bt_off_hint')
+    : bt.status === 'unavailable' ? t('bt_unavailable_hint')
+    : bt.hint;
+  if (btHint) {
+    html += '<div class="ms-hint" style="margin-top:4px">' + esc(btHint) + '</div>';
   }
   // Surface the local peer instance name + a count of LAN peers if any.
   // Lets users confirm "I'm advertising as ___" at a glance.
@@ -5182,7 +5191,7 @@ async function _renderSeedingSection() {
       esc(bt.status === 'ready' ? t('seeding_empty') : '') + '</div>';
     return;
   }
-  const fmt = b => b > 1e9 ? (b/1e9).toFixed(1)+' GB' : b > 1e6 ? (b/1e6).toFixed(0)+' MB' : (b/1e3).toFixed(0)+' KB';
+  const fmt = _fmtBytesBin;
   let rows = '<div class="seeding-totals">' +
     tH('seeding_totals', {
       n: torrents.length,
@@ -6022,7 +6031,7 @@ async function refreshDownloads() {
     const pill = (key, label, count) =>
       '<button class="pill dl-filter-pill' + (filter === key ? ' active' : '') +
       '" onclick="_setDownloadFilter(\'' + key + '\')">' +
-      label + (count > 0 ? ' <span class="dl-pill-count">' + count + '</span>' : '') +
+      label + (count > 0 ? ' <span class="pill-count">' + count + '</span>' : '') +
       '</button>';
     h += '<div class="dl-filter-bar">' +
       pill('all', tH('all'), dls.length) +
@@ -6041,10 +6050,13 @@ async function refreshDownloads() {
           '<div class="dl-row"><span class="dl-name">' + esc(sName) + '</span>' +
           '<span class="dl-size">↑ ' + fmtUp(sd.uploaded_bytes) + ' · ' + tH('seed_ratio', {r: (sd.ratio || 0).toFixed(2)}) +
             (sd.peers > 0 ? ' · ' + tH('n_peers', {n: sd.peers}) : '') + upSpeed + '</span></div>' +
-          '<div class="dl-progress"><div class="dl-progress-bar" style="width:' + Math.min(100, Math.round(((sd.ratio || 0) / seedingCap) * 100)) + '%"></div></div>' +
+          '<div class="dl-progress" title="' + escAttr(t('seed_bar_tip', {cap: seedingCap})) + '"><div class="dl-progress-bar" style="width:' + Math.min(100, Math.round(((sd.ratio || 0) / seedingCap) * 100)) + '%"></div></div>' +
           '</div>';
       }
       if (!seedingTorrents.length) h += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
+    }
+    if (filter !== 'seeding' && filter !== 'all' && !visibleDls.length) {
+      h += '<div class="dl-empty">' + tH('dl_filter_empty') + '</div>';
     }
     for (const dl of visibleDls) {
       const title = dlTitle(dl);
@@ -6062,7 +6074,7 @@ async function refreshDownloads() {
       if (dl.error) {
         h += '<span class="dl-error">' + esc(dl.error) + '</span>';
       } else if (dl.done) {
-        h += '<span class="dl-done">\u2713 Complete</span>';
+        h += '<span class="dl-done">\u2713 ' + tH('dl_complete') + '</span>';
       } else if (indeterminate) {
         h += '<span class="dl-size">' + tH('bt_connecting') + '</span>';
       } else {

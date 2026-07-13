@@ -817,7 +817,7 @@
   "hot_zims_show_anyway": "Показать всё равно",
   "coverage_advantage": "Самое полное издание",
   "coverage_advantage_explain": "В этом издании больше статей, чем во всех меньших изданиях вместе.",
-  "freshness_advantage": " более свежих подмножеств",
+  "freshness_advantage": "Доступно {n} более новых изданий",
   "downloads_active": "Активные",
   "downloads_completed": "Завершено",
   "all": "Все",
@@ -872,8 +872,13 @@
   "save_failed": "Не удалось сохранить",
   "show_installed_covered": "Показать {n} уже имеющихся",
   "hide_installed_covered": "Скрыть уже имеющиеся",
-  "bt_connecting": "Подключение к рою…",
+  "bt_connecting": "Подготовка загрузки…",
   "seeding_tab": "Раздача",
   "n_peers": "{n} пиров",
-  "seed_ratio": "рейтинг {r}×"
+  "seed_ratio": "рейтинг {r}×",
+  "dl_complete": "Готово",
+  "dl_filter_empty": "Здесь пока пусто",
+  "bt_off_hint": "Торрент-загрузки отключены. Обычные загрузки работают.",
+  "bt_unavailable_hint": "Торрент-движок недоступен — загрузки идут обычным путём. Установите aria2, чтобы делиться трафиком с сетью Kiwix.",
+  "seed_bar_tip": "Прогресс до предела раздачи {cap}×"
 }

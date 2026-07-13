@@ -817,7 +817,7 @@
   "hot_zims_show_anyway": "Show hot ZIMs anyway",
   "coverage_advantage": "Most complete edition",
   "coverage_advantage_explain": "This edition has more articles than all its smaller editions combined.",
-  "freshness_advantage": " fresher subset(s)",
+  "freshness_advantage": "{n} newer editions available",
   "downloads_active": "Active",
   "downloads_completed": "Completed",
   "all": "All",
@@ -872,8 +872,13 @@
   "save_failed": "Couldn't save",
   "show_installed_covered": "Show {n} you already have",
   "hide_installed_covered": "Hide ones you already have",
-  "bt_connecting": "Connecting to swarm…",
+  "bt_connecting": "Preparing download…",
   "seeding_tab": "Seeding",
   "n_peers": "{n} peers",
-  "seed_ratio": "ratio {r}×"
+  "seed_ratio": "ratio {r}×",
+  "dl_complete": "Complete",
+  "dl_filter_empty": "Nothing in this view yet",
+  "bt_off_hint": "Torrent downloads are turned off. Regular downloads still work.",
+  "bt_unavailable_hint": "Torrent engine not available — downloads use the regular path. Install aria2 to share bandwidth with the Kiwix network.",
+  "seed_bar_tip": "Progress toward the {cap}× sharing cap"
 }

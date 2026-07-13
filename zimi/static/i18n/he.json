@@ -817,7 +817,7 @@
   "hot_zims_show_anyway": "הצג בכל זאת",
   "coverage_advantage": "המהדורה השלמה ביותר",
   "coverage_advantage_explain": "מהדורה זו מכילה יותר ערכים מכל המהדורות הקטנות יחד.",
-  "freshness_advantage": " קבוצות משנה חדשות יותר",
+  "freshness_advantage": "זמינות {n} מהדורות חדשות יותר",
   "downloads_active": "פעילות",
   "downloads_completed": "הושלמו",
   "all": "הכל",
@@ -872,8 +872,13 @@
   "save_failed": "השמירה נכשלה",
   "show_installed_covered": "הצג {n} שכבר יש לך",
   "hide_installed_covered": "הסתר את מה שכבר יש לך",
-  "bt_connecting": "מתחבר לנחיל…",
+  "bt_connecting": "מכין את ההורדה…",
   "seeding_tab": "זריעה",
   "n_peers": "{n} עמיתים",
-  "seed_ratio": "יחס {r}×"
+  "seed_ratio": "יחס {r}×",
+  "dl_complete": "הושלם",
+  "dl_filter_empty": "אין כאן כלום עדיין",
+  "bt_off_hint": "הורדות טורנט כבויות. הורדות רגילות ממשיכות לעבוד.",
+  "bt_unavailable_hint": "מנוע הטורנט אינו זמין — ההורדות משתמשות בנתיב הרגיל. התקינו aria2 כדי לשתף רוחב פס עם רשת Kiwix.",
+  "seed_bar_tip": "התקדמות לעבר תקרת השיתוף {cap}×"
 }

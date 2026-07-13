@@ -568,6 +568,7 @@ def _try_bt_download(
         return "fallback"
 
     started = time.time()
+    was_paused = False
     while True:
         if dl.get("cancelled"):
             try:
@@ -575,6 +576,15 @@ def _try_bt_download(
             except Exception:
                 pass
             return "cancelled"
+
+        # Propagate UI pause/resume to aria2 — without this, "paused" is a
+        # lie: the flag flips in the dl dict while bytes keep flowing.
+        if bool(dl.get("paused")) != was_paused:
+            was_paused = bool(dl.get("paused"))
+            try:
+                (backend.pause if was_paused else backend.resume)(tid)
+            except Exception as e:
+                log.debug("BT pause/resume propagate failed: %s", e)
 
         try:
             status = backend.status(tid)
@@ -680,7 +690,12 @@ def _try_bt_download(
         elapsed = time.time() - started
         total = status.get("total_bytes", 0) or 1
         pct = status.get("completed_bytes", 0) / total
-        if elapsed >= no_peers_timeout and status.get("peers", 0) == 0 and pct < 0.01:
+        if (
+            not was_paused
+            and elapsed >= no_peers_timeout
+            and status.get("peers", 0) == 0
+            and pct < 0.01
+        ):
             log.info(
                 "BT stalled for %s after %.0fs (0 peers, %.1f%%) — falling back",
                 dl["filename"],
@@ -1063,6 +1078,18 @@ def _download_thread(dl):
                 }
             )
             return
+        # Same libzim gate as the BT path: a complete-but-corrupt file must
+        # never be installed, whatever transport delivered it. Raising here
+        # lands in the non-transient handler below (tmp removed, error set).
+        try:
+            _srv.open_archive(tmp_dest)
+        except Exception as e:
+            log.error(
+                "Downloaded file failed libzim validation (%s): %s",
+                dl["filename"],
+                e,
+            )
+            raise RuntimeError("downloaded file failed validation") from e
         # Atomic rename: tmp → final
         os.replace(tmp_dest, dl["dest"])
         dl["done"] = True  # Mark done immediately so UI shows completion

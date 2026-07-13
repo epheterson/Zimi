@@ -1,0 +1,189 @@
+- generic [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-view"
+  - navigation "Main navigation" [ref=e3]:
+    - generic "Home" [ref=e5] [cursor=pointer]:
+      - generic [ref=e6]: Zimi
+      - generic [ref=e7]: ⌂
+    - button "Go back" [ref=e577] [cursor=pointer]: ←
+    - search [ref=e8]:
+      - generic [ref=e9]: Search
+      - textbox "Search" [active] [ref=e10]:
+        - /placeholder: Search everything…
+        - text: water purification
+      - generic: /
+    - link "Random article (R)" [ref=e11] [cursor=pointer]:
+      - /url: "#"
+      - generic [ref=e12]: 🎲
+    - button "Library (H)" [ref=e13] [cursor=pointer]
+    - button "Language" [ref=e17] [cursor=pointer]
+    - link "Library Manager" [ref=e21] [cursor=pointer]:
+      - /url: "#"
+  - main [ref=e25]:
+    - generic [ref=e26]:
+      - generic [ref=e586]:
+        - generic [ref=e727]:
+          - button "Appropedia (10)" [ref=e728] [cursor=pointer]
+          - button "Wikibooks (10)" [ref=e729] [cursor=pointer]
+          - button "iFixit in English (10)" [ref=e730] [cursor=pointer]
+          - button "Wikipedia (10)" [ref=e731] [cursor=pointer]
+          - button "Wikipedia (10)" [ref=e732] [cursor=pointer]
+          - button "RationalWiki (10)" [ref=e733] [cursor=pointer]
+          - button "Wikivoyage (10)" [ref=e734] [cursor=pointer]
+          - button "Wikiquote (10)" [ref=e735] [cursor=pointer]
+          - button "Cooking Q&A (Seasoned Advice) (10)" [ref=e736] [cursor=pointer]
+          - button "Wikiversity (10)" [ref=e737] [cursor=pointer]
+          - button "ויקיפדיה (10)" [ref=e738] [cursor=pointer]
+          - button "Project Gutenberg Library (10)" [ref=e739] [cursor=pointer]
+          - button "维基百科 (10)" [ref=e740] [cursor=pointer]
+          - 'button "wikiHow: How-to instructions you can trust. (10)" [ref=e741] [cursor=pointer]'
+          - button "Wikipédia (10)" [ref=e742] [cursor=pointer]
+          - button "Wiktionary (10)" [ref=e743] [cursor=pointer]
+          - button "Stack Overflow (10)" [ref=e744] [cursor=pointer]
+          - button "Home Improvement Q&A (8)" [ref=e745] [cursor=pointer]
+          - button "Medical Sciences Q&A (8)" [ref=e746] [cursor=pointer]
+          - button "OpenStreetMap Wiki (8)" [ref=e747] [cursor=pointer]
+          - button "ويكيبيديا (7)" [ref=e748] [cursor=pointer]
+          - button "Mi Yodeya Q&A (7)" [ref=e749] [cursor=pointer]
+          - button "Gardening & Landscaping Q&A (7)" [ref=e750] [cursor=pointer]
+          - button "Electronics Q&A (7)" [ref=e751] [cursor=pointer]
+          - button "Off the Grid (5)" [ref=e752] [cursor=pointer]
+          - button "CIA World Factbook - 2020 (5)" [ref=e753] [cursor=pointer]
+          - button "TED Talks – Technology (4)" [ref=e754] [cursor=pointer]
+          - button "Wikipedia (4)" [ref=e755] [cursor=pointer]
+          - button "Википедия (4)" [ref=e756] [cursor=pointer]
+          - button "विकिपीडिया (3)" [ref=e757] [cursor=pointer]
+          - button "WikEM (2)" [ref=e758] [cursor=pointer]
+          - button "Water Treatment Library (1)" [ref=e759] [cursor=pointer]
+          - button "Explain XKCD (1)" [ref=e760] [cursor=pointer]
+          - button "Server Fault (1)" [ref=e761] [cursor=pointer]
+        - generic [ref=e762]:
+          - button "English (192)" [ref=e763] [cursor=pointer]
+          - button "Deutsch (10)" [ref=e764] [cursor=pointer]
+          - button "Français (10)" [ref=e765] [cursor=pointer]
+          - button "中文 (10)" [ref=e766] [cursor=pointer]
+          - button "עברית (10)" [ref=e767] [cursor=pointer]
+          - button "العربية (7)" [ref=e768] [cursor=pointer]
+          - button "Español (4)" [ref=e769] [cursor=pointer]
+          - button "Русский (4)" [ref=e770] [cursor=pointer]
+          - button "हिन्दी (3)" [ref=e771] [cursor=pointer]
+      - generic [ref=e601]:
+        - generic [ref=e602]: 261 results
+        - generic [ref=e603]: in 28.8s
+      - generic [ref=e27]:
+        - button "Water Treatment Library Resources about water collection and purification 803 entries · 19 MB" [ref=e773] [cursor=pointer]:
+          - generic [ref=e775]:
+            - generic [ref=e776]: Water Treatment Library
+            - generic [ref=e777]: Resources about water collection and purification
+            - generic [ref=e778]: 803 entries · 19 MB
+        - generic [ref=e779]:
+          - button "Wikipedia Water Purification Water purification This article is about treatment of natural water sources (mainly). For treatment of wastewater, see wastewater treatment . Typical drinking water treatment processes Water purification is the process of removing undesirable chemicals, biological contaminants, suspended solids, and" [ref=e780] [cursor=pointer]:
+            - generic [ref=e783]:
+              - generic [ref=e784]: Wikipedia
+              - generic [ref=e786]: Water Purification
+              - generic [ref=e787]: Water purification This article is about treatment of natural water sources (mainly). For treatment of wastewater, see wastewater treatment . Typical drinking water treatment processes Water purification is the process of removing undesirable chemicals, biological contaminants, suspended solids, and
+          - button "Wikipedia Water purification Water purification This article is about treatment of natural water sources (mainly). For treatment of wastewater, see wastewater treatment . Typical drinking water treatment processes Water purification is the process of removing undesirable chemicals, biological contaminants, suspended solids, and" [ref=e788] [cursor=pointer]:
+            - generic [ref=e791]:
+              - generic [ref=e792]: Wikipedia
+              - generic [ref=e794]: Water purification
+              - generic [ref=e795]: Water purification This article is about treatment of natural water sources (mainly). For treatment of wastewater, see wastewater treatment . Typical drinking water treatment processes Water purification is the process of removing undesirable chemicals, biological contaminants, suspended solids, and
+          - button "Wikipedia Chain of Rocks Water Purification Plant Chain of Rocks Water Purification Plant Die Chain of Rocks Water Purification Plant , auch Chain of Rocks Water Treatment Plant , ist ein Wasserwerk zur Versorgung der St. Louis im Bundesstaat Missouri in den Vereinigten Staaten . Es bereitet das Wasser aus dem Mississippi River mit Hilfe chemischer" [ref=e796] [cursor=pointer]:
+            - generic [ref=e797]:
+              - generic [ref=e798]: Wikipedia
+              - generic [ref=e800]: Chain of Rocks Water Purification Plant
+              - generic [ref=e801]: Chain of Rocks Water Purification Plant Die Chain of Rocks Water Purification Plant , auch Chain of Rocks Water Treatment Plant , ist ein Wasserwerk zur Versorgung der St. Louis im Bundesstaat Missouri in den Vereinigten Staaten . Es bereitet das Wasser aus dem Mississippi River mit Hilfe chemischer
+          - button "iFixit in English Water Purification Systems How to replace or upgrade the SSD in your Lenovo Legion Y530-15ICH." [ref=e802] [cursor=pointer]:
+            - generic [ref=e805]:
+              - generic [ref=e806]: iFixit in English
+              - generic [ref=e808]: Water Purification Systems
+              - generic [ref=e809]: How to replace or upgrade the SSD in your Lenovo Legion Y530-15ICH.
+          - button "iFixit in English AmeriWater Water Purification System How to replace or upgrade the SSD in your Lenovo Legion Y530-15ICH." [ref=e810] [cursor=pointer]:
+            - generic [ref=e813]:
+              - generic [ref=e814]: iFixit in English
+              - generic [ref=e816]: AmeriWater Water Purification System
+              - generic [ref=e817]: How to replace or upgrade the SSD in your Lenovo Legion Y530-15ICH.
+          - button "Home Improvement Q&A Why filter again after reverse osmosis water purification? Why filter again after reverse osmosis water purification? - Home Improvement Stack Exchange Questions Tags Users About Home Questions Tags Users About Why filter again after reverse osmosis water purification? Asked May 11 '23 at 05:59 Active Jun 11 '23 at 22:03 Viewed 746 times 2 In some water fil" [ref=e818] [cursor=pointer]:
+            - generic [ref=e821]:
+              - generic [ref=e822]: Home Improvement Q&A
+              - generic [ref=e824]: Why filter again after reverse osmosis water purification?
+              - generic [ref=e825]: Why filter again after reverse osmosis water purification? - Home Improvement Stack Exchange Questions Tags Users About Home Questions Tags Users About Why filter again after reverse osmosis water purification? Asked May 11 '23 at 05:59 Active Jun 11 '23 at 22:03 Viewed 746 times 2 In some water fil
+          - 'button "Wikibooks When It Hits the Fan/Water Purification When It Hits the Fan/Water Purification < When It Hits the Fan One way to purify water is with a \"solar still\". You can use this with anything containing water; damp vegetation, wet dirt or sand, brackish or dirty water, or some combination of these. You will need: 1. Something wet. 2. A shovel or d" [ref=e826] [cursor=pointer]':
+            - generic [ref=e827]:
+              - generic [ref=e828]: Wikibooks
+              - generic [ref=e830]: When It Hits the Fan/Water Purification
+              - generic [ref=e831]: "When It Hits the Fan/Water Purification < When It Hits the Fan One way to purify water is with a \"solar still\". You can use this with anything containing water; damp vegetation, wet dirt or sand, brackish or dirty water, or some combination of these. You will need: 1. Something wet. 2. A shovel or d"
+          - button "Wikibooks Backpack Camping and Woodland Survival/Skills/Water Purification Backpack Camping and Woodland Survival/Skills/Water Purification < Backpack Camping and Woodland Survival | Skills A human can survive a maximum of three days without the intake of water, assuming you are at sea level, at room temperature, and a relative humidity. When camping in an area that does h" [ref=e832] [cursor=pointer]:
+            - generic [ref=e833]:
+              - generic [ref=e834]: Wikibooks
+              - generic [ref=e836]: Backpack Camping and Woodland Survival/Skills/Water Purification
+              - generic [ref=e837]: Backpack Camping and Woodland Survival/Skills/Water Purification < Backpack Camping and Woodland Survival | Skills A human can survive a maximum of three days without the intake of water, assuming you are at sea level, at room temperature, and a relative humidity. When camping in an area that does h
+          - button "Appropedia Water purification by the ecosystem Water purification by the ecosystem Harnessing the Power of Nature for Water Purification Natural ecosystems, such as wetlands, forests, and rivers, play a crucial role in purifying water. By filtering pollutants, breaking down organic matter, and regulating water flow, these ecosystems provide a su" [ref=e838] [cursor=pointer]:
+            - generic [ref=e841]:
+              - generic [ref=e842]: Appropedia
+              - generic [ref=e844]: Water purification by the ecosystem
+              - generic [ref=e845]: Water purification by the ecosystem Harnessing the Power of Nature for Water Purification Natural ecosystems, such as wetlands, forests, and rivers, play a crucial role in purifying water. By filtering pollutants, breaking down organic matter, and regulating water flow, these ecosystems provide a su
+          - 'button "Appropedia Solar water purification system with solar heating/ar نظام تنقية المياه بالطاقة الشمسية مع التسخين الشمسي الشكل 4: نظام تطهير المياه بالطاقة الشمسية نظام تطهير المياه بالطاقة الشمسية هو نظام لتنقية المياه على مستوى المنزل يعتمد على معالجة الإشعاع الشمسي وتقطير المياه مع الاستخدام الإضافي للتسخين الشمسي. إنه مزيج من عمليتين لتنقية المياه، نظام تطهير الم" [ref=e846] [cursor=pointer]':
+            - generic [ref=e849]:
+              - generic [ref=e850]: Appropedia
+              - generic [ref=e852]: Solar water purification system with solar heating/ar
+              - generic [ref=e853]: "نظام تنقية المياه بالطاقة الشمسية مع التسخين الشمسي الشكل 4: نظام تطهير المياه بالطاقة الشمسية نظام تطهير المياه بالطاقة الشمسية هو نظام لتنقية المياه على مستوى المنزل يعتمد على معالجة الإشعاع الشمسي وتقطير المياه مع الاستخدام الإضافي للتسخين الشمسي. إنه مزيج من عمليتين لتنقية المياه، نظام تطهير الم"
+          - button "Wikipedia Water Purification Solution Miracle Mineral Supplement \"Chlorine Dioxide Solution\" redirects here. For the chemical compound, see Chlorine dioxide . \"Genesis II Church of Health and Healing\" redirects here. For other uses, see Genesis 2 . Miracle Mineral Supplement Claims Internal use of industrial bleaching agent chlorine dio" [ref=e854] [cursor=pointer]:
+            - generic [ref=e857]:
+              - generic [ref=e858]: Wikipedia
+              - generic [ref=e860]: Water Purification Solution
+              - generic [ref=e861]: Miracle Mineral Supplement "Chlorine Dioxide Solution" redirects here. For the chemical compound, see Chlorine dioxide . "Genesis II Church of Health and Healing" redirects here. For other uses, see Genesis 2 . Miracle Mineral Supplement Claims Internal use of industrial bleaching agent chlorine dio
+          - button "Wikipedia Portable water purification Portable water purification Not to be confused with Potable water . Portable water purification unit used by International Red Cross and Red Crescent. Water Potabilization Unit (UPA) designed and used by the Uruguayan National Army and the Uruguayan water supply company OSE . Portable water purifica" [ref=e862] [cursor=pointer]:
+            - generic [ref=e865]:
+              - generic [ref=e866]: Wikipedia
+              - generic [ref=e868]: Portable water purification
+              - generic [ref=e869]: Portable water purification Not to be confused with Potable water . Portable water purification unit used by International Red Cross and Red Crescent. Water Potabilization Unit (UPA) designed and used by the Uruguayan National Army and the Uruguayan water supply company OSE . Portable water purifica
+          - button "ويكيبيديا Portable water purification أجهزة تنقية المياه المحمولة أجهزة تنقية المياه المحمولة والمعروفة أيضاً باسم نقطة الاستخدام (Point of use = POU) هي نظم معالجة المياه ومجال تقنيات تطهير المياه _ وهي وحدات مكتفية ذاتياً والتي يمكن أن تستخدم من قبل المتحمسين للإستجمام والأفراد العسكريين وغيرهم ممن يحصل على مياه الشرب من مصادر غير معا" [ref=e870] [cursor=pointer]:
+            - generic [ref=e871]:
+              - generic [ref=e872]: ويكيبيديا
+              - generic [ref=e874]: Portable water purification
+              - generic [ref=e875]: أجهزة تنقية المياه المحمولة أجهزة تنقية المياه المحمولة والمعروفة أيضاً باسم نقطة الاستخدام (Point of use = POU) هي نظم معالجة المياه ومجال تقنيات تطهير المياه _ وهي وحدات مكتفية ذاتياً والتي يمكن أن تستخدم من قبل المتحمسين للإستجمام والأفراد العسكريين وغيرهم ممن يحصل على مياه الشرب من مصادر غير معا
+          - button "Home Improvement Q&A Insulating an outside water purification system against heat in Arizona Insulating an outside water purification system against heat in Arizona - Home Improvement Stack Exchange Questions Tags Users About Home Questions Tags Users About Insulating an outside water purification system against heat in Arizona Asked Jun 28 '23 at 14:31 Active Nov 14 '25 at 22:00 Viewed 180" [ref=e876] [cursor=pointer]:
+            - generic [ref=e879]:
+              - generic [ref=e880]: Home Improvement Q&A
+              - generic [ref=e882]: Insulating an outside water purification system against heat in Arizona
+              - generic [ref=e883]: Insulating an outside water purification system against heat in Arizona - Home Improvement Stack Exchange Questions Tags Users About Home Questions Tags Users About Insulating an outside water purification system against heat in Arizona Asked Jun 28 '23 at 14:31 Active Nov 14 '25 at 22:00 Viewed 180
+          - button "Appropedia Social and economic impacts of water purification/ar Social and economic impacts of water purification/ar لا تستخدم هذا المشهد للدراسة !!! فقط اثنان ونصف في المائة من إمدادات المياه العذبة للكواكب مناسبة للشرب وأقل من واحد في المائة متاح للبشر والنظم البيئية ، والباقي محبوس في مناطق القطب الشمالي والقطب الجنوبي على شكل ثلج وجليد [منشورات معهد المحيط ا" [ref=e884] [cursor=pointer]:
+            - generic [ref=e887]:
+              - generic [ref=e888]: Appropedia
+              - generic [ref=e890]: Social and economic impacts of water purification/ar
+              - generic [ref=e891]: Social and economic impacts of water purification/ar لا تستخدم هذا المشهد للدراسة !!! فقط اثنان ونصف في المائة من إمدادات المياه العذبة للكواكب مناسبة للشرب وأقل من واحد في المائة متاح للبشر والنظم البيئية ، والباقي محبوس في مناطق القطب الشمالي والقطب الجنوبي على شكل ثلج وجليد [منشورات معهد المحيط ا
+          - button "Wikipedia Water purification tablets Portable water purification Not to be confused with Potable water . Portable water purification unit used by International Red Cross and Red Crescent. Water Potabilization Unit (UPA) designed and used by the Uruguayan National Army and the Uruguayan water supply company OSE . Portable water purifica" [ref=e892] [cursor=pointer]:
+            - generic [ref=e895]:
+              - generic [ref=e896]: Wikipedia
+              - generic [ref=e898]: Water purification tablets
+              - generic [ref=e899]: Portable water purification Not to be confused with Potable water . Portable water purification unit used by International Red Cross and Red Crescent. Water Potabilization Unit (UPA) designed and used by the Uruguayan National Army and the Uruguayan water supply company OSE . Portable water purifica
+          - button "Wikipedia Nanotechnology for water purification Nanotechnology for water purification Part of a series of articles on Nanotechnology History Organizations Popular culture Outline Impact and applications Nanomedicine Nanonetwork Nanotoxicology Green nanotechnology Hazards Regulation Nanomaterials Fullerenes Carbon nanotubes Nanoparticles Molecular" [ref=e900] [cursor=pointer]:
+            - generic [ref=e901]:
+              - generic [ref=e902]: Wikipedia
+              - generic [ref=e904]: Nanotechnology for water purification
+              - generic [ref=e905]: Nanotechnology for water purification Part of a series of articles on Nanotechnology History Organizations Popular culture Outline Impact and applications Nanomedicine Nanonetwork Nanotoxicology Green nanotechnology Hazards Regulation Nanomaterials Fullerenes Carbon nanotubes Nanoparticles Molecular
+          - button "ويكيبيديا Organisms used in water purification الكائنات المستخدمة في تنقية المياه في الوقت الحاضر، هناك عدة أنواع من النباتات ، والبكتيريا ، والأسماك المنقية للمياه والتي يتم اختيارها لتستخدم في تنقية المياه . هذا من أجل السماح لأكبر كفاءة ممكنة لتنقية المياه و/أو إنشاء نظام بيئي كامل. هذه المقالة صادرة عن ويكيبيديا .النص متاح تحت رخصة Creative" [ref=e906] [cursor=pointer]:
+            - generic [ref=e907]:
+              - generic [ref=e908]: ويكيبيديا
+              - generic [ref=e910]: Organisms used in water purification
+              - generic [ref=e911]: الكائنات المستخدمة في تنقية المياه في الوقت الحاضر، هناك عدة أنواع من النباتات ، والبكتيريا ، والأسماك المنقية للمياه والتي يتم اختيارها لتستخدم في تنقية المياه . هذا من أجل السماح لأكبر كفاءة ممكنة لتنقية المياه و/أو إنشاء نظام بيئي كامل. هذه المقالة صادرة عن ويكيبيديا .النص متاح تحت رخصة Creative
+          - button "Home Improvement Q&A In water purification, if there are two carbon stages before the reverse osmosis (RO) stage, what exactly does a carbon stage after RO do? In water purification, if there are two carbon stages before the reverse osmosis (RO) stage, what exactly does a carbon stage after RO do? - Home Improvement Stack Exchange Questions Tags Users About Home Questions Tags Users About In water purification, if there are two carbon stages before the rev" [ref=e912] [cursor=pointer]:
+            - generic [ref=e915]:
+              - generic [ref=e916]: Home Improvement Q&A
+              - generic [ref=e918]: In water purification, if there are two carbon stages before the reverse osmosis (RO) stage, what exactly does a carbon stage after RO do?
+              - generic [ref=e919]: In water purification, if there are two carbon stages before the reverse osmosis (RO) stage, what exactly does a carbon stage after RO do? - Home Improvement Stack Exchange Questions Tags Users About Home Questions Tags Users About In water purification, if there are two carbon stages before the rev
+          - button "Appropedia Waterpod/FBD Rainwater Purification Waterpod/FBD Rainwater Purification Project data Type Rainwater purification system Authors Zachary Ruiz Steven Padilla Location New York, United States Status Deployed Years 2009 Cost USD 209.01 The Waterpod is a project based out of New York designed to be a sustainable, navigable living space, sh" [ref=e920] [cursor=pointer]:
+            - generic [ref=e923]:
+              - generic [ref=e924]: Appropedia
+              - generic [ref=e926]: Waterpod/FBD Rainwater Purification
+              - generic [ref=e927]: Waterpod/FBD Rainwater Purification Project data Type Rainwater purification system Authors Zachary Ruiz Steven Padilla Location New York, United States Status Deployed Years 2009 Cost USD 209.01 The Waterpod is a project based out of New York designed to be a sustainable, navigable living space, sh
+        - button "Show 20 more results" [ref=e929] [cursor=pointer]
+        - generic [ref=e930]: Found 261 results in 28.8s
+    - generic [ref=e571]:
+      - link "Zimi" [ref=e572] [cursor=pointer]:
+        - /url: https://github.com/epheterson/Zimi
+      - text: 1.7.0 · Powered by
+      - link "Kiwix" [ref=e573] [cursor=pointer]:
+        - /url: https://kiwix.org
+      - generic [ref=e574]: / Search · R Random · B Bookmarks · H History · Esc Back
+  - status [ref=e576]

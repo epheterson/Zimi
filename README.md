@@ -1,7 +1,7 @@
 # Zimi
 
 [![CI](https://github.com/epheterson/Zimi/actions/workflows/ci.yml/badge.svg)](https://github.com/epheterson/Zimi/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-452%20passing-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/tests-535%20passing-brightgreen)](#)
 [![Lighthouse Accessibility](https://img.shields.io/badge/Lighthouse%20a11y-100%2F100-success?logo=lighthouse&logoColor=white)](docs/plans/2026-04-26-accessibility.md)
 [![WCAG 2.1 AA](https://img.shields.io/badge/WCAG%202.1-AA-blue)](docs/plans/2026-04-26-accessibility.md)
 [![i18n](https://img.shields.io/badge/i18n-10%20languages-blueviolet)](#languages)
@@ -87,7 +87,6 @@ services:
     volumes:
       - ./zims:/zims             # ZIM files go here
       - ./zimi-config:/config    # cache, indexes, settings
-    environment:
 ```
 </details>
 
@@ -107,7 +106,6 @@ services:
     volumes:
       - ./zims:/zims
       - ./zimi-config:/config
-    environment:
 ```
 
 LAN peer discovery (`_zimi._tcp`) won't reach the LAN in bridge mode — multicast doesn't cross the docker bridge. BT seeding still works because aria2 binds the mapped port. See [docs/deployment-networking.md](docs/deployment-networking.md) for the full discussion.
@@ -134,6 +132,8 @@ ZIM_DIR=./zims zimi serve --port 8899
 | `ZIMI_TORRENT` | `1` | BT-first downloads + seeding via the aria2 sidecar (falls back to HTTP when aria2 is missing). `0` to opt out. |
 | `ZIMI_BT_PORT` | `6881` | BitTorrent listen port (TCP+UDP). |
 | `ZIMI_SEED` | `1` | Seed completed ZIMs back to the swarm. `0` disables seeding. |
+| `ZIMI_PEER_SHARE` | `1` | Serve your `.zim` files to LAN peers at `/dl/<name>` (private IPs only). `0` disables. |
+| `ZIMI_PEER_SHARE_PUBLIC` | `0` | Also serve `/dl/` to public-internet clients. Leave off unless you mean it. |
 | `ZIMI_SEED_RATIO` | `2.0` | Stop seeding once ratio (uploaded ÷ downloaded) reaches this. |
 | `ZIMI_PEER_DISCOVERY` | `1` | Advertise + browse `_zimi._tcp.local` over mDNS. `0` disables. |
 | `ZIMI_PEER_NAME` | _(hostname)_ | Friendly name advertised to LAN peers. Defaults to `zimi-<hostname>`. |

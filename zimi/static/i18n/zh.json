@@ -817,7 +817,7 @@
   "hot_zims_show_anyway": "仍然显示",
   "coverage_advantage": "最完整版本",
   "coverage_advantage_explain": "此版本的文章数量超过所有较小版本的总和。",
-  "freshness_advantage": " 个更新的子集",
+  "freshness_advantage": "有 {n} 个更新版本可用",
   "downloads_active": "进行中",
   "downloads_completed": "已完成",
   "all": "全部",
@@ -872,8 +872,13 @@
   "save_failed": "保存失败",
   "show_installed_covered": "显示 {n} 个已拥有的",
   "hide_installed_covered": "隐藏已拥有的",
-  "bt_connecting": "正在连接节点…",
+  "bt_connecting": "正在准备下载…",
   "seeding_tab": "做种中",
   "n_peers": "{n} 个节点",
-  "seed_ratio": "分享率 {r}×"
+  "seed_ratio": "分享率 {r}×",
+  "dl_complete": "已完成",
+  "dl_filter_empty": "这里还没有内容",
+  "bt_off_hint": "种子下载已关闭。普通下载仍然可用。",
+  "bt_unavailable_hint": "种子引擎不可用 — 下载将使用普通方式。安装 aria2 可与 Kiwix 网络共享带宽。",
+  "seed_bar_tip": "距 {cap}× 分享上限的进度"
 }

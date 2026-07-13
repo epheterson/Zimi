@@ -817,7 +817,7 @@
   "hot_zims_show_anyway": "फिर भी दिखाएं",
   "coverage_advantage": "सबसे संपूर्ण संस्करण",
   "coverage_advantage_explain": "इस संस्करण में सभी छोटे संस्करणों के कुल से अधिक लेख हैं।",
-  "freshness_advantage": " ताज़ा उपसमूह",
+  "freshness_advantage": "{n} नए संस्करण उपलब्ध",
   "downloads_active": "सक्रिय",
   "downloads_completed": "पूर्ण",
   "all": "सभी",
@@ -872,8 +872,13 @@
   "save_failed": "सहेजा नहीं जा सका",
   "show_installed_covered": "{n} जो आपके पास पहले से हैं दिखाएं",
   "hide_installed_covered": "जो पहले से हैं उन्हें छिपाएं",
-  "bt_connecting": "स्वार्म से जुड़ रहा है…",
+  "bt_connecting": "डाउनलोड तैयार हो रहा है…",
   "seeding_tab": "सीडिंग",
   "n_peers": "{n} पीयर",
-  "seed_ratio": "अनुपात {r}×"
+  "seed_ratio": "अनुपात {r}×",
+  "dl_complete": "पूर्ण",
+  "dl_filter_empty": "यहाँ अभी कुछ नहीं है",
+  "bt_off_hint": "टोरेंट डाउनलोड बंद हैं। सामान्य डाउनलोड काम करते रहेंगे।",
+  "bt_unavailable_hint": "टोरेंट इंजन उपलब्ध नहीं — डाउनलोड सामान्य तरीके से होंगे। Kiwix नेटवर्क के साथ बैंडविड्थ साझा करने के लिए aria2 इंस्टॉल करें।",
+  "seed_bar_tip": "{cap}× साझाकरण सीमा की ओर प्रगति"
 }

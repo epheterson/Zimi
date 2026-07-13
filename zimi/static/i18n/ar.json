@@ -817,7 +817,7 @@
   "hot_zims_show_anyway": "إظهار على أي حال",
   "coverage_advantage": "الإصدار الأكثر اكتمالاً",
   "coverage_advantage_explain": "يحتوي هذا الإصدار على مقالات أكثر من جميع الإصدارات الأصغر مجتمعة.",
-  "freshness_advantage": " مجموعة فرعية أحدث",
+  "freshness_advantage": "تتوفر {n} إصدارات أحدث",
   "downloads_active": "نشطة",
   "downloads_completed": "مكتملة",
   "all": "الكل",
@@ -872,8 +872,13 @@
   "save_failed": "تعذّر الحفظ",
   "show_installed_covered": "إظهار {n} لديك بالفعل",
   "hide_installed_covered": "إخفاء ما لديك بالفعل",
-  "bt_connecting": "جارٍ الاتصال بالسرب…",
+  "bt_connecting": "جارٍ تجهيز التنزيل…",
   "seeding_tab": "البذر",
   "n_peers": "{n} أقران",
-  "seed_ratio": "النسبة {r}×"
+  "seed_ratio": "النسبة {r}×",
+  "dl_complete": "اكتمل",
+  "dl_filter_empty": "لا شيء هنا بعد",
+  "bt_off_hint": "تنزيلات التورنت متوقفة. التنزيلات العادية تعمل كالمعتاد.",
+  "bt_unavailable_hint": "محرك التورنت غير متاح — تستخدم التنزيلات المسار العادي. ثبّت aria2 لمشاركة النطاق مع شبكة Kiwix.",
+  "seed_bar_tip": "التقدم نحو حد المشاركة {cap}×"
 }

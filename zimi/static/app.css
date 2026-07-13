@@ -544,6 +544,9 @@
     width: 15px; height: 15px; padding: 10px; box-sizing: content-box;
     cursor: pointer;
   }
+  [dir="rtl"] .catalog-grid .catalog-item .ci-select { right: auto; left: 4px; }
+  [dir="rtl"] .catalog-grid .catalog-item .ci-title { padding-right: 0; padding-left: 22px; }
+  .mc-row-clickable:hover, .mc-row-clickable:focus-visible { color: var(--amber); }
   .catalog-item {
     display: flex; gap: 14px; align-items: center; padding: 14px 16px;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -656,13 +659,10 @@
   .dl-filter-pill {
     display: inline-flex; align-items: center; gap: 4px;
   }
-  .dl-filter-pill.active { color: var(--amber); border-color: var(--amber); }
-  .dl-pill-count {
-    background: var(--surface2); color: var(--text2); padding: 0 6px;
-    border-radius: 10px; font-size: 10px; font-weight: 600; min-width: 14px; text-align: center;
-  }
-  /* Dark chip on the amber active pill — amber-on-amber is unreadable */
-  .dl-filter-pill.active .dl-pill-count { background: rgba(0, 0, 0, 0.22); color: #000; }
+  /* background:none beats .pill.active's amber gradient (same specificity,
+     later in source) — amber label on amber fill was unreadable. */
+  .dl-filter-pill.active { color: var(--amber); border-color: var(--amber); background: none; font-weight: 600; }
+  .dl-filter-pill.active .pill-count { opacity: 1; background: var(--amber); color: #000; padding: 0 5px; border-radius: 8px; }
   .dl-pause-btn { background: none; border: 1px solid var(--border); color: var(--text2);
     padding: 4px 12px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s;
     min-height: 24px; }
@@ -675,7 +675,8 @@
   }
   @keyframes dl-indet { to { margin-left: 100%; } }
   @media (prefers-reduced-motion: reduce) {
-    .dl-progress.dl-indeterminate .dl-progress-bar { animation: none; width: 100%; opacity: 0.35; }
+    /* Static centered segment — a full-width bar reads as "almost done" */
+    .dl-progress.dl-indeterminate .dl-progress-bar { animation: none; width: 34%; margin-left: 33%; opacity: 0.6; }
   }
   /* Same shape as .dl-pause-btn — one button family per card */
   .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);

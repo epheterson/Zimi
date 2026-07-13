@@ -817,7 +817,7 @@
   "hot_zims_show_anyway": "Trotzdem anzeigen",
   "coverage_advantage": "Vollständigste Ausgabe",
   "coverage_advantage_explain": "Diese Ausgabe enthält mehr Artikel als alle kleineren Ausgaben zusammen.",
-  "freshness_advantage": " aktuellere Teilmenge(n)",
+  "freshness_advantage": "{n} neuere Ausgaben verfügbar",
   "downloads_active": "Aktiv",
   "downloads_completed": "Abgeschlossen",
   "all": "Alle",
@@ -872,8 +872,13 @@
   "save_failed": "Speichern fehlgeschlagen",
   "show_installed_covered": "{n} bereits vorhandene anzeigen",
   "hide_installed_covered": "Bereits vorhandene ausblenden",
-  "bt_connecting": "Verbindung zum Schwarm…",
+  "bt_connecting": "Download wird vorbereitet…",
   "seeding_tab": "Seeding",
   "n_peers": "{n} Peers",
-  "seed_ratio": "Ratio {r}×"
+  "seed_ratio": "Ratio {r}×",
+  "dl_complete": "Fertig",
+  "dl_filter_empty": "Hier ist noch nichts",
+  "bt_off_hint": "Torrent-Downloads sind deaktiviert. Normale Downloads funktionieren weiterhin.",
+  "bt_unavailable_hint": "Torrent-Engine nicht verfügbar — Downloads nutzen den normalen Weg. Installiere aria2, um Bandbreite mit dem Kiwix-Netzwerk zu teilen.",
+  "seed_bar_tip": "Fortschritt zum {cap}×-Teilungslimit"
 }

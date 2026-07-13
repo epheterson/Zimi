@@ -114,6 +114,9 @@ class OfflinePeerPullTests(unittest.TestCase):
             patch("zimi.p2p_discovery.get_peers", return_value=peers),
             patch("zimi.p2p_discovery.fetch_peer_list", return_value=listing),
             patch("zimi.library._post_download_finalize"),
+            # The install gate libzim-validates every downloaded file; these
+            # transport tests' payloads aren't real ZIMs, so stub the check.
+            patch.object(lib._srv, "open_archive", return_value=object()),
         ):
             dl_id, err = lib._start_peer_download("zimi-seed", "testpeer_2026-01.zim")
             self.assertIsNone(err)
@@ -198,6 +201,9 @@ class PeerRedirectRefusalTests(unittest.TestCase):
             patch("zimi.p2p_discovery.get_peers", return_value=peers),
             patch("zimi.p2p_discovery.fetch_peer_list", return_value=listing),
             patch("zimi.library._post_download_finalize"),
+            # The install gate libzim-validates every downloaded file; these
+            # transport tests' payloads aren't real ZIMs, so stub the check.
+            patch.object(lib._srv, "open_archive", return_value=object()),
         ):
             dl_id, err = lib._start_peer_download("zimi-redir", "evil_2026-01.zim")
             self.assertIsNone(err)

@@ -817,7 +817,7 @@
   "hot_zims_show_anyway": "Afficher quand même",
   "coverage_advantage": "Édition la plus complète",
   "coverage_advantage_explain": "Cette édition contient plus d'articles que toutes les éditions plus petites réunies.",
-  "freshness_advantage": " sous-ensemble(s) plus récent(s)",
+  "freshness_advantage": "{n} éditions plus récentes disponibles",
   "downloads_active": "Actifs",
   "downloads_completed": "Terminés",
   "all": "Tous",
@@ -872,8 +872,13 @@
   "save_failed": "Échec de l'enregistrement",
   "show_installed_covered": "Afficher {n} déjà possédés",
   "hide_installed_covered": "Masquer ceux que vous avez déjà",
-  "bt_connecting": "Connexion à l'essaim…",
+  "bt_connecting": "Préparation du téléchargement…",
   "seeding_tab": "Partage",
   "n_peers": "{n} pairs",
-  "seed_ratio": "ratio {r}×"
+  "seed_ratio": "ratio {r}×",
+  "dl_complete": "Terminé",
+  "dl_filter_empty": "Rien ici pour le moment",
+  "bt_off_hint": "Les téléchargements torrent sont désactivés. Les téléchargements classiques fonctionnent toujours.",
+  "bt_unavailable_hint": "Moteur torrent indisponible — les téléchargements passent par la voie classique. Installez aria2 pour partager la bande passante avec le réseau Kiwix.",
+  "seed_bar_tip": "Progression vers la limite de partage de {cap}×"
 }
