@@ -814,7 +814,7 @@
   "pause": "暂停",
   "resume": "继续",
   "updates_show_detail": "点击查看详情",
-  "hot_zims_show_anyway": "仍然显示",
+  "hot_zims_show_anyway": "选择常用 ZIM…",
   "coverage_advantage": "最完整版本",
   "coverage_advantage_explain": "此版本的文章数量超过所有较小版本的总和。",
   "freshness_advantage": "有 {n} 个更新版本可用",
@@ -864,8 +864,8 @@
   "peer_advertising_as": "广播名称",
   "home": "首页",
   "size_range_hint": "从最小到最大版本 — 下载时选择大小",
-  "seed_toggle_label": "下载时做种",
-  "seed_toggle_hint": "将下载内容回馈给 Kiwix 网络，上传上限为 2 倍。适用于新下载。",
+  "seed_toggle_label": "做种下载",
+  "seed_toggle_hint": "种子下载期间即共享数据，完成后继续做种，直到上传量达到其大小的 2 倍。仅适用于新下载。",
   "mirror_toggle_label": "镜像模式",
   "mirror_toggle_hint": "无限期做种您的下载 — 无分享率上限并提供更高上传带宽，帮助分发 Kiwix 内容。",
   "env_controlled": "由环境变量 {v} 控制",
@@ -880,5 +880,10 @@
   "dl_filter_empty": "这里还没有内容",
   "bt_off_hint": "种子下载已关闭。普通下载仍然可用。",
   "bt_unavailable_hint": "种子引擎不可用 — 下载将使用普通方式。安装 aria2 可与 Kiwix 网络共享带宽。",
-  "seed_bar_tip": "距 {cap}× 分享上限的进度"
+  "seed_bar_tip": "距 {cap}× 分享上限的进度",
+  "peer_share_toggle_label": "在本网络共享我的资料库",
+  "peer_share_toggle_hint": "允许本地网络中的其他 Zimi 设备直接从此设备复制 ZIM。绝不暴露到互联网。",
+  "show_list": "显示列表",
+  "hide_list": "隐藏列表",
+  "ms_settings_tab": "设置"
 }

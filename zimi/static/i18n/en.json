@@ -814,7 +814,7 @@
   "pause": "Pause",
   "resume": "Resume",
   "updates_show_detail": "Click to view detail",
-  "hot_zims_show_anyway": "Show hot ZIMs anyway",
+  "hot_zims_show_anyway": "Choose hot ZIMs…",
   "coverage_advantage": "Most complete edition",
   "coverage_advantage_explain": "This edition has more articles than all its smaller editions combined.",
   "freshness_advantage": "{n} newer editions available",
@@ -864,8 +864,8 @@
   "peer_advertising_as": "Advertising as",
   "home": "Home",
   "size_range_hint": "Smallest to largest edition — pick a size when downloading",
-  "seed_toggle_label": "Seed while downloading",
-  "seed_toggle_hint": "Share downloads back to the Kiwix network, capped at 2× upload. Applies to new downloads.",
+  "seed_toggle_label": "Seed downloads",
+  "seed_toggle_hint": "Shares pieces while a torrent downloads and keeps seeding after it finishes, until you have uploaded 2× its size. New downloads only.",
   "mirror_toggle_label": "Mirror mode",
   "mirror_toggle_hint": "Seed your downloads indefinitely — no ratio cap, higher upload bandwidth. For people who want to help distribute Kiwix content.",
   "env_controlled": "Controlled by the {v} environment variable",
@@ -880,5 +880,10 @@
   "dl_filter_empty": "Nothing in this view yet",
   "bt_off_hint": "Torrent downloads are turned off. Regular downloads still work.",
   "bt_unavailable_hint": "Torrent engine not available — downloads use the regular path. Install aria2 to share bandwidth with the Kiwix network.",
-  "seed_bar_tip": "Progress toward the {cap}× sharing cap"
+  "seed_bar_tip": "Progress toward the {cap}× sharing cap",
+  "peer_share_toggle_label": "Share my library on this network",
+  "peer_share_toggle_hint": "Lets other Zimi devices on your local network copy ZIMs directly from this one. Never exposed to the internet.",
+  "show_list": "Show list",
+  "hide_list": "Hide list",
+  "ms_settings_tab": "Settings"
 }

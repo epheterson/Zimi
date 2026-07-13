@@ -814,7 +814,7 @@
   "pause": "Pausar",
   "resume": "Retomar",
   "updates_show_detail": "Clique para ver detalhes",
-  "hot_zims_show_anyway": "Mostrar mesmo assim",
+  "hot_zims_show_anyway": "Escolher ZIMs quentes…",
   "coverage_advantage": "Edição mais completa",
   "coverage_advantage_explain": "Esta edição tem mais artigos do que todas as edições menores juntas.",
   "freshness_advantage": "{n} edições mais recentes disponíveis",
@@ -864,8 +864,8 @@
   "peer_advertising_as": "Anunciando como",
   "home": "Início",
   "size_range_hint": "Da menor à maior edição — escolha o tamanho ao baixar",
-  "seed_toggle_label": "Semear durante o download",
-  "seed_toggle_hint": "Compartilha os downloads com a rede Kiwix, limitado a 2× de upload. Vale para novos downloads.",
+  "seed_toggle_label": "Semear downloads",
+  "seed_toggle_hint": "Compartilha partes enquanto um torrent baixa e continua semeando depois, até enviar 2× o tamanho. Apenas novos downloads.",
   "mirror_toggle_label": "Modo espelho",
   "mirror_toggle_hint": "Semeia seus downloads indefinidamente — sem limite de proporção e com maior banda de upload, para ajudar a distribuir o conteúdo Kiwix.",
   "env_controlled": "Controlado pela variável de ambiente {v}",
@@ -880,5 +880,10 @@
   "dl_filter_empty": "Nada aqui ainda",
   "bt_off_hint": "Downloads por torrent estão desativados. Downloads normais continuam funcionando.",
   "bt_unavailable_hint": "Motor de torrent indisponível — os downloads usam o caminho normal. Instale o aria2 para compartilhar banda com a rede Kiwix.",
-  "seed_bar_tip": "Progresso até o limite de compartilhamento de {cap}×"
+  "seed_bar_tip": "Progresso até o limite de compartilhamento de {cap}×",
+  "peer_share_toggle_label": "Compartilhar minha biblioteca nesta rede",
+  "peer_share_toggle_hint": "Permite que outros dispositivos Zimi na sua rede local copiem ZIMs diretamente deste. Nunca exposto à internet.",
+  "show_list": "Mostrar lista",
+  "hide_list": "Ocultar lista",
+  "ms_settings_tab": "Configurações"
 }

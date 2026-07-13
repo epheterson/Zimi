@@ -814,7 +814,7 @@
   "pause": "Pausar",
   "resume": "Reanudar",
   "updates_show_detail": "Clic para ver detalles",
-  "hot_zims_show_anyway": "Mostrar de todos modos",
+  "hot_zims_show_anyway": "Elegir ZIMs calientes…",
   "coverage_advantage": "Edición más completa",
   "coverage_advantage_explain": "Esta edición tiene más artículos que todas las ediciones menores juntas.",
   "freshness_advantage": "{n} ediciones más recientes disponibles",
@@ -864,8 +864,8 @@
   "peer_advertising_as": "Anunciando como",
   "home": "Inicio",
   "size_range_hint": "De la edición más pequeña a la más grande — elige el tamaño al descargar",
-  "seed_toggle_label": "Sembrar durante la descarga",
-  "seed_toggle_hint": "Comparte las descargas con la red Kiwix, con límite de 2× de subida. Se aplica a nuevas descargas.",
+  "seed_toggle_label": "Sembrar descargas",
+  "seed_toggle_hint": "Comparte fragmentos mientras se descarga un torrent y sigue sembrando al terminar, hasta subir 2× su tamaño. Solo descargas nuevas.",
   "mirror_toggle_label": "Modo espejo",
   "mirror_toggle_hint": "Siembra tus descargas indefinidamente — sin límite de ratio y con mayor ancho de banda de subida, para ayudar a distribuir el contenido de Kiwix.",
   "env_controlled": "Controlado por la variable de entorno {v}",
@@ -880,5 +880,10 @@
   "dl_filter_empty": "Aún no hay nada aquí",
   "bt_off_hint": "Las descargas por torrent están desactivadas. Las descargas normales siguen funcionando.",
   "bt_unavailable_hint": "Motor de torrent no disponible — las descargas usan la vía normal. Instala aria2 para compartir ancho de banda con la red Kiwix.",
-  "seed_bar_tip": "Progreso hacia el límite de compartición de {cap}×"
+  "seed_bar_tip": "Progreso hacia el límite de compartición de {cap}×",
+  "peer_share_toggle_label": "Compartir mi biblioteca en esta red",
+  "peer_share_toggle_hint": "Permite que otros dispositivos Zimi de tu red local copien ZIMs directamente de este. Nunca se expone a internet.",
+  "show_list": "Mostrar lista",
+  "hide_list": "Ocultar lista",
+  "ms_settings_tab": "Ajustes"
 }

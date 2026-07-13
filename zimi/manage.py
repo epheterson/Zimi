@@ -943,6 +943,16 @@ def handle_manage_post(handler, parsed, data):
                 )
             p2p.set_pref("mirror", bool(data["mirror"]))
             changed["mirror"] = bool(data["mirror"])
+        if "peer_share" in data:
+            from zimi import p2p_discovery as _disc
+
+            if _disc.is_share_env_locked():
+                return handler._json(
+                    403,
+                    {"error": "LAN sharing is controlled by ZIMI_PEER_SHARE env var"},
+                )
+            p2p.set_pref("peer_share", bool(data["peer_share"]))
+            changed["peer_share"] = bool(data["peer_share"])
         if not changed:
             return handler._json(
                 400, {"error": "provide 'seed' and/or 'mirror' booleans"}

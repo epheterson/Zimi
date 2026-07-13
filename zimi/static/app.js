@@ -4283,6 +4283,9 @@ async function _downloadSelected(btn) {
 // ── Tab switching ──
 function switchManageTab(tab) {
   manageTab = tab;
+  // Mobile: the settings card doubles as the 'settings' tab's content.
+  const msCard = document.getElementById('manage-status');
+  if (msCard) msCard.classList.toggle('as-tab-active', tab === 'settings');
   manageCategoryFilter = null;
   manageLangFilter = null;
   _browseView = 'gallery';
@@ -4702,6 +4705,9 @@ async function renderManage() {
       '<div id="ms-pane" class="ms-pane"><div class="loading"><span class="spinner-inline"></span>Loading\u2026</div></div>' +
     '</div>' +
     '<div class="manage-tabs">' +
+      // Mobile-only: the settings card stacks awkwardly above the tabs on a
+      // phone, so it collapses into its own first tab there (CSS-gated).
+      '<button class="manage-tab manage-tab-settings' + (manageTab === 'settings' ? ' active' : '') + '" data-tab="settings" onclick="switchManageTab(\'settings\')">' + tH('ms_settings_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">' + tH('installed_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">' + tH('catalog_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">' + tH('collections_tab') + '</button>' +
@@ -4856,6 +4862,13 @@ async function cleanupTmpFiles() {
   }
 }
 
+function _msToggleCollapse(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const open = el.classList.toggle('ms-open');
+  btn.textContent = open ? t('hide_list') : t('show_list');
+}
+
 function _msPreferencesHtml() {
   var showXzim = !_getStorageFlag(SK.HIDE_XZIM_LINKS);
   var showDiscover = !_getStorageFlag(SK.HIDE_DISCOVER);
@@ -4865,20 +4878,22 @@ function _msPreferencesHtml() {
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
     '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
-    // Languages section combines display toggle + multi-select pref
-    '<div class="ms-section-label" style="margin-top:20px">' + tH('languages_section') + '</div>' +
-    '<label class="ms-check"><input type="checkbox"' + (showLangChooser ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\')"> ' + tH('show_lang_chooser') + '</label>' +
-    '<div class="ms-hint" style="margin-top:8px">' + tH('catalog_languages_hint_short') + '</div>' +
-    '<div class="ms-lang-pills" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>' +
-    // Default download flavor
+    // Default download flavor (above languages — reached more often)
     '<div class="ms-section-label" style="margin-top:20px">' + tH('default_flavor') + '</div>' +
     '<div class="ms-hint">' + tH('default_flavor_hint') + '</div>' +
     '<div class="ms-flavor-row">' +
       _flavorRadio('full', tH('flavor_full')) +
       _flavorRadio('nopic', tH('flavor_nopic')) +
       _flavorRadio('mini', tH('flavor_mini')) +
-    '</div>';
+    '</div>' +
+    // Languages section combines display toggle + multi-select pref.
+    // The pill list is long — collapsed behind a toggle by default.
+    '<div class="ms-section-label" style="margin-top:20px">' + tH('languages_section') + '</div>' +
+    '<label class="ms-check"><input type="checkbox"' + (showLangChooser ? ' checked' : '') +
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\')"> ' + tH('show_lang_chooser') + '</label>' +
+    '<div class="ms-hint" style="margin-top:8px">' + tH('catalog_languages_hint_short') + '</div>' +
+    '<button class="pill" onclick="_msToggleCollapse(\'ms-lang-pills\', this)">' + tH('show_list') + '</button>' +
+    '<div class="ms-lang-pills ms-collapsed-list" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>';
   // Accessibility section
   var a11yOn = _getStorageFlag(SK.A11Y_REWRITE);
   h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_accessibility') + '</div>' +
@@ -5021,7 +5036,7 @@ async function _renderHotZimsSection() {
   const zimCount = Array.isArray(zims) ? zims.length : 0;
   // Collapse the section when there are too few ZIMs to benefit from
   // pinning. User can expand it via the toggle.
-  if (zimCount < _HOT_ZIMS_MIN && !hasHotConfigured && !hotData.env_locked && !_hotZimsForceShow) {
+  if (!hasHotConfigured && !hotData.env_locked && !_hotZimsForceShow) {
     const toggle = document.createElement('button');
     toggle.className = 'pill ms-hot-show';
     toggle.textContent = t('hot_zims_show_anyway');
@@ -5256,6 +5271,8 @@ async function _renderMirrorSection() {
   if (!el) return;
   let h = _btToggleHtml('seed', m.seed_enabled, m.seed_env_locked, 'ZIMI_SEED',
     'seed_toggle_label', 'seed_toggle_hint');
+  h += _btToggleHtml('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_PEER_SHARE',
+    'peer_share_toggle_label', 'peer_share_toggle_hint');
   h += _btToggleHtml('mirror', m.enabled, m.env_locked, 'ZIMI_MIRROR',
     'mirror_toggle_label', 'mirror_toggle_hint');
   if (m.enabled) {

@@ -814,7 +814,7 @@
   "pause": "Pause",
   "resume": "Fortsetzen",
   "updates_show_detail": "Klicken für Details",
-  "hot_zims_show_anyway": "Trotzdem anzeigen",
+  "hot_zims_show_anyway": "Hot-ZIMs auswählen…",
   "coverage_advantage": "Vollständigste Ausgabe",
   "coverage_advantage_explain": "Diese Ausgabe enthält mehr Artikel als alle kleineren Ausgaben zusammen.",
   "freshness_advantage": "{n} neuere Ausgaben verfügbar",
@@ -864,8 +864,8 @@
   "peer_advertising_as": "Wird angekündigt als",
   "home": "Startseite",
   "size_range_hint": "Kleinste bis größte Ausgabe — Größe beim Herunterladen wählen",
-  "seed_toggle_label": "Beim Herunterladen seeden",
-  "seed_toggle_hint": "Downloads an das Kiwix-Netzwerk zurückgeben, begrenzt auf 2× Upload. Gilt für neue Downloads.",
+  "seed_toggle_label": "Downloads seeden",
+  "seed_toggle_hint": "Teilt Teile schon während des Torrent-Downloads und seedet danach weiter, bis das 2-fache der Größe hochgeladen wurde. Nur neue Downloads.",
   "mirror_toggle_label": "Mirror-Modus",
   "mirror_toggle_hint": "Downloads unbegrenzt seeden — ohne Ratio-Limit und mit höherer Upload-Bandbreite, um Kiwix-Inhalte zu verteilen.",
   "env_controlled": "Gesteuert über die Umgebungsvariable {v}",
@@ -880,5 +880,10 @@
   "dl_filter_empty": "Hier ist noch nichts",
   "bt_off_hint": "Torrent-Downloads sind deaktiviert. Normale Downloads funktionieren weiterhin.",
   "bt_unavailable_hint": "Torrent-Engine nicht verfügbar — Downloads nutzen den normalen Weg. Installiere aria2, um Bandbreite mit dem Kiwix-Netzwerk zu teilen.",
-  "seed_bar_tip": "Fortschritt zum {cap}×-Teilungslimit"
+  "seed_bar_tip": "Fortschritt zum {cap}×-Teilungslimit",
+  "peer_share_toggle_label": "Meine Bibliothek in diesem Netzwerk teilen",
+  "peer_share_toggle_hint": "Andere Zimi-Geräte in deinem lokalen Netzwerk können ZIMs direkt von diesem Gerät kopieren. Nie ins Internet freigegeben.",
+  "show_list": "Liste anzeigen",
+  "hide_list": "Liste ausblenden",
+  "ms_settings_tab": "Einstellungen"
 }

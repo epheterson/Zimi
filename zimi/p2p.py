@@ -230,12 +230,16 @@ def get_mirror_upload_kb() -> int:
 
 
 def get_mirror_status() -> dict:
-    """Serialize current seed/mirror config for the /manage/mirror endpoint."""
+    """Serialize current sharing config for the /manage/mirror endpoint."""
+    from zimi import p2p_discovery as _disc
+
     return {
         "enabled": is_mirror_enabled(),
         "env_locked": is_mirror_env_locked(),
         "seed_enabled": is_seeding_enabled(),
         "seed_env_locked": is_seed_env_locked(),
+        "peer_share": _disc.is_share_enabled(),
+        "peer_share_env_locked": _disc.is_share_env_locked(),
         "ratio_cap": get_mirror_ratio_cap(),
         "upload_kb": get_mirror_upload_kb(),
         "seed_ratio_cap": get_seed_ratio_cap(),

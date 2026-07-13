@@ -53,10 +53,22 @@ def is_enabled() -> bool:
 
 
 def is_share_enabled() -> bool:
-    """Serve our local ZIMs to LAN peers over HTTP. On by default;
-    ZIMI_PEER_SHARE=0 disables the /dl/ raw-file endpoint entirely."""
-    val = os.environ.get("ZIMI_PEER_SHARE", "1").strip().lower()
-    return val not in ("0", "false", "no", "off", "")
+    """Serve our local ZIMs to LAN peers over HTTP. On by default.
+
+    An explicitly-set ZIMI_PEER_SHARE env var wins (and locks the UI
+    toggle); otherwise the persisted UI preference (shared prefs store
+    in p2p — one file for all sharing toggles)."""
+    val = os.environ.get("ZIMI_PEER_SHARE")
+    if val is not None and val.strip():
+        return val.strip().lower() not in ("0", "false", "no", "off")
+    from zimi import p2p
+
+    return bool(p2p._read_pref("peer_share", True))
+
+
+def is_share_env_locked() -> bool:
+    val = os.environ.get("ZIMI_PEER_SHARE")
+    return val is not None and val.strip() != ""
 
 
 def is_public_share_enabled() -> bool:

@@ -232,3 +232,17 @@ def test_status_seeding_torrent_reports_complete(monkeypatch):
     })
     st = b.status("g1")
     assert st["state"] == "complete"
+
+
+def test_peer_share_pref_and_env_lock(_prefs, monkeypatch):
+    """LAN sharing follows the same pref+env-lock contract as seed/mirror."""
+    from zimi import p2p_discovery as disc
+
+    monkeypatch.delenv("ZIMI_PEER_SHARE", raising=False)
+    assert disc.is_share_enabled() is True  # default on
+    p2p.set_pref("peer_share", False)
+    assert disc.is_share_enabled() is False
+    assert disc.is_share_env_locked() is False
+    monkeypatch.setenv("ZIMI_PEER_SHARE", "1")
+    assert disc.is_share_enabled() is True  # env wins over pref
+    assert disc.is_share_env_locked() is True
