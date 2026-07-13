@@ -503,25 +503,37 @@
      manage pane (~790px wide), 3 on wide screens, 1 on mobile. Cards switch
      to vertical stack inside grid cells so they don't get cramped. */
   .catalog-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 8px; align-items: stretch;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 6px; align-items: stretch;
   }
   /* Compact grid-card: icon top-left, title+summary right of icon, actions bottom-right.
      Saves vertical space vs full-vertical-stack. */
   .catalog-grid .catalog-item {
     display: grid;
-    grid-template-columns: 40px 1fr;
+    grid-template-columns: 32px 1fr;
     grid-template-areas: "icon info" "actions actions";
-    gap: 4px 12px; align-items: start;
-    max-height: none; padding: 12px 14px;
+    gap: 2px 10px; align-items: start;
+    max-height: none; padding: 8px 10px;
+    position: relative;
   }
-  .catalog-grid .catalog-item .ci-icon { grid-area: icon; }
+  .catalog-grid .catalog-item .ci-icon { grid-area: icon; width: 32px; height: 32px; }
+  .catalog-grid .catalog-item .ci-icon img { width: 28px; height: 28px; }
+  .catalog-grid .catalog-item .ci-icon .ci-letter { width: 32px; height: 32px; font-size: 14px; }
   .catalog-grid .catalog-item .ci-info { grid-area: info; min-width: 0; }
+  .catalog-grid .catalog-item .ci-title { font-size: 13px; margin-bottom: 1px; padding-right: 22px; }
+  .catalog-grid .catalog-item .ci-meta { font-size: 11px; }
   .catalog-grid .catalog-item .ci-actions {
     grid-area: actions; justify-content: flex-end; margin-left: 0;
   }
   .catalog-grid .catalog-item .ci-summary {
     -webkit-line-clamp: 1; line-clamp: 1;
+    font-size: 11.5px; margin-bottom: 2px;
+  }
+  .catalog-grid .catalog-item .ci-hier,
+  .catalog-grid .catalog-item .ci-peer { margin-top: 2px; }
+  /* Batch checkbox pins to the card's top-right corner (out of the title flow) */
+  .catalog-grid .catalog-item .ci-select {
+    position: absolute; top: 8px; right: 10px; margin: 0;
   }
   .catalog-item {
     display: flex; gap: 14px; align-items: center; padding: 14px 16px;

@@ -918,6 +918,34 @@ def handle_manage_post(handler, parsed, data):
             {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq},
         )
 
+    elif parsed.path == "/manage/bt-settings":
+        # Seed/mirror toggles. An env var locks its field — UI changes would
+        # be silently overridden on next read (same contract as auto-update).
+        from zimi import p2p
+
+        changed = {}
+        if "seed" in data:
+            if p2p.is_seed_env_locked():
+                return handler._json(
+                    403, {"error": "Seeding is controlled by ZIMI_SEED env var"}
+                )
+            p2p.set_pref("seed", bool(data["seed"]))
+            changed["seed"] = bool(data["seed"])
+        if "mirror" in data:
+            if p2p.is_mirror_env_locked():
+                return handler._json(
+                    403,
+                    {"error": "Mirror mode is controlled by ZIMI_MIRROR env var"},
+                )
+            p2p.set_pref("mirror", bool(data["mirror"]))
+            changed["mirror"] = bool(data["mirror"])
+        if not changed:
+            return handler._json(
+                400, {"error": "provide 'seed' and/or 'mirror' booleans"}
+            )
+        log.info("BT settings updated via UI: %s", changed)
+        return handler._json(200, p2p.get_mirror_status())
+
     elif parsed.path == "/manage/hot":
         # Pro hot-cache live update. Rejected when ZIMI_HOT_ZIMS env var is set
         # (env wins, UI changes would be silently ignored on next read).

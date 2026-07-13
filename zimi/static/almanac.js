@@ -25,6 +25,9 @@ function _saveLocation(lat, lon, name) {
   var data = { lat: lat, lon: lon };
   if (name) data.name = name;
   localStorage.setItem(_ALM_LOC_KEY, JSON.stringify(data));
+  // Keep the timezone city list in sync with the new location — otherwise a
+  // map click changes the sun/moon math while a stale city stays highlighted.
+  _almSelectedTz = _almTzForLocation(lat, lon);
 }
 
 function _signalDelay(au) {
@@ -1752,6 +1755,32 @@ var _TZ_CITIES = [
   { key: 'auckland', tz: 'Pacific/Auckland', lat: -36.85, lon: 174.76 }
 ];
 
+function _tzUtcOffsetMin(tz, now) {
+  var fmtOpts = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false };
+  var enFmt = function(z) { return new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: z }, fmtOpts)).format(now); };
+  return Math.round((new Date(enFmt(tz)) - new Date(enFmt('UTC'))) / 60000);
+}
+
+// Best _TZ_CITIES match for an arbitrary lat/lon. No offline tz database, so
+// approximate: compare each city's current UTC offset against the location's
+// solar offset (lon/15 h), tie-breaking by angular distance. Offset dominates
+// (minutes, 0–720) over distance (degrees × 0.5, 0–90) by design.
+function _almTzForLocation(lat, lon) {
+  var now = new Date();
+  var solarOffMin = (lon / 15) * 60;
+  var best = null, bestScore = Infinity;
+  for (var i = 0; i < _TZ_CITIES.length; i++) {
+    var offMin;
+    try { offMin = _tzUtcOffsetMin(_TZ_CITIES[i].tz, now); } catch (e) { continue; }
+    var dlat = lat - _TZ_CITIES[i].lat;
+    var dlon = (lon - _TZ_CITIES[i].lon) * Math.cos(lat * DEG_TO_RAD);
+    var distDeg = Math.sqrt(dlat * dlat + dlon * dlon);
+    var score = Math.abs(offMin - solarOffMin) + distDeg * 0.5;
+    if (score < bestScore) { bestScore = score; best = _TZ_CITIES[i].tz; }
+  }
+  return best;
+}
+
 var _almSelectedTz = null; // null = local timezone
 
 function _initTzClock(now) {
@@ -1775,9 +1804,7 @@ function _initTzClock(now) {
     // Compute UTC offset — use en-US with full date+time for accurate diff
     var utcOff = '';
     try {
-      var _tzOffFmt = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false };
-      var enFmt = function(tz) { return new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: tz }, _tzOffFmt)).format(now); };
-      var diffMin = Math.round((new Date(enFmt(tzc.tz)) - new Date(enFmt('UTC'))) / 60000);
+      var diffMin = _tzUtcOffsetMin(tzc.tz, now);
       var sign = diffMin >= 0 ? '+' : '\u2212';
       var absH = Math.floor(Math.abs(diffMin) / 60);
       var absM = Math.abs(diffMin) % 60;
@@ -1799,7 +1826,6 @@ function _initTzClock(now) {
 }
 
 function _almSelectTz(tz, idx) {
-  _almSelectedTz = tz;
   // Also set location to this city for sun/map calculations
   var city = _TZ_CITIES[idx];
   // Look up full name from _MAP_CITIES (includes state/country)
@@ -1809,7 +1835,9 @@ function _almSelectTz(tz, idx) {
       fullName = _MAP_CITIES[ci].name; break;
     }
   }
+  // After _saveLocation's approximate sync — an explicit city pick is exact.
   _saveLocation(city.lat, city.lon, fullName);
+  _almSelectedTz = tz;
   // Re-render but preserve scroll position (avoids annoying jump)
   var scrollEl = document.getElementById('almanac-content');
   var savedScroll = scrollEl ? scrollEl.scrollTop : 0;

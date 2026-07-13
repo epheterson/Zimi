@@ -48,8 +48,57 @@ def _bool_env(key: str, default: bool = False) -> bool:
     if raw in ("1", "true", "yes", "on"):
         return True
     if raw in ("0", "false", "no", "off"):
-        return True if False else False  # explicit no
+        return False
     return default
+
+
+# ============================================================================
+# Persisted UI preferences (seed/mirror toggles). An explicitly-set env var
+# wins and locks the UI control — same pattern as ZIMI_AUTO_UPDATE — so
+# operators who configure via environment keep infra-as-config semantics.
+# ============================================================================
+
+_prefs_path: str | None = None
+_prefs_lock = threading.Lock()
+
+
+def set_prefs_path(path: str) -> None:
+    """Called once at server startup with a writable prefs file location."""
+    global _prefs_path
+    _prefs_path = path
+
+
+def _read_pref(key: str, default):
+    if not _prefs_path:
+        return default
+    try:
+        with open(_prefs_path) as f:
+            return json.load(f).get(key, default)
+    except (OSError, ValueError):
+        return default
+
+
+def set_pref(key: str, value) -> None:
+    if not _prefs_path:
+        return
+    with _prefs_lock:
+        prefs = {}
+        try:
+            with open(_prefs_path) as f:
+                prefs = json.load(f)
+        except (OSError, ValueError):
+            pass
+        prefs[key] = value
+        os.makedirs(os.path.dirname(_prefs_path), exist_ok=True)
+        tmp = _prefs_path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(prefs, f)
+        os.replace(tmp, _prefs_path)
+
+
+def _env_explicitly_set(key: str) -> bool:
+    raw = os.environ.get(key)
+    return raw is not None and raw.strip() != ""
 
 
 def is_torrent_enabled() -> bool:
@@ -89,9 +138,15 @@ def get_backend_name() -> str:
 
 
 def is_seeding_enabled() -> bool:
-    """Seed by default when BT is enabled. ZIMI_SEED=0 to opt out."""
-    raw = os.environ.get("ZIMI_SEED", "1").strip().lower()
-    return raw not in ("0", "false", "no", "off")
+    """Seed by default when BT is enabled. ZIMI_SEED env var wins when set
+    (and locks the UI toggle); otherwise the persisted UI preference."""
+    if _env_explicitly_set("ZIMI_SEED"):
+        return _bool_env("ZIMI_SEED", True)
+    return bool(_read_pref("seed", True))
+
+
+def is_seed_env_locked() -> bool:
+    return _env_explicitly_set("ZIMI_SEED")
 
 
 def get_seed_ratio_cap() -> float:
@@ -142,9 +197,16 @@ DEFAULT_MIRROR_UPLOAD_KB = 10240  # 10 MB/s
 
 
 def is_mirror_enabled() -> bool:
-    """ZIMI_MIRROR=1 turns Zimi into a public-mirror seeder."""
-    raw = os.environ.get("ZIMI_MIRROR", "0").strip().lower()
-    return raw in ("1", "true", "yes", "on")
+    """Mirror mode lifts the seed-ratio cap and raises upload bandwidth.
+    ZIMI_MIRROR env var wins when set (and locks the UI toggle); otherwise
+    the persisted UI preference. Off by default."""
+    if _env_explicitly_set("ZIMI_MIRROR"):
+        return _bool_env("ZIMI_MIRROR", False)
+    return bool(_read_pref("mirror", False))
+
+
+def is_mirror_env_locked() -> bool:
+    return _env_explicitly_set("ZIMI_MIRROR")
 
 
 def get_mirror_ratio_cap() -> float:
@@ -167,11 +229,15 @@ def get_mirror_upload_kb() -> int:
 
 
 def get_mirror_status() -> dict:
-    """Serialize current mirror config for the /manage/mirror endpoint."""
+    """Serialize current seed/mirror config for the /manage/mirror endpoint."""
     return {
         "enabled": is_mirror_enabled(),
+        "env_locked": is_mirror_env_locked(),
+        "seed_enabled": is_seeding_enabled(),
+        "seed_env_locked": is_seed_env_locked(),
         "ratio_cap": get_mirror_ratio_cap(),
         "upload_kb": get_mirror_upload_kb(),
+        "seed_ratio_cap": get_seed_ratio_cap(),
     }
 
 

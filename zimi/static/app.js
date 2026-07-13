@@ -580,6 +580,10 @@ function updateTopbar() {
 
   // Footer
   updateFooter();
+
+  // Batch-download bar only belongs to the Catalog tab — hide elsewhere,
+  // keeping the selection so it reappears when the user returns.
+  _renderSelectionBar();
 }
 
 function bcClick(e) {
@@ -1235,6 +1239,10 @@ function renderHome(filter) {
 function _langBadge(z) {
   var lang = z.language || '';
   if (!lang) return '';
+  // 'all'/'mul' means language-agnostic content — a language badge conveys
+  // nothing there ("ALL" reads as noise), so skip it entirely.
+  var norm = lang.toLowerCase();
+  if (norm === 'all' || norm === 'mul' || norm === 'multi') return '';
   // Multi-language ZIMs (e.g., TED mul_*)
   if (lang.includes(',') || (/^mul/i.test(z.name) && !lang.includes(','))) {
     var count = lang.includes(',') ? lang.split(',').length : 0;
@@ -4023,13 +4031,16 @@ function renderCatalogItem(group) {
   if (item.date) metaTags.push(item.date);
   const sizes = variants.map(v => v.size_bytes).sort((a, b) => a - b);
   if (sizes.length > 1) {
-    metaTags.push(formatSize(sizes[0]) + ' – ' + formatSize(sizes[sizes.length - 1]));
+    metaTags.push('<span title="' + escAttr(t('size_range_hint')) + '">' +
+      formatSize(sizes[0]) + ' – ' + formatSize(sizes[sizes.length - 1]) + '</span>');
   } else {
     metaTags.push(formatSize(sizes[0]));
   }
+  const letterChar = (esc(item.title || item.name)[0] || '?').toUpperCase();
   const iconHtml = item.icon_url
-    ? '<img src="/manage/thumb?url=' + encodeURIComponent(item.icon_url) + '" alt="" width="40" height="40" loading="lazy">'
-    : '<span class="ci-letter">' + (esc(item.title || item.name)[0] || '?').toUpperCase() + '</span>';
+    ? '<img src="/manage/thumb?url=' + encodeURIComponent(item.icon_url) + '" alt="" width="40" height="40" loading="lazy"' +
+      ' onerror="_ciThumbFallback(this)" data-letter="' + escAttr(letterChar) + '">'
+    : '<span class="ci-letter">' + letterChar + '</span>';
   const anyInstalled = variants.some(v => v.installed);
   let actionsHtml = '';
   if (anyInstalled) {
@@ -4107,6 +4118,15 @@ function renderCatalogItem(group) {
   '</div>';
 }
 
+// Thumbnail proxy failures (origin 502, offline) would otherwise leave a
+// permanent white square — swap in the letter icon instead.
+function _ciThumbFallback(img) {
+  const span = document.createElement('span');
+  span.className = 'ci-letter';
+  span.textContent = img.dataset.letter || '?';
+  img.replaceWith(span);
+}
+
 // Selection state for the multi-select Download bar.
 const _selectedDownloads = new Map(); // url → size_bytes
 
@@ -4127,12 +4147,19 @@ function _renderSelectionBar() {
     if (bar) bar.remove();
     return;
   }
+  // Selection survives leaving the Catalog tab; the bar does not.
+  const inCatalog = mode === 'manage' && manageTab === 'browse';
+  if (!inCatalog) {
+    if (bar) bar.style.display = 'none';
+    return;
+  }
   if (!bar) {
     bar = document.createElement('div');
     bar.id = 'ci-selection-bar';
     bar.className = 'ci-selection-bar';
     document.body.appendChild(bar);
   }
+  bar.style.display = '';
   while (bar.firstChild) bar.removeChild(bar.firstChild);
   const totalSize = Array.from(_selectedDownloads.values()).reduce((a, b) => a + b, 0);
   const sizeStr = totalSize > 0 ? ' · ' + formatSize(totalSize) : '';
@@ -4214,6 +4241,7 @@ function switchManageTab(tab) {
     if (!_getPrefLanguages().length && _currentLang) manageLangFilter = _currentLang;
     renderBrowseGallery();
   }
+  _renderSelectionBar();
 }
 
 // ── Collections tab ──
@@ -5109,6 +5137,32 @@ async function _renderSeedingSection() {
   listEl.innerHTML = rows;
 }
 
+// One toggle row for the seed/mirror controls. Env-locked settings render
+// disabled with a "controlled by env var" hint (same pattern as auto-update).
+function _btToggleHtml(key, checked, envLocked, envVar, label, hint) {
+  return '<label class="ms-check"' + (envLocked ? ' style="opacity:0.55"' : '') + '>' +
+    '<input type="checkbox"' + (checked ? ' checked' : '') + (envLocked ? ' disabled' : '') +
+    ' onchange="_setBtSetting(\'' + key + '\', this)"> ' + tH(label) + '</label>' +
+    '<div class="ms-hint">' +
+    (envLocked ? tH('env_controlled', {v: envVar}) : tH(hint)) + '</div>';
+}
+
+async function _setBtSetting(key, cb) {
+  cb.disabled = true;
+  try {
+    const body = {}; body[key] = cb.checked;
+    const r = await manageFetch('/manage/bt-settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) { cb.checked = !cb.checked; _showToast(t('save_failed')); }
+  } catch (e) {
+    cb.checked = !cb.checked; _showToast(t('save_failed'));
+  }
+  cb.disabled = false;
+}
+
 async function _renderMirrorSection() {
   let m;
   try {
@@ -5120,19 +5174,21 @@ async function _renderMirrorSection() {
   }
   const el = document.getElementById('ms-mirror-status');
   if (!el) return;
-  if (!m.enabled) {
-    el.innerHTML = '<div class="ms-hint">' + tH('mirror_off_hint') + '</div>';
-    return;
+  let h = _btToggleHtml('seed', m.seed_enabled, m.seed_env_locked, 'ZIMI_SEED',
+    'seed_toggle_label', 'seed_toggle_hint');
+  h += _btToggleHtml('mirror', m.enabled, m.env_locked, 'ZIMI_MIRROR',
+    'mirror_toggle_label', 'mirror_toggle_hint');
+  if (m.enabled) {
+    const fmtKb = m.upload_kb >= 1024
+      ? (m.upload_kb / 1024).toFixed(1) + ' MB/s'
+      : m.upload_kb + ' KB/s';
+    h += '<div class="mc-row">' +
+      '<span class="mc-label">📡 ' + tH('mirror_active') + '</span>' +
+      '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
+        'ratio ≤ ' + m.ratio_cap.toFixed(0) + 'x · ↑ ' + fmtKb +
+      '</span></div>';
   }
-  const fmtKb = m.upload_kb >= 1024
-    ? (m.upload_kb / 1024).toFixed(1) + ' MB/s'
-    : m.upload_kb + ' KB/s';
-  el.innerHTML = '<div class="mc-row">' +
-    '<span class="mc-label">📡 ' + tH('mirror_active') + '</span>' +
-    '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
-      'ratio ≤ ' + m.ratio_cap.toFixed(0) + 'x · ↑ ' + fmtKb +
-    '</span></div>' +
-    '<div class="ms-hint" style="margin-top:4px">' + tH('mirror_active_hint') + '</div>';
+  el.innerHTML = h;
 }
 
 

@@ -104,3 +104,65 @@ def test_disk_check_handles_missing_path(monkeypatch):
         p2p.shutil, "disk_usage", MagicMock(side_effect=OSError("nope"))
     )
     assert p2p.should_pause_for_disk_pressure("/zims") is False
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Persisted UI preferences (seed/mirror toggles) + env-var lock
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def _prefs(tmp_path, monkeypatch):
+    """Point p2p at a temp prefs file and clear the seed/mirror env vars."""
+    monkeypatch.delenv("ZIMI_SEED", raising=False)
+    monkeypatch.delenv("ZIMI_MIRROR", raising=False)
+    path = str(tmp_path / "bt" / "prefs.json")
+    old = p2p._prefs_path
+    p2p.set_prefs_path(path)
+    yield path
+    p2p.set_prefs_path(old)
+
+
+def test_seed_pref_persists_and_disables(_prefs):
+    assert p2p.is_seeding_enabled() is True  # default without env or pref
+    p2p.set_pref("seed", False)
+    assert p2p.is_seeding_enabled() is False
+    assert p2p.is_seed_env_locked() is False
+
+
+def test_seed_env_wins_over_pref(_prefs, monkeypatch):
+    p2p.set_pref("seed", False)
+    monkeypatch.setenv("ZIMI_SEED", "1")
+    assert p2p.is_seeding_enabled() is True
+    assert p2p.is_seed_env_locked() is True
+
+
+def test_mirror_pref_enables_without_env(_prefs):
+    assert p2p.is_mirror_enabled() is False  # default off
+    p2p.set_pref("mirror", True)
+    assert p2p.is_mirror_enabled() is True
+    assert p2p.is_mirror_env_locked() is False
+
+
+def test_mirror_env_wins_over_pref(_prefs, monkeypatch):
+    p2p.set_pref("mirror", True)
+    monkeypatch.setenv("ZIMI_MIRROR", "0")
+    assert p2p.is_mirror_enabled() is False
+    assert p2p.is_mirror_env_locked() is True
+
+
+def test_prefs_survive_corrupt_file(_prefs):
+    os.makedirs(os.path.dirname(_prefs), exist_ok=True)
+    with open(_prefs, "w") as f:
+        f.write("{not json")
+    assert p2p.is_seeding_enabled() is True  # falls back to default
+    p2p.set_pref("seed", False)  # write replaces the corrupt file
+    assert p2p.is_seeding_enabled() is False
+
+
+def test_mirror_status_reports_lock_state(_prefs, monkeypatch):
+    monkeypatch.setenv("ZIMI_SEED", "0")
+    status = p2p.get_mirror_status()
+    assert status["seed_enabled"] is False
+    assert status["seed_env_locked"] is True
+    assert status["env_locked"] is False  # mirror env not set

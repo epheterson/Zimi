@@ -1016,6 +1016,7 @@ def main():
         try:
             from zimi import p2p
 
+            p2p.set_prefs_path(os.path.join(ZIMI_DATA_DIR, "bt", "prefs.json"))
             backend = p2p.get_backend(data_dir=ZIMI_DATA_DIR)
             if backend:
                 import atexit
