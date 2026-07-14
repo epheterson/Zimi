@@ -1,13 +1,13 @@
 # Zimi
 
 [![CI](https://github.com/epheterson/Zimi/actions/workflows/ci.yml/badge.svg)](https://github.com/epheterson/Zimi/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-535%20passing-brightgreen)](#)
-[![Lighthouse Accessibility](https://img.shields.io/badge/Lighthouse%20a11y-100%2F100-success?logo=lighthouse&logoColor=white)](docs/plans/2026-04-26-accessibility.md)
-[![WCAG 2.1 AA](https://img.shields.io/badge/WCAG%202.1-AA-blue)](docs/plans/2026-04-26-accessibility.md)
-[![i18n](https://img.shields.io/badge/i18n-10%20languages-blueviolet)](#languages)
 [![Docker Pulls](https://img.shields.io/docker/pulls/epheterson/zimi)](https://hub.docker.com/r/epheterson/zimi)
 [![PyPI](https://img.shields.io/pypi/v/zimi)](https://pypi.org/project/zimi/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+A modern experience for your ZIM files.
+
+[Kiwix](https://kiwix.org) packages the world's knowledge into ZIM files. Zimi makes them feel like the real internet with a rich web UI, fast JSON API, and an MCP server for AI agents. Everything works offline, in your language.
 
 Zimi is
 
@@ -32,9 +32,9 @@ Zimi is
 |-------------------|---------|
 | ![Languages](screenshots/language-dropdown.png) | ![Catalog](screenshots/browse-library.png) |
 
-| Article Reader | Sharing |
-|----------------|---------|
-| ![Reader](screenshots/reader.png) | ![Sharing](screenshots/sharing.png) |
+| Sharing |
+|---------|
+| ![Sharing](screenshots/sharing.png) |
 
 ## Languages
 
