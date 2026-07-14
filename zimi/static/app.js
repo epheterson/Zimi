@@ -4706,7 +4706,7 @@ async function renderManage() {
     '<div class="manage-wrap">' +
     '<div class="manage-tabs">' +
       // Settings lives in its own first tab on every viewport.
-      '<button class="manage-tab manage-tab-settings' + (manageTab === 'settings' ? ' active' : '') + '" data-tab="settings" onclick="switchManageTab(\'settings\')">\u2699\ufe0e ' + tH('ms_settings_tab') + '</button>' +
+      '<button class="manage-tab manage-tab-settings' + (manageTab === 'settings' ? ' active' : '') + '" data-tab="settings" onclick="switchManageTab(\'settings\')">' + tH('ms_settings_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">' + tH('installed_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">' + tH('catalog_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">' + tH('collections_tab') + '</button>' +
