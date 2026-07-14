@@ -81,6 +81,13 @@ def is_share_enabled() -> bool:
     return bool(p2p._read_pref("peer_share", True))
 
 
+def is_name_env_locked() -> bool:
+    return bool(
+        str(_nearby_conf().get("name", "")).strip()
+        or os.environ.get("ZIMI_PEER_NAME", "").strip()
+    )
+
+
 def is_share_env_locked() -> bool:
     if "enabled" in _nearby_conf():
         return True
@@ -129,6 +136,10 @@ def _peer_instance_name() -> str:
     raw = str(_nearby_conf().get("name", "")).strip() or os.environ.get(
         "ZIMI_PEER_NAME", ""
     ).strip()
+    if not raw:
+        from zimi import p2p
+
+        raw = str(p2p._read_pref("peer_name", "")).strip()
     if raw:
         # DNS-SD instance names allow most printable chars, but we
         # restrict to [a-zA-Z0-9-_ ] for safety + readability. Spaces

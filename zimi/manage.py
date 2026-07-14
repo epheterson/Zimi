@@ -982,6 +982,17 @@ def handle_manage_post(handler, parsed, data):
                     p2p.shutdown_backend()
                 except Exception:
                     pass
+        if "peer_name" in data:
+            from zimi import p2p_discovery as _disc2
+
+            if _disc2.is_name_env_locked():
+                return handler._json(
+                    403,
+                    {"error": "Peer name is controlled by the ZIMI_NEARBY env var"},
+                )
+            name = str(data["peer_name"]).strip()[:63]
+            p2p.set_pref("peer_name", name)
+            changed["peer_name"] = name
         if "seed_ratio" in data:
             if p2p.is_seed_ratio_env_locked():
                 return handler._json(

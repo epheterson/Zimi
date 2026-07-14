@@ -738,6 +738,13 @@
   }
   .share-ratio input:focus { outline: none; border-color: var(--amber); }
   .share-ratio input:disabled { opacity: 0.45; }
+  .peer-name-input {
+    width: 150px; padding: 2px 6px; font: inherit; text-align: right;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text);
+  }
+  .peer-name-input:focus { outline: none; border-color: var(--amber); }
+  .peer-name-input:disabled { opacity: 0.55; border-color: transparent; background: none; }
   .share-ratio-note { color: var(--text2); opacity: 0.75; font-size: 11px; margin-left: 4px; }
   /* iOS-style switch: amber track when on, black knob slides right */
   .switch { position: relative; flex-shrink: 0; width: 42px; height: 24px; display: inline-block; cursor: pointer; }

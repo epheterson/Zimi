@@ -317,6 +317,7 @@ def get_mirror_status() -> dict:
         "torrent_env_locked": is_torrent_env_locked(),
         "peer_share": _disc.is_share_enabled(),
         "peer_share_env_locked": _disc.is_share_env_locked(),
+        "peer_name_env_locked": _disc.is_name_env_locked(),
         "ratio_cap": get_mirror_ratio_cap(),
         "upload_kb": get_mirror_upload_kb(),
         "seed_ratio_cap": get_seed_ratio_cap(),

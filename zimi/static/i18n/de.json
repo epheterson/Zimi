@@ -890,5 +890,6 @@
   "share_nearby_title": "In der Nähe",
   "share_nearby_desc": "ZIM-Dateien im lokalen Netzwerk teilen und herunterladen.",
   "seed_ratio_zero_hint": "Seeden stoppt, sobald das N-fache der Dateigröße hochgeladen wurde. 0 = nie seeden.",
-  "seed_ratio_zero_inline": "0 = kein Seeden"
+  "seed_ratio_zero_inline": "0 = kein Seeden",
+  "peer_name_hint": "Der Name, den andere Zimi-Geräte sehen. Gilt nach Neustart."
 }

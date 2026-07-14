@@ -890,5 +890,6 @@
   "share_nearby_title": "附近",
   "share_nearby_desc": "在本地网络中共享和下载 ZIM 文件。",
   "seed_ratio_zero_hint": "上传量达到文件大小的 N 倍后停止做种。0 = 从不做种。",
-  "seed_ratio_zero_inline": "0 表示不做种"
+  "seed_ratio_zero_inline": "0 表示不做种",
+  "peer_name_hint": "其他 Zimi 设备看到的名称。重启后生效。"
 }

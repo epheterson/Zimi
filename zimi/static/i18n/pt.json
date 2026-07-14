@@ -890,5 +890,6 @@
   "share_nearby_title": "Por perto",
   "share_nearby_desc": "Compartilhe e baixe arquivos ZIM na sua rede local.",
   "seed_ratio_zero_hint": "Para de semear após enviar N vezes o tamanho do arquivo. 0 = nunca semear.",
-  "seed_ratio_zero_inline": "0 = sem seed"
+  "seed_ratio_zero_inline": "0 = sem seed",
+  "peer_name_hint": "O nome que outros dispositivos Zimi veem. Vale após reiniciar."
 }

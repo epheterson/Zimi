@@ -890,5 +890,6 @@
   "share_nearby_title": "בקרבת מקום",
   "share_nearby_desc": "שתפו והורידו קובצי ZIM ברשת המקומית שלכם.",
   "seed_ratio_zero_hint": "הזריעה נעצרת לאחר העלאה של פי N מגודל הקובץ. 0 = לעולם לא לזרוע.",
-  "seed_ratio_zero_inline": "0 = ללא זריעה"
+  "seed_ratio_zero_inline": "0 = ללא זריעה",
+  "peer_name_hint": "השם שמכשירי Zimi אחרים רואים. נכנס לתוקף לאחר הפעלה מחדש."
 }

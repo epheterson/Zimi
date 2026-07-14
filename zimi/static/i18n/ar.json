@@ -890,5 +890,6 @@
   "share_nearby_title": "قريب",
   "share_nearby_desc": "شارك ونزّل ملفات ZIM على شبكتك المحلية.",
   "seed_ratio_zero_hint": "يتوقف البذر بعد رفع N ضعف حجم الملف. 0 = عدم البذر أبدًا.",
-  "seed_ratio_zero_inline": "0 = بدون بذر"
+  "seed_ratio_zero_inline": "0 = بدون بذر",
+  "peer_name_hint": "الاسم الذي تراه أجهزة Zimi الأخرى. يسري بعد إعادة التشغيل."
 }

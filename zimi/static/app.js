@@ -5174,7 +5174,7 @@ async function _renderSeedingSection() {
   // Status row: dot + state + hint
   const dot = bt.status === 'ready' ? '🟢' : bt.status === 'unavailable' ? '🟡' : '⚪';
   const stateLabel = t('bt_state_' + bt.status);
-  let html = '<div class="mc-row"><span class="mc-label">' + dot + ' ' + esc(stateLabel) + '</span>';
+  let html = '<div class="mc-row"><span class="mc-label"><span style="margin-right:7px">' + dot + '</span>' + esc(stateLabel) + '</span>';
   if (bt.bt_port) {
     html += '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
       'port ' + bt.bt_port + ' · ' + (bt.backend || 'aria2') + '</span>';
@@ -5197,9 +5197,17 @@ async function _renderSeedingSection() {
       if (pd.enabled) {
         const self = pd.self || '';
         const n = (pd.peers || []).length;
+        // The advertised name is editable in place; persists as a pref
+        // and takes effect on the next restart (mDNS re-registration).
+        let nameLocked = false;
+        try { nameLocked = !!(await (await authedFetch('/manage/mirror')).json()).peer_name_env_locked; } catch (e) {}
         html += '<div class="mc-row" style="margin-top:6px">' +
           '<span class="mc-label">' + tH('peer_advertising_as') + '</span>' +
-          '<span class="mc-value" style="font-family:monospace;font-size:11px">' + esc(self) +
+          '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
+          '<input type="text" class="peer-name-input" value="' + escAttr(self) + '" maxlength="63"' +
+          (nameLocked ? ' disabled' : '') +
+          ' title="' + escAttr(t('peer_name_hint')) + '" aria-label="' + escAttr(t('peer_advertising_as')) + '"' +
+          ' onchange="_setPeerName(this)">' +
           (n > 0 ? ' · ' + n + ' ' + tH('peers') : '') +
           '</span></div>';
       }
@@ -5270,6 +5278,19 @@ async function _setBtSetting(key, cb) {
     cb.checked = !cb.checked; _showToast(t('save_failed'));
   }
   cb.disabled = false;
+}
+
+async function _setPeerName(inp) {
+  const v = inp.value.trim().slice(0, 63);
+  try {
+    const r = await manageFetch('/manage/bt-settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({peer_name: v})
+    });
+    if (!r.ok) _showToast(t('save_failed'));
+    else _showToast(t('saved') + ' · ' + t('restart_hint'));
+  } catch (e) { _showToast(t('save_failed')); }
 }
 
 async function _setSeedRatio(inp) {
