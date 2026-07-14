@@ -9,19 +9,15 @@
 [![PyPI](https://img.shields.io/pypi/v/zimi)](https://pypi.org/project/zimi/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**The offline internet.** Entire websites, cross-site linking, a real search engine, a native browsing experience. Wikipedia, Stack Overflow, wikiHow, dev docs, and 1,000+ more archives from [Kiwix](https://kiwix.org). No connection required, ever.
+Zimi is
 
-**Search everything at once.** One query, every source, 140M+ articles. Snippets, thumbnails, and ranking that puts the right answer on top. Fast.
-
-**Jump between languages.** Read an article, switch it to any of its languages mid-sentence. Ten UI languages built in.
-
-**Your machines share with each other.** Zimi instances find each other on your network and pass ZIMs around at LAN speed. Fully offline.
-
-**Downloads that give back.** ZIMs arrive over BitTorrent and seed to a polite 2x, spreading the load instead of leaning on one server. Flip one switch to become a full Kiwix mirror.
-
-**Fresh every day.** Picture of the Day, On This Day, a word, a quote, a comic, a place. An almanac with a live sky. All computed locally, forever.
-
-**For humans and machines.** A rich web UI, a JSON API for everything, and an MCP server so AI agents can read your library too.
+- **The offline internet.** Entire websites, cross-ZIM linking, search engine and native browser experience.
+- **Search that hits everything.** One query, every source, 140M+ articles, the right answer on top. Fast.
+- **Multilingual.** Switch any article into any language it has. Ten UI languages built in.
+- **A mesh.** Your machines find each other and pass ZIMs around at LAN speed, no internet needed.
+- **A good citizen.** Downloads arrive over BitTorrent and seed back to the Kiwix network. One switch makes you a full mirror.
+- **Fresh daily.** Picture of the Day, On This Day, a word, a quote, a comic, a live almanac sky. All computed locally, forever.
+- **For humans and machines.** Web UI, JSON API, MCP server for AI agents.
 
 ## Screenshots
 
