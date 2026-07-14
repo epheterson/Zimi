@@ -18,7 +18,6 @@ Zimi is
 - **A mesh.** Your machines find each other and pass ZIMs around at LAN speed, no internet needed.
 - **A good citizen.** Downloads arrive over BitTorrent and seed back to the Kiwix network. One switch makes you a full mirror.
 - **Fresh daily.** Picture of the Day, On This Day, a word, a quote, a comic, a live almanac sky. All computed locally, forever.
-- **Everyone means everyone.** 100/100 accessibility, keyboard-first, screen readers welcome.
 - **Anywhere.** Docker, pip, a native macOS app, or your phone as a PWA.
 - **For humans and machines.** Web UI, JSON API, MCP server for AI agents.
 
@@ -127,23 +126,29 @@ Seeding needs no router setup. Forwarding your BitTorrent port (default 6881) le
 
 ### Environment Variables
 
+Most people set nothing: every setting below has a sensible default or lives in the UI.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ZIM_DIR` | `/zims` | Path to ZIM files (scanned for `*.zim` on startup) |
 | `ZIMI_DATA_DIR` | `/config` (Docker) or `$ZIM_DIR/.zimi` | Cache, indexes, and settings. Mount separately in Docker. |
-| `ZIMI_MANAGE` | `1` | Library manager. `0` to disable. |
 | `ZIMI_MANAGE_PASSWORD` | _(none)_ | Protect library management |
-| `ZIMI_AUTO_UPDATE` | `0` | Auto-update ZIMs (`1` to enable) |
+| `ZIMI_BT` | `on` | BitTorrent: `off`, or `on,port=6881,ratio=2,up=2048,mirror=off`. Fields you set are locked in the UI; fields you leave out stay UI-controlled. `ratio=0` means never seed. |
+| `ZIMI_NEARBY` | `off` | LAN sharing: `off`, or `on,name=my-zimi,public=off`. Controls serving *and* fetching between your Zimi devices. |
+
+<details>
+<summary>Advanced</summary>
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ZIMI_MANAGE` | `1` | Library manager. `0` to disable entirely. |
+| `ZIMI_AUTO_UPDATE` | `0` | Auto-update ZIMs (`1` to enable; also a UI setting) |
 | `ZIMI_UPDATE_FREQ` | `weekly` | `daily`, `weekly`, or `monthly` |
 | `ZIMI_RATE_LIMIT` | `60` | Requests/min/IP. `0` to disable. |
-| `ZIMI_BT` | `on` | BitTorrent, one compact var: `off`, or `on,port=6881,ratio=2,up=2048,mirror=off`. Every field is optional; a field you set is locked in the UI, fields you leave out stay UI-controlled. `ratio=0` means never seed. |
-| `ZIMI_NEARBY` | `off` | LAN sharing, same style: `off`, or `on,name=my-zimi,public=off`. Controls serving *and* fetching between your Zimi devices. |
-| `ZIMI_SEED_RATIO` | `2.0` | Stop seeding once ratio (uploaded ÷ downloaded) reaches this. |
-| `ZIMI_PEER_DISCOVERY` | `1` | Advertise + browse `_zimi._tcp.local` over mDNS. `0` disables. |
-| `ZIMI_PEER_NAME` | _(hostname)_ | Friendly name advertised to LAN peers. Defaults to `zimi-<hostname>`. |
-| `ZIMI_MIRROR` | `0` | Enable public-mirror mode: uncapped ratio + raised upload bandwidth. `1` to enable. |
-| `ZIMI_MIRROR_RATIO` | `1000` | Mirror-mode ratio cap (effectively uncapped). |
-| `ZIMI_MIRROR_UPLOAD_KB` | `10240` | Mirror-mode upload bandwidth in KB/s. |
+| `ZIMI_API_TOKEN` | _(none)_ | Pin the API token instead of generating in the UI |
+| `ZIMI_HOT_ZIMS` | _(none)_ | Comma-separated ZIM names to pre-warm at startup |
+
+</details>
 
 ## API
 
