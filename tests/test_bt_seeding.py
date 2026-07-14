@@ -281,3 +281,53 @@ def test_get_backend_honors_torrent_pref_over_singleton(_prefs, monkeypatch):
     p2p.set_pref("torrent", True)
     assert p2p.get_backend(data_dir="/tmp") is not None
     p2p._backend_singleton = None
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# ZIMI_BT / ZIMI_NEARBY compact config blobs
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def test_bt_blob_master_switch_and_fields(_prefs, monkeypatch):
+    monkeypatch.setenv("ZIMI_BT", "off")
+    assert p2p.is_torrent_enabled() is False
+    assert p2p.is_torrent_env_locked() is True
+    monkeypatch.setenv("ZIMI_BT", "on,port=16881,ratio=3,mirror=on")
+    assert p2p.is_torrent_enabled() is True
+    assert p2p.get_bt_port() == 16881
+    assert p2p.get_seed_ratio_cap() == 3.0
+    assert p2p.is_seed_ratio_env_locked() is True
+    assert p2p.is_mirror_enabled() is True
+    assert p2p.is_mirror_env_locked() is True
+
+
+def test_bt_blob_field_only_does_not_lock_switch(_prefs, monkeypatch):
+    """Setting just port= must not lock the on/off switch (granular locks)."""
+    monkeypatch.setenv("ZIMI_BT", "port=16881")
+    assert p2p.get_bt_port() == 16881
+    assert p2p.is_torrent_env_locked() is False
+    assert p2p.is_torrent_enabled() is True  # pref default still applies
+    p2p.set_pref("torrent", False)
+    assert p2p.is_torrent_enabled() is False  # UI switch still works
+
+
+def test_legacy_vars_still_work(_prefs, monkeypatch):
+    monkeypatch.delenv("ZIMI_BT", raising=False)
+    monkeypatch.setenv("ZIMI_TORRENT", "0")
+    assert p2p.is_torrent_enabled() is False
+    monkeypatch.setenv("ZIMI_SEED_RATIO", "1.5")
+    assert p2p.get_seed_ratio_cap() == 1.5
+
+
+def test_nearby_blob(_prefs, monkeypatch):
+    from zimi import p2p_discovery as disc
+
+    monkeypatch.delenv("ZIMI_PEER_SHARE", raising=False)
+    monkeypatch.setenv("ZIMI_NEARBY", "off")
+    assert disc.is_share_enabled() is False
+    assert disc.is_share_env_locked() is True
+    assert disc.is_enabled() is False  # off silences discovery too
+    monkeypatch.setenv("ZIMI_NEARBY", "on,name=my box!,public=on")
+    assert disc.is_share_enabled() is True
+    assert disc.is_public_share_enabled() is True
+    assert disc._peer_instance_name() == "my box"

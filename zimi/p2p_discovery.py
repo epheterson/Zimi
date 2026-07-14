@@ -46,8 +46,20 @@ def _import_zeroconf():
         return None
 
 
+def _nearby_conf() -> dict:
+    from zimi import p2p
+
+    return p2p.parse_conf_blob("ZIMI_NEARBY")
+
+
 def is_enabled() -> bool:
-    """LAN discovery is on by default; ZIMI_PEER_DISCOVERY=0 disables it."""
+    """LAN discovery is on by default. ZIMI_NEARBY's discovery= field (or
+    legacy ZIMI_PEER_DISCOVERY) disables it."""
+    conf = _nearby_conf()
+    if "discovery" in conf:
+        return str(conf["discovery"]).lower() not in ("0", "false", "no", "off")
+    if "enabled" in conf and not conf["enabled"]:
+        return False  # NEARBY=off silences the whole feature, adverts included
     val = os.environ.get("ZIMI_PEER_DISCOVERY", "1").strip().lower()
     return val not in ("0", "false", "no", "off", "")
 
@@ -55,9 +67,12 @@ def is_enabled() -> bool:
 def is_share_enabled() -> bool:
     """Serve our local ZIMs to LAN peers over HTTP. On by default.
 
-    An explicitly-set ZIMI_PEER_SHARE env var wins (and locks the UI
-    toggle); otherwise the persisted UI preference (shared prefs store
+    ZIMI_NEARBY (or legacy ZIMI_PEER_SHARE) wins and locks the UI
+    switch; otherwise the persisted UI preference (shared prefs store
     in p2p — one file for all sharing toggles)."""
+    conf = _nearby_conf()
+    if "enabled" in conf:
+        return bool(conf["enabled"])
     val = os.environ.get("ZIMI_PEER_SHARE")
     if val is not None and val.strip():
         return val.strip().lower() not in ("0", "false", "no", "off")
@@ -67,6 +82,8 @@ def is_share_enabled() -> bool:
 
 
 def is_share_env_locked() -> bool:
+    if "enabled" in _nearby_conf():
+        return True
     val = os.environ.get("ZIMI_PEER_SHARE")
     return val is not None and val.strip() != ""
 
@@ -77,7 +94,11 @@ def is_public_share_enabled() -> bool:
     Off by default: a Zimi behind a public reverse proxy
     (knowledge.zosia.io) should not let the open internet vacuum
     multi-GB files. LAN/loopback peers are always allowed when sharing
-    is on; flip ZIMI_PEER_SHARE_PUBLIC=1 to also serve the public."""
+    is on; ZIMI_NEARBY's public= field (or legacy ZIMI_PEER_SHARE_PUBLIC)
+    opts into serving the public."""
+    conf = _nearby_conf()
+    if "public" in conf:
+        return str(conf["public"]).lower() in ("1", "true", "yes", "on")
     val = os.environ.get("ZIMI_PEER_SHARE_PUBLIC", "0").strip().lower()
     return val in ("1", "true", "yes", "on")
 
@@ -105,7 +126,9 @@ def _peer_instance_name() -> str:
     """Friendly name advertised on mDNS. ZIMI_PEER_NAME env var
     overrides the auto-detected `zimi-<hostname>` form. Sanitized to
     `[a-zA-Z0-9-]+` to keep DNS-SD service names valid."""
-    raw = os.environ.get("ZIMI_PEER_NAME", "").strip()
+    raw = str(_nearby_conf().get("name", "")).strip() or os.environ.get(
+        "ZIMI_PEER_NAME", ""
+    ).strip()
     if raw:
         # DNS-SD instance names allow most printable chars, but we
         # restrict to [a-zA-Z0-9-_ ] for safety + readability. Spaces

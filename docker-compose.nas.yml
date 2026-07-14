@@ -33,7 +33,7 @@ services:
       - ZIM_DIR=/zims
       - ZIMI_DATA_DIR=/data
       - ZIMI_MANAGE=1
-      - ZIMI_BT_PORT=16881
+      - ZIMI_BT=port=16881  # gluetun owns host 6881; on/off stays UI-controlled
     # Low resource footprint — only loads ZIM indexes on query
     mem_limit: 4g
     labels:

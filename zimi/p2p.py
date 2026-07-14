@@ -52,6 +52,43 @@ def _bool_env(key: str, default: bool = False) -> bool:
 
 
 # ============================================================================
+# Compact config blobs — the documented env surface is just two vars:
+#   ZIMI_BT="on,port=6881,ratio=2,up=2048,mirror=off"
+#   ZIMI_NEARBY="on,name=my-zimi,public=off"
+# A bare on/off token drives the master switch; key=value pairs set single
+# fields. Any field present in the blob is env-locked in the UI — fields
+# left out stay UI-controlled. The pre-release per-feature vars
+# (ZIMI_TORRENT, ZIMI_SEED, ...) keep working as undocumented fallbacks so
+# :dev testers don't break.
+# ============================================================================
+
+
+def parse_conf_blob(name: str) -> dict:
+    raw = os.environ.get(name, "")
+    conf: dict = {}
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" in part:
+            k, v = part.split("=", 1)
+            conf[k.strip().lower()] = v.strip()
+        else:
+            conf["enabled"] = part.lower() not in ("0", "false", "no", "off")
+    return conf
+
+
+def _conf_bool(v, default: bool = False) -> bool:
+    if isinstance(v, bool):
+        return v
+    return str(v).strip().lower() not in ("0", "false", "no", "off")
+
+
+def _bt_conf() -> dict:
+    return parse_conf_blob("ZIMI_BT")
+
+
+# ============================================================================
 # Persisted UI preferences (seed/mirror toggles). An explicitly-set env var
 # wins and locks the UI control — same pattern as ZIMI_AUTO_UPDATE — so
 # operators who configure via environment keep infra-as-config semantics.
@@ -102,34 +139,39 @@ def _env_explicitly_set(key: str) -> bool:
 
 def is_torrent_enabled() -> bool:
     """BT-first downloads are ON by default (v1.7.0) — every Zimi that can
-    torrent takes load off the Kiwix mirrors. An explicitly-set
-    ZIMI_TORRENT env var wins (and locks the UI switch); otherwise the
-    persisted UI preference. Installs without aria2c silently use HTTP."""
+    torrent takes load off the Kiwix mirrors. ZIMI_BT (or legacy
+    ZIMI_TORRENT) wins and locks the UI switch; otherwise the persisted
+    UI preference. Installs without aria2c silently use HTTP."""
+    conf = _bt_conf()
+    if "enabled" in conf:
+        return bool(conf["enabled"])
     if _env_explicitly_set("ZIMI_TORRENT"):
         return _bool_env("ZIMI_TORRENT", default=True)
     return bool(_read_pref("torrent", True))
 
 
 def is_torrent_env_locked() -> bool:
-    return _env_explicitly_set("ZIMI_TORRENT")
+    return "enabled" in _bt_conf() or _env_explicitly_set("ZIMI_TORRENT")
 
 
 def get_bt_port() -> int:
     """Inbound BT port. Default 6881; clamps invalid input."""
-    raw = os.environ.get("ZIMI_BT_PORT", str(DEFAULT_BT_PORT))
+    raw = _bt_conf().get("port") or os.environ.get(
+        "ZIMI_BT_PORT", str(DEFAULT_BT_PORT)
+    )
     try:
         n = int(raw)
         if 1024 <= n <= 65535:
             return n
     except (ValueError, TypeError):
         pass
-    log.warning("ZIMI_BT_PORT=%r invalid; using default %d", raw, DEFAULT_BT_PORT)
+    log.warning("BT port %r invalid; using default %d", raw, DEFAULT_BT_PORT)
     return DEFAULT_BT_PORT
 
 
 def get_staging_dir(data_dir: str) -> str:
     """Where in-progress downloads land before being renamed to ZIM_DIR."""
-    explicit = os.environ.get("ZIMI_STAGING_DIR")
+    explicit = _bt_conf().get("staging") or os.environ.get("ZIMI_STAGING_DIR")
     if explicit:
         return explicit
     return os.path.join(data_dir, "staging")
@@ -137,6 +179,9 @@ def get_staging_dir(data_dir: str) -> str:
 
 def get_backend_name() -> str:
     """Which BT backend to use. Default 'aria2'."""
+    conf = _bt_conf()
+    if conf.get("backend"):
+        return str(conf["backend"]).lower()
     return os.environ.get("ZIMI_BT_BACKEND", "aria2").strip().lower()
 
 
@@ -146,22 +191,26 @@ def get_backend_name() -> str:
 
 
 def is_seeding_enabled() -> bool:
-    """Seed by default when BT is enabled. ZIMI_SEED env var wins when set
-    (and locks the UI toggle); otherwise the persisted UI preference."""
+    """Seed by default when BT is enabled. ZIMI_BT's seed= field (or
+    legacy ZIMI_SEED) wins; otherwise the persisted UI preference."""
+    conf = _bt_conf()
+    if "seed" in conf:
+        return _conf_bool(conf["seed"])
     if _env_explicitly_set("ZIMI_SEED"):
         return _bool_env("ZIMI_SEED", True)
     return bool(_read_pref("seed", True))
 
 
 def is_seed_env_locked() -> bool:
-    return _env_explicitly_set("ZIMI_SEED")
+    return "seed" in _bt_conf() or _env_explicitly_set("ZIMI_SEED")
 
 
 def get_seed_ratio_cap() -> float:
     """Stop seeding once we've uploaded N× the file size. Default 2.0.
-    ZIMI_SEED_RATIO env wins when set; otherwise the persisted UI value."""
-    raw = os.environ.get("ZIMI_SEED_RATIO")
-    if raw is None or not raw.strip():
+    ZIMI_BT's ratio= field (or legacy ZIMI_SEED_RATIO) wins; otherwise
+    the persisted UI value. 0 = never seed."""
+    raw = _bt_conf().get("ratio") or os.environ.get("ZIMI_SEED_RATIO")
+    if raw is None or not str(raw).strip():
         try:
             return max(
                 0.0, min(10.0, float(_read_pref("seed_ratio", DEFAULT_RATIO_CAP)))
@@ -175,12 +224,12 @@ def get_seed_ratio_cap() -> float:
 
 
 def is_seed_ratio_env_locked() -> bool:
-    return _env_explicitly_set("ZIMI_SEED_RATIO")
+    return "ratio" in _bt_conf() or _env_explicitly_set("ZIMI_SEED_RATIO")
 
 
 def get_disk_pressure_pct() -> int:
     """Pause seeding when free disk drops below this percent. Default 5."""
-    raw = os.environ.get("ZIMI_SEED_DISK_PCT", "5")
+    raw = _bt_conf().get("disk_min") or os.environ.get("ZIMI_SEED_DISK_PCT", "5")
     try:
         return max(1, min(50, int(raw)))
     except (ValueError, TypeError):
@@ -218,20 +267,25 @@ DEFAULT_MIRROR_UPLOAD_KB = 10240  # 10 MB/s
 
 def is_mirror_enabled() -> bool:
     """Mirror mode lifts the seed-ratio cap and raises upload bandwidth.
-    ZIMI_MIRROR env var wins when set (and locks the UI toggle); otherwise
-    the persisted UI preference. Off by default."""
+    ZIMI_BT's mirror= field (or legacy ZIMI_MIRROR) wins; otherwise the
+    persisted UI preference. Off by default."""
+    conf = _bt_conf()
+    if "mirror" in conf:
+        return _conf_bool(conf["mirror"])
     if _env_explicitly_set("ZIMI_MIRROR"):
         return _bool_env("ZIMI_MIRROR", False)
     return bool(_read_pref("mirror", False))
 
 
 def is_mirror_env_locked() -> bool:
-    return _env_explicitly_set("ZIMI_MIRROR")
+    return "mirror" in _bt_conf() or _env_explicitly_set("ZIMI_MIRROR")
 
 
 def get_mirror_ratio_cap() -> float:
     """Mirror-mode ratio cap. ZIMI_MIRROR_RATIO override (default 1000)."""
-    raw = os.environ.get("ZIMI_MIRROR_RATIO", str(DEFAULT_MIRROR_RATIO_CAP))
+    raw = _bt_conf().get("mirror_ratio") or os.environ.get(
+        "ZIMI_MIRROR_RATIO", str(DEFAULT_MIRROR_RATIO_CAP)
+    )
     try:
         return max(1.0, float(raw))
     except (ValueError, TypeError):
@@ -241,7 +295,9 @@ def get_mirror_ratio_cap() -> float:
 def get_mirror_upload_kb() -> int:
     """Mirror-mode upload bandwidth in KB/s. ZIMI_MIRROR_UPLOAD_KB
     override (default 10240 = 10 MB/s)."""
-    raw = os.environ.get("ZIMI_MIRROR_UPLOAD_KB", str(DEFAULT_MIRROR_UPLOAD_KB))
+    raw = _bt_conf().get("mirror_up") or os.environ.get(
+        "ZIMI_MIRROR_UPLOAD_KB", str(DEFAULT_MIRROR_UPLOAD_KB)
+    )
     try:
         return max(64, int(raw))
     except (ValueError, TypeError):
@@ -280,7 +336,7 @@ def effective_seed_options() -> dict:
             ratio_cap=get_mirror_ratio_cap(),
             max_upload_kb=get_mirror_upload_kb(),
         )
-    user_upload_raw = os.environ.get(
+    user_upload_raw = _bt_conf().get("up") or os.environ.get(
         "ZIMI_SEED_UPLOAD_KB", str(DEFAULT_SEED_BANDWIDTH_KB)
     )
     try:

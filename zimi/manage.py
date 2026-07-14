@@ -603,7 +603,7 @@ def handle_manage_get(handler, parsed, params):
             status = "ready"
         hint = None
         if not enabled:
-            hint = "BT downloads disabled (ZIMI_TORRENT=0). HTTP is used instead."
+            hint = "BT downloads disabled (ZIMI_BT=off). HTTP is used instead."
         elif status == "unavailable":
             hint = (
                 "aria2c not found — downloads fall back to HTTP. "
@@ -945,7 +945,7 @@ def handle_manage_post(handler, parsed, data):
         if "seed" in data:
             if p2p.is_seed_env_locked():
                 return handler._json(
-                    403, {"error": "Seeding is controlled by ZIMI_SEED env var"}
+                    403, {"error": "Seeding is controlled by the ZIMI_BT env var"}
                 )
             p2p.set_pref("seed", bool(data["seed"]))
             changed["seed"] = bool(data["seed"])
@@ -953,7 +953,7 @@ def handle_manage_post(handler, parsed, data):
             if p2p.is_mirror_env_locked():
                 return handler._json(
                     403,
-                    {"error": "Mirror mode is controlled by ZIMI_MIRROR env var"},
+                    {"error": "Mirror mode is controlled by the ZIMI_BT env var"},
                 )
             p2p.set_pref("mirror", bool(data["mirror"]))
             changed["mirror"] = bool(data["mirror"])
@@ -963,7 +963,7 @@ def handle_manage_post(handler, parsed, data):
             if _disc.is_share_env_locked():
                 return handler._json(
                     403,
-                    {"error": "LAN sharing is controlled by ZIMI_PEER_SHARE env var"},
+                    {"error": "LAN sharing is controlled by the ZIMI_NEARBY env var"},
                 )
             p2p.set_pref("peer_share", bool(data["peer_share"]))
             changed["peer_share"] = bool(data["peer_share"])
@@ -971,7 +971,7 @@ def handle_manage_post(handler, parsed, data):
             if p2p.is_torrent_env_locked():
                 return handler._json(
                     403,
-                    {"error": "BitTorrent is controlled by ZIMI_TORRENT env var"},
+                    {"error": "BitTorrent is controlled by the ZIMI_BT env var"},
                 )
             on = bool(data["torrent"])
             p2p.set_pref("torrent", on)
@@ -986,7 +986,7 @@ def handle_manage_post(handler, parsed, data):
             if p2p.is_seed_ratio_env_locked():
                 return handler._json(
                     403,
-                    {"error": "Seed ratio is controlled by ZIMI_SEED_RATIO env var"},
+                    {"error": "Seed ratio is controlled by the ZIMI_BT env var"},
                 )
             try:
                 ratio = max(0.0, min(10.0, float(data["seed_ratio"])))

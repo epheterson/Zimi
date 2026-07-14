@@ -60,6 +60,15 @@ mini), and delivers the Reach track: P2P distribution + accessibility.
 - Download UI: indeterminate "Connecting to swarm…" bar while the torrent
   resolves, real progress after — no more instant-100% lies.
 
+### Configuration: two env vars instead of fifteen (2026-07-14)
+
+- **Changed**: the BT/P2P env surface collapses into two compact vars:
+  `ZIMI_BT` (`off`, or `on,port=6881,ratio=2,up=2048,mirror=off`) and
+  `ZIMI_NEARBY` (`off`, or `on,name=my-zimi,public=off`). Any field you
+  set is env-locked in the UI; fields you leave out stay UI-controlled —
+  so `ZIMI_BT=port=16881` pins the port while the on/off switch stays
+  yours. The old per-feature vars keep working undocumented.
+
 ### BitTorrent-first by default (2026-07-13)
 
 - **Changed**: BT-first downloads are now ON by default — every Zimi that

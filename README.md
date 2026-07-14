@@ -127,11 +127,8 @@ ZIM_DIR=./zims zimi serve --port 8899
 | `ZIMI_AUTO_UPDATE` | `0` | Auto-update ZIMs (`1` to enable) |
 | `ZIMI_UPDATE_FREQ` | `weekly` | `daily`, `weekly`, or `monthly` |
 | `ZIMI_RATE_LIMIT` | `60` | Requests/min/IP. `0` to disable. |
-| `ZIMI_TORRENT` | `1` | BT-first downloads + seeding via the aria2 sidecar (falls back to HTTP when aria2 is missing). `0` to opt out. |
-| `ZIMI_BT_PORT` | `6881` | BitTorrent listen port (TCP+UDP). |
-| `ZIMI_SEED` | `1` | Seed completed ZIMs back to the swarm. `0` disables seeding. |
-| `ZIMI_PEER_SHARE` | `1` | Serve your `.zim` files to LAN peers at `/dl/<name>` (private IPs only). `0` disables. |
-| `ZIMI_PEER_SHARE_PUBLIC` | `0` | Also serve `/dl/` to public-internet clients. Leave off unless you mean it. |
+| `ZIMI_BT` | `on` | BitTorrent, one compact var: `off`, or `on,port=6881,ratio=2,up=2048,mirror=off`. Every field is optional; a field you set is locked in the UI, fields you leave out stay UI-controlled. `ratio=0` means never seed. |
+| `ZIMI_NEARBY` | `on` | LAN sharing, same style: `off`, or `on,name=my-zimi,public=off`. Controls serving *and* fetching between your Zimi devices. |
 | `ZIMI_SEED_RATIO` | `2.0` | Stop seeding once ratio (uploaded ÷ downloaded) reaches this. |
 | `ZIMI_PEER_DISCOVERY` | `1` | Advertise + browse `_zimi._tcp.local` over mDNS. `0` disables. |
 | `ZIMI_PEER_NAME` | _(hostname)_ | Friendly name advertised to LAN peers. Defaults to `zimi-<hostname>`. |

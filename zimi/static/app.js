@@ -5301,11 +5301,11 @@ async function _renderMirrorSection() {
     ((m.seed_ratio_env_locked || !m.torrent_enabled) ? ' disabled' : '') +
     ' aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">\u00d7 <span class="share-ratio-note">' + tH('seed_ratio_zero_inline') + '</span></span>';
   let h = '<div class="share-rows">' +
-    _shareSwitch('torrent', m.torrent_enabled, m.torrent_env_locked, 'ZIMI_TORRENT',
+    _shareSwitch('torrent', m.torrent_enabled, m.torrent_env_locked, 'ZIMI_BT',
       'share_bt_title', tH('share_bt_desc') + ' ' + ratioField) +
-    _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_MIRROR',
+    _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
       'share_mirror_title', tH('share_mirror_desc')) +
-    _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_PEER_SHARE',
+    _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
       'share_nearby_title', tH('share_nearby_desc')) +
   '</div>';
   if (m.enabled && m.torrent_enabled) {
