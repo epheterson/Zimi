@@ -800,8 +800,8 @@
   .ci-peer { margin-top: 4px; font-size: 11px; }
   .ci-peer-pill {
     /* flex + gap gives real space after the 📡 (the emoji glyph box
-       swallows a plain text space) */
-    display: inline-flex; align-items: center; gap: 5px;
+       swallows a plain text space, and the dish leans right — needs 8px) */
+    display: inline-flex; align-items: center; gap: 8px;
     padding: 2px 8px; border-radius: 10px;
     font-size: 11px; line-height: 1.4;
     background: rgba(120, 200, 120, 0.12); color: #6ec56e;
