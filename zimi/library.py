@@ -1261,6 +1261,10 @@ def _start_download(url, size_bytes=None):
 def _start_peer_download(peer_name, filename, size_bytes=None):
     """Download a ZIM directly from a discovered LAN peer over HTTP.
 
+    Gated on the share toggle in BOTH directions — with sharing off the
+    user has said "internet sources only", so we don't pull from peers
+    either. (The /dl serving side checks the same flag.)
+
     The target URL is built server-side from the *discovered* peer's
     host/port — never from a client-supplied URL — so this can't be coerced
     into fetching an arbitrary host (the peer equivalent of the Kiwix trust
@@ -1273,6 +1277,9 @@ def _start_peer_download(peer_name, filename, size_bytes=None):
     filename, err = _validate_zim_filename(filename)
     if err:
         return None, err
+
+    if not _disc.is_share_enabled():
+        return None, "LAN sharing is turned off"
 
     peer = next((p for p in _disc.get_peers() if p.get("name") == peer_name), None)
     if peer is None:

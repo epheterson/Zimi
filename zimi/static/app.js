@@ -4181,9 +4181,9 @@ function renderCatalogItem(group) {
       (item.summary ? '<div class="ci-summary">' + esc(item.summary) + '</div>' : '') +
       '<div class="ci-meta">' + metaTags.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
       (hierarchyHtml ? '<div class="ci-hier">' + hierarchyHtml + '</div>' : '') +
-      (peerHtml ? '<div class="ci-peer">' + peerHtml + '</div>' : '') +
     '</div>' +
-    '<div class="ci-actions">' + actionsHtml + '</div>' +
+    // Peer pill rides in the action row, directly left of the download button
+    '<div class="ci-actions">' + peerHtml + actionsHtml + '</div>' +
   '</div>';
 }
 

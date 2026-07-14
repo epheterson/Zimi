@@ -881,8 +881,8 @@
   "bt_off_hint": "Torrent-Downloads sind deaktiviert. Normale Downloads funktionieren weiterhin.",
   "bt_unavailable_hint": "Torrent-Engine nicht verfügbar — Downloads nutzen den normalen Weg. Installiere aria2, um Bandbreite mit dem Kiwix-Netzwerk zu teilen.",
   "seed_bar_tip": "Fortschritt zum {cap}×-Teilungslimit",
-  "peer_share_toggle_label": "Meine Bibliothek in diesem Netzwerk teilen",
-  "peer_share_toggle_hint": "Andere Zimi-Geräte in deinem lokalen Netzwerk können ZIMs direkt von diesem Gerät kopieren. Nie ins Internet freigegeben.",
+  "peer_share_toggle_label": "Mit Geräten in der Nähe teilen",
+  "peer_share_toggle_hint": "ZIMs von anderen Zimi-Geräten im Netzwerk sehen und laden — und ihnen Kopien von diesem Gerät erlauben. Ausschalten, um nur Internetquellen zu nutzen. Nie über dein Netzwerk hinaus freigegeben.",
   "show_list": "Liste anzeigen",
   "hide_list": "Liste ausblenden",
   "ms_settings_tab": "Einstellungen"

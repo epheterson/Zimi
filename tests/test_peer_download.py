@@ -223,3 +223,15 @@ class PeerRedirectRefusalTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PeerShareToggleTests(unittest.TestCase):
+    def test_pull_refused_when_sharing_off(self):
+        """The share toggle governs both directions: with sharing off, peer
+        pulls are refused before any network activity."""
+        from unittest.mock import patch as _patch
+
+        with _patch("zimi.p2p_discovery.is_share_enabled", return_value=False):
+            dl_id, err = lib._start_peer_download("any-peer", "some_2026-01.zim")
+        self.assertIsNone(dl_id)
+        self.assertIn("sharing is turned off", err)

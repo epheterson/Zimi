@@ -881,8 +881,8 @@
   "bt_off_hint": "Downloads por torrent estão desativados. Downloads normais continuam funcionando.",
   "bt_unavailable_hint": "Motor de torrent indisponível — os downloads usam o caminho normal. Instale o aria2 para compartilhar banda com a rede Kiwix.",
   "seed_bar_tip": "Progresso até o limite de compartilhamento de {cap}×",
-  "peer_share_toggle_label": "Compartilhar minha biblioteca nesta rede",
-  "peer_share_toggle_hint": "Permite que outros dispositivos Zimi na sua rede local copiem ZIMs diretamente deste. Nunca exposto à internet.",
+  "peer_share_toggle_label": "Compartilhar com dispositivos próximos",
+  "peer_share_toggle_hint": "Veja e baixe ZIMs de outros dispositivos Zimi na sua rede, e deixe que copiem deste. Desative para usar apenas fontes da internet. Nunca exposto além da sua rede.",
   "show_list": "Mostrar lista",
   "hide_list": "Ocultar lista",
   "ms_settings_tab": "Configurações"

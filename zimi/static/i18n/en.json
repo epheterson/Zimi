@@ -881,8 +881,8 @@
   "bt_off_hint": "Torrent downloads are turned off. Regular downloads still work.",
   "bt_unavailable_hint": "Torrent engine not available — downloads use the regular path. Install aria2 to share bandwidth with the Kiwix network.",
   "seed_bar_tip": "Progress toward the {cap}× sharing cap",
-  "peer_share_toggle_label": "Share my library on this network",
-  "peer_share_toggle_hint": "Lets other Zimi devices on your local network copy ZIMs directly from this one. Never exposed to the internet.",
+  "peer_share_toggle_label": "Share with nearby devices",
+  "peer_share_toggle_hint": "See and fetch ZIMs from other Zimi devices on your network, and let them copy from this one. Turn off to use internet sources only. Never exposed beyond your network.",
   "show_list": "Show list",
   "hide_list": "Hide list",
   "ms_settings_tab": "Settings"

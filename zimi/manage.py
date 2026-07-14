@@ -373,6 +373,18 @@ def handle_manage_get(handler, parsed, params):
         try:
             from zimi import p2p_discovery as _disc
 
+            # The share toggle governs BOTH directions: with it off, we
+            # neither serve /dl nor surface peers to pull from — the user
+            # asked for "internet sources only".
+            if not _disc.is_share_enabled():
+                return handler._json(
+                    200,
+                    {
+                        "enabled": False,
+                        "self": _disc._self_service_name or _disc._peer_instance_name(),
+                        "peers": [],
+                    },
+                )
             return handler._json(
                 200,
                 {
@@ -398,6 +410,8 @@ def handle_manage_get(handler, parsed, params):
         try:
             from zimi import p2p_discovery as _disc
 
+            if not _disc.is_share_enabled():
+                return handler._json(403, {"error": "LAN sharing is turned off"})
             peer = param("peer", "")
             if not peer:
                 return handler._json(400, {"error": "missing 'peer' param"})

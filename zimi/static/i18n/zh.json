@@ -881,8 +881,8 @@
   "bt_off_hint": "种子下载已关闭。普通下载仍然可用。",
   "bt_unavailable_hint": "种子引擎不可用 — 下载将使用普通方式。安装 aria2 可与 Kiwix 网络共享带宽。",
   "seed_bar_tip": "距 {cap}× 分享上限的进度",
-  "peer_share_toggle_label": "在本网络共享我的资料库",
-  "peer_share_toggle_hint": "允许本地网络中的其他 Zimi 设备直接从此设备复制 ZIM。绝不暴露到互联网。",
+  "peer_share_toggle_label": "与附近设备共享",
+  "peer_share_toggle_hint": "查看并从网络中其他 Zimi 设备获取 ZIM，也允许它们从本设备复制。关闭后仅使用互联网来源。绝不会暴露到网络之外。",
   "show_list": "显示列表",
   "hide_list": "隐藏列表",
   "ms_settings_tab": "设置"
