@@ -65,7 +65,8 @@ def is_enabled() -> bool:
 
 
 def is_share_enabled() -> bool:
-    """Serve our local ZIMs to LAN peers over HTTP. On by default.
+    """Serve our local ZIMs to LAN peers over HTTP. OFF by default —
+    talking to other machines is opt-in, one switch away.
 
     ZIMI_NEARBY (or legacy ZIMI_PEER_SHARE) wins and locks the UI
     switch; otherwise the persisted UI preference (shared prefs store
@@ -78,7 +79,7 @@ def is_share_enabled() -> bool:
         return val.strip().lower() not in ("0", "false", "no", "off")
     from zimi import p2p
 
-    return bool(p2p._read_pref("peer_share", True))
+    return bool(p2p._read_pref("peer_share", False))
 
 
 def is_name_env_locked() -> bool:

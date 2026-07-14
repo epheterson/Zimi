@@ -9,19 +9,18 @@
 [![PyPI](https://img.shields.io/pypi/v/zimi)](https://pypi.org/project/zimi/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**The offline internet.** Entire websites, cross-site linking, a real search engine, a native browsing experience. Wikipedia, Stack Overflow, wikiHow, dev docs, and 1,000+ more archives from [Kiwix](https://kiwix.org). No connection required, ever.
+Zimi is
 
-**Search everything at once.** One query, every source, 140M+ articles. Snippets, thumbnails, and ranking that puts the right answer on top. Fast.
-
-**Jump between languages.** Read an article, switch it to any of its languages mid-sentence. Ten UI languages built in.
-
-**Your machines share with each other.** Zimi instances find each other on your network and pass ZIMs around at LAN speed. Fully offline.
-
-**Downloads that give back.** ZIMs arrive over BitTorrent and seed to a polite 2x, spreading the load instead of leaning on one server. Flip one switch to become a full Kiwix mirror.
-
-**Fresh every day.** Picture of the Day, On This Day, a word, a quote, a comic, a place. An almanac with a live sky. All computed locally, forever.
-
-**For humans and machines.** A rich web UI, a JSON API for everything, and an MCP server so AI agents can read your library too.
+- **The offline internet.** Entire websites, cross-ZIM linking, search engine and native browser experience.
+- **Search that hits everything.** One query, every source, 140M+ articles, the right answer on top. Fast.
+- **Multilingual.** Switch any article into any language it has. Ten UI languages built in.
+- **A real library.** 1,000+ archives one click away, auto-updates, collections, batch downloads, bookmarks and history.
+- **A mesh.** Your machines find each other and pass ZIMs around at LAN speed, no internet needed.
+- **A good citizen.** Downloads arrive over BitTorrent and seed back to the Kiwix network. One switch makes you a full mirror.
+- **Fresh daily.** Picture of the Day, On This Day, a word, a quote, a comic, a live almanac sky. All computed locally, forever.
+- **Everyone means everyone.** 100/100 accessibility, keyboard-first, screen readers welcome.
+- **Anywhere.** Docker, pip, a native macOS app, or your phone as a PWA.
+- **For humans and machines.** Web UI, JSON API, MCP server for AI agents.
 
 ## Screenshots
 
@@ -116,6 +115,16 @@ pip install zimi
 ZIM_DIR=./zims zimi serve --port 8899
 ```
 
+## Sharing
+
+Zimi assumes knowledge should flow. Three switches in Server Settings control all of it:
+
+- **BitTorrent** (on by default). Downloads arrive via the Kiwix swarm and seed back, capped at a ratio you choose. `0` means never seed. No aria2 installed? Everything quietly uses plain HTTP.
+- **Nearby** (off by default). Flip it on and Zimi devices on your network find each other; a green pill on a catalog card means a neighbor already has that ZIM. Transfers stay on your LAN, never the internet.
+- **Mirror** (off). Lifts the seeding cap, for people who want to run a long-term Kiwix mirror.
+
+Seeding needs no router setup. Forwarding your BitTorrent port (default 6881) lets peers connect to you directly, which helps on quiet swarms. Optional.
+
 ### Environment Variables
 
 | Variable | Default | Description |
@@ -128,7 +137,7 @@ ZIM_DIR=./zims zimi serve --port 8899
 | `ZIMI_UPDATE_FREQ` | `weekly` | `daily`, `weekly`, or `monthly` |
 | `ZIMI_RATE_LIMIT` | `60` | Requests/min/IP. `0` to disable. |
 | `ZIMI_BT` | `on` | BitTorrent, one compact var: `off`, or `on,port=6881,ratio=2,up=2048,mirror=off`. Every field is optional; a field you set is locked in the UI, fields you leave out stay UI-controlled. `ratio=0` means never seed. |
-| `ZIMI_NEARBY` | `on` | LAN sharing, same style: `off`, or `on,name=my-zimi,public=off`. Controls serving *and* fetching between your Zimi devices. |
+| `ZIMI_NEARBY` | `off` | LAN sharing, same style: `off`, or `on,name=my-zimi,public=off`. Controls serving *and* fetching between your Zimi devices. |
 | `ZIMI_SEED_RATIO` | `2.0` | Stop seeding once ratio (uploaded ÷ downloaded) reaches this. |
 | `ZIMI_PEER_DISCOVERY` | `1` | Advertise + browse `_zimi._tcp.local` over mDNS. `0` disables. |
 | `ZIMI_PEER_NAME` | _(hostname)_ | Friendly name advertised to LAN peers. Defaults to `zimi-<hostname>`. |

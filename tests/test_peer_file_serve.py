@@ -33,6 +33,9 @@ class PeerFileServeIntegrationTests(unittest.TestCase):
         cls._saved_cache = _srv._zim_files_cache
         _srv._zim_files_cache = {"testzim": cls._zim_path}
 
+        # Sharing is opt-in (off) by default; these tests exercise the
+        # serving path, so switch it on for the class.
+        os.environ["ZIMI_PEER_SHARE"] = "1"
         cls._server = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
         cls._port = cls._server.server_address[1]
         cls._thread = threading.Thread(target=cls._server.serve_forever, daemon=True)
@@ -44,6 +47,7 @@ class PeerFileServeIntegrationTests(unittest.TestCase):
         cls._server.server_close()
         _srv._zim_files_cache = cls._saved_cache
         cls._tmp.cleanup()
+        os.environ.pop("ZIMI_PEER_SHARE", None)
 
     def _url(self, path):
         return f"http://127.0.0.1:{self._port}{path}"
@@ -95,10 +99,14 @@ class PeerShareGateTests(unittest.TestCase):
         return ZimHandler._peer_share_allowed(fake)
 
     def setUp(self):
+        # Gate tests probe the IP logic; sharing itself must be on (it is
+        # opt-in/off by default since v1.7.0).
+        os.environ["ZIMI_PEER_SHARE"] = "1"
+        os.environ.pop("ZIMI_PEER_SHARE_PUBLIC", None)
+
+    def tearDown(self):
         for k in ("ZIMI_PEER_SHARE", "ZIMI_PEER_SHARE_PUBLIC"):
             os.environ.pop(k, None)
-
-    tearDown = setUp
 
     def test_loopback_allowed(self):
         self.assertTrue(self._allowed("127.0.0.1"))

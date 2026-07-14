@@ -36,6 +36,7 @@ class PeerDownloadUnitTests(unittest.TestCase):
         with (
             patch("zimi.library._enqueue_or_start", side_effect=fake_enqueue),
             patch("zimi.p2p_discovery.get_peers", return_value=peers),
+            patch("zimi.p2p_discovery.is_share_enabled", return_value=True),
             patch("zimi.p2p_discovery.fetch_peer_list", return_value=(listing or [])),
         ):
             dl_id, err = lib._start_peer_download(peer, fname)
@@ -112,6 +113,7 @@ class OfflinePeerPullTests(unittest.TestCase):
         # transport test. The file landing + done flag happen before it runs.
         with (
             patch("zimi.p2p_discovery.get_peers", return_value=peers),
+            patch("zimi.p2p_discovery.is_share_enabled", return_value=True),
             patch("zimi.p2p_discovery.fetch_peer_list", return_value=listing),
             patch("zimi.library._post_download_finalize"),
             # The install gate libzim-validates every downloaded file; these
@@ -156,6 +158,7 @@ class PeerHostGateTests(unittest.TestCase):
         peers = [{"name": "evil", "host": "169.254.169.254", "port": 80}]
         with (
             patch("zimi.p2p_discovery.get_peers", return_value=peers),
+            patch("zimi.p2p_discovery.is_share_enabled", return_value=True),
             patch("zimi.p2p_discovery.fetch_peer_list", return_value=[]),
         ):
             dl_id, err = lib._start_peer_download("evil", "x_2026-01.zim")
@@ -199,6 +202,7 @@ class PeerRedirectRefusalTests(unittest.TestCase):
         listing = [{"file": "evil_2026-01.zim", "size_bytes": 10}]
         with (
             patch("zimi.p2p_discovery.get_peers", return_value=peers),
+            patch("zimi.p2p_discovery.is_share_enabled", return_value=True),
             patch("zimi.p2p_discovery.fetch_peer_list", return_value=listing),
             patch("zimi.library._post_download_finalize"),
             # The install gate libzim-validates every downloaded file; these

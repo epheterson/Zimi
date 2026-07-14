@@ -68,6 +68,8 @@ mini), and delivers the Reach track: P2P distribution + accessibility.
   set is env-locked in the UI; fields you leave out stay UI-controlled —
   so `ZIMI_BT=port=16881` pins the port while the on/off switch stays
   yours. The old per-feature vars keep working undocumented.
+- **Changed**: Nearby (LAN sharing) is opt-in — OFF by default. Talking
+  to other machines on your network is one switch away, never a surprise.
 
 ### BitTorrent-first by default (2026-07-13)
 
