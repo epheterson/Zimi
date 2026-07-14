@@ -885,5 +885,6 @@
   "peer_share_toggle_hint": "Voir et récupérer des ZIM depuis les autres appareils Zimi de votre réseau, et les laisser copier depuis celui-ci. Désactivez pour n'utiliser que les sources Internet. Jamais exposé au-delà de votre réseau.",
   "show_list": "Afficher la liste",
   "hide_list": "Masquer la liste",
-  "ms_settings_tab": "Réglages"
+  "ms_settings_tab": "Réglages",
+  "n_nearby": "{n} à proximité"
 }

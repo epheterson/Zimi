@@ -885,5 +885,6 @@
   "peer_share_toggle_hint": "查看并从网络中其他 Zimi 设备获取 ZIM，也允许它们从本设备复制。关闭后仅使用互联网来源。绝不会暴露到网络之外。",
   "show_list": "显示列表",
   "hide_list": "隐藏列表",
-  "ms_settings_tab": "设置"
+  "ms_settings_tab": "设置",
+  "n_nearby": "附近 {n} 台"
 }

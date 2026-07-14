@@ -799,7 +799,10 @@
   /* LAN peer pill — green for "this exists on a LAN peer" */
   .ci-peer { margin-top: 4px; font-size: 11px; }
   .ci-peer-pill {
-    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    /* flex + gap gives real space after the 📡 (the emoji glyph box
+       swallows a plain text space) */
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px; border-radius: 10px;
     font-size: 11px; line-height: 1.4;
     background: rgba(120, 200, 120, 0.12); color: #6ec56e;
     border: 1px solid rgba(120, 200, 120, 0.3);

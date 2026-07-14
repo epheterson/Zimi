@@ -3392,26 +3392,30 @@ function _peerHint(item) {
   const peers = item && item.peer_names;
   if (!peers || !peers.length) return '';
   // Strip the "zimi-" prefix for readability ("zimi-elpnas" → "elpnas").
-  const display = peers.map(p => p.replace(/^zimi-/, '')).join(', ');
+  const names = peers.map(p => p.replace(/^zimi-/, ''));
+  // A busy network could have many peers with the same ZIM — collapse to
+  // "{n} nearby" on the pill; the tooltip keeps the full list.
+  const fullList = names.join(', ');
+  const display = names.length > 1 ? t('n_nearby', {n: names.length}) : names[0];
   // Already installed? Show the pill but don't re-trigger a download.
   if (item.installed) {
-    return '<span class="ci-peer-pill" title="' + escAttr(t('peer_has_zim', {peers: display})) + '">' +
-      '📡 ' + esc(display) + '</span>';
+    return '<span class="ci-peer-pill" title="' + escAttr(t('peer_has_zim', {peers: fullList})) + '">' +
+      '<span aria-hidden="true">📡</span>' + esc(display) + '</span>';
   }
   // Not installed and a peer has it → pull the actual file straight from the
   // peer over the LAN (works fully offline). Pick the best-flavor file among
   // the peer's entries (full > nopic > mini, modulated by user preference).
   const entries = (item.peer_entries || []).filter(e => e && e.file);
   if (!entries.length) {
-    return '<span class="ci-peer-pill" title="' + escAttr(t('peer_has_zim', {peers: display})) + '">' +
-      '📡 ' + esc(display) + '</span>';
+    return '<span class="ci-peer-pill" title="' + escAttr(t('peer_has_zim', {peers: fullList})) + '">' +
+      '<span aria-hidden="true">📡</span>' + esc(display) + '</span>';
   }
   const best = entries.slice().sort((a, b) => _flavorOrder(b.file) - _flavorOrder(a.file))[0];
   return '<button type="button" class="ci-peer-pill ci-peer-pill-clickable" ' +
-    'title="' + escAttr(t('peer_pill_click_tip', {peers: display})) + '" ' +
-    'aria-label="' + escAttr(t('peer_pill_click_tip', {peers: display})) + '" ' +
+    'title="' + escAttr(t('peer_pill_click_tip', {peers: fullList})) + '" ' +
+    'aria-label="' + escAttr(t('peer_pill_click_tip', {peers: fullList})) + '" ' +
     'onclick="event.stopPropagation();_downloadFromPeer(\'' + escJs(best.peer) + '\', \'' + escJs(best.file) + '\')">' +
-    '📡 ' + esc(display) + '</button>';
+    '<span aria-hidden="true">📡</span>' + esc(display) + '</button>';
 }
 
 async function _downloadFromPeer(peerName, file) {

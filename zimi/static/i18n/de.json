@@ -885,5 +885,6 @@
   "peer_share_toggle_hint": "ZIMs von anderen Zimi-Geräten im Netzwerk sehen und laden — und ihnen Kopien von diesem Gerät erlauben. Ausschalten, um nur Internetquellen zu nutzen. Nie über dein Netzwerk hinaus freigegeben.",
   "show_list": "Liste anzeigen",
   "hide_list": "Liste ausblenden",
-  "ms_settings_tab": "Einstellungen"
+  "ms_settings_tab": "Einstellungen",
+  "n_nearby": "{n} in der Nähe"
 }
