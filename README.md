@@ -35,9 +35,9 @@ A modern experience for your ZIM files.
 |-------------------|---------|
 | ![Languages](screenshots/language-dropdown.png) | ![Catalog](screenshots/browse-library.png) |
 
-| Article Reader |
-|----------------|
-| ![Reader](screenshots/reader.png) |
+| Article Reader | Sharing |
+|----------------|---------|
+| ![Reader](screenshots/reader.png) | ![Sharing](screenshots/sharing.png) |
 
 ## Languages
 

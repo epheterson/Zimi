@@ -4703,23 +4703,22 @@ async function renderManage() {
 
   output.innerHTML =
     '<div class="manage-wrap">' +
-    '<div id="manage-status" class="manage-settings">' +
-      '<div class="ms-nav" id="ms-nav">' +
-        '<button class="ms-nav-item active" data-ms="library" onclick="switchMs(\'library\')">' + tH('ms_library') + '</button>' +
-        '<button class="ms-nav-item" data-ms="preferences" onclick="switchMs(\'preferences\')">' + tH('ms_display') + '</button>' +
-        '<button class="ms-nav-item" data-ms="server" onclick="switchMs(\'server\')">' + tH('ms_server') + '</button>' +
-      '</div>' +
-      '<div id="ms-pane" class="ms-pane"><div class="loading"><span class="spinner-inline"></span>Loading\u2026</div></div>' +
-    '</div>' +
     '<div class="manage-tabs">' +
-      // Mobile-only: the settings card stacks awkwardly above the tabs on a
-      // phone, so it collapses into its own first tab there (CSS-gated).
+      // Settings lives in its own first tab on every viewport.
       '<button class="manage-tab manage-tab-settings' + (manageTab === 'settings' ? ' active' : '') + '" data-tab="settings" onclick="switchManageTab(\'settings\')">' + tH('ms_settings_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">' + tH('installed_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">' + tH('catalog_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">' + tH('collections_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'downloads' ? ' active' : '') + '" data-tab="downloads" onclick="switchManageTab(\'downloads\')">' + tH('downloads') + '<span id="dl-tab-badge" class="dl-tab-badge" style="display:none"></span></button>' +
       '<button class="manage-tab' + (manageTab === 'history' ? ' active' : '') + '" data-tab="history" onclick="switchManageTab(\'history\')">' + tH('activity_tab') + '</button>' +
+    '</div>' +
+'<div id="manage-status" class="manage-settings">' +
+      '<div class="ms-nav" id="ms-nav">' +
+        '<button class="ms-nav-item active" data-ms="library" onclick="switchMs(\'library\')">' + tH('ms_library') + '</button>' +
+        '<button class="ms-nav-item" data-ms="preferences" onclick="switchMs(\'preferences\')">' + tH('ms_display') + '</button>' +
+        '<button class="ms-nav-item" data-ms="server" onclick="switchMs(\'server\')">' + tH('ms_server') + '</button>' +
+      '</div>' +
+      '<div id="ms-pane" class="ms-pane"><div class="loading"><span class="spinner-inline"></span>Loading\u2026</div></div>' +
     '</div>' +
     '<div id="manage-installed" class="manage-tab-content' + (manageTab === 'installed' ? ' active' : '') + '"></div>' +
     '<div id="manage-downloads" class="manage-tab-content' + (manageTab === 'downloads' ? ' active' : '') + '"></div>' +
@@ -5300,7 +5299,7 @@ async function _renderMirrorSection() {
   const ratioField = '<span class="share-ratio">' + tH('seed_ratio_label') +
     ' <input type="number" min="0" max="10" step="0.5" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
     ((m.seed_ratio_env_locked || !m.torrent_enabled) ? ' disabled' : '') +
-    ' aria-label="' + escAttr(t('seed_ratio_label')) + '" onchange="_setSeedRatio(this)">\u00d7</span>';
+    ' aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">\u00d7</span>';
   let h = '<div class="share-rows">' +
     _shareSwitch('torrent', m.torrent_enabled, m.torrent_env_locked, 'ZIMI_TORRENT',
       'share_bt_title', tH('share_bt_desc') + ' ' + ratioField) +
@@ -5361,7 +5360,7 @@ async function _saveHotZims(btn) {
       body: JSON.stringify({ hot_zims: names }),
     });
     if (!res.ok) throw new Error('save failed');
-    if (status) status.textContent = t('saved') + ' — ' + t('restart_hint');
+    if (status) status.textContent = t('saved') + ' · ' + t('restart_hint');
   } catch (e) {
     if (status) status.textContent = t('error');
   } finally {
@@ -6171,7 +6170,7 @@ async function refreshDownloads() {
             var pct = Math.round(dl.percent);
             var circ = 2 * Math.PI * 10; // circumference for r=10
             var offset = circ * (1 - pct / 100);
-            btn.innerHTML = '<span class="ci-dl-ring" title="' + pct + '% — click to cancel">' +
+            btn.innerHTML = '<span class="ci-dl-ring" title="' + pct + '% · click to cancel">' +
               '<svg viewBox="0 0 24 24" width="24" height="24">' +
               '<circle cx="12" cy="12" r="10" stroke="var(--border)" stroke-width="2" fill="none"/>' +
               '<circle cx="12" cy="12" r="10" stroke="var(--amber)" stroke-width="2" fill="none" stroke-dasharray="' + circ.toFixed(2) + '" stroke-dashoffset="' + offset.toFixed(2) + '" stroke-linecap="round" transform="rotate(-90 12 12)"/>' +

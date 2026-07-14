@@ -714,6 +714,11 @@
   .hot-zims-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hot-zims-id { color: var(--text2); font-size: 11px; font-family: monospace; flex-shrink: 0; }
   .hot-zims-toolbar { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+  /* Settings is a regular first tab on every viewport — the card only
+     shows while its tab is active. */
+  .manage-settings { display: none; margin-top: 12px; }
+  .manage-settings.as-tab-active { display: flex; }
+
   /* ── Sharing hero (v1.7's star): three switch rows, one quiet card ── */
   .share-rows {
     border: 1px solid var(--border); border-radius: 12px;
@@ -766,8 +771,7 @@
   .ms-toggle-block { margin-bottom: 14px; }
   .ms-toggle-block .ms-check { padding-bottom: 0; }
   .ms-toggle-block .ms-hint { margin: 2px 0 0 26px; }
-  /* Settings-as-tab is a mobile-only affordance */
-  .manage-tab-settings { display: none; }
+
   .hot-zims-search {
     flex: 1; min-width: 0; padding: 6px 10px;
     background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
@@ -982,14 +986,6 @@
     .kbd-hints { display: none; }
     .manage-card { padding: 16px 12px; }
     .manage-settings { flex-direction: column; min-height: auto; }
-    /* Mobile: the settings card lives in its own first tab instead of
-       stacking a long card above the whole tab strip. The wrap is a flex
-       column so the tab strip orders above the card. */
-    .manage-wrap { display: flex; flex-direction: column; }
-    .manage-wrap .manage-tabs { order: -1; }
-    .manage-settings { display: none; margin-top: 12px; }
-    .manage-settings.as-tab-active { display: flex; }
-    .manage-tab-settings { display: inline-block; }
     .ms-pane { overflow-x: hidden; min-width: 0; }
     .hot-zims-id { display: none; }
     .ms-nav { width: auto; flex-shrink: 0; border-right: none; border-bottom: 1px solid var(--border); flex-direction: row; padding: 4px 8px; gap: 2px; overflow-x: auto; }
