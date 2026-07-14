@@ -5299,7 +5299,7 @@ async function _renderMirrorSection() {
   const ratioField = '<span class="share-ratio">' + tH('seed_ratio_label') +
     ' <input type="number" min="0" max="10" step="0.5" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
     ((m.seed_ratio_env_locked || !m.torrent_enabled) ? ' disabled' : '') +
-    ' aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">\u00d7</span>';
+    ' aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">\u00d7 <span class="share-ratio-note">' + tH('seed_ratio_zero_inline') + '</span></span>';
   let h = '<div class="share-rows">' +
     _shareSwitch('torrent', m.torrent_enabled, m.torrent_env_locked, 'ZIMI_TORRENT',
       'share_bt_title', tH('share_bt_desc') + ' ' + ratioField) +

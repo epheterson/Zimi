@@ -889,5 +889,6 @@
   "share_mirror_desc": "הפכו למראה BitTorrent של Kiwix ועזרו לחלוק את העומס.",
   "share_nearby_title": "בקרבת מקום",
   "share_nearby_desc": "שתפו והורידו קובצי ZIM ברשת המקומית שלכם.",
-  "seed_ratio_zero_hint": "הזריעה נעצרת לאחר העלאה של פי N מגודל הקובץ. 0 = לעולם לא לזרוע."
+  "seed_ratio_zero_hint": "הזריעה נעצרת לאחר העלאה של פי N מגודל הקובץ. 0 = לעולם לא לזרוע.",
+  "seed_ratio_zero_inline": "0 = ללא זריעה"
 }

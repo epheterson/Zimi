@@ -889,5 +889,6 @@
   "share_mirror_desc": "Devenez un miroir BitTorrent Kiwix et aidez à répartir la charge.",
   "share_nearby_title": "À proximité",
   "share_nearby_desc": "Partagez et téléchargez des fichiers ZIM sur votre réseau local.",
-  "seed_ratio_zero_hint": "Arrête le partage après avoir envoyé N fois la taille du fichier. 0 = ne jamais partager."
+  "seed_ratio_zero_hint": "Arrête le partage après avoir envoyé N fois la taille du fichier. 0 = ne jamais partager.",
+  "seed_ratio_zero_inline": "0 = pas de partage"
 }

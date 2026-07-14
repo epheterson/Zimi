@@ -889,5 +889,6 @@
   "share_mirror_desc": "Become a Kiwix BitTorrent mirror and help share the load.",
   "share_nearby_title": "Nearby",
   "share_nearby_desc": "Share and download ZIM files on your local network.",
-  "seed_ratio_zero_hint": "Stop seeding after uploading this many times the file size. 0 = never seed."
+  "seed_ratio_zero_hint": "Stop seeding after uploading this many times the file size. 0 = never seed.",
+  "seed_ratio_zero_inline": "0 for no seeding"
 }

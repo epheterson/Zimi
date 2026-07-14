@@ -738,6 +738,7 @@
   }
   .share-ratio input:focus { outline: none; border-color: var(--amber); }
   .share-ratio input:disabled { opacity: 0.45; }
+  .share-ratio-note { color: var(--text2); opacity: 0.75; font-size: 11px; margin-left: 4px; }
   /* iOS-style switch: amber track when on, black knob slides right */
   .switch { position: relative; flex-shrink: 0; width: 42px; height: 24px; display: inline-block; cursor: pointer; }
   .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }

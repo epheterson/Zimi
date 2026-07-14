@@ -9,21 +9,19 @@
 [![PyPI](https://img.shields.io/pypi/v/zimi)](https://pypi.org/project/zimi/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A modern experience for your ZIM files.
+**The offline internet.** Entire websites, cross-site linking, a real search engine, a native browsing experience. Wikipedia, Stack Overflow, wikiHow, dev docs, and 1,000+ more archives from [Kiwix](https://kiwix.org). No connection required, ever.
 
-[Kiwix](https://kiwix.org) packages the world's knowledge into ZIM files. Zimi makes them feel like the real internet with a rich web UI, fast JSON API, and an MCP server for AI agents. Everything works offline, in your language.
+**Search everything at once.** One query, every source, 140M+ articles. Snippets, thumbnails, and ranking that puts the right answer on top. Fast.
 
-## What's in the box
+**Jump between languages.** Read an article, switch it to any of its languages mid-sentence. Ten UI languages built in.
 
-- **Cross-source search.** Parallel full-text search across all sources with snippets and thumbnails.
-- **Cross-language navigation.** Switch articles between languages and download missing ones.
-- **Discover.** Fresh cards daily: Picture of the Day, On This Day, Quote, Word, Book, Destination, Talk, Comic, Country.
-- **Bookmarks and history.** Feel like you're in a real browser, save your place.
-- **Kiwix Catalog.** Download 1,000+ Kiwix archives across 10 categories with instant language filtering.
-- **Library management.** Auto-updates, password protection, download queue.
-- **Collections and Favorites.** Group sources for easier access and scoped search.
-- **JSON API.** Every feature accessible programmatically with token auth.
-- **Desktop and mobile.** Native macOS and Python apps. Deploy anywhere.
+**Your machines share with each other.** Zimi instances find each other on your network and pass ZIMs around at LAN speed. Fully offline.
+
+**Downloads that give back.** ZIMs arrive over BitTorrent and seed to a polite 2x, spreading the load instead of leaning on one server. Flip one switch to become a full Kiwix mirror.
+
+**Fresh every day.** Picture of the Day, On This Day, a word, a quote, a comic, a place. An almanac with a live sky. All computed locally, forever.
+
+**For humans and machines.** A rich web UI, a JSON API for everything, and an MCP server so AI agents can read your library too.
 
 ## Screenshots
 
