@@ -18,7 +18,7 @@ Zimi is
 - **A mesh.** Your machines find each other and pass ZIMs around at LAN speed, no internet needed.
 - **A good citizen.** Downloads arrive over BitTorrent and seed back to the Kiwix network. One switch makes you a full mirror.
 - **Fresh daily.** Picture of the Day, On This Day, a word, a quote, a comic, a live almanac sky. All computed locally, forever.
-- **Nobody left behind.** If you browse by keyboard, listen by screen reader, or need high contrast, accessibility is built-in.
+- **Accessible.** If you browse by keyboard, listen by screen reader, or need high contrast, accessibility is built-in.
 - **Anywhere.** Docker, pip, a native macOS app, or your phone as a PWA.
 - **For humans and machines.** Web UI, JSON API, MCP server for AI agents.
 
