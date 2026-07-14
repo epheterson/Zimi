@@ -659,8 +659,10 @@ async function _probeManageAuth() {
       const mdata = await mres.json();
       manageEnabled = !!mdata.manage_enabled;
     } else if (mres.status === 401) {
-      // Stored token went stale — drop it and require a fresh login.
+      // Stored token went stale — drop BOTH copies (leaving the persisted
+      // one meant every future load retried it, 401'd, and re-prompted).
       _manageToken = '';
+      _clearManageToken();
       _managePwRequired = true;
     }
   } catch (e) {}
@@ -4696,6 +4698,7 @@ async function renderManage() {
   const installedCount = zimsCache ? zimsCache.length : 0;
 
   output.innerHTML =
+    '<div class="manage-wrap">' +
     '<div id="manage-status" class="manage-settings">' +
       '<div class="ms-nav" id="ms-nav">' +
         '<button class="ms-nav-item active" data-ms="library" onclick="switchMs(\'library\')">' + tH('ms_library') + '</button>' +
@@ -4720,6 +4723,7 @@ async function renderManage() {
     '<div id="manage-history" class="manage-tab-content' + (manageTab === 'history' ? ' active' : '') + '"></div>' +
     '<div id="manage-browse" class="manage-tab-content' + (manageTab === 'browse' ? ' active' : '') + '">' +
       '<div id="catalog-results"></div>' +
+    '</div>' +
     '</div>';
 
   // Status card — fetch data and render into settings panel
@@ -5235,11 +5239,12 @@ async function _renderSeedingSection() {
 // One toggle row for the seed/mirror controls. Env-locked settings render
 // disabled with a "controlled by env var" hint (same pattern as auto-update).
 function _btToggleHtml(key, checked, envLocked, envVar, label, hint) {
-  return '<label class="ms-check"' + (envLocked ? ' style="opacity:0.55"' : '') + '>' +
+  return '<div class="ms-toggle-block">' +
+    '<label class="ms-check"' + (envLocked ? ' style="opacity:0.55"' : '') + '>' +
     '<input type="checkbox"' + (checked ? ' checked' : '') + (envLocked ? ' disabled' : '') +
     ' onchange="_setBtSetting(\'' + key + '\', this)"> ' + tH(label) + '</label>' +
     '<div class="ms-hint">' +
-    (envLocked ? tH('env_controlled', {v: envVar}) : tH(hint)) + '</div>';
+    (envLocked ? tH('env_controlled', {v: envVar}) : tH(hint)) + '</div></div>';
 }
 
 async function _setBtSetting(key, cb) {

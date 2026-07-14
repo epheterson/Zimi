@@ -60,7 +60,7 @@
     <input id="pw-input" type="password" placeholder="Password" data-i18n-placeholder="password" autocomplete="current-password" aria-labelledby="pw-title" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
     <div class="pw-error" id="pw-error"></div>
     <label id="pw-remember-row" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--text2);cursor:pointer">
-      <input type="checkbox" id="pw-remember" style="accent-color:var(--amber);flex-shrink:0"> <span data-i18n="remember_me">Remember me</span>
+      <input type="checkbox" id="pw-remember" checked style="accent-color:var(--amber);flex-shrink:0"> <span data-i18n="remember_me">Remember me</span>
     </label>
     <div class="pw-actions">
       <button type="button" id="pw-remove-btn" onclick="_confirmRemovePassword(this)" style="display:none;color:var(--text2);font-size:12px;margin-right:auto" data-i18n="remove">Remove</button>
