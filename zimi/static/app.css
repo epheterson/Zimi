@@ -714,6 +714,48 @@
   .hot-zims-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hot-zims-id { color: var(--text2); font-size: 11px; font-family: monospace; flex-shrink: 0; }
   .hot-zims-toolbar { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+  /* ── Sharing hero (v1.7's star): three switch rows, one quiet card ── */
+  .share-rows {
+    border: 1px solid var(--border); border-radius: 12px;
+    background: var(--bg); overflow: hidden; margin-top: 8px;
+  }
+  .share-row { display: flex; align-items: center; gap: 14px; padding: 13px 14px; }
+  .share-row + .share-row { border-top: 1px solid var(--border); }
+  .share-row-text { flex: 1; min-width: 0; }
+  .share-row-title { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
+  .share-row-desc { font-size: 12px; color: var(--text2); margin-top: 2px; line-height: 1.45; }
+  .share-row-locknote { color: var(--amber); opacity: 0.8; }
+  .share-locked .share-row-title, .share-locked .share-row-desc:not(.share-row-locknote) { opacity: 0.55; }
+  .share-ratio { white-space: nowrap; }
+  .share-ratio input {
+    width: 46px; margin: 0 3px; padding: 2px 4px; font-size: 12px; text-align: center;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+  }
+  .share-ratio input:focus { outline: none; border-color: var(--amber); }
+  .share-ratio input:disabled { opacity: 0.45; }
+  /* iOS-style switch: amber track when on, black knob slides right */
+  .switch { position: relative; flex-shrink: 0; width: 42px; height: 24px; display: inline-block; cursor: pointer; }
+  .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .switch-slider {
+    position: absolute; inset: 0; border-radius: 999px;
+    background: var(--surface2); border: 1px solid var(--border);
+    transition: background 0.18s, border-color 0.18s;
+  }
+  .switch-slider::before {
+    content: ''; position: absolute; width: 18px; height: 18px; border-radius: 50%;
+    top: 2px; left: 2px; background: var(--text2);
+    transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), background 0.18s;
+  }
+  .switch input:checked + .switch-slider {
+    background: linear-gradient(135deg, var(--amber), var(--amber2)); border-color: transparent;
+  }
+  .switch input:checked + .switch-slider::before { transform: translateX(18px); background: #000; }
+  .switch input:focus-visible + .switch-slider { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .switch input:disabled + .switch-slider { cursor: default; }
+  @media (prefers-reduced-motion: reduce) {
+    .switch-slider, .switch-slider::before { transition: none; }
+  }
+
   /* Long option lists (languages, hot ZIMs) hide behind a Show-list toggle.
      :not() + !important beat later same-specificity display rules
      (.ms-lang-pills is display:flex further down); when open, the element

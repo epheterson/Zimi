@@ -967,9 +967,37 @@ def handle_manage_post(handler, parsed, data):
                 )
             p2p.set_pref("peer_share", bool(data["peer_share"]))
             changed["peer_share"] = bool(data["peer_share"])
+        if "torrent" in data:
+            if p2p.is_torrent_env_locked():
+                return handler._json(
+                    403,
+                    {"error": "BitTorrent is controlled by ZIMI_TORRENT env var"},
+                )
+            on = bool(data["torrent"])
+            p2p.set_pref("torrent", on)
+            changed["torrent"] = on
+            if not on:
+                # Switch off means OFF — stop the sidecar (and its seeds) now.
+                try:
+                    p2p.shutdown_backend()
+                except Exception:
+                    pass
+        if "seed_ratio" in data:
+            if p2p.is_seed_ratio_env_locked():
+                return handler._json(
+                    403,
+                    {"error": "Seed ratio is controlled by ZIMI_SEED_RATIO env var"},
+                )
+            try:
+                ratio = max(0.0, min(10.0, float(data["seed_ratio"])))
+            except (ValueError, TypeError):
+                return handler._json(400, {"error": "seed_ratio must be a number"})
+            p2p.set_pref("seed_ratio", ratio)
+            changed["seed_ratio"] = ratio
         if not changed:
             return handler._json(
-                400, {"error": "provide 'seed' and/or 'mirror' booleans"}
+                400,
+                {"error": "provide torrent/seed/mirror/peer_share/seed_ratio"},
             )
         log.info("BT settings updated via UI: %s", changed)
         return handler._json(200, p2p.get_mirror_status())

@@ -102,9 +102,16 @@ def _env_explicitly_set(key: str) -> bool:
 
 def is_torrent_enabled() -> bool:
     """BT-first downloads are ON by default (v1.7.0) — every Zimi that can
-    torrent takes load off the Kiwix mirrors. ZIMI_TORRENT=0 opts out.
-    Installs without aria2c silently use HTTP; nothing breaks."""
-    return _bool_env("ZIMI_TORRENT", default=True)
+    torrent takes load off the Kiwix mirrors. An explicitly-set
+    ZIMI_TORRENT env var wins (and locks the UI switch); otherwise the
+    persisted UI preference. Installs without aria2c silently use HTTP."""
+    if _env_explicitly_set("ZIMI_TORRENT"):
+        return _bool_env("ZIMI_TORRENT", default=True)
+    return bool(_read_pref("torrent", True))
+
+
+def is_torrent_env_locked() -> bool:
+    return _env_explicitly_set("ZIMI_TORRENT")
 
 
 def get_bt_port() -> int:
@@ -151,12 +158,24 @@ def is_seed_env_locked() -> bool:
 
 
 def get_seed_ratio_cap() -> float:
-    """Stop seeding once we've uploaded N× the file size. Default 2.0."""
-    raw = os.environ.get("ZIMI_SEED_RATIO", str(DEFAULT_RATIO_CAP))
+    """Stop seeding once we've uploaded N× the file size. Default 2.0.
+    ZIMI_SEED_RATIO env wins when set; otherwise the persisted UI value."""
+    raw = os.environ.get("ZIMI_SEED_RATIO")
+    if raw is None or not raw.strip():
+        try:
+            return max(
+                0.0, min(10.0, float(_read_pref("seed_ratio", DEFAULT_RATIO_CAP)))
+            )
+        except (ValueError, TypeError):
+            return DEFAULT_RATIO_CAP
     try:
         return max(0.0, float(raw))
     except (ValueError, TypeError):
         return DEFAULT_RATIO_CAP
+
+
+def is_seed_ratio_env_locked() -> bool:
+    return _env_explicitly_set("ZIMI_SEED_RATIO")
 
 
 def get_disk_pressure_pct() -> int:
@@ -238,11 +257,14 @@ def get_mirror_status() -> dict:
         "env_locked": is_mirror_env_locked(),
         "seed_enabled": is_seeding_enabled(),
         "seed_env_locked": is_seed_env_locked(),
+        "torrent_enabled": is_torrent_enabled(),
+        "torrent_env_locked": is_torrent_env_locked(),
         "peer_share": _disc.is_share_enabled(),
         "peer_share_env_locked": _disc.is_share_env_locked(),
         "ratio_cap": get_mirror_ratio_cap(),
         "upload_kb": get_mirror_upload_kb(),
         "seed_ratio_cap": get_seed_ratio_cap(),
+        "seed_ratio_env_locked": is_seed_ratio_env_locked(),
     }
 
 
@@ -586,10 +608,13 @@ def get_backend(*, data_dir: str) -> BTBackend | None:
     """
     global _backend_singleton
     with _backend_lock:
-        if _backend_singleton is not None:
-            return _backend_singleton
+        # Checked before the singleton so the UI switch takes effect
+        # immediately — an already-running sidecar stops being used (and
+        # the toggle handler shuts it down).
         if not is_torrent_enabled():
             return None
+        if _backend_singleton is not None:
+            return _backend_singleton
         name = get_backend_name()
         bt_port = get_bt_port()
         staging = get_staging_dir(data_dir)

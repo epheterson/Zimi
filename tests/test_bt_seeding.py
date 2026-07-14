@@ -246,3 +246,38 @@ def test_peer_share_pref_and_env_lock(_prefs, monkeypatch):
     monkeypatch.setenv("ZIMI_PEER_SHARE", "1")
     assert disc.is_share_enabled() is True  # env wins over pref
     assert disc.is_share_env_locked() is True
+
+
+def test_torrent_pref_and_env_lock(_prefs, monkeypatch):
+    """The BitTorrent master switch follows the pref+env-lock contract."""
+    monkeypatch.delenv("ZIMI_TORRENT", raising=False)
+    assert p2p.is_torrent_enabled() is True  # default on
+    p2p.set_pref("torrent", False)
+    assert p2p.is_torrent_enabled() is False
+    assert p2p.is_torrent_env_locked() is False
+    monkeypatch.setenv("ZIMI_TORRENT", "1")
+    assert p2p.is_torrent_enabled() is True
+    assert p2p.is_torrent_env_locked() is True
+
+
+def test_seed_ratio_pref_and_env_lock(_prefs, monkeypatch):
+    monkeypatch.delenv("ZIMI_SEED_RATIO", raising=False)
+    assert p2p.get_seed_ratio_cap() == 2.0  # default
+    p2p.set_pref("seed_ratio", 3.5)
+    assert p2p.get_seed_ratio_cap() == 3.5
+    p2p.set_pref("seed_ratio", 99)  # clamped
+    assert p2p.get_seed_ratio_cap() == 10.0
+    monkeypatch.setenv("ZIMI_SEED_RATIO", "1.5")
+    assert p2p.get_seed_ratio_cap() == 1.5
+    assert p2p.is_seed_ratio_env_locked() is True
+
+
+def test_get_backend_honors_torrent_pref_over_singleton(_prefs, monkeypatch):
+    """Switching BT off must take effect even with a live sidecar cached."""
+    monkeypatch.delenv("ZIMI_TORRENT", raising=False)
+    p2p._backend_singleton = object()  # simulate running backend
+    p2p.set_pref("torrent", False)
+    assert p2p.get_backend(data_dir="/tmp") is None
+    p2p.set_pref("torrent", True)
+    assert p2p.get_backend(data_dir="/tmp") is not None
+    p2p._backend_singleton = None

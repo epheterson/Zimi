@@ -4920,11 +4920,19 @@ function _msPreferencesHtml() {
 }
 
 function _msServerHtml() {
-  var h = '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
+  // Sharing is the star of v1.7 — it leads the Server pane.
+  var h = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
+    '<div id="ms-mirror-status" class="share-rows-slot"></div>' +
+    '<div id="ms-bt-status" style="margin-top:10px"></div>' +
+    '<div id="ms-seeding-list" style="margin-top:10px"></div>' +
+    '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
+  h += '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
     '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>';
   if (IS_DESKTOP) {
-    // Desktop: add browse buttons for folder selection + port + save
-    h = '<div class="ms-field"><label>' + tH('zim_folder') + '</label>' +
+    // Desktop: add browse buttons for folder selection + port + save.
+    // Keep the sharing hero on top — rebuild only the fields part.
+    h = h.split('<div class="ms-field">')[0] +
+      '<div class="ms-field"><label>' + tH('zim_folder') + '</label>' +
       '<div style="display:flex;gap:8px"><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
       '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseZimFolder()">' + tH('choose_folder') + '</button></div></div>' +
       '<div class="ms-field"><label>' + tH('data_folder') + '</label>' +
@@ -4966,13 +4974,6 @@ function _msServerHtml() {
     '<div id="ms-hot-zims" style="margin-top:10px">' + tH('loading') + '</div>' +
     '</div>';
   _renderHotZimsSection();
-  // BT / Seeding section — shows when ZIMI_TORRENT is enabled.
-  h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
-    '<div class="ms-section-label">' + tH('bt_seeding') + '</div>' +
-    '<div id="ms-bt-status" style="margin-top:6px"></div>' +
-    '<div id="ms-mirror-status" style="margin-top:6px"></div>' +
-    '<div id="ms-seeding-list" style="margin-top:10px"></div>' +
-    '</div>';
   _renderSeedingSection();
   _renderMirrorSection();
   // Cache info section
@@ -5240,15 +5241,19 @@ async function _renderSeedingSection() {
   listEl.innerHTML = rows;
 }
 
-// One toggle row for the seed/mirror controls. Env-locked settings render
-// disabled with a "controlled by env var" hint (same pattern as auto-update).
-function _btToggleHtml(key, checked, envLocked, envVar, label, hint) {
-  return '<div class="ms-toggle-block">' +
-    '<label class="ms-check"' + (envLocked ? ' style="opacity:0.55"' : '') + '>' +
-    '<input type="checkbox"' + (checked ? ' checked' : '') + (envLocked ? ' disabled' : '') +
-    ' onchange="_setBtSetting(\'' + key + '\', this)"> ' + tH(label) + '</label>' +
-    '<div class="ms-hint">' +
-    (envLocked ? tH('env_controlled', {v: envVar}) : tH(hint)) + '</div></div>';
+// The v1.7 sharing hero: three switches — BitTorrent (with seed ratio),
+// Mirror, Nearby. Env-locked settings render disabled with the env hint.
+function _shareSwitch(key, on, locked, envVar, titleKey, descHtml) {
+  return '<div class="share-row' + (locked ? ' share-locked' : '') + '">' +
+    '<div class="share-row-text">' +
+      '<div class="share-row-title">' + tH(titleKey) + '</div>' +
+      '<div class="share-row-desc">' + descHtml + '</div>' +
+      (locked ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
+    '</div>' +
+    '<label class="switch"><input type="checkbox" role="switch"' + (on ? ' checked' : '') + (locked ? ' disabled' : '') +
+      ' aria-label="' + escAttr(t(titleKey)) + '"' +
+      ' onchange="_setBtSetting(\'' + key + '\', this)"><span class="switch-slider"></span></label>' +
+  '</div>';
 }
 
 async function _setBtSetting(key, cb) {
@@ -5261,10 +5266,24 @@ async function _setBtSetting(key, cb) {
       body: JSON.stringify(body)
     });
     if (!r.ok) { cb.checked = !cb.checked; _showToast(t('save_failed')); }
+    else if (key === 'torrent') { _renderMirrorSection(); _renderSeedingSection(); }
   } catch (e) {
     cb.checked = !cb.checked; _showToast(t('save_failed'));
   }
   cb.disabled = false;
+}
+
+async function _setSeedRatio(inp) {
+  const v = Math.max(0, Math.min(10, parseFloat(inp.value) || 0));
+  inp.value = v;
+  try {
+    const r = await manageFetch('/manage/bt-settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({seed_ratio: v})
+    });
+    if (!r.ok) _showToast(t('save_failed'));
+  } catch (e) { _showToast(t('save_failed')); }
 }
 
 async function _renderMirrorSection() {
@@ -5278,20 +5297,26 @@ async function _renderMirrorSection() {
   }
   const el = document.getElementById('ms-mirror-status');
   if (!el) return;
-  let h = _btToggleHtml('seed', m.seed_enabled, m.seed_env_locked, 'ZIMI_SEED',
-    'seed_toggle_label', 'seed_toggle_hint');
-  h += _btToggleHtml('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_PEER_SHARE',
-    'peer_share_toggle_label', 'peer_share_toggle_hint');
-  h += _btToggleHtml('mirror', m.enabled, m.env_locked, 'ZIMI_MIRROR',
-    'mirror_toggle_label', 'mirror_toggle_hint');
-  if (m.enabled) {
+  const ratioField = '<span class="share-ratio">' + tH('seed_ratio_label') +
+    ' <input type="number" min="0" max="10" step="0.5" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
+    ((m.seed_ratio_env_locked || !m.torrent_enabled) ? ' disabled' : '') +
+    ' aria-label="' + escAttr(t('seed_ratio_label')) + '" onchange="_setSeedRatio(this)">\u00d7</span>';
+  let h = '<div class="share-rows">' +
+    _shareSwitch('torrent', m.torrent_enabled, m.torrent_env_locked, 'ZIMI_TORRENT',
+      'share_bt_title', tH('share_bt_desc') + ' ' + ratioField) +
+    _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_MIRROR',
+      'share_mirror_title', tH('share_mirror_desc')) +
+    _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_PEER_SHARE',
+      'share_nearby_title', tH('share_nearby_desc')) +
+  '</div>';
+  if (m.enabled && m.torrent_enabled) {
     const fmtKb = m.upload_kb >= 1024
       ? (m.upload_kb / 1024).toFixed(1) + ' MB/s'
       : m.upload_kb + ' KB/s';
-    h += '<div class="mc-row">' +
-      '<span class="mc-label">📡 ' + tH('mirror_active') + '</span>' +
+    h += '<div class="mc-row" style="margin-top:8px">' +
+      '<span class="mc-label">\ud83d\udce1 ' + tH('mirror_active') + '</span>' +
       '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
-        'ratio ≤ ' + m.ratio_cap.toFixed(0) + 'x · ↑ ' + fmtKb +
+        'ratio \u2264 ' + m.ratio_cap.toFixed(0) + 'x \u00b7 \u2191 ' + fmtKb +
       '</span></div>';
   }
   el.innerHTML = h;

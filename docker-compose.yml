@@ -14,4 +14,3 @@ services:
       - ZIM_DIR=/zims
       - ZIMI_DATA_DIR=/config
       - ZIMI_MANAGE=1
-      - ZIMI_TORRENT=1

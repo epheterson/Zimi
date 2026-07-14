@@ -33,7 +33,6 @@ services:
       - ZIM_DIR=/zims
       - ZIMI_DATA_DIR=/data
       - ZIMI_MANAGE=1
-      - ZIMI_TORRENT=1
       - ZIMI_BT_PORT=16881
     # Low resource footprint — only loads ZIM indexes on query
     mem_limit: 4g
