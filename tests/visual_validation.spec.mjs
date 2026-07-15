@@ -1,8 +1,8 @@
 /**
  * v1.6 Visual Validation — Complete Release Checklist
  *
- * Run against NAS:
- *   BASE_URL=https://knowledge.zosia.io npx playwright test
+ * Run against a remote host:
+ *   BASE_URL=https://knowledge.example.com npx playwright test
  *
  * Run against local:
  *   npx playwright test

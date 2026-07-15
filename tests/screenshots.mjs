@@ -1,6 +1,6 @@
 import { test } from '@playwright/test';
 
-const BASE = process.env.BASE_URL || 'http://10.0.0.14:8899';
+const BASE = process.env.BASE_URL || 'http://127.0.0.1:8899';
 
 // Set Sec-Fetch-Site header so manage endpoints work
 test.use({

@@ -1,9 +1,9 @@
 // Cross-language article navigation tests
-// Run against NAS: BASE_URL=http://knowledge.zosia.lan npx playwright test tests/test_interlang.mjs --config=playwright.config.mjs
+// Run against a remote host: BASE_URL=http://knowledge.example.lan npx playwright test tests/test_interlang.mjs --config=playwright.config.mjs
 
 import { test, expect } from '@playwright/test';
 
-const BASE = process.env.BASE_URL || 'http://10.0.0.14:8899';
+const BASE = process.env.BASE_URL || 'http://127.0.0.1:8899';
 
 test.describe('Cross-language navigation', () => {
 

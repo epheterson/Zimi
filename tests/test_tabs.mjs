@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const BASE = process.env.BASE_URL || 'http://10.0.0.14:8899';
+const BASE = process.env.BASE_URL || 'http://127.0.0.1:8899';
 
 // Helper: simulate Ctrl/Cmd+click via JS (Playwright's click doesn't reliably
 // trigger our mousedown capture listener)

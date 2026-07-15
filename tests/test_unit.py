@@ -287,8 +287,8 @@ class TestRateLimiting(unittest.TestCase):
 
     def test_different_ips_independent(self):
         for _ in range(self.zimi.RATE_LIMIT + 10):
-            self.zimi._check_rate_limit("10.0.0.1")
-        result = self.zimi._check_rate_limit("10.0.0.2")
+            self.zimi._check_rate_limit("192.0.2.1")
+        result = self.zimi._check_rate_limit("192.0.2.2")
         self.assertEqual(result, 0)
 
 
