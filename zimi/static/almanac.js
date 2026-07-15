@@ -212,7 +212,9 @@ function _renderAlmanacContent() {
   // Sky scene + calendar — wall calendar: art above, month grid below
   html += '<div class="almanac-sky-wrap">' +
     '<canvas id="almanac-sky-canvas" aria-describedby="almanac-sky-desc" role="img"></canvas>' +
-    '<div id="almanac-sky-desc" class="sr-only"></div>' +
+    // Inline styles duplicate .sr-only so a stale cached app.css can never
+    // expose this text visually (issue #25).
+    '<div id="almanac-sky-desc" class="sr-only" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0"></div>' +
     '</div>';
   html += '<div id="almanac-calendar"></div>';
 
@@ -2507,22 +2509,24 @@ function _initSkyScene(now, lat, lon) {
     var when = now.toLocaleString(undefined, {
       weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit'
     });
+    // _tLookup falls back to English when a stale cached i18n file lacks
+    // these keys — raw key names must never be spoken or shown (issue #25).
     var sunDesc = sunPos.altitude > 0
-      ? t('alm_sun') + ' ' + sunPos.altitude.toFixed(0) + '° ' + t('alm_a11y_above_horizon')
-      : t('alm_sun') + ' ' + t('alm_a11y_below_horizon');
+      ? _tLookup('alm_sun', 'Sun') + ' ' + sunPos.altitude.toFixed(0) + '° ' + _tLookup('alm_a11y_above_horizon', 'above the horizon')
+      : _tLookup('alm_sun', 'Sun') + ' ' + _tLookup('alm_a11y_below_horizon', 'below the horizon');
     var moonDesc;
     if (moonPos0.altitude > -2) {
-      moonDesc = t('alm_moon') + ' ' + moonM0.illumination + '% ' + t('alm_a11y_illuminated') +
-        ', ' + moonPos0.altitude.toFixed(0) + '° ' + t('alm_a11y_altitude');
+      moonDesc = _tLookup('alm_moon', 'Moon') + ' ' + moonM0.illumination + '% ' + _tLookup('alm_a11y_illuminated', 'illuminated') +
+        ', ' + moonPos0.altitude.toFixed(0) + '° ' + _tLookup('alm_a11y_altitude', 'high');
     } else {
-      moonDesc = t('alm_moon') + ' ' + t('alm_a11y_below_horizon');
+      moonDesc = _tLookup('alm_moon', 'Moon') + ' ' + _tLookup('alm_a11y_below_horizon', 'below the horizon');
     }
     var starsVisible = (projStars || []).filter(function(s) { return s.alt > 0; }).length;
     var starsDesc = starsVisible > 0
-      ? starsVisible + ' ' + t('alm_a11y_stars_visible')
-      : t('alm_a11y_no_stars');
-    srEl.textContent = t('alm_a11y_sky_for', {when: when}) +
-      ' ' + sunDesc + '. ' + moonDesc + '. ' + starsDesc + '.';
+      ? starsVisible + ' ' + _tLookup('alm_a11y_stars_visible', 'stars visible')
+      : _tLookup('alm_a11y_no_stars', 'No stars currently above the horizon');
+    var skyFor = _tLookup('alm_a11y_sky_for', 'Almanac sky for {when}.').replace('{when}', when);
+    srEl.textContent = skyFor + ' ' + sunDesc + '. ' + moonDesc + '. ' + starsDesc + '.';
   }
 
   function _skyLoop(ts) {

@@ -152,3 +152,21 @@ def test_serve_web_ui_responds(serve_subprocess):
     """The `/` SPA shell must serve a 200, otherwise users see a blank screen."""
     port, _ = serve_subprocess
     assert _http_status(f"http://127.0.0.1:{port}/") == 200
+
+
+def test_sw_js_version_substituted_at_serve_time():
+    """sw.js must always advertise the running server's version — the
+    hardcoded constant silently disabled the PWA for a release cycle."""
+    import re as _re
+
+    import zimi.http as h
+    import zimi.server as srv
+
+    src = open("zimi/static/sw.js", "rb").read()
+    body = _re.sub(
+        rb"const CACHE_VERSION = '[^']*'",
+        b"const CACHE_VERSION = 'zimi-v" + srv.ZIMI_VERSION.encode() + b"'",
+        src,
+    )
+    assert ("zimi-v" + srv.ZIMI_VERSION).encode() in body
+    assert b"zimi-vdev" not in body

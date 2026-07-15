@@ -130,9 +130,11 @@ def _read_pref(key: str, default):
         return default
 
 
-def set_pref(key: str, value) -> None:
+def set_pref(key: str, value) -> bool:
+    """Persist a UI preference. Returns False (and logs) when the config
+    dir isn't writable — callers surface that instead of a 500."""
     if not _prefs_path:
-        return
+        return False
     with _prefs_lock:
         prefs = {}
         try:
@@ -141,11 +143,16 @@ def set_pref(key: str, value) -> None:
         except (OSError, ValueError):
             pass
         prefs[key] = value
-        os.makedirs(os.path.dirname(_prefs_path), exist_ok=True)
-        tmp = _prefs_path + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(prefs, f)
-        os.replace(tmp, _prefs_path)
+        try:
+            os.makedirs(os.path.dirname(_prefs_path), exist_ok=True)
+            tmp = _prefs_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(prefs, f)
+            os.replace(tmp, _prefs_path)
+        except OSError as e:
+            log.warning("could not persist preference %s: %s", key, e)
+            return False
+    return True
 
 
 def _env_explicitly_set(key: str) -> bool:

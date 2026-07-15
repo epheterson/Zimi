@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.1] — 2026-07-15
+
+Fast follow to v1.7.0, fixing the first two field reports and closing the
+sharpest edges before more people hit them.
+
+### Fixed
+
+- **Updating ZIMs returned bare 400s** (#26): stale clients can send
+  `http://` catalog URLs, which the https-only trust check rejected.
+  Trusted hosts are now upgraded to `https://` instead, and every
+  rejected download logs its reason so a syslog is enough to diagnose.
+  The same report's "Request timed out" spam is also fixed: mirror-list
+  resolution moved off the request thread, so starting downloads no
+  longer stalls for slow metalink fetches.
+- Saving a sharing setting on a read-only config directory now returns a
+  clear error instead of silently failing (or crashing the request).
+- **Screen-reader text visible under the almanac sky** (#25): the
+  description now hides with inline styles and falls back to English
+  wording, so stale cached stylesheets or translations can never render
+  it visibly or as raw key names.
+- **Stale caches can't disable the PWA again**: the service worker's
+  version is stamped at serve time from the running server instead of a
+  hardcoded constant (the constant went stale for a full release cycle
+  once). The Snap package version is likewise derived from pyproject at
+  build time.
+- Queued downloads show the sweeping "preparing" bar instead of a
+  stalled-looking 0% bar.
+- Finishing a download while a catalog page is open flips its card to
+  Installed immediately (peer pills included).
+- Overlapping downloads-panel refreshes no longer double-fetch the
+  library list.
+
+
 ## [1.7.0] — 2026-07-13
 
 The "Reach + Pro" release. Addresses issue #15 (the warlordattack feedback set

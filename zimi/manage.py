@@ -947,7 +947,10 @@ def handle_manage_post(handler, parsed, data):
                 return handler._json(
                     403, {"error": "Seeding is controlled by the ZIMI_BT env var"}
                 )
-            p2p.set_pref("seed", bool(data["seed"]))
+            if not p2p.set_pref("seed", bool(data["seed"])):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
             changed["seed"] = bool(data["seed"])
         if "mirror" in data:
             if p2p.is_mirror_env_locked():
@@ -955,7 +958,10 @@ def handle_manage_post(handler, parsed, data):
                     403,
                     {"error": "Mirror mode is controlled by the ZIMI_BT env var"},
                 )
-            p2p.set_pref("mirror", bool(data["mirror"]))
+            if not p2p.set_pref("mirror", bool(data["mirror"])):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
             changed["mirror"] = bool(data["mirror"])
         if "peer_share" in data:
             from zimi import p2p_discovery as _disc
@@ -965,7 +971,10 @@ def handle_manage_post(handler, parsed, data):
                     403,
                     {"error": "LAN sharing is controlled by the ZIMI_NEARBY env var"},
                 )
-            p2p.set_pref("peer_share", bool(data["peer_share"]))
+            if not p2p.set_pref("peer_share", bool(data["peer_share"])):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
             changed["peer_share"] = bool(data["peer_share"])
         if "torrent" in data:
             if p2p.is_torrent_env_locked():
@@ -974,7 +983,10 @@ def handle_manage_post(handler, parsed, data):
                     {"error": "BitTorrent is controlled by the ZIMI_BT env var"},
                 )
             on = bool(data["torrent"])
-            p2p.set_pref("torrent", on)
+            if not p2p.set_pref("torrent", on):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
             changed["torrent"] = on
             if not on:
                 # Switch off means OFF — stop the sidecar (and its seeds) now.
@@ -991,7 +1003,10 @@ def handle_manage_post(handler, parsed, data):
                     {"error": "Peer name is controlled by the ZIMI_NEARBY env var"},
                 )
             name = str(data["peer_name"]).strip()[:63]
-            p2p.set_pref("peer_name", name)
+            if not p2p.set_pref("peer_name", name):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
             changed["peer_name"] = name
         if "seed_ratio" in data:
             if p2p.is_seed_ratio_env_locked():
@@ -1003,7 +1018,10 @@ def handle_manage_post(handler, parsed, data):
                 ratio = max(0.0, min(10.0, float(data["seed_ratio"])))
             except (ValueError, TypeError):
                 return handler._json(400, {"error": "seed_ratio must be a number"})
-            p2p.set_pref("seed_ratio", ratio)
+            if not p2p.set_pref("seed_ratio", ratio):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
             changed["seed_ratio"] = ratio
         if not changed:
             return handler._json(
