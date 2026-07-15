@@ -1,6 +1,10 @@
 # Zimi
 
 [![CI](https://github.com/epheterson/Zimi/actions/workflows/ci.yml/badge.svg)](https://github.com/epheterson/Zimi/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-543%20passing-brightgreen)](#)
+[![Lighthouse Accessibility](https://img.shields.io/badge/Lighthouse%20a11y-100%2F100-success?logo=lighthouse&logoColor=white)](docs/plans/2026-04-26-accessibility.md)
+[![WCAG 2.1 AA](https://img.shields.io/badge/WCAG%202.1-AA-blue)](docs/plans/2026-04-26-accessibility.md)
+[![i18n](https://img.shields.io/badge/i18n-10%20languages-blueviolet)](#languages)
 [![Docker Pulls](https://img.shields.io/docker/pulls/epheterson/zimi)](https://hub.docker.com/r/epheterson/zimi)
 [![PyPI](https://img.shields.io/pypi/v/zimi)](https://pypi.org/project/zimi/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -9,7 +13,7 @@ A modern experience for your ZIM files.
 
 [Kiwix](https://kiwix.org) packages the world's knowledge into ZIM files. Zimi makes them feel like the real internet with a rich web UI, fast JSON API, and an MCP server for AI agents. Everything works offline, in your language.
 
-Zimi is
+## What is Zimi?
 
 - **The offline internet.** Entire websites, cross-ZIM linking, search engine and native browser experience.
 - **Search that hits everything.** One query, every source, 140M+ articles, the right answer on top. Fast.
@@ -42,6 +46,16 @@ Not an afterthought. Language is deeply integrated into every aspect of Zimi so 
 - **10 languages.** English, French, German, Spanish, Portuguese, Russian, Chinese, Arabic, Hindi, Hebrew.
 
 Something not right? [Open an issue.](https://github.com/epheterson/Zimi/issues)
+
+## Sharing
+
+Zimi assumes knowledge should flow. Three switches in Server Settings control all of it:
+
+- **BitTorrent** (on by default). Downloads arrive via the Kiwix swarm and seed back, capped at a ratio you choose. `0` means never seed. No aria2 installed? Everything quietly uses plain HTTP.
+- **Nearby** (off by default). Flip it on and Zimi devices on your network find each other; a green pill on a catalog card means a neighbor already has that ZIM. Transfers stay on your LAN, never the internet.
+- **Mirror** (off). Lifts the seeding cap, for people who want to run a long-term Kiwix mirror.
+
+Seeding needs no router setup. Optionally forward your BitTorrent port (default 6881) to let peers connect to you directly, which helps on quiet swarms.
 
 ## Install
 
@@ -114,16 +128,6 @@ LAN peer discovery (`_zimi._tcp`) won't reach the LAN in bridge mode — multica
 pip install zimi
 ZIM_DIR=./zims zimi serve --port 8899
 ```
-
-## Sharing
-
-Zimi assumes knowledge should flow. Three switches in Server Settings control all of it:
-
-- **BitTorrent** (on by default). Downloads arrive via the Kiwix swarm and seed back, capped at a ratio you choose. `0` means never seed. No aria2 installed? Everything quietly uses plain HTTP.
-- **Nearby** (off by default). Flip it on and Zimi devices on your network find each other; a green pill on a catalog card means a neighbor already has that ZIM. Transfers stay on your LAN, never the internet.
-- **Mirror** (off). Lifts the seeding cap, for people who want to run a long-term Kiwix mirror.
-
-Seeding needs no router setup. Forwarding your BitTorrent port (default 6881) lets peers connect to you directly, which helps on quiet swarms. Optional.
 
 ### Environment Variables
 
