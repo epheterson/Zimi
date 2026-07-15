@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [Unreleased]
+
+### Fixed
+
+- Server startup no longer blocks on the BitTorrent sidecar: backend spawn
+  and LAN discovery moved off the critical path, and the aria2 RPC probe is
+  deadline-bounded. A half-dead process squatting the RPC port could
+  previously stall startup for minutes (hung the desktop app at launch and
+  the CI release smoke test).
+- `SIGTERM` (docker stop, systemd) now exits through cleanup handlers, so
+  the aria2 sidecar is reaped instead of orphaned.
+- Test suite no longer spawns real aria2c sidecars or makes live network
+  requests; a leaked sidecar from one run poisoned every later backend
+  start on the same machine.
+
 ## [1.7.1] — 2026-07-15
 
 Fast follow to v1.7.0, fixing the first two field reports and closing the
