@@ -331,3 +331,18 @@ def test_nearby_blob(_prefs, monkeypatch):
     assert disc.is_share_enabled() is True
     assert disc.is_public_share_enabled() is True
     assert disc._peer_instance_name() == "my box"
+
+
+def test_find_aria2c_falls_back_to_homebrew_paths(monkeypatch):
+    """macOS GUI apps launch without Homebrew on PATH — the finder must
+    check the standard install locations before giving up."""
+    monkeypatch.setattr(p2p.shutil, "which", lambda _: None)
+    calls = []
+
+    def fake_isfile(path):
+        calls.append(path)
+        return path == "/usr/local/bin/aria2c"
+
+    monkeypatch.setattr(p2p.os.path, "isfile", fake_isfile)
+    monkeypatch.setattr(p2p.os, "access", lambda p, m: True)
+    assert p2p.find_aria2c() == "/usr/local/bin/aria2c"

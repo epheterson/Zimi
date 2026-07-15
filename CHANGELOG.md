@@ -17,34 +17,29 @@ mini), and delivers the Reach track: P2P distribution + accessibility.
 
 - **Your downloads now share the load.** Every Zimi that can torrent
   automatically helps distribute ZIMs instead of leaning on the Kiwix
-  mirrors — on by default, seeding capped at a polite 2×, with a real
-  toggle in Server Settings. Grabbing Wikipedia no longer means one
-  server carries you alone. (No aria2? Downloads fall back to plain
-  HTTP, unchanged.)
-- **Share your library between your own machines — no internet needed.**
-  Zimi instances find each other on your network automatically. When a
+  mirrors. On by default, seeding capped at a polite 2x, controlled by
+  real switches in Server Settings.
+- **Share your library with nearby machines, no internet needed.** Flip
+  on Nearby and Zimi instances find each other on your network. When a
   nearby machine already has a ZIM you're browsing, a green pill lights
-  up on the catalog card — click it and the file transfers straight
-  across the LAN, verified byte-for-byte.
-- **Corruption-proof installs.** Every downloaded file — torrent, HTTP,
-  or LAN peer — must pass a structural validation before it touches
+  up on the catalog card.
+- **Corruption-proof installs.** Every downloaded file, whether torrent,
+  HTTP, or LAN peer, must pass structural validation before it touches
   your library. A broken transfer can never replace a good ZIM.
-- **Built for everyone.** A top-to-bottom accessibility pass: perfect
-  100/100 Lighthouse score, full keyboard navigation, screen-reader
-  labels everywhere (including a spoken description of the almanac
-  sky), high-contrast mode support.
+- **Accessible.** If you browse by keyboard, listen by screen reader, or
+  need high contrast, accessibility is built-in. 100/100 Lighthouse
+  score across the app.
 - **The catalog and downloads got a real overhaul.** Batch-select many
   ZIMs and grab them at once, watch real per-file progress with pause
   and resume, see what you're seeding back, and let the catalog hide
-  things you already have. Denser cards, honest progress bars, cleaner
-  copy.
+  things you already have.
 - **Smarter, safer updates.** A full "maxi" Wikipedia will never
   silently downgrade to "mini" again (#16), auto-update follows Kiwix's
   new mirror URLs (#20), and the updates panel shows exactly what's
   waiting.
 - **Built for big libraries.** A live activity bar shows background
-  indexing and downloads, hot-cache pins your most-used ZIMs for
-  instant search, and startup is dramatically lighter (#15).
+  work, hot-cache pins your most-used ZIMs for instant search, and
+  startup is dramatically lighter (#15).
 
 ### Critical fix: BT two-phase GID bug (2026-07-13)
 

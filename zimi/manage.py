@@ -584,7 +584,7 @@ def handle_manage_get(handler, parsed, params):
         enabled = p2p.is_torrent_enabled()
         backend_name = p2p.get_backend_name()
         binary_present = (
-            bool(_shutil.which("aria2c")) if backend_name == "aria2" else None
+            bool(p2p.find_aria2c()) if backend_name == "aria2" else None
         )
 
         # Live state — peek only. A status view must never spawn the sidecar

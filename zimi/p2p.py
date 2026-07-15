@@ -42,6 +42,22 @@ DEFAULT_RATIO_CAP = 2.0
 DEFAULT_SEED_BANDWIDTH_KB = 2048  # 2 MB/s
 
 
+def find_aria2c() -> str | None:
+    """Locate aria2c. GUI apps on macOS launch with a bare PATH that
+    misses Homebrew, so fall back to the standard install locations."""
+    found = shutil.which("aria2c")
+    if found:
+        return found
+    for candidate in (
+        "/usr/local/bin/aria2c",     # Homebrew (Intel)
+        "/opt/homebrew/bin/aria2c",  # Homebrew (Apple Silicon)
+        "/usr/bin/aria2c",           # Linux distro packages
+    ):
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def _bool_env(key: str, default: bool = False) -> bool:
     raw = os.environ.get(key, "").strip().lower()
     if raw in ("1", "true", "yes", "on"):
@@ -456,7 +472,7 @@ class Aria2Backend(BTBackend):
 
     def available(self) -> bool:
         """True if `aria2c` is on PATH and we can reach its RPC."""
-        if not shutil.which("aria2c"):
+        if not find_aria2c():
             return False
         try:
             self.ensure_running()
@@ -477,7 +493,7 @@ class Aria2Backend(BTBackend):
             os.makedirs(self.torrents_dir, exist_ok=True)
             os.makedirs(self.staging_dir, exist_ok=True)
             args = [
-                "aria2c",
+                find_aria2c() or "aria2c",
                 "--enable-rpc",
                 "--rpc-listen-all=false",
                 f"--rpc-listen-port={self.rpc_port}",
