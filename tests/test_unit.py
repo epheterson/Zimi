@@ -1797,3 +1797,23 @@ if __name__ == "__main__":
     else:
         # Unit tests only
         unittest.main(verbosity=2)
+
+
+class TestVersionConsistency(unittest.TestCase):
+    def setUp(self):
+        import zimi
+
+        self.zimi = zimi
+
+    def test_server_version_matches_pyproject(self):
+        """ZIMI_VERSION is a hardcoded constant; pyproject is the release
+        trigger. They drifted once (health reported the old version after a
+        release) — keep them locked together."""
+        import re as _re
+
+        pyproject = open(
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "pyproject.toml")
+        ).read()
+        m = _re.search(r'^version = "([^"]+)"', pyproject, _re.M)
+        self.assertIsNotNone(m)
+        self.assertEqual(self.zimi.ZIMI_VERSION, m.group(1))
