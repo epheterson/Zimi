@@ -18,6 +18,11 @@ sharpest edges before more people hit them.
   `http://` catalog URLs, which the https-only trust check rejected.
   Trusted hosts are now upgraded to `https://` instead, and every
   rejected download logs its reason so a syslog is enough to diagnose.
+  The same report's "Request timed out" spam is also fixed: mirror-list
+  resolution moved off the request thread, so starting downloads no
+  longer stalls for slow metalink fetches.
+- Saving a sharing setting on a read-only config directory now returns a
+  clear error instead of silently failing (or crashing the request).
 - **Screen-reader text visible under the almanac sky** (#25): the
   description now hides with inline styles and falls back to English
   wording, so stale cached stylesheets or translations can never render

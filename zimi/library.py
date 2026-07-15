@@ -1014,6 +1014,17 @@ def _download_thread(dl):
     """
     tmp_dest = dl["dest"] + ".tmp"
     mirrors = list(dl.get("mirrors", [dl["url"]]))
+    # Resolve the metalink mirror list here, off the request thread (a slow
+    # or unreachable meta4 fetch must never stall the /manage/download POST).
+    meta4 = dl.get("_meta4")
+    if meta4:
+        try:
+            fetched = _fetch_mirrors(meta4)
+            for m in fetched:
+                if m not in mirrors:
+                    mirrors.append(m)
+        except Exception as e:
+            log.debug("meta4 mirror fetch failed (%s) — using direct URL", e)
     _random.shuffle(mirrors)
     try:
         # BT-first attempt when a backend is configured AND we can find a
@@ -1248,23 +1259,27 @@ def _start_download(url, size_bytes=None):
         log.info("download rejected: untrusted URL %.120r", url)
         return None, "URL not from a trusted Kiwix host"
 
-    # OPDS catalog provides .meta4 metalink URLs — fetch mirrors from it
-    mirrors = []
+    # OPDS catalog provides .meta4 metalink URLs. Resolving the mirror list
+    # requires a network fetch, which used to run right here in the request
+    # thread — five parallel update clicks meant five 15-second stalls
+    # (issue #26's "Request timed out" spam). The download thread resolves
+    # it instead; the direct URL is always a valid fallback.
+    meta4_url = None
     if url.endswith(".meta4"):
-        mirrors = _fetch_mirrors(url)
-        url = url[: -len(".meta4")]  # direct URL as primary fallback
-
-    # If we got mirrors, use them; otherwise fall back to the direct URL
-    if not mirrors:
-        mirrors = [url]
-    elif url not in mirrors:
-        mirrors.append(url)  # ensure direct URL is always a fallback
+        meta4_url = url
+        url = url[: -len(".meta4")]
 
     filename, err = _validate_zim_filename(url.split("/")[-1])
     if err:
         log.info("download rejected: %s (url=%.120r)", err, url)
         return None, err
-    return _enqueue_zim_download(url, mirrors, filename, size_bytes=size_bytes)
+    return _enqueue_zim_download(
+        url,
+        [url],
+        filename,
+        size_bytes=size_bytes,
+        extra={"_meta4": meta4_url} if meta4_url else None,
+    )
 
 
 def _start_peer_download(peer_name, filename, size_bytes=None):

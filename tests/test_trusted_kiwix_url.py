@@ -107,7 +107,7 @@ def test_http_urls_upgraded_to_https_for_trusted_hosts(monkeypatch):
 
     captured = {}
 
-    def fake_enqueue(url, mirrors, filename, size_bytes=None):
+    def fake_enqueue(url, mirrors, filename, size_bytes=None, extra=None):
         captured["url"] = url
         return "1", None
 
