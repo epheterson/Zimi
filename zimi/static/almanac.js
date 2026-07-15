@@ -25,6 +25,9 @@ function _saveLocation(lat, lon, name) {
   var data = { lat: lat, lon: lon };
   if (name) data.name = name;
   localStorage.setItem(_ALM_LOC_KEY, JSON.stringify(data));
+  // Keep the timezone city list in sync with the new location — otherwise a
+  // map click changes the sun/moon math while a stale city stays highlighted.
+  _almSelectedTz = _almTzForLocation(lat, lon);
 }
 
 function _signalDelay(au) {
@@ -40,7 +43,15 @@ function _fmtDuration(h, m) {
 // so we must check result !== key to detect misses and fall back to English name.
 function _tLookup(k, fallback) { var v = t(k); return v !== k ? v : fallback; }
 function _tp(name) { return _tLookup('alm_planet_' + name.toLowerCase(), name); }
-function _th(name) { var k = 'alm_hol_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, ''); return _tLookup(k, name); }
+function _th(name) {
+  if (!name) return '';
+  var k = 'alm_hol_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, '');
+  return _tLookup(k, name);
+}
+function _showerName(s) {
+  if (!s) return '';
+  return _tLookup('alm_shower_' + s.key, s.key.replace(/_/g, ' '));
+}
 var _CONST_KEYS = {'Pisces':'pisces','Aries':'aries','Taurus':'taurus','Gemini':'gemini','Cancer':'cancer','Leo':'leo','Virgo':'virgo','Libra':'libra','Scorpius':'scorpius','Sagittarius':'sagittarius','Capricornus':'capricornus','Aquarius':'aquarius','Bo\u00f6tes':'bootes','Lyra':'lyra','Perseus':'perseus','Draco':'draco','Orion':'orion','Ursa Minor':'ursa_minor'};
 function _tc(name) { var k = _CONST_KEYS[name]; return k ? _tLookup('alm_const_' + k, name) : name; }
 
@@ -199,7 +210,10 @@ function _renderAlmanacContent() {
   html += '</div>';
 
   // Sky scene + calendar — wall calendar: art above, month grid below
-  html += '<div class="almanac-sky-wrap"><canvas id="almanac-sky-canvas"></canvas></div>';
+  html += '<div class="almanac-sky-wrap">' +
+    '<canvas id="almanac-sky-canvas" aria-describedby="almanac-sky-desc" role="img"></canvas>' +
+    '<div id="almanac-sky-desc" class="sr-only"></div>' +
+    '</div>';
   html += '<div id="almanac-calendar"></div>';
 
   // Sun map — inline world map with day/night terminator + location picker
@@ -304,7 +318,7 @@ function _cacheAlmanacHighlights(now, moon) {
       var peak = new Date(y, s.peak[0]-1, s.peak[1]);
       if (peak < now) peak = new Date(y+1, s.peak[0]-1, s.peak[1]);
       var days = Math.ceil((peak - now) / MS_PER_DAY);
-      if (days <= 10) highlights.push({ type: 'meteor', name: s.name, days: days, zhr: s.zhr, priority: days === 0 ? 0 : days });
+      if (days <= 10) highlights.push({ type: 'meteor', name: _showerName(s), days: days, zhr: s.zhr, priority: days === 0 ? 0 : days });
     }
     // Eclipses — check rendered eclipse elements for upcoming dates
     var eclipseEl = document.getElementById('almanac-events');
@@ -1741,6 +1755,33 @@ var _TZ_CITIES = [
   { key: 'auckland', tz: 'Pacific/Auckland', lat: -36.85, lon: 174.76 }
 ];
 
+function _tzUtcOffsetMin(tz, now) {
+  var fmtOpts = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false };
+  var enFmt = function(z) { return new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: z }, fmtOpts)).format(now); };
+  return Math.round((new Date(enFmt(tz)) - new Date(enFmt('UTC'))) / 60000);
+}
+
+// Best _TZ_CITIES match for an arbitrary lat/lon. No offline tz database, so
+// approximate: geographic distance dominates (same-region cities usually
+// share a zone, DST included), with the gap between the city's civil offset
+// and the location's solar offset (lon/15 h) as a mild tie-break — 1 h of
+// offset mismatch costs the same as 1° of distance.
+function _almTzForLocation(lat, lon) {
+  var now = new Date();
+  var solarOffMin = (lon / 15) * 60;
+  var best = null, bestScore = Infinity;
+  for (var i = 0; i < _TZ_CITIES.length; i++) {
+    var offMin;
+    try { offMin = _tzUtcOffsetMin(_TZ_CITIES[i].tz, now); } catch (e) { continue; }
+    var dlat = lat - _TZ_CITIES[i].lat;
+    var dlon = (lon - _TZ_CITIES[i].lon) * Math.cos(lat * DEG_TO_RAD);
+    var distDeg = Math.sqrt(dlat * dlat + dlon * dlon);
+    var score = distDeg + Math.abs(offMin - solarOffMin) / 60;
+    if (score < bestScore) { bestScore = score; best = _TZ_CITIES[i].tz; }
+  }
+  return best;
+}
+
 var _almSelectedTz = null; // null = local timezone
 
 function _initTzClock(now) {
@@ -1764,9 +1805,7 @@ function _initTzClock(now) {
     // Compute UTC offset — use en-US with full date+time for accurate diff
     var utcOff = '';
     try {
-      var _tzOffFmt = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false };
-      var enFmt = function(tz) { return new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: tz }, _tzOffFmt)).format(now); };
-      var diffMin = Math.round((new Date(enFmt(tzc.tz)) - new Date(enFmt('UTC'))) / 60000);
+      var diffMin = _tzUtcOffsetMin(tzc.tz, now);
       var sign = diffMin >= 0 ? '+' : '\u2212';
       var absH = Math.floor(Math.abs(diffMin) / 60);
       var absM = Math.abs(diffMin) % 60;
@@ -1788,7 +1827,6 @@ function _initTzClock(now) {
 }
 
 function _almSelectTz(tz, idx) {
-  _almSelectedTz = tz;
   // Also set location to this city for sun/map calculations
   var city = _TZ_CITIES[idx];
   // Look up full name from _MAP_CITIES (includes state/country)
@@ -1798,7 +1836,9 @@ function _almSelectTz(tz, idx) {
       fullName = _MAP_CITIES[ci].name; break;
     }
   }
+  // After _saveLocation's approximate sync — an explicit city pick is exact.
   _saveLocation(city.lat, city.lon, fullName);
+  _almSelectedTz = tz;
   // Re-render but preserve scroll position (avoids annoying jump)
   var scrollEl = document.getElementById('almanac-content');
   var savedScroll = scrollEl ? scrollEl.scrollTop : 0;
@@ -2458,6 +2498,32 @@ function _initSkyScene(now, lat, lon) {
 
   // Pre-compute moon data (constant for this sky scene — now is frozen)
   var moonData = { pos: moonPos0, phase: moonM0 };
+
+  // Screen-reader description of the sky scene. Updates once per
+  // render — the animation visuals are decorative; the values
+  // they're derived from are what matter.
+  var srEl = document.getElementById('almanac-sky-desc');
+  if (srEl) {
+    var when = now.toLocaleString(undefined, {
+      weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit'
+    });
+    var sunDesc = sunPos.altitude > 0
+      ? t('alm_sun') + ' ' + sunPos.altitude.toFixed(0) + '° ' + t('alm_a11y_above_horizon')
+      : t('alm_sun') + ' ' + t('alm_a11y_below_horizon');
+    var moonDesc;
+    if (moonPos0.altitude > -2) {
+      moonDesc = t('alm_moon') + ' ' + moonM0.illumination + '% ' + t('alm_a11y_illuminated') +
+        ', ' + moonPos0.altitude.toFixed(0) + '° ' + t('alm_a11y_altitude');
+    } else {
+      moonDesc = t('alm_moon') + ' ' + t('alm_a11y_below_horizon');
+    }
+    var starsVisible = (projStars || []).filter(function(s) { return s.alt > 0; }).length;
+    var starsDesc = starsVisible > 0
+      ? starsVisible + ' ' + t('alm_a11y_stars_visible')
+      : t('alm_a11y_no_stars');
+    srEl.textContent = t('alm_a11y_sky_for', {when: when}) +
+      ' ' + sunDesc + '. ' + moonDesc + '. ' + starsDesc + '.';
+  }
 
   function _skyLoop(ts) {
     var elapsed = (ts - _skyStartTime) / 1000;
@@ -3734,7 +3800,7 @@ function _getAlmanacEvents(sys, year, month) {
   if (sys === 'gregorian') {
     for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
       var s = _METEOR_SHOWERS[si];
-      if (s.peak[0] === month) { add(s.peak[1], s.name, 'meteor', '\u2604'); }
+      if (s.peak[0] === month) { add(s.peak[1], _showerName(s), 'meteor', '\u2604'); }
     }
   }
 

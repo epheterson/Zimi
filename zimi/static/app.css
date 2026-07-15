@@ -2,10 +2,13 @@
 
   :root {
     --bg: #0a0a0b; --surface: #141416; --surface2: #1c1c20;
-    --border: #27272b; --text: #e8e8ed; --text2: #6e6e7a;
+    --border: #27272b; --text: #e8e8ed; --text2: #8a8a94;
     --accent: #f5f5f7; --amber: #f59e0b; --amber2: #d97706;
     --amber-glow: rgba(245, 158, 11, 0.08); --amber-border: rgba(245, 158, 11, 0.25);
-    --text3: #4a4a54; --text-dim: #4a4a54; --hover: rgba(245, 158, 11, 0.08);
+    /* text3 is reserved for large-text (≥18px or ≥14px bold) only —
+       it's WCAG-AA compliant against --bg at large sizes (3:1) but
+       not at normal body text. Use --text2 for everything else. */
+    --text3: #6e6e7a; --text-dim: #6e6e7a; --hover: rgba(245, 158, 11, 0.08);
     --error: #ef4444;
     --radius: 10px; --shadow-popup: 0 8px 32px rgba(0,0,0,0.5);
     color-scheme: dark;
@@ -14,6 +17,43 @@
 
   html { height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
   body { background: var(--bg); color: var(--text); min-height: 100%; padding-top: 56px; overflow: visible; }
+
+  /* ── Accessibility ── */
+  /* Visually-hide content but keep it readable for screen readers. */
+  .sr-only {
+    position: absolute !important;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0, 0, 0, 0);
+    white-space: nowrap; border: 0;
+  }
+  /* Skip link — visually hidden until keyboard focus brings it onto screen.
+     First tab-stop on the page so keyboard users can jump past the topbar. */
+  .skip-link {
+    position: absolute; top: -100px; left: 12px;
+    background: var(--amber); color: #000;
+    padding: 8px 16px; border-radius: 6px;
+    font-weight: 600; font-size: 14px;
+    z-index: 10000; text-decoration: none;
+    transition: top 0.15s ease;
+  }
+  .skip-link:focus,
+  .skip-link:focus-visible {
+    top: 12px; outline: 2px solid var(--amber); outline-offset: 2px;
+  }
+  /* Visible focus ring across the SPA. The default browser focus ring
+     is invisible-on-dark for many elements; this guarantees a high-
+     contrast outline that works on both light and dark themes. */
+  :focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+  }
+  /* Buttons / inputs that already style their own focus state opt out. */
+  button:focus:not(:focus-visible),
+  input:focus:not(:focus-visible),
+  textarea:focus:not(:focus-visible),
+  select:focus:not(:focus-visible),
+  a:focus:not(:focus-visible) { outline: none; }
 
   /* ── Topbar ── */
   .topbar {
@@ -28,9 +68,8 @@
     text-decoration: none; white-space: nowrap; flex-shrink: 0; cursor: pointer;
     background: linear-gradient(135deg, #f59e0b, #f97316, #ef4444);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    background-clip: text; transition: opacity 0.15s;
+    background-clip: text;
   }
-  .topbar .logo:hover { opacity: 0.8; }
 
   .back-btn {
     display: none; align-items: center; justify-content: center;
@@ -162,6 +201,9 @@
   .pill:hover, .lang-pill:hover,
   .ci-variant-btn:hover, .flavor-pill:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
   .pill.active, .lang-pill.active { background: linear-gradient(135deg, var(--amber), var(--amber2)); color: #000; border-color: transparent; font-weight: 600; }
+  .pill .pill-count { opacity: 0.55; font-size: 10px; }
+  /* Dark chip on the amber active pill — amber-on-amber is unreadable */
+  .pill.active .pill-count { opacity: 1; background: rgba(0, 0, 0, 0.22); color: #000; padding: 0 5px; border-radius: 8px; }
   .pill.dimmed, .lang-pill.dimmed { opacity: 0.35; pointer-events: none; }
   .pills-divider { width: 60px; height: 1px; background: var(--border); margin: 0 auto 4px; opacity: 0.5; }
 
@@ -308,7 +350,10 @@
   .card-info { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-right: 28px; }
   .stat-card .name { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 2px; }
   .stat-card .desc { font-size: 12px; color: var(--text2); line-height: 1.4; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .stat-card .detail { font-size: 11px; color: var(--text2); opacity: 0.6; margin-top: auto; }
+  /* Removed opacity here — multiplying the already-secondary --text2
+     by 0.6 dropped contrast below WCAG AA. --text2 alone is the
+     "secondary" cue. */
+  .stat-card .detail { font-size: 11px; color: var(--text2); margin-top: auto; }
 
   /* ── Search results ── */
   .meta { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; font-size: 12px; color: var(--text2); }
@@ -388,7 +433,7 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── Footer ── */
-  .footer { text-align: center; padding: 20px 16px 16px; font-size: 12px; color: var(--text2); opacity: 0.5; border-top: 1px solid var(--border); margin-top: 16px; }
+  .footer { text-align: center; padding: 20px 16px 16px; font-size: 12px; color: var(--text2); border-top: 1px solid var(--border); margin-top: 16px; }
   .footer .footer-brand {
     background: linear-gradient(135deg, #f59e0b, #f97316);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
@@ -399,7 +444,7 @@
   /* ── Utility ── */
   .loading { text-align: center; padding: 40px; color: var(--text2); font-size: 13px; }
   .loading .spinner-inline { display: inline-block; width: 14px; height: 14px; vertical-align: middle; margin-right: 8px; }
-  .content-search-indicator { text-align: center; padding: 12px; color: var(--text2); font-size: 12px; opacity: 0.7; animation: fadeIn 0.3s ease; }
+  .content-search-indicator { text-align: center; padding: 12px; color: var(--text2); font-size: 12px; animation: fadeIn 0.3s ease; }
   .content-search-indicator .spinner-inline { display: inline-block; width: 12px; height: 12px; vertical-align: middle; margin-right: 6px; }
   .empty { text-align: center; padding: 48px 20px; color: var(--text2); }
   .empty p { font-size: 14px; margin-bottom: 8px; }
@@ -446,17 +491,62 @@
   }
   .ms-pane .ms-field input:focus { outline: none; border-color: var(--amber-border); }
   .ms-pane .ms-field input[readonly] { opacity: 0.6; }
-  .ms-pane .ms-hint { font-size: 12px; color: var(--text2); opacity: 0.7; margin-top: 8px; }
+  .ms-pane .ms-hint { font-size: 12px; color: var(--text2); margin-top: 8px; }
   .ms-section-label, .ci-section-label, .hp-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); }
   .ms-section-label { margin-bottom: 8px; }
+  /* Auto-fit grid for catalog + downloads. 320px min → 2 columns in the
+     manage pane (~790px wide), 3 on wide screens, 1 on mobile. Cards switch
+     to vertical stack inside grid cells so they don't get cramped. */
+  .catalog-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 6px; align-items: stretch;
+  }
+  /* Compact grid-card: icon top-left, title+summary right of icon, actions bottom-right.
+     Saves vertical space vs full-vertical-stack. */
+  .catalog-grid .catalog-item {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    grid-template-areas: "icon info" "actions actions";
+    gap: 2px 10px; align-items: start;
+    max-height: none; padding: 8px 10px;
+    position: relative;
+  }
+  .catalog-grid .catalog-item .ci-icon { grid-area: icon; width: 32px; height: 32px; }
+  .catalog-grid .catalog-item .ci-icon img { width: 28px; height: 28px; }
+  .catalog-grid .catalog-item .ci-icon .ci-letter { width: 32px; height: 32px; font-size: 14px; }
+  .catalog-grid .catalog-item .ci-info { grid-area: info; min-width: 0; }
+  .catalog-grid .catalog-item .ci-title { font-size: 13px; margin-bottom: 1px; padding-right: 22px; }
+  .catalog-grid .catalog-item .ci-meta { font-size: 11px; }
+  .catalog-grid .catalog-item .ci-actions {
+    grid-area: actions; justify-content: flex-end; margin-left: 0;
+  }
+  .catalog-grid .catalog-item .ci-summary {
+    -webkit-line-clamp: 1; line-clamp: 1;
+    font-size: 11.5px; margin-bottom: 2px;
+  }
+  .catalog-grid .catalog-item .ci-hier,
+  .catalog-grid .catalog-item .ci-peer { margin-top: 2px; }
+  /* Batch checkbox pins to the card's top-right corner (out of the title
+     flow). Modest 15px control, but padded to a ~35px touch target. */
+  .catalog-grid .catalog-item .ci-select {
+    position: absolute; top: 4px; right: 4px; margin: 0;
+    width: 15px; height: 15px; padding: 10px; box-sizing: content-box;
+    cursor: pointer;
+  }
+  [dir="rtl"] .catalog-grid .catalog-item .ci-select { right: auto; left: 4px; }
+  [dir="rtl"] .catalog-grid .catalog-item .ci-title { padding-right: 0; padding-left: 22px; }
+  .mc-row-clickable:hover, .mc-row-clickable:focus-visible { color: var(--amber); }
   .catalog-item {
     display: flex; gap: 14px; align-items: center; padding: 14px 16px;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
     margin-bottom: 6px; transition: border-color 0.2s, opacity 0.3s;
     max-height: 200px; overflow: hidden;
   }
+  /* Grid-cell catalog-items don't need a margin — the grid gap handles spacing */
+  .catalog-grid .catalog-item { margin-bottom: 0; }
   .catalog-item:hover { border-color: var(--amber-border); }
-  .catalog-item.ci-installed-item { opacity: 0.6; }
+  .catalog-item.ci-installed-item { opacity: 0.5; }
+  .catalog-item.ci-covered { opacity: 0.6; }
   .ci-icon { flex-shrink: 0; width: 40px; height: 40px; border-radius: 8px; overflow: hidden; background: var(--surface2); }
   .ci-icon img { width: 34px; height: 34px; object-fit: cover; background: #fff; border-radius: 6px; padding: 2px; }
   .ci-icon .ci-letter { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; font-size: 16px; font-weight: 700; color: var(--accent); }
@@ -464,7 +554,7 @@
   .catalog-item .ci-title { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .ci-lang-tag { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 4px; background: var(--surface2); color: var(--text2); border: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0; }
   .catalog-item .ci-summary { font-size: 12px; color: var(--text2); line-height: 1.4; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .catalog-item .ci-meta { font-size: 12px; color: var(--text2); opacity: 0.5; word-spacing: 0.1em; }
+  .catalog-item .ci-meta { font-size: 12px; color: var(--text2); word-spacing: 0.1em; }
   .catalog-item .ci-meta > span { white-space: nowrap; }
   .catalog-item .ci-actions { flex-shrink: 0; display: flex; align-items: center; gap: 6px; margin-left: 8px; }
   .ci-installed-badge { font-size: 11px; color: var(--amber); font-weight: 600; padding: 4px 10px; border: 1px solid var(--amber-border); border-radius: 20px; background: var(--amber-glow); }
@@ -483,9 +573,11 @@
   .ci-update-btn:hover { background: var(--amber); }
   .ci-has-update { border-color: var(--amber-border); }
   .ci-add-btn {
-    padding: 6px 14px; font-size: 12px; font-weight: 500; cursor: pointer;
+    padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
     background: var(--surface2); color: var(--text); border: 1px solid var(--border);
     border-radius: var(--radius); transition: all 0.2s;
+    /* Centers the inline SVG download arrow with the label text */
+    display: inline-flex; align-items: center; gap: 5px; justify-content: center;
   }
   /* Circular download progress indicator */
   .ci-dl-circle { background: none !important; border: none !important; padding: 2px !important; }
@@ -515,8 +607,9 @@
   .flavor-pill {
     display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500;
     color: var(--text2); background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 20px; padding: 2px 8px 2px 8px; cursor: pointer; transition: all 0.2s;
+    border-radius: 20px; padding: 4px 10px; cursor: pointer; transition: all 0.2s;
     white-space: nowrap; position: relative;
+    min-height: 24px;  /* WCAG 2.5.5 touch target */
   }
   .flavor-pill svg { opacity: 0.5; flex-shrink: 0; }
   .flavor-pill:hover svg { opacity: 0.8; }
@@ -543,11 +636,47 @@
   .dl-progress { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
   .dl-progress-bar { height: 100%; background: var(--amber); border-radius: 2px; transition: width 0.5s; }
   .dl-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  /* Same auto-fit grid pattern as catalog so the two views feel consistent */
+  .dl-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 6px;
+  }
+  .dl-filter-bar {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin: 0 0 10px 0;
+  }
+  .dl-filter-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  /* background:none beats .pill.active's amber gradient (same specificity,
+     later in source) — amber label on amber fill was unreadable. */
+  .dl-filter-pill.active { color: var(--amber); border-color: var(--amber); background: none; font-weight: 600; }
+  .dl-filter-pill.active .pill-count { opacity: 1; background: var(--amber); color: #000; padding: 0 5px; border-radius: 8px; }
+  .dl-pause-btn { background: none; border: 1px solid var(--border); color: var(--text2);
+    padding: 4px 12px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s;
+    min-height: 24px; }
+  .dl-pause-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .dl-progress.dl-paused .dl-progress-bar { opacity: 0.5; }
+  /* Total size unknown (BT metadata / finding peers) — sweeping indeterminate bar */
+  .dl-progress.dl-indeterminate .dl-progress-bar {
+    width: 30%; margin-left: -30%; transition: none;
+    animation: dl-indet 1.3s ease-in-out infinite;
+  }
+  @keyframes dl-indet { to { margin-left: 100%; } }
+  @media (prefers-reduced-motion: reduce) {
+    /* Static centered segment — a full-width bar reads as "almost done" */
+    .dl-progress.dl-indeterminate .dl-progress-bar { animation: none; width: 34%; margin-left: 33%; opacity: 0.6; }
+  }
+  /* Same shape as .dl-pause-btn — one button family per card */
   .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);
-    font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+    font-size: 11px; padding: 4px 12px; border-radius: 12px; cursor: pointer;
+    transition: all 0.15s; min-height: 24px; }
   .dl-cancel-btn:hover { border-color: var(--error); color: var(--error); }
   .dl-retry-btn:hover { border-color: var(--amber); color: var(--amber); }
-  .dl-mirror { font-size: 11px; color: var(--text2); opacity: 0.6; flex: 1; }
+  .dl-mirror { font-size: 11px; color: var(--text2); flex: 1; }
+  .dl-source { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
+    color: var(--text2); white-space: nowrap; }
+  .dl-source-bt { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .dl-clear-btn { float: right; background: none; border: 1px solid var(--border); color: var(--text2); font-size: 11px; padding: 2px 10px; border-radius: 4px; cursor: pointer; margin-top: -28px; }
   .dl-clear-btn:hover { border-color: var(--amber); color: var(--amber); }
 
@@ -561,10 +690,246 @@
   }
   .manage-tab:hover { color: var(--text); }
   .manage-tab.active { color: var(--amber); border-bottom-color: var(--amber); font-weight: 600; }
+  .dl-tab-badge {
+    display: inline-block; margin-left: 6px; padding: 1px 7px;
+    background: var(--amber); color: #000; border-radius: 10px;
+    font-size: 11px; font-weight: 600; line-height: 1.4; min-width: 8px; text-align: center;
+  }
+  .dl-empty {
+    padding: 32px 16px; color: var(--text2); font-size: 13px;
+    text-align: center; border: 1px dashed var(--border); border-radius: var(--radius);
+  }
+  .hot-zims-list {
+    max-height: 280px; overflow-y: auto;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 6px; background: var(--bg);
+  }
+  .hot-zims-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 8px; cursor: pointer; border-radius: 4px;
+    font-size: 13px; color: var(--text);
+  }
+  .hot-zims-row:hover { background: var(--surface2); }
+  .hot-zims-row input[type="checkbox"] { accent-color: var(--amber); flex-shrink: 0; }
+  .hot-zims-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hot-zims-id { color: var(--text2); font-size: 11px; font-family: monospace; flex-shrink: 0; }
+  .hot-zims-toolbar { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+  /* Settings is a regular first tab on every viewport — the card only
+     shows while its tab is active. */
+  .manage-settings { display: none; margin-top: 12px; }
+  .manage-settings.as-tab-active { display: flex; }
+
+  /* ── Sharing hero (v1.7's star): three switch rows, one quiet card ── */
+  .share-rows {
+    border: 1px solid var(--border); border-radius: 12px;
+    background: var(--bg); overflow: hidden; margin-top: 8px;
+  }
+  .share-row { display: flex; align-items: center; gap: 14px; padding: 13px 14px; }
+  .share-row + .share-row { border-top: 1px solid var(--border); }
+  .share-row-text { flex: 1; min-width: 0; }
+  .share-row-title { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
+  .share-row-desc { font-size: 12px; color: var(--text2); margin-top: 2px; line-height: 1.45; }
+  .share-row-locknote { color: var(--amber); opacity: 0.8; }
+  .share-locked .share-row-title, .share-locked .share-row-desc:not(.share-row-locknote) { opacity: 0.55; }
+  .share-ratio { white-space: nowrap; }
+  .share-ratio input {
+    width: 46px; margin: 0 3px; padding: 2px 4px; font-size: 12px; text-align: center;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+  }
+  .share-ratio input:focus { outline: none; border-color: var(--amber); }
+  .share-ratio input:disabled { opacity: 0.45; }
+  .peer-name-input {
+    width: 150px; padding: 2px 6px; font: inherit; text-align: right;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text);
+  }
+  .peer-name-input:focus { outline: none; border-color: var(--amber); }
+  .peer-name-input:disabled { opacity: 0.55; border-color: transparent; background: none; }
+  .share-ratio-note { color: var(--text2); opacity: 0.75; font-size: 11px; margin-left: 4px; }
+  /* iOS-style switch: amber track when on, black knob slides right */
+  .switch { position: relative; flex-shrink: 0; width: 42px; height: 24px; display: inline-block; cursor: pointer; }
+  .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .switch-slider {
+    position: absolute; inset: 0; border-radius: 999px;
+    background: var(--surface2); border: 1px solid var(--border);
+    transition: background 0.18s, border-color 0.18s;
+  }
+  .switch-slider::before {
+    content: ''; position: absolute; width: 18px; height: 18px; border-radius: 50%;
+    top: 2px; left: 2px; background: var(--text2);
+    transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), background 0.18s;
+  }
+  .switch input:checked + .switch-slider {
+    background: linear-gradient(135deg, var(--amber), var(--amber2)); border-color: transparent;
+  }
+  .switch input:checked + .switch-slider::before { transform: translateX(18px); background: #000; }
+  .switch input:focus-visible + .switch-slider { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .switch input:disabled + .switch-slider { cursor: default; }
+  @media (prefers-reduced-motion: reduce) {
+    .switch-slider, .switch-slider::before { transition: none; }
+  }
+
+  /* Long option lists (languages, hot ZIMs) hide behind a Show-list toggle.
+     :not() + !important beat later same-specificity display rules
+     (.ms-lang-pills is display:flex further down); when open, the element
+     keeps its natural display. */
+  .ms-collapsed-list:not(.ms-open) { display: none !important; }
+  /* Each sharing toggle owns its hint — indent under the checkbox text so
+     they read as one unit, with clear space before the next toggle. */
+  .ms-toggle-block { margin-bottom: 14px; }
+  .ms-toggle-block .ms-check { padding-bottom: 0; }
+  .ms-toggle-block .ms-hint { margin: 2px 0 0 26px; }
+
+  .hot-zims-search {
+    flex: 1; min-width: 0; padding: 6px 10px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); font-size: 13px;
+  }
+  .hot-zims-search:focus { outline: none; border-color: var(--amber); }
+  .hot-zims-actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .ms-pref-langs {
+    width: 100%; padding: 8px 10px; margin-top: 4px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); font-size: 13px; box-sizing: border-box;
+  }
+  .ms-pref-langs:focus { outline: none; border-color: var(--amber); }
+  .ms-lang-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .ms-lang-pill {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--bg); font-size: 13px; color: var(--text);
+  }
+  .ms-lang-pill.active { border-color: var(--amber); color: var(--amber); }
+  .ms-lang-pill .ms-lang-code {
+    font-family: monospace; font-size: 11px; color: var(--text2);
+    text-transform: uppercase;
+  }
+  .ms-lang-pill.active .ms-lang-code { color: var(--amber); }
+  .ms-flavor-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .ms-flavor-pill {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--bg); font-size: 13px; color: var(--text);
+  }
+  .ms-flavor-pill:has(input:checked) { border-color: var(--amber); color: var(--amber); }
+  .ms-flavor-pill input { accent-color: var(--amber); }
+  .ms-hot-show { margin-top: 6px; }
+  .updates-detail {
+    margin: 6px 0 12px 0; padding: 8px;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius);
+    max-height: 240px; overflow-y: auto;
+  }
+  .updates-detail-row {
+    padding: 6px; font-size: 12px;
+  }
+  .updates-detail-row + .updates-detail-row { border-top: 1px solid var(--border); }
+  .updates-detail-top {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
+  .updates-detail-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .updates-detail-versions { color: var(--text2); font-family: monospace; font-size: 11px; flex-shrink: 0; }
+  .updates-detail-fnames {
+    color: var(--text2); font-family: monospace; font-size: 10.5px;
+    margin-top: 2px; opacity: 0.65; word-break: break-all;
+  }
+
+  /* Multi-select checkbox + floating action bar */
+  .ci-select {
+    accent-color: var(--amber); flex-shrink: 0;
+    margin-right: 6px; align-self: center;
+  }
+  .ci-selection-bar {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+    padding: 8px 14px; display: flex; gap: 12px; align-items: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 100;
+    font-size: 13px; color: var(--text);
+  }
+  .ci-selection-bar .ci-sel-count { font-weight: 500; }
+  .ci-selection-bar button { white-space: nowrap; }
+
+  /* Catalog hierarchy hints */
+  .ci-hier { margin-top: 4px; font-size: 11px; }
+  /* LAN peer pill — green for "this exists on a LAN peer" */
+  .ci-peer { margin-top: 4px; font-size: 11px; }
+  .ci-peer-pill {
+    /* flex + gap gives real space after the 📡 (the emoji glyph box
+       swallows a plain text space, and the dish leans right — needs 8px) */
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; line-height: 1.4;
+    background: rgba(120, 200, 120, 0.12); color: #6ec56e;
+    border: 1px solid rgba(120, 200, 120, 0.3);
+    /* Touch target — bumped to 24px for clickable variant; the static
+       (already-installed) variant inherits the smaller size. */
+  }
+  .ci-peer-pill-clickable {
+    cursor: pointer; min-height: 24px; padding: 4px 10px;
+    font: inherit; font-size: 11px; transition: all 0.15s;
+  }
+  .ci-peer-pill-clickable:hover {
+    background: rgba(120, 200, 120, 0.22);
+    border-color: rgba(120, 200, 120, 0.55);
+    color: #84d684;
+  }
+  .ci-peer-pill-clickable:focus-visible {
+    outline: 2px solid #6ec56e; outline-offset: 2px;
+  }
+  .ci-hier-installed,
+  .ci-hier-subset,
+  .ci-hier-bundle {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; line-height: 1.4;
+  }
+  .ci-hier-installed {
+    background: rgba(120, 200, 120, 0.12); color: #6ec56e;
+    border: 1px solid rgba(120, 200, 120, 0.3);
+  }
+  .ci-hier-subset {
+    background: var(--surface2); color: var(--text2); border: 1px solid var(--border);
+  }
+  .ci-hier-bundle {
+    background: var(--amber-glow); color: var(--amber); border: 1px solid var(--amber-border);
+  }
+  .ci-hier-coverage {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; line-height: 1.4;
+    background: rgba(120, 200, 120, 0.08); color: #6ec56e;
+    border: 1px solid rgba(120, 200, 120, 0.25);
+  }
+  .ci-hier-freshness {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; line-height: 1.4;
+    background: rgba(255, 180, 80, 0.1); color: #ffb450;
+    border: 1px solid rgba(255, 180, 80, 0.3);
+  }
   .manage-tab-content { display: none; }
   .manage-tab-content.active { display: block; }
   .manage-installed-group { margin-bottom: 24px; }
   .manage-installed-group .ci-section-label { margin-top: 0; }
+  .mig-updates .ci-section-label { color: var(--amber); }
+
+  /* BT seeding panel in Server settings */
+  .seeding-totals { font-size: 12px; color: var(--text2); margin-bottom: 8px; }
+  .seeding-list { display: flex; flex-direction: column; gap: 6px; }
+  .seeding-row {
+    padding: 8px 10px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: var(--radius);
+  }
+  .seeding-name {
+    font-size: 12px; font-family: monospace; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .seeding-meta {
+    font-size: 11px; color: var(--text2); margin-top: 2px;
+  }
+  .seeding-bar {
+    height: 4px; background: var(--surface2); border-radius: 2px;
+    margin-top: 6px; overflow: hidden;
+  }
+  .seeding-bar-fill {
+    height: 100%; background: var(--amber); transition: width 0.3s;
+  }
 
   /* ── Featured Living Carousel ── */
   .featured-section { margin-bottom: 20px; }
@@ -610,8 +975,10 @@
 
   /* ── Footer ── */
   .footer-sub { margin-top: 6px; font-size: 11px; opacity: 0.7; }
-  .footer a { color: var(--amber); text-decoration: none; }
-  .footer a:hover { text-decoration: underline; }
+  /* WCAG 1.4.1: links inside text need a non-color cue. Using a 1px
+     dotted underline keeps the visual difference subtle but present. */
+  .footer a { color: var(--amber); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }
+  .footer a:hover { text-decoration-style: solid; }
   .kbd-hints { opacity: 0.6; }
 
   /* ── Mobile ── */
@@ -627,6 +994,8 @@
     .kbd-hints { display: none; }
     .manage-card { padding: 16px 12px; }
     .manage-settings { flex-direction: column; min-height: auto; }
+    .ms-pane { overflow-x: hidden; min-width: 0; }
+    .hot-zims-id { display: none; }
     .ms-nav { width: auto; flex-shrink: 0; border-right: none; border-bottom: 1px solid var(--border); flex-direction: row; padding: 4px 8px; gap: 2px; overflow-x: auto; }
     .ms-nav-item { padding: 6px 12px; white-space: nowrap; border-radius: var(--radius); font-size: 12px; }
     .ms-pane { padding: 14px 12px; }
@@ -647,7 +1016,9 @@
   .pw-overlay.open { display:flex; }
   .pw-box { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; width:320px; max-width:90vw; }
   .pw-box h3 { margin:0 0 12px; font-size:15px; color:var(--text); }
-  .pw-box input[type="password"] { width:100%; padding:8px 10px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:14px; box-sizing:border-box; }
+  /* 16px minimum — iOS Safari auto-zooms (and stays zoomed) on focus of any
+     input smaller than 16px. */
+  .pw-box input[type="password"] { width:100%; padding:8px 10px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:16px; box-sizing:border-box; }
   .pw-box input[type="password"]:focus { outline:none; border-color:var(--amber); }
   .pw-box .pw-actions { display:flex; gap:8px; margin-top:12px; justify-content:flex-end; }
   .pw-box button { padding:6px 14px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; font-size:13px; }
@@ -708,9 +1079,12 @@
 
   /* ── Star (favorite) toggle ── */
   .star-btn {
-    position: absolute; top: 8px; right: 8px; z-index: 2;
+    position: absolute; top: 4px; right: 4px; z-index: 2;
     background: none; border: none; cursor: pointer; font-size: 18px; line-height: 1;
-    color: var(--text2); opacity: 0.3; transition: all 0.2s; padding: 2px;
+    color: var(--text2); opacity: 0.3; transition: all 0.2s;
+    /* WCAG 2.5.5 minimum touch target — 24×24 on top of the visual icon */
+    min-width: 24px; min-height: 24px; padding: 4px;
+    display: inline-flex; align-items: center; justify-content: center;
   }
   .star-btn:hover { opacity: 1; color: var(--amber); transform: scale(1.2); }
   .star-btn.starred { opacity: 1; color: var(--amber); }
@@ -862,4 +1236,58 @@
   /* ── Reduced motion ── */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  /* ── Forced colors (Windows High Contrast, etc.) ──
+     When the OS forces a color scheme, our custom CSS variables get
+     overridden anyway. The wins here are: keep focus rings visible,
+     ensure border-only buttons stay distinguishable, and don't force
+     dark backgrounds that fight the user's chosen scheme. */
+  @media (forced-colors: active) {
+    :focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+    button, .btn-primary, .manage-btn-action, .ci-add-btn {
+      forced-color-adjust: none;
+      background: ButtonFace; color: ButtonText;
+      border: 1px solid ButtonBorder, ButtonText;
+    }
+    .skip-link { background: Highlight; color: HighlightText; }
+    /* Pills need to retain their border so they're still grouped visually */
+    .pill, .ci-peer-pill, .ci-hier-installed, .dl-source {
+      border: 1px solid ButtonText;
+    }
+  }
+
+/* ── Background Activity Bar ──────────────────────────────────────────
+   Thin status strip below the topbar. Surfaces what the server is
+   doing in the background (indexing, downloading, seeding) on one line.
+   Hidden when nothing is happening so it never adds visual noise.
+
+   Design: precision-density / Linear-style. No shadows, no icons, just
+   typography. Single amber accent on the actively-building ZIM name.
+   Slides down on appear so it doesn't shift content abruptly. */
+  .activity-bar {
+    position: fixed; top: 56px; left: 0; right: 0; z-index: 199;
+    background: rgba(10, 10, 11, 0.85);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--border);
+    color: var(--text2); font-size: 12px; line-height: 1.4;
+    padding: 4px 16px;
+    font-variant-numeric: tabular-nums;
+    transform: translateY(-100%);
+    transition: transform 220ms cubic-bezier(0.25, 1, 0.5, 1);
+    pointer-events: none; /* never blocks topbar clicks */
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .activity-bar.visible { transform: translateY(0); }
+  .activity-bar .ab-sep { opacity: 0.4; padding: 0 8px; }
+  .activity-bar .ab-current { color: var(--amber); font-weight: 500; }
+  body.has-activity { padding-top: 80px; } /* 56 topbar + 24 bar */
+  /* Manage view already surfaces downloads/indexing in its own tabs — the
+     ambient bar is redundant noise there. */
+  body.in-manage .activity-bar { display: none; }
+  body.in-manage.has-activity { padding-top: 56px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .activity-bar { transition: none; }
   }

@@ -8,6 +8,7 @@ and static/ZIM content serving. Manage routes delegate to zimi.manage.
 import base64
 import gzip
 import hashlib
+import ipaddress
 import json
 import logging
 import os
@@ -145,7 +146,12 @@ def _normalize_query(q):
 
 
 def _record_usage(event_type, zim_name=None, query=None):
-    """Record a usage event. Thread-safe. Only tracks known ZIM names."""
+    """Record a usage event. Thread-safe.
+
+    For searches, also buckets the normalized query string (capped at
+    _SEARCH_QUERY_CAP keys to bound memory). Per-ZIM stats are only kept
+    for known ZIM names, so deleted ZIMs stop accumulating.
+    """
     with _usage_lock:
         if event_type == "search":
             _usage_stats["searches"] += 1
@@ -270,35 +276,38 @@ if os.path.isdir(_STATIC_DIR):
         fname = m.group(1)
         return f"/static/{fname}?v={_static_hash(fname)}"
 
-    SEARCH_UI_HTML = re.sub(
-        r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, SEARCH_UI_HTML
-    )
-
-    # Same rewrite for inline ?v=N refs inside app.js (e.g. almanac.js loader)
-    # so changing the file content updates the version automatically. Without
-    # this, hardcoded v= values get cached forever by the immutable-asset rule.
+    # Same rewrite for inline ?v=N refs inside app.js (e.g. almanac.js loader).
+    # Cached in memory so we don't write to a possibly-read-only filesystem;
+    # the static-asset handler serves APP_JS_REWRITTEN when set.
     _app_js_path = os.path.join(_STATIC_DIR, "app.js")
+    APP_JS_REWRITTEN = None
     if os.path.exists(_app_js_path):
         with open(_app_js_path, "r") as _f:
             _app_js_src = _f.read()
-        _app_js_rewritten = re.sub(
+        _rewritten = re.sub(
             r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, _app_js_src
         )
-        if _app_js_rewritten != _app_js_src:
-            # Best-effort write — fails gracefully when the static dir is
-            # read-only (Docker --read-only, distroless, etc.). The cache-
-            # bust still works on writable filesystems; on read-only the
-            # served content keeps its hardcoded ?v=N tokens. v1.7.0 will
-            # serve from memory to avoid this entirely.
-            try:
-                with open(_app_js_path, "w") as _f:
-                    _f.write(_app_js_rewritten)
-            except OSError as _e:
-                log.warning(
-                    "Could not auto-version app.js (filesystem read-only?): %s. "
-                    "Cache-busting falls back to hardcoded ?v=N tokens.",
-                    _e,
-                )
+        if _rewritten != _app_js_src:
+            APP_JS_REWRITTEN = _rewritten
+
+            # app.js must be versioned by what we actually SERVE (the
+            # rewritten text), not the on-disk source. Otherwise a deploy
+            # that only changes a lazy-loaded asset (e.g. almanac.js) keeps
+            # app.js's URL identical while its embedded asset hash changed —
+            # immutable-cached clients would never see the new asset.
+            _app_js_served_hash = hashlib.md5(APP_JS_REWRITTEN.encode()).hexdigest()[:8]
+            _orig_static_hash = _static_hash
+
+            def _static_hash(fname):
+                if fname == "app.js":
+                    return _app_js_served_hash
+                return _orig_static_hash(fname)
+
+    # index.html references app.js — rewrite AFTER the served-hash override
+    # above so app.js's URL reflects the rewritten content.
+    SEARCH_UI_HTML = re.sub(
+        r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, SEARCH_UI_HTML
+    )
     # Inject build config into inline script so app.js can read versioned values.
     # Template has: var __ZIMI_CONFIG = {discoverStamp:'disc6',i18nHash:'0'};
     _build_stamp = _static_hash("app.js")[:6]
@@ -911,6 +920,14 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path == "/":
                 return self._serve_index()
 
+            elif parsed.path.startswith("/dl/"):
+                # /dl/<zim_name_or_file> — serve the whole raw .zim file to a
+                # LAN peer over HTTP+Range. This is the peer-to-peer sharing
+                # transport: another Zimi instance pulls a ZIM directly from
+                # us, no internet/Kiwix needed. Gated to private clients by
+                # default (see _serve_zim_file).
+                return self._serve_zim_file(unquote(parsed.path[4:]))
+
             elif parsed.path.startswith("/w/"):
                 # /w/<zim_name>/<entry_path> — serve raw ZIM content
                 rest = parsed.path[3:]  # strip "/w/"
@@ -947,7 +964,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                             args=(zim_name, entry_path),
                             daemon=True,
                         ).start()
-                return self._serve_zim_content(zim_name, entry_path)
+                a11y_on = "a11y" in qs and (qs.get("a11y", [""])[0] == "1")
+                return self._serve_zim_content(zim_name, entry_path, a11y=a11y_on)
 
             else:
                 return self._json(
@@ -1147,11 +1165,17 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(icon_data)
 
-    def _serve_zim_content(self, zim_name, entry_path):
+    def _serve_zim_content(self, zim_name, entry_path, *, a11y=False):
         """Serve raw ZIM content with correct MIME type for the /w/ endpoint.
 
         Manages _zim_lock internally — holds lock only during libzim reads,
         releases before writing to the socket (important for large video streams).
+
+        When a11y=True, HTML responses are passed through the
+        accessibility rewriter (zimi.a11y) before sending. The rewriter
+        adds missing alt="" on images, ensures one <h1>, and fills in
+        <html lang> from the ZIM's language metadata. Activated via the
+        ?a11y=1 query parameter on /w/ URLs.
         """
         # Phase 1: Read from ZIM under lock
         with _srv._zim_lock:
@@ -1276,6 +1300,26 @@ class ZimHandler(BaseHTTPRequestHandler):
         if mimetype.startswith("text/html"):
             text = content.decode("UTF-8", errors="replace")
             text = re.sub(r"<base\s[^>]*>", "", text, flags=re.IGNORECASE)
+            if a11y:
+                from zimi import a11y as _a11y
+
+                # Use the ZIM's language metadata as the lang hint when
+                # the article doesn't carry its own <html lang>.
+                lang_hint = ""
+                try:
+                    z_meta = next(
+                        (
+                            z
+                            for z in (_srv._zim_list_cache or [])
+                            if z.get("name") == zim_name
+                        ),
+                        None,
+                    )
+                    if z_meta:
+                        lang_hint = (z_meta.get("language") or "")[:8]
+                except Exception:
+                    lang_hint = ""
+                text = _a11y.rewrite_html(text, lang_hint=lang_hint)
             content = text.encode("UTF-8")
 
         if range_start is not None and range_end is not None:
@@ -1314,6 +1358,95 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
+
+    def _peer_share_allowed(self):
+        """True if this client may pull whole ZIMs from /dl/.
+
+        Sharing must be enabled (ZIMI_PEER_SHARE) and the client must be
+        on a private/loopback/link-local network — unless the operator
+        opted into public sharing (ZIMI_PEER_SHARE_PUBLIC=1). Uses
+        _client_ip() so it sees the real peer behind a trusted proxy
+        rather than the proxy itself.
+        """
+        from zimi import p2p_discovery as _disc
+
+        if not _disc.is_share_enabled():
+            return False
+        if _disc.is_public_share_enabled():
+            return True
+        try:
+            ip = ipaddress.ip_address(self._client_ip())
+        except ValueError:
+            return False
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+
+    def _serve_zim_file(self, name):
+        """Stream a whole local .zim file to a LAN peer with Range support.
+
+        Resolves `name` strictly against the known ZIM set (by ZIM name or
+        file basename) so a request can never escape ZIM_DIR — there is no
+        user-controlled path here. Streams from disk in chunks; never loads
+        a multi-GB file into memory.
+        """
+        if not self._peer_share_allowed():
+            return self._json(403, {"error": "peer sharing not available"})
+
+        zims = _srv.get_zim_files()  # {name: path}
+        path = zims.get(name)
+        if path is None:
+            for p in zims.values():
+                if os.path.basename(p) == name:
+                    path = p
+                    break
+        if path is None or not os.path.isfile(path):
+            return self._json(404, {"error": "ZIM not found"})
+
+        try:
+            total_size = os.path.getsize(path)
+        except OSError:
+            return self._json(404, {"error": "ZIM not found"})
+
+        range_start = range_end = None
+        range_header = self.headers.get("Range")
+        if range_header:
+            range_start, range_end = self._parse_range(range_header, total_size)
+
+        if range_start is not None and range_end is not None:
+            send_len = range_end - range_start + 1
+            self.send_response(206)
+            self.send_header(
+                "Content-Range", f"bytes {range_start}-{range_end}/{total_size}"
+            )
+        else:
+            range_start, send_len = 0, total_size
+            self.send_response(200)
+
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(send_len))
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header(
+            "Content-Disposition",
+            f'attachment; filename="{os.path.basename(path)}"',
+        )
+        self.end_headers()
+
+        # Stream in 1 MB chunks. A peer disconnecting mid-pull (BrokenPipe)
+        # is normal — swallow it rather than logging a stack trace.
+        chunk_size = 1024 * 1024
+        remaining = send_len
+        try:
+            with open(path, "rb") as f:
+                f.seek(range_start)
+                while remaining > 0:
+                    chunk = f.read(min(chunk_size, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except OSError as e:
+            log.warning("peer file stream failed for %s: %s", name, e)
 
     def _accepts_gzip(self):
         return "gzip" in self.headers.get("Accept-Encoding", "")
@@ -1389,30 +1522,35 @@ class ZimHandler(BaseHTTPRequestHandler):
         if os.path.isabs(rel_path):
             return self._json(400, {"error": "invalid path"})
 
-        # Check cache first, then read from disk
-        with ZimHandler._static_cache_lock:
-            cached = ZimHandler._static_cache.get(rel_path)
-        if cached:
-            body, content_type = cached
+        # app.js gets the in-memory rewrite when present (auto-versioned ?v=
+        # references inside the file). Avoids touching the read-only filesystem.
+        if rel_path == "app.js" and APP_JS_REWRITTEN is not None:
+            body = APP_JS_REWRITTEN.encode("utf-8")
+            content_type = "application/javascript"
         else:
-            base = ZimHandler._static_base_dir()
-            if not base:
-                return self._json(404, {"error": "static directory not found"})
-            file_path = os.path.normpath(os.path.join(base, rel_path))
-            # Ensure resolved path is still inside the static dir
-            if not file_path.startswith(
-                os.path.normpath(base) + os.sep
-            ) and file_path != os.path.normpath(base):
-                return self._json(403, {"error": "forbidden"})
-            if not os.path.isfile(file_path):
-                return self._json(404, {"error": "not found"})
-            ext = os.path.splitext(file_path)[1].lower()
-            content_type = _srv.MIME_FALLBACK.get(ext, "application/octet-stream")
-            with open(file_path, "rb") as f:
-                body = f.read()
-            # Cache in memory (vendor files are immutable, ~8MB total for pdf.js)
             with ZimHandler._static_cache_lock:
-                ZimHandler._static_cache[rel_path] = (body, content_type)
+                cached = ZimHandler._static_cache.get(rel_path)
+            if cached:
+                body, content_type = cached
+            else:
+                base = ZimHandler._static_base_dir()
+                if not base:
+                    return self._json(404, {"error": "static directory not found"})
+                file_path = os.path.normpath(os.path.join(base, rel_path))
+                # Ensure resolved path is still inside the static dir
+                if not file_path.startswith(
+                    os.path.normpath(base) + os.sep
+                ) and file_path != os.path.normpath(base):
+                    return self._json(403, {"error": "forbidden"})
+                if not os.path.isfile(file_path):
+                    return self._json(404, {"error": "not found"})
+                ext = os.path.splitext(file_path)[1].lower()
+                content_type = _srv.MIME_FALLBACK.get(ext, "application/octet-stream")
+                with open(file_path, "rb") as f:
+                    body = f.read()
+                # Cache in memory (vendor files are immutable, ~8MB total for pdf.js)
+                with ZimHandler._static_cache_lock:
+                    ZimHandler._static_cache[rel_path] = (body, content_type)
 
         # Compress text-based static files (viewer.mjs, viewer.css, etc.)
         ct_base = content_type.split(";")[0]

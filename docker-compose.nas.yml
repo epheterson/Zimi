@@ -1,0 +1,40 @@
+# Canonical NAS deploy compose — shipped to the Synology by deploy.sh.
+#
+# This is DISTINCT from the repo-root docker-compose.yml, which is the
+# local-dev / Docker-Hub config (host networking, relative ./zims paths,
+# container name "zimi"). The NAS needs Synology-specific settings:
+#   - user "1026"           Synology uid that owns /volume1/docker/kiwix
+#   - ports 8899:8899       the DSM reverse proxy (knowledge.zosia.lan) targets this
+#   - absolute /volume1 ... bind mounts to the real ZIM + data dirs
+#   - mem_limit 4g          sized for the 32GB NAS (per 2026-06-01 migration)
+#   - watchtower disabled   this image is deploy-managed, not auto-updated
+#
+# deploy.sh copies this file to the NAS as docker-compose.yml so the deploy is
+# deterministic. A stale stock-kiwix compose left in the NAS dir once hijacked a
+# deploy (down --remove-orphans killed the live Zimi container, up -d started the
+# wrong image) — shipping our own compose removes that whole failure mode.
+#
+# network_mode: host — required for LAN peer discovery: in bridge mode the
+# container advertises its unreachable 192.168.x bridge IP over mDNS (and
+# multicast doesn't cross the bridge anyway). Zimi binds :8899 directly on
+# the host, which the DSM reverse proxy already targets. BT uses 16881
+# because gluetun/qBittorrent owns host 6881.
+services:
+  zim-reader:
+    build: .
+    container_name: zim-reader
+    restart: unless-stopped
+    user: "1026"
+    network_mode: host
+    volumes:
+      - /volume1/docker/kiwix:/zims
+      - /volume1/docker/kiwix/zimi-data:/data
+    environment:
+      - ZIM_DIR=/zims
+      - ZIMI_DATA_DIR=/data
+      - ZIMI_MANAGE=1
+      - ZIMI_BT=port=16881  # gluetun owns host 6881; on/off stays UI-controlled
+    # Low resource footprint — only loads ZIM indexes on query
+    mem_limit: 4g
+    labels:
+      - com.centurylinklabs.watchtower.enable=false

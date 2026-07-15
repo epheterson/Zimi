@@ -86,7 +86,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.6.5"
+ZIMI_VERSION = "1.7.0"
 
 log = logging.getLogger("zimi")
 logging.basicConfig(
@@ -637,7 +637,7 @@ def list_zims(use_cache=True):
     zims = get_zim_files()
     info = []
     for name, path in zims.items():
-        size_gb = os.path.getsize(path) / (1024**3)
+        size_bytes = os.path.getsize(path)
         try:
             archive = open_archive(path)
             entry_count = archive.entry_count
@@ -648,7 +648,8 @@ def list_zims(use_cache=True):
             {
                 "name": name,
                 "file": os.path.basename(path),
-                "size_gb": round(size_gb, 3),
+                "size_gb": round(size_bytes / (1024**3), 3),
+                "size_bytes": size_bytes,
                 "entries": entry_count,
             }
         )
@@ -713,7 +714,8 @@ def _extract_zim_date(filename):
 
 def _extract_zim_metadata(name, path):
     """Open a ZIM archive and extract its metadata. Returns (info_dict, archive)."""
-    size_gb = os.path.getsize(path) / (1024**3)
+    size_bytes = os.path.getsize(path)
+    size_gb = size_bytes / (1024**3)
     meta_title = name
     meta_desc = ""
     meta_date = ""
@@ -772,6 +774,9 @@ def _extract_zim_metadata(name, path):
         "name": name,
         "file": os.path.basename(path),
         "size_gb": round(size_gb, 3),
+        # Exact byte size: peers verify a pulled .zim against this (a
+        # truncated transfer is the realistic LAN failure mode).
+        "size_bytes": size_bytes,
         "entries": entry_count,
         "title": meta_title,
         "description": meta_desc,
@@ -821,6 +826,10 @@ def load_cache(force=False):
                 "name": name,
                 "file": filename,
                 "size_gb": cached.get("size_gb", round(size / (1024**3), 3)),
+                # Exact bytes straight from stat — peers verify pulled ZIMs
+                # against this, so it must be present even on a cache hit
+                # (older disk caches predate the field).
+                "size_bytes": size,
                 "entries": cached.get("entries", "?"),
                 "title": cached.get("title", name),
                 "description": cached.get("description", ""),
@@ -1002,6 +1011,34 @@ def main():
             except OSError:
                 pass
         warm_indexes()
+        # Try to start the BT backend (no-op when ZIMI_TORRENT is unset or
+        # backend unavailable — Zimi keeps running with HTTP downloads).
+        try:
+            from zimi import p2p
+
+            p2p.set_prefs_path(os.path.join(ZIMI_DATA_DIR, "bt", "prefs.json"))
+            backend = p2p.get_backend(data_dir=ZIMI_DATA_DIR)
+            if backend:
+                import atexit
+
+                atexit.register(p2p.shutdown_backend)
+        except Exception as e:
+            log.warning("BT backend init failed (HTTP downloads unaffected): %s", e)
+        # LAN peer discovery — best-effort, fails soft.
+        try:
+            from zimi import p2p_discovery as _disc
+
+            _disc.start(
+                http_port=args.port,
+                bt_port=int(os.environ.get("ZIMI_BT_PORT", "6881") or "6881"),
+                zim_count=len(list_zims()),
+                version=ZIMI_VERSION,
+            )
+            import atexit
+
+            atexit.register(_disc.stop)
+        except Exception as e:
+            log.warning("Peer discovery startup failed: %s", e)
         # Start auto-update thread if enabled
         global _auto_update_thread
         if _auto_update_enabled:
@@ -1035,79 +1072,188 @@ def main():
         parser.print_help()
 
 
+# ============================================================================
+# Hot ZIM cache (Pro feature)
+#
+# Hot ZIMs are pre-warmed at startup; cold ones stay lazy. Targets users with
+# 1000+ ZIMs who want fast searches against a small frequently-used subset.
+#
+# Source priority:
+#   1. ZIMI_HOT_ZIMS env var (csv) — overrides file
+#   2. ZIMI_DATA_DIR/hot.json    — persistent across restarts
+#   3. empty                      — fall back to existing warm-everything
+# ============================================================================
+
+_HOT_ZIMS_FILENAME = "hot.json"
+
+
+def _hot_zims_file():
+    return os.path.join(ZIMI_DATA_DIR, _HOT_ZIMS_FILENAME)
+
+
+def _parse_hot_csv(raw):
+    """Split a comma-separated env value into a clean list of names."""
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def get_hot_zims():
+    """Names of ZIMs configured as hot, in priority order. Never raises."""
+    raw = os.environ.get("ZIMI_HOT_ZIMS")
+    if raw is not None:
+        return _parse_hot_csv(raw)
+    path = _hot_zims_file()
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return [s for s in data if isinstance(s, str) and s]
+        except (OSError, json.JSONDecodeError):
+            log.warning("hot.json corrupt or unreadable; treating as empty")
+    return []
+
+
+def set_hot_zims(names):
+    """Persist the hot-ZIMs list to ZIMI_DATA_DIR/hot.json. Atomic.
+
+    Validates: every entry must be a string. Duplicates are dropped while
+    preserving first-seen order.
+    """
+    if not isinstance(names, list):
+        raise TypeError("names must be a list of strings")
+    seen = set()
+    deduped = []
+    for n in names:
+        if not isinstance(n, str):
+            raise TypeError(f"hot-zim name must be string, got {type(n).__name__}")
+        if not n or n in seen:
+            continue
+        seen.add(n)
+        deduped.append(n)
+    os.makedirs(ZIMI_DATA_DIR, exist_ok=True)
+    _atomic_write_json(_hot_zims_file(), deduped)
+    log.info("hot.json updated: %d ZIM(s)", len(deduped))
+
+
 def warm_indexes():
-    """Pre-warm all indexes for fast first queries.
+    """Pre-warm indexes for fast first queries.
 
     Called by serve() at startup and by mcp_server.py on init.
-    Opens archive handles, warms suggest/FTS/title indexes in background threads.
+
+    Eager Archive pre-warm is gated on a non-empty hot list (env
+    `ZIMI_HOT_ZIMS` or `hot.json`). With no hot list — the default for
+    fragile / lightweight hosts — Archive handles open lazily on first
+    use. Search itself is unaffected: title indexes are SQLite, not
+    libzim, and the startup worker still builds them. The lazy default
+    keeps peak startup memory bounded regardless of ZIM count; users
+    with beefy hosts can opt back in by populating hot.json.
     """
     zims = get_zim_files()
-    log.info("Pre-warming %d archives...", len(zims))
-    for name in zims:
+    hot = get_hot_zims()
+    names_to_warm = []
+    if hot:
+        # Validate every named hot ZIM exists; warn on misses.
+        unknown = [h for h in hot if h not in zims]
+        if unknown:
+            log.warning("Hot ZIMs not found in library: %s", ", ".join(unknown))
+        names_to_warm = [h for h in hot if h in zims]
+        log.info(
+            "Pre-warming %d hot archive(s) of %d total (cold ZIMs stay lazy)",
+            len(names_to_warm),
+            len(zims),
+        )
+        for name in names_to_warm:
+            try:
+                get_archive(name)
+            except Exception as e:
+                log.warning("Skipping %s: %s", name, e)
+        log.info("Hot archives ready")
+    else:
+        log.info(
+            "%d ZIM(s) registered; archives open lazily on first use "
+            "(set ZIMI_HOT_ZIMS to pre-warm)",
+            len(zims),
+        )
+
+    # Single sequential startup worker. Five parallel fan-out threads (with a
+    # ThreadPoolExecutor inside one of them) used to open Archive handles for
+    # every ZIM concurrently, blowing memory on weak hosts. We now run the
+    # phases in order on one daemon thread — peak memory at startup is one
+    # Archive handle plus one SQLite tmp instead of N×5 mmaps.
+    def _startup_worker():
+        # Phase 1: build/refresh title indexes (one Archive open at a time).
         try:
-            get_archive(name)
+            _build_all_title_indexes()
         except Exception as e:
-            log.warning("Skipping %s: %s", name, e)
-    log.info("All archives ready")
+            log.warning("Title index build phase failed: %s", e)
 
-    def _warm_suggest_indexes():
-        from concurrent.futures import ThreadPoolExecutor
+        # Phase 2: build/refresh Q-ID indexes (one Archive open at a time).
+        try:
+            _build_all_qid_indexes()
+        except Exception as e:
+            log.warning("Q-ID index build phase failed: %s", e)
 
-        zim_files = get_zim_files()
-        warmed = [0]
-        count_lock = threading.Lock()
-
-        def _warm_one(name, path):
+        # Phase 3: warm suggestion indexes for hot ZIMs only. With no hot
+        # list, suggest archives open lazily on first /suggest call —
+        # paying the open once per ZIM at first use is cheaper than
+        # holding N libzim mmaps continuously.
+        if hot:
             try:
-                _get_suggest_archive(name)
-                archive = open_archive(path)
-                ss = SuggestionSearcher(archive)
-                s = ss.suggest("a")
-                s.getResults(0, 1)
-                with count_lock:
-                    warmed[0] += 1
+                zim_files = get_zim_files()
+                targets = {n: zim_files[n] for n in names_to_warm if n in zim_files}
+                warmed = 0
+                for name, path in targets.items():
+                    try:
+                        _get_suggest_archive(name)
+                        archive = open_archive(path)
+                        try:
+                            ss = SuggestionSearcher(archive)
+                            s = ss.suggest("a")
+                            s.getResults(0, 1)
+                        finally:
+                            del archive
+                        warmed += 1
+                    except Exception as e:
+                        log.debug("Failed to warm suggest index for %s: %s", name, e)
+                log.info("Suggestion indexes warmed: %d/%d", warmed, len(targets))
             except Exception as e:
-                log.debug("Failed to warm suggest index for %s: %s", name, e)
+                log.warning("Suggest warm phase failed: %s", e)
 
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            for name, path in zim_files.items():
-                pool.submit(_warm_one, name, path)
-        log.info("Suggestion indexes warmed: %d/%d", warmed[0], len(zim_files))
-
-    threading.Thread(target=_warm_suggest_indexes, daemon=True).start()
-
-    def _warm_fts_pool():
-        zim_files = get_zim_files()
-        for name in zim_files:
+        # Phase 4: warm FTS archive pool — hot list only, same rationale.
+        if hot:
             try:
-                _get_fts_archive(name)
+                for name in names_to_warm:
+                    try:
+                        _get_fts_archive(name)
+                    except Exception as e:
+                        log.debug("Failed to warm FTS archive for %s: %s", name, e)
+                log.info("FTS pool warmed: %d archives", len(_fts_pool))
             except Exception as e:
-                log.debug("Failed to warm FTS archive for %s: %s", name, e)
-        log.info("FTS pool warmed: %d archives", len(_fts_pool))
+                log.warning("FTS warm phase failed: %s", e)
 
-    threading.Thread(target=_warm_fts_pool, daemon=True).start()
+        # Phase 5: warm title-index SQLite B-trees (no Archive opens — cheap).
+        try:
+            zim_files = get_zim_files()
+            opened = 0
+            for name in zim_files:
+                conn = _get_title_db(name)
+                if conn is not None:
+                    try:
+                        for prefix in ("a", "m", "s"):
+                            conn.execute(
+                                "SELECT title FROM titles WHERE title_lower >= ? LIMIT 1",
+                                (prefix,),
+                            ).fetchone()
+                    except Exception as e:
+                        log.debug("Failed to warm title B-tree for %s: %s", name, e)
+                    opened += 1
+            log.info("Title indexes warmed: %d/%d", opened, len(zim_files))
+        except Exception as e:
+            log.warning("Title B-tree warm phase failed: %s", e)
 
-    threading.Thread(target=_build_all_title_indexes, daemon=True).start()
-    threading.Thread(target=_build_all_qid_indexes, daemon=True).start()
-
-    def _warm_title_indexes():
-        zim_files = get_zim_files()
-        opened = 0
-        for name in zim_files:
-            conn = _get_title_db(name)
-            if conn is not None:
-                try:
-                    for prefix in ("a", "m", "s"):
-                        conn.execute(
-                            "SELECT title FROM titles WHERE title_lower >= ? LIMIT 1",
-                            (prefix,),
-                        ).fetchone()
-                except Exception as e:
-                    log.debug("Failed to warm title index B-tree for %s: %s", name, e)
-                opened += 1
-        log.info("Title indexes warmed: %d/%d", opened, len(zim_files))
-
-    threading.Thread(target=_warm_title_indexes, daemon=True).start()
+    threading.Thread(
+        target=_startup_worker, daemon=True, name="zimi-startup-worker"
+    ).start()
 
     loaded = _suggest_cache_restore()
     if loaded:
@@ -1146,6 +1292,7 @@ from zimi.search import (  # noqa: E402, F401
     _build_fts_for_index,
     _title_index_search,
     _get_title_index_stats,
+    _get_title_index_status_brief,
     _build_all_title_indexes,
     _clean_stale_title_indexes,
     # Archive pools for suggest/FTS
@@ -1220,6 +1367,7 @@ from zimi.library import (  # noqa: E402, F401
     _opds_cache,
     _OPDS_CACHE_TTL,
     _start_download,
+    _start_peer_download,
     _start_import,
     _get_downloads,
     _fetch_kiwix_catalog,

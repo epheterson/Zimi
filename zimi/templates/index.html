@@ -18,42 +18,49 @@
 </head>
 <body>
 
+<a href="#main-view" class="skip-link" data-i18n="skip_to_main">Skip to main content</a>
+
 <nav class="topbar" aria-label="Main navigation">
   <div class="topbar-breadcrumb" onclick="bcClick(event)">
-    <a id="logo" class="logo" onclick="goHome(event)">Zimi</a>
+    <a id="logo" class="logo" onclick="goHome(event)" title="Home" data-i18n-title="home" aria-label="Home" data-i18n-aria="home">Zimi</a>
     <span id="bc-sep" class="bc-sep" style="display:none">/</span>
     <span id="bc-icon" class="bc-icon" style="display:none"></span>
   </div>
   <button id="back-btn" class="back-btn" aria-label="Go back" data-i18n-aria="go_back" style="display:none">&#x2190;</button>
   <div id="history-trail"></div>
-  <div class="topbar-search">
-    <input type="text" id="q" placeholder="Search everything..." data-i18n-placeholder="search_placeholder" autofocus aria-label="Search" autocomplete="off">
+  <div class="topbar-search" role="search">
+    <label for="q" class="sr-only" data-i18n="search">Search</label>
+    <input type="text" id="q" placeholder="Search everything..." data-i18n-placeholder="search_placeholder" autofocus aria-label="Search" autocomplete="off" aria-autocomplete="list" aria-controls="suggest-dropdown">
     <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>
     <span class="kbd">/</span>
     <div id="suggest-dropdown" class="suggest-dropdown"></div>
   </div>
-  <a href="#" id="random-btn" class="random-btn" title="Random article (R)" data-i18n-title="random_article" onclick="randomArticle(event)"><span class="dice">&#x1F3B2;</span></a>
-  <button id="library-btn" class="library-btn" title="Library (H)" data-i18n-title="library" onclick="if(readerOpen){toggleBookmark();_updateLibraryBtnIcon()}else{toggleLibraryPanel()}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
+  <a href="#" id="random-btn" class="random-btn" title="Random article (R)" data-i18n-title="random_article" aria-label="Random article" data-i18n-aria="random_article" onclick="randomArticle(event)"><span class="dice" aria-hidden="true">&#x1F3B2;</span></a>
+  <button id="library-btn" class="library-btn" title="Library (H)" data-i18n-title="library" aria-label="Library" data-i18n-aria="library" onclick="if(readerOpen){toggleBookmark();_updateLibraryBtnIcon()}else{toggleLibraryPanel()}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
   <button id="lang-selector-btn" class="lang-selector-btn" title="Language" data-i18n-title="language" onclick="toggleLangDropdown(event)" aria-label="Language" data-i18n-aria="language"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg></button>
   <div id="lang-dropdown" class="lang-dropdown"></div>
-  <a href="#" id="manage-btn" class="manage-btn" title="Library Manager" data-i18n-title="library_manager" onclick="toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
-  <a id="newtab-btn" class="newtab-btn" href="#" target="_blank" rel="noopener" title="Open in browser" data-i18n-title="open_in_browser" onclick="event.preventDefault();_openInBrowser()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
-  <button id="save-btn" class="newtab-btn" style="display:none" title="Save to disk" onclick="_saveCurrentFile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
-  <button class="topbar-more" onclick="_toggleTopbarMenu(event)" aria-label="More">&#x22EF;</button>
+  <a href="#" id="manage-btn" class="manage-btn" title="Library Manager" data-i18n-title="library_manager" aria-label="Library Manager" data-i18n-aria="library_manager" onclick="toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
+  <a id="newtab-btn" class="newtab-btn" href="#" target="_blank" rel="noopener" title="Open in browser" data-i18n-title="open_in_browser" aria-label="Open in browser" data-i18n-aria="open_in_browser" onclick="event.preventDefault();_openInBrowser()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+  <button id="save-btn" class="newtab-btn" style="display:none" title="Save to disk" aria-label="Save to disk" onclick="_saveCurrentFile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+  <button class="topbar-more" onclick="_toggleTopbarMenu(event)" aria-label="More" data-i18n-aria="more"><span aria-hidden="true">&#x22EF;</span></button>
   <div id="topbar-menu" class="topbar-menu"></div>
 
 </nav>
 
 <div id="history-panel" class="history-panel"></div>
 
-<div id="pw-overlay" class="pw-overlay" onclick="if(event.target===this)closePwModal()">
+<!-- No backdrop-click dismiss: closing cancels login and bounces to home,
+     and on a zoomed-in phone almost every stray tap lands on the backdrop.
+     Cancel and Esc remain the explicit ways out. -->
+<div id="pw-overlay" class="pw-overlay" role="dialog" aria-modal="true" aria-labelledby="pw-title">
   <form class="pw-box" onsubmit="event.preventDefault();submitPw()" autocomplete="off">
     <h3 id="pw-title" data-i18n="enter_password">Enter password</h3>
     <input style="display:none" type="text" name="fakeuser" tabindex="-1" autocomplete="off">
-    <input id="pw-input" type="password" placeholder="Password" data-i18n-placeholder="password" autocomplete="current-password" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
+    <label for="pw-input" class="sr-only" data-i18n="password">Password</label>
+    <input id="pw-input" type="password" placeholder="Password" data-i18n-placeholder="password" autocomplete="current-password" aria-labelledby="pw-title" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
     <div class="pw-error" id="pw-error"></div>
     <label id="pw-remember-row" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--text2);cursor:pointer">
-      <input type="checkbox" id="pw-remember" style="accent-color:var(--amber);flex-shrink:0"> <span data-i18n="remember_me">Remember me</span>
+      <input type="checkbox" id="pw-remember" checked style="accent-color:var(--amber);flex-shrink:0"> <span data-i18n="remember_me">Remember me</span>
     </label>
     <div class="pw-actions">
       <button type="button" id="pw-remove-btn" onclick="_confirmRemovePassword(this)" style="display:none;color:var(--text2);font-size:12px;margin-right:auto" data-i18n="remove">Remove</button>
@@ -69,7 +76,7 @@
     <h2 data-i18n="welcome">Welcome to Zimi</h2>
     <p class="subtitle" data-i18n="choose_folder_hint">Choose where to keep your offline knowledge archives.</p>
     <p class="subtitle" style="font-size:11px;opacity:0.5;margin-top:-16px;margin-bottom:24px" data-i18n="large_files_hint">ZIM files can be large (Wikipedia is ~100 GB) — pick a drive with plenty of space.</p>
-    <label data-i18n="zim_folder">ZIM folder</label>
+    <label for="onboard-path" data-i18n="zim_folder">ZIM folder</label>
     <div class="field-row">
       <input type="text" id="onboard-path" readonly placeholder="Choose a folder..." data-i18n-placeholder="choose_folder_placeholder">
       <button class="btn-browse" onclick="desktopChooseFolder('onboard-path')" data-i18n="choose_folder">Choose Folder</button>
@@ -79,6 +86,8 @@
     </div>
   </div>
 </div>
+
+<div id="activity-bar" class="activity-bar" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
 <noscript>
   <div style="max-width:520px;margin:40px auto;padding:20px;text-align:center;color:#e8e8ed">
@@ -114,6 +123,9 @@
 </div>
 <div id="zim-ctx-menu"></div>
 <div id="link-ctx-menu" class="zimi-ctx"></div>
+
+<!-- Live region for toast notifications. Updated dynamically by _showToast(). -->
+<div id="a11y-toast-region" role="status" aria-live="polite" class="sr-only"></div>
 
 <script>var __ZIMI_CONFIG = {discoverStamp:'disc6',i18nHash:'0'};</script>
 <script src="/static/app.js?v=1"></script>

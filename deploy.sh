@@ -3,29 +3,25 @@
 set -e
 
 echo "=== Deploying to NAS ==="
-ssh nas "mkdir -p /volume1/docker/kiwix/zimi/templates /volume1/docker/kiwix/zimi/assets /volume1/docker/kiwix/zimi/static"
-cat zimi/server.py | ssh nas "cat > /volume1/docker/kiwix/zimi/server.py"
-cat zimi/search.py | ssh nas "cat > /volume1/docker/kiwix/zimi/search.py"
-cat zimi/interlang.py | ssh nas "cat > /volume1/docker/kiwix/zimi/interlang.py"
-cat zimi/library.py | ssh nas "cat > /volume1/docker/kiwix/zimi/library.py"
-cat zimi/http.py | ssh nas "cat > /volume1/docker/kiwix/zimi/http.py"
-cat zimi/manage.py | ssh nas "cat > /volume1/docker/kiwix/zimi/manage.py"
-cat zimi/previews.py | ssh nas "cat > /volume1/docker/kiwix/zimi/previews.py"
-cat zimi/__init__.py | ssh nas "cat > /volume1/docker/kiwix/zimi/__init__.py"
-cat zimi/__main__.py | ssh nas "cat > /volume1/docker/kiwix/zimi/__main__.py"
-cat zimi/mcp_server.py | ssh nas "cat > /volume1/docker/kiwix/zimi/mcp_server.py"
-cat zimi/templates/index.html | ssh nas "cat > /volume1/docker/kiwix/zimi/templates/index.html"
-cat zimi/assets/icon.png | ssh nas "cat > /volume1/docker/kiwix/zimi/assets/icon.png"
-cat zimi/assets/favicon.png | ssh nas "cat > /volume1/docker/kiwix/zimi/assets/favicon.png"
-cat zimi/assets/favicon-64.png | ssh nas "cat > /volume1/docker/kiwix/zimi/assets/favicon-64.png"
-cat zimi/assets/apple-touch-icon.png | ssh nas "cat > /volume1/docker/kiwix/zimi/assets/apple-touch-icon.png"
-tar cf - zimi/static/ | ssh nas "cd /volume1/docker/kiwix && tar xf -"
+ssh nas "mkdir -p /volume1/docker/kiwix/zimi /volume1/docker/kiwix/zimi-data"
+# Ship the whole package as a tar so new modules deploy automatically.
+# Excludes pycache + tests so the image stays slim.
+tar cf - --exclude='__pycache__' --exclude='*.pyc' zimi/ | ssh nas "cd /volume1/docker/kiwix && tar xf -"
 cat requirements.txt | ssh nas "cat > /volume1/docker/kiwix/requirements.txt"
 cat Dockerfile | ssh nas "cat > /volume1/docker/kiwix/Dockerfile"
-echo "  Files copied"
+# Ship our own compose so the deploy is deterministic — never trust whatever
+# compose happens to be sitting in the NAS dir. A stale stock-kiwix compose left
+# there once hijacked a deploy (down --remove-orphans killed the live Zimi
+# container, up -d started the wrong image at 256m and crash-looped). Back up any
+# existing compose to .prev before overwriting, for a one-step manual rollback.
+ssh nas "cd /volume1/docker/kiwix && [ -f docker-compose.yml ] && cp -p docker-compose.yml docker-compose.yml.prev || true"
+cat docker-compose.nas.yml | ssh nas "cat > /volume1/docker/kiwix/docker-compose.yml"
+echo "  Files copied (incl. canonical NAS compose)"
 
+# Stop the running container first so the upcoming `up -d` doesn't hit a
+# name-conflict against a still-shutting-down old container.
+ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose down --remove-orphans --timeout 30" 2>&1 | tail -3
 ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose build --no-cache" 2>&1 | tail -3
-ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose down" 2>&1 | tail -3
 ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose up -d" 2>&1 | tail -3
 echo "  NAS deployed"
 
@@ -46,10 +42,9 @@ fi
 echo ""
 echo "=== Syncing vault ==="
 mkdir -p ~/vault/infra/zim-reader/zimi/templates
-for f in server.py search.py interlang.py library.py http.py manage.py previews.py __init__.py __main__.py mcp_server.py; do
-  cp "zimi/$f" ~/vault/infra/zim-reader/zimi/"$f"
-done
-cp zimi/templates/index.html ~/vault/infra/zim-reader/zimi/templates/index.html
+# Mirror the package with the same exclusions used for NAS deploy.
+rsync -a --delete --exclude='__pycache__' --exclude='*.pyc' \
+  zimi/ ~/vault/infra/zim-reader/zimi/
 echo "  Vault synced"
 
 echo ""

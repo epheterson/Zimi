@@ -10,10 +10,16 @@ var SK = {
   ALMANAC_HL: 'zimi_almanac_highlights',
   HIDE_LANG_CHOOSER: 'zimi_hide_lang_chooser',
   HIDE_XZIM_LINKS: 'zimi_hide_cross_zim_links',
+  // When set, ZIM article HTML is run through the server-side a11y
+  // rewriter (alt="" on images, h1 promotion, html lang). Off by
+  // default to keep ZIM content byte-identical for purist users.
+  A11Y_REWRITE: 'zimi_a11y_rewrite',
   LIBRARY_TAB: 'zimi_library_tab',
   BROWSE_HISTORY: 'zimi_browse_history',
   BOOKMARKS: 'zimi_bookmarks',
   MANAGE_PW: 'zimi_manage_pw',
+  PREF_LANGUAGES: 'zimi_pref_languages',
+  PREF_FLAVOR: 'zimi_pref_flavor',
 };
 
 // ── Storage Helpers ──
@@ -49,6 +55,55 @@ function _hasStoredManageToken() {
   return !!_readManageToken();
 }
 
+// User-preferred languages for the catalog. Empty = no filter (show all).
+function _getPrefLanguages() {
+  return _getStorageJSON(SK.PREF_LANGUAGES, []) || [];
+}
+function _setPrefLanguages(langs) {
+  _setStorageJSON(SK.PREF_LANGUAGES, langs);
+}
+function _savePrefLanguagesFromInput(raw) {
+  const codes = (raw || '').toLowerCase().split(/[\s,]+/).filter(Boolean);
+  _setPrefLanguages(codes);
+}
+
+// Common language pills for the Preferences UI. Order roughly by global Wikipedia use.
+const _LANG_PREF_OPTIONS = ['en', 'fr', 'de', 'es', 'pt', 'ru', 'zh', 'ar', 'hi', 'he', 'ja', 'it', 'multi'];
+
+function _renderLangPrefPills() {
+  const selected = new Set(_getPrefLanguages());
+  return _LANG_PREF_OPTIONS.map(function(code) {
+    const isOn = selected.has(code);
+    const label = code === 'multi' ? t('multi_lang') : (_langDisplayName(code) || code.toUpperCase());
+    return '<button class="ms-lang-pill' + (isOn ? ' active' : '') +
+      '" onclick="_togglePrefLanguage(\'' + code + '\')">' +
+      '<span class="ms-lang-code">' + code + '</span> ' + esc(label) + '</button>';
+  }).join('');
+}
+
+function _togglePrefLanguage(code) {
+  const current = new Set(_getPrefLanguages());
+  if (current.has(code)) current.delete(code);
+  else current.add(code);
+  _setPrefLanguages(Array.from(current));
+  const el = document.getElementById('ms-lang-pills');
+  if (el) el.innerHTML = _renderLangPrefPills();
+}
+
+// Preferred download flavor: "full" (with images), "nopic", or "mini".
+// Used to sort variant pickers so the user's default lands at the top.
+function _getPrefFlavor() {
+  return localStorage.getItem(SK.PREF_FLAVOR) || 'full';
+}
+function _setPrefFlavor(f) {
+  localStorage.setItem(SK.PREF_FLAVOR, f);
+}
+function _flavorRadio(value, label) {
+  const checked = _getPrefFlavor() === value ? ' checked' : '';
+  return '<label class="ms-flavor-pill"><input type="radio" name="zimi-flavor" value="' +
+    value + '"' + checked + ' onchange="_setPrefFlavor(\'' + value + '\')"> ' + label + '</label>';
+}
+
 // ── State ──
 let mode = 'home'; // 'home' | 'source' | 'search' | 'manage'
 let currentSource = null;
@@ -66,7 +121,13 @@ let _zimsByName = new Map();
 function _rebuildZimsMap() { _zimsByName = new Map((zimsCache || []).map(z => [z.name, z])); }
 function _zimInfo(name) { return _zimsByName.get(name) || null; }
 let manageEnabled = false;
+let _managePwRequired = false; // server is password-protected and we have no token yet
 let _manageUnlocked = true; // manage is always available (auth via env var only)
+
+// May we hit ambient /manage/* endpoints (activity bar, peer discovery)?
+// Yes when we hold a token, or when the server isn't password-protected.
+// Avoids a stream of 401s (and console noise) before the operator logs in.
+function _canPollManage() { return !!_manageToken || !_managePwRequired; }
 let activeCategories = new Set();
 let activeSourceFilters = new Set();
 let allResults = {};
@@ -291,6 +352,19 @@ let _manageSavedReader = null; // saved reader state when entering manage
 let _pwResolve = null;
 let _pwReject = null;
 
+// Token-adding fetch for *ambient* /manage/* calls (activity bar, peer
+// discovery, status/mirror polls). Sends the manage token when we have one
+// so these work on password-protected servers, but never prompts for a
+// password on 401 — background polling must fail silently, unlike the
+// interactive manageFetch below.
+function authedFetch(url, opts) {
+  opts = opts || {};
+  if (_manageToken) {
+    opts.headers = Object.assign({}, opts.headers, {'Authorization': 'Bearer ' + _manageToken});
+  }
+  return fetch(url, opts);
+}
+
 function manageFetch(url, opts) {
   opts = opts || {};
   if (_manageToken) {
@@ -339,6 +413,10 @@ function manageLogout() {
   toggleManage();
 }
 
+// Element that had focus before the modal opened; we restore focus
+// here on close so keyboard users don't lose their place.
+let _pwPreviousFocus = null;
+
 function openPwModal(title, opts) {
   document.getElementById('pw-title').textContent = title || t('enter_password');
   document.getElementById('pw-input').value = '';
@@ -347,14 +425,50 @@ function openPwModal(title, opts) {
   document.getElementById('pw-error').style.display = 'none';
   document.getElementById('pw-remember-row').style.display = (opts && opts.hideRemember) ? 'none' : 'flex';
   document.getElementById('pw-remove-btn').style.display = 'none';
-  document.getElementById('pw-overlay').classList.add('open');
+  _pwPreviousFocus = document.activeElement;
+  const overlay = document.getElementById('pw-overlay');
+  overlay.classList.add('open');
+  document.addEventListener('keydown', _pwKeyHandler);
   setTimeout(function() { document.getElementById('pw-input').focus(); }, 50);
 }
 
 function closePwModal() {
   document.getElementById('pw-overlay').classList.remove('open');
+  document.removeEventListener('keydown', _pwKeyHandler);
   if (_pwReject) { _pwReject(); _pwReject = null; }
   _pwResolve = null;
+  // Restore focus to where the user was before we hijacked it.
+  if (_pwPreviousFocus && typeof _pwPreviousFocus.focus === 'function') {
+    try { _pwPreviousFocus.focus(); } catch (_) {}
+  }
+  _pwPreviousFocus = null;
+}
+
+function _pwKeyHandler(e) {
+  // Esc closes the modal — standard a11y pattern for dialogs.
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closePwModal();
+    return;
+  }
+  // Tab focus-trap: cycle within the modal so keyboard users can't
+  // accidentally escape to the background page.
+  if (e.key !== 'Tab') return;
+  const overlay = document.getElementById('pw-overlay');
+  if (!overlay || !overlay.classList.contains('open')) return;
+  const focusables = overlay.querySelectorAll(
+    'input:not([type=hidden]):not([disabled]), button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+  );
+  if (!focusables.length) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 function submitPw() {
@@ -387,7 +501,7 @@ function updateTopbar() {
     const title = _zimTitle(activeSource);
     bcIcon.title = title;
     if (info && info.has_icon) {
-      bcIcon.innerHTML = '<img src="/w/' + encodeURIComponent(activeSource) + '/-/icon" width="22" height="22" alt="' + escAttr(title) + '">';
+      bcIcon.innerHTML = '<img src="/w/' + encodeURIComponent(activeSource) + '/-/icon" alt="" width="22" height="22" alt="' + escAttr(title) + '">';
     } else {
       bcIcon.innerHTML = '<span class="bc-letter">' + (esc(title)[0] || 'Z').toUpperCase() + '</span>';
     }
@@ -466,6 +580,14 @@ function updateTopbar() {
 
   // Footer
   updateFooter();
+
+  // Batch-download bar only belongs to the Catalog tab — hide elsewhere,
+  // keeping the selection so it reappears when the user returns.
+  _renderSelectionBar();
+
+  // Manage has its own downloads/indexing surfaces — the ambient activity
+  // bar is redundant there (CSS hides it via this class).
+  document.body.classList.toggle('in-manage', mode === 'manage');
 }
 
 function bcClick(e) {
@@ -514,23 +636,43 @@ async function init() {
   _initSecondary();
 }
 
+// Resolves once we know whether the server wants a password. Ambient
+// pollers await this so they never fire an unauthenticated request (a 401
+// resource error in the console) during the bootstrap race.
+let _manageProbe = null;
+
+async function _probeManageAuth() {
+  try {
+    // Public pre-auth endpoint — learns password state without a 401 probe.
+    const hres = await fetch('/manage/has-password');
+    if (!hres.ok) { manageEnabled = false; return; }  // 404 = manage disabled
+    manageEnabled = true;
+    const h = await hres.json();
+    const saved = _readManageToken();
+    if (saved) _manageToken = saved;
+    if (h.has_password && !_manageToken) {
+      _managePwRequired = true;  // protected + not yet authenticated
+      return;
+    }
+    const mres = await authedFetch('/manage/status');
+    if (mres.ok) {
+      const mdata = await mres.json();
+      manageEnabled = !!mdata.manage_enabled;
+    } else if (mres.status === 401) {
+      // Stored token went stale — drop BOTH copies (leaving the persisted
+      // one meant every future load retried it, 401'd, and re-prompted).
+      _manageToken = '';
+      _clearManageToken();
+      _managePwRequired = true;
+    }
+  } catch (e) {}
+}
+
 async function _initSecondary() {
   var needsRerender = false;
+  _manageProbe = _probeManageAuth().then(() => { needsRerender = true; });
   await Promise.allSettled([
-    // Manage status + password check
-    fetch('/manage/status').then(async mres => {
-      if (mres.ok) {
-        const mdata = await mres.json();
-        manageEnabled = !!mdata.manage_enabled;
-      } else if (mres.status === 401) {
-        manageEnabled = true;
-      }
-      needsRerender = true;
-    }).catch(function(){}),
-    Promise.resolve().then(() => {
-      var saved = _readManageToken();
-      if (saved) _manageToken = saved;
-    }),
+    _manageProbe,
     // Collections/favorites
     fetch('/collections').then(async cres => {
       if (cres.ok) { collectionsCache = await cres.json(); needsRerender = true; }
@@ -636,6 +778,12 @@ function _showToast(msg, duration) {
   toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
   toast.textContent = msg;
   document.body.appendChild(toast);
+  // Mirror to the screen-reader live region so non-sighted users hear it too.
+  var live = document.getElementById('a11y-toast-region');
+  if (live) {
+    live.textContent = '';
+    setTimeout(function() { live.textContent = msg; }, 50);
+  }
   setTimeout(function() { if (toast.parentNode) toast.remove(); }, duration || 3000);
 }
 
@@ -1114,6 +1262,10 @@ function renderHome(filter) {
 function _langBadge(z) {
   var lang = z.language || '';
   if (!lang) return '';
+  // 'all'/'mul' means language-agnostic content — a language badge conveys
+  // nothing there ("ALL" reads as noise), so skip it entirely.
+  var norm = lang.toLowerCase();
+  if (norm === 'all' || norm === 'mul' || norm === 'multi') return '';
   // Multi-language ZIMs (e.g., TED mul_*)
   if (lang.includes(',') || (/^mul/i.test(z.name) && !lang.includes(','))) {
     var count = lang.includes(',') ? lang.split(',').length : 0;
@@ -1133,7 +1285,7 @@ function renderCardGrid(items, showStars, showCategory) {
   const favs = (collectionsCache && collectionsCache.favorites) || [];
   return '<div class="stats-grid">' + items.map(z => {
     const icon = z.has_icon
-      ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" width="48" height="48" loading="lazy">'
+      ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
       : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
     const isFav = favs.includes(z.name);
     const starHtml = showStars
@@ -1335,7 +1487,7 @@ function openAlmanac(replaceState) {
   }
   if (!_almanacLoaded) {
     var s = document.createElement('script');
-    s.src = '/static/almanac.js?v=05a0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10aa0b10a';
+    s.src = '/static/almanac.js?v=41';
     s.onload = function() { _almanacLoaded = true; _openAlmanacInner(replaceState); };
     s.onerror = function() { console.error('Failed to load almanac.js'); };
     document.head.appendChild(s);
@@ -1618,7 +1770,8 @@ function _renderDiscover(el, items) {
     var zimInfo = _zimInfo(it.zim);
     var iconHtml = '';
     if (zimInfo && zimInfo.has_icon) {
-      iconHtml = '<img class="dc-zim-icon" src="/w/' + encodeURIComponent(it.zim) + '/-/icon" loading="lazy">';
+      // Decorative — the source label next to it conveys the same info
+      iconHtml = '<img class="dc-zim-icon" src="/w/' + encodeURIComponent(it.zim) + '/-/icon" loading="lazy" alt="">';
     }
 
     // Source label: re-resolve from ZIM name (not cached label) so language switches work
@@ -1687,7 +1840,7 @@ function _renderDiscover(el, items) {
       var hasGoodThumb = it.thumbnail && !/home_on\.png|banner_ext|photo_on\.gif/i.test(it.thumbnail);
       if (hasGoodThumb) {
         var thumbClass = 'dc-thumb' + (/gutenberg/i.test(it.zim || '') ? ' dc-book-cover' : '');
-        thumbHtml = '<img class="' + thumbClass + '" src="' + escAttr(it.thumbnail) + '" loading="lazy" onerror="this.style.display=\'none\'" onload="if(this.naturalWidth<80||this.naturalHeight<60)this.style.display=\'none\'">';
+        thumbHtml = '<img class="' + thumbClass + '" src="' + escAttr(it.thumbnail) + '" loading="lazy" alt="" onerror="this.style.display=\'none\'" onload="if(this.naturalWidth<80||this.naturalHeight<60)this.style.display=\'none\'">';
       } else if (it.type === 'country') {
         thumbHtml = '<div class="dc-icon-thumb" style="background:linear-gradient(135deg,#0a1628,#162040)"><span style="font-size:40px;line-height:1">&#x1F30D;</span></div>';
       } else {
@@ -1912,7 +2065,7 @@ async function renderSource(name) {
 
   // Build source header HTML (shown only for catalog/empty ZIMs)
   const iconHtml = info.has_icon
-    ? '<img src="/w/' + encodeURIComponent(name) + '/-/icon" width="64" height="64">'
+    ? '<img src="/w/' + encodeURIComponent(name) + '/-/icon" alt="" width="64" height="64">'
     : '<span class="icon-letter" style="font-size:28px">' + esc(info.title || name)[0].toUpperCase() + '</span>';
   const headerHtml = '<div class="source-header">' +
     '<div class="sh-icon">' + iconHtml + '</div>' +
@@ -2223,7 +2376,7 @@ function _sourceIconHtml(zimName, size) {
   const info = _zimInfo(zimName);
   const title = (info && info.title) || zimName;
   if (info && info.has_icon) {
-    return '<img src="/w/' + encodeURIComponent(zimName) + '/-/icon" width="' + size + '" height="' + size + '">';
+    return '<img src="/w/' + encodeURIComponent(zimName) + '/-/icon" alt="" width="' + size + '" height="' + size + '">';
   }
   return '<span class="rs-letter">' + (esc(title)[0] || 'Z').toUpperCase() + '</span>';
 }
@@ -2334,7 +2487,7 @@ function renderSearchResults(data, scope) {
     if (matches.length > 0 && matches.length <= 8) {
       zimMatchHtml = '<div class="stats-grid" style="margin-bottom:16px">' + matches.map(z => {
         const icon = z.has_icon
-          ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" width="48" height="48" loading="lazy">'
+          ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
           : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
         return '<div class="stat-card" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
           '<div class="card-icon">' + icon + '</div>' +
@@ -2674,6 +2827,9 @@ function _restoreSavedReader() {
 function enterManage(e) {
   if (e && e.preventDefault) e.preventDefault();
   if (!manageEnabled) return;
+  // The History/Bookmarks side panel floats over the right edge; close it so
+  // it doesn't overlap and truncate the full Manage view.
+  _closeLibraryPanel();
   // Save reader state so back navigation can restore the article
   if (readerOpen) {
     _manageSavedReader = {
@@ -2694,6 +2850,7 @@ function enterManage(e) {
     _manageSavedReader = null;
   }
   mode = 'manage';
+  manageTab = 'settings';  // settings greet you; library tabs one tap away
   currentSource = null;
   readerSource = null;
   sourceAutoReader = false;
@@ -2743,7 +2900,7 @@ function _renderLangPills(counts, onclick, validSet) {
     h += '<button class="pill' + (active ? ' active' : '') + (dimmed ? ' dimmed' : '') +
       '" data-lang="' + escAttr(lc) + '" data-lang-name="' + escAttr(name.toLowerCase()) + '"' +
       ' onclick="' + onclick + '(\'' + escAttr(lc) + '\')">' +
-      esc(name) + ' <span style="opacity:0.5;font-size:10px">' + count + '</span></button>';
+      esc(name) + ' <span class="pill-count">' + count + '</span></button>';
   }
   h += '</div></div>';
   return h;
@@ -2821,9 +2978,18 @@ function _parseLangs(langStr) {
 
 // Check if ZIM matches a language filter (handles multilingual + mixed code lengths)
 function _zimMatchesLang(item, lang) {
-  if (!lang) return true;
-  var norm = _normLang(lang);
-  return _parseLangs(item.language).indexOf(norm) >= 0;
+  if (lang) {
+    var norm = _normLang(lang);
+    return _parseLangs(item.language).indexOf(norm) >= 0;
+  }
+  // No explicit language pill selected — fall back to user prefs if set.
+  var prefs = _getPrefLanguages();
+  if (!prefs.length) return true;
+  var langs = _parseLangs(item.language);
+  for (var i = 0; i < prefs.length; i++) {
+    if (langs.indexOf(_normLang(prefs[i])) >= 0) return true;
+  }
+  return false;
 }
 
 function _countLangsByCategory(items, catKey) {
@@ -3003,6 +3169,8 @@ function _catLangTag(langStr, itemName) {
   if (!langStr) return '';
   var codes = langStr.toLowerCase().split(',').map(c => c.trim()).filter(Boolean);
   if (codes.length === 0 || (codes.length === 1 && (codes[0] === 'en' || codes[0] === 'eng'))) return '';
+  // 'all' = language-agnostic content — an "ALL" tag conveys nothing.
+  if (codes.length === 1 && codes[0] === 'all') return '';
   // For multilingual items (TED, etc.), try to extract actual language from name
   if (codes.length > 1 || codes[0] === 'mul') {
     var nameLang = _langFromName(itemName);
@@ -3105,9 +3273,302 @@ async function loadFullCatalog() {
   }
 
   _enrichCatalogInstalled(items);
+  _enrichCatalogHierarchy(items);
+  _enrichCatalogPeers(items);
+  _catalogInstalledNames = new Set(items.filter(it => it.installed).map(it => it.name));
 
   _catalogCache = items;
+  // Kick off peer-list discovery in the background. When it lands,
+  // enrich + re-render whichever catalog view is current.
+  _loadPeerData().then(loaded => {
+    if (!loaded || !_catalogCache) return;
+    _enrichCatalogPeers(_catalogCache);
+    if (manageTab === 'browse') {
+      if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
+      else if (_browseView !== 'gallery') return; // search view re-renders on its own
+      else renderBrowseGallery();
+    }
+  }).catch(() => {});
   return _catalogCache;
+}
+
+let _catalogInstalledNames = new Set();
+
+// LAN peer awareness: maps catalog name (or stripped filename stem) to
+// list of peer names that have it. Populated lazily by _loadPeerData
+// after catalog loads. Empty when no peers / not yet loaded.
+let _catalogPeerStems = new Map();  // stem → [peerName, ...]  (display)
+let _catalogPeerFiles = new Map();  // stem → [{peer, file, size}]  (download)
+let _peersLoadedAt = 0;
+const PEER_LIST_REFRESH_MS = 60_000;
+
+async function _loadPeerData() {
+  // Don't refresh more than once a minute. Returns true on first-time
+  // load (caller may want to re-render); false otherwise.
+  if (Date.now() - _peersLoadedAt < PEER_LIST_REFRESH_MS && _peersLoadedAt > 0) {
+    return false;
+  }
+  // Skip peer discovery on a protected server until the operator is logged
+  // in. Callers retry periodically, so before the bootstrap auth probe
+  // exists just decline — never fetch unprobed.
+  if (!_manageProbe) return false;
+  try { await _manageProbe; } catch (e) {}
+  if (!_canPollManage()) return false;
+  let peers = [];
+  try {
+    const r = await authedFetch('/manage/peers');
+    if (!r.ok) return false;
+    const d = await r.json();
+    peers = d.peers || [];
+  } catch (e) {
+    return false;
+  }
+  const newMap = new Map();
+  const newFiles = new Map();
+  if (!peers.length) {
+    _catalogPeerStems = newMap;
+    _catalogPeerFiles = newFiles;
+    _peersLoadedAt = Date.now();
+    return false;
+  }
+  await Promise.all(peers.map(async p => {
+    try {
+      const lr = await manageFetch('/manage/peers/list?peer=' + encodeURIComponent(p.name));
+      if (!lr.ok) return;
+      const ld = await lr.json();
+      for (const z of (ld.list || [])) {
+        const file = z.file || '';
+        const fb = file.replace(/\.zim$/, '');
+        // Strip date and (optionally) flavor so the stem matches the
+        // catalog item's `name` field (e.g. wikipedia_ce_all_nopic_2026-01
+        // → wikipedia_ce_all).
+        const dated = fb.replace(/_\d{4}-\d{2}$/, '');
+        const stem = dated.replace(/_(maxi|nopic|mini)$/, '');
+        if (!stem) continue;
+        // Index BOTH the flavor-stripped stem and the dated form so
+        // either match path in _enrichCatalogPeers will hit. Names drive
+        // the "📡 has it" pill; entries carry the exact file + peer so the
+        // pill can pull it directly over the LAN.
+        const entry = {peer: p.name, file: file, size: z.size_bytes};
+        for (const key of [stem, dated]) {
+          if (!newMap.has(key)) newMap.set(key, []);
+          if (!newMap.get(key).includes(p.name)) newMap.get(key).push(p.name);
+          if (!newFiles.has(key)) newFiles.set(key, []);
+          if (file) newFiles.get(key).push(entry);
+        }
+      }
+    } catch (_) {}
+  }));
+  _catalogPeerStems = newMap;
+  _catalogPeerFiles = newFiles;
+  _peersLoadedAt = Date.now();
+  return true;
+}
+
+function _enrichCatalogPeers(items) {
+  if (!_catalogPeerStems.size) {
+    for (const it of items) { it.peer_names = []; it.peer_entries = []; }
+    return;
+  }
+  for (const it of items) {
+    const candidates = [it.name];
+    if (it.download_url) {
+      const fname = it.download_url.split('/').pop()
+        .replace(/\.meta4$/, '').replace(/\.zim$/, '');
+      const urlStem = fname.replace(/_\d{4}-\d{2}$/, '');
+      if (urlStem && urlStem !== it.name) candidates.push(urlStem);
+    }
+    let names = [];
+    let entries = [];
+    for (const c of candidates) {
+      const hit = _catalogPeerStems.get(c);
+      if (hit && hit.length) { names = hit; entries = _catalogPeerFiles.get(c) || []; break; }
+    }
+    it.peer_names = names;
+    it.peer_entries = entries;
+  }
+}
+
+function _peerHint(item) {
+  const peers = item && item.peer_names;
+  if (!peers || !peers.length) return '';
+  // Strip the "zimi-" prefix for readability ("zimi-elpnas" → "elpnas").
+  const names = peers.map(p => p.replace(/^zimi-/, ''));
+  // A busy network could have many peers with the same ZIM — collapse to
+  // "{n} nearby" on the pill; the tooltip keeps the full list.
+  const fullList = names.join(', ');
+  const display = names.length > 1 ? t('n_nearby', {n: names.length}) : names[0];
+  // Already installed? Show the pill but don't re-trigger a download.
+  if (item.installed) {
+    return '<span class="ci-peer-pill" title="' + escAttr(t('peer_has_zim', {peers: fullList})) + '">' +
+      '<span aria-hidden="true">📡</span>' + esc(display) + '</span>';
+  }
+  // Not installed and a peer has it → pull the actual file straight from the
+  // peer over the LAN (works fully offline). Pick the best-flavor file among
+  // the peer's entries (full > nopic > mini, modulated by user preference).
+  const entries = (item.peer_entries || []).filter(e => e && e.file);
+  if (!entries.length) {
+    return '<span class="ci-peer-pill" title="' + escAttr(t('peer_has_zim', {peers: fullList})) + '">' +
+      '<span aria-hidden="true">📡</span>' + esc(display) + '</span>';
+  }
+  const best = entries.slice().sort((a, b) => _flavorOrder(b.file) - _flavorOrder(a.file))[0];
+  return '<button type="button" class="ci-peer-pill ci-peer-pill-clickable" ' +
+    'title="' + escAttr(t('peer_pill_click_tip', {peers: fullList})) + '" ' +
+    'aria-label="' + escAttr(t('peer_pill_click_tip', {peers: fullList})) + '" ' +
+    'onclick="event.stopPropagation();_downloadFromPeer(\'' + escJs(best.peer) + '\', \'' + escJs(best.file) + '\')">' +
+    '<span aria-hidden="true">📡</span>' + esc(display) + '</button>';
+}
+
+async function _downloadFromPeer(peerName, file) {
+  // Pull the ZIM directly from the LAN peer over HTTP — no internet/Kiwix
+  // needed. The server resolves peer→host:port from discovery state; we only
+  // pass the peer name + file.
+  const shortPeer = (peerName || '').replace(/^zimi-/, '');
+  try {
+    const res = await manageFetch('/manage/download-from-peer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ peer: peerName, file: file }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      if (typeof _showToast === 'function') _showToast(t('error') + ': ' + data.error);
+      return;
+    }
+    if (typeof _showToast === 'function') {
+      _showToast(t('downloading_from_peer', {peer: shortPeer}));
+    }
+    _dlPrevAllDone = false;
+    _dlRecentStart = Date.now();
+    _showManageBadge(true, 1);
+    refreshDownloads();
+    if (window._nudgeActivityPoll) window._nudgeActivityPoll();
+  } catch (e) {
+    if (typeof _showToast === 'function') _showToast(t('error'));
+  }
+}
+
+function _hierarchyHint(item) {
+  const h = item && item.hierarchy;
+  if (!h) return '';
+  // Subset whose bundle the user already has → reassure them.
+  const installedBundle = (h.is_subset_of || []).find(n => _catalogInstalledNames.has(n));
+  if (installedBundle) {
+    return '<span class="ci-hier-installed" title="' + escAttr(installedBundle) + '">' +
+      tH('covered_by', {name: esc(installedBundle)}) + '</span>';
+  }
+  // Subset whose bundle is uninstalled → flag the larger option.
+  if (h.is_subset_of && h.is_subset_of.length) {
+    return '<span class="ci-hier-subset" title="' + escAttr(h.is_subset_of.join(', ')) + '">' +
+      tH('part_of', {name: esc(h.is_subset_of[0])}) + '</span>';
+  }
+  // Bundle that supersedes others.
+  if (h.supersedes && h.supersedes.length) {
+    let badges = '<span class="ci-hier-bundle">' +
+      tH('includes_n_variants', {n: h.supersedes.length}) + '</span>';
+    // Coverage signal: bundle has more articles than sum of subsets.
+    if (h.coverage_advantage_bundle) {
+      badges += ' <span class="ci-hier-coverage" title="' + escAttr(t('coverage_advantage_explain')) + '">' +
+        tH('coverage_advantage') + '</span>';
+    }
+    // Freshness signal: subsets are newer than this bundle — the user might
+    // want a subset for the latest content even though the bundle is bigger.
+    if (h.freshness_advantage_subsets && h.freshness_advantage_subsets.length) {
+      badges += ' <span class="ci-hier-freshness" title="' + escAttr(h.freshness_advantage_subsets.join(', ')) + '">' +
+        tH('freshness_advantage', {n: h.freshness_advantage_subsets.length}) + '</span>';
+    }
+    return badges;
+  }
+  return '';
+}
+
+// Mirror of zimi/catalog_hierarchy.py:bundle_relationships in JS.
+// Runs over the merged full catalog so relationships can cross pagination.
+// Keep these constants in lockstep with catalog_hierarchy.py — drift = bugs.
+const _DATE_RE = /(\d{4})-(\d{2})/;
+const _DATE_TOKEN_RE = /^\d{4}-\d{2}$/;
+const _BUNDLE_RE = /(?:^|_)all(_.*)?$/;
+// Quality/display suffixes that can follow `_all` and still be a universal bundle.
+// Topic-specific names like `angular.js` or `cheatography` are NOT display variants.
+const _DISPLAY_VARIANTS = new Set(['maxi', 'mini', 'nopic', 'novid', 'nodet']);
+
+function _hierarchyName(name) {
+  const lower = (name || '').toLowerCase();
+  const m = lower.match(_BUNDLE_RE);
+  if (!m) return false;
+  if (!m[1]) return true; // ends exactly with `_all`
+  const parts = m[1].slice(1).split('_').filter(Boolean);
+  return parts.every(p => _DISPLAY_VARIANTS.has(p) || _DATE_TOKEN_RE.test(p));
+}
+function _hierarchyDate(name) {
+  const m = (name || '').match(_DATE_RE);
+  return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : null;
+}
+function _hierarchyArticleCount(it) {
+  return parseInt(it.article_count || 0, 10) || 0;
+}
+
+function _enrichCatalogHierarchy(items) {
+  // Dedupe by name, keep highest article_count.
+  const byName = new Map();
+  for (const it of items) {
+    if (!it.name) continue;
+    const prev = byName.get(it.name);
+    if (!prev || _hierarchyArticleCount(it) > _hierarchyArticleCount(prev)) {
+      byName.set(it.name, it);
+    }
+  }
+
+  // Group by category + language.
+  const families = new Map();
+  for (const it of byName.values()) {
+    const cat = (it.category || '').toLowerCase();
+    const lang = (it.language || '').toLowerCase();
+    if (!cat || !lang) continue;
+    const key = cat + '_' + lang;
+    if (!families.has(key)) families.set(key, []);
+    families.get(key).push(it);
+  }
+
+  // Default empty hierarchy for every item, not just deduped/grouped ones.
+  for (const it of items) {
+    it.hierarchy = {is_subset_of: [], supersedes: [], freshness_advantage_subsets: [], coverage_advantage_bundle: false};
+  }
+
+  for (const members of families.values()) {
+    const bundles = members.filter(m => _hierarchyName(m.name));
+    const subsets = members.filter(m => !_hierarchyName(m.name));
+    if (!bundles.length || !subsets.length) continue;
+
+    const canonical = bundles.reduce((a, b) => _hierarchyArticleCount(b) > _hierarchyArticleCount(a) ? b : a);
+    const canonName = canonical.name;
+    const canonCount = _hierarchyArticleCount(canonical);
+    const canonDate = _hierarchyDate(canonName);
+
+    const validSubsets = subsets.filter(s => !canonCount || _hierarchyArticleCount(s) <= canonCount);
+    const subsetNames = validSubsets.map(s => s.name);
+    const fresher = validSubsets
+      .filter(s => {
+        const d = _hierarchyDate(s.name);
+        return canonDate && d && (d[0] > canonDate[0] || (d[0] === canonDate[0] && d[1] > canonDate[1]));
+      })
+      .map(s => s.name);
+    const sumSubsetArticles = validSubsets.reduce((sum, s) => sum + _hierarchyArticleCount(s), 0);
+    const coverageAdvantage = canonCount > 0 && canonCount > sumSubsetArticles;
+
+    // Apply to ALL items with these names (including dupes that didn't make it
+    // into byName — they share the relationship metadata).
+    for (const it of items) {
+      if (subsetNames.includes(it.name)) {
+        it.hierarchy.is_subset_of = [canonName];
+      }
+      if (it.name === canonName) {
+        it.hierarchy.supersedes = subsetNames.slice();
+        it.hierarchy.freshness_advantage_subsets = fresher.slice();
+        it.hierarchy.coverage_advantage_bundle = coverageAdvantage;
+      }
+    }
+  }
 }
 
 function _enrichCatalogInstalled(items) {
@@ -3389,7 +3850,7 @@ function renderBrowseGallery() {
     h += '</div>';
     // Footer: count centered, language dropdown moved below
     var activeCats = BROWSE_CATEGORIES.filter(function(c) { return (filteredCatCounts[c.key] || 0) > 0; }).length;
-    var totalSources = manageLangFilter
+    var totalSources = (manageLangFilter || _getPrefLanguages().length)
       ? groupVariants(items.filter(function(it) { return _zimMatchesLang(it, manageLangFilter); })).length
       : groupVariants(items).length;
     h += '<div class="browse-footer">' +
@@ -3406,6 +3867,8 @@ function renderBrowseGallery() {
 }
 
 function drillCategory(catKey, namePrefix) {
+  // New category = fresh view; don't carry the show-hidden expansion over.
+  if (manageCategoryFilter !== catKey) _showHiddenCatalog = false;
   const results = document.getElementById('catalog-results');
   if (!results) return;
   _browseView = 'drilldown';
@@ -3437,8 +3900,9 @@ function drillCategory(catKey, namePrefix) {
     // Language pills scoped to this category (counts from unfiltered items)
     var langPills = _renderLangPills(_countLangsByCategory(filtered, catKey), 'filterCatalogLang');
 
-    // Apply language filter after computing pill counts (so pills show all available languages)
-    if (manageLangFilter) {
+    // Apply language filter after computing pill counts (so pills show all available languages).
+    // _zimMatchesLang internally falls back to user prefs when no pill is set.
+    if (manageLangFilter || _getPrefLanguages().length) {
       filtered = filtered.filter(function(item) { return _zimMatchesLang(item, manageLangFilter); });
     }
     const grouped = groupVariants(filtered);
@@ -3450,8 +3914,11 @@ function drillCategory(catKey, namePrefix) {
       '<span class="browse-drilldown-count">' + tH('n_available', {n: grouped.length}) + '</span>' +
     '</div>';
     h += langPills;
-    for (const item of grouped) h += renderCatalogItem(item);
-    if (!grouped.length) h += '<div class="empty"><p>' + tH('no_zims_category') + '</p></div>';
+    if (grouped.length) {
+      h += _renderCatalogGrid(grouped);
+    } else {
+      h += '<div class="empty"><p>' + tH('no_zims_category') + '</p></div>';
+    }
     results.innerHTML = h;
     // Auto-scroll pill bar so the active language pill is visible
     var activePill = results.querySelector('.catalog-lang-scroll .pill.active');
@@ -3489,13 +3956,23 @@ function browseCatalogFilter(query) {
       return title.includes(lq) || summary.includes(lq) || (item.name || '').toLowerCase().includes(lq);
     });
     const grouped = groupVariants(filtered);
-    grouped.sort((a, b) => (a.title || a.name || '').localeCompare(b.title || b.name || ''));
+    // Sort: actionable items first (not installed, not covered by an installed bundle),
+    // then installed/covered items pushed to the back. Within each group, alphabetical.
+    grouped.sort((a, b) => {
+      const aDemoted = a.installed || (a.hierarchy && (a.hierarchy.is_subset_of || []).some(n => _catalogInstalledNames.has(n)));
+      const bDemoted = b.installed || (b.hierarchy && (b.hierarchy.is_subset_of || []).some(n => _catalogInstalledNames.has(n)));
+      if (aDemoted !== bDemoted) return aDemoted ? 1 : -1;
+      return (a.title || a.name || '').localeCompare(b.title || b.name || '');
+    });
     let h = '<div class="browse-drilldown-header">' +
       '<button class="browse-back" onclick="' + (manageCategoryFilter ? "drillCategory('" + escAttr(manageCategoryFilter) + "')" : 'renderBrowseGallery()') + '">\u2190 Back</button>' +
       '<span class="browse-drilldown-count">' + t('n_results', {n: filtered.length}) + ' \u2014 \u201C' + esc(query) + '\u201D</span>' +
     '</div>';
-    for (const item of grouped) h += renderCatalogItem(item);
-    if (!grouped.length) h += '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
+    if (grouped.length) {
+      h += _renderCatalogGrid(grouped);
+    } else {
+      h += '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
+    }
     results.innerHTML = h;
   }).catch(() => {
     results.innerHTML = '<div class="empty"><p>' + tH('failed_search_catalog') + '</p></div>';
@@ -3533,6 +4010,45 @@ function formatSize(bytes) {
   return Math.round(mb) + ' MB';
 }
 
+// Bold download arrow for catalog buttons — the ↓ glyph reads too thin.
+const _DL_ARROW_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v13M6 11l6 6 6-6"/></svg>';
+
+// Installed and covered-by-an-installed-bundle rows are noise when browsing
+// for something new — collapse them behind a count button at the list end.
+let _showHiddenCatalog = false;
+
+function _catalogItemDemoted(g) {
+  const variants = g.variants || [g];
+  if (variants.some(v => v.installed)) return true;
+  return !!(g.hierarchy && (g.hierarchy.is_subset_of || []).some(n => _catalogInstalledNames.has(n)));
+}
+
+// Render a grouped catalog list with demoted rows collapsed. Returns HTML.
+function _renderCatalogGrid(grouped) {
+  const visible = grouped.filter(g => !_catalogItemDemoted(g));
+  const hidden = grouped.filter(_catalogItemDemoted);
+  let h = '';
+  if (visible.length || hidden.length) {
+    h += '<div class="catalog-grid">';
+    for (const item of visible) h += renderCatalogItem(item);
+    if (_showHiddenCatalog) for (const item of hidden) h += renderCatalogItem(item);
+    h += '</div>';
+  }
+  if (hidden.length) {
+    h += '<div style="text-align:center;margin-top:10px"><button class="pill" onclick="_toggleHiddenCatalog()">' +
+      tH(_showHiddenCatalog ? 'hide_installed_covered' : 'show_installed_covered', {n: hidden.length}) +
+      '</button></div>';
+  }
+  return h;
+}
+
+function _toggleHiddenCatalog() {
+  _showHiddenCatalog = !_showHiddenCatalog;
+  if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
+  else if (_browseView === 'search') { var v = q.value.trim(); if (v) browseCatalogFilter(v); }
+  else renderBrowseGallery();
+}
+
 function groupVariants(items) {
   const groups = {};
   for (const item of items) {
@@ -3555,7 +4071,28 @@ function variantLabel(url) {
   return '';
 }
 
-function _flavorOrder(url) { return url.includes('_mini_') ? 0 : url.includes('_nopic_') ? 1 : 2; }
+// Higher = preferred. Highest score belongs to the user's preferred flavor.
+// Used by sort callers — DESC sort puts the preferred flavor first.
+function _flavorOrder(url) {
+  const isMini = url.includes('_mini_');
+  const isNopic = url.includes('_nopic_');
+  const isFull = !isMini && !isNopic;
+  const pref = _getPrefFlavor();
+  if (pref === 'mini') {
+    if (isMini) return 3;
+    if (isNopic) return 2;
+    return 1;
+  }
+  if (pref === 'nopic') {
+    if (isNopic) return 3;
+    if (isFull) return 2;
+    return 1;
+  }
+  // default 'full'
+  if (isFull) return 3;
+  if (isNopic) return 2;
+  return 1;
+}
 
 function renderCatalogItem(group) {
   const item = group;
@@ -3565,13 +4102,16 @@ function renderCatalogItem(group) {
   if (item.date) metaTags.push(item.date);
   const sizes = variants.map(v => v.size_bytes).sort((a, b) => a - b);
   if (sizes.length > 1) {
-    metaTags.push(formatSize(sizes[0]) + ' – ' + formatSize(sizes[sizes.length - 1]));
+    metaTags.push('<span title="' + escAttr(t('size_range_hint')) + '">' +
+      formatSize(sizes[0]) + ' – ' + formatSize(sizes[sizes.length - 1]) + '</span>');
   } else {
     metaTags.push(formatSize(sizes[0]));
   }
+  const letterChar = (esc(item.title || item.name)[0] || '?').toUpperCase();
   const iconHtml = item.icon_url
-    ? '<img src="/manage/thumb?url=' + encodeURIComponent(item.icon_url) + '" width="40" height="40" loading="lazy">'
-    : '<span class="ci-letter">' + (esc(item.title || item.name)[0] || '?').toUpperCase() + '</span>';
+    ? '<img src="/manage/thumb?url=' + encodeURIComponent(item.icon_url) + '" alt="" width="40" height="40" loading="lazy"' +
+      ' onerror="_ciThumbFallback(this)" data-letter="' + escAttr(letterChar) + '">'
+    : '<span class="ci-letter">' + letterChar + '</span>';
   const anyInstalled = variants.some(v => v.installed);
   let actionsHtml = '';
   if (anyInstalled) {
@@ -3594,41 +4134,165 @@ function renderCatalogItem(group) {
       const size = formatSize(v.size_bytes);
       return { label, size, url: v.download_url };
     });
-    withLabels.sort((a, b) => _flavorOrder(a.url) - _flavorOrder(b.url));
+    withLabels.sort((a, b) => _flavorOrder(b.url) - _flavorOrder(a.url));
     if (withLabels.length > 1) {
       // Integrated button: "Download Full (size) ▾" — click chevron to change flavor
       var vid = '_cfv_' + group.name.replace(/[^a-z0-9_]/gi, '_');
       window[vid] = withLabels;
       var best = withLabels[0]; // Full is sorted first
       actionsHtml = '<div class="ci-dl-split" data-variants="' + vid + '" data-selected="0">' +
-        '<button class="ci-add-btn ci-dl-main" onclick="event.stopPropagation();var s=this.closest(\'.ci-dl-split\');downloadZim(window[s.dataset.variants][+s.dataset.selected].url, this)">' +
-          tH('download_size', {size: esc(best.label + ' (' + best.size + ')')}) +
+        '<button class="ci-add-btn ci-dl-main" aria-label="' + escAttr(t('download_size', {size: best.label + ' (' + best.size + ')'})) + '"' +
+          ' onclick="event.stopPropagation();var s=this.closest(\'.ci-dl-split\');downloadZim(window[s.dataset.variants][+s.dataset.selected].url, this)">' +
+          _DL_ARROW_SVG + esc(best.label + ' (' + best.size + ')') +
         '</button>' +
         '<button class="ci-dl-chevron" onclick="event.stopPropagation();showCatalogFlavorPicker(this)" title="' + escAttr(t('choose_flavor')) + '">' +
           '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>' +
         '</button>' +
       '</div>';
     } else if (withLabels.length === 1) {
-      actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' + tH('download_size', {size: withLabels[0].label + ' (' + withLabels[0].size + ')'}) + '</button>';
+      actionsHtml = '<button class="ci-add-btn" aria-label="' + escAttr(t('download_size', {size: withLabels[0].label + ' (' + withLabels[0].size + ')'})) + '"' +
+        ' onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' +
+        _DL_ARROW_SVG + esc(withLabels[0].label + ' (' + withLabels[0].size + ')') + '</button>';
     }
   }
   const catAttr = item.category ? ' data-category="' + escAttr(item.category) + '"' : '';
   const instName = anyInstalled ? (variants.find(v => v.installed && v._installedName) || {})._installedName || '' : '';
   const openAttr = instName ? ' style="cursor:pointer" onclick="if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(instName) + '\',true)}"' : '';
-  return '<div class="catalog-item' + (anyInstalled ? ' ci-installed-item' : '') + '"' + catAttr + openAttr + '>' +
+  const hierarchyHtml = _hierarchyHint(item);
+  const peerHtml = _peerHint(item);
+  // Multi-select checkbox — only when there's something to download.
+  let selectHtml = '';
+  if (!anyInstalled) {
+    const dlVariants = variants.filter(v => v.download_url);
+    if (dlVariants.length > 0) {
+      const sorted = dlVariants.slice().sort((a, b) => _flavorOrder(b.download_url) - _flavorOrder(a.download_url));
+      const best = sorted[0];
+      const checked = _selectedDownloads.has(best.download_url) ? ' checked' : '';
+      selectHtml = '<input type="checkbox" class="ci-select"' + checked +
+        ' data-url="' + escAttr(best.download_url) + '"' +
+        ' data-size="' + (best.size_bytes || 0) + '"' +
+        ' onclick="event.stopPropagation();_toggleDownloadSelection(this)"' +
+        ' title="' + escAttr(t('select_for_batch')) + '">';
+    }
+  }
+  const isCovered = !anyInstalled && item.hierarchy
+    && (item.hierarchy.is_subset_of || []).some(n => _catalogInstalledNames.has(n));
+  return '<div class="catalog-item' + (anyInstalled ? ' ci-installed-item' : '') +
+    (isCovered ? ' ci-covered' : '') + '"' + catAttr + openAttr + '>' +
+    selectHtml +
     '<div class="ci-icon">' + iconHtml + '</div>' +
     '<div class="ci-info">' +
       '<div class="ci-title">' + esc(item.title || item.name) + _catLangTag(item.language, item.name) + '</div>' +
       (item.summary ? '<div class="ci-summary">' + esc(item.summary) + '</div>' : '') +
       '<div class="ci-meta">' + metaTags.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
+      (hierarchyHtml ? '<div class="ci-hier">' + hierarchyHtml + '</div>' : '') +
     '</div>' +
-    '<div class="ci-actions">' + actionsHtml + '</div>' +
+    // Peer pill rides in the action row, directly left of the download button
+    '<div class="ci-actions">' + peerHtml + actionsHtml + '</div>' +
   '</div>';
+}
+
+// Thumbnail proxy failures (origin 502, offline) would otherwise leave a
+// permanent white square — swap in the letter icon instead.
+function _ciThumbFallback(img) {
+  const span = document.createElement('span');
+  span.className = 'ci-letter';
+  span.textContent = img.dataset.letter || '?';
+  img.replaceWith(span);
+}
+
+// Selection state for the multi-select Download bar.
+const _selectedDownloads = new Map(); // url → size_bytes
+
+function _toggleDownloadSelection(cb) {
+  const url = cb.dataset.url;
+  const size = parseInt(cb.dataset.size, 10) || 0;
+  if (cb.checked) {
+    _selectedDownloads.set(url, size);
+  } else {
+    _selectedDownloads.delete(url);
+  }
+  _renderSelectionBar();
+}
+
+function _renderSelectionBar() {
+  let bar = document.getElementById('ci-selection-bar');
+  if (_selectedDownloads.size === 0) {
+    if (bar) bar.remove();
+    return;
+  }
+  // Selection survives leaving the Catalog tab; the bar does not.
+  const inCatalog = mode === 'manage' && manageTab === 'browse';
+  if (!inCatalog) {
+    if (bar) bar.style.display = 'none';
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'ci-selection-bar';
+    bar.className = 'ci-selection-bar';
+    document.body.appendChild(bar);
+  }
+  bar.style.display = '';
+  while (bar.firstChild) bar.removeChild(bar.firstChild);
+  const totalSize = Array.from(_selectedDownloads.values()).reduce((a, b) => a + b, 0);
+  const sizeStr = totalSize > 0 ? ' · ' + formatSize(totalSize) : '';
+  const count = document.createElement('span');
+  count.className = 'ci-sel-count';
+  count.textContent = t('n_selected', {n: _selectedDownloads.size}) + sizeStr;
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'pill';
+  clearBtn.textContent = t('clear');
+  clearBtn.onclick = _clearDownloadSelection;
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'manage-btn-action';
+  dlBtn.textContent = t('download_selected');
+  dlBtn.onclick = () => _downloadSelected(dlBtn);
+  bar.appendChild(count);
+  bar.appendChild(clearBtn);
+  bar.appendChild(dlBtn);
+}
+
+function _clearDownloadSelection() {
+  _selectedDownloads.clear();
+  document.querySelectorAll('.ci-select').forEach(cb => { cb.checked = false; });
+  _renderSelectionBar();
+}
+
+async function _downloadSelected(btn) {
+  const urls = Array.from(_selectedDownloads.keys());
+  const sizes = urls.map(u => _selectedDownloads.get(u) || 0);
+  btn.disabled = true;
+  const origLabel = btn.textContent;
+  btn.innerHTML = '<span class="spinner-inline"></span>' + tH('loading');
+  try {
+    const res = await manageFetch('/manage/download-batch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({urls, sizes}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'failed');
+    _showToast(t('downloads_started', {n: data.started || 0}));
+    _dlRecentStart = Date.now();
+    _clearDownloadSelection();
+    // The batch is now the user's focus — take them to it.
+    switchManageTab('downloads');
+    if (window._nudgeActivityPoll) window._nudgeActivityPoll();
+  } catch (e) {
+    _showToast(t('error'));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origLabel;
+  }
 }
 
 // ── Tab switching ──
 function switchManageTab(tab) {
   manageTab = tab;
+  // Mobile: the settings card doubles as the 'settings' tab's content.
+  const msCard = document.getElementById('manage-status');
+  if (msCard) msCard.classList.toggle('as-tab-active', tab === 'settings');
   manageCategoryFilter = null;
   manageLangFilter = null;
   _browseView = 'gallery';
@@ -3639,6 +4303,9 @@ function switchManageTab(tab) {
   if (tab === 'installed') {
     q.placeholder = t('filter_installed');
     renderInstalled();
+  } else if (tab === 'downloads') {
+    q.placeholder = t('search_placeholder');
+    refreshDownloads();
   } else if (tab === 'collections') {
     q.placeholder = t('search_placeholder');
     renderCollectionsTab();
@@ -3649,11 +4316,13 @@ function switchManageTab(tab) {
     q.placeholder = t('search_placeholder');
     renderActivityTab();
   } else {
-    // Default catalog language filter to user's UI language
-    var catalogLang = _currentLang;
-    if (catalogLang) manageLangFilter = catalogLang;
+    // Default catalog language pill to the UI language UNLESS the user has
+    // a multi-language preference — then leave the pill empty so the prefs
+    // filter is what's in effect.
+    if (!_getPrefLanguages().length && _currentLang) manageLangFilter = _currentLang;
     renderBrowseGallery();
   }
+  _renderSelectionBar();
 }
 
 // ── Collections tab ──
@@ -3786,18 +4455,20 @@ async function toggleCollZim(collName, zimName) {
 
 // ── History tab ──
 function _historyZimInfo(ev) {
-  // Use cached ZIM info from event if available (survives deletion)
-  if (ev.title) return { title: ev.title, name: ev.name || '', has_icon: ev.has_icon, language: ev.language || '', _fromEvent: true };
+  // Prefer the live library record — it carries has_icon and a clickable
+  // name. The event's cached copy (_fromEvent) is the fallback for ZIMs
+  // that no longer exist; it renders a letter icon and isn't clickable.
   var filename = ev.filename;
-  // Try to find ZIM in current library by filename
   if (zimsCache) {
     var z = zimsCache.find(function(z) { return z.file === filename; });
     if (z) return z;
   }
   // Strip date suffix to match by name prefix
   var name = (filename || '').replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '');
-  var z2 = _zimInfo(name);
+  var z2 = _zimInfo(name) || (ev.name ? _zimInfo(ev.name) : null);
   if (z2) return z2;
+  // Cached ZIM info from the event (survives deletion)
+  if (ev.title) return { title: ev.title, name: ev.name || '', has_icon: ev.has_icon, language: ev.language || '', _fromEvent: true };
   // Try catalog cache for downloads that never completed
   if (_catalogCache) {
     var catMatch = _catalogCache.find(function(it) {
@@ -3838,7 +4509,7 @@ async function renderHistoryTab() {
         const title = zim ? (zim.title || zim.name) : (ev.filename || '').replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '').replace(/_/g, ' ');
         const canShowIcon = zim && zim.has_icon && zim.name && !zim._fromEvent;
         const iconHtml = canShowIcon
-          ? '<img src="/w/' + encodeURIComponent(zim.name) + '/-/icon" width="40" height="40" loading="lazy">'
+          ? '<img src="/w/' + encodeURIComponent(zim.name) + '/-/icon" alt="" width="40" height="40" loading="lazy">'
           : '<span class="ci-letter">' + (esc(title)[0] || '?').toUpperCase() + '</span>';
 
         let label = '', labelColor = 'var(--text2)';
@@ -4032,7 +4703,17 @@ async function renderManage() {
   const installedCount = zimsCache ? zimsCache.length : 0;
 
   output.innerHTML =
-    '<div id="manage-status" class="manage-settings">' +
+    '<div class="manage-wrap">' +
+    '<div class="manage-tabs">' +
+      // Settings lives in its own first tab on every viewport.
+      '<button class="manage-tab manage-tab-settings' + (manageTab === 'settings' ? ' active' : '') + '" data-tab="settings" onclick="switchManageTab(\'settings\')">' + tH('ms_settings_tab') + '</button>' +
+      '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">' + tH('installed_tab') + '</button>' +
+      '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">' + tH('catalog_tab') + '</button>' +
+      '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">' + tH('collections_tab') + '</button>' +
+      '<button class="manage-tab' + (manageTab === 'downloads' ? ' active' : '') + '" data-tab="downloads" onclick="switchManageTab(\'downloads\')">' + tH('downloads') + '<span id="dl-tab-badge" class="dl-tab-badge" style="display:none"></span></button>' +
+      '<button class="manage-tab' + (manageTab === 'history' ? ' active' : '') + '" data-tab="history" onclick="switchManageTab(\'history\')">' + tH('activity_tab') + '</button>' +
+    '</div>' +
+'<div id="manage-status" class="manage-settings' + (manageTab === 'settings' ? ' as-tab-active' : '') + '">' +
       '<div class="ms-nav" id="ms-nav">' +
         '<button class="ms-nav-item active" data-ms="library" onclick="switchMs(\'library\')">' + tH('ms_library') + '</button>' +
         '<button class="ms-nav-item" data-ms="preferences" onclick="switchMs(\'preferences\')">' + tH('ms_display') + '</button>' +
@@ -4040,18 +4721,13 @@ async function renderManage() {
       '</div>' +
       '<div id="ms-pane" class="ms-pane"><div class="loading"><span class="spinner-inline"></span>Loading\u2026</div></div>' +
     '</div>' +
-    '<div id="manage-downloads"></div>' +
-    '<div class="manage-tabs">' +
-      '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">' + tH('installed_tab') + '</button>' +
-      '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">' + tH('catalog_tab') + '</button>' +
-      '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">' + tH('collections_tab') + '</button>' +
-      '<button class="manage-tab' + (manageTab === 'history' ? ' active' : '') + '" data-tab="history" onclick="switchManageTab(\'history\')">' + tH('activity_tab') + '</button>' +
-    '</div>' +
     '<div id="manage-installed" class="manage-tab-content' + (manageTab === 'installed' ? ' active' : '') + '"></div>' +
+    '<div id="manage-downloads" class="manage-tab-content' + (manageTab === 'downloads' ? ' active' : '') + '"></div>' +
     '<div id="manage-collections" class="manage-tab-content' + (manageTab === 'collections' ? ' active' : '') + '"></div>' +
     '<div id="manage-history" class="manage-tab-content' + (manageTab === 'history' ? ' active' : '') + '"></div>' +
     '<div id="manage-browse" class="manage-tab-content' + (manageTab === 'browse' ? ' active' : '') + '">' +
       '<div id="catalog-results"></div>' +
+    '</div>' +
     '</div>';
 
   // Status card — fetch data and render into settings panel
@@ -4124,7 +4800,11 @@ function _msLibraryHtml() {
   if (!d) return '<div class="loading"><span class="spinner-inline"></span>Loading\u2026</div>';
   var h = '<div class="mc-row"><span class="mc-label">' + tH('zim_files') + '</span><span class="mc-value">' + esc(String(d.zim_count)) + '</span></div>' +
     '<div class="mc-row"><span class="mc-label">' + tH('total_size') + '</span><span class="mc-value">' + fmtSize(d.total_size_gb) + '</span></div>' +
-    '<div id="update-status" class="mc-row"><span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('loading') + '</span></div>' +
+    '<div id="update-status" class="mc-row mc-row-clickable" role="button" tabindex="0" style="cursor:pointer"' +
+    ' onclick="_toggleUpdatesDetail()" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();_toggleUpdatesDetail()}"' +
+    ' title="' + escAttr(t('updates_show_detail')) + '">' +
+      '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('loading') + '</span></div>' +
+    '<div id="updates-detail" class="updates-detail" style="display:none"></div>' +
     '<div class="mc-row" style="align-items:center">' +
       '<span class="mc-label">' + tH('auto_update') + '</span>' +
       '<span class="mc-value">' +
@@ -4190,6 +4870,13 @@ async function cleanupTmpFiles() {
   }
 }
 
+function _msToggleCollapse(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const open = el.classList.toggle('ms-open');
+  btn.textContent = open ? t('hide_list') : t('show_list');
+}
+
 function _msPreferencesHtml() {
   var showXzim = !_getStorageFlag(SK.HIDE_XZIM_LINKS);
   var showDiscover = !_getStorageFlag(SK.HIDE_DISCOVER);
@@ -4197,10 +4884,30 @@ function _msPreferencesHtml() {
   var h = '<div class="ms-section-label">' + tH('ms_display_section') + '</div>' +
     '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
+    '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
+    // Default download flavor (above languages — reached more often)
+    '<div class="ms-section-label" style="margin-top:20px">' + tH('default_flavor') + '</div>' +
+    '<div class="ms-hint">' + tH('default_flavor_hint') + '</div>' +
+    '<div class="ms-flavor-row">' +
+      _flavorRadio('full', tH('flavor_full')) +
+      _flavorRadio('nopic', tH('flavor_nopic')) +
+      _flavorRadio('mini', tH('flavor_mini')) +
+    '</div>' +
+    // Languages section combines display toggle + multi-select pref.
+    // The pill list is long — collapsed behind a toggle by default.
+    '<div class="ms-section-label" style="margin-top:20px">' + tH('languages_section') + '</div>' +
     '<label class="ms-check"><input type="checkbox"' + (showLangChooser ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\')"> ' + tH('show_lang_chooser') + '</label>' +
-    '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>';
+    '<div class="ms-hint" style="margin-top:8px">' + tH('catalog_languages_hint_short') + '</div>' +
+    '<button class="pill" onclick="_msToggleCollapse(\'ms-lang-pills\', this)">' + tH('show_list') + '</button>' +
+    '<div class="ms-lang-pills ms-collapsed-list" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>';
+  // Accessibility section
+  var a11yOn = _getStorageFlag(SK.A11Y_REWRITE);
+  h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_accessibility') + '</div>' +
+    '<label class="ms-check"><input type="checkbox"' + (a11yOn ? ' checked' : '') +
+      ' onchange="if(this.checked)localStorage.setItem(\'zimi_a11y_rewrite\',\'1\');else localStorage.removeItem(\'zimi_a11y_rewrite\')"> ' + tH('a11y_rewrite_label') + '</label>' +
+    '<div class="ms-hint">' + tH('a11y_rewrite_hint') + '</div>';
   // Security section
   h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_security') + '</div>' +
     '<div class="ms-actions">' +
@@ -4213,11 +4920,19 @@ function _msPreferencesHtml() {
 }
 
 function _msServerHtml() {
-  var h = '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
+  // Sharing is the star of v1.7 — it leads the Server pane.
+  var h = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
+    '<div id="ms-mirror-status" class="share-rows-slot"></div>' +
+    '<div id="ms-bt-status" style="margin-top:10px"></div>' +
+    '<div id="ms-seeding-list" style="margin-top:10px"></div>' +
+    '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
+  h += '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
     '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>';
   if (IS_DESKTOP) {
-    // Desktop: add browse buttons for folder selection + port + save
-    h = '<div class="ms-field"><label>' + tH('zim_folder') + '</label>' +
+    // Desktop: add browse buttons for folder selection + port + save.
+    // Keep the sharing hero on top — rebuild only the fields part.
+    h = h.split('<div class="ms-field">')[0] +
+      '<div class="ms-field"><label>' + tH('zim_folder') + '</label>' +
       '<div style="display:flex;gap:8px"><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
       '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseZimFolder()">' + tH('choose_folder') + '</button></div></div>' +
       '<div class="ms-field"><label>' + tH('data_folder') + '</label>' +
@@ -4252,6 +4967,15 @@ function _msServerHtml() {
     sh += '</span></div>';
     el.innerHTML = sh;
   });
+  // Hot ZIMs section — pre-warmed at startup; cold ZIMs stay lazy.
+  h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
+    '<div class="ms-section-label">' + tH('hot_zims') + '</div>' +
+    '<div class="ms-hint">' + tH('hot_zims_hint') + '</div>' +
+    '<div id="ms-hot-zims" style="margin-top:10px">' + tH('loading') + '</div>' +
+    '</div>';
+  _renderHotZimsSection();
+  _renderSeedingSection();
+  _renderMirrorSection();
   // Cache info section
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
     '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
@@ -4264,7 +4988,14 @@ function _msServerHtml() {
       (c.title_indexes.count || 0) + ' files, ' + fmt(c.title_indexes.size_bytes) + '</span></div>' +
       '<div class="mc-row"><span class="mc-label">' + tH('qid_indexes') + '</span><span class="mc-value">' +
       (c.qid_indexes.count || 0) + ' files, ' + fmt(c.qid_indexes.size_bytes) + '</span></div>' +
-      '<div class="mc-row"><span class="mc-label">' + tH('total_cache') + '</span><span class="mc-value">' + fmt(d.total_bytes) + '</span></div>';
+      '<div class="mc-row"><span class="mc-label">' + tH('total_cache') + '</span><span class="mc-value">' + fmt(d.total_bytes) + '</span></div>' +
+      '<div class="ms-cache-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' +
+        '<button class="pill" onclick="_cacheAction(this,\'clear-search\')">' + tH('clear_search_cache') + '</button>' +
+        '<button class="pill" onclick="_cacheAction(this,\'clear-suggest\')">' + tH('clear_suggest_cache') + '</button>' +
+        '<button class="pill" onclick="_cacheAction(this,\'rebuild-title\')">' + tH('rebuild_title_indexes') + '</button>' +
+        '<button class="pill" onclick="_cacheAction(this,\'rebuild-qid\')">' + tH('rebuild_qid_indexes') + '</button>' +
+        '<span id="ms-cache-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
+      '</div>';
     el.innerHTML = sh;
   }).catch(function() {});
   // Async fill from stats
@@ -4285,6 +5016,378 @@ function _msServerHtml() {
     if (el2) el2.value = '(unavailable)';
   });
   return h;
+}
+
+
+// Below this many installed ZIMs, the warm-everything default is fine and
+// the hot-cache UI gets in the way. Render it collapsed under a "Show" toggle
+// so users with a small library can still pin if they want to.
+const _HOT_ZIMS_MIN = 10;
+let _hotZimsForceShow = false;
+
+async function _renderHotZimsSection() {
+  let hotData, zims;
+  try {
+    [hotData, zims] = await Promise.all([
+      manageFetch('/manage/hot').then(r => r.json()),
+      fetch('/list').then(r => r.json()),
+    ]);
+  } catch (e) {
+    const errEl = document.getElementById('ms-hot-zims');
+    if (errEl) errEl.textContent = t('error');
+    return;
+  }
+  const container = document.getElementById('ms-hot-zims');
+  if (!container) return;
+  while (container.firstChild) container.removeChild(container.firstChild);
+
+  const hasHotConfigured = (hotData.hot_zims || []).length > 0;
+  const zimCount = Array.isArray(zims) ? zims.length : 0;
+  // Collapse the section when there are too few ZIMs to benefit from
+  // pinning. User can expand it via the toggle.
+  if (!hasHotConfigured && !hotData.env_locked && !_hotZimsForceShow) {
+    const toggle = document.createElement('button');
+    toggle.className = 'pill ms-hot-show';
+    toggle.textContent = t('hot_zims_show_anyway');
+    toggle.onclick = () => {
+      // Render expanded: same code as below but with the threshold bypassed.
+      // Easiest: temporarily mark "hot configured" so the second render
+      // takes the full path, then re-render.
+      _hotZimsForceShow = true;
+      _renderHotZimsSection();
+    };
+    container.appendChild(toggle);
+    return;
+  }
+
+  if (hotData.env_locked) {
+    const note = document.createElement('div');
+    note.className = 'ms-hint';
+    note.style.color = 'var(--amber)';
+    note.textContent = t('hot_zims_env_locked');
+    container.appendChild(note);
+    return;
+  }
+
+  const hotSet = new Set(hotData.hot_zims || []);
+  const zimNames = (Array.isArray(zims) ? zims : []).map(z => z.name).filter(Boolean).sort();
+  const zimTitles = Object.fromEntries(
+    (Array.isArray(zims) ? zims : []).map(z => [z.name, z.title || z.name])
+  );
+  if (zimNames.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'ms-hint';
+    empty.textContent = t('no_zims_installed');
+    container.appendChild(empty);
+    return;
+  }
+
+  // Toolbar: search box + select-all / clear-all buttons.
+  const toolbar = document.createElement('div');
+  toolbar.className = 'hot-zims-toolbar';
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.className = 'hot-zims-search';
+  search.placeholder = t('hot_zims_search_placeholder');
+  search.addEventListener('input', () => _filterHotZimsList(search.value));
+  const allBtn = document.createElement('button');
+  allBtn.className = 'pill';
+  allBtn.textContent = t('select_all');
+  allBtn.onclick = () => _toggleAllHotZims(true);
+  const noneBtn = document.createElement('button');
+  noneBtn.className = 'pill';
+  noneBtn.textContent = t('select_none');
+  noneBtn.onclick = () => _toggleAllHotZims(false);
+  toolbar.appendChild(search);
+  toolbar.appendChild(allBtn);
+  toolbar.appendChild(noneBtn);
+  container.appendChild(toolbar);
+
+  const list = document.createElement('div');
+  list.className = 'hot-zims-list';
+  zimNames.forEach(name => {
+    const row = document.createElement('label');
+    row.className = 'hot-zims-row';
+    row.dataset.search = (name + ' ' + (zimTitles[name] || '')).toLowerCase();
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = name;
+    cb.checked = hotSet.has(name);
+    const title = document.createElement('span');
+    title.className = 'hot-zims-title';
+    title.textContent = zimTitles[name] || name;
+    const id = document.createElement('span');
+    id.className = 'hot-zims-id';
+    id.textContent = name;
+    row.appendChild(cb);
+    row.appendChild(title);
+    row.appendChild(id);
+    list.appendChild(row);
+  });
+  container.appendChild(list);
+
+  const actions = document.createElement('div');
+  actions.className = 'hot-zims-actions';
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'manage-btn-action';
+  saveBtn.textContent = t('save');
+  saveBtn.onclick = () => _saveHotZims(saveBtn);
+  actions.appendChild(saveBtn);
+  const status = document.createElement('span');
+  status.id = 'ms-hot-status';
+  status.className = 'ms-hint';
+  status.style.margin = '0';
+  actions.appendChild(status);
+  container.appendChild(actions);
+}
+
+function _filterHotZimsList(query) {
+  const q = query.trim().toLowerCase();
+  document.querySelectorAll('#ms-hot-zims .hot-zims-row').forEach(row => {
+    row.style.display = !q || row.dataset.search.includes(q) ? '' : 'none';
+  });
+}
+
+function _toggleAllHotZims(checked) {
+  // Apply to currently-visible rows only (so search-narrow then select-all works).
+  document.querySelectorAll('#ms-hot-zims .hot-zims-row').forEach(row => {
+    if (row.style.display === 'none') return;
+    const cb = row.querySelector('input[type="checkbox"]');
+    if (cb) cb.checked = checked;
+  });
+}
+
+async function _renderSeedingSection() {
+  let bt, seeding;
+  try {
+    [bt, seeding] = await Promise.all([
+      manageFetch('/manage/bt-status').then(r => r.json()),
+      manageFetch('/manage/seeding').then(r => r.json()),
+    ]);
+  } catch (e) {
+    const errEl = document.getElementById('ms-bt-status');
+    if (errEl) errEl.textContent = t('error');
+    return;
+  }
+  const statusEl = document.getElementById('ms-bt-status');
+  const listEl = document.getElementById('ms-seeding-list');
+  if (!statusEl || !listEl) return;
+  // Status row: dot + state + hint
+  const dot = bt.status === 'ready' ? '🟢' : bt.status === 'unavailable' ? '🟡' : '⚪';
+  const stateLabel = t('bt_state_' + bt.status);
+  let html = '<div class="mc-row"><span class="mc-label"><span style="margin-right:7px">' + dot + '</span>' + esc(stateLabel) + '</span>';
+  if (bt.bt_port) {
+    html += '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
+      'port ' + bt.bt_port + ' · ' + (bt.backend || 'aria2') + '</span>';
+  }
+  html += '</div>';
+  // Friendly client-side copy for the known states; raw server hint only
+  // as a fallback for states added later.
+  const btHint = bt.status === 'off' ? t('bt_off_hint')
+    : bt.status === 'unavailable' ? t('bt_unavailable_hint')
+    : bt.hint;
+  if (btHint) {
+    html += '<div class="ms-hint" style="margin-top:4px">' + esc(btHint) + '</div>';
+  }
+  // Surface the local peer instance name + a count of LAN peers if any.
+  // Lets users confirm "I'm advertising as ___" at a glance.
+  try {
+    const pr = await authedFetch('/manage/peers');
+    if (pr.ok) {
+      const pd = await pr.json();
+      if (pd.enabled) {
+        const self = pd.self || '';
+        const n = (pd.peers || []).length;
+        // The advertised name is editable in place; persists as a pref
+        // and takes effect on the next restart (mDNS re-registration).
+        let nameLocked = false;
+        try { nameLocked = !!(await (await authedFetch('/manage/mirror')).json()).peer_name_env_locked; } catch (e) {}
+        html += '<div class="mc-row" style="margin-top:6px">' +
+          '<span class="mc-label">' + tH('peer_advertising_as') + '</span>' +
+          '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
+          '<input type="text" class="peer-name-input" value="' + escAttr(self) + '" maxlength="63"' +
+          (nameLocked ? ' disabled' : '') +
+          ' title="' + escAttr(t('peer_name_hint')) + '" aria-label="' + escAttr(t('peer_advertising_as')) + '"' +
+          ' onchange="_setPeerName(this)">' +
+          (n > 0 ? ' · ' + n + ' ' + tH('peers') : '') +
+          '</span></div>';
+      }
+    }
+  } catch (e) { /* fail-soft */ }
+  statusEl.innerHTML = html;
+
+  // Seeding list — empty when BT is off OR nothing's seeding yet
+  const torrents = seeding.torrents || [];
+  if (!torrents.length) {
+    listEl.innerHTML = '<div class="ms-hint" style="margin-top:6px">' +
+      esc(bt.status === 'ready' ? t('seeding_empty') : '') + '</div>';
+    return;
+  }
+  const fmt = _fmtBytesBin;
+  let rows = '<div class="seeding-totals">' +
+    tH('seeding_totals', {
+      n: torrents.length,
+      up: fmt(seeding.totals.uploaded),
+      down: fmt(seeding.totals.downloaded),
+      ratio: seeding.totals.ratio.toFixed(2),
+    }) + '</div>';
+  rows += '<div class="seeding-list">';
+  for (const tr of torrents) {
+    const ratioPct = Math.min(100, (tr.ratio / seeding.ratio_cap) * 100);
+    rows += '<div class="seeding-row">' +
+      '<div class="seeding-name" title="' + escAttr(tr.info_hash || '') + '">' + esc(tr.filename) + '</div>' +
+      '<div class="seeding-meta">' +
+        '<span>' + esc(t('seeding_state_' + tr.state, {default: tr.state})) + '</span>' +
+        ' · <span>' + tr.peers + ' ' + tH('peers') + '</span>' +
+        ' · <span>↑ ' + fmt(tr.uploaded_bytes) + '</span>' +
+        ' · <span>' + tr.ratio.toFixed(2) + 'x</span>' +
+      '</div>' +
+      '<div class="seeding-bar"><div class="seeding-bar-fill" style="width:' + ratioPct + '%"></div></div>' +
+    '</div>';
+  }
+  rows += '</div>';
+  listEl.innerHTML = rows;
+}
+
+// The v1.7 sharing hero: three switches — BitTorrent (with seed ratio),
+// Mirror, Nearby. Env-locked settings render disabled with the env hint.
+function _shareSwitch(key, on, locked, envVar, titleKey, descHtml) {
+  return '<div class="share-row' + (locked ? ' share-locked' : '') + '">' +
+    '<div class="share-row-text">' +
+      '<div class="share-row-title">' + tH(titleKey) + '</div>' +
+      '<div class="share-row-desc">' + descHtml + '</div>' +
+      (locked ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
+    '</div>' +
+    '<label class="switch"><input type="checkbox" role="switch"' + (on ? ' checked' : '') + (locked ? ' disabled' : '') +
+      ' aria-label="' + escAttr(t(titleKey)) + '"' +
+      ' onchange="_setBtSetting(\'' + key + '\', this)"><span class="switch-slider"></span></label>' +
+  '</div>';
+}
+
+async function _setBtSetting(key, cb) {
+  cb.disabled = true;
+  try {
+    const body = {}; body[key] = cb.checked;
+    const r = await manageFetch('/manage/bt-settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) { cb.checked = !cb.checked; _showToast(t('save_failed')); }
+    else if (key === 'torrent') { _renderMirrorSection(); _renderSeedingSection(); }
+  } catch (e) {
+    cb.checked = !cb.checked; _showToast(t('save_failed'));
+  }
+  cb.disabled = false;
+}
+
+async function _setPeerName(inp) {
+  const v = inp.value.trim().slice(0, 63);
+  try {
+    const r = await manageFetch('/manage/bt-settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({peer_name: v})
+    });
+    if (!r.ok) _showToast(t('save_failed'));
+    else _showToast(t('saved') + ' · ' + t('restart_hint'));
+  } catch (e) { _showToast(t('save_failed')); }
+}
+
+async function _setSeedRatio(inp) {
+  const v = Math.max(0, Math.min(10, parseFloat(inp.value) || 0));
+  inp.value = v;
+  try {
+    const r = await manageFetch('/manage/bt-settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({seed_ratio: v})
+    });
+    if (!r.ok) _showToast(t('save_failed'));
+  } catch (e) { _showToast(t('save_failed')); }
+}
+
+async function _renderMirrorSection() {
+  let m;
+  try {
+    const r = await authedFetch('/manage/mirror');
+    if (!r.ok) return;
+    m = await r.json();
+  } catch (e) {
+    return;
+  }
+  const el = document.getElementById('ms-mirror-status');
+  if (!el) return;
+  const ratioField = '<span class="share-ratio">' + tH('seed_ratio_label') +
+    ' <input type="number" min="0" max="10" step="0.5" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
+    ((m.seed_ratio_env_locked || !m.torrent_enabled) ? ' disabled' : '') +
+    ' aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">\u00d7 <span class="share-ratio-note">' + tH('seed_ratio_zero_inline') + '</span></span>';
+  let h = '<div class="share-rows">' +
+    _shareSwitch('torrent', m.torrent_enabled, m.torrent_env_locked, 'ZIMI_BT',
+      'share_bt_title', tH('share_bt_desc') + ' ' + ratioField) +
+    _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
+      'share_mirror_title', tH('share_mirror_desc')) +
+    _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
+      'share_nearby_title', tH('share_nearby_desc')) +
+  '</div>';
+  if (m.enabled && m.torrent_enabled) {
+    const fmtKb = m.upload_kb >= 1024
+      ? (m.upload_kb / 1024).toFixed(1) + ' MB/s'
+      : m.upload_kb + ' KB/s';
+    h += '<div class="mc-row" style="margin-top:8px">' +
+      '<span class="mc-label">\ud83d\udce1 ' + tH('mirror_active') + '</span>' +
+      '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
+        'ratio \u2264 ' + m.ratio_cap.toFixed(0) + 'x \u00b7 \u2191 ' + fmtKb +
+      '</span></div>';
+  }
+  el.innerHTML = h;
+}
+
+
+async function _cacheAction(btn, action) {
+  const status = document.getElementById('ms-cache-status');
+  btn.disabled = true;
+  if (status) status.textContent = t('working');
+  try {
+    const res = await manageFetch('/manage/cache-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'failed');
+    if (status) status.textContent = data.status === 'started' ? t('rebuild_started') : t('cleared');
+    // Rebuild kicks off background work — nudge the activity poller so
+    // the topbar bar surfaces within ~250ms instead of waiting up to 30s
+    // for the next idle-cadence poll.
+    if (window._nudgeActivityPoll) window._nudgeActivityPoll();
+  } catch (e) {
+    if (status) status.textContent = t('error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+
+async function _saveHotZims(btn) {
+  const checks = document.querySelectorAll('#ms-hot-zims input[type="checkbox"]:checked');
+  const names = Array.from(checks).map(c => c.value);
+  const status = document.getElementById('ms-hot-status');
+  btn.disabled = true;
+  if (status) status.textContent = t('saving');
+  try {
+    const res = await manageFetch('/manage/hot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hot_zims: names }),
+    });
+    if (!res.ok) throw new Error('save failed');
+    if (status) status.textContent = t('saved') + ' · ' + t('restart_hint');
+  } catch (e) {
+    if (status) status.textContent = t('error');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 
@@ -4390,8 +5493,10 @@ function renderInstalled(filterText) {
     return;
   }
 
-  // Group by category
+  // Group by category. ZIMs with pending updates are pulled into a separate
+  // "Updates available" pseudo-group rendered first so they're easy to spot.
   const groups = {};
+  const pendingUpdates = [];
   for (const z of zims) {
     const cat = z.category || categorizeZim(z.name);
     if (manageCategoryFilter && cat !== manageCategoryFilter) continue;
@@ -4401,6 +5506,10 @@ function renderInstalled(filterText) {
       const title = (z.title || z.name).toLowerCase();
       const catLower = cat.toLowerCase();
       if (!title.includes(ft) && !catLower.includes(ft) && !z.name.toLowerCase().includes(ft)) continue;
+    }
+    if (_availableUpdates[z.file]) {
+      pendingUpdates.push(z);
+      continue;
     }
     if (!groups[cat]) groups[cat] = [];
     groups[cat].push(z);
@@ -4417,16 +5526,22 @@ function renderInstalled(filterText) {
   }
 
   const catOrder = Object.keys(groups).sort();
+  // Render pending-updates pseudo-group first.
+  if (pendingUpdates.length) {
+    catOrder.unshift('__updates__');
+    groups['__updates__'] = pendingUpdates;
+  }
   let items_h = '';
   for (const cat of catOrder) {
     const items = groups[cat];
     if (!items || !items.length) continue;
     items.sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
-    items_h += '<div class="manage-installed-group">';
-    items_h += '<div class="ci-section-label">' + esc(_catDisplayName(cat)) + ' (' + items.length + ')</div>';
+    items_h += '<div class="manage-installed-group' + (cat === '__updates__' ? ' mig-updates' : '') + '">';
+    const groupLabel = cat === '__updates__' ? t('updates_available_section') : _catDisplayName(cat);
+    items_h += '<div class="ci-section-label">' + esc(groupLabel) + ' (' + items.length + ')</div>';
     for (const z of items) {
       const iconHtml = z.has_icon
-        ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" width="40" height="40" loading="lazy">'
+        ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="40" height="40" loading="lazy">'
         : '<span class="ci-letter">' + (esc(z.title || z.name)[0] || '?').toUpperCase() + '</span>';
       const meta = [];
       if (typeof z.entries === 'number') meta.push(t('n_entries', {n: z.entries.toLocaleString()}));
@@ -4790,6 +5905,7 @@ async function downloadZim(url, btn, isUpdate) {
     _dlRecentStart = Date.now();
     _showManageBadge(true, 1);
     refreshDownloads();
+    if (window._nudgeActivityPoll) window._nudgeActivityPoll();
   } catch(e) {
     if (btn) { btn.textContent = t('error'); btn.disabled = false; }
   }
@@ -4901,6 +6017,7 @@ function dlTitle(dl) {
 }
 
 let _dlPrevAllDone = true; // track when downloads finish to trigger refresh
+let _dlPrevCompletedCount = 0; // per-download completion → refresh library list
 let _dlRecentStart = 0;   // timestamp of last download start (grace period for server lag)
 
 function _updateDownloadsTabBadge(activeCount) {
@@ -4920,17 +6037,35 @@ async function refreshDownloads() {
   const dlEl = document.getElementById('manage-downloads');
   if (!dlEl) return;
   try {
-    const res = await manageFetch('/manage/downloads');
+    const [res, seedRes] = await Promise.all([
+      manageFetch('/manage/downloads'),
+      authedFetch('/manage/seeding').catch(() => null),
+    ]);
     const data = await res.json();
     const dls = data.downloads || [];
-    if (!dls.length) {
+    let seedingTorrents = [], seedingCap = 2;
+    if (seedRes && seedRes.ok) {
+      try {
+        const sd = await seedRes.json();
+        seedingTorrents = (sd.torrents || []).filter(t => t.completed_bytes > 0);
+        seedingCap = sd.ratio_cap || 2;
+      } catch (e) {}
+    }
+    if (!dls.length && !seedingTorrents.length) {
       // Grace period: keep polling fast for 10s after a download was started
       // (server may not have registered it yet)
       if (_dlRecentStart && Date.now() - _dlRecentStart < 10000) {
         _dlTimer = setTimeout(refreshDownloads, 1000);
         return;
       }
-      dlEl.innerHTML = ''; _dlPrevAllDone = true; _showManageBadge(false);
+      while (dlEl.firstChild) dlEl.removeChild(dlEl.firstChild);
+      const emptyEl = document.createElement('div');
+      emptyEl.className = 'dl-empty';
+      emptyEl.textContent = t('no_active_downloads');
+      dlEl.appendChild(emptyEl);
+      _dlPrevAllDone = true;
+      _showManageBadge(false);
+      _updateDownloadsTabBadge(0);
       // Keep polling if auto-update may start downloads
       const sel = document.getElementById('auto-update-freq');
       if (sel && sel.value !== 'disabled' && mode === 'manage') _dlTimer = setTimeout(refreshDownloads, 5000);
@@ -4939,16 +6074,71 @@ async function refreshDownloads() {
     _dlRecentStart = 0; // clear grace once server reports downloads
     const anyActive = dls.some(d => !d.done);
     const allDone = !anyActive;
+    const queuedDls = dls.filter(d => d.queued);
+    const downloadingDls = dls.filter(d => !d.done && !d.queued);
+    const completedDls = dls.filter(d => d.done);
+    const filter = localStorage.getItem('zimi_dl_filter') || 'all';
+    const visibleDls = (filter === 'queued') ? queuedDls
+      : (filter === 'downloading') ? downloadingDls
+      : (filter === 'completed') ? completedDls
+      : (filter === 'seeding') ? []
+      : downloadingDls.concat(queuedDls).concat(completedDls);
+    // A download finished while others still run — refresh the library
+    // list NOW so the new ZIM is browsable without waiting for the batch.
+    // (The heavier status/updates refresh still runs on the final one.)
+    if (completedDls.length > _dlPrevCompletedCount && !allDone) {
+      try {
+        const lr = await fetch('/list');
+        zimsCache = await lr.json();
+        _rebuildZimsMap();
+        if (_catalogCache) _enrichCatalogInstalled(_catalogCache);
+      } catch (e) {}
+    }
+    _dlPrevCompletedCount = completedDls.length;
     let h = '<div class="manage-card"><h2>' + tH('downloads') + '</h2>';
     if (allDone) {
       h += '<button class="dl-clear-btn" onclick="clearDownloads()">' + tH('clear') + '</button>';
     }
-    for (const dl of dls) {
+    // Filter pill bar — All / Downloading / Queued / Completed
+    const pill = (key, label, count) =>
+      '<button class="pill dl-filter-pill' + (filter === key ? ' active' : '') +
+      '" onclick="_setDownloadFilter(\'' + key + '\')">' +
+      label + (count > 0 ? ' <span class="pill-count">' + count + '</span>' : '') +
+      '</button>';
+    h += '<div class="dl-filter-bar">' +
+      pill('all', tH('all'), dls.length) +
+      pill('downloading', tH('downloads_active'), downloadingDls.length) +
+      pill('queued', tH('downloads_queued'), queuedDls.length) +
+      pill('completed', tH('downloads_completed'), completedDls.length) +
+      (seedingTorrents.length ? pill('seeding', tH('seeding_tab'), seedingTorrents.length) : '') +
+    '</div>';
+    h += '<div class="dl-grid">';
+    if (filter === 'seeding') {
+      const fmtUp = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
+      for (const sd of seedingTorrents) {
+        const sName = (sd.filename || '').replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '').replace(/_/g, ' ');
+        const upSpeed = sd.up_speed > 1024 ? ' · ↑ ' + (sd.up_speed / (1024 * 1024)).toFixed(1) + ' MB/s' : '';
+        h += '<div class="dl-item">' +
+          '<div class="dl-row"><span class="dl-name">' + esc(sName) + '</span>' +
+          '<span class="dl-size">↑ ' + fmtUp(sd.uploaded_bytes) + ' · ' + tH('seed_ratio', {r: (sd.ratio || 0).toFixed(2)}) +
+            (sd.peers > 0 ? ' · ' + tH('n_peers', {n: sd.peers}) : '') + upSpeed + '</span></div>' +
+          '<div class="dl-progress" title="' + escAttr(t('seed_bar_tip', {cap: seedingCap})) + '"><div class="dl-progress-bar" style="width:' + Math.min(100, Math.round(((sd.ratio || 0) / seedingCap) * 100)) + '%"></div></div>' +
+          '</div>';
+      }
+      if (!seedingTorrents.length) h += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
+    }
+    if (filter !== 'seeding' && filter !== 'all' && !visibleDls.length) {
+      h += '<div class="dl-empty">' + tH('dl_filter_empty') + '</div>';
+    }
+    for (const dl of visibleDls) {
       const title = dlTitle(dl);
       const fmtBytes = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
       const totalStr = dl.total_bytes ? fmtBytes(dl.total_bytes) : '?';
       const dlStr = fmtBytes(dl.downloaded_bytes);
-      const pct = dl.percent || 0;
+      // Total unknown = BT still fetching metadata / finding peers. Show a
+      // sweeping bar + label instead of a lying "0 MB / ? · 0.0 MB/s".
+      const indeterminate = !dl.total_bytes && !dl.queued && !dl.paused;
+      const pct = dl.total_bytes ? (dl.percent || 0) : 0;
       const speed = dl.elapsed > 0 && dl.downloaded_bytes > 0 ? ((dl.downloaded_bytes / 1024 / 1024) / dl.elapsed).toFixed(1) : '0';
 
       h += '<div class="dl-item">';
@@ -4956,23 +6146,39 @@ async function refreshDownloads() {
       if (dl.error) {
         h += '<span class="dl-error">' + esc(dl.error) + '</span>';
       } else if (dl.done) {
-        h += '<span class="dl-done">\u2713 Complete</span>';
+        h += '<span class="dl-done">\u2713 ' + tH('dl_complete') + '</span>';
+      } else if (indeterminate) {
+        h += '<span class="dl-size">' + tH('bt_connecting') + '</span>';
       } else {
-        h += '<span class="dl-size">' + dlStr + ' / ' + totalStr + ' · ' + speed + ' MB/s</span>';
+        h += '<span class="dl-size">' + dlStr + ' / ' + totalStr + ' · ' + Math.round(pct) + '% · ' + speed + ' MB/s</span>';
       }
       h += '</div>';
 
       if (!dl.done && !dl.error) {
-        h += '<div class="dl-progress"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>';
-        var mirrorInfo = dl.mirror_host ? '<span class="dl-mirror" title="' + esc(dl.mirror_host) + '">' + esc(dl.mirror_host) + (dl.mirror_count > 1 ? ' (' + tH('n_mirrors', {n: dl.mirror_count}) + ')' : '') + '</span>' : '';
-        h += '<div class="dl-actions">' + mirrorInfo + '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">' + tH('cancel') + '</button></div>';
+        h += '<div class="dl-progress' + (dl.paused ? ' dl-paused' : '') + (indeterminate ? ' dl-indeterminate' : '') +
+          '"><div class="dl-progress-bar"' + (indeterminate ? '' : ' style="width:' + pct + '%"') + '></div></div>';
+        var sourcePill = dl.source === 'bt'
+          ? '<span class="dl-source dl-source-bt" title="' + escAttr(t('dl_via_bt_tip')) + '">' +
+              tH('dl_via_bt') +
+              (dl.bt_peers > 0 ? ' · ' + tH('n_peers', {n: dl.bt_peers}) : '') +
+            '</span>'
+          : '';
+        // Mirror info describes the HTTP path — on a BT transfer it reads as
+        // nonsense next to the peer count, so show one or the other.
+        var mirrorInfo = (dl.source !== 'bt' && dl.mirror_host) ? '<span class="dl-mirror" title="' + esc(dl.mirror_host) + '">' + esc(dl.mirror_host) + (dl.mirror_count > 1 ? ' (' + tH('n_mirrors', {n: dl.mirror_count}) + ')' : '') + '</span>' : '';
+        var pauseBtn = dl.queued ? '' :
+          '<button class="dl-pause-btn" onclick="pauseDownload(\'' + escAttr(dl.id) + '\',' + (dl.paused ? 'false' : 'true') + ')">' +
+            (dl.paused ? tH('resume') : tH('pause')) + '</button>';
+        h += '<div class="dl-actions">' + sourcePill + mirrorInfo + pauseBtn +
+          '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">' + tH('cancel') + '</button></div>';
       }
       if (dl.error && dl.error !== 'Cancelled') {
         h += '<div class="dl-actions"><button class="dl-retry-btn" onclick="downloadZim(\'' + escAttr(dl.url) + '\')">' + tH('retry') + '</button></div>';
       }
       h += '</div>';
     }
-    h += '</div>';
+    h += '</div>';  // close .dl-grid
+    h += '</div>';  // close .manage-card
     dlEl.innerHTML = h;
     // Update catalog item buttons with download progress
     for (const dl of dls) {
@@ -4986,7 +6192,7 @@ async function refreshDownloads() {
             var pct = Math.round(dl.percent);
             var circ = 2 * Math.PI * 10; // circumference for r=10
             var offset = circ * (1 - pct / 100);
-            btn.innerHTML = '<span class="ci-dl-ring" title="' + pct + '% — click to cancel">' +
+            btn.innerHTML = '<span class="ci-dl-ring" title="' + pct + '% · click to cancel">' +
               '<svg viewBox="0 0 24 24" width="24" height="24">' +
               '<circle cx="12" cy="12" r="10" stroke="var(--border)" stroke-width="2" fill="none"/>' +
               '<circle cx="12" cy="12" r="10" stroke="var(--amber)" stroke-width="2" fill="none" stroke-dasharray="' + circ.toFixed(2) + '" stroke-dashoffset="' + offset.toFixed(2) + '" stroke-linecap="round" transform="rotate(-90 12 12)"/>' +
@@ -5072,7 +6278,9 @@ async function refreshDownloads() {
       } catch(e) {}
     }
     _dlPrevAllDone = allDone;
-    _showManageBadge(anyActive, dls.filter(d => !d.done).length);
+    const activeCount = dls.filter(d => !d.done).length;
+    _showManageBadge(anyActive, activeCount);
+    _updateDownloadsTabBadge(activeCount);
     if (mode === 'manage') {
       // Poll fast while downloads active, slow-poll when auto-update enabled (server may start downloads)
       const sel = document.getElementById('auto-update-freq');
@@ -5089,6 +6297,84 @@ async function clearDownloads() {
     const dlEl = document.getElementById('manage-downloads');
     if (dlEl) dlEl.innerHTML = '';
   } catch(e) {}
+}
+
+async function _toggleUpdatesDetail() {
+  const el = document.getElementById('updates-detail');
+  if (!el) return;
+  if (el.style.display !== 'none') {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'block';
+  while (el.firstChild) el.removeChild(el.firstChild);
+  const loading = document.createElement('div');
+  loading.className = 'ms-hint';
+  loading.textContent = t('loading');
+  el.appendChild(loading);
+  try {
+    const res = await manageFetch('/manage/updates');
+    const data = await res.json();
+    while (el.firstChild) el.removeChild(el.firstChild);
+    const updates = data.updates || [];
+    if (!updates.length) {
+      const none = document.createElement('div');
+      none.className = 'ms-hint';
+      none.textContent = t('all_up_to_date');
+      el.appendChild(none);
+      return;
+    }
+    updates.forEach(u => {
+      const row = document.createElement('div');
+      row.className = 'updates-detail-row';
+      const top = document.createElement('div');
+      top.className = 'updates-detail-top';
+      const name = document.createElement('span');
+      name.className = 'updates-detail-name';
+      name.textContent = u.title || u.name;
+      const versions = document.createElement('span');
+      versions.className = 'updates-detail-versions';
+      versions.textContent = u.installed_date + ' → ' + u.latest_date;
+      top.appendChild(name);
+      top.appendChild(versions);
+      row.appendChild(top);
+      // Filename diff so the user can spot weirdness (e.g. flavor changes that
+      // shouldn't happen — already filtered by _check_updates but visible if
+      // anything slips through).
+      const nextFname = (u.download_url || '').split('/').pop()
+        .replace(/\.meta4$/, '');
+      if (u.installed_file && nextFname && nextFname !== u.installed_file) {
+        const fnames = document.createElement('div');
+        fnames.className = 'updates-detail-fnames';
+        fnames.textContent = u.installed_file + '  →  ' + nextFname;
+        row.appendChild(fnames);
+      }
+      el.appendChild(row);
+    });
+  } catch (e) {
+    while (el.firstChild) el.removeChild(el.firstChild);
+    const err = document.createElement('div');
+    err.className = 'ms-hint';
+    err.textContent = t('error');
+    el.appendChild(err);
+  }
+}
+
+function _setDownloadFilter(filter) {
+  localStorage.setItem('zimi_dl_filter', filter);
+  refreshDownloads();
+}
+
+async function pauseDownload(id, pause) {
+  const path = pause ? '/manage/pause' : '/manage/resume';
+  try {
+    await manageFetch(path, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id}),
+    });
+    refreshDownloads();
+  } catch (e) {}
 }
 
 async function cancelDownload(id) {
@@ -5271,6 +6557,10 @@ function openReader(url) {
   // PDFs: render in embedded pdf.js viewer (skip if already a viewer URL)
   if (lurl.endsWith('.pdf') && !url.startsWith('/static/pdfjs/')) {
     url = _pdfViewerUrl(url);
+  }
+  // A11y rewrite opt-in: only ZIM article URLs (/w/...), not PDFs or static.
+  if (_getStorageFlag(SK.A11Y_REWRITE) && url.startsWith('/w/') && !lurl.endsWith('.pdf')) {
+    url += (url.includes('?') ? '&' : '?') + 'a11y=1';
   }
   readerOpen = true;
   const reader = document.getElementById('reader');
@@ -6552,5 +7842,117 @@ async function settingsRefreshCache() {
     setTimeout(function() { _refreshing = false; }, 2000);
   }
 }
+
+// ── Background activity bar ──────────────────────────────────────────
+// Polls /manage/activity every 5s while something is happening; pauses
+// (but doesn't permanently die) when idle. Hidden by default; only
+// shown when there's actual work to avoid permanent UI noise.
+//
+// Two intervals: ACTIVE_MS while building/downloading/seeding > 0,
+// IDLE_MS while quiet. Idle polling stays live so a manual rebuild or
+// download started AFTER initial idle still surfaces. _renderActivity
+// returns true when activity is showing, false when idle — the poller
+// uses that to swap intervals, never to stop.
+let _activityTimer = null;
+let _activityIdle = false;
+let _activityLastSig = '';
+const _ACTIVITY_POLL_ACTIVE_MS = 5000;
+const _ACTIVITY_POLL_IDLE_MS = 30000;
+
+function _renderActivity(a) {
+  const bar = document.getElementById('activity-bar');
+  if (!bar || !a) return false;
+  const parts = [];
+  if (a.indexing && a.indexing.state === 'building') {
+    const cur = a.indexing.current
+      ? '<span class="ab-current">' + esc(a.indexing.current) + '</span> · '
+      : '';
+    parts.push(
+      tH('activity_indexing') + ' ' + cur +
+      (a.indexing.ready || 0) + '/' + (a.indexing.total || 0)
+    );
+  }
+  const dl = a.downloads || {};
+  if ((dl.active || 0) > 0) {
+    parts.push(dl.active + ' ' + tH('activity_downloading'));
+  }
+  if ((dl.queued || 0) > 0) {
+    parts.push(dl.queued + ' ' + tH('activity_queued'));
+  }
+  const seed = (a.seeding || {}).torrents || 0;
+  if (seed > 0) {
+    parts.push(seed + ' ' + tH('activity_seeding'));
+  }
+  if (parts.length === 0) {
+    bar.classList.remove('visible');
+    bar.hidden = true;
+    document.body.classList.remove('has-activity');
+    _activityLastSig = '';
+    return false;
+  }
+  // Only write the DOM when the rendered content actually changed.
+  // Avoids aria-live re-announcing the same string every 5s when nothing
+  // has ticked (screen-reader spam).
+  const sig = parts.join('|');
+  if (sig !== _activityLastSig) {
+    bar.innerHTML = parts.join('<span class="ab-sep">·</span>');
+    _activityLastSig = sig;
+  }
+  if (bar.hidden) {
+    bar.hidden = false;
+    void bar.offsetHeight; // force reflow so the slide-down animates
+    bar.classList.add('visible');
+    document.body.classList.add('has-activity');
+  }
+  return true;
+}
+
+function _scheduleNextActivityPoll(idle) {
+  if (_activityTimer) clearTimeout(_activityTimer);
+  const delay = idle ? _ACTIVITY_POLL_IDLE_MS : _ACTIVITY_POLL_ACTIVE_MS;
+  _activityIdle = !!idle;
+  _activityTimer = setTimeout(_pollActivity, delay);
+}
+
+async function _pollActivity() {
+  // On a password-protected server, don't poll (and 401-spam) until logged
+  // in. The 'load' event can fire before init() reaches _initSecondary(),
+  // so when the probe doesn't exist yet, defer — never fetch unprobed.
+  if (!_manageProbe) { _scheduleNextActivityPoll(false); return; }
+  try { await _manageProbe; } catch (e) {}
+  if (!_canPollManage()) { _scheduleNextActivityPoll(true); return; }
+  try {
+    const res = await authedFetch('/manage/activity', { credentials: 'same-origin' });
+    if (res.ok) {
+      const data = await res.json();
+      const stillActive = _renderActivity(data);
+      _scheduleNextActivityPoll(!stillActive);
+      return;
+    }
+    // Auth failure or manage disabled — back off to idle cadence (don't spam).
+    _scheduleNextActivityPoll(true);
+  } catch (e) {
+    // Network blip (laptop sleep, etc.) — keep polling at idle cadence.
+    _scheduleNextActivityPoll(true);
+  }
+}
+
+function _startActivityPolling() {
+  if (_activityTimer) return;
+  _pollActivity();
+}
+
+// Public hook: client code that triggers server work (cache-action,
+// download-start, etc.) can call this to make the bar appear within
+// seconds rather than waiting up to ACTIVITY_POLL_IDLE_MS.
+function _nudgeActivityPoll() {
+  if (_activityTimer) clearTimeout(_activityTimer);
+  _activityTimer = setTimeout(_pollActivity, 250);
+}
+window._nudgeActivityPoll = _nudgeActivityPoll;
+
+// Kick off the poller on load. Even if nothing is happening, one call
+// confirms the endpoint works; subsequent calls follow active/idle cadence.
+window.addEventListener('load', _startActivityPolling);
 
 init();

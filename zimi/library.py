@@ -6,6 +6,7 @@ maintain a single source of truth.
 """
 
 import glob
+import ipaddress
 import json
 import logging
 import os
@@ -18,11 +19,101 @@ import time
 import xml.etree.ElementTree as ET
 import urllib.error
 import urllib.request
-from urllib.parse import urlparse, urlencode
+from urllib.parse import urlparse, urlencode, quote
 
 import zimi.server as _srv
 
 log = logging.getLogger("zimi")
+
+
+# Hosts we trust to serve ZIM and .torrent companion URLs. Kiwix runs
+# multiple origins (`download.kiwix.org` for direct, `lbo.download.kiwix.org`
+# load-balanced, plus the Wikimedia dumps mirror for Wikimedia ZIMs). We
+# accept ANY subdomain of `kiwix.org`, plus the Wikimedia kiwix path on
+# `dumps.wikimedia.org`. Everything else is rejected so an attacker can't
+# inject metadata via a third-party URL.
+_TRUSTED_KIWIX_HOST_SUFFIXES = (".kiwix.org",)
+_TRUSTED_KIWIX_EXACT_HOSTS = ("kiwix.org",)
+_TRUSTED_MIRROR_PREFIXES = ("https://dumps.wikimedia.org/kiwix/",)
+
+
+def _is_lan_host(host):
+    """True if `host` is an IP literal safe to pull a peer ZIM from.
+
+    Peers advertise IP literals via mDNS (unauthenticated multicast), so a
+    malicious responder could name any address. We allow only private
+    (RFC1918) and loopback IPs and explicitly reject link-local — that blocks
+    the cloud-metadata endpoint (169.254.169.254) and any public host, so a
+    pill click can't be turned into an SSRF against off-LAN targets. A
+    hostname (non-literal) is rejected outright so nothing re-resolves later.
+    """
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if ip.is_link_local:
+        return False
+    return ip.is_private or ip.is_loopback
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Refuse HTTP redirects. Used wherever following one would be an SSRF
+    risk: Kiwix thumbnail fetches and LAN peer pulls. A peer that passed the
+    LAN-host check can't 302 us to an off-LAN target after the fact — the
+    redirect surfaces as a normal HTTPError the caller treats as a failure."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(
+            req.full_url, code, "Redirect blocked", headers, fp
+        )
+
+
+_NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirectHandler)
+
+
+class _KiwixRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follow redirects only to trusted Kiwix hosts. Used for thumbnail
+    fetches: Kiwix redirects library.kiwix.org → opds.library.kiwix.org, so a
+    blanket no-redirect policy breaks every catalog thumbnail. We follow the
+    redirect when it stays on *.kiwix.org and block it otherwise, so a
+    redirect to an arbitrary/internal host still can't be used for SSRF."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        host = (urlparse(newurl).hostname or "").lower()
+        if host == "kiwix.org" or host.endswith(".kiwix.org"):
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+        raise urllib.error.HTTPError(
+            req.full_url, code, "Redirect blocked (non-Kiwix host)", headers, fp
+        )
+
+
+_KIWIX_REDIRECT_OPENER = urllib.request.build_opener(_KiwixRedirectHandler)
+
+
+def _is_trusted_kiwix_url(url):
+    """Return True if `url` points to a known-good Kiwix-controlled host.
+
+    Requires https — http URLs are rejected even on trusted hosts so a
+    network-level attacker can't downgrade and inject metadata.
+    """
+    if not url:
+        return False
+    for prefix in _TRUSTED_MIRROR_PREFIXES:
+        if url.startswith(prefix):
+            return True
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme != "https":
+        return False
+    host = parsed.hostname
+    if not host:
+        return False
+    host = host.lower()
+    if host in _TRUSTED_KIWIX_EXACT_HOSTS:
+        return True
+    return any(host.endswith(suffix) for suffix in _TRUSTED_KIWIX_HOST_SUFFIXES)
 
 
 # ============================================================================
@@ -34,11 +125,12 @@ log = logging.getLogger("zimi")
 _AUTO_UPDATE_CONFIG = os.path.join(_srv.ZIMI_DATA_DIR, "auto_update.json")
 _auto_update_env_locked = "ZIMI_AUTO_UPDATE" in os.environ
 
+
 def _load_auto_update_config():
     """Load auto-update settings. Env var overrides; otherwise use persisted config."""
     # Look up through _srv so test monkey-patches on server.py propagate
-    locked = getattr(_srv, '_auto_update_env_locked', _auto_update_env_locked)
-    config_path = getattr(_srv, '_AUTO_UPDATE_CONFIG', _AUTO_UPDATE_CONFIG)
+    locked = getattr(_srv, "_auto_update_env_locked", _auto_update_env_locked)
+    config_path = getattr(_srv, "_AUTO_UPDATE_CONFIG", _AUTO_UPDATE_CONFIG)
     if locked:
         enabled = os.environ.get("ZIMI_AUTO_UPDATE", "0") == "1"
         freq = os.environ.get("ZIMI_UPDATE_FREQ", "weekly")
@@ -50,16 +142,19 @@ def _load_auto_update_config():
     except (OSError, json.JSONDecodeError, KeyError):
         return False, "weekly"
 
+
 def _save_auto_update_config(enabled, freq):
     """Persist auto-update settings to disk."""
-    config_path = getattr(_srv, '_AUTO_UPDATE_CONFIG', _AUTO_UPDATE_CONFIG)
+    config_path = getattr(_srv, "_AUTO_UPDATE_CONFIG", _AUTO_UPDATE_CONFIG)
     _srv._atomic_write_json(config_path, {"enabled": enabled, "frequency": freq})
+
 
 _auto_update_enabled, _auto_update_freq = False, "weekly"  # defaults; loaded by _init()
 _auto_update_last_check = None
 _auto_update_thread = None
 
 _FREQ_SECONDS = {"daily": 86400, "weekly": 604800, "monthly": 2592000}
+
 
 def _auto_update_loop(initial_delay=0):
     """Background thread that checks for and applies ZIM updates.
@@ -72,12 +167,14 @@ def _auto_update_loop(initial_delay=0):
     if initial_delay > 0:
         log.info("Auto-update: first check in %ds", initial_delay)
         for _ in range(initial_delay):
-            if not getattr(_srv, '_auto_update_enabled', _auto_update_enabled):
+            if not getattr(_srv, "_auto_update_enabled", _auto_update_enabled):
                 return
             time.sleep(1)
-    log.info("Auto-update enabled: checking every %s",
-             getattr(_srv, '_auto_update_freq', _auto_update_freq))
-    while getattr(_srv, '_auto_update_enabled', _auto_update_enabled):
+    log.info(
+        "Auto-update enabled: checking every %s",
+        getattr(_srv, "_auto_update_freq", _auto_update_freq),
+    )
+    while getattr(_srv, "_auto_update_enabled", _auto_update_enabled):
         try:
             _srv._auto_update_last_check = time.time()
             updates = _check_updates()
@@ -90,14 +187,18 @@ def _auto_update_loop(initial_delay=0):
                     # Strip .meta4 suffix to get the actual filename
                     raw_name = url.rsplit("/", 1)[-1] if "/" in url else url
                     if raw_name.endswith(".meta4"):
-                        raw_name = raw_name[:-len(".meta4")]
+                        raw_name = raw_name[: -len(".meta4")]
                     filename = raw_name
                     # Skip if already downloading this file
                     with _download_lock:
-                        already = any(d["filename"] == filename and not d.get("done")
-                                      for d in _active_downloads.values())
+                        already = any(
+                            d["filename"] == filename and not d.get("done")
+                            for d in _active_downloads.values()
+                        )
                     if already:
-                        log.info("Auto-update: skipping %s (already downloading)", filename)
+                        log.info(
+                            "Auto-update: skipping %s (already downloading)", filename
+                        )
                         continue
                     # Skip if file already exists on disk (prevents infinite re-download loop)
                     if os.path.exists(os.path.join(_srv.ZIM_DIR, filename)):
@@ -105,18 +206,26 @@ def _auto_update_loop(initial_delay=0):
                         continue
                     dl_id, err = _start_download(url)
                     if err:
-                        log.warning("Auto-update download failed for %s: %s", upd.get("name", "?"), err)
+                        log.warning(
+                            "Auto-update download failed for %s: %s",
+                            upd.get("name", "?"),
+                            err,
+                        )
                     else:
-                        log.info("Auto-update started download: %s (id=%s)", upd.get("name", "?"), dl_id)
+                        log.info(
+                            "Auto-update started download: %s (id=%s)",
+                            upd.get("name", "?"),
+                            dl_id,
+                        )
             else:
                 log.info("Auto-update: all ZIMs up to date")
         except Exception as e:
             log.warning("Auto-update check failed: %s", e)
         # Sleep in 60s chunks so we can exit cleanly; re-read frequency each cycle
-        freq = getattr(_srv, '_auto_update_freq', _auto_update_freq)
+        freq = getattr(_srv, "_auto_update_freq", _auto_update_freq)
         interval = _FREQ_SECONDS.get(freq, 604800)
         for _ in range(max(interval // 60, 1)):
-            if not getattr(_srv, '_auto_update_enabled', _auto_update_enabled):
+            if not getattr(_srv, "_auto_update_enabled", _auto_update_enabled):
                 break
             time.sleep(60)
 
@@ -125,9 +234,90 @@ def _auto_update_loop(initial_delay=0):
 # Library Management
 # ============================================================================
 
-_active_downloads = {}  # {id: {"url": ..., "filename": ..., "pid": ..., "started": ...}}
+_active_downloads = (
+    {}
+)  # {id: {"url": ..., "filename": ..., "pid": ..., "started": ...}}
 _download_counter = 0
 _download_lock = threading.Lock()
+
+# Concurrent-download cap. Default 3; overridable via ZIMI_MAX_CONCURRENT_DOWNLOADS.
+# Items beyond the cap are queued in _download_queue, smallest-first.
+_MAX_CONCURRENT_DEFAULT = 3
+_download_queue = []  # [dl, ...] sorted: known sizes ascending, unknown sizes last
+
+
+def _max_concurrent():
+    """Concurrent-download cap, read from env each call so tests can flip it.
+
+    Invalid values (non-integer, negative, zero) clamp to safe defaults.
+    """
+    raw = os.environ.get("ZIMI_MAX_CONCURRENT_DOWNLOADS")
+    if raw is None:
+        return _MAX_CONCURRENT_DEFAULT
+    try:
+        n = int(raw)
+    except (ValueError, TypeError):
+        return _MAX_CONCURRENT_DEFAULT
+    return max(1, n)
+
+
+def _active_count():
+    """Number of in-flight downloads (not done). Hold _download_lock when calling."""
+    return sum(1 for d in _active_downloads.values() if not d.get("done"))
+
+
+def _enqueue_or_start(dl):
+    """Either start the download immediately or place it in the queue.
+
+    Returns True if queued, False if started. Caller must hold _download_lock.
+    """
+    if _active_count() < _max_concurrent():
+        _active_downloads[dl["id"]] = dl
+        threading.Thread(target=_download_thread, args=(dl,), daemon=True).start()
+        return False
+    # Queue: known sizes ascending; unknown (None) sizes go to the end.
+    sz = dl.get("size_bytes")
+    pos = len(_download_queue)
+    if sz is not None:
+        for i, q in enumerate(_download_queue):
+            qsz = q.get("size_bytes")
+            if qsz is None or sz < qsz:
+                pos = i
+                break
+    _download_queue.insert(pos, dl)
+    return True
+
+
+def _drain_queue():
+    """Promote queued downloads into active slots while there's room.
+
+    Caller must hold _download_lock.
+    """
+    while _download_queue and _active_count() < _max_concurrent():
+        dl = _download_queue.pop(0)
+        _active_downloads[dl["id"]] = dl
+        threading.Thread(target=_download_thread, args=(dl,), daemon=True).start()
+
+
+def _cancel_download(dl_id):
+    """Cancel an active or queued download. Returns (status, code).
+
+    status: "cancelling" | "removed" | "not_found" | "already_done"
+    """
+    with _download_lock:
+        # Queued items: just drop
+        for i, q in enumerate(_download_queue):
+            if q["id"] == dl_id:
+                del _download_queue[i]
+                return "removed", 200
+        dl = _active_downloads.get(dl_id)
+        if not dl:
+            return "not_found", 404
+        if dl.get("done"):
+            return "already_done", 400
+        dl["cancelled"] = True
+    return "cancelling", 200
+
 
 KIWIX_OPDS_BASE = "https://library.kiwix.org/catalog/search"
 
@@ -150,6 +340,7 @@ def _fetch_thumb(url):
         return None, None
     # Use URL hash as filename
     import hashlib as _hl
+
     key = _hl.md5(url.encode()).hexdigest()
     cache_path = os.path.join(_thumb_dir(), key)
     meta_path = cache_path + ".meta"
@@ -159,12 +350,10 @@ def _fetch_thumb(url):
             ct = f.read().strip() or "image/png"
         with open(cache_path, "rb") as f:
             return f.read(), ct
-    # Fetch from Kiwix (no redirects to prevent SSRF)
+    # Fetch from Kiwix. Follow redirects only within *.kiwix.org (Kiwix
+    # redirects library → opds); a redirect off-Kiwix is blocked (SSRF).
     try:
-        class _NoRedirect(urllib.request.HTTPRedirectHandler):
-            def redirect_request(self, req, fp, code, msg, headers, newurl):
-                raise urllib.error.HTTPError(req.full_url, code, "Redirect blocked", headers, fp)
-        opener = urllib.request.build_opener(_NoRedirect)
+        opener = _KIWIX_REDIRECT_OPENER
         req = urllib.request.Request(url, headers={"User-Agent": "Zimi/1.0"})
         with opener.open(req, timeout=10) as resp:
             ct = resp.headers.get("Content-Type", "image/png")
@@ -290,14 +479,19 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
             rel = link.get("rel", "")
             href = link.get("href", "")
             ltype = link.get("type", "")
-            if rel == "http://opds-spec.org/acquisition/open-access" and ltype == "application/x-zim":
+            if (
+                rel == "http://opds-spec.org/acquisition/open-access"
+                and ltype == "application/x-zim"
+            ):
                 download_url = href
                 try:
                     size_bytes = int(link.get("length", "0"))
                 except (ValueError, TypeError):
                     pass
             elif rel == "http://opds-spec.org/image/thumbnail":
-                icon_url = "https://library.kiwix.org" + href if href.startswith("/") else href
+                icon_url = (
+                    "https://library.kiwix.org" + href if href.startswith("/") else href
+                )
 
         # Determine if installed by matching download URL filename against local ZIMs
         installed = False
@@ -314,24 +508,226 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
                 if lp:
                     norm_parts.append(_srv._ISO639_3_TO_1.get(lp, lp))
             language = ",".join(norm_parts)
-        items.append({
-            "name": name,
-            "title": title,
-            "summary": summary,
-            "language": language,
-            "category": category,
-            "author": author,
-            "date": date,
-            "article_count": article_count,
-            "media_count": media_count,
-            "size_bytes": size_bytes,
-            "download_url": download_url,
-            "icon_url": icon_url,
-            "installed": installed,
-        })
+        items.append(
+            {
+                "name": name,
+                "title": title,
+                "summary": summary,
+                "language": language,
+                "category": category,
+                "author": author,
+                "date": date,
+                "article_count": article_count,
+                "media_count": media_count,
+                "size_bytes": size_bytes,
+                "download_url": download_url,
+                "icon_url": icon_url,
+                "installed": installed,
+            }
+        )
 
     _opds_cache[cache_key] = (time.time(), total, items)
     return total, items, None
+
+
+def _try_bt_download(
+    backend,
+    dl,
+    *,
+    torrent_url,
+    staging_dir,
+    poll_interval=2.0,
+    no_peers_timeout=60.0,
+):
+    """Attempt to download via the BT backend, with explicit fallback.
+
+    Returns one of:
+      "success"   — file written to dl['dest']; caller is done
+      "fallback"  — BT didn't pan out; caller should run the HTTP path
+      "cancelled" — user cancelled; backend cleaned up; caller stops
+      "error"     — terminal (rare); caller should report
+
+    On every poll we update dl with downloaded_bytes / total_bytes /
+    bt_peers / bt_info_hash so the existing /manage/downloads UI surfaces
+    BT progress without further wiring.
+    """
+    from zimi import p2p as _p2p
+
+    if _p2p.is_seeding_enabled():
+        # effective_seed_options picks mirror caps when ZIMI_MIRROR=1,
+        # otherwise the user's personal cap (default 2× ratio).
+        seed_opts = _p2p.effective_seed_options()
+    else:
+        seed_opts = _p2p.seed_options(ratio_cap=0, max_upload_kb=0)
+    try:
+        tid = backend.add_torrent(torrent_url, dest_dir=staging_dir, options=seed_opts)
+    except Exception as e:
+        log.warning(
+            "BT add_torrent failed for %s: %s — falling back to HTTP", dl["filename"], e
+        )
+        return "fallback"
+
+    started = time.time()
+    was_paused = False
+    while True:
+        if dl.get("cancelled"):
+            try:
+                backend.remove(tid, delete_files=True)
+            except Exception:
+                pass
+            return "cancelled"
+
+        # Propagate UI pause/resume to aria2 — without this, "paused" is a
+        # lie: the flag flips in the dl dict while bytes keep flowing.
+        if bool(dl.get("paused")) != was_paused:
+            was_paused = bool(dl.get("paused"))
+            try:
+                (backend.pause if was_paused else backend.resume)(tid)
+            except Exception as e:
+                log.debug("BT pause/resume propagate failed: %s", e)
+
+        try:
+            status = backend.status(tid)
+        except Exception as e:
+            log.warning(
+                "BT status poll failed for %s: %s — falling back", dl["filename"], e
+            )
+            try:
+                backend.remove(tid, delete_files=True)
+            except Exception:
+                pass
+            return "fallback"
+
+        # Rebind to the followed content GID (see Aria2Backend.status): a
+        # .torrent URL's original GID is just the metadata fetch, and
+        # pause/cancel/remove must act on the real transfer.
+        tid = status.get("gid") or tid
+
+        # Surface progress to the existing UI.
+        dl["downloaded_bytes"] = status.get("completed_bytes", 0)
+        dl["total_bytes"] = status.get("total_bytes", 0)
+        dl["bt_peers"] = status.get("peers", 0)
+        dl["bt_info_hash"] = status.get("info_hash", "")
+        dl["_source"] = "bt"
+
+        state = status.get("state")
+        if state == "complete":
+            staged = os.path.join(staging_dir, dl["filename"])
+            # aria2 keeps a .aria2 control file beside every unfinished
+            # download — if one exists, this "complete" is not our transfer.
+            if not os.path.exists(staged) or os.path.exists(staged + ".aria2"):
+                log.warning(
+                    "BT reported complete but staged file missing/unfinished: %s"
+                    " — falling back",
+                    staged,
+                )
+                try:
+                    backend.remove(tid, delete_files=True)
+                except Exception:
+                    pass
+                return "fallback"
+            # Never install a structurally invalid file. aria2 preallocates
+            # the full file size, so existence and size prove nothing — the
+            # two-phase GID confusion this guards installed full-size
+            # garbage ZIMs before release.
+            try:
+                _srv.open_archive(staged)
+            except Exception as e:
+                log.warning(
+                    "BT staged file failed libzim validation (%s): %s — falling back",
+                    dl["filename"],
+                    e,
+                )
+                try:
+                    backend.remove(tid, delete_files=True)
+                except Exception:
+                    pass
+                return "fallback"
+            try:
+                os.makedirs(os.path.dirname(dl["dest"]), exist_ok=True)
+                os.replace(staged, dl["dest"])
+            except OSError as e:
+                # Cross-filesystem rename — fall back to copy + remove
+                try:
+                    import shutil as _shutil
+
+                    _shutil.copyfile(staged, dl["dest"])
+                    os.remove(staged)
+                except Exception as e2:
+                    log.warning("BT staging→dest failed: %s / %s", e, e2)
+                    return "fallback"
+            # Seeding policy decision: by default we KEEP the torrent in
+            # aria2 so it transitions to seeding mode automatically up to the
+            # ratio cap. Only remove when seeding is disabled — then this
+            # was a leech-only download and we're done.
+            if not _p2p.is_seeding_enabled():
+                try:
+                    backend.remove(tid)
+                except Exception:
+                    pass
+            else:
+                dl["bt_gid"] = tid  # keep so /manage/seeding can find it
+                log.info(
+                    "Seeding %s up to %.1fx ratio",
+                    dl["filename"],
+                    _p2p.get_seed_ratio_cap(),
+                )
+            return "success"
+
+        if state == "error":
+            log.warning(
+                "BT reported error for %s: %s — falling back",
+                dl["filename"],
+                status.get("error_message", ""),
+            )
+            try:
+                backend.remove(tid, delete_files=True)
+            except Exception:
+                pass
+            return "fallback"
+
+        # Stall detection: 0 peers AND <1% progress past the timeout.
+        elapsed = time.time() - started
+        total = status.get("total_bytes", 0) or 1
+        pct = status.get("completed_bytes", 0) / total
+        if (
+            not was_paused
+            and elapsed >= no_peers_timeout
+            and status.get("peers", 0) == 0
+            and pct < 0.01
+        ):
+            log.info(
+                "BT stalled for %s after %.0fs (0 peers, %.1f%%) — falling back",
+                dl["filename"],
+                elapsed,
+                pct * 100,
+            )
+            try:
+                backend.remove(tid, delete_files=True)
+            except Exception:
+                pass
+            return "fallback"
+
+        time.sleep(poll_interval)
+
+
+def _resolve_torrent_url(url):
+    """Return the Kiwix `.torrent` companion URL for a given download URL,
+    or None if no plausible companion exists.
+
+    Kiwix publishes `<file>.zim.torrent` next to every `<file>.zim`. We
+    trust only Kiwix-controlled hosts to avoid attacker-controlled metadata
+    being injected via a third-party URL.
+    """
+    if not _is_trusted_kiwix_url(url):
+        return None
+    if url.endswith(".torrent"):
+        return url
+    if url.endswith(".meta4"):
+        url = url[: -len(".meta4")]
+    if not url.endswith(".zim"):
+        return None
+    return url + ".torrent"
 
 
 def _detect_flavor(filename_or_base):
@@ -366,7 +762,14 @@ def _check_updates():
         filename = os.path.basename(path)
         _, date = _srv._extract_zim_date(filename)
         if date:
-            installed_files.append({"name": name, "date": date, "filename": filename, "filebase": filename.replace('.zim', '')})
+            installed_files.append(
+                {
+                    "name": name,
+                    "date": date,
+                    "filename": filename,
+                    "filebase": filename.replace(".zim", ""),
+                }
+            )
 
     if not installed_files:
         return []
@@ -378,7 +781,9 @@ def _check_updates():
         return []
     all_items.extend(items)
     while len(all_items) < total:
-        _, more, err = _fetch_kiwix_catalog(query="", lang="eng", count=500, start=len(all_items))
+        _, more, err = _fetch_kiwix_catalog(
+            query="", lang="eng", count=500, start=len(all_items)
+        )
         if err or not more:
             break
         all_items.extend(more)
@@ -429,15 +834,17 @@ def _check_updates():
                     best_len = len(p)
         if best:
             _, cat_date, item = best
-            updates.append({
-                "name": inst["name"],
-                "installed_file": inst["filename"],
-                "installed_date": inst["date"],
-                "latest_date": cat_date,
-                "download_url": item.get("download_url", ""),
-                "title": item.get("title", ""),
-                "size_bytes": item.get("size_bytes", 0),
-            })
+            updates.append(
+                {
+                    "name": inst["name"],
+                    "installed_file": inst["filename"],
+                    "installed_date": inst["date"],
+                    "latest_date": cat_date,
+                    "download_url": item.get("download_url", ""),
+                    "title": item.get("title", ""),
+                    "size_bytes": item.get("size_bytes", 0),
+                }
+            )
 
     return updates
 
@@ -455,12 +862,21 @@ def _download_from_url(dl, url, tmp_dest):
     req = urllib.request.Request(url, headers={"User-Agent": "Zimi/1.0"})
     if existing_size > 0:
         req.add_header("Range", f"bytes={existing_size}-")
-        log.info("Resuming download of %s from %d bytes via %s",
-                 dl["filename"], existing_size, urlparse(url).hostname)
+        log.info(
+            "Resuming download of %s from %d bytes via %s",
+            dl["filename"],
+            existing_size,
+            urlparse(url).hostname,
+        )
     else:
         log.info("Downloading %s from %s", dl["filename"], urlparse(url).hostname)
     try:
-        resp = urllib.request.urlopen(req, timeout=600, context=_srv.SSL_CTX)
+        if dl.get("_source") == "peer":
+            # Peer pulls are plain HTTP to a LAN IP literal; refuse redirects
+            # so a peer can't bounce us off-LAN. No SSL context needed.
+            resp = _NO_REDIRECT_OPENER.open(req, timeout=600)
+        else:
+            resp = urllib.request.urlopen(req, timeout=600, context=_srv.SSL_CTX)
     except urllib.error.HTTPError as e:
         if e.code == 416 and existing_size > 0:
             # Range not satisfiable — file already complete
@@ -489,6 +905,14 @@ def _download_from_url(dl, url, tmp_dest):
     try:
         with open(tmp_dest, mode) as f:
             while not dl.get("cancelled"):
+                # Pause = freeze the read loop without releasing the slot. The
+                # user can pause some active downloads to give bandwidth to
+                # another. The HTTP connection may idle-timeout while paused;
+                # if so, the next read fails and the mirror loop retries.
+                while dl.get("paused") and not dl.get("cancelled"):
+                    time.sleep(1)
+                if dl.get("cancelled"):
+                    break
                 chunk = resp.read(65536)
                 if not chunk:
                     break
@@ -504,13 +928,16 @@ def _download_from_url(dl, url, tmp_dest):
     if total > 0:
         actual = os.path.getsize(tmp_dest)
         if actual != total:
-            return False, f"Size mismatch from {urlparse(url).hostname}: expected {total}, got {actual}"
+            return (
+                False,
+                f"Size mismatch from {urlparse(url).hostname}: expected {total}, got {actual}",
+            )
     return True, None
 
 
 def _title_from_filename(filename):
     """Extract a readable title from a ZIM filename for history events."""
-    name = re.sub(r'_\d{4}-\d{2}\.zim$', '', filename).replace('.zim', '')
+    name = re.sub(r"_\d{4}-\d{2}\.zim$", "", filename).replace(".zim", "")
     # Try OPDS cache for a proper title
     for _ts, _total, items in _opds_cache.values():
         for it in items:
@@ -521,6 +948,60 @@ def _title_from_filename(filename):
     return {"title": name.replace("_", " ").title(), "name": name}
 
 
+def _post_download_finalize(dl):
+    """Bookkeeping shared by both the HTTP-mirror and BT success paths.
+
+    Removes older versions of the same ZIM, refreshes server caches,
+    appends to history. Idempotent — safe if dl['dest'] already exists.
+    """
+    # Remove older versions of the same ZIM
+    base = re.match(r"^(.+?)_\d{4}-\d{2}\.zim$", dl["filename"])
+    if base:
+        prefix = base.group(1)
+        try:
+            for f in os.listdir(_srv.ZIM_DIR):
+                if (
+                    f.startswith(prefix + "_")
+                    and f.endswith(".zim")
+                    and f != dl["filename"]
+                ):
+                    try:
+                        os.remove(os.path.join(_srv.ZIM_DIR, f))
+                        log.info("Removed old version: %s", f)
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+    with _srv._zim_lock:
+        _srv.load_cache(force=True)
+    _srv._search_cache_clear()
+    _srv._suggest_cache_clear()
+    _srv._clean_stale_title_indexes()
+    threading.Thread(target=_srv._build_all_qid_indexes, daemon=True).start()
+    zim_info = {}
+    try:
+        for z in _srv._zim_list_cache or []:
+            if z.get("file") == dl["filename"]:
+                zim_info = {
+                    "title": z.get("title", ""),
+                    "name": z.get("name", ""),
+                    "has_icon": z.get("has_icon", False),
+                }
+                break
+    except Exception as e:
+        log.debug("Failed to cache ZIM metadata for download history: %s", e)
+    event_type = "updated" if dl.get("is_update") else "download"
+    _srv._append_history(
+        {
+            "event": event_type,
+            "ts": time.time(),
+            "filename": dl["filename"],
+            "size_bytes": dl.get("total_bytes", 0),
+            **zim_info,
+        }
+    )
+
+
 def _download_thread(dl):
     """Background thread that downloads a file with mirror rotation.
 
@@ -528,11 +1009,45 @@ def _download_thread(dl):
     to the next mirror. Downloads to a .zim.tmp file first, then atomically
     renames on completion. The .tmp file is preserved across mirror attempts
     so resume works even when switching mirrors.
+
+    On any exit path the queue drains so a waiting download can take this slot.
     """
     tmp_dest = dl["dest"] + ".tmp"
     mirrors = list(dl.get("mirrors", [dl["url"]]))
     _random.shuffle(mirrors)
     try:
+        # BT-first attempt when a backend is configured AND we can find a
+        # plausible torrent companion. Falls through to the HTTP mirror loop
+        # on any non-success outcome — never strands the user's download.
+        from zimi import p2p as _p2p
+
+        try:
+            _backend = _p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+        except Exception:
+            _backend = None
+        _torrent_url = _resolve_torrent_url(dl["url"]) if _backend else None
+        if _backend and _torrent_url:
+            try:
+                _bt_outcome = _try_bt_download(
+                    _backend,
+                    dl,
+                    torrent_url=_torrent_url,
+                    staging_dir=_p2p.get_staging_dir(_srv.ZIMI_DATA_DIR),
+                )
+            except Exception as e:
+                log.warning("BT path raised: %s — falling back to HTTP", e)
+                _bt_outcome = "fallback"
+            if _bt_outcome == "success":
+                dl["done"] = True
+                log.info("BT download complete: %s", dl["filename"])
+                _post_download_finalize(dl)
+                return
+            if _bt_outcome == "cancelled":
+                dl["done"] = True
+                dl["error"] = "Cancelled"
+                return
+            # Otherwise fall through to HTTP — nothing else to do here
+
         success = False
         last_error = None
         for mirror_url in mirrors:
@@ -553,58 +1068,65 @@ def _download_thread(dl):
         if not success:
             dl["done"] = True
             dl["error"] = f"All {len(mirrors)} mirror(s) failed. Last: {last_error}"
-            _srv._append_history({"event": "download_failed", "ts": time.time(), "filename": dl["filename"],
-                             "error": dl["error"], **_title_from_filename(dl["filename"])})
+            _srv._append_history(
+                {
+                    "event": "download_failed",
+                    "ts": time.time(),
+                    "filename": dl["filename"],
+                    "error": dl["error"],
+                    **_title_from_filename(dl["filename"]),
+                }
+            )
             return
+        # Same libzim gate as the BT path: a complete-but-corrupt file must
+        # never be installed, whatever transport delivered it. Raising here
+        # lands in the non-transient handler below (tmp removed, error set).
+        try:
+            _srv.open_archive(tmp_dest)
+        except Exception as e:
+            log.error(
+                "Downloaded file failed libzim validation (%s): %s",
+                dl["filename"],
+                e,
+            )
+            raise RuntimeError("downloaded file failed validation") from e
         # Atomic rename: tmp → final
         os.replace(tmp_dest, dl["dest"])
         dl["done"] = True  # Mark done immediately so UI shows completion
-        log.info("Download complete: %s via %s, refreshing library",
-                 dl["filename"], urlparse(dl.get("_mirror_url", dl["url"])).hostname)
-        # Remove older versions of the same ZIM
-        base = re.match(r'^(.+?)_\d{4}-\d{2}\.zim$', dl["filename"])
-        if base:
-            prefix = base.group(1)
-            for f in os.listdir(_srv.ZIM_DIR):
-                if f.startswith(prefix + "_") and f.endswith(".zim") and f != dl["filename"]:
-                    try:
-                        os.remove(os.path.join(_srv.ZIM_DIR, f))
-                        log.info(f"Removed old version: {f}")
-                    except OSError:
-                        pass
-        with _srv._zim_lock:
-            _srv.load_cache(force=True)
-        _srv._search_cache_clear()
-        _srv._suggest_cache_clear()
-        _srv._clean_stale_title_indexes()
-        # Rebuild Q-ID indexes and detect has_qids for the new ZIM
-        threading.Thread(target=_srv._build_all_qid_indexes, daemon=True).start()
-        # Cache ZIM metadata in history so entries survive deletion
-        zim_info = {}
-        try:
-            for z in (_srv._zim_list_cache or []):
-                if z.get("file") == dl["filename"]:
-                    zim_info = {"title": z.get("title", ""), "name": z.get("name", ""), "has_icon": z.get("has_icon", False)}
-                    break
-        except Exception as e:
-            log.debug("Failed to cache ZIM metadata for download history: %s", e)
-            pass
-        event_type = "updated" if dl.get("is_update") else "download"
-        _srv._append_history({"event": event_type, "ts": time.time(), "filename": dl["filename"],
-                         "size_bytes": dl.get("total_bytes", 0), **zim_info})
+        log.info(
+            "Download complete: %s via %s, refreshing library",
+            dl["filename"],
+            urlparse(dl.get("_mirror_url", dl["url"])).hostname,
+        )
+        _post_download_finalize(dl)
     except Exception as e:
-        is_transient = isinstance(e, (urllib.error.URLError, TimeoutError, ConnectionError, OSError))
+        is_transient = isinstance(
+            e, (urllib.error.URLError, TimeoutError, ConnectionError, OSError)
+        )
         if not is_transient:
             try:
                 os.remove(tmp_dest)
             except OSError:
                 pass
         dl["done"] = True
-        log.error("Download thread exception for %s: %s", dl["filename"], e, exc_info=True)
+        log.error(
+            "Download thread exception for %s: %s", dl["filename"], e, exc_info=True
+        )
         dl["error"] = "Download failed"
         if not dl.get("cancelled"):
-            _srv._append_history({"event": "download_failed", "ts": time.time(), "filename": dl["filename"],
-                             "error": "Download failed", **_title_from_filename(dl["filename"])})
+            _srv._append_history(
+                {
+                    "event": "download_failed",
+                    "ts": time.time(),
+                    "filename": dl["filename"],
+                    "error": "Download failed",
+                    **_title_from_filename(dl["filename"]),
+                }
+            )
+    finally:
+        # Always promote the next queued download into this freed slot.
+        with _download_lock:
+            _drain_queue()
 
 
 def _fetch_mirrors(meta4_url):
@@ -637,43 +1159,45 @@ def _fetch_mirrors(meta4_url):
         return []
 
 
-def _start_download(url):
-    """Start a background download via urllib. Returns download ID."""
-    global _download_counter
-    # Validate URL — only allow Kiwix official downloads
-    if not url.startswith("https://download.kiwix.org/"):
-        return None, "URL must be from download.kiwix.org"
+def _validate_zim_filename(filename):
+    """Validate a .zim filename for safe use as a download destination.
 
-    # OPDS catalog provides .meta4 metalink URLs — fetch mirrors from it
-    mirrors = []
-    if url.endswith(".meta4"):
-        mirrors = _fetch_mirrors(url)
-        url = url[:-len(".meta4")]  # direct URL as primary fallback
-
-    # If we got mirrors, use them; otherwise fall back to the direct URL
-    if not mirrors:
-        mirrors = [url]
-    elif url not in mirrors:
-        mirrors.append(url)  # ensure direct URL is always a fallback
-
-    filename = url.split("/")[-1]
-    # Prevent path traversal and validate filename
-    filename = os.path.basename(filename)
+    Returns (clean_basename, None) or (None, error). Strips any directory
+    component so a crafted name can never escape ZIM_DIR.
+    """
+    filename = os.path.basename(filename or "")
     if not filename or ".." in filename:
         return None, "Invalid filename in URL"
     if not filename.endswith(".zim"):
         return None, "Only .zim files can be downloaded"
-    # Reject filenames with suspicious characters
-    if not re.match(r'^[\w.\-]+$', filename):
+    if not re.match(r"^[\w.\-]+$", filename):
         return None, "Invalid characters in filename"
+    return filename, None
+
+
+def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
+    """Build the download record and enqueue it.
+
+    Shared by the Kiwix-catalog and LAN-peer paths — each validates its own
+    source and filename before calling this. `extra` merges extra fields into
+    the download record (e.g. _source/peer_name for peer pulls).
+    """
+    global _download_counter
     dest = os.path.join(_srv.ZIM_DIR, filename)
 
     # Detect if this replaces an existing ZIM (update vs fresh download)
-    name_prefix = re.sub(r'_\d{4}-\d{2}\.zim$', '', filename)
-    is_update = any(
-        f != filename and f.endswith('.zim') and re.sub(r'_\d{4}-\d{2}\.zim$', '', f) == name_prefix
-        for f in os.listdir(_srv.ZIM_DIR) if os.path.isfile(os.path.join(_srv.ZIM_DIR, f))
-    ) if os.path.isdir(_srv.ZIM_DIR) else False
+    name_prefix = re.sub(r"_\d{4}-\d{2}\.zim$", "", filename)
+    is_update = (
+        any(
+            f != filename
+            and f.endswith(".zim")
+            and re.sub(r"_\d{4}-\d{2}\.zim$", "", f) == name_prefix
+            for f in os.listdir(_srv.ZIM_DIR)
+            if os.path.isfile(os.path.join(_srv.ZIM_DIR, f))
+        )
+        if os.path.isdir(_srv.ZIM_DIR)
+        else False
+    )
 
     with _download_lock:
         _download_counter += 1
@@ -688,16 +1212,105 @@ def _start_download(url):
             "done": False,
             "error": None,
             "is_update": is_update,
+            "size_bytes": size_bytes,
         }
-        _active_downloads[dl_id] = dl
-        t = threading.Thread(target=_download_thread, args=(dl,), daemon=True)
-        t.start()
-    log.info("Download started: %s (%d mirror%s available)", filename, len(mirrors),
-             "s" if len(mirrors) != 1 else "")
+        if extra:
+            dl.update(extra)
+        queued = _enqueue_or_start(dl)
+    log.info(
+        "Download %s: %s (%d mirror%s available)",
+        "queued" if queued else "started",
+        filename,
+        len(mirrors),
+        "s" if len(mirrors) != 1 else "",
+    )
     return dl_id, None
 
 
-def _start_import(url):
+def _start_download(url, size_bytes=None):
+    """Start a background download via urllib. Returns (download_id, error).
+
+    If the concurrent-download cap is reached, the download is queued.
+    `size_bytes` is used to order the queue smallest-first; pass it from the
+    catalog when available. Unknown sizes are dispatched after known ones.
+    """
+    # Validate URL — only allow Kiwix-controlled hosts (download.kiwix.org,
+    # lbo.download.kiwix.org load-balanced origin, dumps.wikimedia.org/kiwix
+    # mirror, any other *.kiwix.org). Prevents attacker-controlled metadata.
+    if not _is_trusted_kiwix_url(url):
+        return None, "URL not from a trusted Kiwix host"
+
+    # OPDS catalog provides .meta4 metalink URLs — fetch mirrors from it
+    mirrors = []
+    if url.endswith(".meta4"):
+        mirrors = _fetch_mirrors(url)
+        url = url[: -len(".meta4")]  # direct URL as primary fallback
+
+    # If we got mirrors, use them; otherwise fall back to the direct URL
+    if not mirrors:
+        mirrors = [url]
+    elif url not in mirrors:
+        mirrors.append(url)  # ensure direct URL is always a fallback
+
+    filename, err = _validate_zim_filename(url.split("/")[-1])
+    if err:
+        return None, err
+    return _enqueue_zim_download(url, mirrors, filename, size_bytes=size_bytes)
+
+
+def _start_peer_download(peer_name, filename, size_bytes=None):
+    """Download a ZIM directly from a discovered LAN peer over HTTP.
+
+    Gated on the share toggle in BOTH directions — with sharing off the
+    user has said "internet sources only", so we don't pull from peers
+    either. (The /dl serving side checks the same flag.)
+
+    The target URL is built server-side from the *discovered* peer's
+    host/port — never from a client-supplied URL — so this can't be coerced
+    into fetching an arbitrary host (the peer equivalent of the Kiwix trust
+    check). The pull is plain HTTP from the peer's /dl/ endpoint and works
+    fully offline; the existing mirror loop handles range/resume and verifies
+    the transfer against the peer's Content-Length.
+    """
+    from zimi import p2p_discovery as _disc
+
+    filename, err = _validate_zim_filename(filename)
+    if err:
+        return None, err
+
+    if not _disc.is_share_enabled():
+        return None, "LAN sharing is turned off"
+
+    peer = next((p for p in _disc.get_peers() if p.get("name") == peer_name), None)
+    if peer is None:
+        return None, "Peer not found"
+    host, port = peer.get("host"), peer.get("port")
+    if not host or not port:
+        return None, "Peer address unavailable"
+    # mDNS is unauthenticated — a hostile responder could advertise a peer at
+    # 169.254.169.254 (cloud metadata), a public host, or a localhost-only
+    # service. Only pull from LAN/loopback IP literals (see _is_lan_host).
+    if not _is_lan_host(host):
+        return None, "Peer host not on LAN"
+
+    # Prefer the size the peer advertises (queue ordering + truncation check).
+    if size_bytes is None:
+        for z in _disc.fetch_peer_list(peer_name) or []:
+            if z.get("file") == filename:
+                size_bytes = z.get("size_bytes")
+                break
+
+    url = f"http://{host}:{int(port)}/dl/{quote(filename)}"
+    return _enqueue_zim_download(
+        url,
+        [url],
+        filename,
+        size_bytes=size_bytes,
+        extra={"_source": "peer", "peer_name": peer_name},
+    )
+
+
+def _start_import(url, size_bytes=None):
     """Start a background download from any HTTPS URL. Returns download ID."""
     global _download_counter
     if not url.startswith("https://"):
@@ -711,7 +1324,7 @@ def _start_import(url):
         return None, "Invalid filename in URL"
     if not filename.endswith(".zim"):
         return None, "Only .zim files can be imported"
-    if not re.match(r'^[\w.\-]+$', filename):
+    if not re.match(r"^[\w.\-]+$", filename):
         return None, "Invalid characters in filename"
     dest = os.path.join(_srv.ZIM_DIR, filename)
 
@@ -727,15 +1340,19 @@ def _start_import(url):
             "done": False,
             "error": None,
             "is_update": False,
+            "size_bytes": size_bytes,
         }
-        _active_downloads[dl_id] = dl
-        t = threading.Thread(target=_download_thread, args=(dl,), daemon=True)
-        t.start()
+        _enqueue_or_start(dl)
     return dl_id, None
 
 
 def _get_downloads():
-    """Get status of all active/completed downloads."""
+    """Get status of all active/queued/completed downloads.
+
+    Queued items get `queued: True` and zero-progress fields so the UI can
+    render them as pending. They keep their position in the list (active
+    first, queued after — both sorted by id ascending).
+    """
     results = []
     with _download_lock:
         to_remove = []
@@ -753,24 +1370,49 @@ def _get_downloads():
             pct = min(100.0, round(downloaded / total * 100, 1)) if total > 0 else 0
             mirror_host = urlparse(dl.get("_mirror_url", dl["url"])).hostname or ""
             mirror_count = len(dl.get("mirrors", []))
-            results.append({
-                "id": dl_id,
-                "filename": dl["filename"],
-                "url": dl["url"],
-                "mirror_host": mirror_host,
-                "mirror_count": mirror_count,
-                "size_bytes": size,
-                "total_bytes": total,
-                "downloaded_bytes": downloaded,
-                "percent": pct,
-                "done": done,
-                "error": error,
-                "elapsed": round(time.time() - dl["started"], 1),
-                "is_update": dl.get("is_update", False),
-            })
+            results.append(
+                {
+                    "id": dl_id,
+                    "filename": dl["filename"],
+                    "url": dl["url"],
+                    "mirror_host": mirror_host,
+                    "mirror_count": mirror_count,
+                    "size_bytes": size,
+                    "total_bytes": total,
+                    "downloaded_bytes": downloaded,
+                    "percent": pct,
+                    "done": done,
+                    "error": error,
+                    "elapsed": round(time.time() - dl["started"], 1),
+                    "is_update": dl.get("is_update", False),
+                    "queued": False,
+                    "paused": bool(dl.get("paused", False)),
+                    "source": dl.get("_source", "http"),
+                    "bt_peers": dl.get("bt_peers", 0),
+                }
+            )
             # Clean up completed downloads older than 1 hour
             if done and (time.time() - dl["started"]) > 3600:
                 to_remove.append(dl_id)
+        for dl in _download_queue:
+            results.append(
+                {
+                    "id": dl["id"],
+                    "filename": dl["filename"],
+                    "url": dl["url"],
+                    "mirror_host": "",
+                    "mirror_count": len(dl.get("mirrors", [])),
+                    "size_bytes": 0,
+                    "total_bytes": dl.get("size_bytes") or 0,
+                    "downloaded_bytes": 0,
+                    "percent": 0,
+                    "done": False,
+                    "error": None,
+                    "elapsed": round(time.time() - dl["started"], 1),
+                    "is_update": dl.get("is_update", False),
+                    "queued": True,
+                }
+            )
         for dl_id in to_remove:
             del _active_downloads[dl_id]
     return results

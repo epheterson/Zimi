@@ -21,6 +21,7 @@ log = logging.getLogger("zimi")
 
 _PW_ITERATIONS = 600_000  # OWASP 2023 recommendation for PBKDF2-SHA256
 
+
 def _hash_pw(pw, salt=None):
     """Hash password with PBKDF2-SHA256 + random salt. Returns 'salt$hash'."""
     if salt is None:
@@ -30,14 +31,17 @@ def _hash_pw(pw, salt=None):
     dk = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, _PW_ITERATIONS)
     return salt.hex() + "$" + dk.hex()
 
+
 def _is_legacy_hash(stored):
     """Check if stored hash is a v1.5 unsalted SHA-256 hex string."""
     return stored and "$" not in stored and len(stored) == 64
+
 
 def _verify_legacy(candidate, stored):
     """Verify a password against a v1.5 unsalted SHA-256 hash."""
     legacy = hashlib.sha256(candidate.encode()).hexdigest()
     return hmac.compare_digest(legacy, stored)
+
 
 def _upgrade_legacy_hash(candidate):
     """Re-hash a verified password from v1.5 format to PBKDF2. Called after
@@ -45,10 +49,13 @@ def _upgrade_legacy_hash(candidate):
     _set_manage_password(candidate)
     log.info("Migrated password from v1.5 SHA-256 to PBKDF2")
 
+
 _env_pw_hash_cache = None  # cached hash for ZIMI_MANAGE_PASSWORD env var
+
 
 def _password_file():
     return os.path.join(_srv.ZIMI_DATA_DIR, "password")
+
 
 def _get_manage_password_hash():
     """Get password hash from env var or file."""
@@ -70,6 +77,7 @@ def _get_manage_password_hash():
     except (FileNotFoundError, OSError):
         return ""
 
+
 def _set_manage_password(pw):
     """Save hashed password to file, or clear it. Uses atomic write."""
     pf = _password_file()
@@ -79,9 +87,11 @@ def _set_manage_password(pw):
     os.replace(tmp, pf)
     log.info("Manage password %s", "set" if pw else "cleared")
 
+
 def _api_token_file():
     """API token file path inside ZIMI_DATA_DIR."""
     return os.path.join(_srv.ZIMI_DATA_DIR, "api_token")
+
 
 def _get_api_token():
     """Get stored API token (plaintext, for constant-time comparison)."""
@@ -94,9 +104,11 @@ def _get_api_token():
     except (FileNotFoundError, OSError):
         return ""
 
+
 def _generate_api_token():
     """Generate a new random API token, save to disk, return it. Uses atomic write."""
     import secrets
+
     token = secrets.token_urlsafe(32)
     tf = _api_token_file()
     tmp = tf + ".tmp"
@@ -106,6 +118,7 @@ def _generate_api_token():
     log.info("API token generated")
     return token
 
+
 def _revoke_api_token():
     """Delete the API token file."""
     try:
@@ -113,6 +126,7 @@ def _revoke_api_token():
         log.info("API token revoked")
     except FileNotFoundError:
         pass
+
 
 def _verify_password(candidate, stored_pw):
     """Verify a password against the stored hash. Handles legacy and PBKDF2."""
@@ -125,6 +139,7 @@ def _verify_password(candidate, stored_pw):
         return False
     salt = stored_pw.split("$")[0]
     return hmac.compare_digest(_hash_pw(candidate, salt), stored_pw)
+
 
 def _check_manage_auth(handler):
     """Check authorization for manage endpoints. Returns True if unauthorized.
@@ -155,23 +170,32 @@ def _check_manage_auth(handler):
 
     return True
 
+
 # ============================================================================
 # Manage GET Routes
 # ============================================================================
 
+
 def handle_manage_get(handler, parsed, params):
     """Handle all GET /manage/* requests. Called from ZimHandler.do_GET."""
+
     def param(key, default=None):
         return params.get(key, [default])[0]
 
     if not _srv.ZIMI_MANAGE:
-        return handler._json(404, {"error": "Library management is disabled. Set ZIMI_MANAGE=1 to enable."})
+        return handler._json(
+            404,
+            {"error": "Library management is disabled. Set ZIMI_MANAGE=1 to enable."},
+        )
     # Public pre-auth endpoints (no Authorization header available)
     if parsed.path == "/manage/has-password":
-        return handler._json(200, {
-            "has_password": bool(_get_manage_password_hash()),
-            "env_controlled": bool(os.environ.get("ZIMI_MANAGE_PASSWORD", "")),
-        })
+        return handler._json(
+            200,
+            {
+                "has_password": bool(_get_manage_password_hash()),
+                "env_controlled": bool(os.environ.get("ZIMI_MANAGE_PASSWORD", "")),
+            },
+        )
     if parsed.path == "/manage/has-token":
         return handler._json(200, {"has_token": bool(_get_api_token())})
     if parsed.path == "/manage/thumb":
@@ -185,7 +209,9 @@ def handle_manage_get(handler, parsed, params):
         handler.send_response(200)
         handler.send_header("Content-Type", ct)
         handler.send_header("Content-Length", str(len(data)))
-        handler.send_header("Cache-Control", "public, max-age=604800")  # 7 days browser cache
+        handler.send_header(
+            "Cache-Control", "public, max-age=604800"
+        )  # 7 days browser cache
         handler.end_headers()
         handler.wfile.write(data)
         return
@@ -196,18 +222,21 @@ def handle_manage_get(handler, parsed, params):
         zim_count = len(_srv.get_zim_files())
         total_gb = sum(z.get("size_gb", 0) for z in (_srv._zim_list_cache or []))
         linked_zims = len(set(_srv._domain_zim_map.values()))
-        return handler._json(200, {
-            "zim_count": zim_count,
-            "total_size_gb": round(total_gb, 1),
-            "manage_enabled": True,
-            "linked_zims": linked_zims,
-            "domain_count": len(_srv._domain_zim_map),
-            "auto_update": {
-                "enabled": _srv._auto_update_enabled,
-                "frequency": _srv._auto_update_freq,
-                "locked": _srv._auto_update_env_locked,
+        return handler._json(
+            200,
+            {
+                "zim_count": zim_count,
+                "total_size_gb": round(total_gb, 1),
+                "manage_enabled": True,
+                "linked_zims": linked_zims,
+                "domain_count": len(_srv._domain_zim_map),
+                "auto_update": {
+                    "enabled": _srv._auto_update_enabled,
+                    "frequency": _srv._auto_update_freq,
+                    "locked": _srv._auto_update_env_locked,
+                },
             },
-        })
+        )
 
     elif parsed.path == "/manage/stats":
         metrics = _srv._get_metrics()
@@ -220,12 +249,28 @@ def handle_manage_get(handler, parsed, params):
         title_index = _srv._get_title_index_stats()
         with _srv._xzim_refs_lock:
             xzim_refs = sorted(
-                [{"from": k[0], "to": k[1], "count": v} for k, v in _srv._xzim_refs.items()],
-                key=lambda x: x["count"], reverse=True
+                [
+                    {"from": k[0], "to": k[1], "count": v}
+                    for k, v in _srv._xzim_refs.items()
+                ],
+                key=lambda x: x["count"],
+                reverse=True,
             )
         linked_zims = len(set(_srv._domain_zim_map.values()))
         zim_count = len(_srv.get_zim_files())
-        return handler._json(200, {"metrics": metrics, "disk": disk, "auto_update": auto_update, "title_index": title_index, "cross_zim_refs": xzim_refs, "linked_zims": linked_zims, "zim_count": zim_count, "domain_count": len(_srv._domain_zim_map)})
+        return handler._json(
+            200,
+            {
+                "metrics": metrics,
+                "disk": disk,
+                "auto_update": auto_update,
+                "title_index": title_index,
+                "cross_zim_refs": xzim_refs,
+                "linked_zims": linked_zims,
+                "zim_count": zim_count,
+                "domain_count": len(_srv._domain_zim_map),
+            },
+        )
 
     elif parsed.path == "/manage/usage":
         return handler._json(200, _srv._get_usage_stats())
@@ -244,48 +289,348 @@ def handle_manage_get(handler, parsed, params):
         total, items, err = _srv._fetch_kiwix_catalog(query, lang, count, start)
         if err:
             return handler._json(502, {"error": f"Kiwix catalog fetch failed: {err}"})
+        # Optional client-side language filter — `ui_languages=en,fr` returns
+        # only items whose normalized language code is in the set.
+        ui_langs_raw = param("ui_languages", "")
+        if ui_langs_raw:
+            wanted = {x.strip().lower() for x in ui_langs_raw.split(",") if x.strip()}
+            if wanted:
+                items = [
+                    it for it in items if str(it.get("language", "")).lower() in wanted
+                ]
+                total = len(items)
+        # Optional bundle/subset hierarchy detection. Off by default because
+        # the UI only needs it on the catalog drill-in page.
+        if param("include_hierarchy", "") == "1":
+            from zimi.catalog_hierarchy import bundle_relationships
+
+            rels = bundle_relationships(items)
+            for it in items:
+                it["hierarchy"] = rels.get(it.get("name"), {})
         return handler._json(200, {"total": total, "items": items})
 
     elif parsed.path == "/manage/check-updates":
         updates = _srv._check_updates()
         return handler._json(200, {"updates": updates, "count": len(updates)})
 
+    elif parsed.path == "/manage/updates":
+        # Same shape as /manage/check-updates — stable name without "check-"
+        # so callers reading last-known state aren't named for the side
+        # effect. Triggers a catalog fetch; fast when cached.
+        updates = _srv._check_updates()
+        return handler._json(200, {"updates": updates, "count": len(updates)})
+
     elif parsed.path == "/manage/downloads":
         return handler._json(200, {"downloads": _srv._get_downloads()})
+
+    elif parsed.path == "/manage/activity":
+        # Aggregated background-activity snapshot for the topbar status row.
+        # Cheap to call — reads in-memory state only, no heavy I/O. Designed
+        # for 5s polling. Returns small flat dict; client renders one line.
+        idx = _srv._get_title_index_status_brief()
+        downloads = _srv._get_downloads()
+        # _get_downloads() shape: queued items have queued=True, in-flight
+        # items have queued=False + done=False + paused=False (see
+        # library.py:1209,1234). Earlier draft filtered on a `status` key
+        # that doesn't exist on real download objects — the test stub had it
+        # wrong. Active = actively transferring; queued is a separate bucket.
+        active_dl = sum(
+            1
+            for d in downloads
+            if not d.get("done") and not d.get("paused") and not d.get("queued")
+        )
+        queued_dl = sum(1 for d in downloads if d.get("queued"))
+        seeding_count = 0
+        try:
+            from zimi import p2p as _p2p
+
+            if _p2p.is_torrent_enabled():
+                # peek only — a 5s poll must never spawn (or retry) the sidecar
+                backend = _p2p.peek_backend()
+                if backend:
+                    seeding_count = sum(
+                        1
+                        for raw in backend.list_managed()
+                        if raw.get("state") in ("seeding", "complete")
+                    )
+        except Exception:
+            pass
+        return handler._json(
+            200,
+            {
+                "indexing": {
+                    "state": idx.get("state", "idle"),
+                    "ready": idx.get("ready", 0),
+                    "total": idx.get("total", 0),
+                    "current": idx.get("building_now"),
+                },
+                "downloads": {"active": active_dl, "queued": queued_dl},
+                "seeding": {"torrents": seeding_count},
+            },
+        )
+
+    elif parsed.path == "/manage/peers":
+        try:
+            from zimi import p2p_discovery as _disc
+
+            # The share toggle governs BOTH directions: with it off, we
+            # neither serve /dl nor surface peers to pull from — the user
+            # asked for "internet sources only".
+            if not _disc.is_share_enabled():
+                return handler._json(
+                    200,
+                    {
+                        "enabled": False,
+                        "self": _disc._self_service_name or _disc._peer_instance_name(),
+                        "peers": [],
+                    },
+                )
+            return handler._json(
+                200,
+                {
+                    "enabled": _disc.is_enabled(),
+                    "self": _disc._self_service_name or _disc._peer_instance_name(),
+                    "peers": _disc.get_peers(),
+                },
+            )
+        except Exception:
+            return handler._json(200, {"enabled": False, "self": "", "peers": []})
+
+    elif parsed.path == "/manage/mirror":
+        try:
+            from zimi import p2p as _p2p
+
+            return handler._json(200, _p2p.get_mirror_status())
+        except Exception:
+            return handler._json(
+                200, {"enabled": False, "ratio_cap": 0.0, "upload_kb": 0}
+            )
+
+    elif parsed.path == "/manage/peers/list":
+        try:
+            from zimi import p2p_discovery as _disc
+
+            if not _disc.is_share_enabled():
+                return handler._json(403, {"error": "LAN sharing is turned off"})
+            peer = param("peer", "")
+            if not peer:
+                return handler._json(400, {"error": "missing 'peer' param"})
+            data = _disc.fetch_peer_list(peer)
+            if data is None:
+                return handler._json(404, {"error": "peer not reachable or unknown"})
+            return handler._json(200, {"peer": peer, "list": data})
+        except Exception:
+            return handler._json(503, {"error": "peer fetch failed"})
 
     elif parsed.path == "/manage/history":
         return handler._json(200, {"history": _srv._load_history()})
 
     elif parsed.path == "/manage/cache-info":
         import glob as _glob
+
         data_dir = _srv.ZIMI_DATA_DIR
+
         def _dir_size(path):
             total = 0
-            for f in _glob.glob(os.path.join(path, '**'), recursive=True):
+            for f in _glob.glob(os.path.join(path, "**"), recursive=True):
                 if os.path.isfile(f):
                     total += os.path.getsize(f)
             return total
+
         titles_dir = os.path.join(data_dir, "titles")
         qids_dir = os.path.join(data_dir, "qids")
         caches = {
-            "title_indexes": {"path": "titles/", "size_bytes": _dir_size(titles_dir) if os.path.isdir(titles_dir) else 0,
-                              "count": len(_glob.glob(os.path.join(titles_dir, "*.db"))) if os.path.isdir(titles_dir) else 0},
-            "qid_indexes": {"path": "qids/", "size_bytes": _dir_size(qids_dir) if os.path.isdir(qids_dir) else 0,
-                            "count": len(_glob.glob(os.path.join(qids_dir, "*.db"))) if os.path.isdir(qids_dir) else 0},
-            "metadata_cache": {"path": "cache.json",
-                               "size_bytes": os.path.getsize(os.path.join(data_dir, "cache.json")) if os.path.exists(os.path.join(data_dir, "cache.json")) else 0},
-            "suggest_cache": {"path": "suggest_cache.json",
-                              "size_bytes": os.path.getsize(os.path.join(data_dir, "suggest_cache.json")) if os.path.exists(os.path.join(data_dir, "suggest_cache.json")) else 0},
+            "title_indexes": {
+                "path": "titles/",
+                "size_bytes": _dir_size(titles_dir) if os.path.isdir(titles_dir) else 0,
+                "count": (
+                    len(_glob.glob(os.path.join(titles_dir, "*.db")))
+                    if os.path.isdir(titles_dir)
+                    else 0
+                ),
+            },
+            "qid_indexes": {
+                "path": "qids/",
+                "size_bytes": _dir_size(qids_dir) if os.path.isdir(qids_dir) else 0,
+                "count": (
+                    len(_glob.glob(os.path.join(qids_dir, "*.db")))
+                    if os.path.isdir(qids_dir)
+                    else 0
+                ),
+            },
+            "metadata_cache": {
+                "path": "cache.json",
+                "size_bytes": (
+                    os.path.getsize(os.path.join(data_dir, "cache.json"))
+                    if os.path.exists(os.path.join(data_dir, "cache.json"))
+                    else 0
+                ),
+            },
+            "suggest_cache": {
+                "path": "suggest_cache.json",
+                "size_bytes": (
+                    os.path.getsize(os.path.join(data_dir, "suggest_cache.json"))
+                    if os.path.exists(os.path.join(data_dir, "suggest_cache.json"))
+                    else 0
+                ),
+            },
         }
         total = sum(c["size_bytes"] for c in caches.values())
         return handler._json(200, {"caches": caches, "total_bytes": total})
 
+    elif parsed.path == "/manage/hot":
+        # Pro: list of hot ZIMs + which env source controls them.
+        env_locked = "ZIMI_HOT_ZIMS" in os.environ
+        return handler._json(
+            200,
+            {
+                "hot_zims": _srv.get_hot_zims(),
+                "env_locked": env_locked,
+            },
+        )
+
+    elif parsed.path == "/manage/seeding":
+        # Surface what we're seeding right now: per-ZIM ratio, peers, speeds.
+        # Empty list when BT is off or no torrents are loaded.
+        from zimi import p2p
+
+        if not p2p.is_torrent_enabled():
+            return handler._json(
+                200,
+                {
+                    "enabled": False,
+                    "ratio_cap": p2p.get_seed_ratio_cap(),
+                    "torrents": [],
+                    "totals": {"uploaded": 0, "downloaded": 0, "ratio": 0.0},
+                },
+            )
+        # peek only — a list view must not spawn (or retry) the sidecar
+        backend = p2p.peek_backend()
+        if not backend:
+            return handler._json(
+                200,
+                {
+                    "enabled": True,
+                    "ratio_cap": p2p.get_seed_ratio_cap(),
+                    "torrents": [],
+                    "totals": {"uploaded": 0, "downloaded": 0, "ratio": 0.0},
+                },
+            )
+        torrents = []
+        total_up = 0
+        total_down = 0
+        # Drop finished/errored results (e.g. broken-ZIM torrents that can't
+        # resolve) so they don't linger in the seeding panel. Best-effort.
+        purge = getattr(backend, "purge_stopped", None)
+        if callable(purge):
+            try:
+                purge()
+            except Exception:
+                pass
+        try:
+            for raw in backend.list_managed():
+                # Errored torrents aren't seeding — never surface them as such.
+                if raw.get("status") == "error":
+                    continue
+                files = raw.get("files", [])
+                fname = ""
+                if files and isinstance(files, list) and files[0].get("path"):
+                    fname = os.path.basename(files[0]["path"])
+                # Skip aria2's own .torrent metadata fetches — noise.
+                if not fname.endswith(".zim"):
+                    continue
+                completed = int(raw.get("completedLength", 0))
+                uploaded = int(raw.get("uploadLength", 0))
+                ratio = uploaded / max(completed, 1)
+                torrents.append(
+                    {
+                        "id": raw.get("gid", ""),
+                        "filename": fname,
+                        "state": raw.get("status", "unknown"),
+                        "completed_bytes": completed,
+                        "uploaded_bytes": uploaded,
+                        "ratio": round(ratio, 3),
+                        "peers": int(raw.get("connections", 0)),
+                        "down_speed": int(raw.get("downloadSpeed", 0)),
+                        "up_speed": int(raw.get("uploadSpeed", 0)),
+                        "info_hash": raw.get("infoHash", ""),
+                    }
+                )
+                total_up += uploaded
+                total_down += completed
+        except Exception as e:
+            log.warning("seeding list failed: %s", e)
+        return handler._json(
+            200,
+            {
+                "enabled": p2p.is_seeding_enabled(),
+                "ratio_cap": p2p.get_seed_ratio_cap(),
+                "disk_pressure": p2p.should_pause_for_disk_pressure(_srv.ZIM_DIR),
+                "torrents": torrents,
+                "totals": {
+                    "uploaded": total_up,
+                    "downloaded": total_down,
+                    "ratio": round(total_up / max(total_down, 1), 3),
+                },
+            },
+        )
+
+    elif parsed.path == "/manage/bt-status":
+        # Surface the BT engine state so the user can self-diagnose:
+        # is it enabled, did the binary start, is the port reachable?
+        from zimi import p2p
+        import shutil as _shutil
+
+        enabled = p2p.is_torrent_enabled()
+        backend_name = p2p.get_backend_name()
+        binary_present = (
+            bool(p2p.find_aria2c()) if backend_name == "aria2" else None
+        )
+
+        # Live state — peek only. A status view must never spawn the sidecar
+        # (with BT on by default that would mean every settings visit).
+        backend = p2p.peek_backend() if enabled else None
+
+        if not enabled:
+            status = "off"
+        elif backend is not None:
+            status = "ready"
+        elif binary_present is False:
+            status = "unavailable"
+        else:
+            # Binary present, sidecar just not started yet — it spawns at
+            # boot or on first download, so report ready-to-torrent.
+            status = "ready"
+        hint = None
+        if not enabled:
+            hint = "BT downloads disabled (ZIMI_BT=off). HTTP is used instead."
+        elif status == "unavailable":
+            hint = (
+                "aria2c not found — downloads fall back to HTTP. "
+                "Install aria2 to torrent and share load with the Kiwix mirrors."
+            )
+
+        return handler._json(
+            200,
+            {
+                "status": status,
+                "enabled": enabled,
+                "backend": backend_name,
+                "bt_port": p2p.get_bt_port(),
+                "staging_dir": p2p.get_staging_dir(_srv.ZIMI_DATA_DIR),
+                "binary_present": binary_present,
+                "hint": hint,
+            },
+        )
+
     else:
         return handler._json(404, {"error": "not found"})
+
 
 # ============================================================================
 # Manage POST Routes
 # ============================================================================
+
 
 def handle_manage_post(handler, parsed, data):
     """Handle all POST /manage/* requests. Called from ZimHandler.do_POST."""
@@ -295,7 +640,12 @@ def handle_manage_post(handler, parsed, data):
     if parsed.path == "/manage/set-password":
         # Env var controls password — UI changes would be silently overridden
         if os.environ.get("ZIMI_MANAGE_PASSWORD", ""):
-            return handler._json(403, {"error": "Password is controlled by ZIMI_MANAGE_PASSWORD environment variable"})
+            return handler._json(
+                403,
+                {
+                    "error": "Password is controlled by ZIMI_MANAGE_PASSWORD environment variable"
+                },
+            )
         stored = _get_manage_password_hash()
         if stored:
             cur = data.get("current", "")
@@ -303,16 +653,22 @@ def handle_manage_post(handler, parsed, data):
                 return handler._json(401, {"error": "Current password is incorrect"})
         new_pw = data.get("password", "").strip()
         if not new_pw and _get_api_token():
-            return handler._json(400, {"error": "Revoke the API token before removing the password"})
+            return handler._json(
+                400, {"error": "Revoke the API token before removing the password"}
+            )
         _set_manage_password(new_pw)
-        return handler._json(200, {"status": "password set" if new_pw else "password cleared"})
+        return handler._json(
+            200, {"status": "password set" if new_pw else "password cleared"}
+        )
 
     # API token management — requires existing auth + password must be set
     if parsed.path == "/manage/generate-token":
         if _check_manage_auth(handler):
             return handler._json(401, {"error": "unauthorized", "needs_password": True})
         if not _get_manage_password_hash():
-            return handler._json(400, {"error": "Set a password before generating an API token"})
+            return handler._json(
+                400, {"error": "Set a password before generating an API token"}
+            )
         token = _generate_api_token()
         return handler._json(200, {"token": token})
     if parsed.path == "/manage/revoke-token":
@@ -325,9 +681,50 @@ def handle_manage_post(handler, parsed, data):
 
     if parsed.path == "/manage/download":
         url = data.get("url", "")
+        size_bytes = data.get("size_bytes")
         if not url:
             return handler._json(400, {"error": "missing 'url' in request body"})
-        dl_id, err = _srv._start_download(url)
+        dl_id, err = _srv._start_download(url, size_bytes=size_bytes)
+        if err:
+            return handler._json(400, {"error": err})
+        return handler._json(200, {"status": "started", "id": dl_id})
+
+    elif parsed.path == "/manage/download-batch":
+        urls = data.get("urls")
+        if not isinstance(urls, list):
+            return handler._json(400, {"error": "missing 'urls' array in request body"})
+        sizes = data.get("sizes") or []
+        if not isinstance(sizes, list):
+            sizes = []
+        ids = []
+        errors = []
+        for i, url in enumerate(urls):
+            if not isinstance(url, str) or not url:
+                ids.append(None)
+                errors.append("invalid url at index %d" % i)
+                continue
+            sz = (
+                sizes[i]
+                if i < len(sizes) and isinstance(sizes[i], (int, float))
+                else None
+            )
+            dl_id, err = _srv._start_download(url, size_bytes=sz)
+            ids.append(dl_id)
+            errors.append(err)
+        succeeded = sum(1 for x in ids if x is not None)
+        return handler._json(200, {"ids": ids, "errors": errors, "started": succeeded})
+
+    elif parsed.path == "/manage/download-from-peer":
+        # Pull a ZIM straight from a discovered LAN peer over HTTP. The server
+        # resolves peer→host:port from discovery state, so the client only
+        # names the peer + file — it can't point us at an arbitrary URL.
+        peer = data.get("peer")
+        fname = data.get("file")
+        if not isinstance(peer, str) or not peer:
+            return handler._json(400, {"error": "missing 'peer'"})
+        if not isinstance(fname, str) or not fname:
+            return handler._json(400, {"error": "missing 'file'"})
+        dl_id, err = _srv._start_peer_download(peer, fname)
         if err:
             return handler._json(400, {"error": err})
         return handler._json(200, {"status": "started", "id": dl_id})
@@ -343,14 +740,14 @@ def handle_manage_post(handler, parsed, data):
 
     elif parsed.path == "/manage/cancel":
         dl_id = data.get("id", "")
-        with _srv._download_lock:
-            dl = _srv._active_downloads.get(dl_id)
-            if not dl:
-                return handler._json(404, {"error": "Download not found"})
-            if dl.get("done"):
-                return handler._json(400, {"error": "Download already finished"})
-            dl["cancelled"] = True
-        return handler._json(200, {"status": "cancelling", "id": dl_id})
+        from zimi.library import _cancel_download
+
+        status, code = _cancel_download(dl_id)
+        if status == "not_found":
+            return handler._json(404, {"error": "Download not found"})
+        if status == "already_done":
+            return handler._json(400, {"error": "Download already finished"})
+        return handler._json(code, {"status": status, "id": dl_id})
 
     elif parsed.path == "/manage/clear-downloads":
         with _srv._download_lock:
@@ -369,6 +766,42 @@ def handle_manage_post(handler, parsed, data):
         _srv._suggest_cache_clear()
         _srv._clean_stale_title_indexes()
         return handler._json(200, {"status": "refreshed", "zim_count": count})
+
+    elif parsed.path in ("/manage/pause", "/manage/resume"):
+        dl_id = data.get("id", "")
+        with _srv._download_lock:
+            dl = _srv._active_downloads.get(dl_id)
+            if not dl:
+                return handler._json(404, {"error": "Download not found"})
+            if dl.get("done"):
+                return handler._json(400, {"error": "Download already finished"})
+            dl["paused"] = parsed.path == "/manage/pause"
+        return handler._json(
+            200, {"status": "paused" if dl["paused"] else "resumed", "id": dl_id}
+        )
+
+    elif parsed.path == "/manage/cache-action":
+        # Lightweight cache maintenance for the Server-settings UI.
+        # action ∈ {clear-search, clear-suggest, rebuild-title, rebuild-qid}
+        action = data.get("action", "")
+        if action == "clear-search":
+            _srv._search_cache_clear()
+            return handler._json(200, {"status": "cleared", "target": "search"})
+        if action == "clear-suggest":
+            _srv._suggest_cache_clear()
+            return handler._json(200, {"status": "cleared", "target": "suggest"})
+        if action == "rebuild-title":
+            # Heavy — run in background so the request returns immediately.
+            import threading as _t
+
+            _t.Thread(target=_srv._build_all_title_indexes, daemon=True).start()
+            return handler._json(200, {"status": "started", "target": "title"})
+        if action == "rebuild-qid":
+            import threading as _t
+
+            _t.Thread(target=_srv._build_all_qid_indexes, daemon=True).start()
+            return handler._json(200, {"status": "started", "target": "qid"})
+        return handler._json(400, {"error": "unknown action"})
 
     elif parsed.path == "/manage/build-fts":
         zim_name = data.get("name", "")
@@ -402,17 +835,32 @@ def handle_manage_post(handler, parsed, data):
             # Cache ZIM info before deletion so history shows proper title/icon
             zim_info = {}
             try:
-                for z in (_srv._zim_list_cache or []):
+                for z in _srv._zim_list_cache or []:
                     if z.get("file") == filename:
-                        zim_info = {"title": z.get("title", ""), "name": z.get("name", ""), "has_icon": z.get("has_icon", False)}
+                        zim_info = {
+                            "title": z.get("title", ""),
+                            "name": z.get("name", ""),
+                            "has_icon": z.get("has_icon", False),
+                        }
                         break
             except Exception as e:
-                log.debug("Failed to cache ZIM metadata before deletion of %s: %s", filename, e)
+                log.debug(
+                    "Failed to cache ZIM metadata before deletion of %s: %s",
+                    filename,
+                    e,
+                )
                 pass
             os.remove(filepath)
             log.info(f"Deleted ZIM: {filename}")
-            _srv._append_history({"event": "deleted", "ts": time.time(), "filename": filename,
-                             "size_bytes": file_size, **zim_info})
+            _srv._append_history(
+                {
+                    "event": "deleted",
+                    "ts": time.time(),
+                    "filename": filename,
+                    "size_bytes": file_size,
+                    **zim_info,
+                }
+            )
             with _srv._zim_lock:
                 _srv.load_cache(force=True)
             _srv._search_cache_clear()
@@ -448,15 +896,24 @@ def handle_manage_post(handler, parsed, data):
                 dl_id, err = _srv._start_download(url)
                 if not err:
                     started.append({"name": upd.get("name", "?"), "id": dl_id})
-        return handler._json(200, {"status": "started", "count": len(started), "downloads": started})
+        return handler._json(
+            200, {"status": "started", "count": len(started), "downloads": started}
+        )
 
     elif parsed.path == "/manage/auto-update":
         if _srv._auto_update_env_locked:
-            return handler._json(403, {"error": "Auto-update is controlled by ZIMI_AUTO_UPDATE env var"})
+            return handler._json(
+                403, {"error": "Auto-update is controlled by ZIMI_AUTO_UPDATE env var"}
+            )
         enabled = data.get("enabled", _srv._auto_update_enabled)
         freq = data.get("frequency", _srv._auto_update_freq)
         if freq not in _srv._FREQ_SECONDS:
-            return handler._json(400, {"error": f"Invalid frequency. Use: {', '.join(_srv._FREQ_SECONDS.keys())}"})
+            return handler._json(
+                400,
+                {
+                    "error": f"Invalid frequency. Use: {', '.join(_srv._FREQ_SECONDS.keys())}"
+                },
+            )
         _srv._auto_update_freq = freq
         if enabled and not _srv._auto_update_enabled:
             _srv._auto_update_enabled = True
@@ -464,14 +921,122 @@ def handle_manage_post(handler, parsed, data):
                 log.info("Auto-update thread still running, reusing it")
             else:
                 _srv._auto_update_thread = threading.Thread(
-                    target=_srv._auto_update_loop, kwargs={"initial_delay": 30}, daemon=True)
+                    target=_srv._auto_update_loop,
+                    kwargs={"initial_delay": 30},
+                    daemon=True,
+                )
                 _srv._auto_update_thread.start()
             log.info("Auto-update enabled: %s (first check in 30s)", freq)
         elif not enabled and _srv._auto_update_enabled:
             _srv._auto_update_enabled = False
             log.info("Auto-update disabled")
         _srv._save_auto_update_config(_srv._auto_update_enabled, _srv._auto_update_freq)
-        return handler._json(200, {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq})
+        return handler._json(
+            200,
+            {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq},
+        )
+
+    elif parsed.path == "/manage/bt-settings":
+        # Seed/mirror toggles. An env var locks its field — UI changes would
+        # be silently overridden on next read (same contract as auto-update).
+        from zimi import p2p
+
+        changed = {}
+        if "seed" in data:
+            if p2p.is_seed_env_locked():
+                return handler._json(
+                    403, {"error": "Seeding is controlled by the ZIMI_BT env var"}
+                )
+            p2p.set_pref("seed", bool(data["seed"]))
+            changed["seed"] = bool(data["seed"])
+        if "mirror" in data:
+            if p2p.is_mirror_env_locked():
+                return handler._json(
+                    403,
+                    {"error": "Mirror mode is controlled by the ZIMI_BT env var"},
+                )
+            p2p.set_pref("mirror", bool(data["mirror"]))
+            changed["mirror"] = bool(data["mirror"])
+        if "peer_share" in data:
+            from zimi import p2p_discovery as _disc
+
+            if _disc.is_share_env_locked():
+                return handler._json(
+                    403,
+                    {"error": "LAN sharing is controlled by the ZIMI_NEARBY env var"},
+                )
+            p2p.set_pref("peer_share", bool(data["peer_share"]))
+            changed["peer_share"] = bool(data["peer_share"])
+        if "torrent" in data:
+            if p2p.is_torrent_env_locked():
+                return handler._json(
+                    403,
+                    {"error": "BitTorrent is controlled by the ZIMI_BT env var"},
+                )
+            on = bool(data["torrent"])
+            p2p.set_pref("torrent", on)
+            changed["torrent"] = on
+            if not on:
+                # Switch off means OFF — stop the sidecar (and its seeds) now.
+                try:
+                    p2p.shutdown_backend()
+                except Exception:
+                    pass
+        if "peer_name" in data:
+            from zimi import p2p_discovery as _disc2
+
+            if _disc2.is_name_env_locked():
+                return handler._json(
+                    403,
+                    {"error": "Peer name is controlled by the ZIMI_NEARBY env var"},
+                )
+            name = str(data["peer_name"]).strip()[:63]
+            p2p.set_pref("peer_name", name)
+            changed["peer_name"] = name
+        if "seed_ratio" in data:
+            if p2p.is_seed_ratio_env_locked():
+                return handler._json(
+                    403,
+                    {"error": "Seed ratio is controlled by the ZIMI_BT env var"},
+                )
+            try:
+                ratio = max(0.0, min(10.0, float(data["seed_ratio"])))
+            except (ValueError, TypeError):
+                return handler._json(400, {"error": "seed_ratio must be a number"})
+            p2p.set_pref("seed_ratio", ratio)
+            changed["seed_ratio"] = ratio
+        if not changed:
+            return handler._json(
+                400,
+                {"error": "provide torrent/seed/mirror/peer_share/seed_ratio"},
+            )
+        log.info("BT settings updated via UI: %s", changed)
+        return handler._json(200, p2p.get_mirror_status())
+
+    elif parsed.path == "/manage/hot":
+        # Pro hot-cache live update. Rejected when ZIMI_HOT_ZIMS env var is set
+        # (env wins, UI changes would be silently ignored on next read).
+        if "ZIMI_HOT_ZIMS" in os.environ:
+            return handler._json(
+                403,
+                {
+                    "error": "Hot ZIMs are controlled by ZIMI_HOT_ZIMS environment variable"
+                },
+            )
+        names = data.get("hot_zims")
+        if not isinstance(names, list):
+            return handler._json(
+                400, {"error": "missing 'hot_zims' array in request body"}
+            )
+        # Drop unknown ZIMs rather than 400 — UI can show warnings client-side.
+        zim_files = _srv.get_zim_files()
+        valid = [n for n in names if isinstance(n, str) and n in zim_files]
+        try:
+            _srv.set_hot_zims(valid)
+        except (TypeError, ValueError) as e:
+            log.warning("set_hot_zims rejected payload: %s", e)
+            return handler._json(400, {"error": "invalid hot_zims payload"})
+        return handler._json(200, {"hot_zims": valid, "saved": len(valid)})
 
     else:
         return handler._json(404, {"error": "not found"})

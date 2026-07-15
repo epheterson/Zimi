@@ -3,8 +3,10 @@ services:
     build: .
     container_name: zimi
     restart: unless-stopped
-    ports:
-      - "8899:8899"
+    # Host networking lets mDNS LAN peer discovery (_zimi._tcp) and BT
+    # seeding (6881 TCP+UDP) work without manual port plumbing. See
+    # docs/deployment-networking.md for tradeoffs and alternatives.
+    network_mode: host
     volumes:
       - ./zims:/zims
       - ./zimi-config:/config

@@ -1,6 +1,10 @@
 # Zimi
 
 [![CI](https://github.com/epheterson/Zimi/actions/workflows/ci.yml/badge.svg)](https://github.com/epheterson/Zimi/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-543%20passing-brightgreen)](#)
+[![Lighthouse Accessibility](https://img.shields.io/badge/Lighthouse%20a11y-100%2F100-success?logo=lighthouse&logoColor=white)](docs/plans/2026-04-26-accessibility.md)
+[![WCAG 2.1 AA](https://img.shields.io/badge/WCAG%202.1-AA-blue)](docs/plans/2026-04-26-accessibility.md)
+[![i18n](https://img.shields.io/badge/i18n-10%20languages-blueviolet)](#languages)
 [![Docker Pulls](https://img.shields.io/docker/pulls/epheterson/zimi)](https://hub.docker.com/r/epheterson/zimi)
 [![PyPI](https://img.shields.io/pypi/v/zimi)](https://pypi.org/project/zimi/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -9,17 +13,18 @@ A modern experience for your ZIM files.
 
 [Kiwix](https://kiwix.org) packages the world's knowledge into ZIM files. Zimi makes them feel like the real internet with a rich web UI, fast JSON API, and an MCP server for AI agents. Everything works offline, in your language.
 
-## What's in the box
+## What is Zimi?
 
-- **Cross-source search.** Parallel full-text search across all sources with snippets and thumbnails.
-- **Cross-language navigation.** Switch articles between languages and download missing ones.
-- **Discover.** Fresh cards daily: Picture of the Day, On This Day, Quote, Word, Book, Destination, Talk, Comic, Country.
-- **Bookmarks and history.** Feel like you're in a real browser, save your place.
-- **Kiwix Catalog.** Download 1,000+ Kiwix archives across 10 categories with instant language filtering.
-- **Library management.** Auto-updates, password protection, download queue.
-- **Collections and Favorites.** Group sources for easier access and scoped search.
-- **JSON API.** Every feature accessible programmatically with token auth.
-- **Desktop and mobile.** Native macOS and Python apps. Deploy anywhere.
+- **The offline internet.** Entire websites, cross-ZIM linking, search engine and native browser experience.
+- **Search that hits everything.** One query, every source, 140M+ articles, the right answer on top. Fast.
+- **Multilingual.** Switch any article into any language it has. Ten UI languages built in.
+- **A real library.** 1,000+ archives one click away, auto-updates, collections, batch downloads, bookmarks and history.
+- **A mesh.** Your machines find each other and pass ZIMs around at LAN speed, no internet needed.
+- **A good citizen.** Downloads arrive over BitTorrent and seed back to the Kiwix network. One switch makes you a full mirror.
+- **Fresh daily.** Picture of the Day, On This Day, a word, a quote, a comic, a live almanac sky. All computed locally, forever.
+- **Accessible.** If you browse by keyboard, listen by screen reader, or need high contrast, accessibility is built-in.
+- **Anywhere.** Docker, pip, a native macOS app, or your phone as a PWA.
+- **For humans and machines.** Web UI, JSON API, MCP server for AI agents.
 
 ## Screenshots
 
@@ -31,9 +36,9 @@ A modern experience for your ZIM files.
 |-------------------|---------|
 | ![Languages](screenshots/language-dropdown.png) | ![Catalog](screenshots/browse-library.png) |
 
-| Article Reader |
-|----------------|
-| ![Reader](screenshots/reader.png) |
+| Sharing |
+|---------|
+| ![Sharing](screenshots/sharing.png) |
 
 ## Languages
 
@@ -41,6 +46,16 @@ Not an afterthought. Language is deeply integrated into every aspect of Zimi so 
 - **10 languages.** English, French, German, Spanish, Portuguese, Russian, Chinese, Arabic, Hindi, Hebrew.
 
 Something not right? [Open an issue.](https://github.com/epheterson/Zimi/issues)
+
+## Sharing
+
+Three switches in Server Settings control all of it:
+
+- **BitTorrent** (on by default). Downloads arrive via the Kiwix swarm and seed back, capped at a ratio you choose. `0` means never seed. No aria2 installed? Everything quietly uses plain HTTP.
+- **Nearby** (off by default). Flip it on and Zimi devices on your network find each other; a green pill on a catalog card means a neighbor already has that ZIM. Transfers stay on your LAN, never the internet.
+- **Mirror** (off). Lifts the seeding cap, for people who want to run a long-term Kiwix mirror.
+
+Seeding needs no router setup. Optionally forward your BitTorrent port (default 6881) to let peers connect to you directly, which helps on quiet swarms.
 
 ## Install
 
@@ -63,13 +78,31 @@ Or grab the [AppImage](https://github.com/epheterson/Zimi/releases).
 ### Docker
 
 ```bash
-docker run -v ./zims:/zims -v ./zimi-config:/config -p 8899:8899 epheterson/zimi
+docker run --network host -v ./zims:/zims -v ./zimi-config:/config epheterson/zimi
 ```
 
 `/zims` is where ZIM files live. `/config` persists cache, indexes, and settings. Open http://localhost:8899.
 
+`--network host` is recommended so LAN peer discovery (mDNS) and BitTorrent seeding work out of the box. If you can't use host networking, see "Bridge mode" below.
+
 <details>
-<summary>Docker Compose</summary>
+<summary>Docker Compose (recommended — host networking)</summary>
+
+```yaml
+services:
+  zimi:
+    image: epheterson/zimi
+    container_name: zimi
+    restart: unless-stopped
+    network_mode: host           # mDNS + BT seeding work without port plumbing
+    volumes:
+      - ./zims:/zims             # ZIM files go here
+      - ./zimi-config:/config    # cache, indexes, settings
+```
+</details>
+
+<details>
+<summary>Docker Compose (bridge mode — no LAN discovery)</summary>
 
 ```yaml
 services:
@@ -79,10 +112,14 @@ services:
     restart: unless-stopped
     ports:
       - "8899:8899"
+      - "6881:6881/tcp"          # BitTorrent (TCP)
+      - "6881:6881/udp"          # BitTorrent (UDP / DHT)
     volumes:
-      - ./zims:/zims          # ZIM files go here
-      - ./zimi-config:/config  # cache, indexes, settings
+      - ./zims:/zims
+      - ./zimi-config:/config
 ```
+
+LAN peer discovery (`_zimi._tcp`) won't reach the LAN in bridge mode — multicast doesn't cross the docker bridge. BT seeding still works because aria2 binds the mapped port. See [docs/deployment-networking.md](docs/deployment-networking.md) for the full discussion.
 </details>
 
 ### Python
@@ -94,15 +131,29 @@ ZIM_DIR=./zims zimi serve --port 8899
 
 ### Environment Variables
 
+Most people set nothing: every setting below has a sensible default or lives in the UI.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ZIM_DIR` | `/zims` | Path to ZIM files (scanned for `*.zim` on startup) |
 | `ZIMI_DATA_DIR` | `/config` (Docker) or `$ZIM_DIR/.zimi` | Cache, indexes, and settings. Mount separately in Docker. |
-| `ZIMI_MANAGE` | `1` | Library manager. `0` to disable. |
 | `ZIMI_MANAGE_PASSWORD` | _(none)_ | Protect library management |
-| `ZIMI_AUTO_UPDATE` | `0` | Auto-update ZIMs (`1` to enable) |
+| `ZIMI_BT` | `on` | BitTorrent: `off`, or `on,port=6881,ratio=2,up=2048,mirror=off`. Fields you set are locked in the UI; fields you leave out stay UI-controlled. `ratio=0` means never seed. |
+| `ZIMI_NEARBY` | `off` | LAN sharing: `off`, or `on,name=my-zimi,public=off`. Controls serving *and* fetching between your Zimi devices. |
+
+<details>
+<summary>Advanced</summary>
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ZIMI_MANAGE` | `1` | Library manager. `0` to disable entirely. |
+| `ZIMI_AUTO_UPDATE` | `0` | Auto-update ZIMs (`1` to enable; also a UI setting) |
 | `ZIMI_UPDATE_FREQ` | `weekly` | `daily`, `weekly`, or `monthly` |
 | `ZIMI_RATE_LIMIT` | `60` | Requests/min/IP. `0` to disable. |
+| `ZIMI_API_TOKEN` | _(none)_ | Pin the API token instead of generating in the UI |
+| `ZIMI_HOT_ZIMS` | _(none)_ | Comma-separated ZIM names to pre-warm at startup |
+
+</details>
 
 ## API
 
@@ -170,6 +221,11 @@ For Docker on a remote host:
 ```
 
 Tools: `search` (with `lang` filter), `read`, `suggest`, `list_sources`, `random`, `article_languages`, `read_with_links`, `deep_search`, `list_collections`, `manage_collection`, `manage_favorites`
+
+## Integrations
+
+- **[SearXNG](docs/integrations/searxng.md)** — route queries through Zimi from a self-hosted SearXNG metasearch instance.
+- **[OpenWebUI / generic AI](docs/integrations/openwebui.md)** — wire the MCP server into any AI client for offline research.
 
 ## Contributing
 

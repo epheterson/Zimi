@@ -2,7 +2,9 @@ name: Docker Build & Publish
 
 on:
   push:
-    branches: [main]
+    # main → :latest + semver tags from the version
+    # v1.7.0 (and other v*-prefixed branches) → :dev for early adopters
+    branches: [main, 'v*']
     tags: ['v*.*.*']
 
 env:
@@ -32,6 +34,10 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable={{is_default_branch}}
+            # `dev` tag for any v*-prefixed branch push (currently v1.7.0).
+            # Lets early adopters pull `epheterson/zimi:dev` to try in-progress
+            # work without waiting for a tagged release.
+            type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/heads/v') }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

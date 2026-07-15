@@ -17,6 +17,7 @@ import time
 from urllib.parse import urlparse, parse_qs, unquote
 
 import zimi.server as _srv
+from zimi.search import _loadavg_throttle
 
 log = logging.getLogger("zimi")
 
@@ -25,15 +26,41 @@ log = logging.getLogger("zimi")
 # ---------------------------------------------------------------------------
 
 _LANG_NATIVE_NAMES = {
-    "en": "English", "fr": "Français", "de": "Deutsch", "es": "Español",
-    "pt": "Português", "ru": "Русский", "zh": "中文", "ja": "日本語",
-    "ko": "한국어", "ar": "العربية", "hi": "हिन्दी", "it": "Italiano",
-    "nl": "Nederlands", "pl": "Polski", "tr": "Türkçe", "vi": "Tiếng Việt",
-    "th": "ไทย", "sv": "Svenska", "no": "Norsk", "da": "Dansk",
-    "fi": "Suomi", "cs": "Čeština", "ro": "Română", "hu": "Magyar",
-    "el": "Ελληνικά", "he": "עברית", "uk": "Українська", "ca": "Català",
-    "id": "Bahasa Indonesia", "ms": "Bahasa Melayu", "fa": "فارسی",
-    "bn": "বাংলা", "ta": "தமிழ்", "te": "తెలుగు", "ur": "اردو",
+    "en": "English",
+    "fr": "Français",
+    "de": "Deutsch",
+    "es": "Español",
+    "pt": "Português",
+    "ru": "Русский",
+    "zh": "中文",
+    "ja": "日本語",
+    "ko": "한국어",
+    "ar": "العربية",
+    "hi": "हिन्दी",
+    "it": "Italiano",
+    "nl": "Nederlands",
+    "pl": "Polski",
+    "tr": "Türkçe",
+    "vi": "Tiếng Việt",
+    "th": "ไทย",
+    "sv": "Svenska",
+    "no": "Norsk",
+    "da": "Dansk",
+    "fi": "Suomi",
+    "cs": "Čeština",
+    "ro": "Română",
+    "hu": "Magyar",
+    "el": "Ελληνικά",
+    "he": "עברית",
+    "uk": "Українська",
+    "ca": "Català",
+    "id": "Bahasa Indonesia",
+    "ms": "Bahasa Melayu",
+    "fa": "فارسی",
+    "bn": "বাংলা",
+    "ta": "தமிழ்",
+    "te": "తెలుగు",
+    "ur": "اردو",
     "mul": "Multiple",
 }
 
@@ -43,18 +70,18 @@ _LANG_NATIVE_NAMES = {
 
 _SCRIPT_RANGES = [
     # (start, end, lang_code)
-    (0x4E00, 0x9FFF, "zh"),    # CJK Unified Ideographs
-    (0x3400, 0x4DBF, "zh"),    # CJK Extension A
-    (0x3040, 0x309F, "ja"),    # Hiragana
-    (0x30A0, 0x30FF, "ja"),    # Katakana
-    (0xAC00, 0xD7AF, "ko"),    # Hangul Syllables
-    (0x0400, 0x04FF, "ru"),    # Cyrillic (default to Russian — most content)
-    (0x0600, 0x06FF, "ar"),    # Arabic
-    (0x0900, 0x097F, "hi"),    # Devanagari
-    (0x0980, 0x09FF, "bn"),    # Bengali
-    (0x0A80, 0x0AFF, "gu"),    # Gujarati
-    (0x0B80, 0x0BFF, "ta"),    # Tamil
-    (0x0C00, 0x0C7F, "te"),    # Telugu
+    (0x4E00, 0x9FFF, "zh"),  # CJK Unified Ideographs
+    (0x3400, 0x4DBF, "zh"),  # CJK Extension A
+    (0x3040, 0x309F, "ja"),  # Hiragana
+    (0x30A0, 0x30FF, "ja"),  # Katakana
+    (0xAC00, 0xD7AF, "ko"),  # Hangul Syllables
+    (0x0400, 0x04FF, "ru"),  # Cyrillic (default to Russian — most content)
+    (0x0600, 0x06FF, "ar"),  # Arabic
+    (0x0900, 0x097F, "hi"),  # Devanagari
+    (0x0980, 0x09FF, "bn"),  # Bengali
+    (0x0A80, 0x0AFF, "gu"),  # Gujarati
+    (0x0B80, 0x0BFF, "ta"),  # Tamil
+    (0x0C00, 0x0C7F, "te"),  # Telugu
 ]
 
 _STOPWORDS = {
@@ -112,11 +139,12 @@ def _detect_query_language(query):
 
 _QID_INDEX_DIR = os.path.join(_srv.ZIMI_DATA_DIR, "qids")
 _QID_INDEX_VERSION = "3"
-_QID_RE = re.compile(rb'wikidata\.org/wiki/(Q\d+)')
+_QID_RE = re.compile(rb"wikidata\.org/wiki/(Q\d+)")
 # Authority control Q-ID pattern (article's own Q-ID, not cited references)
-_QID_AUTH_RE = re.compile(rb'wikidata\.org/wiki/(Q\d+)#identifiers')
+_QID_AUTH_RE = re.compile(rb"wikidata\.org/wiki/(Q\d+)#identifiers")
 _QID_FULL_SCAN_MAX_ENTRIES = 6_000_000  # Full-scan all Wikipedia ZIMs up to ~6M entries
 _qid_passive_cache = True  # passively extract Q-IDs from every article viewed
+
 
 def _qid_passive_extract(zim_name, article_path):
     """Extract and cache Q-ID from an article viewed in the reader.
@@ -137,8 +165,9 @@ def _qid_passive_extract(zim_name, article_path):
     except Exception:
         pass  # background task, never fail visibly
 
+
 # Connection pool for Q-ID databases
-_qid_db_pool = {}          # {zim_name: sqlite3.Connection}
+_qid_db_pool = {}  # {zim_name: sqlite3.Connection}
 _qid_db_pool_lock = threading.Lock()
 
 
@@ -152,7 +181,9 @@ def _qid_cache_path():
 
 def _get_qid_db(zim_name):
     """Get a pooled SQLite connection for a Q-ID index, or None if no index."""
-    return _srv._get_pooled_db(zim_name, _qid_db_pool, _qid_db_pool_lock, _qid_index_path)
+    return _srv._get_pooled_db(
+        zim_name, _qid_db_pool, _qid_db_pool_lock, _qid_index_path
+    )
 
 
 def _close_qid_db(zim_name):
@@ -162,7 +193,9 @@ def _close_qid_db(zim_name):
 
 def _qid_index_is_current(zim_name, zim_path):
     """Check if Q-ID index exists and matches ZIM mtime."""
-    return _srv._index_is_current(_qid_index_path(zim_name), zim_path, _QID_INDEX_VERSION)
+    return _srv._index_is_current(
+        _qid_index_path(zim_name), zim_path, _QID_INDEX_VERSION
+    )
 
 
 def _build_qid_index(zim_name, zim_path):
@@ -201,12 +234,15 @@ def _build_qid_index(zim_name, zim_path):
                 if entry.is_redirect:
                     continue
                 path = entry.path
-                dot = path.rfind('.')
+                dot = path.rfind(".")
                 if dot != -1 and path[dot:].lower() in _srv._ASSET_EXTS:
                     continue
                 item = entry.get_item()
                 mimetype = item.mimetype or ""
-                if not mimetype.startswith("text/html") and mimetype != "application/xhtml+xml":
+                if (
+                    not mimetype.startswith("text/html")
+                    and mimetype != "application/xhtml+xml"
+                ):
                     continue
                 if item.size < 2000:
                     continue
@@ -227,8 +263,14 @@ def _build_qid_index(zim_name, zim_path):
                 if scanned % log_interval == 0:
                     pct = round(100 * i / total_entries)
                     rate = scanned / max(time.time() - t0, 0.1)
-                    log.info("Q-ID index: %s %d%% (%d scanned, %d found, %.0f/s)",
-                             zim_name, pct, scanned, count + len(batch), rate)
+                    log.info(
+                        "Q-ID index: %s %d%% (%d scanned, %d found, %.0f/s)",
+                        zim_name,
+                        pct,
+                        scanned,
+                        count + len(batch),
+                        rate,
+                    )
             except Exception as e:
                 log.debug("Q-ID scan: skipping entry %d in %s: %s", i, zim_name, e)
                 continue
@@ -240,8 +282,17 @@ def _build_qid_index(zim_name, zim_path):
         conn.execute("CREATE INDEX idx_qid ON qids(qid)")
 
         zim_mtime = str(os.path.getmtime(zim_path))
-        conn.execute("INSERT INTO meta VALUES ('schema_version', ?)", (_QID_INDEX_VERSION,))
+        zim_uuid = ""
+        try:
+            zim_uuid = str(archive.uuid)
+        except Exception as e:
+            log.debug("UUID read during Q-ID build failed for %s: %s", zim_name, e)
+        conn.execute(
+            "INSERT INTO meta VALUES ('schema_version', ?)", (_QID_INDEX_VERSION,)
+        )
         conn.execute("INSERT INTO meta VALUES ('zim_mtime', ?)", (zim_mtime,))
+        if zim_uuid:
+            conn.execute("INSERT INTO meta VALUES ('zim_uuid', ?)", (zim_uuid,))
         conn.execute("INSERT INTO meta VALUES ('built_at', ?)", (str(time.time()),))
         conn.execute("INSERT INTO meta VALUES ('entry_count', ?)", (str(count),))
         conn.commit()
@@ -255,7 +306,13 @@ def _build_qid_index(zim_name, zim_path):
         _close_qid_db(zim_name)
         os.replace(tmp_path, db_path)
         dt = time.time() - t0
-        log.info("Q-ID index: built %s (%d Q-IDs from %d articles, %.1fs)", zim_name, count, scanned, dt)
+        log.info(
+            "Q-ID index: built %s (%d Q-IDs from %d articles, %.1fs)",
+            zim_name,
+            count,
+            scanned,
+            dt,
+        )
 
 
 _qid_cache_conn = None
@@ -274,7 +331,9 @@ def _get_qid_cache():
         conn = sqlite3.connect(_qid_cache_path(), timeout=5, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("CREATE TABLE IF NOT EXISTS qid_cache (zim TEXT, path TEXT, qid INTEGER, PRIMARY KEY(zim, path))")
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS qid_cache (zim TEXT, path TEXT, qid INTEGER, PRIMARY KEY(zim, path))"
+        )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cache_qid ON qid_cache(qid)")
         _qid_cache_conn = conn
         return conn
@@ -302,7 +361,9 @@ def _qid_extract_from_html(archive, article_path):
     return None
 
 
-_qid_cache_op_lock = threading.Lock()  # protects execute+commit on shared _qid_cache_conn
+_qid_cache_op_lock = (
+    threading.Lock()
+)  # protects execute+commit on shared _qid_cache_conn
 
 
 def _qid_cache_store(zim_name, path, qid):
@@ -310,7 +371,9 @@ def _qid_cache_store(zim_name, path, qid):
     try:
         conn = _get_qid_cache()
         with _qid_cache_op_lock:
-            conn.execute("INSERT OR REPLACE INTO qid_cache VALUES (?,?,?)", (zim_name, path, qid))
+            conn.execute(
+                "INSERT OR REPLACE INTO qid_cache VALUES (?,?,?)", (zim_name, path, qid)
+            )
             conn.commit()
     except Exception as e:
         log.warning("Q-ID cache store failed for %s/%s Q%s: %s", zim_name, path, qid, e)
@@ -321,7 +384,9 @@ def _qid_cache_lookup(zim_name, path):
     try:
         conn = _get_qid_cache()
         with _qid_cache_op_lock:
-            row = conn.execute("SELECT qid FROM qid_cache WHERE zim=? AND path=?", (zim_name, path)).fetchone()
+            row = conn.execute(
+                "SELECT qid FROM qid_cache WHERE zim=? AND path=?", (zim_name, path)
+            ).fetchone()
         return row[0] if row else None
     except Exception as e:
         log.debug("Q-ID cache lookup failed for %s/%s: %s", zim_name, path, e)
@@ -333,7 +398,9 @@ def _qid_cache_find(zim_name, qid):
     try:
         conn = _get_qid_cache()
         with _qid_cache_op_lock:
-            row = conn.execute("SELECT path FROM qid_cache WHERE zim=? AND qid=?", (zim_name, qid)).fetchone()
+            row = conn.execute(
+                "SELECT path FROM qid_cache WHERE zim=? AND qid=?", (zim_name, qid)
+            ).fetchone()
         return row[0] if row else None
     except Exception as e:
         log.debug("Q-ID cache find failed for %s/Q%s: %s", zim_name, qid, e)
@@ -346,11 +413,15 @@ def _qid_lookup(zim_name, article_path):
     conn = _get_qid_db(zim_name)
     if conn is not None:
         try:
-            row = conn.execute("SELECT qid FROM qids WHERE path=?", (article_path,)).fetchone()
+            row = conn.execute(
+                "SELECT qid FROM qids WHERE path=?", (article_path,)
+            ).fetchone()
             if row:
                 return row[0]
         except Exception as e:
-            log.debug("Q-ID index lookup failed for %s/%s: %s", zim_name, article_path, e)
+            log.debug(
+                "Q-ID index lookup failed for %s/%s: %s", zim_name, article_path, e
+            )
     # Check on-demand cache (for large ZIMs)
     return _qid_cache_lookup(zim_name, article_path)
 
@@ -361,7 +432,9 @@ def _qid_find_in_zim(zim_name, qid_int):
     conn = _get_qid_db(zim_name)
     if conn is not None:
         try:
-            row = conn.execute("SELECT path FROM qids WHERE qid=?", (qid_int,)).fetchone()
+            row = conn.execute(
+                "SELECT path FROM qids WHERE qid=?", (qid_int,)
+            ).fetchone()
             if row:
                 return row[0]
         except Exception as e:
@@ -395,12 +468,15 @@ def _check_one_article_for_qid(zim_path):
                 if entry.is_redirect:
                     continue
                 path = entry.path
-                dot = path.rfind('.')
+                dot = path.rfind(".")
                 if dot != -1 and path[dot:].lower() in _srv._ASSET_EXTS:
                     continue
                 item = entry.get_item()
                 mimetype = item.mimetype or ""
-                if not mimetype.startswith("text/html") and mimetype != "application/xhtml+xml":
+                if (
+                    not mimetype.startswith("text/html")
+                    and mimetype != "application/xhtml+xml"
+                ):
                     continue
                 if item.size < 5000:
                     continue
@@ -438,7 +514,22 @@ def _persist_qid_flags(qid_flags):
         log.warning("Failed to persist Q-ID flags to cache: %s", e)
 
 
+_build_all_qid_lock = threading.Lock()
+
+
 def _build_all_qid_indexes():
+    """Build Q-ID indexes for small Wikipedia ZIMs and detect has_qids for all ZIMs.
+
+    Serialized via _build_all_qid_lock — startup worker, post-download
+    triggers (library.py), and manual rebuilds (manage.py) all funnel
+    through here. Late callers wait, then run with a fresh zim list so
+    a download that landed during the wait gets picked up.
+    """
+    with _build_all_qid_lock:
+        _build_all_qid_indexes_inner()
+
+
+def _build_all_qid_indexes_inner():
     """Build Q-ID indexes for small Wikipedia ZIMs and detect has_qids for all ZIMs.
 
     Phase 1: Full-scan small Wikipedia ZIMs (< 200K entries) to build SQLite indexes.
@@ -447,7 +538,9 @@ def _build_all_qid_indexes():
     """
     os.makedirs(_QID_INDEX_DIR, exist_ok=True)
     zims = _srv.get_zim_files()
-    zim_info = {z.get("name"): z.get("entries", 0) for z in (_srv._zim_list_cache or [])}
+    zim_info = {
+        z.get("name"): z.get("entries", 0) for z in (_srv._zim_list_cache or [])
+    }
 
     wiki_zims = [(n, p) for n, p in zims.items() if _zim_project_name(n) == "wikipedia"]
 
@@ -465,7 +558,11 @@ def _build_all_qid_indexes():
             need_build.append((name, path))
 
     if need_build:
-        need_build.sort(key=lambda x: zim_info.get(x[0], 0) if isinstance(zim_info.get(x[0], 0), int) else 0)
+        need_build.sort(
+            key=lambda x: (
+                zim_info.get(x[0], 0) if isinstance(zim_info.get(x[0], 0), int) else 0
+            )
+        )
 
         for name, path in need_build:
             try:
@@ -473,21 +570,40 @@ def _build_all_qid_indexes():
                 current += 1
             except Exception as e:
                 log.warning("Q-ID index build failed for %s: %s", name, e)
+            # Yield to host between ZIMs if loadavg is high.
+            _loadavg_throttle()
 
-    # Clean stale indexes
+    # Clean stale indexes + .tmp orphans from interrupted builds (SIGKILL
+    # mid-build leaves <name>.qid.db.tmp files that aren't tracked anymore).
     for f in os.listdir(_QID_INDEX_DIR):
+        full = os.path.join(_QID_INDEX_DIR, f)
+        if (
+            f.endswith(".qid.db.tmp")
+            or f.endswith(".qid.db.tmp-shm")
+            or f.endswith(".qid.db.tmp-wal")
+        ):
+            try:
+                os.remove(full)
+                log.info("Removed orphan Q-ID index tmp: %s", f)
+            except OSError:
+                pass
+            continue
         if f.endswith(".qid.db"):
             zn = f[:-7]
             if zn not in zims:
                 _close_qid_db(zn)
                 try:
-                    os.remove(os.path.join(_QID_INDEX_DIR, f))
+                    os.remove(full)
                     log.info("Removed stale Q-ID index: %s", f)
                 except OSError:
                     pass
 
     if current or skipped_large:
-        log.info("Q-ID indexes: %d ready, %d large ZIMs use on-demand matching", current, skipped_large)
+        log.info(
+            "Q-ID indexes: %d ready, %d large ZIMs use on-demand matching",
+            current,
+            skipped_large,
+        )
 
     # Phase 2: Detect has_qids for all ZIMs
     # Known Wikimedia projects always embed Q-IDs. For indexed ZIMs we know for sure.
@@ -510,7 +626,7 @@ def _build_all_qid_indexes():
 
     # Apply to _zim_list_cache and persist
     changed = 0
-    for zi in (_srv._zim_list_cache or []):
+    for zi in _srv._zim_list_cache or []:
         zname = zi.get("name", "")
         if zname in qid_flags:
             old = zi.get("has_qids")
@@ -522,7 +638,12 @@ def _build_all_qid_indexes():
         _persist_qid_flags(qid_flags)
 
     has_count = sum(1 for v in qid_flags.values() if v)
-    log.info("Q-ID support: %d/%d ZIMs have Q-IDs (%d sampled)", has_count, len(qid_flags), sampled)
+    log.info(
+        "Q-ID support: %d/%d ZIMs have Q-IDs (%d sampled)",
+        has_count,
+        len(qid_flags),
+        sampled,
+    )
 
 
 # ============================================================================
@@ -565,7 +686,7 @@ def _build_domain_zim_map():
             if www not in dmap:
                 dmap[www] = name
         # Mobile Wikimedia variant: XX.wiki*.org → XX.m.wiki*.org (all languages)
-        m = re.match(r'^(\w{2,3})\.(wiki\w+\.org)$', domain)
+        m = re.match(r"^(\w{2,3})\.(wiki\w+\.org)$", domain)
         if m:
             mobile = f"{m.group(1)}.m.{m.group(2)}"
             if mobile not in dmap:
@@ -580,7 +701,7 @@ def _build_domain_zim_map():
     for name, path in zims.items():
         filename = os.path.basename(path)
         base = filename.split(".zim")[0]
-        m = re.match(r'^([a-zA-Z0-9.-]+\.[a-z]{2,})_', base)
+        m = re.match(r"^([a-zA-Z0-9.-]+\.[a-z]{2,})_", base)
         if m:
             _add_domain(m.group(1), name)
 
@@ -594,7 +715,9 @@ def _build_domain_zim_map():
         if not archive:
             continue
         try:
-            source = bytes(archive.get_metadata("Source")).decode("utf-8", "replace").strip()
+            source = (
+                bytes(archive.get_metadata("Source")).decode("utf-8", "replace").strip()
+            )
         except Exception as e:
             log.debug("Failed to read Source metadata for %s: %s", name, e)
             continue
@@ -606,7 +729,9 @@ def _build_domain_zim_map():
             else:
                 domain = source.split("/")[0]
         except Exception as e:
-            log.debug("Failed to parse domain from source %r for %s: %s", source, name, e)
+            log.debug(
+                "Failed to parse domain from source %r for %s: %s", source, name, e
+            )
             continue
         _add_domain(domain, name)
 
@@ -644,7 +769,7 @@ def _resolve_url_to_zim(url_str):
     # Look up domain (try exact, then without www.)
     zim_name = _domain_zim_map.get(host)
     if not zim_name:
-        bare = re.sub(r'^www\.', '', host)
+        bare = re.sub(r"^www\.", "", host)
         zim_name = _domain_zim_map.get(bare)
     if not zim_name:
         return None
@@ -657,39 +782,54 @@ def _resolve_url_to_zim(url_str):
 
     # Build candidate paths based on domain type
     candidates = []
-    if "wikipedia.org" in host or "wiktionary.org" in host or "wikivoyage.org" in host \
-       or "wikibooks.org" in host or "wikiversity.org" in host or "wikiquote.org" in host \
-       or "wikinews.org" in host:
+    if (
+        "wikipedia.org" in host
+        or "wiktionary.org" in host
+        or "wikivoyage.org" in host
+        or "wikibooks.org" in host
+        or "wikiversity.org" in host
+        or "wikiquote.org" in host
+        or "wikinews.org" in host
+    ):
         # Wikimedia: /wiki/Article_Name → A/Article_Name
-        rest = re.sub(r'^wiki/', '', url_path)
+        rest = re.sub(r"^wiki/", "", url_path)
         # Handle ?title=Article&oldid=... style URLs (MediaWiki index.php format)
         qs = parse_qs(parsed.query)
-        if qs.get("title") and (not rest or rest in ("wiki", "w/index.php", "index.php")):
+        if qs.get("title") and (
+            not rest or rest in ("wiki", "w/index.php", "index.php")
+        ):
             rest = qs["title"][0]
         candidates.append("A/" + rest)
         candidates.append(rest)
         # Strip Wikimedia namespaces (Topic:, Category:, Portal:, etc.)
-        ns_stripped = re.sub(r'^[A-Z][a-z]+:', '', rest)
+        ns_stripped = re.sub(r"^[A-Z][a-z]+:", "", rest)
         if ns_stripped != rest:
             candidates.append(ns_stripped)
             candidates.append("A/" + ns_stripped)
-    elif "stackexchange.com" in host or "stackoverflow.com" in host \
-         or "serverfault.com" in host or "superuser.com" in host or "askubuntu.com" in host:
+    elif (
+        "stackexchange.com" in host
+        or "stackoverflow.com" in host
+        or "serverfault.com" in host
+        or "superuser.com" in host
+        or "askubuntu.com" in host
+    ):
         # Stack Exchange: /questions/12345/title → A/questions/12345/title
         candidates.append("A/" + url_path)
         candidates.append(url_path)
     elif "rationalwiki.org" in host or "appropedia.org" in host:
         # MediaWiki sites: /wiki/Article → Article (no A/ prefix)
-        rest = re.sub(r'^wiki/', '', url_path)
+        rest = re.sub(r"^wiki/", "", url_path)
         # Handle ?title=Article&oldid=... style URLs
         qs = parse_qs(parsed.query)
-        if qs.get("title") and (not rest or rest in ("wiki", "w/index.php", "index.php")):
+        if qs.get("title") and (
+            not rest or rest in ("wiki", "w/index.php", "index.php")
+        ):
             rest = qs["title"][0]
         candidates.append(rest)
         candidates.append("A/" + rest)
     elif "explainxkcd.com" in host:
         # /wiki/index.php/1234 → 1234:_Title (try number prefix match)
-        rest = re.sub(r'^wiki/index\.php/', '', url_path)
+        rest = re.sub(r"^wiki/index\.php/", "", url_path)
         candidates.append(rest)
         candidates.append("A/" + rest)
     elif "wikihow.com" in host:
@@ -719,6 +859,7 @@ def _resolve_url_to_zim(url_str):
 # ============================================================================
 # Article Language Matching
 # ============================================================================
+
 
 def get_article_languages(zim_name, article_path):
     """Find available translations for an article across all installed ZIMs.
@@ -752,11 +893,18 @@ def get_article_languages(zim_name, article_path):
         if item.mimetype not in ("text/html", "application/xhtml+xml"):
             return {"languages": []}
     except Exception as e:
-        log.debug("Failed to read article for language detection in %s path %s: %s", zim_name, article_path, e)
+        log.debug(
+            "Failed to read article for language detection in %s path %s: %s",
+            zim_name,
+            article_path,
+            e,
+        )
         return {"languages": []}
 
     # Determine the source ZIM's project type and language
-    src_info = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == zim_name), None)
+    src_info = next(
+        (z for z in (_srv._zim_list_cache or []) if z.get("name") == zim_name), None
+    )
     src_lang = src_info.get("language", "en") if src_info else "en"
 
     zim_list = _srv._zim_list_cache or []
@@ -776,7 +924,13 @@ def get_article_languages(zim_name, article_path):
         if qid is not None:
             _qid_cache_store(zim_name, article_path, qid)
 
-    log.info("  interlang %s/%s: qid=%s src_project=%s", zim_name, article_path, qid, src_project)
+    log.info(
+        "  interlang %s/%s: qid=%s src_project=%s",
+        zim_name,
+        article_path,
+        qid,
+        src_project,
+    )
 
     # Step 0b: Check all target ZIMs for this Q-ID
     if qid is not None:
@@ -795,12 +949,14 @@ def get_article_languages(zim_name, article_path):
                 # Cache bidirectionally so the reverse hop works too
                 _qid_cache_store(n, matched_path, qid)
                 seen_langs.add(lang)
-                installed.append({
-                    "lang": lang,
-                    "name": _LANG_NATIVE_NAMES.get(lang, lang),
-                    "zim": n,
-                    "path": matched_path,
-                })
+                installed.append(
+                    {
+                        "lang": lang,
+                        "name": _LANG_NATIVE_NAMES.get(lang, lang),
+                        "zim": n,
+                        "path": matched_path,
+                    }
+                )
             if len(seen_langs) >= 30:
                 break
 
@@ -811,7 +967,7 @@ def get_article_languages(zim_name, article_path):
             content = bytes(item.content).decode("utf-8", errors="replace")
             pattern = re.compile(
                 r'href="https?://([a-z]{2,3})(?:\.m)?'
-                r'\.(wikipedia|wiktionary|wikivoyage|wikibooks|wikiquote|wikinews|wikiversity|wikisource)'
+                r"\.(wikipedia|wiktionary|wikivoyage|wikibooks|wikiquote|wikinews|wikiversity|wikisource)"
                 r'\.org/wiki/([^"#]+)"'
             )
             for m in pattern.finditer(content):
@@ -820,7 +976,9 @@ def get_article_languages(zim_name, article_path):
                 if lang in seen_langs:
                     continue
                 wiki_path = unquote(m.group(3))
-                match = _find_article_in_lang_zims(lang, src_project, wiki_path, zim_name, zim_list)
+                match = _find_article_in_lang_zims(
+                    lang, src_project, wiki_path, zim_name, zim_list
+                )
                 if match:
                     seen_langs.add(lang)
                     installed.append(match)
@@ -857,12 +1015,14 @@ def get_article_languages(zim_name, article_path):
                     if cand_qid is not None and cand_qid != qid:
                         continue
                 seen_langs.add(lang)
-                installed.append({
-                    "lang": lang,
-                    "name": _LANG_NATIVE_NAMES.get(lang, lang),
-                    "zim": n,
-                    "path": resolved_path,
-                })
+                installed.append(
+                    {
+                        "lang": lang,
+                        "name": _LANG_NATIVE_NAMES.get(lang, lang),
+                        "zim": n,
+                        "path": resolved_path,
+                    }
+                )
                 break
             except KeyError:
                 continue
@@ -873,7 +1033,9 @@ def get_article_languages(zim_name, article_path):
     # Without this, hopping English→Hebrew caches Q-ID for Hebrew, but Hebrew→German
     # fails because German's sparse nopic index doesn't have the Q-ID.
     if qid is not None and len(installed) > 0:
-        all_paths = [(zim_name, article_path)] + [(m["zim"], m["path"]) for m in installed]
+        all_paths = [(zim_name, article_path)] + [
+            (m["zim"], m["path"]) for m in installed
+        ]
         for z, p in all_paths:
             _qid_cache_store(z, p, qid)
 
@@ -884,7 +1046,14 @@ def get_article_languages(zim_name, article_path):
 def _zim_project_name(zim_name):
     """Extract project name from ZIM name for cross-language matching."""
     n = zim_name.lower()
-    for proj in ("wikipedia", "wiktionary", "wikivoyage", "wikibooks", "wikiquote", "wikiversity"):
+    for proj in (
+        "wikipedia",
+        "wiktionary",
+        "wikivoyage",
+        "wikibooks",
+        "wikiquote",
+        "wikiversity",
+    ):
         if n.startswith(proj) or proj in n:
             return proj
     return ""
@@ -921,7 +1090,11 @@ def _find_article_in_lang_zims(lang, src_project, wiki_path, exclude_zim, zim_li
             try:
                 cand_entry = cand_archive.get_entry_by_path(try_path)
                 # Follow redirects to get actual content path
-                resolved = cand_entry.get_redirect_entry().path if cand_entry.is_redirect else try_path
+                resolved = (
+                    cand_entry.get_redirect_entry().path
+                    if cand_entry.is_redirect
+                    else try_path
+                )
                 break
             except KeyError:
                 continue
@@ -929,7 +1102,11 @@ def _find_article_in_lang_zims(lang, src_project, wiki_path, exclude_zim, zim_li
             quality = _zim_quality_score(cand_name)
             zi_info = next((z for z in zim_list if z.get("name") == cand_name), None)
             entry_count = zi_info.get("entry_count", 0) if zi_info else 0
-            if best is None or quality > best[2] or (quality == best[2] and entry_count > best[3]):
+            if (
+                best is None
+                or quality > best[2]
+                or (quality == best[2] and entry_count > best[3])
+            ):
                 best = (cand_name, resolved, quality, entry_count)
 
     if best:

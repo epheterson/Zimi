@@ -1187,7 +1187,7 @@ class TestDownloadValidation(unittest.TestCase):
         # we can test that non-Kiwix URLs are rejected
         result, err = self.zimi._start_download("https://evil.com/malware.zim")
         self.assertIsNone(result)
-        self.assertIn("download.kiwix.org", err)
+        self.assertIn("trusted Kiwix host", err)
 
     def test_http_rejected(self):
         result, err = self.zimi._start_download("http://download.kiwix.org/test.zim")

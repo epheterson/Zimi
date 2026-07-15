@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zimi"
-version = "1.6.5"
+version = "1.7.0"
 description = "Offline knowledge server for ZIM files"
 readme = "README.md"
 license = {text = "MIT"}
@@ -12,6 +12,10 @@ requires-python = ">=3.9"
 dependencies = [
     "libzim>=3.1.0",
     "certifi>=2024.1.1",
+    # LAN peer discovery (mDNS/Zeroconf). Pure-Python; the peer ZIM-sharing
+    # transport runs over plain HTTP so it needs no extra binary. aria2
+    # (optional BitTorrent accelerator) is bundled only in the Docker image.
+    "zeroconf>=0.130.0",
 ]
 
 [project.optional-dependencies]
