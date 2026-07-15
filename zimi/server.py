@@ -1011,34 +1011,44 @@ def main():
             except OSError:
                 pass
         warm_indexes()
-        # Try to start the BT backend (no-op when ZIMI_TORRENT is unset or
-        # backend unavailable — Zimi keeps running with HTTP downloads).
-        try:
-            from zimi import p2p
+        # Prefs path must be set before the first request can read/write
+        # BT settings — cheap, so it stays synchronous.
+        from zimi import p2p
 
-            p2p.set_prefs_path(os.path.join(ZIMI_DATA_DIR, "bt", "prefs.json"))
-            backend = p2p.get_backend(data_dir=ZIMI_DATA_DIR)
-            if backend:
+        p2p.set_prefs_path(os.path.join(ZIMI_DATA_DIR, "bt", "prefs.json"))
+
+        # BT backend spawn and LAN discovery run in the background: neither
+        # may delay READY / first request. A squatted aria2 RPC port once
+        # stalled this spot for minutes and hung both the CI smoke test and
+        # the desktop app at launch. Both fail soft — Zimi runs with plain
+        # HTTP downloads if they never come up.
+        def _init_p2p_background():
+            try:
+                backend = p2p.get_backend(data_dir=ZIMI_DATA_DIR)
+                if backend:
+                    import atexit
+
+                    atexit.register(p2p.shutdown_backend)
+            except Exception as e:
+                log.warning("BT backend init failed (HTTP downloads unaffected): %s", e)
+            try:
+                from zimi import p2p_discovery as _disc
+
+                _disc.start(
+                    http_port=args.port,
+                    bt_port=int(os.environ.get("ZIMI_BT_PORT", "6881") or "6881"),
+                    zim_count=len(list_zims()),
+                    version=ZIMI_VERSION,
+                )
                 import atexit
 
-                atexit.register(p2p.shutdown_backend)
-        except Exception as e:
-            log.warning("BT backend init failed (HTTP downloads unaffected): %s", e)
-        # LAN peer discovery — best-effort, fails soft.
-        try:
-            from zimi import p2p_discovery as _disc
+                atexit.register(_disc.stop)
+            except Exception as e:
+                log.warning("Peer discovery startup failed: %s", e)
 
-            _disc.start(
-                http_port=args.port,
-                bt_port=int(os.environ.get("ZIMI_BT_PORT", "6881") or "6881"),
-                zim_count=len(list_zims()),
-                version=ZIMI_VERSION,
-            )
-            import atexit
-
-            atexit.register(_disc.stop)
-        except Exception as e:
-            log.warning("Peer discovery startup failed: %s", e)
+        threading.Thread(
+            target=_init_p2p_background, daemon=True, name="p2p-init"
+        ).start()
         # Start auto-update thread if enabled
         global _auto_update_thread
         if _auto_update_enabled:
@@ -1054,6 +1064,14 @@ def main():
                 log.info(
                     "Library management enabled (no password — set one in Settings for public servers)"
                 )
+        # docker stop / systemd / CI teardown send SIGTERM, which by default
+        # kills Python without running atexit — orphaning the aria2 sidecar
+        # (which then squats the RPC port and wedges the next startup).
+        # Route it through sys.exit so cleanup handlers run.
+        import signal
+
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
         server = ThreadingHTTPServer(("0.0.0.0", args.port), ZimHandler)
         # Emit READY <actual-port> so wrapper scripts (CI smoke tests, the
         # desktop launcher) can capture the bound port — important when

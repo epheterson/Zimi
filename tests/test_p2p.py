@@ -22,7 +22,28 @@ import zimi.p2p as p2p  # noqa: E402
 def _reset_singleton():
     p2p._backend_singleton = None
     yield
-    p2p._backend_singleton = None
+    # Stop (not just discard) so a test that really spawned aria2c reaps
+    # it. A leaked sidecar squats RPC port 6800 and poisons every later
+    # backend start — including the CI smoke test that runs after the
+    # suite on the same runner. Duck-typed because tests may have swapped
+    # Aria2Backend for a mock.
+    backend, p2p._backend_singleton = p2p._backend_singleton, None
+    stop = getattr(backend, "stop", None)
+    if callable(stop):
+        try:
+            stop()
+        except Exception:
+            pass
+
+
+@pytest.fixture(autouse=True)
+def _no_real_aria2(request, monkeypatch):
+    """Tests never talk to a real aria2c unless they opt in with the
+    `real_aria2` marker. BT is on by default since v1.7.0, so any
+    get_backend() call in an unmocked test would spawn a live sidecar."""
+    if "real_aria2" in request.keywords:
+        return
+    monkeypatch.setattr(p2p, "find_aria2c", lambda: None)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -100,13 +121,16 @@ def test_backend_name_normalized(monkeypatch):
 
 
 def test_get_backend_returns_none_when_disabled(monkeypatch, tmp_path):
-    monkeypatch.delenv("ZIMI_TORRENT", raising=False)
+    # BT defaults ON since v1.7.0 — disabled now means an explicit opt-out.
+    # (With the env unset this test used to spawn a REAL aria2c and leak it.)
+    monkeypatch.setenv("ZIMI_TORRENT", "0")
     assert p2p.get_backend(data_dir=str(tmp_path)) is None
 
 
 def test_get_backend_returns_none_when_aria2_missing(monkeypatch, tmp_path):
     monkeypatch.setenv("ZIMI_TORRENT", "1")
-    monkeypatch.setattr(p2p.shutil, "which", lambda b: None)
+    # find_aria2c (not bare shutil.which — it also probes Homebrew paths)
+    monkeypatch.setattr(p2p, "find_aria2c", lambda: None)
     assert p2p.get_backend(data_dir=str(tmp_path)) is None
 
 
@@ -119,7 +143,7 @@ def test_get_backend_returns_none_for_unknown_backend(monkeypatch, tmp_path):
 def test_get_backend_returns_none_when_aria2_rpc_unreachable(monkeypatch, tmp_path):
     """aria2c on PATH but the subprocess fails to start → fall back to HTTP."""
     monkeypatch.setenv("ZIMI_TORRENT", "1")
-    monkeypatch.setattr(p2p.shutil, "which", lambda b: "/usr/local/bin/aria2c")
+    monkeypatch.setattr(p2p, "find_aria2c", lambda: "/usr/local/bin/aria2c")
     # Make ensure_running raise — simulates port conflict / startup failure
     fake_proc = MagicMock()
     fake_proc.poll.return_value = None
@@ -135,7 +159,6 @@ def test_get_backend_returns_none_when_aria2_rpc_unreachable(monkeypatch, tmp_pa
 def test_get_backend_caches_singleton(monkeypatch, tmp_path):
     """Second get_backend() call returns the same instance, doesn't restart."""
     monkeypatch.setenv("ZIMI_TORRENT", "1")
-    monkeypatch.setattr(p2p.shutil, "which", lambda b: "/usr/local/bin/aria2c")
     fake = MagicMock(spec=p2p.Aria2Backend)
     fake.available.return_value = True
     monkeypatch.setattr(p2p, "Aria2Backend", lambda **kw: fake)

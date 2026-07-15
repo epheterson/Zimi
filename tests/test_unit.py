@@ -1206,13 +1206,25 @@ class TestDownloadValidation(unittest.TestCase):
         self.assertIn("zim", err.lower())
 
     def test_import_rejects_path_traversal(self):
-        result, err = self.zimi._start_import(
-            "https://example.com/../../../etc/passwd.zim"
+        """Traversal segments must never escape ZIM_DIR: os.path.basename
+        reduces the URL path to its final component before joining. The
+        enqueue is stubbed — the old version of this test asserted nothing
+        and kicked off a REAL download thread, which hit example.com live
+        and spawned an aria2c sidecar that outlived the suite.
+        """
+        import zimi.library as _lib
+
+        captured = {}
+        with patch.object(_lib, "_enqueue_or_start", captured.update):
+            dl_id, err = self.zimi._start_import(
+                "https://example.com/../../../etc/passwd.zim"
+            )
+        self.assertIsNone(err)
+        self.assertIsNotNone(dl_id)
+        self.assertEqual(captured["filename"], "passwd.zim")
+        self.assertEqual(
+            captured["dest"], os.path.join(self.zimi.ZIM_DIR, "passwd.zim")
         )
-        # os.path.basename strips traversal, but the filename still needs to be valid
-        # The actual filename after basename would be "passwd.zim" which is valid
-        # This tests that basename prevents directory escape
-        pass  # Security is via os.path.basename + join, verified in integration tests
 
     def test_import_strips_query_string(self):
         """Query strings should be stripped before filename extraction."""

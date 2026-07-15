@@ -41,3 +41,6 @@ zimi = ["templates/**", "static/**", "assets/**"]
 # over time, so failures there are signal about ZIM data, not code.
 # Run it explicitly with `pytest tests/test_article_languages.py` when needed.
 addopts = "--ignore=tests/test_article_languages.py"
+markers = [
+    "real_aria2: opts a test out of the autouse find_aria2c=None guard (may spawn a live aria2c sidecar)",
+]

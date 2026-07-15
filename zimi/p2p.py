@@ -49,9 +49,9 @@ def find_aria2c() -> str | None:
     if found:
         return found
     for candidate in (
-        "/usr/local/bin/aria2c",     # Homebrew (Intel)
+        "/usr/local/bin/aria2c",  # Homebrew (Intel)
         "/opt/homebrew/bin/aria2c",  # Homebrew (Apple Silicon)
-        "/usr/bin/aria2c",           # Linux distro packages
+        "/usr/bin/aria2c",  # Linux distro packages
     ):
         if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
@@ -179,9 +179,7 @@ def is_torrent_env_locked() -> bool:
 
 def get_bt_port() -> int:
     """Inbound BT port. Default 6881; clamps invalid input."""
-    raw = _bt_conf().get("port") or os.environ.get(
-        "ZIMI_BT_PORT", str(DEFAULT_BT_PORT)
-    )
+    raw = _bt_conf().get("port") or os.environ.get("ZIMI_BT_PORT", str(DEFAULT_BT_PORT))
     try:
         n = int(raw)
         if 1024 <= n <= 65535:
@@ -530,15 +528,34 @@ class Aria2Backend(BTBackend):
             self._proc = subprocess.Popen(
                 args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
             )
-            # Wait briefly for RPC to come up
-            for _ in range(30):
+            # Wait briefly for RPC to come up. Deadline-based with short
+            # probe timeouts: a squatted RPC port (half-dead aria2 from
+            # another process) must fail here in seconds, not stretch into
+            # 30 probes x 5s default timeout — that once blocked startup
+            # for minutes before READY.
+            deadline = time.monotonic() + 5.0
+            last_err: Exception | None = None
+            while time.monotonic() < deadline:
+                if self._proc.poll() is not None:
+                    err = b""
+                    try:
+                        if self._proc.stderr:
+                            err = self._proc.stderr.read()
+                    except OSError:
+                        pass
+                    raise RuntimeError(
+                        f"aria2c exited at startup (rpc port {self.rpc_port} "
+                        f"or bt port {self.bt_port} in use?): "
+                        f"{err.decode(errors='replace').strip()[:300]}"
+                    )
                 try:
-                    self._rpc("aria2.getVersion", [])
+                    self._rpc("aria2.getVersion", [], timeout=0.5)
                     log.info("aria2c ready on port %d", self.rpc_port)
                     return
-                except Exception:
+                except Exception as e:
+                    last_err = e
                     time.sleep(0.1)
-            raise RuntimeError("aria2c failed to start within 3s")
+            raise RuntimeError(f"aria2c failed to start within 5s: {last_err}")
 
     def stop(self) -> None:
         with self._lock:
@@ -708,6 +725,12 @@ def get_backend(*, data_dir: str) -> BTBackend | None:
             log.warning("ZIMI_BT_BACKEND=%r not yet implemented; HTTP-only.", name)
             return None
         if not backend.available():
+            # available() may have spawned a sidecar before failing the RPC
+            # round-trip — reap it or it lingers and squats the RPC port
+            # for every later start (tests leaked these for exactly this
+            # reason and wedged CI smoke runs).
+            if isinstance(backend, Aria2Backend):
+                backend.stop()
             log.warning(
                 "BT backend %r unavailable; downloads will use HTTP fallback. "
                 "(aria2c on PATH? port %d free?)",
