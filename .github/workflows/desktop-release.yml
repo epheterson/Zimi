@@ -207,6 +207,20 @@ jobs:
 
       # ── Packaging ─────────────────────────────────────────────────────
 
+      # snapd on fresh runners races its own seeding; installing core22 via
+      # snapcraft then fails with "Error installing snap 'core22'". Pre-seed
+      # it ourselves with retries (took down the v1.7.0 release run, twice).
+      - name: Pre-install snap bases (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo snap wait system seed.loaded
+          for i in 1 2 3 4 5; do
+            sudo snap install core22 && break
+            echo "core22 install failed (attempt $i), retrying in 20s..."
+            sleep 20
+          done
+          snap list core22
+
       - name: Build Snap (Linux)
         if: runner.os == 'Linux'
         uses: snapcore/action-build@v1
