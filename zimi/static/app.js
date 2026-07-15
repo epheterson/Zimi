@@ -6032,7 +6032,16 @@ function _updateDownloadsTabBadge(activeCount) {
   }
 }
 
+let _dlRefreshing = false;
 async function refreshDownloads() {
+  // Re-entrancy guard: overlapping calls double-fetch /list and corrupt
+  // the completed-count bookkeeping.
+  if (_dlRefreshing) return;
+  _dlRefreshing = true;
+  try { await _refreshDownloadsInner(); } finally { _dlRefreshing = false; }
+}
+
+async function _refreshDownloadsInner() {
   if (_dlTimer) { clearTimeout(_dlTimer); _dlTimer = null; }
   const dlEl = document.getElementById('manage-downloads');
   if (!dlEl) return;
@@ -6092,6 +6101,11 @@ async function refreshDownloads() {
         zimsCache = await lr.json();
         _rebuildZimsMap();
         if (_catalogCache) _enrichCatalogInstalled(_catalogCache);
+        // Flip peer pills / download buttons to Installed in an open catalog
+        if (manageTab === 'browse') {
+          if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
+          else if (_browseView === 'search') { var _q = q.value.trim(); if (_q) browseCatalogFilter(_q); }
+        }
       } catch (e) {}
     }
     _dlPrevCompletedCount = completedDls.length;
@@ -6137,7 +6151,8 @@ async function refreshDownloads() {
       const dlStr = fmtBytes(dl.downloaded_bytes);
       // Total unknown = BT still fetching metadata / finding peers. Show a
       // sweeping bar + label instead of a lying "0 MB / ? · 0.0 MB/s".
-      const indeterminate = !dl.total_bytes && !dl.queued && !dl.paused;
+      // Queued items also sweep — a 0%-wide bar reads as stalled
+      const indeterminate = (!dl.total_bytes || dl.queued) && !dl.paused;
       const pct = dl.total_bytes ? (dl.percent || 0) : 0;
       const speed = dl.elapsed > 0 && dl.downloaded_bytes > 0 ? ((dl.downloaded_bytes / 1024 / 1024) / dl.elapsed).toFixed(1) : '0';
 

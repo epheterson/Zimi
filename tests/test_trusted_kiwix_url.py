@@ -97,3 +97,31 @@ class TrustedKiwixUrlTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_http_urls_upgraded_to_https_for_trusted_hosts(monkeypatch):
+    """Stale clients send http:// catalog URLs — upgrade rather than 400
+    (issue #26 debugging found bare 400s in user syslogs)."""
+    import zimi.library as lib
+    from unittest.mock import patch
+
+    captured = {}
+
+    def fake_enqueue(url, mirrors, filename, size_bytes=None):
+        captured["url"] = url
+        return "1", None
+
+    with patch("zimi.library._enqueue_zim_download", side_effect=fake_enqueue):
+        dl_id, err = lib._start_download(
+            "http://download.kiwix.org/zim/wikipedia/wikipedia_en_top_2026-06.zim"
+        )
+    assert err is None
+    assert captured["url"].startswith("https://")
+
+
+def test_untrusted_http_still_rejected():
+    import zimi.library as lib
+
+    dl_id, err = lib._start_download("http://evil.example.com/foo_2026-01.zim")
+    assert dl_id is None
+    assert "trusted" in err

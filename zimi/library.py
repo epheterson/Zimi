@@ -1237,7 +1237,15 @@ def _start_download(url, size_bytes=None):
     # Validate URL — only allow Kiwix-controlled hosts (download.kiwix.org,
     # lbo.download.kiwix.org load-balanced origin, dumps.wikimedia.org/kiwix
     # mirror, any other *.kiwix.org). Prevents attacker-controlled metadata.
+    # Stale clients and old catalog caches sometimes carry http:// URLs;
+    # upgrading the scheme for otherwise-trusted hosts beats rejecting.
+    if url and url.startswith("http://"):
+        candidate = "https://" + url[len("http://") :]
+        if _is_trusted_kiwix_url(candidate):
+            url = candidate
     if not _is_trusted_kiwix_url(url):
+        # The 400 alone is undebuggable from a syslog (issue #26) — say why.
+        log.info("download rejected: untrusted URL %.120r", url)
         return None, "URL not from a trusted Kiwix host"
 
     # OPDS catalog provides .meta4 metalink URLs — fetch mirrors from it
@@ -1254,6 +1262,7 @@ def _start_download(url, size_bytes=None):
 
     filename, err = _validate_zim_filename(url.split("/")[-1])
     if err:
+        log.info("download rejected: %s (url=%.120r)", err, url)
         return None, err
     return _enqueue_zim_download(url, mirrors, filename, size_bytes=size_bytes)
 

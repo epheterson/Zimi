@@ -210,6 +210,15 @@ jobs:
       # snapd on fresh runners races its own seeding; installing core22 via
       # snapcraft then fails with "Error installing snap 'core22'". Pre-seed
       # it ourselves with retries (took down the v1.7.0 release run, twice).
+      # snapcraft.yaml's version went stale for two releases (shipped a snap
+      # labeled 1.6.1 during v1.7.0). Derive it from pyproject at build time.
+      - name: Sync snap version from pyproject (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          VER=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          sed -i "s/^version: .*/version: '$VER'/" snap/snapcraft.yaml
+          grep '^version' snap/snapcraft.yaml
+
       - name: Pre-install snap bases (Linux)
         if: runner.os == 'Linux'
         run: |

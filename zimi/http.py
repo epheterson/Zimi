@@ -1548,6 +1548,17 @@ class ZimHandler(BaseHTTPRequestHandler):
                 content_type = _srv.MIME_FALLBACK.get(ext, "application/octet-stream")
                 with open(file_path, "rb") as f:
                     body = f.read()
+                # sw.js pins CACHE_VERSION to the running server version at
+                # serve time — the hardcoded constant went stale for a whole
+                # release cycle once and silently disabled the PWA.
+                if rel_path == "sw.js":
+                    body = re.sub(
+                        rb"const CACHE_VERSION = '[^']*'",
+                        b"const CACHE_VERSION = 'zimi-v"
+                        + _srv.ZIMI_VERSION.encode()
+                        + b"'",
+                        body,
+                    )
                 # Cache in memory (vendor files are immutable, ~8MB total for pdf.js)
                 with ZimHandler._static_cache_lock:
                     ZimHandler._static_cache[rel_path] = (body, content_type)

@@ -1,7 +1,7 @@
 // Zimi Service Worker
-// Must match the served zimi version — checkVersion() unregisters this
-// worker when the server reports anything else. Bump on every release.
-const CACHE_VERSION = 'zimi-v1.7.0';
+// Substituted at serve time to match the running server version (see
+// http.py); the literal below is only a fallback for direct file use.
+const CACHE_VERSION = 'zimi-vdev';
 const PRECACHE_URLS = ['/', '/favicon.png', '/apple-touch-icon.png'];
 
 const OFFLINE_HTML = `<!DOCTYPE html>

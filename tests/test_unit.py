@@ -1190,7 +1190,9 @@ class TestDownloadValidation(unittest.TestCase):
         self.assertIn("trusted Kiwix host", err)
 
     def test_http_rejected(self):
-        result, err = self.zimi._start_download("http://download.kiwix.org/test.zim")
+        # http on a TRUSTED host is now upgraded to https (issue #26) — only
+        # untrusted hosts are rejected outright.
+        result, err = self.zimi._start_download("http://evil.example.com/test.zim")
         self.assertIsNone(result)
 
     def test_import_requires_https(self):
