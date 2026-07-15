@@ -49,7 +49,7 @@ Something not right? [Open an issue.](https://github.com/epheterson/Zimi/issues)
 
 ## Sharing
 
-Zimi assumes knowledge should flow. Three switches in Server Settings control all of it:
+Three switches in Server Settings control all of it:
 
 - **BitTorrent** (on by default). Downloads arrive via the Kiwix swarm and seed back, capped at a ratio you choose. `0` means never seed. No aria2 installed? Everything quietly uses plain HTTP.
 - **Nearby** (off by default). Flip it on and Zimi devices on your network find each other; a green pill on a catalog card means a neighbor already has that ZIM. Transfers stay on your LAN, never the internet.
