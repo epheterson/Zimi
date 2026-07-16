@@ -728,7 +728,47 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
     _opds_cache[cache_key] = (time.time(), total, items)
     _catalog_stale_ts = None
     _persist_opds_cache()
+    _prefetch_thumbs(items)
     return total, items, None
+
+
+_thumb_prefetch_started = False
+
+
+def _prefetch_thumbs(items, limit=200, spacing=0.15):
+    """Warm the thumbnail disk cache in the background so catalog browsing
+    doesn't trickle images in one at a time. Once per server run, gently
+    paced (~7/s), capped, and skips everything already cached."""
+    global _thumb_prefetch_started
+    if _thumb_prefetch_started:
+        return
+    _thumb_prefetch_started = True
+    urls = []
+    for it in items or []:
+        u = it.get("icon_url")
+        if u:
+            urls.append(u)
+        if len(urls) >= limit:
+            break
+    if not urls:
+        return
+
+    def _run():
+        import hashlib as _hl
+
+        fetched = 0
+        for u in urls:
+            key = _hl.md5(u.encode()).hexdigest()
+            if os.path.exists(os.path.join(_thumb_dir(), key)):
+                continue
+            data, _ct = _fetch_thumb(u)
+            if data:
+                fetched += 1
+            time.sleep(spacing)
+        if fetched:
+            log.info("Thumbnail prefetch: %d cached", fetched)
+
+    threading.Thread(target=_run, daemon=True, name="thumb-prefetch").start()
 
 
 def mirror_sync():

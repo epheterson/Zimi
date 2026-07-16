@@ -9,8 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.7.2] - 2026-07-16
 
-Backlog blitz: both open field reports plus ten backlog items, in one
-overnight push.
+Backlog blitz: both open field reports plus the deep backlog, in one
+push.
+
+### Added
+
+- **Desktop apps torrent out of the box**: the DMG and AppImage now ship
+  their own aria2 sidecar (hash-verified static build on Linux, relocated
+  Homebrew build on macOS, codesigned and notarized with the app). The
+  BT-first default finally applies to every install, not just Docker.
+- **Port health in BitTorrent settings, like a real BT client**: an
+  open/closed/unknown indicator for the listen port, automatic UPnP
+  port-forwarding (on by default, stdlib implementation, fails soft), and
+  a retry button that re-maps and re-tests on demand.
+- **True mirror mode**: turning Mirror on now seeds your whole installed
+  library — aria2 hash-checks each existing file and seeds it in place,
+  uncapped, using saved .torrent files (works offline) or the catalog's
+  torrent URLs. Seeds whose file an update replaced are retired
+  automatically.
+- **Post-world resilience**: the last good Kiwix catalog persists to disk
+  and stays browsable when the internet is gone (with a quiet "showing
+  catalog from <date>" note), and every BT download keeps its infohash,
+  magnet link, and .torrent file so ZIMs can be re-seeded into offline
+  swarms later.
+- Thumbnails prefetch gently in the background after a catalog fetch, so
+  browsing doesn't trickle images in one at a time.
 
 ### Fixed
 
