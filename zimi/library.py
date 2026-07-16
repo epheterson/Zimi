@@ -329,6 +329,57 @@ def _fmt_gb(n):
     return f"{n / 1024**3:.1f} GB"
 
 
+def _torrents_manifest_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents.json")
+
+
+def _record_torrent_metadata(filename, *, info_hash, torrent_url, staging_dir):
+    """Post-world resilience: keep everything needed to re-seed or share a
+    ZIM without internet. The manifest maps filename -> infohash/magnet +
+    torrent URL; the .torrent file itself (which aria2 fetched into
+    staging) is preserved under ZIMI_DATA_DIR/bt/torrents/."""
+    manifest_path = _torrents_manifest_path()
+    os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
+    try:
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+    except (OSError, ValueError):
+        manifest = {}
+    entry = {
+        "info_hash": info_hash or "",
+        "torrent_url": torrent_url or "",
+        "added": time.time(),
+    }
+    if info_hash:
+        entry["magnet"] = "magnet:?xt=urn:btih:" + info_hash
+    # Preserve the .torrent file aria2 downloaded (staging/<name>.torrent)
+    tdir = os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents")
+    for cand in (
+        os.path.join(staging_dir, filename + ".torrent"),
+        os.path.join(staging_dir, os.path.splitext(filename)[0] + ".torrent"),
+    ):
+        if os.path.isfile(cand):
+            os.makedirs(tdir, exist_ok=True)
+            kept = os.path.join(tdir, filename + ".torrent")
+            try:
+                shutil.copyfile(cand, kept)
+                entry["torrent_file"] = kept
+            except OSError:
+                pass
+            break
+    manifest[filename] = entry
+    _srv._atomic_write_json(manifest_path, manifest)
+
+
+def _get_torrent_metadata():
+    """The saved filename -> {info_hash, magnet, torrent_url, ...} map."""
+    try:
+        with open(_torrents_manifest_path()) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
 def _pending_downloads_path():
     return os.path.join(_srv.ZIMI_DATA_DIR, "downloads.json")
 
@@ -421,6 +472,46 @@ KIWIX_OPDS_BASE = "https://library.kiwix.org/catalog/search"
 # Server-side catalog cache: {cache_key: (timestamp, total, items)}
 _opds_cache = {}
 _OPDS_CACHE_TTL = 86400  # 24 hours — catalog changes rarely
+_OPDS_DISK_KEYS_MAX = 40  # main browse pages; enough for full offline browse
+
+# Post-world resilience: the last good catalog persists to disk and is
+# served (marked stale) when Kiwix is unreachable — the library must stay
+# browsable with zero internet. When a stale copy was served, this holds
+# its fetch timestamp for the API response.
+_catalog_stale_ts = None
+_opds_disk_loaded = False
+
+
+def _catalog_cache_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "catalog_cache.json")
+
+
+def _load_opds_disk_cache():
+    """Merge the persisted catalog into the in-memory cache once."""
+    global _opds_disk_loaded
+    if _opds_disk_loaded:
+        return
+    _opds_disk_loaded = True
+    try:
+        with open(_catalog_cache_path()) as f:
+            data = json.load(f)
+        for key, (ts, total, items) in data.items():
+            _opds_cache.setdefault(key, (ts, total, items))
+        if data:
+            log.info("Catalog cache loaded from disk (%d queries)", len(data))
+    except (OSError, ValueError):
+        pass
+
+
+def _persist_opds_cache():
+    """Write the freshest cache entries to disk (atomic, size-capped)."""
+    try:
+        entries = sorted(
+            _opds_cache.items(), key=lambda kv: kv[1][0], reverse=True
+        )[:_OPDS_DISK_KEYS_MAX]
+        _srv._atomic_write_json(_catalog_cache_path(), dict(entries))
+    except OSError as e:
+        log.debug("catalog cache persist failed: %s", e)
 
 
 def _thumb_dir():
@@ -479,13 +570,17 @@ def _clear_thumb_cache():
 def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
     """Fetch and parse the Kiwix OPDS catalog. Returns (total, items, error).
     Results are cached server-side for 1 hour to avoid hammering Kiwix."""
+    global _catalog_stale_ts
+    _load_opds_disk_cache()
     cache_key = f"{query}|{lang}|{count}|{start}"
     cached = _opds_cache.get(cache_key)
     if cached:
         ts, total, items = cached
         if time.time() - ts < _OPDS_CACHE_TTL:
+            _catalog_stale_ts = None
             return total, items, None
-        del _opds_cache[cache_key]
+        # Expired entries are kept as the offline fallback — deleted only
+        # once a fresh fetch replaces them.
     # Cap cache size
     if len(_opds_cache) > 100:
         _opds_cache.clear()
@@ -502,6 +597,13 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
             xml_bytes = resp.read()
     except Exception as e:
         log.warning("OPDS fetch failed: %s", e)
+        if cached:
+            # Offline: a day-old catalog beats an error page (post-world:
+            # this is how the library stays browsable with no internet).
+            ts, total, items = cached
+            _catalog_stale_ts = ts
+            log.info("Serving stale catalog from %s", time.ctime(ts))
+            return total, items, None
         return 0, [], "Catalog fetch failed"
 
     # Parse OPDS (Atom) XML
@@ -624,6 +726,8 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
         )
 
     _opds_cache[cache_key] = (time.time(), total, items)
+    _catalog_stale_ts = None
+    _persist_opds_cache()
     return total, items, None
 
 
@@ -753,6 +857,18 @@ def _try_bt_download(
                 except Exception as e2:
                     log.warning("BT staging→dest failed: %s / %s", e, e2)
                     return "fallback"
+            # Post-world resilience: remember how to seed this file with
+            # zero internet — infohash + .torrent survive in ZIMI_DATA_DIR
+            # even after the sidecar forgets the download.
+            try:
+                _record_torrent_metadata(
+                    dl["filename"],
+                    info_hash=status.get("info_hash", ""),
+                    torrent_url=torrent_url,
+                    staging_dir=staging_dir,
+                )
+            except Exception as e:
+                log.debug("torrent metadata save failed: %s", e)
             # Seeding policy decision: by default we KEEP the torrent in
             # aria2 so it transitions to seeding mode automatically up to the
             # ratio cap. Only remove when seeding is disabled — then this

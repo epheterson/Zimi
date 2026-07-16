@@ -910,5 +910,6 @@
   "bt_port_closed": "סגור",
   "bt_port_unknown": "לא ידוע",
   "bt_port_recheck_hint": "מיפוי UPnP מחדש ובדיקת נגישות הפורט",
+  "catalog_offline_note": "לא מקוון — מציג קטלוג מ-{d}",
   "peer_name_hint": "השם שמכשירי Zimi אחרים רואים. נכנס לתוקף לאחר הפעלה מחדש."
 }

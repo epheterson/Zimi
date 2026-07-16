@@ -313,7 +313,15 @@ def handle_manage_get(handler, parsed, params):
             rels = bundle_relationships(items)
             for it in items:
                 it["hierarchy"] = rels.get(it.get("name"), {})
-        return handler._json(200, {"total": total, "items": items})
+        resp = {"total": total, "items": items}
+        # Offline: last-good catalog served from disk — tell the client so
+        # it can show a quiet "catalog from <date>" note.
+        from zimi import library as _lib
+
+        if _lib._catalog_stale_ts:
+            resp["stale"] = True
+            resp["fetched_at"] = _lib._catalog_stale_ts
+        return handler._json(200, resp)
 
     elif parsed.path == "/manage/check-updates":
         updates = _srv._check_updates()

@@ -910,5 +910,6 @@
   "bt_port_closed": "fechada",
   "bt_port_unknown": "desconhecida",
   "bt_port_recheck_hint": "Remapear UPnP e testar novamente o acesso à porta",
+  "catalog_offline_note": "Offline — catálogo de {d}",
   "peer_name_hint": "O nome que outros dispositivos Zimi veem. Vale após reiniciar."
 }

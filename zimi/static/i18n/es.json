@@ -910,5 +910,6 @@
   "bt_port_closed": "cerrado",
   "bt_port_unknown": "desconocido",
   "bt_port_recheck_hint": "Reasignar UPnP y volver a comprobar si el puerto es accesible",
+  "catalog_offline_note": "Sin conexión — catálogo del {d}",
   "peer_name_hint": "El nombre que ven otros dispositivos Zimi. Se aplica tras reiniciar."
 }

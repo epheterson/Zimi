@@ -910,5 +910,6 @@
   "bt_port_closed": "बंद",
   "bt_port_unknown": "अज्ञात",
   "bt_port_recheck_hint": "UPnP फिर से मैप करें और पोर्ट की पहुंच जांचें",
+  "catalog_offline_note": "ऑफ़लाइन — {d} का कैटलॉग",
   "peer_name_hint": "वह नाम जो अन्य Zimi डिवाइस देखते हैं। पुनरारंभ के बाद लागू।"
 }

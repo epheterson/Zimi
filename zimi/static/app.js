@@ -3258,6 +3258,15 @@ function autoCategorize(item) {
   return 'other';
 }
 
+var _catalogStaleAt = 0; // >0: catalog served from offline cache (epoch s)
+
+function _catalogStaleNote() {
+  if (!_catalogStaleAt) return '';
+  var when = new Date(_catalogStaleAt * 1000).toLocaleDateString();
+  return '<div class="ms-hint" style="text-align:center;margin:4px 0 10px">' +
+    tH('catalog_offline_note', {d: when}) + '</div>';
+}
+
 async function loadFullCatalog() {
   // Always fetch full catalog (no server-side lang filter — Kiwix OPDS uses 3-letter
   // ISO 639-3 codes but our UI uses 2-letter codes). Language filtering happens
@@ -3269,6 +3278,8 @@ async function loadFullCatalog() {
   if (data.error) throw new Error(data.error);
   const total = data.total || 0;
   let items = data.items || [];
+  // Offline: server returned its last-good catalog — note it quietly
+  _catalogStaleAt = data.stale ? (data.fetched_at || 0) : 0;
 
   // Fetch remaining pages in parallel if needed
   if (total > 500) {
@@ -3873,7 +3884,7 @@ function renderBrowseGallery() {
       '<div class="browse-footer-count">' + totalSources.toLocaleString() + ' sources \u00B7 ' + activeCats + ' categories</div>' +
     '</div>';
     h += '</div>';
-    results.innerHTML = h;
+    results.innerHTML = _catalogStaleNote() + h;
     // Auto-scroll pill bar so the active language pill is visible
     var activePill = results.querySelector('.catalog-lang-scroll .pill.active');
     if (activePill) activePill.scrollIntoView({inline: 'center', block: 'nearest'});
@@ -3935,7 +3946,7 @@ function drillCategory(catKey, namePrefix) {
     } else {
       h += '<div class="empty"><p>' + tH('no_zims_category') + '</p></div>';
     }
-    results.innerHTML = h;
+    results.innerHTML = _catalogStaleNote() + h;
     // Auto-scroll pill bar so the active language pill is visible
     var activePill = results.querySelector('.catalog-lang-scroll .pill.active');
     if (activePill) activePill.scrollIntoView({inline: 'center', block: 'nearest'});
@@ -3989,7 +4000,7 @@ function browseCatalogFilter(query) {
     } else {
       h += '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
     }
-    results.innerHTML = h;
+    results.innerHTML = _catalogStaleNote() + h;
   }).catch(() => {
     results.innerHTML = '<div class="empty"><p>' + tH('failed_search_catalog') + '</p></div>';
   });

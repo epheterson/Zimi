@@ -103,3 +103,71 @@ def test_seed_options_uses_user_caps_when_mirror_off():
     opts = p2p.effective_seed_options()
     # Default ratio cap is 2.0 (DEFAULT_RATIO_CAP)
     assert float(opts["seed-ratio"]) == p2p.DEFAULT_RATIO_CAP
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Post-world resilience: catalog survives offline, torrent metadata persists
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def test_stale_catalog_served_when_kiwix_unreachable(tmp_path, monkeypatch):
+    import urllib.request
+
+    import zimi.library as lib
+    import zimi.server as server
+
+    monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(lib, "_opds_disk_loaded", True)  # isolate from disk
+    lib._catalog_stale_ts = None
+    key = "|eng|500|0"
+    stale_items = [{"name": "wikipedia_en_all", "title": "Wikipedia"}]
+    # Entry is far past the TTL — normally it would be refetched
+    lib._opds_cache[key] = (100.0, 1, stale_items)
+
+    def _boom(*a, **k):
+        raise OSError("no internet")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _boom)
+    total, items, err = lib._fetch_kiwix_catalog("", "eng", 500, 0)
+    assert err is None
+    assert items == stale_items
+    assert lib._catalog_stale_ts == 100.0
+    del lib._opds_cache[key]
+    lib._catalog_stale_ts = None
+
+
+def test_catalog_error_without_any_cache(tmp_path, monkeypatch):
+    import urllib.request
+
+    import zimi.library as lib
+    import zimi.server as server
+
+    monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(lib, "_opds_disk_loaded", True)
+
+    def _boom(*a, **k):
+        raise OSError("no internet")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _boom)
+    total, items, err = lib._fetch_kiwix_catalog("never-seen", "eng", 5, 0)
+    assert err is not None and items == []
+
+
+def test_torrent_metadata_roundtrip(tmp_path, monkeypatch):
+    import zimi.library as lib
+    import zimi.server as server
+
+    monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path))
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "foo.zim.torrent").write_bytes(b"d4:infoe")
+    lib._record_torrent_metadata(
+        "foo.zim",
+        info_hash="abc123",
+        torrent_url="https://download.kiwix.org/zim/foo.zim.torrent",
+        staging_dir=str(staging),
+    )
+    meta = lib._get_torrent_metadata()
+    assert meta["foo.zim"]["info_hash"] == "abc123"
+    assert meta["foo.zim"]["magnet"] == "magnet:?xt=urn:btih:abc123"
+    assert os.path.isfile(meta["foo.zim"]["torrent_file"])

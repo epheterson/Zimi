@@ -910,5 +910,6 @@
   "bt_port_closed": "مغلق",
   "bt_port_unknown": "غير معروف",
   "bt_port_recheck_hint": "إعادة تعيين UPnP وإعادة اختبار إمكانية الوصول إلى المنفذ",
+  "catalog_offline_note": "غير متصل — عرض كتالوج {d}",
   "peer_name_hint": "الاسم الذي تراه أجهزة Zimi الأخرى. يسري بعد إعادة التشغيل."
 }
