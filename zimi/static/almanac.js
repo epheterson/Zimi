@@ -3782,6 +3782,11 @@ function _getAlmanacEvents(sys, year, month) {
   function add(day, label, type, icon) {
     if (day < 1 || day > 31) return;
     if (!events[day]) events[day] = [];
+    // Belt-and-suspenders: base set + one region pack should never
+    // collide, but a same-day duplicate label renders as noise if they do.
+    for (var di = 0; di < events[day].length; di++) {
+      if (events[day][di].label === label) return;
+    }
     events[day].push({ label: label, type: type, icon: icon || '' });
   }
 

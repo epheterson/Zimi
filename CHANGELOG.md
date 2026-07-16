@@ -7,9 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [Unreleased]
+## [1.7.2] - 2026-07-16
+
+Backlog blitz: both open field reports plus ten backlog items, in one
+overnight push.
 
 ### Fixed
+
+- **Downloads and settings panels no longer blank themselves** (#30):
+  Zimi's own rate limiter was counting the manage UI's polling against the
+  anonymous budget. Clients with a valid manage credential — or any
+  private-network client on a passwordless instance — now get 10x headroom
+  (`ZIMI_RATE_LIMIT_TRUSTED`), snippet fetches ride the roomier content
+  bucket, and a 429 keeps the last-known panel content instead of
+  rendering an empty state.
+- **The almanac speaks world, not American** (#28): Gregorian holidays
+  are an international base plus one region pack (17 countries + EU
+  catch-all) picked from the browser locale/timezone — a British calendar
+  shows Guy Fawkes Night and bank holidays, not Thanksgiving. Clock
+  changes follow the region's real rule. The timezone picker grows from
+  16 to 28 cities covering every UTC offset in common use, including
+  Central Europe ("Italy uses UK time" is fixed) and the half-offset
+  zones, translated in all 10 languages.
+- Closing the reader now restores the underlying view's URL — a reload
+  no longer reopens the article you just closed.
+- Downloads survive restarts: pending and queued items persist and
+  resubmit at startup through their validated entry points, resuming
+  partial files. Downloads refuse to start when they would fill the disk
+  (expected size + 2 GB floor, or the disk-pressure threshold).
+- Passwordless instances accept management commands from the local
+  network only; public clients must set a password first. Instances with
+  a password are unchanged.
+- RTL article/ZIM titles (Arabic, Hebrew, Farsi) no longer reshuffle
+  neighboring punctuation in LTR chrome.
+- Cross-ZIM duplicate suppression is regression-tested (bundle + subset
+  libraries), and every locale file is CI-locked to the English key set
+  so untranslated raw key names (#25's bug class) can't recur.
 
 - Server startup no longer blocks on the BitTorrent sidecar: backend spawn
   and LAN discovery moved off the critical path, and the aria2 RPC probe is
