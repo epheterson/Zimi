@@ -595,6 +595,8 @@
   "alm_city_dhaka": "Дакка",
   "alm_city_singapore": "Сингапур",
   "alm_city_adelaide": "Аделаида",
+  "alm_showing_holidays": "Праздники: {c}",
+  "alm_region_holiday": "Праздник ({c})",
   "alm_hol_1st_white_night": "1-я Белая ночь",
   "alm_hol_aban_festival": "Праздник Абана",
   "alm_hol_annunciation": "Благовещение",

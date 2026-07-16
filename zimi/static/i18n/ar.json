@@ -595,6 +595,8 @@
   "alm_city_dhaka": "دكا",
   "alm_city_singapore": "سنغافورة",
   "alm_city_adelaide": "أديلايد",
+  "alm_showing_holidays": "عرض عطلات {c}",
+  "alm_region_holiday": "عطلة {c}",
   "alm_hol_1st_white_night": "الليلة البيضاء الأولى",
   "alm_hol_aban_festival": "مهرجان آبان",
   "alm_hol_annunciation": "البشارة",

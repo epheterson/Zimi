@@ -595,6 +595,8 @@
   "alm_city_dhaka": "Daca",
   "alm_city_singapore": "Singapur",
   "alm_city_adelaide": "Adelaida",
+  "alm_showing_holidays": "Mostrando festivos de {c}",
+  "alm_region_holiday": "Festivo de {c}",
   "alm_hol_1st_white_night": "1.ª Noche Blanca",
   "alm_hol_aban_festival": "Festival de Aban",
   "alm_hol_annunciation": "Anunciación",

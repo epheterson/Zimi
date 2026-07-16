@@ -1564,7 +1564,10 @@ function _loadDiscover() {
   }
   if (!el) return;
   var now = new Date();
-  var today = now.toISOString().substring(0, 10);
+  // LOCAL date, not toISOString (UTC): an evening render used to store
+  // today's cards under tomorrow-UTC's key, serving yesterday's Picture
+  // of the Day all the next day.
+  var today = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + ('0' + now.getDate()).slice(-2);
   var cacheKey = 'zimi_' + (window.__ZIMI_CONFIG && __ZIMI_CONFIG.discoverStamp || 'disc6') + '_' + today;
   // Clean up old Discover cache keys (from previous days or old versions)
   try {

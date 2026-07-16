@@ -595,6 +595,8 @@
   "alm_city_dhaka": "דאקה",
   "alm_city_singapore": "סינגפור",
   "alm_city_adelaide": "אדלייד",
+  "alm_showing_holidays": "מציג חגים של {c}",
+  "alm_region_holiday": "חג של {c}",
   "alm_hol_1st_white_night": "הלילה הלבן הראשון",
   "alm_hol_aban_festival": "חג אבאן",
   "alm_hol_annunciation": "הבשורה",

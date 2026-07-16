@@ -1831,8 +1831,10 @@ function _initTzClock(now) {
     } catch(e) {}
     var tzHour = 0;
     try { tzHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: tzc.tz, hour: 'numeric', hour12: false }).format(now)); } catch(e) {}
-    var isNight = tzHour < 6 || tzHour >= 20;
-    html += '<div class="alm-tz-city-card' + (isActive ? ' alm-tz-city-active' : '') + (isNight ? ' alm-tz-city-night' : '') + '" onclick="_almSelectTz(\'' + tzc.tz + '\',' + i + ')">';
+    var phase = (tzHour < 5 || tzHour >= 21) ? 'night' : tzHour < 8 ? 'dawn' : tzHour < 18 ? 'day' : 'dusk';
+    var glyph = phase === 'night' ? '\ud83c\udf19' : phase === 'dawn' ? '\ud83c\udf05' : phase === 'day' ? '\u2600\ufe0f' : '\ud83c\udf06';
+    html += '<div class="alm-tz-city-card alm-tz-' + phase + (isActive ? ' alm-tz-city-active' : '') + '" onclick="_almSelectTz(\'' + tzc.tz + '\',' + i + ')">';
+    html += '<span class="alm-tz-glyph" aria-hidden="true">' + glyph + '</span>';
     html += '<span class="alm-tz-city-name">' + t('alm_city_' + tzc.key) + '</span>';
     html += '<span class="alm-tz-city-time">' + tzTime + '</span>';
     html += '<span class="alm-tz-city-offset">' + utcOff + '</span>';
@@ -3692,7 +3694,7 @@ var _REGION_HOLIDAYS = {
   },
   CA: {
     fixed: [[7, 1, 'Canada Day'], [9, 30, 'Truth and Reconciliation Day'], [12, 26, 'Boxing Day']],
-    nth: [[9, 1, 1, 'Labour Day'], [10, 1, 2, 'Thanksgiving (CA)']],
+    nth: [[9, 1, 1, 'Labour Day'], [10, 1, 2, 'Thanksgiving']],
     dst: 'us'
   },
   GB: {
@@ -3729,7 +3731,66 @@ var _TZ_REGION = {
   'Africa/Johannesburg': 'ZA', 'Europe/Moscow': 'RU'
 };
 
+// Nearest-anchor country resolution for map clicks. Anchors tagged '' are
+// major non-pack countries — they exist so a click on, say, Nigeria gets
+// the international set instead of snapping to the nearest pack country.
+// Coarse by design: ~80 anchors, borders are approximate.
+var _REGION_ANCHORS = [
+  [40.7, -74.0, 'US'], [34.1, -118.2, 'US'], [41.9, -87.6, 'US'], [29.8, -95.4, 'US'], [39.7, -105.0, 'US'], [47.6, -122.3, 'US'], [25.8, -80.2, 'US'], [42.4, -71.1, 'US'], [61.2, -149.9, 'US'], [21.3, -157.9, 'US'],
+  [49.3, -123.1, 'CA'], [51.0, -114.1, 'CA'], [43.7, -79.4, 'CA'], [45.5, -73.6, 'CA'], [44.6, -63.6, 'CA'], [53.5, -113.5, 'CA'],
+  [19.4, -99.1, 'MX'], [25.7, -100.3, 'MX'], [21.2, -86.8, 'MX'],
+  [-23.6, -46.6, 'BR'], [-15.8, -47.9, 'BR'], [-3.1, -60.0, 'BR'], [-8.1, -34.9, 'BR'],
+  [51.5, -0.1, 'GB'], [53.5, -2.2, 'GB'], [55.9, -3.2, 'GB'], [53.3, -6.3, 'IE'],
+  [48.9, 2.4, 'FR'], [45.8, 4.8, 'FR'], [43.6, 1.4, 'FR'],
+  [52.5, 13.4, 'DE'], [48.1, 11.6, 'DE'], [50.1, 8.7, 'DE'],
+  [41.9, 12.5, 'IT'], [45.5, 9.2, 'IT'], [40.9, 14.3, 'IT'],
+  [40.4, -3.7, 'ES'], [41.4, 2.2, 'ES'], [37.4, -6.0, 'ES'],
+  [-33.9, 151.2, 'AU'], [-37.8, 145.0, 'AU'], [-27.5, 153.0, 'AU'], [-31.9, 115.9, 'AU'], [-34.9, 138.6, 'AU'], [-12.5, 130.8, 'AU'],
+  [-36.8, 174.8, 'NZ'], [-41.3, 174.8, 'NZ'], [-43.5, 172.6, 'NZ'],
+  [28.6, 77.2, 'IN'], [19.1, 72.9, 'IN'], [22.6, 88.4, 'IN'], [13.1, 80.3, 'IN'], [12.9, 77.6, 'IN'],
+  [35.7, 139.7, 'JP'], [34.7, 135.5, 'JP'], [43.1, 141.4, 'JP'],
+  [39.9, 116.4, 'CN'], [31.2, 121.5, 'CN'], [30.6, 104.1, 'CN'], [23.1, 113.3, 'CN'], [43.8, 87.6, 'CN'],
+  [55.8, 37.6, 'RU'], [59.9, 30.4, 'RU'], [55.0, 82.9, 'RU'], [56.8, 60.6, 'RU'], [43.1, 131.9, 'RU'],
+  [-26.2, 28.0, 'ZA'], [-33.9, 18.4, 'ZA'], [-29.9, 31.0, 'ZA'],
+  [64.1, -21.9, ''], [59.9, 10.8, ''], [59.3, 18.1, ''], [60.2, 24.9, ''], [52.2, 21.0, ''], [48.2, 16.4, ''], [47.4, 8.5, ''], [52.4, 4.9, ''], [50.8, 4.4, ''], [38.7, -9.1, ''], [38.0, 23.7, ''], [41.0, 28.9, ''], [50.5, 30.5, ''], [44.4, 26.1, ''], [47.5, 19.0, ''], [50.1, 14.4, ''], [55.7, 12.6, ''],
+  [30.0, 31.2, ''], [6.5, 3.4, ''], [-1.3, 36.8, ''], [9.0, 38.7, ''], [33.6, -7.6, ''], [36.8, 10.2, ''], [-4.3, 15.3, ''], [5.6, -0.2, ''],
+  [24.7, 46.7, ''], [25.2, 55.3, ''], [35.7, 51.4, ''], [33.3, 44.4, ''], [32.1, 34.8, ''], [24.9, 67.0, ''], [23.8, 90.4, ''], [27.7, 85.3, ''], [6.9, 79.9, ''],
+  [13.8, 100.5, ''], [21.0, 105.8, ''], [14.6, 121.0, ''], [-6.2, 106.8, ''], [3.1, 101.7, ''], [1.4, 103.8, ''], [37.6, 127.0, ''], [25.0, 121.6, ''], [47.9, 106.9, ''],
+  [-34.6, -58.4, ''], [-33.4, -70.7, ''], [-12.0, -77.0, ''], [4.7, -74.1, ''], [10.5, -66.9, ''], [23.1, -82.4, ''], [14.6, -90.5, '']
+];
+
+// Location (map click / city pick / GPS) → holiday region. Nearest anchor
+// wins; nothing within ~15 degrees (open ocean) means international-only.
+function _almRegionForLocation(lat, lon) {
+  var best = '', bestD = Infinity;
+  for (var i = 0; i < _REGION_ANCHORS.length; i++) {
+    var a = _REGION_ANCHORS[i];
+    var dlat = lat - a[0];
+    var dlon = (lon - a[1]) * Math.cos(lat * DEG_TO_RAD);
+    var d = dlat * dlat + dlon * dlon;
+    if (d < bestD) { bestD = d; best = a[2]; }
+  }
+  return bestD <= 225 ? best : '';
+}
+
+// Localized country name for the caption ("Showing United States holidays")
+function _almRegionName(region) {
+  if (!region || region === 'EU') return '';
+  try {
+    var lang = (typeof _currentLang !== 'undefined' && _currentLang) ? _currentLang : 'en';
+    return new Intl.DisplayNames([lang], { type: 'region' }).of(region) || region;
+  } catch (e) { return region; }
+}
+
 function _almRegion() {
+  // The chosen location is the source of truth: clicking Italy on the map
+  // means Italian holidays, whatever the browser locale says.
+  try {
+    var locData = JSON.parse(localStorage.getItem(_ALM_LOC_KEY) || 'null');
+    if (locData && typeof locData.lat === 'number') {
+      return _almRegionForLocation(locData.lat, locData.lon);
+    }
+  } catch (e) {}
   try {
     var m = String(navigator.language || '').match(/[-_]([A-Za-z]{2})(\b|$)/);
     if (m) {
@@ -3751,16 +3812,17 @@ function _almRegion() {
 function _applyRegionHolidays(region, year, month, add) {
   var pack = _REGION_HOLIDAYS[region];
   if (!pack) return;
+  var src = _almRegionName(region);
   var i;
   for (i = 0; i < (pack.fixed || []).length; i++) {
     var fx = pack.fixed[i];
-    if (fx[0] === month) add(fx[1], fx[2], 'holiday');
+    if (fx[0] === month) add(fx[1], fx[2], 'holiday', '', src);
   }
   for (i = 0; i < (pack.nth || []).length; i++) {
     var nh = pack.nth[i];
     if (nh[0] !== month) continue;
     var day = nh[2] === -1 ? _lastWeekday(year, month, nh[1]) : _nthWeekday(year, month, nh[1], nh[2]);
-    add(day, nh[3], 'holiday');
+    add(day, nh[3], 'holiday', '', src);
   }
   // Clock changes: labels hold both hemispheres (October IS spring in AU)
   var dst = pack.dst;
@@ -3779,7 +3841,7 @@ function _applyRegionHolidays(region, year, month, add) {
 // Get almanac events for a given calendar system's month, keyed by day number
 function _getAlmanacEvents(sys, year, month) {
   var events = {};
-  function add(day, label, type, icon) {
+  function add(day, label, type, icon, src) {
     if (day < 1 || day > 31) return;
     if (!events[day]) events[day] = [];
     // Belt-and-suspenders: base set + one region pack should never
@@ -3787,7 +3849,7 @@ function _getAlmanacEvents(sys, year, month) {
     for (var di = 0; di < events[day].length; di++) {
       if (events[day][di].label === label) return;
     }
-    events[day].push({ label: label, type: type, icon: icon || '' });
+    events[day].push({ label: label, type: type, icon: icon || '', src: src || '' });
   }
 
   if (sys === 'gregorian') {
@@ -4009,7 +4071,8 @@ function _drawAlmanacGrid() {
     for (var ei = 0; ei < shown; ei++) {
       var ev = dayEvents[ei];
       var escapedLabel = _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      html += '<div class="alm-ev alm-ev-' + ev.type + '">' +
+      var srcTitle = ev.src ? ' title="' + _tLookup('alm_region_holiday', '{c} holiday').replace('{c}', ev.src).replace(/"/g, '&quot;') + '"' : '';
+      html += '<div class="alm-ev alm-ev-' + ev.type + '"' + srcTitle + '>' +
         (ev.icon ? ev.icon + ' ' : '') + escapedLabel + '</div>';
     }
     if (dayEvents.length > 2) {
@@ -4033,10 +4096,22 @@ function _drawAlmanacGrid() {
       html += '<div class="alm-day-detail">';
       for (var ei = 0; ei < selEvents.length; ei++) {
         var ev = selEvents[ei];
+        var detailLabel = _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        if (ev.src) detailLabel += ' <span style="color:var(--text3)">\u00b7 ' + ev.src.replace(/</g,'&lt;') + '</span>';
         html += '<div class="alm-ev alm-ev-' + ev.type + '" style="font-size:12px;padding:2px 0">' +
-          (ev.icon ? ev.icon + ' ' : '') + _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+          (ev.icon ? ev.icon + ' ' : '') + detailLabel + '</div>';
       }
       html += '</div>';
+    }
+  }
+
+  // Quiet caption saying whose national days are shown (location-driven)
+  if (_almSystem === 'gregorian') {
+    var regionName = _almRegionName(_almRegion());
+    if (regionName) {
+      html += '<div class="alm-cal-region">' +
+        _tLookup('alm_showing_holidays', 'Showing {c} holidays').replace('{c}', regionName.replace(/</g, '&lt;')) +
+        '</div>';
     }
   }
 

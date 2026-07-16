@@ -595,6 +595,8 @@
   "alm_city_dhaka": "达卡",
   "alm_city_singapore": "新加坡",
   "alm_city_adelaide": "阿德莱德",
+  "alm_showing_holidays": "显示{c}节假日",
+  "alm_region_holiday": "{c}节假日",
   "alm_hol_1st_white_night": "第一个白夜",
   "alm_hol_aban_festival": "阿班节",
   "alm_hol_annunciation": "圣母领报节",

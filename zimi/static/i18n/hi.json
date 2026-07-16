@@ -595,6 +595,8 @@
   "alm_city_dhaka": "ढाका",
   "alm_city_singapore": "सिंगापुर",
   "alm_city_adelaide": "एडिलेड",
+  "alm_showing_holidays": "{c} की छुट्टियाँ",
+  "alm_region_holiday": "{c} की छुट्टी",
   "alm_hol_1st_white_night": "पहली श्वेत रात्रि",
   "alm_hol_aban_festival": "आबान उत्सव",
   "alm_hol_annunciation": "मंगलवार्ता",
