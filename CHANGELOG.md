@@ -32,6 +32,10 @@ push.
   catalog from <date>" note), and every BT download keeps its infohash,
   magnet link, and .torrent file so ZIMs can be re-seeded into offline
   swarms later.
+- **DHT is on by default** (opt out with the ZIMI_BT dht= field):
+  trackerless peer discovery makes magnet links usable and keeps swarms
+  findable if the Kiwix trackers ever disappear. The routing table
+  persists across restarts.
 - Thumbnails prefetch gently in the background after a catalog fetch, so
   browsing doesn't trickle images in one at a time.
 

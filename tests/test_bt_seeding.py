@@ -368,3 +368,22 @@ def test_find_aria2c_ignores_empty_bundle_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(p2p.shutil, "which", lambda b: None)
     monkeypatch.setattr(p2p.os.path, "isfile", lambda p: False)
     assert p2p.find_aria2c() is None
+
+
+def test_dht_enabled_by_default(monkeypatch):
+    """DHT is what makes magnets and trackerless swarms work — on unless
+    explicitly opted out."""
+    monkeypatch.delenv("ZIMI_DHT", raising=False)
+    monkeypatch.delenv("ZIMI_BT", raising=False)
+    assert p2p.is_dht_enabled() is True
+
+
+def test_dht_blob_opt_out(monkeypatch):
+    monkeypatch.setenv("ZIMI_BT", "on,dht=off")
+    assert p2p.is_dht_enabled() is False
+
+
+def test_dht_legacy_env_opt_out(monkeypatch):
+    monkeypatch.delenv("ZIMI_BT", raising=False)
+    monkeypatch.setenv("ZIMI_DHT", "0")
+    assert p2p.is_dht_enabled() is False

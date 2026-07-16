@@ -296,6 +296,18 @@ DEFAULT_MIRROR_RATIO_CAP = 1000.0  # effectively uncapped — 1000× upload
 DEFAULT_MIRROR_UPLOAD_KB = 10240  # 10 MB/s
 
 
+def is_dht_enabled() -> bool:
+    """DHT on by default: trackerless peer discovery is what makes magnet
+    links and post-world swarms work when the Kiwix trackers are gone.
+    ZIMI_BT's dht= field (or legacy ZIMI_DHT) opts out."""
+    conf = _bt_conf()
+    if "dht" in conf:
+        return _conf_bool(conf["dht"])
+    if _env_explicitly_set("ZIMI_DHT"):
+        return _bool_env("ZIMI_DHT", True)
+    return True
+
+
 def is_upnp_enabled() -> bool:
     """Ask the router to open the BT port automatically (like every BT
     client). ZIMI_BT's upnp= field wins; otherwise the persisted UI
@@ -530,7 +542,10 @@ class Aria2Backend(BTBackend):
                 f"--listen-port={self.bt_port}",
                 f"--dht-listen-port={self.bt_port}",
                 # Seed-cap policy comes via per-torrent options on add_torrent.
-                "--enable-dht=false",  # opt-in only via ZIMI_DHT
+                f"--enable-dht={'true' if is_dht_enabled() else 'false'}",
+                # Persisted routing table: rejoining swarms after a restart
+                # doesn't depend on bootstrap nodes being reachable.
+                f"--dht-file-path={os.path.join(self.bt_dir, 'dht.dat')}",
                 "--enable-peer-exchange=true",
                 f"--dir={self.staging_dir}",
                 f"--save-session={self.session_path}",
