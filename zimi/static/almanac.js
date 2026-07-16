@@ -1832,7 +1832,9 @@ function _initTzClock(now) {
     var tzHour = 0;
     try { tzHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: tzc.tz, hour: 'numeric', hour12: false }).format(now)); } catch(e) {}
     var phase = (tzHour < 5 || tzHour >= 21) ? 'night' : tzHour < 8 ? 'dawn' : tzHour < 18 ? 'day' : 'dusk';
-    var glyph = phase === 'night' ? '\ud83c\udf19' : phase === 'dawn' ? '\ud83c\udf05' : phase === 'day' ? '\u2600\ufe0f' : '\ud83c\udf06';
+    // Text-presentation glyphs (not emoji) — the tint carries the phase,
+    // the glyph just whispers sun or moon.
+    var glyph = phase === 'night' ? '\u263e\ufe0e' : '\u2600\ufe0e';
     html += '<div class="alm-tz-city-card alm-tz-' + phase + (isActive ? ' alm-tz-city-active' : '') + '" onclick="_almSelectTz(\'' + tzc.tz + '\',' + i + ')">';
     html += '<span class="alm-tz-glyph" aria-hidden="true">' + glyph + '</span>';
     html += '<span class="alm-tz-city-name">' + t('alm_city_' + tzc.key) + '</span>';

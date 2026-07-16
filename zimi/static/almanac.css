@@ -18,7 +18,11 @@
 .alm-tz-city-offset { font-size: 9px; color: var(--text3); display: block; margin-top: 1px; }
 /* Each card wears its city's hour: the grid reads as a living band of
    daylight echoing the terminator on the map above. */
-.alm-tz-glyph { position: absolute; top: 3px; right: 5px; font-size: 8px; opacity: 0.75; pointer-events: none; }
+.alm-tz-glyph { position: absolute; top: 2px; right: 5px; font-size: 9px; line-height: 1; opacity: 0.8; pointer-events: none; font-family: system-ui, sans-serif; }
+.alm-tz-day .alm-tz-glyph { color: #ffc15e; }
+.alm-tz-dawn .alm-tz-glyph { color: #ff8a65; }
+.alm-tz-dusk .alm-tz-glyph { color: #ab82ff; }
+.alm-tz-night .alm-tz-glyph { color: #7f9cf5; opacity: 0.65; }
 .alm-tz-day { background: linear-gradient(180deg, rgba(255, 193, 94, 0.12), var(--surface) 70%); border-color: rgba(255, 193, 94, 0.28); }
 .alm-tz-dawn { background: linear-gradient(180deg, rgba(255, 138, 101, 0.12), var(--surface) 70%); border-color: rgba(255, 138, 101, 0.24); }
 .alm-tz-dusk { background: linear-gradient(180deg, rgba(171, 130, 255, 0.12), var(--surface) 70%); border-color: rgba(171, 130, 255, 0.24); }
