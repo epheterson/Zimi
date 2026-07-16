@@ -296,6 +296,20 @@ DEFAULT_MIRROR_RATIO_CAP = 1000.0  # effectively uncapped — 1000× upload
 DEFAULT_MIRROR_UPLOAD_KB = 10240  # 10 MB/s
 
 
+def is_upnp_enabled() -> bool:
+    """Ask the router to open the BT port automatically (like every BT
+    client). ZIMI_BT's upnp= field wins; otherwise the persisted UI
+    preference. On by default — it fails soft on routers without UPnP."""
+    conf = _bt_conf()
+    if "upnp" in conf:
+        return _conf_bool(conf["upnp"])
+    return bool(_read_pref("upnp", True))
+
+
+def is_upnp_env_locked() -> bool:
+    return "upnp" in _bt_conf()
+
+
 def is_mirror_enabled() -> bool:
     """Mirror mode lifts the seed-ratio cap and raises upload bandwidth.
     ZIMI_BT's mirror= field (or legacy ZIMI_MIRROR) wins; otherwise the

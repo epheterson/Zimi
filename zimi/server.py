@@ -1029,6 +1029,16 @@ def main():
                     import atexit
 
                     atexit.register(p2p.shutdown_backend)
+                    # Ask the router to open the BT port + record
+                    # reachability for the settings UI. Fails soft.
+                    try:
+                        from zimi import p2p_nat
+
+                        p2p_nat.probe(
+                            p2p.get_bt_port(), try_upnp=p2p.is_upnp_enabled()
+                        )
+                    except Exception as e:
+                        log.debug("NAT probe failed: %s", e)
             except Exception as e:
                 log.warning("BT backend init failed (HTTP downloads unaffected): %s", e)
             try:

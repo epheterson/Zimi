@@ -5324,12 +5324,49 @@ async function _setSeedRatio(inp) {
   } catch (e) { _showToast(t('save_failed')); }
 }
 
-async function _renderMirrorSection() {
-  let m;
+function _natBadge(nat) {
+  if (!nat || nat.reachable == null) return '<span style="color:var(--text3)">? ' + tH('bt_port_unknown') + '</span>';
+  return nat.reachable
+    ? '<span style="color:#6abf69">\u2713 ' + tH('bt_port_open') + '</span>'
+    : '<span style="color:var(--error)">\u2717 ' + tH('bt_port_closed') + '</span>';
+}
+
+async function _natRecheck(btn) {
+  btn.disabled = true;
+  var prev = btn.textContent;
+  btn.textContent = '\u2026';
   try {
-    const r = await authedFetch('/manage/mirror');
+    const r = await manageFetch('/manage/nat-recheck', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
+    await r.json().catch(function() { return null; });
+  } catch (e) {}
+  btn.disabled = false;
+  btn.textContent = prev;
+  _renderMirrorSection();
+}
+
+async function _setUpnp(cb) {
+  try {
+    const r = await manageFetch('/manage/bt-settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({upnp: cb.checked})
+    });
+    if (!r.ok) { _showToast(t('save_failed')); cb.checked = !cb.checked; return; }
+    // A fresh mapping attempt makes the toggle feel real
+    if (cb.checked) manageFetch('/manage/nat-recheck', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' }).then(function() { _renderMirrorSection(); }).catch(function() {});
+  } catch (e) { _showToast(t('save_failed')); cb.checked = !cb.checked; }
+}
+
+async function _renderMirrorSection() {
+  let m, bt = null;
+  try {
+    const [r, rb] = await Promise.all([
+      authedFetch('/manage/mirror'),
+      manageFetch('/manage/bt-status').catch(function() { return null; }),
+    ]);
     if (!r.ok) return;
     m = await r.json();
+    if (rb && rb.ok) bt = await rb.json();
   } catch (e) {
     return;
   }
@@ -5339,9 +5376,22 @@ async function _renderMirrorSection() {
     ' <input type="number" min="0" max="10" step="0.5" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
     ((m.seed_ratio_env_locked || !m.torrent_enabled) ? ' disabled' : '') +
     ' aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">\u00d7 <span class="share-ratio-note">' + tH('seed_ratio_zero_inline') + '</span></span>';
+  // Port health row — like every real BT client: status, UPnP, retry
+  let portField = '';
+  if (bt && bt.enabled) {
+    var nat = bt.nat || null;
+    portField = '<div class="share-port-row">' +
+      '<span class="share-port-label">' + tH('bt_port_label', {n: bt.bt_port}) + '</span> ' + _natBadge(nat) +
+      ' <label class="share-upnp"' + (bt.upnp_env_locked ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
+        '<input type="checkbox"' + (bt.upnp_enabled ? ' checked' : '') + (bt.upnp_env_locked ? ' disabled' : '') + ' onchange="_setUpnp(this)"> UPnP' +
+      '</label>' +
+      '<button class="share-port-retry" onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '">\u27f3 ' + tH('retry') + '</button>' +
+      (nat && nat.upnp === 'mapped' && nat.external_ip ? '<span class="share-port-note">' + esc(nat.external_ip) + '</span>' : '') +
+    '</div>';
+  }
   let h = '<div class="share-rows">' +
     _shareSwitch('torrent', m.torrent_enabled, m.torrent_env_locked, 'ZIMI_BT',
-      'share_bt_title', tH('share_bt_desc') + ' ' + ratioField) +
+      'share_bt_title', tH('share_bt_desc') + ' ' + ratioField + portField) +
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
       'share_mirror_title', tH('share_mirror_desc')) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',

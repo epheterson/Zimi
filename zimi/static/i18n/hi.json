@@ -905,5 +905,10 @@
   "share_nearby_desc": "अपने स्थानीय नेटवर्क पर ZIM फ़ाइलें साझा और डाउनलोड करें।",
   "seed_ratio_zero_hint": "फ़ाइल आकार का N गुना अपलोड होने पर सीडिंग रुक जाती है। 0 = कभी सीड न करें।",
   "seed_ratio_zero_inline": "0 = कोई सीडिंग नहीं",
+  "bt_port_label": "पोर्ट {n}",
+  "bt_port_open": "खुला",
+  "bt_port_closed": "बंद",
+  "bt_port_unknown": "अज्ञात",
+  "bt_port_recheck_hint": "UPnP फिर से मैप करें और पोर्ट की पहुंच जांचें",
   "peer_name_hint": "वह नाम जो अन्य Zimi डिवाइस देखते हैं। पुनरारंभ के बाद लागू।"
 }

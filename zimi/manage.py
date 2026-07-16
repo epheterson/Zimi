@@ -614,6 +614,8 @@ def handle_manage_get(handler, parsed, params):
                 "Install aria2 to torrent and share load with the Kiwix mirrors."
             )
 
+        from zimi import p2p_nat
+
         return handler._json(
             200,
             {
@@ -624,6 +626,10 @@ def handle_manage_get(handler, parsed, params):
                 "staging_dir": p2p.get_staging_dir(_srv.ZIMI_DATA_DIR),
                 "binary_present": binary_present,
                 "hint": hint,
+                "upnp_enabled": p2p.is_upnp_enabled(),
+                "upnp_env_locked": p2p.is_upnp_env_locked(),
+                # Cached: the probe runs at startup and on explicit recheck
+                "nat": p2p_nat.last_status() or None,
             },
         )
 
@@ -940,6 +946,19 @@ def handle_manage_post(handler, parsed, data):
             {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq},
         )
 
+    elif parsed.path == "/manage/nat-recheck":
+        # The "retry" button every real BT client has: re-map UPnP and
+        # re-test reachability. Slow (SSDP + external check, a few
+        # seconds) but explicitly user-initiated.
+        from zimi import p2p, p2p_nat
+
+        if not p2p.is_torrent_enabled():
+            return handler._json(400, {"error": "BitTorrent is turned off"})
+        result = p2p_nat.probe(
+            p2p.get_bt_port(), try_upnp=p2p.is_upnp_enabled()
+        )
+        return handler._json(200, {"nat": result})
+
     elif parsed.path == "/manage/bt-settings":
         # Seed/mirror toggles. An env var locks its field — UI changes would
         # be silently overridden on next read (same contract as auto-update).
@@ -980,6 +999,16 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["peer_share"] = bool(data["peer_share"])
+        if "upnp" in data:
+            if p2p.is_upnp_env_locked():
+                return handler._json(
+                    403, {"error": "UPnP is controlled by the ZIMI_BT env var"}
+                )
+            if not p2p.set_pref("upnp", bool(data["upnp"])):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
+            changed["upnp"] = bool(data["upnp"])
         if "torrent" in data:
             if p2p.is_torrent_env_locked():
                 return handler._json(

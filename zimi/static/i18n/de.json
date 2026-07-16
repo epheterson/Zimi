@@ -905,5 +905,10 @@
   "share_nearby_desc": "ZIM-Dateien im lokalen Netzwerk teilen und herunterladen.",
   "seed_ratio_zero_hint": "Seeden stoppt, sobald das N-fache der Dateigröße hochgeladen wurde. 0 = nie seeden.",
   "seed_ratio_zero_inline": "0 = kein Seeden",
+  "bt_port_label": "Port {n}",
+  "bt_port_open": "offen",
+  "bt_port_closed": "geschlossen",
+  "bt_port_unknown": "unbekannt",
+  "bt_port_recheck_hint": "UPnP neu zuordnen und Erreichbarkeit des Ports erneut prüfen",
   "peer_name_hint": "Der Name, den andere Zimi-Geräte sehen. Gilt nach Neustart."
 }

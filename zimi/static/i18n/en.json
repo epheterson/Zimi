@@ -905,5 +905,10 @@
   "share_nearby_desc": "Share and download ZIM files on your local network.",
   "seed_ratio_zero_hint": "Stop seeding after uploading this many times the file size. 0 = never seed.",
   "seed_ratio_zero_inline": "0 for no seeding",
+  "bt_port_label": "Port {n}",
+  "bt_port_open": "open",
+  "bt_port_closed": "closed",
+  "bt_port_unknown": "unknown",
+  "bt_port_recheck_hint": "Re-map UPnP and re-test whether peers can reach this port",
   "peer_name_hint": "The name other Zimi devices see. Applies after restart."
 }

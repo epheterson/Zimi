@@ -905,5 +905,10 @@
   "share_nearby_desc": "Comparte y descarga archivos ZIM en tu red local.",
   "seed_ratio_zero_hint": "Deja de sembrar tras subir N veces el tamaño del archivo. 0 = nunca sembrar.",
   "seed_ratio_zero_inline": "0 = sin siembra",
+  "bt_port_label": "Puerto {n}",
+  "bt_port_open": "abierto",
+  "bt_port_closed": "cerrado",
+  "bt_port_unknown": "desconocido",
+  "bt_port_recheck_hint": "Reasignar UPnP y volver a comprobar si el puerto es accesible",
   "peer_name_hint": "El nombre que ven otros dispositivos Zimi. Se aplica tras reiniciar."
 }

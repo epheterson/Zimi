@@ -905,5 +905,10 @@
   "share_nearby_desc": "Partagez et téléchargez des fichiers ZIM sur votre réseau local.",
   "seed_ratio_zero_hint": "Arrête le partage après avoir envoyé N fois la taille du fichier. 0 = ne jamais partager.",
   "seed_ratio_zero_inline": "0 = pas de partage",
+  "bt_port_label": "Port {n}",
+  "bt_port_open": "ouvert",
+  "bt_port_closed": "fermé",
+  "bt_port_unknown": "inconnu",
+  "bt_port_recheck_hint": "Re-mapper UPnP et retester l'accessibilité du port",
   "peer_name_hint": "Le nom que voient les autres appareils Zimi. Effectif après redémarrage."
 }
