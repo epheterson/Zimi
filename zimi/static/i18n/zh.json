@@ -900,7 +900,7 @@
   "share_bt_desc": "通过 BitTorrent 下载和做种 ZIM。",
   "seed_ratio_label": "做种比率",
   "share_mirror_title": "镜像",
-  "share_mirror_desc": "成为 Kiwix BitTorrent 镜像，帮助分担负载。",
+  "share_mirror_desc": "成为 Kiwix BitTorrent 镜像，帮助分担负载。做种整个媒体库，并离线备份完整目录。",
   "share_nearby_title": "附近",
   "share_nearby_desc": "在本地网络中共享和下载 ZIM 文件。",
   "seed_ratio_zero_hint": "上传量达到文件大小的 N 倍后停止做种。0 = 从不做种。",

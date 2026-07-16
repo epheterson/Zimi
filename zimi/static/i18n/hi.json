@@ -900,7 +900,7 @@
   "share_bt_desc": "BitTorrent के माध्यम से ZIM डाउनलोड और सीड करें।",
   "seed_ratio_label": "सीड अनुपात",
   "share_mirror_title": "मिरर",
-  "share_mirror_desc": "Kiwix BitTorrent मिरर बनें और लोड साझा करने में मदद करें।",
+  "share_mirror_desc": "Kiwix BitTorrent मिरर बनें और लोड साझा करने में मदद करें। आपकी पूरी लाइब्रेरी सीड होती है और पूरे कैटलॉग का ऑफ़लाइन बैकअप रहता है।",
   "share_nearby_title": "आस-पास",
   "share_nearby_desc": "अपने स्थानीय नेटवर्क पर ZIM फ़ाइलें साझा और डाउनलोड करें।",
   "seed_ratio_zero_hint": "फ़ाइल आकार का N गुना अपलोड होने पर सीडिंग रुक जाती है। 0 = कभी सीड न करें।",

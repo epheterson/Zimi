@@ -900,7 +900,7 @@
   "share_bt_desc": "Téléchargez et partagez les ZIM via BitTorrent.",
   "seed_ratio_label": "Ratio de partage",
   "share_mirror_title": "Miroir",
-  "share_mirror_desc": "Devenez un miroir BitTorrent Kiwix et aidez à répartir la charge.",
+  "share_mirror_desc": "Devenez un miroir BitTorrent Kiwix et aidez à répartir la charge. Diffuse toute votre bibliothèque et conserve une copie hors ligne du catalogue complet.",
   "share_nearby_title": "À proximité",
   "share_nearby_desc": "Partagez et téléchargez des fichiers ZIM sur votre réseau local.",
   "seed_ratio_zero_hint": "Arrête le partage après avoir envoyé N fois la taille du fichier. 0 = ne jamais partager.",

@@ -900,7 +900,7 @@
   "share_bt_desc": "نزّل وابذر ملفات ZIM عبر BitTorrent.",
   "seed_ratio_label": "نسبة البذر",
   "share_mirror_title": "مرآة",
-  "share_mirror_desc": "كن مرآة BitTorrent لـ Kiwix وساعد في مشاركة الحمل.",
+  "share_mirror_desc": "كن مرآة BitTorrent لـ Kiwix وساعد في مشاركة الحمل. يبذر مكتبتك كاملة ويحفظ نسخة من الكتالوج الكامل للاستخدام دون اتصال.",
   "share_nearby_title": "قريب",
   "share_nearby_desc": "شارك ونزّل ملفات ZIM على شبكتك المحلية.",
   "seed_ratio_zero_hint": "يتوقف البذر بعد رفع N ضعف حجم الملف. 0 = عدم البذر أبدًا.",

@@ -900,7 +900,7 @@
   "share_bt_desc": "הורידו וזרעו קובצי ZIM דרך BitTorrent.",
   "seed_ratio_label": "יחס זריעה",
   "share_mirror_title": "מראה",
-  "share_mirror_desc": "הפכו למראה BitTorrent של Kiwix ועזרו לחלוק את העומס.",
+  "share_mirror_desc": "הפכו למראה BitTorrent של Kiwix ועזרו לחלוק את העומס. משתף את כל הספרייה ושומר גיבוי לא מקוון של הקטלוג המלא.",
   "share_nearby_title": "בקרבת מקום",
   "share_nearby_desc": "שתפו והורידו קובצי ZIM ברשת המקומית שלכם.",
   "seed_ratio_zero_hint": "הזריעה נעצרת לאחר העלאה של פי N מגודל הקובץ. 0 = לעולם לא לזרוע.",

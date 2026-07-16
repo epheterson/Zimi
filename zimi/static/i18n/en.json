@@ -900,7 +900,7 @@
   "share_bt_desc": "Download and seed ZIMs over BitTorrent.",
   "seed_ratio_label": "Seed ratio",
   "share_mirror_title": "Mirror",
-  "share_mirror_desc": "Become a Kiwix BitTorrent mirror and help share the load.",
+  "share_mirror_desc": "Become a Kiwix BitTorrent mirror and help share the load. Seeds your whole library and backs up the entire catalog for offline use.",
   "share_nearby_title": "Nearby",
   "share_nearby_desc": "Share and download ZIM files on your local network.",
   "seed_ratio_zero_hint": "Stop seeding after uploading this many times the file size. 0 = never seed.",

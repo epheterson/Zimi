@@ -900,7 +900,7 @@
   "share_bt_desc": "Baixe e semeie ZIMs via BitTorrent.",
   "seed_ratio_label": "Proporção de seed",
   "share_mirror_title": "Espelho",
-  "share_mirror_desc": "Torne-se um espelho BitTorrent do Kiwix e ajude a dividir a carga.",
+  "share_mirror_desc": "Torne-se um espelho BitTorrent do Kiwix e ajude a dividir a carga. Compartilha toda a sua biblioteca e guarda uma cópia offline do catálogo completo.",
   "share_nearby_title": "Por perto",
   "share_nearby_desc": "Compartilhe e baixe arquivos ZIM na sua rede local.",
   "seed_ratio_zero_hint": "Para de semear após enviar N vezes o tamanho do arquivo. 0 = nunca semear.",
