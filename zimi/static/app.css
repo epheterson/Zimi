@@ -676,6 +676,11 @@
   .dl-retry-btn:hover { border-color: var(--amber); color: var(--amber); }
   .dl-mirror { font-size: 11px; color: var(--text2); flex: 1; }
   /* BT port health row (status + UPnP + retry, like a real BT client) */
+  .share-ratio-row { margin-top: 7px; }
+  .share-bt-inner { margin-top: 8px; }
+  .share-bt-inner:empty { display: none; }
+  .share-inactive { opacity: 0.5; }
+  .share-inactive .switch { cursor: default; }
   .share-port-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; color: var(--text2); flex-wrap: wrap; }
   .share-port-label { font-family: monospace; font-size: 11px; }
   .share-upnp { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-size: 11px; }

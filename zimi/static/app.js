@@ -4950,8 +4950,6 @@ function _msServerHtml() {
   // Sharing is the star of v1.7 — it leads the Server pane.
   var h = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
     '<div id="ms-mirror-status" class="share-rows-slot"></div>' +
-    '<div id="ms-bt-status" style="margin-top:10px"></div>' +
-    '<div id="ms-seeding-list" style="margin-top:10px"></div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
   h += '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
     '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>';
@@ -5279,14 +5277,16 @@ async function _renderSeedingSection() {
 
 // The v1.7 sharing hero: three switches — BitTorrent (with seed ratio),
 // Mirror, Nearby. Env-locked settings render disabled with the env hint.
-function _shareSwitch(key, on, locked, envVar, titleKey, descHtml) {
-  return '<div class="share-row' + (locked ? ' share-locked' : '') + '">' +
+// `inactive` greys a switch that depends on another being on (Mirror with
+// BT off): unmodifiable, but its saved state persists untouched.
+function _shareSwitch(key, on, locked, envVar, titleKey, descHtml, inactive) {
+  return '<div class="share-row' + (locked ? ' share-locked' : '') + (inactive ? ' share-inactive' : '') + '">' +
     '<div class="share-row-text">' +
       '<div class="share-row-title">' + tH(titleKey) + '</div>' +
       '<div class="share-row-desc">' + descHtml + '</div>' +
       (locked ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
     '</div>' +
-    '<label class="switch"><input type="checkbox" role="switch"' + (on ? ' checked' : '') + (locked ? ' disabled' : '') +
+    '<label class="switch"><input type="checkbox" role="switch"' + (on ? ' checked' : '') + ((locked || inactive) ? ' disabled' : '') +
       ' aria-label="' + escAttr(t(titleKey)) + '"' +
       ' onchange="_setBtSetting(\'' + key + '\', this)"><span class="switch-slider"></span></label>' +
   '</div>';
@@ -5400,11 +5400,14 @@ async function _renderMirrorSection() {
       (nat && nat.upnp === 'mapped' && nat.external_ip ? '<span class="share-port-note">' + esc(nat.external_ip) + '</span>' : '') +
     '</div>';
   }
+  const btInner = '<div class="share-ratio-row">' + ratioField + '</div>' + portField +
+    '<div id="ms-bt-status" class="share-bt-inner"></div>' +
+    '<div id="ms-seeding-list" class="share-bt-inner"></div>';
   let h = '<div class="share-rows">' +
     _shareSwitch('torrent', m.torrent_enabled, m.torrent_env_locked, 'ZIMI_BT',
-      'share_bt_title', tH('share_bt_desc') + ' ' + ratioField + portField) +
+      'share_bt_title', tH('share_bt_desc') + btInner) +
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
-      'share_mirror_title', tH('share_mirror_desc')) +
+      'share_mirror_title', tH('share_mirror_desc'), !m.torrent_enabled) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
       'share_nearby_title', tH('share_nearby_desc')) +
   '</div>';
@@ -5419,6 +5422,8 @@ async function _renderMirrorSection() {
       '</span></div>';
   }
   el.innerHTML = h;
+  // The BT status + seeding slots now live inside the card — refill them
+  _renderSeedingSection();
 }
 
 
