@@ -151,7 +151,13 @@ def _check_manage_auth(handler):
     """
     stored_pw = _get_manage_password_hash()
     if not stored_pw:
-        return None  # no password = open
+        # Passwordless is fine on a home network, but a passwordless
+        # instance exposed to the internet was letting anyone on Earth
+        # manage the library. LAN/loopback clients stay open; public
+        # clients must set a password first (from the LAN).
+        if handler._is_private_client():
+            return None
+        return True
 
     auth = handler.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
@@ -583,9 +589,7 @@ def handle_manage_get(handler, parsed, params):
 
         enabled = p2p.is_torrent_enabled()
         backend_name = p2p.get_backend_name()
-        binary_present = (
-            bool(p2p.find_aria2c()) if backend_name == "aria2" else None
-        )
+        binary_present = bool(p2p.find_aria2c()) if backend_name == "aria2" else None
 
         # Live state — peek only. A status view must never spawn the sidecar
         # (with BT on by default that would mean every settings visit).

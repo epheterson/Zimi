@@ -1930,3 +1930,31 @@ class TestVersionConsistency(unittest.TestCase):
         m = _re.search(r'^version = "([^"]+)"', pyproject, _re.M)
         self.assertIsNotNone(m)
         self.assertEqual(self.zimi.ZIMI_VERSION, m.group(1))
+
+
+class TestPasswordlessManageGate(unittest.TestCase):
+    """No password set: LAN clients manage freely, public clients must set
+    a password from the LAN first (a passwordless instance exposed to the
+    internet was world-manageable)."""
+
+    class _FakeHandler:
+        def __init__(self, private):
+            self._private = private
+            self.headers = {}
+
+        def _is_private_client(self):
+            return self._private
+
+    def _check(self, private):
+        from unittest.mock import patch as _patch
+
+        import zimi.manage as manage
+
+        with _patch.object(manage, "_get_manage_password_hash", return_value=None):
+            return manage._check_manage_auth(self._FakeHandler(private))
+
+    def test_private_client_open(self):
+        self.assertIsNone(self._check(private=True))
+
+    def test_public_client_blocked(self):
+        self.assertTrue(self._check(private=False))
