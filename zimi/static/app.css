@@ -294,6 +294,10 @@
   [dir="rtl"] .search-icon { left: 12px; right: auto; }
   [dir="rtl"] .kbd { right: auto; left: 8px; }
   [dir="rtl"] .back-btn { transform: scaleX(-1); }
+  /* Article/ZIM titles can be RTL (Arabic, Hebrew, Farsi) inside LTR
+     chrome (and vice versa) — isolate so neighboring punctuation and
+     counts don't reshuffle around them. */
+  .title, .sg-title, .ci-title, .dc-title, .dl-item .dl-name, .browse-drilldown-title { unicode-bidi: isolate; }
   [dir="rtl"] .bc-sep { transform: scaleX(-1); }
   [dir="rtl"] .result { direction: rtl; }
   [dir="rtl"] .result-body { text-align: right; }
@@ -652,7 +656,8 @@
      later in source) — amber label on amber fill was unreadable. */
   .dl-filter-pill.active { color: var(--amber); border-color: var(--amber); background: none; font-weight: 600; }
   .dl-filter-pill.active .pill-count { opacity: 1; background: var(--amber); color: #000; padding: 0 5px; border-radius: 8px; }
-  .dl-pause-btn { background: none; border: 1px solid var(--border); color: var(--text2);
+  /* One shape for the whole download-row button family */
+  .dl-pause-btn, .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);
     padding: 4px 12px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s;
     min-height: 24px; }
   .dl-pause-btn:hover { border-color: var(--amber); color: var(--amber); }
@@ -667,10 +672,6 @@
     /* Static centered segment — a full-width bar reads as "almost done" */
     .dl-progress.dl-indeterminate .dl-progress-bar { animation: none; width: 34%; margin-left: 33%; opacity: 0.6; }
   }
-  /* Same shape as .dl-pause-btn — one button family per card */
-  .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);
-    font-size: 11px; padding: 4px 12px; border-radius: 12px; cursor: pointer;
-    transition: all 0.15s; min-height: 24px; }
   .dl-cancel-btn:hover { border-color: var(--error); color: var(--error); }
   .dl-retry-btn:hover { border-color: var(--amber); color: var(--amber); }
   .dl-mirror { font-size: 11px; color: var(--text2); flex: 1; }

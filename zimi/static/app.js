@@ -5608,7 +5608,7 @@ function renderInstalled(filterText) {
 async function managePassword() {
   const has = await manageFetch('/manage/has-password').then(r => r.json()).catch(() => ({}));
   if (has.env_controlled) {
-    _showToast('Password is controlled by ZIMI_MANAGE_PASSWORD environment variable');
+    _showToast(t('env_controlled', {v: 'ZIMI_MANAGE_PASSWORD'}));
     return;
   }
   const errEl = document.getElementById('pw-error');
@@ -7205,6 +7205,23 @@ function openArticle(zim, path, title) {
 
 function closeReader() {
   if (!readerOpen) return;
+  // Sync the address bar back to the view the reader was covering — an
+  // explicit close otherwise strands the article URL (a reload would
+  // reopen the closed article). On popstate-driven closes the history
+  // has already moved, so state.mode is no longer 'reader' and this
+  // block is skipped.
+  if (history.state && history.state.mode === 'reader') {
+    var query = q.value.trim();
+    if (mode === 'search' && query) {
+      var scope = currentSource || null;
+      var searchUrl = scope ? '/w/' + encodeURIComponent(scope) + '?q=' + encodeURIComponent(query) : '/?q=' + encodeURIComponent(query);
+      history.replaceState({ mode: 'search', query: query, source: scope }, '', searchUrl);
+    } else if (mode === 'source' && currentSource) {
+      history.replaceState({ mode: 'source', source: currentSource }, '', '/w/' + encodeURIComponent(currentSource));
+    } else {
+      history.replaceState({ mode: 'home' }, '', '/');
+    }
+  }
   readerOpen = false;
   readerSource = null;
   currentArticle = null;
