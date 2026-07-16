@@ -999,7 +999,11 @@ def handle_manage_post(handler, parsed, data):
                 # (hash checks + torrent fetches take a while).
                 from zimi import library as _lib
 
-                threading.Thread(target=_lib.mirror_sync, daemon=True).start()
+                def _mirror_kickoff():
+                    _lib.mirror_sync()
+                    _lib.archive_catalog_torrents()
+
+                threading.Thread(target=_mirror_kickoff, daemon=True).start()
         if "peer_share" in data:
             from zimi import p2p_discovery as _disc
 

@@ -1066,6 +1066,7 @@ def main():
                 # way, drop seeds whose file an update has replaced.
                 _lib.retire_stale_seeds()
                 _lib.mirror_sync()
+                _lib.archive_catalog_torrents()
             except Exception as e:
                 log.warning("Download resume failed: %s", e)
 

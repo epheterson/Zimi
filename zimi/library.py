@@ -851,6 +851,82 @@ def mirror_sync():
     return added
 
 
+_catalog_torrents_archived = False
+
+
+def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
+    """Mirror-mode duty: hold the .torrent for EVERY catalog item, not just
+    installed ones — ~40-80 MB total for the full Kiwix catalog (measured
+    avg ~34 KB each). With the persisted catalog and DHT this makes a
+    mirror node a complete post-world index: any ZIM can be fetched,
+    verified, and re-seeded with zero internet. Paced politely, skips
+    files already archived (dated names make this incremental), runs once
+    per server run and only when mirror mode is on."""
+    global _catalog_torrents_archived
+    from zimi import p2p as _p2p
+
+    if _catalog_torrents_archived:
+        return 0
+    if not (_p2p.is_torrent_enabled() and _p2p.is_mirror_enabled()):
+        return 0
+    _catalog_torrents_archived = True
+
+    tdir = os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents")
+    os.makedirs(tdir, exist_ok=True)
+
+    # Full catalog, all pages
+    urls = {}
+    total, items, err = _fetch_kiwix_catalog("", "eng", 500, 0)
+    if err:
+        _catalog_torrents_archived = False  # retry next run
+        return 0
+    pages = [items]
+    for start in range(500, total, 500):
+        _t, more, _e = _fetch_kiwix_catalog("", "eng", 500, start)
+        if more:
+            pages.append(more)
+    for page in pages:
+        for it in page or []:
+            u = (it.get("download_url") or "").split("?")[0]
+            if u.endswith(".meta4"):
+                u = u[: -len(".meta4")]
+            if u.endswith(".zim"):
+                urls[os.path.basename(u)] = u + ".torrent"
+
+    fetched = 0
+    fetched_bytes = 0
+    for filename, turl in sorted(urls.items()):
+        dest = os.path.join(tdir, filename + ".torrent")
+        if os.path.exists(dest):
+            continue
+        try:
+            req = urllib.request.Request(turl, headers={"User-Agent": "Zimi/1.0"})
+            with urllib.request.urlopen(
+                req, timeout=20, context=_srv.SSL_CTX
+            ) as resp:
+                data = resp.read(_max_bytes + 1)
+            # bencoded dict or it isn't a torrent (error pages, redirects)
+            if not data.startswith(b"d") or len(data) > _max_bytes:
+                continue
+            tmp = dest + ".tmp"
+            with open(tmp, "wb") as f:
+                f.write(data)
+            os.replace(tmp, dest)
+            fetched += 1
+            fetched_bytes += len(data)
+        except Exception as e:
+            log.debug("torrent archive: %s failed: %s", filename, e)
+        time.sleep(spacing)
+    if fetched:
+        log.info(
+            "Catalog torrent archive: %d fetched (%.1f MB), %d total held",
+            fetched,
+            fetched_bytes / 1024 / 1024,
+            len(os.listdir(tdir)),
+        )
+    return fetched
+
+
 def retire_stale_seeds():
     """Drop sidecar torrents whose library file is gone — an update
     replaced it, or the user deleted the ZIM. Without this, aria2 keeps

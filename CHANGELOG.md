@@ -26,7 +26,10 @@ push.
   library — aria2 hash-checks each existing file and seeds it in place,
   uncapped, using saved .torrent files (works offline) or the catalog's
   torrent URLs. Seeds whose file an update replaced are retired
-  automatically.
+  automatically. Mirrors also archive the .torrent for every catalog
+  item (~40-80 MB for the full catalog), making a mirror node a complete
+  offline index: any ZIM can be fetched, verified, and re-seeded with no
+  internet at all.
 - **Post-world resilience**: the last good Kiwix catalog persists to disk
   and stays browsable when the internet is gone (with a quiet "showing
   catalog from <date>" note), and every BT download keeps its infohash,

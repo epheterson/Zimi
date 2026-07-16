@@ -292,3 +292,81 @@ def test_retire_stale_seeds_removes_orphans(_mirror_env, monkeypatch):
     monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
     assert lib.retire_stale_seeds() == 1
     assert backend.removed == ["g-old"]
+
+
+def test_archive_catalog_torrents_fetches_all(_mirror_env, monkeypatch):
+    import io
+    import urllib.request as _ur
+
+    import zimi.library as lib
+
+    lib._catalog_torrents_archived = False
+    monkeypatch.setattr(
+        lib,
+        "_fetch_kiwix_catalog",
+        lambda q, l, c, s: (
+            2,
+            [
+                {"download_url": "https://download.kiwix.org/zim/a/a_2026-06.zim.meta4"},
+                {"download_url": "https://download.kiwix.org/zim/b/b_2026-06.zim.meta4"},
+            ],
+            None,
+        ),
+    )
+
+    class _R(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(_ur, "urlopen", lambda *a, **k: _R(b"d4:infoe"))
+    fetched = lib.archive_catalog_torrents(spacing=0)
+    assert fetched == 2
+    import zimi.server as server
+
+    tdir = os.path.join(server.ZIMI_DATA_DIR, "bt", "torrents")
+    assert sorted(os.listdir(tdir)) == ["a_2026-06.zim.torrent", "b_2026-06.zim.torrent"]
+    # Second call in the same run is a no-op
+    assert lib.archive_catalog_torrents(spacing=0) == 0
+    lib._catalog_torrents_archived = False
+
+
+def test_archive_rejects_non_bencode(_mirror_env, monkeypatch):
+    import io
+    import urllib.request as _ur
+
+    import zimi.library as lib
+
+    lib._catalog_torrents_archived = False
+    monkeypatch.setattr(
+        lib,
+        "_fetch_kiwix_catalog",
+        lambda q, l, c, s: (
+            1,
+            [{"download_url": "https://download.kiwix.org/zim/x/x_2026-06.zim.meta4"}],
+            None,
+        ),
+    )
+
+    class _R(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(_ur, "urlopen", lambda *a, **k: _R(b"<html>404</html>"))
+    assert lib.archive_catalog_torrents(spacing=0) == 0
+    lib._catalog_torrents_archived = False
+
+
+def test_archive_skipped_when_mirror_off(_mirror_env, monkeypatch):
+    import zimi.library as lib
+    import zimi.p2p as p2p
+
+    lib._catalog_torrents_archived = False
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    assert lib.archive_catalog_torrents(spacing=0) == 0
+    assert lib._catalog_torrents_archived is False
