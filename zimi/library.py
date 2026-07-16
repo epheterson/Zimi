@@ -731,6 +731,123 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
     return total, items, None
 
 
+def mirror_sync():
+    """True mirror mode: seed every installed ZIM, not just ones we
+    downloaded over BT. Sources, in order: the saved .torrent files from
+    past downloads (works fully offline), then <download_url>.torrent for
+    catalog entries whose dated filename exactly matches an installed
+    file. aria2 hash-checks the existing file and seeds without
+    re-downloading. Returns how many torrents were added."""
+    from zimi import p2p as _p2p
+
+    if not (_p2p.is_torrent_enabled() and _p2p.is_mirror_enabled()):
+        return 0
+    if _p2p.should_pause_for_disk_pressure(_srv.ZIM_DIR):
+        log.info("Mirror sync skipped: disk pressure")
+        return 0
+    backend = _p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+    if backend is None:
+        return 0
+
+    # What the sidecar already manages, by target file basename
+    managed = set()
+    try:
+        for raw in backend.list_managed():
+            for f in raw.get("files", []):
+                managed.add(os.path.basename(f.get("path", "")))
+    except Exception as e:
+        log.debug("mirror: list_managed failed: %s", e)
+        return 0
+
+    installed = {
+        os.path.basename(path)
+        for path in glob.glob(os.path.join(_srv.ZIM_DIR, "*.zim"))
+    }
+    saved = _get_torrent_metadata()
+
+    # Catalog lookup (stale copy is fine — that's the post-world path)
+    catalog_urls = {}
+    try:
+        _total, items, _err = _fetch_kiwix_catalog("", "eng", 500, 0)
+        for it in items or []:
+            url = (it.get("download_url") or "").split("?")[0]
+            if url.endswith(".meta4"):
+                url = url[: -len(".meta4")]
+            if url.endswith(".zim"):
+                catalog_urls[os.path.basename(url)] = url
+    except Exception:
+        pass
+
+    added = 0
+    for filename in sorted(installed - managed):
+        source = None
+        meta = saved.get(filename) or {}
+        tfile = meta.get("torrent_file")
+        if tfile and os.path.isfile(tfile):
+            source = tfile
+        elif meta.get("torrent_url"):
+            source = meta["torrent_url"]
+        elif filename in catalog_urls:
+            source = catalog_urls[filename] + ".torrent"
+        if not source:
+            continue
+        try:
+            backend.add_torrent(
+                source,
+                dest_dir=_srv.ZIM_DIR,
+                options={
+                    # Verify the existing file, then seed it — never fetch
+                    "check-integrity": "true",
+                    "bt-hash-check-seed": "true",
+                    "seed-ratio": "0",  # mirrors seed without a cap
+                    "allow-overwrite": "true",
+                },
+            )
+            added += 1
+        except Exception as e:
+            log.debug("mirror: add %s failed: %s", filename, e)
+    if added:
+        log.info("Mirror mode: seeding %d installed ZIM(s)", added)
+    return added
+
+
+def retire_stale_seeds():
+    """Drop sidecar torrents whose library file is gone — an update
+    replaced it, or the user deleted the ZIM. Without this, aria2 keeps
+    advertising (and hash-check failing) old versions forever. Only
+    torrents targeting ZIM_DIR are touched; staging transfers belong to
+    the download machinery. Returns how many were removed."""
+    from zimi import p2p as _p2p
+
+    backend = _p2p.peek_backend()
+    if backend is None:
+        return 0
+    removed = 0
+    try:
+        entries = backend.list_managed()
+    except Exception:
+        return 0
+    zim_root = os.path.normpath(_srv.ZIM_DIR)
+    for raw in entries:
+        for f in raw.get("files", []):
+            path = f.get("path", "")
+            if not path:
+                continue
+            if os.path.normpath(os.path.dirname(path)) != zim_root:
+                continue
+            if not os.path.exists(path):
+                try:
+                    backend.remove(raw.get("gid", ""), delete_files=True)
+                    removed += 1
+                    log.info(
+                        "Retired stale seed: %s", os.path.basename(path)
+                    )
+                except Exception:
+                    pass
+                break
+    return removed
+
+
 def _try_bt_download(
     backend,
     dl,
@@ -1352,6 +1469,13 @@ def _download_thread(dl):
         with _download_lock:
             _drain_queue()
             _persist_pending_downloads()
+        # An installed update leaves the old version's seed pointing at a
+        # deleted file — retire it (cheap no-op otherwise).
+        if dl.get("is_update") and dl.get("done") and not dl.get("error"):
+            try:
+                retire_stale_seeds()
+            except Exception:
+                pass
 
 
 def _fetch_mirrors(meta4_url):

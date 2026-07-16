@@ -1062,6 +1062,10 @@ def main():
                 from zimi import library as _lib
 
                 _lib.resume_pending_downloads()
+                # Mirror mode seeds the whole installed library; either
+                # way, drop seeds whose file an update has replaced.
+                _lib.retire_stale_seeds()
+                _lib.mirror_sync()
             except Exception as e:
                 log.warning("Download resume failed: %s", e)
 

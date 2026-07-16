@@ -171,3 +171,124 @@ def test_torrent_metadata_roundtrip(tmp_path, monkeypatch):
     assert meta["foo.zim"]["info_hash"] == "abc123"
     assert meta["foo.zim"]["magnet"] == "magnet:?xt=urn:btih:abc123"
     assert os.path.isfile(meta["foo.zim"]["torrent_file"])
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# True mirror mode: seed the installed library; retire seeds updates orphaned
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class _FakeBackend:
+    def __init__(self, managed=None):
+        self.managed = managed or []
+        self.added = []
+        self.removed = []
+
+    def list_managed(self):
+        return self.managed
+
+    def add_torrent(self, source, *, dest_dir, options=None):
+        self.added.append((source, dest_dir, options or {}))
+        return "gid-" + str(len(self.added))
+
+    def remove(self, tid, *, delete_files=False):
+        self.removed.append(tid)
+
+
+@pytest.fixture
+def _mirror_env(tmp_path, monkeypatch):
+    import zimi.library as lib
+    import zimi.p2p as p2p
+    import zimi.server as server
+
+    zim_dir = tmp_path / "zims"
+    zim_dir.mkdir()
+    monkeypatch.setattr(server, "ZIM_DIR", str(zim_dir))
+    monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(p2p, "is_torrent_enabled", lambda: True)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: True)
+    monkeypatch.setattr(p2p, "should_pause_for_disk_pressure", lambda d: False)
+    return zim_dir
+
+
+def test_mirror_sync_seeds_installed_from_catalog(_mirror_env, monkeypatch):
+    import zimi.library as lib
+    import zimi.p2p as p2p
+
+    (_mirror_env / "wikipedia_en_100_2026-06.zim").write_bytes(b"x")
+    backend = _FakeBackend()
+    monkeypatch.setattr(p2p, "get_backend", lambda **kw: backend)
+    monkeypatch.setattr(
+        lib,
+        "_fetch_kiwix_catalog",
+        lambda *a, **k: (
+            1,
+            [{"download_url": "https://download.kiwix.org/zim/wikipedia/wikipedia_en_100_2026-06.zim.meta4"}],
+            None,
+        ),
+    )
+    assert lib.mirror_sync() == 1
+    source, dest, opts = backend.added[0]
+    assert source.endswith("wikipedia_en_100_2026-06.zim.torrent")
+    assert dest == str(_mirror_env)
+    assert opts["check-integrity"] == "true"
+    assert opts["seed-ratio"] == "0"
+
+
+def test_mirror_sync_prefers_saved_torrent_file(_mirror_env, monkeypatch):
+    import zimi.library as lib
+    import zimi.p2p as p2p
+
+    (_mirror_env / "devdocs_en_css_2026-05.zim").write_bytes(b"x")
+    tfile = _mirror_env / "saved.torrent"
+    tfile.write_bytes(b"d4:infoe")
+    backend = _FakeBackend()
+    monkeypatch.setattr(p2p, "get_backend", lambda **kw: backend)
+    monkeypatch.setattr(
+        lib,
+        "_get_torrent_metadata",
+        lambda: {"devdocs_en_css_2026-05.zim": {"torrent_file": str(tfile)}},
+    )
+    monkeypatch.setattr(lib, "_fetch_kiwix_catalog", lambda *a, **k: (0, [], None))
+    assert lib.mirror_sync() == 1
+    assert backend.added[0][0] == str(tfile)
+
+
+def test_mirror_sync_skips_already_managed(_mirror_env, monkeypatch):
+    import zimi.library as lib
+    import zimi.p2p as p2p
+
+    (_mirror_env / "a_2026-06.zim").write_bytes(b"x")
+    backend = _FakeBackend(
+        managed=[{"gid": "g1", "files": [{"path": str(_mirror_env / "a_2026-06.zim")}]}]
+    )
+    monkeypatch.setattr(p2p, "get_backend", lambda **kw: backend)
+    monkeypatch.setattr(lib, "_fetch_kiwix_catalog", lambda *a, **k: (0, [], None))
+    assert lib.mirror_sync() == 0
+    assert backend.added == []
+
+
+def test_mirror_sync_off_when_disabled(_mirror_env, monkeypatch):
+    import zimi.library as lib
+    import zimi.p2p as p2p
+
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    assert lib.mirror_sync() == 0
+
+
+def test_retire_stale_seeds_removes_orphans(_mirror_env, monkeypatch):
+    import zimi.library as lib
+    import zimi.p2p as p2p
+
+    kept = _mirror_env / "keep_2026-06.zim"
+    kept.write_bytes(b"x")
+    backend = _FakeBackend(
+        managed=[
+            {"gid": "g-old", "files": [{"path": str(_mirror_env / "old_2026-01.zim")}]},
+            {"gid": "g-keep", "files": [{"path": str(kept)}]},
+            {"gid": "g-staging", "files": [{"path": str(_mirror_env.parent / "staging" / "x.zim")}]},
+        ]
+    )
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    assert lib.retire_stale_seeds() == 1
+    assert backend.removed == ["g-old"]
