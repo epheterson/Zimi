@@ -370,3 +370,115 @@ def test_archive_skipped_when_mirror_off(_mirror_env, monkeypatch):
     monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
     assert lib.archive_catalog_torrents(spacing=0) == 0
     assert lib._catalog_torrents_archived is False
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Magnets for all users; torrent files only for mirrors; mirror-off teardown
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _mini_torrent():
+    """A tiny valid bencoded torrent: d8:announce3:url4:infod4:name3:fooee"""
+    return b"d8:announce3:url4:infod4:name3:fooee"
+
+
+def test_torrent_info_hash_extraction():
+    import hashlib
+
+    import zimi.library as lib
+
+    data = _mini_torrent()
+    expected = hashlib.sha1(b"d4:name3:fooe").hexdigest()
+    assert lib._torrent_info_hash(data) == expected
+    assert lib._torrent_info_hash(b"<html>nope</html>") is None
+    assert lib._torrent_info_hash(b"d4:spam3:egge") is None  # no info key
+
+
+def test_ensure_magnets_regular_user_discards_torrent(_mirror_env, monkeypatch):
+    import io
+    import urllib.request as _ur
+
+    import zimi.library as lib
+    import zimi.p2p as p2p
+    import zimi.server as server
+
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    lib._magnets_ensured = False
+    (_mirror_env / "foo_2026-06.zim").write_bytes(b"x")
+    monkeypatch.setattr(
+        lib,
+        "_fetch_kiwix_catalog",
+        lambda *a, **k: (
+            1,
+            [{"download_url": "https://download.kiwix.org/zim/f/foo_2026-06.zim.meta4"}],
+            None,
+        ),
+    )
+
+    class _R(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(_ur, "urlopen", lambda *a, **k: _R(_mini_torrent()))
+    assert lib.ensure_magnets_for_installed(spacing=0) == 1
+    meta = lib._get_torrent_metadata()
+    assert meta["foo_2026-06.zim"]["magnet"].startswith("magnet:?xt=urn:btih:")
+    # Regular users keep the magnet, not the file
+    tdir = os.path.join(server.ZIMI_DATA_DIR, "bt", "torrents")
+    assert not os.path.exists(os.path.join(tdir, "foo_2026-06.zim.torrent"))
+    lib._magnets_ensured = False
+
+
+def test_ensure_magnets_mirror_keeps_torrent_file(_mirror_env, monkeypatch):
+    import io
+    import urllib.request as _ur
+
+    import zimi.library as lib
+    import zimi.server as server
+
+    lib._magnets_ensured = False
+    (_mirror_env / "bar_2026-06.zim").write_bytes(b"x")
+    monkeypatch.setattr(
+        lib,
+        "_fetch_kiwix_catalog",
+        lambda *a, **k: (
+            1,
+            [{"download_url": "https://download.kiwix.org/zim/b/bar_2026-06.zim.meta4"}],
+            None,
+        ),
+    )
+
+    class _R(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(_ur, "urlopen", lambda *a, **k: _R(_mini_torrent()))
+    assert lib.ensure_magnets_for_installed(spacing=0) == 1
+    meta = lib._get_torrent_metadata()
+    assert os.path.isfile(meta["bar_2026-06.zim"]["torrent_file"])
+    lib._magnets_ensured = False
+
+
+def test_stop_mirror_seeds_removes_library_seeds_only(_mirror_env, monkeypatch):
+    import zimi.library as lib
+    import zimi.p2p as p2p
+
+    kept_file = _mirror_env / "keep_2026-06.zim"
+    kept_file.write_bytes(b"x")
+    backend = _FakeBackend(
+        managed=[
+            {"gid": "g-lib", "files": [{"path": str(kept_file)}]},
+            {"gid": "g-staging", "files": [{"path": str(_mirror_env.parent / "staging" / "dl.zim")}]},
+        ]
+    )
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    assert lib.stop_mirror_seeds() == 1
+    assert backend.removed == ["g-lib"]
+    # The ZIM itself is untouched
+    assert kept_file.exists()

@@ -88,6 +88,10 @@ SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
 ZIMI_VERSION = "1.7.2"
 
+# Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
+# 24h — run every 12h so both stay fresh at half-life.
+_MAINTENANCE_INTERVAL = 12 * 3600
+
 log = logging.getLogger("zimi")
 logging.basicConfig(
     format="%(asctime)s %(message)s", datefmt="%H:%M:%S", level=logging.INFO
@@ -1067,11 +1071,54 @@ def main():
                 _lib.retire_stale_seeds()
                 _lib.mirror_sync()
                 _lib.archive_catalog_torrents()
+                _lib.ensure_magnets_for_installed()
             except Exception as e:
                 log.warning("Download resume failed: %s", e)
 
         threading.Thread(
             target=_init_p2p_background, daemon=True, name="p2p-init"
+        ).start()
+
+        # Standing maintenance, independent of anyone visiting the site:
+        # refresh the offline catalog copy before it goes stale, renew the
+        # UPnP mapping at half-lease (24h lease dies silently otherwise),
+        # keep magnet manifest / mirror seeds / torrent archive current.
+        def _maintenance_loop():
+            import random as _random_mod
+
+            from zimi import library as _lib
+            from zimi import p2p as _p2p
+
+            # Jitter so a fleet of Zimis doesn't hit Kiwix on the hour
+            time.sleep(_MAINTENANCE_INTERVAL / 2 + _random_mod.uniform(0, 3600))
+            while True:
+                try:
+                    if _p2p.is_torrent_enabled() and _p2p.peek_backend():
+                        from zimi import p2p_nat
+
+                        p2p_nat.probe(
+                            _p2p.get_bt_port(), try_upnp=_p2p.is_upnp_enabled()
+                        )
+                except Exception as e:
+                    log.debug("maintenance: NAT renew failed: %s", e)
+                try:
+                    # Refresh the offline catalog copy (serves from cache
+                    # inside the TTL, refetches past it)
+                    _lib._fetch_kiwix_catalog("", "eng", 500, 0)
+                    _lib._magnets_ensured = False
+                    _lib.ensure_magnets_for_installed()
+                    _lib.retire_stale_seeds()
+                    _lib._catalog_torrents_archived = False
+                    _lib.mirror_sync()
+                    _lib.archive_catalog_torrents()
+                except Exception as e:
+                    log.debug("maintenance pass failed: %s", e)
+                time.sleep(
+                    _MAINTENANCE_INTERVAL + _random_mod.uniform(0, 3600)
+                )
+
+        threading.Thread(
+            target=_maintenance_loop, daemon=True, name="maintenance"
         ).start()
         # Start auto-update thread if enabled
         global _auto_update_thread

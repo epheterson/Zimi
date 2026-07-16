@@ -35,6 +35,15 @@ push.
   catalog from <date>" note), and every BT download keeps its infohash,
   magnet link, and .torrent file so ZIMs can be re-seeded into offline
   swarms later.
+- **Every install keeps the post-world basics**: the offline catalog
+  copy plus a magnet link for each installed ZIM (infohash extracted
+  from the catalog's torrents); mirrors additionally keep the .torrent
+  files for the whole catalog. Turning Mirror off stops the seeds but
+  never deletes the archive.
+- **Standing maintenance every 12 hours**, no visit required: the
+  offline catalog refreshes before it goes stale, the UPnP port mapping
+  renews at half-lease (it silently expired after 24h otherwise), and
+  magnet manifest / mirror seeds / torrent archive stay current.
 - **DHT is on by default** (opt out with the ZIMI_BT dht= field):
   trackerless peer discovery makes magnet links usable and keeps swarms
   findable if the Kiwix trackers ever disappear. The routing table

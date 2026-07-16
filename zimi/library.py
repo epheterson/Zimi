@@ -329,6 +329,137 @@ def _fmt_gb(n):
     return f"{n / 1024**3:.1f} GB"
 
 
+def _torrent_info_hash(data):
+    """Infohash (hex sha1 of the bencoded info dict) from raw .torrent
+    bytes. Minimal bencode scanner — no external deps. Returns None on
+    malformed input."""
+    import hashlib as _hl
+
+    def _span(i):
+        """End index of the bencoded element starting at i."""
+        c = data[i : i + 1]
+        if c == b"i":
+            return data.index(b"e", i) + 1
+        if c in (b"l", b"d"):
+            i += 1
+            while data[i : i + 1] != b"e":
+                i = _span(i)
+            return i + 1
+        if c.isdigit():
+            colon = data.index(b":", i)
+            return colon + 1 + int(data[i:colon])
+        raise ValueError("bad bencode")
+
+    try:
+        if data[:1] != b"d":
+            return None
+        i = 1
+        while data[i : i + 1] != b"e":
+            key_end = _span(i)
+            key = data[i:key_end]
+            val_end = _span(key_end)
+            if key == b"4:info":
+                return _hl.sha1(data[key_end:val_end]).hexdigest()
+            i = val_end
+        return None
+    except (ValueError, IndexError):
+        return None
+
+
+_magnets_ensured = False
+
+
+def ensure_magnets_for_installed(spacing=0.4):
+    """Every user keeps the catalog + a magnet per installed ZIM; only
+    mirrors keep the .torrent files themselves (Eric's split). For
+    installed ZIMs with no recorded infohash, fetch the matching catalog
+    .torrent, extract the infohash, store filename -> magnet in the
+    manifest — and keep the torrent bytes on disk only in mirror mode.
+    Once per run, politely paced."""
+    global _magnets_ensured
+    from zimi import p2p as _p2p
+
+    if _magnets_ensured or not _p2p.is_torrent_enabled():
+        return 0
+    _magnets_ensured = True
+
+    manifest_path = _torrents_manifest_path()
+    manifest = _get_torrent_metadata()
+    installed = {
+        os.path.basename(path)
+        for path in glob.glob(os.path.join(_srv.ZIM_DIR, "*.zim"))
+    }
+    missing = [
+        f for f in sorted(installed) if not (manifest.get(f) or {}).get("info_hash")
+    ]
+    if not missing:
+        return 0
+
+    # Exact-filename matches from the catalog (stale copy works offline)
+    catalog_urls = {}
+    try:
+        _total, items, _err = _fetch_kiwix_catalog("", "eng", 500, 0)
+        for it in items or []:
+            u = (it.get("download_url") or "").split("?")[0]
+            if u.endswith(".meta4"):
+                u = u[: -len(".meta4")]
+            if u.endswith(".zim"):
+                catalog_urls[os.path.basename(u)] = u + ".torrent"
+    except Exception:
+        return 0
+
+    keep_files = _p2p.is_mirror_enabled()
+    tdir = os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents")
+    updated = 0
+    for filename in missing:
+        data = None
+        archived = os.path.join(tdir, filename + ".torrent")
+        if os.path.isfile(archived):
+            try:
+                with open(archived, "rb") as f:
+                    data = f.read()
+            except OSError:
+                data = None
+        elif filename in catalog_urls:
+            try:
+                req = urllib.request.Request(
+                    catalog_urls[filename], headers={"User-Agent": "Zimi/1.0"}
+                )
+                with urllib.request.urlopen(
+                    req, timeout=20, context=_srv.SSL_CTX
+                ) as resp:
+                    data = resp.read(8 * 1024 * 1024)
+            except Exception:
+                data = None
+            time.sleep(spacing)
+        if not data:
+            continue
+        info_hash = _torrent_info_hash(data)
+        if not info_hash:
+            continue
+        entry = dict(manifest.get(filename) or {})
+        entry["info_hash"] = info_hash
+        entry["magnet"] = "magnet:?xt=urn:btih:" + info_hash
+        entry.setdefault("torrent_url", catalog_urls.get(filename, ""))
+        entry.setdefault("added", time.time())
+        if keep_files and not os.path.isfile(archived):
+            try:
+                os.makedirs(tdir, exist_ok=True)
+                with open(archived + ".tmp", "wb") as f:
+                    f.write(data)
+                os.replace(archived + ".tmp", archived)
+                entry["torrent_file"] = archived
+            except OSError:
+                pass
+        manifest[filename] = entry
+        updated += 1
+    if updated:
+        os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
+        _srv._atomic_write_json(manifest_path, manifest)
+        log.info("Magnet manifest: %d installed ZIM(s) added", updated)
+    return updated
+
+
 def _torrents_manifest_path():
     return os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents.json")
 
@@ -925,6 +1056,39 @@ def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
             len(os.listdir(tdir)),
         )
     return fetched
+
+
+def stop_mirror_seeds():
+    """Mirror off: stop seeding the library, keep the archive.
+
+    Removes sidecar torrents that target ZIM_DIR (the mirror seeds) —
+    the ZIMs themselves and the archived .torrent/catalog files stay on
+    disk untouched, so flipping Mirror back on re-seeds instantly from
+    local data. Turning a toggle off never deletes a backup."""
+    from zimi import p2p as _p2p
+
+    backend = _p2p.peek_backend()
+    if backend is None:
+        return 0
+    removed = 0
+    try:
+        entries = backend.list_managed()
+    except Exception:
+        return 0
+    zim_root = os.path.normpath(_srv.ZIM_DIR)
+    for raw in entries:
+        for f in raw.get("files", []):
+            path = f.get("path", "")
+            if path and os.path.normpath(os.path.dirname(path)) == zim_root:
+                try:
+                    backend.remove(raw.get("gid", ""), delete_files=True)
+                    removed += 1
+                except Exception:
+                    pass
+                break
+    if removed:
+        log.info("Mirror off: stopped %d library seed(s); archive kept", removed)
+    return removed
 
 
 def retire_stale_seeds():

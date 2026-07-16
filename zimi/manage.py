@@ -994,16 +994,20 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["mirror"] = bool(data["mirror"])
+            from zimi import library as _lib
+
             if changed["mirror"]:
                 # Seed the installed library now, off the request thread
                 # (hash checks + torrent fetches take a while).
-                from zimi import library as _lib
-
                 def _mirror_kickoff():
                     _lib.mirror_sync()
                     _lib.archive_catalog_torrents()
 
                 threading.Thread(target=_mirror_kickoff, daemon=True).start()
+            else:
+                # Off = stop seeding, keep the archive (a toggle never
+                # deletes a backup; Mirror on again re-seeds from disk).
+                threading.Thread(target=_lib.stop_mirror_seeds, daemon=True).start()
         if "peer_share" in data:
             from zimi import p2p_discovery as _disc
 
