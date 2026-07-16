@@ -250,3 +250,155 @@ def test_cancel_removes_queued_item(_no_real_threads, _no_mirrors, monkeypatch):
 
     assert qid not in library._active_downloads
     assert all(q["id"] != qid for q in library._download_queue)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Restart resume: pending downloads persist to disk and resubmit at startup
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def _data_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    os.makedirs(str(tmp_path / "data"), exist_ok=True)
+    return str(tmp_path / "data")
+
+
+def _read_pending(data_dir):
+    import json
+
+    path = os.path.join(data_dir, "downloads.json")
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        return json.load(f)["pending"]
+
+
+def test_pending_downloads_persist_on_enqueue(
+    _no_real_threads, _no_mirrors, _data_dir
+):
+    library._start_download(_kiwix_url("aaa"), size_bytes=100)
+    library._start_download(_kiwix_url("bbb"), size_bytes=200)
+    pending = _read_pending(_data_dir)
+    assert [p["filename"] for p in pending] == ["aaa.zim", "bbb.zim"]
+
+
+def test_cancel_removes_from_persisted_pending(
+    _no_real_threads, _no_mirrors, _data_dir, monkeypatch
+):
+    # Cap at 1 so the second download queues (cancellable synchronously)
+    monkeypatch.setenv("ZIMI_MAX_CONCURRENT_DOWNLOADS", "1")
+    library._start_download(_kiwix_url("aaa"), size_bytes=100)
+    dl_id2, err = library._start_download(_kiwix_url("bbb"), size_bytes=200)
+    assert err is None
+    library._cancel_download(dl_id2)
+    pending = _read_pending(_data_dir)
+    assert [p["filename"] for p in pending] == ["aaa.zim"]
+
+
+def test_meta4_url_persisted_for_mirror_refresh(
+    _no_real_threads, _no_mirrors, _data_dir
+):
+    library._start_download(_kiwix_url("ccc") + ".meta4")
+    pending = _read_pending(_data_dir)
+    assert pending[0]["url"].endswith(".meta4")
+
+
+def test_resume_resubmits_and_clears_file(_no_real_threads, _no_mirrors, _data_dir):
+    library._start_download(_kiwix_url("aaa"), size_bytes=100)
+    library._start_download(_kiwix_url("bbb"), size_bytes=200)
+    # Simulate restart: memory state gone, file remains
+    with library._download_lock:
+        library._active_downloads.clear()
+        library._download_queue.clear()
+    resumed = library.resume_pending_downloads()
+    assert resumed == 2
+    with library._download_lock:
+        names = sorted(d["filename"] for d in library._active_downloads.values())
+    assert names == ["aaa.zim", "bbb.zim"]
+    # One-shot: the file is consumed (and immediately re-persisted by the
+    # resubmissions themselves)
+    pending = _read_pending(_data_dir)
+    assert sorted(p["filename"] for p in pending) == ["aaa.zim", "bbb.zim"]
+
+
+def test_resume_skips_untrusted_leftovers(_no_real_threads, _no_mirrors, _data_dir):
+    import json
+
+    path = os.path.join(_data_dir, "downloads.json")
+    with open(path, "w") as f:
+        json.dump(
+            {
+                "pending": [
+                    {"url": "https://evil.example.com/x.zim", "filename": "x.zim"}
+                ]
+            },
+            f,
+        )
+    # Untrusted host goes back through _start_import (HTTPS import path),
+    # which accepts any https URL by design — but a peer entry with a
+    # vanished peer must not resume.
+    with open(path, "w") as f:
+        json.dump(
+            {
+                "pending": [
+                    {
+                        "url": "http://10.0.0.99:8899/dl/y.zim",
+                        "filename": "y.zim",
+                        "source": "peer",
+                        "peer_name": "ghost-peer",
+                    }
+                ]
+            },
+            f,
+        )
+    resumed = library.resume_pending_downloads()
+    assert resumed == 0
+    with library._download_lock:
+        assert not library._active_downloads
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Disk-space gate: downloads refuse to start when they'd fill the disk
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class _FakeUsage:
+    def __init__(self, free, total=1000 * 1024**3):
+        self.free = free
+        self.total = total
+        self.used = total - free
+
+
+def test_download_refused_when_size_exceeds_free_space(
+    _no_real_threads, _no_mirrors, _data_dir, monkeypatch
+):
+    monkeypatch.setattr(
+        library.shutil, "disk_usage", lambda p: _FakeUsage(free=5 * 1024**3)
+    )
+    dl_id, err = library._start_download(
+        _kiwix_url("big"), size_bytes=10 * 1024**3
+    )
+    assert dl_id is None
+    assert "disk space" in err.lower()
+
+
+def test_download_refused_under_disk_pressure_when_size_unknown(
+    _no_real_threads, _no_mirrors, _data_dir, monkeypatch
+):
+    import zimi.p2p as p2p
+
+    monkeypatch.setattr(p2p, "should_pause_for_disk_pressure", lambda d: True)
+    dl_id, err = library._start_download(_kiwix_url("mystery"))
+    assert dl_id is None
+    assert "low" in err.lower()
+
+
+def test_download_allowed_with_room(
+    _no_real_threads, _no_mirrors, _data_dir, monkeypatch
+):
+    monkeypatch.setattr(
+        library.shutil, "disk_usage", lambda p: _FakeUsage(free=500 * 1024**3)
+    )
+    dl_id, err = library._start_download(_kiwix_url("ok"), size_bytes=10 * 1024**3)
+    assert err is None and dl_id is not None

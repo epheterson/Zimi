@@ -1045,6 +1045,15 @@ def main():
                 atexit.register(_disc.stop)
             except Exception as e:
                 log.warning("Peer discovery startup failed: %s", e)
+            # Downloads that were in flight or queued when the server
+            # stopped restart themselves (after the BT backend is up so
+            # they can take the torrent-first path again).
+            try:
+                from zimi import library as _lib
+
+                _lib.resume_pending_downloads()
+            except Exception as e:
+                log.warning("Download resume failed: %s", e)
 
         threading.Thread(
             target=_init_p2p_background, daemon=True, name="p2p-init"

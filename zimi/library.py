@@ -274,6 +274,7 @@ def _enqueue_or_start(dl):
     if _active_count() < _max_concurrent():
         _active_downloads[dl["id"]] = dl
         threading.Thread(target=_download_thread, args=(dl,), daemon=True).start()
+        _persist_pending_downloads()
         return False
     # Queue: known sizes ascending; unknown (None) sizes go to the end.
     sz = dl.get("size_bytes")
@@ -285,6 +286,7 @@ def _enqueue_or_start(dl):
                 pos = i
                 break
     _download_queue.insert(pos, dl)
+    _persist_pending_downloads()
     return True
 
 
@@ -299,6 +301,99 @@ def _drain_queue():
         threading.Thread(target=_download_thread, args=(dl,), daemon=True).start()
 
 
+# Refuse downloads that would obviously fill the disk: the expected size
+# plus a safety floor must fit in free space. Sizes are often unknown, so
+# the seed disk-pressure threshold acts as the fallback gate.
+_DISK_FLOOR_BYTES = 2 * 1024**3
+
+
+def _refuse_for_disk_space(size_bytes):
+    """Return an error string when there's no room, else None."""
+    from zimi import p2p as _p2p
+
+    try:
+        usage = shutil.disk_usage(_srv.ZIM_DIR)
+    except OSError:
+        return None  # can't tell — don't block
+    if size_bytes and usage.free < int(size_bytes) + _DISK_FLOOR_BYTES:
+        return "Not enough disk space (%s free, %s needed)" % (
+            _fmt_gb(usage.free),
+            _fmt_gb(int(size_bytes) + _DISK_FLOOR_BYTES),
+        )
+    if _p2p.should_pause_for_disk_pressure(_srv.ZIM_DIR):
+        return "Disk space is critically low"
+    return None
+
+
+def _fmt_gb(n):
+    return f"{n / 1024**3:.1f} GB"
+
+
+def _pending_downloads_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "downloads.json")
+
+
+def _persist_pending_downloads():
+    """Snapshot every not-yet-finished download so a restart can resume
+    them (queue and active slots are otherwise memory-only). Callers hold
+    _download_lock; the write is atomic and tiny."""
+    items = []
+    for dl in list(_active_downloads.values()) + list(_download_queue):
+        if dl.get("done") or dl.get("cancelled"):
+            continue
+        items.append(
+            {
+                # The .meta4 URL re-resolves fresh mirrors on resume
+                "url": dl.get("_meta4") or dl["url"],
+                "filename": dl["filename"],
+                "size_bytes": dl.get("size_bytes"),
+                "source": dl.get("_source", ""),
+                "peer_name": dl.get("peer_name", ""),
+            }
+        )
+    _srv._atomic_write_json(_pending_downloads_path(), {"pending": items})
+
+
+def resume_pending_downloads():
+    """Re-submit downloads that were pending when the server stopped.
+
+    Each entry goes back through its own validated entry point (catalog /
+    peer / import), so trust checks re-run and .zim.tmp partials resume
+    via the normal range machinery. Returns how many were resubmitted.
+    """
+    path = _pending_downloads_path()
+    try:
+        with open(path) as f:
+            items = json.load(f).get("pending", [])
+    except (OSError, ValueError):
+        return 0
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    resumed = 0
+    for it in items:
+        try:
+            filename = it.get("filename", "?")
+            if it.get("source") == "peer" and it.get("peer_name"):
+                dl_id, err = _start_peer_download(
+                    it["peer_name"], filename, it.get("size_bytes")
+                )
+            elif _is_trusted_kiwix_url(it.get("url", "")):
+                dl_id, err = _start_download(it["url"], it.get("size_bytes"))
+            else:
+                dl_id, err = _start_import(it["url"], it.get("size_bytes"))
+            if dl_id:
+                resumed += 1
+            elif err:
+                log.info("Not resuming %s: %s", filename, err)
+        except Exception as e:
+            log.warning("Resume failed for %s: %s", it.get("filename"), e)
+    if resumed:
+        log.info("Resumed %d pending download(s) from the previous run", resumed)
+    return resumed
+
+
 def _cancel_download(dl_id):
     """Cancel an active or queued download. Returns (status, code).
 
@@ -309,6 +404,7 @@ def _cancel_download(dl_id):
         for i, q in enumerate(_download_queue):
             if q["id"] == dl_id:
                 del _download_queue[i]
+                _persist_pending_downloads()
                 return "removed", 200
         dl = _active_downloads.get(dl_id)
         if not dl:
@@ -316,6 +412,7 @@ def _cancel_download(dl_id):
         if dl.get("done"):
             return "already_done", 400
         dl["cancelled"] = True
+        _persist_pending_downloads()
     return "cancelling", 200
 
 
@@ -1138,6 +1235,7 @@ def _download_thread(dl):
         # Always promote the next queued download into this freed slot.
         with _download_lock:
             _drain_queue()
+            _persist_pending_downloads()
 
 
 def _fetch_mirrors(meta4_url):
@@ -1195,6 +1293,11 @@ def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
     """
     global _download_counter
     dest = os.path.join(_srv.ZIM_DIR, filename)
+
+    space_err = _refuse_for_disk_space(size_bytes)
+    if space_err:
+        log.info("download rejected: %s (%s)", space_err, filename)
+        return None, space_err
 
     # Detect if this replaces an existing ZIM (update vs fresh download)
     name_prefix = re.sub(r"_\d{4}-\d{2}\.zim$", "", filename)
@@ -1351,6 +1454,11 @@ def _start_import(url, size_bytes=None):
     if not re.match(r"^[\w.\-]+$", filename):
         return None, "Invalid characters in filename"
     dest = os.path.join(_srv.ZIM_DIR, filename)
+
+    space_err = _refuse_for_disk_space(size_bytes)
+    if space_err:
+        log.info("import rejected: %s (%s)", space_err, filename)
+        return None, space_err
 
     with _download_lock:
         _download_counter += 1
