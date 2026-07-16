@@ -43,8 +43,18 @@ DEFAULT_SEED_BANDWIDTH_KB = 2048  # 2 MB/s
 
 
 def find_aria2c() -> str | None:
-    """Locate aria2c. GUI apps on macOS launch with a bare PATH that
-    misses Homebrew, so fall back to the standard install locations."""
+    """Locate aria2c. Desktop builds ship their own sidecar (checked
+    first, so a bundled aria2 wins over whatever's on the machine). GUI
+    apps on macOS launch with a bare PATH that misses Homebrew, so fall
+    back to the standard install locations after PATH."""
+    import sys as _sys
+
+    bundle_base = getattr(_sys, "_MEIPASS", None)
+    if bundle_base:
+        for name in ("aria2c", "aria2c.exe"):
+            cand = os.path.join(bundle_base, name)
+            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                return cand
     found = shutil.which("aria2c")
     if found:
         return found

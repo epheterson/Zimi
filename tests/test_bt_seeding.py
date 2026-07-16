@@ -346,3 +346,25 @@ def test_find_aria2c_falls_back_to_homebrew_paths(monkeypatch):
     monkeypatch.setattr(p2p.os.path, "isfile", fake_isfile)
     monkeypatch.setattr(p2p.os, "access", lambda p, m: True)
     assert p2p.find_aria2c() == "/usr/local/bin/aria2c"
+
+
+def test_find_aria2c_prefers_bundled_sidecar(tmp_path, monkeypatch):
+    """Desktop builds ship aria2c inside the bundle (sys._MEIPASS) — it
+    must win over any system install so behavior is self-contained."""
+    import sys
+
+    bundled = tmp_path / "aria2c"
+    bundled.write_text("#!/bin/sh\n")
+    bundled.chmod(0o755)
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    monkeypatch.setattr(p2p.shutil, "which", lambda b: "/usr/bin/aria2c")
+    assert p2p.find_aria2c() == str(bundled)
+
+
+def test_find_aria2c_ignores_empty_bundle_dir(tmp_path, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    monkeypatch.setattr(p2p.shutil, "which", lambda b: None)
+    monkeypatch.setattr(p2p.os.path, "isfile", lambda p: False)
+    assert p2p.find_aria2c() is None

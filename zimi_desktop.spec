@@ -60,6 +60,17 @@ def collect_libzim_binaries():
 
 libzim_bins = collect_libzim_binaries()
 
+# Bundled aria2 sidecar (BT downloads/seeding work out of the box).
+# CI prepares a self-contained directory (binary + relocated dylibs on
+# macOS, one static binary on Linux) and points ZIMI_ARIA2_DIR at it.
+# Local builds without the env var simply skip it — Zimi falls back to
+# any system aria2c, then to plain HTTP.
+_aria2_dir = os.environ.get('ZIMI_ARIA2_DIR')
+if _aria2_dir and os.path.isdir(_aria2_dir):
+    for _f in sorted(os.listdir(_aria2_dir)):
+        libzim_bins.append((os.path.join(_aria2_dir, _f), '.'))
+    print(f"Bundling aria2 sidecar from {_aria2_dir}")
+
 a = Analysis(
     ['zimi_desktop.py'],
     pathex=[],

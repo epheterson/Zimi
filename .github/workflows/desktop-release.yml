@@ -101,6 +101,27 @@ jobs:
                       print(f'  {f}  ({sz})')
           "
 
+      # ── Bundled aria2 sidecar (BT works out of the box on desktop) ────
+      - name: Prepare aria2 sidecar (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew list aria2 >/dev/null 2>&1 || brew install aria2
+          ci/bundle_aria2_macos.sh build/aria2-bundle
+          echo "ZIMI_ARIA2_DIR=$PWD/build/aria2-bundle" >> $GITHUB_ENV
+
+      - name: Prepare aria2 sidecar (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p build/aria2-bundle
+          curl -sL --retry 5 --retry-all-errors --retry-delay 5 \
+            "https://github.com/abcfy2/aria2-static-build/releases/download/1.37.0/aria2-x86_64-linux-musl_static.zip" \
+            -o /tmp/aria2-static.zip
+          echo "e0a09b12ef67f35f8a8e4fdddbec851d235b7c31da549d0578bff459032b499a  /tmp/aria2-static.zip" | sha256sum -c -
+          unzip -o /tmp/aria2-static.zip -d build/aria2-bundle
+          chmod +x build/aria2-bundle/aria2c
+          build/aria2-bundle/aria2c --version | head -1
+          echo "ZIMI_ARIA2_DIR=$PWD/build/aria2-bundle" >> $GITHUB_ENV
+
       - name: Build with PyInstaller
         run: pyinstaller --noconfirm zimi_desktop.spec
 
@@ -110,6 +131,8 @@ jobs:
       # 30s wait failed a healthy Apple Silicon build during v1.7.1.
       - name: Smoke test built binary
         shell: bash
+        env:
+          SMOKE_EXPECT_BT: '1'
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
             ci/smoke_binary.sh "dist/Zimi.app/Contents/MacOS/Zimi"
@@ -243,8 +266,8 @@ jobs:
             codesign --force --options runtime --sign "$IDENTITY" --timestamp "$SPARKLE"
           fi
 
-          # Sign all binaries inside the app bundle
-          find dist/Zimi.app -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.pyd" \) -exec \
+          # Sign all binaries inside the app bundle (incl. the aria2c sidecar)
+          find dist/Zimi.app -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.pyd" -o -name "aria2c" \) -exec \
             codesign --force --options runtime --sign "$IDENTITY" --timestamp {} \;
 
           # Sign the main executable
@@ -308,6 +331,9 @@ jobs:
 
   release:
     needs: build
+    # Tag pushes and explicit tag dispatches release; a bare dispatch (e.g.
+    # validating a branch build) stops after the build jobs.
+    if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.tag != ''
     runs-on: macos-latest  # Need macOS for Sparkle sign_update tool
 
     steps:

@@ -78,4 +78,23 @@ echo "Testing / (web UI)..."
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/")
 [ "$STATUS" = "200" ] && echo "  OK: web UI" || { echo "FAIL: got $STATUS"; exit 1; }
 
+if [ "${SMOKE_EXPECT_BT:-}" = "1" ]; then
+  # The sidecar starts on a background thread after READY — poll briefly.
+  echo "Testing /manage/bt-status (bundled aria2 must come up)..."
+  BT_OK=""
+  for i in $(seq 1 20); do
+    if curl -sf -H "Sec-Fetch-Site: same-origin" "$BASE/manage/bt-status" | grep -q '"status": *"ready"'; then
+      BT_OK=1; break
+    fi
+    sleep 1
+  done
+  if [ -n "$BT_OK" ]; then
+    echo "  OK: BT backend ready (bundled aria2c)"
+  else
+    echo "FAIL: BT backend never became ready:"
+    curl -s -H "Sec-Fetch-Site: same-origin" "$BASE/manage/bt-status"
+    exit 1
+  fi
+fi
+
 echo "All smoke tests passed!"
