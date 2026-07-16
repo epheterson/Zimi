@@ -41,14 +41,27 @@ RATE_LIMIT = int(
 RATE_LIMIT_CONTENT = (
     RATE_LIMIT * 20
 )  # /w/ sub-resources: icons, CSS, images (1200/min default)
+# Trusted clients (valid manage credential, or any private-network client on
+# a passwordless instance) get 10x headroom: the manage UI polls downloads/
+# peers/BT status every couple of seconds and was 429-ing itself off the
+# base budget (#30). Anonymous public traffic keeps the base limit.
+RATE_LIMIT_TRUSTED = int(
+    os.environ.get("ZIMI_RATE_LIMIT_TRUSTED", str(RATE_LIMIT * 10))
+)
 _rate_buckets = {}  # {ip: [timestamps]} — API endpoints
 _rate_buckets_content = {}  # {ip: [timestamps]} — /w/ content
 _rate_lock = threading.Lock()
 
+# Verified Bearer credentials, keyed by digest so the PBKDF2 check runs once
+# per credential per TTL — not on every polled request.
+_authed_cache = {}  # {sha256(bearer): expiry_ts}
+_AUTHED_CACHE_TTL = 300.0
 
-def _check_rate_limit(ip, content=False):
+
+def _check_rate_limit(ip, content=False, limit=None):
     """Check if IP has exceeded rate limit. Returns seconds to wait, or 0 if OK."""
-    limit = RATE_LIMIT_CONTENT if content else RATE_LIMIT
+    if limit is None:
+        limit = RATE_LIMIT_CONTENT if content else RATE_LIMIT
     if limit <= 0:
         return 0
     buckets = _rate_buckets_content if content else _rate_buckets
@@ -366,12 +379,18 @@ class ZimHandler(BaseHTTPRequestHandler):
         def param(key, default=None):
             return params.get(key, [default])[0]
 
-        # Rate limit: API endpoints at RATE_LIMIT, /w/ content at 20x, /manage/ at base rate
-        rate_limited_paths = ("/search", "/read", "/suggest", "/snippet", "/random")
-        is_w_content = parsed.path.startswith("/w/")
+        # Rate limit: API endpoints at RATE_LIMIT (10x for trusted clients),
+        # /w/ content and /snippet at 20x. Snippets ride the content bucket
+        # because one search fans out to ~10 snippet fetches — they burned
+        # the whole API budget in a few searches.
+        rate_limited_paths = ("/search", "/read", "/suggest", "/random")
+        is_w_content = parsed.path.startswith("/w/") or parsed.path == "/snippet"
         is_manage = parsed.path.startswith("/manage/")
         if parsed.path in rate_limited_paths or is_w_content or is_manage:
-            retry_after = _check_rate_limit(self._client_ip(), content=is_w_content)
+            limit = None if is_w_content else self._rate_limit_for_request()
+            retry_after = _check_rate_limit(
+                self._client_ip(), content=is_w_content, limit=limit
+            )
             if retry_after > 0:
                 with _metrics_lock:
                     _metrics["rate_limited"] += 1
@@ -1009,7 +1028,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return handle_manage_post(self, parsed, data)
 
             if parsed.path == "/resolve":
-                retry_after = _check_rate_limit(self._client_ip())
+                retry_after = _check_rate_limit(
+                    self._client_ip(), limit=self._rate_limit_for_request()
+                )
                 if retry_after > 0:
                     with _metrics_lock:
                         _metrics["rate_limited"] += 1
@@ -1112,7 +1133,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
         # Rate limit write endpoints
-        retry_after = _check_rate_limit(self._client_ip())
+        retry_after = _check_rate_limit(
+            self._client_ip(), limit=self._rate_limit_for_request()
+        )
         if retry_after > 0:
             with _metrics_lock:
                 _metrics["rate_limited"] += 1
@@ -1359,6 +1382,14 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
+    def _is_private_client(self):
+        """True when _client_ip() is on a private/loopback/link-local network."""
+        try:
+            ip = ipaddress.ip_address(self._client_ip())
+        except ValueError:
+            return False
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+
     def _peer_share_allowed(self):
         """True if this client may pull whole ZIMs from /dl/.
 
@@ -1374,11 +1405,35 @@ class ZimHandler(BaseHTTPRequestHandler):
             return False
         if _disc.is_public_share_enabled():
             return True
-        try:
-            ip = ipaddress.ip_address(self._client_ip())
-        except ValueError:
-            return False
-        return ip.is_private or ip.is_loopback or ip.is_link_local
+        return self._is_private_client()
+
+    def _rate_limit_for_request(self):
+        """Per-minute budget for this request: RATE_LIMIT_TRUSTED for a
+        valid manage credential or a private-network client on a
+        passwordless instance; RATE_LIMIT otherwise. Credential checks
+        are cached by digest so PBKDF2 runs once per TTL, not per poll."""
+        from zimi import manage as _manage
+
+        stored_pw = _manage._get_manage_password_hash()
+        if not stored_pw:
+            return RATE_LIMIT_TRUSTED if self._is_private_client() else RATE_LIMIT
+        auth = self.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return RATE_LIMIT
+        digest = hashlib.sha256(auth[7:].encode()).hexdigest()
+        now = time.time()
+        with _rate_lock:
+            exp = _authed_cache.get(digest)
+            if exp and exp > now:
+                return RATE_LIMIT_TRUSTED
+        if _manage._check_manage_auth(self) is None:
+            with _rate_lock:
+                _authed_cache[digest] = now + _AUTHED_CACHE_TTL
+                if len(_authed_cache) > 100:
+                    for k in [k for k, v in _authed_cache.items() if v <= now]:
+                        del _authed_cache[k]
+            return RATE_LIMIT_TRUSTED
+        return RATE_LIMIT
 
     def _serve_zim_file(self, name):
         """Stream a whole local .zim file to a LAN peer with Range support.

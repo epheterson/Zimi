@@ -291,6 +291,107 @@ class TestRateLimiting(unittest.TestCase):
         result = self.zimi._check_rate_limit("192.0.2.2")
         self.assertEqual(result, 0)
 
+    def test_explicit_limit_overrides_default(self):
+        """Trusted clients pass their own (higher) budget through."""
+        import zimi.http as zhttp
+
+        for _ in range(zhttp.RATE_LIMIT + 10):
+            self.zimi._check_rate_limit("192.0.2.3", limit=zhttp.RATE_LIMIT_TRUSTED)
+        # Past the base limit but under the trusted one
+        self.assertEqual(
+            self.zimi._check_rate_limit("192.0.2.3", limit=zhttp.RATE_LIMIT_TRUSTED), 0
+        )
+        # The same traffic WOULD be limited at the base budget
+        self.assertGreater(self.zimi._check_rate_limit("192.0.2.3"), 0)
+
+
+class TestTrustedRateTier(unittest.TestCase):
+    """_rate_limit_for_request: who gets the 10x budget (#30)."""
+
+    class _FakeHandler:
+        def __init__(self, ip, bearer=None):
+            self._ip = ip
+            self.headers = {}
+            if bearer:
+                self.headers["Authorization"] = "Bearer " + bearer
+
+        def _client_ip(self):
+            return self._ip
+
+        def _is_private_client(self):
+            import zimi.http as zhttp
+
+            return zhttp.ZimHandler._is_private_client(self)
+
+    def setUp(self):
+        import zimi.http as zhttp
+
+        self.zhttp = zhttp
+        zhttp._authed_cache.clear()
+
+    def _limit_for(self, handler):
+        return self.zhttp.ZimHandler._rate_limit_for_request(handler)
+
+    def test_passwordless_private_client_is_trusted(self):
+        from unittest.mock import patch as _patch
+
+        import zimi.manage as manage
+
+        with _patch.object(manage, "_get_manage_password_hash", return_value=None):
+            h = self._FakeHandler("192.168.1.50")
+            self.assertEqual(self._limit_for(h), self.zhttp.RATE_LIMIT_TRUSTED)
+
+    def test_passwordless_public_client_is_not_trusted(self):
+        from unittest.mock import patch as _patch
+
+        import zimi.manage as manage
+
+        with _patch.object(manage, "_get_manage_password_hash", return_value=None):
+            # A genuinely public IP — the 203.0.113.x TEST-NET range counts
+            # as private/reserved in modern Python ipaddress.
+            h = self._FakeHandler("8.8.8.8")
+            self.assertEqual(self._limit_for(h), self.zhttp.RATE_LIMIT)
+
+    def test_password_set_anonymous_gets_base_limit(self):
+        from unittest.mock import patch as _patch
+
+        import zimi.manage as manage
+
+        with _patch.object(
+            manage, "_get_manage_password_hash", return_value="salt$hash"
+        ):
+            h = self._FakeHandler("192.168.1.50")  # private but unauthenticated
+            self.assertEqual(self._limit_for(h), self.zhttp.RATE_LIMIT)
+
+    def test_valid_bearer_gets_trusted_limit_and_caches(self):
+        from unittest.mock import patch as _patch
+
+        import zimi.manage as manage
+
+        h = self._FakeHandler("203.0.113.9", bearer="s3cret")
+        with _patch.object(
+            manage, "_get_manage_password_hash", return_value="salt$hash"
+        ):
+            with _patch.object(
+                manage, "_check_manage_auth", return_value=None
+            ) as chk:
+                self.assertEqual(self._limit_for(h), self.zhttp.RATE_LIMIT_TRUSTED)
+                # Second call answers from the digest cache — no re-verify
+                self.assertEqual(self._limit_for(h), self.zhttp.RATE_LIMIT_TRUSTED)
+                self.assertEqual(chk.call_count, 1)
+
+    def test_invalid_bearer_gets_base_limit(self):
+        from unittest.mock import patch as _patch
+
+        import zimi.manage as manage
+
+        h = self._FakeHandler("203.0.113.9", bearer="wrong")
+        with _patch.object(
+            manage, "_get_manage_password_hash", return_value="salt$hash"
+        ):
+            with _patch.object(manage, "_check_manage_auth", return_value=True):
+                self.assertEqual(self._limit_for(h), self.zhttp.RATE_LIMIT)
+
 
 class TestDataDir(unittest.TestCase):
     """Test ZIMI_DATA_DIR paths."""

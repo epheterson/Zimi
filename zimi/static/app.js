@@ -357,12 +357,25 @@ let _pwReject = null;
 // so these work on password-protected servers, but never prompts for a
 // password on 401 — background polling must fail silently, unlike the
 // interactive manageFetch below.
+// 429 responses surface as a typed error so callers keep their last-known
+// content and reschedule, instead of rendering the error JSON as an empty
+// state (the downloads panel used to blank itself this way, #30).
+function _throwIfRateLimited(res) {
+  if (res.status === 429) {
+    var err = new Error('rate_limited');
+    err.rateLimited = true;
+    err.retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10) || 5;
+    throw err;
+  }
+  return res;
+}
+
 function authedFetch(url, opts) {
   opts = opts || {};
   if (_manageToken) {
     opts.headers = Object.assign({}, opts.headers, {'Authorization': 'Bearer ' + _manageToken});
   }
-  return fetch(url, opts);
+  return fetch(url, opts).then(_throwIfRateLimited);
 }
 
 function manageFetch(url, opts) {
@@ -370,7 +383,7 @@ function manageFetch(url, opts) {
   if (_manageToken) {
     opts.headers = Object.assign({}, opts.headers, {'Authorization': 'Bearer ' + _manageToken});
   }
-  return fetch(url, opts).then(function(res) {
+  return fetch(url, opts).then(_throwIfRateLimited).then(function(res) {
     if (res.status === 401) {
       return new Promise(function(resolve, reject) {
         var rejectFn = function() {
@@ -5165,6 +5178,7 @@ async function _renderSeedingSection() {
       manageFetch('/manage/seeding').then(r => r.json()),
     ]);
   } catch (e) {
+    if (e && e.rateLimited) return; // keep last-known status (#30)
     const errEl = document.getElementById('ms-bt-status');
     if (errEl) errEl.textContent = t('error');
     return;
@@ -6303,7 +6317,13 @@ async function _refreshDownloadsInner() {
       if (anyActive) _dlTimer = setTimeout(refreshDownloads, 2000);
       else if (autoOn) _dlTimer = setTimeout(refreshDownloads, 10000);
     }
-  } catch(e) {}
+  } catch(e) {
+    // Rate-limited: keep what's rendered and retry when the server says
+    // so — never blank the panel (#30).
+    if (e && e.rateLimited && mode === 'manage') {
+      _dlTimer = setTimeout(refreshDownloads, Math.max(2, e.retryAfter) * 1000);
+    }
+  }
 }
 
 async function clearDownloads() {

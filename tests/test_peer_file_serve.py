@@ -96,6 +96,7 @@ class PeerShareGateTests(unittest.TestCase):
 
     def _allowed(self, ip):
         fake = types.SimpleNamespace(_client_ip=lambda: ip)
+        fake._is_private_client = lambda: ZimHandler._is_private_client(fake)
         return ZimHandler._peer_share_allowed(fake)
 
     def setUp(self):
