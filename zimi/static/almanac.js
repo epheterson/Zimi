@@ -1738,21 +1738,37 @@ function _renderSunMap(now) {
 
 // ── Timezone analog clock ──
 
+// World coverage, west-to-east — every whole offset plus the common halves
+// (Tehran +3:30, India +5:30, Kathmandu +5:45, Adelaide +9:30). Issue #28:
+// the original list jumped London -> Cairo, so all of Central Europe and
+// West Africa snapped to UK time.
 var _TZ_CITIES = [
   { key: 'honolulu', tz: 'Pacific/Honolulu', lat: 21.31, lon: -157.86 },
+  { key: 'anchorage', tz: 'America/Anchorage', lat: 61.22, lon: -149.90 },
   { key: 'los_angeles', tz: 'America/Los_Angeles', lat: 34.05, lon: -118.24 },
   { key: 'denver', tz: 'America/Denver', lat: 39.74, lon: -104.98 },
+  { key: 'mexico_city', tz: 'America/Mexico_City', lat: 19.43, lon: -99.13 },
   { key: 'chicago', tz: 'America/Chicago', lat: 41.88, lon: -87.63 },
   { key: 'new_york', tz: 'America/New_York', lat: 40.71, lon: -74.01 },
+  { key: 'buenos_aires', tz: 'America/Argentina/Buenos_Aires', lat: -34.60, lon: -58.38 },
   { key: 'sao_paulo', tz: 'America/Sao_Paulo', lat: -23.55, lon: -46.63 },
   { key: 'london', tz: 'Europe/London', lat: 51.51, lon: -0.13 },
+  { key: 'paris', tz: 'Europe/Paris', lat: 48.86, lon: 2.35 },
+  { key: 'lagos', tz: 'Africa/Lagos', lat: 6.52, lon: 3.38 },
   { key: 'cairo', tz: 'Africa/Cairo', lat: 30.04, lon: 31.24 },
+  { key: 'johannesburg', tz: 'Africa/Johannesburg', lat: -26.20, lon: 28.05 },
   { key: 'moscow', tz: 'Europe/Moscow', lat: 55.76, lon: 37.62 },
+  { key: 'tehran', tz: 'Asia/Tehran', lat: 35.69, lon: 51.39 },
   { key: 'dubai', tz: 'Asia/Dubai', lat: 25.20, lon: 55.27 },
+  { key: 'karachi', tz: 'Asia/Karachi', lat: 24.86, lon: 67.01 },
   { key: 'mumbai', tz: 'Asia/Kolkata', lat: 19.08, lon: 72.88 },
+  { key: 'kathmandu', tz: 'Asia/Kathmandu', lat: 27.72, lon: 85.32 },
+  { key: 'dhaka', tz: 'Asia/Dhaka', lat: 23.81, lon: 90.41 },
   { key: 'bangkok', tz: 'Asia/Bangkok', lat: 13.76, lon: 100.50 },
+  { key: 'singapore', tz: 'Asia/Singapore', lat: 1.35, lon: 103.82 },
   { key: 'shanghai', tz: 'Asia/Shanghai', lat: 31.23, lon: 121.47 },
   { key: 'tokyo', tz: 'Asia/Tokyo', lat: 35.68, lon: 139.69 },
+  { key: 'adelaide', tz: 'Australia/Adelaide', lat: -34.93, lon: 138.60 },
   { key: 'sydney', tz: 'Australia/Sydney', lat: -33.87, lon: 151.21 },
   { key: 'auckland', tz: 'Pacific/Auckland', lat: -36.85, lon: 174.76 }
 ];
@@ -3661,6 +3677,105 @@ function _hinduSikhApprox(year) {
   return h;
 }
 
+// ── Region-aware Gregorian holidays (issue #28) ─────────────────────────
+// The Gregorian calendar used to show a US-only view of the world. The
+// international base always renders; a region pack layers national days on
+// top. Region comes from the browser locale's country subtag, then the IANA
+// timezone. All offline — data + date math, no APIs.
+// fixed: [month, day, label]; nth: [month, weekday(0=Sun), n, label] where
+// n=-1 means last; dst: 'us' | 'eu' | 'au' | null.
+var _REGION_HOLIDAYS = {
+  US: {
+    fixed: [[2, 2, 'Groundhog Day'], [5, 5, 'Cinco de Mayo'], [6, 19, 'Juneteenth'], [7, 4, 'Independence Day'], [11, 11, 'Veterans Day'], [12, 26, 'Kwanzaa']],
+    nth: [[1, 1, 3, 'Martin Luther King Jr. Day'], [2, 1, 3, "Presidents' Day"], [5, 1, -1, 'Memorial Day'], [9, 1, 1, 'Labor Day'], [10, 1, 2, "Indigenous Peoples' Day"], [11, 4, 4, 'Thanksgiving']],
+    dst: 'us'
+  },
+  CA: {
+    fixed: [[7, 1, 'Canada Day'], [9, 30, 'Truth and Reconciliation Day'], [12, 26, 'Boxing Day']],
+    nth: [[9, 1, 1, 'Labour Day'], [10, 1, 2, 'Thanksgiving (CA)']],
+    dst: 'us'
+  },
+  GB: {
+    fixed: [[4, 23, "St. George's Day"], [11, 5, 'Guy Fawkes Night'], [11, 11, 'Remembrance Day'], [12, 26, 'Boxing Day']],
+    nth: [[5, 1, 1, 'Early May Bank Holiday'], [5, 1, -1, 'Spring Bank Holiday'], [8, 1, -1, 'Summer Bank Holiday']],
+    dst: 'eu'
+  },
+  IE: { fixed: [[2, 1, "St. Brigid's Day"], [12, 26, "St. Stephen's Day"]], nth: [[10, 1, -1, 'October Bank Holiday']], dst: 'eu' },
+  FR: { fixed: [[5, 8, 'Victory in Europe Day'], [7, 14, 'Bastille Day'], [11, 11, 'Armistice Day']], dst: 'eu' },
+  DE: { fixed: [[10, 3, 'German Unity Day'], [12, 6, 'Nikolaus'], [12, 26, 'Second Christmas Day']], dst: 'eu' },
+  IT: { fixed: [[4, 25, 'Liberation Day'], [6, 2, 'Republic Day'], [8, 15, 'Ferragosto'], [12, 26, "St. Stephen's Day"]], dst: 'eu' },
+  ES: { fixed: [[10, 12, 'Fiesta Nacional'], [12, 6, 'Constitution Day'], [12, 8, 'Immaculate Conception']], dst: 'eu' },
+  AU: { fixed: [[1, 26, 'Australia Day'], [4, 25, 'ANZAC Day'], [12, 26, 'Boxing Day']], dst: 'au' },
+  NZ: { fixed: [[2, 6, 'Waitangi Day'], [4, 25, 'ANZAC Day'], [12, 26, 'Boxing Day']], dst: 'au' },
+  IN: { fixed: [[1, 26, 'Republic Day'], [8, 15, 'Independence Day'], [10, 2, 'Gandhi Jayanti']], dst: null },
+  BR: { fixed: [[4, 21, 'Tiradentes'], [9, 7, 'Independence Day'], [10, 12, 'Nossa Senhora Aparecida'], [11, 15, 'Republic Day'], [11, 20, 'Black Consciousness Day']], dst: null },
+  MX: { fixed: [[2, 5, 'Constitution Day'], [5, 5, 'Cinco de Mayo'], [9, 16, 'Independence Day'], [11, 1, 'Day of the Dead'], [11, 2, 'Day of the Dead II']], dst: null },
+  JP: { fixed: [[2, 11, 'National Foundation Day'], [4, 29, 'Showa Day'], [5, 3, 'Constitution Day'], [5, 5, "Children's Day"], [8, 11, 'Mountain Day'], [11, 3, 'Culture Day']], dst: null },
+  CN: { fixed: [[5, 4, 'Youth Day'], [10, 1, 'National Day']], dst: null },
+  ZA: { fixed: [[3, 21, 'Human Rights Day'], [4, 27, 'Freedom Day'], [6, 16, 'Youth Day'], [9, 24, 'Heritage Day'], [12, 16, 'Day of Reconciliation'], [12, 26, 'Day of Goodwill']], dst: null },
+  RU: { fixed: [[1, 7, 'Orthodox Christmas'], [2, 23, 'Defender of the Fatherland Day'], [5, 9, 'Victory Day'], [6, 12, 'Russia Day'], [11, 4, 'Unity Day']], dst: null },
+  // Pseudo-region: European locale without its own pack — correct DST rule.
+  EU: { fixed: [[12, 26, 'Boxing Day']], dst: 'eu' }
+};
+
+// Timezones that pin a region when the locale has no country subtag.
+var _TZ_REGION = {
+  'Europe/London': 'GB', 'Europe/Dublin': 'IE', 'Europe/Paris': 'FR',
+  'Europe/Berlin': 'DE', 'Europe/Rome': 'IT', 'Europe/Madrid': 'ES',
+  'America/Toronto': 'CA', 'America/Vancouver': 'CA',
+  'Australia/Sydney': 'AU', 'Australia/Melbourne': 'AU', 'Australia/Adelaide': 'AU', 'Australia/Perth': 'AU',
+  'Pacific/Auckland': 'NZ', 'Asia/Kolkata': 'IN', 'America/Sao_Paulo': 'BR',
+  'America/Mexico_City': 'MX', 'Asia/Tokyo': 'JP', 'Asia/Shanghai': 'CN',
+  'Africa/Johannesburg': 'ZA', 'Europe/Moscow': 'RU'
+};
+
+function _almRegion() {
+  try {
+    var m = String(navigator.language || '').match(/[-_]([A-Za-z]{2})(\b|$)/);
+    if (m) {
+      var r = m[1].toUpperCase();
+      if (_REGION_HOLIDAYS[r]) return r;
+      // Known locale country without a pack: still want the right DST rule
+      if (/^(AT|BE|BG|CH|CY|CZ|DK|EE|FI|GR|HR|HU|LT|LU|LV|MT|NL|NO|PL|PT|RO|SE|SI|SK|UA)$/.test(r)) return 'EU';
+    }
+  } catch (e) {}
+  try {
+    var tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    if (_TZ_REGION[tz]) return _TZ_REGION[tz];
+    if (tz.indexOf('Europe/') === 0) return 'EU';
+    if (tz.indexOf('America/') === 0) return 'US';
+  } catch (e) {}
+  return '';
+}
+
+function _applyRegionHolidays(region, year, month, add) {
+  var pack = _REGION_HOLIDAYS[region];
+  if (!pack) return;
+  var i;
+  for (i = 0; i < (pack.fixed || []).length; i++) {
+    var fx = pack.fixed[i];
+    if (fx[0] === month) add(fx[1], fx[2], 'holiday');
+  }
+  for (i = 0; i < (pack.nth || []).length; i++) {
+    var nh = pack.nth[i];
+    if (nh[0] !== month) continue;
+    var day = nh[2] === -1 ? _lastWeekday(year, month, nh[1]) : _nthWeekday(year, month, nh[1], nh[2]);
+    add(day, nh[3], 'holiday');
+  }
+  // Clock changes: labels hold both hemispheres (October IS spring in AU)
+  var dst = pack.dst;
+  if (dst === 'us') {
+    if (month === 3) add(_nthWeekday(year, 3, 0, 2), 'Spring Forward', 'seasonal');
+    if (month === 11) add(_nthWeekday(year, 11, 0, 1), 'Fall Back', 'seasonal');
+  } else if (dst === 'eu') {
+    if (month === 3) add(_lastWeekday(year, 3, 0), 'Clocks Forward', 'seasonal');
+    if (month === 10) add(_lastWeekday(year, 10, 0), 'Clocks Back', 'seasonal');
+  } else if (dst === 'au') {
+    if (month === 10) add(_nthWeekday(year, 10, 0, 1), 'Clocks Forward', 'seasonal');
+    if (month === 4) add(_nthWeekday(year, 4, 0, 1), 'Clocks Back', 'seasonal');
+  }
+}
+
 // Get almanac events for a given calendar system's month, keyed by day number
 function _getAlmanacEvents(sys, year, month) {
   var events = {};
@@ -3671,25 +3786,21 @@ function _getAlmanacEvents(sys, year, month) {
   }
 
   if (sys === 'gregorian') {
-    // Fixed holidays
+    // International base — observed widely enough to show everywhere
     if (month === 1) { add(1, "New Year's Day", 'holiday'); add(6, 'Epiphany', 'holiday'); }
-    if (month === 2) { add(2, 'Groundhog Day', 'holiday'); add(14, "Valentine's Day", 'holiday'); }
+    if (month === 2) { add(14, "Valentine's Day", 'holiday'); }
     if (month === 3) { add(8, "International Women's Day", 'holiday'); add(17, "St. Patrick's Day", 'holiday'); }
     if (month === 4) { add(1, "April Fools' Day", 'holiday'); add(22, 'Earth Day', 'holiday'); }
-    if (month === 5) { add(1, 'May Day', 'holiday'); add(5, 'Cinco de Mayo', 'holiday'); }
-    if (month === 6) { add(19, 'Juneteenth', 'holiday'); add(21, 'International Yoga Day', 'holiday'); }
-    if (month === 7) { add(4, 'Independence Day', 'holiday'); }
+    if (month === 5) { add(1, "May Day / Workers' Day", 'holiday'); }
+    if (month === 6) { add(21, 'International Yoga Day', 'holiday'); }
     if (month === 10) { add(31, 'Halloween', 'holiday'); }
-    if (month === 11) { add(11, 'Veterans Day', 'holiday'); }
-    if (month === 12) { add(24, 'Christmas Eve', 'holiday'); add(25, 'Christmas Day', 'holiday'); add(26, 'Kwanzaa', 'holiday'); add(31, "New Year's Eve", 'holiday'); }
-    // Computed holidays
-    if (month === 1) { add(_nthWeekday(year, 1, 1, 3), 'Martin Luther King Jr. Day', 'holiday'); }
-    if (month === 2) { add(_nthWeekday(year, 2, 1, 3), "Presidents' Day", 'holiday'); }
-    if (month === 5) { add(_nthWeekday(year, 5, 0, 2), "Mother's Day", 'holiday'); add(_lastWeekday(year, 5, 1), 'Memorial Day', 'holiday'); }
+    if (month === 12) { add(24, 'Christmas Eve', 'holiday'); add(25, 'Christmas Day', 'holiday'); add(31, "New Year's Eve", 'holiday'); }
+    // Mother's/Father's Day on the US dates — the majority convention
+    // (US, CA, AU, DE, IT, BR, IN, CN, JP and others)
+    if (month === 5) { add(_nthWeekday(year, 5, 0, 2), "Mother's Day", 'holiday'); }
     if (month === 6) { add(_nthWeekday(year, 6, 0, 3), "Father's Day", 'holiday'); }
-    if (month === 9) { add(_nthWeekday(year, 9, 1, 1), 'Labor Day', 'holiday'); }
-    if (month === 10) { add(_nthWeekday(year, 10, 1, 2), 'Indigenous Peoples\' Day', 'holiday'); }
-    if (month === 11) { add(_nthWeekday(year, 11, 4, 4), 'Thanksgiving', 'holiday'); }
+    // National days + clock changes for the detected region
+    _applyRegionHolidays(_almRegion(), year, month, add);
     // Easter and related
     var easter = _computeEaster(year);
     if (easter.month === month) { add(easter.day, 'Easter', 'holiday'); }
@@ -3708,9 +3819,6 @@ function _getAlmanacEvents(sys, year, month) {
     for (var _hi = 0; _hi < _hsh.length; _hi++) {
       if (_hsh[_hi].m === month) add(_hsh[_hi].d, _hsh[_hi].name, 'holiday');
     }
-    // DST (US)
-    if (month === 3) { add(_nthWeekday(year, 3, 0, 2), 'Spring Forward', 'seasonal'); }
-    if (month === 11) { add(_nthWeekday(year, 11, 0, 1), 'Fall Back', 'seasonal'); }
     // Solstices & Equinoxes
     if (month === 3) { add(20, 'Spring Equinox', 'astro'); }
     if (month === 6) { add(20, 'Summer Solstice', 'astro'); }
