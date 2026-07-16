@@ -29,6 +29,15 @@ overnight push.
   16 to 28 cities covering every UTC offset in common use, including
   Central Europe ("Italy uses UK time" is fixed) and the half-offset
   zones, translated in all 10 languages.
+- **Your location drives the calendar**: click anywhere on the almanac
+  map and the holidays follow — Italy gets Ferragosto, all offline. A
+  quiet caption says whose days are showing, and each national day
+  carries a country tooltip.
+- **The world clock is alive**: each city card is tinted by its local
+  hour (day, dawn, dusk, night) with a small glyph — the grid reads as
+  a band of daylight matching the map's terminator.
+- Picture of the Day no longer shows yesterday's picture (the Discover
+  cache keyed on the UTC date while content used the local date).
 - Closing the reader now restores the underlying view's URL — a reload
   no longer reopens the article you just closed.
 - Downloads survive restarts: pending and queued items persist and
