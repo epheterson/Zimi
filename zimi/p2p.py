@@ -385,7 +385,17 @@ def get_mirror_status() -> dict:
         "peer_ip_unreachable": (
             _disc.is_share_enabled() and _disc.advertised_ip_looks_unreachable()
         ),
+        "progress": _mirror_progress_snapshot(),
     }
+
+
+def _mirror_progress_snapshot() -> dict:
+    try:
+        from zimi import library as _lib
+
+        return dict(_lib._mirror_progress)
+    except Exception:
+        return {"phase": None, "done": 0, "total": 0}
 
 
 def effective_seed_options() -> dict:

@@ -4925,7 +4925,7 @@ function _msPreferencesHtml() {
     // The pill list is long — collapsed behind a toggle by default.
     '<div class="ms-section-label" style="margin-top:20px">' + tH('languages_section') + '</div>' +
     '<label class="ms-check"><input type="checkbox"' + (showLangChooser ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\')"> ' + tH('show_lang_chooser') + '</label>' +
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\');if(window.updateTopbar)updateTopbar()"> ' + tH('show_lang_chooser') + '</label>' +
     '<div class="ms-hint" style="margin-top:8px">' + tH('catalog_languages_hint_short') + '</div>' +
     '<button class="pill" onclick="_msToggleCollapse(\'ms-lang-pills\', this)">' + tH('show_list') + '</button>' +
     '<div class="ms-lang-pills ms-collapsed-list" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>';
@@ -4949,7 +4949,7 @@ function _msPreferencesHtml() {
 function _msServerHtml() {
   // Sharing is the star of v1.7 — it leads the Server pane.
   var h = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
-    '<div id="ms-mirror-status" class="share-rows-slot"></div>' +
+    '<div id="ms-mirror-status" class="share-rows-slot"><div class="share-rows-skeleton"></div></div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
   h += '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
     '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>';
@@ -5067,17 +5067,20 @@ async function _renderHotZimsSection() {
   while (container.firstChild) container.removeChild(container.firstChild);
 
   const hasHotConfigured = (hotData.hot_zims || []).length > 0;
-  const zimCount = Array.isArray(zims) ? zims.length : 0;
-  // Collapse the section when there are too few ZIMs to benefit from
-  // pinning. User can expand it via the toggle.
-  if (!hasHotConfigured && !hotData.env_locked && !_hotZimsForceShow) {
+  // Always collapsed by default — the pin list is noisy. A one-line
+  // summary (when pins exist) plus the expand button.
+  if (!hotData.env_locked && !_hotZimsForceShow) {
+    if (hasHotConfigured) {
+      const summary = document.createElement('div');
+      summary.className = 'ms-hint';
+      summary.style.marginBottom = '6px';
+      summary.textContent = t('hot_zims_pinned_n', {n: (hotData.hot_zims || []).length});
+      container.appendChild(summary);
+    }
     const toggle = document.createElement('button');
     toggle.className = 'pill ms-hot-show';
     toggle.textContent = t('hot_zims_show_anyway');
     toggle.onclick = () => {
-      // Render expanded: same code as below but with the threshold bypassed.
-      // Easiest: temporarily mark "hot configured" so the second render
-      // takes the full path, then re-render.
       _hotZimsForceShow = true;
       _renderHotZimsSection();
     };
@@ -5198,15 +5201,11 @@ async function _renderSeedingSection() {
   const statusEl = document.getElementById('ms-bt-status');
   const listEl = document.getElementById('ms-seeding-list');
   if (!statusEl || !listEl) return;
-  // Status row: dot + state + hint
+  // Status: dot + state, left-aligned under the card text (no port/engine
+  // trivia — the port has its own row above)
   const dot = bt.status === 'ready' ? '🟢' : bt.status === 'unavailable' ? '🟡' : '⚪';
   const stateLabel = t('bt_state_' + bt.status);
-  let html = '<div class="mc-row"><span class="mc-label"><span style="margin-right:7px">' + dot + '</span>' + esc(stateLabel) + '</span>';
-  if (bt.bt_port) {
-    html += '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
-      'port ' + bt.bt_port + ' · ' + (bt.backend || 'aria2') + '</span>';
-  }
-  html += '</div>';
+  let html = '<div class="share-bt-state"><span style="margin-right:7px">' + dot + '</span>' + esc(stateLabel) + '</div>';
   // Friendly client-side copy for the known states; raw server hint only
   // as a fallback for states added later.
   const btHint = bt.status === 'off' ? t('bt_off_hint')
@@ -5242,11 +5241,11 @@ async function _renderSeedingSection() {
   } catch (e) { /* fail-soft */ }
   statusEl.innerHTML = html;
 
-  // Seeding list — empty when BT is off OR nothing's seeding yet
+  // Seeding list — hidden entirely when nothing seeds (downloads have
+  // their own tab; an explainer here just confused the settings page)
   const torrents = seeding.torrents || [];
   if (!torrents.length) {
-    listEl.innerHTML = '<div class="ms-hint" style="margin-top:6px">' +
-      esc(bt.status === 'ready' ? t('seeding_empty') : '') + '</div>';
+    listEl.innerHTML = '';
     return;
   }
   const fmt = _fmtBytesBin;
@@ -5323,7 +5322,7 @@ async function _setPeerName(inp) {
       body: JSON.stringify({peer_name: v})
     });
     if (!r.ok) _showToast(t('save_failed'));
-    else _showToast(t('saved') + ' · ' + t('restart_hint'));
+    else _showToast(t('saved'));
   } catch (e) { _showToast(t('save_failed')); }
 }
 
@@ -5338,6 +5337,16 @@ async function _setSeedRatio(inp) {
     });
     if (!r.ok) _showToast(t('save_failed'));
   } catch (e) { _showToast(t('save_failed')); }
+}
+
+function _portRowInner(bt) {
+  var nat = bt.nat || null;
+  return '<span class="share-port-label">' + tH('bt_port_label', {n: bt.bt_port}) + '</span> ' + _natBadge(nat) +
+    ' <label class="share-upnp"' + (bt.upnp_env_locked ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
+      '<input type="checkbox"' + (bt.upnp_enabled ? ' checked' : '') + (bt.upnp_env_locked ? ' disabled' : '') + ' onchange="_setUpnp(this)"> UPnP' +
+    '</label>' +
+    '<button class="share-port-retry" onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '">\u27f3 ' + tH('retry') + '</button>' +
+    (nat && nat.upnp === 'mapped' && nat.external_ip ? '<span class="share-port-note">' + esc(nat.external_ip) + '</span>' : '');
 }
 
 function _natBadge(nat) {
@@ -5360,7 +5369,16 @@ async function _natRecheck(btn) {
   }
   btn.disabled = false;
   btn.textContent = prev;
-  _renderMirrorSection();
+  // Update only the port row — a full section re-render makes everything
+  // blink for a one-line change.
+  try {
+    const rb = await manageFetch('/manage/bt-status');
+    if (rb.ok) {
+      const bt = await rb.json();
+      const row = document.getElementById('share-port-row');
+      if (row && bt.enabled) row.innerHTML = _portRowInner(bt);
+    }
+  } catch (e) {}
 }
 
 async function _setUpnp(cb) {
@@ -5398,15 +5416,7 @@ async function _renderMirrorSection() {
   // Port health row — like every real BT client: status, UPnP, retry
   let portField = '';
   if (bt && bt.enabled) {
-    var nat = bt.nat || null;
-    portField = '<div class="share-port-row">' +
-      '<span class="share-port-label">' + tH('bt_port_label', {n: bt.bt_port}) + '</span> ' + _natBadge(nat) +
-      ' <label class="share-upnp"' + (bt.upnp_env_locked ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
-        '<input type="checkbox"' + (bt.upnp_enabled ? ' checked' : '') + (bt.upnp_env_locked ? ' disabled' : '') + ' onchange="_setUpnp(this)"> UPnP' +
-      '</label>' +
-      '<button class="share-port-retry" onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '">\u27f3 ' + tH('retry') + '</button>' +
-      (nat && nat.upnp === 'mapped' && nat.external_ip ? '<span class="share-port-note">' + esc(nat.external_ip) + '</span>' : '') +
-    '</div>';
+    portField = '<div class="share-port-row" id="share-port-row">' + _portRowInner(bt) + '</div>';
   }
   const btInner = '<div class="share-ratio-row">' + ratioField + '</div>' + portField +
     '<div id="ms-bt-status" class="share-bt-inner"></div>' +
@@ -5429,6 +5439,18 @@ async function _renderMirrorSection() {
       '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
         'ratio \u2264 ' + m.ratio_cap.toFixed(0) + 'x \u00b7 \u2191 ' + fmtKb +
       '</span></div>';
+  }
+  // Mirror work in flight (library hash-check / catalog torrent backup):
+  // show progress and keep polling gently until it finishes.
+  const prog = m.progress || {};
+  if (prog.phase) {
+    h += '<div class="ms-hint share-mirror-progress">' +
+      tH(prog.phase === 'seeding' ? 'mirror_progress_seeding' : 'mirror_progress_archiving',
+         {a: prog.done, b: prog.total}) + '</div>';
+    if (window._mirrorProgTimer) clearTimeout(window._mirrorProgTimer);
+    window._mirrorProgTimer = setTimeout(function() {
+      if (mode === 'manage') _renderMirrorSection();
+    }, 3000);
   }
   el.innerHTML = h;
   // The BT status + seeding slots now live inside the card — refill them

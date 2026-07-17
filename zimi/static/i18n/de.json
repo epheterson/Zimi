@@ -596,6 +596,8 @@
   "alm_city_singapore": "Singapur",
   "alm_city_adelaide": "Adelaide",
   "alm_showing_holidays": "Feiertage: {c}",
+  "alm_showing_worldwide": "Weltweite Feiertage",
+  "alm_holidays_follow_hint": "Folgt deinem Standort auf der Karte",
   "alm_region_holiday": "Feiertag ({c})",
   "alm_hol_1st_white_night": "1. Weiße Nacht",
   "alm_hol_aban_festival": "Aban-Fest",
@@ -912,11 +914,13 @@
   "bt_port_recheck_hint": "UPnP neu zuordnen und Erreichbarkeit des Ports erneut prüfen",
   "catalog_offline_note": "Offline — Katalog vom {d}",
   "nearby_bridge_warning": "In der Nähe meldet eine Container-Adresse, die andere Geräte nicht erreichen. Docker mit Host-Netzwerk starten oder ip=<LAN-Adresse> in ZIMI_NEARBY setzen.",
+  "mirror_progress_seeding": "Bibliothek wird geseedet… {a}/{b}",
+  "mirror_progress_archiving": "Katalog-Torrents werden gesichert… {a}/{b}",
+  "hot_zims_pinned_n": "{n} angeheftet",
   "alm_data_title": "Über diese Daten",
   "alm_data_astro": "Sonnen-, Mond-, Planeten- und Jahreszeitenberechnungen laufen auf deinem Gerät mit publizierten astronomischen Algorithmen (Meeus). Äquinoktien und Sonnenwenden sind auf Minuten genau; Meteorschauer-Daten sind typische Maximumsnächte.",
   "alm_data_calendars": "Hebräische, islamische, persische und chinesische Daten nutzen arithmetische Kalender. Tabellarische islamische Daten können einen Tag von offiziellen Mondsichtungen abweichen.",
   "alm_data_holidays": "Hinduistische und Sikh-Festtage sind für 2024–2030 tabellengeprüft, danach berechnete Näherungen. Nationalfeiertage decken 17 Länder plus einen weltweiten Satz ab; dein gewählter Standort bestimmt die Auswahl.",
   "alm_data_tz": "Uhren und Zeitzonen stammen aus der IANA-Datenbank deines Geräts und bleiben mit Systemupdates aktuell.",
-  "alm_data_offline": "Alles auf dieser Seite wird lokal berechnet oder gespeichert. Nichts wird aus dem Internet geladen.",
   "peer_name_hint": "Der Name, den andere Zimi-Geräte sehen. Gilt nach Neustart."
 }

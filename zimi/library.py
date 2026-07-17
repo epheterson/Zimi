@@ -988,6 +988,15 @@ def _prefetch_thumbs(items, limit=200, spacing=0.15):
 
 
 _mirror_sync_lock = threading.Lock()
+# Live progress for the settings UI: {"phase": "seeding"|"archiving"|None,
+# "done": int, "total": int}
+_mirror_progress = {"phase": None, "done": 0, "total": 0}
+
+
+def _set_mirror_progress(phase, done=0, total=0):
+    _mirror_progress["phase"] = phase
+    _mirror_progress["done"] = done
+    _mirror_progress["total"] = total
 
 
 def mirror_sync():
@@ -1047,7 +1056,10 @@ def _mirror_sync_locked(_p2p):
         pass
 
     added = 0
-    for filename in sorted(installed - managed):
+    todo = sorted(installed - managed)
+    _set_mirror_progress("seeding", 0, len(todo))
+    for _mi, filename in enumerate(todo):
+        _set_mirror_progress("seeding", _mi + 1, len(todo))
         source = None
         meta = saved.get(filename) or {}
         tfile = meta.get("torrent_file")
@@ -1074,6 +1086,7 @@ def _mirror_sync_locked(_p2p):
             added += 1
         except Exception as e:
             log.debug("mirror: add %s failed: %s", filename, e)
+    _set_mirror_progress(None)
     if added:
         log.info("Mirror mode: seeding %d installed ZIM(s)", added)
     return added
@@ -1123,7 +1136,10 @@ def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
 
     fetched = 0
     fetched_bytes = 0
-    for filename, turl in sorted(urls.items()):
+    _todo = sorted(urls.items())
+    _set_mirror_progress("archiving", 0, len(_todo))
+    for _ai, (filename, turl) in enumerate(_todo):
+        _set_mirror_progress("archiving", _ai + 1, len(_todo))
         dest = os.path.join(tdir, filename + ".torrent")
         if os.path.exists(dest):
             continue
@@ -1145,6 +1161,7 @@ def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
         except Exception as e:
             log.debug("torrent archive: %s failed: %s", filename, e)
         time.sleep(spacing)
+    _set_mirror_progress(None)
     if fetched:
         log.info(
             "Catalog torrent archive: %d fetched (%.1f MB), %d total held",

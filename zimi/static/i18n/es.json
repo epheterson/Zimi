@@ -596,6 +596,8 @@
   "alm_city_singapore": "Singapur",
   "alm_city_adelaide": "Adelaida",
   "alm_showing_holidays": "Mostrando festivos de {c}",
+  "alm_showing_worldwide": "Mostrando festivos mundiales",
+  "alm_holidays_follow_hint": "Sigue tu ubicación en el mapa",
   "alm_region_holiday": "Festivo de {c}",
   "alm_hol_1st_white_night": "1.ª Noche Blanca",
   "alm_hol_aban_festival": "Festival de Aban",
@@ -912,11 +914,13 @@
   "bt_port_recheck_hint": "Reasignar UPnP y volver a comprobar si el puerto es accesible",
   "catalog_offline_note": "Sin conexión — catálogo del {d}",
   "nearby_bridge_warning": "Cercanos anuncia una dirección de contenedor inaccesible para otros dispositivos. Usa Docker con red de host o define ip=<dirección LAN> en ZIMI_NEARBY.",
+  "mirror_progress_seeding": "Compartiendo biblioteca… {a}/{b}",
+  "mirror_progress_archiving": "Copiando torrents del catálogo… {a}/{b}",
+  "hot_zims_pinned_n": "{n} fijados",
   "alm_data_title": "Acerca de estos datos",
   "alm_data_astro": "Los cálculos de sol, luna, planetas y estaciones se ejecutan en tu dispositivo con algoritmos astronómicos publicados (Meeus). Los instantes de equinoccios y solsticios tienen precisión de minutos; las fechas de lluvias de meteoros son noches de pico típicas.",
   "alm_data_calendars": "Las fechas hebreas, islámicas, persas y chinas usan calendarios aritméticos. Las fechas islámicas tabulares pueden diferir un día de los anuncios oficiales por avistamiento lunar.",
   "alm_data_holidays": "Las fechas de festivales hindúes y sijs están verificadas por tabla para 2024–2030 y aproximadas por cálculo después. Los festivos nacionales cubren 17 países más un conjunto mundial; tu ubicación elegida selecciona cuáles aplican.",
   "alm_data_tz": "Los relojes y zonas horarias provienen de la base de datos IANA de tu dispositivo y se mantienen al día con las actualizaciones del sistema.",
-  "alm_data_offline": "Todo en esta página se calcula o almacena localmente. No se obtiene nada de internet.",
   "peer_name_hint": "El nombre que ven otros dispositivos Zimi. Se aplica tras reiniciar."
 }

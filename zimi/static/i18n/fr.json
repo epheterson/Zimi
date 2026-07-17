@@ -596,6 +596,8 @@
   "alm_city_singapore": "Singapour",
   "alm_city_adelaide": "Adélaïde",
   "alm_showing_holidays": "Jours fériés de {c}",
+  "alm_showing_worldwide": "Jours fériés mondiaux",
+  "alm_holidays_follow_hint": "Suit votre position sur la carte",
   "alm_region_holiday": "Fête de {c}",
   "alm_hol_1st_white_night": "1re Nuit blanche",
   "alm_hol_aban_festival": "Fête d'Aban",
@@ -912,11 +914,13 @@
   "bt_port_recheck_hint": "Re-mapper UPnP et retester l'accessibilité du port",
   "catalog_offline_note": "Hors ligne — catalogue du {d}",
   "nearby_bridge_warning": "À proximité annonce une adresse de conteneur inaccessible aux autres appareils. Utilisez Docker en réseau hôte ou définissez ip=<adresse LAN> dans ZIMI_NEARBY.",
+  "mirror_progress_seeding": "Partage de la bibliothèque… {a}/{b}",
+  "mirror_progress_archiving": "Sauvegarde des torrents du catalogue… {a}/{b}",
+  "hot_zims_pinned_n": "{n} épinglés",
   "alm_data_title": "À propos de ces données",
   "alm_data_astro": "Les calculs du soleil, de la lune, des planètes et des saisons s'exécutent sur votre appareil avec des algorithmes astronomiques publiés (Meeus). Les instants d'équinoxes et de solstices sont précis à quelques minutes ; les dates des pluies de météores sont des nuits de pic typiques.",
   "alm_data_calendars": "Les dates hébraïques, islamiques, persanes et chinoises utilisent des calendriers arithmétiques. Les dates islamiques tabulaires peuvent différer d'un jour des annonces officielles d'observation lunaire.",
   "alm_data_holidays": "Les dates des fêtes hindoues et sikhes sont vérifiées par table pour 2024–2030 puis approximées par calcul. Les fêtes nationales couvrent 17 pays plus un ensemble mondial ; votre position choisie sélectionne celles qui s'appliquent.",
   "alm_data_tz": "Les horloges et fuseaux horaires proviennent de la base IANA de votre appareil et restent à jour avec le système.",
-  "alm_data_offline": "Tout sur cette page est calculé ou stocké localement. Rien n'est récupéré sur internet.",
   "peer_name_hint": "Le nom que voient les autres appareils Zimi. Effectif après redémarrage."
 }

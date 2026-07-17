@@ -287,7 +287,8 @@ function _renderAlmanacContent() {
   html += '<div class="almanac-section">';
   html += '<div class="almanac-section-title">' + t('alm_data_title') + '</div>';
   html += '<div class="alm-data-notes">';
-  var _dataKeys = ['alm_data_astro', 'alm_data_calendars', 'alm_data_holidays', 'alm_data_tz', 'alm_data_offline'];
+  // (the offline guarantee lives in the footer line — no duplicate here)
+  var _dataKeys = ['alm_data_astro', 'alm_data_calendars', 'alm_data_holidays', 'alm_data_tz'];
   for (var dk = 0; dk < _dataKeys.length; dk++) {
     html += '<div class="alm-data-note">' + t(_dataKeys[dk]) + '</div>';
   }
@@ -1058,6 +1059,9 @@ function _formatSpeed(speed) {
 function _orrerySliderInput(val) {
   _orreryAutoTransit = false; // Manual control disengages auto-transit
   var intVal = parseInt(val);
+  // Manual input always wins — auto-transit was overwriting the slider
+  // every frame, making speed unadjustable during a rocket flight.
+  _orreryAutoTransit = false;
   _orrerySpeed = _sliderToSpeed(intVal);
   var label = document.getElementById('orrery-speed-label');
   if (label) label.textContent = _formatSpeed(_orrerySpeed);
@@ -1646,11 +1650,12 @@ function _renderSunMap(now) {
   html += '</div>';
   html += '</div>';
 
-  // Timezone UI — analog clock left, city list right
+  // Timezone UI — analog clock with the digital box beside it (shorter),
+  // world grid below
   html += '<div class="alm-tz-wrap">';
   html += '<div class="alm-tz-clock-side">';
-  html += '<canvas id="almanac-tz-clock" width="240" height="240"></canvas>';
-  html += '<div id="almanac-tz-label"></div>';
+  html += '<canvas id="almanac-tz-clock" width="180" height="180"></canvas>';
+  html += '<div id="almanac-tz-label" class="alm-clock-info"></div>';
   html += '</div>';
   html += '<div class="alm-tz-list" id="almanac-tz-pills"></div>';
   html += '</div>';
@@ -1991,16 +1996,58 @@ function _drawTzClock(now) {
   // Time text below clock
   var labelEl = document.getElementById('almanac-tz-label');
   if (labelEl) {
-    var timeStr = '';
+    var parts = [];
     try {
-      timeStr = _tzFmt(tz, { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).format(now);
+      parts = _tzFmt(tz, { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).formatToParts(now);
     } catch(e) {}
+    var hm = '', sec = '', ampm = '';
+    for (var pi = 0; pi < parts.length; pi++) {
+      var pt = parts[pi];
+      if (pt.type === 'second') sec = pt.value;
+      else if (pt.type === 'dayPeriod') ampm = pt.value;
+      else if (pt.type === 'hour' || pt.type === 'minute') hm += pt.value;
+      else if (pt.type === 'literal' && sec === '' && hm) hm += pt.value.trim() === '' ? '' : (pi < parts.length - 1 && parts[pi+1].type !== 'dayPeriod' ? pt.value : '');
+    }
+    hm = hm.replace(/:$/, '');
     var dateStr = '';
     try {
       dateStr = _tzFmt(tz, { weekday: 'short', month: 'short', day: 'numeric' }).format(now);
     } catch(e) {}
-    labelEl.innerHTML = '<div style="font-size:18px;font-weight:500;color:var(--text)">' + timeStr + '</div>' +
-      (tzLabel ? '<div style="font-size:12px;color:var(--text3);margin-top:2px">' + tzLabel + (dateStr ? ' \u00b7 ' + dateStr : '') + '</div>' : '');
+    // Timezone abbreviation (PST, CET, GMT+8...) — encyclopedic honesty
+    var tzAbbr = '';
+    try {
+      var tzp = _tzFmt(tz, { timeZoneName: 'short', hour: 'numeric' }).formatToParts(now);
+      for (var ti = 0; ti < tzp.length; ti++) if (tzp[ti].type === 'timeZoneName') tzAbbr = tzp[ti].value;
+    } catch(e) {}
+    // Only rebuild the shell when needed; the flip card ticks per second
+    var secEl = document.getElementById('alm-flip-sec');
+    if (!secEl || labelEl.dataset.tz !== tz) {
+      labelEl.dataset.tz = tz;
+      labelEl.innerHTML =
+        '<div class="alm-clock-time"><span id="alm-clock-hm">' + hm + '</span>' +
+          '<span class="alm-flip-sec" id="alm-flip-sec">' + sec + '</span>' +
+          '<span class="alm-clock-ampm" id="alm-clock-ampm">' + ampm + '</span></div>' +
+        '<div class="alm-clock-sub"><span id="alm-clock-tzname">' + (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '') + '</span></div>' +
+        '<div class="alm-clock-sub" id="alm-clock-date">' + dateStr + '</div>';
+    } else {
+      var hmEl = document.getElementById('alm-clock-hm');
+      if (hmEl && hmEl.textContent !== hm) hmEl.textContent = hm;
+      var apEl = document.getElementById('alm-clock-ampm');
+      if (apEl && apEl.textContent !== ampm) apEl.textContent = ampm;
+      var dEl = document.getElementById('alm-clock-date');
+      if (dEl && dEl.textContent !== dateStr) dEl.textContent = dateStr;
+      var tnEl = document.getElementById('alm-clock-tzname');
+      var tzText = (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '');
+      if (tnEl && tnEl.textContent !== tzText) tnEl.textContent = tzText;
+      secEl = document.getElementById('alm-flip-sec');
+      if (secEl && secEl.textContent !== sec) {
+        // Retrigger the flip animation on each tick
+        secEl.classList.remove('alm-flip-tick');
+        void secEl.offsetWidth;
+        secEl.textContent = sec;
+        secEl.classList.add('alm-flip-tick');
+      }
+    }
   }
 }
 
@@ -4179,14 +4226,17 @@ function _drawAlmanacGrid() {
     }
   }
 
-  // Quiet caption saying whose national days are shown (location-driven)
+  // Quiet caption saying whose national days are shown. Always present on
+  // the Gregorian calendar — no pack means the worldwide set, and saying
+  // so beats an unexplained absence of holidays.
   if (_almSystem === 'gregorian') {
     var regionName = _almRegionName(_almRegion());
-    if (regionName) {
-      html += '<div class="alm-cal-region">' +
-        _tLookup('alm_showing_holidays', 'Showing {c} holidays').replace('{c}', regionName.replace(/</g, '&lt;')) +
-        '</div>';
-    }
+    var capText = regionName
+      ? _tLookup('alm_showing_holidays', 'Showing {c} holidays').replace('{c}', regionName.replace(/</g, '&lt;'))
+      : _tLookup('alm_showing_worldwide', 'Showing worldwide holidays');
+    html += '<div class="alm-cal-region" title="' +
+      _tLookup('alm_holidays_follow_hint', 'Follows your location on the map').replace(/"/g, '&quot;') +
+      '">' + capText + '</div>';
   }
 
   // Cross-reference — selected date in all calendar systems (replaces pills)

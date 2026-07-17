@@ -692,6 +692,12 @@
   .seeding-snag { color: var(--error); }
   .seeding-bar-snag { background: var(--error); opacity: 0.5; }
   .share-nearby-warn { color: var(--error); margin-top: 4px; }
+  .share-rows-skeleton { min-height: 300px; }
+  .share-bt-state { font-size: 12px; color: var(--text2); }
+  .share-mirror-progress { margin-top: 6px; color: var(--amber); }
+  /* Toggles pin to the top-right of tall cards */
+  .share-row { align-items: flex-start; }
+  .share-row .switch { margin-top: 2px; }
   .dl-source { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
     color: var(--text2); white-space: nowrap; }
   .dl-source-bt { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }

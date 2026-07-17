@@ -252,6 +252,20 @@ def get_peers() -> list[dict]:
     return fresh
 
 
+_last_start_args: dict = {}
+
+
+def restart_advertising() -> bool:
+    """Re-register with current settings (e.g. a renamed instance) without
+    a server restart. No-op when discovery isn't running."""
+    global _last_start_args
+    if _zc is None or not _last_start_args:
+        return False
+    args = dict(_last_start_args)
+    stop()
+    return start(**args)
+
+
 def start(
     *,
     http_port: int,
@@ -261,7 +275,13 @@ def start(
 ) -> bool:
     """Start advertising + browsing. Returns True on success, False if
     zeroconf is unavailable or already started."""
-    global _zc, _service_info, _browser, _self_service_name
+    global _zc, _service_info, _browser, _self_service_name, _last_start_args
+    _last_start_args = {
+        "http_port": http_port,
+        "bt_port": bt_port,
+        "zim_count": zim_count,
+        "version": version,
+    }
 
     if _zc is not None:
         return False
