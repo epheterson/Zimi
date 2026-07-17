@@ -922,10 +922,5 @@
   "mirror_progress_seeding": "Seeding library… {a}/{b}",
   "mirror_progress_archiving": "Backing up catalog torrents… {a}/{b}",
   "hot_zims_pinned_n": "{n} pinned",
-  "alm_data_title": "About this data",
-  "alm_data_astro": "Sun, moon, planet, and season calculations run on your device using published astronomical algorithms (Meeus). Equinox and solstice instants are accurate to within minutes; meteor shower dates are typical peak nights.",
-  "alm_data_calendars": "Hebrew, Islamic, Persian, and Chinese dates use arithmetic calendars. Tabular Islamic dates can differ by a day from official moon-sighting announcements.",
-  "alm_data_holidays": "Hindu and Sikh festival dates are table-verified for 2024–2030 and computed approximations beyond. National holidays cover 17 countries plus a worldwide set; your chosen location selects which apply.",
-  "alm_data_tz": "Clocks and time zones come from your device's IANA time zone database and stay current with system updates.",
   "peer_name_hint": "The name other Zimi devices see. Applies after restart."
 }

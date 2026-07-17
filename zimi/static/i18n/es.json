@@ -922,10 +922,5 @@
   "mirror_progress_seeding": "Compartiendo biblioteca… {a}/{b}",
   "mirror_progress_archiving": "Copiando torrents del catálogo… {a}/{b}",
   "hot_zims_pinned_n": "{n} fijados",
-  "alm_data_title": "Acerca de estos datos",
-  "alm_data_astro": "Los cálculos de sol, luna, planetas y estaciones se ejecutan en tu dispositivo con algoritmos astronómicos publicados (Meeus). Los instantes de equinoccios y solsticios tienen precisión de minutos; las fechas de lluvias de meteoros son noches de pico típicas.",
-  "alm_data_calendars": "Las fechas hebreas, islámicas, persas y chinas usan calendarios aritméticos. Las fechas islámicas tabulares pueden diferir un día de los anuncios oficiales por avistamiento lunar.",
-  "alm_data_holidays": "Las fechas de festivales hindúes y sijs están verificadas por tabla para 2024–2030 y aproximadas por cálculo después. Los festivos nacionales cubren 17 países más un conjunto mundial; tu ubicación elegida selecciona cuáles aplican.",
-  "alm_data_tz": "Los relojes y zonas horarias provienen de la base de datos IANA de tu dispositivo y se mantienen al día con las actualizaciones del sistema.",
   "peer_name_hint": "El nombre que ven otros dispositivos Zimi. Se aplica tras reiniciar."
 }

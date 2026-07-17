@@ -922,10 +922,5 @@
   "mirror_progress_seeding": "Semeando biblioteca… {a}/{b}",
   "mirror_progress_archiving": "Copiando torrents do catálogo… {a}/{b}",
   "hot_zims_pinned_n": "{n} fixados",
-  "alm_data_title": "Sobre estes dados",
-  "alm_data_astro": "Os cálculos de sol, lua, planetas e estações rodam no seu dispositivo com algoritmos astronômicos publicados (Meeus). Equinócios e solstícios têm precisão de minutos; as datas de chuvas de meteoros são noites de pico típicas.",
-  "alm_data_calendars": "Datas hebraicas, islâmicas, persas e chinesas usam calendários aritméticos. Datas islâmicas tabulares podem diferir um dia dos anúncios oficiais de avistamento da lua.",
-  "alm_data_holidays": "As datas de festivais hindus e sikhs são verificadas por tabela para 2024–2030 e aproximadas por cálculo depois. Feriados nacionais cobrem 17 países mais um conjunto mundial; sua localização escolhida seleciona quais se aplicam.",
-  "alm_data_tz": "Relógios e fusos horários vêm do banco IANA do seu dispositivo e ficam atualizados com o sistema.",
   "peer_name_hint": "O nome que outros dispositivos Zimi veem. Vale após reiniciar."
 }

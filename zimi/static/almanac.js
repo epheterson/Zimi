@@ -284,17 +284,6 @@ function _renderAlmanacContent() {
   html += '</div>';
 
 
-  // Data honesty — an almanac states its precision like an encyclopedia
-  html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">' + t('alm_data_title') + '</div>';
-  html += '<div class="alm-data-notes">';
-  // (the offline guarantee lives in the footer line — no duplicate here)
-  var _dataKeys = ['alm_data_astro', 'alm_data_calendars', 'alm_data_holidays', 'alm_data_tz'];
-  for (var dk = 0; dk < _dataKeys.length; dk++) {
-    html += '<div class="alm-data-note">' + t(_dataKeys[dk]) + '</div>';
-  }
-  html += '</div></div>';
-
   // Footer
   html += '<div style="margin-top:40px;text-align:center;font-size:11px;color:var(--text3)">' +
     t('alm_footer') +
@@ -1844,6 +1833,15 @@ function _initTzClock(now) {
       var absH = Math.floor(Math.abs(diffMin) / 60);
       var absM = Math.abs(diffMin) % 60;
       utcOff = 'UTC' + sign + absH + (absM ? ':' + (absM < 10 ? '0' : '') + absM : '');
+      // Short zone name (PDT, CET, GMT+8) beside the offset — every zone
+      // has one via the IANA database, some are just GMT-style
+      var znp = _tzFmt(tzc.tz, { timeZoneName: 'short', hour: 'numeric' }).formatToParts(now);
+      for (var zpi = 0; zpi < znp.length; zpi++) {
+        if (znp[zpi].type === 'timeZoneName' && znp[zpi].value !== utcOff) {
+          utcOff += ' \u00b7 ' + znp[zpi].value;
+          break;
+        }
+      }
     } catch(e) {}
     var tzHour = 0;
     try { tzHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: tzc.tz, hour: 'numeric', hour12: false }).format(now)); } catch(e) {}

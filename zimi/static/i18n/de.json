@@ -922,10 +922,5 @@
   "mirror_progress_seeding": "Bibliothek wird geseedet… {a}/{b}",
   "mirror_progress_archiving": "Katalog-Torrents werden gesichert… {a}/{b}",
   "hot_zims_pinned_n": "{n} angeheftet",
-  "alm_data_title": "Über diese Daten",
-  "alm_data_astro": "Sonnen-, Mond-, Planeten- und Jahreszeitenberechnungen laufen auf deinem Gerät mit publizierten astronomischen Algorithmen (Meeus). Äquinoktien und Sonnenwenden sind auf Minuten genau; Meteorschauer-Daten sind typische Maximumsnächte.",
-  "alm_data_calendars": "Hebräische, islamische, persische und chinesische Daten nutzen arithmetische Kalender. Tabellarische islamische Daten können einen Tag von offiziellen Mondsichtungen abweichen.",
-  "alm_data_holidays": "Hinduistische und Sikh-Festtage sind für 2024–2030 tabellengeprüft, danach berechnete Näherungen. Nationalfeiertage decken 17 Länder plus einen weltweiten Satz ab; dein gewählter Standort bestimmt die Auswahl.",
-  "alm_data_tz": "Uhren und Zeitzonen stammen aus der IANA-Datenbank deines Geräts und bleiben mit Systemupdates aktuell.",
   "peer_name_hint": "Der Name, den andere Zimi-Geräte sehen. Gilt nach Neustart."
 }

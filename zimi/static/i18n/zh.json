@@ -922,10 +922,5 @@
   "mirror_progress_seeding": "正在做种媒体库… {a}/{b}",
   "mirror_progress_archiving": "正在备份目录种子… {a}/{b}",
   "hot_zims_pinned_n": "已固定 {n} 个",
-  "alm_data_title": "关于这些数据",
-  "alm_data_astro": "太阳、月亮、行星和季节的计算在您的设备上运行，使用已发表的天文算法（Meeus）。春分秋分与至点时刻精确到分钟；流星雨日期为典型峰值夜。",
-  "alm_data_calendars": "希伯来、伊斯兰、波斯和中国历法使用算术历。表格式伊斯兰日期可能与官方见月公告相差一天。",
-  "alm_data_holidays": "印度教和锡克教节日日期在2024–2030年经过表格校验，之后为计算近似值。国家节假日覆盖17个国家及一套全球节日；您选择的位置决定适用哪些。",
-  "alm_data_tz": "时钟与时区来自设备的IANA时区数据库，随系统更新保持最新。",
   "peer_name_hint": "其他 Zimi 设备看到的名称。重启后生效。"
 }

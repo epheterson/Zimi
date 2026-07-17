@@ -5246,13 +5246,14 @@ async function _renderSeedingSection() {
       }
     }
   } catch (e) { /* fail-soft */ }
-  statusEl.innerHTML = html;
+  // Hints + server-name render full-width above the seed list
+  window._btInfoHtml = html;
 
   // Seeding list — hidden entirely when nothing seeds (downloads have
   // their own tab; an explainer here just confused the settings page)
   const torrents = seeding.torrents || [];
   if (!torrents.length) {
-    listEl.innerHTML = '';
+    listEl.innerHTML = window._btInfoHtml || '';
     return;
   }
   const fmt = _fmtBytesBin;
@@ -5283,7 +5284,7 @@ async function _renderSeedingSection() {
     '</div>';
   }
   rows += '</div>';
-  listEl.innerHTML = rows;
+  listEl.innerHTML = (window._btInfoHtml || '') + rows;
 }
 
 // The v1.7 sharing hero: three switches — BitTorrent (with seed ratio),
@@ -5432,6 +5433,35 @@ async function _setUpnp(cb) {
   } catch (e) { _showToast(t('save_failed')); cb.checked = !cb.checked; }
 }
 
+function _mirrorProgressText(prog) {
+  return tH(prog.phase === 'seeding' ? 'mirror_progress_seeding' : 'mirror_progress_archiving',
+    {a: prog.done, b: prog.total});
+}
+
+// Poll updates ONLY the progress line's text — a full section re-render
+// every 3s made the page jump ("bouncing") on phones.
+function _scheduleMirrorProgressPoll() {
+  if (window._mirrorProgTimer) clearTimeout(window._mirrorProgTimer);
+  window._mirrorProgTimer = setTimeout(async function() {
+    if (mode !== 'manage') return;
+    var el = document.getElementById('mirror-progress-line');
+    if (!el) return;
+    try {
+      const r = await authedFetch('/manage/mirror');
+      if (!r.ok) return;
+      const m = await r.json();
+      const prog = m.progress || {};
+      if (prog.phase) {
+        el.style.display = '';
+        el.innerHTML = _mirrorProgressText(prog);
+        _scheduleMirrorProgressPoll();
+      } else {
+        el.style.display = 'none';
+      }
+    } catch (e) {}
+  }, 3000);
+}
+
 async function _renderMirrorSection() {
   if (_btSettingInFlight) return; // never repaint over an in-flight toggle
   let m, bt = null;
@@ -5475,7 +5505,7 @@ async function _renderMirrorSection() {
       ? (m.upload_kb / 1024).toFixed(1) + ' MB/s'
       : m.upload_kb + ' KB/s';
     h += '<div class="mc-row" style="margin-top:8px">' +
-      '<span class="mc-label">\ud83d\udce1 ' + tH('mirror_active') + '</span>' +
+      '<span class="mc-label">' + tH('mirror_active') + '</span>' +
       '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
         'ratio \u2264 ' + m.ratio_cap.toFixed(0) + 'x \u00b7 \u2191 ' + fmtKb +
       '</span></div>';
@@ -5483,15 +5513,9 @@ async function _renderMirrorSection() {
   // Mirror work in flight (library hash-check / catalog torrent backup):
   // show progress and keep polling gently until it finishes.
   const prog = m.progress || {};
-  if (prog.phase) {
-    h += '<div class="ms-hint share-mirror-progress">' +
-      tH(prog.phase === 'seeding' ? 'mirror_progress_seeding' : 'mirror_progress_archiving',
-         {a: prog.done, b: prog.total}) + '</div>';
-    if (window._mirrorProgTimer) clearTimeout(window._mirrorProgTimer);
-    window._mirrorProgTimer = setTimeout(function() {
-      if (mode === 'manage') _renderMirrorSection();
-    }, 3000);
-  }
+  h += '<div class="ms-hint share-mirror-progress" id="mirror-progress-line"' + (prog.phase ? '' : ' style="display:none"') + '>' +
+    (prog.phase ? _mirrorProgressText(prog) : '') + '</div>';
+  if (prog.phase) _scheduleMirrorProgressPoll();
   el.innerHTML = h;
   // The BT status + seeding slots now live inside the card — refill them
   _renderSeedingSection();
@@ -7613,7 +7637,7 @@ function _toggleTopbarMenu(event) {
   // Build menu items
   var h = '';
   h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
-  h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
+  if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
   h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> ' + tH('manage') + '</button>';
   menu.innerHTML = h;
   menu.classList.add('visible');

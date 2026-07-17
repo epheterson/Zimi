@@ -38,8 +38,6 @@
 .alm-tz-night .alm-tz-city-time { color: var(--text2); }
 .alm-tz-city-active { border: 2px solid var(--amber); background: var(--amber-glow); box-shadow: 0 0 10px var(--amber-glow); padding: 5px 3px; }
 .alm-cal-region { text-align: center; font-size: 11px; color: var(--text3); margin-top: 8px; }
-.alm-data-notes { display: flex; flex-direction: column; gap: 8px; }
-.alm-data-note { font-size: 12px; line-height: 1.5; color: var(--text2); }
 .alm-tz-city-active .alm-tz-city-name { color: var(--amber); font-weight: 600; }
 .alm-tz-city-active .alm-tz-city-time { color: var(--amber); }
 .almanac-hero { display: flex; flex-direction: column; align-items: center; margin-bottom: 32px; position: relative; }
@@ -171,6 +169,7 @@
   .orrery-speed-label { font-size: 10px; min-width: 44px; }
   .orrery-speed-end { font-size: 8px; }
   .orrery-date { font-size: 10px; }
+  .alm-cards { grid-template-columns: repeat(2, 1fr); }
   .alm-tz-wrap { gap: 12px; width: 100%; }
   .alm-tz-clock-side { width: 100%; gap: 12px; }
   .alm-tz-clock-side canvas { width: 140px; height: 140px; }

@@ -711,6 +711,14 @@
   .dl-seed-link { cursor: pointer; }
   .dl-seed-link:hover { color: var(--amber); }
   .dl-seed-actions { margin-top: 8px; text-align: right; }
+  /* Sharing cards on phones: text keeps its width, fields wrap cleanly */
+  .share-row-text { flex: 1; min-width: 0; }
+  @media (max-width: 600px) {
+    .share-field { flex-wrap: wrap; row-gap: 5px; }
+    .share-field > label { min-width: 62px; }
+    .share-row-right { gap: 6px; }
+    .peer-name-input { width: 130px; }
+  }
   .dl-source { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
     color: var(--text2); white-space: nowrap; }
   .dl-source-bt { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
