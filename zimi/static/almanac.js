@@ -3742,8 +3742,8 @@ function _hinduSikhApprox(year) {
 // n=-1 means last; dst: 'us' | 'eu' | 'au' | null.
 var _REGION_HOLIDAYS = {
   US: {
-    fixed: [[2, 2, 'Groundhog Day'], [5, 5, 'Cinco de Mayo'], [6, 19, 'Juneteenth'], [7, 4, 'Independence Day'], [11, 11, 'Veterans Day'], [12, 26, 'Kwanzaa']],
-    nth: [[1, 1, 3, 'Martin Luther King Jr. Day'], [2, 1, 3, "Presidents' Day"], [5, 1, -1, 'Memorial Day'], [9, 1, 1, 'Labor Day'], [10, 1, 2, "Indigenous Peoples' Day"], [11, 4, 4, 'Thanksgiving']],
+    fixed: [[2, 2, 'Groundhog Day'], [4, 15, 'Tax Day'], [5, 5, 'Cinco de Mayo'], [6, 14, 'Flag Day'], [6, 19, 'Juneteenth'], [7, 4, 'Independence Day'], [9, 11, 'Patriot Day'], [11, 11, 'Veterans Day'], [12, 26, 'Kwanzaa']],
+    nth: [[1, 1, 3, 'Martin Luther King Jr. Day'], [2, 0, 2, 'Super Bowl Sunday'], [2, 1, 3, "Presidents' Day"], [5, 1, -1, 'Memorial Day'], [9, 1, 1, 'Labor Day'], [10, 1, 2, "Indigenous Peoples' Day"], [11, 4, 4, 'Thanksgiving']],
     dst: 'us'
   },
   CA: {
@@ -3970,12 +3970,16 @@ function _getAlmanacEvents(sys, year, month) {
     // International base — observed widely enough to show everywhere
     if (month === 1) { add(1, "New Year's Day", 'holiday'); add(6, 'Epiphany', 'holiday'); }
     if (month === 2) { add(14, "Valentine's Day", 'holiday'); }
-    if (month === 3) { add(8, "International Women's Day", 'holiday'); add(17, "St. Patrick's Day", 'holiday'); }
-    if (month === 4) { add(1, "April Fools' Day", 'holiday'); add(22, 'Earth Day', 'holiday'); }
-    if (month === 5) { add(1, "May Day / Workers' Day", 'holiday'); }
-    if (month === 6) { add(21, 'International Yoga Day', 'holiday'); }
-    if (month === 10) { add(31, 'Halloween', 'holiday'); }
-    if (month === 12) { add(24, 'Christmas Eve', 'holiday'); add(25, 'Christmas Day', 'holiday'); add(31, "New Year's Eve", 'holiday'); }
+    if (month === 3) { add(8, "International Women's Day", 'holiday'); add(14, 'Pi Day', 'holiday'); add(17, "St. Patrick's Day", 'holiday'); add(22, 'World Water Day', 'holiday'); }
+    if (month === 4) { add(1, "April Fools' Day", 'holiday'); add(22, 'Earth Day', 'holiday'); add(23, 'World Book Day', 'holiday'); }
+    if (month === 5) { add(1, "May Day / Workers' Day", 'holiday'); add(4, 'Star Wars Day', 'holiday'); }
+    if (month === 6) { add(5, 'World Environment Day', 'holiday'); add(21, 'International Yoga Day', 'holiday'); }
+    if (month === 7) { add(20, 'Moon Landing Day', 'holiday'); add(30, 'International Friendship Day', 'holiday'); }
+    if (month === 8) { add(12, 'International Youth Day', 'holiday'); add(19, 'World Photography Day', 'holiday'); }
+    if (month === 9) { add(8, 'International Literacy Day', 'holiday'); }
+    if (month === 10) { add(5, "World Teachers' Day", 'holiday'); add(24, 'United Nations Day', 'holiday'); add(31, 'Halloween', 'holiday'); }
+    if (month === 11) { add(10, 'World Science Day', 'holiday'); }
+    if (month === 12) { add(10, 'Human Rights Day', 'holiday'); add(24, 'Christmas Eve', 'holiday'); add(25, 'Christmas Day', 'holiday'); add(31, "New Year's Eve", 'holiday'); }
     // Mother's/Father's Day on the US dates — the majority convention
     // (US, CA, AU, DE, IT, BR, IN, CN, JP and others)
     if (month === 5) { add(_nthWeekday(year, 5, 0, 2), "Mother's Day", 'holiday'); }
