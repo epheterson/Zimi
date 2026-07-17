@@ -148,7 +148,10 @@ def start_background_services(http_port):
 
             atexit.register(_disc.stop)
         except Exception as e:
-            log.warning("Peer discovery startup failed: %s", e)
+            # repr + type: zeroconf raises exceptions with empty str()
+            log.warning(
+                "Peer discovery startup failed: %s: %r", type(e).__name__, e
+            )
         # Downloads that were in flight or queued when the server stopped
         # restart themselves (after the BT backend is up so they can take
         # the torrent-first path again).
