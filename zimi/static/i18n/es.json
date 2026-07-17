@@ -143,6 +143,7 @@
   "choose_folder_hint": "Elige dónde guardar tus archivos de conocimiento sin conexión.",
   "large_files_hint": "Los archivos ZIM pueden ser grandes (Wikipedia ocupa unos 100 GB), elige una unidad con suficiente espacio.",
   "zim_folder": "Carpeta ZIM",
+  "storage_section": "Almacenamiento",
   "data_folder": "Carpeta de datos",
   "data_folder_hint": "Caché, colecciones, marcadores e historial. Déjalo en blanco para guardar junto a los ZIM.",
   "same_as_zim": "(igual que la carpeta ZIM)",

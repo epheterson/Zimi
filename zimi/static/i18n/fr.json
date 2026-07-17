@@ -143,6 +143,7 @@
   "choose_folder_hint": "Choisissez où stocker vos archives de connaissances hors ligne.",
   "large_files_hint": "Les fichiers ZIM peuvent être volumineux (Wikipédia fait environ 100 Go), choisissez un disque avec suffisamment d’espace.",
   "zim_folder": "Dossier ZIM",
+  "storage_section": "Stockage",
   "data_folder": "Dossier de données",
   "data_folder_hint": "Cache, collections, signets et historique. Laissez vide pour stocker avec les ZIM.",
   "same_as_zim": "(identique au dossier ZIM)",

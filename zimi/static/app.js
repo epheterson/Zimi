@@ -4951,7 +4951,8 @@ function _msServerHtml() {
   var h = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
     '<div id="ms-mirror-status" class="share-rows-slot"><div class="share-rows-skeleton"></div></div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
-  h += '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
+  h += '<div class="ms-section-label">' + tH('storage_section') + '</div>' +
+    '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
     '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>';
   if (IS_DESKTOP) {
     // Desktop: add browse buttons for folder selection + port + save.

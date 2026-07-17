@@ -143,6 +143,7 @@
   "choose_folder_hint": "Choose where to keep your offline knowledge archives.",
   "large_files_hint": "ZIM files can be large (Wikipedia is ~100 GB). Pick a drive with plenty of space.",
   "zim_folder": "ZIM folder",
+  "storage_section": "Storage",
   "data_folder": "Data folder",
   "data_folder_hint": "Cache, collections, bookmarks, and history. Leave blank to store alongside ZIMs.",
   "same_as_zim": "(same as ZIM folder)",

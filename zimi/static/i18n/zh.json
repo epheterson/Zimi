@@ -143,6 +143,7 @@
   "choose_folder_hint": "选择离线知识库的存储位置。",
   "large_files_hint": "ZIM 文件可能很大（维基百科约 100 GB），请选择空间充足的磁盘。",
   "zim_folder": "ZIM 文件夹",
+  "storage_section": "存储",
   "data_folder": "数据文件夹",
   "data_folder_hint": "缓存、合集、书签和历史记录。留空则与 ZIM 存储在同一位置。",
   "same_as_zim": "（与 ZIM 文件夹相同）",

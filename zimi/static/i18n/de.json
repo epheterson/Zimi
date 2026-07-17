@@ -143,6 +143,7 @@
   "choose_folder_hint": "Wählen Sie, wo Ihre Offline-Wissensarchive gespeichert werden sollen.",
   "large_files_hint": "ZIM-Dateien können groß sein (Wikipedia ist ca. 100 GB), wählen Sie ein Laufwerk mit genügend Speicherplatz.",
   "zim_folder": "ZIM-Ordner",
+  "storage_section": "Speicher",
   "data_folder": "Datenordner",
   "data_folder_hint": "Cache, Sammlungen, Lesezeichen und Verlauf. Leer lassen, um sie neben den ZIMs zu speichern.",
   "same_as_zim": "(wie ZIM-Ordner)",

@@ -143,6 +143,7 @@
   "choose_folder_hint": "Escolha onde guardar seus arquivos de conhecimento offline.",
   "large_files_hint": "Arquivos ZIM podem ser grandes (Wikipédia tem cerca de 100 GB), escolha um disco com bastante espaço.",
   "zim_folder": "Pasta ZIM",
+  "storage_section": "Armazenamento",
   "data_folder": "Pasta de dados",
   "data_folder_hint": "Cache, coleções, favoritos e histórico. Deixe em branco para guardar junto aos ZIMs.",
   "same_as_zim": "(mesma pasta dos ZIMs)",
