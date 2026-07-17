@@ -51,7 +51,7 @@ Something not right? [Open an issue.](https://github.com/epheterson/Zimi/issues)
 
 Three switches in Server Settings control all of it:
 
-- **BitTorrent** (on by default). Downloads arrive via the Kiwix swarm and seed back, capped at a ratio you choose. `0` means never seed. No aria2 installed? Everything quietly uses plain HTTP.
+- **BitTorrent** (on by default). Downloads arrive via the Kiwix swarm and seed back, capped at a ratio you choose. `0` means never seed. The Mac and Linux desktop apps ship their own BitTorrent engine; pip and Docker installs use aria2 if present — and everything quietly falls back to plain HTTP without it. UPnP asks your router to open the port, and the settings panel shows whether it worked.
 - **Nearby** (off by default). Flip it on and Zimi devices on your network find each other; a green pill on a catalog card means a neighbor already has that ZIM. Transfers stay on your LAN, never the internet.
 - **Mirror** (off). Lifts the seeding cap, for people who want to run a long-term Kiwix mirror.
 
@@ -119,7 +119,7 @@ services:
       - ./zimi-config:/config
 ```
 
-LAN peer discovery (`_zimi._tcp`) won't reach the LAN in bridge mode — multicast doesn't cross the docker bridge. BT seeding still works because aria2 binds the mapped port. See [docs/deployment-networking.md](docs/deployment-networking.md) for the full discussion.
+LAN peer discovery (`_zimi._tcp`) won't reach the LAN in bridge mode — multicast doesn't cross the docker bridge, and Zimi warns in the Nearby settings when it detects this. Use host networking, or set `ip=<your host's LAN address>` in `ZIMI_NEARBY`. BT seeding still works because aria2 binds the mapped port. See [docs/deployment-networking.md](docs/deployment-networking.md) for the full discussion.
 </details>
 
 ### Python
@@ -138,8 +138,8 @@ Most people set nothing: every setting below has a sensible default or lives in 
 | `ZIM_DIR` | `/zims` | Path to ZIM files (scanned for `*.zim` on startup) |
 | `ZIMI_DATA_DIR` | `/config` (Docker) or `$ZIM_DIR/.zimi` | Cache, indexes, and settings. Mount separately in Docker. |
 | `ZIMI_MANAGE_PASSWORD` | _(none)_ | Protect library management |
-| `ZIMI_BT` | `on` | BitTorrent: `off`, or `on,port=6881,ratio=2,up=2048,mirror=off`. Fields you set are locked in the UI; fields you leave out stay UI-controlled. `ratio=0` means never seed. |
-| `ZIMI_NEARBY` | `off` | LAN sharing: `off`, or `on,name=my-zimi,public=off`. Controls serving *and* fetching between your Zimi devices. |
+| `ZIMI_BT` | `on` | BitTorrent: `off`, or `on,port=6881,ratio=2,up=2048,mirror=off,upnp=on,dht=on`. Fields you set are locked in the UI; fields you leave out stay UI-controlled. `ratio=0` means never seed. |
+| `ZIMI_NEARBY` | `off` | LAN sharing: `off`, or `on,name=my-zimi,public=off,ip=192.168.1.20`. Controls serving *and* fetching between your Zimi devices. Set `ip=` to your host's LAN address when running Docker in bridge mode. |
 
 <details>
 <summary>Advanced</summary>
@@ -149,7 +149,8 @@ Most people set nothing: every setting below has a sensible default or lives in 
 | `ZIMI_MANAGE` | `1` | Library manager. `0` to disable entirely. |
 | `ZIMI_AUTO_UPDATE` | `0` | Auto-update ZIMs (`1` to enable; also a UI setting) |
 | `ZIMI_UPDATE_FREQ` | `weekly` | `daily`, `weekly`, or `monthly` |
-| `ZIMI_RATE_LIMIT` | `60` | Requests/min/IP. `0` to disable. |
+| `ZIMI_RATE_LIMIT` | `60` | Requests/min/IP for anonymous clients. `0` to disable. |
+| `ZIMI_RATE_LIMIT_TRUSTED` | `600` | Budget for logged-in clients (and private-network clients on passwordless instances). |
 | `ZIMI_API_TOKEN` | _(none)_ | Pin the API token instead of generating in the UI |
 | `ZIMI_HOT_ZIMS` | _(none)_ | Comma-separated ZIM names to pre-warm at startup |
 
@@ -233,7 +234,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Desktop builds bundle [aria2](https://aria2.github.io/) (GPLv2) as a separate sidecar — see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
