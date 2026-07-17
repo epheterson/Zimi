@@ -20,6 +20,9 @@ var SK = {
   MANAGE_PW: 'zimi_manage_pw',
   PREF_LANGUAGES: 'zimi_pref_languages',
   PREF_FLAVOR: 'zimi_pref_flavor',
+  // Last-rendered SHARING rows (Server pane) — restored synchronously on
+  // pane open so the section doesn't pop in after the status fetches.
+  SHARE_ROWS: 'zimi_share_rows',
 };
 
 // ── Storage Helpers ──
@@ -4955,9 +4958,14 @@ function _msPreferencesHtml() {
 }
 
 function _msServerHtml() {
-  // Sharing is the star of v1.7 — it leads the Server pane.
+  // Sharing is the star of v1.7 — it leads the Server pane. Render the
+  // last-known rows immediately (stale toggles beat a blank slab that
+  // pops in); _renderMirrorSection repaints from server truth right after.
+  var shareCached = '';
+  try { shareCached = localStorage.getItem(SK.SHARE_ROWS) || ''; } catch (e) {}
   var h = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
-    '<div id="ms-mirror-status" class="share-rows-slot"><div class="share-rows-skeleton"></div></div>' +
+    '<div id="ms-mirror-status" class="share-rows-slot">' +
+      (shareCached || '<div class="share-rows-skeleton"></div>') + '</div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
   h += '<div class="ms-section-label">' + tH('storage_section') + '</div>' +
     '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
@@ -5007,9 +5015,15 @@ function _msServerHtml() {
     '<div class="ms-hint">' + tH('hot_zims_hint') + '</div>' +
     '<div id="ms-hot-zims" style="margin-top:10px">' + tH('loading') + '</div>' +
     '</div>';
-  _renderHotZimsSection();
-  _renderSeedingSection();
-  _renderMirrorSection();
+  // These populate elements by id, so they must run AFTER this HTML is in
+  // the DOM — not mid-string. Deferring one tick also lets the cached
+  // sharing rows paint first, so the section never flashes empty.
+  setTimeout(function() {
+    if (_msSection !== 'server') return;
+    _renderHotZimsSection();
+    _renderSeedingSection();
+    _renderMirrorSection();
+  }, 0);
   // Cache info section
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
     '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
@@ -5215,11 +5229,27 @@ async function _renderSeedingSection() {
   // inconsistent sizes across platforms and fight the amber palette.
   // Green only when the sidecar process is actually up — "ready" alone
   // means the binary exists, which is true even when a spawn just died.
+  // While the sidecar is coming up the label says "starting…" so text and
+  // dot never disagree; a short settle poll flips it green when RPC answers.
+  const starting = bt.status === 'ready' && bt.enabled && !bt.sidecar_running
+    && _btSettlePollsLeft > 0;
   const stColor = bt.status === 'ready'
     ? (bt.sidecar_running ? '#6abf69' : 'var(--text3)')
     : bt.status === 'unavailable' ? '#d9a13d' : 'var(--text3)';
-  const stateLabel = t('bt_state_' + bt.status);
+  const stateLabel = starting ? t('bt_state_starting') : t('bt_state_' + bt.status);
   statusEl.innerHTML = '<span class="share-port-dot" style="background:' + stColor + '"></span>' + esc(stateLabel);
+  // Remember it so a Mirror-section rebuild can seed the slot instead of
+  // flashing empty for the tick before this async refill lands.
+  window._btStatusHtml = statusEl.innerHTML;
+  if (starting) {
+    _btSettlePollsLeft--;
+    clearTimeout(window._btSettleTimer);
+    window._btSettleTimer = setTimeout(function() {
+      if (mode === 'manage') _renderSeedingSection();
+    }, _BT_SETTLE_POLL_MS);
+  } else {
+    _btSettlePollsLeft = 0;
+  }
   let html = '';
   // Friendly client-side copy for the known states; raw server hint only
   // as a fallback for states added later.
@@ -5317,10 +5347,23 @@ function _shareSwitch(key, on, locked, envVar, titleKey, descHtml, inactive, und
 }
 
 var _btSettingInFlight = false;
+// Settle poll: after an action that (re)spawns the sidecar, re-check status
+// every 1.5s until RPC answers (green dot) or the budget runs out. Armed
+// only by those actions — a dead sidecar on plain pane open shows honestly.
+var _btSettlePollsLeft = 0;
+var _BT_SETTLE_POLL_MS = 1500;
+var _BT_SETTLE_POLL_MAX = 10;
 
 async function _setBtSetting(key, cb) {
   cb.disabled = true;
   _btSettingInFlight = true;
+  // Optimistic status the instant BT is toggled on — the server write +
+  // sidecar spawn take a second or two, and leaving the label on "off"
+  // that whole time reads as "nothing happened". Grey dot, honest word.
+  if (key === 'torrent' && cb.checked) {
+    const _st = document.getElementById('ms-bt-status');
+    if (_st) _st.innerHTML = '<span class="share-port-dot" style="background:var(--text3)"></span>' + esc(t('bt_state_starting'));
+  }
   try {
     const body = {}; body[key] = cb.checked;
     const r = await manageFetch('/manage/bt-settings', {
@@ -5334,6 +5377,8 @@ async function _setBtSetting(key, cb) {
   }
   cb.disabled = false;
   _btSettingInFlight = false;
+  // Turning BT on spawns the sidecar server-side — watch it come up.
+  if (key === 'torrent' && cb.checked) _btSettlePollsLeft = _BT_SETTLE_POLL_MAX;
   // Re-render from fresh server truth AFTER the write lands. A poll that
   // raced the write used to repaint the Mirror toggle off mid-click and
   // read as "it failed".
@@ -5394,7 +5439,8 @@ async function _setBtPort(inp) {
     });
     if (!r.ok) { _showToast(t('save_failed')); return; }
     _showToast(t('saved'));
-    // The sidecar respawns on the new port; refresh the row shortly
+    // The sidecar respawns on the new port; watch it come back up
+    _btSettlePollsLeft = _BT_SETTLE_POLL_MAX;
     setTimeout(function() { _renderMirrorSection(); _renderSeedingSection(); }, 4000);
   } catch (e) { _showToast(t('save_failed')); }
 }
@@ -5523,7 +5569,7 @@ async function _renderMirrorSection() {
   let h = '<div class="share-rows">' +
     _shareSwitch('torrent', m.torrent_enabled, m.torrent_env_locked, 'ZIMI_BT',
       'share_bt_title', tH('share_bt_desc') + btInner,
-      false, '<div id="ms-bt-status" class="share-bt-status-right"></div>') +
+      false, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>') +
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
       'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !m.torrent_enabled) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
@@ -5532,6 +5578,7 @@ async function _renderMirrorSection() {
   '</div>';
   if (prog.phase) _scheduleMirrorProgressPoll();
   el.innerHTML = h;
+  try { localStorage.setItem(SK.SHARE_ROWS, h); } catch (e) {}
   // The BT status + seeding slots now live inside the card — refill them
   _renderSeedingSection();
 }
@@ -7704,9 +7751,16 @@ async function randomArticle(event) {
   btn.classList.add('rolling');
   try {
     var zimParam = currentSource ? '?zim=' + encodeURIComponent(currentSource) : '';
-    var res = await fetch('/random' + zimParam);
-    var data = await res.json();
-    if (!data.error) { openArticle(data.zim, data.path, data.title); return; }
+    // Unscoped rolls retry a couple of times — right after startup the
+    // ZIM list/archives may not be warm yet and the first roll can 500
+    // or come back empty; a silent no-op reads as a dead button.
+    var attempts = currentSource ? 1 : 3;
+    for (var i = 0; i < attempts; i++) {
+      var res = await fetch('/random' + zimParam);
+      var data = await res.json().catch(function() { return {error: 'bad json'}; });
+      if (!data.error) { openArticle(data.zim, data.path, data.title); return; }
+      if (i < attempts - 1) await new Promise(function(r) { setTimeout(r, 400); });
+    }
     // Fallback for zimgit/PDF ZIMs: pick random doc from catalog
     if (currentSource) {
       var catRes = await fetch('/catalog?zim=' + encodeURIComponent(currentSource));

@@ -851,6 +851,7 @@
   "multi_lang": "多语言",
   "bt_seeding": "BitTorrent + 做种",
   "bt_state_ready": "就绪",
+  "bt_state_starting": "启动中…",
   "bt_state_unavailable": "不可用",
   "bt_state_off": "关闭",
   "seeding_empty": "尚无做种的种子。通过 BT 下载的文件将显示在此。",

@@ -851,6 +851,7 @@
   "multi_lang": "متعدد اللغات",
   "bt_seeding": "BitTorrent + المشاركة",
   "bt_state_ready": "جاهز",
+  "bt_state_starting": "جارٍ البدء…",
   "bt_state_unavailable": "غير متوفر",
   "bt_state_off": "إيقاف",
   "seeding_empty": "لا توجد تورنتات للمشاركة بعد. ستظهر الملفات هنا.",

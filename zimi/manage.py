@@ -601,7 +601,6 @@ def handle_manage_get(handler, parsed, params):
         # Surface the BT engine state so the user can self-diagnose:
         # is it enabled, did the binary start, is the port reachable?
         from zimi import p2p
-        import shutil as _shutil
 
         enabled = p2p.is_torrent_enabled()
         backend_name = p2p.get_backend_name()
@@ -1016,9 +1015,7 @@ def handle_manage_post(handler, parsed, data):
 
         if not p2p.is_torrent_enabled():
             return handler._json(400, {"error": "BitTorrent is turned off"})
-        result = p2p_nat.probe(
-            p2p.get_bt_port(), try_upnp=p2p.is_upnp_enabled()
-        )
+        result = p2p_nat.probe(p2p.get_bt_port(), try_upnp=p2p.is_upnp_enabled())
         return handler._json(200, {"nat": result})
 
     elif parsed.path == "/manage/bt-settings":
@@ -1131,6 +1128,17 @@ def handle_manage_post(handler, parsed, data):
                     p2p.shutdown_backend()
                 except Exception:
                     pass
+            else:
+                # Switch on means ON — bring the sidecar up now. Status
+                # endpoints only peek, so without this nothing spawns it
+                # until the next download and the UI dot stays grey.
+                def _spawn_now():
+                    try:
+                        p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+                    except Exception:
+                        pass
+
+                threading.Thread(target=_spawn_now, daemon=True).start()
         if "peer_name" in data:
             from zimi import p2p_discovery as _disc2
 

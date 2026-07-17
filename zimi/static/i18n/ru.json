@@ -851,6 +851,7 @@
   "multi_lang": "Многоязычный",
   "bt_seeding": "BitTorrent + Сидирование",
   "bt_state_ready": "готово",
+  "bt_state_starting": "запуск…",
   "bt_state_unavailable": "недоступно",
   "bt_state_off": "выкл",
   "seeding_empty": "Пока нет сидируемых торрентов. Файлы, загруженные через BT, появятся здесь.",

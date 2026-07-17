@@ -851,6 +851,7 @@
   "multi_lang": "बहुभाषी",
   "bt_seeding": "BitTorrent + सीडिंग",
   "bt_state_ready": "तैयार",
+  "bt_state_starting": "शुरू हो रहा है…",
   "bt_state_unavailable": "अनुपलब्ध",
   "bt_state_off": "बंद",
   "seeding_empty": "अभी कोई टोरेंट सीड नहीं हो रहा। BT से डाउनलोड की गई फ़ाइलें यहां दिखेंगी।",

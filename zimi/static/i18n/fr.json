@@ -851,6 +851,7 @@
   "multi_lang": "Multilingue",
   "bt_seeding": "BitTorrent + Partage",
   "bt_state_ready": "prêt",
+  "bt_state_starting": "démarrage…",
   "bt_state_unavailable": "indisponible",
   "bt_state_off": "désactivé",
   "seeding_empty": "Aucun torrent en partage. Les fichiers téléchargés via BT apparaîtront ici.",

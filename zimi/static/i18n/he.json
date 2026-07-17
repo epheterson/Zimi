@@ -851,6 +851,7 @@
   "multi_lang": "רב-לשוני",
   "bt_seeding": "BitTorrent + שידור",
   "bt_state_ready": "מוכן",
+  "bt_state_starting": "מתחיל…",
   "bt_state_unavailable": "לא זמין",
   "bt_state_off": "כבוי",
   "seeding_empty": "אין טורנטים פעילים בשידור. קבצים שהורדו דרך BT יופיעו כאן.",

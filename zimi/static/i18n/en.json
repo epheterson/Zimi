@@ -851,6 +851,7 @@
   "multi_lang": "Multi-language",
   "bt_seeding": "BitTorrent + Seeding",
   "bt_state_ready": "ready",
+  "bt_state_starting": "starting…",
   "bt_state_unavailable": "unavailable",
   "bt_state_off": "off",
   "seeding_empty": "No torrents seeding yet. Files downloaded via BT will appear here.",

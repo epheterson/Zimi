@@ -713,7 +713,10 @@
   .share-num-input:disabled { opacity: 0.5; }
   .peer-name-input { width: 160px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 8px; text-align: left; }
   .share-port-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-  .share-port-retry-circle { width: 26px; height: 26px; padding: 0; border-radius: 50%; font-size: 13px; line-height: 1; }
+  /* Same surface treatment as the inputs beside it so it reads as a
+     control; flex centering keeps the glyph optically centered. */
+  .share-port-retry-circle { width: 26px; height: 26px; padding: 0; border-radius: 50%; font-size: 13px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center; background: var(--surface2); }
   .dl-seed-link { cursor: pointer; }
   .dl-seed-link:hover { color: var(--amber); }
   /* Seed cards: the status line is long ("Sharing · waiting…") and never

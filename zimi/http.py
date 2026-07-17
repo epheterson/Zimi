@@ -771,7 +771,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if zim:
                     if zim not in _srv.get_zim_files():
                         return self._json(404, {"error": f"ZIM '{zim}' not found"})
-                    pick_name = zim
+                    pick_names = [zim]
                 else:
                     eligible = [
                         z
@@ -780,57 +780,73 @@ class ZimHandler(BaseHTTPRequestHandler):
                     ]
                     if not eligible:
                         return self._json(200, {"error": "no ZIMs available"})
-                    pick_name = _random.choice(eligible)["name"]
+                    # One unlucky ZIM (unopenable archive, all picks non-HTML)
+                    # must not turn the dice into a no-op — try a few.
+                    pick_names = [
+                        z["name"]
+                        for z in _random.sample(eligible, min(3, len(eligible)))
+                    ]
                 want_thumb = param("thumb") == "1"
                 require_thumb = param("require_thumb") == "1"
-                is_wiktionary = "wiktionary" in pick_name.lower()
-                is_gutenberg = "gutenberg" in pick_name.lower()
-                is_wikipedia = "wikipedia" in pick_name.lower()
                 date_param = param("date")  # MMDD format
-                is_wikiquote = "wikiquote" in pick_name.lower()
-                max_tries = (
-                    50
-                    if is_wiktionary
-                    else (
-                        30
-                        if (is_gutenberg or is_wikiquote)
+                seed_param = param("seed")  # For deterministic daily picks
+                t0 = time.time()
+                candidates = []
+                archive = None
+                pick_name = pick_names[0]
+                is_wiktionary = is_gutenberg = is_wikiquote = False
+                for pick_name in pick_names:
+                    is_wiktionary = "wiktionary" in pick_name.lower()
+                    is_gutenberg = "gutenberg" in pick_name.lower()
+                    is_wikipedia = "wikipedia" in pick_name.lower()
+                    is_wikiquote = "wikiquote" in pick_name.lower()
+                    max_tries = (
+                        50
+                        if is_wiktionary
                         else (
-                            5 if (require_thumb or (is_wikipedia and date_param)) else 1
+                            30
+                            if (is_gutenberg or is_wikiquote)
+                            else (
+                                5
+                                if (require_thumb or (is_wikipedia and date_param))
+                                else 1
+                            )
                         )
                     )
-                )
-                t0 = time.time()
-                with _srv._zim_lock:
-                    archive = _srv.get_archive(pick_name)
+                    with _srv._zim_lock:
+                        archive = _srv.get_archive(pick_name)
                     if archive is None:
-                        return self._json(200, {"error": "archive not available"})
-                seed_param = param("seed")  # For deterministic daily picks
-                rng = None
-                if seed_param:
-                    seed_val = int(
-                        hashlib.md5((pick_name + seed_param).encode()).hexdigest()[:8],
-                        16,
-                    )
-                    rng = _random.Random(seed_val)
-                # Batch all ZIM reads under a single lock acquisition
-                candidates = []
-                with _srv._zim_lock:
-                    for _try in range(max_tries):
-                        result = None
-                        if date_param and len(date_param) == 4 and _try == 0:
-                            result = _srv._get_dated_entry(
-                                archive, pick_name, date_param, rng=rng
-                            )
-                        if not result:
-                            result = _srv.random_entry(archive, rng=rng)
-                        if not result:
-                            continue
-                        preview = None
-                        if want_thumb:
-                            preview = _srv._extract_preview(
-                                archive, pick_name, result["path"]
-                            )
-                        candidates.append((result, preview))
+                        continue
+                    rng = None
+                    if seed_param:
+                        seed_val = int(
+                            hashlib.md5((pick_name + seed_param).encode()).hexdigest()[
+                                :8
+                            ],
+                            16,
+                        )
+                        rng = _random.Random(seed_val)
+                    # Batch all ZIM reads under a single lock acquisition
+                    candidates = []
+                    with _srv._zim_lock:
+                        for _try in range(max_tries):
+                            result = None
+                            if date_param and len(date_param) == 4 and _try == 0:
+                                result = _srv._get_dated_entry(
+                                    archive, pick_name, date_param, rng=rng
+                                )
+                            if not result:
+                                result = _srv.random_entry(archive, rng=rng)
+                            if not result:
+                                continue
+                            preview = None
+                            if want_thumb:
+                                preview = _srv._extract_preview(
+                                    archive, pick_name, result["path"]
+                                )
+                            candidates.append((result, preview))
+                    if candidates:
+                        break
                 # Filter candidates outside the lock
                 best_result = None
                 best_preview = None
