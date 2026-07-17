@@ -89,14 +89,15 @@ def test_mirror_status_reflects_env(monkeypatch):
     assert status["upload_kb"] == 8000
 
 
-def test_seed_options_uses_mirror_caps_when_enabled(monkeypatch):
+def test_seed_options_uses_mirror_ratio_when_enabled(monkeypatch):
     monkeypatch.setenv("ZIMI_MIRROR", "1")
     monkeypatch.setenv("ZIMI_MIRROR_RATIO", "100")
-    monkeypatch.setenv("ZIMI_MIRROR_UPLOAD_KB", "10000")
     opts = p2p.effective_seed_options()
-    # When mirror's on we use mirror's caps
+    # Mirror lifts the ratio cap. Speed is NOT capped per-torrent anymore —
+    # the global up/down limits govern bandwidth — so max-upload-limit is
+    # "0K" (unlimited per-torrent).
     assert float(opts["seed-ratio"]) == 100.0
-    assert opts["max-upload-limit"] == "10000K"
+    assert opts["max-upload-limit"] == "0K"
 
 
 def test_seed_options_uses_user_caps_when_mirror_off():
@@ -227,7 +228,11 @@ def test_mirror_sync_seeds_installed_from_catalog(_mirror_env, monkeypatch):
         "_fetch_kiwix_catalog",
         lambda *a, **k: (
             1,
-            [{"download_url": "https://download.kiwix.org/zim/wikipedia/wikipedia_en_100_2026-06.zim.meta4"}],
+            [
+                {
+                    "download_url": "https://download.kiwix.org/zim/wikipedia/wikipedia_en_100_2026-06.zim.meta4"
+                }
+            ],
             None,
         ),
     )
@@ -290,7 +295,10 @@ def test_retire_stale_seeds_removes_orphans(_mirror_env, monkeypatch):
         managed=[
             {"gid": "g-old", "files": [{"path": str(_mirror_env / "old_2026-01.zim")}]},
             {"gid": "g-keep", "files": [{"path": str(kept)}]},
-            {"gid": "g-staging", "files": [{"path": str(_mirror_env.parent / "staging" / "x.zim")}]},
+            {
+                "gid": "g-staging",
+                "files": [{"path": str(_mirror_env.parent / "staging" / "x.zim")}],
+            },
         ]
     )
     monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
@@ -311,8 +319,12 @@ def test_archive_catalog_torrents_fetches_all(_mirror_env, monkeypatch):
         lambda q, l, c, s: (
             2,
             [
-                {"download_url": "https://download.kiwix.org/zim/a/a_2026-06.zim.meta4"},
-                {"download_url": "https://download.kiwix.org/zim/b/b_2026-06.zim.meta4"},
+                {
+                    "download_url": "https://download.kiwix.org/zim/a/a_2026-06.zim.meta4"
+                },
+                {
+                    "download_url": "https://download.kiwix.org/zim/b/b_2026-06.zim.meta4"
+                },
             ],
             None,
         ),
@@ -331,7 +343,10 @@ def test_archive_catalog_torrents_fetches_all(_mirror_env, monkeypatch):
     import zimi.server as server
 
     tdir = os.path.join(server.ZIMI_DATA_DIR, "bt", "torrents")
-    assert sorted(os.listdir(tdir)) == ["a_2026-06.zim.torrent", "b_2026-06.zim.torrent"]
+    assert sorted(os.listdir(tdir)) == [
+        "a_2026-06.zim.torrent",
+        "b_2026-06.zim.torrent",
+    ]
     # Second call in the same run is a no-op
     assert lib.archive_catalog_torrents(spacing=0) == 0
     lib._catalog_torrents_archived = False
@@ -414,7 +429,11 @@ def test_ensure_magnets_regular_user_discards_torrent(_mirror_env, monkeypatch):
         "_fetch_kiwix_catalog",
         lambda *a, **k: (
             1,
-            [{"download_url": "https://download.kiwix.org/zim/f/foo_2026-06.zim.meta4"}],
+            [
+                {
+                    "download_url": "https://download.kiwix.org/zim/f/foo_2026-06.zim.meta4"
+                }
+            ],
             None,
         ),
     )
@@ -450,7 +469,11 @@ def test_ensure_magnets_mirror_keeps_torrent_file(_mirror_env, monkeypatch):
         "_fetch_kiwix_catalog",
         lambda *a, **k: (
             1,
-            [{"download_url": "https://download.kiwix.org/zim/b/bar_2026-06.zim.meta4"}],
+            [
+                {
+                    "download_url": "https://download.kiwix.org/zim/b/bar_2026-06.zim.meta4"
+                }
+            ],
             None,
         ),
     )
@@ -483,7 +506,10 @@ def test_stop_mirror_seeds_removes_only_uncapped_mirror_seeds(_mirror_env, monke
         managed=[
             {"gid": "g-mirror", "files": [{"path": str(mirror_file)}]},
             {"gid": "g-normal", "files": [{"path": str(normal_file)}]},
-            {"gid": "g-staging", "files": [{"path": str(_mirror_env.parent / "staging" / "dl.zim")}]},
+            {
+                "gid": "g-staging",
+                "files": [{"path": str(_mirror_env.parent / "staging" / "dl.zim")}],
+            },
         ],
         options={
             "g-mirror": {"seed-ratio": "0"},

@@ -267,6 +267,48 @@ def is_seed_ratio_env_locked() -> bool:
     return "ratio" in _bt_conf() or _env_explicitly_set("ZIMI_SEED_RATIO")
 
 
+# Global BitTorrent bandwidth caps in KB/s, 0 = unlimited (aria2's default).
+# Applied to the whole aria2 process — downloads AND seeds, mirror included —
+# so one pair of numbers governs all sharing speed. ZIMI_BT's up=/down= fields
+# lock the UI field when set.
+def get_bt_up_limit_kb() -> int:
+    raw = _bt_conf().get("up") or os.environ.get("ZIMI_BT_UP_KB")
+    if raw in (None, ""):
+        raw = _read_pref("bt_up_kb", 0)
+    try:
+        return max(0, int(raw))
+    except (ValueError, TypeError):
+        return 0
+
+
+def get_bt_down_limit_kb() -> int:
+    raw = _bt_conf().get("down") or os.environ.get("ZIMI_BT_DOWN_KB")
+    if raw in (None, ""):
+        raw = _read_pref("bt_down_kb", 0)
+    try:
+        return max(0, int(raw))
+    except (ValueError, TypeError):
+        return 0
+
+
+def is_bt_up_env_locked() -> bool:
+    return "up" in _bt_conf() or _env_explicitly_set("ZIMI_BT_UP_KB")
+
+
+def is_bt_down_env_locked() -> bool:
+    return "down" in _bt_conf() or _env_explicitly_set("ZIMI_BT_DOWN_KB")
+
+
+def apply_rate_limits() -> None:
+    """Push the current up/down caps to a running sidecar (live, no respawn)."""
+    backend = peek_backend()
+    if backend is not None and hasattr(backend, "set_global_rate_limits"):
+        try:
+            backend.set_global_rate_limits(get_bt_up_limit_kb(), get_bt_down_limit_kb())
+        except Exception as e:
+            log.debug("live rate-limit apply failed: %s", e)
+
+
 # Absolute free-space floor shared by the download gate and the seeding
 # pause. Percent-of-drive defaults are wrong at both ends: 5% of a 466 GB
 # drive is 23 GB of "missing" space, and seeding existing files writes
@@ -398,6 +440,10 @@ def get_mirror_status() -> dict:
         "upload_kb": get_mirror_upload_kb(),
         "seed_ratio_cap": get_seed_ratio_cap(),
         "seed_ratio_env_locked": is_seed_ratio_env_locked(),
+        "bt_up_kb": get_bt_up_limit_kb(),
+        "bt_down_kb": get_bt_down_limit_kb(),
+        "bt_up_env_locked": is_bt_up_env_locked(),
+        "bt_down_env_locked": is_bt_down_env_locked(),
         # Docker bridge mode advertises an unreachable container IP —
         # Nearby silently doesn't work. The UI warns; ZIMI_NEARBY's ip=
         # field (or host networking) fixes it.
@@ -418,28 +464,15 @@ def _mirror_progress_snapshot() -> dict:
 
 
 def effective_seed_options() -> dict:
-    """Return aria2 seed options reflecting mirror-or-personal caps.
+    """Per-torrent seed options: just the ratio cap (mirror lifts it).
 
-    Mirror mode raises ratio + upload caps. Personal mode uses the
-    user's `ZIMI_SEED_RATIO` (default 2.0) and `ZIMI_SEED_UPLOAD_KB`
-    (default DEFAULT_SEED_BANDWIDTH_KB).
+    Speed is NOT capped per-torrent — the global up/down limits
+    (get_bt_up_limit_kb / get_bt_down_limit_kb) govern total bandwidth for
+    downloads and seeds alike, so one BT-section control covers personal
+    seeding AND mirror. max_upload_kb=0 means per-torrent unlimited.
     """
-    if is_mirror_enabled():
-        return seed_options(
-            ratio_cap=get_mirror_ratio_cap(),
-            max_upload_kb=get_mirror_upload_kb(),
-        )
-    user_upload_raw = _bt_conf().get("up") or os.environ.get(
-        "ZIMI_SEED_UPLOAD_KB", str(DEFAULT_SEED_BANDWIDTH_KB)
-    )
-    try:
-        user_upload = max(64, int(user_upload_raw))
-    except (ValueError, TypeError):
-        user_upload = DEFAULT_SEED_BANDWIDTH_KB
-    return seed_options(
-        ratio_cap=get_seed_ratio_cap(),
-        max_upload_kb=user_upload,
-    )
+    ratio = get_mirror_ratio_cap() if is_mirror_enabled() else get_seed_ratio_cap()
+    return seed_options(ratio_cap=ratio, max_upload_kb=0)
 
 
 def should_pause_for_disk_pressure(zim_dir: str) -> bool:
@@ -601,6 +634,10 @@ class Aria2Backend(BTBackend):
                 "--bt-stop-timeout=0",
                 "--summary-interval=0",
                 "--quiet=true",
+                # Global bandwidth caps (0 = unlimited). One pair governs all
+                # traffic — downloads, seeds, mirror — changeable live via RPC.
+                f"--max-overall-upload-limit={get_bt_up_limit_kb()}K",
+                f"--max-overall-download-limit={get_bt_down_limit_kb()}K",
             ]
             log.info("Starting aria2c on rpc:%d, bt:%d", self.rpc_port, self.bt_port)
             # Bundled aria2c (desktop builds): its relocated libcrypto must
@@ -803,6 +840,18 @@ class Aria2Backend(BTBackend):
         waiting = self._rpc("aria2.tellWaiting", [0, 1000])
         stopped = self._rpc("aria2.tellStopped", [0, 1000])
         return list(active) + list(waiting) + list(stopped)
+
+    def set_global_rate_limits(self, up_kb: int, down_kb: int) -> None:
+        """Change the overall up/down caps on the fly (0 = unlimited)."""
+        self._rpc(
+            "aria2.changeGlobalOption",
+            [
+                {
+                    "max-overall-upload-limit": f"{max(0, int(up_kb))}K",
+                    "max-overall-download-limit": f"{max(0, int(down_kb))}K",
+                }
+            ],
+        )
 
     def purge_stopped(self, keep_errors: bool = True) -> None:
         """Clear finished download results from aria2's session.

@@ -1188,6 +1188,32 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["seed_ratio"] = ratio
+        # Global bandwidth caps (KB/s, 0 = unlimited). Applied live to the
+        # running sidecar so a new limit takes effect without a respawn.
+        for _field, _envlock in (
+            ("bt_up_kb", p2p.is_bt_up_env_locked),
+            ("bt_down_kb", p2p.is_bt_down_env_locked),
+        ):
+            if _field in data:
+                if _envlock():
+                    return handler._json(
+                        403,
+                        {
+                            "error": "Bandwidth limits are controlled by the ZIMI_BT env var"
+                        },
+                    )
+                try:
+                    kb = max(0, int(data[_field]))
+                except (ValueError, TypeError):
+                    return handler._json(400, {"error": f"{_field} must be a number"})
+                if not p2p.set_pref(_field, kb):
+                    return handler._json(
+                        500,
+                        {"error": "could not save setting (config dir not writable)"},
+                    )
+                changed[_field] = kb
+        if any(k in changed for k in ("bt_up_kb", "bt_down_kb")):
+            p2p.apply_rate_limits()
         if not changed:
             return handler._json(
                 400,

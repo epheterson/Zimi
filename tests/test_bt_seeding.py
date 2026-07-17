@@ -48,6 +48,38 @@ def test_seed_disabled_when_zimi_seed_off(monkeypatch):
     assert p2p.is_seeding_enabled() is False
 
 
+def test_bt_rate_limits_default_unlimited(monkeypatch, tmp_path):
+    monkeypatch.delenv("ZIMI_BT", raising=False)
+    monkeypatch.delenv("ZIMI_BT_UP_KB", raising=False)
+    monkeypatch.delenv("ZIMI_BT_DOWN_KB", raising=False)
+    p2p.set_prefs_path(str(tmp_path / "prefs.json"))
+    assert p2p.get_bt_up_limit_kb() == 0
+    assert p2p.get_bt_down_limit_kb() == 0
+
+
+def test_bt_rate_limits_from_pref(monkeypatch, tmp_path):
+    monkeypatch.delenv("ZIMI_BT", raising=False)
+    monkeypatch.delenv("ZIMI_BT_UP_KB", raising=False)
+    p2p.set_prefs_path(str(tmp_path / "prefs.json"))
+    p2p.set_pref("bt_up_kb", 5120)
+    p2p.set_pref("bt_down_kb", 20480)
+    assert p2p.get_bt_up_limit_kb() == 5120
+    assert p2p.get_bt_down_limit_kb() == 20480
+
+
+def test_bt_rate_limit_env_locks_field(monkeypatch):
+    monkeypatch.setenv("ZIMI_BT", "up=8192")
+    assert p2p.get_bt_up_limit_kb() == 8192
+    assert p2p.is_bt_up_env_locked() is True
+
+
+def test_effective_seed_options_no_per_torrent_cap(monkeypatch, tmp_path):
+    monkeypatch.delenv("ZIMI_MIRROR", raising=False)
+    p2p.set_prefs_path(str(tmp_path / "prefs.json"))
+    opts = p2p.effective_seed_options()
+    assert opts["max-upload-limit"] == "0K"  # global limit governs, not per-torrent
+
+
 def test_seed_enabled_by_default(monkeypatch):
     monkeypatch.delenv("ZIMI_SEED", raising=False)
     assert p2p.is_seeding_enabled() is True
