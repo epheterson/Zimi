@@ -302,9 +302,9 @@ def _drain_queue():
 
 
 # Refuse downloads that would obviously fill the disk: the expected size
-# plus a safety floor must fit in free space. Sizes are often unknown, so
-# the seed disk-pressure threshold acts as the fallback gate.
-_DISK_FLOOR_BYTES = 2 * 1024**3
+# plus a safety floor must fit in free space. The floor is shared with
+# the seeding pause in p2p (canonical definition lives there).
+from zimi.p2p import DISK_FLOOR_BYTES as _DISK_FLOOR_BYTES
 
 
 def _refuse_for_disk_space(size_bytes, dest=None):
@@ -574,6 +574,7 @@ def resume_pending_downloads():
             items = json.load(f).get("pending", [])
     except (OSError, ValueError):
         return 0
+
     # The manifest is NOT deleted up front: a crash during the resume
     # window must not lose every pending transfer. The single rewrite at
     # the end (under the lock) is the source of truth.
@@ -720,9 +721,7 @@ def _persist_opds_cache():
     try:
         with _opds_lock:
             entries = list(_opds_cache.items())
-        entries.sort(
-            key=lambda kv: (not _is_browse_key(kv[0]), -kv[1][0])
-        )
+        entries.sort(key=lambda kv: (not _is_browse_key(kv[0]), -kv[1][0]))
         _srv._atomic_write_json(
             _catalog_cache_path(), dict(entries[:_OPDS_DISK_KEYS_MAX])
         )
@@ -1149,9 +1148,7 @@ def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
             continue
         try:
             req = urllib.request.Request(turl, headers={"User-Agent": "Zimi/1.0"})
-            with urllib.request.urlopen(
-                req, timeout=20, context=_srv.SSL_CTX
-            ) as resp:
+            with urllib.request.urlopen(req, timeout=20, context=_srv.SSL_CTX) as resp:
                 data = resp.read(_max_bytes + 1)
             # bencoded dict or it isn't a torrent (error pages, redirects)
             if not data.startswith(b"d") or len(data) > _max_bytes:
@@ -1246,9 +1243,7 @@ def retire_stale_seeds():
                 try:
                     backend.remove(raw.get("gid", ""), delete_files=True)
                     removed += 1
-                    log.info(
-                        "Retired stale seed: %s", os.path.basename(path)
-                    )
+                    log.info("Retired stale seed: %s", os.path.basename(path))
                 except Exception:
                     pass
                 break
@@ -1401,9 +1396,7 @@ def _try_bt_download(
             _cap = _p2p.get_seed_ratio_cap()
             # Zimi's "ratio 0" means never seed; aria2's means seed
             # forever. Only mirror mode gets the uncapped value.
-            if _p2p.is_seeding_enabled() and (
-                _cap > 0 or _p2p.is_mirror_enabled()
-            ):
+            if _p2p.is_seeding_enabled() and (_cap > 0 or _p2p.is_mirror_enabled()):
                 try:
                     _meta = _get_torrent_metadata().get(dl["filename"]) or {}
                     _src = _meta.get("torrent_file") or torrent_url

@@ -69,8 +69,9 @@ def test_ratio_cap_invalid_falls_back(monkeypatch):
 
 
 def test_disk_pressure_threshold_default(monkeypatch):
+    # Unset → None: the absolute byte floor governs, not a percent
     monkeypatch.delenv("ZIMI_SEED_DISK_PCT", raising=False)
-    assert p2p.get_disk_pressure_pct() == 5  # 5% free → pause seeding
+    assert p2p.get_disk_pressure_pct() is None
 
 
 def test_disk_pressure_threshold_override(monkeypatch):
@@ -96,6 +97,24 @@ def test_should_not_pause_when_disk_ok(monkeypatch):
     fake_usage = MagicMock(total=100, free=50, used=50)
     monkeypatch.setattr(p2p.shutil, "disk_usage", lambda p: fake_usage)
     assert p2p.should_pause_for_disk_pressure("/zims") is False
+
+
+def test_no_pause_on_big_healthy_drive(monkeypatch):
+    """4.3% free on a 466 GB drive is still 20 GB — don't pause seeding.
+    The old percent default refused exactly this (seeding writes ~nothing)."""
+    monkeypatch.delenv("ZIMI_SEED_DISK_PCT", raising=False)
+    gb = 1024**3
+    fake_usage = MagicMock(total=466 * gb, free=20 * gb, used=446 * gb)
+    monkeypatch.setattr(p2p.shutil, "disk_usage", lambda p: fake_usage)
+    assert p2p.should_pause_for_disk_pressure("/zims") is False
+
+
+def test_pause_below_absolute_floor(monkeypatch):
+    monkeypatch.delenv("ZIMI_SEED_DISK_PCT", raising=False)
+    gb = 1024**3
+    fake_usage = MagicMock(total=466 * gb, free=1 * gb, used=465 * gb)
+    monkeypatch.setattr(p2p.shutil, "disk_usage", lambda p: fake_usage)
+    assert p2p.should_pause_for_disk_pressure("/zims") is True
 
 
 def test_disk_check_handles_missing_path(monkeypatch):
@@ -187,25 +206,45 @@ def test_status_follows_metadata_gid_to_content_transfer(monkeypatch):
     file lands; the content transfer continues under followedBy. status()
     must report the content transfer — reporting the metadata GID made the
     caller install a preallocated, mostly-empty staging file."""
-    b = _mk_backend(monkeypatch, {
-        "meta1": {"gid": "meta1", "status": "complete", "followedBy": ["content1"],
-                  "completedLength": "40960", "totalLength": "40960"},
-        "content1": {"gid": "content1", "status": "active",
-                     "completedLength": "1048576", "totalLength": "23000000000",
-                     "downloadSpeed": "9999", "connections": "12"},
-    })
+    b = _mk_backend(
+        monkeypatch,
+        {
+            "meta1": {
+                "gid": "meta1",
+                "status": "complete",
+                "followedBy": ["content1"],
+                "completedLength": "40960",
+                "totalLength": "40960",
+            },
+            "content1": {
+                "gid": "content1",
+                "status": "active",
+                "completedLength": "1048576",
+                "totalLength": "23000000000",
+                "downloadSpeed": "9999",
+                "connections": "12",
+            },
+        },
+    )
     st = b.status("meta1")
     assert st["state"] == "downloading"
-    assert st["gid"] == "content1"          # caller must rebind to this
+    assert st["gid"] == "content1"  # caller must rebind to this
     assert st["total_bytes"] == 23000000000  # real totals, not the .torrent's
 
 
 def test_status_reports_complete_only_when_content_done(monkeypatch):
-    b = _mk_backend(monkeypatch, {
-        "meta1": {"gid": "meta1", "status": "complete", "followedBy": ["c1"]},
-        "c1": {"gid": "c1", "status": "complete",
-               "completedLength": "100", "totalLength": "100"},
-    })
+    b = _mk_backend(
+        monkeypatch,
+        {
+            "meta1": {"gid": "meta1", "status": "complete", "followedBy": ["c1"]},
+            "c1": {
+                "gid": "c1",
+                "status": "complete",
+                "completedLength": "100",
+                "totalLength": "100",
+            },
+        },
+    )
     st = b.status("meta1")
     assert st["state"] == "complete"
     assert st["gid"] == "c1"
@@ -213,10 +252,17 @@ def test_status_reports_complete_only_when_content_done(monkeypatch):
 
 def test_status_plain_download_unchanged(monkeypatch):
     """Direct downloads (no followedBy) behave exactly as before."""
-    b = _mk_backend(monkeypatch, {
-        "g1": {"gid": "g1", "status": "active",
-               "completedLength": "5", "totalLength": "10"},
-    })
+    b = _mk_backend(
+        monkeypatch,
+        {
+            "g1": {
+                "gid": "g1",
+                "status": "active",
+                "completedLength": "5",
+                "totalLength": "10",
+            },
+        },
+    )
     st = b.status("g1")
     assert st["gid"] == "g1"
     assert st["completed_bytes"] == 5
@@ -226,10 +272,18 @@ def test_status_seeding_torrent_reports_complete(monkeypatch):
     """aria2 keeps a finished torrent 'active' while seeding — the download
     itself is done and must report complete, or the UI sits at 100% until
     the seed ratio caps."""
-    b = _mk_backend(monkeypatch, {
-        "g1": {"gid": "g1", "status": "active", "seeder": "true",
-               "completedLength": "100", "totalLength": "100"},
-    })
+    b = _mk_backend(
+        monkeypatch,
+        {
+            "g1": {
+                "gid": "g1",
+                "status": "active",
+                "seeder": "true",
+                "completedLength": "100",
+                "totalLength": "100",
+            },
+        },
+    )
     st = b.status("g1")
     assert st["state"] == "complete"
 

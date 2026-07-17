@@ -190,8 +190,10 @@ def is_torrent_env_locked() -> bool:
 def get_bt_port() -> int:
     """Inbound BT port. ZIMI_BT's port= field (or legacy ZIMI_BT_PORT)
     wins; otherwise the persisted UI preference; default 6881."""
-    raw = _bt_conf().get("port") or os.environ.get("ZIMI_BT_PORT") or _read_pref(
-        "bt_port", DEFAULT_BT_PORT
+    raw = (
+        _bt_conf().get("port")
+        or os.environ.get("ZIMI_BT_PORT")
+        or _read_pref("bt_port", DEFAULT_BT_PORT)
     )
     try:
         n = int(raw)
@@ -265,13 +267,23 @@ def is_seed_ratio_env_locked() -> bool:
     return "ratio" in _bt_conf() or _env_explicitly_set("ZIMI_SEED_RATIO")
 
 
-def get_disk_pressure_pct() -> int:
-    """Pause seeding when free disk drops below this percent. Default 5."""
-    raw = _bt_conf().get("disk_min") or os.environ.get("ZIMI_SEED_DISK_PCT", "5")
+# Absolute free-space floor shared by the download gate and the seeding
+# pause. Percent-of-drive defaults are wrong at both ends: 5% of a 466 GB
+# drive is 23 GB of "missing" space, and seeding existing files writes
+# almost nothing anyway.
+DISK_FLOOR_BYTES = 2 * 1024**3
+
+
+def get_disk_pressure_pct() -> int | None:
+    """Explicit percent threshold for the seeding pause, or None when the
+    user hasn't set one (the absolute DISK_FLOOR_BYTES applies instead)."""
+    raw = _bt_conf().get("disk_min") or os.environ.get("ZIMI_SEED_DISK_PCT")
+    if raw in (None, ""):
+        return None
     try:
         return max(1, min(50, int(raw)))
     except (ValueError, TypeError):
-        return 5
+        return None
 
 
 def seed_options(*, ratio_cap: float, max_upload_kb: int) -> dict:
@@ -431,15 +443,19 @@ def effective_seed_options() -> dict:
 
 
 def should_pause_for_disk_pressure(zim_dir: str) -> bool:
-    """Free space below ZIMI_SEED_DISK_PCT → pause all seeds."""
+    """Pause all seeds when free space is critically low: below the
+    absolute DISK_FLOOR_BYTES, or below ZIMI_SEED_DISK_PCT percent when
+    the user set one explicitly."""
     try:
         usage = shutil.disk_usage(zim_dir)
     except OSError:
         return False  # can't tell → don't pause
     if usage.total == 0:
         return False
-    pct_free = (usage.free / usage.total) * 100
-    return pct_free < get_disk_pressure_pct()
+    pct = get_disk_pressure_pct()
+    if pct is not None:
+        return (usage.free / usage.total) * 100 < pct
+    return usage.free < DISK_FLOOR_BYTES
 
 
 # ============================================================================
