@@ -67,8 +67,15 @@ libzim_bins = collect_libzim_binaries()
 # any system aria2c, then to plain HTTP.
 _aria2_dir = os.environ.get('ZIMI_ARIA2_DIR')
 if _aria2_dir and os.path.isdir(_aria2_dir):
-    for _f in sorted(os.listdir(_aria2_dir)):
-        libzim_bins.append((os.path.join(_aria2_dir, _f), '.'))
+    for _root, _dirs, _files in os.walk(_aria2_dir):
+        _rel = os.path.relpath(_root, _aria2_dir)
+        _dest = '.' if _rel == '.' else _rel
+        for _f in sorted(_files):
+            # Subdirectories must survive: ossl-modules/ is located at
+            # runtime relative to the aria2c binary (OPENSSL_MODULES) —
+            # flattening it silently reverts to the Homebrew path baked
+            # into libcrypto, which only exists on the build runner.
+            libzim_bins.append((os.path.join(_root, _f), _dest))
     print(f"Bundling aria2 sidecar from {_aria2_dir}")
 
 a = Analysis(
