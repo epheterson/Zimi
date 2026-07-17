@@ -9,8 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.7.2] - 2026-07-16
 
-Backlog blitz: both open field reports plus the deep backlog, in one
-push.
+The "Everywhere + Forever" release. Both open field reports fixed within
+a day (#30, #28), and the distribution story finished: desktop apps that
+torrent out of the box, mirror nodes that can carry the whole catalog
+through an internet blackout, and an almanac that tells the truth about
+every date it shows.
+
+### Highlights
+
+- **Desktop apps torrent out of the box.** The Mac and Linux apps now
+  ship their own BitTorrent engine, signed and notarized with the app.
+  Every install shares the load with the Kiwix mirrors, automatically.
+- **Your router opens the door.** Like every real BT client: automatic
+  UPnP port-forwarding, a port open/closed indicator, and a retry button,
+  right in the BitTorrent settings. DHT is on, so magnet links and
+  trackerless swarms just work.
+- **Mirror mode is real now.** Flip one switch and Zimi seeds your whole
+  library, uncapped, and archives the torrent for every catalog item —
+  a single mirror node can bootstrap ZIM distribution for an entire
+  offline network. Turning it off stops the seeds but never deletes the
+  backup.
+- **Built for the day the internet isn't there.** Every install keeps an
+  offline copy of the catalog and a magnet link per installed ZIM. The
+  catalog browses, searches, and installs from LAN peers with zero
+  connectivity.
+- **Honest seeding.** Seeds survive restarts, and the seeding panel
+  shows snagged ones in red with the reason instead of hiding them.
+- **The calendar is yours, wherever you are.** Click your location on
+  the almanac map: national holidays follow (17 countries + a worldwide
+  set), season names match your hemisphere, and equinoxes are computed
+  to the minute. A new "About this data" section states the precision of
+  every date on the page, in all 10 languages.
+- **The world clock is alive**: 28 cities, one per UTC offset, each card
+  tinted by its local daylight.
+- **Panels stopped blanking themselves** (#30): the manage UI no longer
+  trips Zimi's own rate limiter, and a rate-limited response keeps
+  last-known content instead of clearing the page.
+- **Downloads are stubborn now**: they survive server restarts, refuse
+  to start when the disk can't fit them, and flip their catalog card to
+  Installed the moment they land.
+- **Standing maintenance**: catalog, port mapping, seeds, and magnets
+  refresh themselves every 12 hours — no visit required.
 
 ### Added
 
