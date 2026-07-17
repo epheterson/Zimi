@@ -5208,29 +5208,22 @@ function _toggleAllHotZims(checked) {
   });
 }
 
+// Lightweight status refresh — updates ONLY the BT status dot/label and the
+// port reachability dot, in place. No seeding list (that lives in the
+// Downloads tab; rendering it here changed height and made the pane jump),
+// no full-section rebuild. Kept the name so the many callers don't churn.
 async function _renderSeedingSection() {
-  let bt, seeding;
+  let bt;
   try {
-    [bt, seeding] = await Promise.all([
-      manageFetch('/manage/bt-status').then(r => r.json()),
-      manageFetch('/manage/seeding').then(r => r.json()),
-    ]);
+    bt = await manageFetch('/manage/bt-status').then(r => r.json());
   } catch (e) {
-    if (e && e.rateLimited) return; // keep last-known status (#30)
-    const errEl = document.getElementById('ms-bt-status');
-    if (errEl) errEl.textContent = t('error');
-    return;
+    return; // keep last-known status (#30)
   }
   const statusEl = document.getElementById('ms-bt-status');
-  const listEl = document.getElementById('ms-seeding-list');
-  if (!statusEl || !listEl) return;
-  // Status: dot + state, tucked under the toggle in the right column.
-  // CSS dot (same treatment as the port row) — emoji dots render at
-  // inconsistent sizes across platforms and fight the amber palette.
-  // Green only when the sidecar process is actually up — "ready" alone
-  // means the binary exists, which is true even when a spawn just died.
-  // While the sidecar is coming up the label says "starting…" so text and
-  // dot never disagree; a short settle poll flips it green when RPC answers.
+  if (!statusEl) return;
+  // Green only when the sidecar process is actually up — "ready" alone means
+  // the binary exists. While it's coming up the label says "starting…" so
+  // text and dot never disagree; a short settle poll flips it green.
   const starting = bt.status === 'ready' && bt.enabled && !bt.sidecar_running
     && _btSettlePollsLeft > 0;
   const stColor = bt.status === 'ready'
@@ -5238,9 +5231,14 @@ async function _renderSeedingSection() {
     : bt.status === 'unavailable' ? '#d9a13d' : 'var(--text3)';
   const stateLabel = starting ? t('bt_state_starting') : t('bt_state_' + bt.status);
   statusEl.innerHTML = '<span class="share-port-dot" style="background:' + stColor + '"></span>' + esc(stateLabel);
-  // Remember it so a Mirror-section rebuild can seed the slot instead of
-  // flashing empty for the tick before this async refill lands.
   window._btStatusHtml = statusEl.innerHTML;
+  // Port reachability dot, updated in place (no row rebuild).
+  const pdot = document.getElementById('share-port-dot');
+  if (pdot) {
+    const reach = bt.nat ? bt.nat.reachable : null;
+    pdot.style.background = reach == null ? 'var(--text3)' : (reach ? '#6abf69' : 'var(--error)');
+    pdot.title = reach == null ? t('bt_port_unknown') : (reach ? t('bt_port_open') : t('bt_port_closed'));
+  }
   if (starting) {
     _btSettlePollsLeft--;
     clearTimeout(window._btSettleTimer);
@@ -5250,80 +5248,6 @@ async function _renderSeedingSection() {
   } else {
     _btSettlePollsLeft = 0;
   }
-  let html = '';
-  // Friendly client-side copy for the known states; raw server hint only
-  // as a fallback for states added later.
-  const btHint = bt.status === 'off' ? t('bt_off_hint')
-    : bt.status === 'unavailable' ? t('bt_unavailable_hint')
-    : bt.hint;
-  if (btHint) {
-    html += '<div class="ms-hint" style="margin-top:4px">' + esc(btHint) + '</div>';
-  }
-  // Surface the local peer instance name + a count of LAN peers if any.
-  // Lets users confirm "I'm advertising as ___" at a glance.
-  try {
-    const pr = await authedFetch('/manage/peers');
-    if (pr.ok) {
-      const pd = await pr.json();
-      if (pd.enabled) {
-        const self = pd.self || '';
-        const n = (pd.peers || []).length;
-        // The advertised name is editable in place; persists as a pref
-        // and takes effect on the next restart (mDNS re-registration).
-        let nameLocked = false;
-        try { nameLocked = !!(await (await authedFetch('/manage/mirror')).json()).peer_name_env_locked; } catch (e) {}
-        html += '<div class="share-field" style="margin-top:6px">' +
-          '<label>' + tH('peer_advertising_as') + '</label>' +
-          '<input type="text" class="peer-name-input" value="' + escAttr(self) + '" maxlength="63"' +
-          (nameLocked ? ' disabled' : '') +
-          ' title="' + escAttr(t('peer_name_hint')) + '" aria-label="' + escAttr(t('peer_advertising_as')) + '"' +
-          ' onchange="_setPeerName(this)">' +
-          (n > 0 ? '<span class="share-field-note">' + n + ' ' + tH('peers') + '</span>' : '') +
-          '</div>';
-      }
-    }
-  } catch (e) { /* fail-soft */ }
-  // Hints + server-name render full-width above the seed list
-  window._btInfoHtml = html;
-
-  // Seeding list — hidden entirely when nothing seeds (downloads have
-  // their own tab; an explainer here just confused the settings page)
-  const torrents = seeding.torrents || [];
-  if (!torrents.length) {
-    listEl.innerHTML = window._btInfoHtml || '';
-    return;
-  }
-  const fmt = _fmtBytes;
-  let rows = '<div class="seeding-totals">' +
-    tH('seeding_totals', {
-      n: torrents.length,
-      up: fmt(seeding.totals.uploaded),
-      down: fmt(seeding.totals.downloaded),
-      ratio: seeding.totals.ratio.toFixed(2),
-    }) + '</div>';
-  rows += '<div class="seeding-list">';
-  for (const tr of torrents) {
-    const ratioPct = Math.min(100, (tr.ratio / seeding.ratio_cap) * 100);
-    // Snagged seeds (errored, or their file is gone) render honestly in
-    // red instead of pretending to seed — mirrors especially need this.
-    const snagged = !!tr.snag;
-    rows += '<div class="seeding-row' + (snagged ? ' seeding-snagged' : '') + '">' +
-      '<div class="seeding-name" title="' + escAttr(tr.info_hash || '') + '">' + esc(tr.filename) + '</div>' +
-      '<div class="seeding-meta">' +
-        (snagged
-          ? '<span class="seeding-snag">⚠ ' + esc(tr.snag) + '</span>'
-          : (!tr.uploaded_bytes && !tr.up_speed
-            ? '<span>' + tH('seed_waiting', {n: tr.peers || 0}) + '</span>'
-            : '<span>' + esc(t('seeding_state_' + tr.state, {default: tr.state})) + '</span>' +
-              ' · <span>' + tr.peers + ' ' + tH('peers') + '</span>' +
-              ' · <span>↑ ' + fmt(tr.uploaded_bytes) + '</span>' +
-              ' · <span>' + tr.ratio.toFixed(2) + 'x</span>')) +
-      '</div>' +
-      '<div class="seeding-bar"><div class="seeding-bar-fill' + (snagged ? ' seeding-bar-snag' : '') + '" style="width:' + (snagged ? 100 : ratioPct) + '%"></div></div>' +
-    '</div>';
-  }
-  rows += '</div>';
-  listEl.innerHTML = (window._btInfoHtml || '') + rows;
 }
 
 // The v1.7 sharing hero: three switches — BitTorrent (with seed ratio),
@@ -5354,45 +5278,86 @@ var _btSettlePollsLeft = 0;
 var _BT_SETTLE_POLL_MS = 1500;
 var _BT_SETTLE_POLL_MAX = 10;
 
+// Enable/disable the BT card's inner controls in place — no re-render, no
+// height change (they're always in the DOM; a toggle only flips `disabled`
+// and dims the group). Env-locked fields stay locked.
+function _applyTorrentToggleInPlace(on) {
+  const controls = document.getElementById('ms-bt-controls');
+  if (controls) {
+    controls.classList.toggle('share-controls-off', !on);
+    controls.querySelectorAll('input, button').forEach(function(el) {
+      if (el.dataset.envlock === '1') return;
+      el.disabled = !on;
+    });
+  }
+  const st = document.getElementById('ms-bt-status');
+  if (st) st.innerHTML = '<span class="share-port-dot" style="background:var(--text3)"></span>' +
+    esc(t(on ? 'bt_state_starting' : 'bt_state_off'));
+  // Mirror depends on BT: grey its card + disable its switch instantly.
+  const mrow = document.querySelector('#ms-mirror-status input[onchange*="\'mirror\'"]');
+  const mcard = mrow && mrow.closest('.share-row');
+  if (mcard) {
+    mcard.classList.toggle('share-inactive', !on);
+    if (mrow.dataset.envlock !== '1') mrow.disabled = !on;
+  }
+  if (!on) {
+    const mact = document.getElementById('ms-mirror-active');
+    if (mact) mact.style.visibility = 'hidden';
+  }
+}
+
+function _applyMirrorToggleInPlace(on) {
+  const mact = document.getElementById('ms-mirror-active');
+  if (mact) mact.style.visibility = on ? 'visible' : 'hidden';
+}
+
 async function _setBtSetting(key, cb) {
   const on = cb.checked;
   cb.disabled = true;
   _btSettingInFlight = true;
-  // Optimistic feedback the instant BT is toggled — the server write +
-  // sidecar spawn take a second or two, and leaving the label unchanged
-  // that whole time reads as "nothing happened" (Eric: "takes a long time
-  // to update when I turn it off"). Grey dot, honest word, both directions.
-  if (key === 'torrent') {
-    const _st = document.getElementById('ms-bt-status');
-    if (_st) _st.innerHTML = '<span class="share-port-dot" style="background:var(--text3)"></span>' +
-      esc(t(on ? 'bt_state_starting' : 'bt_state_off'));
-    // Mirror depends on BT — grey/ungrey it in place so it doesn't lag.
-    const _mrow = document.querySelector('#ms-mirror-status input[onchange*="\'mirror\'"]');
-    const _mcard = _mrow && _mrow.closest('.share-row');
-    if (_mcard) {
-      _mcard.classList.toggle('share-inactive', !on);
-      _mrow.disabled = !on;
-    }
-  }
+  // Optimistic, in-place feedback the instant a switch flips — no rebuild,
+  // so nothing jumps and there's zero perceived lag (Eric: "every toggle is
+  // delayed and jumpy"). The server write happens in the background.
+  if (key === 'torrent') _applyTorrentToggleInPlace(on);
+  else if (key === 'mirror') _applyMirrorToggleInPlace(on);
   try {
-    const body = {}; body[key] = cb.checked;
+    const body = {}; body[key] = on;
     const r = await manageFetch('/manage/bt-settings', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body)
     });
-    if (!r.ok) { cb.checked = !cb.checked; _showToast(t('save_failed')); }
+    if (!r.ok) {
+      cb.checked = !on; _showToast(t('save_failed'));
+      if (key === 'torrent') _applyTorrentToggleInPlace(!on);
+      else if (key === 'mirror') _applyMirrorToggleInPlace(!on);
+    }
   } catch (e) {
-    cb.checked = !cb.checked; _showToast(t('save_failed'));
+    cb.checked = !on; _showToast(t('save_failed'));
+    if (key === 'torrent') _applyTorrentToggleInPlace(!on);
+    else if (key === 'mirror') _applyMirrorToggleInPlace(!on);
   }
   cb.disabled = false;
   _btSettingInFlight = false;
-  // Turning BT on spawns the sidecar server-side — watch it come up.
+  // Turning BT on spawns the sidecar server-side — watch it come up (updates
+  // just the status dot in place, never the whole section).
   if (key === 'torrent' && cb.checked) _btSettlePollsLeft = _BT_SETTLE_POLL_MAX;
-  // Re-render from fresh server truth AFTER the write lands. A poll that
-  // raced the write used to repaint the Mirror toggle off mid-click and
-  // read as "it failed".
-  _renderMirrorSection(); _renderSeedingSection();
+  _renderSeedingSection();
+}
+
+async function _setBtLimit(inp, which) {
+  // MB/s in the UI → KB/s on the wire. 0 = unlimited.
+  const mbps = Math.max(0, parseFloat(inp.value) || 0);
+  inp.value = mbps;
+  const kb = Math.round(mbps * 1024);
+  const body = {}; body[which === 'up' ? 'bt_up_kb' : 'bt_down_kb'] = kb;
+  try {
+    const r = await manageFetch('/manage/bt-settings', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) _showToast(t('save_failed')); else _showToast(t('saved'));
+  } catch (e) { _showToast(t('save_failed')); }
 }
 
 async function _setPeerName(inp) {
@@ -5425,22 +5390,27 @@ async function _setSeedRatio(inp) {
 // looked amateur next to the crafted inputs. Inline SVG is pixel-stable.
 var _SVG_REFRESH = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
 
-function _portRowInner(bt) {
+// Port row: [port input] [reachability dot] [retry] [UPnP]. Always rendered
+// (disabled when BT is off) so the card height never changes on toggle.
+function _portRowInner(bt, btOn) {
   var nat = bt.nat || null;
-  // Status dot: green open / red closed / grey unknown — text on hover
   var dotColor = !nat || nat.reachable == null ? 'var(--text3)' : (nat.reachable ? '#6abf69' : 'var(--error)');
   var dotTitle = !nat || nat.reachable == null ? t('bt_port_unknown') : (nat.reachable ? t('bt_port_open') : t('bt_port_closed'));
+  var portLock = bt.bt_port_env_locked;
+  var upnpLock = bt.upnp_env_locked;
+  var portDis = (portLock || !btOn) ? ' disabled' : '';
+  var upnpDis = (upnpLock || !btOn) ? ' disabled' : '';
   return '<label>' + tH('bt_port_word') + '</label>' +
     '<span class="share-port-group">' +
-      '<input type="number" class="share-num-input share-port-input" min="1024" max="65535" value="' + bt.bt_port + '"' +
-        (bt.bt_port_env_locked ? ' disabled title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') +
+      '<input type="number" class="share-num-input share-port-input" min="1024" max="65535" value="' + (bt.bt_port || '') + '"' +
+        portDis + (portLock ? ' data-envlock="1" title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') +
         ' aria-label="' + escAttr(t('bt_port_word')) + '" onchange="_setBtPort(this)">' +
       // Reachability light sits right beside the port it describes.
-      '<span class="share-port-dot" title="' + escAttr(dotTitle) + '" style="background:' + dotColor + '"></span>' +
-      '<label class="share-upnp"' + (bt.upnp_env_locked ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
-        '<input type="checkbox"' + (bt.upnp_enabled ? ' checked' : '') + (bt.upnp_env_locked ? ' disabled' : '') + ' onchange="_setUpnp(this)"> UPnP' +
+      '<span class="share-port-dot" id="share-port-dot" title="' + escAttr(dotTitle) + '" style="background:' + dotColor + '"></span>' +
+      '<button class="share-port-retry"' + (btOn ? '' : ' disabled') + ' onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '" aria-label="' + escAttr(t('retry')) + '">' + _SVG_REFRESH + '</button>' +
+      '<label class="share-upnp"' + (upnpLock ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
+        '<input type="checkbox"' + (bt.upnp_enabled ? ' checked' : '') + upnpDis + (upnpLock ? ' data-envlock="1"' : '') + ' onchange="_setUpnp(this)"> UPnP' +
       '</label>' +
-      '<button class="share-port-retry" onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '" aria-label="' + escAttr(t('retry')) + '">' + _SVG_REFRESH + '</button>' +
     '</span>';
 }
 
@@ -5486,7 +5456,7 @@ async function _natRecheck(btn) {
     if (rb.ok) {
       const bt = await rb.json();
       const row = document.getElementById('share-port-row');
-      if (row && bt.enabled) row.innerHTML = _portRowInner(bt);
+      if (row && bt.enabled) row.innerHTML = _portRowInner(bt, true);
     }
   } catch (e) {}
 }
@@ -5551,69 +5521,89 @@ function _shareShellHtml() {
 
 async function _renderMirrorSection() {
   if (_btSettingInFlight) return; // never repaint over an in-flight toggle
-  let m, bt = null;
+  let m, bt = null, peers = null;
   try {
-    const [r, rb] = await Promise.all([
+    const [r, rb, rp] = await Promise.all([
       authedFetch('/manage/mirror'),
       manageFetch('/manage/bt-status').catch(function() { return null; }),
+      authedFetch('/manage/peers').catch(function() { return null; }),
     ]);
     if (!r.ok) return;
     m = await r.json();
     if (rb && rb.ok) bt = await rb.json();
+    if (rp && rp.ok) peers = await rp.json();
   } catch (e) {
     return;
   }
   const el = document.getElementById('ms-mirror-status');
   if (!el) return;
-  const ratioField = '<div class="share-field"><label>' + tH('seed_ratio_label') + '</label>' +
+  const btOn = !!m.torrent_enabled;
+  // disabled= when BT off OR the field is env-locked; lock= marks env-locked
+  // fields so an in-place toggle never re-enables them.
+  const disA = (locked) => ((!btOn || locked) ? ' disabled' : '');
+  const lockA = (locked) => (locked ? ' data-envlock="1"' : '');
+
+  const ratioRow = '<div class="share-field"><label>' + tH('seed_ratio_label') + '</label>' +
     '<span class="share-port-group">' +
     '<input type="number" min="0" max="10" step="0.5" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
-    ((m.seed_ratio_env_locked || !m.torrent_enabled) ? ' disabled' : '') +
+    disA(m.seed_ratio_env_locked) + lockA(m.seed_ratio_env_locked) +
     ' class="share-num-input" aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">' +
-    '<span class="share-field-note">\u00d7</span></span>' +
+    '<span class="share-field-note">×</span></span>' +
     '<span class="share-field-note">' + tH('seed_ratio_zero_inline') + '</span></div>';
-  // Port health row — like every real BT client: status, UPnP, retry
-  let portField = '';
-  if (bt && bt.enabled) {
-    portField = '<div class="share-field share-port-row" id="share-port-row">' + _portRowInner(bt) + '</div>';
-  }
-  const btInner = '<div class="share-ratio-row">' + ratioField + '</div>' + portField +
-    '<div id="ms-seeding-list" class="share-bt-inner"></div>';
-  // Mirror status lives INSIDE the Mirror card (same pattern as the BT
-  // card) \u2014 orphaned rows floating below the switches read as debris.
-  let mirrorInner = '';
-  if (m.enabled && m.torrent_enabled) {
-    // Mirror seeds without a ratio cap by design \u2014 showing "ratio \u2264 1000x"
-    // (an internal sentinel) read as noise. Say what a person cares about:
-    // it's sharing the whole library, at what upload speed.
-    const upCap = m.upload_kb > 0
-      ? (m.upload_kb >= 1024 ? (m.upload_kb / 1024).toFixed(1) + ' MB/s' : m.upload_kb + ' KB/s')
-      : null;
-    const statNote = upCap ? tH('mirror_up_cap', {s: upCap}) : tH('mirror_up_unlimited');
-    mirrorInner += '<div class="share-mirror-active">' +
-      '<span class="share-port-dot" style="background:#6abf69"></span>' + tH('mirror_active') +
-      '<span class="share-mirror-stats">' + statNote + '</span>' +
-      '</div>';
-  }
-  // Mirror work in flight (library hash-check / catalog torrent backup):
-  // show progress and keep polling gently until it finishes.
+
+  // Global up/down bandwidth caps (MB/s in the UI, 0 = unlimited). Mirror
+  // rides these too - there's no separate mirror speed setting anymore.
+  const upMb = m.bt_up_kb ? +(m.bt_up_kb / 1024).toFixed(2) : 0;
+  const downMb = m.bt_down_kb ? +(m.bt_down_kb / 1024).toFixed(2) : 0;
+  const limitRow = '<div class="share-field"><label>' + tH('bt_limit_label') + '</label>' +
+    '<span class="share-port-group">' +
+    '<span class="share-field-note">↑</span>' +
+    '<input type="number" min="0" step="0.5" value="' + upMb + '"' + disA(m.bt_up_env_locked) + lockA(m.bt_up_env_locked) +
+    ' class="share-num-input" aria-label="' + escAttr(t('bt_limit_up')) + '" onchange="_setBtLimit(this,\'up\')">' +
+    '<span class="share-field-note">↓</span>' +
+    '<input type="number" min="0" step="0.5" value="' + downMb + '"' + disA(m.bt_down_env_locked) + lockA(m.bt_down_env_locked) +
+    ' class="share-num-input" aria-label="' + escAttr(t('bt_limit_down')) + '" onchange="_setBtLimit(this,\'down\')">' +
+    '<span class="share-field-note">MB/s</span></span>' +
+    '<span class="share-field-note">' + tH('bt_limit_hint') + '</span></div>';
+
+  const portRow = '<div class="share-field share-port-row" id="share-port-row">' + _portRowInner(bt || {}, btOn) + '</div>';
+
+  const selfName = (peers && peers.self) || '';
+  const nameRow = '<div class="share-field"><label>' + tH('peer_advertising_as') + '</label>' +
+    '<input type="text" class="peer-name-input" value="' + escAttr(selfName) + '" maxlength="63"' +
+    (m.peer_name_env_locked ? ' disabled' : '') + lockA(m.peer_name_env_locked) +
+    ' title="' + escAttr(t('peer_name_hint')) + '" aria-label="' + escAttr(t('peer_advertising_as')) + '" onchange="_setPeerName(this)"></div>';
+
+  // Controls always present; the wrapper dims + disables them when BT is off,
+  // so toggling never adds/removes rows (no layout jump).
+  const btControls = '<div class="share-bt-controls' + (btOn ? '' : ' share-controls-off') + '" id="ms-bt-controls">' +
+    ratioRow + limitRow + portRow + nameRow + '</div>';
+
+  // Mirror "active" line: always in the DOM, just hidden (visibility, not
+  // display) when off - reserves its height so the card never jumps.
+  const mirrorActive = m.enabled && btOn;
   const prog = m.progress || {};
-  mirrorInner += '<div class="ms-hint share-mirror-progress" id="mirror-progress-line"' + (prog.phase ? '' : ' style="display:none"') + '>' +
-    (prog.phase ? _mirrorProgressText(prog) : '') + '</div>';
+  const mirrorInner =
+    '<div class="share-mirror-active" id="ms-mirror-active"' + (mirrorActive ? '' : ' style="visibility:hidden"') + '>' +
+      '<span class="share-port-dot" style="background:#6abf69"></span>' + tH('mirror_active') +
+    '</div>' +
+    '<div class="ms-hint share-mirror-progress" id="mirror-progress-line"' + (prog.phase ? '' : ' style="display:none"') + '>' +
+      (prog.phase ? _mirrorProgressText(prog) : '') + '</div>';
+
   let h = '<div class="share-rows">' +
-    _shareSwitch('torrent', m.torrent_enabled, m.torrent_env_locked, 'ZIMI_BT',
-      'share_bt_title', tH('share_bt_desc') + btInner,
+    _shareSwitch('torrent', btOn, m.torrent_env_locked, 'ZIMI_BT',
+      'share_bt_title', tH('share_bt_desc') + btControls,
       false, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>') +
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
-      'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !m.torrent_enabled) +
+      'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !btOn) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
       'share_nearby_title', tH('share_nearby_desc') +
-        (m.peer_ip_unreachable ? '<div class="share-row-desc share-nearby-warn">\u26a0 ' + tH('nearby_bridge_warning') + '</div>' : '')) +
+        (m.peer_ip_unreachable ? '<div class="share-row-desc share-nearby-warn">⚠ ' + tH('nearby_bridge_warning') + '</div>' : '')) +
   '</div>';
   if (prog.phase) _scheduleMirrorProgressPoll();
   el.innerHTML = h;
   try { localStorage.setItem(SK.SHARE_ROWS, h); } catch (e) {}
-  // The BT status + seeding slots now live inside the card — refill them
+  // Fill the status dot + port dot in place.
   _renderSeedingSection();
 }
 
