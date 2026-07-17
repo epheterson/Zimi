@@ -330,7 +330,11 @@ def _refuse_for_disk_space(size_bytes, dest=None):
             _fmt_gb(usage.free),
             _fmt_gb(needed + _DISK_FLOOR_BYTES),
         )
-    if _p2p.should_pause_for_disk_pressure(_srv.ZIM_DIR):
+    # Absolute floor for unknown sizes. The percent-based seeding
+    # threshold is wrong here: 5% of a big drive is 100+ GB of free
+    # space, which refused perfectly safe downloads (found when the
+    # suite ran on a nearly-full Mac).
+    if usage.free < _DISK_FLOOR_BYTES:
         return "Disk space is critically low"
     return None
 

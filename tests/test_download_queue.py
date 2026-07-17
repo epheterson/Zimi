@@ -386,9 +386,12 @@ def test_download_refused_when_size_exceeds_free_space(
 def test_download_refused_under_disk_pressure_when_size_unknown(
     _no_real_threads, _no_mirrors, _data_dir, monkeypatch
 ):
-    import zimi.p2p as p2p
-
-    monkeypatch.setattr(p2p, "should_pause_for_disk_pressure", lambda d: True)
+    """Unknown size gates on an absolute floor (2 GB free), not the
+    percent-based seeding threshold — 5% of a big drive is 100+ GB and
+    refused perfectly safe downloads."""
+    monkeypatch.setattr(
+        library.shutil, "disk_usage", lambda p: _FakeUsage(free=1 * 1024**3)
+    )
     dl_id, err = library._start_download(_kiwix_url("mystery"))
     assert dl_id is None
     assert "low" in err.lower()

@@ -360,6 +360,13 @@ let _pwReject = null;
 // 429 responses surface as a typed error so callers keep their last-known
 // content and reschedule, instead of rendering the error JSON as an empty
 // state (the downloads panel used to blank itself this way, #30).
+// Escape for a JS string INSIDE an onclick attribute (attribute escaping
+// alone is the classic XSS-in-handler gap)
+function escJs(v) {
+  return String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"')
+    .replace(/</g, '\\x3c').replace(/>/g, '\\x3e').replace(/\u2028|\u2029|\n|\r/g, ' ');
+}
+
 function _throwIfRateLimited(res) {
   if (res.status === 429) {
     var err = new Error('rate_limited');
@@ -6286,13 +6293,13 @@ async function _refreshDownloadsInner() {
         const paused = sd.state === 'paused';
         h += '<div class="dl-item dl-seed-item">' +
           '<div class="dl-row">' +
-          '<span class="dl-name dl-seed-link" onclick="enterSource(\'' + escAttr(zimName) + '\', true)" title="' + escAttr(sName) + '">' + esc(sName) + '</span>' +
+          '<span class="dl-name dl-seed-link" onclick="enterSource(\'' + escAttr(escJs(zimName)) + '\', true)" title="' + escAttr(sName) + '">' + esc(sName) + '</span>' +
           '<span class="dl-size">↑ ' + fmtUp(sd.uploaded_bytes) + ' · ' + tH('seed_ratio', {r: (sd.ratio || 0).toFixed(2)}) +
             (sd.peers > 0 ? ' · ' + tH('n_peers', {n: sd.peers}) : '') + upSpeed + '</span></div>' +
           '<div class="dl-progress" title="' + escAttr(t('seed_bar_tip', {cap: seedingCap})) + '"><div class="dl-progress-bar" style="width:' + Math.min(100, Math.round(((sd.ratio || 0) / seedingCap) * 100)) + '%"></div></div>' +
           '<div class="dl-actions">' +
-            '<button class="dl-pause-btn" onclick="_seedAction(\'' + escAttr(sd.id) + '\', \'' + (paused ? 'resume' : 'pause') + '\', this)">' + (paused ? tH('resume') : tH('pause')) + '</button>' +
-            '<button class="dl-cancel-btn" onclick="_seedAction(\'' + escAttr(sd.id) + '\', \'stop\', this)">' + tH('stop_seed') + '</button>' +
+            '<button class="dl-pause-btn" onclick="_seedAction(\'' + escAttr(escJs(sd.id)) + '\', \'' + (paused ? 'resume' : 'pause') + '\', this)">' + (paused ? tH('resume') : tH('pause')) + '</button>' +
+            '<button class="dl-cancel-btn" onclick="_seedAction(\'' + escAttr(escJs(sd.id)) + '\', \'stop\', this)">' + tH('stop_seed') + '</button>' +
           '</div>' +
           '</div>';
       }
