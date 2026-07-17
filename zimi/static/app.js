@@ -5210,10 +5210,14 @@ async function _renderSeedingSection() {
   const statusEl = document.getElementById('ms-bt-status');
   const listEl = document.getElementById('ms-seeding-list');
   if (!statusEl || !listEl) return;
-  // Status: dot + state, tucked under the toggle in the right column
-  const dot = bt.status === 'ready' ? '🟢' : bt.status === 'unavailable' ? '🟡' : '⚪';
+  // Status: dot + state, tucked under the toggle in the right column.
+  // CSS dot (same treatment as the port row) — emoji dots render at
+  // inconsistent sizes across platforms and fight the amber palette.
+  const stColor = bt.status === 'ready' ? '#6abf69'
+    : bt.status === 'unavailable' ? '#d9a13d' : 'var(--text3)';
   const stateLabel = t('bt_state_' + bt.status);
-  let html = '<span>' + dot + ' ' + esc(stateLabel) + '</span>';
+  statusEl.innerHTML = '<span class="share-port-dot" style="background:' + stColor + '"></span>' + esc(stateLabel);
+  let html = '';
   // Friendly client-side copy for the known states; raw server hint only
   // as a fallback for states added later.
   const btHint = bt.status === 'off' ? t('bt_off_hint')
@@ -5492,31 +5496,33 @@ async function _renderMirrorSection() {
   }
   const btInner = '<div class="share-ratio-row">' + ratioField + '</div>' + portField +
     '<div id="ms-seeding-list" class="share-bt-inner"></div>';
+  // Mirror status lives INSIDE the Mirror card (same pattern as the BT
+  // card) \u2014 orphaned rows floating below the switches read as debris.
+  let mirrorInner = '';
+  if (m.enabled && m.torrent_enabled) {
+    const fmtKb = m.upload_kb >= 1024
+      ? (m.upload_kb / 1024).toFixed(1) + ' MB/s'
+      : m.upload_kb + ' KB/s';
+    mirrorInner += '<div class="share-mirror-active">' +
+      '<span class="share-port-dot" style="background:#6abf69"></span>' + tH('mirror_active') +
+      '<span class="share-mirror-stats">ratio \u2264 ' + m.ratio_cap.toFixed(0) + 'x \u00b7 \u2191 ' + fmtKb + '</span>' +
+      '</div>';
+  }
+  // Mirror work in flight (library hash-check / catalog torrent backup):
+  // show progress and keep polling gently until it finishes.
+  const prog = m.progress || {};
+  mirrorInner += '<div class="ms-hint share-mirror-progress" id="mirror-progress-line"' + (prog.phase ? '' : ' style="display:none"') + '>' +
+    (prog.phase ? _mirrorProgressText(prog) : '') + '</div>';
   let h = '<div class="share-rows">' +
     _shareSwitch('torrent', m.torrent_enabled, m.torrent_env_locked, 'ZIMI_BT',
       'share_bt_title', tH('share_bt_desc') + btInner,
       false, '<div id="ms-bt-status" class="share-bt-status-right"></div>') +
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
-      'share_mirror_title', tH('share_mirror_desc'), !m.torrent_enabled) +
+      'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !m.torrent_enabled) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
       'share_nearby_title', tH('share_nearby_desc') +
         (m.peer_ip_unreachable ? '<div class="share-row-desc share-nearby-warn">\u26a0 ' + tH('nearby_bridge_warning') + '</div>' : '')) +
   '</div>';
-  if (m.enabled && m.torrent_enabled) {
-    const fmtKb = m.upload_kb >= 1024
-      ? (m.upload_kb / 1024).toFixed(1) + ' MB/s'
-      : m.upload_kb + ' KB/s';
-    h += '<div class="mc-row" style="margin-top:8px">' +
-      '<span class="mc-label">' + tH('mirror_active') + '</span>' +
-      '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
-        'ratio \u2264 ' + m.ratio_cap.toFixed(0) + 'x \u00b7 \u2191 ' + fmtKb +
-      '</span></div>';
-  }
-  // Mirror work in flight (library hash-check / catalog torrent backup):
-  // show progress and keep polling gently until it finishes.
-  const prog = m.progress || {};
-  h += '<div class="ms-hint share-mirror-progress" id="mirror-progress-line"' + (prog.phase ? '' : ' style="display:none"') + '>' +
-    (prog.phase ? _mirrorProgressText(prog) : '') + '</div>';
   if (prog.phase) _scheduleMirrorProgressPoll();
   el.innerHTML = h;
   // The BT status + seeding slots now live inside the card — refill them
