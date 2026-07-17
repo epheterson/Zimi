@@ -967,6 +967,47 @@ def handle_manage_post(handler, parsed, data):
             {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq},
         )
 
+    elif parsed.path == "/manage/seeding-action":
+        # Pause / resume / stop one seed, or stop everything — the
+        # sidecar shouldn't need a terminal to be told to quiet down.
+        from zimi import p2p
+
+        backend = p2p.peek_backend()
+        if backend is None:
+            return handler._json(400, {"error": "BitTorrent engine is not running"})
+        action = data.get("action", "")
+        if action == "stop_all":
+            stopped = 0
+            try:
+                for raw in backend.list_managed():
+                    files = raw.get("files", [])
+                    fname = os.path.basename(files[0].get("path", "")) if files else ""
+                    if fname.endswith(".zim"):
+                        try:
+                            backend.remove(raw.get("gid", ""), delete_files=True)
+                            stopped += 1
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+            log.info("Seeding: stopped all (%d)", stopped)
+            return handler._json(200, {"status": "ok", "stopped": stopped})
+        tid = data.get("id", "")
+        if not tid or action not in ("pause", "resume", "stop"):
+            return handler._json(
+                400, {"error": "provide id and action: pause/resume/stop/stop_all"}
+            )
+        try:
+            if action == "pause":
+                backend.pause(tid)
+            elif action == "resume":
+                backend.resume(tid)
+            else:
+                backend.remove(tid, delete_files=True)
+        except Exception:
+            return handler._json(502, {"error": "engine refused the action"})
+        return handler._json(200, {"status": "ok"})
+
     elif parsed.path == "/manage/nat-recheck":
         # The "retry" button every real BT client has: re-map UPnP and
         # re-test reachability. Slow (SSDP + external check, a few

@@ -699,8 +699,18 @@
   .share-row { align-items: flex-start; }
   .share-row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-top: 2px; }
   .share-bt-status-right { font-size: 12px; color: var(--text2); white-space: nowrap; text-align: right; }
-  .share-port-input { width: 64px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 2px 6px; }
-  .share-port-input:disabled { opacity: 0.5; }
+  /* Aligned label/control rows in the sharing cards */
+  .share-field { display: flex; align-items: center; gap: 10px; margin-top: 7px; font-size: 12px; color: var(--text2); }
+  .share-field > label { min-width: 78px; color: var(--text2); }
+  .share-field-note { color: var(--text3); font-size: 11px; }
+  .share-num-input { width: 72px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 6px; text-align: left; }
+  .share-num-input:disabled { opacity: 0.5; }
+  .peer-name-input { width: 160px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 8px; text-align: left; }
+  .share-port-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .share-port-retry-circle { width: 26px; height: 26px; padding: 0; border-radius: 50%; font-size: 13px; line-height: 1; }
+  .dl-seed-link { cursor: pointer; }
+  .dl-seed-link:hover { color: var(--amber); }
+  .dl-seed-actions { margin-top: 8px; text-align: right; }
   .dl-source { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
     color: var(--text2); white-space: nowrap; }
   .dl-source-bt { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }

@@ -566,7 +566,8 @@ function updateTopbar() {
   }
   randomBtn.style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
   document.getElementById('library-btn').style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
-  document.getElementById('lang-selector-btn').style.display = '';
+  document.getElementById('lang-selector-btn').style.display =
+    _getStorageFlag(SK.HIDE_LANG_CHOOSER) ? 'none' : '';
   _updateLibraryBtnIcon();
 
   // Search placeholder
@@ -5227,15 +5228,14 @@ async function _renderSeedingSection() {
         // and takes effect on the next restart (mDNS re-registration).
         let nameLocked = false;
         try { nameLocked = !!(await (await authedFetch('/manage/mirror')).json()).peer_name_env_locked; } catch (e) {}
-        html += '<div class="mc-row" style="margin-top:6px">' +
-          '<span class="mc-label">' + tH('peer_advertising_as') + '</span>' +
-          '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
+        html += '<div class="share-field" style="margin-top:6px">' +
+          '<label>' + tH('peer_advertising_as') + '</label>' +
           '<input type="text" class="peer-name-input" value="' + escAttr(self) + '" maxlength="63"' +
           (nameLocked ? ' disabled' : '') +
           ' title="' + escAttr(t('peer_name_hint')) + '" aria-label="' + escAttr(t('peer_advertising_as')) + '"' +
           ' onchange="_setPeerName(this)">' +
-          (n > 0 ? ' · ' + n + ' ' + tH('peers') : '') +
-          '</span></div>';
+          (n > 0 ? '<span class="share-field-note">' + n + ' ' + tH('peers') + '</span>' : '') +
+          '</div>';
       }
     }
   } catch (e) { /* fail-soft */ }
@@ -5299,8 +5299,11 @@ function _shareSwitch(key, on, locked, envVar, titleKey, descHtml, inactive, und
   '</div>';
 }
 
+var _btSettingInFlight = false;
+
 async function _setBtSetting(key, cb) {
   cb.disabled = true;
+  _btSettingInFlight = true;
   try {
     const body = {}; body[key] = cb.checked;
     const r = await manageFetch('/manage/bt-settings', {
@@ -5309,11 +5312,15 @@ async function _setBtSetting(key, cb) {
       body: JSON.stringify(body)
     });
     if (!r.ok) { cb.checked = !cb.checked; _showToast(t('save_failed')); }
-    else if (key === 'torrent') { _renderMirrorSection(); _renderSeedingSection(); }
   } catch (e) {
     cb.checked = !cb.checked; _showToast(t('save_failed'));
   }
   cb.disabled = false;
+  _btSettingInFlight = false;
+  // Re-render from fresh server truth AFTER the write lands. A poll that
+  // raced the write used to repaint the Mirror toggle off mid-click and
+  // read as "it failed".
+  _renderMirrorSection(); _renderSeedingSection();
 }
 
 async function _setPeerName(inp) {
@@ -5344,16 +5351,18 @@ async function _setSeedRatio(inp) {
 
 function _portRowInner(bt) {
   var nat = bt.nat || null;
-  return '<span class="share-port-label">' + tH('bt_port_word') + '</span>' +
-    '<input type="number" class="share-port-input" min="1024" max="65535" value="' + bt.bt_port + '"' +
+  // Status dot: green open / red closed / grey unknown — text on hover
+  var dotColor = !nat || nat.reachable == null ? 'var(--text3)' : (nat.reachable ? '#6abf69' : 'var(--error)');
+  var dotTitle = !nat || nat.reachable == null ? t('bt_port_unknown') : (nat.reachable ? t('bt_port_open') : t('bt_port_closed'));
+  return '<label>' + tH('bt_port_word') + '</label>' +
+    '<input type="number" class="share-num-input share-port-input" min="1024" max="65535" value="' + bt.bt_port + '"' +
       (bt.bt_port_env_locked ? ' disabled title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') +
       ' aria-label="' + escAttr(t('bt_port_word')) + '" onchange="_setBtPort(this)">' +
-    ' <label class="share-upnp"' + (bt.upnp_env_locked ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
+    '<label class="share-upnp"' + (bt.upnp_env_locked ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
       '<input type="checkbox"' + (bt.upnp_enabled ? ' checked' : '') + (bt.upnp_env_locked ? ' disabled' : '') + ' onchange="_setUpnp(this)"> UPnP' +
     '</label>' +
-    '<button class="share-port-retry" onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '">\u27f3 ' + tH('retry') + '</button>' +
-    ' ' + _natBadge(nat) +
-    (nat && nat.upnp === 'mapped' && nat.external_ip ? '<span class="share-port-note">' + esc(nat.external_ip) + '</span>' : '');
+    '<span class="share-port-dot" title="' + escAttr(dotTitle) + '" style="background:' + dotColor + '"></span>' +
+    '<button class="share-port-retry share-port-retry-circle" onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '" aria-label="' + escAttr(t('retry')) + '">\u27f3</button>';
 }
 
 async function _setBtPort(inp) {
@@ -5417,6 +5426,7 @@ async function _setUpnp(cb) {
 }
 
 async function _renderMirrorSection() {
+  if (_btSettingInFlight) return; // never repaint over an in-flight toggle
   let m, bt = null;
   try {
     const [r, rb] = await Promise.all([
@@ -5431,14 +5441,15 @@ async function _renderMirrorSection() {
   }
   const el = document.getElementById('ms-mirror-status');
   if (!el) return;
-  const ratioField = '<span class="share-ratio">' + tH('seed_ratio_label') +
-    ' <input type="number" min="0" max="10" step="0.5" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
+  const ratioField = '<div class="share-field"><label>' + tH('seed_ratio_label') + '</label>' +
+    '<input type="number" min="0" max="10" step="0.5" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
     ((m.seed_ratio_env_locked || !m.torrent_enabled) ? ' disabled' : '') +
-    ' aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">\u00d7 <span class="share-ratio-note">' + tH('seed_ratio_zero_inline') + '</span></span>';
+    ' class="share-num-input" aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">' +
+    '<span class="share-field-note">\u00d7 \u00b7 ' + tH('seed_ratio_zero_inline') + '</span></div>';
   // Port health row — like every real BT client: status, UPnP, retry
   let portField = '';
   if (bt && bt.enabled) {
-    portField = '<div class="share-port-row" id="share-port-row">' + _portRowInner(bt) + '</div>';
+    portField = '<div class="share-field share-port-row" id="share-port-row">' + _portRowInner(bt) + '</div>';
   }
   const btInner = '<div class="share-ratio-row">' + ratioField + '</div>' + portField +
     '<div id="ms-seeding-list" class="share-bt-inner"></div>';
@@ -6266,16 +6277,27 @@ async function _refreshDownloadsInner() {
     if (filter === 'seeding') {
       const fmtUp = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
       for (const sd of seedingTorrents) {
-        const sName = (sd.filename || '').replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '').replace(/_/g, ' ');
+        // Prefer the installed ZIM's real title; the card opens it
+        const base = (sd.filename || '').replace(/\.zim$/, '');
+        const zim = (zimsCache || []).find(z => z.name === base.replace(/_\d{4}-\d{2}$/, '') || (z.file || '') === sd.filename);
+        const sName = zim ? (zim.title || zim.name) : base.replace(/_\d{4}-\d{2}$/, '').replace(/_/g, ' ');
+        const zimName = zim ? zim.name : base.replace(/_\d{4}-\d{2}$/, '');
         const upSpeed = sd.up_speed > 1024 ? ' · ↑ ' + (sd.up_speed / (1024 * 1024)).toFixed(1) + ' MB/s' : '';
-        h += '<div class="dl-item">' +
-          '<div class="dl-row"><span class="dl-name">' + esc(sName) + '</span>' +
+        const paused = sd.state === 'paused';
+        h += '<div class="dl-item dl-seed-item">' +
+          '<div class="dl-row">' +
+          '<span class="dl-name dl-seed-link" onclick="enterSource(\'' + escAttr(zimName) + '\', true)" title="' + escAttr(sName) + '">' + esc(sName) + '</span>' +
           '<span class="dl-size">↑ ' + fmtUp(sd.uploaded_bytes) + ' · ' + tH('seed_ratio', {r: (sd.ratio || 0).toFixed(2)}) +
             (sd.peers > 0 ? ' · ' + tH('n_peers', {n: sd.peers}) : '') + upSpeed + '</span></div>' +
           '<div class="dl-progress" title="' + escAttr(t('seed_bar_tip', {cap: seedingCap})) + '"><div class="dl-progress-bar" style="width:' + Math.min(100, Math.round(((sd.ratio || 0) / seedingCap) * 100)) + '%"></div></div>' +
+          '<div class="dl-actions">' +
+            '<button class="dl-pause-btn" onclick="_seedAction(\'' + escAttr(sd.id) + '\', \'' + (paused ? 'resume' : 'pause') + '\', this)">' + (paused ? tH('resume') : tH('pause')) + '</button>' +
+            '<button class="dl-cancel-btn" onclick="_seedAction(\'' + escAttr(sd.id) + '\', \'stop\', this)">' + tH('stop_seed') + '</button>' +
+          '</div>' +
           '</div>';
       }
       if (!seedingTorrents.length) h += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
+      else h += '<div class="dl-seed-actions"><button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)">' + tH('stop_all_seeds') + '</button></div>';
     }
     if (filter !== 'seeding' && filter !== 'all' && !visibleDls.length) {
       h += '<div class="dl-empty">' + tH('dl_filter_empty') + '</div>';
@@ -6448,6 +6470,20 @@ async function _refreshDownloadsInner() {
   }
 }
 
+async function _seedAction(id, action, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await manageFetch('/manage/seeding-action', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(id ? {id: id, action: action} : {action: action})
+    });
+    if (!r.ok) _showToast(t('error'));
+  } catch (e) { _showToast(t('error')); }
+  if (btn) btn.disabled = false;
+  refreshDownloads();
+  _renderSeedingSection();
+}
+
 async function clearDownloads() {
   try {
     await manageFetch('/manage/clear-downloads', { method: 'POST' });
@@ -6519,6 +6555,11 @@ async function _toggleUpdatesDetail() {
 
 function _setDownloadFilter(filter) {
   localStorage.setItem('zimi_dl_filter', filter);
+  // Instant feedback: flip the pill highlight now; content follows when
+  // the fetch lands (the lag read as a dead click).
+  document.querySelectorAll('.dl-filter-pill').forEach(function(p) {
+    p.classList.toggle('active', p.getAttribute('onclick').indexOf("'" + filter + "'") >= 0);
+  });
   refreshDownloads();
 }
 
