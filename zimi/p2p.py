@@ -570,8 +570,17 @@ class Aria2Backend(BTBackend):
                 "--quiet=true",
             ]
             log.info("Starting aria2c on rpc:%d, bt:%d", self.rpc_port, self.bt_port)
+            # Bundled aria2c (desktop builds): its relocated libcrypto must
+            # load OpenSSL provider modules from the bundle, not from a
+            # Homebrew path baked in at build time (absent on user machines
+            # -> "OSSL_PROVIDER_load 'legacy' failed" and instant death).
+            env = None
+            binary = args[0]
+            modules_dir = os.path.join(os.path.dirname(binary), "ossl-modules")
+            if os.path.isdir(modules_dir):
+                env = dict(os.environ, OPENSSL_MODULES=modules_dir)
             self._proc = subprocess.Popen(
-                args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+                args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=env
             )
             # Wait briefly for RPC to come up. Deadline-based with short
             # probe timeouts: a squatted RPC port (half-dead aria2 from

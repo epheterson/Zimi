@@ -66,14 +66,40 @@ while [ ${#queue[@]} -gt 0 ]; do
   fi
 done
 
+# OpenSSL loads provider MODULES (legacy.dylib) from a path baked into
+# libcrypto at build time — absent on user machines, aria2c dies with
+# "OSSL_PROVIDER_load 'legacy' failed". Ship the modules; the sidecar
+# spawns with OPENSSL_MODULES pointing here.
+for prefix in "$(brew --prefix openssl@3 2>/dev/null)/lib/ossl-modules" \
+              /opt/homebrew/lib/ossl-modules /usr/local/lib/ossl-modules; do
+  if [ -d "$prefix" ]; then
+    mkdir -p "$OUT/ossl-modules"
+    cp -f "$prefix"/*.dylib "$OUT/ossl-modules/" 2>/dev/null || true
+    break
+  fi
+done
+[ -f "$OUT/ossl-modules/legacy.dylib" ] || { echo "ERROR: legacy.dylib not found — aria2c will fail on user machines"; exit 1; }
+# Modules reference the Homebrew libcrypto — rewire to the bundled copy
+for mod in "$OUT"/ossl-modules/*.dylib; do
+  chmod u+w "$mod"
+  install_name_tool -id "@loader_path/$(basename "$mod")" "$mod" 2>/dev/null
+  while read -r dep; do
+    case "$dep" in
+      /usr/lib/*|/System/*|@loader_path/*) ;;
+      *) install_name_tool -change "$dep" "@loader_path/../$(basename "$dep")" "$mod" 2>/dev/null ;;
+    esac
+  done < <(otool -L "$mod" | tail -n +2 | awk '{print $1}')
+done
+
 echo "Bundle contents:"
 ls -la "$OUT"
 echo "Verifying no non-system, non-loader-path references remain..."
 bad=0
-for f in "$OUT"/*; do
+for f in "$OUT"/* "$OUT"/ossl-modules/*; do
+  [ -f "$f" ] || continue
   while read -r dep; do
     case "$dep" in
-      /usr/lib/*|/System/*|@loader_path/*) ;;
+      /usr/lib/*|/System/*|@loader_path/*|@loader_path/../*) ;;
       *) echo "  BAD: $f -> $dep"; bad=1 ;;
     esac
   done < <(otool -L "$f" | tail -n +2 | awk '{print $1}')

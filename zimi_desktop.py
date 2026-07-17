@@ -682,6 +682,9 @@ def _serve_headless():
     from http.server import ThreadingHTTPServer
     server = ThreadingHTTPServer(("127.0.0.1", port), zimi.ZimHandler)
     actual_port = server.server_address[1]
+    # Same background services as the GUI and the serve CLI — this path
+    # is what CI smoke-tests, so it must exercise the real thing.
+    zimi.start_background_services(actual_port)
     print(f"READY {actual_port}", flush=True)
     try:
         server.serve_forever()
