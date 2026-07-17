@@ -81,14 +81,15 @@ STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/")
 if [ "${SMOKE_EXPECT_BT:-}" = "1" ]; then
   # The sidecar starts on a background thread after READY. "status":"ready"
   # alone is optimistic (binary present counts) — demand PROOF the spawn
-  # happened: the NAT probe recorded that the BT port is listening, which
-  # only occurs when aria2c is actually alive. This caught a bundled
-  # aria2c that died instantly on OpenSSL provider loading.
+  # happened: sidecar_running is true only when the process is up and
+  # answered RPC. This caught a bundled aria2c that died instantly on
+  # OpenSSL provider loading. (An idle aria2 doesn't open its BT listen
+  # socket, so nat.listening can't be the gate.)
   echo "Testing /manage/bt-status (bundled aria2 must actually spawn)..."
   BT_OK=""
   for i in $(seq 1 45); do
     body=$(curl -sf -H "Sec-Fetch-Site: same-origin" "$BASE/manage/bt-status")
-    if echo "$body" | grep -q '"listening": *true'; then
+    if echo "$body" | grep -q '"sidecar_running": *true'; then
       BT_OK=1; break
     fi
     sleep 1

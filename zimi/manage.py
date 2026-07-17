@@ -644,6 +644,10 @@ def handle_manage_get(handler, parsed, params):
                 "hint": hint,
                 "upnp_enabled": p2p.is_upnp_enabled(),
                 "upnp_env_locked": p2p.is_upnp_env_locked(),
+                # True only when the sidecar PROCESS is up (spawned and
+                # answering RPC) — "ready" alone is optimistic (binary
+                # present counts). CI gates on this.
+                "sidecar_running": backend is not None,
                 # Cached: the probe runs at startup and on explicit recheck
                 "nat": p2p_nat.last_status() or None,
             },
@@ -1071,6 +1075,11 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["peer_name"] = name
+            # Apply live: re-register the mDNS advertisement with the new
+            # name — no restart required.
+            from zimi import p2p_discovery as _disc2
+
+            threading.Thread(target=_disc2.restart_advertising, daemon=True).start()
         if "seed_ratio" in data:
             if p2p.is_seed_ratio_env_locked():
                 return handler._json(
