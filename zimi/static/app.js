@@ -5354,7 +5354,10 @@ async function _natRecheck(btn) {
   try {
     const r = await manageFetch('/manage/nat-recheck', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
     await r.json().catch(function() { return null; });
-  } catch (e) {}
+    if (!r.ok) _showToast(t('error'));
+  } catch (e) {
+    _showToast(t('error'));
+  }
   btn.disabled = false;
   btn.textContent = prev;
   _renderMirrorSection();

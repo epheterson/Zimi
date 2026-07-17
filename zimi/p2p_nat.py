@@ -80,6 +80,7 @@ def discover_gateway(timeout: float = 2.0) -> str | None:
             "MX: 2\r\n"
             f"ST: {target}\r\n\r\n"
         ).encode()
+        s = None
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.settimeout(timeout)
@@ -96,11 +97,12 @@ def discover_gateway(timeout: float = 2.0) -> str | None:
                 if m:
                     loc = m.group(1).decode(errors="replace")
                     if _is_private_url(loc):
-                        s.close()
                         return loc
-            s.close()
         except OSError:
             continue
+        finally:
+            if s is not None:
+                s.close()
     return None
 
 
@@ -132,9 +134,14 @@ def _find_control(desc_url: str) -> tuple[str, str] | None:
             ctl = (svc.findtext("controlURL") or "").strip()
             if not ctl:
                 continue
-            if ctl.startswith("http"):
-                return (ctl, stype) if _is_private_url(ctl) else None
-            return base + (ctl if ctl.startswith("/") else "/" + ctl), stype
+            if not ctl.startswith("http"):
+                ctl = base + (ctl if ctl.startswith("/") else "/" + ctl)
+            # LAN-only, enforced on the RESOLVED URL: a spoofed SSDP
+            # response with a public URLBase must not turn the SOAP
+            # client into a generic HTTP poster.
+            if not _is_private_url(ctl):
+                return None
+            return ctl, stype
     return None
 
 

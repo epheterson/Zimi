@@ -179,8 +179,9 @@ def test_torrent_metadata_roundtrip(tmp_path, monkeypatch):
 
 
 class _FakeBackend:
-    def __init__(self, managed=None):
+    def __init__(self, managed=None, options=None):
         self.managed = managed or []
+        self.options = options or {}  # {gid: {"seed-ratio": ...}}
         self.added = []
         self.removed = []
 
@@ -193,6 +194,9 @@ class _FakeBackend:
 
     def remove(self, tid, *, delete_files=False):
         self.removed.append(tid)
+
+    def get_options(self, tid):
+        return self.options.get(tid, {})
 
 
 @pytest.fixture
@@ -465,20 +469,29 @@ def test_ensure_magnets_mirror_keeps_torrent_file(_mirror_env, monkeypatch):
     lib._magnets_ensured = False
 
 
-def test_stop_mirror_seeds_removes_library_seeds_only(_mirror_env, monkeypatch):
+def test_stop_mirror_seeds_removes_only_uncapped_mirror_seeds(_mirror_env, monkeypatch):
+    """Mirror off must not kill ordinary ratio-capped seeds (they carry a
+    positive seed-ratio; mirror-class seeds are the uncapped ones)."""
     import zimi.library as lib
     import zimi.p2p as p2p
 
-    kept_file = _mirror_env / "keep_2026-06.zim"
-    kept_file.write_bytes(b"x")
+    mirror_file = _mirror_env / "mirror_2026-06.zim"
+    mirror_file.write_bytes(b"x")
+    normal_file = _mirror_env / "normal_2026-06.zim"
+    normal_file.write_bytes(b"x")
     backend = _FakeBackend(
         managed=[
-            {"gid": "g-lib", "files": [{"path": str(kept_file)}]},
+            {"gid": "g-mirror", "files": [{"path": str(mirror_file)}]},
+            {"gid": "g-normal", "files": [{"path": str(normal_file)}]},
             {"gid": "g-staging", "files": [{"path": str(_mirror_env.parent / "staging" / "dl.zim")}]},
-        ]
+        ],
+        options={
+            "g-mirror": {"seed-ratio": "0"},
+            "g-normal": {"seed-ratio": "2.0"},
+        },
     )
     monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
     assert lib.stop_mirror_seeds() == 1
-    assert backend.removed == ["g-lib"]
-    # The ZIM itself is untouched
-    assert kept_file.exists()
+    assert backend.removed == ["g-mirror"]
+    # Files untouched, capped seed untouched
+    assert mirror_file.exists() and normal_file.exists()

@@ -307,18 +307,28 @@ def _drain_queue():
 _DISK_FLOOR_BYTES = 2 * 1024**3
 
 
-def _refuse_for_disk_space(size_bytes):
-    """Return an error string when there's no room, else None."""
+def _refuse_for_disk_space(size_bytes, dest=None):
+    """Return an error string when there's no room, else None.
+
+    A resumable partial (.tmp) already occupies its bytes — count only
+    what's left to fetch, or a 90%-done resume gets refused for the
+    space it has already used."""
     from zimi import p2p as _p2p
 
     try:
         usage = shutil.disk_usage(_srv.ZIM_DIR)
     except OSError:
         return None  # can't tell — don't block
-    if size_bytes and usage.free < int(size_bytes) + _DISK_FLOOR_BYTES:
+    needed = int(size_bytes or 0)
+    if needed and dest:
+        try:
+            needed = max(0, needed - os.path.getsize(dest + ".tmp"))
+        except OSError:
+            pass
+    if needed and usage.free < needed + _DISK_FLOOR_BYTES:
         return "Not enough disk space (%s free, %s needed)" % (
             _fmt_gb(usage.free),
-            _fmt_gb(int(size_bytes) + _DISK_FLOOR_BYTES),
+            _fmt_gb(needed + _DISK_FLOOR_BYTES),
         )
     if _p2p.should_pause_for_disk_pressure(_srv.ZIM_DIR):
         return "Disk space is critically low"
@@ -362,7 +372,8 @@ def _torrent_info_hash(data):
                 return _hl.sha1(data[key_end:val_end]).hexdigest()
             i = val_end
         return None
-    except (ValueError, IndexError):
+    except (ValueError, IndexError, RecursionError):
+        # RecursionError: absurdly nested (hostile) input — skip this file
         return None
 
 
@@ -399,14 +410,24 @@ def ensure_magnets_for_installed(spacing=0.4):
     catalog_urls = {}
     try:
         _total, items, _err = _fetch_kiwix_catalog("", "eng", 500, 0)
+        if _err:
+            raise RuntimeError(_err)
         for it in items or []:
             u = (it.get("download_url") or "").split("?")[0]
             if u.endswith(".meta4"):
                 u = u[: -len(".meta4")]
             if u.endswith(".zim"):
                 catalog_urls[os.path.basename(u)] = u + ".torrent"
-    except Exception:
-        return 0
+    except Exception as e:
+        # Archived .torrent files still work offline — process those now,
+        # and retry the catalog-dependent rest on the next maintenance
+        # pass instead of silently never building the manifest.
+        log.info(
+            "Magnet manifest: catalog unavailable (%s) — using archived torrents only",
+            e,
+        )
+        catalog_urls = {}
+        _magnets_ensured = False
 
     keep_files = _p2p.is_mirror_enabled()
     tdir = os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents")
@@ -553,14 +574,46 @@ def resume_pending_downloads():
         os.remove(path)
     except OSError:
         pass
+    def _already_pending(filename):
+        with _download_lock:
+            if any(
+                d.get("filename") == filename and not d.get("done")
+                for d in _active_downloads.values()
+            ):
+                return True
+            return any(q.get("filename") == filename for q in _download_queue)
+
+    # Peer entries need mDNS to have found the peer again — discovery
+    # starts in the same breath as this call, so give it a moment rather
+    # than dropping the transfer (resume runs on a background thread).
+    if any(it.get("source") == "peer" for it in items):
+        from zimi import p2p_discovery as _disc
+
+        wanted = {it.get("peer_name") for it in items if it.get("source") == "peer"}
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            present = {p.get("name") for p in (_disc.get_peers() or [])}
+            if wanted <= present:
+                break
+            time.sleep(2)
+
     resumed = 0
+    kept = []
     for it in items:
         try:
             filename = it.get("filename", "?")
+            if _already_pending(filename):
+                continue
             if it.get("source") == "peer" and it.get("peer_name"):
                 dl_id, err = _start_peer_download(
                     it["peer_name"], filename, it.get("size_bytes")
                 )
+                if not dl_id:
+                    # Peer not back yet — keep the entry for the next
+                    # restart instead of silently discarding the transfer.
+                    kept.append(it)
+                    log.info("Peer resume deferred for %s: %s", filename, err)
+                    continue
             elif _is_trusted_kiwix_url(it.get("url", "")):
                 dl_id, err = _start_download(it["url"], it.get("size_bytes"))
             else:
@@ -571,6 +624,18 @@ def resume_pending_downloads():
                 log.info("Not resuming %s: %s", filename, err)
         except Exception as e:
             log.warning("Resume failed for %s: %s", it.get("filename"), e)
+    if kept:
+        # Merge deferred entries back into the freshly-rewritten manifest
+        try:
+            with _download_lock:
+                _persist_pending_downloads()
+            with open(path) as f:
+                current = json.load(f).get("pending", [])
+        except (OSError, ValueError):
+            current = []
+        have = {c.get("filename") for c in current}
+        current.extend(k for k in kept if k.get("filename") not in have)
+        _srv._atomic_write_json(path, {"pending": current})
     if resumed:
         log.info("Resumed %d pending download(s) from the previous run", resumed)
     return resumed
@@ -602,6 +667,7 @@ KIWIX_OPDS_BASE = "https://library.kiwix.org/catalog/search"
 
 # Server-side catalog cache: {cache_key: (timestamp, total, items)}
 _opds_cache = {}
+_opds_lock = threading.Lock()
 _OPDS_CACHE_TTL = 86400  # 24 hours — catalog changes rarely
 _OPDS_DISK_KEYS_MAX = 40  # main browse pages; enough for full offline browse
 
@@ -626,21 +692,34 @@ def _load_opds_disk_cache():
     try:
         with open(_catalog_cache_path()) as f:
             data = json.load(f)
-        for key, (ts, total, items) in data.items():
-            _opds_cache.setdefault(key, (ts, total, items))
+        with _opds_lock:
+            for key, (ts, total, items) in data.items():
+                _opds_cache.setdefault(key, (ts, total, items))
         if data:
             log.info("Catalog cache loaded from disk (%d queries)", len(data))
     except (OSError, ValueError):
         pass
 
 
+def _is_browse_key(key):
+    """Main catalog browse pages (empty query) — the offline backbone."""
+    return key.startswith("|")
+
+
 def _persist_opds_cache():
-    """Write the freshest cache entries to disk (atomic, size-capped)."""
+    """Write cache entries to disk (atomic, size-capped). Browse pages are
+    the offline catalog backbone — they persist ahead of one-off search
+    keys regardless of freshness, or heavy searching would quietly evict
+    the post-world copy."""
     try:
-        entries = sorted(
-            _opds_cache.items(), key=lambda kv: kv[1][0], reverse=True
-        )[:_OPDS_DISK_KEYS_MAX]
-        _srv._atomic_write_json(_catalog_cache_path(), dict(entries))
+        with _opds_lock:
+            entries = list(_opds_cache.items())
+        entries.sort(
+            key=lambda kv: (not _is_browse_key(kv[0]), -kv[1][0])
+        )
+        _srv._atomic_write_json(
+            _catalog_cache_path(), dict(entries[:_OPDS_DISK_KEYS_MAX])
+        )
     except OSError as e:
         log.debug("catalog cache persist failed: %s", e)
 
@@ -704,17 +783,20 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
     global _catalog_stale_ts
     _load_opds_disk_cache()
     cache_key = f"{query}|{lang}|{count}|{start}"
-    cached = _opds_cache.get(cache_key)
-    if cached:
-        ts, total, items = cached
-        if time.time() - ts < _OPDS_CACHE_TTL:
-            _catalog_stale_ts = None
-            return total, items, None
-        # Expired entries are kept as the offline fallback — deleted only
-        # once a fresh fetch replaces them.
-    # Cap cache size
-    if len(_opds_cache) > 100:
-        _opds_cache.clear()
+    with _opds_lock:
+        cached = _opds_cache.get(cache_key)
+        if cached:
+            ts, total, items = cached
+            if time.time() - ts < _OPDS_CACHE_TTL:
+                _catalog_stale_ts = None
+                return total, items, None
+            # Expired entries are kept as the offline fallback — deleted
+            # only once a fresh fetch replaces them.
+        # Cap: evict only one-off search keys. Browse pages are the
+        # offline catalog and must survive any amount of searching.
+        if len(_opds_cache) > 100:
+            for k in [k for k in _opds_cache if not _is_browse_key(k)]:
+                del _opds_cache[k]
     params = {"count": str(count), "start": str(start)}
     if query:
         params["q"] = query
@@ -856,7 +938,8 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
             }
         )
 
-    _opds_cache[cache_key] = (time.time(), total, items)
+    with _opds_lock:
+        _opds_cache[cache_key] = (time.time(), total, items)
     _catalog_stale_ts = None
     _persist_opds_cache()
     _prefetch_thumbs(items)
@@ -902,6 +985,9 @@ def _prefetch_thumbs(items, limit=200, spacing=0.15):
     threading.Thread(target=_run, daemon=True, name="thumb-prefetch").start()
 
 
+_mirror_sync_lock = threading.Lock()
+
+
 def mirror_sync():
     """True mirror mode: seed every installed ZIM, not just ones we
     downloaded over BT. Sources, in order: the saved .torrent files from
@@ -913,6 +999,15 @@ def mirror_sync():
 
     if not (_p2p.is_torrent_enabled() and _p2p.is_mirror_enabled()):
         return 0
+    if not _mirror_sync_lock.acquire(blocking=False):
+        return 0  # already running (startup + toggle + maintenance overlap)
+    try:
+        return _mirror_sync_locked(_p2p)
+    finally:
+        _mirror_sync_lock.release()
+
+
+def _mirror_sync_locked(_p2p):
     if _p2p.should_pause_for_disk_pressure(_srv.ZIM_DIR):
         log.info("Mirror sync skipped: disk pressure")
         return 0
@@ -1059,12 +1154,14 @@ def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
 
 
 def stop_mirror_seeds():
-    """Mirror off: stop seeding the library, keep the archive.
+    """Mirror off: stop the MIRROR seeds, keep everything else.
 
-    Removes sidecar torrents that target ZIM_DIR (the mirror seeds) —
-    the ZIMs themselves and the archived .torrent/catalog files stay on
-    disk untouched, so flipping Mirror back on re-seeds instantly from
-    local data. Turning a toggle off never deletes a backup."""
+    Mirror-class seeds are the uncapped ones (seed-ratio 0 — mirror_sync
+    and mirror-mode re-seeds both use it; ordinary post-download seeds
+    always carry a positive cap, since cap 0 means leech-only and never
+    re-adds). Regular ratio-capped seeding continues untouched, and the
+    ZIMs + torrent archive stay on disk — flipping Mirror back on
+    re-seeds instantly. Turning a toggle off never deletes a backup."""
     from zimi import p2p as _p2p
 
     backend = _p2p.peek_backend()
@@ -1076,18 +1173,25 @@ def stop_mirror_seeds():
     except Exception:
         return 0
     zim_root = os.path.normpath(_srv.ZIM_DIR)
+    get_opts = getattr(backend, "get_options", lambda tid: {})
     for raw in entries:
         for f in raw.get("files", []):
             path = f.get("path", "")
             if path and os.path.normpath(os.path.dirname(path)) == zim_root:
+                ratio = str(get_opts(raw.get("gid", "")).get("seed-ratio", ""))
                 try:
-                    backend.remove(raw.get("gid", ""), delete_files=True)
-                    removed += 1
-                except Exception:
-                    pass
+                    uncapped = float(ratio) == 0.0
+                except (ValueError, TypeError):
+                    uncapped = False
+                if uncapped:
+                    try:
+                        backend.remove(raw.get("gid", ""), delete_files=True)
+                        removed += 1
+                    except Exception:
+                        pass
                 break
     if removed:
-        log.info("Mirror off: stopped %d library seed(s); archive kept", removed)
+        log.info("Mirror off: stopped %d mirror seed(s); archive kept", removed)
     return removed
 
 
@@ -1271,15 +1375,16 @@ def _try_bt_download(
             # renamed path — it died silently on restart or cross-fs moves.
             # bt-seed-unverified skips a re-hash (aria2 verified every
             # piece during the download; libzim just validated the file).
-            if _p2p.is_seeding_enabled():
+            _cap = _p2p.get_seed_ratio_cap()
+            # Zimi's "ratio 0" means never seed; aria2's means seed
+            # forever. Only mirror mode gets the uncapped value.
+            if _p2p.is_seeding_enabled() and (
+                _cap > 0 or _p2p.is_mirror_enabled()
+            ):
                 try:
                     _meta = _get_torrent_metadata().get(dl["filename"]) or {}
                     _src = _meta.get("torrent_file") or torrent_url
-                    _ratio = (
-                        "0"
-                        if _p2p.is_mirror_enabled()
-                        else str(_p2p.get_seed_ratio_cap())
-                    )
+                    _ratio = "0" if _p2p.is_mirror_enabled() else str(_cap)
                     backend.add_torrent(
                         _src,
                         dest_dir=os.path.dirname(dl["dest"]),
@@ -1296,6 +1401,12 @@ def _try_bt_download(
                         dl["filename"],
                         e,
                     )
+            elif _p2p.is_seeding_enabled():
+                # Seeding on but cap 0: leech-only by policy
+                try:
+                    backend.remove(tid, delete_files=True)
+                except Exception:
+                    pass
             # Leech-only (seeding disabled): drop the finished torrent.
             if not _p2p.is_seeding_enabled():
                 try:
@@ -1841,7 +1952,7 @@ def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
     global _download_counter
     dest = os.path.join(_srv.ZIM_DIR, filename)
 
-    space_err = _refuse_for_disk_space(size_bytes)
+    space_err = _refuse_for_disk_space(size_bytes, dest=dest)
     if space_err:
         log.info("download rejected: %s (%s)", space_err, filename)
         return None, space_err
@@ -2002,7 +2113,7 @@ def _start_import(url, size_bytes=None):
         return None, "Invalid characters in filename"
     dest = os.path.join(_srv.ZIM_DIR, filename)
 
-    space_err = _refuse_for_disk_space(size_bytes)
+    space_err = _refuse_for_disk_space(size_bytes, dest=dest)
     if space_err:
         log.info("import rejected: %s (%s)", space_err, filename)
         return None, space_err

@@ -666,9 +666,25 @@ class Aria2Backend(BTBackend):
         self._rpc("aria2.unpause", [tid])
 
     def remove(self, tid: str, *, delete_files: bool = False) -> None:
-        self._rpc("aria2.remove", [tid])
+        # aria2.remove only accepts active/waiting/paused GIDs — errored
+        # or completed ones raise. The result cleanup below is what
+        # actually clears those, so a failed remove must not abort it.
+        try:
+            self._rpc("aria2.remove", [tid])
+        except Exception:
+            pass
         if delete_files:
-            self._rpc("aria2.removeDownloadResult", [tid])
+            try:
+                self._rpc("aria2.removeDownloadResult", [tid])
+            except Exception:
+                pass
+
+    def get_options(self, tid: str) -> dict:
+        """Per-download options (seed-ratio etc.). Empty dict on error."""
+        try:
+            return self._rpc("aria2.getOption", [tid]) or {}
+        except Exception:
+            return {}
 
     def status(self, tid: str) -> dict:
         raw = self._rpc("aria2.tellStatus", [tid])
