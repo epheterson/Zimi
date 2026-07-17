@@ -2023,16 +2023,12 @@ function _drawTzClock(now) {
       for (var ti = 0; ti < tzp.length; ti++) if (tzp[ti].type === 'timeZoneName') tzAbbr = tzp[ti].value;
     } catch(e) {}
     // Only rebuild the shell when needed; the flip card ticks per second
-    var secEl = document.getElementById('alm-flip-sec');
+    var secEl = document.getElementById('alm-clock-sec');
     if (!secEl || labelEl.dataset.tz !== tz) {
       labelEl.dataset.tz = tz;
       labelEl.innerHTML =
         '<div class="alm-clock-time"><span id="alm-clock-hm">' + hm + '</span>' +
-          '<span class="alm-flip-sec" id="alm-flip-sec">' +
-            '<span class="alm-flip-static-top">' + sec + '</span>' +
-            '<span class="alm-flip-static-bottom">' + sec + '</span>' +
-            '<span class="alm-flip-fold" id="alm-flip-fold">' + sec + '</span>' +
-          '</span>' +
+          '<span class="alm-clock-sec" id="alm-clock-sec">' + sec + '</span>' +
           '<span class="alm-clock-ampm" id="alm-clock-ampm">' + ampm + '</span></div>' +
         '<div class="alm-clock-date" id="alm-clock-date">' + dateStr + '</div>' +
         '<div class="alm-clock-sub"><span id="alm-clock-tzname">' + (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '') + '</span></div>';
@@ -2046,22 +2042,8 @@ function _drawTzClock(now) {
       var tnEl = document.getElementById('alm-clock-tzname');
       var tzText = (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '');
       if (tnEl && tnEl.textContent !== tzText) tnEl.textContent = tzText;
-      // Split-flap: top half of the OLD value folds down over the NEW.
-      // Static top/bottom show the new value; the fold carries the old.
-      var topEl = labelEl.querySelector('.alm-flip-static-top');
-      var botEl = labelEl.querySelector('.alm-flip-static-bottom');
-      var foldEl = document.getElementById('alm-flip-fold');
-      if (topEl && topEl.textContent !== sec) {
-        var oldSec = topEl.textContent;
-        topEl.textContent = sec;
-        botEl.textContent = sec;
-        if (foldEl) {
-          foldEl.textContent = oldSec;
-          foldEl.classList.remove('alm-flip-folding');
-          void foldEl.offsetWidth;
-          foldEl.classList.add('alm-flip-folding');
-        }
-      }
+      var secondsEl = document.getElementById('alm-clock-sec');
+      if (secondsEl && secondsEl.textContent !== sec) secondsEl.textContent = sec;
     }
   }
 }

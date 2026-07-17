@@ -1,7 +1,7 @@
 /* ── Almanac mini-app ── */
 .almanac-view { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
 .almanac-view.open { display: flex; animation: fadeIn 0.15s ease; }
-.almanac-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 24px 16px 80px; overscroll-behavior: contain; }
+.almanac-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: 24px 16px 80px; overscroll-behavior: contain; }
 .almanac-inner { max-width: 600px; margin: 0 auto; }
 .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
 .alm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
@@ -15,27 +15,7 @@
 .alm-clock-ampm { font-size: 13px; color: var(--text2); font-weight: 500; align-self: flex-end; margin-bottom: 4px; }
 .alm-clock-date { font-size: 14px; color: var(--text2); margin-top: 8px; font-weight: 500; }
 .alm-clock-sub { font-size: 11px; color: var(--text3); margin-top: 3px; letter-spacing: 0.04em; text-transform: uppercase; }
-/* Split-flap seconds: the top half of the old digit folds down over the
-   new one, like a real flap clock. Static layers show the new value; the
-   fold layer carries the old value's top half through the animation. */
-.alm-flip-sec { display: inline-block; position: relative; width: 40px; height: 34px; font-size: 20px; font-weight: 600; color: var(--text); perspective: 140px; }
-.alm-flip-static-top, .alm-flip-static-bottom, .alm-flip-fold {
-  position: absolute; inset: 0; line-height: 34px; text-align: center;
-  background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
-}
-/* Each layer holds the full digit; clip-path shows only its half */
-.alm-flip-static-top { clip-path: inset(0 0 50% 0); }
-.alm-flip-static-bottom { clip-path: inset(50% 0 0 0); }
-/* The fold: old digit's TOP half, hinged at the midline, folds down */
-.alm-flip-fold { clip-path: inset(0 0 50% 0); transform-origin: center center; transform: rotateX(90deg); backface-visibility: hidden; z-index: 2; background: var(--surface); }
-.alm-flip-folding { animation: alm-fold 0.28s ease-in; }
-@keyframes alm-fold {
-  0% { transform: rotateX(0deg); }
-  100% { transform: rotateX(-90deg); }
-}
-/* Midline hinge */
-.alm-flip-sec::after { content: ""; position: absolute; left: 2px; right: 2px; top: 50%; height: 1px; background: var(--bg); opacity: 0.9; z-index: 3; }
-@media (prefers-reduced-motion: reduce) { .alm-flip-folding { animation: none; } }
+.alm-clock-sec { font-size: 20px; font-weight: 600; color: var(--text2); font-variant-numeric: tabular-nums; align-self: flex-end; margin-bottom: 3px; min-width: 26px; text-align: left; }
 .alm-tz-list { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
 .alm-tz-city-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; cursor: pointer; transition: all 0.1s; text-align: center; }
 .alm-tz-city-card:hover { background: var(--surface2); border-color: var(--text3); }
@@ -187,7 +167,7 @@
   body.almanac-mode .topbar-more { display: none !important; }
   body.almanac-mode .lang-selector-btn { display: flex !important; }
   body.almanac-mode .manage-btn { display: flex !important; }
-  .orrery-controls { gap: 3px; padding: 0 2px; }
+  .orrery-controls { gap: 3px; padding: 0 2px; flex-wrap: wrap; justify-content: center; }
   .orrery-speed-label { font-size: 10px; min-width: 44px; }
   .orrery-speed-end { font-size: 8px; }
   .orrery-date { font-size: 10px; }
