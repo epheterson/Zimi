@@ -148,25 +148,48 @@ def test_serve_search_endpoint_responds(serve_subprocess):
     assert "total" in data
 
 
+def _http_get_text(url: str, timeout: float = 5.0) -> str:
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        return resp.read().decode()
+
+
+def test_sw_cache_version_matches_health_asset_version(serve_subprocess):
+    """The service worker's CACHE_VERSION must equal /health's asset_version,
+    and be content-hashed (not just the release string). This is what makes a
+    same-version deploy bust the SW cache instead of serving stale JS."""
+    port, _ = serve_subprocess
+    health = _http_get_json(f"http://127.0.0.1:{port}/health")
+    asset_version = health["asset_version"]
+    # version + an 8-char content hash, e.g. zimi-v1.7.2-78bfc872
+    assert asset_version.startswith(f"zimi-v{health['version']}-")
+    assert len(asset_version.rsplit("-", 1)[1]) == 8
+
+    sw = _http_get_text(f"http://127.0.0.1:{port}/static/sw.js")
+    assert f"const CACHE_VERSION = '{asset_version}'" in sw
+
+
 def test_serve_web_ui_responds(serve_subprocess):
     """The `/` SPA shell must serve a 200, otherwise users see a blank screen."""
     port, _ = serve_subprocess
     assert _http_status(f"http://127.0.0.1:{port}/") == 200
 
 
-def test_sw_js_version_substituted_at_serve_time():
-    """sw.js must always advertise the running server's version — the
-    hardcoded constant silently disabled the PWA for a release cycle."""
-    import re as _re
-
+def test_sw_asset_version_is_content_hashed():
+    """sw.js must advertise the content-hashed asset version, not a bare
+    release string — otherwise same-version deploys never bust the SW cache
+    (the hardcoded constant also once silently disabled the PWA for a
+    release cycle). The on-disk source keeps the 'zimi-vdev' placeholder;
+    the server substitutes the real token at serve time."""
     import zimi.http as h
     import zimi.server as srv
 
-    src = open("zimi/static/sw.js", "rb").read()
-    body = _re.sub(
-        rb"const CACHE_VERSION = '[^']*'",
-        b"const CACHE_VERSION = 'zimi-v" + srv.ZIMI_VERSION.encode() + b"'",
-        src,
-    )
-    assert ("zimi-v" + srv.ZIMI_VERSION).encode() in body
-    assert b"zimi-vdev" not in body
+    token = h._asset_version()
+    # zimi-v<version>-<8-char content hash>
+    assert token.startswith(f"zimi-v{srv.ZIMI_VERSION}-")
+    digest = token.rsplit("-", 1)[1]
+    assert len(digest) == 8 and digest != "dev"
+
+    # The unsubstituted on-disk placeholder must never reach a client.
+    src = open("zimi/static/sw.js").read()
+    assert "zimi-vdev" in src  # placeholder present in source
+    assert token not in src  # real token only injected at serve time

@@ -291,6 +291,7 @@ except FileNotFoundError:
 # Auto-version static assets: replace ?v=N with content-hash so deploys bust caches.
 # This eliminates manual version bumping — any file change gets a new URL automatically.
 _STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+_ASSET_BUNDLE_HASH = "dev"  # overridden below when the static dir is present
 if os.path.isdir(_STATIC_DIR):
 
     def _static_hash(fname):
@@ -354,6 +355,28 @@ if os.path.isdir(_STATIC_DIR):
     SEARCH_UI_HTML = SEARCH_UI_HTML.replace(
         "discoverStamp:'disc6'", f"discoverStamp:'d{_build_stamp}'"
     ).replace("i18nHash:'0'", f"i18nHash:'{_i18n_hash}'")
+
+    # Content token for the service worker's cache key (and /health). It
+    # changes whenever ANY app asset changes, so every deploy — even within
+    # a single version like 1.7.2 — produces different sw.js bytes. That is
+    # what makes the browser install a fresh SW whose activate wipes the old
+    # cache. The old scheme keyed the cache on the version string alone, so
+    # same-version deploys never busted the SW cache and served stale JS.
+    _ASSET_BUNDLE_HASH = hashlib.md5(
+        (
+            _static_hash("app.js")
+            + _static_hash("app.css")
+            + _static_hash("almanac.js")
+            + _i18n_hash
+        ).encode()
+    ).hexdigest()[:8]
+
+
+def _asset_version():
+    """Cache-busting token: version + a hash of the app bundle. Serves as the
+    service-worker cache key and is exposed at /health so the SW can detect a
+    changed deploy and drop its stale cache."""
+    return f"zimi-v{_srv.ZIMI_VERSION}-{_ASSET_BUNDLE_HASH}"
 
 
 # ============================================================================
@@ -761,6 +784,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     {
                         "status": "ok",
                         "version": _srv.ZIMI_VERSION,
+                        "asset_version": _asset_version(),
                         "zim_count": zim_count,
                         "pdf_support": _srv.HAS_PYMUPDF,
                     },
@@ -1635,11 +1659,12 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # serve time — the hardcoded constant went stale for a whole
                 # release cycle once and silently disabled the PWA.
                 if rel_path == "sw.js":
+                    # Key the cache on version + content hash so same-version
+                    # deploys still produce new sw.js bytes → the browser
+                    # installs a fresh SW that wipes the stale cache.
                     body = re.sub(
                         rb"const CACHE_VERSION = '[^']*'",
-                        b"const CACHE_VERSION = 'zimi-v"
-                        + _srv.ZIMI_VERSION.encode()
-                        + b"'",
+                        b"const CACHE_VERSION = '" + _asset_version().encode() + b"'",
                         body,
                     )
                 # Cache in memory (vendor files are immutable, ~8MB total for pdf.js)
