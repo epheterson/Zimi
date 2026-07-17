@@ -687,8 +687,13 @@
   .share-port-label { font-family: monospace; font-size: 11px; }
   .share-upnp { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-size: 11px; }
   .share-upnp input { accent-color: var(--amber); }
-  .share-port-retry { background: none; border: 1px solid var(--border); color: var(--text2); font-size: 11px; padding: 2px 10px; border-radius: 12px; cursor: pointer; transition: all 0.15s; }
+  /* Icon button matching the num-input chrome beside it (6px radius,
+     surface fill) — an SVG reload glyph, centered, amber on hover. */
+  .share-port-retry { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text2); cursor: pointer; transition: color 0.15s, border-color 0.15s; }
   .share-port-retry:hover { border-color: var(--amber); color: var(--amber); }
+  .share-port-retry svg { display: block; }
+  .share-port-retry.spinning svg { animation: share-spin 0.7s linear infinite; }
+  @keyframes share-spin { to { transform: rotate(360deg); } }
   .share-port-note { font-family: monospace; font-size: 10px; color: var(--text3); }
   .seeding-snagged .seeding-name { color: var(--error); }
   .seeding-snag { color: var(--error); }
@@ -713,17 +718,16 @@
   .share-num-input:disabled { opacity: 0.5; }
   .peer-name-input { width: 160px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 8px; text-align: left; }
   .share-port-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-  /* Same surface treatment as the inputs beside it so it reads as a
-     control; flex centering keeps the glyph optically centered. */
-  .share-port-retry-circle { width: 26px; height: 26px; padding: 0; border-radius: 50%; font-size: 13px; line-height: 1;
-    display: inline-flex; align-items: center; justify-content: center; background: var(--surface2); }
   .dl-seed-link { cursor: pointer; }
   .dl-seed-link:hover { color: var(--amber); }
-  /* Seed cards: the status line is long ("Sharing · waiting…") and never
-     shrank, crushing the title to an ellipsis — stack it under the title */
-  .dl-seed-item .dl-row { flex-wrap: wrap; row-gap: 2px; }
-  .dl-seed-item .dl-name { flex: 1 1 100%; }
-  .dl-seed-item .dl-size { flex-shrink: 1; min-width: 0; }
+  /* Seed cards: icon + title on the first row, the "Sharing · …" status
+     wraps to its own full-width row below so it never crushes the title. */
+  .dl-seed-item .dl-row { flex-wrap: wrap; row-gap: 3px; column-gap: 8px; }
+  .dl-seed-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; overflow: hidden; background: var(--surface2); }
+  .dl-seed-icon img { width: 22px; height: 22px; object-fit: contain; }
+  .dl-seed-icon .rs-letter { font-size: 12px; font-weight: 600; color: var(--text2); }
+  .dl-seed-item .dl-name { flex: 1 1 auto; min-width: 0; }
+  .dl-seed-item .dl-size { flex: 1 1 100%; min-width: 0; color: var(--text2); }
   /* Stop-all spans the grid instead of squatting an empty card cell */
   .dl-seed-actions { grid-column: 1 / -1; margin-top: 8px; text-align: right; }
   /* Sharing cards on phones: text keeps its width, fields wrap cleanly */
@@ -807,7 +811,7 @@
   .share-ratio input:focus { outline: none; border-color: var(--amber); }
   .share-ratio input:disabled { opacity: 0.45; }
   .peer-name-input {
-    width: 150px; padding: 2px 6px; font: inherit; text-align: right;
+    width: 150px; padding: 2px 6px; font: inherit; text-align: left;
     background: var(--surface2); border: 1px solid var(--border);
     border-radius: 6px; color: var(--text);
   }

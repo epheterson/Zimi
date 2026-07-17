@@ -4965,7 +4965,7 @@ function _msServerHtml() {
   try { shareCached = localStorage.getItem(SK.SHARE_ROWS) || ''; } catch (e) {}
   var h = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
     '<div id="ms-mirror-status" class="share-rows-slot">' +
-      (shareCached || '<div class="share-rows-skeleton"></div>') + '</div>' +
+      (shareCached || _shareShellHtml()) + '</div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
   h += '<div class="ms-section-label">' + tH('storage_section') + '</div>' +
     '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
@@ -5293,7 +5293,7 @@ async function _renderSeedingSection() {
     listEl.innerHTML = window._btInfoHtml || '';
     return;
   }
-  const fmt = _fmtBytesBin;
+  const fmt = _fmtBytes;
   let rows = '<div class="seeding-totals">' +
     tH('seeding_totals', {
       n: torrents.length,
@@ -5355,14 +5355,24 @@ var _BT_SETTLE_POLL_MS = 1500;
 var _BT_SETTLE_POLL_MAX = 10;
 
 async function _setBtSetting(key, cb) {
+  const on = cb.checked;
   cb.disabled = true;
   _btSettingInFlight = true;
-  // Optimistic status the instant BT is toggled on — the server write +
-  // sidecar spawn take a second or two, and leaving the label on "off"
-  // that whole time reads as "nothing happened". Grey dot, honest word.
-  if (key === 'torrent' && cb.checked) {
+  // Optimistic feedback the instant BT is toggled — the server write +
+  // sidecar spawn take a second or two, and leaving the label unchanged
+  // that whole time reads as "nothing happened" (Eric: "takes a long time
+  // to update when I turn it off"). Grey dot, honest word, both directions.
+  if (key === 'torrent') {
     const _st = document.getElementById('ms-bt-status');
-    if (_st) _st.innerHTML = '<span class="share-port-dot" style="background:var(--text3)"></span>' + esc(t('bt_state_starting'));
+    if (_st) _st.innerHTML = '<span class="share-port-dot" style="background:var(--text3)"></span>' +
+      esc(t(on ? 'bt_state_starting' : 'bt_state_off'));
+    // Mirror depends on BT — grey/ungrey it in place so it doesn't lag.
+    const _mrow = document.querySelector('#ms-mirror-status input[onchange*="\'mirror\'"]');
+    const _mcard = _mrow && _mrow.closest('.share-row');
+    if (_mcard) {
+      _mcard.classList.toggle('share-inactive', !on);
+      _mrow.disabled = !on;
+    }
   }
   try {
     const body = {}; body[key] = cb.checked;
@@ -5411,21 +5421,26 @@ async function _setSeedRatio(inp) {
   } catch (e) { _showToast(t('save_failed')); }
 }
 
+// Clean reload glyph — the old ⟳ unicode char rendered inconsistently and
+// looked amateur next to the crafted inputs. Inline SVG is pixel-stable.
+var _SVG_REFRESH = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
+
 function _portRowInner(bt) {
   var nat = bt.nat || null;
   // Status dot: green open / red closed / grey unknown — text on hover
   var dotColor = !nat || nat.reachable == null ? 'var(--text3)' : (nat.reachable ? '#6abf69' : 'var(--error)');
   var dotTitle = !nat || nat.reachable == null ? t('bt_port_unknown') : (nat.reachable ? t('bt_port_open') : t('bt_port_closed'));
   return '<label>' + tH('bt_port_word') + '</label>' +
-    '<input type="number" class="share-num-input share-port-input" min="1024" max="65535" value="' + bt.bt_port + '"' +
-      (bt.bt_port_env_locked ? ' disabled title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') +
-      ' aria-label="' + escAttr(t('bt_port_word')) + '" onchange="_setBtPort(this)">' +
     '<span class="share-port-group">' +
+      '<input type="number" class="share-num-input share-port-input" min="1024" max="65535" value="' + bt.bt_port + '"' +
+        (bt.bt_port_env_locked ? ' disabled title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') +
+        ' aria-label="' + escAttr(t('bt_port_word')) + '" onchange="_setBtPort(this)">' +
+      // Reachability light sits right beside the port it describes.
+      '<span class="share-port-dot" title="' + escAttr(dotTitle) + '" style="background:' + dotColor + '"></span>' +
       '<label class="share-upnp"' + (bt.upnp_env_locked ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
         '<input type="checkbox"' + (bt.upnp_enabled ? ' checked' : '') + (bt.upnp_env_locked ? ' disabled' : '') + ' onchange="_setUpnp(this)"> UPnP' +
       '</label>' +
-      '<span class="share-port-dot" title="' + escAttr(dotTitle) + '" style="background:' + dotColor + '"></span>' +
-      '<button class="share-port-retry share-port-retry-circle" onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '" aria-label="' + escAttr(t('retry')) + '">\u27f3</button>' +
+      '<button class="share-port-retry" onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '" aria-label="' + escAttr(t('retry')) + '">' + _SVG_REFRESH + '</button>' +
     '</span>';
 }
 
@@ -5454,8 +5469,7 @@ function _natBadge(nat) {
 
 async function _natRecheck(btn) {
   btn.disabled = true;
-  var prev = btn.textContent;
-  btn.textContent = '\u2026';
+  btn.classList.add('spinning');  // CSS spins the SVG; don't touch innerHTML
   try {
     const r = await manageFetch('/manage/nat-recheck', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
     await r.json().catch(function() { return null; });
@@ -5464,7 +5478,7 @@ async function _natRecheck(btn) {
     _showToast(t('error'));
   }
   btn.disabled = false;
-  btn.textContent = prev;
+  btn.classList.remove('spinning');
   // Update only the port row — a full section re-render makes everything
   // blink for a one-line change.
   try {
@@ -5519,6 +5533,22 @@ function _scheduleMirrorProgressPoll() {
   }, 3000);
 }
 
+// First-ever paint of the Server pane, before any cached rows exist: the
+// full three-card structure with static copy and off toggles, so the
+// section is never a blank slab. Live states hydrate in via
+// _renderMirrorSection a tick later (structure matches, so no bounce).
+function _shareShellHtml() {
+  return '<div class="share-rows">' +
+    _shareSwitch('torrent', false, false, 'ZIMI_BT',
+      'share_bt_title', tH('share_bt_desc'),
+      false, '<div id="ms-bt-status" class="share-bt-status-right"></div>') +
+    _shareSwitch('mirror', false, false, 'ZIMI_BT',
+      'share_mirror_title', tH('share_mirror_desc'), true) +
+    _shareSwitch('peer_share', false, false, 'ZIMI_NEARBY',
+      'share_nearby_title', tH('share_nearby_desc')) +
+  '</div>';
+}
+
 async function _renderMirrorSection() {
   if (_btSettingInFlight) return; // never repaint over an in-flight toggle
   let m, bt = null;
@@ -5553,12 +5583,16 @@ async function _renderMirrorSection() {
   // card) \u2014 orphaned rows floating below the switches read as debris.
   let mirrorInner = '';
   if (m.enabled && m.torrent_enabled) {
-    const fmtKb = m.upload_kb >= 1024
-      ? (m.upload_kb / 1024).toFixed(1) + ' MB/s'
-      : m.upload_kb + ' KB/s';
+    // Mirror seeds without a ratio cap by design \u2014 showing "ratio \u2264 1000x"
+    // (an internal sentinel) read as noise. Say what a person cares about:
+    // it's sharing the whole library, at what upload speed.
+    const upCap = m.upload_kb > 0
+      ? (m.upload_kb >= 1024 ? (m.upload_kb / 1024).toFixed(1) + ' MB/s' : m.upload_kb + ' KB/s')
+      : null;
+    const statNote = upCap ? tH('mirror_up_cap', {s: upCap}) : tH('mirror_up_unlimited');
     mirrorInner += '<div class="share-mirror-active">' +
       '<span class="share-port-dot" style="background:#6abf69"></span>' + tH('mirror_active') +
-      '<span class="share-mirror-stats">ratio \u2264 ' + m.ratio_cap.toFixed(0) + 'x \u00b7 \u2191 ' + fmtKb + '</span>' +
+      '<span class="share-mirror-stats">' + statNote + '</span>' +
       '</div>';
   }
   // Mirror work in flight (library hash-check / catalog torrent backup):
@@ -6370,17 +6404,21 @@ async function _refreshDownloadsInner() {
         const zim = (zimsCache || []).find(z => z.name === base.replace(/_\d{4}-\d{2}$/, '') || (z.file || '') === sd.filename);
         const sName = zim ? (zim.title || zim.name) : base.replace(/_\d{4}-\d{2}$/, '').replace(/_/g, ' ');
         const zimName = zim ? zim.name : base.replace(/_\d{4}-\d{2}$/, '');
-        const upSpeed = sd.up_speed > 1024 ? ' · ↑ ' + (sd.up_speed / (1024 * 1024)).toFixed(1) + ' MB/s' : '';
         const paused = sd.state === 'paused';
-        // A fresh seed with no uploads reads as broken when it's just
-        // waiting — say so instead of a wall of zeros.
+        const connected = sd.peers || 0;
+        // "Sharing" reads as a state a person understands. Idle = nobody's
+        // pulling right now (not broken); active = show what's going out.
+        // (Replaces the old "waiting for requests" copy that confused.)
         const idle = !sd.uploaded_bytes && !sd.up_speed;
-        const meta = idle
-          ? tH('seed_waiting', {n: sd.peers || 0})
-          : '↑ ' + fmtUp(sd.uploaded_bytes) + ' · ' + tH('seed_ratio', {r: (sd.ratio || 0).toFixed(2)}) +
-            (sd.peers > 0 ? ' · ' + tH('n_peers', {n: sd.peers}) : '') + upSpeed;
+        const upNow = sd.up_speed > 1024 ? ' · ↑ ' + (sd.up_speed / (1024 * 1024)).toFixed(1) + ' MB/s' : '';
+        const meta = paused
+          ? tH('seed_paused_note')
+          : idle
+            ? tH('seed_waiting', {n: connected})
+            : tH('seed_active', {up: fmtUp(sd.uploaded_bytes), n: connected}) + upNow;
         h += '<div class="dl-item dl-seed-item">' +
           '<div class="dl-row">' +
+          '<span class="dl-seed-icon">' + _sourceIconHtml(zimName, 22) + '</span>' +
           '<span class="dl-name dl-seed-link" onclick="enterSource(\'' + escAttr(escJs(zimName)) + '\', true)" title="' + escAttr(sName) + '">' + esc(sName) + '</span>' +
           '<span class="dl-size">' + meta + '</span></div>' +
           '<div class="dl-progress" title="' + escAttr(t('seed_bar_tip', {cap: seedingCap})) + '"><div class="dl-progress-bar" style="width:' + Math.min(100, Math.round(((sd.ratio || 0) / seedingCap) * 100)) + '%"></div></div>' +
