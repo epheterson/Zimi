@@ -2058,11 +2058,19 @@ function _tzFmt(tz, opts) {
 // Smooth clock animation using requestAnimationFrame
 var _tzClockRAF = null;
 var _tzClockColors = null;
+var _tzGridMinute = -1;
 function _startTzClock() {
   if (_tzClockRAF) cancelAnimationFrame(_tzClockRAF);
   function tick() {
     if (!_almanacOpen) { _tzClockRAF = null; return; }
-    _drawTzClock(new Date());
+    var now = new Date();
+    _drawTzClock(now);
+    // City cards rendered once and went stale within minutes — refresh
+    // the grid on each minute rollover (cheap: 28 cards, 1x/min)
+    if (now.getMinutes() !== _tzGridMinute) {
+      _tzGridMinute = now.getMinutes();
+      _initTzClock(now);
+    }
     _tzClockRAF = requestAnimationFrame(tick);
   }
   _tzClockRAF = requestAnimationFrame(tick);
