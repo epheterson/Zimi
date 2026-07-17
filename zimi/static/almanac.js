@@ -283,6 +283,16 @@ function _renderAlmanacContent() {
   html += '</div>';
 
 
+  // Data honesty — an almanac states its precision like an encyclopedia
+  html += '<div class="almanac-section">';
+  html += '<div class="almanac-section-title">' + t('alm_data_title') + '</div>';
+  html += '<div class="alm-data-notes">';
+  var _dataKeys = ['alm_data_astro', 'alm_data_calendars', 'alm_data_holidays', 'alm_data_tz', 'alm_data_offline'];
+  for (var dk = 0; dk < _dataKeys.length; dk++) {
+    html += '<div class="alm-data-note">' + t(_dataKeys[dk]) + '</div>';
+  }
+  html += '</div></div>';
+
   // Footer
   html += '<div style="margin-top:40px;text-align:center;font-size:11px;color:var(--text3)">' +
     t('alm_footer') +
@@ -3840,6 +3850,66 @@ function _applyRegionHolidays(region, year, month, add) {
   }
 }
 
+// ── Equinoxes & solstices: computed, not hardcoded (Meeus ch. 27) ──────
+// JDE0 mean-instant polynomials (valid 1000-3000 CE) plus the 24-term
+// periodic correction — accurate to minutes. The old code pinned fixed
+// dates (Mar 20/Jun 20/Sep 22/Dec 21), which drift a day across years.
+var _SEASON_JDE0 = [
+  [2451623.80984, 365242.37404, 0.05169, -0.00411, -0.00057],  // March eq.
+  [2451716.56767, 365241.62603, 0.00325, 0.00888, -0.00030],   // June sol.
+  [2451810.21715, 365242.01767, -0.11575, 0.00337, 0.00078],   // Sept eq.
+  [2451900.05952, 365242.74049, -0.06223, -0.00823, 0.00032]   // Dec sol.
+];
+var _SEASON_PERIODIC = [
+  [485, 324.96, 1934.136], [203, 337.23, 32964.467], [199, 342.08, 20.186],
+  [182, 27.85, 445267.112], [156, 73.14, 45036.886], [136, 171.52, 22518.443],
+  [77, 222.54, 65928.934], [74, 296.72, 3034.906], [70, 243.58, 9037.513],
+  [58, 119.81, 33718.147], [52, 297.17, 150.678], [50, 21.02, 2281.226],
+  [45, 247.54, 29929.562], [44, 325.15, 31555.956], [29, 60.93, 4443.417],
+  [18, 155.12, 67555.328], [17, 288.79, 4562.452], [16, 198.04, 62894.029],
+  [14, 199.76, 31436.921], [12, 95.39, 14577.848], [12, 287.11, 31931.756],
+  [12, 320.81, 34777.259], [9, 227.73, 1222.114], [8, 15.45, 16859.074]
+];
+
+function _seasonInstantJDE(year, k) {
+  var Y = (year - 2000) / 1000;
+  var c = _SEASON_JDE0[k];
+  var J0 = c[0] + c[1] * Y + c[2] * Y * Y + c[3] * Y * Y * Y + c[4] * Y * Y * Y * Y;
+  var T = (J0 - 2451545.0) / 36525;
+  var W = (35999.373 * T - 2.47) * DEG_TO_RAD;
+  var dl = 1 + 0.0334 * Math.cos(W) + 0.0007 * Math.cos(2 * W);
+  var S = 0;
+  for (var i = 0; i < _SEASON_PERIODIC.length; i++) {
+    var t2 = _SEASON_PERIODIC[i];
+    S += t2[0] * Math.cos((t2[1] + t2[2] * T) * DEG_TO_RAD);
+  }
+  return J0 + (0.00001 * S) / dl;
+}
+
+var _seasonCache = { year: 0, events: [] };
+
+function _seasonEventsForYear(year) {
+  if (_seasonCache.year === year) return _seasonCache.events;
+  // Hemisphere-aware names: October IS spring in Sydney. Chosen location
+  // decides; no location defaults to the northern names.
+  var south = false;
+  try {
+    var loc = JSON.parse(localStorage.getItem(_ALM_LOC_KEY) || 'null');
+    south = !!(loc && loc.lat < 0);
+  } catch (e) {}
+  var names = south
+    ? ['Autumn Equinox', 'Winter Solstice', 'Spring Equinox', 'Summer Solstice']
+    : ['Spring Equinox', 'Summer Solstice', 'Autumn Equinox', 'Winter Solstice'];
+  var events = [];
+  for (var k = 0; k < 4; k++) {
+    // JDE (TT ~ UTC at day precision) -> the user's local calendar date
+    var d = new Date((_seasonInstantJDE(year, k) - 2440587.5) * 86400000);
+    events.push({ month: d.getMonth() + 1, day: d.getDate(), label: names[k] });
+  }
+  _seasonCache = { year: year, events: events };
+  return events;
+}
+
 // Get almanac events for a given calendar system's month, keyed by day number
 function _getAlmanacEvents(sys, year, month) {
   var events = {};
@@ -3888,11 +3958,13 @@ function _getAlmanacEvents(sys, year, month) {
     for (var _hi = 0; _hi < _hsh.length; _hi++) {
       if (_hsh[_hi].m === month) add(_hsh[_hi].d, _hsh[_hi].name, 'holiday');
     }
-    // Solstices & Equinoxes
-    if (month === 3) { add(20, 'Spring Equinox', 'astro'); }
-    if (month === 6) { add(20, 'Summer Solstice', 'astro'); }
-    if (month === 9) { add(22, 'Autumn Equinox', 'astro'); }
-    if (month === 12) { add(21, 'Winter Solstice', 'astro'); }
+    // Solstices & Equinoxes — computed (Meeus), hemisphere-aware labels
+    var seasonEvents = _seasonEventsForYear(year);
+    for (var sei = 0; sei < seasonEvents.length; sei++) {
+      if (seasonEvents[sei].month === month) {
+        add(seasonEvents[sei].day, seasonEvents[sei].label, 'astro');
+      }
+    }
   }
 
   else if (sys === 'hebrew') {

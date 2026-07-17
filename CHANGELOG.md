@@ -35,6 +35,19 @@ push.
   catalog from <date>" note), and every BT download keeps its infohash,
   magnet link, and .torrent file so ZIMs can be re-seeded into offline
   swarms later.
+- **Honest seeding**: completed BT downloads re-seed from the library
+  file itself (the old in-place seed died silently on restart), and the
+  seeding panel shows snagged seeds — errored or file-missing — in red
+  instead of hiding them. Mirrors especially.
+- **Nearby warns when it can't work**: Docker bridge mode advertises an
+  unreachable container address; the Nearby card now says so and the
+  ZIMI_NEARBY ip= field (or host networking) fixes it.
+- **The almanac states its precision like an encyclopedia**: a new
+  "About this data" section covers algorithms, calendar accuracy, and
+  coverage in all 10 languages. Equinoxes and solstices are now computed
+  (Meeus, verified to within ~1 minute of USNO reference times) instead
+  of pinned to fixed dates, with hemisphere-aware season names — October
+  is spring in Sydney.
 - **Every install keeps the post-world basics**: the offline catalog
   copy plus a magnet link for each installed ZIM (infohash extracted
   from the catalog's torrents); mirrors additionally keep the .torrent

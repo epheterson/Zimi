@@ -111,6 +111,34 @@ def is_public_share_enabled() -> bool:
     return val in ("1", "true", "yes", "on")
 
 
+def get_advertise_ip() -> str:
+    """The address peers are told to connect to. ZIMI_NEARBY's ip= field
+    overrides detection — required in Docker bridge mode, where the
+    auto-detected address is the container's bridge IP and unreachable
+    from the LAN. (Host networking needs no override.)"""
+    override = str(_nearby_conf().get("ip", "")).strip()
+    if override:
+        return override
+    return _local_ip()
+
+
+def advertised_ip_looks_unreachable() -> bool:
+    """True when we're advertising a Docker-bridge address (172.16/12 or
+    a veth-style /16 the LAN can't route to). Drives a UI warning —
+    Nearby silently doesn't work in bridge mode without ip= or host
+    networking."""
+    if str(_nearby_conf().get("ip", "")).strip():
+        return False  # operator override — trust it
+    ip = _local_ip()
+    try:
+        import ipaddress as _ipa
+
+        addr = _ipa.ip_address(ip)
+        return addr in _ipa.ip_network("172.16.0.0/12") or ip == "127.0.0.1"
+    except ValueError:
+        return False
+
+
 def _local_ip() -> str:
     """Best-effort: a routable IPv4 the LAN can reach. Falls back to 127.0.0.1."""
     try:
@@ -257,7 +285,7 @@ def start(
             b"port": str(http_port).encode(),
             b"bt_port": str(bt_port).encode(),
         }
-        ip = _local_ip()
+        ip = get_advertise_ip()
         si = mod.ServiceInfo(
             SERVICE_TYPE,
             full_name,

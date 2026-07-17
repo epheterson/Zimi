@@ -1266,10 +1266,37 @@ def _try_bt_download(
                 )
             except Exception as e:
                 log.debug("torrent metadata save failed: %s", e)
-            # Seeding policy decision: by default we KEEP the torrent in
-            # aria2 so it transitions to seeding mode automatically up to the
-            # ratio cap. Only remove when seeding is disabled — then this
-            # was a leech-only download and we're done.
+            # Honest seeding: re-add the torrent pointing at the LIBRARY
+            # file. The old in-place seed rode an open file handle to a
+            # renamed path — it died silently on restart or cross-fs moves.
+            # bt-seed-unverified skips a re-hash (aria2 verified every
+            # piece during the download; libzim just validated the file).
+            if _p2p.is_seeding_enabled():
+                try:
+                    _meta = _get_torrent_metadata().get(dl["filename"]) or {}
+                    _src = _meta.get("torrent_file") or torrent_url
+                    _ratio = (
+                        "0"
+                        if _p2p.is_mirror_enabled()
+                        else str(_p2p.get_seed_ratio_cap())
+                    )
+                    backend.add_torrent(
+                        _src,
+                        dest_dir=os.path.dirname(dl["dest"]),
+                        options={
+                            "bt-seed-unverified": "true",
+                            "seed-ratio": _ratio,
+                            "allow-overwrite": "true",
+                        },
+                    )
+                    backend.remove(tid, delete_files=True)
+                except Exception as e:
+                    log.debug(
+                        "library re-seed failed (%s); in-session seed kept: %s",
+                        dl["filename"],
+                        e,
+                    )
+            # Leech-only (seeding disabled): drop the finished torrent.
             if not _p2p.is_seeding_enabled():
                 try:
                     backend.remove(tid)

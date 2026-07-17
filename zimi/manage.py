@@ -543,24 +543,31 @@ def handle_manage_get(handler, parsed, params):
                 pass
         try:
             for raw in backend.list_managed():
-                # Errored torrents aren't seeding — never surface them as such.
-                if raw.get("status") == "error":
-                    continue
                 files = raw.get("files", [])
-                fname = ""
+                fpath = ""
                 if files and isinstance(files, list) and files[0].get("path"):
-                    fname = os.path.basename(files[0]["path"])
+                    fpath = files[0]["path"]
+                fname = os.path.basename(fpath)
                 # Skip aria2's own .torrent metadata fetches — noise.
                 if not fname.endswith(".zim"):
                     continue
                 completed = int(raw.get("completedLength", 0))
                 uploaded = int(raw.get("uploadLength", 0))
                 ratio = uploaded / max(completed, 1)
+                state = raw.get("status", "unknown")
+                # Honesty: a seed whose file vanished (or that errored) is
+                # snagged, not seeding — surface it, don't hide it.
+                snag = ""
+                if state == "error":
+                    snag = raw.get("errorMessage", "") or "error"
+                elif fpath and not os.path.exists(fpath):
+                    snag = "file missing"
                 torrents.append(
                     {
                         "id": raw.get("gid", ""),
                         "filename": fname,
-                        "state": raw.get("status", "unknown"),
+                        "state": state,
+                        "snag": snag,
                         "completed_bytes": completed,
                         "uploaded_bytes": uploaded,
                         "ratio": round(ratio, 3),
@@ -570,8 +577,9 @@ def handle_manage_get(handler, parsed, params):
                         "info_hash": raw.get("infoHash", ""),
                     }
                 )
-                total_up += uploaded
-                total_down += completed
+                if not snag:
+                    total_up += uploaded
+                    total_down += completed
         except Exception as e:
             log.warning("seeding list failed: %s", e)
         return handler._json(

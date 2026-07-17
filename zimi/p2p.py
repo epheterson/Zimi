@@ -379,6 +379,12 @@ def get_mirror_status() -> dict:
         "upload_kb": get_mirror_upload_kb(),
         "seed_ratio_cap": get_seed_ratio_cap(),
         "seed_ratio_env_locked": is_seed_ratio_env_locked(),
+        # Docker bridge mode advertises an unreachable container IP —
+        # Nearby silently doesn't work. The UI warns; ZIMI_NEARBY's ip=
+        # field (or host networking) fixes it.
+        "peer_ip_unreachable": (
+            _disc.is_share_enabled() and _disc.advertised_ip_looks_unreachable()
+        ),
     }
 
 
@@ -716,14 +722,25 @@ class Aria2Backend(BTBackend):
         stopped = self._rpc("aria2.tellStopped", [0, 1000])
         return list(active) + list(waiting) + list(stopped)
 
-    def purge_stopped(self) -> None:
-        """Clear finished/errored download results from aria2's session.
+    def purge_stopped(self, keep_errors: bool = True) -> None:
+        """Clear finished download results from aria2's session.
 
-        Errored torrents (e.g. broken/empty ZIMs whose .torrent won't resolve)
-        otherwise linger forever in the stopped list and clutter the seeding
-        panel. purgeDownloadResult only touches stopped results — active seeds
-        are untouched."""
-        self._rpc("aria2.purgeDownloadResult", [])
+        Completed/removed results are noise; errored ones are SIGNAL (a
+        snagged seed the user should see) and stay visible by default —
+        the seeding panel renders them as errors instead of hiding them.
+        Active seeds are never touched."""
+        try:
+            stopped = self._rpc("aria2.tellStopped", [0, 1000])
+        except Exception:
+            return
+        for raw in stopped:
+            status = raw.get("status", "")
+            if keep_errors and status == "error":
+                continue
+            try:
+                self._rpc("aria2.removeDownloadResult", [raw.get("gid", "")])
+            except Exception:
+                pass
 
 
 # ============================================================================

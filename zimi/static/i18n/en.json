@@ -911,5 +911,12 @@
   "bt_port_unknown": "unknown",
   "bt_port_recheck_hint": "Re-map UPnP and re-test whether peers can reach this port",
   "catalog_offline_note": "Offline — showing catalog from {d}",
+  "nearby_bridge_warning": "Nearby is advertising a container address other devices can't reach. Run Docker with host networking, or set ip=<LAN address> in ZIMI_NEARBY.",
+  "alm_data_title": "About this data",
+  "alm_data_astro": "Sun, moon, planet, and season calculations run on your device using published astronomical algorithms (Meeus). Equinox and solstice instants are accurate to within minutes; meteor shower dates are typical peak nights.",
+  "alm_data_calendars": "Hebrew, Islamic, Persian, and Chinese dates use arithmetic calendars. Tabular Islamic dates can differ by a day from official moon-sighting announcements.",
+  "alm_data_holidays": "Hindu and Sikh festival dates are table-verified for 2024–2030 and computed approximations beyond. National holidays cover 17 countries plus a worldwide set; your chosen location selects which apply.",
+  "alm_data_tz": "Clocks and time zones come from your device's IANA time zone database and stay current with system updates.",
+  "alm_data_offline": "Everything on this page is computed or stored locally. Nothing is fetched from the internet.",
   "peer_name_hint": "The name other Zimi devices see. Applies after restart."
 }

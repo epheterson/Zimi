@@ -5260,15 +5260,20 @@ async function _renderSeedingSection() {
   rows += '<div class="seeding-list">';
   for (const tr of torrents) {
     const ratioPct = Math.min(100, (tr.ratio / seeding.ratio_cap) * 100);
-    rows += '<div class="seeding-row">' +
+    // Snagged seeds (errored, or their file is gone) render honestly in
+    // red instead of pretending to seed — mirrors especially need this.
+    const snagged = !!tr.snag;
+    rows += '<div class="seeding-row' + (snagged ? ' seeding-snagged' : '') + '">' +
       '<div class="seeding-name" title="' + escAttr(tr.info_hash || '') + '">' + esc(tr.filename) + '</div>' +
       '<div class="seeding-meta">' +
-        '<span>' + esc(t('seeding_state_' + tr.state, {default: tr.state})) + '</span>' +
-        ' · <span>' + tr.peers + ' ' + tH('peers') + '</span>' +
-        ' · <span>↑ ' + fmt(tr.uploaded_bytes) + '</span>' +
-        ' · <span>' + tr.ratio.toFixed(2) + 'x</span>' +
+        (snagged
+          ? '<span class="seeding-snag">⚠ ' + esc(tr.snag) + '</span>'
+          : '<span>' + esc(t('seeding_state_' + tr.state, {default: tr.state})) + '</span>' +
+            ' · <span>' + tr.peers + ' ' + tH('peers') + '</span>' +
+            ' · <span>↑ ' + fmt(tr.uploaded_bytes) + '</span>' +
+            ' · <span>' + tr.ratio.toFixed(2) + 'x</span>') +
       '</div>' +
-      '<div class="seeding-bar"><div class="seeding-bar-fill" style="width:' + ratioPct + '%"></div></div>' +
+      '<div class="seeding-bar"><div class="seeding-bar-fill' + (snagged ? ' seeding-bar-snag' : '') + '" style="width:' + (snagged ? 100 : ratioPct) + '%"></div></div>' +
     '</div>';
   }
   rows += '</div>';
@@ -5409,7 +5414,8 @@ async function _renderMirrorSection() {
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
       'share_mirror_title', tH('share_mirror_desc'), !m.torrent_enabled) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
-      'share_nearby_title', tH('share_nearby_desc')) +
+      'share_nearby_title', tH('share_nearby_desc') +
+        (m.peer_ip_unreachable ? '<div class="share-row-desc share-nearby-warn">\u26a0 ' + tH('nearby_bridge_warning') + '</div>' : '')) +
   '</div>';
   if (m.enabled && m.torrent_enabled) {
     const fmtKb = m.upload_kb >= 1024

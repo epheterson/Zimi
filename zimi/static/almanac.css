@@ -30,6 +30,8 @@
 .alm-tz-night .alm-tz-city-time { color: var(--text2); }
 .alm-tz-city-active { border-color: var(--amber-border); background: var(--amber-glow); }
 .alm-cal-region { text-align: center; font-size: 11px; color: var(--text3); margin-top: 8px; }
+.alm-data-notes { display: flex; flex-direction: column; gap: 8px; }
+.alm-data-note { font-size: 12px; line-height: 1.5; color: var(--text2); }
 .alm-tz-city-active .alm-tz-city-name { color: var(--amber); }
 .almanac-hero { display: flex; flex-direction: column; align-items: center; margin-bottom: 32px; position: relative; }
 .almanac-moon { position: relative; width: 200px; height: 200px; border-radius: 50%; overflow: hidden; background: #080c16; }
