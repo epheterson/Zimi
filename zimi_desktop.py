@@ -161,6 +161,12 @@ class ServerThread(threading.Thread):
             server = ThreadingHTTPServer(("127.0.0.1", port), zimi.ZimHandler)
             self.ready.set()  # UI can load now — /list works from cache
 
+            # BT sidecar, UPnP, LAN discovery, download resume, mirror
+            # upkeep, 12h maintenance — same services the CLI runs. The
+            # desktop app used to skip all of it (BT only worked via the
+            # lazy download-time spawn; UPnP/resume/mirror never ran).
+            zimi.start_background_services(port)
+
             # Restore suggest cache (instant, from JSON file)
             loaded = zimi._suggest_cache_restore()
 
