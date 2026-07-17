@@ -364,13 +364,72 @@ def _run_completion(tmp_path, monkeypatch, *, seeding, mirror, cap):
 def test_reseed_normal_cap_readds_from_library(tmp_path, monkeypatch):
     """Seeding on, cap 2: the finished torrent re-adds against ZIM_DIR
     with the cap, so the seed survives restarts (the honest-seeding fix)."""
-    backend = _run_completion(tmp_path, monkeypatch, seeding=True, mirror=False, cap=2.0)
+    backend = _run_completion(
+        tmp_path, monkeypatch, seeding=True, mirror=False, cap=2.0
+    )
     readds = [c for c in backend.add_torrent.call_args_list[1:]]
     assert len(readds) == 1
     args, kwargs = readds[0]
     assert kwargs["dest_dir"] == str(tmp_path)
     assert kwargs["options"]["seed-ratio"] == "2.0"
     assert kwargs["options"]["bt-seed-unverified"] == "true"
+    backend.remove.assert_called_with("gid-001", delete_files=True)
+
+
+def test_reseed_removes_staging_before_readd(tmp_path, monkeypatch):
+    """The staging torrent must be removed BEFORE the library-path seed is
+    added — same info-hash, so add-before-remove makes aria2 dup-reject the
+    add and no seed is ever created (the real Gutenberg no-seed bug)."""
+    backend = _run_completion(
+        tmp_path, monkeypatch, seeding=True, mirror=False, cap=2.0
+    )
+    # Walk the ordered call log; the re-seed add must follow the staging remove.
+    names = [c[0] for c in backend.mock_calls]
+    remove_idx = names.index("remove")
+    # the re-seed add is the second add_torrent call
+    add_idxs = [i for i, n in enumerate(names) if n == "add_torrent"]
+    reseed_add_idx = add_idxs[1]
+    assert remove_idx < reseed_add_idx, (
+        f"staging remove (@{remove_idx}) must precede re-seed add "
+        f"(@{reseed_add_idx}); order was {names}"
+    )
+
+
+def test_reseed_survives_when_add_raises(tmp_path, monkeypatch):
+    """Even if the re-seed add fails, the staging torrent is already gone
+    (removed first), so no snagged 'file missing' torrent is left behind."""
+    import zimi.p2p as p2p
+
+    dl = _mk_dl(tmp_path)
+    staging_path = tmp_path / "staging" / dl["filename"]
+    staging_path.parent.mkdir(exist_ok=True)
+    staging_path.write_bytes(b"fake zim content")
+    monkeypatch.setattr(library._srv, "open_archive", lambda path: object())
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: True)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
+    backend = _mk_backend(
+        status_sequence=[
+            {
+                "state": "complete",
+                "completed_bytes": 16,
+                "total_bytes": 16,
+                "peers": 0,
+                "info_hash": "aa11",
+                "gid": "gid-001",
+            }
+        ]
+    )
+    # First add_torrent = the download; second = the re-seed, which raises.
+    backend.add_torrent.side_effect = ["gid-001", RuntimeError("duplicate")]
+    out = library._try_bt_download(
+        backend,
+        dl,
+        torrent_url=dl["url"] + ".torrent",
+        staging_dir=str(staging_path.parent),
+        poll_interval=0.01,
+    )
+    assert out == "success"
     backend.remove.assert_called_with("gid-001", delete_files=True)
 
 
@@ -383,12 +442,16 @@ def test_reseed_mirror_mode_is_uncapped(tmp_path, monkeypatch):
 def test_reseed_cap_zero_means_leech_only(tmp_path, monkeypatch):
     """Zimi's ratio 0 = never seed; aria2's 0 = forever. Cap 0 must remove
     the torrent, never re-add it uncapped."""
-    backend = _run_completion(tmp_path, monkeypatch, seeding=True, mirror=False, cap=0.0)
+    backend = _run_completion(
+        tmp_path, monkeypatch, seeding=True, mirror=False, cap=0.0
+    )
     assert len(backend.add_torrent.call_args_list) == 1  # only the download add
     backend.remove.assert_called_with("gid-001", delete_files=True)
 
 
 def test_seeding_disabled_removes_torrent(tmp_path, monkeypatch):
-    backend = _run_completion(tmp_path, monkeypatch, seeding=False, mirror=False, cap=2.0)
+    backend = _run_completion(
+        tmp_path, monkeypatch, seeding=False, mirror=False, cap=2.0
+    )
     assert len(backend.add_torrent.call_args_list) == 1  # no re-add
     assert backend.remove.call_args_list[-1].args[0] == "gid-001"

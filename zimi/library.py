@@ -1397,11 +1397,21 @@ def _try_bt_download(
             # Zimi's "ratio 0" means never seed; aria2's means seed
             # forever. Only mirror mode gets the uncapped value.
             if _p2p.is_seeding_enabled() and (_cap > 0 or _p2p.is_mirror_enabled()):
+                # Remove the staging torrent FIRST. It still holds this
+                # info-hash as an active seeder (now pointing at the moved-away
+                # staging path), so adding the library-path torrent before
+                # removing it makes aria2 reject the add as a duplicate
+                # info-hash — the seed was silently never created and the
+                # staging torrent snagged "file missing". Remove-then-add.
+                try:
+                    backend.remove(tid, delete_files=True)
+                except Exception as e:
+                    log.debug("pre-reseed staging remove failed: %s", e)
                 try:
                     _meta = _get_torrent_metadata().get(dl["filename"]) or {}
                     _src = _meta.get("torrent_file") or torrent_url
                     _ratio = "0" if _p2p.is_mirror_enabled() else str(_cap)
-                    backend.add_torrent(
+                    seed_gid = backend.add_torrent(
                         _src,
                         dest_dir=os.path.dirname(dl["dest"]),
                         options={
@@ -1410,13 +1420,10 @@ def _try_bt_download(
                             "allow-overwrite": "true",
                         },
                     )
-                    backend.remove(tid, delete_files=True)
+                    if seed_gid:
+                        tid = seed_gid  # track the library seed, not staging
                 except Exception as e:
-                    log.debug(
-                        "library re-seed failed (%s); in-session seed kept: %s",
-                        dl["filename"],
-                        e,
-                    )
+                    log.debug("library re-seed failed (%s): %s", dl["filename"], e)
             elif _p2p.is_seeding_enabled():
                 # Seeding on but cap 0: leech-only by policy
                 try:
