@@ -555,6 +555,21 @@ def handle_manage_get(handler, parsed, params):
                 uploaded = int(raw.get("uploadLength", 0))
                 ratio = uploaded / max(completed, 1)
                 state = raw.get("status", "unknown")
+                # An in-flight BT download is the Downloads tab's job, not a
+                # seed — list_managed() returns downloading torrents too, so
+                # without this a BT download double-surfaces (one download
+                # card AND one "seed" card for the same .zim under "All").
+                # Only skip when we KNOW it's still downloading: total known,
+                # not yet complete, and aria2 hasn't flagged it a seeder.
+                total = int(raw.get("totalLength", 0))
+                seeder = raw.get("seeder") in ("true", True)
+                if (
+                    state not in ("error", "complete")
+                    and not seeder
+                    and total > 0
+                    and completed < total
+                ):
+                    continue
                 # Honesty: a seed whose file vanished (or that errored) is
                 # snagged, not seeding — surface it, don't hide it.
                 snag = ""

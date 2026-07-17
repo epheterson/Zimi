@@ -102,6 +102,47 @@ def test_snagged_seeds_are_shown_not_hidden(tmp_path, monkeypatch):
     assert body["totals"]["downloaded"] == 100
 
 
+def test_inflight_download_not_listed_as_seed(tmp_path, monkeypatch):
+    """list_managed() includes downloading torrents; the seeding view must
+    exclude a .zim that's still downloading, or it double-cards against the
+    Downloads tab (the 'showed up twice' bug)."""
+    downloading = tmp_path / "gutenberg_en_all_2026-07.zim"
+    downloading.write_bytes(b"x" * 5)
+    seeding = tmp_path / "wikipedia_en_2026-06.zim"
+    seeding.write_bytes(b"x" * 10)
+    managed = [
+        {
+            "gid": "g-dl",
+            "status": "active",
+            "files": [{"path": str(downloading)}],
+            "completedLength": "40",
+            "totalLength": "100",  # half done — a download, not a seed
+            "uploadLength": "0",
+            "connections": "2",
+            "downloadSpeed": "500",
+            "uploadSpeed": "0",
+            "seeder": "false",
+            "infoHash": "dd",
+        },
+        {
+            "gid": "g-seed",
+            "status": "active",
+            "files": [{"path": str(seeding)}],
+            "completedLength": "100",
+            "totalLength": "100",
+            "uploadLength": "50",
+            "connections": "3",
+            "downloadSpeed": "0",
+            "uploadSpeed": "200",
+            "seeder": "true",
+            "infoHash": "ee",
+        },
+    ]
+    body = _call_seeding(monkeypatch, managed, tmp_path)
+    ids = {t["id"] for t in body["torrents"]}
+    assert ids == {"g-seed"}, "in-flight download must not appear as a seed"
+
+
 def test_purge_stopped_keeps_errors_visible(monkeypatch):
     calls = []
 

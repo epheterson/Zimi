@@ -6398,7 +6398,15 @@ async function _refreshDownloadsInner() {
     if (filter !== 'seeding' && filter !== 'all' && !visibleDls.length) {
       h += '<div class="dl-empty">' + tH('dl_filter_empty') + '</div>';
     }
-    for (const dl of visibleDls) {
+    // Under "All", a completed download that's now seeding is represented by
+    // its seed card above — don't also render its redundant "Complete"
+    // download card (that's the "showed up twice" the seed card + the
+    // lingering done-download entry produced for the same BT file).
+    const _seedNames = new Set(seedingTorrents.map(s => s.filename));
+    const renderDls = (filter === 'all')
+      ? visibleDls.filter(dl => !(dl.done && _seedNames.has(dl.filename)))
+      : visibleDls;
+    for (const dl of renderDls) {
       const title = dlTitle(dl);
       const fmtBytes = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
       const totalStr = dl.total_bytes ? fmtBytes(dl.total_bytes) : '?';
