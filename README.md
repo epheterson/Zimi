@@ -55,7 +55,7 @@ Three switches in Server Settings control all of it:
 - **Nearby** (off by default). Flip it on and Zimi devices on your network find each other; a green pill on a catalog card means a neighbor already has that ZIM. Transfers stay on your LAN, never the internet.
 - **Mirror** (off). Lifts the seeding cap, for people who want to run a long-term Kiwix mirror.
 
-Seeding needs no router setup. Optionally forward your BitTorrent port (default 6881) to let peers connect to you directly, which helps on quiet swarms.
+Seeding needs no router setup: Zimi opens the BitTorrent port automatically (UPnP) and the settings show whether peers can reach you, with a retry when they can't. DHT is on too, so magnet links and trackerless swarms just work.
 
 ## Install
 
@@ -138,7 +138,7 @@ Most people set nothing: every setting below has a sensible default or lives in 
 | `ZIM_DIR` | `/zims` | Path to ZIM files (scanned for `*.zim` on startup) |
 | `ZIMI_DATA_DIR` | `/config` (Docker) or `$ZIM_DIR/.zimi` | Cache, indexes, and settings. Mount separately in Docker. |
 | `ZIMI_MANAGE_PASSWORD` | _(none)_ | Protect library management |
-| `ZIMI_BT` | `on` | BitTorrent: `off`, or `on,port=6881,ratio=2,up=2048,mirror=off,upnp=on,dht=on`. Fields you set are locked in the UI; fields you leave out stay UI-controlled. `ratio=0` means never seed. |
+| `ZIMI_BT` | `on` | BitTorrent: `off`, or `on,port=6881,ratio=2,up=2048,seed=on,mirror=off,upnp=on,dht=on`. `seed`, `upnp`, and `dht` default on. Fields you set are locked in the UI; fields you leave out stay UI-controlled. `ratio=0` means never seed. |
 | `ZIMI_NEARBY` | `off` | LAN sharing: `off`, or `on,name=my-zimi,public=off,ip=192.168.1.20`. Controls serving *and* fetching between your Zimi devices. Set `ip=` to your host's LAN address when running Docker in bridge mode. |
 
 <details>
