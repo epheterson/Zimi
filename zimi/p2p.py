@@ -539,7 +539,7 @@ class Aria2Backend(BTBackend):
         if not find_aria2c():
             return False
         try:
-            self.ensure_running()
+            self._spawn_with_fallback()
             # Round-trip the RPC to confirm it actually responds
             self._rpc("aria2.getVersion", [])
             return True
@@ -627,6 +627,24 @@ class Aria2Backend(BTBackend):
                     last_err = e
                     time.sleep(0.1)
             raise RuntimeError(f"aria2c failed to start within 5s: {last_err}")
+
+    def _spawn_with_fallback(self) -> None:
+        """ensure_running, retrying once on an alternate RPC port when the
+        default is squatted (orphaned sidecars from crashed desktop quits
+        are the usual culprit — messy desktops are the normal case)."""
+        try:
+            self.ensure_running()
+        except RuntimeError:
+            with self._lock:
+                if self._proc is not None:
+                    try:
+                        self._proc.terminate()
+                    except Exception:
+                        pass
+                    self._proc = None
+            self.rpc_port += 13
+            log.info("aria2 RPC port busy; retrying on %d", self.rpc_port)
+            self.ensure_running()
 
     def stop(self) -> None:
         with self._lock:
