@@ -6320,7 +6320,9 @@ async function _refreshDownloadsInner() {
       (seedingTorrents.length ? pill('seeding', tH('seeding_tab'), seedingTorrents.length) : '') +
     '</div>';
     h += '<div class="dl-grid">';
-    if (filter === 'seeding') {
+    // Seed cards render under "Seeding" AND under "All" — All means all.
+    // (With zero downloads and active seeds, All used to render blank.)
+    if (filter === 'seeding' || filter === 'all') {
       const fmtUp = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
       for (const sd of seedingTorrents) {
         // Prefer the installed ZIM's real title; the card opens it
@@ -6348,8 +6350,10 @@ async function _refreshDownloadsInner() {
           '</div>' +
           '</div>';
       }
-      if (!seedingTorrents.length) h += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
-      else h += '<div class="dl-seed-actions"><button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)">' + tH('stop_all_seeds') + '</button></div>';
+      if (filter === 'seeding') {
+        if (!seedingTorrents.length) h += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
+        else h += '<div class="dl-seed-actions"><button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)">' + tH('stop_all_seeds') + '</button></div>';
+      }
     }
     if (filter !== 'seeding' && filter !== 'all' && !visibleDls.length) {
       h += '<div class="dl-empty">' + tH('dl_filter_empty') + '</div>';
