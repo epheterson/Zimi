@@ -27,8 +27,8 @@ every date it shows.
 - **Mirror mode is real now.** Flip one switch and Zimi seeds your whole
   library, uncapped, and archives the torrent for every catalog item —
   a single mirror node can bootstrap ZIM distribution for an entire
-  offline network. Turning it off stops the seeds but never deletes the
-  backup.
+  offline network. Turning it off stops the mirror seeds (ordinary
+  ratio-capped seeding continues) and never deletes the backup.
 - **Built for the day the internet isn't there.** Every install keeps an
   offline copy of the catalog and a magnet link per installed ZIM. The
   catalog browses, searches, and installs from LAN peers with zero
