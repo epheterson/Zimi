@@ -5275,10 +5275,12 @@ async function _renderSeedingSection() {
       '<div class="seeding-meta">' +
         (snagged
           ? '<span class="seeding-snag">⚠ ' + esc(tr.snag) + '</span>'
-          : '<span>' + esc(t('seeding_state_' + tr.state, {default: tr.state})) + '</span>' +
-            ' · <span>' + tr.peers + ' ' + tH('peers') + '</span>' +
-            ' · <span>↑ ' + fmt(tr.uploaded_bytes) + '</span>' +
-            ' · <span>' + tr.ratio.toFixed(2) + 'x</span>') +
+          : (!tr.uploaded_bytes && !tr.up_speed
+            ? '<span>' + tH('seed_waiting', {n: tr.peers || 0}) + '</span>'
+            : '<span>' + esc(t('seeding_state_' + tr.state, {default: tr.state})) + '</span>' +
+              ' · <span>' + tr.peers + ' ' + tH('peers') + '</span>' +
+              ' · <span>↑ ' + fmt(tr.uploaded_bytes) + '</span>' +
+              ' · <span>' + tr.ratio.toFixed(2) + 'x</span>')) +
       '</div>' +
       '<div class="seeding-bar"><div class="seeding-bar-fill' + (snagged ? ' seeding-bar-snag' : '') + '" style="width:' + (snagged ? 100 : ratioPct) + '%"></div></div>' +
     '</div>';
@@ -6315,11 +6317,17 @@ async function _refreshDownloadsInner() {
         const zimName = zim ? zim.name : base.replace(/_\d{4}-\d{2}$/, '');
         const upSpeed = sd.up_speed > 1024 ? ' · ↑ ' + (sd.up_speed / (1024 * 1024)).toFixed(1) + ' MB/s' : '';
         const paused = sd.state === 'paused';
+        // A fresh seed with no uploads reads as broken when it's just
+        // waiting — say so instead of a wall of zeros.
+        const idle = !sd.uploaded_bytes && !sd.up_speed;
+        const meta = idle
+          ? tH('seed_waiting', {n: sd.peers || 0})
+          : '↑ ' + fmtUp(sd.uploaded_bytes) + ' · ' + tH('seed_ratio', {r: (sd.ratio || 0).toFixed(2)}) +
+            (sd.peers > 0 ? ' · ' + tH('n_peers', {n: sd.peers}) : '') + upSpeed;
         h += '<div class="dl-item dl-seed-item">' +
           '<div class="dl-row">' +
           '<span class="dl-name dl-seed-link" onclick="enterSource(\'' + escAttr(escJs(zimName)) + '\', true)" title="' + escAttr(sName) + '">' + esc(sName) + '</span>' +
-          '<span class="dl-size">↑ ' + fmtUp(sd.uploaded_bytes) + ' · ' + tH('seed_ratio', {r: (sd.ratio || 0).toFixed(2)}) +
-            (sd.peers > 0 ? ' · ' + tH('n_peers', {n: sd.peers}) : '') + upSpeed + '</span></div>' +
+          '<span class="dl-size">' + meta + '</span></div>' +
           '<div class="dl-progress" title="' + escAttr(t('seed_bar_tip', {cap: seedingCap})) + '"><div class="dl-progress-bar" style="width:' + Math.min(100, Math.round(((sd.ratio || 0) / seedingCap) * 100)) + '%"></div></div>' +
           '<div class="dl-actions">' +
             '<button class="dl-pause-btn" onclick="_seedAction(\'' + escAttr(escJs(sd.id)) + '\', \'' + (paused ? 'resume' : 'pause') + '\', this)">' + (paused ? tH('resume') : tH('pause')) + '</button>' +

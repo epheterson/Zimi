@@ -913,6 +913,7 @@
   "bt_port_word": "Port",
   "stop_all_seeds": "Stop all seeding",
   "stop_seed": "Stop",
+  "seed_waiting": "Sharing · waiting for requests · {n} connected",
   "bt_port_open": "open",
   "bt_port_closed": "closed",
   "bt_port_unknown": "unknown",

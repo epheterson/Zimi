@@ -913,6 +913,7 @@
   "bt_port_word": "פורט",
   "stop_all_seeds": "עצור את כל השיתוף",
   "stop_seed": "עצור",
+  "seed_waiting": "משתף · ממתין לבקשות · {n} מחוברים",
   "bt_port_open": "פתוח",
   "bt_port_closed": "סגור",
   "bt_port_unknown": "לא ידוע",

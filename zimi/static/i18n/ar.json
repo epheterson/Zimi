@@ -913,6 +913,7 @@
   "bt_port_word": "المنفذ",
   "stop_all_seeds": "إيقاف كل البذر",
   "stop_seed": "إيقاف",
+  "seed_waiting": "مشاركة · بانتظار الطلبات · {n} متصل",
   "bt_port_open": "مفتوح",
   "bt_port_closed": "مغلق",
   "bt_port_unknown": "غير معروف",

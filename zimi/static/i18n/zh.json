@@ -913,6 +913,7 @@
   "bt_port_word": "端口",
   "stop_all_seeds": "停止所有做种",
   "stop_seed": "停止",
+  "seed_waiting": "共享中 · 等待请求 · 已连接 {n}",
   "bt_port_open": "开放",
   "bt_port_closed": "关闭",
   "bt_port_unknown": "未知",

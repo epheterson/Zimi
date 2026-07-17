@@ -913,6 +913,7 @@
   "bt_port_word": "पोर्ट",
   "stop_all_seeds": "सभी सीडिंग रोकें",
   "stop_seed": "रोकें",
+  "seed_waiting": "साझा हो रहा है · अनुरोधों की प्रतीक्षा · {n} जुड़े",
   "bt_port_open": "खुला",
   "bt_port_closed": "बंद",
   "bt_port_unknown": "अज्ञात",

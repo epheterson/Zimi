@@ -913,6 +913,7 @@
   "bt_port_word": "Порт",
   "stop_all_seeds": "Остановить всю раздачу",
   "stop_seed": "Стоп",
+  "seed_waiting": "Раздача · ожидание запросов · {n} подключено",
   "bt_port_open": "открыт",
   "bt_port_closed": "закрыт",
   "bt_port_unknown": "неизвестно",

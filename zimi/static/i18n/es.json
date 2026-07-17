@@ -913,6 +913,7 @@
   "bt_port_word": "Puerto",
   "stop_all_seeds": "Detener toda la compartición",
   "stop_seed": "Detener",
+  "seed_waiting": "Compartiendo · esperando solicitudes · {n} conectados",
   "bt_port_open": "abierto",
   "bt_port_closed": "cerrado",
   "bt_port_unknown": "desconocido",
