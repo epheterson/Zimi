@@ -5372,11 +5372,13 @@ function _portRowInner(bt) {
     '<input type="number" class="share-num-input share-port-input" min="1024" max="65535" value="' + bt.bt_port + '"' +
       (bt.bt_port_env_locked ? ' disabled title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') +
       ' aria-label="' + escAttr(t('bt_port_word')) + '" onchange="_setBtPort(this)">' +
-    '<label class="share-upnp"' + (bt.upnp_env_locked ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
-      '<input type="checkbox"' + (bt.upnp_enabled ? ' checked' : '') + (bt.upnp_env_locked ? ' disabled' : '') + ' onchange="_setUpnp(this)"> UPnP' +
-    '</label>' +
-    '<span class="share-port-dot" title="' + escAttr(dotTitle) + '" style="background:' + dotColor + '"></span>' +
-    '<button class="share-port-retry share-port-retry-circle" onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '" aria-label="' + escAttr(t('retry')) + '">\u27f3</button>';
+    '<span class="share-port-group">' +
+      '<label class="share-upnp"' + (bt.upnp_env_locked ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
+        '<input type="checkbox"' + (bt.upnp_enabled ? ' checked' : '') + (bt.upnp_env_locked ? ' disabled' : '') + ' onchange="_setUpnp(this)"> UPnP' +
+      '</label>' +
+      '<span class="share-port-dot" title="' + escAttr(dotTitle) + '" style="background:' + dotColor + '"></span>' +
+      '<button class="share-port-retry share-port-retry-circle" onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '" aria-label="' + escAttr(t('retry')) + '">\u27f3</button>' +
+    '</span>';
 }
 
 async function _setBtPort(inp) {
@@ -5485,10 +5487,12 @@ async function _renderMirrorSection() {
   const el = document.getElementById('ms-mirror-status');
   if (!el) return;
   const ratioField = '<div class="share-field"><label>' + tH('seed_ratio_label') + '</label>' +
+    '<span class="share-port-group">' +
     '<input type="number" min="0" max="10" step="0.5" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
     ((m.seed_ratio_env_locked || !m.torrent_enabled) ? ' disabled' : '') +
     ' class="share-num-input" aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">' +
-    '<span class="share-field-note">\u00d7 \u00b7 ' + tH('seed_ratio_zero_inline') + '</span></div>';
+    '<span class="share-field-note">\u00d7</span></span>' +
+    '<span class="share-field-note">' + tH('seed_ratio_zero_inline') + '</span></div>';
   // Port health row — like every real BT client: status, UPnP, retry
   let portField = '';
   if (bt && bt.enabled) {
