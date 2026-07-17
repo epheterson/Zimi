@@ -41,7 +41,13 @@ every date it shows.
   to the minute. A new "About this data" section states the precision of
   every date on the page, in all 10 languages.
 - **The world clock is alive**: 28 cities, one per UTC offset, each card
-  tinted by its local daylight.
+  tinted by its local daylight with solid sun/moon marks, the selected
+  city glowing, and a digital card beside the analog clock — split-flap
+  seconds, date, and timezone (PST/CET) included.
+- **The BitTorrent port is editable in place** — change it and the
+  engine respawns on the new port with UPnP re-mapped, live. Peer names
+  apply instantly too (no more restart notes), and Mirror shows its
+  progress while it seeds your library and backs up the catalog.
 - **Panels stopped blanking themselves** (#30): the manage UI no longer
   trips Zimi's own rate limiter, and a rate-limited response keeps
   last-known content instead of clearing the page.
