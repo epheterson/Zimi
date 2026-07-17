@@ -58,6 +58,22 @@ _authed_cache = {}  # {sha256(bearer): expiry_ts}
 _AUTHED_CACHE_TTL = 300.0
 
 
+# Snippets ride the content bucket: one search fans out to ~10 snippet
+# fetches, which burned the whole API budget in a few searches (#30's
+# cousin). Pinned by tests — moving /snippet back to the API bucket is a
+# regression, not a cleanup.
+_RATE_LIMITED_API_PATHS = ("/search", "/read", "/suggest", "/random")
+
+
+def _rate_class(path):
+    """(is_rate_limited, uses_content_bucket) for a GET path."""
+    is_content = path.startswith("/w/") or path == "/snippet"
+    limited = (
+        is_content or path in _RATE_LIMITED_API_PATHS or path.startswith("/manage/")
+    )
+    return limited, is_content
+
+
 def _check_rate_limit(ip, content=False, limit=None):
     """Check if IP has exceeded rate limit. Returns seconds to wait, or 0 if OK."""
     if limit is None:
@@ -380,13 +396,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             return params.get(key, [default])[0]
 
         # Rate limit: API endpoints at RATE_LIMIT (10x for trusted clients),
-        # /w/ content and /snippet at 20x. Snippets ride the content bucket
-        # because one search fans out to ~10 snippet fetches — they burned
-        # the whole API budget in a few searches.
-        rate_limited_paths = ("/search", "/read", "/suggest", "/random")
-        is_w_content = parsed.path.startswith("/w/") or parsed.path == "/snippet"
-        is_manage = parsed.path.startswith("/manage/")
-        if parsed.path in rate_limited_paths or is_w_content or is_manage:
+        # /w/ content and /snippet at 20x.
+        limited, is_w_content = _rate_class(parsed.path)
+        if limited:
             limit = None if is_w_content else self._rate_limit_for_request()
             retry_after = _check_rate_limit(
                 self._client_ip(), content=is_w_content, limit=limit

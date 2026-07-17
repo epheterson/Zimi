@@ -1958,3 +1958,35 @@ class TestPasswordlessManageGate(unittest.TestCase):
 
     def test_public_client_blocked(self):
         self.assertTrue(self._check(private=False))
+
+
+class TestRateClass(unittest.TestCase):
+    """Which endpoints ride which rate bucket. /snippet on the content
+    bucket is a #30-class fix — one search fans out to ~10 snippet
+    fetches; moving it back to the API bucket is a regression."""
+
+    def _cls(self, path):
+        import zimi.http as zhttp
+
+        return zhttp._rate_class(path)
+
+    def test_snippet_rides_content_bucket(self):
+        limited, content = self._cls("/snippet")
+        self.assertTrue(limited)
+        self.assertTrue(content)
+
+    def test_w_content_rides_content_bucket(self):
+        self.assertEqual(self._cls("/w/wikipedia/A/Foo"), (True, True))
+
+    def test_api_paths_ride_api_bucket(self):
+        for p in ("/search", "/read", "/suggest", "/random"):
+            limited, content = self._cls(p)
+            self.assertTrue(limited, p)
+            self.assertFalse(content, p)
+
+    def test_manage_paths_are_limited_api(self):
+        self.assertEqual(self._cls("/manage/downloads"), (True, False))
+
+    def test_unlimited_paths(self):
+        for p in ("/health", "/list", "/static/app.js", "/"):
+            self.assertFalse(self._cls(p)[0], p)

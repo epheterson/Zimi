@@ -92,6 +92,33 @@ ZIMI_VERSION = "1.7.2"
 # 24h — run every 12h so both stay fresh at half-life.
 _MAINTENANCE_INTERVAL = 12 * 3600
 
+
+def _maintenance_pass():
+    """One standing-maintenance sweep: renew the UPnP mapping (24h lease
+    dies silently otherwise), refresh the offline catalog inside its TTL,
+    keep magnets / mirror seeds / torrent archive current. Runs on the
+    12h loop; extracted so tests can pin it."""
+    from zimi import library as _lib
+    from zimi import p2p as _p2p
+
+    try:
+        if _p2p.is_torrent_enabled() and _p2p.peek_backend():
+            from zimi import p2p_nat
+
+            p2p_nat.probe(_p2p.get_bt_port(), try_upnp=_p2p.is_upnp_enabled())
+    except Exception as e:
+        log.debug("maintenance: NAT renew failed: %s", e)
+    try:
+        _lib._fetch_kiwix_catalog("", "eng", 500, 0)
+        _lib._magnets_ensured = False
+        _lib.ensure_magnets_for_installed()
+        _lib.retire_stale_seeds()
+        _lib._catalog_torrents_archived = False
+        _lib.mirror_sync()
+        _lib.archive_catalog_torrents()
+    except Exception as e:
+        log.debug("maintenance pass failed: %s", e)
+
 log = logging.getLogger("zimi")
 logging.basicConfig(
     format="%(asctime)s %(message)s", datefmt="%H:%M:%S", level=logging.INFO
@@ -1086,33 +1113,10 @@ def main():
         def _maintenance_loop():
             import random as _random_mod
 
-            from zimi import library as _lib
-            from zimi import p2p as _p2p
-
             # Jitter so a fleet of Zimis doesn't hit Kiwix on the hour
             time.sleep(_MAINTENANCE_INTERVAL / 2 + _random_mod.uniform(0, 3600))
             while True:
-                try:
-                    if _p2p.is_torrent_enabled() and _p2p.peek_backend():
-                        from zimi import p2p_nat
-
-                        p2p_nat.probe(
-                            _p2p.get_bt_port(), try_upnp=_p2p.is_upnp_enabled()
-                        )
-                except Exception as e:
-                    log.debug("maintenance: NAT renew failed: %s", e)
-                try:
-                    # Refresh the offline catalog copy (serves from cache
-                    # inside the TTL, refetches past it)
-                    _lib._fetch_kiwix_catalog("", "eng", 500, 0)
-                    _lib._magnets_ensured = False
-                    _lib.ensure_magnets_for_installed()
-                    _lib.retire_stale_seeds()
-                    _lib._catalog_torrents_archived = False
-                    _lib.mirror_sync()
-                    _lib.archive_catalog_torrents()
-                except Exception as e:
-                    log.debug("maintenance pass failed: %s", e)
+                _maintenance_pass()
                 time.sleep(
                     _MAINTENANCE_INTERVAL + _random_mod.uniform(0, 3600)
                 )

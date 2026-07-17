@@ -318,3 +318,77 @@ def test_complete_with_aria2_control_file_falls_back(tmp_path, monkeypatch):
     )
     assert result == "fallback"
     assert not os.path.exists(dl["dest"])
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Honest-seeding re-add policy: what happens to the torrent after install
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _run_completion(tmp_path, monkeypatch, *, seeding, mirror, cap):
+    """Drive _try_bt_download to a clean completion under a seed policy;
+    return the mocked backend for assertions."""
+    import zimi.p2p as p2p
+
+    dl = _mk_dl(tmp_path)
+    staging_path = tmp_path / "staging" / dl["filename"]
+    staging_path.parent.mkdir(exist_ok=True)
+    staging_path.write_bytes(b"fake zim content")
+    monkeypatch.setattr(library._srv, "open_archive", lambda path: object())
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: seeding)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: mirror)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: cap)
+    backend = _mk_backend(
+        status_sequence=[
+            {
+                "state": "complete",
+                "completed_bytes": 16,
+                "total_bytes": 16,
+                "peers": 0,
+                "info_hash": "aa11",
+                "gid": "gid-001",
+            }
+        ]
+    )
+    out = library._try_bt_download(
+        backend,
+        dl,
+        torrent_url=dl["url"] + ".torrent",
+        staging_dir=str(staging_path.parent),
+        poll_interval=0.01,
+    )
+    assert out == "success"
+    return backend
+
+
+def test_reseed_normal_cap_readds_from_library(tmp_path, monkeypatch):
+    """Seeding on, cap 2: the finished torrent re-adds against ZIM_DIR
+    with the cap, so the seed survives restarts (the honest-seeding fix)."""
+    backend = _run_completion(tmp_path, monkeypatch, seeding=True, mirror=False, cap=2.0)
+    readds = [c for c in backend.add_torrent.call_args_list[1:]]
+    assert len(readds) == 1
+    args, kwargs = readds[0]
+    assert kwargs["dest_dir"] == str(tmp_path)
+    assert kwargs["options"]["seed-ratio"] == "2.0"
+    assert kwargs["options"]["bt-seed-unverified"] == "true"
+    backend.remove.assert_called_with("gid-001", delete_files=True)
+
+
+def test_reseed_mirror_mode_is_uncapped(tmp_path, monkeypatch):
+    backend = _run_completion(tmp_path, monkeypatch, seeding=True, mirror=True, cap=2.0)
+    _args, kwargs = backend.add_torrent.call_args_list[1]
+    assert kwargs["options"]["seed-ratio"] == "0"
+
+
+def test_reseed_cap_zero_means_leech_only(tmp_path, monkeypatch):
+    """Zimi's ratio 0 = never seed; aria2's 0 = forever. Cap 0 must remove
+    the torrent, never re-add it uncapped."""
+    backend = _run_completion(tmp_path, monkeypatch, seeding=True, mirror=False, cap=0.0)
+    assert len(backend.add_torrent.call_args_list) == 1  # only the download add
+    backend.remove.assert_called_with("gid-001", delete_files=True)
+
+
+def test_seeding_disabled_removes_torrent(tmp_path, monkeypatch):
+    backend = _run_completion(tmp_path, monkeypatch, seeding=False, mirror=False, cap=2.0)
+    assert len(backend.add_torrent.call_args_list) == 1  # no re-add
+    assert backend.remove.call_args_list[-1].args[0] == "gid-001"

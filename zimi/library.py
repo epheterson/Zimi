@@ -570,10 +570,9 @@ def resume_pending_downloads():
             items = json.load(f).get("pending", [])
     except (OSError, ValueError):
         return 0
-    try:
-        os.remove(path)
-    except OSError:
-        pass
+    # The manifest is NOT deleted up front: a crash during the resume
+    # window must not lose every pending transfer. The single rewrite at
+    # the end (under the lock) is the source of truth.
     def _already_pending(filename):
         with _download_lock:
             if any(
@@ -586,9 +585,9 @@ def resume_pending_downloads():
     # Peer entries need mDNS to have found the peer again — discovery
     # starts in the same breath as this call, so give it a moment rather
     # than dropping the transfer (resume runs on a background thread).
-    if any(it.get("source") == "peer" for it in items):
-        from zimi import p2p_discovery as _disc
+    from zimi import p2p_discovery as _disc
 
+    if any(it.get("source") == "peer" for it in items) and _disc.is_share_enabled():
         wanted = {it.get("peer_name") for it in items if it.get("source") == "peer"}
         deadline = time.time() + 30
         while time.time() < deadline:
@@ -624,18 +623,21 @@ def resume_pending_downloads():
                 log.info("Not resuming %s: %s", filename, err)
         except Exception as e:
             log.warning("Resume failed for %s: %s", it.get("filename"), e)
-    if kept:
-        # Merge deferred entries back into the freshly-rewritten manifest
-        try:
-            with _download_lock:
-                _persist_pending_downloads()
-            with open(path) as f:
-                current = json.load(f).get("pending", [])
-        except (OSError, ValueError):
-            current = []
-        have = {c.get("filename") for c in current}
-        current.extend(k for k in kept if k.get("filename") not in have)
-        _srv._atomic_write_json(path, {"pending": current})
+    # Single atomic rewrite, entirely under the lock: active/queued
+    # entries from the resubmissions plus the deferred (kept) ones. A
+    # download completing concurrently can't be resurrected as pending,
+    # because nothing here reads the file back outside the lock.
+    with _download_lock:
+        _persist_pending_downloads()
+        if kept:
+            try:
+                with open(path) as f:
+                    current = json.load(f).get("pending", [])
+            except (OSError, ValueError):
+                current = []
+            have = {c.get("filename") for c in current}
+            current.extend(k for k in kept if k.get("filename") not in have)
+            _srv._atomic_write_json(path, {"pending": current})
     if resumed:
         log.info("Resumed %d pending download(s) from the previous run", resumed)
     return resumed

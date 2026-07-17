@@ -402,3 +402,62 @@ def test_download_allowed_with_room(
     )
     dl_id, err = library._start_download(_kiwix_url("ok"), size_bytes=10 * 1024**3)
     assert err is None and dl_id is not None
+
+
+def test_resume_credits_existing_partial_against_disk_gate(
+    _no_real_threads, _no_mirrors, _data_dir, monkeypatch
+):
+    """A 90%-done partial must not be refused for the space it already
+    occupies — only the remaining bytes count (compounds with restart
+    resume: the refusal used to permanently drop the transfer)."""
+    size = 100 * 1024**3
+    # Free space fits the REMAINDER (10 GB + floor) but not the full size.
+    # total sized so free is ~10% — above the disk-pressure threshold.
+    monkeypatch.setattr(
+        library.shutil,
+        "disk_usage",
+        lambda p: _FakeUsage(free=15 * 1024**3, total=150 * 1024**3),
+    )
+    import zimi.server as _srv_mod
+
+    dest = os.path.join(_srv_mod.ZIM_DIR, "big.zim")
+    real_getsize = os.path.getsize
+    monkeypatch.setattr(
+        library.os.path,
+        "getsize",
+        lambda p: (90 * 1024**3) if p == dest + ".tmp" else real_getsize(p),
+    )
+    dl_id, err = library._start_download(_kiwix_url("big"), size_bytes=size)
+    assert err is None and dl_id is not None
+
+
+def test_peer_resume_deferred_entry_survives_on_disk(
+    _no_real_threads, _no_mirrors, _data_dir, monkeypatch
+):
+    """A peer transfer whose peer isn't rediscovered is kept in
+    downloads.json for the next restart — never silently discarded."""
+    import json
+
+    import zimi.p2p_discovery as disc
+
+    monkeypatch.setattr(disc, "is_share_enabled", lambda: True)
+    monkeypatch.setattr(disc, "get_peers", lambda: [])
+    # Fake clock: the mDNS wait loop's deadline passes immediately (a
+    # no-op sleep alone would busy-wait the full 30 real seconds)
+    t0 = library.time.time()
+    ticks = iter([t0, t0 + 61, t0 + 62, t0 + 63, t0 + 64])
+    monkeypatch.setattr(library.time, "time", lambda: next(ticks, t0 + 99))
+    monkeypatch.setattr(library.time, "sleep", lambda s: None)
+    entry = {
+        "url": "http://10.0.0.99:8899/dl/y.zim",
+        "filename": "y.zim",
+        "source": "peer",
+        "peer_name": "ghost-peer",
+    }
+    path = os.path.join(_data_dir, "downloads.json")
+    with open(path, "w") as f:
+        json.dump({"pending": [entry]}, f)
+    assert library.resume_pending_downloads() == 0
+    with open(path) as f:
+        pending = json.load(f)["pending"]
+    assert [p["filename"] for p in pending] == ["y.zim"], "deferred entry lost"
