@@ -5213,7 +5213,10 @@ async function _renderSeedingSection() {
   // Status: dot + state, tucked under the toggle in the right column.
   // CSS dot (same treatment as the port row) — emoji dots render at
   // inconsistent sizes across platforms and fight the amber palette.
-  const stColor = bt.status === 'ready' ? '#6abf69'
+  // Green only when the sidecar process is actually up — "ready" alone
+  // means the binary exists, which is true even when a spawn just died.
+  const stColor = bt.status === 'ready'
+    ? (bt.sidecar_running ? '#6abf69' : 'var(--text3)')
     : bt.status === 'unavailable' ? '#d9a13d' : 'var(--text3)';
   const stateLabel = t('bt_state_' + bt.status);
   statusEl.innerHTML = '<span class="share-port-dot" style="background:' + stColor + '"></span>' + esc(stateLabel);

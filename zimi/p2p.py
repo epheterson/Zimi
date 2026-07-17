@@ -645,22 +645,28 @@ class Aria2Backend(BTBackend):
             raise RuntimeError(f"aria2c failed to start within 5s: {last_err}")
 
     def _spawn_with_fallback(self) -> None:
-        """ensure_running, retrying once on an alternate RPC port when the
-        default is squatted (orphaned sidecars from crashed desktop quits
-        are the usual culprit — messy desktops are the normal case)."""
-        try:
-            self.ensure_running()
-        except RuntimeError:
-            with self._lock:
-                if self._proc is not None:
-                    try:
-                        self._proc.terminate()
-                    except Exception:
-                        pass
-                    self._proc = None
-            self.rpc_port += 13
-            log.info("aria2 RPC port busy; retrying on %d", self.rpc_port)
-            self.ensure_running()
+        """ensure_running, walking alternate RPC ports when the default is
+        squatted. One retry wasn't enough on real desktops: a desktop app
+        plus a docker instance plus a dev server is three sidecars, and
+        orphans from crashed quits squat ports too."""
+        last: RuntimeError | None = None
+        for attempt in range(5):
+            if attempt:
+                with self._lock:
+                    if self._proc is not None:
+                        try:
+                            self._proc.terminate()
+                        except Exception:
+                            pass
+                        self._proc = None
+                self.rpc_port += 13
+                log.info("aria2 RPC port busy; retrying on %d", self.rpc_port)
+            try:
+                self.ensure_running()
+                return
+            except RuntimeError as e:
+                last = e
+        raise last if last else RuntimeError("aria2 spawn failed")
 
     def stop(self) -> None:
         with self._lock:

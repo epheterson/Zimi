@@ -116,21 +116,24 @@ def start_background_services(http_port):
     # settings — cheap, so it stays synchronous.
     p2p.set_prefs_path(os.path.join(ZIMI_DATA_DIR, "bt", "prefs.json"))
 
+    # Registered unconditionally, not just when the startup spawn succeeds:
+    # the sidecar can come up LATER (port-change respawn, mirror enable,
+    # lazy download-time spawn), and those paths orphaned aria2c on exit
+    # when startup had failed. shutdown_backend no-ops without a backend.
+    import atexit
+
+    atexit.register(p2p.shutdown_backend)
+
     def _init_p2p_background():
         try:
             backend = p2p.get_backend(data_dir=ZIMI_DATA_DIR)
             if backend:
-                import atexit
-
-                atexit.register(p2p.shutdown_backend)
                 # Ask the router to open the BT port + record
                 # reachability for the settings UI. Fails soft.
                 try:
                     from zimi import p2p_nat
 
-                    p2p_nat.probe(
-                        p2p.get_bt_port(), try_upnp=p2p.is_upnp_enabled()
-                    )
+                    p2p_nat.probe(p2p.get_bt_port(), try_upnp=p2p.is_upnp_enabled())
                 except Exception as e:
                     log.debug("NAT probe failed: %s", e)
         except Exception as e:
@@ -149,9 +152,7 @@ def start_background_services(http_port):
             atexit.register(_disc.stop)
         except Exception as e:
             # repr + type: zeroconf raises exceptions with empty str()
-            log.warning(
-                "Peer discovery startup failed: %s: %r", type(e).__name__, e
-            )
+            log.warning("Peer discovery startup failed: %s: %r", type(e).__name__, e)
         # Downloads that were in flight or queued when the server stopped
         # restart themselves (after the BT backend is up so they can take
         # the torrent-first path again).
@@ -168,9 +169,7 @@ def start_background_services(http_port):
         except Exception as e:
             log.warning("Download resume failed: %s", e)
 
-    threading.Thread(
-        target=_init_p2p_background, daemon=True, name="p2p-init"
-    ).start()
+    threading.Thread(target=_init_p2p_background, daemon=True, name="p2p-init").start()
 
     # Standing maintenance, independent of anyone visiting the site:
     # refresh the offline catalog copy before it goes stale, renew the
@@ -185,9 +184,7 @@ def start_background_services(http_port):
             _maintenance_pass()
             time.sleep(_MAINTENANCE_INTERVAL + _random_mod.uniform(0, 3600))
 
-    threading.Thread(
-        target=_maintenance_loop, daemon=True, name="maintenance"
-    ).start()
+    threading.Thread(target=_maintenance_loop, daemon=True, name="maintenance").start()
 
 
 def _maintenance_pass():
@@ -215,6 +212,7 @@ def _maintenance_pass():
         _lib.archive_catalog_torrents()
     except Exception as e:
         log.debug("maintenance pass failed: %s", e)
+
 
 log = logging.getLogger("zimi")
 logging.basicConfig(
