@@ -188,8 +188,11 @@ def is_torrent_env_locked() -> bool:
 
 
 def get_bt_port() -> int:
-    """Inbound BT port. Default 6881; clamps invalid input."""
-    raw = _bt_conf().get("port") or os.environ.get("ZIMI_BT_PORT", str(DEFAULT_BT_PORT))
+    """Inbound BT port. ZIMI_BT's port= field (or legacy ZIMI_BT_PORT)
+    wins; otherwise the persisted UI preference; default 6881."""
+    raw = _bt_conf().get("port") or os.environ.get("ZIMI_BT_PORT") or _read_pref(
+        "bt_port", DEFAULT_BT_PORT
+    )
     try:
         n = int(raw)
         if 1024 <= n <= 65535:
@@ -198,6 +201,10 @@ def get_bt_port() -> int:
         pass
     log.warning("BT port %r invalid; using default %d", raw, DEFAULT_BT_PORT)
     return DEFAULT_BT_PORT
+
+
+def is_bt_port_env_locked() -> bool:
+    return bool(_bt_conf().get("port") or os.environ.get("ZIMI_BT_PORT"))
 
 
 def get_staging_dir(data_dir: str) -> str:

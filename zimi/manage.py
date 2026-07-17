@@ -648,6 +648,7 @@ def handle_manage_get(handler, parsed, params):
                 # answering RPC) — "ready" alone is optimistic (binary
                 # present counts). CI gates on this.
                 "sidecar_running": backend is not None,
+                "bt_port_env_locked": p2p.is_bt_port_env_locked(),
                 # Cached: the probe runs at startup and on explicit recheck
                 "nat": p2p_nat.last_status() or None,
             },
@@ -1033,6 +1034,34 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["peer_share"] = bool(data["peer_share"])
+        if "bt_port" in data:
+            if p2p.is_bt_port_env_locked():
+                return handler._json(
+                    403, {"error": "The BT port is controlled by the ZIMI_BT env var"}
+                )
+            try:
+                port = int(data["bt_port"])
+                assert 1024 <= port <= 65535
+            except (ValueError, TypeError, AssertionError):
+                return handler._json(400, {"error": "Port must be 1024-65535"})
+            if not p2p.set_pref("bt_port", port):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
+            changed["bt_port"] = port
+
+            # Apply live: respawn the sidecar on the new port + re-map UPnP
+            def _respawn():
+                p2p.shutdown_backend()
+                if p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR):
+                    try:
+                        from zimi import p2p_nat
+
+                        p2p_nat.probe(port, try_upnp=p2p.is_upnp_enabled())
+                    except Exception:
+                        pass
+
+            threading.Thread(target=_respawn, daemon=True).start()
         if "upnp" in data:
             if p2p.is_upnp_env_locked():
                 return handler._json(

@@ -695,9 +695,12 @@
   .share-rows-skeleton { min-height: 300px; }
   .share-bt-state { font-size: 12px; color: var(--text2); }
   .share-mirror-progress { margin-top: 6px; color: var(--amber); }
-  /* Toggles pin to the top-right of tall cards */
+  /* Toggles pin to the top-right of tall cards; status tucks under */
   .share-row { align-items: flex-start; }
-  .share-row .switch { margin-top: 2px; }
+  .share-row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-top: 2px; }
+  .share-bt-status-right { font-size: 12px; color: var(--text2); white-space: nowrap; text-align: right; }
+  .share-port-input { width: 64px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 2px 6px; }
+  .share-port-input:disabled { opacity: 0.5; }
   .dl-source { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
     color: var(--text2); white-space: nowrap; }
   .dl-source-bt { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }

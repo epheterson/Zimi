@@ -4734,8 +4734,8 @@ async function renderManage() {
     '<div class="manage-tabs">' +
       // Settings lives in its own first tab on every viewport.
       '<button class="manage-tab manage-tab-settings' + (manageTab === 'settings' ? ' active' : '') + '" data-tab="settings" onclick="switchManageTab(\'settings\')">' + tH('ms_settings_tab') + '</button>' +
-      '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">' + tH('installed_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">' + tH('catalog_tab') + '</button>' +
+      '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">' + tH('installed_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">' + tH('collections_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'downloads' ? ' active' : '') + '" data-tab="downloads" onclick="switchManageTab(\'downloads\')">' + tH('downloads') + '<span id="dl-tab-badge" class="dl-tab-badge" style="display:none"></span></button>' +
       '<button class="manage-tab' + (manageTab === 'history' ? ' active' : '') + '" data-tab="history" onclick="switchManageTab(\'history\')">' + tH('activity_tab') + '</button>' +
@@ -5201,11 +5201,10 @@ async function _renderSeedingSection() {
   const statusEl = document.getElementById('ms-bt-status');
   const listEl = document.getElementById('ms-seeding-list');
   if (!statusEl || !listEl) return;
-  // Status: dot + state, left-aligned under the card text (no port/engine
-  // trivia — the port has its own row above)
+  // Status: dot + state, tucked under the toggle in the right column
   const dot = bt.status === 'ready' ? '🟢' : bt.status === 'unavailable' ? '🟡' : '⚪';
   const stateLabel = t('bt_state_' + bt.status);
-  let html = '<div class="share-bt-state"><span style="margin-right:7px">' + dot + '</span>' + esc(stateLabel) + '</div>';
+  let html = '<span>' + dot + ' ' + esc(stateLabel) + '</span>';
   // Friendly client-side copy for the known states; raw server hint only
   // as a fallback for states added later.
   const btHint = bt.status === 'off' ? t('bt_off_hint')
@@ -5283,16 +5282,19 @@ async function _renderSeedingSection() {
 // Mirror, Nearby. Env-locked settings render disabled with the env hint.
 // `inactive` greys a switch that depends on another being on (Mirror with
 // BT off): unmodifiable, but its saved state persists untouched.
-function _shareSwitch(key, on, locked, envVar, titleKey, descHtml, inactive) {
+function _shareSwitch(key, on, locked, envVar, titleKey, descHtml, inactive, underSwitchHtml) {
   return '<div class="share-row' + (locked ? ' share-locked' : '') + (inactive ? ' share-inactive' : '') + '">' +
     '<div class="share-row-text">' +
       '<div class="share-row-title">' + tH(titleKey) + '</div>' +
       '<div class="share-row-desc">' + descHtml + '</div>' +
       (locked ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
     '</div>' +
-    '<label class="switch"><input type="checkbox" role="switch"' + (on ? ' checked' : '') + ((locked || inactive) ? ' disabled' : '') +
-      ' aria-label="' + escAttr(t(titleKey)) + '"' +
-      ' onchange="_setBtSetting(\'' + key + '\', this)"><span class="switch-slider"></span></label>' +
+    '<div class="share-row-right">' +
+      '<label class="switch"><input type="checkbox" role="switch"' + (on ? ' checked' : '') + ((locked || inactive) ? ' disabled' : '') +
+        ' aria-label="' + escAttr(t(titleKey)) + '"' +
+        ' onchange="_setBtSetting(\'' + key + '\', this)"><span class="switch-slider"></span></label>' +
+      (underSwitchHtml || '') +
+    '</div>' +
   '</div>';
 }
 
@@ -5341,12 +5343,31 @@ async function _setSeedRatio(inp) {
 
 function _portRowInner(bt) {
   var nat = bt.nat || null;
-  return '<span class="share-port-label">' + tH('bt_port_label', {n: bt.bt_port}) + '</span> ' + _natBadge(nat) +
+  return '<span class="share-port-label">' + tH('bt_port_word') + '</span>' +
+    '<input type="number" class="share-port-input" min="1024" max="65535" value="' + bt.bt_port + '"' +
+      (bt.bt_port_env_locked ? ' disabled title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') +
+      ' aria-label="' + escAttr(t('bt_port_word')) + '" onchange="_setBtPort(this)">' +
     ' <label class="share-upnp"' + (bt.upnp_env_locked ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
       '<input type="checkbox"' + (bt.upnp_enabled ? ' checked' : '') + (bt.upnp_env_locked ? ' disabled' : '') + ' onchange="_setUpnp(this)"> UPnP' +
     '</label>' +
     '<button class="share-port-retry" onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '">\u27f3 ' + tH('retry') + '</button>' +
+    ' ' + _natBadge(nat) +
     (nat && nat.upnp === 'mapped' && nat.external_ip ? '<span class="share-port-note">' + esc(nat.external_ip) + '</span>' : '');
+}
+
+async function _setBtPort(inp) {
+  var v = parseInt(inp.value, 10);
+  if (!(v >= 1024 && v <= 65535)) { _showToast(t('error')); return; }
+  try {
+    const r = await manageFetch('/manage/bt-settings', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({bt_port: v})
+    });
+    if (!r.ok) { _showToast(t('save_failed')); return; }
+    _showToast(t('saved'));
+    // The sidecar respawns on the new port; refresh the row shortly
+    setTimeout(function() { _renderMirrorSection(); _renderSeedingSection(); }, 4000);
+  } catch (e) { _showToast(t('save_failed')); }
 }
 
 function _natBadge(nat) {
@@ -5419,11 +5440,11 @@ async function _renderMirrorSection() {
     portField = '<div class="share-port-row" id="share-port-row">' + _portRowInner(bt) + '</div>';
   }
   const btInner = '<div class="share-ratio-row">' + ratioField + '</div>' + portField +
-    '<div id="ms-bt-status" class="share-bt-inner"></div>' +
     '<div id="ms-seeding-list" class="share-bt-inner"></div>';
   let h = '<div class="share-rows">' +
     _shareSwitch('torrent', m.torrent_enabled, m.torrent_env_locked, 'ZIMI_BT',
-      'share_bt_title', tH('share_bt_desc') + btInner) +
+      'share_bt_title', tH('share_bt_desc') + btInner,
+      false, '<div id="ms-bt-status" class="share-bt-status-right"></div>') +
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
       'share_mirror_title', tH('share_mirror_desc'), !m.torrent_enabled) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',

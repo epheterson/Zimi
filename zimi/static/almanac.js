@@ -227,6 +227,7 @@ function _renderAlmanacContent() {
   html += '<div class="almanac-orrery-wrap"><canvas id="almanac-orrery"></canvas></div>';
   html += '<div class="orrery-controls">';
   // Bidirectional speed slider: left = rewind, center = 1×, right = fast forward
+  html += '<span class="orrery-speed-word">' + _tLookup('alm_speed', 'Speed') + '</span>';
   html += '<span class="orrery-speed-end">◀</span>';
   html += '<input id="orrery-slider" type="range" min="-80" max="80" value="50" class="orrery-slider" oninput="_orrerySliderInput(this.value)" />';
   html += '<span class="orrery-speed-end">▶</span>';
@@ -1847,11 +1848,13 @@ function _initTzClock(now) {
     var tzHour = 0;
     try { tzHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: tzc.tz, hour: 'numeric', hour12: false }).format(now)); } catch(e) {}
     var phase = (tzHour < 5 || tzHour >= 21) ? 'night' : tzHour < 8 ? 'dawn' : tzHour < 18 ? 'day' : 'dusk';
-    // Text-presentation glyphs (not emoji) — the tint carries the phase,
-    // the glyph just whispers sun or moon.
-    var glyph = phase === 'night' ? '\u263e\ufe0e' : '\u2600\ufe0e';
+    // Sun: solid unicode; moon: CSS crescent (the unicode moons render as
+    // thin outlines at small sizes)
+    var glyphHtml = phase === 'night'
+      ? '<span class="alm-tz-glyph alm-glyph-moon" aria-hidden="true"></span>'
+      : '<span class="alm-tz-glyph" aria-hidden="true">\u2600\ufe0e</span>';
     html += '<div class="alm-tz-city-card alm-tz-' + phase + (isActive ? ' alm-tz-city-active' : '') + '" onclick="_almSelectTz(\'' + tzc.tz + '\',' + i + ')">';
-    html += '<span class="alm-tz-glyph" aria-hidden="true">' + glyph + '</span>';
+    html += glyphHtml;
     html += '<span class="alm-tz-city-name">' + t('alm_city_' + tzc.key) + '</span>';
     html += '<span class="alm-tz-city-time">' + tzTime + '</span>';
     html += '<span class="alm-tz-city-offset">' + utcOff + '</span>';
@@ -2025,10 +2028,14 @@ function _drawTzClock(now) {
       labelEl.dataset.tz = tz;
       labelEl.innerHTML =
         '<div class="alm-clock-time"><span id="alm-clock-hm">' + hm + '</span>' +
-          '<span class="alm-flip-sec" id="alm-flip-sec">' + sec + '</span>' +
+          '<span class="alm-flip-sec" id="alm-flip-sec">' +
+            '<span class="alm-flip-static-top">' + sec + '</span>' +
+            '<span class="alm-flip-static-bottom">' + sec + '</span>' +
+            '<span class="alm-flip-fold" id="alm-flip-fold">' + sec + '</span>' +
+          '</span>' +
           '<span class="alm-clock-ampm" id="alm-clock-ampm">' + ampm + '</span></div>' +
-        '<div class="alm-clock-sub"><span id="alm-clock-tzname">' + (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '') + '</span></div>' +
-        '<div class="alm-clock-sub" id="alm-clock-date">' + dateStr + '</div>';
+        '<div class="alm-clock-date" id="alm-clock-date">' + dateStr + '</div>' +
+        '<div class="alm-clock-sub"><span id="alm-clock-tzname">' + (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '') + '</span></div>';
     } else {
       var hmEl = document.getElementById('alm-clock-hm');
       if (hmEl && hmEl.textContent !== hm) hmEl.textContent = hm;
@@ -2039,13 +2046,21 @@ function _drawTzClock(now) {
       var tnEl = document.getElementById('alm-clock-tzname');
       var tzText = (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '');
       if (tnEl && tnEl.textContent !== tzText) tnEl.textContent = tzText;
-      secEl = document.getElementById('alm-flip-sec');
-      if (secEl && secEl.textContent !== sec) {
-        // Retrigger the flip animation on each tick
-        secEl.classList.remove('alm-flip-tick');
-        void secEl.offsetWidth;
-        secEl.textContent = sec;
-        secEl.classList.add('alm-flip-tick');
+      // Split-flap: top half of the OLD value folds down over the NEW.
+      // Static top/bottom show the new value; the fold carries the old.
+      var topEl = labelEl.querySelector('.alm-flip-static-top');
+      var botEl = labelEl.querySelector('.alm-flip-static-bottom');
+      var foldEl = document.getElementById('alm-flip-fold');
+      if (topEl && topEl.textContent !== sec) {
+        var oldSec = topEl.textContent;
+        topEl.textContent = sec;
+        botEl.textContent = sec;
+        if (foldEl) {
+          foldEl.textContent = oldSec;
+          foldEl.classList.remove('alm-flip-folding');
+          void foldEl.offsetWidth;
+          foldEl.classList.add('alm-flip-folding');
+        }
       }
     }
   }

@@ -387,3 +387,15 @@ def test_dht_legacy_env_opt_out(monkeypatch):
     monkeypatch.delenv("ZIMI_BT", raising=False)
     monkeypatch.setenv("ZIMI_DHT", "0")
     assert p2p.is_dht_enabled() is False
+
+
+def test_bt_port_pref_and_env_lock(_prefs, monkeypatch):
+    monkeypatch.delenv("ZIMI_BT", raising=False)
+    monkeypatch.delenv("ZIMI_BT_PORT", raising=False)
+    assert p2p.get_bt_port() == 6881
+    assert p2p.is_bt_port_env_locked() is False
+    p2p.set_pref("bt_port", 51413)
+    assert p2p.get_bt_port() == 51413
+    monkeypatch.setenv("ZIMI_BT", "on,port=16881")
+    assert p2p.get_bt_port() == 16881
+    assert p2p.is_bt_port_env_locked() is True
