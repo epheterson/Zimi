@@ -5708,16 +5708,9 @@ function renderInstalled(filterText) {
     groups[cat].push(z);
   }
 
-  // Merge small categories (<3 items) into Other
-  const MIN_CAT = 3;
-  for (const cat of Object.keys(groups)) {
-    if (cat !== 'Other' && groups[cat].length < MIN_CAT) {
-      if (!groups['Other']) groups['Other'] = [];
-      groups['Other'].push(...groups[cat]);
-      delete groups[cat];
-    }
-  }
-
+  // No small-category merging here: home and the filter pills both show
+  // real categories, so a lone WikEM must read "Medical & Health (1)" in
+  // all three places — collapsing it to "Other" contradicted them.
   const catOrder = Object.keys(groups).sort();
   // Render pending-updates pseudo-group first.
   if (pendingUpdates.length) {
