@@ -1475,6 +1475,56 @@ def _try_bt_download(
         time.sleep(poll_interval)
 
 
+def _seed_after_http_download(dl):
+    """Seed a file that completed over HTTP, so the BitTorrent toggle keeps
+    its promise ("Download AND seed") even when the transport fell back.
+
+    The BT path seeds inline on completion; the HTTP path historically did
+    not, so any ZIM whose .torrent had no live seeders (common for niche or
+    freshly-updated files — BT stalls after no_peers_timeout and falls back)
+    silently never seeded. Best-effort: needs seeding on, a running backend,
+    and a resolvable .torrent companion. Hash-checks the finished library
+    file, then seeds it — never re-fetches. No-op on any missing piece.
+    """
+    from zimi import p2p as _p2p
+
+    if not (_p2p.is_torrent_enabled() and _p2p.is_seeding_enabled()):
+        return
+    cap = _p2p.get_seed_ratio_cap()
+    # Zimi's ratio 0 means "never seed" (aria2's means "seed forever").
+    if cap <= 0 and not _p2p.is_mirror_enabled():
+        return
+    try:
+        backend = _p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+    except Exception:
+        backend = None
+    if not backend:
+        return
+    # Torrent source: saved metadata first, then the Kiwix companion URL.
+    meta = _get_torrent_metadata().get(dl["filename"]) or {}
+    source = meta.get("torrent_file") or meta.get("torrent_url")
+    if not source:
+        source = _resolve_torrent_url(dl["url"])
+    if not source:
+        return
+    ratio = "0" if _p2p.is_mirror_enabled() else str(cap)
+    try:
+        backend.add_torrent(
+            source,
+            dest_dir=_srv.ZIM_DIR,
+            options={
+                # Verify the file we already have, then seed it — never fetch.
+                "check-integrity": "true",
+                "bt-hash-check-seed": "true",
+                "seed-ratio": ratio,
+                "allow-overwrite": "true",
+            },
+        )
+        log.info("Seeding HTTP-downloaded %s up to %sx ratio", dl["filename"], ratio)
+    except Exception as e:
+        log.debug("post-HTTP seed of %s failed: %s", dl["filename"], e)
+
+
 def _resolve_torrent_url(url):
     """Return the Kiwix `.torrent` companion URL for a given download URL,
     or None if no plausible companion exists.
@@ -1874,6 +1924,9 @@ def _download_thread(dl):
             urlparse(dl.get("_mirror_url", dl["url"])).hostname,
         )
         _post_download_finalize(dl)
+        # The BT toggle promises seeding; an HTTP completion (fresh download
+        # or BT fallback) must seed too, or niche/updated ZIMs never share.
+        _seed_after_http_download(dl)
     except Exception as e:
         is_transient = isinstance(
             e, (urllib.error.URLError, TimeoutError, ConnectionError, OSError)
