@@ -64,10 +64,30 @@ _AUTHED_CACHE_TTL = 300.0
 # regression, not a cleanup.
 _RATE_LIMITED_API_PATHS = ("/search", "/read", "/suggest", "/random")
 
+# High-frequency read-only manage polls. While a download runs the manage UI
+# keeps three independent timers alive — downloads+seeding every 2s, activity
+# every 5s, BT status in bursts — which together demand ~72 req/min, over the
+# 60/min base API budget. The v1.7.2 fix leaned on the 10x "trusted" tier, but
+# that only applies to a valid Bearer credential or a private-IP passwordless
+# instance; behind a reverse proxy (non-private client IP) or with a manage
+# password set, the client drops to the base budget and the panel 429s itself
+# blank (#30, reopened). These are cheap local JSON reads, so they ride the
+# generous content bucket (1200/min) — trust-independent — instead. Still
+# capped, so it's not an abuse hole; just not on the strict search/read budget.
+_POLL_PATHS = frozenset(
+    (
+        "/manage/downloads",
+        "/manage/seeding",
+        "/manage/activity",
+        "/manage/bt-status",
+        "/manage/status",
+    )
+)
+
 
 def _rate_class(path):
     """(is_rate_limited, uses_content_bucket) for a GET path."""
-    is_content = path.startswith("/w/") or path == "/snippet"
+    is_content = path.startswith("/w/") or path == "/snippet" or path in _POLL_PATHS
     limited = (
         is_content or path in _RATE_LIMITED_API_PATHS or path.startswith("/manage/")
     )
