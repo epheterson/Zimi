@@ -1997,6 +1997,7 @@ class TestRateClass(unittest.TestCase):
             "/manage/activity",
             "/manage/bt-status",
             "/manage/status",
+            "/manage/mirror",
         ):
             limited, content = self._cls(p)
             self.assertTrue(limited, p)

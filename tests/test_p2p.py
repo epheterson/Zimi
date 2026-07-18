@@ -255,3 +255,28 @@ def test_status_handles_zero_total(tmp_path):
 def test_btbackend_cannot_instantiate_abstract():
     with pytest.raises(TypeError):
         p2p.BTBackend()
+
+
+def test_is_alive_reflects_process_state(tmp_path):
+    """A crashed sidecar left the cached backend object in place, so the
+    status view painted a green 'running' dot over a dead engine. is_alive()
+    must track the actual process, and must never spawn one."""
+    backend = p2p.Aria2Backend(
+        bt_port=26881,
+        data_dir=str(tmp_path),
+        staging_dir=str(tmp_path / "staging"),
+    )
+    # No process started yet → not alive (and constructing it didn't spawn).
+    assert backend.is_alive() is False
+
+    class _Proc:
+        def __init__(self, code):
+            self._code = code
+
+        def poll(self):
+            return self._code
+
+    backend._proc = _Proc(None)  # running
+    assert backend.is_alive() is True
+    backend._proc = _Proc(1)  # exited
+    assert backend.is_alive() is False

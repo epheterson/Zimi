@@ -5525,7 +5525,12 @@ function _scheduleMirrorProgressPoll() {
     if (!el) return;
     try {
       const r = await authedFetch('/manage/mirror');
-      if (!r.ok) return;
+      // A single transient failure (429 under load, a blip) used to kill the
+      // poll loop for good, freezing the progress line mid-count while the sync
+      // ran on underneath (#30's sibling). Keep polling and preserve the
+      // last-known line instead; only stop when a *successful* poll says the
+      // sync has finished (no phase).
+      if (!r.ok) { _scheduleMirrorProgressPoll(); return; }
       const m = await r.json();
       const prog = m.progress || {};
       if (prog.phase) {
@@ -5535,7 +5540,9 @@ function _scheduleMirrorProgressPoll() {
       } else {
         el.style.display = 'none';
       }
-    } catch (e) {}
+    } catch (e) {
+      _scheduleMirrorProgressPoll();
+    }
   }, 3000);
 }
 

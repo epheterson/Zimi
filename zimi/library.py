@@ -1258,6 +1258,7 @@ def _try_bt_download(
     staging_dir,
     poll_interval=2.0,
     no_peers_timeout=60.0,
+    no_progress_timeout=180.0,
 ):
     """Attempt to download via the BT backend, with explicit fallback.
 
@@ -1289,6 +1290,8 @@ def _try_bt_download(
 
     started = time.time()
     was_paused = False
+    last_bytes = 0
+    last_progress_t = started
     while True:
         if dl.get("cancelled"):
             try:
@@ -1457,10 +1460,20 @@ def _try_bt_download(
                 pass
             return "fallback"
 
-        # Stall detection: 0 peers AND <1% progress past the timeout.
-        elapsed = time.time() - started
+        # Stall detection. Track byte progress so a swarm that connects but
+        # never sends data can't hang forever.
+        now_t = time.time()
+        elapsed = now_t - started
+        cb = status.get("completed_bytes", 0)
         total = status.get("total_bytes", 0) or 1
-        pct = status.get("completed_bytes", 0) / total
+        pct = cb / total
+        if was_paused:
+            last_progress_t = now_t  # don't count paused time toward a stall
+        elif cb > last_bytes:
+            last_bytes = cb
+            last_progress_t = now_t
+
+        # (a) 0 peers AND <1% progress past the no-peers timeout.
         if (
             not was_paused
             and elapsed >= no_peers_timeout
@@ -1472,6 +1485,28 @@ def _try_bt_download(
                 dl["filename"],
                 elapsed,
                 pct * 100,
+            )
+            try:
+                backend.remove(tid, delete_files=True)
+            except Exception:
+                pass
+            return "fallback"
+
+        # (b) Peers present but no bytes for no_progress_timeout — a choked or
+        # seedless-but-peered swarm dodges the 0-peers check above and would
+        # otherwise loop forever showing an honest-looking "0% · 0.0 MB/s".
+        if (
+            not was_paused
+            and pct < 0.999
+            and (now_t - last_progress_t) >= no_progress_timeout
+        ):
+            log.info(
+                "BT made no progress for %s in %.0fs (%.1f%%, %d peers) — "
+                "falling back",
+                dl["filename"],
+                now_t - last_progress_t,
+                pct * 100,
+                status.get("peers", 0),
             )
             try:
                 backend.remove(tid, delete_files=True)

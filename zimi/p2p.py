@@ -543,6 +543,12 @@ class BTBackend(ABC):
         """Optional deep-link to the backend's web UI. None for headless."""
         return None
 
+    def is_alive(self) -> bool:
+        """Whether the engine is actually running right now. Backends that
+        manage a subprocess override this; for API-reachable backends mere
+        existence is liveness."""
+        return True
+
 
 # ============================================================================
 # aria2 sidecar — the bundled default
@@ -704,6 +710,14 @@ class Aria2Backend(BTBackend):
             except RuntimeError as e:
                 last = e
         raise last if last else RuntimeError("aria2 spawn failed")
+
+    def is_alive(self) -> bool:
+        """Non-spawning liveness check. A crashed/killed aria2 left the cached
+        singleton in place, so the status view reported 'sidecar_running' from
+        mere object existence and painted a green dot over a dead engine. Poll
+        the process handle instead — never starts aria2."""
+        proc = self._proc
+        return proc is not None and proc.poll() is None
 
     def stop(self) -> None:
         with self._lock:

@@ -128,6 +128,74 @@ def test_fallback_when_no_peers_within_timeout(tmp_path):
     backend.remove.assert_called_once()
 
 
+def test_fallback_when_peers_but_no_progress(tmp_path):
+    """Peers connected but zero bytes for the no-progress window → fall back.
+    The 0-peers stall check never fires here (peers > 0), so without the
+    no-progress timeout this would loop forever showing 0% · 0.0 MB/s."""
+    dl = _mk_dl(tmp_path)
+    backend = _mk_backend(
+        status_sequence=[
+            {
+                "state": "downloading",
+                "completed_bytes": 0,
+                "total_bytes": 1000,
+                "down_speed": 0,
+                "up_speed": 0,
+                "peers": 8,
+                "info_hash": "abc",
+            }
+        ]
+        * 500
+    )
+    result = library._try_bt_download(
+        backend,
+        dl,
+        torrent_url="https://download.kiwix.org/zim/foo.zim.torrent",
+        staging_dir=str(tmp_path / "staging"),
+        poll_interval=0.001,
+        no_peers_timeout=100.0,  # ensure the 0-peers path can't be what fires
+        no_progress_timeout=0.05,
+    )
+    assert result == "fallback"
+    backend.remove.assert_called_once()
+
+
+def test_advancing_bytes_reset_the_no_progress_timer(tmp_path, monkeypatch):
+    """A slow-but-steady download must NOT trip the no-progress fallback:
+    bytes climb each tick, resetting the stall timer, so it reaches complete
+    even under a short no_progress_timeout."""
+    dl = _mk_dl(tmp_path)
+    staging_path = tmp_path / "staging" / dl["filename"]
+    staging_path.parent.mkdir()
+    staging_path.write_bytes(b"fake zim content")
+    monkeypatch.setattr(library._srv, "open_archive", lambda path: object())
+
+    def tick(cb, state="downloading"):
+        return {
+            "state": state,
+            "completed_bytes": cb,
+            "total_bytes": 1000,
+            "down_speed": 10,
+            "up_speed": 0,
+            "peers": 4,
+            "info_hash": "abc",
+        }
+
+    backend = _mk_backend(
+        status_sequence=[tick(200), tick(500), tick(800), tick(1000, "complete")]
+    )
+    result = library._try_bt_download(
+        backend,
+        dl,
+        torrent_url="https://download.kiwix.org/zim/wikipedia/foo.zim.torrent",
+        staging_dir=str(tmp_path / "staging"),
+        poll_interval=0.001,
+        no_peers_timeout=100.0,
+        no_progress_timeout=0.5,
+    )
+    assert result == "success"
+
+
 def test_fallback_when_aria_reports_error(tmp_path):
     """Aria-side error (e.g. tracker unreachable) → fall back, don't strand."""
     dl = _mk_dl(tmp_path)

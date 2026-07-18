@@ -624,6 +624,10 @@ def handle_manage_get(handler, parsed, params):
         # Live state — peek only. A status view must never spawn the sidecar
         # (with BT on by default that would mean every settings visit).
         backend = p2p.peek_backend() if enabled else None
+        # A crashed sidecar leaves the cached backend object in place, so
+        # "backend is not None" alone would keep reporting a green "running"
+        # dot over a dead engine. Gate liveness on the actual process.
+        sidecar_alive = backend is not None and backend.is_alive()
 
         if not enabled:
             status = "off"
@@ -658,10 +662,10 @@ def handle_manage_get(handler, parsed, params):
                 "hint": hint,
                 "upnp_enabled": p2p.is_upnp_enabled(),
                 "upnp_env_locked": p2p.is_upnp_env_locked(),
-                # True only when the sidecar PROCESS is up (spawned and
-                # answering RPC) — "ready" alone is optimistic (binary
-                # present counts). CI gates on this.
-                "sidecar_running": backend is not None,
+                # True only when the sidecar PROCESS is actually up — "ready"
+                # alone is optimistic (binary present counts) and a crashed
+                # sidecar leaves the object cached. CI gates on this.
+                "sidecar_running": sidecar_alive,
                 "bt_port_env_locked": p2p.is_bt_port_env_locked(),
                 # Cached: the probe runs at startup and on explicit recheck
                 "nat": p2p_nat.last_status() or None,
@@ -911,6 +915,17 @@ def handle_manage_post(handler, parsed, data):
             _srv._search_cache_clear()
             _srv._suggest_cache_clear()
             _srv._clean_stale_title_indexes()
+            # Stop seeding the file we just deleted. Without this the aria2
+            # torrent keeps advertising (and hash-check failing) the missing
+            # file until the 12h maintenance pass or a restart. peek_backend()
+            # no-ops when BT is off, so this is safe unconditionally; run it off
+            # the response thread since it makes RPC round-trips.
+            try:
+                from zimi import library as _lib
+
+                threading.Thread(target=_lib.retire_stale_seeds, daemon=True).start()
+            except Exception as e:
+                log.debug("Post-delete seed retire skipped: %s", e)
             return handler._json(200, {"status": "deleted", "filename": filename})
         except OSError as e:
             log.error("Failed to delete %s: %s", filename, e)

@@ -81,6 +81,7 @@ _POLL_PATHS = frozenset(
         "/manage/activity",
         "/manage/bt-status",
         "/manage/status",
+        "/manage/mirror",
     )
 )
 
@@ -1843,5 +1844,12 @@ class ZimHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         # Light logging: errors + slow requests. Suppress 200/304 noise.
         if len(args) >= 2 and str(args[1]) in ("200", "304"):
+            return
+        # Idle keep-alive reaping: stdlib logs "Request timed out: ..." at INFO
+        # every time a parked HTTP/1.1 connection (reverse proxy, uptime
+        # monitor) hits ZimHandler.timeout. Routine, not an error — drop to
+        # debug so it doesn't spam the log every ~30s.
+        if isinstance(format, str) and format.startswith("Request timed out"):
+            log.debug(format, *args)
             return
         log.info(format, *args)
