@@ -510,9 +510,9 @@ function _moonGlyphSVG(phase, px) {
     ' A ' + r + ' ' + r + ' 0 0 ' + limbSweep + ' ' + cx + ' ' + (cy + r) +
     ' A ' + tw.toFixed(2) + ' ' + r + ' 0 0 ' + termSweep + ' ' + cx + ' ' + (cy - r) + ' Z';
   return '<svg class="cal-moon" viewBox="0 0 24 24" width="' + px + '" height="' + px + '" aria-hidden="true">' +
-    '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="#23252f"/>' +
-    (frac > 0.005 ? '<path d="' + lit + '" fill="#d8d4c6"/>' : '') +
-    '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="#3a3d48" stroke-width="0.75"/></svg>';
+    '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="#161821"/>' +
+    (frac > 0.005 ? '<path d="' + lit + '" fill="#ede8d6"/>' : '') +
+    '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="#454956" stroke-width="0.75"/></svg>';
 }
 
 function _moonDistance(date) {
@@ -3704,6 +3704,15 @@ function _renderStarChart(now) {
   var styles = getComputedStyle(document.documentElement);
   var amber = (styles.getPropertyValue('--amber') || '#e0b060').trim();
 
+  // Label helper — anchor toward the center so names near the rim grow inward
+  // and never clip off the disc.
+  function drawLabel(txt, x, y, off) {
+    var leftHalf = x <= cx;
+    ctx.textAlign = leftHalf ? 'left' : 'right';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(txt, x + (leftHalf ? off : -off), y - 3);
+  }
+
   // Sky disc + horizon rim.
   ctx.save();
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
@@ -3758,8 +3767,7 @@ function _renderStarChart(now) {
     if (_STAR_NAMES[i] && mag < 1.6) {
       ctx.fillStyle = 'rgba(200,210,235,0.7)';
       ctx.font = '9px system-ui, sans-serif';
-      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-      ctx.fillText(_STAR_NAMES[i], p.x + rad + 2, p.y - rad - 1);
+      drawLabel(_STAR_NAMES[i], p.x, p.y, rad + 2);
     }
   }
 
@@ -3781,9 +3789,8 @@ function _renderStarChart(now) {
     ctx.fillStyle = col;
     ctx.beginPath(); ctx.arc(pp.x, pp.y, 3.2, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = col;
-    ctx.font = '9px system-ui, sans-serif';
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    ctx.fillText(_tp(nm), pp.x + 5, pp.y - 4);
+    ctx.font = 'bold 9px system-ui, sans-serif';
+    drawLabel(_tp(nm), pp.x, pp.y, 5);
     planetsUp.push(_tp(nm));
   }
 
@@ -3799,7 +3806,9 @@ function _renderStarChart(now) {
 
   var cap = document.getElementById('almanac-starchart-caption');
   if (cap) {
-    var where = loc.name ? _almEsc(loc.name) : (lat.toFixed(1) + '°, ' + lon.toFixed(1) + '°');
+    var where = loc.name ? _almEsc(loc.name) :
+      (Math.abs(lat).toFixed(1) + '°' + (lat >= 0 ? 'N' : 'S') + ', ' +
+       Math.abs(lon).toFixed(1) + '°' + (lon >= 0 ? 'E' : 'W'));
     cap.innerHTML = '<div class="alm-starchart-now">' + t('alm_stars_above') + ' ' + where + '</div>' +
       '<div class="alm-starchart-desc">' + starCount + ' ' + t('alm_stars_up') +
       (planetsUp.length ? ' · ' + planetsUp.join(', ') : '') +
@@ -4750,7 +4759,7 @@ function _drawAlmanacGrid() {
     html += '<div class="alm-num">' + d + '</div>';
     // Moon phase for this calendar day (noon UTC), tucked top-right.
     var _cellMoon = _moonPhase(new Date((cellJDN - 2440587.5) * 86400000 + 43200000));
-    html += '<span class="cal-moon-wrap" title="' + _almEsc(_localMoonName(_cellMoon.name)) + '">' + _moonGlyphSVG(_cellMoon.phase, 14) + '</span>';
+    html += '<span class="cal-moon-wrap" title="' + _almEsc(_localMoonName(_cellMoon.name)) + '">' + _moonGlyphSVG(_cellMoon.phase, 15) + '</span>';
     var shown = Math.min(dayEvents.length, 2);
     for (var ei = 0; ei < shown; ei++) {
       var ev = dayEvents[ei];
