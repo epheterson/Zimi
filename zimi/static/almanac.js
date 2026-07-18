@@ -212,6 +212,13 @@ function _renderAlmanacContent() {
   html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_moon_age') + '</div><div class="alm-card-val">' + age + ' ' + t('alm_days') + '</div></div>';
   html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_distance') + '</div><div class="alm-card-val">' + Math.round(dist).toLocaleString() + ' ' + t('alm_km') + '</div></div>';
   html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_new_moon') + '</div><div class="alm-card-val">' + untilNew + ' ' + t('alm_days') + '</div></div>';
+  var _nfm = _nextFullMoon(now);
+  if (_nfm) {
+    var _nfmStr = _nfm.date.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
+    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_next_full') + '</div><div class="alm-card-val"' +
+      (_nfm.isSuper ? ' style="color:#e0b060"' : '') + '>' + _nfmStr +
+      (_nfm.isSuper ? ' · ' + t('alm_supermoon') : '') + '</div></div>';
+  }
   if (sunInfo0.polar) {
     html += '<div class="alm-card" style="grid-column:span 4"><div class="alm-card-val">' + sunInfo0.polar + '</div></div>';
   } else {
@@ -383,6 +390,28 @@ function _renderAlmanacMoon(m, tiltDeg) {
   var glowOpacity = (illumFrac * 0.15 + 0.02).toFixed(2);
   return '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + glowOpacity + ') 0%, transparent 65%)"></div>' +
     _renderMoonHTML(m, 'almanac-moon', tiltDeg, 1.0);
+}
+
+// Next full moon after fromDate, with its distance and whether it's a
+// "supermoon" (full within ~90% of perigee ≈ ≤ 361,500 km).
+function _nextFullMoon(fromDate) {
+  var t = fromDate.getTime();
+  var prev = _moonPhase(new Date(t)).phase - 0.5;
+  for (var h = 1; h <= 45 * 24; h++) {
+    var tt = t + h * 3600000;
+    var delta = _moonPhase(new Date(tt)).phase - 0.5;
+    if (prev < 0 && delta >= 0) { // waxing crossing of full
+      var lo = tt - 3600000, hi = tt;
+      for (var b = 0; b < 22; b++) {
+        var mid = (lo + hi) / 2;
+        if (_moonPhase(new Date(mid)).phase - 0.5 < 0) lo = mid; else hi = mid;
+      }
+      var fm = new Date(hi), d = _moonDistance(fm);
+      return { date: fm, distance: d, isSuper: d <= 361500 };
+    }
+    prev = delta;
+  }
+  return null;
 }
 
 // Small inline-SVG moon at a given phase (0=new .. 0.5=full .. 1=new).

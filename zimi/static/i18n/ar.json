@@ -934,5 +934,7 @@
   "hot_zims_pinned_n": "{n} مثبتة",
   "peer_name_hint": "الاسم الذي تراه أجهزة Zimi الأخرى. يسري بعد إعادة التشغيل.",
   "alm_first_light": "أول ضوء",
-  "alm_last_light": "آخر ضوء"
+  "alm_last_light": "آخر ضوء",
+  "alm_next_full": "اكتمال القمر القادم",
+  "alm_supermoon": "قمر عملاق"
 }

@@ -934,5 +934,7 @@
   "hot_zims_pinned_n": "{n} закреплено",
   "peer_name_hint": "Имя, которое видят другие устройства Zimi. Применяется после перезапуска.",
   "alm_first_light": "Рассвет",
-  "alm_last_light": "Сумерки"
+  "alm_last_light": "Сумерки",
+  "alm_next_full": "Следующее полнолуние",
+  "alm_supermoon": "Суперлуние"
 }

@@ -934,5 +934,7 @@
   "hot_zims_pinned_n": "{n} fijados",
   "peer_name_hint": "El nombre que ven otros dispositivos Zimi. Se aplica tras reiniciar.",
   "alm_first_light": "Primera luz",
-  "alm_last_light": "Última luz"
+  "alm_last_light": "Última luz",
+  "alm_next_full": "Próxima luna llena",
+  "alm_supermoon": "Superluna"
 }

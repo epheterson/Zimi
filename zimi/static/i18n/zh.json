@@ -934,5 +934,7 @@
   "hot_zims_pinned_n": "已固定 {n} 个",
   "peer_name_hint": "其他 Zimi 设备看到的名称。重启后生效。",
   "alm_first_light": "曙光",
-  "alm_last_light": "暮光"
+  "alm_last_light": "暮光",
+  "alm_next_full": "下次满月",
+  "alm_supermoon": "超级月亮"
 }

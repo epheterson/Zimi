@@ -934,5 +934,7 @@
   "hot_zims_pinned_n": "{n} pinned",
   "peer_name_hint": "The name other Zimi devices see. Applies after restart.",
   "alm_first_light": "First light",
-  "alm_last_light": "Last light"
+  "alm_last_light": "Last light",
+  "alm_next_full": "Next full moon",
+  "alm_supermoon": "Supermoon"
 }

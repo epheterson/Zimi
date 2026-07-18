@@ -934,5 +934,7 @@
   "hot_zims_pinned_n": "{n} מוצמדים",
   "peer_name_hint": "השם שמכשירי Zimi אחרים רואים. נכנס לתוקף לאחר הפעלה מחדש.",
   "alm_first_light": "אור ראשון",
-  "alm_last_light": "אור אחרון"
+  "alm_last_light": "אור אחרון",
+  "alm_next_full": "הירח המלא הבא",
+  "alm_supermoon": "סופר-ירח"
 }
