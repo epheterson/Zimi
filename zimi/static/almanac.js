@@ -396,7 +396,15 @@ function _renderAlmanacContent() {
   // Star chart — a circular planisphere of the sky above the chosen location now
   html += '<div class="almanac-section">';
   html += '<div class="almanac-section-title">' + t('alm_star_chart') + '</div>';
-  html += '<div class="alm-starchart-wrap"><canvas id="almanac-starchart"></canvas></div>';
+  html += '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>';
+  // Scrub +/- 12h to watch the sky turn; tap a body to identify it.
+  html += '<div class="alm-sc-controls">' +
+    '<span class="alm-sc-time" id="alm-sc-time"></span>' +
+    '<input id="alm-sc-slider" type="range" min="-720" max="720" step="10" value="0" class="orrery-slider"' +
+      ' aria-label="' + _almEsc(t('alm_star_chart')) + '" oninput="_setStarChartTime(this.value)" />' +
+    '<button class="orrery-ctrl-btn" onclick="_starChartNow()" title="' + _almEsc(t('alm_back_to_now')) + '">' + t('alm_now') + '</button>' +
+    '</div>';
+  html += '<div id="alm-sc-info" class="alm-sc-info"></div>';
   html += '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>';
   html += '</div>';
 
@@ -3711,7 +3719,80 @@ function _planetVisibility(now) {
 // this moment. Zenith at the center, horizon at the rim; N is up and E is to
 // the left, the way the sky reads when you hold a chart overhead. All positions
 // come from the same offline RA/Dec → alt/az math as the rest of the almanac.
-function _renderStarChart(now) {
+// Star-chart interactivity. Scrubbing re-runs the same offline alt/az math at
+// the scrubbed instant (nothing is fetched), and every drawn body is recorded
+// in _starChartBodies so a tap can identify it.
+var _starChartBase = null;    // the moment the almanac was rendered
+var _starChartOffsetMin = 0;  // slider offset from that moment, in minutes
+var _starChartBodies = [];    // hit-test targets collected during the draw
+
+function _starChartTime() {
+  var base = _starChartBase || new Date();
+  return new Date(base.getTime() + _starChartOffsetMin * 60000);
+}
+
+// Azimuth to an 8-point compass label, reusing the localized cardinals.
+function _azCompass(az) {
+  var N = t('alm_dir_n'), E = t('alm_dir_e'), S = t('alm_dir_s'), W = t('alm_dir_w');
+  var pts = [N, N + E, E, S + E, S, S + W, W, N + W];
+  return pts[Math.round(((az % 360) + 360) % 360 / 45) % 8];
+}
+
+function _updateStarChartTimeLabel() {
+  var el = document.getElementById('alm-sc-time');
+  if (!el) return;
+  var loc = _getLocation();
+  var d = _starChartTime();
+  var txt;
+  try {
+    txt = _tzFmt(_almTzForLocation(loc.lat, loc.lon), { weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(d);
+  } catch (e) {
+    txt = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+  el.textContent = _starChartOffsetMin === 0 ? t('alm_now') + ' \u00b7 ' + txt : txt;
+}
+
+function _setStarChartTime(v) {
+  _starChartOffsetMin = parseInt(v, 10) || 0;
+  _drawStarChart(_starChartTime());
+  _updateStarChartTimeLabel();
+}
+
+function _starChartNow() {
+  _starChartOffsetMin = 0;
+  var s = document.getElementById('alm-sc-slider');
+  if (s) s.value = 0;
+  _drawStarChart(_starChartTime());
+  _updateStarChartTimeLabel();
+}
+
+function _starChartClick(ev) {
+  var canvas = document.getElementById('almanac-starchart');
+  var info = document.getElementById('alm-sc-info');
+  if (!canvas || !info) return;
+  var r = canvas.getBoundingClientRect();
+  var x = ev.clientX - r.left, y = ev.clientY - r.top;
+  var best = null, bestD = 18;
+  for (var i = 0; i < _starChartBodies.length; i++) {
+    var b = _starChartBodies[i];
+    var d = Math.sqrt((b.x - x) * (b.x - x) + (b.y - y) * (b.y - y));
+    if (d < bestD) { bestD = d; best = b; }
+  }
+  info.innerHTML = best ? _almEsc(best.label) : '';
+}
+
+function _renderStarChart(baseNow) {
+  _starChartBase = baseNow;
+  _starChartOffsetMin = 0;
+  var s = document.getElementById('alm-sc-slider');
+  if (s) s.value = 0;
+  var info = document.getElementById('alm-sc-info');
+  if (info) info.innerHTML = '';
+  _drawStarChart(baseNow);
+  _updateStarChartTimeLabel();
+}
+
+function _drawStarChart(now) {
   var canvas = document.getElementById('almanac-starchart');
   if (!canvas) return;
   var wrap = canvas.parentElement;
@@ -3724,6 +3805,7 @@ function _renderStarChart(now) {
   var ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, size, size);
+  _starChartBodies = [];
 
   var loc = _getLocation();
   var lat = loc.lat, lon = loc.lon;
@@ -3798,6 +3880,7 @@ function _renderStarChart(now) {
     var aa = altAz(_STARS[i][0] * 15 * DEG_TO_RAD, _STARS[i][1] * DEG_TO_RAD);
     if (aa.alt < 0) continue;
     proj[i] = project(aa.alt, aa.az);
+    proj[i].alt = aa.alt; proj[i].az = aa.az;
   }
   // Constellation lines (both endpoints up).
   ctx.strokeStyle = 'rgba(120,150,210,0.28)';
@@ -3822,6 +3905,11 @@ function _renderStarChart(now) {
       ctx.font = '9px system-ui, sans-serif';
       drawLabel(_STAR_NAMES[i], p.x, p.y, rad + 2);
     }
+    _starChartBodies.push({
+      x: p.x, y: p.y,
+      label: (_STAR_NAMES[i] || t('alm_star')) + ' \u00b7 ' + p.alt.toFixed(0) + '\u00b0 ' +
+             _azCompass(p.az) + ' \u00b7 mag ' + mag.toFixed(1)
+    });
   }
 
   // Planets on the ecliptic (latitude ~0, as elsewhere in the almanac).
@@ -3844,6 +3932,10 @@ function _renderStarChart(now) {
     ctx.fillStyle = col;
     ctx.font = 'bold 9px system-ui, sans-serif';
     drawLabel(_tp(nm), pp.x, pp.y, 5);
+    _starChartBodies.push({
+      x: pp.x, y: pp.y,
+      label: _tp(nm) + ' \u00b7 ' + aa.alt.toFixed(0) + '\u00b0 ' + _azCompass(aa.az)
+    });
     planetsUp.push(_tp(nm));
   }
 
@@ -3855,6 +3947,11 @@ function _renderStarChart(now) {
     ctx.fillStyle = '#f4f4e8';
     ctx.beginPath(); ctx.arc(mpp.x, mpp.y, 4.5, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.5; ctx.stroke();
+    _starChartBodies.push({
+      x: mpp.x, y: mpp.y,
+      label: t('alm_the_moon') + ' \u00b7 ' + mp.altitude.toFixed(0) + '\u00b0 ' +
+             _azCompass(mp.azimuth) + ' \u00b7 ' + _moonPhase(now).illumination + '%'
+    });
   }
 
   var cap = document.getElementById('almanac-starchart-caption');

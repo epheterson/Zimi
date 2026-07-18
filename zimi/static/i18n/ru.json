@@ -953,5 +953,6 @@
   "alm_dir_w": "З",
   "alm_stars_above": "Небо над",
   "alm_stars_up": "звёзд над горизонтом",
-  "alm_the_moon": "Луна"
+  "alm_the_moon": "Луна",
+  "alm_star": "Звезда"
 }

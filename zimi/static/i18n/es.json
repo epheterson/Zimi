@@ -953,5 +953,6 @@
   "alm_dir_w": "O",
   "alm_stars_above": "El cielo sobre",
   "alm_stars_up": "estrellas visibles",
-  "alm_the_moon": "la Luna"
+  "alm_the_moon": "la Luna",
+  "alm_star": "Estrella"
 }
