@@ -303,6 +303,14 @@ function _renderAlmanacContent() {
     // expose this text visually (issue #25).
     '<div id="almanac-sky-desc" class="sr-only" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0"></div>' +
     '</div>';
+  // Sky animation speed — scales the ambient motion only (0x pauses it).
+  html += '<div class="alm-sky-controls">' +
+    '<span class="alm-sky-speed-word">' + _tLookup('alm_speed', 'Speed') + '</span>' +
+    '<input id="alm-sky-speed" type="range" min="0" max="' + (_SKY_SPEEDS.length - 1) + '" step="1" value="' + _skySpeedIdx + '"' +
+      ' class="orrery-slider" aria-label="' + _almEsc(_tLookup('alm_sky_speed', 'Sky animation speed')) + '"' +
+      ' oninput="_setSkySpeed(this.value)" />' +
+    '<span id="alm-sky-speed-label" class="alm-sky-speed-label">' + _almEsc(_skySpeedLabel()) + '</span>' +
+    '</div>';
   html += '<div id="almanac-calendar"></div>';
 
   // Sun map — inline world map with day/night terminator + location picker
@@ -2788,6 +2796,36 @@ function _fmtMinutes(m) {
 
 var _skyStartTime = 0;
 
+// Sky-scene animation speed. The scene's celestial positions are frozen at
+// render time; this scales only the ambient motion (waves, clouds, drift,
+// twinkle), so it's purely a viewing preference. 0 = paused. Persisted so the
+// choice survives reopening the almanac.
+var _SKY_SPEEDS = [0, 0.25, 0.5, 1, 2, 4, 8, 16];
+var _ALM_SKY_SPEED_KEY = 'zimi_almanac_sky_speed';
+var _skySpeedIdx = 3; // 1x
+try {
+  var _storedSkyIdx = parseInt(localStorage.getItem(_ALM_SKY_SPEED_KEY), 10);
+  if (!isNaN(_storedSkyIdx) && _storedSkyIdx >= 0 && _storedSkyIdx < _SKY_SPEEDS.length) {
+    _skySpeedIdx = _storedSkyIdx;
+  }
+} catch (e) {}
+var _skyClock = 0;   // accumulated animation seconds (scaled)
+var _skyLastTs = null;
+
+function _skySpeedLabel() {
+  var s = _SKY_SPEEDS[_skySpeedIdx];
+  return s === 0 ? _tLookup('alm_paused', 'Paused') : (s < 1 ? s : Math.round(s)) + '×';
+}
+
+function _setSkySpeed(i) {
+  i = parseInt(i, 10);
+  if (isNaN(i)) return;
+  _skySpeedIdx = Math.max(0, Math.min(_SKY_SPEEDS.length - 1, i));
+  try { localStorage.setItem(_ALM_SKY_SPEED_KEY, String(_skySpeedIdx)); } catch (e) {}
+  var el = document.getElementById('alm-sky-speed-label');
+  if (el) el.textContent = _skySpeedLabel();
+}
+
 function _initSkyScene(now, lat, lon) {
   var canvas = document.getElementById('almanac-sky-canvas');
   if (!canvas) return;
@@ -2849,10 +2887,17 @@ function _initSkyScene(now, lat, lon) {
   }
 
   function _skyLoop(ts) {
-    var elapsed = (ts - _skyStartTime) / 1000;
-    _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, elapsed, _skyLabelText, projStars, moonData);
+    // Accumulate scaled time rather than scaling total elapsed, so changing
+    // speed (or pausing at 0x) continues smoothly instead of jumping.
+    if (_skyLastTs === null) _skyLastTs = ts;
+    var dt = (ts - _skyLastTs) / 1000;
+    _skyLastTs = ts;
+    if (dt > 0.25) dt = 0.25; // tab was backgrounded — don't lurch
+    _skyClock += dt * _SKY_SPEEDS[_skySpeedIdx];
+    _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, _skyClock, _skyLabelText, projStars, moonData);
     _almanacSkyRAF = requestAnimationFrame(_skyLoop);
   }
+  _skyLastTs = null;
   _activeSkyLoop = _skyLoop;  // expose to _resumeAllRAF
   if (_almanacSkyRAF) cancelAnimationFrame(_almanacSkyRAF);
   _almanacSkyRAF = requestAnimationFrame(_skyLoop);
