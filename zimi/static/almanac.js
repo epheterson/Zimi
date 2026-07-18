@@ -1427,11 +1427,14 @@ function _computeEclipses(fromDate, count) {
             + 0.0118 * Math.sin(2 * F1rad);
       var Q = 5.2207 - 0.0048 * Math.cos(Mrad) + 0.0020 * Math.cos(2 * Mrad)
             - 0.3299 * Math.cos(Mprad) + 0.0041 * Math.cos(Mrad + Mprad);
-      var gamma = (F1 % 360 + 360) % 360;
-      if (gamma > 180) gamma = 360 - gamma;
-      gamma = gamma * DEG_TO_RAD;
+      // gamma = least distance of the shadow axis from Earth's center, in
+      // Earth radii (Meeus Ch. 54). The old code dropped P and Q entirely
+      // and used |sin F|, so gamma came out ~5x too small: every lunar
+      // eclipse read "total", grazing solars lost their "partial" label, and
+      // near-miss syzygies (real |gamma|>1.54) slipped through as phantom
+      // eclipses (~1/year). Use the actual P·cosF1 + Q·sinF1 formula.
       var W2 = Math.abs(Math.cos(F1rad));
-      var gam = Math.abs(sinF) / Math.sqrt(1 - 0.0048 * W2 * W2);
+      var gam = Math.abs((P * Math.cos(F1rad) + Q * Math.sin(F1rad)) * (1 - 0.0048 * W2));
       // Must be within eclipse range
       if (isSolar && gam > 1.5433) continue;
       if (!isSolar && gam > 1.0944) continue;
