@@ -25,8 +25,10 @@
 /* Each card wears its city's hour: the grid reads as a living band of
    daylight echoing the terminator on the map above. */
 .alm-tz-glyph { position: absolute; top: 3px; right: 6px; font-size: 15px; line-height: 1; opacity: 0.9; pointer-events: none; font-family: system-ui, sans-serif; }
-/* Solid crescent: a transparent disc whose shadow IS the moon */
-.alm-glyph-moon { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset -4px 2px 0 0 currentColor; top: 5px; right: 7px; }
+/* Solid crescent: a transparent disc whose shadow IS the moon. Pure
+   horizontal offset keeps it upright (heavy side right, opening left) —
+   the old vertical offset tilted the heavy part up and read as broken. */
+.alm-glyph-moon { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset -4px 0 0 0 currentColor; top: 5px; right: 7px; }
 .alm-tz-day .alm-tz-glyph { color: #ffc15e; }
 .alm-tz-dawn .alm-tz-glyph { color: #ff8a65; }
 .alm-tz-dusk .alm-tz-glyph { color: #ab82ff; }

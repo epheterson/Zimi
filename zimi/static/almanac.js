@@ -1833,12 +1833,14 @@ function _initTzClock(now) {
       var absH = Math.floor(Math.abs(diffMin) / 60);
       var absM = Math.abs(diffMin) % 60;
       utcOff = 'UTC' + sign + absH + (absM ? ':' + (absM < 10 ? '0' : '') + absM : '');
-      // Short zone name (PDT, CET, GMT+8) beside the offset — every zone
-      // has one via the IANA database, some are just GMT-style
+      // Add the short zone name (PST, CET, JST) beside the offset ONLY when
+      // it's a real abbreviation — a GMT/UTC offset alias (GMT, GMT+8,
+      // UTC-5) just repeats the offset we already show.
       var znp = _tzFmt(tzc.tz, { timeZoneName: 'short', hour: 'numeric' }).formatToParts(now);
       for (var zpi = 0; zpi < znp.length; zpi++) {
-        if (znp[zpi].type === 'timeZoneName' && znp[zpi].value !== utcOff) {
-          utcOff += ' \u00b7 ' + znp[zpi].value;
+        if (znp[zpi].type === 'timeZoneName') {
+          var zn = znp[zpi].value;
+          if (zn && !/^(GMT|UTC)([+\u2212-]|$)/.test(zn)) utcOff += ' \u00b7 ' + zn;
           break;
         }
       }
@@ -2020,6 +2022,9 @@ function _drawTzClock(now) {
       var tzp = _tzFmt(tz, { timeZoneName: 'short', hour: 'numeric' }).formatToParts(now);
       for (var ti = 0; ti < tzp.length; ti++) if (tzp[ti].type === 'timeZoneName') tzAbbr = tzp[ti].value;
     } catch(e) {}
+    // Only a real abbreviation (PST, JST, CET) earns a slot next to the city
+    // name; a GMT/UTC offset alias (GMT, GMT+4, UTC-5) says nothing new.
+    if (/^(GMT|UTC)([+−-]|$)/.test(tzAbbr)) tzAbbr = '';
     // Only rebuild the shell when needed; the flip card ticks per second
     var secEl = document.getElementById('alm-clock-sec');
     if (!secEl || labelEl.dataset.tz !== tz) {

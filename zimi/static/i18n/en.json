@@ -596,7 +596,7 @@
   "alm_city_dhaka": "Dhaka",
   "alm_city_singapore": "Singapore",
   "alm_city_adelaide": "Adelaide",
-  "alm_showing_holidays": "Showing {c} holidays",
+  "alm_showing_holidays": "Showing worldwide + {c} holidays",
   "alm_speed": "Speed",
   "alm_showing_worldwide": "Showing worldwide holidays",
   "alm_holidays_follow_hint": "Follows your location on the map",
