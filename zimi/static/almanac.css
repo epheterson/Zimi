@@ -91,6 +91,11 @@
 .alm-otd-year { color: var(--amber); font-weight: 600; font-variant-numeric: tabular-nums; min-width: 46px; flex: 0 0 auto; }
 .alm-otd-text { flex: 1 1 auto; color: var(--text2); font-size: 13px; line-height: 1.45; padding-left: 12px; text-align: left; }
 .alm-otd-ago { color: var(--text3); font-size: 11px; white-space: nowrap; }
+/* The Analemma — centered figure-8 canvas + caption */
+.alm-analemma-wrap { display: flex; justify-content: center; margin: 4px 0 10px; }
+.alm-analemma-caption { text-align: center; }
+.alm-analemma-now { color: var(--text); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.alm-analemma-desc { color: var(--text3); font-size: 11px; line-height: 1.5; max-width: 420px; margin: 6px auto 0; }
 /* Messages Across Time — inscription pills, metadata, text blocks */
 .rosetta-pills { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
 .rosetta-meta { text-align: center; font-size: 12px; color: var(--amber); font-weight: 500; letter-spacing: 0.03em; margin-bottom: 6px; }

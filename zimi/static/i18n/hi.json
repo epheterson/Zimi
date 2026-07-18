@@ -939,5 +939,11 @@
   "alm_supermoon": "सुपरमून",
   "alm_on_this_day": "आज ही के दिन",
   "alm_year_ago": "साल पहले",
-  "alm_years_ago": "साल पहले"
+  "alm_years_ago": "साल पहले",
+  "alm_analemma": "सूर्य-अष्ट",
+  "alm_analemma_desc": "सूर्य द्वारा वर्ष भर में बनाई गई आकृति-8, हर दिन एक ही घड़ी-समय पर खींची गई। चौड़ाई समय-समीकरण है; ऊँचाई सूर्य का क्रांति-कोण।",
+  "alm_sun_ahead": "घड़ी से आगे",
+  "alm_sun_behind": "घड़ी से पीछे",
+  "alm_min": "मिनट",
+  "alm_declination": "क्रांति"
 }

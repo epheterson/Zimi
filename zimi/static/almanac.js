@@ -343,6 +343,13 @@ function _renderAlmanacContent() {
   html += '<div id="almanac-tonight"></div>';
   html += '</div>';
 
+  // The Analemma — the Sun's yearly figure-8 (equation of time × declination)
+  html += '<div class="almanac-section">';
+  html += '<div class="almanac-section-title">' + t('alm_analemma') + '</div>';
+  html += '<div class="alm-analemma-wrap"><canvas id="almanac-analemma"></canvas></div>';
+  html += '<div id="almanac-analemma-caption" class="alm-analemma-caption"></div>';
+  html += '</div>';
+
   // Meteor showers
   html += '<div class="almanac-section">';
   html += '<div class="almanac-section-title">' + t('alm_meteor_showers') + '</div>';
@@ -386,6 +393,7 @@ function _renderAlmanacContent() {
   _renderSunMap(now);
   _renderOnThisDay(now);
   _renderTonightSky(now);
+  _renderAnalemma(now);
   _renderAstroPanel(now);
   _renderMeteorShowers(now, m);
   _renderCelestialEvents(now);
@@ -3625,6 +3633,109 @@ function _planetVisibility(now) {
     results.push({ name: name, elongation: elongAbs, magnitude: mag, visible: visible, sky: sky, direction: dir, distance: delta, color: _PLANETS[name].color });
   }
   return results;
+}
+
+// The Analemma — the figure-8 the Sun traces if photographed at the same clock
+// time every day for a year. Horizontal axis is the equation of time (how far
+// ahead/behind the clock the real Sun runs); vertical axis is solar
+// declination (how high the Sun climbs). Both come straight from the offline
+// solar math already used for sunrise/sunset — no data, works forever.
+function _renderAnalemma(now) {
+  var canvas = document.getElementById('almanac-analemma');
+  if (!canvas) return;
+  var wrap = canvas.parentElement;
+  var dpr = window.devicePixelRatio || 1;
+  var w = Math.min(wrap.clientWidth, 300);
+  var h = 420;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  // Sample the whole year: x = equation of time (min), y = declination (deg).
+  var pts = [];
+  var minX = 99, maxX = -99, minY = 99, maxY = -99;
+  for (var d = 1; d <= 366; d++) {
+    var B = _solarB(d);
+    var eot = _eqOfTime(B);                          // minutes
+    var decl = _solarDeclination(B) * 180 / Math.PI; // degrees
+    pts.push({ d: d, x: eot, y: decl });
+    if (eot < minX) minX = eot; if (eot > maxX) maxX = eot;
+    if (decl < minY) minY = decl; if (decl > maxY) maxY = decl;
+  }
+  var padL = 34, padR = 34, padT = 22, padB = 22;
+  var padX = (maxX - minX) * 0.12, padY = (maxY - minY) * 0.06;
+  minX -= padX; maxX += padX; minY -= padY; maxY += padY;
+  function px(x) { return padL + (x - minX) / (maxX - minX) * (w - padL - padR); }
+  function py(y) { return padT + (maxY - y) / (maxY - minY) * (h - padT - padB); } // summer up
+
+  var styles = getComputedStyle(document.documentElement);
+  var amber = (styles.getPropertyValue('--amber') || '#e0b060').trim();
+  var faint = (styles.getPropertyValue('--border') || 'rgba(255,255,255,0.12)').trim();
+
+  // Reference lines: equator (decl 0) and mean-time meridian (EoT 0).
+  ctx.strokeStyle = faint;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(px(0), padT); ctx.lineTo(px(0), h - padB); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(padL, py(0)); ctx.lineTo(w - padR, py(0)); ctx.stroke();
+
+  // The figure-8 itself.
+  ctx.strokeStyle = amber;
+  ctx.globalAlpha = 0.85;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  for (var i = 0; i < pts.length; i++) {
+    var X = px(pts[i].x), Y = py(pts[i].y);
+    if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Month ticks — small dots on the 1st of each month, so the loop reads as a
+  // calendar you can trace. Label the four seasonal turning points.
+  // Label the four seasonal turning points with locale-aware month names.
+  var seasonMonths = { 0: 1, 3: 1, 5: 1, 8: 1, 11: 1 };
+  var loc = (typeof _almLocale !== 'undefined' && _almLocale) || undefined;
+  ctx.fillStyle = (styles.getPropertyValue('--text3') || '#888').trim();
+  ctx.font = '10px system-ui, sans-serif';
+  for (var mo = 0; mo < 12; mo++) {
+    var doy = _dayOfYear(new Date(now.getFullYear(), mo, 1));
+    var p = pts[doy - 1];
+    if (!p) continue;
+    var mx = px(p.x), my = py(p.y);
+    ctx.beginPath(); ctx.arc(mx, my, 1.6, 0, Math.PI * 2); ctx.fill();
+    if (seasonMonths[mo]) {
+      var lbl = new Date(now.getFullYear(), mo, 1).toLocaleDateString(loc, { month: 'short' });
+      ctx.textAlign = p.x >= 0 ? 'left' : 'right';
+      ctx.fillText(lbl, mx + (p.x >= 0 ? 5 : -5), my + 3);
+    }
+  }
+
+  // Today's Sun.
+  var td = pts[Math.min(_dayOfYear(now), 366) - 1];
+  var tx = px(td.x), ty = py(td.y);
+  var grad = ctx.createRadialGradient(tx, ty, 0, tx, ty, 9);
+  grad.addColorStop(0, amber);
+  grad.addColorStop(1, 'rgba(224,176,96,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(tx, ty, 9, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(tx, ty, 3, 0, Math.PI * 2); ctx.fill();
+
+  // Caption — today's numbers + a one-line explanation.
+  var cap = document.getElementById('almanac-analemma-caption');
+  if (cap) {
+    var mins = Math.abs(td.x);
+    var fastSlow = td.x >= 0 ? t('alm_sun_ahead') : t('alm_sun_behind');
+    cap.innerHTML =
+      '<div class="alm-analemma-now">' + t('alm_sun') + ': ' + mins.toFixed(1) + ' ' + t('alm_min') + ' ' + fastSlow +
+      ' · ' + t('alm_declination') + ' ' + td.y.toFixed(1) + '°</div>' +
+      '<div class="alm-analemma-desc">' + t('alm_analemma_desc') + '</div>';
+  }
 }
 
 // On This Day — render the curated space/science milestones for today's date.

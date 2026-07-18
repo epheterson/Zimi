@@ -939,5 +939,11 @@
   "alm_supermoon": "超级月亮",
   "alm_on_this_day": "历史上的今天",
   "alm_year_ago": "年前",
-  "alm_years_ago": "年前"
+  "alm_years_ago": "年前",
+  "alm_analemma": "日行迹",
+  "alm_analemma_desc": "一年中每天在同一时刻拍摄太阳所描出的“8”字。宽度是时差，高度是太阳赤纬。",
+  "alm_sun_ahead": "快于时钟",
+  "alm_sun_behind": "慢于时钟",
+  "alm_min": "分",
+  "alm_declination": "赤纬"
 }
