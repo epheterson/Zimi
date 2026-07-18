@@ -385,6 +385,27 @@ function _renderAlmanacMoon(m, tiltDeg) {
     _renderMoonHTML(m, 'almanac-moon', tiltDeg, 1.0);
 }
 
+// Small inline-SVG moon at a given phase (0=new .. 0.5=full .. 1=new).
+// Drawn as the lit limb arc + the terminator half-ellipse: crescent when
+// <50% lit, gibbous when >50%. Waxing = lit on the right (N. hemisphere view).
+function _moonGlyphSVG(phase, px) {
+  var r = 10, cx = 12, cy = 12;
+  var frac = (1 - Math.cos(2 * Math.PI * phase)) / 2;
+  var tw = Math.abs(Math.cos(2 * Math.PI * phase)) * r; // terminator half-width
+  var waxing = phase < 0.5;
+  // Lit limb: right semicircle when waxing, left when waning.
+  var limbSweep = waxing ? 1 : 0;
+  // Terminator sweep: crescent curves toward the lit limb, gibbous bulges past.
+  var termSweep = (frac <= 0.5) ? (waxing ? 0 : 1) : (waxing ? 1 : 0);
+  var lit = 'M ' + cx + ' ' + (cy - r) +
+    ' A ' + r + ' ' + r + ' 0 0 ' + limbSweep + ' ' + cx + ' ' + (cy + r) +
+    ' A ' + tw.toFixed(2) + ' ' + r + ' 0 0 ' + termSweep + ' ' + cx + ' ' + (cy - r) + ' Z';
+  return '<svg class="cal-moon" viewBox="0 0 24 24" width="' + px + '" height="' + px + '" aria-hidden="true">' +
+    '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="#23252f"/>' +
+    (frac > 0.005 ? '<path d="' + lit + '" fill="#d8d4c6"/>' : '') +
+    '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="#3a3d48" stroke-width="0.75"/></svg>';
+}
+
 function _moonDistance(date) {
   // Meeus Ch. 47 distance (km), leading periodic terms. The old code used
   // cos(2·M') for the 2nd term where Meeus has cos(2D − M'), and dropped
@@ -4328,6 +4349,9 @@ function _drawAlmanacGrid() {
     var dayEvents = events[d] || [];
     html += '<div class="' + cls + '" onclick="_almSelectDay(' + cellJDN + ')">';
     html += '<div class="alm-num">' + d + '</div>';
+    // Moon phase for this calendar day (noon UTC), tucked top-right.
+    var _cellMoon = _moonPhase(new Date((cellJDN - 2440587.5) * 86400000 + 43200000));
+    html += '<span class="cal-moon-wrap" title="' + _almEsc(_localMoonName(_cellMoon.name)) + '">' + _moonGlyphSVG(_cellMoon.phase, 14) + '</span>';
     var shown = Math.min(dayEvents.length, 2);
     for (var ei = 0; ei < shown; ei++) {
       var ev = dayEvents[ei];

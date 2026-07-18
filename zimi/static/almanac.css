@@ -137,7 +137,10 @@
 .alm-today-btn:hover { opacity: 1; background: var(--surface2); }
 .alm-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
 .alm-hdr { font-size: 11px; color: var(--text3); padding: 8px 0; font-weight: 500; text-align: center; background: var(--surface); }
-.alm-cell { background: var(--surface); min-height: 64px; padding: 4px 5px; font-size: 12px; overflow: hidden; }
+.alm-cell { position: relative; background: var(--surface); min-height: 64px; padding: 4px 5px; font-size: 12px; overflow: hidden; }
+/* Daily moon phase, tucked in the corner — a quiet lunar rhythm down the month. */
+.cal-moon-wrap { position: absolute; top: 3px; right: 3px; line-height: 0; opacity: 0.7; pointer-events: none; }
+.alm-today .cal-moon-wrap, .alm-selected .cal-moon-wrap { opacity: 0.95; }
 .alm-empty { background: transparent; }
 .alm-day { cursor: pointer; transition: background 0.15s; }
 .alm-day:hover { background: var(--surface2); }
