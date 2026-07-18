@@ -596,7 +596,7 @@
   "alm_city_dhaka": "Daca",
   "alm_city_singapore": "Singapura",
   "alm_city_adelaide": "Adelaide",
-  "alm_showing_holidays": "Feriados mundiais + {c}",
+  "alm_showing_holidays": "Feriados mundiais e {c}",
   "alm_speed": "Velocidade",
   "alm_showing_worldwide": "Mostrando feriados mundiais",
   "alm_holidays_follow_hint": "Segue sua localização no mapa",

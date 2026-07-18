@@ -596,7 +596,7 @@
   "alm_city_dhaka": "Dacca",
   "alm_city_singapore": "Singapour",
   "alm_city_adelaide": "Adélaïde",
-  "alm_showing_holidays": "Fêtes mondiales + {c}",
+  "alm_showing_holidays": "Fêtes mondiales et {c}",
   "alm_speed": "Vitesse",
   "alm_showing_worldwide": "Jours fériés mondiaux",
   "alm_holidays_follow_hint": "Suit votre position sur la carte",

@@ -596,7 +596,7 @@
   "alm_city_dhaka": "Дакка",
   "alm_city_singapore": "Сингапур",
   "alm_city_adelaide": "Аделаида",
-  "alm_showing_holidays": "Мировые + {c} праздники",
+  "alm_showing_holidays": "Мировые и {c} праздники",
   "alm_speed": "Скорость",
   "alm_showing_worldwide": "Всемирные праздники",
   "alm_holidays_follow_hint": "Следует за вашим местоположением на карте",
