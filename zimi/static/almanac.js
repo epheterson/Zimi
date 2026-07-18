@@ -442,14 +442,17 @@ function _cacheAlmanacHighlights(now, moon) {
         }
       }
     }
-    // Calendar events today
-    var calEvents = document.querySelectorAll('#almanac-calendar .cal-holiday, #almanac-calendar .cal-event');
+    // Calendar events today. The calendar renders day cells as .alm-day with
+    // the number in .alm-num and each holiday/event as .alm-ev (the "+N" more
+    // marker is .alm-ev-more — skip it). Older selectors here (.cal-day etc.)
+    // matched nothing, so today's holiday never reached the Today card.
+    var calEvents = document.querySelectorAll('#almanac-calendar .alm-ev:not(.alm-ev-more)');
     var todayEvents = [];
     calEvents.forEach(function(ev) {
-      var dayCell = ev.closest('.cal-day');
+      var dayCell = ev.closest('.alm-day');
       if (dayCell) {
-        var dayNum = parseInt(dayCell.querySelector('.cal-day-num')?.textContent);
-        if (dayNum === dd) todayEvents.push(ev.getAttribute('title') || ev.textContent);
+        var dayNum = parseInt(dayCell.querySelector('.alm-num')?.textContent, 10);
+        if (dayNum === dd) todayEvents.push(ev.textContent.trim());
       }
     });
     if (todayEvents.length > 0) highlights.push({ type: 'holiday', name: todayEvents[0], days: 0, priority: -1 });
@@ -3817,17 +3820,18 @@ function _renderStarChart(now) {
 }
 
 // The Analemma — the figure-8 the Sun traces if photographed at the same clock
-// time every day for a year. Horizontal axis is the equation of time (how far
-// ahead/behind the clock the real Sun runs); vertical axis is solar
-// declination (how high the Sun climbs). Both come straight from the offline
-// solar math already used for sunrise/sunset — no data, works forever.
+// time every day for a year. Laid out horizontally: the long axis is solar
+// declination (how high the Sun climbs), the short vertical axis is the
+// equation of time (how far ahead/behind the clock the real Sun runs). Both
+// come straight from the offline solar math already used for sunrise/sunset —
+// no data, works forever.
 function _renderAnalemma(now) {
   var canvas = document.getElementById('almanac-analemma');
   if (!canvas) return;
   var wrap = canvas.parentElement;
   var dpr = window.devicePixelRatio || 1;
-  var w = Math.min(wrap.clientWidth, 300);
-  var h = 420;
+  var w = Math.min(wrap.clientWidth, 460);
+  var h = 260;
   canvas.width = w * dpr;
   canvas.height = h * dpr;
   canvas.style.width = w + 'px';
@@ -3836,32 +3840,37 @@ function _renderAnalemma(now) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  // Sample the whole year: x = equation of time (min), y = declination (deg).
+  // Sample the whole year. Horizontal position = declination (deg, the wide
+  // ±23° swing); vertical position = equation of time (min, the narrow ±16
+  // swing) — so the figure-8 lies on its side.
   var pts = [];
-  var minX = 99, maxX = -99, minY = 99, maxY = -99;
+  var minDecl = 99, maxDecl = -99, minEot = 99, maxEot = -99;
   for (var d = 1; d <= 366; d++) {
     var B = _solarB(d);
     var eot = _eqOfTime(B);                          // minutes
     var decl = _solarDeclination(B) * 180 / Math.PI; // degrees
-    pts.push({ d: d, x: eot, y: decl });
-    if (eot < minX) minX = eot; if (eot > maxX) maxX = eot;
-    if (decl < minY) minY = decl; if (decl > maxY) maxY = decl;
+    pts.push({ d: d, eot: eot, decl: decl });
+    if (decl < minDecl) minDecl = decl; if (decl > maxDecl) maxDecl = decl;
+    if (eot < minEot) minEot = eot; if (eot > maxEot) maxEot = eot;
   }
-  var padL = 34, padR = 34, padT = 22, padB = 22;
-  var padX = (maxX - minX) * 0.12, padY = (maxY - minY) * 0.06;
-  minX -= padX; maxX += padX; minY -= padY; maxY += padY;
-  function px(x) { return padL + (x - minX) / (maxX - minX) * (w - padL - padR); }
-  function py(y) { return padT + (maxY - y) / (maxY - minY) * (h - padT - padB); } // summer up
+  var padL = 30, padR = 30, padT = 26, padB = 26;
+  var padD = (maxDecl - minDecl) * 0.08, padE = (maxEot - minEot) * 0.14;
+  minDecl -= padD; maxDecl += padD; minEot -= padE; maxEot += padE;
+  // fx: declination → horizontal (summer/high-Sun to the right).
+  function fx(decl) { return padL + (decl - minDecl) / (maxDecl - minDecl) * (w - padL - padR); }
+  // fy: equation of time → vertical (Sun ahead of the clock plotted upward).
+  function fy(eot) { return padT + (maxEot - eot) / (maxEot - minEot) * (h - padT - padB); }
 
   var styles = getComputedStyle(document.documentElement);
   var amber = (styles.getPropertyValue('--amber') || '#e0b060').trim();
   var faint = (styles.getPropertyValue('--border') || 'rgba(255,255,255,0.12)').trim();
 
-  // Reference lines: equator (decl 0) and mean-time meridian (EoT 0).
+  // Reference lines: equinox meridian (decl 0, vertical) and mean-time line
+  // (EoT 0, horizontal).
   ctx.strokeStyle = faint;
   ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(px(0), padT); ctx.lineTo(px(0), h - padB); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(padL, py(0)); ctx.lineTo(w - padR, py(0)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(fx(0), padT); ctx.lineTo(fx(0), h - padB); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(padL, fy(0)); ctx.lineTo(w - padR, fy(0)); ctx.stroke();
 
   // The figure-8 itself.
   ctx.strokeStyle = amber;
@@ -3869,36 +3878,37 @@ function _renderAnalemma(now) {
   ctx.lineWidth = 1.6;
   ctx.beginPath();
   for (var i = 0; i < pts.length; i++) {
-    var X = px(pts[i].x), Y = py(pts[i].y);
+    var X = fx(pts[i].decl), Y = fy(pts[i].eot);
     if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
   }
   ctx.closePath();
   ctx.stroke();
   ctx.globalAlpha = 1;
 
-  // Month ticks — small dots on the 1st of each month, so the loop reads as a
-  // calendar you can trace. Label the four seasonal turning points.
-  // Label the four seasonal turning points with locale-aware month names.
+  // Month ticks on the 1st of each month, so the loop reads as a calendar you
+  // can trace. Label the seasonal turning points with locale-aware month names,
+  // placed above the point in the upper half and below in the lower half.
   var seasonMonths = { 0: 1, 3: 1, 5: 1, 8: 1, 11: 1 };
   var loc = (typeof _almLocale !== 'undefined' && _almLocale) || undefined;
   ctx.fillStyle = (styles.getPropertyValue('--text3') || '#888').trim();
   ctx.font = '10px system-ui, sans-serif';
+  ctx.textAlign = 'center';
   for (var mo = 0; mo < 12; mo++) {
     var doy = _dayOfYear(new Date(now.getFullYear(), mo, 1));
     var p = pts[doy - 1];
     if (!p) continue;
-    var mx = px(p.x), my = py(p.y);
+    var mx = fx(p.decl), my = fy(p.eot);
     ctx.beginPath(); ctx.arc(mx, my, 1.6, 0, Math.PI * 2); ctx.fill();
     if (seasonMonths[mo]) {
       var lbl = new Date(now.getFullYear(), mo, 1).toLocaleDateString(loc, { month: 'short' });
-      ctx.textAlign = p.x >= 0 ? 'left' : 'right';
-      ctx.fillText(lbl, mx + (p.x >= 0 ? 5 : -5), my + 3);
+      ctx.fillText(lbl, mx, p.eot >= 0 ? my - 6 : my + 13);
     }
   }
+  ctx.textAlign = 'start';
 
   // Today's Sun.
   var td = pts[Math.min(_dayOfYear(now), 366) - 1];
-  var tx = px(td.x), ty = py(td.y);
+  var tx = fx(td.decl), ty = fy(td.eot);
   var grad = ctx.createRadialGradient(tx, ty, 0, tx, ty, 9);
   grad.addColorStop(0, amber);
   grad.addColorStop(1, 'rgba(224,176,96,0)');
@@ -3910,11 +3920,11 @@ function _renderAnalemma(now) {
   // Caption — today's numbers + a one-line explanation.
   var cap = document.getElementById('almanac-analemma-caption');
   if (cap) {
-    var mins = Math.abs(td.x);
-    var fastSlow = td.x >= 0 ? t('alm_sun_ahead') : t('alm_sun_behind');
+    var mins = Math.abs(td.eot);
+    var fastSlow = td.eot >= 0 ? t('alm_sun_ahead') : t('alm_sun_behind');
     cap.innerHTML =
       '<div class="alm-analemma-now">' + t('alm_sun') + ': ' + mins.toFixed(1) + ' ' + t('alm_min') + ' ' + fastSlow +
-      ' · ' + t('alm_declination') + ' ' + td.y.toFixed(1) + '°</div>' +
+      ' · ' + t('alm_declination') + ' ' + td.decl.toFixed(1) + '°</div>' +
       '<div class="alm-analemma-desc">' + t('alm_analemma_desc') + '</div>';
   }
 }

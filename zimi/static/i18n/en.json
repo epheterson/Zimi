@@ -941,7 +941,7 @@
   "alm_year_ago": "year ago",
   "alm_years_ago": "years ago",
   "alm_analemma": "The Analemma",
-  "alm_analemma_desc": "The figure-8 the Sun traces over a year, photographed at the same clock time each day. Width is the equation of time; height is the Sun’s declination.",
+  "alm_analemma_desc": "The figure-8 the Sun traces over a year, photographed at the same clock time each day.",
   "alm_sun_ahead": "ahead of clock",
   "alm_sun_behind": "behind clock",
   "alm_min": "min",
