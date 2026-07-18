@@ -227,6 +227,7 @@ function _renderAlmanacContent() {
   html += '<div class="almanac-orrery-wrap"><canvas id="almanac-orrery"></canvas></div>';
   html += '<div class="orrery-controls">';
   // Bidirectional speed slider: left = rewind, center = 1×, right = fast forward
+  html += '<span class="orrery-speed-word">' + _tLookup('alm_speed', 'Speed') + '</span>';
   html += '<span class="orrery-speed-end">◀</span>';
   html += '<input id="orrery-slider" type="range" min="-80" max="80" value="50" class="orrery-slider" oninput="_orrerySliderInput(this.value)" />';
   html += '<span class="orrery-speed-end">▶</span>';
@@ -1048,6 +1049,9 @@ function _formatSpeed(speed) {
 function _orrerySliderInput(val) {
   _orreryAutoTransit = false; // Manual control disengages auto-transit
   var intVal = parseInt(val);
+  // Manual input always wins — auto-transit was overwriting the slider
+  // every frame, making speed unadjustable during a rocket flight.
+  _orreryAutoTransit = false;
   _orrerySpeed = _sliderToSpeed(intVal);
   var label = document.getElementById('orrery-speed-label');
   if (label) label.textContent = _formatSpeed(_orrerySpeed);
@@ -1636,11 +1640,12 @@ function _renderSunMap(now) {
   html += '</div>';
   html += '</div>';
 
-  // Timezone UI — analog clock left, city list right
+  // Timezone UI — analog clock with the digital box beside it (shorter),
+  // world grid below
   html += '<div class="alm-tz-wrap">';
   html += '<div class="alm-tz-clock-side">';
-  html += '<canvas id="almanac-tz-clock" width="240" height="240"></canvas>';
-  html += '<div id="almanac-tz-label"></div>';
+  html += '<canvas id="almanac-tz-clock" width="180" height="180"></canvas>';
+  html += '<div id="almanac-tz-label" class="alm-clock-info"></div>';
   html += '</div>';
   html += '<div class="alm-tz-list" id="almanac-tz-pills"></div>';
   html += '</div>';
@@ -1738,21 +1743,37 @@ function _renderSunMap(now) {
 
 // ── Timezone analog clock ──
 
+// World coverage, west-to-east — every whole offset plus the common halves
+// (Tehran +3:30, India +5:30, Kathmandu +5:45, Adelaide +9:30). Issue #28:
+// the original list jumped London -> Cairo, so all of Central Europe and
+// West Africa snapped to UK time.
 var _TZ_CITIES = [
   { key: 'honolulu', tz: 'Pacific/Honolulu', lat: 21.31, lon: -157.86 },
+  { key: 'anchorage', tz: 'America/Anchorage', lat: 61.22, lon: -149.90 },
   { key: 'los_angeles', tz: 'America/Los_Angeles', lat: 34.05, lon: -118.24 },
   { key: 'denver', tz: 'America/Denver', lat: 39.74, lon: -104.98 },
+  { key: 'mexico_city', tz: 'America/Mexico_City', lat: 19.43, lon: -99.13 },
   { key: 'chicago', tz: 'America/Chicago', lat: 41.88, lon: -87.63 },
   { key: 'new_york', tz: 'America/New_York', lat: 40.71, lon: -74.01 },
+  { key: 'buenos_aires', tz: 'America/Argentina/Buenos_Aires', lat: -34.60, lon: -58.38 },
   { key: 'sao_paulo', tz: 'America/Sao_Paulo', lat: -23.55, lon: -46.63 },
   { key: 'london', tz: 'Europe/London', lat: 51.51, lon: -0.13 },
+  { key: 'paris', tz: 'Europe/Paris', lat: 48.86, lon: 2.35 },
+  { key: 'lagos', tz: 'Africa/Lagos', lat: 6.52, lon: 3.38 },
   { key: 'cairo', tz: 'Africa/Cairo', lat: 30.04, lon: 31.24 },
+  { key: 'johannesburg', tz: 'Africa/Johannesburg', lat: -26.20, lon: 28.05 },
   { key: 'moscow', tz: 'Europe/Moscow', lat: 55.76, lon: 37.62 },
+  { key: 'tehran', tz: 'Asia/Tehran', lat: 35.69, lon: 51.39 },
   { key: 'dubai', tz: 'Asia/Dubai', lat: 25.20, lon: 55.27 },
+  { key: 'karachi', tz: 'Asia/Karachi', lat: 24.86, lon: 67.01 },
   { key: 'mumbai', tz: 'Asia/Kolkata', lat: 19.08, lon: 72.88 },
+  { key: 'kathmandu', tz: 'Asia/Kathmandu', lat: 27.72, lon: 85.32 },
+  { key: 'dhaka', tz: 'Asia/Dhaka', lat: 23.81, lon: 90.41 },
   { key: 'bangkok', tz: 'Asia/Bangkok', lat: 13.76, lon: 100.50 },
+  { key: 'singapore', tz: 'Asia/Singapore', lat: 1.35, lon: 103.82 },
   { key: 'shanghai', tz: 'Asia/Shanghai', lat: 31.23, lon: 121.47 },
   { key: 'tokyo', tz: 'Asia/Tokyo', lat: 35.68, lon: 139.69 },
+  { key: 'adelaide', tz: 'Australia/Adelaide', lat: -34.93, lon: 138.60 },
   { key: 'sydney', tz: 'Australia/Sydney', lat: -33.87, lon: 151.21 },
   { key: 'auckland', tz: 'Pacific/Auckland', lat: -36.85, lon: 174.76 }
 ];
@@ -1812,11 +1833,28 @@ function _initTzClock(now) {
       var absH = Math.floor(Math.abs(diffMin) / 60);
       var absM = Math.abs(diffMin) % 60;
       utcOff = 'UTC' + sign + absH + (absM ? ':' + (absM < 10 ? '0' : '') + absM : '');
+      // Add the short zone name (PST, CET, JST) beside the offset ONLY when
+      // it's a real abbreviation — a GMT/UTC offset alias (GMT, GMT+8,
+      // UTC-5) just repeats the offset we already show.
+      var znp = _tzFmt(tzc.tz, { timeZoneName: 'short', hour: 'numeric' }).formatToParts(now);
+      for (var zpi = 0; zpi < znp.length; zpi++) {
+        if (znp[zpi].type === 'timeZoneName') {
+          var zn = znp[zpi].value;
+          if (zn && !/^(GMT|UTC)([+\u2212-]|$)/.test(zn)) utcOff += ' \u00b7 ' + zn;
+          break;
+        }
+      }
     } catch(e) {}
     var tzHour = 0;
     try { tzHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: tzc.tz, hour: 'numeric', hour12: false }).format(now)); } catch(e) {}
-    var isNight = tzHour < 6 || tzHour >= 20;
-    html += '<div class="alm-tz-city-card' + (isActive ? ' alm-tz-city-active' : '') + (isNight ? ' alm-tz-city-night' : '') + '" onclick="_almSelectTz(\'' + tzc.tz + '\',' + i + ')">';
+    var phase = (tzHour < 5 || tzHour >= 21) ? 'night' : tzHour < 8 ? 'dawn' : tzHour < 18 ? 'day' : 'dusk';
+    // Sun: solid unicode; moon: CSS crescent (the unicode moons render as
+    // thin outlines at small sizes)
+    var glyphHtml = phase === 'night'
+      ? '<span class="alm-tz-glyph alm-glyph-moon" aria-hidden="true"></span>'
+      : '<span class="alm-tz-glyph" aria-hidden="true">\u2600\ufe0e</span>';
+    html += '<div class="alm-tz-city-card alm-tz-' + phase + (isActive ? ' alm-tz-city-active' : '') + '" onclick="_almSelectTz(\'' + tzc.tz + '\',' + i + ')">';
+    html += glyphHtml;
     html += '<span class="alm-tz-city-name">' + t('alm_city_' + tzc.key) + '</span>';
     html += '<span class="alm-tz-city-time">' + tzTime + '</span>';
     html += '<span class="alm-tz-city-offset">' + utcOff + '</span>';
@@ -1961,16 +1999,55 @@ function _drawTzClock(now) {
   // Time text below clock
   var labelEl = document.getElementById('almanac-tz-label');
   if (labelEl) {
-    var timeStr = '';
+    var parts = [];
     try {
-      timeStr = _tzFmt(tz, { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).format(now);
+      parts = _tzFmt(tz, { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).formatToParts(now);
     } catch(e) {}
+    var hm = '', sec = '', ampm = '';
+    for (var pi = 0; pi < parts.length; pi++) {
+      var pt = parts[pi];
+      if (pt.type === 'second') sec = pt.value;
+      else if (pt.type === 'dayPeriod') ampm = pt.value;
+      else if (pt.type === 'hour' || pt.type === 'minute') hm += pt.value;
+      else if (pt.type === 'literal' && sec === '' && hm) hm += pt.value.trim() === '' ? '' : (pi < parts.length - 1 && parts[pi+1].type !== 'dayPeriod' ? pt.value : '');
+    }
+    hm = hm.replace(/:$/, '');
     var dateStr = '';
     try {
       dateStr = _tzFmt(tz, { weekday: 'short', month: 'short', day: 'numeric' }).format(now);
     } catch(e) {}
-    labelEl.innerHTML = '<div style="font-size:18px;font-weight:500;color:var(--text)">' + timeStr + '</div>' +
-      (tzLabel ? '<div style="font-size:12px;color:var(--text3);margin-top:2px">' + tzLabel + (dateStr ? ' \u00b7 ' + dateStr : '') + '</div>' : '');
+    // Timezone abbreviation (PST, CET, GMT+8...) — encyclopedic honesty
+    var tzAbbr = '';
+    try {
+      var tzp = _tzFmt(tz, { timeZoneName: 'short', hour: 'numeric' }).formatToParts(now);
+      for (var ti = 0; ti < tzp.length; ti++) if (tzp[ti].type === 'timeZoneName') tzAbbr = tzp[ti].value;
+    } catch(e) {}
+    // Only a real abbreviation (PST, JST, CET) earns a slot next to the city
+    // name; a GMT/UTC offset alias (GMT, GMT+4, UTC-5) says nothing new.
+    if (/^(GMT|UTC)([+−-]|$)/.test(tzAbbr)) tzAbbr = '';
+    // Only rebuild the shell when needed; the flip card ticks per second
+    var secEl = document.getElementById('alm-clock-sec');
+    if (!secEl || labelEl.dataset.tz !== tz) {
+      labelEl.dataset.tz = tz;
+      labelEl.innerHTML =
+        '<div class="alm-clock-time"><span id="alm-clock-hm">' + hm + '</span>' +
+          '<span class="alm-clock-sec" id="alm-clock-sec">' + sec + '</span>' +
+          '<span class="alm-clock-ampm" id="alm-clock-ampm">' + ampm + '</span></div>' +
+        '<div class="alm-clock-date" id="alm-clock-date">' + dateStr + '</div>' +
+        '<div class="alm-clock-sub"><span id="alm-clock-tzname">' + (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '') + '</span></div>';
+    } else {
+      var hmEl = document.getElementById('alm-clock-hm');
+      if (hmEl && hmEl.textContent !== hm) hmEl.textContent = hm;
+      var apEl = document.getElementById('alm-clock-ampm');
+      if (apEl && apEl.textContent !== ampm) apEl.textContent = ampm;
+      var dEl = document.getElementById('alm-clock-date');
+      if (dEl && dEl.textContent !== dateStr) dEl.textContent = dateStr;
+      var tnEl = document.getElementById('alm-clock-tzname');
+      var tzText = (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '');
+      if (tnEl && tnEl.textContent !== tzText) tnEl.textContent = tzText;
+      var secondsEl = document.getElementById('alm-clock-sec');
+      if (secondsEl && secondsEl.textContent !== sec) secondsEl.textContent = sec;
+    }
   }
 }
 
@@ -1986,11 +2063,19 @@ function _tzFmt(tz, opts) {
 // Smooth clock animation using requestAnimationFrame
 var _tzClockRAF = null;
 var _tzClockColors = null;
+var _tzGridMinute = -1;
 function _startTzClock() {
   if (_tzClockRAF) cancelAnimationFrame(_tzClockRAF);
   function tick() {
     if (!_almanacOpen) { _tzClockRAF = null; return; }
-    _drawTzClock(new Date());
+    var now = new Date();
+    _drawTzClock(now);
+    // City cards rendered once and went stale within minutes — refresh
+    // the grid on each minute rollover (cheap: 28 cards, 1x/min)
+    if (now.getMinutes() !== _tzGridMinute) {
+      _tzGridMinute = now.getMinutes();
+      _initTzClock(now);
+    }
     _tzClockRAF = requestAnimationFrame(tick);
   }
   _tzClockRAF = requestAnimationFrame(tick);
@@ -3661,35 +3746,259 @@ function _hinduSikhApprox(year) {
   return h;
 }
 
+// ── Region-aware Gregorian holidays (issue #28) ─────────────────────────
+// The Gregorian calendar used to show a US-only view of the world. The
+// international base always renders; a region pack layers national days on
+// top. Region comes from the browser locale's country subtag, then the IANA
+// timezone. All offline — data + date math, no APIs.
+// fixed: [month, day, label]; nth: [month, weekday(0=Sun), n, label] where
+// n=-1 means last; dst: 'us' | 'eu' | 'au' | null.
+var _REGION_HOLIDAYS = {
+  US: {
+    fixed: [[2, 2, 'Groundhog Day'], [4, 15, 'Tax Day'], [5, 5, 'Cinco de Mayo'], [6, 14, 'Flag Day'], [6, 19, 'Juneteenth'], [7, 4, 'Independence Day'], [9, 11, 'Patriot Day'], [11, 11, 'Veterans Day'], [12, 26, 'Kwanzaa']],
+    nth: [[1, 1, 3, 'Martin Luther King Jr. Day'], [2, 0, 2, 'Super Bowl Sunday'], [2, 1, 3, "Presidents' Day"], [5, 1, -1, 'Memorial Day'], [9, 1, 1, 'Labor Day'], [10, 1, 2, "Indigenous Peoples' Day"], [11, 4, 4, 'Thanksgiving']],
+    dst: 'us'
+  },
+  CA: {
+    fixed: [[7, 1, 'Canada Day'], [9, 30, 'Truth and Reconciliation Day'], [12, 26, 'Boxing Day']],
+    nth: [[9, 1, 1, 'Labour Day'], [10, 1, 2, 'Thanksgiving']],
+    dst: 'us'
+  },
+  GB: {
+    fixed: [[4, 23, "St. George's Day"], [11, 5, 'Guy Fawkes Night'], [11, 11, 'Remembrance Day'], [12, 26, 'Boxing Day']],
+    nth: [[5, 1, 1, 'Early May Bank Holiday'], [5, 1, -1, 'Spring Bank Holiday'], [8, 1, -1, 'Summer Bank Holiday']],
+    dst: 'eu'
+  },
+  IE: { fixed: [[2, 1, "St. Brigid's Day"], [12, 26, "St. Stephen's Day"]], nth: [[10, 1, -1, 'October Bank Holiday']], dst: 'eu' },
+  FR: { fixed: [[5, 8, 'Victory in Europe Day'], [7, 14, 'Bastille Day'], [11, 11, 'Armistice Day']], dst: 'eu' },
+  DE: { fixed: [[10, 3, 'German Unity Day'], [12, 6, 'Nikolaus'], [12, 26, 'Second Christmas Day']], dst: 'eu' },
+  IT: { fixed: [[4, 25, 'Liberation Day'], [6, 2, 'Republic Day'], [8, 15, 'Ferragosto'], [12, 26, "St. Stephen's Day"]], dst: 'eu' },
+  ES: { fixed: [[10, 12, 'Fiesta Nacional'], [12, 6, 'Constitution Day'], [12, 8, 'Immaculate Conception']], dst: 'eu' },
+  AU: { fixed: [[1, 26, 'Australia Day'], [4, 25, 'ANZAC Day'], [12, 26, 'Boxing Day']], dst: 'au' },
+  NZ: { fixed: [[2, 6, 'Waitangi Day'], [4, 25, 'ANZAC Day'], [12, 26, 'Boxing Day']], dst: 'au' },
+  IN: { fixed: [[1, 26, 'Republic Day'], [8, 15, 'Independence Day'], [10, 2, 'Gandhi Jayanti']], dst: null },
+  BR: { fixed: [[4, 21, 'Tiradentes'], [9, 7, 'Independence Day'], [10, 12, 'Nossa Senhora Aparecida'], [11, 15, 'Republic Day'], [11, 20, 'Black Consciousness Day']], dst: null },
+  MX: { fixed: [[2, 5, 'Constitution Day'], [5, 5, 'Cinco de Mayo'], [9, 16, 'Independence Day'], [11, 1, 'Day of the Dead'], [11, 2, 'Day of the Dead II']], dst: null },
+  JP: { fixed: [[2, 11, 'National Foundation Day'], [4, 29, 'Showa Day'], [5, 3, 'Constitution Day'], [5, 5, "Children's Day"], [8, 11, 'Mountain Day'], [11, 3, 'Culture Day']], dst: null },
+  CN: { fixed: [[5, 4, 'Youth Day'], [10, 1, 'National Day']], dst: null },
+  ZA: { fixed: [[3, 21, 'Human Rights Day'], [4, 27, 'Freedom Day'], [6, 16, 'Youth Day'], [9, 24, 'Heritage Day'], [12, 16, 'Day of Reconciliation'], [12, 26, 'Day of Goodwill']], dst: null },
+  RU: { fixed: [[1, 7, 'Orthodox Christmas'], [2, 23, 'Defender of the Fatherland Day'], [5, 9, 'Victory Day'], [6, 12, 'Russia Day'], [11, 4, 'Unity Day']], dst: null },
+  // Pseudo-region: European locale without its own pack — correct DST rule.
+  EU: { fixed: [[12, 26, 'Boxing Day']], dst: 'eu' }
+};
+
+// Timezones that pin a region when the locale has no country subtag.
+var _TZ_REGION = {
+  'Europe/London': 'GB', 'Europe/Dublin': 'IE', 'Europe/Paris': 'FR',
+  'Europe/Berlin': 'DE', 'Europe/Rome': 'IT', 'Europe/Madrid': 'ES',
+  'America/Toronto': 'CA', 'America/Vancouver': 'CA',
+  'Australia/Sydney': 'AU', 'Australia/Melbourne': 'AU', 'Australia/Adelaide': 'AU', 'Australia/Perth': 'AU',
+  'Pacific/Auckland': 'NZ', 'Asia/Kolkata': 'IN', 'America/Sao_Paulo': 'BR',
+  'America/Mexico_City': 'MX', 'Asia/Tokyo': 'JP', 'Asia/Shanghai': 'CN',
+  'Africa/Johannesburg': 'ZA', 'Europe/Moscow': 'RU'
+};
+
+// Nearest-anchor country resolution for map clicks. Anchors tagged '' are
+// major non-pack countries — they exist so a click on, say, Nigeria gets
+// the international set instead of snapping to the nearest pack country.
+// Coarse by design: ~80 anchors, borders are approximate.
+var _REGION_ANCHORS = [
+  [40.7, -74.0, 'US'], [34.1, -118.2, 'US'], [41.9, -87.6, 'US'], [29.8, -95.4, 'US'], [39.7, -105.0, 'US'], [47.6, -122.3, 'US'], [25.8, -80.2, 'US'], [42.4, -71.1, 'US'], [61.2, -149.9, 'US'], [21.3, -157.9, 'US'],
+  [49.3, -123.1, 'CA'], [51.0, -114.1, 'CA'], [43.7, -79.4, 'CA'], [45.5, -73.6, 'CA'], [44.6, -63.6, 'CA'], [53.5, -113.5, 'CA'],
+  [19.4, -99.1, 'MX'], [25.7, -100.3, 'MX'], [21.2, -86.8, 'MX'],
+  [-23.6, -46.6, 'BR'], [-15.8, -47.9, 'BR'], [-3.1, -60.0, 'BR'], [-8.1, -34.9, 'BR'],
+  [51.5, -0.1, 'GB'], [53.5, -2.2, 'GB'], [55.9, -3.2, 'GB'], [53.3, -6.3, 'IE'],
+  [48.9, 2.4, 'FR'], [45.8, 4.8, 'FR'], [43.6, 1.4, 'FR'],
+  [52.5, 13.4, 'DE'], [48.1, 11.6, 'DE'], [50.1, 8.7, 'DE'],
+  [41.9, 12.5, 'IT'], [45.5, 9.2, 'IT'], [40.9, 14.3, 'IT'],
+  [40.4, -3.7, 'ES'], [41.4, 2.2, 'ES'], [37.4, -6.0, 'ES'],
+  [-33.9, 151.2, 'AU'], [-37.8, 145.0, 'AU'], [-27.5, 153.0, 'AU'], [-31.9, 115.9, 'AU'], [-34.9, 138.6, 'AU'], [-12.5, 130.8, 'AU'],
+  [-36.8, 174.8, 'NZ'], [-41.3, 174.8, 'NZ'], [-43.5, 172.6, 'NZ'],
+  [28.6, 77.2, 'IN'], [19.1, 72.9, 'IN'], [22.6, 88.4, 'IN'], [13.1, 80.3, 'IN'], [12.9, 77.6, 'IN'],
+  [35.7, 139.7, 'JP'], [34.7, 135.5, 'JP'], [43.1, 141.4, 'JP'],
+  [39.9, 116.4, 'CN'], [31.2, 121.5, 'CN'], [30.6, 104.1, 'CN'], [23.1, 113.3, 'CN'], [43.8, 87.6, 'CN'],
+  [55.8, 37.6, 'RU'], [59.9, 30.4, 'RU'], [55.0, 82.9, 'RU'], [56.8, 60.6, 'RU'], [43.1, 131.9, 'RU'],
+  [-26.2, 28.0, 'ZA'], [-33.9, 18.4, 'ZA'], [-29.9, 31.0, 'ZA'],
+  [64.1, -21.9, ''], [59.9, 10.8, ''], [59.3, 18.1, ''], [60.2, 24.9, ''], [52.2, 21.0, ''], [48.2, 16.4, ''], [47.4, 8.5, ''], [52.4, 4.9, ''], [50.8, 4.4, ''], [38.7, -9.1, ''], [38.0, 23.7, ''], [41.0, 28.9, ''], [50.5, 30.5, ''], [44.4, 26.1, ''], [47.5, 19.0, ''], [50.1, 14.4, ''], [55.7, 12.6, ''],
+  [30.0, 31.2, ''], [6.5, 3.4, ''], [-1.3, 36.8, ''], [9.0, 38.7, ''], [33.6, -7.6, ''], [36.8, 10.2, ''], [-4.3, 15.3, ''], [5.6, -0.2, ''],
+  [24.7, 46.7, ''], [25.2, 55.3, ''], [35.7, 51.4, ''], [33.3, 44.4, ''], [32.1, 34.8, ''], [24.9, 67.0, ''], [23.8, 90.4, ''], [27.7, 85.3, ''], [6.9, 79.9, ''],
+  [13.8, 100.5, ''], [21.0, 105.8, ''], [14.6, 121.0, ''], [-6.2, 106.8, ''], [3.1, 101.7, ''], [1.4, 103.8, ''], [37.6, 127.0, ''], [25.0, 121.6, ''], [47.9, 106.9, ''],
+  [-34.6, -58.4, ''], [-33.4, -70.7, ''], [-12.0, -77.0, ''], [4.7, -74.1, ''], [10.5, -66.9, ''], [23.1, -82.4, ''], [14.6, -90.5, '']
+];
+
+// Location (map click / city pick / GPS) → holiday region. Nearest anchor
+// wins; nothing within ~15 degrees (open ocean) means international-only.
+function _almRegionForLocation(lat, lon) {
+  var best = '', bestD = Infinity;
+  for (var i = 0; i < _REGION_ANCHORS.length; i++) {
+    var a = _REGION_ANCHORS[i];
+    var dlat = lat - a[0];
+    var dlon = (lon - a[1]) * Math.cos(lat * DEG_TO_RAD);
+    var d = dlat * dlat + dlon * dlon;
+    if (d < bestD) { bestD = d; best = a[2]; }
+  }
+  return bestD <= 225 ? best : '';
+}
+
+// Localized country name for the caption ("Showing United States holidays")
+function _almRegionName(region) {
+  if (!region || region === 'EU') return '';
+  try {
+    var lang = (typeof _currentLang !== 'undefined' && _currentLang) ? _currentLang : 'en';
+    return new Intl.DisplayNames([lang], { type: 'region' }).of(region) || region;
+  } catch (e) { return region; }
+}
+
+function _almRegion() {
+  // The chosen location is the source of truth: clicking Italy on the map
+  // means Italian holidays, whatever the browser locale says.
+  try {
+    var locData = JSON.parse(localStorage.getItem(_ALM_LOC_KEY) || 'null');
+    if (locData && typeof locData.lat === 'number') {
+      return _almRegionForLocation(locData.lat, locData.lon);
+    }
+  } catch (e) {}
+  try {
+    var m = String(navigator.language || '').match(/[-_]([A-Za-z]{2})(\b|$)/);
+    if (m) {
+      var r = m[1].toUpperCase();
+      if (_REGION_HOLIDAYS[r]) return r;
+      // Known locale country without a pack: still want the right DST rule
+      if (/^(AT|BE|BG|CH|CY|CZ|DK|EE|FI|GR|HR|HU|LT|LU|LV|MT|NL|NO|PL|PT|RO|SE|SI|SK|UA)$/.test(r)) return 'EU';
+    }
+  } catch (e) {}
+  try {
+    var tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    if (_TZ_REGION[tz]) return _TZ_REGION[tz];
+    if (tz.indexOf('Europe/') === 0) return 'EU';
+    if (tz.indexOf('America/') === 0) return 'US';
+  } catch (e) {}
+  return '';
+}
+
+function _applyRegionHolidays(region, year, month, add) {
+  var pack = _REGION_HOLIDAYS[region];
+  if (!pack) return;
+  var src = _almRegionName(region);
+  var i;
+  for (i = 0; i < (pack.fixed || []).length; i++) {
+    var fx = pack.fixed[i];
+    if (fx[0] === month) add(fx[1], fx[2], 'holiday', '', src);
+  }
+  for (i = 0; i < (pack.nth || []).length; i++) {
+    var nh = pack.nth[i];
+    if (nh[0] !== month) continue;
+    var day = nh[2] === -1 ? _lastWeekday(year, month, nh[1]) : _nthWeekday(year, month, nh[1], nh[2]);
+    add(day, nh[3], 'holiday', '', src);
+  }
+  // Clock changes: labels hold both hemispheres (October IS spring in AU)
+  var dst = pack.dst;
+  if (dst === 'us') {
+    if (month === 3) add(_nthWeekday(year, 3, 0, 2), 'Spring Forward', 'seasonal');
+    if (month === 11) add(_nthWeekday(year, 11, 0, 1), 'Fall Back', 'seasonal');
+  } else if (dst === 'eu') {
+    if (month === 3) add(_lastWeekday(year, 3, 0), 'Clocks Forward', 'seasonal');
+    if (month === 10) add(_lastWeekday(year, 10, 0), 'Clocks Back', 'seasonal');
+  } else if (dst === 'au') {
+    if (month === 10) add(_nthWeekday(year, 10, 0, 1), 'Clocks Forward', 'seasonal');
+    if (month === 4) add(_nthWeekday(year, 4, 0, 1), 'Clocks Back', 'seasonal');
+  }
+}
+
+// ── Equinoxes & solstices: computed, not hardcoded (Meeus ch. 27) ──────
+// JDE0 mean-instant polynomials (valid 1000-3000 CE) plus the 24-term
+// periodic correction — accurate to minutes. The old code pinned fixed
+// dates (Mar 20/Jun 20/Sep 22/Dec 21), which drift a day across years.
+var _SEASON_JDE0 = [
+  [2451623.80984, 365242.37404, 0.05169, -0.00411, -0.00057],  // March eq.
+  [2451716.56767, 365241.62603, 0.00325, 0.00888, -0.00030],   // June sol.
+  [2451810.21715, 365242.01767, -0.11575, 0.00337, 0.00078],   // Sept eq.
+  [2451900.05952, 365242.74049, -0.06223, -0.00823, 0.00032]   // Dec sol.
+];
+var _SEASON_PERIODIC = [
+  [485, 324.96, 1934.136], [203, 337.23, 32964.467], [199, 342.08, 20.186],
+  [182, 27.85, 445267.112], [156, 73.14, 45036.886], [136, 171.52, 22518.443],
+  [77, 222.54, 65928.934], [74, 296.72, 3034.906], [70, 243.58, 9037.513],
+  [58, 119.81, 33718.147], [52, 297.17, 150.678], [50, 21.02, 2281.226],
+  [45, 247.54, 29929.562], [44, 325.15, 31555.956], [29, 60.93, 4443.417],
+  [18, 155.12, 67555.328], [17, 288.79, 4562.452], [16, 198.04, 62894.029],
+  [14, 199.76, 31436.921], [12, 95.39, 14577.848], [12, 287.11, 31931.756],
+  [12, 320.81, 34777.259], [9, 227.73, 1222.114], [8, 15.45, 16859.074]
+];
+
+function _seasonInstantJDE(year, k) {
+  var Y = (year - 2000) / 1000;
+  var c = _SEASON_JDE0[k];
+  var J0 = c[0] + c[1] * Y + c[2] * Y * Y + c[3] * Y * Y * Y + c[4] * Y * Y * Y * Y;
+  var T = (J0 - 2451545.0) / 36525;
+  var W = (35999.373 * T - 2.47) * DEG_TO_RAD;
+  var dl = 1 + 0.0334 * Math.cos(W) + 0.0007 * Math.cos(2 * W);
+  var S = 0;
+  for (var i = 0; i < _SEASON_PERIODIC.length; i++) {
+    var t2 = _SEASON_PERIODIC[i];
+    S += t2[0] * Math.cos((t2[1] + t2[2] * T) * DEG_TO_RAD);
+  }
+  return J0 + (0.00001 * S) / dl;
+}
+
+var _seasonCache = { year: 0, events: [] };
+
+function _seasonEventsForYear(year) {
+  if (_seasonCache.year === year) return _seasonCache.events;
+  // Hemisphere-aware names: October IS spring in Sydney. Chosen location
+  // decides; no location defaults to the northern names.
+  var south = false;
+  try {
+    var loc = JSON.parse(localStorage.getItem(_ALM_LOC_KEY) || 'null');
+    south = !!(loc && loc.lat < 0);
+  } catch (e) {}
+  var names = south
+    ? ['Autumn Equinox', 'Winter Solstice', 'Spring Equinox', 'Summer Solstice']
+    : ['Spring Equinox', 'Summer Solstice', 'Autumn Equinox', 'Winter Solstice'];
+  var events = [];
+  for (var k = 0; k < 4; k++) {
+    // JDE (TT ~ UTC at day precision) -> the user's local calendar date
+    var d = new Date((_seasonInstantJDE(year, k) - 2440587.5) * 86400000);
+    events.push({ month: d.getMonth() + 1, day: d.getDate(), label: names[k] });
+  }
+  _seasonCache = { year: year, events: events };
+  return events;
+}
+
 // Get almanac events for a given calendar system's month, keyed by day number
 function _getAlmanacEvents(sys, year, month) {
   var events = {};
-  function add(day, label, type, icon) {
+  function add(day, label, type, icon, src) {
     if (day < 1 || day > 31) return;
     if (!events[day]) events[day] = [];
-    events[day].push({ label: label, type: type, icon: icon || '' });
+    // Belt-and-suspenders: base set + one region pack should never
+    // collide, but a same-day duplicate label renders as noise if they do.
+    for (var di = 0; di < events[day].length; di++) {
+      if (events[day][di].label === label) return;
+    }
+    events[day].push({ label: label, type: type, icon: icon || '', src: src || '' });
   }
 
   if (sys === 'gregorian') {
-    // Fixed holidays
+    // International base — observed widely enough to show everywhere
     if (month === 1) { add(1, "New Year's Day", 'holiday'); add(6, 'Epiphany', 'holiday'); }
-    if (month === 2) { add(2, 'Groundhog Day', 'holiday'); add(14, "Valentine's Day", 'holiday'); }
-    if (month === 3) { add(8, "International Women's Day", 'holiday'); add(17, "St. Patrick's Day", 'holiday'); }
-    if (month === 4) { add(1, "April Fools' Day", 'holiday'); add(22, 'Earth Day', 'holiday'); }
-    if (month === 5) { add(1, 'May Day', 'holiday'); add(5, 'Cinco de Mayo', 'holiday'); }
-    if (month === 6) { add(19, 'Juneteenth', 'holiday'); add(21, 'International Yoga Day', 'holiday'); }
-    if (month === 7) { add(4, 'Independence Day', 'holiday'); }
-    if (month === 10) { add(31, 'Halloween', 'holiday'); }
-    if (month === 11) { add(11, 'Veterans Day', 'holiday'); }
-    if (month === 12) { add(24, 'Christmas Eve', 'holiday'); add(25, 'Christmas Day', 'holiday'); add(26, 'Kwanzaa', 'holiday'); add(31, "New Year's Eve", 'holiday'); }
-    // Computed holidays
-    if (month === 1) { add(_nthWeekday(year, 1, 1, 3), 'Martin Luther King Jr. Day', 'holiday'); }
-    if (month === 2) { add(_nthWeekday(year, 2, 1, 3), "Presidents' Day", 'holiday'); }
-    if (month === 5) { add(_nthWeekday(year, 5, 0, 2), "Mother's Day", 'holiday'); add(_lastWeekday(year, 5, 1), 'Memorial Day', 'holiday'); }
+    if (month === 2) { add(14, "Valentine's Day", 'holiday'); }
+    if (month === 3) { add(8, "International Women's Day", 'holiday'); add(14, 'Pi Day', 'holiday'); add(17, "St. Patrick's Day", 'holiday'); add(22, 'World Water Day', 'holiday'); }
+    if (month === 4) { add(1, "April Fools' Day", 'holiday'); add(22, 'Earth Day', 'holiday'); add(23, 'World Book Day', 'holiday'); }
+    if (month === 5) { add(1, "May Day / Workers' Day", 'holiday'); add(4, 'Star Wars Day', 'holiday'); }
+    if (month === 6) { add(5, 'World Environment Day', 'holiday'); add(21, 'International Yoga Day', 'holiday'); }
+    if (month === 7) { add(20, 'Moon Landing Day', 'holiday'); add(30, 'International Friendship Day', 'holiday'); }
+    if (month === 8) { add(12, 'International Youth Day', 'holiday'); add(19, 'World Photography Day', 'holiday'); }
+    if (month === 9) { add(8, 'International Literacy Day', 'holiday'); }
+    if (month === 10) { add(5, "World Teachers' Day", 'holiday'); add(24, 'United Nations Day', 'holiday'); add(31, 'Halloween', 'holiday'); }
+    if (month === 11) { add(10, 'World Science Day', 'holiday'); }
+    if (month === 12) { add(10, 'Human Rights Day', 'holiday'); add(24, 'Christmas Eve', 'holiday'); add(25, 'Christmas Day', 'holiday'); add(31, "New Year's Eve", 'holiday'); }
+    // Mother's/Father's Day on the US dates — the majority convention
+    // (US, CA, AU, DE, IT, BR, IN, CN, JP and others)
+    if (month === 5) { add(_nthWeekday(year, 5, 0, 2), "Mother's Day", 'holiday'); }
     if (month === 6) { add(_nthWeekday(year, 6, 0, 3), "Father's Day", 'holiday'); }
-    if (month === 9) { add(_nthWeekday(year, 9, 1, 1), 'Labor Day', 'holiday'); }
-    if (month === 10) { add(_nthWeekday(year, 10, 1, 2), 'Indigenous Peoples\' Day', 'holiday'); }
-    if (month === 11) { add(_nthWeekday(year, 11, 4, 4), 'Thanksgiving', 'holiday'); }
+    // National days + clock changes for the detected region
+    _applyRegionHolidays(_almRegion(), year, month, add);
     // Easter and related
     var easter = _computeEaster(year);
     if (easter.month === month) { add(easter.day, 'Easter', 'holiday'); }
@@ -3708,14 +4017,13 @@ function _getAlmanacEvents(sys, year, month) {
     for (var _hi = 0; _hi < _hsh.length; _hi++) {
       if (_hsh[_hi].m === month) add(_hsh[_hi].d, _hsh[_hi].name, 'holiday');
     }
-    // DST (US)
-    if (month === 3) { add(_nthWeekday(year, 3, 0, 2), 'Spring Forward', 'seasonal'); }
-    if (month === 11) { add(_nthWeekday(year, 11, 0, 1), 'Fall Back', 'seasonal'); }
-    // Solstices & Equinoxes
-    if (month === 3) { add(20, 'Spring Equinox', 'astro'); }
-    if (month === 6) { add(20, 'Summer Solstice', 'astro'); }
-    if (month === 9) { add(22, 'Autumn Equinox', 'astro'); }
-    if (month === 12) { add(21, 'Winter Solstice', 'astro'); }
+    // Solstices & Equinoxes — computed (Meeus), hemisphere-aware labels
+    var seasonEvents = _seasonEventsForYear(year);
+    for (var sei = 0; sei < seasonEvents.length; sei++) {
+      if (seasonEvents[sei].month === month) {
+        add(seasonEvents[sei].day, seasonEvents[sei].label, 'astro');
+      }
+    }
   }
 
   else if (sys === 'hebrew') {
@@ -3896,7 +4204,8 @@ function _drawAlmanacGrid() {
     for (var ei = 0; ei < shown; ei++) {
       var ev = dayEvents[ei];
       var escapedLabel = _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      html += '<div class="alm-ev alm-ev-' + ev.type + '">' +
+      var srcTitle = ev.src ? ' title="' + _tLookup('alm_region_holiday', '{c} holiday').replace('{c}', ev.src).replace(/"/g, '&quot;') + '"' : '';
+      html += '<div class="alm-ev alm-ev-' + ev.type + '"' + srcTitle + '>' +
         (ev.icon ? ev.icon + ' ' : '') + escapedLabel + '</div>';
     }
     if (dayEvents.length > 2) {
@@ -3920,11 +4229,26 @@ function _drawAlmanacGrid() {
       html += '<div class="alm-day-detail">';
       for (var ei = 0; ei < selEvents.length; ei++) {
         var ev = selEvents[ei];
+        var detailLabel = _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        if (ev.src) detailLabel += ' <span style="color:var(--text3)">\u00b7 ' + ev.src.replace(/</g,'&lt;') + '</span>';
         html += '<div class="alm-ev alm-ev-' + ev.type + '" style="font-size:12px;padding:2px 0">' +
-          (ev.icon ? ev.icon + ' ' : '') + _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+          (ev.icon ? ev.icon + ' ' : '') + detailLabel + '</div>';
       }
       html += '</div>';
     }
+  }
+
+  // Quiet caption saying whose national days are shown. Always present on
+  // the Gregorian calendar — no pack means the worldwide set, and saying
+  // so beats an unexplained absence of holidays.
+  if (_almSystem === 'gregorian') {
+    var regionName = _almRegionName(_almRegion());
+    var capText = regionName
+      ? _tLookup('alm_showing_holidays', 'Showing {c} holidays').replace('{c}', regionName.replace(/</g, '&lt;'))
+      : _tLookup('alm_showing_worldwide', 'Showing worldwide holidays');
+    html += '<div class="alm-cal-region" title="' +
+      _tLookup('alm_holidays_follow_hint', 'Follows your location on the map').replace(/"/g, '&quot;') +
+      '">' + capText + '</div>';
   }
 
   // Cross-reference — selected date in all calendar systems (replaces pills)

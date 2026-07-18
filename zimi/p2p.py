@@ -43,8 +43,18 @@ DEFAULT_SEED_BANDWIDTH_KB = 2048  # 2 MB/s
 
 
 def find_aria2c() -> str | None:
-    """Locate aria2c. GUI apps on macOS launch with a bare PATH that
-    misses Homebrew, so fall back to the standard install locations."""
+    """Locate aria2c. Desktop builds ship their own sidecar (checked
+    first, so a bundled aria2 wins over whatever's on the machine). GUI
+    apps on macOS launch with a bare PATH that misses Homebrew, so fall
+    back to the standard install locations after PATH."""
+    import sys as _sys
+
+    bundle_base = getattr(_sys, "_MEIPASS", None)
+    if bundle_base:
+        for name in ("aria2c", "aria2c.exe"):
+            cand = os.path.join(bundle_base, name)
+            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                return cand
     found = shutil.which("aria2c")
     if found:
         return found
@@ -178,8 +188,13 @@ def is_torrent_env_locked() -> bool:
 
 
 def get_bt_port() -> int:
-    """Inbound BT port. Default 6881; clamps invalid input."""
-    raw = _bt_conf().get("port") or os.environ.get("ZIMI_BT_PORT", str(DEFAULT_BT_PORT))
+    """Inbound BT port. ZIMI_BT's port= field (or legacy ZIMI_BT_PORT)
+    wins; otherwise the persisted UI preference; default 6881."""
+    raw = (
+        _bt_conf().get("port")
+        or os.environ.get("ZIMI_BT_PORT")
+        or _read_pref("bt_port", DEFAULT_BT_PORT)
+    )
     try:
         n = int(raw)
         if 1024 <= n <= 65535:
@@ -188,6 +203,10 @@ def get_bt_port() -> int:
         pass
     log.warning("BT port %r invalid; using default %d", raw, DEFAULT_BT_PORT)
     return DEFAULT_BT_PORT
+
+
+def is_bt_port_env_locked() -> bool:
+    return bool(_bt_conf().get("port") or os.environ.get("ZIMI_BT_PORT"))
 
 
 def get_staging_dir(data_dir: str) -> str:
@@ -248,13 +267,65 @@ def is_seed_ratio_env_locked() -> bool:
     return "ratio" in _bt_conf() or _env_explicitly_set("ZIMI_SEED_RATIO")
 
 
-def get_disk_pressure_pct() -> int:
-    """Pause seeding when free disk drops below this percent. Default 5."""
-    raw = _bt_conf().get("disk_min") or os.environ.get("ZIMI_SEED_DISK_PCT", "5")
+# Global BitTorrent bandwidth caps in KB/s, 0 = unlimited (aria2's default).
+# Applied to the whole aria2 process — downloads AND seeds, mirror included —
+# so one pair of numbers governs all sharing speed. ZIMI_BT's up=/down= fields
+# lock the UI field when set.
+def get_bt_up_limit_kb() -> int:
+    raw = _bt_conf().get("up") or os.environ.get("ZIMI_BT_UP_KB")
+    if raw in (None, ""):
+        raw = _read_pref("bt_up_kb", 0)
+    try:
+        return max(0, int(raw))
+    except (ValueError, TypeError):
+        return 0
+
+
+def get_bt_down_limit_kb() -> int:
+    raw = _bt_conf().get("down") or os.environ.get("ZIMI_BT_DOWN_KB")
+    if raw in (None, ""):
+        raw = _read_pref("bt_down_kb", 0)
+    try:
+        return max(0, int(raw))
+    except (ValueError, TypeError):
+        return 0
+
+
+def is_bt_up_env_locked() -> bool:
+    return "up" in _bt_conf() or _env_explicitly_set("ZIMI_BT_UP_KB")
+
+
+def is_bt_down_env_locked() -> bool:
+    return "down" in _bt_conf() or _env_explicitly_set("ZIMI_BT_DOWN_KB")
+
+
+def apply_rate_limits() -> None:
+    """Push the current up/down caps to a running sidecar (live, no respawn)."""
+    backend = peek_backend()
+    if backend is not None and hasattr(backend, "set_global_rate_limits"):
+        try:
+            backend.set_global_rate_limits(get_bt_up_limit_kb(), get_bt_down_limit_kb())
+        except Exception as e:
+            log.debug("live rate-limit apply failed: %s", e)
+
+
+# Absolute free-space floor shared by the download gate and the seeding
+# pause. Percent-of-drive defaults are wrong at both ends: 5% of a 466 GB
+# drive is 23 GB of "missing" space, and seeding existing files writes
+# almost nothing anyway.
+DISK_FLOOR_BYTES = 2 * 1024**3
+
+
+def get_disk_pressure_pct() -> int | None:
+    """Explicit percent threshold for the seeding pause, or None when the
+    user hasn't set one (the absolute DISK_FLOOR_BYTES applies instead)."""
+    raw = _bt_conf().get("disk_min") or os.environ.get("ZIMI_SEED_DISK_PCT")
+    if raw in (None, ""):
+        return None
     try:
         return max(1, min(50, int(raw)))
     except (ValueError, TypeError):
-        return 5
+        return None
 
 
 def seed_options(*, ratio_cap: float, max_upload_kb: int) -> dict:
@@ -284,6 +355,32 @@ def seed_options(*, ratio_cap: float, max_upload_kb: int) -> dict:
 
 DEFAULT_MIRROR_RATIO_CAP = 1000.0  # effectively uncapped — 1000× upload
 DEFAULT_MIRROR_UPLOAD_KB = 10240  # 10 MB/s
+
+
+def is_dht_enabled() -> bool:
+    """DHT on by default: trackerless peer discovery is what makes magnet
+    links and post-world swarms work when the Kiwix trackers are gone.
+    ZIMI_BT's dht= field (or legacy ZIMI_DHT) opts out."""
+    conf = _bt_conf()
+    if "dht" in conf:
+        return _conf_bool(conf["dht"])
+    if _env_explicitly_set("ZIMI_DHT"):
+        return _bool_env("ZIMI_DHT", True)
+    return True
+
+
+def is_upnp_enabled() -> bool:
+    """Ask the router to open the BT port automatically (like every BT
+    client). ZIMI_BT's upnp= field wins; otherwise the persisted UI
+    preference. On by default — it fails soft on routers without UPnP."""
+    conf = _bt_conf()
+    if "upnp" in conf:
+        return _conf_bool(conf["upnp"])
+    return bool(_read_pref("upnp", True))
+
+
+def is_upnp_env_locked() -> bool:
+    return "upnp" in _bt_conf()
 
 
 def is_mirror_enabled() -> bool:
@@ -343,44 +440,55 @@ def get_mirror_status() -> dict:
         "upload_kb": get_mirror_upload_kb(),
         "seed_ratio_cap": get_seed_ratio_cap(),
         "seed_ratio_env_locked": is_seed_ratio_env_locked(),
+        "bt_up_kb": get_bt_up_limit_kb(),
+        "bt_down_kb": get_bt_down_limit_kb(),
+        "bt_up_env_locked": is_bt_up_env_locked(),
+        "bt_down_env_locked": is_bt_down_env_locked(),
+        # Docker bridge mode advertises an unreachable container IP —
+        # Nearby silently doesn't work. The UI warns; ZIMI_NEARBY's ip=
+        # field (or host networking) fixes it.
+        "peer_ip_unreachable": (
+            _disc.is_share_enabled() and _disc.advertised_ip_looks_unreachable()
+        ),
+        "progress": _mirror_progress_snapshot(),
     }
 
 
-def effective_seed_options() -> dict:
-    """Return aria2 seed options reflecting mirror-or-personal caps.
-
-    Mirror mode raises ratio + upload caps. Personal mode uses the
-    user's `ZIMI_SEED_RATIO` (default 2.0) and `ZIMI_SEED_UPLOAD_KB`
-    (default DEFAULT_SEED_BANDWIDTH_KB).
-    """
-    if is_mirror_enabled():
-        return seed_options(
-            ratio_cap=get_mirror_ratio_cap(),
-            max_upload_kb=get_mirror_upload_kb(),
-        )
-    user_upload_raw = _bt_conf().get("up") or os.environ.get(
-        "ZIMI_SEED_UPLOAD_KB", str(DEFAULT_SEED_BANDWIDTH_KB)
-    )
+def _mirror_progress_snapshot() -> dict:
     try:
-        user_upload = max(64, int(user_upload_raw))
-    except (ValueError, TypeError):
-        user_upload = DEFAULT_SEED_BANDWIDTH_KB
-    return seed_options(
-        ratio_cap=get_seed_ratio_cap(),
-        max_upload_kb=user_upload,
-    )
+        from zimi import library as _lib
+
+        return dict(_lib._mirror_progress)
+    except Exception:
+        return {"phase": None, "done": 0, "total": 0}
+
+
+def effective_seed_options() -> dict:
+    """Per-torrent seed options: just the ratio cap (mirror lifts it).
+
+    Speed is NOT capped per-torrent — the global up/down limits
+    (get_bt_up_limit_kb / get_bt_down_limit_kb) govern total bandwidth for
+    downloads and seeds alike, so one BT-section control covers personal
+    seeding AND mirror. max_upload_kb=0 means per-torrent unlimited.
+    """
+    ratio = get_mirror_ratio_cap() if is_mirror_enabled() else get_seed_ratio_cap()
+    return seed_options(ratio_cap=ratio, max_upload_kb=0)
 
 
 def should_pause_for_disk_pressure(zim_dir: str) -> bool:
-    """Free space below ZIMI_SEED_DISK_PCT → pause all seeds."""
+    """Pause all seeds when free space is critically low: below the
+    absolute DISK_FLOOR_BYTES, or below ZIMI_SEED_DISK_PCT percent when
+    the user set one explicitly."""
     try:
         usage = shutil.disk_usage(zim_dir)
     except OSError:
         return False  # can't tell → don't pause
     if usage.total == 0:
         return False
-    pct_free = (usage.free / usage.total) * 100
-    return pct_free < get_disk_pressure_pct()
+    pct = get_disk_pressure_pct()
+    if pct is not None:
+        return (usage.free / usage.total) * 100 < pct
+    return usage.free < DISK_FLOOR_BYTES
 
 
 # ============================================================================
@@ -480,7 +588,7 @@ class Aria2Backend(BTBackend):
         if not find_aria2c():
             return False
         try:
-            self.ensure_running()
+            self._spawn_with_fallback()
             # Round-trip the RPC to confirm it actually responds
             self._rpc("aria2.getVersion", [])
             return True
@@ -506,7 +614,10 @@ class Aria2Backend(BTBackend):
                 f"--listen-port={self.bt_port}",
                 f"--dht-listen-port={self.bt_port}",
                 # Seed-cap policy comes via per-torrent options on add_torrent.
-                "--enable-dht=false",  # opt-in only via ZIMI_DHT
+                f"--enable-dht={'true' if is_dht_enabled() else 'false'}",
+                # Persisted routing table: rejoining swarms after a restart
+                # doesn't depend on bootstrap nodes being reachable.
+                f"--dht-file-path={os.path.join(self.bt_dir, 'dht.dat')}",
                 "--enable-peer-exchange=true",
                 f"--dir={self.staging_dir}",
                 f"--save-session={self.session_path}",
@@ -523,10 +634,23 @@ class Aria2Backend(BTBackend):
                 "--bt-stop-timeout=0",
                 "--summary-interval=0",
                 "--quiet=true",
+                # Global bandwidth caps (0 = unlimited). One pair governs all
+                # traffic — downloads, seeds, mirror — changeable live via RPC.
+                f"--max-overall-upload-limit={get_bt_up_limit_kb()}K",
+                f"--max-overall-download-limit={get_bt_down_limit_kb()}K",
             ]
             log.info("Starting aria2c on rpc:%d, bt:%d", self.rpc_port, self.bt_port)
+            # Bundled aria2c (desktop builds): its relocated libcrypto must
+            # load OpenSSL provider modules from the bundle, not from a
+            # Homebrew path baked in at build time (absent on user machines
+            # -> "OSSL_PROVIDER_load 'legacy' failed" and instant death).
+            env = None
+            binary = args[0]
+            modules_dir = os.path.join(os.path.dirname(binary), "ossl-modules")
+            if os.path.isdir(modules_dir):
+                env = dict(os.environ, OPENSSL_MODULES=modules_dir)
             self._proc = subprocess.Popen(
-                args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+                args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=env
             )
             # Wait briefly for RPC to come up. Deadline-based with short
             # probe timeouts: a squatted RPC port (half-dead aria2 from
@@ -556,6 +680,30 @@ class Aria2Backend(BTBackend):
                     last_err = e
                     time.sleep(0.1)
             raise RuntimeError(f"aria2c failed to start within 5s: {last_err}")
+
+    def _spawn_with_fallback(self) -> None:
+        """ensure_running, walking alternate RPC ports when the default is
+        squatted. One retry wasn't enough on real desktops: a desktop app
+        plus a docker instance plus a dev server is three sidecars, and
+        orphans from crashed quits squat ports too."""
+        last: RuntimeError | None = None
+        for attempt in range(5):
+            if attempt:
+                with self._lock:
+                    if self._proc is not None:
+                        try:
+                            self._proc.terminate()
+                        except Exception:
+                            pass
+                        self._proc = None
+                self.rpc_port += 13
+                log.info("aria2 RPC port busy; retrying on %d", self.rpc_port)
+            try:
+                self.ensure_running()
+                return
+            except RuntimeError as e:
+                last = e
+        raise last if last else RuntimeError("aria2 spawn failed")
 
     def stop(self) -> None:
         with self._lock:
@@ -621,9 +769,25 @@ class Aria2Backend(BTBackend):
         self._rpc("aria2.unpause", [tid])
 
     def remove(self, tid: str, *, delete_files: bool = False) -> None:
-        self._rpc("aria2.remove", [tid])
+        # aria2.remove only accepts active/waiting/paused GIDs — errored
+        # or completed ones raise. The result cleanup below is what
+        # actually clears those, so a failed remove must not abort it.
+        try:
+            self._rpc("aria2.remove", [tid])
+        except Exception:
+            pass
         if delete_files:
-            self._rpc("aria2.removeDownloadResult", [tid])
+            try:
+                self._rpc("aria2.removeDownloadResult", [tid])
+            except Exception:
+                pass
+
+    def get_options(self, tid: str) -> dict:
+        """Per-download options (seed-ratio etc.). Empty dict on error."""
+        try:
+            return self._rpc("aria2.getOption", [tid]) or {}
+        except Exception:
+            return {}
 
     def status(self, tid: str) -> dict:
         raw = self._rpc("aria2.tellStatus", [tid])
@@ -677,14 +841,37 @@ class Aria2Backend(BTBackend):
         stopped = self._rpc("aria2.tellStopped", [0, 1000])
         return list(active) + list(waiting) + list(stopped)
 
-    def purge_stopped(self) -> None:
-        """Clear finished/errored download results from aria2's session.
+    def set_global_rate_limits(self, up_kb: int, down_kb: int) -> None:
+        """Change the overall up/down caps on the fly (0 = unlimited)."""
+        self._rpc(
+            "aria2.changeGlobalOption",
+            [
+                {
+                    "max-overall-upload-limit": f"{max(0, int(up_kb))}K",
+                    "max-overall-download-limit": f"{max(0, int(down_kb))}K",
+                }
+            ],
+        )
 
-        Errored torrents (e.g. broken/empty ZIMs whose .torrent won't resolve)
-        otherwise linger forever in the stopped list and clutter the seeding
-        panel. purgeDownloadResult only touches stopped results — active seeds
-        are untouched."""
-        self._rpc("aria2.purgeDownloadResult", [])
+    def purge_stopped(self, keep_errors: bool = True) -> None:
+        """Clear finished download results from aria2's session.
+
+        Completed/removed results are noise; errored ones are SIGNAL (a
+        snagged seed the user should see) and stay visible by default —
+        the seeding panel renders them as errors instead of hiding them.
+        Active seeds are never touched."""
+        try:
+            stopped = self._rpc("aria2.tellStopped", [0, 1000])
+        except Exception:
+            return
+        for raw in stopped:
+            status = raw.get("status", "")
+            if keep_errors and status == "error":
+                continue
+            try:
+                self._rpc("aria2.removeDownloadResult", [raw.get("gid", "")])
+            except Exception:
+                pass
 
 
 # ============================================================================

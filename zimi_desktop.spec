@@ -60,6 +60,24 @@ def collect_libzim_binaries():
 
 libzim_bins = collect_libzim_binaries()
 
+# Bundled aria2 sidecar (BT downloads/seeding work out of the box).
+# CI prepares a self-contained directory (binary + relocated dylibs on
+# macOS, one static binary on Linux) and points ZIMI_ARIA2_DIR at it.
+# Local builds without the env var simply skip it — Zimi falls back to
+# any system aria2c, then to plain HTTP.
+_aria2_dir = os.environ.get('ZIMI_ARIA2_DIR')
+if _aria2_dir and os.path.isdir(_aria2_dir):
+    for _root, _dirs, _files in os.walk(_aria2_dir):
+        _rel = os.path.relpath(_root, _aria2_dir)
+        _dest = '.' if _rel == '.' else _rel
+        for _f in sorted(_files):
+            # Subdirectories must survive: ossl-modules/ is located at
+            # runtime relative to the aria2c binary (OPENSSL_MODULES) —
+            # flattening it silently reverts to the Homebrew path baked
+            # into libcrypto, which only exists on the build runner.
+            libzim_bins.append((os.path.join(_root, _f), _dest))
+    print(f"Bundling aria2 sidecar from {_aria2_dir}")
+
 a = Analysis(
     ['zimi_desktop.py'],
     pathex=[],

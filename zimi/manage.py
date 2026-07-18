@@ -151,7 +151,13 @@ def _check_manage_auth(handler):
     """
     stored_pw = _get_manage_password_hash()
     if not stored_pw:
-        return None  # no password = open
+        # Passwordless is fine on a home network, but a passwordless
+        # instance exposed to the internet was letting anyone on Earth
+        # manage the library. LAN/loopback clients stay open; public
+        # clients must set a password first (from the LAN).
+        if handler._is_private_client():
+            return None
+        return True
 
     auth = handler.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
@@ -307,7 +313,15 @@ def handle_manage_get(handler, parsed, params):
             rels = bundle_relationships(items)
             for it in items:
                 it["hierarchy"] = rels.get(it.get("name"), {})
-        return handler._json(200, {"total": total, "items": items})
+        resp = {"total": total, "items": items}
+        # Offline: last-good catalog served from disk — tell the client so
+        # it can show a quiet "catalog from <date>" note.
+        from zimi import library as _lib
+
+        if _lib._catalog_stale_ts:
+            resp["stale"] = True
+            resp["fetched_at"] = _lib._catalog_stale_ts
+        return handler._json(200, resp)
 
     elif parsed.path == "/manage/check-updates":
         updates = _srv._check_updates()
@@ -529,24 +543,46 @@ def handle_manage_get(handler, parsed, params):
                 pass
         try:
             for raw in backend.list_managed():
-                # Errored torrents aren't seeding — never surface them as such.
-                if raw.get("status") == "error":
-                    continue
                 files = raw.get("files", [])
-                fname = ""
+                fpath = ""
                 if files and isinstance(files, list) and files[0].get("path"):
-                    fname = os.path.basename(files[0]["path"])
+                    fpath = files[0]["path"]
+                fname = os.path.basename(fpath)
                 # Skip aria2's own .torrent metadata fetches — noise.
                 if not fname.endswith(".zim"):
                     continue
                 completed = int(raw.get("completedLength", 0))
                 uploaded = int(raw.get("uploadLength", 0))
                 ratio = uploaded / max(completed, 1)
+                state = raw.get("status", "unknown")
+                # An in-flight BT download is the Downloads tab's job, not a
+                # seed — list_managed() returns downloading torrents too, so
+                # without this a BT download double-surfaces (one download
+                # card AND one "seed" card for the same .zim under "All").
+                # Only skip when we KNOW it's still downloading: total known,
+                # not yet complete, and aria2 hasn't flagged it a seeder.
+                total = int(raw.get("totalLength", 0))
+                seeder = raw.get("seeder") in ("true", True)
+                if (
+                    state not in ("error", "complete")
+                    and not seeder
+                    and total > 0
+                    and completed < total
+                ):
+                    continue
+                # Honesty: a seed whose file vanished (or that errored) is
+                # snagged, not seeding — surface it, don't hide it.
+                snag = ""
+                if state == "error":
+                    snag = raw.get("errorMessage", "") or "error"
+                elif fpath and not os.path.exists(fpath):
+                    snag = "file missing"
                 torrents.append(
                     {
                         "id": raw.get("gid", ""),
                         "filename": fname,
-                        "state": raw.get("status", "unknown"),
+                        "state": state,
+                        "snag": snag,
                         "completed_bytes": completed,
                         "uploaded_bytes": uploaded,
                         "ratio": round(ratio, 3),
@@ -556,8 +592,9 @@ def handle_manage_get(handler, parsed, params):
                         "info_hash": raw.get("infoHash", ""),
                     }
                 )
-                total_up += uploaded
-                total_down += completed
+                if not snag:
+                    total_up += uploaded
+                    total_down += completed
         except Exception as e:
             log.warning("seeding list failed: %s", e)
         return handler._json(
@@ -579,13 +616,10 @@ def handle_manage_get(handler, parsed, params):
         # Surface the BT engine state so the user can self-diagnose:
         # is it enabled, did the binary start, is the port reachable?
         from zimi import p2p
-        import shutil as _shutil
 
         enabled = p2p.is_torrent_enabled()
         backend_name = p2p.get_backend_name()
-        binary_present = (
-            bool(p2p.find_aria2c()) if backend_name == "aria2" else None
-        )
+        binary_present = bool(p2p.find_aria2c()) if backend_name == "aria2" else None
 
         # Live state — peek only. A status view must never spawn the sidecar
         # (with BT on by default that would mean every settings visit).
@@ -610,6 +644,8 @@ def handle_manage_get(handler, parsed, params):
                 "Install aria2 to torrent and share load with the Kiwix mirrors."
             )
 
+        from zimi import p2p_nat
+
         return handler._json(
             200,
             {
@@ -620,6 +656,15 @@ def handle_manage_get(handler, parsed, params):
                 "staging_dir": p2p.get_staging_dir(_srv.ZIMI_DATA_DIR),
                 "binary_present": binary_present,
                 "hint": hint,
+                "upnp_enabled": p2p.is_upnp_enabled(),
+                "upnp_env_locked": p2p.is_upnp_env_locked(),
+                # True only when the sidecar PROCESS is up (spawned and
+                # answering RPC) — "ready" alone is optimistic (binary
+                # present counts). CI gates on this.
+                "sidecar_running": backend is not None,
+                "bt_port_env_locked": p2p.is_bt_port_env_locked(),
+                # Cached: the probe runs at startup and on explicit recheck
+                "nat": p2p_nat.last_status() or None,
             },
         )
 
@@ -936,6 +981,58 @@ def handle_manage_post(handler, parsed, data):
             {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq},
         )
 
+    elif parsed.path == "/manage/seeding-action":
+        # Pause / resume / stop one seed, or stop everything — the
+        # sidecar shouldn't need a terminal to be told to quiet down.
+        from zimi import p2p
+
+        backend = p2p.peek_backend()
+        if backend is None:
+            return handler._json(400, {"error": "BitTorrent engine is not running"})
+        action = data.get("action", "")
+        if action == "stop_all":
+            stopped = 0
+            try:
+                for raw in backend.list_managed():
+                    files = raw.get("files", [])
+                    fname = os.path.basename(files[0].get("path", "")) if files else ""
+                    if fname.endswith(".zim"):
+                        try:
+                            backend.remove(raw.get("gid", ""), delete_files=True)
+                            stopped += 1
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+            log.info("Seeding: stopped all (%d)", stopped)
+            return handler._json(200, {"status": "ok", "stopped": stopped})
+        tid = data.get("id", "")
+        if not tid or action not in ("pause", "resume", "stop"):
+            return handler._json(
+                400, {"error": "provide id and action: pause/resume/stop/stop_all"}
+            )
+        try:
+            if action == "pause":
+                backend.pause(tid)
+            elif action == "resume":
+                backend.resume(tid)
+            else:
+                backend.remove(tid, delete_files=True)
+        except Exception:
+            return handler._json(502, {"error": "engine refused the action"})
+        return handler._json(200, {"status": "ok"})
+
+    elif parsed.path == "/manage/nat-recheck":
+        # The "retry" button every real BT client has: re-map UPnP and
+        # re-test reachability. Slow (SSDP + external check, a few
+        # seconds) but explicitly user-initiated.
+        from zimi import p2p, p2p_nat
+
+        if not p2p.is_torrent_enabled():
+            return handler._json(400, {"error": "BitTorrent is turned off"})
+        result = p2p_nat.probe(p2p.get_bt_port(), try_upnp=p2p.is_upnp_enabled())
+        return handler._json(200, {"nat": result})
+
     elif parsed.path == "/manage/bt-settings":
         # Seed/mirror toggles. An env var locks its field — UI changes would
         # be silently overridden on next read (same contract as auto-update).
@@ -963,6 +1060,20 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["mirror"] = bool(data["mirror"])
+            from zimi import library as _lib
+
+            if changed["mirror"]:
+                # Seed the installed library now, off the request thread
+                # (hash checks + torrent fetches take a while).
+                def _mirror_kickoff():
+                    _lib.mirror_sync()
+                    _lib.archive_catalog_torrents()
+
+                threading.Thread(target=_mirror_kickoff, daemon=True).start()
+            else:
+                # Off = stop seeding, keep the archive (a toggle never
+                # deletes a backup; Mirror on again re-seeds from disk).
+                threading.Thread(target=_lib.stop_mirror_seeds, daemon=True).start()
         if "peer_share" in data:
             from zimi import p2p_discovery as _disc
 
@@ -976,6 +1087,44 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["peer_share"] = bool(data["peer_share"])
+        if "bt_port" in data:
+            if p2p.is_bt_port_env_locked():
+                return handler._json(
+                    403, {"error": "The BT port is controlled by the ZIMI_BT env var"}
+                )
+            try:
+                port = int(data["bt_port"])
+                assert 1024 <= port <= 65535
+            except (ValueError, TypeError, AssertionError):
+                return handler._json(400, {"error": "Port must be 1024-65535"})
+            if not p2p.set_pref("bt_port", port):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
+            changed["bt_port"] = port
+
+            # Apply live: respawn the sidecar on the new port + re-map UPnP
+            def _respawn():
+                p2p.shutdown_backend()
+                if p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR):
+                    try:
+                        from zimi import p2p_nat
+
+                        p2p_nat.probe(port, try_upnp=p2p.is_upnp_enabled())
+                    except Exception:
+                        pass
+
+            threading.Thread(target=_respawn, daemon=True).start()
+        if "upnp" in data:
+            if p2p.is_upnp_env_locked():
+                return handler._json(
+                    403, {"error": "UPnP is controlled by the ZIMI_BT env var"}
+                )
+            if not p2p.set_pref("upnp", bool(data["upnp"])):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
+            changed["upnp"] = bool(data["upnp"])
         if "torrent" in data:
             if p2p.is_torrent_env_locked():
                 return handler._json(
@@ -994,6 +1143,17 @@ def handle_manage_post(handler, parsed, data):
                     p2p.shutdown_backend()
                 except Exception:
                     pass
+            else:
+                # Switch on means ON — bring the sidecar up now. Status
+                # endpoints only peek, so without this nothing spawns it
+                # until the next download and the UI dot stays grey.
+                def _spawn_now():
+                    try:
+                        p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+                    except Exception:
+                        pass
+
+                threading.Thread(target=_spawn_now, daemon=True).start()
         if "peer_name" in data:
             from zimi import p2p_discovery as _disc2
 
@@ -1008,6 +1168,11 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["peer_name"] = name
+            # Apply live: re-register the mDNS advertisement with the new
+            # name — no restart required.
+            from zimi import p2p_discovery as _disc2
+
+            threading.Thread(target=_disc2.restart_advertising, daemon=True).start()
         if "seed_ratio" in data:
             if p2p.is_seed_ratio_env_locked():
                 return handler._json(
@@ -1023,6 +1188,32 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["seed_ratio"] = ratio
+        # Global bandwidth caps (KB/s, 0 = unlimited). Applied live to the
+        # running sidecar so a new limit takes effect without a respawn.
+        for _field, _envlock in (
+            ("bt_up_kb", p2p.is_bt_up_env_locked),
+            ("bt_down_kb", p2p.is_bt_down_env_locked),
+        ):
+            if _field in data:
+                if _envlock():
+                    return handler._json(
+                        403,
+                        {
+                            "error": "Bandwidth limits are controlled by the ZIMI_BT env var"
+                        },
+                    )
+                try:
+                    kb = max(0, int(data[_field]))
+                except (ValueError, TypeError):
+                    return handler._json(400, {"error": f"{_field} must be a number"})
+                if not p2p.set_pref(_field, kb):
+                    return handler._json(
+                        500,
+                        {"error": "could not save setting (config dir not writable)"},
+                    )
+                changed[_field] = kb
+        if any(k in changed for k in ("bt_up_kb", "bt_down_kb")):
+            p2p.apply_rate_limits()
         if not changed:
             return handler._json(
                 400,

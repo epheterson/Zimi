@@ -20,6 +20,9 @@ var SK = {
   MANAGE_PW: 'zimi_manage_pw',
   PREF_LANGUAGES: 'zimi_pref_languages',
   PREF_FLAVOR: 'zimi_pref_flavor',
+  // Last-rendered SHARING rows (Server pane) — restored synchronously on
+  // pane open so the section doesn't pop in after the status fetches.
+  SHARE_ROWS: 'zimi_share_rows',
 };
 
 // ── Storage Helpers ──
@@ -357,12 +360,32 @@ let _pwReject = null;
 // so these work on password-protected servers, but never prompts for a
 // password on 401 — background polling must fail silently, unlike the
 // interactive manageFetch below.
+// 429 responses surface as a typed error so callers keep their last-known
+// content and reschedule, instead of rendering the error JSON as an empty
+// state (the downloads panel used to blank itself this way, #30).
+// Escape for a JS string INSIDE an onclick attribute (attribute escaping
+// alone is the classic XSS-in-handler gap)
+function escJs(v) {
+  return String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"')
+    .replace(/</g, '\\x3c').replace(/>/g, '\\x3e').replace(/\u2028|\u2029|\n|\r/g, ' ');
+}
+
+function _throwIfRateLimited(res) {
+  if (res.status === 429) {
+    var err = new Error('rate_limited');
+    err.rateLimited = true;
+    err.retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10) || 5;
+    throw err;
+  }
+  return res;
+}
+
 function authedFetch(url, opts) {
   opts = opts || {};
   if (_manageToken) {
     opts.headers = Object.assign({}, opts.headers, {'Authorization': 'Bearer ' + _manageToken});
   }
-  return fetch(url, opts);
+  return fetch(url, opts).then(_throwIfRateLimited);
 }
 
 function manageFetch(url, opts) {
@@ -370,7 +393,7 @@ function manageFetch(url, opts) {
   if (_manageToken) {
     opts.headers = Object.assign({}, opts.headers, {'Authorization': 'Bearer ' + _manageToken});
   }
-  return fetch(url, opts).then(function(res) {
+  return fetch(url, opts).then(_throwIfRateLimited).then(function(res) {
     if (res.status === 401) {
       return new Promise(function(resolve, reject) {
         var rejectFn = function() {
@@ -553,7 +576,8 @@ function updateTopbar() {
   }
   randomBtn.style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
   document.getElementById('library-btn').style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
-  document.getElementById('lang-selector-btn').style.display = '';
+  document.getElementById('lang-selector-btn').style.display =
+    _getStorageFlag(SK.HIDE_LANG_CHOOSER) ? 'none' : '';
   _updateLibraryBtnIcon();
 
   // Search placeholder
@@ -1551,7 +1575,10 @@ function _loadDiscover() {
   }
   if (!el) return;
   var now = new Date();
-  var today = now.toISOString().substring(0, 10);
+  // LOCAL date, not toISOString (UTC): an evening render used to store
+  // today's cards under tomorrow-UTC's key, serving yesterday's Picture
+  // of the Day all the next day.
+  var today = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + ('0' + now.getDate()).slice(-2);
   var cacheKey = 'zimi_' + (window.__ZIMI_CONFIG && __ZIMI_CONFIG.discoverStamp || 'disc6') + '_' + today;
   // Clean up old Discover cache keys (from previous days or old versions)
   try {
@@ -3242,6 +3269,15 @@ function autoCategorize(item) {
   return 'other';
 }
 
+var _catalogStaleAt = 0; // >0: catalog served from offline cache (epoch s)
+
+function _catalogStaleNote() {
+  if (!_catalogStaleAt) return '';
+  var when = new Date(_catalogStaleAt * 1000).toLocaleDateString();
+  return '<div class="ms-hint" style="text-align:center;margin:4px 0 10px">' +
+    tH('catalog_offline_note', {d: when}) + '</div>';
+}
+
 async function loadFullCatalog() {
   // Always fetch full catalog (no server-side lang filter — Kiwix OPDS uses 3-letter
   // ISO 639-3 codes but our UI uses 2-letter codes). Language filtering happens
@@ -3253,6 +3289,8 @@ async function loadFullCatalog() {
   if (data.error) throw new Error(data.error);
   const total = data.total || 0;
   let items = data.items || [];
+  // Offline: server returned its last-good catalog — note it quietly
+  _catalogStaleAt = data.stale ? (data.fetched_at || 0) : 0;
 
   // Fetch remaining pages in parallel if needed
   if (total > 500) {
@@ -3857,7 +3895,7 @@ function renderBrowseGallery() {
       '<div class="browse-footer-count">' + totalSources.toLocaleString() + ' sources \u00B7 ' + activeCats + ' categories</div>' +
     '</div>';
     h += '</div>';
-    results.innerHTML = h;
+    results.innerHTML = _catalogStaleNote() + h;
     // Auto-scroll pill bar so the active language pill is visible
     var activePill = results.querySelector('.catalog-lang-scroll .pill.active');
     if (activePill) activePill.scrollIntoView({inline: 'center', block: 'nearest'});
@@ -3919,7 +3957,7 @@ function drillCategory(catKey, namePrefix) {
     } else {
       h += '<div class="empty"><p>' + tH('no_zims_category') + '</p></div>';
     }
-    results.innerHTML = h;
+    results.innerHTML = _catalogStaleNote() + h;
     // Auto-scroll pill bar so the active language pill is visible
     var activePill = results.querySelector('.catalog-lang-scroll .pill.active');
     if (activePill) activePill.scrollIntoView({inline: 'center', block: 'nearest'});
@@ -3973,7 +4011,7 @@ function browseCatalogFilter(query) {
     } else {
       h += '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
     }
-    results.innerHTML = h;
+    results.innerHTML = _catalogStaleNote() + h;
   }).catch(() => {
     results.innerHTML = '<div class="empty"><p>' + tH('failed_search_catalog') + '</p></div>';
   });
@@ -4707,8 +4745,8 @@ async function renderManage() {
     '<div class="manage-tabs">' +
       // Settings lives in its own first tab on every viewport.
       '<button class="manage-tab manage-tab-settings' + (manageTab === 'settings' ? ' active' : '') + '" data-tab="settings" onclick="switchManageTab(\'settings\')">' + tH('ms_settings_tab') + '</button>' +
-      '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">' + tH('installed_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'browse' ? ' active' : '') + '" data-tab="browse" onclick="switchManageTab(\'browse\')">' + tH('catalog_tab') + '</button>' +
+      '<button class="manage-tab' + (manageTab === 'installed' ? ' active' : '') + '" data-tab="installed" onclick="switchManageTab(\'installed\')">' + tH('installed_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'collections' ? ' active' : '') + '" data-tab="collections" onclick="switchManageTab(\'collections\')">' + tH('collections_tab') + '</button>' +
       '<button class="manage-tab' + (manageTab === 'downloads' ? ' active' : '') + '" data-tab="downloads" onclick="switchManageTab(\'downloads\')">' + tH('downloads') + '<span id="dl-tab-badge" class="dl-tab-badge" style="display:none"></span></button>' +
       '<button class="manage-tab' + (manageTab === 'history' ? ' active' : '') + '" data-tab="history" onclick="switchManageTab(\'history\')">' + tH('activity_tab') + '</button>' +
@@ -4898,7 +4936,7 @@ function _msPreferencesHtml() {
     // The pill list is long — collapsed behind a toggle by default.
     '<div class="ms-section-label" style="margin-top:20px">' + tH('languages_section') + '</div>' +
     '<label class="ms-check"><input type="checkbox"' + (showLangChooser ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\')"> ' + tH('show_lang_chooser') + '</label>' +
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\');if(window.updateTopbar)updateTopbar()"> ' + tH('show_lang_chooser') + '</label>' +
     '<div class="ms-hint" style="margin-top:8px">' + tH('catalog_languages_hint_short') + '</div>' +
     '<button class="pill" onclick="_msToggleCollapse(\'ms-lang-pills\', this)">' + tH('show_list') + '</button>' +
     '<div class="ms-lang-pills ms-collapsed-list" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>';
@@ -4920,13 +4958,17 @@ function _msPreferencesHtml() {
 }
 
 function _msServerHtml() {
-  // Sharing is the star of v1.7 — it leads the Server pane.
+  // Sharing is the star of v1.7 — it leads the Server pane. Render the
+  // last-known rows immediately (stale toggles beat a blank slab that
+  // pops in); _renderMirrorSection repaints from server truth right after.
+  var shareCached = '';
+  try { shareCached = localStorage.getItem(SK.SHARE_ROWS) || ''; } catch (e) {}
   var h = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
-    '<div id="ms-mirror-status" class="share-rows-slot"></div>' +
-    '<div id="ms-bt-status" style="margin-top:10px"></div>' +
-    '<div id="ms-seeding-list" style="margin-top:10px"></div>' +
+    '<div id="ms-mirror-status" class="share-rows-slot">' +
+      (shareCached || _shareShellHtml()) + '</div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
-  h += '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
+  h += '<div class="ms-section-label">' + tH('storage_section') + '</div>' +
+    '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
     '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>';
   if (IS_DESKTOP) {
     // Desktop: add browse buttons for folder selection + port + save.
@@ -4973,9 +5015,15 @@ function _msServerHtml() {
     '<div class="ms-hint">' + tH('hot_zims_hint') + '</div>' +
     '<div id="ms-hot-zims" style="margin-top:10px">' + tH('loading') + '</div>' +
     '</div>';
-  _renderHotZimsSection();
-  _renderSeedingSection();
-  _renderMirrorSection();
+  // These populate elements by id, so they must run AFTER this HTML is in
+  // the DOM — not mid-string. Deferring one tick also lets the cached
+  // sharing rows paint first, so the section never flashes empty.
+  setTimeout(function() {
+    if (_msSection !== 'server') return;
+    _renderHotZimsSection();
+    _renderSeedingSection();
+    _renderMirrorSection();
+  }, 0);
   // Cache info section
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
     '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
@@ -5042,17 +5090,20 @@ async function _renderHotZimsSection() {
   while (container.firstChild) container.removeChild(container.firstChild);
 
   const hasHotConfigured = (hotData.hot_zims || []).length > 0;
-  const zimCount = Array.isArray(zims) ? zims.length : 0;
-  // Collapse the section when there are too few ZIMs to benefit from
-  // pinning. User can expand it via the toggle.
-  if (!hasHotConfigured && !hotData.env_locked && !_hotZimsForceShow) {
+  // Always collapsed by default — the pin list is noisy. A one-line
+  // summary (when pins exist) plus the expand button.
+  if (!hotData.env_locked && !_hotZimsForceShow) {
+    if (hasHotConfigured) {
+      const summary = document.createElement('div');
+      summary.className = 'ms-hint';
+      summary.style.marginBottom = '6px';
+      summary.textContent = t('hot_zims_pinned_n', {n: (hotData.hot_zims || []).length});
+      container.appendChild(summary);
+    }
     const toggle = document.createElement('button');
     toggle.className = 'pill ms-hot-show';
     toggle.textContent = t('hot_zims_show_anyway');
     toggle.onclick = () => {
-      // Render expanded: same code as below but with the threshold bypassed.
-      // Easiest: temporarily mark "hot configured" so the second render
-      // takes the full path, then re-render.
       _hotZimsForceShow = true;
       _renderHotZimsSection();
     };
@@ -5157,128 +5208,163 @@ function _toggleAllHotZims(checked) {
   });
 }
 
+// Lightweight status refresh — updates ONLY the BT status dot/label and the
+// port reachability dot, in place. No seeding list (that lives in the
+// Downloads tab; rendering it here changed height and made the pane jump),
+// no full-section rebuild. Kept the name so the many callers don't churn.
 async function _renderSeedingSection() {
-  let bt, seeding;
+  let bt;
   try {
-    [bt, seeding] = await Promise.all([
-      manageFetch('/manage/bt-status').then(r => r.json()),
-      manageFetch('/manage/seeding').then(r => r.json()),
-    ]);
+    bt = await manageFetch('/manage/bt-status').then(r => r.json());
   } catch (e) {
-    const errEl = document.getElementById('ms-bt-status');
-    if (errEl) errEl.textContent = t('error');
-    return;
+    return; // keep last-known status (#30)
   }
   const statusEl = document.getElementById('ms-bt-status');
-  const listEl = document.getElementById('ms-seeding-list');
-  if (!statusEl || !listEl) return;
-  // Status row: dot + state + hint
-  const dot = bt.status === 'ready' ? '🟢' : bt.status === 'unavailable' ? '🟡' : '⚪';
-  const stateLabel = t('bt_state_' + bt.status);
-  let html = '<div class="mc-row"><span class="mc-label"><span style="margin-right:7px">' + dot + '</span>' + esc(stateLabel) + '</span>';
-  if (bt.bt_port) {
-    html += '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
-      'port ' + bt.bt_port + ' · ' + (bt.backend || 'aria2') + '</span>';
+  if (!statusEl) return;
+  // Green only when the sidecar process is actually up — "ready" alone means
+  // the binary exists. While it's coming up the label says "starting…" so
+  // text and dot never disagree; a short settle poll flips it green.
+  const starting = bt.status === 'ready' && bt.enabled && !bt.sidecar_running
+    && _btSettlePollsLeft > 0;
+  const stColor = bt.status === 'ready'
+    ? (bt.sidecar_running ? '#6abf69' : 'var(--text3)')
+    : bt.status === 'unavailable' ? '#d9a13d' : 'var(--text3)';
+  const stateLabel = starting ? t('bt_state_starting') : t('bt_state_' + bt.status);
+  statusEl.innerHTML = '<span class="share-port-dot" style="background:' + stColor + '"></span>' + esc(stateLabel);
+  window._btStatusHtml = statusEl.innerHTML;
+  // Port reachability dot, updated in place (no row rebuild).
+  const pdot = document.getElementById('share-port-dot');
+  if (pdot) {
+    const reach = bt.nat ? bt.nat.reachable : null;
+    pdot.style.background = reach == null ? 'var(--text3)' : (reach ? '#6abf69' : 'var(--error)');
+    pdot.title = reach == null ? t('bt_port_unknown') : (reach ? t('bt_port_open') : t('bt_port_closed'));
   }
-  html += '</div>';
-  // Friendly client-side copy for the known states; raw server hint only
-  // as a fallback for states added later.
-  const btHint = bt.status === 'off' ? t('bt_off_hint')
-    : bt.status === 'unavailable' ? t('bt_unavailable_hint')
-    : bt.hint;
-  if (btHint) {
-    html += '<div class="ms-hint" style="margin-top:4px">' + esc(btHint) + '</div>';
+  if (starting) {
+    _btSettlePollsLeft--;
+    clearTimeout(window._btSettleTimer);
+    window._btSettleTimer = setTimeout(function() {
+      if (mode === 'manage') _renderSeedingSection();
+    }, _BT_SETTLE_POLL_MS);
+  } else {
+    _btSettlePollsLeft = 0;
   }
-  // Surface the local peer instance name + a count of LAN peers if any.
-  // Lets users confirm "I'm advertising as ___" at a glance.
-  try {
-    const pr = await authedFetch('/manage/peers');
-    if (pr.ok) {
-      const pd = await pr.json();
-      if (pd.enabled) {
-        const self = pd.self || '';
-        const n = (pd.peers || []).length;
-        // The advertised name is editable in place; persists as a pref
-        // and takes effect on the next restart (mDNS re-registration).
-        let nameLocked = false;
-        try { nameLocked = !!(await (await authedFetch('/manage/mirror')).json()).peer_name_env_locked; } catch (e) {}
-        html += '<div class="mc-row" style="margin-top:6px">' +
-          '<span class="mc-label">' + tH('peer_advertising_as') + '</span>' +
-          '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
-          '<input type="text" class="peer-name-input" value="' + escAttr(self) + '" maxlength="63"' +
-          (nameLocked ? ' disabled' : '') +
-          ' title="' + escAttr(t('peer_name_hint')) + '" aria-label="' + escAttr(t('peer_advertising_as')) + '"' +
-          ' onchange="_setPeerName(this)">' +
-          (n > 0 ? ' · ' + n + ' ' + tH('peers') : '') +
-          '</span></div>';
-      }
-    }
-  } catch (e) { /* fail-soft */ }
-  statusEl.innerHTML = html;
-
-  // Seeding list — empty when BT is off OR nothing's seeding yet
-  const torrents = seeding.torrents || [];
-  if (!torrents.length) {
-    listEl.innerHTML = '<div class="ms-hint" style="margin-top:6px">' +
-      esc(bt.status === 'ready' ? t('seeding_empty') : '') + '</div>';
-    return;
-  }
-  const fmt = _fmtBytesBin;
-  let rows = '<div class="seeding-totals">' +
-    tH('seeding_totals', {
-      n: torrents.length,
-      up: fmt(seeding.totals.uploaded),
-      down: fmt(seeding.totals.downloaded),
-      ratio: seeding.totals.ratio.toFixed(2),
-    }) + '</div>';
-  rows += '<div class="seeding-list">';
-  for (const tr of torrents) {
-    const ratioPct = Math.min(100, (tr.ratio / seeding.ratio_cap) * 100);
-    rows += '<div class="seeding-row">' +
-      '<div class="seeding-name" title="' + escAttr(tr.info_hash || '') + '">' + esc(tr.filename) + '</div>' +
-      '<div class="seeding-meta">' +
-        '<span>' + esc(t('seeding_state_' + tr.state, {default: tr.state})) + '</span>' +
-        ' · <span>' + tr.peers + ' ' + tH('peers') + '</span>' +
-        ' · <span>↑ ' + fmt(tr.uploaded_bytes) + '</span>' +
-        ' · <span>' + tr.ratio.toFixed(2) + 'x</span>' +
-      '</div>' +
-      '<div class="seeding-bar"><div class="seeding-bar-fill" style="width:' + ratioPct + '%"></div></div>' +
-    '</div>';
-  }
-  rows += '</div>';
-  listEl.innerHTML = rows;
 }
 
 // The v1.7 sharing hero: three switches — BitTorrent (with seed ratio),
 // Mirror, Nearby. Env-locked settings render disabled with the env hint.
-function _shareSwitch(key, on, locked, envVar, titleKey, descHtml) {
-  return '<div class="share-row' + (locked ? ' share-locked' : '') + '">' +
+// `inactive` greys a switch that depends on another being on (Mirror with
+// BT off): unmodifiable, but its saved state persists untouched.
+function _shareSwitch(key, on, locked, envVar, titleKey, descHtml, inactive, underSwitchHtml) {
+  return '<div class="share-row' + (locked ? ' share-locked' : '') + (inactive ? ' share-inactive' : '') + '">' +
     '<div class="share-row-text">' +
       '<div class="share-row-title">' + tH(titleKey) + '</div>' +
       '<div class="share-row-desc">' + descHtml + '</div>' +
       (locked ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
     '</div>' +
-    '<label class="switch"><input type="checkbox" role="switch"' + (on ? ' checked' : '') + (locked ? ' disabled' : '') +
-      ' aria-label="' + escAttr(t(titleKey)) + '"' +
-      ' onchange="_setBtSetting(\'' + key + '\', this)"><span class="switch-slider"></span></label>' +
+    '<div class="share-row-right">' +
+      '<label class="switch"><input type="checkbox" role="switch"' + (on ? ' checked' : '') + ((locked || inactive) ? ' disabled' : '') +
+        ' aria-label="' + escAttr(t(titleKey)) + '"' +
+        ' onchange="_setBtSetting(\'' + key + '\', this)"><span class="switch-slider"></span></label>' +
+      (underSwitchHtml || '') +
+    '</div>' +
   '</div>';
 }
 
+var _btSettingInFlight = false;
+// Settle poll: after an action that (re)spawns the sidecar, re-check status
+// every 1.5s until RPC answers (green dot) or the budget runs out. Armed
+// only by those actions — a dead sidecar on plain pane open shows honestly.
+var _btSettlePollsLeft = 0;
+var _BT_SETTLE_POLL_MS = 1500;
+var _BT_SETTLE_POLL_MAX = 10;
+
+// Enable/disable the BT card's inner controls in place — no re-render, no
+// height change (they're always in the DOM; a toggle only flips `disabled`
+// and dims the group). Env-locked fields stay locked.
+function _applyTorrentToggleInPlace(on) {
+  const controls = document.getElementById('ms-bt-controls');
+  if (controls) {
+    controls.classList.toggle('share-controls-off', !on);
+    controls.querySelectorAll('input, button').forEach(function(el) {
+      if (el.dataset.envlock === '1') return;
+      el.disabled = !on;
+    });
+  }
+  const st = document.getElementById('ms-bt-status');
+  if (st) st.innerHTML = '<span class="share-port-dot" style="background:var(--text3)"></span>' +
+    esc(t(on ? 'bt_state_starting' : 'bt_state_off'));
+  // Mirror depends on BT: grey its card + disable its switch instantly.
+  const mrow = document.querySelector('#ms-mirror-status input[onchange*="\'mirror\'"]');
+  const mcard = mrow && mrow.closest('.share-row');
+  if (mcard) {
+    mcard.classList.toggle('share-inactive', !on);
+    if (mrow.dataset.envlock !== '1') mrow.disabled = !on;
+  }
+  // Mirror can't be active without BT — reflect its true state in the
+  // shared right-column status dot.
+  const mact = document.getElementById('ms-mirror-active');
+  if (mact) mact.innerHTML = _mirrorStatusHtml(on && mrow && mrow.checked);
+}
+
+// Shared status line for the Mirror card's right column — same shape as the
+// BT "ready" dot so the two cards' lights sit in identical spots.
+function _mirrorStatusHtml(active) {
+  return '<span class="share-port-dot" style="background:' + (active ? '#6abf69' : 'var(--text3)') + '"></span>' +
+    esc(active ? t('seeding_state_active') : t('bt_state_off'));
+}
+
+function _applyMirrorToggleInPlace(on) {
+  const mact = document.getElementById('ms-mirror-active');
+  if (mact) mact.innerHTML = _mirrorStatusHtml(on);
+}
+
 async function _setBtSetting(key, cb) {
+  const on = cb.checked;
   cb.disabled = true;
+  _btSettingInFlight = true;
+  // Optimistic, in-place feedback the instant a switch flips — no rebuild,
+  // so nothing jumps and there's zero perceived lag (Eric: "every toggle is
+  // delayed and jumpy"). The server write happens in the background.
+  if (key === 'torrent') _applyTorrentToggleInPlace(on);
+  else if (key === 'mirror') _applyMirrorToggleInPlace(on);
   try {
-    const body = {}; body[key] = cb.checked;
+    const body = {}; body[key] = on;
     const r = await manageFetch('/manage/bt-settings', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body)
     });
-    if (!r.ok) { cb.checked = !cb.checked; _showToast(t('save_failed')); }
-    else if (key === 'torrent') { _renderMirrorSection(); _renderSeedingSection(); }
+    if (!r.ok) {
+      cb.checked = !on; _showToast(t('save_failed'));
+      if (key === 'torrent') _applyTorrentToggleInPlace(!on);
+      else if (key === 'mirror') _applyMirrorToggleInPlace(!on);
+    }
   } catch (e) {
-    cb.checked = !cb.checked; _showToast(t('save_failed'));
+    cb.checked = !on; _showToast(t('save_failed'));
+    if (key === 'torrent') _applyTorrentToggleInPlace(!on);
+    else if (key === 'mirror') _applyMirrorToggleInPlace(!on);
   }
   cb.disabled = false;
+  _btSettingInFlight = false;
+  // Turning BT on spawns the sidecar server-side — watch it come up (updates
+  // just the status dot in place, never the whole section).
+  if (key === 'torrent' && cb.checked) _btSettlePollsLeft = _BT_SETTLE_POLL_MAX;
+  _renderSeedingSection();
+}
+
+async function _setBtLimit(inp, which) {
+  // MB/s in the UI → KB/s on the wire. 0 = unlimited.
+  const mbps = Math.max(0, parseFloat(inp.value) || 0);
+  inp.value = mbps;
+  const kb = Math.round(mbps * 1024);
+  const body = {}; body[which === 'up' ? 'bt_up_kb' : 'bt_down_kb'] = kb;
+  try {
+    const r = await manageFetch('/manage/bt-settings', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) _showToast(t('save_failed')); else _showToast(t('saved'));
+  } catch (e) { _showToast(t('save_failed')); }
 }
 
 async function _setPeerName(inp) {
@@ -5290,7 +5376,7 @@ async function _setPeerName(inp) {
       body: JSON.stringify({peer_name: v})
     });
     if (!r.ok) _showToast(t('save_failed'));
-    else _showToast(t('saved') + ' · ' + t('restart_hint'));
+    else _showToast(t('saved'));
   } catch (e) { _showToast(t('save_failed')); }
 }
 
@@ -5307,40 +5393,228 @@ async function _setSeedRatio(inp) {
   } catch (e) { _showToast(t('save_failed')); }
 }
 
-async function _renderMirrorSection() {
-  let m;
+// Clean reload glyph — the old ⟳ unicode char rendered inconsistently and
+// looked amateur next to the crafted inputs. Inline SVG is pixel-stable.
+var _SVG_REFRESH = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
+
+// Port row: [port input] [reachability dot] [retry] [UPnP]. Always rendered
+// (disabled when BT is off) so the card height never changes on toggle.
+function _portRowInner(bt, btOn) {
+  var nat = bt.nat || null;
+  var dotColor = !nat || nat.reachable == null ? 'var(--text3)' : (nat.reachable ? '#6abf69' : 'var(--error)');
+  var dotTitle = !nat || nat.reachable == null ? t('bt_port_unknown') : (nat.reachable ? t('bt_port_open') : t('bt_port_closed'));
+  var portLock = bt.bt_port_env_locked;
+  var upnpLock = bt.upnp_env_locked;
+  var portDis = (portLock || !btOn) ? ' disabled' : '';
+  var upnpDis = (upnpLock || !btOn) ? ' disabled' : '';
+  return '<label>' + tH('bt_port_word') + '</label>' +
+    '<span class="share-port-group">' +
+      '<input type="number" class="share-num-input share-port-input" min="1024" max="65535" value="' + (bt.bt_port || '') + '"' +
+        portDis + (portLock ? ' data-envlock="1" title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') +
+        ' aria-label="' + escAttr(t('bt_port_word')) + '" onchange="_setBtPort(this)">' +
+      // Reachability light sits right beside the port it describes.
+      '<span class="share-port-dot" id="share-port-dot" title="' + escAttr(dotTitle) + '" style="background:' + dotColor + '"></span>' +
+      '<button class="share-port-retry"' + (btOn ? '' : ' disabled') + ' onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '" aria-label="' + escAttr(t('retry')) + '">' + _SVG_REFRESH + '</button>' +
+      '<label class="share-upnp"' + (upnpLock ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
+        '<input type="checkbox"' + (bt.upnp_enabled ? ' checked' : '') + upnpDis + (upnpLock ? ' data-envlock="1"' : '') + ' onchange="_setUpnp(this)"> UPnP' +
+      '</label>' +
+    '</span>';
+}
+
+async function _setBtPort(inp) {
+  var v = parseInt(inp.value, 10);
+  if (!(v >= 1024 && v <= 65535)) { _showToast(t('error')); return; }
   try {
-    const r = await authedFetch('/manage/mirror');
+    const r = await manageFetch('/manage/bt-settings', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({bt_port: v})
+    });
+    if (!r.ok) { _showToast(t('save_failed')); return; }
+    _showToast(t('saved'));
+    // The sidecar respawns on the new port; watch it come back up
+    _btSettlePollsLeft = _BT_SETTLE_POLL_MAX;
+    setTimeout(function() { _renderMirrorSection(); _renderSeedingSection(); }, 4000);
+  } catch (e) { _showToast(t('save_failed')); }
+}
+
+function _natBadge(nat) {
+  if (!nat || nat.reachable == null) return '<span style="color:var(--text3)">? ' + tH('bt_port_unknown') + '</span>';
+  return nat.reachable
+    ? '<span style="color:#6abf69">\u2713 ' + tH('bt_port_open') + '</span>'
+    : '<span style="color:var(--error)">\u2717 ' + tH('bt_port_closed') + '</span>';
+}
+
+async function _natRecheck(btn) {
+  btn.disabled = true;
+  btn.classList.add('spinning');  // CSS spins the SVG; don't touch innerHTML
+  try {
+    const r = await manageFetch('/manage/nat-recheck', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
+    await r.json().catch(function() { return null; });
+    if (!r.ok) _showToast(t('error'));
+  } catch (e) {
+    _showToast(t('error'));
+  }
+  btn.disabled = false;
+  btn.classList.remove('spinning');
+  // Update only the port row — a full section re-render makes everything
+  // blink for a one-line change.
+  try {
+    const rb = await manageFetch('/manage/bt-status');
+    if (rb.ok) {
+      const bt = await rb.json();
+      const row = document.getElementById('share-port-row');
+      if (row && bt.enabled) row.innerHTML = _portRowInner(bt, true);
+    }
+  } catch (e) {}
+}
+
+async function _setUpnp(cb) {
+  try {
+    const r = await manageFetch('/manage/bt-settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({upnp: cb.checked})
+    });
+    if (!r.ok) { _showToast(t('save_failed')); cb.checked = !cb.checked; return; }
+    // A fresh mapping attempt makes the toggle feel real
+    if (cb.checked) manageFetch('/manage/nat-recheck', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' }).then(function() { _renderMirrorSection(); }).catch(function() {});
+  } catch (e) { _showToast(t('save_failed')); cb.checked = !cb.checked; }
+}
+
+function _mirrorProgressText(prog) {
+  return tH(prog.phase === 'seeding' ? 'mirror_progress_seeding' : 'mirror_progress_archiving',
+    {a: prog.done, b: prog.total});
+}
+
+// Poll updates ONLY the progress line's text — a full section re-render
+// every 3s made the page jump ("bouncing") on phones.
+function _scheduleMirrorProgressPoll() {
+  if (window._mirrorProgTimer) clearTimeout(window._mirrorProgTimer);
+  window._mirrorProgTimer = setTimeout(async function() {
+    if (mode !== 'manage') return;
+    var el = document.getElementById('mirror-progress-line');
+    if (!el) return;
+    try {
+      const r = await authedFetch('/manage/mirror');
+      if (!r.ok) return;
+      const m = await r.json();
+      const prog = m.progress || {};
+      if (prog.phase) {
+        el.style.display = '';
+        el.innerHTML = _mirrorProgressText(prog);
+        _scheduleMirrorProgressPoll();
+      } else {
+        el.style.display = 'none';
+      }
+    } catch (e) {}
+  }, 3000);
+}
+
+// First-ever paint of the Server pane, before any cached rows exist: the
+// full three-card structure with static copy and off toggles, so the
+// section is never a blank slab. Live states hydrate in via
+// _renderMirrorSection a tick later (structure matches, so no bounce).
+function _shareShellHtml() {
+  return '<div class="share-rows">' +
+    _shareSwitch('torrent', false, false, 'ZIMI_BT',
+      'share_bt_title', tH('share_bt_desc'),
+      false, '<div id="ms-bt-status" class="share-bt-status-right"></div>') +
+    _shareSwitch('mirror', false, false, 'ZIMI_BT',
+      'share_mirror_title', tH('share_mirror_desc'), true,
+      '<div id="ms-mirror-active" class="share-bt-status-right"></div>') +
+    _shareSwitch('peer_share', false, false, 'ZIMI_NEARBY',
+      'share_nearby_title', tH('share_nearby_desc')) +
+  '</div>';
+}
+
+async function _renderMirrorSection() {
+  if (_btSettingInFlight) return; // never repaint over an in-flight toggle
+  let m, bt = null, peers = null;
+  try {
+    const [r, rb, rp] = await Promise.all([
+      authedFetch('/manage/mirror'),
+      manageFetch('/manage/bt-status').catch(function() { return null; }),
+      authedFetch('/manage/peers').catch(function() { return null; }),
+    ]);
     if (!r.ok) return;
     m = await r.json();
+    if (rb && rb.ok) bt = await rb.json();
+    if (rp && rp.ok) peers = await rp.json();
   } catch (e) {
     return;
   }
   const el = document.getElementById('ms-mirror-status');
   if (!el) return;
-  const ratioField = '<span class="share-ratio">' + tH('seed_ratio_label') +
-    ' <input type="number" min="0" max="10" step="0.5" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
-    ((m.seed_ratio_env_locked || !m.torrent_enabled) ? ' disabled' : '') +
-    ' aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">\u00d7 <span class="share-ratio-note">' + tH('seed_ratio_zero_inline') + '</span></span>';
+  const btOn = !!m.torrent_enabled;
+  // disabled= when BT off OR the field is env-locked; lock= marks env-locked
+  // fields so an in-place toggle never re-enables them.
+  const disA = (locked) => ((!btOn || locked) ? ' disabled' : '');
+  const lockA = (locked) => (locked ? ' data-envlock="1"' : '');
+
+  const ratioRow = '<div class="share-field"><label>' + tH('seed_ratio_label') + '</label>' +
+    '<span class="share-port-group">' +
+    '<input type="number" min="0" max="10" step="0.5" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
+    disA(m.seed_ratio_env_locked) + lockA(m.seed_ratio_env_locked) +
+    ' class="share-num-input" aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">' +
+    '<span class="share-field-note">×</span></span>' +
+    '<span class="share-field-note">' + tH('seed_ratio_zero_inline') + '</span></div>';
+
+  // Global up/down bandwidth caps (MB/s in the UI, 0 = unlimited). Mirror
+  // rides these too - there's no separate mirror speed setting anymore.
+  const upMb = m.bt_up_kb ? +(m.bt_up_kb / 1024).toFixed(2) : 0;
+  const downMb = m.bt_down_kb ? +(m.bt_down_kb / 1024).toFixed(2) : 0;
+  // Arrows sit to the RIGHT of each input so the first input's left edge
+  // lines up with the ratio/port inputs above and below it.
+  const limitRow = '<div class="share-field"><label>' + tH('bt_limit_label') + '</label>' +
+    '<span class="share-port-group">' +
+    '<input type="number" min="0" step="0.5" value="' + upMb + '"' + disA(m.bt_up_env_locked) + lockA(m.bt_up_env_locked) +
+    ' class="share-num-input" aria-label="' + escAttr(t('bt_limit_up')) + '" onchange="_setBtLimit(this,\'up\')">' +
+    '<span class="share-field-note">↑</span>' +
+    '<input type="number" min="0" step="0.5" value="' + downMb + '"' + disA(m.bt_down_env_locked) + lockA(m.bt_down_env_locked) +
+    ' class="share-num-input" aria-label="' + escAttr(t('bt_limit_down')) + '" onchange="_setBtLimit(this,\'down\')">' +
+    '<span class="share-field-note">↓ MB/s</span></span>' +
+    '<span class="share-field-note">' + tH('bt_limit_hint') + '</span></div>';
+
+  const portRow = '<div class="share-field share-port-row" id="share-port-row">' + _portRowInner(bt || {}, btOn) + '</div>';
+
+  const selfName = (peers && peers.self) || '';
+  const nameRow = '<div class="share-field"><label>' + tH('peer_advertising_as') + '</label>' +
+    '<input type="text" class="peer-name-input" value="' + escAttr(selfName) + '" maxlength="63"' +
+    (m.peer_name_env_locked ? ' disabled' : '') + lockA(m.peer_name_env_locked) +
+    ' title="' + escAttr(t('peer_name_hint')) + '" aria-label="' + escAttr(t('peer_advertising_as')) + '" onchange="_setPeerName(this)"></div>';
+
+  // Controls always present; the wrapper dims + disables them when BT is off,
+  // so toggling never adds/removes rows (no layout jump).
+  const btControls = '<div class="share-bt-controls' + (btOn ? '' : ' share-controls-off') + '" id="ms-bt-controls">' +
+    ratioRow + limitRow + portRow + nameRow + '</div>';
+
+  // Mirror status sits under its toggle in the right column — the SAME spot
+  // as the BitTorrent "ready" dot — so both cards' status lights line up.
+  // Green "active" when on, grey "off" when not; the toggle can't be on
+  // without BT, so mirrorActive already folds that in.
+  const mirrorActive = m.enabled && btOn;
+  const mirrorStatus = '<div id="ms-mirror-active" class="share-bt-status-right">' +
+    _mirrorStatusHtml(mirrorActive) + '</div>';
+  const prog = m.progress || {};
+  const mirrorInner =
+    '<div class="ms-hint share-mirror-progress" id="mirror-progress-line"' + (prog.phase ? '' : ' style="display:none"') + '>' +
+      (prog.phase ? _mirrorProgressText(prog) : '') + '</div>';
+
   let h = '<div class="share-rows">' +
-    _shareSwitch('torrent', m.torrent_enabled, m.torrent_env_locked, 'ZIMI_BT',
-      'share_bt_title', tH('share_bt_desc') + ' ' + ratioField) +
+    _shareSwitch('torrent', btOn, m.torrent_env_locked, 'ZIMI_BT',
+      'share_bt_title', tH('share_bt_desc') + btControls,
+      false, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>') +
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
-      'share_mirror_title', tH('share_mirror_desc')) +
+      'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !btOn, mirrorStatus) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
-      'share_nearby_title', tH('share_nearby_desc')) +
+      'share_nearby_title', tH('share_nearby_desc') +
+        (m.peer_ip_unreachable ? '<div class="share-row-desc share-nearby-warn">⚠ ' + tH('nearby_bridge_warning') + '</div>' : '')) +
   '</div>';
-  if (m.enabled && m.torrent_enabled) {
-    const fmtKb = m.upload_kb >= 1024
-      ? (m.upload_kb / 1024).toFixed(1) + ' MB/s'
-      : m.upload_kb + ' KB/s';
-    h += '<div class="mc-row" style="margin-top:8px">' +
-      '<span class="mc-label">\ud83d\udce1 ' + tH('mirror_active') + '</span>' +
-      '<span class="mc-value" style="font-family:monospace;font-size:11px">' +
-        'ratio \u2264 ' + m.ratio_cap.toFixed(0) + 'x \u00b7 \u2191 ' + fmtKb +
-      '</span></div>';
-  }
+  if (prog.phase) _scheduleMirrorProgressPoll();
   el.innerHTML = h;
+  try { localStorage.setItem(SK.SHARE_ROWS, h); } catch (e) {}
+  // Fill the status dot + port dot in place.
+  _renderSeedingSection();
 }
 
 
@@ -5515,16 +5789,9 @@ function renderInstalled(filterText) {
     groups[cat].push(z);
   }
 
-  // Merge small categories (<3 items) into Other
-  const MIN_CAT = 3;
-  for (const cat of Object.keys(groups)) {
-    if (cat !== 'Other' && groups[cat].length < MIN_CAT) {
-      if (!groups['Other']) groups['Other'] = [];
-      groups['Other'].push(...groups[cat]);
-      delete groups[cat];
-    }
-  }
-
+  // No small-category merging here: home and the filter pills both show
+  // real categories, so a lone WikEM must read "Medical & Health (1)" in
+  // all three places — collapsing it to "Other" contradicted them.
   const catOrder = Object.keys(groups).sort();
   // Render pending-updates pseudo-group first.
   if (pendingUpdates.length) {
@@ -5594,7 +5861,7 @@ function renderInstalled(filterText) {
 async function managePassword() {
   const has = await manageFetch('/manage/has-password').then(r => r.json()).catch(() => ({}));
   if (has.env_controlled) {
-    _showToast('Password is controlled by ZIMI_MANAGE_PASSWORD environment variable');
+    _showToast(t('env_controlled', {v: 'ZIMI_MANAGE_PASSWORD'}));
     return;
   }
   const errEl = document.getElementById('pw-error');
@@ -6127,24 +6394,57 @@ async function _refreshDownloadsInner() {
       (seedingTorrents.length ? pill('seeding', tH('seeding_tab'), seedingTorrents.length) : '') +
     '</div>';
     h += '<div class="dl-grid">';
-    if (filter === 'seeding') {
+    // Seed cards render under "Seeding" AND under "All" — All means all.
+    // (With zero downloads and active seeds, All used to render blank.)
+    if (filter === 'seeding' || filter === 'all') {
       const fmtUp = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
       for (const sd of seedingTorrents) {
-        const sName = (sd.filename || '').replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '').replace(/_/g, ' ');
-        const upSpeed = sd.up_speed > 1024 ? ' · ↑ ' + (sd.up_speed / (1024 * 1024)).toFixed(1) + ' MB/s' : '';
-        h += '<div class="dl-item">' +
-          '<div class="dl-row"><span class="dl-name">' + esc(sName) + '</span>' +
-          '<span class="dl-size">↑ ' + fmtUp(sd.uploaded_bytes) + ' · ' + tH('seed_ratio', {r: (sd.ratio || 0).toFixed(2)}) +
-            (sd.peers > 0 ? ' · ' + tH('n_peers', {n: sd.peers}) : '') + upSpeed + '</span></div>' +
+        // Prefer the installed ZIM's real title; the card opens it
+        const base = (sd.filename || '').replace(/\.zim$/, '');
+        const zim = (zimsCache || []).find(z => z.name === base.replace(/_\d{4}-\d{2}$/, '') || (z.file || '') === sd.filename);
+        const sName = zim ? (zim.title || zim.name) : base.replace(/_\d{4}-\d{2}$/, '').replace(/_/g, ' ');
+        const zimName = zim ? zim.name : base.replace(/_\d{4}-\d{2}$/, '');
+        const paused = sd.state === 'paused';
+        const connected = sd.peers || 0;
+        // "Sharing" reads as a state a person understands. Idle = nobody's
+        // pulling right now (not broken); active = show what's going out.
+        // (Replaces the old "waiting for requests" copy that confused.)
+        const idle = !sd.uploaded_bytes && !sd.up_speed;
+        const upNow = sd.up_speed > 1024 ? ' · ↑ ' + (sd.up_speed / (1024 * 1024)).toFixed(1) + ' MB/s' : '';
+        const meta = paused
+          ? tH('seed_paused_note')
+          : idle
+            ? tH('seed_waiting', {n: connected})
+            : tH('seed_active', {up: fmtUp(sd.uploaded_bytes), n: connected}) + upNow;
+        h += '<div class="dl-item dl-seed-item">' +
+          '<div class="dl-row">' +
+          '<span class="dl-seed-icon">' + _sourceIconHtml(zimName, 22) + '</span>' +
+          '<span class="dl-name dl-seed-link" onclick="enterSource(\'' + escAttr(escJs(zimName)) + '\', true)" title="' + escAttr(sName) + '">' + esc(sName) + '</span>' +
+          '<span class="dl-size">' + meta + '</span></div>' +
           '<div class="dl-progress" title="' + escAttr(t('seed_bar_tip', {cap: seedingCap})) + '"><div class="dl-progress-bar" style="width:' + Math.min(100, Math.round(((sd.ratio || 0) / seedingCap) * 100)) + '%"></div></div>' +
+          '<div class="dl-actions">' +
+            '<button class="dl-pause-btn" onclick="_seedAction(\'' + escAttr(escJs(sd.id)) + '\', \'' + (paused ? 'resume' : 'pause') + '\', this)">' + (paused ? tH('resume') : tH('pause')) + '</button>' +
+            '<button class="dl-cancel-btn" onclick="_seedAction(\'' + escAttr(escJs(sd.id)) + '\', \'stop\', this)">' + tH('stop_seed') + '</button>' +
+          '</div>' +
           '</div>';
       }
-      if (!seedingTorrents.length) h += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
+      if (filter === 'seeding') {
+        if (!seedingTorrents.length) h += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
+        else h += '<div class="dl-seed-actions"><button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)">' + tH('stop_all_seeds') + '</button></div>';
+      }
     }
     if (filter !== 'seeding' && filter !== 'all' && !visibleDls.length) {
       h += '<div class="dl-empty">' + tH('dl_filter_empty') + '</div>';
     }
-    for (const dl of visibleDls) {
+    // Under "All", a completed download that's now seeding is represented by
+    // its seed card above — don't also render its redundant "Complete"
+    // download card (that's the "showed up twice" the seed card + the
+    // lingering done-download entry produced for the same BT file).
+    const _seedNames = new Set(seedingTorrents.map(s => s.filename));
+    const renderDls = (filter === 'all')
+      ? visibleDls.filter(dl => !(dl.done && _seedNames.has(dl.filename)))
+      : visibleDls;
+    for (const dl of renderDls) {
       const title = dlTitle(dl);
       const fmtBytes = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
       const totalStr = dl.total_bytes ? fmtBytes(dl.total_bytes) : '?';
@@ -6303,7 +6603,27 @@ async function _refreshDownloadsInner() {
       if (anyActive) _dlTimer = setTimeout(refreshDownloads, 2000);
       else if (autoOn) _dlTimer = setTimeout(refreshDownloads, 10000);
     }
-  } catch(e) {}
+  } catch(e) {
+    // Rate-limited: keep what's rendered and retry when the server says
+    // so — never blank the panel (#30).
+    if (e && e.rateLimited && mode === 'manage') {
+      _dlTimer = setTimeout(refreshDownloads, Math.max(2, e.retryAfter) * 1000);
+    }
+  }
+}
+
+async function _seedAction(id, action, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await manageFetch('/manage/seeding-action', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(id ? {id: id, action: action} : {action: action})
+    });
+    if (!r.ok) _showToast(t('error'));
+  } catch (e) { _showToast(t('error')); }
+  if (btn) btn.disabled = false;
+  refreshDownloads();
+  _renderSeedingSection();
 }
 
 async function clearDownloads() {
@@ -6377,6 +6697,11 @@ async function _toggleUpdatesDetail() {
 
 function _setDownloadFilter(filter) {
   localStorage.setItem('zimi_dl_filter', filter);
+  // Instant feedback: flip the pill highlight now; content follows when
+  // the fetch lands (the lag read as a dead click).
+  document.querySelectorAll('.dl-filter-pill').forEach(function(p) {
+    p.classList.toggle('active', p.getAttribute('onclick').indexOf("'" + filter + "'") >= 0);
+  });
   refreshDownloads();
 }
 
@@ -7185,6 +7510,23 @@ function openArticle(zim, path, title) {
 
 function closeReader() {
   if (!readerOpen) return;
+  // Sync the address bar back to the view the reader was covering — an
+  // explicit close otherwise strands the article URL (a reload would
+  // reopen the closed article). On popstate-driven closes the history
+  // has already moved, so state.mode is no longer 'reader' and this
+  // block is skipped.
+  if (history.state && history.state.mode === 'reader') {
+    var query = q.value.trim();
+    if (mode === 'search' && query) {
+      var scope = currentSource || null;
+      var searchUrl = scope ? '/w/' + encodeURIComponent(scope) + '?q=' + encodeURIComponent(query) : '/?q=' + encodeURIComponent(query);
+      history.replaceState({ mode: 'search', query: query, source: scope }, '', searchUrl);
+    } else if (mode === 'source' && currentSource) {
+      history.replaceState({ mode: 'source', source: currentSource }, '', '/w/' + encodeURIComponent(currentSource));
+    } else {
+      history.replaceState({ mode: 'home' }, '', '/');
+    }
+  }
   readerOpen = false;
   readerSource = null;
   currentArticle = null;
@@ -7406,7 +7748,7 @@ function _toggleTopbarMenu(event) {
   // Build menu items
   var h = '';
   h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
-  h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
+  if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
   h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> ' + tH('manage') + '</button>';
   menu.innerHTML = h;
   menu.classList.add('visible');
@@ -7455,9 +7797,16 @@ async function randomArticle(event) {
   btn.classList.add('rolling');
   try {
     var zimParam = currentSource ? '?zim=' + encodeURIComponent(currentSource) : '';
-    var res = await fetch('/random' + zimParam);
-    var data = await res.json();
-    if (!data.error) { openArticle(data.zim, data.path, data.title); return; }
+    // Unscoped rolls retry a couple of times — right after startup the
+    // ZIM list/archives may not be warm yet and the first roll can 500
+    // or come back empty; a silent no-op reads as a dead button.
+    var attempts = currentSource ? 1 : 3;
+    for (var i = 0; i < attempts; i++) {
+      var res = await fetch('/random' + zimParam);
+      var data = await res.json().catch(function() { return {error: 'bad json'}; });
+      if (!data.error) { openArticle(data.zim, data.path, data.title); return; }
+      if (i < attempts - 1) await new Promise(function(r) { setTimeout(r, 400); });
+    }
     // Fallback for zimgit/PDF ZIMs: pick random doc from catalog
     if (currentSource) {
       var catRes = await fetch('/catalog?zim=' + encodeURIComponent(currentSource));

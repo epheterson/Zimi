@@ -1,23 +1,47 @@
 /* ── Almanac mini-app ── */
 .almanac-view { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
 .almanac-view.open { display: flex; animation: fadeIn 0.15s ease; }
-.almanac-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 24px 16px 80px; overscroll-behavior: contain; }
+.almanac-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: 24px 16px 80px; overscroll-behavior: contain; }
 .almanac-inner { max-width: 600px; margin: 0 auto; }
 .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
 .alm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
 .alm-card-lbl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alm-card-val { font-size: 14px; font-weight: 500; color: var(--text); white-space: nowrap; }
-.alm-tz-wrap { margin-top: 24px; display: flex; gap: 20px; align-items: flex-start; }
-.alm-tz-clock-side { flex: 0 0 auto; text-align: center; }
-.alm-tz-list { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
-.alm-tz-city-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; cursor: pointer; transition: all 0.1s; text-align: center; }
+/* Clock row (analog + digital box side by side) above the grid */
+.alm-tz-wrap { margin-top: 24px; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.alm-tz-clock-side { flex: 0 0 auto; display: flex; align-items: center; gap: 18px; justify-content: center; }
+.alm-clock-info { text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 22px; min-width: 200px; }
+.alm-clock-time { font-size: 28px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; justify-content: center; }
+.alm-clock-ampm { font-size: 13px; color: var(--text2); font-weight: 500; align-self: flex-end; margin-bottom: 4px; }
+.alm-clock-date { font-size: 14px; color: var(--text2); margin-top: 8px; font-weight: 500; }
+.alm-clock-sub { font-size: 11px; color: var(--text3); margin-top: 3px; letter-spacing: 0.04em; text-transform: uppercase; }
+.alm-clock-sec { font-size: 20px; font-weight: 600; color: var(--text2); font-variant-numeric: tabular-nums; align-self: flex-end; margin-bottom: 3px; min-width: 26px; text-align: left; }
+.alm-tz-list { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.alm-tz-city-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; cursor: pointer; transition: all 0.1s; text-align: center; }
 .alm-tz-city-card:hover { background: var(--surface2); border-color: var(--text3); }
 .alm-tz-city-name { font-size: 11px; color: var(--text2); display: block; }
 .alm-tz-city-time { font-size: 13px; font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; display: block; margin-top: 2px; }
 .alm-tz-city-offset { font-size: 9px; color: var(--text3); display: block; margin-top: 1px; }
-.alm-tz-city-night .alm-tz-city-time { color: var(--text2); }
-.alm-tz-city-active { border-color: var(--amber-border); background: var(--amber-glow); }
-.alm-tz-city-active .alm-tz-city-name { color: var(--amber); }
+/* Each card wears its city's hour: the grid reads as a living band of
+   daylight echoing the terminator on the map above. */
+.alm-tz-glyph { position: absolute; top: 3px; right: 6px; font-size: 15px; line-height: 1; opacity: 0.9; pointer-events: none; font-family: system-ui, sans-serif; }
+/* Solid crescent: a transparent disc whose shadow IS the moon. Pure
+   horizontal offset keeps it upright (heavy side right, opening left) —
+   the old vertical offset tilted the heavy part up and read as broken. */
+.alm-glyph-moon { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset -4px 0 0 0 currentColor; top: 5px; right: 7px; }
+.alm-tz-day .alm-tz-glyph { color: #ffc15e; }
+.alm-tz-dawn .alm-tz-glyph { color: #ff8a65; }
+.alm-tz-dusk .alm-tz-glyph { color: #ab82ff; }
+.alm-tz-night .alm-tz-glyph { color: #7f9cf5; opacity: 0.65; }
+.alm-tz-day { background: linear-gradient(180deg, rgba(255, 193, 94, 0.12), var(--surface) 70%); border-color: rgba(255, 193, 94, 0.28); }
+.alm-tz-dawn { background: linear-gradient(180deg, rgba(255, 138, 101, 0.12), var(--surface) 70%); border-color: rgba(255, 138, 101, 0.24); }
+.alm-tz-dusk { background: linear-gradient(180deg, rgba(171, 130, 255, 0.12), var(--surface) 70%); border-color: rgba(171, 130, 255, 0.24); }
+.alm-tz-night { background: linear-gradient(180deg, rgba(84, 110, 200, 0.10), var(--surface) 70%); }
+.alm-tz-night .alm-tz-city-time { color: var(--text2); }
+.alm-tz-city-active { border: 2px solid var(--amber); background: var(--amber-glow); box-shadow: 0 0 10px var(--amber-glow); padding: 5px 3px; }
+.alm-cal-region { text-align: center; font-size: 11px; color: var(--text3); margin-top: 8px; }
+.alm-tz-city-active .alm-tz-city-name { color: var(--amber); font-weight: 600; }
+.alm-tz-city-active .alm-tz-city-time { color: var(--amber); }
 .almanac-hero { display: flex; flex-direction: column; align-items: center; margin-bottom: 32px; position: relative; }
 .almanac-moon { position: relative; width: 200px; height: 200px; border-radius: 50%; overflow: hidden; background: #080c16; }
 .almanac-moon .dc-moon-half { position: absolute; top: 0; width: 50%; height: 100%; }
@@ -39,6 +63,7 @@
 .almanac-orrery-wrap { width: 100%; max-width: 500px; aspect-ratio: 1; margin: 0 auto; }
 .almanac-orrery-wrap canvas { width: 100%; height: 100%; display: block; }
 .orrery-controls { display: flex; align-items: center; gap: 6px; max-width: 500px; margin: 8px auto 0; padding: 0 4px; }
+.orrery-speed-word { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; margin-right: 2px; }
 .orrery-ctrl-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); border-radius: 6px; width: 32px; height: 28px; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
 .orrery-ctrl-btn:hover { color: var(--amber); border-color: var(--amber-border); }
 .orrery-slider { flex: 1; min-width: 60px; height: 4px; -webkit-appearance: none; appearance: none; background: var(--surface2); border-radius: 2px; outline: none; cursor: pointer; }
@@ -142,13 +167,15 @@
   body.almanac-mode .topbar-more { display: none !important; }
   body.almanac-mode .lang-selector-btn { display: flex !important; }
   body.almanac-mode .manage-btn { display: flex !important; }
-  .orrery-controls { gap: 3px; padding: 0 2px; }
+  .orrery-controls { gap: 3px; padding: 0 2px; flex-wrap: wrap; justify-content: center; }
   .orrery-speed-label { font-size: 10px; min-width: 44px; }
   .orrery-speed-end { font-size: 8px; }
   .orrery-date { font-size: 10px; }
-  .alm-tz-wrap { flex-direction: column; gap: 12px; align-items: center; width: 100%; }
-  .alm-tz-clock-side { display: flex; flex-direction: column; align-items: center; width: 100%; }
-  .alm-tz-clock-side canvas { width: 160px; height: 160px; }
+  .alm-cards { grid-template-columns: repeat(2, 1fr); }
+  .alm-tz-wrap { gap: 12px; width: 100%; }
+  .alm-tz-clock-side { width: 100%; gap: 12px; }
+  .alm-tz-clock-side canvas { width: 140px; height: 140px; }
+  .alm-clock-info { min-width: 0; flex: 1; }
   .alm-tz-list { grid-template-columns: repeat(3, 1fr); gap: 4px; width: 100%; }
   .alm-rosetta-block { padding: 12px 14px; }
   .alm-rosetta-text { font-size: 13px; }

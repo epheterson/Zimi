@@ -86,7 +86,133 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.7.1"
+ZIMI_VERSION = "1.7.2"
+
+# Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
+# 24h — run every 12h so both stay fresh at half-life.
+_MAINTENANCE_INTERVAL = 12 * 3600
+
+
+_background_services_started = False
+
+
+def start_background_services(http_port):
+    """P2P init, download resume, NAT/UPnP probe, LAN discovery, mirror
+    upkeep, and the 12h maintenance loop — shared by the serve CLI and
+    the desktop app (which builds its own HTTP server and used to miss
+    ALL of this; BT only worked there via the lazy download-time spawn).
+
+    Everything network-ish runs on background threads: nothing here may
+    delay READY / the first request. A squatted aria2 RPC port once
+    stalled startup for minutes. All parts fail soft."""
+    global _background_services_started
+    if _background_services_started:
+        return
+    _background_services_started = True
+
+    from zimi import p2p
+
+    # Prefs path must be set before the first request can read/write BT
+    # settings — cheap, so it stays synchronous.
+    p2p.set_prefs_path(os.path.join(ZIMI_DATA_DIR, "bt", "prefs.json"))
+
+    # Registered unconditionally, not just when the startup spawn succeeds:
+    # the sidecar can come up LATER (port-change respawn, mirror enable,
+    # lazy download-time spawn), and those paths orphaned aria2c on exit
+    # when startup had failed. shutdown_backend no-ops without a backend.
+    import atexit
+
+    atexit.register(p2p.shutdown_backend)
+
+    def _init_p2p_background():
+        try:
+            backend = p2p.get_backend(data_dir=ZIMI_DATA_DIR)
+            if backend:
+                # Ask the router to open the BT port + record
+                # reachability for the settings UI. Fails soft.
+                try:
+                    from zimi import p2p_nat
+
+                    p2p_nat.probe(p2p.get_bt_port(), try_upnp=p2p.is_upnp_enabled())
+                except Exception as e:
+                    log.debug("NAT probe failed: %s", e)
+        except Exception as e:
+            log.warning("BT backend init failed (HTTP downloads unaffected): %s", e)
+        try:
+            from zimi import p2p_discovery as _disc
+
+            _disc.start(
+                http_port=http_port,
+                bt_port=int(os.environ.get("ZIMI_BT_PORT", "6881") or "6881"),
+                zim_count=len(list_zims()),
+                version=ZIMI_VERSION,
+            )
+            import atexit
+
+            atexit.register(_disc.stop)
+        except Exception as e:
+            # repr + type: zeroconf raises exceptions with empty str()
+            log.warning("Peer discovery startup failed: %s: %r", type(e).__name__, e)
+        # Downloads that were in flight or queued when the server stopped
+        # restart themselves (after the BT backend is up so they can take
+        # the torrent-first path again).
+        try:
+            from zimi import library as _lib
+
+            _lib.resume_pending_downloads()
+            # Mirror mode seeds the whole installed library; either way,
+            # drop seeds whose file an update has replaced.
+            _lib.retire_stale_seeds()
+            _lib.mirror_sync()
+            _lib.archive_catalog_torrents()
+            _lib.ensure_magnets_for_installed()
+        except Exception as e:
+            log.warning("Download resume failed: %s", e)
+
+    threading.Thread(target=_init_p2p_background, daemon=True, name="p2p-init").start()
+
+    # Standing maintenance, independent of anyone visiting the site:
+    # refresh the offline catalog copy before it goes stale, renew the
+    # UPnP mapping at half-lease (24h lease dies silently otherwise),
+    # keep magnet manifest / mirror seeds / torrent archive current.
+    def _maintenance_loop():
+        import random as _random_mod
+
+        # Jitter so a fleet of Zimis doesn't hit Kiwix on the hour
+        time.sleep(_MAINTENANCE_INTERVAL / 2 + _random_mod.uniform(0, 3600))
+        while True:
+            _maintenance_pass()
+            time.sleep(_MAINTENANCE_INTERVAL + _random_mod.uniform(0, 3600))
+
+    threading.Thread(target=_maintenance_loop, daemon=True, name="maintenance").start()
+
+
+def _maintenance_pass():
+    """One standing-maintenance sweep: renew the UPnP mapping (24h lease
+    dies silently otherwise), refresh the offline catalog inside its TTL,
+    keep magnets / mirror seeds / torrent archive current. Runs on the
+    12h loop; extracted so tests can pin it."""
+    from zimi import library as _lib
+    from zimi import p2p as _p2p
+
+    try:
+        if _p2p.is_torrent_enabled() and _p2p.peek_backend():
+            from zimi import p2p_nat
+
+            p2p_nat.probe(_p2p.get_bt_port(), try_upnp=_p2p.is_upnp_enabled())
+    except Exception as e:
+        log.debug("maintenance: NAT renew failed: %s", e)
+    try:
+        _lib._fetch_kiwix_catalog("", "eng", 500, 0)
+        _lib._magnets_ensured = False
+        _lib.ensure_magnets_for_installed()
+        _lib.retire_stale_seeds()
+        _lib._catalog_torrents_archived = False
+        _lib.mirror_sync()
+        _lib.archive_catalog_torrents()
+    except Exception as e:
+        log.debug("maintenance pass failed: %s", e)
+
 
 log = logging.getLogger("zimi")
 logging.basicConfig(
@@ -1011,44 +1137,7 @@ def main():
             except OSError:
                 pass
         warm_indexes()
-        # Prefs path must be set before the first request can read/write
-        # BT settings — cheap, so it stays synchronous.
-        from zimi import p2p
-
-        p2p.set_prefs_path(os.path.join(ZIMI_DATA_DIR, "bt", "prefs.json"))
-
-        # BT backend spawn and LAN discovery run in the background: neither
-        # may delay READY / first request. A squatted aria2 RPC port once
-        # stalled this spot for minutes and hung both the CI smoke test and
-        # the desktop app at launch. Both fail soft — Zimi runs with plain
-        # HTTP downloads if they never come up.
-        def _init_p2p_background():
-            try:
-                backend = p2p.get_backend(data_dir=ZIMI_DATA_DIR)
-                if backend:
-                    import atexit
-
-                    atexit.register(p2p.shutdown_backend)
-            except Exception as e:
-                log.warning("BT backend init failed (HTTP downloads unaffected): %s", e)
-            try:
-                from zimi import p2p_discovery as _disc
-
-                _disc.start(
-                    http_port=args.port,
-                    bt_port=int(os.environ.get("ZIMI_BT_PORT", "6881") or "6881"),
-                    zim_count=len(list_zims()),
-                    version=ZIMI_VERSION,
-                )
-                import atexit
-
-                atexit.register(_disc.stop)
-            except Exception as e:
-                log.warning("Peer discovery startup failed: %s", e)
-
-        threading.Thread(
-            target=_init_p2p_background, daemon=True, name="p2p-init"
-        ).start()
+        start_background_services(args.port)
         # Start auto-update thread if enabled
         global _auto_update_thread
         if _auto_update_enabled:

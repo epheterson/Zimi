@@ -46,14 +46,20 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Version check: unregister if server reports a different version
+// Version check: if the server's asset bundle differs from what this SW was
+// built against, drop caches and unregister so the next load is fully fresh.
+// Compares the content-hashed asset_version (falls back to the version string
+// for older servers that don't report asset_version yet).
 async function checkVersion() {
   try {
     const resp = await fetch('/health', { cache: 'no-store' });
     if (resp.ok) {
       const data = await resp.json();
-      if (data.version && 'zimi-v' + data.version !== CACHE_VERSION) {
-        self.registration.unregister();
+      const serverVer = data.asset_version || (data.version ? 'zimi-v' + data.version : null);
+      if (serverVer && serverVer !== CACHE_VERSION) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+        await self.registration.unregister();
       }
     }
   } catch (e) {

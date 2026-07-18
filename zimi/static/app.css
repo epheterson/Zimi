@@ -294,6 +294,10 @@
   [dir="rtl"] .search-icon { left: 12px; right: auto; }
   [dir="rtl"] .kbd { right: auto; left: 8px; }
   [dir="rtl"] .back-btn { transform: scaleX(-1); }
+  /* Article/ZIM titles can be RTL (Arabic, Hebrew, Farsi) inside LTR
+     chrome (and vice versa) — isolate so neighboring punctuation and
+     counts don't reshuffle around them. */
+  .title, .sg-title, .ci-title, .dc-title, .dl-item .dl-name, .browse-drilldown-title { unicode-bidi: isolate; }
   [dir="rtl"] .bc-sep { transform: scaleX(-1); }
   [dir="rtl"] .result { direction: rtl; }
   [dir="rtl"] .result-body { text-align: right; }
@@ -484,7 +488,9 @@
   .ms-pane .ms-check { display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; font-size: 13px; color: var(--text); }
   .ms-pane .ms-check input { accent-color: var(--amber); }
   .ms-pane .ms-field { margin-bottom: 10px; }
-  .ms-pane .ms-field label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+  /* Field labels stay mixed-case 12px — uppercase is reserved for section
+     headers so the two hierarchy levels read as different levels. */
+  .ms-pane .ms-field label { display: block; font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 4px; }
   .ms-pane .ms-field input {
     width: 100%; padding: 7px 10px; border-radius: var(--radius); border: 1px solid var(--border);
     background: var(--bg); color: var(--text); font-size: 13px; box-sizing: border-box;
@@ -652,7 +658,8 @@
      later in source) — amber label on amber fill was unreadable. */
   .dl-filter-pill.active { color: var(--amber); border-color: var(--amber); background: none; font-weight: 600; }
   .dl-filter-pill.active .pill-count { opacity: 1; background: var(--amber); color: #000; padding: 0 5px; border-radius: 8px; }
-  .dl-pause-btn { background: none; border: 1px solid var(--border); color: var(--text2);
+  /* One shape for the whole download-row button family */
+  .dl-pause-btn, .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);
     padding: 4px 12px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s;
     min-height: 24px; }
   .dl-pause-btn:hover { border-color: var(--amber); color: var(--amber); }
@@ -667,13 +674,76 @@
     /* Static centered segment — a full-width bar reads as "almost done" */
     .dl-progress.dl-indeterminate .dl-progress-bar { animation: none; width: 34%; margin-left: 33%; opacity: 0.6; }
   }
-  /* Same shape as .dl-pause-btn — one button family per card */
-  .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);
-    font-size: 11px; padding: 4px 12px; border-radius: 12px; cursor: pointer;
-    transition: all 0.15s; min-height: 24px; }
   .dl-cancel-btn:hover { border-color: var(--error); color: var(--error); }
   .dl-retry-btn:hover { border-color: var(--amber); color: var(--amber); }
   .dl-mirror { font-size: 11px; color: var(--text2); flex: 1; }
+  /* BT card controls: always rendered (fixed height); dimmed + non-interactive
+     when BT is off so a toggle never adds/removes rows and nothing jumps. */
+  .share-bt-controls { margin-top: 8px; }
+  .share-bt-controls.share-controls-off { opacity: 0.4; }
+  .share-bt-controls.share-controls-off .share-port-dot { opacity: 0.5; }
+  .share-inactive { opacity: 0.5; }
+  .share-inactive .switch { cursor: default; }
+  .share-port-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; color: var(--text2); flex-wrap: wrap; }
+  .share-port-label { font-family: monospace; font-size: 11px; }
+  .share-upnp { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-size: 11px; }
+  .share-upnp input { accent-color: var(--amber); }
+  /* Icon button matching the num-input chrome beside it (6px radius,
+     surface fill) — an SVG reload glyph, centered, amber on hover. */
+  .share-port-retry { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text2); cursor: pointer; transition: color 0.15s, border-color 0.15s; }
+  .share-port-retry:hover { border-color: var(--amber); color: var(--amber); }
+  .share-port-retry svg { display: block; }
+  .share-port-retry.spinning svg { animation: share-spin 0.7s linear infinite; }
+  @keyframes share-spin { to { transform: rotate(360deg); } }
+  .share-port-note { font-family: monospace; font-size: 10px; color: var(--text3); }
+  .seeding-snagged .seeding-name { color: var(--error); }
+  .seeding-snag { color: var(--error); }
+  .seeding-bar-snag { background: var(--error); opacity: 0.5; }
+  .share-nearby-warn { color: var(--error); margin-top: 4px; }
+  .share-rows-skeleton { min-height: 300px; }
+  .share-bt-state { font-size: 12px; color: var(--text2); }
+  .share-mirror-progress { margin-top: 6px; color: var(--amber); }
+  /* Toggles pin to the top-right of tall cards; status tucks under */
+  .share-row { align-items: flex-start; }
+  .share-row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-top: 2px; }
+  /* Shared status light for BT + Mirror — same spot (under each toggle,
+     right column) so the two cards' dots line up. */
+  .share-bt-status-right { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); white-space: nowrap; }
+  .share-bt-status-right .share-port-dot { width: 8px; height: 8px; }
+  /* Aligned label/control rows in the sharing cards */
+  .share-field { display: flex; align-items: center; gap: 10px; margin-top: 7px; font-size: 12px; color: var(--text2); }
+  .share-field > label { min-width: 78px; color: var(--text2); }
+  .share-field-note { color: var(--text3); font-size: 11px; }
+  .share-num-input { width: 72px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 6px; text-align: left; }
+  .share-num-input:disabled { opacity: 0.5; }
+  .peer-name-input { width: 160px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 8px; text-align: left; }
+  .share-port-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .dl-seed-link { cursor: pointer; }
+  .dl-seed-link:hover { color: var(--amber); }
+  /* Seed cards: icon + title on the first row, the "Sharing · …" status
+     wraps to its own full-width row below so it never crushes the title. */
+  .dl-seed-item .dl-row { flex-wrap: wrap; row-gap: 3px; column-gap: 8px; }
+  .dl-seed-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; overflow: hidden; background: var(--surface2); }
+  .dl-seed-icon img { width: 22px; height: 22px; object-fit: contain; }
+  .dl-seed-icon .rs-letter { font-size: 12px; font-weight: 600; color: var(--text2); }
+  .dl-seed-item .dl-name { flex: 1 1 auto; min-width: 0; }
+  .dl-seed-item .dl-size { flex: 1 1 100%; min-width: 0; color: var(--text2); }
+  /* Stop-all spans the grid instead of squatting an empty card cell */
+  .dl-seed-actions { grid-column: 1 / -1; margin-top: 8px; text-align: right; }
+  /* Sharing cards on phones: text keeps its width, fields wrap cleanly */
+  .share-row-text { flex: 1; min-width: 0; }
+  /* UPnP + dot + retry wrap as one unit, never leaving the retry circle
+     stranded on its own line */
+  .share-port-group { display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
+  @media (max-width: 600px) {
+    .share-field { flex-wrap: wrap; row-gap: 5px; }
+    .share-field > label { min-width: 62px; }
+    .share-row-right { gap: 6px; }
+    .peer-name-input { width: 130px; }
+    .share-port-group { gap: 8px; }
+    .share-port-row { gap: 8px; }
+    .share-port-input { width: 58px; }
+  }
   .dl-source { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
     color: var(--text2); white-space: nowrap; }
   .dl-source-bt { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
@@ -739,7 +809,7 @@
   .share-ratio input:focus { outline: none; border-color: var(--amber); }
   .share-ratio input:disabled { opacity: 0.45; }
   .peer-name-input {
-    width: 150px; padding: 2px 6px; font: inherit; text-align: right;
+    width: 150px; padding: 2px 6px; font: inherit; text-align: left;
     background: var(--surface2); border: 1px solid var(--border);
     border-radius: 6px; color: var(--text);
   }

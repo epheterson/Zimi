@@ -4,3 +4,4 @@ certifi>=2024.1.1
 pywebview>=4.0.0
 Pillow>=10.0.0
 pyinstaller>=6.0.0
+zeroconf>=0.130.0

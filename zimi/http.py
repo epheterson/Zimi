@@ -41,14 +41,43 @@ RATE_LIMIT = int(
 RATE_LIMIT_CONTENT = (
     RATE_LIMIT * 20
 )  # /w/ sub-resources: icons, CSS, images (1200/min default)
+# Trusted clients (valid manage credential, or any private-network client on
+# a passwordless instance) get 10x headroom: the manage UI polls downloads/
+# peers/BT status every couple of seconds and was 429-ing itself off the
+# base budget (#30). Anonymous public traffic keeps the base limit.
+RATE_LIMIT_TRUSTED = int(
+    os.environ.get("ZIMI_RATE_LIMIT_TRUSTED", str(RATE_LIMIT * 10))
+)
 _rate_buckets = {}  # {ip: [timestamps]} — API endpoints
 _rate_buckets_content = {}  # {ip: [timestamps]} — /w/ content
 _rate_lock = threading.Lock()
 
+# Verified Bearer credentials, keyed by digest so the PBKDF2 check runs once
+# per credential per TTL — not on every polled request.
+_authed_cache = {}  # {sha256(bearer): expiry_ts}
+_AUTHED_CACHE_TTL = 300.0
 
-def _check_rate_limit(ip, content=False):
+
+# Snippets ride the content bucket: one search fans out to ~10 snippet
+# fetches, which burned the whole API budget in a few searches (#30's
+# cousin). Pinned by tests — moving /snippet back to the API bucket is a
+# regression, not a cleanup.
+_RATE_LIMITED_API_PATHS = ("/search", "/read", "/suggest", "/random")
+
+
+def _rate_class(path):
+    """(is_rate_limited, uses_content_bucket) for a GET path."""
+    is_content = path.startswith("/w/") or path == "/snippet"
+    limited = (
+        is_content or path in _RATE_LIMITED_API_PATHS or path.startswith("/manage/")
+    )
+    return limited, is_content
+
+
+def _check_rate_limit(ip, content=False, limit=None):
     """Check if IP has exceeded rate limit. Returns seconds to wait, or 0 if OK."""
-    limit = RATE_LIMIT_CONTENT if content else RATE_LIMIT
+    if limit is None:
+        limit = RATE_LIMIT_CONTENT if content else RATE_LIMIT
     if limit <= 0:
         return 0
     buckets = _rate_buckets_content if content else _rate_buckets
@@ -262,6 +291,7 @@ except FileNotFoundError:
 # Auto-version static assets: replace ?v=N with content-hash so deploys bust caches.
 # This eliminates manual version bumping — any file change gets a new URL automatically.
 _STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+_ASSET_BUNDLE_HASH = "dev"  # overridden below when the static dir is present
 if os.path.isdir(_STATIC_DIR):
 
     def _static_hash(fname):
@@ -326,6 +356,28 @@ if os.path.isdir(_STATIC_DIR):
         "discoverStamp:'disc6'", f"discoverStamp:'d{_build_stamp}'"
     ).replace("i18nHash:'0'", f"i18nHash:'{_i18n_hash}'")
 
+    # Content token for the service worker's cache key (and /health). It
+    # changes whenever ANY app asset changes, so every deploy — even within
+    # a single version like 1.7.2 — produces different sw.js bytes. That is
+    # what makes the browser install a fresh SW whose activate wipes the old
+    # cache. The old scheme keyed the cache on the version string alone, so
+    # same-version deploys never busted the SW cache and served stale JS.
+    _ASSET_BUNDLE_HASH = hashlib.md5(
+        (
+            _static_hash("app.js")
+            + _static_hash("app.css")
+            + _static_hash("almanac.js")
+            + _i18n_hash
+        ).encode()
+    ).hexdigest()[:8]
+
+
+def _asset_version():
+    """Cache-busting token: version + a hash of the app bundle. Serves as the
+    service-worker cache key and is exposed at /health so the SW can detect a
+    changed deploy and drop its stale cache."""
+    return f"zimi-v{_srv.ZIMI_VERSION}-{_ASSET_BUNDLE_HASH}"
+
 
 # ============================================================================
 # HTTP Request Handler
@@ -366,12 +418,14 @@ class ZimHandler(BaseHTTPRequestHandler):
         def param(key, default=None):
             return params.get(key, [default])[0]
 
-        # Rate limit: API endpoints at RATE_LIMIT, /w/ content at 20x, /manage/ at base rate
-        rate_limited_paths = ("/search", "/read", "/suggest", "/snippet", "/random")
-        is_w_content = parsed.path.startswith("/w/")
-        is_manage = parsed.path.startswith("/manage/")
-        if parsed.path in rate_limited_paths or is_w_content or is_manage:
-            retry_after = _check_rate_limit(self._client_ip(), content=is_w_content)
+        # Rate limit: API endpoints at RATE_LIMIT (10x for trusted clients),
+        # /w/ content and /snippet at 20x.
+        limited, is_w_content = _rate_class(parsed.path)
+        if limited:
+            limit = None if is_w_content else self._rate_limit_for_request()
+            retry_after = _check_rate_limit(
+                self._client_ip(), content=is_w_content, limit=limit
+            )
             if retry_after > 0:
                 with _metrics_lock:
                     _metrics["rate_limited"] += 1
@@ -730,6 +784,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     {
                         "status": "ok",
                         "version": _srv.ZIMI_VERSION,
+                        "asset_version": _asset_version(),
                         "zim_count": zim_count,
                         "pdf_support": _srv.HAS_PYMUPDF,
                     },
@@ -740,7 +795,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if zim:
                     if zim not in _srv.get_zim_files():
                         return self._json(404, {"error": f"ZIM '{zim}' not found"})
-                    pick_name = zim
+                    pick_names = [zim]
                 else:
                     eligible = [
                         z
@@ -749,57 +804,73 @@ class ZimHandler(BaseHTTPRequestHandler):
                     ]
                     if not eligible:
                         return self._json(200, {"error": "no ZIMs available"})
-                    pick_name = _random.choice(eligible)["name"]
+                    # One unlucky ZIM (unopenable archive, all picks non-HTML)
+                    # must not turn the dice into a no-op — try a few.
+                    pick_names = [
+                        z["name"]
+                        for z in _random.sample(eligible, min(3, len(eligible)))
+                    ]
                 want_thumb = param("thumb") == "1"
                 require_thumb = param("require_thumb") == "1"
-                is_wiktionary = "wiktionary" in pick_name.lower()
-                is_gutenberg = "gutenberg" in pick_name.lower()
-                is_wikipedia = "wikipedia" in pick_name.lower()
                 date_param = param("date")  # MMDD format
-                is_wikiquote = "wikiquote" in pick_name.lower()
-                max_tries = (
-                    50
-                    if is_wiktionary
-                    else (
-                        30
-                        if (is_gutenberg or is_wikiquote)
+                seed_param = param("seed")  # For deterministic daily picks
+                t0 = time.time()
+                candidates = []
+                archive = None
+                pick_name = pick_names[0]
+                is_wiktionary = is_gutenberg = is_wikiquote = False
+                for pick_name in pick_names:
+                    is_wiktionary = "wiktionary" in pick_name.lower()
+                    is_gutenberg = "gutenberg" in pick_name.lower()
+                    is_wikipedia = "wikipedia" in pick_name.lower()
+                    is_wikiquote = "wikiquote" in pick_name.lower()
+                    max_tries = (
+                        50
+                        if is_wiktionary
                         else (
-                            5 if (require_thumb or (is_wikipedia and date_param)) else 1
+                            30
+                            if (is_gutenberg or is_wikiquote)
+                            else (
+                                5
+                                if (require_thumb or (is_wikipedia and date_param))
+                                else 1
+                            )
                         )
                     )
-                )
-                t0 = time.time()
-                with _srv._zim_lock:
-                    archive = _srv.get_archive(pick_name)
+                    with _srv._zim_lock:
+                        archive = _srv.get_archive(pick_name)
                     if archive is None:
-                        return self._json(200, {"error": "archive not available"})
-                seed_param = param("seed")  # For deterministic daily picks
-                rng = None
-                if seed_param:
-                    seed_val = int(
-                        hashlib.md5((pick_name + seed_param).encode()).hexdigest()[:8],
-                        16,
-                    )
-                    rng = _random.Random(seed_val)
-                # Batch all ZIM reads under a single lock acquisition
-                candidates = []
-                with _srv._zim_lock:
-                    for _try in range(max_tries):
-                        result = None
-                        if date_param and len(date_param) == 4 and _try == 0:
-                            result = _srv._get_dated_entry(
-                                archive, pick_name, date_param, rng=rng
-                            )
-                        if not result:
-                            result = _srv.random_entry(archive, rng=rng)
-                        if not result:
-                            continue
-                        preview = None
-                        if want_thumb:
-                            preview = _srv._extract_preview(
-                                archive, pick_name, result["path"]
-                            )
-                        candidates.append((result, preview))
+                        continue
+                    rng = None
+                    if seed_param:
+                        seed_val = int(
+                            hashlib.md5((pick_name + seed_param).encode()).hexdigest()[
+                                :8
+                            ],
+                            16,
+                        )
+                        rng = _random.Random(seed_val)
+                    # Batch all ZIM reads under a single lock acquisition
+                    candidates = []
+                    with _srv._zim_lock:
+                        for _try in range(max_tries):
+                            result = None
+                            if date_param and len(date_param) == 4 and _try == 0:
+                                result = _srv._get_dated_entry(
+                                    archive, pick_name, date_param, rng=rng
+                                )
+                            if not result:
+                                result = _srv.random_entry(archive, rng=rng)
+                            if not result:
+                                continue
+                            preview = None
+                            if want_thumb:
+                                preview = _srv._extract_preview(
+                                    archive, pick_name, result["path"]
+                                )
+                            candidates.append((result, preview))
+                    if candidates:
+                        break
                 # Filter candidates outside the lock
                 best_result = None
                 best_preview = None
@@ -1009,7 +1080,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return handle_manage_post(self, parsed, data)
 
             if parsed.path == "/resolve":
-                retry_after = _check_rate_limit(self._client_ip())
+                retry_after = _check_rate_limit(
+                    self._client_ip(), limit=self._rate_limit_for_request()
+                )
                 if retry_after > 0:
                     with _metrics_lock:
                         _metrics["rate_limited"] += 1
@@ -1112,7 +1185,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
         # Rate limit write endpoints
-        retry_after = _check_rate_limit(self._client_ip())
+        retry_after = _check_rate_limit(
+            self._client_ip(), limit=self._rate_limit_for_request()
+        )
         if retry_after > 0:
             with _metrics_lock:
                 _metrics["rate_limited"] += 1
@@ -1359,6 +1434,14 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
+    def _is_private_client(self):
+        """True when _client_ip() is on a private/loopback/link-local network."""
+        try:
+            ip = ipaddress.ip_address(self._client_ip())
+        except ValueError:
+            return False
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+
     def _peer_share_allowed(self):
         """True if this client may pull whole ZIMs from /dl/.
 
@@ -1374,11 +1457,35 @@ class ZimHandler(BaseHTTPRequestHandler):
             return False
         if _disc.is_public_share_enabled():
             return True
-        try:
-            ip = ipaddress.ip_address(self._client_ip())
-        except ValueError:
-            return False
-        return ip.is_private or ip.is_loopback or ip.is_link_local
+        return self._is_private_client()
+
+    def _rate_limit_for_request(self):
+        """Per-minute budget for this request: RATE_LIMIT_TRUSTED for a
+        valid manage credential or a private-network client on a
+        passwordless instance; RATE_LIMIT otherwise. Credential checks
+        are cached by digest so PBKDF2 runs once per TTL, not per poll."""
+        from zimi import manage as _manage
+
+        stored_pw = _manage._get_manage_password_hash()
+        if not stored_pw:
+            return RATE_LIMIT_TRUSTED if self._is_private_client() else RATE_LIMIT
+        auth = self.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return RATE_LIMIT
+        digest = hashlib.sha256(auth[7:].encode()).hexdigest()
+        now = time.time()
+        with _rate_lock:
+            exp = _authed_cache.get(digest)
+            if exp and exp > now:
+                return RATE_LIMIT_TRUSTED
+        if _manage._check_manage_auth(self) is None:
+            with _rate_lock:
+                _authed_cache[digest] = now + _AUTHED_CACHE_TTL
+                if len(_authed_cache) > 100:
+                    for k in [k for k, v in _authed_cache.items() if v <= now]:
+                        del _authed_cache[k]
+            return RATE_LIMIT_TRUSTED
+        return RATE_LIMIT
 
     def _serve_zim_file(self, name):
         """Stream a whole local .zim file to a LAN peer with Range support.
@@ -1552,11 +1659,12 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # serve time — the hardcoded constant went stale for a whole
                 # release cycle once and silently disabled the PWA.
                 if rel_path == "sw.js":
+                    # Key the cache on version + content hash so same-version
+                    # deploys still produce new sw.js bytes → the browser
+                    # installs a fresh SW that wipes the stale cache.
                     body = re.sub(
                         rb"const CACHE_VERSION = '[^']*'",
-                        b"const CACHE_VERSION = 'zimi-v"
-                        + _srv.ZIMI_VERSION.encode()
-                        + b"'",
+                        b"const CACHE_VERSION = '" + _asset_version().encode() + b"'",
                         body,
                     )
                 # Cache in memory (vendor files are immutable, ~8MB total for pdf.js)

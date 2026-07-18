@@ -58,3 +58,30 @@ class ScoreStabilityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCrossZimDedup(unittest.TestCase):
+    """Same article installed via a bundle AND its subset must appear once,
+    from the stronger source (list is pre-sorted by score)."""
+
+    def test_same_title_across_zims_collapses_to_strongest(self):
+        from zimi.search import _dedup_results_by_title
+
+        results = [
+            {"title": "Solar System", "zim": "wikipedia_en_all", "score": 120.0},
+            {"title": "solar system ", "zim": "wikipedia_en_100", "score": 110.0},
+            {"title": "Sun", "zim": "wikipedia_en_all", "score": 90.0},
+        ]
+        deduped = _dedup_results_by_title(results)
+        self.assertEqual(len(deduped), 2)
+        self.assertEqual(deduped[0]["zim"], "wikipedia_en_all")
+        self.assertEqual(deduped[1]["title"], "Sun")
+
+    def test_distinct_titles_survive(self):
+        from zimi.search import _dedup_results_by_title
+
+        results = [
+            {"title": "Water", "zim": "a", "score": 2},
+            {"title": "Water purification", "zim": "b", "score": 1},
+        ]
+        self.assertEqual(len(_dedup_results_by_title(results)), 2)

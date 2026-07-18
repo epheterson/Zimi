@@ -21,6 +21,10 @@ class _Handler:
     def __init__(self):
         self.status = None
         self.body = None
+        self.headers = {}
+
+    def _is_private_client(self):
+        return True  # tests act as a LAN client
 
     def _json(self, status, body):
         self.status = status

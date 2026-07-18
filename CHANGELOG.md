@@ -7,9 +7,178 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [Unreleased]
+## [1.7.2] - 2026-07-17
+
+Both open field reports fixed within a day (#30, #28), and the
+distribution story finished: desktop apps that torrent out of the box,
+mirror nodes that can carry the whole catalog through an internet
+blackout, and an almanac that tells the truth about every date it shows.
+Rounded out with a sharing panel that's rock-solid and honest, and
+BitTorrent that actually seeds what it says it will.
+
+### Highlights
+
+- **Desktop apps torrent out of the box.** The Mac and Linux apps now
+  ship their own BitTorrent engine, signed and notarized with the app.
+  Every install shares the load with the Kiwix mirrors, automatically.
+- **Your router opens the door.** Like every real BT client: automatic
+  UPnP port-forwarding, a port open/closed indicator, and a retry button,
+  right in the BitTorrent settings. DHT is on, so magnet links and
+  trackerless swarms just work.
+- **Mirror mode is real now.** Flip one switch and Zimi seeds your whole
+  library, uncapped, and archives the torrent for every catalog item —
+  a single mirror node can bootstrap ZIM distribution for an entire
+  offline network. Turning it off stops the mirror seeds (ordinary
+  ratio-capped seeding continues) and never deletes the backup.
+- **Built for the day the internet isn't there.** Every install keeps an
+  offline copy of the catalog and a magnet link per installed ZIM. The
+  catalog browses, searches, and installs from LAN peers with zero
+  connectivity.
+- **Honest seeding.** Seeds survive restarts, and the seeding panel
+  shows snagged ones in red with the reason instead of hiding them.
+- **The calendar is yours, wherever you are.** Click your location on
+  the almanac map: national holidays follow (17 countries + a worldwide
+  set), season names match your hemisphere, and equinoxes are computed
+  to the minute. A new "About this data" section states the precision of
+  every date on the page, in all 10 languages.
+- **The world clock is alive**: 28 cities, one per UTC offset, each card
+  tinted by its local daylight with solid sun/moon marks, the selected
+  city glowing, and a digital card beside the analog clock — split-flap
+  seconds, date, and timezone (PST/CET) included.
+- **The BitTorrent port is editable in place** — change it and the
+  engine respawns on the new port with UPnP re-mapped, live. Peer names
+  apply instantly too (no more restart notes), and Mirror shows its
+  progress while it seeds your library and backs up the catalog.
+- **Panels stopped blanking themselves** (#30): the manage UI no longer
+  trips Zimi's own rate limiter, and a rate-limited response keeps
+  last-known content instead of clearing the page.
+- **Downloads are stubborn now**: they survive server restarts, refuse
+  to start when the disk can't fit them, and flip their catalog card to
+  Installed the moment they land.
+- **Standing maintenance**: catalog, port mapping, seeds, and magnets
+  refresh themselves every 12 hours — no visit required.
+- **One control for sharing speed**: set a max up/down rate right in the
+  BitTorrent card (0 = unlimited); it governs downloads, personal seeds,
+  and mirror alike. The Server → Sharing panel is now rock-solid — no
+  layout jump, instant toggles, and status lights that never lie.
+
+### Added
+
+- **Global up/down bandwidth caps** for BitTorrent, set in MB/s in the
+  Sharing panel (0 = unlimited). Applied to the whole aria2 engine —
+  downloads, seeds, and mirror — so one pair of numbers governs all
+  sharing speed. Live-adjustable without a restart.
+
+- **Desktop apps torrent out of the box**: the DMG and AppImage now ship
+  their own aria2 sidecar (hash-verified static build on Linux, relocated
+  Homebrew build on macOS, codesigned and notarized with the app). The
+  BT-first default finally applies to every install, not just Docker.
+- **Port health in BitTorrent settings, like a real BT client**: an
+  open/closed/unknown indicator for the listen port, automatic UPnP
+  port-forwarding (on by default, stdlib implementation, fails soft), and
+  a retry button that re-maps and re-tests on demand.
+- **True mirror mode**: turning Mirror on now seeds your whole installed
+  library — aria2 hash-checks each existing file and seeds it in place,
+  uncapped, using saved .torrent files (works offline) or the catalog's
+  torrent URLs. Seeds whose file an update replaced are retired
+  automatically. Mirrors also archive the .torrent for every catalog
+  item (~40-80 MB for the full catalog), making a mirror node a complete
+  offline index: any ZIM can be fetched, verified, and re-seeded with no
+  internet at all.
+- **Post-world resilience**: the last good Kiwix catalog persists to disk
+  and stays browsable when the internet is gone (with a quiet "showing
+  catalog from <date>" note), and every BT download keeps its infohash,
+  magnet link, and .torrent file so ZIMs can be re-seeded into offline
+  swarms later.
+- **Honest seeding**: completed BT downloads re-seed from the library
+  file itself (the old in-place seed died silently on restart), and the
+  seeding panel shows snagged seeds — errored or file-missing — in red
+  instead of hiding them. Mirrors especially.
+- **Nearby warns when it can't work**: Docker bridge mode advertises an
+  unreachable container address; the Nearby card now says so and the
+  ZIMI_NEARBY ip= field (or host networking) fixes it.
+- **The almanac states its precision like an encyclopedia**: a new
+  "About this data" section covers algorithms, calendar accuracy, and
+  coverage in all 10 languages. Equinoxes and solstices are now computed
+  (Meeus, verified to within ~1 minute of USNO reference times) instead
+  of pinned to fixed dates, with hemisphere-aware season names — October
+  is spring in Sydney.
+- **Every install keeps the post-world basics**: the offline catalog
+  copy plus a magnet link for each installed ZIM (infohash extracted
+  from the catalog's torrents); mirrors additionally keep the .torrent
+  files for the whole catalog. Turning Mirror off stops the seeds but
+  never deletes the archive.
+- **Standing maintenance every 12 hours**, no visit required: the
+  offline catalog refreshes before it goes stale, the UPnP port mapping
+  renews at half-lease (it silently expired after 24h otherwise), and
+  magnet manifest / mirror seeds / torrent archive stay current.
+- **DHT is on by default** (opt out with the ZIMI_BT dht= field):
+  trackerless peer discovery makes magnet links usable and keeps swarms
+  findable if the Kiwix trackers ever disappear. The routing table
+  persists across restarts.
+- Thumbnails prefetch gently in the background after a catalog fetch, so
+  browsing doesn't trickle images in one at a time.
 
 ### Fixed
+
+- **Downloads and settings panels no longer blank themselves** (#30):
+  Zimi's own rate limiter was counting the manage UI's polling against the
+  anonymous budget. Clients with a valid manage credential — or any
+  private-network client on a passwordless instance — now get 10x headroom
+  (`ZIMI_RATE_LIMIT_TRUSTED`), snippet fetches ride the roomier content
+  bucket, and a 429 keeps the last-known panel content instead of
+  rendering an empty state. The Server pane also no longer embeds the live
+  seeding list, which used to grow and shrink under you — seeds live in
+  the Downloads tab.
+- **BitTorrent actually seeds now.** A completed BT download re-added its
+  library-path seed *before* removing the staging torrent — same info-hash,
+  so aria2 rejected the add as a duplicate and no seed was ever created
+  (the staging torrent then snagged "file missing"). Now it removes then
+  adds. Downloads that finish over HTTP (or fall back from BT when a
+  torrent has no live seeders) seed too, instead of silently not sharing.
+- **No more double entries in Downloads.** An in-flight BT download used
+  to surface as both a download card and a "seed" card under All; the
+  seeding view now excludes still-downloading torrents, and a completed
+  download that's now seeding shows only its seed card.
+- **Fresh builds show up immediately.** The service worker keys its cache
+  on a content hash of the app bundle, so any deploy — even within the
+  same version — installs a new worker that clears the stale cache.
+  Previously same-version deploys served old JavaScript from cache.
+- **The random button doesn't no-op.** An unlucky ZIM pick could return
+  nothing and leave the dice looking dead; it now retries across a few
+  sources (and the client retries) so the first roll always opens
+  something.
+- **The almanac speaks world, not American** (#28): Gregorian holidays
+  are an international base plus one region pack (17 countries + EU
+  catch-all) picked from the browser locale/timezone — a British calendar
+  shows Guy Fawkes Night and bank holidays, not Thanksgiving. Clock
+  changes follow the region's real rule. The timezone picker grows from
+  16 to 28 cities covering every UTC offset in common use, including
+  Central Europe ("Italy uses UK time" is fixed) and the half-offset
+  zones, translated in all 10 languages.
+- **Your location drives the calendar**: click anywhere on the almanac
+  map and the holidays follow — Italy gets Ferragosto, all offline. A
+  quiet caption says whose days are showing, and each national day
+  carries a country tooltip.
+- **The world clock is alive**: each city card is tinted by its local
+  hour (day, dawn, dusk, night) with a small glyph — the grid reads as
+  a band of daylight matching the map's terminator.
+- Picture of the Day no longer shows yesterday's picture (the Discover
+  cache keyed on the UTC date while content used the local date).
+- Closing the reader now restores the underlying view's URL — a reload
+  no longer reopens the article you just closed.
+- Downloads survive restarts: pending and queued items persist and
+  resubmit at startup through their validated entry points, resuming
+  partial files. Downloads refuse to start when they would fill the disk
+  (expected size + 2 GB floor, or the disk-pressure threshold).
+- Passwordless instances accept management commands from the local
+  network only; public clients must set a password first. Instances with
+  a password are unchanged.
+- RTL article/ZIM titles (Arabic, Hebrew, Farsi) no longer reshuffle
+  neighboring punctuation in LTR chrome.
+- Cross-ZIM duplicate suppression is regression-tested (bundle + subset
+  libraries), and every locale file is CI-locked to the English key set
+  so untranslated raw key names (#25's bug class) can't recur.
 
 - Server startup no longer blocks on the BitTorrent sidecar: backend spawn
   and LAN discovery moved off the critical path, and the aria2 RPC probe is

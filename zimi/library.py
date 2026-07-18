@@ -274,6 +274,7 @@ def _enqueue_or_start(dl):
     if _active_count() < _max_concurrent():
         _active_downloads[dl["id"]] = dl
         threading.Thread(target=_download_thread, args=(dl,), daemon=True).start()
+        _persist_pending_downloads()
         return False
     # Queue: known sizes ascending; unknown (None) sizes go to the end.
     sz = dl.get("size_bytes")
@@ -285,6 +286,7 @@ def _enqueue_or_start(dl):
                 pos = i
                 break
     _download_queue.insert(pos, dl)
+    _persist_pending_downloads()
     return True
 
 
@@ -299,6 +301,353 @@ def _drain_queue():
         threading.Thread(target=_download_thread, args=(dl,), daemon=True).start()
 
 
+# Refuse downloads that would obviously fill the disk: the expected size
+# plus a safety floor must fit in free space. The floor is shared with
+# the seeding pause in p2p (canonical definition lives there).
+from zimi.p2p import DISK_FLOOR_BYTES as _DISK_FLOOR_BYTES
+
+
+def _refuse_for_disk_space(size_bytes, dest=None):
+    """Return an error string when there's no room, else None.
+
+    A resumable partial (.tmp) already occupies its bytes — count only
+    what's left to fetch, or a 90%-done resume gets refused for the
+    space it has already used."""
+    from zimi import p2p as _p2p
+
+    try:
+        usage = shutil.disk_usage(_srv.ZIM_DIR)
+    except OSError:
+        return None  # can't tell — don't block
+    needed = int(size_bytes or 0)
+    if needed and dest:
+        try:
+            needed = max(0, needed - os.path.getsize(dest + ".tmp"))
+        except OSError:
+            pass
+    if needed and usage.free < needed + _DISK_FLOOR_BYTES:
+        return "Not enough disk space (%s free, %s needed)" % (
+            _fmt_gb(usage.free),
+            _fmt_gb(needed + _DISK_FLOOR_BYTES),
+        )
+    # Absolute floor for unknown sizes. The percent-based seeding
+    # threshold is wrong here: 5% of a big drive is 100+ GB of free
+    # space, which refused perfectly safe downloads (found when the
+    # suite ran on a nearly-full Mac).
+    if usage.free < _DISK_FLOOR_BYTES:
+        return "Disk space is critically low"
+    return None
+
+
+def _fmt_gb(n):
+    return f"{n / 1024**3:.1f} GB"
+
+
+def _torrent_info_hash(data):
+    """Infohash (hex sha1 of the bencoded info dict) from raw .torrent
+    bytes. Minimal bencode scanner — no external deps. Returns None on
+    malformed input."""
+    import hashlib as _hl
+
+    def _span(i):
+        """End index of the bencoded element starting at i."""
+        c = data[i : i + 1]
+        if c == b"i":
+            return data.index(b"e", i) + 1
+        if c in (b"l", b"d"):
+            i += 1
+            while data[i : i + 1] != b"e":
+                i = _span(i)
+            return i + 1
+        if c.isdigit():
+            colon = data.index(b":", i)
+            return colon + 1 + int(data[i:colon])
+        raise ValueError("bad bencode")
+
+    try:
+        if data[:1] != b"d":
+            return None
+        i = 1
+        while data[i : i + 1] != b"e":
+            key_end = _span(i)
+            key = data[i:key_end]
+            val_end = _span(key_end)
+            if key == b"4:info":
+                return _hl.sha1(data[key_end:val_end]).hexdigest()
+            i = val_end
+        return None
+    except (ValueError, IndexError, RecursionError):
+        # RecursionError: absurdly nested (hostile) input — skip this file
+        return None
+
+
+_magnets_ensured = False
+
+
+def ensure_magnets_for_installed(spacing=0.4):
+    """Every user keeps the catalog + a magnet per installed ZIM; only
+    mirrors keep the .torrent files themselves (Eric's split). For
+    installed ZIMs with no recorded infohash, fetch the matching catalog
+    .torrent, extract the infohash, store filename -> magnet in the
+    manifest — and keep the torrent bytes on disk only in mirror mode.
+    Once per run, politely paced."""
+    global _magnets_ensured
+    from zimi import p2p as _p2p
+
+    if _magnets_ensured or not _p2p.is_torrent_enabled():
+        return 0
+    _magnets_ensured = True
+
+    manifest_path = _torrents_manifest_path()
+    manifest = _get_torrent_metadata()
+    installed = {
+        os.path.basename(path)
+        for path in glob.glob(os.path.join(_srv.ZIM_DIR, "*.zim"))
+    }
+    missing = [
+        f for f in sorted(installed) if not (manifest.get(f) or {}).get("info_hash")
+    ]
+    if not missing:
+        return 0
+
+    # Exact-filename matches from the catalog (stale copy works offline)
+    catalog_urls = {}
+    try:
+        _total, items, _err = _fetch_kiwix_catalog("", "eng", 500, 0)
+        if _err:
+            raise RuntimeError(_err)
+        for it in items or []:
+            u = (it.get("download_url") or "").split("?")[0]
+            if u.endswith(".meta4"):
+                u = u[: -len(".meta4")]
+            if u.endswith(".zim"):
+                catalog_urls[os.path.basename(u)] = u + ".torrent"
+    except Exception as e:
+        # Archived .torrent files still work offline — process those now,
+        # and retry the catalog-dependent rest on the next maintenance
+        # pass instead of silently never building the manifest.
+        log.info(
+            "Magnet manifest: catalog unavailable (%s) — using archived torrents only",
+            e,
+        )
+        catalog_urls = {}
+        _magnets_ensured = False
+
+    keep_files = _p2p.is_mirror_enabled()
+    tdir = os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents")
+    updated = 0
+    for filename in missing:
+        data = None
+        archived = os.path.join(tdir, filename + ".torrent")
+        if os.path.isfile(archived):
+            try:
+                with open(archived, "rb") as f:
+                    data = f.read()
+            except OSError:
+                data = None
+        elif filename in catalog_urls:
+            try:
+                req = urllib.request.Request(
+                    catalog_urls[filename], headers={"User-Agent": "Zimi/1.0"}
+                )
+                with urllib.request.urlopen(
+                    req, timeout=20, context=_srv.SSL_CTX
+                ) as resp:
+                    data = resp.read(8 * 1024 * 1024)
+            except Exception:
+                data = None
+            time.sleep(spacing)
+        if not data:
+            continue
+        info_hash = _torrent_info_hash(data)
+        if not info_hash:
+            continue
+        entry = dict(manifest.get(filename) or {})
+        entry["info_hash"] = info_hash
+        entry["magnet"] = "magnet:?xt=urn:btih:" + info_hash
+        entry.setdefault("torrent_url", catalog_urls.get(filename, ""))
+        entry.setdefault("added", time.time())
+        if keep_files and not os.path.isfile(archived):
+            try:
+                os.makedirs(tdir, exist_ok=True)
+                with open(archived + ".tmp", "wb") as f:
+                    f.write(data)
+                os.replace(archived + ".tmp", archived)
+                entry["torrent_file"] = archived
+            except OSError:
+                pass
+        manifest[filename] = entry
+        updated += 1
+    if updated:
+        os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
+        _srv._atomic_write_json(manifest_path, manifest)
+        log.info("Magnet manifest: %d installed ZIM(s) added", updated)
+    return updated
+
+
+def _torrents_manifest_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents.json")
+
+
+def _record_torrent_metadata(filename, *, info_hash, torrent_url, staging_dir):
+    """Post-world resilience: keep everything needed to re-seed or share a
+    ZIM without internet. The manifest maps filename -> infohash/magnet +
+    torrent URL; the .torrent file itself (which aria2 fetched into
+    staging) is preserved under ZIMI_DATA_DIR/bt/torrents/."""
+    manifest_path = _torrents_manifest_path()
+    os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
+    try:
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+    except (OSError, ValueError):
+        manifest = {}
+    entry = {
+        "info_hash": info_hash or "",
+        "torrent_url": torrent_url or "",
+        "added": time.time(),
+    }
+    if info_hash:
+        entry["magnet"] = "magnet:?xt=urn:btih:" + info_hash
+    # Preserve the .torrent file aria2 downloaded (staging/<name>.torrent)
+    tdir = os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents")
+    for cand in (
+        os.path.join(staging_dir, filename + ".torrent"),
+        os.path.join(staging_dir, os.path.splitext(filename)[0] + ".torrent"),
+    ):
+        if os.path.isfile(cand):
+            os.makedirs(tdir, exist_ok=True)
+            kept = os.path.join(tdir, filename + ".torrent")
+            try:
+                shutil.copyfile(cand, kept)
+                entry["torrent_file"] = kept
+            except OSError:
+                pass
+            break
+    manifest[filename] = entry
+    _srv._atomic_write_json(manifest_path, manifest)
+
+
+def _get_torrent_metadata():
+    """The saved filename -> {info_hash, magnet, torrent_url, ...} map."""
+    try:
+        with open(_torrents_manifest_path()) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _pending_downloads_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "downloads.json")
+
+
+def _persist_pending_downloads():
+    """Snapshot every not-yet-finished download so a restart can resume
+    them (queue and active slots are otherwise memory-only). Callers hold
+    _download_lock; the write is atomic and tiny."""
+    items = []
+    for dl in list(_active_downloads.values()) + list(_download_queue):
+        if dl.get("done") or dl.get("cancelled"):
+            continue
+        items.append(
+            {
+                # The .meta4 URL re-resolves fresh mirrors on resume
+                "url": dl.get("_meta4") or dl["url"],
+                "filename": dl["filename"],
+                "size_bytes": dl.get("size_bytes"),
+                "source": dl.get("_source", ""),
+                "peer_name": dl.get("peer_name", ""),
+            }
+        )
+    _srv._atomic_write_json(_pending_downloads_path(), {"pending": items})
+
+
+def resume_pending_downloads():
+    """Re-submit downloads that were pending when the server stopped.
+
+    Each entry goes back through its own validated entry point (catalog /
+    peer / import), so trust checks re-run and .zim.tmp partials resume
+    via the normal range machinery. Returns how many were resubmitted.
+    """
+    path = _pending_downloads_path()
+    try:
+        with open(path) as f:
+            items = json.load(f).get("pending", [])
+    except (OSError, ValueError):
+        return 0
+
+    # The manifest is NOT deleted up front: a crash during the resume
+    # window must not lose every pending transfer. The single rewrite at
+    # the end (under the lock) is the source of truth.
+    def _already_pending(filename):
+        with _download_lock:
+            if any(
+                d.get("filename") == filename and not d.get("done")
+                for d in _active_downloads.values()
+            ):
+                return True
+            return any(q.get("filename") == filename for q in _download_queue)
+
+    # Peer entries need mDNS to have found the peer again — discovery
+    # starts in the same breath as this call, so give it a moment rather
+    # than dropping the transfer (resume runs on a background thread).
+    from zimi import p2p_discovery as _disc
+
+    if any(it.get("source") == "peer" for it in items) and _disc.is_share_enabled():
+        wanted = {it.get("peer_name") for it in items if it.get("source") == "peer"}
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            present = {p.get("name") for p in (_disc.get_peers() or [])}
+            if wanted <= present:
+                break
+            time.sleep(2)
+
+    resumed = 0
+    kept = []
+    for it in items:
+        try:
+            filename = it.get("filename", "?")
+            if _already_pending(filename):
+                continue
+            if it.get("source") == "peer" and it.get("peer_name"):
+                dl_id, err = _start_peer_download(
+                    it["peer_name"], filename, it.get("size_bytes")
+                )
+                if not dl_id:
+                    # Peer not back yet — keep the entry for the next
+                    # restart instead of silently discarding the transfer.
+                    kept.append(it)
+                    log.info("Peer resume deferred for %s: %s", filename, err)
+                    continue
+            elif _is_trusted_kiwix_url(it.get("url", "")):
+                dl_id, err = _start_download(it["url"], it.get("size_bytes"))
+            else:
+                dl_id, err = _start_import(it["url"], it.get("size_bytes"))
+            if dl_id:
+                resumed += 1
+            elif err:
+                log.info("Not resuming %s: %s", filename, err)
+        except Exception as e:
+            log.warning("Resume failed for %s: %s", it.get("filename"), e)
+    # Single atomic rewrite, entirely under the lock: active/queued
+    # entries from the resubmissions plus the deferred (kept) ones. A
+    # download completing concurrently can't be resurrected as pending,
+    # because nothing here reads the file back outside the lock.
+    with _download_lock:
+        _persist_pending_downloads()
+        if kept:
+            try:
+                with open(path) as f:
+                    current = json.load(f).get("pending", [])
+            except (OSError, ValueError):
+                current = []
+            have = {c.get("filename") for c in current}
+            current.extend(k for k in kept if k.get("filename") not in have)
+            _srv._atomic_write_json(path, {"pending": current})
+    if resumed:
+        log.info("Resumed %d pending download(s) from the previous run", resumed)
+    return resumed
+
+
 def _cancel_download(dl_id):
     """Cancel an active or queued download. Returns (status, code).
 
@@ -309,6 +658,7 @@ def _cancel_download(dl_id):
         for i, q in enumerate(_download_queue):
             if q["id"] == dl_id:
                 del _download_queue[i]
+                _persist_pending_downloads()
                 return "removed", 200
         dl = _active_downloads.get(dl_id)
         if not dl:
@@ -316,6 +666,7 @@ def _cancel_download(dl_id):
         if dl.get("done"):
             return "already_done", 400
         dl["cancelled"] = True
+        _persist_pending_downloads()
     return "cancelling", 200
 
 
@@ -323,7 +674,59 @@ KIWIX_OPDS_BASE = "https://library.kiwix.org/catalog/search"
 
 # Server-side catalog cache: {cache_key: (timestamp, total, items)}
 _opds_cache = {}
+_opds_lock = threading.Lock()
 _OPDS_CACHE_TTL = 86400  # 24 hours — catalog changes rarely
+_OPDS_DISK_KEYS_MAX = 40  # main browse pages; enough for full offline browse
+
+# Post-world resilience: the last good catalog persists to disk and is
+# served (marked stale) when Kiwix is unreachable — the library must stay
+# browsable with zero internet. When a stale copy was served, this holds
+# its fetch timestamp for the API response.
+_catalog_stale_ts = None
+_opds_disk_loaded = False
+
+
+def _catalog_cache_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "catalog_cache.json")
+
+
+def _load_opds_disk_cache():
+    """Merge the persisted catalog into the in-memory cache once."""
+    global _opds_disk_loaded
+    if _opds_disk_loaded:
+        return
+    _opds_disk_loaded = True
+    try:
+        with open(_catalog_cache_path()) as f:
+            data = json.load(f)
+        with _opds_lock:
+            for key, (ts, total, items) in data.items():
+                _opds_cache.setdefault(key, (ts, total, items))
+        if data:
+            log.info("Catalog cache loaded from disk (%d queries)", len(data))
+    except (OSError, ValueError):
+        pass
+
+
+def _is_browse_key(key):
+    """Main catalog browse pages (empty query) — the offline backbone."""
+    return key.startswith("|")
+
+
+def _persist_opds_cache():
+    """Write cache entries to disk (atomic, size-capped). Browse pages are
+    the offline catalog backbone — they persist ahead of one-off search
+    keys regardless of freshness, or heavy searching would quietly evict
+    the post-world copy."""
+    try:
+        with _opds_lock:
+            entries = list(_opds_cache.items())
+        entries.sort(key=lambda kv: (not _is_browse_key(kv[0]), -kv[1][0]))
+        _srv._atomic_write_json(
+            _catalog_cache_path(), dict(entries[:_OPDS_DISK_KEYS_MAX])
+        )
+    except OSError as e:
+        log.debug("catalog cache persist failed: %s", e)
 
 
 def _thumb_dir():
@@ -382,16 +785,23 @@ def _clear_thumb_cache():
 def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
     """Fetch and parse the Kiwix OPDS catalog. Returns (total, items, error).
     Results are cached server-side for 1 hour to avoid hammering Kiwix."""
+    global _catalog_stale_ts
+    _load_opds_disk_cache()
     cache_key = f"{query}|{lang}|{count}|{start}"
-    cached = _opds_cache.get(cache_key)
-    if cached:
-        ts, total, items = cached
-        if time.time() - ts < _OPDS_CACHE_TTL:
-            return total, items, None
-        del _opds_cache[cache_key]
-    # Cap cache size
-    if len(_opds_cache) > 100:
-        _opds_cache.clear()
+    with _opds_lock:
+        cached = _opds_cache.get(cache_key)
+        if cached:
+            ts, total, items = cached
+            if time.time() - ts < _OPDS_CACHE_TTL:
+                _catalog_stale_ts = None
+                return total, items, None
+            # Expired entries are kept as the offline fallback — deleted
+            # only once a fresh fetch replaces them.
+        # Cap: evict only one-off search keys. Browse pages are the
+        # offline catalog and must survive any amount of searching.
+        if len(_opds_cache) > 100:
+            for k in [k for k in _opds_cache if not _is_browse_key(k)]:
+                del _opds_cache[k]
     params = {"count": str(count), "start": str(start)}
     if query:
         params["q"] = query
@@ -405,6 +815,13 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
             xml_bytes = resp.read()
     except Exception as e:
         log.warning("OPDS fetch failed: %s", e)
+        if cached:
+            # Offline: a day-old catalog beats an error page (post-world:
+            # this is how the library stays browsable with no internet).
+            ts, total, items = cached
+            _catalog_stale_ts = ts
+            log.info("Serving stale catalog from %s", time.ctime(ts))
+            return total, items, None
         return 0, [], "Catalog fetch failed"
 
     # Parse OPDS (Atom) XML
@@ -526,8 +943,311 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
             }
         )
 
-    _opds_cache[cache_key] = (time.time(), total, items)
+    with _opds_lock:
+        _opds_cache[cache_key] = (time.time(), total, items)
+    _catalog_stale_ts = None
+    _persist_opds_cache()
+    _prefetch_thumbs(items)
     return total, items, None
+
+
+_thumb_prefetch_started = False
+
+
+def _prefetch_thumbs(items, limit=200, spacing=0.15):
+    """Warm the thumbnail disk cache in the background so catalog browsing
+    doesn't trickle images in one at a time. Once per server run, gently
+    paced (~7/s), capped, and skips everything already cached."""
+    global _thumb_prefetch_started
+    if _thumb_prefetch_started:
+        return
+    _thumb_prefetch_started = True
+    urls = []
+    for it in items or []:
+        u = it.get("icon_url")
+        if u:
+            urls.append(u)
+        if len(urls) >= limit:
+            break
+    if not urls:
+        return
+
+    def _run():
+        import hashlib as _hl
+
+        fetched = 0
+        for u in urls:
+            key = _hl.md5(u.encode()).hexdigest()
+            if os.path.exists(os.path.join(_thumb_dir(), key)):
+                continue
+            data, _ct = _fetch_thumb(u)
+            if data:
+                fetched += 1
+            time.sleep(spacing)
+        if fetched:
+            log.info("Thumbnail prefetch: %d cached", fetched)
+
+    threading.Thread(target=_run, daemon=True, name="thumb-prefetch").start()
+
+
+_mirror_sync_lock = threading.Lock()
+# Live progress for the settings UI: {"phase": "seeding"|"archiving"|None,
+# "done": int, "total": int}
+_mirror_progress = {"phase": None, "done": 0, "total": 0}
+
+
+def _set_mirror_progress(phase, done=0, total=0):
+    _mirror_progress["phase"] = phase
+    _mirror_progress["done"] = done
+    _mirror_progress["total"] = total
+
+
+def mirror_sync():
+    """True mirror mode: seed every installed ZIM, not just ones we
+    downloaded over BT. Sources, in order: the saved .torrent files from
+    past downloads (works fully offline), then <download_url>.torrent for
+    catalog entries whose dated filename exactly matches an installed
+    file. aria2 hash-checks the existing file and seeds without
+    re-downloading. Returns how many torrents were added."""
+    from zimi import p2p as _p2p
+
+    if not (_p2p.is_torrent_enabled() and _p2p.is_mirror_enabled()):
+        return 0
+    if not _mirror_sync_lock.acquire(blocking=False):
+        return 0  # already running (startup + toggle + maintenance overlap)
+    try:
+        return _mirror_sync_locked(_p2p)
+    finally:
+        _mirror_sync_lock.release()
+
+
+def _mirror_sync_locked(_p2p):
+    if _p2p.should_pause_for_disk_pressure(_srv.ZIM_DIR):
+        log.info("Mirror sync skipped: disk pressure")
+        return 0
+    backend = _p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+    if backend is None:
+        return 0
+
+    # What the sidecar already manages, by target file basename
+    managed = set()
+    try:
+        for raw in backend.list_managed():
+            for f in raw.get("files", []):
+                managed.add(os.path.basename(f.get("path", "")))
+    except Exception as e:
+        log.debug("mirror: list_managed failed: %s", e)
+        return 0
+
+    installed = {
+        os.path.basename(path)
+        for path in glob.glob(os.path.join(_srv.ZIM_DIR, "*.zim"))
+    }
+    saved = _get_torrent_metadata()
+
+    # Catalog lookup (stale copy is fine — that's the post-world path)
+    catalog_urls = {}
+    try:
+        _total, items, _err = _fetch_kiwix_catalog("", "eng", 500, 0)
+        for it in items or []:
+            url = (it.get("download_url") or "").split("?")[0]
+            if url.endswith(".meta4"):
+                url = url[: -len(".meta4")]
+            if url.endswith(".zim"):
+                catalog_urls[os.path.basename(url)] = url
+    except Exception:
+        pass
+
+    added = 0
+    todo = sorted(installed - managed)
+    _set_mirror_progress("seeding", 0, len(todo))
+    for _mi, filename in enumerate(todo):
+        _set_mirror_progress("seeding", _mi + 1, len(todo))
+        source = None
+        meta = saved.get(filename) or {}
+        tfile = meta.get("torrent_file")
+        if tfile and os.path.isfile(tfile):
+            source = tfile
+        elif meta.get("torrent_url"):
+            source = meta["torrent_url"]
+        elif filename in catalog_urls:
+            source = catalog_urls[filename] + ".torrent"
+        if not source:
+            continue
+        try:
+            backend.add_torrent(
+                source,
+                dest_dir=_srv.ZIM_DIR,
+                options={
+                    # Verify the existing file, then seed it — never fetch
+                    "check-integrity": "true",
+                    "bt-hash-check-seed": "true",
+                    "seed-ratio": "0",  # mirrors seed without a cap
+                    "allow-overwrite": "true",
+                },
+            )
+            added += 1
+        except Exception as e:
+            log.debug("mirror: add %s failed: %s", filename, e)
+    _set_mirror_progress(None)
+    if added:
+        log.info("Mirror mode: seeding %d installed ZIM(s)", added)
+    return added
+
+
+_catalog_torrents_archived = False
+
+
+def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
+    """Mirror-mode duty: hold the .torrent for EVERY catalog item, not just
+    installed ones — ~40-80 MB total for the full Kiwix catalog (measured
+    avg ~34 KB each). With the persisted catalog and DHT this makes a
+    mirror node a complete post-world index: any ZIM can be fetched,
+    verified, and re-seeded with zero internet. Paced politely, skips
+    files already archived (dated names make this incremental), runs once
+    per server run and only when mirror mode is on."""
+    global _catalog_torrents_archived
+    from zimi import p2p as _p2p
+
+    if _catalog_torrents_archived:
+        return 0
+    if not (_p2p.is_torrent_enabled() and _p2p.is_mirror_enabled()):
+        return 0
+    _catalog_torrents_archived = True
+
+    tdir = os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents")
+    os.makedirs(tdir, exist_ok=True)
+
+    # Full catalog, all pages
+    urls = {}
+    total, items, err = _fetch_kiwix_catalog("", "eng", 500, 0)
+    if err:
+        _catalog_torrents_archived = False  # retry next run
+        return 0
+    pages = [items]
+    for start in range(500, total, 500):
+        _t, more, _e = _fetch_kiwix_catalog("", "eng", 500, start)
+        if more:
+            pages.append(more)
+    for page in pages:
+        for it in page or []:
+            u = (it.get("download_url") or "").split("?")[0]
+            if u.endswith(".meta4"):
+                u = u[: -len(".meta4")]
+            if u.endswith(".zim"):
+                urls[os.path.basename(u)] = u + ".torrent"
+
+    fetched = 0
+    fetched_bytes = 0
+    _todo = sorted(urls.items())
+    _set_mirror_progress("archiving", 0, len(_todo))
+    for _ai, (filename, turl) in enumerate(_todo):
+        _set_mirror_progress("archiving", _ai + 1, len(_todo))
+        dest = os.path.join(tdir, filename + ".torrent")
+        if os.path.exists(dest):
+            continue
+        try:
+            req = urllib.request.Request(turl, headers={"User-Agent": "Zimi/1.0"})
+            with urllib.request.urlopen(req, timeout=20, context=_srv.SSL_CTX) as resp:
+                data = resp.read(_max_bytes + 1)
+            # bencoded dict or it isn't a torrent (error pages, redirects)
+            if not data.startswith(b"d") or len(data) > _max_bytes:
+                continue
+            tmp = dest + ".tmp"
+            with open(tmp, "wb") as f:
+                f.write(data)
+            os.replace(tmp, dest)
+            fetched += 1
+            fetched_bytes += len(data)
+        except Exception as e:
+            log.debug("torrent archive: %s failed: %s", filename, e)
+        time.sleep(spacing)
+    _set_mirror_progress(None)
+    if fetched:
+        log.info(
+            "Catalog torrent archive: %d fetched (%.1f MB), %d total held",
+            fetched,
+            fetched_bytes / 1024 / 1024,
+            len(os.listdir(tdir)),
+        )
+    return fetched
+
+
+def stop_mirror_seeds():
+    """Mirror off: stop the MIRROR seeds, keep everything else.
+
+    Mirror-class seeds are the uncapped ones (seed-ratio 0 — mirror_sync
+    and mirror-mode re-seeds both use it; ordinary post-download seeds
+    always carry a positive cap, since cap 0 means leech-only and never
+    re-adds). Regular ratio-capped seeding continues untouched, and the
+    ZIMs + torrent archive stay on disk — flipping Mirror back on
+    re-seeds instantly. Turning a toggle off never deletes a backup."""
+    from zimi import p2p as _p2p
+
+    backend = _p2p.peek_backend()
+    if backend is None:
+        return 0
+    removed = 0
+    try:
+        entries = backend.list_managed()
+    except Exception:
+        return 0
+    zim_root = os.path.normpath(_srv.ZIM_DIR)
+    get_opts = getattr(backend, "get_options", lambda tid: {})
+    for raw in entries:
+        for f in raw.get("files", []):
+            path = f.get("path", "")
+            if path and os.path.normpath(os.path.dirname(path)) == zim_root:
+                ratio = str(get_opts(raw.get("gid", "")).get("seed-ratio", ""))
+                try:
+                    uncapped = float(ratio) == 0.0
+                except (ValueError, TypeError):
+                    uncapped = False
+                if uncapped:
+                    try:
+                        backend.remove(raw.get("gid", ""), delete_files=True)
+                        removed += 1
+                    except Exception:
+                        pass
+                break
+    if removed:
+        log.info("Mirror off: stopped %d mirror seed(s); archive kept", removed)
+    return removed
+
+
+def retire_stale_seeds():
+    """Drop sidecar torrents whose library file is gone — an update
+    replaced it, or the user deleted the ZIM. Without this, aria2 keeps
+    advertising (and hash-check failing) old versions forever. Only
+    torrents targeting ZIM_DIR are touched; staging transfers belong to
+    the download machinery. Returns how many were removed."""
+    from zimi import p2p as _p2p
+
+    backend = _p2p.peek_backend()
+    if backend is None:
+        return 0
+    removed = 0
+    try:
+        entries = backend.list_managed()
+    except Exception:
+        return 0
+    zim_root = os.path.normpath(_srv.ZIM_DIR)
+    for raw in entries:
+        for f in raw.get("files", []):
+            path = f.get("path", "")
+            if not path:
+                continue
+            if os.path.normpath(os.path.dirname(path)) != zim_root:
+                continue
+            if not os.path.exists(path):
+                try:
+                    backend.remove(raw.get("gid", ""), delete_files=True)
+                    removed += 1
+                    log.info("Retired stale seed: %s", os.path.basename(path))
+                except Exception:
+                    pass
+                break
+    return removed
 
 
 def _try_bt_download(
@@ -656,10 +1376,61 @@ def _try_bt_download(
                 except Exception as e2:
                     log.warning("BT staging→dest failed: %s / %s", e, e2)
                     return "fallback"
-            # Seeding policy decision: by default we KEEP the torrent in
-            # aria2 so it transitions to seeding mode automatically up to the
-            # ratio cap. Only remove when seeding is disabled — then this
-            # was a leech-only download and we're done.
+            # Post-world resilience: remember how to seed this file with
+            # zero internet — infohash + .torrent survive in ZIMI_DATA_DIR
+            # even after the sidecar forgets the download.
+            try:
+                _record_torrent_metadata(
+                    dl["filename"],
+                    info_hash=status.get("info_hash", ""),
+                    torrent_url=torrent_url,
+                    staging_dir=staging_dir,
+                )
+            except Exception as e:
+                log.debug("torrent metadata save failed: %s", e)
+            # Honest seeding: re-add the torrent pointing at the LIBRARY
+            # file. The old in-place seed rode an open file handle to a
+            # renamed path — it died silently on restart or cross-fs moves.
+            # bt-seed-unverified skips a re-hash (aria2 verified every
+            # piece during the download; libzim just validated the file).
+            _cap = _p2p.get_seed_ratio_cap()
+            # Zimi's "ratio 0" means never seed; aria2's means seed
+            # forever. Only mirror mode gets the uncapped value.
+            if _p2p.is_seeding_enabled() and (_cap > 0 or _p2p.is_mirror_enabled()):
+                # Remove the staging torrent FIRST. It still holds this
+                # info-hash as an active seeder (now pointing at the moved-away
+                # staging path), so adding the library-path torrent before
+                # removing it makes aria2 reject the add as a duplicate
+                # info-hash — the seed was silently never created and the
+                # staging torrent snagged "file missing". Remove-then-add.
+                try:
+                    backend.remove(tid, delete_files=True)
+                except Exception as e:
+                    log.debug("pre-reseed staging remove failed: %s", e)
+                try:
+                    _meta = _get_torrent_metadata().get(dl["filename"]) or {}
+                    _src = _meta.get("torrent_file") or torrent_url
+                    _ratio = "0" if _p2p.is_mirror_enabled() else str(_cap)
+                    seed_gid = backend.add_torrent(
+                        _src,
+                        dest_dir=os.path.dirname(dl["dest"]),
+                        options={
+                            "bt-seed-unverified": "true",
+                            "seed-ratio": _ratio,
+                            "allow-overwrite": "true",
+                        },
+                    )
+                    if seed_gid:
+                        tid = seed_gid  # track the library seed, not staging
+                except Exception as e:
+                    log.debug("library re-seed failed (%s): %s", dl["filename"], e)
+            elif _p2p.is_seeding_enabled():
+                # Seeding on but cap 0: leech-only by policy
+                try:
+                    backend.remove(tid, delete_files=True)
+                except Exception:
+                    pass
+            # Leech-only (seeding disabled): drop the finished torrent.
             if not _p2p.is_seeding_enabled():
                 try:
                     backend.remove(tid)
@@ -709,6 +1480,56 @@ def _try_bt_download(
             return "fallback"
 
         time.sleep(poll_interval)
+
+
+def _seed_after_http_download(dl):
+    """Seed a file that completed over HTTP, so the BitTorrent toggle keeps
+    its promise ("Download AND seed") even when the transport fell back.
+
+    The BT path seeds inline on completion; the HTTP path historically did
+    not, so any ZIM whose .torrent had no live seeders (common for niche or
+    freshly-updated files — BT stalls after no_peers_timeout and falls back)
+    silently never seeded. Best-effort: needs seeding on, a running backend,
+    and a resolvable .torrent companion. Hash-checks the finished library
+    file, then seeds it — never re-fetches. No-op on any missing piece.
+    """
+    from zimi import p2p as _p2p
+
+    if not (_p2p.is_torrent_enabled() and _p2p.is_seeding_enabled()):
+        return
+    cap = _p2p.get_seed_ratio_cap()
+    # Zimi's ratio 0 means "never seed" (aria2's means "seed forever").
+    if cap <= 0 and not _p2p.is_mirror_enabled():
+        return
+    try:
+        backend = _p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+    except Exception:
+        backend = None
+    if not backend:
+        return
+    # Torrent source: saved metadata first, then the Kiwix companion URL.
+    meta = _get_torrent_metadata().get(dl["filename"]) or {}
+    source = meta.get("torrent_file") or meta.get("torrent_url")
+    if not source:
+        source = _resolve_torrent_url(dl["url"])
+    if not source:
+        return
+    ratio = "0" if _p2p.is_mirror_enabled() else str(cap)
+    try:
+        backend.add_torrent(
+            source,
+            dest_dir=_srv.ZIM_DIR,
+            options={
+                # Verify the file we already have, then seed it — never fetch.
+                "check-integrity": "true",
+                "bt-hash-check-seed": "true",
+                "seed-ratio": ratio,
+                "allow-overwrite": "true",
+            },
+        )
+        log.info("Seeding HTTP-downloaded %s up to %sx ratio", dl["filename"], ratio)
+    except Exception as e:
+        log.debug("post-HTTP seed of %s failed: %s", dl["filename"], e)
 
 
 def _resolve_torrent_url(url):
@@ -1110,6 +1931,9 @@ def _download_thread(dl):
             urlparse(dl.get("_mirror_url", dl["url"])).hostname,
         )
         _post_download_finalize(dl)
+        # The BT toggle promises seeding; an HTTP completion (fresh download
+        # or BT fallback) must seed too, or niche/updated ZIMs never share.
+        _seed_after_http_download(dl)
     except Exception as e:
         is_transient = isinstance(
             e, (urllib.error.URLError, TimeoutError, ConnectionError, OSError)
@@ -1138,6 +1962,14 @@ def _download_thread(dl):
         # Always promote the next queued download into this freed slot.
         with _download_lock:
             _drain_queue()
+            _persist_pending_downloads()
+        # An installed update leaves the old version's seed pointing at a
+        # deleted file — retire it (cheap no-op otherwise).
+        if dl.get("is_update") and dl.get("done") and not dl.get("error"):
+            try:
+                retire_stale_seeds()
+            except Exception:
+                pass
 
 
 def _fetch_mirrors(meta4_url):
@@ -1195,6 +2027,11 @@ def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
     """
     global _download_counter
     dest = os.path.join(_srv.ZIM_DIR, filename)
+
+    space_err = _refuse_for_disk_space(size_bytes, dest=dest)
+    if space_err:
+        log.info("download rejected: %s (%s)", space_err, filename)
+        return None, space_err
 
     # Detect if this replaces an existing ZIM (update vs fresh download)
     name_prefix = re.sub(r"_\d{4}-\d{2}\.zim$", "", filename)
@@ -1351,6 +2188,11 @@ def _start_import(url, size_bytes=None):
     if not re.match(r"^[\w.\-]+$", filename):
         return None, "Invalid characters in filename"
     dest = os.path.join(_srv.ZIM_DIR, filename)
+
+    space_err = _refuse_for_disk_space(size_bytes, dest=dest)
+    if space_err:
+        log.info("import rejected: %s (%s)", space_err, filename)
+        return None, space_err
 
     with _download_lock:
         _download_counter += 1

@@ -1095,6 +1095,21 @@ def _score_result(title, query_words, rank, entry_count, lang_match=False):
     return title_score + rank_score + auth_score + lang_score
 
 
+def _dedup_results_by_title(results):
+    """Collapse same-titled results across ZIMs, keeping the first — the
+    list arrives sorted by score, so the strongest source wins. Without
+    this, bundle+subset libraries (wikipedia_en_all + wikipedia_en_100)
+    show the same article once per ZIM."""
+    seen_titles = set()
+    deduped = []
+    for r in results:
+        key = r["title"].lower().strip()
+        if key not in seen_titles:
+            seen_titles.add(key)
+            deduped.append(r)
+    return deduped
+
+
 def search_all(query_str, limit=5, filter_zim=None, fast=False):
     """Search across all ZIM files, a specific one, or a list.
 
@@ -1293,13 +1308,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     raw_results.sort(key=lambda r: r["score"], reverse=True)
 
     # Deduplicate by title (keep highest-scored)
-    seen_titles = set()
-    deduped = []
-    for r in raw_results:
-        key = r["title"].lower().strip()
-        if key not in seen_titles:
-            seen_titles.add(key)
-            deduped.append(r)
+    deduped = _dedup_results_by_title(raw_results)
 
     # Build by_language counts from result ZIM names
     cache_lang = {
