@@ -7,13 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.7.2] - 2026-07-16
+## [1.7.2] - 2026-07-17
 
 The "Everywhere + Forever" release. Both open field reports fixed within
 a day (#30, #28), and the distribution story finished: desktop apps that
 torrent out of the box, mirror nodes that can carry the whole catalog
 through an internet blackout, and an almanac that tells the truth about
-every date it shows.
+every date it shows. Rounded out with a sharing panel that's rock-solid
+and honest, and BitTorrent that actually seeds what it says it will.
 
 ### Highlights
 
@@ -56,8 +57,17 @@ every date it shows.
   Installed the moment they land.
 - **Standing maintenance**: catalog, port mapping, seeds, and magnets
   refresh themselves every 12 hours — no visit required.
+- **One control for sharing speed**: set a max up/down rate right in the
+  BitTorrent card (0 = unlimited); it governs downloads, personal seeds,
+  and mirror alike. The Server → Sharing panel is now rock-solid — no
+  layout jump, instant toggles, and status lights that never lie.
 
 ### Added
+
+- **Global up/down bandwidth caps** for BitTorrent, set in MB/s in the
+  Sharing panel (0 = unlimited). Applied to the whole aria2 engine —
+  downloads, seeds, and mirror — so one pair of numbers governs all
+  sharing speed. Live-adjustable without a restart.
 
 - **Desktop apps torrent out of the box**: the DMG and AppImage now ship
   their own aria2 sidecar (hash-verified static build on Linux, relocated
@@ -117,7 +127,27 @@ every date it shows.
   private-network client on a passwordless instance — now get 10x headroom
   (`ZIMI_RATE_LIMIT_TRUSTED`), snippet fetches ride the roomier content
   bucket, and a 429 keeps the last-known panel content instead of
-  rendering an empty state.
+  rendering an empty state. The Server pane also no longer embeds the live
+  seeding list, which used to grow and shrink under you — seeds live in
+  the Downloads tab.
+- **BitTorrent actually seeds now.** A completed BT download re-added its
+  library-path seed *before* removing the staging torrent — same info-hash,
+  so aria2 rejected the add as a duplicate and no seed was ever created
+  (the staging torrent then snagged "file missing"). Now it removes then
+  adds. Downloads that finish over HTTP (or fall back from BT when a
+  torrent has no live seeders) seed too, instead of silently not sharing.
+- **No more double entries in Downloads.** An in-flight BT download used
+  to surface as both a download card and a "seed" card under All; the
+  seeding view now excludes still-downloading torrents, and a completed
+  download that's now seeding shows only its seed card.
+- **Fresh builds show up immediately.** The service worker keys its cache
+  on a content hash of the app bundle, so any deploy — even within the
+  same version — installs a new worker that clears the stale cache.
+  Previously same-version deploys served old JavaScript from cache.
+- **The random button doesn't no-op.** An unlucky ZIM pick could return
+  nothing and leave the dice looking dead; it now retries across a few
+  sources (and the client retries) so the first roll always opens
+  something.
 - **The almanac speaks world, not American** (#28): Gregorian holidays
   are an international base plus one region pack (17 countries + EU
   catch-all) picked from the browser locale/timezone — a British calendar
