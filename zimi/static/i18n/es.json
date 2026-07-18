@@ -953,7 +953,5 @@
   "alm_dir_w": "O",
   "alm_stars_above": "El cielo sobre",
   "alm_stars_up": "estrellas visibles",
-  "alm_the_moon": "la Luna",
-  "alm_paused": "En pausa",
-  "alm_sky_speed": "Velocidad de animación del cielo"
+  "alm_the_moon": "la Luna"
 }

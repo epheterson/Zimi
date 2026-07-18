@@ -74,11 +74,6 @@
 .orrery-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--amber); border: none; cursor: pointer; box-shadow: 0 0 4px rgba(255,180,60,0.3); }
 .orrery-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--amber); border: none; cursor: pointer; }
 .orrery-speed-end { color: var(--text3); font-size: 9px; flex-shrink: 0; user-select: none; }
-/* Sky-scene speed control — mirrors the orrery control row so the two
-   readouts feel like the same instrument. */
-.alm-sky-controls { display: flex; align-items: center; gap: 6px; max-width: 500px; margin: 6px auto 0; padding: 0 4px; }
-.alm-sky-speed-word { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; margin-right: 2px; }
-.alm-sky-speed-label { font-size: 11px; color: var(--amber); font-variant-numeric: tabular-nums; min-width: 46px; text-align: right; flex-shrink: 0; }
 .orrery-speed-label { color: var(--amber); font-size: 11px; min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; flex-shrink: 0; font-family: 'SF Mono', 'Fira Code', monospace; }
 .orrery-date { color: var(--text-dim); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 90px; text-align: right; }
 .orrery-transit-wrap { display: none; align-items: center; gap: 6px; max-width: 500px; margin: 4px auto 0; padding: 0 4px; }
@@ -169,8 +164,10 @@
 .alm-empty { background: transparent; }
 .alm-day { cursor: pointer; transition: background 0.15s; }
 .alm-day:hover { background: var(--surface2); }
-.alm-today .alm-num { background: var(--amber); color: #000; font-weight: 700; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; }
-.alm-num { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+/* Every day number occupies the same 22px row, so today's amber circle can't
+   push its holiday/event lines lower than the neighbouring cells'. */
+.alm-num { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 2px; height: 22px; display: flex; align-items: center; }
+.alm-today .alm-num { background: var(--amber); color: #000; font-weight: 700; width: 22px; border-radius: 50%; justify-content: center; font-size: 12px; }
 /* Compound + :hover twin so a selected day keeps its amber tint while the
    cursor rests on it — .alm-day:hover would otherwise outrank a bare
    .alm-selected and repaint it grey. */
