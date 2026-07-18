@@ -945,5 +945,13 @@
   "alm_sun_ahead": "впереди часов",
   "alm_sun_behind": "позади часов",
   "alm_min": "мин",
-  "alm_declination": "склонение"
+  "alm_declination": "склонение",
+  "alm_star_chart": "Звёздная карта",
+  "alm_dir_n": "С",
+  "alm_dir_s": "Ю",
+  "alm_dir_e": "В",
+  "alm_dir_w": "З",
+  "alm_stars_above": "Небо над",
+  "alm_stars_up": "звёзд над горизонтом",
+  "alm_the_moon": "Луна"
 }

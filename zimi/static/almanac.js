@@ -343,6 +343,13 @@ function _renderAlmanacContent() {
   html += '<div id="almanac-tonight"></div>';
   html += '</div>';
 
+  // Star chart — a circular planisphere of the sky above the chosen location now
+  html += '<div class="almanac-section">';
+  html += '<div class="almanac-section-title">' + t('alm_star_chart') + '</div>';
+  html += '<div class="alm-starchart-wrap"><canvas id="almanac-starchart"></canvas></div>';
+  html += '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>';
+  html += '</div>';
+
   // The Analemma — the Sun's yearly figure-8 (equation of time × declination)
   html += '<div class="almanac-section">';
   html += '<div class="almanac-section-title">' + t('alm_analemma') + '</div>';
@@ -393,6 +400,7 @@ function _renderAlmanacContent() {
   _renderSunMap(now);
   _renderOnThisDay(now);
   _renderTonightSky(now);
+  _renderStarChart(now);
   _renderAnalemma(now);
   _renderAstroPanel(now);
   _renderMeteorShowers(now, m);
@@ -2992,6 +3000,17 @@ var _CONST_LINES = [
 // Red/orange giants and supergiants — warm color rendering
 var _WARM_STARS = {0:1, 19:1, 40:1, 45:1, 48:1};
 
+// Proper names for the brightest catalog stars, keyed by _STARS index. Used to
+// label the star chart. Proper star names are effectively international, so
+// they are not localized.
+var _STAR_NAMES = {
+  0: 'Betelgeuse', 1: 'Rigel', 7: 'Dubhe', 19: 'Antares', 25: 'Shaula',
+  26: 'Regulus', 30: 'Deneb', 35: 'Acrux', 40: 'Pollux', 41: 'Sirius',
+  45: 'Aldebaran', 47: 'Canopus', 48: 'Arcturus', 49: 'Rigil Kent.',
+  50: 'Vega', 51: 'Capella', 52: 'Procyon', 53: 'Altair', 54: 'Spica',
+  55: 'Fomalhaut', 56: 'Polaris'
+};
+
 // Project catalog stars to canvas coordinates for current time/location
 function _projectStars(now, lat, lon, W, H) {
   var JD = _dateToJD(now.getTime());
@@ -3633,6 +3652,159 @@ function _planetVisibility(now) {
     results.push({ name: name, elongation: elongAbs, magnitude: mag, visible: visible, sky: sky, direction: dir, distance: delta, color: _PLANETS[name].color });
   }
   return results;
+}
+
+// Star chart — a circular planisphere of the sky above the chosen location at
+// this moment. Zenith at the center, horizon at the rim; N is up and E is to
+// the left, the way the sky reads when you hold a chart overhead. All positions
+// come from the same offline RA/Dec → alt/az math as the rest of the almanac.
+function _renderStarChart(now) {
+  var canvas = document.getElementById('almanac-starchart');
+  if (!canvas) return;
+  var wrap = canvas.parentElement;
+  var dpr = window.devicePixelRatio || 1;
+  var size = Math.min(wrap.clientWidth, 360);
+  canvas.width = size * dpr;
+  canvas.height = size * dpr;
+  canvas.style.width = size + 'px';
+  canvas.style.height = size + 'px';
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, size, size);
+
+  var loc = _getLocation();
+  var lat = loc.lat, lon = loc.lon;
+  var cx = size / 2, cy = size / 2;
+  var R = size / 2 - 16; // leave room for cardinal labels
+
+  // Shared alt/az from apparent local sidereal time.
+  var JD = _dateToJD(now.getTime());
+  var GMST = (280.46061837 + 360.98564736629 * (JD - JD_J2000)) % 360;
+  var LST = (GMST + lon) * DEG_TO_RAD;
+  var latR = lat * DEG_TO_RAD;
+  function altAz(raRad, decRad) {
+    var HA = LST - raRad;
+    HA = ((HA % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+    var sinAlt = Math.sin(latR) * Math.sin(decRad) + Math.cos(latR) * Math.cos(decRad) * Math.cos(HA);
+    var alt = Math.asin(sinAlt);
+    var cosAz = (Math.sin(decRad) - Math.sin(latR) * sinAlt) / (Math.cos(latR) * Math.cos(alt));
+    cosAz = Math.max(-1, Math.min(1, cosAz));
+    if (isNaN(cosAz)) cosAz = 0;
+    var az = Math.acos(cosAz);
+    if (HA > 0) az = 2 * Math.PI - az;
+    return { alt: alt * 180 / Math.PI, az: az * 180 / Math.PI };
+  }
+  // Azimuthal (zenith-centered) projection with N up, E left (looking up).
+  function project(altDeg, azDeg) {
+    var r = (90 - altDeg) / 90 * R;
+    var a = azDeg * DEG_TO_RAD;
+    return { x: cx - r * Math.sin(a), y: cy - r * Math.cos(a) };
+  }
+
+  var styles = getComputedStyle(document.documentElement);
+  var amber = (styles.getPropertyValue('--amber') || '#e0b060').trim();
+
+  // Sky disc + horizon rim.
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+  var sky = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+  sky.addColorStop(0, '#0a1228');
+  sky.addColorStop(1, '#05060d');
+  ctx.fillStyle = sky;
+  ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(120,140,180,0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+  // Altitude ring at 30° and 60°.
+  ctx.strokeStyle = 'rgba(120,140,180,0.12)';
+  ctx.beginPath(); ctx.arc(cx, cy, R * 2 / 3, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, R / 3, 0, Math.PI * 2); ctx.stroke();
+
+  // Cardinal labels (N up, E left — planisphere convention).
+  ctx.fillStyle = amber;
+  ctx.font = 'bold 12px system-ui, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(t('alm_dir_n'), cx, cy - R - 7);
+  ctx.fillText(t('alm_dir_s'), cx, cy + R + 7);
+  ctx.fillText(t('alm_dir_e'), cx - R - 7, cy);
+  ctx.fillText(t('alm_dir_w'), cx + R + 7, cy);
+
+  // Precompute star projections.
+  var proj = {};
+  for (var i = 0; i < _STARS.length; i++) {
+    var aa = altAz(_STARS[i][0] * 15 * DEG_TO_RAD, _STARS[i][1] * DEG_TO_RAD);
+    if (aa.alt < 0) continue;
+    proj[i] = project(aa.alt, aa.az);
+  }
+  // Constellation lines (both endpoints up).
+  ctx.strokeStyle = 'rgba(120,150,210,0.28)';
+  ctx.lineWidth = 0.8;
+  for (var c = 0; c < _CONST_LINES.length; c++) {
+    var a = proj[_CONST_LINES[c][0]], b = proj[_CONST_LINES[c][1]];
+    if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+  }
+  // Stars — radius and brightness by magnitude.
+  var starCount = 0;
+  for (var i = 0; i < _STARS.length; i++) {
+    var p = proj[i]; if (!p) continue;
+    starCount++;
+    var mag = _STARS[i][2];
+    var rad = Math.max(0.8, 2.6 - mag * 0.42);
+    ctx.fillStyle = _WARM_STARS[i] ? '#ffd0a0' : '#eef2ff';
+    ctx.globalAlpha = Math.max(0.5, 1 - mag * 0.13);
+    ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    if (_STAR_NAMES[i] && mag < 1.6) {
+      ctx.fillStyle = 'rgba(200,210,235,0.7)';
+      ctx.font = '9px system-ui, sans-serif';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText(_STAR_NAMES[i], p.x + rad + 2, p.y - rad - 1);
+    }
+  }
+
+  // Planets on the ecliptic (latitude ~0, as elsewhere in the almanac).
+  var T = _jdToJulianCentury(JD);
+  var earth = _planetPosition('Earth', T);
+  var eps = 23.44 * DEG_TO_RAD;
+  var planetsUp = [];
+  for (var pi = 0; pi < _VISIBLE_PLANETS.length; pi++) {
+    var nm = _VISIBLE_PLANETS[pi];
+    var pos = _planetPosition(nm, T);
+    var geoLon = Math.atan2(pos.y - earth.y, pos.x - earth.x); // ecliptic longitude, lat≈0
+    var raP = Math.atan2(Math.sin(geoLon) * Math.cos(eps), Math.cos(geoLon));
+    var decP = Math.asin(Math.sin(eps) * Math.sin(geoLon));
+    var aa = altAz(raP, decP);
+    if (aa.alt < 0) continue;
+    var pp = project(aa.alt, aa.az);
+    var col = _PLANETS[nm] ? _PLANETS[nm].color : amber;
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(pp.x, pp.y, 3.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = col;
+    ctx.font = '9px system-ui, sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(_tp(nm), pp.x + 5, pp.y - 4);
+    planetsUp.push(_tp(nm));
+  }
+
+  // The Moon.
+  var mp = _moonPosition(now, lat, lon);
+  var moonUp = mp.altitude > 0;
+  if (moonUp) {
+    var mpp = project(mp.altitude, mp.azimuth);
+    ctx.fillStyle = '#f4f4e8';
+    ctx.beginPath(); ctx.arc(mpp.x, mpp.y, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.5; ctx.stroke();
+  }
+
+  var cap = document.getElementById('almanac-starchart-caption');
+  if (cap) {
+    var where = loc.name ? _almEsc(loc.name) : (lat.toFixed(1) + '°, ' + lon.toFixed(1) + '°');
+    cap.innerHTML = '<div class="alm-starchart-now">' + t('alm_stars_above') + ' ' + where + '</div>' +
+      '<div class="alm-starchart-desc">' + starCount + ' ' + t('alm_stars_up') +
+      (planetsUp.length ? ' · ' + planetsUp.join(', ') : '') +
+      (moonUp ? ' · ' + t('alm_the_moon') : '') + '</div>';
+  }
 }
 
 // The Analemma — the figure-8 the Sun traces if photographed at the same clock

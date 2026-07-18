@@ -945,5 +945,13 @@
   "alm_sun_ahead": "adiantado",
   "alm_sun_behind": "atrasado",
   "alm_min": "min",
-  "alm_declination": "declinação"
+  "alm_declination": "declinação",
+  "alm_star_chart": "Carta celeste",
+  "alm_dir_n": "N",
+  "alm_dir_s": "S",
+  "alm_dir_e": "L",
+  "alm_dir_w": "O",
+  "alm_stars_above": "O céu acima de",
+  "alm_stars_up": "estrelas visíveis",
+  "alm_the_moon": "a Lua"
 }

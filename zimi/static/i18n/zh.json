@@ -945,5 +945,13 @@
   "alm_sun_ahead": "快于时钟",
   "alm_sun_behind": "慢于时钟",
   "alm_min": "分",
-  "alm_declination": "赤纬"
+  "alm_declination": "赤纬",
+  "alm_star_chart": "星图",
+  "alm_dir_n": "北",
+  "alm_dir_s": "南",
+  "alm_dir_e": "东",
+  "alm_dir_w": "西",
+  "alm_stars_above": "上空的星空",
+  "alm_stars_up": "颗星在地平线上",
+  "alm_the_moon": "月亮"
 }

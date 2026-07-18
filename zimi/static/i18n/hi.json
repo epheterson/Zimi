@@ -945,5 +945,13 @@
   "alm_sun_ahead": "घड़ी से आगे",
   "alm_sun_behind": "घड़ी से पीछे",
   "alm_min": "मिनट",
-  "alm_declination": "क्रांति"
+  "alm_declination": "क्रांति",
+  "alm_star_chart": "तारा मानचित्र",
+  "alm_dir_n": "उ",
+  "alm_dir_s": "द",
+  "alm_dir_e": "पू",
+  "alm_dir_w": "प",
+  "alm_stars_above": "ऊपर का आकाश",
+  "alm_stars_up": "तारे दृश्यमान",
+  "alm_the_moon": "चंद्रमा"
 }

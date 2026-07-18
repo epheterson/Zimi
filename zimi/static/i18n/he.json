@@ -945,5 +945,13 @@
   "alm_sun_ahead": "לפני השעון",
   "alm_sun_behind": "אחרי השעון",
   "alm_min": "דק׳",
-  "alm_declination": "נטייה"
+  "alm_declination": "נטייה",
+  "alm_star_chart": "מפת כוכבים",
+  "alm_dir_n": "צ",
+  "alm_dir_s": "ד",
+  "alm_dir_e": "מז",
+  "alm_dir_w": "מע",
+  "alm_stars_above": "השמיים מעל",
+  "alm_stars_up": "כוכבים מעל האופק",
+  "alm_the_moon": "הירח"
 }

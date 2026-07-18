@@ -945,5 +945,13 @@
   "alm_sun_ahead": "ahead of clock",
   "alm_sun_behind": "behind clock",
   "alm_min": "min",
-  "alm_declination": "declination"
+  "alm_declination": "declination",
+  "alm_star_chart": "Star Chart",
+  "alm_dir_n": "N",
+  "alm_dir_s": "S",
+  "alm_dir_e": "E",
+  "alm_dir_w": "W",
+  "alm_stars_above": "The sky above",
+  "alm_stars_up": "stars up",
+  "alm_the_moon": "the Moon"
 }

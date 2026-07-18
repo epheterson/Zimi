@@ -945,5 +945,13 @@
   "alm_sun_ahead": "vor der Uhr",
   "alm_sun_behind": "hinter der Uhr",
   "alm_min": "Min",
-  "alm_declination": "Deklination"
+  "alm_declination": "Deklination",
+  "alm_star_chart": "Sternenkarte",
+  "alm_dir_n": "N",
+  "alm_dir_s": "S",
+  "alm_dir_e": "O",
+  "alm_dir_w": "W",
+  "alm_stars_above": "Der Himmel über",
+  "alm_stars_up": "Sterne sichtbar",
+  "alm_the_moon": "der Mond"
 }
