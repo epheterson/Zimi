@@ -936,5 +936,8 @@
   "alm_first_light": "First light",
   "alm_last_light": "Last light",
   "alm_next_full": "Next full moon",
-  "alm_supermoon": "Supermoon"
+  "alm_supermoon": "Supermoon",
+  "alm_on_this_day": "On This Day",
+  "alm_year_ago": "year ago",
+  "alm_years_ago": "years ago"
 }

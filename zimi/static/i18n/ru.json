@@ -936,5 +936,8 @@
   "alm_first_light": "Рассвет",
   "alm_last_light": "Сумерки",
   "alm_next_full": "Следующее полнолуние",
-  "alm_supermoon": "Суперлуние"
+  "alm_supermoon": "Суперлуние",
+  "alm_on_this_day": "В этот день",
+  "alm_year_ago": "год назад",
+  "alm_years_ago": "лет назад"
 }

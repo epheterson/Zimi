@@ -936,5 +936,8 @@
   "alm_first_light": "أول ضوء",
   "alm_last_light": "آخر ضوء",
   "alm_next_full": "اكتمال القمر القادم",
-  "alm_supermoon": "قمر عملاق"
+  "alm_supermoon": "قمر عملاق",
+  "alm_on_this_day": "في مثل هذا اليوم",
+  "alm_year_ago": "سنة مضت",
+  "alm_years_ago": "سنوات مضت"
 }

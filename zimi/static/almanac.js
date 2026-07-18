@@ -163,6 +163,66 @@ function _formatTimezone(lang, tz) {
   } catch(e) { return ''; }
 }
 
+// Curated offline "on this day" feed — space & science milestones, keyed by
+// "MM-DD" (1-based month, zero-padded). Purely static data so it works forever
+// with no network. Kept deliberately tight: iconic, verifiable events only.
+var _ON_THIS_DAY = {
+  '01-01': [{ y: 1801, t: 'Piazzi discovers Ceres, the first asteroid — and now the closest dwarf planet.' }],
+  '01-03': [{ y: 2019, t: 'China’s Chang’e 4 makes the first-ever soft landing on the Moon’s far side.' }],
+  '01-04': [{ y: 1643, t: 'Isaac Newton is born (New Style calendar).' }],
+  '01-05': [{ y: 2005, t: 'Eris is discovered — the find that got Pluto reclassified as a dwarf planet.' }],
+  '01-28': [{ y: 1986, t: 'Space Shuttle Challenger breaks apart 73 seconds after launch, killing all seven crew.' }],
+  '01-31': [{ y: 1958, t: 'Explorer 1, the first U.S. satellite, launches and discovers the Van Allen radiation belts.' }],
+  '02-07': [{ y: 1984, t: 'Bruce McCandless makes the first untethered spacewalk, flying free on a jetpack.' }],
+  '02-11': [{ y: 2016, t: 'LIGO announces the first direct detection of gravitational waves, from two merging black holes.' }],
+  '02-12': [{ y: 1809, t: 'Charles Darwin is born.' }],
+  '02-15': [{ y: 1564, t: 'Galileo Galilei is born.' }],
+  '02-18': [{ y: 1930, t: 'Clyde Tombaugh discovers Pluto.' }],
+  '02-20': [{ y: 1962, t: 'John Glenn becomes the first American to orbit the Earth.' }],
+  '02-24': [{ y: 1968, t: 'Jocelyn Bell Burnell’s discovery of pulsars is announced.' }],
+  '03-13': [{ y: 1781, t: 'William Herschel discovers Uranus, the first planet found with a telescope.' }],
+  '03-14': [{ y: 1879, t: 'Albert Einstein is born.' }, { y: 2018, t: 'Stephen Hawking dies.' }],
+  '03-16': [{ y: 1926, t: 'Robert Goddard launches the first liquid-fueled rocket.' }],
+  '04-12': [{ y: 1961, t: 'Yuri Gagarin becomes the first human in space.' }, { y: 1981, t: 'The first Space Shuttle, Columbia, launches.' }],
+  '04-24': [{ y: 1990, t: 'The Hubble Space Telescope launches aboard Discovery.' }],
+  '04-25': [{ y: 1953, t: 'Watson and Crick publish the structure of DNA in Nature.' }],
+  '05-05': [{ y: 1961, t: 'Alan Shepard becomes the first American in space.' }],
+  '05-25': [{ y: 1961, t: 'JFK challenges the U.S. to land a man on the Moon before the decade is out.' }],
+  '06-16': [{ y: 1963, t: 'Valentina Tereshkova becomes the first woman in space.' }],
+  '06-18': [{ y: 1983, t: 'Sally Ride becomes the first American woman in space.' }],
+  '07-04': [{ y: 1997, t: 'Mars Pathfinder lands, delivering Sojourner — the first rover on another planet.' }],
+  '07-14': [{ y: 2015, t: 'New Horizons flies past Pluto, revealing its heart-shaped plain up close.' }],
+  '07-16': [{ y: 1969, t: 'Apollo 11 launches from Kennedy Space Center.' }],
+  '07-18': [{ y: 1921, t: 'John Glenn, first American to orbit Earth, is born.' }],
+  '07-20': [{ y: 1969, t: 'Apollo 11 lands on the Moon; Armstrong and Aldrin walk its surface.' }, { y: 1976, t: 'Viking 1 makes the first successful landing on Mars.' }],
+  '07-23': [{ y: 1995, t: 'Comet Hale–Bopp is discovered; it would dazzle the sky for 18 months.' }],
+  '08-06': [{ y: 2012, t: 'NASA’s Curiosity rover lands in Gale Crater on Mars.' }],
+  '08-12': [{ y: 1877, t: 'Asaph Hall discovers Mars’ moon Deimos (Phobos six days later).' }],
+  '08-25': [{ y: 1989, t: 'Voyager 2 flies past Neptune — humanity’s first and only close visit.' }, { y: 2012, t: 'Voyager 1 becomes the first spacecraft to enter interstellar space.' }],
+  '09-05': [{ y: 1977, t: 'Voyager 1 launches, carrying the Golden Record.' }],
+  '09-21': [{ y: 2003, t: 'The Galileo probe is deliberately crashed into Jupiter, ending a 14-year mission.' }],
+  '09-23': [{ y: 1846, t: 'Neptune is discovered, right where math predicted it would be.' }],
+  '10-04': [{ y: 1957, t: 'The Soviet Union launches Sputnik 1, the first artificial satellite.' }],
+  '10-06': [{ y: 1995, t: 'The first exoplanet around a Sun-like star, 51 Pegasi b, is announced.' }],
+  '10-15': [{ y: 1997, t: 'Cassini launches on its journey to Saturn.' }],
+  '11-08': [{ y: 1895, t: 'Wilhelm Röntgen discovers X-rays.' }],
+  '11-09': [{ y: 1934, t: 'Carl Sagan is born.' }],
+  '11-12': [{ y: 2014, t: 'ESA’s Philae makes the first-ever soft landing on a comet.' }],
+  '11-20': [{ y: 1998, t: 'Zarya, the first module of the International Space Station, launches.' }],
+  '11-26': [{ y: 2011, t: 'The Curiosity rover launches toward Mars.' }],
+  '12-14': [{ y: 1972, t: 'Apollo 17’s crew leaves the Moon — the last humans to walk there, so far.' }],
+  '12-21': [{ y: 1968, t: 'Apollo 8 launches, carrying the first humans to orbit the Moon.' }],
+  '12-25': [{ y: 1642, t: 'Isaac Newton is born (Old Style calendar).' }, { y: 2021, t: 'The James Webb Space Telescope launches.' }],
+  '12-27': [{ y: 1571, t: 'Johannes Kepler is born.' }, { y: 1831, t: 'Darwin sets sail on HMS Beagle.' }]
+};
+
+// Return today's curated space/science events (array of {y, t}), or [] if none.
+function _onThisDay(date) {
+  var mm = ('0' + (date.getMonth() + 1)).slice(-2);
+  var dd = ('0' + date.getDate()).slice(-2);
+  return _ON_THIS_DAY[mm + '-' + dd] || [];
+}
+
 function _renderAlmanacContent() {
   var now = new Date();
   var m = _moonPhase(now);
@@ -248,6 +308,9 @@ function _renderAlmanacContent() {
   // Sun map — inline world map with day/night terminator + location picker
   html += '<div id="almanac-sunmap"></div>';
 
+  // On this day — curated space & science milestones (only rendered when today has some)
+  html += '<div id="almanac-onthisday"></div>';
+
   // Orrery
   html += '<div class="almanac-section">';
   html += '<div class="almanac-section-title">' + t('alm_solar_system') + '</div>';
@@ -321,6 +384,7 @@ function _renderAlmanacContent() {
 
   _renderAlmanacCalendar(now);
   _renderSunMap(now);
+  _renderOnThisDay(now);
   _renderTonightSky(now);
   _renderAstroPanel(now);
   _renderMeteorShowers(now, m);
@@ -3561,6 +3625,29 @@ function _planetVisibility(now) {
     results.push({ name: name, elongation: elongAbs, magnitude: mag, visible: visible, sky: sky, direction: dir, distance: delta, color: _PLANETS[name].color });
   }
   return results;
+}
+
+// On This Day — render the curated space/science milestones for today's date.
+// The wrapping section only appears when the day actually has entries, so the
+// almanac never shows an empty "On This Day" box.
+function _renderOnThisDay(now) {
+  var el = document.getElementById('almanac-onthisday');
+  if (!el) return;
+  var events = _onThisDay(now);
+  if (!events.length) { el.innerHTML = ''; return; }
+  var thisYear = now.getFullYear();
+  var rows = '';
+  for (var i = 0; i < events.length; i++) {
+    var ev = events[i];
+    var ago = thisYear - ev.y;
+    var agoStr = ago > 0 ? String(ago) + ' ' + (ago === 1 ? t('alm_year_ago') : t('alm_years_ago')) : '';
+    rows += '<div class="alm-otd-row">' +
+      '<div class="alm-otd-year">' + String(ev.y) + '</div>' +
+      '<div class="alm-otd-text">' + _almEsc(ev.t) +
+      (agoStr ? ' <span class="alm-otd-ago">' + agoStr + '</span>' : '') + '</div></div>';
+  }
+  el.innerHTML = '<div class="almanac-section">' +
+    '<div class="almanac-section-title">' + t('alm_on_this_day') + '</div>' + rows + '</div>';
 }
 
 function _renderTonightSky(now) {

@@ -936,5 +936,8 @@
   "alm_first_light": "Première lueur",
   "alm_last_light": "Dernière lueur",
   "alm_next_full": "Prochaine pleine lune",
-  "alm_supermoon": "Superlune"
+  "alm_supermoon": "Superlune",
+  "alm_on_this_day": "Ce jour-là",
+  "alm_year_ago": "an",
+  "alm_years_ago": "ans"
 }

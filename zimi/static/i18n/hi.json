@@ -936,5 +936,8 @@
   "alm_first_light": "पहली रोशनी",
   "alm_last_light": "आखिरी रोशनी",
   "alm_next_full": "अगली पूर्णिमा",
-  "alm_supermoon": "सुपरमून"
+  "alm_supermoon": "सुपरमून",
+  "alm_on_this_day": "आज ही के दिन",
+  "alm_year_ago": "साल पहले",
+  "alm_years_ago": "साल पहले"
 }

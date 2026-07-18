@@ -936,5 +936,8 @@
   "alm_first_light": "曙光",
   "alm_last_light": "暮光",
   "alm_next_full": "下次满月",
-  "alm_supermoon": "超级月亮"
+  "alm_supermoon": "超级月亮",
+  "alm_on_this_day": "历史上的今天",
+  "alm_year_ago": "年前",
+  "alm_years_ago": "年前"
 }

@@ -936,5 +936,8 @@
   "alm_first_light": "Erstes Licht",
   "alm_last_light": "Letztes Licht",
   "alm_next_full": "Nächster Vollmond",
-  "alm_supermoon": "Supermond"
+  "alm_supermoon": "Supermond",
+  "alm_on_this_day": "An diesem Tag",
+  "alm_year_ago": "Jahr her",
+  "alm_years_ago": "Jahre her"
 }

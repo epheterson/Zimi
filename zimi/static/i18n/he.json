@@ -936,5 +936,8 @@
   "alm_first_light": "אור ראשון",
   "alm_last_light": "אור אחרון",
   "alm_next_full": "הירח המלא הבא",
-  "alm_supermoon": "סופר-ירח"
+  "alm_supermoon": "סופר-ירח",
+  "alm_on_this_day": "ביום זה",
+  "alm_year_ago": "שנה",
+  "alm_years_ago": "שנים"
 }
