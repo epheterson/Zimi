@@ -5300,15 +5300,22 @@ function _applyTorrentToggleInPlace(on) {
     mcard.classList.toggle('share-inactive', !on);
     if (mrow.dataset.envlock !== '1') mrow.disabled = !on;
   }
-  if (!on) {
-    const mact = document.getElementById('ms-mirror-active');
-    if (mact) mact.style.visibility = 'hidden';
-  }
+  // Mirror can't be active without BT — reflect its true state in the
+  // shared right-column status dot.
+  const mact = document.getElementById('ms-mirror-active');
+  if (mact) mact.innerHTML = _mirrorStatusHtml(on && mrow && mrow.checked);
+}
+
+// Shared status line for the Mirror card's right column — same shape as the
+// BT "ready" dot so the two cards' lights sit in identical spots.
+function _mirrorStatusHtml(active) {
+  return '<span class="share-port-dot" style="background:' + (active ? '#6abf69' : 'var(--text3)') + '"></span>' +
+    esc(active ? t('seeding_state_active') : t('bt_state_off'));
 }
 
 function _applyMirrorToggleInPlace(on) {
   const mact = document.getElementById('ms-mirror-active');
-  if (mact) mact.style.visibility = on ? 'visible' : 'hidden';
+  if (mact) mact.innerHTML = _mirrorStatusHtml(on);
 }
 
 async function _setBtSetting(key, cb) {
@@ -5513,7 +5520,8 @@ function _shareShellHtml() {
       'share_bt_title', tH('share_bt_desc'),
       false, '<div id="ms-bt-status" class="share-bt-status-right"></div>') +
     _shareSwitch('mirror', false, false, 'ZIMI_BT',
-      'share_mirror_title', tH('share_mirror_desc'), true) +
+      'share_mirror_title', tH('share_mirror_desc'), true,
+      '<div id="ms-mirror-active" class="share-bt-status-right"></div>') +
     _shareSwitch('peer_share', false, false, 'ZIMI_NEARBY',
       'share_nearby_title', tH('share_nearby_desc')) +
   '</div>';
@@ -5555,15 +5563,16 @@ async function _renderMirrorSection() {
   // rides these too - there's no separate mirror speed setting anymore.
   const upMb = m.bt_up_kb ? +(m.bt_up_kb / 1024).toFixed(2) : 0;
   const downMb = m.bt_down_kb ? +(m.bt_down_kb / 1024).toFixed(2) : 0;
+  // Arrows sit to the RIGHT of each input so the first input's left edge
+  // lines up with the ratio/port inputs above and below it.
   const limitRow = '<div class="share-field"><label>' + tH('bt_limit_label') + '</label>' +
     '<span class="share-port-group">' +
-    '<span class="share-field-note">↑</span>' +
     '<input type="number" min="0" step="0.5" value="' + upMb + '"' + disA(m.bt_up_env_locked) + lockA(m.bt_up_env_locked) +
     ' class="share-num-input" aria-label="' + escAttr(t('bt_limit_up')) + '" onchange="_setBtLimit(this,\'up\')">' +
-    '<span class="share-field-note">↓</span>' +
+    '<span class="share-field-note">↑</span>' +
     '<input type="number" min="0" step="0.5" value="' + downMb + '"' + disA(m.bt_down_env_locked) + lockA(m.bt_down_env_locked) +
     ' class="share-num-input" aria-label="' + escAttr(t('bt_limit_down')) + '" onchange="_setBtLimit(this,\'down\')">' +
-    '<span class="share-field-note">MB/s</span></span>' +
+    '<span class="share-field-note">↓ MB/s</span></span>' +
     '<span class="share-field-note">' + tH('bt_limit_hint') + '</span></div>';
 
   const portRow = '<div class="share-field share-port-row" id="share-port-row">' + _portRowInner(bt || {}, btOn) + '</div>';
@@ -5579,14 +5588,15 @@ async function _renderMirrorSection() {
   const btControls = '<div class="share-bt-controls' + (btOn ? '' : ' share-controls-off') + '" id="ms-bt-controls">' +
     ratioRow + limitRow + portRow + nameRow + '</div>';
 
-  // Mirror "active" line: always in the DOM, just hidden (visibility, not
-  // display) when off - reserves its height so the card never jumps.
+  // Mirror status sits under its toggle in the right column — the SAME spot
+  // as the BitTorrent "ready" dot — so both cards' status lights line up.
+  // Green "active" when on, grey "off" when not; the toggle can't be on
+  // without BT, so mirrorActive already folds that in.
   const mirrorActive = m.enabled && btOn;
+  const mirrorStatus = '<div id="ms-mirror-active" class="share-bt-status-right">' +
+    _mirrorStatusHtml(mirrorActive) + '</div>';
   const prog = m.progress || {};
   const mirrorInner =
-    '<div class="share-mirror-active" id="ms-mirror-active"' + (mirrorActive ? '' : ' style="visibility:hidden"') + '>' +
-      '<span class="share-port-dot" style="background:#6abf69"></span>' + tH('mirror_active') +
-    '</div>' +
     '<div class="ms-hint share-mirror-progress" id="mirror-progress-line"' + (prog.phase ? '' : ' style="display:none"') + '>' +
       (prog.phase ? _mirrorProgressText(prog) : '') + '</div>';
 
@@ -5595,7 +5605,7 @@ async function _renderMirrorSection() {
       'share_bt_title', tH('share_bt_desc') + btControls,
       false, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>') +
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
-      'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !btOn) +
+      'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !btOn, mirrorStatus) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
       'share_nearby_title', tH('share_nearby_desc') +
         (m.peer_ip_unreachable ? '<div class="share-row-desc share-nearby-warn">⚠ ' + tH('nearby_bridge_warning') + '</div>' : '')) +
