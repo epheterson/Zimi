@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-07-18
+
+### Fixed
+
+- **Timezone routing for Central Europe** (#28 follow-up): clicking a
+  location in Germany (or Poland, Austria, Czechia…) resolved to London's
+  timezone instead of Central European Time. The location→timezone match
+  used a solar-time term that tipped the wide CET band onto UK time; it now
+  matches against a denser set of real-city anchors by geography alone, and
+  the world-clock grid highlights the column that shares your current UTC
+  offset. Germany reads +2 (CEST), an hour ahead of London.
+
+### Added
+
+- **Many more observance days** on the Gregorian calendar — a fuller set of
+  UN international days and cultural observances every month (World Water
+  Day, International Day of Peace, World Food Day, Mother Language Day, and
+  a few for fun like World Emoji Day and Towel Day), on top of the existing
+  worldwide set and your region's national holidays.
+
 ## [1.7.2] - 2026-07-17
 
 Both open field reports fixed within a day (#30, #28), and the
