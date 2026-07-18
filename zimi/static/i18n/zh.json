@@ -932,5 +932,7 @@
   "mirror_progress_seeding": "正在做种媒体库… {a}/{b}",
   "mirror_progress_archiving": "正在备份目录种子… {a}/{b}",
   "hot_zims_pinned_n": "已固定 {n} 个",
-  "peer_name_hint": "其他 Zimi 设备看到的名称。重启后生效。"
+  "peer_name_hint": "其他 Zimi 设备看到的名称。重启后生效。",
+  "alm_first_light": "曙光",
+  "alm_last_light": "暮光"
 }

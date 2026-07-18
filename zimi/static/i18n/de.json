@@ -932,5 +932,7 @@
   "mirror_progress_seeding": "Bibliothek wird geseedet… {a}/{b}",
   "mirror_progress_archiving": "Katalog-Torrents werden gesichert… {a}/{b}",
   "hot_zims_pinned_n": "{n} angeheftet",
-  "peer_name_hint": "Der Name, den andere Zimi-Geräte sehen. Gilt nach Neustart."
+  "peer_name_hint": "Der Name, den andere Zimi-Geräte sehen. Gilt nach Neustart.",
+  "alm_first_light": "Erstes Licht",
+  "alm_last_light": "Letztes Licht"
 }

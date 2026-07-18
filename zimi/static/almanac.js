@@ -147,11 +147,14 @@ function closeAlmanac() {
 }
 
 // ── Timezone formatting ──
-function _formatTimezone(lang) {
+function _formatTimezone(lang, tz) {
   try {
     var loc = lang || ((typeof _currentLang !== 'undefined') ? _currentLang : 'en');
-    // Use locale-aware short timezone name (e.g., "PST" in English, "heure du Pacifique" in French)
-    var fmt = new Intl.DateTimeFormat(loc, { timeZoneName: 'short' });
+    // Locale-aware short zone name (e.g. "PST"). An explicit tz names the
+    // shown location's zone, not the device's.
+    var opts = { timeZoneName: 'short' };
+    if (tz) opts.timeZone = tz;
+    var fmt = new Intl.DateTimeFormat(loc, opts);
     var parts = fmt.formatToParts(new Date());
     for (var i = 0; i < parts.length; i++) {
       if (parts[i].type === 'timeZoneName') return parts[i].value;
@@ -169,27 +172,39 @@ function _renderAlmanacContent() {
 
   var html = '<div class="almanac-inner">';
 
-  // Date header
+  // Location drives the whole panel (moon, sun, holidays) — show its local
+  // date/time in the header too, so the clock, sun times and moon all agree
+  // even when the location isn't in the device's timezone.
+  var loc = _getLocation();
+  var locTz = null;
+  try { locTz = _almTzForLocation(loc.lat, loc.lon); } catch (e) {}
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
-  var dateStr = now.toLocaleDateString(lang, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  var timeStr = now.toLocaleTimeString(lang, { hour: 'numeric', minute: '2-digit' });
-  var tzName = _formatTimezone(lang);
+  var _dtOpts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
+  var _tmOpts = { hour: 'numeric', minute: '2-digit' };
+  if (locTz) { _dtOpts.timeZone = locTz; _tmOpts.timeZone = locTz; }
+  var dateStr = now.toLocaleDateString(lang, _dtOpts);
+  var timeStr = now.toLocaleTimeString(lang, _tmOpts);
+  var tzName = _formatTimezone(lang, locTz);
   html += '<div style="text-align:center;margin-bottom:16px">';
   html += '<div style="font-size:22px;font-weight:600;color:var(--text)">' + dateStr + '</div>';
   html += '<div style="font-size:16px;color:var(--text2);margin-top:4px">' + timeStr + (tzName ? ' &middot; ' + tzName : '') + '</div>';
   html += '</div>';
 
-  // Hero moon — tilted by parallactic angle (how the terminator appears from observer's location)
-  var loc = _getLocation();
+  // Hero moon — tilted so the bright limb faces the Sun as the observer sees
+  // it (bright-limb PA minus parallactic), not the parallactic angle alone.
   var moonPos = _moonPosition(now, loc.lat, loc.lon);
-  var moonTilt = moonPos.parallactic || 0;
+  var moonTilt = (moonPos.brightLimb != null ? moonPos.brightLimb : moonPos.parallactic) || 0;
   html += '<div class="almanac-hero">';
   html += _renderAlmanacMoon(m, moonTilt);
   html += '<div class="almanac-moon-name">' + _localMoonName(m.name) + '</div>';
   html += '</div>';
 
-  // Sun + Moon data cards — all below the moon
-  var sunInfo0 = _computeSunTimes(now, loc.lat, loc.lon);
+  // Sun cards render in the shown location's timezone (same locTz as the
+  // header), so the clock, sun times and moon all agree.
+  var _locTzOff;
+  try { _locTzOff = _tzUtcOffsetMin(locTz, now); }
+  catch (e) { _locTzOff = -now.getTimezoneOffset(); }
+  var sunInfo0 = _computeSunTimes(now, loc.lat, loc.lon, _locTzOff);
 
   // Moon data cards (right under moon hero), then sun data cards (right above sky scene)
   html += '<div class="alm-cards">';
@@ -205,6 +220,11 @@ function _renderAlmanacContent() {
     html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_daylight') + '</div><div class="alm-card-val">' + sunInfo0.dayLength + '</div></div>';
     if (sunInfo0.goldenHour) {
       html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_golden') + '</div><div class="alm-card-val" style="color:#d4aa64">' + sunInfo0.goldenHour + '</div></div>';
+    }
+    // Civil twilight — first/last light (sun 6° below the horizon).
+    if (sunInfo0.civilDawn) {
+      html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_first_light') + '</div><div class="alm-card-val" style="color:#8a9bd4">' + sunInfo0.civilDawn + '</div></div>';
+      html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_last_light') + '</div><div class="alm-card-val" style="color:#8a9bd4">' + sunInfo0.civilDusk + '</div></div>';
     }
   }
   html += '</div>';
@@ -366,13 +386,31 @@ function _renderAlmanacMoon(m, tiltDeg) {
 }
 
 function _moonDistance(date) {
-  // Distance from Moon's mean anomaly (anomalistic period 27.55d, independent of phase)
+  // Meeus Ch. 47 distance (km), leading periodic terms. The old code used
+  // cos(2·M') for the 2nd term where Meeus has cos(2D − M'), and dropped
+  // the cos(2D) and cos(2M') terms — that compressed perigee/apogee by
+  // ~7000 km, so supermoons read too far. Uses elongation D, sun anomaly
+  // M and moon anomaly M' / arg-of-latitude F.
   var JD = _dateToJD(date.getTime());
   var T = _jdToJulianCentury(JD);
-  var M = (134.9634 + 477198.8676 * T) % 360;
-  var Mrad = M * DEG_TO_RAD;
-  // Truncated Meeus series: mean + 1st + 2nd harmonic
-  return 385001 - 20905 * Math.cos(Mrad) - 3699 * Math.cos(2 * Mrad);
+  var D  = ((297.8501921 + 445267.1114034 * T) % 360) * DEG_TO_RAD;
+  var M  = ((357.5291092 + 35999.0502909 * T) % 360) * DEG_TO_RAD;
+  var Mp = ((134.9633964 + 477198.8675055 * T) % 360) * DEG_TO_RAD;
+  var F  = ((93.2720950 + 483202.0175233 * T) % 360) * DEG_TO_RAD;
+  return 385000.56
+    - 20905.355 * Math.cos(Mp)
+    - 3699.111  * Math.cos(2 * D - Mp)
+    - 2955.968  * Math.cos(2 * D)
+    - 569.925   * Math.cos(2 * Mp)
+    + 246.158   * Math.cos(2 * D - 2 * Mp)
+    - 204.586   * Math.cos(2 * D - M)
+    - 170.733   * Math.cos(2 * D + Mp)
+    - 152.138   * Math.cos(2 * D - M - Mp)
+    - 129.620   * Math.cos(M - Mp)
+    + 108.743   * Math.cos(D)
+    + 104.755   * Math.cos(M + Mp)
+    + 48.888    * Math.cos(M)
+    - 3.149     * Math.cos(2 * F);
 }
 
 // ── Orrery: JPL Keplerian elements (J2000 epoch) ──
@@ -1618,8 +1656,12 @@ function _renderSunMap(now) {
   _sunMapLocName = smLoc.name;
   _sunMapHasLocation = !!smLoc.name;
 
-  // Compute sun info for the info line
-  var sunInfo = _computeSunTimes(_sunMapNow, _sunMapLat, _sunMapLon);
+  // Compute sun info in the CLICKED location's timezone, not the device's
+  // (F6) — resolve the point's zone the same way the world clock does.
+  var _smOff;
+  try { _smOff = _tzUtcOffsetMin(_almTzForLocation(_sunMapLat, _sunMapLon), _sunMapNow); }
+  catch (e) { _smOff = -_sunMapNow.getTimezoneOffset(); }
+  var sunInfo = _computeSunTimes(_sunMapNow, _sunMapLat, _sunMapLon, _smOff);
 
   var html = '<div style="margin-top:16px">';
   html += '<div style="position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--border);cursor:crosshair">';
@@ -2133,37 +2175,44 @@ function _startTzClock() {
   _tzClockRAF = requestAnimationFrame(tick);
 }
 
-function _computeSunTimes(now, lat, lon) {
-  var doy = _dayOfYear(now);
-  var B = _solarB(doy);
+// tzOffsetMin: the LOCATION's UTC offset in minutes. Passed by the Sun Map
+// (which can click any city) so times render in that city's zone, not the
+// device's (F6). Omitted → the device's offset (own-location card).
+function _computeSunTimes(now, lat, lon, tzOffsetMin) {
+  // Fractional day-of-year near local noon + 365.25 (F7): declination/EoT are
+  // evaluated closer to the actual event than local midnight.
+  var B = (_dayOfYear(now) - 0.5) * 2 * Math.PI / 365.25;
   var EoT = _eqOfTime(B);
   var decl = _solarDeclination(B);
-  var latRad = lat * DEG_TO_RAD;
-  var cosHA = (Math.cos(90.833 * DEG_TO_RAD) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
-
-  if (cosHA > 1) return { polar: t('alm_polar_night') };
-  if (cosHA < -1) return { polar: t('alm_midnight_sun') };
-
-  var HA = Math.acos(cosHA) * 180 / Math.PI;
-  var sunrise = 720 - 4 * (lon + HA) - EoT;
-  var sunset = 720 - 4 * (lon - HA) - EoT;
-  var tzOffset = -now.getTimezoneOffset();
-  sunrise += tzOffset; sunset += tzOffset;
-  var dayLength = sunset - sunrise;
-  var dayH = Math.floor(dayLength / 60);
-  var dayM = Math.round(dayLength % 60);
-
-  var result = {
-    sunrise: _fmtMinutes(sunrise),
-    sunset: _fmtMinutes(sunset),
-    dayLength: _fmtDuration(dayH, dayM)
-  };
-
-  var cosGH = (Math.cos(84 * DEG_TO_RAD) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
-  if (cosGH >= -1 && cosGH <= 1) {
-    var HAgh = Math.acos(cosGH) * 180 / Math.PI;
-    result.goldenHour = _fmtMinutes(720 - 4 * (lon - HAgh) - EoT + tzOffset);
+  var latRad = lat * DEG_TO_RAD, cd = Math.cos(latRad), sd = Math.sin(latRad);
+  var tzOffset = (typeof tzOffsetMin === 'number') ? tzOffsetMin : -now.getTimezoneOffset();
+  // Minutes-of-day for the morning/evening crossings of a given sun-center
+  // depression below the horizon (deg). 0.833 = refraction + semidiameter;
+  // negative = above the horizon (golden hour).
+  function cross(depressDeg) {
+    var cosHA = (Math.cos((90 + depressDeg) * DEG_TO_RAD) - sd * Math.sin(decl)) / (cd * Math.cos(decl));
+    if (cosHA > 1 || cosHA < -1) return null;
+    var HA = Math.acos(cosHA) * 180 / Math.PI;
+    return { rise: 720 - 4 * (lon + HA) - EoT + tzOffset, set: 720 - 4 * (lon - HA) - EoT + tzOffset };
   }
+  var sun = cross(0.833);
+  if (!sun) {
+    var cosH0 = (Math.cos(90.833 * DEG_TO_RAD) - sd * Math.sin(decl)) / (cd * Math.cos(decl));
+    return { polar: cosH0 > 1 ? t('alm_polar_night') : t('alm_midnight_sun') };
+  }
+  var dayLength = sun.set - sun.rise;
+  var result = {
+    sunrise: _fmtMinutes(sun.rise),
+    sunset: _fmtMinutes(sun.set),
+    dayLength: _fmtDuration(Math.floor(dayLength / 60), Math.round(dayLength % 60))
+  };
+  var gold = cross(-6);
+  if (gold) result.goldenHour = _fmtMinutes(gold.set);
+  // Twilight bands (F8): sun-center 6/12/18 deg below the horizon.
+  var civ = cross(6), naut = cross(12), astr = cross(18);
+  if (civ)  { result.civilDawn = _fmtMinutes(civ.rise);   result.civilDusk = _fmtMinutes(civ.set); }
+  if (naut) { result.nauticalDawn = _fmtMinutes(naut.rise); result.nauticalDusk = _fmtMinutes(naut.set); }
+  if (astr) { result.astroDawn = _fmtMinutes(astr.rise);   result.astroDusk = _fmtMinutes(astr.set); }
   return result;
 }
 
@@ -2746,10 +2795,30 @@ function _moonPosition(date, lat, lon) {
   if (isNaN(cosAz)) cosAz = 0; // zenith/nadir at poles — azimuth undefined
   var azimuth = Math.acos(cosAz) * 180 / Math.PI;
   if (HA > 0) azimuth = 360 - azimuth;
-  // Parallactic angle: tilt of the moon's bright limb from vertical as seen by observer
-  // q = atan2(sin(HA), tan(lat)*cos(dec) - sin(dec)*cos(HA))
+  // Geocentric → apparent altitude (F5): topocentric parallax pulls the Moon
+  // down (up to ~1° at the horizon), then refraction lifts the apparent disc.
+  var hp = Math.asin(6378.14 / _moonDistance(date)) * 180 / Math.PI; // horizontal parallax
+  altitude = altitude - hp * Math.cos(altitude * DEG_TO_RAD);
+  if (altitude > -1) altitude += (1 / Math.tan((altitude + 7.31 / (altitude + 4.4)) * DEG_TO_RAD)) / 60; // Bennett refraction, deg
+  // Parallactic angle q: rotation from celestial north to the observer's
+  // local vertical. q = atan2(sin HA, tan(lat)·cos dec − sin dec·cos HA)
   var parallactic = Math.atan2(Math.sin(HA), Math.tan(latR2) * Math.cos(dec) - Math.sin(dec) * Math.cos(HA));
-  return { altitude: altitude, azimuth: azimuth, parallactic: parallactic * 180 / Math.PI };
+  // Bright-limb position angle chi (Meeus 48.5): direction of the Sun from the
+  // Moon's disc, measured from celestial north. Needs the Sun's equatorial
+  // position. The terminator's tilt as the observer SEES it is chi − q — the
+  // old code used q alone, tilting the crescent's horns 10-25° off.
+  var Lsun = 280.4665 + 36000.7698 * T;
+  var lamSun = (Lsun + 1.915 * Math.sin(Ms * DEG_TO_RAD) + 0.020 * Math.sin(2 * Ms * DEG_TO_RAD)) * DEG_TO_RAD;
+  var raSun = Math.atan2(Math.cos(eps) * Math.sin(lamSun), Math.cos(lamSun));
+  var decSun = Math.asin(Math.sin(eps) * Math.sin(lamSun));
+  var dA = raSun - ra;
+  var chi = Math.atan2(Math.cos(decSun) * Math.sin(dA),
+    Math.sin(decSun) * Math.cos(dec) - Math.cos(decSun) * Math.sin(dec) * Math.cos(dA));
+  return {
+    altitude: altitude, azimuth: azimuth,
+    parallactic: parallactic * 180 / Math.PI,
+    brightLimb: (chi - parallactic) * 180 / Math.PI
+  };
 }
 
 // ── Star catalog — bright stars with real RA/Dec coordinates ──
@@ -3962,7 +4031,7 @@ function _applyRegionHolidays(region, year, month, add) {
 // periodic correction — accurate to minutes. The old code pinned fixed
 // dates (Mar 20/Jun 20/Sep 22/Dec 21), which drift a day across years.
 var _SEASON_JDE0 = [
-  [2451623.80984, 365242.37404, 0.05169, -0.00411, -0.00057],  // March eq.
+  [2451623.80984, 365242.37404, -0.05169, 0.00411, 0.00057],   // March eq. (Meeus 27.B; signs were transcribed flipped)
   [2451716.56767, 365241.62603, 0.00325, 0.00888, -0.00030],   // June sol.
   [2451810.21715, 365242.01767, -0.11575, 0.00337, 0.00078],   // Sept eq.
   [2451900.05952, 365242.74049, -0.06223, -0.00823, 0.00032]   // Dec sol.
@@ -4080,21 +4149,27 @@ function _getAlmanacEvents(sys, year, month) {
   }
 
   else if (sys === 'hebrew') {
-    // Hebrew month indices: 1=Tishrei, 2=Marcheshvan, 3=Kislev, 4=Tevet, 5=Shevat,
-    // 6=Adar I (leap), 7=Adar/Adar II, 8=Nisan, 9=Iyar, 10=Sivan, 11=Tammuz, 12=Av, 13=Elul
+    // `month` arrives as a DISPLAY position into the Hebrew month list, which
+    // omits Adar I in non-leap years — so from position 6 on it sits one
+    // ahead of the internal month code (1=Tishrei … 7=Adar/Adar II, 8=Nisan
+    // … 13=Elul). Convert, then key on the code. The old code treated the
+    // position AS the code, landing Passover in Iyar, Shavuot in Tammuz, etc.
+    // in every non-leap year (12 of 19; 5786/2026 is one).
     var isLeap = _hebrewLeapYear(year);
-    var adar = isLeap ? 7 : 6; // Adar (or Adar II in leap year)
-    if (month === 1) { add(1, 'Rosh Hashanah', 'holiday'); add(2, 'Rosh Hashanah II', 'holiday'); add(3, 'Tzom Gedaliah', 'holiday'); add(10, 'Yom Kippur', 'holiday'); add(15, 'Sukkot', 'holiday'); add(16, 'Sukkot II', 'holiday'); add(21, 'Hoshana Rabbah', 'holiday'); add(22, "Sh'mini Atzeret", 'holiday'); add(23, 'Simchat Torah', 'holiday'); }
-    if (month === 3) { add(25, 'Hanukkah I', 'holiday'); add(26, 'Hanukkah II', 'holiday'); add(27, 'Hanukkah III', 'holiday'); add(28, 'Hanukkah IV', 'holiday'); add(29, 'Hanukkah V', 'holiday'); add(30, 'Hanukkah VI', 'holiday'); }
-    if (month === 4) { add(1, 'Hanukkah VII', 'holiday'); add(2, 'Hanukkah VIII', 'holiday'); add(10, 'Asara B\'Tevet', 'holiday'); }
-    if (month === 5) { add(15, "Tu BiShvat", 'holiday'); }
-    if (month === adar) { add(13, 'Fast of Esther', 'holiday'); add(14, 'Purim', 'holiday'); add(15, 'Shushan Purim', 'holiday'); }
-    if (month === 8) { add(14, 'Erev Pesach', 'holiday'); add(15, 'Passover', 'holiday'); add(16, 'Passover II', 'holiday'); add(21, 'Passover VII', 'holiday'); add(22, 'Passover VIII', 'holiday'); add(27, 'Yom HaShoah', 'holiday'); }
-    if (month === 9) { add(4, 'Yom HaZikaron', 'holiday'); add(5, "Yom Ha'Atzmaut", 'holiday'); add(14, 'Pesach Sheni', 'holiday'); add(18, "Lag BaOmer", 'holiday'); add(28, 'Yom Yerushalayim', 'holiday'); }
-    if (month === 10) { add(6, 'Shavuot', 'holiday'); add(7, 'Shavuot II', 'holiday'); }
-    if (month === 11) { add(17, "Tzom Tammuz", 'holiday'); }
-    if (month === 12) { add(9, "Tisha B'Av", 'holiday'); add(15, "Tu B'Av", 'holiday'); }
-    if (month === 13) { add(29, 'Erev Rosh Hash.', 'holiday'); }
+    var code = (!isLeap && month >= 6) ? month + 1 : month;
+    var HAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+    var kislevLen = _hebrewMonthDays(year, 3); // 29 or 30 — shifts Hanukkah's tail into Tevet
+    if (code === 1) { add(1, 'Rosh Hashanah', 'holiday'); add(2, 'Rosh Hashanah II', 'holiday'); add(3, 'Tzom Gedaliah', 'holiday'); add(10, 'Yom Kippur', 'holiday'); add(15, 'Sukkot', 'holiday'); add(16, 'Sukkot II', 'holiday'); add(21, 'Hoshana Rabbah', 'holiday'); add(22, "Sh'mini Atzeret", 'holiday'); add(23, 'Simchat Torah', 'holiday'); }
+    if (code === 3) { for (var _hk = 25; _hk <= kislevLen; _hk++) add(_hk, 'Hanukkah ' + HAN[_hk - 24], 'holiday'); }
+    if (code === 4) { var _ht = 8 - (kislevLen - 24); for (var _td = 1; _td <= _ht; _td++) add(_td, 'Hanukkah ' + HAN[kislevLen - 24 + _td], 'holiday'); add(10, "Asara B'Tevet", 'holiday'); }
+    if (code === 5) { add(15, "Tu BiShvat", 'holiday'); }
+    if (code === 7) { add(13, 'Fast of Esther', 'holiday'); add(14, 'Purim', 'holiday'); add(15, 'Shushan Purim', 'holiday'); }
+    if (code === 8) { add(14, 'Erev Pesach', 'holiday'); add(15, 'Passover', 'holiday'); add(16, 'Passover II', 'holiday'); add(21, 'Passover VII', 'holiday'); add(22, 'Passover VIII', 'holiday'); add(27, 'Yom HaShoah', 'holiday'); }
+    if (code === 9) { add(4, 'Yom HaZikaron', 'holiday'); add(5, "Yom Ha'Atzmaut", 'holiday'); add(14, 'Pesach Sheni', 'holiday'); add(18, "Lag BaOmer", 'holiday'); add(28, 'Yom Yerushalayim', 'holiday'); }
+    if (code === 10) { add(6, 'Shavuot', 'holiday'); add(7, 'Shavuot II', 'holiday'); }
+    if (code === 11) { add(17, "Tzom Tammuz", 'holiday'); }
+    if (code === 12) { add(9, "Tisha B'Av", 'holiday'); add(15, "Tu B'Av", 'holiday'); }
+    if (code === 13) { add(29, 'Erev Rosh Hash.', 'holiday'); }
   }
 
   else if (sys === 'islamic') {

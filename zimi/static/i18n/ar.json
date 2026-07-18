@@ -932,5 +932,7 @@
   "mirror_progress_seeding": "جارٍ بذر المكتبة… {a}/{b}",
   "mirror_progress_archiving": "جارٍ نسخ تورنتات الكتالوج… {a}/{b}",
   "hot_zims_pinned_n": "{n} مثبتة",
-  "peer_name_hint": "الاسم الذي تراه أجهزة Zimi الأخرى. يسري بعد إعادة التشغيل."
+  "peer_name_hint": "الاسم الذي تراه أجهزة Zimi الأخرى. يسري بعد إعادة التشغيل.",
+  "alm_first_light": "أول ضوء",
+  "alm_last_light": "آخر ضوء"
 }

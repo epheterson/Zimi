@@ -932,5 +932,7 @@
   "mirror_progress_seeding": "लाइब्रेरी सीड हो रही है… {a}/{b}",
   "mirror_progress_archiving": "कैटलॉग टोरेंट का बैकअप… {a}/{b}",
   "hot_zims_pinned_n": "{n} पिन किए गए",
-  "peer_name_hint": "वह नाम जो अन्य Zimi डिवाइस देखते हैं। पुनरारंभ के बाद लागू।"
+  "peer_name_hint": "वह नाम जो अन्य Zimi डिवाइस देखते हैं। पुनरारंभ के बाद लागू।",
+  "alm_first_light": "पहली रोशनी",
+  "alm_last_light": "आखिरी रोशनी"
 }

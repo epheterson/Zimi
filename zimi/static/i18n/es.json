@@ -932,5 +932,7 @@
   "mirror_progress_seeding": "Compartiendo biblioteca… {a}/{b}",
   "mirror_progress_archiving": "Copiando torrents del catálogo… {a}/{b}",
   "hot_zims_pinned_n": "{n} fijados",
-  "peer_name_hint": "El nombre que ven otros dispositivos Zimi. Se aplica tras reiniciar."
+  "peer_name_hint": "El nombre que ven otros dispositivos Zimi. Se aplica tras reiniciar.",
+  "alm_first_light": "Primera luz",
+  "alm_last_light": "Última luz"
 }

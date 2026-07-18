@@ -932,5 +932,7 @@
   "mirror_progress_seeding": "Partage de la bibliothèque… {a}/{b}",
   "mirror_progress_archiving": "Sauvegarde des torrents du catalogue… {a}/{b}",
   "hot_zims_pinned_n": "{n} épinglés",
-  "peer_name_hint": "Le nom que voient les autres appareils Zimi. Effectif après redémarrage."
+  "peer_name_hint": "Le nom que voient les autres appareils Zimi. Effectif après redémarrage.",
+  "alm_first_light": "Première lueur",
+  "alm_last_light": "Dernière lueur"
 }
