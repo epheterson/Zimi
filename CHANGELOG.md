@@ -9,12 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.7.2] - 2026-07-17
 
-The "Everywhere + Forever" release. Both open field reports fixed within
-a day (#30, #28), and the distribution story finished: desktop apps that
-torrent out of the box, mirror nodes that can carry the whole catalog
-through an internet blackout, and an almanac that tells the truth about
-every date it shows. Rounded out with a sharing panel that's rock-solid
-and honest, and BitTorrent that actually seeds what it says it will.
+Both open field reports fixed within a day (#30, #28), and the
+distribution story finished: desktop apps that torrent out of the box,
+mirror nodes that can carry the whole catalog through an internet
+blackout, and an almanac that tells the truth about every date it shows.
+Rounded out with a sharing panel that's rock-solid and honest, and
+BitTorrent that actually seeds what it says it will.
 
 ### Highlights
 
