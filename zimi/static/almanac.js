@@ -1789,18 +1789,56 @@ function _tzUtcOffsetMin(tz, now) {
 // share a zone, DST included), with the gap between the city's civil offset
 // and the location's solar offset (lon/15 h) as a mild tie-break — 1 h of
 // offset mismatch costs the same as 1° of distance.
+// Denser anchor set for mapping a clicked location to its timezone. The
+// world-clock GRID stays one-city-per-offset (_TZ_CITIES); resolution needs
+// more points or wide political zones misroute — Central European Time
+// spans Madrid to Warsaw, so with Paris as the only CET anchor, Germany
+// landed on London (#28). Pure nearest-distance over real IANA zones — no
+// solar-time term (that was what tipped eastern-CET onto UK time).
+var _TZ_ANCHORS = [
+  // Americas
+  [21.31, -157.86, 'Pacific/Honolulu'], [61.22, -149.90, 'America/Anchorage'],
+  [34.05, -118.24, 'America/Los_Angeles'], [49.28, -123.12, 'America/Vancouver'],
+  [39.74, -104.99, 'America/Denver'], [33.45, -112.07, 'America/Phoenix'],
+  [41.88, -87.63, 'America/Chicago'], [19.43, -99.13, 'America/Mexico_City'],
+  [40.71, -74.01, 'America/New_York'], [43.65, -79.38, 'America/Toronto'],
+  [4.71, -74.07, 'America/Bogota'], [-12.05, -77.04, 'America/Lima'],
+  [-33.45, -70.67, 'America/Santiago'], [-23.55, -46.63, 'America/Sao_Paulo'],
+  [-34.60, -58.38, 'America/Argentina/Buenos_Aires'],
+  // Europe / Africa
+  [64.15, -21.94, 'Atlantic/Reykjavik'], [51.51, -0.13, 'Europe/London'],
+  [53.35, -6.26, 'Europe/Dublin'], [38.72, -9.14, 'Europe/Lisbon'],
+  [40.42, -3.70, 'Europe/Madrid'], [48.86, 2.35, 'Europe/Paris'],
+  [52.52, 13.40, 'Europe/Berlin'], [52.37, 4.90, 'Europe/Amsterdam'],
+  [41.90, 12.50, 'Europe/Rome'], [47.37, 8.54, 'Europe/Zurich'],
+  [52.23, 21.01, 'Europe/Warsaw'], [59.33, 18.06, 'Europe/Stockholm'],
+  [37.98, 23.73, 'Europe/Athens'], [60.17, 24.94, 'Europe/Helsinki'],
+  [44.43, 26.10, 'Europe/Bucharest'], [50.45, 30.52, 'Europe/Kyiv'],
+  [41.01, 28.98, 'Europe/Istanbul'], [55.76, 37.62, 'Europe/Moscow'],
+  [6.52, 3.38, 'Africa/Lagos'], [30.04, 31.24, 'Africa/Cairo'],
+  [-1.29, 36.82, 'Africa/Nairobi'], [-26.20, 28.05, 'Africa/Johannesburg'],
+  [33.57, -7.59, 'Africa/Casablanca'],
+  // Asia / Middle East / Oceania
+  [35.69, 51.39, 'Asia/Tehran'], [24.71, 46.68, 'Asia/Riyadh'],
+  [25.20, 55.27, 'Asia/Dubai'], [24.86, 67.01, 'Asia/Karachi'],
+  [19.08, 72.88, 'Asia/Kolkata'], [27.72, 85.32, 'Asia/Kathmandu'],
+  [23.81, 90.41, 'Asia/Dhaka'], [13.76, 100.50, 'Asia/Bangkok'],
+  [-6.21, 106.85, 'Asia/Jakarta'], [1.35, 103.82, 'Asia/Singapore'],
+  [22.32, 114.17, 'Asia/Hong_Kong'], [31.23, 121.47, 'Asia/Shanghai'],
+  [14.60, 120.98, 'Asia/Manila'], [-31.95, 115.86, 'Australia/Perth'],
+  [37.57, 126.98, 'Asia/Seoul'], [35.68, 139.69, 'Asia/Tokyo'],
+  [-34.93, 138.60, 'Australia/Adelaide'], [-27.47, 153.03, 'Australia/Brisbane'],
+  [-33.87, 151.21, 'Australia/Sydney'], [-36.85, 174.76, 'Pacific/Auckland']
+];
+
 function _almTzForLocation(lat, lon) {
-  var now = new Date();
-  var solarOffMin = (lon / 15) * 60;
-  var best = null, bestScore = Infinity;
-  for (var i = 0; i < _TZ_CITIES.length; i++) {
-    var offMin;
-    try { offMin = _tzUtcOffsetMin(_TZ_CITIES[i].tz, now); } catch (e) { continue; }
-    var dlat = lat - _TZ_CITIES[i].lat;
-    var dlon = (lon - _TZ_CITIES[i].lon) * Math.cos(lat * DEG_TO_RAD);
-    var distDeg = Math.sqrt(dlat * dlat + dlon * dlon);
-    var score = distDeg + Math.abs(offMin - solarOffMin) / 60;
-    if (score < bestScore) { bestScore = score; best = _TZ_CITIES[i].tz; }
+  var best = null, bestD = Infinity;
+  for (var i = 0; i < _TZ_ANCHORS.length; i++) {
+    var a = _TZ_ANCHORS[i];
+    var dlat = lat - a[0];
+    var dlon = (lon - a[1]) * Math.cos(lat * DEG_TO_RAD);
+    var d = dlat * dlat + dlon * dlon;
+    if (d < bestD) { bestD = d; best = a[2]; }
   }
   return best;
 }
@@ -1811,18 +1849,29 @@ function _initTzClock(now) {
   var pillsEl = document.getElementById('almanac-tz-pills');
   if (!pillsEl) return;
 
-  // Detect user's current timezone and find matching pill
+  // Highlight the card for the user's (or selected) timezone. Match the
+  // exact IANA zone first; otherwise the card sharing its current UTC offset
+  // — a resolved zone like Europe/Berlin isn't a grid city, but it lines up
+  // with the +2 column (Paris), so the right column still lights up.
   var userTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  var targetTz = _almSelectedTz || userTz;
+  var targetOff = null;
+  try { targetOff = _tzUtcOffsetMin(targetTz, now); } catch (e) {}
   var localMatch = -1;
   for (var i = 0; i < _TZ_CITIES.length; i++) {
-    if (_TZ_CITIES[i].tz === userTz) { localMatch = i; break; }
+    if (_TZ_CITIES[i].tz === targetTz) { localMatch = i; break; }
+  }
+  if (localMatch === -1 && targetOff !== null) {
+    for (var i = 0; i < _TZ_CITIES.length; i++) {
+      try { if (_tzUtcOffsetMin(_TZ_CITIES[i].tz, now) === targetOff) { localMatch = i; break; } } catch (e) {}
+    }
   }
 
   // Render city cards with times
   var html = '';
   for (var i = 0; i < _TZ_CITIES.length; i++) {
     var tzc = _TZ_CITIES[i];
-    var isActive = (i === localMatch && _almSelectedTz === null) || (_almSelectedTz === tzc.tz);
+    var isActive = (i === localMatch);
     var tzTime = '';
     try { tzTime = _tzFmt(tzc.tz, { hour: 'numeric', minute: '2-digit', hour12: true }).format(now); } catch(e) { continue; }
     // Compute UTC offset — use en-US with full date+time for accurate diff
@@ -3980,19 +4029,20 @@ function _getAlmanacEvents(sys, year, month) {
   }
 
   if (sys === 'gregorian') {
-    // International base — observed widely enough to show everywhere
-    if (month === 1) { add(1, "New Year's Day", 'holiday'); add(6, 'Epiphany', 'holiday'); }
-    if (month === 2) { add(14, "Valentine's Day", 'holiday'); }
-    if (month === 3) { add(8, "International Women's Day", 'holiday'); add(14, 'Pi Day', 'holiday'); add(17, "St. Patrick's Day", 'holiday'); add(22, 'World Water Day', 'holiday'); }
-    if (month === 4) { add(1, "April Fools' Day", 'holiday'); add(22, 'Earth Day', 'holiday'); add(23, 'World Book Day', 'holiday'); }
-    if (month === 5) { add(1, "May Day / Workers' Day", 'holiday'); add(4, 'Star Wars Day', 'holiday'); }
-    if (month === 6) { add(5, 'World Environment Day', 'holiday'); add(21, 'International Yoga Day', 'holiday'); }
-    if (month === 7) { add(20, 'Moon Landing Day', 'holiday'); add(30, 'International Friendship Day', 'holiday'); }
-    if (month === 8) { add(12, 'International Youth Day', 'holiday'); add(19, 'World Photography Day', 'holiday'); }
-    if (month === 9) { add(8, 'International Literacy Day', 'holiday'); }
-    if (month === 10) { add(5, "World Teachers' Day", 'holiday'); add(24, 'United Nations Day', 'holiday'); add(31, 'Halloween', 'holiday'); }
-    if (month === 11) { add(10, 'World Science Day', 'holiday'); }
-    if (month === 12) { add(10, 'Human Rights Day', 'holiday'); add(24, 'Christmas Eve', 'holiday'); add(25, 'Christmas Day', 'holiday'); add(31, "New Year's Eve", 'holiday'); }
+    // International base — observed widely enough to show everywhere. Mix of
+    // UN international days, cultural observances, and a few for fun.
+    if (month === 1) { add(1, "New Year's Day", 'holiday'); add(4, 'World Braille Day', 'holiday'); add(6, 'Epiphany', 'holiday'); add(24, 'International Day of Education', 'holiday'); add(27, 'Holocaust Remembrance Day', 'holiday'); }
+    if (month === 2) { add(4, 'World Cancer Day', 'holiday'); add(11, 'Intl. Day of Women in Science', 'holiday'); add(12, 'Darwin Day', 'holiday'); add(14, "Valentine's Day", 'holiday'); add(21, 'International Mother Language Day', 'holiday'); }
+    if (month === 3) { add(3, 'World Wildlife Day', 'holiday'); add(8, "International Women's Day", 'holiday'); add(14, 'Pi Day', 'holiday'); add(17, "St. Patrick's Day", 'holiday'); add(20, 'International Day of Happiness', 'holiday'); add(21, 'World Poetry Day', 'holiday'); add(22, 'World Water Day', 'holiday'); add(27, 'World Theatre Day', 'holiday'); }
+    if (month === 4) { add(1, "April Fools' Day", 'holiday'); add(7, 'World Health Day', 'holiday'); add(15, 'World Art Day', 'holiday'); add(22, 'Earth Day', 'holiday'); add(23, 'World Book Day', 'holiday'); add(29, 'International Dance Day', 'holiday'); }
+    if (month === 5) { add(1, "May Day / Workers' Day", 'holiday'); add(3, 'World Press Freedom Day', 'holiday'); add(4, 'Star Wars Day', 'holiday'); add(15, 'International Day of Families', 'holiday'); add(20, 'World Bee Day', 'holiday'); add(25, 'Towel Day', 'holiday'); }
+    if (month === 6) { add(5, 'World Environment Day', 'holiday'); add(8, 'World Oceans Day', 'holiday'); add(20, 'World Refugee Day', 'holiday'); add(21, 'International Yoga Day', 'holiday'); add(21, 'World Music Day', 'holiday'); }
+    if (month === 7) { add(11, 'World Population Day', 'holiday'); add(17, 'World Emoji Day', 'holiday'); add(18, 'Nelson Mandela Day', 'holiday'); add(20, 'Moon Landing Day', 'holiday'); add(30, 'International Friendship Day', 'holiday'); }
+    if (month === 8) { add(8, 'International Cat Day', 'holiday'); add(12, 'International Youth Day', 'holiday'); add(19, 'World Humanitarian Day', 'holiday'); add(19, 'World Photography Day', 'holiday'); add(26, 'International Dog Day', 'holiday'); }
+    if (month === 9) { add(8, 'International Literacy Day', 'holiday'); add(21, 'International Day of Peace', 'holiday'); add(23, 'International Day of Sign Languages', 'holiday'); add(27, 'World Tourism Day', 'holiday'); }
+    if (month === 10) { add(1, 'International Coffee Day', 'holiday'); add(4, 'World Animal Day', 'holiday'); add(5, "World Teachers' Day", 'holiday'); add(10, 'World Mental Health Day', 'holiday'); add(16, 'World Food Day', 'holiday'); add(24, 'United Nations Day', 'holiday'); add(31, 'Halloween', 'holiday'); }
+    if (month === 11) { add(10, 'World Science Day', 'holiday'); add(13, 'World Kindness Day', 'holiday'); add(19, "International Men's Day", 'holiday'); add(20, "World Children's Day", 'holiday'); add(21, 'World Television Day', 'holiday'); }
+    if (month === 12) { add(3, 'Intl. Day of Persons with Disabilities', 'holiday'); add(5, 'International Volunteer Day', 'holiday'); add(10, 'Human Rights Day', 'holiday'); add(11, 'International Mountain Day', 'holiday'); add(24, 'Christmas Eve', 'holiday'); add(25, 'Christmas Day', 'holiday'); add(31, "New Year's Eve", 'holiday'); }
     // Mother's/Father's Day on the US dates — the majority convention
     // (US, CA, AU, DE, IT, BR, IN, CN, JP and others)
     if (month === 5) { add(_nthWeekday(year, 5, 0, 2), "Mother's Day", 'holiday'); }
