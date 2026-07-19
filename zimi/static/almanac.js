@@ -273,6 +273,29 @@ function _onThisDay(date) {
   return _ON_THIS_DAY[mm + '-' + dd] || [];
 }
 
+// Which principal phase (if any) falls on a given calendar day, or null.
+// Marking only the four turning points keeps the month readable: a glyph on
+// every day is visual noise, since consecutive days differ by only ~12°.
+var _PRINCIPAL_PHASES = [
+  { p: 0,    name: 'New Moon' },
+  { p: 0.25, name: 'First Quarter' },
+  { p: 0.5,  name: 'Full Moon' },
+  { p: 0.75, name: 'Last Quarter' }
+];
+
+function _principalPhaseOnDay(cellJDN) {
+  var noon = (cellJDN - 2440587.5) * 86400000 + 43200000;
+  var p0 = _moonPhase(new Date(noon - 43200000)).phase; // day start
+  var p1 = _moonPhase(new Date(noon + 43200000)).phase; // day end
+  for (var i = 0; i < _PRINCIPAL_PHASES.length; i++) {
+    var tg = _PRINCIPAL_PHASES[i].p;
+    // The cycle wraps 1 -> 0, so a new moon shows up as p0 > p1.
+    var hit = (p0 <= p1) ? (p0 <= tg && tg < p1) : (tg >= p0 || tg < p1);
+    if (hit) return _PRINCIPAL_PHASES[i];
+  }
+  return null;
+}
+
 function _renderAlmanacContent() {
   var now = new Date();
   var m = _moonPhase(now);
@@ -321,7 +344,6 @@ function _renderAlmanacContent() {
   html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_illuminated') + '</div><div class="alm-card-val">' + m.illumination + '%</div></div>';
   html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_moon_age') + '</div><div class="alm-card-val">' + age + ' ' + t('alm_days') + '</div></div>';
   html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_distance') + '</div><div class="alm-card-val">' + Math.round(dist).toLocaleString() + ' ' + t('alm_km') + '</div></div>';
-  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_new_moon') + '</div><div class="alm-card-val">' + untilNew + ' ' + t('alm_days') + '</div></div>';
   var _nfm = _nextFullMoon(now);
   if (_nfm) {
     var _nfmStr = _nfm.date.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
@@ -337,11 +359,6 @@ function _renderAlmanacContent() {
     html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_daylight') + '</div><div class="alm-card-val">' + sunInfo0.dayLength + '</div></div>';
     if (sunInfo0.goldenHour) {
       html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_golden') + '</div><div class="alm-card-val" style="color:#d4aa64">' + sunInfo0.goldenHour + '</div></div>';
-    }
-    // Civil twilight — first/last light (sun 6° below the horizon).
-    if (sunInfo0.civilDawn) {
-      html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_first_light') + '</div><div class="alm-card-val" style="color:#8a9bd4">' + sunInfo0.civilDawn + '</div></div>';
-      html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_last_light') + '</div><div class="alm-card-val" style="color:#8a9bd4">' + sunInfo0.civilDusk + '</div></div>';
     }
   }
   html += '</div>';
@@ -3755,9 +3772,13 @@ function _initStarChartDrag(canvas) {
     var loc = _getLocation();
     var lat = (_starChartViewLat === null ? loc.lat : _starChartViewLat) + dy * 0.4;
     var lon = (_starChartViewLon === null ? loc.lon : _starChartViewLon) - dx * 0.6;
-    // Clamp latitude short of the poles (azimuth is undefined there) and wrap
-    // longitude so dragging east past the date line comes back around.
-    _starChartViewLat = Math.max(-89.5, Math.min(89.5, lat));
+    // Carry over the poles rather than hitting a wall: walking north past the
+    // North Pole is walking south down the opposite meridian. Longitude wraps
+    // at the date line, so panning is continuous in both axes.
+    if (lat > 90) { lat = 180 - lat; lon += 180; }
+    else if (lat < -90) { lat = -180 - lat; lon += 180; }
+    // A hair short of the pole itself, where azimuth is undefined.
+    _starChartViewLat = Math.max(-89.9, Math.min(89.9, lat));
     _starChartViewLon = ((lon + 180) % 360 + 360) % 360 - 180;
     _drawStarChart(_starChartTime());
   };
@@ -4964,8 +4985,11 @@ function _drawAlmanacGrid() {
     html += '<div class="' + cls + '" onclick="_almSelectDay(' + cellJDN + ')">';
     html += '<div class="alm-num">' + d + '</div>';
     // Moon phase for this calendar day (noon UTC), tucked top-right.
-    var _cellMoon = _moonPhase(new Date((cellJDN - 2440587.5) * 86400000 + 43200000));
-    html += '<span class="cal-moon-wrap" title="' + _almEsc(_localMoonName(_cellMoon.name)) + '">' + _moonGlyphSVG(_cellMoon.phase, 15) + '</span>';
+    var _pp = _principalPhaseOnDay(cellJDN);
+    if (_pp) {
+      html += '<span class="cal-moon-wrap" title="' + _almEsc(_localMoonName(_pp.name)) + '">' +
+        _moonGlyphSVG(_pp.p, 16) + '</span>';
+    }
     var shown = Math.min(dayEvents.length, 2);
     for (var ei = 0; ei < shown; ei++) {
       var ev = dayEvents[ei];
@@ -5004,6 +5028,9 @@ function _drawAlmanacGrid() {
     }
   }
 
+  // Numbers for the selected day (moon + sun pills, On This Day).
+  html += _almDayPillsHtml(_almSelectedJDN);
+
   // Quiet caption saying whose national days are shown. Always present on
   // the Gregorian calendar — no pack means the worldwide set, and saying
   // so beats an unexplained absence of holidays.
@@ -5041,6 +5068,64 @@ function _almSelectDay(jdn) {
     _almMonth = cal.month;
   }
   _drawAlmanacGrid();
+}
+
+// Pills for whichever day is selected on the calendar: the same moon-row /
+// sun-row composition as the header, but for that date, plus any On This Day
+// entries. Without this there was no way to see a day's numbers except today's.
+function _almDayPillsHtml(jdn) {
+  var g = _jdnToGregorian(jdn);
+  var date = new Date(g.year, g.month - 1, g.day, 12, 0, 0); // local noon
+  var loc = _getLocation();
+  var tzOff;
+  try { tzOff = _tzUtcOffsetMin(_almTzForLocation(loc.lat, loc.lon), date); }
+  catch (e) { tzOff = -date.getTimezoneOffset(); }
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  var mp = _moonPhase(date);
+  var dist = _moonDistance(date);
+  var age = (mp.phase * 29.53).toFixed(1);
+  var sun = _computeSunTimes(date, loc.lat, loc.lon, tzOff);
+
+  function pill(lbl, val, style) {
+    return '<div class="alm-card"><div class="alm-card-lbl">' + lbl + '</div>' +
+      '<div class="alm-card-val"' + (style ? ' style="' + style + '"' : '') + '>' + val + '</div></div>';
+  }
+
+  var html = '<div class="alm-daysel">';
+  html += '<div class="alm-daysel-head">' +
+    _almEsc(date.toLocaleDateString(lang, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })) +
+    '<span class="alm-daysel-moon">' + _moonGlyphSVG(mp.phase, 15) + ' ' +
+    _almEsc(_localMoonName(mp.name)) + '</span></div>';
+
+  html += '<div class="alm-cards">';
+  html += pill(t('alm_illuminated'), mp.illumination + '%');
+  html += pill(t('alm_moon_age'), age + ' ' + t('alm_days'));
+  html += pill(t('alm_distance'), Math.round(dist).toLocaleString() + ' ' + t('alm_km'));
+  var _dnf = _nextFullMoon(date);
+  html += pill(t('alm_next_full'), _dnf ? _dnf.date.toLocaleDateString(lang, { month: 'short', day: 'numeric' }) : '\u2014',
+    _dnf && _dnf.isSuper ? 'color:#e0b060' : '');
+  if (sun.polar) {
+    html += '<div class="alm-card" style="grid-column:span 4"><div class="alm-card-val">' + sun.polar + '</div></div>';
+  } else {
+    html += pill(t('alm_sunrise'), sun.sunrise);
+    html += pill(t('alm_sunset'), sun.sunset);
+    html += pill(t('alm_daylight'), sun.dayLength);
+    html += pill(t('alm_golden'), sun.goldenHour || '\u2014', 'color:#d4aa64');
+  }
+  html += '</div>';
+
+  // On This Day for the selected date, if the calendar has anything for it.
+  var otd = _onThisDay(date);
+  if (otd.length) {
+    html += '<div class="alm-daysel-otd"><div class="alm-daysel-otd-ttl">' + t('alm_on_this_day') + '</div>';
+    for (var i = 0; i < otd.length; i++) {
+      html += '<div class="alm-otd-row"><div class="alm-otd-year">' + String(otd[i].y) + '</div>' +
+        '<div class="alm-otd-text">' + _almEsc(otd[i].t) + '</div></div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
 }
 
 function _almRenderCrossRef(jdn) {

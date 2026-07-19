@@ -234,3 +234,11 @@
 #almanac-starchart:active { cursor: grabbing; }
 .alm-sc-reset { background: none; border: 1px solid var(--border); color: var(--text3); border-radius: 5px; font-size: 10px; padding: 1px 6px; margin-left: 6px; cursor: pointer; }
 .alm-sc-reset:hover { color: var(--amber); border-color: var(--amber-border); }
+/* Selected-day panel: the header's moon/sun composition, for the chosen date */
+.alm-daysel { margin-top: 14px; }
+.alm-daysel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 10px; flex-wrap: wrap; }
+.alm-daysel-moon { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 400; color: var(--text2); }
+.alm-daysel-moon svg { vertical-align: middle; }
+.alm-daysel .alm-cards { margin-bottom: 0; }
+.alm-daysel-otd { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+.alm-daysel-otd-ttl { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
