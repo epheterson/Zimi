@@ -82,7 +82,9 @@ being a NASA-only timeline.
   runs every seed uncapped at the aria2 layer and enforces your ratio cap
   itself — cumulatively, against file size, across restarts — and keeps
   its own ledger of intended seeds, restoring any that are missing at
-  startup. Deliberate stops (your stop button, seeding off, mirror off,
+  startup. Upload is booked every 30 seconds and flushed at shutdown, so
+  the cap is enforced within half a minute and survives restarts to the
+  byte. Deliberate stops (your stop button, seeding off, mirror off,
   deleting the ZIM) remove the intent, so nothing resurrects.
 - **Selections no longer grey out** under the cursor, and today's date circle
   no longer pushes its holidays below the neighbouring cells.

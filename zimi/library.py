@@ -1294,7 +1294,7 @@ def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
     return fetched
 
 
-def apply_seed_policy():
+def apply_seed_policy(normalize=True):
     """Make the CURRENT seed settings govern every live library seed — and
     enforce the ratio cap at the Zimi layer.
 
@@ -1352,11 +1352,15 @@ def apply_seed_policy():
                     changed += 1
                     break
 
-                # Normalize stale numeric aria2 ratios (the old kill switch).
-                current = str(get_opts(gid).get("seed-ratio", ""))
-                if current not in ("", "0", "0.0"):
-                    if backend.change_options(gid, {"seed-ratio": "0"}):
-                        changed += 1
+                # Normalize stale numeric aria2 ratios (the old kill
+                # switch). Skipped on the frequent accounting tick — it
+                # costs one RPC per seed and only matters after upgrades
+                # or settings changes.
+                if normalize:
+                    current = str(get_opts(gid).get("seed-ratio", ""))
+                    if current not in ("", "0", "0.0"):
+                        if backend.change_options(gid, {"seed-ratio": "0"}):
+                            changed += 1
 
                 # Adopt seeds the ledger doesn't know, then account upload.
                 entry = ledger.get(fname)
@@ -1410,6 +1414,34 @@ def apply_seed_policy():
             "stopped" if not seeding else "updated/stopped",
         )
     return changed
+
+
+# Upload accounting cadence. aria2 only counts upload per session, so the
+# ledger must sample often to stay truthful: a 12h-only sample lost up to
+# 12h of upload at every restart (undercount -> the cap overshoots). At 30s
+# the books are near-continuous, cap enforcement reacts within half a
+# minute, and a clean shutdown flushes the tail — worst case after a power
+# cut is ~30s of unaccounted upload.
+_SEED_ACCOUNTING_INTERVAL = 30.0
+
+
+def seed_accounting_loop():
+    """Daemon loop: account upload + enforce the cap every 30s."""
+    while True:
+        time.sleep(_SEED_ACCOUNTING_INTERVAL)
+        try:
+            apply_seed_policy(normalize=False)
+        except Exception as e:
+            log.debug("seed accounting tick failed: %s", e)
+
+
+def flush_seed_accounting():
+    """Final accounting pass before the sidecar goes down, so a clean
+    shutdown loses none of the session's upload."""
+    try:
+        apply_seed_policy(normalize=False)
+    except Exception:
+        pass
 
 
 def stop_mirror_seeds():

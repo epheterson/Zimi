@@ -123,6 +123,12 @@ def start_background_services(http_port):
     import atexit
 
     atexit.register(p2p.shutdown_backend)
+    # Registered AFTER shutdown_backend so it runs BEFORE it (atexit is
+    # LIFO): the final accounting pass reads aria2's upload counters while
+    # the sidecar is still alive, so a clean shutdown loses no upload.
+    from zimi import library as _lib_flush
+
+    atexit.register(_lib_flush.flush_seed_accounting)
 
     def _init_p2p_background():
         try:
@@ -170,6 +176,14 @@ def start_background_services(http_port):
             _lib.mirror_sync()
             _lib.archive_catalog_torrents()
             _lib.ensure_magnets_for_installed()
+            # Continuous upload books: sample aria2 every 30s so the ledger
+            # tracks lifetime upload closely and the ratio cap is enforced
+            # within half a minute, not at the 12h maintenance cadence.
+            threading.Thread(
+                target=_lib.seed_accounting_loop,
+                daemon=True,
+                name="seed-accounting",
+            ).start()
         except Exception as e:
             log.warning("Download resume failed: %s", e)
 

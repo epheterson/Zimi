@@ -702,3 +702,22 @@ def test_policy_stop_removes_ledger_intent(_ledger_env, tmp_path, monkeypatch):
     monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
     assert lib.apply_seed_policy() == 1
     assert "wiki.zim" not in lib._seed_ledger()
+
+
+def test_accounting_tick_skips_option_normalization(tmp_path, monkeypatch):
+    """The 30s tick must stay cheap: no per-seed option RPCs — accounting
+    and cap enforcement only."""
+    import zimi.library as library
+
+    backend = _policy_backend(str(tmp_path), ratio="2.0", uploaded=100, total=1000)
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: True)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
+    monkeypatch.setattr(library._srv, "ZIM_DIR", str(tmp_path))
+    monkeypatch.setattr(library._srv, "ZIMI_DATA_DIR", os.path.join(str(tmp_path), "data"))
+    library.apply_seed_policy(normalize=False)
+    backend.get_options.assert_not_called()
+    backend.change_options.assert_not_called()
+    # but the upload WAS booked
+    assert library._seed_ledger()["wiki.zim"]["uploaded"] == 100
