@@ -67,6 +67,16 @@ being a NASA-only timeline.
   tilt and altitude; sun times in the selected location's timezone with
   proper twilight; Hebrew holidays in non-leap years; eclipse geometry (no
   more phantom eclipses); and the March equinox.
+- **The hero moon's lit side faces the Sun.** A screen-rotation sign error
+  flipped the crescent to the wrong side of the disc, so the big moon and
+  the sky scene contradicted each other after sunset.
+- **The sky scene's Sun sets in the west.** An unnormalized hour angle
+  mirrored the Sun's azimuth to the wrong hemisphere on western-longitude
+  evenings — the sunset painted on the eastern side of the scene.
+- **Seed settings govern live torrents.** Changing the seed ratio (or
+  toggling seeding or mirror) now re-caps every running seed instead of
+  only affecting the next download; a seed resumed from an old session no
+  longer keeps a stale cap forever.
 - **Selections no longer grey out** under the cursor, and today's date circle
   no longer pushes its holidays below the neighbouring cells.
 - **Eclipse rows no longer name a visibility region.** The label came from

@@ -330,9 +330,14 @@ function _almHeadHtml(focus) {
   html += '</div>';
 
   // Hero moon — tilted so the bright limb faces the Sun as the observer sees
-  // it (bright-limb PA minus parallactic), not the parallactic angle alone.
+  // it. brightLimb (chi − q) is the right physical quantity, but the base
+  // moon art has its lit limb at 3 o'clock and CSS rotation runs opposite to
+  // the position-angle sense on screen, so the screen tilt is −(chi−q) − 90.
+  // Applying chi−q raw flipped the crescent to the wrong side of the disc (a
+  // waxing crescent after sunset lit upper-LEFT, away from the set Sun).
   var moonPos = _moonPosition(focus, loc.lat, loc.lon);
-  var moonTilt = (moonPos.brightLimb != null ? moonPos.brightLimb : moonPos.parallactic) || 0;
+  var _limbPA = (moonPos.brightLimb != null ? moonPos.brightLimb : moonPos.parallactic) || 0;
+  var moonTilt = -_limbPA - 90;
   html += '<div class="almanac-hero">';
   html += _renderAlmanacMoon(m, moonTilt);
   html += '<div class="almanac-moon-name">' + _localMoonName(m.name) + '</div>';
@@ -2117,7 +2122,13 @@ function _sunPosition(date, lat, lon) {
   var EoT = _eqOfTime(B);
   var decl = _solarDeclination(B);
   var solarTime = date.getUTCHours() * 60 + date.getUTCMinutes() + date.getUTCSeconds() / 60 + EoT + lon * 4;
-  var hourAngle = (solarTime / 4 - 180) * DEG_TO_RAD;
+  // Normalize the hour angle to [-180, 180) BEFORE the hemisphere flip below.
+  // Unnormalized, western-longitude evenings drove it past -180 and the
+  // `> 0` test misfired — reflecting the azimuth east, so the sky scene drew
+  // the setting Sun on the wrong side of the sky every evening. Altitude was
+  // unaffected (cosine is even), which is why sunrise/sunset times were fine.
+  var haDeg = ((solarTime / 4 - 180) % 360 + 540) % 360 - 180;
+  var hourAngle = haDeg * DEG_TO_RAD;
   var latRad = lat * DEG_TO_RAD;
   var sinAlt = Math.sin(latRad) * Math.sin(decl) + Math.cos(latRad) * Math.cos(decl) * Math.cos(hourAngle);
   var altitude = Math.asin(sinAlt) * 180 / Math.PI;
@@ -2125,7 +2136,7 @@ function _sunPosition(date, lat, lon) {
   cosAz = Math.max(-1, Math.min(1, cosAz));
   if (isNaN(cosAz)) cosAz = 0; // zenith/nadir at poles — azimuth undefined
   var azimuth = Math.acos(cosAz) * 180 / Math.PI;
-  if (hourAngle > 0) azimuth = 360 - azimuth;
+  if (haDeg > 0) azimuth = 360 - azimuth;
   return { altitude: altitude, azimuth: azimuth };
 }
 
