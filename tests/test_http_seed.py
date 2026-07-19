@@ -46,7 +46,8 @@ def test_http_download_seeds_with_hash_check(monkeypatch):
     _args, kwargs = backend.add_torrent.call_args
     assert kwargs["dest_dir"] == "/zim"
     assert kwargs["options"]["bt-hash-check-seed"] == "true"
-    assert kwargs["options"]["seed-ratio"] == "2.0"
+    # aria2 layer uncapped; Zimi enforces the cap (apply_seed_policy)
+    assert kwargs["options"]["seed-ratio"] == "0"
 
 
 def test_no_seed_when_seeding_disabled(monkeypatch):

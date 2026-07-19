@@ -86,7 +86,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.7.2"
+ZIMI_VERSION = "1.7.3"
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
 # 24h — run every 12h so both stay fresh at half-life.
@@ -123,6 +123,12 @@ def start_background_services(http_port):
     import atexit
 
     atexit.register(p2p.shutdown_backend)
+    # Registered AFTER shutdown_backend so it runs BEFORE it (atexit is
+    # LIFO): the final accounting pass reads aria2's upload counters while
+    # the sidecar is still alive, so a clean shutdown loses no upload.
+    from zimi import library as _lib_flush
+
+    atexit.register(_lib_flush.flush_seed_accounting)
 
     def _init_p2p_background():
         try:
@@ -161,11 +167,23 @@ def start_background_services(http_port):
 
             _lib.resume_pending_downloads()
             # Mirror mode seeds the whole installed library; either way,
-            # drop seeds whose file an update has replaced.
+            # drop seeds whose file an update has replaced, and bring
+            # session-resumed seeds under the CURRENT settings (a seed
+            # added under old settings otherwise keeps its old cap forever).
             _lib.retire_stale_seeds()
+            _lib.apply_seed_policy()
+            _lib.reseed_from_ledger()
             _lib.mirror_sync()
             _lib.archive_catalog_torrents()
             _lib.ensure_magnets_for_installed()
+            # Continuous upload books: sample aria2 every 30s so the ledger
+            # tracks lifetime upload closely and the ratio cap is enforced
+            # within half a minute, not at the 12h maintenance cadence.
+            threading.Thread(
+                target=_lib.seed_accounting_loop,
+                daemon=True,
+                name="seed-accounting",
+            ).start()
         except Exception as e:
             log.warning("Download resume failed: %s", e)
 
@@ -207,6 +225,8 @@ def _maintenance_pass():
         _lib._magnets_ensured = False
         _lib.ensure_magnets_for_installed()
         _lib.retire_stale_seeds()
+        _lib.apply_seed_policy()
+        _lib.reseed_from_ledger()
         _lib._catalog_torrents_archived = False
         _lib.mirror_sync()
         _lib.archive_catalog_torrents()

@@ -624,6 +624,10 @@ def handle_manage_get(handler, parsed, params):
         # Live state — peek only. A status view must never spawn the sidecar
         # (with BT on by default that would mean every settings visit).
         backend = p2p.peek_backend() if enabled else None
+        # A crashed sidecar leaves the cached backend object in place, so
+        # "backend is not None" alone would keep reporting a green "running"
+        # dot over a dead engine. Gate liveness on the actual process.
+        sidecar_alive = backend is not None and backend.is_alive()
 
         if not enabled:
             status = "off"
@@ -658,10 +662,10 @@ def handle_manage_get(handler, parsed, params):
                 "hint": hint,
                 "upnp_enabled": p2p.is_upnp_enabled(),
                 "upnp_env_locked": p2p.is_upnp_env_locked(),
-                # True only when the sidecar PROCESS is up (spawned and
-                # answering RPC) — "ready" alone is optimistic (binary
-                # present counts). CI gates on this.
-                "sidecar_running": backend is not None,
+                # True only when the sidecar PROCESS is actually up — "ready"
+                # alone is optimistic (binary present counts) and a crashed
+                # sidecar leaves the object cached. CI gates on this.
+                "sidecar_running": sidecar_alive,
                 "bt_port_env_locked": p2p.is_bt_port_env_locked(),
                 # Cached: the probe runs at startup and on explicit recheck
                 "nat": p2p_nat.last_status() or None,
@@ -911,6 +915,17 @@ def handle_manage_post(handler, parsed, data):
             _srv._search_cache_clear()
             _srv._suggest_cache_clear()
             _srv._clean_stale_title_indexes()
+            # Stop seeding the file we just deleted. Without this the aria2
+            # torrent keeps advertising (and hash-check failing) the missing
+            # file until the 12h maintenance pass or a restart. peek_backend()
+            # no-ops when BT is off, so this is safe unconditionally; run it off
+            # the response thread since it makes RPC round-trips.
+            try:
+                from zimi import library as _lib
+
+                threading.Thread(target=_lib.retire_stale_seeds, daemon=True).start()
+            except Exception as e:
+                log.debug("Post-delete seed retire skipped: %s", e)
             return handler._json(200, {"status": "deleted", "filename": filename})
         except OSError as e:
             log.error("Failed to delete %s: %s", filename, e)
@@ -989,6 +1004,8 @@ def handle_manage_post(handler, parsed, data):
         backend = p2p.peek_backend()
         if backend is None:
             return handler._json(400, {"error": "BitTorrent engine is not running"})
+        from zimi import library as _lib_seeds
+
         action = data.get("action", "")
         if action == "stop_all":
             stopped = 0
@@ -1000,6 +1017,9 @@ def handle_manage_post(handler, parsed, data):
                         try:
                             backend.remove(raw.get("gid", ""), delete_files=True)
                             stopped += 1
+                            # A user stop is deliberate — don't resurrect it
+                            # from the intent ledger at next startup.
+                            _lib_seeds.unrecord_seed(fname)
                         except Exception:
                             pass
             except Exception:
@@ -1017,7 +1037,21 @@ def handle_manage_post(handler, parsed, data):
             elif action == "resume":
                 backend.resume(tid)
             else:
+                # Resolve the filename BEFORE removing, to drop its ledger
+                # intent too — a user stop must not come back at startup.
+                _stop_fname = ""
+                try:
+                    for _raw in backend.list_managed():
+                        if _raw.get("gid", "") == tid:
+                            _fs = _raw.get("files", [])
+                            if _fs:
+                                _stop_fname = os.path.basename(_fs[0].get("path", ""))
+                            break
+                except Exception:
+                    pass
                 backend.remove(tid, delete_files=True)
+                if _stop_fname:
+                    _lib_seeds.unrecord_seed(_stop_fname)
         except Exception:
             return handler._json(502, {"error": "engine refused the action"})
         return handler._json(200, {"status": "ok"})
@@ -1049,6 +1083,11 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["seed"] = bool(data["seed"])
+            # Settings govern LIVE seeds too: toggling seeding off stops the
+            # running library seeds (files stay); on re-caps them.
+            from zimi import library as _lib_seed
+
+            threading.Thread(target=_lib_seed.apply_seed_policy, daemon=True).start()
         if "mirror" in data:
             if p2p.is_mirror_env_locked():
                 return handler._json(
@@ -1066,6 +1105,9 @@ def handle_manage_post(handler, parsed, data):
                 # Seed the installed library now, off the request thread
                 # (hash checks + torrent fetches take a while).
                 def _mirror_kickoff():
+                    # Retag seeds that predate mirror mode to the mirror's
+                    # uncapped ratio before syncing in the rest.
+                    _lib.apply_seed_policy()
                     _lib.mirror_sync()
                     _lib.archive_catalog_torrents()
 
@@ -1188,6 +1230,11 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["seed_ratio"] = ratio
+            # Apply the new cap to every live library seed, not just future
+            # adds — aria2 even stops seeds already past the new ratio.
+            from zimi import library as _lib_ratio
+
+            threading.Thread(target=_lib_ratio.apply_seed_policy, daemon=True).start()
         # Global bandwidth caps (KB/s, 0 = unlimited). Applied live to the
         # running sidecar so a new limit takes effect without a respawn.
         for _field, _envlock in (

@@ -1338,18 +1338,47 @@ function renderCardGrid(items, showStars, showCategory) {
 var _discoverLoading = false;
 
 function _moonPhase(date) {
-  // Synodic period: 29.53 days. Reference new moon: Jan 6 2000 18:14 UTC
-  var ref = new Date(Date.UTC(2000, 0, 6, 18, 14, 0));
-  var days = (date.getTime() - ref.getTime()) / 86400000;
-  var cycle = days % 29.53;
-  if (cycle < 0) cycle += 29.53;
-  var phase = cycle / 29.53; // 0=new, 0.5=full
-  var illumExact = (1 - Math.cos(phase * 2 * Math.PI)) / 2 * 100;
-  var illum = Math.round(illumExact * 10) / 10; // one decimal place
-  var names = ['New Moon','Waxing Crescent','First Quarter','Waxing Gibbous',
-               'Full Moon','Waning Gibbous','Last Quarter','Waning Crescent'];
-  var idx = Math.floor(phase * 8 + 0.5) % 8;
-  return { phase: phase, name: names[idx], illumination: illum };
+  // True phase from the Moon–Sun elongation (Meeus, main periodic terms).
+  // The old linear-synodic model drifted the age and quarter dates up to
+  // ~0.6 day and mislabeled the quarters (equal 1/8 bins made "First
+  // Quarter" span 31–69% illumination).
+  var rad = Math.PI / 180;
+  var JD = date.getTime() / 86400000 + 2440587.5;
+  var T = (JD - 2451545.0) / 36525.0;
+  var D  = 297.8501921 + 445267.1114034 * T - 0.0018819 * T * T;   // elongation
+  var M  = 357.5291092 + 35999.0502909 * T - 0.0001536 * T * T;    // sun anomaly
+  var Mp = 134.9633964 + 477198.8675055 * T + 0.0087414 * T * T;   // moon anomaly
+  var F  = 93.2720950 + 483202.0175233 * T - 0.0036539 * T * T;    // moon arg. of lat.
+  var Lp = 218.3164477 + 481267.88123421 * T;                      // moon mean longitude
+  var Ls = 280.4664567 + 36000.76982779 * T;                       // sun mean longitude
+  var lambdaMoon = Lp
+    + 6.289 * Math.sin(Mp * rad)
+    + 1.274 * Math.sin((2 * D - Mp) * rad)
+    + 0.658 * Math.sin(2 * D * rad)
+    + 0.214 * Math.sin(2 * Mp * rad)
+    - 0.186 * Math.sin(M * rad)
+    - 0.114 * Math.sin(2 * F * rad)
+    + 0.059 * Math.sin((2 * D - 2 * Mp) * rad)
+    + 0.057 * Math.sin((2 * D - M - Mp) * rad);
+  var lambdaSun = Ls
+    + (1.9146 - 0.004817 * T) * Math.sin(M * rad)
+    + 0.019993 * Math.sin(2 * M * rad);
+  var elong = (((lambdaMoon - lambdaSun) % 360) + 360) % 360; // 0=new, 180=full
+  var phase = elong / 360;
+  var illumExact = (1 - Math.cos(elong * rad)) / 2 * 100;
+  var illum = Math.round(illumExact * 10) / 10;
+  // Name by NARROW windows around the principal phases (±0.6 day), so the
+  // crescent/gibbous ranges get their fair share and quarters read ~50%.
+  var w = 0.02, name;
+  if (phase < w || phase > 1 - w) name = 'New Moon';
+  else if (phase < 0.25 - w) name = 'Waxing Crescent';
+  else if (phase < 0.25 + w) name = 'First Quarter';
+  else if (phase < 0.5 - w) name = 'Waxing Gibbous';
+  else if (phase < 0.5 + w) name = 'Full Moon';
+  else if (phase < 0.75 - w) name = 'Waning Gibbous';
+  else if (phase < 0.75 + w) name = 'Last Quarter';
+  else name = 'Waning Crescent';
+  return { phase: phase, name: name, illumination: illum };
 }
 
 var _MOON_PHASE_I18N = {
@@ -1510,11 +1539,27 @@ function openAlmanac(replaceState) {
     return;
   }
   if (!_almanacLoaded) {
-    var s = document.createElement('script');
-    s.src = '/static/almanac.js?v=41';
-    s.onload = function() { _almanacLoaded = true; _openAlmanacInner(replaceState); };
-    s.onerror = function() { console.error('Failed to load almanac.js'); };
-    document.head.appendChild(s);
+    // The almanac is split across sibling modules (it outgrew one file). They
+    // share a global scope, so load them in sequence and only open once the
+    // last one lands — opening early would call into functions not yet defined.
+    var almanacModules = [
+      '/static/almanac-orrery.js?v=41',
+      '/static/almanac-sky.js?v=41',
+      '/static/almanac.js?v=41'
+    ];
+    var loadNext = function(i) {
+      if (i >= almanacModules.length) {
+        _almanacLoaded = true;
+        _openAlmanacInner(replaceState);
+        return;
+      }
+      var s = document.createElement('script');
+      s.src = almanacModules[i];
+      s.onload = function() { loadNext(i + 1); };
+      s.onerror = function() { console.error('Failed to load ' + almanacModules[i]); };
+      document.head.appendChild(s);
+    };
+    loadNext(0);
     return;
   }
   _openAlmanacInner(replaceState);
@@ -5496,7 +5541,12 @@ function _scheduleMirrorProgressPoll() {
     if (!el) return;
     try {
       const r = await authedFetch('/manage/mirror');
-      if (!r.ok) return;
+      // A single transient failure (429 under load, a blip) used to kill the
+      // poll loop for good, freezing the progress line mid-count while the sync
+      // ran on underneath (#30's sibling). Keep polling and preserve the
+      // last-known line instead; only stop when a *successful* poll says the
+      // sync has finished (no phase).
+      if (!r.ok) { _scheduleMirrorProgressPoll(); return; }
       const m = await r.json();
       const prog = m.progress || {};
       if (prog.phase) {
@@ -5506,7 +5556,9 @@ function _scheduleMirrorProgressPoll() {
       } else {
         el.style.display = 'none';
       }
-    } catch (e) {}
+    } catch (e) {
+      _scheduleMirrorProgressPoll();
+    }
   }, 3000);
 }
 

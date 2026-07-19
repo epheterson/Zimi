@@ -543,6 +543,18 @@ class BTBackend(ABC):
         """Optional deep-link to the backend's web UI. None for headless."""
         return None
 
+    def is_alive(self) -> bool:
+        """Whether the engine is actually running right now. Backends that
+        manage a subprocess override this; for API-reachable backends mere
+        existence is liveness."""
+        return True
+
+    def change_options(self, tid: str, options: dict) -> bool:
+        """Change per-torrent options on a live transfer (e.g. seed-ratio).
+        Returns True on success. Backends without live-option support may
+        leave this as a no-op — callers treat False as 'unchanged'."""
+        return False
+
 
 # ============================================================================
 # aria2 sidecar — the bundled default
@@ -705,6 +717,14 @@ class Aria2Backend(BTBackend):
                 last = e
         raise last if last else RuntimeError("aria2 spawn failed")
 
+    def is_alive(self) -> bool:
+        """Non-spawning liveness check. A crashed/killed aria2 left the cached
+        singleton in place, so the status view reported 'sidecar_running' from
+        mere object existence and painted a green dot over a dead engine. Poll
+        the process handle instead — never starts aria2."""
+        proc = self._proc
+        return proc is not None and proc.poll() is None
+
     def stop(self) -> None:
         with self._lock:
             if not self._proc:
@@ -788,6 +808,18 @@ class Aria2Backend(BTBackend):
             return self._rpc("aria2.getOption", [tid]) or {}
         except Exception:
             return {}
+
+    def change_options(self, tid: str, options: dict) -> bool:
+        """aria2.changeOption on a live transfer. seed-ratio is on aria2's
+        changeable-options list, so a running seed picks a new cap up
+        immediately (and stops itself if it's already past it)."""
+        try:
+            self._rpc(
+                "aria2.changeOption", [tid, {k: str(v) for k, v in options.items()}]
+            )
+            return True
+        except Exception:
+            return False
 
     def status(self, tid: str) -> dict:
         raw = self._rpc("aria2.tellStatus", [tid])

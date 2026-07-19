@@ -372,9 +372,7 @@ class TestTrustedRateTier(unittest.TestCase):
         with _patch.object(
             manage, "_get_manage_password_hash", return_value="salt$hash"
         ):
-            with _patch.object(
-                manage, "_check_manage_auth", return_value=None
-            ) as chk:
+            with _patch.object(manage, "_check_manage_auth", return_value=None) as chk:
                 self.assertEqual(self._limit_for(h), self.zhttp.RATE_LIMIT_TRUSTED)
                 # Second call answers from the digest cache — no re-verify
                 self.assertEqual(self._limit_for(h), self.zhttp.RATE_LIMIT_TRUSTED)
@@ -1984,8 +1982,26 @@ class TestRateClass(unittest.TestCase):
             self.assertTrue(limited, p)
             self.assertFalse(content, p)
 
-    def test_manage_paths_are_limited_api(self):
-        self.assertEqual(self._cls("/manage/downloads"), (True, False))
+    def test_manage_mutating_paths_ride_api_bucket(self):
+        # Non-poll manage paths (start/delete/settings) stay on the strict
+        # API budget.
+        for p in ("/manage/start", "/manage/delete", "/manage/bt-settings"):
+            self.assertEqual(self._cls(p), (True, False), p)
+
+    def test_manage_poll_paths_ride_content_bucket(self):
+        # High-frequency read-only polls ride the generous content bucket so
+        # the download UI can't 429 itself blank (#30, reopened).
+        for p in (
+            "/manage/downloads",
+            "/manage/seeding",
+            "/manage/activity",
+            "/manage/bt-status",
+            "/manage/status",
+            "/manage/mirror",
+        ):
+            limited, content = self._cls(p)
+            self.assertTrue(limited, p)
+            self.assertTrue(content, p)
 
     def test_unlimited_paths(self):
         for p in ("/health", "/list", "/static/app.js", "/"):

@@ -485,3 +485,239 @@ def test_bt_port_pref_and_env_lock(_prefs, monkeypatch):
     monkeypatch.setenv("ZIMI_BT", "on,port=16881")
     assert p2p.get_bt_port() == 16881
     assert p2p.is_bt_port_env_locked() is True
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# apply_seed_policy — current settings govern LIVE seeds, not just future adds
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _policy_backend(zim_dir, *, ratio="0", uploaded=0, total=1000):
+    """Backend with one live library seed and one staging transfer."""
+    backend = MagicMock()
+    backend.list_managed.return_value = [
+        {
+            "gid": "lib-1",
+            "status": "active",
+            "uploadLength": str(uploaded),
+            "totalLength": str(total),
+            "files": [{"path": os.path.join(zim_dir, "wiki.zim")}],
+        },
+        {
+            "gid": "stg-1",
+            "status": "active",
+            "files": [{"path": os.path.join(zim_dir, "staging", "dl.zim")}],
+        },
+    ]
+    backend.get_options.return_value = {"seed-ratio": ratio}
+    backend.change_options.return_value = True
+    return backend
+
+
+def _run_policy(monkeypatch, backend, zim_dir, *, mirror=False, seed=True, cap=2.0):
+    import zimi.library as library
+
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: mirror)
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: seed)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: cap)
+    monkeypatch.setattr(library._srv, "ZIM_DIR", zim_dir)
+    monkeypatch.setattr(
+        library._srv, "ZIMI_DATA_DIR", os.path.join(zim_dir, "data")
+    )
+    return library.apply_seed_policy()
+
+
+def test_policy_normalizes_stale_numeric_ratio_to_zero(tmp_path, monkeypatch):
+    """A seed carrying an old numeric aria2 cap (the kill switch: aria2
+    counts session download, 0 for re-seeds) is reset to uncapped."""
+    backend = _policy_backend(str(tmp_path), ratio="2.0")
+    changed = _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
+    assert changed == 1
+    backend.change_options.assert_called_once_with("lib-1", {"seed-ratio": "0"})
+    backend.remove.assert_not_called()
+
+
+def test_policy_skips_staging_transfers(tmp_path, monkeypatch):
+    """Downloads in staging belong to the download machinery — untouched."""
+    backend = _policy_backend(str(tmp_path), ratio="0")
+    _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
+    for call in backend.change_options.call_args_list:
+        assert call.args[0] != "stg-1"
+
+
+def test_policy_leaves_ratio_zero_seed_running_under_cap(tmp_path, monkeypatch):
+    backend = _policy_backend(str(tmp_path), ratio="0", uploaded=500, total=1000)
+    changed = _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
+    assert changed == 0
+    backend.change_options.assert_not_called()
+    backend.remove.assert_not_called()
+
+
+def test_policy_mirror_never_cap_stops(tmp_path, monkeypatch):
+    """Mirror on: even a heavily-uploaded seed keeps seeding."""
+    backend = _policy_backend(str(tmp_path), ratio="0", uploaded=999999, total=1000)
+    changed = _run_policy(monkeypatch, backend, str(tmp_path), mirror=True)
+    assert changed == 0
+    backend.remove.assert_not_called()
+
+
+def test_policy_stops_seed_at_cumulative_cap(tmp_path, monkeypatch):
+    """Uploaded 2x the file size (across sessions) -> stop + intent gone."""
+    import zimi.library as library
+
+    backend = _policy_backend(str(tmp_path), ratio="0", uploaded=2000, total=1000)
+    changed = _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
+    assert changed == 1
+    backend.remove.assert_called_once_with("lib-1", delete_files=True)
+    assert "wiki.zim" not in library._seed_ledger()
+
+
+def test_policy_accumulates_upload_across_sessions(tmp_path, monkeypatch):
+    """1200 uploaded under one gid + 900 under a new gid = 2100 >= 2x1000:
+    the second pass must stop the seed even though neither session alone
+    reached the cap."""
+    import zimi.library as library
+
+    b1 = _policy_backend(str(tmp_path), ratio="0", uploaded=1200, total=1000)
+    assert _run_policy(monkeypatch, b1, str(tmp_path), cap=2.0) == 0
+    b2 = _policy_backend(str(tmp_path), ratio="0", uploaded=900, total=1000)
+    b2.list_managed.return_value[0]["gid"] = "lib-2"
+    changed = _run_policy(monkeypatch, b2, str(tmp_path), cap=2.0)
+    assert changed == 1
+    b2.remove.assert_called_once_with("lib-2", delete_files=True)
+
+
+def test_policy_seeding_off_stops_library_seeds(tmp_path, monkeypatch):
+    """Cap 0 / seeding off stops live seeds; the ZIM stays on disk."""
+    backend = _policy_backend(str(tmp_path), ratio="2.0")
+    changed = _run_policy(monkeypatch, backend, str(tmp_path), seed=False)
+    assert changed == 1
+    backend.remove.assert_called_once_with("lib-1", delete_files=True)
+    backend.change_options.assert_not_called()
+
+
+def test_policy_no_backend_is_a_noop(monkeypatch):
+    import zimi.library as library
+
+    monkeypatch.setattr(p2p, "peek_backend", lambda: None)
+    assert library.apply_seed_policy() == 0
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Seed intent ledger — restarts must not drop seeds; stops must not resurrect
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def _ledger_env(tmp_path, monkeypatch):
+    import zimi.library as library
+
+    monkeypatch.setattr(library._srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(library._srv, "ZIM_DIR", str(tmp_path))
+    return library
+
+
+def test_ledger_record_unrecord_roundtrip(_ledger_env):
+    lib = _ledger_env
+    lib.record_seed("a.zim")
+    lib.record_seed("b.zim")
+    assert set(lib._seed_ledger()) == {"a.zim", "b.zim"}
+    lib.unrecord_seed("a.zim")
+    assert set(lib._seed_ledger()) == {"b.zim"}
+
+
+def test_reseed_readds_missing_seed_from_local_torrent(_ledger_env, tmp_path, monkeypatch):
+    lib = _ledger_env
+    (tmp_path / "wiki.zim").write_bytes(b"z")
+    tfile = tmp_path / "data" / "bt" / "torrents" / "wiki.zim.torrent"
+    tfile.parent.mkdir(parents=True)
+    tfile.write_bytes(b"t")
+    lib.record_seed("wiki.zim")
+    monkeypatch.setattr(lib, "_get_torrent_metadata", lambda: {"wiki.zim": {"torrent_file": str(tfile)}})
+    backend = MagicMock()
+    backend.list_managed.return_value = []
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: True)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
+    assert lib.reseed_from_ledger() == 1
+    args, kwargs = backend.add_torrent.call_args
+    assert args[0] == str(tfile)
+    # aria2 layer is always uncapped; Zimi enforces the user's cap itself.
+    assert kwargs["options"]["seed-ratio"] == "0"
+    assert kwargs["options"]["bt-hash-check-seed"] == "true"
+
+
+def test_reseed_skips_already_managed(_ledger_env, tmp_path, monkeypatch):
+    lib = _ledger_env
+    (tmp_path / "wiki.zim").write_bytes(b"z")
+    lib.record_seed("wiki.zim")
+    backend = MagicMock()
+    backend.list_managed.return_value = [
+        {"gid": "g1", "files": [{"path": str(tmp_path / "wiki.zim")}]}
+    ]
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: True)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
+    assert lib.reseed_from_ledger() == 0
+    backend.add_torrent.assert_not_called()
+
+
+def test_reseed_drops_intent_when_file_deleted(_ledger_env, monkeypatch):
+    lib = _ledger_env
+    lib.record_seed("gone.zim")
+    backend = MagicMock()
+    backend.list_managed.return_value = []
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: True)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
+    assert lib.reseed_from_ledger() == 0
+    assert "gone.zim" not in lib._seed_ledger()
+    backend.add_torrent.assert_not_called()
+
+
+def test_reseed_respects_seeding_off(_ledger_env, monkeypatch):
+    lib = _ledger_env
+    lib.record_seed("wiki.zim")
+    monkeypatch.setattr(p2p, "peek_backend", lambda: MagicMock())
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: False)
+    assert lib.reseed_from_ledger() == 0
+
+
+def test_policy_stop_removes_ledger_intent(_ledger_env, tmp_path, monkeypatch):
+    """Seeding toggled off: the policy stop also clears intent, so the seed
+    doesn't resurrect at next startup."""
+    lib = _ledger_env
+    lib.record_seed("wiki.zim")
+    backend = MagicMock()
+    backend.list_managed.return_value = [
+        {"gid": "g1", "files": [{"path": str(tmp_path / "wiki.zim")}]}
+    ]
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
+    assert lib.apply_seed_policy() == 1
+    assert "wiki.zim" not in lib._seed_ledger()
+
+
+def test_accounting_tick_skips_option_normalization(tmp_path, monkeypatch):
+    """The 30s tick must stay cheap: no per-seed option RPCs — accounting
+    and cap enforcement only."""
+    import zimi.library as library
+
+    backend = _policy_backend(str(tmp_path), ratio="2.0", uploaded=100, total=1000)
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: True)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
+    monkeypatch.setattr(library._srv, "ZIM_DIR", str(tmp_path))
+    monkeypatch.setattr(library._srv, "ZIMI_DATA_DIR", os.path.join(str(tmp_path), "data"))
+    library.apply_seed_policy(normalize=False)
+    backend.get_options.assert_not_called()
+    backend.change_options.assert_not_called()
+    # but the upload WAS booked
+    assert library._seed_ledger()["wiki.zim"]["uploaded"] == 100

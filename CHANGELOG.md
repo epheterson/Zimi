@@ -7,6 +7,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-07-18
+
+Both field reports closed — the downloads page no longer throttles itself
+blank, and Central Europe reads its own timezone. Alongside that, the
+almanac grew up: pick any day and the whole page follows it, the star chart
+became something you can actually explore, and the history feed stopped
+being a NASA-only timeline.
+
+### Highlights
+
+- **The downloads page stays put** while downloads run (#30).
+- **Pick a day, the almanac follows** — moon, sun, history, sky, all of it.
+- **An interactive star chart** you can scrub through time and drag across
+  the Earth.
+- **BitTorrent tells the truth** about whether it is actually running.
+
+### Added
+
+- **Star chart** — a planisphere of the sky above you: bright stars and
+  constellations, the planets in their colours, and the Moon. Scrub twelve
+  hours either way to watch the sky turn, tap anything to identify it, and
+  drag the chart to stand somewhere else on Earth (drag far enough south and
+  Polaris sets, as it should).
+- **Pick any day on the calendar** and every panel that describes a moment
+  re-draws for it — the moon and its numbers, sunrise and sunset, the sky
+  scene, the star chart, meteor showers, eclipses, and that day's history.
+  The world clock keeps reading now, because it is a clock.
+- **On This Day** — a curated, offline feed of space and science milestones,
+  84 dates from Luna and Leonov to Chandrayaan-3, Hayabusa, Chang'e and
+  CERN, alongside Apollo and Voyager.
+- **The Analemma** — the figure-eight the Sun traces over a year, drawn from
+  the same offline solar maths as the sunrise times, with today marked.
+- **Next full moon**, flagged as a supermoon when it falls near perigee.
+- **Moon phases on the calendar** — the four turning points of each month.
+- **Many more observance days** on the Gregorian calendar: a fuller set of
+  UN international days and cultural observances every month, on top of the
+  worldwide set and your region's national holidays.
+
+### Fixed
+
+- **Downloads and settings panels clearing themselves** (#30): with a
+  download running, three separate pollers together exceeded the API rate
+  limit and the panel 429'd itself blank. The read-only status endpoints now
+  ride a generous budget that does not depend on how the client is
+  classified, so it holds behind a reverse proxy and with a password set.
+- **Downloads that hung forever** on a torrent with peers but no data — they
+  now fall back to HTTP instead of sitting at "0% · 0.0 MB/s".
+- **A green "ready" light over a dead engine**: a crashed BitTorrent sidecar
+  left the status card claiming it was running.
+- **Deleting a ZIM now stops seeding it.** The torrent used to keep
+  advertising the missing file until the next maintenance sweep.
+- **The mirror progress line freezing** mid-count after a single failed poll.
+- **Timezone routing for Central Europe** (#28 follow-up): clicking a
+  location in Germany (or Poland, Austria, Czechia…) resolved to London's
+  timezone. It now matches real-city anchors by geography alone; Germany
+  reads +2 (CEST), an hour ahead of London.
+- **Almanac accuracy throughout**: moon phase naming, distance, crescent
+  tilt and altitude; sun times in the selected location's timezone with
+  proper twilight; Hebrew holidays in non-leap years; eclipse geometry (no
+  more phantom eclipses); and the March equinox.
+- **The hero moon's lit side faces the Sun.** A screen-rotation sign error
+  flipped the crescent to the wrong side of the disc, so the big moon and
+  the sky scene contradicted each other after sunset.
+- **The sky scene's Sun sets in the west.** An unnormalized hour angle
+  mirrored the Sun's azimuth to the wrong hemisphere on western-longitude
+  evenings — the sunset painted on the eastern side of the scene.
+- **Seeding actually works now — and survives restarts.** Two long-standing
+  defects fell together: aria2's own ratio cap measures upload against the
+  session's *downloaded* bytes, which is zero for a re-seed of a file
+  already on disk — so every capped seed silently died the first time a
+  real peer took a piece (only uncapped mirror seeds ever survived). And a
+  restart could silently drop a live seed from aria2's session. Zimi now
+  runs every seed uncapped at the aria2 layer and enforces your ratio cap
+  itself — cumulatively, against file size, across restarts — and keeps
+  its own ledger of intended seeds, restoring any that are missing at
+  startup. Upload is booked every 30 seconds and flushed at shutdown, so
+  the cap is enforced within half a minute and survives restarts to the
+  byte. Deliberate stops (your stop button, seeding off, mirror off,
+  deleting the ZIM) remove the intent, so nothing resurrects.
+- **Selections no longer grey out** under the cursor, and today's date circle
+  no longer pushes its holidays below the neighbouring cells.
+- **Eclipse rows no longer name a visibility region.** The label came from
+  sub-solar longitude alone and was wrong more often than right (the
+  August 2026 totality over Greenland, Iceland and Spain read "Americas").
+  Rows now show the eclipse date instead; real ground tracks come later.
+- **The zodiac animal follows the Chinese year**, not the Gregorian one, so
+  it no longer contradicts the year number beside it each January.
+
+### Changed
+
+- **The Chinese calendar grid view is withdrawn for now.** The approximation
+  behind it has no leap months, which left the grid a full month off for
+  stretches of leap years. The cross-reference row stays, marked "≈". The
+  grid returns when real astronomical intercalation lands.
+- The almanac was split into modules (shell, orrery, sky) after outgrowing a
+  single 5,900-line file. No behaviour change.
+
 ## [1.7.2] - 2026-07-17
 
 Both open field reports fixed within a day (#30, #28), and the
