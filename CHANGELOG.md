@@ -9,23 +9,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.7.3] - 2026-07-18
 
-### Fixed
+Both field reports closed — the downloads page no longer throttles itself
+blank, and Central Europe reads its own timezone. Alongside that, the
+almanac grew up: pick any day and the whole page follows it, the star chart
+became something you can actually explore, and the history feed stopped
+being a NASA-only timeline.
 
-- **Timezone routing for Central Europe** (#28 follow-up): clicking a
-  location in Germany (or Poland, Austria, Czechia…) resolved to London's
-  timezone instead of Central European Time. The location→timezone match
-  used a solar-time term that tipped the wide CET band onto UK time; it now
-  matches against a denser set of real-city anchors by geography alone, and
-  the world-clock grid highlights the column that shares your current UTC
-  offset. Germany reads +2 (CEST), an hour ahead of London.
+### Highlights
+
+- **The downloads page stays put** while downloads run (#30).
+- **Pick a day, the almanac follows** — moon, sun, history, sky, all of it.
+- **An interactive star chart** you can scrub through time and drag across
+  the Earth.
+- **BitTorrent tells the truth** about whether it is actually running.
 
 ### Added
 
-- **Many more observance days** on the Gregorian calendar — a fuller set of
-  UN international days and cultural observances every month (World Water
-  Day, International Day of Peace, World Food Day, Mother Language Day, and
-  a few for fun like World Emoji Day and Towel Day), on top of the existing
+- **Star chart** — a planisphere of the sky above you: bright stars and
+  constellations, the planets in their colours, and the Moon. Scrub twelve
+  hours either way to watch the sky turn, tap anything to identify it, and
+  drag the chart to stand somewhere else on Earth (drag far enough south and
+  Polaris sets, as it should).
+- **Pick any day on the calendar** and every panel that describes a moment
+  re-draws for it — the moon and its numbers, sunrise and sunset, the sky
+  scene, the star chart, meteor showers, eclipses, and that day's history.
+  The world clock keeps reading now, because it is a clock.
+- **On This Day** — a curated, offline feed of space and science milestones,
+  84 dates from Luna and Leonov to Chandrayaan-3, Hayabusa, Chang'e and
+  CERN, alongside Apollo and Voyager.
+- **The Analemma** — the figure-eight the Sun traces over a year, drawn from
+  the same offline solar maths as the sunrise times, with today marked.
+- **Next full moon**, flagged as a supermoon when it falls near perigee.
+- **Moon phases on the calendar** — the four turning points of each month.
+- **Many more observance days** on the Gregorian calendar: a fuller set of
+  UN international days and cultural observances every month, on top of the
   worldwide set and your region's national holidays.
+
+### Fixed
+
+- **Downloads and settings panels clearing themselves** (#30): with a
+  download running, three separate pollers together exceeded the API rate
+  limit and the panel 429'd itself blank. The read-only status endpoints now
+  ride a generous budget that does not depend on how the client is
+  classified, so it holds behind a reverse proxy and with a password set.
+- **Downloads that hung forever** on a torrent with peers but no data — they
+  now fall back to HTTP instead of sitting at "0% · 0.0 MB/s".
+- **A green "ready" light over a dead engine**: a crashed BitTorrent sidecar
+  left the status card claiming it was running.
+- **Deleting a ZIM now stops seeding it.** The torrent used to keep
+  advertising the missing file until the next maintenance sweep.
+- **The mirror progress line freezing** mid-count after a single failed poll.
+- **Timezone routing for Central Europe** (#28 follow-up): clicking a
+  location in Germany (or Poland, Austria, Czechia…) resolved to London's
+  timezone. It now matches real-city anchors by geography alone; Germany
+  reads +2 (CEST), an hour ahead of London.
+- **Almanac accuracy throughout**: moon phase naming, distance, crescent
+  tilt and altitude; sun times in the selected location's timezone with
+  proper twilight; Hebrew holidays in non-leap years; eclipse geometry (no
+  more phantom eclipses); and the March equinox.
+- **Selections no longer grey out** under the cursor, and today's date circle
+  no longer pushes its holidays below the neighbouring cells.
+
+### Changed
+
+- The almanac was split into modules (shell, orrery, sky) after outgrowing a
+  single 5,900-line file. No behaviour change.
 
 ## [1.7.2] - 2026-07-17
 
