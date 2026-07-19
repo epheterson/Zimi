@@ -166,6 +166,7 @@ def start_background_services(http_port):
             # added under old settings otherwise keeps its old cap forever).
             _lib.retire_stale_seeds()
             _lib.apply_seed_policy()
+            _lib.reseed_from_ledger()
             _lib.mirror_sync()
             _lib.archive_catalog_torrents()
             _lib.ensure_magnets_for_installed()
@@ -211,6 +212,7 @@ def _maintenance_pass():
         _lib.ensure_magnets_for_installed()
         _lib.retire_stale_seeds()
         _lib.apply_seed_policy()
+        _lib.reseed_from_ledger()
         _lib._catalog_torrents_archived = False
         _lib.mirror_sync()
         _lib.archive_catalog_torrents()

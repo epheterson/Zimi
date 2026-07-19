@@ -16,9 +16,23 @@ var _ALM_LOC_KEY = 'zimi_almanac_location';
 function _getLocation() {
   var stored = localStorage.getItem(_ALM_LOC_KEY);
   if (stored) {
-    try { var loc = JSON.parse(stored); return { lat: loc.lat, lon: loc.lon, name: loc.name || '' }; } catch(e) {}
+    try { var loc = JSON.parse(stored); return { lat: loc.lat, lon: loc.lon, name: loc.name || '', stored: true }; } catch(e) {}
   }
-  return { lat: 34, lon: -new Date().getTimezoneOffset() / 60 * 15, name: '' };
+  // Synthetic default: mid-northern latitude at the device offset's rough
+  // meridian. Good enough for sun/moon shapes — but callers formatting TIMES
+  // must check `stored`: resolving this made-up point to a timezone showed a
+  // fresh browser Denver's clock instead of its own (the device already
+  // KNOWS its zone; deriving one from invented coordinates loses that).
+  return { lat: 34, lon: -new Date().getTimezoneOffset() / 60 * 15, name: '', stored: false };
+}
+
+// Timezone used to DISPLAY times for the almanac's home location: the chosen
+// location's zone, or the device's own zone when nothing was ever chosen.
+function _almDisplayTz(loc) {
+  loc = loc || _getLocation();
+  return loc.stored
+    ? _almTzForLocation(loc.lat, loc.lon)
+    : Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 function _saveLocation(lat, lon, name) {
@@ -312,8 +326,11 @@ function _almHeadHtml(focus) {
   var age = (m.phase * 29.53).toFixed(1);
 
   var loc = _getLocation();
+  // Times follow the CHOSEN location's zone; with no choice on record, the
+  // device's own zone (a synthetic default resolved to Denver and showed a
+  // fresh browser an hour-off clock).
   var locTz = null;
-  try { locTz = _almTzForLocation(loc.lat, loc.lon); } catch (e) {}
+  try { locTz = _almDisplayTz(loc); } catch (e) {}
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   var _dtOpts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
   var _tmOpts = { hour: 'numeric', minute: '2-digit' };
@@ -1422,23 +1439,14 @@ function _initTzClock(now) {
 }
 
 function _almSelectTz(tz, idx) {
-  // Also set location to this city for sun/map calculations
-  var city = _TZ_CITIES[idx];
-  // Look up full name from _MAP_CITIES (includes state/country)
-  var fullName = t('alm_city_' + city.key);
-  for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
-    if (Math.abs(_MAP_CITIES[ci].lat - city.lat) < 0.1 && Math.abs(_MAP_CITIES[ci].lon - city.lon) < 0.1) {
-      fullName = _MAP_CITIES[ci].name; break;
-    }
-  }
-  // After _saveLocation's approximate sync — an explicit city pick is exact.
-  _saveLocation(city.lat, city.lon, fullName);
+  // A world-clock card is a PREVIEW: it drives the analog clock and the card
+  // highlight, nothing else. It used to also _saveLocation(city) — so peeking
+  // at Tokyo's time silently re-homed the entire almanac (header clock, sun
+  // times, holidays) to Tokyo, permanently, per browser. Location changes
+  // belong to the sun map's picker alone.
   _almSelectedTz = tz;
-  // Re-render but preserve scroll position (avoids annoying jump)
-  var scrollEl = document.getElementById('almanac-content');
-  var savedScroll = scrollEl ? scrollEl.scrollTop : 0;
-  _renderAlmanacContent();
-  if (scrollEl) scrollEl.scrollTop = savedScroll;
+  _initTzClock(new Date());
+  _drawTzClock(new Date());
 }
 
 function _drawTzClock(now) {

@@ -1004,6 +1004,8 @@ def handle_manage_post(handler, parsed, data):
         backend = p2p.peek_backend()
         if backend is None:
             return handler._json(400, {"error": "BitTorrent engine is not running"})
+        from zimi import library as _lib_seeds
+
         action = data.get("action", "")
         if action == "stop_all":
             stopped = 0
@@ -1015,6 +1017,9 @@ def handle_manage_post(handler, parsed, data):
                         try:
                             backend.remove(raw.get("gid", ""), delete_files=True)
                             stopped += 1
+                            # A user stop is deliberate — don't resurrect it
+                            # from the intent ledger at next startup.
+                            _lib_seeds.unrecord_seed(fname)
                         except Exception:
                             pass
             except Exception:
@@ -1032,7 +1037,21 @@ def handle_manage_post(handler, parsed, data):
             elif action == "resume":
                 backend.resume(tid)
             else:
+                # Resolve the filename BEFORE removing, to drop its ledger
+                # intent too — a user stop must not come back at startup.
+                _stop_fname = ""
+                try:
+                    for _raw in backend.list_managed():
+                        if _raw.get("gid", "") == tid:
+                            _fs = _raw.get("files", [])
+                            if _fs:
+                                _stop_fname = os.path.basename(_fs[0].get("path", ""))
+                            break
+                except Exception:
+                    pass
                 backend.remove(tid, delete_files=True)
+                if _stop_fname:
+                    _lib_seeds.unrecord_seed(_stop_fname)
         except Exception:
             return handler._json(502, {"error": "engine refused the action"})
         return handler._json(200, {"status": "ok"})

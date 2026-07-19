@@ -819,7 +819,7 @@ function _updateStarChartTimeLabel() {
   var d = _starChartTime();
   var txt;
   try {
-    txt = _tzFmt(_almTzForLocation(loc.lat, loc.lon), { weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(d);
+    txt = _tzFmt(_almDisplayTz(loc), { weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(d);
   } catch (e) {
     txt = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   }

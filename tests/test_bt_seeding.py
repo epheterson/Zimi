@@ -560,3 +560,102 @@ def test_policy_no_backend_is_a_noop(monkeypatch):
 
     monkeypatch.setattr(p2p, "peek_backend", lambda: None)
     assert library.apply_seed_policy() == 0
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Seed intent ledger — restarts must not drop seeds; stops must not resurrect
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def _ledger_env(tmp_path, monkeypatch):
+    import zimi.library as library
+
+    monkeypatch.setattr(library._srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(library._srv, "ZIM_DIR", str(tmp_path))
+    return library
+
+
+def test_ledger_record_unrecord_roundtrip(_ledger_env):
+    lib = _ledger_env
+    lib.record_seed("a.zim")
+    lib.record_seed("b.zim")
+    assert set(lib._seed_ledger()) == {"a.zim", "b.zim"}
+    lib.unrecord_seed("a.zim")
+    assert set(lib._seed_ledger()) == {"b.zim"}
+
+
+def test_reseed_readds_missing_seed_from_local_torrent(_ledger_env, tmp_path, monkeypatch):
+    lib = _ledger_env
+    (tmp_path / "wiki.zim").write_bytes(b"z")
+    tfile = tmp_path / "data" / "bt" / "torrents" / "wiki.zim.torrent"
+    tfile.parent.mkdir(parents=True)
+    tfile.write_bytes(b"t")
+    lib.record_seed("wiki.zim")
+    monkeypatch.setattr(lib, "_get_torrent_metadata", lambda: {"wiki.zim": {"torrent_file": str(tfile)}})
+    backend = MagicMock()
+    backend.list_managed.return_value = []
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: True)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
+    assert lib.reseed_from_ledger() == 1
+    args, kwargs = backend.add_torrent.call_args
+    assert args[0] == str(tfile)
+    assert kwargs["options"]["seed-ratio"] == "2.0"
+    assert kwargs["options"]["bt-hash-check-seed"] == "true"
+
+
+def test_reseed_skips_already_managed(_ledger_env, tmp_path, monkeypatch):
+    lib = _ledger_env
+    (tmp_path / "wiki.zim").write_bytes(b"z")
+    lib.record_seed("wiki.zim")
+    backend = MagicMock()
+    backend.list_managed.return_value = [
+        {"gid": "g1", "files": [{"path": str(tmp_path / "wiki.zim")}]}
+    ]
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: True)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
+    assert lib.reseed_from_ledger() == 0
+    backend.add_torrent.assert_not_called()
+
+
+def test_reseed_drops_intent_when_file_deleted(_ledger_env, monkeypatch):
+    lib = _ledger_env
+    lib.record_seed("gone.zim")
+    backend = MagicMock()
+    backend.list_managed.return_value = []
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: True)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
+    assert lib.reseed_from_ledger() == 0
+    assert "gone.zim" not in lib._seed_ledger()
+    backend.add_torrent.assert_not_called()
+
+
+def test_reseed_respects_seeding_off(_ledger_env, monkeypatch):
+    lib = _ledger_env
+    lib.record_seed("wiki.zim")
+    monkeypatch.setattr(p2p, "peek_backend", lambda: MagicMock())
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: False)
+    assert lib.reseed_from_ledger() == 0
+
+
+def test_policy_stop_removes_ledger_intent(_ledger_env, tmp_path, monkeypatch):
+    """Seeding toggled off: the policy stop also clears intent, so the seed
+    doesn't resurrect at next startup."""
+    lib = _ledger_env
+    lib.record_seed("wiki.zim")
+    backend = MagicMock()
+    backend.list_managed.return_value = [
+        {"gid": "g1", "files": [{"path": str(tmp_path / "wiki.zim")}]}
+    ]
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
+    assert lib.apply_seed_policy() == 1
+    assert "wiki.zim" not in lib._seed_ledger()

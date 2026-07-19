@@ -536,6 +536,118 @@ def _get_torrent_metadata():
         return {}
 
 
+# ── Seed intent ledger ──
+# aria2's session resume proved lossy: a restart can silently drop a live
+# seed (the session stores a .torrent URL and trusts aria2 to re-materialize
+# it — observed failing in production with no error logged). Zimi therefore
+# keeps its OWN record of which files it intends to seed, and re-adds any
+# that are missing after startup. Intent is added when a seed is created and
+# removed by every deliberate stop (policy stop, mirror off, user stop,
+# retire of a deleted file) — so a restart can never lose a seed, and a stop
+# is never resurrected.
+
+
+def _seed_ledger_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "bt", "seeds.json")
+
+
+def _seed_ledger():
+    try:
+        with open(_seed_ledger_path()) as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def record_seed(filename):
+    """Note that Zimi intends `filename` to be seeding."""
+    try:
+        ledger = _seed_ledger()
+        if filename not in ledger:
+            ledger[filename] = {"added": time.time()}
+            os.makedirs(os.path.dirname(_seed_ledger_path()), exist_ok=True)
+            _srv._atomic_write_json(_seed_ledger_path(), ledger)
+    except Exception as e:
+        log.debug("seed ledger record failed for %s: %s", filename, e)
+
+
+def unrecord_seed(filename):
+    """A deliberate stop: this file should NOT come back at startup."""
+    try:
+        ledger = _seed_ledger()
+        if filename in ledger:
+            del ledger[filename]
+            _srv._atomic_write_json(_seed_ledger_path(), ledger)
+    except Exception as e:
+        log.debug("seed ledger unrecord failed for %s: %s", filename, e)
+
+
+def reseed_from_ledger():
+    """Re-add any intended seed that isn't live — run after startup.
+
+    Sources resolve exactly like _seed_after_http_download: the preserved
+    local .torrent first, then the recorded URL. Entries whose ZIM is gone
+    are dropped (the delete already happened; intent follows the file).
+    Returns how many seeds were re-added."""
+    from zimi import p2p as _p2p
+
+    backend = _p2p.peek_backend()
+    if backend is None:
+        return 0
+    if not _p2p.is_seeding_enabled():
+        return 0
+    mirror = _p2p.is_mirror_enabled()
+    cap = _p2p.get_seed_ratio_cap()
+    if not mirror and cap <= 0:
+        return 0
+    ledger = _seed_ledger()
+    if not ledger:
+        return 0
+    try:
+        managed = set()
+        for raw in backend.list_managed():
+            for f in raw.get("files", []):
+                if f.get("path"):
+                    managed.add(os.path.basename(f["path"]))
+    except Exception:
+        return 0
+    meta_all = _get_torrent_metadata()
+    ratio = "0" if mirror else str(cap)
+    readded = 0
+    for filename in list(ledger):
+        if filename in managed:
+            continue
+        if not os.path.exists(os.path.join(_srv.ZIM_DIR, filename)):
+            unrecord_seed(filename)
+            continue
+        meta = meta_all.get(filename) or {}
+        source = meta.get("torrent_file")
+        if not (source and os.path.isfile(source)):
+            source = meta.get("torrent_url")
+        if not source:
+            log.debug("reseed: no torrent source recorded for %s", filename)
+            continue
+        try:
+            backend.add_torrent(
+                source,
+                dest_dir=_srv.ZIM_DIR,
+                options={
+                    # Verify the file we already have, then seed — never fetch.
+                    "check-integrity": "true",
+                    "bt-hash-check-seed": "true",
+                    "seed-ratio": ratio,
+                    "allow-overwrite": "true",
+                },
+            )
+            readded += 1
+        except Exception as e:
+            log.debug("reseed of %s failed: %s", filename, e)
+    if readded:
+        log.info("Restored %d seed(s) from the intent ledger", readded)
+    return readded
+
+
 def _pending_downloads_path():
     return os.path.join(_srv.ZIMI_DATA_DIR, "downloads.json")
 
@@ -1087,6 +1199,7 @@ def _mirror_sync_locked(_p2p):
                 },
             )
             added += 1
+            record_seed(filename)
         except Exception as e:
             log.debug("mirror: add %s failed: %s", filename, e)
     _set_mirror_progress(None)
@@ -1212,6 +1325,7 @@ def apply_seed_policy():
             try:
                 if target is None:
                     backend.remove(gid, delete_files=True)
+                    unrecord_seed(os.path.basename(path))
                     changed += 1
                 else:
                     current = str(get_opts(gid).get("seed-ratio", ""))
@@ -1265,6 +1379,7 @@ def stop_mirror_seeds():
                     try:
                         backend.remove(raw.get("gid", ""), delete_files=True)
                         removed += 1
+                        unrecord_seed(os.path.basename(path))
                     except Exception:
                         pass
                 break
@@ -1301,6 +1416,7 @@ def retire_stale_seeds():
                 try:
                     backend.remove(raw.get("gid", ""), delete_files=True)
                     removed += 1
+                    unrecord_seed(os.path.basename(path))
                     log.info("Retired stale seed: %s", os.path.basename(path))
                 except Exception:
                     pass
@@ -1483,6 +1599,7 @@ def _try_bt_download(
                     )
                     if seed_gid:
                         tid = seed_gid  # track the library seed, not staging
+                        record_seed(dl["filename"])
                 except Exception as e:
                     log.debug("library re-seed failed (%s): %s", dl["filename"], e)
             elif _p2p.is_seeding_enabled():
@@ -1620,6 +1737,7 @@ def _seed_after_http_download(dl):
                 "allow-overwrite": "true",
             },
         )
+        record_seed(dl["filename"])
         log.info("Seeding HTTP-downloaded %s up to %sx ratio", dl["filename"], ratio)
     except Exception as e:
         log.debug("post-HTTP seed of %s failed: %s", dl["filename"], e)
