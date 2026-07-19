@@ -3725,6 +3725,47 @@ function _planetVisibility(now) {
 var _starChartBase = null;    // the moment the almanac was rendered
 var _starChartOffsetMin = 0;  // slider offset from that moment, in minutes
 var _starChartBodies = [];    // hit-test targets collected during the draw
+var _starChartViewLat = null; // null = use the saved location; set by dragging
+var _starChartViewLon = null;
+var _starChartDragged = false; // suppresses the tap-to-identify after a drag
+
+function _starChartResetLoc() {
+  _starChartViewLat = null;
+  _starChartViewLon = null;
+  _drawStarChart(_starChartTime());
+}
+
+// Drag the chart to stand somewhere else on Earth. This is a preview only —
+// it never overwrites the saved location the rest of the almanac uses.
+function _initStarChartDrag(canvas) {
+  var dragging = false, lastX = 0, lastY = 0, moved = 0;
+  canvas.onpointerdown = function (e) {
+    dragging = true; moved = 0;
+    lastX = e.clientX; lastY = e.clientY;
+    _starChartDragged = false;
+    if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} }
+  };
+  canvas.onpointermove = function (e) {
+    if (!dragging) return;
+    var dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    moved += Math.abs(dx) + Math.abs(dy);
+    if (moved < 4) return; // still a tap
+    _starChartDragged = true;
+    var loc = _getLocation();
+    var lat = (_starChartViewLat === null ? loc.lat : _starChartViewLat) + dy * 0.4;
+    var lon = (_starChartViewLon === null ? loc.lon : _starChartViewLon) - dx * 0.6;
+    // Clamp latitude short of the poles (azimuth is undefined there) and wrap
+    // longitude so dragging east past the date line comes back around.
+    _starChartViewLat = Math.max(-89.5, Math.min(89.5, lat));
+    _starChartViewLon = ((lon + 180) % 360 + 360) % 360 - 180;
+    _drawStarChart(_starChartTime());
+  };
+  canvas.onpointerup = canvas.onpointercancel = function (e) {
+    dragging = false;
+    if (canvas.releasePointerCapture) { try { canvas.releasePointerCapture(e.pointerId); } catch (err) {} }
+  };
+}
 
 function _starChartTime() {
   var base = _starChartBase || new Date();
@@ -3767,6 +3808,7 @@ function _starChartNow() {
 }
 
 function _starChartClick(ev) {
+  if (_starChartDragged) { _starChartDragged = false; return; } // that was a pan
   var canvas = document.getElementById('almanac-starchart');
   var info = document.getElementById('alm-sc-info');
   if (!canvas || !info) return;
@@ -3784,6 +3826,10 @@ function _starChartClick(ev) {
 function _renderStarChart(baseNow) {
   _starChartBase = baseNow;
   _starChartOffsetMin = 0;
+  _starChartViewLat = null;
+  _starChartViewLon = null;
+  var cv = document.getElementById('almanac-starchart');
+  if (cv) _initStarChartDrag(cv);
   var s = document.getElementById('alm-sc-slider');
   if (s) s.value = 0;
   var info = document.getElementById('alm-sc-info');
@@ -3808,7 +3854,9 @@ function _drawStarChart(now) {
   _starChartBodies = [];
 
   var loc = _getLocation();
-  var lat = loc.lat, lon = loc.lon;
+  var panned = _starChartViewLat !== null;
+  var lat = panned ? _starChartViewLat : loc.lat;
+  var lon = panned ? _starChartViewLon : loc.lon;
   var cx = size / 2, cy = size / 2;
   var R = size / 2 - 16; // leave room for cardinal labels
 
@@ -3956,10 +4004,11 @@ function _drawStarChart(now) {
 
   var cap = document.getElementById('almanac-starchart-caption');
   if (cap) {
-    var where = loc.name ? _almEsc(loc.name) :
-      (Math.abs(lat).toFixed(1) + '°' + (lat >= 0 ? 'N' : 'S') + ', ' +
-       Math.abs(lon).toFixed(1) + '°' + (lon >= 0 ? 'E' : 'W'));
-    cap.innerHTML = '<div class="alm-starchart-now">' + t('alm_stars_above') + ' ' + where + '</div>' +
+    var coords = Math.abs(lat).toFixed(1) + '°' + (lat >= 0 ? 'N' : 'S') + ', ' +
+      Math.abs(lon).toFixed(1) + '°' + (lon >= 0 ? 'E' : 'W');
+    var where = (!panned && loc.name) ? _almEsc(loc.name) : coords;
+    cap.innerHTML = '<div class="alm-starchart-now">' + t('alm_stars_above') + ' ' + where +
+      (panned ? ' <button class="alm-sc-reset" onclick="_starChartResetLoc()">' + _almEsc(t('alm_my_location')) + '</button>' : '') + '</div>' +
       '<div class="alm-starchart-desc">' + starCount + ' ' + t('alm_stars_up') +
       (planetsUp.length ? ' · ' + planetsUp.join(', ') : '') +
       (moonUp ? ' · ' + t('alm_the_moon') : '') + '</div>';

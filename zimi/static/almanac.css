@@ -164,10 +164,12 @@
 .alm-empty { background: transparent; }
 .alm-day { cursor: pointer; transition: background 0.15s; }
 .alm-day:hover { background: var(--surface2); }
-/* Every day number occupies the same 22px row, so today's amber circle can't
-   push its holiday/event lines lower than the neighbouring cells'. */
-.alm-num { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 2px; height: 22px; display: flex; align-items: center; }
-.alm-today .alm-num { background: var(--amber); color: #000; font-weight: 700; width: 22px; border-radius: 50%; justify-content: center; font-size: 12px; }
+/* Every day number occupies the same row height so today's amber circle can't
+   push its holiday lines below the neighbouring cells'. Sized to the natural
+   text line (18px) rather than the old 22px circle, so aligning the rows costs
+   the other cells almost no event space. */
+.alm-num { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 2px; height: 18px; display: flex; align-items: center; }
+.alm-today .alm-num { background: var(--amber); color: #000; font-weight: 700; width: 18px; border-radius: 50%; justify-content: center; font-size: 11px; }
 /* Compound + :hover twin so a selected day keeps its amber tint while the
    cursor rests on it — .alm-day:hover would otherwise outrank a bare
    .alm-selected and repaint it grey. */
@@ -227,3 +229,8 @@
 .alm-sc-controls { display: flex; align-items: center; gap: 8px; max-width: 360px; margin: 6px auto 0; }
 .alm-sc-time { font-size: 11px; color: var(--amber); font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
 .alm-sc-info { text-align: center; font-size: 11px; color: var(--text2); min-height: 15px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+/* Chart is draggable: stand somewhere else on Earth. */
+#almanac-starchart { cursor: grab; touch-action: none; }
+#almanac-starchart:active { cursor: grabbing; }
+.alm-sc-reset { background: none; border: 1px solid var(--border); color: var(--text3); border-radius: 5px; font-size: 10px; padding: 1px 6px; margin-left: 6px; cursor: pointer; }
+.alm-sc-reset:hover { color: var(--amber); border-color: var(--amber-border); }
