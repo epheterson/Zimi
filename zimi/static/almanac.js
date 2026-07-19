@@ -3158,19 +3158,6 @@ var _almSystem = 'gregorian';
 var _almYear = 0, _almMonth = 0;
 var _almSelectedJDN = 0, _almTodayJDN = 0;
 
-// No 'chinese' grid: the mean-lunation math behind the cross-reference row is
-// fine for a one-line "≈" conversion, but a browsable month grid needs real
-// astronomical new moons and leap-month intercalation — without them the grid
-// showed invented month lengths and no leap months, a full month off for parts
-// of leap years. Grid returns when the real calendar lands.
-var _ALM_SYSTEMS = [
-  { id: 'buddhist', label: 'Buddhist' },
-  { id: 'gregorian', label: 'Gregorian' },
-  { id: 'hebrew', label: 'Hebrew' },
-  { id: 'islamic', label: 'Islamic' },
-  { id: 'julian', label: 'Julian' },
-  { id: 'persian', label: 'Persian' }
-];
 
 function _renderAlmanacCalendar(now) {
   var el = document.getElementById('almanac-calendar');
@@ -3302,6 +3289,14 @@ function _drawAlmanacGrid() {
 }
 
 function _almSwitchSystem(sys) {
+  // No 'chinese' grid: the mean-lunation math behind the cross-reference row
+  // is fine for a one-line "\u2248" conversion, but a browsable month grid needs
+  // real astronomical new moons and leap-month intercalation — without them
+  // it showed invented month lengths and no leap months, a full month off
+  // for parts of leap years. Guarded HERE because every path funnels through
+  // this function (crossref clicks, the zh language auto-switch); the grid
+  // returns when the real calendar lands.
+  if (sys === 'chinese') sys = 'gregorian';
   // Convert selected day's JDN to the new system
   _almSystem = sys;
   var cal = _jdnToCalendar(sys, _almSelectedJDN);
@@ -3348,7 +3343,7 @@ function _almRenderCrossRef(jdn) {
     }
     var isActive = sys === _almSystem ? ' alm-crossref-active' : '';
     // The Chinese row is a cross-reference only: no grid view is offered for
-    // it (a browsable grid needs real leap-month math \u2014 see _ALM_SYSTEMS).
+    // it (a browsable grid needs real leap-month math; _almSwitchSystem guards it).
     var clickable = sys !== 'chinese';
     html += '<div class="alm-crossref-row' + isActive + '"' +
       (clickable ? ' onclick="_almSwitchSystem(\'' + sys + '\')"' : ' style="cursor:default"') + '>' +

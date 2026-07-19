@@ -547,6 +547,15 @@ def _get_torrent_metadata():
 # is never resurrected.
 
 
+# One coarse lock around every ledger read->mutate->write. Writers live on
+# the startup thread, the 30s accounting daemon, settings-change threads,
+# the stop-action handler, download completions, and the atexit flush —
+# unserialized, two of them doing load/modify/save would silently drop each
+# other's updates (a recorded intent vanishing is precisely the failure the
+# ledger exists to prevent). Cadence is seconds-scale, so contention is nil.
+_seed_ledger_lock = threading.Lock()
+
+
 def _seed_ledger_path():
     return os.path.join(_srv.ZIMI_DATA_DIR, "bt", "seeds.json")
 
@@ -571,11 +580,16 @@ def record_seed(filename, origin="download"):
     re-seed, so any positive cap stopped the seed the moment a real peer
     took one piece."""
     try:
-        ledger = _seed_ledger()
-        if filename not in ledger:
-            ledger[filename] = {"added": time.time(), "origin": origin, "uploaded": 0}
-            os.makedirs(os.path.dirname(_seed_ledger_path()), exist_ok=True)
-            _srv._atomic_write_json(_seed_ledger_path(), ledger)
+        with _seed_ledger_lock:
+            ledger = _seed_ledger()
+            if filename not in ledger:
+                ledger[filename] = {
+                    "added": time.time(),
+                    "origin": origin,
+                    "uploaded": 0,
+                }
+                os.makedirs(os.path.dirname(_seed_ledger_path()), exist_ok=True)
+                _srv._atomic_write_json(_seed_ledger_path(), ledger)
     except Exception as e:
         log.debug("seed ledger record failed for %s: %s", filename, e)
 
@@ -583,10 +597,11 @@ def record_seed(filename, origin="download"):
 def unrecord_seed(filename):
     """A deliberate stop: this file should NOT come back at startup."""
     try:
-        ledger = _seed_ledger()
-        if filename in ledger:
-            del ledger[filename]
-            _srv._atomic_write_json(_seed_ledger_path(), ledger)
+        with _seed_ledger_lock:
+            ledger = _seed_ledger()
+            if filename in ledger:
+                del ledger[filename]
+                _srv._atomic_write_json(_seed_ledger_path(), ledger)
     except Exception as e:
         log.debug("seed ledger unrecord failed for %s: %s", filename, e)
 
@@ -1329,84 +1344,85 @@ def apply_seed_policy(normalize=True):
         return 0
     zim_root = os.path.normpath(_srv.ZIM_DIR)
     get_opts = getattr(backend, "get_options", lambda tid: {})
-    ledger = _seed_ledger()
-    ledger_dirty = False
-    changed = 0
-    for raw in entries:
-        if raw.get("status") not in (None, "active", "waiting", "paused"):
-            continue
-        for f in raw.get("files", []):
-            path = f.get("path", "")
-            if not path or os.path.normpath(os.path.dirname(path)) != zim_root:
+    with _seed_ledger_lock:
+        ledger = _seed_ledger()
+        ledger_dirty = False
+        changed = 0
+        for raw in entries:
+            if raw.get("status") not in (None, "active", "waiting", "paused"):
                 continue
-            if not path.endswith(".zim"):
-                continue
-            gid = raw.get("gid", "")
-            fname = os.path.basename(path)
-            try:
-                if not seeding:
-                    backend.remove(gid, delete_files=True)
-                    if fname in ledger:
+            for f in raw.get("files", []):
+                path = f.get("path", "")
+                if not path or os.path.normpath(os.path.dirname(path)) != zim_root:
+                    continue
+                if not path.endswith(".zim"):
+                    continue
+                gid = raw.get("gid", "")
+                fname = os.path.basename(path)
+                try:
+                    if not seeding:
+                        backend.remove(gid, delete_files=True)
+                        if fname in ledger:
+                            del ledger[fname]
+                            ledger_dirty = True
+                        changed += 1
+                        break
+
+                    # Normalize stale numeric aria2 ratios (the old kill
+                    # switch). Skipped on the frequent accounting tick — it
+                    # costs one RPC per seed and only matters after upgrades
+                    # or settings changes.
+                    if normalize:
+                        current = str(get_opts(gid).get("seed-ratio", ""))
+                        if current not in ("", "0", "0.0"):
+                            if backend.change_options(gid, {"seed-ratio": "0"}):
+                                changed += 1
+
+                    # Adopt seeds the ledger doesn't know, then account upload.
+                    entry = ledger.get(fname)
+                    if entry is None:
+                        entry = {
+                            "added": time.time(),
+                            "origin": "mirror" if mirror else "download",
+                            "uploaded": 0,
+                        }
+                        ledger[fname] = entry
+                        ledger_dirty = True
+                    up_now = int(raw.get("uploadLength", 0) or 0)
+                    total = int(raw.get("totalLength", 0) or 0)
+                    if entry.get("last_gid") == gid:
+                        delta = up_now - int(entry.get("last_up", 0) or 0)
+                    else:
+                        delta = up_now  # new aria2 session for this file
+                    if delta > 0:
+                        entry["uploaded"] = int(entry.get("uploaded", 0) or 0) + delta
+                        ledger_dirty = True
+                    if entry.get("last_gid") != gid or entry.get("last_up") != up_now:
+                        entry["last_gid"] = gid
+                        entry["last_up"] = up_now
+                        ledger_dirty = True
+
+                    # The cap, in bytes uploaded over the file's lifetime.
+                    if not mirror and total > 0 and entry["uploaded"] >= cap * total:
+                        backend.remove(gid, delete_files=True)
                         del ledger[fname]
                         ledger_dirty = True
-                    changed += 1
-                    break
-
-                # Normalize stale numeric aria2 ratios (the old kill
-                # switch). Skipped on the frequent accounting tick — it
-                # costs one RPC per seed and only matters after upgrades
-                # or settings changes.
-                if normalize:
-                    current = str(get_opts(gid).get("seed-ratio", ""))
-                    if current not in ("", "0", "0.0"):
-                        if backend.change_options(gid, {"seed-ratio": "0"}):
-                            changed += 1
-
-                # Adopt seeds the ledger doesn't know, then account upload.
-                entry = ledger.get(fname)
-                if entry is None:
-                    entry = {
-                        "added": time.time(),
-                        "origin": "mirror" if mirror else "download",
-                        "uploaded": 0,
-                    }
-                    ledger[fname] = entry
-                    ledger_dirty = True
-                up_now = int(raw.get("uploadLength", 0) or 0)
-                total = int(raw.get("totalLength", 0) or 0)
-                if entry.get("last_gid") == gid:
-                    delta = up_now - int(entry.get("last_up", 0) or 0)
-                else:
-                    delta = up_now  # new aria2 session for this file
-                if delta > 0:
-                    entry["uploaded"] = int(entry.get("uploaded", 0) or 0) + delta
-                    ledger_dirty = True
-                if entry.get("last_gid") != gid or entry.get("last_up") != up_now:
-                    entry["last_gid"] = gid
-                    entry["last_up"] = up_now
-                    ledger_dirty = True
-
-                # The cap, in bytes uploaded over the file's lifetime.
-                if not mirror and total > 0 and entry["uploaded"] >= cap * total:
-                    backend.remove(gid, delete_files=True)
-                    del ledger[fname]
-                    ledger_dirty = True
-                    changed += 1
-                    log.info(
-                        "Seed cap reached for %s (%.1fx of %d bytes) — stopped",
-                        fname,
-                        entry["uploaded"] / total,
-                        total,
-                    )
-            except Exception:
-                pass
-            break
-    if ledger_dirty:
-        try:
-            os.makedirs(os.path.dirname(_seed_ledger_path()), exist_ok=True)
-            _srv._atomic_write_json(_seed_ledger_path(), ledger)
-        except Exception as e:
-            log.debug("seed ledger save failed: %s", e)
+                        changed += 1
+                        log.info(
+                            "Seed cap reached for %s (%.1fx of %d bytes) — stopped",
+                            fname,
+                            entry["uploaded"] / total,
+                            total,
+                        )
+                except Exception:
+                    pass
+                break
+        if ledger_dirty:
+            try:
+                os.makedirs(os.path.dirname(_seed_ledger_path()), exist_ok=True)
+                _srv._atomic_write_json(_seed_ledger_path(), ledger)
+            except Exception as e:
+                log.debug("seed ledger save failed: %s", e)
     if changed:
         log.info(
             "Seed policy pass: %d seed(s) %s",
@@ -1437,7 +1453,14 @@ def seed_accounting_loop():
 
 def flush_seed_accounting():
     """Final accounting pass before the sidecar goes down, so a clean
-    shutdown loses none of the session's upload."""
+    shutdown loses none of the session's upload. Skips straight out when
+    the sidecar is already dead — otherwise the pass burns ~15s of RPC
+    timeouts (3 sequential calls at 5s each) delaying a clean exit."""
+    from zimi import p2p as _p2p
+
+    backend = _p2p.peek_backend()
+    if backend is None or not backend.is_alive():
+        return
     try:
         apply_seed_policy(normalize=False)
     except Exception:
