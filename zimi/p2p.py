@@ -549,6 +549,12 @@ class BTBackend(ABC):
         existence is liveness."""
         return True
 
+    def change_options(self, tid: str, options: dict) -> bool:
+        """Change per-torrent options on a live transfer (e.g. seed-ratio).
+        Returns True on success. Backends without live-option support may
+        leave this as a no-op — callers treat False as 'unchanged'."""
+        return False
+
 
 # ============================================================================
 # aria2 sidecar — the bundled default
@@ -802,6 +808,18 @@ class Aria2Backend(BTBackend):
             return self._rpc("aria2.getOption", [tid]) or {}
         except Exception:
             return {}
+
+    def change_options(self, tid: str, options: dict) -> bool:
+        """aria2.changeOption on a live transfer. seed-ratio is on aria2's
+        changeable-options list, so a running seed picks a new cap up
+        immediately (and stops itself if it's already past it)."""
+        try:
+            self._rpc(
+                "aria2.changeOption", [tid, {k: str(v) for k, v in options.items()}]
+            )
+            return True
+        except Exception:
+            return False
 
     def status(self, tid: str) -> dict:
         raw = self._rpc("aria2.tellStatus", [tid])

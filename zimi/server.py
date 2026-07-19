@@ -161,8 +161,11 @@ def start_background_services(http_port):
 
             _lib.resume_pending_downloads()
             # Mirror mode seeds the whole installed library; either way,
-            # drop seeds whose file an update has replaced.
+            # drop seeds whose file an update has replaced, and bring
+            # session-resumed seeds under the CURRENT settings (a seed
+            # added under old settings otherwise keeps its old cap forever).
             _lib.retire_stale_seeds()
+            _lib.apply_seed_policy()
             _lib.mirror_sync()
             _lib.archive_catalog_torrents()
             _lib.ensure_magnets_for_installed()
@@ -207,6 +210,7 @@ def _maintenance_pass():
         _lib._magnets_ensured = False
         _lib.ensure_magnets_for_installed()
         _lib.retire_stale_seeds()
+        _lib.apply_seed_policy()
         _lib._catalog_torrents_archived = False
         _lib.mirror_sync()
         _lib.archive_catalog_torrents()

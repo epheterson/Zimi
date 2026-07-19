@@ -1064,6 +1064,11 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["seed"] = bool(data["seed"])
+            # Settings govern LIVE seeds too: toggling seeding off stops the
+            # running library seeds (files stay); on re-caps them.
+            from zimi import library as _lib_seed
+
+            threading.Thread(target=_lib_seed.apply_seed_policy, daemon=True).start()
         if "mirror" in data:
             if p2p.is_mirror_env_locked():
                 return handler._json(
@@ -1081,6 +1086,9 @@ def handle_manage_post(handler, parsed, data):
                 # Seed the installed library now, off the request thread
                 # (hash checks + torrent fetches take a while).
                 def _mirror_kickoff():
+                    # Retag seeds that predate mirror mode to the mirror's
+                    # uncapped ratio before syncing in the rest.
+                    _lib.apply_seed_policy()
                     _lib.mirror_sync()
                     _lib.archive_catalog_torrents()
 
@@ -1203,6 +1211,11 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["seed_ratio"] = ratio
+            # Apply the new cap to every live library seed, not just future
+            # adds — aria2 even stops seeds already past the new ratio.
+            from zimi import library as _lib_ratio
+
+            threading.Thread(target=_lib_ratio.apply_seed_policy, daemon=True).start()
         # Global bandwidth caps (KB/s, 0 = unlimited). Applied live to the
         # running sidecar so a new limit takes effect without a respawn.
         for _field, _envlock in (

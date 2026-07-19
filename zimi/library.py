@@ -1173,6 +1173,64 @@ def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
     return fetched
 
 
+def apply_seed_policy():
+    """Make the CURRENT seed settings govern every live library seed — not
+    just future adds. Before this, a ratio change only affected the next
+    download, so a seed added under old settings kept its old cap forever
+    (a session-resumed seed could sit at ratio 0, seeding for eternity,
+    while the UI showed a 2x cap).
+
+    Effective policy: Mirror on -> uncapped (aria2 ratio "0"); otherwise the
+    personal cap; cap 0 / seeding off -> stop the seeds (files stay on
+    disk). Only torrents whose payload lives in ZIM_DIR are touched —
+    staging transfers belong to the download machinery. Returns how many
+    seeds were updated or stopped."""
+    from zimi import p2p as _p2p
+
+    backend = _p2p.peek_backend()
+    if backend is None:
+        return 0
+    if _p2p.is_mirror_enabled():
+        target = "0"
+    elif _p2p.is_seeding_enabled() and _p2p.get_seed_ratio_cap() > 0:
+        target = str(_p2p.get_seed_ratio_cap())
+    else:
+        target = None  # seeding off — stop library seeds, keep files
+    try:
+        entries = backend.list_managed()
+    except Exception:
+        return 0
+    zim_root = os.path.normpath(_srv.ZIM_DIR)
+    get_opts = getattr(backend, "get_options", lambda tid: {})
+    changed = 0
+    for raw in entries:
+        for f in raw.get("files", []):
+            path = f.get("path", "")
+            if not path or os.path.normpath(os.path.dirname(path)) != zim_root:
+                continue
+            gid = raw.get("gid", "")
+            try:
+                if target is None:
+                    backend.remove(gid, delete_files=True)
+                    changed += 1
+                else:
+                    current = str(get_opts(gid).get("seed-ratio", ""))
+                    if current != target and backend.change_options(
+                        gid, {"seed-ratio": target}
+                    ):
+                        changed += 1
+            except Exception:
+                pass
+            break
+    if changed:
+        log.info(
+            "Seed policy applied to %d live seed(s): %s",
+            changed,
+            "stopped" if target is None else f"ratio {target}",
+        )
+    return changed
+
+
 def stop_mirror_seeds():
     """Mirror off: stop the MIRROR seeds, keep everything else.
 

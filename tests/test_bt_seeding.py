@@ -485,3 +485,78 @@ def test_bt_port_pref_and_env_lock(_prefs, monkeypatch):
     monkeypatch.setenv("ZIMI_BT", "on,port=16881")
     assert p2p.get_bt_port() == 16881
     assert p2p.is_bt_port_env_locked() is True
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# apply_seed_policy — current settings govern LIVE seeds, not just future adds
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _policy_backend(zim_dir, *, ratio="0"):
+    """Backend with one library seed (at `ratio`) and one staging transfer."""
+    backend = MagicMock()
+    backend.list_managed.return_value = [
+        {"gid": "lib-1", "files": [{"path": os.path.join(zim_dir, "wiki.zim")}]},
+        {"gid": "stg-1", "files": [{"path": os.path.join(zim_dir, "staging", "dl.zim")}]},
+    ]
+    backend.get_options.return_value = {"seed-ratio": ratio}
+    backend.change_options.return_value = True
+    return backend
+
+
+def _run_policy(monkeypatch, backend, zim_dir, *, mirror=False, seed=True, cap=2.0):
+    import zimi.library as library
+
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: mirror)
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: seed)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: cap)
+    monkeypatch.setattr(library._srv, "ZIM_DIR", zim_dir)
+    return library.apply_seed_policy()
+
+
+def test_policy_recaps_stale_ratio_on_library_seed(tmp_path, monkeypatch):
+    """A session-resumed seed stuck at ratio 0 gets the current 2x cap."""
+    backend = _policy_backend(str(tmp_path), ratio="0")
+    changed = _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
+    assert changed == 1
+    backend.change_options.assert_called_once_with("lib-1", {"seed-ratio": "2.0"})
+    backend.remove.assert_not_called()
+
+
+def test_policy_skips_staging_transfers(tmp_path, monkeypatch):
+    """Downloads in staging belong to the download machinery — untouched."""
+    backend = _policy_backend(str(tmp_path), ratio="0")
+    _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
+    for call in backend.change_options.call_args_list:
+        assert call.args[0] != "stg-1"
+
+
+def test_policy_noop_when_ratio_already_matches(tmp_path, monkeypatch):
+    backend = _policy_backend(str(tmp_path), ratio="2.0")
+    changed = _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
+    assert changed == 0
+    backend.change_options.assert_not_called()
+
+
+def test_policy_mirror_means_uncapped(tmp_path, monkeypatch):
+    backend = _policy_backend(str(tmp_path), ratio="2.0")
+    changed = _run_policy(monkeypatch, backend, str(tmp_path), mirror=True)
+    assert changed == 1
+    backend.change_options.assert_called_once_with("lib-1", {"seed-ratio": "0"})
+
+
+def test_policy_seeding_off_stops_library_seeds(tmp_path, monkeypatch):
+    """Cap 0 / seeding off stops live seeds; the ZIM stays on disk."""
+    backend = _policy_backend(str(tmp_path), ratio="2.0")
+    changed = _run_policy(monkeypatch, backend, str(tmp_path), seed=False)
+    assert changed == 1
+    backend.remove.assert_called_once_with("lib-1", delete_files=True)
+    backend.change_options.assert_not_called()
+
+
+def test_policy_no_backend_is_a_noop(monkeypatch):
+    import zimi.library as library
+
+    monkeypatch.setattr(p2p, "peek_backend", lambda: None)
+    assert library.apply_seed_policy() == 0
