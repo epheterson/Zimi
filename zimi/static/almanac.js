@@ -296,18 +296,24 @@ function _principalPhaseOnDay(cellJDN) {
   return null;
 }
 
-function _renderAlmanacContent() {
-  var now = new Date();
-  var m = _moonPhase(now);
-  var dist = _moonDistance(now);
+// The moment the header describes. null = live "now"; set by picking a day on
+// the calendar. It's a full instant (not just a date) so a time-of-day picker
+// can drive the same path later.
+var _almFocus = null;
+function _almFocusInstant() { return _almFocus || new Date(); }
+function _almIsToday(d) {
+  var n = new Date();
+  return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+}
+
+// Header, hero moon and the eight pills for a given instant. Re-rendered in
+// place when a calendar day is picked, so there's one set of numbers on the
+// page rather than a duplicate panel lower down.
+function _almHeadHtml(focus) {
+  var m = _moonPhase(focus);
+  var dist = _moonDistance(focus);
   var age = (m.phase * 29.53).toFixed(1);
-  var untilNew = ((1 - m.phase) * 29.53).toFixed(1);
 
-  var html = '<div class="almanac-inner">';
-
-  // Location drives the whole panel (moon, sun, holidays) — show its local
-  // date/time in the header too, so the clock, sun times and moon all agree
-  // even when the location isn't in the device's timezone.
   var loc = _getLocation();
   var locTz = null;
   try { locTz = _almTzForLocation(loc.lat, loc.lon); } catch (e) {}
@@ -315,17 +321,20 @@ function _renderAlmanacContent() {
   var _dtOpts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
   var _tmOpts = { hour: 'numeric', minute: '2-digit' };
   if (locTz) { _dtOpts.timeZone = locTz; _tmOpts.timeZone = locTz; }
-  var dateStr = now.toLocaleDateString(lang, _dtOpts);
-  var timeStr = now.toLocaleTimeString(lang, _tmOpts);
+  var dateStr = focus.toLocaleDateString(lang, _dtOpts);
+  var timeStr = focus.toLocaleTimeString(lang, _tmOpts);
   var tzName = _formatTimezone(lang, locTz);
-  html += '<div style="text-align:center;margin-bottom:16px">';
+  var live = _almIsToday(focus);
+
+  var html = '<div style="text-align:center;margin-bottom:16px">';
   html += '<div style="font-size:22px;font-weight:600;color:var(--text)">' + dateStr + '</div>';
-  html += '<div style="font-size:16px;color:var(--text2);margin-top:4px">' + timeStr + (tzName ? ' &middot; ' + tzName : '') + '</div>';
+  html += '<div style="font-size:16px;color:var(--text2);margin-top:4px">' + timeStr + (tzName ? ' &middot; ' + tzName : '') +
+    (live ? '' : ' <button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button>') + '</div>';
   html += '</div>';
 
   // Hero moon — tilted so the bright limb faces the Sun as the observer sees
   // it (bright-limb PA minus parallactic), not the parallactic angle alone.
-  var moonPos = _moonPosition(now, loc.lat, loc.lon);
+  var moonPos = _moonPosition(focus, loc.lat, loc.lon);
   var moonTilt = (moonPos.brightLimb != null ? moonPos.brightLimb : moonPos.parallactic) || 0;
   html += '<div class="almanac-hero">';
   html += _renderAlmanacMoon(m, moonTilt);
@@ -335,21 +344,20 @@ function _renderAlmanacContent() {
   // Sun cards render in the shown location's timezone (same locTz as the
   // header), so the clock, sun times and moon all agree.
   var _locTzOff;
-  try { _locTzOff = _tzUtcOffsetMin(locTz, now); }
-  catch (e) { _locTzOff = -now.getTimezoneOffset(); }
-  var sunInfo0 = _computeSunTimes(now, loc.lat, loc.lon, _locTzOff);
+  try { _locTzOff = _tzUtcOffsetMin(locTz, focus); }
+  catch (e) { _locTzOff = -focus.getTimezoneOffset(); }
+  var sunInfo0 = _computeSunTimes(focus, loc.lat, loc.lon, _locTzOff);
 
-  // Moon data cards (right under moon hero), then sun data cards (right above sky scene)
   html += '<div class="alm-cards">';
   html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_illuminated') + '</div><div class="alm-card-val">' + m.illumination + '%</div></div>';
   html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_moon_age') + '</div><div class="alm-card-val">' + age + ' ' + t('alm_days') + '</div></div>';
   html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_distance') + '</div><div class="alm-card-val">' + Math.round(dist).toLocaleString() + ' ' + t('alm_km') + '</div></div>';
-  var _nfm = _nextFullMoon(now);
+  var _nfm = _nextFullMoon(focus);
   if (_nfm) {
     var _nfmStr = _nfm.date.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
     html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_next_full') + '</div><div class="alm-card-val"' +
       (_nfm.isSuper ? ' style="color:#e0b060"' : '') + '>' + _nfmStr +
-      (_nfm.isSuper ? ' · ' + t('alm_supermoon') : '') + '</div></div>';
+      (_nfm.isSuper ? ' \u00b7 ' + t('alm_supermoon') : '') + '</div></div>';
   }
   if (sunInfo0.polar) {
     html += '<div class="alm-card" style="grid-column:span 4"><div class="alm-card-val">' + sunInfo0.polar + '</div></div>';
@@ -362,6 +370,48 @@ function _renderAlmanacContent() {
     }
   }
   html += '</div>';
+  return html;
+}
+
+// Repaint every panel that describes a moment, in place, for the focused
+// instant. Two things deliberately stay out of it: the world clock (it is a
+// clock — it should always read now) and the orrery, which carries its own
+// date and speed and operates on a completely different time scale.
+function _almRepaintFocus() {
+  var focus = _almFocusInstant();
+  var loc = _getLocation();
+  var m = _moonPhase(focus);
+  var head = document.getElementById('almanac-head');
+  if (head) head.innerHTML = _almHeadHtml(focus);
+  _renderSunMap(focus);
+  // _renderSunMap re-seeds the world-clock grid off the date it's handed. That
+  // grid is a *clock* — it must keep reading now, not the focused instant.
+  _initTzClock(new Date());
+  _renderOnThisDay(focus);
+  _renderTonightSky(focus);
+  _renderStarChart(focus);
+  _renderAnalemma(focus);
+  _renderAstroPanel(focus);
+  _renderMeteorShowers(focus, m);
+  _renderCelestialEvents(focus);
+  _renderDeepTime(focus);
+  // Re-seeding the sky scene cancels the previous RAF, so loops don't stack.
+  _initSkyScene(focus, loc.lat, loc.lon);
+}
+
+function _almBackToToday() {
+  _almFocus = null;
+  _almSelectedJDN = _almTodayJDN;
+  _drawAlmanacGrid();
+  _almRepaintFocus();
+}
+
+function _renderAlmanacContent() {
+  var now = new Date();
+  var m = _moonPhase(now);
+
+  var html = '<div class="almanac-inner">';
+  html += '<div id="almanac-head">' + _almHeadHtml(now) + '</div>';
 
   // Sky scene + calendar — wall calendar: art above, month grid below
   html += '<div class="almanac-sky-wrap">' +
@@ -5028,9 +5078,6 @@ function _drawAlmanacGrid() {
     }
   }
 
-  // Numbers for the selected day (moon + sun pills, On This Day).
-  html += _almDayPillsHtml(_almSelectedJDN);
-
   // Quiet caption saying whose national days are shown. Always present on
   // the Gregorian calendar — no pack means the worldwide set, and saying
   // so beats an unexplained absence of holidays.
@@ -5061,6 +5108,13 @@ function _almSwitchSystem(sys) {
 
 function _almSelectDay(jdn) {
   _almSelectedJDN = jdn;
+  // Carry the current time-of-day onto the picked date, so the moon and the
+  // instantaneous numbers describe "this time, that day".
+  var g = _jdnToGregorian(jdn);
+  var nowT = new Date();
+  var picked = new Date(g.year, g.month - 1, g.day, nowT.getHours(), nowT.getMinutes(), 0);
+  _almFocus = _almIsToday(picked) ? null : picked;
+  _almRepaintFocus();
   // If clicked day is outside current month view, navigate to it
   var cal = _jdnToCalendar(_almSystem, jdn);
   if (cal.year !== _almYear || cal.month !== _almMonth) {
@@ -5068,64 +5122,6 @@ function _almSelectDay(jdn) {
     _almMonth = cal.month;
   }
   _drawAlmanacGrid();
-}
-
-// Pills for whichever day is selected on the calendar: the same moon-row /
-// sun-row composition as the header, but for that date, plus any On This Day
-// entries. Without this there was no way to see a day's numbers except today's.
-function _almDayPillsHtml(jdn) {
-  var g = _jdnToGregorian(jdn);
-  var date = new Date(g.year, g.month - 1, g.day, 12, 0, 0); // local noon
-  var loc = _getLocation();
-  var tzOff;
-  try { tzOff = _tzUtcOffsetMin(_almTzForLocation(loc.lat, loc.lon), date); }
-  catch (e) { tzOff = -date.getTimezoneOffset(); }
-  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
-  var mp = _moonPhase(date);
-  var dist = _moonDistance(date);
-  var age = (mp.phase * 29.53).toFixed(1);
-  var sun = _computeSunTimes(date, loc.lat, loc.lon, tzOff);
-
-  function pill(lbl, val, style) {
-    return '<div class="alm-card"><div class="alm-card-lbl">' + lbl + '</div>' +
-      '<div class="alm-card-val"' + (style ? ' style="' + style + '"' : '') + '>' + val + '</div></div>';
-  }
-
-  var html = '<div class="alm-daysel">';
-  html += '<div class="alm-daysel-head">' +
-    _almEsc(date.toLocaleDateString(lang, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })) +
-    '<span class="alm-daysel-moon">' + _moonGlyphSVG(mp.phase, 15) + ' ' +
-    _almEsc(_localMoonName(mp.name)) + '</span></div>';
-
-  html += '<div class="alm-cards">';
-  html += pill(t('alm_illuminated'), mp.illumination + '%');
-  html += pill(t('alm_moon_age'), age + ' ' + t('alm_days'));
-  html += pill(t('alm_distance'), Math.round(dist).toLocaleString() + ' ' + t('alm_km'));
-  var _dnf = _nextFullMoon(date);
-  html += pill(t('alm_next_full'), _dnf ? _dnf.date.toLocaleDateString(lang, { month: 'short', day: 'numeric' }) : '\u2014',
-    _dnf && _dnf.isSuper ? 'color:#e0b060' : '');
-  if (sun.polar) {
-    html += '<div class="alm-card" style="grid-column:span 4"><div class="alm-card-val">' + sun.polar + '</div></div>';
-  } else {
-    html += pill(t('alm_sunrise'), sun.sunrise);
-    html += pill(t('alm_sunset'), sun.sunset);
-    html += pill(t('alm_daylight'), sun.dayLength);
-    html += pill(t('alm_golden'), sun.goldenHour || '\u2014', 'color:#d4aa64');
-  }
-  html += '</div>';
-
-  // On This Day for the selected date, if the calendar has anything for it.
-  var otd = _onThisDay(date);
-  if (otd.length) {
-    html += '<div class="alm-daysel-otd"><div class="alm-daysel-otd-ttl">' + t('alm_on_this_day') + '</div>';
-    for (var i = 0; i < otd.length; i++) {
-      html += '<div class="alm-otd-row"><div class="alm-otd-year">' + String(otd[i].y) + '</div>' +
-        '<div class="alm-otd-text">' + _almEsc(otd[i].t) + '</div></div>';
-    }
-    html += '</div>';
-  }
-  html += '</div>';
-  return html;
 }
 
 function _almRenderCrossRef(jdn) {
