@@ -492,12 +492,22 @@ def test_bt_port_pref_and_env_lock(_prefs, monkeypatch):
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _policy_backend(zim_dir, *, ratio="0"):
-    """Backend with one library seed (at `ratio`) and one staging transfer."""
+def _policy_backend(zim_dir, *, ratio="0", uploaded=0, total=1000):
+    """Backend with one live library seed and one staging transfer."""
     backend = MagicMock()
     backend.list_managed.return_value = [
-        {"gid": "lib-1", "files": [{"path": os.path.join(zim_dir, "wiki.zim")}]},
-        {"gid": "stg-1", "files": [{"path": os.path.join(zim_dir, "staging", "dl.zim")}]},
+        {
+            "gid": "lib-1",
+            "status": "active",
+            "uploadLength": str(uploaded),
+            "totalLength": str(total),
+            "files": [{"path": os.path.join(zim_dir, "wiki.zim")}],
+        },
+        {
+            "gid": "stg-1",
+            "status": "active",
+            "files": [{"path": os.path.join(zim_dir, "staging", "dl.zim")}],
+        },
     ]
     backend.get_options.return_value = {"seed-ratio": ratio}
     backend.change_options.return_value = True
@@ -512,15 +522,19 @@ def _run_policy(monkeypatch, backend, zim_dir, *, mirror=False, seed=True, cap=2
     monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: seed)
     monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: cap)
     monkeypatch.setattr(library._srv, "ZIM_DIR", zim_dir)
+    monkeypatch.setattr(
+        library._srv, "ZIMI_DATA_DIR", os.path.join(zim_dir, "data")
+    )
     return library.apply_seed_policy()
 
 
-def test_policy_recaps_stale_ratio_on_library_seed(tmp_path, monkeypatch):
-    """A session-resumed seed stuck at ratio 0 gets the current 2x cap."""
-    backend = _policy_backend(str(tmp_path), ratio="0")
+def test_policy_normalizes_stale_numeric_ratio_to_zero(tmp_path, monkeypatch):
+    """A seed carrying an old numeric aria2 cap (the kill switch: aria2
+    counts session download, 0 for re-seeds) is reset to uncapped."""
+    backend = _policy_backend(str(tmp_path), ratio="2.0")
     changed = _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
     assert changed == 1
-    backend.change_options.assert_called_once_with("lib-1", {"seed-ratio": "2.0"})
+    backend.change_options.assert_called_once_with("lib-1", {"seed-ratio": "0"})
     backend.remove.assert_not_called()
 
 
@@ -532,18 +546,46 @@ def test_policy_skips_staging_transfers(tmp_path, monkeypatch):
         assert call.args[0] != "stg-1"
 
 
-def test_policy_noop_when_ratio_already_matches(tmp_path, monkeypatch):
-    backend = _policy_backend(str(tmp_path), ratio="2.0")
+def test_policy_leaves_ratio_zero_seed_running_under_cap(tmp_path, monkeypatch):
+    backend = _policy_backend(str(tmp_path), ratio="0", uploaded=500, total=1000)
     changed = _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
     assert changed == 0
     backend.change_options.assert_not_called()
+    backend.remove.assert_not_called()
 
 
-def test_policy_mirror_means_uncapped(tmp_path, monkeypatch):
-    backend = _policy_backend(str(tmp_path), ratio="2.0")
+def test_policy_mirror_never_cap_stops(tmp_path, monkeypatch):
+    """Mirror on: even a heavily-uploaded seed keeps seeding."""
+    backend = _policy_backend(str(tmp_path), ratio="0", uploaded=999999, total=1000)
     changed = _run_policy(monkeypatch, backend, str(tmp_path), mirror=True)
+    assert changed == 0
+    backend.remove.assert_not_called()
+
+
+def test_policy_stops_seed_at_cumulative_cap(tmp_path, monkeypatch):
+    """Uploaded 2x the file size (across sessions) -> stop + intent gone."""
+    import zimi.library as library
+
+    backend = _policy_backend(str(tmp_path), ratio="0", uploaded=2000, total=1000)
+    changed = _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
     assert changed == 1
-    backend.change_options.assert_called_once_with("lib-1", {"seed-ratio": "0"})
+    backend.remove.assert_called_once_with("lib-1", delete_files=True)
+    assert "wiki.zim" not in library._seed_ledger()
+
+
+def test_policy_accumulates_upload_across_sessions(tmp_path, monkeypatch):
+    """1200 uploaded under one gid + 900 under a new gid = 2100 >= 2x1000:
+    the second pass must stop the seed even though neither session alone
+    reached the cap."""
+    import zimi.library as library
+
+    b1 = _policy_backend(str(tmp_path), ratio="0", uploaded=1200, total=1000)
+    assert _run_policy(monkeypatch, b1, str(tmp_path), cap=2.0) == 0
+    b2 = _policy_backend(str(tmp_path), ratio="0", uploaded=900, total=1000)
+    b2.list_managed.return_value[0]["gid"] = "lib-2"
+    changed = _run_policy(monkeypatch, b2, str(tmp_path), cap=2.0)
+    assert changed == 1
+    b2.remove.assert_called_once_with("lib-2", delete_files=True)
 
 
 def test_policy_seeding_off_stops_library_seeds(tmp_path, monkeypatch):
@@ -602,7 +644,8 @@ def test_reseed_readds_missing_seed_from_local_torrent(_ledger_env, tmp_path, mo
     assert lib.reseed_from_ledger() == 1
     args, kwargs = backend.add_torrent.call_args
     assert args[0] == str(tfile)
-    assert kwargs["options"]["seed-ratio"] == "2.0"
+    # aria2 layer is always uncapped; Zimi enforces the user's cap itself.
+    assert kwargs["options"]["seed-ratio"] == "0"
     assert kwargs["options"]["bt-hash-check-seed"] == "true"
 
 

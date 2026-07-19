@@ -439,7 +439,8 @@ def test_reseed_normal_cap_readds_from_library(tmp_path, monkeypatch):
     assert len(readds) == 1
     args, kwargs = readds[0]
     assert kwargs["dest_dir"] == str(tmp_path)
-    assert kwargs["options"]["seed-ratio"] == "2.0"
+    # aria2 layer uncapped; Zimi enforces the cap (apply_seed_policy)
+    assert kwargs["options"]["seed-ratio"] == "0"
     assert kwargs["options"]["bt-seed-unverified"] == "true"
     backend.remove.assert_called_with("gid-001", delete_files=True)
 

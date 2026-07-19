@@ -73,10 +73,17 @@ being a NASA-only timeline.
 - **The sky scene's Sun sets in the west.** An unnormalized hour angle
   mirrored the Sun's azimuth to the wrong hemisphere on western-longitude
   evenings — the sunset painted on the eastern side of the scene.
-- **Seed settings govern live torrents.** Changing the seed ratio (or
-  toggling seeding or mirror) now re-caps every running seed instead of
-  only affecting the next download; a seed resumed from an old session no
-  longer keeps a stale cap forever.
+- **Seeding actually works now — and survives restarts.** Two long-standing
+  defects fell together: aria2's own ratio cap measures upload against the
+  session's *downloaded* bytes, which is zero for a re-seed of a file
+  already on disk — so every capped seed silently died the first time a
+  real peer took a piece (only uncapped mirror seeds ever survived). And a
+  restart could silently drop a live seed from aria2's session. Zimi now
+  runs every seed uncapped at the aria2 layer and enforces your ratio cap
+  itself — cumulatively, against file size, across restarts — and keeps
+  its own ledger of intended seeds, restoring any that are missing at
+  startup. Deliberate stops (your stop button, seeding off, mirror off,
+  deleting the ZIM) remove the intent, so nothing resurrects.
 - **Selections no longer grey out** under the cursor, and today's date circle
   no longer pushes its holidays below the neighbouring cells.
 - **Eclipse rows no longer name a visibility region.** The label came from

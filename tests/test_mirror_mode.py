@@ -492,9 +492,10 @@ def test_ensure_magnets_mirror_keeps_torrent_file(_mirror_env, monkeypatch):
     lib._magnets_ensured = False
 
 
-def test_stop_mirror_seeds_removes_only_uncapped_mirror_seeds(_mirror_env, monkeypatch):
-    """Mirror off must not kill ordinary ratio-capped seeds (they carry a
-    positive seed-ratio; mirror-class seeds are the uncapped ones)."""
+def test_stop_mirror_seeds_removes_only_mirror_origin_seeds(_mirror_env, monkeypatch):
+    """Mirror off must not kill ordinary personal seeds. All seeds run at
+    aria2 ratio 0 now (Zimi enforces caps), so mirror-class seeds are told
+    apart by their recorded ledger origin, not their aria2 options."""
     import zimi.library as lib
     import zimi.p2p as p2p
 
@@ -502,6 +503,8 @@ def test_stop_mirror_seeds_removes_only_uncapped_mirror_seeds(_mirror_env, monke
     mirror_file.write_bytes(b"x")
     normal_file = _mirror_env / "normal_2026-06.zim"
     normal_file.write_bytes(b"x")
+    lib.record_seed("mirror_2026-06.zim", origin="mirror")
+    lib.record_seed("normal_2026-06.zim", origin="download")
     backend = _FakeBackend(
         managed=[
             {"gid": "g-mirror", "files": [{"path": str(mirror_file)}]},
@@ -519,5 +522,8 @@ def test_stop_mirror_seeds_removes_only_uncapped_mirror_seeds(_mirror_env, monke
     monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
     assert lib.stop_mirror_seeds() == 1
     assert backend.removed == ["g-mirror"]
-    # Files untouched, capped seed untouched
+    # Files untouched, personal seed untouched — and its intent survives
+    # while the mirror seed's intent is gone.
     assert mirror_file.exists() and normal_file.exists()
+    assert "normal_2026-06.zim" in lib._seed_ledger()
+    assert "mirror_2026-06.zim" not in lib._seed_ledger()
