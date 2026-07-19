@@ -69,9 +69,19 @@ being a NASA-only timeline.
   more phantom eclipses); and the March equinox.
 - **Selections no longer grey out** under the cursor, and today's date circle
   no longer pushes its holidays below the neighbouring cells.
+- **Eclipse rows no longer name a visibility region.** The label came from
+  sub-solar longitude alone and was wrong more often than right (the
+  August 2026 totality over Greenland, Iceland and Spain read "Americas").
+  Rows now show the eclipse date instead; real ground tracks come later.
+- **The zodiac animal follows the Chinese year**, not the Gregorian one, so
+  it no longer contradicts the year number beside it each January.
 
 ### Changed
 
+- **The Chinese calendar grid view is withdrawn for now.** The approximation
+  behind it has no leap months, which left the grid a full month off for
+  stretches of leap years. The cross-reference row stays, marked "≈". The
+  grid returns when real astronomical intercalation lands.
 - The almanac was split into modules (shell, orrery, sky) after outgrowing a
   single 5,900-line file. No behaviour change.
 
