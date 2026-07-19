@@ -987,27 +987,12 @@ function _computeEclipses(fromDate, count) {
         else if (gam < 1.0128) type = t('alm_eclipse_partial_lunar');
         else type = t('alm_eclipse_penumbral_lunar');
       }
-      // Compute sub-solar point longitude at eclipse time
-      // Greenwich Sidereal Time approximation from JDE
-      var T0 = (Math.floor(eclJDE - 0.5) + 0.5 - JD_J2000) / JULIAN_CENTURY;
-      var GST0 = 280.46061837 + 360.98564736629 * (eclJDE - JD_J2000) + 0.000387933 * T0 * T0;
-      GST0 = ((GST0 % 360) + 360) % 360;
-      var subLon = ((180 - GST0) % 360 + 540) % 360 - 180; // sub-solar longitude
-      var region;
-      if (isSolar) {
-        if (subLon > -30 && subLon < 60) region = t('alm_region_europe_africa');
-        else if (subLon >= 60 && subLon < 150) region = t('alm_region_asia_australia');
-        else if (subLon >= 150 || subLon < -120) region = t('alm_region_pacific');
-        else region = t('alm_region_americas');
-      } else {
-        var nightLon = ((subLon + 180 + 360) % 360) - 180;
-        if (nightLon > -30 && nightLon < 60) region = t('alm_region_europe_africa');
-        else if (nightLon >= 60 && nightLon < 150) region = t('alm_region_asia_australia');
-        else if (nightLon >= 150 || nightLon < -120) region = t('alm_region_pacific');
-        else region = t('alm_region_americas');
-      }
+      // No visibility region: naming one from sub-solar longitude alone was
+      // wrong more often than right (the Aug 2026 Greenland/Iceland/Spain
+      // totality read "Americas"). Real ground tracks need Besselian
+      // elements — until then, show only what we can stand behind.
       var dateStr = eclDate.getFullYear() + '-' + String(eclDate.getMonth() + 1).padStart(2, '0') + '-' + String(eclDate.getDate()).padStart(2, '0');
-      results.push({ date: dateStr, type: type, region: region });
+      results.push({ date: dateStr, type: type });
     }
   }
   return results.slice(0, count);
@@ -1088,7 +1073,8 @@ function _renderAstroPanel(now) {
       var daysUntil = Math.ceil((ecDate - now) / MS_PER_DAY);
       var untilStr = daysUntil <= 0 ? t('alm_today') : daysUntil === 1 ? t('alm_tomorrow') : t('alm_n_days', { n: daysUntil });
       html += '<div class="almanac-eclipse-row">' +
-        '<div><span class="almanac-eclipse-type">' + ec.type + '</span><br><span class="almanac-eclipse-date">' + ec.region + '</span></div>' +
+        '<div><span class="almanac-eclipse-type">' + ec.type + '</span><br><span class="almanac-eclipse-date">' +
+        ecDate.toLocaleDateString((typeof _currentLang !== 'undefined') ? _currentLang : undefined, { month: 'long', day: 'numeric', year: 'numeric' }) + '</span></div>' +
         '<div class="almanac-eclipse-until">' + untilStr + '</div></div>';
     }
     html += '</div>';
@@ -3153,9 +3139,13 @@ var _almSystem = 'gregorian';
 var _almYear = 0, _almMonth = 0;
 var _almSelectedJDN = 0, _almTodayJDN = 0;
 
+// No 'chinese' grid: the mean-lunation math behind the cross-reference row is
+// fine for a one-line "≈" conversion, but a browsable month grid needs real
+// astronomical new moons and leap-month intercalation — without them the grid
+// showed invented month lengths and no leap months, a full month off for parts
+// of leap years. Grid returns when the real calendar lands.
 var _ALM_SYSTEMS = [
   { id: 'buddhist', label: 'Buddhist' },
-  { id: 'chinese', label: 'Chinese' },
   { id: 'gregorian', label: 'Gregorian' },
   { id: 'hebrew', label: 'Hebrew' },
   { id: 'islamic', label: 'Islamic' },
@@ -3329,11 +3319,20 @@ function _almRenderCrossRef(jdn) {
     var yearStr = cal.year + _calYearSuffix(sys);
     var dateStr = monthName + ' ' + cal.day + ', ' + yearStr;
     if (sys === 'chinese') {
-      var chinese = _chineseZodiac(greg.year);
-      dateStr = monthName + ' ' + cal.day + ' \u00b7 ' + chinese.animal + ' \u00b7 ' + yearStr;
+      // Key the animal to the CHINESE year being displayed (era 2697), not the
+      // Gregorian year \u2014 otherwise the animal flips on Jan 1 and contradicts
+      // the year number beside it for the weeks before Chinese New Year.
+      var chinese = _chineseZodiac(cal.year - 2697);
+      // "\u2248": mean-lunation approximation without leap months \u2014 close most of
+      // the time, but not the real astronomical Chinese calendar.
+      dateStr = '\u2248 ' + monthName + ' ' + cal.day + ' \u00b7 ' + chinese.animal + ' \u00b7 ' + yearStr;
     }
     var isActive = sys === _almSystem ? ' alm-crossref-active' : '';
-    html += '<div class="alm-crossref-row' + isActive + '" onclick="_almSwitchSystem(\'' + sys + '\')">' +
+    // The Chinese row is a cross-reference only: no grid view is offered for
+    // it (a browsable grid needs real leap-month math \u2014 see _ALM_SYSTEMS).
+    var clickable = sys !== 'chinese';
+    html += '<div class="alm-crossref-row' + isActive + '"' +
+      (clickable ? ' onclick="_almSwitchSystem(\'' + sys + '\')"' : ' style="cursor:default"') + '>' +
       '<span class="alm-crossref-label">' + _calLabel(sys) + '</span>' +
       '<span class="alm-crossref-date">' + dateStr + '</span>' +
       '</div>';
