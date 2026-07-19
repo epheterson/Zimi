@@ -388,6 +388,10 @@ if os.path.isdir(_STATIC_DIR):
             _static_hash("app.js")
             + _static_hash("app.css")
             + _static_hash("almanac.js")
+            # Almanac was split into sibling modules; all of them must feed the
+            # bundle hash or a change to one ships behind a stale SW cache.
+            + _static_hash("almanac-orrery.js")
+            + _static_hash("almanac-sky.js")
             + _i18n_hash
         ).encode()
     ).hexdigest()[:8]

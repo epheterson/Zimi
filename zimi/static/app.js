@@ -1539,11 +1539,27 @@ function openAlmanac(replaceState) {
     return;
   }
   if (!_almanacLoaded) {
-    var s = document.createElement('script');
-    s.src = '/static/almanac.js?v=41';
-    s.onload = function() { _almanacLoaded = true; _openAlmanacInner(replaceState); };
-    s.onerror = function() { console.error('Failed to load almanac.js'); };
-    document.head.appendChild(s);
+    // The almanac is split across sibling modules (it outgrew one file). They
+    // share a global scope, so load them in sequence and only open once the
+    // last one lands — opening early would call into functions not yet defined.
+    var almanacModules = [
+      '/static/almanac-orrery.js?v=41',
+      '/static/almanac-sky.js?v=41',
+      '/static/almanac.js?v=41'
+    ];
+    var loadNext = function(i) {
+      if (i >= almanacModules.length) {
+        _almanacLoaded = true;
+        _openAlmanacInner(replaceState);
+        return;
+      }
+      var s = document.createElement('script');
+      s.src = almanacModules[i];
+      s.onload = function() { loadNext(i + 1); };
+      s.onerror = function() { console.error('Failed to load ' + almanacModules[i]); };
+      document.head.appendChild(s);
+    };
+    loadNext(0);
     return;
   }
   _openAlmanacInner(replaceState);
