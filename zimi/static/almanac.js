@@ -468,6 +468,9 @@ function _renderAlmanacContent() {
   html += '<span id="orrery-date" class="orrery-date"></span>';
   html += '<button id="orrery-now" class="orrery-ctrl-btn orrery-now" onclick="_orrerySnapToNow()" title="' + t('alm_back_to_now') + '" style="display:none">' + t('alm_now') + '</button>';
   html += '</div>';
+  // Deep-space view: zoom out past Neptune to the interstellar probes, where
+  // (unlike the planet view) they have room to visibly crawl outward on a scrub.
+  html += '<div class="orrery-modes"><button id="orrery-deepspace" class="orrery-mode-btn" onclick="_orreryToggleDeepSpace()" title="' + _almEsc(t('alm_deep_space_hint')) + '">' + t('alm_deep_space') + '</button></div>';
   // Transit slider — appears when a rocket is in flight (aligned with main controls)
   html += '<div id="orrery-transit-wrap" class="orrery-transit-wrap">';
   html += '<span class="orrery-transit-end">' + t('alm_transit') + '</span>';
@@ -696,15 +699,35 @@ function _moonDistance(date) {
 
 
 // ── Voyager probes — hyperbolic escape trajectories ──
+// The interstellar probes — escaping the Sun almost radially along a fixed
+// ecliptic direction (physically correct far from the Sun), so a fixed
+// longitude + a distance growing linearly with time is the right model.
+// Distances/velocities are 2026-epoch, ecliptic longitudes JPL-Horizons-grade.
 var _VOYAGERS = [
-  { name: 'Voyager 1', launch: Date.UTC(1977, 8, 5), refEpoch: Date.UTC(2025, 0, 1), refDist: 164.0, vel: 3.59, lon: 260.5 },
-  { name: 'Voyager 2', launch: Date.UTC(1977, 7, 20), refEpoch: Date.UTC(2025, 0, 1), refDist: 137.0, vel: 3.25, lon: 296.2 }
+  { name: 'Voyager 1', label: 'V1', launch: Date.UTC(1977, 8, 5), refEpoch: Date.UTC(2026, 0, 1), refDist: 167.0, vel: 3.57, lon: 260.5 },
+  { name: 'Voyager 2', label: 'V2', launch: Date.UTC(1977, 7, 20), refEpoch: Date.UTC(2026, 0, 1), refDist: 141.4, vel: 3.21, lon: 296.2 },
+  { name: 'Pioneer 10', label: 'P10', launch: Date.UTC(1972, 2, 3), refEpoch: Date.UTC(2026, 0, 1), refDist: 139.9, vel: 2.49, lon: 72 },
+  { name: 'Pioneer 11', label: 'P11', launch: Date.UTC(1973, 3, 6), refEpoch: Date.UTC(2026, 0, 1), refDist: 117.5, vel: 2.34, lon: 277 },
+  { name: 'New Horizons', label: 'NH', launch: Date.UTC(2006, 0, 19), refEpoch: Date.UTC(2026, 0, 1), refDist: 63.3, vel: 2.85, lon: 285 }
 ];
 var _voyagerPositions = []; // [{name, x, y, r, dist, idx}] in CSS pixels
 
 function _voyagerDist(v, simTime) {
   var yearsFromRef = (simTime - v.refEpoch) / (365.25 * MS_PER_DAY);
   return Math.max(0, v.refDist + v.vel * yearsFromRef);
+}
+
+// Reference distances for the "deep space" view (AU).
+var _HELIO_TERMINATION_AU = 94;   // termination shock (V1 crossed 2004)
+var _HELIOPAUSE_AU = 120;         // interstellar boundary (V1 crossed 2012)
+var _KUIPER_INNER_AU = 30, _KUIPER_OUTER_AU = 50;
+
+// Deep-space radial map: AU → fraction of the canvas half-width, log-scaled so
+// the planets cluster near the centre and the probes get room out near the rim
+// (where their year-on-year crawl is finally visible). Normal view keeps the
+// linear-ish planet map; this only applies when deep space is toggled on.
+function _orrDeepRadius(au) {
+  return 0.47 * Math.log(1 + au / 0.3) / Math.log(1 + 200 / 0.3);
 }
 
 function _solveKepler(M, e) {

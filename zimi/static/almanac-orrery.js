@@ -189,12 +189,39 @@ function _drawOrrery(canvas, dpr) {
 
   // Orbit rings — Apple Watch style: visible but understated
   for (var i = 0; i < names.length; i++) {
-    var orbitR = _ORBIT_VIS[names[i]] * W;
+    var orbitR = _orreryRadiusAU(_PLANETS[names[i]].a, names[i]) * W;
     ctx.beginPath();
     ctx.arc(cx, cy, orbitR, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(255,255,255,0.07)';
     ctx.lineWidth = 0.7 * dpr;
     ctx.stroke();
+  }
+
+  // Deep-space reference rings — give the probes something to be "beyond".
+  if (_orreryDeepSpace) {
+    var _refRing = function (au, col, dash, label) {
+      var rr = _orrDeepRadius(au) * W;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+      ctx.strokeStyle = col; ctx.lineWidth = 0.8 * dpr;
+      ctx.setLineDash(dash ? [3 * dpr, 4 * dpr] : []);
+      ctx.stroke();
+      if (label) {
+        ctx.setLineDash([]);
+        ctx.font = (8 * dpr) + 'px -apple-system, system-ui, sans-serif';
+        ctx.fillStyle = col; ctx.textAlign = 'center';
+        ctx.fillText(label, cx, cy - rr - 3 * dpr);
+      }
+      ctx.restore();
+    };
+    // Kuiper belt band (faint annulus)
+    var kIn = _orrDeepRadius(_KUIPER_INNER_AU) * W, kOut = _orrDeepRadius(_KUIPER_OUTER_AU) * W;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, kOut, 0, Math.PI * 2); ctx.arc(cx, cy, kIn, 0, Math.PI * 2, true);
+    ctx.fillStyle = 'rgba(120,160,220,0.05)'; ctx.fill('evenodd');
+    ctx.restore();
+    _refRing(_HELIO_TERMINATION_AU, 'rgba(255,180,60,0.22)', true, null);
+    _refRing(_HELIOPAUSE_AU, 'rgba(120,200,255,0.30)', true, t('alm_heliopause'));
   }
 
   // Sun — large luminous glow, Apple Watch style
@@ -232,7 +259,7 @@ function _drawOrrery(canvas, dpr) {
   for (var i = 0; i < names.length; i++) {
     var pos = _planetPosition(names[i], T);
     var angle = Math.atan2(pos.y, pos.x);
-    var visR = _ORBIT_VIS[names[i]] * W;
+    var visR = _orreryRadiusAU(_PLANETS[names[i]].a, names[i]) * W;
     var px = cx + Math.cos(angle) * visR;
     var py = cy - Math.sin(angle) * visR;
     var p = _PLANETS[names[i]];
@@ -332,9 +359,13 @@ function _drawOrrery(canvas, dpr) {
     var v = _VOYAGERS[vi];
     var dist = _voyagerDist(v, simTime);
     if (dist <= 0) continue; // pre-launch
+    // In the planet view the probes sit just past Neptune (a curiosity, barely
+    // moving). Deep space is where they get room to visibly crawl outward.
+    if (!_orreryDeepSpace && vi >= 2) continue; // only V1/V2 clutter the planet view
     var angle = v.lon * DEG_TO_RAD;
-    // Visual radius scales with distance (log-compressed so it stays on canvas)
-    var visR = Math.min(0.46, 0.44 + 0.02 * Math.log(Math.max(1, dist / 30.07))) * W;
+    var visR = (_orreryDeepSpace
+      ? _orrDeepRadius(dist)
+      : Math.min(0.48, 0.44 + 0.02 * Math.log(Math.max(1, dist / 30.07)))) * W;
     var vx = cx + Math.cos(angle) * visR;
     // Match the planets' Y convention (cy − sin): the probes were mirrored
     // across the horizontal axis, plotting each one 2×longitude off.
@@ -357,7 +388,7 @@ function _drawOrrery(canvas, dpr) {
     ctx.font = (8 * dpr) + 'px -apple-system, system-ui, sans-serif';
     ctx.fillStyle = 'rgba(255,184,60,0.5)';
     ctx.textAlign = 'left';
-    ctx.fillText('V' + (vi + 1), vx + vs * 2.5, vy + vs * 0.5);
+    ctx.fillText(v.label || ('V' + (vi + 1)), vx + vs * 2.5, vy + vs * 0.5);
     _voyagerPositions.push({ name: v.name, x: vx / dpr, y: vy / dpr, r: vs * 1.5 / dpr, dist: dist, idx: vi });
   }
 
@@ -537,7 +568,27 @@ var _orrerySpeed = 100000;
 
 var _orreryTimeOffset = 0;       // milliseconds offset from real time
 
+var _orreryDeepSpace = false;    // zoom out to the interstellar probes + rings
+
 var _orreryLastFrame = 0;        // last rAF timestamp
+
+// Visual radius (fraction of half-width) for a heliocentric distance in AU,
+// honouring the current view. Planets pass their AU; the linear planet map only
+// knows the eight planets, so deep-space (which plots dwarf distances and
+// probes too) always uses the log map.
+function _orreryRadiusAU(au, planetName) {
+  if (_orreryDeepSpace) return _orrDeepRadius(au);
+  if (planetName && _ORBIT_VIS[planetName] != null) return _ORBIT_VIS[planetName];
+  return _auToVis(au);
+}
+
+function _orreryToggleDeepSpace() {
+  _orreryDeepSpace = !_orreryDeepSpace;
+  var btn = document.getElementById('orrery-deepspace');
+  if (btn) btn.classList.toggle('active', _orreryDeepSpace);
+  var cv = document.getElementById('almanac-orrery');
+  if (cv) _drawOrrery(cv, window.devicePixelRatio || 1);
+}
 
 var _orreryRockets = [];         // all rocket missions (in-flight + orbiting)
 
