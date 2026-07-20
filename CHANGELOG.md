@@ -9,8 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.7.4] - 2026-07-20
 
-A polish drop that also closes the two live issues the post-1.7.3 code audit
-surfaced. The moon finally looks like the Moon.
+A polish drop that closes the two live issues the post-1.7.3 code audit
+surfaced, and grows the almanac up: an accurate Chinese calendar, a real
+high-res moon, and a solar system you can travel out to. The moon finally
+looks like the Moon.
+
+### Almanac
+
+- **Accurate Chinese calendar.** Replaced the mean-lunation approximation with
+  real astronomy — month boundaries are true new moons in China Standard Time,
+  leap months placed by the solar-term rule against the winter solstice.
+  Verified against the Hong Kong Observatory (New Year dates and leap months
+  2014–2033). It's a browsable calendar system again, with the 闰 leap-month
+  marker and the correct zodiac animal.
+- **Holidays land on every calendar.** Worldwide days, regional holidays, the
+  Easter cycle, solstices, meteor showers and Hindu/Sikh festivals are now
+  projected onto whatever calendar you're viewing (Hebrew, Islamic, Chinese…)
+  instead of vanishing when you switch away from Gregorian.
+- **A real high-resolution moon**, reprojected from NASA's seamless lunar
+  albedo map — genuine crater detail and subtle true colour. The animated sky
+  moon shares the hero's shading now, earthshine dark side and all.
+- **Travel the solar system.** The interstellar probes — Voyager 1 & 2,
+  Pioneer 10 & 11, New Horizons — are plotted at their real bearings out past
+  Neptune and creep outward as the clock runs, framed by labelled asteroid,
+  Kuiper and heliopause markers.
+- **Easier location picking** — the world map cycles through overlapping
+  cities on repeated clicks, and search reaches 354 cities.
+
+### Security
 
 ### Security
 
