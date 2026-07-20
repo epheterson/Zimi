@@ -1461,6 +1461,18 @@ function _renderMoonSprite(illumFrac, waxing, sizePx) {
   var key = Math.round(illumFrac * 100) + (waxing ? 'w' : 'a') + 'x' + sizePx +
     (_moonTexReady ? 't' : '');
   if (_moonSpriteCache[key]) return _moonSpriteCache[key];
+  var url = _moonSpriteCanvas(illumFrac, waxing, sizePx).toDataURL('image/png');
+  _moonSpriteCache[key] = url;
+  return url;
+}
+
+// The shaded moon as a <canvas> (cached) — the sky scene draws it directly so
+// its dark side shows the same earthshine as the hero, not a black shadow.
+var _moonSpriteCanvasCache = {};
+function _moonSpriteCanvas(illumFrac, waxing, sizePx) {
+  var key = Math.round(illumFrac * 100) + (waxing ? 'w' : 'a') + 'x' + sizePx +
+    (_moonTexReady ? 't' : '');
+  if (_moonSpriteCanvasCache[key]) return _moonSpriteCanvasCache[key];
 
   // Render at the display's device resolution (2× the CSS size on retina),
   // capped at 512, so the per-pixel shading — terminator haze, limb darkening,
@@ -1519,9 +1531,8 @@ function _renderMoonSprite(illumFrac, waxing, sizePx) {
     }
   }
   ctx.putImageData(img, 0, 0);
-  var url = cv.toDataURL('image/png');
-  _moonSpriteCache[key] = url;
-  return url;
+  _moonSpriteCanvasCache[key] = cv;
+  return cv;
 }
 
 // Shared moon renderer — hero (almanac) + Today card. Returns HTML embedding

@@ -319,59 +319,34 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, elapsed, labelText, p
       ctx.fillStyle = mgOuter;
       ctx.beginPath(); ctx.arc(moonX, moonY, moonR * 2.5, 0, Math.PI * 2); ctx.fill();
     }
-    // Rotate entire moon (texture + terminator) by parallactic angle
+    // The moon IS the hero's shaded sprite now — a soft terminator and a dim,
+    // visible earthshine dark side, not a black cut-out — rotated by the
+    // parallactic angle so its tilt matches the real sky.
     var pAngleBody = (moonPos.parallactic || 0) * DEG_TO_RAD;
+    var spr = (typeof _moonSpriteCanvas === 'function' && _moonTexLoaded)
+      ? _moonSpriteCanvas(m.illumination / 100, m.phase <= 0.5, moonR / dpr) : null;
     ctx.save();
     ctx.globalAlpha = moonAlpha;
     ctx.translate(moonX, moonY);
     ctx.rotate(pAngleBody);
-    ctx.beginPath(); ctx.arc(0, 0, moonR, 0, Math.PI * 2); ctx.clip();
-    if (_moonTexLoaded) {
-      ctx.drawImage(_moonTexImg, -moonR, -moonR, moonR * 2, moonR * 2);
-      var brighten = isDaytime ? 0.25 + (m.illumination / 100) * 0.15 : 0.10 + (m.illumination / 100) * 0.30;
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = 'rgba(220,210,195,' + brighten.toFixed(2) + ')';
-      ctx.beginPath(); ctx.arc(0, 0, moonR, 0, Math.PI * 2); ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
+    if (spr) {
+      ctx.drawImage(spr, -moonR, -moonR, moonR * 2, moonR * 2);
+      if (isDaytime) {
+        // Wash the disc pale-blue by day so it reads as faint against the sky.
+        ctx.beginPath(); ctx.arc(0, 0, moonR, 0, Math.PI * 2); ctx.clip();
+        ctx.fillStyle = 'rgba(150,175,205,0.4)';
+        ctx.fillRect(-moonR, -moonR, moonR * 2, moonR * 2);
+      }
     } else {
+      // Before the texture loads: a soft lit disc (no black terminator).
+      ctx.beginPath(); ctx.arc(0, 0, moonR, 0, Math.PI * 2); ctx.clip();
       var moonGrad = ctx.createRadialGradient(-moonR * 0.25, -moonR * 0.2, 0, 0, 0, moonR);
       moonGrad.addColorStop(0, isDaytime ? '#d8dce6' : '#f0ead8');
-      moonGrad.addColorStop(0.5, isDaytime ? '#c8ccd6' : '#e4dcc8');
-      moonGrad.addColorStop(0.85, isDaytime ? '#b8bcc6' : '#d4c8b0');
       moonGrad.addColorStop(1, isDaytime ? '#a8acb6' : '#c0b498');
       ctx.fillStyle = moonGrad;
       ctx.fill();
     }
     ctx.restore();
-    if (m.illumination < 95) {
-      // Draw proper terminator shadow matching the hero moon's half+ellipse technique.
-      // Rotated by parallactic angle so terminator tilt matches real sky.
-      var pAngle = (moonPos.parallactic || 0) * DEG_TO_RAD;
-      ctx.save();
-      ctx.globalAlpha = moonAlpha;
-      // Rotate around moon center for parallactic tilt
-      ctx.translate(moonX, moonY);
-      ctx.rotate(pAngle);
-      var shadowCol = isDaytime ? 'rgba(135,170,210,0.65)' : 'rgba(5,8,12,0.82)';
-      var illumF = m.illumination / 100;
-      var R = moonR;
-      var waxing = m.phase <= 0.5;
-      var termScaleX = Math.max(0.01, Math.abs(illumF * 2 - 1));
-      var termCCW = (illumF < 0.5) === waxing;
-      // Penumbral softening — blur the terminator edge
-      var termBlur = Math.max(0.5, (1 - Math.abs(illumF * 2 - 1)) * 4);
-      ctx.shadowColor = shadowCol;
-      ctx.shadowBlur = termBlur * dpr;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
-      ctx.beginPath();
-      ctx.arc(0, 0, R, -Math.PI / 2, Math.PI / 2, waxing);
-      ctx.ellipse(0, 0, termScaleX * R, R, 0, Math.PI / 2, -Math.PI / 2, termCCW);
-      ctx.closePath();
-      ctx.fillStyle = shadowCol;
-      ctx.fill();
-      ctx.restore();
-    }
   }
 
   // Sun
