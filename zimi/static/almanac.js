@@ -3338,22 +3338,22 @@ function _gregorianBaseEvents(year, month, add) {
   {
     // International base — observed widely enough to show everywhere. Mix of
     // UN international days, cultural observances, and a few for fun.
-    if (month === 1) { add(1, "New Year's Day", 'holiday'); add(4, 'World Braille Day', 'holiday'); add(6, 'Epiphany', 'holiday'); add(24, 'International Day of Education', 'holiday'); add(27, 'Holocaust Remembrance Day', 'holiday'); }
-    if (month === 2) { add(4, 'World Cancer Day', 'holiday'); add(11, 'Intl. Day of Women in Science', 'holiday'); add(12, 'Darwin Day', 'holiday'); add(14, "Valentine's Day", 'holiday'); add(21, 'International Mother Language Day', 'holiday'); }
+    if (month === 1) { add(1, t('hol_new_year_day'), 'holiday'); add(4, 'World Braille Day', 'holiday'); add(6, 'Epiphany', 'holiday'); add(24, 'International Day of Education', 'holiday'); add(27, 'Holocaust Remembrance Day', 'holiday'); }
+    if (month === 2) { add(4, 'World Cancer Day', 'holiday'); add(11, 'Intl. Day of Women in Science', 'holiday'); add(12, 'Darwin Day', 'holiday'); add(14, t('hol_valentines'), 'holiday'); add(21, 'International Mother Language Day', 'holiday'); }
     if (month === 3) { add(3, 'World Wildlife Day', 'holiday'); add(8, "International Women's Day", 'holiday'); add(14, 'Pi Day', 'holiday'); add(17, "St. Patrick's Day", 'holiday'); add(20, 'International Day of Happiness', 'holiday'); add(21, 'World Poetry Day', 'holiday'); add(22, 'World Water Day', 'holiday'); add(27, 'World Theatre Day', 'holiday'); }
-    if (month === 4) { add(1, "April Fools' Day", 'holiday'); add(7, 'World Health Day', 'holiday'); add(15, 'World Art Day', 'holiday'); add(22, 'Earth Day', 'holiday'); add(23, 'World Book Day', 'holiday'); add(29, 'International Dance Day', 'holiday'); }
+    if (month === 4) { add(1, "April Fools' Day", 'holiday'); add(7, 'World Health Day', 'holiday'); add(15, 'World Art Day', 'holiday'); add(22, t('hol_earth_day'), 'holiday'); add(23, 'World Book Day', 'holiday'); add(29, 'International Dance Day', 'holiday'); }
     if (month === 5) { add(1, "May Day / Workers' Day", 'holiday'); add(3, 'World Press Freedom Day', 'holiday'); add(4, 'Star Wars Day', 'holiday'); add(15, 'International Day of Families', 'holiday'); add(20, 'World Bee Day', 'holiday'); add(25, 'Towel Day', 'holiday'); }
     if (month === 6) { add(5, 'World Environment Day', 'holiday'); add(8, 'World Oceans Day', 'holiday'); add(20, 'World Refugee Day', 'holiday'); add(21, 'International Yoga Day', 'holiday'); add(21, 'World Music Day', 'holiday'); }
     if (month === 7) { add(11, 'World Population Day', 'holiday'); add(17, 'World Emoji Day', 'holiday'); add(18, 'Nelson Mandela Day', 'holiday'); add(20, 'Moon Landing Day', 'holiday'); add(30, 'International Friendship Day', 'holiday'); }
     if (month === 8) { add(8, 'International Cat Day', 'holiday'); add(12, 'International Youth Day', 'holiday'); add(19, 'World Humanitarian Day', 'holiday'); add(19, 'World Photography Day', 'holiday'); add(26, 'International Dog Day', 'holiday'); }
     if (month === 9) { add(8, 'International Literacy Day', 'holiday'); add(21, 'International Day of Peace', 'holiday'); add(23, 'International Day of Sign Languages', 'holiday'); add(27, 'World Tourism Day', 'holiday'); }
-    if (month === 10) { add(1, 'International Coffee Day', 'holiday'); add(4, 'World Animal Day', 'holiday'); add(5, "World Teachers' Day", 'holiday'); add(10, 'World Mental Health Day', 'holiday'); add(16, 'World Food Day', 'holiday'); add(24, 'United Nations Day', 'holiday'); add(31, 'Halloween', 'holiday'); }
+    if (month === 10) { add(1, 'International Coffee Day', 'holiday'); add(4, 'World Animal Day', 'holiday'); add(5, "World Teachers' Day", 'holiday'); add(10, 'World Mental Health Day', 'holiday'); add(16, 'World Food Day', 'holiday'); add(24, 'United Nations Day', 'holiday'); add(31, t('hol_halloween'), 'holiday'); }
     if (month === 11) { add(10, 'World Science Day', 'holiday'); add(13, 'World Kindness Day', 'holiday'); add(19, "International Men's Day", 'holiday'); add(20, "World Children's Day", 'holiday'); add(21, 'World Television Day', 'holiday'); }
-    if (month === 12) { add(3, 'Intl. Day of Persons with Disabilities', 'holiday'); add(5, 'International Volunteer Day', 'holiday'); add(10, 'Human Rights Day', 'holiday'); add(11, 'International Mountain Day', 'holiday'); add(24, 'Christmas Eve', 'holiday'); add(25, 'Christmas Day', 'holiday'); add(31, "New Year's Eve", 'holiday'); }
+    if (month === 12) { add(3, 'Intl. Day of Persons with Disabilities', 'holiday'); add(5, 'International Volunteer Day', 'holiday'); add(10, 'Human Rights Day', 'holiday'); add(11, 'International Mountain Day', 'holiday'); add(24, t('hol_christmas_eve'), 'holiday'); add(25, t('hol_christmas'), 'holiday'); add(31, t('hol_new_year_eve'), 'holiday'); }
     // Mother's/Father's Day on the US dates — the majority convention
     // (US, CA, AU, DE, IT, BR, IN, CN, JP and others)
-    if (month === 5) { add(_nthWeekday(year, 5, 0, 2), "Mother's Day", 'holiday'); }
-    if (month === 6) { add(_nthWeekday(year, 6, 0, 3), "Father's Day", 'holiday'); }
+    if (month === 5) { add(_nthWeekday(year, 5, 0, 2), t('hol_mothers_day'), 'holiday'); }
+    if (month === 6) { add(_nthWeekday(year, 6, 0, 3), t('hol_fathers_day'), 'holiday'); }
     // National days + clock changes for the detected region
     _applyRegionHolidays(_almRegion(), year, month, add);
     // Easter and related
@@ -3477,13 +3477,13 @@ function _systemNativeEvents(sys, year, month, add) {
 
   else if (sys === 'julian') {
     // Julian calendar — Orthodox/Eastern Christianity
-    if (month === 1) { add(1, "New Year's Day", 'holiday'); add(5, 'Paramony', 'holiday'); add(6, 'Theophany', 'holiday'); add(7, 'Christmas (Julian)', 'holiday'); add(19, 'Epiphany (Julian)', 'holiday'); }
+    if (month === 1) { add(1, t('hol_new_year_day'), 'holiday'); add(5, 'Paramony', 'holiday'); add(6, 'Theophany', 'holiday'); add(7, 'Christmas (Julian)', 'holiday'); add(19, 'Epiphany (Julian)', 'holiday'); }
     if (month === 2) { add(2, 'Presentation of Jesus', 'holiday'); add(15, 'Meatfare Sunday', 'holiday'); }
     if (month === 3) { add(25, 'Annunciation', 'holiday'); }
     if (month === 8) { add(6, 'Transfiguration', 'holiday'); add(15, 'Dormition of the Theotokos', 'holiday'); }
     if (month === 9) { add(8, 'Nativity of Mary', 'holiday'); add(14, 'Exaltation of the Cross', 'holiday'); }
     if (month === 11) { add(21, 'Presentation of Mary', 'holiday'); }
-    if (month === 12) { add(25, 'Christmas Day', 'holiday'); add(6, "St. Nicholas Day", 'holiday'); }
+    if (month === 12) { add(25, t('hol_christmas'), 'holiday'); add(6, "St. Nicholas Day", 'holiday'); }
   }
 }
 
