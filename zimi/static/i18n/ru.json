@@ -245,6 +245,8 @@
   "alm_now": "Сейчас",
   "alm_click_cycle": "нажмите ещё раз для смены",
   "alm_heliopause": "Гелиопауза",
+  "alm_asteroid_belt": "Пояс астероидов",
+  "alm_kuiper_belt": "Пояс Койпера",
   "alm_back_to_now": "К текущему моменту",
   "alm_transit": "Транзит",
   "alm_transfer_days": "{n}д перелёт",

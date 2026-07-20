@@ -245,6 +245,8 @@
   "alm_now": "Jetzt",
   "alm_click_cycle": "erneut klicken zum Wechseln",
   "alm_heliopause": "Heliopause",
+  "alm_asteroid_belt": "Asteroidengürtel",
+  "alm_kuiper_belt": "Kuipergürtel",
   "alm_back_to_now": "Zurück zu jetzt",
   "alm_transit": "Transit",
   "alm_transfer_days": "{n}T Transfer",

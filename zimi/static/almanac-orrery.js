@@ -211,17 +211,23 @@ function _drawOrrery(canvas, dpr) {
     ctx.stroke();
   }
 
-  // Asteroid belt — a faint stippled band in the Mars–Jupiter gap.
-  (function () {
-    var aIn = _orrR(2.1, z) * W, aOut = _orrR(3.3, z) * W;
+  // Faint labelled band helper (asteroid + Kuiper belts).
+  var _belt = function (auIn, auOut, fill, labelCol, label) {
+    var rIn = _orrR(auIn, z) * W, rOut = _orrR(auOut, z) * W, rMid = (rIn + rOut) / 2;
     ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, cy, aOut, 0, Math.PI * 2);
-    ctx.arc(cx, cy, aIn, 0, Math.PI * 2, true);
-    ctx.fillStyle = 'rgba(200,190,170,0.06)';
-    ctx.fill('evenodd');
+    ctx.arc(cx, cy, rOut, 0, Math.PI * 2);
+    ctx.arc(cx, cy, rIn, 0, Math.PI * 2, true);
+    ctx.fillStyle = fill; ctx.fill('evenodd');
+    ctx.font = (7.5 * dpr) + 'px -apple-system, system-ui, sans-serif';
+    ctx.fillStyle = labelCol; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx, cy - rMid);
+    ctx.textBaseline = 'alphabetic';
     ctx.restore();
-  })();
+  };
+
+  // Asteroid belt — a faint band in the Mars–Jupiter gap.
+  _belt(2.1, 3.3, 'rgba(200,190,170,0.06)', 'rgba(200,190,170,0.5)', t('alm_asteroid_belt'));
 
   // Deep-space reference rings — fade in as the view eases out (z), giving the
   // probes something to be "beyond".
@@ -243,11 +249,7 @@ function _drawOrrery(canvas, dpr) {
       }
       ctx.restore();
     };
-    var kIn = _orrR(_KUIPER_INNER_AU, z) * W, kOut = _orrR(_KUIPER_OUTER_AU, z) * W;
-    ctx.save();
-    ctx.beginPath(); ctx.arc(cx, cy, kOut, 0, Math.PI * 2); ctx.arc(cx, cy, kIn, 0, Math.PI * 2, true);
-    ctx.fillStyle = 'rgba(120,160,220,0.05)'; ctx.fill('evenodd');
-    ctx.restore();
+    _belt(_KUIPER_INNER_AU, _KUIPER_OUTER_AU, 'rgba(120,160,220,0.05)', 'rgba(150,180,230,0.55)', t('alm_kuiper_belt'));
     _refRing(_HELIO_TERMINATION_AU, 'rgba(255,180,60,0.22)', true, null);
     _refRing(_HELIOPAUSE_AU, 'rgba(120,200,255,0.30)', true, t('alm_heliopause'));
     ctx.restore();

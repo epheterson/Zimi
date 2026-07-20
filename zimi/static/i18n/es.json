@@ -245,6 +245,8 @@
   "alm_now": "Ahora",
   "alm_click_cycle": "clic de nuevo para alternar",
   "alm_heliopause": "Heliopausa",
+  "alm_asteroid_belt": "Cinturón de asteroides",
+  "alm_kuiper_belt": "Cinturón de Kuiper",
   "alm_back_to_now": "Volver al presente",
   "alm_transit": "Tránsito",
   "alm_transfer_days": "{n}d de transferencia",
