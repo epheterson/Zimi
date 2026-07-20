@@ -1458,9 +1458,13 @@ function _renderMoonSprite(illumFrac, waxing, sizePx) {
     (_moonTexReady ? 't' : '');
   if (_moonSpriteCache[key]) return _moonSpriteCache[key];
 
-  // Render at the photo's native 256 (or smaller for the tiny card) so the
-  // maria stay crisp; the browser scales the sprite to its display size.
-  var N = Math.min(256, Math.round(sizePx * 2));
+  // Render at the display's device resolution (2× the CSS size on retina),
+  // capped at 512, so the per-pixel shading — terminator haze, limb darkening,
+  // the edge — stays crisp when the hero moon is zoomed. The maria come from
+  // the 256px photo, so their fine detail is bounded by that source; upscaling
+  // the shading past it still sharpens every gradient the math draws.
+  var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+  var N = Math.min(512, Math.max(64, Math.round(sizePx * dpr)));
   var cv = document.createElement('canvas');
   cv.width = cv.height = N;
   var ctx = cv.getContext('2d');

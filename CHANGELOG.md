@@ -44,12 +44,21 @@ surfaced. The moon finally looks like the Moon.
   a single physically-shaded sphere — a soft terminator, gentle limb
   darkening, the maria showing through, and a faint earthshine glow on the
   dark side of a crescent. Gone are the hard light/dark edge, the seam down
-  the middle at the quarters, and the flat too-bright disc.
+  the middle at the quarters, and the flat too-bright disc. The hero moon now
+  renders at the display's device resolution (up to 512px) so its shading
+  stays crisp when you lean in.
 - **Country holidays get their own colour** on the calendar, apart from the
   worldwide observances (#33).
 
 ### Added
 
+- **Tap the almanac's date and time to travel.** The date/time above the moon
+  is now quietly adjustable — click it for month/day/year steppers and a
+  time-of-day slider, and the whole panel follows: the moon's phase and tilt,
+  sunrise and sunset, the star chart, the sky scene. Scrub to midnight three
+  years out and watch the sky go dark. "Now" snaps everything back to the
+  present. The affordance is understated on purpose — you discover it by
+  clicking.
 - **"New" and "Updated" badges** on ZIM cards, so fresh or changed sources
   stand out in a large library instead of being lost in the grid (#34). A
   fresh install gets a solid "New" pill; a source whose file changed on an
