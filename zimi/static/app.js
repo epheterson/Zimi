@@ -516,8 +516,12 @@ function updateTopbar() {
   const showBack = articleHistory.length > 0 || mode === 'search' || homeScope;
   backBtn.style.display = showBack ? 'flex' : 'none';
 
-  // Breadcrumb: Zimi / [icon] — search bar shows source name as placeholder
-  if (activeSource) {
+  // Breadcrumb: Zimi / [icon] — search bar shows source name as placeholder.
+  // The Almanac is reached only from home (never through a ZIM), and it opens
+  // as an overlay that leaves the underlying ZIM "active" — so its icon would
+  // wrongly bleed through. In the Almanac the breadcrumb is just "Zimi", no
+  // separator, no icon.
+  if (activeSource && !_almanacOpen) {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
     const info = _zimInfo(activeSource);

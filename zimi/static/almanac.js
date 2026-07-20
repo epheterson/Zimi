@@ -1226,7 +1226,9 @@ function _renderSunMap(now) {
         }
       }
       _saveLocation(lat, lon, snappedName);
-      _renderAlmanacContent();
+      // Refresh only the location-dependent panels in place — a full rebuild
+      // wipes the scroll container and yanks the page upward on every click.
+      _almRepaintFocus();
     };
   }
 
@@ -1265,7 +1267,7 @@ function _renderSunMap(now) {
         (function(city) {
           items[i].onclick = function() {
             _saveLocation(city.lat, city.lon, city.name);
-            _renderAlmanacContent();
+            _almRepaintFocus();   // location-only refresh, preserves scroll
           };
         })(matches[i]);
       }
@@ -1841,7 +1843,7 @@ function _shareAlmanacLocation() {
       // Only use city name if reasonably close (within ~2 degrees)
       if (bestDist > 4) delete locData.name;
       _saveLocation(locData.lat, locData.lon, locData.name);
-      _renderAlmanacContent();
+      _almRepaintFocus();   // location-only refresh, preserves scroll
     }, function() {
       // GPS denied or unavailable — fall back to manual entry
       _promptAlmanacLocation();
@@ -2100,7 +2102,7 @@ function _promptAlmanacLocation() {
       }
       _saveLocation(locData.lat, locData.lon, locData.name);
       document.body.removeChild(overlay);
-      _renderAlmanacContent();
+      _almRepaintFocus();   // location-only refresh, preserves scroll
     }
   };
 
