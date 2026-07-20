@@ -3203,6 +3203,11 @@ function _systemNativeEvents(sys, year, month, add) {
   }
 
   else if (sys === 'chinese') {
+    // `month` arrives as a display position into the civil year; festivals are
+    // keyed by the real month NUMBER and never fall in a leap month.
+    var _cm = _cnYearMonths(year - 2697)[month - 1];
+    if (!_cm || _cm.leap) return;
+    month = _cm.num;
     // Chinese months: 1=Zhengyue..12=Layue
     if (month === 1) { add(1, 'Spring Festival', 'holiday'); add(2, 'Spring Festival II', 'holiday'); add(3, 'Spring Festival III', 'holiday'); add(5, 'Po Wu', 'holiday'); add(7, 'Renri', 'holiday'); add(9, 'Jade Emperor', 'holiday'); add(15, 'Lantern Festival', 'holiday'); }
     if (month === 2) { add(2, 'Zhonghe Festival', 'holiday'); }
@@ -3381,14 +3386,6 @@ function _drawAlmanacGrid() {
 }
 
 function _almSwitchSystem(sys) {
-  // No 'chinese' grid: the mean-lunation math behind the cross-reference row
-  // is fine for a one-line "\u2248" conversion, but a browsable month grid needs
-  // real astronomical new moons and leap-month intercalation — without them
-  // it showed invented month lengths and no leap months, a full month off
-  // for parts of leap years. Guarded HERE because every path funnels through
-  // this function (crossref clicks, the zh language auto-switch); the grid
-  // returns when the real calendar lands.
-  if (sys === 'chinese') sys = 'gregorian';
   // Convert selected day's JDN to the new system
   _almSystem = sys;
   var cal = _jdnToCalendar(sys, _almSelectedJDN);
@@ -3425,20 +3422,15 @@ function _almRenderCrossRef(jdn) {
     var yearStr = cal.year + _calYearSuffix(sys);
     var dateStr = monthName + ' ' + cal.day + ', ' + yearStr;
     if (sys === 'chinese') {
-      // Key the animal to the CHINESE year being displayed (era 2697), not the
-      // Gregorian year \u2014 otherwise the animal flips on Jan 1 and contradicts
-      // the year number beside it for the weeks before Chinese New Year.
+      // Key the animal to the CHINESE year being displayed (era 2697), which is
+      // the Gregorian year of that year's New Year \u2014 so the animal doesn't flip
+      // on Jan 1 in the weeks before Chinese New Year.
       var chinese = _chineseZodiac(cal.year - 2697);
-      // "\u2248": mean-lunation approximation without leap months \u2014 close most of
-      // the time, but not the real astronomical Chinese calendar.
-      dateStr = '\u2248 ' + monthName + ' ' + cal.day + ' \u00b7 ' + chinese.animal + ' \u00b7 ' + yearStr;
+      dateStr = monthName + ' ' + cal.day + ' \u00b7 ' + chinese.animal + ' \u00b7 ' + yearStr;
     }
     var isActive = sys === _almSystem ? ' alm-crossref-active' : '';
-    // The Chinese row is a cross-reference only: no grid view is offered for
-    // it (a browsable grid needs real leap-month math; _almSwitchSystem guards it).
-    var clickable = sys !== 'chinese';
     html += '<div class="alm-crossref-row' + isActive + '"' +
-      (clickable ? ' onclick="_almSwitchSystem(\'' + sys + '\')"' : ' style="cursor:default"') + '>' +
+      ' onclick="_almSwitchSystem(\'' + sys + '\')">' +
       '<span class="alm-crossref-label">' + _calLabel(sys) + '</span>' +
       '<span class="alm-crossref-date">' + dateStr + '</span>' +
       '</div>';
@@ -3769,35 +3761,154 @@ function _jdnToCalendar(sys, jdn) {
   return { year: 0, month: 1, day: 1 };
 }
 
-// Chinese lunar calendar — approximate using synodic month cycle
-// Reference new moon: Jan 6 2000 18:14 UTC = JDN 2451551.26
-var _CHINESE_NEW_MOON_JDN = 2451551.26;
-var _SYNODIC_MONTH = 29.53059;
-var _CHINESE_MONTHS = ['Zh\u0113ngyue','Eryue','S\u0101nyue','S\u00ecyue','W\u01d4yue','Li\u00f9yue',
-  'Q\u012byue','B\u0101yue','Ji\u01d4yue','Sh\u00edyue','Sh\u00edy\u012byue','L\u00e0yue'];
+// ── Chinese lunisolar calendar — real astronomy (Meeus) ──
+// Month boundaries are true new moons in China Standard Time (UTC+8); leap
+// months are placed by the solar-term (zhongqi) rule anchored to the winter
+// solstice. Accurate against the HK Observatory civil calendar for ~1900–2100.
+// Refs: Meeus, Astronomical Algorithms ch.25/27/49; Aslaksen, The Mathematics
+// of the Chinese Calendar.
+var _CHINESE_MONTHS = ['Zhēngyue','Eryue','Sānyue','Sìyue','Wǔyue','Liùyue',
+  'Qīyue','Bāyue','Jiǔyue','Shíyue','Shíyīyue','Làyue'];
+var _CN_SYN = 29.530588861;
+var _CN_TZ = 8 / 24;   // China Standard Time offset (days)
 
+// ΔT (TT−UT) in days, Espenak–Meeus piecewise — good for 1900–2150.
+function _cnDeltaTdays(jde) {
+  var y = _jdnToGregorian(Math.floor(jde + 0.5)).year;
+  var t = y - 2000, s;
+  if (y >= 2005 && y <= 2050) s = 62.92 + 0.32217 * t + 0.005589 * t * t;
+  else if (y >= 1986 && y < 2005) s = 63.86 + 0.3345 * t - 0.060374 * t * t + 0.0017275 * Math.pow(t, 3) + 0.000651814 * Math.pow(t, 4) + 0.00002373599 * Math.pow(t, 5);
+  else if (y > 2050) { var u = (y - 1820) / 100; s = -20 + 32 * u * u - 0.5628 * (2150 - y); }
+  else { var w = y - 1900; s = -2.79 + 1.494119 * w - 0.0598939 * w * w + 0.0061966 * Math.pow(w, 3) - 0.000197 * Math.pow(w, 4); }
+  return s / 86400;
+}
+
+// New-moon instant (TT Julian Date) for integer lunation index k. Meeus ch.49,
+// new-moon column of Table 49.a plus the largest planetary term A1.
+function _cnNewMoonJDE(k) {
+  var T = k / 1236.85;
+  var JDE = 2451550.09766 + _CN_SYN * k + 0.00015437 * T * T - 0.000000150 * Math.pow(T, 3) + 0.00000000073 * Math.pow(T, 4);
+  var M = (2.5534 + 29.10535670 * k - 0.0000014 * T * T - 0.00000011 * Math.pow(T, 3)) * DEG_TO_RAD;
+  var Mp = (201.5643 + 385.81693528 * k + 0.0107582 * T * T + 0.00001238 * Math.pow(T, 3) - 0.000000058 * Math.pow(T, 4)) * DEG_TO_RAD;
+  var F = (160.7108 + 390.67050284 * k - 0.0016118 * T * T - 0.00000227 * Math.pow(T, 3) + 0.000000011 * Math.pow(T, 4)) * DEG_TO_RAD;
+  var Om = (124.7746 - 1.56375588 * k + 0.0020672 * T * T + 0.00000215 * Math.pow(T, 3)) * DEG_TO_RAD;
+  var E = 1 - 0.002516 * T - 0.0000074 * T * T;
+  JDE += -0.40720 * Math.sin(Mp) + 0.17241 * E * Math.sin(M) + 0.01608 * Math.sin(2 * Mp)
+    + 0.01039 * Math.sin(2 * F) + 0.00739 * E * Math.sin(Mp - M) - 0.00514 * E * Math.sin(Mp + M)
+    + 0.00208 * E * E * Math.sin(2 * M) - 0.00111 * Math.sin(Mp - 2 * F) - 0.00057 * Math.sin(Mp + 2 * F)
+    + 0.00056 * E * Math.sin(2 * Mp + M) - 0.00042 * Math.sin(3 * Mp) + 0.00042 * E * Math.sin(M + 2 * F)
+    + 0.00038 * E * Math.sin(M - 2 * F) - 0.00024 * E * Math.sin(2 * Mp - M) - 0.00017 * Math.sin(Om)
+    - 0.00007 * Math.sin(Mp + 2 * M) + 0.00004 * Math.sin(2 * Mp - 2 * F) + 0.00004 * Math.sin(3 * M)
+    + 0.00003 * Math.sin(Mp + M - 2 * F) + 0.00003 * Math.sin(2 * Mp + 2 * F) - 0.00003 * Math.sin(Mp + M + 2 * F)
+    + 0.00003 * Math.sin(Mp - M + 2 * F) - 0.00002 * Math.sin(Mp - M - 2 * F) - 0.00002 * Math.sin(3 * Mp + M) + 0.00002 * Math.sin(4 * Mp);
+  var A1 = (299.77 + 0.107408 * k - 0.009173 * T * T) * DEG_TO_RAD;
+  JDE += 0.000325 * Math.sin(A1);
+  return JDE;
+}
+
+// Sun's apparent ecliptic longitude (deg) for a TT Julian date. Meeus ch.25.
+function _cnSolarLongitude(jde) {
+  var T = (jde - 2451545.0) / 36525;
+  var L0 = 280.46646 + 36000.76983 * T + 0.0003032 * T * T;
+  var M = (357.52911 + 35999.05029 * T - 0.0001537 * T * T) * DEG_TO_RAD;
+  var C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * Math.sin(M)
+    + (0.019993 - 0.000101 * T) * Math.sin(2 * M) + 0.000289 * Math.sin(3 * M);
+  var Om = (125.04 - 1934.136 * T) * DEG_TO_RAD;
+  var lam = L0 + C - 0.00569 - 0.00478 * Math.sin(Om);
+  return ((lam % 360) + 360) % 360;
+}
+
+// TT Julian date where the Sun reaches ecliptic longitude targetDeg (near approxJD).
+function _cnSolarTermJDE(approxJD, targetDeg) {
+  var jd = approxJD;
+  for (var i = 0; i < 6; i++) {
+    var d = (((targetDeg - _cnSolarLongitude(jd) + 180) % 360) + 360) % 360 - 180;
+    jd += d / 0.98565;
+  }
+  return jd;
+}
+
+// Integer China-civil JDN of a TT instant (subtract ΔT → UT, add +8h, floor).
+function _cnChinaDay(jde) { return Math.floor((jde - _cnDeltaTdays(jde)) + _CN_TZ + 0.5); }
+function _cnNewMoonDay(k) { return _cnChinaDay(_cnNewMoonJDE(k)); }
+
+// Does lunar month k contain a zhongqi (a major solar term, longitude a
+// multiple of 30°), tested by the term's CIVIL DAY falling inside the month?
+// The rigorous test — the cheaper longitude-at-new-moon index test misfires
+// when a term and a new moon land on the same China-civil day (e.g. 2020's
+// summer solstice), which is exactly when leap-month placement turns on it.
+function _cnMonthHasZhongqi(k) {
+  var start = _cnNewMoonDay(k), end = _cnNewMoonDay(k + 1);
+  var nm = _cnNewMoonJDE(k);
+  var lam0 = _cnSolarLongitude(nm);
+  var nextZq = Math.ceil((lam0 - 1e-9) / 30) * 30;      // next multiple of 30° (deg)
+  var zqJDE = _cnSolarTermJDE(nm + 1, ((nextZq % 360) + 360) % 360);
+  var zqDay = _cnChinaDay(zqJDE);
+  return zqDay >= start && zqDay < end;
+}
+
+// Lunation index k of the month-11 new moon whose December solstice it contains.
+function _cnNm11(gy) {
+  var ws = _cnSolarTermJDE(_gregorianToJDN(gy, 12, 21) + 0.5, 270);
+  var wsD = _cnChinaDay(ws);
+  var k = Math.floor((ws - 2451550.09766) / _CN_SYN);
+  while (_cnNewMoonDay(k) > wsD) k--;
+  while (_cnNewMoonDay(k + 1) <= wsD) k++;
+  return k;
+}
+
+// Build the suì starting at month-11 lunation k11: [{k,num,leap,start,end}].
+var _cnSuiCache = {};
+function _cnBuildSui(k11) {
+  if (_cnSuiCache[k11]) return _cnSuiCache[k11];
+  var k11n = _cnNm11(_jdnToGregorian(_cnNewMoonDay(k11)).year + 1);
+  var n = k11n - k11, leap = (n === 13), leapK = -1, i;
+  if (leap) {
+    for (i = 0; i < n; i++) {
+      if (!_cnMonthHasZhongqi(k11 + i)) { leapK = k11 + i; break; }
+    }
+  }
+  // A leap month takes the number of the month it FOLLOWS (闰二月 = leap-2), so
+  // carry prevNum for it rather than the already-advanced running number.
+  var months = [], num = 11, prevNum = 11;
+  for (i = 0; i < n; i++) {
+    var k = k11 + i, isLeap = (k === leapK);
+    var thisNum = isLeap ? prevNum : num;
+    months.push({ k: k, num: thisNum, leap: isLeap, start: _cnNewMoonDay(k), end: _cnNewMoonDay(k + 1) });
+    if (!isLeap) { prevNum = num; num = (num % 12) + 1; }
+  }
+  _cnSuiCache[k11] = months;
+  return months;
+}
+
+// The ordered civil-year months (position 1 = CNY … 12) for the Chinese year
+// whose New Year falls in Gregorian year gyCNY.
+function _cnYearMonths(gyCNY) {
+  var out = [], j;
+  var a = _cnBuildSui(_cnNm11(gyCNY - 1));
+  var i = 0; while (i < a.length && !(a[i].num === 1 && !a[i].leap)) i++;
+  for (; i < a.length; i++) out.push(a[i]);       // months 1..10 (+ any leap among them)
+  var b = _cnBuildSui(_cnNm11(gyCNY));
+  for (j = 0; j < b.length; j++) { if (b[j].num === 1 && !b[j].leap) break; out.push(b[j]); } // 11,12(+leap)
+  return out;
+}
+
+function _cnChineseNewYearJDN(gy) { return _cnYearMonths(gy)[0].start; }
+
+// JDN → Chinese { year (Huangdi era), month (1-based position in the civil
+// year), day, monthNum, leap }.
 function _jdnToChineseLunar(jdn) {
-  // Find which lunation we're in
-  var lunationsSinceRef = (jdn - _CHINESE_NEW_MOON_JDN) / _SYNODIC_MONTH;
-  var currentLunation = Math.floor(lunationsSinceRef);
-  var dayInMonth = Math.floor(jdn - (_CHINESE_NEW_MOON_JDN + currentLunation * _SYNODIC_MONTH)) + 1;
-  if (dayInMonth < 1) { currentLunation--; dayInMonth = Math.floor(jdn - (_CHINESE_NEW_MOON_JDN + currentLunation * _SYNODIC_MONTH)) + 1; }
-  if (dayInMonth > 30) dayInMonth = 30;
-  // Approximate Chinese year and month from Gregorian new year alignment
-  // Chinese New Year falls between Jan 21 and Feb 20; month 1 starts at the new moon nearest
-  var greg = _jdnToGregorian(jdn);
-  var chineseYear = greg.year + 2697; // Huangdi era (approximate)
-  // Month within the year: 1-12 based on lunation offset from Chinese New Year
-  // Chinese New Year 2000 was Feb 5 = JDN 2451580. Lunation 0 is Jan 6.
-  // So CNY 2000 starts at lunation ~1 from our reference.
-  var cnyLunation2000 = 1; // lunation index of CNY 2000
-  var yearsSince2000 = greg.year - 2000;
-  // ~12.37 lunations per solar year; Chinese year has 12 or 13 months
-  var cnyLunation = cnyLunation2000 + Math.round(yearsSince2000 * 12.3685);
-  var monthInYear = currentLunation - cnyLunation + 1;
-  if (monthInYear < 1) { monthInYear += 12; chineseYear--; }
-  if (monthInYear > 12) { monthInYear -= 12; chineseYear++; }
-  return { year: chineseYear, month: Math.max(1, Math.min(12, monthInYear)), day: dayInMonth };
+  var g = _jdnToGregorian(jdn);
+  var gyCNY = g.year;
+  if (jdn < _cnChineseNewYearJDN(g.year)) gyCNY = g.year - 1;
+  var months = _cnYearMonths(gyCNY);
+  for (var p = 0; p < months.length; p++) {
+    if (jdn >= months[p].start && jdn < months[p].end) {
+      return { year: gyCNY + 2697, month: p + 1, day: jdn - months[p].start + 1, monthNum: months[p].num, leap: months[p].leap };
+    }
+  }
+  var last = months[months.length - 1];
+  return { year: gyCNY + 2697, month: months.length, day: jdn - last.start + 1, monthNum: last.monthNum, leap: last.leap };
 }
 
 // Get JDN for first day of a given month
@@ -3816,11 +3927,9 @@ function _calFirstDayJDN(sys, year, month) {
   if (sys === 'julian') return _julianToJDN(year, month, 1);
   if (sys === 'buddhist') return _gregorianToJDN(year - 543, month, 1);
   if (sys === 'chinese') {
-    // Find JDN of first day of this Chinese month
-    var yearsSince2000 = (year - 2697) - 2000;
-    var cnyLunation = 1 + Math.round(yearsSince2000 * 12.3685);
-    var lunation = cnyLunation + month - 1;
-    return Math.round(_CHINESE_NEW_MOON_JDN + lunation * _SYNODIC_MONTH);
+    var cm = _cnYearMonths(year - 2697);
+    var mi = Math.max(1, Math.min(cm.length, month)) - 1;
+    return cm[mi].start;
   }
   return 0;
 }
@@ -3847,7 +3956,11 @@ function _calDaysInMonth(sys, year, month) {
     if (month === 2 && ((gYear % 4 === 0 && gYear % 100 !== 0) || gYear % 400 === 0)) return 29;
     return _GREGORIAN_DAYS_PER_MONTH[month - 1];
   }
-  if (sys === 'chinese') return 29 + (month % 2 === 1 ? 1 : 0); // alternating 30/29
+  if (sys === 'chinese') {
+    var cm = _cnYearMonths(year - 2697);
+    var mi = Math.max(1, Math.min(cm.length, month)) - 1;
+    return cm[mi].end - cm[mi].start;
+  }
   return 30;
 }
 
@@ -3863,14 +3976,20 @@ function _calMonthName(sys, year, month) {
   if (sys === 'persian') return _PERSIAN_MONTHS[month - 1] || '';
   if (sys === 'julian') return _gregorianMonthName(month);
   if (sys === 'buddhist') return _gregorianMonthName(month);
-  if (sys === 'chinese') return _CHINESE_MONTHS[month - 1] || t('alm_month_n', { n: month });
+  if (sys === 'chinese') {
+    var cm = _cnYearMonths(year - 2697);
+    var mi = Math.max(1, Math.min(cm.length, month)) - 1;
+    var mo = cm[mi];
+    var nm = _CHINESE_MONTHS[mo.num - 1] || t('alm_month_n', { n: mo.num });
+    return (mo.leap ? '闰' : '') + nm;   // 闰 = leap-month marker
+  }
   return '';
 }
 
 // Get number of months in a year
 function _calMonthCount(sys, year) {
   if (sys === 'hebrew') return _hebrewMonthList(year).length;
-  if (sys === 'chinese') return 12; // simplified (ignoring leap months)
+  if (sys === 'chinese') return _cnYearMonths(year - 2697).length; // 12 or 13 (leap years)
   return 12;
 }
 
