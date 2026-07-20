@@ -957,5 +957,7 @@
   "alm_star": "Star",
   "alm_my_location": "my location",
   "new_badge": "New",
+  "updated_badge": "Updated",
+  "recently_updated": "Recently updated",
   "recently_installed": "Recently installed"
 }

@@ -1041,6 +1041,7 @@ function enterScope(type, label, zimNames, push) {
 async function enterSource(name, push) {
   const info = _zimInfo(name);
   if (!info) { enterHome(push); return; }
+  _markZimOpened(name);  // opening a source clears its New/Updated badge (#34)
   // Modifier-click: open in new browser tab
   if (_isModClick()) {
     _lastMouseEvent = null;
@@ -1304,12 +1305,35 @@ function _langBadge(z) {
   return '<span class="lang-badge" title="' + escAttr(name) + '">' + esc(name) + '</span>';
 }
 
-// A ZIM counts as "New" for a week after Zimi first saw it — so a fresh
-// install stands out in a big library instead of being lost in the grid (#34).
-var _NEW_ZIM_DAYS = 7;
-function _isNewZim(z) {
-  if (!z || !z.first_seen) return false;
-  return (Date.now() / 1000 - z.first_seen) < _NEW_ZIM_DAYS * 86400;
+// New/Updated badges (#34). A badge flags a ZIM the user hasn't looked at since
+// it appeared or changed. It clears the moment they open the ZIM (tracked per
+// browser), and as a backstop auto-expires after a week even if never opened —
+// so a badge never lingers indefinitely on a source you keep ignoring.
+var _ZIM_BADGE_BACKSTOP_DAYS = 7;
+var _ZIM_OPENED_KEY = 'zimi_zim_opened';
+
+function _getZimOpenedMap() {
+  try { return JSON.parse(localStorage.getItem(_ZIM_OPENED_KEY)) || {}; }
+  catch (e) { return {}; }
+}
+// Record that the user opened a ZIM now — this is what clears its badge. Always
+// writes the latest time so a later update can re-badge, then clear again.
+function _markZimOpened(name) {
+  if (!name) return;
+  var m = _getZimOpenedMap();
+  m[name] = Date.now() / 1000;
+  try { localStorage.setItem(_ZIM_OPENED_KEY, JSON.stringify(m)); } catch (e) {}
+}
+// Returns null, or {label:'new'|'updated'}. A ZIM is fresh when its newest
+// event (first install or last update) is more recent than the user's last open
+// of it, and within the backstop window.
+function _zimBadge(z) {
+  if (!z) return null;
+  var fresh = Math.max(z.first_seen || 0, z.updated_at || 0);
+  if (!fresh) return null;
+  if ((Date.now() / 1000 - fresh) >= _ZIM_BADGE_BACKSTOP_DAYS * 86400) return null;
+  if ((_getZimOpenedMap()[z.name] || 0) >= fresh) return null;
+  return { label: (z.updated_at || 0) > (z.first_seen || 0) ? 'updated' : 'new' };
 }
 
 function renderCardGrid(items, showStars, showCategory) {
@@ -1328,8 +1352,10 @@ function renderCardGrid(items, showStars, showCategory) {
     const qidIcon = z.has_qids
       ? '<span class="qid-badge" title="' + escAttr(t('cross_lang_linking')) + '"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l-3 3 3 3"/><path d="M1 9h10"/><path d="M12 10l3-3-3-3"/><path d="M15 7H5"/></svg></span>'
       : '';
-    const newHtml = _isNewZim(z)
-      ? '<span class="new-badge" title="' + escAttr(t('recently_installed')) + '">' + tH('new_badge') + '</span>'
+    const badgeInfo = _zimBadge(z);
+    const isUpd = badgeInfo && badgeInfo.label === 'updated';
+    const newHtml = badgeInfo
+      ? '<span class="new-badge' + (isUpd ? ' updated-badge' : '') + '" title="' + escAttr(t(isUpd ? 'recently_updated' : 'recently_installed')) + '">' + tH(isUpd ? 'updated_badge' : 'new_badge') + '</span>'
       : '';
     return '<div class="stat-card' + (newHtml ? ' is-new' : '') + '" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
       newHtml +

@@ -34,11 +34,39 @@ def test_brand_new_zim_gets_first_seen(tmp_path, monkeypatch):
 
 def test_first_seen_carried_forward_on_cache_hit(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
-    server.load_cache(force=True)        # stamps + persists
+    server.load_cache(force=True)  # stamps + persists
     stamped = _entry(server._zim_list_cache)["first_seen"]
     assert stamped
-    server.load_cache(force=False)       # reads disk cache → cache hit
+    server.load_cache(force=False)  # reads disk cache → cache hit
     assert _entry(server._zim_list_cache)["first_seen"] == stamped
+
+
+def test_brand_new_zim_has_no_updated_at(tmp_path, monkeypatch):
+    """A fresh install is 'New', never 'Updated' — updated_at stays unset."""
+    _setup(tmp_path, monkeypatch)
+    server.load_cache(force=True)
+    assert _entry(server._zim_list_cache).get("updated_at") in (None, 0, "")
+
+
+def test_changed_zim_gets_updated_at(tmp_path, monkeypatch):
+    """A known ZIM whose file changed on disk is stamped updated_at (the
+    'Updated' badge) while keeping its original first_seen."""
+    _setup(tmp_path, monkeypatch)
+    server.load_cache(force=True)
+    first_seen = _entry(server._zim_list_cache)["first_seen"]
+    assert first_seen
+    # Simulate the file changing: corrupt the cached mtime/size so the next
+    # scan misses on an already-known ZIM and re-reads the archive.
+    cf = server._cache_file_path()
+    data = json.load(open(cf))
+    for v in data["files"].values():
+        v["mtime"] = 1.0
+        v["size"] = 123
+    json.dump(data, open(cf, "w"))
+    server.load_cache(force=False)
+    e = _entry(server._zim_list_cache)
+    assert e.get("updated_at"), "a changed known ZIM must be stamped updated_at"
+    assert e["first_seen"] == first_seen, "first_seen must survive the update"
 
 
 def test_prefeature_cache_entry_is_not_new(tmp_path, monkeypatch):
@@ -52,5 +80,5 @@ def test_prefeature_cache_entry_is_not_new(tmp_path, monkeypatch):
     for v in data.get("files", {}).values():
         v.pop("first_seen", None)
     json.dump(data, open(cf, "w"))
-    server.load_cache(force=False)       # cache hit, no stored first_seen
+    server.load_cache(force=False)  # cache hit, no stored first_seen
     assert _entry(server._zim_list_cache).get("first_seen") in (None, 0, "")

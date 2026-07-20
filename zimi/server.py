@@ -979,7 +979,18 @@ def load_cache(force=False):
             first_seen = time.time()
         else:
             first_seen = cached.get("first_seen")
-        if cached and cached.get("mtime") == mtime and cached.get("size") == size:
+        # An already-known ZIM whose file changed on disk is an update — stamp
+        # updated_at so the UI can flag it "Updated" (distinct from "New").
+        cache_hit = bool(
+            cached and cached.get("mtime") == mtime and cached.get("size") == size
+        )
+        if cached is None:
+            updated_at = None
+        elif cache_hit:
+            updated_at = cached.get("updated_at")
+        else:
+            updated_at = time.time()
+        if cache_hit and cached:
             # Cache hit — use stored metadata, skip opening archive
             entry = {
                 "name": name,
@@ -998,6 +1009,7 @@ def load_cache(force=False):
                 "category": _categorize_zim(name),
                 "main_path": cached.get("main_path", ""),
                 "first_seen": first_seen,
+                "updated_at": updated_at,
             }
             if "has_qids" in cached:
                 entry["has_qids"] = cached["has_qids"]
@@ -1005,6 +1017,8 @@ def load_cache(force=False):
             cached_out = dict(cached)
             if first_seen is not None:
                 cached_out["first_seen"] = first_seen
+            if updated_at is not None:
+                cached_out["updated_at"] = updated_at
             file_cache[filename] = cached_out
         else:
             # Cache miss — scan this ZIM
@@ -1013,6 +1027,7 @@ def load_cache(force=False):
                 _archive_pool[name] = archive
             if first_seen is not None:
                 entry["first_seen"] = first_seen
+            entry["updated_at"] = updated_at
             info.append(entry)
             scanned += 1
             new_cached = {
@@ -1030,6 +1045,8 @@ def load_cache(force=False):
             }
             if first_seen is not None:
                 new_cached["first_seen"] = first_seen
+            if updated_at is not None:
+                new_cached["updated_at"] = updated_at
             file_cache[filename] = new_cached
 
     _zim_list_cache = info

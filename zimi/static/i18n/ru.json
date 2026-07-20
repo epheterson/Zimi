@@ -957,5 +957,7 @@
   "alm_star": "Звезда",
   "alm_my_location": "моё местоположение",
   "new_badge": "Новый",
+  "updated_badge": "Обновлено",
+  "recently_updated": "Недавно обновлено",
   "recently_installed": "Недавно установлено"
 }
