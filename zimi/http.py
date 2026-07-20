@@ -424,16 +424,39 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/html")
         self.end_headers()
 
-    # IPs allowed to set X-Forwarded-For (reverse proxies)
-    _TRUSTED_PROXIES = {"127.0.0.1", "::1", "172.17.0.1", "172.18.0.1"}
-
     def _client_ip(self):
-        """Get client IP, respecting X-Forwarded-For only from trusted proxies."""
+        """Resolve the real client IP, honoring a forwarded header only from a
+        proxy on a private network.
+
+        The old version trusted X-Forwarded-For from a hardcoded bridge-IP set
+        and read its (client-spoofable) leftmost value. On a host-networked
+        deploy behind a containerized tunnel, the connection reaches Zimi from
+        the docker bridge gateway — a *private* IP not in that set and with no
+        real client IP propagated — so every WAN request resolved to a private
+        address and was misclassified "private" (open /dl/ whole-ZIM serving to
+        the internet + the trusted rate tier).
+
+        Fix: (1) prefer Cloudflare's CF-Connecting-IP — it's the true client and
+        Cloudflare strips any client-supplied copy at its edge, so it can't be
+        forged through the tunnel; (2) otherwise take X-Forwarded-For's leftmost;
+        (3) trust either only when the direct hop is itself on a private network
+        (the origin is never directly WAN-reachable, so a forwarding hop is
+        always private) — covering the bridge gateway on any subnet without a
+        hardcoded list; (4) with no forwarded header, return the direct peer as
+        before (a real LAN client is genuinely private; a bare proxy hit stays
+        the proxy's own IP, which _is_private_client already treats correctly)."""
         direct_ip = self.client_address[0]
-        if direct_ip in self._TRUSTED_PROXIES:
-            xff = self.headers.get("X-Forwarded-For")
-            if xff:
-                return xff.split(",")[0].strip()
+        fwd = self.headers.get("CF-Connecting-IP")
+        if not fwd:
+            xff = self.headers.get("X-Forwarded-For", "")
+            fwd = xff.split(",")[0].strip() or None
+        if fwd:
+            try:
+                dip = ipaddress.ip_address(direct_ip)
+                if dip.is_private or dip.is_loopback or dip.is_link_local:
+                    return fwd
+            except ValueError:
+                pass
         return direct_ip
 
     def do_GET(self):
@@ -1591,14 +1614,20 @@ class ZimHandler(BaseHTTPRequestHandler):
         range_spec = header[6:].strip()
         if "," in range_spec:
             return None, None  # multi-range not supported
-        if range_spec.startswith("-"):
-            # Suffix range: last N bytes
-            suffix = int(range_spec[1:])
-            start = max(0, total_size - suffix)
-            return start, total_size - 1
-        parts = range_spec.split("-", 1)
-        start = int(parts[0])
-        end = int(parts[1]) if parts[1] else total_size - 1
+        # Malformed ranges (bytes=abc-, bytes=-, bytes=1-x) must degrade to
+        # "no range" (200 full body), not raise ValueError up through the /dl/
+        # and content-serving paths and 500 / drop the connection.
+        try:
+            if range_spec.startswith("-"):
+                # Suffix range: last N bytes
+                suffix = int(range_spec[1:])
+                start = max(0, total_size - suffix)
+                return start, total_size - 1
+            parts = range_spec.split("-", 1)
+            start = int(parts[0])
+            end = int(parts[1]) if parts[1] else total_size - 1
+        except ValueError:
+            return None, None
         end = min(end, total_size - 1)
         if start > end or start >= total_size:
             return None, None
