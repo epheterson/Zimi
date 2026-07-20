@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.7.4] - 2026-07-19
+## [1.7.4] - 2026-07-20
 
 A polish drop that also closes the two live issues the post-1.7.3 code audit
 surfaced. The moon finally looks like the Moon.
@@ -50,9 +50,12 @@ surfaced. The moon finally looks like the Moon.
 
 ### Added
 
-- **A "New" badge** on freshly-installed ZIMs for their first week, so a new
-  download stands out in a large library instead of being lost in the grid
-  (#34).
+- **"New" and "Updated" badges** on ZIM cards, so fresh or changed sources
+  stand out in a large library instead of being lost in the grid (#34). A
+  fresh install gets a solid "New" pill; a source whose file changed on an
+  update gets a quieter "Updated" pill. A badge clears the moment you open
+  that ZIM, and auto-expires after a week even if you never do — so it never
+  lingers.
 
 ## [1.7.3] - 2026-07-18
 
