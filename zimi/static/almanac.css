@@ -76,10 +76,6 @@
 .orrery-speed-end { color: var(--text3); font-size: 9px; flex-shrink: 0; user-select: none; }
 .orrery-speed-label { color: var(--amber); font-size: 11px; min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; flex-shrink: 0; font-family: 'SF Mono', 'Fira Code', monospace; }
 .orrery-date { color: var(--text-dim); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 90px; text-align: right; }
-.orrery-modes { display: flex; justify-content: center; margin: 8px auto 0; }
-.orrery-mode-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); border-radius: 999px; padding: 5px 14px; font-size: 11px; letter-spacing: 0.03em; cursor: pointer; transition: all 0.15s; }
-.orrery-mode-btn:hover { color: var(--amber); border-color: var(--amber-border); }
-.orrery-mode-btn.active { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
 .orrery-transit-wrap { display: none; align-items: center; gap: 6px; max-width: 500px; margin: 4px auto 0; padding: 0 4px; }
 .orrery-transit-end { font-size: 11px; color: var(--text3); flex-shrink: 0; min-width: 40px; }
 .orrery-transit-label { color: var(--amber); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 90px; text-align: right; font-family: 'SF Mono', 'Fira Code', monospace; }

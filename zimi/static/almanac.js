@@ -468,9 +468,6 @@ function _renderAlmanacContent() {
   html += '<span id="orrery-date" class="orrery-date"></span>';
   html += '<button id="orrery-now" class="orrery-ctrl-btn orrery-now" onclick="_orrerySnapToNow()" title="' + t('alm_back_to_now') + '" style="display:none">' + t('alm_now') + '</button>';
   html += '</div>';
-  // Deep-space view: zoom out past Neptune to the interstellar probes, where
-  // (unlike the planet view) they have room to visibly crawl outward on a scrub.
-  html += '<div class="orrery-modes"><button id="orrery-deepspace" class="orrery-mode-btn" onclick="_orreryToggleDeepSpace()" title="' + _almEsc(t('alm_deep_space_hint')) + '">' + t('alm_deep_space') + '</button></div>';
   // Transit slider — appears when a rocket is in flight (aligned with main controls)
   html += '<div id="orrery-transit-wrap" class="orrery-transit-wrap">';
   html += '<span class="orrery-transit-end">' + t('alm_transit') + '</span>';
