@@ -336,7 +336,9 @@ function _drawOrrery(canvas, dpr) {
     // Visual radius scales with distance (log-compressed so it stays on canvas)
     var visR = Math.min(0.46, 0.44 + 0.02 * Math.log(Math.max(1, dist / 30.07))) * W;
     var vx = cx + Math.cos(angle) * visR;
-    var vy = cy + Math.sin(angle) * visR;
+    // Match the planets' Y convention (cy − sin): the probes were mirrored
+    // across the horizontal axis, plotting each one 2×longitude off.
+    var vy = cy - Math.sin(angle) * visR;
     var vs = 2.5 * dpr;
     // Subtle amber glow
     var vGlow = ctx.createRadialGradient(vx, vy, 0, vx, vy, vs * 4);
