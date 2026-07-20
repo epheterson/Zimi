@@ -1401,29 +1401,20 @@ var _MOON_PHASE_I18N = {
 };
 function _localMoonName(name) { return _MOON_PHASE_I18N[name] ? t(_MOON_PHASE_I18N[name]) : name; }
 
-// ── Moon rendering — one per-pixel shaded sprite, shared everywhere ──
+// ── Moon rendering — the real photo, shaded per-pixel, shared everywhere ──
 // The old renderer stacked two solid half-discs under a scaled-ellipse
-// terminator (a razor-sharp DOM edge, a hard vertical seam at the quarters,
-// and no limb darkening — the artifacts). This shades each disc pixel from
-// the real geometry: surface normal · Sun vector gives a naturally soft
-// terminator, times limb darkening, times the moon.png albedo, with a faint
-// earthshine floor on the dark side so it reads as a sphere, not a cut-out.
-// The result is a static image per phase, so it's computed once and cached.
+// terminator: a razor-sharp edge, a hard seam at the quarters, no limb
+// darkening. This draws the full-resolution moon photo and multiplies it by a
+// physically-shaded brightness map — normal·Sun for a soft terminator, limb
+// darkening toward the rim, and an earthshine FLOOR so the shadowed side stays
+// a visible (cool, dim) sphere rather than going black. Static per phase, so
+// it's computed once and cached.
 var _MOON_TEX = new Image();
 var _moonTexReady = false;
-var _moonTexData = null; // sampled albedo, ImageData at _MOON_TEX_N²
-var _MOON_TEX_N = 128;
 _MOON_TEX.onload = function() {
-  try {
-    var c = document.createElement('canvas');
-    c.width = c.height = _MOON_TEX_N;
-    var g = c.getContext('2d');
-    g.drawImage(_MOON_TEX, 0, 0, _MOON_TEX_N, _MOON_TEX_N);
-    _moonTexData = g.getImageData(0, 0, _MOON_TEX_N, _MOON_TEX_N);
-    _moonTexReady = true;
-    _moonSpriteCache = {};                // re-render with real albedo
-    if (typeof _repaintMoons === 'function') _repaintMoons();
-  } catch (e) { _moonTexReady = false; }
+  _moonTexReady = true;
+  _moonSpriteCache = {};
+  if (typeof _repaintMoons === 'function') _repaintMoons();
 };
 _MOON_TEX.src = '/static/moon.png?v=1';
 
@@ -1441,22 +1432,31 @@ function _renderMoonSprite(illumFrac, waxing, sizePx) {
     (_moonTexReady ? 't' : '');
   if (_moonSpriteCache[key]) return _moonSpriteCache[key];
 
-  var dpr = Math.min(window.devicePixelRatio || 1, 2);
-  var N = Math.round(sizePx * dpr);
+  // Render at the photo's native 256 (or smaller for the tiny card) so the
+  // maria stay crisp; the browser scales the sprite to its display size.
+  var N = Math.min(256, Math.round(sizePx * 2));
   var cv = document.createElement('canvas');
   cv.width = cv.height = N;
   var ctx = cv.getContext('2d');
-  var img = ctx.createImageData(N, N);
+  // Base: the moon photo (same-origin, so getImageData won't taint). Before it
+  // loads, a neutral grey disc so the shape is still right.
+  if (_moonTexReady) {
+    ctx.drawImage(_MOON_TEX, 0, 0, N, N);
+  } else {
+    ctx.fillStyle = '#b8b4aa';
+    ctx.beginPath(); ctx.arc(N / 2, N / 2, N / 2, 0, Math.PI * 2); ctx.fill();
+  }
+  var img = ctx.getImageData(0, 0, N, N);
   var data = img.data;
 
   // Sun direction: phase angle P from illuminated fraction (k = (1+cosP)/2).
   var cosP = 2 * illumFrac - 1;
   var sinP = Math.sqrt(Math.max(0, 1 - cosP * cosP));
   var sx = (waxing ? 1 : -1) * sinP, sz = cosP;
-  var term = 0.06;          // terminator half-width (haze) in dot units
-  var earthBase = 0.05;     // dark-side earthshine floor
-  var earth = earthBase * (1 - illumFrac * 0.6);
-  var tex = _moonTexData ? _moonTexData.data : null;
+  var term = 0.055;                 // terminator half-width (haze) in dot units
+  // Earthshine: the shadowed side stays clearly visible (a dim, cool disc),
+  // brightest near new moon when the Earth is "full" in the Moon's sky.
+  var earth = 0.16 + 0.10 * (1 - illumFrac);
 
   for (var py = 0; py < N; py++) {
     var y = (py + 0.5) / N * 2 - 1;              // +1 top .. -1 bottom
@@ -1464,28 +1464,20 @@ function _renderMoonSprite(illumFrac, waxing, sizePx) {
       var x = (px + 0.5) / N * 2 - 1;
       var r2 = x * x + y * y;
       var o = (py * N + px) * 4;
-      if (r2 > 1.0) { data[o + 3] = 0; continue; }
+      if (r2 >= 1.0) { data[o + 3] = 0; continue; }
       var z = Math.sqrt(1 - r2);                 // toward viewer
-      // Lit fraction: soft terminator from normal·sun.
       var lit = _smoothstep(-term, term, x * sx + z * sz);
-      var limb = Math.pow(z, 0.45);              // limb darkening
-      // Albedo from the texture (orthographic front-face map), luminance.
-      var alb = 0.82;
-      if (tex) {
-        var tu = Math.min(_MOON_TEX_N - 1, ((x + 1) * 0.5 * _MOON_TEX_N) | 0);
-        var tv = Math.min(_MOON_TEX_N - 1, ((1 - y) * 0.5 * _MOON_TEX_N) | 0);
-        var to = (tv * _MOON_TEX_N + tu) * 4;
-        alb = (0.30 * tex[to] + 0.59 * tex[to + 1] + 0.11 * tex[to + 2]) / 255;
-        alb = 0.45 + alb * 0.55;                 // keep maria visible, not black
-      }
-      var litI = lit * limb * alb;
-      var darkI = (1 - lit) * earth * alb;
-      // Warm sunlight on the lit side, cool earthshine on the dark side.
-      var R = litI * 255 + darkI * 150;
-      var G = litI * 248 + darkI * 170;
-      var B = litI * 232 + darkI * 210;
-      // Antialias the limb: fade alpha over the last ~1px ring.
-      var edge = _smoothstep(1.0, 1.0 - (2.0 / N) * 2, r2);
+      var limb = Math.pow(z, 0.42);              // limb darkening
+      var litI = lit * limb;                     // sunlit component
+      var darkI = (1 - lit) * earth * limb;      // earthshine component
+      var m = litI + darkI;
+      var warm = m > 0 ? litI / m : 0;           // 1 = fully sunlit, 0 = earthshine
+      // Multiply the photo by brightness; sunlit side warm, earthshine cool.
+      var R = data[o] * m * (0.99 + 0.05 * warm);
+      var G = data[o + 1] * m;
+      var B = data[o + 2] * m * (1.18 - 0.18 * warm);
+      // Antialias the limb over the outer ~1px ring.
+      var edge = _smoothstep(1.0, 1.0 - 2.4 / N, r2);
       data[o] = Math.min(255, R);
       data[o + 1] = Math.min(255, G);
       data[o + 2] = Math.min(255, B);
