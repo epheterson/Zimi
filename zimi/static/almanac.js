@@ -1139,6 +1139,22 @@ _sunMapImg.onerror = function() { _sunMapLoaded = false; };
 _sunMapImg.src = '/static/world-map.svg?v=1';
 
 var _sunMapCanvas = null;
+var _sunMapCycle = { x: -999, y: -999, list: '', idx: 0 }; // click-cycle overlaps
+var _sunMapFlashTimer = 0;
+
+// Brief label over the map naming the city just picked (and the cycle hint when
+// several cities overlap). Recreated each time — the map re-renders on a pick.
+function _sunMapFlash(text) {
+  var wrap = document.getElementById('almanac-sunmap');
+  if (!wrap) return;
+  var el = document.createElement('div');
+  el.className = 'sunmap-flash';
+  el.textContent = text;
+  wrap.appendChild(el);
+  requestAnimationFrame(function () { el.classList.add('show'); });
+  clearTimeout(_sunMapFlashTimer);
+  _sunMapFlashTimer = setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 2000);
+}
 var _sunMapNow = null;
 var _sunMapLat = 34;
 var _sunMapLon = -118;
@@ -1216,22 +1232,40 @@ function _renderSunMap(now) {
       var lon = (clickX / rect.width) * 360 - 180;
       var lat = 90 - (clickY / rect.height) * 180;
 
-      // Snap to nearby city
+      // Collect every city within the snap radius, nearest first — then let
+      // repeated clicks on the same spot cycle through them, so overlapping
+      // cities (a dense region) are all reachable.
       var snapDist = 15 / rect.width * 360;
-      var snappedName = '';
+      var near = [];
       for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
         var c = _MAP_CITIES[ci];
         var dlat = lat - c.lat, dlon = (lon - c.lon) * Math.cos(lat * DEG_TO_RAD);
-        if (Math.sqrt(dlat * dlat + dlon * dlon) < snapDist) {
-          lat = c.lat; lon = c.lon;
-          snappedName = c.name;
-          break;
-        }
+        var dd = Math.sqrt(dlat * dlat + dlon * dlon);
+        if (dd < snapDist) near.push({ c: c, d: dd });
       }
-      _saveLocation(lat, lon, snappedName);
+      near.sort(function (a, b) { return a.d - b.d; });
+      var snappedName = '';
+      if (near.length) {
+        var samePlace = Math.abs(clickX - _sunMapCycle.x) < 6 && Math.abs(clickY - _sunMapCycle.y) < 6;
+        var keys = near.map(function (n) { return n.c.name; }).join('|');
+        if (samePlace && keys === _sunMapCycle.list) {
+          _sunMapCycle.idx = (_sunMapCycle.idx + 1) % near.length;
+        } else {
+          _sunMapCycle = { x: clickX, y: clickY, list: keys, idx: 0 };
+        }
+        var pick = near[_sunMapCycle.idx].c;
+        lat = pick.lat; lon = pick.lon;
+        snappedName = pick.name + (near.length > 1 ? '  (' + (_sunMapCycle.idx + 1) + '/' + near.length + ' · ' + t('alm_click_cycle') + ')' : '');
+        _saveLocation(pick.lat, pick.lon, pick.name);
+      } else {
+        _sunMapCycle = { x: -999, y: -999, list: '', idx: 0 };
+        _saveLocation(lat, lon, '');
+      }
       // Refresh only the location-dependent panels in place — a full rebuild
       // wipes the scroll container and yanks the page upward on every click.
       _almRepaintFocus();
+      // Flash which city we landed on (and the cycle hint) over the map.
+      if (snappedName) _sunMapFlash(snappedName);
     };
   }
 
