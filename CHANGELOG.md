@@ -37,6 +37,11 @@ surfaced. The moon finally looks like the Moon.
 - LAN peer discovery advertised the wrong BitTorrent port when a custom port
   was set; it now advertises the real one.
 - Malformed HTTP Range headers no longer 500 the download endpoint.
+- The almanac topbar showed the underlying ZIM's icon; the breadcrumb is now
+  just "Zimi" while the almanac is open (you reach it only from home).
+- Picking a location on the almanac's world map no longer rebuilds the whole
+  panel — it refreshes the location-dependent pieces in place, so the page
+  stops jumping and flashing on each click.
 
 ### Changed
 
@@ -52,13 +57,6 @@ surfaced. The moon finally looks like the Moon.
 
 ### Added
 
-- **Tap the almanac's date and time to travel.** The date/time above the moon
-  is now quietly adjustable — click it for month/day/year steppers and a
-  time-of-day slider, and the whole panel follows: the moon's phase and tilt,
-  sunrise and sunset, the star chart, the sky scene. Scrub to midnight three
-  years out and watch the sky go dark. "Now" snaps everything back to the
-  present. The affordance is understated on purpose — you discover it by
-  clicking.
 - **"New" and "Updated" badges** on ZIM cards, so fresh or changed sources
   stand out in a large library instead of being lost in the grid (#34). A
   fresh install gets a solid "New" pill; a source whose file changed on an
