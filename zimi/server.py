@@ -149,7 +149,11 @@ def start_background_services(http_port):
 
             _disc.start(
                 http_port=http_port,
-                bt_port=int(os.environ.get("ZIMI_BT_PORT", "6881") or "6881"),
+                # Advertise the port aria2 actually listens on — get_bt_port()
+                # honors the ZIMI_BT blob's port= and the persisted UI pref;
+                # reading the raw env told peers 6881 while the sidecar (and
+                # the NAT probe) used the configured port.
+                bt_port=p2p.get_bt_port(),
                 zim_count=len(list_zims()),
                 version=ZIMI_VERSION,
             )

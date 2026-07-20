@@ -906,9 +906,15 @@ def _get_pooled_archive(name, pool, pool_lock, zim_locks, pool_label):
             except (RuntimeError, Exception) as e:
                 log.warning(f"{pool_label} pool: skipping corrupt ZIM '{name}': {e}")
                 return None, None
+            # Publish the lock BEFORE the archive: the fast-path reader above
+            # tests `name in pool` unlocked, so if it sees the archive it must
+            # already find the lock — otherwise a concurrent reader hits
+            # KeyError on zim_locks[name], which the caller swallows and the
+            # ZIM silently drops out of search results under load.
+            lock = threading.Lock()
+            zim_locks[name] = lock
             pool[name] = archive
-            zim_locks[name] = threading.Lock()
-            return archive, zim_locks[name]
+            return archive, lock
     return None, None
 
 

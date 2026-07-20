@@ -35,6 +35,30 @@ log = logging.getLogger("zimi")
 # Rate Limiting
 # ============================================================================
 
+
+# Reverse-proxy hops whose forwarded client-IP headers we trust. Optional
+# operator override (comma-separated CIDRs); empty default = trust any private/
+# loopback/link-local hop. The origin is never directly WAN-reachable — a
+# forwarding hop is always private — so the default is safe, and an operator on
+# an unusual topology can still pin it explicitly.
+def _load_trusted_proxy_cidrs():
+    raw = os.environ.get("ZIMI_TRUSTED_PROXIES", "").strip()
+    if not raw:
+        return None  # sentinel: use the "any private hop" heuristic
+    nets = []
+    for tok in raw.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(tok, strict=False))
+        except ValueError:
+            pass
+    return nets or None
+
+
+_TRUSTED_PROXY_CIDRS = _load_trusted_proxy_cidrs()
+
 RATE_LIMIT = int(
     os.environ.get("ZIMI_RATE_LIMIT", "60")
 )  # API requests per minute per IP (0 = disabled)
@@ -439,21 +463,35 @@ class ZimHandler(BaseHTTPRequestHandler):
         Fix: (1) prefer Cloudflare's CF-Connecting-IP — it's the true client and
         Cloudflare strips any client-supplied copy at its edge, so it can't be
         forged through the tunnel; (2) otherwise take X-Forwarded-For's leftmost;
-        (3) trust either only when the direct hop is itself on a private network
-        (the origin is never directly WAN-reachable, so a forwarding hop is
-        always private) — covering the bridge gateway on any subnet without a
-        hardcoded list; (4) with no forwarded header, return the direct peer as
-        before (a real LAN client is genuinely private; a bare proxy hit stays
-        the proxy's own IP, which _is_private_client already treats correctly)."""
+        (3) trust either only from a trusted proxy hop — an explicit
+        ZIMI_TRUSTED_PROXIES CIDR allowlist if set, else any private/loopback/
+        link-local hop (the origin is never directly WAN-reachable, so a
+        forwarding hop is always private) — covering the bridge gateway on any
+        subnet without a hardcoded list; (4) reject a forwarded value that
+        itself claims loopback/link-local, so a permitted forwarder (or a LAN
+        client) can't assert 127.0.0.1 to reach for loopback-tier trust; (5)
+        with no usable forwarded header, return the direct peer as before."""
         direct_ip = self.client_address[0]
+        try:
+            dip = ipaddress.ip_address(direct_ip)
+        except ValueError:
+            return direct_ip
+        if _TRUSTED_PROXY_CIDRS is not None:
+            hop_trusted = any(dip in net for net in _TRUSTED_PROXY_CIDRS)
+        else:
+            hop_trusted = dip.is_private or dip.is_loopback or dip.is_link_local
+        if not hop_trusted:
+            return direct_ip
         fwd = self.headers.get("CF-Connecting-IP")
         if not fwd:
             xff = self.headers.get("X-Forwarded-For", "")
             fwd = xff.split(",")[0].strip() or None
         if fwd:
             try:
-                dip = ipaddress.ip_address(direct_ip)
-                if dip.is_private or dip.is_loopback or dip.is_link_local:
+                fip = ipaddress.ip_address(fwd)
+                # A real forwarded client is never loopback/link-local; refuse
+                # such a claim rather than let it borrow that trust tier.
+                if not (fip.is_loopback or fip.is_link_local):
                     return fwd
             except ValueError:
                 pass

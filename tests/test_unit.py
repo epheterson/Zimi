@@ -2057,6 +2057,33 @@ class TestClientIPResolution(unittest.TestCase):
         self.assertEqual(ip, "8.8.8.8")
         self.assertFalse(self._private("8.8.8.8", {"X-Forwarded-For": "10.0.0.1"}))
 
+    def test_forwarded_loopback_claim_is_rejected(self):
+        # A LAN client (or a permitted forwarder) must not assert 127.0.0.1 to
+        # borrow loopback-tier trust — the forwarded value is refused and we
+        # fall back to the (still private) direct hop.
+        ip = self._ip("192.168.1.1", {"X-Forwarded-For": "127.0.0.1"})
+        self.assertEqual(ip, "192.168.1.1")
+        ip2 = self._ip("172.17.0.1", {"CF-Connecting-IP": "169.254.1.1"})
+        self.assertEqual(ip2, "172.17.0.1")
+
+    def test_explicit_trusted_proxy_allowlist(self):
+        import zimi.http as zhttp
+
+        saved = zhttp._TRUSTED_PROXY_CIDRS
+        try:
+            import ipaddress as _ip
+            zhttp._TRUSTED_PROXY_CIDRS = [_ip.ip_network("172.30.0.0/16")]
+            # in-allowlist hop → forwarded client honored
+            self.assertEqual(
+                self._ip("172.30.0.1", {"CF-Connecting-IP": "8.8.8.8"}), "8.8.8.8"
+            )
+            # a private hop NOT in the allowlist → forwarded header ignored
+            self.assertEqual(
+                self._ip("192.168.1.1", {"CF-Connecting-IP": "8.8.8.8"}), "192.168.1.1"
+            )
+        finally:
+            zhttp._TRUSTED_PROXY_CIDRS = saved
+
     def test_direct_lan_client_stays_private(self):
         self.assertTrue(self._private("192.168.1.50"))
         self.assertEqual(self._ip("192.168.1.50"), "192.168.1.50")
