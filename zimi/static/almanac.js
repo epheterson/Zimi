@@ -335,16 +335,9 @@ function _almHeadHtml(focus) {
   var _dtOpts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
   var _tmOpts = { hour: 'numeric', minute: '2-digit' };
   if (locTz) { _dtOpts.timeZone = locTz; _tmOpts.timeZone = locTz; }
-  var dateStr = focus.toLocaleDateString(lang, _dtOpts);
-  var timeStr = focus.toLocaleTimeString(lang, _tmOpts);
-  var tzName = _formatTimezone(lang, locTz);
-  var live = _almIsToday(focus);
-
-  var html = '<div style="text-align:center;margin-bottom:16px">';
-  html += '<div style="font-size:22px;font-weight:600;color:var(--text)">' + dateStr + '</div>';
-  html += '<div style="font-size:16px;color:var(--text2);margin-top:4px">' + timeStr + (tzName ? ' &middot; ' + tzName : '') +
-    (live ? '' : ' <button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button>') + '</div>';
-  html += '</div>';
+  // The date/time and its controls live in the pinned bar (#almanac-datebar),
+  // not here — so they stay usable while you scroll the panels below.
+  var html = '';
 
   // Hero moon — tilted so the bright limb faces the Sun as the observer sees
   // it. brightLimb (chi − q) is the right physical quantity, but the base
@@ -416,6 +409,8 @@ function _almRepaintFocus() {
   _renderDeepTime(focus);
   // Re-seeding the sky scene cancels the previous RAF, so loops don't stack.
   _initSkyScene(focus, loc.lat, loc.lon);
+  // Keep the pinned bar's readouts in step (no-op if the bar isn't mounted yet).
+  if (typeof _almDateBarRefresh === 'function') _almDateBarRefresh();
 }
 
 function _almBackToToday() {
@@ -431,11 +426,137 @@ function _almBackToToday() {
   _almRepaintFocus();
 }
 
+// ── Pinned date/time scrubber ──
+// The bar at the top of the almanac IS the date/time control: date steppers and
+// a time-of-day slider that drive the whole panel. It's position:sticky, so it
+// stays put — and usable — while you scroll through the moon, sky, calendar and
+// orrery below, and shrinks to a slim row once you've scrolled past the top.
+
+function _almFocusOrNow() { return _almFocus ? new Date(_almFocus.getTime()) : new Date(); }
+var _almDeRaf = 0;
+
+function _almDateBarHtml() {
+  function field(id, cap) {
+    return '<span class="alm-db-field" title="' + _almEsc(cap) + '">' +
+      '<button class="alm-db-step" onclick="_almDeStep(\'' + id + '\',-1)" aria-label="' + _almEsc(cap) + ' −">−</button>' +
+      '<span class="alm-db-val" id="alm-db-' + id + '"></span>' +
+      '<button class="alm-db-step" onclick="_almDeStep(\'' + id + '\',1)" aria-label="' + _almEsc(cap) + ' +">+</button>' +
+      '</span>';
+  }
+  var h = '<div class="alm-db-inner">';
+  h += '<div class="alm-db-date" id="alm-db-date"></div>';
+  h += '<div class="alm-db-steps">' +
+    field('month', t('alm_de_month')) + field('day', t('alm_de_day')) + field('year', t('alm_de_year')) +
+    '</div>';
+  h += '<div class="alm-db-timerow">' +
+    '<span class="alm-db-clock" id="alm-db-clock"></span>' +
+    '<input type="range" id="alm-db-slider" min="0" max="1439" step="1" value="0"' +
+    ' class="orrery-slider alm-db-slider" aria-label="' + _almEsc(t('alm_de_time')) + '"' +
+    ' oninput="_almDeSlide(this.value)" onchange="_almDeSlideCommit(this.value)" />' +
+    '<button class="alm-db-now orrery-ctrl-btn" onclick="_almDeNow()" title="' + _almEsc(t('alm_back_to_now')) + '">' + t('alm_now') + '</button>' +
+    '</div>';
+  h += '</div>';
+  return h;
+}
+
+// Refresh the bar's readouts without rebuilding it (textContent only, so a
+// slider mid-drag is never replaced under the pointer).
+function _almDateBarRefresh() {
+  var bar = document.getElementById('almanac-datebar');
+  if (!bar) return;
+  var f = _almFocusOrNow();
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  var set = function (id, v) { var n = document.getElementById(id); if (n) n.textContent = v; };
+  set('alm-db-date', f.toLocaleDateString(lang, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }));
+  set('alm-db-month', f.toLocaleDateString(lang, { month: 'short' }));
+  set('alm-db-day', f.getDate());
+  set('alm-db-year', f.getFullYear());
+  set('alm-db-clock', f.toLocaleTimeString(lang, { hour: 'numeric', minute: '2-digit' }));
+  var sl = document.getElementById('alm-db-slider');
+  if (sl && document.activeElement !== sl) sl.value = f.getHours() * 60 + f.getMinutes();
+  bar.classList.toggle('alm-db-adjusted', _almFocus !== null);
+}
+
+// Set the focused instant to a specific date+time and repaint everything — the
+// single path shared by the steppers, the slider and day clicks.
+function _almSetFocusInstant(d) {
+  _almFocus = d;
+  var jdn = _gregorianToJDN(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  _almSelectedJDN = jdn;
+  var cal = _jdnToCalendar(_almSystem, jdn);
+  _almYear = cal.year;
+  _almMonth = cal.month;
+  _drawAlmanacGrid();
+  _almRepaintFocus();
+  _almDateBarRefresh();
+}
+
+function _almDeStep(part, dir) {
+  var f = _almFocusOrNow();
+  if (part === 'year') {
+    f.setFullYear(f.getFullYear() + dir);
+  } else if (part === 'month') {
+    var day = f.getDate();
+    f.setDate(1);                       // avoid roll-over (Jan 31 → Mar 3)
+    f.setMonth(f.getMonth() + dir);
+    f.setDate(Math.min(day, new Date(f.getFullYear(), f.getMonth() + 1, 0).getDate()));
+  } else {
+    f.setDate(f.getDate() + dir);
+  }
+  _almSetFocusInstant(f);
+}
+
+// Slider drag: keep the clock live on every event (cheap), throttle the heavy
+// full-panel repaint to one per animation frame so scrubbing stays smooth.
+function _almDeSlide(v) {
+  var mins = parseInt(v, 10) || 0;
+  var f = _almFocusOrNow();
+  f.setHours(Math.floor(mins / 60), mins % 60, 0, 0);
+  _almFocus = f;                        // time touched → an explicit focus
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  var clk = document.getElementById('alm-db-clock');
+  if (clk) clk.textContent = f.toLocaleTimeString(lang, { hour: 'numeric', minute: '2-digit' });
+  var bar = document.getElementById('almanac-datebar');
+  if (bar) bar.classList.add('alm-db-adjusted');
+  if (!_almDeRaf) {
+    _almDeRaf = requestAnimationFrame(function () { _almDeRaf = 0; _almRepaintFocus(); });
+  }
+}
+
+function _almDeSlideCommit(v) {
+  if (_almDeRaf) { cancelAnimationFrame(_almDeRaf); _almDeRaf = 0; }
+  _almDeSlide(v);
+  _almRepaintFocus();
+}
+
+function _almDeNow() {
+  _almBackToToday();      // full snap-to-present (also resets the browsed month)
+  _almDateBarRefresh();
+}
+
+// Shrink the bar to a slim row once the user scrolls past the top, so it keeps
+// out of the way while staying usable. Attached fresh on each full render.
+function _almWireDateBarScroll() {
+  var sc = document.getElementById('almanac-content');
+  var bar = document.getElementById('almanac-datebar');
+  if (!sc || !bar) return;
+  var onScroll = function () { bar.classList.toggle('alm-db-shrunk', sc.scrollTop > 40); };
+  sc.removeEventListener('scroll', sc._almDbScroll || function () {});
+  sc._almDbScroll = onScroll;
+  sc.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+}
+
 function _renderAlmanacContent() {
   var now = new Date();
   var m = _moonPhase(now);
 
   var html = '<div class="almanac-inner">';
+  // Pinned date/time control — sticks to the top of the scroll area so you can
+  // adjust the moment from anywhere and watch every panel below respond. It is
+  // a sibling of #almanac-head (not a child), so focus repaints never tear the
+  // slider out from under the pointer.
+  html += '<div id="almanac-datebar" class="alm-datebar">' + _almDateBarHtml() + '</div>';
   html += '<div id="almanac-head">' + _almHeadHtml(now) + '</div>';
 
   // Sky scene + calendar — wall calendar: art above, month grid below
@@ -564,6 +685,8 @@ function _renderAlmanacContent() {
   _loadSunData(now);
   _startTzClock();
   _cacheAlmanacHighlights(now, m);
+  _almDateBarRefresh();       // seed the pinned bar's readouts
+  _almWireDateBarScroll();    // shrink it once the user scrolls past the top
 }
 
 // Cache computed almanac highlights for the Today discover card.
