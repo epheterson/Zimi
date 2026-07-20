@@ -48,6 +48,12 @@ surfaced. The moon finally looks like the Moon.
 - **Country holidays get their own colour** on the calendar, apart from the
   worldwide observances (#33).
 
+### Added
+
+- **A "New" badge** on freshly-installed ZIMs for their first week, so a new
+  download stands out in a large library instead of being lost in the grid
+  (#34).
+
 ## [1.7.3] - 2026-07-18
 
 Both field reports closed — the downloads page no longer throttles itself
