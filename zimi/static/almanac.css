@@ -4,40 +4,34 @@
 .almanac-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: 24px 16px 80px; overscroll-behavior: contain; }
 .almanac-inner { max-width: 600px; margin: 0 auto; }
 
-/* Pinned date/time scrubber — sticks to the top of the scroll area and stays
-   usable while you scroll the panels below; shrinks to a slim row once past the
-   top. Sits in flow (position:sticky) so content scrolls under its backdrop. */
-.alm-datebar {
-  position: sticky; top: -24px; z-index: 20;
-  background: var(--bg); border-bottom: 1px solid var(--border);
-  margin: -24px -16px 20px; padding: 38px 16px 12px;
-  text-align: center; transition: padding 0.18s ease, box-shadow 0.18s ease;
-}
-.alm-datebar.alm-db-shrunk { padding: 10px 16px; box-shadow: 0 3px 10px rgba(0,0,0,0.35); }
-.alm-db-inner { max-width: 440px; margin: 0 auto; }
-.alm-db-date { font-size: 20px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; transition: font-size 0.18s ease; }
-.alm-db-shrunk .alm-db-date { font-size: 14px; }
-.alm-db-steps {
-  display: flex; justify-content: center; gap: 12px; margin-top: 8px;
-  overflow: hidden; max-height: 40px; opacity: 1;
-  transition: max-height 0.18s ease, opacity 0.15s ease, margin 0.18s ease;
-}
-.alm-db-shrunk .alm-db-steps { max-height: 0; opacity: 0; margin-top: 0; }
-.alm-db-field { display: inline-flex; align-items: center; gap: 4px; }
-.alm-db-step {
-  background: none; border: 1px solid var(--border); color: var(--text-dim);
-  width: 22px; height: 22px; border-radius: 6px; cursor: pointer; font-size: 14px;
-  line-height: 1; display: inline-flex; align-items: center; justify-content: center;
-  transition: all 0.12s;
-}
-.alm-db-step:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
-.alm-db-val { min-width: 42px; text-align: center; font-size: 14px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
-.alm-db-timerow { display: flex; align-items: center; gap: 10px; margin-top: 10px; max-width: 400px; margin-left: auto; margin-right: auto; }
-.alm-db-shrunk .alm-db-timerow { margin-top: 0; }
-.alm-db-clock { font-size: 12px; color: var(--amber); font-variant-numeric: tabular-nums; min-width: 62px; text-align: right; font-family: 'SF Mono', 'Fira Code', monospace; }
-.alm-db-slider { flex: 1; }
-.alm-db-now { width: auto; padding: 0 10px; font-size: 11px; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
-.alm-datebar.alm-db-adjusted .alm-db-now { opacity: 1; pointer-events: auto; color: var(--amber); border-color: var(--amber-border); }
+/* The date/time header reads exactly as before but is clickable; clicking it
+   opens the editor (below), which replaces it in place. */
+#almanac-head { text-align: center; }
+.alm-focus { display: inline-block; margin-bottom: 16px; cursor: pointer; border-radius: 10px; padding: 6px 14px; transition: background 0.15s; }
+.alm-focus-date { font-size: 22px; font-weight: 600; color: var(--text); }
+.alm-focus-time { font-size: 16px; color: var(--text2); margin-top: 4px; }
+.alm-focus:hover { background: var(--surface); }
+.alm-focus:hover .alm-focus-time { color: var(--amber); }
+.alm-focus-reset { text-align: center; margin-bottom: 12px; }
+.almanac-inner.alm-editing #almanac-head .alm-focus,
+.almanac-inner.alm-editing #almanac-head .alm-focus-reset { display: none; }
+
+/* Elegant date/time editor — typed entry to any moment, no stepping. */
+.alm-te { max-width: 380px; margin: 0 auto 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; text-align: center; box-shadow: 0 8px 28px rgba(0,0,0,0.4); }
+.alm-te-readout { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 14px; min-height: 19px; }
+.alm-te-grid { display: flex; align-items: flex-end; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.alm-te-fld { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.alm-te-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); }
+.alm-te-in { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: center; padding: 8px 6px; width: 3ch; transition: border-color 0.12s, box-shadow 0.12s; -moz-appearance: textfield; }
+.alm-te-in:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
+.alm-te-fld:first-child .alm-te-in { width: 5ch; }
+.alm-te-sep { width: 10px; }
+.alm-te-ampm { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--amber); font-size: 14px; font-weight: 700; padding: 10px 10px; cursor: pointer; min-width: 44px; transition: all 0.12s; }
+.alm-te-ampm:hover { border-color: var(--amber-border); background: var(--amber-glow); }
+.alm-te-foot { display: flex; justify-content: space-between; margin-top: 16px; gap: 8px; }
+.alm-te-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); border-radius: 8px; padding: 7px 16px; font-size: 12px; cursor: pointer; transition: all 0.12s; }
+.alm-te-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+.alm-te-done { color: var(--amber); border-color: var(--amber-border); }
 .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
 .alm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
 .alm-card-lbl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

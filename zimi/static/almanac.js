@@ -335,9 +335,21 @@ function _almHeadHtml(focus) {
   var _dtOpts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
   var _tmOpts = { hour: 'numeric', minute: '2-digit' };
   if (locTz) { _dtOpts.timeZone = locTz; _tmOpts.timeZone = locTz; }
-  // The date/time and its controls live in the pinned bar (#almanac-datebar),
-  // not here — so they stay usable while you scroll the panels below.
-  var html = '';
+  var dateStr = focus.toLocaleDateString(lang, _dtOpts);
+  var timeStr = focus.toLocaleTimeString(lang, _tmOpts);
+  var tzName = _formatTimezone(lang, locTz);
+  var live = _almIsToday(focus);
+
+  // The date/time reads exactly as before; clicking it opens an elegant editor
+  // to jump to any moment. The affordance is understated — the view is
+  // unchanged until you click.
+  var html = '<div class="alm-focus" onclick="_almOpenTimeEditor()" title="' + _almEsc(t('alm_set_datetime')) + '">';
+  html += '<div class="alm-focus-date">' + dateStr + '</div>';
+  html += '<div class="alm-focus-time">' + timeStr + (tzName ? ' &middot; ' + tzName : '') + '</div>';
+  html += '</div>';
+  if (!live) {
+    html += '<div class="alm-focus-reset"><button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button></div>';
+  }
 
   // Hero moon — tilted so the bright limb faces the Sun as the observer sees
   // it. brightLimb (chi − q) is the right physical quantity, but the base
@@ -409,8 +421,6 @@ function _almRepaintFocus() {
   _renderDeepTime(focus);
   // Re-seeding the sky scene cancels the previous RAF, so loops don't stack.
   _initSkyScene(focus, loc.lat, loc.lon);
-  // Keep the pinned bar's readouts in step (no-op if the bar isn't mounted yet).
-  if (typeof _almDateBarRefresh === 'function') _almDateBarRefresh();
 }
 
 function _almBackToToday() {
@@ -426,59 +436,44 @@ function _almBackToToday() {
   _almRepaintFocus();
 }
 
-// ── Pinned date/time scrubber ──
-// The bar at the top of the almanac IS the date/time control: date steppers and
-// a time-of-day slider that drive the whole panel. It's position:sticky, so it
-// stays put — and usable — while you scroll through the moon, sky, calendar and
-// orrery below, and shrinks to a slim row once you've scrolled past the top.
+// ── Date/time editor ──
+// The date/time above the moon reads exactly as before; click it and this
+// editor takes its place — type your way to ANY moment (year, month, day, hour,
+// minute), no stepping. It live-applies as you edit and drives the whole panel.
 
 function _almFocusOrNow() { return _almFocus ? new Date(_almFocus.getTime()) : new Date(); }
-var _almDeRaf = 0;
+var _almTeApplyTimer = 0;
 
-function _almDateBarHtml() {
-  function field(id, cap) {
-    return '<span class="alm-db-field" title="' + _almEsc(cap) + '">' +
-      '<button class="alm-db-step" onclick="_almDeStep(\'' + id + '\',-1)" aria-label="' + _almEsc(cap) + ' −">−</button>' +
-      '<span class="alm-db-val" id="alm-db-' + id + '"></span>' +
-      '<button class="alm-db-step" onclick="_almDeStep(\'' + id + '\',1)" aria-label="' + _almEsc(cap) + ' +">+</button>' +
-      '</span>';
-  }
-  var h = '<div class="alm-db-inner">';
-  h += '<div class="alm-db-date" id="alm-db-date"></div>';
-  h += '<div class="alm-db-steps">' +
-    field('month', t('alm_de_month')) + field('day', t('alm_de_day')) + field('year', t('alm_de_year')) +
-    '</div>';
-  h += '<div class="alm-db-timerow">' +
-    '<span class="alm-db-clock" id="alm-db-clock"></span>' +
-    '<input type="range" id="alm-db-slider" min="0" max="1439" step="1" value="0"' +
-    ' class="orrery-slider alm-db-slider" aria-label="' + _almEsc(t('alm_de_time')) + '"' +
-    ' oninput="_almDeSlide(this.value)" onchange="_almDeSlideCommit(this.value)" />' +
-    '<button class="alm-db-now orrery-ctrl-btn" onclick="_almDeNow()" title="' + _almEsc(t('alm_back_to_now')) + '">' + t('alm_now') + '</button>' +
-    '</div>';
-  h += '</div>';
-  return h;
+// The editor works in the SAME timezone the header/panels display (the chosen
+// location's zone), not the browser's — otherwise picking Tokyo while sitting
+// in California would show one clock and edit another.
+function _almTeLocTz() { try { return _almDisplayTz(_getLocation()); } catch (e) { return null; } }
+
+// Wall-clock parts {y,mo,d,h(24),mi} of an instant, as read in a timezone.
+function _almTzParts(dt, tz) {
+  if (!tz) return { y: dt.getFullYear(), mo: dt.getMonth() + 1, d: dt.getDate(), h: dt.getHours(), mi: dt.getMinutes() };
+  var p = {};
+  new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: false })
+    .formatToParts(dt).forEach(function (x) {
+      if (x.type === 'year') p.y = +x.value;
+      else if (x.type === 'month') p.mo = +x.value;
+      else if (x.type === 'day') p.d = +x.value;
+      else if (x.type === 'hour') p.h = (+x.value) % 24;
+      else if (x.type === 'minute') p.mi = +x.value;
+    });
+  return p;
 }
 
-// Refresh the bar's readouts without rebuilding it (textContent only, so a
-// slider mid-drag is never replaced under the pointer).
-function _almDateBarRefresh() {
-  var bar = document.getElementById('almanac-datebar');
-  if (!bar) return;
-  var f = _almFocusOrNow();
-  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
-  var set = function (id, v) { var n = document.getElementById(id); if (n) n.textContent = v; };
-  set('alm-db-date', f.toLocaleDateString(lang, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }));
-  set('alm-db-month', f.toLocaleDateString(lang, { month: 'short' }));
-  set('alm-db-day', f.getDate());
-  set('alm-db-year', f.getFullYear());
-  set('alm-db-clock', f.toLocaleTimeString(lang, { hour: 'numeric', minute: '2-digit' }));
-  var sl = document.getElementById('alm-db-slider');
-  if (sl && document.activeElement !== sl) sl.value = f.getHours() * 60 + f.getMinutes();
-  bar.classList.toggle('alm-db-adjusted', _almFocus !== null);
+// The instant whose wall-clock in `tz` is the given y/mo/d/h(24)/mi.
+function _almInstantFromTz(y, mo, d, h, mi, tz) {
+  if (!tz) return new Date(y, mo - 1, d, h, mi, 0);
+  var asUTC = Date.UTC(y, mo - 1, d, h, mi, 0);
+  var off = _tzUtcOffsetMin(tz, new Date(asUTC));   // minutes east of UTC
+  return new Date(asUTC - off * 60000);
 }
 
 // Set the focused instant to a specific date+time and repaint everything — the
-// single path shared by the steppers, the slider and day clicks.
+// single path shared by the editor and calendar day clicks.
 function _almSetFocusInstant(d) {
   _almFocus = d;
   var jdn = _gregorianToJDN(d.getFullYear(), d.getMonth() + 1, d.getDate());
@@ -488,63 +483,104 @@ function _almSetFocusInstant(d) {
   _almMonth = cal.month;
   _drawAlmanacGrid();
   _almRepaintFocus();
-  _almDateBarRefresh();
 }
 
-function _almDeStep(part, dir) {
+function _almOpenTimeEditor() {
+  var host = document.getElementById('almanac-timeeditor');
+  var inner = document.querySelector('.almanac-inner');
+  if (!host || host.getAttribute('data-open') === '1') return;
   var f = _almFocusOrNow();
-  if (part === 'year') {
-    f.setFullYear(f.getFullYear() + dir);
-  } else if (part === 'month') {
-    var day = f.getDate();
-    f.setDate(1);                       // avoid roll-over (Jan 31 → Mar 3)
-    f.setMonth(f.getMonth() + dir);
-    f.setDate(Math.min(day, new Date(f.getFullYear(), f.getMonth() + 1, 0).getDate()));
-  } else {
-    f.setDate(f.getDate() + dir);
+  var P = _almTzParts(f, _almTeLocTz());
+  var pm = P.h >= 12, h12 = P.h % 12; if (h12 === 0) h12 = 12;
+  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  function fld(id, val, size, max, label) {
+    return '<label class="alm-te-fld"><span class="alm-te-lbl">' + label + '</span>' +
+      '<input id="' + id + '" class="alm-te-in" type="text" inputmode="numeric" autocomplete="off"' +
+      ' maxlength="' + max + '" size="' + size + '" value="' + val + '"' +
+      ' oninput="_almTeApply()" onfocus="this.select()" /></label>';
   }
-  _almSetFocusInstant(f);
+  var h = '<div class="alm-te" role="dialog" aria-label="' + _almEsc(t('alm_set_datetime')) + '">';
+  h += '<div class="alm-te-readout" id="alm-te-readout"></div>';
+  h += '<div class="alm-te-grid">';
+  h += fld('alm-te-year', P.y, 4, 6, t('alm_de_year'));
+  h += fld('alm-te-month', pad(P.mo), 2, 2, t('alm_de_month'));
+  h += fld('alm-te-day', pad(P.d), 2, 2, t('alm_de_day'));
+  h += '<span class="alm-te-sep"></span>';
+  h += fld('alm-te-hour', pad(h12), 2, 2, t('alm_de_hour'));
+  h += fld('alm-te-min', pad(f.getMinutes()), 2, 2, t('alm_de_minute'));
+  h += '<label class="alm-te-fld"><span class="alm-te-lbl">&nbsp;</span>' +
+    '<button id="alm-te-ampm" class="alm-te-ampm" data-pm="' + (pm ? '1' : '0') + '"' +
+    ' onclick="_almTeToggleAmpm()">' + (pm ? t('alm_pm') : t('alm_am')) + '</button></label>';
+  h += '</div>';
+  h += '<div class="alm-te-foot">' +
+    '<button class="alm-te-btn" onclick="_almTeNow()">' + t('alm_now') + '</button>' +
+    '<button class="alm-te-btn alm-te-done" onclick="_almCloseTimeEditor()">' + t('alm_done') + '</button>' +
+    '</div></div>';
+  host.innerHTML = h;
+  host.setAttribute('data-open', '1');
+  if (inner) inner.classList.add('alm-editing');
+  _almTeSyncReadout(f);
+  setTimeout(function () { document.addEventListener('mousedown', _almTeOutside, true); }, 0);
+  var yf = document.getElementById('alm-te-year'); if (yf) { yf.focus(); yf.select(); }
 }
 
-// Slider drag: keep the clock live on every event (cheap), throttle the heavy
-// full-panel repaint to one per animation frame so scrubbing stays smooth.
-function _almDeSlide(v) {
-  var mins = parseInt(v, 10) || 0;
-  var f = _almFocusOrNow();
-  f.setHours(Math.floor(mins / 60), mins % 60, 0, 0);
-  _almFocus = f;                        // time touched → an explicit focus
+function _almCloseTimeEditor() {
+  var host = document.getElementById('almanac-timeeditor');
+  var inner = document.querySelector('.almanac-inner');
+  if (host) { host.innerHTML = ''; host.setAttribute('data-open', '0'); }
+  if (inner) inner.classList.remove('alm-editing');
+  document.removeEventListener('mousedown', _almTeOutside, true);
+}
+
+function _almTeOutside(e) {
+  var host = document.getElementById('almanac-timeeditor');
+  if (host && !host.contains(e.target)) _almCloseTimeEditor();
+}
+
+function _almTeToggleAmpm() {
+  var b = document.getElementById('alm-te-ampm');
+  if (!b) return;
+  var pm = b.getAttribute('data-pm') === '1';
+  b.setAttribute('data-pm', pm ? '0' : '1');
+  b.textContent = pm ? t('alm_am') : t('alm_pm');
+  _almTeApply();
+}
+
+function _almTeNow() {
+  _almBackToToday();
+  var host = document.getElementById('almanac-timeeditor');
+  if (host && host.getAttribute('data-open') === '1') { _almCloseTimeEditor(); _almOpenTimeEditor(); }
+}
+
+function _almTeSyncReadout(dt) {
+  var el = document.getElementById('alm-te-readout');
+  if (!el) return;
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
-  var clk = document.getElementById('alm-db-clock');
-  if (clk) clk.textContent = f.toLocaleTimeString(lang, { hour: 'numeric', minute: '2-digit' });
-  var bar = document.getElementById('almanac-datebar');
-  if (bar) bar.classList.add('alm-db-adjusted');
-  if (!_almDeRaf) {
-    _almDeRaf = requestAnimationFrame(function () { _almDeRaf = 0; _almRepaintFocus(); });
-  }
+  var tz = _almTeLocTz();
+  var dOpts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
+  var tOpts = { hour: 'numeric', minute: '2-digit' };
+  if (tz) { dOpts.timeZone = tz; tOpts.timeZone = tz; }
+  el.textContent = dt.toLocaleDateString(lang, dOpts) + ' · ' + dt.toLocaleTimeString(lang, tOpts);
 }
 
-function _almDeSlideCommit(v) {
-  if (_almDeRaf) { cancelAnimationFrame(_almDeRaf); _almDeRaf = 0; }
-  _almDeSlide(v);
-  _almRepaintFocus();
-}
-
-function _almDeNow() {
-  _almBackToToday();      // full snap-to-present (also resets the browsed month)
-  _almDateBarRefresh();
-}
-
-// Shrink the bar to a slim row once the user scrolls past the top, so it keeps
-// out of the way while staying usable. Attached fresh on each full render.
-function _almWireDateBarScroll() {
-  var sc = document.getElementById('almanac-content');
-  var bar = document.getElementById('almanac-datebar');
-  if (!sc || !bar) return;
-  var onScroll = function () { bar.classList.toggle('alm-db-shrunk', sc.scrollTop > 40); };
-  sc.removeEventListener('scroll', sc._almDbScroll || function () {});
-  sc._almDbScroll = onScroll;
-  sc.addEventListener('scroll', onScroll, { passive: true });
-  onScroll();
+// Read the fields, build the instant, apply it (debounced — the repaint is heavy).
+function _almTeApply() {
+  var val = function (id) { var n = document.getElementById(id); return n ? n.value : ''; };
+  var y = parseInt(val('alm-te-year'), 10), mo = parseInt(val('alm-te-month'), 10),
+    d = parseInt(val('alm-te-day'), 10), h = parseInt(val('alm-te-hour'), 10),
+    mi = parseInt(val('alm-te-min'), 10);
+  if (![y, mo, d, h, mi].every(isFinite)) return;    // wait for complete input
+  var ap = document.getElementById('alm-te-ampm');
+  var pm = ap && ap.getAttribute('data-pm') === '1';
+  mo = Math.min(12, Math.max(1, mo));
+  d = Math.min(new Date(y, mo, 0).getDate(), Math.max(1, d));
+  h = Math.min(12, Math.max(1, h)) % 12; if (pm) h += 12;
+  mi = Math.min(59, Math.max(0, mi));
+  var dt = _almInstantFromTz(y, mo, d, h, mi, _almTeLocTz());
+  if (isNaN(dt.getTime())) return;
+  _almTeSyncReadout(dt);
+  if (_almTeApplyTimer) clearTimeout(_almTeApplyTimer);
+  _almTeApplyTimer = setTimeout(function () { _almSetFocusInstant(dt); }, 140);
 }
 
 function _renderAlmanacContent() {
@@ -552,11 +588,8 @@ function _renderAlmanacContent() {
   var m = _moonPhase(now);
 
   var html = '<div class="almanac-inner">';
-  // Pinned date/time control — sticks to the top of the scroll area so you can
-  // adjust the moment from anywhere and watch every panel below respond. It is
-  // a sibling of #almanac-head (not a child), so focus repaints never tear the
-  // slider out from under the pointer.
-  html += '<div id="almanac-datebar" class="alm-datebar">' + _almDateBarHtml() + '</div>';
+  // The date/time editor mounts into this (empty until the header is clicked).
+  html += '<div id="almanac-timeeditor"></div>';
   html += '<div id="almanac-head">' + _almHeadHtml(now) + '</div>';
 
   // Sky scene + calendar — wall calendar: art above, month grid below
@@ -680,8 +713,6 @@ function _renderAlmanacContent() {
   _loadSunData(now);
   _startTzClock();
   _cacheAlmanacHighlights(now, m);
-  _almDateBarRefresh();       // seed the pinned bar's readouts
-  _almWireDateBarScroll();    // shrink it once the user scrolls past the top
 }
 
 // Cache computed almanac highlights for the Today discover card.
