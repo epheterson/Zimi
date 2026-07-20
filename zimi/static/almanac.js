@@ -3030,7 +3030,38 @@ function _getAlmanacEvents(sys, year, month) {
     events[day].push({ label: label, type: type, icon: icon || '', src: src || '' });
   }
 
-  if (sys === 'gregorian') {
+  // Base worldwide / regional / astronomical events are computed on absolute
+  // Gregorian dates and projected onto whatever grid is shown (each display day
+  // has a JDN → look up that Gregorian date's events), so switching calendars
+  // no longer drops them. Then layer this system's own native table on top.
+  var daysInMonth = _calDaysInMonth(sys, year, month);
+  var firstJDN = _calFirstDayJDN(sys, year, month);
+  var gregMonths = {};
+  for (var _pd = 1; _pd <= daysInMonth; _pd++) {
+    var _pg = _jdnToGregorian(firstJDN + _pd - 1);
+    gregMonths[_pg.year * 100 + _pg.month] = { gy: _pg.year, gm: _pg.month };
+  }
+  var baseByJDN = {};
+  for (var _gk in gregMonths) {
+    (function (gy, gm) {
+      _gregorianBaseEvents(gy, gm, function (gDay, label, type, icon, src) {
+        var jdn = _gregorianToJDN(gy, gm, gDay);
+        (baseByJDN[jdn] = baseByJDN[jdn] || []).push({ label: label, type: type, icon: icon || '', src: src || '' });
+      });
+    })(gregMonths[_gk].gy, gregMonths[_gk].gm);
+  }
+  for (var _dd = 1; _dd <= daysInMonth; _dd++) {
+    var _be = baseByJDN[firstJDN + _dd - 1];
+    if (_be) for (var _bi = 0; _bi < _be.length; _bi++) add(_dd, _be[_bi].label, _be[_bi].type, _be[_bi].icon, _be[_bi].src);
+  }
+
+  _systemNativeEvents(sys, year, month, add);
+  return events;
+}
+
+// The rich base event set, keyed by Gregorian day of `month` via add(day,...).
+function _gregorianBaseEvents(year, month, add) {
+  {
     // International base — observed widely enough to show everywhere. Mix of
     // UN international days, cultural observances, and a few for fun.
     if (month === 1) { add(1, "New Year's Day", 'holiday'); add(4, 'World Braille Day', 'holiday'); add(6, 'Epiphany', 'holiday'); add(24, 'International Day of Education', 'holiday'); add(27, 'Holocaust Remembrance Day', 'holiday'); }
@@ -3078,7 +3109,17 @@ function _getAlmanacEvents(sys, year, month) {
     }
   }
 
-  else if (sys === 'hebrew') {
+  // Meteor shower peaks — Gregorian dates, so part of the projected base.
+  for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
+    var s = _METEOR_SHOWERS[si];
+    if (s.peak[0] === month) { add(s.peak[1], _showerName(s), 'meteor', '☄'); }
+  }
+}
+
+// Each calendar system's own native religious/civil holidays, keyed to that
+// system's own month & day (layered on top of the projected Gregorian base).
+function _systemNativeEvents(sys, year, month, add) {
+  if (sys === 'hebrew') {
     // `month` arrives as a DISPLAY position into the Hebrew month list, which
     // omits Adar I in non-leap years — so from position 6 on it sits one
     // ahead of the internal month code (1=Tishrei … 7=Adar/Adar II, 8=Nisan
@@ -3165,16 +3206,6 @@ function _getAlmanacEvents(sys, year, month) {
     if (month === 11) { add(21, 'Presentation of Mary', 'holiday'); }
     if (month === 12) { add(25, 'Christmas Day', 'holiday'); add(6, "St. Nicholas Day", 'holiday'); }
   }
-
-  // Meteor shower peaks (only for Gregorian — they use Gregorian dates)
-  if (sys === 'gregorian') {
-    for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
-      var s = _METEOR_SHOWERS[si];
-      if (s.peak[0] === month) { add(s.peak[1], _showerName(s), 'meteor', '\u2604'); }
-    }
-  }
-
-  return events;
 }
 
 // Almanac calendar state
