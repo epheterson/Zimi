@@ -431,6 +431,12 @@ function _almRepaintFocus() {
 function _almBackToToday() {
   _almFocus = null;
   _almSelectedJDN = _almTodayJDN;
+  // Snap the browsed month back to the present too — otherwise the grid is
+  // left stranded on whatever month you'd wandered to while the rest of the
+  // panel returns to now.
+  var cal = _jdnToCalendar(_almSystem, _almTodayJDN);
+  _almYear = cal.year;
+  _almMonth = cal.month;
   _drawAlmanacGrid();
   _almRepaintFocus();
 }
@@ -3523,16 +3529,8 @@ function _almDeSlideCommit(v) {
 }
 
 function _almDeNow() {
-  _almFocus = null;
-  _almSelectedJDN = _almTodayJDN;
-  // Return the browsed month to the present too, not just the selected day —
-  // "Now" means the whole panel snaps back to today.
-  var cal = _jdnToCalendar(_almSystem, _almTodayJDN);
-  _almYear = cal.year;
-  _almMonth = cal.month;
-  _drawAlmanacGrid();
-  _almRepaintFocus();
-  _almDateEditRefresh();
+  _almBackToToday();          // full snap-to-present, shared with the header reset
+  _almDateEditRefresh();      // …then re-sync the editor's own controls
 }
 
 // ── World Calendars — every date across civilizations ──
