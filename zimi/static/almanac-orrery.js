@@ -588,14 +588,11 @@ var _orreryTimeOffset = 0;       // milliseconds offset from real time
 
 var _orreryLastFrame = 0;        // last rAF timestamp
 
-// How far the view has eased "out to the probes", 0..1, from how far the sim
-// clock has been scrubbed from now. At the present it's the clean planet view;
-// travel a few years and it glides out to the interstellar probes (which is
-// exactly when their slow outward crawl is worth watching), then glides back.
-function _orreryDeepFactor() {
-  var offYears = Math.abs(_orreryTimeOffset) / (365.25 * 24 * 3600 * 1000);
-  return Math.max(0, Math.min(1, (offYears - 2) / 13));   // 2 yr → 15 yr ramp
-}
+// The orrery always shows the interstellar probes out past Neptune — the view
+// sits at full "deep space" so they're always there and always creeping outward
+// as the clock runs. (Kept as a factor, not a hard-coded scale, so the planet-
+// vs-deep balance stays a one-line tuning knob.)
+function _orreryDeepFactor() { return 1; }
 
 // Planet orbit radius (fraction of half-width), blended between the hand-tuned
 // planet view (_ORBIT_VIS) and the log deep-space map by the zoom factor z.
