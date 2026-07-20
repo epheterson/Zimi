@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.4] - 2026-07-19
+
+A polish drop that also closes the two live issues the post-1.7.3 code audit
+surfaced. The moon finally looks like the Moon.
+
+### Security
+
+- **`/dl/` no longer serves whole ZIMs to the public internet.** On a
+  host-networked deploy behind a containerized reverse proxy, every WAN
+  request reached Zimi from the docker bridge gateway — a private IP with no
+  real client IP propagated — so the whole internet was classified "private"
+  and could pull raw `.zim` files (public content, so not a data breach, but
+  unmetered use of the operator's uplink) and got the trusted rate tier.
+  Zimi now honours Cloudflare's un-forgeable `CF-Connecting-IP`, trusts a
+  forwarded client only from a private proxy hop (optionally an explicit
+  `ZIMI_TRUSTED_PROXIES` allowlist), and refuses a forwarded value that claims
+  loopback. WAN clients resolve to their real IP again.
+
+### Fixed
+
+- **A libzim segfault under normal use.** Opening an article kicked off a
+  background thread that read a shared libzim archive with no lock, while the
+  request read the same archive — two threads in a non-thread-safe library, a
+  silent crash. It now uses its own handle. Added a real-ZIM concurrency
+  stress test so this class of bug can't hide behind mocked archives again.
+- Search results could silently drop a ZIM under concurrent load (an archive
+  published before its lock); the setup order is fixed.
+- LAN peer discovery advertised the wrong BitTorrent port when a custom port
+  was set; it now advertises the real one.
+- Malformed HTTP Range headers no longer 500 the download endpoint.
+
+### Changed
+
+- **The moon is beautiful now.** The hero and Today-card moon are rendered as
+  a single physically-shaded sphere — a soft terminator, gentle limb
+  darkening, the maria showing through, and a faint earthshine glow on the
+  dark side of a crescent. Gone are the hard light/dark edge, the seam down
+  the middle at the quarters, and the flat too-bright disc.
+- **Country holidays get their own colour** on the calendar, apart from the
+  worldwide observances (#33).
+
 ## [1.7.3] - 2026-07-18
 
 Both field reports closed — the downloads page no longer throttles itself
