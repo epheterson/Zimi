@@ -47,12 +47,11 @@
 .alm-tz-city-active .alm-tz-city-name { color: var(--amber); font-weight: 600; }
 .alm-tz-city-active .alm-tz-city-time { color: var(--amber); }
 .almanac-hero { display: flex; flex-direction: column; align-items: center; margin-bottom: 32px; position: relative; }
-.almanac-moon { position: relative; width: 200px; height: 200px; border-radius: 50%; overflow: hidden; background: #080c16; }
-.almanac-moon .dc-moon-half { position: absolute; top: 0; width: 50%; height: 100%; }
-.almanac-moon .dc-moon-half.left { left: 0; }
-.almanac-moon .dc-moon-half.right { right: 0; }
-.almanac-moon .dc-moon-term { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 50%; }
-.almanac-moon-texture { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; pointer-events: none; }
+/* The moon is now a single shaded sprite with transparent corners — no dark
+   backing disc or clip (the sprite IS the sphere; a backing circle would show
+   as a hard rim behind the anti-aliased limb). */
+.almanac-moon { position: relative; width: 200px; height: 200px; }
+.almanac-moon-sprite { display: block; width: 100%; height: 100%; }
 .almanac-moon-glow { position: absolute; width: 280px; height: 280px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: -1; }
 .almanac-moon-name { margin-top: 16px; font-size: 18px; font-weight: 500; color: var(--text); }
 .almanac-moon-line { font-size: 13px; color: var(--text2); margin-top: 8px; text-align: center; }

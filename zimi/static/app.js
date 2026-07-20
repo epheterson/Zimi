@@ -1389,41 +1389,137 @@ var _MOON_PHASE_I18N = {
 };
 function _localMoonName(name) { return _MOON_PHASE_I18N[name] ? t(_MOON_PHASE_I18N[name]) : name; }
 
-// Shared moon phase renderer — used by Today card (index.html) and Almanac hero (almanac.js)
-// Returns HTML for a CSS moon with proper terminator, tilt, blur, and texture.
-// wrapClass: CSS class for the outer container ('dc-moon-wrap' or 'almanac-moon')
-// tiltDeg: parallactic angle in degrees (0 = upright)
-// blurScale: multiplier for terminator blur (1.0 = hero moon, 0.5 = today card)
-function _renderMoonHTML(m, wrapClass, tiltDeg, blurScale) {
-  var litColor = '#e8e0d0', darkColor = '#0a0e1a';
-  var illumFrac = m.illumination / 100;
-  var leftColor, rightColor, overlayColor, overlayScaleX;
-  if (m.phase <= 0.25) {
-    leftColor = darkColor; rightColor = litColor;
-    overlayColor = darkColor; overlayScaleX = 1 - illumFrac * 2;
-  } else if (m.phase <= 0.5) {
-    leftColor = darkColor; rightColor = litColor;
-    overlayColor = litColor; overlayScaleX = (illumFrac - 0.5) * 2;
-  } else if (m.phase <= 0.75) {
-    leftColor = litColor; rightColor = darkColor;
-    overlayColor = litColor; overlayScaleX = (illumFrac - 0.5) * 2;
-  } else {
-    leftColor = litColor; rightColor = darkColor;
-    overlayColor = darkColor; overlayScaleX = 1 - illumFrac * 2;
+// ── Moon rendering — one per-pixel shaded sprite, shared everywhere ──
+// The old renderer stacked two solid half-discs under a scaled-ellipse
+// terminator (a razor-sharp DOM edge, a hard vertical seam at the quarters,
+// and no limb darkening — the artifacts). This shades each disc pixel from
+// the real geometry: surface normal · Sun vector gives a naturally soft
+// terminator, times limb darkening, times the moon.png albedo, with a faint
+// earthshine floor on the dark side so it reads as a sphere, not a cut-out.
+// The result is a static image per phase, so it's computed once and cached.
+var _MOON_TEX = new Image();
+var _moonTexReady = false;
+var _moonTexData = null; // sampled albedo, ImageData at _MOON_TEX_N²
+var _MOON_TEX_N = 128;
+_MOON_TEX.onload = function() {
+  try {
+    var c = document.createElement('canvas');
+    c.width = c.height = _MOON_TEX_N;
+    var g = c.getContext('2d');
+    g.drawImage(_MOON_TEX, 0, 0, _MOON_TEX_N, _MOON_TEX_N);
+    _moonTexData = g.getImageData(0, 0, _MOON_TEX_N, _MOON_TEX_N);
+    _moonTexReady = true;
+    _moonSpriteCache = {};                // re-render with real albedo
+    if (typeof _repaintMoons === 'function') _repaintMoons();
+  } catch (e) { _moonTexReady = false; }
+};
+_MOON_TEX.src = '/static/moon.png?v=1';
+
+var _moonSpriteCache = {};
+
+function _smoothstep(a, b, x) {
+  var t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
+// Sprite for an illuminated fraction (0..1) and waxing flag → data URL.
+// Untilted (lit limb on the right when waxing); the caller rotates it.
+function _renderMoonSprite(illumFrac, waxing, sizePx) {
+  var key = Math.round(illumFrac * 100) + (waxing ? 'w' : 'a') + 'x' + sizePx +
+    (_moonTexReady ? 't' : '');
+  if (_moonSpriteCache[key]) return _moonSpriteCache[key];
+
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var N = Math.round(sizePx * dpr);
+  var cv = document.createElement('canvas');
+  cv.width = cv.height = N;
+  var ctx = cv.getContext('2d');
+  var img = ctx.createImageData(N, N);
+  var data = img.data;
+
+  // Sun direction: phase angle P from illuminated fraction (k = (1+cosP)/2).
+  var cosP = 2 * illumFrac - 1;
+  var sinP = Math.sqrt(Math.max(0, 1 - cosP * cosP));
+  var sx = (waxing ? 1 : -1) * sinP, sz = cosP;
+  var term = 0.06;          // terminator half-width (haze) in dot units
+  var earthBase = 0.05;     // dark-side earthshine floor
+  var earth = earthBase * (1 - illumFrac * 0.6);
+  var tex = _moonTexData ? _moonTexData.data : null;
+
+  for (var py = 0; py < N; py++) {
+    var y = (py + 0.5) / N * 2 - 1;              // +1 top .. -1 bottom
+    for (var px = 0; px < N; px++) {
+      var x = (px + 0.5) / N * 2 - 1;
+      var r2 = x * x + y * y;
+      var o = (py * N + px) * 4;
+      if (r2 > 1.0) { data[o + 3] = 0; continue; }
+      var z = Math.sqrt(1 - r2);                 // toward viewer
+      // Lit fraction: soft terminator from normal·sun.
+      var lit = _smoothstep(-term, term, x * sx + z * sz);
+      var limb = Math.pow(z, 0.45);              // limb darkening
+      // Albedo from the texture (orthographic front-face map), luminance.
+      var alb = 0.82;
+      if (tex) {
+        var tu = Math.min(_MOON_TEX_N - 1, ((x + 1) * 0.5 * _MOON_TEX_N) | 0);
+        var tv = Math.min(_MOON_TEX_N - 1, ((1 - y) * 0.5 * _MOON_TEX_N) | 0);
+        var to = (tv * _MOON_TEX_N + tu) * 4;
+        alb = (0.30 * tex[to] + 0.59 * tex[to + 1] + 0.11 * tex[to + 2]) / 255;
+        alb = 0.45 + alb * 0.55;                 // keep maria visible, not black
+      }
+      var litI = lit * limb * alb;
+      var darkI = (1 - lit) * earth * alb;
+      // Warm sunlight on the lit side, cool earthshine on the dark side.
+      var R = litI * 255 + darkI * 150;
+      var G = litI * 248 + darkI * 170;
+      var B = litI * 232 + darkI * 210;
+      // Antialias the limb: fade alpha over the last ~1px ring.
+      var edge = _smoothstep(1.0, 1.0 - (2.0 / N) * 2, r2);
+      data[o] = Math.min(255, R);
+      data[o + 1] = Math.min(255, G);
+      data[o + 2] = Math.min(255, B);
+      data[o + 3] = 255 * edge;
+    }
   }
-  var tilt = (tiltDeg || 0).toFixed(1);
+  ctx.putImageData(img, 0, 0);
+  var url = cv.toDataURL('image/png');
+  _moonSpriteCache[key] = url;
+  return url;
+}
+
+// Shared moon renderer — hero (almanac) + Today card. Returns HTML embedding
+// the shaded sprite as an <img>, rotated by tiltDeg (the sprite math stays
+// untilted so it's phase-cacheable; orientation is a whole-disc rotation).
+function _renderMoonHTML(m, wrapClass, tiltDeg) {
+  var illumFrac = m.illumination / 100;
+  var waxing = m.phase < 0.5;
   var isHero = wrapClass === 'almanac-moon';
-  var rotateStyle = wrapClass === 'dc-moon-wrap'
-    ? 'transform:translate(-50%,-50%)' + (tiltDeg ? ' rotate(' + tilt + 'deg)' : '')
-    : (tiltDeg ? 'transform:rotate(' + tilt + 'deg)' : '');
-  return '<div class="' + wrapClass + '"' + (rotateStyle ? ' style="' + rotateStyle + '"' : '') + '>' +
-    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=71c1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75b\') center/cover;opacity:0.12"></div>' +
-    '<div class="dc-moon-half left" style="background:' + leftColor + '"></div>' +
-    '<div class="dc-moon-half right" style="background:' + rightColor + '"></div>' +
-    '<div class="dc-moon-term" style="background:' + overlayColor + ';transform:scaleX(' + overlayScaleX.toFixed(3) + ')"></div>' +
-    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=71c1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75b\') center/cover;' +
-    (isHero ? 'mix-blend-mode:soft-light;opacity:1' : '') + '"></div>' +
+  var size = isHero ? 200 : 48;
+  var url = _renderMoonSprite(illumFrac, waxing, size);
+  var tilt = (tiltDeg || 0).toFixed(1);
+  var base = wrapClass === 'dc-moon-wrap' ? 'translate(-50%,-50%) ' : '';
+  var rot = tiltDeg ? 'rotate(' + tilt + 'deg)' : '';
+  var xform = (base + rot).trim();
+  return '<div class="' + wrapClass + '"' + (xform ? ' style="transform:' + xform + '"' : '') + '>' +
+    '<img class="' + (isHero ? 'almanac-moon-sprite' : 'dc-moon-sprite') + ' moon-sprite" ' +
+    'data-illum="' + illumFrac.toFixed(4) + '" data-waxing="' + (waxing ? 1 : 0) + '" data-size="' + size + '" ' +
+    'src="' + url + '" alt="" width="' + size + '" height="' + size + '" />' +
     '</div>';
+}
+
+// Repaint already-rendered moon sprites in place — called when the texture
+// finishes loading so a moon drawn before the albedo was ready upgrades to
+// the textured version without a full re-render.
+function _repaintMoons() {
+  var imgs = document.querySelectorAll('img.moon-sprite');
+  for (var i = 0; i < imgs.length; i++) {
+    var el = imgs[i];
+    var url = _renderMoonSprite(
+      parseFloat(el.getAttribute('data-illum')) || 0,
+      el.getAttribute('data-waxing') === '1',
+      parseInt(el.getAttribute('data-size'), 10) || 48
+    );
+    if (el.src !== url) el.src = url;
+  }
 }
 
 // Lightweight parallactic angle for Today card (runs before almanac.js loads).
