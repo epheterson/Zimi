@@ -1304,6 +1304,14 @@ function _langBadge(z) {
   return '<span class="lang-badge" title="' + escAttr(name) + '">' + esc(name) + '</span>';
 }
 
+// A ZIM counts as "New" for a week after Zimi first saw it — so a fresh
+// install stands out in a big library instead of being lost in the grid (#34).
+var _NEW_ZIM_DAYS = 7;
+function _isNewZim(z) {
+  if (!z || !z.first_seen) return false;
+  return (Date.now() / 1000 - z.first_seen) < _NEW_ZIM_DAYS * 86400;
+}
+
 function renderCardGrid(items, showStars, showCategory) {
   if (!items || !items.length) return '';
   const favs = (collectionsCache && collectionsCache.favorites) || [];
@@ -1320,7 +1328,11 @@ function renderCardGrid(items, showStars, showCategory) {
     const qidIcon = z.has_qids
       ? '<span class="qid-badge" title="' + escAttr(t('cross_lang_linking')) + '"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l-3 3 3 3"/><path d="M1 9h10"/><path d="M12 10l3-3-3-3"/><path d="M15 7H5"/></svg></span>'
       : '';
-    return '<div class="stat-card" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
+    const newHtml = _isNewZim(z)
+      ? '<span class="new-badge" title="' + escAttr(t('recently_installed')) + '">' + tH('new_badge') + '</span>'
+      : '';
+    return '<div class="stat-card' + (newHtml ? ' is-new' : '') + '" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
+      newHtml +
       starHtml +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info">' +

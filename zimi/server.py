@@ -970,6 +970,15 @@ def load_cache(force=False):
             continue
 
         cached = disk_cache.get(filename) if disk_cache else None
+        # When Zimi first sees a ZIM, stamp it so the UI can flag it "New" for
+        # a few days (#34 — a fresh install is otherwise lost in a big
+        # library). A ZIM already known (even if its file changed on an update)
+        # keeps its original stamp; a ZIM present in a pre-feature cache with no
+        # stamp is treated as long-installed, not retroactively "new".
+        if cached is None:
+            first_seen = time.time()
+        else:
+            first_seen = cached.get("first_seen")
         if cached and cached.get("mtime") == mtime and cached.get("size") == size:
             # Cache hit — use stored metadata, skip opening archive
             entry = {
@@ -988,19 +997,25 @@ def load_cache(force=False):
                 "has_icon": cached.get("has_icon", False),
                 "category": _categorize_zim(name),
                 "main_path": cached.get("main_path", ""),
+                "first_seen": first_seen,
             }
             if "has_qids" in cached:
                 entry["has_qids"] = cached["has_qids"]
             info.append(entry)
-            file_cache[filename] = cached
+            cached_out = dict(cached)
+            if first_seen is not None:
+                cached_out["first_seen"] = first_seen
+            file_cache[filename] = cached_out
         else:
             # Cache miss — scan this ZIM
             entry, archive = _extract_zim_metadata(name, path)
             if archive and entry.get("entries") != "?":
                 _archive_pool[name] = archive
+            if first_seen is not None:
+                entry["first_seen"] = first_seen
             info.append(entry)
             scanned += 1
-            file_cache[filename] = {
+            new_cached = {
                 "name": name,
                 "mtime": mtime,
                 "size": size,
@@ -1013,6 +1028,9 @@ def load_cache(force=False):
                 "has_icon": entry["has_icon"],
                 "main_path": entry["main_path"],
             }
+            if first_seen is not None:
+                new_cached["first_seen"] = first_seen
+            file_cache[filename] = new_cached
 
     _zim_list_cache = info
     elapsed = time.time() - t0

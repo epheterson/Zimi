@@ -955,5 +955,7 @@
   "alm_stars_up": "étoiles visibles",
   "alm_the_moon": "la Lune",
   "alm_star": "Étoile",
-  "alm_my_location": "ma position"
+  "alm_my_location": "ma position",
+  "new_badge": "Nouveau",
+  "recently_installed": "Récemment installé"
 }

@@ -955,5 +955,7 @@
   "alm_stars_up": "颗星在地平线上",
   "alm_the_moon": "月亮",
   "alm_star": "恒星",
-  "alm_my_location": "我的位置"
+  "alm_my_location": "我的位置",
+  "new_badge": "新",
+  "recently_installed": "最近安装"
 }

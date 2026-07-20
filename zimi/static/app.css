@@ -1159,6 +1159,15 @@
   .star-btn:hover { opacity: 1; color: var(--amber); transform: scale(1.2); }
   .star-btn.starred { opacity: 1; color: var(--amber); }
   .stat-card { position: relative; }
+  /* "New" ribbon for recently-installed ZIMs (#34) — top-left so it clears the
+     top-right star. */
+  .new-badge {
+    position: absolute; top: 6px; left: 6px; z-index: 2;
+    background: var(--amber); color: #1a1205; font-size: 9px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 5px; line-height: 1.2; pointer-events: none;
+  }
+  [dir="rtl"] .new-badge { left: auto; right: 6px; }
 
   /* ── Context menu ── */
   #zim-ctx-menu {
