@@ -338,12 +338,22 @@ function _almHeadHtml(focus) {
   var dateStr = focus.toLocaleDateString(lang, _dtOpts);
   var timeStr = focus.toLocaleTimeString(lang, _tmOpts);
   var tzName = _formatTimezone(lang, locTz);
-  var live = _almIsToday(focus);
+  // "Live" means no explicit focus is set — the panel is tracking now. A
+  // specific time picked for *today* is still an override, so key off the
+  // focus flag, not just the calendar day.
+  var live = (_almFocus === null);
 
+  // The date/time is quietly tappable — click it and it becomes adjustable
+  // (the editor lives in its own container so it survives panel repaints). The
+  // affordance is deliberately understated; discover it by clicking.
   var html = '<div style="text-align:center;margin-bottom:16px">';
-  html += '<div style="font-size:22px;font-weight:600;color:var(--text)">' + dateStr + '</div>';
-  html += '<div style="font-size:16px;color:var(--text2);margin-top:4px">' + timeStr + (tzName ? ' &middot; ' + tzName : '') +
-    (live ? '' : ' <button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button>') + '</div>';
+  html += '<div class="alm-focus-tap" onclick="_almToggleDateEdit()" title="' + _almEsc(t('alm_de_edit')) + '">';
+  html += '<div class="alm-focus-date">' + dateStr + '</div>';
+  html += '<div class="alm-focus-time">' + timeStr + (tzName ? ' &middot; ' + tzName : '') + '</div>';
+  html += '</div>';
+  if (!live) {
+    html += '<div style="margin-top:6px"><button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button></div>';
+  }
   html += '</div>';
 
   // Hero moon — tilted so the bright limb faces the Sun as the observer sees
@@ -431,6 +441,9 @@ function _renderAlmanacContent() {
 
   var html = '<div class="almanac-inner">';
   html += '<div id="almanac-head">' + _almHeadHtml(now) + '</div>';
+  // Date/time editor — a sibling of the head (not a child), so it isn't wiped
+  // when the head repaints on every focus change; the slider keeps its grip.
+  html += '<div id="almanac-dateedit" class="alm-dateedit" style="display:none"></div>';
 
   // Sky scene + calendar — wall calendar: art above, month grid below
   html += '<div class="almanac-sky-wrap">' +
@@ -3377,6 +3390,149 @@ function _almToday() {
   _almYear = cal.year;
   _almMonth = cal.month;
   _drawAlmanacGrid();
+}
+
+// ── Date/time editor (Option A) ──
+// Tap the header date/time to reveal steppers for the date and a slider for the
+// time of day. Setting a specific instant drives the whole panel — the moon,
+// the sky scene, sunrise/sunset, the star chart — so the almanac becomes a
+// little time machine you can point at any moment.
+
+function _almFocusOrNow() { return _almFocus ? new Date(_almFocus.getTime()) : new Date(); }
+var _almDeRaf = 0;
+
+function _almToggleDateEdit() {
+  var el = document.getElementById('almanac-dateedit');
+  if (!el) return;
+  if (el.style.display === 'block') { _almCloseDateEdit(); return; }
+  el.innerHTML = _almDateEditHtml();
+  el.style.display = 'block';
+  _almDateEditRefresh();
+  // Defer so the opening click itself doesn't immediately count as "outside".
+  setTimeout(function () { document.addEventListener('mousedown', _almDateEditOutside, true); }, 0);
+}
+
+function _almCloseDateEdit() {
+  var el = document.getElementById('almanac-dateedit');
+  if (el) el.style.display = 'none';
+  document.removeEventListener('mousedown', _almDateEditOutside, true);
+}
+
+function _almDateEditOutside(e) {
+  var el = document.getElementById('almanac-dateedit');
+  var head = document.getElementById('almanac-head');
+  // The header owns the toggle; ignore clicks there so it can close cleanly.
+  if (el && !el.contains(e.target) && head && !head.contains(e.target)) _almCloseDateEdit();
+}
+
+function _almDateEditHtml() {
+  function field(id, cap) {
+    return '<div class="alm-de-field">' +
+      '<button class="alm-de-step" onclick="_almDeStep(\'' + id + '\',-1)" aria-label="−">−</button>' +
+      '<span class="alm-de-val" id="alm-de-' + id + '"></span>' +
+      '<button class="alm-de-step" onclick="_almDeStep(\'' + id + '\',1)" aria-label="+">+</button>' +
+      '<div class="alm-de-cap">' + cap + '</div>' +
+      '</div>';
+  }
+  var h = '<div class="alm-de-panel">';
+  h += '<div class="alm-de-row alm-de-date">' +
+    field('month', t('alm_de_month')) + field('day', t('alm_de_day')) + field('year', t('alm_de_year')) +
+    '</div>';
+  h += '<div class="alm-de-row alm-de-time">' +
+    '<span class="alm-de-clock" id="alm-de-clock"></span>' +
+    '<input type="range" id="alm-de-slider" min="0" max="1439" step="1" value="0"' +
+    ' class="orrery-slider alm-de-slider" aria-label="' + _almEsc(t('alm_de_time')) + '"' +
+    ' oninput="_almDeSlide(this.value)" onchange="_almDeSlideCommit(this.value)" />' +
+    '</div>';
+  h += '<div class="alm-de-row alm-de-foot">' +
+    '<span class="alm-de-note" id="alm-de-note"></span>' +
+    '<button class="alm-de-now orrery-ctrl-btn" onclick="_almDeNow()">' + t('alm_now') + '</button>' +
+    '</div>';
+  h += '</div>';
+  return h;
+}
+
+// Update the editor's displayed values without rebuilding it (textContent only,
+// so a slider mid-drag is never torn out from under the pointer).
+function _almDateEditRefresh() {
+  var el = document.getElementById('almanac-dateedit');
+  if (!el || el.style.display !== 'block') return;
+  var f = _almFocusOrNow();
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  var set = function (id, val) { var n = document.getElementById(id); if (n) n.textContent = val; };
+  set('alm-de-month', f.toLocaleDateString(lang, { month: 'short' }));
+  set('alm-de-day', f.getDate());
+  set('alm-de-year', f.getFullYear());
+  set('alm-de-clock', f.toLocaleTimeString(lang, { hour: 'numeric', minute: '2-digit' }));
+  var sl = document.getElementById('alm-de-slider');
+  if (sl && document.activeElement !== sl) sl.value = f.getHours() * 60 + f.getMinutes();
+  // Astronomy degrades far from the present; say so quietly rather than hiding it.
+  set('alm-de-note', Math.abs(f.getFullYear() - new Date().getFullYear()) > 3000 ? t('alm_de_far') : '');
+}
+
+// Commit a new focused instant: mirror it to the calendar grid and repaint
+// every panel that describes a moment. Shared by every editor control.
+function _almSetFocusInstant(d) {
+  _almFocus = d;
+  var jdn = _gregorianToJDN(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  _almSelectedJDN = jdn;
+  var cal = _jdnToCalendar(_almSystem, jdn);
+  _almYear = cal.year;
+  _almMonth = cal.month;
+  _drawAlmanacGrid();
+  _almRepaintFocus();
+  _almDateEditRefresh();
+}
+
+function _almDeStep(part, dir) {
+  var f = _almFocusOrNow();
+  if (part === 'year') {
+    f.setFullYear(f.getFullYear() + dir);
+  } else if (part === 'month') {
+    var day = f.getDate();
+    f.setDate(1);                       // avoid roll-over (Jan 31 → Mar 3)
+    f.setMonth(f.getMonth() + dir);
+    var maxD = new Date(f.getFullYear(), f.getMonth() + 1, 0).getDate();
+    f.setDate(Math.min(day, maxD));
+  } else { // day
+    f.setDate(f.getDate() + dir);
+  }
+  _almSetFocusInstant(f);
+}
+
+// Slider drag: keep the clock label live on every event (cheap), and throttle
+// the heavy full-panel repaint to one per animation frame so scrubbing stays
+// smooth on the canvas-heavy scenes.
+function _almDeSlide(v) {
+  var mins = parseInt(v, 10) || 0;
+  var f = _almFocusOrNow();
+  f.setHours(Math.floor(mins / 60), mins % 60, 0, 0);
+  _almFocus = f;                        // time touched → always an explicit focus
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  var clk = document.getElementById('alm-de-clock');
+  if (clk) clk.textContent = f.toLocaleTimeString(lang, { hour: 'numeric', minute: '2-digit' });
+  if (!_almDeRaf) {
+    _almDeRaf = requestAnimationFrame(function () { _almDeRaf = 0; _almRepaintFocus(); });
+  }
+}
+
+function _almDeSlideCommit(v) {
+  if (_almDeRaf) { cancelAnimationFrame(_almDeRaf); _almDeRaf = 0; }
+  _almDeSlide(v);
+  _almRepaintFocus();
+}
+
+function _almDeNow() {
+  _almFocus = null;
+  _almSelectedJDN = _almTodayJDN;
+  // Return the browsed month to the present too, not just the selected day —
+  // "Now" means the whole panel snaps back to today.
+  var cal = _jdnToCalendar(_almSystem, _almTodayJDN);
+  _almYear = cal.year;
+  _almMonth = cal.month;
+  _drawAlmanacGrid();
+  _almRepaintFocus();
+  _almDateEditRefresh();
 }
 
 // ── World Calendars — every date across civilizations ──
