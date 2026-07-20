@@ -260,9 +260,7 @@
   .alm-title { font-size: 15px; min-width: 140px; }
 }
 
-/* Star-chart time scrubber + tap-to-identify readout */
-.alm-sc-controls { display: flex; align-items: center; gap: 8px; max-width: 360px; margin: 6px auto 0; }
-.alm-sc-time { font-size: 11px; color: var(--amber); font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
+/* Star-chart tap-to-identify readout (time now comes from the pinned scrubber) */
 .alm-sc-info { text-align: center; font-size: 11px; color: var(--text2); min-height: 15px; margin-top: 6px; font-variant-numeric: tabular-nums; }
 /* Chart is draggable: stand somewhere else on Earth. */
 #almanac-starchart { cursor: grab; touch-action: none; }

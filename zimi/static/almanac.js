@@ -610,13 +610,8 @@ function _renderAlmanacContent() {
   html += '<div class="almanac-section">';
   html += '<div class="almanac-section-title">' + t('alm_star_chart') + '</div>';
   html += '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>';
-  // Scrub +/- 12h to watch the sky turn; tap a body to identify it.
-  html += '<div class="alm-sc-controls">' +
-    '<span class="alm-sc-time" id="alm-sc-time"></span>' +
-    '<input id="alm-sc-slider" type="range" min="-720" max="720" step="10" value="0" class="orrery-slider"' +
-      ' aria-label="' + _almEsc(t('alm_star_chart')) + '" oninput="_setStarChartTime(this.value)" />' +
-    '<button class="orrery-ctrl-btn" onclick="_starChartNow()" title="' + _almEsc(t('alm_back_to_now')) + '">' + t('alm_now') + '</button>' +
-    '</div>';
+  // Time is driven by the pinned scrubber at the top now; drag the chart to
+  // stand elsewhere on Earth, tap a body to identify it.
   html += '<div id="alm-sc-info" class="alm-sc-info"></div>';
   html += '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>';
   html += '</div>';

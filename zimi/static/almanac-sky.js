@@ -746,9 +746,7 @@ function _drawPalmTree(ctx, x, baseY, height, dpr, sunAlt, lean, t) {
 // Star-chart interactivity. Scrubbing re-runs the same offline alt/az math at
 // the scrubbed instant (nothing is fetched), and every drawn body is recorded
 // in _starChartBodies so a tap can identify it.
-var _starChartBase = null;    // the moment the almanac was rendered
-
-var _starChartOffsetMin = 0;  // slider offset from that moment, in minutes
+var _starChartBase = null;    // the focused moment (driven by the pinned scrubber)
 
 var _starChartBodies = [];    // hit-test targets collected during the draw
 
@@ -801,8 +799,7 @@ function _initStarChartDrag(canvas) {
 }
 
 function _starChartTime() {
-  var base = _starChartBase || new Date();
-  return new Date(base.getTime() + _starChartOffsetMin * 60000);
+  return _starChartBase ? new Date(_starChartBase.getTime()) : new Date();
 }
 
 // Azimuth to an 8-point compass label, reusing the localized cardinals.
@@ -810,34 +807,6 @@ function _azCompass(az) {
   var N = t('alm_dir_n'), E = t('alm_dir_e'), S = t('alm_dir_s'), W = t('alm_dir_w');
   var pts = [N, N + E, E, S + E, S, S + W, W, N + W];
   return pts[Math.round(((az % 360) + 360) % 360 / 45) % 8];
-}
-
-function _updateStarChartTimeLabel() {
-  var el = document.getElementById('alm-sc-time');
-  if (!el) return;
-  var loc = _getLocation();
-  var d = _starChartTime();
-  var txt;
-  try {
-    txt = _tzFmt(_almDisplayTz(loc), { weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(d);
-  } catch (e) {
-    txt = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  }
-  el.textContent = _starChartOffsetMin === 0 ? t('alm_now') + ' \u00b7 ' + txt : txt;
-}
-
-function _setStarChartTime(v) {
-  _starChartOffsetMin = parseInt(v, 10) || 0;
-  _drawStarChart(_starChartTime());
-  _updateStarChartTimeLabel();
-}
-
-function _starChartNow() {
-  _starChartOffsetMin = 0;
-  var s = document.getElementById('alm-sc-slider');
-  if (s) s.value = 0;
-  _drawStarChart(_starChartTime());
-  _updateStarChartTimeLabel();
 }
 
 function _starChartClick(ev) {
@@ -858,17 +827,13 @@ function _starChartClick(ev) {
 
 function _renderStarChart(baseNow) {
   _starChartBase = baseNow;
-  _starChartOffsetMin = 0;
   _starChartViewLat = null;
   _starChartViewLon = null;
   var cv = document.getElementById('almanac-starchart');
   if (cv) _initStarChartDrag(cv);
-  var s = document.getElementById('alm-sc-slider');
-  if (s) s.value = 0;
   var info = document.getElementById('alm-sc-info');
   if (info) info.innerHTML = '';
   _drawStarChart(baseNow);
-  _updateStarChartTimeLabel();
 }
 
 function _drawStarChart(now) {
