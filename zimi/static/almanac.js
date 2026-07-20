@@ -340,16 +340,11 @@ function _almHeadHtml(focus) {
   var tzName = _formatTimezone(lang, locTz);
   var live = _almIsToday(focus);
 
-  // The date/time reads exactly as before; clicking it opens an elegant editor
-  // to jump to any moment. The affordance is understated — the view is
-  // unchanged until you click.
-  var html = '<div class="alm-focus" onclick="_almOpenTimeEditor()" title="' + _almEsc(t('alm_set_datetime')) + '">';
-  html += '<div class="alm-focus-date">' + dateStr + '</div>';
-  html += '<div class="alm-focus-time">' + timeStr + (tzName ? ' &middot; ' + tzName : '') + '</div>';
+  var html = '<div style="text-align:center;margin-bottom:16px">';
+  html += '<div style="font-size:22px;font-weight:600;color:var(--text)">' + dateStr + '</div>';
+  html += '<div style="font-size:16px;color:var(--text2);margin-top:4px">' + timeStr + (tzName ? ' &middot; ' + tzName : '') +
+    (live ? '' : ' <button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button>') + '</div>';
   html += '</div>';
-  if (!live) {
-    html += '<div class="alm-focus-reset"><button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button></div>';
-  }
 
   // Hero moon — tilted so the bright limb faces the Sun as the observer sees
   // it. brightLimb (chi − q) is the right physical quantity, but the base
@@ -436,160 +431,12 @@ function _almBackToToday() {
   _almRepaintFocus();
 }
 
-// ── Date/time editor ──
-// The date/time above the moon reads exactly as before; click it and this
-// editor takes its place — type your way to ANY moment (year, month, day, hour,
-// minute), no stepping. It live-applies as you edit and drives the whole panel.
-
-function _almFocusOrNow() { return _almFocus ? new Date(_almFocus.getTime()) : new Date(); }
-var _almTeApplyTimer = 0;
-
-// The editor works in the SAME timezone the header/panels display (the chosen
-// location's zone), not the browser's — otherwise picking Tokyo while sitting
-// in California would show one clock and edit another.
-function _almTeLocTz() { try { return _almDisplayTz(_getLocation()); } catch (e) { return null; } }
-
-// Wall-clock parts {y,mo,d,h(24),mi} of an instant, as read in a timezone.
-function _almTzParts(dt, tz) {
-  if (!tz) return { y: dt.getFullYear(), mo: dt.getMonth() + 1, d: dt.getDate(), h: dt.getHours(), mi: dt.getMinutes() };
-  var p = {};
-  new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: false })
-    .formatToParts(dt).forEach(function (x) {
-      if (x.type === 'year') p.y = +x.value;
-      else if (x.type === 'month') p.mo = +x.value;
-      else if (x.type === 'day') p.d = +x.value;
-      else if (x.type === 'hour') p.h = (+x.value) % 24;
-      else if (x.type === 'minute') p.mi = +x.value;
-    });
-  return p;
-}
-
-// The instant whose wall-clock in `tz` is the given y/mo/d/h(24)/mi.
-function _almInstantFromTz(y, mo, d, h, mi, tz) {
-  if (!tz) return new Date(y, mo - 1, d, h, mi, 0);
-  var asUTC = Date.UTC(y, mo - 1, d, h, mi, 0);
-  var off = _tzUtcOffsetMin(tz, new Date(asUTC));   // minutes east of UTC
-  return new Date(asUTC - off * 60000);
-}
-
-// Set the focused instant to a specific date+time and repaint everything — the
-// single path shared by the editor and calendar day clicks.
-function _almSetFocusInstant(d) {
-  _almFocus = d;
-  var jdn = _gregorianToJDN(d.getFullYear(), d.getMonth() + 1, d.getDate());
-  _almSelectedJDN = jdn;
-  var cal = _jdnToCalendar(_almSystem, jdn);
-  _almYear = cal.year;
-  _almMonth = cal.month;
-  _drawAlmanacGrid();
-  _almRepaintFocus();
-}
-
-function _almOpenTimeEditor() {
-  var host = document.getElementById('almanac-timeeditor');
-  var inner = document.querySelector('.almanac-inner');
-  if (!host || host.getAttribute('data-open') === '1') return;
-  var f = _almFocusOrNow();
-  var P = _almTzParts(f, _almTeLocTz());
-  var pm = P.h >= 12, h12 = P.h % 12; if (h12 === 0) h12 = 12;
-  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
-  function fld(id, val, size, max, label) {
-    return '<label class="alm-te-fld"><span class="alm-te-lbl">' + label + '</span>' +
-      '<input id="' + id + '" class="alm-te-in" type="text" inputmode="numeric" autocomplete="off"' +
-      ' maxlength="' + max + '" size="' + size + '" value="' + val + '"' +
-      ' oninput="_almTeApply()" onfocus="this.select()" /></label>';
-  }
-  var h = '<div class="alm-te" role="dialog" aria-label="' + _almEsc(t('alm_set_datetime')) + '">';
-  h += '<div class="alm-te-readout" id="alm-te-readout"></div>';
-  h += '<div class="alm-te-grid">';
-  h += fld('alm-te-year', P.y, 4, 6, t('alm_de_year'));
-  h += fld('alm-te-month', pad(P.mo), 2, 2, t('alm_de_month'));
-  h += fld('alm-te-day', pad(P.d), 2, 2, t('alm_de_day'));
-  h += '<span class="alm-te-sep"></span>';
-  h += fld('alm-te-hour', pad(h12), 2, 2, t('alm_de_hour'));
-  h += fld('alm-te-min', pad(f.getMinutes()), 2, 2, t('alm_de_minute'));
-  h += '<label class="alm-te-fld"><span class="alm-te-lbl">&nbsp;</span>' +
-    '<button id="alm-te-ampm" class="alm-te-ampm" data-pm="' + (pm ? '1' : '0') + '"' +
-    ' onclick="_almTeToggleAmpm()">' + (pm ? t('alm_pm') : t('alm_am')) + '</button></label>';
-  h += '</div>';
-  h += '<div class="alm-te-foot">' +
-    '<button class="alm-te-btn" onclick="_almTeNow()">' + t('alm_now') + '</button>' +
-    '<button class="alm-te-btn alm-te-done" onclick="_almCloseTimeEditor()">' + t('alm_done') + '</button>' +
-    '</div></div>';
-  host.innerHTML = h;
-  host.setAttribute('data-open', '1');
-  if (inner) inner.classList.add('alm-editing');
-  _almTeSyncReadout(f);
-  setTimeout(function () { document.addEventListener('mousedown', _almTeOutside, true); }, 0);
-  var yf = document.getElementById('alm-te-year'); if (yf) { yf.focus(); yf.select(); }
-}
-
-function _almCloseTimeEditor() {
-  var host = document.getElementById('almanac-timeeditor');
-  var inner = document.querySelector('.almanac-inner');
-  if (host) { host.innerHTML = ''; host.setAttribute('data-open', '0'); }
-  if (inner) inner.classList.remove('alm-editing');
-  document.removeEventListener('mousedown', _almTeOutside, true);
-}
-
-function _almTeOutside(e) {
-  var host = document.getElementById('almanac-timeeditor');
-  if (host && !host.contains(e.target)) _almCloseTimeEditor();
-}
-
-function _almTeToggleAmpm() {
-  var b = document.getElementById('alm-te-ampm');
-  if (!b) return;
-  var pm = b.getAttribute('data-pm') === '1';
-  b.setAttribute('data-pm', pm ? '0' : '1');
-  b.textContent = pm ? t('alm_am') : t('alm_pm');
-  _almTeApply();
-}
-
-function _almTeNow() {
-  _almBackToToday();
-  var host = document.getElementById('almanac-timeeditor');
-  if (host && host.getAttribute('data-open') === '1') { _almCloseTimeEditor(); _almOpenTimeEditor(); }
-}
-
-function _almTeSyncReadout(dt) {
-  var el = document.getElementById('alm-te-readout');
-  if (!el) return;
-  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
-  var tz = _almTeLocTz();
-  var dOpts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
-  var tOpts = { hour: 'numeric', minute: '2-digit' };
-  if (tz) { dOpts.timeZone = tz; tOpts.timeZone = tz; }
-  el.textContent = dt.toLocaleDateString(lang, dOpts) + ' · ' + dt.toLocaleTimeString(lang, tOpts);
-}
-
-// Read the fields, build the instant, apply it (debounced — the repaint is heavy).
-function _almTeApply() {
-  var val = function (id) { var n = document.getElementById(id); return n ? n.value : ''; };
-  var y = parseInt(val('alm-te-year'), 10), mo = parseInt(val('alm-te-month'), 10),
-    d = parseInt(val('alm-te-day'), 10), h = parseInt(val('alm-te-hour'), 10),
-    mi = parseInt(val('alm-te-min'), 10);
-  if (![y, mo, d, h, mi].every(isFinite)) return;    // wait for complete input
-  var ap = document.getElementById('alm-te-ampm');
-  var pm = ap && ap.getAttribute('data-pm') === '1';
-  mo = Math.min(12, Math.max(1, mo));
-  d = Math.min(new Date(y, mo, 0).getDate(), Math.max(1, d));
-  h = Math.min(12, Math.max(1, h)) % 12; if (pm) h += 12;
-  mi = Math.min(59, Math.max(0, mi));
-  var dt = _almInstantFromTz(y, mo, d, h, mi, _almTeLocTz());
-  if (isNaN(dt.getTime())) return;
-  _almTeSyncReadout(dt);
-  if (_almTeApplyTimer) clearTimeout(_almTeApplyTimer);
-  _almTeApplyTimer = setTimeout(function () { _almSetFocusInstant(dt); }, 140);
-}
 
 function _renderAlmanacContent() {
   var now = new Date();
   var m = _moonPhase(now);
 
   var html = '<div class="almanac-inner">';
-  // The date/time editor mounts into this (empty until the header is clicked).
-  html += '<div id="almanac-timeeditor"></div>';
   html += '<div id="almanac-head">' + _almHeadHtml(now) + '</div>';
 
   // Sky scene + calendar — wall calendar: art above, month grid below
