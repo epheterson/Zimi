@@ -1446,7 +1446,7 @@ _MOON_TEX.onload = function() {
   _moonSpriteCache = {};
   if (typeof _repaintMoons === 'function') _repaintMoons();
 };
-_MOON_TEX.src = '/static/moon.png?v=1';
+_MOON_TEX.src = '/static/moon.png?v=2';
 
 var _moonSpriteCache = {};
 
