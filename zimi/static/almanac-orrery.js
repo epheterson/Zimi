@@ -78,6 +78,20 @@ function _initOrrery() {
     return null;
   }
 
+  // Place the tooltip beside the target, but keep it inside the orrery box —
+  // near the rim it would otherwise run off the edge (probes especially).
+  function _placeTip(hit) {
+    tooltip.style.display = 'block';
+    var maxX = wrap.clientWidth, maxY = wrap.clientHeight;
+    var tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+    var lx = hit.data.x + hit.data.r + 8;
+    if (lx + tw + 2 > maxX) lx = hit.data.x - hit.data.r - 8 - tw; // flip to the left
+    lx = Math.max(2, Math.min(lx, maxX - tw - 2));
+    var ty = Math.max(2, Math.min(hit.data.y - 10, maxY - th - 2));
+    tooltip.style.left = lx + 'px';
+    tooltip.style.top = ty + 'px';
+  }
+
   canvas.onmousemove = function(e) {
     var rect = canvas.getBoundingClientRect();
     var mx = e.clientX - rect.left, my = e.clientY - rect.top;
@@ -90,17 +104,13 @@ function _initOrrery() {
         else label += ' · ' + t('alm_transfer_years', { n: (days / 365.25).toFixed(1) });
       }
       tooltip.textContent = label;
-      tooltip.style.display = 'block';
-      tooltip.style.left = (hit.data.x + hit.data.r + 8) + 'px';
-      tooltip.style.top = (hit.data.y - 10) + 'px';
+      _placeTip(hit);
       canvas.style.cursor = hit.data.name !== 'Earth' ? 'pointer' : 'default';
     } else if (hit && hit.type === 'voyager') {
       var d = hit.data.dist;
       var sig = _signalDelay(d);
       tooltip.textContent = hit.data.name + ' · ' + d.toFixed(1) + ' AU · ' + _fmtDuration(sig.h, sig.m) + ' ' + t('alm_signal_delay');
-      tooltip.style.display = 'block';
-      tooltip.style.left = (hit.data.x + hit.data.r + 8) + 'px';
-      tooltip.style.top = (hit.data.y - 10) + 'px';
+      _placeTip(hit);
       canvas.style.cursor = 'pointer';
     } else {
       tooltip.style.display = 'none';
