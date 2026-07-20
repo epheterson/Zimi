@@ -156,10 +156,20 @@ def _qid_passive_extract(zim_name, article_path):
         existing = _qid_lookup(zim_name, article_path)
         if existing is not None:
             return
-        archive = _srv.get_archive(zim_name)
-        if archive is None:
+        # CRITICAL: this runs on a daemon thread on every article load. It must
+        # NOT touch the SHARED pooled Archive (_srv.get_archive) — libzim is not
+        # thread-safe, and the same request reads that handle under _zim_lock
+        # concurrently, so a shared read here is a silent segfault. Open our own
+        # dedicated handle instead, exactly as _build_qid_index does.
+        zims = _srv.get_zim_files()
+        path = zims.get(zim_name)
+        if not path:
             return
-        qid = _qid_extract_from_html(archive, article_path)
+        archive = _srv.open_archive(path)
+        try:
+            qid = _qid_extract_from_html(archive, article_path)
+        finally:
+            del archive  # drop our handle promptly; don't pool it
         if qid is not None:
             _qid_cache_store(zim_name, article_path, qid)
     except Exception:
