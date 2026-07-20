@@ -3236,7 +3236,10 @@ function _drawAlmanacGrid() {
       var ev = dayEvents[ei];
       var escapedLabel = _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       var srcTitle = ev.src ? ' title="' + _tLookup('alm_region_holiday', '{c} holiday').replace('{c}', ev.src).replace(/"/g, '&quot;') + '"' : '';
-      html += '<div class="alm-ev alm-ev-' + ev.type + '"' + srcTitle + '>' +
+      // Country-specific holidays (those with a region src) get their own
+      // colour so they read apart from the worldwide observances (#33).
+      var evCls = 'alm-ev alm-ev-' + ev.type + (ev.src ? ' alm-ev-country' : '');
+      html += '<div class="' + evCls + '"' + srcTitle + '>' +
         (ev.icon ? ev.icon + ' ' : '') + escapedLabel + '</div>';
     }
     if (dayEvents.length > 2) {
@@ -3262,7 +3265,7 @@ function _drawAlmanacGrid() {
         var ev = selEvents[ei];
         var detailLabel = _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         if (ev.src) detailLabel += ' <span style="color:var(--text3)">\u00b7 ' + ev.src.replace(/</g,'&lt;') + '</span>';
-        html += '<div class="alm-ev alm-ev-' + ev.type + '" style="font-size:12px;padding:2px 0">' +
+        html += '<div class="alm-ev alm-ev-' + ev.type + (ev.src ? ' alm-ev-country' : '') + '" style="font-size:12px;padding:2px 0">' +
           (ev.icon ? ev.icon + ' ' : '') + detailLabel + '</div>';
       }
       html += '</div>';

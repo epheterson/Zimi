@@ -179,10 +179,11 @@
 .alm-today.alm-selected:hover { background: rgba(245,158,11,0.10); }
 .alm-today.alm-selected .alm-num { background: var(--amber); color: #000; }
 .alm-ev { font-size: 9px; line-height: 1.3; padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.alm-ev-holiday { color: #f59e0b; }
-.alm-ev-seasonal { color: #68d391; }
-.alm-ev-astro { color: #63b3ed; }
-.alm-ev-meteor { color: #fc8181; }
+.alm-ev-holiday { color: #f59e0b; }         /* worldwide observances */
+.alm-ev-country { color: #b794f6; }         /* country-specific national holidays (#33) */
+.alm-ev-seasonal { color: #68d391; }        /* clock changes */
+.alm-ev-astro { color: #63b3ed; }           /* astronomy */
+.alm-ev-meteor { color: #fc8181; }          /* meteor showers */
 .alm-ev-more { color: var(--text3); font-style: italic; }
 .alm-day-detail { padding: 8px 14px; margin-top: 8px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border); }
 .alm-crossref { padding: 10px 14px; background: var(--surface); border-radius: 10px; border: 1px solid var(--border); margin-top: 10px; }
