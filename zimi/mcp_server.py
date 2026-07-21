@@ -102,10 +102,16 @@ def search(
         result = zimi.search_all(query, limit=limit, filter_zim=filter_zim)
 
     items = result.get("results", [])
+    suggestion = result.get("did_you_mean")
     if not items:
-        return f"No results found for '{query}'."
+        msg = f"No results found for '{query}'."
+        if suggestion:
+            msg += f" Did you mean '{suggestion}'?"
+        return msg
 
     lines = [f"Found {result['total']} results in {result.get('elapsed', '?')}s:\n"]
+    if suggestion:
+        lines.append(f"Did you mean '{suggestion}'?\n")
     for r in items[:limit]:
         lines.append(f"- **{r['title']}** [{r['zim']}]")
         lines.append(f"  Path: {r['zim']}/{r['path']}")
