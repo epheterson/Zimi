@@ -2890,8 +2890,14 @@ async function renderSource(name) {
 // ── Search ──
 // ── History-in-dropdown: show recent history when search bar is focused ──
 var _searchFocusedByUser = false;
-q.addEventListener('mousedown', function() { _searchFocusedByUser = true; });
-q.addEventListener('touchstart', function() { _searchFocusedByUser = true; });
+// Clicking an ALREADY-focused box (desktop autofocus) fires no focus event,
+// so the reveal must also happen here or the home filter rows are unreachable.
+function _searchBoxPressed() {
+  _searchFocusedByUser = true;
+  if (document.activeElement === q) { _homeFiltersRevealed = true; _updateHomeFiltersVisibility(); }
+}
+q.addEventListener('mousedown', _searchBoxPressed);
+q.addEventListener('touchstart', _searchBoxPressed);
 q.addEventListener('focus', function() {
   if (_searchFocusedByUser && !q.value.trim() && mode !== 'manage') showHistoryDropdown();
   // Only hide topbar icons on mobile when user tapped the search box (not autofocus on load)

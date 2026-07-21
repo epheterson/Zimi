@@ -396,6 +396,11 @@ def _atomic_write_json(path, data, indent=None):
     prefix = os.path.basename(path) + "."
     try:
         fd, tmp = tempfile.mkstemp(dir=directory, prefix=prefix, suffix=".tmp")
+        # mkstemp creates 0600 and os.replace carries that mode onto the
+        # target — which would silently strip group/world read from state
+        # files (e.g. .zimi_cache.json inspected host-side over SSH).
+        # Restore the umask-style default the old open()-based writer had.
+        os.fchmod(fd, 0o644)
     except OSError as e:
         log.warning("Atomic write failed for %s: %s", path, e)
         return
