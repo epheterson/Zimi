@@ -52,7 +52,7 @@ services:
 
 mDNS in this config is fragile. If anything else on the host (a
 Synology service, another container) already owns 5353, the bind
-fails. BT seeding still works — aria2 uses 6881 directly.
+fails. BT seeding still works — libtorrent uses 6881 directly.
 
 ## Why mDNS is hard in containers
 
