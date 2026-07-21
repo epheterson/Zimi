@@ -333,6 +333,21 @@ def build_openapi():
             "get": {
                 "summary": "List installed ZIM sources",
                 "operationId": "list",
+                "parameters": [
+                    {
+                        "name": "layout",
+                        "in": "query",
+                        "required": False,
+                        "schema": {"type": "string"},
+                        "description": (
+                            "When truthy, wrap the response as "
+                            '{"zims": [...], "section_order": [...]} — the '
+                            "additive envelope carrying the home page's saved "
+                            "section order (#37). Omit for the bare array "
+                            "(default, unchanged)."
+                        ),
+                    }
+                ],
                 "responses": {
                     **_json_response(
                         "200",
@@ -344,6 +359,14 @@ def build_openapi():
                                     "name": {"type": "string"},
                                     "title": {"type": "string"},
                                     "entries": {"type": "integer"},
+                                    "category": {
+                                        "type": "string",
+                                        "description": (
+                                            "Effective category: a saved per-ZIM "
+                                            "override (#37) when set, otherwise the "
+                                            "name-pattern heuristic. May be null."
+                                        ),
+                                    },
                                     "article_count": {
                                         "type": "integer",
                                         "description": (

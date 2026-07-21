@@ -1335,5 +1335,60 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(400, {"error": "invalid hot_zims payload"})
         return handler._json(200, {"hot_zims": valid, "saved": len(valid)})
 
+    elif parsed.path == "/manage/library-layout":
+        # Per-ZIM category overrides + home section order (#37). Merge-patch:
+        # `overrides` is merged key-by-key (empty string clears an entry back to
+        # the heuristic); `section_order` fully replaces when present. Either key
+        # may be omitted so "Move to…" and "Reorder" send minimal payloads.
+        overrides = data.get("overrides")
+        order = data.get("section_order")
+        if overrides is None and order is None:
+            return handler._json(400, {"error": "nothing to update"})
+        if overrides is not None:
+            if (
+                not isinstance(overrides, dict)
+                or len(overrides) > _srv._LAYOUT_MAX_OVERRIDES
+            ):
+                return handler._json(400, {"error": "invalid overrides"})
+            for k, v in overrides.items():
+                if (
+                    not isinstance(k, str)
+                    or not isinstance(v, str)
+                    or len(k) > _srv._LAYOUT_STR_MAX
+                    or len(v) > _srv._LAYOUT_STR_MAX
+                ):
+                    return handler._json(400, {"error": "invalid overrides"})
+        if order is not None:
+            if not isinstance(order, list) or len(order) > _srv._LAYOUT_MAX_ORDER:
+                return handler._json(400, {"error": "invalid section_order"})
+            for s in order:
+                if (
+                    not isinstance(s, str)
+                    or len(s) > _srv._LAYOUT_STR_MAX
+                    or not _srv._SECTION_KEY_RE.match(s)
+                ):
+                    return handler._json(400, {"error": "invalid section_order"})
+        with _srv._library_layout_lock:
+            layout = _srv._load_library_layout()
+            if overrides is not None:
+                merged = dict(layout.get("overrides", {}))
+                for k, v in overrides.items():
+                    if v == "":
+                        merged.pop(k, None)  # empty value = revert to heuristic
+                    else:
+                        merged[k] = v
+                layout["overrides"] = merged
+            if order is not None:
+                layout["section_order"] = list(order)
+            _srv._save_library_layout(layout)
+        return handler._json(
+            200,
+            {
+                "status": "ok",
+                "overrides": layout.get("overrides", {}),
+                "section_order": layout.get("section_order", []),
+            },
+        )
+
     else:
         return handler._json(404, {"error": "not found"})

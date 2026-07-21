@@ -746,6 +746,27 @@ class ZimHandler(BaseHTTPRequestHandler):
 
             elif parsed.path == "/list":
                 result = _srv.list_zims()
+                # Per-ZIM category overrides win over the _categorize_zim
+                # heuristic (#37). Applied here, not baked into the disk cache,
+                # so clearing an override instantly reverts to the heuristic.
+                layout = _srv._load_library_layout()
+                overrides = layout.get("overrides", {})
+                if overrides:
+                    result = [
+                        {**z, "category": overrides.get(z["name"], z.get("category"))}
+                        for z in result
+                    ]
+                # Additive envelope: ?layout=1 carries the top-level section_order
+                # alongside the ZIMs. The bare array shape stays the default so
+                # existing API consumers are unaffected.
+                if param("layout"):
+                    return self._json(
+                        200,
+                        {
+                            "zims": result,
+                            "section_order": layout.get("section_order", []),
+                        },
+                    )
                 return self._json(200, result)
 
             elif parsed.path == "/languages":

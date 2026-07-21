@@ -578,6 +578,60 @@ def _save_collections(data):
     _atomic_write_json(_collections_file_path(), data, indent=2)
 
 
+# ── Library layout: per-ZIM category overrides + home section order (#37) ──
+#
+# Storage: ZIMI_DATA_DIR/library_layout.json —
+#   {"overrides": {"<zim name>": "<category>"}, "section_order": ["cat:<key>"|"col:<name>", ...]}
+# Overrides win over the _categorize_zim heuristic; section_order drives the
+# home page ordering (unlisted sections append in default order). Reads are
+# public (ride /list); writes are auth-gated /manage endpoints.
+_library_layout_lock = threading.Lock()
+
+#: Section-order keys are namespaced so categories and collections can share one
+#: ordered list without colliding (a collection named "Books" != category Books).
+_SECTION_KEY_RE = re.compile(r"^(cat:|col:).+")
+#: Defensive caps so a hostile/buggy client can't write an unbounded file.
+_LAYOUT_MAX_OVERRIDES = 5000
+_LAYOUT_MAX_ORDER = 500
+_LAYOUT_STR_MAX = 128
+
+
+def _library_layout_file_path():
+    """Path to the library-layout JSON file."""
+    return os.path.join(ZIMI_DATA_DIR, "library_layout.json")
+
+
+def _load_library_layout():
+    """Load library layout from disk. Fail-soft to the empty default.
+
+    A missing or corrupt file must degrade to ``{"overrides": {}, "section_order": []}``
+    rather than 500 /list — the whole home page renders from this, so a bad read
+    can never be allowed to blank the library.
+    """
+    empty = {"overrides": {}, "section_order": []}
+    try:
+        with open(_library_layout_file_path()) as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return empty
+        overrides = data.get("overrides")
+        order = data.get("section_order")
+        return {
+            "overrides": overrides if isinstance(overrides, dict) else {},
+            "section_order": order if isinstance(order, list) else [],
+        }
+    except FileNotFoundError:
+        pass  # fresh install — no layout yet
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("Could not read library layout, returning default: %s", e)
+    return empty
+
+
+def _save_library_layout(data):
+    """Save library layout to disk (atomic write via rename)."""
+    _atomic_write_json(_library_layout_file_path(), data, indent=2)
+
+
 _ISO639_3_TO_1 = {
     "eng": "en",
     "fra": "fr",
