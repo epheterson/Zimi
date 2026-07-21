@@ -2006,3 +2006,140 @@ class TestRateClass(unittest.TestCase):
     def test_unlimited_paths(self):
         for p in ("/health", "/list", "/static/app.js", "/"):
             self.assertFalse(self._cls(p)[0], p)
+
+
+class TestClientIPResolution(unittest.TestCase):
+    """_client_ip must not treat a WAN client behind a private-network proxy
+    hop as private (the v1.7.4 /dl/ public-exposure fix)."""
+
+    class _H:
+        def __init__(self, direct_ip, headers=None):
+            self.client_address = (direct_ip, 12345)
+            self.headers = headers or {}
+
+    def _ip(self, direct_ip, headers=None):
+        import zimi.http as zhttp
+
+        return zhttp.ZimHandler._client_ip(self._H(direct_ip, headers))
+
+    def _private(self, direct_ip, headers=None):
+        import zimi.http as zhttp
+
+        h = self._H(direct_ip, headers)
+        # Bind the real _client_ip so _is_private_client resolves through it.
+        h._client_ip = lambda: zhttp.ZimHandler._client_ip(h)
+        return zhttp.ZimHandler._is_private_client(h)
+
+    def test_cf_connecting_ip_from_bridge_hop_is_the_real_client(self):
+        # The live bug: containerized tunnel reaches host-net Zimi from the
+        # bridge gateway (private) carrying the real public client in
+        # CF-Connecting-IP. Must resolve to the public client → NOT private.
+        ip = self._ip("172.20.0.1", {"CF-Connecting-IP": "8.8.8.8"})
+        self.assertEqual(ip, "8.8.8.8")
+        self.assertFalse(self._private("172.20.0.1", {"CF-Connecting-IP": "8.8.8.8"}))
+
+    def test_xff_leftmost_honored_from_private_hop(self):
+        ip = self._ip("192.168.1.1", {"X-Forwarded-For": "1.1.1.1, 192.168.1.1"})
+        self.assertEqual(ip, "1.1.1.1")
+
+    def test_cf_header_beats_xff(self):
+        ip = self._ip(
+            "172.17.0.1",
+            {"CF-Connecting-IP": "8.8.8.8", "X-Forwarded-For": "10.0.0.9"},
+        )
+        self.assertEqual(ip, "8.8.8.8")
+
+    def test_forwarded_header_ignored_from_public_direct_hop(self):
+        # A forwarded header from a NON-private direct peer is untrusted — the
+        # origin isn't WAN-reachable, so this shouldn't happen, but if it does
+        # we must not let a public peer forge a private classification.
+        ip = self._ip("8.8.8.8", {"X-Forwarded-For": "10.0.0.1"})
+        self.assertEqual(ip, "8.8.8.8")
+        self.assertFalse(self._private("8.8.8.8", {"X-Forwarded-For": "10.0.0.1"}))
+
+    def test_forwarded_loopback_claim_is_rejected(self):
+        # A LAN client (or a permitted forwarder) must not assert 127.0.0.1 to
+        # borrow loopback-tier trust — the forwarded value is refused and we
+        # fall back to the (still private) direct hop.
+        ip = self._ip("192.168.1.1", {"X-Forwarded-For": "127.0.0.1"})
+        self.assertEqual(ip, "192.168.1.1")
+        ip2 = self._ip("172.17.0.1", {"CF-Connecting-IP": "169.254.1.1"})
+        self.assertEqual(ip2, "172.17.0.1")
+
+    def test_explicit_trusted_proxy_allowlist(self):
+        import zimi.http as zhttp
+
+        saved = zhttp._TRUSTED_PROXY_CIDRS
+        try:
+            import ipaddress as _ip
+
+            zhttp._TRUSTED_PROXY_CIDRS = [_ip.ip_network("172.30.0.0/16")]
+            # in-allowlist hop → forwarded client honored
+            self.assertEqual(
+                self._ip("172.30.0.1", {"CF-Connecting-IP": "8.8.8.8"}), "8.8.8.8"
+            )
+            # a private hop NOT in the allowlist → forwarded header ignored
+            self.assertEqual(
+                self._ip("192.168.1.1", {"CF-Connecting-IP": "8.8.8.8"}), "192.168.1.1"
+            )
+        finally:
+            zhttp._TRUSTED_PROXY_CIDRS = saved
+
+    def test_direct_lan_client_stays_private(self):
+        self.assertTrue(self._private("192.168.1.50"))
+        self.assertEqual(self._ip("192.168.1.50"), "192.168.1.50")
+
+    def test_forwarded_private_claim_is_rejected(self):
+        # A forwarded value claiming a private (RFC1918) address must not be
+        # honored — else a spoofed X-Forwarded-For could borrow the trusted
+        # tier. It's refused and we fall back to the direct hop.
+        self.assertEqual(
+            self._ip("192.168.1.1", {"X-Forwarded-For": "10.9.9.9"}), "192.168.1.1"
+        )
+        self.assertEqual(
+            self._ip("172.17.0.1", {"CF-Connecting-IP": "192.168.5.5"}), "172.17.0.1"
+        )
+
+    def test_allowlist_missing_header_fails_closed(self):
+        # With an explicit allowlist the hop is only ever a proxy, so a request
+        # from it carrying no client IP can't be identified — fail closed to
+        # public rather than trust the proxy's own private address.
+        import zimi.http as zhttp
+
+        saved = zhttp._TRUSTED_PROXY_CIDRS
+        try:
+            import ipaddress as _ip
+
+            zhttp._TRUSTED_PROXY_CIDRS = [_ip.ip_network("172.30.0.0/16")]
+            self.assertNotEqual(self._ip("172.30.0.1"), "172.30.0.1")
+            self.assertFalse(self._private("172.30.0.1"))
+        finally:
+            zhttp._TRUSTED_PROXY_CIDRS = saved
+
+
+class TestParseRange(unittest.TestCase):
+    """_parse_range degrades malformed ranges to (None,None), never raises."""
+
+    def _pr(self, header, size=1000):
+        import zimi.http as zhttp
+
+        return zhttp.ZimHandler._parse_range(header, size)
+
+    def test_valid(self):
+        self.assertEqual(self._pr("bytes=0-99"), (0, 99))
+        self.assertEqual(self._pr("bytes=100-"), (100, 999))
+        self.assertEqual(self._pr("bytes=-50"), (950, 999))
+
+    def test_malformed_never_raises(self):
+        for bad in (
+            "bytes=abc-",
+            "bytes=-",
+            "bytes=1-x",
+            "bytes=x-y",
+            "bytes=--",
+            "bytes=",
+        ):
+            self.assertEqual(self._pr(bad), (None, None), bad)
+
+    def test_out_of_range(self):
+        self.assertEqual(self._pr("bytes=5000-6000"), (None, None))

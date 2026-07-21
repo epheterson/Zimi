@@ -516,8 +516,12 @@ function updateTopbar() {
   const showBack = articleHistory.length > 0 || mode === 'search' || homeScope;
   backBtn.style.display = showBack ? 'flex' : 'none';
 
-  // Breadcrumb: Zimi / [icon] — search bar shows source name as placeholder
-  if (activeSource) {
+  // Breadcrumb: Zimi / [icon] — search bar shows source name as placeholder.
+  // The Almanac is reached only from home (never through a ZIM), and it opens
+  // as an overlay that leaves the underlying ZIM "active" — so its icon would
+  // wrongly bleed through. In the Almanac the breadcrumb is just "Zimi", no
+  // separator, no icon.
+  if (activeSource && !_almanacOpen) {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
     const info = _zimInfo(activeSource);
@@ -1041,6 +1045,7 @@ function enterScope(type, label, zimNames, push) {
 async function enterSource(name, push) {
   const info = _zimInfo(name);
   if (!info) { enterHome(push); return; }
+  _markZimOpened(name);  // opening a source clears its New/Updated badge (#34)
   // Modifier-click: open in new browser tab
   if (_isModClick()) {
     _lastMouseEvent = null;
@@ -1304,6 +1309,37 @@ function _langBadge(z) {
   return '<span class="lang-badge" title="' + escAttr(name) + '">' + esc(name) + '</span>';
 }
 
+// New/Updated badges (#34). A badge flags a ZIM the user hasn't looked at since
+// it appeared or changed. It clears the moment they open the ZIM (tracked per
+// browser), and as a backstop auto-expires after a week even if never opened —
+// so a badge never lingers indefinitely on a source you keep ignoring.
+var _ZIM_BADGE_BACKSTOP_DAYS = 7;
+var _ZIM_OPENED_KEY = 'zimi_zim_opened';
+
+function _getZimOpenedMap() {
+  try { return JSON.parse(localStorage.getItem(_ZIM_OPENED_KEY)) || {}; }
+  catch (e) { return {}; }
+}
+// Record that the user opened a ZIM now — this is what clears its badge. Always
+// writes the latest time so a later update can re-badge, then clear again.
+function _markZimOpened(name) {
+  if (!name) return;
+  var m = _getZimOpenedMap();
+  m[name] = Date.now() / 1000;
+  try { localStorage.setItem(_ZIM_OPENED_KEY, JSON.stringify(m)); } catch (e) {}
+}
+// Returns null, or {label:'new'|'updated'}. A ZIM is fresh when its newest
+// event (first install or last update) is more recent than the user's last open
+// of it, and within the backstop window.
+function _zimBadge(z) {
+  if (!z) return null;
+  var fresh = Math.max(z.first_seen || 0, z.updated_at || 0);
+  if (!fresh) return null;
+  if ((Date.now() / 1000 - fresh) >= _ZIM_BADGE_BACKSTOP_DAYS * 86400) return null;
+  if ((_getZimOpenedMap()[z.name] || 0) >= fresh) return null;
+  return { label: (z.updated_at || 0) > (z.first_seen || 0) ? 'updated' : 'new' };
+}
+
 function renderCardGrid(items, showStars, showCategory) {
   if (!items || !items.length) return '';
   const favs = (collectionsCache && collectionsCache.favorites) || [];
@@ -1320,7 +1356,13 @@ function renderCardGrid(items, showStars, showCategory) {
     const qidIcon = z.has_qids
       ? '<span class="qid-badge" title="' + escAttr(t('cross_lang_linking')) + '"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l-3 3 3 3"/><path d="M1 9h10"/><path d="M12 10l3-3-3-3"/><path d="M15 7H5"/></svg></span>'
       : '';
-    return '<div class="stat-card" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
+    const badgeInfo = _zimBadge(z);
+    const isUpd = badgeInfo && badgeInfo.label === 'updated';
+    const newHtml = badgeInfo
+      ? '<span class="new-badge' + (isUpd ? ' updated-badge' : '') + '" title="' + escAttr(t(isUpd ? 'recently_updated' : 'recently_installed')) + '">' + tH(isUpd ? 'updated_badge' : 'new_badge') + '</span>'
+      : '';
+    return '<div class="stat-card' + (newHtml ? ' is-new' : '') + '" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
+      newHtml +
       starHtml +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info">' +
@@ -1389,41 +1431,144 @@ var _MOON_PHASE_I18N = {
 };
 function _localMoonName(name) { return _MOON_PHASE_I18N[name] ? t(_MOON_PHASE_I18N[name]) : name; }
 
-// Shared moon phase renderer — used by Today card (index.html) and Almanac hero (almanac.js)
-// Returns HTML for a CSS moon with proper terminator, tilt, blur, and texture.
-// wrapClass: CSS class for the outer container ('dc-moon-wrap' or 'almanac-moon')
-// tiltDeg: parallactic angle in degrees (0 = upright)
-// blurScale: multiplier for terminator blur (1.0 = hero moon, 0.5 = today card)
-function _renderMoonHTML(m, wrapClass, tiltDeg, blurScale) {
-  var litColor = '#e8e0d0', darkColor = '#0a0e1a';
-  var illumFrac = m.illumination / 100;
-  var leftColor, rightColor, overlayColor, overlayScaleX;
-  if (m.phase <= 0.25) {
-    leftColor = darkColor; rightColor = litColor;
-    overlayColor = darkColor; overlayScaleX = 1 - illumFrac * 2;
-  } else if (m.phase <= 0.5) {
-    leftColor = darkColor; rightColor = litColor;
-    overlayColor = litColor; overlayScaleX = (illumFrac - 0.5) * 2;
-  } else if (m.phase <= 0.75) {
-    leftColor = litColor; rightColor = darkColor;
-    overlayColor = litColor; overlayScaleX = (illumFrac - 0.5) * 2;
+// ── Moon rendering — the real photo, shaded per-pixel, shared everywhere ──
+// The old renderer stacked two solid half-discs under a scaled-ellipse
+// terminator: a razor-sharp edge, a hard seam at the quarters, no limb
+// darkening. This draws the full-resolution moon photo and multiplies it by a
+// physically-shaded brightness map — normal·Sun for a soft terminator, limb
+// darkening toward the rim, and an earthshine FLOOR so the shadowed side stays
+// a visible (cool, dim) sphere rather than going black. Static per phase, so
+// it's computed once and cached.
+var _MOON_TEX = new Image();
+var _moonTexReady = false;
+_MOON_TEX.onload = function() {
+  _moonTexReady = true;
+  _moonSpriteCache = {};
+  if (typeof _repaintMoons === 'function') _repaintMoons();
+};
+_MOON_TEX.src = '/static/moon.png?v=2';
+
+var _moonSpriteCache = {};
+
+function _smoothstep(a, b, x) {
+  var t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
+// Sprite for an illuminated fraction (0..1) and waxing flag → data URL.
+// Untilted (lit limb on the right when waxing); the caller rotates it.
+function _renderMoonSprite(illumFrac, waxing, sizePx) {
+  var key = Math.round(illumFrac * 100) + (waxing ? 'w' : 'a') + 'x' + sizePx +
+    (_moonTexReady ? 't' : '');
+  if (_moonSpriteCache[key]) return _moonSpriteCache[key];
+  var url = _moonSpriteCanvas(illumFrac, waxing, sizePx).toDataURL('image/png');
+  _moonSpriteCache[key] = url;
+  return url;
+}
+
+// The shaded moon as a <canvas> (cached) — the sky scene draws it directly so
+// its dark side shows the same earthshine as the hero, not a black shadow.
+var _moonSpriteCanvasCache = {};
+function _moonSpriteCanvas(illumFrac, waxing, sizePx) {
+  var key = Math.round(illumFrac * 100) + (waxing ? 'w' : 'a') + 'x' + sizePx +
+    (_moonTexReady ? 't' : '');
+  if (_moonSpriteCanvasCache[key]) return _moonSpriteCanvasCache[key];
+
+  // Render at the display's device resolution (2× the CSS size on retina),
+  // capped at 512, so the per-pixel shading — terminator haze, limb darkening,
+  // the edge — stays crisp when the hero moon is zoomed. The maria come from
+  // the 256px photo, so their fine detail is bounded by that source; upscaling
+  // the shading past it still sharpens every gradient the math draws.
+  var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+  var N = Math.min(512, Math.max(64, Math.round(sizePx * dpr)));
+  var cv = document.createElement('canvas');
+  cv.width = cv.height = N;
+  var ctx = cv.getContext('2d');
+  // Base: the moon photo (same-origin, so getImageData won't taint). Before it
+  // loads, a neutral grey disc so the shape is still right.
+  if (_moonTexReady) {
+    ctx.drawImage(_MOON_TEX, 0, 0, N, N);
   } else {
-    leftColor = litColor; rightColor = darkColor;
-    overlayColor = darkColor; overlayScaleX = 1 - illumFrac * 2;
+    ctx.fillStyle = '#b8b4aa';
+    ctx.beginPath(); ctx.arc(N / 2, N / 2, N / 2, 0, Math.PI * 2); ctx.fill();
   }
-  var tilt = (tiltDeg || 0).toFixed(1);
+  var img = ctx.getImageData(0, 0, N, N);
+  var data = img.data;
+
+  // Sun direction: phase angle P from illuminated fraction (k = (1+cosP)/2).
+  var cosP = 2 * illumFrac - 1;
+  var sinP = Math.sqrt(Math.max(0, 1 - cosP * cosP));
+  var sx = (waxing ? 1 : -1) * sinP, sz = cosP;
+  var term = 0.055;                 // terminator half-width (haze) in dot units
+  // Earthshine: the shadowed side stays clearly visible (a dim, cool disc),
+  // brightest near new moon when the Earth is "full" in the Moon's sky.
+  var earth = 0.16 + 0.10 * (1 - illumFrac);
+
+  for (var py = 0; py < N; py++) {
+    var y = (py + 0.5) / N * 2 - 1;              // +1 top .. -1 bottom
+    for (var px = 0; px < N; px++) {
+      var x = (px + 0.5) / N * 2 - 1;
+      var r2 = x * x + y * y;
+      var o = (py * N + px) * 4;
+      if (r2 >= 1.0) { data[o + 3] = 0; continue; }
+      var z = Math.sqrt(1 - r2);                 // toward viewer
+      var lit = _smoothstep(-term, term, x * sx + z * sz);
+      var limb = Math.pow(z, 0.42);              // limb darkening
+      var litI = lit * limb;                     // sunlit component
+      var darkI = (1 - lit) * earth * limb;      // earthshine component
+      var m = litI + darkI;
+      var warm = m > 0 ? litI / m : 0;           // 1 = fully sunlit, 0 = earthshine
+      // Multiply the photo by brightness; sunlit side warm, earthshine cool.
+      var R = data[o] * m * (0.99 + 0.05 * warm);
+      var G = data[o + 1] * m;
+      var B = data[o + 2] * m * (1.18 - 0.18 * warm);
+      // Antialias the limb over the outer ~1px ring.
+      var edge = _smoothstep(1.0, 1.0 - 2.4 / N, r2);
+      data[o] = Math.min(255, R);
+      data[o + 1] = Math.min(255, G);
+      data[o + 2] = Math.min(255, B);
+      data[o + 3] = 255 * edge;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  _moonSpriteCanvasCache[key] = cv;
+  return cv;
+}
+
+// Shared moon renderer — hero (almanac) + Today card. Returns HTML embedding
+// the shaded sprite as an <img>, rotated by tiltDeg (the sprite math stays
+// untilted so it's phase-cacheable; orientation is a whole-disc rotation).
+function _renderMoonHTML(m, wrapClass, tiltDeg) {
+  var illumFrac = m.illumination / 100;
+  var waxing = m.phase < 0.5;
   var isHero = wrapClass === 'almanac-moon';
-  var rotateStyle = wrapClass === 'dc-moon-wrap'
-    ? 'transform:translate(-50%,-50%)' + (tiltDeg ? ' rotate(' + tilt + 'deg)' : '')
-    : (tiltDeg ? 'transform:rotate(' + tilt + 'deg)' : '');
-  return '<div class="' + wrapClass + '"' + (rotateStyle ? ' style="' + rotateStyle + '"' : '') + '>' +
-    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=71c1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75b\') center/cover;opacity:0.12"></div>' +
-    '<div class="dc-moon-half left" style="background:' + leftColor + '"></div>' +
-    '<div class="dc-moon-half right" style="background:' + rightColor + '"></div>' +
-    '<div class="dc-moon-term" style="background:' + overlayColor + ';transform:scaleX(' + overlayScaleX.toFixed(3) + ')"></div>' +
-    '<div class="' + (isHero ? 'almanac-moon-texture' : 'dc-moon-texture') + '" style="background:url(\'/static/moon.png?v=71c1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75bc1b75b\') center/cover;' +
-    (isHero ? 'mix-blend-mode:soft-light;opacity:1' : '') + '"></div>' +
+  var size = isHero ? 200 : 48;
+  var url = _renderMoonSprite(illumFrac, waxing, size);
+  var tilt = (tiltDeg || 0).toFixed(1);
+  var base = wrapClass === 'dc-moon-wrap' ? 'translate(-50%,-50%) ' : '';
+  var rot = tiltDeg ? 'rotate(' + tilt + 'deg)' : '';
+  var xform = (base + rot).trim();
+  return '<div class="' + wrapClass + '"' + (xform ? ' style="transform:' + xform + '"' : '') + '>' +
+    '<img class="' + (isHero ? 'almanac-moon-sprite' : 'dc-moon-sprite') + ' moon-sprite" ' +
+    'data-illum="' + illumFrac.toFixed(4) + '" data-waxing="' + (waxing ? 1 : 0) + '" data-size="' + size + '" ' +
+    'src="' + url + '" alt="" width="' + size + '" height="' + size + '" />' +
     '</div>';
+}
+
+// Repaint already-rendered moon sprites in place — called when the texture
+// finishes loading so a moon drawn before the albedo was ready upgrades to
+// the textured version without a full re-render.
+function _repaintMoons() {
+  var imgs = document.querySelectorAll('img.moon-sprite');
+  for (var i = 0; i < imgs.length; i++) {
+    var el = imgs[i];
+    var url = _renderMoonSprite(
+      parseFloat(el.getAttribute('data-illum')) || 0,
+      el.getAttribute('data-waxing') === '1',
+      parseInt(el.getAttribute('data-size'), 10) || 48
+    );
+    if (el.src !== url) el.src = url;
+  }
 }
 
 // Lightweight parallactic angle for Today card (runs before almanac.js loads).

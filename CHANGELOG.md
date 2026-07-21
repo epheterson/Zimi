@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.4] - 2026-07-20
+
+A polish drop that closes the two live issues the post-1.7.3 code audit
+surfaced, and grows the almanac up: an accurate Chinese calendar, a real
+high-res moon, and a solar system you can travel out to. The moon finally
+looks like the Moon.
+
+### Almanac
+
+- **Accurate Chinese calendar.** Replaced the mean-lunation approximation with
+  real astronomy — month boundaries are true new moons in China Standard Time,
+  leap months placed by the solar-term rule against the winter solstice.
+  Verified against the Hong Kong Observatory (New Year dates and leap months
+  2014–2033). It's a browsable calendar system again, with the 闰 leap-month
+  marker and the correct zodiac animal.
+- **Holidays land on every calendar.** Worldwide days, regional holidays, the
+  Easter cycle, solstices, meteor showers and Hindu/Sikh festivals are now
+  projected onto whatever calendar you're viewing (Hebrew, Islamic, Chinese…)
+  instead of vanishing when you switch away from Gregorian.
+- **A real high-resolution moon**, reprojected from NASA's seamless lunar
+  albedo map — genuine crater detail and subtle true colour. The animated sky
+  moon shares the hero's shading now, earthshine dark side and all.
+- **Travel the solar system.** The interstellar probes — Voyager 1 & 2,
+  Pioneer 10 & 11, New Horizons — are plotted at their real bearings out past
+  Neptune and creep outward as the clock runs, framed by labelled asteroid,
+  Kuiper and heliopause markers.
+- **Easier location picking** — the world map cycles through overlapping
+  cities on repeated clicks, and search reaches 354 cities.
+
+### Security
+
+### Security
+
+- **`/dl/` no longer serves whole ZIMs to the public internet.** On a
+  host-networked deploy behind a containerized reverse proxy, every WAN
+  request reached Zimi from the docker bridge gateway — a private IP with no
+  real client IP propagated — so the whole internet was classified "private"
+  and could pull raw `.zim` files (public content, so not a data breach, but
+  unmetered use of the operator's uplink) and got the trusted rate tier.
+  Zimi now honours Cloudflare's un-forgeable `CF-Connecting-IP`, trusts a
+  forwarded client only from a private proxy hop (optionally an explicit
+  `ZIMI_TRUSTED_PROXIES` allowlist), and refuses a forwarded value that claims
+  loopback. WAN clients resolve to their real IP again.
+
+### Fixed
+
+- **A libzim segfault under normal use.** Opening an article kicked off a
+  background thread that read a shared libzim archive with no lock, while the
+  request read the same archive — two threads in a non-thread-safe library, a
+  silent crash. It now uses its own handle. Added a real-ZIM concurrency
+  stress test so this class of bug can't hide behind mocked archives again.
+- Search results could silently drop a ZIM under concurrent load (an archive
+  published before its lock); the setup order is fixed.
+- LAN peer discovery advertised the wrong BitTorrent port when a custom port
+  was set; it now advertises the real one.
+- Malformed HTTP Range headers no longer 500 the download endpoint.
+- The almanac topbar showed the underlying ZIM's icon; the breadcrumb is now
+  just "Zimi" while the almanac is open (you reach it only from home).
+- Picking a location on the almanac's world map no longer rebuilds the whole
+  panel — it refreshes the location-dependent pieces in place, so the page
+  stops jumping and flashing on each click.
+
+### Changed
+
+- **The moon is beautiful now.** The hero and Today-card moon are rendered as
+  a single physically-shaded sphere — a soft terminator, gentle limb
+  darkening, the maria showing through, and a faint earthshine glow on the
+  dark side of a crescent. Gone are the hard light/dark edge, the seam down
+  the middle at the quarters, and the flat too-bright disc. The hero moon now
+  renders at the display's device resolution (up to 512px) so its shading
+  stays crisp when you lean in.
+- **Country holidays get their own colour** on the calendar, apart from the
+  worldwide observances (#33).
+
+### Added
+
+- **"New" and "Updated" badges** on ZIM cards, so fresh or changed sources
+  stand out in a large library instead of being lost in the grid (#34). A
+  fresh install gets a solid "New" pill; a source whose file changed on an
+  update gets a quieter "Updated" pill. A badge clears the moment you open
+  that ZIM, and auto-expires after a week even if you never do — so it never
+  lingers.
+
 ## [1.7.3] - 2026-07-18
 
 Both field reports closed — the downloads page no longer throttles itself

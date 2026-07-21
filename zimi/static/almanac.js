@@ -107,11 +107,6 @@ document.addEventListener('visibilitychange', function() {
     _resumeAllRAF();
   }
 });
-var _moonTexImg = new Image();
-var _moonTexLoaded = false;
-_moonTexImg.onload = function() { _moonTexLoaded = true; };
-_moonTexImg.onerror = function() { _moonTexLoaded = false; };
-_moonTexImg.src = '/static/moon.png?v=1';
 
 function _openAlmanacInner(replaceState) {
   _almanacOpen = true;
@@ -421,9 +416,16 @@ function _almRepaintFocus() {
 function _almBackToToday() {
   _almFocus = null;
   _almSelectedJDN = _almTodayJDN;
+  // Snap the browsed month back to the present too — otherwise the grid is
+  // left stranded on whatever month you'd wandered to while the rest of the
+  // panel returns to now.
+  var cal = _jdnToCalendar(_almSystem, _almTodayJDN);
+  _almYear = cal.year;
+  _almMonth = cal.month;
   _drawAlmanacGrid();
   _almRepaintFocus();
 }
+
 
 function _renderAlmanacContent() {
   var now = new Date();
@@ -483,13 +485,8 @@ function _renderAlmanacContent() {
   html += '<div class="almanac-section">';
   html += '<div class="almanac-section-title">' + t('alm_star_chart') + '</div>';
   html += '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>';
-  // Scrub +/- 12h to watch the sky turn; tap a body to identify it.
-  html += '<div class="alm-sc-controls">' +
-    '<span class="alm-sc-time" id="alm-sc-time"></span>' +
-    '<input id="alm-sc-slider" type="range" min="-720" max="720" step="10" value="0" class="orrery-slider"' +
-      ' aria-label="' + _almEsc(t('alm_star_chart')) + '" oninput="_setStarChartTime(this.value)" />' +
-    '<button class="orrery-ctrl-btn" onclick="_starChartNow()" title="' + _almEsc(t('alm_back_to_now')) + '">' + t('alm_now') + '</button>' +
-    '</div>';
+  // Time is driven by the pinned scrubber at the top now; drag the chart to
+  // stand elsewhere on Earth, tap a body to identify it.
   html += '<div id="alm-sc-info" class="alm-sc-info"></div>';
   html += '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>';
   html += '</div>';
@@ -694,15 +691,35 @@ function _moonDistance(date) {
 
 
 // ── Voyager probes — hyperbolic escape trajectories ──
+// The interstellar probes — escaping the Sun almost radially along a fixed
+// ecliptic direction (physically correct far from the Sun), so a fixed
+// longitude + a distance growing linearly with time is the right model.
+// Distances/velocities are 2026-epoch, ecliptic longitudes JPL-Horizons-grade.
 var _VOYAGERS = [
-  { name: 'Voyager 1', launch: Date.UTC(1977, 8, 5), refEpoch: Date.UTC(2025, 0, 1), refDist: 164.0, vel: 3.59, lon: 260.5 },
-  { name: 'Voyager 2', launch: Date.UTC(1977, 7, 20), refEpoch: Date.UTC(2025, 0, 1), refDist: 137.0, vel: 3.25, lon: 296.2 }
+  { name: 'Voyager 1', label: 'V1', launch: Date.UTC(1977, 8, 5), refEpoch: Date.UTC(2026, 0, 1), refDist: 167.0, vel: 3.57, lon: 260.5 },
+  { name: 'Voyager 2', label: 'V2', launch: Date.UTC(1977, 7, 20), refEpoch: Date.UTC(2026, 0, 1), refDist: 141.4, vel: 3.21, lon: 296.2 },
+  { name: 'Pioneer 10', label: 'P10', launch: Date.UTC(1972, 2, 3), refEpoch: Date.UTC(2026, 0, 1), refDist: 139.9, vel: 2.49, lon: 72 },
+  { name: 'Pioneer 11', label: 'P11', launch: Date.UTC(1973, 3, 6), refEpoch: Date.UTC(2026, 0, 1), refDist: 117.5, vel: 2.34, lon: 277 },
+  { name: 'New Horizons', label: 'NH', launch: Date.UTC(2006, 0, 19), refEpoch: Date.UTC(2026, 0, 1), refDist: 63.3, vel: 2.85, lon: 285 }
 ];
 var _voyagerPositions = []; // [{name, x, y, r, dist, idx}] in CSS pixels
 
 function _voyagerDist(v, simTime) {
   var yearsFromRef = (simTime - v.refEpoch) / (365.25 * MS_PER_DAY);
   return Math.max(0, v.refDist + v.vel * yearsFromRef);
+}
+
+// Reference distances for the "deep space" view (AU).
+var _HELIO_TERMINATION_AU = 94;   // termination shock (V1 crossed 2004)
+var _HELIOPAUSE_AU = 120;         // interstellar boundary (V1 crossed 2012)
+var _KUIPER_INNER_AU = 30, _KUIPER_OUTER_AU = 50;
+
+// Deep-space radial map: AU → fraction of the canvas half-width, log-scaled so
+// the planets cluster near the centre and the probes get room out near the rim
+// (where their year-on-year crawl is finally visible). Normal view keeps the
+// linear-ish planet map; this only applies when deep space is toggled on.
+function _orrDeepRadius(au) {
+  return 0.47 * Math.log(1 + au / 0.3) / Math.log(1 + 200 / 0.3);
 }
 
 function _solveKepler(M, e) {
@@ -1117,6 +1134,22 @@ _sunMapImg.onerror = function() { _sunMapLoaded = false; };
 _sunMapImg.src = '/static/world-map.svg?v=1';
 
 var _sunMapCanvas = null;
+var _sunMapCycle = { x: -999, y: -999, list: '', idx: 0 }; // click-cycle overlaps
+var _sunMapFlashTimer = 0;
+
+// Brief label over the map naming the city just picked (and the cycle hint when
+// several cities overlap). Recreated each time — the map re-renders on a pick.
+function _sunMapFlash(text) {
+  var wrap = document.getElementById('almanac-sunmap');
+  if (!wrap) return;
+  var el = document.createElement('div');
+  el.className = 'sunmap-flash';
+  el.textContent = text;
+  wrap.appendChild(el);
+  requestAnimationFrame(function () { el.classList.add('show'); });
+  clearTimeout(_sunMapFlashTimer);
+  _sunMapFlashTimer = setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 2000);
+}
 var _sunMapNow = null;
 var _sunMapLat = 34;
 var _sunMapLon = -118;
@@ -1194,20 +1227,40 @@ function _renderSunMap(now) {
       var lon = (clickX / rect.width) * 360 - 180;
       var lat = 90 - (clickY / rect.height) * 180;
 
-      // Snap to nearby city
+      // Collect every city within the snap radius, nearest first — then let
+      // repeated clicks on the same spot cycle through them, so overlapping
+      // cities (a dense region) are all reachable.
       var snapDist = 15 / rect.width * 360;
-      var snappedName = '';
+      var near = [];
       for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
         var c = _MAP_CITIES[ci];
         var dlat = lat - c.lat, dlon = (lon - c.lon) * Math.cos(lat * DEG_TO_RAD);
-        if (Math.sqrt(dlat * dlat + dlon * dlon) < snapDist) {
-          lat = c.lat; lon = c.lon;
-          snappedName = c.name;
-          break;
-        }
+        var dd = Math.sqrt(dlat * dlat + dlon * dlon);
+        if (dd < snapDist) near.push({ c: c, d: dd });
       }
-      _saveLocation(lat, lon, snappedName);
-      _renderAlmanacContent();
+      near.sort(function (a, b) { return a.d - b.d; });
+      var snappedName = '';
+      if (near.length) {
+        var samePlace = Math.abs(clickX - _sunMapCycle.x) < 6 && Math.abs(clickY - _sunMapCycle.y) < 6;
+        var keys = near.map(function (n) { return n.c.name; }).join('|');
+        if (samePlace && keys === _sunMapCycle.list) {
+          _sunMapCycle.idx = (_sunMapCycle.idx + 1) % near.length;
+        } else {
+          _sunMapCycle = { x: clickX, y: clickY, list: keys, idx: 0 };
+        }
+        var pick = near[_sunMapCycle.idx].c;
+        lat = pick.lat; lon = pick.lon;
+        snappedName = pick.name + (near.length > 1 ? '  (' + (_sunMapCycle.idx + 1) + '/' + near.length + ' · ' + t('alm_click_cycle') + ')' : '');
+        _saveLocation(pick.lat, pick.lon, pick.name);
+      } else {
+        _sunMapCycle = { x: -999, y: -999, list: '', idx: 0 };
+        _saveLocation(lat, lon, '');
+      }
+      // Refresh only the location-dependent panels in place — a full rebuild
+      // wipes the scroll container and yanks the page upward on every click.
+      _almRepaintFocus();
+      // Flash which city we landed on (and the cycle hint) over the map.
+      if (snappedName) _sunMapFlash(snappedName);
     };
   }
 
@@ -1218,16 +1271,19 @@ function _renderSunMap(now) {
     searchInput.oninput = function() {
       var q = searchInput.value.toLowerCase().trim();
       if (q.length < 2) { resultsDiv.style.display = 'none'; return; }
-      var all = [];
-      for (var i = 0; i < _MAP_CITIES.length; i++) {
-        var name = _MAP_CITIES[i].name.toLowerCase();
+      // Search the plotted cities plus the wider search-only set (no dots).
+      var pool = _MAP_CITIES.concat(_SEARCH_CITIES);
+      var all = [], seen = {};
+      for (var i = 0; i < pool.length; i++) {
+        var name = pool[i].name.toLowerCase();
+        if (seen[name]) continue; seen[name] = 1;   // dedup overlap between lists
         var idx = name.indexOf(q);
         if (idx === -1) continue;
         // Rank: 0 = city name starts with query, 1 = any part starts with, 2 = substring
         var rank = 2;
         if (idx === 0) rank = 0;
         else if (name.charAt(idx - 1) === ' ' || name.charAt(idx - 1) === ',') rank = 1;
-        all.push({ city: _MAP_CITIES[i], rank: rank });
+        all.push({ city: pool[i], rank: rank });
       }
       all.sort(function(a, b) { return a.rank - b.rank; });
       var matches = all.slice(0, 8).map(function(m) { return m.city; });
@@ -1246,7 +1302,7 @@ function _renderSunMap(now) {
         (function(city) {
           items[i].onclick = function() {
             _saveLocation(city.lat, city.lon, city.name);
-            _renderAlmanacContent();
+            _almRepaintFocus();   // location-only refresh, preserves scroll
           };
         })(matches[i]);
       }
@@ -1822,7 +1878,7 @@ function _shareAlmanacLocation() {
       // Only use city name if reasonably close (within ~2 degrees)
       if (bestDist > 4) delete locData.name;
       _saveLocation(locData.lat, locData.lon, locData.name);
-      _renderAlmanacContent();
+      _almRepaintFocus();   // location-only refresh, preserves scroll
     }, function() {
       // GPS denied or unavailable — fall back to manual entry
       _promptAlmanacLocation();
@@ -1975,6 +2031,243 @@ var _MAP_CITIES = [
   { name: 'Suva, Fiji', lat: -17.77, lon: 177.97 }
 ];
 
+// Extra cities the location SEARCH can resolve (no map dots — the map plots
+// only _MAP_CITIES). Small list, big reach; coords to ~0.1° are plenty for a
+// point-on-Earth picker.
+var _SEARCH_CITIES = [
+  // North America
+  { name: 'Seattle, Washington, United States', lat: 47.61, lon: -122.33 },
+  { name: 'Denver, Colorado, United States', lat: 39.74, lon: -104.99 },
+  { name: 'Boston, Massachusetts, United States', lat: 42.36, lon: -71.06 },
+  { name: 'Miami, Florida, United States', lat: 25.76, lon: -80.19 },
+  { name: 'Atlanta, Georgia, United States', lat: 33.75, lon: -84.39 },
+  { name: 'Dallas, Texas, United States', lat: 32.78, lon: -96.80 },
+  { name: 'San Diego, California, United States', lat: 32.72, lon: -117.16 },
+  { name: 'Portland, Oregon, United States', lat: 45.52, lon: -122.68 },
+  { name: 'Las Vegas, Nevada, United States', lat: 36.17, lon: -115.14 },
+  { name: 'Minneapolis, Minnesota, United States', lat: 44.98, lon: -93.27 },
+  { name: 'Detroit, Michigan, United States', lat: 42.33, lon: -83.05 },
+  { name: 'Nashville, Tennessee, United States', lat: 36.16, lon: -86.78 },
+  { name: 'New Orleans, Louisiana, United States', lat: 29.95, lon: -90.07 },
+  { name: 'Salt Lake City, Utah, United States', lat: 40.76, lon: -111.89 },
+  { name: 'Kansas City, Missouri, United States', lat: 39.10, lon: -94.58 },
+  { name: 'St. Louis, Missouri, United States', lat: 38.63, lon: -90.20 },
+  { name: 'Pittsburgh, Pennsylvania, United States', lat: 40.44, lon: -79.996 },
+  { name: 'Cleveland, Ohio, United States', lat: 41.50, lon: -81.69 },
+  { name: 'Baltimore, Maryland, United States', lat: 39.29, lon: -76.61 },
+  { name: 'Austin, Texas, United States', lat: 30.27, lon: -97.74 },
+  { name: 'Charlotte, North Carolina, United States', lat: 35.23, lon: -80.84 },
+  { name: 'Orlando, Florida, United States', lat: 28.54, lon: -81.38 },
+  { name: 'Tampa, Florida, United States', lat: 27.95, lon: -82.46 },
+  { name: 'Honolulu, Hawaii, United States', lat: 21.31, lon: -157.86 },
+  { name: 'Anchorage, Alaska, United States', lat: 61.22, lon: -149.90 },
+  { name: 'Ottawa, Canada', lat: 45.42, lon: -75.70 },
+  { name: 'Calgary, Canada', lat: 51.05, lon: -114.07 },
+  { name: 'Edmonton, Canada', lat: 53.55, lon: -113.49 },
+  { name: 'Winnipeg, Canada', lat: 49.90, lon: -97.14 },
+  { name: 'Quebec City, Canada', lat: 46.81, lon: -71.21 },
+  { name: 'Halifax, Canada', lat: 44.65, lon: -63.58 },
+  // Latin America
+  { name: 'Guadalajara, Mexico', lat: 20.66, lon: -103.35 },
+  { name: 'Monterrey, Mexico', lat: 25.69, lon: -100.32 },
+  { name: 'Tijuana, Mexico', lat: 32.51, lon: -117.04 },
+  { name: 'Havana, Cuba', lat: 23.11, lon: -82.37 },
+  { name: 'Santo Domingo, Dominican Republic', lat: 18.49, lon: -69.93 },
+  { name: 'San Juan, Puerto Rico', lat: 18.47, lon: -66.11 },
+  { name: 'Guatemala City, Guatemala', lat: 14.63, lon: -90.51 },
+  { name: 'San José, Costa Rica', lat: 9.93, lon: -84.08 },
+  { name: 'Panama City, Panama', lat: 8.98, lon: -79.52 },
+  { name: 'Medellín, Colombia', lat: 6.24, lon: -75.58 },
+  { name: 'Cali, Colombia', lat: 3.44, lon: -76.52 },
+  { name: 'Quito, Ecuador', lat: -0.18, lon: -78.47 },
+  { name: 'Guayaquil, Ecuador', lat: -2.17, lon: -79.92 },
+  { name: 'La Paz, Bolivia', lat: -16.50, lon: -68.15 },
+  { name: 'Montevideo, Uruguay', lat: -34.90, lon: -56.16 },
+  { name: 'Asunción, Paraguay', lat: -25.28, lon: -57.63 },
+  { name: 'Belo Horizonte, Brazil', lat: -19.92, lon: -43.94 },
+  { name: 'Brasília, Brazil', lat: -15.79, lon: -47.88 },
+  { name: 'Porto Alegre, Brazil', lat: -30.03, lon: -51.23 },
+  { name: 'Recife, Brazil', lat: -8.05, lon: -34.88 },
+  { name: 'Salvador, Brazil', lat: -12.97, lon: -38.51 },
+  { name: 'Curitiba, Brazil', lat: -25.43, lon: -49.27 },
+  { name: 'Rosario, Argentina', lat: -32.95, lon: -60.64 },
+  { name: 'Córdoba, Argentina', lat: -31.42, lon: -64.18 },
+  // Europe
+  { name: 'Manchester, United Kingdom', lat: 53.48, lon: -2.24 },
+  { name: 'Birmingham, United Kingdom', lat: 52.49, lon: -1.89 },
+  { name: 'Glasgow, United Kingdom', lat: 55.86, lon: -4.25 },
+  { name: 'Edinburgh, United Kingdom', lat: 55.95, lon: -3.19 },
+  { name: 'Leeds, United Kingdom', lat: 53.80, lon: -1.55 },
+  { name: 'Liverpool, United Kingdom', lat: 53.41, lon: -2.99 },
+  { name: 'Bristol, United Kingdom', lat: 51.45, lon: -2.59 },
+  { name: 'Belfast, United Kingdom', lat: 54.60, lon: -5.93 },
+  { name: 'Dublin, Ireland', lat: 53.35, lon: -6.26 },
+  { name: 'Marseille, France', lat: 43.30, lon: 5.37 },
+  { name: 'Lyon, France', lat: 45.76, lon: 4.84 },
+  { name: 'Nice, France', lat: 43.70, lon: 7.27 },
+  { name: 'Toulouse, France', lat: 43.60, lon: 1.44 },
+  { name: 'Bordeaux, France', lat: 44.84, lon: -0.58 },
+  { name: 'Strasbourg, France', lat: 48.57, lon: 7.75 },
+  { name: 'Hamburg, Germany', lat: 53.55, lon: 9.99 },
+  { name: 'Munich, Germany', lat: 48.14, lon: 11.58 },
+  { name: 'Frankfurt, Germany', lat: 50.11, lon: 8.68 },
+  { name: 'Cologne, Germany', lat: 50.94, lon: 6.96 },
+  { name: 'Stuttgart, Germany', lat: 48.78, lon: 9.18 },
+  { name: 'Naples, Italy', lat: 40.85, lon: 14.27 },
+  { name: 'Turin, Italy', lat: 45.07, lon: 7.69 },
+  { name: 'Milan, Italy', lat: 45.46, lon: 9.19 },
+  { name: 'Florence, Italy', lat: 43.77, lon: 11.26 },
+  { name: 'Venice, Italy', lat: 45.44, lon: 12.34 },
+  { name: 'Bologna, Italy', lat: 44.49, lon: 11.34 },
+  { name: 'Palermo, Italy', lat: 38.12, lon: 13.36 },
+  { name: 'Valencia, Spain', lat: 39.47, lon: -0.38 },
+  { name: 'Seville, Spain', lat: 37.39, lon: -5.99 },
+  { name: 'Bilbao, Spain', lat: 43.26, lon: -2.93 },
+  { name: 'Málaga, Spain', lat: 36.72, lon: -4.42 },
+  { name: 'Zaragoza, Spain', lat: 41.65, lon: -0.89 },
+  { name: 'Porto, Portugal', lat: 41.15, lon: -8.61 },
+  { name: 'Rotterdam, Netherlands', lat: 51.92, lon: 4.48 },
+  { name: 'The Hague, Netherlands', lat: 52.08, lon: 4.30 },
+  { name: 'Antwerp, Belgium', lat: 51.22, lon: 4.40 },
+  { name: 'Zurich, Switzerland', lat: 47.37, lon: 8.54 },
+  { name: 'Geneva, Switzerland', lat: 46.20, lon: 6.14 },
+  { name: 'Gothenburg, Sweden', lat: 57.71, lon: 11.97 },
+  { name: 'Bergen, Norway', lat: 60.39, lon: 5.32 },
+  { name: 'Kraków, Poland', lat: 50.06, lon: 19.94 },
+  { name: 'Gdańsk, Poland', lat: 54.35, lon: 18.65 },
+  { name: 'Brno, Czechia', lat: 49.20, lon: 16.61 },
+  { name: 'Bratislava, Slovakia', lat: 48.15, lon: 17.11 },
+  { name: 'Ljubljana, Slovenia', lat: 46.06, lon: 14.51 },
+  { name: 'Zagreb, Croatia', lat: 45.81, lon: 15.98 },
+  { name: 'Belgrade, Serbia', lat: 44.79, lon: 20.45 },
+  { name: 'Sofia, Bulgaria', lat: 42.70, lon: 23.32 },
+  { name: 'Bucharest, Romania', lat: 44.43, lon: 26.10 },
+  { name: 'Thessaloniki, Greece', lat: 40.64, lon: 22.94 },
+  { name: 'Reykjavík, Iceland', lat: 64.15, lon: -21.94 },
+  { name: 'Vilnius, Lithuania', lat: 54.69, lon: 25.28 },
+  { name: 'Riga, Latvia', lat: 56.95, lon: 24.11 },
+  { name: 'Tallinn, Estonia', lat: 59.44, lon: 24.75 },
+  { name: 'Kharkiv, Ukraine', lat: 49.99, lon: 36.23 },
+  { name: 'Odesa, Ukraine', lat: 46.48, lon: 30.72 },
+  { name: 'Lviv, Ukraine', lat: 49.84, lon: 24.03 },
+  { name: 'Kazan, Russia', lat: 55.83, lon: 49.07 },
+  { name: 'Yekaterinburg, Russia', lat: 56.84, lon: 60.61 },
+  { name: 'Novosibirsk, Russia', lat: 55.01, lon: 82.93 },
+  // Middle East
+  { name: 'Mecca, Saudi Arabia', lat: 21.42, lon: 39.83 },
+  { name: 'Jeddah, Saudi Arabia', lat: 21.49, lon: 39.19 },
+  { name: 'Doha, Qatar', lat: 25.29, lon: 51.53 },
+  { name: 'Abu Dhabi, United Arab Emirates', lat: 24.45, lon: 54.38 },
+  { name: 'Kuwait City, Kuwait', lat: 29.38, lon: 47.99 },
+  { name: 'Manama, Bahrain', lat: 26.23, lon: 50.59 },
+  { name: 'Muscat, Oman', lat: 23.59, lon: 58.41 },
+  { name: 'Amman, Jordan', lat: 31.95, lon: 35.93 },
+  { name: 'Beirut, Lebanon', lat: 33.89, lon: 35.50 },
+  { name: 'Baghdad, Iraq', lat: 33.32, lon: 44.36 },
+  { name: 'Isfahan, Iran', lat: 32.65, lon: 51.67 },
+  { name: 'Mashhad, Iran', lat: 36.30, lon: 59.61 },
+  { name: 'Izmir, Turkey', lat: 38.42, lon: 27.14 },
+  { name: 'Tbilisi, Georgia', lat: 41.72, lon: 44.83 },
+  { name: 'Yerevan, Armenia', lat: 40.18, lon: 44.51 },
+  { name: 'Baku, Azerbaijan', lat: 40.41, lon: 49.87 },
+  { name: 'Jerusalem, Israel', lat: 31.77, lon: 35.21 },
+  // Africa
+  { name: 'Casablanca, Morocco', lat: 33.57, lon: -7.59 },
+  { name: 'Marrakesh, Morocco', lat: 31.63, lon: -7.99 },
+  { name: 'Tripoli, Libya', lat: 32.89, lon: 13.19 },
+  { name: 'Khartoum, Sudan', lat: 15.50, lon: 32.56 },
+  { name: 'Addis Ababa, Ethiopia', lat: 9.03, lon: 38.74 },
+  { name: 'Mombasa, Kenya', lat: -4.04, lon: 39.67 },
+  { name: 'Dar es Salaam, Tanzania', lat: -6.79, lon: 39.21 },
+  { name: 'Kampala, Uganda', lat: 0.35, lon: 32.58 },
+  { name: 'Kinshasa, DR Congo', lat: -4.44, lon: 15.27 },
+  { name: 'Luanda, Angola', lat: -8.84, lon: 13.23 },
+  { name: 'Abuja, Nigeria', lat: 9.06, lon: 7.50 },
+  { name: 'Accra, Ghana', lat: 5.60, lon: -0.19 },
+  { name: 'Abidjan, Ivory Coast', lat: 5.36, lon: -4.01 },
+  { name: 'Dakar, Senegal', lat: 14.72, lon: -17.47 },
+  { name: 'Harare, Zimbabwe', lat: -17.83, lon: 31.05 },
+  { name: 'Lusaka, Zambia', lat: -15.42, lon: 28.28 },
+  { name: 'Windhoek, Namibia', lat: -22.56, lon: 17.08 },
+  { name: 'Maputo, Mozambique', lat: -25.97, lon: 32.57 },
+  { name: 'Durban, South Africa', lat: -29.86, lon: 31.02 },
+  { name: 'Pretoria, South Africa', lat: -25.75, lon: 28.19 },
+  { name: 'Alexandria, Egypt', lat: 31.20, lon: 29.92 },
+  // Asia
+  { name: 'Osaka, Japan', lat: 34.69, lon: 135.50 },
+  { name: 'Nagoya, Japan', lat: 35.18, lon: 136.91 },
+  { name: 'Sapporo, Japan', lat: 43.06, lon: 141.35 },
+  { name: 'Fukuoka, Japan', lat: 33.59, lon: 130.40 },
+  { name: 'Kyoto, Japan', lat: 35.01, lon: 135.77 },
+  { name: 'Yokohama, Japan', lat: 35.44, lon: 139.64 },
+  { name: 'Busan, South Korea', lat: 35.18, lon: 129.08 },
+  { name: 'Incheon, South Korea', lat: 37.46, lon: 126.71 },
+  { name: 'Pyongyang, North Korea', lat: 39.04, lon: 125.76 },
+  { name: 'Guangzhou, China', lat: 23.13, lon: 113.26 },
+  { name: 'Shenzhen, China', lat: 22.54, lon: 114.06 },
+  { name: 'Chengdu, China', lat: 30.57, lon: 104.07 },
+  { name: 'Chongqing, China', lat: 29.56, lon: 106.55 },
+  { name: 'Wuhan, China', lat: 30.59, lon: 114.31 },
+  { name: "Xi'an, China", lat: 34.34, lon: 108.94 },
+  { name: 'Hangzhou, China', lat: 30.27, lon: 120.15 },
+  { name: 'Nanjing, China', lat: 32.06, lon: 118.80 },
+  { name: 'Tianjin, China', lat: 39.13, lon: 117.20 },
+  { name: 'Shenyang, China', lat: 41.81, lon: 123.43 },
+  { name: 'Harbin, China', lat: 45.80, lon: 126.53 },
+  { name: 'Qingdao, China', lat: 36.07, lon: 120.38 },
+  { name: 'Hong Kong, China', lat: 22.32, lon: 114.17 },
+  { name: 'Taipei, Taiwan', lat: 25.03, lon: 121.57 },
+  { name: 'Kaohsiung, Taiwan', lat: 22.63, lon: 120.30 },
+  { name: 'Hanoi, Vietnam', lat: 21.03, lon: 105.85 },
+  { name: 'Ho Chi Minh City, Vietnam', lat: 10.82, lon: 106.63 },
+  { name: 'Phnom Penh, Cambodia', lat: 11.56, lon: 104.92 },
+  { name: 'Vientiane, Laos', lat: 17.97, lon: 102.63 },
+  { name: 'Yangon, Myanmar', lat: 16.87, lon: 96.20 },
+  { name: 'Chiang Mai, Thailand', lat: 18.79, lon: 98.99 },
+  { name: 'George Town, Malaysia', lat: 5.41, lon: 100.34 },
+  { name: 'Surabaya, Indonesia', lat: -7.26, lon: 112.75 },
+  { name: 'Bandung, Indonesia', lat: -6.92, lon: 107.62 },
+  { name: 'Medan, Indonesia', lat: 3.60, lon: 98.67 },
+  { name: 'Cebu, Philippines', lat: 10.32, lon: 123.90 },
+  { name: 'Davao, Philippines', lat: 7.19, lon: 125.46 },
+  { name: 'Colombo, Sri Lanka', lat: 6.93, lon: 79.86 },
+  { name: 'Chittagong, Bangladesh', lat: 22.36, lon: 91.78 },
+  { name: 'Kathmandu, Nepal', lat: 27.72, lon: 85.32 },
+  { name: 'Lahore, Pakistan', lat: 31.55, lon: 74.34 },
+  { name: 'Islamabad, Pakistan', lat: 33.68, lon: 73.05 },
+  { name: 'Peshawar, Pakistan', lat: 34.02, lon: 71.58 },
+  { name: 'Kabul, Afghanistan', lat: 34.56, lon: 69.21 },
+  { name: 'Tashkent, Uzbekistan', lat: 41.30, lon: 69.24 },
+  { name: 'Almaty, Kazakhstan', lat: 43.24, lon: 76.89 },
+  { name: 'Astana, Kazakhstan', lat: 51.17, lon: 71.43 },
+  { name: 'Bishkek, Kyrgyzstan', lat: 42.87, lon: 74.59 },
+  { name: 'Ulaanbaatar, Mongolia', lat: 47.89, lon: 106.91 },
+  { name: 'Bangalore, India', lat: 12.97, lon: 77.59 },
+  { name: 'Chennai, India', lat: 13.08, lon: 80.27 },
+  { name: 'Hyderabad, India', lat: 17.39, lon: 78.49 },
+  { name: 'Kolkata, India', lat: 22.57, lon: 88.36 },
+  { name: 'Pune, India', lat: 18.52, lon: 73.86 },
+  { name: 'Ahmedabad, India', lat: 23.03, lon: 72.58 },
+  { name: 'Jaipur, India', lat: 26.91, lon: 75.79 },
+  { name: 'Lucknow, India', lat: 26.85, lon: 80.95 },
+  { name: 'Kochi, India', lat: 9.93, lon: 76.27 },
+  { name: 'Chandigarh, India', lat: 30.73, lon: 76.78 },
+  // Oceania
+  { name: 'Melbourne, Australia', lat: -37.81, lon: 144.96 },
+  { name: 'Brisbane, Australia', lat: -27.47, lon: 153.03 },
+  { name: 'Perth, Australia', lat: -31.95, lon: 115.86 },
+  { name: 'Adelaide, Australia', lat: -34.93, lon: 138.60 },
+  { name: 'Canberra, Australia', lat: -35.28, lon: 149.13 },
+  { name: 'Gold Coast, Australia', lat: -28.02, lon: 153.40 },
+  { name: 'Hobart, Australia', lat: -42.88, lon: 147.33 },
+  { name: 'Darwin, Australia', lat: -12.46, lon: 130.84 },
+  { name: 'Auckland, New Zealand', lat: -36.85, lon: 174.76 },
+  { name: 'Wellington, New Zealand', lat: -41.29, lon: 174.78 },
+  { name: 'Christchurch, New Zealand', lat: -43.53, lon: 172.64 },
+  { name: 'Suva, Fiji', lat: -18.14, lon: 178.44 },
+  { name: 'Port Moresby, Papua New Guinea', lat: -9.44, lon: 147.18 }
+];
+
 // Coastline data removed — using Natural Earth SVG map (/static/world-map.svg)
 
 function _promptAlmanacLocation() {
@@ -2081,7 +2374,7 @@ function _promptAlmanacLocation() {
       }
       _saveLocation(locData.lat, locData.lon, locData.name);
       document.body.removeChild(overlay);
-      _renderAlmanacContent();
+      _almRepaintFocus();   // location-only refresh, preserves scroll
     }
   };
 
@@ -3006,25 +3299,56 @@ function _getAlmanacEvents(sys, year, month) {
     events[day].push({ label: label, type: type, icon: icon || '', src: src || '' });
   }
 
-  if (sys === 'gregorian') {
+  // Base worldwide / regional / astronomical events are computed on absolute
+  // Gregorian dates and projected onto whatever grid is shown (each display day
+  // has a JDN → look up that Gregorian date's events), so switching calendars
+  // no longer drops them. Then layer this system's own native table on top.
+  var daysInMonth = _calDaysInMonth(sys, year, month);
+  var firstJDN = _calFirstDayJDN(sys, year, month);
+  var gregMonths = {};
+  for (var _pd = 1; _pd <= daysInMonth; _pd++) {
+    var _pg = _jdnToGregorian(firstJDN + _pd - 1);
+    gregMonths[_pg.year * 100 + _pg.month] = { gy: _pg.year, gm: _pg.month };
+  }
+  var baseByJDN = {};
+  for (var _gk in gregMonths) {
+    (function (gy, gm) {
+      _gregorianBaseEvents(gy, gm, function (gDay, label, type, icon, src) {
+        var jdn = _gregorianToJDN(gy, gm, gDay);
+        (baseByJDN[jdn] = baseByJDN[jdn] || []).push({ label: label, type: type, icon: icon || '', src: src || '' });
+      });
+    })(gregMonths[_gk].gy, gregMonths[_gk].gm);
+  }
+  for (var _dd = 1; _dd <= daysInMonth; _dd++) {
+    var _be = baseByJDN[firstJDN + _dd - 1];
+    if (_be) for (var _bi = 0; _bi < _be.length; _bi++) add(_dd, _be[_bi].label, _be[_bi].type, _be[_bi].icon, _be[_bi].src);
+  }
+
+  _systemNativeEvents(sys, year, month, add);
+  return events;
+}
+
+// The rich base event set, keyed by Gregorian day of `month` via add(day,...).
+function _gregorianBaseEvents(year, month, add) {
+  {
     // International base — observed widely enough to show everywhere. Mix of
     // UN international days, cultural observances, and a few for fun.
-    if (month === 1) { add(1, "New Year's Day", 'holiday'); add(4, 'World Braille Day', 'holiday'); add(6, 'Epiphany', 'holiday'); add(24, 'International Day of Education', 'holiday'); add(27, 'Holocaust Remembrance Day', 'holiday'); }
-    if (month === 2) { add(4, 'World Cancer Day', 'holiday'); add(11, 'Intl. Day of Women in Science', 'holiday'); add(12, 'Darwin Day', 'holiday'); add(14, "Valentine's Day", 'holiday'); add(21, 'International Mother Language Day', 'holiday'); }
+    if (month === 1) { add(1, t('hol_new_year_day'), 'holiday'); add(4, 'World Braille Day', 'holiday'); add(6, 'Epiphany', 'holiday'); add(24, 'International Day of Education', 'holiday'); add(27, 'Holocaust Remembrance Day', 'holiday'); }
+    if (month === 2) { add(4, 'World Cancer Day', 'holiday'); add(11, 'Intl. Day of Women in Science', 'holiday'); add(12, 'Darwin Day', 'holiday'); add(14, t('hol_valentines'), 'holiday'); add(21, 'International Mother Language Day', 'holiday'); }
     if (month === 3) { add(3, 'World Wildlife Day', 'holiday'); add(8, "International Women's Day", 'holiday'); add(14, 'Pi Day', 'holiday'); add(17, "St. Patrick's Day", 'holiday'); add(20, 'International Day of Happiness', 'holiday'); add(21, 'World Poetry Day', 'holiday'); add(22, 'World Water Day', 'holiday'); add(27, 'World Theatre Day', 'holiday'); }
-    if (month === 4) { add(1, "April Fools' Day", 'holiday'); add(7, 'World Health Day', 'holiday'); add(15, 'World Art Day', 'holiday'); add(22, 'Earth Day', 'holiday'); add(23, 'World Book Day', 'holiday'); add(29, 'International Dance Day', 'holiday'); }
+    if (month === 4) { add(1, "April Fools' Day", 'holiday'); add(7, 'World Health Day', 'holiday'); add(15, 'World Art Day', 'holiday'); add(22, t('hol_earth_day'), 'holiday'); add(23, 'World Book Day', 'holiday'); add(29, 'International Dance Day', 'holiday'); }
     if (month === 5) { add(1, "May Day / Workers' Day", 'holiday'); add(3, 'World Press Freedom Day', 'holiday'); add(4, 'Star Wars Day', 'holiday'); add(15, 'International Day of Families', 'holiday'); add(20, 'World Bee Day', 'holiday'); add(25, 'Towel Day', 'holiday'); }
     if (month === 6) { add(5, 'World Environment Day', 'holiday'); add(8, 'World Oceans Day', 'holiday'); add(20, 'World Refugee Day', 'holiday'); add(21, 'International Yoga Day', 'holiday'); add(21, 'World Music Day', 'holiday'); }
     if (month === 7) { add(11, 'World Population Day', 'holiday'); add(17, 'World Emoji Day', 'holiday'); add(18, 'Nelson Mandela Day', 'holiday'); add(20, 'Moon Landing Day', 'holiday'); add(30, 'International Friendship Day', 'holiday'); }
     if (month === 8) { add(8, 'International Cat Day', 'holiday'); add(12, 'International Youth Day', 'holiday'); add(19, 'World Humanitarian Day', 'holiday'); add(19, 'World Photography Day', 'holiday'); add(26, 'International Dog Day', 'holiday'); }
     if (month === 9) { add(8, 'International Literacy Day', 'holiday'); add(21, 'International Day of Peace', 'holiday'); add(23, 'International Day of Sign Languages', 'holiday'); add(27, 'World Tourism Day', 'holiday'); }
-    if (month === 10) { add(1, 'International Coffee Day', 'holiday'); add(4, 'World Animal Day', 'holiday'); add(5, "World Teachers' Day", 'holiday'); add(10, 'World Mental Health Day', 'holiday'); add(16, 'World Food Day', 'holiday'); add(24, 'United Nations Day', 'holiday'); add(31, 'Halloween', 'holiday'); }
+    if (month === 10) { add(1, 'International Coffee Day', 'holiday'); add(4, 'World Animal Day', 'holiday'); add(5, "World Teachers' Day", 'holiday'); add(10, 'World Mental Health Day', 'holiday'); add(16, 'World Food Day', 'holiday'); add(24, 'United Nations Day', 'holiday'); add(31, t('hol_halloween'), 'holiday'); }
     if (month === 11) { add(10, 'World Science Day', 'holiday'); add(13, 'World Kindness Day', 'holiday'); add(19, "International Men's Day", 'holiday'); add(20, "World Children's Day", 'holiday'); add(21, 'World Television Day', 'holiday'); }
-    if (month === 12) { add(3, 'Intl. Day of Persons with Disabilities', 'holiday'); add(5, 'International Volunteer Day', 'holiday'); add(10, 'Human Rights Day', 'holiday'); add(11, 'International Mountain Day', 'holiday'); add(24, 'Christmas Eve', 'holiday'); add(25, 'Christmas Day', 'holiday'); add(31, "New Year's Eve", 'holiday'); }
+    if (month === 12) { add(3, 'Intl. Day of Persons with Disabilities', 'holiday'); add(5, 'International Volunteer Day', 'holiday'); add(10, 'Human Rights Day', 'holiday'); add(11, 'International Mountain Day', 'holiday'); add(24, t('hol_christmas_eve'), 'holiday'); add(25, t('hol_christmas'), 'holiday'); add(31, t('hol_new_year_eve'), 'holiday'); }
     // Mother's/Father's Day on the US dates — the majority convention
     // (US, CA, AU, DE, IT, BR, IN, CN, JP and others)
-    if (month === 5) { add(_nthWeekday(year, 5, 0, 2), "Mother's Day", 'holiday'); }
-    if (month === 6) { add(_nthWeekday(year, 6, 0, 3), "Father's Day", 'holiday'); }
+    if (month === 5) { add(_nthWeekday(year, 5, 0, 2), t('hol_mothers_day'), 'holiday'); }
+    if (month === 6) { add(_nthWeekday(year, 6, 0, 3), t('hol_fathers_day'), 'holiday'); }
     // National days + clock changes for the detected region
     _applyRegionHolidays(_almRegion(), year, month, add);
     // Easter and related
@@ -3054,7 +3378,17 @@ function _getAlmanacEvents(sys, year, month) {
     }
   }
 
-  else if (sys === 'hebrew') {
+  // Meteor shower peaks — Gregorian dates, so part of the projected base.
+  for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
+    var s = _METEOR_SHOWERS[si];
+    if (s.peak[0] === month) { add(s.peak[1], _showerName(s), 'meteor', '☄'); }
+  }
+}
+
+// Each calendar system's own native religious/civil holidays, keyed to that
+// system's own month & day (layered on top of the projected Gregorian base).
+function _systemNativeEvents(sys, year, month, add) {
+  if (sys === 'hebrew') {
     // `month` arrives as a DISPLAY position into the Hebrew month list, which
     // omits Adar I in non-leap years — so from position 6 on it sits one
     // ahead of the internal month code (1=Tishrei … 7=Adar/Adar II, 8=Nisan
@@ -3104,6 +3438,11 @@ function _getAlmanacEvents(sys, year, month) {
   }
 
   else if (sys === 'chinese') {
+    // `month` arrives as a display position into the civil year; festivals are
+    // keyed by the real month NUMBER and never fall in a leap month.
+    var _cm = _cnYearMonths(year - 2697)[month - 1];
+    if (!_cm || _cm.leap) return;
+    month = _cm.num;
     // Chinese months: 1=Zhengyue..12=Layue
     if (month === 1) { add(1, 'Spring Festival', 'holiday'); add(2, 'Spring Festival II', 'holiday'); add(3, 'Spring Festival III', 'holiday'); add(5, 'Po Wu', 'holiday'); add(7, 'Renri', 'holiday'); add(9, 'Jade Emperor', 'holiday'); add(15, 'Lantern Festival', 'holiday'); }
     if (month === 2) { add(2, 'Zhonghe Festival', 'holiday'); }
@@ -3133,24 +3472,14 @@ function _getAlmanacEvents(sys, year, month) {
 
   else if (sys === 'julian') {
     // Julian calendar — Orthodox/Eastern Christianity
-    if (month === 1) { add(1, "New Year's Day", 'holiday'); add(5, 'Paramony', 'holiday'); add(6, 'Theophany', 'holiday'); add(7, 'Christmas (Julian)', 'holiday'); add(19, 'Epiphany (Julian)', 'holiday'); }
+    if (month === 1) { add(1, t('hol_new_year_day'), 'holiday'); add(5, 'Paramony', 'holiday'); add(6, 'Theophany', 'holiday'); add(7, 'Christmas (Julian)', 'holiday'); add(19, 'Epiphany (Julian)', 'holiday'); }
     if (month === 2) { add(2, 'Presentation of Jesus', 'holiday'); add(15, 'Meatfare Sunday', 'holiday'); }
     if (month === 3) { add(25, 'Annunciation', 'holiday'); }
     if (month === 8) { add(6, 'Transfiguration', 'holiday'); add(15, 'Dormition of the Theotokos', 'holiday'); }
     if (month === 9) { add(8, 'Nativity of Mary', 'holiday'); add(14, 'Exaltation of the Cross', 'holiday'); }
     if (month === 11) { add(21, 'Presentation of Mary', 'holiday'); }
-    if (month === 12) { add(25, 'Christmas Day', 'holiday'); add(6, "St. Nicholas Day", 'holiday'); }
+    if (month === 12) { add(25, t('hol_christmas'), 'holiday'); add(6, "St. Nicholas Day", 'holiday'); }
   }
-
-  // Meteor shower peaks (only for Gregorian — they use Gregorian dates)
-  if (sys === 'gregorian') {
-    for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
-      var s = _METEOR_SHOWERS[si];
-      if (s.peak[0] === month) { add(s.peak[1], _showerName(s), 'meteor', '\u2604'); }
-    }
-  }
-
-  return events;
 }
 
 // Almanac calendar state
@@ -3236,7 +3565,10 @@ function _drawAlmanacGrid() {
       var ev = dayEvents[ei];
       var escapedLabel = _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       var srcTitle = ev.src ? ' title="' + _tLookup('alm_region_holiday', '{c} holiday').replace('{c}', ev.src).replace(/"/g, '&quot;') + '"' : '';
-      html += '<div class="alm-ev alm-ev-' + ev.type + '"' + srcTitle + '>' +
+      // Country-specific holidays (those with a region src) get their own
+      // colour so they read apart from the worldwide observances (#33).
+      var evCls = 'alm-ev alm-ev-' + ev.type + (ev.src ? ' alm-ev-country' : '');
+      html += '<div class="' + evCls + '"' + srcTitle + '>' +
         (ev.icon ? ev.icon + ' ' : '') + escapedLabel + '</div>';
     }
     if (dayEvents.length > 2) {
@@ -3262,7 +3594,7 @@ function _drawAlmanacGrid() {
         var ev = selEvents[ei];
         var detailLabel = _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         if (ev.src) detailLabel += ' <span style="color:var(--text3)">\u00b7 ' + ev.src.replace(/</g,'&lt;') + '</span>';
-        html += '<div class="alm-ev alm-ev-' + ev.type + '" style="font-size:12px;padding:2px 0">' +
+        html += '<div class="alm-ev alm-ev-' + ev.type + (ev.src ? ' alm-ev-country' : '') + '" style="font-size:12px;padding:2px 0">' +
           (ev.icon ? ev.icon + ' ' : '') + detailLabel + '</div>';
       }
       html += '</div>';
@@ -3289,14 +3621,6 @@ function _drawAlmanacGrid() {
 }
 
 function _almSwitchSystem(sys) {
-  // No 'chinese' grid: the mean-lunation math behind the cross-reference row
-  // is fine for a one-line "\u2248" conversion, but a browsable month grid needs
-  // real astronomical new moons and leap-month intercalation — without them
-  // it showed invented month lengths and no leap months, a full month off
-  // for parts of leap years. Guarded HERE because every path funnels through
-  // this function (crossref clicks, the zh language auto-switch); the grid
-  // returns when the real calendar lands.
-  if (sys === 'chinese') sys = 'gregorian';
   // Convert selected day's JDN to the new system
   _almSystem = sys;
   var cal = _jdnToCalendar(sys, _almSelectedJDN);
@@ -3333,20 +3657,15 @@ function _almRenderCrossRef(jdn) {
     var yearStr = cal.year + _calYearSuffix(sys);
     var dateStr = monthName + ' ' + cal.day + ', ' + yearStr;
     if (sys === 'chinese') {
-      // Key the animal to the CHINESE year being displayed (era 2697), not the
-      // Gregorian year \u2014 otherwise the animal flips on Jan 1 and contradicts
-      // the year number beside it for the weeks before Chinese New Year.
+      // Key the animal to the CHINESE year being displayed (era 2697), which is
+      // the Gregorian year of that year's New Year \u2014 so the animal doesn't flip
+      // on Jan 1 in the weeks before Chinese New Year.
       var chinese = _chineseZodiac(cal.year - 2697);
-      // "\u2248": mean-lunation approximation without leap months \u2014 close most of
-      // the time, but not the real astronomical Chinese calendar.
-      dateStr = '\u2248 ' + monthName + ' ' + cal.day + ' \u00b7 ' + chinese.animal + ' \u00b7 ' + yearStr;
+      dateStr = monthName + ' ' + cal.day + ' \u00b7 ' + chinese.animal + ' \u00b7 ' + yearStr;
     }
     var isActive = sys === _almSystem ? ' alm-crossref-active' : '';
-    // The Chinese row is a cross-reference only: no grid view is offered for
-    // it (a browsable grid needs real leap-month math; _almSwitchSystem guards it).
-    var clickable = sys !== 'chinese';
     html += '<div class="alm-crossref-row' + isActive + '"' +
-      (clickable ? ' onclick="_almSwitchSystem(\'' + sys + '\')"' : ' style="cursor:default"') + '>' +
+      ' onclick="_almSwitchSystem(\'' + sys + '\')">' +
       '<span class="alm-crossref-label">' + _calLabel(sys) + '</span>' +
       '<span class="alm-crossref-date">' + dateStr + '</span>' +
       '</div>';
@@ -3677,35 +3996,154 @@ function _jdnToCalendar(sys, jdn) {
   return { year: 0, month: 1, day: 1 };
 }
 
-// Chinese lunar calendar — approximate using synodic month cycle
-// Reference new moon: Jan 6 2000 18:14 UTC = JDN 2451551.26
-var _CHINESE_NEW_MOON_JDN = 2451551.26;
-var _SYNODIC_MONTH = 29.53059;
-var _CHINESE_MONTHS = ['Zh\u0113ngyue','Eryue','S\u0101nyue','S\u00ecyue','W\u01d4yue','Li\u00f9yue',
-  'Q\u012byue','B\u0101yue','Ji\u01d4yue','Sh\u00edyue','Sh\u00edy\u012byue','L\u00e0yue'];
+// ── Chinese lunisolar calendar — real astronomy (Meeus) ──
+// Month boundaries are true new moons in China Standard Time (UTC+8); leap
+// months are placed by the solar-term (zhongqi) rule anchored to the winter
+// solstice. Accurate against the HK Observatory civil calendar for ~1900–2100.
+// Refs: Meeus, Astronomical Algorithms ch.25/27/49; Aslaksen, The Mathematics
+// of the Chinese Calendar.
+var _CHINESE_MONTHS = ['Zhēngyue','Eryue','Sānyue','Sìyue','Wǔyue','Liùyue',
+  'Qīyue','Bāyue','Jiǔyue','Shíyue','Shíyīyue','Làyue'];
+var _CN_SYN = 29.530588861;
+var _CN_TZ = 8 / 24;   // China Standard Time offset (days)
 
+// ΔT (TT−UT) in days, Espenak–Meeus piecewise — good for 1900–2150.
+function _cnDeltaTdays(jde) {
+  var y = _jdnToGregorian(Math.floor(jde + 0.5)).year;
+  var t = y - 2000, s;
+  if (y >= 2005 && y <= 2050) s = 62.92 + 0.32217 * t + 0.005589 * t * t;
+  else if (y >= 1986 && y < 2005) s = 63.86 + 0.3345 * t - 0.060374 * t * t + 0.0017275 * Math.pow(t, 3) + 0.000651814 * Math.pow(t, 4) + 0.00002373599 * Math.pow(t, 5);
+  else if (y > 2050) { var u = (y - 1820) / 100; s = -20 + 32 * u * u - 0.5628 * (2150 - y); }
+  else { var w = y - 1900; s = -2.79 + 1.494119 * w - 0.0598939 * w * w + 0.0061966 * Math.pow(w, 3) - 0.000197 * Math.pow(w, 4); }
+  return s / 86400;
+}
+
+// New-moon instant (TT Julian Date) for integer lunation index k. Meeus ch.49,
+// new-moon column of Table 49.a plus the largest planetary term A1.
+function _cnNewMoonJDE(k) {
+  var T = k / 1236.85;
+  var JDE = 2451550.09766 + _CN_SYN * k + 0.00015437 * T * T - 0.000000150 * Math.pow(T, 3) + 0.00000000073 * Math.pow(T, 4);
+  var M = (2.5534 + 29.10535670 * k - 0.0000014 * T * T - 0.00000011 * Math.pow(T, 3)) * DEG_TO_RAD;
+  var Mp = (201.5643 + 385.81693528 * k + 0.0107582 * T * T + 0.00001238 * Math.pow(T, 3) - 0.000000058 * Math.pow(T, 4)) * DEG_TO_RAD;
+  var F = (160.7108 + 390.67050284 * k - 0.0016118 * T * T - 0.00000227 * Math.pow(T, 3) + 0.000000011 * Math.pow(T, 4)) * DEG_TO_RAD;
+  var Om = (124.7746 - 1.56375588 * k + 0.0020672 * T * T + 0.00000215 * Math.pow(T, 3)) * DEG_TO_RAD;
+  var E = 1 - 0.002516 * T - 0.0000074 * T * T;
+  JDE += -0.40720 * Math.sin(Mp) + 0.17241 * E * Math.sin(M) + 0.01608 * Math.sin(2 * Mp)
+    + 0.01039 * Math.sin(2 * F) + 0.00739 * E * Math.sin(Mp - M) - 0.00514 * E * Math.sin(Mp + M)
+    + 0.00208 * E * E * Math.sin(2 * M) - 0.00111 * Math.sin(Mp - 2 * F) - 0.00057 * Math.sin(Mp + 2 * F)
+    + 0.00056 * E * Math.sin(2 * Mp + M) - 0.00042 * Math.sin(3 * Mp) + 0.00042 * E * Math.sin(M + 2 * F)
+    + 0.00038 * E * Math.sin(M - 2 * F) - 0.00024 * E * Math.sin(2 * Mp - M) - 0.00017 * Math.sin(Om)
+    - 0.00007 * Math.sin(Mp + 2 * M) + 0.00004 * Math.sin(2 * Mp - 2 * F) + 0.00004 * Math.sin(3 * M)
+    + 0.00003 * Math.sin(Mp + M - 2 * F) + 0.00003 * Math.sin(2 * Mp + 2 * F) - 0.00003 * Math.sin(Mp + M + 2 * F)
+    + 0.00003 * Math.sin(Mp - M + 2 * F) - 0.00002 * Math.sin(Mp - M - 2 * F) - 0.00002 * Math.sin(3 * Mp + M) + 0.00002 * Math.sin(4 * Mp);
+  var A1 = (299.77 + 0.107408 * k - 0.009173 * T * T) * DEG_TO_RAD;
+  JDE += 0.000325 * Math.sin(A1);
+  return JDE;
+}
+
+// Sun's apparent ecliptic longitude (deg) for a TT Julian date. Meeus ch.25.
+function _cnSolarLongitude(jde) {
+  var T = (jde - 2451545.0) / 36525;
+  var L0 = 280.46646 + 36000.76983 * T + 0.0003032 * T * T;
+  var M = (357.52911 + 35999.05029 * T - 0.0001537 * T * T) * DEG_TO_RAD;
+  var C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * Math.sin(M)
+    + (0.019993 - 0.000101 * T) * Math.sin(2 * M) + 0.000289 * Math.sin(3 * M);
+  var Om = (125.04 - 1934.136 * T) * DEG_TO_RAD;
+  var lam = L0 + C - 0.00569 - 0.00478 * Math.sin(Om);
+  return ((lam % 360) + 360) % 360;
+}
+
+// TT Julian date where the Sun reaches ecliptic longitude targetDeg (near approxJD).
+function _cnSolarTermJDE(approxJD, targetDeg) {
+  var jd = approxJD;
+  for (var i = 0; i < 6; i++) {
+    var d = (((targetDeg - _cnSolarLongitude(jd) + 180) % 360) + 360) % 360 - 180;
+    jd += d / 0.98565;
+  }
+  return jd;
+}
+
+// Integer China-civil JDN of a TT instant (subtract ΔT → UT, add +8h, floor).
+function _cnChinaDay(jde) { return Math.floor((jde - _cnDeltaTdays(jde)) + _CN_TZ + 0.5); }
+function _cnNewMoonDay(k) { return _cnChinaDay(_cnNewMoonJDE(k)); }
+
+// Does lunar month k contain a zhongqi (a major solar term, longitude a
+// multiple of 30°), tested by the term's CIVIL DAY falling inside the month?
+// The rigorous test — the cheaper longitude-at-new-moon index test misfires
+// when a term and a new moon land on the same China-civil day (e.g. 2020's
+// summer solstice), which is exactly when leap-month placement turns on it.
+function _cnMonthHasZhongqi(k) {
+  var start = _cnNewMoonDay(k), end = _cnNewMoonDay(k + 1);
+  var nm = _cnNewMoonJDE(k);
+  var lam0 = _cnSolarLongitude(nm);
+  var nextZq = Math.ceil((lam0 - 1e-9) / 30) * 30;      // next multiple of 30° (deg)
+  var zqJDE = _cnSolarTermJDE(nm + 1, ((nextZq % 360) + 360) % 360);
+  var zqDay = _cnChinaDay(zqJDE);
+  return zqDay >= start && zqDay < end;
+}
+
+// Lunation index k of the month-11 new moon whose December solstice it contains.
+function _cnNm11(gy) {
+  var ws = _cnSolarTermJDE(_gregorianToJDN(gy, 12, 21) + 0.5, 270);
+  var wsD = _cnChinaDay(ws);
+  var k = Math.floor((ws - 2451550.09766) / _CN_SYN);
+  while (_cnNewMoonDay(k) > wsD) k--;
+  while (_cnNewMoonDay(k + 1) <= wsD) k++;
+  return k;
+}
+
+// Build the suì starting at month-11 lunation k11: [{k,num,leap,start,end}].
+var _cnSuiCache = {};
+function _cnBuildSui(k11) {
+  if (_cnSuiCache[k11]) return _cnSuiCache[k11];
+  var k11n = _cnNm11(_jdnToGregorian(_cnNewMoonDay(k11)).year + 1);
+  var n = k11n - k11, leap = (n === 13), leapK = -1, i;
+  if (leap) {
+    for (i = 0; i < n; i++) {
+      if (!_cnMonthHasZhongqi(k11 + i)) { leapK = k11 + i; break; }
+    }
+  }
+  // A leap month takes the number of the month it FOLLOWS (闰二月 = leap-2), so
+  // carry prevNum for it rather than the already-advanced running number.
+  var months = [], num = 11, prevNum = 11;
+  for (i = 0; i < n; i++) {
+    var k = k11 + i, isLeap = (k === leapK);
+    var thisNum = isLeap ? prevNum : num;
+    months.push({ k: k, num: thisNum, leap: isLeap, start: _cnNewMoonDay(k), end: _cnNewMoonDay(k + 1) });
+    if (!isLeap) { prevNum = num; num = (num % 12) + 1; }
+  }
+  _cnSuiCache[k11] = months;
+  return months;
+}
+
+// The ordered civil-year months (position 1 = CNY … 12) for the Chinese year
+// whose New Year falls in Gregorian year gyCNY.
+function _cnYearMonths(gyCNY) {
+  var out = [], j;
+  var a = _cnBuildSui(_cnNm11(gyCNY - 1));
+  var i = 0; while (i < a.length && !(a[i].num === 1 && !a[i].leap)) i++;
+  for (; i < a.length; i++) out.push(a[i]);       // months 1..10 (+ any leap among them)
+  var b = _cnBuildSui(_cnNm11(gyCNY));
+  for (j = 0; j < b.length; j++) { if (b[j].num === 1 && !b[j].leap) break; out.push(b[j]); } // 11,12(+leap)
+  return out;
+}
+
+function _cnChineseNewYearJDN(gy) { return _cnYearMonths(gy)[0].start; }
+
+// JDN → Chinese { year (Huangdi era), month (1-based position in the civil
+// year), day, monthNum, leap }.
 function _jdnToChineseLunar(jdn) {
-  // Find which lunation we're in
-  var lunationsSinceRef = (jdn - _CHINESE_NEW_MOON_JDN) / _SYNODIC_MONTH;
-  var currentLunation = Math.floor(lunationsSinceRef);
-  var dayInMonth = Math.floor(jdn - (_CHINESE_NEW_MOON_JDN + currentLunation * _SYNODIC_MONTH)) + 1;
-  if (dayInMonth < 1) { currentLunation--; dayInMonth = Math.floor(jdn - (_CHINESE_NEW_MOON_JDN + currentLunation * _SYNODIC_MONTH)) + 1; }
-  if (dayInMonth > 30) dayInMonth = 30;
-  // Approximate Chinese year and month from Gregorian new year alignment
-  // Chinese New Year falls between Jan 21 and Feb 20; month 1 starts at the new moon nearest
-  var greg = _jdnToGregorian(jdn);
-  var chineseYear = greg.year + 2697; // Huangdi era (approximate)
-  // Month within the year: 1-12 based on lunation offset from Chinese New Year
-  // Chinese New Year 2000 was Feb 5 = JDN 2451580. Lunation 0 is Jan 6.
-  // So CNY 2000 starts at lunation ~1 from our reference.
-  var cnyLunation2000 = 1; // lunation index of CNY 2000
-  var yearsSince2000 = greg.year - 2000;
-  // ~12.37 lunations per solar year; Chinese year has 12 or 13 months
-  var cnyLunation = cnyLunation2000 + Math.round(yearsSince2000 * 12.3685);
-  var monthInYear = currentLunation - cnyLunation + 1;
-  if (monthInYear < 1) { monthInYear += 12; chineseYear--; }
-  if (monthInYear > 12) { monthInYear -= 12; chineseYear++; }
-  return { year: chineseYear, month: Math.max(1, Math.min(12, monthInYear)), day: dayInMonth };
+  var g = _jdnToGregorian(jdn);
+  var gyCNY = g.year;
+  if (jdn < _cnChineseNewYearJDN(g.year)) gyCNY = g.year - 1;
+  var months = _cnYearMonths(gyCNY);
+  for (var p = 0; p < months.length; p++) {
+    if (jdn >= months[p].start && jdn < months[p].end) {
+      return { year: gyCNY + 2697, month: p + 1, day: jdn - months[p].start + 1, monthNum: months[p].num, leap: months[p].leap };
+    }
+  }
+  var last = months[months.length - 1];
+  return { year: gyCNY + 2697, month: months.length, day: jdn - last.start + 1, monthNum: last.num, leap: last.leap };
 }
 
 // Get JDN for first day of a given month
@@ -3724,11 +4162,9 @@ function _calFirstDayJDN(sys, year, month) {
   if (sys === 'julian') return _julianToJDN(year, month, 1);
   if (sys === 'buddhist') return _gregorianToJDN(year - 543, month, 1);
   if (sys === 'chinese') {
-    // Find JDN of first day of this Chinese month
-    var yearsSince2000 = (year - 2697) - 2000;
-    var cnyLunation = 1 + Math.round(yearsSince2000 * 12.3685);
-    var lunation = cnyLunation + month - 1;
-    return Math.round(_CHINESE_NEW_MOON_JDN + lunation * _SYNODIC_MONTH);
+    var cm = _cnYearMonths(year - 2697);
+    var mi = Math.max(1, Math.min(cm.length, month)) - 1;
+    return cm[mi].start;
   }
   return 0;
 }
@@ -3755,7 +4191,11 @@ function _calDaysInMonth(sys, year, month) {
     if (month === 2 && ((gYear % 4 === 0 && gYear % 100 !== 0) || gYear % 400 === 0)) return 29;
     return _GREGORIAN_DAYS_PER_MONTH[month - 1];
   }
-  if (sys === 'chinese') return 29 + (month % 2 === 1 ? 1 : 0); // alternating 30/29
+  if (sys === 'chinese') {
+    var cm = _cnYearMonths(year - 2697);
+    var mi = Math.max(1, Math.min(cm.length, month)) - 1;
+    return cm[mi].end - cm[mi].start;
+  }
   return 30;
 }
 
@@ -3771,14 +4211,20 @@ function _calMonthName(sys, year, month) {
   if (sys === 'persian') return _PERSIAN_MONTHS[month - 1] || '';
   if (sys === 'julian') return _gregorianMonthName(month);
   if (sys === 'buddhist') return _gregorianMonthName(month);
-  if (sys === 'chinese') return _CHINESE_MONTHS[month - 1] || t('alm_month_n', { n: month });
+  if (sys === 'chinese') {
+    var cm = _cnYearMonths(year - 2697);
+    var mi = Math.max(1, Math.min(cm.length, month)) - 1;
+    var mo = cm[mi];
+    var nm = _CHINESE_MONTHS[mo.num - 1] || t('alm_month_n', { n: mo.num });
+    return (mo.leap ? '闰' : '') + nm;   // 闰 = leap-month marker
+  }
   return '';
 }
 
 // Get number of months in a year
 function _calMonthCount(sys, year) {
   if (sys === 'hebrew') return _hebrewMonthList(year).length;
-  if (sys === 'chinese') return 12; // simplified (ignoring leap months)
+  if (sys === 'chinese') return _cnYearMonths(year - 2697).length; // 12 or 13 (leap years)
   return 12;
 }
 

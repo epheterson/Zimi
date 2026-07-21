@@ -78,6 +78,20 @@ function _initOrrery() {
     return null;
   }
 
+  // Place the tooltip beside the target, but keep it inside the orrery box —
+  // near the rim it would otherwise run off the edge (probes especially).
+  function _placeTip(hit) {
+    tooltip.style.display = 'block';
+    var maxX = wrap.clientWidth, maxY = wrap.clientHeight;
+    var tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+    var lx = hit.data.x + hit.data.r + 8;
+    if (lx + tw + 2 > maxX) lx = hit.data.x - hit.data.r - 8 - tw; // flip to the left
+    lx = Math.max(2, Math.min(lx, maxX - tw - 2));
+    var ty = Math.max(2, Math.min(hit.data.y - 10, maxY - th - 2));
+    tooltip.style.left = lx + 'px';
+    tooltip.style.top = ty + 'px';
+  }
+
   canvas.onmousemove = function(e) {
     var rect = canvas.getBoundingClientRect();
     var mx = e.clientX - rect.left, my = e.clientY - rect.top;
@@ -90,17 +104,13 @@ function _initOrrery() {
         else label += ' · ' + t('alm_transfer_years', { n: (days / 365.25).toFixed(1) });
       }
       tooltip.textContent = label;
-      tooltip.style.display = 'block';
-      tooltip.style.left = (hit.data.x + hit.data.r + 8) + 'px';
-      tooltip.style.top = (hit.data.y - 10) + 'px';
+      _placeTip(hit);
       canvas.style.cursor = hit.data.name !== 'Earth' ? 'pointer' : 'default';
     } else if (hit && hit.type === 'voyager') {
       var d = hit.data.dist;
       var sig = _signalDelay(d);
       tooltip.textContent = hit.data.name + ' · ' + d.toFixed(1) + ' AU · ' + _fmtDuration(sig.h, sig.m) + ' ' + t('alm_signal_delay');
-      tooltip.style.display = 'block';
-      tooltip.style.left = (hit.data.x + hit.data.r + 8) + 'px';
-      tooltip.style.top = (hit.data.y - 10) + 'px';
+      _placeTip(hit);
       canvas.style.cursor = 'pointer';
     } else {
       tooltip.style.display = 'none';
@@ -187,14 +197,62 @@ function _drawOrrery(canvas, dpr) {
 
   var names = ['Mercury', 'Venus', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'];
 
+  // z: how far the view has glided out toward the probes (0 = clean planet view
+  // at "now", 1 = full deep space after scrubbing years away).
+  var z = _orreryDeepFactor();
+
   // Orbit rings — Apple Watch style: visible but understated
   for (var i = 0; i < names.length; i++) {
-    var orbitR = _ORBIT_VIS[names[i]] * W;
+    var orbitR = _orreryPlanetR(names[i], z) * W;
     ctx.beginPath();
     ctx.arc(cx, cy, orbitR, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(255,255,255,0.07)';
     ctx.lineWidth = 0.7 * dpr;
     ctx.stroke();
+  }
+
+  // Faint labelled band helper (asteroid + Kuiper belts).
+  var _belt = function (auIn, auOut, fill, labelCol, label) {
+    var rIn = _orrR(auIn, z) * W, rOut = _orrR(auOut, z) * W, rMid = (rIn + rOut) / 2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, rOut, 0, Math.PI * 2);
+    ctx.arc(cx, cy, rIn, 0, Math.PI * 2, true);
+    ctx.fillStyle = fill; ctx.fill('evenodd');
+    ctx.font = (7.5 * dpr) + 'px -apple-system, system-ui, sans-serif';
+    ctx.fillStyle = labelCol; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx, cy - rMid);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  };
+
+  // Asteroid belt — a faint band in the Mars–Jupiter gap.
+  _belt(2.1, 3.3, 'rgba(200,190,170,0.06)', 'rgba(200,190,170,0.5)', t('alm_asteroid_belt'));
+
+  // Deep-space reference rings — fade in as the view eases out (z), giving the
+  // probes something to be "beyond".
+  if (z > 0.02) {
+    ctx.save();
+    ctx.globalAlpha = z;
+    var _refRing = function (au, col, dash, label) {
+      var rr = _orrR(au, z) * W;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+      ctx.strokeStyle = col; ctx.lineWidth = 0.8 * dpr;
+      ctx.setLineDash(dash ? [3 * dpr, 4 * dpr] : []);
+      ctx.stroke();
+      if (label) {
+        ctx.setLineDash([]);
+        ctx.font = (8 * dpr) + 'px -apple-system, system-ui, sans-serif';
+        ctx.fillStyle = col; ctx.textAlign = 'center';
+        ctx.fillText(label, cx, cy - rr - 3 * dpr);
+      }
+      ctx.restore();
+    };
+    _belt(_KUIPER_INNER_AU, _KUIPER_OUTER_AU, 'rgba(120,160,220,0.05)', 'rgba(150,180,230,0.55)', t('alm_kuiper_belt'));
+    _refRing(_HELIO_TERMINATION_AU, 'rgba(255,180,60,0.22)', true, null);
+    _refRing(_HELIOPAUSE_AU, 'rgba(120,200,255,0.30)', true, t('alm_heliopause'));
+    ctx.restore();
   }
 
   // Sun — large luminous glow, Apple Watch style
@@ -232,7 +290,7 @@ function _drawOrrery(canvas, dpr) {
   for (var i = 0; i < names.length; i++) {
     var pos = _planetPosition(names[i], T);
     var angle = Math.atan2(pos.y, pos.x);
-    var visR = _ORBIT_VIS[names[i]] * W;
+    var visR = _orreryPlanetR(names[i], z) * W;
     var px = cx + Math.cos(angle) * visR;
     var py = cy - Math.sin(angle) * visR;
     var p = _PLANETS[names[i]];
@@ -326,17 +384,21 @@ function _drawOrrery(canvas, dpr) {
     // No labels — clean Apple Watch aesthetic, hover tooltip on desktop
   }
 
-  // ── Voyager probes — tiny amber diamonds beyond Neptune ──
+  // ── Interstellar probes — amber diamonds out past Neptune, revealed as the
+  // view eases into deep space (z) where they have room to visibly crawl. ──
   _voyagerPositions = [];
-  for (var vi = 0; vi < _VOYAGERS.length; vi++) {
+  ctx.save();
+  ctx.globalAlpha = z;
+  for (var vi = 0; z > 0.02 && vi < _VOYAGERS.length; vi++) {
     var v = _VOYAGERS[vi];
     var dist = _voyagerDist(v, simTime);
     if (dist <= 0) continue; // pre-launch
     var angle = v.lon * DEG_TO_RAD;
-    // Visual radius scales with distance (log-compressed so it stays on canvas)
-    var visR = Math.min(0.46, 0.44 + 0.02 * Math.log(Math.max(1, dist / 30.07))) * W;
+    var visR = _orrR(dist, z) * W;
     var vx = cx + Math.cos(angle) * visR;
-    var vy = cy + Math.sin(angle) * visR;
+    // Match the planets' Y convention (cy − sin): the probes were mirrored
+    // across the horizontal axis, plotting each one 2×longitude off.
+    var vy = cy - Math.sin(angle) * visR;
     var vs = 2.5 * dpr;
     // Subtle amber glow
     var vGlow = ctx.createRadialGradient(vx, vy, 0, vx, vy, vs * 4);
@@ -355,9 +417,10 @@ function _drawOrrery(canvas, dpr) {
     ctx.font = (8 * dpr) + 'px -apple-system, system-ui, sans-serif';
     ctx.fillStyle = 'rgba(255,184,60,0.5)';
     ctx.textAlign = 'left';
-    ctx.fillText('V' + (vi + 1), vx + vs * 2.5, vy + vs * 0.5);
+    ctx.fillText(v.label || ('V' + (vi + 1)), vx + vs * 2.5, vy + vs * 0.5);
     _voyagerPositions.push({ name: v.name, x: vx / dpr, y: vy / dpr, r: vs * 1.5 / dpr, dist: dist, idx: vi });
   }
+  ctx.restore();
 
   // ── Draw Hohmann transfer orbits + rockets (supports multiple simultaneous) ──
   for (var ri = 0; ri < _orreryRockets.length; ri++) {
@@ -376,8 +439,8 @@ function _drawOrrery(canvas, dpr) {
     // The orrery uses compressed distances, so a physical Kepler ellipse looks
     // warped. Instead, interpolate directly in visual space with cosine easing
     // (tangent to both orbits at endpoints — matches real Hohmann geometry).
-    var earthVisR = _ORBIT_VIS['Earth'] * W;
-    var targetVisR = _ORBIT_VIS[rk.target] * W;
+    var earthVisR = _orreryPlanetR('Earth', z) * W;
+    var targetVisR = _orreryPlanetR(rk.target, z) * W;
     var _rocketPoint = (function(angSweep, rk, earthVisR, targetVisR, cx, cy) {
       return function(frac) {
         var angle = rk.launchAngle + frac * angSweep;
@@ -536,6 +599,23 @@ var _orrerySpeed = 100000;
 var _orreryTimeOffset = 0;       // milliseconds offset from real time
 
 var _orreryLastFrame = 0;        // last rAF timestamp
+
+// The orrery always shows the interstellar probes out past Neptune — the view
+// sits at full "deep space" so they're always there and always creeping outward
+// as the clock runs. (Kept as a factor, not a hard-coded scale, so the planet-
+// vs-deep balance stays a one-line tuning knob.)
+function _orreryDeepFactor() { return 1; }
+
+// Planet orbit radius (fraction of half-width), blended between the hand-tuned
+// planet view (_ORBIT_VIS) and the log deep-space map by the zoom factor z.
+function _orreryPlanetR(name, z) {
+  var near = _ORBIT_VIS[name] != null ? _ORBIT_VIS[name] : _auToVis(_PLANETS[name].a);
+  return near * (1 - z) + _orrDeepRadius(_PLANETS[name].a) * z;
+}
+
+// Same blend for an arbitrary distance (rings, belts, probes): near-view uses
+// the planet map (which pins everything past Neptune to the rim), deep uses log.
+function _orrR(au, z) { return _auToVis(au) * (1 - z) + _orrDeepRadius(au) * z; }
 
 var _orreryRockets = [];         // all rocket missions (in-flight + orbiting)
 

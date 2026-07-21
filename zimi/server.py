@@ -86,7 +86,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.7.3"
+ZIMI_VERSION = "1.7.4"
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
 # 24h — run every 12h so both stay fresh at half-life.
@@ -149,7 +149,11 @@ def start_background_services(http_port):
 
             _disc.start(
                 http_port=http_port,
-                bt_port=int(os.environ.get("ZIMI_BT_PORT", "6881") or "6881"),
+                # Advertise the port aria2 actually listens on — get_bt_port()
+                # honors the ZIMI_BT blob's port= and the persisted UI pref;
+                # reading the raw env told peers 6881 while the sidecar (and
+                # the NAT probe) used the configured port.
+                bt_port=p2p.get_bt_port(),
                 zim_count=len(list_zims()),
                 version=ZIMI_VERSION,
             )
@@ -966,7 +970,27 @@ def load_cache(force=False):
             continue
 
         cached = disk_cache.get(filename) if disk_cache else None
-        if cached and cached.get("mtime") == mtime and cached.get("size") == size:
+        # When Zimi first sees a ZIM, stamp it so the UI can flag it "New" for
+        # a few days (#34 — a fresh install is otherwise lost in a big
+        # library). A ZIM already known (even if its file changed on an update)
+        # keeps its original stamp; a ZIM present in a pre-feature cache with no
+        # stamp is treated as long-installed, not retroactively "new".
+        if cached is None:
+            first_seen = time.time()
+        else:
+            first_seen = cached.get("first_seen")
+        # An already-known ZIM whose file changed on disk is an update — stamp
+        # updated_at so the UI can flag it "Updated" (distinct from "New").
+        cache_hit = bool(
+            cached and cached.get("mtime") == mtime and cached.get("size") == size
+        )
+        if cached is None:
+            updated_at = None
+        elif cache_hit:
+            updated_at = cached.get("updated_at")
+        else:
+            updated_at = time.time()
+        if cache_hit and cached:
             # Cache hit — use stored metadata, skip opening archive
             entry = {
                 "name": name,
@@ -984,19 +1008,29 @@ def load_cache(force=False):
                 "has_icon": cached.get("has_icon", False),
                 "category": _categorize_zim(name),
                 "main_path": cached.get("main_path", ""),
+                "first_seen": first_seen,
+                "updated_at": updated_at,
             }
             if "has_qids" in cached:
                 entry["has_qids"] = cached["has_qids"]
             info.append(entry)
-            file_cache[filename] = cached
+            cached_out = dict(cached)
+            if first_seen is not None:
+                cached_out["first_seen"] = first_seen
+            if updated_at is not None:
+                cached_out["updated_at"] = updated_at
+            file_cache[filename] = cached_out
         else:
             # Cache miss — scan this ZIM
             entry, archive = _extract_zim_metadata(name, path)
             if archive and entry.get("entries") != "?":
                 _archive_pool[name] = archive
+            if first_seen is not None:
+                entry["first_seen"] = first_seen
+            entry["updated_at"] = updated_at
             info.append(entry)
             scanned += 1
-            file_cache[filename] = {
+            new_cached = {
                 "name": name,
                 "mtime": mtime,
                 "size": size,
@@ -1009,6 +1043,11 @@ def load_cache(force=False):
                 "has_icon": entry["has_icon"],
                 "main_path": entry["main_path"],
             }
+            if first_seen is not None:
+                new_cached["first_seen"] = first_seen
+            if updated_at is not None:
+                new_cached["updated_at"] = updated_at
+            file_cache[filename] = new_cached
 
     _zim_list_cache = info
     elapsed = time.time() - t0

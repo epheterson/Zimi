@@ -35,6 +35,30 @@ log = logging.getLogger("zimi")
 # Rate Limiting
 # ============================================================================
 
+
+# Reverse-proxy hops whose forwarded client-IP headers we trust. Optional
+# operator override (comma-separated CIDRs); empty default = trust any private/
+# loopback/link-local hop. The origin is never directly WAN-reachable — a
+# forwarding hop is always private — so the default is safe, and an operator on
+# an unusual topology can still pin it explicitly.
+def _load_trusted_proxy_cidrs():
+    raw = os.environ.get("ZIMI_TRUSTED_PROXIES", "").strip()
+    if not raw:
+        return None  # sentinel: use the "any private hop" heuristic
+    nets = []
+    for tok in raw.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(tok, strict=False))
+        except ValueError:
+            pass
+    return nets or None
+
+
+_TRUSTED_PROXY_CIDRS = _load_trusted_proxy_cidrs()
+
 RATE_LIMIT = int(
     os.environ.get("ZIMI_RATE_LIMIT", "60")
 )  # API requests per minute per IP (0 = disabled)
@@ -424,16 +448,68 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/html")
         self.end_headers()
 
-    # IPs allowed to set X-Forwarded-For (reverse proxies)
-    _TRUSTED_PROXIES = {"127.0.0.1", "::1", "172.17.0.1", "172.18.0.1"}
-
     def _client_ip(self):
-        """Get client IP, respecting X-Forwarded-For only from trusted proxies."""
+        """Resolve the real client IP, honoring a forwarded header only from a
+        proxy on a private network.
+
+        The old version trusted X-Forwarded-For from a hardcoded bridge-IP set
+        and read its (client-spoofable) leftmost value. On a host-networked
+        deploy behind a containerized tunnel, the connection reaches Zimi from
+        the docker bridge gateway — a *private* IP not in that set and with no
+        real client IP propagated — so every WAN request resolved to a private
+        address and was misclassified "private" (open /dl/ whole-ZIM serving to
+        the internet + the trusted rate tier).
+
+        Fix: (1) prefer Cloudflare's CF-Connecting-IP — it's the true client and
+        Cloudflare strips any client-supplied copy at its edge, so it can't be
+        forged through the tunnel; (2) otherwise take X-Forwarded-For's leftmost;
+        (3) trust either only from a trusted proxy hop — an explicit
+        ZIMI_TRUSTED_PROXIES CIDR allowlist if set, else any private/loopback/
+        link-local hop (the origin is never directly WAN-reachable, so a
+        forwarding hop is always private) — covering the bridge gateway on any
+        subnet without a hardcoded list; (4) reject a forwarded value that
+        itself claims a trusted-tier address (private/loopback/link-local), so a
+        permitted forwarder (or a LAN client) can't spoof one to borrow that
+        trust; (5) with no usable forwarded header, fail closed to public when
+        an explicit ZIMI_TRUSTED_PROXIES allowlist marks the hop as only-ever-a-
+        proxy, else return the direct peer (heuristic mode can't tell a direct
+        LAN client from a header-stripping proxy)."""
         direct_ip = self.client_address[0]
-        if direct_ip in self._TRUSTED_PROXIES:
-            xff = self.headers.get("X-Forwarded-For")
-            if xff:
-                return xff.split(",")[0].strip()
+        try:
+            dip = ipaddress.ip_address(direct_ip)
+        except ValueError:
+            return direct_ip
+        if _TRUSTED_PROXY_CIDRS is not None:
+            hop_trusted = any(dip in net for net in _TRUSTED_PROXY_CIDRS)
+        else:
+            hop_trusted = dip.is_private or dip.is_loopback or dip.is_link_local
+        if not hop_trusted:
+            return direct_ip
+        fwd = self.headers.get("CF-Connecting-IP")
+        if not fwd:
+            xff = self.headers.get("X-Forwarded-For", "")
+            fwd = xff.split(",")[0].strip() or None
+        if fwd:
+            try:
+                fip = ipaddress.ip_address(fwd)
+                # A real forwarded external client is public. Refuse a claim of
+                # ANY trusted-tier address (private/loopback/link-local — the
+                # same set _is_private_client trusts) so a spoofed header can't
+                # borrow that trust; a genuine internal client still falls back
+                # to the (private, trusted) direct hop below.
+                if not (fip.is_private or fip.is_loopback or fip.is_link_local):
+                    return fwd
+            except ValueError:
+                pass
+        # No usable forwarded client IP. With an explicit ZIMI_TRUSTED_PROXIES
+        # allowlist the hop is *only* ever a proxy, never an end client, so a
+        # missing/rejected client means we can't identify the caller: fail
+        # closed to public rather than trust the proxy's own private address
+        # (an unparseable value → _is_private_client False). Without an
+        # allowlist we can't tell a real direct LAN client from a
+        # header-stripping proxy, so keep the direct peer as before.
+        if _TRUSTED_PROXY_CIDRS is not None:
+            return "proxy-unknown"
         return direct_ip
 
     def do_GET(self):
@@ -1591,14 +1667,20 @@ class ZimHandler(BaseHTTPRequestHandler):
         range_spec = header[6:].strip()
         if "," in range_spec:
             return None, None  # multi-range not supported
-        if range_spec.startswith("-"):
-            # Suffix range: last N bytes
-            suffix = int(range_spec[1:])
-            start = max(0, total_size - suffix)
-            return start, total_size - 1
-        parts = range_spec.split("-", 1)
-        start = int(parts[0])
-        end = int(parts[1]) if parts[1] else total_size - 1
+        # Malformed ranges (bytes=abc-, bytes=-, bytes=1-x) must degrade to
+        # "no range" (200 full body), not raise ValueError up through the /dl/
+        # and content-serving paths and 500 / drop the connection.
+        try:
+            if range_spec.startswith("-"):
+                # Suffix range: last N bytes
+                suffix = int(range_spec[1:])
+                start = max(0, total_size - suffix)
+                return start, total_size - 1
+            parts = range_spec.split("-", 1)
+            start = int(parts[0])
+            end = int(parts[1]) if parts[1] else total_size - 1
+        except ValueError:
+            return None, None
         end = min(end, total_size - 1)
         if start > end or start >= total_size:
             return None, None

@@ -1159,6 +1159,21 @@
   .star-btn:hover { opacity: 1; color: var(--amber); transform: scale(1.2); }
   .star-btn.starred { opacity: 1; color: var(--amber); }
   .stat-card { position: relative; }
+  /* "New" ribbon for recently-installed ZIMs (#34) — top-left so it clears the
+     top-right star. */
+  .new-badge {
+    position: absolute; top: 6px; left: 6px; z-index: 2;
+    background: var(--amber); color: #1a1205; font-size: 9px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 5px; line-height: 1.2; pointer-events: none;
+  }
+  [dir="rtl"] .new-badge { left: auto; right: 6px; }
+  /* "Updated" is the quieter sibling — an outlined amber pill, so a brand-new
+     ZIM (solid amber) still reads louder than one that merely changed. */
+  .new-badge.updated-badge {
+    background: var(--amber-glow); color: var(--amber);
+    box-shadow: inset 0 0 0 1px var(--amber-border);
+  }
 
   /* ── Context menu ── */
   #zim-ctx-menu {
@@ -1287,12 +1302,8 @@
   .dc-today { width: 100%; height: 120px; position: relative; background: linear-gradient(135deg, #0a0e1a 0%, #141c2e 50%, #0d1220 100%); overflow: hidden; }
   .dc-star { position: absolute; width: 2px; height: 2px; background: #fff; border-radius: 50%; animation: dc-twinkle 3s ease-in-out infinite; }
   @keyframes dc-twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
-  .dc-moon-wrap { position: absolute; top: 50%; left: 50%; width: 48px; height: 48px; border-radius: 50%; overflow: hidden; background: #080c16; }
-  .dc-moon-half { position: absolute; top: 0; width: 50%; height: 100%; }
-  .dc-moon-half.left { left: 0; }
-  .dc-moon-half.right { right: 0; }
-  .dc-moon-term { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 50%; }
-  .dc-moon-texture { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 50%; background: url('/static/moon.png?v=1') center/cover; pointer-events: none; mix-blend-mode: soft-light; opacity: 1; }
+  .dc-moon-wrap { position: absolute; top: 50%; left: 50%; width: 48px; height: 48px; }
+  .dc-moon-sprite { display: block; width: 100%; height: 100%; }
   .dc-moon-glow { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 64px; height: 64px; border-radius: 50%; background: radial-gradient(circle, rgba(232,224,208,0.15) 0%, transparent 70%); }
 
   .pill.disabled { opacity: 0.35; cursor: not-allowed; }

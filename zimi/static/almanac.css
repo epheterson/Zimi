@@ -3,6 +3,7 @@
 .almanac-view.open { display: flex; animation: fadeIn 0.15s ease; }
 .almanac-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: 24px 16px 80px; overscroll-behavior: contain; }
 .almanac-inner { max-width: 600px; margin: 0 auto; }
+
 .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
 .alm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
 .alm-card-lbl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -47,12 +48,11 @@
 .alm-tz-city-active .alm-tz-city-name { color: var(--amber); font-weight: 600; }
 .alm-tz-city-active .alm-tz-city-time { color: var(--amber); }
 .almanac-hero { display: flex; flex-direction: column; align-items: center; margin-bottom: 32px; position: relative; }
-.almanac-moon { position: relative; width: 200px; height: 200px; border-radius: 50%; overflow: hidden; background: #080c16; }
-.almanac-moon .dc-moon-half { position: absolute; top: 0; width: 50%; height: 100%; }
-.almanac-moon .dc-moon-half.left { left: 0; }
-.almanac-moon .dc-moon-half.right { right: 0; }
-.almanac-moon .dc-moon-term { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 50%; }
-.almanac-moon-texture { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; pointer-events: none; }
+/* The moon is now a single shaded sprite with transparent corners — no dark
+   backing disc or clip (the sprite IS the sphere; a backing circle would show
+   as a hard rim behind the anti-aliased limb). */
+.almanac-moon { position: relative; width: 200px; height: 200px; }
+.almanac-moon-sprite { display: block; width: 100%; height: 100%; }
 .almanac-moon-glow { position: absolute; width: 280px; height: 280px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: -1; }
 .almanac-moon-name { margin-top: 16px; font-size: 18px; font-weight: 500; color: var(--text); }
 .almanac-moon-line { font-size: 13px; color: var(--text2); margin-top: 8px; text-align: center; }
@@ -76,6 +76,14 @@
 .orrery-speed-end { color: var(--text3); font-size: 9px; flex-shrink: 0; user-select: none; }
 .orrery-speed-label { color: var(--amber); font-size: 11px; min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; flex-shrink: 0; font-family: 'SF Mono', 'Fira Code', monospace; }
 .orrery-date { color: var(--text-dim); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 90px; text-align: right; }
+#almanac-sunmap { position: relative; }
+.sunmap-flash {
+  position: absolute; left: 50%; bottom: 10px; transform: translate(-50%, 6px);
+  background: rgba(0,0,0,0.78); color: var(--text); font-size: 11px;
+  padding: 5px 12px; border-radius: 999px; white-space: nowrap; pointer-events: none;
+  opacity: 0; transition: opacity 0.15s, transform 0.15s; z-index: 5; backdrop-filter: blur(4px);
+}
+.sunmap-flash.show { opacity: 1; transform: translate(-50%, 0); }
 .orrery-transit-wrap { display: none; align-items: center; gap: 6px; max-width: 500px; margin: 4px auto 0; padding: 0 4px; }
 .orrery-transit-end { font-size: 11px; color: var(--text3); flex-shrink: 0; min-width: 40px; }
 .orrery-transit-label { color: var(--amber); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 90px; text-align: right; font-family: 'SF Mono', 'Fira Code', monospace; }
@@ -180,10 +188,11 @@
 .alm-today.alm-selected:hover { background: rgba(245,158,11,0.10); }
 .alm-today.alm-selected .alm-num { background: var(--amber); color: #000; }
 .alm-ev { font-size: 9px; line-height: 1.3; padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.alm-ev-holiday { color: #f59e0b; }
-.alm-ev-seasonal { color: #68d391; }
-.alm-ev-astro { color: #63b3ed; }
-.alm-ev-meteor { color: #fc8181; }
+.alm-ev-holiday { color: #f59e0b; }         /* worldwide observances */
+.alm-ev-country { color: #b794f6; }         /* country-specific national holidays (#33) */
+.alm-ev-seasonal { color: #68d391; }        /* clock changes */
+.alm-ev-astro { color: #63b3ed; }           /* astronomy */
+.alm-ev-meteor { color: #fc8181; }          /* meteor showers */
 .alm-ev-more { color: var(--text3); font-style: italic; }
 .alm-day-detail { padding: 8px 14px; margin-top: 8px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border); }
 .alm-crossref { padding: 10px 14px; background: var(--surface); border-radius: 10px; border: 1px solid var(--border); margin-top: 10px; }
@@ -225,9 +234,7 @@
   .alm-title { font-size: 15px; min-width: 140px; }
 }
 
-/* Star-chart time scrubber + tap-to-identify readout */
-.alm-sc-controls { display: flex; align-items: center; gap: 8px; max-width: 360px; margin: 6px auto 0; }
-.alm-sc-time { font-size: 11px; color: var(--amber); font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
+/* Star-chart tap-to-identify readout (time now comes from the pinned scrubber) */
 .alm-sc-info { text-align: center; font-size: 11px; color: var(--text2); min-height: 15px; margin-top: 6px; font-variant-numeric: tabular-nums; }
 /* Chart is draggable: stand somewhere else on Earth. */
 #almanac-starchart { cursor: grab; touch-action: none; }
