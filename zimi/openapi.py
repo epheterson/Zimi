@@ -265,6 +265,10 @@ def build_openapi():
                                     "type": "string",
                                     "description": "sha256(stripped_text)[:12]",
                                 },
+                                "truncated": {
+                                    "type": "boolean",
+                                    "description": "True when the article's text exceeded the per-request cap and was truncated before chunking.",
+                                },
                                 "total_chunks": {"type": "integer"},
                                 "chunks": {"type": "array", "items": chunk_schema},
                             },
@@ -272,6 +276,7 @@ def build_openapi():
                                 "zim",
                                 "path",
                                 "content_rev",
+                                "truncated",
                                 "total_chunks",
                                 "chunks",
                             ],

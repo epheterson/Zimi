@@ -179,6 +179,51 @@ class TestChunkArticle(unittest.TestCase):
         r = self._chunk(html, size=300, overlap=0)
         self.assertEqual([c["seq"] for c in r["chunks"]], list(range(len(r["chunks"]))))
 
+    # ── Truncation cap (CHUNK_MAX_TEXT) ──
+
+    def test_under_cap_not_truncated(self):
+        html = "<p>" + " ".join(f"word{i}" for i in range(400)) + "</p>"
+        r = self._chunk(html, size=400, overlap=40)
+        self.assertFalse(r["truncated"])
+
+    def _oversize_html(self):
+        # Many paragraphs whose joined stripped text far exceeds CHUNK_MAX_TEXT.
+        para = "lorem ipsum dolor " * 60  # ~1080 chars each
+        n = (search.CHUNK_MAX_TEXT // len(para.strip())) + 200
+        return "".join(f"<p>{para}</p>" for _ in range(n))
+
+    def test_over_cap_truncated_and_bounded(self):
+        r = self._chunk(self._oversize_html(), size=1200, overlap=120)
+        self.assertTrue(r["truncated"])
+        # Canonical text (largest end offset) never exceeds the cap.
+        self.assertLessEqual(_stripped_len(r), search.CHUNK_MAX_TEXT)
+
+    def test_over_cap_ids_deterministic(self):
+        html = self._oversize_html()
+        a = self._chunk(html, size=1200, overlap=120)
+        b = self._chunk(html, size=1200, overlap=120)
+        self.assertTrue(a["truncated"])
+        self.assertEqual(a["content_rev"], b["content_rev"])
+        self.assertEqual([c["id"] for c in a["chunks"]], [c["id"] for c in b["chunks"]])
+
+    def test_over_cap_pdf_truncated(self):
+        # PDF path caps via extract_pdf_text(max_length=CHUNK_MAX_TEXT).
+        big = "\n".join("lorem ipsum dolor sit amet" for _ in range(60000))
+        cleanup = _fake_zim(
+            None, "irrelevant", zim_name=self.ZIM, mimetype="application/pdf"
+        )
+        saved = search.extract_pdf_text
+        search.extract_pdf_text = lambda raw, max_length=None: (
+            big[:max_length] if max_length else big
+        )
+        try:
+            r = search.chunk_article(self.ZIM, self.PATH, size=1200, overlap=120)
+        finally:
+            search.extract_pdf_text = saved
+            cleanup()
+        self.assertTrue(r["truncated"])
+        self.assertLessEqual(_stripped_len(r), search.CHUNK_MAX_TEXT)
+
     # ── Empty / error ──
 
     def test_empty_article(self):

@@ -1398,6 +1398,13 @@ CHUNK_SIZE_MIN = 200
 CHUNK_SIZE_MAX = 4000
 CHUNK_SIZE_DEFAULT = 1200
 CHUNK_OVERLAP_DEFAULT = 120
+# Ceiling on the stripped text a single /chunks request will process. This
+# bounds per-request amplification the same way READ_MAX_LENGTH does for /read:
+# without it a multi-MB zimgit PDF would drive a full-text allocation plus a
+# giant chunk-array JSON on one call. 500k chars is ~100 chunks at defaults —
+# far larger than virtually any real encyclopedia article, so genuine content
+# is never truncated; only pathological inputs get capped.
+CHUNK_MAX_TEXT = 500_000
 _CONTENT_REV_LEN = 12  # sha256(stripped_text) prefix
 _CHUNK_ID_LEN = 16  # sha256(id components) prefix
 _CHUNK_SEP = "\n\n"  # paragraph joiner in the canonical stripped text
@@ -1467,7 +1474,7 @@ def chunk_article(
         raw = bytes(item.content)
         title = entry.title
         if item.mimetype == "application/pdf":
-            plain = extract_pdf_text(raw, max_length=None)
+            plain = extract_pdf_text(raw, max_length=CHUNK_MAX_TEXT)
             paragraphs = [p for p in (b.strip() for b in plain.splitlines()) if p]
         else:
             paragraphs = _paragraphs_from_html(raw.decode("UTF-8", errors="replace"))
@@ -1475,6 +1482,16 @@ def chunk_article(
         return {"error": "not_found"}
 
     stripped_text = _CHUNK_SEP.join(paragraphs)
+    # Cap the canonical text BEFORE hashing so content_rev (and thus chunk IDs)
+    # stay deterministic for capped content. If the cut lands mid-paragraph,
+    # drop the partial trailing paragraph so chunk offsets align to real breaks.
+    truncated = len(stripped_text) > CHUNK_MAX_TEXT
+    if truncated:
+        stripped_text = stripped_text[:CHUNK_MAX_TEXT]
+        cut = stripped_text.rfind(_CHUNK_SEP)
+        if cut > 0:
+            stripped_text = stripped_text[:cut]
+        paragraphs = stripped_text.split(_CHUNK_SEP)
     content_rev = _hashlib.sha256(stripped_text.encode("utf-8")).hexdigest()[
         :_CONTENT_REV_LEN
     ]
@@ -1524,6 +1541,7 @@ def chunk_article(
         "size": size,
         "overlap": overlap,
         "content_rev": content_rev,
+        "truncated": truncated,
         "total_chunks": len(chunks),
         "chunks": chunks,
     }
