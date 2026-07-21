@@ -226,6 +226,26 @@ class TestResume:
         assert tid in b2._handles
         b2.stop()
 
+    def test_periodic_save_writes_fastresume(self, backend, tmp_path):
+        # A hard kill never calls stop(); the periodic checkpoint is what
+        # keeps fastresume fresh. Drive one tick directly (no 60s wait).
+        tid = backend.add_torrent(
+            str(tmp_path / "tick.torrent"), dest_dir=str(tmp_path / "staging")
+        )
+        backend._request_resume_saves()
+        backend._pump_alerts_once()
+        assert os.path.exists(os.path.join(backend.resume_dir, tid + ".fastresume"))
+
+    def test_periodic_save_skips_unchanged_handle(self, backend, tmp_path):
+        # need_save_resume_data() False → no alert requested this tick.
+        tid = backend.add_torrent(
+            str(tmp_path / "quiet.torrent"), dest_dir=str(tmp_path / "staging")
+        )
+        backend._handles[tid]._need_resume = False
+        backend._request_resume_saves()
+        backend._pump_alerts_once()
+        assert not os.path.exists(os.path.join(backend.resume_dir, tid + ".fastresume"))
+
     def test_remove_deletes_resume_file(self, backend, tmp_path):
         tid = backend.add_torrent(
             str(tmp_path / "gone.torrent"), dest_dir=str(tmp_path / "staging")

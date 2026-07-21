@@ -568,6 +568,12 @@ _lt_import_failed = False
 TORRENT_FETCH_TIMEOUT_S = 30
 TORRENT_FETCH_MAX_BYTES = 10 * 1024 * 1024
 
+# Fastresume checkpoint cadence, in alert-loop ticks (~1s each). Without a
+# periodic save, resume data is only written on a clean stop(); a hard kill
+# (power loss, `docker kill`) would then force a full re-hash/re-download of
+# every in-flight torrent. 60 ≈ one minute of at-most-lost progress.
+RESUME_SAVE_INTERVAL_S = 60
+
 
 def _lt():
     """Import libtorrent lazily; None when unavailable (→ HTTP floor).
@@ -668,8 +674,14 @@ class LibtorrentBackend(BTBackend):
             self._alert_thread.start()
 
     def stop(self) -> None:
+        # Snapshot and clear handles under the same lock that takes the
+        # session, so a concurrent add_torrent() can't start a fresh
+        # session and then have its handle wiped by an unlocked clear().
+        # (A post-stop add_torrent re-runs _ensure_session() cleanly.)
         with self._lock:
             ses, self._ses = self._ses, None
+            handles = dict(self._handles)
+            self._handles.clear()
         if ses is None:
             return
         self._alert_stop.set()
@@ -678,7 +690,7 @@ class LibtorrentBackend(BTBackend):
         # Ask every handle for resume data, then drain the alerts that
         # carry it — this is what makes restarts not re-download.
         pending = 0
-        for h in self._handles.values():
+        for h in handles.values():
             try:
                 if h.is_valid():
                     h.save_resume_data()
@@ -695,7 +707,6 @@ class LibtorrentBackend(BTBackend):
                 elif name == "save_resume_data_failed":
                     pending -= 1
             time.sleep(0.05)
-        self._handles.clear()
 
     # ── resume persistence ────────────────────────────────────────────────
 
@@ -738,11 +749,50 @@ class LibtorrentBackend(BTBackend):
     # ── alert pump ────────────────────────────────────────────────────────
 
     def _alert_loop(self) -> None:
+        ticks = 0
         while not self._alert_stop.wait(1.0):
+            ticks += 1
             try:
                 self._pump_alerts_once()
+                # Checkpoint fastresume periodically, not just on stop(),
+                # so a hard kill costs at most RESUME_SAVE_INTERVAL_S of
+                # progress instead of a full re-hash on next start.
+                if ticks % RESUME_SAVE_INTERVAL_S == 0:
+                    self._request_resume_saves()
             except Exception as e:
                 log.debug("alert pump error: %s", e)
+
+    def _request_resume_saves(self) -> None:
+        """Ask libtorrent to emit resume-data alerts for handles that
+        changed since their last save. The alerts are picked up by the
+        normal pump and written to disk — this method only requests.
+
+        Extracted from the loop so tests can drive one checkpoint without
+        waiting a real minute for the tick."""
+        lt = _lt()
+        if lt is None:
+            return
+        # save_info_dict rewrites the (rarely-changing) torrent metadata
+        # too; absent on older builds, in which case a plain save is fine.
+        flags = getattr(lt.torrent_handle, "save_info_dict", 0)
+        with self._lock:
+            handles = list(self._handles.values())
+        for h in handles:
+            try:
+                if not h.is_valid():
+                    continue
+                # need_save_resume_data() is the state gate: it skips
+                # handles with nothing new to persist (and metadata-less
+                # magnets whose save would just fail). Older APIs lack it —
+                # save unconditionally there.
+                if (
+                    hasattr(h, "need_save_resume_data")
+                    and not h.need_save_resume_data()
+                ):
+                    continue
+                h.save_resume_data(flags)
+            except Exception as e:
+                log.debug("periodic resume save skipped for a handle: %s", e)
 
     def _pump_alerts_once(self) -> None:
         ses = self._ses
@@ -821,8 +871,11 @@ class LibtorrentBackend(BTBackend):
         if h is not None and h.is_valid() and self._ses is not None:
             in_staging = False
             try:
-                save_path = os.path.normpath(h.status().save_path)
-                staging = os.path.normpath(self.staging_dir)
+                # realpath, not normpath: a symlink textually under staging
+                # but physically pointing outside must NOT count as staging,
+                # or it would defeat the library-payload delete guard.
+                save_path = os.path.realpath(h.status().save_path)
+                staging = os.path.realpath(self.staging_dir)
                 in_staging = save_path == staging or save_path.startswith(
                     staging + os.sep
                 )

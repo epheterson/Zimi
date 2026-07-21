@@ -115,6 +115,9 @@ class torrent_handle:
             self._status.total_wanted = atp.ti.total_size()
         self._valid = True
         self._paused = bool(atp.flags & torrent_flags.paused)
+        # True right after add; flips False once resume data is saved.
+        # Tests can script it directly to exercise the conditional path.
+        self._need_resume = True
 
     def is_valid(self):
         return self._valid
@@ -138,7 +141,11 @@ class torrent_handle:
     def resume(self):
         self._paused = False
 
+    def need_save_resume_data(self):
+        return self._need_resume
+
     def save_resume_data(self, flags=0):
+        self._need_resume = False
         self._session._alerts.append(save_resume_data_alert(self))
 
     def unset_flags(self, flags):
