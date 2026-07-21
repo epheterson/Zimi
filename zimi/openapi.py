@@ -112,6 +112,21 @@ def build_openapi():
                                 "total": {"type": "integer"},
                                 "elapsed": {"type": "number"},
                                 "partial": {"type": "boolean"},
+                                "detected_language": {
+                                    "type": "string",
+                                    "description": (
+                                        "Language auto-detected from the query, "
+                                        "when one could be inferred. Optional."
+                                    ),
+                                },
+                                "did_you_mean": {
+                                    "type": "string",
+                                    "description": (
+                                        "Spelling suggestion, present only when "
+                                        "results are sparse and a correction was "
+                                        "found. Optional."
+                                    ),
+                                },
                             },
                         },
                     ),

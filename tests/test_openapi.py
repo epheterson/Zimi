@@ -49,6 +49,17 @@ class TestOpenAPISpec(unittest.TestCase):
     def test_version_mirrors_server(self):
         self.assertEqual(self.spec["info"]["version"], server.ZIMI_VERSION)
 
+    def test_search_documents_optional_fields(self):
+        # The /search 200 body advertises the optional did_you_mean suggestion
+        # and the auto-detected language that search_all can attach.
+        props = self.spec["paths"]["/search"]["get"]["responses"]["200"]["content"][
+            "application/json"
+        ]["schema"]["properties"]
+        self.assertIn("did_you_mean", props)
+        self.assertEqual(props["did_you_mean"]["type"], "string")
+        self.assertIn("detected_language", props)
+        self.assertEqual(props["detected_language"]["type"], "string")
+
     def test_structural_self_check(self):
         try:
             from openapi_spec_validator import validate  # type: ignore

@@ -1138,11 +1138,16 @@ _DIST2_MAX_LEN = 7  # only try edit-distance-2 on words this short or shorter
 _DYM_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 _word_split_re = re.compile(r"[^a-z0-9]+")
 # Split a query into alternating [gap, word, gap, word, ...]; odd indices are
-# words (the capturing group), so separators/case survive reconstruction.
-_query_token_re = re.compile(r"([A-Za-z0-9]+)")
+# words (the capturing group), so separators/case survive reconstruction. The
+# class is Unicode-aware (\w) on purpose: an accented run like "café" must stay
+# one token, not fragment into "caf" + "é" (folding the fragment would glue a
+# stray accent back on, e.g. "café" -> "cafeé"). Non-ASCII tokens are then
+# skipped for correction in _did_you_mean.
+_query_token_re = re.compile(r"(\w+)")
 
-_vocab = None  # {word: count}; None until the first build attempt
+_vocab = None  # {word: count}; None until built, a dict once built (empty on failure)
 _vocab_lock = threading.Lock()
+_vocab_builder_thread = None  # daemon thread building the vocab; test hook for .join()
 
 
 def _ascii_fold(s):
@@ -1208,31 +1213,61 @@ def _build_vocab():
     return vocab
 
 
-def _get_vocab():
-    """Return the cached vocabulary, building it once on first call.
+def _vocab_build_worker():
+    """Build the vocab off the request path and cache it. Never raises.
 
-    Lock-disciplined lazy init: the first sparse search pays the (bounded)
-    build cost, everyone after reads the cache. Fail-soft — a build error
-    caches an empty vocab so we don't retry on every query."""
+    A build error (or a broken index) caches an empty vocab so we don't retry
+    on every query and never surface an exception to callers."""
     global _vocab
+    try:
+        built = _build_vocab()
+    except Exception as e:
+        log.debug("Vocab build failed: %s", e)
+        built = {}
+    with _vocab_lock:
+        _vocab = built if built is not None else {}
+    if _vocab:
+        log.info("Did-you-mean vocab: %d words", len(_vocab))
+
+
+def _ensure_vocab():
+    """Return the cached vocabulary, or None while it is still being built.
+
+    Non-blocking by design: the vocab scan can take ~1.5s, and the sparse-search
+    trigger runs inside search_all — on the MCP path that happens while holding
+    the global libzim lock, so a synchronous build would stall every libzim op.
+    The first call kicks off a single daemon builder thread (guarded by
+    _vocab_lock so only one ever starts) and returns None immediately; later
+    sparse searches see the completed vocab. The 50ms per-query budget therefore
+    holds for every search, including the first."""
+    global _vocab, _vocab_builder_thread
     with _vocab_lock:
         if _vocab is not None:
             return _vocab
-        try:
-            _vocab = _build_vocab()
-        except Exception as e:
-            log.debug("Vocab build failed: %s", e)
-            _vocab = {}
-        if _vocab:
-            log.info("Did-you-mean vocab: %d words", len(_vocab))
-        return _vocab
+        if _vocab_builder_thread is None or not _vocab_builder_thread.is_alive():
+            _vocab_builder_thread = threading.Thread(
+                target=_vocab_build_worker, name="zimi-dym-vocab", daemon=True
+            )
+            _vocab_builder_thread.start()
+        return None
+
+
+def _join_vocab_build(timeout=5.0):
+    """Block until the background vocab builder finishes, if one is running.
+
+    Tests only — lets a test wait out the async build it kicked off."""
+    t = _vocab_builder_thread
+    if t is not None:
+        t.join(timeout)
 
 
 def _reset_vocab():
     """Drop the cached vocabulary so the next call rebuilds. Tests only."""
-    global _vocab
+    global _vocab, _vocab_builder_thread
+    _join_vocab_build()  # let any in-flight builder finish before we clear state
     with _vocab_lock:
         _vocab = None
+        _vocab_builder_thread = None
 
 
 def _edits1(word):
@@ -1283,6 +1318,13 @@ def _did_you_mean(query_str, vocab, deadline):
         if i % 2 == 0:  # separator/gap — keep verbatim
             out.append(part)
             continue
+        if not part.isascii():
+            # Token carries non-ASCII word chars (accents, Cyrillic, CJK).
+            # Folding it and correcting risks inventing a hybrid, so keep it
+            # verbatim — never mangle. (Tokenization already keeps such runs
+            # whole, e.g. "café" is one token, not "caf" + "é".)
+            out.append(part)
+            continue
         folded = _ascii_fold(part)
         if (
             len(folded) >= _VOCAB_MIN_WORD_LEN
@@ -1310,8 +1352,8 @@ def _maybe_did_you_mean(query_str):
     if not query_str or not query_str.strip():
         return None
     try:
-        vocab = _get_vocab()
-        if not vocab:
+        vocab = _ensure_vocab()
+        if not vocab:  # None (still building) or empty (fail-soft) → no suggestion
             return None
         deadline = time.monotonic() + _DYM_BUDGET_S
         return _did_you_mean(query_str, vocab, deadline)

@@ -81,10 +81,25 @@ class VocabBuildTests(unittest.TestCase):
         self.assertNotIn("of", vocab)
         self.assertNotIn("in", vocab)
 
-    def test_get_vocab_caches(self):
-        v1 = _search._get_vocab()
-        v2 = _search._get_vocab()
+    def test_ensure_vocab_builds_async_and_caches(self):
+        # The build is non-blocking: the first call kicks off a daemon builder
+        # and returns None immediately; once joined, the cached dict is stable.
+        self.assertIsNone(_search._ensure_vocab())
+        _search._join_vocab_build()
+        v1 = _search._ensure_vocab()
+        v2 = _search._ensure_vocab()
+        self.assertIsNotNone(v1)
         self.assertIs(v1, v2)
+        self.assertIn("python", v1)
+
+    def test_ensure_vocab_single_builder(self):
+        # Concurrent-ish calls must not spawn multiple builder threads.
+        _search._ensure_vocab()
+        t1 = _search._vocab_builder_thread
+        _search._ensure_vocab()
+        t2 = _search._vocab_builder_thread
+        self.assertIs(t1, t2)
+        _search._join_vocab_build()
 
 
 class CorrectionTests(unittest.TestCase):
@@ -123,6 +138,31 @@ class CorrectionTests(unittest.TestCase):
         past = time.monotonic() - 1.0
         self.assertIsNone(_search._did_you_mean("pyhton", self.vocab, past))
 
+    def test_accented_query_never_mangles(self):
+        # "café" must never become a hybrid like "cafeé". A clean "cafe" or
+        # None are both acceptable; a mangled accent-glued token is not.
+        deadline = time.monotonic() + 1.0
+        vocab = {"cafe": 5, "python": 10}
+        out = _search._did_you_mean("café", vocab, deadline)
+        self.assertIn(out, (None, "cafe"))
+
+    def test_cyrillic_query_no_suggestion_no_crash(self):
+        deadline = time.monotonic() + 1.0
+        self.assertIsNone(_search._did_you_mean("привет", self.vocab, deadline))
+
+    def test_cjk_query_no_suggestion_no_crash(self):
+        deadline = time.monotonic() + 1.0
+        self.assertIsNone(_search._did_you_mean("日本語", self.vocab, deadline))
+
+    def test_mixed_ascii_and_accented_only_sane_output(self):
+        # The ASCII typo gets corrected; the accented token is left verbatim,
+        # never fused with a correction fragment.
+        deadline = time.monotonic() + 1.0
+        vocab = {"python": 10, "cafe": 5}
+        out = _search._did_you_mean("pyhton café", vocab, deadline)
+        self.assertEqual(out, "python café")
+        self.assertNotIn("cafeé", out)
+
 
 class SearchAllTriggerTests(unittest.TestCase):
     """search_all attaches did_you_mean only on the full path when total < 3."""
@@ -141,6 +181,9 @@ class SearchAllTriggerTests(unittest.TestCase):
         ]
         for p in self._patches:
             p.start()
+        # The vocab build is now async; prime it synchronously so the sparse-path
+        # assertions don't race the background builder.
+        _search._vocab = _search._build_vocab()
 
     def tearDown(self):
         self._patch_dir.stop()
@@ -210,7 +253,7 @@ class SearchAllTriggerTests(unittest.TestCase):
 class BudgetTests(unittest.TestCase):
     def test_maybe_did_you_mean_respects_monotonic(self):
         vocab = {"python": 1}
-        with mock.patch.object(_search, "_get_vocab", lambda: vocab):
+        with mock.patch.object(_search, "_ensure_vocab", lambda: vocab):
             # First call sets the deadline; the next (the per-word budget check
             # inside _did_you_mean) jumps past it → silent bail.
             seq = iter([100.0, 200.0])
