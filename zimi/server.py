@@ -789,21 +789,27 @@ def list_zims(use_cache=True):
     info = []
     for name, path in zims.items():
         size_bytes = os.path.getsize(path)
+        article_count = None
         try:
             archive = open_archive(path)
             entry_count = archive.entry_count
+            try:
+                article_count = archive.article_count
+            except Exception:
+                article_count = None
         except Exception as e:
             log.debug("Failed to open archive for listing %s: %s", name, e)
             entry_count = "?"
-        info.append(
-            {
-                "name": name,
-                "file": os.path.basename(path),
-                "size_gb": round(size_bytes / (1024**3), 3),
-                "size_bytes": size_bytes,
-                "entries": entry_count,
-            }
-        )
+        entry = {
+            "name": name,
+            "file": os.path.basename(path),
+            "size_gb": round(size_bytes / (1024**3), 3),
+            "size_bytes": size_bytes,
+            "entries": entry_count,
+        }
+        if article_count is not None:
+            entry["article_count"] = article_count
+        info.append(entry)
     return info
 
 
@@ -874,9 +880,17 @@ def _extract_zim_metadata(name, path):
     has_icon = False
     main_path = ""
     archive = None
+    article_count = None
     try:
         archive = open_archive(path)
         entry_count = archive.entry_count
+        # Real article count (user-facing content entries, excluding redirects
+        # and non-article assets). Additive over `entries` (all user entries):
+        # cards/info panels prefer this when present, fall back to entry_count.
+        try:
+            article_count = archive.article_count
+        except Exception:
+            article_count = None
         for key in archive.metadata_keys:
             try:
                 val = bytes(archive.get_metadata(key))
@@ -937,6 +951,8 @@ def _extract_zim_metadata(name, path):
         "category": _categorize_zim(name),
         "main_path": main_path,
     }
+    if article_count is not None:
+        info["article_count"] = article_count
     return info, archive
 
 
@@ -1014,6 +1030,10 @@ def load_cache(force=False):
             }
             if "has_qids" in cached:
                 entry["has_qids"] = cached["has_qids"]
+            # Additive: real article count. Absent in caches built before this
+            # field existed — the UI falls back to `entries` when it's missing.
+            if cached.get("article_count") is not None:
+                entry["article_count"] = cached["article_count"]
             info.append(entry)
             cached_out = dict(cached)
             if first_seen is not None:
@@ -1044,6 +1064,8 @@ def load_cache(force=False):
                 "has_icon": entry["has_icon"],
                 "main_path": entry["main_path"],
             }
+            if entry.get("article_count") is not None:
+                new_cached["article_count"] = entry["article_count"]
             if first_seen is not None:
                 new_cached["first_seen"] = first_seen
             if updated_at is not None:

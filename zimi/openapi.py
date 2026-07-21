@@ -344,6 +344,14 @@ def build_openapi():
                                     "name": {"type": "string"},
                                     "title": {"type": "string"},
                                     "entries": {"type": "integer"},
+                                    "article_count": {
+                                        "type": "integer",
+                                        "description": (
+                                            "Real article count (libzim "
+                                            "article_count). Optional: absent for "
+                                            "ZIMs cached before this field existed."
+                                        ),
+                                    },
                                     "size_gb": {"type": "number"},
                                     "language": {"type": "string"},
                                 },
