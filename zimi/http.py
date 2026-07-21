@@ -24,7 +24,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 
 import zimi.server as _srv
 from zimi.manage import (
-    _check_manage_auth,
+    _manage_auth_challenge,
     handle_manage_get,
     handle_manage_post,
 )
@@ -1252,10 +1252,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path == "/collections":
                 # Auth: only enforce password when manage mode is on (collections are
                 # user-facing features that work without manage mode enabled)
-                if _srv.ZIMI_MANAGE and _check_manage_auth(self):
-                    return self._json(
-                        401, {"error": "unauthorized", "needs_password": True}
-                    )
+                challenge = _manage_auth_challenge(self) if _srv.ZIMI_MANAGE else None
+                if challenge:
+                    return self._json(*challenge)
                 name = data.get("name", "").strip()[:64]
                 label = data.get("label", "").strip()[:128]
                 # Auto-generate name from label if not provided
@@ -1281,10 +1280,9 @@ class ZimHandler(BaseHTTPRequestHandler):
 
             elif parsed.path == "/favorites":
                 # Auth: same as collections — only when manage mode is on
-                if _srv.ZIMI_MANAGE and _check_manage_auth(self):
-                    return self._json(
-                        401, {"error": "unauthorized", "needs_password": True}
-                    )
+                challenge = _manage_auth_challenge(self) if _srv.ZIMI_MANAGE else None
+                if challenge:
+                    return self._json(*challenge)
                 zim_name = data.get("zim", "").strip()
                 if not zim_name:
                     return self._json(400, {"error": "missing 'zim' field"})
@@ -1339,10 +1337,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 name = params.get("name", [None])[0]
                 if not name:
                     return self._json(400, {"error": "missing ?name= parameter"})
-                if _srv.ZIMI_MANAGE and _check_manage_auth(self):
-                    return self._json(
-                        401, {"error": "unauthorized", "needs_password": True}
-                    )
+                challenge = _manage_auth_challenge(self) if _srv.ZIMI_MANAGE else None
+                if challenge:
+                    return self._json(*challenge)
                 with _srv._collections_lock:
                     cdata = _srv._load_collections()
                     if name not in cdata.get("collections", {}):

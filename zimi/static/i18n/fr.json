@@ -980,5 +980,7 @@
   "no_recent_sources": "Aucune source récemment ajoutée ou mise à jour.",
   "tts_speak": "Lire à voix haute",
   "tts_stop": "Arrêter la lecture",
-  "font_size": "Taille du texte"
+  "font_size": "Taille du texte",
+  "manage_public_locked_title": "La gestion à distance est verrouillée",
+  "manage_public_locked_body": "La gestion n'est disponible que sur votre réseau local. Définissez un mot de passe depuis un appareil du réseau local pour activer la gestion à distance."
 }

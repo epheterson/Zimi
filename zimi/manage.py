@@ -141,11 +141,21 @@ def _verify_password(candidate, stored_pw):
     return hmac.compare_digest(_hash_pw(candidate, salt), stored_pw)
 
 
+#: Returned by _check_manage_auth when the only reason a request is denied is
+#: that the instance has NO password and the client is non-private. There is no
+#: password to enter, so the UI must explain rather than prompt (see issue #36).
+PUBLIC_LOCKED = "public_locked"
+
+
 def _check_manage_auth(handler):
-    """Check authorization for manage endpoints. Returns True if unauthorized.
+    """Check authorization for manage endpoints. Returns a truthy value if
+    unauthorized (``True`` for a genuine password/token requirement,
+    ``PUBLIC_LOCKED`` for the passwordless-but-non-private case), ``None`` if
+    authorized.
 
     Auth model:
-    - No password set → open access
+    - No password set → open access for private clients; non-private clients
+      are locked (PUBLIC_LOCKED) until a password is set from the LAN
     - Password set → Bearer token must match password or API token
     - API token is optional (requires password to be set first)
     """
@@ -157,7 +167,7 @@ def _check_manage_auth(handler):
         # clients must set a password first (from the LAN).
         if handler._is_private_client():
             return None
-        return True
+        return PUBLIC_LOCKED
 
     auth = handler.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
@@ -175,6 +185,27 @@ def _check_manage_auth(handler):
         return None
 
     return True
+
+
+def _manage_auth_challenge(handler):
+    """Return the ``(status, body)`` to send for a denied manage request, or
+    ``None`` when the client is authorized.
+
+    Distinguishes the two failure modes that used to both surface as a bare
+    ``401 needs_password`` and left the SPA prompting for a password that does
+    not exist (issue #36):
+
+    - passwordless instance, non-private client → ``403 public_locked`` with
+      ``needs_password: False`` (nothing to enter; the UI explains instead)
+    - password/token required or wrong → ``401 unauthorized`` with
+      ``needs_password: True`` (the UI prompts, exactly as before)
+    """
+    result = _check_manage_auth(handler)
+    if result is None:
+        return None
+    if result == PUBLIC_LOCKED:
+        return (403, {"error": "public_locked", "needs_password": False})
+    return (401, {"error": "unauthorized", "needs_password": True})
 
 
 # ============================================================================
@@ -221,8 +252,9 @@ def handle_manage_get(handler, parsed, params):
         handler.end_headers()
         handler.wfile.write(data)
         return
-    if _check_manage_auth(handler):
-        return handler._json(401, {"error": "unauthorized", "needs_password": True})
+    challenge = _manage_auth_challenge(handler)
+    if challenge:
+        return handler._json(*challenge)
 
     if parsed.path == "/manage/status":
         zim_count = len(_srv.get_zim_files())
@@ -709,8 +741,9 @@ def handle_manage_post(handler, parsed, data):
 
     # API token management — requires existing auth + password must be set
     if parsed.path == "/manage/generate-token":
-        if _check_manage_auth(handler):
-            return handler._json(401, {"error": "unauthorized", "needs_password": True})
+        challenge = _manage_auth_challenge(handler)
+        if challenge:
+            return handler._json(*challenge)
         if not _get_manage_password_hash():
             return handler._json(
                 400, {"error": "Set a password before generating an API token"}
@@ -718,12 +751,14 @@ def handle_manage_post(handler, parsed, data):
         token = _generate_api_token()
         return handler._json(200, {"token": token})
     if parsed.path == "/manage/revoke-token":
-        if _check_manage_auth(handler):
-            return handler._json(401, {"error": "unauthorized", "needs_password": True})
+        challenge = _manage_auth_challenge(handler)
+        if challenge:
+            return handler._json(*challenge)
         _revoke_api_token()
         return handler._json(200, {"status": "token revoked"})
-    if _check_manage_auth(handler):
-        return handler._json(401, {"error": "unauthorized", "needs_password": True})
+    challenge = _manage_auth_challenge(handler)
+    if challenge:
+        return handler._json(*challenge)
 
     if parsed.path == "/manage/download":
         url = data.get("url", "")

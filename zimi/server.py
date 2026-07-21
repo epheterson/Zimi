@@ -526,8 +526,13 @@ def _load_history():
             data = json.load(f)
         if isinstance(data, list):
             return data
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
+    except FileNotFoundError:
+        pass  # fresh install — no history yet
+    except (OSError, json.JSONDecodeError) as e:
+        # Unreadable/corrupt (e.g. a bind mount owned by the wrong uid raising
+        # PermissionError/EIO) must degrade to empty, not 500 the request and
+        # look like data loss. Log so the real problem stays visible.
+        log.warning("Could not read history file, returning empty: %s", e)
     return []
 
 
@@ -558,8 +563,13 @@ def _load_collections():
         if data.get("version") != 1:
             return {"version": 1, "favorites": [], "collections": {}}
         return data
-    except (FileNotFoundError, json.JSONDecodeError, KeyError):
-        return {"version": 1, "favorites": [], "collections": {}}
+    except FileNotFoundError:
+        pass  # fresh install — no collections yet
+    except (OSError, json.JSONDecodeError, KeyError) as e:
+        # Unreadable/corrupt data dir must degrade to the empty default rather
+        # than 500 /collections and blank the user's bookmarks (issue #36).
+        log.warning("Could not read collections file, returning default: %s", e)
+    return {"version": 1, "favorites": [], "collections": {}}
 
 
 def _save_collections(data):

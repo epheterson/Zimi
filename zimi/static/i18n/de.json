@@ -980,5 +980,7 @@
   "no_recent_sources": "Keine kürzlich hinzugefügten oder aktualisierten Quellen.",
   "tts_speak": "Vorlesen",
   "tts_stop": "Vorlesen beenden",
-  "font_size": "Schriftgröße"
+  "font_size": "Schriftgröße",
+  "manage_public_locked_title": "Fernverwaltung ist gesperrt",
+  "manage_public_locked_body": "Die Verwaltung ist nur in Ihrem lokalen Netzwerk verfügbar. Legen Sie von einem Gerät im lokalen Netzwerk ein Passwort fest, um die Fernverwaltung zu aktivieren."
 }

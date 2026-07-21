@@ -264,6 +264,9 @@
   .lang-welcome-text { flex: 1; }
   .lang-welcome-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .lang-welcome-subtle { padding: 8px 12px; font-size: 13px; color: var(--text2); }
+  /* Management LAN-only notice (passwordless + non-private client, issue #36) */
+  .manage-locked-card { max-width: 520px; margin: 32px auto; }
+  .manage-locked-card strong { font-size: 15px; }
 
   /* ── Tab bar ── */
   /* ── Language selector (globe icon) ── */

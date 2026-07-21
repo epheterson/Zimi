@@ -1957,6 +1957,44 @@ class TestPasswordlessManageGate(unittest.TestCase):
     def test_public_client_blocked(self):
         self.assertTrue(self._check(private=False))
 
+    def test_public_client_returns_public_locked_sentinel(self):
+        # The block is distinguishable from a genuine password requirement so
+        # the SPA can explain rather than prompt for a nonexistent password (#36).
+        import zimi.manage as manage
+
+        self.assertEqual(self._check(private=False), manage.PUBLIC_LOCKED)
+
+    def _challenge(self, private, stored_pw=None, auth=None, api_token=""):
+        from unittest.mock import patch as _patch
+
+        import zimi.manage as manage
+
+        h = self._FakeHandler(private)
+        if auth is not None:
+            h.headers = {"Authorization": auth}
+        with (
+            _patch.object(manage, "_get_manage_password_hash", return_value=stored_pw),
+            _patch.object(manage, "_get_api_token", return_value=api_token),
+            _patch.object(manage, "_verify_password", return_value=False),
+        ):
+            return manage._manage_auth_challenge(h)
+
+    def test_challenge_passwordless_private_authorized(self):
+        self.assertIsNone(self._challenge(private=True))
+
+    def test_challenge_passwordless_public_is_403_public_locked(self):
+        status, body = self._challenge(private=False)
+        self.assertEqual(status, 403)
+        self.assertEqual(body["error"], "public_locked")
+        self.assertFalse(body["needs_password"])
+
+    def test_challenge_wrong_password_is_401_needs_password(self):
+        status, body = self._challenge(
+            private=False, stored_pw="salt$hash", auth="Bearer wrong"
+        )
+        self.assertEqual(status, 401)
+        self.assertTrue(body["needs_password"])
+
 
 class TestRateClass(unittest.TestCase):
     """Which endpoints ride which rate bucket. /snippet on the content

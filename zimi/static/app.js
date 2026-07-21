@@ -128,12 +128,15 @@ function _rebuildZimsMap() { _zimsByName = new Map((zimsCache || []).map(z => [z
 function _zimInfo(name) { return _zimsByName.get(name) || null; }
 let manageEnabled = false;
 let _managePwRequired = false; // server is password-protected and we have no token yet
+// Passwordless instance reached over a non-private hop: management is LAN-only
+// and there is no password to enter, so we explain instead of prompting (#36).
+let _managePublicLocked = false;
 let _manageUnlocked = true; // manage is always available (auth via env var only)
 
 // May we hit ambient /manage/* endpoints (activity bar, peer discovery)?
 // Yes when we hold a token, or when the server isn't password-protected.
-// Avoids a stream of 401s (and console noise) before the operator logs in.
-function _canPollManage() { return !!_manageToken || !_managePwRequired; }
+// Avoids a stream of 401s/403s (and console noise) before the operator logs in.
+function _canPollManage() { return !!_manageToken || (!_managePwRequired && !_managePublicLocked); }
 let activeCategories = new Set();
 let activeSourceFilters = new Set();
 let allResults = {};
@@ -713,6 +716,11 @@ async function _probeManageAuth() {
     if (mres.ok) {
       const mdata = await mres.json();
       manageEnabled = !!mdata.manage_enabled;
+    } else if (mres.status === 403) {
+      // Passwordless instance, non-private client: no password exists to enter,
+      // so surface an explanation instead of a bogus prompt (#36). manage stays
+      // "enabled" so the tab is reachable and renders the locked banner.
+      _managePublicLocked = true;
     } else if (mres.status === 401) {
       // Stored token went stale — drop BOTH copies (leaving the persisted
       // one meant every future load retried it, 401'd, and re-prompted).
@@ -5118,7 +5126,22 @@ async function renderActivityTab() {
 }
 
 // ── Manage entry point ──
+// Passwordless instance reachable from a non-private network: there is no
+// password to enter, so explain the LAN-only state instead of prompting (#36).
+function _renderManagePublicLocked() {
+  output.innerHTML =
+    '<div class="manage-wrap">' +
+      '<div class="lang-welcome-card manage-locked-card">' +
+        '<div class="lang-welcome-text">' +
+          '<strong>' + tH('manage_public_locked_title') + '</strong>' +
+          '<p>' + tH('manage_public_locked_body') + '</p>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
 async function renderManage() {
+  if (_managePublicLocked) { _renderManagePublicLocked(); return; }
   const installedCount = zimsCache ? zimsCache.length : 0;
 
   output.innerHTML =
