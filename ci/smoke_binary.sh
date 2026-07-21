@@ -79,13 +79,17 @@ STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/")
 [ "$STATUS" = "200" ] && echo "  OK: web UI" || { echo "FAIL: got $STATUS"; exit 1; }
 
 if [ "${SMOKE_EXPECT_BT:-}" = "1" ]; then
-  # The sidecar starts on a background thread after READY. "status":"ready"
-  # alone is optimistic (binary present counts) — demand PROOF the spawn
-  # happened: sidecar_running is true only when the process is up and
-  # answered RPC. This caught a bundled aria2c that died instantly on
-  # OpenSSL provider loading. (An idle aria2 doesn't open its BT listen
-  # socket, so nat.listening can't be the gate.)
-  echo "Testing /manage/bt-status (bundled aria2 must actually spawn)..."
+  # libtorrent is an in-process engine that starts on a background thread
+  # after READY, so poll rather than check once. "status":"ready" alone is
+  # optimistic (importable counts) — demand PROOF the session came up:
+  # sidecar_running is true only when the engine is actually alive.
+  #
+  # Soft dependency: a platform with no libtorrent wheel bundles nothing and
+  # runs HTTP-only (an accepted degraded mode, NOT a build failure). We tell
+  # the two cases apart via engine_importable:
+  #   importable + never alive  → real bundling bug → FAIL
+  #   not importable            → no wheel, HTTP-only → PASS with a warning
+  echo "Testing /manage/bt-status (in-process libtorrent must actually start)..."
   BT_OK=""
   for i in $(seq 1 45); do
     body=$(curl -sf -H "Sec-Fetch-Site: same-origin" "$BASE/manage/bt-status")
@@ -95,9 +99,11 @@ if [ "${SMOKE_EXPECT_BT:-}" = "1" ]; then
     sleep 1
   done
   if [ -n "$BT_OK" ]; then
-    echo "  OK: bundled aria2c is alive and listening on the BT port"
+    echo "  OK: libtorrent engine is alive and listening on the BT port"
+  elif echo "$body" | grep -q '"engine_importable": *false'; then
+    echo "  WARN: libtorrent not importable in this bundle — HTTP-only build (accepted degraded mode)"
   else
-    echo "FAIL: aria2c never came up (status below). Sidecar stderr is in the server log above."
+    echo "FAIL: libtorrent is importable but the engine never came up (status below). Engine stderr is in the server log above."
     curl -s -H "Sec-Fetch-Site: same-origin" "$BASE/manage/bt-status"
     echo
     cat "$LOG"

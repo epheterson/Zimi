@@ -15,7 +15,7 @@ import os
 import platform
 import sysconfig
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
 
 block_cipher = None
 
@@ -60,28 +60,16 @@ def collect_libzim_binaries():
 
 libzim_bins = collect_libzim_binaries()
 
-# Bundled aria2 sidecar (BT downloads/seeding work out of the box).
-# CI prepares a self-contained directory (binary + relocated dylibs on
-# macOS, one static binary on Linux) and points ZIMI_ARIA2_DIR at it.
-# Local builds without the env var simply skip it — Zimi falls back to
-# any system aria2c, then to plain HTTP.
-_aria2_dir = os.environ.get('ZIMI_ARIA2_DIR')
-if _aria2_dir and os.path.isdir(_aria2_dir):
-    for _root, _dirs, _files in os.walk(_aria2_dir):
-        _rel = os.path.relpath(_root, _aria2_dir)
-        _dest = '.' if _rel == '.' else _rel
-        for _f in sorted(_files):
-            # Subdirectories must survive: ossl-modules/ is located at
-            # runtime relative to the aria2c binary (OPENSSL_MODULES) —
-            # flattening it silently reverts to the Homebrew path baked
-            # into libcrypto, which only exists on the build runner.
-            libzim_bins.append((os.path.join(_root, _f), _dest))
-    print(f"Bundling aria2 sidecar from {_aria2_dir}")
+# libtorrent (in-process BT engine): PyInstaller misses compiled-extension
+# dylibs without an explicit collect. Soft dependency — if the build venv
+# has no libtorrent wheel this collects nothing and the app runs HTTP-only.
+lt_bins = collect_dynamic_libs('libtorrent')
+lt_hidden = collect_submodules('libtorrent')
 
 a = Analysis(
     ['zimi_desktop.py'],
     pathex=[],
-    binaries=libzim_bins,
+    binaries=libzim_bins + lt_bins,
     datas=[
         ('zimi/templates', 'zimi/templates'),
         ('zimi/assets', 'zimi/assets'),
@@ -99,10 +87,14 @@ a = Analysis(
         'zimi.p2p',
         'zimi.p2p_discovery',
         'libzim',
+        # Soft BT dependency: guarantees the extension is bundled when a
+        # wheel is present. Absent → PyInstaller warns, does not fail.
+        'libtorrent',
         'certifi',
         'fitz',
         'PIL',
         'webview',
+        *lt_hidden,
     ] + zeroconf_hiddenimports + (['gi'] if platform.system() == 'Linux' else []),
     hookspath=[],
     hooksconfig={},
