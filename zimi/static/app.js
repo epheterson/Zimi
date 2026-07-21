@@ -6614,6 +6614,12 @@ function renderInstalled(filterText) {
       }
       // Download slot \u2014 filled by _fillInstalledDownloads only when peer-share is live.
       actionsHtml += '<span class="ci-dl" data-file="' + escAttr(z.file) + '" hidden></span>';
+      // Same Move to\u2026 gear the catalog rows carry \u2014 the Installed tab is where
+      // a user organizes their library, so it needs the entry point too. data-zim
+      // + delegated handler, one submenu impl, no user strings in inline onclick.
+      const gearHtml = manageEnabled
+        ? '<button class="ci-gear" data-zim="' + escAttr(z.name) + '" onclick="event.stopPropagation();_ciGearClick(this)" title="' + escAttr(t('organize')) + '" aria-label="' + escAttr(t('organize')) + '">\u22ef</button>'
+        : '';
       var langTag = (z.language && z.language !== 'en') ? '<span class="ci-lang-tag">' + esc(_langDisplayName(z.language)) + '</span>' : '';
       items_h += '<div class="catalog-item' + (upd ? ' ci-has-update' : '') + '" style="cursor:pointer" onclick="if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(z.name) + '\',true)}">' +
         '<div class="ci-icon">' + iconHtml + '</div>' +
@@ -6621,7 +6627,7 @@ function renderInstalled(filterText) {
           '<div class="ci-title">' + esc(z.title || z.name) + langTag + '</div>' +
           '<div class="ci-meta">' + meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
         '</div>' +
-        '<div class="ci-actions">' + actionsHtml + '</div>' +
+        '<div class="ci-actions">' + gearHtml + actionsHtml + '</div>' +
       '</div>';
     }
     items_h += '</div>';
