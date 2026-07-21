@@ -66,6 +66,7 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import threading
 import time
 from http.server import ThreadingHTTPServer
@@ -388,9 +389,18 @@ def _atomic_write_json(path, data, indent=None):
     Used for all persistent state files to prevent corruption from
     crashes or concurrent writes. indent=None for compact output.
     """
-    tmp = path + ".tmp"
+    # Unique temp name per write: a fixed "<path>.tmp" collides when two
+    # threads write the same target concurrently — the second os.replace races
+    # against the first's rename/unlink and can fail or observe a torn file.
+    directory = os.path.dirname(path) or "."
+    prefix = os.path.basename(path) + "."
     try:
-        with open(tmp, "w") as f:
+        fd, tmp = tempfile.mkstemp(dir=directory, prefix=prefix, suffix=".tmp")
+    except OSError as e:
+        log.warning("Atomic write failed for %s: %s", path, e)
+        return
+    try:
+        with os.fdopen(fd, "w") as f:
             json.dump(
                 data,
                 f,
@@ -401,6 +411,10 @@ def _atomic_write_json(path, data, indent=None):
         os.replace(tmp, path)
     except OSError as e:
         log.warning("Atomic write failed for %s: %s", path, e)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 
 # MIME type fallback for ZIM entries with empty mimetype
@@ -1039,6 +1053,7 @@ def load_cache(force=False):
 
     info = []
     scanned = 0
+    backfilled = 0  # legacy entries whose first_seen we filled from file mtime
     file_cache = {}  # for saving back to disk
 
     for name, path in zims.items():
@@ -1060,6 +1075,18 @@ def load_cache(force=False):
             first_seen = time.time()
         else:
             first_seen = cached.get("first_seen")
+            # Legacy cache entries (written before #34) carry no first_seen.
+            # Backfill from the ZIM file's own mtime so a recently-downloaded
+            # ZIM lights up "Recently added" on an already-established library,
+            # while a long-installed file (old mtime) stays quiet. Persisted by
+            # the cache-hit write-back below, so it's computed once. If the file
+            # vanished mid-scan, leave it None rather than stamping "now".
+            if first_seen is None:
+                try:
+                    first_seen = os.path.getmtime(path)
+                    backfilled += 1
+                except OSError:
+                    first_seen = None
         # An already-known ZIM whose file changed on disk is an update — stamp
         # updated_at so the UI can flag it "Updated" (distinct from "New").
         cache_hit = bool(
@@ -1139,8 +1166,9 @@ def load_cache(force=False):
     _zim_list_cache = info
     elapsed = time.time() - t0
 
-    # Persist cache if we scanned anything new
-    if scanned > 0 or disk_cache is None:
+    # Persist cache if we scanned anything new, or backfilled a legacy
+    # first_seen (so the mtime stamp is computed once, not every load).
+    if scanned > 0 or backfilled > 0 or disk_cache is None:
         _save_disk_cache(file_cache)
 
     cached_count = len(info) - scanned

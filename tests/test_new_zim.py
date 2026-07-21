@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -69,16 +70,60 @@ def test_changed_zim_gets_updated_at(tmp_path, monkeypatch):
     assert e["first_seen"] == first_seen, "first_seen must survive the update"
 
 
-def test_prefeature_cache_entry_is_not_new(tmp_path, monkeypatch):
-    """A ZIM already in a cache written before this feature (no first_seen)
-    must NOT be retroactively flagged new."""
-    _setup(tmp_path, monkeypatch)
-    server.load_cache(force=True)
-    # Strip first_seen from the persisted cache to simulate a pre-feature file.
-    cf = server._cache_file_path()
+def _strip_first_seen(cf):
+    """Simulate a pre-#34 cache file: drop first_seen from every entry."""
     data = json.load(open(cf))
     for v in data.get("files", {}).values():
         v.pop("first_seen", None)
     json.dump(data, open(cf, "w"))
-    server.load_cache(force=False)  # cache hit, no stored first_seen
+
+
+def test_prefeature_recent_file_backfills_first_seen(tmp_path, monkeypatch):
+    """A legacy cache entry (no first_seen) whose ZIM file has a recent mtime
+    gets first_seen backfilled from that mtime, and the value is persisted so
+    it's computed once."""
+    zdir = _setup(tmp_path, monkeypatch)
+    server.load_cache(force=True)
+    cf = server._cache_file_path()
+    _strip_first_seen(cf)
+    zpath = str(zdir / "survival_en_2026-06.zim")
+    mtime = os.path.getmtime(zpath)
+    server.load_cache(force=False)  # cache hit, no stored first_seen → backfill
+    assert _entry(server._zim_list_cache)["first_seen"] == mtime
+    # Persisted: the write-back stored the backfilled value.
+    persisted = json.load(open(cf))["files"]["survival_en_2026-06.zim"]
+    assert persisted["first_seen"] == mtime
+
+
+def test_prefeature_old_file_backfills_old_mtime(tmp_path, monkeypatch):
+    """A legacy entry whose ZIM file is old gets stamped with that old mtime,
+    so the 'Recently added' pill naturally won't count it."""
+    zdir = _setup(tmp_path, monkeypatch)
+    server.load_cache(force=True)
+    cf = server._cache_file_path()
+    _strip_first_seen(cf)
+    zpath = str(zdir / "survival_en_2026-06.zim")
+    old = time.time() - 400 * 86400  # ~13 months ago
+    os.utime(zpath, (old, old))
+    server.load_cache(force=False)
+    fs = _entry(server._zim_list_cache)["first_seen"]
+    assert abs(fs - old) < 1.0, "first_seen must track the old file mtime"
+
+
+def test_prefeature_unreadable_mtime_stays_none(tmp_path, monkeypatch):
+    """If the ZIM file's mtime can't be read (vanished mid-scan), the legacy
+    entry stays unstamped rather than being flagged 'new'."""
+    zdir = _setup(tmp_path, monkeypatch)
+    server.load_cache(force=True)
+    cf = server._cache_file_path()
+    _strip_first_seen(cf)
+    real_getmtime = os.path.getmtime
+
+    def flaky_getmtime(p):
+        if p.endswith("survival_en_2026-06.zim"):
+            raise OSError("file gone")
+        return real_getmtime(p)
+
+    monkeypatch.setattr(server.os.path, "getmtime", flaky_getmtime)
+    server.load_cache(force=False)
     assert _entry(server._zim_list_cache).get("first_seen") in (None, 0, "")

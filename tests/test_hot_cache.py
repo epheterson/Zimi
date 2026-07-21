@@ -98,6 +98,37 @@ def test_set_hot_zims_atomic(tmp_path, monkeypatch):
     assert not (tmp_path / "hot.json.tmp").exists()
 
 
+def test_atomic_write_json_concurrent(tmp_path):
+    """Many threads writing the same target concurrently must never raise and
+    must leave a valid JSON file matching one of the writers (the fixed-tmp
+    bug produced 'Atomic write failed' collisions and torn-file windows)."""
+    import glob
+    import threading
+
+    target = str(tmp_path / "catalog_cache.json")
+    errors = []
+
+    def writer(n):
+        try:
+            for _ in range(50):
+                server._atomic_write_json(target, {"writer": n}, indent=2)
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=writer, args=(n,)) for n in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"concurrent writes raised: {errors}"
+    with open(target) as f:
+        data = json.load(f)  # must be valid, non-torn JSON
+    assert data["writer"] in range(8)
+    # No temp files left behind after all writers finish
+    assert not glob.glob(str(tmp_path / "catalog_cache.json.*.tmp"))
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # Validation
 # ────────────────────────────────────────────────────────────────────────────
