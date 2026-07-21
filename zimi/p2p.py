@@ -753,6 +753,12 @@ class LibtorrentBackend(BTBackend):
         # policy passes stop seeds). Auto-management would resurrect
         # paused torrents behind our back.
         atp.flags &= ~lt.torrent_flags.auto_managed
+        # Default add_torrent_params flags set BOTH auto_managed AND paused;
+        # libtorrent's auto-manager is what normally unpauses. With auto_managed
+        # stripped, nothing unpauses it, so an added torrent would sit paused
+        # forever (never downloads, never seeds). Clear paused so it starts;
+        # Zimi drives pause()/resume() explicitly from here on.
+        atp.flags &= ~lt.torrent_flags.paused
         tid = str(atp.info_hashes.v1)
         with self._lock:
             if tid in self._handles and self._handles[tid].is_valid():
