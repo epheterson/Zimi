@@ -1,13 +1,12 @@
 FROM python:3.11-slim
 
-# aria2c bundled for the optional BT/torrent download path (ZIMI_TORRENT=1).
-# Off by default — HTTP downloads work without it.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      aria2 \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# libtorrent 2.0 is the in-process BT engine for the optional torrent download
+# path (ZIMI_TORRENT=1). Off by default — HTTP downloads work without it. The
+# manylinux cp311 wheel means no apt/dist-packages games; the base is pinned to
+# python:3.11-slim so this wheel resolves.
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir "libtorrent==2.0.*"
 
 WORKDIR /app
 COPY zimi/ ./zimi/
