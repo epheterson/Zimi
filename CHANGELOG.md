@@ -7,17 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.7.5] - Unreleased
 
+Zimi grows a real agent-facing API, and the reader and search get the small
+things people have asked for since the beginning. Under the hood the torrent
+engine is finally in-process — no more sidecar.
+
+### Added
+
+- **`GET /chunks`** — deterministic, embedding-free chunking of any article,
+  built for RAG clients. Paragraph-aware packing to a `size` budget
+  (200–4000 chars, default 1200) with a configurable `overlap` (default 120),
+  `start`/`end` char offsets, and stable content-addressed chunk IDs: the same
+  ZIM and parameters produce identical IDs on every server, and a ZIM update
+  rolls them (cache invalidation for free). Text is capped by `CHUNK_MAX_TEXT`
+  with a `truncated` flag so a giant article can't blow up a client. 404 for an
+  unknown ZIM or path, 400 for bad params, rate-limited like `/search`.
+- **MCP `get_chunks` tool** wrapping the same logic, so an agent can pull an
+  article in ready-to-embed pieces without leaving the MCP surface.
+- **`GET /openapi.json`** — a hand-authored OpenAPI 3.1 description of the read
+  API (`/search`, `/suggest`, `/read`, `/content`, `/list`, `/random`,
+  `/health`, `/chunks`) with real parameter and response schemas. `info.version`
+  tracks the running server version.
+- **`docs/api-stability.md`** — which endpoints are stable, the additive-only
+  JSON policy, and the one-minor-release deprecation notice. Plus an honest
+  agent-cycle benchmark and methodology in `docs/benchmarks/2026-07-agent-api.md`.
+- **"Did you mean?" spelling correction.** When a search turns up almost
+  nothing, Zimi offers a correction drawn from a title-word vocabulary built
+  from the ZIMs you actually have — fully offline, bounded so it never slows a
+  search down. Surfaced as an additive `did_you_mean` field on `/search`, passed
+  through MCP search, and rendered as a clickable line in the UI.
+- **Read-aloud in the reader.** A speak/stop control uses the browser's offline
+  speech synthesis to read the current article; it hides itself where the API
+  isn't available.
+- **Reader font-size control.** An A−/A+ pill cycles the article text through
+  85/100/115/130%, injected into the article frame, reapplied on every page,
+  and remembered between sessions.
+- **Download-this-ZIM buttons** — on the source header and on every row in
+  Manage, pointing at the existing `/dl/` peer endpoint. Each button is gated by
+  a capability probe, so it only appears where the raw file can actually be
+  pulled and the public WAN never sees a dead control.
+
 ### Changed
 
 - BitTorrent engine: the bundled aria2c sidecar is replaced by in-process
   libtorrent. Real per-torrent stats, fast-resume across restarts, no more
   RPC ports or orphaned sidecar processes. Where libtorrent isn't available
   (e.g. bare `pip install zimi`), downloads simply use HTTP as always.
+- **Cards show the real article count** — libzim's `article_count` rather than
+  the raw entry count, which includes images, redirects and metadata. It's an
+  additive cache field that fills in on the next natural metadata refresh;
+  sources with a stale cache keep showing the entry count until then.
+- The almanac's daylight labels read "Evening" and "Morning" (capitalized),
+  matching the rest of the panel.
 
 ### Removed
 
 - aria2 backend and bundling (Docker package, desktop sidecar binaries,
   `ZIMI_BT_BACKEND` selection). `ZIMI_BT` configuration is unchanged.
+
+### Fixed
+
+- The almanac's meteor-shower list no longer jams the peak marker onto the
+  line ("🌕 Poor Peak!"). Peak night now gets its own localized badge, styled
+  like the other meteor labels and translated across all ten locales (#23).
 
 ## [1.7.4] - 2026-07-20
 
