@@ -60,6 +60,18 @@ class TestOpenAPISpec(unittest.TestCase):
         self.assertIn("detected_language", props)
         self.assertEqual(props["detected_language"]["type"], "string")
 
+    def test_list_documents_recency_fields(self):
+        # The /list 200 body advertises the additive first_seen/updated_at
+        # stamps (#34) that drive the New/Updated badges and the library
+        # filter pills.
+        props = self.spec["paths"]["/list"]["get"]["responses"]["200"]["content"][
+            "application/json"
+        ]["schema"]["items"]["properties"]
+        self.assertIn("first_seen", props)
+        self.assertEqual(props["first_seen"]["type"], "number")
+        self.assertIn("updated_at", props)
+        self.assertEqual(props["updated_at"]["type"], "number")
+
     def test_structural_self_check(self):
         try:
             from openapi_spec_validator import validate  # type: ignore

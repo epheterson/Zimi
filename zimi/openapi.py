@@ -354,6 +354,27 @@ def build_openapi():
                                     },
                                     "size_gb": {"type": "number"},
                                     "language": {"type": "string"},
+                                    "first_seen": {
+                                        "type": "number",
+                                        "description": (
+                                            "Unix time Zimi first saw this ZIM "
+                                            "(#34). Drives the 'New' badge and the "
+                                            "'Recently added' library filter. "
+                                            "Optional: absent for ZIMs cached "
+                                            "before this field existed."
+                                        ),
+                                    },
+                                    "updated_at": {
+                                        "type": "number",
+                                        "description": (
+                                            "Unix time the ZIM's file last changed "
+                                            "on disk (#34). Set only on an update "
+                                            "(greater than first_seen); drives the "
+                                            "'Updated' badge and the 'Recently "
+                                            "updated' library filter. Null/absent "
+                                            "for a fresh install."
+                                        ),
+                                    },
                                 },
                             },
                         },
