@@ -70,6 +70,40 @@ class TestAddTorrent:
         h = backend._handles[tid]
         assert h._atp.save_path == str(tmp_path / "staging")
 
+    def test_reseed_waits_out_async_remove_and_adopts_new_save_path(
+        self, backend, tmp_path
+    ):
+        # Post-download reseed (library.py): the staging seed is remove()d,
+        # then the SAME info-hash is re-added at the library dir. libtorrent's
+        # remove is async, so for a window the re-add raises duplicate and
+        # find_torrent returns the STILL-REMOVING staging handle (staging
+        # save_path). Adopting it means the file silently never seeds. The
+        # backend must wait the removing handle out and land the seed at the
+        # library dir.
+        staging = tmp_path / "staging"
+        zim_dir = tmp_path / "zims"
+        zim_dir.mkdir()
+        torrent = str(tmp_path / "wiki.torrent")
+
+        tid = backend.add_torrent(torrent, dest_dir=str(staging))
+        assert backend._handles[tid].status().save_path == str(staging)
+
+        # Staging torrent lingers (valid, staging save_path) for 3 add attempts.
+        backend._ses.remove_delay = 3
+        backend.remove(tid, delete_files=True)
+
+        tid2 = backend.add_torrent(torrent, dest_dir=str(zim_dir))
+        assert tid2 == tid  # same info-hash
+        seed = backend._handles[tid2]
+        assert seed.is_valid()
+        # The adopted handle sits at the LIBRARY dir, not stale staging.
+        assert os.path.realpath(seed.status().save_path) == os.path.realpath(
+            str(zim_dir)
+        )
+        assert os.path.realpath(seed.status().save_path) != os.path.realpath(
+            str(staging)
+        )
+
 
 class TestStatus:
     def test_downloading(self, backend, tmp_path):

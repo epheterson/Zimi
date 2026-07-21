@@ -550,7 +550,6 @@ class LibtorrentBackend(BTBackend):
         self.staging_dir = staging_dir
         self.bt_dir = os.path.join(data_dir, "bt")
         self.resume_dir = os.path.join(self.bt_dir, "resume")
-        self.session_state_path = os.path.join(self.bt_dir, "session-state")
         self._ses = None
         self._handles: dict[str, Any] = {}
         self._lock = threading.Lock()
@@ -763,16 +762,50 @@ class LibtorrentBackend(BTBackend):
         with self._lock:
             if tid in self._handles and self._handles[tid].is_valid():
                 return tid  # duplicate add — already managed
+            self._handles[tid] = self._add_resolving_duplicate(atp, dest_dir)
+        return tid
+
+    # A staging seed that was just remove()d still holds its info-hash for a
+    # brief window: libtorrent's remove_torrent is async, so re-adding the
+    # same hash at the library path (post-download reseed, library.py) raises
+    # "duplicate" while find_torrent still returns the STILL-REMOVING staging
+    # handle — whose save_path points at staging, not the library dir. Adopting
+    # it means the file silently never seeds until the next restart. Wait the
+    # removing handle out instead, adopting only a handle that already sits at
+    # the destination.
+    _DUP_RETRY_ATTEMPTS = 20
+    _DUP_RETRY_SLEEP_S = 0.1
+
+    def _add_resolving_duplicate(self, atp, dest_dir: str):
+        """Add atp, tolerating the async-remove duplicate window.
+
+        Retries the add until it succeeds (the removing handle finally
+        clears) or a found handle is confirmed to already live at dest_dir.
+        Caller holds self._lock."""
+        want = os.path.realpath(dest_dir)
+        last_exc: Exception | None = None
+        for _ in range(self._DUP_RETRY_ATTEMPTS):
             try:
-                h = self._ses.add_torrent(atp)
-            except Exception:
+                return self._ses.add_torrent(atp)
+            except Exception as e:
+                last_exc = e
                 existing = self._ses.find_torrent(atp.info_hashes.v1)
                 if existing is not None and existing.is_valid():
-                    self._handles[tid] = existing
-                    return tid
-                raise
-            self._handles[tid] = h
-        return tid
+                    save_path = os.path.realpath(existing.status().save_path)
+                    if save_path == want:
+                        return existing  # genuinely already managed at dest
+                # No valid handle yet, or a stale removing handle at the wrong
+                # save_path — let the async remove finish, then retry the add.
+                time.sleep(self._DUP_RETRY_SLEEP_S)
+        # Window never closed. Adopt only if the survivor sits at dest.
+        existing = self._ses.find_torrent(atp.info_hashes.v1)
+        if (
+            existing is not None
+            and existing.is_valid()
+            and os.path.realpath(existing.status().save_path) == want
+        ):
+            return existing
+        raise last_exc if last_exc is not None else RuntimeError("add_torrent failed")
 
     def _fetch_torrent_bytes(self, url: str) -> bytes:
         """Bounded .torrent metadata fetch. This collapses aria2's

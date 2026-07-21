@@ -183,9 +183,25 @@ class session:
         self._torrents = {}
         self._alerts = []
         self.removed = []  # (hex, delete_files_flag) — test hook
+        # Scriptable async-remove: real remove_torrent is async, so a just-
+        # removed torrent lingers (still valid, old save_path) for a window.
+        # Set >0 to make a removed torrent survive that many add_torrent
+        # attempts — each raising "duplicate" with find_torrent returning the
+        # stale handle — before it really clears. Exercises add_torrent's
+        # duplicate-retry path.
+        self.remove_delay = 0
+        self._pending_removes = {}  # hex -> remaining add attempts before real clear
 
     def add_torrent(self, atp):
         hexh = str(atp.info_hashes.v1)
+        if hexh in self._pending_removes:
+            self._pending_removes[hexh] -= 1
+            if self._pending_removes[hexh] <= 0:
+                # Window closed — the lingering removing torrent finally clears.
+                del self._pending_removes[hexh]
+                old = self._torrents.pop(hexh, None)
+                if old is not None:
+                    old._valid = False
         if hexh in self._torrents:
             raise RuntimeError("torrent already exists in session")
         h = torrent_handle(atp)
@@ -198,9 +214,14 @@ class session:
 
     def remove_torrent(self, handle, flags=0):
         hexh = str(handle._atp.info_hashes.v1)
+        self.removed.append((hexh, bool(flags & session.delete_files)))
+        if self.remove_delay > 0:
+            # Async remove: torrent lingers (valid, old save_path) for N more
+            # add attempts, then really goes. Handle stays valid meanwhile.
+            self._pending_removes[hexh] = self.remove_delay
+            return
         self._torrents.pop(hexh, None)
         handle._valid = False
-        self.removed.append((hexh, bool(flags & session.delete_files)))
 
     def apply_settings(self, settings):
         self.settings.update(settings)
