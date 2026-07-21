@@ -86,7 +86,14 @@ _AUTHED_CACHE_TTL = 300.0
 # fetches, which burned the whole API budget in a few searches (#30's
 # cousin). Pinned by tests — moving /snippet back to the API bucket is a
 # regression, not a cleanup.
-_RATE_LIMITED_API_PATHS = ("/search", "/read", "/suggest", "/random", "/chunks")
+_RATE_LIMITED_API_PATHS = (
+    "/search",
+    "/read",
+    "/suggest",
+    "/random",
+    "/chunks",
+    "/openapi.json",
+)
 
 # High-frequency read-only manage polls. While a download runs the manage UI
 # keeps three independent timers alive — downloads+seeding every 2s, activity
@@ -903,6 +910,11 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path == "/collections":
                 data = _srv._load_collections()
                 return self._json(200, data)
+
+            elif parsed.path == "/openapi.json":
+                from zimi.openapi import build_openapi
+
+                return self._json(200, build_openapi())
 
             elif parsed.path == "/health":
                 zim_count = len(_srv.get_zim_files())
