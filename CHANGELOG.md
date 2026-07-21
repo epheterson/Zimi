@@ -45,6 +45,9 @@ engine is finally in-process — no more sidecar.
   Manage, pointing at the existing `/dl/` peer endpoint. Each button is gated by
   a capability probe, so it only appears where the raw file can actually be
   pulled and the public WAN never sees a dead control.
+- **Library filter pills** — the home library view gains All · Recently added ·
+  Recently updated pills (30-day window, newest first), so a new ZIM is easy to
+  find in a big library without searching (#34).
 
 ### Changed
 
@@ -64,8 +67,21 @@ engine is finally in-process — no more sidecar.
 - aria2 backend and bundling (Docker package, desktop sidecar binaries,
   `ZIMI_BT_BACKEND` selection). `ZIMI_BT` configuration is unchanged.
 
+### Security
+
+- On an internet-exposed Zimi with no management password set, the initial
+  password-setup endpoint was reachable by public clients — a stranger could
+  claim the instance before its owner. Initial setup now works only from
+  private (LAN) addresses, like the rest of management; changing an existing
+  password with the current password keeps working from anywhere.
+
 ### Fixed
 
+- A passwordless Zimi asked non-local visitors for a password that didn't
+  exist. Management is local-network-only until a password is set — the UI
+  now says exactly that instead of showing a password prompt, and library
+  data readers degrade gracefully on unreadable data directories instead of
+  erroring (#36).
 - The almanac's meteor-shower list no longer jams the peak marker onto the
   line ("🌕 Poor Peak!"). Peak night now gets its own localized badge, styled
   like the other meteor labels and translated across all ten locales (#23).
