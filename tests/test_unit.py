@@ -1996,6 +1996,85 @@ class TestPasswordlessManageGate(unittest.TestCase):
         self.assertTrue(body["needs_password"])
 
 
+class TestSetPasswordAuthGate(unittest.TestCase):
+    """/manage/set-password is dispatched before the shared manage gate, so it
+    carries its own auth. Initial setup (no password yet) must be LAN-only —
+    otherwise a public client on an internet-exposed passwordless instance
+    could POST a password and lock the owner out. Once a password exists, the
+    current-password check governs and a credential holder may change it from
+    any hop."""
+
+    class _FakeHandler:
+        def __init__(self, private):
+            self._private = private
+            self.headers = {}
+            self.responses = []
+
+        def _is_private_client(self):
+            return self._private
+
+        def _json(self, status, body):
+            self.responses.append((status, body))
+            return (status, body)
+
+    def _post(self, private, data, stored_pw=None, api_token=""):
+        import urllib.parse
+        from unittest.mock import patch as _patch
+
+        import zimi.manage as manage
+
+        h = self._FakeHandler(private)
+        set_calls = []
+        with (
+            _patch.object(manage._srv, "ZIMI_MANAGE", True, create=True),
+            _patch.dict(manage.os.environ, {}, clear=False),
+            _patch.object(manage, "_get_manage_password_hash", return_value=stored_pw),
+            _patch.object(manage, "_get_api_token", return_value=api_token),
+            _patch.object(
+                manage,
+                "_verify_password",
+                side_effect=lambda cand, stored: cand == "right",
+            ),
+            _patch.object(
+                manage,
+                "_set_manage_password",
+                side_effect=lambda pw: set_calls.append(pw),
+            ),
+        ):
+            manage.os.environ.pop("ZIMI_MANAGE_PASSWORD", None)
+            parsed = urllib.parse.urlparse("/manage/set-password")
+            manage.handle_manage_post(h, parsed, data)
+        return h.responses[-1], set_calls
+
+    def test_passwordless_private_sets_password(self):
+        (status, _body), set_calls = self._post(True, {"password": "newpw"})
+        self.assertEqual(status, 200)
+        self.assertEqual(set_calls, ["newpw"])
+
+    def test_passwordless_public_is_403_public_locked(self):
+        (status, body), set_calls = self._post(False, {"password": "newpw"})
+        self.assertEqual(status, 403)
+        self.assertEqual(body["error"], "public_locked")
+        self.assertFalse(body["needs_password"])
+        self.assertEqual(set_calls, [])  # takeover prevented
+
+    def test_password_set_correct_current_public_allowed(self):
+        # A credential holder is a credential holder — a correct current
+        # password changes it regardless of hop.
+        (status, _body), set_calls = self._post(
+            False, {"current": "right", "password": "newpw"}, stored_pw="salt$hash"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(set_calls, ["newpw"])
+
+    def test_password_set_wrong_current_rejected(self):
+        (status, _body), set_calls = self._post(
+            False, {"current": "wrong", "password": "newpw"}, stored_pw="salt$hash"
+        )
+        self.assertEqual(status, 401)
+        self.assertEqual(set_calls, [])
+
+
 class TestRateClass(unittest.TestCase):
     """Which endpoints ride which rate bucket. /snippet on the content
     bucket is a #30-class fix — one search fans out to ~10 snippet

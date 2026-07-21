@@ -729,6 +729,15 @@ def handle_manage_post(handler, parsed, data):
             cur = data.get("current", "")
             if not cur or not _verify_password(cur, stored):
                 return handler._json(401, {"error": "Current password is incorrect"})
+        else:
+            # Initial setup: there is no current password to verify, so the
+            # public-lock is the only thing between a public client and a
+            # full instance takeover. Gate it exactly like the rest of
+            # manage — private clients set the first password, public clients
+            # get 403 public_locked (must set it from the LAN).
+            challenge = _manage_auth_challenge(handler)
+            if challenge:
+                return handler._json(*challenge)
         new_pw = data.get("password", "").strip()
         if not new_pw and _get_api_token():
             return handler._json(
