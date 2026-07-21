@@ -24,7 +24,7 @@ engine is finally in-process — no more sidecar.
 - **MCP `get_chunks` tool** wrapping the same logic, so an agent can pull an
   article in ready-to-embed pieces without leaving the MCP surface.
 - **`GET /openapi.json`** — a hand-authored OpenAPI 3.1 description of the read
-  API (`/search`, `/suggest`, `/read`, `/content`, `/list`, `/random`,
+  API (`/search`, `/suggest`, `/read`, `/w/{zim}/{path}`, `/list`, `/random`,
   `/health`, `/chunks`) with real parameter and response schemas. `info.version`
   tracks the running server version.
 - **`docs/api-stability.md`** — which endpoints are stable, the additive-only
