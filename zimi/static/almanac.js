@@ -107,11 +107,6 @@ document.addEventListener('visibilitychange', function() {
     _resumeAllRAF();
   }
 });
-var _moonTexImg = new Image();
-var _moonTexLoaded = false;
-_moonTexImg.onload = function() { _moonTexLoaded = true; };
-_moonTexImg.onerror = function() { _moonTexLoaded = false; };
-_moonTexImg.src = '/static/moon.png?v=1';
 
 function _openAlmanacInner(replaceState) {
   _almanacOpen = true;
@@ -4148,7 +4143,7 @@ function _jdnToChineseLunar(jdn) {
     }
   }
   var last = months[months.length - 1];
-  return { year: gyCNY + 2697, month: months.length, day: jdn - last.start + 1, monthNum: last.monthNum, leap: last.leap };
+  return { year: gyCNY + 2697, month: months.length, day: jdn - last.start + 1, monthNum: last.num, leap: last.leap };
 }
 
 // Get JDN for first day of a given month

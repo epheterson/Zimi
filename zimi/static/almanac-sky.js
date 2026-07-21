@@ -323,7 +323,7 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, elapsed, labelText, p
     // visible earthshine dark side, not a black cut-out — rotated by the
     // parallactic angle so its tilt matches the real sky.
     var pAngleBody = (moonPos.parallactic || 0) * DEG_TO_RAD;
-    var spr = (typeof _moonSpriteCanvas === 'function' && _moonTexLoaded)
+    var spr = (typeof _moonSpriteCanvas === 'function' && _moonTexReady)
       ? _moonSpriteCanvas(m.illumination / 100, m.phase <= 0.5, moonR / dpr) : null;
     ctx.save();
     ctx.globalAlpha = moonAlpha;

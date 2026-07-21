@@ -468,9 +468,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         link-local hop (the origin is never directly WAN-reachable, so a
         forwarding hop is always private) — covering the bridge gateway on any
         subnet without a hardcoded list; (4) reject a forwarded value that
-        itself claims loopback/link-local, so a permitted forwarder (or a LAN
-        client) can't assert 127.0.0.1 to reach for loopback-tier trust; (5)
-        with no usable forwarded header, return the direct peer as before."""
+        itself claims a trusted-tier address (private/loopback/link-local), so a
+        permitted forwarder (or a LAN client) can't spoof one to borrow that
+        trust; (5) with no usable forwarded header, fail closed to public when
+        an explicit ZIMI_TRUSTED_PROXIES allowlist marks the hop as only-ever-a-
+        proxy, else return the direct peer (heuristic mode can't tell a direct
+        LAN client from a header-stripping proxy)."""
         direct_ip = self.client_address[0]
         try:
             dip = ipaddress.ip_address(direct_ip)
@@ -489,12 +492,24 @@ class ZimHandler(BaseHTTPRequestHandler):
         if fwd:
             try:
                 fip = ipaddress.ip_address(fwd)
-                # A real forwarded client is never loopback/link-local; refuse
-                # such a claim rather than let it borrow that trust tier.
-                if not (fip.is_loopback or fip.is_link_local):
+                # A real forwarded external client is public. Refuse a claim of
+                # ANY trusted-tier address (private/loopback/link-local — the
+                # same set _is_private_client trusts) so a spoofed header can't
+                # borrow that trust; a genuine internal client still falls back
+                # to the (private, trusted) direct hop below.
+                if not (fip.is_private or fip.is_loopback or fip.is_link_local):
                     return fwd
             except ValueError:
                 pass
+        # No usable forwarded client IP. With an explicit ZIMI_TRUSTED_PROXIES
+        # allowlist the hop is *only* ever a proxy, never an end client, so a
+        # missing/rejected client means we can't identify the caller: fail
+        # closed to public rather than trust the proxy's own private address
+        # (an unparseable value → _is_private_client False). Without an
+        # allowlist we can't tell a real direct LAN client from a
+        # header-stripping proxy, so keep the direct peer as before.
+        if _TRUSTED_PROXY_CIDRS is not None:
+            return "proxy-unknown"
         return direct_ip
 
     def do_GET(self):

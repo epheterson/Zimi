@@ -2072,6 +2072,7 @@ class TestClientIPResolution(unittest.TestCase):
         saved = zhttp._TRUSTED_PROXY_CIDRS
         try:
             import ipaddress as _ip
+
             zhttp._TRUSTED_PROXY_CIDRS = [_ip.ip_network("172.30.0.0/16")]
             # in-allowlist hop → forwarded client honored
             self.assertEqual(
@@ -2088,6 +2089,33 @@ class TestClientIPResolution(unittest.TestCase):
         self.assertTrue(self._private("192.168.1.50"))
         self.assertEqual(self._ip("192.168.1.50"), "192.168.1.50")
 
+    def test_forwarded_private_claim_is_rejected(self):
+        # A forwarded value claiming a private (RFC1918) address must not be
+        # honored — else a spoofed X-Forwarded-For could borrow the trusted
+        # tier. It's refused and we fall back to the direct hop.
+        self.assertEqual(
+            self._ip("192.168.1.1", {"X-Forwarded-For": "10.9.9.9"}), "192.168.1.1"
+        )
+        self.assertEqual(
+            self._ip("172.17.0.1", {"CF-Connecting-IP": "192.168.5.5"}), "172.17.0.1"
+        )
+
+    def test_allowlist_missing_header_fails_closed(self):
+        # With an explicit allowlist the hop is only ever a proxy, so a request
+        # from it carrying no client IP can't be identified — fail closed to
+        # public rather than trust the proxy's own private address.
+        import zimi.http as zhttp
+
+        saved = zhttp._TRUSTED_PROXY_CIDRS
+        try:
+            import ipaddress as _ip
+
+            zhttp._TRUSTED_PROXY_CIDRS = [_ip.ip_network("172.30.0.0/16")]
+            self.assertNotEqual(self._ip("172.30.0.1"), "172.30.0.1")
+            self.assertFalse(self._private("172.30.0.1"))
+        finally:
+            zhttp._TRUSTED_PROXY_CIDRS = saved
+
 
 class TestParseRange(unittest.TestCase):
     """_parse_range degrades malformed ranges to (None,None), never raises."""
@@ -2103,7 +2131,14 @@ class TestParseRange(unittest.TestCase):
         self.assertEqual(self._pr("bytes=-50"), (950, 999))
 
     def test_malformed_never_raises(self):
-        for bad in ("bytes=abc-", "bytes=-", "bytes=1-x", "bytes=x-y", "bytes=--", "bytes="):
+        for bad in (
+            "bytes=abc-",
+            "bytes=-",
+            "bytes=1-x",
+            "bytes=x-y",
+            "bytes=--",
+            "bytes=",
+        ):
             self.assertEqual(self._pr(bad), (None, None), bad)
 
     def test_out_of_range(self):
