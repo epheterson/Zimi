@@ -548,7 +548,7 @@ def handle_manage_get(handler, parsed, params):
                 if files and isinstance(files, list) and files[0].get("path"):
                     fpath = files[0]["path"]
                 fname = os.path.basename(fpath)
-                # Skip aria2's own .torrent metadata fetches — noise.
+                # Skip anything that isn't a ZIM (stray .torrent noise).
                 if not fname.endswith(".zim"):
                     continue
                 completed = int(raw.get("completedLength", 0))
@@ -560,7 +560,7 @@ def handle_manage_get(handler, parsed, params):
                 # without this a BT download double-surfaces (one download
                 # card AND one "seed" card for the same .zim under "All").
                 # Only skip when we KNOW it's still downloading: total known,
-                # not yet complete, and aria2 hasn't flagged it a seeder.
+                # not yet complete, and the engine hasn't flagged it a seeder.
                 total = int(raw.get("totalLength", 0))
                 seeder = raw.get("seeder") in ("true", True)
                 if (
@@ -614,29 +614,26 @@ def handle_manage_get(handler, parsed, params):
 
     elif parsed.path == "/manage/bt-status":
         # Surface the BT engine state so the user can self-diagnose:
-        # is it enabled, did the binary start, is the port reachable?
+        # enabled? libtorrent importable on this install? session up?
         from zimi import p2p
 
         enabled = p2p.is_torrent_enabled()
-        backend_name = p2p.get_backend_name()
-        binary_present = bool(p2p.find_aria2c()) if backend_name == "aria2" else None
+        engine_importable = p2p._lt() is not None
 
-        # Live state — peek only. A status view must never spawn the sidecar
-        # (with BT on by default that would mean every settings visit).
+        # Live state — peek only. A status view must never start the
+        # engine (with BT on by default that would mean every settings
+        # visit spins up a session).
         backend = p2p.peek_backend() if enabled else None
-        # A crashed sidecar leaves the cached backend object in place, so
-        # "backend is not None" alone would keep reporting a green "running"
-        # dot over a dead engine. Gate liveness on the actual process.
-        sidecar_alive = backend is not None and backend.is_alive()
+        engine_alive = backend is not None and backend.is_alive()
 
         if not enabled:
             status = "off"
         elif backend is not None:
             status = "ready"
-        elif binary_present is False:
+        elif not engine_importable:
             status = "unavailable"
         else:
-            # Binary present, sidecar just not started yet — it spawns at
+            # Importable, session just not started yet — it starts at
             # boot or on first download, so report ready-to-torrent.
             status = "ready"
         hint = None
@@ -644,8 +641,9 @@ def handle_manage_get(handler, parsed, params):
             hint = "BT downloads disabled (ZIMI_BT=off). HTTP is used instead."
         elif status == "unavailable":
             hint = (
-                "aria2c not found — downloads fall back to HTTP. "
-                "Install aria2 to torrent and share load with the Kiwix mirrors."
+                "libtorrent isn't importable on this install — downloads "
+                "fall back to HTTP. Install libtorrent to torrent and share "
+                "load with the Kiwix mirrors."
             )
 
         from zimi import p2p_nat
@@ -655,17 +653,16 @@ def handle_manage_get(handler, parsed, params):
             {
                 "status": status,
                 "enabled": enabled,
-                "backend": backend_name,
+                "backend": "libtorrent",
                 "bt_port": p2p.get_bt_port(),
                 "staging_dir": p2p.get_staging_dir(_srv.ZIMI_DATA_DIR),
-                "binary_present": binary_present,
+                "engine_importable": engine_importable,
                 "hint": hint,
                 "upnp_enabled": p2p.is_upnp_enabled(),
                 "upnp_env_locked": p2p.is_upnp_env_locked(),
-                # True only when the sidecar PROCESS is actually up — "ready"
-                # alone is optimistic (binary present counts) and a crashed
-                # sidecar leaves the object cached. CI gates on this.
-                "sidecar_running": sidecar_alive,
+                # True only when the session is actually up — "ready" alone
+                # is optimistic (importable counts). The UI reads this key.
+                "sidecar_running": engine_alive,
                 "bt_port_env_locked": p2p.is_bt_port_env_locked(),
                 # Cached: the probe runs at startup and on explicit recheck
                 "nat": p2p_nat.last_status() or None,
@@ -915,11 +912,11 @@ def handle_manage_post(handler, parsed, data):
             _srv._search_cache_clear()
             _srv._suggest_cache_clear()
             _srv._clean_stale_title_indexes()
-            # Stop seeding the file we just deleted. Without this the aria2
-            # torrent keeps advertising (and hash-check failing) the missing
-            # file until the 12h maintenance pass or a restart. peek_backend()
-            # no-ops when BT is off, so this is safe unconditionally; run it off
-            # the response thread since it makes RPC round-trips.
+            # Stop seeding the file we just deleted. Without this the engine
+            # keeps advertising (and hash-check failing) the missing file
+            # until the 12h maintenance pass or a restart. peek_backend()
+            # no-ops when BT is off, so this is safe unconditionally; run it
+            # off the response thread.
             try:
                 from zimi import library as _lib
 
@@ -1231,12 +1228,12 @@ def handle_manage_post(handler, parsed, data):
                 )
             changed["seed_ratio"] = ratio
             # Apply the new cap to every live library seed, not just future
-            # adds — aria2 even stops seeds already past the new ratio.
+            # adds — the ledger stops seeds already past the new ratio.
             from zimi import library as _lib_ratio
 
             threading.Thread(target=_lib_ratio.apply_seed_policy, daemon=True).start()
         # Global bandwidth caps (KB/s, 0 = unlimited). Applied live to the
-        # running sidecar so a new limit takes effect without a respawn.
+        # running session so a new limit takes effect without a restart.
         for _field, _envlock in (
             ("bt_up_kb", p2p.is_bt_up_env_locked),
             ("bt_down_kb", p2p.is_bt_down_env_locked),

@@ -45,9 +45,9 @@ def test_http_download_seeds_with_hash_check(monkeypatch):
     assert backend.add_torrent.call_count == 1
     _args, kwargs = backend.add_torrent.call_args
     assert kwargs["dest_dir"] == "/zim"
-    assert kwargs["options"]["bt-hash-check-seed"] == "true"
-    # aria2 layer uncapped; Zimi enforces the cap (apply_seed_policy)
-    assert kwargs["options"]["seed-ratio"] == "0"
+    # No per-torrent options: the engine hash-checks then seeds the existing
+    # file; Zimi enforces the cap in the ledger (apply_seed_policy).
+    assert kwargs["options"] is None
 
 
 def test_no_seed_when_seeding_disabled(monkeypatch):
@@ -72,7 +72,7 @@ def test_mirror_seeds_uncapped_even_at_ratio_zero(monkeypatch):
     backend = _wire(monkeypatch, cap=0.0, mirror=True, backend=MagicMock())
     lib._seed_after_http_download({"filename": "x.zim", "url": "https://k/x.zim"})
     _args, kwargs = backend.add_torrent.call_args
-    assert kwargs["options"]["seed-ratio"] == "0"
+    assert kwargs["options"] is None
 
 
 def test_no_seed_when_no_torrent_source(monkeypatch):
@@ -100,7 +100,7 @@ def test_saved_metadata_torrent_file_preferred(monkeypatch):
 
 def test_add_torrent_failure_is_swallowed(monkeypatch):
     backend = MagicMock()
-    backend.add_torrent.side_effect = RuntimeError("aria2 down")
+    backend.add_torrent.side_effect = RuntimeError("engine down")
     _wire(monkeypatch, backend=backend)
     # Best-effort: a seed failure must never break a completed download
     lib._seed_after_http_download({"filename": "x.zim", "url": "https://k/x.zim"})

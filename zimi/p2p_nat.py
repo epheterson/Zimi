@@ -220,7 +220,7 @@ def get_external_ip() -> str | None:
 
 
 def _port_listening(port: int) -> bool:
-    """Is anything (i.e. aria2) accepting on the BT port locally?"""
+    """Is anything (i.e. the BT engine) accepting on the BT port locally?"""
     try:
         s = socket.create_connection(("127.0.0.1", port), timeout=1)
         s.close()

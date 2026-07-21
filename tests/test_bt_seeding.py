@@ -1,8 +1,8 @@
 """Tests for the seeding manager.
 
-After a BT download completes, the torrent stays in aria2 and seeds up
-to a 2× ratio cap. Per-ZIM pause/disable, global disable via env, and
-disk-pressure auto-pause are all tested here.
+After a BT download completes, the torrent keeps seeding in the engine up
+to a 2× ratio cap enforced by the ledger. Per-ZIM pause/disable, global
+disable via env, and disk-pressure auto-pause are all tested here.
 """
 
 import os
@@ -26,21 +26,6 @@ def _reset():
 # ────────────────────────────────────────────────────────────────────────────
 # Seeding policy helpers
 # ────────────────────────────────────────────────────────────────────────────
-
-
-def test_seed_options_default_2x_ratio():
-    """add_torrent should pass seed-ratio=2.0 by default."""
-    opts = p2p.seed_options(ratio_cap=2.0, max_upload_kb=2048)
-    assert opts["seed-ratio"] == "2.0"
-    assert opts["seed-time"] == "0"  # we use ratio cap, not time cap
-    assert opts["max-upload-limit"] == "2048K"
-
-
-def test_seed_options_zero_ratio_disables_seeding():
-    """ratio_cap=0 means leech-only — set seed-time=0 + seed-ratio low."""
-    opts = p2p.seed_options(ratio_cap=0, max_upload_kb=2048)
-    assert opts["seed-ratio"] == "0"
-    assert "bt-stop-timeout" in opts
 
 
 def test_seed_disabled_when_zimi_seed_off(monkeypatch):
@@ -71,13 +56,6 @@ def test_bt_rate_limit_env_locks_field(monkeypatch):
     monkeypatch.setenv("ZIMI_BT", "up=8192")
     assert p2p.get_bt_up_limit_kb() == 8192
     assert p2p.is_bt_up_env_locked() is True
-
-
-def test_effective_seed_options_no_per_torrent_cap(monkeypatch, tmp_path):
-    monkeypatch.delenv("ZIMI_MIRROR", raising=False)
-    p2p.set_prefs_path(str(tmp_path / "prefs.json"))
-    opts = p2p.effective_seed_options()
-    assert opts["max-upload-limit"] == "0K"  # global limit governs, not per-torrent
 
 
 def test_seed_enabled_by_default(monkeypatch):
@@ -219,107 +197,6 @@ def test_mirror_status_reports_lock_state(_prefs, monkeypatch):
     assert status["env_locked"] is False  # mirror env not set
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# Two-phase GID (metadata → content) — the bug that installed corrupt ZIMs
-# ────────────────────────────────────────────────────────────────────────────
-
-
-def _mk_backend(monkeypatch, responses):
-    """Aria2Backend with a mocked RPC returning per-GID tellStatus dicts."""
-    b = p2p.Aria2Backend.__new__(p2p.Aria2Backend)
-    monkeypatch.setattr(
-        b, "_rpc", lambda method, params: responses[params[0]], raising=False
-    )
-    return b
-
-
-def test_status_follows_metadata_gid_to_content_transfer(monkeypatch):
-    """A .torrent URL's original GID completes the moment the tiny metadata
-    file lands; the content transfer continues under followedBy. status()
-    must report the content transfer — reporting the metadata GID made the
-    caller install a preallocated, mostly-empty staging file."""
-    b = _mk_backend(
-        monkeypatch,
-        {
-            "meta1": {
-                "gid": "meta1",
-                "status": "complete",
-                "followedBy": ["content1"],
-                "completedLength": "40960",
-                "totalLength": "40960",
-            },
-            "content1": {
-                "gid": "content1",
-                "status": "active",
-                "completedLength": "1048576",
-                "totalLength": "23000000000",
-                "downloadSpeed": "9999",
-                "connections": "12",
-            },
-        },
-    )
-    st = b.status("meta1")
-    assert st["state"] == "downloading"
-    assert st["gid"] == "content1"  # caller must rebind to this
-    assert st["total_bytes"] == 23000000000  # real totals, not the .torrent's
-
-
-def test_status_reports_complete_only_when_content_done(monkeypatch):
-    b = _mk_backend(
-        monkeypatch,
-        {
-            "meta1": {"gid": "meta1", "status": "complete", "followedBy": ["c1"]},
-            "c1": {
-                "gid": "c1",
-                "status": "complete",
-                "completedLength": "100",
-                "totalLength": "100",
-            },
-        },
-    )
-    st = b.status("meta1")
-    assert st["state"] == "complete"
-    assert st["gid"] == "c1"
-
-
-def test_status_plain_download_unchanged(monkeypatch):
-    """Direct downloads (no followedBy) behave exactly as before."""
-    b = _mk_backend(
-        monkeypatch,
-        {
-            "g1": {
-                "gid": "g1",
-                "status": "active",
-                "completedLength": "5",
-                "totalLength": "10",
-            },
-        },
-    )
-    st = b.status("g1")
-    assert st["gid"] == "g1"
-    assert st["completed_bytes"] == 5
-
-
-def test_status_seeding_torrent_reports_complete(monkeypatch):
-    """aria2 keeps a finished torrent 'active' while seeding — the download
-    itself is done and must report complete, or the UI sits at 100% until
-    the seed ratio caps."""
-    b = _mk_backend(
-        monkeypatch,
-        {
-            "g1": {
-                "gid": "g1",
-                "status": "active",
-                "seeder": "true",
-                "completedLength": "100",
-                "totalLength": "100",
-            },
-        },
-    )
-    st = b.status("g1")
-    assert st["state"] == "complete"
-
-
 def test_peer_share_pref_and_env_lock(_prefs, monkeypatch):
     """LAN sharing follows the same pref+env-lock contract as seed/mirror."""
     from zimi import p2p_discovery as disc
@@ -419,43 +296,6 @@ def test_nearby_blob(_prefs, monkeypatch):
     assert disc._peer_instance_name() == "my box"
 
 
-def test_find_aria2c_falls_back_to_homebrew_paths(monkeypatch):
-    """macOS GUI apps launch without Homebrew on PATH — the finder must
-    check the standard install locations before giving up."""
-    monkeypatch.setattr(p2p.shutil, "which", lambda _: None)
-    calls = []
-
-    def fake_isfile(path):
-        calls.append(path)
-        return path == "/usr/local/bin/aria2c"
-
-    monkeypatch.setattr(p2p.os.path, "isfile", fake_isfile)
-    monkeypatch.setattr(p2p.os, "access", lambda p, m: True)
-    assert p2p.find_aria2c() == "/usr/local/bin/aria2c"
-
-
-def test_find_aria2c_prefers_bundled_sidecar(tmp_path, monkeypatch):
-    """Desktop builds ship aria2c inside the bundle (sys._MEIPASS) — it
-    must win over any system install so behavior is self-contained."""
-    import sys
-
-    bundled = tmp_path / "aria2c"
-    bundled.write_text("#!/bin/sh\n")
-    bundled.chmod(0o755)
-    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
-    monkeypatch.setattr(p2p.shutil, "which", lambda b: "/usr/bin/aria2c")
-    assert p2p.find_aria2c() == str(bundled)
-
-
-def test_find_aria2c_ignores_empty_bundle_dir(tmp_path, monkeypatch):
-    import sys
-
-    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
-    monkeypatch.setattr(p2p.shutil, "which", lambda b: None)
-    monkeypatch.setattr(p2p.os.path, "isfile", lambda p: False)
-    assert p2p.find_aria2c() is None
-
-
 def test_dht_enabled_by_default(monkeypatch):
     """DHT is what makes magnets and trackerless swarms work — on unless
     explicitly opted out."""
@@ -492,7 +332,7 @@ def test_bt_port_pref_and_env_lock(_prefs, monkeypatch):
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _policy_backend(zim_dir, *, ratio="0", uploaded=0, total=1000):
+def _policy_backend(zim_dir, *, uploaded=0, total=1000):
     """Backend with one live library seed and one staging transfer."""
     backend = MagicMock()
     backend.list_managed.return_value = [
@@ -509,8 +349,6 @@ def _policy_backend(zim_dir, *, ratio="0", uploaded=0, total=1000):
             "files": [{"path": os.path.join(zim_dir, "staging", "dl.zim")}],
         },
     ]
-    backend.get_options.return_value = {"seed-ratio": ratio}
-    backend.change_options.return_value = True
     return backend
 
 
@@ -522,41 +360,29 @@ def _run_policy(monkeypatch, backend, zim_dir, *, mirror=False, seed=True, cap=2
     monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: seed)
     monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: cap)
     monkeypatch.setattr(library._srv, "ZIM_DIR", zim_dir)
-    monkeypatch.setattr(
-        library._srv, "ZIMI_DATA_DIR", os.path.join(zim_dir, "data")
-    )
+    monkeypatch.setattr(library._srv, "ZIMI_DATA_DIR", os.path.join(zim_dir, "data"))
     return library.apply_seed_policy()
 
 
-def test_policy_normalizes_stale_numeric_ratio_to_zero(tmp_path, monkeypatch):
-    """A seed carrying an old numeric aria2 cap (the kill switch: aria2
-    counts session download, 0 for re-seeds) is reset to uncapped."""
-    backend = _policy_backend(str(tmp_path), ratio="2.0")
-    changed = _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
-    assert changed == 1
-    backend.change_options.assert_called_once_with("lib-1", {"seed-ratio": "0"})
-    backend.remove.assert_not_called()
-
-
 def test_policy_skips_staging_transfers(tmp_path, monkeypatch):
-    """Downloads in staging belong to the download machinery — untouched."""
-    backend = _policy_backend(str(tmp_path), ratio="0")
+    """Downloads in staging belong to the download machinery — untouched.
+    Under cap, the library seed isn't stopped either, so nothing is removed."""
+    backend = _policy_backend(str(tmp_path))
     _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
-    for call in backend.change_options.call_args_list:
+    for call in backend.remove.call_args_list:
         assert call.args[0] != "stg-1"
 
 
-def test_policy_leaves_ratio_zero_seed_running_under_cap(tmp_path, monkeypatch):
-    backend = _policy_backend(str(tmp_path), ratio="0", uploaded=500, total=1000)
+def test_policy_leaves_seed_running_under_cap(tmp_path, monkeypatch):
+    backend = _policy_backend(str(tmp_path), uploaded=500, total=1000)
     changed = _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
     assert changed == 0
-    backend.change_options.assert_not_called()
     backend.remove.assert_not_called()
 
 
 def test_policy_mirror_never_cap_stops(tmp_path, monkeypatch):
     """Mirror on: even a heavily-uploaded seed keeps seeding."""
-    backend = _policy_backend(str(tmp_path), ratio="0", uploaded=999999, total=1000)
+    backend = _policy_backend(str(tmp_path), uploaded=999999, total=1000)
     changed = _run_policy(monkeypatch, backend, str(tmp_path), mirror=True)
     assert changed == 0
     backend.remove.assert_not_called()
@@ -566,7 +392,7 @@ def test_policy_stops_seed_at_cumulative_cap(tmp_path, monkeypatch):
     """Uploaded 2x the file size (across sessions) -> stop + intent gone."""
     import zimi.library as library
 
-    backend = _policy_backend(str(tmp_path), ratio="0", uploaded=2000, total=1000)
+    backend = _policy_backend(str(tmp_path), uploaded=2000, total=1000)
     changed = _run_policy(monkeypatch, backend, str(tmp_path), cap=2.0)
     assert changed == 1
     backend.remove.assert_called_once_with("lib-1", delete_files=True)
@@ -579,9 +405,9 @@ def test_policy_accumulates_upload_across_sessions(tmp_path, monkeypatch):
     reached the cap."""
     import zimi.library as library
 
-    b1 = _policy_backend(str(tmp_path), ratio="0", uploaded=1200, total=1000)
+    b1 = _policy_backend(str(tmp_path), uploaded=1200, total=1000)
     assert _run_policy(monkeypatch, b1, str(tmp_path), cap=2.0) == 0
-    b2 = _policy_backend(str(tmp_path), ratio="0", uploaded=900, total=1000)
+    b2 = _policy_backend(str(tmp_path), uploaded=900, total=1000)
     b2.list_managed.return_value[0]["gid"] = "lib-2"
     changed = _run_policy(monkeypatch, b2, str(tmp_path), cap=2.0)
     assert changed == 1
@@ -590,11 +416,10 @@ def test_policy_accumulates_upload_across_sessions(tmp_path, monkeypatch):
 
 def test_policy_seeding_off_stops_library_seeds(tmp_path, monkeypatch):
     """Cap 0 / seeding off stops live seeds; the ZIM stays on disk."""
-    backend = _policy_backend(str(tmp_path), ratio="2.0")
+    backend = _policy_backend(str(tmp_path))
     changed = _run_policy(monkeypatch, backend, str(tmp_path), seed=False)
     assert changed == 1
     backend.remove.assert_called_once_with("lib-1", delete_files=True)
-    backend.change_options.assert_not_called()
 
 
 def test_policy_no_backend_is_a_noop(monkeypatch):
@@ -627,14 +452,18 @@ def test_ledger_record_unrecord_roundtrip(_ledger_env):
     assert set(lib._seed_ledger()) == {"b.zim"}
 
 
-def test_reseed_readds_missing_seed_from_local_torrent(_ledger_env, tmp_path, monkeypatch):
+def test_reseed_readds_missing_seed_from_local_torrent(
+    _ledger_env, tmp_path, monkeypatch
+):
     lib = _ledger_env
     (tmp_path / "wiki.zim").write_bytes(b"z")
     tfile = tmp_path / "data" / "bt" / "torrents" / "wiki.zim.torrent"
     tfile.parent.mkdir(parents=True)
     tfile.write_bytes(b"t")
     lib.record_seed("wiki.zim")
-    monkeypatch.setattr(lib, "_get_torrent_metadata", lambda: {"wiki.zim": {"torrent_file": str(tfile)}})
+    monkeypatch.setattr(
+        lib, "_get_torrent_metadata", lambda: {"wiki.zim": {"torrent_file": str(tfile)}}
+    )
     backend = MagicMock()
     backend.list_managed.return_value = []
     monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
@@ -644,9 +473,9 @@ def test_reseed_readds_missing_seed_from_local_torrent(_ledger_env, tmp_path, mo
     assert lib.reseed_from_ledger() == 1
     args, kwargs = backend.add_torrent.call_args
     assert args[0] == str(tfile)
-    # aria2 layer is always uncapped; Zimi enforces the user's cap itself.
-    assert kwargs["options"]["seed-ratio"] == "0"
-    assert kwargs["options"]["bt-hash-check-seed"] == "true"
+    # No per-torrent options: the engine seeds the existing file uncapped and
+    # Zimi enforces the user's cap itself in the ledger.
+    assert kwargs["options"] is None
 
 
 def test_reseed_skips_already_managed(_ledger_env, tmp_path, monkeypatch):
@@ -704,20 +533,19 @@ def test_policy_stop_removes_ledger_intent(_ledger_env, tmp_path, monkeypatch):
     assert "wiki.zim" not in lib._seed_ledger()
 
 
-def test_accounting_tick_skips_option_normalization(tmp_path, monkeypatch):
-    """The 30s tick must stay cheap: no per-seed option RPCs — accounting
-    and cap enforcement only."""
+def test_accounting_tick_books_upload(tmp_path, monkeypatch):
+    """The accounting pass books uploaded bytes into the ledger (the ledger
+    is now the sole cap authority — no per-seed engine options involved)."""
     import zimi.library as library
 
-    backend = _policy_backend(str(tmp_path), ratio="2.0", uploaded=100, total=1000)
+    backend = _policy_backend(str(tmp_path), uploaded=100, total=1000)
     monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
     monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
     monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: True)
     monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
     monkeypatch.setattr(library._srv, "ZIM_DIR", str(tmp_path))
-    monkeypatch.setattr(library._srv, "ZIMI_DATA_DIR", os.path.join(str(tmp_path), "data"))
-    library.apply_seed_policy(normalize=False)
-    backend.get_options.assert_not_called()
-    backend.change_options.assert_not_called()
-    # but the upload WAS booked
+    monkeypatch.setattr(
+        library._srv, "ZIMI_DATA_DIR", os.path.join(str(tmp_path), "data")
+    )
+    library.apply_seed_policy()
     assert library._seed_ledger()["wiki.zim"]["uploaded"] == 100

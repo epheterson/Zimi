@@ -103,8 +103,8 @@ def start_background_services(http_port):
     ALL of this; BT only worked there via the lazy download-time spawn).
 
     Everything network-ish runs on background threads: nothing here may
-    delay READY / the first request. A squatted aria2 RPC port once
-    stalled startup for minutes. All parts fail soft."""
+    delay READY / the first request. Starting the BT engine once stalled
+    startup for minutes. All parts fail soft."""
     global _background_services_started
     if _background_services_started:
         return
@@ -116,16 +116,16 @@ def start_background_services(http_port):
     # settings — cheap, so it stays synchronous.
     p2p.set_prefs_path(os.path.join(ZIMI_DATA_DIR, "bt", "prefs.json"))
 
-    # Registered unconditionally, not just when the startup spawn succeeds:
-    # the sidecar can come up LATER (port-change respawn, mirror enable,
-    # lazy download-time spawn), and those paths orphaned aria2c on exit
-    # when startup had failed. shutdown_backend no-ops without a backend.
+    # Registered unconditionally, not just when the startup start succeeds:
+    # the session can come up LATER (port change, mirror enable, lazy
+    # download-time start). shutdown_backend saves fastresume and no-ops
+    # without a backend.
     import atexit
 
     atexit.register(p2p.shutdown_backend)
     # Registered AFTER shutdown_backend so it runs BEFORE it (atexit is
-    # LIFO): the final accounting pass reads aria2's upload counters while
-    # the sidecar is still alive, so a clean shutdown loses no upload.
+    # LIFO): the final accounting pass reads the engine's upload counters
+    # while the session is still alive, so a clean shutdown loses no upload.
     from zimi import library as _lib_flush
 
     atexit.register(_lib_flush.flush_seed_accounting)
@@ -149,10 +149,11 @@ def start_background_services(http_port):
 
             _disc.start(
                 http_port=http_port,
-                # Advertise the port aria2 actually listens on — get_bt_port()
-                # honors the ZIMI_BT blob's port= and the persisted UI pref;
-                # reading the raw env told peers 6881 while the sidecar (and
-                # the NAT probe) used the configured port.
+                # Advertise the port the engine actually listens on —
+                # get_bt_port() honors the ZIMI_BT blob's port= and the
+                # persisted UI pref; reading the raw env told peers 6881
+                # while the session (and the NAT probe) used the configured
+                # port.
                 bt_port=p2p.get_bt_port(),
                 zim_count=len(list_zims()),
                 version=ZIMI_VERSION,
@@ -180,7 +181,7 @@ def start_background_services(http_port):
             _lib.mirror_sync()
             _lib.archive_catalog_torrents()
             _lib.ensure_magnets_for_installed()
-            # Continuous upload books: sample aria2 every 30s so the ledger
+            # Continuous upload books: sample the engine every 30s so the ledger
             # tracks lifetime upload closely and the ratio cap is enforced
             # within half a minute, not at the 12h maintenance cadence.
             threading.Thread(
@@ -1213,8 +1214,8 @@ def main():
                     "Library management enabled (no password — set one in Settings for public servers)"
                 )
         # docker stop / systemd / CI teardown send SIGTERM, which by default
-        # kills Python without running atexit — orphaning the aria2 sidecar
-        # (which then squats the RPC port and wedges the next startup).
+        # kills Python without running atexit — skipping the clean engine
+        # shutdown that flushes fastresume + the final upload accounting.
         # Route it through sys.exit so cleanup handlers run.
         import signal
 

@@ -196,8 +196,8 @@ def test_advancing_bytes_reset_the_no_progress_timer(tmp_path, monkeypatch):
     assert result == "success"
 
 
-def test_fallback_when_aria_reports_error(tmp_path):
-    """Aria-side error (e.g. tracker unreachable) → fall back, don't strand."""
+def test_fallback_when_engine_reports_error(tmp_path):
+    """Engine-side error (e.g. tracker unreachable) → fall back, don't strand."""
     dl = _mk_dl(tmp_path)
     backend = _mk_backend(
         status_sequence=[
@@ -353,41 +353,6 @@ def test_complete_with_invalid_staged_file(tmp_path, monkeypatch):
     assert not os.path.exists(dl["dest"])  # garbage never installed
 
 
-def test_complete_with_aria2_control_file_falls_back(tmp_path, monkeypatch):
-    """A .aria2 control file beside the staged download means the transfer
-    is unfinished — 'complete' belongs to some other GID. Never install."""
-    name = "wikipedia_en_top_2026-02.zim"
-    dl = _mk_dl(tmp_path, name)
-    staging = tmp_path / "staging"
-    staging.mkdir()
-    (staging / name).write_bytes(b"partial")
-    (staging / (name + ".aria2")).write_bytes(b"ctl")
-    monkeypatch.setattr(library._srv, "open_archive", lambda path: object())
-    backend = _mk_backend(
-        status_sequence=[
-            {
-                "state": "complete",
-                "completed_bytes": 7,
-                "total_bytes": 7,
-                "down_speed": 0,
-                "up_speed": 0,
-                "peers": 0,
-                "info_hash": "abc",
-            },
-        ]
-    )
-    result = library._try_bt_download(
-        backend,
-        dl,
-        torrent_url="https://download.kiwix.org/zim/wikipedia/foo.zim.torrent",
-        staging_dir=str(staging),
-        poll_interval=0.001,
-        no_peers_timeout=10.0,
-    )
-    assert result == "fallback"
-    assert not os.path.exists(dl["dest"])
-
-
 # ────────────────────────────────────────────────────────────────────────────
 # Honest-seeding re-add policy: what happens to the torrent after install
 # ────────────────────────────────────────────────────────────────────────────
@@ -439,16 +404,15 @@ def test_reseed_normal_cap_readds_from_library(tmp_path, monkeypatch):
     assert len(readds) == 1
     args, kwargs = readds[0]
     assert kwargs["dest_dir"] == str(tmp_path)
-    # aria2 layer uncapped; Zimi enforces the cap (apply_seed_policy)
-    assert kwargs["options"]["seed-ratio"] == "0"
-    assert kwargs["options"]["bt-seed-unverified"] == "true"
+    # No per-torrent options: engine seeds uncapped, ledger enforces the cap.
+    assert kwargs["options"] is None
     backend.remove.assert_called_with("gid-001", delete_files=True)
 
 
 def test_reseed_removes_staging_before_readd(tmp_path, monkeypatch):
     """The staging torrent must be removed BEFORE the library-path seed is
-    added — same info-hash, so add-before-remove makes aria2 dup-reject the
-    add and no seed is ever created (the real Gutenberg no-seed bug)."""
+    added — same info-hash, so add-before-remove makes the engine dup-reject
+    the add and no seed is ever created (the real Gutenberg no-seed bug)."""
     backend = _run_completion(
         tmp_path, monkeypatch, seeding=True, mirror=False, cap=2.0
     )
@@ -505,12 +469,13 @@ def test_reseed_survives_when_add_raises(tmp_path, monkeypatch):
 def test_reseed_mirror_mode_is_uncapped(tmp_path, monkeypatch):
     backend = _run_completion(tmp_path, monkeypatch, seeding=True, mirror=True, cap=2.0)
     _args, kwargs = backend.add_torrent.call_args_list[1]
-    assert kwargs["options"]["seed-ratio"] == "0"
+    # Mirror re-adds the library seed with no per-torrent options (uncapped).
+    assert kwargs["options"] is None
 
 
 def test_reseed_cap_zero_means_leech_only(tmp_path, monkeypatch):
-    """Zimi's ratio 0 = never seed; aria2's 0 = forever. Cap 0 must remove
-    the torrent, never re-add it uncapped."""
+    """Zimi's ratio 0 = never seed (the engine itself seeds forever). Cap 0
+    must remove the torrent, never re-add it uncapped."""
     backend = _run_completion(
         tmp_path, monkeypatch, seeding=True, mirror=False, cap=0.0
     )

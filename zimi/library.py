@@ -492,8 +492,8 @@ def _torrents_manifest_path():
 def _record_torrent_metadata(filename, *, info_hash, torrent_url, staging_dir):
     """Post-world resilience: keep everything needed to re-seed or share a
     ZIM without internet. The manifest maps filename -> infohash/magnet +
-    torrent URL; the .torrent file itself (which aria2 fetched into
-    staging) is preserved under ZIMI_DATA_DIR/bt/torrents/."""
+    torrent URL; the .torrent file itself, when a copy was left in staging,
+    is preserved under ZIMI_DATA_DIR/bt/torrents/."""
     manifest_path = _torrents_manifest_path()
     os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
     try:
@@ -508,7 +508,7 @@ def _record_torrent_metadata(filename, *, info_hash, torrent_url, staging_dir):
     }
     if info_hash:
         entry["magnet"] = "magnet:?xt=urn:btih:" + info_hash
-    # Preserve the .torrent file aria2 downloaded (staging/<name>.torrent)
+    # Preserve any .torrent file left in staging (staging/<name>.torrent)
     tdir = os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents")
     for cand in (
         os.path.join(staging_dir, filename + ".torrent"),
@@ -537,9 +537,10 @@ def _get_torrent_metadata():
 
 
 # ── Seed intent ledger ──
-# aria2's session resume proved lossy: a restart can silently drop a live
-# seed (the session stores a .torrent URL and trusts aria2 to re-materialize
-# it — observed failing in production with no error logged). Zimi therefore
+# The old sidecar's session resume proved lossy: a restart could silently
+# drop a live seed (the session stored a .torrent URL and trusted the sidecar
+# to re-materialize it — observed failing in production with no error logged).
+# libtorrent's fastresume is sturdier, but Zimi therefore still
 # keeps its OWN record of which files it intends to seed, and re-adds any
 # that are missing after startup. Intent is added when a seed is created and
 # removed by every deliberate stop (policy stop, mirror off, user stop,
@@ -575,10 +576,8 @@ def record_seed(filename, origin="download"):
     origin distinguishes mirror-sync seeds from personal post-download
     seeds, so Mirror-off can stop exactly the seeds Mirror created. The
     entry also accumulates uploaded bytes across sessions — Zimi enforces
-    the ratio cap itself (see apply_seed_policy): aria2's own seed-ratio
-    counts THIS SESSION's download, which is zero for a hash-check
-    re-seed, so any positive cap stopped the seed the moment a real peer
-    took one piece."""
+    the ratio cap itself in the ledger (see apply_seed_policy), the sole
+    cap authority now that seeds run uncapped at the engine layer."""
     try:
         with _seed_ledger_lock:
             ledger = _seed_ledger()
@@ -651,18 +650,10 @@ def reseed_from_ledger():
             log.debug("reseed: no torrent source recorded for %s", filename)
             continue
         try:
-            backend.add_torrent(
-                source,
-                dest_dir=_srv.ZIM_DIR,
-                options={
-                    # Verify the file we already have, then seed — never fetch.
-                    # Ratio 0 at the aria2 layer; Zimi enforces the cap.
-                    "check-integrity": "true",
-                    "bt-hash-check-seed": "true",
-                    "seed-ratio": "0",
-                    "allow-overwrite": "true",
-                },
-            )
+            # Verify the file we already have, then seed — never fetch.
+            # That's libtorrent's native behavior when save_path points at
+            # the existing file; Zimi enforces the ratio cap in the ledger.
+            backend.add_torrent(source, dest_dir=_srv.ZIM_DIR, options=None)
             readded += 1
         except Exception as e:
             log.debug("reseed of %s failed: %s", filename, e)
@@ -1142,7 +1133,7 @@ def mirror_sync():
     downloaded over BT. Sources, in order: the saved .torrent files from
     past downloads (works fully offline), then <download_url>.torrent for
     catalog entries whose dated filename exactly matches an installed
-    file. aria2 hash-checks the existing file and seeds without
+    file. The engine hash-checks the existing file and seeds without
     re-downloading. Returns how many torrents were added."""
     from zimi import p2p as _p2p
 
@@ -1210,17 +1201,10 @@ def _mirror_sync_locked(_p2p):
         if not source:
             continue
         try:
-            backend.add_torrent(
-                source,
-                dest_dir=_srv.ZIM_DIR,
-                options={
-                    # Verify the existing file, then seed it — never fetch
-                    "check-integrity": "true",
-                    "bt-hash-check-seed": "true",
-                    "seed-ratio": "0",  # mirrors seed without a cap
-                    "allow-overwrite": "true",
-                },
-            )
+            # Verify the existing file, then seed it — never fetch. That's
+            # libtorrent's native behavior when save_path points at the
+            # installed file; mirrors seed without a cap.
+            backend.add_torrent(source, dest_dir=_srv.ZIM_DIR, options=None)
             added += 1
             record_seed(filename, origin="mirror")
         except Exception as e:
@@ -1309,19 +1293,17 @@ def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
     return fetched
 
 
-def apply_seed_policy(normalize=True):
+def apply_seed_policy():
     """Make the CURRENT seed settings govern every live library seed — and
-    enforce the ratio cap at the Zimi layer.
+    enforce the ratio cap in the ledger, the sole cap authority.
 
-    aria2's own seed-ratio option is unusable for re-seeds: it measures
-    upload against THIS SESSION's download, which is zero for a
-    hash-checked library file, so any positive cap stops the seed the
-    moment a real peer takes a piece (observed in production; the only
-    seeds that ever survived were ratio-0). Every seed therefore runs
-    uncapped in aria2, and this function — at startup, on settings
-    changes, and every maintenance pass — does the honest bookkeeping:
+    Seeds run uncapped at the engine layer (a re-seed's engine-side ratio
+    would measure upload against THIS SESSION's download, which is zero
+    for a hash-checked library file — so any positive engine cap stopped
+    the seed the moment a real peer took a piece). This function — at
+    startup, on settings changes, and every maintenance pass — does the
+    honest bookkeeping instead:
 
-    - normalizes any stale numeric aria2 ratio back to 0;
     - adopts live library seeds the ledger doesn't know (pre-ledger
       installs) so they gain intent + accounting;
     - accumulates uploaded bytes per file across sessions in the ledger;
@@ -1343,7 +1325,6 @@ def apply_seed_policy(normalize=True):
     except Exception:
         return 0
     zim_root = os.path.normpath(_srv.ZIM_DIR)
-    get_opts = getattr(backend, "get_options", lambda tid: {})
     with _seed_ledger_lock:
         ledger = _seed_ledger()
         ledger_dirty = False
@@ -1368,16 +1349,6 @@ def apply_seed_policy(normalize=True):
                         changed += 1
                         break
 
-                    # Normalize stale numeric aria2 ratios (the old kill
-                    # switch). Skipped on the frequent accounting tick — it
-                    # costs one RPC per seed and only matters after upgrades
-                    # or settings changes.
-                    if normalize:
-                        current = str(get_opts(gid).get("seed-ratio", ""))
-                        if current not in ("", "0", "0.0"):
-                            if backend.change_options(gid, {"seed-ratio": "0"}):
-                                changed += 1
-
                     # Adopt seeds the ledger doesn't know, then account upload.
                     entry = ledger.get(fname)
                     if entry is None:
@@ -1393,7 +1364,7 @@ def apply_seed_policy(normalize=True):
                     if entry.get("last_gid") == gid:
                         delta = up_now - int(entry.get("last_up", 0) or 0)
                     else:
-                        delta = up_now  # new aria2 session for this file
+                        delta = up_now  # new engine session for this file
                     if delta > 0:
                         entry["uploaded"] = int(entry.get("uploaded", 0) or 0) + delta
                         ledger_dirty = True
@@ -1432,8 +1403,8 @@ def apply_seed_policy(normalize=True):
     return changed
 
 
-# Upload accounting cadence. aria2 only counts upload per session, so the
-# ledger must sample often to stay truthful: a 12h-only sample lost up to
+# Upload accounting cadence. The engine only counts upload per session, so
+# the ledger must sample often to stay truthful: a 12h-only sample lost up to
 # 12h of upload at every restart (undercount -> the cap overshoots). At 30s
 # the books are near-continuous, cap enforcement reacts within half a
 # minute, and a clean shutdown flushes the tail — worst case after a power
@@ -1446,23 +1417,22 @@ def seed_accounting_loop():
     while True:
         time.sleep(_SEED_ACCOUNTING_INTERVAL)
         try:
-            apply_seed_policy(normalize=False)
+            apply_seed_policy()
         except Exception as e:
             log.debug("seed accounting tick failed: %s", e)
 
 
 def flush_seed_accounting():
-    """Final accounting pass before the sidecar goes down, so a clean
+    """Final accounting pass before the engine goes down, so a clean
     shutdown loses none of the session's upload. Skips straight out when
-    the sidecar is already dead — otherwise the pass burns ~15s of RPC
-    timeouts (3 sequential calls at 5s each) delaying a clean exit."""
+    the engine is already dead."""
     from zimi import p2p as _p2p
 
     backend = _p2p.peek_backend()
     if backend is None or not backend.is_alive():
         return
     try:
-        apply_seed_policy(normalize=False)
+        apply_seed_policy()
     except Exception:
         pass
 
@@ -1470,12 +1440,11 @@ def flush_seed_accounting():
 def stop_mirror_seeds():
     """Mirror off: stop the MIRROR seeds, keep everything else.
 
-    Mirror-class seeds are the uncapped ones (seed-ratio 0 — mirror_sync
-    and mirror-mode re-seeds both use it; ordinary post-download seeds
-    always carry a positive cap, since cap 0 means leech-only and never
-    re-adds). Regular ratio-capped seeding continues untouched, and the
-    ZIMs + torrent archive stay on disk — flipping Mirror back on
-    re-seeds instantly. Turning a toggle off never deletes a backup."""
+    Seeds are told apart by their recorded ledger origin, not by any
+    engine-side option (every seed runs uncapped now). Regular
+    ratio-capped seeding continues untouched, and the ZIMs + torrent
+    archive stay on disk — flipping Mirror back on re-seeds instantly.
+    Turning a toggle off never deletes a backup."""
     from zimi import p2p as _p2p
 
     backend = _p2p.peek_backend()
@@ -1487,9 +1456,9 @@ def stop_mirror_seeds():
     except Exception:
         return 0
     zim_root = os.path.normpath(_srv.ZIM_DIR)
-    # Every seed runs at aria2 ratio 0 now (Zimi enforces caps), so the old
-    # "uncapped = mirror" option test can't discriminate. The ledger's
-    # recorded origin can: stop what Mirror created, keep personal seeds.
+    # Every seed runs uncapped now (Zimi enforces caps in the ledger), so
+    # the old "uncapped = mirror" option test can't discriminate. The
+    # ledger's recorded origin can: stop what Mirror created, keep personal.
     ledger = _seed_ledger()
     for raw in entries:
         for f in raw.get("files", []):
@@ -1511,7 +1480,7 @@ def stop_mirror_seeds():
 
 def retire_stale_seeds():
     """Drop sidecar torrents whose library file is gone — an update
-    replaced it, or the user deleted the ZIM. Without this, aria2 keeps
+    replaced it, or the user deleted the ZIM. Without this, the engine keeps
     advertising (and hash-check failing) old versions forever. Only
     torrents targeting ZIM_DIR are touched; staging transfers belong to
     the download machinery. Returns how many were removed."""
@@ -1569,14 +1538,11 @@ def _try_bt_download(
     """
     from zimi import p2p as _p2p
 
-    if _p2p.is_seeding_enabled():
-        # effective_seed_options picks mirror caps when ZIMI_MIRROR=1,
-        # otherwise the user's personal cap (default 2× ratio).
-        seed_opts = _p2p.effective_seed_options()
-    else:
-        seed_opts = _p2p.seed_options(ratio_cap=0, max_upload_kb=0)
+    # Seeding after completion is handled below (re-add against the library
+    # path); the download itself needs no per-torrent options — the global
+    # rate caps govern bandwidth and the ledger governs the ratio cap.
     try:
-        tid = backend.add_torrent(torrent_url, dest_dir=staging_dir, options=seed_opts)
+        tid = backend.add_torrent(torrent_url, dest_dir=staging_dir, options=None)
     except Exception as e:
         log.warning(
             "BT add_torrent failed for %s: %s — falling back to HTTP", dl["filename"], e
@@ -1595,7 +1561,7 @@ def _try_bt_download(
                 pass
             return "cancelled"
 
-        # Propagate UI pause/resume to aria2 — without this, "paused" is a
+        # Propagate UI pause/resume to the engine — without this, "paused" is a
         # lie: the flag flips in the dl dict while bytes keep flowing.
         if bool(dl.get("paused")) != was_paused:
             was_paused = bool(dl.get("paused"))
@@ -1616,11 +1582,6 @@ def _try_bt_download(
                 pass
             return "fallback"
 
-        # Rebind to the followed content GID (see Aria2Backend.status): a
-        # .torrent URL's original GID is just the metadata fetch, and
-        # pause/cancel/remove must act on the real transfer.
-        tid = status.get("gid") or tid
-
         # Surface progress to the existing UI.
         dl["downloaded_bytes"] = status.get("completed_bytes", 0)
         dl["total_bytes"] = status.get("total_bytes", 0)
@@ -1631,11 +1592,9 @@ def _try_bt_download(
         state = status.get("state")
         if state == "complete":
             staged = os.path.join(staging_dir, dl["filename"])
-            # aria2 keeps a .aria2 control file beside every unfinished
-            # download — if one exists, this "complete" is not our transfer.
-            if not os.path.exists(staged) or os.path.exists(staged + ".aria2"):
+            if not os.path.exists(staged):
                 log.warning(
-                    "BT reported complete but staged file missing/unfinished: %s"
+                    "BT reported complete but staged file missing: %s"
                     " — falling back",
                     staged,
                 )
@@ -1644,10 +1603,10 @@ def _try_bt_download(
                 except Exception:
                     pass
                 return "fallback"
-            # Never install a structurally invalid file. aria2 preallocates
-            # the full file size, so existence and size prove nothing — the
-            # two-phase GID confusion this guards installed full-size
-            # garbage ZIMs before release.
+            # Never install a structurally invalid file. Existence and size
+            # prove nothing on their own — the corrupt-ZIM class of bug (the
+            # old two-phase metadata GID) installed full-size garbage ZIMs
+            # before release, so libzim must validate the file first.
             try:
                 _srv.open_archive(staged)
             except Exception as e:
@@ -1689,16 +1648,17 @@ def _try_bt_download(
             # Honest seeding: re-add the torrent pointing at the LIBRARY
             # file. The old in-place seed rode an open file handle to a
             # renamed path — it died silently on restart or cross-fs moves.
-            # bt-seed-unverified skips a re-hash (aria2 verified every
-            # piece during the download; libzim just validated the file).
+            # No re-hash needed: libtorrent seeds the existing file when
+            # save_path points at it, and libzim just validated it.
             _cap = _p2p.get_seed_ratio_cap()
-            # Zimi's "ratio 0" means never seed; aria2's means seed
-            # forever. Only mirror mode gets the uncapped value.
+            # Zimi's "ratio 0" means never seed; the engine seeds without a
+            # cap and the ledger enforces the user's. Only mirror mode or a
+            # positive cap re-adds the library seed.
             if _p2p.is_seeding_enabled() and (_cap > 0 or _p2p.is_mirror_enabled()):
                 # Remove the staging torrent FIRST. It still holds this
                 # info-hash as an active seeder (now pointing at the moved-away
                 # staging path), so adding the library-path torrent before
-                # removing it makes aria2 reject the add as a duplicate
+                # removing it makes the engine reject the add as a duplicate
                 # info-hash — the seed was silently never created and the
                 # staging torrent snagged "file missing". Remove-then-add.
                 try:
@@ -1708,19 +1668,15 @@ def _try_bt_download(
                 try:
                     _meta = _get_torrent_metadata().get(dl["filename"]) or {}
                     _src = _meta.get("torrent_file") or torrent_url
-                    # aria2 always gets ratio 0 (seed until told otherwise):
-                    # its own cap counts this session's DOWNLOAD, which is 0
-                    # for a re-seed of the library file, so a positive cap
-                    # kills the seed on its first uploaded piece. Zimi
-                    # enforces the user's cap in apply_seed_policy.
+                    # No per-torrent options: the engine seeds the existing
+                    # file uncapped and Zimi enforces the user's cap in
+                    # apply_seed_policy (a positive engine cap would measure
+                    # this session's DOWNLOAD — zero for a re-seed — and kill
+                    # the seed on its first uploaded piece).
                     seed_gid = backend.add_torrent(
                         _src,
                         dest_dir=os.path.dirname(dl["dest"]),
-                        options={
-                            "bt-seed-unverified": "true",
-                            "seed-ratio": "0",
-                            "allow-overwrite": "true",
-                        },
+                        options=None,
                     )
                     if seed_gid:
                         tid = seed_gid  # track the library seed, not staging
@@ -1833,7 +1789,7 @@ def _seed_after_http_download(dl):
     if not (_p2p.is_torrent_enabled() and _p2p.is_seeding_enabled()):
         return
     cap = _p2p.get_seed_ratio_cap()
-    # Zimi's ratio 0 means "never seed" (aria2's means "seed forever").
+    # Zimi's ratio 0 means "never seed" (the engine itself seeds uncapped).
     if cap <= 0 and not _p2p.is_mirror_enabled():
         return
     try:
@@ -1850,20 +1806,11 @@ def _seed_after_http_download(dl):
     if not source:
         return
     try:
-        backend.add_torrent(
-            source,
-            dest_dir=_srv.ZIM_DIR,
-            options={
-                # Verify the file we already have, then seed it — never fetch.
-                # Ratio 0 at the aria2 layer; Zimi enforces the user's cap
-                # (aria2's cap counts session download = 0 here, and would
-                # stop the seed on its first uploaded piece).
-                "check-integrity": "true",
-                "bt-hash-check-seed": "true",
-                "seed-ratio": "0",
-                "allow-overwrite": "true",
-            },
-        )
+        # No per-torrent options: libtorrent verifies then seeds the file we
+        # already have when save_path points at it — never fetches. Zimi
+        # enforces the user's cap in the ledger (a positive engine cap would
+        # count this session's download = 0 and stop the seed immediately).
+        backend.add_torrent(source, dest_dir=_srv.ZIM_DIR, options=None)
         record_seed(dl["filename"])
         log.info(
             "Seeding HTTP-downloaded %s (cap %sx, Zimi-enforced)",

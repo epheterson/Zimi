@@ -1,8 +1,7 @@
 """Handler-level tests for /manage/seeding honesty (v1.7.2).
 
 Errored or file-missing seeds must be SHOWN (snag field), not hidden,
-and must not pollute the traffic totals. purge_stopped keeps errored
-results visible while clearing finished ones.
+and must not pollute the traffic totals.
 """
 
 import os
@@ -141,24 +140,3 @@ def test_inflight_download_not_listed_as_seed(tmp_path, monkeypatch):
     body = _call_seeding(monkeypatch, managed, tmp_path)
     ids = {t["id"] for t in body["torrents"]}
     assert ids == {"g-seed"}, "in-flight download must not appear as a seed"
-
-
-def test_purge_stopped_keeps_errors_visible(monkeypatch):
-    calls = []
-
-    backend = p2p.Aria2Backend.__new__(p2p.Aria2Backend)
-
-    def fake_rpc(method, params, timeout=5.0):
-        calls.append((method, params))
-        if method == "aria2.tellStopped":
-            return [
-                {"gid": "g-done", "status": "complete"},
-                {"gid": "g-err", "status": "error"},
-                {"gid": "g-removed", "status": "removed"},
-            ]
-        return None
-
-    backend._rpc = fake_rpc
-    backend.purge_stopped()
-    removed = [p[0] for m, p in calls if m == "aria2.removeDownloadResult"]
-    assert removed == ["g-done", "g-removed"], "errored result must stay visible"

@@ -89,23 +89,6 @@ def test_mirror_status_reflects_env(monkeypatch):
     assert status["upload_kb"] == 8000
 
 
-def test_seed_options_uses_mirror_ratio_when_enabled(monkeypatch):
-    monkeypatch.setenv("ZIMI_MIRROR", "1")
-    monkeypatch.setenv("ZIMI_MIRROR_RATIO", "100")
-    opts = p2p.effective_seed_options()
-    # Mirror lifts the ratio cap. Speed is NOT capped per-torrent anymore —
-    # the global up/down limits govern bandwidth — so max-upload-limit is
-    # "0K" (unlimited per-torrent).
-    assert float(opts["seed-ratio"]) == 100.0
-    assert opts["max-upload-limit"] == "0K"
-
-
-def test_seed_options_uses_user_caps_when_mirror_off():
-    opts = p2p.effective_seed_options()
-    # Default ratio cap is 2.0 (DEFAULT_RATIO_CAP)
-    assert float(opts["seed-ratio"]) == p2p.DEFAULT_RATIO_CAP
-
-
 # ────────────────────────────────────────────────────────────────────────────
 # Post-world resilience: catalog survives offline, torrent metadata persists
 # ────────────────────────────────────────────────────────────────────────────
@@ -180,9 +163,8 @@ def test_torrent_metadata_roundtrip(tmp_path, monkeypatch):
 
 
 class _FakeBackend:
-    def __init__(self, managed=None, options=None):
+    def __init__(self, managed=None):
         self.managed = managed or []
-        self.options = options or {}  # {gid: {"seed-ratio": ...}}
         self.added = []
         self.removed = []
 
@@ -190,14 +172,11 @@ class _FakeBackend:
         return self.managed
 
     def add_torrent(self, source, *, dest_dir, options=None):
-        self.added.append((source, dest_dir, options or {}))
+        self.added.append((source, dest_dir, options))
         return "gid-" + str(len(self.added))
 
     def remove(self, tid, *, delete_files=False):
         self.removed.append(tid)
-
-    def get_options(self, tid):
-        return self.options.get(tid, {})
 
 
 @pytest.fixture
@@ -240,8 +219,9 @@ def test_mirror_sync_seeds_installed_from_catalog(_mirror_env, monkeypatch):
     source, dest, opts = backend.added[0]
     assert source.endswith("wikipedia_en_100_2026-06.zim.torrent")
     assert dest == str(_mirror_env)
-    assert opts["check-integrity"] == "true"
-    assert opts["seed-ratio"] == "0"
+    # No per-torrent options: the engine hash-checks the existing file and
+    # seeds it when save_path points there; mirrors seed uncapped.
+    assert opts is None
 
 
 def test_mirror_sync_prefers_saved_torrent_file(_mirror_env, monkeypatch):
@@ -493,9 +473,9 @@ def test_ensure_magnets_mirror_keeps_torrent_file(_mirror_env, monkeypatch):
 
 
 def test_stop_mirror_seeds_removes_only_mirror_origin_seeds(_mirror_env, monkeypatch):
-    """Mirror off must not kill ordinary personal seeds. All seeds run at
-    aria2 ratio 0 now (Zimi enforces caps), so mirror-class seeds are told
-    apart by their recorded ledger origin, not their aria2 options."""
+    """Mirror off must not kill ordinary personal seeds. Every seed runs
+    uncapped now (Zimi enforces caps in the ledger), so mirror-class seeds
+    are told apart by their recorded ledger origin, not by engine options."""
     import zimi.library as lib
     import zimi.p2p as p2p
 
@@ -514,10 +494,6 @@ def test_stop_mirror_seeds_removes_only_mirror_origin_seeds(_mirror_env, monkeyp
                 "files": [{"path": str(_mirror_env.parent / "staging" / "dl.zim")}],
             },
         ],
-        options={
-            "g-mirror": {"seed-ratio": "0"},
-            "g-normal": {"seed-ratio": "2.0"},
-        },
     )
     monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
     assert lib.stop_mirror_seeds() == 1
