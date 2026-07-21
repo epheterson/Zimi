@@ -47,7 +47,13 @@ engine is finally in-process — no more sidecar.
   pulled and the public WAN never sees a dead control.
 - **Library filter pills** — the home library view gains All · Recently added ·
   Recently updated pills (30-day window, newest first), so a new ZIM is easy to
-  find in a big library without searching (#34).
+  find in a big library without searching (#34). Recent-search chips bring back
+  your last searches with one tap, and language pills filter a multilingual
+  library the same way the other views already could.
+- **Organize your library** — right-click any ZIM (or use the ⋯ control on its
+  row in Manage) to move it into another category, including brand-new custom
+  ones, and reorder the home sections — default categories and collections
+  alike — from a new Reorder panel in Manage preferences (#37).
 
 ### Changed
 
