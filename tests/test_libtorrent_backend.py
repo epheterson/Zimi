@@ -148,9 +148,11 @@ class TestListManaged:
             "gid",
             "status",
             "files",
+            "completedLength",
             "uploadLength",
             "totalLength",
             "infoHash",
+            "seeder",
         ):
             assert key in raw, key
         assert raw["status"] == "active"
@@ -162,6 +164,29 @@ class TestListManaged:
         )
         backend.pause(tid)
         assert backend.list_managed()[0]["status"] == "paused"
+
+    def test_downloading_not_seeder_completed_tracks_done(self, backend, tmp_path):
+        # manage.py hides in-flight downloads from the seeding panel by
+        # reading seeder=="false" + completedLength<totalLength, so both
+        # must reflect the real transfer, not aria2 ghosts.
+        tid = backend.add_torrent(
+            str(tmp_path / "wikipedia.torrent"), dest_dir=str(tmp_path / "staging")
+        )
+        h = backend._handles[tid]
+        h._status.total_done = 400
+        raw = backend.list_managed()[0]
+        assert raw["seeder"] == "false"
+        assert raw["completedLength"] == "400"
+        assert int(raw["completedLength"]) < int(raw["totalLength"])
+
+    def test_seeding_state_reports_seeder_true(self, backend, tmp_path):
+        tid = backend.add_torrent(
+            str(tmp_path / "wikipedia.torrent"), dest_dir=str(tmp_path / "staging")
+        )
+        h = backend._handles[tid]
+        h._status.state = fake_lt.torrent_status.seeding
+        raw = backend.list_managed()[0]
+        assert raw["seeder"] == "true"
 
 
 class TestRemoveSafety:

@@ -538,8 +538,10 @@ class LibtorrentBackend(BTBackend):
     OPENSSL_MODULES env hack. Torrent ids are v1 info-hash hex.
 
     list_managed() entries keep the historical key names library.py
-    parses (gid/status/files/uploadLength/totalLength) — that dict shape
-    is the contract, not an aria2-ism.
+    and manage.py parse (gid/status/files/completedLength/uploadLength/
+    totalLength/infoHash/seeder) — that dict shape is the contract, not
+    an aria2-ism. `seeder` is the string "true"/"false" (aria2 emitted it
+    as JSON strings); `completedLength` is a str byte count.
     """
 
     def __init__(self, *, bt_port: int, data_dir: str, staging_dir: str) -> None:
@@ -896,14 +898,26 @@ class LibtorrentBackend(BTBackend):
                     for i in range(fs.num_files())
                 ]
                 total = int(ti.total_size())
+            done = int(s.total_done)
+            wanted = int(s.total_wanted)
+            # Has all the data? Mirror status()'s completion test: the engine
+            # flags it seeding/finished, or the payload is fully in hand.
+            is_seeder = s.state in (
+                lt.torrent_status.seeding,
+                lt.torrent_status.finished,
+            ) or (wanted > 0 and done >= wanted)
             out.append(
                 {
                     "gid": tid,
                     "status": status,
                     "files": files,
+                    "completedLength": str(done),
                     "uploadLength": str(int(s.all_time_upload)),
                     "totalLength": str(total),
                     "infoHash": tid,
+                    # aria2 emitted these as JSON strings; manage.py tests
+                    # `seeder in ("true", True)`, so keep the string form.
+                    "seeder": "true" if is_seeder else "false",
                 }
             )
         return out

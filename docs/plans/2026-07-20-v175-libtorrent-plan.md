@@ -14,7 +14,7 @@
 
 - libtorrent is NEVER a declared dependency in `pyproject.toml`/`requirements.txt` — soft import only.
 - The normalized `status()` dict contract is preserved verbatim: keys `state` (`downloading|waiting|paused|error|complete|removed|unknown`), `gid`, `completed_bytes`, `total_bytes`, `down_speed`, `up_speed`, `peers`, `seeders`, `ratio`, `info_hash`, `error_code`, `error_message`.
-- The `list_managed()` entry contract (what `library.py`/`manage.py` parse): keys `gid` (str), `status` (`active|paused|error`), `files` (list of `{"path": abs_path}`), `uploadLength` (str int), `totalLength` (str int), `infoHash` (str).
+- The `list_managed()` entry contract (what `library.py`/`manage.py` parse): keys `gid` (str), `status` (`active|paused|error`), `files` (list of `{"path": abs_path}`), `completedLength` (str int), `uploadLength` (str int), `totalLength` (str int), `infoHash` (str), `seeder` (str `"true"|"false"`).
 - **`remove(tid, delete_files=True)` must NEVER delete payload files outside the staging dir.** aria2's version only cleared session results; deleting a seed must never delete the ZIM in `ZIM_DIR`.
 - Every env/UI knob keeps working unchanged: `ZIMI_BT` blob (`port=`, `ratio=`, `up=`, `down=`, `dht=`, `upnp=`, `mirror=`, `seed=`, `staging=`), legacy `ZIMI_TORRENT`/`ZIMI_SEED`/etc., persisted UI prefs.
 - Zimi enforces seed-ratio caps itself via the seed ledger (`library.py`); the engine always seeds uncapped per-torrent. Do not implement per-torrent ratio caps in libtorrent.
