@@ -4040,7 +4040,53 @@ function autoCategorize(item) {
   return 'other';
 }
 
-var _catalogStaleAt = 0; // >0: catalog served from offline cache (epoch s)
+var _catalogStaleAt = 0; // >0: catalog served from stale/offline cache (epoch s)
+
+// Stale-while-revalidate: when the server serves a stale catalog it kicks a
+// background refresh against Kiwix. We poll once the refresh should have
+// landed and quietly repaint if the data changed. One poller at a time.
+var _catalogRevalidating = false;
+var CATALOG_REVALIDATE_MS = 5000;   // let the server's background refresh land
+var CATALOG_REVALIDATE_TRIES = 4;   // ~20s of polling, then wait for next visit
+
+function _scheduleCatalogRevalidate() {
+  if (_catalogRevalidating) return;
+  _catalogRevalidating = true;
+  var tries = 0;
+  var poll = async function() {
+    tries++;
+    var done = false;
+    try {
+      var res = await manageFetch('/manage/catalog?lang=&count=500&start=0');
+      var data = await res.json();
+      if (!data.error && !data.stale) {
+        // Fresh copy is ready — rebuild the full catalog and quietly repaint
+        // the current view (only if the user hasn't scrolled away).
+        _catalogCache = null;
+        _catalogStaleAt = 0;
+        await loadFullCatalog();
+        _rerenderCatalogIfSafe();
+        done = true;
+      }
+    } catch (e) { /* transient — retry or give up */ }
+    if (!done && tries < CATALOG_REVALIDATE_TRIES) setTimeout(poll, CATALOG_REVALIDATE_MS);
+    else _catalogRevalidating = false;
+  };
+  setTimeout(poll, CATALOG_REVALIDATE_MS);
+}
+
+function _rerenderCatalogIfSafe() {
+  if (manageTab !== 'browse') return; // user left — cache is fresh for next visit
+  var results = document.getElementById('catalog-results');
+  if (!results) return;
+  // Don't yank the page mid-scroll — only repaint at/near the top, which is
+  // the just-landed case where the stale copy was shown.
+  var sc = document.scrollingElement || document.documentElement;
+  if ((sc && sc.scrollTop > 60) || results.scrollTop > 60) return;
+  if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
+  else if (_browseView === 'search') { var v = q.value.trim(); if (v) browseCatalogFilter(v); else renderBrowseGallery(); }
+  else renderBrowseGallery();
+}
 
 function _catalogStaleNote() {
   if (!_catalogStaleAt) return '';
@@ -4087,6 +4133,9 @@ async function loadFullCatalog() {
   _catalogInstalledNames = new Set(items.filter(it => it.installed).map(it => it.name));
 
   _catalogCache = items;
+  // Server served a stale copy and is revalidating against Kiwix — poll once
+  // the refresh should have landed and quietly repaint if the data changed.
+  if (data.stale) _scheduleCatalogRevalidate();
   // Kick off peer-list discovery in the background. When it lands,
   // enrich + re-render whichever catalog view is current.
   _loadPeerData().then(loaded => {

@@ -34,6 +34,9 @@ def _env(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "ZIM_DIR", str(zim_dir))
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(lib, "_opds_disk_loaded", True)
+    # Offline tests assert the synchronous stale-serve path — no background
+    # revalidation threads reaching for a (dead) network.
+    monkeypatch.setattr(lib, "_OPDS_BG_REFRESH", False)
     lib._catalog_stale_ts = None
     return zim_dir
 

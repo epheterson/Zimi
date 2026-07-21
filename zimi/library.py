@@ -811,6 +811,13 @@ _OPDS_DISK_KEYS_MAX = 40  # main browse pages; enough for full offline browse
 _catalog_stale_ts = None
 _opds_disk_loaded = False
 
+# Stale-while-revalidate: cache keys with a background refresh in flight, so
+# concurrent requests for the same stale page share one Kiwix round trip
+# instead of stampeding it. `_OPDS_BG_REFRESH` is a test seam — set False to
+# keep the stale-serve path fully synchronous (no threads spawned).
+_opds_refreshing = set()
+_OPDS_BG_REFRESH = True
+
 
 def _catalog_cache_path():
     return os.path.join(_srv.ZIMI_DATA_DIR, "catalog_cache.json")
@@ -908,12 +915,45 @@ def _clear_thumb_cache():
         shutil.rmtree(d, ignore_errors=True)
 
 
-def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
+def _kick_catalog_refresh(query, lang, count, start):
+    """Spawn at most one background thread per cache key to revalidate a stale
+    catalog page against Kiwix. Concurrent callers hitting the same stale page
+    share the single in-flight refresh — no thundering herd on Kiwix. No-op
+    when background refresh is disabled."""
+    if not _OPDS_BG_REFRESH:
+        return
+    cache_key = f"{query}|{lang}|{count}|{start}"
+    with _opds_lock:
+        if cache_key in _opds_refreshing:
+            return
+        _opds_refreshing.add(cache_key)
+
+    def _run():
+        try:
+            _fetch_kiwix_catalog(query, lang, count, start, _background=True)
+        except Exception as e:
+            log.debug("background catalog refresh failed: %s", e)
+        finally:
+            with _opds_lock:
+                _opds_refreshing.discard(cache_key)
+
+    threading.Thread(target=_run, name="catalog-refresh", daemon=True).start()
+
+
+def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0, _background=False):
     """Fetch and parse the Kiwix OPDS catalog. Returns (total, items, error).
-    Results are cached server-side for 1 hour to avoid hammering Kiwix."""
+    Results are cached server-side (24h TTL) to avoid hammering Kiwix.
+
+    Stale-while-revalidate: when a cached copy exists but has expired, the
+    stale copy is returned *immediately* (marked stale for the client) and a
+    single background thread revalidates it against Kiwix, so the catalog UI
+    never blocks on a NAS→Kiwix round trip. A cold cache (no copy at all) still
+    fetches synchronously. Background refreshes pass `_background=True` to skip
+    the stale-serve shortcut and actually hit the network."""
     global _catalog_stale_ts
     _load_opds_disk_cache()
     cache_key = f"{query}|{lang}|{count}|{start}"
+    serve_stale = None
     with _opds_lock:
         cached = _opds_cache.get(cache_key)
         if cached:
@@ -921,13 +961,24 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0):
             if time.time() - ts < _OPDS_CACHE_TTL:
                 _catalog_stale_ts = None
                 return total, items, None
-            # Expired entries are kept as the offline fallback — deleted
-            # only once a fresh fetch replaces them.
+            # Expired but present. Foreground callers get it instantly
+            # (stale-while-revalidate); a background refresh falls through to
+            # actually re-fetch. Expired entries are kept as the offline
+            # fallback — deleted only once a fresh fetch replaces them.
+            if not _background:
+                _catalog_stale_ts = ts
+                serve_stale = (total, items)
         # Cap: evict only one-off search keys. Browse pages are the
         # offline catalog and must survive any amount of searching.
         if len(_opds_cache) > 100:
             for k in [k for k in _opds_cache if not _is_browse_key(k)]:
                 del _opds_cache[k]
+
+    if serve_stale is not None:
+        # Hand back the stale copy now; revalidate in the background.
+        _kick_catalog_refresh(query, lang, count, start)
+        return serve_stale[0], serve_stale[1], None
+
     params = {"count": str(count), "start": str(start)}
     if query:
         params["q"] = query

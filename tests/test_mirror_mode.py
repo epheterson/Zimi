@@ -102,6 +102,7 @@ def test_stale_catalog_served_when_kiwix_unreachable(tmp_path, monkeypatch):
 
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(lib, "_opds_disk_loaded", True)  # isolate from disk
+    monkeypatch.setattr(lib, "_OPDS_BG_REFRESH", False)  # sync stale-serve path
     lib._catalog_stale_ts = None
     key = "|eng|500|0"
     stale_items = [{"name": "wikipedia_en_all", "title": "Wikipedia"}]
