@@ -2303,28 +2303,66 @@ function toggleCategory(cat) {
   document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeCtx(); });
 })();
 
-// Probe the peer-share endpoint and reveal a download link only when it will
-// serve this file to this client. Uses a 1-byte ranged GET, not HEAD: the
-// server's do_HEAD answers 200 for every path, so HEAD can't tell a live /dl/
-// from a gated one. 206/200 → live (show); 403 (WAN or sharing off) / 404 → hide.
+// Markup for a "Download this ZIM" link (peer-share /dl/ endpoint, direct HTTP
+// range). Shared by the source header and every manage-list row so the pill is
+// defined once. `cls` lets each context match its neighbours' styling.
+function _dlPillHtml(file, cls) {
+  return '<a class="' + (cls || 'pill dl-pill') + '" href="/dl/' + encodeURIComponent(file) +
+    '" download="' + escAttr(file) + '">⬇ ' + tH('download_zim') + '</a>';
+}
+
+// Probe the peer-share endpoint once and cache whether it will serve files to
+// this client. /dl/ availability is server-GLOBAL (share on/off + this client's
+// IP), not per-file, so one probe gates every download pill — never N probes
+// for N rows. Uses a 1-byte ranged GET, not HEAD: the server's do_HEAD answers
+// 200 for every path, so HEAD can't tell a live /dl/ from a gated one.
+// 206/200 → live; 403 (WAN or sharing off) / 404 → gated.
+let _dlProbe = null;  // {ts, promise:Promise<boolean>}
+const DL_PROBE_TTL_MS = 30000;
+function _probeDlShare(file) {
+  const now = Date.now();
+  if (_dlProbe && (now - _dlProbe.ts) < DL_PROBE_TTL_MS) return _dlProbe.promise;
+  const p = (async () => {
+    if (!file) return false;
+    try {
+      const res = await fetch('/dl/' + encodeURIComponent(file), {headers: {'Range': 'bytes=0-0'}});
+      const ok = res.status === 206 || res.status === 200;
+      // Don't pull the body: if an intermediary ignored Range and answered 200,
+      // arrayBuffer() would download the whole ZIM invisibly. Cancel instead.
+      try { if (res.body) res.body.cancel(); } catch (e) {}
+      return ok;
+    } catch (e) { return false; }
+  })();
+  _dlProbe = {ts: now, promise: p};
+  return p;
+}
+
+// Reveal the source-header download link only when peer-share is live.
 async function _probeZimDownload(name, info) {
   const file = info && info.file;
   if (!file) return;
-  const url = '/dl/' + encodeURIComponent(file);
-  let ok = false;
-  try {
-    const res = await fetch(url, {headers: {'Range': 'bytes=0-0'}});
-    ok = res.status === 206 || res.status === 200;
-    try { await res.arrayBuffer(); } catch (e) {}  // drain the 1-byte body
-  } catch (e) { ok = false; }
+  const ok = await _probeDlShare(file);
   if (!ok) return;
   // The panel may have moved on while we were probing.
   if (mode !== 'source' || currentSource !== name) return;
   const box = document.getElementById('sh-download');
   if (!box) return;
-  box.innerHTML = '<a class="pill dl-pill" href="' + url +
-    '" download="' + escAttr(file) + '">⬇ ' + tH('download_zim') + '</a>';
+  box.innerHTML = _dlPillHtml(file);
   box.hidden = false;
+}
+
+// Reveal a download pill on every installed manage-list row, gated by a single
+// global peer-share probe (see _probeDlShare) — not one probe per row.
+function _fillInstalledDownloads(el) {
+  const slots = el.querySelectorAll('.ci-dl[data-file]');
+  if (!slots.length) return;
+  _probeDlShare(slots[0].getAttribute('data-file')).then(function(ok) {
+    if (!ok) return;
+    slots.forEach(function(slot) {
+      const file = slot.getAttribute('data-file');
+      if (file) { slot.innerHTML = _dlPillHtml(file, 'ci-installed-badge dl-pill'); slot.hidden = false; }
+    });
+  });
 }
 
 // ── Render: Source ──
@@ -6089,7 +6127,8 @@ function renderInstalled(filterText) {
         ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="40" height="40" loading="lazy">'
         : '<span class="ci-letter">' + (esc(z.title || z.name)[0] || '?').toUpperCase() + '</span>';
       const meta = [];
-      if (typeof z.entries === 'number') meta.push(t('n_entries', {n: z.entries.toLocaleString()}));
+      const countHtml = _zimCountHtml(z);
+      if (countHtml) meta.push(countHtml);
       meta.push(fmtSize(z.size_gb));
       // Show date from ZIM metadata
       const dateStr = z.date ? z.date.substring(0, 7) : null;
@@ -6119,6 +6158,8 @@ function renderInstalled(filterText) {
         actionsHtml = '<span class="ci-installed-badge">' + tH('installed_badge') + '</span>' +
           '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="' + escAttr(t('delete_zim')) + '">\u00D7</button>';
       }
+      // Download slot \u2014 filled by _fillInstalledDownloads only when peer-share is live.
+      actionsHtml += '<span class="ci-dl" data-file="' + escAttr(z.file) + '" hidden></span>';
       var langTag = (z.language && z.language !== 'en') ? '<span class="ci-lang-tag">' + esc(_langDisplayName(z.language)) + '</span>' : '';
       items_h += '<div class="catalog-item' + (upd ? ' ci-has-update' : '') + '" style="cursor:pointer" onclick="if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(z.name) + '\',true)}">' +
         '<div class="ci-icon">' + iconHtml + '</div>' +
@@ -6134,6 +6175,7 @@ function renderInstalled(filterText) {
   if (!items_h) items_h = '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
 
   el.innerHTML = getInstalledPillsHtml() + items_h;
+  _fillInstalledDownloads(el);
 }
 
 async function managePassword() {
