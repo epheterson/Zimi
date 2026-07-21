@@ -99,7 +99,13 @@ class _Sha1:
 class add_torrent_params:
     def __init__(self, hex_v1="a" * 40, ti=None):
         self.save_path = ""
-        self.flags = torrent_flags.auto_managed
+        # Mirror real libtorrent 2.0's trap: a fresh add_torrent_params
+        # defaults flags to BOTH paused AND auto_managed. The backend must
+        # strip both (auto_managed so we're the manager, paused so it ever
+        # starts). If the fake only set auto_managed, deleting the
+        # paused-strip in add_torrent would still pass every Mac test while
+        # shipping a BT path that sits paused forever (caught in Docker).
+        self.flags = torrent_flags.paused | torrent_flags.auto_managed
         self.ti = ti
         self.info_hashes = _InfoHashes(hex_v1)
         self.name = ti.name() if ti else ""
