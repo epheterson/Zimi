@@ -333,6 +333,17 @@ function fmtSize(gb, html) {
 // ── DOM refs ──
 const q = document.getElementById('q');
 const output = document.getElementById('output');
+
+// Delegated click for the "Did you mean" correction link. The suggestion
+// derives from third-party ZIM title words, so the anchor carries it in an
+// HTML-attribute-encoded data-sugg (no inline onclick — a JS-string escape
+// alone doesn't survive a double-quote in attribute position).
+output.addEventListener('click', function(e) {
+  var link = e.target.closest('.did-you-mean a[data-sugg]');
+  if (!link) return;
+  e.preventDefault();
+  applyDidYouMean(link.getAttribute('data-sugg'));
+});
 const mainView = document.getElementById('main-view');
 const statsBar = document.getElementById('stats-bar');
 const pillsBar = document.getElementById('pills-bar');
@@ -2702,7 +2713,7 @@ function renderSearchResults(data, scope) {
   if (data.did_you_mean && totalCount < 3) {
     var sugg = data.did_you_mean;
     dymHtml = '<div class="did-you-mean">' +
-      t('did_you_mean', {s: '<a href="#" onclick="applyDidYouMean(\'' + escJs(sugg) + '\');return false;">' + esc(sugg) + '</a>'}) +
+      t('did_you_mean', {s: '<a href="#" data-sugg="' + escAttr(sugg) + '">' + esc(sugg) + '</a>'}) +
       '</div>';
   }
 
