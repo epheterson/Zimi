@@ -1181,7 +1181,7 @@ function renderHome(filter) {
   // The pill row only appears with ≥2 distinct languages; a mono-language
   // library never sees it (and any stale filter state is dropped).
   var _langCounts = {};
-  sortedAll.forEach(z => { var l = z.language || ''; if (l) _langCounts[l] = (_langCounts[l] || 0) + 1; });
+  sortedAll.forEach(z => { var l = z.language || ''; if (l && _isValidLangCode(l)) _langCounts[l] = (_langCounts[l] || 0) + 1; });
   var _langCodes = Object.keys(_langCounts).sort((a, b) => _langCounts[b] - _langCounts[a]);
   var _showLangPills = !homeScope && !filter && _langCodes.length >= 2;
   if (!_showLangPills) homeLangFilter.clear();
@@ -1254,6 +1254,11 @@ function renderHome(filter) {
   // #34 recency-filter view: a flat, newest-first grid of just the matching
   // ZIMs. No discover row or category sections — the pill IS the organization,
   // and a cross-cutting "added this month" list doesn't group by category.
+  // A language narrowing can empty the active recency list — its pill is
+  // hidden then, so an active-but-invisible filter would strand the view on
+  // an empty state. Fall back to All instead.
+  if (homeRecentFilter === 'added' && !_recentAdded.length) homeRecentFilter = null;
+  if (homeRecentFilter === 'updated' && !_recentUpdated.length) homeRecentFilter = null;
   if (homeRecentFilter) {
     var _list = homeRecentFilter === 'added' ? _recentAdded : _recentUpdated;
     h += '<div class="cat-heading">' +
@@ -1503,7 +1508,10 @@ function _homeLangPill(code, count, active) {
   var name = _NATIVE_LANG_NAMES[code] || _langDisplayName(code) || code.toUpperCase();
   return '<button class="pill' + (active ? ' active' : '') + '"' +
     ' aria-pressed="' + (active ? 'true' : 'false') + '"' +
-    ' onclick="filterHomeLang(\'' + escAttr(code) + '\')">' +
+    // escJs, not escAttr: an entity-escaped quote decodes back to a live quote
+    // inside the onclick JS string — third-party ZIM language codes must not
+    // be able to break out (same trap the recent-search chips already avoid).
+    ' onclick="filterHomeLang(\'' + escJs(code) + '\')">' +
     esc(name) + ' <span class="pill-count">' + count + '</span></button>';
 }
 
