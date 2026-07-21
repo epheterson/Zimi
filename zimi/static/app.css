@@ -1106,12 +1106,35 @@
     body { overflow-x: hidden; }
     /* Mobile: hide secondary actions, show overflow menu */
     .random-btn, .lang-selector-btn, .manage-btn { display: none !important; }
+    /* Reader controls (font size, read-aloud, pop-out) migrate into the ...
+       menu on mobile — the topbar is too tight to hold them inline. */
+    #font-btn, #tts-btn, #newtab-btn { display: none !important; }
     .topbar-more { display: flex !important; }
     .topbar.search-focused .topbar-more,
     .topbar.search-focused .library-btn { display: none !important; }
     .topbar.search-focused .lang-dropdown { display: none !important; }
     /* v1.6: Language dropdown — full width on mobile */
     .lang-dropdown { min-width: 160px; }
+    /* Catalog multi-select checkbox — the 15px control rendered goofy-large
+       on touch. Pin a sane 24px visual with padding making a 44px tap target. */
+    .catalog-grid .catalog-item .ci-select {
+      width: 24px; height: 24px; padding: 10px; top: 0; right: 0;
+    }
+    [dir="rtl"] .catalog-grid .catalog-item .ci-select { right: auto; left: 0; }
+    .catalog-grid .catalog-item .ci-title { padding-right: 30px; }
+    [dir="rtl"] .catalog-grid .catalog-item .ci-title { padding-right: 0; padding-left: 30px; }
+    /* Selection bar — a single-row pill centred above the tab bar, never
+       wrapping into a blob that overlaps cards. */
+    .ci-selection-bar {
+      left: 12px; right: 12px; transform: none; margin: 0 auto;
+      max-width: 420px; flex-wrap: nowrap; gap: 8px; padding: 8px 12px;
+      justify-content: center;
+      bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    }
+    .ci-selection-bar .ci-sel-count {
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ci-selection-bar button { flex-shrink: 0; }
   }
 
   /* ── Password modal ── */

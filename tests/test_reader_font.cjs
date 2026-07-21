@@ -1,14 +1,17 @@
 // DOM-free regression test for the reader font-scale helper (_applyReaderFont).
 //
-// Guards the fix where the neutral 100% level must be NON-DESTRUCTIVE: at the
-// default level the helper must REMOVE its inline font-size override (so a ZIM's
-// own root size — e.g. devdocs' html{font-size:62.5%} rem reset — governs),
-// while non-default levels still pin N%. A literal fontSize:100% regresses this.
+// Guards two properties of the zoom-based scaler:
+//   1. Scaling uses body.style.zoom (level/100), NOT a root font-size %. A root
+//      font-size only rescales rem/em text, so px-bodied articles wouldn't grow —
+//      the bug this replaced. `zoom` rescales every unit uniformly.
+//   2. The neutral 100% level is NON-DESTRUCTIVE + self-cleaning: it REMOVES the
+//      zoom override (never pins zoom:1) AND strips any leftover root font-size a
+//      pre-zoom session may have pinned, so a ZIM's own root size governs again.
 //
 // Pure-helper approach: extract the constants + the two font functions straight
 // from app.js by source markers, eval them in a sandbox with stubbed
-// localStorage, and drive them against a fake documentElement.style that records
-// setProperty/removeProperty and the fontSize assignment.
+// localStorage, and drive them against a fake document whose body/documentElement
+// styles record zoom + font-size mutations.
 //
 // Run: node tests/test_reader_font.cjs   (exit 0 = pass, non-zero = fail)
 
@@ -31,17 +34,29 @@ const cDefault = extract(/var READER_FONT_DEFAULT = \d+;/, 'READER_FONT_DEFAULT'
 const fLevel = extract(/function _readerFontLevel\(\)\s*\{[\s\S]*?\n\}/, '_readerFontLevel');
 const fApply = extract(/function _applyReaderFont\(doc\)\s*\{[\s\S]*?\n\}/, '_applyReaderFont');
 
-// A fake style that mirrors the CSSStyleDeclaration surface the code touches.
+// A fake document mirroring the CSSStyleDeclaration surface the code touches:
+// body.style.zoom (set + removeProperty) and documentElement.style.fontSize
+// (set + removeProperty), each recorded.
 function makeDoc() {
-  const rec = { set: 0, removed: 0, value: undefined, present: false };
-  const style = {
-    get fontSize() { return rec.present ? rec.value : ''; },
-    set fontSize(v) { rec.value = v; rec.present = true; rec.set++; },
+  const rec = {
+    zoomSet: 0, zoomRemoved: 0, zoomValue: undefined, zoomPresent: false,
+    fsSet: 0, fsRemoved: 0, fsPresent: false,
+  };
+  const bodyStyle = {
+    get zoom() { return rec.zoomPresent ? rec.zoomValue : ''; },
+    set zoom(v) { rec.zoomValue = v; rec.zoomPresent = true; rec.zoomSet++; },
     removeProperty(name) {
-      if (name === 'font-size') { rec.present = false; rec.value = undefined; rec.removed++; }
+      if (name === 'zoom') { rec.zoomPresent = false; rec.zoomValue = undefined; rec.zoomRemoved++; }
     },
   };
-  return { doc: { documentElement: { style } }, rec };
+  const rootStyle = {
+    get fontSize() { return rec.fsPresent ? '100%' : ''; },
+    set fontSize(v) { rec.fsPresent = true; rec.fsSet++; },
+    removeProperty(name) {
+      if (name === 'font-size') { if (rec.fsPresent) rec.fsRemoved++; rec.fsPresent = false; }
+    },
+  };
+  return { doc: { documentElement: { style: rootStyle }, body: { style: bodyStyle } }, rec };
 }
 
 const store = {};
@@ -61,44 +76,52 @@ function check(name, cond) {
   else { console.log('  FAIL - ' + name); failures++; }
 }
 
-// 1. Default (no key set): must REMOVE the override, never set a value.
+// 1. Default (no key set): removes zoom, never sets it; never pins a font-size.
 {
   delete store['zimi_reader_font_scale'];
   const { doc, rec } = makeDoc();
-  sandbox.APPLY = sandbox._applyReaderFont; // expose for call
   vm.runInContext('_applyReaderFont(globalThis.__doc)', Object.assign(sandbox, { __doc: doc }));
-  check('default level removes font-size (removeProperty called)', rec.removed === 1);
-  check('default level does not set font-size', rec.set === 0 && rec.present === false);
+  check('default level removes zoom', rec.zoomRemoved === 1 && rec.zoomPresent === false);
+  check('default level does not set zoom', rec.zoomSet === 0);
+  check('default level never pins a font-size', rec.fsSet === 0 && rec.fsPresent === false);
 }
 
-// 2. Non-default level pins N%.
+// 2. Non-default level sets body zoom = level/100, and does NOT touch font-size.
 {
   store['zimi_reader_font_scale'] = '130';
   const { doc, rec } = makeDoc();
   vm.runInContext('_applyReaderFont(globalThis.__doc)', Object.assign(sandbox, { __doc: doc }));
-  check('level 130 sets font-size to 130%', rec.value === '130%' && rec.set === 1);
-  check('level 130 does not remove', rec.removed === 0);
+  check('level 130 sets zoom to 1.3', rec.zoomValue === 1.3 && rec.zoomSet === 1);
+  check('level 130 does not remove zoom', rec.zoomRemoved === 0);
+  check('level 130 does not touch font-size', rec.fsSet === 0 && rec.fsRemoved === 0);
 }
 
-// 3. Live cycle back to 100 clears a previously-set override.
+// 3. Live cycle back to 100 clears a previously-set zoom override.
 {
   store['zimi_reader_font_scale'] = '115';
   const { doc, rec } = makeDoc();
   vm.runInContext('_applyReaderFont(globalThis.__doc)', Object.assign(sandbox, { __doc: doc }));
-  check('level 115 sets 115%', rec.value === '115%');
-  // Now cycle to default and re-apply on the SAME doc (mirrors _cycleReaderFont
-  // calling _applyReaderFont on the live contentDocument).
+  check('level 115 sets zoom 1.15', rec.zoomValue === 1.15);
   store['zimi_reader_font_scale'] = '100';
   vm.runInContext('_applyReaderFont(globalThis.__doc)', sandbox);
-  check('cycling to 100 removes the live override', rec.present === false && rec.removed === 1);
+  check('cycling to 100 removes the live zoom override', rec.zoomPresent === false && rec.zoomRemoved === 1);
 }
 
-// 4. An unknown/garbage stored value falls back to default → remove.
+// 4. A leftover root font-size from an older (pre-zoom) session is cleared at 100.
+{
+  store['zimi_reader_font_scale'] = '100';
+  const { doc, rec } = makeDoc();
+  rec.fsPresent = true; // simulate an inline font-size a pre-zoom build left behind
+  vm.runInContext('_applyReaderFont(globalThis.__doc)', Object.assign(sandbox, { __doc: doc }));
+  check('default level strips leftover root font-size', rec.fsRemoved === 1 && rec.fsPresent === false);
+}
+
+// 5. An unknown/garbage stored value falls back to default → remove zoom.
 {
   store['zimi_reader_font_scale'] = '999';
   const { doc, rec } = makeDoc();
   vm.runInContext('_applyReaderFont(globalThis.__doc)', Object.assign(sandbox, { __doc: doc }));
-  check('garbage value falls back to default and removes', rec.removed === 1 && rec.set === 0);
+  check('garbage value falls back to default and removes zoom', rec.zoomRemoved === 1 && rec.zoomSet === 0);
 }
 
 if (failures) { console.log('\n' + failures + ' check(s) FAILED'); process.exit(1); }

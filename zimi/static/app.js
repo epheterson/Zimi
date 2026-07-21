@@ -20,8 +20,8 @@ var SK = {
   MANAGE_PW: 'zimi_manage_pw',
   PREF_LANGUAGES: 'zimi_pref_languages',
   PREF_FLAVOR: 'zimi_pref_flavor',
-  // Reader font scale (percent, one of READER_FONT_LEVELS), injected into the
-  // iframe document root and reapplied on every article load.
+  // Reader font scale (percent, one of READER_FONT_LEVELS), applied as a `zoom`
+  // on the iframe body and reapplied on every article load.
   READER_FONT: 'zimi_reader_font_scale',
   // Last-rendered SHARING rows (Server pane) — restored synchronously on
   // pane open so the section doesn't pop in after the status fetches.
@@ -177,6 +177,20 @@ let homeRecentFilter = null;
 let homeLangFilter = new Set();
 // Most recent distinct search strings surfaced as one-tap chips on home.
 const _HOME_SEARCH_CHIPS_MAX = 6;
+// Home filter rows: (recent-search chips, recency pills, language pills)
+// stay hidden until the search field is focused, so the default home is clean.
+// A row that has a filter actively applied stays visible regardless (the user
+// needs its controls to un-filter). Both flags are transient — never persisted.
+let _homeFiltersRevealed = false;
+// True only while pillsBar currently holds the home filter rows (vs the
+// search-results source/language pills, which are always shown). Gates the
+// focus/blur visibility toggle so it never touches the search-results pills.
+let _pillsAreHomeFilters = false;
+function _updateHomeFiltersVisibility() {
+  if (!_pillsAreHomeFilters || !pillsBar.innerHTML) return;
+  const filterActive = !!homeRecentFilter || homeLangFilter.size > 0;
+  pillsBar.style.display = (_homeFiltersRevealed || filterActive) ? '' : 'none';
+}
 
 
 // ── Language filter ──
@@ -596,7 +610,10 @@ function updateTopbar() {
     manageBtnEl.style.background = 'var(--amber-glow)';
     manageBtnEl.onclick = function(e) { toggleManage(e); };
   } else if (_almanacOpen || readerOpen) {
-    // Hide X when another button takes the 4th slot (save on desktop, pop-out on web)
+    // Hide X when another button takes the 4th slot (save on desktop, pop-out on
+    // web). On mobile .manage-btn is hidden anyway (close is the back-btn /
+    // breadcrumb) and the pop-out now lives in the ... menu, so this only affects
+    // desktop-web where the inline pop-out still shows.
     var hasSaveBtn = !_almanacOpen && IS_DESKTOP && currentArticle && /\.(pdf|epub)$/i.test(currentArticle.path || '');
     var hasNewtab = !_almanacOpen && readerOpen && !IS_DESKTOP;
     manageBtnEl.style.display = (hasSaveBtn || hasNewtab) ? 'none' : 'flex';
@@ -1366,10 +1383,15 @@ function renderHome(filter) {
     }
     pillsBar.className = 'pills';
     pillsBar.innerHTML = _rows;
-    pillsBar.style.display = '';
+    _pillsAreHomeFilters = true;
+    // Hidden by default — revealed while the search field is focused, or
+    // whenever a filter is actively applied (so the un-filter controls stay
+    // reachable). _updateHomeFiltersVisibility encodes that rule.
+    _updateHomeFiltersVisibility();
   } else {
     // No pills otherwise (scoped/filtered/nothing recent) — sections organize home.
     pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
+    _pillsAreHomeFilters = false;
     homeRecentFilter = null; // guard: pill row gone, so no stale filter state
     homeLangFilter.clear();
   }
@@ -2873,13 +2895,25 @@ q.addEventListener('touchstart', function() { _searchFocusedByUser = true; });
 q.addEventListener('focus', function() {
   if (_searchFocusedByUser && !q.value.trim() && mode !== 'manage') showHistoryDropdown();
   // Only hide topbar icons on mobile when user tapped the search box (not autofocus on load)
-  if (_searchFocusedByUser && window.matchMedia('(max-width: 600px)').matches) {
+  if (_searchFocusedByUser && _isNarrow()) {
     document.querySelector('.topbar').classList.add('search-focused');
   }
+  // Reveal the home filter rows while the field is active (user-initiated
+  // focus only — not autofocus-on-load, which would spoil the clean default).
+  if (_searchFocusedByUser) { _homeFiltersRevealed = true; _updateHomeFiltersVisibility(); }
   _searchFocusedByUser = false;
 });
 q.addEventListener('blur', function() {
   document.querySelector('.topbar').classList.remove('search-focused');
+  // Re-hide the home filter rows once focus leaves — unless a filter is
+  // actively applied. Deferred so a pill tap (which blurs the field first, then
+  // fires its click) still lands before the row can vanish; the click re-renders
+  // home with the filter applied, which keeps the row visible anyway.
+  setTimeout(function() {
+    if (document.activeElement === q) return; // refocused during the delay
+    _homeFiltersRevealed = false;
+    _updateHomeFiltersVisibility();
+  }, 200);
 });
 
 q.addEventListener('input', () => {
@@ -3190,11 +3224,15 @@ function renderSearchResults(data, scope) {
         esc(_zimTitle(s)) + ' (' + bySource[s] + ')</button>';
     }).join('');
     pillsBar.className = 'pills';
-    // Source pills first, then language pills below (consistent with catalog)
+    // Source pills first, then language pills below (consistent with catalog).
+    // These are search-results pills, always shown — not the focus-gated home
+    // filter rows, so clear the marker the home path sets.
+    _pillsAreHomeFilters = false;
     pillsBar.innerHTML = '<div class="pills-row">' + sourcePillsHtml + '</div>' + langPillsHtml;
     pillsBar.style.display = '';
   } else if (langPillsHtml) {
     pillsBar.className = 'pills';
+    _pillsAreHomeFilters = false;
     pillsBar.innerHTML = langPillsHtml;
     pillsBar.style.display = '';
   }
@@ -7662,8 +7700,8 @@ function _stepBackToArticle(prev, replaceState) {
 
 // ── Reader font scale ──
 // A single cycling control (chosen over an A−/A+ pair to conserve the already
-// crowded topbar) steps through these percentages, injected into the iframe
-// document root and reapplied on every article load. Persisted in localStorage.
+// crowded topbar) steps through these percentages, applied as a `zoom` on the
+// iframe body and reapplied on every article load. Persisted in localStorage.
 var READER_FONT_LEVELS = [85, 100, 115, 130];
 var READER_FONT_DEFAULT = 100;
 
@@ -7675,16 +7713,22 @@ function _applyReaderFont(doc) {
   if (!doc || !doc.documentElement) return;
   var level = _readerFontLevel();
   try {
+    // Scale via `zoom` on <body>, not a root font-size %. A root font-size only
+    // rescales rem/em-sized text — an article whose body copy is in absolute px
+    // (common outside MediaWiki) wouldn't budge, so users saw only headings grow.
+    // `zoom` rescales every unit uniformly (px, rem, images) and is supported in
+    // Safari/Chrome forever and Firefox 126+. We never combine the two: root% ×
+    // zoom would double-scale rem docs.
+    var body = doc.body || doc.documentElement;
     if (level === READER_FONT_DEFAULT) {
-      // Default (100%): REMOVE our inline override rather than pin it to 100%.
-      // A literal fontSize:100% still wins over a ZIM's own root size (e.g.
-      // devdocs' html{font-size:62.5%} rem reset), inflating every rem-based
-      // article ~1.6x for users who never touched the control. Removing the
-      // property lets the ZIM's stylesheet govern again. Cycling back to 100
-      // routes through here too, so the override clears live, not just on load.
+      // Default (100%): REMOVE the override rather than pin zoom:1. Also strip any
+      // leftover root font-size an older (pre-zoom) session may have pinned, so a
+      // ZIM's own root size (e.g. devdocs' html{font-size:62.5%} rem reset) governs
+      // again. Cycling back to 100 routes through here too, so it clears live.
+      body.style.removeProperty('zoom');
       doc.documentElement.style.removeProperty('font-size');
     } else {
-      doc.documentElement.style.fontSize = level + '%';
+      body.style.zoom = level / 100;
     }
   } catch(e) {}
 }
@@ -7698,6 +7742,7 @@ function _syncFontBtnGlyph() {
   var label = t('font_size') + ' — ' + level + '%';
   btn.title = label;
   btn.setAttribute('aria-label', label);
+  _syncTopbarMenuReaderItems(); // keep the ... menu row (if open) in step
 }
 function _cycleReaderFont() {
   var idx = READER_FONT_LEVELS.indexOf(_readerFontLevel());
@@ -7772,6 +7817,7 @@ function _ttsLang(doc) {
 }
 function _ttsSetSpeaking(on) {
   _ttsSpeaking = on;
+  _syncTopbarMenuReaderItems(); // mobile: reflect speaking-state on the ... menu row
   var btn = document.getElementById('tts-btn');
   if (!btn) return;
   btn.classList.toggle('speaking', on);
@@ -8669,6 +8715,31 @@ function _closeLangDropdown() {
 }
 
 // ── Mobile topbar overflow menu ──
+// Single source of truth for the mobile breakpoint (matches the max-width:600px
+// media query that shows the ... menu and hides the inline secondary actions).
+function _isNarrow() { return window.matchMedia('(max-width: 600px)').matches; }
+
+// Compact SVGs reused by the reader controls when they migrate into the ... menu.
+var _TBM_TTS_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+var _TBM_NEWTAB_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+
+// Keep the font + TTS menu rows (if the menu is open) in sync with live state.
+// _cycleReaderFont / _ttsSetSpeaking call this so the label updates in place
+// without closing the menu.
+function _syncTopbarMenuReaderItems() {
+  var fontItem = document.getElementById('tbm-font');
+  if (fontItem) {
+    var val = fontItem.querySelector('.tbm-val');
+    if (val) val.textContent = _readerFontLevel() + '%';
+  }
+  var ttsItem = document.getElementById('tbm-tts');
+  if (ttsItem) {
+    ttsItem.setAttribute('aria-pressed', _ttsSpeaking ? 'true' : 'false');
+    var lbl = ttsItem.querySelector('.tbm-label');
+    if (lbl) lbl.textContent = t(_ttsSpeaking ? 'tts_stop' : 'tts_speak');
+  }
+}
+
 function _toggleTopbarMenu(event) {
   event.stopPropagation();
   var menu = document.getElementById('topbar-menu');
@@ -8678,6 +8749,24 @@ function _toggleTopbarMenu(event) {
   }
   // Build menu items
   var h = '';
+  // Reader controls migrate here on mobile (the inline topbar buttons are hidden
+  // by the max-width:600px CSS — the topbar was too tight). Font + TTS cycle in
+  // place and keep the menu open (event.stopPropagation blocks the outside-click
+  // close); pop-out closes the menu like the other actions.
+  if (readerOpen && !_almanacOpen) {
+    h += '<button class="topbar-menu-item" id="tbm-font" onclick="event.stopPropagation();_cycleReaderFont()">' +
+      '<span class="font-glyph" aria-hidden="true" style="font-weight:700">A</span> ' + tH('font_size') +
+      ' <span class="tbm-val">' + _readerFontLevel() + '%</span></button>';
+    if (_TTS_AVAILABLE) {
+      h += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
+        '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
+        ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
+    }
+    if (!IS_DESKTOP) {
+      h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();_openInBrowser()">' + _TBM_NEWTAB_ICON +
+        ' ' + tH('open_in_browser') + '</button>';
+    }
+  }
   h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
   if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
   h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> ' + tH('manage') + '</button>';
