@@ -86,7 +86,7 @@ _AUTHED_CACHE_TTL = 300.0
 # fetches, which burned the whole API budget in a few searches (#30's
 # cousin). Pinned by tests — moving /snippet back to the API bucket is a
 # regression, not a cleanup.
-_RATE_LIMITED_API_PATHS = ("/search", "/read", "/suggest", "/random")
+_RATE_LIMITED_API_PATHS = ("/search", "/read", "/suggest", "/random", "/chunks")
 
 # High-frequency read-only manage polls. While a download runs the manage UI
 # keeps three independent timers alive — downloads+seeding every 2s, activity
@@ -674,6 +674,32 @@ class ZimHandler(BaseHTTPRequestHandler):
                 _record_usage("read", zim)
                 return self._json(200, result)
 
+            elif parsed.path == "/chunks":
+                zim = param("zim")
+                path = param("path")
+                if not zim or not path:
+                    return self._json(
+                        400, {"error": "missing ?zim= and ?path= parameters"}
+                    )
+                # Out-of-range size/overlap are clamped in chunk_article, not
+                # rejected; only unparseable values fall back to the defaults.
+                try:
+                    size = int(param("size", str(_srv.CHUNK_SIZE_DEFAULT)))
+                except (ValueError, TypeError):
+                    size = _srv.CHUNK_SIZE_DEFAULT
+                try:
+                    overlap = int(param("overlap", str(_srv.CHUNK_OVERLAP_DEFAULT)))
+                except (ValueError, TypeError):
+                    overlap = _srv.CHUNK_OVERLAP_DEFAULT
+                t0 = time.time()
+                with _srv._zim_lock:
+                    result = _srv.chunk_article(zim, path, size=size, overlap=overlap)
+                _record_metric("/chunks", time.time() - t0)
+                if result.get("error") == "not_found":
+                    return self._json(404, {"error": "not found"})
+                _record_usage("read", zim)
+                return self._json(200, result)
+
             elif parsed.path == "/suggest":
                 q = param("q")
                 if not q:
@@ -1147,6 +1173,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                         "endpoints": [
                             "/search",
                             "/read",
+                            "/chunks",
                             "/suggest",
                             "/list",
                             "/catalog",

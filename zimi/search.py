@@ -4,6 +4,7 @@ Handles search caching, SQLite title indexes, full-text search via Xapian,
 suggestion search, and article content reading.
 """
 
+import hashlib as _hashlib
 import json
 import logging
 import math
@@ -1382,6 +1383,150 @@ def read_article(zim_name, article_path, max_length=None):
         }
     except KeyError:
         return {"error": f"Article '{article_path}' not found in {zim_name}"}
+
+
+# ---------------------------------------------------------------------------
+# RAG chunking (GET /chunks + MCP get_chunks)
+# ---------------------------------------------------------------------------
+# Deterministic, embedding-free chunking so RAG clients can build their own
+# vector stores against a stable ID space. No embeddings live in this repo
+# (audit rule); we only slice text and hash it. Same ZIM + same params → byte
+# identical IDs on every server, and a ZIM update flips content_rev so every
+# derived chunk ID changes — cache invalidation for free.
+
+CHUNK_SIZE_MIN = 200
+CHUNK_SIZE_MAX = 4000
+CHUNK_SIZE_DEFAULT = 1200
+CHUNK_OVERLAP_DEFAULT = 120
+_CONTENT_REV_LEN = 12  # sha256(stripped_text) prefix
+_CHUNK_ID_LEN = 16  # sha256(id components) prefix
+_CHUNK_SEP = "\n\n"  # paragraph joiner in the canonical stripped text
+
+# Block-level boundaries whose *closing* tag (or <br>) ends a paragraph. Split
+# the raw HTML on these first, then strip each piece, so paragraph structure
+# survives strip_html's whitespace collapse.
+_BLOCK_BOUNDARY_RE = re.compile(
+    r"(?i)</(?:p|div|li|h[1-6]|section|article|blockquote|tr|pre|figcaption|dd|dt)>"
+    r"|<br\s*/?>"
+)
+
+
+def _paragraphs_from_html(html_text):
+    """Split HTML into stripped, non-empty paragraph strings on block boundaries."""
+    return [
+        t
+        for t in (strip_html(part) for part in _BLOCK_BOUNDARY_RE.split(html_text))
+        if t
+    ]
+
+
+def _split_span(text, start, end, size):
+    """Split [start, end) into spans each <= size chars, breaking at spaces.
+
+    Used to hard-split a single oversize paragraph. Falls back to a mid-word cut
+    only when a window contains no space at all.
+    """
+    spans = []
+    s = start
+    while end - s > size:
+        brk = text.rfind(" ", s, s + size + 1)
+        if brk <= s:
+            brk = s + size  # no space in window — hard cut
+        spans.append((s, brk))
+        s = brk
+        while s < end and text[s] == " ":
+            s += 1
+    if s < end:
+        spans.append((s, end))
+    return spans
+
+
+def chunk_article(
+    zim_name, path, size=CHUNK_SIZE_DEFAULT, overlap=CHUNK_OVERLAP_DEFAULT
+):
+    """Chunk an article's stripped text into deterministic, RAG-ready segments.
+
+    Paragraph-aware: pack block paragraphs up to `size` chars, hard-splitting any
+    oversize paragraph at word boundaries; each chunk after the first is prefixed
+    with the previous chunk's last `overlap` chars. `start`/`end` are char offsets
+    into the canonical stripped text. Clamps params (size 200–4000, overlap
+    0–size/2) rather than erroring. Returns {"error": "not_found"} for an unknown
+    zim or path so the route can map it to 404.
+    """
+    size = max(CHUNK_SIZE_MIN, min(int(size), CHUNK_SIZE_MAX))
+    overlap = max(0, min(int(overlap), size // 2))
+
+    zims = _srv.get_zim_files()
+    if zim_name not in zims:
+        return {"error": "not_found"}
+
+    archive = _srv.get_archive(zim_name) or _srv.open_archive(zims[zim_name])
+    try:
+        entry = archive.get_entry_by_path(path)
+        item = entry.get_item()
+        raw = bytes(item.content)
+        title = entry.title
+        if item.mimetype == "application/pdf":
+            plain = extract_pdf_text(raw, max_length=None)
+            paragraphs = [p for p in (b.strip() for b in plain.splitlines()) if p]
+        else:
+            paragraphs = _paragraphs_from_html(raw.decode("UTF-8", errors="replace"))
+    except KeyError:
+        return {"error": "not_found"}
+
+    stripped_text = _CHUNK_SEP.join(paragraphs)
+    content_rev = _hashlib.sha256(stripped_text.encode("utf-8")).hexdigest()[
+        :_CONTENT_REV_LEN
+    ]
+
+    # Word-bounded units: each paragraph's span into stripped_text, hard-split if
+    # it alone exceeds `size`. Units tile the text (separators fall between them).
+    units = []
+    pos = 0
+    for i, para in enumerate(paragraphs):
+        if i > 0:
+            pos += len(_CHUNK_SEP)
+        units.extend(_split_span(stripped_text, pos, pos + len(para), size))
+        pos += len(para)
+
+    # Greedily pack units into chunks bounded by `size` (offsets into stripped_text).
+    spans = []
+    cur_start = cur_end = None
+    for s, e in units:
+        if cur_start is None:
+            cur_start, cur_end = s, e
+        elif e - cur_start <= size:
+            cur_end = e
+        else:
+            spans.append((cur_start, cur_end))
+            cur_start, cur_end = s, e
+    if cur_start is not None:
+        spans.append((cur_start, cur_end))
+
+    chunks = []
+    for seq, (start, end) in enumerate(spans):
+        core = stripped_text[start:end]
+        if seq > 0 and overlap:
+            prev_start, prev_end = spans[seq - 1]
+            prefix = stripped_text[max(prev_start, prev_end - overlap) : prev_end]
+            text = prefix + core
+        else:
+            text = core
+        cid = _hashlib.sha256(
+            f"{zim_name}|{path}|{content_rev}|{seq}|{size}|{overlap}".encode("utf-8")
+        ).hexdigest()[:_CHUNK_ID_LEN]
+        chunks.append({"id": cid, "seq": seq, "start": start, "end": end, "text": text})
+
+    return {
+        "zim": zim_name,
+        "path": path,
+        "title": title,
+        "size": size,
+        "overlap": overlap,
+        "content_rev": content_rev,
+        "total_chunks": len(chunks),
+        "chunks": chunks,
+    }
 
 
 def get_catalog(zim_name):
