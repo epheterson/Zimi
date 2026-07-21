@@ -148,6 +148,25 @@ let suggestIndex = -1;
 let snippetController = null;
 let collectionsCache = null; // {version, favorites, collections}
 let _expandedCollection = null; // which collection is expanded for ZIM picking
+// #37 home section order: array of "cat:<key>"/"col:<name>" keys. Populated by
+// _fetchList from /list?layout=1; drives renderHome section ordering.
+let _sectionOrder = [];
+// Deep-link state for the manage reorder panel: expand it on next render, and
+// which ms-nav section to jump to after the (async) manage view mounts.
+let _reorderAutoExpand = false;
+let _pendingMsSection = null;
+
+// Single reader of /list — normalizes the additive ?layout=1 envelope
+// ({zims, section_order}) back to the bare ZIM array every caller expects, and
+// stashes the section order as a side effect. Older/plain array responses still
+// work (section order simply stays empty).
+async function _fetchList() {
+  const r = await fetch('/list?layout=1');
+  const data = await r.json();
+  if (Array.isArray(data)) { _sectionOrder = []; return data; }
+  _sectionOrder = Array.isArray(data.section_order) ? data.section_order : [];
+  return Array.isArray(data.zims) ? data.zims : [];
+}
 let homeScope = null; // {type:'favorites'|'category'|'collection', label, zimNames:[]}
 // #34 library filter pills: null | 'added' | 'updated'. Transient view state —
 // deliberately NOT persisted, so a reload always lands on the full library.
@@ -681,8 +700,7 @@ async function init() {
   output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
   // Only block on /list — everything else loads in background
   try {
-    const res = await fetch('/list');
-    zimsCache = await res.json();
+    zimsCache = await _fetchList();
   } catch(e) { zimsCache = []; }
   _rebuildZimsMap();
   // Migrate bookmarks if ZIM names changed
@@ -1110,6 +1128,113 @@ async function enterSource(name, push) {
   await renderSource(name);
 }
 
+// Drop ZIMs already shown in the language auto-collection so they don't appear
+// twice on home. No-op when that section is absent.
+function _dedupLang(items, langNames) {
+  return langNames && langNames.size
+    ? items.filter(function(z) { return !langNames.has(z.name); })
+    : items;
+}
+
+// Order home sections ({key, html}) by the saved section_order (#37): listed
+// keys first in their saved order, then any unlisted section in its default
+// (build) order. Keys are "cat:<category>"/"col:<collection>".
+function _orderSections(sections) {
+  var order = _sectionOrder || [];
+  var byKey = new Map(sections.map(function(s) { return [s.key, s]; }));
+  var out = [];
+  order.forEach(function(k) {
+    if (byKey.has(k)) { out.push(byKey.get(k)); byKey.delete(k); }
+  });
+  sections.forEach(function(s) { if (byKey.has(s.key)) out.push(s); });
+  return out;
+}
+
+// The unified {key,label} list of reorderable home sections currently present —
+// collections (non-empty) + categories in use — in effective order. Shared by
+// the manage reorder panel.
+function _currentReorderSections() {
+  var sections = [];
+  var colls = (collectionsCache && collectionsCache.collections) || {};
+  for (var cname in colls) {
+    if ((colls[cname].zims || []).some(function(n) { return _zimInfo(n); })) {
+      sections.push({ key: 'col:' + cname, label: colls[cname].label || cname });
+    }
+  }
+  var seen = new Set(), cats = [];
+  (zimsCache || []).forEach(function(z) {
+    if (z.category && !seen.has(z.category)) { seen.add(z.category); cats.push(z.category); }
+  });
+  cats.sort().forEach(function(c) { sections.push({ key: 'cat:' + c, label: _catDisplayName(c) }); });
+  return _orderSections(sections);
+}
+
+// Manage-row gear → the compact Move to… menu, anchored under the button.
+function _ciGearClick(btn) {
+  var r = btn.getBoundingClientRect();
+  _openZimMenu(btn.dataset.zim, r.left, r.bottom + 2, true);
+}
+
+// Deep-link from the card menu to the manage reorder panel (expanded).
+function _openReorderPanel() {
+  _reorderAutoExpand = true;
+  if (mode === 'manage' && manageTab === 'settings') {
+    switchMs('preferences');
+  } else {
+    _pendingMsSection = 'preferences';
+    enterManage();
+  }
+}
+
+function _reorderSectionsHtml() {
+  var sections = _currentReorderSections();
+  if (!sections.length) return '<div class="ms-hint">' + tH('reorder_empty') + '</div>';
+  var h = '<div class="reorder-list">';
+  sections.forEach(function(s, i) {
+    h += '<div class="reorder-row" data-key="' + escAttr(s.key) + '">' +
+      '<span class="reorder-label">' + esc(s.label) + '</span>' +
+      '<span class="reorder-btns">' +
+        '<button class="reorder-btn" data-dir="up"' + (i === 0 ? ' disabled' : '') + ' aria-label="' + escAttr(t('move_up')) + '">▲</button>' +
+        '<button class="reorder-btn" data-dir="down"' + (i === sections.length - 1 ? ' disabled' : '') + ' aria-label="' + escAttr(t('move_down')) + '">▼</button>' +
+      '</span>' +
+    '</div>';
+  });
+  return h + '</div>';
+}
+
+function _reorderRefreshDisabled(list) {
+  var rows = list.querySelectorAll('.reorder-row');
+  rows.forEach(function(r, i) {
+    var up = r.querySelector('[data-dir="up"]'), dn = r.querySelector('[data-dir="down"]');
+    if (up) up.disabled = (i === 0);
+    if (dn) dn.disabled = (i === rows.length - 1);
+  });
+}
+
+// Per-click POST (not debounced): reorders are discrete, infrequent, and each
+// leaves a complete valid order — immediate durability beats coalescing here.
+function _persistReorder(list) {
+  var order = Array.prototype.map.call(list.querySelectorAll('.reorder-row'), function(r) { return r.dataset.key; });
+  _sectionOrder = order;
+  _saveLibraryLayout({ section_order: order }).then(function(res) {
+    if (!res.ok) _showToast(res.status === 403 ? t('layout_locked') : t('error'));
+  }).catch(function() { _showToast(t('error')); });
+}
+
+function _reorderClick(e) {
+  var btn = e.target.closest('.reorder-btn');
+  if (!btn || btn.disabled) return;
+  var row = btn.closest('.reorder-row');
+  var list = row.parentNode;
+  if (btn.dataset.dir === 'up' && row.previousElementSibling) {
+    list.insertBefore(row, row.previousElementSibling);
+  } else if (btn.dataset.dir === 'down' && row.nextElementSibling) {
+    list.insertBefore(row.nextElementSibling, row);
+  } else { return; }
+  _reorderRefreshDisabled(list);
+  _persistReorder(list);
+}
+
 // ── Render: Home ──
 function renderHome(filter) {
   if (!zimsCache || zimsCache.length === 0) {
@@ -1333,18 +1458,8 @@ function renderHome(filter) {
         h += renderCardGrid(favZims, true, true);
       }
     }
-
-    // Collections sections (if any, not when filtering)
-    if (!filter && collectionsCache && collectionsCache.collections) {
-      for (const [cname, coll] of Object.entries(collectionsCache.collections)) {
-        const collZims = (coll.zims || []).map(n => _zimInfo(n)).filter(Boolean);
-        if (collZims.length > 0) {
-          const collZimNames = collZims.map(z => z.name);
-          h += '<div class="cat-heading clickable" onclick="enterScope(\'collection\',\'' + escJs(coll.label || cname) + '\',' + escJs(JSON.stringify(collZimNames)) + ',true)">' + esc(coll.label || cname) + '</div>';
-          h += renderCardGrid(collZims, true, true);
-        }
-      }
-    }
+    // Collections now render inside the unified, reorderable section list below
+    // (#37) \u2014 no longer pinned above categories.
   }
 
   // Language auto-collection: when UI is non-English, show matching-language ZIMs as their own section
@@ -1364,25 +1479,47 @@ function renderHome(filter) {
 
   if (filter && zims.length === 0) {
     h += '<div class="empty"><p>' + tH('no_sources_matching', {query: filter}) + '</p></div>';
-  } else {
+  } else if (homeScope) {
+    // Scoped view: plain category headings, no reordering or collections.
     cats.forEach(cat => {
-      // Deduplicate: skip ZIMs already shown in language auto-collection
-      var catItems = _langSectionNames.size > 0
-        ? groups[cat].filter(function(z) { return !_langSectionNames.has(z.name); })
-        : groups[cat];
-      if (catItems.length === 0) return; // Skip empty categories after dedup
-      if (!homeScope) {
-        const catZimNames = catItems.map(z => z.name);
-        h += '<div class="cat-heading clickable" onclick="enterScope(\'category\',\'' + escJs(_catDisplayName(cat)) + '\',' + escJs(JSON.stringify(catZimNames)) + ',true)">' + esc(_catDisplayName(cat)) + '</div>';
-      } else {
-        h += '<div class="cat-heading">' + esc(_catDisplayName(cat)) + '</div>';
-      }
+      var catItems = _dedupLang(groups[cat], _langSectionNames);
+      if (catItems.length === 0) return;
+      h += '<div class="cat-heading">' + esc(_catDisplayName(cat)) + '</div>';
       h += renderCardGrid(catItems, true);
     });
     if (groups._uncategorized) {
-      var uncatItems = _langSectionNames.size > 0
-        ? groups._uncategorized.filter(function(z) { return !_langSectionNames.has(z.name); })
-        : groups._uncategorized;
+      var uncatItems = _dedupLang(groups._uncategorized, _langSectionNames);
+      if (uncatItems.length > 0) {
+        h += '<div class="cat-heading" style="opacity:0.5">' + tH('cat_other') + '</div>';
+        h += renderCardGrid(uncatItems, true);
+      }
+    }
+  } else {
+    // Unscoped home: collections + categories in one reorderable list (#37),
+    // ordered by the saved section_order (unlisted sections keep default order).
+    var _sections = [];
+    if (!filter && collectionsCache && collectionsCache.collections) {
+      for (const [cname, coll] of Object.entries(collectionsCache.collections)) {
+        const collZims = (coll.zims || []).map(n => _zimInfo(n)).filter(Boolean);
+        if (collZims.length > 0) {
+          const collZimNames = collZims.map(z => z.name);
+          _sections.push({ key: 'col:' + cname, html:
+            '<div class="cat-heading clickable" onclick="enterScope(\'collection\',\'' + escJs(coll.label || cname) + '\',' + escJs(JSON.stringify(collZimNames)) + ',true)">' + esc(coll.label || cname) + '</div>' +
+            renderCardGrid(collZims, true, true) });
+        }
+      }
+    }
+    cats.forEach(cat => {
+      var catItems = _dedupLang(groups[cat], _langSectionNames);
+      if (catItems.length === 0) return;
+      const catZimNames = catItems.map(z => z.name);
+      _sections.push({ key: 'cat:' + cat, html:
+        '<div class="cat-heading clickable" onclick="enterScope(\'category\',\'' + escJs(_catDisplayName(cat)) + '\',' + escJs(JSON.stringify(catZimNames)) + ',true)">' + esc(_catDisplayName(cat)) + '</div>' +
+        renderCardGrid(catItems, true) });
+    });
+    h += _orderSections(_sections).map(function(s) { return s.html; }).join('');
+    if (groups._uncategorized) {
+      var uncatItems = _dedupLang(groups._uncategorized, _langSectionNames);
       if (uncatItems.length > 0) {
         h += '<div class="cat-heading" style="opacity:0.5">' + tH('cat_other') + '</div>';
         h += renderCardGrid(uncatItems, true);
@@ -2351,6 +2488,69 @@ function toggleCategory(cat) {
   renderHome();
 }
 
+// ── Category overrides + section order (#37) ──
+//
+// Default "Move to…" targets: the _categorize_zim heuristic's English category
+// names (minus the Other catch-all). These are the values stored as overrides —
+// server-side grouping keys off the same names — so the round-trip stays exact.
+const _DEFAULT_MOVE_CATEGORIES = ['Wikimedia', 'Stack Exchange', 'Dev Docs', 'Education', 'Medical', 'How-To', 'Books'];
+
+// Move targets = defaults ∪ any category currently in use, so a custom category
+// the user already created is offered as a reuse target (not just re-typed).
+function _moveTargetCategories() {
+  var seen = new Set();
+  var out = [];
+  _DEFAULT_MOVE_CATEGORIES.forEach(function(c) { if (!seen.has(c)) { seen.add(c); out.push(c); } });
+  (zimsCache || []).forEach(function(z) {
+    if (z.category && !seen.has(z.category)) { seen.add(z.category); out.push(z.category); }
+  });
+  return out;
+}
+
+// Submenu markup shared by the card right-click menu and the manage-row gear —
+// ONE implementation, two triggers. Data-attributes only (no inline onclick):
+// category names are user free-text, and the delegated menu handler reads them
+// off dataset, sidestepping the escJs-in-onclick trap.
+function _moveSubmenuHtml(zim) {
+  var cur = (_zimInfo(zim) || {}).category || '';
+  var h = '';
+  _moveTargetCategories().forEach(function(c) {
+    h += '<div class="ctx-item" data-action="move-to" data-cat="' + escAttr(c) + '">' +
+      (c === cur ? '✓ ' : '') + esc(_catDisplayName(c)) + '</div>';
+  });
+  h += '<div class="ctx-sep"></div>';
+  h += '<div class="ctx-item" data-action="move-new">' + tH('move_new_category') + '</div>';
+  return h;
+}
+
+// POST a layout patch ({overrides} and/or {section_order}) to the auth-gated
+// endpoint. Always a /manage write, so it rides manageFetch's token.
+function _saveLibraryLayout(patch) {
+  return manageFetch('/manage/library-layout', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(patch)
+  });
+}
+
+// Assign a ZIM to a category: optimistic local update + re-render, then persist.
+// Reverts and toasts on failure (e.g. 403 public-locked).
+function _moveZimTo(zim, category) {
+  var zinfo = _zimInfo(zim);
+  var prev = zinfo ? zinfo.category : null;
+  if (zinfo) zinfo.category = category;
+  renderHome();
+  var ov = {}; ov[zim] = category;
+  _saveLibraryLayout({ overrides: ov }).then(function(res) {
+    if (!res.ok) {
+      if (zinfo) zinfo.category = prev;
+      renderHome();
+      _showToast(res.status === 403 ? t('layout_locked') : t('error'));
+    }
+  }).catch(function() {
+    if (zinfo) zinfo.category = prev; renderHome(); _showToast(t('error'));
+  });
+}
+
 // ── Context menu for homepage ZIM cards ──
 (function() {
   const menu = document.getElementById('zim-ctx-menu');
@@ -2358,6 +2558,7 @@ function toggleCategory(cat) {
   let _ctxZim = null;
   let _ctxCard = null;
   let _ctxX = 0, _ctxY = 0;
+  let _ctxCompact = false;  // gear trigger shows just the layout actions
 
   function closeCtx() { menu.classList.remove('visible'); _ctxZim = null; _ctxCard = null; }
 
@@ -2368,16 +2569,28 @@ function toggleCategory(cat) {
     var finalX = Math.min(x, window.innerWidth - mw - 8);
     menu.style.left = finalX + 'px';
     menu.style.top = Math.min(y, window.innerHeight - mh - 8) + 'px';
-    // Flip submenu left if menu is near right edge
-    var sub = menu.querySelector('.ctx-sub');
-    if (sub) {
-      if (finalX + mw + 170 > window.innerWidth) sub.classList.add('flip-left');
-      else sub.classList.remove('flip-left');
-    }
+    // Flip every submenu left if the menu sits near the right edge
+    var flip = finalX + mw + 170 > window.innerWidth;
+    menu.querySelectorAll('.ctx-sub').forEach(function(sub) {
+      sub.classList.toggle('flip-left', flip);
+    });
+  }
+
+  // Layout actions (Move to… + Reorder) — appended to the full menu and the
+  // sole contents of the compact gear menu. Gated on manage (auth-gated write).
+  function _layoutItemsHtml(zim) {
+    if (!manageEnabled) return '';
+    return '<div class="ctx-item">' + tH('move_to') + ' ›<div class="ctx-sub">' + _moveSubmenuHtml(zim) + '</div></div>' +
+      '<div class="ctx-item" data-action="reorder">' + tH('reorder_sections') + '</div>';
   }
 
   function showMainMenu() {
     var zim = _ctxZim;
+    if (_ctxCompact) {
+      menu.innerHTML = _layoutItemsHtml(zim);
+      posMenu(_ctxX, _ctxY);
+      return;
+    }
     var favs = (collectionsCache && collectionsCache.favorites) || [];
     var isFav = favs.includes(zim);
     var colls = (collectionsCache && collectionsCache.collections) || {};
@@ -2396,6 +2609,8 @@ function toggleCategory(cat) {
     if (Object.keys(colls).length > 0) h += '<div class="ctx-sep"></div>';
     h += '<div class="ctx-item" data-action="new-collection">' + tH('new_collection') + '</div>';
     h += '</div></div>';
+    var layoutItems = _layoutItemsHtml(zim);
+    if (layoutItems) { h += '<div class="ctx-sep"></div>' + layoutItems; }
     if (manageEnabled) {
       h += '<div class="ctx-sep"></div>';
       h += '<div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
@@ -2403,6 +2618,13 @@ function toggleCategory(cat) {
     menu.innerHTML = h;
     posMenu(_ctxX, _ctxY);
   }
+
+  // Exposed so the manage-row gear can raise the same menu (compact variant).
+  window._openZimMenu = function(zim, x, y, compact) {
+    _ctxZim = zim; _ctxCard = null; _ctxCompact = !!compact;
+    _ctxX = x; _ctxY = y;
+    showMainMenu();
+  };
 
   document.addEventListener('contextmenu', function(e) {
     var card = e.target.closest('.stat-card');
@@ -2414,6 +2636,7 @@ function toggleCategory(cat) {
     if (!m) return;
     _ctxZim = m[1];
     _ctxCard = card;
+    _ctxCompact = false;
     _ctxX = e.clientX + 2;
     _ctxY = e.clientY + 2;
     showMainMenu();
@@ -2438,6 +2661,18 @@ function toggleCategory(cat) {
       closeCtx(); enterSource(zim, true);
     } else if (action === 'newtab') {
       closeCtx(); window.open('/w/' + encodeURIComponent(zim), '_blank');
+    } else if (action === 'move-to') {
+      var cat = item.dataset.cat;
+      closeCtx();
+      _moveZimTo(zim, cat);
+    } else if (action === 'move-new') {
+      closeCtx();
+      var nc = prompt(t('move_new_category_prompt'));
+      if (!nc || !nc.trim()) return;
+      _moveZimTo(zim, nc.trim());
+    } else if (action === 'reorder') {
+      closeCtx();
+      _openReorderPanel();
     } else if (action === 'favorite') {
       closeCtx(); toggleFavorite(zim);
     } else if (action === 'toggle-coll') {
@@ -4705,6 +4940,12 @@ function renderCatalogItem(group) {
         ' title="' + escAttr(t('select_for_batch')) + '">';
     }
   }
+  // Gear on installed rows opens the same Move to… menu the card right-click
+  // does (right-click alone isn't discoverable). data-zim + delegated handler,
+  // no user strings in an inline onclick.
+  const gearHtml = (instName && manageEnabled)
+    ? '<button class="ci-gear" data-zim="' + escAttr(instName) + '" onclick="event.stopPropagation();_ciGearClick(this)" title="' + escAttr(t('organize')) + '" aria-label="' + escAttr(t('organize')) + '">⋯</button>'
+    : '';
   const isCovered = !anyInstalled && item.hierarchy
     && (item.hierarchy.is_subset_of || []).some(n => _catalogInstalledNames.has(n));
   return '<div class="catalog-item' + (anyInstalled ? ' ci-installed-item' : '') +
@@ -4718,7 +4959,7 @@ function renderCatalogItem(group) {
       (hierarchyHtml ? '<div class="ci-hier">' + hierarchyHtml + '</div>' : '') +
     '</div>' +
     // Peer pill rides in the action row, directly left of the download button
-    '<div class="ci-actions">' + peerHtml + actionsHtml + '</div>' +
+    '<div class="ci-actions">' + gearHtml + peerHtml + actionsHtml + '</div>' +
   '</div>';
 }
 
@@ -5281,6 +5522,8 @@ async function renderManage() {
     const data = await res.json();
     _manageStatusData = data;
     switchMs('library');
+    // Honor a deep-link (card menu → "Reorder sections…") once the view mounts.
+    if (_pendingMsSection) { var _ms = _pendingMsSection; _pendingMsSection = null; switchMs(_ms); }
     // Sync auto-update dropdown from server
     const au = data.auto_update || {};
     const freqSel = document.getElementById('auto-update-freq');
@@ -5447,6 +5690,19 @@ function _msPreferencesHtml() {
     '<div class="ms-hint" style="margin-top:8px">' + tH('catalog_languages_hint_short') + '</div>' +
     '<button class="pill" onclick="_msToggleCollapse(\'ms-lang-pills\', this)">' + tH('show_list') + '</button>' +
     '<div class="ms-lang-pills ms-collapsed-list" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>';
+  // Section reorder (#37) — collapsed by default; deep-linked open from the
+  // card menu's "Reorder sections…" item.
+  var _reOpen = _reorderAutoExpand; _reorderAutoExpand = false;
+  h += '<div class="ms-section-label" style="margin-top:20px">' + tH('reorder_sections') + '</div>' +
+    '<div class="ms-hint">' + tH('reorder_hint') + '</div>' +
+    '<button class="pill" onclick="_msToggleCollapse(\'ms-reorder\', this)">' + (_reOpen ? tH('hide_list') : tH('show_list')) + '</button>' +
+    '<div class="ms-collapsed-list' + (_reOpen ? ' ms-open' : '') + '" id="ms-reorder" onclick="_reorderClick(event)">' + _reorderSectionsHtml() + '</div>';
+  if (_reOpen) {
+    setTimeout(function() {
+      var el = document.getElementById('ms-reorder');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 60);
+  }
   // Accessibility section
   var a11yOn = _getStorageFlag(SK.A11Y_REWRITE);
   h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_accessibility') + '</div>' +
@@ -5585,7 +5841,7 @@ async function _renderHotZimsSection() {
   try {
     [hotData, zims] = await Promise.all([
       manageFetch('/manage/hot').then(r => r.json()),
-      fetch('/list').then(r => r.json()),
+      _fetchList(),
     ]);
   } catch (e) {
     const errEl = document.getElementById('ms-hot-zims');
@@ -6728,8 +6984,7 @@ async function deleteZim(filename, btn) {
     }
     if (card) card.remove();
     _catalogCache = null;
-    const lr = await fetch('/list');
-    zimsCache = await lr.json();
+    zimsCache = await _fetchList();
     _rebuildZimsMap();
     const tabBtn = document.querySelector('.manage-tab[data-tab="installed"]');
     if (tabBtn) tabBtn.textContent = t('installed_tab');
@@ -6882,8 +7137,7 @@ async function _refreshDownloadsInner() {
     // (The heavier status/updates refresh still runs on the final one.)
     if (completedDls.length > _dlPrevCompletedCount && !allDone) {
       try {
-        const lr = await fetch('/list');
-        zimsCache = await lr.json();
+        zimsCache = await _fetchList();
         _rebuildZimsMap();
         if (_catalogCache) _enrichCatalogInstalled(_catalogCache);
         // Flip peer pills / download buttons to Installed in an open catalog
@@ -7084,8 +7338,7 @@ async function _refreshDownloadsInner() {
     if (allDone && !_dlPrevAllDone) {
       _dlPrevAllDone = true;
       try {
-        const lr = await fetch('/list');
-        zimsCache = await lr.json();
+        zimsCache = await _fetchList();
         _rebuildZimsMap();
         _availableUpdates = {};
         // Re-merge install status into existing catalog (no OPDS re-fetch needed)
@@ -7333,8 +7586,7 @@ async function refreshLibrary() {
     const data = await res.json();
     if (data.status === 'refreshed') {
       try {
-        const lr = await fetch('/list');
-        zimsCache = await lr.json();
+        zimsCache = await _fetchList();
         _rebuildZimsMap();
       } catch(e) {}
       renderManage();
@@ -8868,7 +9120,7 @@ async function settingsRefreshCache() {
     await manageFetch('/manage/refresh', { method: 'POST' });
     if (msgEl) msgEl.textContent = t('cache_refreshed');
     // Reload ZIM list
-    try { const lr = await fetch('/list'); zimsCache = await lr.json(); _rebuildZimsMap(); } catch(e) {}
+    try { zimsCache = await _fetchList(); _rebuildZimsMap(); } catch(e) {}
     if (btn) btn.textContent = t('refreshed');
     var overlay = document.getElementById('settings-overlay');
     if (msgEl && overlay && overlay.classList.contains('open')) {

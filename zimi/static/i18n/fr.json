@@ -985,5 +985,15 @@
   "tts_stop": "Arrêter la lecture",
   "font_size": "Taille du texte",
   "manage_public_locked_title": "La gestion à distance est verrouillée",
-  "manage_public_locked_body": "La gestion n'est disponible que sur votre réseau local. Définissez un mot de passe depuis un appareil du réseau local pour activer la gestion à distance."
+  "manage_public_locked_body": "La gestion n'est disponible que sur votre réseau local. Définissez un mot de passe depuis un appareil du réseau local pour activer la gestion à distance.",
+  "move_to": "Déplacer vers…",
+  "move_new_category": "Nouvelle catégorie…",
+  "move_new_category_prompt": "Nom de la nouvelle catégorie",
+  "reorder_sections": "Réorganiser les sections",
+  "reorder_hint": "Ordonnez les sections de catégories et de collections affichées sur l'accueil.",
+  "reorder_empty": "Aucune section à réorganiser pour l'instant.",
+  "move_up": "Monter",
+  "move_down": "Descendre",
+  "organize": "Organiser",
+  "layout_locked": "L'organisation de la bibliothèque n'est disponible que sur le réseau local."
 }

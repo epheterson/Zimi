@@ -985,5 +985,15 @@
   "tts_stop": "Parar leitura",
   "font_size": "Tamanho da fonte",
   "manage_public_locked_title": "O gerenciamento remoto está bloqueado",
-  "manage_public_locked_body": "O gerenciamento só está disponível na sua rede local. Defina uma senha em um dispositivo da rede local para ativar o gerenciamento remoto."
+  "manage_public_locked_body": "O gerenciamento só está disponível na sua rede local. Defina uma senha em um dispositivo da rede local para ativar o gerenciamento remoto.",
+  "move_to": "Mover para…",
+  "move_new_category": "Nova categoria…",
+  "move_new_category_prompt": "Nome da nova categoria",
+  "reorder_sections": "Reordenar seções",
+  "reorder_hint": "Ordene as seções de categorias e coleções mostradas na página inicial.",
+  "reorder_empty": "Ainda não há seções para reordenar.",
+  "move_up": "Mover para cima",
+  "move_down": "Mover para baixo",
+  "organize": "Organizar",
+  "layout_locked": "A organização da biblioteca só está disponível na rede local."
 }

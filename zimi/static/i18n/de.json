@@ -985,5 +985,15 @@
   "tts_stop": "Vorlesen beenden",
   "font_size": "Schriftgröße",
   "manage_public_locked_title": "Fernverwaltung ist gesperrt",
-  "manage_public_locked_body": "Die Verwaltung ist nur in Ihrem lokalen Netzwerk verfügbar. Legen Sie von einem Gerät im lokalen Netzwerk ein Passwort fest, um die Fernverwaltung zu aktivieren."
+  "manage_public_locked_body": "Die Verwaltung ist nur in Ihrem lokalen Netzwerk verfügbar. Legen Sie von einem Gerät im lokalen Netzwerk ein Passwort fest, um die Fernverwaltung zu aktivieren.",
+  "move_to": "Verschieben nach…",
+  "move_new_category": "Neue Kategorie…",
+  "move_new_category_prompt": "Name der neuen Kategorie",
+  "reorder_sections": "Abschnitte neu anordnen",
+  "reorder_hint": "Ordne die Kategorie- und Sammlungsabschnitte auf der Startseite an.",
+  "reorder_empty": "Noch keine Abschnitte zum Anordnen.",
+  "move_up": "Nach oben",
+  "move_down": "Nach unten",
+  "organize": "Organisieren",
+  "layout_locked": "Die Bibliotheksorganisation ist nur im lokalen Netzwerk verfügbar."
 }

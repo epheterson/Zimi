@@ -985,5 +985,15 @@
   "tts_stop": "Stop reading",
   "font_size": "Font size",
   "manage_public_locked_title": "Remote management is locked",
-  "manage_public_locked_body": "Management is available on your local network only. Set a password from a device on the local network to enable remote management."
+  "manage_public_locked_body": "Management is available on your local network only. Set a password from a device on the local network to enable remote management.",
+  "move_to": "Move to…",
+  "move_new_category": "New category…",
+  "move_new_category_prompt": "New category name",
+  "reorder_sections": "Reorder sections",
+  "reorder_hint": "Order the category and collection sections shown on the home page.",
+  "reorder_empty": "No sections to reorder yet.",
+  "move_up": "Move up",
+  "move_down": "Move down",
+  "organize": "Organize",
+  "layout_locked": "Library organization is available on the local network only."
 }
