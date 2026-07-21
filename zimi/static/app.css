@@ -221,6 +221,20 @@
   .lang-pills { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; width: 100%; }
   .lang-pills::-webkit-scrollbar { display: none; }
 
+  /* ── Recent-search chips (home) ── one-tap actions, not filters: no amber
+     active state, transparent fill to read distinctly from the .pill filters. */
+  .recent-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
+  .recent-chips-label { font-size: 11px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 2px; }
+  .recent-chip {
+    display: inline-flex; align-items: center; gap: 5px; max-width: 220px;
+    padding: 5px 12px 5px 10px; font-size: 12px; font-weight: 500; white-space: nowrap;
+    background: transparent; border: 1px solid var(--border); border-radius: 20px;
+    color: var(--text2); cursor: pointer; transition: color 0.2s, background 0.2s, border-color 0.2s;
+  }
+  .recent-chip span { overflow: hidden; text-overflow: ellipsis; }
+  .recent-chip svg { opacity: 0.5; flex-shrink: 0; }
+  .recent-chip:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
+
   /* ── Language banner (view-in-lang / download) ── */
   .lang-banner {
     display: flex; align-items: center; gap: 6px; padding: 5px 12px;

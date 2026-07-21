@@ -152,6 +152,12 @@ let homeScope = null; // {type:'favorites'|'category'|'collection', label, zimNa
 // #34 library filter pills: null | 'added' | 'updated'. Transient view state —
 // deliberately NOT persisted, so a reload always lands on the full library.
 let homeRecentFilter = null;
+// Library language filter: a Set of ZIM language codes. Empty = all languages.
+// Combines with homeRecentFilter (AND). Transient like it — reset alongside it,
+// never persisted. Multi-select toggle, matching the search-results lang pills.
+let homeLangFilter = new Set();
+// Most recent distinct search strings surfaced as one-tap chips on home.
+const _HOME_SEARCH_CHIPS_MAX = 6;
 
 
 // ── Language filter ──
@@ -1135,9 +1141,10 @@ function renderHome(filter) {
     });
   }
 
-  // The recency pills only make sense on the full, unscoped, untyped library.
-  // Entering a scope or typing a filter drops back to "All" so state stays sane.
-  if (homeScope || filter) homeRecentFilter = null;
+  // The recency + language pills only make sense on the full, unscoped, untyped
+  // library. Entering a scope or typing a filter drops back to "All" / all
+  // languages so state stays sane.
+  if (homeScope || filter) { homeRecentFilter = null; homeLangFilter.clear(); }
 
   const totalEntries = baseZims.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
   const totalGb = baseZims.reduce((s, z) => s + z.size_gb, 0);
@@ -1154,7 +1161,7 @@ function renderHome(filter) {
 
   // Check if Discover will be active (not hidden and not filtered/scoped)
   var discoverHidden = _getStorageFlag(SK.HIDE_DISCOVER);
-  var discoverWillShow = !homeScope && !filter && !homeRecentFilter && !discoverHidden;
+  var discoverWillShow = !homeScope && !filter && !homeRecentFilter && !homeLangFilter.size && !discoverHidden;
 
   if (discoverWillShow) {
     // Discover on top — hide stats bar (will show at bottom)
@@ -1168,8 +1175,24 @@ function renderHome(filter) {
     statsBar.style.display = '';
   }
 
+  const sortedAll = zims.filter(z => z.entries !== '?').sort((a, b) => (b.entries || 0) - (a.entries || 0));
+
+  // Language filter data — count of ZIMs per language, over the whole library.
+  // The pill row only appears with ≥2 distinct languages; a mono-language
+  // library never sees it (and any stale filter state is dropped).
+  var _langCounts = {};
+  sortedAll.forEach(z => { var l = z.language || ''; if (l) _langCounts[l] = (_langCounts[l] || 0) + 1; });
+  var _langCodes = Object.keys(_langCounts).sort((a, b) => _langCounts[b] - _langCounts[a]);
+  var _showLangPills = !homeScope && !filter && _langCodes.length >= 2;
+  if (!_showLangPills) homeLangFilter.clear();
+
+  // Apply the language filter (AND with recency, which is computed downstream
+  // from this already-narrowed set). Empty filter = the full library.
+  const sorted = homeLangFilter.size
+    ? sortedAll.filter(z => homeLangFilter.has(z.language || ''))
+    : sortedAll;
+
   const groups = {};
-  const sorted = zims.filter(z => z.entries !== '?').sort((a, b) => (b.entries || 0) - (a.entries || 0));
   sorted.forEach(z => {
     const key = z.category || '_uncategorized';
     if (!groups[key]) groups[key] = [];
@@ -1178,30 +1201,52 @@ function renderHome(filter) {
 
   const cats = Object.keys(groups).filter(c => c !== '_uncategorized').sort();
 
-  // #34 library filter pills: All · Recently added · Recently updated. Reuses the
-  // manage-view .pill row. Each recency pill only appears when it has something to
-  // show, so we never present a filter that lands on an empty view.
+  // #34 library filter pills: recent-search chips · All · Recently added ·
+  // Recently updated · language pills. Reuses the manage-view .pill row. Each
+  // recency pill only appears when it has something to show, so we never present
+  // a filter that lands on an empty view. The three rows are independent — the
+  // bar shows if any of them has content.
   var _recentAdded = sorted.filter(_zimRecentAdded).sort(_byFirstSeenDesc);
   var _recentUpdated = sorted.filter(_zimRecentUpdated).sort(_byUpdatedDesc);
-  if (!homeScope && !filter && (_recentAdded.length || _recentUpdated.length)) {
-    var _pills = '<div class="pills-row">';
-    _pills += _recentPill(null, tH('filter_all'), homeRecentFilter === null);
-    if (_recentAdded.length) {
-      _pills += _recentPill('added', tH('filter_recently_added') +
-        ' <span class="pill-count">' + _recentAdded.length + '</span>', homeRecentFilter === 'added');
+  var _searchChips = (!homeScope && !filter) ? _recentSearchChips() : [];
+  var _hasChips = _searchChips.length > 0;
+  var _hasRecency = !homeScope && !filter && (_recentAdded.length || _recentUpdated.length);
+  if (_hasChips || _hasRecency || _showLangPills) {
+    var _rows = '';
+    if (_hasChips) {
+      _rows += '<div class="recent-chips" aria-label="' + escAttr(t('recent_searches')) + '">';
+      _rows += '<span class="recent-chips-label">' + tH('recent_searches') + '</span>';
+      _rows += _searchChips.map(_recentSearchChip).join('');
+      _rows += '</div>';
     }
-    if (_recentUpdated.length) {
-      _pills += _recentPill('updated', tH('recently_updated') +
-        ' <span class="pill-count">' + _recentUpdated.length + '</span>', homeRecentFilter === 'updated');
+    if (_hasRecency) {
+      _rows += '<div class="pills-row">';
+      _rows += _recentPill(null, tH('filter_all'), homeRecentFilter === null);
+      if (_recentAdded.length) {
+        _rows += _recentPill('added', tH('filter_recently_added') +
+          ' <span class="pill-count">' + _recentAdded.length + '</span>', homeRecentFilter === 'added');
+      }
+      if (_recentUpdated.length) {
+        _rows += _recentPill('updated', tH('recently_updated') +
+          ' <span class="pill-count">' + _recentUpdated.length + '</span>', homeRecentFilter === 'updated');
+      }
+      _rows += '</div>';
     }
-    _pills += '</div>';
+    if (_showLangPills) {
+      _rows += '<div class="lang-pills" aria-label="' + escAttr(t('filter_by_language')) + '">';
+      _rows += _langCodes.map(function(code) {
+        return _homeLangPill(code, _langCounts[code], homeLangFilter.has(code));
+      }).join('');
+      _rows += '</div>';
+    }
     pillsBar.className = 'pills';
-    pillsBar.innerHTML = _pills;
+    pillsBar.innerHTML = _rows;
     pillsBar.style.display = '';
   } else {
     // No pills otherwise (scoped/filtered/nothing recent) — sections organize home.
     pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
     homeRecentFilter = null; // guard: pill row gone, so no stale filter state
+    homeLangFilter.clear();
   }
 
   let h = '';
@@ -1237,8 +1282,8 @@ function renderHome(filter) {
       tH('search_articles', {n: scopeEntries.toLocaleString(), query: filter}) + '</div>';
   }
 
-  // Discover (only on unscoped, unfiltered home)
-  var _showDiscover = !homeScope && !filter;
+  // Discover (only on unscoped, unfiltered, unfiltered-by-language home)
+  var _showDiscover = !homeScope && !filter && !homeLangFilter.size;
   if (_showDiscover) {
     h += '<div id="discover-row"></div>';
   }
@@ -1449,6 +1494,58 @@ function filterHomeRecent(kind) {
   // Toggle: clicking the active pill (or "All") returns to the full library.
   homeRecentFilter = (homeRecentFilter === kind) ? null : kind;
   renderHome();
+}
+
+// One language filter pill for the home library. Multi-select toggle; the
+// native language name matches the search-results lang pills (reusing the
+// existing _NATIVE_LANG_NAMES map, with _langDisplayName as fallback).
+function _homeLangPill(code, count, active) {
+  var name = _NATIVE_LANG_NAMES[code] || _langDisplayName(code) || code.toUpperCase();
+  return '<button class="pill' + (active ? ' active' : '') + '"' +
+    ' aria-pressed="' + (active ? 'true' : 'false') + '"' +
+    ' onclick="filterHomeLang(\'' + escAttr(code) + '\')">' +
+    esc(name) + ' <span class="pill-count">' + count + '</span></button>';
+}
+
+function filterHomeLang(code) {
+  // Toggle membership; empty Set = all languages.
+  if (homeLangFilter.has(code)) homeLangFilter.delete(code);
+  else homeLangFilter.add(code);
+  renderHome();
+}
+
+// Last _HOME_SEARCH_CHIPS_MAX distinct search strings from browse history,
+// newest first. Reads the same store the history dropdown / panel use, so
+// clearing history clears these chips too.
+function _recentSearchChips() {
+  var h = _histLoad();
+  var out = [];
+  var seen = new Set();
+  for (var i = 0; i < h.length && out.length < _HOME_SEARCH_CHIPS_MAX; i++) {
+    var e = h[i];
+    if (!e || e.type !== 'search') continue;
+    var query = (typeof e.query === 'string' ? e.query : '').trim();
+    if (!query) continue;
+    var key = query.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ query: query, zim: e.zim || '' });
+  }
+  return out;
+}
+
+function _recentSearchChip(chip) {
+  var icon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>';
+  return '<button class="recent-chip" aria-label="' + escAttr(t('search_for', {query: chip.query})) + '"' +
+    ' onclick="_runRecentSearch(\'' + escJs(chip.query) + '\',\'' + escJs(chip.zim) + '\')">' +
+    icon + '<span>' + esc(chip.query) + '</span></button>';
+}
+
+// Re-run a stored search — the same path the history dropdown uses.
+function _runRecentSearch(query, zim) {
+  q.value = query;
+  if (zim) enterSource(zim);
+  doSearch(query);
 }
 
 function renderCardGrid(items, showStars, showCategory) {
@@ -3196,9 +3293,7 @@ function selectSuggest(i) {
   hideSuggest();
   // History search item: re-execute the search
   if (s._histSearch) {
-    q.value = s.query;
-    if (s.zim) { enterSource(s.zim); }
-    doSearch(s.query);
+    _runRecentSearch(s.query, s.zim);
     return;
   }
   // Regular suggestion or history article
