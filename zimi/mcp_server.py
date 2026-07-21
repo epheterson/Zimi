@@ -33,6 +33,8 @@ Claude Code config (Docker via SSH):
   }
 """
 
+import json
+
 from mcp.server.fastmcp import FastMCP
 
 from zimi import server as zimi
@@ -41,14 +43,19 @@ from zimi import server as zimi
 # then warm search indexes in background so MCP transport starts immediately.
 # First search may be slightly slower; subsequent searches are instant.
 import threading
+
 zimi.load_cache()
 threading.Thread(target=zimi.warm_indexes, daemon=True).start()
 
-mcp = FastMCP("zimi", instructions="Search and read articles from offline ZIM knowledge archives.")
+mcp = FastMCP(
+    "zimi", instructions="Search and read articles from offline ZIM knowledge archives."
+)
 
 
 @mcp.tool()
-def search(query: str, zim: str = "", collection: str = "", language: str = "", limit: int = 5) -> str:
+def search(
+    query: str, zim: str = "", collection: str = "", language: str = "", limit: int = 5
+) -> str:
     """Full-text search across offline knowledge sources.
 
     Searches Wikipedia, Stack Overflow, dev docs, and other ZIM archives.
@@ -76,7 +83,7 @@ def search(query: str, zim: str = "", collection: str = "", language: str = "", 
     # If language filter, narrow to ZIMs matching that language
     if language:
         lang_zims = []
-        for z in (zimi._zim_list_cache or []):
+        for z in zimi._zim_list_cache or []:
             if z.get("language") == language:
                 lang_zims.append(z["name"])
         if not lang_zims:
@@ -131,6 +138,30 @@ def read(zim: str, path: str, max_length: int = 8000) -> str:
     if result.get("truncated"):
         header += f"\n(Showing {max_length} of {result['full_length']} chars)"
     return f"{header}\n\n{result['content']}"
+
+
+@mcp.tool()
+def get_chunks(zim: str, path: str, size: int = 1200, overlap: int = 120) -> str:
+    """Chunk an article into deterministic, RAG-ready text segments.
+
+    Embedding-free: returns evenly-sized, paragraph-aware chunks with stable IDs
+    so you can build your own vector store. Same ZIM + params → identical IDs on
+    every server; a ZIM update flips content_rev (and every chunk id) so caches
+    invalidate automatically. Returns JSON: {zim, path, title, size, overlap,
+    content_rev, total_chunks, chunks:[{id, seq, start, end, text}]}.
+
+    Args:
+        zim: Source name (e.g. "wikipedia")
+        path: Article path within the source (from search results)
+        size: Target chunk size in chars (clamped 200-4000, default 1200)
+        overlap: Chars of the previous chunk repeated at the start of each chunk
+                 (clamped 0-size/2, default 120)
+    """
+    with zimi._zim_lock:
+        result = zimi.chunk_article(zim, path, size=size, overlap=overlap)
+    if result.get("error"):
+        return f"Error: article not found in '{zim}'."
+    return json.dumps(result, ensure_ascii=False)
 
 
 @mcp.tool()
@@ -189,8 +220,10 @@ def list_sources() -> str:
 
     lines = [f"{len(sources)} sources available:\n"]
     for z in sources:
-        entries = z['entries'] if isinstance(z['entries'], int) else 0
-        lines.append(f"- **{z.get('title', z['name'])}** (`{z['name']}`) — {entries:,} entries, {z['size_gb']} GB")
+        entries = z["entries"] if isinstance(z["entries"], int) else 0
+        lines.append(
+            f"- **{z.get('title', z['name'])}** (`{z['name']}`) — {entries:,} entries, {z['size_gb']} GB"
+        )
     return "\n".join(lines)
 
 
@@ -206,11 +239,15 @@ def random(zim: str = "") -> str:
             return f"Source '{zim}' not found."
         pick_name = zim
     else:
-        eligible = [z for z in (zimi._zim_list_cache or [])
-                    if isinstance(z.get("entries"), int) and z["entries"] > 100]
+        eligible = [
+            z
+            for z in (zimi._zim_list_cache or [])
+            if isinstance(z.get("entries"), int) and z["entries"] > 100
+        ]
         if not eligible:
             return "No sources available."
         import random as _random
+
         pick_name = _random.choice(eligible)["name"]
 
     with zimi._zim_lock:
@@ -246,7 +283,9 @@ def list_collections() -> str:
         for name, info in colls.items():
             label = info.get("label", name)
             zim_list = info.get("zims", [])
-            lines.append(f"- **{label}** (`{name}`) — {', '.join(f'`{z}`' for z in zim_list) if zim_list else 'empty'}")
+            lines.append(
+                f"- **{label}** (`{name}`) — {', '.join(f'`{z}`' for z in zim_list) if zim_list else 'empty'}"
+            )
     else:
         lines.append("No collections created.")
 
@@ -254,7 +293,9 @@ def list_collections() -> str:
 
 
 @mcp.tool()
-def manage_collection(action: str, name: str = "", label: str = "", zims: str = "") -> str:
+def manage_collection(
+    action: str, name: str = "", label: str = "", zims: str = ""
+) -> str:
     """Create, update, or delete a named collection of ZIM sources.
 
     Collections let you group ZIMs for scoped search (e.g. "dev-docs" = stackoverflow + devdocs).
@@ -266,9 +307,10 @@ def manage_collection(action: str, name: str = "", label: str = "", zims: str = 
         zims: Comma-separated ZIM names (e.g. "stackoverflow,devdocs_python") — used for create/update
     """
     import re
+
     # Auto-generate name from label if not provided
     if not name and label:
-        name = re.sub(r'[^a-z0-9]+', '-', label.lower()).strip('-')[:64]
+        name = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")[:64]
     if not name:
         return "Error: provide 'name' or 'label'."
 
@@ -351,7 +393,9 @@ def article_languages(zim: str, path: str) -> str:
     if installed:
         lines.append(f"**Installed translations ({len(installed)}):**")
         for lang in installed:
-            lines.append(f"- {lang['name']} ({lang['lang']}) → read(zim=\"{lang['zim']}\", path=\"{lang['path']}\")")
+            lines.append(
+                f"- {lang['name']} ({lang['lang']}) → read(zim=\"{lang['zim']}\", path=\"{lang['path']}\")"
+            )
     if available:
         lines.append(f"\n**Available for download ({len(available)}):**")
         for lang in available:
@@ -386,6 +430,7 @@ def read_with_links(zim: str, path: str, max_length: int = 8000) -> str:
                 item = entry.get_item()
                 if item.mimetype in ("text/html", "application/xhtml+xml"):
                     import re
+
                     html = bytes(item.content).decode("utf-8", errors="replace")
                     # Find external links
                     urls = re.findall(r'href="(https?://[^"]+)"', html)
@@ -416,7 +461,9 @@ def read_with_links(zim: str, path: str, max_length: int = 8000) -> str:
 
 
 @mcp.tool()
-def deep_search(query: str, zim: str = "", language: str = "", max_results: int = 3) -> str:
+def deep_search(
+    query: str, zim: str = "", language: str = "", max_results: int = 3
+) -> str:
     """Search and auto-read top results for comprehensive context.
 
     Performs a search, then reads the top results and returns a synthesized
@@ -438,7 +485,11 @@ def deep_search(query: str, zim: str = "", language: str = "", max_results: int 
         filter_zim = parts if len(parts) > 1 else (parts[0] if parts else None)
 
     if language:
-        lang_zims = [z["name"] for z in (zimi._zim_list_cache or []) if z.get("language") == language]
+        lang_zims = [
+            z["name"]
+            for z in (zimi._zim_list_cache or [])
+            if z.get("language") == language
+        ]
         if lang_zims:
             if filter_zim:
                 if isinstance(filter_zim, str):
@@ -448,14 +499,18 @@ def deep_search(query: str, zim: str = "", language: str = "", max_results: int 
                 filter_zim = lang_zims if len(lang_zims) > 1 else lang_zims[0]
 
     with zimi._zim_lock:
-        search_result = zimi.search_all(query, limit=max_results * 2, filter_zim=filter_zim)
+        search_result = zimi.search_all(
+            query, limit=max_results * 2, filter_zim=filter_zim
+        )
 
     items = search_result.get("results", [])
     if not items:
         return f"No results found for '{query}'."
 
     lines = [f"# Deep Search: {query}\n"]
-    lines.append(f"Found {search_result['total']} results. Reading top {min(max_results, len(items))}:\n")
+    lines.append(
+        f"Found {search_result['total']} results. Reading top {min(max_results, len(items))}:\n"
+    )
 
     read_count = 0
     for r in items:
