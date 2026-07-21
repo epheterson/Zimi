@@ -907,7 +907,7 @@
   "dl_complete": "Completado",
   "dl_filter_empty": "Aún no hay nada aquí",
   "bt_off_hint": "Las descargas por torrent están desactivadas. Las descargas normales siguen funcionando.",
-  "bt_unavailable_hint": "Motor de torrent no disponible, las descargas usan la vía normal. Instala aria2 para compartir ancho de banda con la red Kiwix.",
+  "bt_unavailable_hint": "Motor BitTorrent no disponible en esta instalación — las descargas usan HTTP. (Las compilaciones de Docker y de escritorio lo incluyen.)",
   "seed_bar_tip": "Progreso hacia el límite de compartición de {cap}×",
   "show_list": "Mostrar lista",
   "hide_list": "Ocultar lista",

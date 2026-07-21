@@ -907,7 +907,7 @@
   "dl_complete": "Complete",
   "dl_filter_empty": "Nothing in this view yet",
   "bt_off_hint": "Torrent downloads are turned off. Regular downloads still work.",
-  "bt_unavailable_hint": "Torrent engine not available, downloads use the regular path. Install aria2 to share bandwidth with the Kiwix network.",
+  "bt_unavailable_hint": "BitTorrent engine not available on this install — downloads use HTTP. (Docker and desktop builds include it.)",
   "seed_bar_tip": "Progress toward the {cap}× sharing cap",
   "show_list": "Show list",
   "hide_list": "Hide list",

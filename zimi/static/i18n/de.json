@@ -907,7 +907,7 @@
   "dl_complete": "Fertig",
   "dl_filter_empty": "Hier ist noch nichts",
   "bt_off_hint": "Torrent-Downloads sind deaktiviert. Normale Downloads funktionieren weiterhin.",
-  "bt_unavailable_hint": "Torrent-Engine nicht verfügbar, Downloads nutzen den normalen Weg. Installiere aria2, um Bandbreite mit dem Kiwix-Netzwerk zu teilen.",
+  "bt_unavailable_hint": "BitTorrent-Engine bei dieser Installation nicht verfügbar — Downloads nutzen HTTP. (Docker- und Desktop-Builds enthalten sie.)",
   "seed_bar_tip": "Fortschritt zum {cap}×-Teilungslimit",
   "show_list": "Liste anzeigen",
   "hide_list": "Liste ausblenden",

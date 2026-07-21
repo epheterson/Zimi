@@ -5,7 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.7.5] - Unreleased
+
+### Changed
+
+- BitTorrent engine: the bundled aria2c sidecar is replaced by in-process
+  libtorrent. Real per-torrent stats, fast-resume across restarts, no more
+  RPC ports or orphaned sidecar processes. Where libtorrent isn't available
+  (e.g. bare `pip install zimi`), downloads simply use HTTP as always.
+
+### Removed
+
+- aria2 backend and bundling (Docker package, desktop sidecar binaries,
+  `ZIMI_BT_BACKEND` selection). `ZIMI_BT` configuration is unchanged.
 
 ## [1.7.4] - 2026-07-20
 
@@ -35,8 +47,6 @@ looks like the Moon.
   Kuiper and heliopause markers.
 - **Easier location picking** — the world map cycles through overlapping
   cities on repeated clicks, and search reaches 354 cities.
-
-### Security
 
 ### Security
 

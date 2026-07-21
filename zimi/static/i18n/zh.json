@@ -907,7 +907,7 @@
   "dl_complete": "已完成",
   "dl_filter_empty": "这里还没有内容",
   "bt_off_hint": "种子下载已关闭。普通下载仍然可用。",
-  "bt_unavailable_hint": "种子引擎不可用, 下载将使用普通方式。安装 aria2 可与 Kiwix 网络共享带宽。",
+  "bt_unavailable_hint": "此安装未提供 BitTorrent 引擎，下载将使用 HTTP。(Docker 和桌面版已内置。)",
   "seed_bar_tip": "距 {cap}× 分享上限的进度",
   "show_list": "显示列表",
   "hide_list": "隐藏列表",

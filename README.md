@@ -51,7 +51,7 @@ Something not right? [Open an issue.](https://github.com/epheterson/Zimi/issues)
 
 Three switches in Server Settings control all of it:
 
-- **BitTorrent** (on by default). Downloads arrive via the Kiwix swarm and seed back, capped at a ratio you choose. `0` means never seed. The Mac and Linux desktop apps ship their own BitTorrent engine; pip and Docker installs use aria2 if present — and everything quietly falls back to plain HTTP without it. UPnP asks your router to open the port, and the settings panel shows whether it worked.
+- **BitTorrent** (on by default). Downloads arrive via the Kiwix swarm and seed back, capped at a ratio you choose. `0` means never seed. The Mac and Linux desktop apps and the Docker image ship their own BitTorrent engine (in-process libtorrent); a bare `pip install` uses it if the wheel is present — and everything quietly falls back to plain HTTP without it. UPnP asks your router to open the port, and the settings panel shows whether it worked.
 - **Nearby** (off by default). Flip it on and Zimi devices on your network find each other; a green pill on a catalog card means a neighbor already has that ZIM. Transfers stay on your LAN, never the internet.
 - **Mirror** (off). Lifts the seeding cap, for people who want to run a long-term Kiwix mirror.
 
@@ -119,7 +119,7 @@ services:
       - ./zimi-config:/config
 ```
 
-LAN peer discovery (`_zimi._tcp`) won't reach the LAN in bridge mode — multicast doesn't cross the docker bridge, and Zimi warns in the Nearby settings when it detects this. Use host networking, or set `ip=<your host's LAN address>` in `ZIMI_NEARBY`. BT seeding still works because aria2 binds the mapped port. See [docs/deployment-networking.md](docs/deployment-networking.md) for the full discussion.
+LAN peer discovery (`_zimi._tcp`) won't reach the LAN in bridge mode — multicast doesn't cross the docker bridge, and Zimi warns in the Nearby settings when it detects this. Use host networking, or set `ip=<your host's LAN address>` in `ZIMI_NEARBY`. BT seeding still works because libtorrent binds the mapped port. See [docs/deployment-networking.md](docs/deployment-networking.md) for the full discussion.
 </details>
 
 ### Python
@@ -234,7 +234,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE). Desktop builds bundle [aria2](https://aria2.github.io/) (GPLv2) as a separate sidecar — see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[MIT](LICENSE). Desktop and Docker builds bundle [libtorrent-rasterbar](https://libtorrent.org/) (BSD-3-Clause) for BitTorrent transfers — see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
