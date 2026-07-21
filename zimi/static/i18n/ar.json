@@ -973,5 +973,8 @@
   "new_badge": "جديد",
   "updated_badge": "محدّث",
   "recently_updated": "محدّث حديثاً",
-  "recently_installed": "مثبت حديثاً"
+  "recently_installed": "مثبت حديثاً",
+  "tts_speak": "قراءة بصوت عالٍ",
+  "tts_stop": "إيقاف القراءة",
+  "font_size": "حجم الخط"
 }

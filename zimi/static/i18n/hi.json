@@ -973,5 +973,8 @@
   "new_badge": "नया",
   "updated_badge": "अपडेट किया गया",
   "recently_updated": "हाल ही में अपडेट किया गया",
-  "recently_installed": "हाल ही में इंस्टॉल किया गया"
+  "recently_installed": "हाल ही में इंस्टॉल किया गया",
+  "tts_speak": "ज़ोर से पढ़ें",
+  "tts_stop": "पढ़ना रोकें",
+  "font_size": "फ़ॉन्ट आकार"
 }

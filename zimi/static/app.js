@@ -20,6 +20,9 @@ var SK = {
   MANAGE_PW: 'zimi_manage_pw',
   PREF_LANGUAGES: 'zimi_pref_languages',
   PREF_FLAVOR: 'zimi_pref_flavor',
+  // Reader font scale (percent, one of READER_FONT_LEVELS), injected into the
+  // iframe document root and reapplied on every article load.
+  READER_FONT: 'zimi_reader_font_scale',
   // Last-rendered SHARING rows (Server pane) — restored synchronously on
   // pane open so the section doesn't pop in after the status fetches.
   SHARE_ROWS: 'zimi_share_rows',
@@ -582,6 +585,15 @@ function updateTopbar() {
   }
 
   newtabBtn.style.display = (readerOpen && !IS_DESKTOP) ? 'flex' : 'none';
+  // Reader-only controls: font scale (always when reading) + read-aloud (only
+  // when the browser exposes the offline Web Speech API). Hidden when the
+  // reader isn't the active surface — and read-aloud never appears at all
+  // when unsupported, so no dead button.
+  var _readingArticle = readerOpen && !_almanacOpen;
+  var fontBtn = document.getElementById('font-btn');
+  if (fontBtn) fontBtn.style.display = _readingArticle ? 'flex' : 'none';
+  var ttsBtn = document.getElementById('tts-btn');
+  if (ttsBtn) ttsBtn.style.display = (_readingArticle && _TTS_AVAILABLE) ? 'flex' : 'none';
   // Desktop: show save button when viewing a downloadable file (PDF, EPUB)
   var saveBtn = document.getElementById('save-btn');
   if (saveBtn) {
@@ -7111,6 +7123,142 @@ function _stepBackToArticle(prev, replaceState) {
   openReader(url);
 }
 
+// ── Reader font scale ──
+// A single cycling control (chosen over an A−/A+ pair to conserve the already
+// crowded topbar) steps through these percentages, injected into the iframe
+// document root and reapplied on every article load. Persisted in localStorage.
+var READER_FONT_LEVELS = [85, 100, 115, 130];
+var READER_FONT_DEFAULT = 100;
+
+function _readerFontLevel() {
+  var v = parseInt(localStorage.getItem(SK.READER_FONT), 10);
+  return READER_FONT_LEVELS.indexOf(v) >= 0 ? v : READER_FONT_DEFAULT;
+}
+function _applyReaderFont(doc) {
+  if (!doc || !doc.documentElement) return;
+  try { doc.documentElement.style.fontSize = _readerFontLevel() + '%'; } catch(e) {}
+}
+function _syncFontBtnGlyph() {
+  var btn = document.getElementById('font-btn');
+  if (!btn) return;
+  var level = _readerFontLevel();
+  var idx = READER_FONT_LEVELS.indexOf(level); if (idx < 0) idx = 1;
+  var glyph = btn.querySelector('.font-glyph');
+  if (glyph) glyph.style.fontSize = (12 + idx * 2) + 'px'; // 12/14/16/18px live preview
+  var label = t('font_size') + ' — ' + level + '%';
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
+function _cycleReaderFont() {
+  var idx = READER_FONT_LEVELS.indexOf(_readerFontLevel());
+  var next = READER_FONT_LEVELS[(idx + 1) % READER_FONT_LEVELS.length];
+  try { localStorage.setItem(SK.READER_FONT, String(next)); } catch(e) {}
+  var frame = document.getElementById('reader-frame');
+  try { if (frame && frame.contentDocument) _applyReaderFont(frame.contentDocument); } catch(e) {}
+  _syncFontBtnGlyph();
+}
+
+// ── Reader text-to-speech (offline Web Speech API) ──
+// Binary speak/stop model only — speechSynthesis.pause() is flaky across
+// browsers, so we never expose pause. Long articles are split into short
+// utterances (the API chokes on very long strings) and queued; stop cancels
+// the whole queue.
+var _TTS_AVAILABLE = (typeof window !== 'undefined') && ('speechSynthesis' in window);
+var _ttsSpeaking = false;
+
+// TTS_CHUNK_FN_START (extracted + node-tested — keep these sentinels)
+function _ttsChunkText(text, maxLen) {
+  maxLen = maxLen || 240;
+  var out = [];
+  if (!text) return out;
+  // Collapse whitespace so newlines don't confuse sentence detection.
+  var clean = String(text).replace(/\s+/g, ' ').trim();
+  if (!clean) return out;
+  // Split into sentences, keeping terminal punctuation (Latin + CJK).
+  var sentences = clean.match(/[^.!?。！？]+[.!?。！？]+|\S[^.!?。！？]*$/g) || [clean];
+  var buf = '';
+  for (var i = 0; i < sentences.length; i++) {
+    var s = sentences[i].trim();
+    if (!s) continue;
+    // A single sentence longer than maxLen: hard-split on word boundaries.
+    if (s.length > maxLen) {
+      if (buf) { out.push(buf); buf = ''; }
+      var words = s.split(' ');
+      var line = '';
+      for (var w = 0; w < words.length; w++) {
+        var word = words[w];
+        if (line && (line.length + 1 + word.length) > maxLen) { out.push(line); line = word; }
+        else { line = line ? (line + ' ' + word) : word; }
+      }
+      if (line) buf = line; // carry remainder to pack with the next sentence
+      continue;
+    }
+    if (buf && (buf.length + 1 + s.length) > maxLen) { out.push(buf); buf = s; }
+    else { buf = buf ? (buf + ' ' + s) : s; }
+  }
+  if (buf) out.push(buf);
+  return out;
+}
+// TTS_CHUNK_FN_END
+
+function _ttsExtractText(doc) {
+  if (!doc) return '';
+  // Prefer the article's main content element — that alone drops surrounding
+  // nav/chrome cheaply. Fall back to the whole body (acceptable v1).
+  var main = null;
+  try { main = doc.querySelector('#mw-content-text, .mw-parser-output, main, article, [role="main"]'); } catch(e) {}
+  if (!main) main = doc.body;
+  if (!main) return '';
+  return (main.innerText || main.textContent || '').trim();
+}
+function _ttsLang(doc) {
+  var l = '';
+  try { l = (doc && doc.documentElement && doc.documentElement.lang) || ''; } catch(e) {}
+  if (!l) {
+    var info = _zimInfo(readerSource || (currentArticle && currentArticle.zim) || '');
+    if (info && info.language) l = info.language;
+  }
+  return l || '';
+}
+function _ttsSetSpeaking(on) {
+  _ttsSpeaking = on;
+  var btn = document.getElementById('tts-btn');
+  if (!btn) return;
+  btn.classList.toggle('speaking', on);
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  var label = on ? t('tts_stop') : t('tts_speak');
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
+function _ttsStop() {
+  if (!_TTS_AVAILABLE) return;
+  try { window.speechSynthesis.cancel(); } catch(e) {}
+  if (_ttsSpeaking) _ttsSetSpeaking(false);
+}
+function _ttsSpeak() {
+  if (!_TTS_AVAILABLE) return;
+  var frame = document.getElementById('reader-frame');
+  var doc; try { doc = frame && frame.contentDocument; } catch(e) { doc = null; }
+  if (!doc) return;
+  var chunks = _ttsChunkText(_ttsExtractText(doc), 240);
+  if (!chunks.length) return;
+  var lang = _ttsLang(doc);
+  var synth = window.speechSynthesis;
+  synth.cancel(); // clear any residual queue before starting fresh
+  _ttsSetSpeaking(true);
+  chunks.forEach(function(chunk, idx) {
+    var u = new SpeechSynthesisUtterance(chunk);
+    if (lang) u.lang = lang;
+    if (idx === chunks.length - 1) u.onend = function() { _ttsSetSpeaking(false); };
+    u.onerror = function() { _ttsSetSpeaking(false); };
+    synth.speak(u);
+  });
+}
+function _ttsToggle() {
+  if (_ttsSpeaking) _ttsStop();
+  else _ttsSpeak();
+}
+
 // ── Reader ──
 function openReader(url) {
   // EPUBs: download (Gutenberg has HTML equivalents)
@@ -7130,6 +7278,9 @@ function openReader(url) {
     url += (url.includes('?') ? '&' : '?') + 'a11y=1';
   }
   readerOpen = true;
+  _ttsStop();          // never carry speech across a new article load
+  _ttsSetSpeaking(false); // reset the button label to "Read aloud"
+  _syncFontBtnGlyph();    // reflect the persisted font level on the control
   const reader = document.getElementById('reader');
   const frame = document.getElementById('reader-frame');
   const loading = document.getElementById('reader-loading');
@@ -7163,6 +7314,8 @@ function openReader(url) {
     clearTimeout(_readerTimeout);
     loading.classList.add('hidden');
     if (!readerOpen) return; // reader was closed — don't update title
+    _ttsStop(); // stop any in-progress speech when the article changes
+    try { _applyReaderFont(frame.contentDocument); } catch(e) {} // reapply persisted font scale
     // Capture mousedown inside iframe for modifier-click detection + dismiss context menu
     try {
       frame.contentDocument.addEventListener('mousedown', function(e) { _lastMouseEvent = e; _lastMouseTime = Date.now(); _hideLinkCtxMenu(); }, true);
@@ -7737,6 +7890,7 @@ function openArticle(zim, path, title) {
 
 function closeReader() {
   if (!readerOpen) return;
+  _ttsStop(); // stop read-aloud when leaving the reader
   // Sync the address bar back to the view the reader was covering — an
   // explicit close otherwise strands the article URL (a reload would
   // reopen the closed article). On popstate-driven closes the history

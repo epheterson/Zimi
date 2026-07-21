@@ -973,5 +973,8 @@
   "new_badge": "Новый",
   "updated_badge": "Обновлено",
   "recently_updated": "Недавно обновлено",
-  "recently_installed": "Недавно установлено"
+  "recently_installed": "Недавно установлено",
+  "tts_speak": "Читать вслух",
+  "tts_stop": "Остановить чтение",
+  "font_size": "Размер шрифта"
 }

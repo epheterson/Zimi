@@ -973,5 +973,8 @@
   "new_badge": "חדש",
   "updated_badge": "עודכן",
   "recently_updated": "עודכן לאחרונה",
-  "recently_installed": "הותקן לאחרונה"
+  "recently_installed": "הותקן לאחרונה",
+  "tts_speak": "הקראה",
+  "tts_stop": "הפסקת ההקראה",
+  "font_size": "גודל הגופן"
 }

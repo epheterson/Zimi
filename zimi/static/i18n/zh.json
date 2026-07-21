@@ -973,5 +973,8 @@
   "new_badge": "新",
   "updated_badge": "已更新",
   "recently_updated": "最近更新",
-  "recently_installed": "最近安装"
+  "recently_installed": "最近安装",
+  "tts_speak": "朗读",
+  "tts_stop": "停止朗读",
+  "font_size": "字体大小"
 }

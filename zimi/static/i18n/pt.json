@@ -973,5 +973,8 @@
   "new_badge": "Novo",
   "updated_badge": "Atualizado",
   "recently_updated": "Atualizado recentemente",
-  "recently_installed": "Instalado recentemente"
+  "recently_installed": "Instalado recentemente",
+  "tts_speak": "Ler em voz alta",
+  "tts_stop": "Parar leitura",
+  "font_size": "Tamanho da fonte"
 }
