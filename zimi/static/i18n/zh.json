@@ -40,6 +40,7 @@
   "n_results": "{n} 条结果",
   "in_time": "用时 {time} 秒",
   "no_results": "未找到结果",
+  "did_you_mean": "您是不是想找 {s}？",
   "try_different": "试试其他关键词",
   "try_specific": "试试更具体的关键词",
   "common_words": "“{word}”等常见词匹配的文章过多",

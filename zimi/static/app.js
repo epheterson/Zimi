@@ -2443,6 +2443,14 @@ q.addEventListener('keydown', e => {
 });
 
 
+// Re-run the search with a "Did you mean" correction the user clicked.
+function applyDidYouMean(suggestion) {
+  if (!suggestion) return;
+  var q = document.getElementById('q');
+  if (q) q.value = suggestion;
+  doSearch(suggestion, true);
+}
+
 async function doSearch(query, push) {
   if (push === undefined) push = true;
   if (!query) return;
@@ -2584,6 +2592,7 @@ function mergeSearchResults(phase1, phase2) {
     total: merged.length,
     elapsed: phase2.elapsed,
     partial: false,
+    did_you_mean: phase2.did_you_mean || phase1.did_you_mean,
     _clientElapsed: phase2._clientElapsed,
     _query: phase2._query,
   };
@@ -2687,8 +2696,18 @@ function renderSearchResults(data, scope) {
   document.getElementById('search-time').textContent = displayElapsed ? t('in_time', {time: displayElapsed}) : '';
   searchMeta.style.display = items.length ? 'flex' : 'none';
 
+  // "Did you mean X?" — a clickable correction, shown only when results are
+  // sparse (server already gates on <3, but merged counts can differ).
+  var dymHtml = '';
+  if (data.did_you_mean && totalCount < 3) {
+    var sugg = data.did_you_mean;
+    dymHtml = '<div class="did-you-mean">' +
+      t('did_you_mean', {s: '<a href="#" onclick="applyDidYouMean(\'' + escJs(sugg) + '\');return false;">' + esc(sugg) + '</a>'}) +
+      '</div>';
+  }
+
   if (!items.length) {
-    output.innerHTML = '<div class="empty"><p>' + tH('no_results') + '</p><p class="hint">' + tH('try_different') + '</p></div>';
+    output.innerHTML = '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH('try_different') + '</p></div>';
     return;
   }
 
@@ -2722,7 +2741,7 @@ function renderSearchResults(data, scope) {
   const visible = items.slice(0, visibleResultCount);
   const remaining = items.length - visibleResultCount;
 
-  let html = zimMatchHtml + '<div class="results">' + visible.map((r, i) => {
+  let html = dymHtml + zimMatchHtml + '<div class="results">' + visible.map((r, i) => {
     const sourceRow = !scope
       ? '<div class="result-source">' + _sourceIconHtml(r.zim, 20) +
         '<span class="rs-name">' + esc(_zimTitle(r.zim)) + '</span></div>'

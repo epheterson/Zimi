@@ -453,6 +453,10 @@
   .empty { text-align: center; padding: 48px 20px; color: var(--text2); }
   .empty p { font-size: 14px; margin-bottom: 8px; }
   .empty .hint { font-size: 12px; opacity: 0.5; }
+  .did-you-mean { font-size: 14px; color: var(--text2); margin-bottom: 16px; }
+  .empty .did-you-mean { margin-bottom: 12px; }
+  .did-you-mean a { color: var(--amber); font-style: italic; text-decoration: none; border-bottom: 1px solid var(--amber-border); }
+  .did-you-mean a:hover { border-bottom-color: var(--amber); }
   .search-deeper {
     text-align: center; padding: 14px 20px; margin-top: 16px;
     color: var(--amber); font-size: 13px; cursor: pointer;

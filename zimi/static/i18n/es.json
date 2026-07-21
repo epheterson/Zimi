@@ -40,6 +40,7 @@
   "n_results": "{n} resultados",
   "in_time": "en {time}s",
   "no_results": "Sin resultados",
+  "did_you_mean": "¿Quisiste decir {s}?",
   "try_different": "Prueba con otras palabras clave",
   "try_specific": "Prueba con palabras clave más específicas",
   "common_words": "Palabras comunes como «{word}» coinciden con demasiados artículos",
