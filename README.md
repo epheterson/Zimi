@@ -228,6 +228,16 @@ Tools: `search` (with `lang` filter), `read`, `suggest`, `list_sources`, `random
 - **[SearXNG](docs/integrations/searxng.md)** — route queries through Zimi from a self-hosted SearXNG metasearch instance.
 - **[OpenWebUI / generic AI](docs/integrations/openwebui.md)** — wire the MCP server into any AI client for offline research.
 
+## Long-requested, shipped here
+
+Some features the ZIM ecosystem has been asking for are available in Zimi today:
+
+- **Spelling suggestions** — "did you mean?" on sparse searches, fully offline ([libzim #731](https://github.com/openzim/libzim/issues/731))
+- **Read-aloud** — text-to-speech in the reader via the offline Web Speech API ([kiwix-js #166](https://github.com/kiwix/kiwix-js/issues/166))
+- **Text size control** — per-reader font scaling that survives navigation
+- **Grab the file** — a download button for any ZIM you're sharing on your network
+- **Real article counts** — articles, not raw entry counts, on library cards
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
