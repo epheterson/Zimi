@@ -13,6 +13,7 @@ import re
 import sqlite3
 import threading
 import time
+import unicodedata
 
 from libzim.search import Query, Searcher
 from libzim.suggestion import SuggestionSearcher
@@ -1117,6 +1118,208 @@ def _dedup_results_by_title(results):
     return deduped
 
 
+# ---------------------------------------------------------------------------
+# "Did you mean" spelling correction (offline)
+# ---------------------------------------------------------------------------
+# When a search comes back nearly empty, offer a correction built entirely
+# from the words that already appear in ZIM titles — no dictionary ships with
+# Zimi, the vocabulary IS the library. Norvig-style edit-distance candidate
+# generation (deletes/transposes/replaces/inserts) keeps matching O(word),
+# not O(vocab), so it stays fast even against a 200k-word vocabulary. The
+# whole feature is fail-soft: any error, empty vocab, or a blown time budget
+# yields no suggestion, never an exception and never a slow search.
+
+_DYM_MIN_RESULTS = 3  # only suggest when fewer than this many results
+_DYM_BUDGET_S = 0.05  # ~50ms ceiling on per-query correction work
+_VOCAB_MAX_WORDS = 200_000  # cap on distinct vocabulary words held in memory
+_VOCAB_MIN_WORD_LEN = 3  # ignore 1-2 char fragments (noise, not misspellings)
+_VOCAB_BUILD_BUDGET_S = 2.0  # one-time ceiling on the lazy vocab scan
+_DIST2_MAX_LEN = 7  # only try edit-distance-2 on words this short or shorter
+_DYM_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
+_word_split_re = re.compile(r"[^a-z0-9]+")
+# Split a query into alternating [gap, word, gap, word, ...]; odd indices are
+# words (the capturing group), so separators/case survive reconstruction.
+_query_token_re = re.compile(r"([A-Za-z0-9]+)")
+
+_vocab = None  # {word: count}; None until the first build attempt
+_vocab_lock = threading.Lock()
+
+
+def _ascii_fold(s):
+    """Lowercased, accent-stripped ASCII form. 'Café' -> 'cafe'."""
+    return (
+        unicodedata.normalize("NFKD", s.lower())
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+
+
+def _build_vocab():
+    """Scan the SQLite title indexes into a {word: count} vocabulary.
+
+    Opens a FRESH connection per index (sqlite objects aren't shareable across
+    threads). Bounded two ways: a distinct-word cap and a wall-clock budget —
+    whichever hits first stops the scan. Returns whatever was gathered (possibly
+    empty). Never raises; a broken index is skipped."""
+    deadline = time.monotonic() + _VOCAB_BUILD_BUDGET_S
+    vocab = {}
+    index_dir = _TITLE_INDEX_DIR
+    if not os.path.isdir(index_dir):
+        return vocab
+    at_cap = False
+    for fname in sorted(os.listdir(index_dir)):
+        if at_cap or time.monotonic() > deadline:
+            break
+        if not fname.endswith(".db"):
+            continue
+        db_path = os.path.join(index_dir, fname)
+        try:
+            conn = sqlite3.connect(db_path, timeout=2)
+        except Exception as e:
+            log.debug("Vocab: cannot open %s: %s", fname, e)
+            continue
+        try:
+            cur = conn.execute("SELECT title_lower FROM titles")
+            while not at_cap and time.monotonic() <= deadline:
+                rows = cur.fetchmany(5000)
+                if not rows:
+                    break
+                for (title_lower,) in rows:
+                    if not title_lower:
+                        continue
+                    for w in _word_split_re.split(_ascii_fold(title_lower)):
+                        # Skip short fragments and bare numbers (years, page
+                        # ids) — not spelling-correctable, just cap pressure.
+                        if len(w) < _VOCAB_MIN_WORD_LEN or w.isdigit():
+                            continue
+                        if w in vocab:
+                            vocab[w] += 1
+                        elif not at_cap:
+                            vocab[w] = 1
+                            if len(vocab) >= _VOCAB_MAX_WORDS:
+                                at_cap = True
+        except Exception as e:
+            log.debug("Vocab: scan failed for %s: %s", fname, e)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return vocab
+
+
+def _get_vocab():
+    """Return the cached vocabulary, building it once on first call.
+
+    Lock-disciplined lazy init: the first sparse search pays the (bounded)
+    build cost, everyone after reads the cache. Fail-soft — a build error
+    caches an empty vocab so we don't retry on every query."""
+    global _vocab
+    with _vocab_lock:
+        if _vocab is not None:
+            return _vocab
+        try:
+            _vocab = _build_vocab()
+        except Exception as e:
+            log.debug("Vocab build failed: %s", e)
+            _vocab = {}
+        if _vocab:
+            log.info("Did-you-mean vocab: %d words", len(_vocab))
+        return _vocab
+
+
+def _reset_vocab():
+    """Drop the cached vocabulary so the next call rebuilds. Tests only."""
+    global _vocab
+    with _vocab_lock:
+        _vocab = None
+
+
+def _edits1(word):
+    """All strings one edit away from `word` (Norvig). Bounded by |word|."""
+    splits = [(word[:i], word[i:]) for i in range(len(word) + 1)]
+    deletes = [L + R[1:] for L, R in splits if R]
+    transposes = [L + R[1] + R[0] + R[2:] for L, R in splits if len(R) > 1]
+    replaces = [L + c + R[1:] for L, R in splits if R for c in _DYM_ALPHABET]
+    inserts = [L + c + R for L, R in splits for c in _DYM_ALPHABET]
+    return set(deletes + transposes + replaces + inserts)
+
+
+def _best_correction(word, vocab, deadline=None):
+    """Best in-vocab correction for `word`, or None. Frequency breaks ties.
+
+    Distance-1 first; distance-2 only for short words (candidate set stays
+    bounded) and only if the time budget allows."""
+    if not word or word in vocab:
+        return None
+    cands = [w for w in _edits1(word) if w in vocab]
+    if cands:
+        return max(cands, key=lambda w: vocab[w])
+    if len(word) <= _DIST2_MAX_LEN and (
+        deadline is None or time.monotonic() <= deadline
+    ):
+        cands2 = set()
+        for e1 in _edits1(word):
+            for e2 in _edits1(e1):
+                if e2 in vocab:
+                    cands2.add(e2)
+        if cands2:
+            return max(cands2, key=lambda w: vocab[w])
+    return None
+
+
+def _did_you_mean(query_str, vocab, deadline):
+    """Correct misspelled words in `query_str` against `vocab`.
+
+    Returns the whole query with corrections swapped in, or None if nothing
+    was corrected (or the differences are only case). Bails silently if the
+    time budget is exceeded mid-correction."""
+    if not vocab or not query_str:
+        return None
+    parts = _query_token_re.split(query_str)
+    corrected_any = False
+    out = []
+    for i, part in enumerate(parts):
+        if i % 2 == 0:  # separator/gap — keep verbatim
+            out.append(part)
+            continue
+        folded = _ascii_fold(part)
+        if (
+            len(folded) >= _VOCAB_MIN_WORD_LEN
+            and folded not in STOP_WORDS
+            and folded not in vocab
+        ):
+            if time.monotonic() > deadline:
+                return None
+            corr = _best_correction(folded, vocab, deadline)
+            if corr and corr != folded:
+                out.append(corr)
+                corrected_any = True
+                continue
+        out.append(part)
+    if not corrected_any:
+        return None
+    suggestion = "".join(out)
+    if suggestion.strip().lower() == query_str.strip().lower():
+        return None
+    return suggestion
+
+
+def _maybe_did_you_mean(query_str):
+    """Compute a spelling suggestion for a sparse query, or None. Fail-soft."""
+    if not query_str or not query_str.strip():
+        return None
+    try:
+        vocab = _get_vocab()
+        if not vocab:
+            return None
+        deadline = time.monotonic() + _DYM_BUDGET_S
+        return _did_you_mean(query_str, vocab, deadline)
+    except Exception as e:
+        log.debug("did_you_mean failed for %r: %s", query_str, e)
+        return None
+
+
 def search_all(query_str, limit=5, filter_zim=None, fast=False):
     """Search across all ZIM files, a specific one, or a list.
 
@@ -1338,6 +1541,12 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     }
     if detected_lang:
         result["detected_language"] = detected_lang
+    # "Did you mean" — only on the full path (the fast path is a partial,
+    # progressive pass), and only when results are sparse. Additive field.
+    if not fast and len(deduped) < _DYM_MIN_RESULTS:
+        suggestion = _maybe_did_you_mean(query_str)
+        if suggestion:
+            result["did_you_mean"] = suggestion
     return result
 
 
