@@ -3101,6 +3101,7 @@ function enterManage(e) {
       windowTitle: document.title
     };
     // Hide reader visually but keep iframe loaded
+    _ttsStop(); // stop read-aloud — the reader (and its stop button) is now hidden
     readerOpen = false;
     document.getElementById('reader').classList.remove('open');
     mainView.classList.remove('hidden');
@@ -7136,7 +7137,20 @@ function _readerFontLevel() {
 }
 function _applyReaderFont(doc) {
   if (!doc || !doc.documentElement) return;
-  try { doc.documentElement.style.fontSize = _readerFontLevel() + '%'; } catch(e) {}
+  var level = _readerFontLevel();
+  try {
+    if (level === READER_FONT_DEFAULT) {
+      // Default (100%): REMOVE our inline override rather than pin it to 100%.
+      // A literal fontSize:100% still wins over a ZIM's own root size (e.g.
+      // devdocs' html{font-size:62.5%} rem reset), inflating every rem-based
+      // article ~1.6x for users who never touched the control. Removing the
+      // property lets the ZIM's stylesheet govern again. Cycling back to 100
+      // routes through here too, so the override clears live, not just on load.
+      doc.documentElement.style.removeProperty('font-size');
+    } else {
+      doc.documentElement.style.fontSize = level + '%';
+    }
+  } catch(e) {}
 }
 function _syncFontBtnGlyph() {
   var btn = document.getElementById('font-btn');
