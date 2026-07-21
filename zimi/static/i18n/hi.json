@@ -102,6 +102,7 @@
   "mini": "लघु",
   "no_images": "बिना चित्र",
   "n_entries": "{n} प्रविष्टियाँ",
+  "download_zim": "यह ZIM डाउनलोड करें",
   "language_label": "भाषा: {lang}",
   "by_author": "लेखक: {author}",
   "collection_placeholder": "संग्रह का नाम (उदा. डेव डॉक्स)",

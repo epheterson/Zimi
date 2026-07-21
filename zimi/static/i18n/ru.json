@@ -102,6 +102,7 @@
   "mini": "Мини",
   "no_images": "Без изображений",
   "n_entries": "Записей: {n}",
+  "download_zim": "Скачать этот ZIM",
   "language_label": "Язык: {lang}",
   "by_author": "Автор: {author}",
   "collection_placeholder": "Название коллекции (напр. Документация)",

@@ -102,6 +102,7 @@
   "mini": "Mini",
   "no_images": "Sem imagens",
   "n_entries": "{n} entradas",
+  "download_zim": "Baixar este ZIM",
   "language_label": "Idioma: {lang}",
   "by_author": "Por {author}",
   "collection_placeholder": "Nome da coleção (ex.: Docs de Dev)",

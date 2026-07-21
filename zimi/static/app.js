@@ -333,6 +333,14 @@ function fmtSize(gb, html) {
   else { n = Math.round(gb); u = ' GB'; }
   return html ? '<span class="num">' + n + '</span>' + u : n + u;
 }
+// Localized count line for a ZIM's card/info panel. Prefers the real article
+// count (libzim `article_count`, added by the metadata cache) and falls back to
+// the raw entry count for stale caches that predate the field. Empty string
+// when neither is a number (e.g. an unreadable ZIM whose entries is '?').
+function _zimCountHtml(z) {
+  const n = (z && typeof z.article_count === 'number') ? z.article_count : (z ? z.entries : undefined);
+  return typeof n === 'number' ? t('n_entries', {n: n.toLocaleString()}) : '';
+}
 // ── DOM refs ──
 const q = document.getElementById('q');
 const output = document.getElementById('output');
@@ -1391,7 +1399,7 @@ function renderCardGrid(items, showStars, showCategory) {
       '<div class="card-info">' +
         '<div class="name">' + esc(z.title || z.name) + badge + qidIcon + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
-        '<div class="detail">' + catPrefix + (typeof z.entries === 'number' ? t('n_entries', {n: z.entries.toLocaleString()}) : '') +
+        '<div class="detail">' + catPrefix + _zimCountHtml(z) +
         ' &middot; ' + fmtSize(z.size_gb) +
         '</div>' +
       '</div></div>';
@@ -2295,6 +2303,30 @@ function toggleCategory(cat) {
   document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeCtx(); });
 })();
 
+// Probe the peer-share endpoint and reveal a download link only when it will
+// serve this file to this client. Uses a 1-byte ranged GET, not HEAD: the
+// server's do_HEAD answers 200 for every path, so HEAD can't tell a live /dl/
+// from a gated one. 206/200 → live (show); 403 (WAN or sharing off) / 404 → hide.
+async function _probeZimDownload(name, info) {
+  const file = info && info.file;
+  if (!file) return;
+  const url = '/dl/' + encodeURIComponent(file);
+  let ok = false;
+  try {
+    const res = await fetch(url, {headers: {'Range': 'bytes=0-0'}});
+    ok = res.status === 206 || res.status === 200;
+    try { await res.arrayBuffer(); } catch (e) {}  // drain the 1-byte body
+  } catch (e) { ok = false; }
+  if (!ok) return;
+  // The panel may have moved on while we were probing.
+  if (mode !== 'source' || currentSource !== name) return;
+  const box = document.getElementById('sh-download');
+  if (!box) return;
+  box.innerHTML = '<a class="pill dl-pill" href="' + url +
+    '" download="' + escAttr(file) + '">⬇ ' + tH('download_zim') + '</a>';
+  box.hidden = false;
+}
+
 // ── Render: Source ──
 async function renderSource(name) {
   const info = _zimInfo(name);
@@ -2311,9 +2343,10 @@ async function renderSource(name) {
     '<div class="sh-icon">' + iconHtml + '</div>' +
     '<div class="sh-info">' +
       '<h1>' + esc(info.title || name) + '</h1>' +
-      '<div class="sh-meta">' + (typeof info.entries === 'number' ? t('n_entries', {n: info.entries.toLocaleString()}) : '') +
+      '<div class="sh-meta">' + _zimCountHtml(info) +
       ' &middot; ' + fmtSize(info.size_gb) + '</div>' +
       (info.description ? '<div class="sh-desc">' + esc(info.description) + '</div>' : '') +
+      '<div class="sh-actions" id="sh-download" hidden></div>' +
     '</div></div>';
 
   // For ZIMs with a homepage, go straight to reader (skip intermediate page)
@@ -2332,6 +2365,11 @@ async function renderSource(name) {
   sourceHeaderEl.innerHTML = headerHtml;
   sourceHeaderEl.style.display = '';
   output.innerHTML = _loadingHtml();
+
+  // Reveal a "Download this ZIM" link only if the peer-share endpoint (/dl/)
+  // will actually serve this file to this client. Probed once per panel open —
+  // never per render tick — so the WAN (403) never sees a dead button.
+  _probeZimDownload(name, info);
 
   // Try catalog (zimgit PDF collections show document list)
   try {
@@ -2753,7 +2791,7 @@ function renderSearchResults(data, scope) {
           '<div class="card-info">' +
             '<div class="name">' + esc(z.title || z.name) + '</div>' +
             (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
-            '<div class="detail">' + (typeof z.entries === 'number' ? t('n_entries', {n: z.entries.toLocaleString()}) : '') +
+            '<div class="detail">' + _zimCountHtml(z) +
             ' &middot; ' + fmtSize(z.size_gb) + '</div>' +
           '</div></div>';
       }).join('') + '</div>';

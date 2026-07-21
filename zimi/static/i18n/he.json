@@ -102,6 +102,7 @@
   "mini": "מיני",
   "no_images": "ללא תמונות",
   "n_entries": "{n} רשומות",
+  "download_zim": "הורד קובץ ZIM זה",
   "language_label": "שפה: {lang}",
   "by_author": "מאת {author}",
   "collection_placeholder": "שם אוסף (למשל: מסמכי פיתוח)",

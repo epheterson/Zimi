@@ -102,6 +102,7 @@
   "mini": "مصغّر",
   "no_images": "بدون صور",
   "n_entries": "{n} مدخل",
+  "download_zim": "تنزيل ملف ZIM هذا",
   "language_label": "اللغة: {lang}",
   "by_author": "بقلم {author}",
   "collection_placeholder": "اسم المجموعة (مثلاً: وثائق تطوير)",

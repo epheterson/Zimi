@@ -102,6 +102,7 @@
   "mini": "精简版",
   "no_images": "无图片",
   "n_entries": "{n} 个条目",
+  "download_zim": "下载此 ZIM",
   "language_label": "语言：{lang}",
   "by_author": "作者：{author}",
   "collection_placeholder": "合集名称（例如：开发文档）",
