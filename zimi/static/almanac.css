@@ -97,6 +97,7 @@
 .almanac-eclipse-type { font-weight: 500; color: var(--text); }
 .almanac-eclipse-date { color: var(--text2); font-size: 12px; }
 .almanac-eclipse-until { color: var(--amber); font-size: 12px; font-weight: 500; }
+.almanac-eclipse-peak { flex: 0 0 auto; margin-left: 10px; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; color: #000; background: var(--amber); }
 /* On This Day — year gutter + milestone text */
 .alm-otd-row { display: flex; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .alm-otd-row:last-child { border-bottom: none; }

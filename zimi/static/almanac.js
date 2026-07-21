@@ -2791,7 +2791,11 @@ function _renderMeteorShowers(now, moon) {
   var html = '';
   for (var i = 0; i < upcoming.length; i++) {
     var s = upcoming[i];
-    var untilStr = s.daysUntil < 0 ? t('alm_peak') : s.daysUntil === 0 ? t('alm_tonight') : s.daysUntil === 1 ? t('alm_tomorrow') : s.daysUntil + ' ' + t('alm_days');
+    // A shower at (or just past) its peak gets a highlighted chip; everything
+    // else is a plain amber countdown value.
+    var isPeaking = s.daysUntil < 0;
+    var untilStr = isPeaking ? t('alm_peak') : s.daysUntil === 0 ? t('alm_tonight') : s.daysUntil === 1 ? t('alm_tomorrow') : s.daysUntil + ' ' + t('alm_days');
+    var untilClass = 'almanac-eclipse-until' + (isPeaking ? ' almanac-eclipse-peak' : '');
     var rateDesc = s.zhr >= 100 ? t('alm_meteor_major') : s.zhr >= 25 ? t('alm_meteor_moderate') : t('alm_meteor_minor');
     var condColor = s.moonCondition === t('alm_moon_ideal') ? 'var(--accent)' : s.moonCondition === t('alm_moon_fair') ? 'var(--text2)' : 'var(--text3)';
     html += '<div class="almanac-eclipse-row">' +
@@ -2800,7 +2804,7 @@ function _renderMeteorShowers(now, moon) {
       '<br><span class="almanac-eclipse-date">~' + s.zhr + t('alm_per_hour') + ' &middot; ' + _tc(s.radiant) + ' &middot; ' + t('alm_speed_' + s.speed.toLowerCase()) +
       ' &middot; <span style="color:' + condColor + '">' + s.moonIcon + ' ' + s.moonCondition + '</span></span>' +
       '</div>' +
-      '<div class="almanac-eclipse-until">' + untilStr + '</div></div>';
+      '<div class="' + untilClass + '">' + untilStr + '</div></div>';
   }
   html += '<div style="margin-top:10px;font-size:11px;color:var(--text3)">' + t('alm_moon_conditions') + ': ' +
     '\u{1F311} ' + t('alm_moon_ideal_desc') + ' &middot; \u{1F313} ' + t('alm_moon_fair') + ' &middot; \u{1F315} ' + t('alm_moon_poor_desc') + '</div>';
