@@ -146,6 +146,9 @@ let snippetController = null;
 let collectionsCache = null; // {version, favorites, collections}
 let _expandedCollection = null; // which collection is expanded for ZIM picking
 let homeScope = null; // {type:'favorites'|'category'|'collection', label, zimNames:[]}
+// #34 library filter pills: null | 'added' | 'updated'. Transient view state —
+// deliberately NOT persisted, so a reload always lands on the full library.
+let homeRecentFilter = null;
 
 
 // ── Language filter ──
@@ -1124,6 +1127,10 @@ function renderHome(filter) {
     });
   }
 
+  // The recency pills only make sense on the full, unscoped, untyped library.
+  // Entering a scope or typing a filter drops back to "All" so state stays sane.
+  if (homeScope || filter) homeRecentFilter = null;
+
   const totalEntries = baseZims.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
   const totalGb = baseZims.reduce((s, z) => s + z.size_gb, 0);
 
@@ -1139,7 +1146,7 @@ function renderHome(filter) {
 
   // Check if Discover will be active (not hidden and not filtered/scoped)
   var discoverHidden = _getStorageFlag(SK.HIDE_DISCOVER);
-  var discoverWillShow = !homeScope && !filter && !discoverHidden;
+  var discoverWillShow = !homeScope && !filter && !homeRecentFilter && !discoverHidden;
 
   if (discoverWillShow) {
     // Discover on top — hide stats bar (will show at bottom)
@@ -1163,10 +1170,47 @@ function renderHome(filter) {
 
   const cats = Object.keys(groups).filter(c => c !== '_uncategorized').sort();
 
-  // No pills on home — sections provide the organization
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
+  // #34 library filter pills: All · Recently added · Recently updated. Reuses the
+  // manage-view .pill row. Each recency pill only appears when it has something to
+  // show, so we never present a filter that lands on an empty view.
+  var _recentAdded = sorted.filter(_zimRecentAdded).sort(_byFirstSeenDesc);
+  var _recentUpdated = sorted.filter(_zimRecentUpdated).sort(_byUpdatedDesc);
+  if (!homeScope && !filter && (_recentAdded.length || _recentUpdated.length)) {
+    var _pills = '<div class="pills-row">';
+    _pills += _recentPill(null, tH('filter_all'), homeRecentFilter === null);
+    if (_recentAdded.length) {
+      _pills += _recentPill('added', tH('filter_recently_added') +
+        ' <span class="pill-count">' + _recentAdded.length + '</span>', homeRecentFilter === 'added');
+    }
+    if (_recentUpdated.length) {
+      _pills += _recentPill('updated', tH('recently_updated') +
+        ' <span class="pill-count">' + _recentUpdated.length + '</span>', homeRecentFilter === 'updated');
+    }
+    _pills += '</div>';
+    pillsBar.className = 'pills';
+    pillsBar.innerHTML = _pills;
+    pillsBar.style.display = '';
+  } else {
+    // No pills otherwise (scoped/filtered/nothing recent) — sections organize home.
+    pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
+    homeRecentFilter = null; // guard: pill row gone, so no stale filter state
+  }
 
   let h = '';
+
+  // #34 recency-filter view: a flat, newest-first grid of just the matching
+  // ZIMs. No discover row or category sections — the pill IS the organization,
+  // and a cross-cutting "added this month" list doesn't group by category.
+  if (homeRecentFilter) {
+    var _list = homeRecentFilter === 'added' ? _recentAdded : _recentUpdated;
+    h += '<div class="cat-heading">' +
+      tH(homeRecentFilter === 'added' ? 'filter_recently_added' : 'recently_updated') + '</div>';
+    h += _list.length
+      ? renderCardGrid(_list, true, true)
+      : '<div class="empty"><p>' + tH('no_recent_sources') + '</p></div>';
+    output.innerHTML = h;
+    return;
+  }
 
   // Scope header with back link
   if (homeScope) {
@@ -1362,6 +1406,41 @@ function _zimBadge(z) {
   if ((Date.now() / 1000 - fresh) >= _ZIM_BADGE_BACKSTOP_DAYS * 86400) return null;
   if ((_getZimOpenedMap()[z.name] || 0) >= fresh) return null;
   return { label: (z.updated_at || 0) > (z.first_seen || 0) ? 'updated' : 'new' };
+}
+
+// ── #34 library filter pills: "Recently added" / "Recently updated" ──
+// A distinct window from _ZIM_BADGE_BACKSTOP_DAYS on purpose: the badge is a
+// short nudge that clears the moment you open a ZIM, whereas these pills are a
+// durable "what landed this month" lens for someone managing a large library.
+var _ZIM_RECENT_WINDOW_DAYS = 30;
+function _zimRecentAdded(z) {
+  var fs = z && z.first_seen;
+  if (!fs) return false;
+  return (Date.now() / 1000 - fs) < _ZIM_RECENT_WINDOW_DAYS * 86400;
+}
+function _zimRecentUpdated(z) {
+  // An update means the file changed after first install (updated_at > first_seen).
+  // A fresh install has updated_at unset (or == first_seen) and counts as "added",
+  // not "updated" — matching how _zimBadge distinguishes the two.
+  var ua = z && z.updated_at;
+  if (!ua || ua <= (z.first_seen || 0)) return false;
+  return (Date.now() / 1000 - ua) < _ZIM_RECENT_WINDOW_DAYS * 86400;
+}
+function _byFirstSeenDesc(a, b) { return (b.first_seen || 0) - (a.first_seen || 0); }
+function _byUpdatedDesc(a, b) { return (b.updated_at || 0) - (a.updated_at || 0); }
+
+// One recency pill. kind=null is the "All" reset; aria-pressed reflects state
+// so the row is usable from the keyboard (each pill is a real <button>).
+function _recentPill(kind, labelHtml, active) {
+  return '<button class="pill' + (active ? ' active' : '') + '"' +
+    ' aria-pressed="' + (active ? 'true' : 'false') + '"' +
+    ' onclick="filterHomeRecent(' + (kind ? "'" + kind + "'" : 'null') + ')">' + labelHtml + '</button>';
+}
+
+function filterHomeRecent(kind) {
+  // Toggle: clicking the active pill (or "All") returns to the full library.
+  homeRecentFilter = (homeRecentFilter === kind) ? null : kind;
+  renderHome();
 }
 
 function renderCardGrid(items, showStars, showCategory) {

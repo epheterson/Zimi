@@ -975,6 +975,9 @@
   "updated_badge": "已更新",
   "recently_updated": "最近更新",
   "recently_installed": "最近安装",
+  "filter_all": "全部",
+  "filter_recently_added": "最近添加",
+  "no_recent_sources": "没有最近添加或更新的来源。",
   "tts_speak": "朗读",
   "tts_stop": "停止朗读",
   "font_size": "字体大小"

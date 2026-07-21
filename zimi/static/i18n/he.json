@@ -975,6 +975,9 @@
   "updated_badge": "עודכן",
   "recently_updated": "עודכן לאחרונה",
   "recently_installed": "הותקן לאחרונה",
+  "filter_all": "הכול",
+  "filter_recently_added": "נוסף לאחרונה",
+  "no_recent_sources": "אין מקורות שנוספו או עודכנו לאחרונה.",
   "tts_speak": "הקראה",
   "tts_stop": "הפסקת ההקראה",
   "font_size": "גודל הגופן"

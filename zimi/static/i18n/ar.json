@@ -975,6 +975,9 @@
   "updated_badge": "محدّث",
   "recently_updated": "محدّث حديثاً",
   "recently_installed": "مثبت حديثاً",
+  "filter_all": "الكل",
+  "filter_recently_added": "أُضيف حديثاً",
+  "no_recent_sources": "لا توجد مصادر مضافة أو محدّثة حديثاً.",
   "tts_speak": "قراءة بصوت عالٍ",
   "tts_stop": "إيقاف القراءة",
   "font_size": "حجم الخط"

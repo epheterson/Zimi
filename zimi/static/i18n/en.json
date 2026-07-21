@@ -975,6 +975,9 @@
   "updated_badge": "Updated",
   "recently_updated": "Recently updated",
   "recently_installed": "Recently installed",
+  "filter_all": "All",
+  "filter_recently_added": "Recently added",
+  "no_recent_sources": "No recently added or updated sources.",
   "tts_speak": "Read aloud",
   "tts_stop": "Stop reading",
   "font_size": "Font size"

@@ -975,6 +975,9 @@
   "updated_badge": "Обновлено",
   "recently_updated": "Недавно обновлено",
   "recently_installed": "Недавно установлено",
+  "filter_all": "Все",
+  "filter_recently_added": "Недавно добавлено",
+  "no_recent_sources": "Нет недавно добавленных или обновлённых источников.",
   "tts_speak": "Читать вслух",
   "tts_stop": "Остановить чтение",
   "font_size": "Размер шрифта"
