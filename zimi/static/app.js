@@ -175,21 +175,21 @@ let homeRecentFilter = null;
 // Combines with homeRecentFilter (AND). Transient like it — reset alongside it,
 // never persisted. Multi-select toggle, matching the search-results lang pills.
 let homeLangFilter = new Set();
-// Most recent distinct search strings surfaced as one-tap chips on home.
-const _HOME_SEARCH_CHIPS_MAX = 6;
-// Home filter rows: (recent-search chips, recency pills, language pills)
-// stay hidden until the search field is focused, so the default home is clean.
-// A row that has a filter actively applied stays visible regardless (the user
-// needs its controls to un-filter). Both flags are transient — never persisted.
-let _homeFiltersRevealed = false;
-// True only while pillsBar currently holds the home filter rows (vs the
+// Home filter pills (recency + language) live in the search dropdown, where the
+// user picks a filter (see showHistoryDropdown). On home itself the pills row is
+// hidden by default (clean home) and only appears above the content while a
+// filter is actively applied, so its un-filter controls stay reachable.
+// True only while pillsBar currently holds the home filter pills (vs the
 // search-results source/language pills, which are always shown). Gates the
-// focus/blur visibility toggle so it never touches the search-results pills.
+// visibility toggle so it never touches the search-results pills. Transient.
 let _pillsAreHomeFilters = false;
+// Cached recency+language pills HTML, rebuilt each renderHome, so the search
+// dropdown can render the same pills at its top without recomputing.
+let _homeFilterRowsHtml = '';
 function _updateHomeFiltersVisibility() {
   if (!_pillsAreHomeFilters || !pillsBar.innerHTML) return;
   const filterActive = !!homeRecentFilter || homeLangFilter.size > 0;
-  pillsBar.style.display = (_homeFiltersRevealed || filterActive) ? '' : 'none';
+  pillsBar.style.display = filterActive ? '' : 'none';
 }
 
 
@@ -1343,50 +1343,43 @@ function renderHome(filter) {
 
   const cats = Object.keys(groups).filter(c => c !== '_uncategorized').sort();
 
-  // #34 library filter pills: recent-search chips · All · Recently added ·
-  // Recently updated · language pills. Reuses the manage-view .pill row. Each
-  // recency pill only appears when it has something to show, so we never present
-  // a filter that lands on an empty view. The three rows are independent — the
-  // bar shows if any of them has content.
+  // #34 library filter pills: All · Recently added · Recently updated · language
+  // pills. Reuses the manage-view .pill row. Each recency pill only appears when
+  // it has something to show, so we never present a filter that lands on an empty
+  // view. The pills are picked from the search dropdown (which renders the cached
+  // _homeFilterRowsHtml at its top); on home the row only shows above the content
+  // while a filter is active, so un-filtering stays reachable.
   var _recentAdded = sorted.filter(_zimRecentAdded).sort(_byFirstSeenDesc);
   var _recentUpdated = sorted.filter(_zimRecentUpdated).sort(_byUpdatedDesc);
-  var _searchChips = (!homeScope && !filter) ? _recentSearchChips() : [];
-  var _hasChips = _searchChips.length > 0;
   var _hasRecency = !homeScope && !filter && (_recentAdded.length || _recentUpdated.length);
-  if (_hasChips || _hasRecency || _showLangPills) {
-    var _rows = '';
-    if (_hasChips) {
-      _rows += '<div class="recent-chips" aria-label="' + escAttr(t('recent_searches')) + '">';
-      _rows += '<span class="recent-chips-label">' + tH('recent_searches') + '</span>';
-      _rows += _searchChips.map(_recentSearchChip).join('');
-      _rows += '</div>';
+  var _rows = '';
+  if (_hasRecency) {
+    _rows += '<div class="pills-row">';
+    _rows += _recentPill(null, tH('filter_all'), homeRecentFilter === null);
+    if (_recentAdded.length) {
+      _rows += _recentPill('added', tH('filter_recently_added') +
+        ' <span class="pill-count">' + _recentAdded.length + '</span>', homeRecentFilter === 'added');
     }
-    if (_hasRecency) {
-      _rows += '<div class="pills-row">';
-      _rows += _recentPill(null, tH('filter_all'), homeRecentFilter === null);
-      if (_recentAdded.length) {
-        _rows += _recentPill('added', tH('filter_recently_added') +
-          ' <span class="pill-count">' + _recentAdded.length + '</span>', homeRecentFilter === 'added');
-      }
-      if (_recentUpdated.length) {
-        _rows += _recentPill('updated', tH('recently_updated') +
-          ' <span class="pill-count">' + _recentUpdated.length + '</span>', homeRecentFilter === 'updated');
-      }
-      _rows += '</div>';
+    if (_recentUpdated.length) {
+      _rows += _recentPill('updated', tH('recently_updated') +
+        ' <span class="pill-count">' + _recentUpdated.length + '</span>', homeRecentFilter === 'updated');
     }
-    if (_showLangPills) {
-      _rows += '<div class="lang-pills" aria-label="' + escAttr(t('filter_by_language')) + '">';
-      _rows += _langCodes.map(function(code) {
-        return _homeLangPill(code, _langCounts[code], homeLangFilter.has(code));
-      }).join('');
-      _rows += '</div>';
-    }
+    _rows += '</div>';
+  }
+  if (_showLangPills) {
+    _rows += '<div class="lang-pills" aria-label="' + escAttr(t('filter_by_language')) + '">';
+    _rows += _langCodes.map(function(code) {
+      return _homeLangPill(code, _langCounts[code], homeLangFilter.has(code));
+    }).join('');
+    _rows += '</div>';
+  }
+  _homeFilterRowsHtml = _rows; // the search dropdown renders the same pills
+  if (_rows) {
     pillsBar.className = 'pills';
     pillsBar.innerHTML = _rows;
     _pillsAreHomeFilters = true;
-    // Hidden by default — revealed while the search field is focused, or
-    // whenever a filter is actively applied (so the un-filter controls stay
-    // reachable). _updateHomeFiltersVisibility encodes that rule.
+    // Hidden by default (clean home) — shown above the content only while a
+    // filter is actively applied. _updateHomeFiltersVisibility encodes that.
     _updateHomeFiltersVisibility();
   } else {
     // No pills otherwise (scoped/filtered/nothing recent) — sections organize home.
@@ -1655,6 +1648,7 @@ function _recentPill(kind, labelHtml, active) {
 }
 
 function filterHomeRecent(kind) {
+  hideSuggest(); // the pill may have been picked from the search dropdown
   // Toggle: clicking the active pill (or "All") returns to the full library.
   homeRecentFilter = (homeRecentFilter === kind) ? null : kind;
   renderHome();
@@ -1669,43 +1663,17 @@ function _homeLangPill(code, count, active) {
     ' aria-pressed="' + (active ? 'true' : 'false') + '"' +
     // escJs, not escAttr: an entity-escaped quote decodes back to a live quote
     // inside the onclick JS string — third-party ZIM language codes must not
-    // be able to break out (same trap the recent-search chips already avoid).
+    // be able to break out.
     ' onclick="filterHomeLang(\'' + escJs(code) + '\')">' +
     esc(name) + ' <span class="pill-count">' + count + '</span></button>';
 }
 
 function filterHomeLang(code) {
+  hideSuggest(); // the pill may have been picked from the search dropdown
   // Toggle membership; empty Set = all languages.
   if (homeLangFilter.has(code)) homeLangFilter.delete(code);
   else homeLangFilter.add(code);
   renderHome();
-}
-
-// Last _HOME_SEARCH_CHIPS_MAX distinct search strings from browse history,
-// newest first. Reads the same store the history dropdown / panel use, so
-// clearing history clears these chips too.
-function _recentSearchChips() {
-  var h = _histLoad();
-  var out = [];
-  var seen = new Set();
-  for (var i = 0; i < h.length && out.length < _HOME_SEARCH_CHIPS_MAX; i++) {
-    var e = h[i];
-    if (!e || e.type !== 'search') continue;
-    var query = (typeof e.query === 'string' ? e.query : '').trim();
-    if (!query) continue;
-    var key = query.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ query: query, zim: e.zim || '' });
-  }
-  return out;
-}
-
-function _recentSearchChip(chip) {
-  var icon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>';
-  return '<button class="recent-chip" aria-label="' + escAttr(t('search_for', {query: chip.query})) + '"' +
-    ' onclick="_runRecentSearch(\'' + escJs(chip.query) + '\',\'' + escJs(chip.zim) + '\')">' +
-    icon + '<span>' + esc(chip.query) + '</span></button>';
 }
 
 // Re-run a stored search — the same path the history dropdown uses.
@@ -2890,36 +2858,26 @@ async function renderSource(name) {
 // ── Search ──
 // ── History-in-dropdown: show recent history when search bar is focused ──
 var _searchFocusedByUser = false;
-// Clicking an ALREADY-focused box (desktop autofocus) fires no focus event,
-// so the reveal must also happen here or the home filter rows are unreachable.
+// Clicking an ALREADY-focused box (desktop autofocus) fires no focus event, so
+// open the dropdown here too or the filter pills would be unreachable.
 function _searchBoxPressed() {
   _searchFocusedByUser = true;
-  if (document.activeElement === q) { _homeFiltersRevealed = true; _updateHomeFiltersVisibility(); }
+  if (document.activeElement === q && !q.value.trim() && mode !== 'manage') showHistoryDropdown();
 }
 q.addEventListener('mousedown', _searchBoxPressed);
 q.addEventListener('touchstart', _searchBoxPressed);
 q.addEventListener('focus', function() {
+  // Open the dropdown (filter pills + recent history) on user-initiated focus
+  // only — not autofocus-on-load, which would spoil the clean default home.
   if (_searchFocusedByUser && !q.value.trim() && mode !== 'manage') showHistoryDropdown();
   // Only hide topbar icons on mobile when user tapped the search box (not autofocus on load)
   if (_searchFocusedByUser && _isNarrow()) {
     document.querySelector('.topbar').classList.add('search-focused');
   }
-  // Reveal the home filter rows while the field is active (user-initiated
-  // focus only — not autofocus-on-load, which would spoil the clean default).
-  if (_searchFocusedByUser) { _homeFiltersRevealed = true; _updateHomeFiltersVisibility(); }
   _searchFocusedByUser = false;
 });
 q.addEventListener('blur', function() {
   document.querySelector('.topbar').classList.remove('search-focused');
-  // Re-hide the home filter rows once focus leaves — unless a filter is
-  // actively applied. Deferred so a pill tap (which blurs the field first, then
-  // fires its click) still lands before the row can vanish; the click re-renders
-  // home with the filter applied, which keeps the row visible anyway.
-  setTimeout(function() {
-    if (document.activeElement === q) return; // refocused during the delay
-    _homeFiltersRevealed = false;
-    _updateHomeFiltersVisibility();
-  }, 200);
 });
 
 q.addEventListener('input', () => {
@@ -3506,8 +3464,13 @@ document.addEventListener('mousedown', (e) => {
 
 function showHistoryDropdown(filter) {
   var h = _histLoad();
-  if (!h.length) { if (!filter) return; }
   var fl = filter ? filter.toLowerCase() : '';
+  // Filter pills ride at the top of the dropdown in the focus state (not while
+  // typing) — this is where recency/language filters are picked. Home itself
+  // stays clean; picking a pill closes the dropdown and renders the filtered
+  // view (filterHomeRecent/filterHomeLang call hideSuggest + renderHome).
+  var pillsHtml = (!filter && _homeFilterRowsHtml && mode !== 'manage' && !homeScope)
+    ? '<div class="suggest-filters">' + _homeFilterRowsHtml + '</div>' : '';
   var items = [];
   var seen = new Set();
   for (var i = 0; i < h.length && items.length < 8; i++) {
@@ -3528,7 +3491,7 @@ function showHistoryDropdown(filter) {
     seen.add(key);
     items.push({ entry: entry, label: label, sub: sub, isSearch: entry.type === 'search', idx: i });
   }
-  if (!items.length) {
+  if (!items.length && !pillsHtml) {
     if (!filter) hideSuggest();
     return;
   }
@@ -3541,7 +3504,8 @@ function showHistoryDropdown(filter) {
   suggestIndex = -1;
   var icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
   var searchIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.5"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>';
-  suggestDropdown.innerHTML = (filter ? '' : '<div style="padding:6px 14px 2px;font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">Recent</div>') +
+  var recentHeader = (filter || !items.length) ? '' : '<div style="padding:6px 14px 2px;font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">Recent</div>';
+  suggestDropdown.innerHTML = pillsHtml + recentHeader +
     items.map(function(it, i) {
       return '<div class="suggest-item" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')" style="display:flex;align-items:center;gap:8px">' +
         (it.isSearch ? searchIcon : icon) +
@@ -4095,21 +4059,23 @@ function _catalogStaleNote() {
     tH('catalog_offline_note', {d: when}) + '</div>';
 }
 
-async function loadFullCatalog() {
-  // Always fetch full catalog (no server-side lang filter — Kiwix OPDS uses 3-letter
-  // ISO 639-3 codes but our UI uses 2-letter codes). Language filtering happens
-  // client-side via _zimMatchesLang in drillCategory/browseCatalogFilter.
-  if (_catalogCache) return _catalogCache;
+// Session-persisted catalog so a page reload / PWA relaunch paints the library
+// instantly instead of blocking on a fresh OPDS fetch. Bumped suffix = format
+// change (clears old copies). Revalidation runs once per page load.
+const CATALOG_SESSION_KEY = 'zimi_catalog_v1';
+let _catalogSessionRevalidated = false;
 
+// Fetch the full catalog from the server (all pages), auto-categorized but not
+// yet enriched. Returns { items, stale, fetchedAt }. Shared by the cold load
+// and the session-cache revalidation so the paging/categorize logic lives once.
+async function _fetchCatalogItems() {
+  // No server-side lang filter — Kiwix OPDS uses 3-letter ISO 639-3 codes but
+  // our UI uses 2-letter codes; language filtering happens client-side.
   const res = await manageFetch('/manage/catalog?lang=&count=500&start=0');
   const data = await res.json();
   if (data.error) throw new Error(data.error);
   const total = data.total || 0;
   let items = data.items || [];
-  // Offline: server returned its last-good catalog — note it quietly
-  _catalogStaleAt = data.stale ? (data.fetched_at || 0) : 0;
-
-  // Fetch remaining pages in parallel if needed
   if (total > 500) {
     const fetches = [];
     for (let start = 500; start < total; start += 500) {
@@ -4121,23 +4087,67 @@ async function loadFullCatalog() {
     const pages = await Promise.all(fetches);
     for (const page of pages) items.push(...page);
   }
+  for (const item of items) item.category = autoCategorize(item);
+  return { items: items, stale: !!data.stale, fetchedAt: data.stale ? (data.fetched_at || 0) : 0 };
+}
 
-  // Auto-categorize uncategorized items
-  for (const item of items) {
-    item.category = autoCategorize(item);
-  }
-
+// Enrich in place: installed flags, hierarchy, peer availability, name index.
+function _enrichCatalogItems(items) {
   _enrichCatalogInstalled(items);
   _enrichCatalogHierarchy(items);
   _enrichCatalogPeers(items);
   _catalogInstalledNames = new Set(items.filter(it => it.installed).map(it => it.name));
+}
 
+// Persist a catalog copy for instant paint on the next page load. Enrichment
+// (installed/peer state) is recomputed on hydrate against the live library, so
+// storing the fetched items is enough. Best-effort — quota/disabled is fine.
+function _saveCatalogSession(items) {
+  try { sessionStorage.setItem(CATALOG_SESSION_KEY, JSON.stringify(items)); }
+  catch (e) { /* cache is a nicety, not a requirement */ }
+}
+
+// Populate _catalogCache synchronously from sessionStorage if it's empty, so
+// the catalog views can skip their cold spinner and render instantly. Kicks a
+// single background revalidation to catch any change since the copy was saved.
+// Returns true when the in-memory cache is now populated.
+function _ensureCatalogHydrated() {
+  if (_catalogCache) return true;
+  let items;
+  try {
+    const raw = sessionStorage.getItem(CATALOG_SESSION_KEY);
+    if (!raw) return false;
+    items = JSON.parse(raw);
+  } catch (e) { return false; }
+  if (!Array.isArray(items) || !items.length) return false;
+  _enrichCatalogItems(items);
   _catalogCache = items;
-  // Server served a stale copy and is revalidating against Kiwix — poll once
-  // the refresh should have landed and quietly repaint if the data changed.
-  if (data.stale) _scheduleCatalogRevalidate();
-  // Kick off peer-list discovery in the background. When it lands,
-  // enrich + re-render whichever catalog view is current.
+  _kickPeerEnrichment();
+  _revalidateSessionCatalog();
+  return true;
+}
+
+// One background refresh after a session-cache hydrate: fetch fresh, rebuild,
+// and quietly repaint (at-top-only, via _rerenderCatalogIfSafe). Runs once.
+function _revalidateSessionCatalog() {
+  if (_catalogSessionRevalidated) return;
+  _catalogSessionRevalidated = true;
+  setTimeout(async function() {
+    try {
+      const fresh = await _fetchCatalogItems();
+      _catalogStaleAt = fresh.stale ? fresh.fetchedAt : 0;
+      _enrichCatalogItems(fresh.items);
+      _catalogCache = fresh.items;
+      if (!fresh.stale) _saveCatalogSession(fresh.items);
+      _rerenderCatalogIfSafe();
+      if (fresh.stale) _scheduleCatalogRevalidate();
+    } catch (e) { /* offline — keep the hydrated copy */ }
+  }, 0);
+}
+
+// Kick off peer-list discovery in the background. When it lands, enrich +
+// re-render whichever catalog view is current.
+function _kickPeerEnrichment() {
   _loadPeerData().then(loaded => {
     if (!loaded || !_catalogCache) return;
     _enrichCatalogPeers(_catalogCache);
@@ -4147,6 +4157,21 @@ async function loadFullCatalog() {
       else renderBrowseGallery();
     }
   }).catch(() => {});
+}
+
+async function loadFullCatalog() {
+  if (_catalogCache) return _catalogCache;
+
+  const { items, stale, fetchedAt } = await _fetchCatalogItems();
+  // Offline: server returned its last-good catalog — note it quietly
+  _catalogStaleAt = stale ? fetchedAt : 0;
+  _enrichCatalogItems(items);
+  _catalogCache = items;
+  if (!stale) _saveCatalogSession(items);
+  // Server served a stale copy and is revalidating against Kiwix — poll once
+  // the refresh should have landed and quietly repaint if the data changed.
+  if (stale) _scheduleCatalogRevalidate();
+  _kickPeerEnrichment();
   return _catalogCache;
 }
 
@@ -4603,13 +4628,14 @@ function renderBrowseGallery() {
   }
   const results = document.getElementById('catalog-results');
   if (!results) return;
+  _ensureCatalogHydrated(); // instant paint from the session cache when present
   _browseView = 'gallery';
   manageCategoryFilter = null;
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   q.placeholder = t('search_catalog');
 
   // Only show loading spinner if catalog hasn't been fetched yet
-  if (!_catalogCache) results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
+  if (!_catalogCache) results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_catalog') + '</div>';
 
   loadFullCatalog().then(items => {
     // Count unique ZIMs per category (group variants by name)
@@ -4729,6 +4755,7 @@ function drillCategory(catKey, namePrefix) {
   if (manageCategoryFilter !== catKey) _showHiddenCatalog = false;
   const results = document.getElementById('catalog-results');
   if (!results) return;
+  _ensureCatalogHydrated(); // instant paint from the session cache when present
   _browseView = 'drilldown';
   manageCategoryFilter = catKey;
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
@@ -4738,7 +4765,7 @@ function drillCategory(catKey, namePrefix) {
   q.placeholder = t('search_in', {source: catName});
   q.value = '';
 
-  if (!_catalogCache) results.innerHTML = _loadingHtml();
+  if (!_catalogCache) results.innerHTML = _loadingHtml('loading_catalog');
 
   loadFullCatalog().then(items => {
     // Filter to this category (+ unknown/merged cats go to "other")
@@ -4790,11 +4817,12 @@ function browseCatalogFilter(query) {
   if (!query) { renderBrowseGallery(); return; }
   const results = document.getElementById('catalog-results');
   if (!results) return;
+  _ensureCatalogHydrated(); // instant paint from the session cache when present
   _browseView = 'search';
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
 
   if (!_catalogCache) {
-    results.innerHTML = _loadingHtml();
+    results.innerHTML = _loadingHtml('loading_catalog');
   }
   loadFullCatalog().then(items => {
     const lq = query.toLowerCase();
@@ -8809,18 +8837,21 @@ function _toggleTopbarMenu(event) {
   // place and keep the menu open (event.stopPropagation blocks the outside-click
   // close); pop-out closes the menu like the other actions.
   if (readerOpen && !_almanacOpen) {
-    h += '<button class="topbar-menu-item" id="tbm-font" onclick="event.stopPropagation();_cycleReaderFont()">' +
-      '<span class="font-glyph" aria-hidden="true" style="font-weight:700">A</span> ' + tH('font_size') +
-      ' <span class="tbm-val">' + _readerFontLevel() + '%</span></button>';
+    // Reader-control group first: Read aloud, Font size, Open in browser.
     if (_TTS_AVAILABLE) {
       h += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
     }
+    h += '<button class="topbar-menu-item" id="tbm-font" onclick="event.stopPropagation();_cycleReaderFont()">' +
+      '<span class="font-glyph" aria-hidden="true" style="font-weight:700">A</span> ' + tH('font_size') +
+      ' <span class="tbm-val">' + _readerFontLevel() + '%</span></button>';
     if (!IS_DESKTOP) {
       h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();_openInBrowser()">' + _TBM_NEWTAB_ICON +
         ' ' + tH('open_in_browser') + '</button>';
     }
+    // Divider between the reader group and the app-navigation group below.
+    h += '<div class="topbar-menu-divider" role="separator"></div>';
   }
   h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
   if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';

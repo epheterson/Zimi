@@ -221,19 +221,13 @@
   .lang-pills { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; width: 100%; }
   .lang-pills::-webkit-scrollbar { display: none; }
 
-  /* ── Recent-search chips (home) ── one-tap actions, not filters: no amber
-     active state, transparent fill to read distinctly from the .pill filters. */
-  .recent-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
-  .recent-chips-label { font-size: 11px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 2px; }
-  .recent-chip {
-    display: inline-flex; align-items: center; gap: 5px; max-width: 220px;
-    padding: 5px 12px 5px 10px; font-size: 12px; font-weight: 500; white-space: nowrap;
-    background: transparent; border: 1px solid var(--border); border-radius: 20px;
-    color: var(--text2); cursor: pointer; transition: color 0.2s, background 0.2s, border-color 0.2s;
+  /* ── Filter pills inside the search dropdown ── the recency + language pills
+     ride at the top of the suggestions panel, above RECENT, separated by a rule.
+     Each row keeps its own horizontal scroll (.pills-row / .lang-pills). */
+  .suggest-filters {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 10px 12px; border-bottom: 1px solid var(--border);
   }
-  .recent-chip span { overflow: hidden; text-overflow: ellipsis; }
-  .recent-chip svg { opacity: 0.5; flex-shrink: 0; }
-  .recent-chip:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
 
   /* ── Language banner (view-in-lang / download) ── */
   .lang-banner {
@@ -269,6 +263,8 @@
   }
   .topbar-menu-item:hover { background: var(--surface2); }
   .topbar-menu-item svg { flex-shrink: 0; }
+  /* Thin rule separating the reader-control group from the app-navigation group. */
+  .topbar-menu-divider { height: 1px; margin: 4px 0; background: var(--border); }
   /* Language welcome card on home */
   .lang-welcome-card {
     display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-bottom: 16px;
@@ -565,14 +561,33 @@
   }
   .catalog-grid .catalog-item .ci-hier,
   .catalog-grid .catalog-item .ci-peer { margin-top: 2px; }
-  /* Batch checkbox pins to the card's top-right corner (out of the title
-     flow). Modest 15px control, but padded to a ~35px touch target. */
+  /* Batch checkbox: a custom appearance:none box drawn entirely in CSS so it
+     renders identically across engines. A native checkbox scales with its
+     width/height/padding on iOS Safari into a huge dark rounded square — the
+     bug this replaces. 40px transparent hit area (tap target) centring a 22px
+     visual box (::before), pinned to the card's top-right corner. The checked
+     black-on-amber check matches the .pill.active convention. */
   .catalog-grid .catalog-item .ci-select {
-    position: absolute; top: 4px; right: 4px; margin: 0;
-    width: 15px; height: 15px; padding: 10px; box-sizing: content-box;
-    cursor: pointer;
+    appearance: none; -webkit-appearance: none;
+    position: absolute; top: 0; right: 0; margin: 0; padding: 0;
+    width: 40px; height: 40px; box-sizing: border-box;
+    background: none; border: none; cursor: pointer;
+    display: grid; place-content: center;
   }
-  [dir="rtl"] .catalog-grid .catalog-item .ci-select { right: auto; left: 4px; }
+  .catalog-grid .catalog-item .ci-select::before {
+    content: ""; width: 22px; height: 22px; box-sizing: border-box;
+    border: 2px solid var(--border); border-radius: 6px; background: var(--surface);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .catalog-grid .catalog-item .ci-select:checked::before {
+    border-color: var(--amber);
+    background: var(--amber) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center/14px no-repeat;
+  }
+  .catalog-grid .catalog-item .ci-select:focus-visible { outline: none; }
+  .catalog-grid .catalog-item .ci-select:focus-visible::before {
+    border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow);
+  }
+  [dir="rtl"] .catalog-grid .catalog-item .ci-select { right: auto; left: 0; }
   [dir="rtl"] .catalog-grid .catalog-item .ci-title { padding-right: 0; padding-left: 22px; }
   .mc-row-clickable:hover, .mc-row-clickable:focus-visible { color: var(--amber); }
   .catalog-item {
@@ -936,11 +951,8 @@
     margin-top: 2px; opacity: 0.65; word-break: break-all;
   }
 
-  /* Multi-select checkbox + floating action bar */
-  .ci-select {
-    accent-color: var(--amber); flex-shrink: 0;
-    margin-right: 6px; align-self: center;
-  }
+  /* Floating multi-select action bar (the checkbox itself is fully styled in
+     the .catalog-grid rule above — appearance:none, so no accent-color here). */
   .ci-selection-bar {
     position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
     background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
@@ -1115,12 +1127,9 @@
     .topbar.search-focused .lang-dropdown { display: none !important; }
     /* v1.6: Language dropdown — full width on mobile */
     .lang-dropdown { min-width: 160px; }
-    /* Catalog multi-select checkbox — the 15px control rendered goofy-large
-       on touch. Pin a sane 24px visual with padding making a 44px tap target. */
-    .catalog-grid .catalog-item .ci-select {
-      width: 24px; height: 24px; padding: 10px; top: 0; right: 0;
-    }
-    [dir="rtl"] .catalog-grid .catalog-item .ci-select { right: auto; left: 0; }
+    /* Catalog checkbox is engine-independent now (custom CSS box, sized in the
+       base .catalog-grid rule) — no mobile size override needed. Just keep the
+       title clear of the corner box. */
     .catalog-grid .catalog-item .ci-title { padding-right: 30px; }
     [dir="rtl"] .catalog-grid .catalog-item .ci-title { padding-right: 0; padding-left: 30px; }
     /* Selection bar — a single-row pill centred above the tab bar, never
