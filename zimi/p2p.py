@@ -557,6 +557,389 @@ class BTBackend(ABC):
 
 
 # ============================================================================
+# libtorrent — the in-process engine (v1.7.5+)
+# ============================================================================
+
+_lt_module = None
+_lt_import_failed = False
+
+# .torrent metadata fetches: bounded so a hostile/misbehaving URL can't
+# balloon memory. Real Kiwix .torrent files are tens of KB.
+TORRENT_FETCH_TIMEOUT_S = 30
+TORRENT_FETCH_MAX_BYTES = 10 * 1024 * 1024
+
+
+def _lt():
+    """Import libtorrent lazily; None when unavailable (→ HTTP floor).
+
+    Not a hard dependency: the PyPI package has patchy wheel coverage
+    (nothing for 3.13+/some platforms). Docker installs it; pip installs
+    of zimi work without it and simply don't torrent.
+    """
+    global _lt_module, _lt_import_failed
+    if _lt_module is not None:
+        return _lt_module
+    if _lt_import_failed:
+        return None
+    try:
+        import libtorrent
+
+        _lt_module = libtorrent
+    except ImportError:
+        _lt_import_failed = True
+        log.info("libtorrent not importable — BT off, downloads use HTTP")
+        return None
+    return _lt_module
+
+
+class LibtorrentBackend(BTBackend):
+    """In-process libtorrent session. One engine, no sidecar.
+
+    Replaces the aria2 subprocess (v1.7.5) and with it the four
+    out-of-process compensation layers: RPC port-walking, process
+    liveness polling, the followedBy two-GID dance, and the
+    OPENSSL_MODULES env hack. Torrent ids are v1 info-hash hex.
+
+    list_managed() entries keep the historical key names library.py
+    parses (gid/status/files/uploadLength/totalLength) — that dict shape
+    is the contract, not an aria2-ism.
+    """
+
+    def __init__(self, *, bt_port: int, data_dir: str, staging_dir: str) -> None:
+        self.bt_port = bt_port
+        self.data_dir = data_dir
+        self.staging_dir = staging_dir
+        self.bt_dir = os.path.join(data_dir, "bt")
+        self.resume_dir = os.path.join(self.bt_dir, "resume")
+        self.session_state_path = os.path.join(self.bt_dir, "session-state")
+        self._ses = None
+        self._handles: dict[str, Any] = {}
+        self._lock = threading.Lock()
+        self._alert_stop = threading.Event()
+        self._alert_thread: threading.Thread | None = None
+
+    # ── availability / lifecycle ──────────────────────────────────────────
+
+    def available(self) -> bool:
+        if _lt() is None:
+            return False
+        try:
+            self._ensure_session()
+            return True
+        except Exception as e:
+            log.warning("libtorrent session failed to start: %s", e)
+            return False
+
+    def is_alive(self) -> bool:
+        return self._ses is not None
+
+    def ensure_running(self) -> None:
+        self._ensure_session()
+
+    def _ensure_session(self) -> None:
+        with self._lock:
+            if self._ses is not None:
+                return
+            lt = _lt()
+            if lt is None:
+                raise RuntimeError("libtorrent not importable")
+            os.makedirs(self.resume_dir, exist_ok=True)
+            os.makedirs(self.staging_dir, exist_ok=True)
+            settings = {
+                "listen_interfaces": f"0.0.0.0:{self.bt_port},[::]:{self.bt_port}",
+                "enable_dht": is_dht_enabled(),
+                "enable_upnp": is_upnp_enabled(),
+                "enable_natpmp": is_upnp_enabled(),
+                "upload_rate_limit": get_bt_up_limit_kb() * 1024,
+                "download_rate_limit": get_bt_down_limit_kb() * 1024,
+                "alert_mask": (
+                    lt.alert.category_t.status_notification
+                    | lt.alert.category_t.error_notification
+                    | lt.alert.category_t.storage_notification
+                ),
+            }
+            self._ses = lt.session(settings)
+            log.info("libtorrent session up (bt port %d)", self.bt_port)
+            self._load_resume_files(lt)
+            self._alert_stop.clear()
+            self._alert_thread = threading.Thread(
+                target=self._alert_loop, name="lt-alerts", daemon=True
+            )
+            self._alert_thread.start()
+
+    def stop(self) -> None:
+        with self._lock:
+            ses, self._ses = self._ses, None
+        if ses is None:
+            return
+        self._alert_stop.set()
+        if self._alert_thread is not None:
+            self._alert_thread.join(timeout=2)
+        # Ask every handle for resume data, then drain the alerts that
+        # carry it — this is what makes restarts not re-download.
+        pending = 0
+        for h in self._handles.values():
+            try:
+                if h.is_valid():
+                    h.save_resume_data()
+                    pending += 1
+            except Exception:
+                pass
+        deadline = time.monotonic() + 5.0
+        while pending > 0 and time.monotonic() < deadline:
+            for alert in ses.pop_alerts():
+                name = alert.what()
+                if name == "save_resume_data":
+                    self._write_resume_file(alert)
+                    pending -= 1
+                elif name == "save_resume_data_failed":
+                    pending -= 1
+            time.sleep(0.05)
+        self._handles.clear()
+
+    # ── resume persistence ────────────────────────────────────────────────
+
+    def _resume_path(self, tid: str) -> str:
+        return os.path.join(self.resume_dir, tid + ".fastresume")
+
+    def _write_resume_file(self, alert) -> None:
+        lt = _lt()
+        try:
+            tid = str(alert.params.info_hashes.v1)
+            buf = lt.write_resume_data_buf(alert.params)
+            tmp = self._resume_path(tid) + ".tmp"
+            with open(tmp, "wb") as f:
+                f.write(buf)
+            os.replace(tmp, self._resume_path(tid))
+        except Exception as e:
+            log.debug("resume-data write failed: %s", e)
+
+    def _load_resume_files(self, lt) -> None:
+        try:
+            names = os.listdir(self.resume_dir)
+        except OSError:
+            return
+        for name in names:
+            if not name.endswith(".fastresume"):
+                continue
+            path = os.path.join(self.resume_dir, name)
+            try:
+                with open(path, "rb") as f:
+                    atp = lt.read_resume_data(f.read())
+                h = self._ses.add_torrent(atp)
+                self._handles[str(atp.info_hashes.v1)] = h
+            except Exception as e:
+                log.warning("stale resume file %s dropped: %s", name, e)
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
+    # ── alert pump ────────────────────────────────────────────────────────
+
+    def _alert_loop(self) -> None:
+        while not self._alert_stop.wait(1.0):
+            try:
+                self._pump_alerts_once()
+            except Exception as e:
+                log.debug("alert pump error: %s", e)
+
+    def _pump_alerts_once(self) -> None:
+        ses = self._ses
+        if ses is None:
+            return
+        for alert in ses.pop_alerts():
+            if alert.what() == "save_resume_data":
+                self._write_resume_file(alert)
+
+    # ── BTBackend impl ────────────────────────────────────────────────────
+
+    def add_torrent(
+        self, source: str, *, dest_dir: str, options: dict | None = None
+    ) -> str:
+        lt = _lt()
+        self._ensure_session()
+        if source.startswith("magnet:"):
+            atp = lt.parse_magnet_uri(source)
+        elif source.startswith(("http://", "https://")):
+            atp = lt.load_torrent_buffer(self._fetch_torrent_bytes(source))
+        else:
+            atp = lt.load_torrent_file(source)
+        atp.save_path = dest_dir
+        # No auto_managed: Zimi is the manager (ledger enforces caps,
+        # policy passes stop seeds). Auto-management would resurrect
+        # paused torrents behind our back.
+        atp.flags &= ~lt.torrent_flags.auto_managed
+        tid = str(atp.info_hashes.v1)
+        with self._lock:
+            if tid in self._handles and self._handles[tid].is_valid():
+                return tid  # duplicate add — already managed
+            try:
+                h = self._ses.add_torrent(atp)
+            except Exception:
+                existing = self._ses.find_torrent(atp.info_hashes.v1)
+                if existing is not None and existing.is_valid():
+                    self._handles[tid] = existing
+                    return tid
+                raise
+            self._handles[tid] = h
+        return tid
+
+    def _fetch_torrent_bytes(self, url: str) -> bytes:
+        """Bounded .torrent metadata fetch. This collapses aria2's
+        two-phase metadata GID: by the time we add to the session we
+        already hold the full torrent, so 'complete' can only ever mean
+        the content is complete (the corrupt-ZIM class of bug is gone
+        by construction)."""
+        req = urllib.request.Request(url, headers={"User-Agent": "zimi"})
+        with urllib.request.urlopen(req, timeout=TORRENT_FETCH_TIMEOUT_S) as resp:
+            data = resp.read(TORRENT_FETCH_MAX_BYTES + 1)
+        if len(data) > TORRENT_FETCH_MAX_BYTES:
+            raise RuntimeError(f".torrent metadata too large from {url}")
+        return data
+
+    def pause(self, tid: str) -> None:
+        h = self._handles.get(tid)
+        if h is not None and h.is_valid():
+            h.pause()
+
+    def resume(self, tid: str) -> None:
+        h = self._handles.get(tid)
+        if h is not None and h.is_valid():
+            h.resume()
+
+    def remove(self, tid: str, *, delete_files: bool = False) -> None:
+        """delete_files only ever deletes payload under the staging dir.
+
+        aria2's remove cleared session bookkeeping and never touched
+        payload; libtorrent's delete_files flag REALLY deletes. Mapping
+        them naively would let stop_mirror_seeds() delete library ZIMs.
+        Staging partials are ours to clean; library files never."""
+        lt = _lt()
+        with self._lock:
+            h = self._handles.pop(tid, None)
+        if h is not None and h.is_valid() and self._ses is not None:
+            in_staging = False
+            try:
+                save_path = os.path.normpath(h.status().save_path)
+                staging = os.path.normpath(self.staging_dir)
+                in_staging = save_path == staging or save_path.startswith(
+                    staging + os.sep
+                )
+            except Exception:
+                pass
+            flags = lt.session.delete_files if (delete_files and in_staging) else 0
+            try:
+                self._ses.remove_torrent(h, flags)
+            except Exception as e:
+                log.debug("remove_torrent failed for %s: %s", tid, e)
+        try:
+            os.unlink(self._resume_path(tid))
+        except OSError:
+            pass
+
+    def status(self, tid: str) -> dict:
+        lt = _lt()
+        h = self._handles.get(tid)
+        if h is None or not h.is_valid():
+            return {
+                "state": "removed",
+                "gid": tid,
+                "completed_bytes": 0,
+                "total_bytes": 0,
+                "down_speed": 0,
+                "up_speed": 0,
+                "peers": 0,
+                "seeders": 0,
+                "ratio": 0.0,
+                "info_hash": tid,
+                "error_code": "",
+                "error_message": "",
+            }
+        s = h.status()
+        if s.errc.value() != 0:
+            state = "error"
+        elif bool(s.flags & lt.torrent_flags.paused):
+            state = "paused"
+        elif s.state in (lt.torrent_status.seeding, lt.torrent_status.finished):
+            # Content is done — caller installs the file; seeding
+            # continues on the live handle exactly like aria2's
+            # active+seeder remap did.
+            state = "complete"
+        else:
+            # checking_files / downloading_metadata / downloading /
+            # checking_resume_data all present as in-progress.
+            state = "downloading"
+        total = int(s.total_wanted)
+        return {
+            "state": state,
+            "gid": tid,
+            "completed_bytes": int(s.total_done),
+            "total_bytes": total,
+            "down_speed": int(s.download_payload_rate),
+            "up_speed": int(s.upload_payload_rate),
+            "peers": int(s.num_peers),
+            "seeders": int(s.num_seeds),
+            "ratio": float(s.all_time_upload) / max(total, 1),
+            "info_hash": tid,
+            "error_code": str(s.errc.value()) if s.errc.value() else "",
+            "error_message": s.errc.message() if s.errc.value() else "",
+        }
+
+    def list_managed(self) -> list[dict]:
+        lt = _lt()
+        out = []
+        for tid, h in list(self._handles.items()):
+            if not h.is_valid():
+                continue
+            try:
+                s = h.status()
+            except Exception:
+                continue
+            if s.errc.value() != 0:
+                status = "error"
+            elif bool(s.flags & lt.torrent_flags.paused):
+                status = "paused"
+            else:
+                status = "active"
+            ti = h.torrent_file()
+            files = []
+            total = int(s.total_wanted)
+            if ti is not None:
+                fs = ti.files()
+                files = [
+                    {"path": os.path.join(s.save_path, fs.file_path(i))}
+                    for i in range(fs.num_files())
+                ]
+                total = int(ti.total_size())
+            out.append(
+                {
+                    "gid": tid,
+                    "status": status,
+                    "files": files,
+                    "uploadLength": str(int(s.all_time_upload)),
+                    "totalLength": str(total),
+                    "infoHash": tid,
+                }
+            )
+        return out
+
+    def set_global_rate_limits(self, up_kb: int, down_kb: int) -> None:
+        self._ensure_session()
+        self._ses.apply_settings(
+            {
+                "upload_rate_limit": max(0, int(up_kb)) * 1024,
+                "download_rate_limit": max(0, int(down_kb)) * 1024,
+            }
+        )
+
+    def purge_stopped(self, keep_errors: bool = True) -> None:
+        """No-op: libtorrent has no stopped-results ledger to groom.
+        Finished downloads keep seeding on their live handle; policy
+        passes remove() them when a cap is hit."""
+
+
+# ============================================================================
 # aria2 sidecar — the bundled default
 # ============================================================================
 
