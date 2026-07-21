@@ -385,13 +385,6 @@ let _pwReject = null;
 // 429 responses surface as a typed error so callers keep their last-known
 // content and reschedule, instead of rendering the error JSON as an empty
 // state (the downloads panel used to blank itself this way, #30).
-// Escape for a JS string INSIDE an onclick attribute (attribute escaping
-// alone is the classic XSS-in-handler gap)
-function escJs(v) {
-  return String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"')
-    .replace(/</g, '\\x3c').replace(/>/g, '\\x3e').replace(/\u2028|\u2029|\n|\r/g, ' ');
-}
-
 function _throwIfRateLimited(res) {
   if (res.status === 429) {
     var err = new Error('rate_limited');
@@ -8401,6 +8394,10 @@ window.addEventListener('popstate', (e) => {
 function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 function escAttr(s) { return esc(s).replace(/'/g, '&#39;').replace(/"/g, '&quot;'); }
 // Escape for JS string literal inside HTML onclick attribute (survives HTML decode then JS parse)
+// Escape a value for a JS string literal INSIDE an onclick="..." attribute.
+// The result is parsed as HTML first, so quotes/&/< are emitted as HTML
+// entities (not backslash escapes) — that's what lets JSON.stringify(...)
+// arguments survive into the handler intact.
 function escJs(s) { return (s || '').replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/'/g, "\\'").replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
 
 // ── Desktop app integration (pywebview) ──
