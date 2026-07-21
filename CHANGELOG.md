@@ -88,6 +88,10 @@ engine is finally in-process — no more sidecar.
   now says exactly that instead of showing a password prompt, and library
   data readers degrade gracefully on unreadable data directories instead of
   erroring (#36).
+- Tailscale (and other CGNAT/overlay) clients are no longer treated as public,
+  so management no longer locks when reaching Zimi over the tailnet. The
+  100.64.0.0/10 range now counts as your private network by default; set
+  `ZIMI_TRUST_CGNAT=0` to opt out (#36).
 - The almanac's meteor-shower list no longer jams the peak marker onto the
   line ("🌕 Poor Peak!"). Peak night now gets its own localized badge, styled
   like the other meteor labels and translated across all ten locales (#23).

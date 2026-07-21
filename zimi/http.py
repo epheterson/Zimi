@@ -59,6 +59,48 @@ def _load_trusted_proxy_cidrs():
 
 _TRUSTED_PROXY_CIDRS = _load_trusted_proxy_cidrs()
 
+# Carrier-grade NAT / overlay-network shared address space (RFC 6598). Tailscale
+# hands every node a 100.64.0.0/10 address (and ZeroTier-style overlays live in
+# comparable private-by-convention ranges); the block is deliberately excluded
+# from the public routing table. Python's ipaddress.is_private is False for it,
+# so without this Zimi classifies Tailscale peers as PUBLIC and locks management
+# on them (#36 — the lock "came and went" as the reporter switched between LAN
+# and Tailscale).
+CGNAT_NET = ipaddress.ip_network("100.64.0.0/10")
+
+# Default on. An inbound TCP connection with a 100.64/10 source cannot complete a
+# handshake from the public internet — the return path to that range is
+# unroutable — so such a connection means genuine membership in a shared/overlay
+# network (Tailscale, ZeroTier), which is a private-tier peer. Residual risk: a
+# host whose OWN uplink sits inside a carrier's CGNAT could in theory see other
+# subscribers of that carrier in the same range; operators in that situation set
+# a management password (and ZIMI_TRUST_CGNAT=0) to opt out.
+_TRUST_CGNAT = os.environ.get("ZIMI_TRUST_CGNAT", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+    "",
+)
+
+
+def _is_trusted_net(ip):
+    """True when an ipaddress object is on a private-tier network: RFC1918/ULA
+    private, loopback, link-local, or (unless ZIMI_TRUST_CGNAT=0) the
+    100.64.0.0/10 CGNAT/overlay range Tailscale and similar mesh VPNs use.
+
+    This is the single source of truth for "trusted tier" so the direct-client
+    check, the proxy-hop check, and the forwarded-claim refusal stay symmetric:
+    any address this trusts as a direct peer is equally refused when merely
+    *claimed* in a forwarded header from a trusted hop.
+    """
+    if ip.is_private or ip.is_loopback or ip.is_link_local:
+        return True
+    if _TRUST_CGNAT and ip in CGNAT_NET:
+        return True
+    return False
+
+
 RATE_LIMIT = int(
     os.environ.get("ZIMI_RATE_LIMIT", "60")
 )  # API requests per minute per IP (0 = disabled)
@@ -471,11 +513,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         Cloudflare strips any client-supplied copy at its edge, so it can't be
         forged through the tunnel; (2) otherwise take X-Forwarded-For's leftmost;
         (3) trust either only from a trusted proxy hop — an explicit
-        ZIMI_TRUSTED_PROXIES CIDR allowlist if set, else any private/loopback/
-        link-local hop (the origin is never directly WAN-reachable, so a
-        forwarding hop is always private) — covering the bridge gateway on any
-        subnet without a hardcoded list; (4) reject a forwarded value that
-        itself claims a trusted-tier address (private/loopback/link-local), so a
+        ZIMI_TRUSTED_PROXIES CIDR allowlist if set, else any trusted-tier hop
+        (private/loopback/link-local + CGNAT/overlay per _is_trusted_net; the
+        origin is never directly WAN-reachable, so a forwarding hop is always
+        private) — covering the bridge gateway on any subnet without a hardcoded
+        list; (4) reject a forwarded value that itself claims a trusted-tier
+        address (private/loopback/link-local + CGNAT/overlay), so a
         permitted forwarder (or a LAN client) can't spoof one to borrow that
         trust; (5) with no usable forwarded header, fail closed to public when
         an explicit ZIMI_TRUSTED_PROXIES allowlist marks the hop as only-ever-a-
@@ -489,7 +532,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         if _TRUSTED_PROXY_CIDRS is not None:
             hop_trusted = any(dip in net for net in _TRUSTED_PROXY_CIDRS)
         else:
-            hop_trusted = dip.is_private or dip.is_loopback or dip.is_link_local
+            hop_trusted = _is_trusted_net(dip)
         if not hop_trusted:
             return direct_ip
         fwd = self.headers.get("CF-Connecting-IP")
@@ -500,11 +543,12 @@ class ZimHandler(BaseHTTPRequestHandler):
             try:
                 fip = ipaddress.ip_address(fwd)
                 # A real forwarded external client is public. Refuse a claim of
-                # ANY trusted-tier address (private/loopback/link-local — the
-                # same set _is_private_client trusts) so a spoofed header can't
-                # borrow that trust; a genuine internal client still falls back
-                # to the (private, trusted) direct hop below.
-                if not (fip.is_private or fip.is_loopback or fip.is_link_local):
+                # ANY trusted-tier address (private/loopback/link-local + CGNAT/
+                # overlay — the same set _is_private_client trusts via
+                # _is_trusted_net) so a spoofed header can't borrow that trust; a
+                # genuine internal client still falls back to the (private,
+                # trusted) direct hop below.
+                if not _is_trusted_net(fip):
                     return fwd
             except ValueError:
                 pass
@@ -1593,12 +1637,13 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def _is_private_client(self):
-        """True when _client_ip() is on a private/loopback/link-local network."""
+        """True when _client_ip() is on a private-tier network (private/
+        loopback/link-local, plus CGNAT/overlay per _is_trusted_net)."""
         try:
             ip = ipaddress.ip_address(self._client_ip())
         except ValueError:
             return False
-        return ip.is_private or ip.is_loopback or ip.is_link_local
+        return _is_trusted_net(ip)
 
     def _peer_share_allowed(self):
         """True if this client may pull whole ZIMs from /dl/.

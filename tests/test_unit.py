@@ -2217,6 +2217,59 @@ class TestClientIPResolution(unittest.TestCase):
             self._ip("172.17.0.1", {"CF-Connecting-IP": "192.168.5.5"}), "172.17.0.1"
         )
 
+    def test_cgnat_direct_client_is_private_tier(self):
+        # Tailscale/CGNAT (100.64.0.0/10) direct peer must classify private —
+        # the #36 fix. Python's is_private is False for this range, so without
+        # the CGNAT extension the client would be locked out as public.
+        self.assertTrue(self._private("100.100.1.1"))
+        self.assertEqual(self._ip("100.100.1.1"), "100.100.1.1")
+
+    def test_cgnat_forwarded_claim_is_rejected(self):
+        # Symmetry: a forwarded header claiming a 100.x address from a trusted
+        # hop must be REFUSED (same as a private/loopback claim), else a spoofed
+        # header could borrow the trusted tier. Falls back to the direct hop.
+        self.assertEqual(
+            self._ip("192.168.1.1", {"X-Forwarded-For": "100.100.1.1"}),
+            "192.168.1.1",
+        )
+        self.assertEqual(
+            self._ip("172.17.0.1", {"CF-Connecting-IP": "100.64.5.5"}),
+            "172.17.0.1",
+        )
+
+    def test_cgnat_hop_is_trusted_forwarder(self):
+        # A 100.x direct hop (Tailscale exit-node style) is trusted enough to
+        # forward a genuine public client.
+        self.assertEqual(
+            self._ip("100.64.0.1", {"CF-Connecting-IP": "8.8.8.8"}), "8.8.8.8"
+        )
+
+    def test_cgnat_opt_out_makes_it_public_again(self):
+        # ZIMI_TRUST_CGNAT=0 disables the extension: 100.x is public once more.
+        import zimi.http as zhttp
+
+        saved = zhttp._TRUST_CGNAT
+        try:
+            zhttp._TRUST_CGNAT = False
+            self.assertFalse(self._private("100.100.1.1"))
+            # And as a forwarded claim it's now honored (it's public).
+            self.assertEqual(
+                self._ip("192.168.1.1", {"X-Forwarded-For": "100.100.1.1"}),
+                "100.100.1.1",
+            )
+        finally:
+            zhttp._TRUST_CGNAT = saved
+
+    def test_tailscale_v6_ula_already_private(self):
+        # Tailscale's IPv6 range fd7a:115c:a1e0::/48 falls under fd00::/8, which
+        # Python's ipaddress already treats as private. Pin it so a stdlib
+        # change (or a regression) would surface here rather than silently
+        # locking out Tailscale-over-v6 clients.
+        import ipaddress as _ip
+
+        self.assertTrue(_ip.ip_address("fd7a:115c:a1e0::1").is_private)
+        self.assertTrue(self._private("fd7a:115c:a1e0::1"))
+
     def test_allowlist_missing_header_fails_closed(self):
         # With an explicit allowlist the hop is only ever a proxy, so a request
         # from it carrying no client IP can't be identified — fail closed to
