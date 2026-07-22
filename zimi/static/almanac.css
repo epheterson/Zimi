@@ -250,3 +250,12 @@
 .alm-daysel .alm-cards { margin-bottom: 0; }
 .alm-daysel-otd { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
 .alm-daysel-otd-ttl { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+
+/* Deep-links — almanac entities that open the matching library article.
+   Quiet by default (inherits its surrounding text); the amber dotted underline
+   only appears on hover/focus, so the almanac stays clutter-free. Fail-soft:
+   when nothing is installed to link to, these spans are never emitted. */
+.alm-link { cursor: pointer; text-decoration: none; border-radius: 3px; transition: color .12s ease; }
+.alm-link:hover { color: var(--amber); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+.alm-link:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; color: var(--amber); }
+.alm-crossref-label .alm-link:hover, .alm-crossref-active .alm-crossref-label .alm-link { color: var(--amber); }

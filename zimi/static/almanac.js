@@ -69,6 +69,15 @@ function _showerName(s) {
 var _CONST_KEYS = {'Pisces':'pisces','Aries':'aries','Taurus':'taurus','Gemini':'gemini','Cancer':'cancer','Leo':'leo','Virgo':'virgo','Libra':'libra','Scorpius':'scorpius','Sagittarius':'sagittarius','Capricornus':'capricornus','Aquarius':'aquarius','Bo\u00f6tes':'bootes','Lyra':'lyra','Perseus':'perseus','Draco':'draco','Orion':'orion','Ursa Minor':'ursa_minor'};
 function _tc(name) { var k = _CONST_KEYS[name]; return k ? _tLookup('alm_const_' + k, name) : name; }
 
+// Deep-link wrappers \u2014 turn a localized label into a tappable encyclopedia
+// link when the library has a matching ZIM (fail-soft: plain text otherwise).
+// Only call these at DOM (innerHTML) render sites, never inside canvas draws.
+function _alLink(key, html, label) {
+  return window.AlmanacLinks ? window.AlmanacLinks.wrap(key, html, label != null ? label : html) : html;
+}
+function _lp(name) { var s = _tp(name); return _alLink('planet:' + name.toLowerCase(), s, s); }
+function _lc(name) { var s = _tc(name); var k = _CONST_KEYS[name]; return k ? _alLink('const:' + k, s, s) : s; }
+
 function _dayOfYear(date) {
   var start = new Date(date.getFullYear(), 0, 1);
   return Math.floor((date - start) / MS_PER_DAY) + 1;
@@ -116,6 +125,8 @@ function _openAlmanacInner(replaceState) {
   else history.pushState({ mode: 'almanac' }, '', url);
   var el = document.getElementById('almanac-view');
   el.classList.add('open');
+  // Deep-links: fresh library check per open, and one delegated tap handler.
+  if (window.AlmanacLinks) { window.AlmanacLinks.reset(); window.AlmanacLinks.bind(el); }
   var mv = document.getElementById('main-view');
   if (mv) mv.classList.add('hidden');
   _setWindowTitle('Almanac');
@@ -1031,7 +1042,7 @@ function _computeEclipses(fromDate, count) {
       // totality read "Americas"). Real ground tracks need Besselian
       // elements — until then, show only what we can stand behind.
       var dateStr = eclDate.getFullYear() + '-' + String(eclDate.getMonth() + 1).padStart(2, '0') + '-' + String(eclDate.getDate()).padStart(2, '0');
-      results.push({ date: dateStr, type: type });
+      results.push({ date: dateStr, type: type, solar: isSolar });
     }
   }
   return results.slice(0, count);
@@ -1085,9 +1096,9 @@ function _renderAstroPanel(now) {
     { name: 'Scorpius', start: 241.1 }, { name: 'Sagittarius', start: 266.6 },
     { name: 'Capricornus', start: 300.0 }, { name: 'Aquarius', start: 327.9 }
   ];
-  var constellation = _tc(zodiac[zodiac.length - 1].name);
+  var constellation = _lc(zodiac[zodiac.length - 1].name);
   for (var zi = zodiac.length - 1; zi >= 0; zi--) {
-    if (sunLon >= zodiac[zi].start) { constellation = _tc(zodiac[zi].name); break; }
+    if (sunLon >= zodiac[zi].start) { constellation = _lc(zodiac[zi].name); break; }
   }
 
   // Compute eclipses algorithmically — works for any date, forever
@@ -1112,7 +1123,7 @@ function _renderAstroPanel(now) {
       var daysUntil = Math.ceil((ecDate - now) / MS_PER_DAY);
       var untilStr = daysUntil <= 0 ? t('alm_today') : daysUntil === 1 ? t('alm_tomorrow') : t('alm_n_days', { n: daysUntil });
       html += '<div class="almanac-eclipse-row">' +
-        '<div><span class="almanac-eclipse-type">' + ec.type + '</span><br><span class="almanac-eclipse-date">' +
+        '<div><span class="almanac-eclipse-type">' + _alLink(ec.solar ? 'eclipse:total_solar' : 'eclipse:total_lunar', ec.type) + '</span><br><span class="almanac-eclipse-date">' +
         ecDate.toLocaleDateString((typeof _currentLang !== 'undefined') ? _currentLang : undefined, { month: 'long', day: 'numeric', year: 'numeric' }) + '</span></div>' +
         '<div class="almanac-eclipse-until">' + untilStr + '</div></div>';
     }
@@ -2730,13 +2741,13 @@ function _renderTonightSky(now) {
       var brightness = p.magnitude < -3 ? t('alm_brightness_brilliant') : p.magnitude < -1 ? t('alm_brightness_very_bright') : p.magnitude < 1 ? t('alm_brightness_bright') : p.magnitude < 3 ? t('alm_brightness_visible') : t('alm_brightness_faint');
       html += '<div class="almanac-eclipse-row">' +
         '<div>' +
-        '<span class="almanac-eclipse-type" style="color:' + p.color + '">' + _tp(p.name) + '</span>' +
+        '<span class="almanac-eclipse-type" style="color:' + p.color + '">' + _lp(p.name) + '</span>' +
         '<br><span class="almanac-eclipse-date">' + brightness + ' &middot; mag ' + magStr + ' &middot; ' + p.elongation.toFixed(0) + '\u00b0 ' + t('alm_from_sun') + '</span>' +
         '</div>' +
         '<div class="almanac-eclipse-until" style="font-size:11px">' + p.sky + '<br>' + p.direction + '</div></div>';
     }
     if (notVisible.length > 0) {
-      var names = notVisible.map(function(p) { return _tp(p.name); });
+      var names = notVisible.map(function(p) { return _lp(p.name); });
       html += '<div style="margin-top:8px;font-size:11px;color:var(--text3);text-align:center">' + names.join(', ') + ' \u2014 ' + t('alm_not_visible_tonight') + '</div>';
     }
   }
@@ -2800,8 +2811,8 @@ function _renderMeteorShowers(now, moon) {
     var condColor = s.moonCondition === t('alm_moon_ideal') ? 'var(--accent)' : s.moonCondition === t('alm_moon_fair') ? 'var(--text2)' : 'var(--text3)';
     html += '<div class="almanac-eclipse-row">' +
       '<div>' +
-      '<span class="almanac-eclipse-type">' + t('alm_shower_' + s.key) + '</span>' +
-      '<br><span class="almanac-eclipse-date">~' + s.zhr + t('alm_per_hour') + ' &middot; ' + _tc(s.radiant) + ' &middot; ' + t('alm_speed_' + s.speed.toLowerCase()) +
+      '<span class="almanac-eclipse-type">' + _alLink('shower:' + s.key, t('alm_shower_' + s.key)) + '</span>' +
+      '<br><span class="almanac-eclipse-date">~' + s.zhr + t('alm_per_hour') + ' &middot; ' + _lc(s.radiant) + ' &middot; ' + t('alm_speed_' + s.speed.toLowerCase()) +
       ' &middot; <span style="color:' + condColor + '">' + s.moonIcon + ' ' + s.moonCondition + '</span></span>' +
       '</div>' +
       '<div class="' + untilClass + '">' + untilStr + '</div></div>';
@@ -2921,13 +2932,13 @@ function _renderCelestialEvents(now) {
       var untilStr = ev.daysUntil <= 1 ? t('alm_now_exclaim') : ev.daysUntil + ' ' + t('alm_days');
       var title, detail;
       if (ev.type === 'conjunction') {
-        title = _tp(ev.planets[0]) + ' \u2013 ' + _tp(ev.planets[1]) + ' ' + t('alm_conjunction');
+        title = _lp(ev.planets[0]) + ' \u2013 ' + _lp(ev.planets[1]) + ' ' + t('alm_conjunction');
         detail = ev.separation.toFixed(1) + '\u00b0 ' + t('alm_apart') + ' &middot; ' + dateStr;
       } else if (ev.type === 'opposition') {
-        title = _tp(ev.planet) + ' ' + t('alm_at_opposition');
+        title = _lp(ev.planet) + ' ' + t('alm_at_opposition');
         detail = t('alm_closest_brightest') + ' &middot; ' + dateStr;
       } else if (ev.type === 'elongation') {
-        title = _tp(ev.planet) + ' ' + t('alm_greatest_elongation');
+        title = _lp(ev.planet) + ' ' + t('alm_greatest_elongation');
         var skyLabel = ev.sky === 'evening' ? t('alm_evening') : t('alm_morning');
         detail = ev.elongation.toFixed(1) + '\u00b0 &middot; ' + skyLabel + ' ' + t('alm_sky') + ' &middot; ' + dateStr;
       }
@@ -3596,7 +3607,11 @@ function _drawAlmanacGrid() {
       html += '<div class="alm-day-detail">';
       for (var ei = 0; ei < selEvents.length; ei++) {
         var ev = selEvents[ei];
-        var detailLabel = _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        var rawLabel = _th(ev.label);
+        var escName = rawLabel.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        // Holidays deep-link into the library (fail-soft); other event types stay plain text.
+        var detailLabel = (ev.type === 'holiday' && window.AlmanacLinks)
+          ? window.AlmanacLinks.wrapHoliday(escName, rawLabel) : escName;
         if (ev.src) detailLabel += ' <span style="color:var(--text3)">\u00b7 ' + ev.src.replace(/</g,'&lt;') + '</span>';
         html += '<div class="alm-ev alm-ev-' + ev.type + (ev.src ? ' alm-ev-country' : '') + '" style="font-size:12px;padding:2px 0">' +
           (ev.icon ? ev.icon + ' ' : '') + detailLabel + '</div>';
@@ -3665,12 +3680,12 @@ function _almRenderCrossRef(jdn) {
       // the Gregorian year of that year's New Year \u2014 so the animal doesn't flip
       // on Jan 1 in the weeks before Chinese New Year.
       var chinese = _chineseZodiac(cal.year - 2697);
-      dateStr = monthName + ' ' + cal.day + ' \u00b7 ' + chinese.animal + ' \u00b7 ' + yearStr;
+      dateStr = monthName + ' ' + cal.day + ' \u00b7 ' + _alLink('zodiac:' + chinese.animalKey, chinese.animal) + ' \u00b7 ' + yearStr;
     }
     var isActive = sys === _almSystem ? ' alm-crossref-active' : '';
     html += '<div class="alm-crossref-row' + isActive + '"' +
       ' onclick="_almSwitchSystem(\'' + sys + '\')">' +
-      '<span class="alm-crossref-label">' + _calLabel(sys) + '</span>' +
+      '<span class="alm-crossref-label">' + _alLink('cal:' + sys, _calLabel(sys)) + '</span>' +
       '<span class="alm-crossref-date">' + dateStr + '</span>' +
       '</div>';
   }
@@ -3792,6 +3807,7 @@ function _chineseZodiac(year) {
   var branches = ['\u5b50','\u4e11','\u5bc5','\u536f','\u8fb0','\u5df3','\u5348','\u672a','\u7533','\u9149','\u620c','\u4ea5'];
   var animals = [t('alm_zodiac_rat'),t('alm_zodiac_ox'),t('alm_zodiac_tiger'),t('alm_zodiac_rabbit'),t('alm_zodiac_dragon'),t('alm_zodiac_snake'),t('alm_zodiac_horse'),t('alm_zodiac_goat'),t('alm_zodiac_monkey'),t('alm_zodiac_rooster'),t('alm_zodiac_dog'),t('alm_zodiac_pig')];
   var elements = [t('alm_element_wood'),t('alm_element_wood'),t('alm_element_fire'),t('alm_element_fire'),t('alm_element_earth'),t('alm_element_earth'),t('alm_element_metal'),t('alm_element_metal'),t('alm_element_water'),t('alm_element_water')];
+  var animalKeys = ['rat','ox','tiger','rabbit','dragon','snake','horse','goat','monkey','rooster','dog','pig'];
   var offset = year - 4; // 4 CE was a Jia-Zi year
   var stemIdx = ((offset % 10) + 10) % 10;
   var branchIdx = ((offset % 12) + 12) % 12;
@@ -3800,7 +3816,7 @@ function _chineseZodiac(year) {
   var chineseYear = year + 2697; // Huang Di epoch (approximate)
   return {
     stem: stems[stemIdx], branch: branches[branchIdx],
-    animal: animals[branchIdx], element: elements[stemIdx],
+    animal: animals[branchIdx], animalKey: animalKeys[branchIdx], element: elements[stemIdx],
     cycle: stems[stemIdx] + branches[branchIdx],
     cycleYear: cycleYear, year: chineseYear
   };

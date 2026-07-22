@@ -2109,9 +2109,10 @@ function openAlmanac(replaceState) {
     // share a global scope, so load them in sequence and only open once the
     // last one lands — opening early would call into functions not yet defined.
     var almanacModules = [
-      '/static/almanac-orrery.js?v=41',
-      '/static/almanac-sky.js?v=41',
-      '/static/almanac.js?v=41'
+      '/static/almanac-links.js?v=43',
+      '/static/almanac-orrery.js?v=43',
+      '/static/almanac-sky.js?v=43',
+      '/static/almanac.js?v=43'
     ];
     var loadNext = function(i) {
       if (i >= almanacModules.length) {
