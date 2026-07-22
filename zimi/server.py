@@ -405,7 +405,7 @@ def _atomic_write_json(path, data, indent=None):
         log.warning("Atomic write failed for %s: %s", path, e)
         return
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(
                 data,
                 f,
@@ -541,7 +541,7 @@ def _history_file_path():
 def _load_history():
     """Load event history from disk. Returns list of event dicts, newest first."""
     try:
-        with open(_history_file_path()) as f:
+        with open(_history_file_path(), encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, list):
             return data
@@ -577,7 +577,7 @@ def _collections_file_path():
 def _load_collections():
     """Load collections from disk. Returns default structure if missing."""
     try:
-        with open(_collections_file_path()) as f:
+        with open(_collections_file_path(), encoding="utf-8") as f:
             data = json.load(f)
         if data.get("version") != 1:
             return {"version": 1, "favorites": [], "collections": {}}
@@ -629,7 +629,7 @@ def _load_library_layout():
     """
     empty = {"overrides": {}, "section_order": []}
     try:
-        with open(_library_layout_file_path()) as f:
+        with open(_library_layout_file_path(), encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict):
             return empty
@@ -935,7 +935,7 @@ def _cache_file_path():
 def _load_disk_cache():
     """Load persistent metadata cache from disk. Returns {filename: metadata} or None."""
     try:
-        with open(_cache_file_path()) as f:
+        with open(_cache_file_path(), encoding="utf-8") as f:
             data = json.load(f)
         if data.get("version") != _CACHE_VERSION:
             return None
@@ -1475,7 +1475,7 @@ def get_hot_zims():
     path = _hot_zims_file()
     if os.path.exists(path):
         try:
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             if isinstance(data, list):
                 return [s for s in data if isinstance(s, str) and s]

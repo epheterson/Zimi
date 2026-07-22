@@ -150,7 +150,7 @@ def _load_auto_update_config():
         freq = os.environ.get("ZIMI_UPDATE_FREQ", "weekly")
         return enabled, freq
     try:
-        with open(config_path) as f:
+        with open(config_path, encoding="utf-8") as f:
             cfg = json.loads(f.read())
             return cfg.get("enabled", False), cfg.get("frequency", "weekly")
     except (OSError, json.JSONDecodeError, KeyError):
@@ -511,7 +511,7 @@ def _record_torrent_metadata(filename, *, info_hash, torrent_url, staging_dir):
     manifest_path = _torrents_manifest_path()
     os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
     try:
-        with open(manifest_path) as f:
+        with open(manifest_path, encoding="utf-8") as f:
             manifest = json.load(f)
     except (OSError, ValueError):
         manifest = {}
@@ -544,7 +544,7 @@ def _record_torrent_metadata(filename, *, info_hash, torrent_url, staging_dir):
 def _get_torrent_metadata():
     """The saved filename -> {info_hash, magnet, torrent_url, ...} map."""
     try:
-        with open(_torrents_manifest_path()) as f:
+        with open(_torrents_manifest_path(), encoding="utf-8") as f:
             return json.load(f)
     except (OSError, ValueError):
         return {}
@@ -577,7 +577,7 @@ def _seed_ledger_path():
 
 def _seed_ledger():
     try:
-        with open(_seed_ledger_path()) as f:
+        with open(_seed_ledger_path(), encoding="utf-8") as f:
             data = json.load(f)
             return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
@@ -710,7 +710,7 @@ def resume_pending_downloads():
     """
     path = _pending_downloads_path()
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             items = json.load(f).get("pending", [])
     except (OSError, ValueError):
         return 0
@@ -776,7 +776,7 @@ def resume_pending_downloads():
         _persist_pending_downloads()
         if kept:
             try:
-                with open(path) as f:
+                with open(path, encoding="utf-8") as f:
                     current = json.load(f).get("pending", [])
             except (OSError, ValueError):
                 current = []
@@ -866,7 +866,7 @@ def _load_opds_disk_cache():
         return
     _opds_disk_loaded = True
     try:
-        with open(_catalog_cache_path()) as f:
+        with open(_catalog_cache_path(), encoding="utf-8") as f:
             data = json.load(f)
         with _opds_lock:
             for key, (ts, total, items) in data.items():
@@ -918,7 +918,7 @@ def _fetch_thumb(url):
     meta_path = cache_path + ".meta"
     # Serve from disk cache if exists
     if os.path.exists(cache_path) and os.path.exists(meta_path):
-        with open(meta_path) as f:
+        with open(meta_path, encoding="utf-8") as f:
             ct = f.read().strip() or "image/png"
         with open(cache_path, "rb") as f:
             return f.read(), ct
@@ -936,7 +936,7 @@ def _fetch_thumb(url):
         # Write to disk cache
         with open(cache_path, "wb") as f:
             f.write(data)
-        with open(meta_path, "w") as f:
+        with open(meta_path, "w", encoding="utf-8") as f:
             f.write(ct)
         return data, ct
     except Exception as e:

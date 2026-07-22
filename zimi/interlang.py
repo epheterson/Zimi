@@ -512,7 +512,7 @@ def _persist_qid_flags(qid_flags):
     the 'name' field, then saves atomically.
     """
     try:
-        with open(_srv._cache_file_path()) as f:
+        with open(_srv._cache_file_path(), encoding="utf-8") as f:
             data = json.load(f)
         files = data.get("files", {})
         for _filename, meta in files.items():

@@ -103,7 +103,7 @@ def _read_pref(key: str, default):
     if not _prefs_path:
         return default
     try:
-        with open(_prefs_path) as f:
+        with open(_prefs_path, encoding="utf-8") as f:
             return json.load(f).get(key, default)
     except (OSError, ValueError):
         return default
@@ -117,7 +117,7 @@ def set_pref(key: str, value) -> bool:
     with _prefs_lock:
         prefs = {}
         try:
-            with open(_prefs_path) as f:
+            with open(_prefs_path, encoding="utf-8") as f:
                 prefs = json.load(f)
         except (OSError, ValueError):
             pass
@@ -125,7 +125,7 @@ def set_pref(key: str, value) -> bool:
         try:
             os.makedirs(os.path.dirname(_prefs_path), exist_ok=True)
             tmp = _prefs_path + ".tmp"
-            with open(tmp, "w") as f:
+            with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(prefs, f)
             os.replace(tmp, _prefs_path)
         except OSError as e:

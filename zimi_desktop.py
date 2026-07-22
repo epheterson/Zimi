@@ -83,7 +83,7 @@ class ConfigManager:
     def _load(self):
         if os.path.exists(self.path):
             try:
-                with open(self.path, "r") as f:
+                with open(self.path, "r", encoding="utf-8") as f:
                     stored = json.load(f)
                 self._data.update(stored)
             except (json.JSONDecodeError, OSError):
@@ -91,7 +91,7 @@ class ConfigManager:
 
     def save(self):
         os.makedirs(self.dir, exist_ok=True)
-        with open(self.path, "w") as f:
+        with open(self.path, "w", encoding="utf-8") as f:
             json.dump(self._data, f, indent=2)
 
     def get(self, key):

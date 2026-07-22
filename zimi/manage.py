@@ -68,7 +68,7 @@ def _get_manage_password_hash():
         return _env_pw_hash_cache
     # Fall back to password file (set via UI)
     try:
-        with open(_password_file()) as f:
+        with open(_password_file(), encoding="utf-8") as f:
             stored = f.read().strip()
         # Empty or too-short to be a valid hash — treat as no password
         if not stored or len(stored) < 10:
@@ -82,7 +82,7 @@ def _set_manage_password(pw):
     """Save hashed password to file, or clear it. Uses atomic write."""
     pf = _password_file()
     tmp = pf + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         f.write(_hash_pw(pw) if pw else "")
     os.replace(tmp, pf)
     log.info("Manage password %s", "set" if pw else "cleared")
@@ -99,7 +99,7 @@ def _get_api_token():
     if env_token:
         return env_token
     try:
-        with open(_api_token_file()) as f:
+        with open(_api_token_file(), encoding="utf-8") as f:
             return f.read().strip()
     except (FileNotFoundError, OSError):
         return ""
@@ -112,7 +112,7 @@ def _generate_api_token():
     token = secrets.token_urlsafe(32)
     tf = _api_token_file()
     tmp = tf + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         f.write(token)
     os.replace(tmp, tf)
     log.info("API token generated")

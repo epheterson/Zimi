@@ -377,7 +377,7 @@ COMPRESSIBLE_TYPES = {
 
 _TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 try:
-    with open(os.path.join(_TEMPLATE_DIR, "index.html")) as f:
+    with open(os.path.join(_TEMPLATE_DIR, "index.html"), encoding="utf-8") as f:
         SEARCH_UI_HTML = f.read()
 except FileNotFoundError:
     SEARCH_UI_HTML = "<html><body><h1>Zimi</h1><p>UI template not found. API endpoints are still available.</p></body></html>"
@@ -406,7 +406,7 @@ if os.path.isdir(_STATIC_DIR):
     _app_js_path = os.path.join(_STATIC_DIR, "app.js")
     APP_JS_REWRITTEN = None
     if os.path.exists(_app_js_path):
-        with open(_app_js_path, "r") as _f:
+        with open(_app_js_path, "r", encoding="utf-8") as _f:
             _app_js_src = _f.read()
         _rewritten = re.sub(
             r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, _app_js_src

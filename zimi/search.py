@@ -201,7 +201,7 @@ def _suggest_cache_restore():
     try:
         if not os.path.exists(_SUGGEST_CACHE_PATH):
             return 0
-        with open(_SUGGEST_CACHE_PATH) as f:
+        with open(_SUGGEST_CACHE_PATH, encoding="utf-8") as f:
             data = json.load(f)
         now = time.time()
         loaded = 0
