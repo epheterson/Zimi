@@ -461,6 +461,13 @@ MIME_FALLBACK = {
     ".flac": "audio/flac",
     ".vtt": "text/vtt",
     ".srt": "text/plain",
+    # Map tiles / geodata. OSM map ZIMs (Leaflet / MapLibre) store vector
+    # tiles as .pbf|.mvt; a loader that inspects Content-Type needs protobuf,
+    # not octet-stream. Raster (.png) tiles already covered above.
+    ".pbf": "application/x-protobuf",
+    ".mvt": "application/x-protobuf",
+    ".geojson": "application/geo+json",
+    ".topojson": "application/json",
 }
 
 
