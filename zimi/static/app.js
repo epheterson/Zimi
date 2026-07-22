@@ -2774,8 +2774,97 @@ function _moveZimTo(zim, category) {
   let _ctxCard = null;
   let _ctxX = 0, _ctxY = 0;
   let _ctxCompact = false;  // gear trigger shows just the layout actions
+  let _kbSub = null;        // the submenu trigger currently opened by keyboard
 
-  function closeCtx() { menu.classList.remove('visible'); _ctxZim = null; _ctxCard = null; }
+  function closeCtx() { menu.classList.remove('visible'); _ctxZim = null; _ctxCard = null; _kbSub = null; }
+
+  // ── Keyboard navigation (ARIA menu pattern) ──
+  // The menu + its Move to…/Collections submenus are reachable by keyboard:
+  // Up/Down cycle, Home/End jump, Enter/Space activate (or open a submenu),
+  // Right/Enter open a submenu, Left/Escape back out, Escape closes. Shared by
+  // the card right-click menu and the ⋯ gear menu (same #zim-ctx-menu element).
+  function _ctxItems(container) {
+    return Array.prototype.slice.call(container.querySelectorAll(':scope > .ctx-item'));
+  }
+  function _ctxSubOf(item) { return item ? item.querySelector(':scope > .ctx-sub') : null; }
+  // The items the arrow keys currently move through: an open submenu's items,
+  // else the top-level items.
+  function _ctxCurrentList() {
+    if (_kbSub) { var sub = _ctxSubOf(_kbSub); if (sub) return _ctxItems(sub); }
+    return _ctxItems(menu);
+  }
+  function _ctxFocus(item) { if (item) item.focus({ preventScroll: true }); }
+  function _ctxOpenSub(trigger) {
+    var sub = _ctxSubOf(trigger);
+    if (!sub) return false;
+    trigger.classList.add('kb-open');
+    trigger.setAttribute('aria-expanded', 'true');
+    _kbSub = trigger;
+    var items = _ctxItems(sub);
+    if (items.length) _ctxFocus(items[0]);
+    return true;
+  }
+  function _ctxCloseSub() {
+    if (!_kbSub) return;
+    var trigger = _kbSub;
+    trigger.classList.remove('kb-open');
+    trigger.setAttribute('aria-expanded', 'false');
+    _kbSub = null;
+    _ctxFocus(trigger);
+  }
+  // Stamp roles/tabindex and focus the first item — run on every open.
+  function _prepMenuA11y() {
+    menu.setAttribute('role', 'menu');
+    _kbSub = null;
+    _ctxItems(menu).forEach(function(it) {
+      it.setAttribute('role', 'menuitem');
+      it.setAttribute('tabindex', '-1');
+      var sub = _ctxSubOf(it);
+      if (sub) {
+        it.setAttribute('aria-haspopup', 'true');
+        it.setAttribute('aria-expanded', 'false');
+        _ctxItems(sub).forEach(function(si) { si.setAttribute('role', 'menuitem'); si.setAttribute('tabindex', '-1'); });
+      }
+    });
+    var first = _ctxItems(menu)[0];
+    if (first) setTimeout(function() { _ctxFocus(first); }, 0);
+  }
+  menu.addEventListener('keydown', function(e) {
+    if (!menu.classList.contains('visible')) return;
+    var list = _ctxCurrentList();
+    var idx = list.indexOf(document.activeElement);
+    var cur = idx >= 0 ? list[idx] : null;
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        if (list.length) _ctxFocus(list[idx < 0 ? 0 : (idx + 1) % list.length]);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        if (list.length) _ctxFocus(list[idx < 0 ? list.length - 1 : (idx - 1 + list.length) % list.length]);
+        break;
+      case 'Home':
+        e.preventDefault(); if (list.length) _ctxFocus(list[0]); break;
+      case 'End':
+        e.preventDefault(); if (list.length) _ctxFocus(list[list.length - 1]); break;
+      case 'ArrowRight':
+        if (cur && _ctxSubOf(cur)) { e.preventDefault(); _ctxOpenSub(cur); }
+        break;
+      case 'ArrowLeft':
+        if (_kbSub) { e.preventDefault(); _ctxCloseSub(); }
+        break;
+      case 'Enter':
+      case ' ':
+        if (!cur) return;
+        e.preventDefault();
+        if (_ctxSubOf(cur)) _ctxOpenSub(cur); else cur.click();
+        break;
+      case 'Escape':
+        e.preventDefault(); e.stopPropagation();
+        if (_kbSub) _ctxCloseSub(); else closeCtx();
+        break;
+    }
+  });
 
   function posMenu(x, y) {
     menu.style.left = '0'; menu.style.top = '0';
@@ -2789,6 +2878,7 @@ function _moveZimTo(zim, category) {
     menu.querySelectorAll('.ctx-sub').forEach(function(sub) {
       sub.classList.toggle('flip-left', flip);
     });
+    _prepMenuA11y();
   }
 
   // Layout actions (Move to… + Reorder) — appended to the full menu and the
