@@ -18,6 +18,9 @@ var SK = {
   BROWSE_HISTORY: 'zimi_browse_history',
   BOOKMARKS: 'zimi_bookmarks',
   MANAGE_PW: 'zimi_manage_pw',
+  // Optional management username (v1.8) — a plain identifier, stored next to
+  // the token so a remembered session keeps sending its X-Zimi-User header.
+  MANAGE_USER: 'zimi_manage_user',
   PREF_LANGUAGES: 'zimi_pref_languages',
   PREF_FLAVOR: 'zimi_pref_flavor',
   // Reader font scale (percent, one of READER_FONT_LEVELS), applied as a `zoom`
@@ -56,12 +59,33 @@ function _saveManageToken(token, remember) {
   // Clear both first so toggling "remember me" never leaves stale copies.
   localStorage.removeItem(SK.MANAGE_PW);
   sessionStorage.removeItem(SK.MANAGE_PW);
+  localStorage.removeItem(SK.MANAGE_USER);
+  sessionStorage.removeItem(SK.MANAGE_USER);
   if (!token) return;
-  (remember ? localStorage : sessionStorage).setItem(SK.MANAGE_PW, token);
+  var store = remember ? localStorage : sessionStorage;
+  store.setItem(SK.MANAGE_PW, token);
+  // Persist the username alongside so it rides with the same remember scope.
+  if (_manageUser) store.setItem(SK.MANAGE_USER, _manageUser);
+}
+function _readManageUser() {
+  return localStorage.getItem(SK.MANAGE_USER) || sessionStorage.getItem(SK.MANAGE_USER) || '';
 }
 function _clearManageToken() {
   localStorage.removeItem(SK.MANAGE_PW);
   sessionStorage.removeItem(SK.MANAGE_PW);
+  localStorage.removeItem(SK.MANAGE_USER);
+  sessionStorage.removeItem(SK.MANAGE_USER);
+}
+// Auth headers for every manage request: Bearer token + optional username.
+// One builder so the two dozen call sites can't drift out of sync.
+function _authHeaders(token) {
+  token = token || _manageToken;
+  var h = {};
+  if (token) {
+    h['Authorization'] = 'Bearer ' + token;
+    if (_manageUser) h['X-Zimi-User'] = _manageUser;
+  }
+  return h;
 }
 function _hasStoredManageToken() {
   return !!_readManageToken();
@@ -424,6 +448,9 @@ const footerEl = document.getElementById('footer');
 
 // ── Manage password ──
 let _manageToken = '';
+// Optional management username (v1.8). '' = none; when set it rides along in
+// the X-Zimi-User header (see _authHeaders). Restored from storage on load.
+let _manageUser = _readManageUser();
 let _manageSavedReader = null; // saved reader state when entering manage
 let _pwResolve = null;
 let _pwReject = null;
@@ -449,7 +476,7 @@ function _throwIfRateLimited(res) {
 function authedFetch(url, opts) {
   opts = opts || {};
   if (_manageToken) {
-    opts.headers = Object.assign({}, opts.headers, {'Authorization': 'Bearer ' + _manageToken});
+    opts.headers = Object.assign({}, opts.headers, _authHeaders());
   }
   return fetch(url, opts).then(_throwIfRateLimited);
 }
@@ -457,7 +484,7 @@ function authedFetch(url, opts) {
 function manageFetch(url, opts) {
   opts = opts || {};
   if (_manageToken) {
-    opts.headers = Object.assign({}, opts.headers, {'Authorization': 'Bearer ' + _manageToken});
+    opts.headers = Object.assign({}, opts.headers, _authHeaders());
   }
   return fetch(url, opts).then(_throwIfRateLimited).then(function(res) {
     if (res.status === 401) {
@@ -468,9 +495,11 @@ function manageFetch(url, opts) {
           reject(new Error('auth_cancelled'));
         };
         _pwResolve = function(token) {
-          // Verify password before accepting it
+          // Verify password (and username, if any) before accepting it.
+          // submitPw has already set _manageUser from the modal field, so
+          // _authHeaders folds in the X-Zimi-User header.
           var verifyOpts = Object.assign({}, opts);
-          verifyOpts.headers = Object.assign({}, verifyOpts.headers, {'Authorization': 'Bearer ' + token});
+          verifyOpts.headers = Object.assign({}, verifyOpts.headers, _authHeaders(token));
           fetch(url, verifyOpts).then(function(retryRes) {
             if (retryRes.status === 401) {
               // Wrong password — show error, restore reject handler, keep modal open
@@ -508,6 +537,10 @@ let _pwPreviousFocus = null;
 
 function openPwModal(title, opts) {
   document.getElementById('pw-title').textContent = title || t('enter_password');
+  // Prefill the username with what this session logged in as (continuity on a
+  // change-password), else the neutral 'zimi' default.
+  var uEl = document.getElementById('pw-username');
+  if (uEl) uEl.value = _manageUser || 'zimi';
   document.getElementById('pw-input').value = '';
   document.getElementById('pw-input').placeholder = (opts && opts.placeholder) || t('password');
   document.getElementById('pw-input').autocomplete = (opts && opts.hideRemember) ? 'new-password' : 'current-password';
@@ -563,6 +596,11 @@ function _pwKeyHandler(e) {
 function submitPw() {
   const pw = document.getElementById('pw-input').value.trim();
   if (!pw) return;
+  // Capture the optional username so _authHeaders sends X-Zimi-User on the
+  // verify/retry. Blank field → 'zimi' (matches the passwordless keychain UX
+  // and the server's any-value-passes rule when no username is configured).
+  const uEl = document.getElementById('pw-username');
+  _manageUser = (uEl && uEl.value.trim()) || 'zimi';
   if (_pwResolve) {
     _pwReject = null;  // prevent cancel on close
     document.getElementById('pw-error').style.display = 'none';
@@ -2537,7 +2575,7 @@ async function toggleFavorite(zimName) {
   try {
     const res = await fetch('/favorites', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', ..._manageToken ? {'Authorization': 'Bearer ' + _manageToken} : {}},
+      headers: {'Content-Type': 'application/json', ..._authHeaders()},
       body: JSON.stringify({zim: zimName})
     });
     const data = await res.json();
@@ -5385,7 +5423,7 @@ async function createCollection() {
   const label = labelEl.value.trim();
   try {
     const opts = {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({label, zims: []})};
-    if (_manageToken) opts.headers['Authorization'] = 'Bearer ' + _manageToken;
+    Object.assign(opts.headers, _authHeaders());
     const res = await fetch('/collections', opts);
     if (res.ok) {
       labelEl.value = '';
@@ -5406,8 +5444,7 @@ async function deleteCollection(name, btn) {
     return;
   }
   try {
-    const opts = {method: 'DELETE'};
-    if (_manageToken) opts.headers = {'Authorization': 'Bearer ' + _manageToken};
+    const opts = {method: 'DELETE', headers: _authHeaders()};
     const res = await fetch('/collections?name=' + encodeURIComponent(name), opts);
     if (res.ok) renderCollectionsTab();
   } catch(e) {}
@@ -5428,7 +5465,7 @@ async function toggleCollZim(collName, zimName) {
   else zims.push(zimName);
   try {
     const opts = {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: collName, label: coll.label || collName, zims})};
-    if (_manageToken) opts.headers['Authorization'] = 'Bearer ' + _manageToken;
+    Object.assign(opts.headers, _authHeaders());
     const res = await fetch('/collections', opts);
     if (res.ok) {
       // Update cache in place so re-render is instant
@@ -6974,7 +7011,9 @@ async function managePassword() {
   document.getElementById('pw-remove-btn').style.display = has.has_password ? '' : 'none';
 
   _pwResolve = async function(newPw) {
-    const body = {password: newPw};
+    // submitPw set _manageUser from the (now visible) username field; store it
+    // alongside the new password so future logins must present it.
+    const body = {password: newPw, username: _manageUser || 'zimi'};
     if (has.has_password && _manageToken) body.current = _manageToken;
     const res = await manageFetch('/manage/set-password', {
       method: 'POST',

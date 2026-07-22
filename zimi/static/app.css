@@ -1266,8 +1266,9 @@
   .pw-box h3 { margin:0 0 12px; font-size:15px; color:var(--text); }
   /* 16px minimum — iOS Safari auto-zooms (and stays zoomed) on focus of any
      input smaller than 16px. */
-  .pw-box input[type="password"] { width:100%; padding:8px 10px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:16px; box-sizing:border-box; }
-  .pw-box input[type="password"]:focus { outline:none; border-color:var(--amber); }
+  .pw-box input[type="password"], .pw-box input[type="text"] { width:100%; padding:8px 10px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:16px; box-sizing:border-box; }
+  .pw-box input[type="password"]:focus, .pw-box input[type="text"]:focus { outline:none; border-color:var(--amber); }
+  .pw-box input#pw-username { margin-bottom:8px; }
   .pw-box .pw-actions { display:flex; gap:8px; margin-top:12px; justify-content:flex-end; }
   .pw-box button { padding:6px 14px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; font-size:13px; }
   .pw-box button.pw-primary { background:linear-gradient(135deg, var(--amber), var(--amber2)); color:#000; border-color:transparent; font-weight:600; }

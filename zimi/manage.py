@@ -58,7 +58,11 @@ def _password_file():
 
 
 def _get_manage_password_hash():
-    """Get password hash from env var or file."""
+    """Get password hash from env var or file.
+
+    The password file holds the hash on its first line; an OPTIONAL username
+    may follow on the second line (see _file_username). Only the first line is
+    the hash, so legacy single-line files keep working unchanged."""
     global _env_pw_hash_cache
     # Env var takes priority (Docker deployments)
     pw = os.environ.get("ZIMI_MANAGE_PASSWORD", "")
@@ -69,7 +73,7 @@ def _get_manage_password_hash():
     # Fall back to password file (set via UI)
     try:
         with open(_password_file(), encoding="utf-8") as f:
-            stored = f.read().strip()
+            stored = f.readline().strip()  # first line only — line 2 is username
         # Empty or too-short to be a valid hash — treat as no password
         if not stored or len(stored) < 10:
             return ""
@@ -78,12 +82,52 @@ def _get_manage_password_hash():
         return ""
 
 
-def _set_manage_password(pw):
-    """Save hashed password to file, or clear it. Uses atomic write."""
+def _file_username():
+    """Optional username stored on the second line of the password file, or ''.
+
+    A plain identifier (not a secret) — legacy files have no second line and
+    return ''. Env var ZIMI_MANAGE_USER (see _get_manage_user) overrides this."""
+    try:
+        with open(_password_file(), encoding="utf-8") as f:
+            lines = f.read().split("\n")
+        if len(lines) >= 2:
+            return lines[1].strip()
+    except (FileNotFoundError, OSError):
+        pass
+    return ""
+
+
+def _get_manage_user():
+    """Configured management username, or '' if none. Env var wins over file.
+
+    OPTIONAL: when '' the login accepts any username (pure keychain UX);
+    when set, the login username must match it case-insensitively. Original
+    case is preserved for display; matching is done case-folded by callers."""
+    env_user = os.environ.get("ZIMI_MANAGE_USER", "").strip()
+    if env_user:
+        return env_user
+    return _file_username()
+
+
+def _set_manage_password(pw, username=None):
+    """Save hashed password to file (line 1) with an optional username (line 2),
+    or clear the file. Uses atomic write.
+
+    username semantics: None preserves whatever username the file already had
+    (so a plain password change never wipes it); '' clears it; a non-empty
+    string sets it. Clearing the password (pw falsy) clears username too."""
     pf = _password_file()
     tmp = pf + ".tmp"
+    if not pw:
+        content = ""  # cleared — no hash, no username
+    else:
+        if username is None:
+            username = _file_username()  # preserve existing on a bare pw change
+        content = _hash_pw(pw)
+        if username and username.strip():
+            content += "\n" + username.strip()
     with open(tmp, "w", encoding="utf-8") as f:
-        f.write(_hash_pw(pw) if pw else "")
+        f.write(content)
     os.replace(tmp, pf)
     log.info("Manage password %s", "set" if pw else "cleared")
 
@@ -175,13 +219,22 @@ def _check_manage_auth(handler):
 
     candidate = auth[7:]
 
-    # Accept API token (cheap constant-time check first)
+    # Accept API token (cheap constant-time check first). The API token is a
+    # machine credential — it carries no username, so the username gate never
+    # applies to it (keeps existing scripts/agents working unchanged).
     stored_token = _get_api_token()
     if stored_token and hmac.compare_digest(candidate, stored_token):
         return None
 
-    # Accept password
+    # Accept password — plus, when a username is configured, it must match.
     if _verify_password(candidate, stored_pw):
+        configured_user = _get_manage_user()
+        if configured_user:
+            provided = handler.headers.get("X-Zimi-User", "")
+            if provided.strip().casefold() != configured_user.strip().casefold():
+                # Wrong (or missing) username reads exactly like a wrong
+                # password: same generic 401, no username-enumeration signal.
+                return True
         return None
 
     return True
@@ -820,7 +873,14 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(
                 400, {"error": "Revoke the API token before removing the password"}
             )
-        _set_manage_password(new_pw)
+        # OPTIONAL username stored alongside the hash. Absent field → None →
+        # _set_manage_password preserves any existing username. When the env
+        # var owns the username, the file copy is inert (env wins on read), so
+        # we simply don't persist it.
+        new_user = data.get("username")
+        if new_user is not None and os.environ.get("ZIMI_MANAGE_USER", "").strip():
+            new_user = None
+        _set_manage_password(new_pw, username=new_user)
         return handler._json(
             200, {"status": "password set" if new_pw else "password cleared"}
         )
