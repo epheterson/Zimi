@@ -30,6 +30,15 @@ package-lock.json
 .playwright-mcp/
 test-results/
 tmp/
+.pytest_cache/
+.ruff_cache/
+
+# Agent / scratch workspaces (never shipped)
+scratchpad/
+scratchpad_zims_data/
+zimi-config/
+.superpowers/
+graphify-out/
 
 # Root-level dev screenshots / QA artifacts (don't block images elsewhere)
 /*.png
@@ -38,7 +47,6 @@ tmp/
 /*.yml
 !/docker-compose*.yml
 ui-review/
-.playwright-mcp/
 
 # Working docs (not shipped)
 PLAN.md
