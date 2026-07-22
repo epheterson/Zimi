@@ -8507,6 +8507,8 @@ var _READER_VIEW_STRIP = [
 var _READER_CONSTRAIN_PROPS = ['height', 'max-height', 'min-height', 'overflow', 'overflow-x', 'overflow-y'];
 // Book-open glyph shared by the desktop button and the mobile ... menu row.
 var _READER_VIEW_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
+var _RV_PRINT_ICON = '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>';
+var _RV_SHARE_ICON = '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
 
 function _readerFrameDoc() {
   var frame = document.getElementById('reader-frame');
@@ -8707,7 +8709,26 @@ function _readerViewInjectStyle(doc) {
     '.zimi-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:1.3em 0;max-width:100%}',
     '.zimi-reader table{border-collapse:collapse;font-family:-apple-system,sans-serif;font-size:0.84em}',
     '.zimi-reader th,.zimi-reader td{border:1px solid var(--rv-border);padding:6px 10px;text-align:left;vertical-align:top}',
-    '.zimi-reader th{background:var(--rv-th);color:var(--rv-head);font-weight:600}'
+    '.zimi-reader th{background:var(--rv-th);color:var(--rv-head);font-weight:600}',
+    // ── Print / Save as PDF ──
+    // The palette's Print row calls frame.contentWindow.print(), so only THIS
+    // iframe document prints. Force a clean sheet independent of the on-screen
+    // theme: white page, black text, links de-styled to plain text, media
+    // contained, and break-avoid hints so figures/tables/code don't split across
+    // pages. Any open lightbox scrim is hidden so it can't paint over the page.
+    '@media print{',
+      'html,body.zimi-reader-active{background:#fff !important}',
+      'body.zimi-reader-active,body.zimi-reader-active.rv-theme-light,body.zimi-reader-active.rv-theme-sepia{',
+        '--rv-bg:#fff;--rv-fg:#000;--rv-head:#000;--rv-muted:#333;--rv-border:#bbb;',
+        '--rv-link:#000;--rv-code:#f2f2f2;--rv-pre:#f7f7f7;--rv-th:#eee}',
+      '.zimi-reader{color:#000 !important;background:#fff !important;padding:0 !important;',
+        'font-size:12pt;max-width:100%}',
+      '.zimi-reader a{color:#000 !important;text-decoration:none}',
+      '.zimi-reader img,.zimi-reader figure,.zimi-reader svg,.zimi-reader table,.zimi-reader pre,',
+        '.zimi-reader blockquote{page-break-inside:avoid;break-inside:avoid;max-width:100% !important}',
+      '.zimi-reader h1,.zimi-reader h2,.zimi-reader h3{page-break-after:avoid;break-after:avoid}',
+      '.' + _READER_LIGHTBOX_CLASS + ',.zimi-lightbox-close{display:none !important}',
+    '}'
   ].join('');
   var style = doc.createElement('style');
   style.id = _READER_VIEW_STYLE_ID;
@@ -9044,8 +9065,20 @@ function _readerPaletteHtml() {
     '<span class="rv-toggle-text"><span class="rv-toggle-title">' + tH('reader_auto') + '</span>' +
     '<span class="rv-toggle-sub">' + tH('reader_auto_hint') + '</span></span>' +
     '<span class="rv-switch' + (auto ? ' on' : '') + '" aria-hidden="true"><span class="rv-knob"></span></span></button>';
-  // Print/PDF/share intentionally deferred (D-item): an export row would slot here,
-  // above the divider, once the export flow is designed.
+  // Print / Save as PDF (+ native Share where supported). Only while Reader View
+  // is active: printing the clean reader shell yields a beautiful page (see the
+  // @media print rules in _readerViewInjectStyle); printing a raw ZIM page is out
+  // of scope. Share rides navigator.share (mobile Safari / Android) — hidden when
+  // the platform can't share.
+  if (_readerViewOn) {
+    h += '<div class="rv-pal-divider" role="separator"></div>';
+    h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderPalette();_readerPrint()">' +
+      _RV_PRINT_ICON + '<span>' + tH('reader_print') + '</span></button>';
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderPalette();_readerShare()">' +
+        _RV_SHARE_ICON + '<span>' + tH('reader_share') + '</span></button>';
+    }
+  }
   h += '<div class="rv-pal-divider" role="separator"></div>';
   h += '<button type="button" class="rv-exit-row" onclick="_closeReaderPalette();_readerViewToggle()">' +
     '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
@@ -9067,6 +9100,24 @@ function _toggleReaderPalette() {
 function _closeReaderPalette() {
   var pal = document.getElementById(_READER_PALETTE_ID);
   if (pal) pal.classList.remove('visible');
+}
+// Print / Save as PDF the article iframe itself — its clean Reader-View shell
+// carries @media print rules (black-on-white, chrome hidden, images contained)
+// so the browser's print/PDF output looks right regardless of the screen theme.
+// Falls back to printing the app window if the frame refuses (cross-origin,
+// though the reader iframe is same-origin).
+function _readerPrint() {
+  var frame = document.getElementById('reader-frame');
+  try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+  catch (e) { try { window.print(); } catch (e2) {} }
+}
+// Native share of the current article (title + its /w/ URL). Only wired when
+// navigator.share exists (the palette row is hidden otherwise).
+function _readerShare() {
+  if (typeof navigator === 'undefined' || !navigator.share) return;
+  var doc = _readerFrameDoc();
+  var title = (doc && doc.title) || document.title || 'Zimi';
+  navigator.share({ title: title, url: location.href }).catch(function () {});
 }
 
 // ── Reader ──

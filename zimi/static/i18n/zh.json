@@ -936,6 +936,8 @@
   "reader_auto": "始终使用阅读视图",
   "reader_auto_hint": "在阅读视图中打开文章",
   "reader_exit": "退出阅读视图",
+  "reader_print": "打印 / 另存为 PDF",
+  "reader_share": "分享",
   "manage_public_locked_title": "远程管理已锁定",
   "manage_public_locked_body": "管理功能仅在本地网络中可用。请在本地网络中的设备上设置密码，以启用远程管理。",
   "move_to": "移动到…",

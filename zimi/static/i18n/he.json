@@ -936,6 +936,8 @@
   "reader_auto": "השתמש תמיד בתצוגת קריאה",
   "reader_auto_hint": "פתח מאמרים בתצוגת קריאה",
   "reader_exit": "צא מתצוגת קריאה",
+  "reader_print": "הדפסה / שמירה כ-PDF",
+  "reader_share": "שיתוף",
   "manage_public_locked_title": "הניהול מרחוק נעול",
   "manage_public_locked_body": "הניהול זמין ברשת המקומית שלך בלבד. הגדר סיסמה ממכשיר ברשת המקומית כדי לאפשר ניהול מרחוק.",
   "move_to": "העברה אל…",

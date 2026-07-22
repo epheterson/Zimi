@@ -936,6 +936,8 @@
   "reader_auto": "Leseansicht immer verwenden",
   "reader_auto_hint": "Artikel in Leseansicht öffnen",
   "reader_exit": "Leseansicht beenden",
+  "reader_print": "Drucken / Als PDF speichern",
+  "reader_share": "Teilen",
   "manage_public_locked_title": "Fernverwaltung ist gesperrt",
   "manage_public_locked_body": "Die Verwaltung ist nur in Ihrem lokalen Netzwerk verfügbar. Legen Sie von einem Gerät im lokalen Netzwerk ein Passwort fest, um die Fernverwaltung zu aktivieren.",
   "move_to": "Verschieben nach…",

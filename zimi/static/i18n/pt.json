@@ -936,6 +936,8 @@
   "reader_auto": "Sempre usar Modo de leitura",
   "reader_auto_hint": "Abrir artigos no Modo de leitura",
   "reader_exit": "Sair do Modo de leitura",
+  "reader_print": "Imprimir / Guardar como PDF",
+  "reader_share": "Partilhar",
   "manage_public_locked_title": "O gerenciamento remoto está bloqueado",
   "manage_public_locked_body": "O gerenciamento só está disponível na sua rede local. Defina uma senha em um dispositivo da rede local para ativar o gerenciamento remoto.",
   "move_to": "Mover para…",

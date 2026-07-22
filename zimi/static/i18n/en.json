@@ -936,6 +936,8 @@
   "reader_auto": "Always use Reader View",
   "reader_auto_hint": "Open articles in Reader View",
   "reader_exit": "Exit Reader View",
+  "reader_print": "Print / Save as PDF",
+  "reader_share": "Share",
   "manage_public_locked_title": "Remote management is locked",
   "manage_public_locked_body": "Management is available on your local network only. Set a password from a device on the local network to enable remote management.",
   "move_to": "Move to…",

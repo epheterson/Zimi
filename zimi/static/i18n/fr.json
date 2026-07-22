@@ -936,6 +936,8 @@
   "reader_auto": "Toujours utiliser le mode lecture",
   "reader_auto_hint": "Ouvrir les articles en mode lecture",
   "reader_exit": "Quitter le mode lecture",
+  "reader_print": "Imprimer / Enregistrer en PDF",
+  "reader_share": "Partager",
   "manage_public_locked_title": "La gestion à distance est verrouillée",
   "manage_public_locked_body": "La gestion n'est disponible que sur votre réseau local. Définissez un mot de passe depuis un appareil du réseau local pour activer la gestion à distance.",
   "move_to": "Déplacer vers…",

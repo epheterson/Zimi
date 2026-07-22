@@ -936,6 +936,8 @@
   "reader_auto": "Usar siempre Vista de lectura",
   "reader_auto_hint": "Abrir artículos en Vista de lectura",
   "reader_exit": "Salir de Vista de lectura",
+  "reader_print": "Imprimir / Guardar como PDF",
+  "reader_share": "Compartir",
   "manage_public_locked_title": "La administración remota está bloqueada",
   "manage_public_locked_body": "La administración solo está disponible en tu red local. Establece una contraseña desde un dispositivo de la red local para habilitar la administración remota.",
   "move_to": "Mover a…",

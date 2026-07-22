@@ -360,12 +360,14 @@
   }
   .rv-switch.on .rv-knob { inset-inline-start: 18px; }
   .rv-pal-divider { height: 1px; margin: 6px 6px; background: var(--border); }
-  .rv-exit-row {
+  .rv-exit-row, .rv-action-row {
     display: flex; align-items: center; gap: 10px; width: 100%; text-align: start;
     padding: 9px 8px; background: none; border: none; cursor: pointer; border-radius: 8px;
     color: var(--text); font-size: 13px;
   }
-  .rv-exit-row:hover { background: var(--surface2); color: var(--amber); }
+  .rv-exit-row:hover, .rv-action-row:hover { background: var(--surface2); color: var(--amber); }
+  .rv-action-row svg { flex-shrink: 0; color: var(--text2); }
+  .rv-action-row:hover svg { color: var(--amber); }
   /* Language welcome card on home */
   .lang-welcome-card {
     display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-bottom: 16px;
