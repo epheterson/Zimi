@@ -702,7 +702,12 @@ _CACHE_VERSION = 2  # bumped for language metadata
 # rebuild once stamped first_seen=now for every ZIM at once. first_seen values
 # within this window are treated as "the same instant" (a rebuild), and a stamp
 # is only trusted if it lands within the mtime tolerance of the file itself.
-_MASS_STAMP_WINDOW = 5.0  # seconds
+# A full rebuild stamps entries across the whole scan, which takes ~13s per 66
+# ZIMs on NAS spinning disks — the bucket must swallow an entire slow scan or
+# the majority test splits across buckets and the heal never fires. Safe to be
+# generous: the per-entry mtime tolerance below is the guard that protects
+# genuine batch downloads, the bucket is only a pre-filter.
+_MASS_STAMP_WINDOW = 120.0  # seconds
 _MASS_STAMP_MTIME_TOL = 3600.0  # first_seen must be within 1h of file mtime to be real
 _zim_list_cache = None
 _zim_files_cache = None  # {name: path} — cached at startup, ZIM dir is read-only
