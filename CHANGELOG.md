@@ -5,11 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.8.0] - Unreleased
+## [1.8.0] - Unreleased — the Community Edition
 
-Zimi grows a real agent-facing API, and the reader and search get the small
-things people have asked for since the beginning. Under the hood the torrent
-engine is finally in-process — no more sidecar.
+A release shaped by the people using Zimi: the open issues, the long-standing
+asks from the wider ZIM ecosystem, and a week of field testing on real phones.
+Reader View, read-aloud, "did you mean", library organization, filter pills —
+and under the hood the torrent engine is finally in-process, with a real
+agent-facing API alongside.
 
 ### Added
 
