@@ -5918,7 +5918,11 @@ function _cacheSegLabel(key) {
   return m[key] || key;
 }
 function _cacheBreakdownHtml(d) {
-  var segs = d.breakdown || [];
+  // Sort segments largest→smallest so the bar reads high-to-low and the legend
+  // order matches. Copy first — never mutate the fetched payload.
+  var segs = (d.breakdown || []).slice().sort(function(a, b) {
+    return (b.size_bytes || 0) - (a.size_bytes || 0);
+  });
   var total = d.data_dir_total_bytes || segs.reduce(function(a, s) { return a + s.size_bytes; }, 0);
   var titleRow = '<div class="mc-section-title">' + tH('cache_storage_title') +
     (total ? ' · ' + _fmtBytes(total) : '') + '</div>';
@@ -8340,8 +8344,14 @@ function _readerViewInjectStyle(doc) {
       '--rv-muted:#736341;--rv-border:#e0d4b4;--rv-link:#8f4d12;--rv-code:#ece0c2;',
       '--rv-pre:#efe6cb;--rv-th:#ece0c2}',
     // ── Shell ──
+    // overflow-x:hidden is the belt-and-suspenders clip for wide media (e.g.
+    // wikivoyage's 2000px region maps): the img/figure/video rule below already
+    // caps them at 100%, and the only descendants that legitimately overflow —
+    // .zimi-table-wrap and <pre> — carry their OWN overflow-x:auto, so they
+    // scroll inside their box rather than pushing the shell. Clipping here can
+    // never eat their scroll.
     '.zimi-reader{background:var(--rv-bg);color:var(--rv-fg);min-height:100vh;box-sizing:border-box;',
-      'padding:24px 20px 96px;font-family:var(--rv-font);',
+      'padding:24px 20px 96px;font-family:var(--rv-font);overflow-x:hidden;max-width:100%;',
       'font-size:19px;line-height:1.65;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}',
     // Kill class-based fixed-height / inner-scroll constraints the ZIM's own
     // stylesheet (still live in the iframe head) imposes on the cloned content —
@@ -8365,7 +8375,11 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader p{margin:0 0 1.1em}',
     '.zimi-reader a{color:var(--rv-link);text-decoration:none}',
     '.zimi-reader a:hover{text-decoration:underline}',
-    '.zimi-reader img{max-width:100%;height:auto;border-radius:6px;margin:0.4em 0;display:block}',
+    // Strictly contain wide media. !important out-specifies any width the ZIM's
+    // own (still-live) stylesheet or presentational width= attribute imposes.
+    '.zimi-reader img,.zimi-reader figure,.zimi-reader video,.zimi-reader svg,.zimi-reader canvas,.zimi-reader iframe{',
+      'max-width:100% !important;height:auto}',
+    '.zimi-reader img{border-radius:6px;margin:0.4em 0;display:block}',
     '.zimi-reader figure{margin:1.3em auto}',
     '.zimi-reader figcaption{font-size:0.78em;color:var(--rv-muted);font-family:-apple-system,sans-serif;',
       'text-align:center;margin-top:0.4em;line-height:1.45}',
