@@ -67,13 +67,13 @@
     <h3 id="pw-title" data-i18n="enter_password">Enter password</h3>
     <!-- Optional username (v1.8): purely optional identifier, not a secret.
          When the server has no username configured it accepts any value (the
-         "zimi" prefill just gives password managers / iCloud Keychain a
+         "admin" prefill just gives password managers / iCloud Keychain a
          username field with autocomplete="username" to key a credential on).
          When ZIMI_MANAGE_USER (or a stored username) IS set, this must match.
          Do NOT add autocomplete="off" here or on the form: that suppresses the
          save-password prompt. -->
     <label for="pw-username" class="sr-only" data-i18n="username">Username</label>
-    <input id="pw-username" type="text" name="username" value="zimi" autocomplete="username" placeholder="Username" data-i18n-placeholder="username" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('pw-input').focus()}">
+    <input id="pw-username" type="text" name="username" value="admin" autocomplete="username" placeholder="Username" data-i18n-placeholder="username" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('pw-input').focus()}">
     <label for="pw-input" class="sr-only" data-i18n="password">Password</label>
     <input id="pw-input" type="password" placeholder="Password" data-i18n-placeholder="password" autocomplete="current-password" aria-labelledby="pw-title" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
     <div class="pw-error" id="pw-error"></div>
