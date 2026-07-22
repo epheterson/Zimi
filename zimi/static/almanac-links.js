@@ -373,6 +373,16 @@
     return entry && entry.q ? entry.q : null;
   }
 
+  // The resolved article for an entity key, or null. Public so the canvas
+  // modules (orrery, star chart) can ask "is this body a link?" before wiring a
+  // tap — the same closed-set authority the DOM linkify path uses. Returns the
+  // {zim, path, title} hit so a caller can, e.g., set cursor:pointer only over
+  // linkable bodies. Unresolved key (or batch not yet landed) -> null.
+  function linkFor(key) {
+    var q = _qidFor(key);
+    return (q && _qidLinks[q]) ? _qidLinks[q] : null;
+  }
+
   // -- Open (direct, from the preloaded map) --------------------------------
 
   // The reader overlay renders beneath the open almanac view, so we must leave
@@ -459,6 +469,6 @@
 
   window.AlmanacLinks = {
     MAP: MAP, wrap: wrap, wrapHoliday: wrapHoliday,
-    open: open, bind: bind, reset: reset
+    open: open, bind: bind, reset: reset, linkFor: linkFor
   };
 })();
