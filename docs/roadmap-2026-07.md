@@ -70,3 +70,18 @@ forward because it's the actual wedge.
 Deploy from **main after merge**, not from the release branch before review.
 Batch small fixes onto a `polish` branch; one deploy when settled — no rebuild
 per tweak.
+
+## Addendum 2026-07-21 (Eric, post-1.7.5): roadmap reshuffle
+
+- **1.8 hero: Almanac → library deep-links.** Every almanac entity (planets,
+  stars, constellations, meteor showers, eclipses, holidays, calendar systems,
+  zodiac, deep-time eras) links to the matching article when a Wikipedia (or
+  suitable) ZIM is installed — language-matched via the existing interlang /
+  Q-ID machinery, opened in the Zimi reader (now with Reader View). Fail-soft:
+  no matching ZIM → no link, zero clutter. "Another step towards offline
+  internet — feeling online while all in Zimi." Do it right, not fast:
+  entity→article mapping table (Q-IDs where possible, title fallback),
+  per-language resolution, availability probe against the installed library.
+  Generalizes: any Zimi mini-app becomes a portal into the library.
+- **Chatbot ("chat with your library") → 2.0** — possibly as the Time Machine
+  voice/video librarian itself. 1.8's hero is the almanac-linking instead.
