@@ -47,7 +47,7 @@ A modern experience for your ZIM files.
 Not an afterthought. Language is deeply integrated into every aspect of Zimi so you can focus on your content and feel at home. Enjoy filtered lists, labeled sources, RTL support and no rock left unturned.
 - **10 languages.** English, French, German, Spanish, Portuguese, Russian, Chinese, Arabic, Hindi, Hebrew.
 
-Something not right? [Open an issue.](https://github.com/epheterson/Zimi/issues)
+Something not right? [Open an issue.](https://github.com/epheterson/Zimi/issues) Found a security problem? See [SECURITY.md](SECURITY.md) — report it privately.
 
 ## Sharing
 
