@@ -56,6 +56,9 @@ agent-facing API alongside.
   row in Manage) to move it into another category, including brand-new custom
   ones, and reorder the home sections — default categories and collections
   alike — from a new Reorder panel in Manage preferences (#37).
+- **Windows portable build** — a one-dir `Zimi-windows-x64.zip` (Edge WebView2
+  backend, in-process libtorrent when a wheel is available) built by the desktop
+  release CI alongside the macOS DMGs and Linux AppImage/snap.
 
 ### Changed
 

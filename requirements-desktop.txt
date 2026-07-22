@@ -5,3 +5,9 @@ pywebview>=4.0.0
 Pillow>=10.0.0
 pyinstaller>=6.0.0
 zeroconf>=0.130.0
+# Windows desktop backend. pywebview 5.x/6.x drives the native Edge WebView2
+# runtime through .NET, which it reaches via pythonnet (+ clr_loader). pywebview
+# already declares `pythonnet; sys_platform == "win32"` transitively, but we pin
+# it explicitly with an env marker so PyInstaller always collects it into the
+# bundle and mac/linux builds skip it entirely.
+pythonnet>=3.0.0 ; sys_platform == "win32"

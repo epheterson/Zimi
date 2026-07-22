@@ -27,6 +27,9 @@ jobs:
           - os: macos-latest
             artifact: Zimi-AppleSilicon
             asset: Zimi-AppleSilicon.dmg
+          - os: windows-latest
+            artifact: Zimi-windows-x64
+            asset: Zimi-windows-x64.zip
 
     runs-on: ${{ matrix.os }}
 
@@ -123,6 +126,10 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
             ci/smoke_binary.sh "dist/Zimi.app/Contents/MacOS/Zimi"
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            # windows-latest runners provide git-bash for `shell: bash`.
+            # One-dir PyInstaller output is dist/Zimi/Zimi.exe.
+            ci/smoke_binary.sh "dist/Zimi/Zimi.exe"
           else
             ci/smoke_binary.sh "dist/Zimi/Zimi"
           fi
@@ -307,6 +314,15 @@ jobs:
           done
           echo "Notarization complete"
 
+      - name: Package portable ZIP (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # PyInstaller one-dir output is dist/Zimi/ (Zimi.exe + deps). Zip the
+          # whole folder so the archive extracts to a self-contained Zimi\ dir —
+          # no installer, portable. Compress-Archive ships with the runner.
+          Compress-Archive -Path dist/Zimi -DestinationPath ${{ matrix.asset }} -Force
+
       - name: Move asset to dist
         run: mv ${{ matrix.asset }} dist/ 2>/dev/null || true
         shell: bash
@@ -480,3 +496,4 @@ jobs:
             Zimi-Linux-snap/*.snap
             Zimi-Intel/Zimi-Intel.dmg
             Zimi-AppleSilicon/Zimi-AppleSilicon.dmg
+            Zimi-windows-x64/Zimi-windows-x64.zip
