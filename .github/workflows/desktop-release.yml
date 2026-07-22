@@ -90,6 +90,27 @@ jobs:
           cp -R /tmp/Sparkle.framework Sparkle.framework
           echo "Sparkle.framework ready ($(du -sh Sparkle.framework | cut -f1))"
 
+      - name: Download WinSparkle.dll (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Pinned WinSparkle release + sha256 (verified in-workflow, same
+          # discipline the old aria2 static download used). WinSparkle's EdDSA
+          # verification is wire-compatible with Sparkle's sign_update tool, so
+          # the release job signs the Windows enclosure with the same key.
+          $ver = '0.9.4'
+          $expected = '9beb9917d098ec05afadfa7853d500d53874b21026df4763c9166f253ee878e3'
+          $url = "https://github.com/vslavik/winsparkle/releases/download/v$ver/WinSparkle-$ver.zip"
+          Invoke-WebRequest -Uri $url -OutFile winsparkle.zip -MaximumRetryCount 5 -RetryIntervalSec 5
+          $actual = (Get-FileHash winsparkle.zip -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $expected) {
+            Write-Error "WinSparkle sha256 mismatch: expected $expected, got $actual"
+            exit 1
+          }
+          Expand-Archive -Path winsparkle.zip -DestinationPath winsparkle -Force
+          Copy-Item "winsparkle/WinSparkle-$ver/x64/Release/WinSparkle.dll" -Destination WinSparkle.dll -Force
+          Write-Host "WinSparkle.dll ready ($((Get-Item WinSparkle.dll).Length) bytes)"
+
       - name: Generate icons
         run: python zimi/assets/generate_icons.py
 
@@ -323,6 +344,23 @@ jobs:
           # no installer, portable. Compress-Archive ships with the runner.
           Compress-Archive -Path dist/Zimi -DestinationPath ${{ matrix.asset }} -Force
 
+      - name: Build installer (Windows / Inno Setup)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # WinSparkle downloads and runs an installer to apply updates (a
+          # portable zip can't self-install), so ship a per-user Inno Setup
+          # installer as the auto-update enclosure alongside the portable zip.
+          # ISCC ships on the windows runner image; install via Chocolatey if not.
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          }
+          $ver = (Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"(.*)"').Matches[0].Groups[1].Value
+          & $iscc "/DMyAppVersion=$ver" windows\zimi.iss
+          Write-Host "Built installer: dist/Zimi-windows-x64-Setup.exe"
+
       - name: Move asset to dist
         run: mv ${{ matrix.asset }} dist/ 2>/dev/null || true
         shell: bash
@@ -332,6 +370,13 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.asset }}
+
+      - name: Upload Windows installer artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zimi-windows-x64-Setup
+          path: dist/Zimi-windows-x64-Setup.exe
 
   release:
     needs: build
@@ -351,17 +396,19 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
-      # ── Sparkle EdDSA signing + appcast ─────────────────────────────
-      - name: Sign DMGs and update appcast.xml
+      # ── Sparkle/WinSparkle EdDSA signing + appcasts ─────────────────
+      - name: Sign updates and update appcasts
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
-            echo "SPARKLE_PRIVATE_KEY not set, skipping DMG signing"
+            echo "SPARKLE_PRIVATE_KEY not set, skipping update signing"
             exit 0
           fi
 
-          # Download Sparkle tools
+          # Download Sparkle tools. sign_update produces EdDSA (ed25519)
+          # signatures that WinSparkle verifies too, so one keypair signs the
+          # mac DMGs and the Windows installer alike.
           curl -sL --retry 5 --retry-all-errors --retry-delay 5 "https://github.com/sparkle-project/Sparkle/releases/download/2.8.1/Sparkle-2.8.1.tar.xz" -o /tmp/sparkle.tar.xz
           tar -xf /tmp/sparkle.tar.xz -C /tmp
 
@@ -369,22 +416,22 @@ jobs:
           VERSION="${TAG#v}"
           REPO="epheterson/Zimi"
 
-          # Sign both DMGs and generate per-architecture appcasts
+          # Sign one enclosure and write its appcast.
+          #   $1 label  $2 file-to-sign  $3 release-asset  $4 outfile  $5 min-sys line
           generate_appcast() {
-            local ARCH_NAME="$1" DMG_DIR="$2" DMG_ASSET="$3" OUTFILE="$4"
-            local DMG_FILE=$(ls "$DMG_DIR"/*.dmg 2>/dev/null | head -1)
-            if [ -z "$DMG_FILE" ]; then
-              echo "WARNING: No $ARCH_NAME DMG found in $DMG_DIR"
+            local LABEL="$1" FILE="$2" ASSET="$3" OUTFILE="$4" MINSYS="$5"
+            if [ ! -f "$FILE" ]; then
+              echo "WARNING: No $LABEL enclosure found at $FILE"
               return 1
             fi
 
-            echo "Signing $DMG_FILE ($ARCH_NAME)..."
-            local SIG=$(/tmp/bin/sign_update "$DMG_FILE" --ed-key-file <(echo "$SPARKLE_PRIVATE_KEY") 2>&1)
+            echo "Signing $FILE ($LABEL)..."
+            local SIG=$(/tmp/bin/sign_update "$FILE" --ed-key-file <(echo "$SPARKLE_PRIVATE_KEY") 2>&1)
             local ED_SIG=$(echo "$SIG" | grep -o 'sparkle:edSignature="[^"]*"' | sed 's/sparkle:edSignature="//;s/"//')
             local LENGTH=$(echo "$SIG" | grep -o 'length="[^"]*"' | sed 's/length="//;s/"//')
 
             if [ -z "$ED_SIG" ]; then
-              echo "ERROR: Failed to sign $ARCH_NAME DMG"
+              echo "ERROR: Failed to sign $LABEL enclosure"
               return 1
             fi
 
@@ -399,11 +446,10 @@ jobs:
               <item>
                 <title>Version ${VERSION}</title>
                 <sparkle:version>${VERSION}</sparkle:version>
-                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
-                <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
+                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>${MINSYS}
                 <pubDate>$(date -R)</pubDate>
                 <enclosure
-                  url="https://github.com/${REPO}/releases/download/${TAG}/${DMG_ASSET}"
+                  url="https://github.com/${REPO}/releases/download/${TAG}/${ASSET}"
                   length="${LENGTH}"
                   type="application/octet-stream"
                   sparkle:edSignature="${ED_SIG}"
@@ -417,13 +463,17 @@ jobs:
             cat "$OUTFILE"
           }
 
-          generate_appcast "Intel" "Zimi-Intel" "Zimi-Intel.dmg" "appcast-intel.xml"
-          generate_appcast "Apple Silicon" "Zimi-AppleSilicon" "Zimi-AppleSilicon.dmg" "appcast-arm64.xml"
+          MAC_MINSYS=$'\n            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>'
+          generate_appcast "Intel" "Zimi-Intel/Zimi-Intel.dmg" "Zimi-Intel.dmg" "appcast-intel.xml" "$MAC_MINSYS"
+          generate_appcast "Apple Silicon" "Zimi-AppleSilicon/Zimi-AppleSilicon.dmg" "Zimi-AppleSilicon.dmg" "appcast-arm64.xml" "$MAC_MINSYS"
+          # Windows enclosure is the Inno Setup installer; WinSparkle downloads
+          # and runs it to apply the update. No minimumSystemVersion line.
+          generate_appcast "Windows" "Zimi-windows-x64-Setup/Zimi-windows-x64-Setup.exe" "Zimi-windows-x64-Setup.exe" "appcast-windows.xml" ""
 
           # Commit and push to main
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add appcast-intel.xml appcast-arm64.xml
+          git add appcast-intel.xml appcast-arm64.xml appcast-windows.xml
           git diff --cached --quiet && echo "No appcast changes" || {
             git commit -m "Update appcasts for ${TAG}"
             git push origin main
@@ -497,3 +547,4 @@ jobs:
             Zimi-Intel/Zimi-Intel.dmg
             Zimi-AppleSilicon/Zimi-AppleSilicon.dmg
             Zimi-windows-x64/Zimi-windows-x64.zip
+            Zimi-windows-x64-Setup/Zimi-windows-x64-Setup.exe

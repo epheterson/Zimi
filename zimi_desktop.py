@@ -298,6 +298,21 @@ class DesktopAPI:
         except Exception as e:
             return None
 
+    def check_for_app_update(self):
+        """Manually trigger an app-update check (Windows/WinSparkle).
+
+        Parity with the macOS "Check for Updates…" menu item, callable from
+        the web UI. No-op (returns False) off Windows or when the updater is
+        absent.
+        """
+        if platform.system() != "Windows":
+            return False
+        try:
+            import zimi_winsparkle
+            return zimi_winsparkle.check_update_with_ui()
+        except Exception:
+            return False
+
     def restart(self):
         """Restart the app (caught by restart loop in wrapper)."""
         os._exit(42)
@@ -556,11 +571,20 @@ def _run():
 
     def _on_webview_ready():
         """Called when the webview window is shown — start server and navigate."""
-        # Initialize Sparkle first (so the menu setup can find the controller)
+        # Initialize the platform auto-updater. macOS uses Sparkle.framework
+        # (main-thread init so the menu setup can find the controller); Windows
+        # uses WinSparkle.dll via ctypes. Both soft-fail to no-updater.
         if platform.system() == "Darwin":
             try:
                 from PyObjCTools import AppHelper
                 AppHelper.callAfter(_init_sparkle_updater)
+            except Exception:
+                pass
+        elif platform.system() == "Windows":
+            try:
+                import zimi_winsparkle
+                from zimi.server import ZIMI_VERSION
+                zimi_winsparkle.init_updater(ZIMI_VERSION)
             except Exception:
                 pass
 

@@ -66,10 +66,21 @@ libzim_bins = collect_libzim_binaries()
 lt_bins = collect_dynamic_libs('libtorrent')
 lt_hidden = collect_submodules('libtorrent')
 
+# WinSparkle (Windows auto-updater): the CI workflow downloads the release DLL
+# (pinned + sha256-verified) to the repo root as WinSparkle.dll before building.
+# Bundle it at the bundle root so zimi_winsparkle._find_dll() resolves it via
+# sys._MEIPASS. Absent (e.g. local mac build) → collects nothing, app runs
+# without auto-update, exactly like the Sparkle.framework soft path.
+winsparkle_bins = []
+if platform.system() == 'Windows':
+    _ws_dll = os.path.join(SPECPATH, 'WinSparkle.dll')
+    if os.path.isfile(_ws_dll):
+        winsparkle_bins.append((_ws_dll, '.'))
+
 a = Analysis(
     ['zimi_desktop.py'],
     pathex=[],
-    binaries=libzim_bins + lt_bins,
+    binaries=libzim_bins + lt_bins + winsparkle_bins,
     datas=[
         ('zimi/templates', 'zimi/templates'),
         ('zimi/assets', 'zimi/assets'),
@@ -94,6 +105,8 @@ a = Analysis(
         'fitz',
         'PIL',
         'webview',
+        # Windows auto-updater bridge (imported lazily in zimi_desktop).
+        'zimi_winsparkle',
         *lt_hidden,
     ] + zeroconf_hiddenimports + (['gi'] if platform.system() == 'Linux' else []),
     hookspath=[],
