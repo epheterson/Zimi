@@ -94,6 +94,9 @@ agent-facing API alongside.
   so management no longer locks when reaching Zimi over the tailnet. The
   100.64.0.0/10 range now counts as your private network by default; set
   `ZIMI_TRUST_CGNAT=0` to opt out (#36).
+- LAN peer ZIM pulls now work over Tailscale/CGNAT (100.64.0.0/10) peers: the
+  outbound pull gate honors the same `ZIMI_TRUST_CGNAT` knob as inbound trust,
+  so tailnet peer-sharing no longer silently fails to pull.
 - The almanac's meteor-shower list no longer jams the peak marker onto the
   line ("🌕 Poor Peak!"). Peak night now gets its own localized badge, styled
   like the other meteor labels and translated across all ten locales (#23).

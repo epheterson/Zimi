@@ -46,6 +46,16 @@ def _is_lan_host(host):
     the cloud-metadata endpoint (169.254.169.254) and any public host, so a
     pill click can't be turned into an SSRF against off-LAN targets. A
     hostname (non-literal) is rejected outright so nothing re-resolves later.
+
+    We also accept the 100.64.0.0/10 CGNAT/overlay range (Tailscale, ZeroTier)
+    under the same trust knob a4629dd gave the inbound gate (_is_trusted_net in
+    http.py, ZIMI_TRUST_CGNAT): a tailnet peer that Zimi already trusts for
+    management must be pullable too, or LAN peer-sharing silently breaks over
+    the tailnet. Reusing http's CGNAT_NET + flag (read through the module so
+    ZIMI_TRUST_CGNAT / test monkeypatching is honored live, and lazily to avoid
+    an import cycle) keeps the outbound pull gate and inbound trust tier
+    symmetric. Note this stays stricter than _is_trusted_net, which accepts
+    link-local — the SSRF metadata block above must hold on the pull side.
     """
     try:
         ip = ipaddress.ip_address(host)
@@ -53,7 +63,11 @@ def _is_lan_host(host):
         return False
     if ip.is_link_local:
         return False
-    return ip.is_private or ip.is_loopback
+    if ip.is_private or ip.is_loopback:
+        return True
+    from zimi import http as _http
+
+    return _http._TRUST_CGNAT and ip in _http.CGNAT_NET
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):

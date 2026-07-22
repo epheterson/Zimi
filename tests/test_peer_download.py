@@ -154,6 +154,26 @@ class PeerHostGateTests(unittest.TestCase):
         self.assertFalse(lib._is_lan_host("evil.example.com"))
         self.assertFalse(lib._is_lan_host(""))
 
+    def test_cgnat_peer_allowed_by_default(self):
+        # Tailscale/tailnet peers get 100.64.0.0/10 addresses; with the default
+        # trust knob on, they must be pullable or LAN sharing breaks over the
+        # tailnet.
+        for h in ("100.64.0.1", "100.100.100.100", "100.127.255.254"):
+            self.assertTrue(lib._is_lan_host(h), h)
+
+    def test_cgnat_peer_rejected_when_trust_off(self):
+        import zimi.http as zhttp
+
+        saved = zhttp._TRUST_CGNAT
+        try:
+            zhttp._TRUST_CGNAT = False
+            self.assertFalse(lib._is_lan_host("100.64.0.1"))
+            # Real LAN/loopback still allowed; a public host is still rejected.
+            self.assertTrue(lib._is_lan_host("10.0.0.5"))
+            self.assertFalse(lib._is_lan_host("8.8.8.8"))
+        finally:
+            zhttp._TRUST_CGNAT = saved
+
     def test_enqueue_rejects_offlan_peer(self):
         peers = [{"name": "evil", "host": "169.254.169.254", "port": 80}]
         with (
