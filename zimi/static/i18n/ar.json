@@ -913,6 +913,7 @@
   "filter_recently_added": "أُضيف حديثاً",
   "no_recent_sources": "لا توجد مصادر مضافة أو محدّثة حديثاً.",
   "filter_by_language": "تصفية حسب اللغة",
+  "filter_by_recency": "التصفية حسب الحداثة",
   "tts_speak": "قراءة بصوت عالٍ",
   "tts_stop": "إيقاف القراءة",
   "font_size": "حجم الخط",

@@ -1432,7 +1432,7 @@ function renderHome(filter) {
   var _hasRecency = !homeScope && !filter && (_recentAdded.length || _recentUpdated.length);
   var _rows = '';
   if (_hasRecency) {
-    _rows += '<div class="pills-row">';
+    _rows += '<div class="pills-row" role="group" aria-label="' + escAttr(t('filter_by_recency')) + '">';
     _rows += _recentPill(null, tH('filter_all'), homeRecentFilter === null);
     if (_recentAdded.length) {
       _rows += _recentPill('added', tH('filter_recently_added') +
@@ -1445,7 +1445,7 @@ function renderHome(filter) {
     _rows += '</div>';
   }
   if (_showLangPills) {
-    _rows += '<div class="lang-pills" aria-label="' + escAttr(t('filter_by_language')) + '">';
+    _rows += '<div class="lang-pills" role="group" aria-label="' + escAttr(t('filter_by_language')) + '">';
     _rows += _langCodes.map(function(code) {
       return _homeLangPill(code, _langCounts[code], homeLangFilter.has(code));
     }).join('');
@@ -3259,12 +3259,12 @@ function renderSearchResults(data, scope) {
   const langCodes = Object.keys(byLanguage);
   if (!scope && langCodes.length > 1) {
     // Sort by count descending, same as source pills
-    langPillsHtml = '<div class="lang-pills">' + langCodes.sort(function(a, b) { return (byLanguage[b] || 0) - (byLanguage[a] || 0); }).map(function(lang) {
+    langPillsHtml = '<div class="lang-pills" role="group" aria-label="' + escAttr(t('filter_by_language')) + '">' + langCodes.sort(function(a, b) { return (byLanguage[b] || 0) - (byLanguage[a] || 0); }).map(function(lang) {
       var name = _NATIVE_LANG_NAMES[lang] || lang;
       // Dim language pills when a source filter is active and that source has no results in this language
       var dimmed = activeSourceFilters.size > 0 && ![...activeSourceFilters].some(function(s) { return langsBySource[s] && langsBySource[s].has(lang); });
       return '<button class="pill' + (activeLanguageFilters.has(lang) ? ' active' : '') + (dimmed ? ' dimmed' : '') +
-        '" onclick="toggleLanguageFilter(\'' + escAttr(lang) + '\')">' +
+        '" aria-pressed="' + activeLanguageFilters.has(lang) + '" onclick="toggleLanguageFilter(\'' + escAttr(lang) + '\')">' +
         esc(name) + ' (' + byLanguage[lang] + ')</button>';
     }).join('') + '</div>';
   }
@@ -8324,10 +8324,10 @@ function _readerViewInjectStyle(doc) {
       'background:var(--rv-bg) !important;margin:0 !important}',
     'body.zimi-reader-active.rv-font-sans{--rv-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}',
     'body.zimi-reader-active.rv-theme-light{--rv-bg:#fbfbf9;--rv-fg:#1f1f22;--rv-head:#0a0a0b;',
-      '--rv-muted:#63636b;--rv-border:#e3e2dd;--rv-link:#b45309;--rv-code:#f0efe9;',
+      '--rv-muted:#63636b;--rv-border:#e3e2dd;--rv-link:#aa4e08;--rv-code:#f0efe9;',
       '--rv-pre:#f5f4ee;--rv-th:#f0efe9}',
     'body.zimi-reader-active.rv-theme-sepia{--rv-bg:#f4ecd8;--rv-fg:#463a28;--rv-head:#2b2010;',
-      '--rv-muted:#8a7955;--rv-border:#e0d4b4;--rv-link:#9a5313;--rv-code:#ece0c2;',
+      '--rv-muted:#736341;--rv-border:#e0d4b4;--rv-link:#8f4d12;--rv-code:#ece0c2;',
       '--rv-pre:#efe6cb;--rv-th:#ece0c2}',
     // ── Shell ──
     '.zimi-reader{background:var(--rv-bg);color:var(--rv-fg);min-height:100vh;box-sizing:border-box;',
@@ -9665,6 +9665,14 @@ async function randomArticle(event) {
 // ── Keyboard ──
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    // Topmost popovers first — otherwise Escape falls through to goBack()/close
+    // and dumps a keyboard user out of the reader instead of shutting the popover.
+    var _rp = document.getElementById(_READER_PALETTE_ID);
+    if (_rp && _rp.classList.contains('visible')) { _closeReaderPalette(); return; }
+    var _tm = document.getElementById('topbar-menu');
+    if (_tm && _tm.classList.contains('visible')) { _closeTopbarMenu(); return; }
+    var _ld = document.getElementById('lang-dropdown');
+    if (_ld && _ld.classList.contains('visible')) { _closeLangDropdown(); return; }
     var _hp = document.getElementById('history-panel');
     if (_hp && _hp.classList.contains('open')) { _closeLibraryPanel(); return; }
     if (suggestDropdown.style.display !== 'none') { hideSuggest(); return; }

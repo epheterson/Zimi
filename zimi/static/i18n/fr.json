@@ -913,6 +913,7 @@
   "filter_recently_added": "Récemment ajouté",
   "no_recent_sources": "Aucune source récemment ajoutée ou mise à jour.",
   "filter_by_language": "Filtrer par langue",
+  "filter_by_recency": "Filtrer par nouveauté",
   "tts_speak": "Lire à voix haute",
   "tts_stop": "Arrêter la lecture",
   "font_size": "Taille du texte",
