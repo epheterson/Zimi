@@ -922,6 +922,7 @@
   "tts_stop": "Arrêter la lecture",
   "font_size": "Taille du texte",
   "reader_view": "Mode lecture",
+  "reader_full_size": "Afficher en taille réelle",
   "reader_theme": "Thème",
   "reader_theme_dark": "Sombre",
   "reader_theme_light": "Clair",

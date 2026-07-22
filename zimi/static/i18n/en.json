@@ -922,6 +922,7 @@
   "tts_stop": "Stop reading",
   "font_size": "Font size",
   "reader_view": "Reader View",
+  "reader_full_size": "View full size",
   "reader_theme": "Theme",
   "reader_theme_dark": "Dark",
   "reader_theme_light": "Light",

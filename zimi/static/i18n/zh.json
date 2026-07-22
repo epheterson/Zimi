@@ -922,6 +922,7 @@
   "tts_stop": "停止朗读",
   "font_size": "字体大小",
   "reader_view": "阅读视图",
+  "reader_full_size": "查看原始大小",
   "reader_theme": "主题",
   "reader_theme_dark": "深色",
   "reader_theme_light": "浅色",

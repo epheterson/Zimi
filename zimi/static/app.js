@@ -8262,6 +8262,11 @@ var _readerViewOn = false;
 var READER_VIEW_MIN_CHARS = 200; // extraction floor: below this we treat the page as un-readerable
 var _READER_VIEW_STYLE_ID = 'zimi-reader-style';
 var _READER_VIEW_STASH = '__zimiReaderStash'; // property name on the frame document
+// Tap-to-full-size lightbox (inside the reader iframe). An image is "zoomable"
+// only when its natural width exceeds its displayed width by more than this slop
+// (px) — i.e. it was actually scaled down and there's more detail to reveal.
+var _READER_LIGHTBOX_CLASS = 'zimi-img-lightbox';
+var _READER_LIGHTBOX_SLOP = 2;
 // Chrome that Reader View drops. Wikipedia/MediaWiki-heavy; harmless no-ops on
 // other ZIM DOMs (stackexchange/devdocs) whose main element is already clean.
 var _READER_VIEW_STRIP = [
@@ -8438,6 +8443,30 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader img,.zimi-reader figure,.zimi-reader video,.zimi-reader svg,.zimi-reader canvas,.zimi-reader iframe{',
       'max-width:100% !important;height:auto}',
     '.zimi-reader img{border-radius:6px;margin:0.4em 0;display:block}',
+    // Tap-to-full-size: only images whose source is larger than the scaled-down
+    // display get the affordance (class added by _readerMarkImage). zoom-in cue +
+    // a subtle focus ring so keyboard users can see the target.
+    '.zimi-reader img.zimi-zoomable{cursor:zoom-in}',
+    '.zimi-reader img.zimi-zoomable:focus-visible{outline:2px solid var(--rv-link);outline-offset:3px}',
+    // Full-bleed lightbox: fixed scrim covering the iframe viewport, itself the
+    // scroll container (overflow:auto) so a larger-than-viewport image PANS on
+    // both axes via native scroll (drag/trackpad on desktop, swipe on touch).
+    // margin:auto on the image — NOT flex centering — so it centers when small
+    // yet never clips its top/left edge when it overflows (the classic
+    // flex-centering-in-a-scroller trap). touch-action left default so pinch-zoom
+    // works on mobile. z-index above every ZIM stylesheet.
+    '.' + _READER_LIGHTBOX_CLASS + '{position:fixed;inset:0;z-index:2147483000;',
+      'background:rgba(0,0,0,0.9);overflow:auto;display:flex;cursor:zoom-out;',
+      '-webkit-overflow-scrolling:touch;overscroll-behavior:contain}',
+    '.' + _READER_LIGHTBOX_CLASS + ' .zimi-lightbox-img{margin:auto;display:block;',
+      'max-width:none !important;max-height:none !important;height:auto !important;',
+      'width:auto !important;border-radius:0;cursor:zoom-out}',
+    '.zimi-lightbox-close{position:fixed;top:12px;right:14px;width:40px;height:40px;',
+      'border-radius:50%;border:none;background:rgba(0,0,0,0.55);color:#fff;',
+      'font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;',
+      'justify-content:center;z-index:1;-webkit-backdrop-filter:blur(6px);',
+      'backdrop-filter:blur(6px)}',
+    '.zimi-lightbox-close:hover,.zimi-lightbox-close:focus-visible{background:rgba(0,0,0,0.8);outline:2px solid #fff}',
     '.zimi-reader figure{margin:1.3em auto}',
     '.zimi-reader figcaption{font-size:0.78em;color:var(--rv-muted);font-family:-apple-system,sans-serif;',
       'text-align:center;margin-top:0.4em;line-height:1.45}',
@@ -8460,6 +8489,119 @@ function _readerViewInjectStyle(doc) {
   style.id = _READER_VIEW_STYLE_ID;
   style.textContent = css;
   (doc.head || doc.documentElement).appendChild(style);
+}
+
+// ── Reader View image lightbox ──
+// True when the image was scaled down (source has more detail than shown), so a
+// full-size view is worth offering. naturalWidth is 0 until the image loads —
+// callers re-check on the load event.
+function _readerImgZoomable(img) {
+  if (!img || img.tagName !== 'IMG') return false;
+  var nw = img.naturalWidth || 0;
+  var cw = img.clientWidth || 0;
+  return nw > 0 && cw > 0 && nw > cw + _READER_LIGHTBOX_SLOP;
+}
+// Add/remove the affordance on a single image: zoomable images become focusable
+// button-role targets (Enter/Space + tap open the lightbox). Idempotent.
+function _readerMarkImage(img) {
+  if (!img || img.tagName !== 'IMG') return;
+  if (_readerImgZoomable(img)) {
+    if (img.classList.contains('zimi-zoomable')) return;
+    img.classList.add('zimi-zoomable');
+    img.setAttribute('tabindex', '0');
+    img.setAttribute('role', 'button');
+    var label = t('reader_full_size');
+    img.setAttribute('aria-label', img.alt ? (img.alt + ' — ' + label) : label);
+  } else if (img.classList.contains('zimi-zoomable')) {
+    img.classList.remove('zimi-zoomable');
+    img.removeAttribute('tabindex');
+    img.removeAttribute('role');
+    img.removeAttribute('aria-label');
+  }
+}
+// Mark every image in the freshly-built shell. Already-loaded images resolve
+// synchronously; the delegated capture 'load' listener (bound in
+// _readerBindLightbox) handles those that finish later.
+function _readerMarkImages(shell) {
+  if (!shell) return;
+  var imgs = shell.querySelectorAll('img');
+  for (var i = 0; i < imgs.length; i++) _readerMarkImage(imgs[i]);
+}
+// Open the full-bleed pan/zoom overlay for one image. Appended to the shell so it
+// inherits the reader theme context; the scrim is opaque enough to read over any
+// theme (dark/light/sepia). Focus is trapped on the close button and restored to
+// the originating image on close.
+function _readerOpenLightbox(img) {
+  var doc = img && img.ownerDocument;
+  if (!doc || !doc.body) return;
+  if (doc.querySelector('.' + _READER_LIGHTBOX_CLASS)) return; // never stack
+  var overlay = doc.createElement('div');
+  overlay.className = _READER_LIGHTBOX_CLASS;
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', img.alt || t('reader_full_size'));
+  // Body carries the font-zoom (`zoom`) — neutralize it here so the overlay is a
+  // true viewport cover and the image shows at real natural pixels, not zoom×natural.
+  var lvl = _readerFontLevel();
+  if (lvl !== READER_FONT_DEFAULT) overlay.style.zoom = String(100 / lvl);
+
+  var full = doc.createElement('img');
+  full.className = 'zimi-lightbox-img';
+  full.src = img.currentSrc || img.src;
+  if (img.alt) full.alt = img.alt;
+
+  var closeBtn = doc.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'zimi-lightbox-close';
+  closeBtn.setAttribute('aria-label', t('close'));
+  closeBtn.innerHTML = '✕';
+
+  overlay.appendChild(full);
+  overlay.appendChild(closeBtn);
+
+  function onKey(e) {
+    var k = e.key;
+    if (k === 'Escape' || e.keyCode === 27) { e.preventDefault(); close(); return; }
+    // Focus trap: the close button is the only tab stop while the overlay is open.
+    if (k === 'Tab') { e.preventDefault(); closeBtn.focus(); }
+  }
+  function close() {
+    doc.removeEventListener('keydown', onKey, true);
+    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    try { img.focus(); } catch(e) {} // return focus to the trigger
+  }
+  // Tap anywhere (scrim or image) closes; a drag scrolls (pan) and fires no click.
+  overlay.addEventListener('click', function() { close(); });
+  doc.addEventListener('keydown', onKey, true);
+  doc.body.appendChild(overlay);
+  try { overlay.scrollTop = 0; overlay.scrollLeft = 0; } catch(e) {}
+  try { closeBtn.focus(); } catch(e) {}
+}
+// Bind the delegated listeners ONCE per shell (guarded by a flag so re-entrant
+// applies can't double-bind). Delegation on the shell survives in-place mutations
+// and covers every current/future descendant image without per-image wiring.
+function _readerBindLightbox(shell, doc) {
+  if (!shell || shell.__zimiLightboxBound) return;
+  shell.__zimiLightboxBound = true;
+  shell.addEventListener('click', function(e) {
+    var img = e.target && e.target.closest ? e.target.closest('img') : null;
+    if (!img || !shell.contains(img)) return;
+    if (!_readerImgZoomable(img)) return; // authoritative check at tap time
+    e.preventDefault();
+    _readerOpenLightbox(img);
+  });
+  shell.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    var img = e.target;
+    if (!img || img.tagName !== 'IMG' || !img.classList.contains('zimi-zoomable')) return;
+    e.preventDefault();
+    _readerOpenLightbox(img);
+  });
+  // load doesn't bubble — capture it to mark images that decode after apply.
+  shell.addEventListener('load', function(e) {
+    if (e.target && e.target.tagName === 'IMG') _readerMarkImage(e.target);
+  }, true);
+  _readerMarkImages(shell);
 }
 
 // Build the shell and swap it in. Returns true on success. All fallible DOM work
@@ -8513,6 +8655,7 @@ function _readerViewApply(doc) {
   _applyReaderTheme(doc); // stamp theme + family classes → CSS var palette
   try { doc.defaultView.scrollTo(0, 0); } catch(e) {}
   _applyReaderFont(doc); // font zoom composes over the shell
+  _readerBindLightbox(shell, doc); // tap-to-full-size on scaled-down images
   return true;
 }
 
