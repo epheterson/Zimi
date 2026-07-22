@@ -983,6 +983,7 @@
   "tts_speak": "Read aloud",
   "tts_stop": "Stop reading",
   "font_size": "Font size",
+  "reader_view": "Reader View",
   "manage_public_locked_title": "Remote management is locked",
   "manage_public_locked_body": "Management is available on your local network only. Set a password from a device on the local network to enable remote management.",
   "move_to": "Move to…",

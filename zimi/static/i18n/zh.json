@@ -983,6 +983,7 @@
   "tts_speak": "朗读",
   "tts_stop": "停止朗读",
   "font_size": "字体大小",
+  "reader_view": "阅读视图",
   "manage_public_locked_title": "远程管理已锁定",
   "manage_public_locked_body": "管理功能仅在本地网络中可用。请在本地网络中的设备上设置密码，以启用远程管理。",
   "move_to": "移动到…",

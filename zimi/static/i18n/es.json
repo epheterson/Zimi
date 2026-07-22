@@ -983,6 +983,7 @@
   "tts_speak": "Leer en voz alta",
   "tts_stop": "Detener lectura",
   "font_size": "Tamaño de letra",
+  "reader_view": "Vista de lectura",
   "manage_public_locked_title": "La administración remota está bloqueada",
   "manage_public_locked_body": "La administración solo está disponible en tu red local. Establece una contraseña desde un dispositivo de la red local para habilitar la administración remota.",
   "move_to": "Mover a…",

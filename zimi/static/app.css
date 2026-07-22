@@ -83,6 +83,7 @@
   .catalog-lang-search-btn:hover,
   .lang-selector-btn:hover,
   .library-btn.panel-open,
+  #readerview-btn[aria-pressed="true"],
   #tts-btn.speaking { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
 
   /* ── History trail dropdown ── */
@@ -1120,7 +1121,7 @@
     .random-btn, .lang-selector-btn, .manage-btn { display: none !important; }
     /* Reader controls (font size, read-aloud, pop-out) migrate into the ...
        menu on mobile — the topbar is too tight to hold them inline. */
-    #font-btn, #tts-btn, #newtab-btn { display: none !important; }
+    #font-btn, #tts-btn, #readerview-btn, #newtab-btn { display: none !important; }
     .topbar-more { display: flex !important; }
     .topbar.search-focused .topbar-more,
     .topbar.search-focused .library-btn { display: none !important; }

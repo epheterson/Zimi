@@ -983,6 +983,7 @@
   "tts_speak": "Ler em voz alta",
   "tts_stop": "Parar leitura",
   "font_size": "Tamanho da fonte",
+  "reader_view": "Modo de leitura",
   "manage_public_locked_title": "O gerenciamento remoto está bloqueado",
   "manage_public_locked_body": "O gerenciamento só está disponível na sua rede local. Defina uma senha em um dispositivo da rede local para ativar o gerenciamento remoto.",
   "move_to": "Mover para…",

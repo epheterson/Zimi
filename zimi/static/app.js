@@ -643,6 +643,7 @@ function updateTopbar() {
   if (fontBtn) fontBtn.style.display = _readingArticle ? 'flex' : 'none';
   var ttsBtn = document.getElementById('tts-btn');
   if (ttsBtn) ttsBtn.style.display = (_readingArticle && _TTS_AVAILABLE) ? 'flex' : 'none';
+  _syncReaderViewBtn(); // book/reader-view glyph — gated on extractable content
   // Desktop: show save button when viewing a downloadable file (PDF, EPUB)
   var saveBtn = document.getElementById('save-btn');
   if (saveBtn) {
@@ -7879,13 +7880,22 @@ function _ttsChunkText(text, maxLen) {
 }
 // TTS_CHUNK_FN_END
 
+// Shared main-content locator for a ZIM article document. Returns the element
+// that holds the article body (dropping surrounding nav/chrome) or null when no
+// recognizable container exists. Both Read-aloud and Reader View build on this —
+// one selector, one place to tune it. Callers decide their own body fallback.
+var _READER_MAIN_SELECTOR = '#mw-content-text, .mw-parser-output, main, article, [role="main"]';
+function _readerMainContent(doc) {
+  if (!doc) return null;
+  var main = null;
+  try { main = doc.querySelector(_READER_MAIN_SELECTOR); } catch(e) {}
+  return main;
+}
 function _ttsExtractText(doc) {
   if (!doc) return '';
   // Prefer the article's main content element — that alone drops surrounding
   // nav/chrome cheaply. Fall back to the whole body (acceptable v1).
-  var main = null;
-  try { main = doc.querySelector('#mw-content-text, .mw-parser-output, main, article, [role="main"]'); } catch(e) {}
-  if (!main) main = doc.body;
+  var main = _readerMainContent(doc) || doc.body;
   if (!main) return '';
   return (main.innerText || main.textContent || '').trim();
 }
@@ -7936,6 +7946,236 @@ function _ttsSpeak() {
 function _ttsToggle() {
   if (_ttsSpeaking) _ttsStop();
   else _ttsSpeak();
+}
+
+// ── Reader View (Safari-Reader-style clean typography) ──
+// A per-session toggle that re-renders the current ZIM article as a single,
+// distraction-free reading column inside the SAME iframe — no reload, no server
+// round-trip. On: we clone the article's main content (reusing _readerMainContent
+// so TTS and Reader View agree on what "the article" is), strip the ZIM's chrome
+// (navboxes, infoboxes, edit links, TOC), and swap the frame body for a minimal
+// shell styled in Zimi's dark palette. The original body is stashed as a detached
+// node so Off restores it byte-for-byte. The preference is a module var (session
+// only, intentionally not persisted — see task notes) reapplied on every
+// frame.onload while on, mirroring _applyReaderFont.
+var _readerViewOn = false;
+var READER_VIEW_MIN_CHARS = 200; // extraction floor: below this we treat the page as un-readerable
+var _READER_VIEW_STYLE_ID = 'zimi-reader-style';
+var _READER_VIEW_STASH = '__zimiReaderStash'; // property name on the frame document
+// Chrome that Reader View drops. Wikipedia/MediaWiki-heavy; harmless no-ops on
+// other ZIM DOMs (stackexchange/devdocs) whose main element is already clean.
+var _READER_VIEW_STRIP = [
+  'script', 'style', 'link', 'noscript',
+  '.mw-editsection', '.navbox', '.vertical-navbox', '.navbox-inner',
+  '.noprint', '.mw-jump-link', '.infobox', '.metadata', '.ambox', '.mbox-small',
+  '.sistersitebox', '.sidebar', '.side-box', '.hatnote', '.shortdescription',
+  '.printfooter', '.catlinks', '.mw-hidden-catlinks', '#toc', '.toc',
+  '.mw-empty-elt', '.mw-editsection-like'
+].join(',');
+// Book-open glyph shared by the desktop button and the mobile ... menu row.
+var _READER_VIEW_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
+
+function _readerFrameDoc() {
+  var frame = document.getElementById('reader-frame');
+  var doc = null;
+  try { doc = frame && frame.contentDocument; } catch(e) { doc = null; }
+  return doc;
+}
+
+// Is Reader View offer-able for whatever is currently in the frame? False for
+// pdf.js viewer pages, zimgit catalogs, and any doc whose main content is too
+// thin to be worth re-rendering (guards against a broken half-render).
+function _readerViewAvailable() {
+  if (!readerOpen || _almanacOpen) return false;
+  var frame = document.getElementById('reader-frame');
+  var doc = _readerFrameDoc();
+  if (!doc || !doc.body) return false;
+  var loc = '';
+  try { loc = frame.contentWindow.location.pathname; } catch(e) { return false; }
+  if (loc.indexOf('/static/') === 0) return false; // pdf.js / other static viewers
+  // When already applied, the stash proves it was readerable — keep it offered.
+  if (doc[_READER_VIEW_STASH]) return true;
+  var main = _readerMainContent(doc);
+  if (!main || main === doc.body) return false;
+  var len = (main.innerText || main.textContent || '').trim().length;
+  return len >= READER_VIEW_MIN_CHARS;
+}
+
+function _readerViewTitle(doc) {
+  var el = null;
+  try { el = doc.querySelector('#firstHeading, .mw-first-heading, h1, .title'); } catch(e) {}
+  var txt = el && (el.innerText || el.textContent || '').trim();
+  if (txt) return txt;
+  return (doc.title || '').trim();
+}
+
+// Strip chrome and make tables horizontally scrollable inside the CLONE only —
+// the live document is untouched until the caller swaps it in.
+function _readerViewClean(root, doc) {
+  try {
+    var junk = root.querySelectorAll(_READER_VIEW_STRIP);
+    for (var i = 0; i < junk.length; i++) {
+      if (junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
+    }
+  } catch(e) {}
+  // Wrap wide tables so they scroll rather than blow out the reading column.
+  try {
+    var tables = root.querySelectorAll('table');
+    for (var j = 0; j < tables.length; j++) {
+      var tbl = tables[j];
+      if (tbl.parentNode && tbl.parentNode.classList &&
+          tbl.parentNode.classList.contains('zimi-table-wrap')) continue;
+      var wrap = doc.createElement('div');
+      wrap.className = 'zimi-table-wrap';
+      tbl.parentNode.insertBefore(wrap, tbl);
+      wrap.appendChild(tbl);
+    }
+  } catch(e) {}
+}
+
+function _readerViewInjectStyle(doc) {
+  if (doc.getElementById(_READER_VIEW_STYLE_ID)) return;
+  // Colors are hardcoded copies of app.css theme vars — the iframe can't see the
+  // parent's custom properties. Serif body + sans headings is the recognized
+  // "reader mode" signal and reads as a deliberate mode switch away from the raw
+  // ZIM render; headings stay in Zimi's system-sans stack for brand continuity.
+  var css = [
+    'body.zimi-reader-active{background:#0a0a0b !important;margin:0 !important}',
+    '.zimi-reader{background:#0a0a0b;color:#e8e8ed;min-height:100vh;box-sizing:border-box;',
+      'padding:48px 20px 96px;font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;',
+      'font-size:19px;line-height:1.65;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}',
+    '.zimi-reader-body{max-width:68ch;margin:0 auto}',
+    '.zimi-reader h1,.zimi-reader h2,.zimi-reader h3,.zimi-reader h4,.zimi-reader h5,.zimi-reader h6{',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.25;',
+      'color:#f5f5f7;font-weight:700;margin:1.6em 0 0.5em}',
+    '.zimi-reader-title{font-size:2em;margin:0 0 0.7em;line-height:1.2;',
+      'border-bottom:1px solid #27272b;padding-bottom:0.35em}',
+    '.zimi-reader h2{font-size:1.5em;border-bottom:1px solid #27272b;padding-bottom:0.2em}',
+    '.zimi-reader h3{font-size:1.25em}.zimi-reader h4{font-size:1.1em}',
+    '.zimi-reader p{margin:0 0 1.1em}',
+    '.zimi-reader a{color:#f59e0b;text-decoration:none}',
+    '.zimi-reader a:hover{text-decoration:underline}',
+    '.zimi-reader img{max-width:100%;height:auto;border-radius:6px;margin:0.4em 0;display:block}',
+    '.zimi-reader figure{margin:1.3em auto}',
+    '.zimi-reader figcaption{font-size:0.78em;color:#8a8a94;font-family:-apple-system,sans-serif;',
+      'text-align:center;margin-top:0.4em;line-height:1.45}',
+    '.zimi-reader ul,.zimi-reader ol{margin:0 0 1.1em 1.4em}',
+    '.zimi-reader li{margin:0.3em 0}',
+    '.zimi-reader blockquote{border-left:3px solid #27272b;margin:1.3em 0;padding-left:1em;color:#8a8a94}',
+    '.zimi-reader hr{border:none;border-top:1px solid #27272b;margin:2em 0}',
+    '.zimi-reader sup,.zimi-reader sub{font-size:0.75em}',
+    '.zimi-reader pre,.zimi-reader code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}',
+    '.zimi-reader pre{background:#141416;border:1px solid #27272b;border-radius:8px;padding:14px;',
+      'overflow-x:auto;font-size:0.82em;line-height:1.5}',
+    '.zimi-reader code{background:#1c1c20;padding:0.1em 0.4em;border-radius:4px;font-size:0.86em}',
+    '.zimi-reader pre code{background:none;padding:0;font-size:1em}',
+    '.zimi-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:1.3em 0;max-width:100%}',
+    '.zimi-reader table{border-collapse:collapse;font-family:-apple-system,sans-serif;font-size:0.84em}',
+    '.zimi-reader th,.zimi-reader td{border:1px solid #27272b;padding:6px 10px;text-align:left;vertical-align:top}',
+    '.zimi-reader th{background:#1c1c20;color:#e8e8ed;font-weight:600}'
+  ].join('');
+  var style = doc.createElement('style');
+  style.id = _READER_VIEW_STYLE_ID;
+  style.textContent = css;
+  (doc.head || doc.documentElement).appendChild(style);
+}
+
+// Build the shell and swap it in. Returns true on success. All fallible DOM work
+// (query, clone, clean) happens BEFORE the live document is mutated, so a failure
+// leaves the original page fully intact — never a half-render.
+function _readerViewApply(doc) {
+  if (!doc || !doc.body) return false;
+  if (doc[_READER_VIEW_STASH]) return true; // already applied to this document
+  var main = _readerMainContent(doc);
+  if (!main || main === doc.body) return false;
+  var text = (main.innerText || main.textContent || '').trim();
+  if (text.length < READER_VIEW_MIN_CHARS) return false;
+
+  var clone = main.cloneNode(true);
+  _readerViewClean(clone, doc);
+  var title = _readerViewTitle(doc);
+  // Some ZIMs put the article's title <h1> INSIDE the main container; our styled
+  // .zimi-reader-title would then double it. Drop the in-content copy when its
+  // text matches the title we're about to render.
+  if (title) {
+    try {
+      var dup = clone.querySelector('#firstHeading, .mw-first-heading, h1');
+      if (dup && (dup.innerText || dup.textContent || '').trim() === title && dup.parentNode) {
+        dup.parentNode.removeChild(dup);
+      }
+    } catch(e) {}
+  }
+
+  var shell = doc.createElement('div');
+  shell.className = 'zimi-reader';
+  var article = doc.createElement('article');
+  article.className = 'zimi-reader-body';
+  if (title) {
+    var h1 = doc.createElement('h1');
+    h1.className = 'zimi-reader-title';
+    h1.textContent = title;
+    article.appendChild(h1);
+  }
+  article.appendChild(clone);
+  shell.appendChild(article);
+
+  _readerViewInjectStyle(doc);
+  // Swap: stash every existing body child (detached, order-preserving) then show
+  // the shell. Document-level listeners (link interception) live on the document,
+  // not the body, so they keep working on the cloned content.
+  var stash = doc.createElement('div');
+  while (doc.body.firstChild) stash.appendChild(doc.body.firstChild);
+  doc[_READER_VIEW_STASH] = stash;
+  doc.body.appendChild(shell);
+  doc.body.classList.add('zimi-reader-active');
+  try { doc.defaultView.scrollTo(0, 0); } catch(e) {}
+  _applyReaderFont(doc); // font zoom composes over the shell
+  return true;
+}
+
+function _readerViewRestore(doc) {
+  if (!doc || !doc[_READER_VIEW_STASH]) return;
+  var shell = doc.querySelector('.zimi-reader');
+  if (shell && shell.parentNode) shell.parentNode.removeChild(shell);
+  var stash = doc[_READER_VIEW_STASH];
+  while (stash.firstChild) doc.body.appendChild(stash.firstChild);
+  doc[_READER_VIEW_STASH] = null;
+  doc.body.classList.remove('zimi-reader-active');
+  _applyReaderFont(doc);
+}
+
+function _readerViewToggle() {
+  var doc = _readerFrameDoc();
+  if (!doc) return;
+  if (_readerViewOn) {
+    _readerViewOn = false;
+    try { _readerViewRestore(doc); } catch(e) {}
+  } else {
+    var ok = false;
+    try { ok = _readerViewApply(doc); } catch(e) { ok = false; }
+    if (!ok) {
+      // Extraction failed mid-toggle: undo anything partial and quietly stay off.
+      try { _readerViewRestore(doc); } catch(e) {}
+      _readerViewOn = false;
+      _syncReaderViewBtn();
+      return;
+    }
+    _readerViewOn = true;
+  }
+  _ttsStop(); // the visible content changed under any in-progress speech
+  _syncReaderViewBtn();
+}
+
+// Reflect availability + on/off state onto the desktop button and the ... menu row.
+function _syncReaderViewBtn() {
+  var avail = _readerViewAvailable();
+  var btn = document.getElementById('readerview-btn');
+  if (btn) {
+    btn.style.display = avail ? 'flex' : 'none';
+    btn.setAttribute('aria-pressed', _readerViewOn ? 'true' : 'false');
+  }
+  var item = document.getElementById('tbm-readerview');
+  if (item) item.setAttribute('aria-pressed', _readerViewOn ? 'true' : 'false');
 }
 
 // ── Reader ──
@@ -8255,6 +8495,12 @@ function openReader(url) {
       _checkReaderLangBanner();
       _prefetchArticleLangs();
     }
+    // Reader View: reapply the session preference to the freshly-loaded article
+    // (same pattern as _applyReaderFont), then sync the toggle's availability.
+    // Placed last so the injected scroll-to-top button + responsive style are
+    // already in place and get stashed with the rest of the original body.
+    if (_readerViewOn) { try { _readerViewApply(frame.contentDocument); } catch(e) {} }
+    _syncReaderViewBtn();
   };
   // Use location.replace to avoid polluting parent history stack
   // (setting iframe.src adds a session history entry that breaks the back button)
@@ -8810,6 +9056,8 @@ var _TBM_NEWTAB_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="
 // _cycleReaderFont / _ttsSetSpeaking call this so the label updates in place
 // without closing the menu.
 function _syncTopbarMenuReaderItems() {
+  var rvItem = document.getElementById('tbm-readerview');
+  if (rvItem) rvItem.setAttribute('aria-pressed', _readerViewOn ? 'true' : 'false');
   var fontItem = document.getElementById('tbm-font');
   if (fontItem) {
     var val = fontItem.querySelector('.tbm-val');
@@ -8837,7 +9085,12 @@ function _toggleTopbarMenu(event) {
   // place and keep the menu open (event.stopPropagation blocks the outside-click
   // close); pop-out closes the menu like the other actions.
   if (readerOpen && !_almanacOpen) {
-    // Reader-control group first: Read aloud, Font size, Open in browser.
+    // Reader-control group first: Reader View, Read aloud, Font size, Open in browser.
+    if (_readerViewAvailable()) {
+      h += '<button class="topbar-menu-item" id="tbm-readerview" aria-pressed="' + (_readerViewOn ? 'true' : 'false') +
+        '" onclick="event.stopPropagation();_readerViewToggle()">' + _READER_VIEW_ICON +
+        ' <span class="tbm-label">' + tH('reader_view') + '</span></button>';
+    }
     if (_TTS_AVAILABLE) {
       h += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
