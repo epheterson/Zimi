@@ -67,8 +67,15 @@ class _QidFixtureMixin:
         self._saved_cache_conn = _interlang._qid_cache_conn
         _interlang._qid_cache_conn = None
         self._saved_zim_list = _srv._zim_list_cache
+        # Isolate the server-side resolved-batch memo so a prior test's answer
+        # can't satisfy this one (the key encodes library generation, not the
+        # zim-list contents these tests swap in place).
+        self._saved_alm_cache = dict(_interlang._almanac_resolve_cache)
+        _interlang._almanac_resolve_cache.clear()
 
     def _teardown_qids(self):
+        _interlang._almanac_resolve_cache.clear()
+        _interlang._almanac_resolve_cache.update(self._saved_alm_cache)
         for conn in _interlang._qid_db_pool.values():
             try:
                 conn.close()
@@ -218,6 +225,207 @@ class AlmanacLinksEndpointTests(_QidFixtureMixin, unittest.TestCase):
     def test_endpoint_is_rate_limited_public_read(self):
         # Rides the API rate-limit bucket like /suggest — no auth involved.
         self.assertIn("/almanac-links", _http._RATE_LIMITED_API_PATHS)
+
+
+class _LockSpy:
+    """A _zim_lock stand-in that counts context-manager entries but otherwise
+    behaves like a real lock — so tests can assert the title fallback actually
+    serializes its libzim access."""
+
+    def __init__(self):
+        import threading
+
+        self._lock = threading.Lock()
+        self.enters = 0
+
+    def __enter__(self):
+        self.enters += 1
+        return self._lock.__enter__()
+
+    def __exit__(self, *a):
+        return self._lock.__exit__(*a)
+
+    def acquire(self, *a, **k):
+        return self._lock.acquire(*a, **k)
+
+    def release(self):
+        return self._lock.release()
+
+
+class TitleFallbackTests(_QidFixtureMixin, unittest.TestCase):
+    """Exact-title fallback against a REAL wikipedia-shaped ZIM.
+
+    The fixture ZIM carries NO Q-ID index, so the only way these Q-IDs resolve is
+    via the curated English title supplied alongside them (direct + redirect).
+    """
+
+    def setUp(self):
+        import tempfile
+
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from conftest_zim import build_wiki_fixture_zim
+
+        self._setup_qids()
+        self._zdir = tempfile.mkdtemp(prefix="zimi-alm-wiki-")
+        zpath = os.path.join(self._zdir, "wikipedia_en_test.zim")
+        build_wiki_fixture_zim(zpath)
+        self._archive = _srv.open_archive(zpath)
+        # Inject the open archive straight into the pool under the ZIM name the
+        # candidate list + get_archive() will look up.
+        self._saved_pool = dict(_srv._archive_pool)
+        _srv._archive_pool["wikipedia_en_test"] = self._archive
+        _srv._zim_list_cache = [
+            {"name": "wikipedia_en_test", "language": "en", "entry_count": 5000},
+        ]
+
+    def tearDown(self):
+        _srv._archive_pool.clear()
+        _srv._archive_pool.update(self._saved_pool)
+        self._teardown_qids()
+
+    def test_title_fallback_direct_hit(self):
+        # No index → Q-ID missed → resolved by exact curated title (direct entry).
+        out = _srv.resolve_almanac_qids(["Q308"], ["en"], {"Q308": "Mercury (planet)"})
+        self.assertIn("Q308", out)
+        self.assertEqual(out["Q308"]["zim"], "wikipedia_en_test")
+        self.assertEqual(out["Q308"]["path"], "A/Mercury_(planet)")
+        self.assertEqual(out["Q308"]["title"], "Mercury (planet)")
+
+    def test_title_fallback_follows_redirect_to_canonical(self):
+        # 'Sun' is a redirect to the canonical 'A/Sol' — the resolver must follow
+        # the one hop and return the canonical path.
+        out = _srv.resolve_almanac_qids(["Q525"], ["en"], {"Q525": "Sun"})
+        self.assertIn("Q525", out)
+        self.assertEqual(out["Q525"]["path"], "A/Sol")
+
+    def test_title_miss_stays_absent(self):
+        # A title with no matching entry is a miss, never a fuzzy/search fallback.
+        out = _srv.resolve_almanac_qids(
+            ["Q999999"], ["en"], {"Q999999": "Nonexistent Article Title"}
+        )
+        self.assertNotIn("Q999999", out)
+
+    def test_no_title_provided_is_absent(self):
+        # Without a curated title there is nothing to fall back to → absent.
+        out = _srv.resolve_almanac_qids(["Q308"], ["en"], None)
+        self.assertNotIn("Q308", out)
+
+    def test_non_english_zim_excluded_from_title_fallback(self):
+        # Strict-language rule: the curated title is English, so a French-only
+        # library must NOT resolve it by title (no wrong-language link).
+        _srv._archive_pool["wikipedia_fr_test"] = self._archive  # same content
+        _srv._zim_list_cache = [
+            {"name": "wikipedia_fr_test", "language": "fr", "entry_count": 5000},
+        ]
+        out = _srv.resolve_almanac_qids(["Q308"], ["fr"], {"Q308": "Mercury (planet)"})
+        self.assertNotIn("Q308", out)
+
+    def test_title_fallback_holds_zim_lock(self):
+        # Lock discipline: the fallback touches libzim, so it must acquire
+        # _zim_lock (the C library is not thread-safe).
+        spy = _LockSpy()
+        with mock.patch.object(_srv, "_zim_lock", spy):
+            out = _srv.resolve_almanac_qids(
+                ["Q308"], ["en"], {"Q308": "Mercury (planet)"}
+            )
+        self.assertIn("Q308", out)
+        self.assertGreaterEqual(spy.enters, 1)
+
+    def test_pure_index_path_does_not_take_zim_lock(self):
+        # Contrast: an index hit (no title miss) never enters the libzim fallback,
+        # so _zim_lock stays untouched — proving the lock guards only the fallback.
+        _make_qid_index(self.tmp, "wikipedia_en_test", {"A/Mercury_(planet)": 308})
+        # Drop the pooled qid-db handle so the new index file is picked up.
+        _interlang._qid_db_pool.clear()
+        spy = _LockSpy()
+        with mock.patch.object(_srv, "_zim_lock", spy):
+            out = _srv.resolve_almanac_qids(
+                ["Q308"], ["en"], {"Q308": "Mercury (planet)"}
+            )
+        self.assertEqual(out["Q308"]["path"], "A/Mercury_(planet)")
+        self.assertEqual(spy.enters, 0)
+
+
+class ResolveCacheTests(_QidFixtureMixin, unittest.TestCase):
+    """The resolved batch is memoized so a repeat open is one dict hit."""
+
+    def setUp(self):
+        self._setup_qids()
+        _make_qid_index(self.tmp, "wikipedia_en_test", {"A/Earth": 2})
+        _srv._zim_list_cache = [
+            {"name": "wikipedia_en_test", "language": "en", "entry_count": 5000},
+        ]
+
+    def tearDown(self):
+        self._teardown_qids()
+
+    def test_repeat_batch_served_from_cache(self):
+        calls = {"n": 0}
+        real = _interlang._qid_find_in_zim
+
+        def counting(name, qid_int):
+            calls["n"] += 1
+            return real(name, qid_int)
+
+        with mock.patch.object(_interlang, "_qid_find_in_zim", counting):
+            first = _srv.resolve_almanac_qids(["Q2"], ["en"])
+            after_first = calls["n"]
+            second = _srv.resolve_almanac_qids(["Q2"], ["en"])
+        self.assertEqual(first, second)
+        self.assertEqual(first["Q2"]["path"], "A/Earth")
+        self.assertGreater(after_first, 0)
+        # Second call resolved purely from the memo — no further index probes.
+        self.assertEqual(calls["n"], after_first)
+
+    def test_cache_key_includes_library_generation(self):
+        _srv.resolve_almanac_qids(["Q2"], ["en"])
+        # A library reload bumps _cache_generation → the old memo entry no longer
+        # keys, so the batch is recomputed (not a stale hit).
+        saved_gen = _srv._cache_generation
+        try:
+            _srv._cache_generation = saved_gen + 1
+            calls = {"n": 0}
+            real = _interlang._qid_find_in_zim
+
+            def counting(name, qid_int):
+                calls["n"] += 1
+                return real(name, qid_int)
+
+            with mock.patch.object(_interlang, "_qid_find_in_zim", counting):
+                _srv.resolve_almanac_qids(["Q2"], ["en"])
+            self.assertGreater(calls["n"], 0)
+        finally:
+            _srv._cache_generation = saved_gen
+
+    def test_titles_change_busts_cache(self):
+        # Same Q-IDs + langs but a different titles map is a different request
+        # (the fallback could resolve differently), so it must not reuse the memo.
+        key_a = _interlang._almanac_cache_key(["Q2"], ["en"], {"Q2": "Earth"})
+        key_b = _interlang._almanac_cache_key(["Q2"], ["en"], {"Q2": "Terra"})
+        self.assertNotEqual(key_a, key_b)
+
+
+class TitlesValidationTests(_QidFixtureMixin, unittest.TestCase):
+    def setUp(self):
+        self._setup_qids()
+        _make_qid_index(self.tmp, "wikipedia_en_test", {"A/Earth": 2})
+        _srv._zim_list_cache = [
+            {"name": "wikipedia_en_test", "language": "en", "entry_count": 5000},
+        ]
+
+    def tearDown(self):
+        self._teardown_qids()
+
+    def test_titles_must_be_object(self):
+        h = _Handler()
+        _http._almanac_links_response(h, ["Q2"], ["en"], ["not", "a", "dict"])
+        self.assertEqual(h.status, 400)
+
+    def test_titles_optional(self):
+        h = _Handler()
+        _http._almanac_links_response(h, ["Q2"], ["en"], None)
+        self.assertEqual(h.status, 200)
+        self.assertIn("Q2", h.body["links"])
 
 
 if __name__ == "__main__":

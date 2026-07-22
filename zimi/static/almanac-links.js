@@ -7,13 +7,20 @@
 //   - Q-ID resolves to an installed article → the entity renders as a direct
 //     link; a tap opens it with zero further requests.
 //   - Q-ID doesn't resolve (or no encyclopedia installed) → plain text.
-// There is deliberately NO title search, no /suggest chain, no direct-path
-// probe, and no on-tap fetch. A Q-ID that doesn't map to a real article is
-// simply not a link — a wrong link is worse than no link. Entities in the map
-// without a `q` field can never become links.
+// There is deliberately NO title SEARCH, no /suggest chain, no fuzzy match, and
+// no on-tap fetch. A Q-ID that doesn't map to a real article is simply not a
+// link — a wrong link is worse than no link. Entities in the map without a `q`
+// field can never become links.
+//
+// Each entity's curated English article title travels alongside its Q-ID in the
+// batch (parallel `titles` map). That is NOT a search: in a Wikipedia ZIM a
+// title maps deterministically to the entry path, so the server can resolve an
+// English article by exact title when a ZIM has no prebuilt Q-ID index (a full
+// English Wikipedia would otherwise need a ~35h index build to link anything).
 //
 // Server side: resolve_almanac_qids() in interlang.py consults each installed
-// wikipedia/vikidia ZIM's Q-ID index (sqlite) in language-preference order.
+// wikipedia/vikidia ZIM's Q-ID index (sqlite) in language-preference order,
+// then falls back to the exact curated title against English-family ZIMs.
 //
 // This module shares global scope with app.js + the other almanac modules
 // (all loaded as plain <script>s), so it calls openArticle(), zimsCache,
@@ -323,6 +330,21 @@
     return out;
   }
 
+  // Parallel {qid: en-title} for the closed set. The server uses these as an
+  // EXACT-TITLE fallback when a candidate ZIM has no prebuilt Q-ID index (e.g. a
+  // full English Wikipedia): the curated `en` title maps deterministically to
+  // the entry path, so no ~35h index build is needed for English. Deduped by
+  // Q-ID (first title wins), same closed set as _allQids.
+  function _qidTitles() {
+    var out = {};
+    for (var k in MAP) {
+      if (!MAP.hasOwnProperty(k)) continue;
+      var e = MAP[k];
+      if (e && e.q && e.en && !out[e.q]) out[e.q] = e.en;
+    }
+    return out;
+  }
+
   var _qidLinks = {};     // 'Qxxx' -> {zim, path, title}   (resolved hits only)
   var _qidSig = null;     // signature of the library+langs _qidLinks was built for
   var _qidLoaded = false; // a batch response has landed for the current signature
@@ -351,7 +373,7 @@
     fetch('/almanac-links', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ qids: qids, langs: langs })
+      body: JSON.stringify({ qids: qids, langs: langs, titles: _qidTitles() })
     })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {

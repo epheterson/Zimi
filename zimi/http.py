@@ -206,13 +206,15 @@ def _check_rate_limit(ip, content=False, limit=None):
     return 0
 
 
-def _almanac_links_response(handler, qids, langs):
+def _almanac_links_response(handler, qids, langs, titles=None):
     """Shared GET/POST handler body for /almanac-links.
 
     Validates the batch shape/size, then batch-resolves the closed set of
     Wikidata Q-IDs to installed articles (hits only). Q-ID format validation
     lives in resolve_almanac_qids, so a malformed token is silently skipped,
-    not an error. Returns {"links": {qid: {zim, path, title}}}.
+    not an error. `titles` is an optional {qid: english_title} map (POST only)
+    powering the exact-title fallback for ZIMs without a prebuilt Q-ID index.
+    Returns {"links": {qid: {zim, path, title}}}.
     """
     if not isinstance(qids, list):
         return handler._json(400, {"error": "'qids' must be a list"})
@@ -223,7 +225,9 @@ def _almanac_links_response(handler, qids, langs):
         )
     if langs is not None and not isinstance(langs, list):
         return handler._json(400, {"error": "'langs' must be a list"})
-    links = _srv.resolve_almanac_qids(qids, langs)
+    if titles is not None and not isinstance(titles, dict):
+        return handler._json(400, {"error": "'titles' must be an object"})
+    links = _srv.resolve_almanac_qids(qids, langs, titles)
     return handler._json(200, {"links": links})
 
 
@@ -1387,7 +1391,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                         429, {"error": "rate limited", "retry_after": retry_after}
                     )
                 return _almanac_links_response(
-                    self, data.get("qids", []), data.get("langs")
+                    self,
+                    data.get("qids", []),
+                    data.get("langs"),
+                    data.get("titles"),
                 )
 
             elif parsed.path == "/collections":

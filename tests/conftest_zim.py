@@ -82,3 +82,42 @@ def build_fixture_zim(path: str) -> str:
         creator.add_metadata("Description", "tiny fixture")
     assert os.path.exists(path)
     return path
+
+
+def build_wiki_fixture_zim(path: str) -> str:
+    """Write a tiny wikipedia-shaped ZIM at `path` for the almanac title fallback.
+
+    Exercises both exact-title fallback shapes:
+      - a DIRECT article ('A/Mercury_(planet)')
+      - a REDIRECT ('A/Sun' → canonical 'A/Sol') so the resolver must follow one
+        hop to the canonical entry path.
+
+    Carries NO Q-ID index, so resolve_almanac_qids can only reach these via the
+    curated-title fallback (which is the whole point).
+    """
+    from libzim.writer import Blob  # noqa: F401  (Creator API completeness)
+
+    articles = [
+        (
+            "A/Mercury_(planet)",
+            "Mercury (planet)",
+            b"<html><body><h1>Mercury</h1><p>Closest planet to the Sun."
+            b"</p></body></html>",
+        ),
+        (
+            "A/Sol",
+            "Sun",
+            b"<html><body><h1>Sun</h1><p>The star at the centre." b"</p></body></html>",
+        ),
+    ]
+    with Creator(path).config_indexing(True, "eng") as creator:
+        creator.set_mainpath("A/Mercury_(planet)")
+        for p, t, h in articles:
+            creator.add_item(_Article(p, t, h))
+        # 'Sun' as a redirect to the canonical 'A/Sol' entry.
+        creator.add_redirection("A/Sun", "Sun", "A/Sol", {})
+        creator.add_metadata("Title", "Test Wikipedia")
+        creator.add_metadata("Language", "eng")
+        creator.add_metadata("Description", "tiny wiki fixture")
+    assert os.path.exists(path)
+    return path
