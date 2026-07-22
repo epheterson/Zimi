@@ -380,12 +380,20 @@ def handle_manage_get(handler, parsed, params):
         # library.py:1209,1234). Earlier draft filtered on a `status` key
         # that doesn't exist on real download objects — the test stub had it
         # wrong. Active = actively transferring; queued is a separate bucket.
-        active_dl = sum(
-            1
+        active = [
+            d
             for d in downloads
             if not d.get("done") and not d.get("paused") and not d.get("queued")
-        )
+        ]
+        active_dl = len(active)
         queued_dl = sum(1 for d in downloads if d.get("queued"))
+        # Name of the first in-flight download so the topbar badge tooltip can
+        # read "1 downloading — <name>" instead of a bare count. Base filename
+        # (sans .zim) — recognizable without a catalog lookup on a 5s poll.
+        first_name = ""
+        if active:
+            fn = active[0].get("filename", "") or ""
+            first_name = fn[:-4] if fn.endswith(".zim") else fn
         seeding_count = 0
         try:
             from zimi import p2p as _p2p
@@ -410,7 +418,11 @@ def handle_manage_get(handler, parsed, params):
                     "total": idx.get("total", 0),
                     "current": idx.get("building_now"),
                 },
-                "downloads": {"active": active_dl, "queued": queued_dl},
+                "downloads": {
+                    "active": active_dl,
+                    "queued": queued_dl,
+                    "name": first_name,
+                },
                 "seeding": {"torrents": seeding_count},
             },
         )

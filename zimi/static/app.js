@@ -686,9 +686,13 @@ function updateTopbar() {
   // keeping the selection so it reappears when the user returns.
   _renderSelectionBar();
 
-  // Manage has its own downloads/indexing surfaces — the ambient activity
-  // bar is redundant there (CSS hides it via this class).
   document.body.classList.toggle('in-manage', mode === 'manage');
+
+  // Re-attach the background-activity badge: this function rewrites the gear's
+  // innerHTML above (wiping any child badge), and Manage mode suppresses it
+  // (that view surfaces downloads in its own tabs). Safe no-op before the first
+  // poll (badge state defaults to inactive).
+  _applyActivityBadge();
 }
 
 function bcClick(e) {
@@ -7812,6 +7816,14 @@ function _applyReaderFont(doc) {
       body.style.removeProperty('zoom');
       doc.documentElement.style.removeProperty('font-size');
     } else {
+      // `zoom` (NOT a width-compensated transform) is deliberate: modern WebKit
+      // RE-LAYS-OUT at the zoom-divided viewport width, so text reflows and no
+      // horizontal scroll appears. Verified empirically in the real reader (iOS
+      // WebKit engine, 390px): maxScrollLeft == 0 at every level (85/100/115/130).
+      // Do NOT add a body-width "compensation" (100/level%): that's the fix for
+      // transform:scale, which doesn't reflow — under `zoom` it makes the body
+      // wider than the viewport at zoom-OUT levels (85% → width:117% → a real
+      // 69px x-scroll) and only wastes width at zoom-in. Bare zoom is correct.
       body.style.zoom = level / 100;
     }
   } catch(e) {}
@@ -9083,12 +9095,12 @@ function _toggleTopbarMenu(event) {
   // Reader controls migrate here on mobile (the inline topbar buttons are hidden
   // by the max-width:600px CSS — the topbar was too tight). Font + TTS cycle in
   // place and keep the menu open (event.stopPropagation blocks the outside-click
-  // close); pop-out closes the menu like the other actions.
+  // close); Reader View, pop-out and the app-nav rows close the menu on tap.
   if (readerOpen && !_almanacOpen) {
     // Reader-control group first: Reader View, Read aloud, Font size, Open in browser.
     if (_readerViewAvailable()) {
       h += '<button class="topbar-menu-item" id="tbm-readerview" aria-pressed="' + (_readerViewOn ? 'true' : 'false') +
-        '" onclick="event.stopPropagation();_readerViewToggle()">' + _READER_VIEW_ICON +
+        '" onclick="_closeTopbarMenu();_readerViewToggle()">' + _READER_VIEW_ICON +
         ' <span class="tbm-label">' + tH('reader_view') + '</span></button>';
     }
     if (_TTS_AVAILABLE) {
@@ -9108,7 +9120,13 @@ function _toggleTopbarMenu(event) {
   }
   h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
   if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
-  h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> ' + tH('manage') + '</button>';
+  // Manage row: while downloads are active, carry the count and route the tap
+  // straight to the downloads view (the badge on the ⋯ button is only a dot).
+  var _mgSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+  var _dlN = _activityBadge.count;
+  var _mgClick = _dlN > 0 ? '_openDownloadsView(event)' : '_closeTopbarMenu();toggleManage(event)';
+  var _mgCount = _dlN > 0 ? '<span class="tbm-count">' + (_dlN > 99 ? '99+' : _dlN) + '</span>' : '';
+  h += '<button class="topbar-menu-item" onclick="' + _mgClick + '">' + _mgSvg + ' ' + tH('manage') + _mgCount + '</button>';
   menu.innerHTML = h;
   menu.classList.add('visible');
   // Close on outside click
@@ -9570,10 +9588,11 @@ async function settingsRefreshCache() {
   }
 }
 
-// ── Background activity bar ──────────────────────────────────────────
+// ── Background activity badge ────────────────────────────────────────
 // Polls /manage/activity every 5s while something is happening; pauses
-// (but doesn't permanently die) when idle. Hidden by default; only
-// shown when there's actual work to avoid permanent UI noise.
+// (but doesn't permanently die) when idle. Surfaces the result as a compact
+// amber badge on the Manage entry point (gear on desktop, ⋯ on mobile) rather
+// than a full-width bar — no layout shift, and it's clickable (→ downloads).
 //
 // Two intervals: ACTIVE_MS while building/downloading/seeding > 0,
 // IDLE_MS while quiet. Idle polling stays live so a manual rebuild or
@@ -9582,56 +9601,86 @@ async function settingsRefreshCache() {
 // uses that to swap intervals, never to stop.
 let _activityTimer = null;
 let _activityIdle = false;
-let _activityLastSig = '';
 const _ACTIVITY_POLL_ACTIVE_MS = 5000;
 const _ACTIVITY_POLL_IDLE_MS = 30000;
 
+// Snapshot of current background work for the topbar badge. count = the number
+// shown on the gear (in-flight + queued downloads); active = whether ANY work is
+// happening (downloads/indexing/seeding); tip = the full detail string for the
+// hover title + aria-label (keeps indexing/seeding surfaced even though the
+// count is downloads-only).
+var _activityBadge = { count: 0, active: false, tip: '' };
+
+// Jump to the downloads view — where the old bar's click would have gone.
+// Enters Manage first if needed, then selects the downloads tab.
+function _openDownloadsView(e) {
+  if (e) { if (e.preventDefault) e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); }
+  _closeTopbarMenu();
+  if (mode !== 'manage') {
+    if (!manageEnabled) return;
+    enterManage();
+  }
+  switchManageTab('downloads');
+}
+
+// Paint the badge onto whichever Manage entry point is live (CSS shows exactly
+// one: gear on desktop, ⋯ on mobile). Idempotent — called by the poller AND at
+// the end of updateTopbar (which rewrites the gear's innerHTML, wiping any child
+// badge). Suppressed in Manage mode: that view surfaces downloads in its tabs,
+// and the gear is a close-X there.
+function _applyActivityBadge() {
+  var st = _activityBadge || { active: false, count: 0, tip: '' };
+  var suppress = (typeof mode !== 'undefined' && mode === 'manage') || !st.active;
+  var hosts = [
+    { el: document.getElementById('manage-btn'), forceDot: false }, // desktop gear: count
+    { el: document.querySelector('.topbar-more'), forceDot: true }, // mobile ⋯: dot
+  ];
+  hosts.forEach(function(h) {
+    if (!h.el) return;
+    var badge = h.el.querySelector('.topbar-badge');
+    if (suppress) { if (badge) badge.remove(); return; }
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'topbar-badge';
+      badge.setAttribute('role', 'status');
+      badge.onclick = _openDownloadsView;
+      h.el.appendChild(badge);
+    }
+    var asDot = h.forceDot || st.count <= 0;
+    badge.classList.toggle('dot', asDot);
+    badge.textContent = asDot ? '' : (st.count > 99 ? '99+' : String(st.count));
+    badge.title = st.tip;
+    badge.setAttribute('aria-label', st.tip);
+    badge.style.display = 'flex';
+  });
+}
+
 function _renderActivity(a) {
-  const bar = document.getElementById('activity-bar');
-  if (!bar || !a) return false;
+  if (!a) return false;
+  // Full detail string for the hover title + aria-label (plain text — set via
+  // .title / aria-label, so use t() not tH() and no markup). Mirrors what the
+  // old bar showed, so indexing + seeding stay surfaced alongside downloads.
   const parts = [];
   if (a.indexing && a.indexing.state === 'building') {
-    const cur = a.indexing.current
-      ? '<span class="ab-current">' + esc(a.indexing.current) + '</span> · '
-      : '';
-    parts.push(
-      tH('activity_indexing') + ' ' + cur +
-      (a.indexing.ready || 0) + '/' + (a.indexing.total || 0)
-    );
+    const cur = a.indexing.current ? a.indexing.current + ' · ' : '';
+    parts.push(t('activity_indexing') + ' ' + cur + (a.indexing.ready || 0) + '/' + (a.indexing.total || 0));
   }
   const dl = a.downloads || {};
+  const dlCount = (dl.active || 0) + (dl.queued || 0);
   if ((dl.active || 0) > 0) {
-    parts.push(dl.active + ' ' + tH('activity_downloading'));
+    let d = dl.active + ' ' + t('activity_downloading');
+    if (dl.name) d += ' — ' + dl.name; // "1 downloading — openstreetmap-wiki"
+    parts.push(d);
   }
-  if ((dl.queued || 0) > 0) {
-    parts.push(dl.queued + ' ' + tH('activity_queued'));
-  }
+  if ((dl.queued || 0) > 0) parts.push(dl.queued + ' ' + t('activity_queued'));
   const seed = (a.seeding || {}).torrents || 0;
-  if (seed > 0) {
-    parts.push(seed + ' ' + tH('activity_seeding'));
-  }
-  if (parts.length === 0) {
-    bar.classList.remove('visible');
-    bar.hidden = true;
-    document.body.classList.remove('has-activity');
-    _activityLastSig = '';
-    return false;
-  }
-  // Only write the DOM when the rendered content actually changed.
-  // Avoids aria-live re-announcing the same string every 5s when nothing
-  // has ticked (screen-reader spam).
-  const sig = parts.join('|');
-  if (sig !== _activityLastSig) {
-    bar.innerHTML = parts.join('<span class="ab-sep">·</span>');
-    _activityLastSig = sig;
-  }
-  if (bar.hidden) {
-    bar.hidden = false;
-    void bar.offsetHeight; // force reflow so the slide-down animates
-    bar.classList.add('visible');
-    document.body.classList.add('has-activity');
-  }
-  return true;
+  if (seed > 0) parts.push(seed + ' ' + t('activity_seeding'));
+
+  _activityBadge.count = dlCount;
+  _activityBadge.active = parts.length > 0;
+  _activityBadge.tip = parts.join(' · ');
+  _applyActivityBadge();
+  return parts.length > 0;
 }
 
 function _scheduleNextActivityPoll(idle) {

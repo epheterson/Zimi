@@ -7,6 +7,11 @@
 //   2. The neutral 100% level is NON-DESTRUCTIVE + self-cleaning: it REMOVES the
 //      zoom override (never pins zoom:1) AND strips any leftover root font-size a
 //      pre-zoom session may have pinned, so a ZIM's own root size governs again.
+//   3. It NEVER sets body.style.width. `zoom` reflows text on its own (modern
+//      WebKit re-lays-out at the zoom-divided viewport width → no x-scroll). A
+//      body-width "compensation" (100/level%) is the transform:scale fix, and
+//      under `zoom` it introduces horizontal scroll at zoom-out levels — verified
+//      in the real reader (85% → width:117% → 69px pan). This guards its return.
 //
 // Pure-helper approach: extract the constants + the two font functions straight
 // from app.js by source markers, eval them in a sandbox with stubbed
@@ -41,12 +46,16 @@ function makeDoc() {
   const rec = {
     zoomSet: 0, zoomRemoved: 0, zoomValue: undefined, zoomPresent: false,
     fsSet: 0, fsRemoved: 0, fsPresent: false,
+    widthSet: 0, widthValue: undefined, widthPresent: false,
   };
   const bodyStyle = {
     get zoom() { return rec.zoomPresent ? rec.zoomValue : ''; },
     set zoom(v) { rec.zoomValue = v; rec.zoomPresent = true; rec.zoomSet++; },
+    get width() { return rec.widthPresent ? rec.widthValue : ''; },
+    set width(v) { rec.widthValue = v; rec.widthPresent = true; rec.widthSet++; },
     removeProperty(name) {
       if (name === 'zoom') { rec.zoomPresent = false; rec.zoomValue = undefined; rec.zoomRemoved++; }
+      if (name === 'width') { rec.widthPresent = false; rec.widthValue = undefined; }
     },
   };
   const rootStyle = {
@@ -94,6 +103,17 @@ function check(name, cond) {
   check('level 130 sets zoom to 1.3', rec.zoomValue === 1.3 && rec.zoomSet === 1);
   check('level 130 does not remove zoom', rec.zoomRemoved === 0);
   check('level 130 does not touch font-size', rec.fsSet === 0 && rec.fsRemoved === 0);
+  check('level 130 never sets body width (no transform-scale comp)', rec.widthSet === 0 && rec.widthPresent === false);
+}
+
+// 2b. Zoom-OUT level (85%): still bare zoom, never a width compensation. A
+// 100/level% width here would be 117% → wider-than-viewport → real x-scroll.
+{
+  store['zimi_reader_font_scale'] = '85';
+  const { doc, rec } = makeDoc();
+  vm.runInContext('_applyReaderFont(globalThis.__doc)', Object.assign(sandbox, { __doc: doc }));
+  check('level 85 sets zoom to 0.85', rec.zoomValue === 0.85 && rec.zoomSet === 1);
+  check('level 85 never sets body width', rec.widthSet === 0 && rec.widthPresent === false);
 }
 
 // 3. Live cycle back to 100 clears a previously-set zoom override.
