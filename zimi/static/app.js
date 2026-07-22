@@ -7954,8 +7954,18 @@ function _pdfViewerUrl(pdfUrl) {
   var locale = localeMap[lang] || '';
   return '/static/pdfjs/web/viewer.html?file=' + pdfUrl + (locale ? '#locale=' + locale : '');
 }
+// Single-page docs (devdocs) surface result paths like 'index#backslash' where
+// 'index' is the real ZIM entry and '#backslash' is an in-page fragment. Encode
+// the path segments but keep '#fragment' raw so the browser scrolls to the
+// section instead of requesting a nonexistent 'index%23backslash' entry.
+function _splitPathFragment(path) {
+  var h = path.indexOf('#');
+  if (h === -1) return { base: path, frag: '' };
+  return { base: path.slice(0, h), frag: path.slice(h) };
+}
 function _articleUrl(zim, path) {
-  return '/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/');
+  var p = _splitPathFragment(path);
+  return '/w/' + encodeURIComponent(zim) + '/' + p.base.split('/').map(encodeURIComponent).join('/') + p.frag;
 }
 function _titleFromPath(path) {
   return decodeURIComponent(path.split('/').pop() || '').replace(/_/g, ' ');
@@ -9232,7 +9242,8 @@ function openArticle(zim, path, title) {
   // Modifier-click: always open in new browser tab
   if (_isModClick()) {
     _lastMouseEvent = null;
-    var url = '/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/') + '?view=1';
+    var p = _splitPathFragment(path);
+    var url = '/w/' + encodeURIComponent(zim) + '/' + p.base.split('/').map(encodeURIComponent).join('/') + '?view=1' + p.frag;
     window.open(url, '_blank');
     return;
   }

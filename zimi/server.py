@@ -464,6 +464,22 @@ MIME_FALLBACK = {
 }
 
 
+def split_entry_fragment(path):
+    """Split a ZIM entry path at its first URL fragment ('#').
+
+    Single-page docs (notably devdocs ZIMs like devdocs_en_markdown) surface
+    suggestion/title-index paths of the form ``index#backslash`` where the real
+    ZIM entry is ``index`` and ``#backslash`` is an in-page fragment. Callers use
+    this to fall back to the base entry when a lookup for the full string fails.
+
+    Returns ``(base_path, fragment)`` with the fragment excluding the '#', or
+    ``(path, "")`` when there is no fragment."""
+    hash_idx = path.find("#")
+    if hash_idx == -1:
+        return path, ""
+    return path[:hash_idx], path[hash_idx + 1 :]
+
+
 def _namespace_fallbacks(path):
     """Generate alternative paths for old/new namespace ZIM compatibility.
     Old ZIMs use A/ (articles), I/ (images), C/ (CSS), -/ (metadata) prefixes.

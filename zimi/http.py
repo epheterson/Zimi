@@ -20,7 +20,7 @@ import threading
 import time
 import traceback
 from http.server import BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, unquote, quote
 
 import zimi.server as _srv
 from zimi.manage import (
@@ -1477,6 +1477,24 @@ class ZimHandler(BaseHTTPRequestHandler):
                     except KeyError:
                         continue
             if entry is None:
+                # Single-page docs (devdocs): 'index#backslash' is entry 'index'
+                # plus an in-page fragment. If the base entry exists, redirect so
+                # the browser keeps the raw '#fragment' and scrolls to the section.
+                base_path, fragment = _srv.split_entry_fragment(entry_path)
+                if fragment:
+                    try:
+                        archive.get_entry_by_path(base_path)
+                    except KeyError:
+                        base_path = None
+                    if base_path is not None:
+                        quoted = "/".join(quote(seg) for seg in base_path.split("/"))
+                        self.send_response(302)
+                        self.send_header(
+                            "Location", f"/w/{quote(zim_name)}/{quoted}#{fragment}"
+                        )
+                        self.send_header("Content-Length", "0")
+                        self.end_headers()
+                        return
                 return self._json(
                     404, {"error": f"Entry '{entry_path}' not found in {zim_name}"}
                 )

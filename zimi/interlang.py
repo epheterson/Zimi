@@ -892,6 +892,11 @@ def get_article_languages(zim_name, article_path):
     if archive is None:
         return {"languages": []}
 
+    # Single-page docs (devdocs): 'index#anchor' is entry 'index' + a fragment.
+    # Drop the fragment so translation lookups target the real base entry.
+    base_path, _fragment = _srv.split_entry_fragment(article_path)
+    article_path = base_path
+
     # Get article title from path
     title = article_path
     if title.startswith("A/"):

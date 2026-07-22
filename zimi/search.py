@@ -1602,7 +1602,14 @@ def read_article(zim_name, article_path, max_length=None):
 
     archive = _srv.get_archive(zim_name) or _srv.open_archive(zims[zim_name])
     try:
-        entry = archive.get_entry_by_path(article_path)
+        try:
+            entry = archive.get_entry_by_path(article_path)
+        except KeyError:
+            # Single-page docs (devdocs): 'index#anchor' → serve base entry 'index'.
+            base_path, fragment = _srv.split_entry_fragment(article_path)
+            if not fragment:
+                raise
+            entry = archive.get_entry_by_path(base_path)
         item = entry.get_item()
         raw = bytes(item.content)
 
@@ -1720,7 +1727,14 @@ def chunk_article(
 
     archive = _srv.get_archive(zim_name) or _srv.open_archive(zims[zim_name])
     try:
-        entry = archive.get_entry_by_path(path)
+        try:
+            entry = archive.get_entry_by_path(path)
+        except KeyError:
+            # Single-page docs (devdocs): 'index#anchor' → chunk base entry 'index'.
+            base_path, fragment = _srv.split_entry_fragment(path)
+            if not fragment:
+                raise
+            entry = archive.get_entry_by_path(base_path)
         item = entry.get_item()
         raw = bytes(item.content)
         title = entry.title
