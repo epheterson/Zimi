@@ -698,6 +698,12 @@ _ISO639_3_TO_1 = {
 # Persistent cache in .zimi_cache.json enables instant startup on subsequent runs.
 # Archives are opened lazily (on first search/read) instead of all at once.
 _CACHE_VERSION = 2  # bumped for language metadata
+# Self-heal thresholds for the "whole library badged New" bug: a full cache
+# rebuild once stamped first_seen=now for every ZIM at once. first_seen values
+# within this window are treated as "the same instant" (a rebuild), and a stamp
+# is only trusted if it lands within the mtime tolerance of the file itself.
+_MASS_STAMP_WINDOW = 5.0  # seconds
+_MASS_STAMP_MTIME_TOL = 3600.0  # first_seen must be within 1h of file mtime to be real
 _zim_list_cache = None
 _zim_files_cache = None  # {name: path} — cached at startup, ZIM dir is read-only
 _cache_generation = 0  # incremented on load_cache(force=True) — used in ETags
@@ -1039,6 +1045,62 @@ def _extract_zim_metadata(name, path):
     return info, archive
 
 
+def _self_heal_mass_first_seen(info, file_cache, zims):
+    """Repair a library-wide first_seen stamp left by a full cache rebuild.
+
+    A pre-fix rebuild stamped ``first_seen = now`` for every ZIM at once, so the
+    whole library badged "New". Detect that fingerprint — a majority of entries
+    sharing one first_seen instant that does NOT match their file mtimes — and
+    re-derive each affected stamp from the file's own mtime. Mutates ``info`` and
+    ``file_cache`` in place; returns True if anything was repaired.
+
+    The mtime check is the safety guard: a genuine batch download (10 ZIMs
+    pulled within seconds) also shares one first_seen, but there the files' own
+    mtimes match that instant, so those are left untouched.
+    """
+    stamped = [e for e in info if e.get("first_seen")]
+    if len(stamped) < 4:
+        return False  # too small a library to distinguish a rebuild from reality
+    from collections import Counter
+
+    buckets = Counter(round(e["first_seen"] / _MASS_STAMP_WINDOW) for e in stamped)
+    bucket_key, count = buckets.most_common(1)[0]
+    if count <= len(stamped) * 0.5:
+        return False  # no dominant shared instant → not a mass rebuild
+
+    now = time.time()
+    repaired = 0
+    for e in info:
+        fs = e.get("first_seen")
+        if not fs or round(fs / _MASS_STAMP_WINDOW) != bucket_key:
+            continue
+        path = zims.get(e["name"])
+        if not path:
+            continue
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            continue
+        # Stamp is plausible if it lands near the file's own mtime — leave it.
+        if abs(fs - mtime) <= _MASS_STAMP_MTIME_TOL:
+            continue
+        new_fs = min(mtime, now)
+        e["first_seen"] = new_fs
+        fc = file_cache.get(e["file"])
+        if fc is not None:
+            fc["first_seen"] = new_fs
+        repaired += 1
+
+    if repaired:
+        log.info(
+            "first_seen self-heal: re-derived %d/%d ZIM stamps from file mtime "
+            "(a full cache rebuild had stamped them all at once)",
+            repaired,
+            len(stamped),
+        )
+    return repaired > 0
+
+
 def load_cache(force=False):
     """Load ZIM metadata, using persistent disk cache for instant startup.
 
@@ -1054,7 +1116,11 @@ def load_cache(force=False):
         _cache_generation += 1
     zims = _zim_files_cache
 
-    disk_cache = None if force else _load_disk_cache()
+    # Always load the persisted cache. Even on a forced rebuild we re-scan every
+    # archive (fresh metadata) but must carry each ZIM's first_seen/updated_at
+    # forward — otherwise a rebuild re-stamps the whole library and every ZIM
+    # badges "New" at once (the bug this fix closes).
+    disk_cache = _load_disk_cache()
 
     info = []
     scanned = 0
@@ -1077,7 +1143,13 @@ def load_cache(force=False):
         # keeps its original stamp; a ZIM present in a pre-feature cache with no
         # stamp is treated as long-installed, not retroactively "new".
         if cached is None:
-            first_seen = time.time()
+            # First time Zimi has ever seen this file. Stamp first_seen from the
+            # file's own mtime — NOT wall-clock now. A genuinely new download has
+            # mtime≈now, so it still lights up "New"; but a full cache rebuild of
+            # an old library (force=True, or a corrupt/unreadable cache.json) now
+            # re-derives quiet, honest stamps from the files instead of badging
+            # the entire library at once. min() guards against future mtimes.
+            first_seen = min(mtime, time.time())
         else:
             first_seen = cached.get("first_seen")
             # Legacy cache entries (written before #34) carry no first_seen.
@@ -1094,12 +1166,15 @@ def load_cache(force=False):
                     first_seen = None
         # An already-known ZIM whose file changed on disk is an update — stamp
         # updated_at so the UI can flag it "Updated" (distinct from "New").
-        cache_hit = bool(
+        file_unchanged = bool(
             cached and cached.get("mtime") == mtime and cached.get("size") == size
         )
+        # Skip re-opening the archive only on a normal load; a forced rebuild
+        # re-scans even unchanged files, but must not mistake that for a change.
+        cache_hit = file_unchanged and not force
         if cached is None:
             updated_at = None
-        elif cache_hit:
+        elif file_unchanged:
             updated_at = cached.get("updated_at")
         else:
             updated_at = time.time()
@@ -1168,12 +1243,17 @@ def load_cache(force=False):
                 new_cached["updated_at"] = updated_at
             file_cache[filename] = new_cached
 
+    # Self-heal a library that a pre-fix rebuild already mass-stamped. The code
+    # fix above stops NEW rebuilds from doing it, but existing disk caches still
+    # carry first_seen=<rebuild instant> for every ZIM; repair them from mtime.
+    healed = _self_heal_mass_first_seen(info, file_cache, zims)
+
     _zim_list_cache = info
     elapsed = time.time() - t0
 
-    # Persist cache if we scanned anything new, or backfilled a legacy
-    # first_seen (so the mtime stamp is computed once, not every load).
-    if scanned > 0 or backfilled > 0 or disk_cache is None:
+    # Persist cache if we scanned anything new, backfilled a legacy first_seen
+    # (so the mtime stamp is computed once), or repaired mass-stamped entries.
+    if scanned > 0 or backfilled > 0 or disk_cache is None or healed:
         _save_disk_cache(file_cache)
 
     cached_count = len(info) - scanned
