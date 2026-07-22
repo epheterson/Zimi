@@ -822,6 +822,8 @@
   "seeding_state_active": "active",
   "dl_via_bt": "BT",
   "dl_via_bt_tip": "Downloaded via BitTorrent, peer-to-peer.",
+  "dl_delta_reuse": "reused {size}",
+  "dl_delta_reuse_tip": "Salvaged from the previous version — only changed pieces are downloading.",
   "peer_has_zim": "{peers} on your LAN already has this ZIM. Download it at LAN speed.",
   "skip_to_main": "Skip to main content",
   "search": "Search",

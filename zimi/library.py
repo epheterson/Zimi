@@ -1610,6 +1610,102 @@ def retire_stale_seeds():
     return removed
 
 
+def _find_previous_version(filename):
+    """Return the newest already-installed version of the same ZIM as
+    `filename` (matching base name, different date stamp), or None.
+
+    Uses the same base-name derivation as the update detector in
+    _enqueue_zim_download so "is an update" and "which old file to reuse"
+    can never disagree. Date-stamped names sort lexically by date, so the
+    max is the most recent — the best delta source (closest content).
+    """
+    name_prefix = re.sub(r"_\d{4}-\d{2}\.zim$", "", filename)
+    if name_prefix == filename or not os.path.isdir(_srv.ZIM_DIR):
+        return None  # not a date-stamped name → no versioned predecessor
+    candidates = [
+        f
+        for f in os.listdir(_srv.ZIM_DIR)
+        if f != filename
+        and f.endswith(".zim")
+        and re.sub(r"_\d{4}-\d{2}\.zim$", "", f) == name_prefix
+        and os.path.isfile(os.path.join(_srv.ZIM_DIR, f))
+    ]
+    return max(candidates) if candidates else None
+
+
+def _prepare_delta_staging(dl, staging_dir):
+    """Delta update via BitTorrent piece reuse.
+
+    When updating a ZIM, copy the previous version into the staging dir under
+    the NEW filename before the torrent is added. libtorrent then hash-checks
+    that pre-seeded file and salvages every piece the two versions share —
+    Wikipedia monthlies overlap heavily, so only the changed pieces download.
+    Zero new infra: the honest-seeding path already relies on libtorrent
+    hash-checking an existing file, so this just points that mechanism at the
+    old version.
+
+    Fail-soft by construction: not an update, no predecessor, no disk space,
+    an existing staging partial (a resume — never clobber it), or any copy
+    error all leave staging untouched, and the caller does a normal full
+    download. Sets dl['delta_from'] only when a copy actually happened.
+    """
+    if not dl.get("is_update"):
+        return
+    old = _find_previous_version(dl["filename"])
+    if not old:
+        return
+    staged = os.path.join(staging_dir, dl["filename"])
+    if os.path.exists(staged):
+        return  # a resume already has staged data — don't overwrite it
+    old_path = os.path.join(_srv.ZIM_DIR, old)
+    try:
+        old_size = os.path.getsize(old_path)
+    except OSError:
+        return
+    # A delta copy needs room for a full second copy of the old file in
+    # staging (staging may sit on a different filesystem than ZIM_DIR, so
+    # measure the staging target, not ZIM_DIR).
+    try:
+        os.makedirs(staging_dir, exist_ok=True)
+        free = shutil.disk_usage(staging_dir).free
+    except OSError:
+        return
+    if free < old_size + _DISK_FLOOR_BYTES:
+        log.info(
+            "delta-update: not enough staging space to pre-seed %s from %s "
+            "(%s free, %s needed) — full download",
+            dl["filename"],
+            old,
+            _fmt_gb(free),
+            _fmt_gb(old_size + _DISK_FLOOR_BYTES),
+        )
+        return
+    try:
+        # v1: plain copy. A reflink (cp --reflink / clonefile) would make this
+        # near-instant and space-free on APFS/btrfs, but shutil.copyfile is
+        # portable and correct; reflink is a later optimization.
+        shutil.copyfile(old_path, staged)
+    except Exception as e:
+        log.info(
+            "delta-update: pre-seed copy of %s failed (%s) — full download",
+            dl["filename"],
+            e,
+        )
+        try:
+            os.remove(staged)
+        except OSError:
+            pass
+        return
+    dl["delta_from"] = old
+    log.info(
+        "delta-update: pre-seeded staging for %s from %s (%s) — libtorrent "
+        "will salvage unchanged pieces",
+        dl["filename"],
+        old,
+        _fmt_gb(old_size),
+    )
+
+
 def _try_bt_download(
     backend,
     dl,
@@ -1633,6 +1729,14 @@ def _try_bt_download(
     BT progress without further wiring.
     """
     from zimi import p2p as _p2p
+
+    # Delta update: seed the staging file from the previous version so the
+    # hash check below salvages every unchanged piece. Fail-soft — a no-op on
+    # anything but a genuine update with room to copy.
+    try:
+        _prepare_delta_staging(dl, staging_dir)
+    except Exception as e:
+        log.debug("delta-update pre-seed skipped for %s: %s", dl["filename"], e)
 
     # Seeding after completion is handled below (re-add against the library
     # path); the download itself needs no per-torrent options — the global
@@ -1698,6 +1802,24 @@ def _try_bt_download(
         dl["bt_peers"] = status.get("peers", 0)
         dl["bt_info_hash"] = status.get("info_hash", "")
         dl["_source"] = "bt"
+
+        # Delta salvage: once the hash check finishes, completed_bytes is the
+        # fraction libtorrent reused from the pre-seeded old version. Snapshot
+        # it once so the UI can show "reused N GB from the previous version".
+        if (
+            dl.get("delta_from")
+            and "reused_bytes" not in dl
+            and not status.get("checking")
+        ):
+            dl["reused_bytes"] = status.get("completed_bytes", 0)
+            _total = status.get("total_bytes", 0) or 1
+            log.info(
+                "delta-update: hash check salvaged %s (%.1f%%) for %s from %s",
+                _fmt_gb(dl["reused_bytes"]),
+                100.0 * dl["reused_bytes"] / _total,
+                dl["filename"],
+                dl["delta_from"],
+            )
 
         state = status.get("state")
         if state == "complete":
@@ -2661,6 +2783,7 @@ def _get_downloads():
                     "source": dl.get("_source", "http"),
                     "bt_peers": dl.get("bt_peers", 0),
                     "switching_direct": bool(dl.get("switch_direct", False)),
+                    "reused_bytes": dl.get("reused_bytes", 0),
                 }
             )
             # Clean up completed downloads older than 1 hour

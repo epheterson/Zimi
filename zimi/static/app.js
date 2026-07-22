@@ -8031,6 +8031,13 @@ async function _refreshDownloadsInner() {
               (dl.bt_peers > 0 ? ' · ' + tH('n_peers', {n: dl.bt_peers}) : '') +
             '</span>'
           : '';
+        // Delta-update salvage: pieces reused from the previous version so
+        // only changed data downloads. Only meaningful on a BT transfer.
+        var reusePill = (dl.source === 'bt' && dl.reused_bytes > 0)
+          ? '<span class="dl-source dl-source-reuse" title="' + escAttr(t('dl_delta_reuse_tip')) + '">' +
+              tH('dl_delta_reuse', {size: fmtBytes(dl.reused_bytes)}) +
+            '</span>'
+          : '';
         // Mirror info describes the HTTP path — on a BT transfer it reads as
         // nonsense next to the peer count, so show one or the other.
         var mirrorInfo = (dl.source !== 'bt' && dl.mirror_host) ? '<span class="dl-mirror" title="' + esc(dl.mirror_host) + '">' + esc(dl.mirror_host) + (dl.mirror_count > 1 ? ' (' + tH('n_mirrors', {n: dl.mirror_count}) + ')' : '') + '</span>' : '';
@@ -8044,7 +8051,7 @@ async function _refreshDownloadsInner() {
             ? '<button class="dl-pause-btn" disabled>' + tH('dl_switching_direct') + '</button>'
             : '<button class="dl-pause-btn" onclick="switchToDirect(\'' + escAttr(dl.id) + '\')" title="' + escAttr(t('dl_switch_direct_tip')) + '">' + tH('dl_switch_direct') + '</button>';
         }
-        h += '<div class="dl-actions">' + sourcePill + mirrorInfo + switchBtn + pauseBtn +
+        h += '<div class="dl-actions">' + sourcePill + reusePill + mirrorInfo + switchBtn + pauseBtn +
           '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">' + tH('cancel') + '</button></div>';
       }
       if (dl.error && dl.error !== 'Cancelled') {

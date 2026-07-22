@@ -59,6 +59,13 @@ agent-facing API alongside.
 - **Windows portable build** — a one-dir `Zimi-windows-x64.zip` (Edge WebView2
   backend, in-process libtorrent when a wheel is available) built by the desktop
   release CI alongside the macOS DMGs and Linux AppImage/snap.
+- **Delta updates over BitTorrent.** When updating a ZIM that has a torrent,
+  Zimi copies the previous version into staging under the new name first, so
+  libtorrent's hash check salvages every unchanged piece and only the changed
+  pieces download. Wikipedia monthlies overlap heavily, so an update can pull a
+  fraction of the full size. The download shows how much was reused; if there's
+  no room to copy or anything goes wrong, it falls back to a normal full
+  download. Zero new infrastructure.
 
 ### Changed
 

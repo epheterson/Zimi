@@ -822,6 +822,8 @@
   "seeding_state_active": "सक्रिय",
   "dl_via_bt": "BT",
   "dl_via_bt_tip": "BitTorrent के माध्यम से डाउनलोड किया गया, पीयर-टू-पीयर ट्रांसफ़र।",
+  "dl_delta_reuse": "{size} पुनः उपयोग",
+  "dl_delta_reuse_tip": "पिछले संस्करण से लिया गया — केवल बदले हुए हिस्से डाउनलोड हो रहे हैं।",
   "peer_has_zim": "आपके LAN पर {peers} के पास यह ZIM पहले से है, LAN गति पर वहाँ से डाउनलोड करें।",
   "skip_to_main": "मुख्य सामग्री पर जाएँ",
   "search": "खोज",

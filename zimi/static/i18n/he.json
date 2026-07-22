@@ -822,6 +822,8 @@
   "seeding_state_active": "פעיל",
   "dl_via_bt": "BT",
   "dl_via_bt_tip": "הורד דרך BitTorrent, העברה בין עמיתים.",
+  "dl_delta_reuse": "שימוש חוזר ב-{size}",
+  "dl_delta_reuse_tip": "שוחזר מהגרסה הקודמת — רק החלקים שהשתנו יורדים.",
   "peer_has_zim": "ל־{peers} ברשת המקומית כבר יש את ה־ZIM הזה, אפשר להוריד ממנו במהירות LAN.",
   "skip_to_main": "דלג לתוכן הראשי",
   "search": "חיפוש",

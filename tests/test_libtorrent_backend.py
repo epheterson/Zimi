@@ -143,6 +143,21 @@ class TestStatus:
     def test_unknown_tid_reports_removed(self, backend):
         assert backend.status("f" * 40)["state"] == "removed"
 
+    def test_checking_flag_true_while_hash_checking(self, backend, tmp_path):
+        # The delta-update path waits on this flag before snapshotting the
+        # salvaged bytes — checking_* must report checking=True, downloading
+        # states must report False.
+        tid = backend.add_torrent(MAGNET, dest_dir=str(tmp_path / "staging"))
+        h = backend._handles[tid]
+        h._status.state = fake_lt.torrent_status.checking_files
+        assert backend.status(tid)["checking"] is True
+        h._status.state = fake_lt.torrent_status.checking_resume_data
+        assert backend.status(tid)["checking"] is True
+
+    def test_checking_flag_false_when_downloading(self, backend, tmp_path):
+        tid = backend.add_torrent(MAGNET, dest_dir=str(tmp_path / "staging"))
+        assert backend.status(tid)["checking"] is False
+
     def test_contract_keys_present(self, backend, tmp_path):
         tid = backend.add_torrent(MAGNET, dest_dir=str(tmp_path / "staging"))
         st = backend.status(tid)

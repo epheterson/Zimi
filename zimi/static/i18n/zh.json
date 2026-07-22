@@ -822,6 +822,8 @@
   "seeding_state_active": "活跃",
   "dl_via_bt": "BT",
   "dl_via_bt_tip": "通过 BitTorrent 下载，点对点传输。",
+  "dl_delta_reuse": "复用 {size}",
+  "dl_delta_reuse_tip": "从上一版本中复用——仅下载有变化的部分。",
   "peer_has_zim": "局域网中的 {peers} 已有此 ZIM, 以局域网速度从他们处下载。",
   "skip_to_main": "跳到主要内容",
   "search": "搜索",

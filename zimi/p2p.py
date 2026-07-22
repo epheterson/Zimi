@@ -914,8 +914,17 @@ class LibtorrentBackend(BTBackend):
             # checking_resume_data all present as in-progress.
             state = "downloading"
         total = int(s.total_wanted)
+        # Distinct from "downloading" so the delta-update path can wait for the
+        # hash check to finish before snapshotting the salvaged (reused) bytes.
+        # status() collapses checking into "downloading" for the progress UI;
+        # this flag exposes it without changing that contract.
+        checking = s.state in (
+            lt.torrent_status.checking_files,
+            lt.torrent_status.checking_resume_data,
+        )
         return {
             "state": state,
+            "checking": checking,
             "gid": tid,
             "completed_bytes": int(s.total_done),
             "total_bytes": total,

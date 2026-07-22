@@ -822,6 +822,8 @@
   "seeding_state_active": "aktiv",
   "dl_via_bt": "BT",
   "dl_via_bt_tip": "Heruntergeladen via BitTorrent – Peer-to-Peer-Übertragung.",
+  "dl_delta_reuse": "{size} wiederverwendet",
+  "dl_delta_reuse_tip": "Aus der vorherigen Version übernommen – nur geänderte Teile werden heruntergeladen.",
   "peer_has_zim": "{peers} im LAN hat dieses ZIM bereits, lade es im LAN-Tempo direkt von dort.",
   "skip_to_main": "Zum Hauptinhalt springen",
   "search": "Suche",

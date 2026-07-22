@@ -822,6 +822,8 @@
   "seeding_state_active": "actif",
   "dl_via_bt": "BT",
   "dl_via_bt_tip": "Téléchargé via BitTorrent, transfert pair à pair.",
+  "dl_delta_reuse": "{size} réutilisés",
+  "dl_delta_reuse_tip": "Récupéré de la version précédente — seuls les blocs modifiés sont téléchargés.",
   "peer_has_zim": "{peers} sur ton LAN a déjà ce ZIM, télécharge-le à vitesse LAN.",
   "skip_to_main": "Aller au contenu principal",
   "search": "Rechercher",
