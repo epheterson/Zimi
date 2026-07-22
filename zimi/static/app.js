@@ -23,6 +23,12 @@ var SK = {
   // Reader font scale (percent, one of READER_FONT_LEVELS), applied as a `zoom`
   // on the iframe body and reapplied on every article load.
   READER_FONT: 'zimi_reader_font_scale',
+  // Reader View settings palette (persisted — a real palette implies persistence,
+  // unlike the session-only v1 toggle). Family: 'serif'|'sans'. Theme:
+  // 'dark'|'light'|'sepia'. Auto: '1' opens every article straight into Reader View.
+  READER_FAMILY: 'zimi_reader_family',
+  READER_THEME: 'zimi_reader_theme',
+  READER_AUTO: 'zimi_reader_auto',
   // Last-rendered SHARING rows (Server pane) — restored synchronously on
   // pane open so the section doesn't pop in after the status fetches.
   SHARE_ROWS: 'zimi_share_rows',
@@ -8169,15 +8175,16 @@ function _ttsToggle() {
 }
 
 // ── Reader View (Safari-Reader-style clean typography) ──
-// A per-session toggle that re-renders the current ZIM article as a single,
-// distraction-free reading column inside the SAME iframe — no reload, no server
-// round-trip. On: we clone the article's main content (reusing _readerMainContent
-// so TTS and Reader View agree on what "the article" is), strip the ZIM's chrome
-// (navboxes, infoboxes, edit links, TOC), and swap the frame body for a minimal
-// shell styled in Zimi's dark palette. The original body is stashed as a detached
-// node so Off restores it byte-for-byte. The preference is a module var (session
-// only, intentionally not persisted — see task notes) reapplied on every
-// frame.onload while on, mirroring _applyReaderFont.
+// Re-renders the current ZIM article as a single, distraction-free reading column
+// inside the SAME iframe — no reload, no server round-trip. On: we clone the
+// article's main content (reusing _readerMainContent so TTS and Reader View agree
+// on what "the article" is), strip the ZIM's chrome (navboxes, infoboxes, edit
+// links, TOC), and swap the frame body for a minimal shell themed via CSS vars
+// (dark/light/sepia + serif/sans — see the settings palette). The original body is
+// stashed as a detached node so Off restores it byte-for-byte. `_readerViewOn` is
+// the live on/off state (module var, reapplied on every frame.onload — sticky
+// across in-ZIM navigation); the palette settings (theme/family/size/AUTO) persist
+// in localStorage. AUTO opens every eligible article straight into Reader View.
 var _readerViewOn = false;
 var READER_VIEW_MIN_CHARS = 200; // extraction floor: below this we treat the page as un-readerable
 var _READER_VIEW_STYLE_ID = 'zimi-reader-style';
@@ -8204,6 +8211,34 @@ function _readerFrameDoc() {
   var doc = null;
   try { doc = frame && frame.contentDocument; } catch(e) { doc = null; }
   return doc;
+}
+
+// ── Reader View settings (persisted palette) ──
+var READER_FAMILIES = ['serif', 'sans'];
+var READER_THEMES = ['dark', 'light', 'sepia'];
+// The <body> background each theme paints — mirrors --rv-bg in the injected CSS.
+// Used to tint the iframe/loading chrome so AUTO mode never flashes ZIM-white.
+var READER_THEME_BG = { dark: '#0a0a0b', light: '#fbfbf9', sepia: '#f4ecd8' };
+function _readerFamily() {
+  var v = localStorage.getItem(SK.READER_FAMILY);
+  return READER_FAMILIES.indexOf(v) >= 0 ? v : 'serif';
+}
+function _readerTheme() {
+  var v = localStorage.getItem(SK.READER_THEME);
+  return READER_THEMES.indexOf(v) >= 0 ? v : 'dark';
+}
+function _readerAuto() { return _getStorageFlag(SK.READER_AUTO); }
+function _readerThemeBg() { return READER_THEME_BG[_readerTheme()] || READER_THEME_BG.dark; }
+
+// Stamp the current theme + family onto the reader body as rv-theme-*/rv-font-*
+// classes so the injected CSS var palettes take effect. Safe to call on any doc.
+function _applyReaderTheme(doc) {
+  if (!doc || !doc.body) return;
+  var cl = doc.body.classList;
+  READER_THEMES.forEach(function(th) { cl.remove('rv-theme-' + th); });
+  READER_FAMILIES.forEach(function(fm) { cl.remove('rv-font-' + fm); });
+  cl.add('rv-theme-' + _readerTheme());
+  cl.add('rv-font-' + _readerFamily());
 }
 
 // Is Reader View offer-able for whatever is currently in the frame? False for
@@ -8272,14 +8307,30 @@ function _readerViewClean(root, doc) {
 
 function _readerViewInjectStyle(doc) {
   if (doc.getElementById(_READER_VIEW_STYLE_ID)) return;
-  // Colors are hardcoded copies of app.css theme vars — the iframe can't see the
-  // parent's custom properties. Serif body + sans headings is the recognized
-  // "reader mode" signal and reads as a deliberate mode switch away from the raw
-  // ZIM render; headings stay in Zimi's system-sans stack for brand continuity.
+  // Themes/fonts are driven by CSS custom properties set on `body.zimi-reader-active`
+  // and swapped by the rv-theme-*/rv-font-* body classes (_applyReaderTheme). The
+  // iframe can't see the parent's variables, so the palettes are defined here.
+  // Light + sepia are designed as first-class palettes (not inverted dark) with
+  // WCAG-AA link/text contrast. Body font follows --rv-font (Serif/Sans toggle);
+  // headings stay in the system-sans stack in every theme — the classic reader
+  // signal and a stable hierarchy cue.
   var css = [
-    'body.zimi-reader-active{background:#0a0a0b !important;margin:0 !important}',
-    '.zimi-reader{background:#0a0a0b;color:#e8e8ed;min-height:100vh;box-sizing:border-box;',
-      'padding:48px 20px 96px;font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;',
+    // ── Theme variable palettes (defaults = dark) ──
+    'body.zimi-reader-active{--rv-bg:#0a0a0b;--rv-fg:#e8e8ed;--rv-head:#f5f5f7;',
+      '--rv-muted:#8a8a94;--rv-border:#27272b;--rv-link:#f59e0b;--rv-code:#1c1c20;',
+      '--rv-pre:#141416;--rv-th:#1c1c20;',
+      '--rv-font:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;',
+      'background:var(--rv-bg) !important;margin:0 !important}',
+    'body.zimi-reader-active.rv-font-sans{--rv-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}',
+    'body.zimi-reader-active.rv-theme-light{--rv-bg:#fbfbf9;--rv-fg:#1f1f22;--rv-head:#0a0a0b;',
+      '--rv-muted:#63636b;--rv-border:#e3e2dd;--rv-link:#b45309;--rv-code:#f0efe9;',
+      '--rv-pre:#f5f4ee;--rv-th:#f0efe9}',
+    'body.zimi-reader-active.rv-theme-sepia{--rv-bg:#f4ecd8;--rv-fg:#463a28;--rv-head:#2b2010;',
+      '--rv-muted:#8a7955;--rv-border:#e0d4b4;--rv-link:#9a5313;--rv-code:#ece0c2;',
+      '--rv-pre:#efe6cb;--rv-th:#ece0c2}',
+    // ── Shell ──
+    '.zimi-reader{background:var(--rv-bg);color:var(--rv-fg);min-height:100vh;box-sizing:border-box;',
+      'padding:24px 20px 96px;font-family:var(--rv-font);',
       'font-size:19px;line-height:1.65;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}',
     // Kill class-based fixed-height / inner-scroll constraints the ZIM's own
     // stylesheet (still live in the iframe head) imposes on the cloned content —
@@ -8292,32 +8343,35 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader-body{max-width:68ch;margin:0 auto}',
     '.zimi-reader h1,.zimi-reader h2,.zimi-reader h3,.zimi-reader h4,.zimi-reader h5,.zimi-reader h6{',
       'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.25;',
-      'color:#f5f5f7;font-weight:700;margin:1.6em 0 0.5em}',
-    '.zimi-reader-title{font-size:2em;margin:0 0 0.7em;line-height:1.2;',
-      'border-bottom:1px solid #27272b;padding-bottom:0.35em}',
-    '.zimi-reader h2{font-size:1.5em;border-bottom:1px solid #27272b;padding-bottom:0.2em}',
+      'color:var(--rv-head);font-weight:700;margin:1.6em 0 0.5em}',
+    // Title needs the h1-qualified selector to out-specify the heading rule above —
+    // otherwise its `margin:1.6em 0 0.5em` (≈61px top) wins and shoves the article
+    // down into the "dead space" this release removes.
+    '.zimi-reader h1.zimi-reader-title{font-size:2em;margin:0 0 0.7em;line-height:1.2;',
+      'border-bottom:1px solid var(--rv-border);padding-bottom:0.35em}',
+    '.zimi-reader h2{font-size:1.5em;border-bottom:1px solid var(--rv-border);padding-bottom:0.2em}',
     '.zimi-reader h3{font-size:1.25em}.zimi-reader h4{font-size:1.1em}',
     '.zimi-reader p{margin:0 0 1.1em}',
-    '.zimi-reader a{color:#f59e0b;text-decoration:none}',
+    '.zimi-reader a{color:var(--rv-link);text-decoration:none}',
     '.zimi-reader a:hover{text-decoration:underline}',
     '.zimi-reader img{max-width:100%;height:auto;border-radius:6px;margin:0.4em 0;display:block}',
     '.zimi-reader figure{margin:1.3em auto}',
-    '.zimi-reader figcaption{font-size:0.78em;color:#8a8a94;font-family:-apple-system,sans-serif;',
+    '.zimi-reader figcaption{font-size:0.78em;color:var(--rv-muted);font-family:-apple-system,sans-serif;',
       'text-align:center;margin-top:0.4em;line-height:1.45}',
     '.zimi-reader ul,.zimi-reader ol{margin:0 0 1.1em 1.4em}',
     '.zimi-reader li{margin:0.3em 0}',
-    '.zimi-reader blockquote{border-left:3px solid #27272b;margin:1.3em 0;padding-left:1em;color:#8a8a94}',
-    '.zimi-reader hr{border:none;border-top:1px solid #27272b;margin:2em 0}',
+    '.zimi-reader blockquote{border-left:3px solid var(--rv-border);margin:1.3em 0;padding-left:1em;color:var(--rv-muted)}',
+    '.zimi-reader hr{border:none;border-top:1px solid var(--rv-border);margin:2em 0}',
     '.zimi-reader sup,.zimi-reader sub{font-size:0.75em}',
     '.zimi-reader pre,.zimi-reader code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}',
-    '.zimi-reader pre{background:#141416;border:1px solid #27272b;border-radius:8px;padding:14px;',
+    '.zimi-reader pre{background:var(--rv-pre);border:1px solid var(--rv-border);border-radius:8px;padding:14px;',
       'overflow-x:auto;font-size:0.82em;line-height:1.5}',
-    '.zimi-reader code{background:#1c1c20;padding:0.1em 0.4em;border-radius:4px;font-size:0.86em}',
+    '.zimi-reader code{background:var(--rv-code);padding:0.1em 0.4em;border-radius:4px;font-size:0.86em}',
     '.zimi-reader pre code{background:none;padding:0;font-size:1em}',
     '.zimi-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:1.3em 0;max-width:100%}',
     '.zimi-reader table{border-collapse:collapse;font-family:-apple-system,sans-serif;font-size:0.84em}',
-    '.zimi-reader th,.zimi-reader td{border:1px solid #27272b;padding:6px 10px;text-align:left;vertical-align:top}',
-    '.zimi-reader th{background:#1c1c20;color:#e8e8ed;font-weight:600}'
+    '.zimi-reader th,.zimi-reader td{border:1px solid var(--rv-border);padding:6px 10px;text-align:left;vertical-align:top}',
+    '.zimi-reader th{background:var(--rv-th);color:var(--rv-head);font-weight:600}'
   ].join('');
   var style = doc.createElement('style');
   style.id = _READER_VIEW_STYLE_ID;
@@ -8373,6 +8427,7 @@ function _readerViewApply(doc) {
   doc[_READER_VIEW_STASH] = stash;
   doc.body.appendChild(shell);
   doc.body.classList.add('zimi-reader-active');
+  _applyReaderTheme(doc); // stamp theme + family classes → CSS var palette
   try { doc.defaultView.scrollTo(0, 0); } catch(e) {}
   _applyReaderFont(doc); // font zoom composes over the shell
   return true;
@@ -8386,6 +8441,8 @@ function _readerViewRestore(doc) {
   while (stash.firstChild) doc.body.appendChild(stash.firstChild);
   doc[_READER_VIEW_STASH] = null;
   doc.body.classList.remove('zimi-reader-active');
+  READER_THEMES.forEach(function(th) { doc.body.classList.remove('rv-theme-' + th); });
+  READER_FAMILIES.forEach(function(fm) { doc.body.classList.remove('rv-font-' + fm); });
   _applyReaderFont(doc);
 }
 
@@ -8395,6 +8452,7 @@ function _readerViewToggle() {
   if (_readerViewOn) {
     _readerViewOn = false;
     try { _readerViewRestore(doc); } catch(e) {}
+    _closeReaderPalette();
   } else {
     var ok = false;
     try { ok = _readerViewApply(doc); } catch(e) { ok = false; }
@@ -8407,6 +8465,7 @@ function _readerViewToggle() {
     }
     _readerViewOn = true;
   }
+  _tintReaderChrome(); // paint (on) or clear (off) the iframe/loading tint
   _ttsStop(); // the visible content changed under any in-progress speech
   _syncReaderViewBtn();
 }
@@ -8421,6 +8480,134 @@ function _syncReaderViewBtn() {
   }
   var item = document.getElementById('tbm-readerview');
   if (item) item.setAttribute('aria-pressed', _readerViewOn ? 'true' : 'false');
+  if (!avail) _closeReaderPalette();
+}
+
+// The book button / mobile menu row entry point. OFF → one tap enters Reader View
+// (low-friction, Safari-like). ON → the button becomes the settings affordance and
+// opens the palette (exit lives as an explicit row inside), so a second topbar
+// control isn't needed and an accidental tap never dumps you out of the mode.
+function _readerViewButtonAction() {
+  if (_readerViewOn) _toggleReaderPalette();
+  else _readerViewToggle();
+}
+
+// ── Reader View settings palette ──
+// Live setters: with Reader View on, theme/family swap via CSS-var class stamping
+// (no DOM rebuild) and size composes the existing font zoom. Each persists and
+// re-renders the open palette so its active states stay truthful.
+function _setReaderFamily(fam) {
+  if (READER_FAMILIES.indexOf(fam) < 0) return;
+  try { localStorage.setItem(SK.READER_FAMILY, fam); } catch(e) {}
+  var doc = _readerFrameDoc(); if (doc && _readerViewOn) _applyReaderTheme(doc);
+  _renderReaderPalette();
+}
+function _setReaderTheme(theme) {
+  if (READER_THEMES.indexOf(theme) < 0) return;
+  try { localStorage.setItem(SK.READER_THEME, theme); } catch(e) {}
+  var doc = _readerFrameDoc(); if (doc && _readerViewOn) _applyReaderTheme(doc);
+  // Keep the iframe/chrome tint in step so scroll-past-content shows theme bg.
+  _tintReaderChrome();
+  _renderReaderPalette();
+}
+function _stepReaderFont(dir) {
+  var idx = READER_FONT_LEVELS.indexOf(_readerFontLevel());
+  if (idx < 0) idx = READER_FONT_LEVELS.indexOf(READER_FONT_DEFAULT);
+  var next = Math.min(READER_FONT_LEVELS.length - 1, Math.max(0, idx + dir));
+  try { localStorage.setItem(SK.READER_FONT, String(READER_FONT_LEVELS[next])); } catch(e) {}
+  var doc = _readerFrameDoc();
+  try { if (doc) _applyReaderFont(doc); } catch(e) {}
+  _syncFontBtnGlyph();
+  _renderReaderPalette();
+}
+function _toggleReaderAuto() {
+  var on = !_readerAuto();
+  try { localStorage.setItem(SK.READER_AUTO, on ? '1' : '0'); } catch(e) {}
+  // Turning AUTO on while a readerable article sits in raw view: apply immediately
+  // so the toggle has visible effect, not just on the next article.
+  if (on && !_readerViewOn && _readerViewAvailable()) _readerViewToggle();
+  _renderReaderPalette();
+}
+
+// Paint the iframe + loading overlay in the reader theme background. Prevents the
+// ZIM's own white paint bleeding at the edges (light/sepia) and, in AUTO mode, is
+// the "dark mode unbroken" guard — the gap before Reader View applies shows theme
+// bg, never ZIM-white. Reverts to #fff when Reader View is off.
+function _tintReaderChrome() {
+  var frame = document.getElementById('reader-frame');
+  var loading = document.getElementById('reader-loading');
+  var bg = (_readerViewOn || _readerAuto()) ? _readerThemeBg() : '';
+  if (frame) frame.style.background = bg || '#fff';
+  if (loading) loading.style.background = bg || '';
+}
+
+var _READER_PALETTE_ID = 'reader-palette';
+var _READER_SIZE_LABELS = { 85: 'S', 100: 'M', 115: 'L', 130: 'XL' };
+function _readerPaletteHtml() {
+  var theme = _readerTheme(), fam = _readerFamily(), auto = _readerAuto();
+  var lvl = _readerFontLevel();
+  var minSize = lvl === READER_FONT_LEVELS[0];
+  var maxSize = lvl === READER_FONT_LEVELS[READER_FONT_LEVELS.length - 1];
+  function swatch(key) {
+    return '<button type="button" class="rv-swatch rv-sw-' + key + (theme === key ? ' active' : '') +
+      '" role="radio" aria-checked="' + (theme === key ? 'true' : 'false') +
+      '" title="' + tH('reader_theme_' + key) + '" aria-label="' + tH('reader_theme_' + key) +
+      '" onclick="event.stopPropagation();_setReaderTheme(\'' + key + '\')"><span class="rv-sw-dot"></span>' +
+      tH('reader_theme_' + key) + '</button>';
+  }
+  function famPill(key) {
+    return '<button type="button" class="rv-pill' + (fam === key ? ' active' : '') +
+      '" role="radio" aria-checked="' + (fam === key ? 'true' : 'false') +
+      '" style="font-family:' + (key === 'serif' ? 'Georgia,serif' : '-apple-system,sans-serif') +
+      '" onclick="event.stopPropagation();_setReaderFamily(\'' + key + '\')">' + tH('reader_font_' + key) + '</button>';
+  }
+  var h = '<div class="rv-pal-head">' + _READER_VIEW_ICON + '<span>' + tH('reader_view') + '</span></div>';
+  // Theme
+  h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_theme') + '</div>' +
+    '<div class="rv-swatches" role="radiogroup" aria-label="' + tH('reader_theme') + '">' +
+    swatch('dark') + swatch('light') + swatch('sepia') + '</div></div>';
+  // Font family
+  h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_font_family') + '</div>' +
+    '<div class="rv-pills" role="radiogroup" aria-label="' + tH('reader_font_family') + '">' +
+    famPill('serif') + famPill('sans') + '</div></div>';
+  // Text size (reuses the persisted zoom levels as A−/A+)
+  h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_text_size') + '</div>' +
+    '<div class="rv-size">' +
+    '<button type="button" class="rv-size-btn"' + (minSize ? ' disabled' : '') +
+      ' aria-label="' + tH('reader_size_smaller') + '" onclick="event.stopPropagation();_stepReaderFont(-1)">A<span class="rv-minus">&minus;</span></button>' +
+    '<span class="rv-size-val">' + (_READER_SIZE_LABELS[lvl] || lvl + '%') + '</span>' +
+    '<button type="button" class="rv-size-btn"' + (maxSize ? ' disabled' : '') +
+      ' aria-label="' + tH('reader_size_larger') + '" onclick="event.stopPropagation();_stepReaderFont(1)">A<span class="rv-plus">+</span></button>' +
+    '</div></div>';
+  // AUTO mode
+  h += '<button type="button" class="rv-toggle-row" role="switch" aria-checked="' + (auto ? 'true' : 'false') +
+    '" onclick="event.stopPropagation();_toggleReaderAuto()">' +
+    '<span class="rv-toggle-text"><span class="rv-toggle-title">' + tH('reader_auto') + '</span>' +
+    '<span class="rv-toggle-sub">' + tH('reader_auto_hint') + '</span></span>' +
+    '<span class="rv-switch' + (auto ? ' on' : '') + '" aria-hidden="true"><span class="rv-knob"></span></span></button>';
+  // Print/PDF/share intentionally deferred (D-item): an export row would slot here,
+  // above the divider, once the export flow is designed.
+  h += '<div class="rv-pal-divider" role="separator"></div>';
+  h += '<button type="button" class="rv-exit-row" onclick="_closeReaderPalette();_readerViewToggle()">' +
+    '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
+    tH('reader_exit') + '</button>';
+  return h;
+}
+function _renderReaderPalette() {
+  var pal = document.getElementById(_READER_PALETTE_ID);
+  if (pal && pal.classList.contains('visible')) pal.innerHTML = _readerPaletteHtml();
+}
+function _toggleReaderPalette() {
+  var pal = document.getElementById(_READER_PALETTE_ID);
+  if (!pal) return;
+  if (pal.classList.contains('visible')) { _closeReaderPalette(); return; }
+  pal.innerHTML = _readerPaletteHtml();
+  pal.classList.add('visible');
+  setTimeout(function() { document.addEventListener('click', _closeReaderPalette, { once: true }); }, 0);
+}
+function _closeReaderPalette() {
+  var pal = document.getElementById(_READER_PALETTE_ID);
+  if (pal) pal.classList.remove('visible');
 }
 
 // ── Reader ──
@@ -8454,6 +8641,17 @@ function openReader(url) {
   // Hide main document scroll so iframe becomes primary scroller (iOS tap-to-top)
   document.documentElement.style.overflowY = 'hidden';
   loading.classList.remove('hidden');
+  // Tint the iframe + loading overlay to the reader theme when Reader View is
+  // sticky or AUTO is armed, so the load gap shows theme bg (never ZIM-white).
+  _tintReaderChrome();
+  // "Dark mode unbroken": when Reader View will apply to the incoming doc (sticky
+  // or AUTO), keep the iframe itself invisible until onload has swapped in the
+  // reader shell. The tinted overlay fades in over 0.3s, so on a fast local load
+  // it can't be trusted to fully mask the raw white ZIM paint — hiding the frame
+  // outright guarantees the first painted frame is the reader, never the original.
+  // (visibility:hidden preserves layout + load, so extraction still works.)
+  var _maskFrame = _readerViewOn || _readerAuto();
+  frame.style.visibility = _maskFrame ? 'hidden' : 'visible';
 
   // Punch-out button: for pdf.js viewer URLs, link to the raw PDF for download
   if (url.startsWith('/static/pdfjs/')) {
@@ -8466,6 +8664,7 @@ function openReader(url) {
 
   frame.onerror = function() {
     loading.classList.add('hidden');
+    frame.style.visibility = 'visible'; // never leave the frame masked on error
   };
   // Safety timeout: if iframe doesn't load within 15s, hide spinner
   if (_readerTimeout) clearTimeout(_readerTimeout);
@@ -8473,12 +8672,30 @@ function openReader(url) {
     if (readerOpen && !loading.classList.contains('hidden')) {
       loading.classList.add('hidden');
     }
+    frame.style.visibility = 'visible'; // reveal even if the load stalled
   }, 15000);
   frame.onload = function() {
     clearTimeout(_readerTimeout);
-    loading.classList.add('hidden');
-    if (!readerOpen) return; // reader was closed — don't update title
+    if (!readerOpen) { loading.classList.add('hidden'); return; } // reader was closed — don't update title
     _ttsStop(); // stop any in-progress speech when the article changes
+    // AUTO / sticky Reader View: transform the freshly loaded document BEFORE we
+    // reveal it. The reader was on for the previous article (sticky, Safari-like)
+    // or AUTO is armed → re-apply to this doc. The tinted loading overlay stays up
+    // until the shell exists, so the raw ZIM page never flashes ("dark mode
+    // unbroken"). Non-eligible docs (PDF viewer, thin pages) fall through silently.
+    var _wantReader = _readerViewOn || _readerAuto();
+    _readerViewOn = false; // the new document has no shell yet
+    if (_wantReader) {
+      var _rdoc = null; try { _rdoc = frame.contentDocument; } catch(e) { _rdoc = null; }
+      if (_rdoc && _readerViewAvailable()) {
+        var _rok = false; try { _rok = _readerViewApply(_rdoc); } catch(e) { _rok = false; }
+        if (_rok) _readerViewOn = true;
+      }
+    }
+    _tintReaderChrome(); // reset frame bg to #fff if reader ended up off
+    _syncReaderViewBtn();
+    frame.style.visibility = 'visible'; // reveal now — shell (or raw doc) is ready to paint
+    loading.classList.add('hidden');
     try { _applyReaderFont(frame.contentDocument); } catch(e) {} // reapply persisted font scale
     // Capture mousedown inside iframe for modifier-click detection + dismiss context menu
     try {
@@ -9333,7 +9550,7 @@ function _toggleTopbarMenu(event) {
     // Reader-control group first: Reader View, Read aloud, Font size, Open in browser.
     if (_readerViewAvailable()) {
       h += '<button class="topbar-menu-item" id="tbm-readerview" aria-pressed="' + (_readerViewOn ? 'true' : 'false') +
-        '" onclick="_closeTopbarMenu();_readerViewToggle()">' + _READER_VIEW_ICON +
+        '" onclick="_closeTopbarMenu();_readerViewButtonAction()">' + _READER_VIEW_ICON +
         ' <span class="tbm-label">' + tH('reader_view') + '</span></button>';
     }
     if (_TTS_AVAILABLE) {

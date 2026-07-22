@@ -276,6 +276,87 @@
   .topbar-menu-item .dice { line-height: 1; flex-shrink: 0; }
   /* Thin rule separating the reader-control group from the app-navigation group. */
   .topbar-menu-divider { height: 1px; margin: 4px 0; background: var(--border); }
+
+  /* ── Reader View settings palette ── */
+  /* Popover from the book button (desktop) / ⋯ Reader View row (mobile). Anchored
+     top-right under the topbar, same visual family as .topbar-menu. Chrome (app UI)
+     always uses Zimi's dark palette — only the article inside the iframe changes
+     theme, so this popover intentionally does NOT recolor with the reader theme. */
+  .reader-palette {
+    display: none; position: absolute; inset-inline-end: 8px; top: 48px; z-index: 220;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow-popup); width: 264px; max-width: calc(100vw - 16px); padding: 6px;
+  }
+  .reader-palette.visible { display: block; animation: fadeIn 0.12s ease; }
+  .rv-pal-head {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px 8px;
+    color: var(--text); font-size: 13px; font-weight: 600;
+  }
+  .rv-pal-head svg { color: var(--amber); }
+  .rv-row { padding: 7px 8px; }
+  .rv-row-label { font-size: 11px; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+  /* Theme swatches */
+  .rv-swatches { display: flex; gap: 6px; }
+  .rv-swatch {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px;
+    padding: 8px 4px 6px; border: 1px solid var(--border); border-radius: 9px;
+    background: var(--surface2); color: var(--text2); font-size: 11px; cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .rv-swatch:hover { border-color: var(--amber-border); color: var(--text); }
+  .rv-swatch.active { border-color: var(--amber); color: var(--text); }
+  .rv-sw-dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.14); }
+  .rv-sw-dark .rv-sw-dot { background: #0a0a0b; }
+  .rv-sw-light .rv-sw-dot { background: #fbfbf9; border-color: rgba(0,0,0,0.18); }
+  .rv-sw-sepia .rv-sw-dot { background: #f4ecd8; border-color: rgba(0,0,0,0.14); }
+  .rv-swatch.active .rv-sw-dot { box-shadow: 0 0 0 2px var(--surface2), 0 0 0 3px var(--amber); }
+  /* Family pills */
+  .rv-pills { display: flex; gap: 6px; }
+  .rv-pill {
+    flex: 1; padding: 8px 6px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface2); color: var(--text2); font-size: 14px; cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+  .rv-pill:hover { border-color: var(--amber-border); color: var(--text); }
+  .rv-pill.active { border-color: var(--amber); color: var(--amber); background: var(--amber-glow); }
+  /* Text-size stepper */
+  .rv-size { display: flex; align-items: center; gap: 8px; }
+  .rv-size-btn {
+    display: flex; align-items: baseline; justify-content: center; gap: 1px;
+    width: 44px; height: 34px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface2); color: var(--text); font-size: 15px; font-weight: 700; cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .rv-size-btn .rv-minus, .rv-size-btn .rv-plus { font-size: 10px; font-weight: 700; }
+  .rv-size-btn:hover:not([disabled]) { border-color: var(--amber-border); }
+  .rv-size-btn[disabled] { opacity: 0.35; cursor: default; }
+  .rv-size-val { flex: 1; text-align: center; font-size: 13px; color: var(--text2); }
+  /* AUTO toggle row */
+  .rv-toggle-row {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: start;
+    padding: 9px 8px; margin-top: 2px; background: none; border: none; cursor: pointer; border-radius: 8px;
+  }
+  .rv-toggle-row:hover { background: var(--surface2); }
+  .rv-toggle-text { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+  .rv-toggle-title { font-size: 13px; color: var(--text); }
+  .rv-toggle-sub { font-size: 11px; color: var(--text2); }
+  .rv-switch {
+    flex-shrink: 0; width: 38px; height: 22px; border-radius: 11px; background: var(--surface2);
+    border: 1px solid var(--border); position: relative; transition: background 0.15s, border-color 0.15s;
+  }
+  .rv-switch.on { background: var(--amber); border-color: var(--amber); }
+  .rv-knob {
+    position: absolute; top: 2px; inset-inline-start: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; transition: inset-inline-start 0.15s;
+  }
+  .rv-switch.on .rv-knob { inset-inline-start: 18px; }
+  .rv-pal-divider { height: 1px; margin: 6px 6px; background: var(--border); }
+  .rv-exit-row {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: start;
+    padding: 9px 8px; background: none; border: none; cursor: pointer; border-radius: 8px;
+    color: var(--text); font-size: 13px;
+  }
+  .rv-exit-row:hover { background: var(--surface2); color: var(--amber); }
   /* Language welcome card on home */
   .lang-welcome-card {
     display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-bottom: 16px;
