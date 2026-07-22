@@ -2490,15 +2490,27 @@ function toggleCategory(cat) {
 // server-side grouping keys off the same names — so the round-trip stays exact.
 const _DEFAULT_MOVE_CATEGORIES = ['Wikimedia', 'Stack Exchange', 'Dev Docs', 'Education', 'Medical', 'How-To', 'Books'];
 
+// Canonical key for de-duplicating category targets. Two categories collide when
+// they render to the SAME row for the user — which is the localized display name,
+// case-insensitive. Keying dedup off the raw value is wrong: the default 'Wikimedia'
+// and an in-use 'Encyclopedias' are different strings but display identically (both
+// "Encyclopedias"), so raw-value dedup let both through — the duplicate-rows bug.
+function _catCanonKey(c) { return (c ? _catDisplayName(c) : '').trim().toLowerCase(); }
+
 // Move targets = defaults ∪ any category currently in use, so a custom category
 // the user already created is offered as a reuse target (not just re-typed).
+// Defaults come first (canonical English keys the server stores); an in-use
+// category is appended only when its display name isn't already covered.
 function _moveTargetCategories() {
   var seen = new Set();
   var out = [];
-  _DEFAULT_MOVE_CATEGORIES.forEach(function(c) { if (!seen.has(c)) { seen.add(c); out.push(c); } });
-  (zimsCache || []).forEach(function(z) {
-    if (z.category && !seen.has(z.category)) { seen.add(z.category); out.push(z.category); }
-  });
+  function add(c) {
+    var canon = _catCanonKey(c);
+    if (!canon || seen.has(canon)) return;
+    seen.add(canon); out.push(c);
+  }
+  _DEFAULT_MOVE_CATEGORIES.forEach(add);
+  (zimsCache || []).forEach(function(z) { add(z.category); });
   return out;
 }
 
@@ -2508,10 +2520,12 @@ function _moveTargetCategories() {
 // off dataset, sidestepping the escJs-in-onclick trap.
 function _moveSubmenuHtml(zim) {
   var cur = (_zimInfo(zim) || {}).category || '';
+  var curCanon = _catCanonKey(cur); // mark the current category once, by display, not raw value
   var h = '';
   _moveTargetCategories().forEach(function(c) {
+    var isCur = curCanon && _catCanonKey(c) === curCanon;
     h += '<div class="ctx-item" data-action="move-to" data-cat="' + escAttr(c) + '">' +
-      (c === cur ? '✓ ' : '') + esc(_catDisplayName(c)) + '</div>';
+      (isCur ? '✓ ' : '') + esc(_catDisplayName(c)) + '</div>';
   });
   h += '<div class="ctx-sep"></div>';
   h += '<div class="ctx-item" data-action="move-new">' + tH('move_new_category') + '</div>';
@@ -7984,6 +7998,10 @@ var _READER_VIEW_STRIP = [
   '.printfooter', '.catlinks', '.mw-hidden-catlinks', '#toc', '.toc',
   '.mw-empty-elt', '.mw-editsection-like'
 ].join(',');
+// Layout props that force a nested inner scroller; stripped from clone inline
+// styles and overridden (scoped) in the reader shell CSS. Kept in one place so
+// the inline-strip and the CSS rule can't drift apart.
+var _READER_CONSTRAIN_PROPS = ['height', 'max-height', 'min-height', 'overflow', 'overflow-x', 'overflow-y'];
 // Book-open glyph shared by the desktop button and the mobile ... menu row.
 var _READER_VIEW_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
 
@@ -8030,6 +8048,19 @@ function _readerViewClean(root, doc) {
       if (junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
     }
   } catch(e) {}
+  // Neutralize INLINE layout constraints that would make the clone a fixed-height
+  // inner scroller inside the reader column (the devdocs-class bug: a main element
+  // sized `height:100%;overflow:scroll`). Class-based constraints from the ZIM's
+  // own stylesheet — still live in the iframe head — are handled by the reader
+  // shell CSS override in _readerViewInjectStyle; this only clears style="" props.
+  try {
+    var constrained = [root].concat(Array.prototype.slice.call(root.querySelectorAll('[style]')));
+    for (var s = 0; s < constrained.length; s++) {
+      var st = constrained[s].style;
+      if (!st) continue;
+      _READER_CONSTRAIN_PROPS.forEach(function(p) { try { st.removeProperty(p); } catch(e) {} });
+    }
+  } catch(e) {}
   // Wrap wide tables so they scroll rather than blow out the reading column.
   try {
     var tables = root.querySelectorAll('table');
@@ -8056,6 +8087,14 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader{background:#0a0a0b;color:#e8e8ed;min-height:100vh;box-sizing:border-box;',
       'padding:48px 20px 96px;font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;',
       'font-size:19px;line-height:1.65;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}',
+    // Kill class-based fixed-height / inner-scroll constraints the ZIM's own
+    // stylesheet (still live in the iframe head) imposes on the cloned content —
+    // e.g. devdocs' `._content{height:100%;overflow-y:scroll}`, which otherwise
+    // renders as a nested scrollbar + empty region inside the reader column.
+    // Scoped OFF the table wrapper and <pre> so their intentional horizontal
+    // scroll survives; the shell itself keeps its min-height:100vh (not a descendant).
+    '.zimi-reader *:not(.zimi-table-wrap):not(pre){height:auto !important;max-height:none !important;',
+      'min-height:0 !important;overflow:visible !important}',
     '.zimi-reader-body{max-width:68ch;margin:0 auto}',
     '.zimi-reader h1,.zimi-reader h2,.zimi-reader h3,.zimi-reader h4,.zimi-reader h5,.zimi-reader h6{',
       'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.25;',
