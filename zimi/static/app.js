@@ -6050,6 +6050,14 @@ function _msPreferencesHtml() {
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 60);
   }
+  // Reader section — mirror of the in-article palette's AUTO switch, so the
+  // setting is discoverable without first opening an article. Same wording,
+  // same localStorage key (via _setReaderAuto).
+  var readerAutoOn = _readerAuto();
+  h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_reader') + '</div>' +
+    '<label class="ms-check"><input type="checkbox" id="ms-reader-auto"' + (readerAutoOn ? ' checked' : '') +
+      ' onchange="_setReaderAuto(this.checked)"> ' + tH('reader_auto') + '</label>' +
+    '<div class="ms-hint">' + tH('reader_auto_hint') + '</div>';
   // Accessibility section
   var a11yOn = _getStorageFlag(SK.A11Y_REWRITE);
   h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_accessibility') + '</div>' +
@@ -8584,13 +8592,22 @@ function _stepReaderFont(dir) {
   _syncFontBtnGlyph();
   _renderReaderPalette();
 }
-function _toggleReaderAuto() {
-  var on = !_readerAuto();
+// Persist the reader AUTO flag and reflect it live. Shared by the reader
+// palette switch and the mirrored checkbox in manage → preferences, so the
+// two controls always drive the one localStorage key with identical behavior.
+function _setReaderAuto(on) {
+  on = !!on;
   try { localStorage.setItem(SK.READER_AUTO, on ? '1' : '0'); } catch(e) {}
   // Turning AUTO on while a readerable article sits in raw view: apply immediately
   // so the toggle has visible effect, not just on the next article.
   if (on && !_readerViewOn && _readerViewAvailable()) _readerViewToggle();
   _renderReaderPalette();
+  // Keep the prefs checkbox in sync if it happens to be mounted.
+  var cb = document.getElementById('ms-reader-auto');
+  if (cb) cb.checked = on;
+}
+function _toggleReaderAuto() {
+  _setReaderAuto(!_readerAuto());
 }
 
 // Paint the iframe + loading overlay in the reader theme background. Prevents the

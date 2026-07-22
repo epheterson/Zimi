@@ -826,6 +826,7 @@
   "skip_to_main": "Skip to main content",
   "search": "Search",
   "ms_accessibility": "Accessibility",
+  "ms_reader": "Reader",
   "a11y_rewrite_label": "Improve ZIM article accessibility",
   "a11y_rewrite_hint": "Adds missing image alt text, ensures one heading per article, and fills in document language. Helps screen readers; some article HTML changes.",
   "alm_a11y_sky_for": "Almanac sky for {when}.",

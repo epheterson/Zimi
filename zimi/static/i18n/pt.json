@@ -826,6 +826,7 @@
   "skip_to_main": "Ir para o conteúdo principal",
   "search": "Pesquisar",
   "ms_accessibility": "Acessibilidade",
+  "ms_reader": "Leitor",
   "a11y_rewrite_label": "Melhorar acessibilidade dos artigos ZIM",
   "a11y_rewrite_hint": "Adiciona texto alternativo às imagens, garante um título por artigo e preenche o idioma do documento. Ajuda leitores de tela; o HTML muda um pouco.",
   "alm_a11y_sky_for": "Céu do almanaque em {when}.",
