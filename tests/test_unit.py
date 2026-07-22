@@ -2038,7 +2038,7 @@ class TestSetPasswordAuthGate(unittest.TestCase):
             _patch.object(
                 manage,
                 "_set_manage_password",
-                side_effect=lambda pw: set_calls.append(pw),
+                side_effect=lambda pw, username=None: set_calls.append(pw),
             ),
         ):
             manage.os.environ.pop("ZIMI_MANAGE_PASSWORD", None)
