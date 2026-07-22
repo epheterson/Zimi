@@ -875,6 +875,8 @@
   "stop_seed": "Arrêter",
   "seed_waiting": "Partage · inactif · {n} connectés",
   "seed_active": "Partage · ↑ {up} · {n} connectés",
+  "seed_uploaded_of": "{up} sur {goal} (ratio {ratio} / {cap})",
+  "seed_mirror_uploaded": "{up} partagé · miroir ∞",
   "seed_paused_note": "Partage en pause",
   "bt_port_open": "ouvert",
   "bt_port_closed": "fermé",

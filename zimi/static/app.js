@@ -7550,7 +7550,6 @@ async function _refreshDownloadsInner() {
     // Seed cards render under "Seeding" AND under "All" — All means all.
     // (With zero downloads and active seeds, All used to render blank.)
     if (filter === 'seeding' || filter === 'all') {
-      const fmtUp = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
       for (const sd of seedingTorrents) {
         // Prefer the installed ZIM's real title; the card opens it
         const base = (sd.filename || '').replace(/\.zim$/, '');
@@ -7564,17 +7563,29 @@ async function _refreshDownloadsInner() {
         // (Replaces the old "waiting for requests" copy that confused.)
         const idle = !sd.uploaded_bytes && !sd.up_speed;
         const upNow = sd.up_speed > 1024 ? ' · ↑ ' + (sd.up_speed / (1024 * 1024)).toFixed(1) + ' MB/s' : '';
+        // Lifetime uploaded bytes vs the goal (ratio cap x file size). Mirror
+        // seeds run uncapped, so they show uploaded + an ∞ label instead.
+        const up = sd.cumulative_uploaded_bytes != null ? sd.cumulative_uploaded_bytes : (sd.uploaded_bytes || 0);
+        const cap = sd.cap_bytes || 0;
+        const size = sd.file_size_bytes || sd.completed_bytes || 0;
+        const isMirror = sd.mirror || !cap;
+        const curRatio = size ? up / size : (sd.ratio || 0);
+        const goalStr = isMirror
+          ? tH('seed_mirror_uploaded', {up: _fmtBytes(up)})
+          : tH('seed_uploaded_of', {up: _fmtBytes(up), goal: _fmtBytes(cap), ratio: curRatio.toFixed(1), cap: seedingCap});
+        const pct = isMirror ? 0 : Math.min(100, Math.round((up / cap) * 100));
         const meta = paused
           ? tH('seed_paused_note')
           : idle
             ? tH('seed_waiting', {n: connected})
-            : tH('seed_active', {up: fmtUp(sd.uploaded_bytes), n: connected}) + upNow;
+            : tH('seed_active', {up: _fmtBytes(up), n: connected}) + upNow;
         h += '<div class="dl-item dl-seed-item">' +
           '<div class="dl-row">' +
           '<span class="dl-seed-icon">' + _sourceIconHtml(zimName, 22) + '</span>' +
           '<span class="dl-name dl-seed-link" onclick="enterSource(\'' + escAttr(escJs(zimName)) + '\', true)" title="' + escAttr(sName) + '">' + esc(sName) + '</span>' +
           '<span class="dl-size">' + meta + '</span></div>' +
-          '<div class="dl-progress" title="' + escAttr(t('seed_bar_tip', {cap: seedingCap})) + '"><div class="dl-progress-bar" style="width:' + Math.min(100, Math.round(((sd.ratio || 0) / seedingCap) * 100)) + '%"></div></div>' +
+          '<div class="dl-seed-goal">' + esc(goalStr) + '</div>' +
+          (isMirror ? '' : '<div class="dl-progress" title="' + escAttr(t('seed_bar_tip', {cap: seedingCap})) + '"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>') +
           '<div class="dl-actions">' +
             '<button class="dl-pause-btn" onclick="_seedAction(\'' + escAttr(escJs(sd.id)) + '\', \'' + (paused ? 'resume' : 'pause') + '\', this)">' + (paused ? tH('resume') : tH('pause')) + '</button>' +
             '<button class="dl-cancel-btn" onclick="_seedAction(\'' + escAttr(escJs(sd.id)) + '\', \'stop\', this)">' + tH('stop_seed') + '</button>' +

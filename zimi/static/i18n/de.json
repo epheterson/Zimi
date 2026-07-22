@@ -875,6 +875,8 @@
   "stop_seed": "Stopp",
   "seed_waiting": "Wird geteilt · inaktiv · {n} verbunden",
   "seed_active": "Wird geteilt · ↑ {up} · {n} verbunden",
+  "seed_uploaded_of": "{up} von {goal} (Verhältnis {ratio} / {cap})",
+  "seed_mirror_uploaded": "{up} geteilt · Spiegel ∞",
   "seed_paused_note": "Teilen pausiert",
   "bt_port_open": "offen",
   "bt_port_closed": "geschlossen",

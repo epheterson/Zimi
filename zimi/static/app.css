@@ -889,6 +889,8 @@
   .dl-seed-icon .rs-letter { font-size: 12px; font-weight: 600; color: var(--text2); }
   .dl-seed-item .dl-name { flex: 1 1 auto; min-width: 0; }
   .dl-seed-item .dl-size { flex: 1 1 100%; min-width: 0; color: var(--text2); }
+  /* Uploaded-vs-goal line under the seed row: quiet, tabular, its own row. */
+  .dl-seed-goal { margin-top: 6px; font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
   /* Stop-all spans the grid instead of squatting an empty card cell */
   .dl-seed-actions { grid-column: 1 / -1; margin-top: 8px; text-align: right; }
   /* Sharing cards on phones: text keeps its width, fields wrap cleanly */

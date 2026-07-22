@@ -607,6 +607,15 @@ def record_seed(filename, origin="download"):
         log.debug("seed ledger record failed for %s: %s", filename, e)
 
 
+def seed_ledger_snapshot():
+    """Read-only copy of the seed intent ledger: {filename: entry}. Entries
+    carry cumulative cross-session upload in ``uploaded`` and ``origin``
+    (``mirror``|``download``). Used by /manage/seeding to show lifetime
+    uploaded bytes rather than just this session's."""
+    with _seed_ledger_lock:
+        return {k: dict(v) for k, v in _seed_ledger().items()}
+
+
 def unrecord_seed(filename):
     """A deliberate stop: this file should NOT come back at startup."""
     try:

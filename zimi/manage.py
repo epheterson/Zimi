@@ -695,6 +695,14 @@ def handle_manage_get(handler, parsed, params):
         torrents = []
         total_up = 0
         total_down = 0
+        # Mirror seeds carry no ratio cap; personal seeds stop at cap x size.
+        # The cap is a single global (per-torrent goal = cap x that file's
+        # size), computed client-side from ratio_cap + the file size we send.
+        mirror_on = p2p.is_mirror_enabled()
+        ratio_cap = p2p.get_seed_ratio_cap()
+        from zimi import library as _lib
+
+        ledger = _lib.seed_ledger_snapshot()
         # Drop finished/errored results (e.g. broken-ZIM torrents that can't
         # resolve) so they don't linger in the seeding panel. Best-effort.
         purge = getattr(backend, "purge_stopped", None)
@@ -739,6 +747,15 @@ def handle_manage_get(handler, parsed, params):
                     snag = raw.get("errorMessage", "") or "error"
                 elif fpath and not os.path.exists(fpath):
                     snag = "file missing"
+                # Lifetime upload from the ledger (survives restarts) — at
+                # least this session's count. file_size prefers the torrent's
+                # total; completedLength is the seeding-file fallback.
+                led = ledger.get(fname, {})
+                cumulative = max(int(led.get("uploaded", 0) or 0), uploaded)
+                file_size = total or completed
+                is_mirror = mirror_on or led.get("origin") == "mirror"
+                # Personal seeds have a byte goal (cap x size); mirror = none.
+                cap_bytes = 0 if is_mirror else int(ratio_cap * file_size)
                 torrents.append(
                     {
                         "id": raw.get("gid", ""),
@@ -746,7 +763,11 @@ def handle_manage_get(handler, parsed, params):
                         "state": state,
                         "snag": snag,
                         "completed_bytes": completed,
+                        "file_size_bytes": file_size,
                         "uploaded_bytes": uploaded,
+                        "cumulative_uploaded_bytes": cumulative,
+                        "cap_bytes": cap_bytes,
+                        "mirror": is_mirror,
                         "ratio": round(ratio, 3),
                         "peers": int(raw.get("connections", 0)),
                         "down_speed": int(raw.get("downloadSpeed", 0)),
@@ -763,7 +784,8 @@ def handle_manage_get(handler, parsed, params):
             200,
             {
                 "enabled": p2p.is_seeding_enabled(),
-                "ratio_cap": p2p.get_seed_ratio_cap(),
+                "ratio_cap": ratio_cap,
+                "mirror": mirror_on,
                 "disk_pressure": p2p.should_pause_for_disk_pressure(_srv.ZIM_DIR),
                 "torrents": torrents,
                 "totals": {

@@ -875,6 +875,8 @@
   "stop_seed": "停止",
   "seed_waiting": "分享中 · 空闲 · {n} 已连接",
   "seed_active": "分享中 · ↑ {up} · {n} 已连接",
+  "seed_uploaded_of": "{up} / {goal}（分享率 {ratio} / {cap}）",
+  "seed_mirror_uploaded": "已分享 {up} · 镜像 ∞",
   "seed_paused_note": "分享已暂停",
   "bt_port_open": "开放",
   "bt_port_closed": "关闭",

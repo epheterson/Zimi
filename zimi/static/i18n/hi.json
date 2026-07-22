@@ -875,6 +875,8 @@
   "stop_seed": "रोकें",
   "seed_waiting": "साझा किया जा रहा है · निष्क्रिय · {n} जुड़े",
   "seed_active": "साझा किया जा रहा है · ↑ {up} · {n} जुड़े",
+  "seed_uploaded_of": "{goal} में से {up} (अनुपात {ratio} / {cap})",
+  "seed_mirror_uploaded": "{up} साझा · मिरर ∞",
   "seed_paused_note": "साझा करना रुका हुआ",
   "bt_port_open": "खुला",
   "bt_port_closed": "बंद",

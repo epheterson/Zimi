@@ -875,6 +875,8 @@
   "stop_seed": "עצור",
   "seed_waiting": "משתף · במנוחה · {n} מחוברים",
   "seed_active": "משתף · ↑ {up} · {n} מחוברים",
+  "seed_uploaded_of": "{up} מתוך {goal} (יחס {ratio} / {cap})",
+  "seed_mirror_uploaded": "{up} שותף · מראה ∞",
   "seed_paused_note": "השיתוף מושהה",
   "bt_port_open": "פתוח",
   "bt_port_closed": "סגור",

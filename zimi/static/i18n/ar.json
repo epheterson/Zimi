@@ -875,6 +875,8 @@
   "stop_seed": "إيقاف",
   "seed_waiting": "جارٍ المشاركة · خامل · {n} متصل",
   "seed_active": "جارٍ المشاركة · ↑ {up} · {n} متصل",
+  "seed_uploaded_of": "{up} من {goal} (النسبة {ratio} / {cap})",
+  "seed_mirror_uploaded": "تمت مشاركة {up} · مرآة ∞",
   "seed_paused_note": "المشاركة متوقفة مؤقتًا",
   "bt_port_open": "مفتوح",
   "bt_port_closed": "مغلق",
