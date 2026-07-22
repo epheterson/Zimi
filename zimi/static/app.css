@@ -217,6 +217,13 @@
   .pill.active .pill-count { opacity: 1; background: rgba(0, 0, 0, 0.22); color: #000; padding: 0 5px; border-radius: 8px; }
   .pill.dimmed, .lang-pill.dimmed { opacity: 0.35; pointer-events: none; }
   .pills-divider { width: 60px; height: 1px; background: var(--border); margin: 0 auto 4px; opacity: 0.5; }
+  /* Installed-tab category pills: draggable to reorder (W1.3). */
+  .cat-pill[draggable="true"] { cursor: grab; }
+  .cat-pill.dragging { opacity: 0.45; cursor: grabbing; }
+  .cat-pill.drag-over { border-color: var(--amber); box-shadow: -2px 0 0 var(--amber); }
+  /* "Reorder" is an ACTION, not a filter — amber outline sets it apart. */
+  .reorder-pill { display: inline-flex; align-items: center; gap: 4px; color: var(--amber); border-color: var(--amber-border); border-style: dashed; background: var(--amber-glow); }
+  .reorder-pill:hover { color: var(--amber); border-color: var(--amber); background: var(--amber-glow); border-style: dashed; }
 
   /* ── Language pills (above source pills in search results) ── */
   .lang-pills { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; width: 100%; }
@@ -769,7 +776,10 @@
   .share-field { display: flex; align-items: center; gap: 10px; margin-top: 7px; font-size: 12px; color: var(--text2); }
   .share-field > label { min-width: 78px; color: var(--text2); }
   .share-field-note { color: var(--text3); font-size: 11px; }
-  .share-num-input { width: 72px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 6px; text-align: left; }
+  /* Sized for the 1-4 digit values they hold (ratio 1.5, MB/s caps) rather than
+     the old label-width default; the port needs room for 5 digits + spinner. */
+  .share-num-input { width: 6ch; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 6px; text-align: left; }
+  .share-port-input { width: 8ch; }
   .share-num-input:disabled { opacity: 0.5; }
   .peer-name-input { width: 160px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 8px; text-align: left; }
   .share-port-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }

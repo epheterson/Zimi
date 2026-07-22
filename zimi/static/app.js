@@ -1224,6 +1224,73 @@ function _reorderSectionsHtml() {
   return h + '</div>';
 }
 
+// Order category names by the saved section order (cat: keys), unlisted A-Z.
+// Shared by the installed-tab filter pills so they mirror the home page.
+function _orderCatsBySaved(cats) {
+  var pos = {};
+  (_sectionOrder || []).forEach(function(k, i) {
+    if (k.indexOf('cat:') === 0) pos[k.slice(4)] = i;
+  });
+  return cats.slice().sort(function(a, b) {
+    var pa = pos[a], pb = pos[b];
+    if (pa == null && pb == null) return a.localeCompare(b);
+    if (pa == null) return 1;
+    if (pb == null) return -1;
+    return pa - pb;
+  });
+}
+
+// Persist the installed-tab pill order as the home section order. Pills cover
+// only categories; collections keep their existing slot positions so the home
+// page and the reorder panel stay consistent (#37 keys: cat:/col:).
+function _persistInstalledPillOrder(row) {
+  var pillCats = Array.prototype.map.call(
+    row.querySelectorAll('.cat-pill[data-cat]'),
+    function(p) { return 'cat:' + p.dataset.cat; });
+  var full = _currentReorderSections().map(function(s) { return s.key; });
+  pillCats.forEach(function(k) { if (full.indexOf(k) === -1) full.push(k); });
+  var ci = 0;
+  var order = full.map(function(k) {
+    return (k.indexOf('cat:') === 0 && ci < pillCats.length) ? pillCats[ci++] : k;
+  });
+  _sectionOrder = order;
+  _saveLibraryLayout({ section_order: order }).then(function(res) {
+    if (!res.ok) _showToast(res.status === 403 ? t('layout_locked') : t('error'));
+  }).catch(function() { _showToast(t('error')); });
+}
+
+// HTML5 drag reordering of the installed-tab category pills (desktop). Touch
+// devices don't fire these — they use the trailing "Reorder" action pill.
+var _dragPill = null;
+function _wireInstalledPillDrag(container) {
+  var row = container.querySelector('.installed-cat-pills');
+  if (!row) return;
+  row.querySelectorAll('.cat-pill[draggable="true"]').forEach(function(p) {
+    p.addEventListener('dragstart', function(e) {
+      _dragPill = p; p.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', p.dataset.cat); } catch (_) {}
+    });
+    p.addEventListener('dragend', function() {
+      p.classList.remove('dragging'); _dragPill = null;
+      row.querySelectorAll('.drag-over').forEach(function(x) { x.classList.remove('drag-over'); });
+    });
+    p.addEventListener('dragover', function(e) {
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      if (_dragPill && _dragPill !== p) p.classList.add('drag-over');
+    });
+    p.addEventListener('dragleave', function() { p.classList.remove('drag-over'); });
+    p.addEventListener('drop', function(e) {
+      e.preventDefault(); p.classList.remove('drag-over');
+      if (!_dragPill || _dragPill === p) return;
+      var rect = p.getBoundingClientRect();
+      var after = (e.clientX - rect.left) > rect.width / 2;
+      row.insertBefore(_dragPill, after ? p.nextSibling : p);
+      _persistInstalledPillOrder(row);
+    });
+  });
+}
+
 function _reorderRefreshDisabled(list) {
   var rows = list.querySelectorAll('.reorder-row');
   rows.forEach(function(r, i) {
@@ -6087,6 +6154,13 @@ async function _renderHotZimsSection() {
   saveBtn.textContent = t('save');
   saveBtn.onclick = () => _saveHotZims(saveBtn);
   actions.appendChild(saveBtn);
+  // Inverse of the "Choose hot ZIMs…" expander — collapse the list back to the
+  // one-line summary (the section had a Show but no Hide) (W1.5).
+  const hideBtn = document.createElement('button');
+  hideBtn.className = 'pill ms-hot-hide';
+  hideBtn.textContent = t('hot_zims_hide');
+  hideBtn.onclick = () => { _hotZimsForceShow = false; _renderHotZimsSection(); };
+  actions.appendChild(hideBtn);
   const status = document.createElement('span');
   status.id = 'ms-hot-status';
   status.className = 'ms-hint';
@@ -6463,7 +6537,7 @@ async function _renderMirrorSection() {
 
   const ratioRow = '<div class="share-field"><label>' + tH('seed_ratio_label') + '</label>' +
     '<span class="share-port-group">' +
-    '<input type="number" min="0" max="10" step="0.5" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
+    '<input type="number" min="0" max="10" step="0.1" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
     disA(m.seed_ratio_env_locked) + lockA(m.seed_ratio_env_locked) +
     ' class="share-num-input" aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">' +
     '<span class="share-field-note">×</span></span>' +
@@ -6621,16 +6695,27 @@ function getInstalledPillsHtml() {
       langCounts[lang] = (langCounts[lang] || 0) + 1;
     }
   }
-  const allCats = [...new Set(Object.keys(langsByCat))].sort();
+  // Show pills in the saved home section order so the filter row mirrors the
+  // page (and reflects drag reorders); unlisted categories fall back to A-Z.
+  const allCats = _orderCatsBySaved([...new Set(Object.keys(langsByCat))]);
   let h = '';
-  // Category pills — dimmed if no items match the active language filter
+  // Category pills — dimmed if no items match the active language filter.
+  // Desktop: drag a pill to reorder categories in place (persisted as the home
+  // section order). Touch: use the trailing "Reorder" action pill, which opens
+  // the up/down reorder panel (W1.3).
   if (allCats.length > 1) {
-    h += '<div class="pills" style="margin-bottom:8px">';
+    h += '<div class="pills installed-cat-pills" style="margin-bottom:8px">';
     for (const cat of allCats) {
       const dimmed = manageLangFilter && !langsByCat[cat].has(manageLangFilter);
-      h += '<button class="pill' + (manageCategoryFilter === cat ? ' active' : '') + (dimmed ? ' dimmed' : '') +
+      h += '<button class="pill cat-pill' + (manageCategoryFilter === cat ? ' active' : '') + (dimmed ? ' dimmed' : '') +
+        '" draggable="true" data-cat="' + escAttr(cat) + '" title="' + escAttr(t('reorder_drag_hint')) +
         '" onclick="filterManageCategory(\'' + escAttr(cat) + '\')">' + esc(_catDisplayName(cat)) + '</button>';
     }
+    // Distinct amber-outline ACTION pill (not a filter) → existing reorder panel.
+    h += '<button type="button" class="pill reorder-pill" onclick="_openReorderPanel()" title="' +
+      escAttr(t('reorder_sections')) + '" aria-label="' + escAttr(t('reorder_sections')) + '">' +
+      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="7 8 12 3 17 8"/><polyline points="7 16 12 21 17 16"/></svg>' +
+      esc(t('reorder')) + '</button>';
     h += '</div>';
   }
   // Language pills — horizontal scroll with counts, no search button
@@ -6775,6 +6860,7 @@ function renderInstalled(filterText) {
   if (!items_h) items_h = '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
 
   el.innerHTML = getInstalledPillsHtml() + items_h;
+  _wireInstalledPillDrag(el);
   _fillInstalledDownloads(el);
 }
 
@@ -9669,7 +9755,11 @@ function _openDownloadsView(e) {
 // and the gear is a close-X there.
 function _applyActivityBadge() {
   var st = _activityBadge || { active: false, count: 0, tip: '' };
-  var suppress = (typeof mode !== 'undefined' && mode === 'manage') || !st.active;
+  // Suppress in Manage (downloads live in its own tabs) and while the Almanac
+  // overlay is open — there the Manage entry point becomes the close X, so the
+  // badge would bleed onto it (W1.1).
+  var suppress = (typeof mode !== 'undefined' && mode === 'manage') ||
+    (typeof _almanacOpen !== 'undefined' && _almanacOpen) || !st.active;
   var hosts = [
     { el: document.getElementById('manage-btn'), forceDot: false }, // desktop gear: count
     { el: document.querySelector('.topbar-more'), forceDot: true }, // mobile ⋯: dot
