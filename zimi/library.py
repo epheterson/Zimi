@@ -810,6 +810,28 @@ def _cancel_download(dl_id):
     return "cancelling", 200
 
 
+def _switch_to_direct(dl_id):
+    """Abandon the BitTorrent transfer for an active download and pull it
+    over HTTP instead. Returns (status, code).
+
+    status: "switching" | "not_found" | "already_done" | "not_bt"
+
+    Cooperative, like _cancel_download: sets a flag the BT poll loop observes
+    and then bails to the HTTP mirror loop. A no-op for downloads that aren't
+    currently on the BT transport.
+    """
+    with _download_lock:
+        dl = _active_downloads.get(dl_id)
+        if not dl:
+            return "not_found", 404
+        if dl.get("done"):
+            return "already_done", 400
+        if dl.get("_source") != "bt":
+            return "not_bt", 400
+        dl["switch_direct"] = True
+    return "switching", 200
+
+
 KIWIX_OPDS_BASE = "https://library.kiwix.org/catalog/search"
 
 # Server-side catalog cache: {cache_key: (timestamp, total, items)}
@@ -1626,6 +1648,20 @@ def _try_bt_download(
                 pass
             return "cancelled"
 
+        # User bailed on the swarm — hand off to the HTTP mirror loop. The
+        # BT partial lives in the staging dir and can't feed the HTTP resume,
+        # so drop it; the caller re-downloads over HTTP into its own .tmp.
+        if dl.get("switch_direct"):
+            try:
+                backend.remove(tid, delete_files=True)
+            except Exception:
+                pass
+            log.info(
+                "Switch-to-direct requested for %s — falling back to HTTP",
+                dl["filename"],
+            )
+            return "fallback"
+
         # Propagate UI pause/resume to the engine — without this, "paused" is a
         # lie: the flag flips in the dl dict while bytes keep flowing.
         if bool(dl.get("paused")) != was_paused:
@@ -2232,7 +2268,13 @@ def _download_thread(dl):
                 dl["done"] = True
                 dl["error"] = "Cancelled"
                 return
-            # Otherwise fall through to HTTP — nothing else to do here
+            # Otherwise fall through to HTTP — nothing else to do here.
+            # A BT attempt left _source="bt" and stale peer counts on the dl;
+            # reset them so the UI reflects the HTTP transport it's now on
+            # (matters most for a user-triggered switch-to-direct).
+            dl["_source"] = "http"
+            dl["bt_peers"] = 0
+            dl["switch_direct"] = False
 
         success = False
         last_error = None
@@ -2609,6 +2651,7 @@ def _get_downloads():
                     "paused": bool(dl.get("paused", False)),
                     "source": dl.get("_source", "http"),
                     "bt_peers": dl.get("bt_peers", 0),
+                    "switching_direct": bool(dl.get("switch_direct", False)),
                 }
             )
             # Clean up completed downloads older than 1 hour

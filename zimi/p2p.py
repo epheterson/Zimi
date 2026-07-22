@@ -590,10 +590,18 @@ class LibtorrentBackend(BTBackend):
                 "enable_natpmp": is_upnp_enabled(),
                 "upload_rate_limit": get_bt_up_limit_kb() * 1024,
                 "download_rate_limit": get_bt_down_limit_kb() * 1024,
+                # port_mapping category surfaces UPnP/NAT-PMP success or
+                # failure — the single most useful signal for "why is BT slow":
+                # a node that never maps its port is not connectable and starves
+                # on a thin swarm. The enum's name varies across libtorrent
+                # versions (and the test double omits it), so resolve it
+                # defensively — 0 is a harmless no-op when it's absent.
                 "alert_mask": (
                     lt.alert.category_t.status_notification
                     | lt.alert.category_t.error_notification
                     | lt.alert.category_t.storage_notification
+                    | getattr(lt.alert.category_t, "port_mapping_notification", 0)
+                    | getattr(lt.alert.category_t, "port_mapping", 0)
                 ),
             }
             self._ses = lt.session(settings)
@@ -731,8 +739,18 @@ class LibtorrentBackend(BTBackend):
         if ses is None:
             return
         for alert in ses.pop_alerts():
-            if alert.what() == "save_resume_data":
+            name = alert.what()
+            if name == "save_resume_data":
                 self._write_resume_file(alert)
+            elif name == "portmap":
+                # UPnP/NAT-PMP mapped our port — we're now connectable.
+                log.info("BT port mapped (connectable): %s", alert.message())
+            elif name == "portmap_error":
+                # Mapping failed — inbound peers can't reach us; expect slow
+                # peer acquisition on thin swarms. Surface it so it's diagnosable.
+                log.warning(
+                    "BT port mapping failed (not connectable): %s", alert.message()
+                )
 
     # ── BTBackend impl ────────────────────────────────────────────────────
 
