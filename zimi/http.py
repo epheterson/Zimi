@@ -161,6 +161,8 @@ _POLL_PATHS = frozenset(
         "/manage/bt-status",
         "/manage/status",
         "/manage/mirror",
+        "/manage/health",
+        "/manage/export-bookmarks",
     )
 )
 

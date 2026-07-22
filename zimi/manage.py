@@ -665,6 +665,18 @@ def handle_manage_get(handler, parsed, params):
                 200, {"enabled": False, "ratio_cap": 0.0, "upload_kb": 0}
             )
 
+    elif parsed.path == "/manage/health":
+        # Library health report — poll status of the on-demand check.
+        from zimi import health as _health
+
+        return handler._json(200, _health.get_state())
+
+    elif parsed.path == "/manage/export-bookmarks":
+        # Save-to-ZIM export — poll status of the on-demand export.
+        from zimi import zimwriter as _zw
+
+        return handler._json(200, _zw.get_export_state())
+
     elif parsed.path == "/manage/peers/list":
         try:
             from zimi import p2p_discovery as _disc
@@ -1128,6 +1140,39 @@ def handle_manage_post(handler, parsed, data):
             _t.Thread(target=_srv._build_all_qid_indexes, daemon=True).start()
             return handler._json(200, {"status": "started", "target": "qid"})
         return handler._json(400, {"error": "unknown action"})
+
+    elif parsed.path == "/manage/health-check":
+        # Kick off the library health report on a worker thread.
+        from zimi import health as _health
+
+        started, msg = _health.start_check()
+        return handler._json(
+            200, {"status": "started" if started else "running", "detail": msg}
+        )
+
+    elif parsed.path == "/manage/export-bookmarks":
+        # Save bookmarks to a standalone ZIM. The client POSTs its localStorage
+        # bookmark list (client-side only — server has no copy).
+        from zimi import zimwriter as _zw
+
+        bookmarks = data.get("bookmarks")
+        if not isinstance(bookmarks, list) or not bookmarks:
+            return handler._json(400, {"error": "No bookmarks to export"})
+        if len(bookmarks) > 500:
+            return handler._json(400, {"error": "Too many bookmarks (max 500)"})
+        cleaned = [
+            {
+                "zim": str(b.get("zim", "")),
+                "path": str(b.get("path", "")),
+                "title": str(b.get("title", "")),
+            }
+            for b in bookmarks
+            if isinstance(b, dict)
+        ]
+        started, msg = _zw.start_export(cleaned)
+        return handler._json(
+            200, {"status": "started" if started else "busy", "detail": msg}
+        )
 
     elif parsed.path == "/manage/build-fts":
         zim_name = data.get("name", "")
