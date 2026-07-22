@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.7.5] - Unreleased
+## [1.8.0] - Unreleased
 
 Zimi grows a real agent-facing API, and the reader and search get the small
 things people have asked for since the beginning. Under the hood the torrent
