@@ -9,9 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 A release shaped by the people using Zimi: the open issues, the long-standing
 asks from the wider ZIM ecosystem, and a week of field testing on real phones.
-Reader View, read-aloud, "did you mean", library organization, filter pills —
-and under the hood the torrent engine is finally in-process, with a real
-agent-facing API alongside.
+Reader View, read-aloud, word lookup, "did you mean", library organization,
+filter pills — and the almanac now deep-links its stars, planets and people
+straight into your installed encyclopedias. Multiple named accounts with
+per-user library allowlists arrive alongside a native Windows build, and under
+the hood the torrent engine is finally in-process, with a real agent-facing API
+and delta updates on top.
 
 ### Added
 
@@ -40,9 +43,65 @@ agent-facing API alongside.
 - **Read-aloud in the reader.** A speak/stop control uses the browser's offline
   speech synthesis to read the current article; it hides itself where the API
   isn't available.
-- **Reader font-size control.** An A−/A+ pill cycles the article text through
-  85/100/115/130%, injected into the article frame, reapplied on every page,
-  and remembered between sessions.
+- **Reader View.** A toggle re-renders the current article as a single
+  distraction-free reading column inside the reader — ZIM chrome (navboxes,
+  infoboxes, edit links, TOC) stripped, wide tables wrapped to scroll, Zimi's
+  dark palette by default — with no reload or server round-trip. A settings
+  palette adds designed Dark/Light/Sepia themes, serif/sans fonts, an A−/A+
+  text-size control (85–130%), and an AUTO mode that opens eligible articles
+  straight into Reader View without the raw white page flashing first.
+  Preferences stick across article navigation and between sessions; PDFs and
+  thin pages skip it silently.
+- **Word lookup.** Select or double-tap a word in the reader and a Define
+  popover pulls the first definition from the best installed Wiktionary ZIM —
+  one suggest, one fetch, fully offline. It follows your language preference,
+  works in the normal reader and Reader View, and stays dormant with zero UI
+  when no Wiktionary is installed.
+- **Tap-to-zoom images.** A scaled-down image in an article opens to full size
+  in a lightbox on tap, and closes on tap-out or Escape.
+- **Almanac deep-links into your library.** Entities across the almanac — the
+  planets and interstellar probes in the orrery, the stars, planets and Moon in
+  the star chart, and the named people, places and events in the panels —
+  resolve against your installed Wikipedia/Vikidia ZIMs by Wikidata Q-ID in one
+  batch when the almanac opens. A match becomes a direct tap-through to the
+  installed article (canvas taps included, via hit-testing); anything
+  unresolved stays plain text, so a link is never wrong. The resolver is pure
+  SQLite over each ZIM's Q-ID index — no title guessing, no per-tap fetch, no
+  miss toast.
+- **Multiple user accounts.** Named accounts (on top of the existing password
+  admin) with per-user ZIM allowlists that filter the whole read surface —
+  search, read, suggest, random, list, chunks and almanac-links — for a
+  signed-in user. Login mints an HttpOnly session cookie (so iframe reads carry
+  it) and a Bearer token; users are auto-rejected from `/manage/*`. Admin and
+  anonymous visitors are unchanged (all-access), and single-password installs
+  need zero migration. A management username is now an optional, case-insensitive
+  second factor for admin login (env var or a second line in the password file);
+  the login field prefills `admin`. The search cache is keyed by allowlist
+  identity so one user's results can never surface another's restricted ZIMs.
+- **Library health report.** A check in Manage → library opens each installed
+  ZIM in turn and reports a per-ZIM ✓/⚠ table — main page, entry count,
+  title/Q-ID index status, size against the catalog, age — with a summary line,
+  flagging broken (0-entry or unopenable) sources.
+- **Save your bookmarks to a ZIM.** A button in the bookmarks panel exports your
+  local bookmarks to a standalone, portable `.zim` (one article per bookmark
+  plus an index page) that any ZIM reader can open. Disabled when you have no
+  bookmarks.
+- **Print, Save as PDF, and Share.** A new row in the Reader palette prints or
+  saves the current article as a PDF through the browser, and offers the native
+  Share sheet where the platform supports it.
+- **Seeding goals.** Each seed card shows lifetime uploaded bytes against its
+  goal (ratio cap × file size) with a progress bar — e.g. "1.2 GB of 4.0 GB" —
+  while a mirror-mode seed shows "shared · mirror ∞" and no cap. The uploaded
+  total is read from the seed ledger, so it survives restarts.
+- **Manage view: storage and download controls.** A caches bar breaks down
+  Zimi's data directory by category (title indexes, Q-ID indexes, catalog
+  caches, staging) with the top per-ZIM contributors, so you can see what's
+  using disk without ever scanning the ZIM library. A per-download "switch to
+  direct" button drops a stuck BitTorrent transfer to a plain HTTP pull, and the
+  settings panel now prefetches so it opens instantly.
+- **Keyboard-navigable card menu.** The right-click / ⋯ card context menu is now
+  fully operable from the keyboard — arrow keys, Enter and Escape — with proper
+  focus handling and ARIA roles.
 - **Download-this-ZIM buttons** — on the source header and on every row in
   Manage, pointing at the existing `/dl/` peer endpoint. Each button is gated by
   a capability probe, so it only appears where the raw file can actually be
@@ -58,7 +117,10 @@ agent-facing API alongside.
   alike — from a new Reorder panel in Manage preferences (#37).
 - **Windows portable build** — a one-dir `Zimi-windows-x64.zip` (Edge WebView2
   backend, in-process libtorrent when a wheel is available) built by the desktop
-  release CI alongside the macOS DMGs and Linux AppImage/snap.
+  release CI alongside the macOS DMGs and Linux AppImage/snap. The Windows
+  desktop app also self-updates via WinSparkle — a per-user Inno Setup installer
+  (no UAC) shipped beside the zip, verified with the same signed appcast key as
+  the macOS Sparkle path.
 - **Delta updates over BitTorrent.** When updating a ZIM that has a torrent,
   Zimi copies the previous version into staging under the new name first, so
   libtorrent's hash check salvages every unchanged piece and only the changed
@@ -79,6 +141,15 @@ agent-facing API alongside.
   sources with a stale cache keep showing the entry count until then.
 - The almanac's daylight labels read "Evening" and "Morning" (capitalized),
   matching the rest of the panel.
+- **The Catalog renders instantly.** It now paints from its cached copy and
+  refreshes in the background (stale-while-revalidate), and reuses the fetched
+  feed for the rest of the session instead of re-downloading it.
+- On smaller screens the home library's filter pills (recent searches,
+  languages, recency) collapse into a single filter dropdown, so the header
+  stays clean in a big multilingual library.
+- **Everything user-visible is translated.** A full i18n audit closed English
+  leaks across all ten locales, removed orphaned keys, and tightened Chinese
+  typography — every string a user sees now has a translation in every language.
 
 ### Removed
 
@@ -110,6 +181,30 @@ agent-facing API alongside.
 - The almanac's meteor-shower list no longer jams the peak marker onto the
   line ("🌕 Poor Peak!"). Peak night now gets its own localized badge, styled
   like the other meteor labels and translated across all ten locales (#23).
+- In-page `#fragment` links in single-page docs (devdocs) scroll to the right
+  anchor instead of reloading the document (#38).
+- Almanac Q-ID resolution never falls back to a wrong-language Wikipedia
+  article — an entity resolves to your preferred language or stays plain text.
+- **Windows crashes fixed.** All text file I/O is forced to UTF-8 (a cp1252
+  decode crash on non-ASCII data), and the atomic JSON writer guards
+  `os.fchmod`, which doesn't exist on Windows.
+- New/Updated badges no longer light up an entire existing library as "New":
+  `first_seen` is honest on a cache rebuild (backfilled from file mtime), and a
+  mass badge-in no longer swallows a whole slow scan (#34).
+- Saving the management password to the keychain and "remember me" now survive
+  a password change.
+- Reader palette meets AA contrast, Escape no longer dead-ends inside it, and
+  the filter pills carry proper ARIA roles.
+- Map ZIMs (Kiwix `maps_en_*`) render more reliably — vector-tile and GeoJSON
+  responses now carry correct MIME types (`application/x-protobuf`,
+  `application/geo+json`) so a tile loader gets protobuf, not octet-stream.
+
+### Notes
+
+- **Downgrade caveat:** once a management username is set, the password file
+  gains a second line holding that username. A pre-1.8 server can't read the
+  two-line format — if you roll back, delete the username line (or the whole
+  file) so the older server reads it as a plain single-line hash again.
 
 ## [1.7.4] - 2026-07-20
 
