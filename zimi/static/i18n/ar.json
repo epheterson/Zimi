@@ -965,5 +965,22 @@
   "reader_view_settings": "إعدادات وضع القراءة",
   "filter_languages": "تصفية اللغات",
   "filter_generic": "تصفية…",
-  "historical_event": "حدث تاريخي"
+  "historical_event": "حدث تاريخي",
+  "sign_in": "تسجيل الدخول",
+  "signed_in_as": "مسجَّل الدخول باسم",
+  "ms_users": "المستخدمون",
+  "users_intro": "أنشئ حسابات لكل منها عرضها الخاص للمكتبة. يرى المستخدم المسجَّل فقط ملفات ZIM التي تسمح بها؛ بينما يرى المدير والزوار المجهولون كل شيء.",
+  "users_all_access": "وصول كامل",
+  "users_zim_count": "ZIM",
+  "users_edit_access": "تعديل الوصول",
+  "users_none": "لا يوجد مستخدمون بعد.",
+  "users_add": "إضافة مستخدم",
+  "users_name_ph": "الاسم",
+  "users_access_label": "الوصول إلى المكتبة",
+  "users_no_zims": "لا توجد ملفات ZIM مثبتة بعد.",
+  "users_create": "إنشاء مستخدم",
+  "users_need_name_pw": "أدخل اسمًا وكلمة مرور.",
+  "users_create_failed": "تعذّر إنشاء المستخدم.",
+  "users_delete_confirm": "حذف المستخدم ‏«{name}»؟",
+  "back": "رجوع"
 }

@@ -965,5 +965,22 @@
   "reader_view_settings": "הגדרות תצוגת קריאה",
   "filter_languages": "סינון שפות",
   "filter_generic": "סינון…",
-  "historical_event": "אירוע היסטורי"
+  "historical_event": "אירוע היסטורי",
+  "sign_in": "התחברות",
+  "signed_in_as": "מחובר בתור",
+  "ms_users": "משתמשים",
+  "users_intro": "צור חשבונות עם תצוגה משלהם של הספרייה. משתמש מחובר רואה רק את קובצי ה-ZIM שתאפשר; מנהל ומבקרים אנונימיים רואים הכול.",
+  "users_all_access": "גישה מלאה",
+  "users_zim_count": "ZIM",
+  "users_edit_access": "עריכת גישה",
+  "users_none": "עדיין אין משתמשים.",
+  "users_add": "הוספת משתמש",
+  "users_name_ph": "שם",
+  "users_access_label": "גישה לספרייה",
+  "users_no_zims": "עדיין לא הותקנו קובצי ZIM.",
+  "users_create": "יצירת משתמש",
+  "users_need_name_pw": "הזן שם וסיסמה.",
+  "users_create_failed": "לא ניתן ליצור משתמש.",
+  "users_delete_confirm": "למחוק את המשתמש “{name}”?",
+  "back": "חזרה"
 }

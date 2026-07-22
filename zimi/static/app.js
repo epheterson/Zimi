@@ -455,6 +455,78 @@ let _manageSavedReader = null; // saved reader state when entering manage
 let _pwResolve = null;
 let _pwReject = null;
 
+// ── Multi-user session (v1.8) ──
+// A logged-in NAMED USER (not admin). The session cookie does the actual
+// server-side filtering; this just shapes the client chrome (hide the admin
+// gear, show name + logout). null = admin or anonymous. {name, restricted}.
+let _userSession = null;
+// When true, the password modal is in "sign in" mode (POST /login: user OR
+// admin) rather than the admin-only manage-retry flow.
+let _pwLoginMode = false;
+
+var _ACCT_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+
+// Open the shared modal in sign-in mode (reachable by anyone, incl. a kid on a
+// password-protected instance who can't open manage).
+function openLoginModal() {
+  _pwLoginMode = true;
+  _pwResolve = null; _pwReject = null;
+  openPwModal(t('sign_in'));
+}
+
+function _showPwError(msg) {
+  var el = document.getElementById('pw-error');
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+  var inp = document.getElementById('pw-input');
+  if (inp) { inp.value = ''; inp.focus(); }
+}
+
+// POST /login → {status, j}. Cookie (if a user) is set by the server.
+function doLogin(username, password, remember) {
+  return fetch('/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ username: username, password: password, remember: remember })
+  }).then(function(r) { return r.json().then(function(j) { return { status: r.status, j: j }; }); });
+}
+
+// Apply a user session to the UI. Server-side filtering is already live via the
+// cookie; here we hide manage and reload the (now restricted) library view.
+function _applyUserSession(name) {
+  _userSession = { name: name, restricted: true };
+  // A user is never admin — drop any admin token so ambient manage polls stop.
+  _manageToken = ''; _clearManageToken();
+  if (manageBtnEl) manageBtnEl.style.display = 'none';
+  _refreshAfterAuthChange();
+}
+
+function userLogout() {
+  fetch('/logout', { method: 'POST', credentials: 'same-origin' }).catch(function(){}).then(function() {
+    _userSession = null;
+    if (manageBtnEl) manageBtnEl.style.display = '';
+    _refreshAfterAuthChange();
+  });
+}
+
+// Reload the library after a login/logout so the filtered view is reflected.
+async function _refreshAfterAuthChange() {
+  try { zimsCache = await _fetchList(); _rebuildZimsMap(); } catch (e) { zimsCache = []; }
+  if (typeof goHome === 'function') goHome();
+  else route(false);
+}
+
+// On boot: learn whether a user session cookie is active, to shape the chrome.
+// The data is already filtered server-side regardless of this call.
+function _checkUserSession() {
+  fetch('/whoami', { credentials: 'same-origin' }).then(function(r) { return r.json(); }).then(function(j) {
+    if (j && j.role === 'user') {
+      _userSession = { name: j.name, restricted: !!j.restricted };
+      if (manageBtnEl) manageBtnEl.style.display = 'none';
+    }
+  }).catch(function() {});
+}
+
 // Token-adding fetch for *ambient* /manage/* calls (activity bar, peer
 // discovery, status/mirror polls). Sends the manage token when we have one
 // so these work on password-protected servers, but never prompts for a
@@ -600,7 +672,26 @@ function submitPw() {
   // verify/retry. Blank field → 'admin' (matches the passwordless keychain UX
   // and the server's any-value-passes rule when no username is configured).
   const uEl = document.getElementById('pw-username');
-  _manageUser = (uEl && uEl.value.trim()) || 'admin';
+  const uname = (uEl && uEl.value.trim()) || 'admin';
+  _manageUser = uname;
+  // Sign-in mode: unified /login (a named user OR the admin account).
+  if (_pwLoginMode) {
+    const remember = document.getElementById('pw-remember').checked;
+    doLogin(uname, pw, remember).then(function(res) {
+      if (res.status !== 200) { _showPwError(t('wrong_password')); return; }
+      if (res.j.role === 'user') {
+        _applyUserSession(res.j.name);
+      } else {
+        // Admin logged in via the sign-in modal — store the header token and
+        // open manage, same end state as the classic admin flow.
+        _manageToken = pw; _saveManageToken(pw, remember);
+        if (typeof toggleManage === 'function') toggleManage();
+      }
+      _pwLoginMode = false;
+      closePwModal();
+    });
+    return;
+  }
   if (_pwResolve) {
     _pwReject = null;  // prevent cancel on close
     document.getElementById('pw-error').style.display = 'none';
@@ -780,6 +871,9 @@ async function init() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/static/sw.js', { scope: '/' }).catch(function() {});
   }
+  // Detect an active user-session cookie to shape the chrome (data is already
+  // filtered server-side by the cookie regardless of this call).
+  _checkUserSession();
   // Fetch secondary data in parallel, update UI as each arrives
   _initSecondary();
 }
@@ -5755,6 +5849,7 @@ async function renderManage() {
         '<button class="ms-nav-item active" data-ms="library" onclick="switchMs(\'library\')">' + tH('ms_library') + '</button>' +
         '<button class="ms-nav-item" data-ms="preferences" onclick="switchMs(\'preferences\')">' + tH('ms_display') + '</button>' +
         '<button class="ms-nav-item" data-ms="server" onclick="switchMs(\'server\')">' + tH('ms_server') + '</button>' +
+        '<button class="ms-nav-item" data-ms="users" onclick="switchMs(\'users\')">' + tH('ms_users') + '</button>' +
       '</div>' +
       '<div id="ms-pane" class="ms-pane"><div class="loading"><span class="spinner-inline"></span>Loading\u2026</div></div>' +
     '</div>' +
@@ -5875,7 +5970,136 @@ function switchMs(section) {
     case 'library': pane.innerHTML = _msLibraryHtml(); break;
     case 'preferences': pane.innerHTML = _msPreferencesHtml(); break;
     case 'server': pane.innerHTML = _msServerHtml(); break;
+    case 'users': _renderMsUsers(); break;
   }
+}
+
+// ── Users management (admin-only, multi-user v1) ──
+var _usersData = null;  // { users:[...], zims:[names] } from /manage/users
+
+function _renderMsUsers() {
+  var pane = document.getElementById('ms-pane');
+  if (!pane) return;
+  pane.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '…</div>';
+  manageFetch('/manage/users').then(function(res) { return res.json(); }).then(function(data) {
+    _usersData = data;
+    if (_msSection === 'users') pane.innerHTML = _msUsersHtml();
+  }).catch(function() {
+    pane.innerHTML = '<div style="color:var(--text2);font-size:13px">' + tH('could_not_load_stats') + '</div>';
+  });
+}
+
+function _msUsersHtml() {
+  var d = _usersData || { users: [], zims: [] };
+  var h = '<div class="ms-users-intro" style="color:var(--text2);font-size:13px;margin-bottom:14px">' + tH('users_intro') + '</div>';
+  // Existing users
+  if (d.users.length) {
+    h += '<div class="ms-users-list">';
+    d.users.forEach(function(u) {
+      var scope = u.all_access ? tH('users_all_access') : (u.allowlist.length + ' ' + tH('users_zim_count'));
+      h += '<div class="ms-user-row" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
+        '<span style="flex:1"><strong>' + esc(u.name) + '</strong> <span style="color:var(--text2);font-size:12px">' + scope + '</span></span>' +
+        '<button class="ms-btn" onclick="_editUserAllowlist(' + escAttr(JSON.stringify(u.name)) + ')">' + tH('users_edit_access') + '</button>' +
+        '<button class="ms-btn ms-btn-danger" onclick="_deleteUser(' + escAttr(JSON.stringify(u.name)) + ')">' + tH('delete') + '</button>' +
+      '</div>';
+    });
+    h += '</div>';
+  } else {
+    h += '<div style="color:var(--text2);font-size:13px;margin-bottom:14px">' + tH('users_none') + '</div>';
+  }
+  // Add-user form
+  h += '<div class="ms-user-add" style="margin-top:18px">' +
+    '<h4 style="margin:0 0 10px">' + tH('users_add') + '</h4>' +
+    '<input id="new-user-name" type="text" placeholder="' + escAttr(tH('users_name_ph')) + '" style="width:100%;margin-bottom:8px" maxlength="32">' +
+    '<input id="new-user-pw" type="password" placeholder="' + escAttr(tH('password')) + '" autocomplete="new-password" style="width:100%;margin-bottom:8px">' +
+    '<div style="font-size:12px;color:var(--text2);margin-bottom:6px">' + tH('users_access_label') + '</div>' +
+    '<label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:8px;cursor:pointer">' +
+      '<input type="checkbox" id="new-user-allaccess" checked onchange="_toggleNewUserAllowlist(this)" style="accent-color:var(--amber)"> ' + tH('users_all_access') +
+    '</label>' +
+    '<div id="new-user-allowlist" style="display:none">' + _allowlistPicker([]) + '</div>' +
+    '<div id="new-user-error" class="pw-error" style="display:none"></div>' +
+    '<button class="ms-btn ms-btn-primary" style="margin-top:10px" onclick="_createUser()">' + tH('users_create') + '</button>' +
+  '</div>';
+  return h;
+}
+
+// Checkbox picker of installed ZIMs. `selected` = array of chosen names.
+function _allowlistPicker(selected) {
+  var sel = new Set(selected || []);
+  var names = (_usersData && _usersData.zims) || [];
+  if (!names.length) return '<div style="color:var(--text2);font-size:12px">' + tH('users_no_zims') + '</div>';
+  var h = '<div class="ms-allowlist" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px">';
+  names.forEach(function(name) {
+    var title = (typeof _zimTitle === 'function' ? _zimTitle(name) : '') || name;
+    h += '<label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:13px;cursor:pointer">' +
+      '<input type="checkbox" class="allowlist-cb" value="' + escAttr(name) + '"' + (sel.has(name) ? ' checked' : '') + ' style="accent-color:var(--amber)"> ' +
+      esc(title) + '</label>';
+  });
+  h += '</div>';
+  return h;
+}
+
+function _toggleNewUserAllowlist(cb) {
+  var el = document.getElementById('new-user-allowlist');
+  if (el) el.style.display = cb.checked ? 'none' : 'block';
+}
+
+function _collectAllowlist(containerId) {
+  var out = [];
+  document.querySelectorAll('#' + containerId + ' .allowlist-cb:checked').forEach(function(cb) { out.push(cb.value); });
+  return out;
+}
+
+function _usersPost(payload) {
+  return manageFetch('/manage/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(function(res) { return res.json().then(function(j) { return { ok: res.ok, j: j }; }); });
+}
+
+function _createUser() {
+  var name = (document.getElementById('new-user-name').value || '').trim();
+  var pw = document.getElementById('new-user-pw').value || '';
+  var allAccess = document.getElementById('new-user-allaccess').checked;
+  var errEl = document.getElementById('new-user-error');
+  if (!name || !pw) { errEl.textContent = t('users_need_name_pw'); errEl.style.display = 'block'; return; }
+  var payload = { action: 'create', name: name, password: pw };
+  payload.allowlist = allAccess ? null : _collectAllowlist('new-user-allowlist');
+  _usersPost(payload).then(function(r) {
+    if (!r.ok) { errEl.textContent = t('users_create_failed'); errEl.style.display = 'block'; return; }
+    _usersData = r.j; if (_msSection === 'users') document.getElementById('ms-pane').innerHTML = _msUsersHtml();
+  });
+}
+
+function _deleteUser(name) {
+  if (!confirm(t('users_delete_confirm').replace('{name}', name))) return;
+  _usersPost({ action: 'delete', name: name }).then(function(r) {
+    if (r.ok) { _usersData = r.j; if (_msSection === 'users') document.getElementById('ms-pane').innerHTML = _msUsersHtml(); }
+  });
+}
+
+// Inline allowlist editor for an existing user (overlay-free: swaps the pane).
+function _editUserAllowlist(name) {
+  var u = ((_usersData && _usersData.users) || []).find(function(x) { return x.name === name; });
+  if (!u) return;
+  var pane = document.getElementById('ms-pane');
+  var h = '<button class="ms-btn" onclick="_renderMsUsers()" style="margin-bottom:12px">← ' + tH('back') + '</button>' +
+    '<h4 style="margin:0 0 10px">' + tH('users_edit_access') + ' — ' + esc(name) + '</h4>' +
+    '<label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:8px;cursor:pointer">' +
+      '<input type="checkbox" id="edit-user-allaccess"' + (u.all_access ? ' checked' : '') + ' onchange="document.getElementById(\'edit-user-allowlist\').style.display=this.checked?\'none\':\'block\'" style="accent-color:var(--amber)"> ' + tH('users_all_access') +
+    '</label>' +
+    '<div id="edit-user-allowlist" style="display:' + (u.all_access ? 'none' : 'block') + '">' + _allowlistPicker(u.allowlist) + '</div>' +
+    '<button class="ms-btn ms-btn-primary" style="margin-top:12px" onclick="_saveUserAllowlist(' + escAttr(JSON.stringify(name)) + ')">' + tH('save') + '</button>';
+  pane.innerHTML = h;
+}
+
+function _saveUserAllowlist(name) {
+  var allAccess = document.getElementById('edit-user-allaccess').checked;
+  var allowlist = allAccess ? null : _collectAllowlist('edit-user-allowlist');
+  _usersPost({ action: 'set-allowlist', name: name, allowlist: allowlist }).then(function(r) {
+    if (r.ok) { _usersData = r.j; _renderMsUsers(); }
+  });
 }
 
 function _msLibraryHtml() {
@@ -9812,7 +10036,15 @@ function _toggleTopbarMenu(event) {
   var _dlN = _activityBadge.count;
   var _mgClick = _dlN > 0 ? '_openDownloadsView(event)' : '_closeTopbarMenu();toggleManage(event)';
   var _mgCount = _dlN > 0 ? '<span class="tbm-count">' + (_dlN > 99 ? '99+' : _dlN) + '</span>' : '';
-  h += '<button class="topbar-menu-item" onclick="' + _mgClick + '">' + _mgSvg + ' ' + tH('manage') + _mgCount + '</button>';
+  // A logged-in user has no manage view — show their account + logout instead.
+  if (_userSession) {
+    h += '<div class="topbar-menu-divider" role="separator"></div>';
+    h += '<div class="topbar-menu-label">' + tH('signed_in_as') + ' ' + esc(_userSession.name) + '</div>';
+    h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();userLogout()">' + _ACCT_ICON + ' ' + tH('log_out') + '</button>';
+  } else {
+    h += '<button class="topbar-menu-item" onclick="' + _mgClick + '">' + _mgSvg + ' ' + tH('manage') + _mgCount + '</button>';
+    h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();openLoginModal()">' + _ACCT_ICON + ' ' + tH('sign_in') + '</button>';
+  }
   menu.innerHTML = h;
   menu.classList.add('visible');
   // Close on outside click

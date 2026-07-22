@@ -965,5 +965,22 @@
   "reader_view_settings": "Reader View settings",
   "filter_languages": "Filter languages",
   "filter_generic": "Filter…",
-  "historical_event": "Historical event"
+  "historical_event": "Historical event",
+  "sign_in": "Sign in",
+  "signed_in_as": "Signed in as",
+  "ms_users": "Users",
+  "users_intro": "Create accounts with their own view of the library. A signed-in user sees only the ZIMs you allow; admin and anonymous visitors see everything.",
+  "users_all_access": "Full access",
+  "users_zim_count": "ZIMs",
+  "users_edit_access": "Edit access",
+  "users_none": "No users yet.",
+  "users_add": "Add a user",
+  "users_name_ph": "Name",
+  "users_access_label": "Library access",
+  "users_no_zims": "No ZIMs installed yet.",
+  "users_create": "Create user",
+  "users_need_name_pw": "Enter a name and password.",
+  "users_create_failed": "Could not create user.",
+  "users_delete_confirm": "Delete user “{name}”?",
+  "back": "Back"
 }

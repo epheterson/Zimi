@@ -965,5 +965,22 @@
   "reader_view_settings": "阅读视图设置",
   "filter_languages": "筛选语言",
   "filter_generic": "筛选…",
-  "historical_event": "历史事件"
+  "historical_event": "历史事件",
+  "sign_in": "登录",
+  "signed_in_as": "已登录为",
+  "ms_users": "用户",
+  "users_intro": "创建拥有各自库视图的账户。登录用户只能看到你允许的 ZIM；管理员和匿名访客可以看到全部。",
+  "users_all_access": "完全访问",
+  "users_zim_count": "ZIM",
+  "users_edit_access": "编辑访问权限",
+  "users_none": "还没有用户。",
+  "users_add": "添加用户",
+  "users_name_ph": "名称",
+  "users_access_label": "库访问权限",
+  "users_no_zims": "还没有安装任何 ZIM。",
+  "users_create": "创建用户",
+  "users_need_name_pw": "请输入名称和密码。",
+  "users_create_failed": "无法创建用户。",
+  "users_delete_confirm": "删除用户“{name}”？",
+  "back": "返回"
 }

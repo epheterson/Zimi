@@ -276,6 +276,15 @@
   .topbar-menu-item .dice { line-height: 1; flex-shrink: 0; }
   /* Thin rule separating the reader-control group from the app-navigation group. */
   .topbar-menu-divider { height: 1px; margin: 4px 0; background: var(--border); }
+  .topbar-menu-label { padding: 6px 12px 2px; font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.04em; }
+
+  /* ── Users management (multi-user v1) ── */
+  .ms-btn { padding: 6px 12px; font-size: 12px; font-family: inherit; color: var(--text2); background: none; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: all 0.15s; }
+  .ms-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .ms-btn-primary { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .ms-btn-primary:hover { color: #fff; background: var(--amber); border-color: var(--amber); }
+  .ms-btn-danger:hover { color: #ef4444; border-color: #ef444455; background: #ef444411; }
+  .ms-user-add input { padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); box-sizing: border-box; }
 
   /* ── Reader View settings palette ── */
   /* Popover from the book button (desktop) / ⋯ Reader View row (mobile). Anchored

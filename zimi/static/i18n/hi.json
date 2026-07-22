@@ -965,5 +965,22 @@
   "reader_view_settings": "रीडर व्यू सेटिंग्स",
   "filter_languages": "भाषाएँ फ़िल्टर करें",
   "filter_generic": "फ़िल्टर…",
-  "historical_event": "ऐतिहासिक घटना"
+  "historical_event": "ऐतिहासिक घटना",
+  "sign_in": "साइन इन करें",
+  "signed_in_as": "इस रूप में साइन इन",
+  "ms_users": "उपयोगकर्ता",
+  "users_intro": "लाइब्रेरी के अपने-अपने दृश्य वाले खाते बनाएँ। साइन-इन उपयोगकर्ता केवल वही ZIM देखता है जिनकी आप अनुमति देते हैं; व्यवस्थापक और अनाम आगंतुक सब कुछ देखते हैं।",
+  "users_all_access": "पूर्ण पहुँच",
+  "users_zim_count": "ZIM",
+  "users_edit_access": "पहुँच संपादित करें",
+  "users_none": "अभी कोई उपयोगकर्ता नहीं।",
+  "users_add": "उपयोगकर्ता जोड़ें",
+  "users_name_ph": "नाम",
+  "users_access_label": "लाइब्रेरी पहुँच",
+  "users_no_zims": "अभी कोई ZIM स्थापित नहीं।",
+  "users_create": "उपयोगकर्ता बनाएँ",
+  "users_need_name_pw": "नाम और पासवर्ड दर्ज करें।",
+  "users_create_failed": "उपयोगकर्ता नहीं बनाया जा सका।",
+  "users_delete_confirm": "उपयोगकर्ता “{name}” हटाएँ?",
+  "back": "वापस"
 }

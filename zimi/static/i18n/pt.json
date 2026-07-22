@@ -965,5 +965,22 @@
   "reader_view_settings": "Configurações do modo de leitura",
   "filter_languages": "Filtrar idiomas",
   "filter_generic": "Filtrar…",
-  "historical_event": "Evento histórico"
+  "historical_event": "Evento histórico",
+  "sign_in": "Entrar",
+  "signed_in_as": "Sessão iniciada como",
+  "ms_users": "Utilizadores",
+  "users_intro": "Crie contas com a sua própria vista da biblioteca. Um utilizador com sessão iniciada vê apenas os ZIM que permitir; o administrador e visitantes anónimos veem tudo.",
+  "users_all_access": "Acesso total",
+  "users_zim_count": "ZIM",
+  "users_edit_access": "Editar acesso",
+  "users_none": "Ainda não há utilizadores.",
+  "users_add": "Adicionar um utilizador",
+  "users_name_ph": "Nome",
+  "users_access_label": "Acesso à biblioteca",
+  "users_no_zims": "Ainda não há ZIM instalados.",
+  "users_create": "Criar utilizador",
+  "users_need_name_pw": "Introduza um nome e uma palavra-passe.",
+  "users_create_failed": "Não foi possível criar o utilizador.",
+  "users_delete_confirm": "Eliminar o utilizador “{name}”?",
+  "back": "Voltar"
 }
