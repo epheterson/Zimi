@@ -514,10 +514,15 @@ def _almanac_candidate_zims(langs):
         count = z.get("entry_count") or z.get("article_count") or 0
         return (rank, -_zim_quality_score(z.get("name", "")), -count)
 
+    # Strictly the user's languages + English — never "any installed
+    # wikipedia". A Hebrew article behind an English UI's Jupiter link is
+    # worse than no link (Eric's spec: match the right language; no match →
+    # plain text). Libraries whose preferred-language wikipedia lacks a
+    # built Q-ID index simply get fewer links.
     enc = [
         z
         for z in (_srv._zim_list_cache or [])
-        if _ALMANAC_ENC_RE.match(z.get("name", ""))
+        if _ALMANAC_ENC_RE.match(z.get("name", "")) and z.get("language", "") in order
     ]
     enc.sort(key=sort_key)
     return enc
