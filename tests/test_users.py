@@ -18,7 +18,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import zimi.server as _srv  # noqa: E402
-from zimi import manage, users  # noqa: E402
+from zimi import manage, search, users  # noqa: E402
 
 
 class _FakeHandler:
@@ -407,6 +407,104 @@ class TestManageUsersEndpoint(_UsersBase):
             self.assertIn("a", body["zims"])
         finally:
             _srv._zim_files_cache = None
+
+
+# ── Search-result cache must not leak across allowlists ────────────────────
+
+
+class TestSearchCacheRespectsAllowlist(_UsersBase):
+    """The HTTP /search result cache is keyed per request. Its key MUST fold in
+    the requester's allowlist identity, or an all-access session's broad results
+    leak to a restricted user issuing the same query (and vice-versa)."""
+
+    def setUp(self):
+        super().setUp()
+        _srv._search_cache_clear()
+
+    def tearDown(self):
+        _srv._search_cache_clear()
+        super().tearDown()
+
+    def _key(self, q="water", scope="", limit=5, fast=False):
+        # Built exactly as http.py's /search handler builds it, for the CURRENT
+        # request-allow context.
+        return _srv._search_cache_key(q, scope, limit, fast)
+
+    def test_anonymous_entry_not_served_to_restricted_user(self):
+        # Anonymous (all-access) search populates the cache…
+        _srv.clear_request_allow()
+        _srv._search_cache_put(self._key(), {"results": ["ALL-ACCESS"]})
+        # …a restricted user issuing the SAME query gets a MISS, so the filtered
+        # path recomputes rather than serving the broad cached results.
+        _srv.set_request_allow({"alpha"})
+        self.assertIsNone(_srv._search_cache_get(self._key()))
+
+    def test_restricted_entry_not_served_to_anonymous(self):
+        _srv.set_request_allow({"alpha"})
+        _srv._search_cache_put(self._key(), {"results": ["ALPHA-ONLY"]})
+        _srv.clear_request_allow()
+        self.assertIsNone(_srv._search_cache_get(self._key()))
+
+    def test_two_different_allowlists_do_not_share(self):
+        _srv.set_request_allow({"alpha"})
+        _srv._search_cache_put(self._key(), {"results": ["ALPHA-ONLY"]})
+        _srv.set_request_allow({"beta"})
+        self.assertIsNone(_srv._search_cache_get(self._key()))
+
+    def test_identical_allowlist_shares_entry(self):
+        # Keyed caching, NOT a bypass: same allow-set → same key → cache HIT,
+        # order-independent (sorted tuple).
+        _srv.set_request_allow({"alpha", "beta"})
+        _srv._search_cache_put(self._key(), {"results": ["A+B"]})
+        _srv.clear_request_allow()
+        _srv.set_request_allow({"beta", "alpha"})
+        hit = _srv._search_cache_get(self._key())
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit["results"], ["A+B"])
+
+    def test_allow_identity_is_folded_into_key(self):
+        _srv.clear_request_allow()
+        k_none = _srv._search_cache_key("q", "", 5, False)
+        _srv.set_request_allow({"alpha"})
+        k_alpha = _srv._search_cache_key("q", "", 5, False)
+        self.assertNotEqual(k_none, k_alpha)
+        self.assertIsNone(k_none[-1])
+        self.assertEqual(k_alpha[-1], ("alpha",))
+
+
+# ── "Did you mean" must not leak forbidden title-words to restricted users ──
+
+
+class TestDidYouMeanRespectsAllowlist(_UsersBase):
+    """The did_you_mean vocab is built globally from every ZIM's titles, so a
+    correction is suppressed for restricted sessions (a suggested word could
+    come from a ZIM outside the allowlist). All-access sessions keep it."""
+
+    def setUp(self):
+        super().setUp()
+        self._orig_files = _srv._zim_files_cache
+        self._orig_list = _srv._zim_list_cache
+        _srv._zim_files_cache = {}
+        _srv._zim_list_cache = []
+        self._orig_dym = search._maybe_did_you_mean
+        # Force a correction so the guard is the only thing that can hide it.
+        search._maybe_did_you_mean = lambda q: "corrected"
+
+    def tearDown(self):
+        _srv._zim_files_cache = self._orig_files
+        _srv._zim_list_cache = self._orig_list
+        search._maybe_did_you_mean = self._orig_dym
+        super().tearDown()
+
+    def test_all_access_gets_suggestion(self):
+        _srv.clear_request_allow()
+        result = _srv.search_all("xyzzy", limit=5)
+        self.assertEqual(result.get("did_you_mean"), "corrected")
+
+    def test_restricted_user_gets_no_suggestion(self):
+        _srv.set_request_allow({"alpha"})
+        result = _srv.search_all("xyzzy", limit=5)
+        self.assertNotIn("did_you_mean", result)
 
 
 if __name__ == "__main__":

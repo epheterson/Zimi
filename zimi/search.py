@@ -80,6 +80,22 @@ SEARCH_CACHE_TTL = 900  # 15 minutes base
 SEARCH_CACHE_TTL_ACTIVE = 1800  # 30 minutes if re-accessed
 
 
+def _search_cache_key(q, zim_scope_str, limit, fast):
+    """Build the search-result cache key for the CURRENT request.
+
+    The key folds in the request's allowlist identity so a restricted user can
+    never HIT results computed for an all-access (admin/anonymous) session, or
+    for a user with a different allowlist — the core multi-user invariant. Keyed
+    caching (not a bypass) is deliberate: restricted users still get cache hits,
+    they just get them from their OWN partition. ``allow`` is None for
+    admin/anonymous/all-access (allow_key None); a restricted allowlist becomes a
+    sorted tuple, so two users with identical allowlists correctly share entries.
+    """
+    allow = _srv.current_allow()
+    allow_key = None if allow is None else tuple(sorted(allow))
+    return (q.lower().strip(), zim_scope_str, limit, fast, allow_key)
+
+
 def _search_cache_get(key):
     """Get cached search result if still valid. Re-accessed entries get extended TTL."""
     with _search_cache_lock:
@@ -1585,7 +1601,12 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
         result["detected_language"] = detected_lang
     # "Did you mean" — only on the full path (the fast path is a partial,
     # progressive pass), and only when results are sparse. Additive field.
-    if not fast and len(deduped) < _DYM_MIN_RESULTS:
+    # Suppressed for restricted (allowlisted) sessions: the vocab is built
+    # globally from every ZIM's title index, so a correction could surface a
+    # title-word that only appears in a ZIM outside the user's allowlist — a
+    # small but real cross-allowlist leak. Admin/anonymous/all-access
+    # (current_allow() is None) keep the feature.
+    if not fast and len(deduped) < _DYM_MIN_RESULTS and _srv.current_allow() is None:
         suggestion = _maybe_did_you_mean(query_str)
         if suggestion:
             result["did_you_mean"] = suggestion

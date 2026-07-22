@@ -705,7 +705,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                     if isinstance(filter_zim, list)
                     else (filter_zim or "")
                 )
-                cache_key = (q.lower().strip(), zim_scope_str, limit, fast)
+                # Key includes the request's allowlist identity (see
+                # _search_cache_key) so a restricted user never receives another
+                # session's broader results.
+                cache_key = _srv._search_cache_key(q, zim_scope_str, limit, fast)
                 cached = _srv._search_cache_get(cache_key)
                 if cached is not None:
                     _record_metric("/search", 0)

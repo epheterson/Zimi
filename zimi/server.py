@@ -1719,6 +1719,7 @@ from zimi.search import (  # noqa: E402, F401
     # Search / suggest caches (dicts + constants + functions)
     _search_cache,
     SEARCH_CACHE_MAX,
+    _search_cache_key,
     _search_cache_get,
     _search_cache_put,
     _search_cache_clear,
