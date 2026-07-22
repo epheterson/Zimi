@@ -23,6 +23,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote, quote
 
 import zimi.server as _srv
+from zimi import users as _users
 from zimi.manage import (
     _manage_auth_challenge,
     handle_manage_get,
@@ -122,6 +123,10 @@ _rate_lock = threading.Lock()
 # per credential per TTL — not on every polled request.
 _authed_cache = {}  # {sha256(bearer): expiry_ts}
 _AUTHED_CACHE_TTL = 300.0
+
+# "Remember me" user-session cookie lifetime (seconds). 30 days — long enough
+# for a kid's device to stay logged in, short enough to age out abandoned tokens.
+SESSION_COOKIE_MAX_AGE = 30 * 24 * 3600
 
 
 # Snippets ride the content bucket: one search fans out to ~10 snippet
@@ -592,6 +597,11 @@ class ZimHandler(BaseHTTPRequestHandler):
         def param(key, default=None):
             return params.get(key, [default])[0]
 
+        # Multi-user: restrict this request's ZIM view to the logged-in user's
+        # allowlist (None = admin/anonymous/all-access). Set FIRST so a kept-alive
+        # connection re-sets it per request; cleared in the finally for hygiene.
+        _srv.set_request_allow(_users.request_allow(self))
+
         # Rate limit: API endpoints at RATE_LIMIT (10x for trusted clients),
         # /w/ content and /snippet at 20x.
         limited, is_w_content = _rate_class(parsed.path)
@@ -647,6 +657,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                         z["name"]
                         for z in (_srv._zim_list_cache or [])
                         if z.get("language", "") == lang_filter
+                        and _srv.zim_allowed(z["name"])
                     ]
                     if not lang_zims:
                         return self._json(
@@ -843,6 +854,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     )
                 return self._json(200, result)
 
+            elif parsed.path == "/whoami":
+                return self._handle_whoami()
+
             elif parsed.path == "/languages":
                 # Installed language summary with native names and ZIM counts
                 lang_zims = {}  # {lang_code: [zim_name, ...]}
@@ -1034,7 +1048,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     eligible = [
                         z
                         for z in (_srv._zim_list_cache or [])
-                        if isinstance(z.get("entries"), int) and z["entries"] > 100
+                        if isinstance(z.get("entries"), int)
+                        and z["entries"] > 100
+                        and _srv.zim_allowed(z["name"])
                     ]
                     if not eligible:
                         return self._json(200, {"error": "no ZIMs available"})
@@ -1293,9 +1309,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         except Exception as e:
             traceback.print_exc()
             return self._json(500, {"error": "Internal server error"})
+        finally:
+            _srv.clear_request_allow()
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        _srv.set_request_allow(_users.request_allow(self))
         try:
             content_len = int(self.headers.get("Content-Length", "0"))
             if content_len > _srv.MAX_POST_BODY:
@@ -1313,6 +1332,12 @@ class ZimHandler(BaseHTTPRequestHandler):
 
             if parsed.path.startswith("/manage/"):
                 return handle_manage_post(self, parsed, data)
+
+            if parsed.path == "/login":
+                return self._handle_login(data)
+
+            if parsed.path == "/logout":
+                return self._handle_logout()
 
             if parsed.path == "/resolve":
                 retry_after = _check_rate_limit(
@@ -1429,6 +1454,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         except Exception as e:
             traceback.print_exc()
             return self._json(500, {"error": "Internal server error"})
+        finally:
+            _srv.clear_request_allow()
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
@@ -2092,6 +2119,106 @@ class ZimHandler(BaseHTTPRequestHandler):
             json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode(),
             "application/json",
         )
+
+    # ── Multi-user login / logout / whoami ──────────────────────────────────
+    def _json_cookie(self, code, data, set_cookie):
+        """Send a small JSON auth response carrying a Set-Cookie header. Kept
+        separate from _send (no gzip, always no-store) so the ~200 _json call
+        sites stay untouched. Auth responses must never be cached."""
+        body = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-store")
+        if set_cookie:
+            self.send_header("Set-Cookie", set_cookie)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _session_cookie(self, token, remember):
+        """Build the zimi_session cookie. HttpOnly + SameSite=Lax always;
+        Secure only behind an HTTPS proxy (so plain-http LAN keeps working);
+        Max-Age only when 'remember' (else a session cookie, cleared on close)."""
+        parts = ["zimi_session=" + token, "Path=/", "HttpOnly", "SameSite=Lax"]
+        if remember:
+            parts.append("Max-Age=" + str(SESSION_COOKIE_MAX_AGE))
+        if self.headers.get("X-Forwarded-Proto", "").lower() == "https":
+            parts.append("Secure")
+        return "; ".join(parts)
+
+    def _expire_cookie(self):
+        return "zimi_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+
+    def _handle_login(self, data):
+        """POST /login — username + password. A named user gets a session
+        (cookie + Bearer token); admin credentials return role=admin (the
+        client keeps using the header token). Failures are generic: the same
+        401 whether the username or the password is wrong (no enumeration)."""
+        username = (data.get("username") or "").strip()
+        password = data.get("password") or ""
+        remember = bool(data.get("remember"))
+        if not username or not password:
+            return self._json(400, {"error": "username and password required"})
+        # Named user first.
+        name = _users.authenticate(username, password)
+        if name:
+            token = _users.create_session(name)
+            rec = _users.get_user(name)
+            allowlist = rec.get("allowlist") if rec else None
+            log.info("User login: %s", name)
+            return self._json_cookie(
+                200,
+                {
+                    "role": "user",
+                    "name": name,
+                    "token": token,
+                    "restricted": isinstance(allowlist, list),
+                    "allowlist": allowlist if isinstance(allowlist, list) else [],
+                },
+                self._session_cookie(token, remember),
+            )
+        # Admin account (the existing password account).
+        from zimi import manage as _manage
+
+        if _manage.verify_admin_credentials(username, password):
+            return self._json(200, {"role": "admin"})
+        return self._json(401, {"error": "invalid credentials"})
+
+    def _handle_logout(self):
+        """POST /logout — drop the current session + expire the cookie."""
+        token = _users._bearer_token(self) or _users._cookie_token(self)
+        _users.drop_session(token)
+        return self._json_cookie(200, {"status": "ok"}, self._expire_cookie())
+
+    def _handle_whoami(self):
+        """GET /whoami — the current identity for the client to shape its UI.
+        role ∈ {user, admin, anonymous}. Server-side filtering is independent
+        of this — it keys off the cookie/token, not the client's belief."""
+        name = _users.resolve_request_user(self)
+        if name:
+            rec = _users.get_user(name)
+            allowlist = rec.get("allowlist") if rec else None
+            return self._json(
+                200,
+                {
+                    "role": "user",
+                    "name": name,
+                    "restricted": isinstance(allowlist, list),
+                },
+            )
+        from zimi import manage as _manage
+
+        if (
+            _srv.ZIMI_MANAGE
+            and _manage._get_manage_password_hash()
+            and _manage._check_manage_auth(self) is None
+        ):
+            return self._json(
+                200,
+                {"role": "admin", "name": _manage._get_manage_user() or "admin"},
+            )
+        return self._json(200, {"role": "anonymous"})
 
     def log_message(self, format, *args):
         # Light logging: errors + slow requests. Suppress 200/304 noise.

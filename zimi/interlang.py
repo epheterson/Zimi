@@ -522,7 +522,9 @@ def _almanac_candidate_zims(langs):
     enc = [
         z
         for z in (_srv._zim_list_cache or [])
-        if _ALMANAC_ENC_RE.match(z.get("name", "")) and z.get("language", "") in order
+        if _ALMANAC_ENC_RE.match(z.get("name", ""))
+        and z.get("language", "") in order
+        and _srv.zim_allowed(z.get("name", ""))
     ]
     enc.sort(key=sort_key)
     return enc

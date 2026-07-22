@@ -729,6 +729,42 @@ _MASS_STAMP_WINDOW = 120.0  # seconds
 _MASS_STAMP_MTIME_TOL = 3600.0  # first_seen must be within 1h of file mtime to be real
 _zim_list_cache = None
 _zim_files_cache = None  # {name: path} — cached at startup, ZIM dir is read-only
+
+# ── Per-request ZIM allow context (multi-user v1) ────────────────────────────
+# When a named USER (not admin, not anonymous) is logged in, the request's ZIM
+# view is restricted to their allowlist. ThreadingHTTPServer runs one thread per
+# request, so a thread-local is naturally request-scoped; http.do_GET/do_POST set
+# it from zimi.users.request_allow() and clear it in a finally. A value of None
+# means all-access (admin/anonymous/all-access user) — the common case, and what
+# background threads (indexing, downloads) always see since they never set it.
+# get_zim_files() and list_zims() consult it so every dict-based read path
+# (search_all, read_article, chunk_article, resolve_almanac_qids, /list) is
+# filtered from one place; zim_allowed() covers the two spots that bypass them.
+_request_ctx = threading.local()
+
+
+def set_request_allow(allow):
+    """Set the current request's ZIM allow set (a set of names) or None for all."""
+    _request_ctx.allow = allow
+
+
+def clear_request_allow():
+    """Clear the request allow context (always call in a finally)."""
+    _request_ctx.allow = None
+
+
+def current_allow():
+    """The current request's allow set, or None for all-access."""
+    return getattr(_request_ctx, "allow", None)
+
+
+def zim_allowed(name):
+    """True if `name` is visible to the current request. Gates the paths that
+    don't flow through get_zim_files() (pooled /w/ content, direct list reads)."""
+    allow = current_allow()
+    return allow is None or name in allow
+
+
 _cache_generation = 0  # incremented on load_cache(force=True) — used in ETags
 _archive_pool = {}  # {name: Archive} — kept open for fast search
 _archive_lock = threading.Lock()  # protects _archive_pool writes in threaded mode
@@ -871,12 +907,18 @@ def _scan_zim_files():
 
 
 def get_zim_files():
-    """Get ZIM file mapping. Uses startup cache (ZIM dir is read-only mount)."""
+    """Get ZIM file mapping. Uses startup cache (ZIM dir is read-only mount).
+
+    When a restricted user is logged in (current_allow() is not None), the mapping
+    is filtered to their allowlist — a fresh dict, never a mutation of the cache.
+    This is the single choke point every dict-based read path flows through."""
     global _zim_files_cache
-    if _zim_files_cache is not None:
+    if _zim_files_cache is None:
+        _zim_files_cache = _scan_zim_files()
+    allow = current_allow()
+    if allow is None:
         return _zim_files_cache
-    _zim_files_cache = _scan_zim_files()
-    return _zim_files_cache
+    return {k: v for k, v in _zim_files_cache.items() if k in allow}
 
 
 def open_archive(path):
@@ -895,7 +937,11 @@ def list_zims(use_cache=True):
     """List all available ZIM files with metadata. Uses startup cache when available."""
     global _zim_list_cache
     if use_cache and _zim_list_cache is not None:
-        return _zim_list_cache
+        allow = current_allow()
+        if allow is None:
+            return _zim_list_cache
+        # Restricted user: return a filtered copy, never mutate the shared cache.
+        return [z for z in _zim_list_cache if z.get("name") in allow]
 
     zims = get_zim_files()
     info = []
@@ -926,7 +972,14 @@ def list_zims(use_cache=True):
 
 
 def get_archive(name):
-    """Get a cached archive handle, or open it fresh. Thread-safe."""
+    """Get a cached archive handle, or open it fresh. Thread-safe.
+
+    Fails closed for a restricted user: a ZIM outside their allowlist resolves to
+    None (as if not installed), gating every archive-based content path (/w/,
+    /snippet, /catalog, /article-languages, /random) including already-pooled
+    handles. Background/admin requests have current_allow()==None → no change."""
+    if not zim_allowed(name):
+        return None
     if name in _archive_pool:
         return _archive_pool[name]
     zims = get_zim_files()

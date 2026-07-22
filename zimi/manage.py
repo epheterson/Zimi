@@ -185,6 +185,25 @@ def _verify_password(candidate, stored_pw):
     return hmac.compare_digest(_hash_pw(candidate, salt), stored_pw)
 
 
+def verify_admin_credentials(username, password):
+    """Verify a (username, password) pair against the ADMIN account, header-free.
+
+    Used by the unified /login endpoint so admin creds entered in the same modal
+    as user creds still authenticate. Mirrors _check_manage_auth's password +
+    optional-username gate, but takes explicit values instead of reading headers.
+    Returns False on a passwordless instance (nothing to log into as admin).
+    """
+    stored_pw = _get_manage_password_hash()
+    if not stored_pw:
+        return False
+    if not _verify_password(password, stored_pw):
+        return False
+    configured_user = _get_manage_user()
+    if configured_user:
+        return (username or "").strip().casefold() == configured_user.strip().casefold()
+    return True
+
+
 #: Returned by _check_manage_auth when the only reason a request is denied is
 #: that the instance has NO password and the client is non-private. There is no
 #: password to enter, so the UI must explain rather than prompt (see issue #36).
@@ -480,6 +499,20 @@ def handle_manage_get(handler, parsed, params):
 
     elif parsed.path == "/manage/usage":
         return handler._json(200, _srv._get_usage_stats())
+
+    elif parsed.path == "/manage/users":
+        # Named user accounts (multi-user v1) — admin-only (gated above). Returns
+        # the roster (no password hashes) plus the installed ZIM names so the
+        # admin UI can build the per-user allowlist multi-select.
+        from zimi import users as _users
+
+        return handler._json(
+            200,
+            {
+                "users": _users.list_users(),
+                "zims": sorted(_srv.get_zim_files().keys()),
+            },
+        )
 
     elif parsed.path == "/manage/catalog":
         query = param("q", "")
@@ -857,6 +890,32 @@ def handle_manage_get(handler, parsed, params):
         return handler._json(404, {"error": "not found"})
 
 
+def _handle_users_post(handler, data):
+    """Admin-only user CRUD (multi-user v1). action ∈ {create, delete,
+    set-password, set-allowlist}. Errors are returned generically; on success
+    the fresh roster (no hashes) is echoed so the UI re-renders in one round
+    trip. Reaching here means the admin-auth challenge already passed."""
+    from zimi import users as _users
+
+    action = data.get("action", "")
+    name = data.get("name", "")
+    if action == "create":
+        ok, err = _users.create_user(
+            name, data.get("password", ""), data.get("allowlist")
+        )
+    elif action == "delete":
+        ok, err = _users.delete_user(name)
+    elif action == "set-password":
+        ok, err = _users.set_password(name, data.get("password", ""))
+    elif action == "set-allowlist":
+        ok, err = _users.set_allowlist(name, data.get("allowlist"))
+    else:
+        return handler._json(400, {"error": "unknown action"})
+    if not ok:
+        return handler._json(400, {"error": err or "operation failed"})
+    return handler._json(200, {"status": "ok", "users": _users.list_users()})
+
+
 # ============================================================================
 # Manage POST Routes
 # ============================================================================
@@ -927,6 +986,9 @@ def handle_manage_post(handler, parsed, data):
     challenge = _manage_auth_challenge(handler)
     if challenge:
         return handler._json(*challenge)
+
+    if parsed.path == "/manage/users":
+        return _handle_users_post(handler, data)
 
     if parsed.path == "/manage/download":
         url = data.get("url", "")
