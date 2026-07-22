@@ -135,6 +135,19 @@ var _STAR_NAMES = {
   55: 'Fomalhaut', 56: 'Polaris'
 };
 
+// A few catalog labels don't normalize onto their AlmanacLinks key (which uses
+// the full proper name); map those explicitly. Everything else is the label
+// lowercased with non-alphanumerics collapsed to underscores.
+var _STAR_LINK_OVERRIDES = { 'Rigil Kent.': 'star:rigil_kentaurus' };
+
+// AlmanacLinks key for a catalog star index, or null if it has no proper name.
+function _starLinkKey(idx) {
+  var nm = _STAR_NAMES[idx];
+  if (!nm) return null;
+  if (_STAR_LINK_OVERRIDES[nm]) return _STAR_LINK_OVERRIDES[nm];
+  return 'star:' + nm.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+$/, '');
+}
+
 // Project catalog stars to canvas coordinates for current time/location
 function _projectStars(now, lat, lon, W, H) {
   var JD = _dateToJD(now.getTime());
@@ -748,7 +761,14 @@ function _initStarChartDrag(canvas) {
     if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} }
   };
   canvas.onpointermove = function (e) {
-    if (!dragging) return;
+    if (!dragging) {
+      // Hover affordance: pointer cursor only over a body that resolves to an
+      // installed article. Plain (grab) cursor everywhere else.
+      var hr = canvas.getBoundingClientRect();
+      var over = _starChartBodyAt(e.clientX - hr.left, e.clientY - hr.top);
+      canvas.style.cursor = _starChartLinkFor(over) ? 'pointer' : '';
+      return;
+    }
     var dx = e.clientX - lastX, dy = e.clientY - lastY;
     lastX = e.clientX; lastY = e.clientY;
     moved += Math.abs(dx) + Math.abs(dy);
@@ -784,19 +804,33 @@ function _azCompass(az) {
   return pts[Math.round(((az % 360) + 360) % 360 / 45) % 8];
 }
 
-function _starChartClick(ev) {
-  if (_starChartDragged) { _starChartDragged = false; return; } // that was a pan
-  var canvas = document.getElementById('almanac-starchart');
-  var info = document.getElementById('alm-sc-info');
-  if (!canvas || !info) return;
-  var r = canvas.getBoundingClientRect();
-  var x = ev.clientX - r.left, y = ev.clientY - r.top;
+// Nearest drawn body within the tap radius of a canvas point, or null.
+function _starChartBodyAt(x, y) {
   var best = null, bestD = 18;
   for (var i = 0; i < _starChartBodies.length; i++) {
     var b = _starChartBodies[i];
     var d = Math.sqrt((b.x - x) * (b.x - x) + (b.y - y) * (b.y - y));
     if (d < bestD) { bestD = d; best = b; }
   }
+  return best;
+}
+
+// The resolved article for a body, or null (no key / not in the installed
+// library / batch not yet landed).
+function _starChartLinkFor(body) {
+  return (body && body.key && window.AlmanacLinks) ? window.AlmanacLinks.linkFor(body.key) : null;
+}
+
+function _starChartClick(ev) {
+  if (_starChartDragged) { _starChartDragged = false; return; } // that was a pan
+  var canvas = document.getElementById('almanac-starchart');
+  var info = document.getElementById('alm-sc-info');
+  if (!canvas || !info) return;
+  var r = canvas.getBoundingClientRect();
+  var best = _starChartBodyAt(ev.clientX - r.left, ev.clientY - r.top);
+  // A linkable body opens its installed article directly (closed-set authority);
+  // otherwise fall back to naming the body in the info line (unchanged).
+  if (_starChartLinkFor(best)) { window.AlmanacLinks.open(best.key); return; }
   info.innerHTML = best ? _almEsc(best.label) : '';
 }
 
@@ -927,7 +961,7 @@ function _drawStarChart(now) {
       drawLabel(_STAR_NAMES[i], p.x, p.y, rad + 2);
     }
     _starChartBodies.push({
-      x: p.x, y: p.y,
+      x: p.x, y: p.y, key: _starLinkKey(i),
       label: (_STAR_NAMES[i] || t('alm_star')) + ' \u00b7 ' + p.alt.toFixed(0) + '\u00b0 ' +
              _azCompass(p.az) + ' \u00b7 mag ' + mag.toFixed(1)
     });
@@ -954,7 +988,7 @@ function _drawStarChart(now) {
     ctx.font = 'bold 9px system-ui, sans-serif';
     drawLabel(_tp(nm), pp.x, pp.y, 5);
     _starChartBodies.push({
-      x: pp.x, y: pp.y,
+      x: pp.x, y: pp.y, key: 'planet:' + nm.toLowerCase(),
       label: _tp(nm) + ' \u00b7 ' + aa.alt.toFixed(0) + '\u00b0 ' + _azCompass(aa.az)
     });
     planetsUp.push(_tp(nm));
@@ -969,7 +1003,7 @@ function _drawStarChart(now) {
     ctx.beginPath(); ctx.arc(mpp.x, mpp.y, 4.5, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.5; ctx.stroke();
     _starChartBodies.push({
-      x: mpp.x, y: mpp.y,
+      x: mpp.x, y: mpp.y, key: 'planet:moon',
       label: t('alm_the_moon') + ' \u00b7 ' + mp.altitude.toFixed(0) + '\u00b0 ' +
              _azCompass(mp.azimuth) + ' \u00b7 ' + _moonPhase(now).illumination + '%'
     });
