@@ -551,6 +551,59 @@
   .zimi-ctx-item { padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
   .zimi-ctx-item:hover { background: var(--hover); }
   .zimi-ctx-item .ctx-key { margin-inline-start: auto; font-size: 11px; color: var(--text2); }
+  /* ── Word lookup (Define) popover ── */
+  .define-popover {
+    position: fixed; z-index: 10001; display: none;
+    background: var(--card-bg, #1a1a1a); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    color: var(--text); font-size: 13px; max-width: 320px;
+  }
+  .define-popover.open { display: block; }
+  /* Stage 1: the compact "Define" trigger button */
+  .define-trigger {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 12px; cursor: pointer; white-space: nowrap; font-weight: 500;
+  }
+  .define-trigger:hover { color: var(--amber); }
+  .define-trigger svg { width: 14px; height: 14px; }
+  /* Stage 2: the definition card */
+  .define-card { padding: 10px 14px 12px; max-height: 40vh; overflow-y: auto; }
+  .define-card .define-word {
+    font-weight: 600; font-size: 15px; margin-bottom: 4px;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .define-card .define-word .define-lang { font-size: 11px; color: var(--text2); font-weight: 400; }
+  .define-card .define-body { color: var(--text); line-height: 1.5; }
+  .define-card .define-body ol { margin: 4px 0 0; padding-inline-start: 20px; }
+  .define-card .define-body li { margin: 2px 0; }
+  .define-card .define-status { color: var(--text2); font-style: italic; }
+  .define-card .define-open {
+    display: inline-block; margin-top: 8px; font-size: 12px;
+    color: var(--amber); cursor: pointer; text-decoration: none;
+  }
+  .define-card .define-open:hover { text-decoration: underline; }
+  /* ── Library health report ── */
+  .library-health:empty { display: none; }
+  .library-health { margin-top: 12px; }
+  .health-summary { font-weight: 600; margin: 8px 0; color: var(--text); }
+  .health-table { border-top: 1px solid var(--border); }
+  .health-row {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 6px 2px; border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .health-row .health-mark { flex: 0 0 auto; width: 16px; text-align: center; }
+  .health-row .health-name { flex: 0 0 auto; font-weight: 500; color: var(--text); }
+  .health-row .health-detail { flex: 1 1 auto; color: var(--text2); text-align: end; }
+  .health-row.health-warn .health-detail { color: var(--amber); }
+  /* ── Bookmarks panel: Save to ZIM ── */
+  .hp-actions { display: flex; align-items: center; gap: 10px; padding: 8px 12px; flex-wrap: wrap; }
+  .hp-action-btn {
+    font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+  }
+  .hp-action-btn:hover:not(:disabled) { color: var(--amber); border-color: var(--amber-border, var(--amber)); }
+  .hp-action-btn:disabled { opacity: 0.5; cursor: default; }
+  .hp-action-status { font-size: 12px; color: var(--text2); }
   .reader-loading {
     position: absolute; inset: 0; display: flex; align-items: center;
     justify-content: center; flex-direction: column; gap: 12px;

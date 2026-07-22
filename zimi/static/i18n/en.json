@@ -984,5 +984,22 @@
   "users_need_name_pw": "Enter a name and password.",
   "users_create_failed": "Could not create user.",
   "users_delete_confirm": "Delete user “{name}”?",
-  "back": "Back"
+  "back": "Back",
+  "define": "Define",
+  "define_loading": "Looking up…",
+  "define_no_results": "No definition found",
+  "define_open_full": "Open full entry →",
+  "library_health": "Library health",
+  "library_health_running": "Checking library…",
+  "library_health_failed": "Health check failed",
+  "library_health_progress": "Checked {done} of {total}",
+  "library_health_summary_ok": "{total} ZIMs healthy",
+  "library_health_summary_warn": "{healthy} healthy, {warnings} warning(s)",
+  "health_entries": "{n} entries",
+  "healthy": "Healthy",
+  "warning": "Warning",
+  "save_to_zim": "Save to ZIM",
+  "save_to_zim_working": "Building ZIM…",
+  "save_to_zim_failed": "Export failed",
+  "save_to_zim_done": "Saved {file}"
 }

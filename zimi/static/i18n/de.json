@@ -984,5 +984,22 @@
   "users_need_name_pw": "Name und Passwort eingeben.",
   "users_create_failed": "Benutzer konnte nicht erstellt werden.",
   "users_delete_confirm": "Benutzer „{name}“ löschen?",
-  "back": "Zurück"
+  "back": "Zurück",
+  "define": "Definieren",
+  "define_loading": "Nachschlagen…",
+  "define_no_results": "Keine Definition gefunden",
+  "define_open_full": "Vollständigen Eintrag öffnen →",
+  "library_health": "Bibliothekszustand",
+  "library_health_running": "Bibliothek wird geprüft…",
+  "library_health_failed": "Zustandsprüfung fehlgeschlagen",
+  "library_health_progress": "{done} von {total} geprüft",
+  "library_health_summary_ok": "{total} ZIMs in Ordnung",
+  "library_health_summary_warn": "{healthy} in Ordnung, {warnings} Warnung(en)",
+  "health_entries": "{n} Einträge",
+  "healthy": "In Ordnung",
+  "warning": "Warnung",
+  "save_to_zim": "Als ZIM speichern",
+  "save_to_zim_working": "ZIM wird erstellt…",
+  "save_to_zim_failed": "Export fehlgeschlagen",
+  "save_to_zim_done": "{file} gespeichert"
 }

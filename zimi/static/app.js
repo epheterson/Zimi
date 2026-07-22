@@ -6218,8 +6218,10 @@ function _msLibraryHtml() {
     '<div class="ms-actions">' +
       '<button class="manage-btn-action" onclick="manageImportZim()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('import_zim') + '</button>' +
       '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('refresh_cache') + '</button>' +
+      '<button id="library-health-btn" class="manage-btn-action" onclick="runLibraryHealth()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('library_health') + '</button>' +
       '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none;margin-inline-start:auto">' + tH('update_all') + '</button>' +
     '</div>' +
+    '<div id="library-health-section" class="library-health"></div>' +
     '<div id="tmp-files-section"></div>';
   // Async-load tmp file info
   manageFetch('/manage/stats').catch(function() { return null; }).then(function(r) { return r && r.json(); }).then(function(s) {
@@ -6246,6 +6248,79 @@ function _fmtBytes(b) {
   if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
   if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
   return (b / 1073741824).toFixed(1) + ' GB';
+}
+
+// ── Library health report ──
+var _healthPoll = null;
+function runLibraryHealth() {
+  var btn = document.getElementById('library-health-btn');
+  var sec = document.getElementById('library-health-section');
+  if (btn) btn.disabled = true;
+  if (sec) sec.innerHTML = _loadingHtml('library_health_running');
+  manageFetch('/manage/health-check', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function() { _pollLibraryHealth(); })
+    .catch(function() {
+      if (btn) btn.disabled = false;
+      if (sec) sec.innerHTML = '<div class="mc-row"><span class="mc-value" style="color:var(--amber)">' + tH('library_health_failed') + '</span></div>';
+    });
+}
+function _pollLibraryHealth() {
+  clearTimeout(_healthPoll);
+  manageFetch('/manage/health').then(function(r) { return r.json(); }).then(function(st) {
+    var sec = document.getElementById('library-health-section');
+    if (!sec) return;
+    if (st.phase === 'running') {
+      sec.innerHTML = _loadingHtml('library_health_running') +
+        '<div class="mc-row"><span class="mc-value" style="color:var(--text2)">' +
+        t('library_health_progress', { done: st.done || 0, total: st.total || 0 }) + '</span></div>';
+      _healthPoll = setTimeout(_pollLibraryHealth, 600);
+    } else if (st.phase === 'done') {
+      _renderHealthReport(st);
+      var btn = document.getElementById('library-health-btn');
+      if (btn) btn.disabled = false;
+    } else {
+      sec.innerHTML = '<div class="mc-row"><span class="mc-value" style="color:var(--amber)">' + tH('library_health_failed') + '</span></div>';
+      var b2 = document.getElementById('library-health-btn');
+      if (b2) b2.disabled = false;
+    }
+  }).catch(function() {
+    var b3 = document.getElementById('library-health-btn');
+    if (b3) b3.disabled = false;
+  });
+}
+function _healthMark(ok) {
+  return ok
+    ? '<span style="color:#34d399" title="' + escAttr(t('healthy')) + '">✓</span>'
+    : '<span style="color:var(--amber)" title="' + escAttr(t('warning')) + '">⚠</span>';
+}
+function _renderHealthReport(st) {
+  var sec = document.getElementById('library-health-section');
+  if (!sec) return;
+  var s = st.summary || { total: 0, healthy: 0, warnings: 0 };
+  var summaryLine = s.warnings
+    ? t('library_health_summary_warn', { healthy: s.healthy, warnings: s.warnings })
+    : t('library_health_summary_ok', { total: s.total });
+  var rows = (st.report || []).slice().sort(function(a, b) {
+    // Warnings first, then by name.
+    if (a.status !== b.status) return a.status === 'warn' ? -1 : 1;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+  var body = rows.map(function(r) {
+    var issues = (r.issues && r.issues.length) ? esc(r.issues.join(', ')) :
+      (r.entries != null ? t('health_entries', { n: r.entries }) : '');
+    var idx = [];
+    if (r.title_index === 'current') idx.push('title');
+    else if (r.title_index === 'stale') idx.push('title(stale)');
+    if (r.qid_index === 'present') idx.push('Q-ID');
+    var meta = idx.length ? ' <span style="color:var(--text2);font-size:11px">' + esc(idx.join(' · ')) + '</span>' : '';
+    return '<div class="health-row ' + (r.status === 'warn' ? 'health-warn' : '') + '">' +
+      '<span class="health-mark">' + _healthMark(r.status === 'ok') + '</span>' +
+      '<span class="health-name">' + esc(r.title || r.name) + '</span>' +
+      '<span class="health-detail">' + issues + meta + '</span></div>';
+  }).join('');
+  sec.innerHTML = '<div class="health-summary">' + esc(summaryLine) + '</div>' +
+    '<div class="health-table">' + body + '</div>';
 }
 
 // Data-dir storage breakdown (Server settings → Caches). Distinct, accessible
@@ -9301,6 +9376,10 @@ function openReader(url) {
     try {
       frame.contentDocument.addEventListener('mousedown', function(e) { _lastMouseEvent = e; _lastMouseTime = Date.now(); _hideLinkCtxMenu(); }, true);
     } catch(e) {}
+    // Word lookup: wire selection/double-tap → Define popover (dormant when no
+    // wiktionary ZIM is installed). Works in the normal reader AND Reader View
+    // (same document, listeners attached once per load survive the transform).
+    try { _defineAttachToDoc(frame); } catch(e) {}
     // Inject responsive CSS + scroll-to-top button for mobile
     try {
       var _rStyle = frame.contentDocument.createElement('style');
@@ -9737,7 +9816,9 @@ function _renderBookmarksContent() {
   if (!bk.length) {
     return '<div class="hp-empty">' + tH('no_bookmarks') + '</div>';
   }
-  var html = '<div class="hp-group">';
+  var html = '<div class="hp-actions"><button id="export-bookmarks-btn" class="hp-action-btn" onclick="exportBookmarksToZim()">' + tH('save_to_zim') + '</button>' +
+    '<span id="export-bookmarks-status" class="hp-action-status"></span></div>';
+  html += '<div class="hp-group">';
   for (var i = 0; i < bk.length; i++) {
     var b = bk[i];
     var icon = b.zim ? _sourceIconHtml(b.zim, 20) : '\uD83D\uDCC4';
@@ -9791,6 +9872,49 @@ function _bkAdd(zim, path, title) {
 function _bkRemove(zim, path) {
   var idx = _bkFind(zim, path);
   if (idx >= 0) { _bkLoad().splice(idx, 1); _bkSave(); }
+}
+// Save to ZIM: POST the client's bookmark list (server has no copy) and poll
+// until the export ZIM is written and rescanned into the library.
+var _exportPoll = null;
+function exportBookmarksToZim() {
+  var bk = _bkLoad();
+  if (!bk.length) return; // guard: nothing to export
+  var btn = document.getElementById('export-bookmarks-btn');
+  var status = document.getElementById('export-bookmarks-status');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = t('save_to_zim_working');
+  var payload = bk.map(function(b) { return { zim: b.zim, path: b.path, title: b.title || '' }; });
+  manageFetch('/manage/export-bookmarks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bookmarks: payload }),
+  }).then(function(r) { return r.json(); }).then(function(res) {
+    if (res && res.error) { _exportBookmarksFail(); return; }
+    _pollExportBookmarks();
+  }).catch(_exportBookmarksFail);
+}
+function _exportBookmarksFail() {
+  var btn = document.getElementById('export-bookmarks-btn');
+  var status = document.getElementById('export-bookmarks-status');
+  if (btn) btn.disabled = false;
+  if (status) { status.textContent = t('save_to_zim_failed'); status.style.color = 'var(--amber)'; }
+}
+function _pollExportBookmarks() {
+  clearTimeout(_exportPoll);
+  manageFetch('/manage/export-bookmarks').then(function(r) { return r.json(); }).then(function(st) {
+    var btn = document.getElementById('export-bookmarks-btn');
+    var status = document.getElementById('export-bookmarks-status');
+    if (st.phase === 'running') {
+      _exportPoll = setTimeout(_pollExportBookmarks, 600);
+    } else if (st.phase === 'done') {
+      if (btn) btn.disabled = false;
+      if (status) { status.style.color = '#34d399'; status.textContent = t('save_to_zim_done', { file: st.file || '' }); }
+    } else if (st.phase === 'error') {
+      _exportBookmarksFail();
+    } else {
+      if (btn) btn.disabled = false; // idle/unknown
+    }
+  }).catch(_exportBookmarksFail);
 }
 function toggleBookmark() {
   if (!currentArticle) return;
@@ -10275,6 +10399,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     // Topmost popovers first — otherwise Escape falls through to goBack()/close
     // and dumps a keyboard user out of the reader instead of shutting the popover.
+    if (_definePopover && _definePopover.classList.contains('open')) { _defineHide(); return; }
     var _rp = document.getElementById(_READER_PALETTE_ID);
     if (_rp && _rp.classList.contains('visible')) { _closeReaderPalette(); return; }
     var _tm = document.getElementById('topbar-menu');
@@ -10468,8 +10593,212 @@ function _ctxCopyTitle() {
   navigator.clipboard.writeText(data.title).catch(function() {});
 }
 
+// ── Word lookup (Define) ──
+// Select or double-tap a word in the reader → a small "Define" popover; tapping
+// it pulls the first definition from the best installed wiktionary ZIM (one
+// /suggest + one article fetch). Entirely dormant — zero UI — when no
+// wiktionary ZIM is installed.
+var _definePopover = document.getElementById('define-popover');
+var _defineState = null; // {word, zim, path} of the active lookup
+var _defineDebounce = null;
+var _DEFINE_BOOK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
+var _DEFINE_MAX_WORD = 40;
+var _DEFINE_MAX_CHARS = 600; // cap on extracted definition length
+
+// Two-letter language prefix for loose matching ('eng'→'en', 'en-US'→'en').
+function _defineLang2(l) { return (l || '').toLowerCase().slice(0, 2); }
+
+// Pick the best installed wiktionary ZIM for an article language. Preference:
+// article language → UI language → English → any wiktionary. Returns the ZIM
+// info object or null (→ feature dormant).
+function _defineFindWiktionary(articleLang) {
+  var wikts = (zimsCache || []).filter(function(z) {
+    return z && z.name && /wiktionary/i.test(z.name);
+  });
+  if (!wikts.length) return null;
+  var prefs = [_defineLang2(articleLang), _defineLang2(_currentLang), 'en'];
+  for (var i = 0; i < prefs.length; i++) {
+    if (!prefs[i]) continue;
+    for (var j = 0; j < wikts.length; j++) {
+      if (_defineLang2(wikts[j].language) === prefs[i]) return wikts[j];
+    }
+  }
+  return wikts[0]; // best-effort: some wiktionary beats none
+}
+
+function _defineIsWord(s) {
+  if (!s) return false;
+  s = s.trim();
+  if (!s || s.length > _DEFINE_MAX_WORD) return false;
+  if (/\s/.test(s)) return false;           // single word only (v1)
+  return /[\p{L}]/u.test(s);                 // must contain a letter
+}
+
+// Selection rect in PARENT-window coords (iframe rect + selection rect).
+function _defineSelRect(frame, sel) {
+  try {
+    var r = sel.getRangeAt(0).getBoundingClientRect();
+    var fr = frame.getBoundingClientRect();
+    return { x: r.left + fr.left, y: r.bottom + fr.top + 4, top: r.top + fr.top };
+  } catch (e) { return null; }
+}
+
+function _definePosition(rect) {
+  if (!rect) return;
+  _definePopover.classList.add('open');
+  var w = _definePopover.offsetWidth || 200;
+  var h = _definePopover.offsetHeight || 60;
+  var x = rect.x, y = rect.y;
+  if (x + w > window.innerWidth - 8) x = window.innerWidth - w - 8;
+  if (x < 8) x = 8;
+  // Flip above the selection if it would overflow the bottom.
+  if (y + h > window.innerHeight - 8) y = Math.max(8, rect.top - h - 8);
+  _definePopover.style.left = x + 'px';
+  _definePopover.style.top = y + 'px';
+}
+
+function _defineHide() {
+  if (!_definePopover) return;
+  _definePopover.classList.remove('open');
+  _definePopover.innerHTML = '';
+  _defineState = null;
+}
+
+// Stage 1 — show the "Define" trigger next to the selected word.
+function _defineShowTrigger(frame, word, wikt, rect) {
+  _defineState = { word: word, zim: wikt.name, path: null };
+  _definePopover.innerHTML = '<div class="define-trigger" onclick="_defineRun()">' +
+    _DEFINE_BOOK_ICON + '<span>' + tH('define') + '</span></div>';
+  _definePosition(rect);
+}
+
+// Stage 2 — run the lookup (one /suggest + one article fetch) and render.
+function _defineRun() {
+  var st = _defineState;
+  if (!st) return;
+  _definePopover.innerHTML = '<div class="define-card"><div class="define-word">' +
+    esc(st.word) + '</div><div class="define-status">' + tH('define_loading') +
+    '</div></div>';
+  var q = st.word;
+  fetch('/suggest?q=' + encodeURIComponent(q.toLowerCase()) + '&limit=6&zim=' + encodeURIComponent(st.zim))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var hits = (data && data[st.zim]) || [];
+      // Prefer an exact case-insensitive title match (wiktionary entries are
+      // lowercase words), else the raw word, else the first suggestion.
+      var hit = null, ql = q.toLowerCase();
+      for (var i = 0; i < hits.length; i++) {
+        if ((hits[i].title || '').toLowerCase() === ql) { hit = hits[i]; break; }
+      }
+      if (!hit) hit = hits[0];
+      if (!hit) { _defineRenderMiss(st.word); return; }
+      st.path = hit.path;
+      return fetch(_articleUrl(st.zim, hit.path) + '?raw=1')
+        .then(function(r) { return r.text(); })
+        .then(function(html) { _defineRenderResult(st, hit, html); });
+    })
+    .catch(function() { _defineRenderMiss(st.word); });
+}
+
+function _defineRenderMiss(word) {
+  if (!_defineState) return;
+  _definePopover.innerHTML = '<div class="define-card"><div class="define-word">' +
+    esc(word) + '</div><div class="define-status">' + tH('define_no_results') +
+    '</div></div>';
+}
+
+// Pull the first definition block(s) from a wiktionary article's raw HTML.
+// Pragmatic: the first ordered list under the parser output holds the senses;
+// take its first few items, dropping nested examples/quotations.
+function _defineExtract(html) {
+  try {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var root = doc.querySelector('.mw-parser-output') || doc.body;
+    if (!root) return '';
+    var ol = root.querySelector('ol');
+    if (ol) {
+      var out = doc.createElement('ol');
+      var items = ol.querySelectorAll(':scope > li');
+      for (var i = 0; i < items.length && i < 4; i++) {
+        var li = items[i].cloneNode(true);
+        // Drop nested example/quotation/synonym blocks — senses only.
+        li.querySelectorAll('ul, dl, ol, .h-usage-example, .citation-whole').forEach(function(n) { n.remove(); });
+        var txt = (li.textContent || '').trim();
+        if (!txt) continue;
+        var nli = doc.createElement('li');
+        nli.textContent = txt.length > 200 ? txt.slice(0, 200) + '…' : txt;
+        out.appendChild(nli);
+      }
+      if (out.children.length) return out.outerHTML;
+    }
+    // Fallback: first meaningful paragraph.
+    var p = root.querySelector('p');
+    if (p) {
+      var pt = (p.textContent || '').trim();
+      if (pt) return '<p>' + esc(pt.slice(0, _DEFINE_MAX_CHARS)) + '</p>';
+    }
+  } catch (e) {}
+  return '';
+}
+
+function _defineRenderResult(st, hit, html) {
+  if (!_defineState || _defineState.word !== st.word) return; // superseded
+  var body = _defineExtract(html);
+  var lang = _defineLang2(_zimInfo(st.zim) && _zimInfo(st.zim).language);
+  var head = '<div class="define-word">' + esc(st.word) +
+    (lang ? ' <span class="define-lang">' + esc(lang) + '</span>' : '') + '</div>';
+  var content = body
+    ? '<div class="define-body">' + body + '</div>'
+    : '<div class="define-status">' + tH('define_no_results') + '</div>';
+  _definePopover.innerHTML = '<div class="define-card">' + head + content +
+    '<a class="define-open" onclick="_defineOpenFull()">' + tH('define_open_full') + '</a></div>';
+}
+
+function _defineOpenFull() {
+  var st = _defineState;
+  _defineHide();
+  if (st && st.zim && st.path) openArticle(st.zim, st.path);
+}
+
+// Consider the current selection inside the reader iframe; show or hide the
+// trigger accordingly. Debounced from the noisy selectionchange event.
+function _defineConsider(frame) {
+  if (!readerOpen || !_definePopover) return;
+  var doc, sel;
+  try { doc = frame.contentDocument; sel = frame.contentWindow.getSelection(); }
+  catch (e) { return; } // cross-origin ZIM — feature can't reach the selection
+  if (!sel || sel.isCollapsed) { _defineHide(); return; }
+  var word = sel.toString().trim();
+  if (!_defineIsWord(word)) { _defineHide(); return; }
+  var wikt = _defineFindWiktionary(_ttsLang(doc));
+  if (!wikt) return; // dormant: no wiktionary installed
+  var rect = _defineSelRect(frame, sel);
+  if (rect) _defineShowTrigger(frame, word, wikt, rect);
+}
+
+function _defineAttachToDoc(frame) {
+  var doc = frame.contentDocument;
+  if (!doc) return;
+  var onSel = function() {
+    clearTimeout(_defineDebounce);
+    _defineDebounce = setTimeout(function() { _defineConsider(frame); }, 220);
+  };
+  doc.addEventListener('dblclick', function() {
+    clearTimeout(_defineDebounce);
+    _defineConsider(frame);
+  });
+  doc.addEventListener('mouseup', onSel);
+  doc.addEventListener('selectionchange', onSel);
+  // Tapping/scrolling inside the article dismisses a stale popover.
+  doc.addEventListener('mousedown', function() { if (_defineState && _defineState.path !== null) _defineHide(); }, true);
+}
+
 // Close context menu on click anywhere
 document.addEventListener('click', function() { _hideLinkCtxMenu(); });
+// Tap outside the Define popover closes it (clicks inside are handled by its own controls).
+document.addEventListener('mousedown', function(e) {
+  if (_definePopover && _definePopover.classList.contains('open') && !_definePopover.contains(e.target)) _defineHide();
+}, true);
 document.addEventListener('contextmenu', function(e) {
   // If clicking outside existing menu, close it
   if (_linkCtxMenu.classList.contains('open') && !_linkCtxMenu.contains(e.target)) {

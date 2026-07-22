@@ -984,5 +984,22 @@
   "users_need_name_pw": "नाम और पासवर्ड दर्ज करें।",
   "users_create_failed": "उपयोगकर्ता नहीं बनाया जा सका।",
   "users_delete_confirm": "उपयोगकर्ता “{name}” हटाएँ?",
-  "back": "वापस"
+  "back": "वापस",
+  "define": "परिभाषा",
+  "define_loading": "खोज रहे हैं…",
+  "define_no_results": "कोई परिभाषा नहीं मिली",
+  "define_open_full": "पूरी प्रविष्टि खोलें →",
+  "library_health": "लाइब्रेरी स्वास्थ्य",
+  "library_health_running": "लाइब्रेरी जाँच रहे हैं…",
+  "library_health_failed": "स्वास्थ्य जाँच विफल",
+  "library_health_progress": "{total} में से {done} जाँचे गए",
+  "library_health_summary_ok": "{total} ZIM ठीक हैं",
+  "library_health_summary_warn": "{healthy} ठीक, {warnings} चेतावनी",
+  "health_entries": "{n} प्रविष्टियाँ",
+  "healthy": "ठीक",
+  "warning": "चेतावनी",
+  "save_to_zim": "ZIM में सहेजें",
+  "save_to_zim_working": "ZIM बना रहे हैं…",
+  "save_to_zim_failed": "निर्यात विफल",
+  "save_to_zim_done": "{file} सहेजा गया"
 }

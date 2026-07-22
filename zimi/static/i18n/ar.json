@@ -984,5 +984,22 @@
   "users_need_name_pw": "أدخل اسمًا وكلمة مرور.",
   "users_create_failed": "تعذّر إنشاء المستخدم.",
   "users_delete_confirm": "حذف المستخدم ‏«{name}»؟",
-  "back": "رجوع"
+  "back": "رجوع",
+  "define": "تعريف",
+  "define_loading": "جارٍ البحث…",
+  "define_no_results": "لم يُعثر على تعريف",
+  "define_open_full": "فتح المدخل الكامل ←",
+  "library_health": "صحة المكتبة",
+  "library_health_running": "جارٍ فحص المكتبة…",
+  "library_health_failed": "فشل فحص الصحة",
+  "library_health_progress": "تم فحص {done} من {total}",
+  "library_health_summary_ok": "{total} ملف ZIM سليم",
+  "library_health_summary_warn": "{healthy} سليم، {warnings} تحذير",
+  "health_entries": "{n} مُدخلًا",
+  "healthy": "سليم",
+  "warning": "تحذير",
+  "save_to_zim": "حفظ كملف ZIM",
+  "save_to_zim_working": "جارٍ إنشاء ZIM…",
+  "save_to_zim_failed": "فشل التصدير",
+  "save_to_zim_done": "تم حفظ {file}"
 }

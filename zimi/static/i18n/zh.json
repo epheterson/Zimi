@@ -984,5 +984,22 @@
   "users_need_name_pw": "请输入名称和密码。",
   "users_create_failed": "无法创建用户。",
   "users_delete_confirm": "删除用户“{name}”？",
-  "back": "返回"
+  "back": "返回",
+  "define": "释义",
+  "define_loading": "查询中…",
+  "define_no_results": "未找到释义",
+  "define_open_full": "打开完整词条 →",
+  "library_health": "库健康检查",
+  "library_health_running": "正在检查库…",
+  "library_health_failed": "健康检查失败",
+  "library_health_progress": "已检查 {done}/{total}",
+  "library_health_summary_ok": "{total} 个 ZIM 正常",
+  "library_health_summary_warn": "{healthy} 个正常，{warnings} 个警告",
+  "health_entries": "{n} 个条目",
+  "healthy": "正常",
+  "warning": "警告",
+  "save_to_zim": "保存为 ZIM",
+  "save_to_zim_working": "正在生成 ZIM…",
+  "save_to_zim_failed": "导出失败",
+  "save_to_zim_done": "已保存 {file}"
 }

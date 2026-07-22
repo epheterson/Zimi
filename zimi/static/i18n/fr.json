@@ -984,5 +984,22 @@
   "users_need_name_pw": "Saisissez un nom et un mot de passe.",
   "users_create_failed": "Impossible de créer l’utilisateur.",
   "users_delete_confirm": "Supprimer l’utilisateur « {name} » ?",
-  "back": "Retour"
+  "back": "Retour",
+  "define": "Définir",
+  "define_loading": "Recherche…",
+  "define_no_results": "Aucune définition trouvée",
+  "define_open_full": "Ouvrir l'entrée complète →",
+  "library_health": "État de la bibliothèque",
+  "library_health_running": "Vérification de la bibliothèque…",
+  "library_health_failed": "Échec de la vérification",
+  "library_health_progress": "{done} sur {total} vérifiés",
+  "library_health_summary_ok": "{total} ZIM en bon état",
+  "library_health_summary_warn": "{healthy} corrects, {warnings} avertissement(s)",
+  "health_entries": "{n} entrées",
+  "healthy": "Correct",
+  "warning": "Avertissement",
+  "save_to_zim": "Enregistrer en ZIM",
+  "save_to_zim_working": "Création du ZIM…",
+  "save_to_zim_failed": "Échec de l'export",
+  "save_to_zim_done": "{file} enregistré"
 }
