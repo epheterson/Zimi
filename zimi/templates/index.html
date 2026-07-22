@@ -62,9 +62,16 @@
      and on a zoomed-in phone almost every stray tap lands on the backdrop.
      Cancel and Esc remain the explicit ways out. -->
 <div id="pw-overlay" class="pw-overlay" role="dialog" aria-modal="true" aria-labelledby="pw-title">
-  <form class="pw-box" onsubmit="event.preventDefault();submitPw()" autocomplete="off">
+  <form class="pw-box" onsubmit="event.preventDefault();submitPw()">
     <h3 id="pw-title" data-i18n="enter_password">Enter password</h3>
-    <input style="display:none" type="text" name="fakeuser" tabindex="-1" autocomplete="off">
+    <!-- Hidden-but-present username field: single-user server has no real
+         username, but password managers (iCloud Keychain) need a username
+         field with autocomplete="username" to key a credential on and offer
+         to save. Off-screen, out of tab order and the a11y tree — the manager
+         still sees it. Do NOT add autocomplete="off" here or on the form: that
+         is what was suppressing the save-password prompt (only fired "next page
+         load", if at all). -->
+    <input id="pw-username" type="text" name="username" value="zimi" autocomplete="username" aria-hidden="true" tabindex="-1" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
     <label for="pw-input" class="sr-only" data-i18n="password">Password</label>
     <input id="pw-input" type="password" placeholder="Password" data-i18n-placeholder="password" autocomplete="current-password" aria-labelledby="pw-title" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
     <div class="pw-error" id="pw-error"></div>

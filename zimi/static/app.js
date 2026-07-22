@@ -6891,10 +6891,15 @@ async function managePassword() {
       overlay.classList.add('open');
       return;
     }
-    // After setting/changing password, keep current session authenticated
-    // but don't persist — force fresh login next visit.
+    // After setting/changing the password, keep the session authenticated AND
+    // preserve the user's "Remember me" choice: if the old token was persisted
+    // (localStorage), re-persist the new one so a password change doesn't
+    // silently log them out next visit. Previously this always cleared storage,
+    // which defeated Remember me for anyone who ever changed their password.
+    const wasRemembered = !!localStorage.getItem(SK.MANAGE_PW);
     _manageToken = newPw || '';
-    _clearManageToken();
+    if (newPw) _saveManageToken(newPw, wasRemembered);
+    else _clearManageToken();
     closePwModal();
     renderManage();
   };
