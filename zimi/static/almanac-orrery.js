@@ -36,6 +36,72 @@ function _planetPosition(name, T) {
 
 var _orreryPlanetPositions = []; // [{name, x, y, r}] in CSS pixels for hover
 
+// ── Deep-link a tapped body to its installed article ──
+// The AlmanacLinks closed set carries a curated Q-ID for every planet/probe;
+// resolved-against-the-library hits become taps that open the article directly
+// (the same authority the DOM linkify path uses). A body whose Q-ID didn't
+// resolve keeps its prior interaction — planet launches a rocket, probe shows
+// its detail card — so the orrery's play survives when no encyclopedia is
+// installed. To keep BOTH on a linkable body: single tap opens the article,
+// double tap (within _ORRERY_DBLTAP_MS) fires the launch/card. This threshold
+// also lets the second tap of a double-tap-zoom fall through cleanly.
+var _ORRERY_DBLTAP_MS = 260;
+var _orreryTapTimer = null;
+
+// Find the hit target (planet or probe) at a canvas position, or null. Module
+// scope so the tap handlers and the hover-cursor path share one implementation.
+function _orreryHitTest(mx, my, tolerance) {
+  for (var i = 0; i < _orreryPlanetPositions.length; i++) {
+    var p = _orreryPlanetPositions[i];
+    var dx = mx - p.x, dy = my - p.y;
+    if (dx * dx + dy * dy < (p.r + tolerance) * (p.r + tolerance)) return { type: 'planet', data: p };
+  }
+  for (var j = 0; j < _voyagerPositions.length; j++) {
+    var v = _voyagerPositions[j];
+    var vdx = mx - v.x, vdy = my - v.y;
+    if (vdx * vdx + vdy * vdy < (v.r + tolerance + 6) * (v.r + tolerance + 6)) return { type: 'voyager', data: v };
+  }
+  return null;
+}
+
+// AlmanacLinks key for a hit-test result, or null for un-mappable bodies.
+function _orreryLinkKey(hit) {
+  if (!hit) return null;
+  if (hit.type === 'planet') return 'planet:' + hit.data.name.toLowerCase();
+  if (hit.type === 'voyager') return 'probe:' + hit.data.name.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return null;
+}
+
+// The resolved article for a hit (null when not a link / batch not yet landed).
+function _orreryLinkFor(hit) {
+  var key = _orreryLinkKey(hit);
+  return (key && window.AlmanacLinks) ? window.AlmanacLinks.linkFor(key) : null;
+}
+
+// Prior interaction for a body: planet → launch transit, probe → detail card.
+function _orrerySecondaryAction(hit) {
+  if (!hit) { _hideVoyagerCard(); return; }
+  if (hit.type === 'planet' && hit.data.name !== 'Earth') _orreryLaunchRocket(hit.data.name);
+  else if (hit.type === 'voyager') _showVoyagerCard(hit.data.idx);
+}
+
+// Unified tap handler for mouse + touch. Linkable body: single tap opens the
+// article, a quick second tap runs the secondary action. Non-linkable body:
+// the secondary action fires immediately (unchanged behaviour).
+function _orreryTap(mx, my, tolerance) {
+  var hit = _orreryHitTest(mx, my, tolerance);
+  if (_orreryTapTimer) { clearTimeout(_orreryTapTimer); _orreryTapTimer = null; _orrerySecondaryAction(hit); return; }
+  if (_orreryLinkFor(hit)) {
+    var key = _orreryLinkKey(hit);
+    _orreryTapTimer = setTimeout(function () {
+      _orreryTapTimer = null;
+      if (window.AlmanacLinks) window.AlmanacLinks.open(key);
+    }, _ORRERY_DBLTAP_MS);
+  } else {
+    _orrerySecondaryAction(hit);
+  }
+}
+
 function _initOrrery() {
   var canvas = document.getElementById('almanac-orrery');
   if (!canvas) return;
@@ -63,21 +129,6 @@ function _initOrrery() {
     wrap.style.position = 'relative';
     wrap.appendChild(tooltip);
   }
-  // Helper: find hit target (planet or voyager) at mouse position
-  function _orreryHitTest(mx, my, tolerance) {
-    for (var i = 0; i < _orreryPlanetPositions.length; i++) {
-      var p = _orreryPlanetPositions[i];
-      var dx = mx - p.x, dy = my - p.y;
-      if (dx * dx + dy * dy < (p.r + tolerance) * (p.r + tolerance)) return { type: 'planet', data: p };
-    }
-    for (var i = 0; i < _voyagerPositions.length; i++) {
-      var v = _voyagerPositions[i];
-      var dx = mx - v.x, dy = my - v.y;
-      if (dx * dx + dy * dy < (v.r + tolerance + 6) * (v.r + tolerance + 6)) return { type: 'voyager', data: v };
-    }
-    return null;
-  }
-
   // Place the tooltip beside the target, but keep it inside the orrery box —
   // near the rim it would otherwise run off the edge (probes especially).
   function _placeTip(hit) {
@@ -105,7 +156,9 @@ function _initOrrery() {
       }
       tooltip.textContent = label;
       _placeTip(hit);
-      canvas.style.cursor = hit.data.name !== 'Earth' ? 'pointer' : 'default';
+      // Pointer for anything actionable: a transit-launchable planet, or an
+      // Earth whose article resolved (Earth has no transit but is a link).
+      canvas.style.cursor = (hit.data.name !== 'Earth' || _orreryLinkFor(hit)) ? 'pointer' : 'default';
     } else if (hit && hit.type === 'voyager') {
       var d = hit.data.dist;
       var sig = _signalDelay(d);
@@ -119,36 +172,33 @@ function _initOrrery() {
   };
   canvas.onmouseleave = function() { tooltip.style.display = 'none'; };
 
-  // Click planet to launch rocket, or Voyager to show detail card
+  // Tap a linkable body to open its article; a transit-launchable planet or a
+  // probe with no resolved link keeps its prior action (launch / detail card).
   canvas.onclick = function(e) {
     var rect = canvas.getBoundingClientRect();
-    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    var hit = _orreryHitTest(mx, my, 10);
-    if (hit && hit.type === 'planet' && hit.data.name !== 'Earth') {
-      _orreryLaunchRocket(hit.data.name);
-      tooltip.style.display = 'none';
-    } else if (hit && hit.type === 'voyager') {
-      _showVoyagerCard(hit.data.idx);
-      tooltip.style.display = 'none';
-    } else {
-      _hideVoyagerCard();
-    }
+    _orreryTap(e.clientX - rect.left, e.clientY - rect.top, 10);
+    tooltip.style.display = 'none';
   };
 
-  // Touch support for mobile — tap planet to launch, tap Voyager for detail
+  // Touch support — same handler. A touchstart→touchend that moved more than a
+  // few px is a scroll/drag, not a tap, so it never fires an action. On a hit
+  // we preventDefault to kill the synthetic click (no double-firing).
+  var _orreryTouchStart = null;
+  canvas.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 1) _orreryTouchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, { passive: true });
   canvas.addEventListener('touchend', function(e) {
     if (e.changedTouches.length === 0) return;
     var touch = e.changedTouches[0];
+    if (_orreryTouchStart) {
+      var moved = Math.abs(touch.clientX - _orreryTouchStart.x) + Math.abs(touch.clientY - _orreryTouchStart.y);
+      _orreryTouchStart = null;
+      if (moved > 12) return; // a drag/scroll, not a tap
+    }
     var rect = canvas.getBoundingClientRect();
     var mx = touch.clientX - rect.left, my = touch.clientY - rect.top;
-    var hit = _orreryHitTest(mx, my, 14);
-    if (hit && hit.type === 'planet') {
-      e.preventDefault();
-      _orreryLaunchRocket(hit.data.name);
-    } else if (hit && hit.type === 'voyager') {
-      e.preventDefault();
-      _showVoyagerCard(hit.data.idx);
-    }
+    if (_orreryHitTest(mx, my, 14)) e.preventDefault();
+    _orreryTap(mx, my, 14);
   });
 
   // Initial date display
