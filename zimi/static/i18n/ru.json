@@ -953,7 +953,6 @@
   "dl_switch_direct_tip": "Отменить одноранговую передачу и загрузить по HTTP",
   "dl_switching_direct": "Переключение…",
   "cache_storage_title": "Кэш",
-  "alm_not_in_library": "«{name}» нет в вашей библиотеке",
   "catalog_caches": "Кэш каталога",
   "cache_staging": "Промежуточные файлы",
   "cache_other": "Прочее",

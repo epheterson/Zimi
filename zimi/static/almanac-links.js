@@ -1,35 +1,33 @@
 // Almanac deep-links — turn almanac entities into taps that open the matching
-// encyclopedia article DIRECTLY from the user's INSTALLED library, in their
-// preferred article language. A tap NEVER routes through the search bar — it
-// either lands on the article or shows a "not in your library" toast and stays
-// put in the almanac. Fail-soft by design (Eric's bar):
-//   - No encyclopedia ZIM installed  → entities render as plain text (zero clutter).
-//   - A tap that can't be resolved    → in-almanac toast, no navigation (never a dead end).
+// encyclopedia article DIRECTLY from the user's INSTALLED library. This is a
+// CLOSED SET: the curated map below carries a stable Wikidata Q-ID for every
+// linkable entity, and the almanac resolves those Q-IDs against the installed
+// library in ONE batch on open (POST /almanac-links). The returned map is
+// authoritative:
+//   - Q-ID resolves to an installed article → the entity renders as a direct
+//     link; a tap opens it with zero further requests.
+//   - Q-ID doesn't resolve (or no encyclopedia installed) → plain text.
+// There is deliberately NO title search, no /suggest chain, no direct-path
+// probe, and no on-tap fetch. A Q-ID that doesn't map to a real article is
+// simply not a link — a wrong link is worse than no link. Entities in the map
+// without a `q` field can never become links.
 //
-// Resolution tries hard before giving up, in order:
-//   (a) /suggest against the best-language wikipedia ZIM with the localized label
-//   (b) /suggest against the best-language ZIM with the curated English title
-//   (c) /suggest against English wikipedia (if different) with the English title
-//   (d) a verified title-with-underscores direct-path probe (HEAD before open)
-// Every /suggest hit is guarded: the result title must case-fold-equal or
-// start-with the query, else it's discarded as a garbage match.
-//
-// Q-IDs in the map below are provenance / future-proofing: there is no
-// client-callable Q-ID→path endpoint today (interlang's /article-languages needs
-// an already-open zim+path), so the title is what actually resolves.
+// Server side: resolve_almanac_qids() in interlang.py consults each installed
+// wikipedia/vikidia ZIM's Q-ID index (sqlite) in language-preference order.
 //
 // This module shares global scope with app.js + the other almanac modules
 // (all loaded as plain <script>s), so it calls openArticle(), zimsCache,
-// _getPrefLanguages(), _currentLang, etc. directly.
+// _getPrefLanguages(), _currentLang, _almanacOpen, _renderAlmanacContent, etc.
+// directly.
 
 (function () {
   'use strict';
 
   // ── Curated entity map ──────────────────────────────────────────────────
   // key → { q: 'Q…', en: '<English Wikipedia article title>' }
-  // Keys are namespaced by category. `en` is the load-bearing field (used as
-  // the /suggest query against English wikipedia and as a disambiguated title);
-  // `q` is stable identity for the future Q-ID path.
+  // Keys are namespaced by category. `q` is the load-bearing field: it is the
+  // stable Wikidata identity resolved server-side against the installed library.
+  // `en` is retained as human-readable provenance (which article the Q-ID is).
 
   var PLANETS = {
     'planet:mercury': { q: 'Q308', en: 'Mercury (planet)' },
@@ -263,261 +261,175 @@
   [PLANETS, PROBES, CONSTELLATIONS, SHOWERS, ECLIPSES, CALENDARS, ZODIAC, STARS, HOLIDAYS]
     .forEach(function (group) { for (var k in group) if (group.hasOwnProperty(k)) MAP[k] = group[k]; });
 
-  // ── Encyclopedia ZIM detection + language selection ─────────────────────
+  // Register curated holidays under a "holiday:<norm>" key so wrapHoliday() can
+  // map a displayed label straight to its curated Q-ID entry.
+  for (var hn in HOLIDAYS) if (HOLIDAYS.hasOwnProperty(hn)) MAP['holiday:' + hn] = HOLIDAYS[hn];
 
   function _norm(s) {
     return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
   }
 
+  // -- Preloaded Q-ID -> article map (the closed set, resolved once) --------
+  //
+  // On almanac open we send the whole curated Q-ID set to the server in ONE
+  // batch (/almanac-links) and get back {qid -> {zim, path, title}} for the
+  // Q-IDs that resolve to an article in the installed library. That map is
+  // authoritative: an entity whose Q-ID is present renders as a direct link
+  // (tap -> openArticle, zero further requests); every other entity renders as
+  // plain text. There is no title search, no probe, no on-tap fetch -- a Q-ID
+  // that doesn't resolve is simply not a link.
+
   // A ZIM is an "encyclopedia" target if it's a wikipedia-family or vikidia
-  // archive (the ones whose article titles match our entity names).
-  var _ENC_RE = /^(wikipedia|vikidia)_/i;
-  var _encZimsCache = null; // reset per open via reset()
+  // archive. Mirrors _ALMANAC_ENC_RE server-side; used here only to (a) skip
+  // the batch entirely when nothing could resolve and (b) key the cache.
+  var _ENC_RE = /^(wikipedia|vikidia)/i;
+  var _encNamesCache = null; // reset per open via reset()
 
-  function _encZims() {
-    if (_encZimsCache) return _encZimsCache;
+  function _encZimNames() {
+    if (_encNamesCache) return _encNamesCache;
     var list = (typeof zimsCache !== 'undefined' && zimsCache) ? zimsCache : [];
-    _encZimsCache = list.filter(function (z) { return z && _ENC_RE.test(z.name); });
-    return _encZimsCache;
+    _encNamesCache = list
+      .filter(function (z) { return z && _ENC_RE.test(z.name); })
+      .map(function (z) { return z.name; });
+    return _encNamesCache;
   }
 
-  // Any encyclopedia ZIM installed → entities become tappable. Cheap, cached:
-  // this is the zero-probe gate that keeps the almanac clutter-free when the
-  // library has nothing to link to.
-  function linkable() { return _encZims().length > 0; }
-
-  function _articleCount(z) {
-    return (z && typeof z.article_count === 'number') ? z.article_count
-         : (z && typeof z.entries === 'number') ? z.entries : 0;
-  }
-
-  // Best encyclopedia ZIM for a given language code (largest wins).
-  function _bestZimForLang(lang) {
-    var best = null;
-    _encZims().forEach(function (z) {
-      if ((z.language || '') !== lang) return;
-      if (!best || _articleCount(z) > _articleCount(best)) best = z;
-    });
-    return best;
-  }
-
-  // Language priority: user's article-language prefs → UI language → English →
-  // whatever encyclopedia is installed. Returns a ZIM object or null.
-  function _targetZim() {
+  // Language preference for resolution order: user's article-language prefs ->
+  // UI language -> English. Sent to the server, which picks the best ZIM per ID.
+  function _prefLangs() {
     var order = [];
     try {
       var prefs = (typeof _getPrefLanguages === 'function') ? _getPrefLanguages() : [];
-      for (var i = 0; i < prefs.length; i++) if (prefs[i] !== 'multi') order.push(prefs[i]);
+      for (var i = 0; i < prefs.length; i++) {
+        if (prefs[i] && prefs[i] !== 'multi' && order.indexOf(prefs[i]) < 0) order.push(prefs[i]);
+      }
     } catch (e) {}
-    if (typeof _currentLang !== 'undefined' && _currentLang) order.push(_currentLang);
-    order.push('en');
-    for (var j = 0; j < order.length; j++) {
-      var z = _bestZimForLang(order[j]);
-      if (z) return z;
+    if (typeof _currentLang !== 'undefined' && _currentLang && order.indexOf(_currentLang) < 0) {
+      order.push(_currentLang);
     }
-    // Fall back to the largest encyclopedia regardless of language.
-    var all = _encZims(), fb = null;
-    for (var k = 0; k < all.length; k++) if (!fb || _articleCount(all[k]) > _articleCount(fb)) fb = all[k];
-    return fb;
+    if (order.indexOf('en') < 0) order.push('en');
+    return order;
   }
 
-  // ── Resolution (session-cached, resolve-on-tap) ─────────────────────────
+  // All curated Q-IDs (the closed set), deduped. Entities without a `q` field
+  // contribute nothing -- they can never become links.
+  function _allQids() {
+    var seen = {}, out = [];
+    for (var k in MAP) {
+      if (!MAP.hasOwnProperty(k)) continue;
+      var q = MAP[k] && MAP[k].q;
+      if (q && !seen[q]) { seen[q] = 1; out.push(q); }
+    }
+    return out;
+  }
 
-  var _resolveCache = {}; // "key|label" → {zim,path,title} | 'miss'
+  var _qidLinks = {};     // 'Qxxx' -> {zim, path, title}   (resolved hits only)
+  var _qidSig = null;     // signature of the library+langs _qidLinks was built for
+  var _qidLoaded = false; // a batch response has landed for the current signature
+
+  // Signature so the session cache re-fetches only when the library or language
+  // prefs actually change (re-fetch on library change -- not on every open).
+  function _signature(names, langs) {
+    return names.slice().sort().join(',') + '|' + langs.join(',');
+  }
+
+  // Batch-resolve the closed set for the current library. Cached per signature;
+  // a no-op when the signature is unchanged (reopen with a warm cache renders
+  // links on the first paint, no flash). Fail-soft: offline / no encyclopedia /
+  // no server -> the map stays empty and every entity is plain text.
+  function _preload() {
+    var names = _encZimNames();
+    var langs = _prefLangs();
+    var sig = _signature(names, langs);
+    if (sig === _qidSig && _qidLoaded) return;   // warm cache -- nothing to do
+    _qidSig = sig;
+    _qidLoaded = false;
+    _qidLinks = {};
+    if (!names.length) { _qidLoaded = true; return; } // no target -> all plain text
+    var qids = _allQids();
+    if (!qids.length) { _qidLoaded = true; return; }
+    fetch('/almanac-links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ qids: qids, langs: langs })
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data || sig !== _qidSig) return; // superseded by a newer reset()
+        _qidLinks = data.links || {};
+        _qidLoaded = true;
+        // Entities that rendered plain before the batch landed become links now.
+        if (typeof _almanacOpen !== 'undefined' && _almanacOpen &&
+            typeof _renderAlmanacContent === 'function') {
+          _renderAlmanacContent();
+        }
+      })
+      .catch(function () { /* offline / no server -> stays plain text */ });
+  }
+
+  // The curated Q-ID for an entity key, or null.
+  function _qidFor(key) {
+    var entry = key ? MAP[key] : null;
+    return entry && entry.q ? entry.q : null;
+  }
+
+  // -- Open (direct, from the preloaded map) --------------------------------
 
   // The reader overlay renders beneath the open almanac view, so we must leave
-  // the almanac before opening an article — otherwise the article loads hidden.
+  // the almanac before opening an article -- otherwise the article loads hidden.
   function _leaveAlmanac() {
     try { if (typeof closeAlmanac === 'function') closeAlmanac(); } catch (e) {}
   }
 
-  function _openArticle(zim, path, title) {
-    _leaveAlmanac();
-    openArticle(zim, path, title);
-  }
-
-  // Total-miss handler: never a dead end, never a search handoff — surface the
-  // app's own toast and stay in the almanac.
-  function _notInLibrary(name) {
-    try {
-      var msg = (typeof t === 'function')
-        ? t('alm_not_in_library', { name: name || '' })
-        : ('“' + (name || '') + '” isn’t in your library');
-      if (typeof _showToast === 'function') _showToast(msg);
-    } catch (e) {}
-  }
-
-  // A /suggest hit is trustworthy only if its title case-fold-equals or
-  // starts-with the query — otherwise SuggestionSearcher's fuzzy tail can hand
-  // back an unrelated article. Guards every attempt.
-  function _titleMatches(resultTitle, query) {
-    var a = String(resultTitle || '').trim().toLowerCase();
-    var b = String(query || '').trim().toLowerCase();
-    if (!a || !b) return false;
-    return a === b || a.indexOf(b) === 0;
-  }
-
-  // Build the ordered (zim, query) attempt list. Deduped; skips empties.
-  function _buildAttempts(entry, label) {
-    var out = [], seen = {};
-    function push(zim, query) {
-      if (!zim || !query) return;
-      var k = zim.name + ' ' + query;
-      if (seen[k]) return;
-      seen[k] = 1;
-      out.push({ zim: zim, query: query });
-    }
-    var best = _targetZim();
-    var en = _bestZimForLang('en');
-    var enTitle = entry && entry.en ? entry.en : '';
-    push(best, label);       // (a) best-language ZIM, localized label
-    push(best, enTitle);     // (b) best-language ZIM, curated English title
-    push(en, enTitle);       // (c) English wikipedia, curated English title
-    push(en, label);         //     …and the label, in case en is all that's installed
-    return out;
-  }
-
-  // One /suggest probe. Resolves to {zim,path,title} on a guarded hit, else null.
-  function _suggestOne(zim, query) {
-    return fetch('/suggest?q=' + encodeURIComponent(query) + '&limit=5&zim=' + encodeURIComponent(zim.name))
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        // /suggest returns {zim_name: [{path,title}, …]}
-        for (var zn in data) {
-          if (!data.hasOwnProperty(zn)) continue;
-          var items = data[zn] || [];
-          for (var i = 0; i < items.length; i++) {
-            var it = items[i];
-            if (it && it.path && !it.error && _titleMatches(it.title, query)) {
-              return { zim: zn, path: it.path, title: it.title || query };
-            }
-          }
-        }
-        return null;
-      })
-      .catch(function () { return null; });
-  }
-
-  // Try each /suggest attempt in order; first guarded hit wins.
-  function _resolveChain(attempts, i) {
-    if (i >= attempts.length) return Promise.resolve(null);
-    return _suggestOne(attempts[i].zim, attempts[i].query).then(function (hit) {
-      return hit || _resolveChain(attempts, i + 1);
-    });
-  }
-
-  // (d) Last resort: probe title-with-underscores direct paths. Verify each with
-  // a real GET before committing so a 404 never surfaces a broken reader. (HEAD
-  // is deliberately NOT used: Zimi's BaseHTTPServer answers HEAD 200 even for
-  // missing paths — only GET returns the honest 404.)
-  function _directPathAttempt(attempts) {
-    var cands = [];
-    attempts.forEach(function (a) {
-      var q = a.query, us = q.replace(/ /g, '_');
-      [us, 'A/' + us, q, 'A/' + q].forEach(function (p) {
-        cands.push({ zim: a.zim.name, path: p, title: q });
-      });
-    });
-    return _verifyChain(cands, 0);
-  }
-
-  function _verifyChain(cands, i) {
-    if (i >= cands.length) return Promise.resolve(null);
-    var c = cands[i];
-    var url = '/w/' + encodeURIComponent(c.zim) + '/' +
-      c.path.split('/').map(encodeURIComponent).join('/');
-    return fetch(url, { method: 'GET' })
-      .then(function (r) { return (r && r.ok) ? c : _verifyChain(cands, i + 1); })
-      .catch(function () { return _verifyChain(cands, i + 1); });
-  }
-
-  // Resolve a tapped entity and open it directly. key may be null (label-only,
-  // e.g. an uncurated holiday); label is the localized on-screen text.
-  function open(key, label) {
+  // Open a tapped entity directly from the preloaded map. Only linked entities
+  // are tappable, so a missing hit is a no-op -- never a dead end, never a
+  // toast, never a search.
+  function open(key) {
     if (typeof openArticle !== 'function') return;
-    var entry = key ? MAP[key] : null;
-    var display = label || (entry && entry.en) || '';
-    if (!linkable()) { _notInLibrary(display); return; }
-
-    var attempts = _buildAttempts(entry, label);
-    if (!attempts.length) { _notInLibrary(display); return; }
-
-    var cacheKey = (key || '') + '|' + (label || '');
-    var cached = _resolveCache[cacheKey];
-    if (cached === 'miss') { _notInLibrary(display); return; }
-    if (cached) { _openArticle(cached.zim, cached.path, cached.title); return; }
-
-    _resolveChain(attempts, 0)
-      .then(function (hit) { return hit || _directPathAttempt(attempts); })
-      .then(function (hit) {
-        if (hit) {
-          _resolveCache[cacheKey] = hit;
-          _openArticle(hit.zim, hit.path, hit.title);
-        } else {
-          _resolveCache[cacheKey] = 'miss';
-          _notInLibrary(display);
-        }
-      })
-      .catch(function () { _notInLibrary(display); });
+    var q = _qidFor(key);
+    var hit = q ? _qidLinks[q] : null;
+    if (!hit) return;
+    _leaveAlmanac();
+    openArticle(hit.zim, hit.path, hit.title);
   }
 
-  // ── Linkify helper for render sites ─────────────────────────────────────
+  // -- Linkify helpers for render sites -------------------------------------
 
   function _escAttr(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  // Wrap an already-escaped label in a tappable span. Fail-soft: returns the
-  // label untouched when nothing is installed to link to.
-  //   key        — entity key in MAP (or null for label-only linking)
-  //   innerHtml  — the display HTML (already escaped/localized)
-  //   label      — plain-text localized label used for resolution (defaults to innerHtml)
-  function wrap(key, innerHtml, label) {
-    if (!linkable()) return innerHtml;
-    if (key && !MAP[key]) key = null;      // unknown key → treat as label-only
-    var resolveLabel = (label != null) ? label : innerHtml;
-    if (!key && !resolveLabel) return innerHtml;
+  function _linkSpan(key, innerHtml) {
     return '<span class="alm-link" role="link" tabindex="0" data-alm-key="' +
-      _escAttr(key || '') + '" data-alm-label="' + _escAttr(resolveLabel) + '">' +
-      innerHtml + '</span>';
+      _escAttr(key) + '">' + innerHtml + '</span>';
   }
 
-  // Holiday convenience: resolve a curated entry from the displayed label.
-  // Returns the curated key if the (English) label is in our list, else null;
-  // uncurated holidays still link by label via wrap(null, …).
-  function holidayKey(label) {
-    var n = _norm(label);
-    return HOLIDAYS[n] ? 'holiday-alias' : null; // marker; open() reads label
+  // Wrap an already-escaped label in a tappable span IFF its curated Q-ID
+  // resolved to an installed article. Otherwise return the label untouched
+  // (plain text). `label` is accepted for call-site compatibility but no longer
+  // used -- resolution is by Q-ID, not by title.
+  function wrap(key, innerHtml, label) { // eslint-disable-line no-unused-vars
+    var q = _qidFor(key);
+    return (q && _qidLinks[q]) ? _linkSpan(key, innerHtml) : innerHtml;
   }
 
-  // For a holiday we prefer the curated English title when available.
+  // Holiday convenience: map the displayed label to its curated entry, then
+  // link only if that entry's Q-ID resolved. Uncurated holidays (no curated
+  // Q-ID) stay plain text -- closed set, no guessing.
   function wrapHoliday(displayHtml, label) {
-    if (!linkable()) return displayHtml;
     var n = _norm(label);
-    if (HOLIDAYS[n]) {
-      // Curated: carry the English title as the resolution label so English
-      // wikipedia gets an exact hit; localized ZIMs fall back to /suggest logic.
-      return '<span class="alm-link" role="link" tabindex="0" data-alm-key="holiday:' +
-        _escAttr(n) + '" data-alm-label="' + _escAttr(label) + '">' + displayHtml + '</span>';
-    }
-    return wrap(null, displayHtml, label);
+    return HOLIDAYS[n] ? wrap('holiday:' + n, displayHtml, label) : displayHtml;
   }
 
-  // Register curated holidays under a "holiday:<norm>" key so open() finds the
-  // English title.
-  for (var hn in HOLIDAYS) if (HOLIDAYS.hasOwnProperty(hn)) MAP['holiday:' + hn] = HOLIDAYS[hn];
-
-  // ── Delegated tap handler (bound once) ──────────────────────────────────
+  // -- Delegated tap handler (bound once) -----------------------------------
 
   function _handle(e) {
     var el = e.target;
     while (el && el !== document) {
       if (el.classList && el.classList.contains('alm-link')) {
         e.preventDefault(); e.stopPropagation();
-        var key = el.getAttribute('data-alm-key') || null;
-        var label = el.getAttribute('data-alm-label') || '';
-        open(key || null, label);
+        open(el.getAttribute('data-alm-key') || null);
         return;
       }
       el = el.parentNode;
@@ -536,12 +448,17 @@
     });
   }
 
-  // Reset per-open caches (library may have changed between opens — that can
-  // flip both which ZIMs are targets AND whether a prior 'miss' still holds).
-  function reset() { _encZimsCache = null; _resolveCache = {}; }
+  // Called on every almanac open. Drops the encyclopedia-name cache (the
+  // library may have changed) and kicks off the batch preload; _preload()
+  // itself no-ops when the signature is unchanged, so a reopen with the same
+  // library reuses the session cache.
+  function reset() {
+    _encNamesCache = null;
+    _preload();
+  }
 
   window.AlmanacLinks = {
-    MAP: MAP, wrap: wrap, wrapHoliday: wrapHoliday, holidayKey: holidayKey,
-    open: open, linkable: linkable, bind: bind, reset: reset
+    MAP: MAP, wrap: wrap, wrapHoliday: wrapHoliday,
+    open: open, bind: bind, reset: reset
   };
 })();

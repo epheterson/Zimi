@@ -1729,6 +1729,9 @@ from zimi.interlang import (  # noqa: E402, F401
     _qid_cache_store,
     _qid_find_in_zim,
     _qid_has_index,
+    # Almanac deep-links (closed-set Q-ID → article batch resolution)
+    resolve_almanac_qids,
+    ALMANAC_QID_BATCH_MAX,
     # Cross-ZIM resolution
     _domain_zim_map,
     _xzim_refs,

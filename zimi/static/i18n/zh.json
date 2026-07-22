@@ -953,7 +953,6 @@
   "dl_switch_direct_tip": "取消点对点传输，改用 HTTP 下载",
   "dl_switching_direct": "正在切换…",
   "cache_storage_title": "缓存",
-  "alm_not_in_library": "“{name}”不在你的库中",
   "catalog_caches": "目录缓存",
   "cache_staging": "暂存",
   "cache_other": "其他",

@@ -135,6 +135,7 @@ _RATE_LIMITED_API_PATHS = (
     "/random",
     "/chunks",
     "/openapi.json",
+    "/almanac-links",
 )
 
 # High-frequency read-only manage polls. While a download runs the manage UI
@@ -196,6 +197,27 @@ def _check_rate_limit(ip, content=False, limit=None):
         if len(buckets) > 10000:
             buckets.clear()
     return 0
+
+
+def _almanac_links_response(handler, qids, langs):
+    """Shared GET/POST handler body for /almanac-links.
+
+    Validates the batch shape/size, then batch-resolves the closed set of
+    Wikidata Q-IDs to installed articles (hits only). Q-ID format validation
+    lives in resolve_almanac_qids, so a malformed token is silently skipped,
+    not an error. Returns {"links": {qid: {zim, path, title}}}.
+    """
+    if not isinstance(qids, list):
+        return handler._json(400, {"error": "'qids' must be a list"})
+    if len(qids) > _srv.ALMANAC_QID_BATCH_MAX:
+        return handler._json(
+            400,
+            {"error": f"too many qids (max {_srv.ALMANAC_QID_BATCH_MAX})"},
+        )
+    if langs is not None and not isinstance(langs, list):
+        return handler._json(400, {"error": "'langs' must be a list"})
+    links = _srv.resolve_almanac_qids(qids, langs)
+    return handler._json(200, {"links": links})
 
 
 # ============================================================================
@@ -788,6 +810,14 @@ class ZimHandler(BaseHTTPRequestHandler):
                 _record_metric("/suggest", time.time() - t0)
                 return self._json(200, result)
 
+            elif parsed.path == "/almanac-links":
+                # Closed-set Q-ID → installed-article batch resolution for the
+                # almanac. GET form: ?qids=Q1,Q2,...&langs=en,fr (POST carries
+                # the same shape as JSON, for large batches).
+                qids = [q for q in param("qids", "").split(",") if q]
+                langs = [x for x in param("langs", "").split(",") if x]
+                return _almanac_links_response(self, qids, langs)
+
             elif parsed.path == "/list":
                 result = _srv.list_zims()
                 # Per-ZIM category overrides win over the _categorize_zim
@@ -1313,6 +1343,22 @@ class ZimHandler(BaseHTTPRequestHandler):
                     else:
                         results[url_str] = {"found": False}
                 return self._json(200, {"results": results})
+
+            elif parsed.path == "/almanac-links":
+                # Batch Q-ID resolution (closed set) — same public, rate-limited
+                # read as /suggest; the almanac POSTs its full ~250-Q-ID set.
+                retry_after = _check_rate_limit(
+                    self._client_ip(), limit=self._rate_limit_for_request()
+                )
+                if retry_after > 0:
+                    with _metrics_lock:
+                        _metrics["rate_limited"] += 1
+                    return self._json(
+                        429, {"error": "rate limited", "retry_after": retry_after}
+                    )
+                return _almanac_links_response(
+                    self, data.get("qids", []), data.get("langs")
+                )
 
             elif parsed.path == "/collections":
                 # Auth: only enforce password when manage mode is on (collections are

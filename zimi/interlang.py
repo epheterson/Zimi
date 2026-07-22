@@ -458,6 +458,126 @@ def _qid_has_index(zim_name):
     return _get_qid_db(zim_name) is not None
 
 
+# ---------------------------------------------------------------------------
+# Almanac deep-links: batch Q-ID → installed-article resolution
+# ---------------------------------------------------------------------------
+#
+# The almanac ships a curated, CLOSED SET of Wikidata Q-IDs (see
+# static/almanac-links.js). On open it asks the server, in one batch, which of
+# those Q-IDs resolve to an article in the user's installed encyclopedia ZIMs.
+# Resolution is authoritative: a Q-ID either maps to a real article (direct
+# link) or it doesn't (plain text). There is deliberately NO title-search
+# fallback — a wrong link is worse than no link.
+
+# Valid Wikidata Q-ID token (e.g. "Q42").
+_ALMANAC_QID_RE = re.compile(r"^Q\d+$")
+
+# Hard cap on a single batch. The curated set is ~250 entries; this bounds
+# work (and memory) if a client sends a padded or hostile list.
+ALMANAC_QID_BATCH_MAX = 400
+
+# Only wikipedia/vikidia-family archives carry the encyclopedia articles the
+# almanac's entity Q-IDs point at. Mirrors _ENC_RE in almanac-links.js.
+_ALMANAC_ENC_RE = re.compile(r"^(wikipedia|vikidia)", re.IGNORECASE)
+
+
+def _almanac_title_from_path(path):
+    """Derive a human title from a ZIM article path.
+
+    Strips the 'A/' namespace, percent-decodes, and turns underscores into
+    spaces (e.g. 'A/Mercury_(planet)' → 'Mercury (planet)'). Purely lexical so
+    it never touches libzim — the reader only needs a header label, and the
+    real title is embedded in the article anyway.
+    """
+    p = path[2:] if path.startswith("A/") else path
+    return unquote(p).replace("_", " ")
+
+
+def _almanac_candidate_zims(langs):
+    """Ordered encyclopedia ZIMs for almanac Q-ID resolution.
+
+    Preference order: the user's languages (in the order given) → English →
+    everything else. Within a language the best-quality / largest archive wins
+    (reuses _zim_quality_score). Only wikipedia/vikidia-family archives take
+    part. Computed once per batch, not per Q-ID.
+    """
+    order = []
+    for lang in langs or []:
+        if lang and lang != "multi" and lang not in order:
+            order.append(lang)
+    if "en" not in order:
+        order.append("en")
+
+    def sort_key(z):
+        lang = z.get("language", "")
+        rank = order.index(lang) if lang in order else len(order)
+        count = z.get("entry_count") or z.get("article_count") or 0
+        return (rank, -_zim_quality_score(z.get("name", "")), -count)
+
+    enc = [
+        z
+        for z in (_srv._zim_list_cache or [])
+        if _ALMANAC_ENC_RE.match(z.get("name", ""))
+    ]
+    enc.sort(key=sort_key)
+    return enc
+
+
+def resolve_almanac_qids(qids, langs=None):
+    """Batch-resolve a closed set of Wikidata Q-IDs to installed articles.
+
+    For each Q-ID, consult every candidate encyclopedia ZIM's Q-ID index (and
+    its on-demand cache) in language-preference order; the first hit wins.
+    Resolution is pure SQLite — the Q-ID index and cache are both sqlite tables
+    with check_same_thread=False connections, and SQLite serializes access
+    internally — so this needs neither libzim nor _zim_lock and stays fast for
+    a ~250-Q-ID batch (a handful of indexed SELECTs per ID).
+
+    ZIMs WITHOUT a built Q-ID index (large full Wikipedias that were too big to
+    full-scan) contribute only entries already sitting in the on-demand cache
+    from prior interlang hops. They are NOT scanned per-Q-ID here: that path
+    needs a libzim title search + HTML read + verify per ID, which is far too
+    expensive for a page-open batch. A library whose only encyclopedia lacks a
+    built index therefore yields few/no links — by design, not a bug, and never
+    a title-search fallback.
+
+    Args:
+        qids: iterable of Q-ID strings (e.g. ["Q308", "Q2"]). Malformed or
+            duplicate entries are skipped.
+        langs: preferred language codes, most-preferred first.
+
+    Returns:
+        {qid: {"zim", "path", "title"}} for HITS ONLY. Unmatched Q-IDs are
+        simply absent — the caller renders those entities as plain text.
+    """
+    out = {}
+    if not qids:
+        return out
+    cands = _almanac_candidate_zims(langs)
+    if not cands:
+        return out
+    seen = set()
+    for q in qids:
+        if not isinstance(q, str):
+            continue
+        q = q.strip()
+        if q in seen or not _ALMANAC_QID_RE.match(q):
+            continue
+        seen.add(q)
+        qid_int = int(q[1:])
+        for z in cands:
+            name = z.get("name", "")
+            path = _qid_find_in_zim(name, qid_int)
+            if path:
+                out[q] = {
+                    "zim": name,
+                    "path": path,
+                    "title": _almanac_title_from_path(path),
+                }
+                break
+    return out
+
+
 def _check_one_article_for_qid(zim_path):
     """Sample random HTML articles from a ZIM and check for Wikidata Q-IDs.
 

@@ -953,7 +953,6 @@
   "dl_switch_direct_tip": "Peer-to-Peer-Übertragung abbrechen und stattdessen über HTTP herunterladen",
   "dl_switching_direct": "Wechsle…",
   "cache_storage_title": "Cache",
-  "alm_not_in_library": "„{name}“ ist nicht in deiner Bibliothek",
   "catalog_caches": "Katalog-Caches",
   "cache_staging": "Zwischenspeicher",
   "cache_other": "Sonstiges",

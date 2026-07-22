@@ -538,9 +538,9 @@ let _pwPreviousFocus = null;
 function openPwModal(title, opts) {
   document.getElementById('pw-title').textContent = title || t('enter_password');
   // Prefill the username with what this session logged in as (continuity on a
-  // change-password), else the neutral 'zimi' default.
+  // change-password), else the neutral 'admin' default.
   var uEl = document.getElementById('pw-username');
-  if (uEl) uEl.value = _manageUser || 'zimi';
+  if (uEl) uEl.value = _manageUser || 'admin';
   document.getElementById('pw-input').value = '';
   document.getElementById('pw-input').placeholder = (opts && opts.placeholder) || t('password');
   document.getElementById('pw-input').autocomplete = (opts && opts.hideRemember) ? 'new-password' : 'current-password';
@@ -597,10 +597,10 @@ function submitPw() {
   const pw = document.getElementById('pw-input').value.trim();
   if (!pw) return;
   // Capture the optional username so _authHeaders sends X-Zimi-User on the
-  // verify/retry. Blank field → 'zimi' (matches the passwordless keychain UX
+  // verify/retry. Blank field → 'admin' (matches the passwordless keychain UX
   // and the server's any-value-passes rule when no username is configured).
   const uEl = document.getElementById('pw-username');
-  _manageUser = (uEl && uEl.value.trim()) || 'zimi';
+  _manageUser = (uEl && uEl.value.trim()) || 'admin';
   if (_pwResolve) {
     _pwReject = null;  // prevent cancel on close
     document.getElementById('pw-error').style.display = 'none';
@@ -2147,10 +2147,10 @@ function openAlmanac(replaceState) {
     // share a global scope, so load them in sequence and only open once the
     // last one lands — opening early would call into functions not yet defined.
     var almanacModules = [
-      '/static/almanac-links.js?v=43',
-      '/static/almanac-orrery.js?v=43',
-      '/static/almanac-sky.js?v=43',
-      '/static/almanac.js?v=43'
+      '/static/almanac-links.js?v=44',
+      '/static/almanac-orrery.js?v=44',
+      '/static/almanac-sky.js?v=44',
+      '/static/almanac.js?v=44'
     ];
     var loadNext = function(i) {
       if (i >= almanacModules.length) {
@@ -7021,7 +7021,7 @@ async function managePassword() {
   _pwResolve = async function(newPw) {
     // submitPw set _manageUser from the (now visible) username field; store it
     // alongside the new password so future logins must present it.
-    const body = {password: newPw, username: _manageUser || 'zimi'};
+    const body = {password: newPw, username: _manageUser || 'admin'};
     if (has.has_password && _manageToken) body.current = _manageToken;
     const res = await manageFetch('/manage/set-password', {
       method: 'POST',
