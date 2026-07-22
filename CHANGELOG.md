@@ -843,11 +843,11 @@ mini), and delivers the Reach track: P2P distribution + accessibility.
       input → exits source/manage view, in that order, never trapping
     - Two-step Esc on search (1st: hide dropdown, 2nd: clear input)
       is intentional so users can see results before discarding
-  - **Two-machine LAN test** — spun up a second Zimi instance on the
-    Mac (`10.0.0.229:9000`), bound to 0.0.0.0 with 3 ZIMs. Verified:
+  - **Two-machine LAN test** — spun up a second Zimi instance on a
+    LAN host (`:9000`), bound to 0.0.0.0 with 3 ZIMs. Verified:
     - `dns-sd -B _zimi._tcp local.` from a third device on the LAN
       sees both instances simultaneously
-    - NAS `/manage/peers` lists `zimi-Erics-iMac` with the right
+    - NAS `/manage/peers` lists the second host with the right
       host/port/zim-count
     - Mac `/manage/peers` lists `zimi-elpnas` (69 ZIMs)
     - 8 catalog cards on the Mac show clickable "📡 elpnas" pills

@@ -46,7 +46,7 @@ separately (not blocking the Docker / Linux release).
 
 ## Cloudflare Tunnel reality check
 
-Existing Zimi at `knowledge.zosia.io` is fronted by CF Tunnel.
+Existing Zimi at `zimi.example.com` is fronted by CF Tunnel.
 CF only proxies HTTP/HTTPS. **Inbound BT connections (TCP/UDP on
 port 6881) cannot reach Zimi through CF Tunnel.**
 

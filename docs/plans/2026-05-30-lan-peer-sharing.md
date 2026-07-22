@@ -23,7 +23,7 @@ HTTP is the universal substrate; BitTorrent stays an optional internet/Kiwix-swa
 - New route, e.g. `GET /dl/<zim_name>` in `http.py`. Resolve `zim_name` → path via `get_zim_files()` (known-names only; **no arbitrary path → no traversal**).
 - Stream from disk in chunks (must NOT load multi-GB into memory; current range code at `http.py:1240` reads in-memory ZIM *content* — different path). Reuse `_parse_range` (`http.py:1342`).
 - Emit `Accept-Ranges: bytes`, `206 Partial Content` + `Content-Range` on range, `Content-Length`, `Content-Type: application/octet-stream`.
-- **Safe-by-default exposure:** serve only when client remote IP is private/loopback/link-local, OR `ZIMI_PEER_SHARE_PUBLIC=1`. Master toggle `ZIMI_PEER_SHARE` (default on). Prevents WAN (`knowledge.zosia.io`) from vacuuming ZIMs.
+- **Safe-by-default exposure:** serve only when client remote IP is private/loopback/link-local, OR `ZIMI_PEER_SHARE_PUBLIC=1`. Master toggle `ZIMI_PEER_SHARE` (default on). Prevents WAN (`zimi.example.com`) from vacuuming ZIMs.
 
 ### 2. Peer manifest: exact size + optional sha
 - Extend the peer-facing list (`/list` → `list_zims()` at `server.py:631`) to add `size_bytes` (exact, for byte verification) and `sha256` **only if already cached** (never hash a 90 GB file on demand — would hammer NAS disk; compute lazily/once, store in `cache.json`).

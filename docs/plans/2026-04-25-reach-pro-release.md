@@ -107,7 +107,7 @@ The initial token check should read `localStorage` first, then `sessionStorage` 
 
 **Step 4: Show badge with count** when active+queued > 0.
 
-**Step 5: Visual verify** via Chrome MCP against `https://knowledge.zosia.io`: catalog filter menu sits at top regardless of download count.
+**Step 5: Visual verify** via Chrome MCP against `https://zimi.example.com`: catalog filter menu sits at top regardless of download count.
 
 **Step 6: Commit.**
 

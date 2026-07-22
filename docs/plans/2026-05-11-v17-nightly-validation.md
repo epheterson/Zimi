@@ -10,7 +10,7 @@
 
 ## Night 1 — UI/UX core flows (~45 min)
 
-Open `https://knowledge.zosia.io` (after re-deploy) or local `python3 -m zimi serve` with at least 3 ZIMs. No tools other than your eyes.
+Open `https://zimi.example.com` (after re-deploy) or local `python3 -m zimi serve` with at least 3 ZIMs. No tools other than your eyes.
 
 - ☐ **Home page** loads, shows a populated card grid. Featured ZIMs render. Random card cycles.
 - ☐ **Topbar search** focuses on `/`, suggestions dropdown appears as you type, arrow keys navigate, Enter opens the top hit.

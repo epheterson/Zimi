@@ -100,7 +100,7 @@ def is_public_share_enabled() -> bool:
     """Allow non-private (WAN) clients to pull whole ZIMs from /dl/.
 
     Off by default: a Zimi behind a public reverse proxy
-    (knowledge.zosia.io) should not let the open internet vacuum
+    (a public https:// URL) should not let the open internet vacuum
     multi-GB files. LAN/loopback peers are always allowed when sharing
     is on; ZIMI_NEARBY's public= field (or legacy ZIMI_PEER_SHARE_PUBLIC)
     opts into serving the public."""
@@ -162,9 +162,10 @@ def _peer_instance_name() -> str:
     """Friendly name advertised on mDNS. ZIMI_PEER_NAME env var
     overrides the auto-detected `zimi-<hostname>` form. Sanitized to
     `[a-zA-Z0-9-]+` to keep DNS-SD service names valid."""
-    raw = str(_nearby_conf().get("name", "")).strip() or os.environ.get(
-        "ZIMI_PEER_NAME", ""
-    ).strip()
+    raw = (
+        str(_nearby_conf().get("name", "")).strip()
+        or os.environ.get("ZIMI_PEER_NAME", "").strip()
+    )
     if not raw:
         from zimi import p2p
 

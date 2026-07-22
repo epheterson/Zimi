@@ -5,7 +5,7 @@ pass cover endpoints, status codes, and data shape — this list is the stuff th
 **only a human eye catches**: layout, interaction feel, visual polish, edge cases.
 
 Weighted toward v1.7.0's new surface (built without eyes) and the live QA findings.
-Test against **http://knowledge.zosia.lan** (LAN) and, where noted, a phone for PWA/responsive.
+Test against **http://zimi.local** (LAN) and, where noted, a phone for PWA/responsive.
 
 Legend: 🆕 = new in v1.7.0 · ⚠️ = known finding to confirm · 📱 = check on mobile too
 
