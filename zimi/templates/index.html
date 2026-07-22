@@ -20,7 +20,7 @@
 
 <a href="#main-view" class="skip-link" data-i18n="skip_to_main">Skip to main content</a>
 
-<nav class="topbar" aria-label="Main navigation">
+<nav class="topbar" aria-label="Main navigation" data-i18n-aria="aria_main_nav">
   <div class="topbar-breadcrumb" onclick="bcClick(event)">
     <a id="logo" class="logo" onclick="goHome(event)" title="Home" data-i18n-title="home" aria-label="Home" data-i18n-aria="home">Zimi</a>
     <span id="bc-sep" class="bc-sep" style="display:none">/</span>
@@ -30,7 +30,7 @@
   <div id="history-trail"></div>
   <div class="topbar-search" role="search">
     <label for="q" class="sr-only" data-i18n="search">Search</label>
-    <input type="text" id="q" placeholder="Search everything..." data-i18n-placeholder="search_placeholder" autofocus aria-label="Search" autocomplete="off" aria-autocomplete="list" aria-controls="suggest-dropdown">
+    <input type="text" id="q" placeholder="Search everything..." data-i18n-placeholder="search_placeholder" autofocus aria-label="Search" data-i18n-aria="search" autocomplete="off" aria-autocomplete="list" aria-controls="suggest-dropdown">
     <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>
     <span class="kbd">/</span>
     <div id="suggest-dropdown" class="suggest-dropdown"></div>
@@ -49,11 +49,11 @@
   <button id="readerview-btn" class="reader-btn" style="display:none" aria-pressed="false" title="Reader View" data-i18n-title="reader_view" aria-label="Reader View" data-i18n-aria="reader_view" onclick="_readerViewButtonAction()"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></button>
   <button id="font-btn" class="reader-btn" style="display:none" title="Font size" data-i18n-title="font_size" aria-label="Font size" data-i18n-aria="font_size" onclick="_cycleReaderFont()"><span class="font-glyph" aria-hidden="true">A</span></button>
   <button id="tts-btn" class="reader-btn" style="display:none" aria-pressed="false" title="Read aloud" data-i18n-title="tts_speak" aria-label="Read aloud" data-i18n-aria="tts_speak" onclick="_ttsToggle()"><svg class="tts-icon-speak" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg><svg class="tts-icon-stop" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
-  <button id="save-btn" class="newtab-btn" style="display:none" title="Save to disk" aria-label="Save to disk" onclick="_saveCurrentFile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+  <button id="save-btn" class="newtab-btn" style="display:none" title="Save to disk" data-i18n-title="save_to_disk" aria-label="Save to disk" data-i18n-aria="save_to_disk" onclick="_saveCurrentFile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
   <button class="topbar-more" onclick="_toggleTopbarMenu(event)" aria-label="More" data-i18n-aria="more"><span aria-hidden="true">&#x22EF;</span></button>
   <a id="newtab-btn" class="newtab-btn" href="#" target="_blank" rel="noopener" title="Open in browser" data-i18n-title="open_in_browser" aria-label="Open in browser" data-i18n-aria="open_in_browser" onclick="event.preventDefault();_openInBrowser()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
   <div id="topbar-menu" class="topbar-menu"></div>
-  <div id="reader-palette" class="reader-palette" role="dialog" aria-label="Reader View settings"></div>
+  <div id="reader-palette" class="reader-palette" role="dialog" aria-label="Reader View settings" data-i18n-aria="reader_view_settings"></div>
 
 </nav>
 

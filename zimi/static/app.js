@@ -2433,7 +2433,7 @@ function _renderDiscover(el, items) {
     }
     if (it.type === 'onthisday' && displayTitle) {
       displayTitle = displayTitle.replace(/^Portal:Current events\/?/, '').replace(/_/g, ' ');
-      if (!displayTitle) displayTitle = it.title || 'Historical event';
+      if (!displayTitle) displayTitle = it.title || t('historical_event');
     }
 
     // Detect quote content (for special card template)
@@ -3597,7 +3597,7 @@ function showHistoryDropdown(filter) {
   suggestIndex = -1;
   var icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
   var searchIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.5"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>';
-  var recentHeader = (filter || !items.length) ? '' : '<div style="padding:6px 14px 2px;font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">Recent</div>';
+  var recentHeader = (filter || !items.length) ? '' : '<div style="padding:6px 14px 2px;font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">' + tH('suggest_recent') + '</div>';
   suggestDropdown.innerHTML = pillsHtml + recentHeader +
     items.map(function(it, i) {
       return '<div class="suggest-item" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')" style="display:flex;align-items:center;gap:8px">' +
@@ -3744,7 +3744,7 @@ function _renderLangPills(counts, onclick, validSet) {
   if (_getStorageFlag(SK.HIDE_LANG_CHOOSER)) return '';
   var searchSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>';
   var h = '<div class="catalog-lang-row" oncontextmenu="_langChooserCtxMenu(event)">' +
-    '<div class="catalog-lang-search-btn" onclick="_toggleLangSearch(this)" title="Filter languages">' + searchSvg + '</div>' +
+    '<div class="catalog-lang-search-btn" onclick="_toggleLangSearch(this)" title="' + tH('filter_languages') + '">' + searchSvg + '</div>' +
     '<div class="catalog-lang-scroll" id="catalog-lang-scroll">';
   for (var j = 0; j < langs.length; j++) {
     var lc = langs[j];
@@ -3772,7 +3772,7 @@ function _toggleLangSearch(btn) {
   }
   btn.classList.add('expanded');
   btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>' +
-    '<input type="text" placeholder="Filter…" oninput="_filterLangPills(this)" autofocus>';
+    '<input type="text" placeholder="' + tH('filter_generic') + '" oninput="_filterLangPills(this)" autofocus>';
   var inp = btn.querySelector('input');
   if (inp) { inp.focus(); inp.addEventListener('click', function(e) { e.stopPropagation(); }); }
 }
