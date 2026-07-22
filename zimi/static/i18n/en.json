@@ -998,5 +998,14 @@
   "move_up": "Move up",
   "move_down": "Move down",
   "organize": "Organize",
-  "layout_locked": "Library organization is available on the local network only."
+  "layout_locked": "Library organization is available on the local network only.",
+  "dl_switch_direct": "Switch to direct download",
+  "dl_switch_direct_tip": "Cancel the peer-to-peer transfer and download over HTTP instead",
+  "dl_switching_direct": "Switching…",
+  "cache_storage_title": "Storage breakdown",
+  "catalog_caches": "Catalog caches",
+  "cache_staging": "Staging",
+  "cache_other": "Other",
+  "cache_top_zims": "Largest indexes",
+  "cache_empty": "No cached data yet"
 }

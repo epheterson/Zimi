@@ -998,5 +998,14 @@
   "move_up": "تحريك لأعلى",
   "move_down": "تحريك لأسفل",
   "organize": "تنظيم",
-  "layout_locked": "تنظيم المكتبة متاح على الشبكة المحلية فقط."
+  "layout_locked": "تنظيم المكتبة متاح على الشبكة المحلية فقط.",
+  "dl_switch_direct": "التبديل إلى التنزيل المباشر",
+  "dl_switch_direct_tip": "إلغاء النقل عبر الأقران والتنزيل عبر HTTP بدلاً من ذلك",
+  "dl_switching_direct": "جارٍ التبديل…",
+  "cache_storage_title": "توزيع التخزين",
+  "catalog_caches": "ذاكرة التخزين المؤقت للفهرس",
+  "cache_staging": "التخزين المؤقت",
+  "cache_other": "أخرى",
+  "cache_top_zims": "أكبر الفهارس",
+  "cache_empty": "لا توجد بيانات مخزّنة مؤقتًا بعد"
 }

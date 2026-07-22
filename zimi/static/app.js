@@ -5729,6 +5729,10 @@ async function renderManage() {
     const data = await res.json();
     _manageStatusData = data;
     switchMs('library');
+    // Warm the Server-pane fetches now (token is set from the status call
+    // above, so these won't trigger a second auth prompt) — the Server pane
+    // then paints from fresh data instead of the OFF-default shell.
+    _prefetchServerSettings();
     // Honor a deep-link (card menu → "Reorder sections…") once the view mounts.
     if (_pendingMsSection) { var _ms = _pendingMsSection; _pendingMsSection = null; switchMs(_ms); }
     // Sync auto-update dropdown from server
@@ -5775,6 +5779,46 @@ async function renderManage() {
 // ── macOS-style settings panel sections ──
 var _msSection = 'library';
 var _manageStatusData = null;
+
+// ── Server-settings prefetch ──────────────────────────────────────────────
+// Entering the manage view fires the Server-pane fetches immediately and in
+// parallel, so by the time the user opens the Server sub-pane the data is
+// already in flight or resolved — no slow serial load, no flash of OFF-default
+// toggles. Entries are single-use: a re-render triggered by a user action
+// (toggling a setting) always refetches fresh, so the cache can never serve a
+// stale value back over a change the user just made.
+var _msPrefetch = {};              // url -> { ts, promise-of-parsed-json }
+var _MS_PREFETCH_TTL = 15000;      // 15s: bridges entry → first server-pane paint
+
+function _msJson(r) {
+  if (!r || !r.ok) throw new Error('http ' + (r && r.status));
+  return r.json();
+}
+function _msDefaultFetcher(url) {
+  return function() { return manageFetch(url).then(_msJson); };
+}
+function _msFetch(url, fetcher) {
+  // Consume a fresh prefetch if one exists; otherwise fetch now. Single-use.
+  var e = _msPrefetch[url];
+  if (e) {
+    delete _msPrefetch[url];
+    if ((Date.now() - e.ts) < _MS_PREFETCH_TTL) return e.promise;
+  }
+  return (fetcher || _msDefaultFetcher(url))();
+}
+function _msPrime(url, fetcher) {
+  var p = (fetcher || _msDefaultFetcher(url))();
+  _msPrefetch[url] = { ts: Date.now(), promise: p };
+  p.catch(function() {});  // silence unhandled-rejection; consumers re-await
+}
+function _prefetchServerSettings() {
+  _msPrime('/manage/mirror', function() { return authedFetch('/manage/mirror').then(_msJson); });
+  _msPrime('/manage/bt-status');
+  _msPrime('/manage/peers', function() { return authedFetch('/manage/peers').then(_msJson); });
+  _msPrime('/manage/cache-info');
+  _msPrime('/manage/hot');
+  _msPrime('/manage/stats');
+}
 
 function switchMs(section) {
   _msSection = section;
@@ -5844,6 +5888,54 @@ function _fmtBytes(b) {
   if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
   if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
   return (b / 1073741824).toFixed(1) + ' GB';
+}
+
+// Data-dir storage breakdown (Server settings → Caches). Distinct, accessible
+// hues — never color alone: every segment carries a text label + value in the
+// legend and its title/aria text.
+var _CACHE_SEG_COLORS = {
+  title_indexes: '#f59e0b',
+  qid_indexes: '#d97706',
+  catalog_caches: '#60a5fa',
+  staging: '#34d399',
+  other: '#6e6e7a',
+};
+function _cacheSegLabel(key) {
+  var m = {
+    title_indexes: t('title_indexes'),
+    qid_indexes: t('qid_indexes'),
+    catalog_caches: t('catalog_caches'),
+    staging: t('cache_staging'),
+    other: t('cache_other'),
+  };
+  return m[key] || key;
+}
+function _cacheBreakdownHtml(d) {
+  var segs = d.breakdown || [];
+  var total = d.data_dir_total_bytes || segs.reduce(function(a, s) { return a + s.size_bytes; }, 0);
+  var titleRow = '<div class="mc-section-title">' + tH('cache_storage_title') +
+    (total ? ' · ' + _fmtBytes(total) : '') + '</div>';
+  if (!total) return titleRow + '<div class="ms-hint" style="margin:2px 0 8px">' + tH('cache_empty') + '</div>';
+  var bars = '', legend = '', aria = [];
+  segs.forEach(function(s) {
+    if (!s.size_bytes) return;
+    var pct = s.size_bytes / total * 100;
+    var color = _CACHE_SEG_COLORS[s.key] || 'var(--text2)';
+    var label = _cacheSegLabel(s.key);
+    var val = _fmtBytes(s.size_bytes);
+    bars += '<span class="cache-seg" style="width:' + pct.toFixed(2) + '%;background:' + color + '" title="' + escAttr(label + ' — ' + val) + '"></span>';
+    legend += '<span class="cache-legend-item"><span class="cache-legend-swatch" style="background:' + color + '"></span>' +
+      esc(label) + ' <b>' + val + '</b></span>';
+    aria.push(label + ' ' + val);
+  });
+  var top = '';
+  if (d.top_zims && d.top_zims.length) {
+    top = '<div class="cache-top-zims"><span class="cache-top-label">' + tH('cache_top_zims') + ':</span> ' +
+      d.top_zims.map(function(z) { return esc(z.name) + ' (' + _fmtBytes(z.size_bytes) + ')'; }).join(', ') + '</div>';
+  }
+  return titleRow +
+    '<div class="cache-bar" role="img" aria-label="' + escAttr(t('cache_storage_title') + ': ' + aria.join(', ')) + '">' + bars + '</div>' +
+    '<div class="cache-legend">' + legend + '</div>' + top;
 }
 
 async function cleanupTmpFiles() {
@@ -5935,7 +6027,7 @@ function _msServerHtml() {
   try { shareCached = localStorage.getItem(SK.SHARE_ROWS) || ''; } catch (e) {}
   var h = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
     '<div id="ms-mirror-status" class="share-rows-slot">' +
-      (shareCached || _shareShellHtml()) + '</div>' +
+      (shareCached || _shareSkeletonHtml()) + '</div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
   h += '<div class="ms-section-label">' + tH('storage_section') + '</div>' +
     '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
@@ -5997,16 +6089,15 @@ function _msServerHtml() {
   // Cache info section
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
     '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
-  manageFetch('/manage/cache-info').then(function(r) { return r.json(); }).then(function(d) {
+  _msFetch('/manage/cache-info').then(function(d) {
     var el = document.getElementById('ms-cache-info');
     if (!el || !d.caches) return;
     var c = d.caches;
-    var fmt = function(b) { return b > 1e9 ? (b/1e9).toFixed(1)+' GB' : b > 1e6 ? (b/1e6).toFixed(0)+' MB' : b > 1e3 ? (b/1e3).toFixed(0)+' KB' : b+' B'; };
-    var sh = '<div class="mc-row"><span class="mc-label">' + tH('title_indexes') + '</span><span class="mc-value">' +
-      (c.title_indexes.count || 0) + ' files, ' + fmt(c.title_indexes.size_bytes) + '</span></div>' +
+    var sh = _cacheBreakdownHtml(d) +
+      '<div class="mc-row"><span class="mc-label">' + tH('title_indexes') + '</span><span class="mc-value">' +
+      (c.title_indexes.count || 0) + ' files, ' + _fmtBytes(c.title_indexes.size_bytes) + '</span></div>' +
       '<div class="mc-row"><span class="mc-label">' + tH('qid_indexes') + '</span><span class="mc-value">' +
-      (c.qid_indexes.count || 0) + ' files, ' + fmt(c.qid_indexes.size_bytes) + '</span></div>' +
-      '<div class="mc-row"><span class="mc-label">' + tH('total_cache') + '</span><span class="mc-value">' + fmt(d.total_bytes) + '</span></div>' +
+      (c.qid_indexes.count || 0) + ' files, ' + _fmtBytes(c.qid_indexes.size_bytes) + '</span></div>' +
       '<div class="ms-cache-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' +
         '<button class="pill" onclick="_cacheAction(this,\'clear-search\')">' + tH('clear_search_cache') + '</button>' +
         '<button class="pill" onclick="_cacheAction(this,\'clear-suggest\')">' + tH('clear_suggest_cache') + '</button>' +
@@ -6017,7 +6108,7 @@ function _msServerHtml() {
     el.innerHTML = sh;
   }).catch(function() {});
   // Async fill from stats
-  manageFetch('/manage/stats').then(function(r) { return r.json(); }).then(function(s) {
+  _msFetch('/manage/stats').then(function(s) {
     var el = document.getElementById('ms-zim-dir');
     if (el && s.disk && s.disk.zim_dir) el.value = s.disk.zim_dir;
     else if (el) el.value = '(unknown)';
@@ -6047,7 +6138,7 @@ async function _renderHotZimsSection() {
   let hotData, zims;
   try {
     [hotData, zims] = await Promise.all([
-      manageFetch('/manage/hot').then(r => r.json()),
+      _msFetch('/manage/hot'),
       _fetchList(),
     ]);
   } catch (e) {
@@ -6192,7 +6283,7 @@ function _toggleAllHotZims(checked) {
 async function _renderSeedingSection() {
   let bt;
   try {
-    bt = await manageFetch('/manage/bt-status').then(r => r.json());
+    bt = await _msFetch('/manage/bt-status');
   } catch (e) {
     return; // keep last-known status (#30)
   }
@@ -6498,35 +6589,30 @@ function _scheduleMirrorProgressPoll() {
 // full three-card structure with static copy and off toggles, so the
 // section is never a blank slab. Live states hydrate in via
 // _renderMirrorSection a tick later (structure matches, so no bounce).
-function _shareShellHtml() {
-  return '<div class="share-rows">' +
-    _shareSwitch('torrent', false, false, 'ZIMI_BT',
-      'share_bt_title', tH('share_bt_desc'),
-      false, '<div id="ms-bt-status" class="share-bt-status-right"></div>') +
-    _shareSwitch('mirror', false, false, 'ZIMI_BT',
-      'share_mirror_title', tH('share_mirror_desc'), true,
-      '<div id="ms-mirror-active" class="share-bt-status-right"></div>') +
-    _shareSwitch('peer_share', false, false, 'ZIMI_NEARBY',
-      'share_nearby_title', tH('share_nearby_desc')) +
-  '</div>';
+// Shown only on the first-ever visit, before the prefetch resolves and when
+// no last-known rows are cached. A neutral skeleton — never the OFF-default
+// switches, which read as "sharing is off" when the truth is simply unknown.
+function _shareSkeletonHtml() {
+  var row = '<div class="share-row-skeleton"><span class="sk-line sk-line-wide"></span><span class="sk-line sk-line-narrow"></span></div>';
+  return '<div class="share-rows share-rows-skeleton" aria-busy="true">' + row + row + row + '</div>';
 }
 
 async function _renderMirrorSection() {
   if (_btSettingInFlight) return; // never repaint over an in-flight toggle
   let m, bt = null, peers = null;
+  // Reuse the manage-entry prefetch when it's still warm; a re-render after a
+  // user toggle finds no cache and fetches fresh (single-use), so a change is
+  // never overwritten by stale prefetched data.
+  const mirrorP = _msFetch('/manage/mirror', function() { return authedFetch('/manage/mirror').then(_msJson); });
+  const btP = _msFetch('/manage/bt-status');
+  const peersP = _msFetch('/manage/peers', function() { return authedFetch('/manage/peers').then(_msJson); });
   try {
-    const [r, rb, rp] = await Promise.all([
-      authedFetch('/manage/mirror'),
-      manageFetch('/manage/bt-status').catch(function() { return null; }),
-      authedFetch('/manage/peers').catch(function() { return null; }),
-    ]);
-    if (!r.ok) return;
-    m = await r.json();
-    if (rb && rb.ok) bt = await rb.json();
-    if (rp && rp.ok) peers = await rp.json();
+    m = await mirrorP;
   } catch (e) {
     return;
   }
+  try { bt = await btP; } catch (e) { bt = null; }
+  try { peers = await peersP; } catch (e) { peers = null; }
   const el = document.getElementById('ms-mirror-status');
   if (!el) return;
   const btOn = !!m.torrent_enabled;
@@ -7493,7 +7579,14 @@ async function _refreshDownloadsInner() {
         var pauseBtn = dl.queued ? '' :
           '<button class="dl-pause-btn" onclick="pauseDownload(\'' + escAttr(dl.id) + '\',' + (dl.paused ? 'false' : 'true') + ')">' +
             (dl.paused ? tH('resume') : tH('pause')) + '</button>';
-        h += '<div class="dl-actions">' + sourcePill + mirrorInfo + pauseBtn +
+        // Escape hatch for a slow swarm: only on an active BT transfer.
+        var switchBtn = '';
+        if (dl.source === 'bt' && !dl.queued) {
+          switchBtn = dl.switching_direct
+            ? '<button class="dl-pause-btn" disabled>' + tH('dl_switching_direct') + '</button>'
+            : '<button class="dl-pause-btn" onclick="switchToDirect(\'' + escAttr(dl.id) + '\')" title="' + escAttr(t('dl_switch_direct_tip')) + '">' + tH('dl_switch_direct') + '</button>';
+        }
+        h += '<div class="dl-actions">' + sourcePill + mirrorInfo + switchBtn + pauseBtn +
           '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">' + tH('cancel') + '</button></div>';
       }
       if (dl.error && dl.error !== 'Cancelled') {
@@ -7728,6 +7821,16 @@ async function pauseDownload(id, pause) {
 async function cancelDownload(id) {
   try {
     await manageFetch('/manage/cancel', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id})
+    });
+    refreshDownloads();
+  } catch(e) {}
+}
+
+async function switchToDirect(id) {
+  try {
+    await manageFetch('/manage/switch-direct', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({id})
     });

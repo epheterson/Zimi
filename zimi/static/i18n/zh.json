@@ -998,5 +998,14 @@
   "move_up": "上移",
   "move_down": "下移",
   "organize": "整理",
-  "layout_locked": "仅可在局域网内整理知识库。"
+  "layout_locked": "仅可在局域网内整理知识库。",
+  "dl_switch_direct": "切换为直接下载",
+  "dl_switch_direct_tip": "取消点对点传输，改用 HTTP 下载",
+  "dl_switching_direct": "正在切换…",
+  "cache_storage_title": "存储分布",
+  "catalog_caches": "目录缓存",
+  "cache_staging": "暂存",
+  "cache_other": "其他",
+  "cache_top_zims": "最大的索引",
+  "cache_empty": "暂无缓存数据"
 }

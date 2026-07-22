@@ -998,5 +998,14 @@
   "move_up": "Subir",
   "move_down": "Bajar",
   "organize": "Organizar",
-  "layout_locked": "La organización de la biblioteca solo está disponible en la red local."
+  "layout_locked": "La organización de la biblioteca solo está disponible en la red local.",
+  "dl_switch_direct": "Cambiar a descarga directa",
+  "dl_switch_direct_tip": "Cancelar la transferencia entre pares y descargar por HTTP",
+  "dl_switching_direct": "Cambiando…",
+  "cache_storage_title": "Desglose de almacenamiento",
+  "catalog_caches": "Cachés del catálogo",
+  "cache_staging": "Preparación",
+  "cache_other": "Otros",
+  "cache_top_zims": "Índices más grandes",
+  "cache_empty": "Aún no hay datos en caché"
 }

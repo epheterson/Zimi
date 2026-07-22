@@ -509,6 +509,17 @@
   .manage-card .mc-row, .ms-pane .mc-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--text2); padding: 4px 0; }
   .manage-card .mc-row .mc-label, .ms-pane .mc-label { color: var(--text2); }
   .manage-card .mc-row .mc-value, .ms-pane .mc-value { color: var(--text); font-weight: 500; }
+  /* Caches: data-dir storage breakdown */
+  .mc-section-title { font-size: 12px; font-weight: 600; color: var(--text); margin: 2px 0 8px; }
+  .cache-bar { display: flex; width: 100%; height: 14px; border-radius: 6px; overflow: hidden; background: var(--surface2); border: 1px solid var(--border); }
+  .cache-seg { height: 100%; min-width: 2px; }
+  .cache-seg + .cache-seg { box-shadow: inset 1px 0 0 rgba(0,0,0,0.28); }
+  .cache-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 2px; font-size: 11px; color: var(--text2); }
+  .cache-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+  .cache-legend-swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+  .cache-legend-item b { color: var(--text); font-weight: 600; }
+  .cache-top-zims { font-size: 11px; color: var(--text2); margin-top: 8px; line-height: 1.5; }
+  .cache-top-label { color: var(--text); font-weight: 600; }
   .manage-btn-action,
   .desktop-card .btn-primary,
   .coll-form button { background: linear-gradient(135deg, var(--amber), var(--amber2)); color: #000; border: none; border-radius: var(--radius); cursor: pointer; }
@@ -763,6 +774,10 @@
   .seeding-bar-snag { background: var(--error); opacity: 0.5; }
   .share-nearby-warn { color: var(--error); margin-top: 4px; }
   .share-rows-skeleton { min-height: 300px; }
+  .share-row-skeleton { display: flex; flex-direction: column; gap: 8px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+  .share-row-skeleton .sk-line { height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: dc-shimmer 1.5s ease-in-out infinite; }
+  .share-row-skeleton .sk-line-wide { width: 45%; }
+  .share-row-skeleton .sk-line-narrow { width: 70%; height: 10px; opacity: 0.6; }
   .share-bt-state { font-size: 12px; color: var(--text2); }
   .share-mirror-progress { margin-top: 6px; color: var(--amber); }
   /* Toggles pin to the top-right of tall cards; status tucks under */

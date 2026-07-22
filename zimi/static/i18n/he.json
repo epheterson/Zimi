@@ -998,5 +998,14 @@
   "move_up": "העברה למעלה",
   "move_down": "העברה למטה",
   "organize": "ארגון",
-  "layout_locked": "ארגון הספרייה זמין ברשת המקומית בלבד."
+  "layout_locked": "ארגון הספרייה זמין ברשת המקומית בלבד.",
+  "dl_switch_direct": "מעבר להורדה ישירה",
+  "dl_switch_direct_tip": "ביטול ההעברה מקצה לקצה והורדה דרך HTTP במקום",
+  "dl_switching_direct": "מחליף…",
+  "cache_storage_title": "פילוח אחסון",
+  "catalog_caches": "מטמוני קטלוג",
+  "cache_staging": "אחסון ביניים",
+  "cache_other": "אחר",
+  "cache_top_zims": "האינדקסים הגדולים ביותר",
+  "cache_empty": "אין עדיין נתונים במטמון"
 }
