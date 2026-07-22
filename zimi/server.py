@@ -400,7 +400,9 @@ def _atomic_write_json(path, data, indent=None):
         # target — which would silently strip group/world read from state
         # files (e.g. .zimi_cache.json inspected host-side over SSH).
         # Restore the umask-style default the old open()-based writer had.
-        os.fchmod(fd, 0o644)
+        # POSIX-only: Windows has no fchmod and no meaningful mode bits.
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o644)
     except OSError as e:
         log.warning("Atomic write failed for %s: %s", path, e)
         return
