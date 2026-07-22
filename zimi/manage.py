@@ -208,6 +208,121 @@ def _manage_auth_challenge(handler):
     return (401, {"error": "unauthorized", "needs_password": True})
 
 
+def _cache_info_payload():
+    """Size breakdown of the Zimi data dir (indexes + caches, NOT the ZIM
+    library). Walks only the small-file-count data dir — never the ZIM files.
+
+    Returns the original {caches, total_bytes} shape (backward compatible)
+    plus:
+      - data_dir_total_bytes: everything under the data dir
+      - breakdown: ordered segments for the stacked bar (title/qid indexes,
+        catalog caches, staging, other) — each {key, size_bytes[, count]}
+      - top_zims: largest per-ZIM title-index contributors, largest first
+    """
+    import glob as _glob
+
+    data_dir = _srv.ZIMI_DATA_DIR
+
+    def _dir_size(path):
+        total = 0
+        for f in _glob.glob(os.path.join(path, "**"), recursive=True):
+            if os.path.isfile(f):
+                try:
+                    total += os.path.getsize(f)
+                except OSError:
+                    pass
+        return total
+
+    def _file_size(path):
+        try:
+            return os.path.getsize(path)
+        except OSError:
+            return 0
+
+    titles_dir = os.path.join(data_dir, "titles")
+    qids_dir = os.path.join(data_dir, "qids")
+
+    title_bytes = _dir_size(titles_dir) if os.path.isdir(titles_dir) else 0
+    title_count = (
+        len(_glob.glob(os.path.join(titles_dir, "*.db")))
+        if os.path.isdir(titles_dir)
+        else 0
+    )
+    qid_bytes = _dir_size(qids_dir) if os.path.isdir(qids_dir) else 0
+    qid_count = (
+        len(_glob.glob(os.path.join(qids_dir, "*.db")))
+        if os.path.isdir(qids_dir)
+        else 0
+    )
+    metadata_bytes = _file_size(os.path.join(data_dir, "cache.json"))
+    suggest_bytes = _file_size(os.path.join(data_dir, "suggest_cache.json"))
+
+    # Catalog caches = the JSON metadata/catalog files at the data-dir root
+    # (metadata cache, suggest cache, offline catalog, history, layout, …).
+    catalog_bytes = 0
+    if os.path.isdir(data_dir):
+        for f in _glob.glob(os.path.join(data_dir, "*.json")):
+            catalog_bytes += _file_size(f)
+
+    # Staging = in-progress downloads. May live outside the data dir (env
+    # override), so track whether it's already counted in the dir walk.
+    try:
+        from zimi import p2p as _p2p
+
+        staging_dir = _p2p.get_staging_dir(data_dir)
+    except Exception:
+        staging_dir = os.path.join(data_dir, "staging")
+    staging_bytes = _dir_size(staging_dir) if os.path.isdir(staging_dir) else 0
+    staging_in_data = os.path.abspath(staging_dir).startswith(
+        os.path.abspath(data_dir) + os.sep
+    )
+
+    data_total = _dir_size(data_dir) if os.path.isdir(data_dir) else 0
+    accounted = (
+        title_bytes
+        + qid_bytes
+        + catalog_bytes
+        + (staging_bytes if staging_in_data else 0)
+    )
+    other_bytes = max(0, data_total - accounted)
+
+    # Top per-ZIM contributors: title-index files are one .db per ZIM.
+    top_zims = []
+    if os.path.isdir(titles_dir):
+        sizes = []
+        for f in _glob.glob(os.path.join(titles_dir, "*.db")):
+            name = os.path.basename(f)[: -len(".db")]
+            sizes.append({"name": name, "size_bytes": _file_size(f)})
+        sizes.sort(key=lambda s: s["size_bytes"], reverse=True)
+        top_zims = sizes[:6]
+
+    caches = {
+        "title_indexes": {
+            "path": "titles/",
+            "size_bytes": title_bytes,
+            "count": title_count,
+        },
+        "qid_indexes": {"path": "qids/", "size_bytes": qid_bytes, "count": qid_count},
+        "metadata_cache": {"path": "cache.json", "size_bytes": metadata_bytes},
+        "suggest_cache": {"path": "suggest_cache.json", "size_bytes": suggest_bytes},
+    }
+    breakdown = [
+        {"key": "title_indexes", "size_bytes": title_bytes, "count": title_count},
+        {"key": "qid_indexes", "size_bytes": qid_bytes, "count": qid_count},
+        {"key": "catalog_caches", "size_bytes": catalog_bytes},
+        {"key": "staging", "size_bytes": staging_bytes},
+        {"key": "other", "size_bytes": other_bytes},
+    ]
+    bar_total = sum(seg["size_bytes"] for seg in breakdown)
+    return {
+        "caches": caches,
+        "total_bytes": sum(c["size_bytes"] for c in caches.values()),
+        "data_dir_total_bytes": bar_total,
+        "breakdown": breakdown,
+        "top_zims": top_zims,
+    }
+
+
 # ============================================================================
 # Manage GET Routes
 # ============================================================================
@@ -484,57 +599,7 @@ def handle_manage_get(handler, parsed, params):
         return handler._json(200, {"history": _srv._load_history()})
 
     elif parsed.path == "/manage/cache-info":
-        import glob as _glob
-
-        data_dir = _srv.ZIMI_DATA_DIR
-
-        def _dir_size(path):
-            total = 0
-            for f in _glob.glob(os.path.join(path, "**"), recursive=True):
-                if os.path.isfile(f):
-                    total += os.path.getsize(f)
-            return total
-
-        titles_dir = os.path.join(data_dir, "titles")
-        qids_dir = os.path.join(data_dir, "qids")
-        caches = {
-            "title_indexes": {
-                "path": "titles/",
-                "size_bytes": _dir_size(titles_dir) if os.path.isdir(titles_dir) else 0,
-                "count": (
-                    len(_glob.glob(os.path.join(titles_dir, "*.db")))
-                    if os.path.isdir(titles_dir)
-                    else 0
-                ),
-            },
-            "qid_indexes": {
-                "path": "qids/",
-                "size_bytes": _dir_size(qids_dir) if os.path.isdir(qids_dir) else 0,
-                "count": (
-                    len(_glob.glob(os.path.join(qids_dir, "*.db")))
-                    if os.path.isdir(qids_dir)
-                    else 0
-                ),
-            },
-            "metadata_cache": {
-                "path": "cache.json",
-                "size_bytes": (
-                    os.path.getsize(os.path.join(data_dir, "cache.json"))
-                    if os.path.exists(os.path.join(data_dir, "cache.json"))
-                    else 0
-                ),
-            },
-            "suggest_cache": {
-                "path": "suggest_cache.json",
-                "size_bytes": (
-                    os.path.getsize(os.path.join(data_dir, "suggest_cache.json"))
-                    if os.path.exists(os.path.join(data_dir, "suggest_cache.json"))
-                    else 0
-                ),
-            },
-        }
-        total = sum(c["size_bytes"] for c in caches.values())
-        return handler._json(200, {"caches": caches, "total_bytes": total})
+        return handler._json(200, _cache_info_payload())
 
     elif parsed.path == "/manage/hot":
         # Pro: list of hot ZIMs + which env source controls them.
@@ -849,6 +914,21 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(404, {"error": "Download not found"})
         if status == "already_done":
             return handler._json(400, {"error": "Download already finished"})
+        return handler._json(code, {"status": status, "id": dl_id})
+
+    elif parsed.path == "/manage/switch-direct":
+        # Escape hatch for a slow BitTorrent swarm: abandon BT for this
+        # download and pull it over HTTP instead.
+        dl_id = data.get("id", "")
+        from zimi.library import _switch_to_direct
+
+        status, code = _switch_to_direct(dl_id)
+        if status == "not_found":
+            return handler._json(404, {"error": "Download not found"})
+        if status == "already_done":
+            return handler._json(400, {"error": "Download already finished"})
+        if status == "not_bt":
+            return handler._json(400, {"error": "Download is not using BitTorrent"})
         return handler._json(code, {"status": status, "id": dl_id})
 
     elif parsed.path == "/manage/clear-downloads":
