@@ -8179,6 +8179,9 @@ function _updateDownloadsTabBadge(activeCount) {
 }
 
 let _dlRefreshing = false;
+// Last downloads payload, cached so tapping a filter pill can repaint instantly
+// from data we already have instead of waiting for the next fetch (#6).
+let _dlLastDls = null, _dlLastSeeds = [], _dlLastSeedCap = 2;
 async function refreshDownloads() {
   // Re-entrancy guard: overlapping calls double-fetch /list and corrupt
   // the completed-count bookkeeping.
@@ -8187,29 +8190,36 @@ async function refreshDownloads() {
   try { await _refreshDownloadsInner(); } finally { _dlRefreshing = false; }
 }
 
-async function _refreshDownloadsInner() {
-  if (_dlTimer) { clearTimeout(_dlTimer); _dlTimer = null; }
+// useCache=true renders from the last fetched payload with no network round-trip
+// and no polling/library side-effects — the instant filter-pill repaint (#6).
+async function _refreshDownloadsInner(useCache) {
+  if (!useCache && _dlTimer) { clearTimeout(_dlTimer); _dlTimer = null; }
   const dlEl = document.getElementById('manage-downloads');
   if (!dlEl) return;
   try {
-    const [res, seedRes] = await Promise.all([
-      manageFetch('/manage/downloads'),
-      authedFetch('/manage/seeding').catch(() => null),
-    ]);
-    const data = await res.json();
-    const dls = data.downloads || [];
-    let seedingTorrents = [], seedingCap = 2;
-    if (seedRes && seedRes.ok) {
-      try {
-        const sd = await seedRes.json();
-        seedingTorrents = (sd.torrents || []).filter(t => t.completed_bytes > 0);
-        seedingCap = sd.ratio_cap || 2;
-      } catch (e) {}
+    let dls, seedingTorrents = [], seedingCap = 2;
+    if (useCache && _dlLastDls) {
+      dls = _dlLastDls; seedingTorrents = _dlLastSeeds; seedingCap = _dlLastSeedCap;
+    } else {
+      const [res, seedRes] = await Promise.all([
+        manageFetch('/manage/downloads'),
+        authedFetch('/manage/seeding').catch(() => null),
+      ]);
+      const data = await res.json();
+      dls = data.downloads || [];
+      if (seedRes && seedRes.ok) {
+        try {
+          const sd = await seedRes.json();
+          seedingTorrents = (sd.torrents || []).filter(t => t.completed_bytes > 0);
+          seedingCap = sd.ratio_cap || 2;
+        } catch (e) {}
+      }
+      _dlLastDls = dls; _dlLastSeeds = seedingTorrents; _dlLastSeedCap = seedingCap;
     }
     if (!dls.length && !seedingTorrents.length) {
       // Grace period: keep polling fast for 10s after a download was started
       // (server may not have registered it yet)
-      if (_dlRecentStart && Date.now() - _dlRecentStart < 10000) {
+      if (!useCache && _dlRecentStart && Date.now() - _dlRecentStart < 10000) {
         _dlTimer = setTimeout(refreshDownloads, 1000);
         return;
       }
@@ -8221,9 +8231,10 @@ async function _refreshDownloadsInner() {
       _dlPrevAllDone = true;
       _showManageBadge(false);
       _updateDownloadsTabBadge(0);
-      // Keep polling if auto-update may start downloads
+      // Keep polling if auto-update may start downloads (skip on cache repaint —
+      // the caller fires a real refresh that owns the poll schedule).
       const sel = document.getElementById('auto-update-freq');
-      if (sel && sel.value !== 'disabled' && mode === 'manage') _dlTimer = setTimeout(refreshDownloads, 5000);
+      if (!useCache && sel && sel.value !== 'disabled' && mode === 'manage') _dlTimer = setTimeout(refreshDownloads, 5000);
       return;
     }
     _dlRecentStart = 0; // clear grace once server reports downloads
@@ -8241,7 +8252,7 @@ async function _refreshDownloadsInner() {
     // A download finished while others still run — refresh the library
     // list NOW so the new ZIM is browsable without waiting for the batch.
     // (The heavier status/updates refresh still runs on the final one.)
-    if (completedDls.length > _dlPrevCompletedCount && !allDone) {
+    if (!useCache && completedDls.length > _dlPrevCompletedCount && !allDone) {
       try {
         zimsCache = await _fetchList();
         _rebuildZimsMap();
@@ -8466,7 +8477,7 @@ async function _refreshDownloadsInner() {
       }
     }
     // When downloads finish, refresh the library to show new installs
-    if (allDone && !_dlPrevAllDone) {
+    if (!useCache && allDone && !_dlPrevAllDone) {
       _dlPrevAllDone = true;
       try {
         zimsCache = await _fetchList();
@@ -8498,7 +8509,7 @@ async function _refreshDownloadsInner() {
     const activeCount = dls.filter(d => !d.done).length;
     _showManageBadge(anyActive, activeCount);
     _updateDownloadsTabBadge(activeCount);
-    if (mode === 'manage') {
+    if (!useCache && mode === 'manage') {
       // Poll fast while downloads active, slow-poll when auto-update enabled (server may start downloads)
       const sel = document.getElementById('auto-update-freq');
       const autoOn = sel && sel.value !== 'disabled';
@@ -8599,11 +8610,15 @@ async function _toggleUpdatesDetail() {
 
 function _setDownloadFilter(filter) {
   localStorage.setItem('zimi_dl_filter', filter);
-  // Instant feedback: flip the pill highlight now; content follows when
-  // the fetch lands (the lag read as a dead click).
+  // Instant feedback: flip the pill highlight now…
   document.querySelectorAll('.dl-filter-pill').forEach(function(p) {
     p.classList.toggle('active', p.getAttribute('onclick').indexOf("'" + filter + "'") >= 0);
   });
+  // …and repaint the list from data we already have, so the filter applies
+  // immediately instead of waiting for the next fetch (#6). Bypasses the
+  // re-entrancy guard: cache mode does no network I/O and schedules no timer.
+  if (_dlLastDls) _refreshDownloadsInner(true);
+  // Then a real refresh for fresh data + to resume the poll schedule.
   refreshDownloads();
 }
 
