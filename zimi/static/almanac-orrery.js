@@ -38,15 +38,13 @@ var _orreryPlanetPositions = []; // [{name, x, y, r}] in CSS pixels for hover
 
 // ── Deep-link a tapped body to its installed article ──
 // The AlmanacLinks closed set carries a curated Q-ID for every planet/probe;
-// resolved-against-the-library hits become taps that open the article directly
-// (the same authority the DOM linkify path uses). A body whose Q-ID didn't
+// resolved-against-the-library hits become links. A body whose Q-ID didn't
 // resolve keeps its prior interaction — planet launches a rocket, probe shows
 // its detail card — so the orrery's play survives when no encyclopedia is
-// installed. To keep BOTH on a linkable body: single tap opens the article,
-// double tap (within _ORRERY_DBLTAP_MS) fires the launch/card. This threshold
-// also lets the second tap of a double-tap-zoom fall through cleanly.
-var _ORRERY_DBLTAP_MS = 260;
-var _orreryTapTimer = null;
+// installed. When a body is BOTH linkable AND has a prior action (a flyable
+// planet, or a probe with a detail card), a single tap raises a small anchored
+// popover offering both — flight stays a first-class action, no double-tap.
+var _orreryPopover = null;
 
 // Find the hit target (planet or probe) at a canvas position, or null. Module
 // scope so the tap handlers and the hover-cursor path share one implementation.
@@ -78,27 +76,78 @@ function _orreryLinkFor(hit) {
   return (key && window.AlmanacLinks) ? window.AlmanacLinks.linkFor(key) : null;
 }
 
-// Prior interaction for a body: planet → launch transit, probe → detail card.
-function _orrerySecondaryAction(hit) {
-  if (!hit) { _hideVoyagerCard(); return; }
-  if (hit.type === 'planet' && hit.data.name !== 'Earth') _orreryLaunchRocket(hit.data.name);
-  else if (hit.type === 'voyager') _showVoyagerCard(hit.data.idx);
+function _orreryHidePopover() {
+  if (_orreryPopover) { _orreryPopover.style.display = 'none'; _orreryPopover.innerHTML = ''; }
 }
 
-// Unified tap handler for mouse + touch. Linkable body: single tap opens the
-// article, a quick second tap runs the secondary action. Non-linkable body:
-// the secondary action fires immediately (unchanged behaviour).
-function _orreryTap(mx, my, tolerance) {
+function _orreryOpenLink(key) { if (key && window.AlmanacLinks) window.AlmanacLinks.open(key); }
+
+// Show a small anchored popover of choices beside the tapped body. `rows` is
+// [{icon, label, fn}]; picking a row runs its fn. Positioned inside the wrap so
+// it never spills off the orrery box (mirrors the hover-tooltip clamping).
+function _orreryShowPopover(wrap, hit, rows) {
+  if (!_orreryPopover) {
+    _orreryPopover = document.createElement('div');
+    _orreryPopover.className = 'orrery-popover';
+    wrap.style.position = 'relative';
+    wrap.appendChild(_orreryPopover);
+  }
+  var html = '';
+  for (var i = 0; i < rows.length; i++) {
+    html += '<button type="button" class="orrery-pop-row" data-idx="' + i + '">' +
+      '<span class="orrery-pop-ico" aria-hidden="true">' + rows[i].icon + '</span>' +
+      _almEsc(rows[i].label) + '</button>';
+  }
+  _orreryPopover.innerHTML = html;
+  _orreryPopover.style.display = 'block';
+  var maxX = wrap.clientWidth, maxY = wrap.clientHeight;
+  var pw = _orreryPopover.offsetWidth, ph = _orreryPopover.offsetHeight;
+  var lx = hit.data.x + hit.data.r + 8;
+  if (lx + pw + 2 > maxX) lx = hit.data.x - hit.data.r - 8 - pw; // flip to the left
+  lx = Math.max(2, Math.min(lx, maxX - pw - 2));
+  var ty = Math.max(2, Math.min(hit.data.y - ph / 2, maxY - ph - 2));
+  _orreryPopover.style.left = lx + 'px';
+  _orreryPopover.style.top = ty + 'px';
+  var btns = _orreryPopover.querySelectorAll('.orrery-pop-row');
+  for (var j = 0; j < btns.length; j++) {
+    (function (fn) {
+      btns[j].onclick = function (e) { e.stopPropagation(); _orreryHidePopover(); fn(); };
+    })(rows[j].fn);
+  }
+}
+
+// Unified tap handler for mouse + touch. A body that is BOTH linkable and has a
+// prior action raises a two-choice popover (flight/detail + Wikipedia); a body
+// with only one affordance runs it directly. No double-tap anywhere.
+function _orreryTap(mx, my, tolerance, wrap) {
+  _orreryHidePopover();
   var hit = _orreryHitTest(mx, my, tolerance);
-  if (_orreryTapTimer) { clearTimeout(_orreryTapTimer); _orreryTapTimer = null; _orrerySecondaryAction(hit); return; }
-  if (_orreryLinkFor(hit)) {
-    var key = _orreryLinkKey(hit);
-    _orreryTapTimer = setTimeout(function () {
-      _orreryTapTimer = null;
-      if (window.AlmanacLinks) window.AlmanacLinks.open(key);
-    }, _ORRERY_DBLTAP_MS);
-  } else {
-    _orrerySecondaryAction(hit);
+  if (!hit) return;
+  var key = _orreryLinkKey(hit);
+  var linked = !!_orreryLinkFor(hit);
+  if (hit.type === 'planet') {
+    var flyable = hit.data.name !== 'Earth';
+    if (flyable && linked && wrap) {
+      _orreryShowPopover(wrap, hit, [
+        { icon: '✈️', label: t('alm_fly_there'), fn: (function (n) { return function () { _orreryLaunchRocket(n); }; })(hit.data.name) },
+        { icon: '📖', label: t('alm_wikipedia'), fn: (function (k) { return function () { _orreryOpenLink(k); }; })(key) }
+      ]);
+    } else if (flyable) {
+      _orreryLaunchRocket(hit.data.name); // non-linkable (or no wrap): fly directly
+    } else if (linked) {
+      _orreryOpenLink(key); // Earth: linkable, not flyable → open article
+    }
+    return;
+  }
+  if (hit.type === 'voyager') {
+    if (linked && wrap) {
+      _orreryShowPopover(wrap, hit, [
+        { icon: '🛰️', label: t('alm_probe_details'), fn: (function (ix) { return function () { _showVoyagerCard(ix); }; })(hit.data.idx) },
+        { icon: '📖', label: t('alm_wikipedia'), fn: (function (k) { return function () { _orreryOpenLink(k); }; })(key) }
+      ]);
+    } else {
+      _showVoyagerCard(hit.data.idx); // non-linkable probe: detail card directly
+    }
   }
 }
 
@@ -106,6 +155,9 @@ function _initOrrery() {
   var canvas = document.getElementById('almanac-orrery');
   if (!canvas) return;
   var wrap = canvas.parentElement;
+  // The wrap DOM is rebuilt on every almanac render, so drop the stale popover
+  // node reference — it is recreated lazily in the fresh wrap on first tap.
+  _orreryPopover = null;
   var dpr = window.devicePixelRatio || 1;
   var w = wrap.clientWidth;
   canvas.width = w * dpr;
@@ -176,7 +228,7 @@ function _initOrrery() {
   // probe with no resolved link keeps its prior action (launch / detail card).
   canvas.onclick = function(e) {
     var rect = canvas.getBoundingClientRect();
-    _orreryTap(e.clientX - rect.left, e.clientY - rect.top, 10);
+    _orreryTap(e.clientX - rect.left, e.clientY - rect.top, 10, wrap);
     tooltip.style.display = 'none';
   };
 
@@ -198,7 +250,7 @@ function _initOrrery() {
     var rect = canvas.getBoundingClientRect();
     var mx = touch.clientX - rect.left, my = touch.clientY - rect.top;
     if (_orreryHitTest(mx, my, 14)) e.preventDefault();
-    _orreryTap(mx, my, 14);
+    _orreryTap(mx, my, 14, wrap);
   });
 
   // Initial date display

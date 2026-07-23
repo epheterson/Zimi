@@ -88,6 +88,11 @@
 .orrery-transit-end { font-size: 11px; color: var(--text3); flex-shrink: 0; min-width: 40px; }
 .orrery-transit-label { color: var(--amber); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 90px; text-align: right; font-family: 'SF Mono', 'Fira Code', monospace; }
 .orrery-now { width: auto; padding: 0 10px; font-size: 11px; color: var(--amber); border-color: var(--amber-border); }
+/* Anchored choice popover for a tapped planet/probe (fly / details vs Wikipedia) */
+.orrery-popover { position: absolute; display: none; z-index: 12; background: rgba(20,20,24,0.94); border: 1px solid var(--border); border-radius: 8px; padding: 4px; box-shadow: 0 6px 20px rgba(0,0,0,0.45); backdrop-filter: blur(6px); min-width: 132px; }
+.orrery-pop-row { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; color: var(--text); font-size: 13px; text-align: left; padding: 7px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.orrery-pop-row:hover { color: var(--amber); background: var(--amber-glow); }
+.orrery-pop-ico { font-size: 13px; width: 16px; text-align: center; }
 .almanac-sky-wrap { width: 100%; max-width: 600px; margin: 0 auto; border-radius: 12px; overflow: hidden; position: relative; }
 .almanac-sky-wrap canvas { width: 100%; display: block; }
 .almanac-location-link { color: var(--amber); cursor: pointer; text-decoration: none; font-size: 12px; }
