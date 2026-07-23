@@ -85,3 +85,53 @@ per tweak.
   Generalizes: any Zimi mini-app becomes a portal into the library.
 - **Chatbot ("chat with your library") → 2.0** — possibly as the Time Machine
   voice/video librarian itself. 1.8's hero is the almanac-linking instead.
+
+## Addendum 2026-07-23 (Eric, post-1.8 users-light): 1.9 = Industry Edition
+
+Decision: named users STAY light in 1.8 (basic accounts, roles, per-user
+allowlists, admin password reset, last-login). The full user/identity machinery
+moves to **1.9, reframed as the "Industry Edition"** — the enterprise / fleet /
+school tier. "Figure out what enterprise needs." Users-v2 (emails, resets, kid
+modes, monitoring ethics, schools) folds INTO this, not a separate track.
+
+What enterprise buyers actually require (research summary, build order TBD):
+
+- **Identity / SSO.** OAuth2 / OIDC login (Google Workspace, Entra ID, Okta,
+  Keycloak) so Zimi isn't a separate password island. SAML is the enterprise
+  long-tail; OIDC first. Map IdP groups → Zimi roles at login.
+- **User provisioning.** SCIM 2.0 for auto-provision/deprovision from the IdP,
+  plus a pragmatic CSV/JSON bulk import for air-gapped sites with no live IdP.
+  Both write the same users.json-shaped store the light version already owns.
+- **Group-based policy.** Today's per-user allowlist doesn't scale to 500 kids.
+  Need per-GROUP ZIM policies (class "Grade 7" → this shelf), users inherit from
+  group, individual override optional. The allowlist choke point already exists;
+  add a group layer above it.
+- **Audit logs.** Who logged in, who changed a policy, who downloaded a ZIM —
+  append-only, exportable (JSON lines / syslog). Distinct from monitoring what a
+  user READS (that stays behind the ethics gate — see users-v2 note).
+- **Private / forced-login mode.** An instance that serves NOTHING to anonymous
+  visitors: no library, no read, until authenticated. Today anonymous = all
+  access; enterprises need the inverse as a config flag.
+- **Backup / restore.** One-command dump+restore of config, users, groups,
+  policies, bookmarks (not the ZIMs — those are re-downloadable). Prereq for any
+  serious deployment; already on the 1.9 "dependable library" list.
+- **Fleet deployment.** Air-gapped bundles (ZIMs + image + config in one tar),
+  docker-compose and k8s manifests, a headless config file (no click-through
+  setup), and an "apply this policy set to N boxes" story for school districts /
+  NGOs / ships / bases.
+- **Update channels.** stable / beta channel selection, offline update bundles
+  (download once on a connected box, sideload to the fleet), pinned versions —
+  because enterprises don't auto-pull latest.
+- **Monitoring / observability.** /metrics exists — expose it in **Prometheus
+  text format** (or add a /metrics?format=prometheus) so it drops into existing
+  Grafana stacks; documented healthcheck endpoint; structured JSON logs.
+- **License / support posture.** Decide the commercial line: open core + a paid
+  Industry Edition (SSO, SCIM, audit, support SLA) is the standard OSS-infra
+  model. Even if unpriced now, gate the enterprise-only surfaces behind a clear
+  edition boundary so the split is clean later.
+
+Guiding cut: 1.8 stays the friendly single-admin + a few named users. 1.9 is
+"deploy Zimi to 200 machines and hand it to IT" — identity, policy at scale,
+audit, backup, fleet ops. Don't build 1.9 surfaces into 1.8; keep the light
+store forward-compatible (it already is: roles + flags{} seam + allowlist choke
+point).
