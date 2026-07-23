@@ -264,8 +264,60 @@
     'nowruz2':         { q: 'Q192334', en: 'Nowruz' }
   };
 
+  // Astronomy & timekeeping terms — the obscure-but-linkable vocabulary the
+  // almanac actually renders (magnitude, elongation, obliquity, precession…).
+  // `en` is the canonical English Wikipedia article title (redirects resolve to
+  // the head article via the server's single-hop fallback, so a redirect title
+  // like "Perihelion" is fine). Q-IDs marked "q low-confidence" resolve in
+  // practice via the exact-title fallback on English Wikipedia; they are the
+  // ones to re-verify against a Q-ID-indexed ZIM.
+  var TERMS = {
+    // Sun geometry & the seasons
+    'term:equinox':             { q: 'Q194',     en: 'Equinox' },
+    'term:solstice':            { q: 'Q133151',  en: 'Solstice' },
+    'term:analemma':            { q: 'Q622721',  en: 'Analemma' },
+    'term:equation_of_time':    { q: 'Q11081',   en: 'Equation of time' },
+    'term:declination':         { q: 'Q76287',   en: 'Declination' },
+    'term:ecliptic':            { q: 'Q69314',   en: 'Ecliptic' },
+    'term:astronomical_unit':   { q: 'Q1811',    en: 'Astronomical unit' },
+    'term:apsis':               { q: 'Q194235',  en: 'Apsis' }, // perihelion/aphelion/perigee/apogee
+    // Planet visibility & configurations
+    'term:apparent_magnitude':  { q: 'Q3013005', en: 'Apparent magnitude' },
+    'term:elongation':          { q: 'Q2489540', en: 'Elongation (astronomy)' },
+    'term:conjunction':         { q: 'Q210112',  en: 'Conjunction (astronomy)' },
+    'term:opposition':          { q: 'Q265422',  en: 'Opposition (astronomy)' }, // q low-confidence
+    // Moon
+    'term:supermoon':           { q: 'Q621656',  en: 'Supermoon' },
+    'term:lunar_phase':         { q: 'Q1088',    en: 'Lunar phase' },
+    'term:golden_hour':         { q: 'Q1502002', en: 'Golden hour (photography)' },
+    'term:twilight':            { q: 'Q104291',  en: 'Twilight' },
+    // Meteors
+    'term:meteor_shower':       { q: 'Q123469',  en: 'Meteor shower' },
+    'term:radiant':             { q: 'Q1195709', en: 'Radiant (meteor shower)' }, // q low-confidence
+    // Deep time / orbital mechanics
+    'term:axial_tilt':          { q: 'Q101017',  en: 'Axial tilt' },
+    'term:axial_precession':    { q: 'Q4622784', en: 'Axial precession' }, // q low-confidence
+    'term:orbital_eccentricity':{ q: 'Q104541',  en: 'Orbital eccentricity' },
+    'term:julian_day':          { q: 'Q14711',   en: 'Julian day' },
+    'term:galactic_year':       { q: 'Q1341811', en: 'Galactic year' }, // q low-confidence
+    'term:milankovitch':        { q: 'Q1049485', en: 'Milankovitch cycles' }, // q low-confidence
+    'term:tidal_acceleration':  { q: 'Q1332629', en: 'Tidal acceleration' }, // q low-confidence
+    // Structure & timekeeping
+    'term:solar_system':        { q: 'Q544',     en: 'Solar System' },
+    'term:zodiac':              { q: 'Q83043',   en: 'Zodiac' },
+    'term:leap_year':           { q: 'Q19828',   en: 'Leap year' }
+  };
+
+  // The four seasons — displayed as the current-season name in the astro panel.
+  var SEASONS = {
+    'season:winter': { q: 'Q1311', en: 'Winter' },
+    'season:spring': { q: 'Q1312', en: 'Spring (season)' },
+    'season:summer': { q: 'Q1313', en: 'Summer' },
+    'season:autumn': { q: 'Q1314', en: 'Autumn' }
+  };
+
   var MAP = {};
-  [PLANETS, PROBES, CONSTELLATIONS, SHOWERS, ECLIPSES, CALENDARS, ZODIAC, STARS, HOLIDAYS]
+  [PLANETS, PROBES, CONSTELLATIONS, SHOWERS, ECLIPSES, CALENDARS, ZODIAC, STARS, HOLIDAYS, TERMS, SEASONS]
     .forEach(function (group) { for (var k in group) if (group.hasOwnProperty(k)) MAP[k] = group[k]; });
 
   // Register curated holidays under a "holiday:<norm>" key so wrapHoliday() can

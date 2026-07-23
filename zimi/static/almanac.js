@@ -77,6 +77,11 @@ function _alLink(key, html, label) {
 }
 function _lp(name) { var s = _tp(name); return _alLink('planet:' + name.toLowerCase(), s, s); }
 function _lc(name) { var s = _tc(name); var k = _CONST_KEYS[name]; return k ? _alLink('const:' + k, s, s) : s; }
+// Link an astronomy/timekeeping TERM by its map suffix (key = 'term:<suffix>').
+// `html` is the already-localized, already-escaped display text.
+function _lterm(suffix, html) { return _alLink('term:' + suffix, html, html); }
+// Link a season by its article key ('winter'|'spring'|'summer'|'autumn').
+function _lseason(key, html) { return key ? _alLink('season:' + key, html, html) : html; }
 
 function _dayOfYear(date) {
   var start = new Date(date.getFullYear(), 0, 1);
@@ -371,7 +376,7 @@ function _almHeadHtml(focus) {
   var moonTilt = -_limbPA - 90;
   html += '<div class="almanac-hero">';
   html += _renderAlmanacMoon(m, moonTilt);
-  html += '<div class="almanac-moon-name">' + _localMoonName(m.name) + '</div>';
+  html += '<div class="almanac-moon-name">' + _lterm('lunar_phase', _localMoonName(m.name)) + '</div>';
   html += '</div>';
 
   // Sun cards render in the shown location's timezone (same locTz as the
@@ -390,7 +395,7 @@ function _almHeadHtml(focus) {
     var _nfmStr = _nfm.date.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
     html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_next_full') + '</div><div class="alm-card-val"' +
       (_nfm.isSuper ? ' style="color:#e0b060"' : '') + '>' + _nfmStr +
-      (_nfm.isSuper ? ' \u00b7 ' + t('alm_supermoon') : '') + '</div></div>';
+      (_nfm.isSuper ? ' \u00b7 ' + _lterm('supermoon', t('alm_supermoon')) : '') + '</div></div>';
   }
   if (sunInfo0.polar) {
     html += '<div class="alm-card" style="grid-column:span 4"><div class="alm-card-val">' + sunInfo0.polar + '</div></div>';
@@ -399,7 +404,7 @@ function _almHeadHtml(focus) {
     html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_sunset') + '</div><div class="alm-card-val">' + sunInfo0.sunset + '</div></div>';
     html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_daylight') + '</div><div class="alm-card-val">' + sunInfo0.dayLength + '</div></div>';
     if (sunInfo0.goldenHour) {
-      html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_golden') + '</div><div class="alm-card-val" style="color:#d4aa64">' + sunInfo0.goldenHour + '</div></div>';
+      html += '<div class="alm-card"><div class="alm-card-lbl">' + _lterm('golden_hour', t('alm_golden')) + '</div><div class="alm-card-val" style="color:#d4aa64">' + sunInfo0.goldenHour + '</div></div>';
     }
   }
   html += '</div>';
@@ -470,7 +475,7 @@ function _renderAlmanacContent() {
 
   // Orrery
   html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">' + t('alm_solar_system') + '</div>';
+  html += '<div class="almanac-section-title">' + _lterm('solar_system', t('alm_solar_system')) + '</div>';
   html += '<div class="almanac-orrery-wrap"><canvas id="almanac-orrery"></canvas></div>';
   html += '<div class="orrery-controls">';
   // Bidirectional speed slider: left = rewind, center = 1×, right = fast forward
@@ -512,14 +517,14 @@ function _renderAlmanacContent() {
 
   // The Analemma — the Sun's yearly figure-8 (equation of time × declination)
   html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">' + t('alm_analemma') + '</div>';
+  html += '<div class="almanac-section-title">' + _lterm('analemma', t('alm_analemma')) + '</div>';
   html += '<div class="alm-analemma-wrap"><canvas id="almanac-analemma"></canvas></div>';
   html += '<div id="almanac-analemma-caption" class="alm-analemma-caption"></div>';
   html += '</div>';
 
   // Meteor showers
   html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">' + t('alm_meteor_showers') + '</div>';
+  html += '<div class="almanac-section-title">' + _lterm('meteor_shower', t('alm_meteor_showers')) + '</div>';
   html += '<div id="almanac-meteors"></div>';
   html += '</div>';
 
@@ -1067,15 +1072,19 @@ function _renderAstroPanel(now) {
   // Hemisphere-aware seasons: flip for southern hemisphere observers
   var obsLat = _getLocation().lat;
   var south = obsLat < 0;
+  // Season labels follow the observer's hemisphere; the article key follows the
+  // label (a "Summer" label in the south links the Summer article, not Winter).
+  var Wk = south ? 'summer' : 'winter', Spk = south ? 'autumn' : 'spring';
+  var Suk = south ? 'winter' : 'summer', Auk = south ? 'spring' : 'autumn';
   var W = south ? t('season_summer') : t('season_winter'), Sp = south ? t('season_autumn') : t('season_spring');
   var Su = south ? t('season_winter') : t('season_summer'), Au = south ? t('season_spring') : t('season_autumn');
-  var _eq = t('alm_equinox'), _sol = t('alm_solstice');
+  var _eq = _lterm('equinox', t('alm_equinox')), _sol = _lterm('solstice', t('alm_solstice'));
   var seasonBounds = [
-    { name: W, start: new Date(y - 1, 11, 21), end: new Date(y, 2, 20), next: Sp + ' ' + _eq },
-    { name: Sp, start: new Date(y, 2, 20), end: new Date(y, 5, 21), next: Su + ' ' + _sol },
-    { name: Su, start: new Date(y, 5, 21), end: new Date(y, 8, 22), next: Au + ' ' + _eq },
-    { name: Au, start: new Date(y, 8, 22), end: new Date(y, 11, 21), next: W + ' ' + _sol },
-    { name: W, start: new Date(y, 11, 21), end: new Date(y + 1, 2, 20), next: Sp + ' ' + _eq }
+    { name: W, nameKey: Wk, start: new Date(y - 1, 11, 21), end: new Date(y, 2, 20), next: Sp + ' ' + _eq },
+    { name: Sp, nameKey: Spk, start: new Date(y, 2, 20), end: new Date(y, 5, 21), next: Su + ' ' + _sol },
+    { name: Su, nameKey: Suk, start: new Date(y, 5, 21), end: new Date(y, 8, 22), next: Au + ' ' + _eq },
+    { name: Au, nameKey: Auk, start: new Date(y, 8, 22), end: new Date(y, 11, 21), next: W + ' ' + _sol },
+    { name: W, nameKey: Wk, start: new Date(y, 11, 21), end: new Date(y + 1, 2, 20), next: Sp + ' ' + _eq }
   ];
   var season = null;
   for (var si = 0; si < seasonBounds.length; si++) {
@@ -1115,10 +1124,10 @@ function _renderAstroPanel(now) {
   var html = '<div class="almanac-info-grid">';
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + dayOfYear + ' / ' + daysInYear + '</div><div class="almanac-info-lbl">' + t('alm_day_of_year') + '</div></div>';
   if (season) {
-    html += '<div class="almanac-info-item"><div class="almanac-info-val">' + season.name + '</div><div class="almanac-info-lbl">' + t('alm_days_to_next', { n: season.daysUntilNext, next: season.next }) + '</div>' +
+    html += '<div class="almanac-info-item"><div class="almanac-info-val">' + _lseason(season.nameKey, season.name) + '</div><div class="almanac-info-lbl">' + t('alm_days_to_next', { n: season.daysUntilNext, next: season.next }) + '</div>' +
       '<div class="almanac-progress"><div class="almanac-progress-bar" style="width:' + Math.round(season.progress * 100) + '%"></div></div></div>';
   }
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + earthSunAU + ' AU</div><div class="almanac-info-lbl">' + t('alm_earth_sun_dist') + '</div></div>';
+  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + earthSunAU + ' ' + _lterm('astronomical_unit', 'AU') + '</div><div class="almanac-info-lbl">' + t('alm_earth_sun_dist') + '</div></div>';
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + constellation + '</div><div class="almanac-info-lbl">' + t('alm_sun_constellation') + '</div></div>';
   html += '</div>';
 
@@ -2702,8 +2711,8 @@ function _renderAnalemma(now) {
     var mins = Math.abs(td.eot);
     var fastSlow = td.eot >= 0 ? t('alm_sun_ahead') : t('alm_sun_behind');
     cap.innerHTML =
-      '<div class="alm-analemma-now">' + t('alm_sun') + ': ' + mins.toFixed(1) + ' ' + t('alm_min') + ' ' + fastSlow +
-      ' · ' + t('alm_declination') + ' ' + td.decl.toFixed(1) + '°</div>' +
+      '<div class="alm-analemma-now">' + t('alm_sun') + ': ' + _lterm('equation_of_time', mins.toFixed(1) + ' ' + t('alm_min') + ' ' + fastSlow) +
+      ' · ' + _lterm('declination', t('alm_declination')) + ' ' + td.decl.toFixed(1) + '°</div>' +
       '<div class="alm-analemma-desc">' + t('alm_analemma_desc') + '</div>';
   }
 }
@@ -2750,7 +2759,7 @@ function _renderTonightSky(now) {
       html += '<div class="almanac-eclipse-row">' +
         '<div>' +
         '<span class="almanac-eclipse-type" style="color:' + p.color + '">' + _lp(p.name) + '</span>' +
-        '<br><span class="almanac-eclipse-date">' + brightness + ' &middot; mag ' + magStr + ' &middot; ' + p.elongation.toFixed(0) + '\u00b0 ' + t('alm_from_sun') + '</span>' +
+        '<br><span class="almanac-eclipse-date">' + brightness + ' &middot; ' + _lterm('apparent_magnitude', 'mag') + ' ' + magStr + ' &middot; ' + _lterm('elongation', p.elongation.toFixed(0) + '\u00b0 ' + t('alm_from_sun')) + '</span>' +
         '</div>' +
         '<div class="almanac-eclipse-until" style="font-size:11px">' + p.sky + '<br>' + p.direction + '</div></div>';
     }
@@ -2940,13 +2949,13 @@ function _renderCelestialEvents(now) {
       var untilStr = ev.daysUntil <= 1 ? t('alm_now_exclaim') : ev.daysUntil + ' ' + t('alm_days');
       var title, detail;
       if (ev.type === 'conjunction') {
-        title = _lp(ev.planets[0]) + ' \u2013 ' + _lp(ev.planets[1]) + ' ' + t('alm_conjunction');
+        title = _lp(ev.planets[0]) + ' \u2013 ' + _lp(ev.planets[1]) + ' ' + _lterm('conjunction', t('alm_conjunction'));
         detail = ev.separation.toFixed(1) + '\u00b0 ' + t('alm_apart') + ' &middot; ' + dateStr;
       } else if (ev.type === 'opposition') {
-        title = _lp(ev.planet) + ' ' + t('alm_at_opposition');
+        title = _lp(ev.planet) + ' ' + _lterm('opposition', t('alm_at_opposition'));
         detail = t('alm_closest_brightest') + ' &middot; ' + dateStr;
       } else if (ev.type === 'elongation') {
-        title = _lp(ev.planet) + ' ' + t('alm_greatest_elongation');
+        title = _lp(ev.planet) + ' ' + _lterm('elongation', t('alm_greatest_elongation'));
         var skyLabel = ev.sky === 'evening' ? t('alm_evening') : t('alm_morning');
         detail = ev.elongation.toFixed(1) + '\u00b0 &middot; ' + skyLabel + ' ' + t('alm_sky') + ' &middot; ' + dateStr;
       }
@@ -4310,13 +4319,13 @@ function _renderDeepTime(now) {
 
   // Axial tilt
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + obliquityDeg.toFixed(2) + '\u00b0</div>' +
-    '<div class="almanac-info-lbl">' + t('alm_dt_tilt') + '</div>' +
+    '<div class="almanac-info-lbl">' + _lterm('axial_tilt', t('alm_dt_tilt')) + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
     t('alm_dt_tilt_desc', { trend: tiltDir, impact: seasonImpact, pct: tiltInCycle }) + '</div></div>';
 
   // North Star
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + polarisDist + '\u00b0 ' + t('alm_from_true_north') + '</div>' +
-    '<div class="almanac-info-lbl">' + t('alm_dt_polaris') + '</div>' +
+    '<div class="almanac-info-lbl">' + _alLink('star:polaris', t('alm_dt_polaris')) + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
     t('alm_dt_polaris_desc', { years: (14000 - now.getFullYear()).toLocaleString() }) + '</div></div>';
 
@@ -4326,20 +4335,20 @@ function _renderDeepTime(now) {
                totalExcessMs > 0.01 ? '+' + (totalExcessMs * 1000).toFixed(0) + '\u00b5s ' + t('alm_over_24h') :
                '~24h';
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + dayStr + '</div>' +
-    '<div class="almanac-info-lbl">' + t('alm_dt_daylen') + '</div>' +
+    '<div class="almanac-info-lbl">' + _lterm('tidal_acceleration', t('alm_dt_daylen')) + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
     t('alm_dt_daylen_desc', { ms: excessMs.toFixed(1) }) + '</div></div>';
 
   // Orbital eccentricity
   var eccTrendStr = parseFloat(earthEcc) < eccPrev ? t('alm_decreasing') : t('alm_increasing');
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + earthEcc + '</div>' +
-    '<div class="almanac-info-lbl">' + t('alm_dt_orbit') + '</div>' +
+    '<div class="almanac-info-lbl">' + _lterm('orbital_eccentricity', t('alm_dt_orbit')) + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
     t('alm_dt_orbit_desc', { trend: eccTrendStr }) + '</div></div>';
 
   // Julian Date
   html += '<div class="almanac-info-item"><div class="almanac-info-val">JD ' + julianDate + '</div>' +
-    '<div class="almanac-info-lbl">' + t('alm_dt_julian') + '</div>' +
+    '<div class="almanac-info-lbl">' + _lterm('julian_day', t('alm_dt_julian')) + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
     t('alm_dt_julian_desc') + '</div></div>';
 
@@ -4350,7 +4359,7 @@ function _renderDeepTime(now) {
   var currentOrbitPct = ((sunAge % galacticPeriod) / galacticPeriod * 100).toFixed(1);
 
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + t('alm_galactic_orbit', { pct: currentOrbitPct, n: orbitsCompleted + 1 }) + '</div>' +
-    '<div class="almanac-info-lbl">' + t('alm_dt_galactic') + '</div>' +
+    '<div class="almanac-info-lbl">' + _lterm('galactic_year', t('alm_dt_galactic')) + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
     t('alm_dt_galactic_desc', { age: (sunAge / 1000).toFixed(1), orbits: orbitsCompleted }) + '</div></div>';
 
