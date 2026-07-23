@@ -1289,6 +1289,10 @@ function enterHome(push) {
   readerSource = null;
   sourceAutoReader = false;
   homeScope = null;
+  // Recency/language pills are scoped to whatever card set is showing (#37) —
+  // leaving a scope drops any filter picked inside it so home starts clean.
+  homeRecentFilter = null;
+  homeLangFilter.clear();
   _currentSearchQuery = null;
   articleHistory = [];
   currentArticle = null;
@@ -1323,6 +1327,10 @@ function enterScope(type, label, zimNames, push) {
   readerSource = null;
   sourceAutoReader = false;
   homeScope = { type, label, zimNames };
+  // New section, new card set — drop any recency/language filter picked in
+  // whatever view we're leaving (home or a different section).
+  homeRecentFilter = null;
+  homeLangFilter.clear();
   q.value = '';
   searchMeta.style.display = 'none';
   sourceHeaderEl.style.display = 'none';
@@ -1577,10 +1585,13 @@ function renderHome(filter) {
     });
   }
 
-  // The recency + language pills only make sense on the full, unscoped, untyped
-  // library. Entering a scope or typing a filter drops back to "All" / all
-  // languages so state stays sane.
-  if (homeScope || filter) { homeRecentFilter = null; homeLangFilter.clear(); }
+  // The recency + language pills also make sense scoped to a section (#37) —
+  // they filter that section's cards, computed below from the already-scoped
+  // `sorted`/`sortedAll` sets. Typing a filter still drops back to "All" / all
+  // languages so state stays sane (scope transitions reset filters themselves,
+  // in enterScope/enterHome, so re-rendering the same scope doesn't clobber a
+  // filter the user just picked).
+  if (filter) { homeRecentFilter = null; homeLangFilter.clear(); }
 
   const totalEntries = baseZims.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
   const totalGb = baseZims.reduce((s, z) => s + z.size_gb, 0);
@@ -1619,7 +1630,7 @@ function renderHome(filter) {
   var _langCounts = {};
   sortedAll.forEach(z => { var l = z.language || ''; if (l && _isValidLangCode(l)) _langCounts[l] = (_langCounts[l] || 0) + 1; });
   var _langCodes = Object.keys(_langCounts).sort((a, b) => _langCounts[b] - _langCounts[a]);
-  var _showLangPills = !homeScope && !filter && _langCodes.length >= 2;
+  var _showLangPills = !filter && _langCodes.length >= 2;
   if (!_showLangPills) homeLangFilter.clear();
 
   // Apply the language filter (AND with recency, which is computed downstream
@@ -1645,7 +1656,7 @@ function renderHome(filter) {
   // while a filter is active, so un-filtering stays reachable.
   var _recentAdded = sorted.filter(_zimRecentAdded).sort(_byFirstSeenDesc);
   var _recentUpdated = sorted.filter(_zimRecentUpdated).sort(_byUpdatedDesc);
-  var _hasRecency = !homeScope && !filter && (_recentAdded.length || _recentUpdated.length);
+  var _hasRecency = !filter && (_recentAdded.length || _recentUpdated.length);
   var _rows = '';
   if (_hasRecency) {
     _rows += '<div class="pills-row" role="group" aria-label="' + escAttr(t('filter_by_recency')) + '">';
@@ -1685,9 +1696,21 @@ function renderHome(filter) {
 
   let h = '';
 
+  // Scope header with back link — rendered first so it survives the
+  // recency-filter early return below (a section's "Recently added" pill
+  // shouldn't strand the user with no way back to "All sources").
+  if (homeScope) {
+    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">' +
+      '<a href="#" onclick="event.preventDefault();enterHome(true)" style="color:var(--text2);text-decoration:none;font-size:13px">' + tH('all_sources') + '</a>' +
+      '<span style="color:var(--border)">/</span>' +
+      '<span style="font-size:13px;font-weight:600;color:var(--amber)">' + esc(homeScope.label) + '</span>' +
+    '</div>';
+  }
+
   // #34 recency-filter view: a flat, newest-first grid of just the matching
-  // ZIMs. No discover row or category sections — the pill IS the organization,
-  // and a cross-cutting "added this month" list doesn't group by category.
+  // ZIMs (still scoped to the section, if any). No discover row or category
+  // sections — the pill IS the organization, and a cross-cutting "added this
+  // month" list doesn't group by category.
   // A language narrowing can empty the active recency list — its pill is
   // hidden then, so an active-but-invisible filter would strand the view on
   // an empty state. Fall back to All instead.
@@ -1702,15 +1725,6 @@ function renderHome(filter) {
       : '<div class="empty"><p>' + tH('no_recent_sources') + '</p></div>';
     output.innerHTML = h;
     return;
-  }
-
-  // Scope header with back link
-  if (homeScope) {
-    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">' +
-      '<a href="#" onclick="event.preventDefault();enterHome(true)" style="color:var(--text2);text-decoration:none;font-size:13px">' + tH('all_sources') + '</a>' +
-      '<span style="color:var(--border)">/</span>' +
-      '<span style="font-size:13px;font-weight:600;color:var(--amber)">' + esc(homeScope.label) + '</span>' +
-    '</div>';
   }
 
   // Show article search hint at the top when filtering
@@ -3865,12 +3879,13 @@ function showHistoryDropdown(filter) {
   var h = _histLoad();
   var fl = filter ? filter.toLowerCase() : '';
   // Filter pills ride at the top of the dropdown in the focus state (not while
-  // typing) — this is where recency/language filters are picked. They're
-  // whole-library filters (filterHomeRecent/filterHomeLang re-render the
-  // unscoped home), so they only belong on the unscoped home page: never inside
-  // a single ZIM (currentSource), a search, a scope, or manage. Picking a pill
-  // closes the dropdown and renders the filtered view.
-  var pillsHtml = (!filter && _homeFilterRowsHtml && mode === 'home' && !homeScope && !currentSource)
+  // typing) — this is where recency/language filters are picked. They filter
+  // the current library view — the whole library on unscoped home, or just the
+  // section's ZIMs inside a scope (favorites/category/collection) — so they
+  // belong on home in general: never inside a single ZIM (currentSource), a
+  // search, or manage. Picking a pill closes the dropdown and renders the
+  // filtered view.
+  var pillsHtml = (!filter && _homeFilterRowsHtml && mode === 'home' && !currentSource)
     ? '<div class="suggest-filters">' + _homeFilterRowsHtml + '</div>' : '';
   var items = [];
   var seen = new Set();
