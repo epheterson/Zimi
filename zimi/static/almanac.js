@@ -332,19 +332,27 @@ function _almHeadHtml(focus) {
   var age = (m.phase * 29.53).toFixed(1);
 
   var loc = _getLocation();
-  // Times follow the CHOSEN location's zone; with no choice on record, the
-  // device's own zone (a synthetic default resolved to Denver and showed a
-  // fresh browser an hour-off clock).
   var locTz = null;
   try { locTz = _almDisplayTz(loc); } catch (e) {}
+  var live = _almIsToday(focus);
+  // The live "now" header must always read the VIEWER's own local time: the
+  // person is at their device, and "what time is it right now" is unambiguous.
+  // A stored almanac location drives the sky/sun math below, but its derived
+  // zone must never override the live clock — a stale or wrong-hemisphere
+  // stored location (e.g. a western longitude persisted with the wrong sign)
+  // otherwise resolves to a far-eastern zone and paints tomorrow morning onto
+  // today's sky. Only a scrubbed (non-today) focus, which has no "now", keeps
+  // the location zone so its date reads consistently with the panels below.
+  var deviceTz = null;
+  try { deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) {}
+  var displayTz = live ? (deviceTz || locTz) : locTz;
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   var _dtOpts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
   var _tmOpts = { hour: 'numeric', minute: '2-digit' };
-  if (locTz) { _dtOpts.timeZone = locTz; _tmOpts.timeZone = locTz; }
+  if (displayTz) { _dtOpts.timeZone = displayTz; _tmOpts.timeZone = displayTz; }
   var dateStr = focus.toLocaleDateString(lang, _dtOpts);
   var timeStr = focus.toLocaleTimeString(lang, _tmOpts);
-  var tzName = _formatTimezone(lang, locTz);
-  var live = _almIsToday(focus);
+  var tzName = _formatTimezone(lang, displayTz);
 
   var html = '<div style="text-align:center;margin-bottom:16px">';
   html += '<div style="font-size:22px;font-weight:600;color:var(--text)">' + dateStr + '</div>';
