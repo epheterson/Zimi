@@ -6475,6 +6475,7 @@ function _msLibraryHtml() {
       '<button id="library-health-btn" class="manage-btn-action" onclick="runLibraryHealth()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('library_health') + '</button>' +
       '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none;margin-inline-start:auto">' + tH('update_all') + '</button>' +
     '</div>' +
+    '<div class="ms-hint" style="font-size:12px;color:var(--text2);margin-top:6px">' + tH('library_health_desc') + '</div>' +
     '<div id="library-health-section" class="library-health"></div>' +
     '<div id="tmp-files-section"></div>';
   // Async-load tmp file info
@@ -6543,10 +6544,49 @@ function _pollLibraryHealth() {
     if (b3) b3.disabled = false;
   });
 }
-function _healthMark(ok) {
-  return ok
-    ? '<span style="color:#34d399" title="' + escAttr(t('healthy')) + '">✓</span>'
-    : '<span style="color:var(--amber)" title="' + escAttr(t('warning')) + '">⚠</span>';
+function _healthMark(status) {
+  if (status === 'ok') return '<span style="color:#34d399" title="' + escAttr(t('healthy')) + '">✓</span>';
+  if (status === 'info') return '<span style="color:var(--text2)" title="' + escAttr(t('health_info')) + '">ⓘ</span>';
+  return '<span style="color:var(--amber)" title="' + escAttr(t('warning')) + '">⚠</span>';
+}
+// The catalog item for an installed ZIM name, or null. Used to offer
+// "Redownload" only for ZIMs Zimi knows how to fetch again (catalog-known).
+function _catalogItemForZim(name) {
+  if (!name || !_catalogCache) return null;
+  return _catalogCache.find(function(it) {
+    if (it.name === name) return true;
+    var u = it.download_url || (it.variants && it.variants[0] && it.variants[0].download_url);
+    if (!u) return false;
+    var sn = u.split('/').pop().replace(/\.zim$/, '').replace(/_maxi.*$/, '').replace(/_\d{4}-\d{2}$/, '');
+    return sn === name;
+  }) || null;
+}
+// Best download URL for a catalog item (richest flavor, else its own URL).
+function _catalogItemUrl(it) {
+  if (!it) return null;
+  if (it.variants && it.variants.length) {
+    var v = it.variants.filter(function(x) { return x.download_url; })
+      .sort(function(a, b) { return _flavorOrder(b.download_url) - _flavorOrder(a.download_url); })[0];
+    if (v) return v.download_url;
+  }
+  return it.download_url || null;
+}
+// Two-click confirm (mirrors deleteZim): first tap arms, second redownloads.
+function healthRedownload(url, btn) {
+  if (!btn) return;
+  if (!btn.classList.contains('confirming')) {
+    btn.classList.add('confirming');
+    btn.textContent = t('health_redownload_confirm');
+    setTimeout(function() {
+      if (btn.classList.contains('confirming')) {
+        btn.classList.remove('confirming');
+        btn.textContent = t('health_redownload');
+      }
+    }, 4000);
+    return;
+  }
+  btn.classList.remove('confirming');
+  downloadZim(url, btn, true);
 }
 function _renderHealthReport(st) {
   var sec = document.getElementById('library-health-section');
@@ -6555,12 +6595,21 @@ function _renderHealthReport(st) {
   var summaryLine = s.warnings
     ? t('library_health_summary_warn', { healthy: s.healthy, warnings: s.warnings })
     : t('library_health_summary_ok', { total: s.total });
+  if (s.torrent_files) summaryLine += ' · ' + t('health_torrent_files', { n: s.torrent_files });
+  var rank = { warn: 0, ok: 1, info: 2 };  // warnings first, torrent-metadata last
   var rows = (st.report || []).slice().sort(function(a, b) {
-    // Warnings first, then by name.
-    if (a.status !== b.status) return a.status === 'warn' ? -1 : 1;
+    var ra = rank[a.status] != null ? rank[a.status] : 1;
+    var rb = rank[b.status] != null ? rank[b.status] : 1;
+    if (ra !== rb) return ra - rb;
     return (a.name || '').localeCompare(b.name || '');
   });
   var body = rows.map(function(r) {
+    if (r.kind === 'torrent_meta') {
+      return '<div class="health-row health-info">' +
+        '<span class="health-mark">' + _healthMark('info') + '</span>' +
+        '<span class="health-name">' + esc(r.name) + '</span>' +
+        '<span class="health-detail">' + esc(t('health_torrent_meta')) + '</span></div>';
+    }
     var issues = (r.issues && r.issues.length) ? esc(r.issues.join(', ')) :
       (r.entries != null ? t('health_entries', { n: r.entries }) : '');
     var idx = [];
@@ -6568,10 +6617,21 @@ function _renderHealthReport(st) {
     else if (r.title_index === 'stale') idx.push('title(stale)');
     if (r.qid_index === 'present') idx.push('Q-ID');
     var meta = idx.length ? ' <span style="color:var(--text2);font-size:11px">' + esc(idx.join(' · ')) + '</span>' : '';
+    // A broken/degraded ZIM that Zimi knows how to fetch again gets a
+    // Redownload action wired into the normal download flow.
+    var action = '';
+    if (r.status === 'warn') {
+      var it = _catalogItemForZim(r.name);
+      var url = _catalogItemUrl(it);
+      if (url) {
+        action = '<button class="health-redownload-btn" onclick="healthRedownload(\'' +
+          escAttr(url) + '\', this)">' + tH('health_redownload') + '</button>';
+      }
+    }
     return '<div class="health-row ' + (r.status === 'warn' ? 'health-warn' : '') + '">' +
-      '<span class="health-mark">' + _healthMark(r.status === 'ok') + '</span>' +
+      '<span class="health-mark">' + _healthMark(r.status) + '</span>' +
       '<span class="health-name">' + esc(r.title || r.name) + '</span>' +
-      '<span class="health-detail">' + issues + meta + '</span></div>';
+      '<span class="health-detail">' + issues + meta + '</span>' + action + '</div>';
   }).join('');
   sec.innerHTML = '<div class="health-summary">' + esc(summaryLine) + '</div>' +
     '<div class="health-table">' + body + '</div>';

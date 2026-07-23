@@ -635,6 +635,13 @@
   .health-row .health-name { flex: 0 0 auto; font-weight: 500; color: var(--text); }
   .health-row .health-detail { flex: 1 1 auto; color: var(--text2); text-align: end; }
   .health-row.health-warn .health-detail { color: var(--amber); }
+  .health-row.health-info .health-detail { color: var(--text2); }
+  .health-row .health-redownload-btn {
+    flex: 0 0 auto; font-size: 11px; padding: 2px 8px; border-radius: 5px; cursor: pointer;
+    background: var(--surface2); color: var(--amber); border: 1px solid var(--border);
+  }
+  .health-row .health-redownload-btn:hover { border-color: var(--amber); }
+  .health-row .health-redownload-btn.confirming { background: var(--amber-glow, rgba(245,158,11,.15)); font-weight: 600; }
   /* ── Bookmarks panel: Save to ZIM ── */
   .hp-actions { display: flex; align-items: center; gap: 10px; padding: 8px 12px; flex-wrap: wrap; }
   .hp-action-btn {
