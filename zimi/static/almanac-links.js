@@ -323,8 +323,107 @@
     'belt:kuiper':   { q: 'Q41072', en: 'Kuiper belt' }
   };
 
+  // "On this day" event subjects — the confident entity behind each editorial
+  // milestone in _ON_THIS_DAY (almanac.js). `sub` is the exact phrase, as it
+  // appears in the event text, that becomes the link; `en` is the article title
+  // resolved server-side (may differ from `sub`, e.g. a redirect or a
+  // disambiguated title). Ambiguous events (no confident single subject) carry
+  // no `ev:` key and stay plain text — a wrong link is worse than none.
+  var EVENTS = {
+    'ev:ceres':        { q: 'Q596',       en: 'Ceres (dwarf planet)',        sub: 'Ceres' },
+    'ev:luna1':        { q: 'Q768766',    en: 'Luna 1',                      sub: 'Luna 1' },
+    'ev:change4':      { q: 'Q15982545',  en: "Chang'e 4",                   sub: 'Chang’e 4' },
+    'ev:newton':       { q: 'Q935',       en: 'Isaac Newton',                sub: 'Isaac Newton' },
+    'ev:eris':         { q: 'Q21',        en: 'Eris (dwarf planet)',         sub: 'Eris' },
+    'ev:jupiter':      { q: 'Q319',       en: 'Jupiter',                     sub: 'Jupiter' },
+    'ev:titan':        { q: 'Q2565',      en: 'Titan (moon)',                sub: 'Titan' },
+    'ev:yukawa':       { q: 'Q193300',    en: 'Hideki Yukawa',               sub: 'Hideki Yukawa' },
+    'ev:challenger':   { q: 'Q192943',    en: 'Space Shuttle Challenger',    sub: 'Space Shuttle Challenger' },
+    'ev:explorer1':    { q: 'Q235612',    en: 'Explorer 1',                  sub: 'Explorer 1' },
+    'ev:mccandless':   { q: 'Q311145',    en: 'Bruce McCandless II',         sub: 'Bruce McCandless' },
+    'ev:mendeleev':    { q: 'Q9106',      en: 'Dmitri Mendeleev',            sub: 'Dmitri Mendeleev' },
+    'ev:mendel':       { q: 'Q37970',     en: 'Gregor Mendel',               sub: 'Gregor Mendel' },
+    'ev:ligo':         { q: 'Q579695',    en: 'LIGO',                        sub: 'LIGO' },
+    'ev:darwin':       { q: 'Q1035',      en: 'Charles Darwin',              sub: 'Charles Darwin' },
+    'ev:voyager1':     { q: 'Q48472',     en: 'Voyager 1',                   sub: 'Voyager 1' },
+    'ev:galileogalilei': { q: 'Q307',     en: 'Galileo Galilei',             sub: 'Galileo Galilei' },
+    'ev:pluto':        { q: 'Q339',       en: 'Pluto',                       sub: 'Pluto' },
+    'ev:copernicus':   { q: 'Q619',       en: 'Nicolaus Copernicus',         sub: 'Nicolaus Copernicus' },
+    'ev:bellburnell':  { q: 'Q231180',    en: 'Jocelyn Bell Burnell',        sub: 'Jocelyn Bell Burnell' },
+    'ev:uranus':       { q: 'Q324',       en: 'Uranus',                      sub: 'Uranus' },
+    'ev:einstein':     { q: 'Q937',       en: 'Albert Einstein',             sub: 'Albert Einstein' },
+    'ev:hawking':      { q: 'Q17714',     en: 'Stephen Hawking',             sub: 'Stephen Hawking' },
+    'ev:goddard':      { q: 'Q152672',    en: 'Robert H. Goddard',           sub: 'Robert Goddard' },
+    'ev:leonov':       { q: 'Q170382',    en: 'Alexei Leonov',               sub: 'Alexei Leonov' },
+    'ev:noether':      { q: 'Q7099',      en: 'Emmy Noether',                sub: 'Emmy Noether' },
+    'ev:gagarin':      { q: 'Q40488',     en: 'Yuri Gagarin',                sub: 'Yuri Gagarin' },
+    'ev:columbia':     { q: 'Q250571',    en: 'Space Shuttle Columbia',      sub: 'Columbia' },
+    'ev:apollo13':     { q: 'Q182252',    en: 'Apollo 13',                   sub: 'Apollo 13' },
+    'ev:salyut1':      { q: 'Q844408',    en: 'Salyut 1',                    sub: 'Salyut 1' },
+    'ev:hubble':       { q: 'Q2513',      en: 'Hubble Space Telescope',      sub: 'Hubble Space Telescope' },
+    'ev:franklin':     { q: 'Q166298',    en: 'Rosalind Franklin',           sub: 'Rosalind Franklin' },
+    'ev:shepard':      { q: 'Q131002',    en: 'Alan Shepard',                sub: 'Alan Shepard' },
+    'ev:smallpox':     { q: 'Q12214',     en: 'Smallpox',                    sub: 'smallpox' },
+    'ev:hodgkin':      { q: 'Q170672',    en: 'Dorothy Hodgkin',             sub: 'Dorothy Hodgkin' },
+    'ev:jenner':       { q: 'Q170579',    en: 'Edward Jenner',               sub: 'Edward Jenner' },
+    'ev:zhurong':      { q: 'Q100708006', en: 'Zhurong (rover)',             sub: 'Zhurong' },
+    'ev:jfk':          { q: 'Q9696',      en: 'John F. Kennedy',             sub: 'JFK' },
+    'ev:esa':          { q: 'Q42262',     en: 'European Space Agency',       sub: 'European Space Agency' },
+    'ev:hayabusa':     { q: 'Q182828',    en: 'Hayabusa',                    sub: 'Hayabusa' },
+    'ev:tereshkova':   { q: 'Q7861',      en: 'Valentina Tereshkova',        sub: 'Valentina Tereshkova' },
+    'ev:sallyride':    { q: 'Q26719',     en: 'Sally Ride',                  sub: 'Sally Ride' },
+    'ev:turing':       { q: 'Q7251',      en: 'Alan Turing',                 sub: 'Alan Turing' },
+    'ev:genome':       { q: 'Q611',       en: 'Human genome',                sub: 'human genome' },
+    'ev:tunguska':     { q: 'Q173536',    en: 'Tunguska event',              sub: 'Tunguska' },
+    'ev:pathfinder':   { q: 'Q184935',    en: 'Mars Pathfinder',             sub: 'Mars Pathfinder' },
+    'ev:higgs':        { q: 'Q42824',     en: 'Higgs boson',                 sub: 'Higgs boson' },
+    'ev:newhorizons':  { q: 'Q186447',    en: 'New Horizons',                sub: 'New Horizons' },
+    'ev:mariner4':     { q: 'Q206068',    en: 'Mariner 4',                   sub: 'Mariner 4' },
+    'ev:apollo11':     { q: 'Q43653',     en: 'Apollo 11',                   sub: 'Apollo 11' },
+    'ev:lemaitre':     { q: 'Q193660',    en: 'Georges Lemaître',       sub: 'Georges Lemaître' },
+    'ev:glenn':        { q: 'Q2882',      en: 'John Glenn',                  sub: 'John Glenn' },
+    'ev:viking1':      { q: 'Q207164',    en: 'Viking 1',                    sub: 'Viking 1' },
+    'ev:halebopp':     { q: 'Q80956',     en: 'Comet Hale–Bopp',        sub: 'Comet Hale–Bopp' },
+    'ev:curiosity':    { q: 'Q184304',    en: 'Curiosity (rover)',           sub: 'Curiosity' },
+    'ev:rosetta':      { q: 'Q194429',    en: 'Rosetta (spacecraft)',        sub: 'Rosetta' },
+    'ev:deimos':       { q: 'Q7548',      en: 'Deimos (moon)',               sub: 'Deimos' },
+    'ev:chandrayaan3': { q: 'Q117207630', en: 'Chandrayaan-3',               sub: 'Chandrayaan-3' },
+    'ev:voyager2':     { q: 'Q48479',     en: 'Voyager 2',                   sub: 'Voyager 2' },
+    'ev:goldenrecord': { q: 'Q1130017',   en: 'Voyager Golden Record',       sub: 'Golden Record' },
+    'ev:lhc':          { q: 'Q2957',      en: 'Large Hadron Collider',       sub: 'Large Hadron Collider' },
+    'ev:luna2':        { q: 'Q768773',    en: 'Luna 2',                      sub: 'Luna 2' },
+    'ev:galileoprobe': { q: 'Q184921',    en: 'Galileo (spacecraft)',        sub: 'Galileo' },
+    'ev:neptune':      { q: 'Q332',       en: 'Neptune',                     sub: 'Neptune' },
+    'ev:mangalyaan':   { q: 'Q1189238',   en: 'Mars Orbiter Mission',        sub: 'Mangalyaan' },
+    'ev:fleming':      { q: 'Q40757',     en: 'Alexander Fleming',           sub: 'Alexander Fleming' },
+    'ev:sputnik1':     { q: 'Q30341',     en: 'Sputnik 1',                   sub: 'Sputnik 1' },
+    'ev:pegasi':       { q: 'Q1054213',   en: '51 Pegasi b',                 sub: '51 Pegasi b' },
+    'ev:luna3':        { q: 'Q768822',    en: 'Luna 3',                      sub: 'Luna 3' },
+    'ev:cassini':      { q: 'Q153201',    en: 'Cassini–Huygens',        sub: 'Cassini' },
+    'ev:shenzhou5':    { q: 'Q1055829',   en: 'Shenzhou 5',                  sub: 'Shenzhou 5' },
+    'ev:chandrasekhar':{ q: 'Q173028',    en: 'Subrahmanyan Chandrasekhar',  sub: 'Subrahmanyan Chandrasekhar' },
+    'ev:iss':          { q: 'Q25956',     en: 'International Space Station',  sub: 'ISS' },
+    'ev:iss_full':     { q: 'Q25956',     en: 'International Space Station',  sub: 'International Space Station' },
+    'ev:laika':        { q: 'Q30150',     en: 'Laika',                       sub: 'Laika' },
+    'ev:curie_pl':     { q: 'Q7186',      en: 'Marie Curie',                 sub: 'Marie Skłodowska-Curie' },
+    'ev:halley':       { q: 'Q170488',    en: 'Edmond Halley',               sub: 'Edmond Halley' },
+    'ev:rontgen':      { q: 'Q37877',     en: 'Wilhelm Röntgen',        sub: 'Wilhelm Röntgen' },
+    'ev:sagan':        { q: 'Q160522',    en: 'Carl Sagan',                  sub: 'Carl Sagan' },
+    'ev:philae':       { q: 'Q211530',    en: 'Philae (spacecraft)',         sub: 'Philae' },
+    'ev:hayabusa2':    { q: 'Q17048372',  en: 'Hayabusa2',                   sub: 'Hayabusa2' },
+    'ev:curie':        { q: 'Q7186',      en: 'Marie Curie',                 sub: 'Marie Curie' },
+    'ev:apollo17':     { q: 'Q47010',     en: 'Apollo 17',                   sub: 'Apollo 17' },
+    'ev:venera7':      { q: 'Q244565',    en: 'Venera 7',                    sub: 'Venera 7' },
+    'ev:wright':       { q: 'Q35314',     en: 'Wright brothers',             sub: 'Wright brothers' },
+    'ev:apollo8':      { q: 'Q214917',    en: 'Apollo 8',                    sub: 'Apollo 8' },
+    'ev:ramanujan':    { q: 'Q82547',     en: 'Srinivasa Ramanujan',         sub: 'Srinivasa Ramanujan' },
+    'ev:jwst':         { q: 'Q1436668',   en: 'James Webb Space Telescope',  sub: 'James Webb Space Telescope' },
+    'ev:kepler':       { q: 'Q8963',      en: 'Johannes Kepler',             sub: 'Johannes Kepler' },
+    'ev:beagle':       { q: 'Q10380',     en: 'HMS Beagle',                  sub: 'HMS Beagle' }
+  };
+
   var MAP = {};
-  [PLANETS, PROBES, CONSTELLATIONS, SHOWERS, ECLIPSES, CALENDARS, ZODIAC, STARS, HOLIDAYS, TERMS, SEASONS, BELTS]
+  [PLANETS, PROBES, CONSTELLATIONS, SHOWERS, ECLIPSES, CALENDARS, ZODIAC, STARS, HOLIDAYS, TERMS, SEASONS, BELTS, EVENTS]
     .forEach(function (group) { for (var k in group) if (group.hasOwnProperty(k)) MAP[k] = group[k]; });
 
   // Register curated holidays under a "holiday:<norm>" key so wrapHoliday() can
@@ -522,6 +621,24 @@
     return HOLIDAYS[n] ? wrap('holiday:' + n, displayHtml, label) : displayHtml;
   }
 
+  function _escHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // Linkify one "on this day" event string: HTML-escape the whole text, and —
+  // when the event's subject Q-ID resolved to an installed article — wrap just
+  // the subject phrase (`sub`, exactly as it appears in the text) in a tappable
+  // link. Unresolved / uncurated / phrase-not-found → the plain escaped text.
+  function linkifyEvent(text, key) {
+    var full = _escHtml(text);
+    var entry = key ? MAP[key] : null;
+    if (!entry || !entry.sub || !(entry.q && _qidLinks[entry.q])) return full;
+    var escSub = _escHtml(entry.sub);
+    var idx = full.indexOf(escSub);
+    if (idx < 0) return full;
+    return full.slice(0, idx) + _linkSpan(key, escSub) + full.slice(idx + escSub.length);
+  }
+
   // -- Delegated tap handler (bound once) -----------------------------------
 
   function _handle(e) {
@@ -558,7 +675,7 @@
   }
 
   window.AlmanacLinks = {
-    MAP: MAP, wrap: wrap, wrapHoliday: wrapHoliday,
+    MAP: MAP, wrap: wrap, wrapHoliday: wrapHoliday, linkifyEvent: linkifyEvent,
     open: open, bind: bind, reset: reset, linkFor: linkFor
   };
 })();
