@@ -5711,26 +5711,33 @@ async function renderCollectionsTab() {
       '<button class="coll-del" onclick="event.stopPropagation();deleteCollection(\'' + escAttr(name) + '\', this)" title="' + escAttr(t('delete_collection')) + '">\u00D7</button>' +
     '</div>';
     if (expanded) {
-      // Group ZIMs by category (same names + order as homepage)
+      // ZIM picker — same library card layout as the Installed list (shared
+      // _zimCardHtml), grouped by category like the homepage. A tap toggles
+      // collection membership; members render selected (checkmark).
       const catMap = {};
       for (const z of zims) {
         const cat = z.category || categorizeZim(z.name);
         if (!catMap[cat]) catMap[cat] = [];
         catMap[cat].push(z);
       }
-      h += '<div style="margin-top:10px">';
+      h += '<div class="coll-picker" onclick="event.stopPropagation()">';
       for (const cat of Object.keys(catMap).sort()) {
-        const catZims = catMap[cat];
-        h += '<div style="margin-bottom:8px"><div style="font-size:11px;color:var(--text2);margin-bottom:4px">' + esc(cat) + '</div>';
-        h += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+        const catZims = catMap[cat].slice().sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
+        h += '<div class="manage-installed-group"><div class="ci-section-label">' + esc(_catDisplayName(cat)) + ' (' + catZims.length + ')</div>';
         for (const z of catZims) {
           const inColl = collZims.includes(z.name);
-          const title = z.title || z.name;
-          h += '<span class="pill' + (inColl ? ' active' : '') + '" style="cursor:pointer;font-size:12px" ' +
-            'onclick="event.stopPropagation();toggleCollZim(\'' + escAttr(name) + '\',\'' + escAttr(z.name) + '\')">' +
-            esc(title) + '</span>';
+          const meta = [];
+          const countHtml = _zimCountHtml(z);
+          if (countHtml) meta.push(countHtml);
+          meta.push(fmtSize(z.size_gb));
+          h += _zimCardHtml(z, {
+            selected: inColl,
+            onclick: 'event.stopPropagation();toggleCollZim(\'' + escAttr(name) + '\',\'' + escAttr(z.name) + '\')',
+            metaHtml: meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; '),
+            actionsHtml: '<span class="ci-coll-check">' + (inColl ? '✓' : '') + '</span>',
+          });
         }
-        h += '</div></div>';
+        h += '</div>';
       }
       h += '</div>';
     }
@@ -7620,6 +7627,30 @@ function filterManageLang(lang) {
 }
 
 // ── Installed tab: render ZIMs grouped by category ──
+// Shared library-style ZIM card (icon + title + meta + actions). Used by the
+// Installed list AND the collection picker so a ZIM looks identical wherever
+// it appears — one layout, no fork. Callers supply the meta string and the
+// trailing actions; opts.selected marks it (collection membership).
+// opts: { metaHtml, actionsHtml, onclick, extraClass, selected }
+function _zimCardHtml(z, opts) {
+  opts = opts || {};
+  const iconHtml = z.has_icon
+    ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="40" height="40" loading="lazy">'
+    : '<span class="ci-letter">' + (esc(z.title || z.name)[0] || '?').toUpperCase() + '</span>';
+  const langTag = (z.language && z.language !== 'en')
+    ? '<span class="ci-lang-tag">' + esc(_langDisplayName(z.language)) + '</span>' : '';
+  const cls = 'catalog-item' + (opts.extraClass ? ' ' + opts.extraClass : '') + (opts.selected ? ' ci-selected' : '');
+  return '<div class="' + cls + '"' +
+      (opts.onclick ? ' style="cursor:pointer" onclick="' + opts.onclick + '"' : '') + '>' +
+    '<div class="ci-icon">' + iconHtml + '</div>' +
+    '<div class="ci-info">' +
+      '<div class="ci-title">' + esc(z.title || z.name) + langTag + '</div>' +
+      '<div class="ci-meta">' + (opts.metaHtml || '') + '</div>' +
+    '</div>' +
+    '<div class="ci-actions">' + (opts.actionsHtml || '') + '</div>' +
+  '</div>';
+}
+
 function renderInstalled(filterText) {
   const el = document.getElementById('manage-installed');
   if (!el) return;
@@ -7669,9 +7700,6 @@ function renderInstalled(filterText) {
     const groupLabel = cat === '__updates__' ? t('updates_available_section') : _catDisplayName(cat);
     items_h += '<div class="ci-section-label">' + esc(groupLabel) + ' (' + items.length + ')</div>';
     for (const z of items) {
-      const iconHtml = z.has_icon
-        ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="40" height="40" loading="lazy">'
-        : '<span class="ci-letter">' + (esc(z.title || z.name)[0] || '?').toUpperCase() + '</span>';
       const meta = [];
       const countHtml = _zimCountHtml(z);
       if (countHtml) meta.push(countHtml);
@@ -7712,15 +7740,12 @@ function renderInstalled(filterText) {
       const gearHtml = manageEnabled
         ? '<button class="ci-gear" data-zim="' + escAttr(z.name) + '" onclick="event.stopPropagation();_ciGearClick(this)" title="' + escAttr(t('organize')) + '" aria-label="' + escAttr(t('organize')) + '">\u22ef</button>'
         : '';
-      var langTag = (z.language && z.language !== 'en') ? '<span class="ci-lang-tag">' + esc(_langDisplayName(z.language)) + '</span>' : '';
-      items_h += '<div class="catalog-item' + (upd ? ' ci-has-update' : '') + '" style="cursor:pointer" onclick="if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(z.name) + '\',true)}">' +
-        '<div class="ci-icon">' + iconHtml + '</div>' +
-        '<div class="ci-info">' +
-          '<div class="ci-title">' + esc(z.title || z.name) + langTag + '</div>' +
-          '<div class="ci-meta">' + meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
-        '</div>' +
-        '<div class="ci-actions">' + gearHtml + actionsHtml + '</div>' +
-      '</div>';
+      items_h += _zimCardHtml(z, {
+        extraClass: upd ? 'ci-has-update' : '',
+        onclick: 'if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(z.name) + '\',true)}',
+        metaHtml: meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; '),
+        actionsHtml: gearHtml + actionsHtml,
+      });
     }
     items_h += '</div>';
   }
