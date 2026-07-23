@@ -1334,24 +1334,18 @@ def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
     tdir = os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents")
     os.makedirs(tdir, exist_ok=True)
 
-    # Full catalog, all pages
+    # Full catalog, all pages (English slice, as before).
     urls = {}
-    total, items, err = _fetch_kiwix_catalog("", "eng", 500, 0)
-    if err:
+    catalog = _full_catalog("eng")
+    if not catalog:
         _catalog_torrents_archived = False  # retry next run
         return 0
-    pages = [items]
-    for start in range(500, total, 500):
-        _t, more, _e = _fetch_kiwix_catalog("", "eng", 500, start)
-        if more:
-            pages.append(more)
-    for page in pages:
-        for it in page or []:
-            u = (it.get("download_url") or "").split("?")[0]
-            if u.endswith(".meta4"):
-                u = u[: -len(".meta4")]
-            if u.endswith(".zim"):
-                urls[os.path.basename(u)] = u + ".torrent"
+    for it in catalog:
+        u = (it.get("download_url") or "").split("?")[0]
+        if u.endswith(".meta4"):
+            u = u[: -len(".meta4")]
+        if u.endswith(".zim"):
+            urls[os.path.basename(u)] = u + ".torrent"
 
     fetched = 0
     fetched_bytes = 0
@@ -2090,6 +2084,34 @@ def _detect_flavor(filename_or_base):
     return None
 
 
+def _full_catalog(lang=""):
+    """Every catalog entry across all pages, served from the SWR cache when warm.
+
+    Defaults to the SAME (query, lang, count) the browse UI warms — empty lang,
+    count 500 — so a manual update check reuses the already-cached catalog and
+    makes ZERO network round trips on the common path (the browse view, or a
+    prior check, has populated the cache). A cold cache fetches synchronously
+    once; every later caller then rides the cache.
+
+    Empty lang (not "eng") also matters for correctness: an eng-filtered catalog
+    omits non-English installs (wikipedia_de, wikipedia_he, ...), which would
+    then silently never be offered an update. Callers that deliberately want the
+    English slice pass lang="eng".
+    """
+    total, items, err = _fetch_kiwix_catalog(query="", lang=lang, count=500, start=0)
+    if err:
+        return []
+    all_items = list(items or [])
+    while len(all_items) < total:
+        _t, more, err = _fetch_kiwix_catalog(
+            query="", lang=lang, count=500, start=len(all_items)
+        )
+        if err or not more:
+            break
+        all_items.extend(more)
+    return all_items
+
+
 def _check_updates():
     """Compare installed ZIMs against Kiwix catalog to find available updates.
 
@@ -2116,19 +2138,11 @@ def _check_updates():
     if not installed_files:
         return []
 
-    # Fetch full catalog to check all installed ZIMs (paginated)
-    all_items = []
-    total, items, err = _fetch_kiwix_catalog(query="", lang="eng", count=500, start=0)
-    if err:
+    # Full catalog across all pages — reuses the browse UI's warm SWR cache
+    # (empty lang, count 500), so the common path makes no extra Kiwix requests.
+    all_items = _full_catalog()
+    if not all_items:
         return []
-    all_items.extend(items)
-    while len(all_items) < total:
-        _, more, err = _fetch_kiwix_catalog(
-            query="", lang="eng", count=500, start=len(all_items)
-        )
-        if err or not more:
-            break
-        all_items.extend(more)
 
     # Build index: for each catalog item, gather candidate prefixes to match
     # installed filenames against. OPDS `name` field can be truncated/

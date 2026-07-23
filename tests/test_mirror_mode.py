@@ -297,7 +297,7 @@ def test_archive_catalog_torrents_fetches_all(_mirror_env, monkeypatch):
     monkeypatch.setattr(
         lib,
         "_fetch_kiwix_catalog",
-        lambda q, l, c, s: (
+        lambda *a, **k: (
             2,
             [
                 {
@@ -343,7 +343,7 @@ def test_archive_rejects_non_bencode(_mirror_env, monkeypatch):
     monkeypatch.setattr(
         lib,
         "_fetch_kiwix_catalog",
-        lambda q, l, c, s: (
+        lambda *a, **k: (
             1,
             [{"download_url": "https://download.kiwix.org/zim/x/x_2026-06.zim.meta4"}],
             None,
