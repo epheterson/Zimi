@@ -3816,10 +3816,12 @@ function showHistoryDropdown(filter) {
   var h = _histLoad();
   var fl = filter ? filter.toLowerCase() : '';
   // Filter pills ride at the top of the dropdown in the focus state (not while
-  // typing) — this is where recency/language filters are picked. Home itself
-  // stays clean; picking a pill closes the dropdown and renders the filtered
-  // view (filterHomeRecent/filterHomeLang call hideSuggest + renderHome).
-  var pillsHtml = (!filter && _homeFilterRowsHtml && mode !== 'manage' && !homeScope)
+  // typing) — this is where recency/language filters are picked. They're
+  // whole-library filters (filterHomeRecent/filterHomeLang re-render the
+  // unscoped home), so they only belong on the unscoped home page: never inside
+  // a single ZIM (currentSource), a search, a scope, or manage. Picking a pill
+  // closes the dropdown and renders the filtered view.
+  var pillsHtml = (!filter && _homeFilterRowsHtml && mode === 'home' && !homeScope && !currentSource)
     ? '<div class="suggest-filters">' + _homeFilterRowsHtml + '</div>' : '';
   var items = [];
   var seen = new Set();
