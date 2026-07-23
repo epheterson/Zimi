@@ -74,6 +74,9 @@
          save-password prompt. -->
     <label for="pw-username" class="sr-only" data-i18n="username">Username</label>
     <input id="pw-username" type="text" name="username" value="admin" autocomplete="username" placeholder="Username" data-i18n-placeholder="username" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('pw-input').focus()}">
+    <!-- First-login hint: shown only when the default username applies (server
+         flag via /whoami). Tells a fresh user the account name is "admin". -->
+    <div id="pw-username-hint" style="display:none;font-size:12px;color:var(--text2);margin:-4px 0 8px"></div>
     <label for="pw-input" class="sr-only" data-i18n="password">Password</label>
     <input id="pw-input" type="password" placeholder="Password" data-i18n-placeholder="password" autocomplete="current-password" aria-labelledby="pw-title" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
     <div class="pw-error" id="pw-error"></div>

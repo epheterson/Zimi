@@ -524,8 +524,14 @@ function _checkUserSession() {
       _userSession = { name: j.name, restricted: !!j.restricted };
       if (manageBtnEl) manageBtnEl.style.display = 'none';
     }
+    // First-login hint: the server only sends this when the default username
+    // ("admin") applies (no custom username, no named users). The login modal
+    // reads it to show "Default username: admin".
+    _defaultUsernameHint = (j && j.default_username) || '';
   }).catch(function() {});
 }
+// '' unless the server says the default username applies (see _checkUserSession).
+var _defaultUsernameHint = '';
 
 // Token-adding fetch for *ambient* /manage/* calls (activity bar, peer
 // discovery, status/mirror polls). Sends the manage token when we have one
@@ -613,6 +619,14 @@ function openPwModal(title, opts) {
   // change-password), else the neutral 'admin' default.
   var uEl = document.getElementById('pw-username');
   if (uEl) uEl.value = _manageUser || 'admin';
+  // First-login hint ("Default username: admin") — only in sign-in mode and
+  // only when the server says the default applies (no custom username/users).
+  var hintEl = document.getElementById('pw-username-hint');
+  if (hintEl) {
+    var showHint = _pwLoginMode && !!_defaultUsernameHint;
+    hintEl.style.display = showHint ? 'block' : 'none';
+    if (showHint) hintEl.textContent = t('default_username_hint').replace('{name}', _defaultUsernameHint);
+  }
   document.getElementById('pw-input').value = '';
   document.getElementById('pw-input').placeholder = (opts && opts.placeholder) || t('password');
   document.getElementById('pw-input').autocomplete = (opts && opts.hideRemember) ? 'new-password' : 'current-password';
@@ -691,7 +705,11 @@ function submitPw() {
         // (the in-memory token is wiped, so manage polls stop even though the
         // persisted copy survives). enterManage() is deterministic — it always
         // lands in manage and restores any pending _pendingMsSection.
-        _manageToken = pw; _saveManageToken(pw, remember);
+        // A SECONDARY admin authenticates to a session token (res.j.token);
+        // the PRIMARY admin's token is the password itself.
+        var tok = res.j.token || pw;
+        if (res.j.secondary && res.j.name) _manageUser = res.j.name;
+        _manageToken = tok; _saveManageToken(tok, remember);
         _pwLoginMode = false;
         closePwModal();
         if (typeof enterManage === 'function') enterManage();
@@ -6096,38 +6114,83 @@ function _renderMsUsers() {
   });
 }
 
+// Role → localized badge. Admin gets the amber badge; user/limited are muted.
+function _roleBadge(role) {
+  var key = role === 'admin' ? 'users_role_admin' : (role === 'limited' ? 'users_role_limited' : 'users_role_user');
+  var cls = role === 'admin' ? 'ms-role-badge ms-role-admin' : 'ms-role-badge';
+  return '<span class="' + cls + '">' + tH(key) + '</span>';
+}
+
 function _msUsersHtml() {
   var d = _usersData || { users: [], zims: [] };
+  var isPrimary = d.self_kind === 'primary';
   var h = '<div class="ms-users-intro" style="color:var(--text2);font-size:13px;margin-bottom:14px">' + tH('users_intro') + '</div>';
-  // Existing users
-  if (d.users.length) {
-    h += '<div class="ms-users-list">';
-    d.users.forEach(function(u) {
-      var scope = u.all_access ? tH('users_all_access') : (u.allowlist.length + ' ' + tH('users_zim_count'));
-      h += '<div class="ms-user-row" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
-        '<span style="flex:1"><strong>' + esc(u.name) + '</strong> <span style="color:var(--text2);font-size:12px">' + scope + '</span></span>' +
-        '<button class="ms-btn" onclick="_editUserAllowlist(' + escAttr(JSON.stringify(u.name)) + ')">' + tH('users_edit_access') + '</button>' +
-        '<button class="ms-btn ms-btn-danger" onclick="_deleteUser(' + escAttr(JSON.stringify(u.name)) + ')">' + tH('delete') + '</button>' +
-      '</div>';
-    });
-    h += '</div>';
-  } else {
-    h += '<div style="color:var(--text2);font-size:13px;margin-bottom:14px">' + tH('users_none') + '</div>';
+  h += '<div class="ms-users-list">';
+  // The PRIMARY admin, always first — crown, admin badge, never deletable.
+  if (d.primary_admin) {
+    h += '<div class="ms-user-row" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
+      '<span style="flex:1"><span class="ms-crown" title="' + escAttr(tH('users_primary_admin')) + '">👑</span> <strong>' + esc(d.primary_admin.name) + '</strong> ' + _roleBadge('admin') +
+      ' <span style="color:var(--text2);font-size:12px">' + tH('users_primary_admin') + '</span></span>' +
+    '</div>';
   }
+  // Named users, each with its role badge.
+  d.users.forEach(function(u) {
+    var scope = u.all_access ? tH('users_all_access') : (u.allowlist.length + ' ' + tH('users_zim_count'));
+    // A secondary admin cannot manage other admins (server enforces; UI hides).
+    var canManage = isPrimary || u.role !== 'admin';
+    var btns = canManage
+      ? '<button class="ms-btn" onclick="_editUser(' + escAttr(JSON.stringify(u.name)) + ')">' + tH('users_edit_access') + '</button>' +
+        '<button class="ms-btn ms-btn-danger" onclick="_deleteUser(' + escAttr(JSON.stringify(u.name)) + ')">' + tH('delete') + '</button>'
+      : '';
+    h += '<div class="ms-user-row" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
+      '<span style="flex:1"><strong>' + esc(u.name) + '</strong> ' + _roleBadge(u.role) +
+      ' <span style="color:var(--text2);font-size:12px">' + (u.role === 'limited' ? scope : tH('users_all_access')) + '</span></span>' +
+      btns +
+    '</div>';
+  });
+  h += '</div>';
   // Add-user form
   h += '<div class="ms-user-add" style="margin-top:18px">' +
     '<h4 style="margin:0 0 10px">' + tH('users_add') + '</h4>' +
-    '<input id="new-user-name" type="text" placeholder="' + escAttr(tH('users_name_ph')) + '" style="width:100%;margin-bottom:8px" maxlength="32">' +
+    '<input id="new-user-name" type="text" placeholder="' + escAttr(tH('users_name_ph')) + '" autocomplete="username" style="width:100%;margin-bottom:8px" maxlength="32">' +
     '<input id="new-user-pw" type="password" placeholder="' + escAttr(tH('password')) + '" autocomplete="new-password" style="width:100%;margin-bottom:8px">' +
     '<div style="font-size:12px;color:var(--text2);margin-bottom:6px">' + tH('users_access_label') + '</div>' +
-    '<label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:8px;cursor:pointer">' +
-      '<input type="checkbox" id="new-user-allaccess" checked onchange="_toggleNewUserAllowlist(this)" style="accent-color:var(--amber)"> ' + tH('users_all_access') +
-    '</label>' +
-    '<div id="new-user-allowlist" style="display:none">' + _allowlistPicker([]) + '</div>' +
+    _rolePills('new-user', 'user', isPrimary) +
+    '<div id="new-user-allowlist" style="display:none;margin-top:8px">' + _allowlistPicker([]) + '</div>' +
     '<div id="new-user-error" class="pw-error" style="display:none"></div>' +
     '<button class="ms-btn ms-btn-primary" style="margin-top:10px" onclick="_createUser()">' + tH('users_create') + '</button>' +
   '</div>';
   return h;
+}
+
+// Radio-pill role picker. `showAdmin` gates the Admin option to the primary
+// admin (only the primary may create/promote secondary admins).
+function _rolePills(idPrefix, selected, showAdmin) {
+  var roles = [['user', 'users_role_user'], ['limited', 'users_role_limited']];
+  if (showAdmin) roles.push(['admin', 'users_role_admin']);
+  var h = '<div class="pills-row" id="' + idPrefix + '-role" role="radiogroup" aria-label="' + escAttr(tH('users_access_label')) + '">';
+  roles.forEach(function(r) {
+    var on = r[0] === selected;
+    h += '<button type="button" class="pill' + (on ? ' active' : '') + '" role="radio" aria-checked="' + on + '" data-role="' + r[0] + '" onclick="_selectRole(\'' + idPrefix + '\', \'' + r[0] + '\')">' + tH(r[1]) + '</button>';
+  });
+  return h + '</div>';
+}
+
+function _selectRole(idPrefix, role) {
+  var group = document.getElementById(idPrefix + '-role');
+  if (group) group.querySelectorAll('.pill').forEach(function(p) {
+    var on = p.getAttribute('data-role') === role;
+    p.classList.toggle('active', on);
+    p.setAttribute('aria-checked', on);
+  });
+  // Allowlist editor only makes sense for the limited role.
+  var al = document.getElementById(idPrefix + '-allowlist');
+  if (al) al.style.display = role === 'limited' ? 'block' : 'none';
+}
+
+function _selectedRole(idPrefix) {
+  var el = document.querySelector('#' + idPrefix + '-role .pill.active');
+  return el ? el.getAttribute('data-role') : 'user';
 }
 
 // Checkbox picker of installed ZIMs. `selected` = array of chosen names.
@@ -6144,11 +6207,6 @@ function _allowlistPicker(selected) {
   });
   h += '</div>';
   return h;
-}
-
-function _toggleNewUserAllowlist(cb) {
-  var el = document.getElementById('new-user-allowlist');
-  if (el) el.style.display = cb.checked ? 'none' : 'block';
 }
 
 function _collectAllowlist(containerId) {
@@ -6168,11 +6226,11 @@ function _usersPost(payload) {
 function _createUser() {
   var name = (document.getElementById('new-user-name').value || '').trim();
   var pw = document.getElementById('new-user-pw').value || '';
-  var allAccess = document.getElementById('new-user-allaccess').checked;
+  var role = _selectedRole('new-user');
   var errEl = document.getElementById('new-user-error');
   if (!name || !pw) { errEl.textContent = t('users_need_name_pw'); errEl.style.display = 'block'; return; }
-  var payload = { action: 'create', name: name, password: pw };
-  payload.allowlist = allAccess ? null : _collectAllowlist('new-user-allowlist');
+  var payload = { action: 'create', name: name, password: pw, role: role };
+  if (role === 'limited') payload.allowlist = _collectAllowlist('new-user-allowlist');
   _usersPost(payload).then(function(r) {
     if (!r.ok) { errEl.textContent = t('users_create_failed'); errEl.style.display = 'block'; return; }
     _usersData = r.j; if (_msSection === 'users') document.getElementById('ms-pane').innerHTML = _msUsersHtml();
@@ -6186,25 +6244,26 @@ function _deleteUser(name) {
   });
 }
 
-// Inline allowlist editor for an existing user (overlay-free: swaps the pane).
-function _editUserAllowlist(name) {
+// Inline role + access editor for an existing user (overlay-free: swaps the
+// pane). Role pills mirror the add form; the allowlist shows only for limited.
+function _editUser(name) {
   var u = ((_usersData && _usersData.users) || []).find(function(x) { return x.name === name; });
   if (!u) return;
+  var isPrimary = _usersData && _usersData.self_kind === 'primary';
   var pane = document.getElementById('ms-pane');
   var h = '<button class="ms-btn" onclick="_renderMsUsers()" style="margin-bottom:12px">← ' + tH('back') + '</button>' +
     '<h4 style="margin:0 0 10px">' + tH('users_edit_access') + ' — ' + esc(name) + '</h4>' +
-    '<label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:8px;cursor:pointer">' +
-      '<input type="checkbox" id="edit-user-allaccess"' + (u.all_access ? ' checked' : '') + ' onchange="document.getElementById(\'edit-user-allowlist\').style.display=this.checked?\'none\':\'block\'" style="accent-color:var(--amber)"> ' + tH('users_all_access') +
-    '</label>' +
-    '<div id="edit-user-allowlist" style="display:' + (u.all_access ? 'none' : 'block') + '">' + _allowlistPicker(u.allowlist) + '</div>' +
-    '<button class="ms-btn ms-btn-primary" style="margin-top:12px" onclick="_saveUserAllowlist(' + escAttr(JSON.stringify(name)) + ')">' + tH('save') + '</button>';
+    _rolePills('edit-user', u.role, isPrimary) +
+    '<div id="edit-user-allowlist" style="display:' + (u.role === 'limited' ? 'block' : 'none') + ';margin-top:8px">' + _allowlistPicker(u.allowlist) + '</div>' +
+    '<button class="ms-btn ms-btn-primary" style="margin-top:12px" onclick="_saveUser(' + escAttr(JSON.stringify(name)) + ')">' + tH('save') + '</button>';
   pane.innerHTML = h;
 }
 
-function _saveUserAllowlist(name) {
-  var allAccess = document.getElementById('edit-user-allaccess').checked;
-  var allowlist = allAccess ? null : _collectAllowlist('edit-user-allowlist');
-  _usersPost({ action: 'set-allowlist', name: name, allowlist: allowlist }).then(function(r) {
+function _saveUser(name) {
+  var role = _selectedRole('edit-user');
+  var payload = { action: 'set-role', name: name, role: role };
+  if (role === 'limited') payload.allowlist = _collectAllowlist('edit-user-allowlist');
+  _usersPost(payload).then(function(r) {
     if (r.ok) { _usersData = r.j; _renderMsUsers(); }
   });
 }
