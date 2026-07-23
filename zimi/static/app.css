@@ -288,8 +288,15 @@
     display: none; position: absolute; inset-inline-end: 8px; top: 48px; z-index: 200;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
     box-shadow: 0 4px 16px rgba(0,0,0,0.3); min-width: 180px; padding: 4px 0;
+    /* With Reader View's settings inline the menu can get tall; cap it to the
+       viewport and scroll cleanly rather than overflow off-screen. */
+    max-height: calc(100vh - 56px); overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
   .topbar-menu.visible { display: block; }
+  /* Inline Reader View settings inside the ⋯ menu — the rv-* rows own their own
+     compact layout; this wrapper just insets them from the menu edge and widens
+     the menu enough for the theme swatches / font pills to breathe. */
+  .topbar-menu .tbm-reader-settings { padding: 2px 6px 4px; min-width: 232px; }
   .topbar-menu-item {
     display: flex; align-items: center; gap: 10px; padding: 10px 14px;
     color: var(--text); font-size: 13px; cursor: pointer; border: none;
@@ -363,11 +370,13 @@
   /* Text-size stepper */
   .rv-size { display: flex; align-items: center; gap: 8px; }
   .rv-size-btn {
-    display: flex; align-items: baseline; justify-content: center; gap: 1px;
+    display: flex; align-items: center; justify-content: center; gap: 1px; line-height: 1;
     width: 44px; height: 34px; border: 1px solid var(--border); border-radius: 8px;
     background: var(--surface2); color: var(--text); font-size: 15px; font-weight: 700; cursor: pointer;
     transition: border-color 0.15s, color 0.15s;
   }
+  /* The ± sits smaller than the A but shares its vertical center — align-items:center
+     on the button centers both flex items, so the glyph group reads as centered. */
   .rv-size-btn .rv-minus, .rv-size-btn .rv-plus { font-size: 10px; font-weight: 700; }
   .rv-size-btn:hover:not([disabled]) { border-color: var(--amber-border); }
   .rv-size-btn[disabled] { opacity: 0.35; cursor: default; }
