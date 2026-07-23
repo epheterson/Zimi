@@ -260,7 +260,9 @@
    Quiet by default (inherits its surrounding text); the amber dotted underline
    only appears on hover/focus, so the almanac stays clutter-free. Fail-soft:
    when nothing is installed to link to, these spans are never emitted. */
-.alm-link { cursor: pointer; text-decoration: none; border-radius: 3px; transition: color .12s ease; }
-.alm-link:hover { color: var(--amber); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+/* A resting dotted underline signals "this word links into your library"
+   without shouting; hover/focus firms it up to amber. */
+.alm-link { cursor: pointer; border-radius: 3px; transition: color .12s ease; text-decoration: underline; text-decoration-style: dotted; text-decoration-color: var(--amber-border); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.alm-link:hover { color: var(--amber); text-decoration-color: var(--amber); }
 .alm-link:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; color: var(--amber); }
 .alm-crossref-label .alm-link:hover, .alm-crossref-active .alm-crossref-label .alm-link { color: var(--amber); }
