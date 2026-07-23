@@ -488,7 +488,7 @@ class BTBackend(ABC):
 
 
 # ============================================================================
-# libtorrent — the in-process engine (v1.7.5+)
+# libtorrent — the in-process engine (v1.8+)
 # ============================================================================
 
 _lt_module = None
@@ -532,7 +532,7 @@ def _lt():
 class LibtorrentBackend(BTBackend):
     """In-process libtorrent session. One engine, no sidecar.
 
-    Replaces the aria2 subprocess (v1.7.5) and with it the four
+    Replaces the aria2 subprocess (v1.8) and with it the four
     out-of-process compensation layers: RPC port-walking, process
     liveness polling, the followedBy two-GID dance, and the
     OPENSSL_MODULES env hack. Torrent ids are v1 info-hash hex.
