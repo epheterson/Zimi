@@ -1,5 +1,13 @@
 # Zimi roadmap — locked down 2026-07-20
 
+> **Living record — read the addenda.** The release plan below was the 7/20
+> thinking; it was reshaped twice since (see the **2026-07-21** and
+> **2026-07-23** addenda at the bottom). What actually shipped as **1.8.0**:
+> the almanac→library deep-links hero plus light named-user accounts and the
+> in-process libtorrent + agent-API work — the "1.7.5" point release folded
+> into 1.8.0, and "chat with your library" moved to 2.0. Sections above the
+> addenda are kept verbatim as provenance, not current plan of record.
+
 Captured before a context compaction so nothing is lost. Source threads: the
 7/19 grow-up audit, the Kiwix opportunity scan (`docs/kiwix-opportunity-scan-2026-07.md`),
 and the 1.7.4 session.
