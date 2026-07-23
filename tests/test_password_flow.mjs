@@ -25,13 +25,13 @@ test('1. Manage opens without password when none set', async ({ page }) => {
   await expect(page.locator('#manage-installed, #manage-status')).toBeVisible();
 });
 
-test('2. Set password via Preferences', async ({ page }) => {
+test('2. Set password via Users pane', async ({ page }) => {
   await page.goto(`${BASE}/?manage`);
   await page.waitForTimeout(2000);
 
-  // Go to Preferences tab
-  await page.click('[data-ms="preferences"]');
-  await page.waitForTimeout(500);
+  // Change/set password now lives under Users → "Your account"
+  await page.click('[data-ms="users"]');
+  await page.waitForSelector('#pw-btn');
 
   // Click Password button
   await page.click('#pw-btn');
@@ -104,9 +104,9 @@ test('4. Remove password via modal', async ({ page }) => {
   await page.click('.pw-primary');
   await page.waitForTimeout(1000);
 
-  // Go to Preferences, click Password
-  await page.click('[data-ms="preferences"]');
-  await page.waitForTimeout(500);
+  // Change/set password now lives under Users → "Your account"
+  await page.click('[data-ms="users"]');
+  await page.waitForSelector('#pw-btn');
   await page.click('#pw-btn');
   await page.waitForTimeout(500);
 

@@ -6149,7 +6149,7 @@ function _renderUserManage() {
   var role = restricted ? 'limited' : 'user';
   var scope = restricted ? tH('users_scope_limited') : tH('users_all_access');
   output.innerHTML =
-    '<div class="manage-wrap"><div class="manage-settings as-tab-active" style="max-width:520px;margin:0 auto">' +
+    '<div class="manage-wrap"><div style="max-width:520px;margin:16px auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px">' +
       '<div class="ms-section-label">' + tH('ms_users') + '</div>' +
       '<div class="ms-user-row" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">' +
         '<span style="flex:1"><strong>' + esc(name) + '</strong> ' + _roleBadge(role) +
