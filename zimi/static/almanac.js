@@ -401,6 +401,39 @@ function _almIsToday(d) {
   return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
 }
 
+// Date, time and timezone strings for the hero header at a given instant,
+// plus the resolved location/zone the moon and sun cards reuse. One source of
+// truth so the full header render and the lightweight scrub updater
+// (_almScrubClock) read time identically.
+//
+// The live "now" header must always read the VIEWER's own local time: the
+// person is at their device, and "what time is it right now" is unambiguous. A
+// stored almanac location drives the sky/sun math, but its derived zone must
+// never override the live clock -- a stale or wrong-hemisphere stored location
+// (e.g. a western longitude persisted with the wrong sign) otherwise resolves
+// to a far-eastern zone and paints tomorrow morning onto today's sky. Only a
+// scrubbed (non-today) focus, which has no "now", keeps the location zone so
+// its date reads consistently with the panels below.
+function _almClockParts(focus) {
+  var loc = _getLocation();
+  var locTz = null;
+  try { locTz = _almDisplayTz(loc); } catch (e) {}
+  var live = _almIsToday(focus);
+  var deviceTz = null;
+  try { deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) {}
+  var displayTz = live ? (deviceTz || locTz) : locTz;
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  var _dtOpts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
+  var _tmOpts = { hour: 'numeric', minute: '2-digit' };
+  if (displayTz) { _dtOpts.timeZone = displayTz; _tmOpts.timeZone = displayTz; }
+  return {
+    loc: loc, locTz: locTz, lang: lang, live: live,
+    date: focus.toLocaleDateString(lang, _dtOpts),
+    time: focus.toLocaleTimeString(lang, _tmOpts),
+    tz: _formatTimezone(lang, displayTz)
+  };
+}
+
 // Header, hero moon and the eight pills for a given instant. Re-rendered in
 // place when a calendar day is picked, so there's one set of numbers on the
 // page rather than a duplicate panel lower down.
@@ -409,33 +442,13 @@ function _almHeadHtml(focus) {
   var dist = _moonDistance(focus);
   var age = (m.phase * 29.53).toFixed(1);
 
-  var loc = _getLocation();
-  var locTz = null;
-  try { locTz = _almDisplayTz(loc); } catch (e) {}
-  var live = _almIsToday(focus);
-  // The live "now" header must always read the VIEWER's own local time: the
-  // person is at their device, and "what time is it right now" is unambiguous.
-  // A stored almanac location drives the sky/sun math below, but its derived
-  // zone must never override the live clock — a stale or wrong-hemisphere
-  // stored location (e.g. a western longitude persisted with the wrong sign)
-  // otherwise resolves to a far-eastern zone and paints tomorrow morning onto
-  // today's sky. Only a scrubbed (non-today) focus, which has no "now", keeps
-  // the location zone so its date reads consistently with the panels below.
-  var deviceTz = null;
-  try { deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) {}
-  var displayTz = live ? (deviceTz || locTz) : locTz;
-  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
-  var _dtOpts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
-  var _tmOpts = { hour: 'numeric', minute: '2-digit' };
-  if (displayTz) { _dtOpts.timeZone = displayTz; _tmOpts.timeZone = displayTz; }
-  var dateStr = focus.toLocaleDateString(lang, _dtOpts);
-  var timeStr = focus.toLocaleTimeString(lang, _tmOpts);
-  var tzName = _formatTimezone(lang, displayTz);
+  var cp = _almClockParts(focus);
+  var loc = cp.loc, locTz = cp.locTz, lang = cp.lang;
 
   var html = '<div style="text-align:center;margin-bottom:16px">';
-  html += '<div style="font-size:22px;font-weight:600;color:var(--text)">' + dateStr + '</div>';
-  html += '<div style="font-size:16px;color:var(--text2);margin-top:4px">' + timeStr + (tzName ? ' &middot; ' + tzName : '') +
-    (live ? '' : ' <button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button>') + '</div>';
+  html += '<div id="almanac-head-date" style="font-size:22px;font-weight:600;color:var(--text)">' + cp.date + '</div>';
+  html += '<div style="font-size:16px;color:var(--text2);margin-top:4px"><span id="almanac-head-time">' + cp.time + '</span>' + (cp.tz ? ' &middot; ' + cp.tz : '') +
+    (cp.live ? '' : ' <button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button>') + '</div>';
   html += '</div>';
 
   // Hero moon — tilted so the bright limb faces the Sun as the observer sees
@@ -512,6 +525,7 @@ function _almRepaintFocus() {
 
 function _almBackToToday() {
   _almFocus = null;
+  _almScrubPending = null;
   _almSelectedJDN = _almTodayJDN;
   // Snap the browsed month back to the present too — otherwise the grid is
   // left stranded on whatever month you'd wandered to while the rest of the
@@ -521,7 +535,251 @@ function _almBackToToday() {
   _almMonth = cal.month;
   _drawAlmanacGrid();
   _almRepaintFocus();
+  _almTimewarpSync();
 }
+
+// == Time scrubber + destination panel =====================================
+// Date control already exists (pick a day on the calendar -> _almSelectDay).
+// This adds TIME control: a slim vertical rail on the sky's right edge that you
+// drag to travel forward/back through the day, watching the sky, sun and moon
+// move live. Only the sky canvas + hero clock update per drag frame (throttled
+// to one rAF); the heavy panels (calendars, holidays, meteor tables) recompute
+// once, on release. When the focus is away from now, a two-row destination
+// panel appears -- DESTINATION TIME (tap to type an exact date+time) and
+// PRESENT TIME (with a return-to-now button).
+
+// Drag sensitivity: a slow, deliberate drag scrubs minutes-per-pixel; a fast
+// flick scrubs hours-per-pixel. Velocity is measured in screen-px per ms.
+var _SCRUB_MIN_MS_PER_PX = 60000;      // 1 min / px at a slow, precise drag
+var _SCRUB_MAX_MS_PER_PX = 5400000;    // 90 min / px at a fast flick
+var _SCRUB_SPEED_CAP = 2.2;            // px/ms treated as "full speed"
+var _SCRUB_WHEEL_STEP = 3600000;       // 1 hour per wheel notch / arrow key
+var _SCRUB_PAGE_STEP = 86400000;       // 1 day per PageUp/PageDown
+var _SCRUB_LIVE_EPS = 60000;           // within 1 min of now -> snap back to live
+
+function _almReduceMotion() {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+  catch (e) { return false; }
+}
+
+function _almScrubMsPerPx(pxPerMs) {
+  var f = Math.min(1, pxPerMs / _SCRUB_SPEED_CAP);
+  f = f * f;  // ease-in so slow drags stay fine-grained
+  return _SCRUB_MIN_MS_PER_PX + (_SCRUB_MAX_MS_PER_PX - _SCRUB_MIN_MS_PER_PX) * f;
+}
+
+// Lightweight per-frame clock update while scrubbing -- just the two hero text
+// nodes, no header rebuild. (The moon disc and sun cards settle on release.)
+function _almScrubClock(focus) {
+  var cp = _almClockParts(focus);
+  var d = document.getElementById('almanac-head-date');
+  var tmEl = document.getElementById('almanac-head-time');
+  if (d) d.textContent = cp.date;
+  if (tmEl) tmEl.textContent = cp.time;
+}
+
+function _almIsLiveNow(d) { return Math.abs(d.getTime() - Date.now()) < _SCRUB_LIVE_EPS; }
+
+// Move the calendar selection + browsed month onto the focused instant's day.
+function _almSyncSelectedToFocus() {
+  var f = _almFocusInstant();
+  _almSelectedJDN = _gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate());
+  var cal = _jdnToCalendar(_almSystem, _almSelectedJDN);
+  _almYear = cal.year;
+  _almMonth = cal.month;
+  _drawAlmanacGrid();
+}
+
+// Settle the almanac on `target`: snap back to live if within a minute of now,
+// otherwise recompute every panel once for the new instant.
+function _almScrubSettle(target) {
+  if (_almIsLiveNow(target)) {
+    _almBackToToday();
+  } else {
+    _almFocus = target;
+    _almSyncSelectedToFocus();
+    _almRepaintFocus();
+    _almTimewarpSync();
+  }
+}
+
+// BTTF flux-display formatting: MMM DD YYYY  HH:MM in the viewer's language,
+// month abbreviation upper-cased, 24-hour tabular time (amber monospace via CSS).
+function _almBttfFmt(d) {
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  var mon = d.toLocaleDateString(lang, { month: 'short' }).toUpperCase();
+  var day = ('0' + d.getDate()).slice(-2);
+  var hm = d.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', hour12: false });
+  return mon + ' ' + day + ' ' + d.getFullYear() + '  ' + hm;
+}
+
+// yyyy-MM-ddThh:mm in local time, for an <input type="datetime-local"> value.
+function _almToLocalInput(d) {
+  function p(n) { return ('0' + n).slice(-2); }
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+    'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+// Show/refresh the destination panel. Visible only while time-travelling.
+function _almTimewarpSync() {
+  var el = document.getElementById('alm-timewarp');
+  if (!el) return;
+  var traveling = _almFocus != null && !_almIsLiveNow(_almFocus);
+  el.hidden = !traveling;
+  if (!traveling) {
+    var ed0 = document.getElementById('alm-tw-edit');
+    if (ed0) ed0.hidden = true;
+    return;
+  }
+  var dv = document.getElementById('alm-tw-dest-val');
+  if (dv) dv.textContent = _almBttfFmt(_almFocus);
+  var pv = document.getElementById('alm-tw-present-val');
+  if (pv) pv.textContent = _almBttfFmt(new Date());
+}
+
+function _almTimewarpEditToggle() {
+  var ed = document.getElementById('alm-tw-edit');
+  if (!ed) return;
+  if (ed.hidden) {
+    var input = document.getElementById('alm-tw-input');
+    if (input) { input.value = _almToLocalInput(_almFocusInstant()); }
+    ed.hidden = false;
+    if (input) input.focus();
+  } else {
+    ed.hidden = true;
+  }
+}
+
+function _almTimewarpKey(e) {
+  if (e.key === 'Enter') { e.preventDefault(); _almTimewarpGo(); }
+  else if (e.key === 'Escape') { var ed = document.getElementById('alm-tw-edit'); if (ed) ed.hidden = true; }
+}
+
+function _almTimewarpGo() {
+  var input = document.getElementById('alm-tw-input');
+  if (!input || !input.value) return;
+  var picked = new Date(input.value);  // datetime-local parses as local time
+  if (isNaN(picked.getTime())) return;
+  var ed = document.getElementById('alm-tw-edit');
+  if (ed) ed.hidden = true;
+  _almScrubSettle(picked);
+}
+
+// -- Scrubber drag / wheel / keyboard --
+var _almScrubActive = false;
+var _almScrubLastY = 0;
+var _almScrubLastT = 0;
+var _almScrubPending = null;   // latest scrubbed instant, applied on the next rAF
+var _almScrubRAF = null;
+var _almScrubWheelTimer = null;
+
+function _almScrubClientY(e) {
+  return (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+}
+
+function _almScrubApplyFrame() {
+  _almScrubRAF = null;
+  if (!_almScrubPending) return;
+  _almFocus = _almScrubPending;
+  _almScrubClock(_almFocus);
+  // Reduced motion: skip the live sky animation -- the scene settles on release.
+  if (!_almReduceMotion() && typeof _skySetInstant === 'function') _skySetInstant(_almFocus);
+  _almTimewarpSync();
+}
+
+function _almScrubStart(e) {
+  if (e.type === 'pointerdown' && e.button != null && e.button !== 0) return;
+  _almScrubActive = true;
+  _almScrubPending = new Date(_almFocusInstant().getTime());
+  _almScrubLastY = _almScrubClientY(e);
+  _almScrubLastT = performance.now();
+  var rail = document.getElementById('alm-scrubber');
+  if (rail) {
+    rail.classList.add('alm-scrubbing');
+    if (rail.setPointerCapture && e.pointerId != null) { try { rail.setPointerCapture(e.pointerId); } catch (err) {} }
+  }
+  e.preventDefault();
+}
+
+function _almScrubMove(e) {
+  if (!_almScrubActive) return;
+  e.preventDefault();
+  var y = _almScrubClientY(e);
+  var now = performance.now();
+  var dy = y - _almScrubLastY;                 // + = dragged downward
+  var dt = Math.max(1, now - _almScrubLastT);
+  var msPerPx = _almScrubMsPerPx(Math.abs(dy) / dt);
+  // Up (dy<0) travels forward in time; down travels backward.
+  var base = _almScrubPending || _almFocusInstant();
+  _almScrubPending = new Date(base.getTime() + (-dy * msPerPx));
+  _almScrubLastY = y;
+  _almScrubLastT = now;
+  if (!_almScrubRAF) _almScrubRAF = requestAnimationFrame(_almScrubApplyFrame);
+}
+
+function _almScrubEnd(e) {
+  if (!_almScrubActive) return;
+  _almScrubActive = false;
+  if (_almScrubRAF) { cancelAnimationFrame(_almScrubRAF); _almScrubRAF = null; }
+  var rail = document.getElementById('alm-scrubber');
+  if (rail) {
+    rail.classList.remove('alm-scrubbing');
+    if (rail.releasePointerCapture && e && e.pointerId != null) { try { rail.releasePointerCapture(e.pointerId); } catch (err) {} }
+  }
+  var target = _almScrubPending || _almFocusInstant();
+  _almScrubPending = null;
+  _almScrubSettle(target);
+}
+
+// Wheel over the rail (and arrow keys) step time; the heavy repaint is debounced
+// so a burst of notches only settles once. PageUp/Down jump a whole day.
+function _almScrubStep(deltaMs) {
+  var next = new Date(_almFocusInstant().getTime() + deltaMs);
+  _almFocus = next;
+  _almScrubClock(next);
+  if (!_almReduceMotion() && typeof _skySetInstant === 'function') _skySetInstant(next);
+  _almTimewarpSync();
+  clearTimeout(_almScrubWheelTimer);
+  _almScrubWheelTimer = setTimeout(function () { _almScrubSettle(_almFocusInstant()); }, 220);
+}
+
+function _almScrubWheel(e) {
+  e.preventDefault();
+  _almScrubStep(e.deltaY < 0 ? _SCRUB_WHEEL_STEP : -_SCRUB_WHEEL_STEP);
+}
+
+function _almScrubKey(e) {
+  var d = 0;
+  if (e.key === 'ArrowUp') d = _SCRUB_WHEEL_STEP;
+  else if (e.key === 'ArrowDown') d = -_SCRUB_WHEEL_STEP;
+  else if (e.key === 'PageUp') d = _SCRUB_PAGE_STEP;
+  else if (e.key === 'PageDown') d = -_SCRUB_PAGE_STEP;
+  else if (e.key === 'Home') { e.preventDefault(); _almBackToToday(); return; }
+  else return;
+  e.preventDefault();
+  _almScrubStep(d);
+}
+
+function _almInitScrubber() {
+  var rail = document.getElementById('alm-scrubber');
+  if (!rail) return;
+  if (window.PointerEvent) {
+    rail.addEventListener('pointerdown', _almScrubStart);
+    rail.addEventListener('pointermove', _almScrubMove);
+    rail.addEventListener('pointerup', _almScrubEnd);
+    rail.addEventListener('pointercancel', _almScrubEnd);
+  } else {
+    rail.addEventListener('touchstart', _almScrubStart, { passive: false });
+    rail.addEventListener('touchmove', _almScrubMove, { passive: false });
+    rail.addEventListener('touchend', _almScrubEnd);
+    rail.addEventListener('mousedown', _almScrubStart);
+    window.addEventListener('mousemove', _almScrubMove);
+    window.addEventListener('mouseup', _almScrubEnd);
+  }
+  rail.addEventListener('wheel', _almScrubWheel, { passive: false });
+  rail.addEventListener('keydown', _almScrubKey);
+}
+
 
 
 function _renderAlmanacContent() {
@@ -529,6 +787,27 @@ function _renderAlmanacContent() {
   var m = _moonPhase(now);
 
   var html = '<div class="almanac-inner">';
+
+  // Destination panel (BTTF-style flux display). Sticky so the time-travel
+  // context — where you are, and the way home — stays reachable as you scroll
+  // the panels below. Hidden until the focus leaves "now".
+  html += '<div id="alm-timewarp" class="alm-timewarp" hidden>';
+  html += '<div class="alm-tw-row alm-tw-dest" onclick="_almTimewarpEditToggle()" title="' + _almEsc(t('alm_tw_edit_hint')) + '">';
+  html += '<span class="alm-tw-label">' + t('alm_tw_destination') + '</span>';
+  html += '<span class="alm-tw-value" id="alm-tw-dest-val"></span>';
+  html += '<span class="alm-tw-edit-ic" aria-hidden="true">✎</span>';
+  html += '</div>';
+  html += '<div class="alm-tw-edit" id="alm-tw-edit" hidden>';
+  html += '<input type="datetime-local" id="alm-tw-input" class="alm-tw-input" step="60" onkeydown="_almTimewarpKey(event)" aria-label="' + _almEsc(t('alm_tw_edit_hint')) + '">';
+  html += '<button class="alm-tw-go" onclick="_almTimewarpGo()">' + t('alm_tw_go') + '</button>';
+  html += '</div>';
+  html += '<div class="alm-tw-row alm-tw-present">';
+  html += '<span class="alm-tw-label">' + t('alm_tw_present') + '</span>';
+  html += '<span class="alm-tw-value" id="alm-tw-present-val"></span>';
+  html += '<button class="alm-tw-return" onclick="_almBackToToday()" title="' + _almEsc(t('alm_back_to_now')) + '">↺ ' + t('alm_now') + '</button>';
+  html += '</div>';
+  html += '</div>';
+
   html += '<div id="almanac-head">' + _almHeadHtml(now) + '</div>';
 
   // Sky scene + calendar — wall calendar: art above, month grid below
@@ -537,6 +816,18 @@ function _renderAlmanacContent() {
     // Inline styles duplicate .sr-only so a stale cached app.css can never
     // expose this text visually (issue #25).
     '<div id="almanac-sky-desc" class="sr-only" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0"></div>' +
+    // Time scrubber — drag the rail up/down to travel through the day. Its own
+    // touch target: dragging it scrubs time, it never scrolls the page.
+    '<div id="alm-scrubber" class="alm-scrubber" role="slider" tabindex="0" ' +
+      'aria-label="' + _almEsc(t('alm_scrub_label')) + '" aria-orientation="vertical" ' +
+      'aria-valuemin="-720" aria-valuemax="720" aria-valuenow="0">' +
+      '<div class="alm-scrub-track"></div>' +
+      '<div class="alm-scrub-thumb" aria-hidden="true">' +
+        '<span class="alm-scrub-ar">▲</span>' +
+        '<span class="alm-scrub-grip">⠿</span>' +
+        '<span class="alm-scrub-ar">▼</span>' +
+      '</div>' +
+    '</div>' +
     '</div>';
   html += '<div id="almanac-calendar"></div>';
 
@@ -651,6 +942,8 @@ function _renderAlmanacContent() {
   _orreryAnimate();
   _loadSunData(now);
   _startTzClock();
+  _almInitScrubber();
+  _almTimewarpSync();
   _cacheAlmanacHighlights(now, m);
 }
 
@@ -1815,6 +2108,11 @@ function _startTzClock() {
     if (now.getMinutes() !== _tzGridMinute) {
       _tzGridMinute = now.getMinutes();
       _initTzClock(now);
+      // Keep the destination panel's PRESENT TIME row ticking (HH:MM, so a
+      // once-per-minute refresh is enough) while parked in the past.
+      var _twp = document.getElementById('alm-tw-present-val');
+      var _twPanel = document.getElementById('alm-timewarp');
+      if (_twp && _twPanel && !_twPanel.hidden) _twp.textContent = _almBttfFmt(now);
     }
     _tzClockRAF = requestAnimationFrame(tick);
   }

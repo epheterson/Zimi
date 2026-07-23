@@ -1010,5 +1010,10 @@
   "save_to_zim": "Save to ZIM",
   "save_to_zim_working": "Building ZIM…",
   "save_to_zim_failed": "Export failed",
-  "save_to_zim_done": "Saved {file}"
+  "save_to_zim_done": "Saved {file}",
+  "alm_tw_destination": "Destination Time",
+  "alm_tw_present": "Present Time",
+  "alm_tw_go": "Go",
+  "alm_tw_edit_hint": "Type a date and time",
+  "alm_scrub_label": "Time scrubber — drag up for later, down for earlier"
 }

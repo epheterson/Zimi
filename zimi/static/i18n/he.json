@@ -1010,5 +1010,10 @@
   "save_to_zim": "שמור כ-ZIM",
   "save_to_zim_working": "יוצר ZIM…",
   "save_to_zim_failed": "הייצוא נכשל",
-  "save_to_zim_done": "{file} נשמר"
+  "save_to_zim_done": "{file} נשמר",
+  "alm_tw_destination": "זמן היעד",
+  "alm_tw_present": "הזמן הנוכחי",
+  "alm_tw_go": "צא לדרך",
+  "alm_tw_edit_hint": "הזן תאריך ושעה",
+  "alm_scrub_label": "בקר הזמן: גרור למעלה קדימה, למטה אחורה"
 }

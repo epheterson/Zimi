@@ -1010,5 +1010,10 @@
   "save_to_zim": "Enregistrer en ZIM",
   "save_to_zim_working": "Création du ZIM…",
   "save_to_zim_failed": "Échec de l'export",
-  "save_to_zim_done": "{file} enregistré"
+  "save_to_zim_done": "{file} enregistré",
+  "alm_tw_destination": "Heure de destination",
+  "alm_tw_present": "Heure actuelle",
+  "alm_tw_go": "Aller",
+  "alm_tw_edit_hint": "Saisir une date et une heure",
+  "alm_scrub_label": "Curseur temporel : glissez vers le haut pour avancer, vers le bas pour reculer"
 }

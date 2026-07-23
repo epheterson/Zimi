@@ -9,6 +9,34 @@ var _activeSkyLoop = null;  // reference to the closure-bound _skyLoop inside _i
 
 var _skyStartTime = 0;
 
+// Live scene state the RAF loop reads each frame. Split out of the old closure
+// so the time scrubber can swap in a new instant (sun/moon/stars for a scrubbed
+// datetime) without tearing down the loop or reallocating the canvas -- only
+// these few astronomical values are recomputed per scrub frame. See
+// _skySetInstant: that is the whole per-frame cost of dragging through time.
+var _skyState = null;
+
+// Recompute the frozen celestial values (sun, moon, stars, horizon label) for
+// an instant. The RAF loop's `elapsed` still drives the decorative twinkle and
+// waves; everything astronomical comes from here. Cheap: a handful of trig
+// calls plus one pass over the bright-star catalogue.
+function _skyFrame(now, lat, lon, cw, ch) {
+  var sunPos = _sunPosition(now, lat, lon);
+  var moonPos0 = _moonPosition(now, lat, lon);
+  var moonM0 = _moonPhase(now);
+  var projStars = _projectStars(now, lat, lon, cw, ch);
+  var altStr = sunPos.altitude.toFixed(1);
+  var labelText = sunPos.altitude > 0
+    ? t('alm_sun') + ' ' + altStr + '°'
+    : t('alm_sun') + ' ' + t('alm_below_horizon') + ' (' + altStr + '°)';
+  if (moonPos0.altitude > -2) {
+    labelText += ' · ' + t('alm_moon') + ' ' + moonPos0.altitude.toFixed(1) + '° (' + moonM0.illumination + '%)';
+  } else {
+    labelText += ' · ' + t('alm_moon') + ' ' + t('alm_below_horizon');
+  }
+  return { sunPos: sunPos, moonData: { pos: moonPos0, phase: moonM0 }, projStars: projStars, labelText: labelText };
+}
+
 function _initSkyScene(now, lat, lon) {
   var canvas = document.getElementById('almanac-sky-canvas');
   if (!canvas) return;
@@ -21,62 +49,69 @@ function _initSkyScene(now, lat, lon) {
   canvas.style.width = w + 'px';
   canvas.style.height = h + 'px';
 
-  var sunPos = _sunPosition(now, lat, lon);
+  var f = _skyFrame(now, lat, lon, canvas.width, canvas.height);
   _skyStartTime = performance.now();
-
-  // Build sky label text (rendered on the beach inside canvas)
-  var _skyLabelText = '';
-  var altStr = sunPos.altitude.toFixed(1);
-  _skyLabelText = sunPos.altitude > 0 ? t('alm_sun') + ' ' + altStr + '\u00b0' : t('alm_sun') + ' ' + t('alm_below_horizon') + ' (' + altStr + '\u00b0)';
-  var moonPos0 = _moonPosition(now, lat, lon);
-  var moonM0 = _moonPhase(now);
-  if (moonPos0.altitude > -2) {
-    _skyLabelText += ' \u00b7 ' + t('alm_moon') + ' ' + moonPos0.altitude.toFixed(1) + '\u00b0 (' + moonM0.illumination + '%)';
-  } else {
-    _skyLabelText += ' \u00b7 ' + t('alm_moon') + ' ' + t('alm_below_horizon');
-  }
-
-  var projStars = _projectStars(now, lat, lon, canvas.width, canvas.height);
-
-  // Pre-compute moon data (constant for this sky scene — now is frozen)
-  var moonData = { pos: moonPos0, phase: moonM0 };
-
-  // Screen-reader description of the sky scene. Updates once per
-  // render — the animation visuals are decorative; the values
-  // they're derived from are what matter.
-  var srEl = document.getElementById('almanac-sky-desc');
-  if (srEl) {
-    var when = now.toLocaleString(undefined, {
-      weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit'
-    });
-    // _tLookup falls back to English when a stale cached i18n file lacks
-    // these keys — raw key names must never be spoken or shown (issue #25).
-    var sunDesc = sunPos.altitude > 0
-      ? _tLookup('alm_sun', 'Sun') + ' ' + sunPos.altitude.toFixed(0) + '° ' + _tLookup('alm_a11y_above_horizon', 'above the horizon')
-      : _tLookup('alm_sun', 'Sun') + ' ' + _tLookup('alm_a11y_below_horizon', 'below the horizon');
-    var moonDesc;
-    if (moonPos0.altitude > -2) {
-      moonDesc = _tLookup('alm_moon', 'Moon') + ' ' + moonM0.illumination + '% ' + _tLookup('alm_a11y_illuminated', 'illuminated') +
-        ', ' + moonPos0.altitude.toFixed(0) + '° ' + _tLookup('alm_a11y_altitude', 'high');
-    } else {
-      moonDesc = _tLookup('alm_moon', 'Moon') + ' ' + _tLookup('alm_a11y_below_horizon', 'below the horizon');
-    }
-    var starsVisible = (projStars || []).filter(function(s) { return s.alt > 0; }).length;
-    var starsDesc = starsVisible > 0
-      ? starsVisible + ' ' + _tLookup('alm_a11y_stars_visible', 'stars visible')
-      : _tLookup('alm_a11y_no_stars', 'No stars currently above the horizon');
-    var skyFor = _tLookup('alm_a11y_sky_for', 'Almanac sky for {when}.').replace('{when}', when);
-    srEl.textContent = skyFor + ' ' + sunDesc + '. ' + moonDesc + '. ' + starsDesc + '.';
-  }
+  _skyState = {
+    canvas: canvas, dpr: dpr, now: now, lat: lat, lon: lon,
+    sunPos: f.sunPos, moonData: f.moonData, projStars: f.projStars, labelText: f.labelText
+  };
+  _skyUpdateDesc(_skyState);
 
   function _skyLoop(ts) {
+    var s = _skyState;
+    if (!s) return;
     var elapsed = (ts - _skyStartTime) / 1000;
-    _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, elapsed, _skyLabelText, projStars, moonData);
+    _drawSkyScene(s.canvas, s.dpr, s.sunPos, s.now, s.lat, s.lon, elapsed, s.labelText, s.projStars, s.moonData);
     _almanacSkyRAF = requestAnimationFrame(_skyLoop);
   }
   _activeSkyLoop = _skyLoop;  // expose to _resumeAllRAF
   if (_almanacSkyRAF) cancelAnimationFrame(_almanacSkyRAF);
   _almanacSkyRAF = requestAnimationFrame(_skyLoop);
+}
+
+// Repaint the sky for a scrubbed instant WITHOUT restarting the loop or
+// resizing the canvas -- the running RAF picks up the new state on its next
+// frame. This is the efficiency contract of the time scrubber: per drag frame
+// we recompute only the sky's astronomical values (via _skyFrame); the heavy
+// almanac panels wait for release.
+function _skySetInstant(now) {
+  var s = _skyState;
+  if (!s) return;
+  var f = _skyFrame(now, s.lat, s.lon, s.canvas.width, s.canvas.height);
+  s.now = now;
+  s.sunPos = f.sunPos;
+  s.moonData = f.moonData;
+  s.projStars = f.projStars;
+  s.labelText = f.labelText;
+}
+
+// Screen-reader description of the sky scene. Updates on (re)init and on scrub
+// release -- the animation visuals are decorative; the values they're derived
+// from are what matter. _tLookup falls back to English when a stale cached
+// i18n file lacks these keys -- raw key names must never be spoken (issue #25).
+function _skyUpdateDesc(s) {
+  var srEl = document.getElementById('almanac-sky-desc');
+  if (!srEl) return;
+  var sunPos = s.sunPos, moonPos0 = s.moonData.pos, moonM0 = s.moonData.phase, projStars = s.projStars;
+  var when = s.now.toLocaleString(undefined, {
+    weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit'
+  });
+  var sunDesc = sunPos.altitude > 0
+    ? _tLookup('alm_sun', 'Sun') + ' ' + sunPos.altitude.toFixed(0) + '° ' + _tLookup('alm_a11y_above_horizon', 'above the horizon')
+    : _tLookup('alm_sun', 'Sun') + ' ' + _tLookup('alm_a11y_below_horizon', 'below the horizon');
+  var moonDesc;
+  if (moonPos0.altitude > -2) {
+    moonDesc = _tLookup('alm_moon', 'Moon') + ' ' + moonM0.illumination + '% ' + _tLookup('alm_a11y_illuminated', 'illuminated') +
+      ', ' + moonPos0.altitude.toFixed(0) + '° ' + _tLookup('alm_a11y_altitude', 'high');
+  } else {
+    moonDesc = _tLookup('alm_moon', 'Moon') + ' ' + _tLookup('alm_a11y_below_horizon', 'below the horizon');
+  }
+  var starsVisible = (projStars || []).filter(function(st) { return st.alt > 0; }).length;
+  var starsDesc = starsVisible > 0
+    ? starsVisible + ' ' + _tLookup('alm_a11y_stars_visible', 'stars visible')
+    : _tLookup('alm_a11y_no_stars', 'No stars currently above the horizon');
+  var skyFor = _tLookup('alm_a11y_sky_for', 'Almanac sky for {when}.').replace('{when}', when);
+  srEl.textContent = skyFor + ' ' + sunDesc + '. ' + moonDesc + '. ' + starsDesc + '.';
 }
 
 var _STARS = [

@@ -1010,5 +1010,10 @@
   "save_to_zim": "ZIM में सहेजें",
   "save_to_zim_working": "ZIM बना रहे हैं…",
   "save_to_zim_failed": "निर्यात विफल",
-  "save_to_zim_done": "{file} सहेजा गया"
+  "save_to_zim_done": "{file} सहेजा गया",
+  "alm_tw_destination": "गंतव्य समय",
+  "alm_tw_present": "वर्तमान समय",
+  "alm_tw_go": "जाएँ",
+  "alm_tw_edit_hint": "दिनांक और समय दर्ज करें",
+  "alm_scrub_label": "समय स्क्रबर: आगे के लिए ऊपर खींचें, पीछे के लिए नीचे"
 }

@@ -1010,5 +1010,10 @@
   "save_to_zim": "Сохранить в ZIM",
   "save_to_zim_working": "Создание ZIM…",
   "save_to_zim_failed": "Ошибка экспорта",
-  "save_to_zim_done": "{file} сохранён"
+  "save_to_zim_done": "{file} сохранён",
+  "alm_tw_destination": "Время назначения",
+  "alm_tw_present": "Текущее время",
+  "alm_tw_go": "Вперёд",
+  "alm_tw_edit_hint": "Введите дату и время",
+  "alm_scrub_label": "Ползунок времени: вверх — вперёд, вниз — назад"
 }

@@ -1010,5 +1010,10 @@
   "save_to_zim": "保存为 ZIM",
   "save_to_zim_working": "正在生成 ZIM…",
   "save_to_zim_failed": "导出失败",
-  "save_to_zim_done": "已保存 {file}"
+  "save_to_zim_done": "已保存 {file}",
+  "alm_tw_destination": "目标时间",
+  "alm_tw_present": "当前时间",
+  "alm_tw_go": "前往",
+  "alm_tw_edit_hint": "输入日期和时间",
+  "alm_scrub_label": "时间滑块：向上拖动前进，向下拖动后退"
 }
