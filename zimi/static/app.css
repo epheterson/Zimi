@@ -321,7 +321,6 @@
   /* Role badges in the users list. Muted by default; admin gets amber. */
   .ms-role-badge { display: inline-block; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 10px; color: var(--text2); background: var(--surface2); border: 1px solid var(--border); vertical-align: middle; }
   .ms-role-badge.ms-role-admin { color: #000; background: linear-gradient(135deg, var(--amber), var(--amber2)); border-color: transparent; }
-  .ms-crown { font-size: 13px; vertical-align: middle; }
   /* Role picker reuses .pill; keep it wrapping rather than scrolling in the narrow users pane. */
   #new-user-role, #edit-user-role { flex-wrap: wrap; overflow: visible; margin-bottom: 4px; }
 

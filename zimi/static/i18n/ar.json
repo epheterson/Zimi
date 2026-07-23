@@ -1015,5 +1015,12 @@
   "alm_tw_present": "الوقت الحالي",
   "alm_tw_go": "انطلق",
   "alm_tw_edit_hint": "أدخل التاريخ والوقت",
-  "alm_scrub_label": "شريط الزمن: اسحب لأعلى للأمام، لأسفل للخلف"
+  "alm_scrub_label": "شريط الزمن: اسحب لأعلى للأمام، لأسفل للخلف",
+  "users_set_password": "تعيين كلمة المرور",
+  "users_set_password_prompt": "كلمة مرور جديدة لـ {name}:",
+  "users_password_set": "تم تحديث كلمة المرور لـ {name}.",
+  "users_last_login": "آخر ظهور",
+  "users_last_never": "لم يسجّل الدخول قط",
+  "users_your_account": "حسابك",
+  "users_scope_limited": "وصول محدود"
 }

@@ -1015,5 +1015,12 @@
   "alm_tw_present": "Hora atual",
   "alm_tw_go": "Ir",
   "alm_tw_edit_hint": "Digite uma data e hora",
-  "alm_scrub_label": "Controle de tempo: arraste para cima para avançar, para baixo para retroceder"
+  "alm_scrub_label": "Controle de tempo: arraste para cima para avançar, para baixo para retroceder",
+  "users_set_password": "Definir senha",
+  "users_set_password_prompt": "Nova senha para {name}:",
+  "users_password_set": "Senha atualizada para {name}.",
+  "users_last_login": "Última visita",
+  "users_last_never": "Nunca entrou",
+  "users_your_account": "Sua conta",
+  "users_scope_limited": "Acesso limitado"
 }

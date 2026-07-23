@@ -607,6 +607,12 @@ function manageFetch(url, opts) {
   return fetch(url, opts).then(_throwIfRateLimited).then(function(res) {
     if (res.status === 401) {
       return new Promise(function(resolve, reject) {
+        // Single auth door: any unauthorized manage call opens the UNIFIED
+        // sign-in modal (there is no separate "Sign in" entry). It accepts a
+        // named user (→ their filtered library) OR the admin (→ full manage);
+        // submitPw routes /login by role. For the admin case it calls the
+        // resolver below, which verifies the token by retrying THIS request.
+        _pwLoginMode = true;
         var rejectFn = function() {
           // User cancelled — leave manage view
           goHome();
@@ -636,7 +642,7 @@ function manageFetch(url, opts) {
           });
         };
         _pwReject = rejectFn;
-        openPwModal(t('enter_password'));
+        openPwModal(t('sign_in'));
       });
     }
     return res;
@@ -655,10 +661,13 @@ let _pwPreviousFocus = null;
 
 function openPwModal(title, opts) {
   document.getElementById('pw-title').textContent = title || t('enter_password');
-  // Prefill the username with what this session logged in as (continuity on a
-  // change-password), else the neutral 'admin' default.
+  // Prefill: the session's known username (change-password continuity), else the
+  // server-flagged default. The default is 'admin' ONLY when the sole account is
+  // the primary admin (server sends default_username then — see _checkUserSession);
+  // once named users exist the field starts blank so a user types their own name
+  // rather than a misleading 'admin'.
   var uEl = document.getElementById('pw-username');
-  if (uEl) uEl.value = _manageUser || 'admin';
+  if (uEl) uEl.value = _manageUser || _defaultUsernameHint || '';
   // First-login hint ("Default username: admin") — only in sign-in mode and
   // only when the server says the default applies (no custom username/users).
   var hintEl = document.getElementById('pw-username-hint');
@@ -685,6 +694,7 @@ function closePwModal() {
   document.removeEventListener('keydown', _pwKeyHandler);
   if (_pwReject) { _pwReject(); _pwReject = null; }
   _pwResolve = null;
+  _pwLoginMode = false;  // never leave sign-in mode armed for the next opener
   // Restore focus to where the user was before we hijacked it.
   if (_pwPreviousFocus && typeof _pwPreviousFocus.focus === 'function') {
     try { _pwPreviousFocus.focus(); } catch (_) {}
@@ -734,29 +744,34 @@ function submitPw() {
     doLogin(uname, pw, remember).then(function(res) {
       if (res.status !== 200) { _showPwError(t('wrong_password')); return; }
       if (res.j.role === 'user') {
-        _applyUserSession(res.j.name);
-      } else {
-        // Admin logged in via the sign-in modal — store the header token and
-        // (re-)enter manage. Must NOT use toggleManage() here: when the modal
-        // was opened from within the manage view (mode === 'manage'),
-        // toggleManage() TOGGLES OFF — it clears _manageToken and drops the
-        // user back on home immediately after a successful login. That reads
-        // as both "post-login lands on home" and "remember-me didn't stick"
-        // (the in-memory token is wiped, so manage polls stop even though the
-        // persisted copy survives). enterManage() is deterministic — it always
-        // lands in manage and restores any pending _pendingMsSection.
-        // A SECONDARY admin authenticates to a session token (res.j.token);
-        // the PRIMARY admin's token is the password itself.
-        var tok = res.j.token || pw;
-        if (res.j.secondary && res.j.name) _manageUser = res.j.name;
-        _manageToken = tok; _saveManageToken(tok, remember);
+        // Named user: no manage powers. Abandon any pending manage request
+        // (it's admin-only — retrying would just 401 again) and switch to the
+        // filtered library. Their account state lives in Manage → Users.
+        _pwResolve = null; _pwReject = null;
         _pwLoginMode = false;
         closePwModal();
-        if (typeof enterManage === 'function') enterManage();
+        _applyUserSession(res.j.name);
         return;
       }
+      // Admin via the sign-in modal. A SECONDARY admin authenticates to a
+      // session token (res.j.token); the PRIMARY admin's token is the password.
+      var tok = res.j.token || pw;
+      if (res.j.secondary && res.j.name) _manageUser = res.j.name;
       _pwLoginMode = false;
-      closePwModal();
+      if (_pwResolve) {
+        // Opened from a manage 401: hand the token to the resolver, which
+        // verifies it by retrying the original request, persists it, closes the
+        // modal, and resolves so the in-flight manage view paints in place.
+        var resolver = _pwResolve; _pwResolve = null; _pwReject = null;
+        resolver(tok);
+      } else {
+        // Opened directly (no pending request): store the token and enter
+        // manage deterministically (enterManage, never toggleManage — the
+        // latter would toggle OFF when opened from within manage).
+        _manageToken = tok; _saveManageToken(tok, remember);
+        closePwModal();
+        if (typeof enterManage === 'function') enterManage();
+      }
     });
     return;
   }
@@ -6037,6 +6052,10 @@ function _renderManagePublicLocked() {
 
 async function renderManage() {
   if (_managePublicLocked) { _renderManagePublicLocked(); return; }
+  // A signed-in non-admin has no admin console. Show their minimal account card
+  // (name, access scope, log out) — never the manage tabs, and never a
+  // /manage/status call (it would 401 and re-prompt for sign-in).
+  if (_userSession && !_manageToken) { _renderUserManage(); return; }
   const installedCount = zimsCache ? zimsCache.length : 0;
 
   output.innerHTML =
@@ -6119,6 +6138,27 @@ async function renderManage() {
   if (!_catalogCache) {
     loadFullCatalog().then(() => { if (manageTab === 'installed') renderInstalled(); }).catch(() => {});
   }
+}
+
+// The minimal Manage view a signed-in non-admin sees: who they are, their
+// access scope, and Log out. No admin powers, no self password change (the
+// light version has no self-service endpoint — an admin resets it from Users).
+function _renderUserManage() {
+  var name = (_userSession && _userSession.name) || '';
+  var restricted = !!(_userSession && _userSession.restricted);
+  var role = restricted ? 'limited' : 'user';
+  var scope = restricted ? tH('users_scope_limited') : tH('users_all_access');
+  output.innerHTML =
+    '<div class="manage-wrap"><div class="manage-settings as-tab-active" style="max-width:520px;margin:0 auto">' +
+      '<div class="ms-section-label">' + tH('ms_users') + '</div>' +
+      '<div class="ms-user-row" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">' +
+        '<span style="flex:1"><strong>' + esc(name) + '</strong> ' + _roleBadge(role) +
+        ' <span style="color:var(--text2);font-size:12px">' + scope + '</span></span>' +
+      '</div>' +
+      '<div class="ms-actions" style="margin-top:16px">' +
+        '<button class="manage-btn-action" onclick="userLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('log_out') + '</button>' +
+      '</div>' +
+    '</div></div>';
 }
 
 // ── macOS-style settings panel sections ──
@@ -6207,10 +6247,11 @@ function _msUsersHtml() {
   var isPrimary = d.self_kind === 'primary';
   var h = '<div class="ms-users-intro" style="color:var(--text2);font-size:13px;margin-bottom:14px">' + tH('users_intro') + '</div>';
   h += '<div class="ms-users-list">';
-  // The PRIMARY admin, always first — crown, admin badge, never deletable.
+  // The PRIMARY admin, always first — amber ADMIN badge + label, never deletable.
+  // (No crown: the role badge is the design-system indicator.)
   if (d.primary_admin) {
     h += '<div class="ms-user-row" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
-      '<span style="flex:1"><span class="ms-crown" title="' + escAttr(tH('users_primary_admin')) + '">👑</span> <strong>' + esc(d.primary_admin.name) + '</strong> ' + _roleBadge('admin') +
+      '<span style="flex:1"><strong>' + esc(d.primary_admin.name) + '</strong> ' + _roleBadge('admin') +
       ' <span style="color:var(--text2);font-size:12px">' + tH('users_primary_admin') + '</span></span>' +
     '</div>';
   }
@@ -6219,13 +6260,19 @@ function _msUsersHtml() {
     var scope = u.all_access ? tH('users_all_access') : (u.allowlist.length + ' ' + tH('users_zim_count'));
     // A secondary admin cannot manage other admins (server enforces; UI hides).
     var canManage = isPrimary || u.role !== 'admin';
+    // Last-login: relative time (localized) or "never signed in".
+    var seen = u.last_login
+      ? tH('users_last_login') + ' ' + esc(_relTime(u.last_login))
+      : tH('users_last_never');
     var btns = canManage
-      ? '<button class="ms-btn" onclick="_editUser(' + escAttr(JSON.stringify(u.name)) + ')">' + tH('users_edit_access') + '</button>' +
+      ? '<button class="ms-btn" onclick="_setUserPassword(' + escAttr(JSON.stringify(u.name)) + ')">' + tH('users_set_password') + '</button>' +
+        '<button class="ms-btn" onclick="_editUser(' + escAttr(JSON.stringify(u.name)) + ')">' + tH('users_edit_access') + '</button>' +
         '<button class="ms-btn ms-btn-danger" onclick="_deleteUser(' + escAttr(JSON.stringify(u.name)) + ')">' + tH('delete') + '</button>'
       : '';
     h += '<div class="ms-user-row" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
       '<span style="flex:1"><strong>' + esc(u.name) + '</strong> ' + _roleBadge(u.role) +
-      ' <span style="color:var(--text2);font-size:12px">' + (u.role === 'limited' ? scope : tH('users_all_access')) + '</span></span>' +
+      ' <span style="color:var(--text2);font-size:12px">' + (u.role === 'limited' ? scope : tH('users_all_access')) +
+      ' · ' + seen + '</span></span>' +
       btns +
     '</div>';
   });
@@ -6241,7 +6288,57 @@ function _msUsersHtml() {
     '<div id="new-user-error" class="pw-error" style="display:none"></div>' +
     '<button class="ms-btn ms-btn-primary" style="margin-top:10px" onclick="_createUser()">' + tH('users_create') + '</button>' +
   '</div>';
+  // The admin's own account controls — moved here from Preferences → Security so
+  // password + logout live with the rest of the user/identity management.
+  h += '<div class="ms-user-account" style="margin-top:22px;border-top:1px solid var(--border);padding-top:16px">' +
+    '<h4 style="margin:0 0 10px">' + tH('users_your_account') + '</h4>' +
+    '<div class="ms-actions">' +
+      '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">🔒 ' + tH('change_password') + '</button>';
+  if (_hasStoredManageToken()) {
+    h += '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('log_out') + '</button>';
+  }
+  h += '</div></div>';
   return h;
+}
+
+// Localized relative time for a unix-seconds timestamp (e.g. "3 hours ago").
+// Intl.RelativeTimeFormat handles every UI language with no per-language strings.
+function _relTime(tsSec) {
+  if (!tsSec) return '';
+  var diff = Math.round(Date.now() / 1000 - tsSec);  // seconds elapsed (past → +)
+  var units = [['year', 31536000], ['month', 2592000], ['week', 604800],
+               ['day', 86400], ['hour', 3600], ['minute', 60], ['second', 1]];
+  try {
+    var rtf = new Intl.RelativeTimeFormat(_currentLang || 'en', { numeric: 'auto' });
+    for (var i = 0; i < units.length; i++) {
+      if (Math.abs(diff) >= units[i][1]) {
+        return rtf.format(-Math.round(diff / units[i][1]), units[i][0]);
+      }
+    }
+    return rtf.format(0, 'second');  // within the last second
+  } catch (e) {
+    return new Date(tsSec * 1000).toLocaleDateString();
+  }
+}
+
+// Admin password reset (item 3): set a NEW password for any manageable user, no
+// current password required — this is an admin override via the set-password
+// action. A plain prompt keeps it self-contained (the pw modal is reserved for
+// the sign-in / change-own-password flows).
+function _setUserPassword(name) {
+  var pw = prompt(t('users_set_password_prompt').replace('{name}', name));
+  if (pw === null) return;  // cancelled
+  pw = pw.trim();
+  if (!pw) return;
+  _usersPost({ action: 'set-password', name: name, password: pw }).then(function(r) {
+    if (r.ok) {
+      _usersData = r.j;
+      if (_msSection === 'users') document.getElementById('ms-pane').innerHTML = _msUsersHtml();
+      _showToast(t('users_password_set').replace('{name}', name));
+    } else {
+      _showToast(t('users_create_failed'));
+    }
+  });
 }
 
 // Radio-pill role picker. `showAdmin` gates the Admin option to the primary
@@ -6610,14 +6707,7 @@ function _msPreferencesHtml() {
     '<label class="ms-check"><input type="checkbox"' + (a11yOn ? ' checked' : '') +
       ' onchange="if(this.checked)localStorage.setItem(\'zimi_a11y_rewrite\',\'1\');else localStorage.removeItem(\'zimi_a11y_rewrite\')"> ' + tH('a11y_rewrite_label') + '</label>' +
     '<div class="ms-hint">' + tH('a11y_rewrite_hint') + '</div>';
-  // Security section
-  h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_security') + '</div>' +
-    '<div class="ms-actions">' +
-      '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">\uD83D\uDD12 ' + tH('password') + '</button>';
-  if (_hasStoredManageToken()) {
-    h += '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('log_out') + '</button>';
-  }
-  h += '</div>';
+  // Security (password + logout) now lives in the Users pane ("Your account").
   return h;
 }
 
@@ -10646,14 +10736,16 @@ function _toggleTopbarMenu(event) {
   var _dlN = _activityBadge.count;
   var _mgClick = _dlN > 0 ? '_openDownloadsView(event)' : '_closeTopbarMenu();toggleManage(event)';
   var _mgCount = _dlN > 0 ? '<span class="tbm-count">' + (_dlN > 99 ? '99+' : _dlN) + '</span>' : '';
-  // A logged-in user has no manage view — show their account + logout instead.
+  // Single account door: Manage. There is no separate "Sign in" — an
+  // unauthenticated visitor who taps Manage gets the unified sign-in modal
+  // (named user OR admin), and a signed-in user lands on their minimal account
+  // card (name, access, log out). See manageFetch's 401 handler + renderManage.
   if (_userSession) {
     h += '<div class="topbar-menu-divider" role="separator"></div>';
     h += '<div class="topbar-menu-label">' + tH('signed_in_as') + ' ' + esc(_userSession.name) + '</div>';
-    h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();userLogout()">' + _ACCT_ICON + ' ' + tH('log_out') + '</button>';
+    h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleManage(event)">' + _ACCT_ICON + ' ' + tH('manage') + '</button>';
   } else {
     h += '<button class="topbar-menu-item" onclick="' + _mgClick + '">' + _mgSvg + ' ' + tH('manage') + _mgCount + '</button>';
-    h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();openLoginModal()">' + _ACCT_ICON + ' ' + tH('sign_in') + '</button>';
   }
   menu.innerHTML = h;
   menu.classList.add('visible');

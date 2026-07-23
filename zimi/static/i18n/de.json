@@ -1015,5 +1015,12 @@
   "alm_tw_present": "Aktuelle Zeit",
   "alm_tw_go": "Los",
   "alm_tw_edit_hint": "Datum und Uhrzeit eingeben",
-  "alm_scrub_label": "Zeitregler: nach oben ziehen für später, nach unten für früher"
+  "alm_scrub_label": "Zeitregler: nach oben ziehen für später, nach unten für früher",
+  "users_set_password": "Passwort festlegen",
+  "users_set_password_prompt": "Neues Passwort für {name}:",
+  "users_password_set": "Passwort für {name} aktualisiert.",
+  "users_last_login": "Zuletzt aktiv",
+  "users_last_never": "Nie angemeldet",
+  "users_your_account": "Ihr Konto",
+  "users_scope_limited": "Eingeschränkter Zugriff"
 }

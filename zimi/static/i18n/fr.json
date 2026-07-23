@@ -1015,5 +1015,12 @@
   "alm_tw_present": "Heure actuelle",
   "alm_tw_go": "Aller",
   "alm_tw_edit_hint": "Saisir une date et une heure",
-  "alm_scrub_label": "Curseur temporel : glissez vers le haut pour avancer, vers le bas pour reculer"
+  "alm_scrub_label": "Curseur temporel : glissez vers le haut pour avancer, vers le bas pour reculer",
+  "users_set_password": "Définir le mot de passe",
+  "users_set_password_prompt": "Nouveau mot de passe pour {name} :",
+  "users_password_set": "Mot de passe mis à jour pour {name}.",
+  "users_last_login": "Dernière connexion",
+  "users_last_never": "Jamais connecté",
+  "users_your_account": "Votre compte",
+  "users_scope_limited": "Accès limité"
 }

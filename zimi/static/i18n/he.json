@@ -1015,5 +1015,12 @@
   "alm_tw_present": "הזמן הנוכחי",
   "alm_tw_go": "צא לדרך",
   "alm_tw_edit_hint": "הזן תאריך ושעה",
-  "alm_scrub_label": "בקר הזמן: גרור למעלה קדימה, למטה אחורה"
+  "alm_scrub_label": "בקר הזמן: גרור למעלה קדימה, למטה אחורה",
+  "users_set_password": "הגדר סיסמה",
+  "users_set_password_prompt": "סיסמה חדשה עבור {name}:",
+  "users_password_set": "הסיסמה עודכנה עבור {name}.",
+  "users_last_login": "נראה לאחרונה",
+  "users_last_never": "מעולם לא התחבר",
+  "users_your_account": "החשבון שלך",
+  "users_scope_limited": "גישה מוגבלת"
 }

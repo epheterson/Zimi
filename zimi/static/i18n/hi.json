@@ -1015,5 +1015,12 @@
   "alm_tw_present": "वर्तमान समय",
   "alm_tw_go": "जाएँ",
   "alm_tw_edit_hint": "दिनांक और समय दर्ज करें",
-  "alm_scrub_label": "समय स्क्रबर: आगे के लिए ऊपर खींचें, पीछे के लिए नीचे"
+  "alm_scrub_label": "समय स्क्रबर: आगे के लिए ऊपर खींचें, पीछे के लिए नीचे",
+  "users_set_password": "पासवर्ड सेट करें",
+  "users_set_password_prompt": "{name} के लिए नया पासवर्ड:",
+  "users_password_set": "{name} के लिए पासवर्ड अपडेट किया गया।",
+  "users_last_login": "अंतिम बार देखा गया",
+  "users_last_never": "कभी साइन इन नहीं किया",
+  "users_your_account": "आपका खाता",
+  "users_scope_limited": "सीमित पहुँच"
 }
