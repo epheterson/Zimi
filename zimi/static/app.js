@@ -49,6 +49,43 @@ function _getStorageFlag(key) {
   return localStorage.getItem(key) === '1';
 }
 
+// Shared "dismiss on outside interaction" for menus/popovers. Registers a
+// capture-phase click listener on BOTH the parent document AND the reader iframe
+// document. The iframe half is the crucial bit: the reader content is iframed,
+// so a tap inside the article never bubbles to the parent — without listening on
+// the frame doc, an open palette/menu would stay stuck when you tap the article.
+// `keepEls` are elements whose interior clicks must NOT dismiss (the menu itself
+// and, usually, its trigger so a second tap toggles cleanly instead of
+// double-firing). `onDismiss` runs on the first outside interaction; if it
+// returns false the dismissal is vetoed and the listener keeps watching (e.g. a
+// transient locked state). Returns a detach fn; also auto-detaches once it fires.
+function _dismissOnOutside(keepEls, onDismiss) {
+  keepEls = (Array.isArray(keepEls) ? keepEls : [keepEls]).filter(Boolean);
+  function inside(target) {
+    return keepEls.some(function(el) { return el.contains && el.contains(target); });
+  }
+  var detached = false;
+  function detach() {
+    if (detached) return;
+    detached = true;
+    document.removeEventListener('click', handler, true);
+    var f = _readerFrameDoc();
+    if (f) { try { f.removeEventListener('click', handler, true); } catch (_) {} }
+  }
+  function handler(e) {
+    if (e && e.target && inside(e.target)) return;
+    if (onDismiss() === false) return;
+    detach();
+  }
+  // Defer a tick so the click that opened the menu doesn't instantly dismiss it.
+  setTimeout(function() {
+    document.addEventListener('click', handler, true);
+    var f = _readerFrameDoc();
+    if (f) { try { f.addEventListener('click', handler, true); } catch (_) {} }
+  }, 0);
+  return detach;
+}
+
 // ── Manage token storage ──
 // localStorage = persistent ("Remember me" checked).
 // sessionStorage = current-tab-only (default). Read both, prefer persistent.
@@ -9363,17 +9400,22 @@ function _renderReaderPalette() {
   var pal = document.getElementById(_READER_PALETTE_ID);
   if (pal && pal.classList.contains('visible')) pal.innerHTML = _readerPaletteHtml();
 }
+var _readerPaletteDetach = null;
 function _toggleReaderPalette() {
   var pal = document.getElementById(_READER_PALETTE_ID);
   if (!pal) return;
   if (pal.classList.contains('visible')) { _closeReaderPalette(); return; }
   pal.innerHTML = _readerPaletteHtml();
   pal.classList.add('visible');
-  setTimeout(function() { document.addEventListener('click', _closeReaderPalette, { once: true }); }, 0);
+  // Keep the palette AND its trigger button as "inside" so swatch/size taps and a
+  // second tap on the book button behave; a tap on the article iframe dismisses.
+  _readerPaletteDetach = _dismissOnOutside(
+    [pal, document.getElementById('readerview-btn')], _closeReaderPalette);
 }
 function _closeReaderPalette() {
   var pal = document.getElementById(_READER_PALETTE_ID);
   if (pal) pal.classList.remove('visible');
+  if (_readerPaletteDetach) { _readerPaletteDetach(); _readerPaletteDetach = null; }
 }
 // Print / Save as PDF the article iframe itself — its clean Reader-View shell
 // carries @media print rules (black-on-white, chrome hidden, images contained)
@@ -10323,23 +10365,22 @@ function toggleLangDropdown(event) {
     dd.style.left = 'auto';
   }
   dd.classList.add('visible');
-  setTimeout(function() {
-    document.addEventListener('click', function _maybeClose(e) {
-      var dd2 = document.getElementById('lang-dropdown');
-      // Don't close if clicking inside the download section
-      if (dd2 && dd2.contains(e.target)) {
-        document.addEventListener('click', _maybeClose, { once: true });
-        return;
-      }
-      _closeLangDropdown();
-    }, { once: true });
-  }, 0);
+  // Dismiss on outside interaction (iframe taps included). Clicks inside the
+  // dropdown are ignored by the helper; a transient locked state vetoes the
+  // close (returns false) so the listener keeps watching. Keep the selector
+  // button "inside" for a clean second-tap toggle.
+  _langDropdownDetach = _dismissOnOutside([dd, btn], function() {
+    if (_langDropdownLocked) return false;
+    _closeLangDropdown();
+  });
 }
 
 var _langDropdownLocked = false;
+var _langDropdownDetach = null;
 function _closeLangDropdown() {
   if (_langDropdownLocked) return;
   document.getElementById('lang-dropdown').classList.remove('visible');
+  if (_langDropdownDetach) { _langDropdownDetach(); _langDropdownDetach = null; }
 }
 
 // ── Mobile topbar overflow menu ──
@@ -10424,14 +10465,17 @@ function _toggleTopbarMenu(event) {
   }
   menu.innerHTML = h;
   menu.classList.add('visible');
-  // Close on outside click
-  setTimeout(function() {
-    document.addEventListener('click', _closeTopbarMenu, { once: true });
-  }, 0);
+  // Close on outside interaction — including a tap inside the reader iframe,
+  // which a plain document listener never sees. The ⋯ trigger is kept "inside"
+  // so a second tap toggles the menu shut via its own handler.
+  _topbarMenuDetach = _dismissOnOutside(
+    [menu, document.querySelector('.topbar-more')], _closeTopbarMenu);
 }
+var _topbarMenuDetach = null;
 function _closeTopbarMenu() {
   var menu = document.getElementById('topbar-menu');
   if (menu) menu.classList.remove('visible');
+  if (_topbarMenuDetach) { _topbarMenuDetach(); _topbarMenuDetach = null; }
 }
 
 // ── Bookmark migration for renamed ZIMs ──
