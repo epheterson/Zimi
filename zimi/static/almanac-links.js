@@ -316,8 +316,15 @@
     'season:autumn': { q: 'Q1314', en: 'Autumn' }
   };
 
+  // Orrery belts — the labelled bands the orrery draws (asteroid + Kuiper). Keys
+  // match the canvas hit-test in almanac-orrery.js.
+  var BELTS = {
+    'belt:asteroid': { q: 'Q41217', en: 'Asteroid belt' },
+    'belt:kuiper':   { q: 'Q41072', en: 'Kuiper belt' }
+  };
+
   var MAP = {};
-  [PLANETS, PROBES, CONSTELLATIONS, SHOWERS, ECLIPSES, CALENDARS, ZODIAC, STARS, HOLIDAYS, TERMS, SEASONS]
+  [PLANETS, PROBES, CONSTELLATIONS, SHOWERS, ECLIPSES, CALENDARS, ZODIAC, STARS, HOLIDAYS, TERMS, SEASONS, BELTS]
     .forEach(function (group) { for (var k in group) if (group.hasOwnProperty(k)) MAP[k] = group[k]; });
 
   // Register curated holidays under a "holiday:<norm>" key so wrapHoliday() can
