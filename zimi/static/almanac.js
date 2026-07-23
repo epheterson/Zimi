@@ -3330,13 +3330,13 @@ function _applyRegionHolidays(region, year, month, add) {
   var i;
   for (i = 0; i < (pack.fixed || []).length; i++) {
     var fx = pack.fixed[i];
-    if (fx[0] === month) add(fx[1], fx[2], 'holiday', '', src);
+    if (fx[0] === month) add(fx[1], fx[2], 'holiday', '', src, region);
   }
   for (i = 0; i < (pack.nth || []).length; i++) {
     var nh = pack.nth[i];
     if (nh[0] !== month) continue;
     var day = nh[2] === -1 ? _lastWeekday(year, month, nh[1]) : _nthWeekday(year, month, nh[1], nh[2]);
-    add(day, nh[3], 'holiday', '', src);
+    add(day, nh[3], 'holiday', '', src, region);
   }
   // Clock changes: labels hold both hemispheres (October IS spring in AU)
   var dst = pack.dst;
@@ -3415,7 +3415,7 @@ function _seasonEventsForYear(year) {
 // Get almanac events for a given calendar system's month, keyed by day number
 function _getAlmanacEvents(sys, year, month) {
   var events = {};
-  function add(day, label, type, icon, src) {
+  function add(day, label, type, icon, src, region) {
     if (day < 1 || day > 31) return;
     if (!events[day]) events[day] = [];
     // Belt-and-suspenders: base set + one region pack should never
@@ -3423,7 +3423,9 @@ function _getAlmanacEvents(sys, year, month) {
     for (var di = 0; di < events[day].length; di++) {
       if (events[day][di].label === label) return;
     }
-    events[day].push({ label: label, type: type, icon: icon || '', src: src || '' });
+    // `region` (ISO code) lets a shared label like "Independence Day" deep-link
+    // to the right country's article; '' for worldwide/native events.
+    events[day].push({ label: label, type: type, icon: icon || '', src: src || '', region: region || '' });
   }
 
   // Base worldwide / regional / astronomical events are computed on absolute
@@ -3723,7 +3725,7 @@ function _drawAlmanacGrid() {
         var escName = rawLabel.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         // Holidays deep-link into the library (fail-soft); other event types stay plain text.
         var detailLabel = (ev.type === 'holiday' && window.AlmanacLinks)
-          ? window.AlmanacLinks.wrapHoliday(escName, rawLabel) : escName;
+          ? window.AlmanacLinks.wrapHoliday(escName, rawLabel, ev.region) : escName;
         if (ev.src) detailLabel += ' <span style="color:var(--text3)">\u00b7 ' + ev.src.replace(/</g,'&lt;') + '</span>';
         html += '<div class="alm-ev alm-ev-' + ev.type + (ev.src ? ' alm-ev-country' : '') + '" style="font-size:12px;padding:2px 0">' +
           (ev.icon ? ev.icon + ' ' : '') + detailLabel + '</div>';

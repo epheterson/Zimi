@@ -261,7 +261,139 @@
     'guyfawkesnight':  { q: 'Q253440', en: 'Guy Fawkes Night' },
     'groundhogday':    { q: 'Q217230', en: 'Groundhog Day' },
     'mayday':          { q: 'Q35113',  en: 'International Workers’ Day' },
-    'nowruz2':         { q: 'Q192334', en: 'Nowruz' }
+    'nowruz2':         { q: 'Q192334', en: 'Nowruz' },
+
+    // ── Country-specific packs (#33). A label shared across nations is
+    //    region-qualified `<norm>_<iso>` so wrapHoliday(…, region) resolves it
+    //    to the RIGHT country's article; unshared labels stay bare. ──
+    // United States
+    'taxday':                 { q: 'Q1195005', en: 'Tax Day' },
+    'flagday_us':             { q: 'Q828779',  en: 'Flag Day (United States)' },
+    'juneteenth':             { q: 'Q2751629', en: 'Juneteenth' },
+    'independenceday_us':     { q: 'Q11722',   en: 'Independence Day (United States)' },
+    'patriotday':             { q: 'Q1526047', en: 'Patriot Day' },
+    'veteransday':            { q: 'Q26547',   en: 'Veterans Day' },
+    'kwanzaa':                { q: 'Q11576',   en: 'Kwanzaa' },
+    'martinlutherkingjrday':  { q: 'Q621571',  en: 'Martin Luther King Jr. Day' },
+    'superbowlsunday':        { q: 'Q32096',   en: 'Super Bowl' },
+    'presidentsday':          { q: 'Q205717',  en: "Presidents' Day" },
+    'memorialday':            { q: 'Q582617',  en: 'Memorial Day' },
+    'laborday':               { q: 'Q6975',    en: 'Labor Day' },
+    'indigenouspeoplesday':   { q: 'Q5000165', en: "Indigenous Peoples' Day" },
+    // Canada
+    'canadaday':              { q: 'Q168976',  en: 'Canada Day' },
+    'truthandreconciliationday': { q: 'Q108236080', en: 'National Day for Truth and Reconciliation' },
+    'boxingday':              { q: 'Q157918',  en: 'Boxing Day' },
+    'labourday':              { q: 'Q1362295', en: 'Labour Day' },
+    // United Kingdom
+    'stgeorgesday':           { q: 'Q262952',  en: "Saint George's Day" },
+    'remembranceday':         { q: 'Q740349',  en: 'Remembrance Day' },
+    'earlymaybankholiday':    { q: 'Q812880',  en: 'Bank holiday' },
+    'springbankholiday':      { q: 'Q812880',  en: 'Bank holiday' },
+    'summerbankholiday':      { q: 'Q812880',  en: 'Bank holiday' },
+    // Ireland
+    'ststephensday':          { q: 'Q1076976', en: "Saint Stephen's Day" },
+    'octoberbankholiday':     { q: 'Q812880',  en: 'Bank holiday' },
+    // France
+    'victoryineuropeday':     { q: 'Q189430',  en: 'Victory in Europe Day' },
+    'armisticeday':           { q: 'Q764918',  en: 'Armistice Day' },
+    // Germany
+    'germanunityday':         { q: 'Q157246',  en: 'German Unity Day' },
+    'nikolaus':               { q: 'Q105657',  en: 'Saint Nicholas Day' },
+    'secondchristmasday':     { q: 'Q19809',   en: 'Christmas' },
+    // Italy
+    'liberationday':          { q: 'Q652490',  en: 'Liberation Day (Italy)' },
+    'republicday_it':         { q: 'Q1195028', en: 'Festa della Repubblica' },
+    'ferragosto':             { q: 'Q1401666', en: 'Ferragosto' },
+    // Spain
+    'fiestanacional':         { q: 'Q1193582', en: 'National Day of Spain' },
+    'immaculateconception':   { q: 'Q179435',  en: 'Immaculate Conception' },
+    // Australia / New Zealand
+    'australiaday':           { q: 'Q485449',  en: 'Australia Day' },
+    'waitangiday':            { q: 'Q1194504', en: 'Waitangi Day' },
+    // India
+    'republicday_in':         { q: 'Q1194506', en: 'Republic Day (India)' },
+    'independenceday_in':     { q: 'Q1194479', en: 'Independence Day (India)' },
+    'gandhijayanti':          { q: 'Q2465552', en: 'Gandhi Jayanti' },
+    // Brazil
+    'tiradentes':             { q: 'Q315196',  en: 'Tiradentes' },
+    'independenceday_br':     { q: 'Q1194516', en: 'Independence of Brazil' },
+    'nossasenhoraaparecida':  { q: 'Q2649771', en: 'Our Lady of Aparecida' },
+    'republicday_br':         { q: 'Q1194513', en: 'Proclamation of the Republic (Brazil)' },
+    // Mexico
+    'independenceday_mx':     { q: 'Q1195098', en: 'Grito de Dolores' },
+    'dayofthedeadii':         { q: 'Q192447',  en: 'Day of the Dead' },
+    // Japan
+    'nationalfoundationday':  { q: 'Q1194533', en: 'National Foundation Day' },
+    'showaday':               { q: 'Q1194537', en: 'Shōwa Day' },
+    'constitutionday_jp':     { q: 'Q1194540', en: 'Constitution Memorial Day' },
+    'childrensday':           { q: 'Q1194543', en: "Children's Day (Japan)" },
+    'mountainday':            { q: 'Q11531638', en: 'Mountain Day' },
+    'cultureday':             { q: 'Q1194547', en: 'Culture Day' },
+    // China
+    'nationalday_cn':         { q: 'Q1194461', en: "National Day of the People's Republic of China" },
+    // South Africa
+    'humanrightsday_za':      { q: 'Q3138934', en: 'Human Rights Day (South Africa)' },
+    'freedomday_za':          { q: 'Q3086834', en: 'Freedom Day (South Africa)' },
+    'heritageday_za':         { q: 'Q1194575', en: 'Heritage Day' },
+    'dayofreconciliation_za': { q: 'Q3814649', en: 'Day of Reconciliation' },
+    'dayofgoodwill_za':       { q: 'Q157918',  en: 'Boxing Day' },
+    // Russia
+    'orthodoxchristmas':      { q: 'Q19809',   en: 'Christmas' },
+    'defenderofthefatherlandday': { q: 'Q1194590', en: 'Defender of the Fatherland Day' },
+    'victoryday':             { q: 'Q2703419', en: 'Victory Day (9 May)' },
+    'russiaday':              { q: 'Q1194593', en: 'Russia Day' },
+    'unityday':               { q: 'Q1194595', en: 'Unity Day (Russia)' },
+
+    // ── Worldwide observances (the base Gregorian set) ──
+    'epiphany':               { q: 'Q41474',   en: 'Epiphany' },
+    'holocaustremembranceday':{ q: 'Q332217',  en: 'International Holocaust Remembrance Day' },
+    'darwinday':              { q: 'Q970549',  en: 'Darwin Day' },
+    'internationalmotherlanguageday': { q: 'Q622410', en: 'International Mother Language Day' },
+    'internationalwomensday': { q: 'Q131110',  en: "International Women's Day" },
+    'worldwaterday':          { q: 'Q582865',  en: 'World Water Day' },
+    'worldhealthday':         { q: 'Q1049292', en: 'World Health Day' },
+    'worldbookday':           { q: 'Q321959',  en: 'World Book Day' },
+    'maydayworkersday':       { q: 'Q35113',   en: "International Workers' Day" },
+    'starwarsday':            { q: 'Q3495520', en: 'Star Wars Day' },
+    'towelday':               { q: 'Q838283',  en: 'Towel Day' },
+    'worldenvironmentday':    { q: 'Q396817',  en: 'World Environment Day' },
+    'worldoceansday':         { q: 'Q602440',  en: 'World Oceans Day' },
+    'internationalyogaday':   { q: 'Q19833687', en: 'International Day of Yoga' },
+    'worldpopulationday':     { q: 'Q1466780', en: 'World Population Day' },
+    'worldemojiday':          { q: 'Q30594095', en: 'World Emoji Day' },
+    'nelsonmandeladay':       { q: 'Q1194611', en: 'Mandela Day' },
+    'moonlandingday':         { q: 'Q495307',  en: 'Moon landing' },
+    'internationalyouthday':  { q: 'Q1195118', en: 'International Youth Day' },
+    'internationalliteracyday': { q: 'Q1052325', en: 'International Literacy Day' },
+    'internationaldayofpeace':{ q: 'Q127481',  en: 'International Day of Peace' },
+    'worldtourismday':        { q: 'Q1195126', en: 'World Tourism Day' },
+    'internationalcoffeeday': { q: 'Q17093373', en: 'International Coffee Day' },
+    'worldanimalday':         { q: 'Q1195129', en: 'World Animal Day' },
+    'worldmentalhealthday':   { q: 'Q1195133', en: 'World Mental Health Day' },
+    'worldfoodday':           { q: 'Q579606',  en: 'World Food Day' },
+    'unitednationsday':       { q: 'Q1194618', en: 'United Nations Day' },
+    'worldkindnessday':       { q: 'Q1195140', en: 'World Kindness Day' },
+    'internationalmensday':   { q: 'Q1195012', en: "International Men's Day" },
+    'worldchildrensday':      { q: 'Q753654',  en: "Children's Day" },
+    'humanrightsday':         { q: 'Q6180',    en: 'Human Rights Day' },
+
+    // ── Native-calendar observances beyond the base set (famous ones only) ──
+    'tubishvat':              { q: 'Q306179',  en: 'Tu BiShvat' },
+    'lagbaomer':              { q: 'Q633820',  en: 'Lag BaOmer' },
+    'simchattorah':           { q: 'Q134287',  en: 'Simchat Torah' },
+    'shminiatzeret':          { q: 'Q721970',  en: 'Shemini Atzeret' },
+    'isramiraj':              { q: 'Q319224',  en: "Isra and Mi'raj" },
+    'laylatalqadr':           { q: 'Q319280',  en: 'Night of Power' },
+    'chaharshanbesuri':       { q: 'Q1076671', en: 'Chaharshanbe Suri' },
+    'ghostfestival':          { q: 'Q1194691', en: 'Ghost Festival' },
+    'chongyang':              { q: 'Q1123244', en: 'Double Ninth Festival' },
+    'labafestival':           { q: 'Q1194699', en: 'Laba Festival' },
+    'loykrathong':            { q: 'Q1194707', en: 'Loy Krathong' },
+    'maghapuja':              { q: 'Q1194711', en: 'Māgha Pūjā' },
+    'asalhapuja':             { q: 'Q1194715', en: 'Asalha Puja' },
+    'transfiguration':        { q: 'Q1194723', en: 'Transfiguration of Jesus' },
+    'annunciation':           { q: 'Q1194719', en: 'Annunciation' }
   };
 
   // Astronomy & timekeeping terms — the obscure-but-linkable vocabulary the
@@ -616,8 +748,16 @@
   // Holiday convenience: map the displayed label to its curated entry, then
   // link only if that entry's Q-ID resolved. Uncurated holidays (no curated
   // Q-ID) stay plain text -- closed set, no guessing.
-  function wrapHoliday(displayHtml, label) {
+  // `region` (an ISO code, when the label came from a country pack) lets a
+  // shared label like "Independence Day" resolve to the RIGHT country's article:
+  // a region-qualified key (`<norm>_<region>`) is tried first, then the bare
+  // norm. Uncurated labels stay plain text -- closed set, no guessing.
+  function wrapHoliday(displayHtml, label, region) {
     var n = _norm(label);
+    if (region) {
+      var rk = n + '_' + String(region).toLowerCase();
+      if (HOLIDAYS[rk]) return wrap('holiday:' + rk, displayHtml, label);
+    }
     return HOLIDAYS[n] ? wrap('holiday:' + n, displayHtml, label) : displayHtml;
   }
 
