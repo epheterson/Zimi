@@ -1426,9 +1426,24 @@ function _persistInstalledPillOrder(row) {
   var order = full.map(function(k) {
     return (k.indexOf('cat:') === 0 && ci < pillCats.length) ? pillCats[ci++] : k;
   });
+  _persistSectionOrder(order);
+}
+
+// Single writer for the home section order. Both the installed-tab pill drag and
+// the up/down reorder panel funnel through here so the optimistic local update,
+// the POST, the failure toast, and — the fix for stale-home — the post-save
+// resync all live in one place. The server validates/normalizes the order
+// (drops unknown keys via _SECTION_KEY_RE), so we adopt its echoed order as
+// authoritative and, when home is the visible view, re-render it immediately so
+// the list matches the pills without waiting for the next navigation.
+function _persistSectionOrder(order) {
   _sectionOrder = order;
-  _saveLibraryLayout({ section_order: order }).then(function(res) {
-    if (!res.ok) _showToast(res.status === 403 ? t('layout_locked') : t('error'));
+  return _saveLibraryLayout({ section_order: order }).then(function(res) {
+    if (!res.ok) { _showToast(res.status === 403 ? t('layout_locked') : t('error')); return; }
+    return res.json().then(function(body) {
+      if (body && Array.isArray(body.section_order)) _sectionOrder = body.section_order;
+      if (mode === 'home' && !readerOpen && !currentSource) renderHome();
+    }).catch(function() {});
   }).catch(function() { _showToast(t('error')); });
 }
 
@@ -1477,10 +1492,7 @@ function _reorderRefreshDisabled(list) {
 // leaves a complete valid order — immediate durability beats coalescing here.
 function _persistReorder(list) {
   var order = Array.prototype.map.call(list.querySelectorAll('.reorder-row'), function(r) { return r.dataset.key; });
-  _sectionOrder = order;
-  _saveLibraryLayout({ section_order: order }).then(function(res) {
-    if (!res.ok) _showToast(res.status === 403 ? t('layout_locked') : t('error'));
-  }).catch(function() { _showToast(t('error')); });
+  _persistSectionOrder(order);
 }
 
 function _reorderClick(e) {
