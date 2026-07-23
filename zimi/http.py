@@ -2178,6 +2178,17 @@ class ZimHandler(BaseHTTPRequestHandler):
             token = _users.create_session(name)
             rec = _users.get_user(name)
             allowlist = rec.get("allowlist") if rec else None
+            # A SECONDARY admin (role=admin) logs in through the same modal but
+            # gets the admin chrome + manage powers: their session token is what
+            # _check_manage_auth accepts, so hand it back as role=admin so the
+            # client uses it as the manage Bearer token (never hides the gear).
+            if _users.is_admin_user(name):
+                log.info("Secondary-admin login: %s", name)
+                return self._json_cookie(
+                    200,
+                    {"role": "admin", "name": name, "token": token, "secondary": True},
+                    self._session_cookie(token, remember),
+                )
             log.info("User login: %s", name)
             return self._json_cookie(
                 200,
@@ -2207,8 +2218,16 @@ class ZimHandler(BaseHTTPRequestHandler):
         """GET /whoami — the current identity for the client to shape its UI.
         role ∈ {user, admin, anonymous}. Server-side filtering is independent
         of this — it keys off the cookie/token, not the client's belief."""
+        from zimi import manage as _manage
+
         name = _users.resolve_request_user(self)
         if name:
+            # A SECONDARY admin keeps the admin chrome on reload (their session
+            # token is restored from storage as the manage Bearer token).
+            if _users.is_admin_user(name):
+                return self._json(
+                    200, {"role": "admin", "name": name, "secondary": True}
+                )
             rec = _users.get_user(name)
             allowlist = rec.get("allowlist") if rec else None
             return self._json(
@@ -2219,7 +2238,6 @@ class ZimHandler(BaseHTTPRequestHandler):
                     "restricted": isinstance(allowlist, list),
                 },
             )
-        from zimi import manage as _manage
 
         if (
             _srv.ZIMI_MANAGE
@@ -2230,7 +2248,13 @@ class ZimHandler(BaseHTTPRequestHandler):
                 200,
                 {"role": "admin", "name": _manage._get_manage_user() or "admin"},
             )
-        return self._json(200, {"role": "anonymous"})
+        # Anonymous. Expose a first-login hint ONLY when the default username
+        # applies — no custom username AND no named users configured. This is
+        # not an info leak: "the default username is admin" is in the docs.
+        resp = {"role": "anonymous"}
+        if not _manage._get_manage_user() and not _users.list_users():
+            resp["default_username"] = "admin"
+        return self._json(200, resp)
 
     def log_message(self, format, *args):
         # Light logging: errors + slow requests. Suppress 200/304 noise.
