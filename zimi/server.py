@@ -1210,6 +1210,25 @@ def load_cache(force=False):
     backfilled = 0  # legacy entries whose first_seen we filled from file mtime
     file_cache = {}  # for saving back to disk
 
+    # Index prior cache entries by date-stripped short name. ZIM filenames carry
+    # a date (…_2026-07.zim); an update downloads a NEW dated filename, so the
+    # cache — keyed by full filename — misses and the update masquerades as a
+    # brand-new install (first_seen≈now, no updated_at → badges "New" not
+    # "Updated"). This lets the cache-miss path recognise that a new filename is
+    # the SAME logical ZIM as a known one, inherit its original first_seen, and
+    # stamp updated_at. Keep the earliest first_seen per name (true install).
+    prior_by_name = {}
+    if disk_cache:
+        for _fn, _ce in disk_cache.items():
+            if not isinstance(_ce, dict):
+                continue
+            _sn = _zim_short_name(_fn)
+            _prev = prior_by_name.get(_sn)
+            if _prev is None or (_ce.get("first_seen") or float("inf")) < (
+                _prev.get("first_seen") or float("inf")
+            ):
+                prior_by_name[_sn] = _ce
+
     for name, path in zims.items():
         filename = os.path.basename(path)
         try:
@@ -1225,14 +1244,26 @@ def load_cache(force=False):
         # library). A ZIM already known (even if its file changed on an update)
         # keeps its original stamp; a ZIM present in a pre-feature cache with no
         # stamp is treated as long-installed, not retroactively "new".
+        # A new filename whose date-stripped name matches a known ZIM is an
+        # UPDATE arriving under a new dated filename, not a first install.
+        prior = prior_by_name.get(name) if cached is None else None
+        prior_first_seen = prior.get("first_seen") if prior else None
+        is_update_rename = cached is None and prior_first_seen is not None
         if cached is None:
-            # First time Zimi has ever seen this file. Stamp first_seen from the
-            # file's own mtime — NOT wall-clock now. A genuinely new download has
-            # mtime≈now, so it still lights up "New"; but a full cache rebuild of
-            # an old library (force=True, or a corrupt/unreadable cache.json) now
-            # re-derives quiet, honest stamps from the files instead of badging
-            # the entire library at once. min() guards against future mtimes.
-            first_seen = min(mtime, time.time())
+            if is_update_rename:
+                # Same logical ZIM, newer file: inherit the ORIGINAL first_seen
+                # (never re-stamp it) so updated_at>first_seen and the badge
+                # reads "Updated", matching the activity log.
+                first_seen = prior_first_seen
+            else:
+                # First time Zimi has ever seen this file. Stamp first_seen from
+                # the file's own mtime — NOT wall-clock now. A genuinely new
+                # download has mtime≈now, so it still lights up "New"; but a full
+                # cache rebuild of an old library (force=True, or a
+                # corrupt/unreadable cache.json) now re-derives quiet, honest
+                # stamps from the files instead of badging the whole library at
+                # once. min() guards against future mtimes.
+                first_seen = min(mtime, time.time())
         else:
             first_seen = cached.get("first_seen")
             # Legacy cache entries (written before #34) carry no first_seen.
@@ -1256,7 +1287,9 @@ def load_cache(force=False):
         # re-scans even unchanged files, but must not mistake that for a change.
         cache_hit = file_unchanged and not force
         if cached is None:
-            updated_at = None
+            # Brand-new install → no update stamp; an update-under-new-filename
+            # → stamp updated_at=now (it's a change to an already-known ZIM).
+            updated_at = time.time() if is_update_rename else None
         elif file_unchanged:
             updated_at = cached.get("updated_at")
         else:

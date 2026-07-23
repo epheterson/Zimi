@@ -96,6 +96,45 @@ def test_changed_zim_gets_updated_at(tmp_path, monkeypatch):
     assert e["first_seen"] == first_seen, "first_seen must survive the update"
 
 
+def test_update_under_new_dated_filename_badges_updated(tmp_path, monkeypatch):
+    """A ZIM re-downloaded under a NEW dated filename (…_2026-06 → …_2026-07) is
+    the same logical ZIM. The cache misses on the new filename, but the update
+    must inherit the ORIGINAL first_seen and get updated_at>first_seen so it
+    badges 'Updated', not 'New' (regression: date-renamed updates showed 'New'
+    while the activity log said 'updated')."""
+    zdir = _setup(tmp_path, monkeypatch)
+    old_path = str(zdir / "survival_en_2026-06.zim")
+    installed = time.time() - 90 * 86400  # installed 3 months ago
+    os.utime(old_path, (installed, installed))
+    server.load_cache(force=True)
+    original_first_seen = _entry(server._zim_list_cache)["first_seen"]
+    assert abs(original_first_seen - installed) < 2.0
+
+    # The update lands: old dated file replaced by a newer dated file.
+    os.remove(old_path)
+    build_fixture_zim(str(zdir / "survival_en_2026-07.zim"))
+    server.load_cache(force=False)  # new filename → cache miss → update-rename
+
+    e = _entry(server._zim_list_cache)
+    assert (
+        e["first_seen"] == original_first_seen
+    ), "an update must inherit the original first_seen, never re-stamp it"
+    assert e.get("updated_at"), "an update must be stamped updated_at"
+    assert (
+        e["updated_at"] > e["first_seen"]
+    ), "updated_at must exceed first_seen so the badge reads 'Updated'"
+
+
+def test_first_install_under_dated_filename_still_new(tmp_path, monkeypatch):
+    """Guard: a genuinely first-time install (no prior same-name entry) must
+    still be 'New' — updated_at unset — even though its filename carries a date."""
+    _setup(tmp_path, monkeypatch)
+    server.load_cache(force=True)
+    e = _entry(server._zim_list_cache)
+    assert e.get("first_seen")
+    assert e.get("updated_at") in (None, 0, ""), "a first install isn't 'Updated'"
+
+
 def _strip_first_seen(cf):
     """Simulate a pre-#34 cache file: drop first_seen from every entry."""
     data = json.load(open(cf))
