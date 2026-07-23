@@ -1413,19 +1413,15 @@ function _orderCatsBySaved(cats) {
   });
 }
 
-// Persist the installed-tab pill order as the home section order. Pills cover
-// only categories; collections keep their existing slot positions so the home
-// page and the reorder panel stay consistent (#37 keys: cat:/col:).
+// Persist the installed-tab pill order as the home section order. The pill row
+// now shows BOTH category and collection sections (#37 keys cat:/col:) in the
+// saved order, so the DOM order of the draggable pills IS the complete, unified
+// section order — what you drag is exactly what home renders. No slot-preserving
+// merge is needed anymore.
 function _persistInstalledPillOrder(row) {
-  var pillCats = Array.prototype.map.call(
-    row.querySelectorAll('.cat-pill[data-cat]'),
-    function(p) { return 'cat:' + p.dataset.cat; });
-  var full = _currentReorderSections().map(function(s) { return s.key; });
-  pillCats.forEach(function(k) { if (full.indexOf(k) === -1) full.push(k); });
-  var ci = 0;
-  var order = full.map(function(k) {
-    return (k.indexOf('cat:') === 0 && ci < pillCats.length) ? pillCats[ci++] : k;
-  });
+  var order = Array.prototype.map.call(
+    row.querySelectorAll('.pill[data-key]'),
+    function(p) { return p.dataset.key; });
   _persistSectionOrder(order);
 }
 
@@ -1447,17 +1443,18 @@ function _persistSectionOrder(order) {
   }).catch(function() { _showToast(t('error')); });
 }
 
-// HTML5 drag reordering of the installed-tab category pills (desktop). Touch
-// devices don't fire these — they use the trailing "Reorder" action pill.
+// HTML5 drag reordering of the installed-tab section pills — categories AND
+// collections alike (desktop). Touch devices don't fire these — they use the
+// trailing "Reorder" action pill.
 var _dragPill = null;
 function _wireInstalledPillDrag(container) {
   var row = container.querySelector('.installed-cat-pills');
   if (!row) return;
-  row.querySelectorAll('.cat-pill[draggable="true"]').forEach(function(p) {
+  row.querySelectorAll('.pill[draggable="true"]').forEach(function(p) {
     p.addEventListener('dragstart', function(e) {
       _dragPill = p; p.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
-      try { e.dataTransfer.setData('text/plain', p.dataset.cat); } catch (_) {}
+      try { e.dataTransfer.setData('text/plain', p.dataset.key); } catch (_) {}
     });
     p.addEventListener('dragend', function() {
       p.classList.remove('dragging'); _dragPill = null;
@@ -7299,6 +7296,10 @@ async function toggleAutoUpdate() {
   }
 }
 
+// Layers glyph marking a collection pill in the installed reorder row, so it
+// reads as a grouping (not a category) at a glance.
+var _COLLECTION_GLYPH = '<svg class="col-pill-glyph" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>';
+
 function getInstalledPillsHtml() {
   const zims = zimsCache || [];
   // Build cross-reference: which cats exist per lang, which langs exist per cat
@@ -7316,20 +7317,31 @@ function getInstalledPillsHtml() {
       langCounts[lang] = (langCounts[lang] || 0) + 1;
     }
   }
-  // Show pills in the saved home section order so the filter row mirrors the
-  // page (and reflects drag reorders); unlisted categories fall back to A-Z.
+  // The reorder surface shows every home section — collections AND categories —
+  // in the saved order, so what you drag is exactly what home renders (dragging
+  // a category can no longer jump invisibly past a collection). Collection pills
+  // are visually distinct (glyph + col-pill) and open the Collections tab;
+  // category pills double as filters. Both are draggable. `allCats` is still
+  // computed above purely to gate the language row below.
   const allCats = _orderCatsBySaved([...new Set(Object.keys(langsByCat))]);
+  const sections = _currentReorderSections();
   let h = '';
-  // Category pills — dimmed if no items match the active language filter.
-  // Desktop: drag a pill to reorder categories in place (persisted as the home
+  // Desktop: drag a pill to reorder sections in place (persisted as the home
   // section order). Touch: use the trailing "Reorder" action pill, which opens
-  // the up/down reorder panel (W1.3).
-  if (allCats.length > 1) {
+  // the up/down reorder panel.
+  if (sections.length > 1) {
     h += '<div class="pills installed-cat-pills" style="margin-bottom:8px">';
-    for (const cat of allCats) {
-      const dimmed = manageLangFilter && !langsByCat[cat].has(manageLangFilter);
+    for (const s of sections) {
+      if (s.key.indexOf('col:') === 0) {
+        h += '<button type="button" class="pill col-pill" draggable="true" data-key="' + escAttr(s.key) +
+          '" title="' + escAttr(t('reorder_drag_hint')) + '" onclick="switchManageTab(\'collections\')">' +
+          _COLLECTION_GLYPH + esc(s.label) + '</button>';
+        continue;
+      }
+      const cat = s.key.slice(4);
+      const dimmed = manageLangFilter && langsByCat[cat] && !langsByCat[cat].has(manageLangFilter);
       h += '<button class="pill cat-pill' + (manageCategoryFilter === cat ? ' active' : '') + (dimmed ? ' dimmed' : '') +
-        '" draggable="true" data-cat="' + escAttr(cat) + '" title="' + escAttr(t('reorder_drag_hint')) +
+        '" draggable="true" data-key="' + escAttr(s.key) + '" data-cat="' + escAttr(cat) + '" title="' + escAttr(t('reorder_drag_hint')) +
         '" onclick="filterManageCategory(\'' + escAttr(cat) + '\')">' + esc(_catDisplayName(cat)) + '</button>';
     }
     // Distinct amber-outline ACTION pill (not a filter) → existing reorder panel.

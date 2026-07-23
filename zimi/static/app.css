@@ -217,10 +217,14 @@
   .pill.active .pill-count { opacity: 1; background: rgba(0, 0, 0, 0.22); color: #000; padding: 0 5px; border-radius: 8px; }
   .pill.dimmed, .lang-pill.dimmed { opacity: 0.35; pointer-events: none; }
   .pills-divider { width: 60px; height: 1px; background: var(--border); margin: 0 auto 4px; opacity: 0.5; }
-  /* Installed-tab category pills: draggable to reorder (W1.3). */
-  .cat-pill[draggable="true"] { cursor: grab; }
-  .cat-pill.dragging { opacity: 0.45; cursor: grabbing; }
-  .cat-pill.drag-over { border-color: var(--amber); box-shadow: -2px 0 0 var(--amber); }
+  /* Installed-tab section pills (categories + collections): draggable to reorder. */
+  .cat-pill[draggable="true"], .col-pill[draggable="true"] { cursor: grab; }
+  .cat-pill.dragging, .col-pill.dragging { opacity: 0.45; cursor: grabbing; }
+  .cat-pill.drag-over, .col-pill.drag-over { border-color: var(--amber); box-shadow: -2px 0 0 var(--amber); }
+  /* Collection pills carry the layers glyph so they read as groupings, not
+     categories, in the same reorder row. */
+  .col-pill { display: inline-flex; align-items: center; gap: 5px; border-style: dashed; }
+  .col-pill-glyph { flex-shrink: 0; opacity: 0.8; }
   /* "Reorder" is an ACTION, not a filter — amber outline sets it apart. */
   .reorder-pill { display: inline-flex; align-items: center; gap: 4px; color: var(--amber); border-color: var(--amber-border); border-style: dashed; background: var(--amber-glow); }
   .reorder-pill:hover { color: var(--amber); border-color: var(--amber); background: var(--amber-glow); border-style: dashed; }
