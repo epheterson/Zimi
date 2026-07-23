@@ -1,7 +1,7 @@
 # Zimi
 
 [![CI](https://github.com/epheterson/Zimi/actions/workflows/ci.yml/badge.svg)](https://github.com/epheterson/Zimi/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-771%20passing-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/tests-963%20passing-brightgreen)](#)
 [![Lighthouse Accessibility](https://img.shields.io/badge/Lighthouse%20a11y-100%2F100-success?logo=lighthouse&logoColor=white)](docs/plans/2026-04-26-accessibility.md)
 [![WCAG 2.1 AA](https://img.shields.io/badge/WCAG%202.1-AA-blue)](docs/plans/2026-04-26-accessibility.md)
 [![i18n](https://img.shields.io/badge/i18n-10%20languages-blueviolet)](#languages)
@@ -164,6 +164,7 @@ Most people set nothing: every setting below has a sensible default or lives in 
 |----------|-------------|
 | `GET /search?q=...&limit=5&zim=...&fast=1&lang=...` | Full-text search. `fast=1` for title matches only. `lang` filters by language. |
 | `GET /read?zim=...&path=...&max_length=8000` | Read article as plain text |
+| `GET /chunks?zim=...&path=...&size=1200&overlap=120` | Deterministic, embedding-free article chunking for RAG clients |
 | `GET /suggest?q=...&limit=10&zim=...` | Title autocomplete |
 | `GET /list` | List all sources with metadata |
 | `GET /article-languages?zim=...&path=...` | All languages an article is available in |
@@ -177,6 +178,7 @@ Most people set nothing: every setting below has a sensible default or lives in 
 | `POST /resolve` | Batch resolve: `{"urls": [...]}` |
 | `GET /health` | Health check with version |
 | `GET /w/<zim>/<path>` | Serve raw ZIM content |
+| `GET /openapi.json` | OpenAPI 3.1 description of the stable read API |
 
 ### Examples
 
