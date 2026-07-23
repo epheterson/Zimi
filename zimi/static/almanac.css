@@ -16,7 +16,17 @@
 .alm-clock-ampm { font-size: 13px; color: var(--text2); font-weight: 500; align-self: flex-end; margin-bottom: 4px; }
 .alm-clock-date { font-size: 14px; color: var(--text2); margin-top: 8px; font-weight: 500; }
 .alm-clock-sub { font-size: 11px; color: var(--text3); margin-top: 3px; letter-spacing: 0.04em; text-transform: uppercase; }
-.alm-clock-sec { font-size: 20px; font-weight: 600; color: var(--text2); font-variant-numeric: tabular-nums; align-self: flex-end; margin-bottom: 3px; min-width: 26px; text-align: left; }
+.alm-clock-sec { font-size: 20px; font-weight: 600; color: var(--text2); font-variant-numeric: tabular-nums; align-self: flex-end; margin-bottom: 3px; min-width: 26px; text-align: left; position: relative; overflow: hidden; }
+.alm-clock-sec-d { display: inline-block; }
+/* Counting tick: outgoing digit lifts out (absolute, so it can't push layout),
+   incoming rises from below. Both transform+opacity only. */
+.alm-sec-out { position: absolute; left: 0; top: 0; animation: almSecOut 0.2s ease forwards; }
+.alm-sec-in { animation: almSecIn 0.2s ease; }
+@keyframes almSecOut { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-0.9em); opacity: 0; } }
+@keyframes almSecIn { from { transform: translateY(0.9em); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .alm-sec-out, .alm-sec-in { animation: none; }
+}
 .alm-tz-list { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
 .alm-tz-city-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; cursor: pointer; transition: all 0.1s; text-align: center; }
 .alm-tz-city-card:hover { background: var(--surface2); border-color: var(--text3); }

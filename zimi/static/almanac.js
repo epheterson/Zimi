@@ -13,10 +13,29 @@ function _jdToJulianCentury(JD) { return (JD - JD_J2000) / JULIAN_CENTURY; }
 
 var _ALM_LOC_KEY = 'zimi_almanac_location';
 
+// The almanac is EPHEMERAL: a chosen location lives for the session only, never
+// across a refresh. Purge any location persisted by an older build on load —
+// this also permanently retires the corrupted-longitude value the v1.7 hero-time
+// bug could have written to localStorage.
+try { localStorage.removeItem(_ALM_LOC_KEY); } catch (e) {}
+
+// A finite lat/lon inside its real range. A click-math slip or a legacy
+// corrupted value is rejected so it can never drive the sun/moon/timezone math.
+function _almValidLatLon(lat, lon) {
+  return typeof lat === 'number' && isFinite(lat) && lat >= -90 && lat <= 90 &&
+    typeof lon === 'number' && isFinite(lon) && lon >= -180 && lon <= 180;
+}
+
 function _getLocation() {
-  var stored = localStorage.getItem(_ALM_LOC_KEY);
+  var stored = null;
+  try { stored = sessionStorage.getItem(_ALM_LOC_KEY); } catch (e) {}
   if (stored) {
-    try { var loc = JSON.parse(stored); return { lat: loc.lat, lon: loc.lon, name: loc.name || '', stored: true }; } catch(e) {}
+    try {
+      var loc = JSON.parse(stored);
+      if (_almValidLatLon(loc.lat, loc.lon)) {
+        return { lat: loc.lat, lon: loc.lon, name: loc.name || '', stored: true };
+      }
+    } catch(e) {}
   }
   // Synthetic default: mid-northern latitude at the device offset's rough
   // meridian. Good enough for sun/moon shapes — but callers formatting TIMES
@@ -36,9 +55,11 @@ function _almDisplayTz(loc) {
 }
 
 function _saveLocation(lat, lon, name) {
+  if (!_almValidLatLon(lat, lon)) return; // reject a bad click/geolocate outright
   var data = { lat: lat, lon: lon };
   if (name) data.name = name;
-  localStorage.setItem(_ALM_LOC_KEY, JSON.stringify(data));
+  // Session-only: a chosen location never survives a refresh (see _ALM_LOC_KEY).
+  try { sessionStorage.setItem(_ALM_LOC_KEY, JSON.stringify(data)); } catch (e) {}
   // Keep the timezone city list in sync with the new location — otherwise a
   // map click changes the sun/moon math while a stale city stays highlighted.
   _almSelectedTz = _almTzForLocation(lat, lon);
@@ -200,15 +221,24 @@ function _reopenAlmanacFromLink() {
   var target = _almReturnScroll;
   _almReturnScroll = null;
   _openAlmanacInner(true);
-  if (target) {
-    var restore = function () {
-      var content = document.getElementById('almanac-content');
-      if (content) content.scrollTop = target;
-    };
-    // Re-render reflows canvases/images, so settle the offset across two frames.
-    requestAnimationFrame(function () { restore(); requestAnimationFrame(restore); });
-    setTimeout(restore, 120);
-  }
+  if (!target) return;
+  var content = document.getElementById('almanac-content');
+  if (!content) return;
+  // The drift bug: a fixed-delay restore could fire while the content was still
+  // short (canvases sizing, images decoding), so scrollTop clamped to a smaller
+  // maxScroll and landed a few pixels above the saved spot — and each round trip
+  // re-saved that drifted value. Instead, re-assert the offset every frame the
+  // content height is still changing, then once more when it settles. Bounded to
+  // ~1s so it never fights a later user scroll.
+  content.scrollTop = target;
+  var lastH = -1, stableFrames = 0, frames = 0;
+  (function settle() {
+    var h = content.scrollHeight;
+    if (h !== lastH) { lastH = h; stableFrames = 0; content.scrollTop = target; }
+    else { stableFrames++; }
+    if (++frames < 60 && stableFrames < 4) requestAnimationFrame(settle);
+    else content.scrollTop = target; // final assert once the height has settled
+  })();
 }
 
 // ── Timezone formatting ──
@@ -1721,7 +1751,7 @@ function _drawTzClock(now) {
       labelEl.dataset.tz = tz;
       labelEl.innerHTML =
         '<div class="alm-clock-time"><span id="alm-clock-hm">' + hm + '</span>' +
-          '<span class="alm-clock-sec" id="alm-clock-sec">' + sec + '</span>' +
+          '<span class="alm-clock-sec" id="alm-clock-sec"><span class="alm-clock-sec-d">' + sec + '</span></span>' +
           '<span class="alm-clock-ampm" id="alm-clock-ampm">' + ampm + '</span></div>' +
         '<div class="alm-clock-date" id="alm-clock-date">' + dateStr + '</div>' +
         '<div class="alm-clock-sub"><span id="alm-clock-tzname">' + (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '') + '</span></div>';
@@ -1735,10 +1765,30 @@ function _drawTzClock(now) {
       var tnEl = document.getElementById('alm-clock-tzname');
       var tzText = (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '');
       if (tnEl && tnEl.textContent !== tzText) tnEl.textContent = tzText;
-      var secondsEl = document.getElementById('alm-clock-sec');
-      if (secondsEl && secondsEl.textContent !== sec) secondsEl.textContent = sec;
+      _tickSeconds(document.getElementById('alm-clock-sec'), sec);
     }
   }
+}
+
+// Animate the hero clock's seconds: the old value slides/fades up and out, the
+// new value rises in from below — a clean counting tick, transform+opacity only
+// (no layout shift; the container clips the vertical travel). Honours
+// prefers-reduced-motion by swapping the text instantly.
+function _tickSeconds(secEl, sec) {
+  if (!secEl) return;
+  var cur = secEl.querySelector('.alm-clock-sec-d');
+  if (!cur) { secEl.innerHTML = '<span class="alm-clock-sec-d">' + sec + '</span>'; return; }
+  if (cur.textContent === sec) return;
+  var reduce = false;
+  try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+  if (reduce) { cur.textContent = sec; return; }
+  var incoming = document.createElement('span');
+  incoming.className = 'alm-clock-sec-d alm-sec-in';
+  incoming.textContent = sec;
+  incoming.addEventListener('animationend', function () { incoming.classList.remove('alm-sec-in'); }, { once: true });
+  cur.classList.add('alm-sec-out');
+  cur.addEventListener('animationend', function () { if (cur.parentNode) cur.parentNode.removeChild(cur); }, { once: true });
+  secEl.appendChild(incoming);
 }
 
 // Cached Intl.DateTimeFormat objects — avoid 180+ allocations/sec in the RAF loop
