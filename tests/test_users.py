@@ -507,5 +507,179 @@ class TestDidYouMeanRespectsAllowlist(_UsersBase):
         self.assertNotIn("did_you_mean", result)
 
 
+# ── Roles: creation, migration, role-aware allowlist sync ──────────────────
+
+
+class TestRoles(_UsersBase):
+    def test_create_default_role_is_user(self):
+        users.create_user("Grown", "pw")
+        self.assertEqual(users.list_users()[0]["role"], "user")
+        self.assertTrue(users.list_users()[0]["all_access"])
+
+    def test_create_admin_is_all_access(self):
+        users.create_user("Sec", "pw", role="admin")
+        u = users.list_users()[0]
+        self.assertEqual(u["role"], "admin")
+        self.assertTrue(u["all_access"])
+        self.assertTrue(users.is_admin_user("sec"))
+
+    def test_create_limited_forces_role_and_list(self):
+        users.create_user("Kid", "pw", allowlist=["a"], role="limited")
+        u = users.list_users()[0]
+        self.assertEqual(u["role"], "limited")
+        self.assertEqual(u["allowlist"], ["a"])
+
+    def test_admin_ignores_allowlist(self):
+        users.create_user("Sec", "pw", allowlist=["a"], role="admin")
+        self.assertTrue(users.list_users()[0]["all_access"])
+
+    def test_invalid_role_rejected(self):
+        ok, err = users.create_user("X", "pw", role="superuser")
+        self.assertFalse(ok)
+        self.assertIn("role", err)
+
+    def test_role_inferred_when_none(self):
+        # Backward-compatible callers pass no role; an allowlist → limited.
+        users.create_user("Kid", "pw", allowlist=["a"])
+        self.assertEqual(users.list_users()[0]["role"], "limited")
+
+    def test_set_allowlist_syncs_role(self):
+        users.create_user("Kid", "pw", role="user")
+        users.set_allowlist("Kid", ["a"])
+        self.assertEqual(users.list_users()[0]["role"], "limited")
+        users.set_allowlist("Kid", None)
+        self.assertEqual(users.list_users()[0]["role"], "user")
+
+    def test_set_allowlist_rejected_for_admin(self):
+        users.create_user("Sec", "pw", role="admin")
+        ok, _ = users.set_allowlist("Sec", ["a"])
+        self.assertFalse(ok)
+
+    def test_set_role_promote_and_demote(self):
+        users.create_user("Kid", "pw", allowlist=["a"], role="limited")
+        users.set_role("Kid", "user")
+        self.assertTrue(users.list_users()[0]["all_access"])
+        users.set_role("Kid", "admin")
+        self.assertTrue(users.is_admin_user("Kid"))
+        users.set_role("Kid", "limited", ["b"])
+        self.assertEqual(users.list_users()[0]["allowlist"], ["b"])
+
+    def test_set_role_drops_sessions(self):
+        users.create_user("Kid", "pw")
+        token = users.create_session("Kid")
+        users.set_role("Kid", "limited", ["a"])
+        self.assertIsNone(users.resolve_session(token))
+
+    def test_migration_legacy_record_without_role(self):
+        # A legacy users.json (no role) must migrate: allowlist → limited, else user.
+        import json
+
+        legacy = {
+            "version": 1,
+            "users": {
+                "kid": {"name": "Kid", "pw": "x", "allowlist": ["a"]},
+                "gro": {"name": "Gro", "pw": "x", "allowlist": None},
+            },
+        }
+        with open(users._users_path(), "w", encoding="utf-8") as f:
+            json.dump(legacy, f)
+        by_name = {u["name"]: u for u in users.list_users()}
+        self.assertEqual(by_name["Kid"]["role"], "limited")
+        self.assertEqual(by_name["Gro"]["role"], "user")
+
+
+# ── Admin hierarchy: primary vs secondary through the real handler ─────────
+
+
+class TestAdminHierarchy(_UsersBase):
+    def setUp(self):
+        super().setUp()
+        manage._set_manage_password("adminpw")
+
+    def _post(self, handler, data):
+        from types import SimpleNamespace
+
+        manage.handle_manage_post(handler, SimpleNamespace(path="/manage/users"), data)
+        return handler.last
+
+    def _primary(self):
+        return _FakeHandler(_bearer("adminpw"), private=False)
+
+    def _secondary(self):
+        users.create_user("Sec", "secpw", role="admin")
+        token = users.create_session("Sec")
+        return _FakeHandler(_bearer(token, "Sec"), private=False)
+
+    def test_secondary_admin_passes_manage_auth(self):
+        h = self._secondary()
+        self.assertIsNone(manage._check_manage_auth(h))
+        self.assertEqual(manage.admin_kind(h), "secondary")
+
+    def test_primary_admin_kind(self):
+        self.assertEqual(manage.admin_kind(self._primary()), "primary")
+
+    def test_role_user_session_still_401_on_manage(self):
+        users.create_user("Plain", "pw", role="user")
+        token = users.create_session("Plain")
+        h = _FakeHandler(_bearer(token, "Plain"), private=False)
+        self.assertTrue(manage._check_manage_auth(h))
+
+    def test_role_user_sees_full_library(self):
+        users.create_user("Plain", "pw", role="user")
+        token = users.create_session("Plain")
+        self.assertIsNone(users.request_allow(_FakeHandler(_cookie(token))))
+
+    def test_secondary_can_crud_regular_user(self):
+        h = self._secondary()
+        code, body = self._post(
+            h, {"action": "create", "name": "Kid", "password": "pw", "role": "user"}
+        )
+        self.assertEqual(code, 200)
+        self.assertTrue(any(u["name"] == "Kid" for u in body["users"]))
+        code, _ = self._post(h, {"action": "delete", "name": "Kid"})
+        self.assertEqual(code, 200)
+
+    def test_secondary_cannot_create_admin(self):
+        h = self._secondary()
+        code, _ = self._post(
+            h, {"action": "create", "name": "Kid2", "password": "pw", "role": "admin"}
+        )
+        self.assertEqual(code, 403)
+
+    def test_secondary_cannot_touch_other_admin(self):
+        # A second admin exists; our secondary must not delete/demote them.
+        users.create_user("Other", "pw", role="admin")
+        h = self._secondary()
+        code, _ = self._post(h, {"action": "delete", "name": "Other"})
+        self.assertEqual(code, 403)
+        code, _ = self._post(h, {"action": "set-role", "name": "Other", "role": "user"})
+        self.assertEqual(code, 403)
+
+    def test_primary_can_manage_admins(self):
+        h = self._primary()
+        code, _ = self._post(
+            h, {"action": "create", "name": "Sec2", "password": "pw", "role": "admin"}
+        )
+        self.assertEqual(code, 200)
+        code, _ = self._post(h, {"action": "delete", "name": "Sec2"})
+        self.assertEqual(code, 200)
+
+    def test_nobody_can_modify_primary_row(self):
+        # The primary admin is synthetic — no action may target its name.
+        for h in (self._primary(), self._secondary()):
+            code, _ = self._post(h, {"action": "delete", "name": "admin"})
+            self.assertEqual(code, 403)
+
+    def test_primary_row_and_self_kind_in_get(self):
+        from types import SimpleNamespace
+
+        h = self._primary()
+        manage.handle_manage_get(h, SimpleNamespace(path="/manage/users"), {})
+        code, body = h.last
+        self.assertEqual(code, 200)
+        self.assertEqual(body["primary_admin"]["name"], "admin")
+        self.assertEqual(body["self_kind"], "primary")
+
+
 if __name__ == "__main__":
     unittest.main()
