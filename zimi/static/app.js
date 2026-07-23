@@ -1640,8 +1640,14 @@ function renderHome(filter) {
   var discoverHidden = _getStorageFlag(SK.HIDE_DISCOVER);
   var discoverWillShow = !homeScope && !filter && !homeRecentFilter && !homeLangFilter.size && !discoverHidden;
 
-  if (discoverWillShow) {
-    // Discover on top — hide stats bar (will show at bottom)
+  // Counts sit at the BOTTOM in every discover-capable home state — the clean
+  // idle view AND while a recency/language filter is active — so tapping a
+  // filter pill never makes the counts bar jump from bottom to top (#8). The
+  // top stats bar is used only when discover is user-hidden or the view is
+  // scoped / text-filtered.
+  var countsAtBottom = !homeScope && !filter && !discoverHidden;
+  if (countsAtBottom) {
+    // Counts render at the bottom of the content — keep the top bar empty.
     statsBar.innerHTML = ''; statsBar.style.display = 'none';
   } else if (!homeScope && !filter && discoverHidden) {
     // Discover hidden — stats clickable to re-enable
@@ -1880,8 +1886,9 @@ function renderHome(filter) {
     }
   }
 
-  // When Discover is active, show stats at bottom instead of top
-  if (discoverWillShow) {
+  // Counts at the bottom whenever the top bar is suppressed (idle discover view
+  // or an active recency/language filter) — a stable anchor, no jump (#8).
+  if (countsAtBottom) {
     h += '<div class="stats-bar" style="padding:28px 0 0">' + statsHtml + '</div>';
   }
 
@@ -3915,7 +3922,14 @@ function showHistoryDropdown(filter) {
   // belong on home in general: never inside a single ZIM (currentSource), a
   // search, or manage. Picking a pill closes the dropdown and renders the
   // filtered view.
-  var pillsHtml = (!filter && _homeFilterRowsHtml && mode === 'home' && !currentSource)
+  // Gate: never inside a single ZIM (currentSource), a search, manage, or while
+  // READING an article opened from home (readerOpen — the mode can still read
+  // 'home' behind the reader overlay, #7). And when a filter is already ACTIVE
+  // the pills-bar is shown above the content, so the dropdown must not duplicate
+  // the same rows — the handoff is idle→dropdown, in-use→pills-bar (#9).
+  var _filterActive = !!homeRecentFilter || homeLangFilter.size > 0;
+  var pillsHtml = (!filter && _homeFilterRowsHtml && mode === 'home' &&
+      !currentSource && !readerOpen && !_filterActive)
     ? '<div class="suggest-filters">' + _homeFilterRowsHtml + '</div>' : '';
   var items = [];
   var seen = new Set();
