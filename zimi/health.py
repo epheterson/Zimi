@@ -62,6 +62,24 @@ def _catalog_sizes():
     return sizes
 
 
+def _stray_torrent_files():
+    """Basenames of ``*.torrent`` companions sitting in ZIM_DIR. libtorrent
+    (1.8+) keeps torrent metadata under ZIMI_DATA_DIR/bt/torrents, but the old
+    aria2 downloader left ``<name>.zim.torrent`` next to the ZIM. These are
+    bencoded metadata, not ZIMs — running zimcheck on one fails with "Invalid
+    magic number", which looks like ZIM corruption but isn't (see #38). Surface
+    them distinctly so the user knows they're leftover litter, safe to delete.
+    Non-recursive listdir (never a recursive walk)."""
+    out = []
+    try:
+        for fn in sorted(os.listdir(_srv.ZIM_DIR)):
+            if fn.endswith(".torrent"):
+                out.append(fn)
+    except OSError:
+        pass
+    return out
+
+
 def _age_days(entry, path):
     """Best-effort age of the ZIM in days, from updated_at/first_seen, then
     file mtime. Returns None when unknown."""
@@ -163,10 +181,35 @@ def _run():
             _set(done=i + 1, total=total)
         healthy = sum(1 for r in report if r["status"] == "ok")
         warnings = total - healthy
+        # Stray .torrent metadata companions (aria2-era leftovers) — flagged
+        # distinctly as "not a ZIM", never counted as broken ZIMs (#38).
+        strays = _stray_torrent_files()
+        for fn in strays:
+            report.append(
+                {
+                    "name": fn,
+                    "title": fn,
+                    "kind": "torrent_meta",
+                    "opens": False,
+                    "has_main": False,
+                    "entries": None,
+                    "title_index": "absent",
+                    "qid_index": "absent",
+                    "size_delta": None,
+                    "age_days": None,
+                    "status": "info",
+                    "issues": ["torrent metadata, not a ZIM — safe to delete"],
+                }
+            )
         _set(
             phase="done",
             report=report,
-            summary={"total": total, "healthy": healthy, "warnings": warnings},
+            summary={
+                "total": total,
+                "healthy": healthy,
+                "warnings": warnings,
+                "torrent_files": len(strays),
+            },
             finished_at=time.time(),
         )
     except Exception as e:

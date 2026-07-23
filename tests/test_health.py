@@ -42,6 +42,27 @@ def _run_check():
     raise AssertionError("health check did not finish")
 
 
+def test_stray_torrent_metadata_flagged_distinctly(tmp_path, monkeypatch):
+    """An aria2-era leftover ``<name>.zim.torrent`` in ZIM_DIR is bencoded
+    metadata, not a ZIM. It must surface as a distinct info row (kind
+    'torrent_meta'), never as a broken ZIM, and be counted in
+    summary['torrent_files'] (#38)."""
+    zdir = _setup(tmp_path, monkeypatch)
+    (zdir / "devdocs_en_markdown_2026-07.zim.torrent").write_bytes(b"d4:infod")
+    st = _run_check()
+    rows = {r["name"]: r for r in st["report"]}
+    stray = rows["devdocs_en_markdown_2026-07.zim.torrent"]
+    assert stray["kind"] == "torrent_meta"
+    assert stray["status"] == "info"
+    assert stray["opens"] is False
+    assert st["summary"]["torrent_files"] == 1
+    # Never counted as a broken ZIM.
+    assert st["summary"]["total"] == 2  # survival + broken, torrent excluded
+    assert "devdocs_en_markdown_2026-07.zim.torrent" not in {
+        r["name"] for r in st["report"] if r.get("status") == "warn"
+    }
+
+
 def test_report_flags_broken_and_healthy(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
     st = _run_check()
