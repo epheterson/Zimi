@@ -13,6 +13,7 @@ Covers the full matrix the feature must hold:
 import os
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -679,6 +680,120 @@ class TestAdminHierarchy(_UsersBase):
         self.assertEqual(code, 200)
         self.assertEqual(body["primary_admin"]["name"], "admin")
         self.assertEqual(body["self_kind"], "primary")
+
+
+# ── last_login: stamped on login, echoed additively, never fatal ───────────
+
+
+class TestLastLogin(_UsersBase):
+    def test_new_user_has_zero_last_login(self):
+        users.create_user("Kid", "pw123")
+        self.assertEqual(users.list_users()[0]["last_login"], 0)
+
+    def test_record_login_stamps_current_time(self):
+        users.create_user("Kid", "pw123")
+        before = int(time.time())
+        users.record_login("kid")  # casefold key resolves
+        stamped = users.list_users()[0]["last_login"]
+        self.assertGreaterEqual(stamped, before)
+
+    def test_record_login_missing_user_is_noop(self):
+        # A deleted-mid-request account must not raise or create a ghost record.
+        users.record_login("ghost")
+        self.assertEqual(users.list_users(), [])
+
+    def test_last_login_persists_on_record(self):
+        users.create_user("Kid", "pw123")
+        users.record_login("Kid")
+        self.assertIn("last_login", users.get_user("Kid"))
+
+    def test_record_login_updates_on_second_login(self):
+        users.create_user("Kid", "pw123")
+        users.record_login("Kid")
+        first = users.get_user("Kid")["last_login"]
+        # Force a distinct later stamp regardless of clock granularity.
+        with users._lock:
+            u = users._load_users()
+            u[users._key("Kid")]["last_login"] = first - 100
+            users._save_users(u)
+        users.record_login("Kid")
+        self.assertGreater(users.get_user("Kid")["last_login"], first - 100)
+
+
+# ── Admin password-reset (set-password) auth matrix through the endpoint ────
+
+
+class TestAdminPasswordReset(_UsersBase):
+    """The Users pane resets a user's password via POST /manage/users
+    action=set-password. Verify the hierarchy holds for that action too."""
+
+    def setUp(self):
+        super().setUp()
+        manage._set_manage_password("adminpw")
+
+    def _post(self, handler, data):
+        from types import SimpleNamespace
+
+        manage.handle_manage_post(handler, SimpleNamespace(path="/manage/users"), data)
+        return handler.last
+
+    def _primary(self):
+        return _FakeHandler(_bearer("adminpw"), private=False)
+
+    def _secondary(self):
+        users.create_user("Sec", "secpw", role="admin")
+        token = users.create_session("Sec")
+        return _FakeHandler(_bearer(token, "Sec"), private=False)
+
+    def test_primary_resets_regular_user(self):
+        users.create_user("Kid", "oldpw", role="user")
+        code, _ = self._post(
+            self._primary(),
+            {"action": "set-password", "name": "Kid", "password": "newpw"},
+        )
+        self.assertEqual(code, 200)
+        self.assertIsNone(users.authenticate("Kid", "oldpw"))
+        self.assertIsNotNone(users.authenticate("Kid", "newpw"))
+
+    def test_secondary_resets_regular_user(self):
+        users.create_user("Kid", "oldpw", role="user")
+        code, _ = self._post(
+            self._secondary(),
+            {"action": "set-password", "name": "Kid", "password": "newpw"},
+        )
+        self.assertEqual(code, 200)
+        self.assertIsNotNone(users.authenticate("Kid", "newpw"))
+
+    def test_secondary_cannot_reset_admin(self):
+        users.create_user("Other", "oldpw", role="admin")
+        code, _ = self._post(
+            self._secondary(),
+            {"action": "set-password", "name": "Other", "password": "x"},
+        )
+        self.assertEqual(code, 403)
+        self.assertIsNotNone(users.authenticate("Other", "oldpw"))  # unchanged
+
+    def test_nobody_resets_primary_via_users(self):
+        for h in (self._primary(), self._secondary()):
+            code, _ = self._post(
+                h, {"action": "set-password", "name": "admin", "password": "x"}
+            )
+            self.assertEqual(code, 403)
+
+    def test_reset_missing_user_fails(self):
+        code, _ = self._post(
+            self._primary(),
+            {"action": "set-password", "name": "ghost", "password": "x"},
+        )
+        self.assertEqual(code, 400)
+
+    def test_login_stamps_last_login_field(self):
+        # End-to-end: set-password lets the user in, and record_login (called
+        # from _handle_login) would stamp last_login. Assert the field surfaces.
+        users.create_user("Kid", "pw123", role="user")
+        users.record_login("Kid")
+        row = next(u for u in users.list_users() if u["name"] == "Kid")
+        self.assertGreater(row["last_login"], 0)
 
 
 if __name__ == "__main__":

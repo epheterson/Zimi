@@ -2175,6 +2175,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         # Named user first.
         name = _users.authenticate(username, password)
         if name:
+            _users.record_login(name)
             token = _users.create_session(name)
             rec = _users.get_user(name)
             allowlist = rec.get("allowlist") if rec else None

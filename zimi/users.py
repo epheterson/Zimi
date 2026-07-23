@@ -261,6 +261,7 @@ def list_users():
                 "allowlist": allowlist if isinstance(allowlist, list) else [],
                 "flags": rec.get("flags", {}) or {},
                 "created": rec.get("created", 0),
+                "last_login": rec.get("last_login", 0),
             }
         )
     out.sort(key=lambda u: u["name"].casefold())
@@ -394,6 +395,20 @@ def authenticate(name, password):
     if _verify_pw(password, rec.get("pw", "")):
         return rec.get("name", name)
     return None
+
+
+def record_login(name):
+    """Stamp the account's ``last_login`` (unix seconds) after a successful
+    authentication. Best-effort and additive: a legacy record simply gains the
+    field on its first login. A vanished record (deleted mid-request) is a no-op
+    — login must never fail because this bookkeeping write lost a race."""
+    with _lock:
+        users = _load_users()
+        rec = users.get(_key(name))
+        if not rec:
+            return
+        rec["last_login"] = int(time.time())
+        _save_users(users)
 
 
 def create_session(name):
