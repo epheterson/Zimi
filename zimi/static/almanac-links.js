@@ -52,54 +52,59 @@
   var PROBES = {
     'probe:voyager1':     { q: 'Q48472',  en: 'Voyager 1' },
     'probe:voyager2':     { q: 'Q48479',  en: 'Voyager 2' },
-    'probe:pioneer10':    { q: 'Q303265', en: 'Pioneer 10' },   // q spot-check
-    'probe:pioneer11':    { q: 'Q604132', en: 'Pioneer 11' },   // q spot-check
+    'probe:pioneer10':    { q: 'Q59103',  en: 'Pioneer 10' },
+    'probe:pioneer11':    { q: 'Q59113',  en: 'Pioneer 11' },
     'probe:newhorizons':  { q: 'Q186447', en: 'New Horizons' }
   };
 
   // Constellations — `en` is the disambiguated article title so English
-  // resolution doesn't collide with a myth/name (Orion, Leo, Cancer…).
+  // resolution doesn't collide with a myth/name (Orion, Leo, Cancer…). Q-IDs
+  // are the IAU constellation items (not the astrological signs): the almanac
+  // links the sidereal constellation the Sun/sky actually occupies. Verified
+  // against Wikidata (wbgetentities by exact enwiki title).
   var CONSTELLATIONS = {
-    'const:pisces':      { q: 'Q10538', en: 'Pisces (constellation)' },
-    'const:aries':       { q: 'Q10576', en: 'Aries (constellation)' },
-    'const:taurus':      { q: 'Q10577', en: 'Taurus (constellation)' },
-    'const:gemini':      { q: 'Q10578', en: 'Gemini (constellation)' },
-    'const:cancer':      { q: 'Q10508', en: 'Cancer (constellation)' },
+    'const:pisces':      { q: 'Q8679',  en: 'Pisces (constellation)' },
+    'const:aries':       { q: 'Q10584', en: 'Aries (constellation)' },
+    'const:taurus':      { q: 'Q10570', en: 'Taurus (constellation)' },
+    'const:gemini':      { q: 'Q8923',  en: 'Gemini (constellation)' },
+    'const:cancer':      { q: 'Q8849',  en: 'Cancer (constellation)' },
     'const:leo':         { q: 'Q8853',  en: 'Leo (constellation)' },
-    'const:virgo':       { q: 'Q10578', en: 'Virgo (constellation)' },   // q spot-check
-    'const:libra':       { q: 'Q10564', en: 'Libra (constellation)' },
-    'const:scorpius':    { q: 'Q13182', en: 'Scorpius' },
-    'const:sagittarius': { q: 'Q10529', en: 'Sagittarius (constellation)' },
-    'const:capricornus': { q: 'Q10484', en: 'Capricornus' },
-    'const:aquarius':    { q: 'Q10453', en: 'Aquarius (constellation)' },
-    'const:bootes':      { q: 'Q8667',  en: 'Boötes' },                  // q spot-check
-    'const:lyra':        { q: 'Q10430', en: 'Lyra' },
-    'const:perseus':     { q: 'Q10406', en: 'Perseus (constellation)' },
-    'const:draco':       { q: 'Q10508', en: 'Draco (constellation)' },   // q spot-check
-    'const:orion':       { q: 'Q7107',  en: 'Orion (constellation)' },
-    'const:ursa_minor':  { q: 'Q10476', en: 'Ursa Minor' },
+    'const:virgo':       { q: 'Q8842',  en: 'Virgo (constellation)' },
+    'const:libra':       { q: 'Q10580', en: 'Libra (constellation)' },
+    'const:scorpius':    { q: 'Q8865',  en: 'Scorpius' },
+    'const:sagittarius': { q: 'Q8866',  en: 'Sagittarius (constellation)' },
+    'const:capricornus': { q: 'Q10535', en: 'Capricornus' },
+    'const:aquarius':    { q: 'Q10576', en: 'Aquarius (constellation)' },
+    'const:bootes':      { q: 'Q8667',  en: 'Boötes' },
+    'const:lyra':        { q: 'Q10484', en: 'Lyra' },
+    'const:perseus':     { q: 'Q10511', en: 'Perseus (constellation)' },
+    'const:draco':       { q: 'Q8675',  en: 'Draco (constellation)' },
+    'const:orion':       { q: 'Q8860',  en: 'Orion (constellation)' },
+    'const:ursa_minor':  { q: 'Q10478', en: 'Ursa Minor' },
     // drawn-only (canvas) — mapped for completeness, not yet DOM-tappable
-    'const:ursa_major':  { q: 'Q8667',  en: 'Ursa Major' },
-    'const:cassiopeia':  { q: 'Q10457', en: 'Cassiopeia (constellation)' },
-    'const:cygnus':      { q: 'Q10442', en: 'Cygnus (constellation)' },
-    'const:crux':        { q: 'Q10452', en: 'Crux' },
-    'const:canis_major': { q: 'Q10538', en: 'Canis Major' }             // q spot-check
+    'const:ursa_major':  { q: 'Q8918',  en: 'Ursa Major' },
+    'const:cassiopeia':  { q: 'Q10464', en: 'Cassiopeia (constellation)' },
+    'const:cygnus':      { q: 'Q8921',  en: 'Cygnus (constellation)' },
+    'const:crux':        { q: 'Q10542', en: 'Crux' },
+    'const:canis_major': { q: 'Q10538', en: 'Canis Major' }
   };
 
-  // Meteor showers — key matches _METEOR_SHOWERS[].key. Titles are exact.
+  // Meteor showers — key matches _METEOR_SHOWERS[].key. Q-IDs verified against
+  // Wikidata by exact enwiki title ('Delta Aquariids' redirects to 'Southern
+  // Delta Aquariids', Q2914592).
   var SHOWERS = {
-    'shower:quadrantids':        { q: 'Q745704', en: 'Quadrantids' },
-    'shower:lyrids':             { q: 'Q622664', en: 'Lyrids' },
-    'shower:eta_aquariids':      { q: 'Q1194371', en: 'Eta Aquariids' },
-    'shower:s_delta_aquariids':  { q: 'Q1194360', en: 'Delta Aquariids' },
-    'shower:alpha_capricornids': { q: 'Q2597698', en: 'Alpha Capricornids' },
-    'shower:perseids':           { q: 'Q131375', en: 'Perseids' },
-    'shower:draconids':          { q: 'Q902330', en: 'Draconids' },
-    'shower:orionids':           { q: 'Q902333', en: 'Orionids' },
-    'shower:taurids':            { q: 'Q902363', en: 'Taurids' },
-    'shower:leonids':            { q: 'Q131375', en: 'Leonids' },       // q spot-check
-    'shower:geminids':           { q: 'Q321781', en: 'Geminids' },
-    'shower:ursids':             { q: 'Q1145510', en: 'Ursids' }
+    'shower:quadrantids':        { q: 'Q838275',  en: 'Quadrantids' },
+    'shower:lyrids':             { q: 'Q200531',  en: 'Lyrids' },
+    'shower:eta_aquariids':      { q: 'Q249546',  en: 'Eta Aquariids' },
+    'shower:s_delta_aquariids':  { q: 'Q2914592', en: 'Delta Aquariids' },
+    'shower:alpha_capricornids': { q: 'Q3235037', en: 'Alpha Capricornids' },
+    'shower:perseids':           { q: 'Q173708',  en: 'Perseids' },
+    'shower:draconids':          { q: 'Q740319',  en: 'Draconids' },
+    'shower:orionids':           { q: 'Q374114',  en: 'Orionids' },
+    'shower:taurids':            { q: 'Q32334',   en: 'Taurids' },
+    'shower:leonids':            { q: 'Q189698',  en: 'Leonids' },
+    'shower:geminids':           { q: 'Q1237067', en: 'Geminids' },
+    'shower:ursids':             { q: 'Q1133679', en: 'Ursids' }
   };
 
   // Eclipse types collapse onto the two head articles.
