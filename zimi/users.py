@@ -21,6 +21,20 @@ Storage (both under ZIMI_DATA_DIR, atomic writes):
 ``allowlist`` semantics: a list restricts the account to those ZIM names; ``None``
 (or absent) means an all-access user. ``flags`` is a per-user dict reserved as the
 v2 seam (kid mode, history monitoring, forced login, schools) — unused in v1.
+
+Roles (v1.8 round 2): every account carries a ``role`` ∈ {``admin``, ``user``,
+``limited``}:
+- ``admin``   — a SECONDARY admin. All-access read PLUS full manage powers via
+  their own login (see ``manage.admin_kind`` — they authenticate to a session
+  token that ``manage._check_manage_auth`` accepts). They can CRUD regular users
+  but cannot touch the PRIMARY admin (the password-file account) or manage other
+  admins — only the primary can. The primary admin is NOT stored here.
+- ``user``    — full library, no manage. All-access read, session token never
+  reaches ``/manage/*``.
+- ``limited`` — an explicit allowlist restricts the read surface.
+The role determines the allowlist shape: ``admin``/``user`` are all-access
+(allowlist ``None``); ``limited`` carries a list. Legacy records without a role
+are migrated in-memory on load: an allowlist present → ``limited``, else ``user``.
 """
 
 import hashlib
@@ -37,6 +51,11 @@ log = logging.getLogger("zimi")
 
 _USERS_VERSION = 1
 _SESSIONS_VERSION = 1
+
+#: Account roles. ``admin`` = secondary admin (all-access + manage), ``user`` =
+#: full library no manage, ``limited`` = explicit allowlist. See module docstring.
+_ROLES = ("admin", "user", "limited")
+_DEFAULT_ROLE = "user"
 
 #: Reserved names that can't be a user (admin is the password account; the others
 #: avoid confusing UI labels). Compared case-insensitively.
@@ -102,9 +121,24 @@ def _load_users():
         if not isinstance(data, dict) or data.get("version") != _USERS_VERSION:
             return {}
         users = data.get("users", {})
-        return users if isinstance(users, dict) else {}
+        if not isinstance(users, dict):
+            return {}
+        # Migrate legacy records (no role) in-memory: allowlist present →
+        # limited, else user. Persisted the next time the record is written.
+        for rec in users.values():
+            if isinstance(rec, dict):
+                rec["role"] = _effective_role(rec)
+        return users
     except (FileNotFoundError, ValueError, OSError):
         return {}
+
+
+def _effective_role(rec):
+    """The stored role, or the migrated default for a legacy record."""
+    role = rec.get("role")
+    if role in _ROLES:
+        return role
+    return "limited" if isinstance(rec.get("allowlist"), list) else _DEFAULT_ROLE
 
 
 def _save_users(users):
@@ -184,6 +218,25 @@ def _clean_allowlist(allowlist):
     return sorted(out), None
 
 
+def _resolve_role_allowlist(role, allowlist):
+    """Reconcile a role with an allowlist. Returns (role, allowlist, error).
+
+    ``admin``/``user`` are always all-access (allowlist forced to ``None``);
+    ``limited`` always carries a list (``None`` → ``[]``). A ``None`` role is
+    inferred from the allowlist for backward-compatible callers.
+    """
+    if role is None:
+        role = "limited" if isinstance(allowlist, list) else _DEFAULT_ROLE
+    if role not in _ROLES:
+        return None, None, "invalid role"
+    if role == "limited":
+        allow, err = _clean_allowlist(allowlist if allowlist is not None else [])
+        if err:
+            return None, None, err
+        return role, allow, None
+    return role, None, None  # admin / user → all-access
+
+
 # ============================================================================
 # CRUD
 # ============================================================================
@@ -203,6 +256,7 @@ def list_users():
         out.append(
             {
                 "name": rec.get("name", ""),
+                "role": _effective_role(rec),
                 "all_access": allowlist is None,
                 "allowlist": allowlist if isinstance(allowlist, list) else [],
                 "flags": rec.get("flags", {}) or {},
@@ -213,13 +267,18 @@ def list_users():
     return out
 
 
-def create_user(name, password, allowlist=None):
-    """Create a user. Returns (ok: bool, error: str|None)."""
+def create_user(name, password, allowlist=None, role=None):
+    """Create a user. Returns (ok: bool, error: str|None).
+
+    ``role`` ∈ {``admin``, ``user``, ``limited``}; ``None`` infers it from the
+    allowlist (backward-compatible). ``admin``/``user`` ignore the allowlist
+    (all-access); ``limited`` uses it (``None`` → empty).
+    """
     if not _valid_name(name):
         return False, "invalid name"
     if not isinstance(password, str) or len(password) < 1:
         return False, "password required"
-    allow, err = _clean_allowlist(allowlist)
+    role, allow, err = _resolve_role_allowlist(role, allowlist)
     if err:
         return False, err
     with _lock:
@@ -228,13 +287,16 @@ def create_user(name, password, allowlist=None):
             return False, "user already exists"
         users[_key(name)] = {
             "name": name.strip(),
+            "role": role,
             "pw": _hash_pw(password),
             "allowlist": allow,
             "flags": {},  # v2 seam — kid mode / history monitoring / forced login
             "created": int(time.time()),
         }
         _save_users(users)
-    log.info("User created: %s (all_access=%s)", name.strip(), allow is None)
+    log.info(
+        "User created: %s (role=%s, all_access=%s)", name.strip(), role, allow is None
+    )
     return True, None
 
 
@@ -268,6 +330,8 @@ def set_password(name, password):
 
 
 def set_allowlist(name, allowlist):
+    """Set a user's allowlist and sync the role: a list → ``limited``, ``None``
+    → ``user`` (all-access). Admins are all-access and reject allowlist edits."""
     allow, err = _clean_allowlist(allowlist)
     if err:
         return False, err
@@ -276,10 +340,41 @@ def set_allowlist(name, allowlist):
         rec = users.get(_key(name))
         if not rec:
             return False, "user not found"
+        if _effective_role(rec) == "admin":
+            return False, "admins are all-access"
         rec["allowlist"] = allow
+        rec["role"] = "limited" if isinstance(allow, list) else "user"
         _save_users(users)
     log.info("User allowlist set: %s (all_access=%s)", name, allow is None)
     return True, None
+
+
+def set_role(name, role, allowlist=None):
+    """Change a user's role. ``admin``/``user`` become all-access; ``limited``
+    keeps the given allowlist (or the existing one). Drops live sessions so the
+    new scope takes effect on the next login. Returns (ok, error)."""
+    with _lock:
+        users = _load_users()
+        rec = users.get(_key(name))
+        if not rec:
+            return False, "user not found"
+        if role == "limited" and allowlist is None:
+            allowlist = rec.get("allowlist") or []
+        role, allow, err = _resolve_role_allowlist(role, allowlist)
+        if err:
+            return False, err
+        rec["role"] = role
+        rec["allowlist"] = allow
+        _save_users(users)
+        _drop_user_sessions_locked(_key(name))
+    log.info("User role set: %s → %s", name, role)
+    return True, None
+
+
+def is_admin_user(name):
+    """True if ``name`` is a stored SECONDARY-admin account (role=admin)."""
+    rec = _load_users().get(_key(name))
+    return bool(rec) and _effective_role(rec) == "admin"
 
 
 # ============================================================================
