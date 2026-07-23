@@ -1067,6 +1067,7 @@ function _openInBrowser() {
 // ── Navigation ──
 function goHome(e) {
   if (e) e.preventDefault();
+  if (typeof _almReturnScroll !== 'undefined') _almReturnScroll = null; // explicit Home cancels almanac return
   if (_almanacOpen) closeAlmanac();
   // Clear manage auth when leaving manage
   if (mode === 'manage' && !_hasStoredManageToken()) _manageToken = '';
@@ -1091,6 +1092,12 @@ function goBack() {
     // Step back through article history before closing reader
     if (articleHistory.length > 0) {
       _stepBackToArticle(articleHistory.pop(), true);
+      return;
+    }
+    // Article was opened from the almanac — drive Back through history so the
+    // popstate handler reopens the almanac at its saved scroll position.
+    if (typeof _almReturnScroll !== 'undefined' && _almReturnScroll != null) {
+      history.back();
       return;
     }
     closeReader();
@@ -9969,6 +9976,9 @@ function _updateLibraryBtnIcon() {
   }
 }
 function openArticle(zim, path, title) {
+  // Any normal article open cancels a pending "return to almanac" intent; the
+  // almanac deep-link path re-stamps it immediately after this call returns.
+  _almReturnScroll = null;
   // Modifier-click: always open in new browser tab
   if (_isModClick()) {
     _lastMouseEvent = null;
@@ -10502,6 +10512,10 @@ window.addEventListener('popstate', (e) => {
     _popstateNoAutoReader = true;
     enterSource(s.source, false);
     _popstateNoAutoReader = false;
+  } else if (s && s.mode === 'almanac') {
+    // Back from an almanac-originated article — reopen the almanac at its spot.
+    if (typeof _reopenAlmanacFromLink === 'function') _reopenAlmanacFromLink();
+    else route(false);
   } else {
     // Fallback: route from URL
     route(false);

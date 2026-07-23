@@ -461,8 +461,14 @@
 
   // The reader overlay renders beneath the open almanac view, so we must leave
   // the almanac before opening an article -- otherwise the article loads hidden.
+  // Suspend (not close) so the #almanac history entry survives and Back returns
+  // to it; returns the scroll offset to restore on return.
   function _leaveAlmanac() {
-    try { if (typeof closeAlmanac === 'function') closeAlmanac(); } catch (e) {}
+    try {
+      if (typeof _suspendAlmanacForLink === 'function') return _suspendAlmanacForLink();
+      if (typeof closeAlmanac === 'function') closeAlmanac();
+    } catch (e) {}
+    return 0;
   }
 
   // Open a tapped entity directly from the preloaded map. Only linked entities
@@ -473,8 +479,11 @@
     var q = _qidFor(key);
     var hit = q ? _qidLinks[q] : null;
     if (!hit) return;
-    _leaveAlmanac();
+    var scroll = _leaveAlmanac();
     openArticle(hit.zim, hit.path, hit.title);
+    // Stamp the return intent AFTER openArticle (which clears it for normal
+    // opens), so a Back from this article reopens the almanac at `scroll`.
+    window._almReturnScroll = scroll;
   }
 
   // -- Linkify helpers for render sites -------------------------------------

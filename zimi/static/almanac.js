@@ -122,6 +122,12 @@ document.addEventListener('visibilitychange', function() {
   }
 });
 
+// When an in-almanac deep link opens an article, we suspend the almanac (hide
+// it so the reader shows) but KEEP its #almanac history entry, and stash the
+// scroll offset here so Back — browser or in-app — returns to the same spot.
+// null means "the open reader did not originate in the almanac".
+var _almReturnScroll = null;
+
 function _openAlmanacInner(replaceState) {
   _almanacOpen = true;
   document.body.classList.add('almanac-mode');
@@ -142,8 +148,10 @@ function _openAlmanacInner(replaceState) {
   _renderAlmanacContent();
 }
 
-function closeAlmanac() {
-  if (!_almanacOpen) return;
+// Shared visual/animation teardown for leaving the almanac. Does NOT touch
+// history — the caller decides whether to strip the #almanac entry (a real
+// close) or preserve it (a deep-link suspend that Back should return to).
+function _almanacTeardown() {
   _almanacOpen = false;
   document.body.classList.remove('almanac-mode');
   _cancelAllRAF();
@@ -158,14 +166,49 @@ function closeAlmanac() {
   document.getElementById('almanac-view').classList.remove('open');
   var mv = document.getElementById('main-view');
   if (mv) mv.classList.remove('hidden');
-  // Remove #almanac hash without adding history entry
-  if (location.hash === '#almanac') {
-    history.replaceState(history.state, '', location.pathname + location.search);
-  }
   _setWindowTitle('Zimi');
   if (typeof updateTopbar === 'function') updateTopbar();
   var qEl = document.getElementById('q');
   if (qEl) qEl.placeholder = t('search_placeholder');
+}
+
+function closeAlmanac() {
+  if (!_almanacOpen) return;
+  _almReturnScroll = null; // an explicit close cancels any pending return
+  _almanacTeardown();
+  // Remove #almanac hash without adding history entry
+  if (location.hash === '#almanac') {
+    history.replaceState(history.state, '', location.pathname + location.search);
+  }
+}
+
+// Suspend the almanac to open a deep-linked article: tear down the visuals but
+// leave the #almanac history entry intact so a Back returns here. Returns the
+// scroll offset to restore on return (the caller stamps it into _almReturnScroll
+// AFTER openArticle, since openArticle clears the flag for normal opens).
+function _suspendAlmanacForLink() {
+  var content = document.getElementById('almanac-content');
+  var sc = content ? content.scrollTop : 0;
+  if (_almanacOpen) _almanacTeardown();
+  return sc;
+}
+
+// Reopen the almanac after a Back from a deep-linked article and restore the
+// scroll offset. The current history entry is already the #almanac one, so we
+// reuse it (replaceState) rather than pushing a new one.
+function _reopenAlmanacFromLink() {
+  var target = _almReturnScroll;
+  _almReturnScroll = null;
+  _openAlmanacInner(true);
+  if (target) {
+    var restore = function () {
+      var content = document.getElementById('almanac-content');
+      if (content) content.scrollTop = target;
+    };
+    // Re-render reflows canvases/images, so settle the offset across two frames.
+    requestAnimationFrame(function () { restore(); requestAnimationFrame(restore); });
+    setTimeout(restore, 120);
+  }
 }
 
 // ── Timezone formatting ──
