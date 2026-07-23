@@ -5,10 +5,27 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "zimi"
 version = "1.8.0"
-description = "Offline knowledge server for ZIM files"
+description = "Offline knowledge server for ZIM files — search and read Wikipedia, Stack Overflow and 50+ sources with no internet"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
+authors = [{name = "Eric Pheterson"}]
+keywords = ["zim", "kiwix", "offline", "wikipedia", "search", "knowledge-base", "rag", "mcp", "self-hosted"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Text Processing :: Indexing",
+]
 dependencies = [
     "libzim>=3.1.0",
     "certifi>=2024.1.1",
@@ -29,6 +46,9 @@ zimi = "zimi.server:main"
 
 [project.urls]
 Homepage = "https://github.com/epheterson/Zimi"
+Repository = "https://github.com/epheterson/Zimi"
+Issues = "https://github.com/epheterson/Zimi/issues"
+Changelog = "https://github.com/epheterson/Zimi/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = ["zimi*"]
