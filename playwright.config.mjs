@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['visual_validation.spec.mjs', 'test_password_flow.mjs', 'test_interlang.mjs', 'screenshots.mjs', 'test_tabs.mjs', 'test_almanac_hero_clock.spec.mjs'],
+  testMatch: ['visual_validation.spec.mjs', 'test_password_flow.mjs', 'test_interlang.mjs', 'screenshots.mjs', 'test_tabs.mjs', 'test_almanac_hero_clock.spec.mjs', 'test_login_navigation.spec.mjs'],
   timeout: 60000,
   expect: { timeout: 10000 },
   fullyParallel: false, // Run sequentially — some tests depend on server state

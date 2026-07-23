@@ -683,9 +683,19 @@ function submitPw() {
         _applyUserSession(res.j.name);
       } else {
         // Admin logged in via the sign-in modal — store the header token and
-        // open manage, same end state as the classic admin flow.
+        // (re-)enter manage. Must NOT use toggleManage() here: when the modal
+        // was opened from within the manage view (mode === 'manage'),
+        // toggleManage() TOGGLES OFF — it clears _manageToken and drops the
+        // user back on home immediately after a successful login. That reads
+        // as both "post-login lands on home" and "remember-me didn't stick"
+        // (the in-memory token is wiped, so manage polls stop even though the
+        // persisted copy survives). enterManage() is deterministic — it always
+        // lands in manage and restores any pending _pendingMsSection.
         _manageToken = pw; _saveManageToken(pw, remember);
-        if (typeof toggleManage === 'function') toggleManage();
+        _pwLoginMode = false;
+        closePwModal();
+        if (typeof enterManage === 'function') enterManage();
+        return;
       }
       _pwLoginMode = false;
       closePwModal();
