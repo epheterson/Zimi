@@ -970,6 +970,7 @@
   "aria_main_nav": "Основная навигация",
   "save_to_disk": "Сохранить на диск",
   "reader_view_settings": "Настройки режима чтения",
+  "reader_settings_hint": "Нажмите ещё раз для настроек чтения",
   "filter_languages": "Фильтр языков",
   "filter_generic": "Фильтр…",
   "historical_event": "Историческое событие",

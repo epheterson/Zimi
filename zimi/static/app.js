@@ -32,6 +32,9 @@ var SK = {
   READER_FAMILY: 'zimi_reader_family',
   READER_THEME: 'zimi_reader_theme',
   READER_AUTO: 'zimi_reader_auto',
+  // One-shot: set once the "tap again for reading settings" coachmark has been
+  // shown, so the hint never nags a returning reader.
+  READER_COACH: 'zimi_reader_settings_coach',
   // Last-rendered SHARING rows (Server pane) — restored synchronously on
   // pane open so the section doesn't pop in after the status fetches.
   SHARE_ROWS: 'zimi_share_rows',
@@ -9259,10 +9262,41 @@ function _syncReaderViewBtn() {
   if (btn) {
     btn.style.display = avail ? 'flex' : 'none';
     btn.setAttribute('aria-pressed', _readerViewOn ? 'true' : 'false');
+    // While Reader View is ON the button becomes the settings affordance — the
+    // rv-on class paints a small "more" dot so it's discoverable that a second
+    // tap opens the palette (rather than exiting the mode).
+    btn.classList.toggle('rv-on', _readerViewOn && avail);
   }
   var item = document.getElementById('tbm-readerview');
   if (item) item.setAttribute('aria-pressed', _readerViewOn ? 'true' : 'false');
   if (!avail) _closeReaderPalette();
+  else if (_readerViewOn) _maybeShowReaderCoach();
+}
+
+// First time a device lands in Reader View, float a one-shot coachmark by the
+// book button — "tap again for reading settings" — so the hidden palette gets
+// discovered. Fires at most once (localStorage flag), auto-dismisses after 4s,
+// and closes on tap. Covers both manual entry and AUTO mode.
+function _maybeShowReaderCoach() {
+  if (_getStorageFlag(SK.READER_COACH)) return;
+  var btn = document.getElementById('readerview-btn');
+  if (!btn || btn.style.display === 'none') return;
+  try { localStorage.setItem(SK.READER_COACH, '1'); } catch (e) {}
+  var tip = document.createElement('div');
+  tip.className = 'reader-coach';
+  tip.setAttribute('role', 'status');
+  tip.textContent = t('reader_settings_hint');
+  document.body.appendChild(tip);
+  var r = btn.getBoundingClientRect();
+  tip.style.top = (r.bottom + 9) + 'px';
+  tip.style.right = Math.max(8, window.innerWidth - r.right) + 'px';
+  requestAnimationFrame(function() { tip.classList.add('visible'); });
+  var kill = function() {
+    tip.classList.remove('visible');
+    setTimeout(function() { if (tip.parentNode) tip.remove(); }, 200);
+  };
+  var timer = setTimeout(kill, 4000);
+  tip.addEventListener('click', function() { clearTimeout(timer); kill(); });
 }
 
 // The book button / mobile menu row entry point. OFF → one tap enters Reader View

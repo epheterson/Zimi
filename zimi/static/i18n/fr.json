@@ -970,6 +970,7 @@
   "aria_main_nav": "Navigation principale",
   "save_to_disk": "Enregistrer sur le disque",
   "reader_view_settings": "Paramètres du mode lecture",
+  "reader_settings_hint": "Touchez à nouveau pour les réglages de lecture",
   "filter_languages": "Filtrer les langues",
   "filter_generic": "Filtrer…",
   "historical_event": "Événement historique",
