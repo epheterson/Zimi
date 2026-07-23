@@ -210,6 +210,65 @@ def verify_admin_credentials(username, password):
 PUBLIC_LOCKED = "public_locked"
 
 
+def _primary_admin_authorized(handler):
+    """True if the request carries PRIMARY-admin credentials: the password-file
+    account (password hash or configured username+password) or the API token,
+    OR a private client on a passwordless instance (legacy open admin).
+
+    The primary admin is the top of the hierarchy — the only account that can
+    manage other admins and that no secondary admin can delete or demote.
+    """
+    stored_pw = _get_manage_password_hash()
+    if not stored_pw:
+        # Passwordless: LAN/loopback clients are the (only) primary admin.
+        return handler._is_private_client()
+
+    auth = handler.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return False
+    candidate = auth[7:]
+
+    # API token — a machine credential, carries no username gate (keeps
+    # existing scripts/agents working unchanged).
+    stored_token = _get_api_token()
+    if stored_token and hmac.compare_digest(candidate, stored_token):
+        return True
+
+    # Password — plus, when a username is configured, it must match.
+    if _verify_password(candidate, stored_pw):
+        configured_user = _get_manage_user()
+        if configured_user:
+            provided = handler.headers.get("X-Zimi-User", "")
+            if provided.strip().casefold() != configured_user.strip().casefold():
+                # Wrong/missing username reads exactly like a wrong password:
+                # generic denial, no username-enumeration signal.
+                return False
+        return True
+    return False
+
+
+def _secondary_admin_authorized(handler):
+    """True if the request is a SECONDARY admin: a users.json account with
+    role=admin, authenticated by its session token (Bearer or cookie). They get
+    manage powers, but the hierarchy in ``_handle_users_post`` still bars them
+    from touching the primary admin or managing other admins."""
+    from zimi import users as _users
+
+    name = _users.resolve_request_user(handler)
+    return bool(name) and _users.is_admin_user(name)
+
+
+def admin_kind(handler):
+    """Classify an authorized manage request: ``'primary'`` (password-file /
+    API-token / passwordless-private), ``'secondary'`` (role=admin session), or
+    ``None`` (not an admin). Drives the primary-only hierarchy checks."""
+    if _primary_admin_authorized(handler):
+        return "primary"
+    if _secondary_admin_authorized(handler):
+        return "secondary"
+    return None
+
+
 def _check_manage_auth(handler):
     """Check authorization for manage endpoints. Returns a truthy value if
     unauthorized (``True`` for a genuine password/token requirement,
@@ -219,7 +278,8 @@ def _check_manage_auth(handler):
     Auth model:
     - No password set → open access for private clients; non-private clients
       are locked (PUBLIC_LOCKED) until a password is set from the LAN
-    - Password set → Bearer token must match password or API token
+    - Password set → Bearer token must match password or API token (PRIMARY
+      admin), OR a role=admin session token (SECONDARY admin)
     - API token is optional (requires password to be set first)
     """
     stored_pw = _get_manage_password_hash()
@@ -232,30 +292,8 @@ def _check_manage_auth(handler):
             return None
         return PUBLIC_LOCKED
 
-    auth = handler.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        return True  # password required, no credentials
-
-    candidate = auth[7:]
-
-    # Accept API token (cheap constant-time check first). The API token is a
-    # machine credential — it carries no username, so the username gate never
-    # applies to it (keeps existing scripts/agents working unchanged).
-    stored_token = _get_api_token()
-    if stored_token and hmac.compare_digest(candidate, stored_token):
+    if _primary_admin_authorized(handler) or _secondary_admin_authorized(handler):
         return None
-
-    # Accept password — plus, when a username is configured, it must match.
-    if _verify_password(candidate, stored_pw):
-        configured_user = _get_manage_user()
-        if configured_user:
-            provided = handler.headers.get("X-Zimi-User", "")
-            if provided.strip().casefold() != configured_user.strip().casefold():
-                # Wrong (or missing) username reads exactly like a wrong
-                # password: same generic 401, no username-enumeration signal.
-                return True
-        return None
-
     return True
 
 
@@ -511,6 +549,17 @@ def handle_manage_get(handler, parsed, params):
             {
                 "users": _users.list_users(),
                 "zims": sorted(_srv.get_zim_files().keys()),
+                # The PRIMARY admin (password-file account) is not stored in
+                # users.json — surface it as a synthetic, non-deletable row so
+                # the UI can show "the admin" alongside the named users.
+                "primary_admin": {
+                    "name": _get_manage_user() or "admin",
+                    "role": "admin",
+                    "primary": True,
+                },
+                # Which kind of admin is viewing — the client hides admin-only
+                # controls (creating/managing other admins) for secondaries.
+                "self_kind": admin_kind(handler),
             },
         )
 
@@ -904,16 +953,39 @@ def handle_manage_get(handler, parsed, params):
 
 def _handle_users_post(handler, data):
     """Admin-only user CRUD (multi-user v1). action ∈ {create, delete,
-    set-password, set-allowlist}. Errors are returned generically; on success
-    the fresh roster (no hashes) is echoed so the UI re-renders in one round
-    trip. Reaching here means the admin-auth challenge already passed."""
+    set-password, set-allowlist, set-role}. Errors are returned generically; on
+    success the fresh roster (no hashes) is echoed so the UI re-renders in one
+    round trip. Reaching here means the admin-auth challenge already passed.
+
+    Hierarchy (see ``users`` module docstring): only the PRIMARY admin may
+    manage admin-role accounts. A SECONDARY admin can CRUD regular users but
+    cannot create/modify/delete any admin, and NO admin can mutate the primary
+    account (it lives in the password file, not users.json)."""
     from zimi import users as _users
 
     action = data.get("action", "")
     name = data.get("name", "")
+    kind = admin_kind(handler)  # 'primary' | 'secondary' (auth already passed)
+    role = data.get("role")
+
+    # The primary admin is a synthetic row — no CRUD action may target it.
+    primary_name = _get_manage_user() or "admin"
+    if name and name.strip().casefold() == primary_name.strip().casefold():
+        return handler._json(403, {"error": "cannot modify the primary admin"})
+
+    # Only the primary admin manages admin-role accounts. A secondary admin
+    # cannot create an admin, nor touch an existing admin-role user.
+    if kind != "primary":
+        targets_admin_role = role == "admin"
+        touches_existing_admin = bool(name) and _users.is_admin_user(name)
+        if targets_admin_role or touches_existing_admin:
+            return handler._json(
+                403, {"error": "only the primary admin manages admins"}
+            )
+
     if action == "create":
         ok, err = _users.create_user(
-            name, data.get("password", ""), data.get("allowlist")
+            name, data.get("password", ""), data.get("allowlist"), role=role
         )
     elif action == "delete":
         ok, err = _users.delete_user(name)
@@ -921,6 +993,8 @@ def _handle_users_post(handler, data):
         ok, err = _users.set_password(name, data.get("password", ""))
     elif action == "set-allowlist":
         ok, err = _users.set_allowlist(name, data.get("allowlist"))
+    elif action == "set-role":
+        ok, err = _users.set_role(name, role, data.get("allowlist"))
     else:
         return handler._json(400, {"error": "unknown action"})
     if not ok:
