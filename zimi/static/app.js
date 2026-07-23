@@ -1027,6 +1027,21 @@ function route(push) {
     return;
   }
   if (params.get('manage') !== null && manageEnabled) { enterManage(); return; }
+  // Article deep link: /?a=<zim>/<path>. Root path always boots the SPA, so this
+  // reliably opens full Zimi chrome on the target article regardless of browser
+  // (see _articleDeepLink). Split on the first '/' — zim names never contain one.
+  var aParam = params.get('a');
+  if (aParam) {
+    var aSlash = aParam.indexOf('/');
+    var aZim = aSlash === -1 ? aParam : aParam.slice(0, aSlash);
+    var aPath = aSlash === -1 ? '' : aParam.slice(aSlash + 1);
+    if (aZim && aPath) {
+      enterSource(aZim, false);
+      openArticle(aZim, aPath);
+      return;
+    }
+    if (aZim) { enterSource(aZim, push); return; }
+  }
   if (path.startsWith('/w/')) {
     let rest;
     try { rest = decodeURIComponent(path.slice(3)); } catch(e) { rest = path.slice(3); }
@@ -9296,6 +9311,11 @@ function _maybeShowReaderCoach() {
   if (_getStorageFlag(SK.READER_COACH)) return;
   var btn = document.getElementById('readerview-btn');
   if (!btn || btn.style.display === 'none') return;
+  // Only meaningful where the book button is actually on screen (desktop). On
+  // mobile the button is CSS-hidden and the reading settings are already
+  // top-level inside the ⋯ menu, so the "tap again" hint is redundant — skip it
+  // (offsetParent is null / zero-size when hidden by the max-width media query).
+  if (!btn.offsetParent && !(btn.offsetWidth || btn.offsetHeight)) return;
   try { localStorage.setItem(SK.READER_COACH, '1'); } catch (e) {}
   var tip = document.createElement('div');
   tip.className = 'reader-coach';
@@ -9384,6 +9404,14 @@ function _tintReaderChrome() {
 var _READER_PALETTE_ID = 'reader-palette';
 var _READER_SIZE_LABELS = { 85: 'S', 100: 'M', 115: 'L', 130: 'XL' };
 function _readerPaletteHtml() {
+  return '<div class="rv-pal-head">' + _READER_VIEW_ICON + '<span>' + tH('reader_view') +
+    '</span></div>' + _readerSettingsRowsHtml();
+}
+// The settings rows (theme / family / size / AUTO / print / share / exit) shared
+// by the standalone book-button palette (desktop) and the inline section that
+// renders top-level inside the mobile ⋯ menu when Reader View is on. Kept
+// head-less so either host can wrap it with its own heading.
+function _readerSettingsRowsHtml() {
   var theme = _readerTheme(), fam = _readerFamily(), auto = _readerAuto();
   var lvl = _readerFontLevel();
   var minSize = lvl === READER_FONT_LEVELS[0];
@@ -9401,7 +9429,7 @@ function _readerPaletteHtml() {
       '" style="font-family:' + (key === 'serif' ? 'Georgia,serif' : '-apple-system,sans-serif') +
       '" onclick="event.stopPropagation();_setReaderFamily(\'' + key + '\')">' + tH('reader_font_' + key) + '</button>';
   }
-  var h = '<div class="rv-pal-head">' + _READER_VIEW_ICON + '<span>' + tH('reader_view') + '</span></div>';
+  var h = '';
   // Theme
   h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_theme') + '</div>' +
     '<div class="rv-swatches" role="radiogroup" aria-label="' + tH('reader_theme') + '">' +
@@ -9430,17 +9458,22 @@ function _readerPaletteHtml() {
   // @media print rules in _readerViewInjectStyle); printing a raw ZIM page is out
   // of scope. Share rides navigator.share (mobile Safari / Android) — hidden when
   // the platform can't share.
-  if (_readerViewOn) {
+  if (_readerViewOn && _readerPrintable()) {
     h += '<div class="rv-pal-divider" role="separator"></div>';
-    h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderPalette();_readerPrint()">' +
+    h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerPrint()">' +
       _RV_PRINT_ICON + '<span>' + tH('reader_print') + '</span></button>';
     if (typeof navigator !== 'undefined' && navigator.share) {
-      h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderPalette();_readerShare()">' +
+      h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerShare()">' +
         _RV_SHARE_ICON + '<span>' + tH('reader_share') + '</span></button>';
     }
+  } else if (_readerViewOn && typeof navigator !== 'undefined' && navigator.share) {
+    // Print unavailable on this platform, but sharing still is.
+    h += '<div class="rv-pal-divider" role="separator"></div>';
+    h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerShare()">' +
+      _RV_SHARE_ICON + '<span>' + tH('reader_share') + '</span></button>';
   }
   h += '<div class="rv-pal-divider" role="separator"></div>';
-  h += '<button type="button" class="rv-exit-row" onclick="_closeReaderPalette();_readerViewToggle()">' +
+  h += '<button type="button" class="rv-exit-row" onclick="_closeReaderControls();_readerViewToggle()">' +
     '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
     tH('reader_exit') + '</button>';
   return h;
@@ -9448,6 +9481,22 @@ function _readerPaletteHtml() {
 function _renderReaderPalette() {
   var pal = document.getElementById(_READER_PALETTE_ID);
   if (pal && pal.classList.contains('visible')) pal.innerHTML = _readerPaletteHtml();
+  // Keep the inline copy inside the ⋯ menu (mobile) live too, so active states
+  // for theme/family/size stay truthful without reopening the menu.
+  var inline = document.querySelector('#topbar-menu.visible .tbm-reader-settings');
+  if (inline) inline.innerHTML = _readerSettingsRowsHtml();
+}
+// Close whichever reader-controls host is open — the standalone book-button
+// palette (desktop) and/or the inline settings section in the ⋯ menu (mobile).
+// Both null-check, so calling from either context is safe.
+function _closeReaderControls() {
+  _closeReaderPalette();
+  _closeTopbarMenu();
+}
+// Print is only offered where window.print() is a real function. Desktop and
+// mobile Safari/Chrome all qualify; the row is hidden where it would dead-click.
+function _readerPrintable() {
+  return typeof window !== 'undefined' && typeof window.print === 'function';
 }
 var _readerPaletteDetach = null;
 function _toggleReaderPalette() {
@@ -9466,23 +9515,100 @@ function _closeReaderPalette() {
   if (pal) pal.classList.remove('visible');
   if (_readerPaletteDetach) { _readerPaletteDetach(); _readerPaletteDetach = null; }
 }
-// Print / Save as PDF the article iframe itself — its clean Reader-View shell
-// carries @media print rules (black-on-white, chrome hidden, images contained)
-// so the browser's print/PDF output looks right regardless of the screen theme.
-// Falls back to printing the app window if the frame refuses (cross-origin,
-// though the reader iframe is same-origin).
+var _READER_PRINT_ROOT_ID = 'zimi-print-root';
+var _READER_PRINT_STYLE_ID = 'zimi-print-style';
+// Print / Save as PDF. Printing the IFRAME's own window (frame.contentWindow.print)
+// is silently a no-op in iOS standalone Safari — the reported bug. Instead we clone
+// the cleaned Reader-View shell into a hidden container in the PARENT document and
+// print the PARENT window, which works across desktop, mobile Safari and PWAs. The
+// clone's relative image/link URLs are resolved to absolute from the live iframe
+// DOM (they'd otherwise resolve against the parent URL and break).
 function _readerPrint() {
-  var frame = document.getElementById('reader-frame');
-  try { frame.contentWindow.focus(); frame.contentWindow.print(); }
-  catch (e) { try { window.print(); } catch (e2) {} }
+  if (!_readerPrintable()) return;
+  var doc = _readerFrameDoc();
+  var liveShell = doc && doc.querySelector('.zimi-reader');
+  // Reader View guarantees the .zimi-reader shell; without it there's nothing
+  // clean to print, so bail rather than print the whole app chrome.
+  if (!liveShell) { try { window.print(); } catch (e) {} return; }
+
+  var clone = liveShell.cloneNode(true);
+  // Resolve URLs from the live, already-rendered elements (their .src/.href
+  // properties are absolute) onto the structurally-identical clone.
+  function _absFix(sel, prop, attr) {
+    var live = liveShell.querySelectorAll(sel), cl = clone.querySelectorAll(sel);
+    for (var i = 0; i < cl.length && i < live.length; i++) {
+      try { cl[i].setAttribute(attr, live[i][prop]); } catch (e) {}
+      if (attr === 'src') cl[i].removeAttribute('srcset'); // relative srcset would win
+    }
+  }
+  _absFix('img', 'src', 'src');
+  _absFix('a', 'href', 'href');
+  // Drop interactive-only affordances that don't belong on paper.
+  var lb = clone.querySelectorAll('.' + _READER_LIGHTBOX_CLASS + ',.zimi-lightbox-close');
+  for (var j = 0; j < lb.length; j++) if (lb[j].parentNode) lb[j].parentNode.removeChild(lb[j]);
+
+  _readerPrintCleanup(); // clear any prior run
+  var style = document.createElement('style');
+  style.id = _READER_PRINT_STYLE_ID;
+  style.textContent = [
+    // On screen the print root is never shown; it only exists for @media print.
+    '#' + _READER_PRINT_ROOT_ID + '{display:none}',
+    '@media print{',
+      // Hide the entire app; reveal only the print root, black-on-white.
+      'body>*{display:none !important}',
+      'body>#' + _READER_PRINT_ROOT_ID + '{display:block !important}',
+      'html,body{background:#fff !important;margin:0 !important;padding:0 !important}',
+      '#' + _READER_PRINT_ROOT_ID + '{color:#000;background:#fff;font-size:12pt;line-height:1.6;',
+        'font-family:Georgia,"Times New Roman",serif;max-width:100%;padding:0 4mm}',
+      '#' + _READER_PRINT_ROOT_ID + ' .zimi-reader-title{font-size:20pt;font-weight:700;margin:0 0 0.6em;line-height:1.25}',
+      '#' + _READER_PRINT_ROOT_ID + ' h1,#' + _READER_PRINT_ROOT_ID + ' h2,#' + _READER_PRINT_ROOT_ID + ' h3{',
+        'page-break-after:avoid;break-after:avoid;line-height:1.3}',
+      '#' + _READER_PRINT_ROOT_ID + ' a{color:#000 !important;text-decoration:none}',
+      '#' + _READER_PRINT_ROOT_ID + ' img,#' + _READER_PRINT_ROOT_ID + ' figure,#' + _READER_PRINT_ROOT_ID + ' svg,',
+        '#' + _READER_PRINT_ROOT_ID + ' table,#' + _READER_PRINT_ROOT_ID + ' pre,#' + _READER_PRINT_ROOT_ID + ' blockquote{',
+        'page-break-inside:avoid;break-inside:avoid;max-width:100% !important;height:auto}',
+      '#' + _READER_PRINT_ROOT_ID + ' th,#' + _READER_PRINT_ROOT_ID + ' td{border:1px solid #bbb;padding:6px 10px;text-align:left}',
+      '#' + _READER_PRINT_ROOT_ID + ' pre,#' + _READER_PRINT_ROOT_ID + ' code{background:#f2f2f2;white-space:pre-wrap;word-wrap:break-word}',
+    '}'
+  ].join('');
+  document.head.appendChild(style);
+
+  var root = document.createElement('div');
+  root.id = _READER_PRINT_ROOT_ID;
+  root.appendChild(clone);
+  document.body.appendChild(root);
+
+  // Tear down after printing. afterprint covers desktop + most mobile; a timeout
+  // backstops iOS where afterprint can be flaky.
+  var done = false;
+  var teardown = function () { if (done) return; done = true; _readerPrintCleanup(); window.removeEventListener('afterprint', teardown); };
+  window.addEventListener('afterprint', teardown);
+  setTimeout(teardown, 60000);
+  try { window.print(); }
+  catch (e) { teardown(); }
 }
-// Native share of the current article (title + its /w/ URL). Only wired when
+function _readerPrintCleanup() {
+  var el = document.getElementById(_READER_PRINT_ROOT_ID); if (el) el.remove();
+  var st = document.getElementById(_READER_PRINT_STYLE_ID); if (st) st.remove();
+}
+// Build a Zimi SPA deep link for an article: /?a=<zim>/<path>. Anchored on the
+// root path (always served as the SPA shell) with the target in a query param, so
+// opening it boots full Zimi chrome and lands straight on the article — unlike a
+// raw /w/<zim>/<path> link, which servers ambiguously serve as bare ZIM content
+// when the Sec-Fetch-Dest hint is missing (older Safari, in-app browsers).
+function _articleDeepLink(zim, path) {
+  return location.origin + '/?a=' + encodeURIComponent(zim + '/' + path);
+}
+// Native share of the current article (title + a SPA deep link). Only wired when
 // navigator.share exists (the palette row is hidden otherwise).
 function _readerShare() {
   if (typeof navigator === 'undefined' || !navigator.share) return;
   var doc = _readerFrameDoc();
   var title = (doc && doc.title) || document.title || 'Zimi';
-  navigator.share({ title: title, url: location.href }).catch(function () {});
+  var url = currentArticle
+    ? _articleDeepLink(currentArticle.zim, currentArticle.path)
+    : location.href;
+  navigator.share({ title: title, url: url }).catch(function () {});
 }
 
 // ── Reader ──
@@ -10474,23 +10600,40 @@ function _toggleTopbarMenu(event) {
   // place and keep the menu open (event.stopPropagation blocks the outside-click
   // close); Reader View, pop-out and the app-nav rows close the menu on tap.
   if (readerOpen && !_almanacOpen) {
-    // Reader-control group first: Reader View, Read aloud, Font size, Open in browser.
-    if (_readerViewAvailable()) {
-      h += '<button class="topbar-menu-item" id="tbm-readerview" aria-pressed="' + (_readerViewOn ? 'true' : 'false') +
-        '" onclick="_closeTopbarMenu();_readerViewButtonAction()">' + _READER_VIEW_ICON +
-        ' <span class="tbm-label">' + tH('reader_view') + '</span></button>';
-    }
+    // Reader-control group. When Reader View is ON the full settings palette
+    // renders INLINE here (theme / font / size / AUTO / print / share / exit) so
+    // the reading controls are top-level in one tap — no second tap on a hidden
+    // palette. The inline settings own font-size (A−/A+), so the separate "Font
+    // size" cycle row and the Reader View toggle row are dropped to avoid
+    // duplication (Exit Reader View lives inside the settings). When Reader View
+    // is OFF we keep the compact rows: a Reader View entry (turns it on), Font
+    // size, plus the shared Read aloud / Open in browser actions.
+    var _rvInline = _readerViewOn && _readerViewAvailable();
     if (_TTS_AVAILABLE) {
       h += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
     }
-    h += '<button class="topbar-menu-item" id="tbm-font" onclick="event.stopPropagation();_cycleReaderFont()">' +
-      '<span class="font-glyph" aria-hidden="true" style="font-weight:700">A</span> ' + tH('font_size') +
-      ' <span class="tbm-val">' + _readerFontLevel() + '%</span></button>';
     if (!IS_DESKTOP) {
       h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();_openInBrowser()">' + _TBM_NEWTAB_ICON +
         ' ' + tH('open_in_browser') + '</button>';
+    }
+    if (_rvInline) {
+      // Inline reader-settings section under a subtle divider + heading. The rv-*
+      // rows carry their own compact layout; the wrapper only supplies padding
+      // so swatches/pills don't butt against the menu edge.
+      h += '<div class="topbar-menu-divider" role="separator"></div>';
+      h += '<div class="topbar-menu-label">' + tH('reader_view') + '</div>';
+      h += '<div class="tbm-reader-settings">' + _readerSettingsRowsHtml() + '</div>';
+    } else {
+      if (_readerViewAvailable()) {
+        h += '<button class="topbar-menu-item" id="tbm-readerview" aria-pressed="false"' +
+          ' onclick="_closeTopbarMenu();_readerViewButtonAction()">' + _READER_VIEW_ICON +
+          ' <span class="tbm-label">' + tH('reader_view') + '</span></button>';
+      }
+      h += '<button class="topbar-menu-item" id="tbm-font" onclick="event.stopPropagation();_cycleReaderFont()">' +
+        '<span class="font-glyph" aria-hidden="true" style="font-weight:700">A</span> ' + tH('font_size') +
+        ' <span class="tbm-val">' + _readerFontLevel() + '%</span></button>';
     }
     // Divider between the reader group and the app-navigation group below.
     h += '<div class="topbar-menu-divider" role="separator"></div>';
