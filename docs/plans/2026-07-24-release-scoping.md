@@ -24,6 +24,9 @@ The four yes-items that missed the train, plus polish debt:
 - Post-release issue replies (drafts queued; Eric approves each)
 - NOMAD (or similar) partnership outreach — draft goes to Eric right after ship
 - Windows Authenticode cert decision (kills SmartScreen warning)
+- Almanac time machine, skeuomorphic pass: Eric wants a more physical
+  representation of both the time scrubber and the current/destination
+  (BTTF) panel — the 1.8.0 version is functional but "I don't love it"
 
 ## v1.9 "Industry Edition"
 Enterprise + the deep community items:
