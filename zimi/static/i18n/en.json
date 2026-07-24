@@ -812,6 +812,7 @@
   "flavor_mini": "Mini",
   "updates_available_section": "Updates available",
   "languages_section": "Languages",
+  "categories_section": "Categories",
   "catalog_languages_hint_short": "Click to add or remove from your catalog filter.",
   "multi_lang": "Multi-language",
   "bt_state_ready": "ready",

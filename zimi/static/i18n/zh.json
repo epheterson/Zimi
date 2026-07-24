@@ -812,6 +812,7 @@
   "flavor_mini": "精简",
   "updates_available_section": "可用更新",
   "languages_section": "语言",
+  "categories_section": "分类",
   "catalog_languages_hint_short": "点击添加或从目录筛选中移除。",
   "multi_lang": "多语言",
   "bt_state_ready": "就绪",

@@ -1498,20 +1498,51 @@ function _openReorderPanel() {
   }
 }
 
+// One draggable reorder row (keyboard fallback via the ▲▼ buttons). `first`/
+// `last` pre-disable the buttons at the ends of its own group; drag/keyboard
+// moves keep them in sync via _reorderRefreshDisabled.
+function _reorderRowHtml(s, first, last) {
+  return '<div class="reorder-row" data-key="' + escAttr(s.key) + '" draggable="true">' +
+    '<span class="reorder-grip" aria-hidden="true">' +
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="5" r="1.6"/><circle cx="15" cy="5" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="19" r="1.6"/><circle cx="15" cy="19" r="1.6"/></svg>' +
+    '</span>' +
+    '<span class="reorder-label">' + esc(s.label) + '</span>' +
+    '<span class="reorder-btns">' +
+      '<button class="reorder-btn" data-dir="up"' + (first ? ' disabled' : '') + ' aria-label="' + escAttr(t('move_up')) + '">▲</button>' +
+      '<button class="reorder-btn" data-dir="down"' + (last ? ' disabled' : '') + ' aria-label="' + escAttr(t('move_down')) + '">▼</button>' +
+    '</span>' +
+  '</div>';
+}
+
+function _reorderListHtml(items, group) {
+  var rows = items.map(function(s, i) {
+    return _reorderRowHtml(s, i === 0, i === items.length - 1);
+  }).join('');
+  return '<div class="reorder-list" data-group="' + group + '">' + rows + '</div>';
+}
+
+// Categories reorder as a flat, draggable list. Collections don't share the
+// same semantics (they group ZIMs by hand), so they render as their own labelled
+// group above — visually distinct, ordered among themselves, never interleaved
+// with categories. The persisted order is every row top-to-bottom (collections
+// first), so what you see is exactly what home renders.
 function _reorderSectionsHtml() {
   var sections = _currentReorderSections();
   if (!sections.length) return '<div class="ms-hint">' + tH('reorder_empty') + '</div>';
-  var h = '<div class="reorder-list">';
-  sections.forEach(function(s, i) {
-    h += '<div class="reorder-row" data-key="' + escAttr(s.key) + '">' +
-      '<span class="reorder-label">' + esc(s.label) + '</span>' +
-      '<span class="reorder-btns">' +
-        '<button class="reorder-btn" data-dir="up"' + (i === 0 ? ' disabled' : '') + ' aria-label="' + escAttr(t('move_up')) + '">▲</button>' +
-        '<button class="reorder-btn" data-dir="down"' + (i === sections.length - 1 ? ' disabled' : '') + ' aria-label="' + escAttr(t('move_down')) + '">▼</button>' +
-      '</span>' +
-    '</div>';
-  });
-  return h + '</div>';
+  var cols = sections.filter(function(s) { return s.key.indexOf('col:') === 0; });
+  var cats = sections.filter(function(s) { return s.key.indexOf('cat:') === 0; });
+  var h = '';
+  if (cols.length) {
+    h += '<div class="reorder-group reorder-group-collections">' +
+      '<div class="reorder-group-label">' + tH('collections_tab') + '</div>' +
+      _reorderListHtml(cols, 'col') + '</div>';
+  }
+  if (cats.length) {
+    h += '<div class="reorder-group">' +
+      (cols.length ? '<div class="reorder-group-label">' + tH('categories_section') + '</div>' : '') +
+      _reorderListHtml(cats, 'cat') + '</div>';
+  }
+  return h;
 }
 
 // Order category names by the saved section order (cat: keys), unlisted A-Z.
@@ -1530,22 +1561,10 @@ function _orderCatsBySaved(cats) {
   });
 }
 
-// Persist the installed-tab pill order as the home section order. The pill row
-// now shows BOTH category and collection sections (#37 keys cat:/col:) in the
-// saved order, so the DOM order of the draggable pills IS the complete, unified
-// section order — what you drag is exactly what home renders. No slot-preserving
-// merge is needed anymore.
-function _persistInstalledPillOrder(row) {
-  var order = Array.prototype.map.call(
-    row.querySelectorAll('.pill[data-key]'),
-    function(p) { return p.dataset.key; });
-  _persistSectionOrder(order);
-}
-
-// Single writer for the home section order. Both the installed-tab pill drag and
-// the up/down reorder panel funnel through here so the optimistic local update,
-// the POST, the failure toast, and — the fix for stale-home — the post-save
-// resync all live in one place. The server validates/normalizes the order
+// Single writer for the home section order. The reorder panel (drag + up/down)
+// funnels through here so the optimistic local update, the POST, the failure
+// toast, and — the fix for stale-home — the post-save resync all live in one
+// place. The server validates/normalizes the order
 // (drops unknown keys via _SECTION_KEY_RE), so we adopt its echoed order as
 // authoritative and, when home is the visible view, re-render it immediately so
 // the list matches the pills without waiting for the next navigation.
@@ -1560,55 +1579,31 @@ function _persistSectionOrder(order) {
   }).catch(function() { _showToast(t('error')); });
 }
 
-// HTML5 drag reordering of the installed-tab section pills — categories AND
-// collections alike (desktop). Touch devices don't fire these — they use the
-// trailing "Reorder" action pill.
-var _dragPill = null;
-function _wireInstalledPillDrag(container) {
-  var row = container.querySelector('.installed-cat-pills');
-  if (!row) return;
-  row.querySelectorAll('.pill[draggable="true"]').forEach(function(p) {
-    p.addEventListener('dragstart', function(e) {
-      _dragPill = p; p.classList.add('dragging');
-      e.dataTransfer.effectAllowed = 'move';
-      try { e.dataTransfer.setData('text/plain', p.dataset.key); } catch (_) {}
-    });
-    p.addEventListener('dragend', function() {
-      p.classList.remove('dragging'); _dragPill = null;
-      row.querySelectorAll('.drag-over').forEach(function(x) { x.classList.remove('drag-over'); });
-    });
-    p.addEventListener('dragover', function(e) {
-      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
-      if (_dragPill && _dragPill !== p) p.classList.add('drag-over');
-    });
-    p.addEventListener('dragleave', function() { p.classList.remove('drag-over'); });
-    p.addEventListener('drop', function(e) {
-      e.preventDefault(); p.classList.remove('drag-over');
-      if (!_dragPill || _dragPill === p) return;
-      var rect = p.getBoundingClientRect();
-      var after = (e.clientX - rect.left) > rect.width / 2;
-      row.insertBefore(_dragPill, after ? p.nextSibling : p);
-      _persistInstalledPillOrder(row);
+// Refresh ▲▼ disabled state at the ends of every group in the reorder panel.
+function _reorderRefreshDisabled() {
+  var cont = document.getElementById('ms-reorder');
+  if (!cont) return;
+  cont.querySelectorAll('.reorder-list').forEach(function(list) {
+    var rows = list.querySelectorAll('.reorder-row');
+    rows.forEach(function(r, i) {
+      var up = r.querySelector('[data-dir="up"]'), dn = r.querySelector('[data-dir="down"]');
+      if (up) up.disabled = (i === 0);
+      if (dn) dn.disabled = (i === rows.length - 1);
     });
   });
 }
 
-function _reorderRefreshDisabled(list) {
-  var rows = list.querySelectorAll('.reorder-row');
-  rows.forEach(function(r, i) {
-    var up = r.querySelector('[data-dir="up"]'), dn = r.querySelector('[data-dir="down"]');
-    if (up) up.disabled = (i === 0);
-    if (dn) dn.disabled = (i === rows.length - 1);
-  });
-}
-
-// Per-click POST (not debounced): reorders are discrete, infrequent, and each
+// Per-move POST (not debounced): reorders are discrete, infrequent, and each
 // leaves a complete valid order — immediate durability beats coalescing here.
-function _persistReorder(list) {
-  var order = Array.prototype.map.call(list.querySelectorAll('.reorder-row'), function(r) { return r.dataset.key; });
+// The order is every row across every group, top-to-bottom (collections first).
+function _persistReorder() {
+  var cont = document.getElementById('ms-reorder');
+  if (!cont) return;
+  var order = Array.prototype.map.call(cont.querySelectorAll('.reorder-row'), function(r) { return r.dataset.key; });
   _persistSectionOrder(order);
 }
 
+// Keyboard fallback for drag: ▲▼ move a row within its own group only.
 function _reorderClick(e) {
   var btn = e.target.closest('.reorder-btn');
   if (!btn || btn.disabled) return;
@@ -1619,8 +1614,37 @@ function _reorderClick(e) {
   } else if (btn.dataset.dir === 'down' && row.nextElementSibling) {
     list.insertBefore(row.nextElementSibling, row);
   } else { return; }
-  _reorderRefreshDisabled(list);
-  _persistReorder(list);
+  _reorderRefreshDisabled();
+  _persistReorder();
+}
+
+// HTML5 drag reordering of the section rows, delegated from the #ms-reorder
+// container (drag events bubble). A row can only move within its own group
+// (collections stay grouped, categories stay grouped) — cross-group drops are
+// ignored. Live insert on dragover makes the move feel direct; dragend persists.
+var _reDrag = null;
+function _reorderDragStart(e) {
+  var row = e.target.closest('.reorder-row');
+  if (!row) return;
+  _reDrag = row; row.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', row.dataset.key); } catch (_) {}
+}
+function _reorderDragOver(e) {
+  var row = e.target.closest('.reorder-row');
+  if (!_reDrag || !row || row === _reDrag || row.parentNode !== _reDrag.parentNode) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  var rect = row.getBoundingClientRect();
+  var after = (e.clientY - rect.top) > rect.height / 2;
+  row.parentNode.insertBefore(_reDrag, after ? row.nextSibling : row);
+}
+function _reorderDrop(e) { if (_reDrag) e.preventDefault(); }
+function _reorderDragEnd() {
+  if (!_reDrag) return;
+  _reDrag.classList.remove('dragging');
+  _reDrag = null;
+  _reorderRefreshDisabled();
+  _persistReorder();
 }
 
 // ── Render: Home ──
@@ -3097,12 +3121,12 @@ function _moveZimTo(zim, category) {
     _prepMenuA11y();
   }
 
-  // Layout actions (Move to… + Reorder) — appended to the full menu and the
-  // sole contents of the compact gear menu. Gated on manage (auth-gated write).
+  // Layout action (Move to…) — appended to the full menu and the sole content
+  // of the compact gear menu. Gated on manage (auth-gated write). Reordering is
+  // NOT a per-row action; it lives as a link in the library header (its own view).
   function _layoutItemsHtml(zim) {
     if (!manageEnabled) return '';
-    return '<div class="ctx-item">' + tH('move_to') + ' ›<div class="ctx-sub">' + _moveSubmenuHtml(zim) + '</div></div>' +
-      '<div class="ctx-item" data-action="reorder">' + tH('reorder_sections') + '</div>';
+    return '<div class="ctx-item">' + tH('move_to') + ' ›<div class="ctx-sub">' + _moveSubmenuHtml(zim) + '</div></div>';
   }
 
   function showMainMenu() {
@@ -3211,9 +3235,6 @@ function _moveZimTo(zim, category) {
       var nc = prompt(t('move_new_category_prompt'));
       if (!nc || !nc.trim()) return;
       _moveZimTo(zim, nc.trim());
-    } else if (action === 'reorder') {
-      closeCtx();
-      _openReorderPanel();
     } else if (action === 'favorite') {
       closeCtx(); toggleFavorite(zim);
     } else if (action === 'toggle-coll') {
@@ -7012,7 +7033,10 @@ function _msPreferencesHtml() {
   h += '<div class="ms-section-label" style="margin-top:20px">' + tH('reorder_sections') + '</div>' +
     '<div class="ms-hint">' + tH('reorder_hint') + '</div>' +
     '<button class="pill" onclick="_msToggleCollapse(\'ms-reorder\', this)">' + (_reOpen ? tH('hide_list') : tH('show_list')) + '</button>' +
-    '<div class="ms-collapsed-list' + (_reOpen ? ' ms-open' : '') + '" id="ms-reorder" onclick="_reorderClick(event)">' + _reorderSectionsHtml() + '</div>';
+    '<div class="ms-collapsed-list' + (_reOpen ? ' ms-open' : '') + '" id="ms-reorder"' +
+      ' onclick="_reorderClick(event)" ondragstart="_reorderDragStart(event)"' +
+      ' ondragover="_reorderDragOver(event)" ondrop="_reorderDrop(event)"' +
+      ' ondragend="_reorderDragEnd(event)">' + _reorderSectionsHtml() + '</div>';
   if (_reOpen) {
     setTimeout(function() {
       var el = document.getElementById('ms-reorder');
@@ -7812,29 +7836,30 @@ function getInstalledPillsHtml() {
   const allCats = _orderCatsBySaved([...new Set(Object.keys(langsByCat))]);
   const sections = _currentReorderSections();
   let h = '';
-  // Desktop: drag a pill to reorder sections in place (persisted as the home
-  // section order). Touch: use the trailing "Reorder" action pill, which opens
-  // the up/down reorder panel.
+  // These pills FILTER the installed library (click a category to scope, click a
+  // collection to open its tab). Reordering is not done here — it lives in its
+  // own view behind the trailing link-out pill, which opens the reorder panel.
   if (sections.length > 1) {
     h += '<div class="pills installed-cat-pills" style="margin-bottom:8px">';
     for (const s of sections) {
       if (s.key.indexOf('col:') === 0) {
-        h += '<button type="button" class="pill col-pill" draggable="true" data-key="' + escAttr(s.key) +
-          '" title="' + escAttr(t('reorder_drag_hint')) + '" onclick="switchManageTab(\'collections\')">' +
+        h += '<button type="button" class="pill col-pill" data-key="' + escAttr(s.key) +
+          '" onclick="switchManageTab(\'collections\')">' +
           _COLLECTION_GLYPH + esc(s.label) + '</button>';
         continue;
       }
       const cat = s.key.slice(4);
       const dimmed = manageLangFilter && langsByCat[cat] && !langsByCat[cat].has(manageLangFilter);
       h += '<button class="pill cat-pill' + (manageCategoryFilter === cat ? ' active' : '') + (dimmed ? ' dimmed' : '') +
-        '" draggable="true" data-key="' + escAttr(s.key) + '" data-cat="' + escAttr(cat) + '" title="' + escAttr(t('reorder_drag_hint')) +
+        '" data-key="' + escAttr(s.key) + '" data-cat="' + escAttr(cat) +
         '" onclick="filterManageCategory(\'' + escAttr(cat) + '\')">' + esc(_catDisplayName(cat)) + '</button>';
     }
-    // Distinct amber-outline ACTION pill (not a filter) → existing reorder panel.
+    // Link-out ACTION pill (not a filter) → the separate reorder view.
     h += '<button type="button" class="pill reorder-pill" onclick="_openReorderPanel()" title="' +
       escAttr(t('reorder_sections')) + '" aria-label="' + escAttr(t('reorder_sections')) + '">' +
-      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="7 8 12 3 17 8"/><polyline points="7 16 12 21 17 16"/></svg>' +
-      esc(t('reorder')) + '</button>';
+      esc(t('reorder')) +
+      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>' +
+      '</button>';
     h += '</div>';
   }
   // Language pills — horizontal scroll with counts, no search button
@@ -7997,7 +8022,6 @@ function renderInstalled(filterText) {
   if (!items_h) items_h = '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
 
   el.innerHTML = getInstalledPillsHtml() + items_h;
-  _wireInstalledPillDrag(el);
   _fillInstalledDownloads(el);
 }
 

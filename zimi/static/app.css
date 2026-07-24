@@ -242,15 +242,12 @@
   .pill.active .pill-count { opacity: 1; background: rgba(0, 0, 0, 0.22); color: #000; padding: 0 5px; border-radius: 8px; }
   .pill.dimmed, .lang-pill.dimmed { opacity: 0.35; pointer-events: none; }
   .pills-divider { width: 60px; height: 1px; background: var(--border); margin: 0 auto 4px; opacity: 0.5; }
-  /* Installed-tab section pills (categories + collections): draggable to reorder. */
-  .cat-pill[draggable="true"], .col-pill[draggable="true"] { cursor: grab; }
-  .cat-pill.dragging, .col-pill.dragging { opacity: 0.45; cursor: grabbing; }
-  .cat-pill.drag-over, .col-pill.drag-over { border-color: var(--amber); box-shadow: -2px 0 0 var(--amber); }
   /* Collection pills carry the layers glyph so they read as groupings, not
-     categories, in the same reorder row. */
+     categories, in the filter row. */
   .col-pill { display: inline-flex; align-items: center; gap: 5px; border-style: dashed; }
   .col-pill-glyph { flex-shrink: 0; opacity: 0.8; }
-  /* "Reorder" is an ACTION, not a filter — amber outline sets it apart. */
+  /* "Reorder" is a link-OUT action (opens a separate view), not a filter —
+     amber outline + the trailing ↗ glyph set it apart. */
   .reorder-pill { display: inline-flex; align-items: center; gap: 4px; color: var(--amber); border-color: var(--amber-border); border-style: dashed; background: var(--amber-glow); }
   .reorder-pill:hover { color: var(--amber); border-color: var(--amber); background: var(--amber-glow); border-style: dashed; }
 
@@ -1568,12 +1565,23 @@
   .ci-gear:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
 
   /* ── Section reorder panel (#37) ── */
+  /* Collections and categories are separate groups — each ordered among itself,
+     never interleaved — so they get their own labelled block. */
+  .reorder-group { margin-top: 10px; }
+  .reorder-group-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text2); margin-bottom: 4px;
+  }
+  .reorder-group-collections .reorder-row { border-style: dashed; }
   .reorder-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
   .reorder-row {
     display: flex; align-items: center; gap: 8px;
     padding: 8px 12px; background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); font-size: 13px;
+    border-radius: var(--radius); font-size: 13px; cursor: grab;
   }
+  .reorder-row.dragging { opacity: 0.5; cursor: grabbing; border-color: var(--amber); }
+  /* Grip is the drag affordance; the ▲▼ buttons remain the keyboard fallback. */
+  .reorder-grip { flex-shrink: 0; color: var(--text3); display: inline-flex; align-items: center; }
   .reorder-label { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .reorder-btns { display: flex; gap: 4px; flex-shrink: 0; }
   .reorder-btn {

@@ -812,6 +812,7 @@
   "flavor_mini": "Мини",
   "updates_available_section": "Доступны обновления",
   "languages_section": "Языки",
+  "categories_section": "Категории",
   "catalog_languages_hint_short": "Нажмите, чтобы добавить или убрать из фильтра каталога.",
   "multi_lang": "Многоязычный",
   "bt_state_ready": "готово",
