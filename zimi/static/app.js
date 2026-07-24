@@ -10321,15 +10321,24 @@ function _renderHistoryContent() {
   if (h.length === 0) {
     return '<div class="hp-empty">' + tH('no_history_panel') + '</div>';
   }
-  var html = '<div style="padding:8px 16px 0;text-align:right"><button class="hp-clear" onclick="_histClear()">' + tH('clear') + '</button></div>';
+  var html = '';
   var currentGroup = '';
+  var firstGroup = true;
   var i = 0;
   while (i < h.length) {
     var item = h[i];
     var group = _histDateGroup(item.timestamp);
     if (group !== currentGroup) {
       if (currentGroup) html += '</div>';
-      html += '<div class="hp-group"><div class="hp-group-label">' + esc(group) + '</div>';
+      if (firstGroup) {
+        // First day heading shares its row with the Clear action (one line).
+        html += '<div class="hp-group"><div class="hp-group-head">' +
+          '<div class="hp-group-label">' + esc(group) + '</div>' +
+          '<button class="hp-clear" onclick="_histClear()">' + tH('clear') + '</button></div>';
+        firstGroup = false;
+      } else {
+        html += '<div class="hp-group"><div class="hp-group-label">' + esc(group) + '</div>';
+      }
       currentGroup = group;
     }
     if (item.type === 'search') {
