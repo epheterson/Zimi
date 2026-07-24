@@ -2069,8 +2069,21 @@ function _drawTzClock(now) {
 // prefers-reduced-motion by swapping the text instantly.
 function _tickSeconds(secEl, sec) {
   if (!secEl) return;
-  var cur = secEl.querySelector('.alm-clock-sec-d');
+  var digits = secEl.querySelectorAll('.alm-clock-sec-d');
+  // Leak clamp: at any instant we want at most two layers — the current digit
+  // plus one outgoing mid-animation. querySelectorAll returns document order,
+  // so the LAST span is always the authoritative current value; earlier spans
+  // are outgoing layers. Drop everything older than those two so a missed
+  // animationend (backgrounded tab, interrupted transition) can never stack up
+  // permanent inline spans and grow the clock horizontally.
+  for (var i = 0; i < digits.length - 2; i++) {
+    if (digits[i].parentNode) digits[i].parentNode.removeChild(digits[i]);
+  }
+  var cur = digits.length ? digits[digits.length - 1] : null;
   if (!cur) { secEl.innerHTML = '<span class="alm-clock-sec-d">' + sec + '</span>'; return; }
+  // Reading the last span (not the first) is what stops per-frame stacking:
+  // once the incoming digit is appended it becomes `cur`, and every remaining
+  // RAF frame this second short-circuits here instead of appending again.
   if (cur.textContent === sec) return;
   var reduce = false;
   try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
