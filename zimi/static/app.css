@@ -1532,6 +1532,8 @@
   .card-cat { font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
   .lang-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 5px; margin-left: 6px; border-radius: 4px; background: var(--surface2); color: var(--text2); vertical-align: middle; letter-spacing: 0.06em; }
   .lang-badge.multi { background: var(--amber-glow); color: var(--amber); border: 1px solid var(--amber-border); }
+  /* Downloads/seeds row chip: distinguishes identically-titled transfers. */
+  .dl-lang-badge { flex-shrink: 0; }
   .qid-badge { display: inline-block; margin-left: 5px; vertical-align: middle; color: var(--text3); opacity: 0.5; }
 
   /* ── Star (favorite) toggle ── */

@@ -8446,6 +8446,23 @@ async function buildFts(name, btn) {
   }
 }
 
+// Language chip for a downloads/seeds row — full language name where we can
+// resolve it (space allows here, unlike the tiles), 2-letter code in the
+// tooltip. Derived from an installed ZIM's language or, failing that, parsed
+// from the file/ZIM name, so identically-titled transfers (several Wikipedias)
+// are distinguishable. Returns '' for English / language-agnostic content.
+function _dlLangBadge(name, installedLang) {
+  var lang = (installedLang || '').toLowerCase();
+  if (!lang || lang === 'all' || lang === 'mul' || lang === 'multi' || lang.includes(',')) {
+    lang = (_langFromName(name) || '').toLowerCase();  // name-derived fallback
+  }
+  if (!lang || lang === 'en' || lang === 'eng') return '';
+  var code = lang.length > 2 ? (_LANG3TO2[lang] || lang.slice(0, 2)) : lang;
+  if (code === 'en') return '';
+  var full = _langDisplayName(code) || code.toUpperCase();
+  return '<span class="lang-badge dl-lang-badge" title="' + escAttr(code.toUpperCase()) + '">' + esc(full) + '</span>';
+}
+
 function dlTitle(dl) {
   const fn = dl.filename || '';
   const url = dl.url || '';
@@ -8641,6 +8658,7 @@ async function _refreshDownloadsInner(useCache) {
           '<div class="dl-row">' +
           '<span class="dl-seed-icon">' + _sourceIconHtml(zimName, 22) + '</span>' +
           '<span class="dl-name dl-seed-link" onclick="enterSource(\'' + escAttr(escJs(zimName)) + '\', true)" title="' + escAttr(sName) + '">' + esc(sName) + '</span>' +
+          _dlLangBadge(zimName, (_zimInfo(zimName) || {}).language) +
           '<span class="dl-size">' + meta + '</span></div>' +
           '<div class="dl-seed-goal">' + esc(goalStr) + '</div>' +
           (isMirror ? '' : '<div class="dl-progress" title="' + escAttr(t('seed_bar_tip', {cap: seedingCap})) + '"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>') +
@@ -8679,7 +8697,8 @@ async function _refreshDownloadsInner(useCache) {
       const speed = dl.elapsed > 0 && dl.downloaded_bytes > 0 ? ((dl.downloaded_bytes / 1024 / 1024) / dl.elapsed).toFixed(1) : '0';
 
       h += '<div class="dl-item">';
-      h += '<div class="dl-row"><span class="dl-name">' + esc(title) + '</span>';
+      h += '<div class="dl-row"><span class="dl-name">' + esc(title) + '</span>' +
+        _dlLangBadge(dl.filename || dl.name, null);
       if (dl.error) {
         h += '<span class="dl-error">' + esc(dl.error) + '</span>';
       } else if (dl.done) {
