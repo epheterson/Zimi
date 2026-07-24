@@ -2084,31 +2084,68 @@ def _detect_flavor(filename_or_base):
     return None
 
 
+# Bound on simultaneous Kiwix round trips when a cold _full_catalog() has to
+# fetch every page itself. The real catalog has grown past 3,600 entries (8
+# pages at count=500) since the ~1,072-entry / 3-page figure the cache-reuse
+# fix was measured against — fetching pages one at a time (~2s/page against
+# the real Kiwix OPDS endpoint) turned a warm-cache non-issue back into a
+# 15s+ "Loading..." on every cold check.
+_FULL_CATALOG_MAX_PARALLEL = 6
+
+
 def _full_catalog(lang=""):
     """Every catalog entry across all pages, served from the SWR cache when warm.
 
     Defaults to the SAME (query, lang, count) the browse UI warms — empty lang,
     count 500 — so a manual update check reuses the already-cached catalog and
     makes ZERO network round trips on the common path (the browse view, or a
-    prior check, has populated the cache). A cold cache fetches synchronously
-    once; every later caller then rides the cache.
+    prior check, has populated the cache). A warm cache still resolves every
+    page from the in-memory dict, so the concurrency below only matters when
+    genuinely cold.
 
     Empty lang (not "eng") also matters for correctness: an eng-filtered catalog
     omits non-English installs (wikipedia_de, wikipedia_he, ...), which would
     then silently never be offered an update. Callers that deliberately want the
     English slice pass lang="eng".
+
+    Pages after the first are fetched concurrently (bounded by
+    _FULL_CATALOG_MAX_PARALLEL in-flight requests), not one-at-a-time — on a
+    cold cache this turns N sequential Kiwix round trips into ~N/parallelism,
+    matching how the browse UI's client-side fetch already parallelizes pages
+    (see _fetchCatalogItems in app.js). A page that errors is simply omitted
+    rather than truncating the rest of an otherwise-successful fetch.
     """
     total, items, err = _fetch_kiwix_catalog(query="", lang=lang, count=500, start=0)
     if err:
         return []
     all_items = list(items or [])
-    while len(all_items) < total:
-        _t, more, err = _fetch_kiwix_catalog(
-            query="", lang=lang, count=500, start=len(all_items)
-        )
-        if err or not more:
-            break
-        all_items.extend(more)
+    starts = list(range(len(all_items), total, 500))
+    if not starts:
+        return all_items
+
+    pages = {}
+    sem = threading.Semaphore(_FULL_CATALOG_MAX_PARALLEL)
+
+    def _fetch_page(start):
+        with sem:
+            _t, more, page_err = _fetch_kiwix_catalog(
+                query="", lang=lang, count=500, start=start
+            )
+        pages[start] = None if page_err else (more or None)
+
+    threads = [
+        threading.Thread(target=_fetch_page, args=(start,), daemon=True)
+        for start in starts
+    ]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+
+    for start in starts:
+        page = pages.get(start)
+        if page:
+            all_items.extend(page)
     return all_items
 
 

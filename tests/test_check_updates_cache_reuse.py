@@ -15,6 +15,7 @@ These tests mock the network at urlopen and count real round trips.
 
 import os
 import sys
+import threading
 import time
 import urllib.request
 
@@ -190,3 +191,85 @@ def test_non_english_installs_are_matched(_env):
     # At least one German and one Hebrew install must be offered an update.
     assert any("_de_" in n for n in names)
     assert any("_he_" in n for n in names)
+
+
+# The real Kiwix catalog has grown to ~3,600 entries (8 pages at count=500) —
+# well past the ~1,072 / 3-page catalog the cache-reuse fix above was measured
+# against. A cold _full_catalog() that fetches those 8 pages one at a time
+# (each a real ~2s round trip to Kiwix) reproduces the "still slow" complaint
+# even though the warm-cache path added by fcf11b9 makes zero network calls.
+_N_LARGE_CATALOG = 3602
+_LARGE_PAGE_LATENCY = 0.1  # simulated per-page round-trip cost, seconds
+
+
+@pytest.fixture
+def _large_catalog_env(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "ZIM_DIR", str(tmp_path / "zims"))
+    (tmp_path / "zims").mkdir()
+    monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    (tmp_path / "data").mkdir()
+    monkeypatch.setattr(lib, "_opds_disk_loaded", True)
+    monkeypatch.setattr(lib, "_OPDS_BG_REFRESH", False)
+    lib._opds_cache.clear()
+    lib._opds_refreshing.clear()
+    lib._catalog_stale_ts = None
+
+    calls = {"n": 0}
+    concurrency = {"in_flight": 0, "peak": 0}
+    conc_lock = threading.Lock()
+
+    def fake_urlopen(req, *a, **k):
+        with conc_lock:
+            calls["n"] += 1
+            concurrency["in_flight"] += 1
+            concurrency["peak"] = max(concurrency["peak"], concurrency["in_flight"])
+        try:
+            # Long enough that overlapping threads reliably overlap even on a
+            # loaded test runner, without making the suite slow.
+            time.sleep(_LARGE_PAGE_LATENCY)
+        finally:
+            with conc_lock:
+                concurrency["in_flight"] -= 1
+        from urllib.parse import parse_qs, urlparse
+
+        q = parse_qs(urlparse(req.full_url).query)
+        start = int(q.get("start", ["0"])[0])
+        count = int(q.get("count", ["500"])[0])
+        n = min(count, max(0, _N_LARGE_CATALOG - start))
+        entries = "".join(
+            _entry_xml(f"large{i}_en", f"large{i}_en_2026-02")
+            for i in range(start, start + n)
+        )
+        xml = (
+            '<feed xmlns="http://www.w3.org/2005/Atom"'
+            ' xmlns:dc="http://purl.org/dc/terms/">'
+            f"<totalResults>{_N_LARGE_CATALOG}</totalResults>"
+            f"{entries}</feed>"
+        ).encode()
+        return _FakeResp(xml)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    yield calls, concurrency
+    lib._opds_cache.clear()
+    lib._opds_refreshing.clear()
+    lib._catalog_stale_ts = None
+
+
+def test_cold_full_catalog_fetches_pages_concurrently(_large_catalog_env):
+    """Proves parallelism directly (peak simultaneous in-flight requests) rather
+    than via a wall-clock threshold, which is flaky under a loaded test runner.
+    8 pages at count=500, bounded by _FULL_CATALOG_MAX_PARALLEL=6 in-flight,
+    must show more than one request overlapping — the old code issued them
+    strictly one at a time (peak == 1)."""
+    calls, concurrency = _large_catalog_env
+    n_pages = -(-_N_LARGE_CATALOG // 500)  # 8
+
+    items = lib._full_catalog("")
+
+    assert calls["n"] == n_pages
+    assert len(items) == _N_LARGE_CATALOG
+    assert concurrency["peak"] > 1, (
+        "expected overlapping page requests (parallel fetch), "
+        f"but peak concurrency was {concurrency['peak']}"
+    )
+    assert concurrency["peak"] <= lib._FULL_CATALOG_MAX_PARALLEL

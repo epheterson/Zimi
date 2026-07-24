@@ -6399,7 +6399,7 @@ var _usersData = null;  // { users:[...], zims:[names] } from /manage/users
 function _renderMsUsers() {
   var pane = document.getElementById('ms-pane');
   if (!pane) return;
-  pane.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '…</div>';
+  pane.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '</div>';
   manageFetch('/manage/users').then(function(res) { return res.json(); }).then(function(data) {
     _usersData = data;
     if (_msSection === 'users') pane.innerHTML = _msUsersHtml();
@@ -7069,7 +7069,7 @@ function _msServerHtml() {
   }
   // Security: password + API token
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
-    '<div id="ms-security">Loading...</div></div>';
+    '<div id="ms-security">' + tH('loading') + '</div></div>';
   // Async fill security
   Promise.all([
     fetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
