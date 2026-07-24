@@ -150,6 +150,25 @@ and delta updates on top.
 - **Everything user-visible is translated.** A full i18n audit closed English
   leaks across all ten locales, removed orphaned keys, and tightened Chinese
   typography — every string a user sees now has a translation in every language.
+- **Checking for updates is fast again.** The Kiwix catalog has grown past
+  3,600 entries; a cold update check used to fetch its OPDS pages one at a
+  time (~16 s of "Loading…"). Pages now download concurrently and a warm
+  cache still answers instantly.
+- **One pill, everywhere.** Filter, language, source and category pills share
+  a single geometry across search, home and management, and each filter row
+  starts with an "All" pill — two clicks resets every search filter.
+- **Language badges.** Home tiles and rows show a two-letter language badge
+  on non-English ZIMs, and download/seed rows name their language — six
+  same-named Wikipedias are finally tellable apart. Tiles got wider titles,
+  the inactive favorite star stays hidden until hover, and the New/Updated
+  badge moved off the source icon.
+- **Calmer article header.** On desktop the reader controls (Reader View,
+  text size, read-aloud) fold into the ⋯ menu like on mobile, and close is
+  always the far-right button.
+- **Section reorder grew its own view** — rows drag (keyboard arrows still
+  work), collections sit in their own group, and ZIM row menus keep just
+  "Move to…". The health report now spells out its badges ("Title index",
+  "Q-ID index") and adds thousands separators to entry counts.
 
 ### Removed
 
