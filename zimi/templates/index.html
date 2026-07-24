@@ -32,6 +32,7 @@
     <label for="q" class="sr-only" data-i18n="search">Search</label>
     <input type="text" id="q" placeholder="Search everything..." data-i18n-placeholder="search_placeholder" autofocus aria-label="Search" data-i18n-aria="search" autocomplete="off" aria-autocomplete="list" aria-controls="suggest-dropdown">
     <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>
+    <button type="button" id="search-clear" class="search-clear" aria-label="Clear search" data-i18n-aria="clear_search" title="Clear search" data-i18n-title="clear_search" onclick="clearSearchInput()"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <span class="kbd">/</span>
     <div id="suggest-dropdown" class="suggest-dropdown"></div>
   </div>

@@ -4005,6 +4005,16 @@ function toggleSourceFilter(s) {
   renderSearchResults(allResults, null);
 }
 
+// The search box × affordance (and Escape): wipe the query, results and filter
+// state, returning to the current context's clean view. Keeps focus in the box
+// so the user can keep typing.
+function clearSearchInput() {
+  q.value = '';
+  hideSuggest();
+  clearSearch();
+  q.focus();
+}
+
 function clearSearch() {
   activeSourceFilters.clear();
   if (snippetController) { snippetController.abort(); snippetController = null; }

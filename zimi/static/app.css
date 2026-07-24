@@ -158,6 +158,19 @@
     font-family: inherit; pointer-events: none; opacity: 0.7; transition: opacity 0.15s;
   }
   .topbar-search input:focus ~ .kbd { opacity: 0; }
+  /* Clear (×): shown only when the field has a value (placeholder hidden). The
+     kbd hint gives way to it so they never overlap. Pure CSS — the value drives
+     :placeholder-shown, including programmatic changes. */
+  .topbar-search .search-clear {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    display: none; align-items: center; justify-content: center;
+    width: 22px; height: 22px; padding: 0; border: none; border-radius: 5px;
+    background: transparent; color: var(--text2); cursor: pointer;
+    transition: color 0.12s, background 0.12s;
+  }
+  .topbar-search .search-clear:hover { color: var(--amber); background: var(--amber-glow); }
+  .topbar-search input:not(:placeholder-shown) ~ .search-clear { display: flex; }
+  .topbar-search input:not(:placeholder-shown) ~ .kbd { opacity: 0; }
 
   /* ── Suggest dropdown ── */
   .suggest-dropdown {
@@ -508,6 +521,7 @@
   [dir="rtl"] .topbar-search input { text-align: right; padding: 9px 14px 9px 36px; }
   [dir="rtl"] .search-icon { left: 12px; right: auto; }
   [dir="rtl"] .kbd { right: auto; left: 8px; }
+  [dir="rtl"] .topbar-search .search-clear { right: auto; left: 8px; }
   [dir="rtl"] .back-btn { transform: scaleX(-1); }
   /* Article/ZIM titles can be RTL (Arabic, Hebrew, Farsi) inside LTR
      chrome (and vice versa) — isolate so neighboring punctuation and

@@ -1,5 +1,6 @@
 {
   "search_placeholder": "ابحث في كل شيء…",
+  "clear_search": "مسح البحث",
   "search_in": "ابحث في {source}…",
   "search_catalog": "ابحث في الفهرس…",
   "filter_installed": "تصفية ملفات ZIM المثبتة…",

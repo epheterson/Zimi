@@ -1,5 +1,6 @@
 {
   "search_placeholder": "Искать везде…",
+  "clear_search": "Очистить поиск",
   "search_in": "Искать в {source}…",
   "search_catalog": "Искать в каталоге…",
   "filter_installed": "Фильтровать установленные ZIM…",

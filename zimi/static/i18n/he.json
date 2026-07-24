@@ -1,5 +1,6 @@
 {
   "search_placeholder": "חיפוש בכל…",
+  "clear_search": "ניקוי חיפוש",
   "search_in": "חיפוש בתוך {source}…",
   "search_catalog": "חיפוש בקטלוג…",
   "filter_installed": "סינון קבצי ZIM מותקנים…",

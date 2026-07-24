@@ -1,5 +1,6 @@
 {
   "search_placeholder": "Rechercher partout…",
+  "clear_search": "Effacer la recherche",
   "search_in": "Rechercher dans {source}…",
   "search_catalog": "Rechercher dans le catalogue…",
   "filter_installed": "Filtrer les ZIM installés…",
