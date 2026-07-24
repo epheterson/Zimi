@@ -1028,5 +1028,8 @@
   "users_last_login": "Last seen",
   "users_last_never": "Never signed in",
   "users_your_account": "Your account",
-  "users_scope_limited": "Limited access"
+  "users_scope_limited": "Limited access",
+  "library_view": "Library view",
+  "view_list": "List view",
+  "view_tiles": "Tile view"
 }

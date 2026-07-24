@@ -15,6 +15,8 @@ var SK = {
   // default to keep ZIM content byte-identical for purist users.
   A11Y_REWRITE: 'zimi_a11y_rewrite',
   LIBRARY_TAB: 'zimi_library_tab',
+  // Home library layout: 'list' (default full cards) | 'tiles' (compact grid).
+  LIBRARY_VIEW: 'zimi_library_view',
   BROWSE_HISTORY: 'zimi_browse_history',
   BOOKMARKS: 'zimi_bookmarks',
   MANAGE_PW: 'zimi_manage_pw',
@@ -1761,6 +1763,10 @@ function renderHome(filter) {
     '</div>';
   }
 
+  // Compact/full layout toggle — governs every source-card grid below (home
+  // sections and scoped section views alike). Shown whenever cards will render.
+  if (zims.length > 0) h += _libViewToggleHtml();
+
   // #34 recency-filter view: a flat, newest-first grid of just the matching
   // ZIMs (still scoped to the section, if any). No discover row or category
   // sections — the pill IS the organization, and a cross-cutting "added this
@@ -2046,10 +2052,35 @@ function _runRecentSearch(query, zim) {
   doSearch(query);
 }
 
+// Home library layout: compact "tiles" vs the default full-card "list". A
+// per-browser preference (localStorage) so it survives reloads; default is the
+// current card list.
+function _getLibraryView() {
+  return localStorage.getItem(SK.LIBRARY_VIEW) === 'tiles' ? 'tiles' : 'list';
+}
+function _setLibraryView(mode) {
+  if (mode !== 'tiles') mode = 'list';
+  try { localStorage.setItem(SK.LIBRARY_VIEW, mode); } catch (e) {}
+  renderHome();  // scope/recency filters are module state, so this re-renders in place
+}
+// The grid/list segmented toggle. Both glyphs are always shown; the active one
+// is aria-pressed. Right-aligned above the library sections.
+function _libViewToggleHtml() {
+  var view = _getLibraryView();
+  var listSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><line x1="5" y1="3.5" x2="14" y2="3.5"/><line x1="5" y1="8" x2="14" y2="8"/><line x1="5" y1="12.5" x2="14" y2="12.5"/><circle cx="2" cy="3.5" r="1"/><circle cx="2" cy="8" r="1"/><circle cx="2" cy="12.5" r="1"/></svg>';
+  var gridSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="4.5" height="4.5" rx="1"/><rect x="9.5" y="2" width="4.5" height="4.5" rx="1"/><rect x="2" y="9.5" width="4.5" height="4.5" rx="1"/><rect x="9.5" y="9.5" width="4.5" height="4.5" rx="1"/></svg>';
+  return '<div class="lib-view-bar">' +
+    '<div class="lib-view-toggle" role="group" aria-label="' + escAttr(t('library_view')) + '">' +
+    '<button class="lib-view-btn' + (view === 'list' ? ' active' : '') + '" aria-pressed="' + (view === 'list') + '" title="' + escAttr(t('view_list')) + '" aria-label="' + escAttr(t('view_list')) + '" onclick="_setLibraryView(\'list\')">' + listSvg + '</button>' +
+    '<button class="lib-view-btn' + (view === 'tiles' ? ' active' : '') + '" aria-pressed="' + (view === 'tiles') + '" title="' + escAttr(t('view_tiles')) + '" aria-label="' + escAttr(t('view_tiles')) + '" onclick="_setLibraryView(\'tiles\')">' + gridSvg + '</button>' +
+    '</div></div>';
+}
+
 function renderCardGrid(items, showStars, showCategory) {
   if (!items || !items.length) return '';
   const favs = (collectionsCache && collectionsCache.favorites) || [];
-  return '<div class="stats-grid">' + items.map(z => {
+  const gridCls = _getLibraryView() === 'tiles' ? 'stats-grid tiles' : 'stats-grid';
+  return '<div class="' + gridCls + '">' + items.map(z => {
     const icon = z.has_icon
       ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
       : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';

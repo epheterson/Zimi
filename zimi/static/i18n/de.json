@@ -1028,5 +1028,8 @@
   "users_last_login": "Zuletzt aktiv",
   "users_last_never": "Nie angemeldet",
   "users_your_account": "Ihr Konto",
-  "users_scope_limited": "Eingeschränkter Zugriff"
+  "users_scope_limited": "Eingeschränkter Zugriff",
+  "library_view": "Bibliotheksansicht",
+  "view_list": "Listenansicht",
+  "view_tiles": "Kachelansicht"
 }

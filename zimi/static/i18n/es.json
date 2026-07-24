@@ -1028,5 +1028,8 @@
   "users_last_login": "Última conexión",
   "users_last_never": "Nunca ha iniciado sesión",
   "users_your_account": "Tu cuenta",
-  "users_scope_limited": "Acceso limitado"
+  "users_scope_limited": "Acceso limitado",
+  "library_view": "Vista de biblioteca",
+  "view_list": "Vista de lista",
+  "view_tiles": "Vista de mosaico"
 }

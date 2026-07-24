@@ -1028,5 +1028,8 @@
   "users_last_login": "अंतिम बार देखा गया",
   "users_last_never": "कभी साइन इन नहीं किया",
   "users_your_account": "आपका खाता",
-  "users_scope_limited": "सीमित पहुँच"
+  "users_scope_limited": "सीमित पहुँच",
+  "library_view": "लाइब्रेरी दृश्य",
+  "view_list": "सूची दृश्य",
+  "view_tiles": "टाइल दृश्य"
 }
