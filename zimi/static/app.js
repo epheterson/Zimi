@@ -1051,8 +1051,7 @@ function route(push) {
     var aZim = aSlash === -1 ? aParam : aParam.slice(0, aSlash);
     var aPath = aSlash === -1 ? '' : aParam.slice(aSlash + 1);
     if (aZim && aPath) {
-      enterSource(aZim, false);
-      openArticle(aZim, aPath);
+      _bootDeepLinkArticle(aZim, aPath);
       return;
     }
     if (aZim) { enterSource(aZim, push); return; }
@@ -1116,6 +1115,25 @@ function route(push) {
     return;
   }
   enterHome(push);
+}
+
+// Boot straight into a shared article deep link (/?a=<zim>/<path>). The history
+// stack must be exactly [article] so browser Back leaves the site rather than
+// surfacing a phantom "home"/source page the user never actually visited. Two
+// steps get us there:
+//  1. Suppress the source's main-article auto-open (renderSource, synchronous):
+//     left on, it stamps currentArticle with the ZIM homepage, which openArticle
+//     then pushes into articleHistory — lighting up the Back arrow and giving
+//     browser Back a bogus destination.
+//  2. REPLACE the boot entry instead of pushing, so no extra entry is created.
+async function _bootDeepLinkArticle(zim, path) {
+  _popstateNoAutoReader = true;
+  try {
+    await enterSource(zim, false);
+  } finally {
+    _popstateNoAutoReader = false;
+  }
+  openArticle(zim, path, null, { replace: true });
 }
 
 function _showToast(msg, duration) {
@@ -3225,6 +3243,17 @@ function _fillInstalledDownloads(el) {
   });
 }
 
+// Jump straight into a source's homepage article in the reader (skip the
+// intermediate source page). Shared by both auto-open sites in renderSource so
+// the "become the reader" steps stay in one place.
+function _autoOpenSourceMain(name, mainPath) {
+  sourceHeaderEl.style.display = 'none';
+  output.innerHTML = '';
+  sourceAutoReader = true;
+  currentArticle = { zim: name, path: mainPath };
+  openReader('/w/' + encodeURIComponent(name) + '/' + mainPath);
+}
+
 // ── Render: Source ──
 async function renderSource(name) {
   const info = _zimInfo(name);
@@ -3251,11 +3280,7 @@ async function renderSource(name) {
   // Unless navigating back via popstate — show the source page instead
   const isZimgit = name.startsWith('zimgit-');
   if (info.main_path && !isZimgit && !_popstateNoAutoReader) {
-    sourceHeaderEl.style.display = 'none';
-    output.innerHTML = '';
-    sourceAutoReader = true;
-    currentArticle = { zim: name, path: info.main_path };
-    openReader('/w/' + encodeURIComponent(name) + '/' + info.main_path);
+    _autoOpenSourceMain(name, info.main_path);
     return;
   }
 
@@ -3291,13 +3316,14 @@ async function renderSource(name) {
 
   if (mode !== 'source' || currentSource !== name) return;
 
-  // No catalog and no main_path — show empty source page
+  // main_path ZIM that isn't a catalog: auto-open the homepage in the reader —
+  // UNLESS auto-open is suppressed (popstate back / deep-link boot), in which
+  // case leave the source header visible and don't touch currentArticle. Missing
+  // this guard was what let a deep-link boot stamp currentArticle with the ZIM
+  // homepage, which then leaked a phantom entry into articleHistory.
   if (info.main_path) {
-    sourceAutoReader = true;
-    currentArticle = { zim: name, path: info.main_path };
-    output.innerHTML = '';
-    sourceHeaderEl.style.display = 'none';
-    openReader('/w/' + encodeURIComponent(name) + '/' + info.main_path);
+    if (_popstateNoAutoReader) { output.innerHTML = ''; }
+    else _autoOpenSourceMain(name, info.main_path);
   } else if (info.entries === 0 || info.entries === '?') {
     output.innerHTML = '<div class="empty"><p>' + tH('no_content') + '</p><p class="hint">' + tH('zim_corrupted') + '</p></div>';
   } else {
@@ -8832,10 +8858,9 @@ function _stepBackToArticle(prev, replaceState) {
   readerSource = prev.zim;
   var url = _articleUrl(prev.zim, prev.path);
   var lurl = url.toLowerCase();
-  // PDFs need ?view=1 in URL so CDN cache serves SPA shell on reload
+  // Address bar keeps the SPA's canonical ?a= form (never raw /w/ — see openArticle).
   if (replaceState) {
-    var stateUrl = lurl.endsWith('.pdf') ? url + '?view=1' : url;
-    history.replaceState({ mode: 'reader', zim: prev.zim, path: prev.path }, '', stateUrl);
+    history.replaceState({ mode: 'reader', zim: prev.zim, path: prev.path }, '', _articleDeepLinkPath(prev.zim, prev.path));
   }
   if (lurl.endsWith('.pdf')) url = _pdfViewerUrl(url);
   var docTitle = (prev.title || _titleFromPath(prev.path)) + ' \u2014 Zimi';
@@ -9800,8 +9825,11 @@ function _readerPrintCleanup() {
 // opening it boots full Zimi chrome and lands straight on the article — unlike a
 // raw /w/<zim>/<path> link, which servers ambiguously serve as bare ZIM content
 // when the Sec-Fetch-Dest hint is missing (older Safari, in-app browsers).
+function _articleDeepLinkPath(zim, path) {
+  return '/?a=' + encodeURIComponent(zim + '/' + path);
+}
 function _articleDeepLink(zim, path) {
-  return location.origin + '/?a=' + encodeURIComponent(zim + '/' + path);
+  return location.origin + _articleDeepLinkPath(zim, path);
 }
 // Native share of the current article (title + a SPA deep link). Only wired when
 // navigator.share exists (the palette row is hidden otherwise).
@@ -10481,7 +10509,7 @@ function _updateLibraryBtnIcon() {
     btn.title = (tab === 'bookmarks') ? t('bookmarks') : t('history');
   }
 }
-function openArticle(zim, path, title) {
+function openArticle(zim, path, title, opts) {
   // Any normal article open cancels a pending "return to almanac" intent; the
   // almanac deep-link path re-stamps it immediately after this call returns.
   _almReturnScroll = null;
@@ -10514,10 +10542,19 @@ function openArticle(zim, path, title) {
   _prefetchArticleLangs();
   // Persist to browse history (localStorage)
   _histPushArticle(zim, path, title || _titleFromPath(path));
-  // Push state with the original /w/ URL (not the viewer URL) so reload serves SPA shell.
-  // PDFs get ?view=1 so CDN caches don't serve raw PDF binary on reload.
-  var pushUrl = lurl.endsWith('.pdf') ? url + (url.includes('?') ? '&' : '?') + 'view=1' : url;
-  history.pushState({ mode: 'reader', zim: zim, path: path }, '', pushUrl);
+  // Address bar always carries the SPA's canonical deep-link form (?a=<zim>/<path>),
+  // never the raw /w/ content URL. A /w/<zim>/<path> URL is served as the BARE ZIM
+  // article (no Zimi chrome), so leaving one in the bar strands the user in a
+  // headerless page on reload. The ?a= form always reboots full SPA chrome (route()),
+  // and being a query on '/', not a '.pdf' path, it also sidesteps the PDF
+  // raw-binary-on-reload hazard the old ?view=1 kludge guarded against.
+  var canonUrl = _articleDeepLinkPath(zim, path);
+  var st = { mode: 'reader', zim: zim, path: path };
+  // Deep-link boot replaces the boot entry so the history stack is exactly
+  // [article] — browser Back then leaves the site instead of surfacing a phantom
+  // home the user never visited.
+  if (opts && opts.replace) history.replaceState(st, '', canonUrl);
+  else history.pushState(st, '', canonUrl);
   // PDF: route through pdf.js viewer (renders in reader iframe like any article)
   if (lurl.endsWith('.pdf')) {
     url = _pdfViewerUrl(url);
