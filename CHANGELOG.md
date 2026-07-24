@@ -145,8 +145,9 @@ and delta updates on top.
   refreshes in the background (stale-while-revalidate), and reuses the fetched
   feed for the rest of the session instead of re-downloading it.
 - On smaller screens the home library's filter pills (recent searches,
-  languages, recency) collapse into a single filter dropdown, so the header
-  stays clean in a big multilingual library.
+  languages) collapse into a single filter dropdown, so the header stays
+  clean in a big multilingual library. Recently added and recently updated
+  ZIMs surface as their own home sections rather than filter pills.
 - **Everything user-visible is translated.** A full i18n audit closed English
   leaks across all ten locales, removed orphaned keys, and tightened Chinese
   typography — every string a user sees now has a translation in every language.
@@ -185,6 +186,22 @@ and delta updates on top.
 
 ### Fixed
 
+- **Interrupted downloads pick up where they left off.** Quitting or crashing
+  mid-download no longer turns the partial file into "junk to clean up" —
+  Retry resumes from the bytes already on disk (HTTP Range, with a size check
+  so a changed remote file restarts clean), and the cleanup offer only lists
+  genuinely orphaned partials, never anything a download still wants.
+- **The update check can't hang.** A wedged connection to the Kiwix catalog
+  used to spin "Loading…" forever (most visibly in the desktop app); the
+  whole check is now bounded, and a failed catalog page is skipped instead
+  of sinking the rest.
+- The desktop reading ⋯ menu no longer lists Random and Language twice, the
+  reader's serif font choice now applies to headings too, and the settings
+  gear shows a single activity badge instead of stacking two.
+- Orrery hover cards stay put while you mouse over to click their article
+  link, and the Sun and the heliopause now link out like the planets do.
+  The night sky also got real depth: a few hundred faint background stars,
+  seeded deterministically and cached instead of re-rolled every frame.
 - A passwordless Zimi asked non-local visitors for a password that didn't
   exist. Management is local-network-only until a password is set — the UI
   now says exactly that instead of showing a password prompt, and library
