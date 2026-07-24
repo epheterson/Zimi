@@ -797,12 +797,6 @@ def resume_pending_downloads():
     return resumed
 
 
-# A partial (.zim.tmp) older than this with no active/queued/pending backing is
-# treated as orphaned junk — the only thing the "clean up partials" action
-# removes. Matches the serve-path stale sweep (86400s).
-_PARTIAL_STALE_HOURS = 24
-
-
 def _pending_download_filenames():
     """Filenames recorded in downloads.json — these resume on next start, so
     their partials are still wanted even before the resume actually fires."""
@@ -820,20 +814,24 @@ def _pending_download_filenames():
 def classify_partials():
     """Split ZIM_DIR's ``*.zim.tmp`` partials into ``(protected, orphaned)``.
 
-    A partial ``<name>.zim.tmp`` is *protected* — still wanted, never offered
-    for cleanup — when it is backed by an in-memory active/queued download, by a
-    pending entry that resumes on next start, or when it is recent (younger than
-    ``_PARTIAL_STALE_HOURS``) and holds real progress (an interrupted download
-    not yet re-submitted; Retry resumes it from the partial via Range). Anything
-    else is *orphaned*: stale with no backing, or a zero-byte stub. Only
-    orphaned partials are safe to delete. Each list holds
+    Protection is *state-based*, never based on a file's age or size: a partial
+    ``<name>.zim.tmp`` is protected only when a download record still wants it —
+    an entry in the active table (including a failed-but-retryable one that the
+    UI still shows a Retry button for; Retry resumes it from the partial via
+    Range), a queued entry, or a pending entry that resumes on next start. A
+    cancelled download is not protected — its partial was already removed. A
+    bare ``.zim.tmp`` with no matching download record is *orphaned* — the only
+    thing cleanup targets — regardless of how recent it is. Each list holds
     ``{filename, size_bytes, age_hours}`` dicts.
     """
     with _download_lock:
+        # Include done-with-error entries: those are the "Download failed /
+        # Retry" state, still tracked and resumable, so their partials stay
+        # wanted. Only a cancelled download disowns its partial.
         wanted = {
             d["filename"]
             for d in _active_downloads.values()
-            if not d.get("done") and not d.get("cancelled") and d.get("filename")
+            if not d.get("cancelled") and d.get("filename")
         }
         wanted |= {q["filename"] for q in _download_queue if q.get("filename")}
     wanted |= _pending_download_filenames()
@@ -855,8 +853,7 @@ def classify_partials():
             continue
         info = {"filename": f, "size_bytes": size, "age_hours": round(age_hours, 1)}
         base = f[: -len(".tmp")]  # "<name>.zim.tmp" → "<name>.zim"
-        recent_progress = size > 0 and age_hours < _PARTIAL_STALE_HOURS
-        if base in wanted or recent_progress:
+        if base in wanted:
             protected.append(info)
         else:
             orphaned.append(info)

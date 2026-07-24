@@ -402,15 +402,12 @@ class TestServerEndpoints(unittest.TestCase):
 
     def test_manage_cleanup_tmp_removes_files(self):
         """Cleanup removes genuinely orphaned .zim.tmp files."""
-        import time
-
-        # An orphaned partial: stale mtime, no active/queued/pending backing.
-        # (A recent partial with progress is protected — see test_partial_cleanup.)
+        # A bare partial with no active/queued/pending download record is
+        # orphaned, so cleanup removes it (a still-wanted partial would be
+        # protected — see test_partial_cleanup).
         tmp_path = os.path.join(self._tmpdir, "test_dl.zim.tmp")
         with open(tmp_path, "wb") as f:
             f.write(b"partial" * 100)
-        old = time.time() - 48 * 3600
-        os.utime(tmp_path, (old, old))
         # Verify it shows in stats
         data, _ = self._get("/manage/stats")
         self.assertTrue(

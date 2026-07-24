@@ -1641,19 +1641,23 @@ def main():
         print(f"ZIM Reader API starting on port {args.port}")
         print(f"ZIM directory: {ZIM_DIR}")
         load_cache()
-        # Sweep partial downloads. Drop only genuinely orphaned ones; keep
-        # resumable partials (recent-with-progress or listed in downloads.json)
-        # so the resume_pending_downloads() pass in start_background_services
-        # can pick them up via Range instead of restarting from zero.
+        # Startup partial-download sweep. Keep partials that a download record
+        # still wants (resume_pending_downloads() picks those up via Range).
+        # For the rest (orphaned), auto-delete only the stale ones (>24h) — a
+        # recent orphaned partial is left in place so the user can re-add it and
+        # resume; the interactive "clean up" action can clear it on demand.
         from zimi import library as _lib
 
         _protected, _orphaned = _lib.classify_partials()
         for info in _protected:
             log.info("Partial download found (resumable): %s", info["filename"])
         for info in _orphaned:
+            if info["age_hours"] * 3600 <= 86400:
+                log.info("Partial download found (orphaned): %s", info["filename"])
+                continue
             try:
                 os.remove(os.path.join(ZIM_DIR, info["filename"]))
-                log.info("Cleaned up orphaned partial download: %s", info["filename"])
+                log.info("Cleaned up stale partial download: %s", info["filename"])
             except OSError:
                 pass
         warm_indexes()

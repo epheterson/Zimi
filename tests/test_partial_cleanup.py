@@ -3,9 +3,11 @@ genuinely orphaned ones for cleanup.
 
 Field report: after relaunching mid-download, Settings offered to "clean up" a
 partial that was still wanted. The cleanup offer (disk.tmp_files) and the
-/manage/cleanup-tmp handler both draw their delete set from classify_partials,
-so a partial that is active, queued, pending-resume, or recent-with-progress
-must be classified protected — never orphaned.
+/manage/cleanup-tmp handler both draw their delete set from classify_partials.
+Protection is *state-based*: a partial is protected only when a download record
+still wants it (active — including a failed-but-retryable download the UI shows
+Retry for — queued, or pending-resume). A bare .zim.tmp with no matching record
+is orphaned regardless of age, and stays cleanable.
 """
 
 import json
@@ -50,16 +52,29 @@ def _env(tmp_path, monkeypatch):
 def test_only_orphaned_partials_are_offered_for_cleanup(_env):
     zim_dir, data_dir, _tmp = _env
 
-    # Protected cases:
+    # Protected — a download record still wants each of these:
     _tmp("active_en_2026-01.zim.tmp", 100, 0.1)
     _tmp("queued_en_2026-01.zim.tmp", 100, 0.1)
     _tmp("pending_en_2026-01.zim.tmp", 100, 0.1)
-    _tmp("recent_en_2026-01.zim.tmp", 100, 1.0)  # young + has progress
-    # Orphaned cases:
-    _tmp("stale_en_2026-01.zim.tmp", 100, 48.0)  # old, no backing
-    _tmp("empty_en_2026-01.zim.tmp", 0, 48.0)  # zero-byte junk
+    _tmp("failed_en_2026-01.zim.tmp", 100, 0.1)  # done+error → Retry available
+    # Orphaned — no matching record, cleanable regardless of age:
+    _tmp("recent_en_2026-01.zim.tmp", 100, 1.0)  # young but no download record
+    _tmp("stale_en_2026-01.zim.tmp", 100, 48.0)
+    _tmp("empty_en_2026-01.zim.tmp", 0, 48.0)
+    # Cancelled downloads disown their partial → orphaned.
+    _tmp("cancelled_en_2026-01.zim.tmp", 100, 0.1)
 
     lib._active_downloads["1"] = {"filename": "active_en_2026-01.zim", "done": False}
+    lib._active_downloads["2"] = {
+        "filename": "failed_en_2026-01.zim",
+        "done": True,
+        "error": "All mirror(s) failed",
+    }
+    lib._active_downloads["3"] = {
+        "filename": "cancelled_en_2026-01.zim",
+        "done": True,
+        "cancelled": True,
+    }
     lib._download_queue.append({"filename": "queued_en_2026-01.zim"})
     (data_dir / "downloads.json").write_text(
         json.dumps({"pending": [{"filename": "pending_en_2026-01.zim"}]})
@@ -73,20 +88,27 @@ def test_only_orphaned_partials_are_offered_for_cleanup(_env):
         "active_en_2026-01.zim.tmp",
         "queued_en_2026-01.zim.tmp",
         "pending_en_2026-01.zim.tmp",
-        "recent_en_2026-01.zim.tmp",
+        "failed_en_2026-01.zim.tmp",
     }
-    assert orph == {"stale_en_2026-01.zim.tmp", "empty_en_2026-01.zim.tmp"}
+    assert orph == {
+        "recent_en_2026-01.zim.tmp",
+        "stale_en_2026-01.zim.tmp",
+        "empty_en_2026-01.zim.tmp",
+        "cancelled_en_2026-01.zim.tmp",
+    }
 
 
 def test_cleanup_removing_orphaned_leaves_protected_on_disk(_env):
     zim_dir, data_dir, _tmp = _env
-    _tmp("recent_en_2026-01.zim.tmp", 100, 1.0)
-    _tmp("stale_en_2026-01.zim.tmp", 100, 48.0)
+    _tmp("active_en_2026-01.zim.tmp", 100, 0.1)
+    _tmp("orphan_en_2026-01.zim.tmp", 100, 1.0)  # no record → orphaned
+
+    lib._active_downloads["1"] = {"filename": "active_en_2026-01.zim", "done": False}
 
     _protected, orphaned = lib.classify_partials()
     # Simulate the cleanup handler: it deletes exactly the orphaned set.
     for info in orphaned:
         os.remove(os.path.join(str(zim_dir), info["filename"]))
 
-    assert (zim_dir / "recent_en_2026-01.zim.tmp").exists()
-    assert not (zim_dir / "stale_en_2026-01.zim.tmp").exists()
+    assert (zim_dir / "active_en_2026-01.zim.tmp").exists()
+    assert not (zim_dir / "orphan_en_2026-01.zim.tmp").exists()
