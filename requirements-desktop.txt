@@ -11,3 +11,10 @@ zeroconf>=0.130.0
 # it explicitly with an env marker so PyInstaller always collects it into the
 # bundle and mac/linux builds skip it entirely.
 pythonnet>=3.0.0 ; sys_platform == "win32"
+
+# In-process BitTorrent engine (optional download accelerator + seeding).
+# Installed separately by the build (deploy.sh / desktop-release.yml), NOT
+# pinned here as a hard requirement: libtorrent 2.0 ships wheels only for
+# CPython <= 3.13, so listing it here would break `pip install -r` on newer
+# interpreters. Absent → the app runs HTTP-only. Build under Python <= 3.13 to
+# bundle it.

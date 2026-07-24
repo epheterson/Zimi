@@ -17,6 +17,7 @@ zims/
 # Build artifacts
 /build/
 /dist/
+/.build-venv/
 *.spec
 *.spec.bak
 Sparkle.framework/
