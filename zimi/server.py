@@ -358,6 +358,79 @@ def _migrate_data_files():
                 except OSError:
                     pass
 
+    # 4. Stray .torrent companions in ZIM_DIR → ZIMI_DATA_DIR/bt/torrents
+    _migrate_stray_torrent_files()
+
+
+def _migrate_stray_torrent_files():
+    """Move any ``*.torrent`` companions out of ZIM_DIR into the cache dir.
+
+    Torrent metadata belongs under ``ZIMI_DATA_DIR/bt/torrents`` — never beside
+    the ZIMs. Older installs (aria2-era, pre-1.8) left ``<name>.zim.torrent``
+    next to the ZIM; those are bencoded metadata, not ZIMs, so a health scan
+    flags them and zimcheck chokes on one with "Invalid magic number", looking
+    like ZIM corruption (#38). Move them once — non-recursive listdir, never a
+    walk — repoint any torrents-manifest record that referenced the old
+    in-library path, and log a single summary line. Idempotent."""
+    try:
+        strays = [f for f in os.listdir(ZIM_DIR) if f.endswith(".torrent")]
+    except OSError:
+        return
+    if not strays:
+        return
+    tdir = os.path.join(ZIMI_DATA_DIR, "bt", "torrents")
+    try:
+        os.makedirs(tdir, exist_ok=True)
+    except OSError:
+        return
+    moved = {}  # old ZIM_DIR path -> new bt/torrents path
+    for fn in strays:
+        src = os.path.join(ZIM_DIR, fn)
+        dst = os.path.join(tdir, fn)
+        if os.path.exists(dst):
+            # A good copy is already archived — drop the in-library litter.
+            try:
+                os.remove(src)
+                moved[os.path.normpath(src)] = dst
+            except OSError:
+                pass
+            continue
+        try:
+            os.replace(src, dst)  # same-filesystem fast path
+        except OSError:
+            try:
+                shutil.copy2(src, dst)
+                os.remove(src)
+            except OSError:
+                continue
+        moved[os.path.normpath(src)] = dst
+    if not moved:
+        return
+    # Repoint any manifest record whose torrent_file pointed into ZIM_DIR.
+    manifest_path = os.path.join(ZIMI_DATA_DIR, "bt", "torrents.json")
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest = json.load(f)
+    except (OSError, ValueError):
+        manifest = None
+    if isinstance(manifest, dict):
+        changed = False
+        for entry in manifest.values():
+            if not isinstance(entry, dict):
+                continue
+            tf = entry.get("torrent_file")
+            if tf and os.path.normpath(tf) in moved:
+                entry["torrent_file"] = moved[os.path.normpath(tf)]
+                changed = True
+        if changed:
+            try:
+                _atomic_write_json(manifest_path, manifest)
+            except OSError:
+                pass
+    log.info(
+        "Moved %d stray .torrent file(s) out of ZIM_DIR into bt/torrents", len(moved)
+    )
+
 
 # ============================================================================
 # Constants & Shared Utilities
