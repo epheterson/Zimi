@@ -103,6 +103,8 @@ function _lc(name) { var s = _tc(name); var k = _CONST_KEYS[name]; return k ? _a
 function _lterm(suffix, html) { return _alLink('term:' + suffix, html, html); }
 // Link a season by its article key ('winter'|'spring'|'summer'|'autumn').
 function _lseason(key, html) { return key ? _alLink('season:' + key, html, html) : html; }
+// Link a Messages Across Time inscription by its manifest id (key = 'rosetta:<id>').
+function _lrosetta(id, html) { return id ? _alLink('rosetta:' + id, html, html) : html; }
 
 function _dayOfYear(date) {
   var start = new Date(date.getFullYear(), 0, 1);
@@ -4875,6 +4877,9 @@ async function _renderRosettaStone(now) {
     html += '<button class="' + cls + '" onclick="_selectRosettaText(' + si + ')">' + _rf(manifest[si], 'title') + '</button>';
   }
   html += '</div>';
+
+  // Title (linked to the encyclopedia article when the curated Q-ID resolves)
+  html += '<div class="rosetta-title-link">' + _lrosetta(entry.id, _almEsc(_rf(entry, 'title'))) + '</div>';
 
   // Metadata
   html += '<div class="rosetta-meta">' + _rf(entry, 'date') + ' \u00b7 ' + _rf(entry, 'place') + ' \u00b7 ' + _rf(entry, 'medium') + '</div>';

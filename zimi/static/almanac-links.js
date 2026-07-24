@@ -571,8 +571,26 @@
     'ev:beagle':         { q: 'Q35926',     en: 'HMS Beagle',                  sub: 'HMS Beagle' }
   };
 
+  // Messages Across Time — the enduring-inscription artifacts shown in the
+  // almanac's rosetta panel (almanac.js _renderRosettaStone). Keys match each
+  // entry's `id` in /static/rosetta/manifest.json exactly, prefixed
+  // 'rosetta:'. Q-IDs verified against Wikidata (wikibase_item via the live
+  // English Wikipedia pageprops API, redirects followed).
+  var MESSAGES = {
+    'rosetta:code-of-hammurabi':   { q: 'Q93304',  en: 'Code of Hammurabi' },
+    'rosetta:cyrus-cylinder':      { q: 'Q405008', en: 'Cyrus Cylinder' },
+    'rosetta:behistun-inscription':{ q: 'Q180012', en: 'Behistun inscription' },
+    'rosetta:rosetta-stone':       { q: 'Q48584',  en: 'Rosetta Stone' },
+    'rosetta:magna-carta':         { q: 'Q12519',  en: 'Magna Carta' },
+    'rosetta:universal-declaration': { q: 'Q7813', en: 'Universal Declaration of Human Rights' },
+    'rosetta:pioneer-plaque':      { q: 'Q412',    en: 'Pioneer plaque' },
+    'rosetta:arecibo-message':     { q: 'Q384071', en: 'Arecibo message' },
+    'rosetta:golden-record':       { q: 'Q156315', en: 'Voyager Golden Record' },
+    'rosetta:georgia-guidestones': { q: 'Q958391', en: 'Georgia Guidestones' }
+  };
+
   var MAP = {};
-  [PLANETS, PROBES, CONSTELLATIONS, SHOWERS, ECLIPSES, CALENDARS, ZODIAC, STARS, HOLIDAYS, TERMS, SEASONS, BELTS, EVENTS]
+  [PLANETS, PROBES, CONSTELLATIONS, SHOWERS, ECLIPSES, CALENDARS, ZODIAC, STARS, HOLIDAYS, TERMS, SEASONS, BELTS, EVENTS, MESSAGES]
     .forEach(function (group) { for (var k in group) if (group.hasOwnProperty(k)) MAP[k] = group[k]; });
 
   // Register curated holidays under a "holiday:<norm>" key so wrapHoliday() can
