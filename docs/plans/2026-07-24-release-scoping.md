@@ -31,6 +31,11 @@ The four yes-items that missed the train, plus polish debt:
   page gets a curated entry (Flag Day, Summer Solstice, …) — same closed-set
   provenance rules, no search fallback. Audit the full entity list for
   unmatched-but-matchable items.
+- Real night sky: the horizon scene's background stars are procedural
+  filler — replace with the actual bright-star catalogue positions
+  (correct layout for time/location, moving with the sky) so the scene
+  matches what's really overhead. Eric: "I want REAL stars / layout in
+  the sky moving."
 
 ## v1.9 "Industry Edition"
 Enterprise + the deep community items:
