@@ -1748,6 +1748,7 @@ function renderHome(filter) {
   }
   if (_showLangPills) {
     _rows += '<div class="lang-pills" role="group" aria-label="' + escAttr(t('filter_by_language')) + '">';
+    _rows += _allResetPill(homeLangFilter.size === 0, 'clearHomeLang()');
     _rows += _langCodes.map(function(code) {
       return _homeLangPill(code, _langCounts[code], homeLangFilter.has(code));
     }).join('');
@@ -2061,6 +2062,13 @@ function filterHomeLang(code) {
   // Toggle membership; empty Set = all languages.
   if (homeLangFilter.has(code)) homeLangFilter.delete(code);
   else homeLangFilter.add(code);
+  renderHome();
+}
+
+// "All" reset for the home language row — clears every language selection.
+function clearHomeLang() {
+  hideSuggest();
+  homeLangFilter.clear();
   renderHome();
 }
 
@@ -3691,6 +3699,23 @@ function toggleLanguageFilter(lang) {
   renderSearchResults(allResults, currentSource);
 }
 
+// "All" reset pills at the head of each search filter row — one click each on
+// the two Alls returns the results to the unfiltered set.
+function clearLanguageFilter() {
+  activeLanguageFilters.clear();
+  renderSearchResults(allResults, currentSource);
+}
+function clearSourceFilter() {
+  activeSourceFilters.clear();
+  visibleResultCount = RESULTS_PER_PAGE;
+  renderSearchResults(allResults, null);
+}
+// One "All" reset pill (active when no filter is applied on its row).
+function _allResetPill(active, handler) {
+  return '<button class="pill' + (active ? ' active' : '') + '" aria-pressed="' +
+    active + '" onclick="' + handler + '">' + tH('filter_all') + '</button>';
+}
+
 function renderSearchResults(data, scope) {
   if (snippetController) { snippetController.abort(); snippetController = null; }
   let items = data.results || [];
@@ -3717,7 +3742,9 @@ function renderSearchResults(data, scope) {
   const langCodes = Object.keys(byLanguage);
   if (!scope && langCodes.length > 1) {
     // Sort by count descending, same as source pills
-    langPillsHtml = '<div class="lang-pills" role="group" aria-label="' + escAttr(t('filter_by_language')) + '">' + langCodes.sort(function(a, b) { return (byLanguage[b] || 0) - (byLanguage[a] || 0); }).map(function(lang) {
+    langPillsHtml = '<div class="lang-pills" role="group" aria-label="' + escAttr(t('filter_by_language')) + '">' +
+      _allResetPill(activeLanguageFilters.size === 0, 'clearLanguageFilter()') +
+      langCodes.sort(function(a, b) { return (byLanguage[b] || 0) - (byLanguage[a] || 0); }).map(function(lang) {
       var name = _NATIVE_LANG_NAMES[lang] || lang;
       // Dim language pills when a source filter is active and that source has no results in this language
       var dimmed = activeSourceFilters.size > 0 && ![...activeSourceFilters].some(function(s) { return langsBySource[s] && langsBySource[s].has(lang); });
@@ -3731,7 +3758,8 @@ function renderSearchResults(data, scope) {
   const sourceNames = Object.keys(bySource);
   if (!scope && sourceNames.length > 1) {
     // Sort by count descending so most relevant sources are visible first
-    var sourcePillsHtml = sourceNames.sort(function(a, b) { return (bySource[b] || 0) - (bySource[a] || 0); }).map(function(s) {
+    var sourcePillsHtml = _allResetPill(activeSourceFilters.size === 0, 'clearSourceFilter()') +
+      sourceNames.sort(function(a, b) { return (bySource[b] || 0) - (bySource[a] || 0); }).map(function(s) {
       // Dim source pills when a language filter is active and this source has no results in that language
       var dimmed = activeLanguageFilters.size > 0 && ![...activeLanguageFilters].some(function(lang) { return sourcesByLang[lang] && sourcesByLang[lang].has(s); });
       return '<button class="pill' + (activeSourceFilters.has(s) ? ' active' : '') + (dimmed ? ' dimmed' : '') +

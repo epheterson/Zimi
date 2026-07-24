@@ -208,10 +208,9 @@
   .stats-bar .num { color: var(--amber); font-weight: 600; }
 
   /* ── Pills (categories + search source filters) ── */
-  .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 20px; }
-  .pills-row { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: var(--border) transparent; padding-bottom: 2px; width: 100%; }
-  .pills-row::-webkit-scrollbar { height: 4px; }
-  .pills-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin-bottom: 20px; }
+  .pills-row { display: flex; align-items: center; gap: 6px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; width: 100%; }
+  .pills-row::-webkit-scrollbar { display: none; }
   /* ── Catalog lang row (single-row scroll with search icon) ── */
   .catalog-lang-row { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; overflow: hidden; }
   .catalog-lang-scroll { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; flex: 1; min-width: 0; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 2px 0; }
@@ -224,13 +223,17 @@
   }
   .catalog-lang-search-btn.expanded { width: 140px; border-color: var(--amber-border); background: var(--surface); justify-content: flex-start; gap: 6px; padding: 0 10px; }
   .catalog-lang-search-btn.expanded input { border: none; background: transparent; color: var(--text); font-size: 11px; outline: none; width: 100%; font-weight: 500; }
+  /* One base geometry for every filter/category/source/language/recency pill.
+     Variants (.cat-pill, .col-pill, .reorder-pill, .dl-filter-pill, .lang-pill…)
+     ride on top of .pill and may override colour/accent ONLY — never height,
+     padding, or font-size, so rows never render at mismatched heights. */
   .pill, .lang-pill {
+    display: inline-flex; align-items: center; gap: 5px; box-sizing: border-box;
+    min-height: 28px; padding: 6px 14px; font-size: 12px; line-height: 1;
     font-weight: 500; white-space: nowrap;
     background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
     color: var(--text2); cursor: pointer; transition: color 0.2s, background 0.2s, border-color 0.2s;
   }
-  .pill { padding: 6px 14px; font-size: 12px; }
-  .lang-pill { padding: 4px 12px; font-size: 11px; }
   .pill:hover, .lang-pill:hover,
   .ci-variant-btn:hover, .flavor-pill:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
   .pill.active, .lang-pill.active { background: linear-gradient(135deg, var(--amber), var(--amber2)); color: #000; border-color: transparent; font-weight: 600; }
@@ -252,7 +255,7 @@
   .reorder-pill:hover { color: var(--amber); border-color: var(--amber); background: var(--amber-glow); border-style: dashed; }
 
   /* ── Language pills (above source pills in search results) ── */
-  .lang-pills { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; width: 100%; }
+  .lang-pills { display: flex; align-items: center; gap: 6px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; width: 100%; }
   .lang-pills::-webkit-scrollbar { display: none; }
 
   /* ── Filter pills inside the search dropdown ── the recency + language pills
