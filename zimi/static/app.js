@@ -1812,9 +1812,8 @@ function renderHome(filter) {
     '</div>';
   }
 
-  // Compact/full layout toggle — governs every source-card grid below (home
-  // sections and scoped section views alike). Shown whenever cards will render.
-  if (zims.length > 0) h += _libViewToggleHtml();
+  // The compact/full layout toggle is injected onto the first section header
+  // after render (see _placeViewToggle) rather than sitting in a bar of its own.
 
   // #34 recency-filter view: a flat, newest-first grid of just the matching
   // ZIMs (still scoped to the section, if any). No discover row or category
@@ -1833,6 +1832,7 @@ function renderHome(filter) {
       ? renderCardGrid(_list, true, true)
       : '<div class="empty"><p>' + tH('no_recent_sources') + '</p></div>';
     output.innerHTML = h;
+    _placeViewToggle();
     return;
   }
 
@@ -1973,6 +1973,7 @@ function renderHome(filter) {
     if (_prevRow && _prevRow.innerHTML && _prevRow.dataset.lang === _currentLang) _prevDiscoverHtml = _prevRow.innerHTML;
   }
   output.innerHTML = h;
+  _placeViewToggle();
   if (_showDiscover) {
     if (_prevDiscoverHtml) {
       // Restore cached discover DOM — avoid re-fetch flash
@@ -2120,16 +2121,28 @@ function _setLibraryView(mode) {
   renderHome();  // scope/recency filters are module state, so this re-renders in place
 }
 // The grid/list segmented toggle. Both glyphs are always shown; the active one
-// is aria-pressed. Right-aligned above the library sections.
+// is aria-pressed. It's a global view control but lives on the first section
+// header's line (right-aligned) — _placeViewToggle injects it there after render.
+// stopPropagation keeps a click off the enclosing clickable heading's onclick.
 function _libViewToggleHtml() {
   var view = _getLibraryView();
   var listSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><line x1="5" y1="3.5" x2="14" y2="3.5"/><line x1="5" y1="8" x2="14" y2="8"/><line x1="5" y1="12.5" x2="14" y2="12.5"/><circle cx="2" cy="3.5" r="1"/><circle cx="2" cy="8" r="1"/><circle cx="2" cy="12.5" r="1"/></svg>';
   var gridSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="4.5" height="4.5" rx="1"/><rect x="9.5" y="2" width="4.5" height="4.5" rx="1"/><rect x="2" y="9.5" width="4.5" height="4.5" rx="1"/><rect x="9.5" y="9.5" width="4.5" height="4.5" rx="1"/></svg>';
-  return '<div class="lib-view-bar">' +
-    '<div class="lib-view-toggle" role="group" aria-label="' + escAttr(t('library_view')) + '">' +
-    '<button class="lib-view-btn' + (view === 'list' ? ' active' : '') + '" aria-pressed="' + (view === 'list') + '" title="' + escAttr(t('view_list')) + '" aria-label="' + escAttr(t('view_list')) + '" onclick="_setLibraryView(\'list\')">' + listSvg + '</button>' +
-    '<button class="lib-view-btn' + (view === 'tiles' ? ' active' : '') + '" aria-pressed="' + (view === 'tiles') + '" title="' + escAttr(t('view_tiles')) + '" aria-label="' + escAttr(t('view_tiles')) + '" onclick="_setLibraryView(\'tiles\')">' + gridSvg + '</button>' +
-    '</div></div>';
+  return '<span class="lib-view-toggle" role="group" aria-label="' + escAttr(t('library_view')) + '">' +
+    '<button class="lib-view-btn' + (view === 'list' ? ' active' : '') + '" aria-pressed="' + (view === 'list') + '" title="' + escAttr(t('view_list')) + '" aria-label="' + escAttr(t('view_list')) + '" onclick="event.stopPropagation();_setLibraryView(\'list\')">' + listSvg + '</button>' +
+    '<button class="lib-view-btn' + (view === 'tiles' ? ' active' : '') + '" aria-pressed="' + (view === 'tiles') + '" title="' + escAttr(t('view_tiles')) + '" aria-label="' + escAttr(t('view_tiles')) + '" onclick="event.stopPropagation();_setLibraryView(\'tiles\')">' + gridSvg + '</button>' +
+    '</span>';
+}
+
+// Place the segmented view toggle on the first section header (Favorites, or the
+// first category/collection) — a global control that reuses the first header's
+// line rather than a bar of its own. No-op when there is no header to host it.
+function _placeViewToggle() {
+  if (!zimsCache || !zimsCache.length) return;
+  var heading = output.querySelector('.cat-heading');
+  if (!heading || heading.querySelector('.lib-view-toggle')) return;
+  heading.classList.add('has-view-toggle');
+  heading.insertAdjacentHTML('beforeend', _libViewToggleHtml());
 }
 
 function renderCardGrid(items, showStars, showCategory) {

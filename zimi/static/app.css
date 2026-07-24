@@ -531,6 +531,14 @@
   .cat-heading:first-child { margin-top: 0; }
   .cat-heading.clickable { cursor: pointer; }
   .cat-heading.clickable:hover { opacity: 0.8; }
+  /* The global view toggle rides on the first section header's line, pinned to
+     its trailing edge. Absolute (not flex) so the gradient-clipped heading text
+     is untouched; text-fill-color reset so the toggle glyphs aren't transparent. */
+  .cat-heading.has-view-toggle { position: relative; padding-inline-end: 74px; }
+  .cat-heading .lib-view-toggle {
+    position: absolute; inset-inline-end: 0; top: 50%; transform: translateY(-50%);
+    -webkit-text-fill-color: initial;
+  }
 
   /* ── Source header ── */
   .source-header { display: flex; gap: 16px; align-items: flex-start; padding: 4px 0 24px; }
@@ -569,8 +577,7 @@
   .stat-card .detail { font-size: 11px; color: var(--text2); margin-top: auto; }
 
   /* ── Library view toggle (compact tiles vs full list) ── */
-  .lib-view-bar { display: flex; justify-content: flex-end; margin: 4px 0 0; }
-  .lib-view-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .lib-view-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; vertical-align: middle; }
   .lib-view-btn {
     display: flex; align-items: center; justify-content: center; width: 32px; height: 28px;
     background: none; border: none; color: var(--text2); cursor: pointer; padding: 0;
