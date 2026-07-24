@@ -1328,18 +1328,23 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(500, {"error": "Failed to delete file"})
 
     elif parsed.path == "/manage/cleanup-tmp":
-        # Remove partial (.tmp) downloads
+        # Remove only genuinely orphaned partials. Defense in depth: even if a
+        # stale client posts this, never delete an active, queued, or
+        # resumable-with-progress .zim.tmp the user still wants.
+        from zimi import library as _lib
+
+        _protected, orphaned = _lib.classify_partials()
         removed = []
-        for f in os.listdir(_srv.ZIM_DIR):
-            if f.endswith(".zim.tmp"):
-                try:
-                    fpath = os.path.join(_srv.ZIM_DIR, f)
-                    size = os.path.getsize(fpath)
-                    os.remove(fpath)
-                    removed.append({"filename": f, "size_bytes": size})
-                    log.info("Cleaned up partial download: %s", f)
-                except OSError:
-                    pass
+        for info in orphaned:
+            fpath = os.path.join(_srv.ZIM_DIR, info["filename"])
+            try:
+                os.remove(fpath)
+                removed.append(
+                    {"filename": info["filename"], "size_bytes": info["size_bytes"]}
+                )
+                log.info("Cleaned up orphaned partial download: %s", info["filename"])
+            except OSError:
+                pass
         return handler._json(200, {"removed": removed})
 
     elif parsed.path == "/manage/update":

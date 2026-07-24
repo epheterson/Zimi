@@ -797,6 +797,72 @@ def resume_pending_downloads():
     return resumed
 
 
+# A partial (.zim.tmp) older than this with no active/queued/pending backing is
+# treated as orphaned junk — the only thing the "clean up partials" action
+# removes. Matches the serve-path stale sweep (86400s).
+_PARTIAL_STALE_HOURS = 24
+
+
+def _pending_download_filenames():
+    """Filenames recorded in downloads.json — these resume on next start, so
+    their partials are still wanted even before the resume actually fires."""
+    try:
+        with open(_pending_downloads_path(), encoding="utf-8") as f:
+            return {
+                it.get("filename")
+                for it in json.load(f).get("pending", [])
+                if it.get("filename")
+            }
+    except (OSError, ValueError):
+        return set()
+
+
+def classify_partials():
+    """Split ZIM_DIR's ``*.zim.tmp`` partials into ``(protected, orphaned)``.
+
+    A partial ``<name>.zim.tmp`` is *protected* — still wanted, never offered
+    for cleanup — when it is backed by an in-memory active/queued download, by a
+    pending entry that resumes on next start, or when it is recent (younger than
+    ``_PARTIAL_STALE_HOURS``) and holds real progress (an interrupted download
+    not yet re-submitted; Retry resumes it from the partial via Range). Anything
+    else is *orphaned*: stale with no backing, or a zero-byte stub. Only
+    orphaned partials are safe to delete. Each list holds
+    ``{filename, size_bytes, age_hours}`` dicts.
+    """
+    with _download_lock:
+        wanted = {
+            d["filename"]
+            for d in _active_downloads.values()
+            if not d.get("done") and not d.get("cancelled") and d.get("filename")
+        }
+        wanted |= {q["filename"] for q in _download_queue if q.get("filename")}
+    wanted |= _pending_download_filenames()
+
+    protected, orphaned = [], []
+    try:
+        names = os.listdir(_srv.ZIM_DIR)
+    except OSError:
+        return protected, orphaned
+    now = time.time()
+    for f in names:
+        if not f.endswith(".zim.tmp"):
+            continue
+        fpath = os.path.join(_srv.ZIM_DIR, f)
+        try:
+            size = os.path.getsize(fpath)
+            age_hours = (now - os.path.getmtime(fpath)) / 3600
+        except OSError:
+            continue
+        info = {"filename": f, "size_bytes": size, "age_hours": round(age_hours, 1)}
+        base = f[: -len(".tmp")]  # "<name>.zim.tmp" → "<name>.zim"
+        recent_progress = size > 0 and age_hours < _PARTIAL_STALE_HOURS
+        if base in wanted or recent_progress:
+            protected.append(info)
+        else:
+            orphaned.append(info)
+    return protected, orphaned
+
+
 def _cancel_download(dl_id):
     """Cancel an active or queued download. Returns (status, code).
 
@@ -2092,6 +2158,14 @@ def _detect_flavor(filename_or_base):
 # 15s+ "Loading..." on every cold check.
 _FULL_CATALOG_MAX_PARALLEL = 6
 
+# Hard ceiling on the concurrent page-fetch phase. Every page fetch already
+# carries its own socket timeout, but a connection whose timeout never fires
+# (observed only inside the frozen desktop app) would otherwise wedge a worker
+# thread and block the join forever — the "check for updates" flow that never
+# finishes. Past this deadline we return whatever pages completed; the workers
+# are daemon threads, so an abandoned one can't hold up the process.
+_FULL_CATALOG_TOTAL_TIMEOUT = 90.0
+
 
 def _full_catalog(lang=""):
     """Every catalog entry across all pages, served from the SWR cache when warm.
@@ -2127,11 +2201,17 @@ def _full_catalog(lang=""):
     sem = threading.Semaphore(_FULL_CATALOG_MAX_PARALLEL)
 
     def _fetch_page(start):
-        with sem:
-            _t, more, page_err = _fetch_kiwix_catalog(
-                query="", lang=lang, count=500, start=start
-            )
-        pages[start] = None if page_err else (more or None)
+        try:
+            with sem:
+                _t, more, page_err = _fetch_kiwix_catalog(
+                    query="", lang=lang, count=500, start=start
+                )
+            pages[start] = None if page_err else (more or None)
+        except Exception as e:
+            # A page that raises is a failed page, not a crashed worker: record
+            # the miss and let the rest of the fetch complete.
+            log.debug("catalog page fetch raised (start=%d): %s", start, e)
+            pages[start] = None
 
     threads = [
         threading.Thread(target=_fetch_page, args=(start,), daemon=True)
@@ -2139,8 +2219,15 @@ def _full_catalog(lang=""):
     ]
     for th in threads:
         th.start()
+    # Bounded join: never wait past the overall deadline, so a single wedged
+    # page fetch can't hang the whole update check. Threads still running at
+    # the deadline are abandoned (daemon) and their pages simply omitted.
+    deadline = time.monotonic() + _FULL_CATALOG_TOTAL_TIMEOUT
     for th in threads:
-        th.join()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        th.join(timeout=remaining)
 
     for start in starts:
         page = pages.get(start)
@@ -2286,6 +2373,28 @@ def _download_from_url(dl, url, tmp_dest):
                 total = existing_size + int(resp.headers.get("Content-Length", 0))
         except (ValueError, IndexError):
             total = existing_size + int(resp.headers.get("Content-Length", 0))
+        # Resume sanity: the partial on disk was written toward a known total.
+        # If this mirror reports a different total, the remote file changed (or
+        # the mirror serves a different build) and appending would splice two
+        # files into a corrupt ZIM. Discard the partial and restart this mirror
+        # clean rather than resume onto a mismatched file.
+        expected = dl.get("size_bytes") or 0
+        if expected and total and total != expected:
+            resp.close()
+            log.warning(
+                "Resume size mismatch for %s (partial expected %d, %s has %d) "
+                "— discarding partial and restarting clean",
+                dl["filename"],
+                expected,
+                urlparse(url).hostname,
+                total,
+            )
+            try:
+                os.remove(tmp_dest)
+            except OSError:
+                pass
+            # Re-enter with no partial present → plain GET (200/wb) from zero.
+            return _download_from_url(dl, url, tmp_dest)
         dl["total_bytes"] = total
         dl["downloaded_bytes"] = existing_size
         mode = "ab"

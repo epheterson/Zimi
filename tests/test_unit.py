@@ -897,10 +897,15 @@ class TestDiskStats(unittest.TestCase):
         self.assertEqual(len(stats["tmp_files"]), 0)
 
     def test_detects_tmp_files(self):
-        # Create a .zim.tmp file
+        # Only genuinely orphaned partials are offered for cleanup. Make this
+        # one stale (old mtime) with no active/queued/pending download backing
+        # it, so classify_partials treats it as orphaned rather than a
+        # still-wanted, resumable partial.
         tmp_path = os.path.join(self.tmpdir, "test_download.zim.tmp")
         with open(tmp_path, "wb") as f:
             f.write(b"x" * 1024)
+        old = time.time() - 48 * 3600
+        os.utime(tmp_path, (old, old))
         stats = self.zimi._get_disk_usage()
         self.assertEqual(len(stats["tmp_files"]), 1)
         self.assertEqual(stats["tmp_files"][0]["filename"], "test_download.zim.tmp")

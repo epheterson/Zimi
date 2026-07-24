@@ -364,23 +364,12 @@ def _get_disk_usage():
             for f in os.listdir(_srv.ZIM_DIR)
             if f.endswith(".zim")
         )
-        # List partial (.tmp) downloads
-        tmp_files = []
-        for f in os.listdir(_srv.ZIM_DIR):
-            if f.endswith(".zim.tmp"):
-                try:
-                    fpath = os.path.join(_srv.ZIM_DIR, f)
-                    tmp_files.append(
-                        {
-                            "filename": f,
-                            "size_bytes": os.path.getsize(fpath),
-                            "age_hours": round(
-                                (time.time() - os.path.getmtime(fpath)) / 3600, 1
-                            ),
-                        }
-                    )
-                except OSError:
-                    pass
+        # Only surface genuinely orphaned partials for cleanup — an active,
+        # queued, or resumable-with-progress .zim.tmp is still wanted and must
+        # never be offered for deletion.
+        from zimi import library as _lib
+
+        _protected, tmp_files = _lib.classify_partials()
         return {
             "zim_dir": _srv.ZIM_DIR,
             "data_dir": _srv.ZIMI_DATA_DIR,

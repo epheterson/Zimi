@@ -54,12 +54,14 @@ class TestServerEndpoints(unittest.TestCase):
         cls._base = f"http://127.0.0.1:{cls._port}"
         # Generate an API token so manage/collections endpoints authenticate
         from zimi.manage import _generate_api_token
+
         cls._api_token = _generate_api_token()
 
     @classmethod
     def tearDownClass(cls):
         cls._server.shutdown()
         import shutil
+
         shutil.rmtree(cls._tmpdir, ignore_errors=True)
 
     def _auth_request(self, url, method="GET", data=None):
@@ -237,11 +239,10 @@ class TestServerEndpoints(unittest.TestCase):
     def test_collections_crud(self):
         """Create, read, and delete a collection."""
         # Create
-        data, status = self._post("/collections", {
-            "name": "test-coll",
-            "label": "Test Collection",
-            "zims": []
-        })
+        data, status = self._post(
+            "/collections",
+            {"name": "test-coll", "label": "Test Collection", "zims": []},
+        )
         self.assertEqual(status, 200)
         self.assertEqual(data["collection"], "test-coll")
 
@@ -262,10 +263,9 @@ class TestServerEndpoints(unittest.TestCase):
         self.assertEqual(status, 400)
 
     def test_collections_auto_name_from_label(self):
-        data, status = self._post("/collections", {
-            "label": "My Dev Docs",
-            "zims": ["devdocs_python"]
-        })
+        data, status = self._post(
+            "/collections", {"label": "My Dev Docs", "zims": ["devdocs_python"]}
+        )
         self.assertEqual(status, 200)
         # Should auto-generate name from label
         self.assertTrue(len(data["collection"]) > 0)
@@ -401,15 +401,24 @@ class TestServerEndpoints(unittest.TestCase):
         self.assertEqual(len(data["removed"]), 0)
 
     def test_manage_cleanup_tmp_removes_files(self):
-        """Cleanup removes .zim.tmp files."""
-        import tempfile
-        # Create a tmp file in the ZIM dir
+        """Cleanup removes genuinely orphaned .zim.tmp files."""
+        import time
+
+        # An orphaned partial: stale mtime, no active/queued/pending backing.
+        # (A recent partial with progress is protected — see test_partial_cleanup.)
         tmp_path = os.path.join(self._tmpdir, "test_dl.zim.tmp")
         with open(tmp_path, "wb") as f:
             f.write(b"partial" * 100)
+        old = time.time() - 48 * 3600
+        os.utime(tmp_path, (old, old))
         # Verify it shows in stats
         data, _ = self._get("/manage/stats")
-        self.assertTrue(any(t["filename"] == "test_dl.zim.tmp" for t in data.get("disk", {}).get("tmp_files", [])))
+        self.assertTrue(
+            any(
+                t["filename"] == "test_dl.zim.tmp"
+                for t in data.get("disk", {}).get("tmp_files", [])
+            )
+        )
         # Clean up
         data, status = self._post("/manage/cleanup-tmp")
         self.assertEqual(status, 200)
@@ -447,10 +456,9 @@ class TestServerEndpoints(unittest.TestCase):
 
     def test_auto_update_toggle(self):
         # Enable
-        data, status = self._post("/manage/auto-update", {
-            "enabled": True,
-            "frequency": "weekly"
-        })
+        data, status = self._post(
+            "/manage/auto-update", {"enabled": True, "frequency": "weekly"}
+        )
         self.assertEqual(status, 200)
         self.assertTrue(data["enabled"])
         self.assertEqual(data["frequency"], "weekly")
