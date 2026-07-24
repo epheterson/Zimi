@@ -44,8 +44,8 @@ var _orreryPlanetPositions = []; // [{name, x, y, r}] in CSS pixels for hover
 //   • Bodies whose only affordance is their article (Earth, the belts) open it
 //     on tap.
 //   • The HOVER tooltip keeps the info it always showed AND, when the body's
-//     curated Q-ID resolved against the installed library, gains a tappable
-//     "📖 Wikipedia" line. On touch the same tooltip is shown right after the
+//     curated Q-ID resolved against the installed library, renders the body
+//     NAME as a dotted-amber link (.alm-link idiom). On touch the same tooltip is shown after the
 //     tap, so the link is reachable without a hover.
 
 // Belt annulus hit zones, recorded on each draw (asteroid + Kuiper belts). Each
@@ -99,8 +99,8 @@ function _orreryOpenLink(key) { if (key && window.AlmanacLinks) window.AlmanacLi
 // Tap handler for mouse + touch. Restores the pre-1.8 direct actions: a planet
 // launches its transit, a probe opens its detail card. A body whose only
 // affordance is its article (Earth, a belt) opens it. Returns the hit so the
-// touch path can raise the info+link tooltip afterward. The Wikipedia link is
-// never on this path — it lives in the tooltip.
+// touch path can raise the info+link tooltip afterward. The article link is
+// never on this path — it lives in the tooltip (as the body name).
 function _orreryTap(mx, my, tolerance) {
   var hit = _orreryHitTest(mx, my, tolerance);
   if (!hit) return null;
@@ -133,9 +133,9 @@ function _initOrrery() {
   _orrerySliderEl = document.getElementById('orrery-slider');
   _drawOrrery(canvas, dpr);
 
-  // Hover tooltip: the body's info, plus a tappable Wikipedia line when its
+  // Hover tooltip: the body stats with the body NAME as a dotted-amber link when its
   // curated Q-ID resolved. The container is pointer-transparent so hovering a
-  // body behind it still registers; only the "📖 Wikipedia" line captures
+  // body behind it still registers; only that name link captures
   // clicks (its own pointer-events:auto). A short grace delay keeps the tip
   // alive while the pointer travels from the body to that link.
   var tooltip = document.getElementById('orrery-tooltip');
@@ -153,39 +153,42 @@ function _initOrrery() {
   var _tipHideTimer = null;
   function _cancelTipHide() { if (_tipHideTimer) { clearTimeout(_tipHideTimer); _tipHideTimer = null; } }
   function _hideTip() { _cancelTipHide(); tooltip.style.display = 'none'; }
-  function _tipHasLink() { return !!tooltip.querySelector('.orrery-tip-wiki'); }
+  function _tipHasLink() { return !!tooltip.querySelector('.alm-link'); }
   function _scheduleTipHide(ms) { _cancelTipHide(); _tipHideTimer = setTimeout(function () { tooltip.style.display = 'none'; }, ms); }
 
-  // Info line for a hit (name/stats, exactly what the tooltip always showed).
+  // Info for a hit, split so the NAME can carry the link idiom while the trailing
+  // stats stay plain text: { name, rest } where `rest` includes its leading ' · '.
   function _tipInfo(hit) {
     if (hit.type === 'planet') {
-      var label = _tp(hit.data.name);
+      var rest = '';
       if (hit.data.name !== 'Earth') {
         var days = Math.round(_hohmannDays(_PLANETS['Earth'].a, _PLANETS[hit.data.name].a));
-        label += (days < 365) ? ' · ' + t('alm_transfer_days', { n: days })
-                              : ' · ' + t('alm_transfer_years', { n: (days / 365.25).toFixed(1) });
+        rest = (days < 365) ? ' · ' + t('alm_transfer_days', { n: days })
+                            : ' · ' + t('alm_transfer_years', { n: (days / 365.25).toFixed(1) });
       }
-      return label;
+      return { name: _tp(hit.data.name), rest: rest };
     }
     if (hit.type === 'voyager') {
       var sig = _signalDelay(hit.data.dist);
-      return hit.data.name + ' · ' + hit.data.dist.toFixed(1) + ' AU · ' +
-        _fmtDuration(sig.h, sig.m) + ' ' + t('alm_signal_delay');
+      return { name: hit.data.name, rest: ' · ' + hit.data.dist.toFixed(1) + ' AU · ' +
+        _fmtDuration(sig.h, sig.m) + ' ' + t('alm_signal_delay') };
     }
-    if (hit.type === 'belt') return t(hit.data.labelKey);
-    return '';
+    if (hit.type === 'belt') return { name: t(hit.data.labelKey), rest: '' };
+    return { name: '', rest: '' };
   }
 
   // Render + place the tip beside the target, clamped inside the orrery box.
   function _showTip(hit) {
     _cancelTipHide();
     var linkKey = _orreryLinkFor(hit) ? _orreryLinkKey(hit) : null;
-    var html = '<span class="orrery-tip-info">' + _almEsc(_tipInfo(hit)) + '</span>';
-    if (linkKey) {
-      html += '<span class="orrery-tip-wiki" role="link" tabindex="0" data-alm-key="' +
-        _almEsc(linkKey) + '">📖 ' + _almEsc(t('alm_wikipedia')) + '</span>';
-    }
-    tooltip.innerHTML = html;
+    var info = _tipInfo(hit);
+    // The body NAME is the link — a subtle dotted-amber underline (the almanac
+    // link idiom), no separate "Wikipedia" line. AlmanacLinks.wrap yields the
+    // same .alm-link span used everywhere else; only that span captures pointer
+    // events (see CSS) so the body behind the tip keeps registering hover.
+    var nameHtml = _almEsc(info.name);
+    if (linkKey) nameHtml = window.AlmanacLinks.wrap(linkKey, nameHtml);
+    tooltip.innerHTML = '<span class="orrery-tip-info">' + nameHtml + _almEsc(info.rest) + '</span>';
     tooltip.style.display = 'block';
     var maxX = wrap.clientWidth, maxY = wrap.clientHeight;
     var tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
@@ -197,7 +200,7 @@ function _initOrrery() {
     tooltip.style.top = ty + 'px';
   }
 
-  // Keep the tip alive while the pointer is on the Wikipedia line.
+  // Keep the tip alive while the pointer is on the name link.
   tooltip.onmouseenter = _cancelTipHide;
   tooltip.onmouseleave = _hideTip;
 
