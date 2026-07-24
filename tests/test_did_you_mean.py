@@ -102,6 +102,72 @@ class VocabBuildTests(unittest.TestCase):
         _search._join_vocab_build()
 
 
+class VocabSizeOrderTests(unittest.TestCase):
+    """_build_vocab scans indexes largest-file-first, not alphabetically."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="zimi-dym-size-")
+        # "aaa" sorts first alphabetically but stays tiny (1 title).
+        _make_title_index(self.tmp, "aaa", ["Small Only"])
+        # "zzz" sorts last alphabetically but is the big index (many titles)
+        # — real libraries need this one scanned first when budget is tight.
+        _make_title_index(self.tmp, "zzz", [f"Big Title {i}" for i in range(200)])
+        self._patch_dir = mock.patch.object(_search, "_TITLE_INDEX_DIR", self.tmp)
+        self._patch_dir.start()
+        _search._reset_vocab()
+
+    def tearDown(self):
+        self._patch_dir.stop()
+        _search._reset_vocab()
+        import shutil
+
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_scans_largest_file_first_under_tight_budget(self):
+        # Fake a clock: deadline = 0 + 100. Four "in-budget" ticks are enough
+        # for _build_vocab to open+drain one small-row-count file (the outer
+        # loop check, two inner while-loop checks); everything after returns
+        # a value far past the deadline, so a second file is never opened.
+        ticks = iter([0, 1, 2, 3] + [10_000] * 50)
+        with (
+            mock.patch.object(_search, "_VOCAB_BUILD_BUDGET_S", 100),
+            mock.patch.object(_search.time, "monotonic", lambda: next(ticks)),
+        ):
+            vocab = _search._build_vocab()
+        # The big file (size-sorted first) got scanned...
+        self.assertIn("big", vocab)
+        self.assertIn("title", vocab)
+        # ...the small, alphabetically-first file did not.
+        self.assertNotIn("small", vocab)
+        self.assertNotIn("only", vocab)
+
+
+class VocabLoggingTests(unittest.TestCase):
+    """The vocab build always logs its outcome at info, including empty."""
+
+    def test_empty_build_logs_at_info(self):
+        empty_dir = tempfile.mkdtemp(prefix="zimi-dym-emptylog-")
+        try:
+            with mock.patch.object(_search, "_TITLE_INDEX_DIR", empty_dir):
+                with self.assertLogs(_search.log.name, level="INFO") as cm:
+                    vocab = _search._build_vocab()
+            self.assertEqual(vocab, {})
+            self.assertTrue(any("vocab" in msg.lower() for msg in cm.output))
+            self.assertTrue(any("0/0" in msg for msg in cm.output))
+        finally:
+            import shutil
+
+            shutil.rmtree(empty_dir, ignore_errors=True)
+
+    def test_missing_dir_logs_at_info(self):
+        missing = "/nonexistent/zimi-dym-path-xyz"
+        with mock.patch.object(_search, "_TITLE_INDEX_DIR", missing):
+            with self.assertLogs(_search.log.name, level="INFO") as cm:
+                vocab = _search._build_vocab()
+        self.assertEqual(vocab, {})
+        self.assertTrue(any("vocab" in msg.lower() for msg in cm.output))
+
+
 class CorrectionTests(unittest.TestCase):
     def setUp(self):
         self.vocab = {"python": 10, "javascript": 3, "asyncio": 2, "machine": 5}
@@ -119,6 +185,40 @@ class CorrectionTests(unittest.TestCase):
 
     def test_no_candidate_returns_none(self):
         self.assertIsNone(_search._best_correction("zzzzzzzz", self.vocab))
+
+    def test_freq_ratio_corrects_known_typo(self):
+        # "einstien" is itself in vocab (the typo appears in some titles) but
+        # is vastly outnumbered by the correctly-spelled "einstein".
+        vocab = {"einstien": 1, "einstein": 100}
+        self.assertEqual(
+            _search._best_correction(
+                "einstien", vocab, freq_ratio=_search._DYM_FREQ_RATIO
+            ),
+            "einstein",
+        )
+
+    def test_freq_ratio_leaves_common_words_alone(self):
+        # Both spellings are common; the ratio guard must not "correct" one
+        # into the other.
+        vocab = {"water": 5000, "waiter": 400}
+        self.assertIsNone(
+            _search._best_correction("water", vocab, freq_ratio=_search._DYM_FREQ_RATIO)
+        )
+
+    def test_no_freq_ratio_keeps_legacy_behavior(self):
+        # Without freq_ratio, an in-vocab word is never touched.
+        self.assertIsNone(_search._best_correction("python", self.vocab))
+
+    def test_did_you_mean_corrects_in_vocab_typo_via_frequency(self):
+        vocab = {"einstien": 1, "einstein": 100, "theory": 50}
+        deadline = time.monotonic() + 1.0
+        out = _search._did_you_mean("einstien theory", vocab, deadline)
+        self.assertEqual(out, "einstein theory")
+
+    def test_did_you_mean_leaves_common_word_uncorrected(self):
+        vocab = {"water": 5000, "waiter": 400}
+        deadline = time.monotonic() + 1.0
+        self.assertIsNone(_search._did_you_mean("water", vocab, deadline))
 
     def test_multiword_correction(self):
         deadline = time.monotonic() + 1.0
@@ -208,15 +308,15 @@ class SearchAllTriggerTests(unittest.TestCase):
         # "python" is a real vocab word → no suggestion, field omitted.
         self.assertNotIn("did_you_mean", result)
 
-    def test_results_ge_3_no_suggestion(self):
-        # Stub the full FTS path to yield 3 results so the gate skips DYM.
+    def test_results_ge_min_no_suggestion(self):
+        # Stub the full FTS path to yield _DYM_MIN_RESULTS results so the
+        # gate skips DYM.
         fake_lock = mock.MagicMock()
         fake_lock.__enter__ = lambda *a: None
         fake_lock.__exit__ = lambda *a: False
         results = [
-            {"title": "Zzz One", "path": "A/1", "snippet": ""},
-            {"title": "Zzz Two", "path": "A/2", "snippet": ""},
-            {"title": "Zzz Three", "path": "A/3", "snippet": ""},
+            {"title": f"Zzz {i}", "path": f"A/{i}", "snippet": ""}
+            for i in range(_search._DYM_MIN_RESULTS)
         ]
         with (
             mock.patch.object(
@@ -233,7 +333,7 @@ class SearchAllTriggerTests(unittest.TestCase):
             mock.patch.object(_search, "search_zim", lambda *a, **k: results),
         ):
             out = _search.search_all("pyhton", fast=False)
-        self.assertEqual(out["total"], 3)
+        self.assertEqual(out["total"], _search._DYM_MIN_RESULTS)
         self.assertNotIn("did_you_mean", out)
 
     def test_fail_soft_with_no_indexes(self):

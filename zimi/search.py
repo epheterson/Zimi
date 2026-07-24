@@ -1145,11 +1145,25 @@ def _dedup_results_by_title(results):
 # whole feature is fail-soft: any error, empty vocab, or a blown time budget
 # yields no suggestion, never an exception and never a slow search.
 
-_DYM_MIN_RESULTS = 3  # only suggest when fewer than this many results
+_DYM_MIN_RESULTS = (
+    10  # suggest alongside weak result sets too (additive; results still show)
+)
 _DYM_BUDGET_S = 0.05  # ~50ms ceiling on per-query correction work
+_DYM_FREQ_RATIO = 10  # an in-vocab word is only "corrected" when a candidate
+# is at least this many times more common — Norvig-style confidence that lets
+# us fix a typo that itself snuck into the vocab (e.g. a misspelled title)
+# without ever touching a genuinely common word.
 _VOCAB_MAX_WORDS = 200_000  # cap on distinct vocabulary words held in memory
 _VOCAB_MIN_WORD_LEN = 3  # ignore 1-2 char fragments (noise, not misspellings)
-_VOCAB_BUILD_BUDGET_S = 2.0  # one-time ceiling on the lazy vocab scan
+# One-time ceiling on the lazy vocab scan. Generous on purpose: this runs on a
+# background daemon thread (see _ensure_vocab), off the request path, so it
+# never blocks a search. On a real multi-ZIM library the previous 2s budget
+# expired partway through an alphabetical file scan, before ever reaching the
+# Wikipedia-scale indexes that sort late — the real vocabulary was silently
+# never built. 10s comfortably covers a large library's title indexes while
+# still bounding worst case (see also: descending file-size scan order below,
+# which puts the richest indexes first so a blown budget hurts least).
+_VOCAB_BUILD_BUDGET_S = 10.0
 _DIST2_MAX_LEN = 7  # only try edit-distance-2 on words this short or shorter
 _DYM_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 _word_split_re = re.compile(r"[^a-z0-9]+")
@@ -1180,25 +1194,39 @@ def _build_vocab():
 
     Opens a FRESH connection per index (sqlite objects aren't shareable across
     threads). Bounded two ways: a distinct-word cap and a wall-clock budget —
-    whichever hits first stops the scan. Returns whatever was gathered (possibly
-    empty). Never raises; a broken index is skipped."""
+    whichever hits first stops the scan. Files are scanned largest-first (by
+    byte size) so that if the budget does run out, it runs out after the
+    richest indexes (Wikipedia-scale) have already contributed, not before —
+    alphabetical order previously starved the scan on files that just
+    happened to sort early. Returns whatever was gathered (possibly empty).
+    Never raises; a broken index is skipped. Always logs the outcome at info
+    level, including the empty case, so a starved scan is visible in
+    production rather than silently returning nothing."""
     deadline = time.monotonic() + _VOCAB_BUILD_BUDGET_S
     vocab = {}
     index_dir = _TITLE_INDEX_DIR
     if not os.path.isdir(index_dir):
+        log.info("Did-you-mean vocab: no title index dir at %s", index_dir)
         return vocab
+    try:
+        fnames = [f for f in os.listdir(index_dir) if f.endswith(".db")]
+    except Exception as e:
+        log.info("Did-you-mean vocab: cannot list %s: %s", index_dir, e)
+        return vocab
+    fnames.sort(key=lambda f: os.path.getsize(os.path.join(index_dir, f)), reverse=True)
+    total_files = len(fnames)
+    files_scanned = 0
     at_cap = False
-    for fname in sorted(os.listdir(index_dir)):
+    for fname in fnames:
         if at_cap or time.monotonic() > deadline:
             break
-        if not fname.endswith(".db"):
-            continue
         db_path = os.path.join(index_dir, fname)
         try:
             conn = sqlite3.connect(db_path, timeout=2)
         except Exception as e:
             log.debug("Vocab: cannot open %s: %s", fname, e)
             continue
+        files_scanned += 1
         try:
             cur = conn.execute("SELECT title_lower FROM titles")
             while not at_cap and time.monotonic() <= deadline:
@@ -1226,6 +1254,15 @@ def _build_vocab():
                 conn.close()
             except Exception:
                 pass
+    budget_hit = time.monotonic() > deadline
+    log.info(
+        "Did-you-mean vocab: %d words from %d/%d index files (budget_hit=%s, at_cap=%s)",
+        len(vocab),
+        files_scanned,
+        total_files,
+        budget_hit,
+        at_cap,
+    )
     return vocab
 
 
@@ -1238,12 +1275,10 @@ def _vocab_build_worker():
     try:
         built = _build_vocab()
     except Exception as e:
-        log.debug("Vocab build failed: %s", e)
+        log.info("Did-you-mean vocab: build raised %s", e)
         built = {}
     with _vocab_lock:
         _vocab = built if built is not None else {}
-    if _vocab:
-        log.info("Did-you-mean vocab: %d words", len(_vocab))
 
 
 def _ensure_vocab():
@@ -1296,26 +1331,46 @@ def _edits1(word):
     return set(deletes + transposes + replaces + inserts)
 
 
-def _best_correction(word, vocab, deadline=None):
+def _best_correction(word, vocab, deadline=None, freq_ratio=None):
     """Best in-vocab correction for `word`, or None. Frequency breaks ties.
 
     Distance-1 first; distance-2 only for short words (candidate set stays
-    bounded) and only if the time budget allows."""
-    if not word or word in vocab:
+    bounded) and only if the time budget allows.
+
+    If `word` is itself in `vocab`, it's left alone UNLESS `freq_ratio` is
+    given: then a same-or-lower-distance candidate must be at least
+    `freq_ratio` times more common than `word` before it "corrects" an
+    already-valid word. This is what lets a typo that snuck into the vocab
+    (e.g. a misspelled ZIM title, seen a handful of times) get corrected to
+    the far more common correct spelling, while a genuinely common word
+    (whose count dwarfs any near-miss) is never touched."""
+    if not word:
         return None
-    cands = [w for w in _edits1(word) if w in vocab]
-    if cands:
-        return max(cands, key=lambda w: vocab[w])
+    own_count = vocab.get(word)
+    if own_count is not None and freq_ratio is None:
+        return None
+
+    def _pick(cands):
+        if not cands:
+            return None
+        best = max(cands, key=lambda w: vocab[w])
+        if own_count is None or vocab[best] >= freq_ratio * own_count:
+            return best
+        return None
+
+    cands = [w for w in _edits1(word) if w in vocab and w != word]
+    picked = _pick(cands)
+    if picked:
+        return picked
     if len(word) <= _DIST2_MAX_LEN and (
         deadline is None or time.monotonic() <= deadline
     ):
         cands2 = set()
         for e1 in _edits1(word):
             for e2 in _edits1(e1):
-                if e2 in vocab:
+                if e2 in vocab and e2 != word:
                     cands2.add(e2)
-        if cands2:
-            return max(cands2, key=lambda w: vocab[w])
+        return _pick(cands2)
     return None
 
 
@@ -1342,14 +1397,12 @@ def _did_you_mean(query_str, vocab, deadline):
             out.append(part)
             continue
         folded = _ascii_fold(part)
-        if (
-            len(folded) >= _VOCAB_MIN_WORD_LEN
-            and folded not in STOP_WORDS
-            and folded not in vocab
-        ):
+        if len(folded) >= _VOCAB_MIN_WORD_LEN and folded not in STOP_WORDS:
             if time.monotonic() > deadline:
                 return None
-            corr = _best_correction(folded, vocab, deadline)
+            # freq_ratio lets an in-vocab word still be corrected when a much
+            # more common candidate exists (see _best_correction docstring).
+            corr = _best_correction(folded, vocab, deadline, freq_ratio=_DYM_FREQ_RATIO)
             if corr and corr != folded:
                 out.append(corr)
                 corrected_any = True
