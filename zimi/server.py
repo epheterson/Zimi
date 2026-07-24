@@ -1257,6 +1257,75 @@ def _self_heal_mass_first_seen(info, file_cache, zims):
     return repaired > 0
 
 
+def _self_heal_update_stamps(info, file_cache):
+    """Repair 'New' badges on ZIMs that were actually UPDATED before the
+    dated-filename inherit fix landed.
+
+    The pre-fix updater re-stamped ``first_seen=now`` and left ``updated_at``
+    unset when an update arrived under a new dated filename, so a genuinely
+    updated ZIM badges 'New' instead of 'Updated' — indistinguishable from a
+    fresh install by its stamps alone. The persistent event history IS the
+    authority: it records an ``updated`` event per real update. For any ZIM the
+    history says was updated, sync its cache stamps to that truth — set
+    ``updated_at`` from the update event and pull ``first_seen`` back to the
+    earliest recorded event so ``updated_at > first_seen`` and the badge reads
+    'Updated', matching the activity log. Only touches ZIMs with a recorded
+    update event, so it can never misfire on a real fresh install. Mutates
+    ``info`` and ``file_cache`` in place; returns True if anything changed."""
+    try:
+        history = _load_history()
+    except Exception:
+        return False
+    if not history:
+        return False
+    # Per logical ZIM name: earliest recorded event (install) and latest update.
+    earliest = {}
+    latest_update = {}
+    for ev in history:
+        ts = ev.get("ts")
+        name = ev.get("name")
+        if not ts or not name:
+            continue
+        if name not in earliest or ts < earliest[name]:
+            earliest[name] = ts
+        if ev.get("event") == "updated" and (
+            name not in latest_update or ts > latest_update[name]
+        ):
+            latest_update[name] = ts
+    if not latest_update:
+        return False
+    repaired = 0
+    for e in info:
+        new_ua = latest_update.get(e.get("name"))
+        if not new_ua:
+            continue
+        # Already correctly flagged 'Updated' (updated_at > first_seen)? Leave it.
+        if (e.get("updated_at") or 0) > (e.get("first_seen") or 0):
+            continue
+        # first_seen must precede the update. Prefer the earliest recorded event;
+        # if the only record IS the update (original install predates history),
+        # nudge first_seen just below it so the ordering — hence badge — is right.
+        new_fs = min(earliest.get(e.get("name"), new_ua), new_ua)
+        if new_fs >= new_ua:
+            new_fs = new_ua - 1
+        if e.get("updated_at") == new_ua and e.get("first_seen") == new_fs:
+            continue
+        e["updated_at"] = new_ua
+        e["first_seen"] = new_fs
+        fc = file_cache.get(e["file"])
+        if fc is not None:
+            fc["updated_at"] = new_ua
+            fc["first_seen"] = new_fs
+        repaired += 1
+    if repaired:
+        log.info(
+            "update-stamp self-heal: re-flagged %d ZIM(s) as 'Updated' from the "
+            "event history (pre-fix updates had mis-stamped them 'New')",
+            repaired,
+        )
+    return repaired > 0
+
+
 def load_cache(force=False):
     """Load ZIM metadata, using persistent disk cache for instant startup.
 
@@ -1436,13 +1505,16 @@ def load_cache(force=False):
     # fix above stops NEW rebuilds from doing it, but existing disk caches still
     # carry first_seen=<rebuild instant> for every ZIM; repair them from mtime.
     healed = _self_heal_mass_first_seen(info, file_cache, zims)
+    # Repair 'New' badges on ZIMs the event history proves were UPDATED before
+    # the dated-filename inherit fix (pre-fix updates mis-stamped them 'New').
+    healed_updates = _self_heal_update_stamps(info, file_cache)
 
     _zim_list_cache = info
     elapsed = time.time() - t0
 
     # Persist cache if we scanned anything new, backfilled a legacy first_seen
     # (so the mtime stamp is computed once), or repaired mass-stamped entries.
-    if scanned > 0 or backfilled > 0 or disk_cache is None or healed:
+    if scanned > 0 or backfilled > 0 or disk_cache is None or healed or healed_updates:
         _save_disk_cache(file_cache)
 
     cached_count = len(info) - scanned
