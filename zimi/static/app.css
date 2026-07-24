@@ -394,6 +394,22 @@
   .rv-size-btn:hover:not([disabled]) { border-color: var(--amber-border); }
   .rv-size-btn[disabled] { opacity: 0.35; cursor: default; }
   .rv-size-val { flex: 1; text-align: center; font-size: 13px; color: var(--text2); }
+  /* ── Compact reader controls (⋯ menu, Reader View on) ── */
+  /* Label-less: theme swatches shrink to ~24px colour chips (the text label is
+     hidden, aria-label carries the name), and font family + size share one row.
+     Sized to fit a 390px viewport without horizontal scroll. */
+  .rv-compact { display: flex; flex-direction: column; gap: 8px; padding: 2px 2px 4px; }
+  .rv-compact .rv-swatches { gap: 8px; }
+  .rv-compact .rv-swatch { flex-direction: row; justify-content: center; padding: 5px; gap: 0; }
+  .rv-compact .rv-sw-label { display: none; }
+  .rv-compact .rv-sw-dot { width: 24px; height: 24px; }
+  .rv-compact-fontrow { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+  .rv-compact-fontrow .rv-pills { flex: 1 1 108px; }
+  .rv-compact-fontrow .rv-size { flex: 1 1 132px; }
+  /* Full-palette swatch keeps its stacked label. */
+  .rv-swatch .rv-sw-label { line-height: 1; }
+  /* Reader View row rendered as a switch inside the ⋯ menu. */
+  .topbar-menu-item.tbm-rv-toggle .rv-switch { margin-inline-start: auto; }
   /* AUTO toggle row */
   .rv-toggle-row {
     display: flex; align-items: center; gap: 10px; width: 100%; text-align: start;

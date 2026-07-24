@@ -838,7 +838,10 @@ function updateTopbar() {
     // breadcrumb) and the pop-out now lives in the ... menu, so this only affects
     // desktop-web where the inline pop-out still shows.
     var hasSaveBtn = !_almanacOpen && IS_DESKTOP && currentArticle && /\.(pdf|epub)$/i.test(currentArticle.path || '');
-    var hasNewtab = !_almanacOpen && readerOpen && !IS_DESKTOP;
+    // Pop-out (open in browser) only makes sense from an installed/standalone
+    // PWA — in a plain browser tab you're already in a browser, so it's hidden
+    // (the close X takes the slot back).
+    var hasNewtab = !_almanacOpen && readerOpen && _isStandalonePWA();
     manageBtnEl.style.display = (hasSaveBtn || hasNewtab) ? 'none' : 'flex';
     manageBtnEl.innerHTML = _closeSvg;
     manageBtnEl.title = t('close');
@@ -856,7 +859,7 @@ function updateTopbar() {
     manageBtnEl.onclick = function(e) { toggleManage(e); };
   }
 
-  newtabBtn.style.display = (readerOpen && !IS_DESKTOP) ? 'flex' : 'none';
+  newtabBtn.style.display = (readerOpen && !_almanacOpen && _isStandalonePWA()) ? 'flex' : 'none';
   // Reader-only controls: font scale (always when reading) + read-aloud (only
   // when the browser exposes the offline Web Speech API). Hidden when the
   // reader isn't the active surface — and read-aloud never appears at all
@@ -1155,24 +1158,37 @@ function _showToast(msg, duration) {
   setTimeout(function() { if (toast.parentNode) toast.remove(); }, duration || 3000);
 }
 
-// ── Open in browser (escape PWA standalone mode) ──
+// True when Zimi is running as an installed/standalone app surface (iOS/Android
+// home-screen PWA, or a desktop PWA window) rather than a plain browser tab.
+// "Open in browser" is only meaningful here (and in the desktop app).
+function _isStandalonePWA() {
+  try {
+    return window.matchMedia('(display-mode:standalone)').matches || navigator.standalone === true;
+  } catch (e) { return false; }
+}
+
+// ── Open in browser (escape the app shell into a real browser tab) ──
+// Opens the current article via its ?a= deep link (full Zimi chrome), never the
+// raw /w/ path — a bare /w/ URL renders header-less ZIM content in some browsers.
 function _openInBrowser() {
-  var url = location.href;
-  var isPWA = window.matchMedia('(display-mode:standalone)').matches || navigator.standalone;
-  if (isPWA) {
-    // iOS PWA can't window.open to Safari — copy URL to clipboard instead
+  var url = currentArticle
+    ? _articleDeepLink(currentArticle.zim, currentArticle.path)
+    : location.href;
+  // Desktop app: hand off to the system browser via the pywebview bridge.
+  if (IS_DESKTOP && window.pywebview && window.pywebview.api && window.pywebview.api.open_external) {
+    window.pywebview.api.open_external(url).catch(function() {});
+    return;
+  }
+  if (_isStandalonePWA()) {
+    // iOS PWA can't window.open to Safari — copy the URL to the clipboard.
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(function() {
-        _showToast(t('link_copied'));
-      });
+      navigator.clipboard.writeText(url).then(function() { _showToast(t('link_copied')); });
     } else {
-      // Fallback: prompt with the URL
       prompt(t('copy_link'), url);
     }
-  } else {
-    // Normal browser: open in new tab
-    window.open(url, '_blank', 'noopener');
+    return;
   }
+  window.open(url, '_blank', 'noopener');
 }
 
 // ── Navigation ──
@@ -9702,7 +9718,11 @@ function _syncReaderViewBtn() {
     btn.classList.toggle('rv-on', _readerViewOn && avail);
   }
   var item = document.getElementById('tbm-readerview');
-  if (item) item.setAttribute('aria-pressed', _readerViewOn ? 'true' : 'false');
+  if (item) {
+    item.setAttribute('aria-checked', _readerViewOn ? 'true' : 'false');
+    var sw = item.querySelector('.rv-switch');
+    if (sw) sw.classList.toggle('on', _readerViewOn);
+  }
   if (!avail) _closeReaderPalette();
   else if (_readerViewOn) _maybeShowReaderCoach();
 }
@@ -9811,46 +9831,69 @@ function _readerPaletteHtml() {
   return '<div class="rv-pal-head">' + _READER_VIEW_ICON + '<span>' + tH('reader_view') +
     '</span></div>' + _readerSettingsRowsHtml();
 }
-// The settings rows (theme / family / size / AUTO / print / share / exit) shared
-// by the standalone book-button palette (desktop) and the inline section that
-// renders top-level inside the mobile ⋯ menu when Reader View is on. Kept
-// head-less so either host can wrap it with its own heading.
-function _readerSettingsRowsHtml() {
-  var theme = _readerTheme(), fam = _readerFamily(), auto = _readerAuto();
-  var lvl = _readerFontLevel();
+// ── Shared Reader-View control builders ──
+// One theme swatch / family pill / size stepper, used by BOTH the full desktop
+// palette (with row labels + AUTO) and the compact inline block in the ⋯ menu
+// (label-less). Defined once so the two hosts can never drift.
+function _rvSwatchHtml(key, theme) {
+  return '<button type="button" class="rv-swatch rv-sw-' + key + (theme === key ? ' active' : '') +
+    '" role="radio" aria-checked="' + (theme === key ? 'true' : 'false') +
+    '" title="' + tH('reader_theme_' + key) + '" aria-label="' + tH('reader_theme_' + key) +
+    '" onclick="event.stopPropagation();_setReaderTheme(\'' + key + '\')"><span class="rv-sw-dot"></span>' +
+    '<span class="rv-sw-label">' + tH('reader_theme_' + key) + '</span></button>';
+}
+function _rvSwatchesHtml(theme) {
+  return '<div class="rv-swatches" role="radiogroup" aria-label="' + tH('reader_theme') + '">' +
+    _rvSwatchHtml('dark', theme) + _rvSwatchHtml('light', theme) + _rvSwatchHtml('sepia', theme) + '</div>';
+}
+function _rvFamPillHtml(key, fam) {
+  return '<button type="button" class="rv-pill' + (fam === key ? ' active' : '') +
+    '" role="radio" aria-checked="' + (fam === key ? 'true' : 'false') +
+    '" style="font-family:' + (key === 'serif' ? 'Georgia,serif' : '-apple-system,sans-serif') +
+    '" onclick="event.stopPropagation();_setReaderFamily(\'' + key + '\')">' + tH('reader_font_' + key) + '</button>';
+}
+function _rvFamPillsHtml(fam) {
+  return '<div class="rv-pills" role="radiogroup" aria-label="' + tH('reader_font_family') + '">' +
+    _rvFamPillHtml('serif', fam) + _rvFamPillHtml('sans', fam) + '</div>';
+}
+function _rvSizeStepperHtml(lvl) {
   var minSize = lvl === READER_FONT_LEVELS[0];
   var maxSize = lvl === READER_FONT_LEVELS[READER_FONT_LEVELS.length - 1];
-  function swatch(key) {
-    return '<button type="button" class="rv-swatch rv-sw-' + key + (theme === key ? ' active' : '') +
-      '" role="radio" aria-checked="' + (theme === key ? 'true' : 'false') +
-      '" title="' + tH('reader_theme_' + key) + '" aria-label="' + tH('reader_theme_' + key) +
-      '" onclick="event.stopPropagation();_setReaderTheme(\'' + key + '\')"><span class="rv-sw-dot"></span>' +
-      tH('reader_theme_' + key) + '</button>';
-  }
-  function famPill(key) {
-    return '<button type="button" class="rv-pill' + (fam === key ? ' active' : '') +
-      '" role="radio" aria-checked="' + (fam === key ? 'true' : 'false') +
-      '" style="font-family:' + (key === 'serif' ? 'Georgia,serif' : '-apple-system,sans-serif') +
-      '" onclick="event.stopPropagation();_setReaderFamily(\'' + key + '\')">' + tH('reader_font_' + key) + '</button>';
-  }
-  var h = '';
-  // Theme
-  h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_theme') + '</div>' +
-    '<div class="rv-swatches" role="radiogroup" aria-label="' + tH('reader_theme') + '">' +
-    swatch('dark') + swatch('light') + swatch('sepia') + '</div></div>';
-  // Font family
-  h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_font_family') + '</div>' +
-    '<div class="rv-pills" role="radiogroup" aria-label="' + tH('reader_font_family') + '">' +
-    famPill('serif') + famPill('sans') + '</div></div>';
-  // Text size (reuses the persisted zoom levels as A−/A+)
-  h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_text_size') + '</div>' +
-    '<div class="rv-size">' +
+  return '<div class="rv-size">' +
     '<button type="button" class="rv-size-btn"' + (minSize ? ' disabled' : '') +
       ' aria-label="' + tH('reader_size_smaller') + '" onclick="event.stopPropagation();_stepReaderFont(-1)">A<span class="rv-minus">&minus;</span></button>' +
     '<span class="rv-size-val">' + (_READER_SIZE_LABELS[lvl] || lvl + '%') + '</span>' +
     '<button type="button" class="rv-size-btn"' + (maxSize ? ' disabled' : '') +
       ' aria-label="' + tH('reader_size_larger') + '" onclick="event.stopPropagation();_stepReaderFont(1)">A<span class="rv-plus">+</span></button>' +
-    '</div></div>';
+    '</div>';
+}
+
+// Compact controls for the ⋯ menu when Reader View is on: theme swatches row +
+// a combined font-family/size row. No title labels, no AUTO (settings-only now),
+// no print/share/exit — just the two everyday controls, sized to fit 390px.
+function _readerCompactControlsHtml() {
+  return '<div class="rv-compact">' +
+    _rvSwatchesHtml(_readerTheme()) +
+    '<div class="rv-compact-fontrow">' + _rvFamPillsHtml(_readerFamily()) + _rvSizeStepperHtml(_readerFontLevel()) + '</div>' +
+  '</div>';
+}
+
+// The full settings rows (theme / family / size / AUTO / print / share / exit)
+// for the standalone book-button palette (desktop). Kept head-less so the
+// palette can wrap it with its own heading.
+function _readerSettingsRowsHtml() {
+  var theme = _readerTheme(), fam = _readerFamily(), auto = _readerAuto();
+  var lvl = _readerFontLevel();
+  var h = '';
+  // Theme
+  h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_theme') + '</div>' +
+    _rvSwatchesHtml(theme) + '</div>';
+  // Font family
+  h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_font_family') + '</div>' +
+    _rvFamPillsHtml(fam) + '</div>';
+  // Text size (reuses the persisted zoom levels as A−/A+)
+  h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_text_size') + '</div>' +
+    _rvSizeStepperHtml(lvl) + '</div>';
   // AUTO mode
   h += '<button type="button" class="rv-toggle-row" role="switch" aria-checked="' + (auto ? 'true' : 'false') +
     '" onclick="event.stopPropagation();_toggleReaderAuto()">' +
@@ -9885,10 +9928,10 @@ function _readerSettingsRowsHtml() {
 function _renderReaderPalette() {
   var pal = document.getElementById(_READER_PALETTE_ID);
   if (pal && pal.classList.contains('visible')) pal.innerHTML = _readerPaletteHtml();
-  // Keep the inline copy inside the ⋯ menu (mobile) live too, so active states
+  // Keep the compact copy inside the ⋯ menu (mobile) live too, so active states
   // for theme/family/size stay truthful without reopening the menu.
   var inline = document.querySelector('#topbar-menu.visible .tbm-reader-settings');
-  if (inline) inline.innerHTML = _readerSettingsRowsHtml();
+  if (inline) inline.innerHTML = _readerCompactControlsHtml();
 }
 // Close whichever reader-controls host is open — the standalone book-button
 // palette (desktop) and/or the inline settings section in the ⋯ menu (mobile).
@@ -10067,7 +10110,9 @@ function openReader(url) {
     // Add ?raw=1 for direct browser download (bypasses SPA shell)
     newtabBtn.href = fileParam ? (fileParam + (fileParam.includes('?') ? '&' : '?') + 'raw=1') : url;
   } else {
-    newtabBtn.href = url;
+    // Middle/⌘-click parity: use the ?a= deep link (full Zimi chrome), matching
+    // what _openInBrowser opens on a plain click.
+    newtabBtn.href = currentArticle ? _articleDeepLinkPath(currentArticle.zim, currentArticle.path) : url;
   }
 
   frame.onerror = function() {
@@ -10997,11 +11042,10 @@ var _TBM_NEWTAB_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="
 // without closing the menu.
 function _syncTopbarMenuReaderItems() {
   var rvItem = document.getElementById('tbm-readerview');
-  if (rvItem) rvItem.setAttribute('aria-pressed', _readerViewOn ? 'true' : 'false');
-  var fontItem = document.getElementById('tbm-font');
-  if (fontItem) {
-    var val = fontItem.querySelector('.tbm-val');
-    if (val) val.textContent = _readerFontLevel() + '%';
+  if (rvItem) {
+    rvItem.setAttribute('aria-checked', _readerViewOn ? 'true' : 'false');
+    var sw = rvItem.querySelector('.rv-switch');
+    if (sw) sw.classList.toggle('on', _readerViewOn);
   }
   var ttsItem = document.getElementById('tbm-tts');
   if (ttsItem) {
@@ -11011,54 +11055,52 @@ function _syncTopbarMenuReaderItems() {
   }
 }
 
-function _toggleTopbarMenu(event) {
-  event.stopPropagation();
+// Rebuild the ⋯ menu contents in place (used when a control inside it — the
+// Reader View switch — flips state and the row set must change without closing).
+function _readerViewMenuToggle() {
+  _readerViewToggle();
   var menu = document.getElementById('topbar-menu');
-  if (menu.classList.contains('visible')) {
-    menu.classList.remove('visible');
-    return;
-  }
-  // Build menu items
+  if (menu && menu.classList.contains('visible')) menu.innerHTML = _buildTopbarMenuHtml();
+}
+
+// Single source of truth for the ⋯ menu markup, so both the initial open and an
+// in-place rebuild (Reader View toggled) render identical structure.
+function _buildTopbarMenuHtml() {
   var h = '';
   // Reader controls migrate here on mobile (the inline topbar buttons are hidden
-  // by the max-width:600px CSS — the topbar was too tight). Font + TTS cycle in
-  // place and keep the menu open (event.stopPropagation blocks the outside-click
-  // close); Reader View, pop-out and the app-nav rows close the menu on tap.
+  // by the max-width:600px CSS — the topbar was too tight). The reader group is
+  // pinned to the TOP: Reader View toggle first; its compact controls directly
+  // under it when on; then Read aloud; then Open in browser LAST. Taps inside
+  // the reader group keep the menu open (event.stopPropagation) except the
+  // actions that navigate away.
   if (readerOpen && !_almanacOpen) {
-    // Reader-control group. When Reader View is ON the full settings palette
-    // renders INLINE here (theme / font / size / AUTO / print / share / exit) so
-    // the reading controls are top-level in one tap — no second tap on a hidden
-    // palette. The inline settings own font-size (A−/A+), so the separate "Font
-    // size" cycle row and the Reader View toggle row are dropped to avoid
-    // duplication (Exit Reader View lives inside the settings). When Reader View
-    // is OFF we keep the compact rows: a Reader View entry (turns it on), Font
-    // size, plus the shared Read aloud / Open in browser actions.
-    var _rvInline = _readerViewOn && _readerViewAvailable();
+    var rvAvail = _readerViewAvailable();
+    var rvOn = _readerViewOn && rvAvail;
+    // 1. Reader View toggle — always first. A switch: tapping flips it and the
+    // menu rebuilds in place (compact controls appear/disappear beneath).
+    if (rvAvail) {
+      h += '<button class="topbar-menu-item tbm-rv-toggle" id="tbm-readerview" role="switch" aria-checked="' + (rvOn ? 'true' : 'false') +
+        '" onclick="event.stopPropagation();_readerViewMenuToggle()">' + _READER_VIEW_ICON +
+        ' <span class="tbm-label">' + tH('reader_view') + '</span>' +
+        '<span class="rv-switch' + (rvOn ? ' on' : '') + '" aria-hidden="true"><span class="rv-knob"></span></span></button>';
+    }
+    // 2. Compact settings directly under the toggle when Reader View is on —
+    // theme swatches + font/size only, no title labels, no AUTO (settings-only).
+    if (rvOn) {
+      h += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
+    }
+    // 3. Read aloud.
     if (_TTS_AVAILABLE) {
       h += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
     }
-    if (!IS_DESKTOP) {
+    // 4. Open in browser — LAST, and only where it's meaningful: the desktop app
+    // or an installed/standalone PWA. In a plain browser tab you're already in a
+    // browser, so it's hidden. Opens the ?a= deep link (full Zimi chrome).
+    if (IS_DESKTOP || _isStandalonePWA()) {
       h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();_openInBrowser()">' + _TBM_NEWTAB_ICON +
         ' ' + tH('open_in_browser') + '</button>';
-    }
-    if (_rvInline) {
-      // Inline reader-settings section under a subtle divider + heading. The rv-*
-      // rows carry their own compact layout; the wrapper only supplies padding
-      // so swatches/pills don't butt against the menu edge.
-      h += '<div class="topbar-menu-divider" role="separator"></div>';
-      h += '<div class="topbar-menu-label">' + tH('reader_view') + '</div>';
-      h += '<div class="tbm-reader-settings">' + _readerSettingsRowsHtml() + '</div>';
-    } else {
-      if (_readerViewAvailable()) {
-        h += '<button class="topbar-menu-item" id="tbm-readerview" aria-pressed="false"' +
-          ' onclick="_closeTopbarMenu();_readerViewButtonAction()">' + _READER_VIEW_ICON +
-          ' <span class="tbm-label">' + tH('reader_view') + '</span></button>';
-      }
-      h += '<button class="topbar-menu-item" id="tbm-font" onclick="event.stopPropagation();_cycleReaderFont()">' +
-        '<span class="font-glyph" aria-hidden="true" style="font-weight:700">A</span> ' + tH('font_size') +
-        ' <span class="tbm-val">' + _readerFontLevel() + '%</span></button>';
     }
     // Divider between the reader group and the app-navigation group below.
     h += '<div class="topbar-menu-divider" role="separator"></div>';
@@ -11082,7 +11124,17 @@ function _toggleTopbarMenu(event) {
   } else {
     h += '<button class="topbar-menu-item" onclick="' + _mgClick + '">' + _mgSvg + ' ' + tH('manage') + _mgCount + '</button>';
   }
-  menu.innerHTML = h;
+  return h;
+}
+
+function _toggleTopbarMenu(event) {
+  event.stopPropagation();
+  var menu = document.getElementById('topbar-menu');
+  if (menu.classList.contains('visible')) {
+    menu.classList.remove('visible');
+    return;
+  }
+  menu.innerHTML = _buildTopbarMenuHtml();
   menu.classList.add('visible');
   // Close on outside interaction — including a tap inside the reader iframe,
   // which a plain document listener never sees. The ⋯ trigger is kept "inside"
