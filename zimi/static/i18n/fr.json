@@ -1006,7 +1006,6 @@
   "library_health_progress": "{done} sur {total} vérifiés",
   "library_health_summary_ok": "{total} ZIM en bon état",
   "library_health_summary_warn": "{healthy} corrects, {warnings} avertissement(s)",
-  "library_health_desc": "Ouvre chaque ZIM pour vérifier qu'il est lisible, indexé et complet.",
   "health_redownload": "Retélécharger",
   "health_redownload_confirm": "Retélécharger ?",
   "health_torrent_meta": "Métadonnées torrent, pas un ZIM — suppression sans risque",

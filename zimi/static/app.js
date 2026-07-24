@@ -6787,7 +6787,6 @@ function _msLibraryHtml() {
       '<button id="library-health-btn" class="manage-btn-action" onclick="runLibraryHealth()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('library_health') + '</button>' +
       '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none;margin-inline-start:auto">' + tH('update_all') + '</button>' +
     '</div>' +
-    '<div class="ms-hint" style="font-size:12px;color:var(--text2);margin-top:6px">' + tH('library_health_desc') + '</div>' +
     '<div id="library-health-section" class="library-health"></div>' +
     '<div id="tmp-files-section"></div>';
   // Async-load tmp file info

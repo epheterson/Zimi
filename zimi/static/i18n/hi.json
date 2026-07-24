@@ -1006,7 +1006,6 @@
   "library_health_progress": "{total} में से {done} जाँचे गए",
   "library_health_summary_ok": "{total} ZIM ठीक हैं",
   "library_health_summary_warn": "{healthy} ठीक, {warnings} चेतावनी",
-  "library_health_desc": "प्रत्येक ZIM को खोलकर पुष्टि करता है कि वह पठनीय, अनुक्रमित और पूर्ण है।",
   "health_redownload": "पुनः डाउनलोड करें",
   "health_redownload_confirm": "पुनः डाउनलोड करें?",
   "health_torrent_meta": "टोरेंट मेटाडेटा, ZIM नहीं — हटाना सुरक्षित है",

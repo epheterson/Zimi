@@ -1006,7 +1006,6 @@
   "library_health_progress": "تم فحص {done} من {total}",
   "library_health_summary_ok": "{total} ملف ZIM سليم",
   "library_health_summary_warn": "{healthy} سليم، {warnings} تحذير",
-  "library_health_desc": "يفتح كل ملف ZIM للتأكد من أنه قابل للقراءة ومفهرس وكامل.",
   "health_redownload": "إعادة التنزيل",
   "health_redownload_confirm": "إعادة التنزيل؟",
   "health_torrent_meta": "بيانات تعريف تورنت، وليست ملف ZIM — يمكن حذفها بأمان",

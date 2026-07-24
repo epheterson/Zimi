@@ -1006,7 +1006,6 @@
   "library_health_progress": "已检查 {done}/{total}",
   "library_health_summary_ok": "{total} 个 ZIM 正常",
   "library_health_summary_warn": "{healthy} 个正常，{warnings} 个警告",
-  "library_health_desc": "打开每个 ZIM，确认其可读、已建立索引且完整。",
   "health_redownload": "重新下载",
   "health_redownload_confirm": "重新下载？",
   "health_torrent_meta": "种子元数据，非 ZIM 文件 — 可安全删除",

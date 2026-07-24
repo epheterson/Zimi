@@ -1006,7 +1006,6 @@
   "library_health_progress": "נבדקו {done} מתוך {total}",
   "library_health_summary_ok": "{total} קובצי ZIM תקינים",
   "library_health_summary_warn": "{healthy} תקינים, {warnings} אזהרות",
-  "library_health_desc": "פותח כל ZIM כדי לוודא שהוא קריא, מאונדקס ושלם.",
   "health_redownload": "הורדה מחדש",
   "health_redownload_confirm": "להוריד מחדש?",
   "health_torrent_meta": "מטא-נתוני טורנט, לא ZIM — ניתן למחוק בבטחה",

@@ -1006,7 +1006,6 @@
   "library_health_progress": "Проверено {done} из {total}",
   "library_health_summary_ok": "{total} ZIM в порядке",
   "library_health_summary_warn": "{healthy} в порядке, предупреждений: {warnings}",
-  "library_health_desc": "Открывает каждый ZIM, чтобы убедиться, что он читается, проиндексирован и полон.",
   "health_redownload": "Скачать заново",
   "health_redownload_confirm": "Скачать заново?",
   "health_torrent_meta": "Метаданные торрента, не ZIM — можно удалить",
