@@ -782,6 +782,8 @@ var _starChartDragged = false; // suppresses the tap-to-identify after a drag
 var _starChartSelectedKey = null; // the currently selected body's link key (2nd
                                   // tap on the same one opens its article)
 
+var _scTouchPanning = false;      // a touch gesture began inside the disc
+
 function _starChartResetLoc() {
   _starChartViewLat = null;
   _starChartViewLon = null;
@@ -801,22 +803,31 @@ function _insideChartDisc(canvas, clientX, clientY) {
 // Drag the chart to stand somewhere else on Earth. This is a preview only —
 // it never overwrites the saved location the rest of the almanac uses.
 function _initStarChartDrag(canvas) {
-  var dragging = false, lastX = 0, lastY = 0, moved = 0, touchPanning = false;
+  var dragging = false, lastX = 0, lastY = 0, moved = 0;
   // touch-action is `auto`, so a touch that starts in the square's corners
-  // scrolls the page normally. Containment lives in these non-passive handlers,
-  // not clip-path (which only clips hit-testing in some browsers, not Safari):
+  // scrolls the page normally. Containment lives in these listeners, not
+  // clip-path (which only clips hit-testing in some browsers, not Safari):
   //   - touchstart records only whether the gesture began inside the disc; it
   //     does NOT preventDefault, so a stationary tap still yields its click
   //     (tap-to-identify / open the article).
-  //   - touchmove preventDefaults only for an inside-started gesture, cancelling
-  //     the page scroll so the pan owns it. A corner-started gesture is left to
-  //     scroll the page.
-  canvas.ontouchstart = function (e) {
-    var tt = e.touches[0];
-    touchPanning = !!tt && _insideChartDisc(canvas, tt.clientX, tt.clientY);
-  };
-  canvas.ontouchmove = function (e) { if (touchPanning) e.preventDefault(); };
-  canvas.ontouchend = canvas.ontouchcancel = function () { touchPanning = false; };
+  //   - touchmove (non-passive) preventDefaults only for an inside-started
+  //     gesture, cancelling the page scroll so the pan owns it. A corner-started
+  //     gesture is left to scroll the page.
+  // Bound once — _initStarChartDrag re-runs per render, and addEventListener
+  // would otherwise stack duplicates (unlike the reassigned pointer handlers).
+  if (!canvas._scTouchBound) {
+    canvas._scTouchBound = true;
+    canvas.addEventListener('touchstart', function (e) {
+      var tt = e.touches[0];
+      _scTouchPanning = !!tt && _insideChartDisc(canvas, tt.clientX, tt.clientY);
+    }, { passive: true });
+    canvas.addEventListener('touchmove', function (e) {
+      if (_scTouchPanning) e.preventDefault();
+    }, { passive: false });
+    var _scTouchClear = function () { _scTouchPanning = false; };
+    canvas.addEventListener('touchend', _scTouchClear);
+    canvas.addEventListener('touchcancel', _scTouchClear);
+  }
   canvas.onpointerdown = function (e) {
     // Only the circular disc is interactive. A press in the square's corners
     // (outside the inscribed circle) must not start a rotation or capture the
