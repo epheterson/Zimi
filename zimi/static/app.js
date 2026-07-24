@@ -40,6 +40,9 @@ var SK = {
   // Last-rendered SHARING rows (Server pane) — restored synchronously on
   // pane open so the section doesn't pop in after the status fetches.
   SHARE_ROWS: 'zimi_share_rows',
+  // Last-active manage settings section (library|preferences|server|users).
+  // Session-scoped so a reload (or re-entering Manage) lands on the same tab.
+  MANAGE_SECTION: 'zimi_manage_section',
 };
 
 // ── Storage Helpers ──
@@ -1026,7 +1029,7 @@ async function _initSecondary() {
   // Re-check URL for ?manage now that manageEnabled is known (route() ran before this resolved)
   var params = new URLSearchParams(location.search);
   if (params.get('manage') !== null && manageEnabled && mode !== 'manage') {
-    enterManage();
+    enterManage(null, _validMsSection(params.get('manage')));
     return;
   }
   // Re-render homepage if manage/collections changed (adds collection sections, manage button)
@@ -1043,7 +1046,7 @@ function route(push) {
     openAlmanac(true);
     return;
   }
-  if (params.get('manage') !== null && manageEnabled) { enterManage(); return; }
+  if (params.get('manage') !== null && manageEnabled) { enterManage(null, _validMsSection(params.get('manage'))); return; }
   // Article deep link: /?a=<zim>/<path>. Root path always boots the SPA, so this
   // reliably opens full Zimi chrome on the target article regardless of browser
   // (see _articleDeepLink). Split on the first '/' — zim names never contain one.
@@ -2959,8 +2962,13 @@ function _moveZimTo(zim, category) {
   let _ctxX = 0, _ctxY = 0;
   let _ctxCompact = false;  // gear trigger shows just the layout actions
   let _kbSub = null;        // the submenu trigger currently opened by keyboard
+  // When set, this menu was raised by a non-ZIM caller (e.g. the Users pane).
+  // The click handler routes data-action taps to this callback instead of the
+  // built-in ZIM actions, so the whole positioning / keyboard-nav / dismiss
+  // machinery is reused verbatim rather than duplicated per menu.
+  let _ctxCustomAction = null;
 
-  function closeCtx() { menu.classList.remove('visible'); _ctxZim = null; _ctxCard = null; _kbSub = null; }
+  function closeCtx() { menu.classList.remove('visible'); _ctxZim = null; _ctxCard = null; _kbSub = null; _ctxCustomAction = null; }
 
   // ── Keyboard navigation (ARIA menu pattern) ──
   // The menu + its Move to…/Collections submenus are reachable by keyboard:
@@ -3111,8 +3119,21 @@ function _moveZimTo(zim, category) {
   // Exposed so the manage-row gear can raise the same menu (compact variant).
   window._openZimMenu = function(zim, x, y, compact) {
     _ctxZim = zim; _ctxCard = null; _ctxCompact = !!compact;
+    _ctxCustomAction = null;
     _ctxX = x; _ctxY = y;
     showMainMenu();
+  };
+
+  // Generic opener: render arbitrary .ctx-item markup at (x,y) and route every
+  // data-action tap/Enter to `onAction(action, itemEl)`. Returning false from
+  // the callback keeps the menu open; anything else closes it. Reuses posMenu,
+  // the ARIA keyboard nav and outside-dismiss that the ZIM menu already has.
+  window._openMenuAt = function(html, x, y, onAction) {
+    _ctxZim = null; _ctxCard = null; _ctxCompact = false;
+    _ctxCustomAction = onAction || null;
+    _ctxX = x; _ctxY = y;
+    menu.innerHTML = html;
+    posMenu(x, y);
   };
 
   document.addEventListener('contextmenu', function(e) {
@@ -3145,6 +3166,13 @@ function _moveZimTo(zim, category) {
     var zim = _ctxZim;
     var card = _ctxCard;
     e.stopPropagation();
+
+    // Custom (non-ZIM) menu: delegate to the caller's handler.
+    if (_ctxCustomAction) {
+      var keepOpen = _ctxCustomAction(action, item) === false;
+      if (!keepOpen) closeCtx();
+      return;
+    }
 
     if (action === 'open') {
       closeCtx(); enterSource(zim, true);
@@ -4102,9 +4130,15 @@ function _restoreSavedReader() {
   return true;
 }
 
-function enterManage(e) {
+function enterManage(e, section) {
   if (e && e.preventDefault) e.preventDefault();
   if (!manageEnabled) return;
+  // Decide which settings section to land on: an explicit arg (deep link /
+  // ?manage=<section>) wins, else a section a caller already staged in
+  // _pendingMsSection (e.g. Reorder → preferences), else the last one used
+  // this session, else Library. renderManage honors _pendingMsSection.
+  var _msTarget = _validMsSection(section) || _pendingMsSection || _lastMsSection() || 'library';
+  _pendingMsSection = _msTarget;
   // The History/Bookmarks side panel floats over the right edge; close it so
   // it doesn't overlap and truncate the full Manage view.
   _closeLibraryPanel();
@@ -4139,7 +4173,7 @@ function enterManage(e) {
   searchMeta.style.display = 'none';
   sourceHeaderEl.style.display = 'none';
   hideSuggest();
-  history.pushState({ mode: 'manage' }, '', '/?manage');
+  history.pushState({ mode: 'manage' }, '', _msSectionUrl(_msTarget));
   updateTopbar();
   renderManage();
 }
@@ -6283,8 +6317,25 @@ function _prefetchServerSettings() {
   _msPrime('/manage/stats');
 }
 
+// Manage settings sections + the URL/session plumbing that lets a reload (or a
+// fresh tap on Manage) land back on the section the user last had open.
+var _MS_SECTIONS = ['library', 'preferences', 'server', 'users'];
+function _validMsSection(s) { return _MS_SECTIONS.indexOf(s) >= 0 ? s : null; }
+function _msSectionUrl(section) { return (!section || section === 'library') ? '/?manage' : '/?manage=' + section; }
+function _lastMsSection() {
+  try { return _validMsSection(sessionStorage.getItem(SK.MANAGE_SECTION)); } catch (e) { return null; }
+}
+
 function switchMs(section) {
   _msSection = section;
+  // Persist + reflect in the URL so a Safari reload of /?manage=<section>
+  // (or re-entering Manage) restores this section instead of defaulting to
+  // Library. replaceState keeps a single Manage history entry, consistent with
+  // the existing ?manage routing (see route()/enterManage).
+  try { sessionStorage.setItem(SK.MANAGE_SECTION, section); } catch (e) {}
+  if (mode === 'manage') {
+    try { history.replaceState({ mode: 'manage' }, '', _msSectionUrl(section)); } catch (e) {}
+  }
   document.querySelectorAll('.ms-nav-item').forEach(function(b) {
     b.classList.toggle('active', b.dataset.ms === section);
   });
@@ -6320,63 +6371,140 @@ function _roleBadge(role) {
   return '<span class="' + cls + '">' + tH(key) + '</span>';
 }
 
+// One user row: name + role badge + scope · last-seen, with a single ⋯ menu
+// holding every mutation (set password / change role / edit allowlist / delete).
+// No controls are visible at rest — the menu is the only affordance. `opts`
+// carries the trailing ⋯ button (empty for the never-managed primary admin).
+function _userRowHtml(name, role, meta, menuAttr) {
+  return '<div class="ms-user-row">' +
+    '<span class="ms-user-main"><strong>' + esc(name) + '</strong> ' + _roleBadge(role) +
+    (meta ? ' <span class="ms-user-meta">' + meta + '</span>' : '') + '</span>' +
+    (menuAttr
+      ? '<button class="ci-gear ms-user-menu-btn" ' + menuAttr + '>⋯</button>'
+      : '') +
+  '</div>';
+}
+
 function _msUsersHtml() {
   var d = _usersData || { users: [], zims: [] };
   var isPrimary = d.self_kind === 'primary';
-  var h = '<div class="ms-users-intro" style="color:var(--text2);font-size:13px;margin-bottom:14px">' + tH('users_intro') + '</div>';
+  var h = '<div class="ms-users-intro">' + tH('users_intro') + '</div>';
   h += '<div class="ms-users-list">';
-  // The PRIMARY admin, always first — amber ADMIN badge + label, never deletable.
-  // (No crown: the role badge is the design-system indicator.)
+  // The PRIMARY admin, always first — amber ADMIN badge + label, never deletable
+  // (no ⋯). The role badge is the design-system indicator, no crown.
   if (d.primary_admin) {
-    h += '<div class="ms-user-row" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
-      '<span style="flex:1"><strong>' + esc(d.primary_admin.name) + '</strong> ' + _roleBadge('admin') +
-      ' <span style="color:var(--text2);font-size:12px">' + tH('users_primary_admin') + '</span></span>' +
-    '</div>';
+    h += _userRowHtml(d.primary_admin.name, 'admin', tH('users_primary_admin'), '');
   }
-  // Named users, each with its role badge.
+  // Named users, each with its role badge + a single ⋯ menu.
   d.users.forEach(function(u) {
-    var scope = u.all_access ? tH('users_all_access') : (u.allowlist.length + ' ' + tH('users_zim_count'));
-    // A secondary admin cannot manage other admins (server enforces; UI hides).
-    var canManage = isPrimary || u.role !== 'admin';
+    var scope = u.role === 'limited'
+      ? (u.all_access ? tH('users_all_access') : (u.allowlist.length + ' ' + tH('users_zim_count')))
+      : tH('users_all_access');
     // Last-login: relative time (localized) or "never signed in".
     var seen = u.last_login
       ? tH('users_last_login') + ' ' + esc(_relTime(u.last_login))
       : tH('users_last_never');
-    var btns = canManage
-      ? '<button class="ms-btn" onclick="_setUserPassword(' + escAttr(JSON.stringify(u.name)) + ')">' + tH('users_set_password') + '</button>' +
-        '<button class="ms-btn" onclick="_editUser(' + escAttr(JSON.stringify(u.name)) + ')">' + tH('users_edit_access') + '</button>' +
-        '<button class="ms-btn ms-btn-danger" onclick="_deleteUser(' + escAttr(JSON.stringify(u.name)) + ')">' + tH('delete') + '</button>'
+    // A secondary admin cannot manage other admins (server enforces; UI hides).
+    var canManage = isPrimary || u.role !== 'admin';
+    var menuAttr = canManage
+      ? 'onclick="event.stopPropagation();_openUserMenu(this,' + escAttr(JSON.stringify(u.name)) + ')" title="' + escAttr(t('users_options')) + '" aria-label="' + escAttr(t('users_options')) + '" aria-haspopup="menu"'
       : '';
-    h += '<div class="ms-user-row" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
-      '<span style="flex:1"><strong>' + esc(u.name) + '</strong> ' + _roleBadge(u.role) +
-      ' <span style="color:var(--text2);font-size:12px">' + (u.role === 'limited' ? scope : tH('users_all_access')) +
-      ' · ' + seen + '</span></span>' +
-      btns +
-    '</div>';
+    h += _userRowHtml(u.name, u.role, scope + ' · ' + seen, menuAttr);
   });
   h += '</div>';
-  // Add-user form
-  h += '<div class="ms-user-add" style="margin-top:18px">' +
-    '<h4 style="margin:0 0 10px">' + tH('users_add') + '</h4>' +
-    '<input id="new-user-name" type="text" placeholder="' + escAttr(tH('users_name_ph')) + '" autocomplete="username" style="width:100%;margin-bottom:8px" maxlength="32">' +
-    '<input id="new-user-pw" type="password" placeholder="' + escAttr(tH('password')) + '" autocomplete="new-password" style="width:100%;margin-bottom:8px">' +
-    '<div style="font-size:12px;color:var(--text2);margin-bottom:6px">' + tH('users_access_label') + '</div>' +
-    _rolePills('new-user', 'user', isPrimary) +
-    '<div id="new-user-allowlist" style="display:none;margin-top:8px">' + _allowlistPicker([]) + '</div>' +
-    '<div id="new-user-error" class="pw-error" style="display:none"></div>' +
-    '<button class="ms-btn ms-btn-primary" style="margin-top:10px" onclick="_createUser()">' + tH('users_create') + '</button>' +
+  // Add user: one button; the form is revealed only on demand (no fields at rest).
+  h += '<div class="ms-user-addbar">' +
+    '<button class="ms-btn ms-btn-primary" id="add-user-toggle" onclick="_toggleAddUser()">+ ' + tH('users_add') + '</button>' +
+    '<div id="add-user-form" class="ms-user-add" hidden>' +
+      '<input id="new-user-name" type="text" placeholder="' + escAttr(tH('users_name_ph')) + '" autocomplete="username" maxlength="32">' +
+      '<input id="new-user-pw" type="password" placeholder="' + escAttr(tH('password')) + '" autocomplete="new-password">' +
+      '<div class="ms-form-label">' + tH('users_access_label') + '</div>' +
+      _rolePills('new-user', 'user', isPrimary) +
+      '<div id="new-user-allowlist" style="display:none;margin-top:8px">' + _allowlistPicker([]) + '</div>' +
+      '<div id="new-user-error" class="pw-error" style="display:none"></div>' +
+      '<div class="ms-actions">' +
+        '<button class="ms-btn ms-btn-primary" onclick="_createUser()">' + tH('users_create') + '</button>' +
+        '<button class="ms-btn" onclick="_toggleAddUser()">' + tH('cancel') + '</button>' +
+      '</div>' +
+    '</div>' +
   '</div>';
-  // The admin's own account controls — moved here from Preferences → Security so
-  // password + logout live with the rest of the user/identity management.
-  h += '<div class="ms-user-account" style="margin-top:22px;border-top:1px solid var(--border);padding-top:16px">' +
-    '<h4 style="margin:0 0 10px">' + tH('users_your_account') + '</h4>' +
-    '<div class="ms-actions">' +
-      '<button id="pw-btn" class="manage-btn-action" onclick="managePassword()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">🔒 ' + tH('change_password') + '</button>';
-  if (_hasStoredManageToken()) {
-    h += '<button class="manage-btn-action" onclick="manageLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('log_out') + '</button>';
-  }
-  h += '</div></div>';
+  // The admin's own account — same clean treatment: a row + a single ⋯ menu with
+  // Change password / Log out. Moved here from Preferences → Security.
+  h += '<div class="ms-user-account">' +
+    '<div class="ms-section-label">' + tH('users_your_account') + '</div>' +
+    '<div class="ms-user-row">' +
+      '<span class="ms-user-main"><strong>' + esc(_manageAccountName()) + '</strong> ' + _roleBadge('admin') + '</span>' +
+      '<button class="ci-gear ms-user-menu-btn" onclick="event.stopPropagation();_openAccountMenu(this)" title="' + escAttr(t('users_options')) + '" aria-label="' + escAttr(t('users_options')) + '" aria-haspopup="menu">⋯</button>' +
+    '</div>' +
+  '</div>';
   return h;
+}
+
+// Best-effort display name for the signed-in admin account card. The primary
+// admin's name comes back with the users payload; a secondary admin falls back
+// to its stored username, then a generic label.
+function _manageAccountName() {
+  var d = _usersData || {};
+  if (d.self_kind === 'primary' && d.primary_admin) return d.primary_admin.name;
+  return _readManageUser() || t('users_your_account');
+}
+
+// ⋯ menu for a managed user. Set password / Change role › / Edit allowlist
+// (limited only) / Delete. Reuses the shared ctx-menu (keyboard-navigable).
+function _openUserMenu(btn, name) {
+  var u = ((_usersData && _usersData.users) || []).find(function(x) { return x.name === name; });
+  if (!u) return;
+  var isPrimary = _usersData && _usersData.self_kind === 'primary';
+  var roles = [['user', 'users_role_user'], ['limited', 'users_role_limited']];
+  if (isPrimary) roles.push(['admin', 'users_role_admin']);
+  var h = '<div class="ctx-item" data-action="set-pw">' + tH('users_set_password') + '</div>';
+  h += '<div class="ctx-item">' + tH('users_change_role') + ' ›<div class="ctx-sub">';
+  roles.forEach(function(r) {
+    h += '<div class="ctx-item" data-action="role" data-role="' + r[0] + '">' +
+      (u.role === r[0] ? '✓ ' : '') + tH(r[1]) + '</div>';
+  });
+  h += '</div></div>';
+  if (u.role === 'limited') {
+    h += '<div class="ctx-item" data-action="allowlist">' + tH('users_edit_allowlist') + '</div>';
+  }
+  h += '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
+  var r = btn.getBoundingClientRect();
+  window._openMenuAt(h, r.left, r.bottom + 2, function(action, item) {
+    if (action === 'set-pw') _setUserPassword(name);
+    else if (action === 'role') _setUserRole(name, item.dataset.role);
+    else if (action === 'allowlist') _editUserAllowlist(name);
+    else if (action === 'delete') _deleteUser(name);
+  });
+}
+
+// ⋯ menu for the "Your account" card.
+function _openAccountMenu(btn) {
+  var h = '<div class="ctx-item" data-action="change-pw">' + tH('change_password') + '</div>';
+  if (_hasStoredManageToken()) {
+    h += '<div class="ctx-sep"></div><div class="ctx-item" data-action="logout">' + tH('log_out') + '</div>';
+  }
+  var r = btn.getBoundingClientRect();
+  window._openMenuAt(h, r.left, r.bottom + 2, function(action) {
+    if (action === 'change-pw') managePassword();
+    else if (action === 'logout') manageLogout();
+  });
+}
+
+// Reveal / hide the add-user form (fields exist only while open).
+function _toggleAddUser() {
+  var form = document.getElementById('add-user-form');
+  var toggle = document.getElementById('add-user-toggle');
+  if (!form || !toggle) return;
+  var open = form.hasAttribute('hidden');
+  if (open) {
+    form.removeAttribute('hidden');
+    toggle.style.display = 'none';
+    var nm = document.getElementById('new-user-name');
+    if (nm) nm.focus();
+  } else {
+    form.setAttribute('hidden', '');
+    toggle.style.display = '';
+  }
 }
 
 // Localized relative time for a unix-seconds timestamp (e.g. "3 hours ago").
@@ -6411,7 +6539,7 @@ function _setUserPassword(name) {
   _usersPost({ action: 'set-password', name: name, password: pw }).then(function(r) {
     if (r.ok) {
       _usersData = r.j;
-      if (_msSection === 'users') document.getElementById('ms-pane').innerHTML = _msUsersHtml();
+      _refreshUsersPane();
       _showToast(t('users_password_set').replace('{name}', name));
     } else {
       _showToast(t('users_create_failed'));
@@ -6479,6 +6607,13 @@ function _usersPost(payload) {
   }).then(function(res) { return res.json().then(function(j) { return { ok: res.ok, j: j }; }); });
 }
 
+// Re-render the Users pane in place after a mutation (shared by every action).
+function _refreshUsersPane() {
+  if (_msSection !== 'users') return;
+  var pane = document.getElementById('ms-pane');
+  if (pane) pane.innerHTML = _msUsersHtml();
+}
+
 function _createUser() {
   var name = (document.getElementById('new-user-name').value || '').trim();
   var pw = document.getElementById('new-user-pw').value || '';
@@ -6489,36 +6624,45 @@ function _createUser() {
   if (role === 'limited') payload.allowlist = _collectAllowlist('new-user-allowlist');
   _usersPost(payload).then(function(r) {
     if (!r.ok) { errEl.textContent = t('users_create_failed'); errEl.style.display = 'block'; return; }
-    _usersData = r.j; if (_msSection === 'users') document.getElementById('ms-pane').innerHTML = _msUsersHtml();
+    _usersData = r.j; _refreshUsersPane();
   });
 }
 
 function _deleteUser(name) {
   if (!confirm(t('users_delete_confirm').replace('{name}', name))) return;
   _usersPost({ action: 'delete', name: name }).then(function(r) {
-    if (r.ok) { _usersData = r.j; if (_msSection === 'users') document.getElementById('ms-pane').innerHTML = _msUsersHtml(); }
+    if (r.ok) { _usersData = r.j; _refreshUsersPane(); }
   });
 }
 
-// Inline role + access editor for an existing user (overlay-free: swaps the
-// pane). Role pills mirror the add form; the allowlist shows only for limited.
-function _editUser(name) {
+// Change a user's role from the ⋯ menu. Switching to "limited" carries the
+// existing allowlist forward (edit it via the separate Edit allowlist item).
+function _setUserRole(name, role) {
+  if (!_validMsSection(_msSection)) return;
   var u = ((_usersData && _usersData.users) || []).find(function(x) { return x.name === name; });
-  if (!u) return;
-  var isPrimary = _usersData && _usersData.self_kind === 'primary';
-  var pane = document.getElementById('ms-pane');
-  var h = '<button class="ms-btn" onclick="_renderMsUsers()" style="margin-bottom:12px">← ' + tH('back') + '</button>' +
-    '<h4 style="margin:0 0 10px">' + tH('users_edit_access') + ' — ' + esc(name) + '</h4>' +
-    _rolePills('edit-user', u.role, isPrimary) +
-    '<div id="edit-user-allowlist" style="display:' + (u.role === 'limited' ? 'block' : 'none') + ';margin-top:8px">' + _allowlistPicker(u.allowlist) + '</div>' +
-    '<button class="ms-btn ms-btn-primary" style="margin-top:12px" onclick="_saveUser(' + escAttr(JSON.stringify(name)) + ')">' + tH('save') + '</button>';
-  pane.innerHTML = h;
+  if (u && u.role === role) return;  // no-op tap on the current role
+  var payload = { action: 'set-role', name: name, role: role };
+  if (role === 'limited') payload.allowlist = (u && u.allowlist) || [];
+  _usersPost(payload).then(function(r) {
+    if (r.ok) { _usersData = r.j; _refreshUsersPane(); }
+  });
 }
 
-function _saveUser(name) {
-  var role = _selectedRole('edit-user');
-  var payload = { action: 'set-role', name: name, role: role };
-  if (role === 'limited') payload.allowlist = _collectAllowlist('edit-user-allowlist');
+// Allowlist editor for a limited user (overlay-free: swaps the pane). Role is
+// set separately via the ⋯ menu, so this pane is allowlist-only.
+function _editUserAllowlist(name) {
+  var u = ((_usersData && _usersData.users) || []).find(function(x) { return x.name === name; });
+  if (!u) return;
+  var pane = document.getElementById('ms-pane');
+  pane.innerHTML =
+    '<button class="ms-btn" onclick="_renderMsUsers()" style="margin-bottom:12px">← ' + tH('back') + '</button>' +
+    '<div class="ms-section-label">' + tH('users_edit_allowlist') + ' — ' + esc(name) + '</div>' +
+    '<div id="edit-user-allowlist" style="margin-top:8px">' + _allowlistPicker(u.allowlist) + '</div>' +
+    '<button class="ms-btn ms-btn-primary" style="margin-top:12px" onclick="_saveUserAllowlist(' + escAttr(JSON.stringify(name)) + ')">' + tH('save') + '</button>';
+}
+
+function _saveUserAllowlist(name) {
+  var payload = { action: 'set-role', name: name, role: 'limited', allowlist: _collectAllowlist('edit-user-allowlist') };
   _usersPost(payload).then(function(r) {
     if (r.ok) { _usersData = r.j; _renderMsUsers(); }
   });
