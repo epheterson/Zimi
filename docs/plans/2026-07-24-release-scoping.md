@@ -27,6 +27,10 @@ The four yes-items that missed the train, plus polish debt:
 - Almanac time machine, skeuomorphic pass: Eric wants a more physical
   representation of both the time scrubber and the current/destination
   (BTTF) panel — the 1.8.0 version is functional but "I don't love it"
+- Almanac link-map expansion: every holiday/event with a real Wikipedia
+  page gets a curated entry (Flag Day, Summer Solstice, …) — same closed-set
+  provenance rules, no search fallback. Audit the full entity list for
+  unmatched-but-matchable items.
 
 ## v1.9 "Industry Edition"
 Enterprise + the deep community items:
