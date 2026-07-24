@@ -1985,25 +1985,34 @@ function renderHome(filter) {
   }
 }
 
+// Resolve a ZIM's language into a badge intent: a short uppercase code ({code}),
+// a multi-language count ({multi:n}), or null (no badge — language-agnostic, or
+// it matches the current UI language, where a badge would just be noise). Shared
+// by the inline list badge and the compact-tile corner badge so the exclusion
+// rules never drift between the two views.
+function _zimLangBadgeInfo(z) {
+  var lang = (z.language || '').toLowerCase();
+  if (!lang || lang === 'all') return null;
+  if (lang.includes(',')) { var n = lang.split(',').length; return n > 1 ? {multi: n} : null; }
+  if (lang === 'mul' || lang === 'multi' || /^mul/i.test(z.name)) return null;
+  if (lang === _currentLang) return null;
+  // Two-letter uppercase code (DE, AR, FR…). ISO 639-1 codes are already two
+  // letters; longer codes are clipped to their first two.
+  return {code: (lang.length > 2 ? lang.slice(0, 2) : lang).toUpperCase()};
+}
+
+// Inline language badge (search + full list rows). Full language name in the
+// tooltip; the visible label is the short code so identically-named ZIMs in
+// different languages are distinguishable at a glance.
 function _langBadge(z) {
-  var lang = z.language || '';
-  if (!lang) return '';
-  // 'all'/'mul' means language-agnostic content — a language badge conveys
-  // nothing there ("ALL" reads as noise), so skip it entirely.
-  var norm = lang.toLowerCase();
-  if (norm === 'all' || norm === 'mul' || norm === 'multi') return '';
-  // Multi-language ZIMs (e.g., TED mul_*)
-  if (lang.includes(',') || (/^mul/i.test(z.name) && !lang.includes(','))) {
-    var count = lang.includes(',') ? lang.split(',').length : 0;
-    if (count > 1) {
-      return '<span class="lang-badge multi" title="' + escAttr(t('multilingual', {n: count})) + '">' + count + ' ' + tH('language').toLowerCase() + '</span>';
-    }
-    return '<span class="lang-badge multi">' + tH('language') + '</span>';
+  var info = _zimLangBadgeInfo(z);
+  if (!info) return '';
+  if (info.multi) {
+    return '<span class="lang-badge multi" title="' + escAttr(t('multilingual', {n: info.multi})) + '">' +
+      info.multi + ' ' + tH('language').toLowerCase() + '</span>';
   }
-  // Don't badge ZIMs that match the current UI language
-  if (lang === _currentLang) return '';
-  var name = _langDisplayName(lang) || lang.toUpperCase();
-  return '<span class="lang-badge" title="' + escAttr(name) + '">' + esc(name) + '</span>';
+  var name = _langDisplayName(z.language) || info.code;
+  return '<span class="lang-badge" title="' + escAttr(name) + '">' + esc(info.code) + '</span>';
 }
 
 // New/Updated badges (#34). A badge flags a ZIM the user hasn't looked at since
@@ -2168,11 +2177,12 @@ function renderCardGrid(items, showStars, showCategory) {
       ? '<span class="new-badge' + (isUpd ? ' updated-badge' : '') + '" title="' + escAttr(t(isUpd ? 'recently_updated' : 'recently_installed')) + '">' + tH(isUpd ? 'updated_badge' : 'new_badge') + '</span>'
       : '';
     return '<div class="stat-card' + (newHtml ? ' is-new' : '') + '" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
-      newHtml +
       starHtml +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info">' +
-        '<div class="name">' + esc(z.title || z.name) + badge + qidIcon + '</div>' +
+        // new-badge lives in the title row (list) — never over the left icon;
+        // CSS lifts it to a tile corner in compact view (icon is centred there).
+        '<div class="name">' + newHtml + esc(z.title || z.name) + badge + qidIcon + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
         '<div class="detail">' + catPrefix + _zimCountHtml(z) +
         ' &middot; ' + fmtSize(z.size_gb) +
