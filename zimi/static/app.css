@@ -1046,7 +1046,9 @@
   /* Sized for the 1-4 digit values they hold (ratio 1.5, MB/s caps) rather than
      the old label-width default; the port needs room for 5 digits + spinner. */
   .share-num-input { width: 6ch; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 6px; text-align: left; }
-  .share-port-input { width: 8ch; }
+  /* 5 digits of monospace + left/right padding + the number spinner arrows;
+     8ch clipped the last digit once the spinner was accounted for. */
+  .share-port-input { width: 78px; }
   .share-num-input:disabled { opacity: 0.5; }
   .peer-name-input { width: 160px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 8px; text-align: left; }
   .share-port-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
@@ -1076,7 +1078,7 @@
     .peer-name-input { width: 130px; }
     .share-port-group { gap: 8px; }
     .share-port-row { gap: 8px; }
-    .share-port-input { width: 58px; }
+    .share-port-input { width: 70px; }
   }
   .dl-source { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
     color: var(--text2); white-space: nowrap; }
