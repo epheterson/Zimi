@@ -36,6 +36,14 @@ The four yes-items that missed the train, plus polish debt:
   (correct layout for time/location, moving with the sky) so the scene
   matches what's really overhead. Eric: "I want REAL stars / layout in
   the sky moving."
+- README demo GIF, done right: one GIF replacing ALL static screenshots —
+  a full walkthrough (search, reader, interlang live usage, almanac).
+  Eric likes the idea, not the 1.8.0 execution; removed for launch.
+- Repo-root slimming: move zimi_desktop.py / zimi_desktop.spec /
+  zimi_winsparkle.py / requirements-desktop.txt / playwright.config.mjs
+  into subdirs and update CI paths (needs a full CI re-validation, which
+  is why it didn't happen on ship day). The appcast*.xml files CANNOT
+  move — they are live Sparkle/WinSparkle feed URLs.
 
 ## v1.9 "Industry Edition"
 Enterprise + the deep community items:

@@ -13,8 +13,6 @@ A modern experience for your ZIM files.
 
 [Kiwix](https://kiwix.org) packages the world's knowledge into ZIM files. Zimi makes them feel like the real internet with a rich web UI, fast JSON API, and an MCP server for AI agents. Everything works offline, in your language.
 
-![Zimi demo — searching across sources, opening a Wikipedia article, toggling Reader View, and correcting a misspelled query](screenshots/demo.gif)
-
 ## What is Zimi?
 
 - **The offline internet.** Entire websites, cross-ZIM linking, search engine and native browser experience.
@@ -234,11 +232,16 @@ Tools: `search` (with `lang` filter), `read`, `suggest`, `list_sources`, `random
 
 ## Long-requested, shipped here
 
-Some features the ZIM ecosystem has been asking for are available in Zimi today:
+Features the ZIM ecosystem has been asking for, available in Zimi today:
 
-- **Spelling suggestions** — "did you mean?" on sparse searches, fully offline ([libzim #731](https://github.com/openzim/libzim/issues/731))
+- **Spelling suggestions** — "did you mean?" on weak searches, fully offline ([libzim #731](https://github.com/openzim/libzim/issues/731))
 - **Read-aloud** — text-to-speech in the reader via the offline Web Speech API ([kiwix-js #166](https://github.com/kiwix/kiwix-js/issues/166))
-- **Text size control** — per-reader font scaling that survives navigation
+- **Reader View** — a clean, adjustable reading mode (themes, fonts, text size) for any article
+- **Word lookup** — tap a word in any article, get the dictionary entry from your own library
+- **Resumable downloads** — an interrupted ZIM download picks up where it left off, and updates reuse the unchanged pieces of the old file instead of re-downloading everything
+- **User accounts** — named logins with per-ZIM access lists, so one server can serve the whole house (or classroom)
+- **A native Windows app** — with the same auto-update channel as macOS
+- **Give back** — seed your downloads to the Kiwix swarm at a ratio you choose, or flip one switch and be a full mirror
 - **Grab the file** — a download button for any ZIM you're sharing on your network
 - **Real article counts** — articles, not raw entry counts, on library cards
 
