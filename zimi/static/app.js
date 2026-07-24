@@ -6926,12 +6926,17 @@ function _renderHealthReport(st) {
         '<span class="health-detail">' + esc(t('health_torrent_meta')) + '</span></div>';
     }
     var issues = (r.issues && r.issues.length) ? esc(r.issues.join(', ')) :
-      (r.entries != null ? t('health_entries', { n: r.entries }) : '');
+      (r.entries != null ? esc(t('health_entries', { n: Number(r.entries).toLocaleString() })) : '');
+    // Which indexes this ZIM has, as small labelled badges (not bare "title"/
+    // "Q-ID" tokens, which read as leftover garbage next to the entry count).
     var idx = [];
-    if (r.title_index === 'current') idx.push('title');
-    else if (r.title_index === 'stale') idx.push('title(stale)');
-    if (r.qid_index === 'present') idx.push('Q-ID');
-    var meta = idx.length ? ' <span style="color:var(--text2);font-size:11px">' + esc(idx.join(' · ')) + '</span>' : '';
+    if (r.title_index === 'current') idx.push(t('health_title_index'));
+    else if (r.title_index === 'stale') idx.push(t('health_title_index_stale'));
+    if (r.qid_index === 'present') idx.push(t('health_qid_index'));
+    var meta = idx.map(function(label) {
+      return '<span class="health-idx-badge">' + esc(label) + '</span>';
+    }).join('');
+    if (meta) meta = ' ' + meta;
     // A broken/degraded ZIM that Zimi knows how to fetch again gets a
     // Redownload action wired into the normal download flow.
     var action = '';

@@ -721,6 +721,13 @@
   .health-row .health-mark { flex: 0 0 auto; width: 16px; text-align: center; }
   .health-row .health-name { flex: 0 0 auto; font-weight: 500; color: var(--text); }
   .health-row .health-detail { flex: 1 1 auto; color: var(--text2); text-align: end; }
+  /* Small labelled chips for the "has title index / Q-ID index" indicators. */
+  .health-idx-badge {
+    display: inline-block; margin-inline-start: 5px; padding: 1px 6px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.04em; border-radius: 4px;
+    background: var(--surface2); color: var(--text2); border: 1px solid var(--border);
+    vertical-align: middle;
+  }
   .health-row.health-warn .health-detail { color: var(--amber); }
   .health-row.health-info .health-detail { color: var(--text2); }
   .health-row .health-redownload-btn {
