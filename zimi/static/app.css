@@ -237,9 +237,12 @@
   .pill:hover, .lang-pill:hover,
   .ci-variant-btn:hover, .flavor-pill:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
   .pill.active, .lang-pill.active { background: linear-gradient(135deg, var(--amber), var(--amber2)); color: #000; border-color: transparent; font-weight: 600; }
-  .pill .pill-count { opacity: 0.55; font-size: 10px; }
+  /* Count chip: a subtle padded pill so the number reads as a distinct count and
+     never crowds the label or the pill's edge. The parent gap (5px) separates it
+     from the label; the padding gives the digits breathing room inside the chip. */
+  .pill .pill-count { opacity: 0.7; font-size: 10px; font-weight: 600; margin-left: 1px; padding: 1px 6px; background: rgba(255, 255, 255, 0.07); border-radius: 8px; }
   /* Dark chip on the amber active pill — amber-on-amber is unreadable */
-  .pill.active .pill-count { opacity: 1; background: rgba(0, 0, 0, 0.22); color: #000; padding: 0 5px; border-radius: 8px; }
+  .pill.active .pill-count { opacity: 1; background: rgba(0, 0, 0, 0.22); color: #000; padding: 1px 6px; border-radius: 8px; }
   .pill.dimmed, .lang-pill.dimmed { opacity: 0.35; pointer-events: none; }
   .pills-divider { width: 60px; height: 1px; background: var(--border); margin: 0 auto 4px; opacity: 0.5; }
   /* Collection pills carry the layers glyph so they read as groupings, not
@@ -280,7 +283,6 @@
   .lang-banner-dismiss:hover { color: var(--text); }
 
   /* ── Language switch panel (ephemeral, bottom of reader) ── */
-  .manage-badge { position: absolute; top: 0; right: -2px; min-width: 14px; height: 14px; background: var(--amber); border-radius: 7px; pointer-events: none; font-size: 9px; font-weight: 700; color: #000; display: flex; align-items: center; justify-content: center; padding: 0 3px; box-sizing: border-box; }
   /* Mobile overflow menu */
   .topbar-more { display: none; background: none; border: none; color: var(--text2); font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 6px; letter-spacing: 2px; }
   .topbar-more:hover { color: var(--text); background: var(--surface2); }
@@ -343,6 +345,12 @@
   .ms-user-add input { padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); box-sizing: border-box; width: 100%; }
   .ms-form-label { font-size: 12px; color: var(--text2); }
   .ms-user-account { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
+  /* "Your Account" now leads the pane: no top border, and a divider below it
+     separates it from the other-users section. */
+  .ms-user-account-self { margin-top: 0; border-top: none; padding-top: 0; padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .ms-user-account-self .ms-user-row { border-bottom: none; }
+  /* Your-account actions: visible Change password / Log out buttons, not a ⋯. */
+  .ms-user-self-actions { flex-shrink: 0; display: flex; gap: 8px; }
   /* Role badges in the users list. Muted by default; admin gets amber. */
   .ms-role-badge { display: inline-block; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 10px; color: var(--text2); background: var(--surface2); border: 1px solid var(--border); vertical-align: middle; }
   .ms-role-badge.ms-role-admin { color: #000; background: linear-gradient(135deg, var(--amber), var(--amber2)); border-color: transparent; }
@@ -1020,7 +1028,7 @@
   /* background:none beats .pill.active's amber gradient (same specificity,
      later in source) — amber label on amber fill was unreadable. */
   .dl-filter-pill.active { color: var(--amber); border-color: var(--amber); background: none; font-weight: 600; }
-  .dl-filter-pill.active .pill-count { opacity: 1; background: var(--amber); color: #000; padding: 0 5px; border-radius: 8px; }
+  .dl-filter-pill.active .pill-count { opacity: 1; background: var(--amber); color: #000; padding: 1px 6px; border-radius: 8px; }
   /* One shape for the whole download-row button family */
   .dl-pause-btn, .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);
     padding: 4px 12px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s;

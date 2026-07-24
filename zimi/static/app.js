@@ -242,15 +242,13 @@ async function _fetchList() {
   _sectionOrder = Array.isArray(data.section_order) ? data.section_order : [];
   return Array.isArray(data.zims) ? data.zims : [];
 }
-let homeScope = null; // {type:'favorites'|'category'|'collection', label, zimNames:[]}
-// #34 library filter pills: null | 'added' | 'updated'. Transient view state —
-// deliberately NOT persisted, so a reload always lands on the full library.
-let homeRecentFilter = null;
+let homeScope = null; // {type:'favorites'|'category'|'collection'|'recent', label, zimNames:[]}
 // Library language filter: a Set of ZIM language codes. Empty = all languages.
-// Combines with homeRecentFilter (AND). Transient like it — reset alongside it,
-// never persisted. Multi-select toggle, matching the search-results lang pills.
+// Transient view state — reset when leaving/entering a scope, never persisted,
+// so a reload always lands on the full library. Multi-select toggle, matching
+// the search-results lang pills.
 let homeLangFilter = new Set();
-// Home filter pills (recency + language) live in the search dropdown, where the
+// Home language filter pills live in the search dropdown, where the
 // user picks a filter (see showHistoryDropdown). On home itself the pills row is
 // hidden by default (clean home) and only appears above the content while a
 // filter is actively applied, so its un-filter controls stay reachable.
@@ -263,7 +261,7 @@ let _pillsAreHomeFilters = false;
 let _homeFilterRowsHtml = '';
 function _updateHomeFiltersVisibility() {
   if (!_pillsAreHomeFilters || !pillsBar.innerHTML) return;
-  const filterActive = !!homeRecentFilter || homeLangFilter.size > 0;
+  const filterActive = homeLangFilter.size > 0;
   pillsBar.style.display = filterActive ? '' : 'none';
 }
 
@@ -382,21 +380,20 @@ function _checkReaderLangBanner() {
   if (old) old.remove();
 }
 
+// Legacy download-count badge shim. The topbar activity badge (.topbar-badge,
+// see _applyActivityBadge) is now the single source of truth for the gear count
+// — it already surfaces downloads plus indexing/seeding. Painting a second
+// `.manage-badge` here stacked two badges on the same gear (double-badge bug),
+// so this now just nudges the activity poll for immediate feedback on a
+// download start/stop and lets that one badge own the gear. Kept as a named
+// function so the download call sites read intentionally.
 function _showManageBadge(show, count) {
+  // Drop any stale `.manage-badge` left by an older cached app.js, then defer to
+  // the activity badge.
   var btn = document.getElementById('manage-btn');
-  if (!btn) return;
-  // Don't show badge when manage view is already open (button is close X)
-  if (mode === 'manage' || _almanacOpen) show = false;
-  var badge = btn.querySelector('.manage-badge');
-  if (show && !badge) {
-    badge = document.createElement('span');
-    badge.className = 'manage-badge';
-    btn.appendChild(badge);
-  } else if (!show && badge) {
-    badge.remove();
-    return;
-  }
-  if (badge && count > 0) badge.textContent = count;
+  var stale = btn && btn.querySelector('.manage-badge');
+  if (stale) stale.remove();
+  if (window._nudgeActivityPoll) window._nudgeActivityPoll();
 }
 
 function _langBannerDownload(lang, catMatch) {
@@ -1363,9 +1360,8 @@ function enterHome(push) {
   readerSource = null;
   sourceAutoReader = false;
   homeScope = null;
-  // Recency/language pills are scoped to whatever card set is showing (#37) —
+  // The language filter is scoped to whatever card set is showing (#37) —
   // leaving a scope drops any filter picked inside it so home starts clean.
-  homeRecentFilter = null;
   homeLangFilter.clear();
   _currentSearchQuery = null;
   articleHistory = [];
@@ -1401,9 +1397,8 @@ function enterScope(type, label, zimNames, push) {
   readerSource = null;
   sourceAutoReader = false;
   homeScope = { type, label, zimNames };
-  // New section, new card set — drop any recency/language filter picked in
-  // whatever view we're leaving (home or a different section).
-  homeRecentFilter = null;
+  // New section, new card set — drop any language filter picked in whatever
+  // view we're leaving (home or a different section).
   homeLangFilter.clear();
   q.value = '';
   searchMeta.style.display = 'none';
@@ -1689,7 +1684,7 @@ function renderHome(filter) {
   // languages so state stays sane (scope transitions reset filters themselves,
   // in enterScope/enterHome, so re-rendering the same scope doesn't clobber a
   // filter the user just picked).
-  if (filter) { homeRecentFilter = null; homeLangFilter.clear(); }
+  if (filter) { homeLangFilter.clear(); }
 
   const totalEntries = baseZims.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
   const totalGb = baseZims.reduce((s, z) => s + z.size_gb, 0);
@@ -1706,10 +1701,10 @@ function renderHome(filter) {
 
   // Check if Discover will be active (not hidden and not filtered/scoped)
   var discoverHidden = _getStorageFlag(SK.HIDE_DISCOVER);
-  var discoverWillShow = !homeScope && !filter && !homeRecentFilter && !homeLangFilter.size && !discoverHidden;
+  var discoverWillShow = !homeScope && !filter && !homeLangFilter.size && !discoverHidden;
 
   // Counts sit at the BOTTOM in every discover-capable home state — the clean
-  // idle view AND while a recency/language filter is active — so tapping a
+  // idle view AND while a language filter is active — so tapping a
   // filter pill never makes the counts bar jump from bottom to top (#8). The
   // top stats bar is used only when discover is user-hidden or the view is
   // scoped / text-filtered.
@@ -1752,29 +1747,13 @@ function renderHome(filter) {
 
   const cats = Object.keys(groups).filter(c => c !== '_uncategorized').sort();
 
-  // #34 library filter pills: All · Recently added · Recently updated · language
-  // pills. Reuses the manage-view .pill row. Each recency pill only appears when
-  // it has something to show, so we never present a filter that lands on an empty
-  // view. The pills are picked from the search dropdown (which renders the cached
-  // _homeFilterRowsHtml at its top); on home the row only shows above the content
-  // while a filter is active, so un-filtering stays reachable.
+  // #34 recency lists: recently added / updated ZIMs. These render as their own
+  // home sections (see below), like Favorites — not as pills in the global filter
+  // row — so recents sit next to the content they describe. The global filter row
+  // below carries only the language pills.
   var _recentAdded = sorted.filter(_zimRecentAdded).sort(_byFirstSeenDesc);
   var _recentUpdated = sorted.filter(_zimRecentUpdated).sort(_byUpdatedDesc);
-  var _hasRecency = !filter && (_recentAdded.length || _recentUpdated.length);
   var _rows = '';
-  if (_hasRecency) {
-    _rows += '<div class="pills-row" role="group" aria-label="' + escAttr(t('filter_by_recency')) + '">';
-    _rows += _recentPill(null, tH('filter_all'), homeRecentFilter === null);
-    if (_recentAdded.length) {
-      _rows += _recentPill('added', tH('filter_recently_added') +
-        ' <span class="pill-count">' + _recentAdded.length + '</span>', homeRecentFilter === 'added');
-    }
-    if (_recentUpdated.length) {
-      _rows += _recentPill('updated', tH('recently_updated') +
-        ' <span class="pill-count">' + _recentUpdated.length + '</span>', homeRecentFilter === 'updated');
-    }
-    _rows += '</div>';
-  }
   if (_showLangPills) {
     _rows += '<div class="lang-pills" role="group" aria-label="' + escAttr(t('filter_by_language')) + '">';
     _rows += _allResetPill(homeLangFilter.size === 0, 'clearHomeLang()');
@@ -1792,18 +1771,17 @@ function renderHome(filter) {
     // filter is actively applied. _updateHomeFiltersVisibility encodes that.
     _updateHomeFiltersVisibility();
   } else {
-    // No pills otherwise (scoped/filtered/nothing recent) — sections organize home.
+    // No pills otherwise (scoped/filtered/no languages) — sections organize home.
     pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
     _pillsAreHomeFilters = false;
-    homeRecentFilter = null; // guard: pill row gone, so no stale filter state
     homeLangFilter.clear();
   }
 
   let h = '';
 
-  // Scope header with back link — rendered first so it survives the
-  // recency-filter early return below (a section's "Recently added" pill
-  // shouldn't strand the user with no way back to "All sources").
+  // Scope header with back link — a recency section ('Recently added'/'updated'),
+  // Favorites, a category or a collection all drill in here, so keep a way back
+  // to "All sources".
   if (homeScope) {
     h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">' +
       '<a href="#" onclick="event.preventDefault();enterHome(true)" style="color:var(--text2);text-decoration:none;font-size:13px">' + tH('all_sources') + '</a>' +
@@ -1814,27 +1792,6 @@ function renderHome(filter) {
 
   // The compact/full layout toggle is injected onto the first section header
   // after render (see _placeViewToggle) rather than sitting in a bar of its own.
-
-  // #34 recency-filter view: a flat, newest-first grid of just the matching
-  // ZIMs (still scoped to the section, if any). No discover row or category
-  // sections — the pill IS the organization, and a cross-cutting "added this
-  // month" list doesn't group by category.
-  // A language narrowing can empty the active recency list — its pill is
-  // hidden then, so an active-but-invisible filter would strand the view on
-  // an empty state. Fall back to All instead.
-  if (homeRecentFilter === 'added' && !_recentAdded.length) homeRecentFilter = null;
-  if (homeRecentFilter === 'updated' && !_recentUpdated.length) homeRecentFilter = null;
-  if (homeRecentFilter) {
-    var _list = homeRecentFilter === 'added' ? _recentAdded : _recentUpdated;
-    h += '<div class="cat-heading">' +
-      tH(homeRecentFilter === 'added' ? 'filter_recently_added' : 'recently_updated') + '</div>';
-    h += _list.length
-      ? renderCardGrid(_list, true, true)
-      : '<div class="empty"><p>' + tH('no_recent_sources') + '</p></div>';
-    output.innerHTML = h;
-    _placeViewToggle();
-    return;
-  }
 
   // Show article search hint at the top when filtering
   if (filter) {
@@ -1889,6 +1846,14 @@ function renderHome(filter) {
         h += '<div class="cat-heading clickable" onclick="enterScope(\'favorites\',\'\u2605 ' + escJs(t('favorites')) + '\',' + escJs(JSON.stringify(favZimNames)) + ',true)">\u2605 ' + tH('favorites') + '</div>';
         h += renderCardGrid(favZims, true, true);
       }
+    }
+    // Recently added / updated sections (#34). Surfaced inline like Favorites
+    // rather than as pills in the global filter row, so recents sit beside the
+    // content they describe. Each heading drills into a focused, category-grouped
+    // scope (reusing enterScope, which supplies its own back link).
+    if (!filter) {
+      h += _recencySectionHtml('added', _recentAdded);
+      h += _recencySectionHtml('updated', _recentUpdated);
     }
     // Collections now render inside the unified, reorderable section list below
     // (#37) \u2014 no longer pinned above categories.
@@ -2046,9 +2011,9 @@ function _zimBadge(z) {
   return { label: (z.updated_at || 0) > (z.first_seen || 0) ? 'updated' : 'new' };
 }
 
-// ── #34 library filter pills: "Recently added" / "Recently updated" ──
+// ── #34 recency sections: "Recently added" / "Recently updated" ──
 // A distinct window from _ZIM_BADGE_BACKSTOP_DAYS on purpose: the badge is a
-// short nudge that clears the moment you open a ZIM, whereas these pills are a
+// short nudge that clears the moment you open a ZIM, whereas these sections are a
 // durable "what landed this month" lens for someone managing a large library.
 var _ZIM_RECENT_WINDOW_DAYS = 30;
 function _zimRecentAdded(z) {
@@ -2067,19 +2032,21 @@ function _zimRecentUpdated(z) {
 function _byFirstSeenDesc(a, b) { return (b.first_seen || 0) - (a.first_seen || 0); }
 function _byUpdatedDesc(a, b) { return (b.updated_at || 0) - (a.updated_at || 0); }
 
-// One recency pill. kind=null is the "All" reset; aria-pressed reflects state
-// so the row is usable from the keyboard (each pill is a real <button>).
-function _recentPill(kind, labelHtml, active) {
-  return '<button class="pill' + (active ? ' active' : '') + '"' +
-    ' aria-pressed="' + (active ? 'true' : 'false') + '"' +
-    ' onclick="filterHomeRecent(' + (kind ? "'" + kind + "'" : 'null') + ')">' + labelHtml + '</button>';
-}
+// Clock glyph shared by both recency section headings, so "added" and "updated"
+// read as one time-based family (mirrors the globe on the language section).
+var _RECENCY_GLYPH = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" style="vertical-align:-2px;margin-right:4px"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5V8l2.5 1.5"/></svg>';
 
-function filterHomeRecent(kind) {
-  hideSuggest(); // the pill may have been picked from the search dropdown
-  // Toggle: clicking the active pill (or "All") returns to the full library.
-  homeRecentFilter = (homeRecentFilter === kind) ? null : kind;
-  renderHome();
+// One recency section: a clickable heading (drills into a focused, category-
+// grouped scope via enterScope — which brings its own back link) followed by the
+// newest-first card grid. Empty lists render nothing. kind selects the i18n label.
+function _recencySectionHtml(kind, list) {
+  if (!list || !list.length) return '';
+  var label = t(kind === 'added' ? 'filter_recently_added' : 'recently_updated');
+  var names = list.map(function(z) { return z.name; });
+  return '<div class="cat-heading clickable" onclick="enterScope(\'recent\',\'' +
+      escJs(label) + '\',' + escJs(JSON.stringify(names)) + ',true)">' +
+      _RECENCY_GLYPH + esc(label) + '</div>' +
+    renderCardGrid(list, true, true);
 }
 
 // One language filter pill for the home library. Multi-select toggle; the
@@ -4105,7 +4072,7 @@ function showHistoryDropdown(filter) {
   // 'home' behind the reader overlay, #7). And when a filter is already ACTIVE
   // the pills-bar is shown above the content, so the dropdown must not duplicate
   // the same rows — the handoff is idle→dropdown, in-use→pills-bar (#9).
-  var _filterActive = !!homeRecentFilter || homeLangFilter.size > 0;
+  var _filterActive = homeLangFilter.size > 0;
   var pillsHtml = (!filter && _homeFilterRowsHtml && mode === 'home' &&
       !currentSource && !readerOpen && !_filterActive)
     ? '<div class="suggest-filters">' + _homeFilterRowsHtml + '</div>' : '';
@@ -6481,30 +6448,62 @@ function _userRowHtml(name, role, meta, menuAttr) {
 function _msUsersHtml() {
   var d = _usersData || { users: [], zims: [] };
   var isPrimary = d.self_kind === 'primary';
-  var h = '<div class="ms-users-intro">' + tH('users_intro') + '</div>';
-  h += '<div class="ms-users-list">';
-  // The PRIMARY admin, always first — amber ADMIN badge + label, never deletable
-  // (no ⋯). The role badge is the design-system indicator, no crown.
-  if (d.primary_admin) {
-    h += _userRowHtml(d.primary_admin.name, 'admin', tH('users_primary_admin'), '');
+  var selfName = _manageAccountName();
+
+  // (a) Your Account FIRST — the signed-in admin, with Change password and Log
+  // out as visible buttons (no ⋯ for your own row). This is where password/logout
+  // live, moved out of Preferences → Security.
+  var h = '<div class="ms-user-account ms-user-account-self">' +
+    '<div class="ms-section-label">' + tH('users_your_account') + '</div>' +
+    '<div class="ms-user-row">' +
+      '<span class="ms-user-main"><strong>' + esc(selfName) + '</strong> ' + _roleBadge('admin') + '</span>' +
+      '<span class="ms-user-self-actions">' +
+        '<button class="ms-btn" onclick="managePassword()">' + tH('change_password') + '</button>' +
+        (_hasStoredManageToken()
+          ? '<button class="ms-btn" onclick="manageLogout()">' + tH('log_out') + '</button>'
+          : '') +
+      '</span>' +
+    '</div>' +
+  '</div>';
+
+  // (b) Everyone else. Build the list excluding yourself, so a single-admin
+  // install shows no list at all (no self-duplication). A secondary admin sees
+  // the primary admin (never manageable) plus the other named users.
+  var others = [];
+  if (d.primary_admin && !isPrimary) {
+    others.push({ name: d.primary_admin.name, role: 'admin', _primary: true });
   }
-  // Named users, each with its role badge + a single ⋯ menu.
   d.users.forEach(function(u) {
-    var scope = u.role === 'limited'
-      ? (u.all_access ? tH('users_all_access') : (u.allowlist.length + ' ' + tH('users_zim_count')))
-      : tH('users_all_access');
-    // Last-login: relative time (localized) or "never signed in".
-    var seen = u.last_login
-      ? tH('users_last_login') + ' ' + esc(_relTime(u.last_login))
-      : tH('users_last_never');
-    // A secondary admin cannot manage other admins (server enforces; UI hides).
-    var canManage = isPrimary || u.role !== 'admin';
-    var menuAttr = canManage
-      ? 'onclick="event.stopPropagation();_openUserMenu(this,' + escAttr(JSON.stringify(u.name)) + ')" title="' + escAttr(t('users_options')) + '" aria-label="' + escAttr(t('users_options')) + '" aria-haspopup="menu"'
-      : '';
-    h += _userRowHtml(u.name, u.role, scope + ' · ' + seen, menuAttr);
+    if (!isPrimary && u.name === selfName) return; // that's you — already shown above
+    others.push(u);
   });
-  h += '</div>';
+
+  h += '<div class="ms-users-section">';
+  h += '<div class="ms-users-intro">' + tH('users_intro') + '</div>';
+  if (others.length) {
+    h += '<div class="ms-users-list">';
+    others.forEach(function(u) {
+      // The primary admin: amber ADMIN badge + label, never manageable (no ⋯).
+      if (u._primary) {
+        h += _userRowHtml(u.name, 'admin', tH('users_primary_admin'), '');
+        return;
+      }
+      var scope = u.role === 'limited'
+        ? (u.all_access ? tH('users_all_access') : (u.allowlist.length + ' ' + tH('users_zim_count')))
+        : tH('users_all_access');
+      // Last-login: relative time (localized) or "never signed in".
+      var seen = u.last_login
+        ? tH('users_last_login') + ' ' + esc(_relTime(u.last_login))
+        : tH('users_last_never');
+      // A secondary admin cannot manage other admins (server enforces; UI hides).
+      var canManage = isPrimary || u.role !== 'admin';
+      var menuAttr = canManage
+        ? 'onclick="event.stopPropagation();_openUserMenu(this,' + escAttr(JSON.stringify(u.name)) + ')" title="' + escAttr(t('users_options')) + '" aria-label="' + escAttr(t('users_options')) + '" aria-haspopup="menu"'
+        : '';
+      h += _userRowHtml(u.name, u.role, scope + ' · ' + seen, menuAttr);
+    });
+    h += '</div>';
+  }
   // Add user: one button; the form is revealed only on demand (no fields at rest).
   h += '<div class="ms-user-addbar">' +
     '<button class="ms-btn ms-btn-primary" id="add-user-toggle" onclick="_toggleAddUser()">+ ' + tH('users_add') + '</button>' +
@@ -6521,15 +6520,7 @@ function _msUsersHtml() {
       '</div>' +
     '</div>' +
   '</div>';
-  // The admin's own account — same clean treatment: a row + a single ⋯ menu with
-  // Change password / Log out. Moved here from Preferences → Security.
-  h += '<div class="ms-user-account">' +
-    '<div class="ms-section-label">' + tH('users_your_account') + '</div>' +
-    '<div class="ms-user-row">' +
-      '<span class="ms-user-main"><strong>' + esc(_manageAccountName()) + '</strong> ' + _roleBadge('admin') + '</span>' +
-      '<button class="ci-gear ms-user-menu-btn" onclick="event.stopPropagation();_openAccountMenu(this)" title="' + escAttr(t('users_options')) + '" aria-label="' + escAttr(t('users_options')) + '" aria-haspopup="menu">⋯</button>' +
-    '</div>' +
-  '</div>';
+  h += '</div>';
   return h;
 }
 
@@ -6567,19 +6558,6 @@ function _openUserMenu(btn, name) {
     else if (action === 'role') _setUserRole(name, item.dataset.role);
     else if (action === 'allowlist') _editUserAllowlist(name);
     else if (action === 'delete') _deleteUser(name);
-  });
-}
-
-// ⋯ menu for the "Your account" card.
-function _openAccountMenu(btn) {
-  var h = '<div class="ctx-item" data-action="change-pw">' + tH('change_password') + '</div>';
-  if (_hasStoredManageToken()) {
-    h += '<div class="ctx-sep"></div><div class="ctx-item" data-action="logout">' + tH('log_out') + '</div>';
-  }
-  var r = btn.getBoundingClientRect();
-  window._openMenuAt(h, r.left, r.bottom + 2, function(action) {
-    if (action === 'change-pw') managePassword();
-    else if (action === 'logout') manageLogout();
   });
 }
 
@@ -9519,8 +9497,10 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader *:not(.zimi-table-wrap):not(pre){height:auto !important;max-height:none !important;',
       'min-height:0 !important;overflow:visible !important}',
     '.zimi-reader-body{max-width:68ch;margin:0 auto}',
+    // Headings follow the reader's font-family choice (serif/sans) like the body,
+    // via --rv-font — a serif pick that left headings sans looked half-applied.
     '.zimi-reader h1,.zimi-reader h2,.zimi-reader h3,.zimi-reader h4,.zimi-reader h5,.zimi-reader h6{',
-      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.25;',
+      'font-family:var(--rv-font);line-height:1.25;',
       'color:var(--rv-head);font-weight:700;margin:1.6em 0 0.5em}',
     // Title needs the h1-qualified selector to out-specify the heading rule above —
     // otherwise its `margin:1.6em 0 0.5em` (≈61px top) wins and shoves the article
@@ -11169,21 +11149,34 @@ function _readerViewMenuToggle() {
 
 // Single source of truth for the ⋯ menu markup, so both the initial open and an
 // in-place rebuild (Reader View toggled) render identical structure.
+// True when the topbar collapses its secondary actions into the ⋯ menu — i.e.
+// the same max-width:600px viewport where the inline Random/Language/Manage
+// buttons are CSS-hidden. Used to decide which rows the ⋯ menu owns: on a wide
+// viewport those buttons stay inline, so the menu must NOT re-list them (that
+// double-listed Random/Language while reading on desktop).
+function _topbarCollapsed() {
+  return !!(window.matchMedia && window.matchMedia('(max-width: 600px)').matches);
+}
+
 function _buildTopbarMenuHtml() {
   var h = '';
-  // Reader controls migrate here on mobile (the inline topbar buttons are hidden
-  // by the max-width:600px CSS — the topbar was too tight). The reader group is
-  // pinned to the TOP: Reader View toggle first; its compact controls directly
-  // under it when on; then Read aloud; then Open in browser LAST. Taps inside
-  // the reader group keep the menu open (event.stopPropagation) except the
-  // actions that navigate away.
+  // The ⋯ menu holds whatever is hidden from the inline topbar in the current
+  // state, in two groups separated by a divider:
+  //   • Reader controls — folded in whenever an article is open (mobile always;
+  //     desktop while reading, where body.reading CSS hides the inline reader
+  //     buttons). Reader View toggle first; its compact controls under it when
+  //     on; then Read aloud; then Open in browser last.
+  //   • App navigation (Random / Language / Manage) — only when the topbar is
+  //     collapsed (mobile), where those inline buttons are hidden. On a wide
+  //     viewport they stay inline, so listing them here too would duplicate them.
+  var readerGroup = '';
   if (readerOpen && !_almanacOpen) {
     var rvAvail = _readerViewAvailable();
     var rvOn = _readerViewOn && rvAvail;
     // 1. Reader View toggle — always first. A switch: tapping flips it and the
     // menu rebuilds in place (compact controls appear/disappear beneath).
     if (rvAvail) {
-      h += '<button class="topbar-menu-item tbm-rv-toggle" id="tbm-readerview" role="switch" aria-checked="' + (rvOn ? 'true' : 'false') +
+      readerGroup += '<button class="topbar-menu-item tbm-rv-toggle" id="tbm-readerview" role="switch" aria-checked="' + (rvOn ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_readerViewMenuToggle()">' + _READER_VIEW_ICON +
         ' <span class="tbm-label">' + tH('reader_view') + '</span>' +
         '<span class="rv-switch' + (rvOn ? ' on' : '') + '" aria-hidden="true"><span class="rv-knob"></span></span></button>';
@@ -11191,11 +11184,11 @@ function _buildTopbarMenuHtml() {
     // 2. Compact settings directly under the toggle when Reader View is on —
     // theme swatches + font/size only, no title labels, no AUTO (settings-only).
     if (rvOn) {
-      h += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
+      readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
     }
     // 3. Read aloud.
     if (_TTS_AVAILABLE) {
-      h += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
+      readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
     }
@@ -11203,31 +11196,42 @@ function _buildTopbarMenuHtml() {
     // or an installed/standalone PWA. In a plain browser tab you're already in a
     // browser, so it's hidden. Opens the ?a= deep link (full Zimi chrome).
     if (IS_DESKTOP || _isStandalonePWA()) {
-      h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();_openInBrowser()">' + _TBM_NEWTAB_ICON +
+      readerGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();_openInBrowser()">' + _TBM_NEWTAB_ICON +
         ' ' + tH('open_in_browser') + '</button>';
     }
-    // Divider between the reader group and the app-navigation group below.
-    h += '<div class="topbar-menu-divider" role="separator"></div>';
   }
-  h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
-  if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
-  // Manage row: while downloads are active, carry the count and route the tap
-  // straight to the downloads view (the badge on the ⋯ button is only a dot).
-  var _mgSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
-  var _dlN = _activityBadge.count;
-  var _mgClick = _dlN > 0 ? '_openDownloadsView(event)' : '_closeTopbarMenu();toggleManage(event)';
-  var _mgCount = _dlN > 0 ? '<span class="tbm-count">' + (_dlN > 99 ? '99+' : _dlN) + '</span>' : '';
-  // Single account door: Manage. There is no separate "Sign in" — an
-  // unauthenticated visitor who taps Manage gets the unified sign-in modal
-  // (named user OR admin), and a signed-in user lands on their minimal account
-  // card (name, access, log out). See manageFetch's 401 handler + renderManage.
-  if (_userSession) {
-    h += '<div class="topbar-menu-divider" role="separator"></div>';
-    h += '<div class="topbar-menu-label">' + tH('signed_in_as') + ' ' + esc(_userSession.name) + '</div>';
-    h += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleManage(event)">' + _ACCT_ICON + ' ' + tH('manage') + '</button>';
-  } else {
-    h += '<button class="topbar-menu-item" onclick="' + _mgClick + '">' + _mgSvg + ' ' + tH('manage') + _mgCount + '</button>';
+
+  // App-navigation group — only when the topbar is collapsed (mobile). On a wide
+  // viewport Random / Language / Manage stay inline, so re-listing them here
+  // would double them up (the desktop reader duplication bug).
+  var navGroup = '';
+  if (_topbarCollapsed()) {
+    navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
+    if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
+    // Manage row: while downloads are active, carry the count and route the tap
+    // straight to the downloads view (the badge on the ⋯ button is only a dot).
+    var _mgSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+    var _dlN = _activityBadge.count;
+    var _mgClick = _dlN > 0 ? '_openDownloadsView(event)' : '_closeTopbarMenu();toggleManage(event)';
+    var _mgCount = _dlN > 0 ? '<span class="tbm-count">' + (_dlN > 99 ? '99+' : _dlN) + '</span>' : '';
+    // Single account door: Manage. There is no separate "Sign in" — an
+    // unauthenticated visitor who taps Manage gets the unified sign-in modal
+    // (named user OR admin), and a signed-in user lands on their minimal account
+    // card (name, access, log out). See manageFetch's 401 handler + renderManage.
+    if (_userSession) {
+      navGroup += '<div class="topbar-menu-divider" role="separator"></div>';
+      navGroup += '<div class="topbar-menu-label">' + tH('signed_in_as') + ' ' + esc(_userSession.name) + '</div>';
+      navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleManage(event)">' + _ACCT_ICON + ' ' + tH('manage') + '</button>';
+    } else {
+      navGroup += '<button class="topbar-menu-item" onclick="' + _mgClick + '">' + _mgSvg + ' ' + tH('manage') + _mgCount + '</button>';
+    }
   }
+
+  h = readerGroup;
+  // Divider only when both groups are present, so neither a reader-only (desktop)
+  // nor a nav-only (mobile home) menu ends up with a stray separator.
+  if (readerGroup && navGroup) h += '<div class="topbar-menu-divider" role="separator"></div>';
+  h += navGroup;
   return h;
 }
 
@@ -11238,7 +11242,9 @@ function _toggleTopbarMenu(event) {
     menu.classList.remove('visible');
     return;
   }
-  menu.innerHTML = _buildTopbarMenuHtml();
+  var html = _buildTopbarMenuHtml();
+  if (!html) return; // nothing to show (e.g. desktop reader with no foldable controls)
+  menu.innerHTML = html;
   menu.classList.add('visible');
   // Close on outside interaction — including a tap inside the reader iframe,
   // which a plain document listener never sees. The ⋯ trigger is kept "inside"
