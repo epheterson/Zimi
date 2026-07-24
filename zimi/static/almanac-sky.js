@@ -790,6 +790,16 @@ function _starChartResetLoc() {
 function _initStarChartDrag(canvas) {
   var dragging = false, lastX = 0, lastY = 0, moved = 0;
   canvas.onpointerdown = function (e) {
+    // Only the circular disc is interactive. A press in the square's corners
+    // (outside the inscribed circle) must not start a rotation or capture the
+    // pointer — it belongs to the page (scroll). The canvas is clip-path:circle
+    // so corner presses usually never reach here, but this keeps mouse/stylus
+    // and clip-path-less browsers honest.
+    var rect = canvas.getBoundingClientRect();
+    var px = e.clientX - rect.left - rect.width / 2;
+    var py = e.clientY - rect.top - rect.height / 2;
+    var R = Math.min(rect.width, rect.height) / 2;
+    if (px * px + py * py > R * R) return;
     dragging = true; moved = 0;
     lastX = e.clientX; lastY = e.clientY;
     _starChartDragged = false;

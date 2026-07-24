@@ -255,7 +255,11 @@
 /* Star-chart tap-to-identify readout (time now comes from the pinned scrubber) */
 .alm-sc-info { text-align: center; font-size: 11px; color: var(--text2); min-height: 15px; margin-top: 6px; font-variant-numeric: tabular-nums; }
 /* Chart is draggable: stand somewhere else on Earth. */
-#almanac-starchart { cursor: grab; touch-action: none; }
+/* clip-path makes the square's corners pointer-transparent: a touch that begins
+   outside the disc passes through to the page (vertical scroll on mobile) instead
+   of being swallowed by touch-action:none. The disc itself still owns its gesture
+   for rotate/pan. Belt-and-suspenders hit-test lives in _initStarChartDrag. */
+#almanac-starchart { cursor: grab; touch-action: none; clip-path: circle(50%); }
 #almanac-starchart:active { cursor: grabbing; }
 .alm-sc-reset { background: none; border: 1px solid var(--border); color: var(--text3); border-radius: 5px; font-size: 10px; padding: 1px 6px; margin-left: 6px; cursor: pointer; }
 .alm-sc-reset:hover { color: var(--amber); border-color: var(--amber-border); }
