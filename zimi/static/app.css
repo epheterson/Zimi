@@ -1618,23 +1618,21 @@
   .ci-gear:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
 
   /* ── Section reorder panel (#37) ── */
-  /* Collections and categories are separate groups — each ordered among itself,
-     never interleaved — so they get their own labelled block. */
-  .reorder-group { margin-top: 10px; }
-  .reorder-group-label {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
-    color: var(--text2); margin-bottom: 4px;
-  }
-  .reorder-group-collections .reorder-row { border-style: dashed; }
+  /* Collections and categories share one draggable list; a per-type icon (layers
+     vs tag) tells them apart, and collection rows carry a dashed border too. */
   .reorder-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
   .reorder-row {
     display: flex; align-items: center; gap: 8px;
     padding: 8px 12px; background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius); font-size: 13px; cursor: grab;
   }
+  .reorder-row-col { border-style: dashed; }
   .reorder-row.dragging { opacity: 0.5; cursor: grabbing; border-color: var(--amber); }
   /* Grip is the drag affordance; the ▲▼ buttons remain the keyboard fallback. */
   .reorder-grip { flex-shrink: 0; color: var(--text3); display: inline-flex; align-items: center; }
+  /* Type icon: collections read amber (their signature), categories muted. */
+  .reorder-type { flex-shrink: 0; display: inline-flex; align-items: center; color: var(--text2); }
+  .reorder-row-col .reorder-type { color: var(--amber); }
   .reorder-label { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .reorder-btns { display: flex; gap: 4px; flex-shrink: 0; }
   .reorder-btn {

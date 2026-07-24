@@ -1505,14 +1505,21 @@ function _openReorderPanel() {
   }
 }
 
+// Tag glyph marking a category reorder row, so collections (layers glyph) and
+// categories read as different kinds of section at a glance while sharing one list.
+var _CATEGORY_GLYPH = '<svg class="reorder-type-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>';
+
 // One draggable reorder row (keyboard fallback via the ▲▼ buttons). `first`/
-// `last` pre-disable the buttons at the ends of its own group; drag/keyboard
-// moves keep them in sync via _reorderRefreshDisabled.
+// `last` pre-disable the buttons at the ends of the list; drag/keyboard moves
+// keep them in sync via _reorderRefreshDisabled. Collections and categories share
+// one list, told apart by a per-type icon.
 function _reorderRowHtml(s, first, last) {
-  return '<div class="reorder-row" data-key="' + escAttr(s.key) + '" draggable="true">' +
+  var isCol = s.key.indexOf('col:') === 0;
+  return '<div class="reorder-row' + (isCol ? ' reorder-row-col' : '') + '" data-key="' + escAttr(s.key) + '" draggable="true">' +
     '<span class="reorder-grip" aria-hidden="true">' +
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="5" r="1.6"/><circle cx="15" cy="5" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="19" r="1.6"/><circle cx="15" cy="19" r="1.6"/></svg>' +
     '</span>' +
+    '<span class="reorder-type">' + (isCol ? _COLLECTION_GLYPH : _CATEGORY_GLYPH) + '</span>' +
     '<span class="reorder-label">' + esc(s.label) + '</span>' +
     '<span class="reorder-btns">' +
       '<button class="reorder-btn" data-dir="up"' + (first ? ' disabled' : '') + ' aria-label="' + escAttr(t('move_up')) + '">▲</button>' +
@@ -1528,28 +1535,14 @@ function _reorderListHtml(items, group) {
   return '<div class="reorder-list" data-group="' + group + '">' + rows + '</div>';
 }
 
-// Categories reorder as a flat, draggable list. Collections don't share the
-// same semantics (they group ZIMs by hand), so they render as their own labelled
-// group above — visually distinct, ordered among themselves, never interleaved
-// with categories. The persisted order is every row top-to-bottom (collections
-// first), so what you see is exactly what home renders.
+// Collections and categories reorder together in one flat, draggable list, in
+// the saved order — a per-type icon (layers vs tag) tells them apart, and a row
+// can move freely anywhere in the list. The persisted order is every row
+// top-to-bottom, so what you drag is exactly what home renders.
 function _reorderSectionsHtml() {
   var sections = _currentReorderSections();
   if (!sections.length) return '<div class="ms-hint">' + tH('reorder_empty') + '</div>';
-  var cols = sections.filter(function(s) { return s.key.indexOf('col:') === 0; });
-  var cats = sections.filter(function(s) { return s.key.indexOf('cat:') === 0; });
-  var h = '';
-  if (cols.length) {
-    h += '<div class="reorder-group reorder-group-collections">' +
-      '<div class="reorder-group-label">' + tH('collections_tab') + '</div>' +
-      _reorderListHtml(cols, 'col') + '</div>';
-  }
-  if (cats.length) {
-    h += '<div class="reorder-group">' +
-      (cols.length ? '<div class="reorder-group-label">' + tH('categories_section') + '</div>' : '') +
-      _reorderListHtml(cats, 'cat') + '</div>';
-  }
-  return h;
+  return _reorderListHtml(sections, 'all');
 }
 
 // Order category names by the saved section order (cat: keys), unlisted A-Z.
@@ -1602,7 +1595,7 @@ function _reorderRefreshDisabled() {
 
 // Per-move POST (not debounced): reorders are discrete, infrequent, and each
 // leaves a complete valid order — immediate durability beats coalescing here.
-// The order is every row across every group, top-to-bottom (collections first).
+// The order is every row in the single list, top-to-bottom.
 function _persistReorder() {
   var cont = document.getElementById('ms-reorder');
   if (!cont) return;
@@ -1610,7 +1603,7 @@ function _persistReorder() {
   _persistSectionOrder(order);
 }
 
-// Keyboard fallback for drag: ▲▼ move a row within its own group only.
+// Keyboard fallback for drag: ▲▼ move a row up/down within the list.
 function _reorderClick(e) {
   var btn = e.target.closest('.reorder-btn');
   if (!btn || btn.disabled) return;
@@ -1626,9 +1619,9 @@ function _reorderClick(e) {
 }
 
 // HTML5 drag reordering of the section rows, delegated from the #ms-reorder
-// container (drag events bubble). A row can only move within its own group
-// (collections stay grouped, categories stay grouped) — cross-group drops are
-// ignored. Live insert on dragover makes the move feel direct; dragend persists.
+// container (drag events bubble). Collections and categories share one list, so
+// a row can move anywhere in it. Live insert on dragover makes the move feel
+// direct; dragend persists.
 var _reDrag = null;
 function _reorderDragStart(e) {
   var row = e.target.closest('.reorder-row');
@@ -1639,7 +1632,7 @@ function _reorderDragStart(e) {
 }
 function _reorderDragOver(e) {
   var row = e.target.closest('.reorder-row');
-  if (!_reDrag || !row || row === _reDrag || row.parentNode !== _reDrag.parentNode) return;
+  if (!_reDrag || !row || row === _reDrag) return;
   e.preventDefault(); e.dataTransfer.dropEffect = 'move';
   var rect = row.getBoundingClientRect();
   var after = (e.clientY - rect.top) > rect.height / 2;
@@ -7992,7 +7985,10 @@ function renderInstalled(filterText) {
   // No small-category merging here: home and the filter pills both show
   // real categories, so a lone WikEM must read "Medical & Health (1)" in
   // all three places — collapsing it to "Other" contradicted them.
-  const catOrder = Object.keys(groups).sort();
+  // Order groups by the saved section order (one source of truth), so the
+  // Installed list matches the home page and the filter pills instead of falling
+  // back to A-Z after a reorder.
+  const catOrder = _orderCatsBySaved(Object.keys(groups));
   // Render pending-updates pseudo-group first.
   if (pendingUpdates.length) {
     catOrder.unshift('__updates__');
