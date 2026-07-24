@@ -102,11 +102,13 @@
 .orrery-transit-label { color: var(--amber); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 90px; text-align: right; font-family: 'SF Mono', 'Fira Code', monospace; }
 .orrery-now { width: auto; padding: 0 10px; font-size: 11px; color: var(--amber); border-color: var(--amber-border); }
 /* Orrery hover/tap tooltip: body stats with the body NAME itself as the link
-   (dotted-amber .alm-link idiom). The box is pointer-transparent so a body
-   behind it still hovers; only the name link captures clicks. */
-#orrery-tooltip { position: absolute; display: none; z-index: 10; pointer-events: none; background: rgba(0,0,0,0.78); color: #ccc; font-size: 11px; line-height: 1.5; padding: 4px 8px; border-radius: 5px; white-space: nowrap; backdrop-filter: blur(4px); }
-.orrery-tip-info { display: block; pointer-events: none; }
-.orrery-tip-info .alm-link { pointer-events: auto; }
+   (dotted-amber .alm-link idiom). The box takes pointer events itself (not
+   just the name link) so a hover-intent grace period can keep it open while
+   the pointer travels from the body onto the tooltip to reach the link —
+   with pointer-events:none here that traversal never registered and the tip
+   vanished before it could be clicked. */
+#orrery-tooltip { position: absolute; display: none; z-index: 10; pointer-events: auto; background: rgba(0,0,0,0.78); color: #ccc; font-size: 11px; line-height: 1.5; padding: 4px 8px; border-radius: 5px; white-space: nowrap; backdrop-filter: blur(4px); }
+.orrery-tip-info { display: block; }
 .almanac-sky-wrap { width: 100%; max-width: 600px; margin: 0 auto; border-radius: 12px; overflow: hidden; position: relative; }
 .almanac-sky-wrap canvas { width: 100%; display: block; }
 .almanac-location-link { color: var(--amber); cursor: pointer; text-decoration: none; font-size: 12px; }
