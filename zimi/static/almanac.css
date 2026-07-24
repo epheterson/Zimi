@@ -16,7 +16,10 @@
 .alm-clock-ampm { font-size: 13px; color: var(--text2); font-weight: 500; align-self: flex-end; margin-bottom: 4px; }
 .alm-clock-date { font-size: 14px; color: var(--text2); margin-top: 8px; font-weight: 500; }
 .alm-clock-sub { font-size: 11px; color: var(--text3); margin-top: 3px; letter-spacing: 0.04em; text-transform: uppercase; }
-.alm-clock-sec { font-size: 20px; font-weight: 600; color: var(--text2); font-variant-numeric: tabular-nums; align-self: flex-end; margin-bottom: 3px; min-width: 26px; text-align: left; position: relative; overflow: hidden; }
+.alm-clock-sec { font-size: 20px; font-weight: 600; color: var(--text2); font-variant-numeric: tabular-nums; align-self: flex-end; margin-bottom: 3px; min-width: 26px; text-align: left; display: inline-flex; }
+/* Each seconds digit is its own clipped column so the tens and ones roll
+   independently — the ones every second, the tens only on its boundary. */
+.alm-clock-sec-col { display: inline-block; position: relative; overflow: hidden; }
 .alm-clock-sec-d { display: inline-block; }
 /* Counting tick: outgoing digit lifts out (absolute, so it can't push layout),
    incoming rises from below. Both transform+opacity only. */

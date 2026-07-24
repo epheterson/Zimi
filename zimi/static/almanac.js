@@ -2044,7 +2044,7 @@ function _drawTzClock(now) {
       labelEl.dataset.tz = tz;
       labelEl.innerHTML =
         '<div class="alm-clock-time"><span id="alm-clock-hm">' + hm + '</span>' +
-          '<span class="alm-clock-sec" id="alm-clock-sec"><span class="alm-clock-sec-d">' + sec + '</span></span>' +
+          '<span class="alm-clock-sec" id="alm-clock-sec">' + _secColsHTML(sec) + '</span>' +
           '<span class="alm-clock-ampm" id="alm-clock-ampm">' + ampm + '</span></div>' +
         '<div class="alm-clock-date" id="alm-clock-date">' + dateStr + '</div>' +
         '<div class="alm-clock-sub"><span id="alm-clock-tzname">' + (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '') + '</span></div>';
@@ -2063,13 +2063,22 @@ function _drawTzClock(now) {
   }
 }
 
-// Animate the hero clock's seconds: the old value slides/fades up and out, the
+// Two clipped digit columns (tens, ones) for the two-digit seconds value.
+function _secColsHTML(sec) {
+  sec = '' + sec;
+  if (sec.length < 2) sec = ('0' + sec).slice(-2);
+  return '<span class="alm-clock-sec-col"><span class="alm-clock-sec-d">' + sec.charAt(0) + '</span></span>' +
+         '<span class="alm-clock-sec-col"><span class="alm-clock-sec-d">' + sec.charAt(1) + '</span></span>';
+}
+
+// Animate one seconds digit column: the old value slides/fades up and out, the
 // new value rises in from below — a clean counting tick, transform+opacity only
-// (no layout shift; the container clips the vertical travel). Honours
-// prefers-reduced-motion by swapping the text instantly.
-function _tickSeconds(secEl, sec) {
-  if (!secEl) return;
-  var digits = secEl.querySelectorAll('.alm-clock-sec-d');
+// (no layout shift; the column clips the vertical travel). Honours
+// prefers-reduced-motion by swapping the text instantly. Called per digit so a
+// column only animates when ITS value changes.
+function _tickDigit(colEl, ch) {
+  if (!colEl) return;
+  var digits = colEl.querySelectorAll('.alm-clock-sec-d');
   // Leak clamp: at any instant we want at most two layers — the current digit
   // plus one outgoing mid-animation. querySelectorAll returns document order,
   // so the LAST span is always the authoritative current value; earlier spans
@@ -2080,21 +2089,35 @@ function _tickSeconds(secEl, sec) {
     if (digits[i].parentNode) digits[i].parentNode.removeChild(digits[i]);
   }
   var cur = digits.length ? digits[digits.length - 1] : null;
-  if (!cur) { secEl.innerHTML = '<span class="alm-clock-sec-d">' + sec + '</span>'; return; }
+  if (!cur) { colEl.innerHTML = '<span class="alm-clock-sec-d">' + ch + '</span>'; return; }
   // Reading the last span (not the first) is what stops per-frame stacking:
   // once the incoming digit is appended it becomes `cur`, and every remaining
   // RAF frame this second short-circuits here instead of appending again.
-  if (cur.textContent === sec) return;
+  if (cur.textContent === ch) return;
   var reduce = false;
   try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
-  if (reduce) { cur.textContent = sec; return; }
+  if (reduce) { cur.textContent = ch; return; }
   var incoming = document.createElement('span');
   incoming.className = 'alm-clock-sec-d alm-sec-in';
-  incoming.textContent = sec;
+  incoming.textContent = ch;
   incoming.addEventListener('animationend', function () { incoming.classList.remove('alm-sec-in'); }, { once: true });
   cur.classList.add('alm-sec-out');
   cur.addEventListener('animationend', function () { if (cur.parentNode) cur.parentNode.removeChild(cur); }, { once: true });
-  secEl.appendChild(incoming);
+  colEl.appendChild(incoming);
+}
+
+// Roll the hero clock's seconds. sec is a two-digit string; each digit column
+// rolls only when its own value changes — the ones every second, the tens only
+// on the tens boundary (e.g. 39→40) — so they never animate in lockstep.
+function _tickSeconds(secEl, sec) {
+  if (!secEl) return;
+  var cols = secEl.querySelectorAll('.alm-clock-sec-col');
+  // Heal a pre-two-column shell (older markup) before ticking.
+  if (cols.length !== 2) { secEl.innerHTML = _secColsHTML(sec); return; }
+  sec = '' + sec;
+  if (sec.length < 2) sec = ('0' + sec).slice(-2);
+  _tickDigit(cols[0], sec.charAt(0));
+  _tickDigit(cols[1], sec.charAt(1));
 }
 
 // Cached Intl.DateTimeFormat objects — avoid 180+ allocations/sec in the RAF loop
