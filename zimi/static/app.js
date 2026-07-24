@@ -242,7 +242,12 @@ async function _fetchList() {
   _sectionOrder = Array.isArray(data.section_order) ? data.section_order : [];
   return Array.isArray(data.zims) ? data.zims : [];
 }
-let homeScope = null; // {type:'favorites'|'category'|'collection'|'recent', label, zimNames:[]}
+let homeScope = null; // {type:'favorites'|'category'|'collection', label, zimNames:[]}
+// #34 library recency filter: null | 'added' | 'updated'. Transient view state —
+// deliberately NOT persisted, so a reload always lands on the full library. An
+// active pill narrows the existing home sections in place (like a language pill),
+// combining with homeLangFilter (AND).
+let homeRecentFilter = null;
 // Library language filter: a Set of ZIM language codes. Empty = all languages.
 // Transient view state — reset when leaving/entering a scope, never persisted,
 // so a reload always lands on the full library. Multi-select toggle, matching
@@ -261,7 +266,7 @@ let _pillsAreHomeFilters = false;
 let _homeFilterRowsHtml = '';
 function _updateHomeFiltersVisibility() {
   if (!_pillsAreHomeFilters || !pillsBar.innerHTML) return;
-  const filterActive = homeLangFilter.size > 0;
+  const filterActive = !!homeRecentFilter || homeLangFilter.size > 0;
   pillsBar.style.display = filterActive ? '' : 'none';
 }
 
@@ -1360,8 +1365,9 @@ function enterHome(push) {
   readerSource = null;
   sourceAutoReader = false;
   homeScope = null;
-  // The language filter is scoped to whatever card set is showing (#37) —
-  // leaving a scope drops any filter picked inside it so home starts clean.
+  // The recency/language filters are scoped to whatever card set is showing (#37)
+  // — leaving a scope drops any filter picked inside it so home starts clean.
+  homeRecentFilter = null;
   homeLangFilter.clear();
   _currentSearchQuery = null;
   articleHistory = [];
@@ -1397,8 +1403,9 @@ function enterScope(type, label, zimNames, push) {
   readerSource = null;
   sourceAutoReader = false;
   homeScope = { type, label, zimNames };
-  // New section, new card set — drop any language filter picked in whatever
-  // view we're leaving (home or a different section).
+  // New section, new card set — drop any recency/language filter picked in
+  // whatever view we're leaving (home or a different section).
+  homeRecentFilter = null;
   homeLangFilter.clear();
   q.value = '';
   searchMeta.style.display = 'none';
@@ -1684,7 +1691,7 @@ function renderHome(filter) {
   // languages so state stays sane (scope transitions reset filters themselves,
   // in enterScope/enterHome, so re-rendering the same scope doesn't clobber a
   // filter the user just picked).
-  if (filter) { homeLangFilter.clear(); }
+  if (filter) { homeRecentFilter = null; homeLangFilter.clear(); }
 
   const totalEntries = baseZims.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
   const totalGb = baseZims.reduce((s, z) => s + z.size_gb, 0);
@@ -1701,7 +1708,7 @@ function renderHome(filter) {
 
   // Check if Discover will be active (not hidden and not filtered/scoped)
   var discoverHidden = _getStorageFlag(SK.HIDE_DISCOVER);
-  var discoverWillShow = !homeScope && !filter && !homeLangFilter.size && !discoverHidden;
+  var discoverWillShow = !homeScope && !filter && !homeRecentFilter && !homeLangFilter.size && !discoverHidden;
 
   // Counts sit at the BOTTOM in every discover-capable home state — the clean
   // idle view AND while a language filter is active — so tapping a
@@ -1732,11 +1739,24 @@ function renderHome(filter) {
   var _showLangPills = !filter && _langCodes.length >= 2;
   if (!_showLangPills) homeLangFilter.clear();
 
-  // Apply the language filter (AND with recency, which is computed downstream
-  // from this already-narrowed set). Empty filter = the full library.
-  const sorted = homeLangFilter.size
+  // Apply the language filter first. Empty filter = the full library.
+  const _langSorted = homeLangFilter.size
     ? sortedAll.filter(z => homeLangFilter.has(z.language || ''))
     : sortedAll;
+
+  // #34 recency lists, computed from the language-narrowed set so the two filters
+  // compose (AND). The counts drive the pill labels; an ACTIVE recency pill then
+  // narrows `sorted` in place so the existing sections filter down to just those
+  // ZIMs — exactly like a language pill — rather than spawning a separate view.
+  var _recentAdded = _langSorted.filter(_zimRecentAdded).sort(_byFirstSeenDesc);
+  var _recentUpdated = _langSorted.filter(_zimRecentUpdated).sort(_byUpdatedDesc);
+  // A language narrowing can empty the active recency list — its pill is hidden
+  // then, so fall back to All rather than strand the view on an empty filter.
+  if (homeRecentFilter === 'added' && !_recentAdded.length) homeRecentFilter = null;
+  if (homeRecentFilter === 'updated' && !_recentUpdated.length) homeRecentFilter = null;
+  const sorted = homeRecentFilter === 'added' ? _recentAdded
+    : homeRecentFilter === 'updated' ? _recentUpdated
+    : _langSorted;
 
   const groups = {};
   sorted.forEach(z => {
@@ -1747,13 +1767,26 @@ function renderHome(filter) {
 
   const cats = Object.keys(groups).filter(c => c !== '_uncategorized').sort();
 
-  // #34 recency lists: recently added / updated ZIMs. These render as their own
-  // home sections (see below), like Favorites — not as pills in the global filter
-  // row — so recents sit next to the content they describe. The global filter row
-  // below carries only the language pills.
-  var _recentAdded = sorted.filter(_zimRecentAdded).sort(_byFirstSeenDesc);
-  var _recentUpdated = sorted.filter(_zimRecentUpdated).sort(_byUpdatedDesc);
+  // #34 library filter pills: All · Recently added · Recently updated · language
+  // pills. Each recency pill only appears when it has something to show, so we
+  // never present a filter that lands on an empty view. Rendered above the content
+  // while a filter is active (and in the search dropdown), so un-filtering stays
+  // reachable.
   var _rows = '';
+  var _hasRecency = !filter && (_recentAdded.length || _recentUpdated.length);
+  if (_hasRecency) {
+    _rows += '<div class="pills-row" role="group" aria-label="' + escAttr(t('filter_by_recency')) + '">';
+    _rows += _recentPill(null, tH('filter_all'), homeRecentFilter === null);
+    if (_recentAdded.length) {
+      _rows += _recentPill('added', tH('filter_recently_added') +
+        ' <span class="pill-count">' + _recentAdded.length + '</span>', homeRecentFilter === 'added');
+    }
+    if (_recentUpdated.length) {
+      _rows += _recentPill('updated', tH('recently_updated') +
+        ' <span class="pill-count">' + _recentUpdated.length + '</span>', homeRecentFilter === 'updated');
+    }
+    _rows += '</div>';
+  }
   if (_showLangPills) {
     _rows += '<div class="lang-pills" role="group" aria-label="' + escAttr(t('filter_by_language')) + '">';
     _rows += _allResetPill(homeLangFilter.size === 0, 'clearHomeLang()');
@@ -1771,17 +1804,18 @@ function renderHome(filter) {
     // filter is actively applied. _updateHomeFiltersVisibility encodes that.
     _updateHomeFiltersVisibility();
   } else {
-    // No pills otherwise (scoped/filtered/no languages) — sections organize home.
+    // No pills otherwise (scoped/filtered/nothing recent, no languages) — sections
+    // organize home.
     pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
     _pillsAreHomeFilters = false;
+    homeRecentFilter = null; // guard: pill row gone, so no stale filter state
     homeLangFilter.clear();
   }
 
   let h = '';
 
-  // Scope header with back link — a recency section ('Recently added'/'updated'),
-  // Favorites, a category or a collection all drill in here, so keep a way back
-  // to "All sources".
+  // Scope header with back link — Favorites, a category or a collection all
+  // drill in here, so keep a way back to "All sources".
   if (homeScope) {
     h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">' +
       '<a href="#" onclick="event.preventDefault();enterHome(true)" style="color:var(--text2);text-decoration:none;font-size:13px">' + tH('all_sources') + '</a>' +
@@ -1802,7 +1836,7 @@ function renderHome(filter) {
   }
 
   // Discover (only on unscoped, unfiltered, unfiltered-by-language home)
-  var _showDiscover = !homeScope && !filter && !homeLangFilter.size;
+  var _showDiscover = !homeScope && !filter && !homeRecentFilter && !homeLangFilter.size;
   if (_showDiscover) {
     h += '<div id="discover-row"></div>';
   }
@@ -1846,14 +1880,6 @@ function renderHome(filter) {
         h += '<div class="cat-heading clickable" onclick="enterScope(\'favorites\',\'\u2605 ' + escJs(t('favorites')) + '\',' + escJs(JSON.stringify(favZimNames)) + ',true)">\u2605 ' + tH('favorites') + '</div>';
         h += renderCardGrid(favZims, true, true);
       }
-    }
-    // Recently added / updated sections (#34). Surfaced inline like Favorites
-    // rather than as pills in the global filter row, so recents sit beside the
-    // content they describe. Each heading drills into a focused, category-grouped
-    // scope (reusing enterScope, which supplies its own back link).
-    if (!filter) {
-      h += _recencySectionHtml('added', _recentAdded);
-      h += _recencySectionHtml('updated', _recentUpdated);
     }
     // Collections now render inside the unified, reorderable section list below
     // (#37) \u2014 no longer pinned above categories.
@@ -2011,9 +2037,9 @@ function _zimBadge(z) {
   return { label: (z.updated_at || 0) > (z.first_seen || 0) ? 'updated' : 'new' };
 }
 
-// ── #34 recency sections: "Recently added" / "Recently updated" ──
+// ── #34 library filter pills: "Recently added" / "Recently updated" ──
 // A distinct window from _ZIM_BADGE_BACKSTOP_DAYS on purpose: the badge is a
-// short nudge that clears the moment you open a ZIM, whereas these sections are a
+// short nudge that clears the moment you open a ZIM, whereas these pills are a
 // durable "what landed this month" lens for someone managing a large library.
 var _ZIM_RECENT_WINDOW_DAYS = 30;
 function _zimRecentAdded(z) {
@@ -2032,21 +2058,21 @@ function _zimRecentUpdated(z) {
 function _byFirstSeenDesc(a, b) { return (b.first_seen || 0) - (a.first_seen || 0); }
 function _byUpdatedDesc(a, b) { return (b.updated_at || 0) - (a.updated_at || 0); }
 
-// Clock glyph shared by both recency section headings, so "added" and "updated"
-// read as one time-based family (mirrors the globe on the language section).
-var _RECENCY_GLYPH = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" style="vertical-align:-2px;margin-right:4px"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5V8l2.5 1.5"/></svg>';
+// One recency filter pill. kind=null is the "All" reset; aria-pressed reflects
+// state so the row is usable from the keyboard (each pill is a real <button>).
+function _recentPill(kind, labelHtml, active) {
+  return '<button class="pill' + (active ? ' active' : '') + '"' +
+    ' aria-pressed="' + (active ? 'true' : 'false') + '"' +
+    ' onclick="filterHomeRecent(' + (kind ? "'" + kind + "'" : 'null') + ')">' + labelHtml + '</button>';
+}
 
-// One recency section: a clickable heading (drills into a focused, category-
-// grouped scope via enterScope — which brings its own back link) followed by the
-// newest-first card grid. Empty lists render nothing. kind selects the i18n label.
-function _recencySectionHtml(kind, list) {
-  if (!list || !list.length) return '';
-  var label = t(kind === 'added' ? 'filter_recently_added' : 'recently_updated');
-  var names = list.map(function(z) { return z.name; });
-  return '<div class="cat-heading clickable" onclick="enterScope(\'recent\',\'' +
-      escJs(label) + '\',' + escJs(JSON.stringify(names)) + ',true)">' +
-      _RECENCY_GLYPH + esc(label) + '</div>' +
-    renderCardGrid(list, true, true);
+// Toggle the recency filter: clicking the active pill (or "All") returns to the
+// full library. Narrows the existing home sections in place — same model as the
+// language pills.
+function filterHomeRecent(kind) {
+  hideSuggest(); // the pill may have been picked from the search dropdown
+  homeRecentFilter = (homeRecentFilter === kind) ? null : kind;
+  renderHome();
 }
 
 // One language filter pill for the home library. Multi-select toggle; the
@@ -4072,7 +4098,7 @@ function showHistoryDropdown(filter) {
   // 'home' behind the reader overlay, #7). And when a filter is already ACTIVE
   // the pills-bar is shown above the content, so the dropdown must not duplicate
   // the same rows — the handoff is idle→dropdown, in-use→pills-bar (#9).
-  var _filterActive = homeLangFilter.size > 0;
+  var _filterActive = !!homeRecentFilter || homeLangFilter.size > 0;
   var pillsHtml = (!filter && _homeFilterRowsHtml && mode === 'home' &&
       !currentSource && !readerOpen && !_filterActive)
     ? '<div class="suggest-filters">' + _homeFilterRowsHtml + '</div>' : '';

@@ -920,6 +920,7 @@
   "filter_all": "全部",
   "filter_recently_added": "最近添加",
   "filter_by_language": "按语言筛选",
+  "filter_by_recency": "按新增时间筛选",
   "tts_speak": "朗读",
   "tts_stop": "停止朗读",
   "font_size": "字体大小",

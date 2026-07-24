@@ -920,6 +920,7 @@
   "filter_all": "Alle",
   "filter_recently_added": "Kürzlich hinzugefügt",
   "filter_by_language": "Nach Sprache filtern",
+  "filter_by_recency": "Nach Aktualität filtern",
   "tts_speak": "Vorlesen",
   "tts_stop": "Vorlesen beenden",
   "font_size": "Schriftgröße",

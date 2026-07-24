@@ -920,6 +920,7 @@
   "filter_all": "All",
   "filter_recently_added": "Recently added",
   "filter_by_language": "Filter by language",
+  "filter_by_recency": "Filter by recency",
   "tts_speak": "Read aloud",
   "tts_stop": "Stop reading",
   "font_size": "Font size",
