@@ -68,6 +68,8 @@
   "updates": "更新",
   "updates_available": "{n} 个可用",
   "all_up_to_date": "全部已是最新",
+  "updates_checking": "正在检查…",
+  "updates_check_failed": "无法检查更新",
   "update_all": "全部更新",
   "updating": "更新中…",
   "updating_n": "正在更新 {n}…",

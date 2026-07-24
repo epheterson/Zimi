@@ -68,6 +68,8 @@
   "updates": "التحديثات",
   "updates_available": "{n} متاحة",
   "all_up_to_date": "الكل محدّث",
+  "updates_checking": "جارٍ التحقق…",
+  "updates_check_failed": "تعذّر التحقق من التحديثات",
   "update_all": "تحديث الكل",
   "updating": "جارٍ التحديث…",
   "updating_n": "جارٍ تحديث {n}…",

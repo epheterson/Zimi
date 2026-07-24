@@ -68,6 +68,8 @@
   "updates": "अपडेट",
   "updates_available": "{n} उपलब्ध",
   "all_up_to_date": "सब अप टू डेट है",
+  "updates_checking": "जाँच हो रही है…",
+  "updates_check_failed": "अपडेट की जाँच नहीं हो सकी",
   "update_all": "सब अपडेट करें",
   "updating": "अपडेट हो रहा है…",
   "updating_n": "{n} अपडेट हो रहे हैं…",

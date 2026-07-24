@@ -68,6 +68,8 @@
   "updates": "עדכונים",
   "updates_available": "{n} זמינים",
   "all_up_to_date": "הכל מעודכן",
+  "updates_checking": "בודק…",
+  "updates_check_failed": "לא ניתן לבדוק עדכונים",
   "update_all": "עדכן הכל",
   "updating": "מעדכן…",
   "updating_n": "מעדכן {n}…",

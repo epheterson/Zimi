@@ -68,6 +68,8 @@
   "updates": "Updates",
   "updates_available": "{n} available",
   "all_up_to_date": "All up to date",
+  "updates_checking": "Checking…",
+  "updates_check_failed": "Couldn't check for updates",
   "update_all": "Update all",
   "updating": "Updating…",
   "updating_n": "Updating {n}…",

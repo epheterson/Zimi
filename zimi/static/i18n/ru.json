@@ -68,6 +68,8 @@
   "updates": "Обновления",
   "updates_available": "Доступно: {n}",
   "all_up_to_date": "Всё актуально",
+  "updates_checking": "Проверка…",
+  "updates_check_failed": "Не удалось проверить обновления",
   "update_all": "Обновить все",
   "updating": "Обновление…",
   "updating_n": "Обновление {n}…",

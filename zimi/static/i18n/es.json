@@ -68,6 +68,8 @@
   "updates": "Actualizaciones",
   "updates_available": "{n} disponibles",
   "all_up_to_date": "Todo actualizado",
+  "updates_checking": "Comprobando…",
+  "updates_check_failed": "No se pudo comprobar si hay actualizaciones",
   "update_all": "Actualizar todo",
   "updating": "Actualizando…",
   "updating_n": "Actualizando {n}…",

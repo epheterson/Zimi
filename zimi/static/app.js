@@ -6301,7 +6301,8 @@ async function renderManage() {
         freqSel.style.opacity = '0.5';
       }
     }
-    checkForUpdates();
+    // The Updates line is refreshed by switchMs('library') above (and on every
+    // library re-mount), so no separate check is needed here.
   } catch(e) {
     var pane = document.getElementById('ms-pane');
     if (pane) pane.innerHTML = '<div style="color:var(--text2);font-size:13px">' + tH('could_not_load_stats') + '</div>';
@@ -6426,6 +6427,10 @@ function switchMs(section) {
     case 'server': pane.innerHTML = _msServerHtml(); break;
     case 'users': _renderMsUsers(); break;
   }
+  // The library pane owns the Updates line — refresh it on every mount so a
+  // re-entry (nav away and back) never re-renders "Checking…" and then strands
+  // there. checkForUpdates repaints instantly from cache when it's fresh.
+  if (section === 'library') { _renderUpdatesSummary(); checkForUpdates(); }
 }
 
 // ── Users management (admin-only, multi-user v1) ──
@@ -6763,10 +6768,12 @@ function _msLibraryHtml() {
   if (!d) return '<div class="loading"><span class="spinner-inline"></span>Loading\u2026</div>';
   var h = '<div class="mc-row"><span class="mc-label">' + tH('zim_files') + '</span><span class="mc-value">' + esc(String(d.zim_count)) + '</span></div>' +
     '<div class="mc-row"><span class="mc-label">' + tH('total_size') + '</span><span class="mc-value">' + fmtSize(d.total_size_gb) + '</span></div>' +
-    '<div id="update-status" class="mc-row mc-row-clickable" role="button" tabindex="0" style="cursor:pointer"' +
-    ' onclick="_toggleUpdatesDetail()" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();_toggleUpdatesDetail()}"' +
-    ' title="' + escAttr(t('updates_show_detail')) + '">' +
-      '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('loading') + '</span></div>' +
+    // Summary line + (only when updates exist) an expandable detail panel. The
+    // row's state, clickability and detail are all driven by _renderUpdatesSummary
+    // — the single writer — so the top-level label never strands on "Checking…".
+    '<div id="update-status" class="mc-row">' +
+      '<span class="mc-label">' + tH('updates') + '</span>' +
+      '<span class="mc-value" style="color:var(--text2)"><span class="spinner-inline"></span>' + tH('updates_checking') + '</span></div>' +
     '<div id="updates-detail" class="updates-detail" style="display:none"></div>' +
     '<div class="mc-row" style="align-items:center">' +
       '<span class="mc-label">' + tH('auto_update') + '</span>' +
@@ -8797,11 +8804,16 @@ async function _refreshDownloadsInner(useCache) {
       const updateEl = document.getElementById('update-status');
       const updateBtn = document.getElementById('update-all-btn');
       if (anyActive) {
-        // Downloads still running — show how many remain
-        if (updateEl) updateEl.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--amber)">' + stillRunning + ' ' + tH('remaining') + '</span>';
+        // Downloads still running — transient "N remaining" progress line (not a
+        // state the summary writer models). Non-clickable while in flight.
+        if (updateEl) {
+          updateEl.onclick = null; updateEl.classList.remove('mc-row-clickable');
+          updateEl.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--amber)">' + stillRunning + ' ' + tH('remaining') + '</span>';
+        }
         if (updateBtn && updateBtn.disabled) updateBtn.textContent = t('updating_n', {n: stillRunning});
       } else {
-        // All downloads finished — remove successful ones from _availableUpdates
+        // All downloads finished — drop successful ones, then repaint through the
+        // single summary writer so state/clickability stay consistent.
         for (const dl of dls) {
           if (dl.done && !dl.error) {
             for (const [key, u] of Object.entries(_availableUpdates)) {
@@ -8810,15 +8822,8 @@ async function _refreshDownloadsInner(useCache) {
             }
           }
         }
-        const remaining = Object.keys(_availableUpdates).length;
-        const timer = _autoUpdateTimerHtml();
-        if (remaining > 0) {
-          if (updateEl) updateEl.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--amber)">' + timer + tH('updates_available', {n: remaining}) + '</span>';
-          if (updateBtn) { updateBtn.style.display = ''; updateBtn.disabled = false; updateBtn.textContent = t('update_all'); }
-        } else {
-          if (updateEl) updateEl.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('all_up_to_date') + '</span>';
-          if (updateBtn) updateBtn.style.display = 'none';
-        }
+        _updatesStatus = 'ready';
+        _renderUpdatesSummary();
       }
     }
     // When downloads finish, refresh the library to show new installs
@@ -8892,65 +8897,43 @@ async function clearDownloads() {
   } catch(e) {}
 }
 
-async function _toggleUpdatesDetail() {
+// The detail panel lists the pending updates from _availableUpdates — the same
+// data the summary line counts, so the two can never disagree (no second fetch).
+// Reachable only when there ARE updates (the row is inert otherwise).
+function _toggleUpdatesDetail() {
   const el = document.getElementById('updates-detail');
   if (!el) return;
-  if (el.style.display !== 'none') {
-    el.style.display = 'none';
-    return;
-  }
+  if (el.style.display !== 'none') { el.style.display = 'none'; return; }
+  const updates = Object.values(_availableUpdates);
+  if (!updates.length) { el.style.display = 'none'; return; }
   el.style.display = 'block';
   while (el.firstChild) el.removeChild(el.firstChild);
-  const loading = document.createElement('div');
-  loading.className = 'ms-hint';
-  loading.textContent = t('loading');
-  el.appendChild(loading);
-  try {
-    const res = await manageFetch('/manage/updates');
-    const data = await res.json();
-    while (el.firstChild) el.removeChild(el.firstChild);
-    const updates = data.updates || [];
-    if (!updates.length) {
-      const none = document.createElement('div');
-      none.className = 'ms-hint';
-      none.textContent = t('all_up_to_date');
-      el.appendChild(none);
-      return;
+  updates.forEach(u => {
+    const row = document.createElement('div');
+    row.className = 'updates-detail-row';
+    const top = document.createElement('div');
+    top.className = 'updates-detail-top';
+    const name = document.createElement('span');
+    name.className = 'updates-detail-name';
+    name.textContent = u.title || u.name;
+    const versions = document.createElement('span');
+    versions.className = 'updates-detail-versions';
+    versions.textContent = u.installed_date + ' → ' + u.latest_date;
+    top.appendChild(name);
+    top.appendChild(versions);
+    row.appendChild(top);
+    // Filename diff so the user can spot weirdness (e.g. flavor changes that
+    // shouldn't happen — already filtered by _check_updates but visible if
+    // anything slips through).
+    const nextFname = (u.download_url || '').split('/').pop().replace(/\.meta4$/, '');
+    if (u.installed_file && nextFname && nextFname !== u.installed_file) {
+      const fnames = document.createElement('div');
+      fnames.className = 'updates-detail-fnames';
+      fnames.textContent = u.installed_file + '  →  ' + nextFname;
+      row.appendChild(fnames);
     }
-    updates.forEach(u => {
-      const row = document.createElement('div');
-      row.className = 'updates-detail-row';
-      const top = document.createElement('div');
-      top.className = 'updates-detail-top';
-      const name = document.createElement('span');
-      name.className = 'updates-detail-name';
-      name.textContent = u.title || u.name;
-      const versions = document.createElement('span');
-      versions.className = 'updates-detail-versions';
-      versions.textContent = u.installed_date + ' → ' + u.latest_date;
-      top.appendChild(name);
-      top.appendChild(versions);
-      row.appendChild(top);
-      // Filename diff so the user can spot weirdness (e.g. flavor changes that
-      // shouldn't happen — already filtered by _check_updates but visible if
-      // anything slips through).
-      const nextFname = (u.download_url || '').split('/').pop()
-        .replace(/\.meta4$/, '');
-      if (u.installed_file && nextFname && nextFname !== u.installed_file) {
-        const fnames = document.createElement('div');
-        fnames.className = 'updates-detail-fnames';
-        fnames.textContent = u.installed_file + '  →  ' + nextFname;
-        row.appendChild(fnames);
-      }
-      el.appendChild(row);
-    });
-  } catch (e) {
-    while (el.firstChild) el.removeChild(el.firstChild);
-    const err = document.createElement('div');
-    err.className = 'ms-hint';
-    err.textContent = t('error');
-    el.appendChild(err);
-  }
+    el.appendChild(row);
+  });
 }
 
 function _setDownloadFilter(filter) {
@@ -9035,25 +9018,72 @@ function _autoUpdateTimerHtml() {
 
 var _lastUpdateCheck = 0;
 var _UPDATE_CHECK_INTERVAL = 86400000;  // 24 hours
+// Top-level Updates line state: 'checking' | 'ready' | 'error'. The count comes
+// from _availableUpdates, so this only tracks the check lifecycle.
+var _updatesStatus = 'checking';
+
+// Single writer for the top-level Updates summary line (#update-status). Every
+// path that changes update state (mount, check, download progress) funnels here
+// so the label always reflects the real state — the fix for the label stranding
+// on "Checking…" while the detail panel showed the true result. The row is only
+// clickable/expandable when there ARE updates; up-to-date, checking and error are
+// a plain line with no dead expander.
+function _renderUpdatesSummary() {
+  var el = document.getElementById('update-status');
+  if (!el) return;
+  var count = Object.keys(_availableUpdates).length;
+  var updateBtn = document.getElementById('update-all-btn');
+  var label = '<span class="mc-label">' + tH('updates') + '</span>';
+  var value, clickable = false;
+  if (_updatesStatus === 'checking') {
+    value = '<span class="mc-value" style="color:var(--text2)"><span class="spinner-inline"></span>' + tH('updates_checking') + '</span>';
+  } else if (_updatesStatus === 'error') {
+    value = '<span class="mc-value" style="color:var(--text2)">' + tH('updates_check_failed') + '</span>';
+  } else if (count > 0) {
+    value = '<span class="mc-value" style="color:var(--amber)">' + _autoUpdateTimerHtml() + tH('updates_available', {n: count}) +
+      '<svg class="mc-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span>';
+    clickable = true;
+  } else {
+    value = '<span class="mc-value" style="color:var(--text2)">' + tH('all_up_to_date') + '</span>';
+  }
+  el.innerHTML = label + value;
+  if (clickable) {
+    el.classList.add('mc-row-clickable');
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    el.style.cursor = 'pointer';
+    el.title = t('updates_show_detail');
+    el.onclick = _toggleUpdatesDetail;
+    el.onkeydown = function(e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _toggleUpdatesDetail(); } };
+  } else {
+    el.classList.remove('mc-row-clickable');
+    el.removeAttribute('role');
+    el.removeAttribute('tabindex');
+    el.style.cursor = '';
+    el.removeAttribute('title');
+    el.onclick = null;
+    el.onkeydown = null;
+    var det = document.getElementById('updates-detail');
+    if (det) { det.style.display = 'none'; while (det.firstChild) det.removeChild(det.firstChild); }
+  }
+  if (updateBtn) {
+    if (count > 0 && _updatesStatus === 'ready') { updateBtn.style.display = ''; if (!updateBtn.disabled) updateBtn.textContent = t('update_all'); }
+    else updateBtn.style.display = 'none';
+  }
+}
 
 async function checkForUpdates(force) {
   const el = document.getElementById('update-status');
   if (!el) return;
-  // Use cached results if checked recently
+  // Use cached results if checked recently — repaint from _availableUpdates.
   var now = Date.now();
   if (!force && _lastUpdateCheck && (now - _lastUpdateCheck < _UPDATE_CHECK_INTERVAL)) {
-    // Just re-render with cached _availableUpdates
-    var count = Object.keys(_availableUpdates).length;
-    var timer = _autoUpdateTimerHtml();
-    if (count > 0) {
-      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--amber)">' + timer + tH('updates_available', {n: count}) + '</span>';
-      var updateBtn = document.getElementById('update-all-btn');
-      if (updateBtn) { updateBtn.style.display = ''; updateBtn.textContent = t('update_all'); }
-    } else {
-      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('all_up_to_date') + '</span>';
-    }
+    _updatesStatus = 'ready';
+    _renderUpdatesSummary();
     return;
   }
+  _updatesStatus = 'checking';
+  _renderUpdatesSummary();
   try {
     const res = await manageFetch('/manage/check-updates');
     _lastUpdateCheck = now;
@@ -9064,20 +9094,13 @@ async function checkForUpdates(force) {
         if (u.installed_file) _availableUpdates[u.installed_file] = u;
       }
     }
-    const count = Object.keys(_availableUpdates).length;
-    const updateBtn = document.getElementById('update-all-btn');
-    const timer = _autoUpdateTimerHtml();
-    if (count > 0) {
-      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--amber)">' + timer + tH('updates_available', {n: count}) + '</span>';
-      if (updateBtn) { updateBtn.style.display = ''; updateBtn.textContent = t('update_all'); }
-    } else {
-      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('all_up_to_date') + '</span>';
-      if (updateBtn) updateBtn.style.display = 'none';
-    }
+    _updatesStatus = 'ready';
+    _renderUpdatesSummary();
     // Re-render installed tab to show inline update buttons
     if (manageTab === 'installed') renderInstalled();
   } catch(e) {
-    // Silently fail — update check is optional
+    _updatesStatus = 'error';
+    _renderUpdatesSummary();
   }
 }
 
