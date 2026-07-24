@@ -145,9 +145,9 @@ and delta updates on top.
   refreshes in the background (stale-while-revalidate), and reuses the fetched
   feed for the rest of the session instead of re-downloading it.
 - On smaller screens the home library's filter pills (recent searches,
-  languages) collapse into a single filter dropdown, so the header stays
-  clean in a big multilingual library. Recently added and recently updated
-  ZIMs surface as their own home sections rather than filter pills.
+  languages, recency) collapse into a single filter dropdown, so the header
+  stays clean in a big multilingual library. Recency pills filter the home
+  sections in place, the same way language pills do.
 - **Everything user-visible is translated.** A full i18n audit closed English
   leaks across all ten locales, removed orphaned keys, and tightened Chinese
   typography — every string a user sees now has a translation in every language.
@@ -185,6 +185,22 @@ and delta updates on top.
   password with the current password keeps working from anywhere.
 
 ### Fixed
+
+- **"Did you mean?" actually fires now.** The spelling vocabulary was being
+  built from whichever title indexes sorted first alphabetically inside a
+  2-second budget — on a large library it never reached Wikipedia, and the
+  trigger threshold was so strict that typo-matching junk results silenced
+  it. The vocabulary now scans the biggest indexes first with room to
+  finish, suggestions appear alongside weak result sets, and a typo that
+  happens to exist in a few titles ("einstien") is still corrected when the
+  real word vastly outweighs it.
+- The almanac's Messages Across Time inscriptions (Rosetta Stone, Golden
+  Record, Pioneer plaque, …) deep-link into your installed encyclopedias
+  like the rest of the almanac — ten entities, verified both directions
+  against Wikidata.
+- The search box has a clear (×) button, and the Updates line no longer
+  strands on "Checking…" — one summary line that always reflects the
+  result, with detail only when there are updates.
 
 - **Interrupted downloads pick up where they left off.** Quitting or crashing
   mid-download no longer turns the partial file into "junk to clean up" —
