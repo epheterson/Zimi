@@ -312,6 +312,17 @@
   .topbar-menu-divider { height: 1px; margin: 4px 0; background: var(--border); }
   .topbar-menu-label { padding: 6px 12px 2px; font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.04em; }
 
+  /* ── Reader header layout ──
+     While an article is open the inline Reader View / font / read-aloud / pop-out
+     controls fold into the ⋯ menu (on every viewport — mobile already did this
+     via the max-width rule; this brings desktop to parity). Flex `order` pins the
+     close X (the .manage-btn slot) to the far right, with ⋯ immediately before it,
+     so the header reads: title … ✕. */
+  body.reading #font-btn, body.reading #tts-btn,
+  body.reading #readerview-btn, body.reading #newtab-btn { display: none !important; }
+  body.reading .topbar-more { display: flex; order: 990; }
+  body.reading .manage-btn { order: 1000; }
+
   /* ── Users management (multi-user v1) ── */
   .ms-btn { padding: 6px 12px; font-size: 12px; font-family: inherit; color: var(--text2); background: none; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: all 0.15s; }
   .ms-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }

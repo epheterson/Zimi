@@ -913,6 +913,11 @@ function updateTopbar() {
   _renderSelectionBar();
 
   document.body.classList.toggle('in-manage', mode === 'manage');
+  // Reading an article: the inline Reader View / font / read-aloud controls fold
+  // into the ⋯ menu (desktop too, matching mobile), and CSS `order` pins the
+  // close X to the far right with ⋯ just before it. No DOM is moved — display
+  // and flex order only — so repeated opens can't duplicate any button.
+  document.body.classList.toggle('reading', _readingArticle);
 
   // Re-attach the background-activity badge: this function rewrites the gear's
   // innerHTML above (wiping any child badge), and Manage mode suppresses it
