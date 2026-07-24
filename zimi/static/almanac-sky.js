@@ -785,21 +785,41 @@ function _starChartResetLoc() {
   _drawStarChart(_starChartTime());
 }
 
+// True when a client point falls within the inscribed disc of the square canvas
+// — the only region that owns the pan gesture. Corners belong to the page.
+function _insideChartDisc(canvas, clientX, clientY) {
+  var rect = canvas.getBoundingClientRect();
+  var px = clientX - rect.left - rect.width / 2;
+  var py = clientY - rect.top - rect.height / 2;
+  var R = Math.min(rect.width, rect.height) / 2;
+  return px * px + py * py <= R * R;
+}
+
 // Drag the chart to stand somewhere else on Earth. This is a preview only —
 // it never overwrites the saved location the rest of the almanac uses.
 function _initStarChartDrag(canvas) {
-  var dragging = false, lastX = 0, lastY = 0, moved = 0;
+  var dragging = false, lastX = 0, lastY = 0, moved = 0, touchPanning = false;
+  // touch-action is `auto`, so a touch that starts in the square's corners
+  // scrolls the page normally. Containment lives in these non-passive handlers,
+  // not clip-path (which only clips hit-testing in some browsers, not Safari):
+  //   - touchstart records only whether the gesture began inside the disc; it
+  //     does NOT preventDefault, so a stationary tap still yields its click
+  //     (tap-to-identify / open the article).
+  //   - touchmove preventDefaults only for an inside-started gesture, cancelling
+  //     the page scroll so the pan owns it. A corner-started gesture is left to
+  //     scroll the page.
+  canvas.ontouchstart = function (e) {
+    var tt = e.touches[0];
+    touchPanning = !!tt && _insideChartDisc(canvas, tt.clientX, tt.clientY);
+  };
+  canvas.ontouchmove = function (e) { if (touchPanning) e.preventDefault(); };
+  canvas.ontouchend = canvas.ontouchcancel = function () { touchPanning = false; };
   canvas.onpointerdown = function (e) {
     // Only the circular disc is interactive. A press in the square's corners
     // (outside the inscribed circle) must not start a rotation or capture the
-    // pointer — it belongs to the page (scroll). The canvas is clip-path:circle
-    // so corner presses usually never reach here, but this keeps mouse/stylus
-    // and clip-path-less browsers honest.
-    var rect = canvas.getBoundingClientRect();
-    var px = e.clientX - rect.left - rect.width / 2;
-    var py = e.clientY - rect.top - rect.height / 2;
-    var R = Math.min(rect.width, rect.height) / 2;
-    if (px * px + py * py > R * R) return;
+    // pointer — it belongs to the page (scroll). This mirrors the touch guard
+    // above and keeps mouse/stylus honest.
+    if (!_insideChartDisc(canvas, e.clientX, e.clientY)) return;
     dragging = true; moved = 0;
     lastX = e.clientX; lastY = e.clientY;
     _starChartDragged = false;
