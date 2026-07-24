@@ -36,6 +36,8 @@ function _planetPosition(name, T) {
 
 var _orreryPlanetPositions = []; // [{name, x, y, r}] in CSS pixels for hover
 
+var _orrerySunPos = null; // {x, y, r} in CSS pixels — the Sun is always at center
+
 // ── Deep-link a tapped body to its installed article ──
 // Interaction model (restored to pre-1.8 behaviour, with the link ADDED not
 // substituted):
@@ -57,9 +59,16 @@ var _orrerySelectedKey = null; // link key of the body a first tap selected
 // is {key, rIn, rOut} in CSS pixels measured from the canvas centre.
 var _orreryBeltZones = [];
 
-// Find the hit target at a canvas position, or null. Planets and probes win
-// over the belts (they sit inside/over the bands); belts are broad ring zones.
+// Find the hit target at a canvas position, or null. The Sun (small, fixed at
+// center) and planets/probes win over the belts (they sit inside/over the
+// bands); belts — and the heliopause ring — are broad/thin ring zones.
 function _orreryHitTest(mx, my, tolerance) {
+  if (_orrerySunPos) {
+    var sdx = mx - _orrerySunPos.x, sdy = my - _orrerySunPos.y;
+    if (sdx * sdx + sdy * sdy < (_orrerySunPos.r + tolerance) * (_orrerySunPos.r + tolerance)) {
+      return { type: 'sun', data: _orrerySunPos };
+    }
+  }
   for (var i = 0; i < _orreryPlanetPositions.length; i++) {
     var p = _orreryPlanetPositions[i];
     var dx = mx - p.x, dy = my - p.y;
@@ -87,6 +96,7 @@ function _orreryHitTest(mx, my, tolerance) {
 // AlmanacLinks key for a hit-test result, or null for un-mappable bodies.
 function _orreryLinkKey(hit) {
   if (!hit) return null;
+  if (hit.type === 'sun') return 'planet:sun';
   if (hit.type === 'planet') return 'planet:' + hit.data.name.toLowerCase();
   if (hit.type === 'voyager') return 'probe:' + hit.data.name.toLowerCase().replace(/[^a-z0-9]+/g, '');
   if (hit.type === 'belt') return hit.data.key;
@@ -123,8 +133,8 @@ function _orreryTap(mx, my, tolerance) {
     else _orreryOpenLink(_orreryLinkKey(hit));                          // Earth: no transit → article
   } else if (hit.type === 'voyager') {
     _showVoyagerCard(hit.data.idx);                                     // probe: detail card, as before
-  } else if (hit.type === 'belt') {
-    _orreryOpenLink(_orreryLinkKey(hit));                               // belt: article
+  } else if (hit.type === 'belt' || hit.type === 'sun') {
+    _orreryOpenLink(_orreryLinkKey(hit));                               // belt/Sun/heliopause: article only
   }
   // Remember the selection only when its article resolved, so a second tap has
   // somewhere to go (no link → no second-tap open, never a search).
@@ -151,11 +161,12 @@ function _initOrrery() {
   _orrerySelectedKey = null;
   _drawOrrery(canvas, dpr);
 
-  // Hover tooltip: the body stats with the body NAME as a dotted-amber link when its
-  // curated Q-ID resolved. The container is pointer-transparent so hovering a
-  // body behind it still registers; only that name link captures
-  // clicks (its own pointer-events:auto). A short grace delay keeps the tip
-  // alive while the pointer travels from the body to that link.
+  // Hover tooltip: the body stats with the body NAME as a dotted-amber link when
+  // its curated Q-ID resolved. The tooltip box itself takes pointer events (see
+  // CSS) and a grace period (_ORRERY_TIP_GRACE_MS) keeps it open while the
+  // pointer crosses the small gap between the body and the box — long enough to
+  // reach and click the link, without lingering once the pointer is truly gone.
+  var _ORRERY_TIP_GRACE_MS = 300;
   var tooltip = document.getElementById('orrery-tooltip');
   if (!tooltip) {
     tooltip = document.createElement('div');
@@ -177,6 +188,7 @@ function _initOrrery() {
   // Info for a hit, split so the NAME can carry the link idiom while the trailing
   // stats stay plain text: { name, rest } where `rest` includes its leading ' · '.
   function _tipInfo(hit) {
+    if (hit.type === 'sun') return { name: t('alm_sun'), rest: '' };
     if (hit.type === 'planet') {
       var rest = '';
       if (hit.data.name !== 'Earth') {
@@ -202,8 +214,9 @@ function _initOrrery() {
     var info = _tipInfo(hit);
     // The body NAME is the link — a subtle dotted-amber underline (the almanac
     // link idiom), no separate "Wikipedia" line. AlmanacLinks.wrap yields the
-    // same .alm-link span used everywhere else; only that span captures pointer
-    // events (see CSS) so the body behind the tip keeps registering hover.
+    // same .alm-link span used everywhere else; the click handler above only
+    // acts when the click target carries data-alm-key, so hovering/clicking
+    // elsewhere in the box is inert.
     var nameHtml = _almEsc(info.name);
     if (linkKey) nameHtml = window.AlmanacLinks.wrap(linkKey, nameHtml);
     tooltip.innerHTML = '<span class="orrery-tip-info">' + nameHtml + _almEsc(info.rest) + '</span>';
@@ -235,11 +248,11 @@ function _initOrrery() {
       canvas.style.cursor = actionable ? 'pointer' : 'default';
     } else {
       // Grace period so the pointer can reach the tip's link before it hides.
-      if (_tipHasLink()) _scheduleTipHide(260); else _hideTip();
+      if (_tipHasLink()) _scheduleTipHide(_ORRERY_TIP_GRACE_MS); else _hideTip();
       canvas.style.cursor = 'default';
     }
   };
-  canvas.onmouseleave = function() { if (_tipHasLink()) _scheduleTipHide(260); else _hideTip(); };
+  canvas.onmouseleave = function() { if (_tipHasLink()) _scheduleTipHide(_ORRERY_TIP_GRACE_MS); else _hideTip(); };
 
   // A tap does the body's direct action (fly / detail card / open article),
   // exactly as before. The mouse path lets hover manage the tip.
@@ -277,13 +290,21 @@ function _initOrrery() {
   _orreryUpdateDate();
 }
 
+// Deterministic seeded PRNG (Park-Miller minimal-standard LCG) — every
+// decorative starfield in the almanac (orrery, horizon scene, star chart) is
+// generated from one of these rather than Math.random, so a layout is stable
+// across frames/re-inits and only ever changes if its seed does.
+function _lcgRand(seed) {
+  var s = seed;
+  return function () { s = (s * 16807) % 2147483647; return s / 2147483647; };
+}
+
 // Pre-computed orrery background stars (computed once, not per frame)
 var _orreryBgStars = null;
 
 function _ensureOrreryStars(W, dpr) {
   if (_orreryBgStars && _orreryBgStars.W === W) return _orreryBgStars.stars;
-  var ss = 73;
-  function sr() { ss = (ss * 16807) % 2147483647; return ss / 2147483647; }
+  var sr = _lcgRand(73);
   var stars = [];
   for (var i = 0; i < 40; i++) {
     stars.push({ x: sr() * W, y: sr() * W, b: 0.03 + sr() * 0.06, r: (0.3 + sr() * 0.4) * dpr });
@@ -359,7 +380,7 @@ function _drawOrrery(canvas, dpr) {
   if (z > 0.02) {
     ctx.save();
     ctx.globalAlpha = z;
-    var _refRing = function (au, col, dash, label) {
+    var _refRing = function (au, col, dash, label, key, labelKey) {
       var rr = _orrR(au, z) * W;
       ctx.save();
       ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2);
@@ -373,15 +394,22 @@ function _drawOrrery(canvas, dpr) {
         ctx.fillText(label, cx, cy - rr - 3 * dpr);
       }
       ctx.restore();
+      // A thin ring (not a filled band) still gets a narrow hit zone around its
+      // drawn line, same annulus scheme the belts use.
+      if (key) {
+        var ringTol = 4 * dpr;
+        _orreryBeltZones.push({ key: key, labelKey: labelKey, rIn: (rr - ringTol) / dpr, rOut: (rr + ringTol) / dpr });
+      }
     };
     _belt(_KUIPER_INNER_AU, _KUIPER_OUTER_AU, 'rgba(120,160,220,0.05)', 'rgba(150,180,230,0.55)', t('alm_kuiper_belt'), 'belt:kuiper', 'alm_kuiper_belt');
     _refRing(_HELIO_TERMINATION_AU, 'rgba(255,180,60,0.22)', true, null);
-    _refRing(_HELIOPAUSE_AU, 'rgba(120,200,255,0.30)', true, t('alm_heliopause'));
+    _refRing(_HELIOPAUSE_AU, 'rgba(120,200,255,0.30)', true, t('alm_heliopause'), 'belt:heliopause', 'alm_heliopause');
     ctx.restore();
   }
 
   // Sun — large luminous glow, Apple Watch style
   var sunR = W * 0.022;
+  _orrerySunPos = { x: cx / dpr, y: cy / dpr, r: sunR / dpr }; // hover/tap hit zone (CSS px)
 
   // Wide outer haze
   var haze = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.14);

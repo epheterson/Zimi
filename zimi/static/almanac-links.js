@@ -461,11 +461,15 @@
     'season:autumn': { q: 'Q1314', en: 'Autumn' }
   };
 
-  // Orrery belts — the labelled bands the orrery draws (asteroid + Kuiper). Keys
-  // match the canvas hit-test in almanac-orrery.js.
+  // Orrery belts — the labelled bands/rings the orrery draws (asteroid, Kuiper,
+  // heliopause). Keys match the canvas hit-test in almanac-orrery.js. Heliopause
+  // verified against Wikidata by exact enwiki title (Q1137936 → "Heliopause
+  // (astronomy)"; the bare "Heliopause" title is a disambiguation page, Q5705772
+  // — not linkable).
   var BELTS = {
-    'belt:asteroid': { q: 'Q2179', en: 'Asteroid belt' },
-    'belt:kuiper':   { q: 'Q427',  en: 'Kuiper belt' }
+    'belt:asteroid':   { q: 'Q2179',    en: 'Asteroid belt' },
+    'belt:kuiper':     { q: 'Q427',     en: 'Kuiper belt' },
+    'belt:heliopause': { q: 'Q1137936', en: 'Heliopause (astronomy)' }
   };
 
   // "On this day" event subjects — the confident entity behind each editorial

@@ -230,6 +230,32 @@ function _drawConstellations(ctx, alpha, t, projStars) {
   ctx.restore();
 }
 
+// Decorative dim background starfield for the horizon scene — generated once
+// per canvas size (cached, like the orrery's own background stars) rather than
+// re-rolled every animation frame. These are pure ambiance (no real RA/Dec, no
+// link), filling out the naked-eye-dense look a ~60-catalog-star sky can't on
+// its own; _lcgRand (almanac-orrery.js) keeps them deterministic.
+var _skyBgStars = null;
+
+function _ensureSkyBgStars(W, H, dpr) {
+  if (_skyBgStars && _skyBgStars.W === W && _skyBgStars.H === H) return _skyBgStars.stars;
+  var sr = _lcgRand(42);
+  var count = 220;
+  var stars = [];
+  for (var i = 0; i < count; i++) {
+    stars.push({
+      x: sr() * W,
+      y: sr() * H * 0.55,
+      r: (0.25 + sr() * 0.35) * dpr,
+      freq: 0.8 + sr() * 2.0,
+      phase: sr() * 6.28,
+      base: 0.03 + sr() * 0.12
+    });
+  }
+  _skyBgStars = { W: W, H: H, stars: stars };
+  return stars;
+}
+
 function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, elapsed, labelText, projStars, moonData) {
   var t = elapsed || 0;  // 't' is animation time in seconds — not the i18n t() function
   var ctx = canvas.getContext('2d');
@@ -288,21 +314,17 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, elapsed, labelText, p
   if (alt < 8) {
     var starOpacity = alt < -14 ? 1 : alt < -2 ? (-2 - alt) / 12 : Math.max(0, (8 - alt) / 20);
 
-    // Dim background stars — seeded PRNG for faint ambiance
-    var _seed = 42;
-    function _srand() { _seed = (_seed * 16807 + 0) % 2147483647; return _seed / 2147483647; }
-    for (var si = 0; si < 45; si++) {
-      var sx = _srand() * W;
-      var sy = _srand() * H * 0.55;
-      _srand();
-      var sr = 0.4 * dpr;
-      var twinkleFreq = 0.8 + _srand() * 2.0;
-      var twinklePhase = _srand() * 6.28;
-      var twinkle = Math.sin(t * twinkleFreq + twinklePhase) * 0.15;
-      var bsa = starOpacity * Math.max(0.03, 0.15 + twinkle);
-      _srand();
+    // Dim background stars — a cached deterministic field (only the twinkle,
+    // a sine over each star's cached phase/frequency, is recomputed per frame;
+    // the layout itself is generated once per canvas size, not re-rolled every
+    // RAF tick — see _ensureSkyBgStars).
+    var bgStars = _ensureSkyBgStars(W, H, dpr);
+    for (var si = 0; si < bgStars.length; si++) {
+      var bs = bgStars[si];
+      var twinkle = Math.sin(t * bs.freq + bs.phase) * 0.15;
+      var bsa = starOpacity * Math.max(0.03, bs.base + twinkle);
       ctx.beginPath();
-      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+      ctx.arc(bs.x, bs.y, bs.r, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(200,210,230,' + bsa.toFixed(3) + ')';
       ctx.fill();
     }
@@ -935,6 +957,33 @@ function _renderStarChart(baseNow) {
   _drawStarChart(baseNow);
 }
 
+// Decorative dim background starfield for the planisphere disc — same idea as
+// _ensureSkyBgStars for the horizon scene: a cached, deterministic field (not
+// astronomically real, not linkable) so the disc reads as a real night sky
+// instead of the ~25-35 catalog stars typically above the horizon at once.
+// Cached by disc size only (not lat/lon/time), so panning/scrubbing is free.
+var _starChartBgStars = null;
+
+function _ensureStarChartBgStars(size) {
+  if (_starChartBgStars && _starChartBgStars.size === size) return _starChartBgStars.stars;
+  var sr = _lcgRand(137);
+  var count = 150;
+  var half = size / 2;
+  var stars = [];
+  for (var i = 0; i < count; i++) {
+    var ang = sr() * Math.PI * 2;
+    var rad = Math.sqrt(sr()) * (half - 16); // area-uniform over the disc, clear of the rim labels
+    stars.push({
+      x: half + Math.cos(ang) * rad,
+      y: half + Math.sin(ang) * rad,
+      r: 0.3 + sr() * 0.45,
+      a: 0.06 + sr() * 0.13
+    });
+  }
+  _starChartBgStars = { size: size, stars: stars };
+  return stars;
+}
+
 function _drawStarChart(now) {
   var canvas = document.getElementById('almanac-starchart');
   if (!canvas) return;
@@ -1002,6 +1051,20 @@ function _drawStarChart(now) {
   ctx.fillStyle = sky;
   ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
   ctx.restore();
+
+  // Faint decorative background stars, clipped to the disc — ambiance only,
+  // drawn under the constellation lines and the real (linkable) catalog stars.
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+  var bgStars = _ensureStarChartBgStars(size);
+  for (var bgi = 0; bgi < bgStars.length; bgi++) {
+    var bg = bgStars[bgi];
+    ctx.beginPath(); ctx.arc(bg.x, bg.y, bg.r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(210,220,240,' + bg.a.toFixed(3) + ')';
+    ctx.fill();
+  }
+  ctx.restore();
+
   ctx.strokeStyle = 'rgba(120,140,180,0.35)';
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
