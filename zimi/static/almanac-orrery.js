@@ -47,6 +47,11 @@ var _orreryPlanetPositions = []; // [{name, x, y, r}] in CSS pixels for hover
 //     curated Q-ID resolved against the installed library, renders the body
 //     NAME as a dotted-amber link (.alm-link idiom). On touch the same tooltip is shown after the
 //     tap, so the link is reachable without a hover.
+//   • A SECOND tap on the same, already-selected body (whose article resolved)
+//     opens that article — the discoverable touch path, added alongside the
+//     tooltip name-link, not replacing the first-tap action.
+
+var _orrerySelectedKey = null; // link key of the body a first tap selected
 
 // Belt annulus hit zones, recorded on each draw (asteroid + Kuiper belts). Each
 // is {key, rIn, rOut} in CSS pixels measured from the canvas centre.
@@ -103,7 +108,16 @@ function _orreryOpenLink(key) { if (key && window.AlmanacLinks) window.AlmanacLi
 // never on this path — it lives in the tooltip (as the body name).
 function _orreryTap(mx, my, tolerance) {
   var hit = _orreryHitTest(mx, my, tolerance);
-  if (!hit) return null;
+  if (!hit) { _orrerySelectedKey = null; return null; }
+  var linkKey = _orreryLinkKey(hit);
+  var resolved = !!_orreryLinkFor(hit);
+  // Second tap on the same, already-selected body (whose article resolved)
+  // opens it — the discoverable touch path, using the same open as the tooltip
+  // name-link. A no-link body has no selection, so it never reaches here.
+  if (resolved && linkKey && linkKey === _orrerySelectedKey) {
+    _orreryOpenLink(linkKey);
+    return hit;
+  }
   if (hit.type === 'planet') {
     if (hit.data.name !== 'Earth') _orreryLaunchRocket(hit.data.name); // fly, exactly as before
     else _orreryOpenLink(_orreryLinkKey(hit));                          // Earth: no transit → article
@@ -112,6 +126,9 @@ function _orreryTap(mx, my, tolerance) {
   } else if (hit.type === 'belt') {
     _orreryOpenLink(_orreryLinkKey(hit));                               // belt: article
   }
+  // Remember the selection only when its article resolved, so a second tap has
+  // somewhere to go (no link → no second-tap open, never a search).
+  _orrerySelectedKey = resolved ? linkKey : null;
   return hit;
 }
 
@@ -131,6 +148,7 @@ function _initOrrery() {
   _orreryDpr = dpr;
   _orrerySpeedLabel = document.getElementById('orrery-speed-label');
   _orrerySliderEl = document.getElementById('orrery-slider');
+  _orrerySelectedKey = null;
   _drawOrrery(canvas, dpr);
 
   // Hover tooltip: the body stats with the body NAME as a dotted-amber link when its

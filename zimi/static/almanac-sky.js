@@ -779,6 +779,9 @@ var _starChartViewLon = null;
 
 var _starChartDragged = false; // suppresses the tap-to-identify after a drag
 
+var _starChartSelectedKey = null; // the currently selected body's link key (2nd
+                                  // tap on the same one opens its article)
+
 function _starChartResetLoc() {
   _starChartViewLat = null;
   _starChartViewLon = null;
@@ -893,10 +896,20 @@ function _starChartClick(ev) {
   if (!canvas || !info) return;
   var r = canvas.getBoundingClientRect();
   var best = _starChartBodyAt(ev.clientX - r.left, ev.clientY - r.top);
-  // A linkable body opens its installed article directly (closed-set authority);
-  // otherwise fall back to naming the body in the info line (unchanged).
-  if (_starChartLinkFor(best)) { window.AlmanacLinks.open(best.key); return; }
-  info.innerHTML = best ? _almEsc(best.label) : '';
+  if (!best) { info.innerHTML = ''; _starChartSelectedKey = null; return; }
+  var link = _starChartLinkFor(best);
+  // Second tap on the same, already-selected linkable body opens its installed
+  // article (closed-set authority — same open path the name-link hint uses).
+  if (link && best.key && best.key === _starChartSelectedKey) {
+    window.AlmanacLinks.open(best.key);
+    return;
+  }
+  // First tap selects: name it in the info line, carrying the dotted-amber link
+  // hint ONLY when its curated Q-ID actually resolved (no link → no hint, never
+  // a search). A resolved body is remembered so a second tap can open it.
+  var label = _almEsc(best.label);
+  info.innerHTML = link ? window.AlmanacLinks.wrap(best.key, label) : label;
+  _starChartSelectedKey = link ? best.key : null;
 }
 
 function _renderStarChart(baseNow) {
@@ -907,6 +920,7 @@ function _renderStarChart(baseNow) {
   if (cv) _initStarChartDrag(cv);
   var info = document.getElementById('alm-sc-info');
   if (info) info.innerHTML = '';
+  _starChartSelectedKey = null;
   _drawStarChart(baseNow);
 }
 
