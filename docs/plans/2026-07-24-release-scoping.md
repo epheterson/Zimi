@@ -39,6 +39,13 @@ The four yes-items that missed the train, plus polish debt:
 - README demo GIF, done right: one GIF replacing ALL static screenshots —
   a full walkthrough (search, reader, interlang live usage, almanac).
   Eric likes the idea, not the 1.8.0 execution; removed for launch.
+- Did-you-mean vocab coverage tuning: 1.8.0 ships working corrections
+  (einstien→einstein, watre→water, phlosophy, pyhton) but the 200k word
+  cap saturates on ~3/66 index files, so spread-out science words
+  (mitochondria, photosynthesis) get evicted before their counts build.
+  Next levers: bigger cap, count-min-sketch or two-pass counting, or
+  per-file word quotas. All groundwork (stride sampling, lossy eviction,
+  disk-persisted versioned cache) shipped in 1.8.0.
 - Snippet extraction skips boilerplate: iFixit device pages return an
   embedded "featured guides" widget's text as the snippet (e.g. a Lenovo
   SSD guide summary on the AmeriWater purifier page). previews.py should
