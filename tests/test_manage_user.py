@@ -1,9 +1,9 @@
 """Optional management username (v1.8).
 
 Covers the full auth matrix for the OPTIONAL username that can sit alongside
-the password: configured-via-env, configured-via-file, and the default
+the management credential — configured via env, via file, and the default
 not-configured (any value passes) case — plus that a legacy single-line
-password file (no username) keeps working unchanged.
+credential file (no username) keeps working unchanged.
 """
 
 import os
