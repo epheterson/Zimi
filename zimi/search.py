@@ -1145,9 +1145,14 @@ def _dedup_results_by_title(results):
 # whole feature is fail-soft: any error, empty vocab, or a blown time budget
 # yields no suggestion, never an exception and never a slow search.
 
-_DYM_MIN_RESULTS = (
-    10  # suggest alongside weak result sets too (additive; results still show)
-)
+_DYM_MIN_RESULTS = 30  # suggest alongside weak result sets too (additive; results
+# still show). A typo on a 100M-article library routinely still matches junk
+# in the teens-to-twenties (typo'd titles elsewhere, partial-word hits) —
+# "einstien" pulled 13 real results, "volcanoe eruption" pulls ~26 — so a
+# lower bar suppressed the correction even with a perfect candidate in hand.
+# Safe to raise: the freq-ratio guard (_DYM_FREQ_RATIO) already prevents a
+# well-spelled query from getting "corrected" just because it also has few
+# results.
 _DYM_BUDGET_S = 0.05  # ~50ms ceiling on per-query correction work
 _DYM_FREQ_RATIO = 10  # an in-vocab word is only "corrected" when a candidate
 # is at least this many times more common — Norvig-style confidence that lets
@@ -1164,15 +1169,18 @@ _VOCAB_MIN_WORD_LEN = 3  # ignore 1-2 char fragments (noise, not misspellings)
 # index up to the per-file row cap below is a few minutes worst case; 300s
 # gives that room to actually finish instead of bailing mid-library.
 _VOCAB_BUILD_BUDGET_S = 300.0
-# Per-file cap on rows scanned, independent of the overall time budget. A
+# Per-file cap on rows sampled, independent of the overall time budget. A
 # single giant index (English Wikipedia's ~27M titles) can otherwise eat the
 # entire budget before any other index — including much smaller, equally
-# relevant ones — ever gets opened. Capping rows-per-file guarantees every
-# index contributes some vocabulary, trading depth in the biggest file for
-# breadth across all of them. 3M rows (up from an initial 300k) gives large
-# indexes enough depth to actually build real word *frequencies* — at 300k,
-# NAS testing showed Wikipedia's one-off proper nouns filled the whole word
-# cap before any word was seen twice, so nothing ever looked "common".
+# relevant ones — ever gets opened. This cap now bounds a STRIDE SAMPLE
+# spread across the whole file (see _vocab_stride), not a contiguous
+# prefix: round-3 testing showed a 3M-row prefix of a 27M-row Wikipedia
+# table still missed most of the vocabulary (only the alphabetically- or
+# insertion-order-first titles were ever seen), and even reading the first
+# 3M rows didn't reach common words like "mitochondria" or "photosynthesis"
+# at all — they simply weren't in that prefix. Sampling every k-th row
+# instead gives a word occurring even a few dozen times across the whole
+# file a real chance to be sampled and survive lossy-counting eviction.
 _VOCAB_MAX_ROWS_PER_FILE = 3_000_000
 _VOCAB_FETCH_BATCH_SIZE = 5000  # sqlite fetchmany() page size during the scan
 # Lossy-counting admission: when the word cap is hit, count==1 entries (the
@@ -1188,10 +1196,11 @@ _VOCAB_CACHE_PATH = os.path.join(_srv.ZIMI_DATA_DIR, _VOCAB_CACHE_FILENAME)
 # Bump whenever the vocab-building algorithm changes in a way that makes an
 # on-disk cache from an older version invalid even though the underlying
 # title indexes haven't changed — e.g. round 3's lossy-counting admission
-# produces a materially different vocab than round 2's first-come cap did.
-# Folded into _vocab_signature so a stale-algorithm cache is rebuilt
-# transparently rather than loaded forever.
-_VOCAB_BUILDER_VERSION = 2
+# produced a materially different vocab than round 2's first-come cap did,
+# and round 4's stride sampling (see _vocab_stride) again changes which
+# rows get read. Folded into _vocab_signature so a stale-algorithm cache is
+# rebuilt transparently rather than loaded forever.
+_VOCAB_BUILDER_VERSION = 3
 _DIST2_MAX_LEN = 7  # only try edit-distance-2 on words this short or shorter
 _DYM_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 _word_split_re = re.compile(r"[^a-z0-9]+")
@@ -1229,6 +1238,29 @@ def _evict_singleton_words(vocab):
     return len(singles)
 
 
+def _vocab_stride(conn, cap):
+    """Row stride for near-uniform sampling of one title index.
+
+    Returns k such that reading every k-th row (by rowid) stays within
+    `cap` rows total, spread across the WHOLE file rather than a contiguous
+    prefix. A word occurring even a few dozen times across a 27M-row
+    Wikipedia table has a real chance of landing in that spread; a
+    contiguous prefix scan only ever sees whatever happened to be inserted
+    first. k=1 (every row, unfiltered — identical to a plain scan) when the
+    file is already at or under the cap, or when the row count can't be
+    estimated (MAX(rowid) failed or the table is empty); the per-file row
+    cap in _build_vocab still bounds how much gets read either way, so k=1
+    is always a safe fallback, never a correctness issue."""
+    try:
+        row = conn.execute("SELECT MAX(rowid) FROM titles").fetchone()
+    except Exception:
+        return 1
+    est_rows = row[0] if row else None
+    if not est_rows:
+        return 1
+    return max(1, math.ceil(est_rows / cap))
+
+
 def _build_vocab():
     """Scan the SQLite title indexes into a {word: count} vocabulary.
 
@@ -1237,9 +1269,11 @@ def _build_vocab():
     an overall wall-clock budget — whichever hits first stops that file (row
     cap) or the whole scan (word cap / budget). Files are scanned largest-first
     (by byte size) so the richest indexes (Wikipedia-scale) contribute first;
-    the per-file row cap then keeps any single giant index from starving every
-    other one out of the time budget, trading its depth for breadth across the
-    whole library. The word cap uses lossy-counting admission (see
+    each file's rows are then STRIDE-SAMPLED (see _vocab_stride) rather than
+    read as a contiguous prefix, so the per-file row cap buys breadth across
+    the WHOLE file, not just its first N rows — a word occurring only
+    occasionally across a huge index still has a real chance to be sampled.
+    The word cap uses lossy-counting admission (see
     _evict_singleton_words): hitting it triggers a singleton sweep rather
     than freezing outright, so words seen later in the scan can still be
     counted — a first-come cap otherwise fills entirely with one-off proper
@@ -1278,7 +1312,15 @@ def _build_vocab():
         files_scanned += 1
         rows_this_file = 0
         try:
-            cur = conn.execute("SELECT title_lower FROM titles")
+            k = _vocab_stride(conn, _VOCAB_MAX_ROWS_PER_FILE)
+            if k > 1:
+                # SQLite filters the modulo C-side — Python still only ever
+                # sees up to the row cap, but spread across the whole file.
+                cur = conn.execute(
+                    "SELECT title_lower FROM titles WHERE (rowid % ?) = 0", (k,)
+                )
+            else:
+                cur = conn.execute("SELECT title_lower FROM titles")
             while (
                 not at_cap
                 and rows_this_file < _VOCAB_MAX_ROWS_PER_FILE

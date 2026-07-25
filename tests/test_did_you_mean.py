@@ -180,18 +180,13 @@ class VocabLoggingTests(unittest.TestCase):
         self.assertTrue(any("vocab" in msg.lower() for msg in cm.output))
 
 
-class VocabRowCapTests(unittest.TestCase):
-    """A single file's row scan is capped, so one giant index can't starve
-    every other index out of the time budget."""
+class VocabStrideSamplingTests(unittest.TestCase):
+    """A file bigger than the row cap is sampled across its WHOLE length
+    (stride, not a contiguous prefix) — a file at or under the cap is read
+    in full, same as before stride sampling existed."""
 
     def setUp(self):
-        self.tmp = tempfile.mkdtemp(prefix="zimi-dym-rowcap-")
-        # 20 titles, each contributing a unique numbered word — repeated
-        # within the same title so it survives the final singleton prune
-        # (count 2 from one row, not 1), isolating the row-cap behavior from
-        # the separate singleton-pruning behavior under test elsewhere.
-        titles = [f"RowWord{i:03d} RowWord{i:03d} Common" for i in range(20)]
-        _make_title_index(self.tmp, "wikipedia", titles)
+        self.tmp = tempfile.mkdtemp(prefix="zimi-dym-stride-")
         self._patch_dir = mock.patch.object(_search, "_TITLE_INDEX_DIR", self.tmp)
         self._patch_dir.start()
         _search._reset_vocab()
@@ -203,23 +198,59 @@ class VocabRowCapTests(unittest.TestCase):
 
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def test_per_file_row_cap_limits_contribution(self):
-        # A tiny fetch batch size (5) plus a tiny row cap (5) means only the
-        # first 5 rows of the file are ever read — the rest of the file's
-        # words must not appear, even though nothing else stopped the scan.
-        with (
-            mock.patch.object(_search, "_VOCAB_FETCH_BATCH_SIZE", 5),
-            mock.patch.object(_search, "_VOCAB_MAX_ROWS_PER_FILE", 5),
-        ):
+    def test_large_file_samples_across_whole_file(self):
+        # 20 rows (rowid 1-20), cap patched to 5 → k = ceil(20/5) = 4 →
+        # sampled rowid % 4 == 0, i.e. rowid {4,8,12,16,20} → 0-indexed
+        # rows {3,7,11,15,19}. Each distinguishing word is duplicated within
+        # its own title so it survives the final singleton prune regardless
+        # of stride, isolating the sampling behavior under test.
+        titles = [f"RowWord{i:03d} RowWord{i:03d} Common" for i in range(20)]
+        _make_title_index(self.tmp, "wikipedia", titles)
+        with mock.patch.object(_search, "_VOCAB_MAX_ROWS_PER_FILE", 5):
             vocab = _search._build_vocab()
-        # Common to all 20 titles → present regardless of the cap.
-        self.assertIn("common", vocab)
-        # Rows 0-4 got scanned...
-        self.assertIn("rowword000", vocab)
-        self.assertIn("rowword004", vocab)
-        # ...rows past the cap did not.
-        self.assertNotIn("rowword010", vocab)
-        self.assertNotIn("rowword019", vocab)
+        for i in (3, 7, 11, 15, 19):
+            self.assertIn(f"rowword{i:03d}", vocab)
+        # Never sampled...
+        for i in (0, 1, 2, 4, 5, 6, 18):
+            self.assertNotIn(f"rowword{i:03d}", vocab)
+        # ...and critically, the LAST row (19) is present — a contiguous
+        # prefix scan bounded to 5 rows could never have reached it.
+        self.assertIn("rowword019", vocab)
+
+    def test_small_file_stride_is_one_full_scan(self):
+        # File well under the cap → k=1 → every row read, exactly like a
+        # plain unfiltered scan (no sampling gaps).
+        titles = ["Alpha Alpha", "Bravo Bravo", "Charlie Charlie"]
+        _make_title_index(self.tmp, "wikipedia", titles)
+        with mock.patch.object(_search, "_VOCAB_MAX_ROWS_PER_FILE", 1000):
+            vocab = _search._build_vocab()
+        self.assertIn("alpha", vocab)
+        self.assertIn("bravo", vocab)
+        self.assertIn("charlie", vocab)
+
+    def test_stride_helper_k_one_for_small_table(self):
+        db_path = _make_title_index(self.tmp, "small", ["Only Only Title"])
+        conn = sqlite3.connect(db_path)
+        try:
+            self.assertEqual(_search._vocab_stride(conn, 1000), 1)
+        finally:
+            conn.close()
+
+    def test_stride_helper_k_scales_with_row_count(self):
+        db_path = _make_title_index(self.tmp, "big", [f"T{i}" for i in range(1000)])
+        conn = sqlite3.connect(db_path)
+        try:
+            self.assertEqual(_search._vocab_stride(conn, 100), 10)
+        finally:
+            conn.close()
+
+    def test_stride_helper_falls_back_to_one_on_empty_table(self):
+        db_path = _make_title_index(self.tmp, "empty", [])
+        conn = sqlite3.connect(db_path)
+        try:
+            self.assertEqual(_search._vocab_stride(conn, 100), 1)
+        finally:
+            conn.close()
 
 
 class VocabLossyCountingTests(unittest.TestCase):
@@ -344,6 +375,18 @@ class VocabCachePersistenceTests(unittest.TestCase):
             old_sig = _search._vocab_signature(self.index_dir)
             _search._vocab_cache_save({"stale": 99}, old_sig)
         # Back to the real (current) version — same indexes, different sig.
+        self.assertIsNone(_search._vocab_cache_load())
+
+    def test_round3_cache_on_disk_invalidated_by_round4_version_bump(self):
+        # The exact real-world case: a round-3 cache (builder version 2,
+        # first-come-eviction vocab, no stride sampling) already sitting on
+        # disk when round 4's code (version 3) starts up. It must not be
+        # loaded — the algorithm producing "words" changed, even though the
+        # indexes on disk did not.
+        with mock.patch.object(_search, "_VOCAB_BUILDER_VERSION", 2):
+            round3_sig = _search._vocab_signature(self.index_dir)
+            _search._vocab_cache_save({"python": 4}, round3_sig)
+        self.assertEqual(_search._VOCAB_BUILDER_VERSION, 3)
         self.assertIsNone(_search._vocab_cache_load())
 
     def test_round_trip_avoids_rebuild(self):
