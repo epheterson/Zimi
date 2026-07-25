@@ -39,6 +39,11 @@ The four yes-items that missed the train, plus polish debt:
 - README demo GIF, done right: one GIF replacing ALL static screenshots —
   a full walkthrough (search, reader, interlang live usage, almanac).
   Eric likes the idea, not the 1.8.0 execution; removed for launch.
+- Snippet extraction skips boilerplate: iFixit device pages return an
+  embedded "featured guides" widget's text as the snippet (e.g. a Lenovo
+  SSD guide summary on the AmeriWater purifier page). previews.py should
+  prefer the main content region / skip repeated-across-pages blocks.
+  Found 2026-07-24 during screenshot QA; cosmetic but visible in search.
 - Repo-root slimming: move zimi_desktop.py / zimi_desktop.spec /
   zimi_winsparkle.py / requirements-desktop.txt / playwright.config.mjs
   into subdirs and update CI paths (needs a full CI re-validation, which
