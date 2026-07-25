@@ -1155,15 +1155,26 @@ _DYM_FREQ_RATIO = 10  # an in-vocab word is only "corrected" when a candidate
 # without ever touching a genuinely common word.
 _VOCAB_MAX_WORDS = 200_000  # cap on distinct vocabulary words held in memory
 _VOCAB_MIN_WORD_LEN = 3  # ignore 1-2 char fragments (noise, not misspellings)
-# One-time ceiling on the lazy vocab scan. Generous on purpose: this runs on a
-# background daemon thread (see _ensure_vocab), off the request path, so it
-# never blocks a search. On a real multi-ZIM library the previous 2s budget
-# expired partway through an alphabetical file scan, before ever reaching the
-# Wikipedia-scale indexes that sort late — the real vocabulary was silently
-# never built. 10s comfortably covers a large library's title indexes while
-# still bounding worst case (see also: descending file-size scan order below,
-# which puts the richest indexes first so a blown budget hurts least).
-_VOCAB_BUILD_BUDGET_S = 10.0
+# One-time ceiling on the lazy vocab scan when there's no usable cache on
+# disk (see _vocab_cache_load / _vocab_cache_save below). Generous on
+# purpose: this runs on a background daemon thread (see _ensure_vocab), off
+# the request path, and only ever pays this cost once per library
+# state — every later restart with an unchanged library hits the persisted
+# cache instead. A single 27M-title Wikipedia index alone can take well
+# past 10s to scan even with the per-file row cap below; 60s gives that a
+# real chance to finish rather than bailing mid-file.
+_VOCAB_BUILD_BUDGET_S = 60.0
+# Per-file cap on rows scanned, independent of the overall time budget. A
+# single giant index (English Wikipedia's ~27M titles) can otherwise eat the
+# entire budget before any other index — including much smaller, equally
+# relevant ones — ever gets opened. Capping rows-per-file guarantees every
+# index contributes some vocabulary, trading depth in the biggest file for
+# breadth across all of them; 300k rows of even an arbitrarily-ordered title
+# table still surfaces the high-frequency words that matter for correction.
+_VOCAB_MAX_ROWS_PER_FILE = 300_000
+_VOCAB_FETCH_BATCH_SIZE = 5000  # sqlite fetchmany() page size during the scan
+_VOCAB_CACHE_FILENAME = "dym_vocab.json"
+_VOCAB_CACHE_PATH = os.path.join(_srv.ZIMI_DATA_DIR, _VOCAB_CACHE_FILENAME)
 _DIST2_MAX_LEN = 7  # only try edit-distance-2 on words this short or shorter
 _DYM_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 _word_split_re = re.compile(r"[^a-z0-9]+")
@@ -1193,15 +1204,16 @@ def _build_vocab():
     """Scan the SQLite title indexes into a {word: count} vocabulary.
 
     Opens a FRESH connection per index (sqlite objects aren't shareable across
-    threads). Bounded two ways: a distinct-word cap and a wall-clock budget —
-    whichever hits first stops the scan. Files are scanned largest-first (by
-    byte size) so that if the budget does run out, it runs out after the
-    richest indexes (Wikipedia-scale) have already contributed, not before —
-    alphabetical order previously starved the scan on files that just
-    happened to sort early. Returns whatever was gathered (possibly empty).
-    Never raises; a broken index is skipped. Always logs the outcome at info
-    level, including the empty case, so a starved scan is visible in
-    production rather than silently returning nothing."""
+    threads). Bounded three ways: a distinct-word cap, a per-file row cap, and
+    an overall wall-clock budget — whichever hits first stops that file (row
+    cap) or the whole scan (word cap / budget). Files are scanned largest-first
+    (by byte size) so the richest indexes (Wikipedia-scale) contribute first;
+    the per-file row cap then keeps any single giant index from starving every
+    other one out of the time budget, trading its depth for breadth across the
+    whole library. Returns whatever was gathered (possibly empty). Never
+    raises; a broken index is skipped. Always logs the outcome at info level,
+    including the empty case, so a starved scan is visible in production
+    rather than silently returning nothing."""
     deadline = time.monotonic() + _VOCAB_BUILD_BUDGET_S
     vocab = {}
     index_dir = _TITLE_INDEX_DIR
@@ -1216,6 +1228,7 @@ def _build_vocab():
     fnames.sort(key=lambda f: os.path.getsize(os.path.join(index_dir, f)), reverse=True)
     total_files = len(fnames)
     files_scanned = 0
+    rows_scanned = 0
     at_cap = False
     for fname in fnames:
         if at_cap or time.monotonic() > deadline:
@@ -1227,12 +1240,18 @@ def _build_vocab():
             log.debug("Vocab: cannot open %s: %s", fname, e)
             continue
         files_scanned += 1
+        rows_this_file = 0
         try:
             cur = conn.execute("SELECT title_lower FROM titles")
-            while not at_cap and time.monotonic() <= deadline:
-                rows = cur.fetchmany(5000)
+            while (
+                not at_cap
+                and rows_this_file < _VOCAB_MAX_ROWS_PER_FILE
+                and time.monotonic() <= deadline
+            ):
+                rows = cur.fetchmany(_VOCAB_FETCH_BATCH_SIZE)
                 if not rows:
                     break
+                rows_this_file += len(rows)
                 for (title_lower,) in rows:
                     if not title_lower:
                         continue
@@ -1250,28 +1269,106 @@ def _build_vocab():
         except Exception as e:
             log.debug("Vocab: scan failed for %s: %s", fname, e)
         finally:
+            rows_scanned += rows_this_file
             try:
                 conn.close()
             except Exception:
                 pass
     budget_hit = time.monotonic() > deadline
     log.info(
-        "Did-you-mean vocab: %d words from %d/%d index files (budget_hit=%s, at_cap=%s)",
+        "Did-you-mean vocab: %d words from %d/%d index files, %d rows "
+        "(budget_hit=%s, at_cap=%s)",
         len(vocab),
         files_scanned,
         total_files,
+        rows_scanned,
         budget_hit,
         at_cap,
     )
     return vocab
 
 
+def _vocab_signature(index_dir):
+    """Fingerprint of the title indexes a vocab would be built from.
+
+    Sorted (filename, size, mtime) triples, hashed. Any index added,
+    removed, resized, or rewritten changes this — it's how a persisted vocab
+    cache (see _vocab_cache_load) knows it's stale. Returns None if the
+    directory can't be listed, which callers treat as "cache unusable"."""
+    try:
+        fnames = sorted(f for f in os.listdir(index_dir) if f.endswith(".db"))
+    except OSError:
+        return None
+    parts = []
+    for f in fnames:
+        try:
+            st = os.stat(os.path.join(index_dir, f))
+        except OSError:
+            continue
+        # Full float precision on mtime, not truncated to whole seconds — a
+        # quick reindex can rewrite a file within the same second and still
+        # need to invalidate the cache.
+        parts.append(f"{f}:{st.st_size}:{st.st_mtime!r}")
+    return _hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _vocab_cache_save(vocab, sig):
+    """Persist a built vocab to disk so future starts can skip the scan.
+
+    Fail-soft: a write error is logged and otherwise ignored — the vocab
+    still works in memory for this process, it just won't survive restart."""
+    try:
+        _srv._atomic_write_json(_VOCAB_CACHE_PATH, {"sig": sig, "words": vocab})
+        log.info(
+            "Did-you-mean vocab: persisted %d words to %s",
+            len(vocab),
+            _VOCAB_CACHE_PATH,
+        )
+    except Exception as e:
+        log.info("Did-you-mean vocab: persist failed: %s", e)
+
+
+def _vocab_cache_load():
+    """Load a persisted vocab if its signature matches the current indexes.
+
+    Returns the {word: count} dict on a hit, or None (caller should rebuild)
+    on a missing file, signature mismatch, or any error — a corrupted or
+    stale cache is just treated as absent, never raised."""
+    try:
+        if not os.path.exists(_VOCAB_CACHE_PATH):
+            return None
+        with open(_VOCAB_CACHE_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        sig = _vocab_signature(_TITLE_INDEX_DIR)
+        if sig is None or data.get("sig") != sig:
+            return None
+        words = data.get("words")
+        if not isinstance(words, dict):
+            return None
+        return words
+    except Exception as e:
+        log.info("Did-you-mean vocab: cache load failed: %s", e)
+        return None
+
+
 def _vocab_build_worker():
-    """Build the vocab off the request path and cache it. Never raises.
+    """Load the vocab from disk if valid, else build it and persist. Never raises.
 
     A build error (or a broken index) caches an empty vocab so we don't retry
-    on every query and never surface an exception to callers."""
+    on every query and never surface an exception to callers. A successful
+    fresh build is persisted to disk (see _vocab_cache_save) so the next
+    process start hits _vocab_cache_load instead of re-scanning every index."""
     global _vocab
+    cached = _vocab_cache_load()
+    if cached is not None:
+        with _vocab_lock:
+            _vocab = cached
+        log.info(
+            "Did-you-mean vocab: loaded %d words from cache (%s)",
+            len(cached),
+            _VOCAB_CACHE_PATH,
+        )
+        return
     try:
         built = _build_vocab()
     except Exception as e:
@@ -1279,15 +1376,21 @@ def _vocab_build_worker():
         built = {}
     with _vocab_lock:
         _vocab = built if built is not None else {}
+    if built:
+        sig = _vocab_signature(_TITLE_INDEX_DIR)
+        if sig is not None:
+            _vocab_cache_save(built, sig)
 
 
 def _ensure_vocab():
     """Return the cached vocabulary, or None while it is still being built.
 
-    Non-blocking by design: the vocab scan can take ~1.5s, and the sparse-search
-    trigger runs inside search_all — on the MCP path that happens while holding
-    the global libzim lock, so a synchronous build would stall every libzim op.
-    The first call kicks off a single daemon builder thread (guarded by
+    Non-blocking by design: an uncached build can take up to
+    _VOCAB_BUILD_BUDGET_S (a cache hit is near-instant, see
+    _vocab_cache_load), and the sparse-search trigger runs inside
+    search_all — on the MCP path that happens while holding the global
+    libzim lock, so a synchronous build would stall every libzim op. The
+    first call kicks off a single daemon builder thread (guarded by
     _vocab_lock so only one ever starts) and returns None immediately; later
     sparse searches see the completed vocab. The 50ms per-query budget therefore
     holds for every search, including the first."""

@@ -7,6 +7,7 @@ index with that real schema, then exercise vocab build, edit-distance matching,
 the sparse-result trigger in search_all, the time budget, and fail-soft paths.
 """
 
+import json
 import os
 import sqlite3
 import sys
@@ -54,10 +55,18 @@ class VocabBuildTests(unittest.TestCase):
         _make_title_index(self.tmp, "wikipedia", TITLES)
         self._patch = mock.patch.object(_search, "_TITLE_INDEX_DIR", self.tmp)
         self._patch.start()
+        # Isolate the on-disk vocab cache too — _vocab_build_worker (used by
+        # _ensure_vocab) now checks disk before scanning, and it must never
+        # touch the real ZIMI_DATA_DIR cache during a test.
+        self._patch_cache = mock.patch.object(
+            _search, "_VOCAB_CACHE_PATH", os.path.join(self.tmp, "dym_vocab.json")
+        )
+        self._patch_cache.start()
         _search._reset_vocab()
 
     def tearDown(self):
         self._patch.stop()
+        self._patch_cache.stop()
         _search._reset_vocab()
         import shutil
 
@@ -168,6 +177,136 @@ class VocabLoggingTests(unittest.TestCase):
         self.assertTrue(any("vocab" in msg.lower() for msg in cm.output))
 
 
+class VocabRowCapTests(unittest.TestCase):
+    """A single file's row scan is capped, so one giant index can't starve
+    every other index out of the time budget."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="zimi-dym-rowcap-")
+        # 20 titles, each contributing a unique numbered word.
+        titles = [f"RowWord{i:03d} Common" for i in range(20)]
+        _make_title_index(self.tmp, "wikipedia", titles)
+        self._patch_dir = mock.patch.object(_search, "_TITLE_INDEX_DIR", self.tmp)
+        self._patch_dir.start()
+        _search._reset_vocab()
+
+    def tearDown(self):
+        self._patch_dir.stop()
+        _search._reset_vocab()
+        import shutil
+
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_per_file_row_cap_limits_contribution(self):
+        # A tiny fetch batch size (5) plus a tiny row cap (5) means only the
+        # first 5 rows of the file are ever read — the rest of the file's
+        # words must not appear, even though nothing else stopped the scan.
+        with (
+            mock.patch.object(_search, "_VOCAB_FETCH_BATCH_SIZE", 5),
+            mock.patch.object(_search, "_VOCAB_MAX_ROWS_PER_FILE", 5),
+        ):
+            vocab = _search._build_vocab()
+        # Common to all 20 titles → present regardless of the cap.
+        self.assertIn("common", vocab)
+        # Rows 0-4 got scanned...
+        self.assertIn("rowword000", vocab)
+        self.assertIn("rowword004", vocab)
+        # ...rows past the cap did not.
+        self.assertNotIn("rowword010", vocab)
+        self.assertNotIn("rowword019", vocab)
+
+
+class VocabCachePersistenceTests(unittest.TestCase):
+    """The vocab is persisted to disk and reloaded instead of rescanned,
+    as long as its signature still matches the title indexes on disk."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="zimi-dym-cache-")
+        self.index_dir = os.path.join(self.tmp, "titles")
+        _make_title_index(self.index_dir, "wikipedia", TITLES)
+        self.cache_path = os.path.join(self.tmp, "dym_vocab.json")
+        self._patches = [
+            mock.patch.object(_search, "_TITLE_INDEX_DIR", self.index_dir),
+            mock.patch.object(_search, "_VOCAB_CACHE_PATH", self.cache_path),
+        ]
+        for p in self._patches:
+            p.start()
+        _search._reset_vocab()
+
+    def tearDown(self):
+        for p in self._patches:
+            p.stop()
+        _search._reset_vocab()
+        import shutil
+
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_signature_changes_when_index_touched(self):
+        sig1 = _search._vocab_signature(self.index_dir)
+        # Touch: append a row, changing size and mtime.
+        db_path = os.path.join(self.index_dir, "wikipedia.db")
+        conn = sqlite3.connect(db_path)
+        conn.execute("INSERT INTO titles VALUES ('A/999','New Thing','new thing')")
+        conn.commit()
+        conn.close()
+        sig2 = _search._vocab_signature(self.index_dir)
+        self.assertNotEqual(sig1, sig2)
+
+    def test_cache_invalidated_after_index_change(self):
+        built = _search._build_vocab()
+        sig = _search._vocab_signature(self.index_dir)
+        _search._vocab_cache_save(built, sig)
+        self.assertIsNotNone(_search._vocab_cache_load())
+        # Touch the index — cache is now stale and must be rejected.
+        db_path = os.path.join(self.index_dir, "wikipedia.db")
+        conn = sqlite3.connect(db_path)
+        conn.execute("INSERT INTO titles VALUES ('A/999','New Thing','new thing')")
+        conn.commit()
+        conn.close()
+        self.assertIsNone(_search._vocab_cache_load())
+
+    def test_round_trip_avoids_rebuild(self):
+        # Build once and persist, exactly as _vocab_build_worker would.
+        built = _search._build_vocab()
+        sig = _search._vocab_signature(self.index_dir)
+        _search._vocab_cache_save(built, sig)
+        _search._reset_vocab()  # simulate a fresh process: in-memory state gone
+
+        # Prove the next build path never re-scans: if it did, this raises.
+        def _fail_if_called():
+            raise AssertionError("cache miss — _build_vocab should not run")
+
+        with mock.patch.object(_search, "_build_vocab", _fail_if_called):
+            self.assertIsNone(_search._ensure_vocab())
+            _search._join_vocab_build()
+            vocab = _search._ensure_vocab()
+        self.assertIsNotNone(vocab)
+        self.assertIn("python", vocab)
+        self.assertEqual(vocab, built)
+
+    def test_corrupted_cache_falls_back_to_clean_rebuild(self):
+        os.makedirs(self.tmp, exist_ok=True)
+        with open(self.cache_path, "w", encoding="utf-8") as f:
+            f.write("{not valid json")
+        self.assertIsNone(_search._vocab_cache_load())
+        # And the worker path recovers by rebuilding rather than raising.
+        _search._ensure_vocab()
+        _search._join_vocab_build()
+        vocab = _search._ensure_vocab()
+        self.assertIsNotNone(vocab)
+        self.assertIn("python", vocab)
+
+    def test_cache_persisted_after_fresh_build(self):
+        self.assertFalse(os.path.exists(self.cache_path))
+        _search._ensure_vocab()
+        _search._join_vocab_build()
+        self.assertTrue(os.path.exists(self.cache_path))
+        with open(self.cache_path, encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertIn("python", data["words"])
+        self.assertEqual(data["sig"], _search._vocab_signature(self.index_dir))
+
+
 class CorrectionTests(unittest.TestCase):
     def setUp(self):
         self.vocab = {"python": 10, "javascript": 3, "asyncio": 2, "machine": 5}
@@ -272,6 +411,10 @@ class SearchAllTriggerTests(unittest.TestCase):
         _make_title_index(self.tmp, "wikipedia", TITLES)
         self._patch_dir = mock.patch.object(_search, "_TITLE_INDEX_DIR", self.tmp)
         self._patch_dir.start()
+        self._patch_cache = mock.patch.object(
+            _search, "_VOCAB_CACHE_PATH", os.path.join(self.tmp, "dym_vocab.json")
+        )
+        self._patch_cache.start()
         _search._reset_vocab()
         # No ZIMs loaded → search returns 0 results, exercising the sparse path.
         self._patches = [
@@ -287,6 +430,7 @@ class SearchAllTriggerTests(unittest.TestCase):
 
     def tearDown(self):
         self._patch_dir.stop()
+        self._patch_cache.stop()
         for p in self._patches:
             p.stop()
         _search._reset_vocab()
@@ -340,7 +484,12 @@ class SearchAllTriggerTests(unittest.TestCase):
         # Point the vocab at an empty dir → empty vocab → no suggestion, no error.
         empty = tempfile.mkdtemp(prefix="zimi-dym-empty-")
         try:
-            with mock.patch.object(_search, "_TITLE_INDEX_DIR", empty):
+            with (
+                mock.patch.object(_search, "_TITLE_INDEX_DIR", empty),
+                mock.patch.object(
+                    _search, "_VOCAB_CACHE_PATH", os.path.join(empty, "dym_vocab.json")
+                ),
+            ):
                 _search._reset_vocab()
                 result = _search.search_all("pyhton", fast=False)
             self.assertNotIn("did_you_mean", result)
