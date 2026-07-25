@@ -1973,13 +1973,15 @@ function renderHome(filter) {
 // a multi-language count ({multi:n}), or null (no badge — language-agnostic, or
 // it matches the current UI language, where a badge would just be noise). Shared
 // by the inline list badge and the compact-tile corner badge so the exclusion
-// rules never drift between the two views.
-function _zimLangBadgeInfo(z) {
+// rules never drift between the two views. `force` keeps the code even when it
+// matches the UI language — used to disambiguate identically-titled source pills,
+// where dropping the current language would leave a collision unlabelled.
+function _zimLangBadgeInfo(z, force) {
   var lang = (z.language || '').toLowerCase();
   if (!lang || lang === 'all') return null;
   if (lang.includes(',')) { var n = lang.split(',').length; return n > 1 ? {multi: n} : null; }
   if (lang === 'mul' || lang === 'multi' || /^mul/i.test(z.name)) return null;
-  if (lang === _currentLang) return null;
+  if (!force && lang === _currentLang) return null;
   // Two-letter uppercase code (DE, AR, FR…). ISO 639-1 codes are already two
   // letters; longer codes are clipped to their first two.
   return {code: (lang.length > 2 ? lang.slice(0, 2) : lang).toUpperCase()};
@@ -1987,9 +1989,10 @@ function _zimLangBadgeInfo(z) {
 
 // Inline language badge (search + full list rows). Full language name in the
 // tooltip; the visible label is the short code so identically-named ZIMs in
-// different languages are distinguishable at a glance.
-function _langBadge(z) {
-  var info = _zimLangBadgeInfo(z);
+// different languages are distinguishable at a glance. `force` forwards to
+// _zimLangBadgeInfo (see there).
+function _langBadge(z, force) {
+  var info = _zimLangBadgeInfo(z, force);
   if (!info) return '';
   if (info.multi) {
     return '<span class="lang-badge multi" title="' + escAttr(t('multilingual', {n: info.multi})) + '">' +
@@ -3792,14 +3795,21 @@ function renderSearchResults(data, scope) {
   // Source filter pills (global search only, multiple sources)
   const sourceNames = Object.keys(bySource);
   if (!scope && sourceNames.length > 1) {
+    // When two+ sources share a display title (e.g. wikipedia + wikipedia_de both
+    // read "Wikipedia"), tag each colliding pill with its language code so they're
+    // tellable apart. Unique titles stay clean. Reuses the tile lang-badge look.
+    var _titleCounts = {};
+    sourceNames.forEach(function(s) { var tt = _zimTitle(s); _titleCounts[tt] = (_titleCounts[tt] || 0) + 1; });
     // Sort by count descending so most relevant sources are visible first
     var sourcePillsHtml = _allResetPill(activeSourceFilters.size === 0, 'clearSourceFilter()') +
       sourceNames.sort(function(a, b) { return (bySource[b] || 0) - (bySource[a] || 0); }).map(function(s) {
       // Dim source pills when a language filter is active and this source has no results in that language
       var dimmed = activeLanguageFilters.size > 0 && ![...activeLanguageFilters].some(function(lang) { return sourcesByLang[lang] && sourcesByLang[lang].has(s); });
+      var _si = _zimInfo(s);
+      var badge = (_si && _titleCounts[_zimTitle(s)] > 1) ? ' ' + _langBadge(_si, true) : '';
       return '<button class="pill' + (activeSourceFilters.has(s) ? ' active' : '') + (dimmed ? ' dimmed' : '') +
         '" aria-pressed="' + activeSourceFilters.has(s) + '" onclick="toggleSourceFilter(\'' + escAttr(s) + '\')">' +
-        esc(_zimTitle(s)) + ' (' + bySource[s] + ')</button>';
+        esc(_zimTitle(s)) + badge + ' (' + bySource[s] + ')</button>';
     }).join('');
     pillsBar.className = 'pills';
     // Source pills first, then language pills below (consistent with catalog).
