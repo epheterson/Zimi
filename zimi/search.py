@@ -1158,23 +1158,40 @@ _VOCAB_MIN_WORD_LEN = 3  # ignore 1-2 char fragments (noise, not misspellings)
 # One-time ceiling on the lazy vocab scan when there's no usable cache on
 # disk (see _vocab_cache_load / _vocab_cache_save below). Generous on
 # purpose: this runs on a background daemon thread (see _ensure_vocab), off
-# the request path, and only ever pays this cost once per library
-# state — every later restart with an unchanged library hits the persisted
-# cache instead. A single 27M-title Wikipedia index alone can take well
-# past 10s to scan even with the per-file row cap below; 60s gives that a
-# real chance to finish rather than bailing mid-file.
-_VOCAB_BUILD_BUDGET_S = 60.0
+# the request path, and only ever pays this cost once per library state —
+# every later restart with an unchanged library hits the persisted cache
+# instead. Measured NAS throughput is ~50k+ rows/sec, so scanning every
+# index up to the per-file row cap below is a few minutes worst case; 300s
+# gives that room to actually finish instead of bailing mid-library.
+_VOCAB_BUILD_BUDGET_S = 300.0
 # Per-file cap on rows scanned, independent of the overall time budget. A
 # single giant index (English Wikipedia's ~27M titles) can otherwise eat the
 # entire budget before any other index — including much smaller, equally
 # relevant ones — ever gets opened. Capping rows-per-file guarantees every
 # index contributes some vocabulary, trading depth in the biggest file for
-# breadth across all of them; 300k rows of even an arbitrarily-ordered title
-# table still surfaces the high-frequency words that matter for correction.
-_VOCAB_MAX_ROWS_PER_FILE = 300_000
+# breadth across all of them. 3M rows (up from an initial 300k) gives large
+# indexes enough depth to actually build real word *frequencies* — at 300k,
+# NAS testing showed Wikipedia's one-off proper nouns filled the whole word
+# cap before any word was seen twice, so nothing ever looked "common".
+_VOCAB_MAX_ROWS_PER_FILE = 3_000_000
 _VOCAB_FETCH_BATCH_SIZE = 5000  # sqlite fetchmany() page size during the scan
+# Lossy-counting admission: when the word cap is hit, count==1 entries (the
+# one-off proper nouns and IDs that dominate large title sets) are swept out
+# to make room, and scanning continues — this is what lets genuinely common
+# words admitted later in the scan still get counted, instead of the cap
+# freezing on whichever words happened to appear first. If a sweep frees
+# less than this fraction of the cap, the vocab has saturated (what's left
+# is mostly count>=2) and the scan stops for good.
+_VOCAB_EVICT_MIN_FRACTION = 0.10
 _VOCAB_CACHE_FILENAME = "dym_vocab.json"
 _VOCAB_CACHE_PATH = os.path.join(_srv.ZIMI_DATA_DIR, _VOCAB_CACHE_FILENAME)
+# Bump whenever the vocab-building algorithm changes in a way that makes an
+# on-disk cache from an older version invalid even though the underlying
+# title indexes haven't changed — e.g. round 3's lossy-counting admission
+# produces a materially different vocab than round 2's first-come cap did.
+# Folded into _vocab_signature so a stale-algorithm cache is rebuilt
+# transparently rather than loaded forever.
+_VOCAB_BUILDER_VERSION = 2
 _DIST2_MAX_LEN = 7  # only try edit-distance-2 on words this short or shorter
 _DYM_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 _word_split_re = re.compile(r"[^a-z0-9]+")
@@ -1200,6 +1217,18 @@ def _ascii_fold(s):
     )
 
 
+def _evict_singleton_words(vocab):
+    """Sweep-delete every count==1 entry from `vocab`, in place.
+
+    Returns the number removed. Used both mid-scan (lossy-counting admission
+    when the word cap is hit) and once at the end (final prune — singletons
+    are noise for correction and just bloat the persisted cache)."""
+    singles = [w for w, c in vocab.items() if c == 1]
+    for w in singles:
+        del vocab[w]
+    return len(singles)
+
+
 def _build_vocab():
     """Scan the SQLite title indexes into a {word: count} vocabulary.
 
@@ -1210,10 +1239,17 @@ def _build_vocab():
     (by byte size) so the richest indexes (Wikipedia-scale) contribute first;
     the per-file row cap then keeps any single giant index from starving every
     other one out of the time budget, trading its depth for breadth across the
-    whole library. Returns whatever was gathered (possibly empty). Never
-    raises; a broken index is skipped. Always logs the outcome at info level,
-    including the empty case, so a starved scan is visible in production
-    rather than silently returning nothing."""
+    whole library. The word cap uses lossy-counting admission (see
+    _evict_singleton_words): hitting it triggers a singleton sweep rather
+    than freezing outright, so words seen later in the scan can still be
+    counted — a first-come cap otherwise fills entirely with one-off proper
+    nouns from a huge index before anything looks "common". A final sweep
+    after the whole scan drops any remaining singletons (noise for
+    correction, dead weight in the persisted cache). Returns whatever was
+    gathered (possibly empty). Never raises; a broken index is skipped.
+    Always logs the outcome at info level, including the empty case, so a
+    starved scan is visible in production rather than silently returning
+    nothing."""
     deadline = time.monotonic() + _VOCAB_BUILD_BUDGET_S
     vocab = {}
     index_dir = _TITLE_INDEX_DIR
@@ -1265,7 +1301,9 @@ def _build_vocab():
                         elif not at_cap:
                             vocab[w] = 1
                             if len(vocab) >= _VOCAB_MAX_WORDS:
-                                at_cap = True
+                                freed = _evict_singleton_words(vocab)
+                                if freed < _VOCAB_MAX_WORDS * _VOCAB_EVICT_MIN_FRACTION:
+                                    at_cap = True
         except Exception as e:
             log.debug("Vocab: scan failed for %s: %s", fname, e)
         finally:
@@ -1275,10 +1313,14 @@ def _build_vocab():
             except Exception:
                 pass
     budget_hit = time.monotonic() > deadline
+    pruned = _evict_singleton_words(
+        vocab
+    )  # final prune: singletons are noise, drop them
     log.info(
-        "Did-you-mean vocab: %d words from %d/%d index files, %d rows "
-        "(budget_hit=%s, at_cap=%s)",
+        "Did-you-mean vocab: %d words (%d singletons pruned) from %d/%d index "
+        "files, %d rows (budget_hit=%s, at_cap=%s)",
         len(vocab),
+        pruned,
         files_scanned,
         total_files,
         rows_scanned,
@@ -1291,15 +1333,20 @@ def _build_vocab():
 def _vocab_signature(index_dir):
     """Fingerprint of the title indexes a vocab would be built from.
 
-    Sorted (filename, size, mtime) triples, hashed. Any index added,
-    removed, resized, or rewritten changes this — it's how a persisted vocab
-    cache (see _vocab_cache_load) knows it's stale. Returns None if the
-    directory can't be listed, which callers treat as "cache unusable"."""
+    Sorted (filename, size, mtime) triples plus _VOCAB_BUILDER_VERSION,
+    hashed. Any index added, removed, resized, or rewritten changes this —
+    it's how a persisted vocab cache (see _vocab_cache_load) knows it's
+    stale. So does a builder-version bump, which invalidates every existing
+    cache even though the indexes on disk haven't moved — that's what lets
+    an algorithm change (e.g. round 3's lossy-counting admission) replace a
+    cache built by the old algorithm instead of loading it forever. Returns
+    None if the directory can't be listed, which callers treat as "cache
+    unusable"."""
     try:
         fnames = sorted(f for f in os.listdir(index_dir) if f.endswith(".db"))
     except OSError:
         return None
-    parts = []
+    parts = [f"builder:{_VOCAB_BUILDER_VERSION}"]
     for f in fnames:
         try:
             st = os.stat(os.path.join(index_dir, f))

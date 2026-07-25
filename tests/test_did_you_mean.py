@@ -43,8 +43,11 @@ TITLES = [
     "Python bytecode",
     "History of Python",
     "JavaScript",
+    "JavaScript frameworks",  # 2nd occurrence — survives the final singleton prune
     "Asyncio in Python",
+    "Asyncio patterns",  # 2nd occurrence — survives the final singleton prune
     "Café culture",  # accented — should ASCII-fold to "cafe"
+    "Café menu",  # 2nd occurrence — survives the final singleton prune
     "Machine learning",
 ]
 
@@ -183,8 +186,11 @@ class VocabRowCapTests(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="zimi-dym-rowcap-")
-        # 20 titles, each contributing a unique numbered word.
-        titles = [f"RowWord{i:03d} Common" for i in range(20)]
+        # 20 titles, each contributing a unique numbered word — repeated
+        # within the same title so it survives the final singleton prune
+        # (count 2 from one row, not 1), isolating the row-cap behavior from
+        # the separate singleton-pruning behavior under test elsewhere.
+        titles = [f"RowWord{i:03d} RowWord{i:03d} Common" for i in range(20)]
         _make_title_index(self.tmp, "wikipedia", titles)
         self._patch_dir = mock.patch.object(_search, "_TITLE_INDEX_DIR", self.tmp)
         self._patch_dir.start()
@@ -214,6 +220,70 @@ class VocabRowCapTests(unittest.TestCase):
         # ...rows past the cap did not.
         self.assertNotIn("rowword010", vocab)
         self.assertNotIn("rowword019", vocab)
+
+
+class VocabLossyCountingTests(unittest.TestCase):
+    """Hitting the word cap sweeps out singletons instead of freezing the
+    vocab — words seen later in the scan can still be counted, and only a
+    truly unproductive sweep (saturation) stops the scan for good."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="zimi-dym-lossy-")
+        self._patch_dir = mock.patch.object(_search, "_TITLE_INDEX_DIR", self.tmp)
+        self._patch_dir.start()
+        _search._reset_vocab()
+
+    def tearDown(self):
+        self._patch_dir.stop()
+        _search._reset_vocab()
+        import shutil
+
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_eviction_sweep_keeps_frequent_drops_singletons(self):
+        # Row 0 gives "common" a count of 2 up front. Rows 1-5 are five
+        # distinct singleton words, so the 5th insertion hits a word cap of
+        # 5 and triggers a sweep: "common" (count>=2) must survive it, the
+        # four singletons must not.
+        titles = ["Common Common", "Aaa", "Bbb", "Ccc", "Ddd", "Eee"]
+        _make_title_index(self.tmp, "wikipedia", titles)
+        with mock.patch.object(_search, "_VOCAB_MAX_WORDS", 5):
+            vocab = _search._build_vocab()
+        self.assertEqual(vocab.get("common"), 2)
+        for w in ("aaa", "bbb", "ccc", "ddd"):
+            self.assertNotIn(w, vocab)
+
+    def test_saturation_stops_the_scan(self):
+        # 19 words pre-seeded to count 2 (via a duplicate within each row's
+        # own title), then a 20th, brand-new singleton word hits a word cap
+        # of 20. It's the ONLY singleton in the vocab at that moment, so the
+        # sweep frees just 1 — under the 10% (of 20 = 2) saturation
+        # threshold. That must stop the scan outright: a further row after
+        # the trigger must never be read.
+        titles = [f"W{i:02d} W{i:02d}" for i in range(19)]
+        titles.append("Trigger")  # 20th distinct word, count 1 → hits the cap
+        titles.append("ShouldNeverAppear ShouldNeverAppear")  # must not be read
+        _make_title_index(self.tmp, "wikipedia", titles)
+        with (
+            mock.patch.object(_search, "_VOCAB_MAX_WORDS", 20),
+            mock.patch.object(_search, "_VOCAB_EVICT_MIN_FRACTION", 0.10),
+            mock.patch.object(_search, "_VOCAB_FETCH_BATCH_SIZE", 1),
+        ):
+            vocab = _search._build_vocab()
+        for i in range(19):
+            self.assertEqual(vocab.get(f"w{i:02d}"), 2)
+        self.assertNotIn("trigger", vocab)
+        self.assertNotIn("shouldneverappear", vocab)
+
+    def test_final_prune_drops_remaining_singletons(self):
+        # No cap pressure here — this isolates the end-of-scan prune from
+        # the mid-scan eviction sweep tested above.
+        titles = ["Repeated Repeated", "Oneoff Word"]
+        _make_title_index(self.tmp, "wikipedia", titles)
+        vocab = _search._build_vocab()
+        self.assertEqual(vocab.get("repeated"), 2)
+        self.assertNotIn("oneoff", vocab)  # count 1 → pruned
+        self.assertNotIn("word", vocab)  # count 1 → pruned
 
 
 class VocabCachePersistenceTests(unittest.TestCase):
@@ -263,6 +333,17 @@ class VocabCachePersistenceTests(unittest.TestCase):
         conn.execute("INSERT INTO titles VALUES ('A/999','New Thing','new thing')")
         conn.commit()
         conn.close()
+        self.assertIsNone(_search._vocab_cache_load())
+
+    def test_builder_version_bump_invalidates_cache(self):
+        # Save a cache under an older builder version — as if it were left
+        # over from round 2's algorithm — with the underlying indexes
+        # completely unchanged. The current (newer) version must still
+        # reject it: the signature folds in _VOCAB_BUILDER_VERSION.
+        with mock.patch.object(_search, "_VOCAB_BUILDER_VERSION", 1):
+            old_sig = _search._vocab_signature(self.index_dir)
+            _search._vocab_cache_save({"stale": 99}, old_sig)
+        # Back to the real (current) version — same indexes, different sig.
         self.assertIsNone(_search._vocab_cache_load())
 
     def test_round_trip_avoids_rebuild(self):
