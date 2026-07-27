@@ -16,15 +16,16 @@ A modern experience for your ZIM files.
 ## What is Zimi?
 
 - **The offline internet.** Entire websites, cross-ZIM linking, search engine and native browser experience.
-- **Search that hits everything.** One query, every source, 140M+ articles, the right answer on top. Fast.
+- **Search that hits everything.** One query, every source, 100M+ articles, the right answer on top. Fast.
 - **Multilingual.** Switch any article into any language it has. Ten UI languages built in.
 - **A real library.** 1,000+ archives one click away, auto-updates, collections, batch downloads, bookmarks and history.
-- **A mesh.** Your machines find each other and pass ZIMs around at LAN speed, no internet needed.
+- **Your own network.** Your machines find each other and pass ZIMs around at LAN speed, no internet needed.
 - **A good citizen.** Downloads arrive over BitTorrent and seed back to the Kiwix network. One switch makes you a full mirror.
 - **Fresh daily.** Picture of the Day, On This Day, a word, a quote, a comic, a live almanac sky. All computed locally, forever.
 - **Accessible.** If you browse by keyboard, listen by screen reader, or need high contrast, accessibility is built-in.
 - **Anywhere.** Docker, pip, a native macOS app, or your phone as a PWA.
 - **For humans and machines.** Web UI, JSON API, MCP server for AI agents.
+- **Improving.** Regular updates shaped by the community — GitHub ideas land fast, and the creator is listening. Just ask!
 
 ## Screenshots
 
@@ -223,7 +224,7 @@ For Docker on a remote host:
 }
 ```
 
-Tools: `search` (with `lang` filter), `read`, `suggest`, `list_sources`, `random`, `article_languages`, `read_with_links`, `deep_search`, `list_collections`, `manage_collection`, `manage_favorites`
+Tools: `search` (with `lang` filter), `read`, `get_chunks`, `suggest`, `list_sources`, `random`, `article_languages`, `read_with_links`, `deep_search`, `list_collections`, `manage_collection`, `manage_favorites`
 
 ## Integrations
 
