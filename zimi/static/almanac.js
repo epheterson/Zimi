@@ -455,7 +455,7 @@ function _almHeadHtml(focus) {
 
   var html = '<div style="text-align:center;margin-bottom:16px">';
   html += '<div id="almanac-head-date" style="font-size:22px;font-weight:600;color:var(--text)">' + cp.date + '</div>';
-  html += '<div style="font-size:16px;color:var(--text2);margin-top:4px"><span id="almanac-head-time">' + cp.time + '</span>' + (cp.tz ? ' &middot; ' + cp.tz : '') +
+  html += '<div style="font-size:16px;color:var(--text2);margin-top:4px"><span id="almanac-head-time" class="almanac-head-time-btn" onclick="_almTmShow()" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();_almTmShow();}" title="' + _almEsc(t('alm_tm_open')) + '" aria-label="' + _almEsc(t('alm_tm_open')) + '">' + cp.time + '</span>' + (cp.tz ? ' &middot; ' + cp.tz : '') +
     (cp.live ? '' : ' <button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button>') + '</div>';
   html += '</div>';
 
@@ -681,6 +681,26 @@ function _almScrubSettle(target, opts) {
   if (opts && opts.land) _almTmLand();
 }
 
+// -- Visibility -----------------------------------------------------------
+// The instrument is hidden until summoned, so the almanac opens on the sky, not
+// a control panel. It appears when the user taps the hero clock (the
+// discoverable entry), picks a different calendar day, or engages the lever;
+// the × closes it, snapping back to now via the existing back-to-now path so
+// the almanac is left reading the present.
+function _almTmShow() {
+  var el = document.getElementById('alm-tm');
+  if (!el) return;
+  el.classList.add('alm-tm-open');
+  // Land on the three-row circuit unless a lever throw is actively in flight.
+  if (el.getAttribute('data-mode') !== 'motion') _almTmMode('rest');
+  _almTmSync();
+}
+function _almTmHide() {
+  var el = document.getElementById('alm-tm');
+  if (el) el.classList.remove('alm-tm-open');
+}
+function _almTmClose() { _almBackToToday(); _almTmHide(); }
+
 // -- Panel faces & readouts --
 function _almTmMode(mode) {
   var el = document.getElementById('alm-tm');
@@ -849,6 +869,7 @@ function _almLeverStart(e) {
   _almTmHalf = Math.max(1, tr.height / 2 - knob.offsetHeight / 2);
   _almLeverActive = true;
   _almLeverDecel = false;
+  _almTmShow();                          // engaging the lever reveals the instrument
   knob.classList.remove('alm-tm-lever-spring');
   if (knob.setPointerCapture && e.pointerId != null) { try { knob.setPointerCapture(e.pointerId); } catch (err) {} }
   _almTmMode('motion');
@@ -966,7 +987,7 @@ function _renderAlmanacContent() {
   html +=         '<span class="alm-tm-dest-ic" aria-hidden="true">✎</span>';
   html +=       '</button>';
   html +=       '<div class="alm-tm-row alm-tm-now">';
-  html +=         '<span class="alm-tm-label">' + t('alm_now') + '</span>';
+  html +=         '<span class="alm-tm-label">' + t('alm_tm_actual') + '</span>';
   html +=         '<span class="alm-tm-time" id="alm-tm-now-val"></span>';
   html +=         '<button type="button" class="alm-tm-return" id="alm-tm-return" onclick="_almTmReturnNow()" title="' + _almEsc(t('alm_back_to_now')) + '" hidden>↺ ' + t('alm_now') + '</button>';
   html +=       '</div>';
@@ -1012,6 +1033,8 @@ function _renderAlmanacContent() {
   html +=       '<span class="alm-tm-endstop alm-tm-endstop-back" aria-hidden="true"></span>';
   html +=     '</div>';
   html +=   '</div>';
+  // Close — returns the almanac to now and hides the instrument again.
+  html +=   '<button type="button" class="alm-tm-close" onclick="_almTmClose()" title="' + _almEsc(t('alm_tm_close')) + '" aria-label="' + _almEsc(t('alm_tm_close')) + '">×</button>';
   html += '</div>';
 
   html += '<div id="almanac-head">' + _almHeadHtml(now) + '</div>';
@@ -2089,12 +2112,16 @@ function _initTzClock(now) {
 }
 
 function _almSelectTz(tz, idx) {
-  // A world-clock card is a PREVIEW: it drives the analog clock and the card
-  // highlight, nothing else. It used to also _saveLocation(city) — so peeking
-  // at Tokyo's time silently re-homed the entire almanac (header clock, sun
-  // times, holidays) to Tokyo, permanently, per browser. Location changes
-  // belong to the sun map's picker alone.
+  // Clicking a world-clock city re-homes the almanac there: it drives the
+  // analog preview clock AND sets the page location through the same setter the
+  // sun-map picker uses, so the header clock, sun times, holidays and sky all
+  // follow to that city.
   _almSelectedTz = tz;
+  var city = _TZ_CITIES[idx];
+  if (city) {
+    _saveLocation(city.lat, city.lon, t('alm_city_' + city.key));
+    _almRepaintFocus();   // location-only refresh, preserves scroll
+  }
   _initTzClock(new Date());
   _drawTzClock(new Date());
 }
@@ -2243,14 +2270,15 @@ function _drawTzClock(now) {
     if (!secEl || labelEl.dataset.tz !== tz) {
       labelEl.dataset.tz = tz;
       labelEl.innerHTML =
-        '<div class="alm-clock-time"><span id="alm-clock-hm">' + hm + '</span>' +
-          '<span class="alm-clock-sec" id="alm-clock-sec">' + _secColsHTML(sec) + '</span>' +
+        '<div class="alm-clock-time"><span class="alm-clock-hm" id="alm-clock-hm"></span>' +
+          '<span class="alm-clock-sec" id="alm-clock-sec"></span>' +
           '<span class="alm-clock-ampm" id="alm-clock-ampm">' + ampm + '</span></div>' +
         '<div class="alm-clock-date" id="alm-clock-date">' + dateStr + '</div>' +
         '<div class="alm-clock-sub"><span id="alm-clock-tzname">' + (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '') + '</span></div>';
+      _rollDigitStr(document.getElementById('alm-clock-hm'), hm);
+      _rollDigitStr(document.getElementById('alm-clock-sec'), sec);
     } else {
-      var hmEl = document.getElementById('alm-clock-hm');
-      if (hmEl && hmEl.textContent !== hm) hmEl.textContent = hm;
+      _rollDigitStr(document.getElementById('alm-clock-hm'), hm);
       var apEl = document.getElementById('alm-clock-ampm');
       if (apEl && apEl.textContent !== ampm) apEl.textContent = ampm;
       var dEl = document.getElementById('alm-clock-date');
@@ -2258,24 +2286,46 @@ function _drawTzClock(now) {
       var tnEl = document.getElementById('alm-clock-tzname');
       var tzText = (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '');
       if (tnEl && tnEl.textContent !== tzText) tnEl.textContent = tzText;
-      _tickSeconds(document.getElementById('alm-clock-sec'), sec);
+      _rollDigitStr(document.getElementById('alm-clock-sec'), sec);
     }
   }
 }
 
-// Two clipped digit columns (tens, ones) for the two-digit seconds value.
-function _secColsHTML(sec) {
-  sec = '' + sec;
-  if (sec.length < 2) sec = ('0' + sec).slice(-2);
-  return '<span class="alm-clock-sec-col"><span class="alm-clock-sec-d">' + sec.charAt(0) + '</span></span>' +
-         '<span class="alm-clock-sec-col"><span class="alm-clock-sec-d">' + sec.charAt(1) + '</span></span>';
+// Render/roll a clock string (seconds "42", or the hours:minutes "9:07") as
+// independent digit columns: each digit is its own clipped roll column, each
+// non-digit (the colon) a static separator. Column-count agnostic, so the same
+// per-digit roll drives hours, minutes and seconds alike. The shell is rebuilt
+// only when the column PATTERN changes -- e.g. 9:59 → 10:00 gains an hour digit
+// -- so an ordinary tick just rolls the digits that actually changed, and
+// _tickDigit's leak clamp keeps each column at ≤2 layers forever.
+function _rollDigitStr(el, str) {
+  if (!el) return;
+  str = '' + str;
+  var pattern = str.replace(/[0-9]/g, '#');
+  if (el.dataset.pat !== pattern) {
+    el.dataset.pat = pattern;
+    var shell = '';
+    for (var i = 0; i < str.length; i++) {
+      var ch = str.charAt(i);
+      if (ch >= '0' && ch <= '9') shell += '<span class="alm-clock-sec-col"><span class="alm-clock-sec-d">' + ch + '</span></span>';
+      else shell += '<span class="alm-clock-sep">' + ch + '</span>';
+    }
+    el.innerHTML = shell;
+    return;
+  }
+  var cols = el.querySelectorAll('.alm-clock-sec-col');
+  var ci = 0;
+  for (var j = 0; j < str.length; j++) {
+    var c = str.charAt(j);
+    if (c >= '0' && c <= '9') { _tickDigit(cols[ci], c); ci++; }
+  }
 }
 
-// Animate one seconds digit column: the old value slides/fades up and out, the
-// new value rises in from below — a clean counting tick, transform+opacity only
-// (no layout shift; the column clips the vertical travel). Honours
-// prefers-reduced-motion by swapping the text instantly. Called per digit so a
-// column only animates when ITS value changes.
+// Animate one clock digit column (seconds, minutes or hours): the old value
+// slides/fades up and out, the new value rises in from below — a clean counting
+// tick, transform+opacity only (no layout shift; the column clips the vertical
+// travel). Honours prefers-reduced-motion by swapping the text instantly.
+// Called per digit so a column only animates when ITS value changes.
 function _tickDigit(colEl, ch) {
   if (!colEl) return;
   var digits = colEl.querySelectorAll('.alm-clock-sec-d');
@@ -2306,19 +2356,6 @@ function _tickDigit(colEl, ch) {
   colEl.appendChild(incoming);
 }
 
-// Roll the hero clock's seconds. sec is a two-digit string; each digit column
-// rolls only when its own value changes — the ones every second, the tens only
-// on the tens boundary (e.g. 39→40) — so they never animate in lockstep.
-function _tickSeconds(secEl, sec) {
-  if (!secEl) return;
-  var cols = secEl.querySelectorAll('.alm-clock-sec-col');
-  // Heal a pre-two-column shell (older markup) before ticking.
-  if (cols.length !== 2) { secEl.innerHTML = _secColsHTML(sec); return; }
-  sec = '' + sec;
-  if (sec.length < 2) sec = ('0' + sec).slice(-2);
-  _tickDigit(cols[0], sec.charAt(0));
-  _tickDigit(cols[1], sec.charAt(1));
-}
 
 // Cached Intl.DateTimeFormat objects — avoid 180+ allocations/sec in the RAF loop
 var _tzFmtCache = {};
@@ -4301,6 +4338,7 @@ function _almSelectDay(jdn) {
   // — reachable via the typable year — lands on the real year, not the 1900s.
   var picked = _almMakeInstant(g.year, g.month, g.day, nowT.getHours(), nowT.getMinutes());
   _almFocus = _almIsToday(picked) ? null : _almClampInstant(picked);
+  _almTmShow();                          // picking a day reveals the instrument
   _almRepaintFocus();
   // If clicked day is outside current month view, navigate to it
   var cal = _jdnToCalendar(_almSystem, jdn);
@@ -5132,8 +5170,25 @@ async function _renderRosettaStone(now) {
   html += '<div class="rosetta-meta">' + _rf(entry, 'date') + ' \u00b7 ' + _rf(entry, 'place') + ' \u00b7 ' + _rf(entry, 'medium') + '</div>';
   html += '<div class="rosetta-context">' + _rf(entry, 'context') + '</div>';
 
-  // Language pills (bottom row) — show language names in current UI language
-  html += '<div class="rosetta-pills">';
+  // Language pills + text blocks live in stable containers so a language toggle
+  // can rewrite only them (via _updateRosettaLangs) without tearing down the
+  // artifact's image gallery below — its ~50 <img> nodes would otherwise be
+  // destroyed and re-decoded on every pill click.
+  html += '<div class="rosetta-pills" id="alm-rosetta-langpills">' + _rosettaLangPillsHtml(availLangs) + '</div>';
+  html += '<div id="alm-rosetta-texts">' + _rosettaTextsHtml(data) + '</div>';
+
+  // Golden Record image gallery (only when that inscription is selected)
+  if (entry.id === 'golden-record') {
+    html += _renderGoldenRecordGallery();
+  }
+
+  el.innerHTML = html;
+}
+
+// Language pill row (bottom) — active state reflects the chosen language(s).
+// Split out so a language toggle rebuilds only the pills, not the gallery.
+function _rosettaLangPillsHtml(availLangs) {
+  var html = '';
   for (var li = 0; li < _ALL_LANGS.length; li++) {
     var lc = _ALL_LANGS[li].code;
     var langLabel = t('lang_name_' + lc);
@@ -5146,11 +5201,14 @@ async function _renderRosettaStone(now) {
       html += '<button class="pill disabled" disabled>' + langLabel + '</button>';
     }
   }
-  html += '</div>';
+  return html;
+}
 
-  // Text block(s) — one or two-up comparison
+// Inscription text block(s) for the chosen language(s) — one, or a two-up
+// comparison. The only part that changes when languages toggle.
+function _rosettaTextsHtml(data) {
   var twoUp = _rosettaLangs.length === 2;
-  if (twoUp) html += '<div class="rosetta-compare">';
+  var html = twoUp ? '<div class="rosetta-compare">' : '';
   for (var ri = 0; ri < _rosettaLangs.length; ri++) {
     var langCode = _rosettaLangs[ri];
     var text = (data.texts || {})[langCode] || (data.texts || {})['en'] || '';
@@ -5167,13 +5225,21 @@ async function _renderRosettaStone(now) {
       '</div>';
   }
   if (twoUp) html += '</div>';
+  return html;
+}
 
-  // Golden Record image gallery (only when that inscription is selected)
-  if (entry.id === 'golden-record') {
-    html += _renderGoldenRecordGallery();
-  }
-
-  el.innerHTML = html;
+// Swap only the language pills + text blocks in place, leaving the artifact
+// title, metadata and (expensive) image gallery untouched.
+async function _updateRosettaLangs() {
+  var manifest = await _loadRosettaManifest();
+  if (!manifest.length) return;
+  var entry = manifest[_rosettaTextIdx] || manifest[0];
+  var data = await _loadInscription(entry.id);   // served from _rosettaCache
+  var availLangs = Object.keys(data.texts || {});
+  var pills = document.getElementById('alm-rosetta-langpills');
+  if (pills) pills.innerHTML = _rosettaLangPillsHtml(availLangs);
+  var texts = document.getElementById('alm-rosetta-texts');
+  if (texts) texts.innerHTML = _rosettaTextsHtml(data);
 }
 
 function _renderGoldenRecordGallery() {
@@ -5257,7 +5323,8 @@ function _toggleRosettaLang(code) {
     if (_rosettaLangs.length >= 2) _rosettaLangs.shift();
     _rosettaLangs.push(code);
   }
-  _renderRosettaStone(new Date());
+  // Language-only change — swap the text without rebuilding the image gallery.
+  _updateRosettaLangs();
 }
 
 // Scroll to Messages Across Time and select Golden Record (called from Voyager card)
@@ -5292,6 +5359,9 @@ window.addEventListener('resize', function() {
   _almanacResizeTimer = setTimeout(function() {
     _initOrrery();
     var loc = _getLocation();
-    _initSkyScene(new Date(), loc.lat, loc.lon);
+    // Redraw for the CURRENTLY focused instant, not live now — resizing while
+    // parked in the past/future must not snap the moon back to today. No
+    // animateMoon: from == to position, so it repaints in place without a glide.
+    _initSkyScene(_almFocusInstant(), loc.lat, loc.lon);
   }, 200);
 });

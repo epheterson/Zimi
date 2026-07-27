@@ -17,8 +17,14 @@
 .alm-clock-date { font-size: 14px; color: var(--text2); margin-top: 8px; font-weight: 500; }
 .alm-clock-sub { font-size: 11px; color: var(--text3); margin-top: 3px; letter-spacing: 0.04em; text-transform: uppercase; }
 .alm-clock-sec { font-size: 20px; font-weight: 600; color: var(--text2); font-variant-numeric: tabular-nums; align-self: flex-end; margin-bottom: 3px; min-width: 26px; text-align: left; display: inline-flex; }
-/* Each seconds digit is its own clipped column so the tens and ones roll
-   independently — the ones every second, the tens only on its boundary. */
+/* Hours:minutes roll with the same per-digit columns as the seconds. Flex so
+   the colon separator centres against the digit columns despite their
+   overflow:hidden (which would otherwise drop an inline-block to its bottom
+   edge and lift the colon). */
+.alm-clock-hm { display: inline-flex; align-items: center; }
+.alm-clock-sep { display: inline-block; }
+/* Each digit is its own clipped column so tens and ones roll independently —
+   the ones every second, the tens only on its boundary. */
 .alm-clock-sec-col { display: inline-block; position: relative; overflow: hidden; }
 .alm-clock-sec-d { display: inline-block; }
 /* Counting tick: outgoing digit lifts out (absolute, so it can't push layout),
@@ -298,7 +304,7 @@
    tabular figures; transitions 150–250ms except the travel effects. */
 .alm-tm {
   position: sticky; top: 6px; z-index: 20;
-  display: flex; align-items: stretch; gap: 8px;
+  display: none; align-items: stretch; gap: 8px;
   max-width: 380px; margin: 0 auto 18px; padding: 10px;
   background: linear-gradient(180deg, rgba(30,30,34,0.96), rgba(14,14,16,0.96));
   border: 1px solid var(--amber-border); border-radius: 14px;
@@ -306,6 +312,19 @@
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
 }
+/* Hidden until summoned (hero-clock tap, calendar pick, or lever). */
+.alm-tm.alm-tm-open { display: flex; }
+.alm-tm-close {
+  position: absolute; top: 5px; right: 6px; z-index: 2;
+  width: 18px; height: 18px; padding: 0; line-height: 15px;
+  border: 0; border-radius: 50%; background: transparent;
+  color: var(--text3); font-size: 15px; cursor: pointer; transition: color .15s;
+}
+.alm-tm-close:hover { color: var(--amber); }
+/* The hero clock time is the discoverable way in — flag it as tappable. */
+.almanac-head-time-btn { cursor: pointer; border-radius: 4px; transition: color .15s; }
+.almanac-head-time-btn:hover { color: var(--amber); }
+.almanac-head-time-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--amber-glow); }
 .alm-tm-panel { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
 
 /* Face switching driven by data-mode */
