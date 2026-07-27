@@ -105,15 +105,24 @@ _PAGE_CSS = (
 )
 
 
+def _page_head(title):
+    """Opening markup through </head>. `title` must already be escaped."""
+    return (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        f"<title>{title}</title><style>{_PAGE_CSS}</style></head>"
+    )
+
+
 def _article_html(title, source_zim, source_path, body):
     """Wrap a source body as a standalone export article."""
     src = _html.escape(source_zim)
     spath = _html.escape(source_path)
     return (
-        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        f"<title>{_html.escape(title)}</title><style>{_PAGE_CSS}</style></head>"
-        "<body><header class='zimi-src'>From <strong>" + src + "</strong>"
+        _page_head(_html.escape(title))
+        + "<body><header class='zimi-src'>From <strong>"
+        + src
+        + "</strong>"
         f" · <code>{spath}</code> · "
         "<a href='index'>&#8592; Bookmarks index</a></header>"
         f"<main>{body}</main>"
@@ -132,10 +141,7 @@ def _index_html(entries, date_str):
         )
     body = "".join(items) or "<li><em>No bookmarks.</em></li>"
     return (
-        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        f"<title>Zimi Bookmarks · {date_str}</title>"
-        f"<style>{_PAGE_CSS}</style></head><body>"
+        _page_head(f"Zimi Bookmarks · {_html.escape(date_str)}") + "<body>"
         f"<h1>Zimi Bookmarks</h1><p style='color:#666'>Exported {date_str} · "
         f"{len(entries)} article(s)</p>"
         f"<ol class='zimi-index'>{body}</ol></body></html>"

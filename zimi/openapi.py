@@ -14,6 +14,13 @@ plain text.
 import zimi.server as _srv
 
 
+def _param(name, schema, required=False, where="query", description=None):
+    p = {"name": name, "in": where, "required": required, "schema": schema}
+    if description:
+        p["description"] = description
+    return p
+
+
 def _error_schema():
     return {
         "type": "object",
@@ -59,43 +66,16 @@ def build_openapi():
                 "summary": "Full-text search across ZIM sources",
                 "operationId": "search",
                 "parameters": [
-                    {
-                        "name": "q",
-                        "in": "query",
-                        "required": True,
-                        "schema": {"type": "string"},
-                    },
-                    {
-                        "name": "zim",
-                        "in": "query",
-                        "required": False,
-                        "schema": {"type": "string"},
-                        "description": "Comma-separated source names",
-                    },
-                    {
-                        "name": "collection",
-                        "in": "query",
-                        "required": False,
-                        "schema": {"type": "string"},
-                    },
-                    {
-                        "name": "lang",
-                        "in": "query",
-                        "required": False,
-                        "schema": {"type": "string"},
-                    },
-                    {
-                        "name": "limit",
-                        "in": "query",
-                        "required": False,
-                        "schema": {"type": "integer", "default": 5},
-                    },
-                    {
-                        "name": "fast",
-                        "in": "query",
-                        "required": False,
-                        "schema": {"type": "string", "enum": ["1"]},
-                    },
+                    _param("q", {"type": "string"}, required=True),
+                    _param(
+                        "zim",
+                        {"type": "string"},
+                        description="Comma-separated source names",
+                    ),
+                    _param("collection", {"type": "string"}),
+                    _param("lang", {"type": "string"}),
+                    _param("limit", {"type": "integer", "default": 5}),
+                    _param("fast", {"type": "string", "enum": ["1"]}),
                 ],
                 "responses": {
                     **_json_response(
@@ -139,30 +119,10 @@ def build_openapi():
                 "summary": "Title autocomplete",
                 "operationId": "suggest",
                 "parameters": [
-                    {
-                        "name": "q",
-                        "in": "query",
-                        "required": True,
-                        "schema": {"type": "string"},
-                    },
-                    {
-                        "name": "zim",
-                        "in": "query",
-                        "required": False,
-                        "schema": {"type": "string"},
-                    },
-                    {
-                        "name": "collection",
-                        "in": "query",
-                        "required": False,
-                        "schema": {"type": "string"},
-                    },
-                    {
-                        "name": "limit",
-                        "in": "query",
-                        "required": False,
-                        "schema": {"type": "integer", "default": 10},
-                    },
+                    _param("q", {"type": "string"}, required=True),
+                    _param("zim", {"type": "string"}),
+                    _param("collection", {"type": "string"}),
+                    _param("limit", {"type": "integer", "default": 10}),
                 ],
                 "responses": {
                     **_json_response(
@@ -190,24 +150,9 @@ def build_openapi():
                 "summary": "Read an article as stripped plain text",
                 "operationId": "read",
                 "parameters": [
-                    {
-                        "name": "zim",
-                        "in": "query",
-                        "required": True,
-                        "schema": {"type": "string"},
-                    },
-                    {
-                        "name": "path",
-                        "in": "query",
-                        "required": True,
-                        "schema": {"type": "string"},
-                    },
-                    {
-                        "name": "max_length",
-                        "in": "query",
-                        "required": False,
-                        "schema": {"type": "integer"},
-                    },
+                    _param("zim", {"type": "string"}, required=True),
+                    _param("path", {"type": "string"}, required=True),
+                    _param("max_length", {"type": "integer"}),
                 ],
                 "responses": {
                     **_json_response(
@@ -234,36 +179,22 @@ def build_openapi():
                 "summary": "Deterministic, embedding-free RAG chunking of an article",
                 "operationId": "chunks",
                 "parameters": [
-                    {
-                        "name": "zim",
-                        "in": "query",
-                        "required": True,
-                        "schema": {"type": "string"},
-                    },
-                    {
-                        "name": "path",
-                        "in": "query",
-                        "required": True,
-                        "schema": {"type": "string"},
-                    },
-                    {
-                        "name": "size",
-                        "in": "query",
-                        "required": False,
-                        "schema": {
+                    _param("zim", {"type": "string"}, required=True),
+                    _param("path", {"type": "string"}, required=True),
+                    _param(
+                        "size",
+                        {
                             "type": "integer",
                             "minimum": 200,
                             "maximum": 4000,
                             "default": 1200,
                         },
-                    },
-                    {
-                        "name": "overlap",
-                        "in": "query",
-                        "required": False,
-                        "schema": {"type": "integer", "minimum": 0, "default": 120},
-                        "description": "Clamped to size/2",
-                    },
+                    ),
+                    _param(
+                        "overlap",
+                        {"type": "integer", "minimum": 0, "default": 120},
+                        description="Clamped to size/2",
+                    ),
                 ],
                 "responses": {
                     **_json_response(
@@ -307,18 +238,8 @@ def build_openapi():
                 "summary": "Raw article content (original HTML/asset bytes) for the reader",
                 "operationId": "content",
                 "parameters": [
-                    {
-                        "name": "zim",
-                        "in": "path",
-                        "required": True,
-                        "schema": {"type": "string"},
-                    },
-                    {
-                        "name": "path",
-                        "in": "path",
-                        "required": True,
-                        "schema": {"type": "string"},
-                    },
+                    _param("zim", {"type": "string"}, required=True, where="path"),
+                    _param("path", {"type": "string"}, required=True, where="path"),
                 ],
                 "responses": {
                     "200": {
@@ -334,19 +255,15 @@ def build_openapi():
                 "summary": "List installed ZIM sources",
                 "operationId": "list",
                 "parameters": [
-                    {
-                        "name": "layout",
-                        "in": "query",
-                        "required": False,
-                        "schema": {"type": "string"},
-                        "description": (
-                            "When truthy, wrap the response as "
-                            '{"zims": [...], "section_order": [...]} — the '
-                            "additive envelope carrying the home page's saved "
-                            "section order (#37). Omit for the bare array "
-                            "(default, unchanged)."
-                        ),
-                    }
+                    _param(
+                        "layout",
+                        {"type": "string"},
+                        description="When truthy, wrap the response as "
+                        '{"zims": [...], "section_order": [...]} — the '
+                        "additive envelope carrying the home page's saved "
+                        "section order (#37). Omit for the bare array "
+                        "(default, unchanged).",
+                    )
                 ],
                 "responses": {
                     **_json_response(
@@ -410,12 +327,7 @@ def build_openapi():
                 "summary": "Random article",
                 "operationId": "random",
                 "parameters": [
-                    {
-                        "name": "zim",
-                        "in": "query",
-                        "required": False,
-                        "schema": {"type": "string"},
-                    },
+                    _param("zim", {"type": "string"}),
                 ],
                 "responses": {
                     **_json_response(

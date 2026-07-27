@@ -1174,13 +1174,18 @@ function _isStandalonePWA() {
   } catch (e) { return false; }
 }
 
-// ── Open in browser (escape the app shell into a real browser tab) ──
-// Opens the current article via its ?a= deep link (full Zimi chrome), never the
-// raw /w/ path — a bare /w/ URL renders header-less ZIM content in some browsers.
-function _openInBrowser() {
-  var url = currentArticle
+// Shareable URL for whatever is on screen: an article's ?a= deep link (full
+// Zimi chrome), never the raw /w/ path — a bare /w/ URL renders header-less ZIM
+// content in some browsers. Falls back to the current location off-article.
+function _currentPageUrl() {
+  return currentArticle
     ? _articleDeepLink(currentArticle.zim, currentArticle.path)
     : location.href;
+}
+
+// ── Open in browser (escape the app shell into a real browser tab) ──
+function _openInBrowser() {
+  var url = _currentPageUrl();
   // Desktop app: hand off to the system browser via the pywebview bridge.
   if (IS_DESKTOP && window.pywebview && window.pywebview.api && window.pywebview.api.open_external) {
     window.pywebview.api.open_external(url).catch(function() {});
@@ -1903,13 +1908,6 @@ function renderHome(filter) {
       h += '<div class="cat-heading">' + esc(_catDisplayName(cat)) + '</div>';
       h += renderCardGrid(catItems, true);
     });
-    if (groups._uncategorized) {
-      var uncatItems = _dedupLang(groups._uncategorized, _langSectionNames);
-      if (uncatItems.length > 0) {
-        h += '<div class="cat-heading" style="opacity:0.5">' + tH('cat_other') + '</div>';
-        h += renderCardGrid(uncatItems, true);
-      }
-    }
   } else {
     // Unscoped home: collections + categories in one reorderable list (#37),
     // ordered by the saved section_order (unlisted sections keep default order).
@@ -1934,12 +1932,16 @@ function renderHome(filter) {
         renderCardGrid(catItems, true) });
     });
     h += _orderSections(_sections).map(function(s) { return s.html; }).join('');
-    if (groups._uncategorized) {
-      var uncatItems = _dedupLang(groups._uncategorized, _langSectionNames);
-      if (uncatItems.length > 0) {
-        h += '<div class="cat-heading" style="opacity:0.5">' + tH('cat_other') + '</div>';
-        h += renderCardGrid(uncatItems, true);
-      }
+  }
+
+  // "Other" always sorts last, after every ordered section. Safe to run for the
+  // empty-filter branch too: `groups` derives from `zims`, so no matches means
+  // no groups.
+  if (groups._uncategorized) {
+    var uncatItems = _dedupLang(groups._uncategorized, _langSectionNames);
+    if (uncatItems.length > 0) {
+      h += '<div class="cat-heading" style="opacity:0.5">' + tH('cat_other') + '</div>';
+      h += renderCardGrid(uncatItems, true);
     }
   }
 
@@ -8970,8 +8972,10 @@ function _setDownloadFilter(filter) {
   refreshDownloads();
 }
 
-async function pauseDownload(id, pause) {
-  const path = pause ? '/manage/pause' : '/manage/resume';
+// Every download control is the same call: POST the download id, then re-read
+// the list. A failure is silent and skips the refresh — the row keeps showing
+// its last known state rather than flickering.
+async function _downloadAction(path, id) {
   try {
     await manageFetch(path, {
       method: 'POST',
@@ -8982,25 +8986,13 @@ async function pauseDownload(id, pause) {
   } catch (e) {}
 }
 
-async function cancelDownload(id) {
-  try {
-    await manageFetch('/manage/cancel', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({id})
-    });
-    refreshDownloads();
-  } catch(e) {}
+function pauseDownload(id, pause) {
+  return _downloadAction(pause ? '/manage/pause' : '/manage/resume', id);
 }
 
-async function switchToDirect(id) {
-  try {
-    await manageFetch('/manage/switch-direct', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({id})
-    });
-    refreshDownloads();
-  } catch(e) {}
-}
+function cancelDownload(id) { return _downloadAction('/manage/cancel', id); }
+
+function switchToDirect(id) { return _downloadAction('/manage/switch-direct', id); }
 
 async function triggerUpdate() {
   const updates = Object.values(_availableUpdates);
@@ -10051,19 +10043,18 @@ function _readerSettingsRowsHtml() {
   // @media print rules in _readerViewInjectStyle); printing a raw ZIM page is out
   // of scope. Share rides navigator.share (mobile Safari / Android) — hidden when
   // the platform can't share.
-  if (_readerViewOn && _readerPrintable()) {
+  var canPrint = _readerViewOn && _readerPrintable();
+  var canShare = _readerViewOn && typeof navigator !== 'undefined' && !!navigator.share;
+  if (canPrint || canShare) {
     h += '<div class="rv-pal-divider" role="separator"></div>';
-    h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerPrint()">' +
-      _RV_PRINT_ICON + '<span>' + tH('reader_print') + '</span></button>';
-    if (typeof navigator !== 'undefined' && navigator.share) {
+    if (canPrint) {
+      h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerPrint()">' +
+        _RV_PRINT_ICON + '<span>' + tH('reader_print') + '</span></button>';
+    }
+    if (canShare) {
       h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerShare()">' +
         _RV_SHARE_ICON + '<span>' + tH('reader_share') + '</span></button>';
     }
-  } else if (_readerViewOn && typeof navigator !== 'undefined' && navigator.share) {
-    // Print unavailable on this platform, but sharing still is.
-    h += '<div class="rv-pal-divider" role="separator"></div>';
-    h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerShare()">' +
-      _RV_SHARE_ICON + '<span>' + tH('reader_share') + '</span></button>';
   }
   h += '<div class="rv-pal-divider" role="separator"></div>';
   h += '<button type="button" class="rv-exit-row" onclick="_closeReaderControls();_readerViewToggle()">' +
@@ -10201,10 +10192,7 @@ function _readerShare() {
   if (typeof navigator === 'undefined' || !navigator.share) return;
   var doc = _readerFrameDoc();
   var title = (doc && doc.title) || document.title || 'Zimi';
-  var url = currentArticle
-    ? _articleDeepLink(currentArticle.zim, currentArticle.path)
-    : location.href;
-  navigator.share({ title: title, url: url }).catch(function () {});
+  navigator.share({ title: title, url: _currentPageUrl() }).catch(function () {});
 }
 
 // ── Reader ──
@@ -11177,7 +11165,12 @@ function _closeLangDropdown() {
 // ── Mobile topbar overflow menu ──
 // Single source of truth for the mobile breakpoint (matches the max-width:600px
 // media query that shows the ... menu and hides the inline secondary actions).
-function _isNarrow() { return window.matchMedia('(max-width: 600px)').matches; }
+// Also decides which rows the ... menu owns: on a wide viewport the inline
+// Random/Language/Manage buttons are still visible, so the menu must not
+// re-list them.
+function _isNarrow() {
+  return !!(window.matchMedia && window.matchMedia('(max-width: 600px)').matches);
+}
 
 // Compact SVGs reused by the reader controls when they migrate into the ... menu.
 var _TBM_TTS_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
@@ -11211,15 +11204,6 @@ function _readerViewMenuToggle() {
 
 // Single source of truth for the ⋯ menu markup, so both the initial open and an
 // in-place rebuild (Reader View toggled) render identical structure.
-// True when the topbar collapses its secondary actions into the ⋯ menu — i.e.
-// the same max-width:600px viewport where the inline Random/Language/Manage
-// buttons are CSS-hidden. Used to decide which rows the ⋯ menu owns: on a wide
-// viewport those buttons stay inline, so the menu must NOT re-list them (that
-// double-listed Random/Language while reading on desktop).
-function _topbarCollapsed() {
-  return !!(window.matchMedia && window.matchMedia('(max-width: 600px)').matches);
-}
-
 function _buildTopbarMenuHtml() {
   var h = '';
   // The ⋯ menu holds whatever is hidden from the inline topbar in the current
@@ -11267,7 +11251,7 @@ function _buildTopbarMenuHtml() {
   // viewport Random / Language / Manage stay inline, so re-listing them here
   // would double them up (the desktop reader duplication bug).
   var navGroup = '';
-  if (_topbarCollapsed()) {
+  if (_isNarrow()) {
     navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
     if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
     // Manage row: while downloads are active, carry the count and route the tap
