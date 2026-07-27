@@ -11,10 +11,11 @@ A release shaped by the people using Zimi: the open issues, the long-standing
 asks from the wider ZIM ecosystem, and a week of field testing on real phones.
 Reader View, read-aloud, word lookup, "did you mean", library organization,
 filter pills — and the almanac now deep-links its stars, planets and people
-straight into your installed encyclopedias. Multiple named accounts with
-per-user library allowlists arrive alongside a native Windows build, and under
-the hood the torrent engine is finally in-process, with a real agent-facing API
-and delta updates on top.
+straight into your installed encyclopedias, with a skeuomorphic time machine
+that flies the whole sky to any date. Multiple named accounts with per-user
+library allowlists arrive alongside a native Windows build, and under the hood
+the torrent engine is finally in-process, with a real agent-facing API and
+delta updates on top.
 
 ### Added
 
@@ -68,6 +69,16 @@ and delta updates on top.
   unresolved stays plain text, so a link is never wrong. The resolver is pure
   SQLite over each ZIM's Q-ID index — no title guessing, no per-tap fetch, no
   miss toast.
+- **The almanac's time machine.** The velocity scrubber and destination panel
+  are replaced by a skeuomorphic instrument: a three-row time circuit (amber
+  displayed date, neutral destination, dimmed now) beside a side-mounted brass
+  lever you throw — ease it for minutes, throw it for centuries — with a single
+  large readout while travelling and a transform-only landing shake (disabled
+  under reduced motion). The sky, orrery, moon and every calendar move with the
+  chosen moment. Type any year from −270000 to 270000; at extreme epochs, a
+  panel whose calendar math runs out shows a quiet "beyond this calendar's
+  range" note while the sky, orrery and deep-time carry on. 13 new i18n keys,
+  parity across all ten locales.
 - **Multiple user accounts.** Named accounts (on top of the existing password
   admin) with per-user ZIM allowlists that filter the whole read surface —
   search, read, suggest, random, list, chunks and almanac-links — for a
@@ -160,9 +171,18 @@ and delta updates on top.
   starts with an "All" pill — two clicks resets every search filter.
 - **Language badges.** Home tiles and rows show a two-letter language badge
   on non-English ZIMs, and download/seed rows name their language — six
-  same-named Wikipedias are finally tellable apart. Tiles got wider titles,
-  the inactive favorite star stays hidden until hover, and the New/Updated
-  badge moved off the source icon.
+  same-named Wikipedias are finally tellable apart. Search-result source pills
+  get the same treatment: when two share a display title (wikipedia and
+  wikipedia_de both read "Wikipedia"), each colliding pill carries its language
+  code while unique titles stay clean. Tiles got wider titles, the inactive
+  favorite star stays hidden until hover, and the New/Updated badge moved off
+  the source icon.
+- **The sky-scene moon glides on time travel.** A focus-time jump — scrub,
+  wheel/key step, Go, or Back to Now — now eases the moon to its new altitude
+  and azimuth over ~500 ms inside the existing sky loop, retargeting from
+  wherever it is on screen so rapid scrubbing glides instead of snapping and
+  re-launching. Illumination updates on arrival; live loads and resizes are
+  unchanged.
 - **Calmer article header.** On desktop the reader controls (Reader View,
   text size, read-aloud) fold into the ⋯ menu like on mobile, and close is
   always the far-right button.
@@ -183,6 +203,21 @@ and delta updates on top.
   claim the instance before its owner. Initial setup now works only from
   private (LAN) addresses, like the rest of management; changing an existing
   password with the current password keeps working from anywhere.
+- **Login is rate-limited.** `POST /login` — the one unauthenticated endpoint
+  that runs PBKDF2 (600k rounds) — now has its own bucket
+  (`ZIMI_RATE_LIMIT_LOGIN`, default 10/min), checked before any credential
+  work, so it can no longer be used for unlimited password guessing or CPU
+  exhaustion.
+- **Allowlist leaks closed for limited accounts.** `GET /languages` read the
+  raw ZIM cache, letting a `limited` user enumerate every installed ZIM by
+  name; and the Q-ID interlanguage lookup answered from the SQLite index
+  without the fail-closed allowlist check the other resolution strategies run,
+  leaking ZIM names and article paths outside the user's allowlist. Both now
+  filter to what the signed-in user is allowed to see.
+- **Sessions expire.** Session tokens now carry a 30-day server-side TTL
+  (`SESSION_TTL_S`), checked on every resolve and swept at login. A captured
+  token is no longer a permanent credential, and `sessions.json` stops growing
+  one entry per login forever.
 
 ### Fixed
 
@@ -198,6 +233,20 @@ and delta updates on top.
   Record, Pioneer plaque, …) deep-link into your installed encyclopedias
   like the rest of the almanac — ten entities, verified both directions
   against Wikidata.
+- **Almanac deep-links were silently dead on a full library.** The curated
+  entity set had grown to 406 Q-IDs while `/almanac-links` rejects any batch
+  over 400, so the client sent the whole set in one request, the endpoint
+  400'd, and every almanac entity fell back to plain text — zero links even
+  with a full English Wikipedia installed. The client now splits the set into
+  chunks under the cap and merges the responses; a failed chunk retries on the
+  next open while whatever resolved still renders, and a test pins the client
+  chunk size against the server cap so the two can't drift back into the cliff.
+- **Region-aware holidays and season names follow the map again.** After
+  location storage moved to session storage this release, the holiday-region
+  and hemisphere-season readers still read the old localStorage key, so
+  clicking a country on the almanac map never changed which national holidays
+  or season names rendered — it silently fell back to browser locale. Both now
+  read through the shared session-storage getter.
 - The search box has a clear (×) button, and the Updates line no longer
   strands on "Checking…" — one summary line that always reflects the
   result, with detail only when there are updates.
@@ -207,6 +256,13 @@ and delta updates on top.
   Retry resumes from the bytes already on disk (HTTP Range, with a size check
   so a changed remote file restarts clean), and the cleanup offer only lists
   genuinely orphaned partials, never anything a download still wants.
+- **A failed partial-download cleanup can't spin forever.** When a mirror
+  reports a different total size than the partial on disk, the download
+  discards the partial and restarts clean — but if the delete failed (read-only
+  mount, NFS lock, Windows sharing violation) the retry re-sent the same Range,
+  got the same mismatched response, and recursed until the stack blew. It now
+  fails the download with a generic message and the real reason logged, instead
+  of dying with a RecursionError.
 - **The update check can't hang.** A wedged connection to the Kiwix catalog
   used to spin "Loading…" forever (most visibly in the desktop app); the
   whole check is now bounded, and a failed catalog page is skipped instead
@@ -234,7 +290,12 @@ and delta updates on top.
   line ("🌕 Poor Peak!"). Peak night now gets its own localized badge, styled
   like the other meteor labels and translated across all ten locales (#23).
 - In-page `#fragment` links in single-page docs (devdocs) scroll to the right
-  anchor instead of reloading the document (#38).
+  anchor instead of 404'ing — `/w/devdocs_en_markdown/index%23backslash` used
+  to report `Entry 'index#backslash' not found`; the path is now split so the
+  entry loads and the browser scrolls to the fragment (#38). Stray
+  `<name>.zim.torrent` companions left in the ZIM directory by the old aria2
+  era are migrated into the cache directory at startup and flagged as "not a
+  ZIM" by the health report, so they stop showing up as broken sources (#38).
 - Almanac Q-ID resolution never falls back to a wrong-language Wikipedia
   article — an entity resolves to your preferred language or stays plain text.
 - **Windows crashes fixed.** All text file I/O is forced to UTF-8 (a cp1252

@@ -2,8 +2,8 @@
 
 **The release the community asked for.**
 
-Every open issue closed, the ZIM ecosystem's longest-standing requests shipped,
-and a native Windows app. 260 commits, 1,025 tests.
+Every open issue addressed, the ZIM ecosystem's longest-standing requests
+shipped, and a native Windows app. 260+ commits, 1,025 tests.
 
 ---
 
@@ -59,8 +59,9 @@ a 2040 eclipse or back to the night you were born.
 ## Fixed
 
 Issues #34 (filter pills), #36 (management locked over Tailscale), #37 (library
-organization), #38 (stray `.torrent` files mistaken for broken ZIMs) — plus a
-long tail of polish across the reader, the almanac, the catalog, and mobile.
+organization), #38 (devdocs `#fragment` links 404'ing, plus stray `.torrent`
+files flagged as broken ZIMs) — plus a long tail of polish across the reader,
+the almanac, the catalog, and mobile.
 
 ## Install
 
