@@ -3,7 +3,7 @@
 **The release the community asked for.**
 
 Every open issue closed, the ZIM ecosystem's longest-standing requests shipped,
-and a native Windows app. 244 commits, 1,014 tests.
+and a native Windows app. 260 commits, 1,025 tests.
 
 ---
 
@@ -16,9 +16,11 @@ guessing: a curated set of entities mapped to Wikidata IDs, each verified, that
 resolve against whatever you actually have installed. Nothing installed for it?
 It stays quiet text. It never guesses.
 
-**A time machine to go with it.** Drag the almanac's new time control and the
-sky, the planets, the moon and the calendars all move with you — forward to a
-2040 eclipse or back to the night you were born.
+**A time machine to go with it.** A real instrument: a three-row time circuit,
+a brass lever you pull — ease it for minutes, throw it for centuries — and the
+sky, the planets, the moon and the calendars all move with you. Land on a date
+and feel it. Type year 10000, or −10000, and see what the sky does. Forward to
+a 2040 eclipse or back to the night you were born.
 
 ## For everyone who asked
 
