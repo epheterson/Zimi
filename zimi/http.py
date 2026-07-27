@@ -1176,6 +1176,13 @@ class ZimHandler(BaseHTTPRequestHandler):
                     "path": best_result["path"],
                     "title": best_result["title"],
                 }
+                # On-this-day: carry the date-anchored event context to the card
+                # so it can show "July 27, 1777 — <event>" even when the target
+                # article never restates the date.
+                if best_result.get("event_year"):
+                    chosen["event_year"] = best_result["event_year"]
+                if best_result.get("event_text"):
+                    chosen["event_text"] = best_result["event_text"]
                 if best_preview:
                     # Use extracted title if the entry title looks like a slug
                     if best_preview.get("title"):

@@ -2829,6 +2829,14 @@ function _renderDiscover(el, items) {
       displayTitle = displayTitle.replace(/^Portal:Current events\/?/, '').replace(/_/g, ' ');
       if (!displayTitle) displayTitle = it.title || t('historical_event');
     }
+    // On This Day: put the date context on the card ("July 27, 1777 — event")
+    // so it reads honestly even if the target article never restates the date.
+    // The headline stays the article title; this replaces the blurb.
+    if (it.type === 'onthisday' && it.event_text) {
+      var _otdLang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+      var _otdDate = new Date().toLocaleDateString(_otdLang, { month: 'long', day: 'numeric' });
+      it.blurb = _otdDate + (it.event_year ? ', ' + it.event_year : '') + ' — ' + it.event_text;
+    }
 
     // Detect quote content (for special card template)
     var isQuote = it.blurb && (it.blurb.charAt(0) === '\u201c' || it.blurb.charAt(0) === '"');

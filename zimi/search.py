@@ -2259,6 +2259,106 @@ def _pick_html_entry(archive, paths):
     return None
 
 
+# On-this-day event lines look like "1777 – <event text>" under the
+# Events/Births/Deaths sections of a Wikipedia "Month_Day" page. Following a
+# random link off such a page frequently lands on the generic background topic
+# of an event (e.g. American Revolution) rather than a date-anchored article, so
+# the card feels broken. We instead parse the event lines and pick the article
+# the event actually names, returning the event context alongside it.
+_OTD_DASH = "–—-"  # en-dash, em-dash, hyphen — Wikipedia uses en-dash
+_otd_line_re = re.compile(
+    r"^\s*(\d{1,4}(?:\s*BC)?)\s*[" + _OTD_DASH + r"]\s*(.+)$", re.DOTALL
+)
+_otd_year_re = re.compile(r"^\d{1,4}(?:\s*BC)?$")
+_OTD_TEXT_CAP = 240  # keep event blurbs card-sized
+_OTD_SCAN_CAP = 600000  # bound the regex scan on huge Month_Day pages
+
+
+def _otd_norm_link(href):
+    """Normalize a Wikipedia anchor href to a bare ZIM article path.
+
+    Handles ZIM-relative (./Foo, ../A/Foo, A/Foo) and absolute
+    (https://en.wikipedia.org/wiki/Foo) forms; drops fragments and queries.
+    The caller retries with an "A/" prefix, so we strip a leading namespace.
+    """
+    href = href.split("#")[0].split("?")[0]
+    href = re.sub(r"^https?://[^/]+/wiki/", "", href)
+    href = re.sub(r"^(?:\.\./|\./)+", "", href)
+    href = re.sub(r"^(?:A/|/wiki/|/)", "", href)
+    return href
+
+
+def _extract_otd_events(page_html):
+    """Parse date-anchored event lines from a Wikipedia "Month_Day" page.
+
+    Returns a list of {"year", "text", "link"} in document order, covering the
+    Events/Births/Deaths sections. For each line, "link" is the most specific
+    (longest-text) non-year article link on that line, so the pick is an
+    article the event names — not a random topic off the page. Fail-soft: any
+    parse trouble yields [].
+    """
+    try:
+        # Bound the scan to the dated sections: from the "Events" heading to the
+        # first of Holidays/References/See also/External links (or a cap). Lines
+        # in those sections are all "YEAR – ..." shaped; nav/holidays lines are
+        # not year-prefixed and get filtered out anyway.
+        # Anchor on the section HEADING tag (<h2 id="Events">Events…), not any
+        # bare ">Events<" — the latter also matches table-of-contents chrome.
+        start = re.search(r"<h[2-4][^>]*>(?:\s|<[^>]+>)*Events\b", page_html)
+        scan = page_html[start.start() :] if start else page_html
+        end = re.search(
+            r"<h[2-4][^>]*>(?:\s|<[^>]+>)*"
+            r"(?:Holidays and observances|Holidays|References|See also"
+            r"|External links)\b",
+            scan,
+        )
+        scan = scan[: end.start()] if end else scan[:_OTD_SCAN_CAP]
+        events = []
+        for li in re.findall(r"<li\b[^>]*>(.*?)</li>", scan, re.DOTALL | re.IGNORECASE):
+            # Drop <sup> footnote/citation markers before flattening so they
+            # don't leave "[ 19 ]" litter in the sentence.
+            li = re.sub(
+                r"<sup\b[^>]*>.*?</sup>", "", li, flags=re.DOTALL | re.IGNORECASE
+            )
+            plain = strip_html(li)
+            plain = re.sub(r"\[\s*\d+\s*\]", "", plain)  # any remaining [1] marks
+            plain = re.sub(r"\s+([,.;:])", r"\1", plain).strip()
+            m = _otd_line_re.match(plain)
+            if not m:
+                continue
+            year, text = m.group(1).strip(), m.group(2).strip()
+            if len(text) < 3:
+                continue
+            if len(text) > _OTD_TEXT_CAP:
+                text = text[:_OTD_TEXT_CAP].rsplit(" ", 1)[0] + "…"
+            # Pick the most specific link on the line: longest anchor text that
+            # isn't a bare year (year-page links are skipped entirely).
+            best_link, best_len = None, 0
+            for href, inner in re.findall(
+                r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+                li,
+                re.DOTALL | re.IGNORECASE,
+            ):
+                atext = strip_html(inner)
+                if not atext or _otd_year_re.match(atext):
+                    continue
+                link = _otd_norm_link(href)
+                if not link or _otd_year_re.match(link.replace("_", " ")):
+                    continue
+                if ":" in link or re.search(
+                    r"\.(png|jpg|jpeg|gif|svg|ico)$", link, re.IGNORECASE
+                ):
+                    continue  # File:/Category: namespaces and images
+                if len(atext) > best_len:
+                    best_link, best_len = link, len(atext)
+            if best_link:
+                events.append({"year": year, "text": text, "link": best_link})
+        return events
+    except Exception as e:
+        log.debug("On-this-day event parse failed: %s", e)
+        return []
+
+
 def _get_dated_entry(archive, zim_name, mmdd, rng=None):
     """Try to find an article for today's date in date-based or content ZIMs.
 
@@ -2312,11 +2412,41 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
                 if entry.is_redirect:
                     entry = entry.get_redirect_entry()
                 raw = bytes(entry.get_item().content)
-                date_page_html = raw.decode("utf-8", errors="replace")[:100000]
+                # Full body (already in memory) so the Events/Births/Deaths
+                # sections aren't truncated on big Month_Day pages.
+                date_page_html = raw.decode("utf-8", errors="replace")
                 break
             except KeyError:
                 continue
         if date_page_html:
+            # Preferred: pick an article a dated event actually names, and carry
+            # the event context (year + sentence) back so the card can show the
+            # date even when the target article never restates it.
+            events = _extract_otd_events(date_page_html)
+            _rng = rng or _random
+            _rng.shuffle(events)
+            for ev in events:
+                for prefix in ["A/", ""]:
+                    try:
+                        entry = archive.get_entry_by_path(prefix + ev["link"])
+                        if entry.is_redirect:
+                            entry = entry.get_redirect_entry()
+                        item = entry.get_item()
+                        if not (item.mimetype or "").startswith("text/html"):
+                            continue
+                        title = entry.title or ""
+                        if _meta_title_re.search(title) or len(title) < 3:
+                            continue
+                        return {
+                            "path": entry.path,
+                            "title": title,
+                            "event_year": ev["year"],
+                            "event_text": ev["text"],
+                        }
+                    except (KeyError, Exception):
+                        # Subset ZIMs may not hold the target — try next line.
+                        continue
+            # Fallback: no event line resolved — follow a random internal link.
             # Extract article links from the date page
             links = re.findall(
                 r'href=["\'](?:\./|A/)?([^"\'#/][^"\'#]*)["\']', date_page_html
