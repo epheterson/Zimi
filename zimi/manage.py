@@ -617,10 +617,9 @@ def handle_manage_get(handler, parsed, params):
         idx = _srv._get_title_index_status_brief()
         downloads = _srv._get_downloads()
         # _get_downloads() shape: queued items have queued=True, in-flight
-        # items have queued=False + done=False + paused=False (see
-        # library.py:1209,1234). Earlier draft filtered on a `status` key
-        # that doesn't exist on real download objects — the test stub had it
-        # wrong. Active = actively transferring; queued is a separate bucket.
+        # items have queued=False + done=False + paused=False. There is no
+        # `status` key on a real download object. Active = actively
+        # transferring; queued is a separate bucket.
         active = [
             d
             for d in downloads
