@@ -16,6 +16,54 @@ var _skyStartTime = 0;
 // _skySetInstant: that is the whole per-frame cost of dragging through time.
 var _skyState = null;
 
+// Moon glide — when the focus time jumps (scrub, wheel/key step, "Go", Back to
+// Now), the moon eases to its new sky position instead of snapping there.
+// Duration is fixed regardless of jump size, so scrubbing years ahead still
+// takes MOON_TWEEN_MS -- a graceful sweep rather than a blur -- and small steps
+// (one wheel notch, one arrow key) get the same easing so mixed inputs feel
+// consistent.
+var MOON_TWEEN_MS = 500;
+
+function _moonEaseOut(p) { return 1 - Math.pow(1 - p, 3); }
+
+// Shortest signed delta (degrees) from `from` to `to`, wrapping at 360 -- so
+// azimuth/parallactic tweening sweeps the short way around the 0/360 seam
+// instead of the long way when a jump straddles it.
+function _angleDelta(from, to) { return ((to - from) % 360 + 540) % 360 - 180; }
+
+// Sample the moon's tweened state at time `ts` (a performance.now()/rAF
+// timestamp). Only position (altitude/azimuth/parallactic) eases -- the phase
+// (illumination + waxing flag) snaps straight to the target. Interpolating
+// illumination would change _moonSpriteCanvas's cache key every frame, forcing
+// a full per-pixel re-shade of the moon photo each tick, which the sky
+// redraw's tiny per-frame budget can't absorb -- so the sprite updates on
+// arrival, same as before this animated the position.
+function _skyMoonAt(s, ts) {
+  var anim = s.moonAnim;
+  if (!anim) return s.moonData;
+  var p = (ts - anim.start) / MOON_TWEEN_MS;
+  if (p >= 1) { s.moonAnim = null; return s.moonData; }
+  var e = _moonEaseOut(Math.max(0, p));
+  var fp = anim.from.pos, tp = anim.to.pos;
+  return {
+    pos: {
+      altitude: fp.altitude + (tp.altitude - fp.altitude) * e,
+      azimuth: fp.azimuth + _angleDelta(fp.azimuth, tp.azimuth) * e,
+      parallactic: fp.parallactic + _angleDelta(fp.parallactic, tp.parallactic) * e
+    },
+    phase: anim.to.phase
+  };
+}
+
+// (Re)target the moon's glide toward `toMoonData`, sampling the CURRENT
+// interpolated position as the new start. A rapid sequence of scrub frames or
+// key/wheel steps thus glides continuously toward whatever the latest target
+// is, instead of snapping back and re-launching a fresh tween each time.
+function _skyMoonRetarget(s, toMoonData, ts) {
+  s.moonAnim = { from: _skyMoonAt(s, ts), to: toMoonData, start: ts };
+  s.moonData = toMoonData;
+}
+
 // Recompute the frozen celestial values (sun, moon, stars, horizon label) for
 // an instant. The RAF loop's `elapsed` still drives the decorative twinkle and
 // waves; everything astronomical comes from here. Cheap: a handful of trig
@@ -37,7 +85,13 @@ function _skyFrame(now, lat, lon, cw, ch) {
   return { sunPos: sunPos, moonData: { pos: moonPos0, phase: moonM0 }, projStars: projStars, labelText: labelText };
 }
 
-function _initSkyScene(now, lat, lon) {
+// `animateMoon` -- true only for a repaint that reinitializes this same canvas
+// for a NEW focus instant (scrub settle, wheel/key-step settle, "Go", Back to
+// Now). Live loads/resizes (no focus change, or a canvas that didn't exist a
+// moment ago) omit it and get the moon's real position immediately -- there is
+// nothing to glide from, and per-minute live drift must look exactly as it did
+// before this feature existed.
+function _initSkyScene(now, lat, lon, animateMoon) {
   var canvas = document.getElementById('almanac-sky-canvas');
   if (!canvas) return;
   var wrap = canvas.parentElement;
@@ -50,18 +104,27 @@ function _initSkyScene(now, lat, lon) {
   canvas.style.height = h + 'px';
 
   var f = _skyFrame(now, lat, lon, canvas.width, canvas.height);
-  _skyStartTime = performance.now();
+  var ts = performance.now();
+  // Carry any in-flight glide across the reinit boundary -- read from the
+  // OLD state (which _skySetInstant may have already been easing) before it's
+  // replaced, so a scrub's settle continues the same motion rather than
+  // reading as a second, smaller snap right after the drag's own motion.
+  var priorMoon = (animateMoon && _skyState) ? _skyMoonAt(_skyState, ts) : null;
+  _skyStartTime = ts;
   _skyState = {
     canvas: canvas, dpr: dpr, now: now, lat: lat, lon: lon,
-    sunPos: f.sunPos, moonData: f.moonData, projStars: f.projStars, labelText: f.labelText
+    sunPos: f.sunPos, moonData: f.moonData, projStars: f.projStars, labelText: f.labelText,
+    moonAnim: null
   };
+  if (priorMoon) _skyState.moonAnim = { from: priorMoon, to: f.moonData, start: ts };
   _skyUpdateDesc(_skyState);
 
   function _skyLoop(ts) {
     var s = _skyState;
     if (!s) return;
     var elapsed = (ts - _skyStartTime) / 1000;
-    _drawSkyScene(s.canvas, s.dpr, s.sunPos, s.now, s.lat, s.lon, elapsed, s.labelText, s.projStars, s.moonData);
+    var moonNow = _skyMoonAt(s, ts);
+    _drawSkyScene(s.canvas, s.dpr, s.sunPos, s.now, s.lat, s.lon, elapsed, s.labelText, s.projStars, moonNow);
     _almanacSkyRAF = requestAnimationFrame(_skyLoop);
   }
   _activeSkyLoop = _skyLoop;  // expose to _resumeAllRAF
@@ -80,7 +143,7 @@ function _skySetInstant(now) {
   var f = _skyFrame(now, s.lat, s.lon, s.canvas.width, s.canvas.height);
   s.now = now;
   s.sunPos = f.sunPos;
-  s.moonData = f.moonData;
+  _skyMoonRetarget(s, f.moonData, performance.now());
   s.projStars = f.projStars;
   s.labelText = f.labelText;
 }

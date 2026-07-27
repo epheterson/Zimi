@@ -522,7 +522,10 @@ function _almRepaintFocus() {
   _renderCelestialEvents(focus);
   _renderDeepTime(focus);
   // Re-seeding the sky scene cancels the previous RAF, so loops don't stack.
-  _initSkyScene(focus, loc.lat, loc.lon);
+  // animateMoon=true: this repaint always follows a focus-time change (scrub
+  // settle, wheel/key step, "Go", Back to Now) -- let the moon glide onward
+  // from wherever it currently is rather than snapping to the settled value.
+  _initSkyScene(focus, loc.lat, loc.lon, !_almReduceMotion());
 }
 
 function _almBackToToday() {
