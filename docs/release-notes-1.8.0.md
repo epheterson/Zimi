@@ -3,7 +3,7 @@
 **The release the community asked for.**
 
 Every open issue addressed, the ZIM ecosystem's longest-standing requests
-shipped, and a native Windows app. 260+ commits, 1,025 tests.
+shipped, and a native Windows app. 270+ commits, 1,042 tests.
 
 ---
 
