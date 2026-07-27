@@ -89,6 +89,8 @@ delta updates on top.
   second factor for admin login (env var or a second line in the password file);
   the login field prefills `admin`. The search cache is keyed by allowlist
   identity so one user's results can never surface another's restricted ZIMs.
+  The Users panel leads with Your Account (Change password / Log out as plain
+  buttons) and lists only other users below — a solo admin sees no list.
 - **Library health report.** A check in Manage → library opens each installed
   ZIM in turn and reports a per-ZIM ✓/⚠ table — main page, entry count,
   title/Q-ID index status, size against the catalog, age — with a summary line,
