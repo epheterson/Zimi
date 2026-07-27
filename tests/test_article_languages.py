@@ -41,7 +41,11 @@ _HOST_MAP = {
     "local": "http://localhost:8899",
 }
 
-TEST_HOST = os.environ.get("TEST_HOST", "nas")
+# Default to the local server: a checkout on someone else's machine has no
+# reason to reach for an SSH alias. TEST_HOST=nas runs the same requests as
+# `ssh <alias> curl ...`, for a server this machine can't reach directly.
+TEST_HOST = os.environ.get("TEST_HOST", "local")
+SSH_ALIAS = os.environ.get("ZIMI_TEST_SSH_HOST", "nas")
 USE_SSH = TEST_HOST == "nas"
 
 
@@ -49,7 +53,7 @@ def api(endpoint, retries=3):
     """Call the Zimi API, with retry/backoff for rate limiting."""
     if USE_SSH:
         base = _HOST_MAP["nas"]
-        cmd = f"ssh nas \"curl -s '{base}{endpoint}'\""
+        cmd = f"ssh {SSH_ALIAS} \"curl -s '{base}{endpoint}'\""
         for attempt in range(retries):
             try:
                 out = subprocess.check_output(cmd, shell=True, timeout=20).decode()
@@ -93,7 +97,7 @@ def article_exists(zim, path):
     ep = urllib.parse.quote(path)
     if USE_SSH:
         base = _HOST_MAP["nas"]
-        cmd = f"ssh nas \"curl -s -o /dev/null -w '%{{http_code}}' '{base}/read?zim={zim}&path={ep}'\" 2>/dev/null"
+        cmd = f"ssh {SSH_ALIAS} \"curl -s -o /dev/null -w '%{{http_code}}' '{base}/read?zim={zim}&path={ep}'\" 2>/dev/null"
         try:
             code = subprocess.check_output(cmd, shell=True, timeout=15).decode().strip()
             return code == "200"

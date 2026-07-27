@@ -107,7 +107,13 @@ function _lseason(key, html) { return key ? _alLink('season:' + key, html) : htm
 function _lrosetta(id, html) { return id ? _alLink('rosetta:' + id, html) : html; }
 
 function _dayOfYear(date) {
-  var start = new Date(date.getFullYear(), 0, 1);
+  // setFullYear, not new Date(year,…): the constructor folds years 0–99 into
+  // 1900–1999, which turns Jan 1 of an ancient/typed year into a date ~2000
+  // years off and makes day-of-year wildly negative. Reachable now that the
+  // time machine travels to arbitrary years.
+  var start = new Date(0);
+  start.setFullYear(date.getFullYear(), 0, 1);
+  start.setHours(0, 0, 0, 0);
   return Math.floor((date - start) / MS_PER_DAY) + 1;
 }
 
@@ -499,6 +505,22 @@ function _almHeadHtml(focus) {
   return html;
 }
 
+// Render one panel resiliently. Travel now reaches arbitrary epochs, where a
+// given panel's math can go non-finite or throw (a lunisolar conversion, the
+// sun-map terminator, a meteor table). Catch it, drop a quiet "beyond range"
+// note into that panel's container, and let the rest — crucially the sky,
+// orrery and deep-time — carry on. One panel must never abort the repaint.
+function _almSafePanel(fn, containerId) {
+  try { fn(); }
+  catch (e) {
+    if (window.console && console.warn) console.warn('almanac: panel skipped at this epoch —', e && e.message);
+    if (containerId) {
+      var el = document.getElementById(containerId);
+      if (el) el.innerHTML = '<div class="alm-beyond">' + _tLookup('alm_tm_beyond_range', "Beyond this calendar's range") + '</div>';
+    }
+  }
+}
+
 // Repaint every panel that describes a moment, in place, for the focused
 // instant. Two things deliberately stay out of it: the world clock (it is a
 // clock — it should always read now) and the orrery, which carries its own
@@ -506,26 +528,27 @@ function _almHeadHtml(focus) {
 function _almRepaintFocus() {
   var focus = _almFocusInstant();
   var loc = _getLocation();
-  var m = _moonPhase(focus);
+  var m;
+  try { m = _moonPhase(focus); } catch (e) { m = null; }
   var head = document.getElementById('almanac-head');
-  if (head) head.innerHTML = _almHeadHtml(focus);
-  _renderSunMap(focus);
+  if (head) _almSafePanel(function () { head.innerHTML = _almHeadHtml(focus); }, 'almanac-head');
+  _almSafePanel(function () { _renderSunMap(focus); }, 'almanac-sunmap');
   // _renderSunMap re-seeds the world-clock grid off the date it's handed. That
   // grid is a *clock* — it must keep reading now, not the focused instant.
   _initTzClock(new Date());
-  _renderOnThisDay(focus);
-  _renderTonightSky(focus);
-  _renderStarChart(focus);
-  _renderAnalemma(focus);
-  _renderAstroPanel(focus);
-  _renderMeteorShowers(focus, m);
-  _renderCelestialEvents(focus);
-  _renderDeepTime(focus);
+  _almSafePanel(function () { _renderOnThisDay(focus); }, 'almanac-onthisday');
+  _almSafePanel(function () { _renderTonightSky(focus); }, 'almanac-tonight');
+  _almSafePanel(function () { _renderStarChart(focus); }, null);
+  _almSafePanel(function () { _renderAnalemma(focus); }, null);
+  _almSafePanel(function () { _renderAstroPanel(focus); }, 'almanac-astro');
+  _almSafePanel(function () { _renderMeteorShowers(focus, m); }, 'almanac-meteors');
+  _almSafePanel(function () { _renderCelestialEvents(focus); }, 'almanac-events');
+  _almSafePanel(function () { _renderDeepTime(focus); }, 'almanac-deeptime');
   // Re-seeding the sky scene cancels the previous RAF, so loops don't stack.
   // animateMoon=true: this repaint always follows a focus-time change (scrub
   // settle, wheel/key step, "Go", Back to Now) -- let the moon glide onward
   // from wherever it currently is rather than snapping to the settled value.
-  _initSkyScene(focus, loc.lat, loc.lon, !_almReduceMotion());
+  _almSafePanel(function () { _initSkyScene(focus, loc.lat, loc.lon, !_almReduceMotion()); }, null);
 }
 
 function _almBackToToday() {
@@ -1611,12 +1634,15 @@ function _renderAstroPanel(now) {
   var W = south ? t('season_summer') : t('season_winter'), Sp = south ? t('season_autumn') : t('season_spring');
   var Su = south ? t('season_winter') : t('season_summer'), Au = south ? t('season_spring') : t('season_autumn');
   var _eq = _lterm('equinox', t('alm_equinox')), _sol = _lterm('solstice', t('alm_solstice'));
+  // setFullYear (see _dayOfYear) so season boundaries land on the real year for
+  // any epoch the time machine reaches, not the 1900s for years 0–99.
+  function _dmy(yy, mo, dd) { var x = new Date(0); x.setFullYear(yy, mo, dd); x.setHours(0, 0, 0, 0); return x; }
   var seasonBounds = [
-    { name: W, nameKey: Wk, start: new Date(y - 1, 11, 21), end: new Date(y, 2, 20), next: Sp + ' ' + _eq },
-    { name: Sp, nameKey: Spk, start: new Date(y, 2, 20), end: new Date(y, 5, 21), next: Su + ' ' + _sol },
-    { name: Su, nameKey: Suk, start: new Date(y, 5, 21), end: new Date(y, 8, 22), next: Au + ' ' + _eq },
-    { name: Au, nameKey: Auk, start: new Date(y, 8, 22), end: new Date(y, 11, 21), next: W + ' ' + _sol },
-    { name: W, nameKey: Wk, start: new Date(y, 11, 21), end: new Date(y + 1, 2, 20), next: Sp + ' ' + _eq }
+    { name: W, nameKey: Wk, start: _dmy(y - 1, 11, 21), end: _dmy(y, 2, 20), next: Sp + ' ' + _eq },
+    { name: Sp, nameKey: Spk, start: _dmy(y, 2, 20), end: _dmy(y, 5, 21), next: Su + ' ' + _sol },
+    { name: Su, nameKey: Suk, start: _dmy(y, 5, 21), end: _dmy(y, 8, 22), next: Au + ' ' + _eq },
+    { name: Au, nameKey: Auk, start: _dmy(y, 8, 22), end: _dmy(y, 11, 21), next: W + ' ' + _sol },
+    { name: W, nameKey: Wk, start: _dmy(y, 11, 21), end: _dmy(y + 1, 2, 20), next: Sp + ' ' + _eq }
   ];
   var season = null;
   for (var si = 0; si < seasonBounds.length; si++) {
@@ -1628,7 +1654,7 @@ function _renderAstroPanel(now) {
     }
   }
 
-  var perihelion = new Date(y, 0, 3);
+  var perihelion = _dmy(y, 0, 3);
   var daysSincePeri = (now - perihelion) / MS_PER_DAY;
   var earthSunDist = 149598023 * (1 - 0.0167 * Math.cos(daysSincePeri / 365.25 * 2 * Math.PI));
   var earthSunAU = (earthSunDist / 149597870.7).toFixed(4);
@@ -1663,19 +1689,27 @@ function _renderAstroPanel(now) {
   html += '<div class="almanac-info-item"><div class="almanac-info-val">' + constellation + '</div><div class="almanac-info-lbl">' + t('alm_sun_constellation') + '</div></div>';
   html += '</div>';
 
-  if (nextEclipses.length > 0) {
+  // Eclipse rows. The date string uses a plain YYYY-MM-DD that Date can't parse
+  // for year 0, five-figure, or BCE years — skip any row that comes back invalid
+  // rather than printing "Invalid Date / NaN days", and drop the whole section
+  // if none survive. (We can't meaningfully date eclipses millennia out anyway.)
+  var eclipseRows = '';
+  for (var ei = 0; ei < nextEclipses.length; ei++) {
+    var ec = nextEclipses[ei];
+    var ecDate = new Date(ec.date + 'T00:00:00');
+    if (isNaN(ecDate.getTime())) continue;
+    var daysUntil = Math.ceil((ecDate - now) / MS_PER_DAY);
+    if (!isFinite(daysUntil)) continue;
+    var untilStr = daysUntil <= 0 ? t('alm_today') : daysUntil === 1 ? t('alm_tomorrow') : t('alm_n_days', { n: daysUntil });
+    eclipseRows += '<div class="almanac-eclipse-row">' +
+      '<div><span class="almanac-eclipse-type">' + _alLink(ec.solar ? 'eclipse:total_solar' : 'eclipse:total_lunar', ec.type) + '</span><br><span class="almanac-eclipse-date">' +
+      ecDate.toLocaleDateString((typeof _currentLang !== 'undefined') ? _currentLang : undefined, { month: 'long', day: 'numeric', year: 'numeric' }) + '</span></div>' +
+      '<div class="almanac-eclipse-until">' + untilStr + '</div></div>';
+  }
+  if (eclipseRows) {
     html += '<div style="margin-top:16px">';
     html += '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">' + t('alm_upcoming_eclipses') + '</div>';
-    for (var ei = 0; ei < nextEclipses.length; ei++) {
-      var ec = nextEclipses[ei];
-      var ecDate = new Date(ec.date + 'T00:00:00');
-      var daysUntil = Math.ceil((ecDate - now) / MS_PER_DAY);
-      var untilStr = daysUntil <= 0 ? t('alm_today') : daysUntil === 1 ? t('alm_tomorrow') : t('alm_n_days', { n: daysUntil });
-      html += '<div class="almanac-eclipse-row">' +
-        '<div><span class="almanac-eclipse-type">' + _alLink(ec.solar ? 'eclipse:total_solar' : 'eclipse:total_lunar', ec.type) + '</span><br><span class="almanac-eclipse-date">' +
-        ecDate.toLocaleDateString((typeof _currentLang !== 'undefined') ? _currentLang : undefined, { month: 'long', day: 'numeric', year: 'numeric' }) + '</span></div>' +
-        '<div class="almanac-eclipse-until">' + untilStr + '</div></div>';
-    }
+    html += eclipseRows;
     html += '</div>';
   }
 
