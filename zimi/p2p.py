@@ -499,11 +499,14 @@ _lt_import_failed = False
 TORRENT_FETCH_TIMEOUT_S = 30
 TORRENT_FETCH_MAX_BYTES = 10 * 1024 * 1024
 
-# Fastresume checkpoint cadence, in alert-loop ticks (~1s each). Without a
-# periodic save, resume data is only written on a clean stop(); a hard kill
-# (power loss, `docker kill`) would then force a full re-hash/re-download of
-# every in-flight torrent. 60 ≈ one minute of at-most-lost progress.
-RESUME_SAVE_INTERVAL_S = 60
+# How long the alert pump blocks per iteration. Also the unit the fastresume
+# checkpoint cadence counts in, so the two must be read together.
+ALERT_TICK_S = 1.0
+# Fastresume checkpoint cadence, in alert-loop ticks. Without a periodic save,
+# resume data is only written on a clean stop(); a hard kill (power loss,
+# `docker kill`) would then force a full re-hash/re-download of every in-flight
+# torrent. At the default tick that is about a minute of at-most-lost progress.
+RESUME_SAVE_TICKS = 60
 
 
 def _lt():
@@ -685,14 +688,14 @@ class LibtorrentBackend(BTBackend):
 
     def _alert_loop(self) -> None:
         ticks = 0
-        while not self._alert_stop.wait(1.0):
+        while not self._alert_stop.wait(ALERT_TICK_S):
             ticks += 1
             try:
                 self._pump_alerts_once()
                 # Checkpoint fastresume periodically, not just on stop(),
-                # so a hard kill costs at most RESUME_SAVE_INTERVAL_S of
-                # progress instead of a full re-hash on next start.
-                if ticks % RESUME_SAVE_INTERVAL_S == 0:
+                # so a hard kill costs at most RESUME_SAVE_TICKS of progress
+                # instead of a full re-hash on next start.
+                if ticks % RESUME_SAVE_TICKS == 0:
                     self._request_resume_saves()
             except Exception as e:
                 log.debug("alert pump error: %s", e)

@@ -2257,6 +2257,8 @@ _MOON_TEX.src = '/static/moon.png?v=2';
 
 var _moonSpriteCache = {};
 
+// Hermite ease between two edges. Also used by the lazy-loaded almanac
+// scripts, which app.js always loads first.
 function _smoothstep(a, b, x) {
   var t = Math.max(0, Math.min(1, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);

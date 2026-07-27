@@ -1217,8 +1217,8 @@ def get_article_languages(zim_name, article_path):
         if qid is not None:
             _qid_cache_store(zim_name, article_path, qid)
 
-    log.info(
-        "  interlang %s/%s: qid=%s src_project=%s",
+    log.debug(
+        "interlang %s/%s: qid=%s src_project=%s",
         zim_name,
         article_path,
         qid,
