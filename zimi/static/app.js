@@ -6,6 +6,8 @@ var _i18nVer = _cfg.i18nHash || '0';
 var SK = {
   UI_LANG: 'zimi_ui_lang',
   HIDE_DISCOVER: 'zimi_hide_discover',
+  // Almanac location. SESSION-scoped — the almanac is deliberately ephemeral,
+  // so read it with _getSessionJSON, never _getStorageJSON.
   ALMANAC_LOC: 'zimi_almanac_location',
   ALMANAC_HL: 'zimi_almanac_highlights',
   HIDE_LANG_CHOOSER: 'zimi_hide_lang_chooser',
@@ -46,9 +48,13 @@ var SK = {
 };
 
 // ── Storage Helpers ──
-function _getStorageJSON(key, fallback) {
-  try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+function _getStorageJSON(key, fallback, session) {
+  try { var v = (session ? sessionStorage : localStorage).getItem(key); return v ? JSON.parse(v) : fallback; }
   catch(e) { return fallback; }
+}
+// Read for keys that live in sessionStorage rather than localStorage.
+function _getSessionJSON(key, fallback) {
+  return _getStorageJSON(key, fallback, true);
 }
 function _setStorageJSON(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch(e) {}
@@ -2396,7 +2402,7 @@ function _quickMoonTilt(date) {
   var eps = 23.44 * D2R, lngR = lng*D2R, latR = lat_ec*D2R;
   var dec = Math.asin(Math.sin(latR)*Math.cos(eps) + Math.cos(latR)*Math.sin(eps)*Math.sin(lngR));
   var ra = Math.atan2(Math.sin(lngR)*Math.cos(eps) - Math.tan(latR)*Math.sin(eps), Math.cos(lngR));
-  var ll = _getStorageJSON(SK.ALMANAC_LOC, null);
+  var ll = _getSessionJSON(SK.ALMANAC_LOC, null);
   var obsLat = ll ? ll.lat : 34, obsLon = ll ? ll.lon : -date.getTimezoneOffset() / 60 * 15;
   var LST = ((280.46061837 + 360.98564736629*(JD-2451545.0))%360 + obsLon) * D2R;
   var HA = LST - ra;
@@ -2433,7 +2439,7 @@ function _todayTeaser() {
     events.push({ days: days, name: s[2], extra: ' \u00b7 ZHR ' + s[3], tonight: true });
   }
   // Equinoxes & solstices — use season-aware names for Southern Hemisphere
-  var _tLoc = _getStorageJSON(SK.ALMANAC_LOC, null);
+  var _tLoc = _getSessionJSON(SK.ALMANAC_LOC, null);
   var _tSouth = _tLoc && _tLoc.lat < 0;
   var eqNames = _tSouth
     ? [t('season_autumn') + ' ' + t('alm_equinox'), t('season_winter') + ' ' + t('alm_solstice'), t('season_spring') + ' ' + t('alm_equinox'), t('season_summer') + ' ' + t('alm_solstice')]
@@ -2746,7 +2752,7 @@ function _renderDiscover(el, items) {
       // Season detection — flip for Southern Hemisphere if location is set
       var _nSeasons = ['winter', 'spring', 'summer', 'autumn', 'winter'];
       var _sSeasons = ['summer', 'autumn', 'winter', 'spring', 'summer']; // Southern Hemisphere
-      var _storedLoc = _getStorageJSON(SK.ALMANAC_LOC, null);
+      var _storedLoc = _getSessionJSON(SK.ALMANAC_LOC, null);
       var _isSouth = _storedLoc && _storedLoc.lat < 0;
       var _seasonKeys = _isSouth ? _sSeasons : _nSeasons;
       var _sBounds = [

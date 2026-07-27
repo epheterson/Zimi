@@ -30,9 +30,10 @@ async function heroFirstTwoLines(page) {
 
 async function openAlmanac(page, loc) {
   await page.goto(BASE);
-  await page.evaluate(() => localStorage.removeItem('zimi_almanac_location'));
+  // Session-scoped, matching the app: the almanac location never persists.
+  await page.evaluate(() => sessionStorage.removeItem('zimi_almanac_location'));
   if (loc) {
-    await page.evaluate((l) => localStorage.setItem('zimi_almanac_location', JSON.stringify(l)), loc);
+    await page.evaluate((l) => sessionStorage.setItem('zimi_almanac_location', JSON.stringify(l)), loc);
   }
   await page.goto(`${BASE}/#almanac`);
   await page.waitForTimeout(1500);
