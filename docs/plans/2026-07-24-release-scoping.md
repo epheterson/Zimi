@@ -39,6 +39,14 @@ The four yes-items that missed the train, plus polish debt:
 - README demo GIF, done right: one GIF replacing ALL static screenshots —
   a full walkthrough (search, reader, interlang live usage, almanac).
   Eric likes the idea, not the 1.8.0 execution; removed for launch.
+- Almanac location v2: wider typeable city set; click ANYWHERE on the map
+  (not just cities) to set location; map shows every world-clock city.
+  (1.8.0 ships clock-city→location sync + clock/map city parity.)
+- Almanac link-map expansion round 2: more holidays and glossary terms
+  Q-ID matched (Eric, ship night: "lots more holidays and terms that
+  could be Q-ID matched").
+- Almanac identity: its own icon in the header/tab when open, like
+  entering a ZIM does.
 - Holidays "Worldwide" option: a region choice that layers ALL 18 national
   packs with per-entry country tags ("Bastille Day · FR"). Default stays
   region-scoped (all packs at once ≈ 80+ national days = too noisy as a
