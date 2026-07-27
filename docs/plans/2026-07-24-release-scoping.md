@@ -39,6 +39,11 @@ The four yes-items that missed the train, plus polish debt:
 - README demo GIF, done right: one GIF replacing ALL static screenshots —
   a full walkthrough (search, reader, interlang live usage, almanac).
   Eric likes the idea, not the 1.8.0 execution; removed for launch.
+- Holidays "Worldwide" option: a region choice that layers ALL 18 national
+  packs with per-entry country tags ("Bastille Day · FR"). Default stays
+  region-scoped (all packs at once ≈ 80+ national days = too noisy as a
+  default, Eric agrees the option is worth having). Also: make the
+  "showing X holidays" caption clickable → jumps to the location control.
 - Did-you-mean vocab coverage tuning: 1.8.0 ships working corrections
   (einstien→einstein, watre→water, phlosophy, pyhton) but the 200k word
   cap saturates on ~3/66 index files, so spread-out science words
