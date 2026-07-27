@@ -4,7 +4,7 @@
 
 This is the release the people using Zimi shaped: every open issue on the
 tracker answered, the ZIM ecosystem's longest-standing requests built, a native
-Windows app, and a real API for agents. 270 commits since 1.7.4, 1,032 tests
+Windows app, and a real API for agents. 270 commits since 1.7.4, 1,042 tests
 passing.
 
 ---
