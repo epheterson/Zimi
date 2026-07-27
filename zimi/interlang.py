@@ -1234,6 +1234,12 @@ def get_article_languages(zim_name, article_path):
             n = zi.get("name", "")
             if n == zim_name:
                 continue
+            # This strategy answers purely from the Q-ID SQLite index, never
+            # through get_archive(), so it has to consult the allowlist itself
+            # or a restricted user learns the names and article paths of ZIMs
+            # they can't open.
+            if not _srv.zim_allowed(n):
+                continue
             if src_project and _zim_project_name(n) != src_project:
                 continue
             # Check full index (small ZIMs) or on-demand cache (large ZIMs)

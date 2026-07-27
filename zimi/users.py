@@ -67,6 +67,12 @@ _NAME_RE = re.compile(r"^[\w .\-]{1,32}$", re.UNICODE)
 
 _SESSION_TOKEN_BYTES = 32  # secrets.token_urlsafe(32) → ~43 url-safe chars
 
+#: Server-side session lifetime. The cookie carries a matching Max-Age, but that
+#: is a hint the holder controls — this is the half that actually expires a
+#: stolen token, and it bounds sessions.json instead of letting it grow one
+#: entry per login forever.
+SESSION_TTL_S = 30 * 24 * 3600
+
 # One lock guards both files' read-modify-write cycles. Writes are rare
 # (admin CRUD, login/logout), so a single coarse lock is simplest and correct.
 _lock = threading.RLock()
@@ -411,13 +417,31 @@ def record_login(name):
         _save_users(users)
 
 
+def _session_expired(ent, now=None):
+    """True once a session entry is past SESSION_TTL_S. An entry with a missing
+    or unparseable ``created`` is treated as expired — fail closed rather than
+    grant an immortal token to a hand-edited or corrupt sessions.json."""
+    try:
+        created = int(ent.get("created", 0))
+    except (TypeError, ValueError):
+        return True
+    if created <= 0:
+        return True
+    return (now if now is not None else int(time.time())) - created > SESSION_TTL_S
+
+
 def create_session(name):
     """Mint a random session token for a user, persist it (hashed), return the
     plaintext token (shown once, delivered via cookie + login response)."""
     token = secrets.token_urlsafe(_SESSION_TOKEN_BYTES)
+    now = int(time.time())
     with _lock:
         sessions = _load_sessions()
-        sessions[_token_hash(token)] = {"user": _key(name), "created": int(time.time())}
+        # Login is the natural sweep point — no timer thread, and the file can
+        # only grow by one entry between two sweeps of the same account.
+        for h in [h for h, e in sessions.items() if _session_expired(e, now)]:
+            del sessions[h]
+        sessions[_token_hash(token)] = {"user": _key(name), "created": now}
         _save_sessions(sessions)
     return token
 
@@ -430,7 +454,7 @@ def resolve_session(token):
         return None
     sessions = _load_sessions()
     ent = sessions.get(_token_hash(token))
-    if not ent:
+    if not ent or _session_expired(ent):
         return None
     rec = _load_users().get(ent.get("user"))
     if not rec:

@@ -210,6 +210,36 @@ class TestAuthSessions(_UsersBase):
         users.set_password("Kid", "newpw")
         self.assertIsNone(users.resolve_session(token))
 
+    def test_session_expires_after_ttl(self):
+        users.create_user("Kid", "pw123")
+        token = users.create_session("Kid")
+        self._age_session(token, users.SESSION_TTL_S + 60)
+        self.assertIsNone(users.resolve_session(token))
+
+    def test_session_without_created_is_rejected(self):
+        """A hand-edited or corrupt entry must not become an immortal token."""
+        users.create_user("Kid", "pw123")
+        token = users.create_session("Kid")
+        sessions = users._load_sessions()
+        sessions[users._token_hash(token)].pop("created")
+        users._save_sessions(sessions)
+        self.assertIsNone(users.resolve_session(token))
+
+    def test_login_prunes_expired_sessions(self):
+        users.create_user("Kid", "pw123")
+        stale = users.create_session("Kid")
+        self._age_session(stale, users.SESSION_TTL_S + 60)
+        fresh = users.create_session("Kid")
+        sessions = users._load_sessions()
+        self.assertNotIn(users._token_hash(stale), sessions)
+        self.assertIn(users._token_hash(fresh), sessions)
+
+    def _age_session(self, token, seconds):
+        sessions = users._load_sessions()
+        ent = sessions[users._token_hash(token)]
+        ent["created"] = int(ent["created"]) - seconds
+        users._save_sessions(sessions)
+
     def test_resolve_request_user_bearer_and_cookie(self):
         users.create_user("Kid", "pw123")
         token = users.create_session("Kid")

@@ -115,8 +115,13 @@ RATE_LIMIT_CONTENT = (
 RATE_LIMIT_TRUSTED = int(
     os.environ.get("ZIMI_RATE_LIMIT_TRUSTED", str(RATE_LIMIT * 10))
 )
+# Credential checks get their own much tighter budget. /login is the one
+# unauthenticated endpoint that runs PBKDF2 (600k iterations), so the same cap
+# defends against both password guessing and CPU exhaustion.
+RATE_LIMIT_LOGIN = int(os.environ.get("ZIMI_RATE_LIMIT_LOGIN", "10"))
 _rate_buckets = {}  # {ip: [timestamps]} — API endpoints
 _rate_buckets_content = {}  # {ip: [timestamps]} — /w/ content
+_rate_buckets_login = {}  # {ip: [timestamps]} — POST /login
 _rate_lock = threading.Lock()
 
 # Verified Bearer credentials, keyed by digest so the PBKDF2 check runs once
@@ -176,13 +181,14 @@ def _rate_class(path):
     return limited, is_content
 
 
-def _check_rate_limit(ip, content=False, limit=None):
+def _check_rate_limit(ip, content=False, limit=None, buckets=None):
     """Check if IP has exceeded rate limit. Returns seconds to wait, or 0 if OK."""
     if limit is None:
         limit = RATE_LIMIT_CONTENT if content else RATE_LIMIT
     if limit <= 0:
         return 0
-    buckets = _rate_buckets_content if content else _rate_buckets
+    if buckets is None:
+        buckets = _rate_buckets_content if content else _rate_buckets
     now = time.time()
     window = 60.0  # 1 minute window
     with _rate_lock:
@@ -860,7 +866,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 lang_zims = {}  # {lang_code: [zim_name, ...]}
                 for z in _srv._zim_list_cache or []:
                     lang = z.get("language", "")
-                    if lang:
+                    if lang and _srv.zim_allowed(z["name"]):
                         lang_zims.setdefault(lang, []).append(z["name"])
                 result = []
                 for lang, zim_names in sorted(lang_zims.items()):
@@ -1332,6 +1338,13 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return handle_manage_post(self, parsed, data)
 
             if parsed.path == "/login":
+                retry_after = _check_rate_limit(
+                    self._client_ip(),
+                    limit=RATE_LIMIT_LOGIN,
+                    buckets=_rate_buckets_login,
+                )
+                if retry_after > 0:
+                    return self._json_rate_limited(retry_after)
                 return self._handle_login(data)
 
             if parsed.path == "/logout":
@@ -1342,11 +1355,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     self._client_ip(), limit=self._rate_limit_for_request()
                 )
                 if retry_after > 0:
-                    with _metrics_lock:
-                        _metrics["rate_limited"] += 1
-                    return self._json(
-                        429, {"error": "rate limited", "retry_after": retry_after}
-                    )
+                    return self._json_rate_limited(retry_after)
                 # Batch cross-ZIM URL resolution: POST {"urls": [...]} → {"results": {...}}
                 urls = data.get("urls", [])
                 if not isinstance(urls, list) or len(urls) > 100:
@@ -1374,11 +1383,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     self._client_ip(), limit=self._rate_limit_for_request()
                 )
                 if retry_after > 0:
-                    with _metrics_lock:
-                        _metrics["rate_limited"] += 1
-                    return self._json(
-                        429, {"error": "rate limited", "retry_after": retry_after}
-                    )
+                    return self._json_rate_limited(retry_after)
                 return _almanac_links_response(
                     self,
                     data.get("qids", []),
@@ -1466,11 +1471,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             self._client_ip(), limit=self._rate_limit_for_request()
         )
         if retry_after > 0:
-            with _metrics_lock:
-                _metrics["rate_limited"] += 1
-            return self._json(
-                429, {"error": "rate limited", "retry_after": retry_after}
-            )
+            return self._json_rate_limited(retry_after)
         try:
             if parsed.path == "/collections":
                 name = params.get("name", [None])[0]
@@ -2120,6 +2121,12 @@ class ZimHandler(BaseHTTPRequestHandler):
             json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode(),
             "application/json",
         )
+
+    def _json_rate_limited(self, retry_after):
+        """429 body for the POST/DELETE write paths."""
+        with _metrics_lock:
+            _metrics["rate_limited"] += 1
+        return self._json(429, {"error": "rate limited", "retry_after": retry_after})
 
     # ── Multi-user login / logout / whoami ──────────────────────────────────
     def _json_cookie(self, code, data, set_cookie):
