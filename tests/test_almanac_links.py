@@ -15,6 +15,7 @@ exercise the same sqlite path production uses.
 """
 
 import os
+import re
 import sqlite3
 import sys
 import tempfile
@@ -426,6 +427,36 @@ class TitlesValidationTests(_QidFixtureMixin, unittest.TestCase):
         _http._almanac_links_response(h, ["Q2"], ["en"], None)
         self.assertEqual(h.status, 200)
         self.assertIn("Q2", h.body["links"])
+
+
+class TestClientBatchChunking(unittest.TestCase):
+    """The curated set is bigger than one batch, so the client must chunk it.
+
+    Sending it whole once outgrew ALMANAC_QID_BATCH_MAX: the endpoint 400s and
+    EVERY almanac entity silently renders as plain text. Pin the client's chunk
+    size against the server cap so neither side can drift back into that cliff.
+    """
+
+    @staticmethod
+    def _js():
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "zimi",
+            "static",
+            "almanac-links.js",
+        )
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_chunk_size_within_server_cap(self):
+        m = re.search(r"_QID_BATCH_SIZE\s*=\s*(\d+)", self._js())
+        self.assertIsNotNone(m, "client chunk size constant missing")
+        self.assertLessEqual(int(m.group(1)), _srv.ALMANAC_QID_BATCH_MAX)
+
+    def test_curated_set_exceeds_a_single_batch(self):
+        # Documents why chunking exists: the set no longer fits in one request.
+        qids = set(re.findall(r"q:\s*'(Q\d+)'", self._js()))
+        self.assertGreater(len(qids), _srv.ALMANAC_QID_BATCH_MAX)
 
 
 if __name__ == "__main__":

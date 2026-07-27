@@ -2,8 +2,8 @@
 // encyclopedia article DIRECTLY from the user's INSTALLED library. This is a
 // CLOSED SET: the curated map below carries a stable Wikidata Q-ID for every
 // linkable entity, and the almanac resolves those Q-IDs against the installed
-// library in ONE batch on open (POST /almanac-links). The returned map is
-// authoritative:
+// library on open (POST /almanac-links, chunked to the server's per-batch cap).
+// The returned map is authoritative:
 //   - Q-ID resolves to an installed article → the entity renders as a direct
 //     link; a tap opens it with zero further requests.
 //   - Q-ID doesn't resolve (or no encyclopedia installed) → plain text.
@@ -603,9 +603,9 @@
 
   // -- Preloaded Q-ID -> article map (the closed set, resolved once) --------
   //
-  // On almanac open we send the whole curated Q-ID set to the server in ONE
-  // batch (/almanac-links) and get back {qid -> {zim, path, title}} for the
-  // Q-IDs that resolve to an article in the installed library. That map is
+  // On almanac open we send the whole curated Q-ID set to the server
+  // (/almanac-links, in chunks) and get back {qid -> {zim, path, title}} for
+  // the Q-IDs that resolve to an article in the installed library. That map is
   // authoritative: an entity whose Q-ID is present renders as a direct link
   // (tap -> openArticle, zero further requests); every other entity renders as
   // plain text. There is no title search, no probe, no on-tap fetch -- a Q-ID
@@ -674,6 +674,37 @@
   var _qidSig = null;     // signature of the library+langs _qidLinks was built for
   var _qidLoaded = false; // a batch response has landed for the current signature
 
+  // The server rejects an oversized batch outright (ALMANAC_QID_BATCH_MAX in
+  // interlang.py). The curated set is already larger than one batch and grows
+  // with every entity added, so it is split into chunks that stay under that
+  // cap — send it whole and the single 400 leaves EVERY entity plain text.
+  // Must stay <= the server cap; tests/test_almanac_links.py pins that.
+  var _QID_BATCH_SIZE = 200;
+
+  function _chunk(list, size) {
+    var out = [];
+    for (var i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+    return out;
+  }
+
+  // Resolve one chunk to its {qid: hit} map, or null if the request failed —
+  // the caller keeps a failed signature retryable while still using whatever
+  // other chunks came back.
+  function _fetchChunk(qids, langs, titles) {
+    var sub = {};
+    for (var i = 0; i < qids.length; i++) {
+      if (titles[qids[i]]) sub[qids[i]] = titles[qids[i]];
+    }
+    return fetch('/almanac-links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ qids: qids, langs: langs, titles: sub })
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) { return data ? (data.links || {}) : null; })
+      .catch(function () { return null; });
+  }
+
   // Signature so the session cache re-fetches only when the library or language
   // prefs actually change (re-fetch on library change -- not on every open).
   function _signature(names, langs) {
@@ -695,23 +726,26 @@
     if (!names.length) { _qidLoaded = true; return; } // no target -> all plain text
     var qids = _allQids();
     if (!qids.length) { _qidLoaded = true; return; }
-    fetch('/almanac-links', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ qids: qids, langs: langs, titles: _qidTitles() })
-    })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (data) {
-        if (!data || sig !== _qidSig) return; // superseded by a newer reset()
-        _qidLinks = data.links || {};
-        _qidLoaded = true;
-        // Entities that rendered plain before the batch landed become links now.
-        if (typeof _almanacOpen !== 'undefined' && _almanacOpen &&
-            typeof _renderAlmanacContent === 'function') {
-          _renderAlmanacContent();
-        }
-      })
-      .catch(function () { /* offline / no server -> stays plain text */ });
+    var titles = _qidTitles();
+    Promise.all(_chunk(qids, _QID_BATCH_SIZE).map(function (part) {
+      return _fetchChunk(part, langs, titles);
+    })).then(function (parts) {
+      if (sig !== _qidSig) return; // superseded by a newer reset()
+      var merged = {}, complete = true;
+      parts.forEach(function (p) {
+        if (!p) { complete = false; return; }
+        for (var q in p) if (p.hasOwnProperty(q)) merged[q] = p[q];
+      });
+      _qidLinks = merged;
+      // A chunk that failed (offline / no server) leaves the signature unloaded
+      // so the next open retries; what did land still renders as links.
+      _qidLoaded = complete;
+      // Entities that rendered plain before the batch landed become links now.
+      if (typeof _almanacOpen !== 'undefined' && _almanacOpen &&
+          typeof _renderAlmanacContent === 'function') {
+        _renderAlmanacContent();
+      }
+    });
   }
 
   // The curated Q-ID for an entity key, or null.
