@@ -63,7 +63,7 @@ passing.
 - **Named user accounts** on top of the existing password admin — sign in and
   out, manage everyone from an admin **Users** pane (Manage → ⋯ → Users).
 - **Per-user library filtering** — this exists too, and it's behind one gesture
-  Eric never found, so here it is explicitly: open a user's **⋯ menu → Change
+  that's easy to miss, so here it is explicitly: open a user's **⋯ menu → Change
   role → Limited**, and an **Edit allowlist** item then appears in that same
   menu. Pick the ZIMs that account may see, and their entire read surface —
   search, read, suggest, random, list, even almanac links — is filtered to just
