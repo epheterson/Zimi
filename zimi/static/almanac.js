@@ -3635,12 +3635,8 @@ function _almRegionName(region) {
 function _almRegion() {
   // The chosen location is the source of truth: clicking Italy on the map
   // means Italian holidays, whatever the browser locale says.
-  try {
-    var locData = JSON.parse(localStorage.getItem(_ALM_LOC_KEY) || 'null');
-    if (locData && typeof locData.lat === 'number') {
-      return _almRegionForLocation(locData.lat, locData.lon);
-    }
-  } catch (e) {}
+  var loc = _getLocation();
+  if (loc.stored) return _almRegionForLocation(loc.lat, loc.lon);
   try {
     var m = String(navigator.language || '').match(/[-_]([A-Za-z]{2})(\b|$)/);
     if (m) {
@@ -3730,11 +3726,8 @@ function _seasonEventsForYear(year) {
   if (_seasonCache.year === year) return _seasonCache.events;
   // Hemisphere-aware names: October IS spring in Sydney. Chosen location
   // decides; no location defaults to the northern names.
-  var south = false;
-  try {
-    var loc = JSON.parse(localStorage.getItem(_ALM_LOC_KEY) || 'null');
-    south = !!(loc && loc.lat < 0);
-  } catch (e) {}
+  var loc = _getLocation();
+  var south = !!(loc.stored && loc.lat < 0);
   var names = south
     ? ['Autumn Equinox', 'Winter Solstice', 'Spring Equinox', 'Summer Solstice']
     : ['Spring Equinox', 'Summer Solstice', 'Autumn Equinox', 'Winter Solstice'];
