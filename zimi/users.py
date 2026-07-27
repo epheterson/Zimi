@@ -22,7 +22,7 @@ Storage (both under ZIMI_DATA_DIR, atomic writes):
 (or absent) means an all-access user. ``flags`` is a per-user dict reserved as the
 v2 seam (kid mode, history monitoring, forced login, schools) — unused in v1.
 
-Roles (v1.8 round 2): every account carries a ``role`` ∈ {``admin``, ``user``,
+Roles: every account carries a ``role`` ∈ {``admin``, ``user``,
 ``limited``}:
 - ``admin``   — a SECONDARY admin. All-access read PLUS full manage powers via
   their own login (see ``manage.admin_kind`` — they authenticate to a session

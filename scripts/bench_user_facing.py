@@ -5,6 +5,7 @@ times /list (library page data) and /w/<zim>/<path> (open a ZIM)."""
 
 from __future__ import annotations
 
+import glob
 import os
 import shutil
 import subprocess
@@ -13,11 +14,12 @@ import tempfile
 import time
 import urllib.request
 
+# Colon-separated paths in ZIMI_BENCH_ZIMS, else every .zim in ./zims.
 ZIM_SOURCES = [
-    "/Users/elp/Zimi/gutenberg_en_lcc-k_2025-12.zim",
-    "/Users/elp/Zimi/zimgit-medicine_en_2024-08.zim",
-    "/Users/elp/Zimi/zimgit-water_en_2024-08.zim",
-]
+    p
+    for p in os.environ.get("ZIMI_BENCH_ZIMS", "").split(os.pathsep)
+    if p
+] or sorted(glob.glob(os.path.join("zims", "*.zim")))
 
 
 def _wait_for(url, timeout=120):

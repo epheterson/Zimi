@@ -93,18 +93,18 @@ function _tc(name) { var k = _CONST_KEYS[name]; return k ? _tLookup('alm_const_'
 // Deep-link wrappers \u2014 turn a localized label into a tappable encyclopedia
 // link when the library has a matching ZIM (fail-soft: plain text otherwise).
 // Only call these at DOM (innerHTML) render sites, never inside canvas draws.
-function _alLink(key, html, label) {
-  return window.AlmanacLinks ? window.AlmanacLinks.wrap(key, html, label != null ? label : html) : html;
+function _alLink(key, html) {
+  return window.AlmanacLinks ? window.AlmanacLinks.wrap(key, html) : html;
 }
-function _lp(name) { var s = _tp(name); return _alLink('planet:' + name.toLowerCase(), s, s); }
-function _lc(name) { var s = _tc(name); var k = _CONST_KEYS[name]; return k ? _alLink('const:' + k, s, s) : s; }
+function _lp(name) { var s = _tp(name); return _alLink('planet:' + name.toLowerCase(), s); }
+function _lc(name) { var s = _tc(name); var k = _CONST_KEYS[name]; return k ? _alLink('const:' + k, s) : s; }
 // Link an astronomy/timekeeping TERM by its map suffix (key = 'term:<suffix>').
 // `html` is the already-localized, already-escaped display text.
-function _lterm(suffix, html) { return _alLink('term:' + suffix, html, html); }
+function _lterm(suffix, html) { return _alLink('term:' + suffix, html); }
 // Link a season by its article key ('winter'|'spring'|'summer'|'autumn').
-function _lseason(key, html) { return key ? _alLink('season:' + key, html, html) : html; }
+function _lseason(key, html) { return key ? _alLink('season:' + key, html) : html; }
 // Link a Messages Across Time inscription by its manifest id (key = 'rosetta:<id>').
-function _lrosetta(id, html) { return id ? _alLink('rosetta:' + id, html, html) : html; }
+function _lrosetta(id, html) { return id ? _alLink('rosetta:' + id, html) : html; }
 
 function _dayOfYear(date) {
   var start = new Date(date.getFullYear(), 0, 1);
@@ -530,7 +530,6 @@ function _almRepaintFocus() {
 
 function _almBackToToday() {
   _almFocus = null;
-  _almScrubPending = null;
   _almSelectedJDN = _almTodayJDN;
   // Snap the browsed month back to the present too — otherwise the grid is
   // left stranded on whatever month you'd wandered to while the rest of the
@@ -540,7 +539,8 @@ function _almBackToToday() {
   _almMonth = cal.month;
   _drawAlmanacGrid();
   _almRepaintFocus();
-  _almTimewarpSync();
+  _almTmMode('rest');
+  _almTmSync();
 }
 
 // == Time scrubber + destination panel =====================================

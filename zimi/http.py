@@ -526,32 +526,27 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _client_ip(self):
-        """Resolve the real client IP, honoring a forwarded header only from a
-        proxy on a private network.
+        """Resolve the real client IP. Drives /dl/ whole-ZIM serving and the
+        trusted rate tier, so a spoofable answer here opens both to the internet.
 
-        The old version trusted X-Forwarded-For from a hardcoded bridge-IP set
-        and read its (client-spoofable) leftmost value. On a host-networked
-        deploy behind a containerized tunnel, the connection reaches Zimi from
-        the docker bridge gateway — a *private* IP not in that set and with no
-        real client IP propagated — so every WAN request resolved to a private
-        address and was misclassified "private" (open /dl/ whole-ZIM serving to
-        the internet + the trusted rate tier).
+        Rules, in order:
 
-        Fix: (1) prefer Cloudflare's CF-Connecting-IP — it's the true client and
-        Cloudflare strips any client-supplied copy at its edge, so it can't be
-        forged through the tunnel; (2) otherwise take X-Forwarded-For's leftmost;
-        (3) trust either only from a trusted proxy hop — an explicit
-        ZIMI_TRUSTED_PROXIES CIDR allowlist if set, else any trusted-tier hop
-        (private/loopback/link-local + CGNAT/overlay per _is_trusted_net; the
-        origin is never directly WAN-reachable, so a forwarding hop is always
-        private) — covering the bridge gateway on any subnet without a hardcoded
-        list; (4) reject a forwarded value that itself claims a trusted-tier
-        address (private/loopback/link-local + CGNAT/overlay), so a
-        permitted forwarder (or a LAN client) can't spoof one to borrow that
-        trust; (5) with no usable forwarded header, fail closed to public when
-        an explicit ZIMI_TRUSTED_PROXIES allowlist marks the hop as only-ever-a-
-        proxy, else return the direct peer (heuristic mode can't tell a direct
-        LAN client from a header-stripping proxy)."""
+        1. A forwarded header counts only from a trusted proxy hop — the
+           ZIMI_TRUSTED_PROXIES CIDR allowlist if set, else any trusted-tier
+           address (private/loopback/link-local + CGNAT/overlay). The origin is
+           never directly WAN-reachable, so a forwarding hop is always one of
+           those; the heuristic covers a docker bridge gateway on any subnet
+           without hardcoding one.
+        2. Prefer CF-Connecting-IP over X-Forwarded-For's leftmost value:
+           Cloudflare strips any client-supplied copy at its edge, so it can't
+           be forged through the tunnel, whereas XFF's leftmost can.
+        3. Reject a forwarded value that itself claims a trusted-tier address,
+           so a permitted forwarder (or a LAN client) can't spoof one to borrow
+           that trust.
+        4. With no usable forwarded value, fail closed to public when an
+           explicit allowlist marks the hop as only-ever-a-proxy. In heuristic
+           mode keep the direct peer — it can't distinguish a direct LAN client
+           from a header-stripping proxy."""
         direct_ip = self.client_address[0]
         try:
             dip = ipaddress.ip_address(direct_ip)

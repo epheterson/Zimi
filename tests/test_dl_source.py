@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath("/Users/elp/Repos/zimi/tests/_a"))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import zimi.library as library  # noqa: E402
 import zimi.server as server  # noqa: E402

@@ -6,9 +6,9 @@ spec documents only the endpoints we commit to keeping stable (see
 docs/api-stability.md). `info.version` mirrors the running server VERSION so the
 spec never drifts from the build serving it.
 
-The raw-content endpoint is `/w/{zim}/{path}` (the plan's "/content"): it serves
-an article's original HTML/asset bytes for the reader, distinct from /read which
-returns stripped plain text.
+The raw-content endpoint is `/w/{zim}/{path}`: it serves an article's original
+HTML/asset bytes for the reader, distinct from /read which returns stripped
+plain text.
 """
 
 import zimi.server as _srv

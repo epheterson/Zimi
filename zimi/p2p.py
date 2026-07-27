@@ -290,7 +290,7 @@ def get_disk_pressure_pct() -> int | None:
 
 
 # ============================================================================
-# Mirror mode (W3.6) — opt-in "I'm an active mirror" flag that lifts the
+# Mirror mode — opt-in "I'm an active mirror" flag that lifts the
 # 2× ratio cap and raises upload bandwidth. Personal users keep the
 # default conservative caps; people running an actual public mirror
 # flip ZIMI_MIRROR=1 and accept they'll seed indefinitely.
@@ -530,18 +530,13 @@ def _lt():
 
 
 class LibtorrentBackend(BTBackend):
-    """In-process libtorrent session. One engine, no sidecar.
+    """In-process libtorrent session. One engine, no sidecar. Torrent ids are
+    v1 info-hash hex.
 
-    Replaces the aria2 subprocess (v1.8) and with it the four
-    out-of-process compensation layers: RPC port-walking, process
-    liveness polling, the followedBy two-GID dance, and the
-    OPENSSL_MODULES env hack. Torrent ids are v1 info-hash hex.
-
-    list_managed() entries keep the historical key names library.py
-    and manage.py parse (gid/status/files/completedLength/uploadLength/
-    totalLength/infoHash/seeder) — that dict shape is the contract, not
-    an aria2-ism. `seeder` is the string "true"/"false" (aria2 emitted it
-    as JSON strings); `completedLength` is a str byte count.
+    list_managed() entries are the contract library.py and manage.py parse:
+    gid/status/files/completedLength/uploadLength/totalLength/infoHash/seeder.
+    The string-typed values are load-bearing for those parsers — `seeder` is
+    "true"/"false" and `completedLength` is a str byte count.
     """
 
     def __init__(self, *, bt_port: int, data_dir: str, staging_dir: str) -> None:
@@ -826,11 +821,10 @@ class LibtorrentBackend(BTBackend):
         raise last_exc if last_exc is not None else RuntimeError("add_torrent failed")
 
     def _fetch_torrent_bytes(self, url: str) -> bytes:
-        """Bounded .torrent metadata fetch. This collapses aria2's
-        two-phase metadata GID: by the time we add to the session we
-        already hold the full torrent, so 'complete' can only ever mean
-        the content is complete (the corrupt-ZIM class of bug is gone
-        by construction)."""
+        """Bounded .torrent metadata fetch, done before the torrent joins the
+        session. Holding the full metadata up front is what makes 'complete'
+        unambiguously mean the *content* is complete — a two-phase add can
+        report complete on metadata alone and hand back a truncated ZIM."""
         req = urllib.request.Request(url, headers={"User-Agent": "zimi"})
         with urllib.request.urlopen(req, timeout=TORRENT_FETCH_TIMEOUT_S) as resp:
             data = resp.read(TORRENT_FETCH_MAX_BYTES + 1)
@@ -851,10 +845,10 @@ class LibtorrentBackend(BTBackend):
     def remove(self, tid: str, *, delete_files: bool = False) -> None:
         """delete_files only ever deletes payload under the staging dir.
 
-        aria2's remove cleared session bookkeeping and never touched
-        payload; libtorrent's delete_files flag REALLY deletes. Mapping
-        them naively would let stop_mirror_seeds() delete library ZIMs.
-        Staging partials are ours to clean; library files never."""
+        libtorrent's delete_files flag REALLY deletes, and mirror seeds point
+        at library ZIMs — passing it straight through would let
+        stop_mirror_seeds() erase the library. Staging partials are ours to
+        clean; library files never."""
         lt = _lt()
         with self._lock:
             h = self._handles.pop(tid, None)
@@ -905,9 +899,8 @@ class LibtorrentBackend(BTBackend):
         elif bool(s.flags & lt.torrent_flags.paused):
             state = "paused"
         elif s.state in (lt.torrent_status.seeding, lt.torrent_status.finished):
-            # Content is done — caller installs the file; seeding
-            # continues on the live handle exactly like aria2's
-            # active+seeder remap did.
+            # Content is done — the caller installs the file while seeding
+            # continues on the live handle.
             state = "complete"
         else:
             # checking_files / downloading_metadata / downloading /
@@ -981,8 +974,8 @@ class LibtorrentBackend(BTBackend):
                     "uploadLength": str(int(s.all_time_upload)),
                     "totalLength": str(total),
                     "infoHash": tid,
-                    # aria2 emitted these as JSON strings; manage.py tests
-                    # `seeder in ("true", True)`, so keep the string form.
+                    # manage.py tests `seeder in ("true", True)` — keep the
+                    # string form or seeding rows silently read as leechers.
                     "seeder": "true" if is_seeder else "false",
                 }
             )

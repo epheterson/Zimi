@@ -807,27 +807,25 @@
 
   // Wrap an already-escaped label in a tappable span IFF its curated Q-ID
   // resolved to an installed article. Otherwise return the label untouched
-  // (plain text). `label` is accepted for call-site compatibility but no longer
-  // used -- resolution is by Q-ID, not by title.
-  function wrap(key, innerHtml, label) { // eslint-disable-line no-unused-vars
+  // (plain text). Resolution is by Q-ID, never by title.
+  function wrap(key, innerHtml) {
     var q = _qidFor(key);
     return (q && _qidLinks[q]) ? _linkSpan(key, innerHtml) : innerHtml;
   }
 
   // Holiday convenience: map the displayed label to its curated entry, then
-  // link only if that entry's Q-ID resolved. Uncurated holidays (no curated
-  // Q-ID) stay plain text -- closed set, no guessing.
-  // `region` (an ISO code, when the label came from a country pack) lets a
-  // shared label like "Independence Day" resolve to the RIGHT country's article:
-  // a region-qualified key (`<norm>_<region>`) is tried first, then the bare
-  // norm. Uncurated labels stay plain text -- closed set, no guessing.
+  // link only if that entry's Q-ID resolved. `region` (an ISO code, when the
+  // label came from a country pack) lets a shared label like "Independence Day"
+  // resolve to the RIGHT country's article: the region-qualified key
+  // (`<norm>_<region>`) is tried first, then the bare norm. Uncurated labels
+  // stay plain text -- closed set, no guessing.
   function wrapHoliday(displayHtml, label, region) {
     var n = _norm(label);
     if (region) {
       var rk = n + '_' + String(region).toLowerCase();
-      if (HOLIDAYS[rk]) return wrap('holiday:' + rk, displayHtml, label);
+      if (HOLIDAYS[rk]) return wrap('holiday:' + rk, displayHtml);
     }
-    return HOLIDAYS[n] ? wrap('holiday:' + n, displayHtml, label) : displayHtml;
+    return HOLIDAYS[n] ? wrap('holiday:' + n, displayHtml) : displayHtml;
   }
 
   function _escHtml(s) {

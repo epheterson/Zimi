@@ -11,8 +11,8 @@ lets an operator point at a real install and list the misses.
 Usage:
     scripts/verify_almanac_links.py [BASE_URL]
 
-    BASE_URL defaults to http://knowledge.zosia.lan (Eric's NAS, full English
-    Wikipedia). Any Zimi server with an encyclopedia ZIM works.
+    BASE_URL defaults to the local server. Point it at any Zimi install with a
+    full encyclopedia ZIM; a small ZIM will report misses that aren't real.
 
 It POSTs the whole curated Q-ID + title set to /almanac-links in one batch
 (<= ALMANAC_QID_BATCH_MAX = 400) and prints, per entity:
@@ -32,7 +32,7 @@ from pathlib import Path
 LINKS_JS = (
     Path(__file__).resolve().parent.parent / "zimi" / "static" / "almanac-links.js"
 )
-DEFAULT_BASE = "http://knowledge.zosia.lan"
+DEFAULT_BASE = "http://localhost:8899"
 BATCH_MAX = 400
 
 # Matches:  'key': { q: 'Q123', en: 'Article Title' }  (key may be namespaced)

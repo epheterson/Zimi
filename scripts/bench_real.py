@@ -1,10 +1,12 @@
 """Real-ZIM timing: cold-start build, cached launch, first-search latency.
 
-Compares warm_indexes() + first-search behavior against the user's actual
-question: "takes a lil longer or on a cached launch not longer at all?"
+Answers whether warm_indexes() costs anything on a *cached* launch, or only on
+the first cold build.
 
-Uses 3 small real ZIMs (gutenberg, zimgit-medicine, zimgit-water)."""
+Needs a few small real ZIMs. Point ZIMI_BENCH_ZIMS at them as a colon-separated
+list of paths, or drop them in ./zims."""
 
+import glob
 import os
 import resource
 import shutil
@@ -15,11 +17,12 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Colon-separated paths in ZIMI_BENCH_ZIMS, else every .zim in ./zims.
 ZIM_SOURCES = [
-    "/Users/elp/Zimi/gutenberg_en_lcc-k_2025-12.zim",
-    "/Users/elp/Zimi/zimgit-medicine_en_2024-08.zim",
-    "/Users/elp/Zimi/zimgit-water_en_2024-08.zim",
-]
+    p
+    for p in os.environ.get("ZIMI_BENCH_ZIMS", "").split(os.pathsep)
+    if p
+] or sorted(glob.glob(os.path.join("zims", "*.zim")))
 
 
 def _rss_mb():

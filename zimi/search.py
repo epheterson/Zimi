@@ -1174,11 +1174,10 @@ _VOCAB_BUILD_BUDGET_S = 300.0
 # entire budget before any other index — including much smaller, equally
 # relevant ones — ever gets opened. This cap now bounds a STRIDE SAMPLE
 # spread across the whole file (see _vocab_stride), not a contiguous
-# prefix: round-3 testing showed a 3M-row prefix of a 27M-row Wikipedia
-# table still missed most of the vocabulary (only the alphabetically- or
-# insertion-order-first titles were ever seen), and even reading the first
-# 3M rows didn't reach common words like "mitochondria" or "photosynthesis"
-# at all — they simply weren't in that prefix. Sampling every k-th row
+# prefix: a 3M-row prefix of a 27M-row Wikipedia table sees only the
+# alphabetically- or insertion-order-first titles, and misses common words
+# like "mitochondria" or "photosynthesis" entirely — they simply aren't in
+# that prefix, however far it reads. Sampling every k-th row
 # instead gives a word occurring even a few dozen times across the whole
 # file a real chance to be sampled and survive lossy-counting eviction.
 _VOCAB_MAX_ROWS_PER_FILE = 3_000_000
@@ -1195,10 +1194,9 @@ _VOCAB_CACHE_FILENAME = "dym_vocab.json"
 _VOCAB_CACHE_PATH = os.path.join(_srv.ZIMI_DATA_DIR, _VOCAB_CACHE_FILENAME)
 # Bump whenever the vocab-building algorithm changes in a way that makes an
 # on-disk cache from an older version invalid even though the underlying
-# title indexes haven't changed — e.g. round 3's lossy-counting admission
-# produced a materially different vocab than round 2's first-come cap did,
-# and round 4's stride sampling (see _vocab_stride) again changes which
-# rows get read. Folded into _vocab_signature so a stale-algorithm cache is
+# title indexes haven't changed — lossy-counting admission and stride
+# sampling (see _vocab_stride) each changed which words a scan of the same
+# files produces. Folded into _vocab_signature so a stale-algorithm cache is
 # rebuilt transparently rather than loaded forever.
 _VOCAB_BUILDER_VERSION = 3
 _DIST2_MAX_LEN = 7  # only try edit-distance-2 on words this short or shorter
@@ -1379,9 +1377,9 @@ def _vocab_signature(index_dir):
     hashed. Any index added, removed, resized, or rewritten changes this —
     it's how a persisted vocab cache (see _vocab_cache_load) knows it's
     stale. So does a builder-version bump, which invalidates every existing
-    cache even though the indexes on disk haven't moved — that's what lets
-    an algorithm change (e.g. round 3's lossy-counting admission) replace a
-    cache built by the old algorithm instead of loading it forever. Returns
+    cache even though the indexes on disk haven't moved — that's what lets an
+    algorithm change replace a cache built by the old one instead of loading
+    it forever. Returns
     None if the directory can't be listed, which callers treat as "cache
     unusable"."""
     try:
@@ -1722,7 +1720,6 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                 log.debug(
                     "Suggest search failed for %s query %r: %s", name, query_str, e
                 )
-                pass
 
         if len(target_names) == 1:
             _search_one_zim(target_names[0])

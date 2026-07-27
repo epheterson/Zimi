@@ -9278,7 +9278,6 @@ function _cycleReaderFont() {
 var _TTS_AVAILABLE = (typeof window !== 'undefined') && ('speechSynthesis' in window);
 var _ttsSpeaking = false;
 
-// TTS_CHUNK_FN_START (extracted + node-tested — keep these sentinels)
 function _ttsChunkText(text, maxLen) {
   maxLen = maxLen || 240;
   var out = [];
@@ -9311,7 +9310,6 @@ function _ttsChunkText(text, maxLen) {
   if (buf) out.push(buf);
   return out;
 }
-// TTS_CHUNK_FN_END
 
 // Shared main-content locator for a ZIM article document. Returns the element
 // that holds the article body (dropping surrounding nav/chrome) or null when no

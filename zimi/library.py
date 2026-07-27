@@ -48,8 +48,8 @@ def _is_lan_host(host):
     hostname (non-literal) is rejected outright so nothing re-resolves later.
 
     We also accept the 100.64.0.0/10 CGNAT/overlay range (Tailscale, ZeroTier)
-    under the same trust knob a4629dd gave the inbound gate (_is_trusted_net in
-    http.py, ZIMI_TRUST_CGNAT): a tailnet peer that Zimi already trusts for
+    under the same trust knob as the inbound gate (_is_trusted_net in http.py,
+    ZIMI_TRUST_CGNAT): a tailnet peer that Zimi already trusts for
     management must be pullable too, or LAN peer-sharing silently breaks over
     the tailnet. Reusing http's CGNAT_NET + flag (read through the module so
     ZIMI_TRUST_CGNAT / test monkeypatching is honored live, and lazily to avoid
