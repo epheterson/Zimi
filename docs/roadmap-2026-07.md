@@ -9,8 +9,8 @@
 > addenda are kept verbatim as provenance, not current plan of record.
 
 Captured before a context compaction so nothing is lost. Source threads: the
-7/19 grow-up audit, the Kiwix opportunity scan (`docs/kiwix-opportunity-scan-2026-07.md`),
-and the 1.7.4 session.
+7/19 grow-up audit, an ecosystem review (internal notes), and the 1.7.4
+session.
 
 ## The strategic read (why the next release is what it is)
 
