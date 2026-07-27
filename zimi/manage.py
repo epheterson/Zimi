@@ -349,21 +349,15 @@ def _cache_info_payload():
         except OSError:
             return 0
 
-    titles_dir = os.path.join(data_dir, "titles")
-    qids_dir = os.path.join(data_dir, "qids")
+    def _index_dir_stats(path):
+        """(total bytes, .db file count) for an index directory, (0, 0) if absent."""
+        if not os.path.isdir(path):
+            return 0, 0
+        return _dir_size(path), len(_glob.glob(os.path.join(path, "*.db")))
 
-    title_bytes = _dir_size(titles_dir) if os.path.isdir(titles_dir) else 0
-    title_count = (
-        len(_glob.glob(os.path.join(titles_dir, "*.db")))
-        if os.path.isdir(titles_dir)
-        else 0
-    )
-    qid_bytes = _dir_size(qids_dir) if os.path.isdir(qids_dir) else 0
-    qid_count = (
-        len(_glob.glob(os.path.join(qids_dir, "*.db")))
-        if os.path.isdir(qids_dir)
-        else 0
-    )
+    titles_dir = os.path.join(data_dir, "titles")
+    title_bytes, title_count = _index_dir_stats(titles_dir)
+    qid_bytes, qid_count = _index_dir_stats(os.path.join(data_dir, "qids"))
     metadata_bytes = _file_size(os.path.join(data_dir, "cache.json"))
     suggest_bytes = _file_size(os.path.join(data_dir, "suggest_cache.json"))
 
@@ -376,12 +370,9 @@ def _cache_info_payload():
 
     # Staging = in-progress downloads. May live outside the data dir (env
     # override), so track whether it's already counted in the dir walk.
-    try:
-        from zimi import p2p as _p2p
+    from zimi import p2p as _p2p
 
-        staging_dir = _p2p.get_staging_dir(data_dir)
-    except Exception:
-        staging_dir = os.path.join(data_dir, "staging")
+    staging_dir = _p2p.get_staging_dir(data_dir)
     staging_bytes = _dir_size(staging_dir) if os.path.isdir(staging_dir) else 0
     staging_in_data = os.path.abspath(staging_dir).startswith(
         os.path.abspath(data_dir) + os.sep

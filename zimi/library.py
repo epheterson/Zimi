@@ -2154,6 +2154,11 @@ def _detect_flavor(filename_or_base):
 # the real Kiwix OPDS endpoint) turned a warm-cache non-issue back into a
 # 15s+ "Loading..." on every cold check.
 _FULL_CATALOG_MAX_PARALLEL = 6
+# Page size for the full-catalog fan-out. The request count and the offset
+# stride must stay the same number: if they diverge the pages either overlap or
+# leave gaps, and a gap means installed ZIMs silently never get offered an
+# update.
+_FULL_CATALOG_PAGE_SIZE = 500
 
 # Hard ceiling on the concurrent page-fetch phase. Every page fetch already
 # carries its own socket timeout, but a connection whose timeout never fires
@@ -2186,11 +2191,13 @@ def _full_catalog(lang=""):
     (see _fetchCatalogItems in app.js). A page that errors is simply omitted
     rather than truncating the rest of an otherwise-successful fetch.
     """
-    total, items, err = _fetch_kiwix_catalog(query="", lang=lang, count=500, start=0)
+    total, items, err = _fetch_kiwix_catalog(
+        query="", lang=lang, count=_FULL_CATALOG_PAGE_SIZE, start=0
+    )
     if err:
         return []
     all_items = list(items or [])
-    starts = list(range(len(all_items), total, 500))
+    starts = list(range(len(all_items), total, _FULL_CATALOG_PAGE_SIZE))
     if not starts:
         return all_items
 
@@ -2201,7 +2208,7 @@ def _full_catalog(lang=""):
         try:
             with sem:
                 _t, more, page_err = _fetch_kiwix_catalog(
-                    query="", lang=lang, count=500, start=start
+                    query="", lang=lang, count=_FULL_CATALOG_PAGE_SIZE, start=start
                 )
             pages[start] = None if page_err else (more or None)
         except Exception as e:
@@ -2388,8 +2395,12 @@ def _download_from_url(dl, url, tmp_dest):
             )
             try:
                 os.remove(tmp_dest)
-            except OSError:
-                pass
+            except OSError as e:
+                # The retry below only works because the partial is gone — with
+                # it still on disk we would send Range again, get the same
+                # mismatched 206, and recurse until the stack blew.
+                log.error("Cannot remove stale partial %s: %s", tmp_dest, e)
+                return False, "could not discard mismatched partial download"
             # Re-enter with no partial present → plain GET (200/wb) from zero.
             return _download_from_url(dl, url, tmp_dest)
         dl["total_bytes"] = total
