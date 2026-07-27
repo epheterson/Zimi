@@ -2236,6 +2236,18 @@ function _moonPhase(date) {
   return { phase: phase, name: name, illumination: illum };
 }
 
+// Interpolate the moon between two phase fractions along the shortest cyclic
+// path, returning the { phase, illumination } shape the renderers read. Lets a
+// time jump MELT the lit fraction across a tween instead of snapping it. The
+// illumination uses the same elongation formula as _moonPhase, so a tweened
+// value shades identically to the real phase it lands on, and waxing (phase <
+// 0.5) falls out of the interpolated phase for free.
+function _moonPhaseLerp(fromPhase, toPhase, e) {
+  var d = (((toPhase - fromPhase + 0.5) % 1) + 1) % 1 - 0.5;
+  var p = (((fromPhase + d * e) % 1) + 1) % 1;
+  return { phase: p, illumination: (1 - Math.cos(p * 2 * Math.PI)) / 2 * 100 };
+}
+
 var _MOON_PHASE_I18N = {
   'New Moon': 'moon_new', 'Waxing Crescent': 'moon_waxing_crescent',
   'First Quarter': 'moon_first_quarter', 'Waxing Gibbous': 'moon_waxing_gibbous',

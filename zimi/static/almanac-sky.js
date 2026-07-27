@@ -32,12 +32,12 @@ function _moonEaseOut(p) { return 1 - Math.pow(1 - p, 3); }
 function _angleDelta(from, to) { return ((to - from) % 360 + 540) % 360 - 180; }
 
 // Sample the moon's tweened state at time `ts` (a performance.now()/rAF
-// timestamp). Only position (altitude/azimuth/parallactic) eases -- the phase
-// (illumination + waxing flag) snaps straight to the target. Interpolating
-// illumination would change _moonSpriteCanvas's cache key every frame, forcing
-// a full per-pixel re-shade of the moon photo each tick, which the sky
-// redraw's tiny per-frame budget can't absorb -- so the sprite updates on
-// arrival, same as before this animated the position.
+// timestamp). Both position (altitude/azimuth/parallactic) AND phase ease to
+// the target: the lit fraction melts across the jump via _moonPhaseLerp rather
+// than snapping on arrival. The re-shade cost the old snap avoided is bounded
+// here by _moonSpriteCanvas's cache, keyed on illumination rounded to 1%: at
+// the sky moon's ~14 px radius a full new..full sweep is a few dozen tiny
+// cached sprites, generated once, which the per-frame redraw budget absorbs.
 function _skyMoonAt(s, ts) {
   var anim = s.moonAnim;
   if (!anim) return s.moonData;
@@ -51,7 +51,7 @@ function _skyMoonAt(s, ts) {
       azimuth: fp.azimuth + _angleDelta(fp.azimuth, tp.azimuth) * e,
       parallactic: fp.parallactic + _angleDelta(fp.parallactic, tp.parallactic) * e
     },
-    phase: anim.to.phase
+    phase: _moonPhaseLerp(anim.from.phase.phase, anim.to.phase.phase, e)
   };
 }
 

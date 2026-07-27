@@ -531,7 +531,15 @@ function _almRepaintFocus() {
   var m;
   try { m = _moonPhase(focus); } catch (e) { m = null; }
   var head = document.getElementById('almanac-head');
-  if (head) _almSafePanel(function () { head.innerHTML = _almHeadHtml(focus); }, 'almanac-head');
+  if (head) {
+    // Snapshot the outgoing hero moon before _almHeadHtml rebuilds the whole
+    // header, so the new phase can melt out of the old one instead of popping.
+    var prevMoon = head.querySelector('.almanac-moon');
+    var prevHTML = prevMoon ? prevMoon.outerHTML : null;
+    var prevTilt = prevMoon ? prevMoon.style.transform : '';
+    _almSafePanel(function () { head.innerHTML = _almHeadHtml(focus); }, 'almanac-head');
+    if (prevHTML && !_almReduceMotion()) _almHeroMoonCrossfade(head, prevHTML, prevTilt);
+  }
   _almSafePanel(function () { _renderSunMap(focus); }, 'almanac-sunmap');
   // _renderSunMap re-seeds the world-clock grid off the date it's handed. That
   // grid is a *clock* — it must keep reading now, not the focused instant.
@@ -1213,6 +1221,44 @@ function _cacheAlmanacHighlights(now, moon) {
 }
 
 // ── Moon rendering ──
+
+// Melt the hero moon from its previous phase/tilt to the freshly rendered one.
+// _almHeadHtml rebuilds the entire header in one innerHTML swap, so there is no
+// live node to CSS-transition across -- the new moon is simply already there.
+// We lay a snapshot of the OUTGOING moon over it and fade that out (rotating it
+// into the new tilt as it goes, so a big tilt swing reads as the disc turning
+// rather than two crescents ghosting). Pure CSS: no rAF, no per-frame sprite
+// work. The overlay removes itself on animation end -- with a timeout fallback
+// and the next header rebuild wiping it -- so nodes never accumulate across
+// jumps. Skipped when the disc is unchanged (a location-only refresh); reduced
+// motion is handled by the caller and a CSS guard.
+function _almHeroMoonCrossfade(head, prevHTML, prevTilt) {
+  var hero = head.querySelector('.almanac-hero');
+  var newMoon = hero ? hero.querySelector('.almanac-moon') : null;
+  if (!hero || !newMoon) return;
+  var newTilt = newMoon.style.transform || '';
+  var newImg = newMoon.querySelector('.almanac-moon-sprite');
+  var prevAttrs = /data-illum="([^"]*)"[\s\S]*?data-waxing="([^"]*)"/.exec(prevHTML);
+  // Nothing to melt if the disc looks identical -- same phase bucket and tilt.
+  if (prevTilt === newTilt && newImg && prevAttrs &&
+      newImg.getAttribute('data-illum') === prevAttrs[1] &&
+      newImg.getAttribute('data-waxing') === prevAttrs[2]) return;
+  var fade = document.createElement('div');
+  fade.className = 'almanac-moon-fade';
+  fade.setAttribute('aria-hidden', 'true');
+  fade.innerHTML = prevHTML;
+  fade.style.animationDuration = MOON_TWEEN_MS + 'ms';
+  hero.appendChild(fade);
+  var inner = fade.querySelector('.almanac-moon');
+  if (inner && newTilt && prevTilt !== newTilt) {
+    inner.style.transition = 'transform ' + MOON_TWEEN_MS + 'ms ease-out';
+    void inner.offsetWidth;   // flush layout so the transition has a start value
+    inner.style.transform = newTilt;
+  }
+  var done = function () { if (fade.parentNode) fade.parentNode.removeChild(fade); };
+  fade.addEventListener('animationend', done);
+  setTimeout(done, MOON_TWEEN_MS + 120);   // fallback if animationend is missed
+}
 
 // Almanac hero moon — delegates to shared _renderMoonHTML (defined in index.html)
 // Adds the almanac-specific glow wrapper
