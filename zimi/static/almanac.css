@@ -75,12 +75,11 @@
 .almanac-moon-glow { position: absolute; width: 280px; height: 280px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: -1; }
 .almanac-moon-name { margin-top: 16px; font-size: 18px; font-weight: 500; color: var(--text); }
 .almanac-moon-line { font-size: 13px; color: var(--text2); margin-top: 8px; text-align: center; }
-/* Cross-fade layer: a snapshot of the outgoing hero moon, laid over the newly
-   rendered one and faded out so a time jump melts the phase instead of popping.
-   Duration is set inline from MOON_TWEEN_MS; self-removes on animation end. */
-.almanac-moon-fade { position: absolute; top: 0; left: 50%; width: 200px; height: 200px; transform: translateX(-50%); pointer-events: none; animation-name: almMoonFade; animation-timing-function: ease-out; animation-fill-mode: forwards; }
-@keyframes almMoonFade { from { opacity: 1; } to { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .almanac-moon-fade { display: none; } }
+/* Live canvas laid over the hero moon during a time-travel sweep: it draws the
+   moon at successive real instants (terminator sweeping, disc rotating) over
+   the crisp resting img, then is removed to reveal the destination phase. */
+.almanac-moon-anim { position: absolute; top: 0; left: 50%; width: 200px; height: 200px; transform: translateX(-50%); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .almanac-moon-anim { display: none; } }
 .almanac-section { margin-top: 32px; border-top: 1px solid var(--border); padding-top: 24px; }
 .almanac-section-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.06em; }
 .almanac-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

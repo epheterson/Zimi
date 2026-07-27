@@ -2236,16 +2236,46 @@ function _moonPhase(date) {
   return { phase: phase, name: name, illumination: illum };
 }
 
-// Interpolate the moon between two phase fractions along the shortest cyclic
-// path, returning the { phase, illumination } shape the renderers read. Lets a
-// time jump MELT the lit fraction across a tween instead of snapping it. The
-// illumination uses the same elongation formula as _moonPhase, so a tweened
-// value shades identically to the real phase it lands on, and waxing (phase <
-// 0.5) falls out of the interpolated phase for free.
-function _moonPhaseLerp(fromPhase, toPhase, e) {
-  var d = (((toPhase - fromPhase + 0.5) % 1) + 1) % 1 - 0.5;
-  var p = (((fromPhase + d * e) % 1) + 1) % 1;
-  return { phase: p, illumination: (1 - Math.cos(p * 2 * Math.PI)) / 2 * 100 };
+// Moon time-travel animation — shared by the hero disc and the sky-scene moon.
+// A jump doesn't snap the phase: the moon is sampled at real intermediate
+// instants so the terminator sweeps along its TRUE path (a two-week jump really
+// passes through full on its way from gibbous to new), as if a camera stayed on
+// it the whole way. Tilt is NOT sampled this way -- the parallactic angle
+// cycles daily, so real tilt-at-t strobes; the renderers interpolate tilt
+// straight from A to B instead.
+var _MOON_SYNODIC_MS = 29.530588853 * 86400000;   // one lunation
+// Duration scales gently with the span so a one-day nudge is quick and a
+// multi-week sweep lingers, capped so a deep-time jump can't run long.
+var _MOON_ANIM_BASE_MS = 600;
+var _MOON_ANIM_PER_CYCLE_MS = 420;
+var _MOON_ANIM_MAX_MS = 1500;
+// Past this many lunations we stop animating every real cycle (thousands would
+// strobe) and instead sweep a bounded number that still LANDS on the true
+// destination phase -- fast-flowing phases rather than a blur.
+var _MOON_ANIM_MAX_CYCLES = 3;
+
+// Moon phase { phase, illumination } at animation progress e in [0,1] for a
+// jump from fromTime to toTime (ms). Real astronomy along the true time path
+// within the cycle cap; a compressed-but-correct sweep beyond it.
+function _moonAnimPhaseAt(fromTime, toTime, e) {
+  var span = toTime - fromTime;
+  if (Math.abs(span) <= _MOON_ANIM_MAX_CYCLES * _MOON_SYNODIC_MS) {
+    return _moonPhase(new Date(fromTime + span * e));
+  }
+  var p0 = _moonPhase(new Date(fromTime)).phase;
+  var p1 = _moonPhase(new Date(toTime)).phase;
+  var dir = span >= 0 ? 1 : -1;
+  var frac = dir > 0 ? (((p1 - p0) % 1) + 1) % 1 : -((((p0 - p1) % 1) + 1) % 1);
+  var advance = frac + dir * _MOON_ANIM_MAX_CYCLES;   // whole cycles + landing frac
+  var ph = (((p0 + advance * e) % 1) + 1) % 1;
+  return { phase: ph, illumination: (1 - Math.cos(ph * 2 * Math.PI)) / 2 * 100 };
+}
+
+// How long to sweep a jump of the given span (ms), scaled and capped.
+function _moonAnimDurMs(fromTime, toTime) {
+  var cycles = Math.abs(toTime - fromTime) / _MOON_SYNODIC_MS;
+  return Math.max(_MOON_ANIM_BASE_MS,
+    Math.min(_MOON_ANIM_MAX_MS, _MOON_ANIM_BASE_MS + cycles * _MOON_ANIM_PER_CYCLE_MS));
 }
 
 var _MOON_PHASE_I18N = {

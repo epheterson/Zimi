@@ -403,6 +403,9 @@ function _principalPhaseOnDay(cellJDN) {
 // the calendar. It's a full instant (not just a date) so a time-of-day picker
 // can drive the same path later.
 var _almFocus = null;
+// The focus instant the hero moon last rendered at, so a jump can sweep from
+// it. Seeded to "now" when the almanac first renders.
+var _almPrevFocusTime = null;
 function _almFocusInstant() { return _almFocus || new Date(); }
 function _almIsToday(d) {
   var n = new Date();
@@ -460,14 +463,8 @@ function _almHeadHtml(focus) {
   html += '</div>';
 
   // Hero moon — tilted so the bright limb faces the Sun as the observer sees
-  // it. brightLimb (chi − q) is the right physical quantity, but the base
-  // moon art has its lit limb at 3 o'clock and CSS rotation runs opposite to
-  // the position-angle sense on screen, so the screen tilt is −(chi−q) − 90.
-  // Applying chi−q raw flipped the crescent to the wrong side of the disc (a
-  // waxing crescent after sunset lit upper-LEFT, away from the set Sun).
-  var moonPos = _moonPosition(focus, loc.lat, loc.lon);
-  var _limbPA = (moonPos.brightLimb != null ? moonPos.brightLimb : moonPos.parallactic) || 0;
-  var moonTilt = -_limbPA - 90;
+  // it (see _heroMoonTiltDeg for the sign derivation).
+  var moonTilt = _heroMoonTiltDeg(focus, loc);
   html += '<div class="almanac-hero">';
   html += _renderAlmanacMoon(m, moonTilt);
   html += '<div class="almanac-moon-name">' + _lterm('lunar_phase', _localMoonName(m.name)) + '</div>';
@@ -532,14 +529,13 @@ function _almRepaintFocus() {
   try { m = _moonPhase(focus); } catch (e) { m = null; }
   var head = document.getElementById('almanac-head');
   if (head) {
-    // Snapshot the outgoing hero moon before _almHeadHtml rebuilds the whole
-    // header, so the new phase can melt out of the old one instead of popping.
-    var prevMoon = head.querySelector('.almanac-moon');
-    var prevHTML = prevMoon ? prevMoon.outerHTML : null;
-    var prevTilt = prevMoon ? prevMoon.style.transform : '';
+    // Sweep the hero moon from the previous focus to this one (real phases +
+    // continuous rotation) after the header rebuilds to the destination.
+    var fromTime = (_almPrevFocusTime != null) ? _almPrevFocusTime : focus.getTime();
     _almSafePanel(function () { head.innerHTML = _almHeadHtml(focus); }, 'almanac-head');
-    if (prevHTML && !_almReduceMotion()) _almHeroMoonCrossfade(head, prevHTML, prevTilt);
+    if (!_almReduceMotion()) _almHeroMoonSweep(head, fromTime, focus.getTime(), loc);
   }
+  _almPrevFocusTime = focus.getTime();
   _almSafePanel(function () { _renderSunMap(focus); }, 'almanac-sunmap');
   // _renderSunMap re-seeds the world-clock grid off the date it's handed. That
   // grid is a *clock* — it must keep reading now, not the focused instant.
@@ -1046,6 +1042,7 @@ function _renderAlmanacContent() {
   html += '</div>';
 
   html += '<div id="almanac-head">' + _almHeadHtml(now) + '</div>';
+  _almPrevFocusTime = now.getTime();   // seed the hero-moon sweep's start
 
   // Sky scene + calendar — wall calendar: art above, month grid below. Time is
   // driven by the time machine at the top; the sky animates live as you travel.
@@ -1222,45 +1219,128 @@ function _cacheAlmanacHighlights(now, moon) {
 
 // ── Moon rendering ──
 
-// Melt the hero moon from its previous phase/tilt to the freshly rendered one.
-// _almHeadHtml rebuilds the entire header in one innerHTML swap, so there is no
-// live node to CSS-transition across -- the new moon is simply already there.
-// We lay a snapshot of the OUTGOING moon over it and fade that out (rotating it
-// into the new tilt as it goes, so a big tilt swing reads as the disc turning
-// rather than two crescents ghosting). Pure CSS: no rAF, no per-frame sprite
-// work. The overlay removes itself on animation end -- with a timeout fallback
-// and the next header rebuild wiping it -- so nodes never accumulate across
-// jumps. Skipped when the disc is unchanged (a location-only refresh); reduced
-// motion is handled by the caller and a CSS guard.
-function _almHeroMoonCrossfade(head, prevHTML, prevTilt) {
-  var hero = head.querySelector('.almanac-hero');
-  var newMoon = hero ? hero.querySelector('.almanac-moon') : null;
-  if (!hero || !newMoon) return;
-  var newTilt = newMoon.style.transform || '';
-  var newImg = newMoon.querySelector('.almanac-moon-sprite');
-  var prevAttrs = /data-illum="([^"]*)"[\s\S]*?data-waxing="([^"]*)"/.exec(prevHTML);
-  // Nothing to melt if the disc looks identical -- same phase bucket and tilt.
-  if (prevTilt === newTilt && newImg && prevAttrs &&
-      newImg.getAttribute('data-illum') === prevAttrs[1] &&
-      newImg.getAttribute('data-waxing') === prevAttrs[2]) return;
-  var fade = document.createElement('div');
-  fade.className = 'almanac-moon-fade';
-  fade.setAttribute('aria-hidden', 'true');
-  fade.innerHTML = prevHTML;
-  fade.style.animationDuration = MOON_TWEEN_MS + 'ms';
-  hero.appendChild(fade);
-  var inner = fade.querySelector('.almanac-moon');
-  if (inner && newTilt && prevTilt !== newTilt) {
-    inner.style.transition = 'transform ' + MOON_TWEEN_MS + 'ms ease-out';
-    void inner.offsetWidth;   // flush layout so the transition has a start value
-    inner.style.transform = newTilt;
-  }
-  var done = function () { if (fade.parentNode) fade.parentNode.removeChild(fade); };
-  fade.addEventListener('animationend', done);
-  setTimeout(done, MOON_TWEEN_MS + 120);   // fallback if animationend is missed
+// Screen tilt (degrees) of the hero disc at a given instant: the bright limb
+// faces the Sun as the observer sees it. brightLimb (chi - q) is the physical
+// quantity; the base art has its lit limb at 3 o'clock and CSS rotation runs
+// opposite to the position-angle sense, so the screen tilt is -(chi-q) - 90.
+function _heroMoonTiltDeg(date, loc) {
+  var mp = _moonPosition(date, loc.lat, loc.lon);
+  var limb = (mp.brightLimb != null ? mp.brightLimb : mp.parallactic) || 0;
+  return -limb - 90;
 }
 
-// Almanac hero moon — delegates to shared _renderMoonHTML (defined in index.html)
+// ── Hero moon time-travel sweep ──
+// When the focus jumps, the big hero disc doesn't cut to the new phase: a live
+// <canvas> overlay draws the moon at successive REAL instants between the two
+// times, so the terminator sweeps its true path and the disc rotates from the
+// old tilt to the new one -- as if a camera stayed on it. Driven by the sky
+// scene's existing rAF (via _heroMoonTick), so there is no second loop. The
+// overlay's opaque disc fully covers the crisp resting <img> beneath it, which
+// already shows the destination phase; on completion the overlay is removed and
+// that img is revealed with no visible seam. Reduced motion snaps (caller +
+// CSS guard). Position never changes -- the hero is centred -- so only phase
+// and tilt animate.
+var _HERO_MOON_ANIM_SIZE = 128;   // sprite gen size while moving (cheap; scaled to fill)
+var _HERO_MOON_PHASE_STEP = 0.02; // quantise illum to ~50 buckets so re-shades stay cached
+var _HERO_MOON_MIN_SPAN_MS = 1000;// jumps under this (e.g. a location refresh) just snap
+var _heroMoonAnim = null;         // active discrete-jump descriptor, or null
+var _heroMoonOverlay = null;      // the overlay <canvas>, or null
+
+function _moonEaseInOut(p) {
+  return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+}
+
+// The overlay canvas laid over the current hero moon (created lazily, reused).
+function _heroMoonEnsureOverlay(hero) {
+  if (_heroMoonOverlay && _heroMoonOverlay.isConnected) return _heroMoonOverlay;
+  var dpr = window.devicePixelRatio || 1;
+  var cv = document.createElement('canvas');
+  cv.className = 'almanac-moon-anim';
+  cv.setAttribute('aria-hidden', 'true');
+  cv.width = Math.round(200 * dpr);
+  cv.height = Math.round(200 * dpr);
+  hero.appendChild(cv);
+  _heroMoonOverlay = cv;
+  return cv;
+}
+
+function _heroMoonRemoveOverlay() {
+  if (_heroMoonOverlay && _heroMoonOverlay.parentNode) {
+    _heroMoonOverlay.parentNode.removeChild(_heroMoonOverlay);
+  }
+  _heroMoonOverlay = null;
+}
+
+// Draw the moon into the overlay: cached shaded sprite (drawImage is ~free once
+// the 1% bucket exists) rotated by the interpolated tilt. genSize controls the
+// sprite resolution -- small while moving, full on the landing frame so the
+// hand-off to the resting img is seamless.
+function _heroMoonDrawCanvas(cv, illumFrac, waxing, tiltDeg, genSize) {
+  var ctx = cv.getContext('2d');
+  var W = cv.width, c = W / 2;
+  ctx.clearRect(0, 0, W, W);
+  var spr = _moonSpriteCanvas(illumFrac, waxing, genSize);
+  ctx.save();
+  ctx.translate(c, c);
+  ctx.rotate(tiltDeg * Math.PI / 180);
+  ctx.drawImage(spr, -c, -c, W, W);
+  ctx.restore();
+}
+
+// Begin a hero sweep from fromTime to toTime (focus instants, ms). Called right
+// after _almHeadHtml has rebuilt the header to the destination phase/tilt.
+function _almHeroMoonSweep(head, fromTime, toTime, loc) {
+  if (Math.abs(toTime - fromTime) < _HERO_MOON_MIN_SPAN_MS) return; // no real jump
+  var hero = head.querySelector('.almanac-hero');
+  if (!hero || !hero.querySelector('.almanac-moon')) return;
+  _heroMoonEnsureOverlay(hero);
+  _heroMoonAnim = {
+    fromTime: fromTime, toTime: toTime,
+    fromTilt: _heroMoonTiltDeg(new Date(fromTime), loc),
+    toTilt: _heroMoonTiltDeg(new Date(toTime), loc),
+    start: performance.now(),
+    dur: _moonAnimDurMs(fromTime, toTime)
+  };
+}
+
+// Per-frame hook, called from the sky rAF. Advances a discrete jump sweep and,
+// failing that, keeps the hero flowing while the time lever is engaged.
+function _heroMoonTick(ts) {
+  if (_heroMoonAnim) {
+    var a = _heroMoonAnim, cv = _heroMoonOverlay;
+    if (!cv || !cv.isConnected) { _heroMoonAnim = null; return; }
+    var p = (ts - a.start) / a.dur;
+    if (p >= 1) {
+      // Land at full resolution so removing the overlay reveals an identical img.
+      var end = _moonPhase(new Date(a.toTime));
+      _heroMoonDrawCanvas(cv, end.illumination / 100, end.phase < 0.5, a.toTilt, 200);
+      _heroMoonRemoveOverlay();
+      _heroMoonAnim = null;
+      return;
+    }
+    var e = _moonEaseInOut(p);
+    var ph = _moonAnimPhaseAt(a.fromTime, a.toTime, e);
+    var illumFrac = Math.round(ph.illumination / 100 / _HERO_MOON_PHASE_STEP) * _HERO_MOON_PHASE_STEP;
+    var tilt = a.fromTilt + _angleDelta(a.fromTilt, a.toTilt) * e;
+    _heroMoonDrawCanvas(cv, illumFrac, ph.phase < 0.5, tilt, _HERO_MOON_ANIM_SIZE);
+    return;
+  }
+  // Live lever travel: the header isn't rebuilt per frame, so drive the disc
+  // straight from the current focus. Real tilt at a single instant is stable
+  // (no daily-parallactic strobe, which only shows when sampling ACROSS days).
+  var travel = (typeof _almLeverActive !== 'undefined') && (_almLeverActive || _almLeverDecel);
+  if (travel) {
+    var heroEl = document.querySelector('#almanac-head .almanac-hero');
+    if (!heroEl || !heroEl.querySelector('.almanac-moon')) return;
+    var cv2 = _heroMoonEnsureOverlay(heroEl);
+    var f = _almFocusInstant(), loc2 = _getLocation(), m = _moonPhase(f);
+    _heroMoonDrawCanvas(cv2, m.illumination / 100, m.phase < 0.5, _heroMoonTiltDeg(f, loc2), _HERO_MOON_ANIM_SIZE);
+    return;
+  }
+  if (_heroMoonOverlay) _heroMoonRemoveOverlay();   // travel ended: reveal the img
+}
+
+// Almanac hero moon — delegates to _renderMoonHTML (defined in app.js)
 // Adds the almanac-specific glow wrapper
 function _renderAlmanacMoon(m, tiltDeg) {
   var illumFrac = m.illumination / 100;
