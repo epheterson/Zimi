@@ -34,13 +34,16 @@ dependencies = [
     # transport runs over plain HTTP so it needs no extra binary.
     "zeroconf>=0.130.0",
     # BitTorrent accelerator (optional at runtime, attempted by default at
-    # install). Pulled automatically wherever a prebuilt wheel exists —
-    # CPython 3.9–3.13 on manylinux (incl. aarch64), macOS, and Windows. Gated
-    # below 3.14 because no 3.14 wheel is published yet: an unmarked hard dep
-    # would make pip try a from-source build there and fail the WHOLE install,
-    # breaking the HTTP soft-fallback contract. When it's absent (3.14+, musl,
-    # exotic arch) Zimi logs a one-line fix and downloads over HTTP. Force it
-    # anywhere with `pip install zimi[bt]`.
+    # install). Pulled automatically wherever a prebuilt wheel exists — CPython
+    # 3.9–3.13 on manylinux + musllinux (incl. aarch64), macOS, and Windows, so
+    # glibc AND Alpine get it for free. Gated below 3.14 because no 3.14 wheel
+    # is published yet and the project ships no sdist: without the marker pip
+    # would find no distribution there and fail the WHOLE install, breaking the
+    # HTTP soft-fallback contract. On 3.14+ Zimi runs HTTP-only and logs the
+    # one-line fix. (A py≤3.13 arch with no wheel at all — rare, e.g. some BSD —
+    # would still fail the install since there's no sdist; use the Docker image
+    # or `pip install zimi` without forcing BT there.) Force it anywhere with
+    # `pip install zimi[bt]`.
     "libtorrent==2.0.*; python_version < '3.14'",
 ]
 
