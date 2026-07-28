@@ -48,6 +48,9 @@ var SK = {
   // Last-active manage settings section (library|preferences|server|users).
   // Session-scoped so a reload (or re-entering Manage) lands on the same tab.
   MANAGE_SECTION: 'zimi_manage_section',
+  // Video resume ledger: {"<zim>\n<path>#<i>": {t, d, ts}} — playback position
+  // per video, restored on reopen and dropped once watched to completion.
+  VIDEO_RESUME: 'zimi_video_resume',
 };
 
 // ── Storage Helpers ──
@@ -2992,8 +2995,13 @@ function _renderDiscover(el, items) {
           showBlurb = '';
         }
       }
-      h += '<div class="discover-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
-        thumbHtml +
+      // Video ZIMs: overlay a play badge on the thumbnail and mark the card so
+      // it reads as "play a random video" for AT users, not "open article".
+      var _isVid = _isVideoZim(it.zim);
+      var playBadge = _isVid ? '<span class="dc-play-badge" aria-hidden="true"></span>' : '';
+      var vidAttrs = _isVid ? ' data-video="1" aria-label="' + escAttr(t('play_video') + ': ' + displayTitle) + '"' : '';
+      h += '<div class="discover-card' + (_isVid ? ' dc-video-card' : '') + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '"' + vidAttrs + ' onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+        thumbHtml + playBadge +
         '<div class="dc-body">' +
           '<div class="dc-source">' + iconHtml + '<span>' + esc(sourceLabel) + '</span>' + badgeHtml + dateHtml + '</div>' +
           '<div class="dc-title">' + esc(displayTitle) + '</div>' +
@@ -4034,6 +4042,12 @@ function showMoreResults() {
 function _zimTitle(name) {
   const info = _zimInfo(name);
   return (info && info.title) || name;
+}
+// True for ZIMs whose articles are primarily playable video (TED, TED-Ed, Khan
+// Academy talk collections). Drives the play badge on discover cards so a
+// "random" pick from one reads as "play a video", not "read an article".
+function _isVideoZim(name) {
+  return /^ted[_-]|(^|_)ted-ed|khanacademy|^khan[_-]/i.test(name || '');
 }
 function _zimTitleWithLang(name) {
   var info = _zimInfo(name);
@@ -10327,6 +10341,61 @@ function _readerBindLightbox(shell, doc) {
   _readerMarkImages(shell);
 }
 
+// ── Video resume ───────────────────────────────────────────────────────
+// Remember where the viewer stopped in each video (TED/Khan talks, any ZIM
+// with an HTML5 <video>) and pick up there next time. Keyed by zim+path+index
+// so a page with several clips tracks each independently. The ledger is a
+// single localStorage object, trimmed to the most-recent _VIDEO_RESUME_MAX.
+var _VIDEO_RESUME_MAX = 100;    // ledger cap (oldest evicted first)
+var _VIDEO_RESUME_MIN = 5;      // seconds — below this, not worth resuming
+var _VIDEO_RESUME_DONE = 0.95;  // ≥95% watched → treat as finished, drop it
+var _VIDEO_RESUME_THROTTLE = 5000; // ms between timeupdate writes
+function _videoResumeKey(zim, path, i) { return zim + '\n' + path + '#' + i; }
+function _videoResumeTrim(led) {
+  var keys = Object.keys(led);
+  if (keys.length <= _VIDEO_RESUME_MAX) return;
+  keys.sort(function(a, b) { return (led[a].ts || 0) - (led[b].ts || 0); });
+  for (var i = 0; i < keys.length - _VIDEO_RESUME_MAX; i++) delete led[keys[i]];
+}
+function _bindVideoResume(frame, zim, path) {
+  var doc; try { doc = frame.contentDocument; } catch(e) { return; }
+  if (!doc || !zim || !path) return;
+  var vids = doc.querySelectorAll('video');
+  for (var i = 0; i < vids.length; i++) (function(v, idx) {
+    if (v.__zimiResume) return;
+    v.__zimiResume = true;
+    var key = _videoResumeKey(zim, path, idx);
+    var restore = function() {
+      var led = _getStorageJSON(SK.VIDEO_RESUME, {}) || {};
+      var rec = led[key];
+      // Skip if we'd land within a second of the end — nothing left to watch.
+      if (rec && rec.t > _VIDEO_RESUME_MIN && (!v.duration || rec.t < v.duration - 1)) {
+        try { v.currentTime = rec.t; } catch(e) {}
+      }
+    };
+    if (v.readyState >= 1) restore();
+    else v.addEventListener('loadedmetadata', restore, { once: true });
+    var last = 0;
+    v.addEventListener('timeupdate', function() {
+      var now = Date.now();
+      if (now - last < _VIDEO_RESUME_THROTTLE) return;
+      last = now;
+      var d = v.duration || 0, tt = v.currentTime || 0;
+      var led = _getStorageJSON(SK.VIDEO_RESUME, {}) || {};
+      if (d && tt / d >= _VIDEO_RESUME_DONE) { delete led[key]; }
+      else if (tt > _VIDEO_RESUME_MIN) { led[key] = { t: tt, d: d, ts: now }; }
+      else return;
+      _videoResumeTrim(led);
+      _setStorageJSON(SK.VIDEO_RESUME, led);
+    });
+    // Watched to the end → clear so a rewatch starts clean.
+    v.addEventListener('ended', function() {
+      var led = _getStorageJSON(SK.VIDEO_RESUME, {}) || {};
+      if (led[key]) { delete led[key]; _setStorageJSON(SK.VIDEO_RESUME, led); }
+    });
+  })(vids[i], i);
+}
+
 // Bind the tap-to-full-size lightbox to the NORMAL (non-Reader-View) article
 // frame, reusing the Reader View overlay + open/mark helpers. Two differences
 // from the Reader View binding: eligibility also excludes article-navigating
@@ -10922,7 +10991,9 @@ function openReader(url) {
     // Inject responsive CSS + scroll-to-top button for mobile
     try {
       var _rStyle = frame.contentDocument.createElement('style');
-      _rStyle.textContent = 'img{max-width:100%;height:auto}table{max-width:100%;overflow-x:auto;display:block}pre{overflow-x:auto;max-width:100%}' +
+      // video/audio need the same 100% cap as img: TED/Khan talk pages carry a
+      // fixed width= (e.g. 640) that overflows a phone viewport without it.
+      _rStyle.textContent = 'img,video{max-width:100%;height:auto}audio{width:100%;max-width:100%}table{max-width:100%;overflow-x:auto;display:block}pre{overflow-x:auto;max-width:100%}' +
         '#zimi-top{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;border:none;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:9999;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}';
       frame.contentDocument.head.appendChild(_rStyle);
       var _topBtn = frame.contentDocument.createElement('button');
@@ -10944,6 +11015,12 @@ function openReader(url) {
       // Tap-to-full-size lightbox for the raw article frame. Bound first so its
       // capture click handler precedes the link interceptor below.
       try { _bindNormalReaderLightbox(frame); } catch(e) {}
+      // Video resume: derive zim+path from the frame's real /w/ location so it
+      // keys correctly even after in-iframe navigation (not just openArticle).
+      try {
+        var _vm = _frameLoc.match(/^\/w\/([^\/]+)\/(.+)$/);
+        if (_vm) _bindVideoResume(frame, decodeURIComponent(_vm[1]), decodeURIComponent(_vm[2]));
+      } catch(e) {}
       var _handleFrameLink = function(e) {
         var a = e.target.closest('a[href]');
         if (!a) return;
