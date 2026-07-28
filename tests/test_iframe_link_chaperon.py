@@ -69,21 +69,27 @@ def test_iframe_click_handler_uses_capture_phase():
     )
 
 
-def test_iframe_contextmenu_uses_no_rewrite_trick():
-    """The right-click contextmenu handler also resolves hrefs from the
-    iframe — must use the same `_no_rewrite=true` pattern as the left-
-    click handler, otherwise wombat ZIMs would have the same doubling
-    bug on right-click "Open article" (incomplete fix for #17)."""
+def test_no_custom_contextmenu_inside_article_frame():
+    """Right-click coherence (1.8.1): right-clicking INSIDE article content
+    must yield ONLY the browser's own context menu, which is load-bearing on
+    a ZIM page (copy, open-link-in-new-tab, translate, image save, look up…).
+
+    An earlier build attached a contextmenu listener to the reader iframe that
+    intercepted right-click on in-archive links and swapped in Zimi's own "open
+    article" menu. That was removed: Zimi's custom link menu is now offered ONLY
+    on CHROME article links (search results / home tiles) in the PARENT document.
+    This guards against a regression that re-adds an in-frame interceptor.
+    """
     src = _read_app_js()
-    # Both occurrences should share the pattern. Easy invariant: the
-    # number of "_no_rewrite = true" assignments matches the number of
-    # iframe-document listeners that read a.href (click + contextmenu).
-    flag_sets = src.count("_no_rewrite = true")
-    assert flag_sets >= 2, (
-        f"expected ≥2 `_no_rewrite = true` assignments (click + "
-        f"contextmenu handlers); found {flag_sets}. The contextmenu "
-        f"handler must also use the trick or right-click on wombat "
-        f"ZIMs will double the path."
+    assert "frame.contentDocument.addEventListener('contextmenu'" not in src, (
+        "no contextmenu listener may be attached to the reader iframe that shows "
+        "Zimi's own menu — the system menu is load-bearing inside article content "
+        "(1.8.1 right-click coherence)"
+    )
+    # The exact removed call — a link menu positioned in frame-relative coords.
+    assert "_showLinkCtxMenu(e.clientX + frameRect" not in src, (
+        "the reader frame must not open Zimi's link context menu on right-click; "
+        "that affordance lives on parent-document chrome links only"
     )
 
 

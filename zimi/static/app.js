@@ -39,6 +39,9 @@ var SK = {
   // One-shot: set once the "tap again for reading settings" coachmark has been
   // shown, so the hint never nags a returning reader.
   READER_COACH: 'zimi_reader_settings_coach',
+  // One-shot: set once the "select any word to define it" tip has been shown (or
+  // the moment the reader first uses Define), so the tip appears at most once.
+  DEFINE_HINT: 'zimi_define_hint_seen',
   // Last-rendered SHARING rows (Server pane) — restored synchronously on
   // pane open so the section doesn't pop in after the status fetches.
   SHARE_ROWS: 'zimi_share_rows',
@@ -10574,38 +10577,12 @@ function openReader(url) {
       frame.contentDocument.addEventListener('auxclick', function(e) {
         if (e.button === 1) _handleFrameLink(e);
       });
-      // Right-click context menu for links inside iframe
-      frame.contentDocument.addEventListener('contextmenu', function(e) {
-        var a = e.target.closest('a[href]');
-        if (!a) return;
-        var href = a.getAttribute('href') || '';
-        if (href.startsWith('#')) return;
-        // Same _no_rewrite trick as the click handler — wombat-rewritten
-        // anchors return the original URL via .href, but with the flag set
-        // they return the actual in-archive URL (issue #17).
-        var fullUrl;
-        try {
-          var _prevNoRewrite = a._no_rewrite;
-          a._no_rewrite = true;
-          fullUrl = a.href;
-          a._no_rewrite = _prevNoRewrite;
-        } catch (ex) {
-          var frameLoc = frame.contentWindow.location;
-          try { fullUrl = new URL(href, frameLoc.href).href; } catch(ex2) { fullUrl = a.href; }
-        }
-        var wMatch = fullUrl.startsWith(location.origin) && fullUrl.match(/\/w\/([^\/]+)\/(.+)/);
-        if (wMatch) {
-          e.preventDefault();
-          e.stopPropagation();
-          var linkZim = decodeURIComponent(wMatch[1]);
-          var linkPath = decodeURIComponent(wMatch[2]).replace(/\?.*$/, '');
-          // Calculate position relative to parent window
-          var frameRect = frame.getBoundingClientRect();
-          _showLinkCtxMenu(e.clientX + frameRect.left, e.clientY + frameRect.top, {
-            zim: linkZim, path: linkPath, title: a.textContent.trim(), url: fullUrl
-          });
-        }
-      });
+      // NB: deliberately NO contextmenu listener inside the article frame. The
+      // system context menu is load-bearing on article content (copy, open link
+      // in new tab, look up, translate, image save…), so right-click inside a ZIM
+      // page must yield ONLY the browser's own menu. Zimi's custom link menu is
+      // offered on chrome article links (search results / tiles) in the parent
+      // document instead — see the delegated contextmenu handler below.
     } catch(e) { /* cross-origin — ZIM content loaded from a different origin */ }
     // Classify links: batch-resolve external URLs to find which ones are available locally
     // Only highlight links that actually resolve to a different installed ZIM
@@ -11145,6 +11122,7 @@ function openArticle(zim, path, title, opts) {
 function closeReader() {
   if (!readerOpen) return;
   _ttsStop(); // stop read-aloud when leaving the reader
+  _defineExitLookupMode(); // never leave the reader armed for a word tap
   // Sync the address bar back to the view the reader was covering — an
   // explicit close otherwise strands the article URL (a reload would
   // reopen the closed article). On popstate-driven closes the history
@@ -11446,6 +11424,13 @@ function _buildTopbarMenuHtml() {
       readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
+    }
+    // 3b. Look up a word — teaching affordance for Define. Only when a wiktionary
+    // is installed (else Define is dormant). Arms tap-to-define; a re-tap exits.
+    if (_defineFindWiktionary(_ttsLang(_readerFrameDoc()))) {
+      readerGroup += '<button class="topbar-menu-item" id="tbm-define" aria-pressed="' + (_defineLookupMode ? 'true' : 'false') +
+        '" onclick="event.stopPropagation();_closeTopbarMenu();_defineToggleLookupMode()">' + _DEFINE_BOOK_ICON +
+        ' <span class="tbm-label">' + tH('define_lookup') + '</span></button>';
     }
     // 4. Open in browser — LAST, and only where it's meaningful: the desktop app
     // or an installed/standalone PWA. In a plain browser tab you're already in a
@@ -11835,13 +11820,17 @@ function _defineIsWord(s) {
   return /[\p{L}]/u.test(s);                 // must contain a letter
 }
 
-// Selection rect in PARENT-window coords (iframe rect + selection rect).
-function _defineSelRect(frame, sel) {
+// Range rect in PARENT-window coords (iframe offset + range rect). Shared by the
+// selection path and tap-to-define, which each have a Range in hand.
+function _defineRangeRect(frame, range) {
   try {
-    var r = sel.getRangeAt(0).getBoundingClientRect();
+    var r = range.getBoundingClientRect();
     var fr = frame.getBoundingClientRect();
     return { x: r.left + fr.left, y: r.bottom + fr.top + 4, top: r.top + fr.top };
   } catch (e) { return null; }
+}
+function _defineSelRect(frame, sel) {
+  try { return _defineRangeRect(frame, sel.getRangeAt(0)); } catch (e) { return null; }
 }
 
 function _definePosition(rect) {
@@ -11877,6 +11866,8 @@ function _defineShowTrigger(frame, word, wikt, rect) {
 function _defineRun() {
   var st = _defineState;
   if (!st) return;
+  // The reader has now used Define — retire the one-shot discovery tip for good.
+  try { localStorage.setItem(SK.DEFINE_HINT, '1'); } catch (e) {}
   _definePopover.innerHTML = '<div class="define-card"><div class="define-word">' +
     esc(st.word) + '</div><div class="define-status">' + tH('define_loading') +
     '</div></div>';
@@ -11999,6 +11990,136 @@ function _defineAttachToDoc(frame) {
     if (e.button === 0) _defineSuppressChip = false;
     if (_defineState && _defineState.path !== null) _defineHide();
   }, true);
+  // First article open with a wiktionary installed → one-shot discovery tip.
+  _maybeShowDefineHint(doc);
+}
+
+// ── Define discoverability ──
+// Two teaching affordances layered on top of the select-a-word gesture, which
+// stays the fast path: (a) a one-shot bottom tip the first time an article opens
+// with a wiktionary installed, and (b) a "Look up a word" ⋯-menu entry that arms
+// a tap-to-define mode for people who never think to select text.
+
+// (a) One-shot tip — shows at most once per browser. Skipped entirely when no
+// wiktionary is installed (feature dormant) or the reader has already met Define.
+function _maybeShowDefineHint(doc) {
+  if (_getStorageFlag(SK.DEFINE_HINT)) return;
+  if (!readerOpen) return;
+  if (!_defineFindWiktionary(_ttsLang(doc))) return; // dormant: nothing to teach
+  try { localStorage.setItem(SK.DEFINE_HINT, '1'); } catch (e) {}
+  var tip = document.createElement('div');
+  tip.className = 'define-hint';
+  tip.setAttribute('role', 'status');
+  tip.innerHTML = '<span class="define-hint-icon">' + _DEFINE_BOOK_ICON + '</span>' +
+    '<span>' + tH('define_hint') + '</span>';
+  document.body.appendChild(tip);
+  requestAnimationFrame(function() { tip.classList.add('visible'); });
+  var kill = function() {
+    tip.classList.remove('visible');
+    setTimeout(function() { if (tip.parentNode) tip.remove(); }, 220);
+  };
+  var timer = setTimeout(kill, 6000);
+  tip.addEventListener('click', function() { clearTimeout(timer); kill(); });
+}
+
+// (b) Tap-to-define lookup mode. Armed from the ⋯ menu; the next tap on a word in
+// the article selects that word and runs the same Define path, then disarms. A
+// subtle banner explains it; Escape or re-tapping the menu entry exits.
+var _defineLookupMode = false;
+var _defineLookupBanner = null;
+var _defineLookupDetach = null;
+
+// The word under a point inside the reader document → { word, rect } (rect in
+// PARENT coords), or null. Uses caretRange/PositionFromPoint then expands to word
+// boundaries in the text node (letters, digits, hyphen, apostrophe). Reads the
+// word and rect straight off the Range so it works even when a programmatic
+// iframe selection doesn't "stick" (unfocused iframe); it still applies the
+// selection as visual feedback, best-effort.
+function _defineWordAt(frame, doc, win, x, y) {
+  var range = null;
+  if (doc.caretRangeFromPoint) {
+    range = doc.caretRangeFromPoint(x, y);
+  } else if (doc.caretPositionFromPoint) {
+    var pos = doc.caretPositionFromPoint(x, y);
+    if (pos) { range = doc.createRange(); range.setStart(pos.offsetNode, pos.offset); range.collapse(true); }
+  }
+  if (!range || range.startContainer.nodeType !== 3) return null; // need a text node
+  var node = range.startContainer, text = node.textContent || '', off = range.startOffset;
+  var isW = function(c) { return !!c && /[\p{L}\p{N}'’-]/u.test(c); };
+  var start = off, end = off;
+  while (start > 0 && isW(text[start - 1])) start--;
+  while (end < text.length && isW(text[end])) end++;
+  if (end <= start) return null;
+  var wr = doc.createRange();
+  wr.setStart(node, start); wr.setEnd(node, end);
+  var word = (wr.toString() || '').trim();
+  if (!word) return null;
+  var rect = _defineRangeRect(frame, wr);
+  try { var sel = win.getSelection(); sel.removeAllRanges(); sel.addRange(wr); } catch (e) {}
+  return { word: word, rect: rect };
+}
+
+function _defineToggleLookupMode() {
+  if (_defineLookupMode) { _defineExitLookupMode(); return; }
+  _defineEnterLookupMode();
+}
+
+function _defineEnterLookupMode() {
+  if (_defineLookupMode || !readerOpen) return;
+  var frame = document.getElementById('reader-frame');
+  var doc, win;
+  try { doc = frame.contentDocument; win = frame.contentWindow; } catch (e) { return; }
+  if (!doc || !win) return;
+  if (!_defineFindWiktionary(_ttsLang(doc))) return; // dormant
+  // Using lookup mode also counts as discovering Define — retire the tip.
+  try { localStorage.setItem(SK.DEFINE_HINT, '1'); } catch (e) {}
+  _defineLookupMode = true;
+  document.body.classList.add('define-lookup-armed');
+  _defineHide();
+
+  var banner = document.createElement('div');
+  banner.className = 'define-lookup-banner';
+  banner.setAttribute('role', 'status');
+  banner.innerHTML = _DEFINE_BOOK_ICON + '<span>' + tH('define_lookup_prompt') + '</span>';
+  banner.addEventListener('click', function() { _defineExitLookupMode(); });
+  document.body.appendChild(banner);
+  _defineLookupBanner = banner;
+  requestAnimationFrame(function() { banner.classList.add('visible'); });
+
+  // The next tap in the article defines that word (capture, so it runs before the
+  // frame's own link-click handler and never navigates). Escape exits.
+  var onClick = function(e) {
+    e.preventDefault(); e.stopPropagation();
+    var hit = null;
+    try { hit = _defineWordAt(frame, doc, win, e.clientX, e.clientY); } catch (ex) {}
+    _defineExitLookupMode();
+    if (hit && hit.rect && _defineIsWord(hit.word)) {
+      var wikt = _defineFindWiktionary(_ttsLang(doc));
+      if (wikt) { _defineSuppressChip = false; _defineShowTrigger(frame, hit.word, wikt, hit.rect); }
+    }
+  };
+  var onKey = function(e) { if (e.key === 'Escape') _defineExitLookupMode(); };
+  doc.addEventListener('click', onClick, true);
+  doc.addEventListener('keydown', onKey, true);
+  document.addEventListener('keydown', onKey, true);
+  _defineLookupDetach = function() {
+    try { doc.removeEventListener('click', onClick, true); } catch (ex) {}
+    try { doc.removeEventListener('keydown', onKey, true); } catch (ex) {}
+    document.removeEventListener('keydown', onKey, true);
+  };
+}
+
+function _defineExitLookupMode() {
+  if (!_defineLookupMode) return;
+  _defineLookupMode = false;
+  document.body.classList.remove('define-lookup-armed');
+  if (_defineLookupDetach) { _defineLookupDetach(); _defineLookupDetach = null; }
+  var banner = _defineLookupBanner;
+  _defineLookupBanner = null;
+  if (banner) {
+    banner.classList.remove('visible');
+    setTimeout(function() { if (banner.parentNode) banner.remove(); }, 200);
+  }
 }
 
 // Close context menu on click anywhere
