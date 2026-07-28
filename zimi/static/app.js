@@ -2173,7 +2173,7 @@ function renderCardGrid(items, showStars, showCategory) {
     const newHtml = badgeInfo
       ? '<span class="new-badge' + (isUpd ? ' updated-badge' : '') + '" title="' + escAttr(t(isUpd ? 'recently_updated' : 'recently_installed')) + '">' + tH(isUpd ? 'updated_badge' : 'new_badge') + '</span>'
       : '';
-    return '<div class="stat-card' + (newHtml ? ' is-new' : '') + '" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
+    return '<div class="stat-card' + (newHtml ? ' is-new' : '') + '" data-zim="' + escAttr(z.name) + '" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
       starHtml +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info">' +
@@ -11012,12 +11012,39 @@ function _pollExportBookmarks() {
     } else if (st.phase === 'done') {
       if (btn) btn.disabled = false;
       if (status) { status.style.color = '#34d399'; status.textContent = t('save_to_zim_done', { file: st.file || '' }); }
+      _revealExportedZim(st.file); // surface the new ZIM in the library without a manual refresh
     } else if (st.phase === 'error') {
       _exportBookmarksFail();
     } else {
       if (btn) btn.disabled = false; // idle/unknown
     }
   }).catch(_exportBookmarksFail);
+}
+// After a successful bookmark export, pull the refreshed library list (the
+// server already rescanned the new file into its cache), re-render the home
+// library so the new source's card exists, close the library panel so it's
+// visible, then scroll to the card and give it a brief highlight pulse.
+async function _revealExportedZim(file) {
+  if (!file) return;
+  try {
+    zimsCache = await _fetchList();
+    _rebuildZimsMap();
+  } catch (e) { return; }
+  var z = (zimsCache || []).find(function(x) { return x.file === file; });
+  var name = z ? z.name : file.replace(/\.zim$/, '');
+  if (!readerOpen && !currentSource && !readerSource) {
+    try { renderHome(); } catch (e) {}
+  }
+  _closeLibraryPanel();
+  // Defer so the freshly rendered cards + the panel close settle first.
+  setTimeout(function() {
+    var sel = '.stat-card[data-zim="' + ((window.CSS && CSS.escape) ? CSS.escape(name) : name) + '"]';
+    var card = document.querySelector(sel);
+    if (!card) return;
+    try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { try { card.scrollIntoView(); } catch (e2) {} }
+    card.classList.add('zimi-just-added');
+    setTimeout(function() { card.classList.remove('zimi-just-added'); }, 2600);
+  }, 120);
 }
 function toggleBookmark() {
   if (!currentArticle) return;

@@ -587,6 +587,16 @@
     box-shadow: 0 4px 24px var(--amber-glow), 0 0 0 1px var(--amber-glow);
     transform: translateY(-2px); outline: none;
   }
+  /* Brief amber pulse on a just-added source (e.g. a fresh bookmarks export)
+     so the eye lands on it after the library refreshes. Self-clears in JS. */
+  .stat-card.zimi-just-added {
+    animation: zimiJustAdded 2.6s ease-out both;
+  }
+  @keyframes zimiJustAdded {
+    0%   { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber), 0 6px 28px var(--amber-glow); }
+    70%  { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber-border), 0 4px 20px var(--amber-glow); }
+    100% { border-color: var(--border); box-shadow: none; }
+  }
   .card-icon { width: 48px; height: 48px; flex-shrink: 0; border-radius: 10px; overflow: hidden; background: var(--surface2); display: flex; align-items: center; justify-content: center; align-self: center; }
   .card-icon img { width: 42px; height: 42px; object-fit: cover; background: #fff; border-radius: 8px; padding: 2px; }
   .icon-letter { font-size: 20px; font-weight: 700; background: linear-gradient(135deg, var(--amber), #f97316); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
