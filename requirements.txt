@@ -3,3 +3,7 @@ PyMuPDF>=1.23.0
 mcp>=1.0.0
 certifi>=2024.1.1
 zeroconf>=0.130.0
+# BitTorrent accelerator. Marker-gated below 3.14 (no wheel there yet) so a
+# plain `pip install -r requirements.txt` never breaks; missing = HTTP-only.
+# Docker's base is Python 3.11 (glibc), so a wheel always resolves here.
+libtorrent==2.0.*; python_version < "3.14"

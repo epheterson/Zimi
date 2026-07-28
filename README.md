@@ -44,7 +44,7 @@ Something not right? [Open an issue.](https://github.com/epheterson/Zimi/issues)
 
 Three switches in Server Settings control all of it:
 
-- **BitTorrent** (on by default). Downloads arrive via the Kiwix swarm and seed back, capped at a ratio you choose. `0` means never seed. The Mac and Linux desktop apps and the Docker image ship their own BitTorrent engine (in-process libtorrent); a bare `pip install` uses it if the wheel is present — and everything quietly falls back to plain HTTP without it. UPnP asks your router to open the port, and the settings panel shows whether it worked.
+- **BitTorrent** (on by default). Downloads arrive via the Kiwix swarm and seed back, capped at a ratio you choose. `0` means never seed. The engine is in-process libtorrent: the desktop apps and Docker image bundle it, and `pip install zimi` pulls it automatically wherever a prebuilt wheel exists (CPython 3.9–3.13 on Linux, macOS, and Windows). If there's no wheel for your interpreter — Python 3.14+ has none yet — Zimi quietly falls back to plain HTTP and prints the one-line fix; `pip install zimi[bt]` forces the attempt. UPnP asks your router to open the port, and the settings panel shows whether it worked. Concurrent downloads and the peer-connection limit are tunable in the same panel.
 - **Nearby** (off by default). Flip it on and Zimi devices on your network find each other; a green pill on a catalog card means a neighbor already has that ZIM. Transfers stay on your LAN, never the internet.
 - **Mirror** (off). Lifts the seeding cap, for people who want to run a long-term Kiwix mirror.
 
@@ -131,7 +131,7 @@ Most people set nothing: every setting below has a sensible default or lives in 
 | `ZIM_DIR` | `/zims` | Path to ZIM files (scanned for `*.zim` on startup) |
 | `ZIMI_DATA_DIR` | `/config` (Docker) or `$ZIM_DIR/.zimi` | Cache, indexes, and settings. Mount separately in Docker. |
 | `ZIMI_MANAGE_PASSWORD` | _(none)_ | Protect library management |
-| `ZIMI_BT` | `on` | BitTorrent: `off`, or `on,port=6881,ratio=2,up=2048,seed=on,mirror=off,upnp=on,dht=on`. `seed`, `upnp`, and `dht` default on. Fields you set are locked in the UI; fields you leave out stay UI-controlled. `ratio=0` means never seed. |
+| `ZIMI_BT` | `on` | BitTorrent: `off`, or `on,port=6881,ratio=2,up=2048,seed=on,mirror=off,upnp=on,dht=on,active=4,conns=200`. `seed`, `upnp`, and `dht` default on. `active` caps concurrent downloads (the rest queue; governs HTTP too — legacy `ZIMI_MAX_CONCURRENT_DOWNLOADS` still works), `conns` is the global peer-connection limit. Fields you set are locked in the UI; fields you leave out stay UI-controlled. `ratio=0` means never seed. |
 | `ZIMI_NEARBY` | `off` | LAN sharing: `off`, or `on,name=my-zimi,public=off,ip=192.168.1.20`. Controls serving *and* fetching between your Zimi devices. Set `ip=` to your host's LAN address when running Docker in bridge mode. |
 
 <details>

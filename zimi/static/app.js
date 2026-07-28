@@ -9955,7 +9955,10 @@ function _articleUrl(zim, path) {
   return '/w/' + encodeURIComponent(zim) + '/' + p.base.split('/').map(encodeURIComponent).join('/') + p.frag;
 }
 function _titleFromPath(path) {
-  return decodeURIComponent(path.split('/').pop() || '').replace(/_/g, ' ');
+  // Drop any in-page '#fragment' — a title should name the article, not the anchor
+  // (single-page devdocs links carry 'index#section' style paths).
+  var base = _splitPathFragment(path).base;
+  return decodeURIComponent(base.split('/').pop() || '').replace(/_/g, ' ');
 }
 function _saveCurrentFile() {
   // Desktop: save the currently viewed file (PDF, EPUB) to disk
@@ -11174,6 +11177,45 @@ function _readerShare() {
 
 // ── Reader ──
 function openReader(url) {
+  // Same-document fragment scroll fast-path. When the frame already holds the
+  // target document and only the #fragment differs, a location.replace() below
+  // performs a SAME-DOCUMENT scroll and fires NO load event — so the loading
+  // overlay (shown unconditionally further down) would hang until the 15s safety
+  // timeout. Single-page docs (devdocs) whose TOC links are page-qualified
+  // ('index#anchor', not bare '#anchor') route every anchor click through here,
+  // making each in-page jump look like a 15s page load (issue #38). Detect the
+  // same-base target and scroll in place instead of running the reload cycle.
+  if (url.slice(0, 3) === '/w/' && url.indexOf('#') !== -1) {
+    var _frame0 = document.getElementById('reader-frame');
+    var _curHref = ''; try { _curHref = _frame0.contentWindow.location.href; } catch (e) {}
+    var _absTarget = location.origin + url;
+    var _docBase = function (u) { var i = u.indexOf('#'); return i < 0 ? u : u.slice(0, i); };
+    if (_curHref && _docBase(_curHref) === _docBase(_absTarget) && _curHref !== _absTarget) {
+      readerOpen = true;
+      mainView.classList.add('hidden');
+      document.getElementById('reader').classList.add('open');
+      document.documentElement.style.overflowY = 'hidden';
+      document.getElementById('reader-loading').classList.add('hidden');
+      _frame0.style.visibility = 'visible';
+      if (_readerTimeout) clearTimeout(_readerTimeout);
+      var _frag = _absTarget.slice(_absTarget.indexOf('#') + 1);
+      // Set the hash for URL consistency, then scroll the target into view
+      // explicitly. Relying on the hash alone is unreliable here — the browser
+      // skips its fragment-scroll when the hash is set programmatically right
+      // after we reveal the frame — so resolve the anchor (by id, then name) and
+      // scrollIntoView, matching the native jump the old full reload produced.
+      try { _frame0.contentWindow.location.hash = '#' + _frag; } catch (e) {}
+      try {
+        var _fdoc = _frame0.contentDocument;
+        var _dec = _frag; try { _dec = decodeURIComponent(_frag); } catch (e) {}
+        var _tgt = _fdoc.getElementById(_dec) || _fdoc.getElementById(_frag) ||
+                   _fdoc.querySelector('[name="' + (window.CSS && CSS.escape ? CSS.escape(_dec) : _dec) + '"]');
+        if (_tgt) _tgt.scrollIntoView();
+      } catch (e) {}
+      updateTopbar();
+      return;
+    }
+  }
   // EPUBs: download (Gutenberg has HTML equivalents)
   var lurl = url.toLowerCase();
   if (lurl.endsWith('.epub')) {

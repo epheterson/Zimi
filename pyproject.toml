@@ -23,6 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
     "Topic :: Text Processing :: Indexing",
 ]
@@ -30,16 +31,24 @@ dependencies = [
     "libzim>=3.1.0",
     "certifi>=2024.1.1",
     # LAN peer discovery (mDNS/Zeroconf). Pure-Python; the peer ZIM-sharing
-    # transport runs over plain HTTP so it needs no extra binary. libtorrent
-    # (the optional in-process BitTorrent accelerator) is bundled in the
-    # Docker image and desktop builds; a bare pip install uses it if present.
+    # transport runs over plain HTTP so it needs no extra binary.
     "zeroconf>=0.130.0",
+    # BitTorrent accelerator (optional at runtime, attempted by default at
+    # install). Pulled automatically wherever a prebuilt wheel exists —
+    # CPython 3.9–3.13 on manylinux (incl. aarch64), macOS, and Windows. Gated
+    # below 3.14 because no 3.14 wheel is published yet: an unmarked hard dep
+    # would make pip try a from-source build there and fail the WHOLE install,
+    # breaking the HTTP soft-fallback contract. When it's absent (3.14+, musl,
+    # exotic arch) Zimi logs a one-line fix and downloads over HTTP. Force it
+    # anywhere with `pip install zimi[bt]`.
+    "libtorrent==2.0.*; python_version < '3.14'",
 ]
 
 [project.optional-dependencies]
+bt = ["libtorrent==2.0.*"]
 pdf = ["PyMuPDF>=1.23.0"]
 mcp = ["mcp>=1.0.0"]
-all = ["PyMuPDF>=1.23.0", "mcp>=1.0.0"]
+all = ["PyMuPDF>=1.23.0", "mcp>=1.0.0", "libtorrent==2.0.*"]
 
 [project.scripts]
 zimi = "zimi.server:main"

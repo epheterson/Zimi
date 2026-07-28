@@ -1,12 +1,11 @@
 FROM python:3.11-slim
 
 COPY requirements.txt .
-# libtorrent 2.0 is the in-process BT engine for the optional torrent download
-# path (ZIMI_TORRENT=1). Off by default — HTTP downloads work without it. The
-# manylinux cp311 wheel means no apt/dist-packages games; the base is pinned to
-# python:3.11-slim so this wheel resolves.
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir "libtorrent==2.0.*"
+# requirements.txt pins libtorrent 2.0 (the in-process BT engine, ON by
+# default). The manylinux wheel — cp311 for both amd64 and aarch64 (Synology
+# and other ARM NAS) — resolves cleanly on this python:3.11-slim/glibc base, so
+# no apt/dist-packages games and no separate install step.
+RUN pip install --no-cache-dir -r requirements.txt
 
 WORKDIR /app
 COPY zimi/ ./zimi/
