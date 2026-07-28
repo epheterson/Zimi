@@ -397,9 +397,19 @@ let suggestIndex = -1;
 let snippetController = null;
 let collectionsCache = null; // {version, favorites, collections}
 let _expandedCollection = null; // which collection is expanded for ZIM picking
-// #37 home section order: array of "cat:<key>"/"col:<name>" keys. Populated by
-// _fetchList from /list?layout=1; drives renderHome section ordering.
+// #37 home section order: array of "cat:<key>"/"col:<name>"/"other" keys.
+// Populated by _fetchList from /list?layout=1; drives renderHome section ordering.
 let _sectionOrder = [];
+// #37 user-declared empty sections (category names with no ZIM yet). Offered as
+// Move-to targets and reorder rows so a section can be created before it holds
+// anything. Populated by _fetchList; written via _saveLibraryLayout({sections}).
+let _declaredSections = [];
+// The reserved category VALUE stored as an override to force a ZIM into the
+// uncategorized "Other" bucket, and the client-internal group key that bucket
+// uses. The heuristic never emits it, so its only source is an explicit move.
+const OTHER_CAT = '__other__';
+// The reserved section-order key for the Other section (server mirrors it).
+const OTHER_KEY = 'other';
 // Deep-link state for the manage reorder panel: expand it on next render, and
 // which ms-nav section to jump to after the (async) manage view mounts.
 let _reorderAutoExpand = false;
@@ -412,8 +422,9 @@ let _pendingMsSection = null;
 async function _fetchList() {
   const r = await fetch('/list?layout=1');
   const data = await r.json();
-  if (Array.isArray(data)) { _sectionOrder = []; return data; }
+  if (Array.isArray(data)) { _sectionOrder = []; _declaredSections = []; return data; }
   _sectionOrder = Array.isArray(data.section_order) ? data.section_order : [];
+  _declaredSections = Array.isArray(data.sections) ? data.sections : [];
   return Array.isArray(data.zims) ? data.zims : [];
 }
 let homeScope = null; // {type:'favorites'|'category'|'collection', label, zimNames:[]}
@@ -737,28 +748,58 @@ async function _refreshAfterAuthChange() {
   else route(false);
 }
 
-// On boot: learn whether a user session cookie is active, to shape the chrome.
-// The data is already filtered server-side regardless of this call.
-function _checkUserSession() {
-  fetch('/whoami', { credentials: 'same-origin' }).then(function(r) { return r.json(); }).then(function(j) {
-    if (j && j.role === 'user') {
-      _userSession = { name: j.name, restricted: !!j.restricted };
-      if (manageBtnEl) manageBtnEl.style.display = 'none';
-    }
-    // First-login hint: the server only sends this when the default username
-    // ("admin") applies (no custom username, no named users). The login modal
-    // reads it to show "Default username: admin".
-    _defaultUsernameHint = (j && j.default_username) || '';
-    // Private public-access mode: an anonymous visitor (no user, no admin) must
-    // see nothing but the login screen. The server already 401s every read; the
-    // gate makes the CLIENT match — an opaque, non-dismissible login overlay
-    // instead of a half-populated home whose fetches all fail in the background.
-    if (j && j.login_required && j.role === 'anonymous' && !_manageToken) {
-      _enterLoginGate();
-    }
-  }).catch(function() {});
+// Boot-time auth probe + gate. Runs BEFORE the library renders so a private
+// instance paints the login form as its FIRST frame (no empty-chrome flash),
+// and a token-authed admin is recognised without a spurious re-gate on reload.
+// Returns true when the login gate was shown — the caller then skips the whole
+// library boot; a successful sign-in reloads into a clean, authorised boot.
+//
+// Why whoami must carry the admin token: the admin's credential is a Bearer
+// token kept in client storage, NOT the session cookie the named-user path
+// rides on. A bare whoami (cookie only) can't see the admin, answers
+// `anonymous + login_required`, and used to bounce a just-signed-in admin
+// straight back to the login screen ("login wouldn't stick").
+async function _bootAuthGate() {
+  // Present any stored admin token so whoami can authenticate a token-admin.
+  if (!_manageToken) { var saved = _readManageToken(); if (saved) _manageToken = saved; }
+  var j;
+  try {
+    var r = await fetch('/whoami', {
+      credentials: 'same-origin',
+      headers: _manageToken ? _authHeaders() : {},
+    });
+    j = await r.json();
+  } catch (e) {
+    return false;  // network hiccup — fall through to the normal boot
+  }
+  // First-login hint: the server only sends this when the default username
+  // ("admin") applies (no custom username, no named users). The login modal
+  // reads it to show "Default username: admin".
+  _defaultUsernameHint = (j && j.default_username) || '';
+  if (j && j.role === 'user') {
+    _userSession = { name: j.name, restricted: !!j.restricted };
+    if (manageBtnEl) manageBtnEl.style.display = 'none';
+    return false;
+  }
+  if (j && j.role === 'admin') {
+    return false;  // token-authed admin — proceed to the full library.
+  }
+  // Private public-access mode: an anonymous visitor (no valid cookie or token)
+  // sees nothing but the login screen. The server already 401s every read; the
+  // gate makes the CLIENT match with an opaque, non-dismissible login overlay
+  // rendered as the first frame, instead of a half-populated home whose fetches
+  // all fail in the background.
+  if (j && j.login_required) {
+    // A stored token that didn't authenticate above is stale — drop it so the
+    // gate isn't skipped on the next reload.
+    if (_manageToken) { _manageToken = ''; _clearManageToken(); }
+    _applyI18nToDOM();  // localise the modal's static labels before it shows
+    _enterLoginGate();
+    return true;
+  }
+  return false;
 }
-// '' unless the server says the default username applies (see _checkUserSession).
+// '' unless the server says the default username applies (see _bootAuthGate).
 var _defaultUsernameHint = '';
 
 // ── Login gate (private public-access mode) ──
@@ -864,7 +905,7 @@ function openPwModal(title, opts) {
   document.getElementById('pw-title').textContent = title || t('enter_password');
   // Prefill: the session's known username (change-password continuity), else the
   // server-flagged default. The default is 'admin' ONLY when the sole account is
-  // the primary admin (server sends default_username then — see _checkUserSession);
+  // the primary admin (server sends default_username then — see _bootAuthGate);
   // once named users exist the field starts blank so a user types their own name
   // rather than a misleading 'admin'.
   var uEl = document.getElementById('pw-username');
@@ -1174,6 +1215,12 @@ async function init() {
   _applyRTL(_currentLang);
   await _loadI18n(_currentLang);
 
+  // Decide auth BEFORE any library chrome paints. On a private instance an
+  // anonymous visitor gets the login form as the first frame (no empty flash),
+  // and a token-authed admin is recognised so a reload never re-gates them. A
+  // shown gate reloads the page on successful sign-in, so we stop the boot here.
+  if (await _bootAuthGate()) return;
+
   output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
   // Only block on /list — everything else loads in background
   try {
@@ -1191,9 +1238,6 @@ async function init() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/static/sw.js', { scope: '/' }).catch(function() {});
   }
-  // Detect an active user-session cookie to shape the chrome (data is already
-  // filtered server-side by the cookie regardless of this call).
-  _checkUserSession();
   // Fetch secondary data in parallel, update UI as each arrives
   _initSecondary();
 }
@@ -1696,9 +1740,20 @@ function _orderSections(sections) {
   return out;
 }
 
-// The unified {key,label} list of reorderable home sections currently present —
-// collections (non-empty) + categories in use — in effective order. Shared by
-// the manage reorder panel.
+// A ZIM's effective category for grouping/ordering: its override/heuristic value,
+// or OTHER_CAT for the uncategorized catch-all (empty value, or the explicit
+// force-Other sentinel). One source of truth so home, the Installed list and the
+// reorder list bucket a ZIM identically.
+function _zimCat(z) {
+  if (!z) return OTHER_CAT;
+  return (z.category && z.category !== OTHER_CAT) ? z.category : OTHER_CAT;
+}
+
+// The unified {key,label} list of reorderable home sections — collections
+// (non-empty) + categories in use + user-declared empty sections + the Other
+// catch-all (when anything is uncategorized) — in effective order. Shared by the
+// manage reorder panel. `empty` marks a declared section with no ZIM yet (so it
+// can be removed); `other` marks the uncategorized catch-all row.
 function _currentReorderSections() {
   var sections = [];
   var colls = (collectionsCache && collectionsCache.collections) || {};
@@ -1707,11 +1762,22 @@ function _currentReorderSections() {
       sections.push({ key: 'col:' + cname, label: colls[cname].label || cname });
     }
   }
-  var seen = new Set(), cats = [];
+  var inUse = new Set(), canon = new Set(), cats = [], hasOther = false;
   (zimsCache || []).forEach(function(z) {
-    if (z.category && !seen.has(z.category)) { seen.add(z.category); cats.push(z.category); }
+    var c = _zimCat(z);
+    if (c === OTHER_CAT) { hasOther = true; return; }
+    if (!inUse.has(c)) { inUse.add(c); canon.add(_catCanonKey(c)); cats.push(c); }
   });
   cats.sort().forEach(function(c) { sections.push({ key: 'cat:' + c, label: _catDisplayName(c) }); });
+  // Declared empty sections: shown so they can be ordered / removed / targeted
+  // before any ZIM lives in them. Skip any whose ZIMs have since arrived (now
+  // in `cats`) so a section never appears twice.
+  (_declaredSections || []).forEach(function(name) {
+    if (canon.has(_catCanonKey(name))) return;
+    canon.add(_catCanonKey(name));
+    sections.push({ key: 'cat:' + name, label: _catDisplayName(name), empty: true });
+  });
+  if (hasOther) sections.push({ key: OTHER_KEY, label: t('cat_other'), other: true });
   return _orderSections(sections);
 }
 
@@ -1725,9 +1791,9 @@ function _ciGearClick(btn) {
 function _openReorderPanel() {
   _reorderAutoExpand = true;
   if (mode === 'manage' && manageTab === 'settings') {
-    switchMs('preferences');
+    switchMs('library');
   } else {
-    _pendingMsSection = 'preferences';
+    _pendingMsSection = 'library';
     enterManage();
   }
 }
@@ -1736,18 +1802,31 @@ function _openReorderPanel() {
 // categories read as different kinds of section at a glance while sharing one list.
 var _CATEGORY_GLYPH = '<svg class="reorder-type-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>';
 
+// The Other catch-all row's glyph (a tray) — distinct from the category tag and
+// collection layers so the three kinds of section read apart at a glance.
+var _OTHER_GLYPH = '<svg class="reorder-type-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>';
+
 // One draggable reorder row (keyboard fallback via the ▲▼ buttons). `first`/
 // `last` pre-disable the buttons at the ends of the list; drag/keyboard moves
-// keep them in sync via _reorderRefreshDisabled. Collections and categories share
-// one list, told apart by a per-type icon.
+// keep them in sync via _reorderRefreshDisabled. Collections, categories and the
+// Other catch-all share one list, told apart by a per-type icon. A declared-empty
+// category (`s.empty`) also carries a ✕ to remove it before any ZIM lives there.
 function _reorderRowHtml(s, first, last) {
   var isCol = s.key.indexOf('col:') === 0;
-  return '<div class="reorder-row' + (isCol ? ' reorder-row-col' : '') + '" data-key="' + escAttr(s.key) + '" draggable="true">' +
+  var glyph = s.other ? _OTHER_GLYPH : (isCol ? _COLLECTION_GLYPH : _CATEGORY_GLYPH);
+  var cls = 'reorder-row' + (isCol ? ' reorder-row-col' : '') +
+    (s.other ? ' reorder-row-other' : '') + (s.empty ? ' reorder-row-empty' : '');
+  var removeBtn = s.empty
+    ? '<button class="reorder-remove" data-remove="' + escAttr(s.key.slice(4)) +
+        '" title="' + escAttr(t('remove_section')) + '" aria-label="' + escAttr(t('remove_section')) + '">×</button>'
+    : '';
+  return '<div class="' + cls + '" data-key="' + escAttr(s.key) + '" draggable="true">' +
     '<span class="reorder-grip" aria-hidden="true">' +
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="5" r="1.6"/><circle cx="15" cy="5" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="19" r="1.6"/><circle cx="15" cy="19" r="1.6"/></svg>' +
     '</span>' +
-    '<span class="reorder-type">' + (isCol ? _COLLECTION_GLYPH : _CATEGORY_GLYPH) + '</span>' +
+    '<span class="reorder-type">' + glyph + '</span>' +
     '<span class="reorder-label">' + esc(s.label) + '</span>' +
+    removeBtn +
     '<span class="reorder-btns">' +
       '<button class="reorder-btn" data-dir="up"' + (first ? ' disabled' : '') + ' aria-label="' + escAttr(t('move_up')) + '">▲</button>' +
       '<button class="reorder-btn" data-dir="down"' + (last ? ' disabled' : '') + ' aria-label="' + escAttr(t('move_down')) + '">▼</button>' +
@@ -1768,8 +1847,17 @@ function _reorderListHtml(items, group) {
 // top-to-bottom, so what you drag is exactly what home renders.
 function _reorderSectionsHtml() {
   var sections = _currentReorderSections();
-  if (!sections.length) return '<div class="ms-hint">' + tH('reorder_empty') + '</div>';
-  return _reorderListHtml(sections, 'all');
+  var list = sections.length
+    ? _reorderListHtml(sections, 'all')
+    : '<div class="ms-hint">' + tH('reorder_empty') + '</div>';
+  // "Add section" creates an empty category up front, so a user can build the
+  // shelf before moving ZIMs onto it. Lives inside #ms-reorder so its click is
+  // caught by the same delegated handler as the row controls.
+  return list +
+    '<button type="button" class="pill reorder-add" data-add="1">' +
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+      esc(t('add_section')) +
+    '</button>';
 }
 
 // Order category names by the saved section order (cat: keys), unlisted A-Z.
@@ -1778,10 +1866,15 @@ function _orderCatsBySaved(cats) {
   var pos = {};
   (_sectionOrder || []).forEach(function(k, i) {
     if (k.indexOf('cat:') === 0) pos[k.slice(4)] = i;
+    else if (k === OTHER_KEY) pos[OTHER_CAT] = i;  // Other rides its reserved key
   });
   return cats.slice().sort(function(a, b) {
     var pa = pos[a], pb = pos[b];
-    if (pa == null && pb == null) return a.localeCompare(b);
+    if (pa == null && pb == null) {
+      if (a === OTHER_CAT) return 1;   // unlisted Other defaults last, like home
+      if (b === OTHER_CAT) return -1;
+      return a.localeCompare(b);
+    }
     if (pa == null) return 1;
     if (pb == null) return -1;
     return pa - pb;
@@ -1830,8 +1923,63 @@ function _persistReorder() {
   _persistSectionOrder(order);
 }
 
-// Keyboard fallback for drag: ▲▼ move a row up/down within the list.
+// Re-render the reorder panel in place (after add/remove) so the new row set and
+// the ▲▼ end-state stay correct without a full manage repaint.
+function _rerenderReorderPanel() {
+  var cont = document.getElementById('ms-reorder');
+  if (cont) cont.innerHTML = _reorderSectionsHtml();
+}
+
+// Create a new empty section (a declared category). Rejects blanks and
+// case-insensitive duplicates of an existing section, then persists to the
+// `sections` half of the layout and re-renders the panel in place.
+function _addSection() {
+  var name = prompt(t('add_section_prompt'));
+  if (name == null) return;
+  name = name.trim();
+  if (!name) return;
+  var canon = _catCanonKey(name);
+  var exists = _currentReorderSections().some(function(s) {
+    return s.key.indexOf('cat:') === 0 && _catCanonKey(s.key.slice(4)) === canon;
+  });
+  if (exists) { _showToast(t('section_exists')); return; }
+  _declaredSections = (_declaredSections || []).concat([name]);
+  _rerenderReorderPanel();
+  _saveLibraryLayout({ sections: _declaredSections }).then(function(res) {
+    if (!res.ok) {
+      _declaredSections = _declaredSections.filter(function(n) { return n !== name; });
+      _rerenderReorderPanel();
+      _showToast(res.status === 403 ? t('layout_locked') : t('error'));
+    } else { _showToast(t('saved')); }
+  }).catch(function() {
+    _declaredSections = _declaredSections.filter(function(n) { return n !== name; });
+    _rerenderReorderPanel(); _showToast(t('error'));
+  });
+}
+
+// Remove an empty declared section (only offered on rows with no ZIM yet). Drops
+// it from both `sections` and any lingering section_order slot, then persists.
+function _removeSection(name) {
+  var prev = (_declaredSections || []).slice();
+  _declaredSections = prev.filter(function(n) { return _catCanonKey(n) !== _catCanonKey(name); });
+  _sectionOrder = (_sectionOrder || []).filter(function(k) {
+    return !(k.indexOf('cat:') === 0 && _catCanonKey(k.slice(4)) === _catCanonKey(name));
+  });
+  _rerenderReorderPanel();
+  _saveLibraryLayout({ sections: _declaredSections, section_order: _sectionOrder }).then(function(res) {
+    if (!res.ok) {
+      _declaredSections = prev; _rerenderReorderPanel();
+      _showToast(res.status === 403 ? t('layout_locked') : t('error'));
+    }
+  }).catch(function() { _declaredSections = prev; _rerenderReorderPanel(); _showToast(t('error')); });
+}
+
+// Delegated clicks inside #ms-reorder: Add section, remove an empty section, and
+// the ▲▼ keyboard fallback for drag (move a row up/down within the list).
 function _reorderClick(e) {
+  if (e.target.closest('[data-add]')) { _addSection(); return; }
+  var rm = e.target.closest('[data-remove]');
+  if (rm) { _removeSection(rm.dataset.remove); return; }
   var btn = e.target.closest('.reorder-btn');
   if (!btn || btn.disabled) return;
   var row = btn.closest('.reorder-row');
@@ -1980,12 +2128,12 @@ function renderHome(filter) {
 
   const groups = {};
   sorted.forEach(z => {
-    const key = z.category || '_uncategorized';
+    const key = _zimCat(z);  // real category, or OTHER_CAT for the catch-all
     if (!groups[key]) groups[key] = [];
     groups[key].push(z);
   });
 
-  const cats = Object.keys(groups).filter(c => c !== '_uncategorized').sort();
+  const cats = Object.keys(groups).filter(c => c !== OTHER_CAT).sort();
 
   // #34 library filter pills: All · Recently added · Recently updated · language
   // pills. Each recency pill only appears when it has something to show, so we
@@ -2130,9 +2278,16 @@ function renderHome(filter) {
       h += '<div class="cat-heading">' + esc(_catDisplayName(cat)) + '</div>';
       h += renderCardGrid(catItems, true);
     });
+    // Other (uncategorized) sorts last in a scoped view — not reorderable here.
+    var _scopeOther = _dedupLang(groups[OTHER_CAT] || [], _langSectionNames);
+    if (_scopeOther.length > 0) {
+      h += '<div class="cat-heading cat-heading-other">' + tH('cat_other') + '</div>';
+      h += renderCardGrid(_scopeOther, true);
+    }
   } else {
-    // Unscoped home: collections + categories in one reorderable list (#37),
-    // ordered by the saved section_order (unlisted sections keep default order).
+    // Unscoped home: collections + categories + the Other catch-all in one
+    // reorderable list (#37), ordered by the saved section_order (unlisted
+    // sections keep default order — Other is built last so it defaults last).
     var _sections = [];
     if (!filter && collectionsCache && collectionsCache.collections) {
       for (const [cname, coll] of Object.entries(collectionsCache.collections)) {
@@ -2153,18 +2308,13 @@ function renderHome(filter) {
         '<div class="cat-heading clickable" onclick="enterScope(\'category\',\'' + escJs(_catDisplayName(cat)) + '\',' + escJs(JSON.stringify(catZimNames)) + ',true)">' + esc(_catDisplayName(cat)) + '</div>' +
         renderCardGrid(catItems, true) });
     });
-    h += _orderSections(_sections).map(function(s) { return s.html; }).join('');
-  }
-
-  // "Other" always sorts last, after every ordered section. Safe to run for the
-  // empty-filter branch too: `groups` derives from `zims`, so no matches means
-  // no groups.
-  if (groups._uncategorized) {
-    var uncatItems = _dedupLang(groups._uncategorized, _langSectionNames);
-    if (uncatItems.length > 0) {
-      h += '<div class="cat-heading" style="opacity:0.5">' + tH('cat_other') + '</div>';
-      h += renderCardGrid(uncatItems, true);
+    var _otherItems = _dedupLang(groups[OTHER_CAT] || [], _langSectionNames);
+    if (_otherItems.length > 0) {
+      _sections.push({ key: OTHER_KEY, html:
+        '<div class="cat-heading cat-heading-other">' + tH('cat_other') + '</div>' +
+        renderCardGrid(_otherItems, true) });
     }
+    h += _orderSections(_sections).map(function(s) { return s.html; }).join('');
   }
 
   // Counts at the bottom whenever the top bar is suppressed (idle discover view
@@ -3239,20 +3389,23 @@ const _DEFAULT_MOVE_CATEGORIES = ['Wikimedia', 'Stack Exchange', 'Dev Docs', 'Ed
 // "Encyclopedias"), so raw-value dedup let both through — the duplicate-rows bug.
 function _catCanonKey(c) { return (c ? _catDisplayName(c) : '').trim().toLowerCase(); }
 
-// Move targets = defaults ∪ any category currently in use, so a custom category
-// the user already created is offered as a reuse target (not just re-typed).
-// Defaults come first (canonical English keys the server stores); an in-use
-// category is appended only when its display name isn't already covered.
+// Move targets = defaults ∪ in-use categories ∪ user-declared empty sections,
+// so a custom category the user already created (with or without ZIMs) is a
+// reuse target rather than something to re-type. Defaults come first (canonical
+// English keys the server stores); the Other catch-all is always offered last.
 function _moveTargetCategories() {
   var seen = new Set();
   var out = [];
   function add(c) {
+    if (!c || c === OTHER_CAT) return;  // Other is appended explicitly, last
     var canon = _catCanonKey(c);
     if (!canon || seen.has(canon)) return;
     seen.add(canon); out.push(c);
   }
   _DEFAULT_MOVE_CATEGORIES.forEach(add);
   (zimsCache || []).forEach(function(z) { add(z.category); });
+  (_declaredSections || []).forEach(add);
+  out.push(OTHER_CAT);
   return out;
 }
 
@@ -3261,8 +3414,9 @@ function _moveTargetCategories() {
 // category names are user free-text, and the delegated menu handler reads them
 // off dataset, sidestepping the escJs-in-onclick trap.
 function _moveSubmenuHtml(zim) {
-  var cur = (_zimInfo(zim) || {}).category || '';
-  var curCanon = _catCanonKey(cur); // mark the current category once, by display, not raw value
+  // _zimCat resolves the effective bucket (incl. the Other catch-all) so the ✓
+  // lands on Other for an uncategorized ZIM, not just an explicitly-moved one.
+  var curCanon = _catCanonKey(_zimCat(_zimInfo(zim))); // mark by display, not raw value
   var h = '';
   _moveTargetCategories().forEach(function(c) {
     var isCur = curCanon && _catCanonKey(c) === curCanon;
@@ -3549,6 +3703,58 @@ function _moveZimTo(zim, category) {
       e.preventDefault();
     }
   });
+
+  // ── Long-press = right-click on touch (#37) ──
+  // Touch has no contextmenu, so a 500ms press on a ZIM card (home .stat-card or
+  // an Installed row) opens the same menu right-click does — the mobile answer to
+  // "where's Move to…". Movement cancels it (so it never hijacks a scroll), a
+  // short haptic confirms it fired, and the synthetic click that follows is
+  // swallowed so the press doesn't also open the ZIM. iOS's own callout is killed
+  // by -webkit-touch-callout:none on the cards (app.css).
+  var _lpTimer = null, _lpCard = null, _lpStartX = 0, _lpStartY = 0, _lpFired = false;
+  function _lpHit(target) {
+    var card = target.closest && target.closest('.stat-card, .catalog-item[data-zim]');
+    if (!card) return null;
+    var zim = card.dataset && card.dataset.zim;
+    if (!zim) {
+      var m = (card.getAttribute('onclick') || '').match(/enterSource\('([^']+)'/);
+      zim = m && m[1];
+    }
+    return zim ? { card: card, zim: zim } : null;
+  }
+  function _lpCancel() { if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; } }
+  document.addEventListener('touchstart', function(e) {
+    if (e.touches.length !== 1) { _lpCancel(); return; }
+    var hit = _lpHit(e.target);
+    if (!hit) return;
+    var t = e.touches[0];
+    _lpStartX = t.clientX; _lpStartY = t.clientY; _lpFired = false;
+    _lpTimer = setTimeout(function() {
+      _lpTimer = null; _lpFired = true; _lpCard = hit.card;
+      if (navigator.vibrate) { try { navigator.vibrate(10); } catch (_) {} }
+      if (window.getSelection) { try { window.getSelection().removeAllRanges(); } catch (_) {} }
+      _ctxZim = hit.zim; _ctxCard = hit.card; _ctxCompact = false; _ctxCustomAction = null;
+      _ctxX = _lpStartX + 2; _ctxY = _lpStartY + 2;
+      showMainMenu();
+    }, 500);
+  }, { passive: true });
+  document.addEventListener('touchmove', function(e) {
+    if (!_lpTimer) return;
+    var t = e.touches[0];
+    if (t && (Math.abs(t.clientX - _lpStartX) > 10 || Math.abs(t.clientY - _lpStartY) > 10)) _lpCancel();
+  }, { passive: true });
+  document.addEventListener('touchend', function(e) {
+    _lpCancel();
+    if (_lpFired) e.preventDefault();  // block the trailing synthetic click/open
+  });
+  document.addEventListener('touchcancel', _lpCancel, { passive: true });
+  // Capture-phase guard: swallow the click a long-press would otherwise fire on
+  // the pressed card (not menu taps — those land outside the card).
+  document.addEventListener('click', function(e) {
+    if (_lpFired && _lpCard && _lpCard.contains(e.target)) {
+      e.preventDefault(); e.stopPropagation(); _lpFired = false;
+    }
+  }, true);
 
   menu.addEventListener('click', function(e) {
     var item = e.target.closest('[data-action]');
@@ -4847,6 +5053,7 @@ const BROWSE_CATEGORIES = [
 
 // Category key → localized display name
 function _catDisplayName(key) {
+  if (key === OTHER_CAT) return t('cat_other');  // the forced-Other sentinel reads as "Other"
   // Accept both BROWSE_CATEGORIES keys ('wikipedia') and English names ('Wikimedia')
   var browseKey = _CAT_TO_BROWSE_KEY[key] || key;
   var meta = BROWSE_CATEGORIES.find(function(c) { return c.key === browseKey; });
@@ -7368,7 +7575,8 @@ function _msLibraryHtml() {
       '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none;margin-inline-start:auto">' + tH('update_all') + '</button>' +
     '</div>' +
     '<div id="library-health-section" class="library-health"></div>' +
-    '<div id="tmp-files-section"></div>';
+    '<div id="tmp-files-section"></div>' +
+    _msReorderHtml();
   // Async-load tmp file info
   manageFetch('/manage/stats').catch(function() { return null; }).then(function(r) { return r && r.json(); }).then(function(s) {
     if (!s) return;
@@ -7611,6 +7819,28 @@ function _msToggleCollapse(id, btn) {
   btn.textContent = open ? t('hide_list') : t('show_list');
 }
 
+// Section reorder + add-section panel (#37). Lives under Library settings — the
+// one obvious home for organizing the library. Collapsed by default; deep-linked
+// open from the card menu and the Installed-tab "Reorder" pill via
+// _reorderAutoExpand. Draggable rows, ▲▼ keyboard fallback, Add/remove sections.
+function _msReorderHtml() {
+  var reOpen = _reorderAutoExpand; _reorderAutoExpand = false;
+  var h = '<div class="ms-section-label" style="margin-top:20px">' + tH('reorder_sections') + '</div>' +
+    '<div class="ms-hint">' + tH('reorder_hint') + '</div>' +
+    '<button class="pill" onclick="_msToggleCollapse(\'ms-reorder\', this)">' + (reOpen ? tH('hide_list') : tH('show_list')) + '</button>' +
+    '<div class="ms-collapsed-list' + (reOpen ? ' ms-open' : '') + '" id="ms-reorder"' +
+      ' onclick="_reorderClick(event)" ondragstart="_reorderDragStart(event)"' +
+      ' ondragover="_reorderDragOver(event)" ondrop="_reorderDrop(event)"' +
+      ' ondragend="_reorderDragEnd(event)">' + _reorderSectionsHtml() + '</div>';
+  if (reOpen) {
+    setTimeout(function() {
+      var el = document.getElementById('ms-reorder');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 60);
+  }
+  return h;
+}
+
 function _msPreferencesHtml() {
   var showXzim = !_getStorageFlag(SK.HIDE_XZIM_LINKS);
   var showDiscover = !_getStorageFlag(SK.HIDE_DISCOVER);
@@ -7646,22 +7876,14 @@ function _msPreferencesHtml() {
     '<div class="ms-hint" style="margin-top:8px">' + tH('catalog_languages_hint_short') + '</div>' +
     '<button class="pill" onclick="_msToggleCollapse(\'ms-lang-pills\', this)">' + tH('show_list') + '</button>' +
     '<div class="ms-lang-pills ms-collapsed-list" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>';
-  // Section reorder (#37) — collapsed by default; deep-linked open from the
-  // card menu's "Reorder sections…" item.
-  var _reOpen = _reorderAutoExpand; _reorderAutoExpand = false;
+  // Section reorder moved to Library settings (#37). Leave a one-release pointer
+  // here so anyone who remembers the old home still lands in the right place.
   h += '<div class="ms-section-label" style="margin-top:20px">' + tH('reorder_sections') + '</div>' +
-    '<div class="ms-hint">' + tH('reorder_hint') + '</div>' +
-    '<button class="pill" onclick="_msToggleCollapse(\'ms-reorder\', this)">' + (_reOpen ? tH('hide_list') : tH('show_list')) + '</button>' +
-    '<div class="ms-collapsed-list' + (_reOpen ? ' ms-open' : '') + '" id="ms-reorder"' +
-      ' onclick="_reorderClick(event)" ondragstart="_reorderDragStart(event)"' +
-      ' ondragover="_reorderDragOver(event)" ondrop="_reorderDrop(event)"' +
-      ' ondragend="_reorderDragEnd(event)">' + _reorderSectionsHtml() + '</div>';
-  if (_reOpen) {
-    setTimeout(function() {
-      var el = document.getElementById('ms-reorder');
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 60);
-  }
+    '<div class="ms-hint">' + tH('reorder_moved_hint') + '</div>' +
+    '<button type="button" class="pill reorder-pill" onclick="_openReorderPanel()">' +
+      esc(t('open_library_settings')) +
+      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>' +
+    '</button>';
   // Reader section — mirror of the in-article palette's AUTO switch, so the
   // setting is discoverable without first opening an article. Same wording,
   // same localStorage key (via _setReaderAuto).
@@ -8024,7 +8246,9 @@ function _applyTorrentToggleInPlace(on) {
   if (controls) {
     controls.classList.toggle('share-controls-off', !on);
     controls.querySelectorAll('input, button').forEach(function(el) {
-      if (el.dataset.envlock === '1') return;
+      // data-nogate stays editable with BT off: it governs HTTP downloads too
+      // (e.g. the concurrent-download cap), not just the BT engine.
+      if (el.dataset.envlock === '1' || el.dataset.nogate === '1') return;
       el.disabled = !on;
     });
   }
@@ -8129,6 +8353,31 @@ async function _setSeedRatio(inp) {
     });
     if (!r.ok) _showToast(t('save_failed'));
   } catch (e) { _showToast(t('save_failed')); }
+}
+
+// One POST helper for the numeric BT settings that only need save/toast
+// feedback (concurrent downloads, max connections).
+async function _postBtSetting(body) {
+  try {
+    const r = await manageFetch('/manage/bt-settings', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) { _showToast(t('save_failed')); return; }
+    _showToast(t('saved'));
+  } catch (e) { _showToast(t('save_failed')); }
+}
+
+async function _setBtMaxDl(inp) {
+  const v = Math.max(1, Math.min(20, parseInt(inp.value, 10) || 4));
+  inp.value = v;
+  await _postBtSetting({max_active_downloads: v});
+}
+
+async function _setBtMaxConn(inp) {
+  const v = Math.max(10, Math.min(2000, parseInt(inp.value, 10) || 200));
+  inp.value = v;
+  await _postBtSetting({bt_max_connections: v});
 }
 
 // Clean reload glyph — the old ⟳ unicode char rendered inconsistently and
@@ -8312,6 +8561,27 @@ async function _renderMirrorSection() {
     '<span class="share-field-note">↑ MB/s</span></span>' +
     '<span class="share-field-note">' + tH('bt_limit_hint') + '</span></div>';
 
+  // Concurrent downloads: how many run at once, the rest queue. Governs HTTP
+  // and BT alike, so it stays editable even with the BT engine off
+  // (data-nogate) — only an env var locks it.
+  const dlRow = '<div class="share-field"><label>' + tH('bt_max_dl_label') + '</label>' +
+    '<span class="share-port-group">' +
+    '<input type="number" min="1" max="20" step="1" value="' + (m.max_active_downloads != null ? m.max_active_downloads : 4) + '"' +
+    (m.max_active_downloads_env_locked ? ' disabled' : '') + lockA(m.max_active_downloads_env_locked) + ' data-nogate="1"' +
+    ' class="share-num-input" aria-label="' + escAttr(t('bt_max_dl_label')) + '" onchange="_setBtMaxDl(this)">' +
+    '</span>' +
+    '<span class="share-field-note">' + tH('bt_max_dl_hint') + '</span></div>';
+
+  // Max connections: libtorrent's global socket cap (real, enforced). Pure BT
+  // engine setting, so it greys with the engine.
+  const connRow = '<div class="share-field"><label>' + tH('bt_max_conn_label') + '</label>' +
+    '<span class="share-port-group">' +
+    '<input type="number" min="10" max="2000" step="10" value="' + (m.bt_max_connections != null ? m.bt_max_connections : 200) + '"' +
+    disA(m.bt_max_connections_env_locked) + lockA(m.bt_max_connections_env_locked) +
+    ' class="share-num-input" aria-label="' + escAttr(t('bt_max_conn_label')) + '" onchange="_setBtMaxConn(this)">' +
+    '</span>' +
+    '<span class="share-field-note">' + tH('bt_max_conn_hint') + '</span></div>';
+
   const portRow = '<div class="share-field share-port-row" id="share-port-row">' + _portRowInner(bt || {}, btOn) + '</div>';
 
   const selfName = (peers && peers.self) || '';
@@ -8323,7 +8593,7 @@ async function _renderMirrorSection() {
   // Controls always present; the wrapper dims + disables them when BT is off,
   // so toggling never adds/removes rows (no layout jump).
   const btControls = '<div class="share-bt-controls' + (btOn ? '' : ' share-controls-off') + '" id="ms-bt-controls">' +
-    ratioRow + limitRow + portRow + nameRow + '</div>';
+    ratioRow + limitRow + dlRow + connRow + portRow + nameRow + '</div>';
 
   // Mirror status sits under its toggle in the right column — the SAME spot
   // as the BitTorrent "ready" dot — so both cards' status lights line up.
@@ -8370,10 +8640,12 @@ async function _renderDownloadSchedule() {
     ' onchange="_setDownloadScheduleEnabled(this.checked)"> ' + tH('dl_schedule_toggle') + '</label>';
   var lockNote = locked ? '<div class="ms-hint">' + tH('dl_window_env_locked') + '</div>' : '';
 
+  // The window times drive BOTH download-queueing and the upload restrictor, so
+  // show them whenever either is on (the download-status chip is downloads-only).
   var windowBlock = '';
-  if (enabled) {
-    var chip = '<span class="dl-window-chip ' + (s.in_window ? 'dl-window-in' : 'dl-window-out') + '">' +
-      (s.in_window ? tH('dl_in_window') : tH('dl_waiting_window')) + '</span>';
+  if (enabled || s.upload_restrict) {
+    var chip = enabled ? '<span class="dl-window-chip ' + (s.in_window ? 'dl-window-in' : 'dl-window-out') + '">' +
+      (s.in_window ? tH('dl_in_window') : tH('dl_waiting_window')) + '</span>' : '';
     windowBlock =
       '<div class="ms-dl-window">' +
         '<label>' + tH('dl_window_start') + ' <input type="time" id="ms-dl-start" value="' + escAttr(s.start) + '"' +
@@ -8382,7 +8654,7 @@ async function _renderDownloadSchedule() {
           (locked ? ' disabled' : '') + ' onchange="_setDownloadWindow()"></label>' +
         chip +
       '</div>' +
-      '<div class="ms-hint">' + tH('dl_window_hint') + '</div>';
+      (enabled ? '<div class="ms-hint">' + tH('dl_window_hint') + '</div>' : '');
   }
 
   var speedRow =
@@ -8395,7 +8667,25 @@ async function _renderDownloadSchedule() {
     '<span class="share-field-note">' + tH('dl_speed_hint') + '</span></div>' +
     (speedLocked ? '<div class="ms-hint">' + tH('dl_speed_env_locked') + '</div>' : '');
 
-  el.innerHTML = toggle + lockNote + windowBlock + speedRow;
+  // Upload restrictor: trickle seeding outside the window (one row; the trickle
+  // field + "throttling now" note only appear once it's on).
+  var uploadRestrict = !!s.upload_restrict;
+  var uploadRow =
+    '<label class="ms-toggle-row"><input type="checkbox"' +
+      (uploadRestrict ? ' checked' : '') + (locked ? ' disabled' : '') +
+      ' onchange="_setUploadRestrict(this.checked)"> ' + tH('dl_upload_restrict') + '</label>' +
+    (uploadRestrict ?
+      '<div class="ms-field ms-dl-trickle"><label>' + tH('dl_upload_trickle') + '</label>' +
+        '<span class="share-port-group">' +
+        '<input type="number" min="1" step="10" value="' + (s.upload_trickle_kb || 50) + '" id="ms-dl-trickle"' +
+          (locked ? ' disabled' : '') + ' class="share-num-input" aria-label="' + escAttr(t('dl_upload_trickle')) +
+          '" onchange="_setUploadTrickle(this)">' +
+        '<span class="share-field-note">' + tH('dl_speed_unit') + '</span></span>' +
+        '<span class="share-field-note">' + tH('dl_upload_trickle_hint') + '</span></div>' +
+        (s.upload_throttled ? '<div class="ms-hint">' + tH('dl_upload_throttled_now') + '</div>' : '')
+      : '');
+
+  el.innerHTML = toggle + lockNote + windowBlock + speedRow + uploadRow;
 }
 
 async function _postDownloadSchedule(body) {
@@ -8414,6 +8704,10 @@ function _setDownloadWindow() {
 }
 function _setDownloadSpeed(input) {
   return _postDownloadSchedule({ download_kb: Math.max(0, parseInt(input.value, 10) || 0) });
+}
+function _setUploadRestrict(on) { return _postDownloadSchedule({ upload_restrict: !!on }); }
+function _setUploadTrickle(input) {
+  return _postDownloadSchedule({ upload_trickle_kb: Math.max(1, parseInt(input.value, 10) || 50) });
 }
 
 
@@ -8439,14 +8733,22 @@ function _collectPreferences() {
   return out;
 }
 
+// The parsed bundle awaiting the admin's Apply confirmation. Nothing is written
+// until _backupApply() runs — the import is strictly preview-then-apply.
+var _pendingBackup = null;
+
 function _backupHubHtml() {
   return '<div class="ms-hint">' + tH('backup_intro') + '</div>' +
     '<div class="ms-backup-actions">' +
-      '<button class="pill" onclick="exportBackup()">' + tH('backup_export_all') + '</button>' +
+      '<button class="pill" onclick="exportBackup(\'device\')">' + tH('backup_export_device') + '</button>' +
+      '<button class="pill" onclick="exportBackup(\'server\')">' + tH('backup_export_server') + '</button>' +
       '<button class="pill" onclick="document.getElementById(\'ms-backup-file\').click()">' + tH('backup_import') + '</button>' +
       '<input type="file" id="ms-backup-file" accept="application/json,.json" style="display:none" onchange="importBackupFile(this)">' +
       '<span id="ms-backup-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
     '</div>' +
+    '<div class="ms-hint">' + tH('backup_scope_device') + '</div>' +
+    '<div class="ms-hint">' + tH('backup_scope_server') + '</div>' +
+    '<label class="ms-toggle-row"><input type="checkbox" id="ms-backup-overwrite"> ' + tH('backup_overwrite') + '</label>' +
     '<div id="ms-backup-import" class="ms-backup-import"></div>';
 }
 
@@ -8459,25 +8761,60 @@ function _downloadJson(filename, obj) {
   setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
 }
 
-async function exportBackup() {
+function _backupOverwrite() {
+  var cb = document.getElementById('ms-backup-overwrite');
+  return !!(cb && cb.checked);
+}
+
+// Bookmarks/history live in localStorage; the server never sees them. Identity
+// is zim+path, newest (by timestamp) wins on conflict — mirrors the server's
+// merge rules for the pieces it does own.
+function _bookmarkKey(b) {
+  return (b && b.zim ? b.zim : '') + '\n' + (b && b.path ? b.path : '');
+}
+
+function _mergeByKey(current, incoming, keyFn, overwrite) {
+  if (overwrite) return { list: incoming.slice(), added: incoming.length, dupes: 0 };
+  var out = current.slice(), idx = {}, added = 0, dupes = 0;
+  out.forEach(function(x, i) { idx[keyFn(x)] = i; });
+  incoming.forEach(function(x) {
+    var k = keyFn(x);
+    if (k in idx) {
+      dupes++;
+      if ((x.timestamp || 0) >= (out[idx[k]].timestamp || 0)) out[idx[k]] = x;
+    } else { idx[k] = out.length; out.push(x); added++; }
+  });
+  return { list: out, added: added, dupes: dupes };
+}
+
+async function exportBackup(scope) {
+  scope = scope === 'server' ? 'server' : 'device';
   var status = document.getElementById('ms-backup-status');
   if (status) status.textContent = t('working');
+  var bundle = null;
   try {
-    var bundle = await (await manageFetch('/manage/backup')).json();
-    // Merge the per-browser state the server never sees.
-    bundle.bookmarks = _getStorageJSON(SK.BOOKMARKS, []);
-    bundle.history = _getStorageJSON(SK.BROWSE_HISTORY, []);
-    bundle.preferences = _collectPreferences();
-    _downloadJson('zimi-backup-' + new Date().toISOString().slice(0, 10) + '.json', bundle);
-    if (status) status.textContent = t('backup_exported');
-  } catch (e) { if (status) status.textContent = t('error'); }
+    var res = await manageFetch('/manage/backup?scope=' + scope);
+    if (!res.ok) throw new Error('http ' + res.status);
+    bundle = await res.json();
+  } catch (e) {
+    // A server backup needs the server half; a device backup stays available to
+    // everyone even when the server half is unreachable — fall back to the
+    // browser-only bundle so bookmarks/history/prefs still export.
+    if (scope === 'server') { if (status) status.textContent = t('error'); return; }
+    bundle = { schema: _BACKUP_SCHEMA, scope: 'device' };
+  }
+  bundle.bookmarks = _getStorageJSON(SK.BOOKMARKS, []);
+  bundle.history = _getStorageJSON(SK.BROWSE_HISTORY, []);
+  bundle.preferences = _collectPreferences();
+  _downloadJson('zimi-backup-' + scope + '-' + new Date().toISOString().slice(0, 10) + '.json', bundle);
+  if (status) status.textContent = t('backup_exported');
 }
 
 function importBackupFile(input) {
   var f = input.files && input.files[0];
   if (!f) return;
   var reader = new FileReader();
-  reader.onload = function() { _applyBackup(reader.result); input.value = ''; };
+  reader.onload = function() { _previewBackup(reader.result); input.value = ''; };
   reader.onerror = function() {
     var status = document.getElementById('ms-backup-status');
     if (status) status.textContent = t('backup_bad_file');
@@ -8486,7 +8823,8 @@ function importBackupFile(input) {
   reader.readAsText(f);
 }
 
-async function _applyBackup(text) {
+// Step 1 of 2: compute the diff and show it. Applies NOTHING.
+async function _previewBackup(text) {
   var status = document.getElementById('ms-backup-status');
   var bundle;
   try { bundle = JSON.parse(text); } catch (e) { bundle = null; }
@@ -8494,29 +8832,89 @@ async function _applyBackup(text) {
     if (status) status.textContent = t('backup_bad_file');
     return;
   }
+  _pendingBackup = bundle;
   if (status) status.textContent = t('working');
-  // 1. Server-side: collections + home layout.
+  var overwrite = _backupOverwrite();
+  var srv = {};
+  try {
+    var res = await manageFetch('/manage/backup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({}, bundle, { action: 'preview', overwrite: overwrite })),
+    });
+    var d = await res.json().catch(function() { return {}; });
+    if (!res.ok) { if (status) status.textContent = t('error'); return; }
+    srv = d.preview || {};
+  } catch (e) { if (status) status.textContent = t('error'); return; }
+  // Browser-half counts are computed client-side (the server never sees them).
+  var bm = _mergeByKey(_getStorageJSON(SK.BOOKMARKS, []), bundle.bookmarks || [], _bookmarkKey, overwrite);
+  if (status) status.textContent = '';
+  _renderBackupPreview(srv, bm, bundle);
+}
+
+function _renderBackupPreview(srv, bm, bundle) {
+  var box = document.getElementById('ms-backup-import');
+  if (!box) return;
+  var lines = [];
+  if (srv.collections) {
+    lines.push(tH('backup_pv_collections', { added: srv.collections.col_added, replaced: srv.collections.col_replaced }));
+    lines.push(tH('backup_pv_favorites', { added: srv.collections.fav_added, dupes: srv.collections.fav_dupes }));
+  }
+  lines.push(tH('backup_pv_bookmarks', { added: bm.added, dupes: bm.dupes }));
+  if (srv.layout && (srv.layout.over_added || srv.layout.over_changed)) {
+    lines.push(tH('backup_pv_overrides', { added: srv.layout.over_added, changed: srv.layout.over_changed }));
+  }
+  if (srv.users) lines.push(tH('backup_pv_users', { added: srv.users.added, replaced: srv.users.replaced }));
+  if (srv.settings && srv.settings.length) lines.push(tH('backup_pv_settings', { n: srv.settings.length }));
+  if (srv.missing_zims) lines.push(tH('backup_pv_missing', { n: srv.missing_zims }));
+  box.innerHTML =
+    '<div class="ms-backup-preview">' +
+      '<div class="ms-hint">' + tH('backup_preview_title') + '</div>' +
+      lines.map(function(l) { return '<div class="ms-backup-pv-line">' + l + '</div>'; }).join('') +
+      '<div class="ms-backup-actions">' +
+        '<button class="pill" onclick="_backupApply()">' + tH('backup_apply') + '</button>' +
+        '<button class="pill" onclick="_backupCancel()">' + tH('backup_cancel') + '</button>' +
+      '</div>' +
+    '</div>';
+}
+
+function _backupCancel() {
+  _pendingBackup = null;
+  var box = document.getElementById('ms-backup-import');
+  if (box) box.innerHTML = '';
+  var status = document.getElementById('ms-backup-status');
+  if (status) status.textContent = t('backup_cancelled');
+}
+
+// Step 2 of 2: the admin confirmed — write the server half then the browser half.
+async function _backupApply() {
+  var bundle = _pendingBackup;
+  if (!bundle) return;
+  var status = document.getElementById('ms-backup-status');
+  var overwrite = _backupOverwrite();
+  if (status) status.textContent = t('working');
   try {
     await manageFetch('/manage/backup', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        schema: bundle.schema,
-        collections: bundle.collections,
-        library_layout: bundle.library_layout,
-      }),
+      body: JSON.stringify(Object.assign({}, bundle, { action: 'apply', overwrite: overwrite })),
     });
   } catch (e) {}
-  // 2. Per-browser: preferences, bookmarks, history back into localStorage.
+  // Per-browser: preferences (whole-replace of known keys), bookmarks + history
+  // (merged, or replaced under overwrite).
   if (bundle.preferences && typeof bundle.preferences === 'object') {
     Object.keys(bundle.preferences).forEach(function(k) {
       if (_PREF_KEYS.indexOf(k) === -1) return;  // ignore unknown/foreign keys
       try { localStorage.setItem(k, bundle.preferences[k]); } catch (e) {}
     });
   }
-  if (Array.isArray(bundle.bookmarks)) _setStorageJSON(SK.BOOKMARKS, bundle.bookmarks);
-  if (Array.isArray(bundle.history)) _setStorageJSON(SK.BROWSE_HISTORY, bundle.history);
+  if (Array.isArray(bundle.bookmarks)) {
+    _setStorageJSON(SK.BOOKMARKS, _mergeByKey(_getStorageJSON(SK.BOOKMARKS, []), bundle.bookmarks, _bookmarkKey, overwrite).list);
+  }
+  if (Array.isArray(bundle.history)) {
+    _setStorageJSON(SK.BROWSE_HISTORY, _mergeByKey(_getStorageJSON(SK.BROWSE_HISTORY, []), bundle.history, _bookmarkKey, overwrite).list);
+  }
   if (status) status.textContent = t('backup_imported');
-  // 3. Library: offer to re-seed any ZIMs the backup lists but we don't have.
+  _pendingBackup = null;
+  // Library: offer to re-seed any ZIMs the backup lists but we don't have.
   _renderMissingZims(bundle.library || []);
 }
 
@@ -8687,7 +9085,8 @@ function getInstalledPillsHtml() {
           _COLLECTION_GLYPH + esc(s.label) + '</button>';
         continue;
       }
-      const cat = s.key.slice(4);
+      // The Other catch-all rides the reserved 'other' key (not a cat: slice).
+      const cat = s.key === OTHER_KEY ? OTHER_CAT : s.key.slice(4);
       const dimmed = manageLangFilter && langsByCat[cat] && !langsByCat[cat].has(manageLangFilter);
       h += '<button class="pill cat-pill' + (manageCategoryFilter === cat ? ' active' : '') + (dimmed ? ' dimmed' : '') +
         '" data-key="' + escAttr(s.key) + '" data-cat="' + escAttr(cat) +
@@ -8749,7 +9148,11 @@ function _zimCardHtml(z, opts) {
   const langTag = (z.language && z.language !== 'en')
     ? '<span class="ci-lang-tag">' + esc(_langDisplayName(z.language)) + '</span>' : '';
   const cls = 'catalog-item' + (opts.extraClass ? ' ' + opts.extraClass : '') + (opts.selected ? ' ci-selected' : '');
-  return '<div class="' + cls + '"' +
+  // opts.dragZim makes the row a drag source for the Installed-list section DnD
+  // (#37): data-zim names the ZIM; draggable is pointer-only (touch uses the
+  // long-press menu), so it never fights list scroll on mobile.
+  const dragAttr = opts.dragZim ? ' draggable="true" data-zim="' + escAttr(opts.dragZim) + '"' : '';
+  return '<div class="' + cls + '"' + dragAttr +
       (opts.onclick ? ' style="cursor:pointer" onclick="' + opts.onclick + '"' : '') + '>' +
     '<div class="ci-icon">' + iconHtml + '</div>' +
     '<div class="ci-info">' +
@@ -8774,7 +9177,7 @@ function renderInstalled(filterText) {
   const groups = {};
   const pendingUpdates = [];
   for (const z of zims) {
-    const cat = z.category || categorizeZim(z.name);
+    const cat = _zimCat(z);  // real category or OTHER_CAT — matches the home grouping
     if (manageCategoryFilter && cat !== manageCategoryFilter) continue;
     if (manageLangFilter && !_zimMatchesLang(z, manageLangFilter)) continue;
     if (filterText) {
@@ -8810,7 +9213,10 @@ function renderInstalled(filterText) {
     items.sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
     items_h += '<div class="manage-installed-group' + (cat === '__updates__' ? ' mig-updates' : '') + '">';
     const groupLabel = cat === '__updates__' ? t('updates_available_section') : _catDisplayName(cat);
-    items_h += '<div class="ci-section-label">' + esc(groupLabel) + ' (' + items.length + ')</div>';
+    // Real-category headers are drop targets for the row DnD (#37) — data-cat
+    // names the destination; the Updates pseudo-group is never a target.
+    const dropAttr = cat === '__updates__' ? '' : ' data-cat="' + escAttr(cat) + '"';
+    items_h += '<div class="ci-section-label"' + dropAttr + '>' + esc(groupLabel) + ' (' + items.length + ')</div>';
     for (const z of items) {
       const meta = [];
       const countHtml = _zimCountHtml(z);
@@ -8857,6 +9263,7 @@ function renderInstalled(filterText) {
         onclick: 'if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(z.name) + '\',true)}',
         metaHtml: meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; '),
         actionsHtml: gearHtml + actionsHtml,
+        dragZim: manageEnabled ? z.name : null,
       });
     }
     items_h += '</div>';
@@ -8864,7 +9271,64 @@ function renderInstalled(filterText) {
   if (!items_h) items_h = '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
 
   el.innerHTML = getInstalledPillsHtml() + items_h;
+  // Pointer DnD: drag a row onto a section header to move that ZIM there (#37).
+  // Assigned per render (idempotent) since innerHTML above replaced the children.
+  el.ondragstart = _installedDragStart;
+  el.ondragover = _installedDragOver;
+  el.ondragleave = _installedDragLeave;
+  el.ondrop = _installedDrop;
+  el.ondragend = _installedDragEnd;
   _fillInstalledDownloads(el);
+}
+
+// ── Installed-list drag-to-move (#37) ──
+// Drag a ZIM row onto a category section header to reassign it — the dense,
+// touch-safe surface (mobile organizes via the long-press menu, not DnD). The
+// dragged ZIM rides in a module var (dataTransfer text is a fallback for the
+// browser's own bookkeeping). Headers light up via .drop-target while hovered.
+var _instDragZim = null;
+var _instDropTarget = null;
+function _installedDragStart(e) {
+  var row = e.target.closest('.catalog-item[data-zim]');
+  if (!row) return;
+  _instDragZim = row.dataset.zim;
+  row.classList.add('ci-dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', _instDragZim); } catch (_) {}
+}
+function _installedDragOver(e) {
+  if (!_instDragZim) return;
+  var hdr = e.target.closest('.ci-section-label[data-cat]');
+  if (!hdr) { _installedClearDrop(); return; }
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  if (_instDropTarget !== hdr) {
+    _installedClearDrop();
+    _instDropTarget = hdr; hdr.classList.add('drop-target');
+  }
+}
+function _installedDragLeave(e) {
+  if (_instDropTarget && !_instDropTarget.contains(e.relatedTarget)) _installedClearDrop();
+}
+function _installedClearDrop() {
+  if (_instDropTarget) { _instDropTarget.classList.remove('drop-target'); _instDropTarget = null; }
+}
+function _installedDrop(e) {
+  var hdr = e.target.closest('.ci-section-label[data-cat]');
+  if (!hdr || !_instDragZim) { _installedClearDrop(); return; }
+  e.preventDefault();
+  var cat = hdr.dataset.cat;
+  var zim = _instDragZim;
+  _installedClearDrop();
+  // No-op if it's already in that bucket, so a stray drop doesn't toast "Saved".
+  var cur = _zimInfo(zim);
+  if (cur && _zimCat(cur) !== cat) _moveZimTo(zim, cat);
+}
+function _installedDragEnd() {
+  _instDragZim = null;
+  _installedClearDrop();
+  var d = document.querySelector('.catalog-item.ci-dragging');
+  if (d) d.classList.remove('ci-dragging');
 }
 
 async function managePassword() {
