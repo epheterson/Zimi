@@ -15,7 +15,12 @@ import os
 import platform
 import sysconfig
 
-from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
+from PyInstaller.utils.hooks import (
+    collect_all,
+    collect_data_files,
+    collect_dynamic_libs,
+    collect_submodules,
+)
 
 block_cipher = None
 
@@ -77,15 +82,45 @@ if platform.system() == 'Windows':
     if os.path.isfile(_ws_dll):
         winsparkle_bins.append((_ws_dll, '.'))
 
+# ---------------------------------------------------------------------------
+# Windows: pythonnet + clr_loader (drives pywebview's WebView2 backend).
+# ---------------------------------------------------------------------------
+# pywebview's edgechromium/winforms backend reaches .NET through pythonnet,
+# which loads Python.Runtime.dll (shipped inside the pythonnet package) via
+# clr_loader's native netfx hosting shim (clr_loader/ffi/dlls/**/*.dll). None
+# of that is a plain Python import, so PyInstaller's static analysis misses it
+# unless we collect the whole packages. Missing pieces = a frozen app that
+# crashes at launch trying to bring up the window. Windows-only; on mac/linux
+# these packages aren't installed and this collects nothing.
+pythonnet_datas = []
+pythonnet_bins = []
+windows_hiddenimports = []
+if platform.system() == 'Windows':
+    for _pkg in ('pythonnet', 'clr_loader'):
+        _d, _b, _h = collect_all(_pkg)
+        pythonnet_datas += _d
+        pythonnet_bins += _b
+        windows_hiddenimports += _h
+    # WebView2 interop DLLs live in webview/lib/ as data, not importable code.
+    pythonnet_datas += collect_data_files('webview')
+    windows_hiddenimports += [
+        'clr',
+        'clr_loader',
+        'clr_loader.netfx',
+        'pythonnet',
+        'webview.platforms.edgechromium',
+        'webview.platforms.winforms',
+    ]
+
 a = Analysis(
     ['zimi_desktop.py'],
     pathex=[],
-    binaries=libzim_bins + lt_bins + winsparkle_bins,
+    binaries=libzim_bins + lt_bins + winsparkle_bins + pythonnet_bins,
     datas=[
         ('zimi/templates', 'zimi/templates'),
         ('zimi/assets', 'zimi/assets'),
         ('zimi/static', 'zimi/static'),
-    ],
+    ] + pythonnet_datas,
     hiddenimports=[
         'zimi',
         'zimi.server',
@@ -108,7 +143,7 @@ a = Analysis(
         # Windows auto-updater bridge (imported lazily in zimi_desktop).
         'zimi_winsparkle',
         *lt_hidden,
-    ] + zeroconf_hiddenimports + (['gi'] if platform.system() == 'Linux' else []),
+    ] + zeroconf_hiddenimports + windows_hiddenimports + (['gi'] if platform.system() == 'Linux' else []),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

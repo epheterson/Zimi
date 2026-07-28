@@ -15,26 +15,31 @@ import sys
 import threading
 
 # ---------------------------------------------------------------------------
-# Windows: configure pythonnet to use CoreCLR (.NET 6+) before any imports
-# that trigger pywebview → pythonnet. Without this, clr_loader defaults to
-# .NET Framework 4.x which can't load the .NET 6 Python.Runtime.dll.
-# In PyInstaller bundles, also point at the bundled .NET runtime.
+# Windows: force pythonnet onto the .NET Framework runtime BEFORE any import
+# that triggers pywebview → pythonnet (must run before `import webview`).
+#
+# pywebview's Windows backend (edgechromium/winforms) hosts the WebView2
+# control inside a System.Windows.Forms window and does
+# `clr.AddReference('System.Windows.Forms')`. WinForms is a .NET Framework
+# desktop assembly that lives in the GAC and always resolves under the netfx
+# runtime — every Windows box ships .NET Framework 4.x. Under CoreCLR the base
+# runtime has no desktop assemblies, so in a frozen app the reference resolves
+# to a null-token AssemblyName and fails with:
+#   Could not load file or assembly 'System.Windows.Forms, PublicKeyToken=null'
+# which surfaces to the user as an unhandled-exception launch crash.
 # ---------------------------------------------------------------------------
 if platform.system() == "Windows":
-    os.environ.setdefault("PYTHONNET_RUNTIME", "coreclr")
-    if getattr(sys, '_MEIPASS', None):
-        _dotnet = os.path.join(sys._MEIPASS, "dotnet_runtime")
-        if os.path.isdir(_dotnet):
-            os.environ.setdefault("DOTNET_ROOT", _dotnet)
+    os.environ.setdefault("PYTHONNET_RUNTIME", "netfx")
 
 
 # ---------------------------------------------------------------------------
 # Icon path — resolve relative to this script (works in dev and PyInstaller)
 # ---------------------------------------------------------------------------
 
+
 def _icon_path():
     """Find the app icon, handling both dev and PyInstaller bundle paths."""
-    if getattr(sys, '_MEIPASS', None):
+    if getattr(sys, "_MEIPASS", None):
         # PyInstaller bundle: assets are at _MEIPASS/zimi/assets/
         base = os.path.join(sys._MEIPASS, "zimi")
     else:
@@ -48,15 +53,20 @@ def _icon_path():
 # ConfigManager — cross-platform persistent config
 # ---------------------------------------------------------------------------
 
+
 def _config_dir():
     """Platform-appropriate config directory."""
     system = platform.system()
     if system == "Darwin":
-        return os.path.join(os.path.expanduser("~"), "Library", "Application Support", "Zimi")
+        return os.path.join(
+            os.path.expanduser("~"), "Library", "Application Support", "Zimi"
+        )
     elif system == "Windows":
         return os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Zimi")
     else:  # Linux / other
-        xdg = os.environ.get("XDG_CONFIG_HOME", os.path.join(os.path.expanduser("~"), ".config"))
+        xdg = os.environ.get(
+            "XDG_CONFIG_HOME", os.path.join(os.path.expanduser("~"), ".config")
+        )
         return os.path.join(xdg, "zimi")
 
 
@@ -109,6 +119,7 @@ class ConfigManager:
 # ServerThread — runs Zimi HTTP server in background
 # ---------------------------------------------------------------------------
 
+
 def _find_open_port(start=8899, end=8910):
     """Find the first available port in range."""
     for port in range(start, end + 1):
@@ -149,6 +160,7 @@ class ServerThread(threading.Thread):
 
             # Import zimi here so env vars are set first
             import zimi
+
             zimi.ZIM_DIR = self.zim_dir
             zimi.ZIMI_DATA_DIR = self.data_dir
             os.makedirs(zimi.ZIMI_DATA_DIR, exist_ok=True)
@@ -158,6 +170,7 @@ class ServerThread(threading.Thread):
             zimi._migrate_data_files()
 
             from http.server import ThreadingHTTPServer
+
             server = ThreadingHTTPServer(("127.0.0.1", port), zimi.ZimHandler)
             self.ready.set()  # UI can load now — /list works from cache
 
@@ -193,9 +206,13 @@ class ServerThread(threading.Thread):
                     if conn:
                         try:
                             for prefix in ("a", "m", "s"):
-                                conn.execute("SELECT title FROM titles WHERE title_lower >= ? LIMIT 1", (prefix,)).fetchone()
+                                conn.execute(
+                                    "SELECT title FROM titles WHERE title_lower >= ? LIMIT 1",
+                                    (prefix,),
+                                ).fetchone()
                         except Exception:
                             pass
+
             threading.Thread(target=_warm, daemon=True).start()
 
             server.serve_forever()
@@ -208,6 +225,7 @@ class ServerThread(threading.Thread):
 # DesktopAPI — JS bridge exposed via pywebview
 # ---------------------------------------------------------------------------
 
+
 class DesktopAPI:
     """Methods callable from JavaScript as window.pywebview.api.*"""
 
@@ -218,9 +236,9 @@ class DesktopAPI:
     def choose_folder(self, initial=None):
         """Open native folder picker dialog. Returns path or None."""
         import webview
+
         result = webview.windows[0].create_file_dialog(
-            webview.FOLDER_DIALOG,
-            directory=initial or os.path.expanduser("~")
+            webview.FOLDER_DIALOG, directory=initial or os.path.expanduser("~")
         )
         return result[0] if result else None
 
@@ -256,6 +274,7 @@ class DesktopAPI:
     def open_external(self, url):
         """Open a URL in the system's default browser/app."""
         import webbrowser
+
         webbrowser.open(url)
 
     def download_file(self, url, suggested_name="download"):
@@ -309,6 +328,7 @@ class DesktopAPI:
             return False
         try:
             import zimi_winsparkle
+
             return zimi_winsparkle.check_update_with_ui()
         except Exception:
             return False
@@ -322,12 +342,14 @@ class DesktopAPI:
 # macOS Dock icon — replace Python rocket with Zimi icon
 # ---------------------------------------------------------------------------
 
+
 def _set_macos_app_identity(window_ref=None):
     """Set Dock icon, process name, and native menu bar on macOS."""
     if platform.system() != "Darwin":
         return
     try:
         from Foundation import NSBundle, NSProcessInfo
+
         # Set process name shown when hovering Dock icon
         NSProcessInfo.processInfo().setProcessName_("Zimi")
         # Override bundle name so Dock and menu bar say "Zimi"
@@ -343,6 +365,7 @@ def _set_macos_app_identity(window_ref=None):
     if icon:
         try:
             from AppKit import NSApplication, NSImage
+
             app = NSApplication.sharedApplication()
             img = NSImage.alloc().initWithContentsOfFile_(icon)
             if img:
@@ -363,21 +386,25 @@ def _init_sparkle_updater():
         return
     try:
         import objc
+
         # Load Sparkle.framework from the app bundle's Frameworks/ directory
         bundle_path = None
-        if getattr(sys, '_MEIPASS', None):
+        if getattr(sys, "_MEIPASS", None):
             # PyInstaller bundle: framework is in Contents/Frameworks/
             app_bundle_path = os.path.dirname(os.path.dirname(sys._MEIPASS))
-            bundle_path = os.path.join(app_bundle_path, "Frameworks", "Sparkle.framework")
+            bundle_path = os.path.join(
+                app_bundle_path, "Frameworks", "Sparkle.framework"
+            )
         if not bundle_path or not os.path.exists(bundle_path):
             # Dev mode: framework in repo root
-            bundle_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Sparkle.framework")
+            bundle_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "Sparkle.framework"
+            )
         if not os.path.exists(bundle_path):
             return
 
         sparkle_bundle = objc.loadBundle(
-            "Sparkle", bundle_path=bundle_path,
-            module_globals=globals()
+            "Sparkle", bundle_path=bundle_path, module_globals=globals()
         )
 
         # SPUStandardUpdaterController manages the full update lifecycle
@@ -391,6 +418,7 @@ def _init_sparkle_updater():
         # Point at architecture-specific appcast so AS users get the AS DMG
         import platform as _plat
         from Foundation import NSURL
+
         arch = _plat.machine()  # "arm64" or "x86_64"
         arch_suffix = "arm64" if arch == "arm64" else "intel"
         feed_url = f"https://raw.githubusercontent.com/epheterson/Zimi/main/appcast-{arch_suffix}.xml"
@@ -469,18 +497,21 @@ def _setup_macos_menu(window_ref):
 
         # Add View menu with Reload (Cmd+R)
         from AppKit import NSMenu
+
         view_menu = NSMenu.alloc().initWithTitle_("View")
         reload_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
             "Reload", "reloadPage:", "r"
         )
         reload_item.setTarget_(delegate)
         view_menu.addItem_(reload_item)
-        view_menu_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("View", None, "")
+        view_menu_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "View", None, ""
+        )
         view_menu_item.setSubmenu_(view_menu)
         main_menu.addItem_(view_menu_item)
 
         # Add "Check for Updates..." if Sparkle is initialized
-        controller = getattr(_init_sparkle_updater, '_controller', None)
+        controller = getattr(_init_sparkle_updater, "_controller", None)
         if controller:
             update_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
                 "Check for Updates\u2026", "checkForUpdates:", ""
@@ -518,6 +549,7 @@ LOADING_HTML = """\
 # Window lifecycle — save geometry on close
 # ---------------------------------------------------------------------------
 
+
 def _save_window_geometry(window, config):
     """Save window size and position to config."""
     try:
@@ -533,6 +565,7 @@ def _save_window_geometry(window, config):
 # ---------------------------------------------------------------------------
 # main — orchestrate startup
 # ---------------------------------------------------------------------------
+
 
 def _run():
     """Actual app entry point (called by wrapper or directly with --run)."""
@@ -557,12 +590,15 @@ def _run():
 
     # Create window with loading splash first
     window = webview.create_window(
-        'Zimi',
+        "Zimi",
         html=LOADING_HTML,
         js_api=api,
-        width=win_w, height=win_h, min_size=(800, 600),
-        x=win_x, y=win_y,
-        background_color='#0a0a0b',
+        width=win_w,
+        height=win_h,
+        min_size=(800, 600),
+        x=win_x,
+        y=win_y,
+        background_color="#0a0a0b",
     )
     window_ref["window"] = window
 
@@ -577,6 +613,7 @@ def _run():
         if platform.system() == "Darwin":
             try:
                 from PyObjCTools import AppHelper
+
                 AppHelper.callAfter(_init_sparkle_updater)
             except Exception:
                 pass
@@ -584,6 +621,7 @@ def _run():
             try:
                 import zimi_winsparkle
                 from zimi.server import ZIMI_VERSION
+
                 zimi_winsparkle.init_updater(ZIMI_VERSION)
             except Exception:
                 pass
@@ -601,16 +639,17 @@ def _run():
                 f'<html><body style="font-family:system-ui;background:#0a0a0b;color:#e8e8ed;padding:40px">'
                 f'<h2 style="color:#f59e0b">Failed to start server</h2>'
                 f'<pre style="color:#6e6e7a;margin-top:16px">{server.error}</pre>'
-                f'</body></html>'
+                f"</body></html>"
             )
             return
 
-        window.load_url(f'http://127.0.0.1:{server.actual_port}')
+        window.load_url(f"http://127.0.0.1:{server.actual_port}")
 
         # Wait for the page to load, then ensure desktop mode is activated.
         # pywebview's cocoa backend doesn't fire the 'loaded' event, so we
         # poll from Python until the page has the Zimi JS loaded.
         import time
+
         for _ in range(20):  # up to 10s
             time.sleep(0.5)
             try:
@@ -648,7 +687,7 @@ def _run():
     window.events.shown += _on_webview_ready
 
     # On Windows, force Edge WebView2 backend (avoids pythonnet/.NET issues)
-    gui = 'edgechromium' if platform.system() == 'Windows' else None
+    gui = "edgechromium" if platform.system() == "Windows" else None
     webview.start(gui=gui)
 
 
@@ -685,6 +724,7 @@ def _serve_headless():
     data_dir = os.environ.get("ZIMI_DATA_DIR") or os.path.join(zim_dir, ".zimi")
 
     import zimi
+
     zimi.ZIM_DIR = zim_dir
     zimi.ZIMI_DATA_DIR = data_dir
     os.makedirs(zimi.ZIMI_DATA_DIR, exist_ok=True)
@@ -704,6 +744,7 @@ def _serve_headless():
     threading.Thread(target=zimi._build_all_title_indexes, daemon=True).start()
 
     from http.server import ThreadingHTTPServer
+
     server = ThreadingHTTPServer(("127.0.0.1", port), zimi.ZimHandler)
     actual_port = server.server_address[1]
     # Same background services as the GUI and the serve CLI — this path
@@ -716,8 +757,81 @@ def _serve_headless():
         server.shutdown()
 
 
+def _smoke_test_window():
+    """Headed smoke test: open a REAL pywebview window, confirm it shows, tear
+    it down, and exit. Enabled via ZIMI_DESKTOP_SMOKE=1 or --smoke.
+
+    The headless --serve smoke only exercises the embedded HTTP server, so it
+    can't catch failures in window creation itself — e.g. the pythonnet /
+    System.Windows.Forms assembly-load crash that shipped in a Windows build.
+    This path drives the same backend the app uses (EdgeChromium on Windows)
+    so any runtime/assembly failure aborts the build.
+
+    Contract: prints "SMOKE: window shown" and exits 0 on success; prints a
+    "SMOKE: FAIL ..." line and exits nonzero on any exception or a 90s timeout.
+    """
+    import time
+
+    import webview
+
+    shown = threading.Event()
+
+    def _watchdog():
+        # A window that never shows (hang, missing WebView2, backend crash that
+        # doesn't raise) must still fail the build rather than block forever.
+        if not shown.wait(90):
+            print("SMOKE: FAIL — window never shown within 90s", flush=True)
+            os._exit(1)
+
+    threading.Thread(target=_watchdog, daemon=True).start()
+
+    window = webview.create_window(
+        "Zimi Smoke",
+        html="<!DOCTYPE html><html><body style='background:#0a0a0b'></body></html>",
+        width=480,
+        height=320,
+    )
+
+    def _on_shown():
+        # Reaching here proves the native window + its .NET backend came up.
+        print("SMOKE: window shown", flush=True)
+        shown.set()
+
+        # Tear the window down from a separate thread so this handler returns
+        # and the GUI loop is idle before destroy() runs — destroying inline
+        # from the shown callback can race the loop on some backends. Once the
+        # window closes, webview.start() returns and we exit cleanly.
+        def _teardown():
+            time.sleep(0.3)
+            try:
+                window.destroy()
+            except Exception:
+                pass
+
+        threading.Thread(target=_teardown, daemon=True).start()
+
+    window.events.shown += _on_shown
+
+    gui = "edgechromium" if platform.system() == "Windows" else None
+    try:
+        webview.start(gui=gui)
+    except Exception as e:
+        print(f"SMOKE: FAIL — webview.start raised: {e}", flush=True)
+        os._exit(1)
+
+    if not shown.is_set():
+        print("SMOKE: FAIL — webview exited without showing a window", flush=True)
+        os._exit(1)
+    print("SMOKE: OK", flush=True)
+    os._exit(0)
+
+
 def main():
     """Wrapper that restarts the app when exit code is 42."""
+    if os.environ.get("ZIMI_DESKTOP_SMOKE") == "1" or "--smoke" in sys.argv:
+        _smoke_test_window()
+        return
+
     if "--serve" in sys.argv:
         _serve_headless()
         return

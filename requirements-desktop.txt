@@ -7,10 +7,15 @@ pyinstaller>=6.0.0
 zeroconf>=0.130.0
 # Windows desktop backend. pywebview 5.x/6.x drives the native Edge WebView2
 # runtime through .NET, which it reaches via pythonnet (+ clr_loader). pywebview
-# already declares `pythonnet; sys_platform == "win32"` transitively, but we pin
-# it explicitly with an env marker so PyInstaller always collects it into the
-# bundle and mac/linux builds skip it entirely.
-pythonnet>=3.0.0 ; sys_platform == "win32"
+# declares `pythonnet` transitively, but we pin both explicitly with an env
+# marker so PyInstaller always collects them into the bundle and mac/linux
+# builds skip them entirely. The app forces the .NET Framework runtime
+# (PYTHONNET_RUNTIME=netfx) at startup — WinForms/System.Windows.Forms only
+# resolves there, not under CoreCLR. pythonnet 3.0.3 is the first release with
+# CPython 3.12 support (CI builds on 3.12); clr_loader ships the netfx hosting
+# shim DLLs the bundle needs.
+pythonnet>=3.0.3 ; sys_platform == "win32"
+clr_loader>=0.2.6 ; sys_platform == "win32"
 
 # In-process BitTorrent engine (optional download accelerator + seeding).
 # Installed separately by the build (deploy.sh / desktop-release.yml), NOT
