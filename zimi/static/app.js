@@ -7395,6 +7395,14 @@ function _msServerHtml() {
     '<div id="ms-mirror-status" class="share-rows-slot">' +
       (shareCached || _shareSkeletonHtml()) + '</div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
+  // Downloads: nightly window scheduler + the global download speed cap.
+  h += '<div class="ms-section-label">' + tH('downloads_section') + '</div>' +
+    '<div id="ms-dl-schedule" class="ms-dl-schedule">' + tH('loading') + '</div>' +
+    '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
+  // Backup & export hub — filled async after the pane paints.
+  h += '<div class="ms-section-label">' + tH('backup_section') + '</div>' +
+    '<div id="ms-backup" class="ms-backup">' + _backupHubHtml() + '</div>' +
+    '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
   h += '<div class="ms-section-label">' + tH('storage_section') + '</div>' +
     '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
     '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>';
@@ -7451,6 +7459,7 @@ function _msServerHtml() {
     _renderHotZimsSection();
     _renderSeedingSection();
     _renderMirrorSection();
+    _renderDownloadSchedule();
   }, 0);
   // Cache info section
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
@@ -7995,20 +8004,17 @@ async function _renderMirrorSection() {
     '<span class="share-field-note">×</span></span>' +
     '<span class="share-field-note">' + tH('seed_ratio_zero_inline') + '</span></div>';
 
-  // Global up/down bandwidth caps (MB/s in the UI, 0 = unlimited). Mirror
-  // rides these too - there's no separate mirror speed setting anymore.
+  // Upload bandwidth cap (MB/s in the UI, 0 = unlimited). Mirror + seeding ride
+  // this too. The DOWNLOAD cap lives in the Downloads card below (one global
+  // number governs HTTP + BT) so it isn't rendered twice.
   const upMb = m.bt_up_kb ? +(m.bt_up_kb / 1024).toFixed(2) : 0;
-  const downMb = m.bt_down_kb ? +(m.bt_down_kb / 1024).toFixed(2) : 0;
-  // Arrows sit to the RIGHT of each input so the first input's left edge
-  // lines up with the ratio/port inputs above and below it.
-  const limitRow = '<div class="share-field"><label>' + tH('bt_limit_label') + '</label>' +
+  // Arrow sits to the RIGHT of the input so its left edge lines up with the
+  // ratio/port inputs above and below it.
+  const limitRow = '<div class="share-field"><label>' + tH('bt_up_limit_label') + '</label>' +
     '<span class="share-port-group">' +
     '<input type="number" min="0" step="0.5" value="' + upMb + '"' + disA(m.bt_up_env_locked) + lockA(m.bt_up_env_locked) +
     ' class="share-num-input" aria-label="' + escAttr(t('bt_limit_up')) + '" onchange="_setBtLimit(this,\'up\')">' +
-    '<span class="share-field-note">↑</span>' +
-    '<input type="number" min="0" step="0.5" value="' + downMb + '"' + disA(m.bt_down_env_locked) + lockA(m.bt_down_env_locked) +
-    ' class="share-num-input" aria-label="' + escAttr(t('bt_limit_down')) + '" onchange="_setBtLimit(this,\'down\')">' +
-    '<span class="share-field-note">↓ MB/s</span></span>' +
+    '<span class="share-field-note">↑ MB/s</span></span>' +
     '<span class="share-field-note">' + tH('bt_limit_hint') + '</span></div>';
 
   const portRow = '<div class="share-field share-port-row" id="share-port-row">' + _portRowInner(bt || {}, btOn) + '</div>';
@@ -8051,6 +8057,220 @@ async function _renderMirrorSection() {
   try { localStorage.setItem(SK.SHARE_ROWS, h); } catch (e) {}
   // Fill the status dot + port dot in place.
   _renderSeedingSection();
+}
+
+
+// ── Download scheduling card (nightly window + global download speed cap) ──
+async function _renderDownloadSchedule() {
+  var el = document.getElementById('ms-dl-schedule');
+  if (!el) return;
+  var s;
+  try { s = await (await manageFetch('/manage/download-schedule')).json(); }
+  catch (e) { el.textContent = t('error'); return; }
+  window._dlSchedule = s;
+  var enabled = !!s.enabled, locked = !!s.locked, speedLocked = !!s.download_kb_locked;
+
+  var toggle = '<label class="ms-toggle-row"><input type="checkbox"' +
+    (enabled ? ' checked' : '') + (locked ? ' disabled' : '') +
+    ' onchange="_setDownloadScheduleEnabled(this.checked)"> ' + tH('dl_schedule_toggle') + '</label>';
+  var lockNote = locked ? '<div class="ms-hint">' + tH('dl_window_env_locked') + '</div>' : '';
+
+  var windowBlock = '';
+  if (enabled) {
+    var chip = '<span class="dl-window-chip ' + (s.in_window ? 'dl-window-in' : 'dl-window-out') + '">' +
+      (s.in_window ? tH('dl_in_window') : tH('dl_waiting_window')) + '</span>';
+    windowBlock =
+      '<div class="ms-dl-window">' +
+        '<label>' + tH('dl_window_start') + ' <input type="time" id="ms-dl-start" value="' + escAttr(s.start) + '"' +
+          (locked ? ' disabled' : '') + ' onchange="_setDownloadWindow()"></label>' +
+        '<label>' + tH('dl_window_end') + ' <input type="time" id="ms-dl-end" value="' + escAttr(s.end) + '"' +
+          (locked ? ' disabled' : '') + ' onchange="_setDownloadWindow()"></label>' +
+        chip +
+      '</div>' +
+      '<div class="ms-hint">' + tH('dl_window_hint') + '</div>';
+  }
+
+  var speedRow =
+    '<div class="ms-field ms-dl-speed"><label>' + tH('dl_speed_limit') + '</label>' +
+    '<span class="share-port-group">' +
+    '<input type="number" min="0" step="64" value="' + (s.download_kb || 0) + '" id="ms-dl-speed"' +
+      (speedLocked ? ' disabled' : '') + ' class="share-num-input" aria-label="' + escAttr(t('dl_speed_limit')) +
+      '" onchange="_setDownloadSpeed(this)">' +
+    '<span class="share-field-note">' + tH('dl_speed_unit') + '</span></span>' +
+    '<span class="share-field-note">' + tH('dl_speed_hint') + '</span></div>' +
+    (speedLocked ? '<div class="ms-hint">' + tH('dl_speed_env_locked') + '</div>' : '');
+
+  el.innerHTML = toggle + lockNote + windowBlock + speedRow;
+}
+
+async function _postDownloadSchedule(body) {
+  try {
+    await manageFetch('/manage/download-schedule', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+  } catch (e) {}
+  _renderDownloadSchedule();
+}
+function _setDownloadScheduleEnabled(on) { return _postDownloadSchedule({ enabled: !!on }); }
+function _setDownloadWindow() {
+  var st = document.getElementById('ms-dl-start'), en = document.getElementById('ms-dl-end');
+  if (!st || !en) return;
+  return _postDownloadSchedule({ enabled: true, start: st.value, end: en.value });
+}
+function _setDownloadSpeed(input) {
+  return _postDownloadSchedule({ download_kb: Math.max(0, parseInt(input.value, 10) || 0) });
+}
+
+
+// ── Backup & export hub ──────────────────────────────────────────────────
+// A backup bundle (schema "zimi-backup") is assembled from two sources:
+//   • SERVER  — library list, collections/favorites, home layout (/manage/backup)
+//   • BROWSER — bookmarks, history, and the preference localStorage keys below
+// Export merges both into one file; import writes the server half via
+// /manage/backup and the browser half straight back into localStorage. Keep
+// _PREF_KEYS and the server's _BACKUP_SCHEMA_VERSION in lockstep.
+var _BACKUP_SCHEMA = 'zimi-backup';
+var _PREF_KEYS = [
+  SK.UI_LANG, SK.HIDE_DISCOVER, SK.HIDE_LANG_CHOOSER, SK.HIDE_XZIM_LINKS,
+  SK.A11Y_REWRITE, SK.LIBRARY_VIEW, SK.PREF_LANGUAGES, SK.PREF_FLAVOR,
+  SK.READER_FONT, SK.READER_FAMILY, SK.READER_THEME, SK.READER_AUTO,
+];
+
+function _collectPreferences() {
+  var out = {};
+  _PREF_KEYS.forEach(function(k) {
+    try { var v = localStorage.getItem(k); if (v !== null) out[k] = v; } catch (e) {}
+  });
+  return out;
+}
+
+function _backupHubHtml() {
+  return '<div class="ms-hint">' + tH('backup_intro') + '</div>' +
+    '<div class="ms-backup-actions">' +
+      '<button class="pill" onclick="exportBackup()">' + tH('backup_export_all') + '</button>' +
+      '<button class="pill" onclick="document.getElementById(\'ms-backup-file\').click()">' + tH('backup_import') + '</button>' +
+      '<input type="file" id="ms-backup-file" accept="application/json,.json" style="display:none" onchange="importBackupFile(this)">' +
+      '<span id="ms-backup-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
+    '</div>' +
+    '<div id="ms-backup-import" class="ms-backup-import"></div>';
+}
+
+function _downloadJson(filename, obj) {
+  var blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+}
+
+async function exportBackup() {
+  var status = document.getElementById('ms-backup-status');
+  if (status) status.textContent = t('working');
+  try {
+    var bundle = await (await manageFetch('/manage/backup')).json();
+    // Merge the per-browser state the server never sees.
+    bundle.bookmarks = _getStorageJSON(SK.BOOKMARKS, []);
+    bundle.history = _getStorageJSON(SK.BROWSE_HISTORY, []);
+    bundle.preferences = _collectPreferences();
+    _downloadJson('zimi-backup-' + new Date().toISOString().slice(0, 10) + '.json', bundle);
+    if (status) status.textContent = t('backup_exported');
+  } catch (e) { if (status) status.textContent = t('error'); }
+}
+
+function importBackupFile(input) {
+  var f = input.files && input.files[0];
+  if (!f) return;
+  var reader = new FileReader();
+  reader.onload = function() { _applyBackup(reader.result); input.value = ''; };
+  reader.onerror = function() {
+    var status = document.getElementById('ms-backup-status');
+    if (status) status.textContent = t('backup_bad_file');
+    input.value = '';
+  };
+  reader.readAsText(f);
+}
+
+async function _applyBackup(text) {
+  var status = document.getElementById('ms-backup-status');
+  var bundle;
+  try { bundle = JSON.parse(text); } catch (e) { bundle = null; }
+  if (!bundle || bundle.schema !== _BACKUP_SCHEMA) {
+    if (status) status.textContent = t('backup_bad_file');
+    return;
+  }
+  if (status) status.textContent = t('working');
+  // 1. Server-side: collections + home layout.
+  try {
+    await manageFetch('/manage/backup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        schema: bundle.schema,
+        collections: bundle.collections,
+        library_layout: bundle.library_layout,
+      }),
+    });
+  } catch (e) {}
+  // 2. Per-browser: preferences, bookmarks, history back into localStorage.
+  if (bundle.preferences && typeof bundle.preferences === 'object') {
+    Object.keys(bundle.preferences).forEach(function(k) {
+      if (_PREF_KEYS.indexOf(k) === -1) return;  // ignore unknown/foreign keys
+      try { localStorage.setItem(k, bundle.preferences[k]); } catch (e) {}
+    });
+  }
+  if (Array.isArray(bundle.bookmarks)) _setStorageJSON(SK.BOOKMARKS, bundle.bookmarks);
+  if (Array.isArray(bundle.history)) _setStorageJSON(SK.BROWSE_HISTORY, bundle.history);
+  if (status) status.textContent = t('backup_imported');
+  // 3. Library: offer to re-seed any ZIMs the backup lists but we don't have.
+  _renderMissingZims(bundle.library || []);
+}
+
+async function _renderMissingZims(library) {
+  var box = document.getElementById('ms-backup-import');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!Array.isArray(library) || !library.length) return;
+  // Which backup ZIMs aren't installed here?
+  var installed = new Set();
+  try {
+    var list = await (await fetch('/list')).json();
+    (Array.isArray(list) ? list : (list.zims || [])).forEach(function(z) { if (z && z.name) installed.add(z.name); });
+  } catch (e) {}
+  var missing = library.filter(function(z) { return z && z.name && !installed.has(z.name); });
+  if (!missing.length) {
+    box.innerHTML = '<div class="ms-hint">' + tH('backup_library_complete') + '</div>';
+    return;
+  }
+  // Resolve download URLs from the catalog by ZIM name.
+  try { await loadFullCatalog(); } catch (e) {}
+  var urls = [], unresolved = 0;
+  missing.forEach(function(z) {
+    var url = _catalogItemUrl(_catalogItemForZim(z.name));
+    if (url) urls.push(url); else unresolved++;
+  });
+  var note = unresolved ? '<div class="ms-hint">' + tH('backup_missing_unresolved', { n: unresolved }) + '</div>' : '';
+  if (!urls.length) { box.innerHTML = '<div class="ms-hint">' + tH('backup_missing_none') + '</div>' + note; return; }
+  box.innerHTML =
+    '<div class="ms-hint">' + tH('backup_missing_found', { n: urls.length }) + '</div>' +
+    '<button class="pill" id="ms-backup-dl-btn" onclick=\'_downloadMissingZims(' + JSON.stringify(urls) + ')\'>' +
+      tH('backup_download_missing', { n: urls.length }) + '</button>' + note;
+}
+
+async function _downloadMissingZims(urls) {
+  var btn = document.getElementById('ms-backup-dl-btn');
+  if (btn) { btn.disabled = true; btn.textContent = t('starting'); }
+  try {
+    // Reuse the batch download machinery — it honors the download schedule, so
+    // a nightly window parks these as "scheduled" automatically.
+    var r = await manageFetch('/manage/download-batch', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ urls: urls }),
+    });
+    var d = await r.json();
+    if (btn) btn.textContent = t('backup_queued', { n: d.started || 0 });
+    _dlPrevAllDone = false;
+    refreshDownloads();
+    if (window._nudgeActivityPoll) window._nudgeActivityPoll();
+  } catch (e) { if (btn) { btn.textContent = t('error'); btn.disabled = false; } }
 }
 
 

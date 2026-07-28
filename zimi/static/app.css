@@ -1126,6 +1126,24 @@
   .dl-item .dl-size { color: var(--text2); flex-shrink: 0; }
   .dl-item .dl-done { color: var(--amber); font-weight: 600; }
   .dl-item .dl-error { color: var(--error); font-weight: 600; }
+  .dl-item .dl-scheduled { color: var(--text2); flex-shrink: 0; font-weight: 500; }
+  /* Download-scheduling card */
+  .ms-toggle-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
+  .ms-toggle-row input[disabled] { cursor: not-allowed; }
+  .ms-dl-window { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 10px; }
+  .ms-dl-window label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); }
+  .ms-dl-window input[type="time"] {
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 6px; font-size: 13px;
+  }
+  .ms-dl-window input[type="time"]:disabled { opacity: 0.6; }
+  .ms-dl-speed { margin-top: 12px; }
+  .dl-window-chip { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .dl-window-chip.dl-window-in { color: var(--amber); background: var(--amber-glow); border: 1px solid var(--amber-border); }
+  .dl-window-chip.dl-window-out { color: var(--text2); background: var(--surface2); border: 1px solid var(--border); }
+  /* Backup & export hub */
+  .ms-backup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+  .ms-backup-import { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
   .dl-progress { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
   .dl-progress-bar { height: 100%; background: var(--amber); border-radius: 2px; transition: width 0.5s; }
   .dl-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
