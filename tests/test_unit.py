@@ -604,6 +604,65 @@ class TestTitleIndex(unittest.TestCase):
             self.zimi._close_title_db = orig_close
 
 
+class TestZimgitCatalogParse(unittest.TestCase):
+    """zimgit database.js parsing — Python-style single-quoted dicts.
+
+    zimgit ZIMs ship a database.js whose payload is a Python literal (single
+    quotes, not JSON), so parse_catalog must use ast.literal_eval. These tests
+    pin that quirk: the same bytes json.loads chokes on must parse cleanly.
+    """
+
+    def setUp(self):
+        from zimi import search
+
+        self.search = search
+
+    def _archive_with_db(self, content):
+        """MagicMock archive whose database.js entry yields `content`."""
+        from unittest.mock import MagicMock
+
+        archive = MagicMock()
+        entry = MagicMock()
+        entry.get_item.return_value.content = bytearray(content.encode("utf-8"))
+        archive.get_entry_by_path.return_value = entry
+        return archive
+
+    def test_parses_python_style_single_quoted_dicts(self):
+        # Real zimgit shape: single quotes, trailing semicolon, id/ti/dsc/aut/fp.
+        db = (
+            "var DATABASE = ["
+            "{'_id': '00000', 'ti': 'First Aid', 'dsc': 'Field Manual', "
+            "'aut': 'US Army', 'fp': ['First Aid (1).pdf']}"
+            "];"
+        )
+        items = self.search.parse_catalog(self._archive_with_db(db))
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["ti"], "First Aid")
+        self.assertEqual(items[0]["fp"], ["First Aid (1).pdf"])
+
+    def test_json_would_reject_same_payload(self):
+        # Guards the reason ast.literal_eval exists: JSON can't read single quotes.
+        import ast
+        import json
+
+        payload = "[{'ti': 'X'}]"
+        with self.assertRaises(json.JSONDecodeError):
+            json.loads(payload)
+        self.assertEqual(ast.literal_eval(payload), [{"ti": "X"}])
+
+    def test_missing_database_js_returns_none(self):
+        from unittest.mock import MagicMock
+
+        archive = MagicMock()
+        archive.get_entry_by_path.side_effect = KeyError("database.js")
+        self.assertIsNone(self.search.parse_catalog(archive))
+
+    def test_malformed_payload_returns_none(self):
+        # A non-literal (function call) must fail closed, not raise.
+        archive = self._archive_with_db("var DATABASE = do_evil();")
+        self.assertIsNone(self.search.parse_catalog(archive))
+
+
 class TestQuoteExtraction(unittest.TestCase):
     """Test wikiquote quote and attribution extraction from HTML."""
 

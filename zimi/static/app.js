@@ -3490,6 +3490,70 @@ function _autoOpenSourceMain(name, mainPath) {
   openReader('/w/' + encodeURIComponent(name) + '/' + mainPath);
 }
 
+// ── zimgit / PDF collection document list ──
+// A zimgit-* ZIM is a collection of PDFs described by database.js. We render it
+// as a searchable document list (title + author + size + description) instead of
+// a reader — the header already flags it as a document collection.
+var _zimgitDocs = [];      // documents for the collection currently shown
+var _zimgitZimName = '';   // ZIM they belong to (for the filter's re-render)
+
+function _zimgitDocHtml(name, d, i) {
+  var hasPath = !!d.path;
+  var call = hasPath
+    ? "openArticle('" + escJs(name) + "', '" + escJs(d.path) + "', '" + escJs(d.title || '') + "')"
+    : '';
+  var clickAttr = hasPath
+    ? ' onclick="' + call + '" onkeydown="if(event.key===\'Enter\')' + call + '"'
+    : '';
+  var meta = [];
+  if (d.author) meta.push(esc(d.author));
+  if (d.size) meta.push(_fmtBytes(d.size));
+  var metaHtml = meta.length ? '<div class="zg-meta">' + meta.join(' · ') + '</div>' : '';
+  return '<div class="result zg-doc"' +
+    (hasPath ? ' tabindex="0" role="button" data-zim="' + escAttr(name) + '" data-path="' + escAttr(d.path) + '" data-title="' + escAttr(d.title || '') + '"' : '') +
+    ' style="animation-delay:' + (i * 0.04) + 's"' + clickAttr + '>' +
+    '<div class="zg-icon" aria-hidden="true">PDF</div>' +
+    '<div class="result-body">' +
+      '<div class="title">' + esc(d.title) + '</div>' +
+      (d.description ? '<div class="snippet">' + esc(d.description) + '</div>' : '') +
+      metaHtml +
+    '</div></div>';
+}
+
+function _renderZimgitCatalog(name, docs) {
+  _zimgitDocs = docs;
+  _zimgitZimName = name;
+  // The filter earns its space only on longer lists; short ones scan fine.
+  var showFilter = docs.length > 6;
+  var h = '<div class="cat-heading">' + tH('documents', {n: docs.length}) + '</div>';
+  if (showFilter) {
+    h += '<input type="search" id="zg-filter" class="zg-filter" autocomplete="off" ' +
+      'placeholder="' + escAttr(t('filter_documents')) + '" aria-label="' + escAttr(t('filter_documents')) + '" ' +
+      'oninput="_filterZimgitCatalog(this.value)">';
+  }
+  h += '<div class="results" id="zg-results">' +
+    docs.map(function(d, i) { return _zimgitDocHtml(name, d, i); }).join('') + '</div>';
+  output.innerHTML = h;
+}
+
+function _filterZimgitCatalog(q) {
+  var qq = (q || '').trim().toLowerCase();
+  var results = document.getElementById('zg-results');
+  if (!results) return;
+  var filtered = !qq ? _zimgitDocs : _zimgitDocs.filter(function(d) {
+    return (d.title || '').toLowerCase().indexOf(qq) >= 0 ||
+           (d.description || '').toLowerCase().indexOf(qq) >= 0 ||
+           (d.author || '').toLowerCase().indexOf(qq) >= 0;
+  });
+  if (!filtered.length) {
+    results.innerHTML = '<div class="zg-empty">' + tH('no_matching_documents') + '</div>';
+    return;
+  }
+  results.innerHTML = filtered.map(function(d, i) {
+    return _zimgitDocHtml(_zimgitZimName, d, i);
+  }).join('');
+}
+
 // ── Render: Source ──
 async function renderSource(name) {
   const info = _zimInfo(name);
@@ -3502,19 +3566,24 @@ async function renderSource(name) {
   const iconHtml = info.has_icon
     ? '<img src="/w/' + encodeURIComponent(name) + '/-/icon" alt="" width="64" height="64">'
     : '<span class="icon-letter" style="font-size:28px">' + esc(info.title || name)[0].toUpperCase() + '</span>';
+  // zimgit-* ZIMs are PDF/document collections, not encyclopedias — the header
+  // says so, and below they get a searchable document list instead of a reader.
+  const isZimgit = name.startsWith('zimgit-');
+  const collectionChip = isZimgit
+    ? ' &middot; <span class="sh-chip">' + tH('document_collection') + '</span>'
+    : '';
   const headerHtml = '<div class="source-header">' +
     '<div class="sh-icon">' + iconHtml + '</div>' +
     '<div class="sh-info">' +
       '<h1>' + esc(info.title || name) + '</h1>' +
       '<div class="sh-meta">' + _zimCountHtml(info) +
-      ' &middot; ' + fmtSize(info.size_gb) + '</div>' +
+      ' &middot; ' + fmtSize(info.size_gb) + collectionChip + '</div>' +
       (info.description ? '<div class="sh-desc">' + esc(info.description) + '</div>' : '') +
       '<div class="sh-actions" id="sh-download" hidden></div>' +
     '</div></div>';
 
   // For ZIMs with a homepage, go straight to reader (skip intermediate page)
   // Unless navigating back via popstate — show the source page instead
-  const isZimgit = name.startsWith('zimgit-');
   if (info.main_path && !isZimgit && !_popstateNoAutoReader) {
     _autoOpenSourceMain(name, info.main_path);
     return;
@@ -3536,16 +3605,7 @@ async function renderSource(name) {
     const data = await res.json();
     if (mode !== 'source' || currentSource !== name) return; // stale
     if (data.documents && data.documents.length) {
-      output.innerHTML = '<div class="cat-heading">' + tH('documents', {n: data.count}) + '</div>' +
-        '<div class="results">' + data.documents.map((d, i) => {
-          const hasPath = !!d.path;
-          const clickAttr = hasPath ? ' onclick="openArticle(\'' + escJs(name) + '\', \'' + escJs(d.path) + '\', \'' + escJs(d.title || '') + '\')" onkeydown="if(event.key===\'Enter\')openArticle(\'' + escJs(name) + '\', \'' + escJs(d.path) + '\', \'' + escJs(d.title || '') + '\')"' : '';
-          return '<div class="result"' + (hasPath ? ' tabindex="0" role="button" data-zim="' + escAttr(name) + '" data-path="' + escAttr(d.path) + '" data-title="' + escAttr(d.title || '') + '"' : '') + ' style="animation-delay:' + (i * 0.04) + 's"' + clickAttr + '>' +
-            '<div class="result-body">' +
-            '<div class="title">' + esc(d.title) + '</div>' +
-            (d.description ? '<div class="snippet">' + esc(d.description) + '</div>' : '') +
-            '</div></div>';
-        }).join('') + '</div>';
+      _renderZimgitCatalog(name, data.documents);
       return;
     }
   } catch(e) {}

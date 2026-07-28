@@ -656,6 +656,29 @@
   .sh-desc { font-size: 13px; color: var(--text2); margin-top: 4px; line-height: 1.5; }
   .sh-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
   .dl-pill { text-decoration: none; display: inline-block; }
+  /* zimgit "document collection" flag in the source header meta line */
+  .sh-chip {
+    display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
+    color: var(--amber); background: var(--amber-glow); border: 1px solid var(--amber-border);
+    border-radius: 999px; padding: 1px 8px; vertical-align: middle;
+  }
+  /* ── zimgit / PDF collection document list ── */
+  .zg-filter {
+    width: 100%; box-sizing: border-box; margin: 0 0 12px; padding: 9px 12px;
+    background: var(--surface); color: var(--text); font-size: 14px;
+    border: 1px solid var(--border); border-radius: var(--radius); outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .zg-filter:focus { border-color: var(--amber-border); box-shadow: 0 0 0 1px var(--amber-glow); }
+  .zg-doc { display: flex; gap: 12px; align-items: flex-start; }
+  .zg-icon {
+    flex-shrink: 0; width: 38px; height: 46px; margin-top: 2px; border-radius: 4px;
+    background: var(--surface2); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.05em; color: var(--amber);
+  }
+  .zg-meta { font-size: 11px; color: var(--text2); margin-top: 4px; }
+  .zg-empty { padding: 28px 8px; text-align: center; color: var(--text2); font-size: 13px; }
 
   /* ── Source cards ── */
   .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 8px; margin-top: 8px; }

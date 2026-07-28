@@ -2343,12 +2343,22 @@ def get_catalog(zim_name):
     docs = []
     for doc in catalog:
         fps = doc.get("fp", [])
+        path = f"files/{fps[0]}" if fps else None
+        # Cheap size hint: the PDF entry's item.size is metadata (no decompress).
+        # Runs under _zim_lock (caller holds it) so touching libzim here is safe.
+        size = None
+        if path:
+            try:
+                size = archive.get_entry_by_path(path).get_item().size
+            except Exception:
+                size = None
         docs.append(
             {
                 "title": doc.get("ti", "?"),
                 "description": doc.get("dsc", ""),
                 "author": doc.get("aut", ""),
-                "path": f"files/{fps[0]}" if fps else None,
+                "path": path,
+                "size": size,
             }
         )
     return {"zim": zim_name, "documents": docs, "count": len(docs)}
