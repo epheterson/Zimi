@@ -9449,6 +9449,25 @@ var _READER_VIEW_STASH = '__zimiReaderStash'; // property name on the frame docu
 // (px) — i.e. it was actually scaled down and there's more detail to reveal.
 var _READER_LIGHTBOX_CLASS = 'zimi-img-lightbox';
 var _READER_LIGHTBOX_SLOP = 2;
+// Full-bleed lightbox overlay chrome — the scrim, the pan/zoom image, and the
+// close button. Shared VERBATIM by Reader View (_readerViewInjectStyle) and the
+// normal article frame (_bindNormalReaderLightbox); only the zoom-in cursor /
+// focus-ring rule differs per context, so it's added at each call site. Defined
+// once here so the two hosts can never drift.
+var _READER_LIGHTBOX_OVERLAY_CSS = [
+  '.' + _READER_LIGHTBOX_CLASS + '{position:fixed;inset:0;z-index:2147483000;',
+    'background:rgba(0,0,0,0.9);overflow:auto;display:flex;cursor:zoom-out;',
+    '-webkit-overflow-scrolling:touch;overscroll-behavior:contain}',
+  '.' + _READER_LIGHTBOX_CLASS + ' .zimi-lightbox-img{margin:auto;display:block;',
+    'max-width:none !important;max-height:none !important;height:auto !important;',
+    'width:auto !important;border-radius:0;cursor:zoom-out}',
+  '.zimi-lightbox-close{position:fixed;top:12px;right:14px;width:40px;height:40px;',
+    'border-radius:50%;border:none;background:rgba(0,0,0,0.55);color:#fff;',
+    'font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;',
+    'justify-content:center;z-index:1;-webkit-backdrop-filter:blur(6px);',
+    'backdrop-filter:blur(6px)}',
+  '.zimi-lightbox-close:hover,.zimi-lightbox-close:focus-visible{background:rgba(0,0,0,0.8);outline:2px solid #fff}'
+].join('');
 // Chrome that Reader View drops. Wikipedia/MediaWiki-heavy; harmless no-ops on
 // other ZIM DOMs (stackexchange/devdocs) whose main element is already clean.
 var _READER_VIEW_STRIP = [
@@ -9634,25 +9653,13 @@ function _readerViewInjectStyle(doc) {
     // a subtle focus ring so keyboard users can see the target.
     '.zimi-reader img.zimi-zoomable{cursor:zoom-in}',
     '.zimi-reader img.zimi-zoomable:focus-visible{outline:2px solid var(--rv-link);outline-offset:3px}',
-    // Full-bleed lightbox: fixed scrim covering the iframe viewport, itself the
-    // scroll container (overflow:auto) so a larger-than-viewport image PANS on
-    // both axes via native scroll (drag/trackpad on desktop, swipe on touch).
-    // margin:auto on the image — NOT flex centering — so it centers when small
-    // yet never clips its top/left edge when it overflows (the classic
-    // flex-centering-in-a-scroller trap). touch-action left default so pinch-zoom
-    // works on mobile. z-index above every ZIM stylesheet.
-    '.' + _READER_LIGHTBOX_CLASS + '{position:fixed;inset:0;z-index:2147483000;',
-      'background:rgba(0,0,0,0.9);overflow:auto;display:flex;cursor:zoom-out;',
-      '-webkit-overflow-scrolling:touch;overscroll-behavior:contain}',
-    '.' + _READER_LIGHTBOX_CLASS + ' .zimi-lightbox-img{margin:auto;display:block;',
-      'max-width:none !important;max-height:none !important;height:auto !important;',
-      'width:auto !important;border-radius:0;cursor:zoom-out}',
-    '.zimi-lightbox-close{position:fixed;top:12px;right:14px;width:40px;height:40px;',
-      'border-radius:50%;border:none;background:rgba(0,0,0,0.55);color:#fff;',
-      'font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;',
-      'justify-content:center;z-index:1;-webkit-backdrop-filter:blur(6px);',
-      'backdrop-filter:blur(6px)}',
-    '.zimi-lightbox-close:hover,.zimi-lightbox-close:focus-visible{background:rgba(0,0,0,0.8);outline:2px solid #fff}',
+    // Full-bleed lightbox chrome (scrim + pan/zoom image + close button): the
+    // scrim is itself the scroll container (overflow:auto) so a larger-than-
+    // viewport image PANS on both axes via native scroll (drag/trackpad on
+    // desktop, swipe on touch). margin:auto on the image — NOT flex centering —
+    // so it centers when small yet never clips its top/left edge when it
+    // overflows. Shared with the normal reader frame; see the constant above.
+    _READER_LIGHTBOX_OVERLAY_CSS,
     '.zimi-reader figure{margin:1.3em auto}',
     '.zimi-reader figcaption{font-size:0.78em;color:var(--rv-muted);font-family:-apple-system,sans-serif;',
       'text-align:center;margin-top:0.4em;line-height:1.45}',
@@ -9705,6 +9712,27 @@ function _readerImgZoomable(img) {
   var nw = img.naturalWidth || 0;
   var cw = img.clientWidth || 0;
   return nw > 0 && cw > 0 && nw > cw + _READER_LIGHTBOX_SLOP;
+}
+// True when an anchor points at an image FILE rather than an article — its <img>
+// child should open the lightbox, not navigate. Covers image extensions, the
+// ZIM's _assets_/ media path, and MediaWiki's file-link classes.
+function _isImageFileLink(a) {
+  if (!a) return false;
+  var href = a.getAttribute('href') || '';
+  if (/\.(jpe?g|png|gif|svg|webp|avif|bmp)(?:[?#]|$)/i.test(href)) return true;
+  if (/(?:^|\/)_assets_\//.test(href)) return true;
+  var cls = ' ' + (a.className || '') + ' ';
+  return / (?:image|mw-file-description) /.test(cls);
+}
+// Lightbox-eligible in the NORMAL reader frame: zoomable AND its click otherwise
+// does nothing. A bare image, or one wrapped in a file/image link, qualifies; an
+// image wrapped in an anchor that navigates to an article does NOT (that anchor
+// must keep navigating).
+function _readerImgLightboxable(img) {
+  if (!_readerImgZoomable(img)) return false;
+  var a = img.closest ? img.closest('a[href]') : null;
+  if (a && !_isImageFileLink(a)) return false;
+  return true;
 }
 // Add/remove the affordance on a single image: zoomable images become focusable
 // button-role targets (Enter/Space + tap open the lightbox). Idempotent.
@@ -9807,6 +9835,57 @@ function _readerBindLightbox(shell, doc) {
     if (e.target && e.target.tagName === 'IMG') _readerMarkImage(e.target);
   }, true);
   _readerMarkImages(shell);
+}
+
+// Bind the tap-to-full-size lightbox to the NORMAL (non-Reader-View) article
+// frame, reusing the Reader View overlay + open/mark helpers. Two differences
+// from the Reader View binding: eligibility also excludes article-navigating
+// anchors (_readerImgLightboxable), and the listeners live on the DOCUMENT with
+// capture so they run BEFORE the frame's link interceptor — a file/image-link-
+// wrapped thumbnail opens the lightbox instead of navigating. Bound once per
+// document (fresh each article load); it self-skips while Reader View owns the
+// body, since that shell carries its own binding.
+function _bindNormalReaderLightbox(frame) {
+  var doc = frame.contentDocument;
+  if (!doc || !doc.body) return;
+  var body = doc.body;
+  if (!doc.getElementById('zimi-normal-lightbox-css')) {
+    var style = doc.createElement('style');
+    style.id = 'zimi-normal-lightbox-css';
+    // Overlay chrome (shared) + the zoom-in cursor / focus ring, unscoped since
+    // there's no .zimi-reader wrapper here. Amber focus ring matches the app.
+    style.textContent = _READER_LIGHTBOX_OVERLAY_CSS +
+      'img.zimi-zoomable{cursor:zoom-in}' +
+      'img.zimi-zoomable:focus-visible{outline:2px solid #f59e0b;outline-offset:3px}';
+    (doc.head || doc.documentElement).appendChild(style);
+  }
+  var active = function() { return body.classList.contains('zimi-reader-active'); };
+  var mark = function(img) { if (!active() && _readerImgLightboxable(img)) _readerMarkImage(img); };
+  if (!doc.__zimiNormalLightbox) {
+    doc.__zimiNormalLightbox = true;
+    doc.addEventListener('click', function(e) {
+      if (active()) return; // Reader View shell owns clicks in reader mode
+      var img = e.target && e.target.closest ? e.target.closest('img') : null;
+      if (!img || !_readerImgLightboxable(img)) return;
+      e.preventDefault();
+      e.stopPropagation(); // beat the link interceptor for file-link-wrapped images
+      _readerOpenLightbox(img);
+    }, true);
+    doc.addEventListener('keydown', function(e) {
+      if (active()) return;
+      if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+      var img = e.target;
+      if (!img || img.tagName !== 'IMG' || !img.classList.contains('zimi-zoomable')) return;
+      e.preventDefault();
+      _readerOpenLightbox(img);
+    });
+    // load doesn't bubble — capture it on the document to mark lazy images.
+    doc.addEventListener('load', function(e) {
+      if (e.target && e.target.tagName === 'IMG') mark(e.target);
+    }, true);
+  }
+  var imgs = body.querySelectorAll('img');
+  for (var i = 0; i < imgs.length; i++) mark(imgs[i]);
 }
 
 // Build the shell and swap it in. Returns true on success. All fallible DOM work
@@ -10372,6 +10451,9 @@ function openReader(url) {
     // Only intercept clicks in ZIM content, not in static viewer pages (pdf.js)
     var _frameLoc = ''; try { _frameLoc = frame.contentWindow.location.pathname; } catch(e) {}
     if (!_frameLoc.startsWith('/static/')) try {
+      // Tap-to-full-size lightbox for the raw article frame. Bound first so its
+      // capture click handler precedes the link interceptor below.
+      try { _bindNormalReaderLightbox(frame); } catch(e) {}
       var _handleFrameLink = function(e) {
         var a = e.target.closest('a[href]');
         if (!a) return;
