@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import zimi.server as _srv  # noqa: E402
 from zimi import manage, users  # noqa: E402
-from zimi.http import ZimHandler  # noqa: E402
+from zimi.http import SESSION_COOKIE_MAX_AGE, ZimHandler  # noqa: E402
 
 
 class _FakeHandler:
@@ -406,6 +406,99 @@ class TestPublicAccessEndpoints(_AccessBase):
         manage.handle_manage_get(h, SimpleNamespace(path="/manage/public-access"), {})
         code, _ = h.last
         self.assertEqual(code, 401)
+
+
+# ── Session-cookie attributes (login persistence over plain http) ──────────
+
+
+class TestSessionCookieAttributes(_AccessBase):
+    """The ``zimi_session`` cookie carries ``Secure`` ONLY behind an HTTPS proxy.
+
+    A LAN instance is plain http, and a browser silently DROPS a ``Secure``
+    cookie set over http:// — so gating Secure on the forwarded proto is what
+    lets a login stick on the LAN. ``HttpOnly`` + ``SameSite=Lax`` are always
+    present; ``Max-Age`` appears only when 'remember' is set (else it is a
+    session cookie the browser clears on close).
+    """
+
+    def _cookie(self, remember, proto=None):
+        headers = {}
+        if proto is not None:
+            headers["X-Forwarded-Proto"] = proto
+        h = _FakeHandler(headers, private=False)
+        return ZimHandler._session_cookie(h, "TOK", remember)
+
+    def test_plain_http_omits_secure(self):
+        parts = self._cookie(remember=True).split("; ")
+        self.assertNotIn("Secure", parts)
+        self.assertIn("HttpOnly", parts)
+        self.assertIn("SameSite=Lax", parts)
+        self.assertEqual(parts[0], "zimi_session=TOK")
+
+    def test_https_proxy_sets_secure(self):
+        parts = self._cookie(remember=True, proto="https").split("; ")
+        self.assertIn("Secure", parts)
+
+    def test_https_proto_case_insensitive(self):
+        self.assertIn("Secure", self._cookie(remember=True, proto="HTTPS").split("; "))
+
+    def test_http_forwarded_proto_no_secure(self):
+        # An explicit ``http`` forwarded proto (proxy that terminates TLS
+        # elsewhere but forwards http to us) must NOT set Secure.
+        self.assertNotIn(
+            "Secure", self._cookie(remember=True, proto="http").split("; ")
+        )
+
+    def test_remember_sets_max_age(self):
+        self.assertIn(
+            "Max-Age=" + str(SESSION_COOKIE_MAX_AGE), self._cookie(remember=True)
+        )
+
+    def test_no_remember_is_session_cookie(self):
+        self.assertNotIn("Max-Age", self._cookie(remember=False))
+
+    def test_expire_cookie_clears_with_max_age_zero(self):
+        c = ZimHandler._expire_cookie(_FakeHandler())
+        self.assertIn("zimi_session=;", c)
+        self.assertIn("Max-Age=0", c)
+
+
+# ── whoami recognises a token-authed admin (client boot-gate contract) ──────
+
+
+class TestWhoamiAdminToken(_AccessBase):
+    """The admin's credential is a Bearer token, not the session cookie the
+    named-user path rides on. In private mode the boot gate sends that token on
+    /whoami; the server MUST answer role=admin (never anonymous+login_required),
+    or a just-signed-in admin gets bounced back to the login screen on reload.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._orig_manage = _srv.ZIMI_MANAGE
+        _srv.ZIMI_MANAGE = True
+        manage._set_manage_password("adminpw")
+        users.set_public_access("private")
+
+    def tearDown(self):
+        _srv.ZIMI_MANAGE = self._orig_manage
+        super().tearDown()
+
+    def test_admin_bearer_token_resolves_to_admin(self):
+        h = _FakeHandler(_bearer("adminpw"), private=False)
+        ZimHandler._handle_whoami(h)
+        code, body = h.last
+        self.assertEqual(code, 200)
+        self.assertEqual(body.get("role"), "admin")
+        self.assertNotIn("login_required", body)
+
+    def test_anonymous_gets_login_required(self):
+        h = _FakeHandler({}, private=False)
+        ZimHandler._handle_whoami(h)
+        code, body = h.last
+        self.assertEqual(code, 200)
+        self.assertEqual(body.get("role"), "anonymous")
+        self.assertTrue(body.get("login_required"))
 
 
 if __name__ == "__main__":
