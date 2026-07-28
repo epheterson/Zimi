@@ -1601,6 +1601,11 @@
   /* ── Password modal ── */
   .pw-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:200; align-items:center; justify-content:center; }
   .pw-overlay.open { display:flex; }
+  /* Login gate (private public-access mode): the overlay becomes fully opaque
+     so the anonymous visitor sees nothing but the login card — no half-loaded
+     home showing through. Highest layer, and the background page can't scroll. */
+  body.login-gate { overflow:hidden; }
+  body.login-gate .pw-overlay { background:var(--bg); z-index:1000; }
   .pw-box { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; width:320px; max-width:90vw; }
   .pw-box h3 { margin:0 0 12px; font-size:15px; color:var(--text); }
   /* 16px minimum — iOS Safari auto-zooms (and stays zoomed) on focus of any

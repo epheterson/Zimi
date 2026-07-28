@@ -584,10 +584,30 @@ function _checkUserSession() {
     // ("admin") applies (no custom username, no named users). The login modal
     // reads it to show "Default username: admin".
     _defaultUsernameHint = (j && j.default_username) || '';
+    // Private public-access mode: an anonymous visitor (no user, no admin) must
+    // see nothing but the login screen. The server already 401s every read; the
+    // gate makes the CLIENT match — an opaque, non-dismissible login overlay
+    // instead of a half-populated home whose fetches all fail in the background.
+    if (j && j.login_required && j.role === 'anonymous' && !_manageToken) {
+      _enterLoginGate();
+    }
   }).catch(function() {});
 }
 // '' unless the server says the default username applies (see _checkUserSession).
 var _defaultUsernameHint = '';
+
+// ── Login gate (private public-access mode) ──
+// True while an anonymous visitor is held at the forced login screen.
+var _loginRequired = false;
+function _enterLoginGate() {
+  _loginRequired = true;
+  document.body.classList.add('login-gate');
+  openLoginModal();
+}
+function _exitLoginGate() {
+  _loginRequired = false;
+  document.body.classList.remove('login-gate');
+}
 
 // Token-adding fetch for *ambient* /manage/* calls (activity bar, peer
 // discovery, status/mirror polls). Sends the manage token when we have one
@@ -706,6 +726,10 @@ function openPwModal(title, opts) {
 }
 
 function closePwModal() {
+  // The private-mode login gate is non-dismissible: Cancel / Esc / any close
+  // path is a no-op, since there is nothing behind it but 401s. Only a
+  // successful sign-in (which calls _exitLoginGate) can leave.
+  if (_loginRequired) return;
   document.getElementById('pw-overlay').classList.remove('open');
   document.removeEventListener('keydown', _pwKeyHandler);
   if (_pwReject) { _pwReject(); _pwReject = null; }
@@ -719,10 +743,12 @@ function closePwModal() {
 }
 
 function _pwKeyHandler(e) {
-  // Esc closes the modal — standard a11y pattern for dialogs.
+  // Esc closes the modal — standard a11y pattern for dialogs. Exception: the
+  // login gate (private mode) is non-dismissible — there is nothing behind it
+  // to reveal, so Esc is swallowed.
   if (e.key === 'Escape') {
     e.preventDefault();
-    closePwModal();
+    if (!_loginRequired) closePwModal();
     return;
   }
   // Tab focus-trap: cycle within the modal so keyboard users can't
@@ -765,6 +791,9 @@ function submitPw() {
         // filtered library. Their account state lives in Manage → Users.
         _pwResolve = null; _pwReject = null;
         _pwLoginMode = false;
+        // Leaving the private-mode gate: reload into a clean authenticated
+        // state so the whole app boots with the session's filtered view.
+        if (_loginRequired) { _exitLoginGate(); location.reload(); return; }
         closePwModal();
         _applyUserSession(res.j.name);
         return;
@@ -780,6 +809,12 @@ function submitPw() {
         // modal, and resolves so the in-flight manage view paints in place.
         var resolver = _pwResolve; _pwResolve = null; _pwReject = null;
         resolver(tok);
+      } else if (_loginRequired) {
+        // Admin signing in from the private-mode gate: persist the token and
+        // reload into a clean, fully authorized boot (whoami → admin, no gate).
+        _manageToken = tok; _saveManageToken(tok, remember);
+        _exitLoginGate();
+        location.reload();
       } else {
         // Opened directly (no pending request): store the token and enter
         // manage deterministically (enterManage, never toggleManage — the
