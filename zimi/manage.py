@@ -430,9 +430,9 @@ def _cache_info_payload():
 # ============================================================================
 
 
-def _validate_library_layout(overrides, order):
-    """Return an error string if `overrides`/`section_order` are malformed,
-    else None. Either may be None (that half is simply skipped)."""
+def _validate_library_layout(overrides, order, sections=None):
+    """Return an error string if `overrides`/`section_order`/`sections` are
+    malformed, else None. Any may be None (that half is simply skipped)."""
     if overrides is not None:
         if (
             not isinstance(overrides, dict)
@@ -457,13 +457,19 @@ def _validate_library_layout(overrides, order):
                 or not _srv._SECTION_KEY_RE.match(s)
             ):
                 return "invalid section_order"
+    if sections is not None:
+        if not isinstance(sections, list) or len(sections) > _srv._LAYOUT_MAX_SECTIONS:
+            return "invalid sections"
+        for s in sections:
+            if not isinstance(s, str) or not s or len(s) > _srv._LAYOUT_STR_MAX:
+                return "invalid sections"
     return None
 
 
-def _apply_library_layout(overrides, order):
+def _apply_library_layout(overrides, order, sections=None):
     """Merge-patch the persisted layout. `overrides` merges key-by-key (empty
-    value clears an entry); `section_order` fully replaces when present.
-    Returns the saved layout. Caller must have validated first."""
+    value clears an entry); `section_order` and `sections` fully replace when
+    present. Returns the saved layout. Caller must have validated first."""
     with _srv._library_layout_lock:
         layout = _srv._load_library_layout()
         if overrides is not None:
@@ -476,6 +482,16 @@ def _apply_library_layout(overrides, order):
             layout["overrides"] = merged
         if order is not None:
             layout["section_order"] = list(order)
+        if sections is not None:
+            # De-dupe case-insensitively, first spelling wins, so a declared
+            # empty section can't accumulate near-duplicate rows.
+            seen, deduped = set(), []
+            for name in sections:
+                key = name.strip().lower()
+                if key and key not in seen:
+                    seen.add(key)
+                    deduped.append(name)
+            layout["sections"] = deduped
         _srv._save_library_layout(layout)
     return layout
 
@@ -559,10 +575,11 @@ def _apply_backup_bundle(data):
             return None, "invalid library_layout"
         overrides = layout.get("overrides")
         order = layout.get("section_order")
-        err = _validate_library_layout(overrides, order)
+        sections = layout.get("sections")
+        err = _validate_library_layout(overrides, order, sections)
         if err:
             return None, err
-        _apply_library_layout(overrides, order)
+        _apply_library_layout(overrides, order, sections)
         applied.append("library_layout")
 
     return {"status": "ok", "applied": applied}, None
@@ -1626,8 +1643,17 @@ def handle_manage_post(handler, parsed, data):
         from zimi import p2p
 
         sched = _lib._load_download_schedule()
-        # Window fields
-        if any(k in data for k in ("enabled", "start", "end")):
+        # Window fields + the upload restrictor (restrict seeding to the window
+        # + its trickle cap). All ride the same config file, so one save covers
+        # any subset the client sent; absent fields are preserved.
+        window_keys = (
+            "enabled",
+            "start",
+            "end",
+            "upload_restrict",
+            "upload_trickle_kb",
+        )
+        if any(k in data for k in window_keys):
             if sched.get("locked"):
                 return handler._json(
                     403,
@@ -1642,7 +1668,22 @@ def handle_manage_post(handler, parsed, data):
                 return handler._json(
                     400, {"error": "start/end must be 'HH:MM' (24-hour)"}
                 )
-            if not _lib._save_download_schedule(enabled, start, end):
+            upload_restrict = (
+                bool(data["upload_restrict"])
+                if "upload_restrict" in data
+                else sched["upload_restrict"]
+            )
+            upload_trickle_kb = sched["upload_trickle_kb"]
+            if "upload_trickle_kb" in data:
+                try:
+                    upload_trickle_kb = max(1, int(data["upload_trickle_kb"]))
+                except (ValueError, TypeError):
+                    return handler._json(
+                        400, {"error": "upload_trickle_kb must be a number"}
+                    )
+            if not _lib._save_download_schedule(
+                enabled, start, end, upload_restrict, upload_trickle_kb
+            ):
                 return handler._json(
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
@@ -1975,18 +2016,20 @@ def handle_manage_post(handler, parsed, data):
         # may be omitted so "Move to…" and "Reorder" send minimal payloads.
         overrides = data.get("overrides")
         order = data.get("section_order")
-        if overrides is None and order is None:
+        sections = data.get("sections")
+        if overrides is None and order is None and sections is None:
             return handler._json(400, {"error": "nothing to update"})
-        err = _validate_library_layout(overrides, order)
+        err = _validate_library_layout(overrides, order, sections)
         if err:
             return handler._json(400, {"error": err})
-        layout = _apply_library_layout(overrides, order)
+        layout = _apply_library_layout(overrides, order, sections)
         return handler._json(
             200,
             {
                 "status": "ok",
                 "overrides": layout.get("overrides", {}),
                 "section_order": layout.get("section_order", []),
+                "sections": layout.get("sections", []),
             },
         )
 

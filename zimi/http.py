@@ -908,6 +908,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                         {
                             "zims": result,
                             "section_order": layout.get("section_order", []),
+                            "sections": layout.get("sections", []),
                         },
                     )
                 return self._json(200, result)

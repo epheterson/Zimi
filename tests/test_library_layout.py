@@ -96,6 +96,53 @@ def test_order_replaces_not_merges(monkeypatch, tmp_path):
     assert body["section_order"] == ["cat:Wikimedia"]
 
 
+def test_other_key_is_orderable(monkeypatch, tmp_path):
+    # The uncategorized catch-all rides section_order via the reserved `other`
+    # key so it can be positioned like any real section.
+    _setup(monkeypatch, tmp_path)
+    order = ["other", "cat:Books"]
+    status, body = _post(_Handler(), {"section_order": order})
+    assert status == 200
+    assert body["section_order"] == order
+
+
+def test_sections_round_trip(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    status, body = _post(_Handler(), {"sections": ["Survival", "Field Guides"]})
+    assert status == 200
+    assert body["sections"] == ["Survival", "Field Guides"]
+    assert server._load_library_layout()["sections"] == ["Survival", "Field Guides"]
+
+
+def test_sections_replace_and_dedupe(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    _post(_Handler(), {"sections": ["A", "B"]})
+    # Fully replaces (not merges) and drops case-insensitive duplicates.
+    _, body = _post(_Handler(), {"sections": ["C", "c", "C "]})
+    assert body["sections"] == ["C"]
+
+
+def test_sections_independent_of_overrides_and_order(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    _post(_Handler(), {"overrides": {"z": "Books"}, "section_order": ["cat:Books"]})
+    _, body = _post(_Handler(), {"sections": ["Empty"]})
+    assert body["overrides"] == {"z": "Books"}
+    assert body["section_order"] == ["cat:Books"]
+    assert body["sections"] == ["Empty"]
+
+
+def test_sections_not_a_list_400(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    status, _ = _post(_Handler(), {"sections": "Books"})
+    assert status == 400
+
+
+def test_sections_empty_string_400(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    status, _ = _post(_Handler(), {"sections": ["ok", ""]})
+    assert status == 400
+
+
 def test_override_and_order_are_independent(monkeypatch, tmp_path):
     _setup(monkeypatch, tmp_path)
     _post(_Handler(), {"overrides": {"z": "Books"}})
@@ -187,15 +234,23 @@ def test_corrupt_layout_reads_as_empty(monkeypatch, tmp_path):
     data_dir = _setup(monkeypatch, tmp_path)
     (data_dir / "library_layout.json").write_text("{ this is not json")
     layout = server._load_library_layout()
-    assert layout == {"overrides": {}, "section_order": []}
+    assert layout == {"overrides": {}, "section_order": [], "sections": []}
 
 
 def test_missing_layout_reads_as_empty(monkeypatch, tmp_path):
     _setup(monkeypatch, tmp_path)
-    assert server._load_library_layout() == {"overrides": {}, "section_order": []}
+    assert server._load_library_layout() == {
+        "overrides": {},
+        "section_order": [],
+        "sections": [],
+    }
 
 
 def test_wrong_shape_layout_reads_as_empty(monkeypatch, tmp_path):
     data_dir = _setup(monkeypatch, tmp_path)
     (data_dir / "library_layout.json").write_text(json.dumps([1, 2, 3]))
-    assert server._load_library_layout() == {"overrides": {}, "section_order": []}
+    assert server._load_library_layout() == {
+        "overrides": {},
+        "section_order": [],
+        "sections": [],
+    }

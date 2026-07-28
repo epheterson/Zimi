@@ -3,7 +3,17 @@
   :root {
     --bg: #0a0a0b; --surface: #141416; --surface2: #1c1c20;
     --border: #27272b; --text: #e8e8ed; --text2: #8a8a94;
+    /* Border for interactive controls whose outline is their only affordance
+       (form fields, toggle tracks). On dark it equals --border; the light block
+       deepens it to clear 3:1 on paper. */
+    --border-strong: var(--border);
     --accent: #f5f5f7; --amber: #f59e0b; --amber2: #d97706;
+    /* Ink for text/glyphs sitting ON an amber fill (buttons, active pills,
+       badges, toggle knobs). Dark theme's amber is bright, so black reads best;
+       the light block flips it to white because light's amber is deep. One
+       token keeps ~14 call sites from hardcoding a color that's only legible
+       in one theme. */
+    --on-amber: #000;
     --amber-glow: rgba(245, 158, 11, 0.08); --amber-border: rgba(245, 158, 11, 0.25);
     /* text3 is reserved for large-text (≥18px or ≥14px bold) only —
        it's WCAG-AA compliant against --bg at large sizes (3:1) but
@@ -38,10 +48,26 @@
   :root[data-theme="light"] {
     --bg: #f2efe8; --surface: #fbfaf6; --surface2: #ffffff;
     --border: #e4dfd4; --text: #26241f; --text2: #6a675e;
-    --accent: #1a1917; --amber: #b45309; --amber2: #92400e;
+    /* Amber deepened one more step (#b45309 → #9d4a08) so it clears WCAG-AA as
+       text/link on paper (5.35:1 on --bg) AND as small amber ink on the faint
+       amber-glow badge fills (updated / installed / multilingual: 4.70:1). The
+       fills flip their ink to white via --on-amber, so a deeper amber only
+       helps them too. */
+    --accent: #1a1917; --amber: #9d4a08; --amber2: #92400e;
     --amber-glow: rgba(180, 83, 9, 0.10); --amber-border: rgba(180, 83, 9, 0.28);
-    --text3: #7c786e; --text-dim: #7c786e; --hover: rgba(180, 83, 9, 0.10);
+    /* On paper the amber fill is deep, so ink on it flips to white (6.15:1). */
+    --on-amber: #fff;
+    /* text3 deepened (#7c786e → #6f6b60) so the muted 10–12px labels that use it
+       (download sizes, field notes, dropdown sublabels) clear AA at 4.63:1 —
+       the dark-theme "large text only" caveat doesn't survive on paper. */
+    --text3: #6f6b60; --text-dim: #6f6b60; --hover: rgba(180, 83, 9, 0.10);
     --error: #dc2626;
+    /* Interactive-control borders that carry meaning (form fields, toggle
+       tracks). The decorative --border (#e4dfd4) is only ~1.2:1 on paper — fine
+       for card separators that also have a fill change, too weak for a control
+       whose outline is its only affordance. This deeper grey hits 3:1 on --bg
+       (3.30) and on --surface (3.63). */
+    --border-strong: #8c826f;
     --topbar-bg: rgba(250, 249, 246, 0.85);
     --card-bg: #ffffff;
     --success: #2f7d32; --success-strong: #256428;
@@ -87,7 +113,7 @@
      First tab-stop on the page so keyboard users can jump past the topbar. */
   .skip-link {
     position: absolute; top: -100px; left: 12px;
-    background: var(--amber); color: #000;
+    background: var(--amber); color: var(--on-amber);
     padding: 8px 16px; border-radius: 6px;
     font-weight: 600; font-size: 14px;
     z-index: 10000; text-decoration: none;
@@ -152,7 +178,7 @@
   /* One-shot coachmark floated beside the book button on first Reader View. */
   .reader-coach {
     position: fixed; z-index: 9999; max-width: 220px;
-    background: var(--amber); color: #000; font-size: 12.5px; font-weight: 600;
+    background: var(--amber); color: var(--on-amber); font-size: 12.5px; font-weight: 600;
     line-height: 1.3; padding: 8px 11px; border-radius: 10px;
     box-shadow: var(--shadow-popup); cursor: pointer;
     opacity: 0; transform: translateY(-4px); transition: opacity .2s, transform .2s;
@@ -190,7 +216,7 @@
     transform: translateX(-50%) translateY(-6px);
     display: flex; align-items: center; gap: 8px;
     min-height: 40px; box-sizing: border-box;
-    background: var(--amber); color: #000;
+    background: var(--amber); color: var(--on-amber);
     font-size: 12.5px; font-weight: 600; line-height: 1.3;
     padding: 8px 14px; border-radius: 999px;
     box-shadow: var(--shadow-popup); cursor: pointer;
@@ -348,13 +374,13 @@
   }
   .pill:hover, .lang-pill:hover,
   .ci-variant-btn:hover, .flavor-pill:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
-  .pill.active, .lang-pill.active { background: linear-gradient(135deg, var(--amber), var(--amber2)); color: #000; border-color: transparent; font-weight: 600; }
+  .pill.active, .lang-pill.active { background: linear-gradient(135deg, var(--amber), var(--amber2)); color: var(--on-amber); border-color: transparent; font-weight: 600; }
   /* Count chip: a subtle padded pill so the number reads as a distinct count and
      never crowds the label or the pill's edge. The parent gap (5px) separates it
      from the label; the padding gives the digits breathing room inside the chip. */
   .pill .pill-count { opacity: 0.7; font-size: 10px; font-weight: 600; margin-left: 1px; padding: 1px 6px; background: rgba(255, 255, 255, 0.07); border-radius: 8px; }
   /* Dark chip on the amber active pill — amber-on-amber is unreadable */
-  .pill.active .pill-count { opacity: 1; background: rgba(0, 0, 0, 0.22); color: #000; padding: 1px 6px; border-radius: 8px; }
+  .pill.active .pill-count { opacity: 1; background: rgba(0, 0, 0, 0.22); color: var(--on-amber); padding: 1px 6px; border-radius: 8px; }
   .pill.dimmed, .lang-pill.dimmed { opacity: 0.35; pointer-events: none; }
   .pills-divider { width: 60px; height: 1px; background: var(--border); margin: 0 auto 4px; opacity: 0.5; }
   /* Collection pills carry the layers glyph so they read as groupings, not
@@ -390,7 +416,7 @@
     background: var(--surface2); color: var(--text); font-size: 12px; font-weight: 500;
     cursor: pointer; white-space: nowrap; transition: all 0.15s;
   }
-  .lang-banner-btn:hover { background: var(--amber); color: #000; border-color: transparent; }
+  .lang-banner-btn:hover { background: var(--amber); color: var(--on-amber); border-color: transparent; }
   .lang-banner-dismiss { margin-inline-start: auto; background: none; border: none; color: var(--text2); cursor: pointer; font-size: 14px; padding: 2px 6px; }
   .lang-banner-dismiss:hover { color: var(--text); }
 
@@ -465,7 +491,7 @@
   .ms-user-self-actions { flex-shrink: 0; display: flex; gap: 8px; }
   /* Role badges in the users list. Muted by default; admin gets amber. */
   .ms-role-badge { display: inline-block; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 10px; color: var(--text2); background: var(--surface2); border: 1px solid var(--border); vertical-align: middle; }
-  .ms-role-badge.ms-role-admin { color: #000; background: linear-gradient(135deg, var(--amber), var(--amber2)); border-color: transparent; }
+  .ms-role-badge.ms-role-admin { color: var(--on-amber); background: linear-gradient(135deg, var(--amber), var(--amber2)); border-color: transparent; }
   /* Role picker reuses .pill; keep it wrapping rather than scrolling in the narrow users pane. */
   #new-user-role, #edit-user-role { flex-wrap: wrap; overflow: visible; margin-bottom: 4px; }
   /* Limited scope on a user row → clickable shortcut into the allowlist editor. */
@@ -580,9 +606,8 @@
   .rv-compact-fontrow .rv-size { flex: 1 1 132px; }
   /* Full-palette swatch keeps its stacked label. */
   .rv-swatch .rv-sw-label { line-height: 1; }
-  /* Reader View + Darken-article rows rendered as switches inside the ⋯ menu. */
-  .topbar-menu-item.tbm-rv-toggle .rv-switch,
-  #tbm-darken .rv-switch { margin-inline-start: auto; }
+  /* Reader View row rendered as a switch inside the ⋯ menu. */
+  .topbar-menu-item.tbm-rv-toggle .rv-switch { margin-inline-start: auto; }
   /* AUTO toggle row */
   .rv-toggle-row {
     display: flex; align-items: center; gap: 10px; width: 100%; text-align: start;
@@ -602,6 +627,13 @@
     border-radius: 50%; background: #fff; transition: inset-inline-start 0.15s;
   }
   .rv-switch.on .rv-knob { inset-inline-start: 18px; }
+  /* Light theme: same fix as the .switch iOS toggle — the OFF track needs a
+     warm-grey fill + AA outline, and its white knob (fine on the dark ON amber)
+     must darken to --text2 when off so it doesn't vanish on the grey track. */
+  :root[data-theme="light"] .rv-switch {
+    background: #e0dacd; border-color: var(--border-strong);
+  }
+  :root[data-theme="light"] .rv-switch:not(.on) .rv-knob { background: var(--text2); }
   .rv-pal-divider { height: 1px; margin: 6px 6px; background: var(--border); }
   .rv-exit-row, .rv-action-row {
     display: flex; align-items: center; gap: 10px; width: 100%; text-align: start;
@@ -1004,7 +1036,7 @@
   .cache-top-label { color: var(--text); font-weight: 600; }
   .manage-btn-action,
   .desktop-card .btn-primary,
-  .coll-form button { background: linear-gradient(135deg, var(--amber), var(--amber2)); color: #000; border: none; border-radius: var(--radius); cursor: pointer; }
+  .coll-form button { background: linear-gradient(135deg, var(--amber), var(--amber2)); color: var(--on-amber); border: none; border-radius: var(--radius); cursor: pointer; }
   .manage-btn-action:hover,
   .desktop-card .btn-primary:hover { opacity: 0.85; }
   .manage-btn-action:disabled,
@@ -1048,7 +1080,7 @@
   .app-theme-btn svg { flex-shrink: 0; }
   .app-theme-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .app-theme-btn.active {
-    background: var(--amber); color: #000; border-color: transparent; font-weight: 600;
+    background: var(--amber); color: var(--on-amber); border-color: transparent; font-weight: 600;
   }
   .ms-section-label, .ci-section-label, .hp-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); }
   .ms-section-label { margin-bottom: 8px; }
@@ -1261,7 +1293,7 @@
   /* background:none beats .pill.active's amber gradient (same specificity,
      later in source) — amber label on amber fill was unreadable. */
   .dl-filter-pill.active { color: var(--amber); border-color: var(--amber); background: none; font-weight: 600; }
-  .dl-filter-pill.active .pill-count { opacity: 1; background: var(--amber); color: #000; padding: 1px 6px; border-radius: 8px; }
+  .dl-filter-pill.active .pill-count { opacity: 1; background: var(--amber); color: var(--on-amber); padding: 1px 6px; border-radius: 8px; }
   /* One shape for the whole download-row button family */
   .dl-pause-btn, .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);
     padding: 4px 12px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s;
@@ -1379,7 +1411,7 @@
   .manage-tab.active { color: var(--amber); border-bottom-color: var(--amber); font-weight: 600; }
   .dl-tab-badge {
     display: inline-block; margin-left: 6px; padding: 1px 7px;
-    background: var(--amber); color: #000; border-radius: 10px;
+    background: var(--amber); color: var(--on-amber); border-radius: 10px;
     font-size: 11px; font-weight: 600; line-height: 1.4; min-width: 8px; text-align: center;
   }
   .dl-empty {
@@ -1455,6 +1487,21 @@
   @media (prefers-reduced-motion: reduce) {
     .switch-slider, .switch-slider::before { transition: none; }
   }
+  /* Light theme: the OFF track (--surface2 = #fff) vanishes on a near-white card
+     (1.04:1) — the maintainer flagged the BitTorrent switch. Give it a warm-grey
+     fill with an AA outline (--border-strong, 3.63:1) so it reads as a control,
+     and flip the ON knob to white since the deep-amber ON track needs light ink
+     (#000 knob would sink to ~3.6:1). The OFF knob stays --text2, which clears
+     3:1 on the grey track (4.06:1). */
+  :root[data-theme="light"] .switch-slider {
+    background: #e0dacd; border-color: var(--border-strong);
+  }
+  :root[data-theme="light"] .switch input:checked + .switch-slider {
+    border-color: transparent;
+  }
+  :root[data-theme="light"] .switch input:checked + .switch-slider::before {
+    background: var(--on-amber);
+  }
 
   /* Long option lists (languages, hot ZIMs) hide behind a Show-list toggle.
      :not() + !important beat later same-specificity display rules
@@ -1469,7 +1516,7 @@
 
   .hot-zims-search {
     flex: 1; min-width: 0; padding: 6px 10px;
-    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius);
     color: var(--text); font-size: 13px;
   }
   .hot-zims-search:focus { outline: none; border-color: var(--amber); }
@@ -1727,12 +1774,12 @@
   .pw-box h3 { margin:0 0 12px; font-size:15px; color:var(--text); }
   /* 16px minimum — iOS Safari auto-zooms (and stays zoomed) on focus of any
      input smaller than 16px. */
-  .pw-box input[type="password"], .pw-box input[type="text"] { width:100%; padding:8px 10px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:16px; box-sizing:border-box; }
+  .pw-box input[type="password"], .pw-box input[type="text"] { width:100%; padding:8px 10px; border-radius:var(--radius); border:1px solid var(--border-strong); background:var(--bg); color:var(--text); font-size:16px; box-sizing:border-box; }
   .pw-box input[type="password"]:focus, .pw-box input[type="text"]:focus { outline:none; border-color:var(--amber); }
   .pw-box input#pw-username { margin-bottom:8px; }
   .pw-box .pw-actions { display:flex; gap:8px; margin-top:12px; justify-content:flex-end; }
   .pw-box button { padding:6px 14px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; font-size:13px; }
-  .pw-box button.pw-primary { background:linear-gradient(135deg, var(--amber), var(--amber2)); color:#000; border-color:transparent; font-weight:600; }
+  .pw-box button.pw-primary { background:linear-gradient(135deg, var(--amber), var(--amber2)); color: var(--on-amber); border-color:transparent; font-weight:600; }
   .pw-box button.pw-primary:hover { opacity:0.85; }
   .pw-box .pw-error { color:var(--error); font-size:12px; margin-top:8px; display:none; }
 
@@ -1753,7 +1800,7 @@
   .desktop-card label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
   .desktop-card .field-row { display: flex; gap: 8px; margin-bottom: 16px; }
   .desktop-card input[type="text"], .desktop-card input[type="number"] {
-    flex: 1; padding: 9px 12px; background: var(--bg); border: 1px solid var(--border);
+    flex: 1; padding: 9px 12px; background: var(--bg); border: 1px solid var(--border-strong);
     border-radius: var(--radius); color: var(--text); font-size: 14px; font-family: inherit;
   }
   .desktop-card input[type="text"]:focus, .desktop-card input[type="number"]:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
@@ -1808,7 +1855,7 @@
   .new-badge {
     display: inline-block; vertical-align: middle;
     margin-inline-end: 6px; z-index: 2;
-    background: var(--amber); color: #1a1205; font-size: 9px; font-weight: 700;
+    background: var(--amber); color: var(--on-amber); font-size: 9px; font-weight: 700;
     letter-spacing: 0.06em; text-transform: uppercase;
     padding: 2px 6px; border-radius: 5px; line-height: 1.2; pointer-events: none;
   }
@@ -2061,7 +2108,7 @@
     position: absolute; top: -5px; right: -5px;
     min-width: 17px; height: 17px; padding: 0 4px; box-sizing: border-box;
     display: none; align-items: center; justify-content: center;
-    background: var(--amber); color: #000;
+    background: var(--amber); color: var(--on-amber);
     border: 1.5px solid var(--bg); border-radius: 9px;
     font-size: 10px; font-weight: 700; line-height: 1;
     font-variant-numeric: tabular-nums; cursor: pointer;
@@ -2074,7 +2121,7 @@
   /* Download count shown on the ⋯-menu's Manage row (mobile). */
   .topbar-menu-item .tbm-count {
     margin-left: auto; padding: 1px 7px;
-    background: var(--amber); color: #000; border-radius: 10px;
+    background: var(--amber); color: var(--on-amber); border-radius: 10px;
     font-size: 11px; font-weight: 600; line-height: 1.4;
     font-variant-numeric: tabular-nums;
   }

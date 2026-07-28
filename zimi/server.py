@@ -701,18 +701,25 @@ def _save_collections(data):
 # ── Library layout: per-ZIM category overrides + home section order (#37) ──
 #
 # Storage: ZIMI_DATA_DIR/library_layout.json —
-#   {"overrides": {"<zim name>": "<category>"}, "section_order": ["cat:<key>"|"col:<name>", ...]}
+#   {"overrides": {"<zim name>": "<category>"},
+#    "section_order": ["cat:<key>"|"col:<name>"|"other", ...],
+#    "sections": ["<category name>", ...]}
 # Overrides win over the _categorize_zim heuristic; section_order drives the
-# home page ordering (unlisted sections append in default order). Reads are
-# public (ride /list); writes are auth-gated /manage endpoints.
+# home page ordering (unlisted sections append in default order); `sections`
+# holds user-declared empty categories that should be offered as Move-to targets
+# and reorder rows before any ZIM lives in them. Reads are public (ride /list);
+# writes are auth-gated /manage endpoints.
 _library_layout_lock = threading.Lock()
 
 #: Section-order keys are namespaced so categories and collections can share one
 #: ordered list without colliding (a collection named "Books" != category Books).
-_SECTION_KEY_RE = re.compile(r"^(cat:|col:).+")
+#: The bare `other` key is the reserved slot for the uncategorized catch-all, so
+#: it can be ordered like any real section instead of being pinned last.
+_SECTION_KEY_RE = re.compile(r"^(?:(?:cat:|col:).+|other)$")
 #: Defensive caps so a hostile/buggy client can't write an unbounded file.
 _LAYOUT_MAX_OVERRIDES = 5000
 _LAYOUT_MAX_ORDER = 500
+_LAYOUT_MAX_SECTIONS = 200
 _LAYOUT_STR_MAX = 128
 
 
@@ -724,11 +731,12 @@ def _library_layout_file_path():
 def _load_library_layout():
     """Load library layout from disk. Fail-soft to the empty default.
 
-    A missing or corrupt file must degrade to ``{"overrides": {}, "section_order": []}``
-    rather than 500 /list — the whole home page renders from this, so a bad read
-    can never be allowed to blank the library.
+    A missing or corrupt file must degrade to the empty default
+    (``{"overrides": {}, "section_order": [], "sections": []}``) rather than 500
+    /list — the whole home page renders from this, so a bad read can never be
+    allowed to blank the library.
     """
-    empty = {"overrides": {}, "section_order": []}
+    empty = {"overrides": {}, "section_order": [], "sections": []}
     try:
         with open(_library_layout_file_path(), encoding="utf-8") as f:
             data = json.load(f)
@@ -736,9 +744,11 @@ def _load_library_layout():
             return empty
         overrides = data.get("overrides")
         order = data.get("section_order")
+        sections = data.get("sections")
         return {
             "overrides": overrides if isinstance(overrides, dict) else {},
             "section_order": order if isinstance(order, list) else [],
+            "sections": sections if isinstance(sections, list) else [],
         }
     except FileNotFoundError:
         pass  # fresh install — no layout yet

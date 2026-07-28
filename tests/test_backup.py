@@ -64,7 +64,11 @@ def test_build_bundle_shape(monkeypatch, tmp_path):
     assert bundle["schema_version"] == manage._BACKUP_SCHEMA_VERSION
     assert bundle["library"] == []
     assert bundle["collections"] == {"version": 1, "favorites": [], "collections": {}}
-    assert bundle["library_layout"] == {"overrides": {}, "section_order": []}
+    assert bundle["library_layout"] == {
+        "overrides": {},
+        "section_order": [],
+        "sections": [],
+    }
     assert "created" in bundle and "zimi_version" in bundle
 
 
