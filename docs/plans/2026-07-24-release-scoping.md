@@ -118,3 +118,8 @@ Surface this list at the start of every release cycle.
   add an anonymous-access policy (full / subset allowlist / login-only).
 - Right-click coherence + Define discoverability (scoped above).
 - Demo walkthrough GIF replacing screenshots (scoped above).
+- Per-user data (Eric, 2026-07-27): bookmarks/history are currently
+  per-BROWSER (localStorage), NOT per-account — users v1 is access control
+  only. Future: per-user bookmarks/history/config ownership (1.9, already
+  scoped) plus per-user backup/restore of all of it, whole or subsets
+  (pairs with the 1.8.1 backup & export hub).
