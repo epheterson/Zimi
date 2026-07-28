@@ -940,6 +940,11 @@ function openPwModal(title, opts) {
   document.getElementById('pw-error').style.display = 'none';
   document.getElementById('pw-remember-row').style.display = (opts && opts.hideRemember) ? 'none' : 'flex';
   document.getElementById('pw-remove-btn').style.display = 'none';
+  // The private-mode login gate is non-dismissible (closePwModal no-ops while
+  // _loginRequired), so hide the Cancel button there — an inert Cancel just
+  // reads as broken. It shows in every other (dismissible) use of the modal.
+  var pwCancel = document.getElementById('pw-cancel');
+  if (pwCancel) pwCancel.style.display = _loginRequired ? 'none' : '';
   _pwPreviousFocus = document.activeElement;
   const overlay = document.getElementById('pw-overlay');
   overlay.classList.add('open');

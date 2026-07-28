@@ -2100,6 +2100,18 @@
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
 
+  /* ── Touch-device input zoom guard ──
+     iOS Safari auto-zooms the page when a focused text-entry control has a
+     font-size below 16px. Many of our inputs use denser sizes (Add User 13px,
+     search/port fields 11–13px) which triggered that zoom on tap. On coarse
+     (touch) pointers, floor every text-entry control at 16px so focusing an
+     input never zooms; desktop keeps the compact sizes. Checkbox/radio/range/
+     color aren't font-sized and don't zoom, so they're excluded. */
+  @media (pointer: coarse) {
+    input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),
+    select, textarea { font-size: 16px; }
+  }
+
   /* ── Forced colors (Windows High Contrast, etc.) ──
      When the OS forces a color scheme, our custom CSS variables get
      overridden anyway. The wins here are: keep focus rings visible,
