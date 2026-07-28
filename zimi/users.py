@@ -385,6 +385,138 @@ def is_admin_user(name):
 
 
 # ============================================================================
+# Public-access policy — what an ANONYMOUS (not logged-in) visitor may see
+# ============================================================================
+#
+# Three modes, stored in ``access.json`` under ZIMI_DATA_DIR (kept out of
+# users.json so the user schema stays stable and the policy can be swapped
+# atomically on its own):
+#
+#   {"version": 1, "mode": "open"|"limited"|"private", "allowlist": [...]}
+#
+# - ``open``    — default, legacy behaviour: anonymous sees the whole library
+#                 (``request_allow`` → None, the all-access sentinel).
+# - ``limited`` — anonymous is filtered to ``allowlist`` using the EXACT same
+#                 choke points as a limited USER (``current_allow`` thread-local
+#                 → get_zim_files/list_zims/zim_allowed/search-cache key). No new
+#                 filtering path, so no new leak surface.
+# - ``private`` — anonymous gets nothing but the login screen; every read
+#                 endpoint requires a session (enforced by the request gate in
+#                 http.py). ``request_allow`` returns an EMPTY set as defence in
+#                 depth so a gate bypass still yields an empty library.
+#
+# Env override ``ZIMI_PUBLIC_ACCESS`` (open|limited|private) wins over the file
+# for docker/compose deployments. When it selects ``limited`` the allowlist
+# still comes from access.json (env can't carry a list); an unconfigured
+# allowlist there → empty set → anonymous sees nothing, which is safe.
+#
+# FAIL CLOSED: a file that is PRESENT but corrupt/unreadable, with no env
+# override, resolves to ``private`` — never silently back to ``open`` (that
+# would dump the whole library to the internet on a hand-edited or truncated
+# config). A MISSING file is the legacy default → ``open`` (installs that never
+# configured a policy must not suddenly lock out).
+
+_ACCESS_VERSION = 1
+_ACCESS_MODES = ("open", "limited", "private")
+_DEFAULT_ACCESS_MODE = "open"
+
+
+def _access_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "access.json")
+
+
+def _env_access_mode():
+    """The ZIMI_PUBLIC_ACCESS override, or None if unset/invalid."""
+    raw = (os.environ.get("ZIMI_PUBLIC_ACCESS") or "").strip().lower()
+    return raw if raw in _ACCESS_MODES else None
+
+
+def _load_access():
+    """Return ``(mode, allowlist, ok)``.
+
+    ``ok`` is False ONLY when the file exists but could not be read/parsed as a
+    valid policy — the fail-closed signal. A missing file is the legacy default
+    (``open``, ok=True), NOT an error.
+    """
+    path = _access_path()
+    if not os.path.exists(path):
+        return _DEFAULT_ACCESS_MODE, [], True
+    try:
+        import json
+
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return _DEFAULT_ACCESS_MODE, [], False
+        mode = data.get("mode")
+        if mode not in _ACCESS_MODES:
+            return _DEFAULT_ACCESS_MODE, [], False
+        raw = data.get("allowlist")
+        allow = [a for a in raw if isinstance(a, str)] if isinstance(raw, list) else []
+        return mode, allow, True
+    except (ValueError, OSError):
+        return _DEFAULT_ACCESS_MODE, [], False
+
+
+def get_public_access():
+    """The effective anonymous policy as ``(mode, allowlist)``.
+
+    Env override wins over the file. With no override, an unreadable-but-present
+    config fails closed to ``private``. See the section header for the full
+    contract.
+    """
+    mode, allow, ok = _load_access()
+    env = _env_access_mode()
+    if env is not None:
+        mode = env
+    elif not ok:
+        mode = "private"  # fail closed
+    return mode, allow
+
+
+def set_public_access(mode, allowlist=None):
+    """Persist the anonymous-access policy. Returns (ok, error).
+
+    ``limited`` stores the cleaned allowlist; ``open``/``private`` ignore it
+    (stored empty). The env override, if set, still wins at read time — callers
+    should surface that to the admin, but we still persist so a later env
+    removal restores intent.
+    """
+    if mode not in _ACCESS_MODES:
+        return False, "invalid mode"
+    allow, err = _clean_allowlist(allowlist if allowlist is not None else [])
+    if err:
+        return False, err
+    stored = allow if mode == "limited" else []
+    with _lock:
+        _srv._atomic_write_json(
+            _access_path(),
+            {"version": _ACCESS_VERSION, "mode": mode, "allowlist": stored},
+            indent=2,
+        )
+    log.info("Public access set: mode=%s (allowlist=%d)", mode, len(stored))
+    return True, None
+
+
+def public_access_status():
+    """Admin-facing view of the policy: the effective mode/allowlist plus
+    whether the env override is forcing it (so the UI can show a read-only
+    banner). The stored file mode is surfaced separately from the effective
+    mode so the admin sees what they saved even when env overrides it."""
+    file_mode, file_allow, _ = _load_access()
+    env = _env_access_mode()
+    eff_mode, eff_allow = get_public_access()
+    return {
+        "mode": eff_mode,
+        "allowlist": eff_allow,
+        "stored_mode": file_mode,
+        "stored_allowlist": file_allow,
+        "env_controlled": env is not None,
+        "env_mode": env,
+    }
+
+
+# ============================================================================
 # Authentication + sessions
 # ============================================================================
 
@@ -522,19 +654,44 @@ def resolve_request_user(handler):
     return resolve_session(_cookie_token(handler))
 
 
+def _request_is_admin(handler):
+    """True if the request is an authorized admin (primary or secondary) — the
+    account that always sees the whole library regardless of the public-access
+    policy. Fails CLOSED: any error resolving admin status → False (treat as a
+    non-admin, i.e. restricted), never accidentally all-access."""
+    try:
+        from zimi import manage as _manage
+
+        return _manage._check_manage_auth(handler) is None
+    except Exception:
+        return False
+
+
 def request_allow(handler):
     """The request's ZIM allow set, or None for all-access.
 
-    None  → admin / anonymous / all-access user → sees everything.
-    set() → a logged-in user with an explicit allowlist → restricted.
+    Resolution order:
+    - A logged-in USER → their own allowlist (set) or None (all-access user).
+    - Otherwise (anonymous OR admin) the public-access policy applies:
+        * ``open``    → None (all-access) — the common default; no admin probe.
+        * ``limited`` → admin gets None, anonymous gets set(public allowlist).
+        * ``private`` → admin gets None, anonymous gets an EMPTY set (defence in
+                        depth; the http.py request gate 401s them before any
+                        read handler runs).
     """
     name = resolve_request_user(handler)
-    if not name:
+    if name:
+        rec = get_user(name)
+        if not rec:
+            return None
+        allowlist = rec.get("allowlist")
+        return set(allowlist) if isinstance(allowlist, list) else None
+
+    mode, allow = get_public_access()
+    if mode == "open":
+        return None  # fast path — no admin probe for the default deployment
+    if _request_is_admin(handler):
         return None
-    rec = get_user(name)
-    if not rec:
-        return None
-    allowlist = rec.get("allowlist")
-    if isinstance(allowlist, list):
-        return set(allowlist)
-    return None
+    if mode == "limited":
+        return set(allow)
+    return set()  # private → empty library; gate returns 401 first

@@ -171,6 +171,33 @@ _POLL_PATHS = frozenset(
     )
 )
 
+# The ONLY paths an anonymous visitor may reach when the public-access policy is
+# ``private``. Everything else 401s until they log in. The set is deliberately
+# minimal — enough to render the login screen and authenticate, nothing that
+# reveals library contents:
+#   /                     the SPA shell (static HTML, no data)
+#   /whoami               so the client learns it must show the login screen
+#   /health               aggregate status; already allow-filtered (→ 0 zims)
+#   /login /logout        the auth transitions themselves
+#   favicons / touch icon chrome the shell references
+# Prefixes: /static/ (app.js, app.css, i18n, sw.js, pdfjs, manifest) and
+# /manage/ (self-gated — its own admin challenge blocks non-admins, while the
+# pre-auth has-password/has-token the login modal needs stay reachable).
+_PRIVATE_LOGIN_SURFACE_EXACT = frozenset(
+    (
+        "/",
+        "/whoami",
+        "/health",
+        "/login",
+        "/logout",
+        "/favicon.ico",
+        "/favicon.png",
+        "/favicon-64.png",
+        "/apple-touch-icon.png",
+    )
+)
+_PRIVATE_LOGIN_SURFACE_PREFIX = ("/static/", "/manage/")
+
 
 def _rate_class(path):
     """(is_rate_limited, uses_content_bucket) for a GET path."""
@@ -586,6 +613,27 @@ class ZimHandler(BaseHTTPRequestHandler):
             return "proxy-unknown"
         return direct_ip
 
+    def _private_access_block(self, parsed):
+        """Enforce ``private`` public-access mode. Returns True (and sends a 401)
+        when an ANONYMOUS request targets anything outside the login surface;
+        False to proceed. Admins and logged-in users always proceed.
+
+        Checks the cheap static path allowlist BEFORE probing identity, so
+        serving the login shell + assets costs no session/admin file reads.
+        """
+        mode, _ = _users.get_public_access()
+        if mode != "private":
+            return False
+        path = parsed.path
+        if path in _PRIVATE_LOGIN_SURFACE_EXACT or path.startswith(
+            _PRIVATE_LOGIN_SURFACE_PREFIX
+        ):
+            return False
+        if _users.resolve_request_user(self) or _users._request_is_admin(self):
+            return False
+        self._json(401, {"error": "authentication required", "login_required": True})
+        return True
+
     def do_GET(self):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
@@ -597,6 +645,17 @@ class ZimHandler(BaseHTTPRequestHandler):
         # allowlist (None = admin/anonymous/all-access). Set FIRST so a kept-alive
         # connection re-sets it per request; cleared in the finally for hygiene.
         _srv.set_request_allow(_users.request_allow(self))
+
+        # Private mode: block anonymous reads before any handler runs. The
+        # finally below still clears the request-allow context.
+        try:
+            if self._private_access_block(parsed):
+                return
+        except Exception:
+            # Fail closed: if the policy can't be evaluated, deny rather than
+            # risk serving content an intended-private instance meant to hide.
+            self._json(401, {"error": "authentication required"})
+            return
 
         # Rate limit: API endpoints at RATE_LIMIT (10x for trusted clients),
         # /w/ content and /snippet at 20x.
@@ -925,28 +984,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                         # Read first 15KB — enough for <head> meta tags + initial content
                         raw = bytes(item.content)[:15360]
                         text = raw.decode("UTF-8", errors="replace")
-                        # Prefer meta description (skips nav/header boilerplate)
-                        for desc_pat in [
-                            r'<meta\s+(?:name|property)=["\'](?:og:)?description["\']\s+content=["\']([^"\']{20,})["\']',
-                            r'<meta\s+content=["\']([^"\']{20,})["\']\s+(?:name|property)=["\'](?:og:)?description["\']',
-                        ]:
-                            desc_m = re.search(desc_pat, text[:8000], re.IGNORECASE)
-                            if desc_m:
-                                snippet = _srv.strip_html(desc_m.group(1))[:300].strip()
-                                break
-                        # Fallback: extract from <main> or <article> body (skip nav boilerplate)
-                        if not snippet:
-                            for tag in ["main", "article"]:
-                                tag_m = re.search(
-                                    r"<" + tag + r"[\s>]", text, re.IGNORECASE
-                                )
-                                if tag_m:
-                                    plain = _srv.strip_html(text[tag_m.start() :])
-                                    snippet = plain[:300].strip()
-                                    break
-                        # Last resort: full page text
-                        if not snippet:
-                            snippet = _srv.strip_html(text)[:300].strip()
+                        # Prefer the page's own summary, then meta description,
+                        # then body prose — skipping boilerplate some ZIMs bake
+                        # into every page (iFixit device pages, #snippet QA).
+                        snippet = _srv.extract_snippet(text, zim)
                         # Lightweight thumbnail: og:image / twitter:image from <head>
                         for img_pat in [
                             r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']',
@@ -1321,6 +1362,12 @@ class ZimHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         _srv.set_request_allow(_users.request_allow(self))
+        try:
+            if self._private_access_block(parsed):
+                return
+        except Exception:
+            self._json(401, {"error": "authentication required"})
+            return
         try:
             content_len = int(self.headers.get("Content-Length", "0"))
             if content_len > _srv.MAX_POST_BODY:
@@ -2253,6 +2300,15 @@ class ZimHandler(BaseHTTPRequestHandler):
         resp = {"role": "anonymous"}
         if not _manage._get_manage_user() and not _users.list_users():
             resp["default_username"] = "admin"
+        # Tell the SPA how the public-access policy shapes its view: ``private``
+        # forces the login screen (login_required); ``limited`` just means the
+        # library it receives is already filtered server-side (no client action
+        # needed, but surfaced for messaging). ``open`` omits the field.
+        mode, _ = _users.get_public_access()
+        if mode != "open":
+            resp["public_access"] = mode
+            if mode == "private":
+                resp["login_required"] = True
         return self._json(200, resp)
 
     def log_message(self, format, *args):
