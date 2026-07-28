@@ -1151,6 +1151,30 @@ def _cancel_download(dl_id):
     return "cancelling", 200
 
 
+def _start_scheduled_now(dl_id):
+    """Override the schedule for one queued item: start it now if a slot is
+    free, else clear its ``scheduled`` marker so it drains like any normal
+    queued download. Returns (status, code).
+
+    status: "started" | "queued" | "already_active" | "not_found"
+    """
+    with _download_lock:
+        for i, q in enumerate(_download_queue):
+            if q["id"] == dl_id:
+                q.pop("scheduled", None)
+                if _active_count() < _max_concurrent():
+                    _download_queue.pop(i)
+                    _launch_download(q)
+                    _persist_pending_downloads()
+                    return "started", 200
+                _persist_pending_downloads()
+                return "queued", 200
+        dl = _active_downloads.get(dl_id)
+        if dl and not dl.get("done"):
+            return "already_active", 200
+    return "not_found", 404
+
+
 def _switch_to_direct(dl_id):
     """Abandon the BitTorrent transfer for an active download and pull it
     over HTTP instead. Returns (status, code).

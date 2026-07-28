@@ -425,6 +425,150 @@ def _cache_info_payload():
 
 
 # ============================================================================
+# Library layout — shared validate/apply (used by /manage/library-layout POST
+# and the backup importer so the two never drift).
+# ============================================================================
+
+
+def _validate_library_layout(overrides, order):
+    """Return an error string if `overrides`/`section_order` are malformed,
+    else None. Either may be None (that half is simply skipped)."""
+    if overrides is not None:
+        if (
+            not isinstance(overrides, dict)
+            or len(overrides) > _srv._LAYOUT_MAX_OVERRIDES
+        ):
+            return "invalid overrides"
+        for k, v in overrides.items():
+            if (
+                not isinstance(k, str)
+                or not isinstance(v, str)
+                or len(k) > _srv._LAYOUT_STR_MAX
+                or len(v) > _srv._LAYOUT_STR_MAX
+            ):
+                return "invalid overrides"
+    if order is not None:
+        if not isinstance(order, list) or len(order) > _srv._LAYOUT_MAX_ORDER:
+            return "invalid section_order"
+        for s in order:
+            if (
+                not isinstance(s, str)
+                or len(s) > _srv._LAYOUT_STR_MAX
+                or not _srv._SECTION_KEY_RE.match(s)
+            ):
+                return "invalid section_order"
+    return None
+
+
+def _apply_library_layout(overrides, order):
+    """Merge-patch the persisted layout. `overrides` merges key-by-key (empty
+    value clears an entry); `section_order` fully replaces when present.
+    Returns the saved layout. Caller must have validated first."""
+    with _srv._library_layout_lock:
+        layout = _srv._load_library_layout()
+        if overrides is not None:
+            merged = dict(layout.get("overrides", {}))
+            for k, v in overrides.items():
+                if v == "":
+                    merged.pop(k, None)  # empty value = revert to heuristic
+                else:
+                    merged[k] = v
+            layout["overrides"] = merged
+        if order is not None:
+            layout["section_order"] = list(order)
+        _srv._save_library_layout(layout)
+    return layout
+
+
+# ============================================================================
+# Backup bundle — export/import the server-side half of a Zimi setup.
+#
+# SCHEMA (zimi-backup, version 1). The FULL bundle the user downloads is
+# assembled client-side; the server owns only the pieces below. Per-browser
+# state — bookmarks, history, and localStorage preferences — is added by the
+# client on export and written back by the client on import; it never touches
+# the server. Keep `_BACKUP_SCHEMA_VERSION` in lockstep with the client.
+# ============================================================================
+
+_BACKUP_SCHEMA = "zimi-backup"
+_BACKUP_SCHEMA_VERSION = 1
+
+
+def _build_backup_bundle():
+    """Server-side portion of a backup: the installed library list (portable
+    name+version so a fresh machine can re-seed), collections/favorites, and
+    the home library layout."""
+    library = [
+        {
+            "name": z["name"],
+            "file": z.get("file"),
+            "date": z.get("date", ""),
+            "language": z.get("language", ""),
+            "article_count": z.get("article_count"),
+            "size_bytes": z.get("size_bytes"),
+            "title": z.get("title", z["name"]),
+        }
+        for z in _srv.list_zims()
+    ]
+    return {
+        "schema": _BACKUP_SCHEMA,
+        "schema_version": _BACKUP_SCHEMA_VERSION,
+        "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "zimi_version": _srv.ZIMI_VERSION,
+        "library": library,
+        "collections": _srv._load_collections(),
+        "library_layout": _srv._load_library_layout(),
+    }
+
+
+def _apply_backup_bundle(data):
+    """Apply the server-side half of a backup bundle. Returns (result, error).
+
+    `collections` is a whole-document replace (favorites + named collections);
+    `library_layout` is validated then merge-patched. Both keys are optional so
+    a partial bundle still restores what it carries.
+    """
+    if not isinstance(data, dict):
+        return None, "invalid backup"
+    schema = data.get("schema")
+    if schema is not None and schema != _BACKUP_SCHEMA:
+        return None, "not a Zimi backup"
+    applied = []
+
+    coll = data.get("collections")
+    if coll is not None:
+        if not isinstance(coll, dict):
+            return None, "invalid collections"
+        favorites = coll.get("favorites", [])
+        collections = coll.get("collections", {})
+        if not isinstance(favorites, list) or not isinstance(collections, dict):
+            return None, "invalid collections"
+        with _srv._collections_lock:
+            _srv._save_collections(
+                {
+                    "version": coll.get("version", 1),
+                    "favorites": favorites[:100],
+                    "collections": collections,
+                }
+            )
+        applied.append("collections")
+
+    layout = data.get("library_layout")
+    if layout is not None:
+        if not isinstance(layout, dict):
+            return None, "invalid library_layout"
+        overrides = layout.get("overrides")
+        order = layout.get("section_order")
+        err = _validate_library_layout(overrides, order)
+        if err:
+            return None, err
+        _apply_library_layout(overrides, order)
+        applied.append("library_layout")
+
+    return {"status": "ok", "applied": applied}, None
+
+
+# ============================================================================
 # Manage GET Routes
 # ============================================================================
 
@@ -533,6 +677,9 @@ def handle_manage_get(handler, parsed, params):
         from zimi import library as _lib
 
         return handler._json(200, _lib._download_schedule_status())
+
+    elif parsed.path == "/manage/backup":
+        return handler._json(200, _build_backup_bundle())
 
     elif parsed.path == "/manage/users":
         # Named user accounts (multi-user v1) — admin-only (gated above). Returns
@@ -1209,6 +1356,17 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(400, {"error": "Download already finished"})
         return handler._json(code, {"status": status, "id": dl_id})
 
+    elif parsed.path == "/manage/download-start-now":
+        # Override the nightly window for one scheduled item — start it now
+        # (or promote it to a normal queued item if every slot is busy).
+        dl_id = data.get("id", "")
+        from zimi.library import _start_scheduled_now
+
+        status, code = _start_scheduled_now(dl_id)
+        if status == "not_found":
+            return handler._json(404, {"error": "Download not found"})
+        return handler._json(code, {"status": status, "id": dl_id})
+
     elif parsed.path == "/manage/switch-direct":
         # Escape hatch for a slow BitTorrent swarm: abandon BT for this
         # download and pull it over HTTP instead.
@@ -1819,43 +1977,10 @@ def handle_manage_post(handler, parsed, data):
         order = data.get("section_order")
         if overrides is None and order is None:
             return handler._json(400, {"error": "nothing to update"})
-        if overrides is not None:
-            if (
-                not isinstance(overrides, dict)
-                or len(overrides) > _srv._LAYOUT_MAX_OVERRIDES
-            ):
-                return handler._json(400, {"error": "invalid overrides"})
-            for k, v in overrides.items():
-                if (
-                    not isinstance(k, str)
-                    or not isinstance(v, str)
-                    or len(k) > _srv._LAYOUT_STR_MAX
-                    or len(v) > _srv._LAYOUT_STR_MAX
-                ):
-                    return handler._json(400, {"error": "invalid overrides"})
-        if order is not None:
-            if not isinstance(order, list) or len(order) > _srv._LAYOUT_MAX_ORDER:
-                return handler._json(400, {"error": "invalid section_order"})
-            for s in order:
-                if (
-                    not isinstance(s, str)
-                    or len(s) > _srv._LAYOUT_STR_MAX
-                    or not _srv._SECTION_KEY_RE.match(s)
-                ):
-                    return handler._json(400, {"error": "invalid section_order"})
-        with _srv._library_layout_lock:
-            layout = _srv._load_library_layout()
-            if overrides is not None:
-                merged = dict(layout.get("overrides", {}))
-                for k, v in overrides.items():
-                    if v == "":
-                        merged.pop(k, None)  # empty value = revert to heuristic
-                    else:
-                        merged[k] = v
-                layout["overrides"] = merged
-            if order is not None:
-                layout["section_order"] = list(order)
-            _srv._save_library_layout(layout)
+        err = _validate_library_layout(overrides, order)
+        if err:
+            return handler._json(400, {"error": err})
+        layout = _apply_library_layout(overrides, order)
         return handler._json(
             200,
             {
@@ -1864,6 +1989,16 @@ def handle_manage_post(handler, parsed, data):
                 "section_order": layout.get("section_order", []),
             },
         )
+
+    elif parsed.path == "/manage/backup":
+        # Restore the SERVER-side half of a backup bundle: collections
+        # (whole-doc replace) and library layout. Per-browser state
+        # (bookmarks/history/preferences) never reaches the server — the
+        # client writes those back to localStorage itself.
+        result, err = _apply_backup_bundle(data)
+        if err:
+            return handler._json(400, {"error": err})
+        return handler._json(200, result)
 
     else:
         return handler._json(404, {"error": "not found"})
