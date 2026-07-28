@@ -39,6 +39,16 @@ The four yes-items that missed the train, plus polish debt:
 - README demo GIF, done right: one GIF replacing ALL static screenshots —
   a full walkthrough (search, reader, interlang live usage, almanac).
   Eric likes the idea, not the 1.8.0 execution; removed for launch.
+- Right-click coherence + Define discoverability: never intercept
+  right-click inside article content (system menu is load-bearing);
+  custom menu only on Zimi chrome (tiles/cards/rows). Fix the wart where
+  right-clicking a link shows the Define chip (contextmenu leaks into the
+  selection handler — suppress). Teach the Define gesture: one-time hint
+  on first article-open with a Wiktionary installed + a "Look up a word"
+  entry in the reader ⋯ menu that enters tap-a-word mode.
+- Users allowlist discoverability: "Edit allowlist" only appears once a
+  role is Limited — surface it for all roles (disabled w/ hint, or show
+  the picker in Add User), so the feature Eric couldn't find is findable.
 - Almanac location v2: wider typeable city set; click ANYWHERE on the map
   (not just cities) to set location; map shows every world-clock city.
   (1.8.0 ships clock-city→location sync + clock/map city parity.)
