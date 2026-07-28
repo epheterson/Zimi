@@ -2395,7 +2395,10 @@ function renderCardGrid(items, showStars, showCategory) {
       '<div class="card-info">' +
         // new-badge lives in the title row (list) — never over the left icon;
         // CSS lifts it to a tile corner in compact view (icon is centred there).
-        '<div class="name">' + newHtml + esc(z.title || z.name) + badge + qidIcon + '</div>' +
+        // The title text is wrapped in .zt so the tile layout can clamp it to two
+        // lines independently and drop the language chip onto its own line below
+        // (in the list the .zt span is inline, so nothing changes there).
+        '<div class="name">' + newHtml + '<span class="zt">' + esc(z.title || z.name) + '</span>' + badge + qidIcon + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
         '<div class="detail">' + catPrefix + _zimCountHtml(z) +
         ' &middot; ' + fmtSize(z.size_gb) +

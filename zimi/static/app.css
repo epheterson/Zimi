@@ -815,21 +815,42 @@
   .lib-view-btn:hover { color: var(--text); background: var(--surface2); }
   .lib-view-btn.active { color: var(--amber); background: var(--amber-glow); }
 
-  /* Compact tiles: square-ish cells, icon on top, name under it, several per row.
-     Reuses .stat-card markup — only the layout changes. Wider min column than
-     before so titles have room to breathe (mobile stays ~3 across, desktop gets
-     roomier tiles via the min-width override below). */
+  /* Compact tiles: square-ish cells sharing .stat-card markup (same surface,
+     radius, border, hover as the detail cards — one family, only the layout
+     differs). A fixed vertical rhythm on a 4px grid keeps every tile reading
+     the same regardless of title length:
+       28px top band (reserved for the corner chips) → icon → two-line-tall
+       title (anchors the baseline so short titles don't float) → language chip
+       in normal flow.
+     The old layout floated the title and pinned the language badge bottom-left,
+     where it collided with any title that wrapped to two lines. */
   .stats-grid.tiles { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
-  .stats-grid.tiles .stat-card { flex-direction: column; align-items: center; gap: 8px; padding: 14px 10px; text-align: center; }
+  .stats-grid.tiles .stat-card {
+    flex-direction: column; align-items: center; justify-content: flex-start;
+    gap: 8px; padding: 28px 12px 12px; text-align: center;
+  }
   .stats-grid.tiles .card-icon { align-self: center; }
-  .stats-grid.tiles .card-info { align-items: center; padding-right: 0; }
+  .stats-grid.tiles .card-info { align-items: center; padding-right: 0; gap: 6px; flex: 0 0 auto; }
   .stats-grid.tiles .desc, .stats-grid.tiles .detail, .stats-grid.tiles .card-cat, .stats-grid.tiles .qid-badge { display: none; }
-  .stats-grid.tiles .name { font-size: 12px; margin-bottom: 0; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
-  /* Badges become corner chips on the tile (icon is centred, so corners are
-     clear): NEW top-left, language bottom-left. The inline margins from the list
-     layout are dropped since they're absolutely positioned here. */
-  .stats-grid.tiles .new-badge { position: absolute; top: 6px; left: 6px; margin: 0; }
-  .stats-grid.tiles .lang-badge { display: inline-block; position: absolute; bottom: 6px; left: 6px; margin: 0; }
+  /* The name row becomes a centred column: the title (.zt) on top, the language
+     chip on its own line below. */
+  .stats-grid.tiles .name {
+    display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 0;
+  }
+  /* Reserve two lines (2 x 1.35 line-height) so a one-line title lands at the
+     same Y as a two-line one — the anchor that stops titles from floating. */
+  .stats-grid.tiles .zt {
+    font-size: 12px; line-height: 1.35; min-height: 2.7em;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; word-break: break-word;
+  }
+  /* Deterministic badge layout: status chip top-left, star top-right — opposite
+     corners, so they can never collide at any title length. The language chip
+     flows on its own line under the title (always visible, never clipped by the
+     title clamp, never overlapping). Consistent tone with the list's inline chip. */
+  .stats-grid.tiles .new-badge { position: absolute; top: 8px; left: 8px; margin: 0; }
+  .stats-grid.tiles .star-btn { top: 6px; right: 6px; }
+  .stats-grid.tiles .lang-badge { margin: 0; }
   /* Compact view hides the empty (unfavorited) star — only a filled star or a
      hover (pointer devices) reveals it, so tiles aren't peppered with grey stars. */
   .stats-grid.tiles .star-btn:not(.starred) { opacity: 0; pointer-events: none; }
