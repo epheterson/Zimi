@@ -3280,22 +3280,44 @@ function _saveLibraryLayout(patch) {
   });
 }
 
-// Assign a ZIM to a category: optimistic local update + re-render, then persist.
-// Reverts and toasts on failure (e.g. 403 public-locked).
+// Re-render whichever ZIM list is actually on screen after a Move to… action.
+// Move to… fires from three places sharing this one handler: the home-page card
+// menu, the Installed tab, and the Catalog tab. renderHome() and renderManage()
+// both paint into the SAME #output element — calling renderHome() unconditionally
+// while the Manage overlay is open replaced its whole DOM with the home grid,
+// which read to the user as being "sent to the home screen" for a settings
+// action. Route to the pane that's actually active instead.
+function _refreshZimListView() {
+  if (mode === 'manage') {
+    if (manageTab === 'installed') renderInstalled();
+    else if (manageTab === 'browse') {
+      if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
+      else renderBrowseGallery();
+    }
+  } else {
+    renderHome();
+  }
+}
+
+// Assign a ZIM to a category: optimistic local update + re-render in place, then
+// persist. Reverts and toasts on failure (e.g. 403 public-locked); toasts the
+// existing generic "Saved" confirmation on success.
 function _moveZimTo(zim, category) {
   var zinfo = _zimInfo(zim);
   var prev = zinfo ? zinfo.category : null;
   if (zinfo) zinfo.category = category;
-  renderHome();
+  _refreshZimListView();
   var ov = {}; ov[zim] = category;
   _saveLibraryLayout({ overrides: ov }).then(function(res) {
     if (!res.ok) {
       if (zinfo) zinfo.category = prev;
-      renderHome();
+      _refreshZimListView();
       _showToast(res.status === 403 ? t('layout_locked') : t('error'));
+    } else {
+      _showToast(t('saved'));
     }
   }).catch(function() {
-    if (zinfo) zinfo.category = prev; renderHome(); _showToast(t('error'));
+    if (zinfo) zinfo.category = prev; _refreshZimListView(); _showToast(t('error'));
   });
 }
 
@@ -3415,6 +3437,26 @@ function _moveZimTo(zim, category) {
     var flip = finalX + mw + 170 > window.innerWidth;
     menu.querySelectorAll('.ctx-sub').forEach(function(sub) {
       sub.classList.toggle('flip-left', flip);
+    });
+    // Every submenu (Move to…'s category list, Collections, …) opens flush
+    // with its trigger's TOP edge by default. A trigger sitting near the
+    // bottom of the viewport — e.g. the last row of a long Installed-tab
+    // list — would run that list off screen with no way to reach the lower
+    // items. Flip it to hang from the trigger's BOTTOM edge instead when
+    // there's more room above, and cap its height to whatever room is
+    // actually available so its own scroll (see .ctx-sub max-height in CSS)
+    // kicks in at the right size instead of just overflowing. Done once here,
+    // for every trigger in the menu, so every submenu benefits — not just
+    // Move to….
+    _ctxItems(menu).forEach(function(item) {
+      var sub = _ctxSubOf(item);
+      if (!sub) return;
+      var r = item.getBoundingClientRect();
+      var spaceBelow = window.innerHeight - r.top - 8;
+      var spaceAbove = r.bottom - 8;
+      var flipUp = spaceBelow < 120 && spaceAbove > spaceBelow;
+      sub.classList.toggle('flip-up', flipUp);
+      sub.style.maxHeight = Math.max(100, flipUp ? spaceAbove : spaceBelow) + 'px';
     });
     _prepMenuA11y();
   }

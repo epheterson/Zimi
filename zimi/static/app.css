@@ -1837,6 +1837,7 @@
     padding: 4px 0; z-index: 10000;
   }
   .ctx-sub.flip-left { left: auto; right: 100%; }
+  .ctx-sub.flip-up { top: auto; bottom: -4px; }
   .ctx-item:hover > .ctx-sub, .ctx-item.kb-open > .ctx-sub { display: block; }
   /* Keyboard focus reads like hover (roving tabindex, ARIA menu pattern). */
   .ctx-item:focus, .ctx-item:focus-visible { background: var(--amber-glow); color: var(--amber); outline: none; }
