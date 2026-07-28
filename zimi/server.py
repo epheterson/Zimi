@@ -1009,7 +1009,12 @@ def open_archive(path):
     return Archive(path)
 
 
-from zimi.previews import strip_html, _extract_preview, _resolve_img_path  # noqa: E402
+from zimi.previews import (  # noqa: E402
+    strip_html,
+    _extract_preview,
+    _resolve_img_path,
+    extract_snippet,
+)
 
 # ============================================================================
 # ZIM Listing & Metadata Cache
