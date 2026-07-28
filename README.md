@@ -25,7 +25,7 @@ A modern experience for your ZIM files.
 - **Accessible.** If you browse by keyboard, listen by screen reader, or need high contrast, accessibility is built-in.
 - **Anywhere.** Docker, pip, a native macOS app, or your phone as a PWA.
 - **For humans and machines.** Web UI, JSON API, MCP server for AI agents.
-- **Improving.** Regular updates shaped by the community — GitHub ideas land fast, and the creator is listening. Just ask!
+- **Improving.** Regular updates with ideas from the community — GitHub and creator keep Zimi fresh. Just ask!
 
 ## Screenshots
 
@@ -233,7 +233,10 @@ Tools: `search` (with `lang` filter), `read`, `get_chunks`, `suggest`, `list_sou
 
 ## Long-requested, shipped here
 
-Features the ZIM ecosystem has been asking for, available in Zimi today:
+Every issue filed against Zimi has been answered — #33 country holiday colors,
+#34 new-ZIM badges and recency filters, #36 Tailscale-friendly management,
+#37 library organization, #38 fragment links and stray-torrent confusion.
+And features the wider ZIM ecosystem has been asking for, available today:
 
 - **Spelling suggestions** — "did you mean?" on weak searches, fully offline ([libzim #731](https://github.com/openzim/libzim/issues/731))
 - **Read-aloud** — text-to-speech in the reader via the offline Web Speech API ([kiwix-js #166](https://github.com/kiwix/kiwix-js/issues/166))
