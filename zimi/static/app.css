@@ -10,9 +10,65 @@
        not at normal body text. Use --text2 for everything else. */
     --text3: #6e6e7a; --text-dim: #6e6e7a; --hover: rgba(245, 158, 11, 0.08);
     --error: #ef4444;
+    /* Translucent bar/menu surface (topbar frosted glass). Tokenised so the
+       light theme can flip it without every backdrop rule carrying a literal. */
+    --topbar-bg: rgba(10, 10, 11, 0.85);
+    /* Raised popover/menu fill (context menus, drawers). One token so the
+       three call sites can't drift, and the light theme flips it in one place. */
+    --card-bg: #1a1a1a;
+    /* Positive/"sharing active" semantics (seed + peer badges). --success is the
+       text/icon green; the faint translucent fills stay inline (they read on both
+       themes). Light theme darkens the ink for contrast on paper. */
+    --success: #6ec56e; --success-strong: #84d684;
     --radius: 10px; --shadow-popup: 0 8px 32px rgba(0,0,0,0.5);
     color-scheme: dark;
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  }
+
+  /* ── Light theme ──
+     Warm-paper, soft-contrast counterpart to the default dark palette — NOT
+     stark white. The amber accent deepens to a burnt amber (#b45309) so it keeps
+     AA contrast as text/link on paper AND still reads as a warm fill with black
+     label text; every `var(--amber*)` reference adapts at once (no per-selector
+     churn). Applied by [data-theme] on <html>, stamped synchronously in the head
+     bootstrap so there's no dark flash. Auto mode resolves to dark or light and
+     sets the same attribute, so the CSS has exactly one code path.
+     Deliberate seam: the almanac overlay + the home "Today"/space cards keep
+     their dark cosmic identity in both themes (a night sky is a night sky). */
+  :root[data-theme="light"] {
+    --bg: #f2efe8; --surface: #fbfaf6; --surface2: #ffffff;
+    --border: #e4dfd4; --text: #26241f; --text2: #6a675e;
+    --accent: #1a1917; --amber: #b45309; --amber2: #92400e;
+    --amber-glow: rgba(180, 83, 9, 0.10); --amber-border: rgba(180, 83, 9, 0.28);
+    --text3: #7c786e; --text-dim: #7c786e; --hover: rgba(180, 83, 9, 0.10);
+    --error: #dc2626;
+    --topbar-bg: rgba(250, 249, 246, 0.85);
+    --card-bg: #ffffff;
+    --success: #2f7d32; --success-strong: #256428;
+    --shadow-popup: 0 8px 32px rgba(60, 50, 30, 0.16);
+    color-scheme: light;
+  }
+  /* Two single-use status inks that are legible on dark but wash out on paper:
+     the "reused download" teal and the "stale" ochre. Darkened here rather than
+     tokenised — one call site each, so a token would be ceremony. */
+  :root[data-theme="light"] .dl-source-reuse { color: #0f766e; }
+  :root[data-theme="light"] .ci-hier-freshness { color: #a16207; }
+  /* Almanac seam (intentional): the almanac is a canvas-driven night-sky app —
+     its orrery/sky/star-field paint hardcoded cosmic colors that only read on
+     dark. Rather than ship a half-lit almanac, we keep its whole subtree dark
+     under the light app. Custom properties inherit, so redefining the token set
+     on the overlay container re-establishes the dark palette for every child
+     (cards, text, pills) without touching almanac.css. The result is a light app
+     chrome over a deliberately dark cosmic panel — a seam by design, not a bug. */
+  :root[data-theme="light"] .almanac-view {
+    --bg: #0a0a0b; --surface: #141416; --surface2: #1c1c20;
+    --border: #27272b; --text: #e8e8ed; --text2: #8a8a94;
+    --accent: #f5f5f7; --amber: #f59e0b; --amber2: #d97706;
+    --amber-glow: rgba(245, 158, 11, 0.08); --amber-border: rgba(245, 158, 11, 0.25);
+    --text3: #6e6e7a; --text-dim: #6e6e7a; --hover: rgba(245, 158, 11, 0.08);
+    --error: #ef4444; --card-bg: #1a1a1a;
+    --success: #6ec56e; --success-strong: #84d684;
+    color-scheme: dark;
   }
 
   html { height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
@@ -59,7 +115,7 @@
   .topbar {
     position: fixed; top: 0; left: 0; right: 0; z-index: 200;
     height: 56px; display: flex; align-items: center; gap: 10px;
-    padding: 0 16px; background: rgba(10, 10, 11, 0.85); backdrop-filter: blur(20px) saturate(180%);
+    padding: 0 16px; background: var(--topbar-bg); backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     border-bottom: 1px solid var(--border);
   }
@@ -524,8 +580,9 @@
   .rv-compact-fontrow .rv-size { flex: 1 1 132px; }
   /* Full-palette swatch keeps its stacked label. */
   .rv-swatch .rv-sw-label { line-height: 1; }
-  /* Reader View row rendered as a switch inside the ⋯ menu. */
-  .topbar-menu-item.tbm-rv-toggle .rv-switch { margin-inline-start: auto; }
+  /* Reader View + Darken-article rows rendered as switches inside the ⋯ menu. */
+  .topbar-menu-item.tbm-rv-toggle .rv-switch,
+  #tbm-darken .rv-switch { margin-inline-start: auto; }
   /* AUTO toggle row */
   .rv-toggle-row {
     display: flex; align-items: center; gap: 10px; width: 100%; text-align: start;
@@ -974,6 +1031,25 @@
   .ms-pane .ms-field input:focus { outline: none; border-color: var(--amber-border); }
   .ms-pane .ms-field input[readonly] { opacity: 0.6; }
   .ms-pane .ms-hint { font-size: 12px; color: var(--text2); margin-top: 8px; }
+  /* App-theme segmented control (Auto / Dark / Light). Three equal pills in a
+     recessed track, amber-filled when active — mirrors the reader palette's
+     control language so the two theme pickers feel like one family. */
+  .ms-theme-label { font-size: 13px; color: var(--text); margin: 4px 0 8px; }
+  .app-theme-seg {
+    display: flex; gap: 4px; padding: 4px; border-radius: var(--radius);
+    background: var(--surface2); border: 1px solid var(--border); max-width: 340px;
+  }
+  .app-theme-btn {
+    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 7px 8px; border: 1px solid transparent; border-radius: 7px;
+    background: none; color: var(--text2); font-size: 12.5px; font-weight: 500;
+    cursor: pointer; transition: color 0.15s, background 0.15s, border-color 0.15s;
+  }
+  .app-theme-btn svg { flex-shrink: 0; }
+  .app-theme-btn:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .app-theme-btn.active {
+    background: var(--amber); color: #000; border-color: transparent; font-weight: 600;
+  }
   .ms-section-label, .ci-section-label, .hp-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); }
   .ms-section-label { margin-bottom: 8px; }
   /* Auto-fit grid for catalog + downloads. 320px min → 2 columns in the
@@ -1466,7 +1542,7 @@
     display: inline-flex; align-items: center; gap: 8px;
     padding: 2px 8px; border-radius: 10px;
     font-size: 11px; line-height: 1.4;
-    background: rgba(120, 200, 120, 0.12); color: #6ec56e;
+    background: rgba(120, 200, 120, 0.12); color: var(--success);
     border: 1px solid rgba(120, 200, 120, 0.3);
     /* Touch target — bumped to 24px for clickable variant; the static
        (already-installed) variant inherits the smaller size. */
@@ -1478,10 +1554,10 @@
   .ci-peer-pill-clickable:hover {
     background: rgba(120, 200, 120, 0.22);
     border-color: rgba(120, 200, 120, 0.55);
-    color: #84d684;
+    color: var(--success-strong);
   }
   .ci-peer-pill-clickable:focus-visible {
-    outline: 2px solid #6ec56e; outline-offset: 2px;
+    outline: 2px solid var(--success); outline-offset: 2px;
   }
   .ci-hier-installed,
   .ci-hier-subset,
@@ -1490,7 +1566,7 @@
     font-size: 11px; line-height: 1.4;
   }
   .ci-hier-installed {
-    background: rgba(120, 200, 120, 0.12); color: #6ec56e;
+    background: rgba(120, 200, 120, 0.12); color: var(--success);
     border: 1px solid rgba(120, 200, 120, 0.3);
   }
   .ci-hier-subset {
@@ -1502,7 +1578,7 @@
   .ci-hier-coverage {
     display: inline-block; padding: 2px 8px; border-radius: 10px;
     font-size: 11px; line-height: 1.4;
-    background: rgba(120, 200, 120, 0.08); color: #6ec56e;
+    background: rgba(120, 200, 120, 0.08); color: var(--success);
     border: 1px solid rgba(120, 200, 120, 0.25);
   }
   .ci-hier-freshness {
