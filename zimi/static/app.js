@@ -6585,6 +6585,10 @@ function _msUsersHtml() {
     others.push(u);
   });
 
+  // Public access card — governs what an ANONYMOUS visitor sees. Sits above the
+  // user list because it is the broadest policy on the page.
+  h += _publicAccessCard();
+
   h += '<div class="ms-users-section">';
   h += '<div class="ms-users-intro">' + tH('users_intro') + '</div>';
   if (others.length) {
@@ -6595,15 +6599,20 @@ function _msUsersHtml() {
         h += _userRowHtml(u.name, 'admin', tH('users_primary_admin'), '');
         return;
       }
-      var scope = u.role === 'limited'
+      // A secondary admin cannot manage other admins (server enforces; UI hides).
+      var canManage = isPrimary || u.role !== 'admin';
+      var scopeText = u.role === 'limited'
         ? (u.all_access ? tH('users_all_access') : (u.allowlist.length + ' ' + tH('users_zim_count')))
         : tH('users_all_access');
+      // Limited scope doubles as the discoverable entry point to editing the
+      // allowlist — clicking "7 ZIMs" on the row opens the picker directly.
+      var scope = (u.role === 'limited' && canManage)
+        ? '<a class="ms-user-scope-link" onclick="event.stopPropagation();_editUserAllowlist(' + escAttr(JSON.stringify(u.name)) + ')" title="' + escAttr(t('users_edit_allowlist')) + '">' + scopeText + '</a>'
+        : scopeText;
       // Last-login: relative time (localized) or "never signed in".
       var seen = u.last_login
         ? tH('users_last_login') + ' ' + esc(_relTime(u.last_login))
         : tH('users_last_never');
-      // A secondary admin cannot manage other admins (server enforces; UI hides).
-      var canManage = isPrimary || u.role !== 'admin';
       var menuAttr = canManage
         ? 'onclick="event.stopPropagation();_openUserMenu(this,' + escAttr(JSON.stringify(u.name)) + ')" title="' + escAttr(t('users_options')) + '" aria-label="' + escAttr(t('users_options')) + '" aria-haspopup="menu"'
         : '';
@@ -6755,26 +6764,178 @@ function _selectedRole(idPrefix) {
   return el ? el.getAttribute('data-role') : 'user';
 }
 
-// Checkbox picker of installed ZIMs. `selected` = array of chosen names.
+// Installed-ZIM options for the allowlist pickers: the rich server list
+// (title + language + article_count) when present, else the bare names list
+// mapped through the client title cache. Shared by the per-user Limited picker
+// and the public-access Limited picker.
+function _pickerOptions() {
+  var d = _usersData || {};
+  if (d.zim_options && d.zim_options.length) return d.zim_options;
+  return (d.zims || []).map(function(name) {
+    return {
+      name: name,
+      title: (typeof _zimTitle === 'function' ? _zimTitle(name) : '') || name,
+      language: '',
+      article_count: null
+    };
+  });
+}
+
+// Searchable, legible checklist of installed ZIMs. `selected` = array of chosen
+// names. Renders real titles + language badges + article counts, a search box,
+// select-all/none, and a live "N of M selected" summary. Every instance is
+// self-scoped via `.ms-allowlist-picker` so multiple can coexist on a page; the
+// `.allowlist-cb` class keeps `_collectAllowlist(containerId)` working.
 function _allowlistPicker(selected) {
   var sel = new Set(selected || []);
-  var names = (_usersData && _usersData.zims) || [];
-  if (!names.length) return '<div style="color:var(--text2);font-size:12px">' + tH('users_no_zims') + '</div>';
-  var h = '<div class="ms-allowlist" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px">';
-  names.forEach(function(name) {
-    var title = (typeof _zimTitle === 'function' ? _zimTitle(name) : '') || name;
-    h += '<label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:13px;cursor:pointer">' +
-      '<input type="checkbox" class="allowlist-cb" value="' + escAttr(name) + '"' + (sel.has(name) ? ' checked' : '') + ' style="accent-color:var(--amber)"> ' +
-      esc(title) + '</label>';
+  var opts = _pickerOptions();
+  if (!opts.length) return '<div class="ms-allow-empty">' + tH('users_no_zims') + '</div>';
+  var chosen = opts.filter(function(o) { return sel.has(o.name); }).length;
+  var rows = opts.map(function(o) {
+    var on = sel.has(o.name);
+    var lang = o.language
+      ? '<span class="ms-allow-lang">' + esc(String(o.language).toUpperCase()) + '</span>' : '';
+    var count = (o.article_count != null)
+      ? '<span class="ms-allow-count">' + Number(o.article_count).toLocaleString() + '</span>' : '';
+    var hay = ((o.title || '') + ' ' + o.name + ' ' + (o.language || '')).toLowerCase();
+    return '<label class="ms-allow-row" data-hay="' + escAttr(hay) + '">' +
+      '<input type="checkbox" class="allowlist-cb" value="' + escAttr(o.name) + '"' +
+        (on ? ' checked' : '') + ' onchange="_allowlistSync(this)"> ' +
+      '<span class="ms-allow-name"><span class="ms-allow-title">' + esc(o.title || o.name) + '</span>' + lang + '</span>' +
+      count +
+    '</label>';
+  }).join('');
+  return '<div class="ms-allowlist-picker" data-total="' + opts.length + '">' +
+    '<div class="ms-allow-tools">' +
+      '<input type="search" class="ms-allow-search" placeholder="' + escAttr(tH('users_allow_search')) +
+        '" oninput="_allowlistFilter(this)" aria-label="' + escAttr(tH('users_allow_search')) + '">' +
+      '<button type="button" class="ms-allow-link" onclick="_allowlistSelectAll(this,true)">' + tH('users_allow_all') + '</button>' +
+      '<button type="button" class="ms-allow-link" onclick="_allowlistSelectAll(this,false)">' + tH('users_allow_none') + '</button>' +
+    '</div>' +
+    '<div class="ms-allow-summary" aria-live="polite">' +
+      t('users_allow_count', { n: chosen, total: opts.length }) +
+    '</div>' +
+    '<div class="ms-allow-list">' + rows + '</div>' +
+  '</div>';
+}
+
+function _allowlistRoot(el) { return el.closest ? el.closest('.ms-allowlist-picker') : null; }
+
+// Live filter: show only rows whose title/name/language contains the query.
+function _allowlistFilter(input) {
+  var root = _allowlistRoot(input);
+  if (!root) return;
+  var q = (input.value || '').trim().toLowerCase();
+  root.querySelectorAll('.ms-allow-row').forEach(function(r) {
+    r.style.display = (!q || r.getAttribute('data-hay').indexOf(q) !== -1) ? '' : 'none';
   });
-  h += '</div>';
-  return h;
+}
+
+// Select-all / none acts on the VISIBLE rows only, so it composes with search
+// (e.g. "search 'wiki' → select all" tags just the Wikipedias).
+function _allowlistSelectAll(btn, on) {
+  var root = _allowlistRoot(btn);
+  if (!root) return;
+  root.querySelectorAll('.ms-allow-row').forEach(function(r) {
+    if (r.style.display === 'none') return;
+    var cb = r.querySelector('.allowlist-cb');
+    if (cb) cb.checked = on;
+  });
+  _allowlistUpdateSummary(root);
+}
+
+function _allowlistSync(cb) {
+  var root = _allowlistRoot(cb);
+  if (root) _allowlistUpdateSummary(root);
+}
+
+function _allowlistUpdateSummary(root) {
+  var total = root.getAttribute('data-total');
+  var n = root.querySelectorAll('.allowlist-cb:checked').length;
+  var s = root.querySelector('.ms-allow-summary');
+  if (s) s.textContent = t('users_allow_count', { n: n, total: total });
 }
 
 function _collectAllowlist(containerId) {
   var out = [];
   document.querySelectorAll('#' + containerId + ' .allowlist-cb:checked').forEach(function(cb) { out.push(cb.value); });
   return out;
+}
+
+// ── Public access policy (anonymous visitors) ──────────────────────────────
+// Three modes shape what a not-logged-in visitor sees: Open (everything),
+// Limited (a chosen allowlist), Sign-in required (nothing but the login
+// screen). Reuses the same allowlist picker as per-user Limited.
+function _publicAccessCard() {
+  var pa = (_usersData && _usersData.public_access) || { mode: 'open', allowlist: [] };
+  var mode = pa.mode || 'open';
+  var envLocked = !!pa.env_controlled;
+  var modes = [
+    ['open', 'users_pa_open', 'users_pa_open_desc'],
+    ['limited', 'users_pa_limited', 'users_pa_limited_desc'],
+    ['private', 'users_pa_private', 'users_pa_private_desc']
+  ];
+  var choices = modes.map(function(m) {
+    var on = m[0] === mode;
+    return '<label class="ms-pa-choice' + (on ? ' active' : '') + (envLocked ? ' disabled' : '') + '">' +
+      '<input type="radio" name="ms-pa-mode" value="' + m[0] + '"' + (on ? ' checked' : '') +
+        (envLocked ? ' disabled' : '') + ' onchange="_onPublicAccessMode(this.value)"> ' +
+      '<span class="ms-pa-choice-body">' +
+        '<span class="ms-pa-choice-title">' + tH(m[1]) + '</span>' +
+        '<span class="ms-pa-choice-desc">' + tH(m[2]) + '</span>' +
+      '</span>' +
+    '</label>';
+  }).join('');
+  var picker = '<div id="ms-pa-allowlist" class="ms-pa-allowlist"' + (mode === 'limited' ? '' : ' hidden') + '>' +
+    _allowlistPicker(pa.allowlist || []) +
+    '<button class="ms-btn ms-btn-primary ms-pa-save" onclick="_savePublicAccessLimited()">' + tH('save') + '</button>' +
+  '</div>';
+  var envNote = envLocked
+    ? '<div class="ms-pa-env">' + tH('users_pa_env') + ' <code>ZIMI_PUBLIC_ACCESS=' + esc(pa.env_mode || '') + '</code></div>'
+    : '';
+  return '<div class="ms-pa-card">' +
+    '<div class="ms-section-label">' + tH('users_pa_title') + '</div>' +
+    '<div class="ms-pa-sub">' + tH('users_pa_sub') + '</div>' +
+    envNote +
+    '<div class="ms-pa-choices">' + choices + '</div>' +
+    picker +
+  '</div>';
+}
+
+// Radio change: reflect selection, reveal the picker for Limited, and save
+// Open/Private immediately (they need no further input). Limited waits for the
+// explicit Save so the admin can choose ZIMs first.
+function _onPublicAccessMode(mode) {
+  document.querySelectorAll('.ms-pa-choice').forEach(function(c) {
+    var r = c.querySelector('input');
+    c.classList.toggle('active', !!(r && r.checked));
+  });
+  var picker = document.getElementById('ms-pa-allowlist');
+  if (picker) picker.hidden = (mode !== 'limited');
+  if (mode !== 'limited') _publicAccessPost({ mode: mode });
+}
+
+function _savePublicAccessLimited() {
+  _publicAccessPost({ mode: 'limited', allowlist: _collectAllowlist('ms-pa-allowlist') });
+}
+
+function _publicAccessPost(payload) {
+  return manageFetch('/manage/public-access', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(function(res) {
+    return res.json().then(function(j) { return { ok: res.ok, j: j }; });
+  }).then(function(r) {
+    if (r.ok && r.j && r.j.public_access) {
+      if (_usersData) _usersData.public_access = r.j.public_access;
+      _refreshUsersPane();
+      _showToast(t('users_pa_saved'));
+    } else {
+      _showToast(t('users_create_failed'));
+    }
+    return r;
+  });
 }
 
 function _usersPost(payload) {
