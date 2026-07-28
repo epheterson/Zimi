@@ -359,6 +359,12 @@
     'russiaday':                  { q: 'Q1432329', en: 'Russia Day' },
     'unityday':                   { q: 'Q1355116', en: 'Unity Day (Russia)' },
 
+    // ── Round-2 region-pack matches (1.8.1): pack labels that now resolve. ──
+    'stbrigidsday':          { q: 'Q376333',   en: 'Imbolc' }, // IE — enwiki merges St Brigid's Day into Imbolc
+    'blackconsciousnessday': { q: 'Q3082990',  en: 'National Day of Zumbi and Black Consciousness' }, // BR
+    'youthday_cn':           { q: 'Q10881633', en: 'Youth Day (China)' },
+    'youthday_za':           { q: 'Q946446',   en: 'Youth Day' }, // ZA
+
     // ── Worldwide observances (the base Gregorian set) ──
     'epiphany':                       { q: 'Q61556',    en: 'Epiphany' },
     'holocaustremembranceday':        { q: 'Q152960',   en: 'International Holocaust Remembrance Day' },
@@ -391,6 +397,32 @@
     'internationalmensday':           { q: 'Q15964944', en: "International Men's Day" },
     'worldchildrensday':              { q: 'Q37081',    en: "Children's Day" },
     'humanrightsday':                 { q: 'Q206206',   en: 'Human Rights Day' },
+
+    // ── Round-2 base-observance matches (1.8.1): keys are _norm(label). ──
+    'worldbrailleday':                  { q: 'Q11880318', en: 'World Braille Day' },
+    'internationaldayofeducation':      { q: 'Q59530956', en: 'International Day of Education' },
+    'worldcancerday':                   { q: 'Q551942',   en: 'World Cancer Day' },
+    'intldayofwomeninscience':          { q: 'Q22084569', en: 'International Day of Women and Girls in Science' },
+    'worldwildlifeday':                 { q: 'Q15813320', en: 'World Wildlife Day' },
+    'internationaldayofhappiness':      { q: 'Q5305947',  en: 'International Day of Happiness' },
+    'worldpoetryday':                   { q: 'Q857171',   en: 'World Poetry Day' },
+    'worldtheatreday':                  { q: 'Q2076105',  en: 'World Theatre Day' },
+    'worldartday':                      { q: 'Q15725894', en: 'World Art Day' },
+    'internationaldanceday':            { q: 'Q855927',   en: 'International Dance Day' },
+    'worldpressfreedomday':             { q: 'Q592588',   en: 'World Press Freedom Day' },
+    'internationaldayoffamilies':       { q: 'Q246959',   en: 'International Day of Families' },
+    'worldbeeday':                      { q: 'Q47008694', en: 'World Bee Day' },
+    'worldrefugeeday':                  { q: 'Q757285',   en: 'World Refugee Day' },
+    'worldmusicday':                    { q: 'Q1129327',  en: 'F\u00eate de la Musique' },
+    'internationalfriendshipday':       { q: 'Q14551661', en: 'Friendship Day' },
+    'internationalcatday':              { q: 'Q25457495', en: 'International Cat Day' },
+    'worldhumanitarianday':             { q: 'Q2723440',  en: 'World Humanitarian Day' },
+    'internationaldogday':              { q: 'Q113627236', en: 'International Dog Day' },
+    'internationaldayofsignlanguages':  { q: 'Q47002373', en: 'International Day of Sign Languages' },
+    'worldteachersday':                 { q: 'Q864881',   en: "World Teachers' Day" },
+    'worldtelevisionday':               { q: 'Q2495614',  en: 'World Television Day' },
+    'intldayofpersonswithdisabilities': { q: 'Q339544',   en: "United Nations' International Day of Persons with Disabilities" },
+    'internationalvolunteerday':        { q: 'Q490486',   en: 'International Volunteer Day' },
 
     // ── Native-calendar observances beyond the base set (famous ones only) ──
     'tubishvat':        { q: 'Q748816',  en: 'Tu BiShvat' },
@@ -589,8 +621,44 @@
     'rosetta:georgia-guidestones': { q: 'Q958391', en: 'Georgia Guidestones' }
   };
 
+  // World-clock cities (1.8.1) — the fixed cities of the timezone grid
+  // (_TZ_CITIES in almanac.js), keyed 'city:<key>'. Q-IDs verified both
+  // directions against Wikidata (exact enwiki sitelink). Registered for the
+  // closed set now; like the drawn-only constellations they become live links
+  // once the clock render calls wrap('city:'+key, ...).
+  var CITIES = {
+    'city:honolulu':     { q: 'Q18094', en: 'Honolulu' },
+    'city:anchorage':    { q: 'Q39450', en: 'Anchorage, Alaska' },
+    'city:los_angeles':  { q: 'Q65',    en: 'Los Angeles' },
+    'city:denver':       { q: 'Q16554', en: 'Denver' },
+    'city:mexico_city':  { q: 'Q1489',  en: 'Mexico City' },
+    'city:chicago':      { q: 'Q1297',  en: 'Chicago' },
+    'city:new_york':     { q: 'Q60',    en: 'New York City' },
+    'city:buenos_aires': { q: 'Q1486',  en: 'Buenos Aires' },
+    'city:sao_paulo':    { q: 'Q174',   en: 'S\u00e3o Paulo' },
+    'city:london':       { q: 'Q84',    en: 'London' },
+    'city:paris':        { q: 'Q90',    en: 'Paris' },
+    'city:lagos':        { q: 'Q8673',  en: 'Lagos' },
+    'city:cairo':        { q: 'Q85',    en: 'Cairo' },
+    'city:johannesburg': { q: 'Q34647', en: 'Johannesburg' },
+    'city:moscow':       { q: 'Q649',   en: 'Moscow' },
+    'city:tehran':       { q: 'Q3616',  en: 'Tehran' },
+    'city:dubai':        { q: 'Q612',   en: 'Dubai' },
+    'city:karachi':      { q: 'Q8660',  en: 'Karachi' },
+    'city:mumbai':       { q: 'Q1156',  en: 'Mumbai' },
+    'city:kathmandu':    { q: 'Q3037',  en: 'Kathmandu' },
+    'city:dhaka':        { q: 'Q1354',  en: 'Dhaka' },
+    'city:bangkok':      { q: 'Q1861',  en: 'Bangkok' },
+    'city:singapore':    { q: 'Q334',   en: 'Singapore' },
+    'city:shanghai':     { q: 'Q8686',  en: 'Shanghai' },
+    'city:tokyo':        { q: 'Q1490',  en: 'Tokyo' },
+    'city:adelaide':     { q: 'Q5112',  en: 'Adelaide' },
+    'city:sydney':       { q: 'Q3130',  en: 'Sydney' },
+    'city:auckland':     { q: 'Q37100', en: 'Auckland' }
+  };
+
   var MAP = {};
-  [PLANETS, PROBES, CONSTELLATIONS, SHOWERS, ECLIPSES, CALENDARS, ZODIAC, STARS, HOLIDAYS, TERMS, SEASONS, BELTS, EVENTS, MESSAGES]
+  [PLANETS, PROBES, CONSTELLATIONS, SHOWERS, ECLIPSES, CALENDARS, ZODIAC, STARS, HOLIDAYS, TERMS, SEASONS, BELTS, EVENTS, MESSAGES, CITIES]
     .forEach(function (group) { for (var k in group) if (group.hasOwnProperty(k)) MAP[k] = group[k]; });
 
   // Register curated holidays under a "holiday:<norm>" key so wrapHoliday() can
