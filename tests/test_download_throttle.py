@@ -16,6 +16,28 @@ import zimi.library as library  # noqa: E402
 import zimi.p2p as p2p  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_throttle_state():
+    """Snapshot and restore every piece of module-global state these tests
+    touch, so nothing leaks in or out regardless of suite order:
+      - library._rate_cache (the ~2s rate lookup cache)
+      - library._download_throttle (the shared token-bucket singleton)
+      - p2p._prefs_path (set by the mirrors-bt-down test)
+    A dirty _rate_cache or a mid-flight bucket is exactly what produces the
+    "expected 0.0, got 1.0" pacing failures under interleaved runs.
+    """
+    saved_cache = dict(library._rate_cache)
+    saved_prefs = p2p._prefs_path
+    library._rate_cache["ts"] = 0.0
+    library._rate_cache["bps"] = 0
+    library._download_throttle.reset()
+    yield
+    library._rate_cache.clear()
+    library._rate_cache.update(saved_cache)
+    library._download_throttle.reset()
+    p2p._prefs_path = saved_prefs
+
+
 class _FakeClock:
     def __init__(self):
         self.t = 0.0
