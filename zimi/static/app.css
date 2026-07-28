@@ -68,6 +68,10 @@
        whose outline is its only affordance. This deeper grey hits 3:1 on --bg
        (3.30) and on --surface (3.63). */
     --border-strong: #8c826f;
+    /* Card definition on paper: a firmer edge than the decorative --border plus
+       a soft warm shadow, so tiles/detail cards read as cards, not loose blocks. */
+    --card-border: #ddd6c8;
+    --card-shadow: 0 1px 2px rgba(66, 54, 30, 0.06), 0 3px 8px rgba(66, 54, 30, 0.05);
     --topbar-bg: rgba(250, 249, 246, 0.85);
     --card-bg: #ffffff;
     --success: #2f7d32; --success-strong: #256428;
@@ -781,7 +785,12 @@
   .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 8px; margin-top: 8px; }
   .stat-card {
     background: var(--surface); border-radius: var(--radius); padding: 14px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--card-border, var(--border));
+    /* On the light cream the 1px border is ~1.2:1 and cards read as loose
+       icon+text. A soft shadow (--card-shadow, light-only) lifts them into
+       defined cards; dark keeps the flat surface-contrast look. Hover overrides
+       both border-color and box-shadow at higher specificity. */
+    box-shadow: var(--card-shadow, none);
     transition: background 0.25s, border-color 0.25s, box-shadow 0.25s, transform 0.25s;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     display: flex; gap: 14px; align-items: stretch; text-decoration: none; color: inherit; cursor: pointer;
@@ -806,6 +815,11 @@
   }
   .card-icon { width: 48px; height: 48px; flex-shrink: 0; border-radius: 10px; overflow: hidden; background: var(--surface2); display: flex; align-items: center; justify-content: center; align-self: center; }
   .card-icon img { width: 42px; height: 42px; object-fit: cover; background: #fff; border-radius: 8px; padding: 2px; }
+  /* On paper, a source whose favicon is white/transparent (e.g. Army Publishing
+     Directorate) rendered as an invisible white block on a white card. An inset
+     ring on the icon block gives it a defined edge regardless of the artwork. */
+  :root[data-theme="light"] .card-icon { box-shadow: inset 0 0 0 1px rgba(20, 15, 5, 0.10); }
+  :root[data-theme="light"] .card-icon img { box-shadow: inset 0 0 0 1px rgba(20, 15, 5, 0.06); }
   .icon-letter { font-size: 20px; font-weight: 700; background: linear-gradient(135deg, var(--amber), #f97316); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
   .card-info { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-right: 28px; }
   .stat-card .name { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 2px; }
@@ -1403,9 +1417,15 @@
   /* 5 digits of monospace + left/right padding + the number spinner arrows;
      8ch clipped the last digit once the spinner was accounted for. */
   .share-port-input { width: 78px; }
-  .share-num-input:disabled { opacity: 0.5; }
+  /* Disabled (env-locked / BT-off) port + numeric fields: half-opacity turned the
+     value into illegible grey-on-grey on paper. Keep the value readable with a
+     muted colour on a recessed fill instead — still clearly inactive, but the
+     number (e.g. an env-locked 16881) stays legible. */
+  .share-num-input:disabled { opacity: 1; color: var(--text2); background: var(--bg); border-color: var(--border); cursor: not-allowed; }
   .peer-name-input { width: 160px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 8px; text-align: left; }
-  .share-port-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  /* Ring so the status dot stays visible even when its colour is a low-key grey
+     (unknown / env-locked reachability) sitting on a same-tone field. */
+  .share-port-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 1px rgba(127, 127, 127, 0.32); }
   .dl-seed-link { cursor: pointer; }
   .dl-seed-link:hover { color: var(--amber); }
   /* Seed cards: icon + title on the first row, the "Sharing · …" status
