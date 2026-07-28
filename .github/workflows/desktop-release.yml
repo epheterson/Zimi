@@ -160,6 +160,42 @@ jobs:
             ci/smoke_binary.sh "dist/Zimi/Zimi"
           fi
 
+      # GUI smoke: the check above only exercises the headless HTTP server, so
+      # it never opens a window — that gap let a build ship that crashed at
+      # launch (pythonnet couldn't load System.Windows.Forms). windows-latest
+      # runners have an interactive desktop + WebView2, so a real EdgeChromium
+      # window CAN open. Run the BUILT exe with ZIMI_DESKTOP_SMOKE=1 and demand
+      # the "SMOKE: window shown" marker + a clean exit.
+      - name: GUI smoke test (Windows — real window)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ZIMI_DESKTOP_SMOKE: '1'
+        run: |
+          $exe = "dist/Zimi/Zimi.exe"
+          $out = "smoke_gui.out.log"
+          $err = "smoke_gui.err.log"
+          Write-Host "Launching $exe in GUI smoke mode..."
+          $p = Start-Process -FilePath $exe -PassThru `
+                 -RedirectStandardOutput $out -RedirectStandardError $err
+          if (-not $p.WaitForExit(120000)) {
+            try { $p.Kill() } catch {}
+            Write-Host "--- stdout ---"; Get-Content $out -ErrorAction SilentlyContinue
+            Write-Host "--- stderr ---"; Get-Content $err -ErrorAction SilentlyContinue
+            Write-Error "GUI smoke timed out (no exit within 120s)"
+            exit 1
+          }
+          $code = $p.ExitCode
+          Write-Host "--- stdout ---"; Get-Content $out -ErrorAction SilentlyContinue
+          Write-Host "--- stderr ---"; Get-Content $err -ErrorAction SilentlyContinue
+          Write-Host "exit code: $code"
+          if ($code -ne 0) { Write-Error "GUI smoke exited $code"; exit 1 }
+          if (-not (Select-String -Path $out -Pattern 'SMOKE: window shown' -Quiet)) {
+            Write-Error "GUI smoke did not report 'SMOKE: window shown'"
+            exit 1
+          }
+          Write-Host "GUI smoke passed: a real EdgeChromium window opened and was shown."
+
       # ── Packaging ─────────────────────────────────────────────────────
 
       # snapd on fresh runners races its own seeding; installing core22 via
