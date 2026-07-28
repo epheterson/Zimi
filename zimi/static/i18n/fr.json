@@ -579,7 +579,7 @@
   "alm_region_holiday": "Fête de {c}",
   "alm_showing_all_countries": "Affichage des fêtes de tous les pays",
   "alm_scope_worldwide": "Monde entier",
-  "alm_scope_region": "Ma région",
+  "alm_scope_regional": "Régional",
   "alm_scope_toggle_hint": "Basculer entre votre région et tous les pays",
   "alm_hol_1st_white_night": "1re Nuit blanche",
   "alm_hol_aban_festival": "Fête d'Aban",

@@ -74,9 +74,9 @@ function _almHolidayScope() {
   try { return sessionStorage.getItem(_ALM_HOLIDAY_SCOPE_KEY) === 'worldwide' ? 'worldwide' : 'region'; }
   catch (e) { return 'region'; }
 }
-function _almToggleHolidayScope() {
-  var next = _almHolidayScope() === 'worldwide' ? 'region' : 'worldwide';
-  try { sessionStorage.setItem(_ALM_HOLIDAY_SCOPE_KEY, next); } catch (e) {}
+function _almSetHolidayScope(scope) {
+  if (scope === _almHolidayScope()) return;
+  try { sessionStorage.setItem(_ALM_HOLIDAY_SCOPE_KEY, scope); } catch (e) {}
   if (typeof _drawAlmanacGrid === 'function') _drawAlmanacGrid();
 }
 
@@ -4550,6 +4550,34 @@ function _drawAlmanacGrid() {
   html += '<button class="alm-today-btn" onclick="_almToday()"' + (isCurrentMonth && isToSelected ? ' style="visibility:hidden"' : '') + '>' + t('alm_today') + '</button>';
   html += '</div>';
 
+  // Holiday scope row — lives right under the month header, tied to the grid
+  // it filters rather than floating below the day-detail panel. A two-segment
+  // pill (Regional/Worldwide) sets the scope explicitly; the caption text next
+  // to it names the region (or "every country") and doubles as a plain-hover
+  // link back to the location control. Gregorian only — the national packs are
+  // keyed to Gregorian month/day, not the other calendar systems.
+  if (_almSystem === 'gregorian') {
+    var scope = _almHolidayScope();
+    var regionName = _almRegionName(_almRegion());
+    var capText = (scope === 'worldwide')
+      ? _tLookup('alm_showing_all_countries', "Showing every country's holidays")
+      : (regionName
+        ? _tLookup('alm_showing_holidays', 'Showing {c} holidays').replace('{c}', regionName.replace(/</g, '&lt;'))
+        : _tLookup('alm_showing_worldwide', 'Showing worldwide holidays'));
+    html += '<div class="alm-hol-row">' +
+      '<div class="alm-scope-seg" role="tablist" aria-label="' +
+        _tLookup('alm_scope_toggle_hint', 'Switch between your region and every country').replace(/"/g, '&quot;') + '">' +
+        '<button type="button" class="alm-scope-btn' + (scope === 'region' ? ' active' : '') + '" role="tab" aria-selected="' + (scope === 'region') + '" onclick="_almSetHolidayScope(\'region\')">' +
+          _tLookup('alm_scope_regional', 'Regional') + '</button>' +
+        '<button type="button" class="alm-scope-btn' + (scope === 'worldwide' ? ' active' : '') + '" role="tab" aria-selected="' + (scope === 'worldwide') + '" onclick="_almSetHolidayScope(\'worldwide\')">' +
+          _tLookup('alm_scope_worldwide', 'Worldwide') + '</button>' +
+      '</div>' +
+      '<button type="button" class="alm-hol-cap" onclick="_almScrollToLocation()" title="' +
+        _tLookup('alm_holidays_follow_hint', 'Follows your location on the map').replace(/"/g, '&quot;') + '">' +
+        capText + '</button>' +
+      '</div>';
+  }
+
   // Grid
   html += '<div class="alm-grid">';
   var _dlLocale = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
@@ -4624,32 +4652,6 @@ function _drawAlmanacGrid() {
       }
       html += '</div>';
     }
-  }
-
-  // Quiet caption saying whose national days are shown. Always present on
-  // the Gregorian calendar — no pack means the worldwide set, and saying
-  // so beats an unexplained absence of holidays.
-  if (_almSystem === 'gregorian') {
-    var scope = _almHolidayScope();
-    var capText, toggleText;
-    if (scope === 'worldwide') {
-      capText = _tLookup('alm_showing_all_countries', "Showing every country's holidays");
-      toggleText = _tLookup('alm_scope_region', 'My region');
-    } else {
-      var regionName = _almRegionName(_almRegion());
-      capText = regionName
-        ? _tLookup('alm_showing_holidays', 'Showing {c} holidays').replace('{c}', regionName.replace(/</g, '&lt;'))
-        : _tLookup('alm_showing_worldwide', 'Showing worldwide holidays');
-      toggleText = _tLookup('alm_scope_worldwide', 'Worldwide');
-    }
-    html += '<div class="alm-cal-region">' +
-      '<button type="button" class="alm-cal-region-cap" onclick="_almScrollToLocation()" title="' +
-        _tLookup('alm_holidays_follow_hint', 'Follows your location on the map').replace(/"/g, '&quot;') + '">' +
-        capText + '</button>' +
-      '<button type="button" class="alm-cal-region-toggle" onclick="_almToggleHolidayScope()" title="' +
-        _tLookup('alm_scope_toggle_hint', 'Switch between your region and every country').replace(/"/g, '&quot;') + '">' +
-        toggleText + '</button>' +
-      '</div>';
   }
 
   // Cross-reference — selected date in all calendar systems (replaces pills)

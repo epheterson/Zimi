@@ -579,7 +579,7 @@
   "alm_region_holiday": "Festivo de {c}",
   "alm_showing_all_countries": "Mostrando festivos de todos los países",
   "alm_scope_worldwide": "Todo el mundo",
-  "alm_scope_region": "Mi región",
+  "alm_scope_regional": "Regional",
   "alm_scope_toggle_hint": "Cambiar entre tu región y todos los países",
   "alm_hol_1st_white_night": "1.ª Noche Blanca",
   "alm_hol_aban_festival": "Festival de Aban",

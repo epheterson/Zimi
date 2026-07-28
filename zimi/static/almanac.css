@@ -63,11 +63,23 @@
    keeps the cursor on it and hover repaints the amber border grey. */
 .alm-tz-city-card.alm-tz-city-active,
 .alm-tz-city-card.alm-tz-city-active:hover { border: 2px solid var(--amber); background: var(--amber-glow); box-shadow: 0 0 10px var(--amber-glow); padding: 5px 3px; }
-.alm-cal-region { text-align: center; font-size: 11px; color: var(--text3); margin-top: 8px; display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; }
-.alm-cal-region-cap { background: none; border: none; padding: 0; margin: 0; font: inherit; color: var(--text3); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
-.alm-cal-region-cap:hover { color: var(--amber); }
-.alm-cal-region-toggle { background: none; border: 1px solid var(--border); border-radius: 999px; padding: 1px 9px; font: inherit; font-size: 11px; color: var(--text3); cursor: pointer; line-height: 1.5; }
-.alm-cal-region-toggle:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+/* Holiday scope row — sits under the month header, tied to the grid it
+   filters. A recessed segmented pill (Regional/Worldwide) sets the scope
+   explicitly, amber-filled when active — same control language as the
+   app-theme picker (app.css .app-theme-seg) so the two families read as one
+   system. The caption text names the region and doubles as a plain-hover
+   link back to the location control; no underline, just a colour shift. */
+.alm-hol-row { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; font-size: 11px; }
+.alm-scope-seg { display: flex; gap: 3px; padding: 3px; border-radius: 999px; background: var(--surface2); border: 1px solid var(--border); }
+.alm-scope-btn {
+  border: none; border-radius: 999px; padding: 3px 12px; font: inherit; font-size: 11px;
+  background: none; color: var(--text3); cursor: pointer; line-height: 1.4;
+  transition: color 0.15s, background 0.15s;
+}
+.alm-scope-btn:hover { color: var(--amber); }
+.alm-scope-btn.active { background: var(--amber); color: #000; font-weight: 600; }
+.alm-hol-cap { background: none; border: none; padding: 0; margin: 0; font: inherit; color: var(--text3); cursor: pointer; }
+.alm-hol-cap:hover { color: var(--amber); }
 /* Brief highlight when the holidays caption jumps focus to the location map. */
 .alm-loc-flash { animation: almLocFlash 1.6s ease-out; border-radius: 8px; }
 @keyframes almLocFlash { 0%, 20% { box-shadow: 0 0 0 2px var(--amber), 0 0 14px var(--amber-glow); } 100% { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent; } }
