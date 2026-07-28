@@ -9584,6 +9584,48 @@ function _readerViewClean(root, doc) {
       wrap.appendChild(tbl);
     }
   } catch(e) {}
+  // Flatten MediaWiki CSS-crop thumbnails. A "cropped" lead image clips a large
+  // source to a small window via an ancestor's overflow:hidden plus an inner
+  // wrapper positioned with a NEGATIVE offset. Reader View forces
+  // overflow:visible on every descendant (to kill devdocs-style inner
+  // scrollers), which defeats the clip and lets the full-size image blow past
+  // the column's right edge. Detect the crop by its tell — a negative top/left
+  // inline offset — and un-crop it so the whole image flows and caps at the
+  // column width (aspect preserved). Bare/figure images have no such wrapper, so
+  // normal-size images are untouched.
+  try {
+    var negOffset = /(?:^|;)\s*(?:top|left)\s*:\s*-/i;
+    var styled = root.querySelectorAll('[style]');
+    for (var c = 0; c < styled.length; c++) {
+      var crop = styled[c];
+      if (!negOffset.test(crop.getAttribute('style') || '')) continue;
+      ['position', 'top', 'left', 'width', 'height', 'max-width'].forEach(function(p) {
+        try { crop.style.removeProperty(p); } catch(e) {}
+      });
+      crop.style.maxWidth = '100%';
+      // Free the fixed widths on the crop's wrapper chain (.thumbimage /
+      // .thumbinner / .noresize carry inline px widths that would still pin the
+      // image), stopping at the reading root.
+      var anc = crop.parentNode, hops = 0;
+      while (anc && anc !== root && anc.nodeType === 1 && hops < 4) {
+        if (anc.style && (anc.style.width || /(?:thumb|noresize)/.test(anc.className || ''))) {
+          try { anc.style.removeProperty('width'); anc.style.removeProperty('height'); } catch(e) {}
+          anc.style.maxWidth = '100%';
+        }
+        anc = anc.parentNode; hops++;
+      }
+      // The image itself carries width=/height= attrs sized to the FULL source —
+      // clear them so it scales down to the column instead of overflowing.
+      var cimgs = crop.querySelectorAll('img');
+      for (var ci = 0; ci < cimgs.length; ci++) {
+        cimgs[ci].removeAttribute('width');
+        cimgs[ci].removeAttribute('height');
+        cimgs[ci].style.width = 'auto';
+        cimgs[ci].style.maxWidth = '100%';
+        cimgs[ci].style.height = 'auto';
+      }
+    }
+  } catch(e) {}
 }
 
 function _readerViewInjectStyle(doc) {
