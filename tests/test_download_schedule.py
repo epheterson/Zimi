@@ -123,7 +123,77 @@ def test_save_and_reload():
         "start": "23:00",
         "end": "05:00",
         "locked": False,
+        "upload_restrict": False,
+        "upload_trickle_kb": library._DEFAULT_UPLOAD_TRICKLE_KB,
     }
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Upload-window restrictor (restrict seeding to the window)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def test_upload_fields_persist():
+    assert library._save_download_schedule(True, "01:00", "07:00", True, 25)
+    sched = library._load_download_schedule()
+    assert sched["upload_restrict"] is True
+    assert sched["upload_trickle_kb"] == 25
+
+
+def test_upload_fields_preserved_on_window_edit():
+    # Set the upload policy, then edit only the window — policy must survive.
+    library._save_download_schedule(True, "01:00", "07:00", True, 40)
+    library._save_download_schedule(True, "02:00", "06:00")
+    sched = library._load_download_schedule()
+    assert sched["start"] == "02:00"
+    assert sched["upload_restrict"] is True
+    assert sched["upload_trickle_kb"] == 40
+
+
+def test_upload_trickle_floored_positive():
+    # 0 would mean "unlimited" downstream — a trickle must stay positive.
+    library._save_download_schedule(True, "01:00", "07:00", True, 0)
+    assert library._load_download_schedule()["upload_trickle_kb"] >= 1
+
+
+def test_in_window_now_ignores_enabled(monkeypatch):
+    # Scheduling OFF but the upload restrictor uses raw window membership.
+    library._save_download_schedule(False, "01:00", "07:00", True, 30)
+    monkeypatch.setattr(library, "_now_local_minutes", lambda: 180)  # 03:00 inside
+    assert library._in_window_now() is True
+    monkeypatch.setattr(library, "_now_local_minutes", lambda: 720)  # noon outside
+    assert library._in_window_now() is False
+
+
+def test_upload_window_transition_calls_rate_setter(monkeypatch):
+    from zimi import p2p
+
+    calls = []
+    monkeypatch.setattr(p2p, "set_upload_window_cap", lambda kb: calls.append(kb))
+    library._save_download_schedule(True, "01:00", "07:00", True, 30)
+    library._upload_window_applied = None  # reset transition memory
+    # Outside the window → trickle to 30.
+    monkeypatch.setattr(library, "_now_local_minutes", lambda: 720)
+    library._apply_upload_window()
+    assert calls[-1] == 30
+    # Inside the window → release (None).
+    monkeypatch.setattr(library, "_now_local_minutes", lambda: 180)
+    library._apply_upload_window()
+    assert calls[-1] is None
+
+
+def test_upload_window_idempotent_no_transition(monkeypatch):
+    from zimi import p2p
+
+    calls = []
+    monkeypatch.setattr(p2p, "set_upload_window_cap", lambda kb: calls.append(kb))
+    library._save_download_schedule(True, "01:00", "07:00", True, 30)
+    library._upload_window_applied = None
+    monkeypatch.setattr(library, "_now_local_minutes", lambda: 720)
+    library._apply_upload_window()
+    n = len(calls)
+    library._apply_upload_window()  # same state — must not touch the session again
+    assert len(calls) == n
 
 
 def test_malformed_persisted_times_fall_back():

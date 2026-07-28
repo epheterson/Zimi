@@ -729,6 +729,11 @@
   .cat-heading:first-child { margin-top: 0; }
   .cat-heading.clickable { cursor: pointer; }
   .cat-heading.clickable:hover { opacity: 0.8; }
+  /* The Other catch-all heading reads quieter than a named section (it's the
+     leftover bucket) — flat muted colour instead of the amber gradient. */
+  .cat-heading-other {
+    background: none; -webkit-text-fill-color: initial; color: var(--text2); opacity: 0.7;
+  }
   /* The global view toggle rides on the first section header's line, pinned to
      its trailing edge. Absolute (not flex) so the gradient-clipped heading text
      is untouched; text-fill-color reset so the toggle glyphs aren't transparent. */
@@ -780,6 +785,9 @@
     transition: background 0.25s, border-color 0.25s, box-shadow 0.25s, transform 0.25s;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     display: flex; gap: 14px; align-items: stretch; text-decoration: none; color: inherit; cursor: pointer;
+    /* Long-press opens the context menu (#37) — suppress iOS's own text-selection
+       callout / magnifier so the press reads as a clean right-click. */
+    -webkit-touch-callout: none;
   }
   .stat-card:hover, .stat-card:focus-visible {
     background: var(--surface2); border-color: var(--amber-border);
@@ -1185,6 +1193,7 @@
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
     margin-bottom: 6px; transition: border-color 0.2s, opacity 0.3s;
     max-height: 200px; overflow: hidden;
+    -webkit-touch-callout: none;  /* long-press → context menu, not iOS callout (#37) */
   }
   /* Grid-cell catalog-items don't need a margin — the grid gap handles spacing */
   .catalog-grid .catalog-item { margin-bottom: 0; }
@@ -1284,6 +1293,9 @@
   .dl-item .dl-scheduled { color: var(--text2); flex-shrink: 0; font-weight: 500; }
   /* Download-scheduling card */
   .ms-toggle-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
+  /* Match the app's styled checkbox (amber accent) instead of the bare native
+     square — consistent with .ms-check / .share-upnp elsewhere in the pane. */
+  .ms-toggle-row input[type="checkbox"] { accent-color: var(--amber); width: 15px; height: 15px; flex-shrink: 0; }
   .ms-toggle-row input[disabled] { cursor: not-allowed; }
   .ms-dl-window { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 10px; }
   .ms-dl-window label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); }
@@ -1299,6 +1311,13 @@
   /* Backup & export hub */
   .ms-backup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
   .ms-backup-import { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  /* Import preview: a bordered diff summary the admin confirms before anything applies. */
+  .ms-backup-preview {
+    align-self: stretch; padding: 12px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--surface2); display: flex; flex-direction: column; gap: 4px;
+  }
+  .ms-backup-pv-line { font-size: 13px; color: var(--text); }
+  .ms-dl-trickle { margin-top: 8px; }
   .dl-progress { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
   .dl-progress-bar { height: 100%; background: var(--amber); border-radius: 2px; transition: width 0.5s; }
   .dl-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
@@ -1663,6 +1682,15 @@
   .manage-installed-group { margin-bottom: 24px; }
   .manage-installed-group .ci-section-label { margin-top: 0; }
   .mig-updates .ci-section-label { color: var(--amber); }
+  /* Drag-to-move (#37): the row being dragged dims; a section header lights up
+     while it's a valid drop target. Both tokens theme-track (light + dark). */
+  .catalog-item.ci-dragging { opacity: 0.4; }
+  .ci-section-label[data-cat] { border-radius: var(--radius); transition: color 0.1s, background 0.1s, box-shadow 0.1s; }
+  .ci-section-label.drop-target {
+    color: var(--amber);
+    background: var(--amber-glow);
+    box-shadow: inset 0 0 0 1px var(--amber-border);
+  }
 
   /* BT seeding panel in Server settings */
   .seeding-totals { font-size: 12px; color: var(--text2); margin-bottom: 8px; }
@@ -1954,6 +1982,25 @@
   }
   .reorder-btn:hover:not(:disabled) { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .reorder-btn:disabled { opacity: 0.3; cursor: default; }
+  /* Other catch-all + declared-empty rows read quieter — they're structural, not
+     content. Still fully AA (muted labels, not disabled). */
+  .reorder-row-other, .reorder-row-empty { border-style: dashed; }
+  .reorder-row-other .reorder-label, .reorder-row-empty .reorder-label { color: var(--text2); }
+  /* ✕ to drop an empty declared section (only present before any ZIM lives there). */
+  .reorder-remove {
+    flex-shrink: 0; width: 22px; height: 22px; padding: 0; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 15px;
+    background: transparent; border: none; border-radius: var(--radius);
+    color: var(--text3); cursor: pointer; transition: color 0.1s, background 0.1s;
+  }
+  .reorder-remove:hover { color: var(--danger, #e5484d); background: var(--amber-glow); }
+  /* Add-section pill: dashed amber, matches the reorder link-out pill. */
+  .reorder-add {
+    display: inline-flex; align-items: center; gap: 5px; margin-top: 10px;
+    color: var(--amber); border-color: var(--amber-border); border-style: dashed;
+    background: var(--amber-glow);
+  }
+  .reorder-add:hover { color: var(--amber); border-color: var(--amber); background: var(--amber-glow); border-style: dashed; }
 
   /* ── Collections manage ── */
   .coll-form { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }

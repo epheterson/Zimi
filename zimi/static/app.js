@@ -8681,14 +8681,17 @@ async function _renderDownloadSchedule() {
       (enabled ? '<div class="ms-hint">' + tH('dl_window_hint') + '</div>' : '');
   }
 
+  // Compose as [label] [input] [unit] on one line, hint on its own muted line
+  // below — the .share-field pattern the BitTorrent card uses (a plain .ms-field
+  // would stretch the input full-width and shove the unit into the hint).
   var speedRow =
-    '<div class="ms-field ms-dl-speed"><label>' + tH('dl_speed_limit') + '</label>' +
+    '<div class="share-field ms-dl-speed"><label>' + tH('dl_speed_limit') + '</label>' +
     '<span class="share-port-group">' +
     '<input type="number" min="0" step="64" value="' + (s.download_kb || 0) + '" id="ms-dl-speed"' +
       (speedLocked ? ' disabled' : '') + ' class="share-num-input" aria-label="' + escAttr(t('dl_speed_limit')) +
       '" onchange="_setDownloadSpeed(this)">' +
-    '<span class="share-field-note">' + tH('dl_speed_unit') + '</span></span>' +
-    '<span class="share-field-note">' + tH('dl_speed_hint') + '</span></div>' +
+    '<span class="share-field-note">' + tH('dl_speed_unit') + '</span></span></div>' +
+    '<div class="ms-hint">' + tH('dl_speed_hint') + '</div>' +
     (speedLocked ? '<div class="ms-hint">' + tH('dl_speed_env_locked') + '</div>' : '');
 
   // Upload restrictor: trickle seeding outside the window (one row; the trickle
@@ -8699,13 +8702,13 @@ async function _renderDownloadSchedule() {
       (uploadRestrict ? ' checked' : '') + (locked ? ' disabled' : '') +
       ' onchange="_setUploadRestrict(this.checked)"> ' + tH('dl_upload_restrict') + '</label>' +
     (uploadRestrict ?
-      '<div class="ms-field ms-dl-trickle"><label>' + tH('dl_upload_trickle') + '</label>' +
+      '<div class="share-field ms-dl-trickle"><label>' + tH('dl_upload_trickle') + '</label>' +
         '<span class="share-port-group">' +
         '<input type="number" min="1" step="10" value="' + (s.upload_trickle_kb || 50) + '" id="ms-dl-trickle"' +
           (locked ? ' disabled' : '') + ' class="share-num-input" aria-label="' + escAttr(t('dl_upload_trickle')) +
           '" onchange="_setUploadTrickle(this)">' +
-        '<span class="share-field-note">' + tH('dl_speed_unit') + '</span></span>' +
-        '<span class="share-field-note">' + tH('dl_upload_trickle_hint') + '</span></div>' +
+        '<span class="share-field-note">' + tH('dl_speed_unit') + '</span></span></div>' +
+        '<div class="ms-hint">' + tH('dl_upload_trickle_hint') + '</div>' +
         (s.upload_throttled ? '<div class="ms-hint">' + tH('dl_upload_throttled_now') + '</div>' : '')
       : '');
 
