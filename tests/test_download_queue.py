@@ -69,11 +69,12 @@ def _kiwix_url(name):
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def test_default_max_concurrent_is_3(monkeypatch):
+def test_default_max_concurrent(monkeypatch):
     monkeypatch.delenv("ZIMI_MAX_CONCURRENT_DOWNLOADS", raising=False)
-    from zimi import library
+    monkeypatch.delenv("ZIMI_BT", raising=False)
+    from zimi import library, p2p
 
-    assert library._max_concurrent() == 3
+    assert library._max_concurrent() == p2p.DEFAULT_MAX_ACTIVE_DOWNLOADS
 
 
 def test_env_var_overrides_max_concurrent(monkeypatch):
@@ -85,9 +86,9 @@ def test_env_var_overrides_max_concurrent(monkeypatch):
 
 def test_env_var_invalid_falls_back_to_default(monkeypatch):
     monkeypatch.setenv("ZIMI_MAX_CONCURRENT_DOWNLOADS", "not-a-number")
-    from zimi import library
+    from zimi import library, p2p
 
-    assert library._max_concurrent() == library._MAX_CONCURRENT_DEFAULT
+    assert library._max_concurrent() == p2p.DEFAULT_MAX_ACTIVE_DOWNLOADS
 
 
 def test_env_var_zero_clamps_to_one(monkeypatch):
@@ -124,6 +125,28 @@ def test_at_cap_queues_extras(_no_real_threads, _no_mirrors, monkeypatch):
     assert len(library._active_downloads) == 2
     assert len(library._download_queue) == 1
     assert library._download_queue[0]["id"] == qid
+
+
+def test_pref_cap_queues_extras(_no_real_threads, _no_mirrors, monkeypatch, tmp_path):
+    """The cap wired through the p2p pref (the UI path, no env) queues past it,
+    and raising it live then drains the queue."""
+    from zimi import library, p2p
+
+    monkeypatch.delenv("ZIMI_MAX_CONCURRENT_DOWNLOADS", raising=False)
+    monkeypatch.delenv("ZIMI_BT", raising=False)
+    monkeypatch.setattr(p2p, "_prefs_path", str(tmp_path / "prefs.json"))
+    assert p2p.set_pref("max_active_downloads", 1)
+
+    library._start_download(_kiwix_url("a"), size_bytes=100)
+    qid = library._start_download(_kiwix_url("b"), size_bytes=200)[0]
+    assert len(library._active_downloads) == 1
+    assert [q["id"] for q in library._download_queue] == [qid]
+
+    # Raise the cap and drain — the queued item promotes into the new slot.
+    assert p2p.set_pref("max_active_downloads", 2)
+    library.drain_download_queue()
+    assert qid in library._active_downloads
+    assert len(library._download_queue) == 0
 
 
 def test_queue_orders_smallest_first(_no_real_threads, _no_mirrors, monkeypatch):
@@ -274,9 +297,7 @@ def _read_pending(data_dir):
         return json.load(f)["pending"]
 
 
-def test_pending_downloads_persist_on_enqueue(
-    _no_real_threads, _no_mirrors, _data_dir
-):
+def test_pending_downloads_persist_on_enqueue(_no_real_threads, _no_mirrors, _data_dir):
     library._start_download(_kiwix_url("aaa"), size_bytes=100)
     library._start_download(_kiwix_url("bbb"), size_bytes=200)
     pending = _read_pending(_data_dir)
@@ -376,9 +397,7 @@ def test_download_refused_when_size_exceeds_free_space(
     monkeypatch.setattr(
         library.shutil, "disk_usage", lambda p: _FakeUsage(free=5 * 1024**3)
     )
-    dl_id, err = library._start_download(
-        _kiwix_url("big"), size_bytes=10 * 1024**3
-    )
+    dl_id, err = library._start_download(_kiwix_url("big"), size_bytes=10 * 1024**3)
     assert dl_id is None
     assert "disk space" in err.lower()
 

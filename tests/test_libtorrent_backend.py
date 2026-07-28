@@ -281,6 +281,40 @@ class TestRateLimits:
         assert backend._ses.settings["download_rate_limit"] == 0
 
 
+class TestConnectionLimit:
+    def test_session_start_applies_connections_limit(
+        self, backend, tmp_path, monkeypatch
+    ):
+        # The real, enforced knob: connections_limit lands on the session at
+        # startup (not active_downloads/active_seeds — those are inert for
+        # Zimi's manually-managed, non-auto-managed torrents).
+        monkeypatch.setattr(p2p, "_prefs_path", None)
+        monkeypatch.delenv("ZIMI_BT", raising=False)
+        backend._ensure_session()
+        assert backend._ses.settings["connections_limit"] == p2p.DEFAULT_MAX_CONNECTIONS
+
+    def test_set_connections_limit_applies_live(self, backend, tmp_path):
+        backend.add_torrent(MAGNET, dest_dir=str(tmp_path / "staging"))
+        backend.set_connections_limit(333)
+        assert backend._ses.settings["connections_limit"] == 333
+
+    def test_apply_session_limits_pushes_current_cap(
+        self, backend, tmp_path, monkeypatch
+    ):
+        # apply_session_limits() reads the configured cap and pushes it to the
+        # already-running backend (peek_backend, not get_backend).
+        backend.add_torrent(MAGNET, dest_dir=str(tmp_path / "staging"))
+        monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+        monkeypatch.setattr(p2p, "_prefs_path", None)
+        monkeypatch.setenv("ZIMI_BT", "on,conns=777")
+        p2p.apply_session_limits()
+        assert backend._ses.settings["connections_limit"] == 777
+
+    def test_connections_limit_floor(self, backend, tmp_path):
+        backend.set_connections_limit(1)
+        assert backend._ses.settings["connections_limit"] == 10
+
+
 class TestResume:
     def test_resume_round_trip(self, backend, tmp_path):
         tid = backend.add_torrent(

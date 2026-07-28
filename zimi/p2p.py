@@ -48,7 +48,7 @@ def _bool_env(key: str, default: bool = False) -> bool:
 
 # ============================================================================
 # Compact config blobs — the documented env surface is just two vars:
-#   ZIMI_BT="on,port=6881,ratio=2,up=2048,mirror=off"
+#   ZIMI_BT="on,port=6881,ratio=2,up=2048,mirror=off,active=4,conns=200"
 #   ZIMI_NEARBY="on,name=my-zimi,public=off"
 # A bare on/off token drives the master switch; key=value pairs set single
 # fields. Any field present in the blob is env-locked in the UI — fields
@@ -130,6 +130,50 @@ def set_pref(key: str, value) -> bool:
             os.replace(tmp, _prefs_path)
         except OSError as e:
             log.warning("could not persist preference %s: %s", key, e)
+            return False
+    return True
+
+
+def all_prefs() -> dict:
+    """The whole persisted-prefs blob (seed/mirror/rate/port toggles). Used by
+    the full-server backup so every UI-set sharing pref rides along, including
+    ones added later — no per-key list to keep in sync."""
+    if not _prefs_path:
+        return {}
+    with _prefs_lock:
+        try:
+            with open(_prefs_path, encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+
+def replace_prefs(prefs: dict, overwrite: bool = False) -> bool:
+    """Restore prefs from a backup. ``overwrite`` replaces the whole blob;
+    otherwise incoming keys are merged over the current ones (a setting, so
+    incoming wins per key). Returns False when the config dir isn't writable."""
+    if not _prefs_path or not isinstance(prefs, dict):
+        return False
+    with _prefs_lock:
+        merged = {} if overwrite else {}
+        if not overwrite:
+            try:
+                with open(_prefs_path, encoding="utf-8") as f:
+                    cur = json.load(f)
+                if isinstance(cur, dict):
+                    merged = cur
+            except (OSError, ValueError):
+                pass
+        merged.update(prefs)
+        try:
+            os.makedirs(os.path.dirname(_prefs_path), exist_ok=True)
+            tmp = _prefs_path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(merged, f)
+            os.replace(tmp, _prefs_path)
+        except OSError as e:
+            log.warning("could not restore preferences: %s", e)
             return False
     return True
 
@@ -271,14 +315,115 @@ def is_bt_down_env_locked() -> bool:
     return "down" in _bt_conf() or _env_explicitly_set("ZIMI_BT_DOWN_KB")
 
 
+# ============================================================================
+# Concurrency + connection caps
+#
+# Two different enforcement layers, deliberately:
+#
+#   active= (max concurrent downloads) is enforced by library.py's own
+#   download queue — the rest wait in line, smallest-first — because Zimi
+#   manages every torrent by hand (add_torrent strips auto_managed so the
+#   ledger, not libtorrent, decides what runs). libtorrent's active_downloads/
+#   active_seeds/active_limit only queue AUTO-managed torrents, of which Zimi
+#   has none, so setting them would be an inert knob. The queue also governs
+#   HTTP pulls, so one number caps concurrency across both transports.
+#
+#   conns= (max connections) IS a real libtorrent session setting
+#   (connections_limit) — enforced on every torrent regardless of management —
+#   so it lives on the session and applies live.
+#
+# Both follow the ZIMI_BT sub-key + persisted-pref + default pattern; a set
+# field env-locks its UI control.
+# ============================================================================
+
+DEFAULT_MAX_ACTIVE_DOWNLOADS = 4
+DEFAULT_MAX_CONNECTIONS = 200
+
+
+def get_max_active_downloads() -> int:
+    """How many downloads run at once; the rest queue (library.py's queue is
+    the enforcer, HTTP and BT alike). Legacy ZIMI_MAX_CONCURRENT_DOWNLOADS
+    wins and locks; then ZIMI_BT's active= field; then the persisted UI
+    value; default 4. Clamped 1..20."""
+    raw = os.environ.get("ZIMI_MAX_CONCURRENT_DOWNLOADS") or _bt_conf().get("active")
+    if raw in (None, ""):
+        raw = _read_pref("max_active_downloads", DEFAULT_MAX_ACTIVE_DOWNLOADS)
+    try:
+        return max(1, min(20, int(raw)))
+    except (ValueError, TypeError):
+        return DEFAULT_MAX_ACTIVE_DOWNLOADS
+
+
+def is_max_active_downloads_env_locked() -> bool:
+    return bool(
+        _env_explicitly_set("ZIMI_MAX_CONCURRENT_DOWNLOADS") or _bt_conf().get("active")
+    )
+
+
+def get_bt_max_connections() -> int:
+    """Global libtorrent connections_limit — the session's total socket cap,
+    shared across all torrents. ZIMI_BT's conns= field wins and locks; then
+    the persisted UI value; default 200 (libtorrent's own default). Clamped
+    10..2000 — zero would strangle the session."""
+    raw = _bt_conf().get("conns")
+    if raw in (None, ""):
+        raw = _read_pref("bt_max_connections", DEFAULT_MAX_CONNECTIONS)
+    try:
+        return max(10, min(2000, int(raw)))
+    except (ValueError, TypeError):
+        return DEFAULT_MAX_CONNECTIONS
+
+
+def is_bt_max_connections_env_locked() -> bool:
+    return bool(_bt_conf().get("conns"))
+
+
+# Download-window upload restrictor (library.py drives the transitions). When
+# set, this overrides the configured up limit so seeding trickles outside the
+# window; None means "no override — use the normal up limit". Folding it into
+# apply_rate_limits keeps one setter as the sole authority over the live
+# session's upload rate.
+_upload_window_cap_kb: int | None = None
+
+
+def set_upload_window_cap(kb: int | None) -> None:
+    """Trickle (positive KB/s) or release (None) the seeding upload rate for the
+    download window, applied live. Idempotent at the session layer — safe to
+    call on every schedule tick."""
+    global _upload_window_cap_kb
+    _upload_window_cap_kb = None if kb is None else max(0, int(kb))
+    apply_rate_limits()
+
+
+def _effective_up_kb() -> int:
+    """Upload cap to hand the session: the window trickle when one is active,
+    else the configured BT up limit."""
+    if _upload_window_cap_kb is not None:
+        return _upload_window_cap_kb
+    return get_bt_up_limit_kb()
+
+
 def apply_rate_limits() -> None:
-    """Push the current up/down caps to the running session (live, no restart)."""
+    """Push the current up/down caps to the running session (live, no restart).
+
+    The upload side honors any active download-window trickle (see
+    set_upload_window_cap); the download side is always the configured cap."""
     backend = peek_backend()
     if backend is not None and hasattr(backend, "set_global_rate_limits"):
         try:
-            backend.set_global_rate_limits(get_bt_up_limit_kb(), get_bt_down_limit_kb())
+            backend.set_global_rate_limits(_effective_up_kb(), get_bt_down_limit_kb())
         except Exception as e:
             log.debug("live rate-limit apply failed: %s", e)
+
+
+def apply_session_limits() -> None:
+    """Push the connection cap to the running session (live, no restart)."""
+    backend = peek_backend()
+    if backend is not None and hasattr(backend, "set_connections_limit"):
+        try:
+            backend.set_connections_limit(get_bt_max_connections())
+        except Exception as e:
+            log.debug("live connection-limit apply failed: %s", e)
 
 
 # Absolute free-space floor shared by the download gate and the seeding
@@ -398,6 +543,10 @@ def get_mirror_status() -> dict:
         "bt_down_kb": get_bt_down_limit_kb(),
         "bt_up_env_locked": is_bt_up_env_locked(),
         "bt_down_env_locked": is_bt_down_env_locked(),
+        "max_active_downloads": get_max_active_downloads(),
+        "max_active_downloads_env_locked": is_max_active_downloads_env_locked(),
+        "bt_max_connections": get_bt_max_connections(),
+        "bt_max_connections_env_locked": is_bt_max_connections_env_locked(),
         # Docker bridge mode advertises an unreachable container IP —
         # Nearby silently doesn't work. The UI warns; ZIMI_NEARBY's ip=
         # field (or host networking) fixes it.
@@ -538,7 +687,16 @@ def _lt():
         _lt_module = libtorrent
     except ImportError:
         _lt_import_failed = True
-        log.info("libtorrent not importable — BT off, downloads use HTTP")
+        import sys as _sys
+
+        if _sys.version_info >= (3, 14):
+            _fix = (
+                f"no wheel for Python {_sys.version_info.major}."
+                f"{_sys.version_info.minor} yet — use Python 3.13 or the Docker image"
+            )
+        else:
+            _fix = "`pip install libtorrent` (or `pip install zimi[bt]`) to enable it"
+        log.info("libtorrent not importable — BT off, downloads use HTTP; %s", _fix)
         return None
     return _lt_module
 
@@ -597,8 +755,14 @@ class LibtorrentBackend(BTBackend):
                 "enable_dht": is_dht_enabled(),
                 "enable_upnp": is_upnp_enabled(),
                 "enable_natpmp": is_upnp_enabled(),
-                "upload_rate_limit": get_bt_up_limit_kb() * 1024,
+                "upload_rate_limit": _effective_up_kb() * 1024,
                 "download_rate_limit": get_bt_down_limit_kb() * 1024,
+                # Global socket cap — real and enforced on every torrent. (The
+                # concurrent-DOWNLOAD cap is not a session setting: libtorrent's
+                # active_* only queue auto-managed torrents, which Zimi has none
+                # of, so library.py's own queue enforces it — see
+                # get_max_active_downloads.)
+                "connections_limit": get_bt_max_connections(),
                 # port_mapping category surfaces UPnP/NAT-PMP success or
                 # failure — the single most useful signal for "why is BT slow":
                 # a node that never maps its port is not connectable and starves
@@ -1003,6 +1167,10 @@ class LibtorrentBackend(BTBackend):
                 "download_rate_limit": max(0, int(down_kb)) * 1024,
             }
         )
+
+    def set_connections_limit(self, n: int) -> None:
+        self._ensure_session()
+        self._ses.apply_settings({"connections_limit": max(10, int(n))})
 
     def purge_stopped(self, keep_errors: bool = True) -> None:
         """No-op: libtorrent has no stopped-results ledger to groom.

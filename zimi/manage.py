@@ -497,23 +497,43 @@ def _apply_library_layout(overrides, order, sections=None):
 
 
 # ============================================================================
-# Backup bundle — export/import the server-side half of a Zimi setup.
+# Backup bundle — export/import a Zimi setup.
 #
-# SCHEMA (zimi-backup, version 1). The FULL bundle the user downloads is
-# assembled client-side; the server owns only the pieces below. Per-browser
-# state — bookmarks, history, and localStorage preferences — is added by the
-# client on export and written back by the client on import; it never touches
-# the server. Keep `_BACKUP_SCHEMA_VERSION` in lockstep with the client.
+# SCHEMA (zimi-backup, version 2). Two scopes:
+#   • "device" — everyone's backup: the installed library list, collections/
+#     favorites, and the home layout. The client folds its own per-browser
+#     state (bookmarks/history/preferences) in on top; that never touches the
+#     server. This is the v1 shape plus a `scope` field.
+#   • "server" — ADMIN-ONLY. Everything the server owns: the device fields
+#     PLUS users.json (WITH password hashes — it's the admin's own backup),
+#     the anonymous-access policy, the download schedule, the BitTorrent/
+#     sharing prefs, and the seed-intent ledger.
+#
+# Import MERGES by default (union by identity, incoming wins on conflict) and
+# is a two-step: a "preview" pass returns a diff summary and applies nothing;
+# only an explicit "apply" writes. An `overwrite` flag replaces wholesale where
+# the caller wants that. Keep `_BACKUP_SCHEMA_VERSION` in lockstep with the
+# client's `_BACKUP_SCHEMA_VERSION`.
 # ============================================================================
 
 _BACKUP_SCHEMA = "zimi-backup"
-_BACKUP_SCHEMA_VERSION = 1
+_BACKUP_SCHEMA_VERSION = 2
 
 
-def _build_backup_bundle():
-    """Server-side portion of a backup: the installed library list (portable
-    name+version so a fresh machine can re-seed), collections/favorites, and
-    the home library layout."""
+def _bundle_scope(data):
+    """The scope a bundle declares. Missing (v1 bundles) → 'device'. Anything
+    other than 'server' is treated as 'device' so server-only keys can never be
+    processed off a device bundle."""
+    return (
+        "server"
+        if (isinstance(data, dict) and data.get("scope") == "server")
+        else "device"
+    )
+
+
+def _build_backup_bundle(scope="device"):
+    """Assemble a backup bundle. ``scope='server'`` adds the admin-only server
+    state on top of the device fields (caller enforces the admin gate)."""
     library = [
         {
             "name": z["name"],
@@ -526,63 +546,327 @@ def _build_backup_bundle():
         }
         for z in _srv.list_zims()
     ]
-    return {
+    bundle = {
         "schema": _BACKUP_SCHEMA,
         "schema_version": _BACKUP_SCHEMA_VERSION,
+        "scope": "device",
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "zimi_version": _srv.ZIMI_VERSION,
         "library": library,
         "collections": _srv._load_collections(),
         "library_layout": _srv._load_library_layout(),
     }
+    if scope == "server":
+        from zimi import library as _lib
+        from zimi import p2p
+        from zimi import users as _users
+
+        sched = _lib._load_download_schedule()
+        mode, allow, _ = _users._load_access()
+        bundle["scope"] = "server"
+        bundle["users"] = _users._load_users()  # WITH hashes — admin's own backup
+        bundle["public_access"] = {"mode": mode, "allowlist": allow}
+        bundle["schedule"] = {
+            "enabled": sched["enabled"],
+            "start": sched["start"],
+            "end": sched["end"],
+            "upload_restrict": sched["upload_restrict"],
+            "upload_trickle_kb": sched["upload_trickle_kb"],
+        }
+        bundle["bt_prefs"] = p2p.all_prefs()
+        bundle["seed_intents"] = _lib.seed_ledger_snapshot()
+    return bundle
 
 
-def _apply_backup_bundle(data):
-    """Apply the server-side half of a backup bundle. Returns (result, error).
+# ── Merge primitives (pure — compute the merged value + counts, persist later) ──
 
-    `collections` is a whole-document replace (favorites + named collections);
-    `library_layout` is validated then merge-patched. Both keys are optional so
-    a partial bundle still restores what it carries.
+
+def _collection_newer(incoming, current):
+    """Conflict winner for a same-named collection. Honors an optional
+    ``updated`` epoch when both carry one; otherwise incoming wins (it's the
+    backup the admin chose to restore)."""
+    try:
+        inc_t = float(incoming.get("updated"))
+        cur_t = float(current.get("updated"))
+    except (TypeError, ValueError):
+        return True
+    return inc_t >= cur_t
+
+
+def _merge_collections(cur, incoming, overwrite):
+    """Union favorites (dedupe) and named collections (by name, newest-wins).
+    Returns (merged, counts)."""
+    inc_fav = [f for f in incoming.get("favorites", []) if isinstance(f, str)]
+    inc_cols = incoming.get("collections", {})
+    if overwrite:
+        fav = list(dict.fromkeys(inc_fav))[:100]
+        merged = {"version": 1, "favorites": fav, "collections": dict(inc_cols)}
+        counts = {
+            "fav_added": len(fav),
+            "fav_dupes": 0,
+            "col_added": len(inc_cols),
+            "col_replaced": 0,
+        }
+        return merged, counts
+    fav = list(cur.get("favorites", []))
+    dupes = 0
+    for f in inc_fav:
+        if f in fav:
+            dupes += 1
+        else:
+            fav.append(f)
+    cols = dict(cur.get("collections", {}))
+    added = replaced = 0
+    for name, obj in inc_cols.items():
+        if name in cols:
+            if _collection_newer(obj, cols[name]):
+                cols[name] = obj
+            replaced += 1
+        else:
+            cols[name] = obj
+            added += 1
+    merged = {"version": 1, "favorites": fav[:100], "collections": cols}
+    counts = {
+        "fav_added": max(0, len(fav[:100]) - len(cur.get("favorites", []))),
+        "fav_dupes": dupes,
+        "col_added": added,
+        "col_replaced": replaced,
+    }
+    return merged, counts
+
+
+def _merge_layout(cur, incoming, overwrite):
+    """Merge the home layout: overrides union (incoming wins per ZIM), sections
+    union, section_order replaced when present (an ordering — merging is
+    meaningless). Returns (overrides, order, sections, counts)."""
+    inc_over = incoming.get("overrides") or {}
+    inc_order = incoming.get("section_order")
+    inc_sections = incoming.get("sections") or []
+    cur_over = cur.get("overrides") or {}
+    cur_sections = cur.get("sections") or []
+    if overwrite:
+        over = dict(inc_over)
+        order = inc_order if isinstance(inc_order, list) else cur.get("section_order")
+        sections = list(inc_sections)
+        counts = {
+            "over_added": len(inc_over),
+            "over_changed": 0,
+            "order_changed": inc_order is not None,
+            "sections_added": len(inc_sections),
+        }
+        return over, order, sections, counts
+    over = dict(cur_over)
+    added = changed = 0
+    for k, v in inc_over.items():
+        if k in over:
+            if over[k] != v:
+                changed += 1
+                over[k] = v
+        else:
+            over[k] = v
+            added += 1
+    sections = list(cur_sections)
+    sec_added = 0
+    seen = {s.strip().lower() for s in cur_sections if isinstance(s, str)}
+    for s in inc_sections:
+        if isinstance(s, str) and s.strip().lower() not in seen:
+            seen.add(s.strip().lower())
+            sections.append(s)
+            sec_added += 1
+    order = inc_order if isinstance(inc_order, list) else cur.get("section_order")
+    counts = {
+        "over_added": added,
+        "over_changed": changed,
+        "order_changed": isinstance(inc_order, list)
+        and inc_order != cur.get("section_order"),
+        "sections_added": sec_added,
+    }
+    return over, order, sections, counts
+
+
+def _merge_users(cur, incoming, overwrite):
+    """Union users by casefold key; incoming wins on conflict (or replace all
+    when overwrite). Returns (merged, counts)."""
+    from zimi import users as _users
+
+    inc = {
+        _users._key(v.get("name", k)): v
+        for k, v in incoming.items()
+        if isinstance(v, dict)
+    }
+    if overwrite:
+        return inc, {"added": len(inc), "replaced": 0}
+    merged = dict(cur)
+    added = replaced = 0
+    for k, v in inc.items():
+        if k in merged:
+            if merged[k] != v:
+                replaced += 1
+            merged[k] = v
+        else:
+            merged[k] = v
+            added += 1
+    return merged, {"added": added, "replaced": replaced}
+
+
+def _compute_backup(data, overwrite):
+    """Diff an incoming bundle against current server state WITHOUT persisting.
+
+    Returns (plan, preview, error). ``plan`` is a list of (label, thunk) pairs
+    the apply pass runs in order; ``preview`` is the diff summary the client
+    shows before the admin confirms. Server-only keys are considered only for a
+    ``server``-scope bundle, so a device bundle can never carry server changes.
     """
     if not isinstance(data, dict):
-        return None, "invalid backup"
+        return None, None, "invalid backup"
     schema = data.get("schema")
     if schema is not None and schema != _BACKUP_SCHEMA:
-        return None, "not a Zimi backup"
-    applied = []
+        return None, None, "not a Zimi backup"
+    scope = _bundle_scope(data)
+    plan = []
+    preview = {"scope": scope}
 
     coll = data.get("collections")
     if coll is not None:
         if not isinstance(coll, dict):
-            return None, "invalid collections"
-        favorites = coll.get("favorites", [])
-        collections = coll.get("collections", {})
-        if not isinstance(favorites, list) or not isinstance(collections, dict):
-            return None, "invalid collections"
-        with _srv._collections_lock:
-            _srv._save_collections(
-                {
-                    "version": coll.get("version", 1),
-                    "favorites": favorites[:100],
-                    "collections": collections,
-                }
-            )
-        applied.append("collections")
+            return None, None, "invalid collections"
+        fav = coll.get("favorites", [])
+        cols = coll.get("collections", {})
+        if not isinstance(fav, list) or not isinstance(cols, dict):
+            return None, None, "invalid collections"
+        merged, counts = _merge_collections(_srv._load_collections(), coll, overwrite)
+        preview["collections"] = counts
+        plan.append(("collections", lambda m=merged: _persist_collections(m)))
 
     layout = data.get("library_layout")
     if layout is not None:
         if not isinstance(layout, dict):
-            return None, "invalid library_layout"
-        overrides = layout.get("overrides")
-        order = layout.get("section_order")
-        sections = layout.get("sections")
-        err = _validate_library_layout(overrides, order, sections)
+            return None, None, "invalid library_layout"
+        over, order, sections, counts = _merge_layout(
+            _srv._load_library_layout(), layout, overwrite
+        )
+        err = _validate_library_layout(over, order, sections)
         if err:
-            return None, err
-        _apply_library_layout(overrides, order, sections)
-        applied.append("library_layout")
+            return None, None, err
+        preview["layout"] = counts
+        plan.append(
+            (
+                "library_layout",
+                lambda o=over, r=order, s=sections: _apply_library_layout(o, r, s),
+            )
+        )
 
-    return {"status": "ok", "applied": applied}, None
+    lib = data.get("library")
+    if isinstance(lib, list):
+        installed = set(_srv.get_zim_files().keys())
+        preview["missing_zims"] = sum(
+            1 for z in lib if isinstance(z, dict) and z.get("name") not in installed
+        )
+
+    if scope == "server":
+        err = _plan_server_scope(data, overwrite, plan, preview)
+        if err:
+            return None, None, err
+
+    return plan, preview, None
+
+
+def _persist_collections(merged):
+    with _srv._collections_lock:
+        _srv._save_collections(merged)
+
+
+def _plan_server_scope(data, overwrite, plan, preview):
+    """Extend the plan/preview with the admin-only server state. Returns an
+    error string or None."""
+    from zimi import library as _lib
+    from zimi import p2p
+    from zimi import users as _users
+
+    users = data.get("users")
+    if users is not None:
+        if not isinstance(users, dict):
+            return "invalid users"
+        merged, counts = _merge_users(_users._load_users(), users, overwrite)
+        preview["users"] = counts
+        plan.append(("users", lambda m=merged: _users._save_users(m)))
+
+    settings_changed = []
+
+    pa = data.get("public_access")
+    if isinstance(pa, dict):
+        mode = pa.get("mode")
+        allow = pa.get("allowlist", [])
+        cur_mode, cur_allow, _ = _users._load_access()
+        if mode != cur_mode or allow != cur_allow:
+            settings_changed.append("public_access")
+        plan.append(
+            ("public_access", lambda m=mode, a=allow: _users.set_public_access(m, a))
+        )
+
+    sched = data.get("schedule")
+    if isinstance(sched, dict):
+        cur = _lib._load_download_schedule()
+        keys = ("enabled", "start", "end", "upload_restrict", "upload_trickle_kb")
+        if any(sched.get(k) != cur.get(k) for k in keys if k in sched):
+            settings_changed.append("download_schedule")
+        plan.append(("schedule", lambda s=sched: _restore_schedule(s)))
+
+    bt = data.get("bt_prefs")
+    if isinstance(bt, dict):
+        if bt != p2p.all_prefs():
+            settings_changed.append("sharing_prefs")
+        plan.append(("bt_prefs", lambda b=bt: _restore_bt_prefs(b, overwrite)))
+
+    intents = data.get("seed_intents")
+    if isinstance(intents, dict):
+        cur = _lib.seed_ledger_snapshot()
+        preview["seed_intents"] = {
+            "added": sum(1 for k, v in intents.items() if cur.get(k) != v)
+        }
+        plan.append(
+            ("seed_intents", lambda i=intents: _lib.restore_seed_intents(i, overwrite))
+        )
+
+    if settings_changed:
+        preview["settings"] = settings_changed
+    return None
+
+
+def _restore_schedule(sched):
+    from zimi import library as _lib
+
+    cur = _lib._load_download_schedule()
+    _lib._save_download_schedule(
+        sched.get("enabled", cur["enabled"]),
+        sched.get("start", cur["start"]),
+        sched.get("end", cur["end"]),
+        sched.get("upload_restrict", cur["upload_restrict"]),
+        sched.get("upload_trickle_kb", cur["upload_trickle_kb"]),
+    )
+
+
+def _restore_bt_prefs(bt, overwrite):
+    from zimi import p2p
+
+    p2p.replace_prefs(bt, overwrite=overwrite)
+    p2p.apply_rate_limits()
+
+
+def _apply_backup_bundle(data, overwrite=False):
+    """Apply a backup bundle (MERGE by default). Returns (result, error).
+
+    Prefer the two-step route contract (preview then apply); this runs the whole
+    plan in one shot for direct callers/tests. ``result`` carries the applied
+    keys plus the preview summary."""
+    plan, preview, err = _compute_backup(data, overwrite)
+    if err:
+        return None, err
+    applied = []
+    for label, thunk in plan:
+        thunk()
+        applied.append(label)
+    return {"status": "ok", "applied": applied, "preview": preview}, None
 
 
 # ============================================================================
@@ -696,7 +980,14 @@ def handle_manage_get(handler, parsed, params):
         return handler._json(200, _lib._download_schedule_status())
 
     elif parsed.path == "/manage/backup":
-        return handler._json(200, _build_backup_bundle())
+        # scope=device (default, everyone) or scope=server (admin-only: the full
+        # server state incl. users.json with hashes). The manage gate above is
+        # already admin-only, but the explicit check keeps the server-scope
+        # contract self-evident and independently testable.
+        scope = param("scope", "device")
+        if scope == "server" and admin_kind(handler) is None:
+            return handler._json(403, {"error": "full-server backup requires an admin"})
+        return handler._json(200, _build_backup_bundle(scope=scope))
 
     elif parsed.path == "/manage/users":
         # Named user accounts (multi-user v1) — admin-only (gated above). Returns
@@ -1097,10 +1388,24 @@ def handle_manage_get(handler, parsed, params):
         if not enabled:
             hint = "BT downloads disabled (ZIMI_BT=off). HTTP is used instead."
         elif status == "unavailable":
+            import sys as _sys
+
+            # Give the exact next step. Wheels exist for CPython 3.9–3.13; on
+            # 3.14+ there's no wheel yet, so name that specifically instead of
+            # sending the user to a pip command that will fail.
+            if _sys.version_info >= (3, 14):
+                fix = (
+                    f"no libtorrent wheel exists for Python "
+                    f"{_sys.version_info.major}.{_sys.version_info.minor} yet — "
+                    "run Zimi on Python 3.13 or older (or use the Docker image) "
+                    "to torrent."
+                )
+            else:
+                fix = "run `pip install libtorrent` (or `pip install zimi[bt]`) to torrent."
             hint = (
-                "libtorrent isn't importable on this install — downloads "
-                "fall back to HTTP. Install libtorrent to torrent and share "
-                "load with the Kiwix mirrors."
+                "libtorrent isn't importable on this install — downloads fall "
+                "back to HTTP, which works fine. To share load with the Kiwix "
+                "mirrors, " + fix
             )
 
         from zimi import p2p_nat
@@ -1976,6 +2281,48 @@ def handle_manage_post(handler, parsed, data):
                 changed[_field] = kb
         if any(k in changed for k in ("bt_up_kb", "bt_down_kb")):
             p2p.apply_rate_limits()
+        # Max concurrent downloads (governs HTTP + BT via library.py's queue).
+        if "max_active_downloads" in data:
+            if p2p.is_max_active_downloads_env_locked():
+                return handler._json(
+                    403,
+                    {"error": "Max concurrent downloads is controlled by an env var"},
+                )
+            try:
+                n = max(1, min(20, int(data["max_active_downloads"])))
+            except (ValueError, TypeError):
+                return handler._json(
+                    400, {"error": "max_active_downloads must be a number"}
+                )
+            if not p2p.set_pref("max_active_downloads", n):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
+            changed["max_active_downloads"] = n
+            # Raising the cap frees slots that nothing else would drain until a
+            # download finishes — promote queued items now.
+            from zimi import library as _lib_cc
+
+            threading.Thread(target=_lib_cc.drain_download_queue, daemon=True).start()
+        # Max connections — a real libtorrent session setting, applied live.
+        if "bt_max_connections" in data:
+            if p2p.is_bt_max_connections_env_locked():
+                return handler._json(
+                    403,
+                    {"error": "Max connections is controlled by the ZIMI_BT env var"},
+                )
+            try:
+                n = max(10, min(2000, int(data["bt_max_connections"])))
+            except (ValueError, TypeError):
+                return handler._json(
+                    400, {"error": "bt_max_connections must be a number"}
+                )
+            if not p2p.set_pref("bt_max_connections", n):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
+            changed["bt_max_connections"] = n
+            p2p.apply_session_limits()
         if not changed:
             return handler._json(
                 400,
@@ -2034,14 +2381,25 @@ def handle_manage_post(handler, parsed, data):
         )
 
     elif parsed.path == "/manage/backup":
-        # Restore the SERVER-side half of a backup bundle: collections
-        # (whole-doc replace) and library layout. Per-browser state
-        # (bookmarks/history/preferences) never reaches the server — the
-        # client writes those back to localStorage itself.
-        result, err = _apply_backup_bundle(data)
+        # Restore a backup bundle. Two-step so nothing lands before the admin
+        # confirms: action="preview" (default) returns a diff summary and
+        # applies NOTHING; action="apply" writes. MERGE by default; overwrite
+        # replaces wholesale. A server-scope bundle is admin-only in BOTH
+        # directions — a non-admin session can't preview OR apply one.
+        if _bundle_scope(data) == "server" and admin_kind(handler) is None:
+            return handler._json(403, {"error": "full-server backup requires an admin"})
+        action = data.get("action", "preview")
+        overwrite = bool(data.get("overwrite"))
+        if action == "apply":
+            result, err = _apply_backup_bundle(data, overwrite=overwrite)
+            if err:
+                return handler._json(400, {"error": err})
+            return handler._json(200, result)
+        # Preview (default): compute the diff, persist nothing.
+        _plan, preview, err = _compute_backup(data, overwrite)
         if err:
             return handler._json(400, {"error": err})
-        return handler._json(200, result)
+        return handler._json(200, {"status": "preview", "preview": preview})
 
     else:
         return handler._json(404, {"error": "not found"})

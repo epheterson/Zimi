@@ -107,6 +107,70 @@ def test_staging_dir_override(monkeypatch):
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# Concurrency + connection caps
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def _clean_caps_env(monkeypatch):
+    for k in ("ZIMI_BT", "ZIMI_MAX_CONCURRENT_DOWNLOADS"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(p2p, "_prefs_path", None)
+
+
+def test_max_active_downloads_default(_clean_caps_env):
+    assert p2p.get_max_active_downloads() == p2p.DEFAULT_MAX_ACTIVE_DOWNLOADS
+    assert p2p.is_max_active_downloads_env_locked() is False
+
+
+def test_max_active_downloads_legacy_env_wins_and_locks(_clean_caps_env, monkeypatch):
+    monkeypatch.setenv("ZIMI_MAX_CONCURRENT_DOWNLOADS", "7")
+    assert p2p.get_max_active_downloads() == 7
+    assert p2p.is_max_active_downloads_env_locked() is True
+
+
+def test_max_active_downloads_bt_subkey(_clean_caps_env, monkeypatch):
+    monkeypatch.setenv("ZIMI_BT", "on,active=6")
+    assert p2p.get_max_active_downloads() == 6
+    assert p2p.is_max_active_downloads_env_locked() is True
+
+
+@pytest.mark.parametrize("raw,expected", [("0", 1), ("99", 20), ("x", 4)])
+def test_max_active_downloads_clamps(_clean_caps_env, monkeypatch, raw, expected):
+    monkeypatch.setenv("ZIMI_MAX_CONCURRENT_DOWNLOADS", raw)
+    assert p2p.get_max_active_downloads() == expected
+
+
+def test_max_connections_default(_clean_caps_env):
+    assert p2p.get_bt_max_connections() == p2p.DEFAULT_MAX_CONNECTIONS
+    assert p2p.is_bt_max_connections_env_locked() is False
+
+
+def test_max_connections_bt_subkey_wins_and_locks(_clean_caps_env, monkeypatch):
+    monkeypatch.setenv("ZIMI_BT", "on,conns=500")
+    assert p2p.get_bt_max_connections() == 500
+    assert p2p.is_bt_max_connections_env_locked() is True
+
+
+@pytest.mark.parametrize("raw,expected", [("5", 10), ("99999", 2000), ("x", 200)])
+def test_max_connections_clamps(_clean_caps_env, monkeypatch, raw, expected):
+    monkeypatch.setenv("ZIMI_BT", f"on,conns={raw}")
+    assert p2p.get_bt_max_connections() == expected
+
+
+def test_caps_read_from_persisted_prefs(_clean_caps_env, monkeypatch, tmp_path):
+    prefs = tmp_path / "prefs.json"
+    monkeypatch.setattr(p2p, "_prefs_path", str(prefs))
+    assert p2p.set_pref("max_active_downloads", 9)
+    assert p2p.set_pref("bt_max_connections", 321)
+    assert p2p.get_max_active_downloads() == 9
+    assert p2p.get_bt_max_connections() == 321
+    # A pref (no env) leaves the UI control unlocked.
+    assert p2p.is_max_active_downloads_env_locked() is False
+    assert p2p.is_bt_max_connections_env_locked() is False
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # get_backend() — fail-soft to None, else the libtorrent singleton
 # ────────────────────────────────────────────────────────────────────────────
 

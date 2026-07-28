@@ -254,9 +254,9 @@ _active_downloads = (
 _download_counter = 0
 _download_lock = threading.Lock()
 
-# Concurrent-download cap. Default 3; overridable via ZIMI_MAX_CONCURRENT_DOWNLOADS.
-# Items beyond the cap are queued in _download_queue, smallest-first.
-_MAX_CONCURRENT_DEFAULT = 3
+# Concurrent-download cap authority lives in p2p (get_max_active_downloads);
+# _max_concurrent() below delegates. Items beyond the cap queue in
+# _download_queue, smallest-first.
 _download_queue = []  # [dl, ...] sorted: known sizes ascending, unknown sizes last
 
 
@@ -342,7 +342,15 @@ def _download_rate_bps():
 _DOWNLOAD_SCHEDULE_CONFIG = os.path.join(_srv.ZIMI_DATA_DIR, "download_schedule.json")
 _DEFAULT_WINDOW_START = "01:00"
 _DEFAULT_WINDOW_END = "07:00"
+# Trickle cap (KB/s) applied to seeding when uploads are restricted to the
+# window and we're outside it. A low positive floor, not 0 — 0 means
+# "unlimited" everywhere else in the rate plumbing, which would be the opposite
+# of a trickle.
+_DEFAULT_UPLOAD_TRICKLE_KB = 50
 _schedule_watcher_thread = None
+# Last (restrict, in_window) tuple pushed to the BT session by the upload
+# restrictor, so a 60s tick only touches libtorrent on an actual transition.
+_upload_window_applied = None
 
 
 def _parse_hhmm(s):
@@ -383,6 +391,8 @@ def _load_download_schedule():
                 "start": a.strip(),
                 "end": b.strip(),
                 "locked": True,
+                "upload_restrict": False,
+                "upload_trickle_kb": _DEFAULT_UPLOAD_TRICKLE_KB,
             }
     cfg_path = getattr(_srv, "_DOWNLOAD_SCHEDULE_CONFIG", _DOWNLOAD_SCHEDULE_CONFIG)
     try:
@@ -394,11 +404,19 @@ def _load_download_schedule():
             start = _DEFAULT_WINDOW_START
         if _parse_hhmm(end) is None:
             end = _DEFAULT_WINDOW_END
+        try:
+            trickle = max(
+                1, int(cfg.get("upload_trickle_kb", _DEFAULT_UPLOAD_TRICKLE_KB))
+            )
+        except (ValueError, TypeError):
+            trickle = _DEFAULT_UPLOAD_TRICKLE_KB
         return {
             "enabled": bool(cfg.get("enabled", False)),
             "start": start,
             "end": end,
             "locked": False,
+            "upload_restrict": bool(cfg.get("upload_restrict", False)),
+            "upload_trickle_kb": trickle,
         }
     except (OSError, json.JSONDecodeError, ValueError):
         return {
@@ -406,19 +424,47 @@ def _load_download_schedule():
             "start": _DEFAULT_WINDOW_START,
             "end": _DEFAULT_WINDOW_END,
             "locked": False,
+            "upload_restrict": False,
+            "upload_trickle_kb": _DEFAULT_UPLOAD_TRICKLE_KB,
         }
 
 
-def _save_download_schedule(enabled, start, end):
+def _save_download_schedule(
+    enabled, start, end, upload_restrict=None, upload_trickle_kb=None
+):
     """Persist the download window. Returns False if the config is env-locked
-    or the write fails."""
-    if _load_download_schedule().get("locked"):
+    or the write fails.
+
+    The upload-window fields (restrict seeding to the window + the trickle cap)
+    are UI-only — no env lock — and preserved when the caller passes None, so a
+    window edit doesn't clobber the seeding policy and vice versa.
+    """
+    cur = _load_download_schedule()
+    if cur.get("locked"):
         return False
+    if upload_restrict is None:
+        upload_restrict = cur["upload_restrict"]
+    if upload_trickle_kb is None:
+        upload_trickle_kb = cur["upload_trickle_kb"]
+    try:
+        trickle = max(1, int(upload_trickle_kb))
+    except (ValueError, TypeError):
+        trickle = _DEFAULT_UPLOAD_TRICKLE_KB
     cfg_path = getattr(_srv, "_DOWNLOAD_SCHEDULE_CONFIG", _DOWNLOAD_SCHEDULE_CONFIG)
     try:
         _srv._atomic_write_json(
-            cfg_path, {"enabled": bool(enabled), "start": start, "end": end}
+            cfg_path,
+            {
+                "enabled": bool(enabled),
+                "start": start,
+                "end": end,
+                "upload_restrict": bool(upload_restrict),
+                "upload_trickle_kb": trickle,
+            },
         )
+        # A policy change is a transition — push the right cap now instead of
+        # waiting up to a full tick for the watcher to notice.
+        _apply_upload_window(force=True)
         return True
     except OSError as e:
         log.warning("could not persist download schedule: %s", e)
@@ -451,6 +497,46 @@ def _schedule_defers_now():
     return _load_download_schedule()["enabled"] and not _within_download_window()
 
 
+def _in_window_now(sched=None, now_min=None):
+    """Raw window membership, IGNORING the ``enabled`` flag.
+
+    The upload restrictor has its own toggle (``upload_restrict``) over the same
+    window bounds, so it can't reuse ``_within_download_window`` (which
+    short-circuits to True when download-queueing is off). Malformed bounds → in
+    window (never throttle on bad config)."""
+    sched = sched or _load_download_schedule()
+    start = _parse_hhmm(sched["start"])
+    end = _parse_hhmm(sched["end"])
+    if start is None or end is None:
+        return True
+    if now_min is None:
+        now_min = _now_local_minutes()
+    return _in_window(now_min, start, end)
+
+
+def _apply_upload_window(force=False):
+    """Push the correct upload cap to the BT session for the current window.
+
+    When ``upload_restrict`` is on and we're OUTSIDE the window, seeding is
+    trickled to ``upload_trickle_kb``; inside the window (or when the option is
+    off) the normal up limit is restored. Idempotent — only touches libtorrent
+    on a state change, so a 60s tick is free when nothing moved."""
+    global _upload_window_applied
+    from zimi import p2p as _p2p
+
+    sched = _load_download_schedule()
+    restrict = sched["upload_restrict"]
+    inside = _in_window_now(sched)
+    state = (restrict, inside)
+    if not force and state == _upload_window_applied:
+        return
+    _upload_window_applied = state
+    if restrict and not inside:
+        _p2p.set_upload_window_cap(sched["upload_trickle_kb"])
+    else:
+        _p2p.set_upload_window_cap(None)
+
+
 def _download_schedule_status():
     """Serialize the schedule config for the /manage/download-schedule endpoint."""
     from zimi import p2p as _p2p
@@ -466,17 +552,26 @@ def _download_schedule_status():
         # number governs every transport (see p2p.get_download_limit_kb).
         "download_kb": _p2p.get_download_limit_kb(),
         "download_kb_locked": _p2p.is_bt_down_env_locked(),
+        # Upload-window restrictor: throttle seeding to a trickle outside the
+        # window. Shares the window bounds above but is independently toggled.
+        "upload_restrict": sched["upload_restrict"],
+        "upload_trickle_kb": sched["upload_trickle_kb"],
+        "upload_kb": _p2p.get_bt_up_limit_kb(),
+        "upload_kb_locked": _p2p.is_bt_up_env_locked(),
+        # True right now: uploads are actively trickled (restrict on + outside).
+        "upload_throttled": sched["upload_restrict"] and not _in_window_now(sched),
     }
 
 
 def _download_schedule_tick():
-    """One watcher pass: if we're inside the window, release any scheduled
-    downloads waiting for it. Cheap no-op otherwise. Extracted so tests can
-    drive it without the loop."""
+    """One watcher pass: release scheduled downloads once the window is open and
+    keep the upload cap in step with the window. Cheap no-op otherwise.
+    Extracted so tests can drive it without the loop."""
     if _within_download_window():
         with _download_lock:
             if _download_queue:
                 _drain_queue()
+    _apply_upload_window()
 
 
 def _download_schedule_loop(interval=60):
@@ -502,21 +597,31 @@ def start_download_scheduler():
         target=_download_schedule_loop, daemon=True, name="download-scheduler"
     )
     _schedule_watcher_thread.start()
+    # Set the upload cap to match wherever the window sits right now, so a
+    # process that boots outside its window starts throttled without waiting a
+    # full tick.
+    try:
+        _apply_upload_window(force=True)
+    except Exception as e:
+        log.debug("initial upload-window apply failed: %s", e)
 
 
 def _max_concurrent():
-    """Concurrent-download cap, read from env each call so tests can flip it.
+    """Concurrent-download cap. Authority lives in p2p (legacy
+    ZIMI_MAX_CONCURRENT_DOWNLOADS > ZIMI_BT active= > persisted UI pref >
+    default) so the BitTorrent settings card and this download queue read one
+    number. Invalid/zero values clamp to a safe minimum there."""
+    from zimi import p2p as _p2p
 
-    Invalid values (non-integer, negative, zero) clamp to safe defaults.
-    """
-    raw = os.environ.get("ZIMI_MAX_CONCURRENT_DOWNLOADS")
-    if raw is None:
-        return _MAX_CONCURRENT_DEFAULT
-    try:
-        n = int(raw)
-    except (ValueError, TypeError):
-        return _MAX_CONCURRENT_DEFAULT
-    return max(1, n)
+    return _p2p.get_max_active_downloads()
+
+
+def drain_download_queue():
+    """Promote queued downloads into freshly-available slots — e.g. right
+    after the concurrency cap is raised in the UI, when nothing else would
+    trigger a drain until a download finishes. Safe to call any time."""
+    with _download_lock:
+        _drain_queue()
 
 
 def _active_count():
@@ -883,6 +988,32 @@ def seed_ledger_snapshot():
     uploaded bytes rather than just this session's."""
     with _seed_ledger_lock:
         return {k: dict(v) for k, v in _seed_ledger().items()}
+
+
+def restore_seed_intents(intents, overwrite=False):
+    """Restore seed-intent entries from a full-server backup.
+
+    ``overwrite`` replaces the whole ledger; otherwise incoming entries are
+    merged in (union by filename, incoming wins on conflict) so a restore never
+    drops a seed this machine already intends. Entries whose ZIM is absent are
+    harmless — reseed_from_ledger drops them at startup. Returns how many
+    entries were added/updated."""
+    if not isinstance(intents, dict):
+        return 0
+    clean = {
+        k: v for k, v in intents.items() if isinstance(k, str) and isinstance(v, dict)
+    }
+    try:
+        with _seed_ledger_lock:
+            ledger = {} if overwrite else _seed_ledger()
+            before = dict(ledger)
+            ledger.update(clean)
+            os.makedirs(os.path.dirname(_seed_ledger_path()), exist_ok=True)
+            _srv._atomic_write_json(_seed_ledger_path(), ledger)
+            return sum(1 for k, v in clean.items() if before.get(k) != v)
+    except Exception as e:
+        log.debug("seed ledger restore failed: %s", e)
+        return 0
 
 
 def unrecord_seed(filename):
