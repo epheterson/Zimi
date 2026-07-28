@@ -51,6 +51,14 @@ var SK = {
   // Video resume ledger: {"<zim>\n<path>#<i>": {t, d, ts}} — playback position
   // per video, restored on reopen and dropped once watched to completion.
   VIDEO_RESUME: 'zimi_video_resume',
+  // Whole-app theme: 'auto' (follow prefers-color-scheme, dark fallback) |
+  // 'dark' | 'light'. Default auto. Read/written via _appTheme/_setAppTheme;
+  // the head bootstrap in index.html stamps the resolved value pre-paint.
+  APP_THEME: 'zimi_app_theme',
+  // Auto-darken raw (non-Reader-View) ZIM articles when the app is dark, so a
+  // blinding-white ZIM page doesn't break dark mode. Tri-state: unset = follow
+  // the app theme (on when dark); '1'/'0' = explicit override once toggled.
+  DARKEN_ARTICLES: 'zimi_darken_articles',
 };
 
 // ── Storage Helpers ──
@@ -67,6 +75,160 @@ function _setStorageJSON(key, value) {
 }
 function _getStorageFlag(key) {
   return localStorage.getItem(key) === '1';
+}
+
+// ── Whole-app theme (Auto / Dark / Light) ──
+// The token palette in app.css is driven by data-theme on <html>. Auto mode
+// resolves the OS preference to a concrete 'dark'|'light' and stamps the SAME
+// attribute, so the CSS has one code path (no reliance on prefers-color-scheme
+// in the stylesheet). The head bootstrap sets it pre-paint; this re-applies on
+// load and, in Auto, live-tracks the media query.
+var APP_THEMES = ['auto', 'dark', 'light'];
+function _appTheme() {
+  var v = localStorage.getItem(SK.APP_THEME);
+  return APP_THEMES.indexOf(v) >= 0 ? v : 'auto';
+}
+function _prefersLight() {
+  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+}
+// Resolve a stored mode to the concrete theme actually painted. Auto → the OS
+// preference, dark fallback (matches the index.html bootstrap exactly).
+function _resolveAppTheme(mode) {
+  mode = mode || _appTheme();
+  if (mode === 'light') return 'light';
+  if (mode === 'dark') return 'dark';
+  return _prefersLight() ? 'light' : 'dark';
+}
+function _appThemeIsDark() { return _resolveAppTheme() === 'dark'; }
+function _applyAppTheme() {
+  document.documentElement.setAttribute('data-theme', _resolveAppTheme());
+}
+function _setAppTheme(mode) {
+  if (APP_THEMES.indexOf(mode) < 0) mode = 'auto';
+  if (mode === 'auto') localStorage.removeItem(SK.APP_THEME);
+  else localStorage.setItem(SK.APP_THEME, mode);
+  _applyAppTheme();
+  // Repaint the segmented control's active state in place, and re-apply article
+  // darkening (its default follows the app theme, and the darken row's checked
+  // state may flip when the theme does).
+  var seg = document.getElementById('app-theme-seg');
+  if (seg) seg.innerHTML = _appThemeSegInner();
+  var darkChk = document.getElementById('ms-darken-articles');
+  if (darkChk && localStorage.getItem(SK.DARKEN_ARTICLES) === null) darkChk.checked = _appThemeIsDark();
+  try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
+}
+// Install once: when in Auto, a live OS light/dark flip re-resolves the theme.
+var _appThemeMediaBound = false;
+function _bindAppThemeMedia() {
+  if (_appThemeMediaBound || !window.matchMedia) return;
+  _appThemeMediaBound = true;
+  var mq = window.matchMedia('(prefers-color-scheme: dark)');
+  var onFlip = function() {
+    if (_appTheme() !== 'auto') return; // explicit choice ignores the OS
+    _applyAppTheme();
+    try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
+  };
+  if (mq.addEventListener) mq.addEventListener('change', onFlip);
+  else if (mq.addListener) mq.addListener(onFlip); // Safari <14
+}
+
+// ── Auto-darken raw articles ──
+// Whether the darken-articles adaptation should be applied to a raw ZIM page.
+// Default follows the app theme (on when dark); an explicit toggle overrides.
+function _darkenArticlesOn() {
+  var v = localStorage.getItem(SK.DARKEN_ARTICLES);
+  if (v === '1') return true;
+  if (v === '0') return false;
+  return _appThemeIsDark();
+}
+function _setDarkenArticles(on) {
+  localStorage.setItem(SK.DARKEN_ARTICLES, on ? '1' : '0');
+  try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
+}
+
+// ── App-theme segmented control (Display settings) ──
+// Auto / Dark / Light, matching the reader palette's control language (pills).
+var _APP_THEME_ICONS = {
+  auto: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/></svg>',
+  dark: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+  light: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>'
+};
+function _appThemeSegInner() {
+  var cur = _appTheme();
+  return APP_THEMES.map(function(m) {
+    var on = m === cur;
+    return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') +
+      '" role="radio" aria-checked="' + (on ? 'true' : 'false') +
+      '" onclick="_setAppTheme(\'' + m + '\')">' + _APP_THEME_ICONS[m] +
+      '<span>' + tH('theme_' + m) + '</span></button>';
+  }).join('');
+}
+function _appThemeSegHtml() {
+  return '<div class="app-theme-seg" id="app-theme-seg" role="radiogroup" aria-label="' +
+    escAttr(t('app_theme')) + '">' + _appThemeSegInner() + '</div>';
+}
+
+// ── Article dark adaptation (raw / non-Reader-View pages) ──
+var _ARTICLE_DARKEN_STYLE_ID = 'zimi-article-darken';
+// The invert-based adaptation. invert(1) hue-rotate(180deg) on the root flips the
+// page to dark while roughly preserving hue; media + math + anything painting its
+// own background image is counter-inverted so photos/diagrams/formulas stay true.
+// A slightly-off-white root background gives the invert a clean white to flip to
+// pure near-black, so transparent pages don't leave a grey haze.
+var _ARTICLE_DARKEN_CSS = [
+  'html{background:#ffffff !important;filter:invert(1) hue-rotate(180deg) !important;',
+    '-webkit-filter:invert(1) hue-rotate(180deg) !important}',
+  'img,video,picture,canvas,svg,image,embed,object,iframe,',
+  '[style*="background-image"],.mwe-math-element,.mwe-math-fallback-image-inline,',
+  '.mwe-math-fallback-image-display{filter:invert(1) hue-rotate(180deg) !important;',
+    '-webkit-filter:invert(1) hue-rotate(180deg) !important}'
+].join('');
+// A page "declares its own dark scheme" (so we must NOT invert it, or we'd flip it
+// back to blinding white) when it opts into dark via <meta name="color-scheme">
+// or its body already paints a dark background.
+function _articleDeclaresDark(doc) {
+  try {
+    var meta = doc.querySelector('meta[name="color-scheme"]');
+    if (meta && /dark/i.test(meta.getAttribute('content') || '')) return true;
+  } catch (e) {}
+  try {
+    var bg = doc.defaultView.getComputedStyle(doc.body).backgroundColor;
+    var m = bg && bg.match(/rgba?\(([^)]+)\)/);
+    if (m) {
+      var p = m[1].split(',').map(parseFloat);
+      var a = p.length > 3 ? p[3] : 1;
+      // Only trust an opaque background; a transparent body defaults to white.
+      if (a >= 0.5) {
+        var lum = (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) / 255;
+        if (lum < 0.4) return true;
+      }
+    }
+  } catch (e) {}
+  return false;
+}
+// Apply or remove the dark adaptation on a raw article document. No-op for
+// Reader View (it owns its themes), PDF/static viewer pages, and pages that ship
+// their own dark scheme. Idempotent — safe to call on any frame.onload or toggle.
+function _applyArticleDarken(doc) {
+  if (!doc || !doc.documentElement) return;
+  var existing = doc.getElementById(_ARTICLE_DARKEN_STYLE_ID);
+  var want = _darkenArticlesOn() && !_readerViewOn;
+  if (want) {
+    var loc = '';
+    try { loc = doc.defaultView.location.pathname; } catch (e) {}
+    if (loc.indexOf('/static/') === 0) want = false;         // pdf.js / viewers
+    else if (_articleDeclaresDark(doc)) want = false;         // already dark
+  }
+  if (want) {
+    if (!existing && doc.head) {
+      var st = doc.createElement('style');
+      st.id = _ARTICLE_DARKEN_STYLE_ID;
+      st.textContent = _ARTICLE_DARKEN_CSS;
+      doc.head.appendChild(st);
+    }
+  } else if (existing && existing.parentNode) {
+    existing.parentNode.removeChild(existing);
+  }
 }
 
 // Shared "dismiss on outside interaction" for menus/popovers. Registers a
@@ -1003,6 +1165,10 @@ function updateFooter() {
 
 // ── Init ──
 async function init() {
+  // Re-apply the app theme (the head bootstrap already stamped it pre-paint) and
+  // start live-tracking the OS preference when in Auto mode.
+  _applyAppTheme();
+  _bindAppThemeMedia();
   // Initialize i18n before anything else
   _currentLang = _detectLanguage();
   _applyRTL(_currentLang);
@@ -7404,7 +7570,17 @@ function _msPreferencesHtml() {
   var showXzim = !_getStorageFlag(SK.HIDE_XZIM_LINKS);
   var showDiscover = !_getStorageFlag(SK.HIDE_DISCOVER);
   var showLangChooser = !_getStorageFlag(SK.HIDE_LANG_CHOOSER);
+  var darkenOn = _darkenArticlesOn();
   var h = '<div class="ms-section-label">' + tH('ms_display_section') + '</div>' +
+    // App theme: Auto / Dark / Light segmented control.
+    '<div class="ms-theme-label">' + tH('app_theme') + '</div>' +
+    _appThemeSegHtml() +
+    '<div class="ms-hint">' + tH('app_theme_hint') + '</div>' +
+    // Darken raw articles (default follows the app theme).
+    '<label class="ms-check" style="margin-top:14px"><input type="checkbox" id="ms-darken-articles"' + (darkenOn ? ' checked' : '') +
+      ' onchange="_setDarkenArticles(this.checked)"> ' + tH('darken_articles') + '</label>' +
+    '<div class="ms-hint">' + tH('darken_articles_hint') + '</div>' +
+    '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
     '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
     '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
@@ -10595,6 +10771,9 @@ function _readerViewToggle() {
     _readerViewOn = true;
   }
   _tintReaderChrome(); // paint (on) or clear (off) the iframe/loading tint
+  // Reader View owns its own themes: strip the raw-article dark filter when it
+  // turns on (it would invert the reader shell), restore it when it turns off.
+  try { _applyArticleDarken(doc); } catch(e) {}
   _ttsStop(); // the visible content changed under any in-progress speech
   _syncReaderViewBtn();
 }
@@ -11037,6 +11216,9 @@ function openReader(url) {
     }
     _tintReaderChrome(); // reset frame bg to #fff if reader ended up off
     _syncReaderViewBtn();
+    // Auto-darken a raw (non-Reader-View) ZIM page when the app is dark, so the
+    // white page doesn't break dark mode. No-op under Reader View / dark pages.
+    try { _applyArticleDarken(frame.contentDocument); } catch(e) {}
     frame.style.visibility = 'visible'; // reveal now — shell (or raw doc) is ready to paint
     loading.classList.add('hidden');
     try { _applyReaderFont(frame.contentDocument); } catch(e) {} // reapply persisted font scale
@@ -11944,6 +12126,7 @@ function _isNarrow() {
 // Compact SVGs reused by the reader controls when they migrate into the ... menu.
 var _TBM_TTS_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
 var _TBM_NEWTAB_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+var _TBM_DARKEN_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
 
 // Keep the font + TTS menu rows (if the menu is open) in sync with live state.
 // _cycleReaderFont / _ttsSetSpeaking call this so the label updates in place
@@ -11967,6 +12150,11 @@ function _syncTopbarMenuReaderItems() {
 // Reader View switch — flips state and the row set must change without closing).
 function _readerViewMenuToggle() {
   _readerViewToggle();
+  _rebuildTopbarMenu();
+}
+// Repaint the ⋯ menu in place (only while it's open) so a control inside it can
+// flip state and change the row set without closing the menu.
+function _rebuildTopbarMenu() {
   var menu = document.getElementById('topbar-menu');
   if (menu && menu.classList.contains('visible')) menu.innerHTML = _buildTopbarMenuHtml();
 }
@@ -12000,6 +12188,17 @@ function _buildTopbarMenuHtml() {
     // theme swatches + font/size only, no title labels, no AUTO (settings-only).
     if (rvOn) {
       readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
+    }
+    // 2b. Darken article — quick toggle for the raw-page dark adaptation. Only
+    // offered when NOT in Reader View (which owns its own themes) and the frame
+    // is a real ZIM page (not a pdf.js / static viewer, where invert no-ops).
+    var _rawLoc = ''; try { _rawLoc = document.getElementById('reader-frame').contentWindow.location.pathname; } catch(e) {}
+    if (!rvOn && _rawLoc.indexOf('/static/') !== 0) {
+      var _dkOn = _darkenArticlesOn();
+      readerGroup += '<button class="topbar-menu-item" id="tbm-darken" role="switch" aria-checked="' + (_dkOn ? 'true' : 'false') +
+        '" onclick="event.stopPropagation();_setDarkenArticles(!' + (_dkOn ? 'true' : 'false') + ');_rebuildTopbarMenu()">' + _TBM_DARKEN_ICON +
+        ' <span class="tbm-label">' + tH('darken_articles') + '</span>' +
+        '<span class="rv-switch' + (_dkOn ? ' on' : '') + '" aria-hidden="true"><span class="rv-knob"></span></span></button>';
     }
     // 3. Read aloud.
     if (_TTS_AVAILABLE) {
