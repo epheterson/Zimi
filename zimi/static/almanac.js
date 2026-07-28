@@ -65,6 +65,33 @@ function _saveLocation(lat, lon, name) {
   _almSelectedTz = _almTzForLocation(lat, lon);
 }
 
+// Holiday scope — 'region' (default: the one national pack for the chosen or
+// detected location) or 'worldwide' (all national packs layered at once, each
+// entry tagged with its country). Session-scoped like the location itself: the
+// almanac is ephemeral, so a refresh returns to the location-following default.
+var _ALM_HOLIDAY_SCOPE_KEY = 'zimi_almanac_holiday_scope';
+function _almHolidayScope() {
+  try { return sessionStorage.getItem(_ALM_HOLIDAY_SCOPE_KEY) === 'worldwide' ? 'worldwide' : 'region'; }
+  catch (e) { return 'region'; }
+}
+function _almToggleHolidayScope() {
+  var next = _almHolidayScope() === 'worldwide' ? 'region' : 'worldwide';
+  try { sessionStorage.setItem(_ALM_HOLIDAY_SCOPE_KEY, next); } catch (e) {}
+  if (typeof _drawAlmanacGrid === 'function') _drawAlmanacGrid();
+}
+
+// Scroll the location control (the Sun & Daylight world map — where a click sets
+// the location that drives holidays) into view and flash it. Target of the
+// holidays caption, so a reader who wonders "whose holidays?" lands on the
+// control that answers it.
+function _almScrollToLocation() {
+  var el = document.getElementById('almanac-sunmap');
+  if (!el) return;
+  try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { el.scrollIntoView(); }
+  el.classList.add('alm-loc-flash');
+  setTimeout(function () { el.classList.remove('alm-loc-flash'); }, 1600);
+}
+
 function _signalDelay(au) {
   var sec = au * 499;
   return { h: Math.floor(sec / 3600), m: Math.floor((sec % 3600) / 60) };
@@ -4015,10 +4042,13 @@ function _almRegion() {
   return '';
 }
 
-function _applyRegionHolidays(region, year, month, add) {
+function _applyRegionHolidays(region, year, month, add, worldwide) {
   var pack = _REGION_HOLIDAYS[region];
   if (!pack) return;
-  var src = _almRegionName(region);
+  // Region-scoped: the caption already names the country, so each entry's tag is
+  // just its colour. Worldwide: 18 packs at once, so every entry carries a
+  // compact country code ("Bastille Day · FR") to say whose day it is.
+  var src = worldwide ? region : _almRegionName(region);
   var i;
   for (i = 0; i < (pack.fixed || []).length; i++) {
     var fx = pack.fixed[i];
@@ -4030,6 +4060,9 @@ function _applyRegionHolidays(region, year, month, add) {
     var day = nh[2] === -1 ? _lastWeekday(year, month, nh[1]) : _nthWeekday(year, month, nh[1], nh[2]);
     add(day, nh[3], 'holiday', '', src, region);
   }
+  // Clock changes are location-specific; layering 18 countries' worth would be
+  // pure noise, so only the single region-scoped pack contributes them.
+  if (worldwide) return;
   // Clock changes: labels hold both hemispheres (October IS spring in AU)
   var dst = pack.dst;
   if (dst === 'us') {
@@ -4041,6 +4074,16 @@ function _applyRegionHolidays(region, year, month, add) {
   } else if (dst === 'au') {
     if (month === 10) add(_nthWeekday(year, 10, 0, 1), 'Clocks Forward', 'seasonal');
     if (month === 4) add(_nthWeekday(year, 4, 0, 1), 'Clocks Back', 'seasonal');
+  }
+}
+
+// Worldwide scope: layer every national pack (skipping the EU pseudo-region,
+// which carries no national days of its own — only a DST rule). Each entry is
+// tagged with its ISO country code via the worldwide path of _applyRegionHolidays.
+function _applyAllRegionHolidays(year, month, add) {
+  for (var iso in _REGION_HOLIDAYS) {
+    if (iso === 'EU') continue;
+    _applyRegionHolidays(iso, year, month, add, true);
   }
 }
 
@@ -4167,8 +4210,10 @@ function _gregorianBaseEvents(year, month, add) {
     // (US, CA, AU, DE, IT, BR, IN, CN, JP and others)
     if (month === 5) { add(_nthWeekday(year, 5, 0, 2), t('hol_mothers_day'), 'holiday'); }
     if (month === 6) { add(_nthWeekday(year, 6, 0, 3), t('hol_fathers_day'), 'holiday'); }
-    // National days + clock changes for the detected region
-    _applyRegionHolidays(_almRegion(), year, month, add);
+    // National days: every pack when Worldwide is chosen, else the detected
+    // region's (which also contributes its clock changes).
+    if (_almHolidayScope() === 'worldwide') _applyAllRegionHolidays(year, month, add);
+    else _applyRegionHolidays(_almRegion(), year, month, add);
     // Easter and related
     var easter = _computeEaster(year);
     if (easter.month === month) { add(easter.day, 'Easter', 'holiday'); }
@@ -4385,7 +4430,10 @@ function _drawAlmanacGrid() {
     for (var ei = 0; ei < shown; ei++) {
       var ev = dayEvents[ei];
       var escapedLabel = _th(ev.label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      var srcTitle = ev.src ? ' title="' + _tLookup('alm_region_holiday', '{c} holiday').replace('{c}', ev.src).replace(/"/g, '&quot;') + '"' : '';
+      // Worldwide entries carry a 2-letter ISO code as src; expand it to the full
+      // country name for the tooltip ("France holiday", not "FR holiday").
+      var srcName = (ev.src && ev.src.length === 2) ? (_almRegionName(ev.src) || ev.src) : ev.src;
+      var srcTitle = ev.src ? ' title="' + _tLookup('alm_region_holiday', '{c} holiday').replace('{c}', srcName).replace(/"/g, '&quot;') + '"' : '';
       // Country-specific holidays (those with a region src) get their own
       // colour so they read apart from the worldwide observances (#33).
       var evCls = 'alm-ev alm-ev-' + ev.type + (ev.src ? ' alm-ev-country' : '');
@@ -4430,13 +4478,26 @@ function _drawAlmanacGrid() {
   // the Gregorian calendar — no pack means the worldwide set, and saying
   // so beats an unexplained absence of holidays.
   if (_almSystem === 'gregorian') {
-    var regionName = _almRegionName(_almRegion());
-    var capText = regionName
-      ? _tLookup('alm_showing_holidays', 'Showing {c} holidays').replace('{c}', regionName.replace(/</g, '&lt;'))
-      : _tLookup('alm_showing_worldwide', 'Showing worldwide holidays');
-    html += '<div class="alm-cal-region" title="' +
-      _tLookup('alm_holidays_follow_hint', 'Follows your location on the map').replace(/"/g, '&quot;') +
-      '">' + capText + '</div>';
+    var scope = _almHolidayScope();
+    var capText, toggleText;
+    if (scope === 'worldwide') {
+      capText = _tLookup('alm_showing_all_countries', "Showing every country's holidays");
+      toggleText = _tLookup('alm_scope_region', 'My region');
+    } else {
+      var regionName = _almRegionName(_almRegion());
+      capText = regionName
+        ? _tLookup('alm_showing_holidays', 'Showing {c} holidays').replace('{c}', regionName.replace(/</g, '&lt;'))
+        : _tLookup('alm_showing_worldwide', 'Showing worldwide holidays');
+      toggleText = _tLookup('alm_scope_worldwide', 'Worldwide');
+    }
+    html += '<div class="alm-cal-region">' +
+      '<button type="button" class="alm-cal-region-cap" onclick="_almScrollToLocation()" title="' +
+        _tLookup('alm_holidays_follow_hint', 'Follows your location on the map').replace(/"/g, '&quot;') + '">' +
+        capText + '</button>' +
+      '<button type="button" class="alm-cal-region-toggle" onclick="_almToggleHolidayScope()" title="' +
+        _tLookup('alm_scope_toggle_hint', 'Switch between your region and every country').replace(/"/g, '&quot;') + '">' +
+        toggleText + '</button>' +
+      '</div>';
   }
 
   // Cross-reference — selected date in all calendar systems (replaces pills)

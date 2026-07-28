@@ -284,27 +284,53 @@ class VocabLossyCountingTests(unittest.TestCase):
         for w in ("aaa", "bbb", "ccc", "ddd"):
             self.assertNotIn(w, vocab)
 
-    def test_saturation_stops_the_scan(self):
-        # 19 words pre-seeded to count 2 (via a duplicate within each row's
-        # own title), then a 20th, brand-new singleton word hits a word cap
-        # of 20. It's the ONLY singleton in the vocab at that moment, so the
-        # sweep frees just 1 — under the 10% (of 20 = 2) saturation
-        # threshold. That must stop the scan outright: a further row after
-        # the trigger must never be read.
-        titles = [f"W{i:02d} W{i:02d}" for i in range(19)]
-        titles.append("Trigger")  # 20th distinct word, count 1 → hits the cap
-        titles.append("ShouldNeverAppear ShouldNeverAppear")  # must not be read
+    def test_cap_evicts_but_never_stops_the_scan(self):
+        # THE coverage-promise regression guard. Five singleton words fill a
+        # word cap of 5; the 5th admission triggers a tiered sweep. Unlike the
+        # old saturation-stop, the scan MUST continue — so "later", which
+        # appears (three times, to clear the final singleton prune) only in a
+        # row read AFTER the eviction, must land in the vocab. This is exactly
+        # the "mitochondria only shows up once the later indexes are scanned"
+        # case, in miniature.
+        titles = [
+            "Aaa",
+            "Bbb",
+            "Ccc",
+            "Ddd",
+            "Eee",  # 5th distinct singleton → hits cap of 5, triggers eviction
+            "Later Later Later",  # read only after the sweep — must be admitted
+        ]
         _make_title_index(self.tmp, "wikipedia", titles)
         with (
-            mock.patch.object(_search, "_VOCAB_MAX_WORDS", 20),
-            mock.patch.object(_search, "_VOCAB_EVICT_MIN_FRACTION", 0.10),
+            mock.patch.object(_search, "_VOCAB_MAX_WORDS", 5),
             mock.patch.object(_search, "_VOCAB_FETCH_BATCH_SIZE", 1),
         ):
             vocab = _search._build_vocab()
-        for i in range(19):
-            self.assertEqual(vocab.get(f"w{i:02d}"), 2)
-        self.assertNotIn("trigger", vocab)
-        self.assertNotIn("shouldneverappear", vocab)
+        # The singletons were swept (and pruned) — but the post-eviction word
+        # was still counted, proving the scan did not stop.
+        self.assertEqual(vocab.get("later"), 3)
+
+    def test_admissions_freeze_when_eviction_cannot_free_room(self):
+        # A vocab of nothing but high-count words: the sweep can't free the
+        # required room even at the top tier, so NEW words stop being admitted
+        # — but existing words keep counting and every row is still read.
+        # 19 words pre-seeded to a count above every eviction tier, then a new
+        # word appears after the cap is hit; it must be refused admission,
+        # while an already-known word seen again afterward must still increment.
+        titles = [f"W{i:02d} W{i:02d} W{i:02d} W{i:02d}" for i in range(19)]
+        titles.append("Newword")  # 20th distinct → hits cap, can't free → frozen
+        titles.append("W00")  # already known → must still be counted (5th time)
+        _make_title_index(self.tmp, "wikipedia", titles)
+        with (
+            mock.patch.object(_search, "_VOCAB_MAX_WORDS", 20),
+            mock.patch.object(_search, "_VOCAB_EVICT_MAX_TIER", 3),
+            mock.patch.object(_search, "_VOCAB_FETCH_BATCH_SIZE", 1),
+        ):
+            vocab = _search._build_vocab()
+        self.assertNotIn("newword", vocab)  # admission frozen
+        self.assertEqual(
+            vocab.get("w00"), 5
+        )  # existing word still counted after freeze
 
     def test_final_prune_drops_remaining_singletons(self):
         # No cap pressure here — this isolates the end-of-scan prune from
@@ -377,16 +403,18 @@ class VocabCachePersistenceTests(unittest.TestCase):
         # Back to the real (current) version — same indexes, different sig.
         self.assertIsNone(_search._vocab_cache_load())
 
-    def test_round3_cache_on_disk_invalidated_by_round4_version_bump(self):
-        # The exact real-world case: a round-3 cache (builder version 2,
-        # first-come-eviction vocab, no stride sampling) already sitting on
-        # disk when round 4's code (version 3) starts up. It must not be
-        # loaded — the algorithm producing "words" changed, even though the
-        # indexes on disk did not.
-        with mock.patch.object(_search, "_VOCAB_BUILDER_VERSION", 2):
-            round3_sig = _search._vocab_signature(self.index_dir)
-            _search._vocab_cache_save({"python": 4}, round3_sig)
-        self.assertEqual(_search._VOCAB_BUILDER_VERSION, 3)
+    def test_prior_version_cache_on_disk_invalidated_by_version_bump(self):
+        # The exact real-world case behind the 1.8.1 coverage promise: a cache
+        # from the previous builder (the saturating-cap algorithm that dropped
+        # spread-thin words) already sitting on disk when the current code
+        # starts up. It must not be loaded — the algorithm producing "words"
+        # changed, even though the indexes on disk did not — so production
+        # re-scans once and picks up the previously-missing words.
+        with mock.patch.object(
+            _search, "_VOCAB_BUILDER_VERSION", _search._VOCAB_BUILDER_VERSION - 1
+        ):
+            prior_sig = _search._vocab_signature(self.index_dir)
+            _search._vocab_cache_save({"python": 4}, prior_sig)
         self.assertIsNone(_search._vocab_cache_load())
 
     def test_round_trip_avoids_rebuild(self):
@@ -676,6 +704,112 @@ class McpPassthroughTests(unittest.TestCase):
             }
         )
         self.assertNotIn("Did you mean", out)
+
+
+class EditDistanceTests(unittest.TestCase):
+    """The bounded Levenshtein used to verify trigram candidates."""
+
+    def test_zero_distance(self):
+        self.assertEqual(_search._edit_distance_le2("photo", "photo"), 0)
+
+    def test_one_and_two(self):
+        self.assertEqual(_search._edit_distance_le2("photo", "photto"), 1)  # 1 insert
+        self.assertEqual(
+            _search._edit_distance_le2("fotosynthesis", "photosynthesis"), 2
+        )
+
+    def test_caps_at_three(self):
+        # Far-apart strings never report a real distance, just the >2 sentinel.
+        self.assertEqual(_search._edit_distance_le2("cat", "elephant"), 3)
+        self.assertEqual(_search._edit_distance_le2("abcdefg", "hijklmn"), 3)
+
+    def test_length_gap_short_circuits(self):
+        self.assertEqual(_search._edit_distance_le2("ab", "abcde"), 3)
+
+
+class TrigramIndexTests(unittest.TestCase):
+    """The trigram inverted index only covers long words and finds
+    distance-2 corrections an exhaustive edit-2 scan would skip for length."""
+
+    def tearDown(self):
+        _search._trigram_index = None
+
+    def test_index_only_holds_long_words(self):
+        vocab = {"photosynthesis": 10, "cat": 5, "python": 3, "database": 7}
+        idx = _search._build_trigram_index(vocab)
+        # "database" (8) and "photosynthesis" (14) are indexed; "cat"/"python"
+        # (< _TRIGRAM_MIN_LEN) are not.
+        indexed = {w for posting in idx.values() for w in posting}
+        self.assertIn("photosynthesis", indexed)
+        self.assertIn("database", indexed)
+        self.assertNotIn("cat", indexed)
+        self.assertNotIn("python", indexed)
+
+    def test_trigrams_helper(self):
+        self.assertEqual(_search._trigrams("abcd"), {"abc", "bcd"})
+        self.assertEqual(_search._trigrams("ab"), {"ab"})  # short-circuit
+
+    def test_long_word_distance2_correction(self):
+        # THE dist-2 promise case: "fotosynthesis" -> "photosynthesis" (two
+        # edits, 13/14 chars — too long for the exhaustive edit-2 path).
+        vocab = {
+            "photosynthesis": 100,
+            "photosynthetic": 20,
+            "mitochondria": 50,
+            "encyclopedia": 80,
+        }
+        _search._rebuild_trigram_index(vocab)
+        self.assertEqual(
+            _search._best_correction("fotosynthesis", vocab), "photosynthesis"
+        )
+
+    def test_long_word_correction_via_did_you_mean(self):
+        vocab = {"photosynthesis": 100, "chlorophyll": 40}
+        _search._rebuild_trigram_index(vocab)
+        deadline = time.monotonic() + 1.0
+        self.assertEqual(
+            _search._did_you_mean("fotosynthesis", vocab, deadline),
+            "photosynthesis",
+        )
+
+    def test_long_word_no_index_fails_soft(self):
+        # No trigram index (never built) → long-word dist-2 is simply skipped,
+        # never raising, returning None.
+        _search._trigram_index = None
+        vocab = {"photosynthesis": 100}
+        self.assertIsNone(_search._best_correction("fotosynthesis", vocab))
+
+    def test_frequency_breaks_ties_among_near_long_words(self):
+        # Two long vocab words are each EXACTLY distance 2 from the typo (the
+        # two-char suffix differs), and distance 2 from each other, so neither
+        # is reachable by the distance-1 path — the trigram path must choose,
+        # and the far more common one wins.
+        vocab = {"helloworldaa": 900, "helloworldbb": 3}
+        _search._rebuild_trigram_index(vocab)
+        out = _search._best_correction("helloworldxx", vocab)
+        self.assertEqual(out, "helloworldaa")  # frequency wins the tie
+
+    def test_index_caps_to_highest_count_long_words(self):
+        # With the per-index word cap lowered, only the highest-count long
+        # words are indexed — a rare long word is excluded, a common one kept —
+        # so query latency stays flat as the vocab's low-count tail grows.
+        vocab = {
+            "photosynthesis": 500,  # common → indexed
+            "electroencephalography": 3,  # rare long word → dropped by the cap
+            "biodiversity": 400,  # common → indexed
+        }
+        with mock.patch.object(_search, "_TRIGRAM_MAX_INDEX_WORDS", 2):
+            idx = _search._build_trigram_index(vocab)
+        indexed = {w for posting in idx.values() for w in posting}
+        self.assertIn("photosynthesis", indexed)
+        self.assertIn("biodiversity", indexed)
+        self.assertNotIn("electroencephalography", indexed)
+
+    def test_reset_clears_trigram_index(self):
+        _search._rebuild_trigram_index({"photosynthesis": 5})
+        self.assertIsNotNone(_search._trigram_index)
+        _search._reset_vocab()
+        self.assertIsNone(_search._trigram_index)
 
 
 if __name__ == "__main__":

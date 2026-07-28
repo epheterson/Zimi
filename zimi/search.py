@@ -1158,7 +1158,33 @@ _DYM_FREQ_RATIO = 10  # an in-vocab word is only "corrected" when a candidate
 # is at least this many times more common — Norvig-style confidence that lets
 # us fix a typo that itself snuck into the vocab (e.g. a misspelled title)
 # without ever touching a genuinely common word.
-_VOCAB_MAX_WORDS = 200_000  # cap on distinct vocabulary words held in memory
+# Peak in-memory ceiling on distinct words held DURING the build (not the
+# size of what's persisted — see _VOCAB_MAX_PERSIST_WORDS). The whole library
+# holds ~6M distinct sampled tokens (measured), the vast majority count==1
+# junk from huge Q&A/dictionary indexes. This cap is a memory guard, not an
+# early-stop: hitting it triggers a non-terminating tiered eviction (see
+# _evict_to_free) that frees room and lets the scan CONTINUE through every
+# remaining index, instead of the old 200k cap that saturated after ~3 of 68
+# files and froze the scan — which is exactly why spread-thin words like
+# "mitochondria" and "photosynthesis" never made it in. 4M keeps peak build
+# RSS around ~600MB, comfortable inside the 4GB container alongside the live
+# server.
+_VOCAB_MAX_WORDS = 4_000_000
+# Safety ceiling on the PERSISTED vocab (and the in-memory dict the corrector
+# uses). After the scan, singletons are pruned; only if MORE than this many
+# count>=2 words remain are the top-K by frequency kept. Sized so it does NOT
+# bite for a normal library — the measured 53-file/16.8GB NAS keeps ~1.26M
+# count>=2 words (a ~19MB cache), all retained — so every word appearing even
+# twice survives, honoring the "coverage grows with your title indexes"
+# promise with room to spare (the old cache was 181k words / 2.4MB). The cap
+# only guards against an unbounded dict on a pathologically large library;
+# because it's frequency-ranked, high-count words are never the ones dropped.
+_VOCAB_MAX_PERSIST_WORDS = 1_500_000
+# Highest count-tier _evict_to_free will sweep before giving up and freezing
+# new admissions (it keeps counting/scanning either way). Singletons (tier 1)
+# dominate the junk, so tier 1 almost always frees plenty; tiers 2-3 are a
+# safety valve for pathological libraries.
+_VOCAB_EVICT_MAX_TIER = 3
 _VOCAB_MIN_WORD_LEN = 3  # ignore 1-2 char fragments (noise, not misspellings)
 # One-time ceiling on the lazy vocab scan when there's no usable cache on
 # disk (see _vocab_cache_load / _vocab_cache_save below). Generous on
@@ -1182,24 +1208,54 @@ _VOCAB_BUILD_BUDGET_S = 300.0
 # file a real chance to be sampled and survive lossy-counting eviction.
 _VOCAB_MAX_ROWS_PER_FILE = 3_000_000
 _VOCAB_FETCH_BATCH_SIZE = 5000  # sqlite fetchmany() page size during the scan
-# Lossy-counting admission: when the word cap is hit, count==1 entries (the
-# one-off proper nouns and IDs that dominate large title sets) are swept out
-# to make room, and scanning continues — this is what lets genuinely common
-# words admitted later in the scan still get counted, instead of the cap
-# freezing on whichever words happened to appear first. If a sweep frees
-# less than this fraction of the cap, the vocab has saturated (what's left
-# is mostly count>=2) and the scan stops for good.
+# When the peak word cap is hit, tiered eviction (see _evict_to_free) must
+# free at least this fraction of the cap so the sweep is worth its O(N) scan
+# and the vocab doesn't thrash — evicting a few thousand entries only to
+# refill them a batch later. count==1 junk almost always clears far more than
+# this; the fraction only decides how deep the tier escalation goes.
 _VOCAB_EVICT_MIN_FRACTION = 0.10
 _VOCAB_CACHE_FILENAME = "dym_vocab.json"
 _VOCAB_CACHE_PATH = os.path.join(_srv.ZIMI_DATA_DIR, _VOCAB_CACHE_FILENAME)
 # Bump whenever the vocab-building algorithm changes in a way that makes an
 # on-disk cache from an older version invalid even though the underlying
-# title indexes haven't changed — lossy-counting admission and stride
-# sampling (see _vocab_stride) each changed which words a scan of the same
-# files produces. Folded into _vocab_signature so a stale-algorithm cache is
-# rebuilt transparently rather than loaded forever.
-_VOCAB_BUILDER_VERSION = 3
-_DIST2_MAX_LEN = 7  # only try edit-distance-2 on words this short or shorter
+# title indexes haven't changed — lossy-counting admission, stride sampling,
+# and (v4) non-terminating tiered eviction + top-K persist each changed which
+# words a scan of the same files produces. Folded into _vocab_signature so a
+# stale-algorithm cache is rebuilt transparently rather than loaded forever.
+# v4 is the release-note "coverage grows with your title indexes" rebuild:
+# every production instance re-scans once on upgrade and picks up the
+# previously-missing spread-thin words.
+_VOCAB_BUILDER_VERSION = 4
+# Words this length or shorter get EXHAUSTIVE edit-distance-2 via _edits2 (the
+# candidate set stays small enough to enumerate within budget). Longer words
+# would blow the 50ms budget that way — a 13-char word generates ~450k
+# distance-2 strings (~700ms) — so they go through the trigram index instead
+# (see _trigram_dist2_candidates), which is how "fotosynthesis" reaches
+# "photosynthesis" (distance 2, 14 chars) without enumerating its neighborhood.
+_DIST2_MAX_LEN = 7
+# Long-word distance-2 correction. A character-trigram inverted index over the
+# vocab turns "which vocab words are within edit distance 2 of this long typo?"
+# into a bounded posting-list intersection instead of an unbounded edit-2
+# enumeration. Only words longer than the exhaustive path handles are indexed
+# and corrected this way, so the two paths partition cleanly by length.
+_TRIGRAM_MIN_LEN = _DIST2_MAX_LEN + 1  # 8
+# Trigrams appearing in more vocab words than this are dropped from a query's
+# candidate gather — they're uninformative (every long word shares "ing",
+# "tion", …) and their posting lists dominate the cost. Measured worst-case
+# query stays ~15ms with this set.
+_TRIGRAM_SKIP_POSTING = 15_000
+_TRIGRAM_MAX_SCAN = 40_000  # hard ceiling on postings walked per query (budget guard)
+_TRIGRAM_MAX_VERIFY = 40  # edit-distance-verify only the N best trigram-overlap words
+# Ceiling on how many long words go INTO the trigram index, decoupling
+# long-word distance-2 latency from the size of the persisted vocab. The vocab
+# can grow to _VOCAB_MAX_PERSIST_WORDS (cheap O(1) dist-1 coverage), but only
+# the highest-count long words are indexed for dist-2 — a rare count==2 long
+# word is almost never the right correction, yet each one lengthens the
+# posting lists every query walks. Measured: ~284k long words on the real NAS
+# library gives a ~31ms worst-case long-word query; leaving the index
+# uncapped, a synthetic 1.3M-word vocab (~984k long words) pushed that to
+# ~44ms. Capping here keeps the worst case flat as the library grows.
+_TRIGRAM_MAX_INDEX_WORDS = 400_000
 _DYM_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 _word_split_re = re.compile(r"[^a-z0-9]+")
 # Split a query into alternating [gap, word, gap, word, ...]; odd indices are
@@ -1213,6 +1269,13 @@ _query_token_re = re.compile(r"(\w+)")
 _vocab = None  # {word: count}; None until built, a dict once built (empty on failure)
 _vocab_lock = threading.Lock()
 _vocab_builder_thread = None  # daemon thread building the vocab; test hook for .join()
+# {trigram: [word, ...]} inverted index over the long (>= _TRIGRAM_MIN_LEN)
+# words of _vocab, built by the same background worker right after the vocab is
+# ready. None until then; long-word distance-2 correction is simply skipped
+# while it's absent (fail-soft, like the vocab itself). Not persisted — it's
+# cheap to rebuild (~2-3s) from the loaded vocab, so the cache format is
+# unchanged.
+_trigram_index = None
 
 
 def _ascii_fold(s):
@@ -1227,13 +1290,59 @@ def _ascii_fold(s):
 def _evict_singleton_words(vocab):
     """Sweep-delete every count==1 entry from `vocab`, in place.
 
-    Returns the number removed. Used both mid-scan (lossy-counting admission
-    when the word cap is hit) and once at the end (final prune — singletons
-    are noise for correction and just bloat the persisted cache)."""
+    Returns the number removed. Used for the final prune — singletons are
+    noise for correction and just bloat the persisted cache."""
     singles = [w for w, c in vocab.items() if c == 1]
     for w in singles:
         del vocab[w]
     return len(singles)
+
+
+def _evict_to_free(vocab, min_free):
+    """Free at least `min_free` entries from a full vocab WITHOUT stopping the
+    scan, in place. Returns (removed, top_tier).
+
+    Drops the lowest-count tier first (count==1 singletons — the one-off
+    proper nouns, IDs and typos that dominate huge Q&A/dictionary indexes),
+    escalating to count==2, ==3, … only when a tier doesn't free enough,
+    bounded by _VOCAB_EVICT_MAX_TIER. Unlike the old saturation-stop this is
+    NOT a signal to end the scan: the caller keeps reading every remaining
+    index afterward, so a word evicted here is simply re-admitted when it
+    recurs, and — critically — spread-thin words that only appear in
+    later-scanned indexes still get their chance. Singletons almost always
+    clear far more than min_free in one tier; escalation is a safety valve.
+    If even the top tier can't free enough, the caller freezes NEW admissions
+    but still finishes counting existing words and scanning the library."""
+    removed = 0
+    tier = 0
+    while removed < min_free and tier < _VOCAB_EVICT_MAX_TIER:
+        tier += 1
+        victims = [w for w, c in vocab.items() if c == tier]
+        for w in victims:
+            del vocab[w]
+        removed += len(victims)
+    return removed, tier
+
+
+def _cap_vocab_to_top_k(vocab, k):
+    """Keep only the `k` highest-count words in `vocab`, in place. No-op when
+    the vocab already fits. Returns the number dropped.
+
+    Bounds the persisted cache and load time without touching the words a user
+    is likely to type: correction candidates are generated by edit distance,
+    not looked up by rank, so dropping the long low-count tail costs coverage
+    only for words seen a mere handful of times library-wide. Ties at the
+    cutoff count are broken by the word text so the result is deterministic
+    (same indexes → same cache → stable signature)."""
+    if len(vocab) <= k:
+        return 0
+    # Sort by (count desc, word asc); keep the first k.
+    keep = sorted(vocab.items(), key=lambda kv: (-kv[1], kv[0]))[:k]
+    dropped = len(vocab) - len(keep)
+    kept = dict(keep)
+    vocab.clear()
+    vocab.update(kept)
+    return dropped
 
 
 def _vocab_stride(conn, cap):
@@ -1263,25 +1372,30 @@ def _build_vocab():
     """Scan the SQLite title indexes into a {word: count} vocabulary.
 
     Opens a FRESH connection per index (sqlite objects aren't shareable across
-    threads). Bounded three ways: a distinct-word cap, a per-file row cap, and
-    an overall wall-clock budget — whichever hits first stops that file (row
-    cap) or the whole scan (word cap / budget). Files are scanned largest-first
-    (by byte size) so the richest indexes (Wikipedia-scale) contribute first;
-    each file's rows are then STRIDE-SAMPLED (see _vocab_stride) rather than
-    read as a contiguous prefix, so the per-file row cap buys breadth across
-    the WHOLE file, not just its first N rows — a word occurring only
-    occasionally across a huge index still has a real chance to be sampled.
-    The word cap uses lossy-counting admission (see
-    _evict_singleton_words): hitting it triggers a singleton sweep rather
-    than freezing outright, so words seen later in the scan can still be
-    counted — a first-come cap otherwise fills entirely with one-off proper
-    nouns from a huge index before anything looks "common". A final sweep
-    after the whole scan drops any remaining singletons (noise for
-    correction, dead weight in the persisted cache). Returns whatever was
-    gathered (possibly empty). Never raises; a broken index is skipped.
-    Always logs the outcome at info level, including the empty case, so a
-    starved scan is visible in production rather than silently returning
-    nothing."""
+    threads). Files are scanned largest-first (by byte size) so the richest
+    indexes contribute first if the wall-clock budget is ever hit; each file's
+    rows are STRIDE-SAMPLED (see _vocab_stride) rather than read as a
+    contiguous prefix, so the per-file row cap buys breadth across the WHOLE
+    file — a word occurring only occasionally across a huge index still has a
+    real chance to be sampled.
+
+    The build is bounded by memory, not by a first-come word cap that stops
+    the scan. Hitting the peak word cap triggers NON-TERMINATING tiered
+    eviction (see _evict_to_free): the lowest count-tiers are swept to free
+    room and the scan keeps going through every remaining index. This is the
+    v4 fix for the coverage promise — the old design saturated a 200k cap
+    after ~3 of 68 files and froze, so spread-thin words ("mitochondria",
+    "photosynthesis") that only accumulate once the dictionary/encyclopedia
+    indexes are reached never made it in. Only if eviction genuinely can't
+    free room (a library of almost all high-count words) are NEW admissions
+    frozen — existing words keep counting and every file is still read.
+
+    After the scan: singletons are pruned (noise for correction, dead weight
+    in the cache), then if more than _VOCAB_MAX_PERSIST_WORDS remain, only the
+    top-K by frequency are kept so the persisted cache and load time stay
+    bounded. Returns whatever was gathered (possibly empty). Never raises; a
+    broken index is skipped. Always logs the outcome at info level, including
+    the empty case, so a starved scan is visible in production."""
     deadline = time.monotonic() + _VOCAB_BUILD_BUDGET_S
     vocab = {}
     index_dir = _TITLE_INDEX_DIR
@@ -1297,9 +1411,15 @@ def _build_vocab():
     total_files = len(fnames)
     files_scanned = 0
     rows_scanned = 0
-    at_cap = False
+    evictions = 0
+    admissions_frozen = (
+        False  # set only if eviction can't free room; never stops the scan
+    )
+    # At least 1 so a tiny cap (tests, degenerate libraries) still frees room
+    # rather than looping on a no-op sweep.
+    min_free = max(1, int(_VOCAB_MAX_WORDS * _VOCAB_EVICT_MIN_FRACTION))
     for fname in fnames:
-        if at_cap or time.monotonic() > deadline:
+        if time.monotonic() > deadline:
             break
         db_path = os.path.join(index_dir, fname)
         try:
@@ -1320,8 +1440,7 @@ def _build_vocab():
             else:
                 cur = conn.execute("SELECT title_lower FROM titles")
             while (
-                not at_cap
-                and rows_this_file < _VOCAB_MAX_ROWS_PER_FILE
+                rows_this_file < _VOCAB_MAX_ROWS_PER_FILE
                 and time.monotonic() <= deadline
             ):
                 rows = cur.fetchmany(_VOCAB_FETCH_BATCH_SIZE)
@@ -1338,12 +1457,16 @@ def _build_vocab():
                             continue
                         if w in vocab:
                             vocab[w] += 1
-                        elif not at_cap:
+                        elif not admissions_frozen:
                             vocab[w] = 1
                             if len(vocab) >= _VOCAB_MAX_WORDS:
-                                freed = _evict_singleton_words(vocab)
-                                if freed < _VOCAB_MAX_WORDS * _VOCAB_EVICT_MIN_FRACTION:
-                                    at_cap = True
+                                freed, _tier = _evict_to_free(vocab, min_free)
+                                evictions += 1
+                                # Couldn't free enough even at the top tier:
+                                # stop admitting NEW words, but keep counting
+                                # existing ones and scanning every file.
+                                if freed < min_free:
+                                    admissions_frozen = True
         except Exception as e:
             log.debug("Vocab: scan failed for %s: %s", fname, e)
         finally:
@@ -1356,16 +1479,20 @@ def _build_vocab():
     pruned = _evict_singleton_words(
         vocab
     )  # final prune: singletons are noise, drop them
+    capped = _cap_vocab_to_top_k(vocab, _VOCAB_MAX_PERSIST_WORDS)
     log.info(
-        "Did-you-mean vocab: %d words (%d singletons pruned) from %d/%d index "
-        "files, %d rows (budget_hit=%s, at_cap=%s)",
+        "Did-you-mean vocab: %d words (%d singletons pruned, %d capped by top-K) "
+        "from %d/%d index files, %d rows (budget_hit=%s, evictions=%d, "
+        "admissions_frozen=%s)",
         len(vocab),
         pruned,
+        capped,
         files_scanned,
         total_files,
         rows_scanned,
         budget_hit,
-        at_cap,
+        evictions,
+        admissions_frozen,
     )
     return vocab
 
@@ -1455,6 +1582,7 @@ def _vocab_build_worker():
             len(cached),
             _VOCAB_CACHE_PATH,
         )
+        _rebuild_trigram_index(cached)
         return
     try:
         built = _build_vocab()
@@ -1467,6 +1595,7 @@ def _vocab_build_worker():
         sig = _vocab_signature(_TITLE_INDEX_DIR)
         if sig is not None:
             _vocab_cache_save(built, sig)
+    _rebuild_trigram_index(_vocab)
 
 
 def _ensure_vocab():
@@ -1504,11 +1633,12 @@ def _join_vocab_build(timeout=5.0):
 
 def _reset_vocab():
     """Drop the cached vocabulary so the next call rebuilds. Tests only."""
-    global _vocab, _vocab_builder_thread
+    global _vocab, _vocab_builder_thread, _trigram_index
     _join_vocab_build()  # let any in-flight builder finish before we clear state
     with _vocab_lock:
         _vocab = None
         _vocab_builder_thread = None
+        _trigram_index = None
 
 
 def _edits1(word):
@@ -1521,11 +1651,131 @@ def _edits1(word):
     return set(deletes + transposes + replaces + inserts)
 
 
+def _trigrams(word):
+    """Set of character 3-grams in `word` (the whole word, itself for len<3)."""
+    if len(word) < 3:
+        return {word}
+    return {word[i : i + 3] for i in range(len(word) - 2)}
+
+
+def _edit_distance_le2(a, b):
+    """Levenshtein distance between `a` and `b`, capped: returns the true
+    distance when it is <= 2, otherwise 3. Rows are computed with early-exit
+    once every cell exceeds 2, so this stays cheap for the long words the
+    trigram path verifies."""
+    la, lb = len(a), len(b)
+    if abs(la - lb) > 2:
+        return 3
+    prev = list(range(lb + 1))
+    for i in range(1, la + 1):
+        cur = [i] + [0] * lb
+        row_best = i
+        ai = a[i - 1]
+        for j in range(1, lb + 1):
+            cost = 0 if ai == b[j - 1] else 1
+            v = prev[j] + 1
+            if cur[j - 1] + 1 < v:
+                v = cur[j - 1] + 1
+            if prev[j - 1] + cost < v:
+                v = prev[j - 1] + cost
+            cur[j] = v
+            if v < row_best:
+                row_best = v
+        if row_best > 2:
+            return 3
+        prev = cur
+    return prev[lb] if prev[lb] <= 2 else 3
+
+
+def _build_trigram_index(vocab):
+    """Inverted trigram index over the long words of `vocab`: {trigram:[word]}.
+
+    Only words >= _TRIGRAM_MIN_LEN are indexed — shorter words are corrected by
+    exhaustive edit-distance-2 and never need this — and at most
+    _TRIGRAM_MAX_INDEX_WORDS of them, the highest-count ones, so query latency
+    stays flat as the vocab grows (see that constant). Posting lists hold the
+    same string objects that key `vocab` (references, not copies), so the index
+    adds only ~pointer-per-posting overhead. Returns the dict (possibly empty)."""
+    longs = [w for w in vocab if len(w) >= _TRIGRAM_MIN_LEN]
+    if len(longs) > _TRIGRAM_MAX_INDEX_WORDS:
+        # Keep the most frequent long words (count desc, word asc for a
+        # deterministic cutoff).
+        longs = sorted(longs, key=lambda w: (-vocab[w], w))[:_TRIGRAM_MAX_INDEX_WORDS]
+    idx = {}
+    for w in longs:
+        for g in _trigrams(w):
+            idx.setdefault(g, []).append(w)
+    return idx
+
+
+def _rebuild_trigram_index(vocab):
+    """Build the trigram index from `vocab` and publish it. Fail-soft: any
+    error just leaves long-word distance-2 correction disabled (index None),
+    never raising into the background worker."""
+    global _trigram_index
+    try:
+        idx = _build_trigram_index(vocab) if vocab else None
+    except Exception as e:
+        log.info("Did-you-mean trigram index: build failed: %s", e)
+        idx = None
+    with _vocab_lock:
+        _trigram_index = idx
+    if idx is not None:
+        log.info("Did-you-mean trigram index: %d trigrams over long words", len(idx))
+
+
+def _trigram_dist2_candidates(word, deadline=None):
+    """Vocab words within edit distance 2 of a long `word`, via the trigram
+    index. Returns only the CLOSEST such words (all at the minimum distance
+    found, which is <= 2), or [] if none / no index / word too short.
+
+    Bounded for the 50ms budget: only selective trigrams are consulted (the
+    ultra-common ones are skipped), their posting lists are walked
+    shortest-first up to a hard scan ceiling, and edit distance is verified on
+    only the best-overlapping candidates."""
+    idx = _trigram_index
+    if idx is None or len(word) < _TRIGRAM_MIN_LEN:
+        return []
+    grams = [
+        g for g in _trigrams(word) if 0 < len(idx.get(g, ())) <= _TRIGRAM_SKIP_POSTING
+    ]
+    grams.sort(key=lambda g: len(idx[g]))  # most selective first
+    counts = {}
+    scanned = 0
+    for g in grams:
+        posting = idx[g]
+        if scanned + len(posting) > _TRIGRAM_MAX_SCAN:
+            break
+        scanned += len(posting)
+        for w in posting:
+            counts[w] = counts.get(w, 0) + 1
+        if deadline is not None and time.monotonic() > deadline:
+            break
+    if not counts or (deadline is not None and time.monotonic() > deadline):
+        return []
+    ranked = sorted(counts, key=lambda w: counts[w], reverse=True)[:_TRIGRAM_MAX_VERIFY]
+    best_d = 3
+    best = []
+    for w in ranked:
+        if w == word:
+            continue
+        d = _edit_distance_le2(word, w)
+        if d < best_d:
+            best_d = d
+            best = [w]
+        elif d == best_d and d <= 2:
+            best.append(w)
+    return best if best_d <= 2 else []
+
+
 def _best_correction(word, vocab, deadline=None, freq_ratio=None):
     """Best in-vocab correction for `word`, or None. Frequency breaks ties.
 
-    Distance-1 first; distance-2 only for short words (candidate set stays
-    bounded) and only if the time budget allows.
+    Distance-1 first, then distance-2 if the time budget allows: short words
+    (<= _DIST2_MAX_LEN) enumerate their full edit-2 neighborhood; longer words
+    use the trigram index instead (see _trigram_dist2_candidates), which keeps
+    long-word correction like "fotosynthesis" -> "photosynthesis" inside the
+    budget an exhaustive enumeration would blow.
 
     If `word` is itself in `vocab`, it's left alone UNLESS `freq_ratio` is
     given: then a same-or-lower-distance candidate must be at least
@@ -1552,15 +1802,17 @@ def _best_correction(word, vocab, deadline=None, freq_ratio=None):
     picked = _pick(cands)
     if picked:
         return picked
-    if len(word) <= _DIST2_MAX_LEN and (
-        deadline is None or time.monotonic() <= deadline
-    ):
-        cands2 = set()
-        for e1 in _edits1(word):
-            for e2 in _edits1(e1):
-                if e2 in vocab and e2 != word:
-                    cands2.add(e2)
-        return _pick(cands2)
+    if deadline is None or time.monotonic() <= deadline:
+        if len(word) <= _DIST2_MAX_LEN:
+            cands2 = set()
+            for e1 in _edits1(word):
+                for e2 in _edits1(e1):
+                    if e2 in vocab and e2 != word:
+                        cands2.add(e2)
+            return _pick(cands2)
+        # Long word: trigram index returns only the closest (<=2) vocab words,
+        # so _pick's frequency tie-break chooses among equally-near candidates.
+        return _pick(_trigram_dist2_candidates(word, deadline))
     return None
 
 
