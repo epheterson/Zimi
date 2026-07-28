@@ -262,3 +262,55 @@ def test_get_downloads_reports_scheduled(_no_real_threads, monkeypatch):
     queued = [r for r in rows if r.get("queued")]
     assert len(queued) == 1
     assert queued[0]["scheduled"] is True
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Start-now override (_start_scheduled_now)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def test_start_now_launches_scheduled_item(_no_real_threads, monkeypatch):
+    monkeypatch.setattr(library, "_fetch_mirrors", lambda url: [])
+    library._save_download_schedule(True, "01:00", "07:00")
+    monkeypatch.setattr(library, "_now_local_minutes", lambda: 720)  # outside
+    dl_id, _ = library._start_download(_kiwix_url("a"), size_bytes=100)
+    assert library._download_queue[0]["scheduled"] is True
+    # Override the window for this one — still outside it.
+    status, code = library._start_scheduled_now(dl_id)
+    assert (status, code) == ("started", 200)
+    assert dl_id in library._active_downloads
+    assert len(library._download_queue) == 0
+
+
+def test_start_now_at_cap_promotes_to_normal_queue(_no_real_threads, monkeypatch):
+    monkeypatch.setattr(library, "_fetch_mirrors", lambda url: [])
+    monkeypatch.setenv("ZIMI_MAX_CONCURRENT_DOWNLOADS", "1")
+    library._save_download_schedule(True, "01:00", "07:00")
+    # One active (in-window start), one scheduled (outside window).
+    monkeypatch.setattr(library, "_now_local_minutes", lambda: 180)  # inside
+    library._start_download(_kiwix_url("active"), size_bytes=100)
+    monkeypatch.setattr(library, "_now_local_minutes", lambda: 720)  # outside
+    sid, _ = library._start_download(_kiwix_url("later"), size_bytes=200)
+    assert library._download_queue[0]["scheduled"] is True
+    # No free slot: start-now clears the scheduled flag but can't launch yet.
+    status, code = library._start_scheduled_now(sid)
+    assert (status, code) == ("queued", 200)
+    assert "scheduled" not in library._download_queue[0]
+    # It now drains on the next slot regardless of the window (not gated).
+    monkeypatch.setattr(library, "_now_local_minutes", lambda: 720)
+    with library._download_lock:
+        library._active_downloads.clear()  # free the slot
+        library._drain_queue()
+    assert sid in library._active_downloads
+
+
+def test_start_now_unknown_id_not_found():
+    assert library._start_scheduled_now("nope") == ("not_found", 404)
+
+
+def test_start_now_on_active_item_reports_already_active(_no_real_threads, monkeypatch):
+    monkeypatch.setattr(library, "_fetch_mirrors", lambda url: [])
+    library._save_download_schedule(False, "01:00", "07:00")  # off → starts active
+    dl_id, _ = library._start_download(_kiwix_url("a"), size_bytes=100)
+    assert dl_id in library._active_downloads
+    assert library._start_scheduled_now(dl_id) == ("already_active", 200)
