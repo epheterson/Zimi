@@ -54,6 +54,35 @@ def test_appcast_url_matches_mac_feed_pattern():
     assert url.endswith("appcast-windows.xml")
 
 
+# ── Appcast URL override (ZIMI_APPCAST_URL) ─────────────────────────────────
+
+
+def test_resolve_appcast_url_defaults_to_production(monkeypatch):
+    monkeypatch.delenv("ZIMI_APPCAST_URL", raising=False)
+    assert ws._resolve_appcast_url() == ws.WINDOWS_APPCAST_URL
+
+
+def test_resolve_appcast_url_honors_env_override(monkeypatch):
+    monkeypatch.setenv("ZIMI_APPCAST_URL", "http://localhost:8000/appcast-test.xml")
+    assert ws._resolve_appcast_url() == "http://localhost:8000/appcast-test.xml"
+
+
+def test_resolve_appcast_url_explicit_arg_wins_over_env(monkeypatch):
+    # An explicit caller argument beats the env override.
+    monkeypatch.setenv("ZIMI_APPCAST_URL", "http://localhost:8000/appcast-test.xml")
+    assert ws._resolve_appcast_url("https://example.com/x.xml") == (
+        "https://example.com/x.xml"
+    )
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="no-op path is off-Windows")
+def test_init_updater_noop_even_with_env_override(monkeypatch):
+    # The override changes the feed URL, never the off-Windows soft-fail contract.
+    monkeypatch.setenv("ZIMI_APPCAST_URL", "http://localhost:8000/appcast-test.xml")
+    assert ws.init_updater("1.8.0") is False
+    assert ws._dll is None
+
+
 def test_eddsa_key_matches_sparkle_spec_key():
     """WinSparkle reuses the macOS Sparkle keypair — guard against drift."""
     spec = open(os.path.join(REPO_ROOT, "zimi_desktop.spec")).read()

@@ -40,6 +40,13 @@ WINDOWS_APPCAST_URL = (
     "https://raw.githubusercontent.com/epheterson/Zimi/main/appcast-windows.xml"
 )
 
+# Override for update-testing. Set ZIMI_APPCAST_URL to point a build at a
+# throwaway feed (a local file:// or http:// appcast advertising an RC build)
+# so a released app can be driven through a real WinSparkle update WITHOUT
+# touching the production appcast on `main`. Unset in normal use → the default
+# feed above wins. Windows-only lever; ignored everywhere else the module no-ops.
+_APPCAST_URL_ENV = "ZIMI_APPCAST_URL"
+
 # WinSparkle stores its check state (last-check time, skipped versions) here.
 _REGISTRY_PATH = b"Software\\Zimi\\WinSparkle"
 
@@ -101,16 +108,28 @@ def _bind_signatures(dll):
     # init / cleanup / check_* take no args and return void — ctypes defaults fine.
 
 
-def init_updater(
-    version, appcast_url=WINDOWS_APPCAST_URL, pubkey=WINSPARKLE_EDDSA_PUBLIC_KEY
-):
+def _resolve_appcast_url(explicit=None):
+    """Feed URL to use: explicit arg > ZIMI_APPCAST_URL env > production default.
+
+    The env override is the test lever documented on :data:`_APPCAST_URL_ENV`;
+    with it unset (the normal case) the production feed is returned unchanged.
+    """
+    if explicit:
+        return explicit
+    return os.environ.get(_APPCAST_URL_ENV, WINDOWS_APPCAST_URL)
+
+
+def init_updater(version, appcast_url=None, pubkey=WINSPARKLE_EDDSA_PUBLIC_KEY):
     """Initialize WinSparkle and kick off a launch-time update check.
 
-    Returns True if the updater started, False (clean no-op) otherwise — on a
-    non-Windows host, a missing DLL, or any load/call error. Safe to call from a
-    background thread: WinSparkle spawns its own thread and message loop.
+    ``appcast_url`` defaults to :func:`_resolve_appcast_url` (production feed
+    unless ``ZIMI_APPCAST_URL`` is set). Returns True if the updater started,
+    False (clean no-op) otherwise — on a non-Windows host, a missing DLL, or any
+    load/call error. Safe to call from a background thread: WinSparkle spawns its
+    own thread and message loop.
     """
     global _dll
+    appcast_url = _resolve_appcast_url(appcast_url)
     dll_path = _find_dll()
     if not dll_path:
         _log_once("DLL not found — running without auto-update")

@@ -459,8 +459,9 @@ jobs:
 
           # Sign one enclosure and write its appcast.
           #   $1 label  $2 file-to-sign  $3 release-asset  $4 outfile  $5 min-sys line
+          #   $6 extra enclosure attributes (e.g. sparkle:installerArguments)
           generate_appcast() {
-            local LABEL="$1" FILE="$2" ASSET="$3" OUTFILE="$4" MINSYS="$5"
+            local LABEL="$1" FILE="$2" ASSET="$3" OUTFILE="$4" MINSYS="$5" ENC_EXTRA="$6"
             if [ ! -f "$FILE" ]; then
               echo "WARNING: No $LABEL enclosure found at $FILE"
               return 1
@@ -493,7 +494,7 @@ jobs:
                   url="https://github.com/${REPO}/releases/download/${TAG}/${ASSET}"
                   length="${LENGTH}"
                   type="application/octet-stream"
-                  sparkle:edSignature="${ED_SIG}"
+                  sparkle:edSignature="${ED_SIG}"${ENC_EXTRA}
                 />
               </item>
             </channel>
@@ -505,11 +506,16 @@ jobs:
           }
 
           MAC_MINSYS=$'\n            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>'
-          generate_appcast "Intel" "Zimi-Intel/Zimi-Intel.dmg" "Zimi-Intel.dmg" "appcast-intel.xml" "$MAC_MINSYS"
-          generate_appcast "Apple Silicon" "Zimi-AppleSilicon/Zimi-AppleSilicon.dmg" "Zimi-AppleSilicon.dmg" "appcast-arm64.xml" "$MAC_MINSYS"
-          # Windows enclosure is the Inno Setup installer; WinSparkle downloads
-          # and runs it to apply the update. No minimumSystemVersion line.
-          generate_appcast "Windows" "Zimi-windows-x64-Setup/Zimi-windows-x64-Setup.exe" "Zimi-windows-x64-Setup.exe" "appcast-windows.xml" ""
+          generate_appcast "Intel" "Zimi-Intel/Zimi-Intel.dmg" "Zimi-Intel.dmg" "appcast-intel.xml" "$MAC_MINSYS" ""
+          generate_appcast "Apple Silicon" "Zimi-AppleSilicon/Zimi-AppleSilicon.dmg" "Zimi-AppleSilicon.dmg" "appcast-arm64.xml" "$MAC_MINSYS" ""
+          # Windows enclosure is the Inno Setup installer; WinSparkle (0.9.4)
+          # downloads it, runs it with sparkle:installerArguments via
+          # ShellExecuteEx, then quits WITHOUT relaunching — so /SILENT gives a
+          # click-free progress-only update and the installer's [Run] entry does
+          # the relaunch (windows/zimi.iss). /SP- skips the "ready to install"
+          # prompt. Per-user install (no UAC), so silent is safe.
+          WIN_INSTALLER_ARGS=' sparkle:installerArguments="/SILENT /SP-"'
+          generate_appcast "Windows" "Zimi-windows-x64-Setup/Zimi-windows-x64-Setup.exe" "Zimi-windows-x64-Setup.exe" "appcast-windows.xml" "" "$WIN_INSTALLER_ARGS"
 
           # Commit and push to main
           git config user.name "github-actions[bot]"

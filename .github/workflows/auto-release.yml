@@ -1,8 +1,21 @@
 name: Auto Release
 
-# When a push to main changes the version, auto-tag and create a draft release.
-# The draft body is pulled from CHANGELOG.md. Desktop builds attach assets.
-# Only step left: review the draft and publish.
+# ── Single-draft release flow (there must be exactly ONE draft per tag) ──────
+# When a push to main changes the version in pyproject.toml:
+#   1. this workflow tags vX.Y.Z and creates/updates the draft release, with
+#      notes pulled from CHANGELOG.md;
+#   2. the tag push triggers desktop-release.yml, which builds every platform,
+#      signs the update enclosures, refreshes the appcasts, and attaches the
+#      built assets to the SAME draft (softprops matches the release by tag).
+#   3. the maintainer reviews that one draft and publishes it;
+#   4. publish-release.yml then ships PyPI + snap.
+#
+# The draft step below is IDEMPOTENT on purpose: `gh release create` would
+# happily make a SECOND draft for a tag that already has one (GitHub does not
+# enforce tag-uniqueness on drafts), which is exactly the duplicate "Zimi
+# vX.Y.Z" draft that showed up next to a hand-curated one after PR #39. So if a
+# release for the tag already exists (a maintainer-curated draft, or a re-run),
+# we EDIT it instead of creating a duplicate.
 
 on:
   push:
@@ -78,7 +91,18 @@ jobs:
           ENDNOTES
           # Trim leading whitespace from heredoc
           sed -i 's/^          //' /tmp/release-notes.md
-          gh release create "v${VERSION}" \
-            --draft \
-            --title "Zimi v${VERSION}" \
-            --notes-file /tmp/release-notes.md
+          # One draft per tag: update an existing release (curated draft or a
+          # re-run) instead of creating a duplicate. `gh release view` finds
+          # drafts by tag too.
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "Release v${VERSION} already exists — updating its notes in place"
+            gh release edit "v${VERSION}" \
+              --draft \
+              --title "Zimi v${VERSION}" \
+              --notes-file /tmp/release-notes.md
+          else
+            gh release create "v${VERSION}" \
+              --draft \
+              --title "Zimi v${VERSION}" \
+              --notes-file /tmp/release-notes.md
+          fi

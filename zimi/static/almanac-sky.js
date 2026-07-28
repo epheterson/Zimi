@@ -75,6 +75,7 @@ function _skyFrame(now, lat, lon, cw, ch) {
   var moonPos0 = _moonPosition(now, lat, lon);
   var moonM0 = _moonPhase(now);
   var projStars = _projectStars(now, lat, lon, cw, ch);
+  var projField = _projectFieldStars(now, lat, lon, cw, ch);
   var altStr = sunPos.altitude.toFixed(1);
   var labelText = sunPos.altitude > 0
     ? t('alm_sun') + ' ' + altStr + '°'
@@ -84,7 +85,7 @@ function _skyFrame(now, lat, lon, cw, ch) {
   } else {
     labelText += ' · ' + t('alm_moon') + ' ' + t('alm_below_horizon');
   }
-  return { sunPos: sunPos, moonData: { pos: moonPos0, phase: moonM0 }, projStars: projStars, labelText: labelText };
+  return { sunPos: sunPos, moonData: { pos: moonPos0, phase: moonM0 }, projStars: projStars, projField: projField, labelText: labelText };
 }
 
 // `animateMoon` -- true only for a repaint that reinitializes this same canvas
@@ -116,7 +117,7 @@ function _initSkyScene(now, lat, lon, animateMoon) {
   _skyStartTime = ts;
   _skyState = {
     canvas: canvas, dpr: dpr, now: now, nowTime: now.getTime(), lat: lat, lon: lon,
-    sunPos: f.sunPos, moonData: f.moonData, projStars: f.projStars, labelText: f.labelText,
+    sunPos: f.sunPos, moonData: f.moonData, projStars: f.projStars, projField: f.projField, labelText: f.labelText,
     moonAnim: null
   };
   if (priorMoon) _skyState.moonAnim = { from: priorMoon, to: f.moonData, start: ts, fromTime: priorTime, toTime: now.getTime() };
@@ -127,7 +128,7 @@ function _initSkyScene(now, lat, lon, animateMoon) {
     if (!s) return;
     var elapsed = (ts - _skyStartTime) / 1000;
     var moonNow = _skyMoonAt(s, ts);
-    _drawSkyScene(s.canvas, s.dpr, s.sunPos, s.now, s.lat, s.lon, elapsed, s.labelText, s.projStars, moonNow);
+    _drawSkyScene(s.canvas, s.dpr, s.sunPos, s.now, s.lat, s.lon, elapsed, s.labelText, s.projStars, moonNow, s.projField);
     // Drive the hero moon's time-travel sweep from this same loop (no second
     // rAF). Defined in almanac.js, which loads after this file.
     if (typeof _heroMoonTick === 'function') _heroMoonTick(ts);
@@ -152,6 +153,7 @@ function _skySetInstant(now) {
   s.sunPos = f.sunPos;
   _skyMoonRetarget(s, f.moonData, performance.now(), fromTime, now.getTime());
   s.projStars = f.projStars;
+  s.projField = f.projField;
   s.labelText = f.labelText;
 }
 
@@ -212,6 +214,132 @@ var _STARS = [
   [22.96,-29.62,1.16],[2.53,89.26,1.98],[2.12,23.46,2.00],[9.76,23.77,2.98]
 ];
 
+// Real background field — the naked-eye sky beyond the named catalog above.
+// Bright-star catalogue (HYG v41), every star to magnitude 4.0, culled of the
+// ~58 already in _STARS; each row is [RA hours, Dec degrees, magnitude, colour
+// index]. Projected by the SAME horizon geometry as the named stars
+// (_projectFieldStars) so the whole scene is astronomically real and drifts
+// with time/location — this REPLACES the old procedural _ensureSkyBgStars
+// filler, which had no real position and did not move with the sky. Colour
+// index tints each star warm (high B–V) to blue-white (low B–V).
+var _SKY_FIELD_STARS = [
+  [1.63,-57.24,0.45,-0.16],[14.06,-60.37,0.61,-0.23],[9.22,-69.72,1.67,0.07],[22.14,-46.96,1.73,-0.07],
+  [8.16,-47.34,1.75,-0.14],[3.41,49.86,1.79,0.48],[18.40,-34.38,1.79,-0.03],[8.38,-59.51,1.86,1.20],
+  [5.99,44.95,1.90,0.08],[16.81,-69.03,1.91,1.45],[6.63,16.40,1.93,0.00],[8.75,-54.71,1.93,0.04],
+  [20.43,-56.74,1.94,-0.12],[9.46,-8.66,1.99,1.44],[0.73,-17.99,2.04,1.02],[18.92,-26.30,2.05,-0.13],
+  [14.11,-36.37,2.06,1.01],[0.14,29.09,2.07,-0.04],[1.16,35.62,2.07,1.58],[14.85,74.16,2.07,1.47],
+  [22.71,-46.88,2.07,1.61],[17.58,12.56,2.08,0.15],[3.14,40.96,2.09,-0.00],[2.06,42.33,2.10,1.37],
+  [12.69,-48.96,2.20,-0.02],[8.06,-40.00,2.21,-0.27],[9.28,-59.28,2.21,0.19],[15.58,26.71,2.22,0.03],
+  [9.13,-43.43,2.23,1.67],[17.94,51.49,2.24,1.52],[13.66,-53.47,2.29,-0.17],[14.70,-47.39,2.30,-0.15],
+  [14.59,-42.16,2.33,-0.16],[14.75,27.07,2.35,0.97],[21.74,9.88,2.38,1.52],[17.71,-39.03,2.39,-0.17],
+  [0.44,-42.31,2.40,1.08],[17.17,-15.72,2.43,0.06],[23.06,28.08,2.44,1.66],[7.40,-29.30,2.45,-0.08],
+  [21.31,62.59,2.45,0.26],[9.37,-55.01,2.47,-0.14],[23.08,15.21,2.49,-0.00],[3.04,4.09,2.54,1.63],
+  [16.62,-10.57,2.54,0.04],[13.93,-47.29,2.55,-0.18],[5.55,-17.82,2.58,0.21],[12.14,-50.72,2.58,-0.13],
+  [12.26,-17.54,2.58,-0.11],[19.04,-29.88,2.60,0.06],[15.28,-9.38,2.61,-0.07],[15.74,6.43,2.63,1.17],
+  [1.91,20.81,2.64,0.17],[5.66,-34.07,2.65,-0.12],[6.00,37.21,2.65,-0.08],[12.57,-23.40,2.65,0.89],
+  [13.91,18.40,2.68,0.58],[14.98,-43.13,2.68,-0.18],[4.95,33.17,2.69,1.49],[10.78,-49.42,2.69,0.90],
+  [12.62,-69.14,2.69,-0.18],[17.51,-37.30,2.70,-0.18],[7.29,-37.10,2.71,1.62],[18.35,-29.83,2.72,1.38],
+  [19.77,10.61,2.72,1.51],[16.24,-3.69,2.73,1.58],[16.40,61.51,2.73,0.91],[10.72,-64.39,2.74,-0.22],
+  [12.69,-1.45,2.74,0.37],[5.59,-5.91,2.75,-0.21],[13.34,-36.71,2.75,0.07],[14.85,-16.04,2.75,0.15],
+  [17.72,4.57,2.76,1.17],[5.13,-5.09,2.78,0.16],[16.50,21.49,2.78,0.95],[17.24,14.39,2.78,1.16],
+  [17.51,52.30,2.79,0.95],[15.59,-41.17,2.80,-0.22],[5.47,-20.76,2.81,0.81],[16.69,31.60,2.81,0.65],
+  [0.43,-77.25,2.82,0.62],[16.60,-28.22,2.82,-0.21],[18.47,-25.42,2.82,1.02],[0.22,15.18,2.83,-0.19],
+  [8.13,-24.30,2.83,0.46],[15.92,-63.43,2.83,0.32],[3.90,31.88,2.84,0.27],[17.42,-55.53,2.84,1.48],
+  [17.53,-49.88,2.84,-0.14],[3.79,24.11,2.85,-0.09],[13.04,10.96,2.85,0.93],[21.78,-16.13,2.85,0.18],
+  [1.98,-61.57,2.86,0.29],[6.38,22.51,2.87,1.62],[15.32,-68.68,2.87,0.01],[22.31,-60.26,2.87,1.39],
+  [2.97,-40.30,2.88,0.13],[19.16,-21.02,2.88,0.38],[7.45,8.29,2.89,-0.10],[12.93,38.32,2.89,-0.12],
+  [3.96,40.01,2.90,-0.20],[16.35,-25.59,2.90,0.30],[21.53,-5.57,2.90,0.83],[3.08,53.51,2.91,0.72],
+  [9.79,-65.07,2.92,0.27],[22.72,30.22,2.93,0.85],[6.83,-50.61,2.94,1.21],[12.50,-16.52,2.94,-0.01],
+  [22.10,-0.32,2.95,0.97],[3.97,-13.51,2.97,1.59],[5.63,21.14,2.97,-0.15],[18.10,-30.42,2.98,0.98],
+  [13.32,-23.17,2.99,0.92],[17.79,-40.13,2.99,0.51],[19.09,13.86,2.99,0.01],[2.16,34.99,3.00,0.14],
+  [11.16,44.50,3.00,1.14],[15.35,71.83,3.00,0.06],[16.86,-38.05,3.00,-0.20],[21.90,-37.36,3.00,-0.08],
+  [3.72,47.79,3.01,-0.12],[6.34,-30.06,3.02,-0.16],[7.05,-23.83,3.02,-0.08],[12.17,-22.62,3.02,1.33],
+  [5.03,43.82,3.03,0.54],[12.77,-68.11,3.04,-0.18],[14.53,38.31,3.04,0.19],[20.35,-14.78,3.05,0.79],
+  [6.73,25.13,3.06,1.38],[10.37,41.50,3.06,1.60],[19.21,67.66,3.07,0.99],[18.29,-36.76,3.10,1.58],
+  [8.92,5.95,3.11,0.98],[10.83,-16.19,3.11,1.23],[11.60,-63.02,3.11,-0.04],[20.63,-47.29,3.11,1.00],
+  [5.85,-35.77,3.12,1.15],[8.99,48.04,3.12,0.22],[16.98,-55.99,3.12,1.55],[17.25,24.84,3.12,0.08],
+  [14.99,-42.10,3.13,-0.21],[9.35,34.39,3.14,1.55],[9.52,-57.03,3.16,1.54],[17.25,36.81,3.16,1.44],
+  [6.63,-43.20,3.17,-0.10],[9.55,51.68,3.17,0.47],[17.15,65.71,3.17,-0.12],[18.76,-26.99,3.17,-0.11],
+  [5.11,41.23,3.18,-0.15],[14.71,-64.98,3.18,0.26],[4.83,6.96,3.19,0.48],[5.09,-22.37,3.19,1.46],
+  [16.96,9.38,3.19,1.16],[17.83,-37.04,3.19,1.19],[21.22,30.23,3.21,0.99],[23.66,77.63,3.21,1.03],
+  [15.36,-40.65,3.22,-0.23],[16.31,-4.69,3.23,0.97],[18.36,-2.90,3.23,0.94],[21.48,70.56,3.23,-0.20],
+  [6.80,-61.94,3.24,0.23],[20.19,-0.82,3.24,-0.07],[7.49,-43.30,3.25,1.51],[14.11,-26.68,3.25,1.09],
+  [15.07,-25.28,3.25,1.67],[18.98,32.69,3.25,-0.05],[3.79,-74.24,3.26,1.59],[0.66,30.86,3.27,1.27],
+  [17.37,-25.00,3.27,-0.19],[22.91,-15.82,3.27,0.07],[5.22,-16.21,3.29,-0.11],[10.23,-70.04,3.29,-0.07],
+  [15.42,58.97,3.29,1.17],[4.57,-55.04,3.30,-0.08],[10.53,-61.69,3.30,-0.09],[6.25,22.51,3.31,1.60],
+  [17.42,-56.38,3.31,-0.15],[1.10,-46.72,3.32,0.89],[3.09,38.84,3.32,1.53],[17.20,-43.24,3.32,0.44],
+  [17.98,-9.77,3.32,0.99],[19.12,-27.67,3.32,1.17],[4.24,-62.47,3.33,0.92],[11.24,15.43,3.33,-0.00],
+  [7.82,-24.86,3.34,1.22],[5.41,-2.40,3.35,-0.24],[6.75,12.90,3.35,0.44],[8.50,60.72,3.35,0.86],
+  [19.42,3.11,3.36,0.32],[15.38,-44.69,3.37,-0.19],[8.78,6.42,3.38,0.69],[13.58,-0.60,3.38,0.11],
+  [5.59,9.93,3.39,-0.16],[10.28,-61.33,3.39,1.54],[12.93,3.40,3.39,1.57],[22.18,58.20,3.39,1.56],
+  [4.48,15.87,3.40,0.18],[17.17,-15.73,3.40,0.60],[1.47,-43.32,3.41,1.54],[4.01,12.49,3.41,-0.10],
+  [13.83,-41.69,3.41,-0.23],[15.20,-52.10,3.41,0.92],[20.75,61.84,3.41,0.91],[22.69,10.83,3.41,-0.09],
+  [1.88,29.58,3.42,0.49],[16.00,-38.40,3.42,-0.21],[17.77,27.72,3.42,0.75],[20.75,-66.20,3.42,0.16],
+  [9.18,-58.97,3.43,-0.19],[10.28,23.42,3.43,0.31],[19.10,-4.88,3.43,-0.10],[10.28,42.91,3.45,0.03],
+  [0.82,57.82,3.46,0.59],[1.14,-10.18,3.46,1.16],[7.95,-52.98,3.46,-0.18],[15.26,33.31,3.46,0.96],
+  [2.72,3.24,3.47,0.09],[13.83,-42.47,3.47,-0.17],[10.12,16.76,3.48,-0.03],[16.71,38.92,3.48,0.92],
+  [1.73,-15.94,3.49,0.73],[7.03,-27.93,3.49,1.73],[11.31,33.09,3.49,1.40],[15.03,40.39,3.49,0.96],
+  [18.45,-45.97,3.49,-0.18],[22.81,-51.32,3.49,0.08],[6.83,-32.51,3.50,-0.12],[7.34,21.98,3.50,0.37],
+  [22.83,66.20,3.50,1.05],[19.98,19.49,3.51,1.57],[22.83,24.60,3.51,0.93],[3.72,-9.76,3.52,0.92],
+  [9.69,9.89,3.52,0.52],[9.95,-54.57,3.52,-0.07],[18.83,33.36,3.52,0.00],[18.96,-21.11,3.52,1.15],
+  [22.17,6.20,3.52,0.09],[12.69,-1.45,3.52,0.60],[4.48,19.18,3.53,1.01],[8.28,9.19,3.53,1.48],
+  [11.55,-31.86,3.54,0.95],[15.83,-3.43,3.54,-0.04],[17.63,-15.40,3.54,0.26],[4.30,-33.80,3.55,-0.11],
+  [5.78,-14.82,3.55,0.10],[14.32,-46.06,3.55,-0.18],[18.35,72.73,3.55,0.49],[20.15,-66.18,3.55,0.75],
+  [0.32,-8.82,3.56,1.21],[2.28,-51.51,3.56,-0.12],[11.32,-14.78,3.56,1.11],[16.87,-38.02,3.56,-0.21],
+  [7.74,24.40,3.57,0.93],[9.06,47.16,3.57,0.01],[14.53,30.37,3.57,1.30],[15.36,-36.26,3.57,1.53],
+  [7.30,16.54,3.58,0.11],[20.30,-12.54,3.58,0.88],[1.63,48.63,3.59,1.27],[5.29,-6.84,3.59,-0.12],
+  [5.74,-22.45,3.59,0.48],[11.84,1.76,3.59,0.52],[12.36,-60.40,3.59,1.39],[1.40,-8.18,3.60,1.06],
+  [6.88,33.96,3.60,0.10],[8.67,-52.92,3.60,-0.17],[9.51,-40.47,3.60,0.37],[15.62,-28.14,3.60,1.36],
+  [17.52,-60.68,3.60,-0.10],[2.83,27.26,3.61,-0.10],[3.41,9.03,3.61,0.89],[10.18,-12.35,3.61,1.01],
+  [13.04,-71.55,3.61,1.19],[17.76,-64.72,3.61,1.16],[1.52,15.35,3.62,0.97],[3.82,24.05,3.62,-0.07],
+  [7.75,-37.97,3.62,1.71],[16.91,-42.36,3.62,1.39],[23.03,42.33,3.62,-0.10],[11.76,-66.73,3.63,0.16],
+  [20.63,14.60,3.64,0.42],[4.33,15.63,3.65,0.98],[9.53,63.06,3.65,0.36],[15.77,15.42,3.65,0.07],
+  [18.11,-50.09,3.65,-0.10],[22.48,-0.02,3.65,0.41],[15.46,29.11,3.66,0.32],[15.64,-29.78,3.66,-0.18],
+  [14.07,64.38,3.67,-0.05],[20.91,-58.45,3.67,1.25],[4.85,5.61,3.68,-0.16],[8.73,-33.19,3.68,-0.18],
+  [19.79,18.53,3.68,1.31],[23.16,-21.17,3.68,1.20],[0.62,53.90,3.69,-0.20],[1.93,-51.61,3.69,0.84],
+  [5.04,41.08,3.69,1.15],[9.75,-62.51,3.69,1.01],[11.77,47.78,3.69,1.18],[21.67,-16.66,3.69,0.32],
+  [3.33,-21.76,3.70,1.61],[17.96,29.25,3.70,0.94],[23.29,3.28,3.70,0.92],[4.90,2.44,3.71,-0.18],
+  [5.94,-14.17,3.71,0.34],[7.87,-40.58,3.71,1.01],[15.85,4.48,3.71,0.15],[18.12,9.56,3.71,0.16],
+  [19.92,6.41,3.71,0.85],[3.55,-9.46,3.72,0.88],[3.75,24.11,3.72,-0.10],[5.99,54.28,3.72,1.01],
+  [21.08,43.93,3.72,1.61],[3.45,9.73,3.73,-0.08],[14.77,1.89,3.73,-0.01],[17.89,56.87,3.73,1.18],
+  [21.69,-77.39,3.73,1.01],[22.88,-7.58,3.73,1.63],[1.86,-10.34,3.74,1.14],[16.37,19.15,3.74,0.30],
+  [21.25,38.05,3.74,0.39],[9.07,-47.10,3.75,1.17],[17.80,2.71,3.75,0.04],[5.56,-62.49,3.76,0.64],
+  [5.86,-20.88,3.76,0.98],[6.48,-7.03,3.76,-0.11],[19.08,-21.74,3.76,1.01],[19.50,51.73,3.76,0.15],
+  [22.52,50.28,3.76,0.03],[2.84,55.90,3.77,1.69],[3.75,42.58,3.77,0.42],[4.38,17.54,3.77,0.98],
+  [5.65,-2.60,3.77,-0.19],[8.43,-66.14,3.77,1.13],[8.68,-46.65,3.77,0.67],[16.83,-59.04,3.77,1.56],
+  [20.66,15.91,3.77,-0.06],[21.44,-22.41,3.77,1.00],[22.12,25.35,3.77,0.43],[7.15,-70.50,3.78,1.01],
+  [7.43,27.80,3.78,1.02],[9.85,59.04,3.78,0.29],[10.89,-58.85,3.78,0.94],[14.69,13.73,3.78,0.04],
+  [20.79,-9.50,3.78,0.00],[3.16,44.86,3.79,0.98],[10.89,34.21,3.79,1.04],[3.20,-28.99,3.80,0.54],
+  [7.65,-26.80,3.80,-0.16],[15.58,10.54,3.80,0.27],[19.29,53.37,3.80,0.95],[20.23,46.74,3.80,1.27],
+  [4.59,-30.56,3.81,0.96],[10.46,-58.74,3.81,0.32],[15.71,26.30,3.81,0.02],[23.63,46.46,3.81,0.98],
+  [2.03,2.76,3.82,0.02],[9.31,36.80,3.82,0.07],[11.52,69.33,3.82,1.61],[16.52,1.98,3.82,0.02],
+  [17.66,46.01,3.82,-0.18],[10.43,-16.84,3.83,1.46],[13.97,-42.10,3.83,-0.22],[14.80,-79.04,3.83,1.43],
+  [3.74,-64.81,3.84,1.13],[3.74,32.29,3.84,0.02],[4.48,15.96,3.84,0.95],[8.92,-60.64,3.84,-0.10],
+  [10.55,9.31,3.84,-0.15],[10.62,-48.23,3.84,0.30],[12.54,-72.13,3.84,-0.16],[18.13,28.76,3.84,-0.02],
+  [18.23,-21.06,3.84,0.20],[19.80,70.27,3.84,0.89],[4.23,-42.29,3.85,1.08],[5.79,-51.07,3.85,0.17],
+  [6.37,-33.44,3.85,0.86],[10.25,-42.12,3.85,0.05],[12.56,69.79,3.85,-0.12],[12.63,-48.54,3.85,0.05],
+  [15.94,15.66,3.85,0.48],[18.39,21.77,3.85,1.17],[18.59,-8.24,3.85,1.32],[0.95,38.50,3.86,0.13],
+  [4.64,-14.30,3.86,1.08],[5.52,-35.47,3.86,1.13],[16.26,-63.69,3.86,1.10],[16.56,-78.90,3.86,0.92],
+  [17.94,37.25,3.86,1.35],[22.36,-1.39,3.86,-0.06],[3.76,24.37,3.87,-0.06],[8.77,-46.04,3.87,0.01],
+  [13.98,-44.80,3.87,-0.21],[14.72,-5.66,3.87,0.39],[15.95,-29.21,3.87,-0.20],[19.87,1.01,3.87,0.63],
+  [0.16,-45.75,3.88,1.01],[1.89,19.29,3.88,-0.05],[9.88,26.01,3.88,1.22],[15.20,-48.74,3.88,-0.03],
+  [23.17,-45.25,3.88,1.00],[2.94,-8.90,3.89,1.09],[6.90,-24.18,3.89,1.74],[9.24,2.31,3.89,-0.06],
+  [12.33,-0.67,3.89,0.03],[19.94,35.08,3.89,1.02],[9.66,-1.14,3.90,1.31],[11.35,-54.49,3.90,-0.16],
+  [13.52,-39.41,3.90,1.19],[4.05,5.99,3.91,0.03],[8.43,-3.91,3.91,-0.01],[12.47,-50.23,3.91,-0.19],
+  [15.09,-47.05,3.91,-0.14],[15.59,-14.79,3.91,1.01],[16.33,46.31,3.91,-0.15],[17.00,30.93,3.92,-0.02],
+  [19.36,-17.85,3.92,0.23],[21.26,5.25,3.92,0.55],[0.44,-43.68,3.93,0.17],[1.52,-49.07,3.93,0.97],
+  [2.90,52.76,3.93,0.76],[4.61,-3.35,3.93,-0.21],[7.70,-72.61,3.93,1.03],[11.14,-58.98,3.93,1.23],
+  [16.11,-20.67,3.93,-0.05],[18.01,2.93,3.93,0.03],[1.14,-55.25,3.94,-0.12],[7.69,-9.55,3.94,1.02],
+  [7.73,-28.95,3.94,0.16],[8.74,18.15,3.94,1.08],[20.95,41.17,3.94,0.03],[2.06,72.42,3.95,-0.00],
+  [6.61,-19.26,3.95,1.04],[4.14,47.71,3.96,-0.03],[5.99,-42.82,3.96,1.15],[9.01,41.78,3.96,0.46],
+  [9.19,-62.32,3.96,-0.18],[19.38,-44.46,3.96,-0.09],[19.40,-40.62,3.96,-0.10],[20.26,47.71,3.96,1.45],
+  [23.38,-20.10,3.96,1.08],[4.40,-34.02,3.97,1.47],[5.86,39.15,3.97,1.13],[7.28,-67.96,3.97,0.76],
+  [8.67,-35.31,3.97,0.94],[12.19,-52.37,3.97,-0.16],[15.85,-33.63,3.97,-0.04],[20.01,-72.91,3.97,-0.03],
+  [22.49,-43.50,3.97,1.02],[22.78,23.57,3.97,1.07],[3.98,35.79,3.98,0.02],[21.57,45.59,3.98,0.89],
+  [2.00,-21.08,3.99,1.55],[6.25,-6.27,3.99,1.32],[10.41,-74.03,3.99,0.37],[23.29,-58.24,3.99,0.41],
+  [9.04,-66.40,4.00,0.14],[11.40,10.53,4.00,0.42],[16.20,-19.46,4.00,0.08],
+];
+
 // Constellation connecting lines — pairs of _STARS indices
 var _CONST_LINES = [
   [0,2],[0,5],[2,3],[3,4],[4,5],[3,1],[5,6],           // Orion
@@ -253,33 +381,71 @@ function _starLinkKey(idx) {
   return 'star:' + nm.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+$/, '');
 }
 
-// Project catalog stars to canvas coordinates for current time/location
-function _projectStars(now, lat, lon, W, H) {
+// Local sidereal time (radians) for an instant + longitude — the one value
+// every star projection in the scene shares.
+function _skyLST(now, lon) {
   var JD = _dateToJD(now.getTime());
   var GMST = (280.46061837 + 360.98564736629 * (JD - JD_J2000)) % 360;
-  var LST = (GMST + lon) * DEG_TO_RAD;
-  var latR = lat * DEG_TO_RAD;
+  return (GMST + lon) * DEG_TO_RAD;
+}
+
+// Project one star (RA hours, Dec degrees) onto the horizon-scene canvas for a
+// precomputed LST and observer latitude (sin/cos passed in so a whole catalogue
+// pass computes them once). Returns {x, y, alt} or null when the star falls
+// below the scene's horizon band or outside its 60°–300° azimuth window. Shared
+// by the named catalog (_projectStars) and the real field (_projectFieldStars)
+// so both use byte-for-byte identical geometry.
+function _projectStarXY(raHours, decDeg, LST, sinLat, cosLat, W, H) {
+  var ra = raHours * 15 * DEG_TO_RAD;
+  var dec = decDeg * DEG_TO_RAD;
+  var sinDec = Math.sin(dec), cosDec = Math.cos(dec);
+  var HA = LST - ra;
+  HA = ((HA % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+  var sinAlt = sinLat * sinDec + cosLat * cosDec * Math.cos(HA);
+  var altitude = Math.asin(sinAlt) * 180 / Math.PI;
+  if (altitude < -2) return null;
+  var cosAz = (sinDec - sinLat * sinAlt) / (cosLat * Math.cos(Math.asin(sinAlt)));
+  cosAz = Math.max(-1, Math.min(1, cosAz));
+  if (isNaN(cosAz)) cosAz = 0;
+  var azimuth = Math.acos(cosAz) * 180 / Math.PI;
+  if (HA > 0) azimuth = 360 - azimuth;
+  var xFrac = (azimuth - 60) / 240;
+  if (xFrac < -0.05 || xFrac > 1.05) return null;
+  xFrac = Math.max(0, Math.min(1, xFrac));
+  return { x: xFrac * W, y: Math.max(0, Math.min(H * 0.66, H * 0.66 - (altitude / 90) * H * 0.56)), alt: altitude };
+}
+
+// Project the named catalog stars to canvas coordinates for current
+// time/location. `alt` rides along so the a11y description can count how many
+// are truly above the horizon.
+function _projectStars(now, lat, lon, W, H) {
+  var LST = _skyLST(now, lon);
+  var latR = lat * DEG_TO_RAD, sinLat = Math.sin(latR), cosLat = Math.cos(latR);
   var result = [];
   for (var i = 0; i < _STARS.length; i++) {
     var s = _STARS[i];
-    var ra = s[0] * 15 * DEG_TO_RAD;
-    var dec = s[1] * DEG_TO_RAD;
-    var HA = LST - ra;
-    HA = ((HA % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
-    var sinAlt = Math.sin(latR) * Math.sin(dec) + Math.cos(latR) * Math.cos(dec) * Math.cos(HA);
-    var altitude = Math.asin(sinAlt) * 180 / Math.PI;
-    if (altitude < -2) continue;
-    var cosAz = (Math.sin(dec) - Math.sin(latR) * sinAlt) / (Math.cos(latR) * Math.cos(Math.asin(sinAlt)));
-    cosAz = Math.max(-1, Math.min(1, cosAz));
-    if (isNaN(cosAz)) cosAz = 0;
-    var azimuth = Math.acos(cosAz) * 180 / Math.PI;
-    if (HA > 0) azimuth = 360 - azimuth;
-    var xFrac = (azimuth - 60) / 240;
-    if (xFrac < -0.05 || xFrac > 1.05) continue;
-    xFrac = Math.max(0, Math.min(1, xFrac));
-    result.push({ x: xFrac * W, y: Math.max(0, Math.min(H * 0.66, H * 0.66 - (altitude / 90) * H * 0.56)), mag: s[2], idx: i });
+    var p = _projectStarXY(s[0], s[1], LST, sinLat, cosLat, W, H);
+    if (p) result.push({ x: p.x, y: p.y, alt: p.alt, mag: s[2], idx: i });
   }
   return result;
+}
+
+// Project the real background field (_SKY_FIELD_STARS) the same way. Only stars
+// genuinely above the horizon are kept; each survivor carries a warm/cool tint
+// from its colour index and a deterministic twinkle phase seeded from its RA, so
+// the shimmer is stable across rebuilds. Rebuilt only when _skyFrame recomputes
+// (init / time jump / drift cadence), never per animation frame.
+function _projectFieldStars(now, lat, lon, W, H) {
+  var LST = _skyLST(now, lon);
+  var latR = lat * DEG_TO_RAD, sinLat = Math.sin(latR), cosLat = Math.cos(latR);
+  var out = [];
+  for (var i = 0; i < _SKY_FIELD_STARS.length; i++) {
+    var fs = _SKY_FIELD_STARS[i];
+    var p = _projectStarXY(fs[0], fs[1], LST, sinLat, cosLat, W, H);
+    if (!p || p.alt < 0) continue;
+    out.push({ x: p.x, y: p.y, mag: fs[2], ci: fs[3], phase: (fs[0] * 137.508) % 6.2832 });
+  }
+  return out;
 }
 
 function _drawConstellations(ctx, alpha, t, projStars) {
@@ -300,33 +466,19 @@ function _drawConstellations(ctx, alpha, t, projStars) {
   ctx.restore();
 }
 
-// Decorative dim background starfield for the horizon scene — generated once
-// per canvas size (cached, like the orrery's own background stars) rather than
-// re-rolled every animation frame. These are pure ambiance (no real RA/Dec, no
-// link), filling out the naked-eye-dense look a ~60-catalog-star sky can't on
-// its own; _lcgRand (almanac-orrery.js) keeps them deterministic.
-var _skyBgStars = null;
-
-function _ensureSkyBgStars(W, H, dpr) {
-  if (_skyBgStars && _skyBgStars.W === W && _skyBgStars.H === H) return _skyBgStars.stars;
-  var sr = _lcgRand(42);
-  var count = 220;
-  var stars = [];
-  for (var i = 0; i < count; i++) {
-    stars.push({
-      x: sr() * W,
-      y: sr() * H * 0.55,
-      r: (0.25 + sr() * 0.35) * dpr,
-      freq: 0.8 + sr() * 2.0,
-      phase: sr() * 6.28,
-      base: 0.03 + sr() * 0.12
-    });
-  }
-  _skyBgStars = { W: W, H: H, stars: stars };
-  return stars;
+// "r,g,b" tint for a star from its B–V colour index: hot blue-white stars have
+// a low (even negative) index, cool amber stars a high one. Buckets, not a
+// gradient — plenty at this scale, and cheap. Shared by the field draw.
+function _starTint(ci) {
+  if (ci == null) return '220,230,255';
+  if (ci < 0.0)  return '202,222,255';  // blue-white (O/B)
+  if (ci < 0.3)  return '226,236,255';  // white (A)
+  if (ci < 0.6)  return '248,248,235';  // yellow-white (F)
+  if (ci < 1.0)  return '255,240,208';  // yellow (G/K)
+  return '255,214,170';                 // orange-red (K/M)
 }
 
-function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, elapsed, labelText, projStars, moonData) {
+function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, elapsed, labelText, projStars, moonData, projField) {
   var t = elapsed || 0;  // 't' is animation time in seconds — not the i18n t() function
   var ctx = canvas.getContext('2d');
   var W = canvas.width, H = canvas.height;
@@ -384,19 +536,24 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, elapsed, labelText, p
   if (alt < 8) {
     var starOpacity = alt < -14 ? 1 : alt < -2 ? (-2 - alt) / 12 : Math.max(0, (8 - alt) / 20);
 
-    // Dim background stars — a cached deterministic field (only the twinkle,
-    // a sine over each star's cached phase/frequency, is recomputed per frame;
-    // the layout itself is generated once per canvas size, not re-rolled every
-    // RAF tick — see _ensureSkyBgStars).
-    var bgStars = _ensureSkyBgStars(W, H, dpr);
-    for (var si = 0; si < bgStars.length; si++) {
-      var bs = bgStars[si];
-      var twinkle = Math.sin(t * bs.freq + bs.phase) * 0.15;
-      var bsa = starOpacity * Math.max(0.03, bs.base + twinkle);
-      ctx.beginPath();
-      ctx.arc(bs.x, bs.y, bs.r, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(200,210,230,' + bsa.toFixed(3) + ')';
-      ctx.fill();
+    // Real background field — the naked-eye sky at astronomically correct
+    // positions (_projectFieldStars, mag ≤ 4.0), replacing the old procedural
+    // filler that never moved with the sky. Positions are cached (rebuilt only
+    // on a time/location change, never per frame); only the twinkle recomputes
+    // each RAF tick, and each star's colour-index tint makes hot stars blue and
+    // cool stars amber, as the real sky is.
+    if (projField) {
+      for (var si = 0; si < projField.length; si++) {
+        var fp = projField[si];
+        var fr = Math.max(0.35, (4.5 - fp.mag) * 0.28) * dpr;
+        var ftw = Math.sin(t * (1.0 + (si % 7) * 0.3) + fp.phase) * 0.12;
+        var fbase = 0.1 + (4.5 - fp.mag) / 4.5 * 0.5;
+        var fsa = starOpacity * Math.max(0.05, Math.min(0.85, fbase + ftw));
+        ctx.beginPath();
+        ctx.arc(fp.x, fp.y, fr, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(' + _starTint(fp.ci) + ',' + fsa.toFixed(3) + ')';
+        ctx.fill();
+      }
     }
 
     // Catalog stars at astronomically correct positions
@@ -1027,10 +1184,12 @@ function _renderStarChart(baseNow) {
   _drawStarChart(baseNow);
 }
 
-// Decorative dim background starfield for the planisphere disc — same idea as
-// _ensureSkyBgStars for the horizon scene: a cached, deterministic field (not
-// astronomically real, not linkable) so the disc reads as a real night sky
-// instead of the ~25-35 catalog stars typically above the horizon at once.
+// Decorative dim background starfield for the planisphere disc — a cached,
+// deterministic field (not astronomically real, not linkable) so the schematic
+// chart disc reads as a dense night sky rather than the ~25-35 catalog stars
+// typically above the horizon at once. (The horizon SCENE uses real positions —
+// see _projectFieldStars — but the planisphere is a labelled diagram, where an
+// even ambient fill behind the named stars reads better than 460 mag dots.)
 // Cached by disc size only (not lat/lon/time), so panning/scrubbing is free.
 var _starChartBgStars = null;
 

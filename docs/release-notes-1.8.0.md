@@ -44,7 +44,7 @@ This is the release the people using Zimi shaped: every open issue on the tracke
 
 ## A native Windows app
 
-A one-dir `Zimi-windows-x64.zip` (Edge WebView2) that **self-updates via WinSparkle**, signed with the same appcast key as the macOS Sparkle path, with a per-user installer that needs no admin rights.
+A per-user **installer** (`Zimi-windows-x64-Setup.exe`, no admin rights) that **self-updates via WinSparkle**, signed with the same appcast key as the macOS Sparkle path — updates install silently and relaunch on their own. A portable `Zimi-windows-x64.zip` (Edge WebView2) is there too for no-install use.
 
 ## Also in the box
 

@@ -66,4 +66,8 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
+; Relaunch Zimi after install. No `skipifsilent`: WinSparkle runs this installer
+; with /SILENT for auto-updates and then quits the old app WITHOUT relaunching
+; it (WinSparkle 0.9.4 ShellExecuteEx's the installer, then RequestShutdown),
+; so the installer itself must bring the updated app back up — in silent mode too.
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall
