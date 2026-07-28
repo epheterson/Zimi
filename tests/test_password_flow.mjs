@@ -1,6 +1,6 @@
 // Password flow validation - run against a local server WITHOUT ZIMI_MANAGE_PASSWORD env var
 // Start: ZIM_DIR=/tmp/zimi-test-zims ZIMI_DATA_DIR=/tmp/zimi-test-data ZIMI_MANAGE=1 python3 -m zimi serve --port 8877
-// Run:   BASE_URL=http://localhost:8877 npx playwright test tests/test_password_flow.mjs
+// Run:   BASE_URL=http://localhost:8877 npx playwright test --config=tests/playwright.config.mjs tests/test_password_flow.mjs
 
 import { test, expect } from '@playwright/test';
 

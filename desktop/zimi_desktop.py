@@ -15,6 +15,17 @@ import sys
 import threading
 
 # ---------------------------------------------------------------------------
+# Path bootstrap — this script lives in desktop/, the zimi package at the repo
+# root. When run directly in dev mode (e.g. `python desktop/zimi_desktop.py`),
+# sys.path[0] is desktop/, so `import zimi` would miss the package. Prepend the
+# repo root. In a frozen bundle the package is embedded under _MEIPASS, so skip.
+# ---------------------------------------------------------------------------
+if not getattr(sys, "_MEIPASS", None):
+    _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _REPO_ROOT not in sys.path:
+        sys.path.insert(0, _REPO_ROOT)
+
+# ---------------------------------------------------------------------------
 # Windows: force pythonnet onto the .NET Framework runtime BEFORE any import
 # that triggers pywebview → pythonnet (must run before `import webview`).
 #
@@ -396,9 +407,10 @@ def _init_sparkle_updater():
                 app_bundle_path, "Frameworks", "Sparkle.framework"
             )
         if not bundle_path or not os.path.exists(bundle_path):
-            # Dev mode: framework in repo root
+            # Dev mode: framework in repo root (one level up from desktop/)
             bundle_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "Sparkle.framework"
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "Sparkle.framework",
             )
         if not os.path.exists(bundle_path):
             return

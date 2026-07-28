@@ -80,7 +80,7 @@ if [ ! -x "$BUILD_VENV/bin/python" ] || \
   "$BUILD_PY" -m venv "$BUILD_VENV"
 fi
 "$BUILD_VENV/bin/pip" install -q --upgrade pip
-"$BUILD_VENV/bin/pip" install -q -r requirements-desktop.txt
+"$BUILD_VENV/bin/pip" install -q -r desktop/requirements-desktop.txt
 # Soft dependency, mirroring CI: no wheel for this interpreter → warn and build
 # HTTP-only, never block the build.
 if "$BUILD_VENV/bin/pip" install -q "libtorrent==2.0.*" 2>/dev/null; then
@@ -89,7 +89,7 @@ else
   echo "  WARNING: no libtorrent wheel for $($BUILD_PY --version 2>&1) — app will be HTTP-only"
 fi
 
-"$BUILD_VENV/bin/pyinstaller" zimi_desktop.spec --noconfirm 2>&1 | tail -5
+"$BUILD_VENV/bin/pyinstaller" desktop/zimi_desktop.spec --noconfirm 2>&1 | tail -5
 echo "  App built"
 
 echo ""

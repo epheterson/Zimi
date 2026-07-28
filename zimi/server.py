@@ -1636,6 +1636,13 @@ def main():
 
     elif args.command == "desktop" or (args.command == "serve" and args.ui):
         try:
+            # The desktop entry-point lives in the repo's desktop/ dir (a sibling
+            # of this package), not on the default import path — add it first.
+            _desktop_dir = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "desktop"
+            )
+            if _desktop_dir not in sys.path:
+                sys.path.insert(0, _desktop_dir)
             from zimi_desktop import main as desktop_main
         except ImportError:
             print(

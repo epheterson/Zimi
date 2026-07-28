@@ -7,7 +7,7 @@
 // Start a server first (uses the bundled devdocs ZIM):
 //   ZIM_DIR=./zims python3 -m zimi serve --port 8877
 // Run:
-//   BASE_URL=http://localhost:8877 npx playwright test tests/test_reader3.spec.mjs
+//   BASE_URL=http://localhost:8877 npx playwright test --config=tests/playwright.config.mjs tests/test_reader3.spec.mjs
 
 import { test, expect } from '@playwright/test';
 

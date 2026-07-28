@@ -2,15 +2,15 @@
  * v1.6 Visual Validation — Complete Release Checklist
  *
  * Run against a remote host:
- *   BASE_URL=https://knowledge.example.com npx playwright test
+ *   BASE_URL=https://knowledge.example.com npx playwright test --config=tests/playwright.config.mjs
  *
  * Run against local:
- *   npx playwright test
+ *   npx playwright test --config=tests/playwright.config.mjs
  *
  * View report:
  *   npx playwright show-report test-results/html-report
  *
- * Every test records video automatically (see playwright.config.mjs).
+ * Every test records video automatically (see tests/playwright.config.mjs).
  * Screenshots are captured at key moments and embedded in the HTML report.
  */
 import { test, expect } from '@playwright/test';

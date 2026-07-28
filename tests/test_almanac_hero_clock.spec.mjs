@@ -10,7 +10,7 @@
 // Start a server first (no ZIMs needed):
 //   ZIM_DIR=/tmp/zimi-empty python3 -m zimi serve --port 8877
 // Run:
-//   BASE_URL=http://localhost:8877 npx playwright test tests/test_almanac_hero_clock.spec.mjs
+//   BASE_URL=http://localhost:8877 npx playwright test --config=tests/playwright.config.mjs tests/test_almanac_hero_clock.spec.mjs
 
 import { test, expect } from '@playwright/test';
 

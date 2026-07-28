@@ -55,7 +55,7 @@ jobs:
             gcc libcairo2-dev pkg-config python3-dev
 
       - name: Install dependencies
-        run: pip install -r requirements-desktop.txt
+        run: pip install -r desktop/requirements-desktop.txt
 
       - name: Install libtorrent (in-process BT engine)
         shell: bash
@@ -139,7 +139,7 @@ jobs:
           "
 
       - name: Build with PyInstaller
-        run: pyinstaller --noconfirm zimi_desktop.spec
+        run: pyinstaller --noconfirm desktop/zimi_desktop.spec
 
       # ── Post-build smoke tests ────────────────────────────────────────
 

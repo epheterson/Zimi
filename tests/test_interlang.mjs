@@ -1,5 +1,5 @@
 // Cross-language article navigation tests
-// Run against a remote host: BASE_URL=http://knowledge.example.lan npx playwright test tests/test_interlang.mjs --config=playwright.config.mjs
+// Run against a remote host: BASE_URL=http://knowledge.example.lan npx playwright test tests/test_interlang.mjs --config=tests/playwright.config.mjs
 
 import { test, expect } from '@playwright/test';
 

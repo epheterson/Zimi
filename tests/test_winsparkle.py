@@ -14,7 +14,8 @@ import xml.etree.ElementTree as ET
 import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, REPO_ROOT)
+DESKTOP_DIR = os.path.join(REPO_ROOT, "desktop")
+sys.path.insert(0, DESKTOP_DIR)
 
 import zimi_winsparkle as ws  # noqa: E402
 
@@ -85,7 +86,7 @@ def test_init_updater_noop_even_with_env_override(monkeypatch):
 
 def test_eddsa_key_matches_sparkle_spec_key():
     """WinSparkle reuses the macOS Sparkle keypair — guard against drift."""
-    spec = open(os.path.join(REPO_ROOT, "zimi_desktop.spec")).read()
+    spec = open(os.path.join(DESKTOP_DIR, "zimi_desktop.spec")).read()
     m = re.search(r"'SUPublicEDKey':\s*'([^']+)'", spec)
     assert m, "SUPublicEDKey not found in zimi_desktop.spec"
     assert ws.WINSPARKLE_EDDSA_PUBLIC_KEY == m.group(1)

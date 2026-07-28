@@ -2,8 +2,8 @@
 """
 PyInstaller spec for Zimi Desktop.
 
-Build:
-    pyinstaller zimi_desktop.spec
+Build (from the repo root):
+    pyinstaller --noconfirm desktop/zimi_desktop.spec
 
 Output:
     dist/Zimi/          — one-dir bundle (all platforms)
@@ -23,6 +23,14 @@ from PyInstaller.utils.hooks import (
 )
 
 block_cipher = None
+
+# This spec lives in desktop/; the entry script and its winsparkle sibling live
+# beside it, while the zimi package + data dirs (and CI-downloaded Sparkle
+# framework / WinSparkle DLL) live at the repo root. Anchor every path to those
+# two roots explicitly so the build is independent of the invocation CWD.
+# SPECPATH is the absolute directory containing this spec file.
+DESKTOP_DIR = SPECPATH
+REPO_ROOT = os.path.dirname(SPECPATH)
 
 # zeroconf (LAN peer discovery) loads submodules dynamically, so PyInstaller's
 # static analysis misses them unless we collect the whole package.
@@ -78,7 +86,7 @@ lt_hidden = collect_submodules('libtorrent')
 # without auto-update, exactly like the Sparkle.framework soft path.
 winsparkle_bins = []
 if platform.system() == 'Windows':
-    _ws_dll = os.path.join(SPECPATH, 'WinSparkle.dll')
+    _ws_dll = os.path.join(REPO_ROOT, 'WinSparkle.dll')
     if os.path.isfile(_ws_dll):
         winsparkle_bins.append((_ws_dll, '.'))
 
@@ -113,13 +121,13 @@ if platform.system() == 'Windows':
     ]
 
 a = Analysis(
-    ['zimi_desktop.py'],
-    pathex=[],
+    [os.path.join(DESKTOP_DIR, 'zimi_desktop.py')],
+    pathex=[REPO_ROOT, DESKTOP_DIR],
     binaries=libzim_bins + lt_bins + winsparkle_bins + pythonnet_bins,
     datas=[
-        ('zimi/templates', 'zimi/templates'),
-        ('zimi/assets', 'zimi/assets'),
-        ('zimi/static', 'zimi/static'),
+        (os.path.join(REPO_ROOT, 'zimi/templates'), 'zimi/templates'),
+        (os.path.join(REPO_ROOT, 'zimi/assets'), 'zimi/assets'),
+        (os.path.join(REPO_ROOT, 'zimi/static'), 'zimi/static'),
     ] + pythonnet_datas,
     hiddenimports=[
         'zimi',
@@ -176,7 +184,8 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
-    icon='zimi/assets/icon.icns' if platform.system() == 'Darwin' else 'zimi/assets/icon.ico',
+    icon=(os.path.join(REPO_ROOT, 'zimi/assets/icon.icns') if platform.system() == 'Darwin'
+          else os.path.join(REPO_ROOT, 'zimi/assets/icon.ico')),
 )
 
 coll = COLLECT(
@@ -197,7 +206,7 @@ if platform.system() == 'Darwin':
     app = BUNDLE(
         coll,
         name='Zimi.app',
-        icon='zimi/assets/icon.icns',
+        icon=os.path.join(REPO_ROOT, 'zimi/assets/icon.icns'),
         bundle_identifier='io.zosia.zimi',
         info_plist={
             'CFBundleShortVersionString': '1.4.0',

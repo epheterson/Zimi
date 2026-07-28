@@ -13,7 +13,7 @@
 //   ZIM_DIR=/tmp/zimi-empty ZIMI_DATA_DIR=/tmp/zimi-auth ZIMI_MANAGE=1 \
 //     python3 -m zimi serve --port 8878
 // Run:
-//   BASE_URL=http://localhost:8878 npx playwright test tests/test_login_navigation.spec.mjs
+//   BASE_URL=http://localhost:8878 npx playwright test --config=tests/playwright.config.mjs tests/test_login_navigation.spec.mjs
 
 import { test, expect } from '@playwright/test';
 

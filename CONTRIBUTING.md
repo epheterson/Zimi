@@ -27,8 +27,8 @@ python3 tests/test_unit.py --perf             # Performance benchmarks
 Before tagging, verify these on the feature branch:
 
 - [ ] Versions match: `ZIMI_VERSION` in `server.py`, `version` in `pyproject.toml`, `version` in `snap/snapcraft.yaml`
-- [ ] `zimi_desktop.spec` `hiddenimports` includes ALL `zimi/*.py` modules (add any new ones from server split)
-- [ ] Smoke test locally: `python3 zimi_desktop.py --serve --port 0` starts and prints `READY`
+- [ ] `desktop/zimi_desktop.spec` `hiddenimports` includes ALL `zimi/*.py` modules (add any new ones from server split)
+- [ ] Smoke test locally: `python3 desktop/zimi_desktop.py --serve --port 0` starts and prints `READY`
 - [ ] `desktop-release.yml` smoke test commands work with current auth model (e.g. `Sec-Fetch-Site` header for manage endpoints)
 - [ ] `node -c zimi/static/app.js` passes (no syntax errors)
 - [ ] `python3 -m pytest tests/ -q` passes
@@ -74,8 +74,8 @@ When QA passes:
 ### Local Build
 
 ```bash
-pip install -r requirements-desktop.txt
-pyinstaller --noconfirm zimi_desktop.spec     # Output: dist/Zimi.app
+pip install -r desktop/requirements-desktop.txt
+pyinstaller --noconfirm desktop/zimi_desktop.spec     # Output: dist/Zimi.app
 ```
 
 ### Icons
@@ -94,6 +94,6 @@ CI handles signing and notarization automatically. See `.github/workflows/deskto
 - `dist/` and `build/` are gitignored — never commit build artifacts
 - PyInstaller copies source at build time — rebuild after code changes
 - The `.spec` file includes `zimi/templates/`, `zimi/assets/`, and `zimi/static/` as data
-- **When splitting modules:** any new `zimi/*.py` file must be added to `hiddenimports` in `zimi_desktop.spec` AND the CI smoke test must still pass. PyInstaller can't discover runtime imports.
+- **When splitting modules:** any new `zimi/*.py` file must be added to `hiddenimports` in `desktop/zimi_desktop.spec` AND the CI smoke test must still pass. PyInstaller can't discover runtime imports.
 - **Workflow dispatch and refs:** `gh workflow run --ref v1.X.0` runs the workflow YAML from the tag, not main. Fixes to the workflow on main won't apply unless you omit `--ref`.
 - Windows: use `pip install zimi` (no desktop build currently)
