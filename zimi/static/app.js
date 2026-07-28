@@ -834,6 +834,10 @@ function submitPw() {
   }
 }
 
+// Breadcrumb identity for the Almanac — a calendar-with-a-star glyph, sized to
+// match a ZIM's 22px icon, tinted by the chrome via currentColor.
+var _ALMANAC_BC_ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18"/><path d="M8 2.5v4M16 2.5v4"/><path d="M12 12l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z"/></svg>';
+
 // ── Topbar ──
 function updateTopbar() {
   const activeSource = currentSource || readerSource;
@@ -846,11 +850,15 @@ function updateTopbar() {
   backBtn.style.display = showBack ? 'flex' : 'none';
 
   // Breadcrumb: Zimi / [icon] — search bar shows source name as placeholder.
-  // The Almanac is reached only from home (never through a ZIM), and it opens
-  // as an overlay that leaves the underlying ZIM "active" — so its icon would
-  // wrongly bleed through. In the Almanac the breadcrumb is just "Zimi", no
-  // separator, no icon.
-  if (activeSource && !_almanacOpen) {
+  // The Almanac opens as an overlay over the home/ZIM view but is its own
+  // destination, so it shows its OWN identity here (icon + "Almanac"), mirroring
+  // how entering a ZIM does — never the underlying ZIM's icon bleeding through.
+  if (_almanacOpen) {
+    bcSep.style.display = 'inline';
+    bcIcon.style.display = 'inline-flex';
+    bcIcon.title = t('almanac');
+    bcIcon.innerHTML = _ALMANAC_BC_ICON;
+  } else if (activeSource) {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
     const info = _zimInfo(activeSource);
@@ -975,6 +983,7 @@ function updateTopbar() {
 function bcClick(e) {
   // Clicking the icon in the breadcrumb goes to the source view
   if (e.target.id === 'logo') return;
+  if (_almanacOpen) return; // the Almanac breadcrumb is identity only — no nav into the ZIM behind it
   if (currentSource && (readerOpen || mode === 'search')) {
     if (readerOpen) closeReader();
     enterSource(currentSource, false);
@@ -8869,6 +8878,14 @@ async function _refreshDownloadsInner(useCache) {
     _dlRecentStart = 0; // clear grace once server reports downloads
     const anyActive = dls.some(d => !d.done);
     const allDone = !anyActive;
+    // Scheduled rows show "starts HH:MM" from the window config — fetch it once
+    // when a scheduled item first appears, then repaint so the time fills in.
+    if (dls.some(d => d.scheduled) && !window._dlSchedule && !window._dlScheduleFetching) {
+      window._dlScheduleFetching = true;
+      manageFetch('/manage/download-schedule').then(r => r.json()).then(s => {
+        window._dlSchedule = s || {}; window._dlScheduleFetching = false; refreshDownloads();
+      }).catch(() => { window._dlScheduleFetching = false; });
+    }
     const queuedDls = dls.filter(d => d.queued);
     const downloadingDls = dls.filter(d => !d.done && !d.queued);
     const completedDls = dls.filter(d => d.done);
@@ -8993,6 +9010,10 @@ async function _refreshDownloadsInner(useCache) {
         h += '<span class="dl-error">' + esc(dl.error) + '</span>';
       } else if (dl.done) {
         h += '<span class="dl-done">\u2713 ' + tH('dl_complete') + '</span>';
+      } else if (dl.scheduled) {
+        var _win = (window._dlSchedule && window._dlSchedule.start) || '';
+        h += '<span class="dl-scheduled" title="' + escAttr(t('dl_scheduled_tip')) + '">\u23f0 ' +
+          tH('dl_scheduled') + (_win ? ' \u00b7 ' + tH('dl_scheduled_starts', {time: esc(_win)}) : '') + '</span>';
       } else if (indeterminate) {
         h += '<span class="dl-size">' + tH('bt_connecting') + '</span>';
       } else {
@@ -9022,6 +9043,11 @@ async function _refreshDownloadsInner(useCache) {
         var pauseBtn = dl.queued ? '' :
           '<button class="dl-pause-btn" onclick="pauseDownload(\'' + escAttr(dl.id) + '\',' + (dl.paused ? 'false' : 'true') + ')">' +
             (dl.paused ? tH('resume') : tH('pause')) + '</button>';
+        // Scheduled items wait for the nightly window; offer an override that
+        // starts (or normally-queues) the item right now.
+        var startNowBtn = dl.scheduled
+          ? '<button class="dl-pause-btn" onclick="startDownloadNow(\'' + escAttr(dl.id) + '\')" title="' + escAttr(t('dl_start_now_tip')) + '">' + tH('dl_start_now') + '</button>'
+          : '';
         // Escape hatch for a slow swarm: only on an active BT transfer.
         var switchBtn = '';
         if (dl.source === 'bt' && !dl.queued) {
@@ -9029,7 +9055,7 @@ async function _refreshDownloadsInner(useCache) {
             ? '<button class="dl-pause-btn" disabled>' + tH('dl_switching_direct') + '</button>'
             : '<button class="dl-pause-btn" onclick="switchToDirect(\'' + escAttr(dl.id) + '\')" title="' + escAttr(t('dl_switch_direct_tip')) + '">' + tH('dl_switch_direct') + '</button>';
         }
-        h += '<div class="dl-actions">' + sourcePill + reusePill + mirrorInfo + switchBtn + pauseBtn +
+        h += '<div class="dl-actions">' + sourcePill + reusePill + mirrorInfo + switchBtn + startNowBtn + pauseBtn +
           '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">' + tH('cancel') + '</button></div>';
       }
       if (dl.error && dl.error !== 'Cancelled') {
@@ -9248,6 +9274,9 @@ function pauseDownload(id, pause) {
 }
 
 function cancelDownload(id) { return _downloadAction('/manage/cancel', id); }
+
+// Override the nightly window for one scheduled item — start it now.
+function startDownloadNow(id) { return _downloadAction('/manage/download-start-now', id); }
 
 function switchToDirect(id) { return _downloadAction('/manage/switch-direct', id); }
 
