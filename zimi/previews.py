@@ -18,6 +18,84 @@ def strip_html(text):
     return text
 
 
+# Some ZIMs bake a single repeated <meta description> into every page — iFixit
+# device pages carry a featured-guide blurb ("How to replace the SSD in your
+# Lenovo Legion…") rather than the device's own description. When a page exposes
+# its own summary block (iFixit's .banner-blurb / itemprop="description"), that
+# wins over the meta tag.
+_SNIPPET_OWN_SUMMARY_RES = [
+    re.compile(
+        r'<p[^>]*\bclass=["\'][^"\']*\bbanner-blurb\b[^"\']*["\'][^>]*>(.*?)</p>',
+        re.IGNORECASE | re.DOTALL,
+    ),
+    re.compile(
+        r'<[a-z]+[^>]*\bitemprop=["\']description["\'][^>]*>(.*?)</[a-z]+>',
+        re.IGNORECASE | re.DOTALL,
+    ),
+]
+_SNIPPET_META_DESC_RES = [
+    re.compile(
+        r'<meta\s+(?:name|property)=["\'](?:og:)?description["\']\s+'
+        r'content=["\']([^"\']{20,})["\']',
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r'<meta\s+content=["\']([^"\']{20,})["\']\s+'
+        r'(?:name|property)=["\'](?:og:)?description["\']',
+        re.IGNORECASE,
+    ),
+]
+# Repeated-across-pages chrome stripped before the body-text fallback: whole
+# nav/aside/header/footer elements, plus TOC / breadcrumb / related-guides
+# containers keyed by class. Lazy match — approximate but cheap; the goal is
+# to keep boilerplate prose out of the last-resort snippet.
+_SNIPPET_BOILERPLATE_RE = re.compile(
+    r"<(nav|aside|header|footer)\b[^>]*>.*?</\1>"
+    r'|<[a-z]+[^>]*\bclass=["\'][^"\']*\b'
+    r"(?:toc|breadcrumb|related-guides|featured-guides|navigation|"
+    r'js-dynamic-toc-section)\b[^"\']*["\'][^>]*>.*?</[a-z]+>',
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def extract_snippet(text, zim_name=""):
+    """Best short text snippet for the /snippet endpoint.
+
+    Order of preference:
+      1. The page's own summary block (iFixit device blurb / itemprop
+         description) — beats a repeated boilerplate <meta description>.
+      2. A <meta (og:)description> tag.
+      3. <main>/<article> body prose, boilerplate chrome stripped.
+      4. Full page text, boilerplate chrome stripped.
+
+    ``text`` is the already-decoded HTML lead (the caller reads ~15 KB, enough
+    for <head> meta + the opening content). Returns a plain-text string
+    (possibly empty)."""
+    # 1. Page's own summary block.
+    for rx in _SNIPPET_OWN_SUMMARY_RES:
+        m = rx.search(text)
+        if m:
+            s = strip_html(m.group(1))[:300].strip()
+            if len(s) >= 20:
+                return s
+    # 2. Meta description (near the top of <head>).
+    for rx in _SNIPPET_META_DESC_RES:
+        m = rx.search(text[:8000])
+        if m:
+            s = strip_html(m.group(1))[:300].strip()
+            if s:
+                return s
+    # 3/4. Body prose, with repeated chrome removed first.
+    cleaned = _SNIPPET_BOILERPLATE_RE.sub(" ", text)
+    for tag in ("main", "article"):
+        tag_m = re.search(r"<" + tag + r"[\s>]", cleaned, re.IGNORECASE)
+        if tag_m:
+            s = strip_html(cleaned[tag_m.start() :])[:300].strip()
+            if s:
+                return s
+    return strip_html(cleaned)[:300].strip()
+
+
 def _resolve_img_path(archive, path, src):
     """Resolve a relative image src to a ZIM entry path. Returns URL or None."""
     decoded = unquote(unquote(src))
@@ -29,7 +107,8 @@ def _resolve_img_path(archive, path, src):
     parts = []
     for seg in img_path.replace("\\", "/").split("/"):
         if seg == "..":
-            if parts: parts.pop()
+            if parts:
+                parts.pop()
         elif seg and seg != ".":
             parts.append(seg)
     img_path = "/".join(parts)
@@ -60,18 +139,24 @@ def _extract_preview_title(html_str, entry_title):
     for pattern in [
         r'<meta\s+property=["\']og:title["\']\s+content=["\']([^"\']+)["\']',
         r'<meta\s+content=["\']([^"\']+)["\']\s+property=["\']og:title["\']',
-        r'<title[^>]*>([^<]+)</title>',
+        r"<title[^>]*>([^<]+)</title>",
         r'<p\s+class=["\']title\s+lang-default["\'][^>]*>(.*?)</p>',
         r'<p\s+class=["\']title["\'][^>]*>(.*?)</p>',
-        r'<h1[^>]*>(.*?)</h1>',
+        r"<h1[^>]*>(.*?)</h1>",
     ]:
         tm = re.search(pattern, html_str, re.IGNORECASE | re.DOTALL)
         if tm:
             clean_title = strip_html(html.unescape(tm.group(1).strip()))
             # Strip site suffixes like " | TED Talk", "— The World Factbook"
-            clean_title = re.sub(r'\s*[\|–—]\s*(TED\s*Talk|TED|Wikipedia|The World Factbook).*$', '', clean_title)
+            clean_title = re.sub(
+                r"\s*[\|–—]\s*(TED\s*Talk|TED|Wikipedia|The World Factbook).*$",
+                "",
+                clean_title,
+            )
             # Strip Factbook region prefixes like "Africa :: " or "Europe :: "
-            clean_title = re.sub(r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*::\s*', '', clean_title)
+            clean_title = re.sub(
+                r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*::\s*", "", clean_title
+            )
             if len(clean_title) > 3 and clean_title != entry_title:
                 return clean_title[:200]
     # No HTML title found — title-case the slug as last resort
@@ -80,13 +165,23 @@ def _extract_preview_title(html_str, entry_title):
 
 def _is_real_quote(text):
     """Filter out non-quote text: credits, citations, references, metadata."""
-    if re.match(r'^(Directed|Written|Produced|Edited|Narrated|Adapted|Translated|Music)\s+by\b', text, re.IGNORECASE):
+    if re.match(
+        r"^(Directed|Written|Produced|Edited|Narrated|Adapted|Translated|Music)\s+by\b",
+        text,
+        re.IGNORECASE,
+    ):
         return False
-    if re.match(r'^(In response to|Based on|See also|Main article)\b', text, re.IGNORECASE):
+    if re.match(
+        r"^(In response to|Based on|See also|Main article)\b", text, re.IGNORECASE
+    ):
         return False
-    if re.search(r'\bRetrieved\s+(on|from)\b|\bISBN\b|\bAssociated Press\b|^\d{4}\s+film\b', text, re.IGNORECASE):
+    if re.search(
+        r"\bRetrieved\s+(on|from)\b|\bISBN\b|\bAssociated Press\b|^\d{4}\s+film\b",
+        text,
+        re.IGNORECASE,
+    ):
         return False
-    if re.match(r'^[\w\s,]+\(\s*\d{4}\s*\)', text):  # "Author Name (Year)" citation
+    if re.match(r"^[\w\s,]+\(\s*\d{4}\s*\)", text):  # "Author Name (Year)" citation
         return False
     return len(text.split()) > 6
 
@@ -98,46 +193,70 @@ def _extract_wikiquote_attribution(block, inner_ul_pos, page_title):
     """
     author = None
     # Use page title as fallback only if it looks like a person name (has a space)
-    if ' ' in page_title and re.match(r'^[A-Z][a-z]+ [A-Z]', page_title):
+    if " " in page_title and re.match(r"^[A-Z][a-z]+ [A-Z]", page_title):
         author = page_title
     inner_block = block[inner_ul_pos:]
     attr_raw = strip_html(inner_block).strip()
     # Normalize double spaces around punctuation (strip_html replaces tags with spaces)
-    attr_raw = re.sub(r'\s+([,;:.!?])', r'\1', attr_raw)
-    attr_raw = re.sub(r'^[\u2014\u2013\-~]+\s*', '', attr_raw).strip().split('\n')[0].strip()
+    attr_raw = re.sub(r"\s+([,;:.!?])", r"\1", attr_raw)
+    attr_raw = (
+        re.sub(r"^[\u2014\u2013\-~]+\s*", "", attr_raw).strip().split("\n")[0].strip()
+    )
     if attr_raw and 3 < len(attr_raw) < 200:
-        if not re.search(r'[\[\]{}]|https?:|www\.|^\d', attr_raw, re.IGNORECASE):
+        if not re.search(r"[\[\]{}]|https?:|www\.|^\d", attr_raw, re.IGNORECASE):
             # Detect source citations (not person names):
             # - Contains ":" mid-text (e.g. "StoptheWarNow: Third peace convoy")
             # - Looks like a title/headline (many capitalized words, >5 words)
             # - Contains news agency / publication markers
             _is_source = bool(
-                re.search(r'\w:\s+\w', attr_raw)  # colon in middle
-                or re.search(r'(?i)\b(Agency|News|Times|Post|Tribune|Journal|Gazette|Herald|Magazine|Review|Report|Press|Daily)\b', attr_raw)
-                or (len(attr_raw.split()) > 6 and not re.match(r'^[A-Z][a-z]+(?:\s+[a-z]+)*\s+[A-Z][a-z]+$', attr_raw.split('(')[0].split(',')[0].strip()))
+                re.search(r"\w:\s+\w", attr_raw)  # colon in middle
+                or re.search(
+                    r"(?i)\b(Agency|News|Times|Post|Tribune|Journal|Gazette|Herald|Magazine|Review|Report|Press|Daily)\b",
+                    attr_raw,
+                )
+                or (
+                    len(attr_raw.split()) > 6
+                    and not re.match(
+                        r"^[A-Z][a-z]+(?:\s+[a-z]+)*\s+[A-Z][a-z]+$",
+                        attr_raw.split("(")[0].split(",")[0].strip(),
+                    )
+                )
             )
             if not _is_source:
                 # Extract name: everything before first comma or opening paren
                 # e.g. "Henry Adams, Mont Saint Michel and Chartres (1904)" → "Henry Adams"
-                name_part = re.split(r'[,(]', attr_raw)[0].strip()
+                name_part = re.split(r"[,(]", attr_raw)[0].strip()
                 # Handle honorifics with commas: "Adams, Henry" or "King, Jr., Martin Luther"
                 # If name_part is a single word and next part also looks like a name, rejoin
-                if name_part and ',' in attr_raw:
-                    parts = [p.strip() for p in attr_raw.split(',')]
+                if name_part and "," in attr_raw:
+                    parts = [p.strip() for p in attr_raw.split(",")]
                     # "Last, First" pattern: single capitalized word, then capitalized word(s)
-                    if (len(parts) >= 2 and re.match(r'^[A-Z][a-z]+$', parts[0])
-                            and re.match(r'^(Jr\.|Sr\.|[A-Z])', parts[1])):
+                    if (
+                        len(parts) >= 2
+                        and re.match(r"^[A-Z][a-z]+$", parts[0])
+                        and re.match(r"^(Jr\.|Sr\.|[A-Z])", parts[1])
+                    ):
                         # Check for Jr./Sr. suffix
-                        if parts[1] in ('Jr.', 'Sr.', 'III', 'II', 'IV') and len(parts) >= 3:
-                            name_part = parts[2].strip() + ' ' + parts[0] + ', ' + parts[1]
-                        elif re.match(r'^[A-Z][a-z]', parts[1]):
+                        if (
+                            parts[1] in ("Jr.", "Sr.", "III", "II", "IV")
+                            and len(parts) >= 3
+                        ):
+                            name_part = (
+                                parts[2].strip() + " " + parts[0] + ", " + parts[1]
+                            )
+                        elif re.match(r"^[A-Z][a-z]", parts[1]):
                             # "Last, First ..." — but only if second part is short (a name, not a book title)
                             if len(parts[1].split()) <= 3:
-                                name_part = parts[1] + ' ' + parts[0]
+                                name_part = parts[1] + " " + parts[0]
                 # Validate: must start with uppercase letter, reasonable length
-                if (name_part and 2 < len(name_part) < 60
-                        and re.match(r'^[A-Z]', name_part)
-                        and not re.match(r'^(p\.|ch\.|vol\.|see |ibid)', name_part, re.IGNORECASE)):
+                if (
+                    name_part
+                    and 2 < len(name_part) < 60
+                    and re.match(r"^[A-Z]", name_part)
+                    and not re.match(
+                        r"^(p\.|ch\.|vol\.|see |ibid)", name_part, re.IGNORECASE
+                    )
+                ):
                     author = name_part
     return author
 
@@ -150,14 +269,14 @@ def _extract_preview_wikiquote(html_str, result, entry_title):
     # Wikiquote structure: <ul><li>Quote text<ul><li>Attribution</li></ul></li></ul>
     # Strategy: find <ul> blocks that contain nested <ul> (quote + attribution).
     # Use a simple stack-based approach to find balanced top-level <ul> blocks.
-    for ul_m in re.finditer(r'<ul>', html_str):
+    for ul_m in re.finditer(r"<ul>", html_str):
         start = ul_m.start()
         # Find the matching </ul> by counting nesting depth
         depth = 1
         pos = ul_m.end()
         while depth > 0 and pos < len(html_str) and pos < start + 5000:
-            next_open = html_str.find('<ul', pos)
-            next_close = html_str.find('</ul>', pos)
+            next_open = html_str.find("<ul", pos)
+            next_close = html_str.find("</ul>", pos)
             if next_close < 0:
                 break
             if next_open >= 0 and next_open < next_close:
@@ -170,29 +289,35 @@ def _extract_preview_wikiquote(html_str, result, entry_title):
             continue
         block = html_str[start:pos]
         # Must have a nested <ul> (attribution) to be a quote block
-        if block.count('<ul') < 2:
+        if block.count("<ul") < 2:
             continue
         # Extract text before the first nested <ul> as the quote
-        inner_ul_pos = block.find('<ul', 4)  # skip the outer <ul>
+        inner_ul_pos = block.find("<ul", 4)  # skip the outer <ul>
         if inner_ul_pos < 0:
             continue
         quote_html = block[4:inner_ul_pos]  # between outer <ul> and first nested <ul>
         # Strip the wrapping <li> tag
-        quote_html = re.sub(r'^\s*<li[^>]*>', '', quote_html)
+        quote_html = re.sub(r"^\s*<li[^>]*>", "", quote_html)
         text = strip_html(quote_html).strip()
         # Check for inline tilde attribution: "Quote text. ~ Author Name"
-        tilde_match = re.search(r'\s*~\s*(.+)$', text)
+        tilde_match = re.search(r"\s*~\s*(.+)$", text)
         tilde_author = None
         if tilde_match:
-            text = text[:tilde_match.start()].rstrip()
+            text = text[: tilde_match.start()].rstrip()
             tilde_author = tilde_match.group(1).strip()
         if 20 < len(text) < 400 and _is_real_quote(text):
-            if text.startswith(("Category:", "See also", "External links", "Retrieved")):
+            if text.startswith(
+                ("Category:", "See also", "External links", "Retrieved")
+            ):
                 continue
             result["blurb"] = "\u201c" + text[:250] + "\u201d"
             # Attribution: tilde author takes priority (inline convention),
             # then try nested <ul> for author name, fall back to page title.
-            if tilde_author and 2 < len(tilde_author) < 60 and re.match(r'^[A-Z]', tilde_author):
+            if (
+                tilde_author
+                and 2 < len(tilde_author) < 60
+                and re.match(r"^[A-Z]", tilde_author)
+            ):
                 result["attribution"] = tilde_author[:100]
                 break
             page_title = result.get("title") or entry_title
@@ -203,27 +328,36 @@ def _extract_preview_wikiquote(html_str, result, entry_title):
     # Fallback: if <ul><li> parsing found nothing, try <dd> blocks or <li> after "Quotes" heading
     if not result.get("blurb"):
         # Try <dd> blocks (definition list format used on some wikiquote pages)
-        for dd_m in re.finditer(r'<dd>(.*?)</dd>', html_str, re.DOTALL):
+        for dd_m in re.finditer(r"<dd>(.*?)</dd>", html_str, re.DOTALL):
             dd_text = strip_html(dd_m.group(1)).strip()
             if 30 < len(dd_text) < 400 and _is_real_quote(dd_text):
-                if not dd_text.startswith(("Category:", "See also", "External", "Retrieved", "Source")):
+                if not dd_text.startswith(
+                    ("Category:", "See also", "External", "Retrieved", "Source")
+                ):
                     result["blurb"] = "\u201c" + dd_text[:250] + "\u201d"
                     _pg = result.get("title") or entry_title
-                    if ' ' in _pg and re.match(r'^[A-Z][a-z]+ [A-Z]', _pg):
+                    if " " in _pg and re.match(r"^[A-Z][a-z]+ [A-Z]", _pg):
                         result["attribution"] = _pg
                     break
     if not result.get("blurb"):
         # Try text after a "Quotes" section heading
-        quotes_section = re.search(r'<h[23][^>]*>(?:<[^>]*>)*\s*Quotes?\s*(?:<[^>]*>)*</h[23]>(.*?)(?:<h[23]|$)',
-                                   html_str, re.DOTALL | re.IGNORECASE)
+        quotes_section = re.search(
+            r"<h[23][^>]*>(?:<[^>]*>)*\s*Quotes?\s*(?:<[^>]*>)*</h[23]>(.*?)(?:<h[23]|$)",
+            html_str,
+            re.DOTALL | re.IGNORECASE,
+        )
         if quotes_section:
-            for li_m in re.finditer(r'<li>(.*?)</li>', quotes_section.group(1), re.DOTALL):
+            for li_m in re.finditer(
+                r"<li>(.*?)</li>", quotes_section.group(1), re.DOTALL
+            ):
                 li_text = strip_html(li_m.group(1)).strip()
                 if 30 < len(li_text) < 400 and _is_real_quote(li_text):
-                    if not li_text.startswith(("Category:", "See also", "External", "Retrieved")):
+                    if not li_text.startswith(
+                        ("Category:", "See also", "External", "Retrieved")
+                    ):
                         result["blurb"] = "\u201c" + li_text[:250] + "\u201d"
                         _pg = result.get("title") or entry_title
-                        if ' ' in _pg and re.match(r'^[A-Z][a-z]+ [A-Z]', _pg):
+                        if " " in _pg and re.match(r"^[A-Z][a-z]+ [A-Z]", _pg):
                             result["attribution"] = _pg
                         break
 
@@ -237,21 +371,32 @@ def _extract_preview_ted(html_str, archive, zim_name, path, result):
     """
     speaker = None
     last_name = None
-    sp_m = re.search(r'<p\s+id=["\']speaker["\'][^>]*>(.*?)</p>', html_str, re.DOTALL | re.IGNORECASE)
+    sp_m = re.search(
+        r'<p\s+id=["\']speaker["\'][^>]*>(.*?)</p>', html_str, re.DOTALL | re.IGNORECASE
+    )
     if sp_m:
-        last_name = re.sub(r'\s+', ' ', strip_html(sp_m.group(1))).strip()
-        if ' ' in last_name:
+        last_name = re.sub(r"\s+", " ", strip_html(sp_m.group(1))).strip()
+        if " " in last_name:
             # Already a full name (some playlist ZIMs have full names)
             speaker = last_name
     # Find full name in speaker_desc by locating the last name in context
     if not speaker and last_name:
-        sp_desc = re.search(r'<p\s+id=["\']speaker_desc["\'][^>]*>(.*?)</p>', html_str, re.DOTALL | re.IGNORECASE)
+        sp_desc = re.search(
+            r'<p\s+id=["\']speaker_desc["\'][^>]*>(.*?)</p>',
+            html_str,
+            re.DOTALL | re.IGNORECASE,
+        )
         if sp_desc:
-            desc_text = re.sub(r'\s+', ' ', strip_html(sp_desc.group(1))).strip()
+            desc_text = re.sub(r"\s+", " ", strip_html(sp_desc.group(1))).strip()
             # Find last name in the desc and grab preceding word(s) as first name
             # e.g. "Biologist E.O. Wilson explored..." → find "Wilson", grab "E.O. Wilson"
             esc_last = re.escape(last_name)
-            name_m = re.search(r'((?:(?:[A-Z][\w.\'\u2019-]*|el|de|van|von|al)\s+){0,3})' + esc_last + r'\b', desc_text)
+            name_m = re.search(
+                r"((?:(?:[A-Z][\w.\'\u2019-]*|el|de|van|von|al)\s+){0,3})"
+                + esc_last
+                + r"\b",
+                desc_text,
+            )
             if name_m:
                 prefix = name_m.group(1).strip()
                 if prefix:
@@ -262,12 +407,24 @@ def _extract_preview_ted(html_str, archive, zim_name, path, result):
         speaker = last_name  # fallback to last name if desc search failed
     if speaker and len(speaker) > 1:
         result["speaker"] = speaker[:100]
-    sp_img = re.search(r'<img\s+id=["\']speaker_img["\'][^>]*src=["\']([^"\']+)["\']', html_str, re.IGNORECASE)
+    sp_img = re.search(
+        r'<img\s+id=["\']speaker_img["\'][^>]*src=["\']([^"\']+)["\']',
+        html_str,
+        re.IGNORECASE,
+    )
     if not sp_img:
-        sp_img = re.search(r'<img[^>]*id=["\']speaker_img["\'][^>]*src=["\']([^"\']+)["\']', html_str, re.IGNORECASE)
+        sp_img = re.search(
+            r'<img[^>]*id=["\']speaker_img["\'][^>]*src=["\']([^"\']+)["\']',
+            html_str,
+            re.IGNORECASE,
+        )
     if sp_img:
         src = sp_img.group(1)
-        if not src.startswith("http") and not src.startswith("//") and not src.startswith("data:"):
+        if (
+            not src.startswith("http")
+            and not src.startswith("//")
+            and not src.startswith("data:")
+        ):
             resolved = _resolve_img_path(archive, path, src)
             if resolved:
                 result["thumbnail"] = f"/w/{zim_name}/{resolved}"
@@ -280,7 +437,7 @@ def _extract_preview_factbook(html_str, archive, zim_name, path, result):
     Populates result["thumbnail"] in place.
     """
     # Look for flag images: <img> with alt/src containing "flag"
-    for flag_m in re.finditer(r'<img\b([^>]*)>', html_str[:60000], re.IGNORECASE):
+    for flag_m in re.finditer(r"<img\b([^>]*)>", html_str[:60000], re.IGNORECASE):
         attrs = flag_m.group(1)
         alt_m = re.search(r'alt=["\']([^"\']*)["\']', attrs, re.IGNORECASE)
         src_m = re.search(r'src=["\']([^"\']+)["\']', attrs, re.IGNORECASE)
@@ -292,14 +449,19 @@ def _extract_preview_factbook(html_str, archive, zim_name, path, result):
             is_flag = True
         if "flag" in src.lower():
             is_flag = True
-        if is_flag and not src.startswith("http") and not src.startswith("//") and not src.startswith("data:"):
+        if (
+            is_flag
+            and not src.startswith("http")
+            and not src.startswith("//")
+            and not src.startswith("data:")
+        ):
             resolved = _resolve_img_path(archive, path, src)
             if resolved:
                 result["thumbnail"] = f"/w/{zim_name}/{resolved}"
                 return
 
     # Try locator map if no flag found
-    for loc_m in re.finditer(r'<img\b([^>]*)>', html_str[:60000], re.IGNORECASE):
+    for loc_m in re.finditer(r"<img\b([^>]*)>", html_str[:60000], re.IGNORECASE):
         attrs = loc_m.group(1)
         src_m = re.search(r'src=["\']([^"\']+)["\']', attrs, re.IGNORECASE)
         if not src_m:
@@ -317,7 +479,7 @@ def _extract_preview_xkcd(html_str, result):
 
     Populates result["blurb"] in place.
     """
-    for img_m in re.finditer(r'<img\b([^>]*)>', html_str, re.IGNORECASE):
+    for img_m in re.finditer(r"<img\b([^>]*)>", html_str, re.IGNORECASE):
         attrs = img_m.group(1)
         title_m = re.search(r'title=["\']([^"\']+)["\']', attrs)
         if title_m and len(title_m.group(1).strip()) > 20:
@@ -349,28 +511,44 @@ def _extract_preview_gutenberg(html_str, archive, zim_name, path, entry, result)
     if author_btn:
         author = author_btn.group(1).strip()
     if not author:
-        creator_m = re.search(r'<meta\s+content="([^"]+)"\s+name="dc\.creator"', gut_html[:8000], re.IGNORECASE)
+        creator_m = re.search(
+            r'<meta\s+content="([^"]+)"\s+name="dc\.creator"',
+            gut_html[:8000],
+            re.IGNORECASE,
+        )
         if not creator_m:
-            creator_m = re.search(r'<meta\s+name="dc\.creator"\s+content="([^"]+)"', gut_html[:8000], re.IGNORECASE)
+            creator_m = re.search(
+                r'<meta\s+name="dc\.creator"\s+content="([^"]+)"',
+                gut_html[:8000],
+                re.IGNORECASE,
+            )
         if creator_m:
             author = creator_m.group(1).strip()
     if author:
         # Convert "Last, First, dates" → "First Last"
-        if ',' in author:
-            parts = author.split(',')
+        if "," in author:
+            parts = author.split(",")
             last = parts[0].strip()
-            first = parts[1].strip() if len(parts) > 1 else ''
-            if first and not re.match(r'^\d', first):
-                author = first + ' ' + last
+            first = parts[1].strip() if len(parts) > 1 else ""
+            if first and not re.match(r"^\d", first):
+                author = first + " " + last
             else:
                 author = last
-        if author.lower() != 'various':
+        if author.lower() != "various":
             result["author"] = author[:100]
     # Cover image: look for .cover-art img (Gutenberg cover pages)
     if not result["thumbnail"]:
-        cover_m = re.search(r'<img[^>]*class="[^"]*cover-art[^"]*"[^>]*src=["\']([^"\']+)["\']', gut_html, re.IGNORECASE)
+        cover_m = re.search(
+            r'<img[^>]*class="[^"]*cover-art[^"]*"[^>]*src=["\']([^"\']+)["\']',
+            gut_html,
+            re.IGNORECASE,
+        )
         if not cover_m:
-            cover_m = re.search(r'<img[^>]*src=["\']([^"\']*cover_image[^"\']*)["\']', gut_html, re.IGNORECASE)
+            cover_m = re.search(
+                r'<img[^>]*src=["\']([^"\']*cover_image[^"\']*)["\']',
+                gut_html,
+                re.IGNORECASE,
+            )
         if cover_m:
             src = cover_m.group(1)
             if not src.startswith(("http", "//", "data:")):
@@ -386,19 +564,36 @@ def _extract_wiktionary_pos_and_def(section_html, result, pos_heading_levels):
     e.g. '34' for <h3>/<h4> or '234' for <h2>/<h3>/<h4>.
     Populates result["part_of_speech"], result["blurb"], result["boring"] in place.
     """
-    pos_pattern = r'<h[' + pos_heading_levels + r'][^>]*>(.*?)</h'
+    pos_pattern = r"<h[" + pos_heading_levels + r"][^>]*>(.*?)</h"
     for pos_m in re.finditer(pos_pattern, section_html, re.DOTALL | re.IGNORECASE):
         pos_text = strip_html(pos_m.group(1)).strip()
-        if pos_text.lower() in ('noun', 'verb', 'adjective', 'adverb', 'pronoun', 'preposition',
-                                 'conjunction', 'interjection', 'determiner', 'particle', 'prefix', 'suffix'):
+        if pos_text.lower() in (
+            "noun",
+            "verb",
+            "adjective",
+            "adverb",
+            "pronoun",
+            "preposition",
+            "conjunction",
+            "interjection",
+            "determiner",
+            "particle",
+            "prefix",
+            "suffix",
+        ):
             result["part_of_speech"] = pos_text
             break
     # Definition from first <ol><li> — skip boring inflected forms
-    _boring_def = re.compile(r'^(plural of |third-person |simple past |past participle |present participle |alternative |archaic |obsolete |misspelling |eye dialect |nonstandard )', re.IGNORECASE)
-    for def_m in re.finditer(r'<ol[^>]*>\s*<li[^>]*>(.*?)</li>', section_html, re.DOTALL):
+    _boring_def = re.compile(
+        r"^(plural of |third-person |simple past |past participle |present participle |alternative |archaic |obsolete |misspelling |eye dialect |nonstandard )",
+        re.IGNORECASE,
+    )
+    for def_m in re.finditer(
+        r"<ol[^>]*>\s*<li[^>]*>(.*?)</li>", section_html, re.DOTALL
+    ):
         def_text = strip_html(def_m.group(1)).strip()
-        def_text = re.split(r'\n', def_text)[0].strip()
-        if len(def_text) > 5 and not def_text.startswith(('Category:', 'See also')):
+        def_text = re.split(r"\n", def_text)[0].strip()
+        if len(def_text) > 5 and not def_text.startswith(("Category:", "See also")):
             if _boring_def.match(def_text):
                 result["boring"] = True  # signal to retry
             else:
@@ -417,11 +612,13 @@ def _extract_preview_wiktionary(html_str, zim_name, result):
     if eng_m:
         # Slice from English header to next <h2> (next language section) or end
         eng_start = eng_m.start()
-        next_h2 = re.search(r'<h2[^>]*id=', html_str[eng_start + 50:30000], re.IGNORECASE)
+        next_h2 = re.search(
+            r"<h2[^>]*id=", html_str[eng_start + 50 : 30000], re.IGNORECASE
+        )
         eng_end = (eng_start + 50 + next_h2.start()) if next_h2 else 30000
         eng_section = html_str[eng_start:eng_end]
         # Part of speech from <h3>/<h4>, definition from <ol><li>
-        _extract_wiktionary_pos_and_def(eng_section, result, '34')
+        _extract_wiktionary_pos_and_def(eng_section, result, "34")
     else:
         # No <h2 id="English"> — could be Simple Wiktionary (monolingual, no language headers)
         # or a non-English entry. Check if page has any <ol><li> definitions.
@@ -430,11 +627,16 @@ def _extract_preview_wiktionary(html_str, zim_name, result):
             # Simple Wiktionary: treat entire page as English content
             eng_section = html_str[:30000]
             # Part of speech: Simple Wiktionary uses <h2> for POS (not nested under language)
-            _extract_wiktionary_pos_and_def(eng_section, result, '234')
+            _extract_wiktionary_pos_and_def(eng_section, result, "234")
             if not result.get("part_of_speech"):
                 # Try inline pattern: (noun), (verb), etc.
-                pos_inline = re.search(r'\((\w+)\)', eng_section[:3000])
-                if pos_inline and pos_inline.group(1).lower() in ('noun', 'verb', 'adjective', 'adverb'):
+                pos_inline = re.search(r"\((\w+)\)", eng_section[:3000])
+                if pos_inline and pos_inline.group(1).lower() in (
+                    "noun",
+                    "verb",
+                    "adjective",
+                    "adverb",
+                ):
                     result["part_of_speech"] = pos_inline.group(1).capitalize()
         else:
             # Full Wiktionary, no English section — flag for the random endpoint to skip
@@ -456,8 +658,11 @@ def _extract_preview_blurb(html_str):
         if m and len(m.group(1).strip()) > 20:
             return html.unescape(m.group(1).strip())[:200]
     # First substantial <p> text (skip tiny nav/footer paragraphs and boilerplate)
-    _skip_blurb = re.compile(r'(Creative Commons|This work is licensed|free to copy and share|All rights reserved|Copyright \d|DMCA)', re.IGNORECASE)
-    for pm in re.finditer(r'<p\b[^>]*>(.*?)</p>', html_str, re.DOTALL | re.IGNORECASE):
+    _skip_blurb = re.compile(
+        r"(Creative Commons|This work is licensed|free to copy and share|All rights reserved|Copyright \d|DMCA)",
+        re.IGNORECASE,
+    )
+    for pm in re.finditer(r"<p\b[^>]*>(.*?)</p>", html_str, re.DOTALL | re.IGNORECASE):
         text = strip_html(pm.group(1))
         if len(text) > 40 and not _skip_blurb.search(text):
             return text[:200]
@@ -484,7 +689,11 @@ def _extract_preview_thumbnail(html_str, archive, zim_name, path):
         m = re.search(pattern, html_str, re.IGNORECASE)
         if m:
             src = m.group(1)
-            if src.startswith("http://") or src.startswith("https://") or src.startswith("//"):
+            if (
+                src.startswith("http://")
+                or src.startswith("https://")
+                or src.startswith("//")
+            ):
                 continue  # external URL, can't serve from ZIM
             if not src.lower().endswith(".svg"):
                 resolved = _resolve_img_path(archive, path, src)
@@ -494,7 +703,7 @@ def _extract_preview_thumbnail(html_str, archive, zim_name, path):
     # Fall back to best content image using scoring heuristics
     best_img = None
     best_score = 0
-    for m in re.finditer(r'<img\b([^>]*)>', html_str, re.IGNORECASE):
+    for m in re.finditer(r"<img\b([^>]*)>", html_str, re.IGNORECASE):
         attrs = m.group(1)
         src_m = re.search(r'src=["\']([^"\']+)["\']', attrs)
         if not src_m:
@@ -506,8 +715,14 @@ def _extract_preview_thumbnail(html_str, archive, zim_name, path):
             continue
         # Skip generic site chrome images (navigation icons, banners)
         src_base = src.rsplit("/", 1)[-1].lower()
-        if src_base in ("home_on.png", "home_off.png", "banner_ext2.png",
-                         "photo_on.gif", "one-page-summary.png", "travel-facts.png"):
+        if src_base in (
+            "home_on.png",
+            "home_off.png",
+            "banner_ext2.png",
+            "photo_on.gif",
+            "one-page-summary.png",
+            "travel-facts.png",
+        ):
             continue
         w_m = re.search(r'width=["\']?(\d+)', attrs)
         h_m = re.search(r'height=["\']?(\d+)', attrs)
@@ -518,8 +733,10 @@ def _extract_preview_thumbnail(html_str, archive, zim_name, path):
             continue
         # Skip images inside header/nav/footer
         ctx_start = max(0, m.start() - 300)
-        ctx = html_str[ctx_start:m.start()].lower()
-        if re.search(r'<(header|nav|footer)\b', ctx) and not re.search(r'</(header|nav|footer)>', ctx):
+        ctx = html_str[ctx_start : m.start()].lower()
+        if re.search(r"<(header|nav|footer)\b", ctx) and not re.search(
+            r"</(header|nav|footer)>", ctx
+        ):
             continue
         # Score: area + bonuses for content signals
         area = w * h
@@ -561,7 +778,9 @@ def _extract_preview(archive, zim_name, path):
         content = bytes(entry.get_item().content)
         html_str = content.decode("utf-8", errors="replace")[:80000]
     except Exception as e:
-        log.debug("Failed to read entry for preview extract %s/%s: %s", zim_name, path, e)
+        log.debug(
+            "Failed to read entry for preview extract %s/%s: %s", zim_name, path, e
+        )
         return result
 
     # -- Title: extract from <title> or og:title if entry.title is a slug --
@@ -597,6 +816,8 @@ def _extract_preview(archive, zim_name, path):
 
     # -- Generic thumbnail fallback --
     if not result["thumbnail"]:
-        result["thumbnail"] = _extract_preview_thumbnail(html_str, archive, zim_name, path)
+        result["thumbnail"] = _extract_preview_thumbnail(
+            html_str, archive, zim_name, path
+        )
 
     return result
