@@ -11646,6 +11646,11 @@ function _ctxCopyTitle() {
 var _definePopover = document.getElementById('define-popover');
 var _defineState = null; // {word, zim, path} of the active lookup
 var _defineDebounce = null;
+// A right-click can create/keep a selection that reaches selectionchange, which
+// would pop the Define trigger next to the native context menu. Set on
+// contextmenu, cleared by the next primary (left) mousedown, and honored in
+// _defineConsider so a right-click-originated selection never offers Define.
+var _defineSuppressChip = false;
 var _DEFINE_BOOK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
 var _DEFINE_MAX_WORD = 40;
 var _DEFINE_MAX_CHARS = 600; // cap on extracted definition length
@@ -11809,6 +11814,7 @@ function _defineOpenFull() {
 // trigger accordingly. Debounced from the noisy selectionchange event.
 function _defineConsider(frame) {
   if (!readerOpen || !_definePopover) return;
+  if (_defineSuppressChip) return; // selection came from a right-click — no trigger
   var doc, sel;
   try { doc = frame.contentDocument; sel = frame.contentWindow.getSelection(); }
   catch (e) { return; } // cross-origin ZIM — feature can't reach the selection
@@ -11834,8 +11840,14 @@ function _defineAttachToDoc(frame) {
   });
   doc.addEventListener('mouseup', onSel);
   doc.addEventListener('selectionchange', onSel);
+  // A right-click arms suppression (and clears any live trigger); the next
+  // primary mousedown disarms it so ordinary selection/double-click still work.
+  doc.addEventListener('contextmenu', function() { _defineSuppressChip = true; _defineHide(); }, true);
   // Tapping/scrolling inside the article dismisses a stale popover.
-  doc.addEventListener('mousedown', function() { if (_defineState && _defineState.path !== null) _defineHide(); }, true);
+  doc.addEventListener('mousedown', function(e) {
+    if (e.button === 0) _defineSuppressChip = false;
+    if (_defineState && _defineState.path !== null) _defineHide();
+  }, true);
 }
 
 // Close context menu on click anywhere
