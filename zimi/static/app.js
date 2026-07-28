@@ -12168,7 +12168,6 @@ function _isNarrow() {
 // Compact SVGs reused by the reader controls when they migrate into the ... menu.
 var _TBM_TTS_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
 var _TBM_NEWTAB_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
-var _TBM_DARKEN_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
 
 // Keep the font + TTS menu rows (if the menu is open) in sync with live state.
 // _cycleReaderFont / _ttsSetSpeaking call this so the label updates in place
@@ -12230,17 +12229,6 @@ function _buildTopbarMenuHtml() {
     // theme swatches + font/size only, no title labels, no AUTO (settings-only).
     if (rvOn) {
       readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
-    }
-    // 2b. Darken article — quick toggle for the raw-page dark adaptation. Only
-    // offered when NOT in Reader View (which owns its own themes) and the frame
-    // is a real ZIM page (not a pdf.js / static viewer, where invert no-ops).
-    var _rawLoc = ''; try { _rawLoc = document.getElementById('reader-frame').contentWindow.location.pathname; } catch(e) {}
-    if (!rvOn && _rawLoc.indexOf('/static/') !== 0) {
-      var _dkOn = _darkenArticlesOn();
-      readerGroup += '<button class="topbar-menu-item" id="tbm-darken" role="switch" aria-checked="' + (_dkOn ? 'true' : 'false') +
-        '" onclick="event.stopPropagation();_setDarkenArticles(!' + (_dkOn ? 'true' : 'false') + ');_rebuildTopbarMenu()">' + _TBM_DARKEN_ICON +
-        ' <span class="tbm-label">' + tH('darken_articles') + '</span>' +
-        '<span class="rv-switch' + (_dkOn ? ' on' : '') + '" aria-hidden="true"><span class="rv-knob"></span></span></button>';
     }
     // 3. Read aloud.
     if (_TTS_AVAILABLE) {
@@ -12643,13 +12631,26 @@ function _defineIsWord(s) {
   return /[\p{L}]/u.test(s);                 // must contain a letter
 }
 
+// Touch/coarse-pointer devices (iOS, Android) get the system's own text-
+// selection callout (Copy / Look Up / …), which our chip must stay clear of —
+// mouse/trackpad devices have no such overlay so their layout is untouched.
+function _defineIsTouch() {
+  try { return window.matchMedia('(pointer: coarse)').matches; } catch (e) { return false; }
+}
+var _DEFINE_TOUCH_DELAY = 350;  // ms — let the OS callout's own animation settle first
+var _DEFINE_TOUCH_MARGIN = 14;  // px gap below the selection, clear of the callout's tail
+var _DEFINE_NEAR_TOP_PX = 120;  // selection this close to the viewport top leaves iOS no
+                                 // room to place its callout above, so it flips below —
+                                 // mirror that by flipping our chip above instead
+
 // Range rect in PARENT-window coords (iframe offset + range rect). Shared by the
 // selection path and tap-to-define, which each have a Range in hand.
 function _defineRangeRect(frame, range) {
   try {
     var r = range.getBoundingClientRect();
     var fr = frame.getBoundingClientRect();
-    return { x: r.left + fr.left, y: r.bottom + fr.top + 4, top: r.top + fr.top };
+    var margin = _defineIsTouch() ? _DEFINE_TOUCH_MARGIN : 4;
+    return { x: r.left + fr.left, y: r.bottom + fr.top + margin, top: r.top + fr.top };
   } catch (e) { return null; }
 }
 function _defineSelRect(frame, sel) {
@@ -12664,6 +12665,13 @@ function _definePosition(rect) {
   var x = rect.x, y = rect.y;
   if (x + w > window.innerWidth - 8) x = window.innerWidth - w - 8;
   if (x < 8) x = 8;
+  // On touch, the OS callout normally renders ABOVE the selection (our chip
+  // defaults below it, via the margin in _defineRangeRect) — but near the top
+  // of the viewport iOS has no room above and flips its callout below instead,
+  // so flip our chip above to stay out of its way.
+  if (_defineIsTouch() && rect.top < _DEFINE_NEAR_TOP_PX) {
+    y = Math.max(8, rect.top - h - _DEFINE_TOUCH_MARGIN);
+  }
   // Flip above the selection if it would overflow the bottom.
   if (y + h > window.innerHeight - 8) y = Math.max(8, rect.top - h - 8);
   _definePopover.style.left = x + 'px';
@@ -12797,7 +12805,10 @@ function _defineAttachToDoc(frame) {
   if (!doc) return;
   var onSel = function() {
     clearTimeout(_defineDebounce);
-    _defineDebounce = setTimeout(function() { _defineConsider(frame); }, 220);
+    // Touch devices wait out the OS selection-callout's own animation before the
+    // chip appears; desktop's shorter debounce (no callout to fight) is unchanged.
+    var delay = _defineIsTouch() ? _DEFINE_TOUCH_DELAY : 220;
+    _defineDebounce = setTimeout(function() { _defineConsider(frame); }, delay);
   };
   doc.addEventListener('dblclick', function() {
     clearTimeout(_defineDebounce);
