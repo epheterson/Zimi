@@ -172,6 +172,9 @@ def start_background_services(http_port):
             from zimi import library as _lib
 
             _lib.resume_pending_downloads()
+            # Watcher that releases night-window-scheduled downloads when the
+            # window opens (no-op unless the user enabled download scheduling).
+            _lib.start_download_scheduler()
             # Mirror mode seeds the whole installed library; either way,
             # drop seeds whose file an update has replaced, and bring
             # session-resumed seeds under the CURRENT settings (a seed

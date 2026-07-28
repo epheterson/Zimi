@@ -529,10 +529,17 @@ def handle_manage_get(handler, parsed, params):
     elif parsed.path == "/manage/usage":
         return handler._json(200, _srv._get_usage_stats())
 
+    elif parsed.path == "/manage/download-schedule":
+        from zimi import library as _lib
+
+        return handler._json(200, _lib._download_schedule_status())
+
     elif parsed.path == "/manage/users":
         # Named user accounts (multi-user v1) — admin-only (gated above). Returns
-        # the roster (no password hashes) plus the installed ZIM names so the
-        # admin UI can build the per-user allowlist multi-select.
+        # the roster (no password hashes), the installed ZIM names (legacy field),
+        # the richer picker options (title + language + count) the redesigned
+        # allowlist picker needs, and the public-access policy so the whole Users
+        # panel renders from a single fetch.
         from zimi import users as _users
 
         return handler._json(
@@ -540,6 +547,11 @@ def handle_manage_get(handler, parsed, params):
             {
                 "users": _users.list_users(),
                 "zims": sorted(_srv.get_zim_files().keys()),
+                # Rich per-ZIM options for the allowlist picker (used by both the
+                # per-user Limited picker and the public-access Limited picker).
+                "zim_options": _zim_picker_options(),
+                # Anonymous-access policy (Open / Limited / Sign-in required).
+                "public_access": _users.public_access_status(),
                 # The PRIMARY admin (password-file account) is not stored in
                 # users.json — surface it as a synthetic, non-deletable row so
                 # the UI can show "the admin" alongside the named users.
@@ -551,6 +563,19 @@ def handle_manage_get(handler, parsed, params):
                 # Which kind of admin is viewing — the client hides admin-only
                 # controls (creating/managing other admins) for secondaries.
                 "self_kind": admin_kind(handler),
+            },
+        )
+
+    elif parsed.path == "/manage/public-access":
+        # Anonymous-access policy on its own, with the picker options — a
+        # lightweight refetch target after the admin changes it.
+        from zimi import users as _users
+
+        return handler._json(
+            200,
+            {
+                "public_access": _users.public_access_status(),
+                "zim_options": _zim_picker_options(),
             },
         )
 
@@ -941,6 +966,51 @@ def handle_manage_get(handler, parsed, params):
         return handler._json(404, {"error": "not found"})
 
 
+def _zim_picker_options():
+    """``[{name, title, language, article_count}]`` for the allowlist pickers,
+    sorted by title. Admin view = all installed ZIMs. Titles/languages come from
+    the startup metadata cache; a ZIM not yet in that cache still appears (by
+    name) so it is always selectable."""
+    opts = []
+    seen = set()
+    for z in _srv._zim_list_cache or []:
+        name = z.get("name")
+        if not name:
+            continue
+        seen.add(name)
+        opts.append(
+            {
+                "name": name,
+                "title": z.get("title") or name,
+                "language": z.get("language", ""),
+                "article_count": z.get("article_count"),
+            }
+        )
+    for name in sorted(_srv.get_zim_files().keys()):
+        if name not in seen:
+            opts.append(
+                {"name": name, "title": name, "language": "", "article_count": None}
+            )
+    opts.sort(key=lambda o: (o["title"] or "").casefold())
+    return opts
+
+
+def _handle_public_access_post(handler, data):
+    """Admin-only: set the anonymous-access policy. ``mode`` ∈ {open, limited,
+    private}; ``allowlist`` applies only to ``limited``. Echoes the fresh status
+    so the UI re-renders in one round trip. Auth already passed (gated in
+    ``handle_manage_post``)."""
+    from zimi import users as _users
+
+    mode = data.get("mode", "")
+    ok, err = _users.set_public_access(mode, data.get("allowlist"))
+    if not ok:
+        return handler._json(400, {"error": err or "operation failed"})
+    return handler._json(
+        200, {"status": "ok", "public_access": _users.public_access_status()}
+    )
+
+
 def _handle_users_post(handler, data):
     """Admin-only user CRUD (multi-user v1). action ∈ {create, delete,
     set-password, set-allowlist, set-role}. Errors are returned generically; on
@@ -1065,6 +1135,9 @@ def handle_manage_post(handler, parsed, data):
 
     if parsed.path == "/manage/users":
         return _handle_users_post(handler, data)
+
+    if parsed.path == "/manage/public-access":
+        return _handle_public_access_post(handler, data)
 
     if parsed.path == "/manage/download":
         url = data.get("url", "")
@@ -1386,6 +1459,58 @@ def handle_manage_post(handler, parsed, data):
             200,
             {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq},
         )
+
+    elif parsed.path == "/manage/download-schedule":
+        # Night-window queueing + the global download-speed cap. Same env-lock
+        # contract as the other settings endpoints: ZIMI_DL_WINDOW locks the
+        # window, ZIMI_BT_DOWN_KB (via bt_down_kb) locks the speed cap.
+        from zimi import library as _lib
+        from zimi import p2p
+
+        sched = _lib._load_download_schedule()
+        # Window fields
+        if any(k in data for k in ("enabled", "start", "end")):
+            if sched.get("locked"):
+                return handler._json(
+                    403,
+                    {
+                        "error": "Download window is controlled by the ZIMI_DL_WINDOW env var"
+                    },
+                )
+            enabled = bool(data.get("enabled", sched["enabled"]))
+            start = data.get("start", sched["start"])
+            end = data.get("end", sched["end"])
+            if _lib._parse_hhmm(start) is None or _lib._parse_hhmm(end) is None:
+                return handler._json(
+                    400, {"error": "start/end must be 'HH:MM' (24-hour)"}
+                )
+            if not _lib._save_download_schedule(enabled, start, end):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
+            # Whether the window just opened or scheduling was turned off,
+            # release anything already waiting now — don't wait for a tick.
+            threading.Thread(target=_lib._download_schedule_tick, daemon=True).start()
+        # Global download-speed cap (KB/s, 0 = unlimited) — shared with the BT
+        # download limit so one number governs every transport.
+        if "download_kb" in data:
+            if p2p.is_bt_down_env_locked():
+                return handler._json(
+                    403,
+                    {
+                        "error": "Download speed limit is controlled by the ZIMI_BT env var"
+                    },
+                )
+            try:
+                kb = max(0, int(data["download_kb"]))
+            except (ValueError, TypeError):
+                return handler._json(400, {"error": "download_kb must be a number"})
+            if not p2p.set_pref("bt_down_kb", kb):
+                return handler._json(
+                    500, {"error": "could not save setting (config dir not writable)"}
+                )
+            p2p.apply_rate_limits()
+        return handler._json(200, _lib._download_schedule_status())
 
     elif parsed.path == "/manage/seeding-action":
         # Pause / resume / stop one seed, or stop everything — the

@@ -252,6 +252,17 @@ def get_bt_down_limit_kb() -> int:
         return 0
 
 
+def get_download_limit_kb() -> int:
+    """Global download-speed cap in KB/s (0 = unlimited).
+
+    A byte is a byte regardless of transport, so one number governs total
+    download speed: the libtorrent session already applies it as its
+    ``download_rate_limit`` (see get_bt_down_limit_kb, wired through
+    apply_rate_limits) and library.py throttles the HTTP read loop to the
+    same value. Same persisted pref as the BT download limit."""
+    return get_bt_down_limit_kb()
+
+
 def is_bt_up_env_locked() -> bool:
     return "up" in _bt_conf() or _env_explicitly_set("ZIMI_BT_UP_KB")
 
