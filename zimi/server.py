@@ -87,7 +87,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.8.0"
+ZIMI_VERSION = "1.8.1"
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
 # 24h — run every 12h so both stay fresh at half-life.
