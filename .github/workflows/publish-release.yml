@@ -34,12 +34,21 @@ jobs:
       - name: Download Snap from release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.event.release.tag_name }}
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
-          gh release download "$VERSION" --repo epheterson/Zimi --pattern "*.snap" || true
-          SNAP_FILE=$(ls *.snap 2>/dev/null | head -1)
+          # The snap is attached by the Desktop Release workflow, which is
+          # usually still building when the release-published event fires.
+          # Poll for up to 60 minutes instead of racing it (the 1.8.0 snap
+          # silently missed the store because of this exact race).
+          for i in $(seq 1 30); do
+            gh release download "$VERSION" --repo epheterson/Zimi --pattern "*.snap" || true
+            SNAP_FILE=$(ls *.snap 2>/dev/null | head -1)
+            [ -n "$SNAP_FILE" ] && break
+            echo "Snap not attached yet (attempt $i/30) — waiting 2m"
+            sleep 120
+          done
           if [ -z "$SNAP_FILE" ]; then
-            echo "No snap found in release $VERSION — skipping publish"
+            echo "No snap found in release $VERSION after 60m — skipping publish"
             echo "SNAP_FOUND=false" >> $GITHUB_ENV
           else
             echo "Found: $SNAP_FILE"
