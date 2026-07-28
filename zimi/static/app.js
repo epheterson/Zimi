@@ -101,7 +101,13 @@ function _resolveAppTheme(mode) {
 }
 function _appThemeIsDark() { return _resolveAppTheme() === 'dark'; }
 function _applyAppTheme() {
-  document.documentElement.setAttribute('data-theme', _resolveAppTheme());
+  var t = _resolveAppTheme();
+  var el = document.documentElement;
+  el.setAttribute('data-theme', t);
+  // Keep the UA surface (scrollbars, form controls, Safari's tab backdrop) in
+  // sync with the app theme — this is what prevents the dark compositor flash
+  // on tab re-activation. Mirrors the head bootstrap.
+  el.style.colorScheme = t;
 }
 function _setAppTheme(mode) {
   if (APP_THEMES.indexOf(mode) < 0) mode = 'auto';
@@ -116,6 +122,15 @@ function _setAppTheme(mode) {
   var darkChk = document.getElementById('ms-darken-articles');
   if (darkChk && localStorage.getItem(SK.DARKEN_ARTICLES) === null) darkChk.checked = _appThemeIsDark();
   try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
+  _reapplyReaderThemeIfAuto();
+}
+// When the reader theme is set to Auto, it follows the app theme — so an app
+// theme change (manual or OS flip) must re-stamp an open reader. Hoisted, so it
+// can be called from the app-theme handlers above the reader definitions.
+function _reapplyReaderThemeIfAuto() {
+  if (typeof _readerThemeMode !== 'function' || _readerThemeMode() !== 'auto') return;
+  try { var d = _readerFrameDoc(); if (d && _readerViewOn) _applyReaderTheme(d); } catch (e) {}
+  try { _tintReaderChrome(); } catch (e) {}
 }
 // Install once: when in Auto, a live OS light/dark flip re-resolves the theme.
 var _appThemeMediaBound = false;
@@ -127,6 +142,7 @@ function _bindAppThemeMedia() {
     if (_appTheme() !== 'auto') return; // explicit choice ignores the OS
     _applyAppTheme();
     try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
+    _reapplyReaderThemeIfAuto();
   };
   if (mq.addEventListener) mq.addEventListener('change', onFlip);
   else if (mq.addListener) mq.addListener(onFlip); // Safari <14
@@ -1210,6 +1226,9 @@ async function init() {
   // start live-tracking the OS preference when in Auto mode.
   _applyAppTheme();
   _bindAppThemeMedia();
+  // bfcache restore (Safari back/forward) re-runs no other script — re-assert
+  // the theme so a restored page can't paint with a stale scheme.
+  window.addEventListener('pageshow', function(e) { if (e.persisted) _applyAppTheme(); });
   // Initialize i18n before anything else
   _currentLang = _detectLanguage();
   _applyRTL(_currentLang);
@@ -10706,7 +10725,12 @@ function _readerFrameDoc() {
 
 // ── Reader View settings (persisted palette) ──
 var READER_FAMILIES = ['serif', 'sans'];
+// Concrete palettes the reader body can paint (rv-theme-* classes / bg map).
 var READER_THEMES = ['dark', 'light', 'sepia'];
+// User-selectable modes in the picker. 'auto' follows the app theme (dark→dark,
+// light→light); sepia stays a deliberate manual choice, so it's not in Auto's
+// resolution. Stored value is the MODE; _readerTheme() resolves it to a palette.
+var READER_THEME_MODES = ['auto', 'dark', 'light', 'sepia'];
 // The <body> background each theme paints — mirrors --rv-bg in the injected CSS.
 // Used to tint the iframe/loading chrome so AUTO mode never flashes ZIM-white.
 var READER_THEME_BG = { dark: '#0a0a0b', light: '#fbfbf9', sepia: '#f4ecd8' };
@@ -10714,9 +10738,17 @@ function _readerFamily() {
   var v = localStorage.getItem(SK.READER_FAMILY);
   return READER_FAMILIES.indexOf(v) >= 0 ? v : 'serif';
 }
-function _readerTheme() {
+// The stored picker selection: 'auto' (default) | 'dark' | 'light' | 'sepia'.
+function _readerThemeMode() {
   var v = localStorage.getItem(SK.READER_THEME);
-  return READER_THEMES.indexOf(v) >= 0 ? v : 'dark';
+  return READER_THEME_MODES.indexOf(v) >= 0 ? v : 'auto';
+}
+// The concrete palette actually painted. Auto resolves to the app theme's
+// dark/light so the reader matches the surrounding chrome.
+function _readerTheme() {
+  var m = _readerThemeMode();
+  if (m === 'auto') return _appThemeIsDark() ? 'dark' : 'light';
+  return READER_THEMES.indexOf(m) >= 0 ? m : 'dark';
 }
 function _readerAuto() { return _getStorageFlag(SK.READER_AUTO); }
 function _readerThemeBg() { return READER_THEME_BG[_readerTheme()] || READER_THEME_BG.dark; }
@@ -11363,7 +11395,7 @@ function _setReaderFamily(fam) {
   _renderReaderPalette();
 }
 function _setReaderTheme(theme) {
-  if (READER_THEMES.indexOf(theme) < 0) return;
+  if (READER_THEME_MODES.indexOf(theme) < 0) return;
   try { localStorage.setItem(SK.READER_THEME, theme); } catch(e) {}
   var doc = _readerFrameDoc(); if (doc && _readerViewOn) _applyReaderTheme(doc);
   // Keep the iframe/chrome tint in step so scroll-past-content shows theme bg.
@@ -11421,15 +11453,21 @@ function _readerPaletteHtml() {
 // palette (with row labels + AUTO) and the compact inline block in the ⋯ menu
 // (label-less). Defined once so the two hosts can never drift.
 function _rvSwatchHtml(key, theme) {
+  // 'auto' reuses the app-theme control's already-localized "Auto" label so no
+  // new i18n key is needed; the concrete palettes keep their reader_theme_* keys.
+  var lbl = tH(key === 'auto' ? 'theme_auto' : 'reader_theme_' + key);
   return '<button type="button" class="rv-swatch rv-sw-' + key + (theme === key ? ' active' : '') +
     '" role="radio" aria-checked="' + (theme === key ? 'true' : 'false') +
-    '" title="' + tH('reader_theme_' + key) + '" aria-label="' + tH('reader_theme_' + key) +
+    '" title="' + lbl + '" aria-label="' + lbl +
     '" onclick="event.stopPropagation();_setReaderTheme(\'' + key + '\')"><span class="rv-sw-dot"></span>' +
-    '<span class="rv-sw-label">' + tH('reader_theme_' + key) + '</span></button>';
+    '<span class="rv-sw-label">' + lbl + '</span></button>';
 }
-function _rvSwatchesHtml(theme) {
+function _rvSwatchesHtml(mode) {
+  // `mode` is the stored selection (auto|dark|light|sepia) so the Auto swatch
+  // lights up when chosen — not the resolved palette.
   return '<div class="rv-swatches" role="radiogroup" aria-label="' + tH('reader_theme') + '">' +
-    _rvSwatchHtml('dark', theme) + _rvSwatchHtml('light', theme) + _rvSwatchHtml('sepia', theme) + '</div>';
+    _rvSwatchHtml('auto', mode) + _rvSwatchHtml('dark', mode) +
+    _rvSwatchHtml('light', mode) + _rvSwatchHtml('sepia', mode) + '</div>';
 }
 function _rvFamPillHtml(key, fam) {
   return '<button type="button" class="rv-pill' + (fam === key ? ' active' : '') +
@@ -11458,7 +11496,7 @@ function _rvSizeStepperHtml(lvl) {
 // no print/share/exit — just the two everyday controls, sized to fit 390px.
 function _readerCompactControlsHtml() {
   return '<div class="rv-compact">' +
-    _rvSwatchesHtml(_readerTheme()) +
+    _rvSwatchesHtml(_readerThemeMode()) +
     '<div class="rv-compact-fontrow">' + _rvFamPillsHtml(_readerFamily()) + _rvSizeStepperHtml(_readerFontLevel()) + '</div>' +
   '</div>';
 }
@@ -11467,12 +11505,12 @@ function _readerCompactControlsHtml() {
 // for the standalone book-button palette (desktop). Kept head-less so the
 // palette can wrap it with its own heading.
 function _readerSettingsRowsHtml() {
-  var theme = _readerTheme(), fam = _readerFamily(), auto = _readerAuto();
+  var fam = _readerFamily(), auto = _readerAuto();
   var lvl = _readerFontLevel();
   var h = '';
-  // Theme
+  // Theme (swatches keyed off the stored mode so Auto reflects the selection)
   h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_theme') + '</div>' +
-    _rvSwatchesHtml(theme) + '</div>';
+    _rvSwatchesHtml(_readerThemeMode()) + '</div>';
   // Font family
   h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_font_family') + '</div>' +
     _rvFamPillsHtml(fam) + '</div>';

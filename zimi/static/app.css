@@ -565,6 +565,9 @@
   .rv-swatch:hover { border-color: var(--amber-border); color: var(--text); }
   .rv-swatch.active { border-color: var(--amber); color: var(--text); }
   .rv-sw-dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.14); }
+  /* Auto = follows the app theme: a split dark/light disc, same language as the
+     app-theme Auto icon. Half-and-half via a hard-stop gradient. */
+  .rv-sw-auto .rv-sw-dot { background: linear-gradient(90deg, #0a0a0b 0 50%, #fbfbf9 50% 100%); border-color: rgba(127,127,127,0.4); }
   .rv-sw-dark .rv-sw-dot { background: #0a0a0b; }
   .rv-sw-light .rv-sw-dot { background: #fbfbf9; border-color: rgba(0,0,0,0.18); }
   .rv-sw-sepia .rv-sw-dot { background: #f4ecd8; border-color: rgba(0,0,0,0.14); }
