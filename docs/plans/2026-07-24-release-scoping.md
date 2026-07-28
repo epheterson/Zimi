@@ -123,3 +123,7 @@ Surface this list at the start of every release cycle.
   only. Future: per-user bookmarks/history/config ownership (1.9, already
   scoped) plus per-user backup/restore of all of it, whole or subsets
   (pairs with the 1.8.1 backup & export hub).
+- Windows packaging polish: make the per-user INSTALLER the headline
+  download (zip stays for portable users) — Eric on first launch: the
+  bare onedir "_internal" folder look is odd; Program Files install
+  hides it. Pairs with the Authenticode cert decision.
