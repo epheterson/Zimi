@@ -24,8 +24,8 @@ A modern experience for your ZIM files.
 - **Fresh daily.** Picture of the Day, On This Day, a word, a quote, a comic, a live almanac sky. All computed locally, forever.
 - **Accessible.** If you browse by keyboard, listen by screen reader, or need high contrast, accessibility is built-in.
 - **Anywhere.** Docker, pip, a native macOS app, or your phone as a PWA.
+- **Improving.** Regular updates with ideas from the community, GitHub and creator keep Zimi fresh. Just ask!
 - **For humans and machines.** Web UI, JSON API, MCP server for AI agents.
-- **Improving.** Regular updates with ideas from the community — GitHub and creator keep Zimi fresh. Just ask!
 
 ## Screenshots
 

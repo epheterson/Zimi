@@ -104,3 +104,17 @@ Enterprise + the deep community items:
   feel like you've traveled there." Pairs with LLM integration.
 - Sky/scene features that change by period + location
 - Extended ZIM format (backwards-compatible bundle) + almanac-as-ZIM
+
+## Promises ledger (public commitments + shipped-incomplete — see through unprompted)
+Rule from Eric (2026-07-27): "any promise or unfinished feature we start —
+keep us honest and always see it through whether or not I bring it up again."
+Surface this list at the start of every release cycle.
+- Did-you-mean vocab coverage expansion — PROMISED in 1.8.0 release notes
+  ("widening in 1.8.1"). Must ship in 1.8.1.
+- Bookmarks→ZIM export v2 — v1 ships bare text, flows poorly; v2 carries
+  images/styling so the export resembles the original articles.
+- Users v2 access model — allowlist UI is barely legible (redesign), and
+  PUBLIC/anonymous currently sees everything, which makes Limited odd:
+  add an anonymous-access policy (full / subset allowlist / login-only).
+- Right-click coherence + Define discoverability (scoped above).
+- Demo walkthrough GIF replacing screenshots (scoped above).
