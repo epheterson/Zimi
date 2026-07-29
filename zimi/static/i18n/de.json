@@ -403,6 +403,7 @@
   "ms_server": "Server",
   "ms_security": "Sicherheit",
   "ms_display_section": "Anzeige",
+  "ms_reader_section": "Lesen",
   "welcome_lang_title": "Inhalte auf {lang} gesucht?",
   "welcome_lang_body": "Zimi speichert ganze Enzyklopädien offline. Durchsuchen Sie den Katalog, um Wikipedia auf {lang} und mehr herunterzuladen.",
   "welcome_lang_browse": "Katalog durchsuchen",

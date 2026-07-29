@@ -8077,8 +8077,10 @@ function _msPreferencesHtml() {
     '<div class="ms-theme-label">' + tH('app_theme') + '</div>' +
     _appThemeSegHtml() +
     '<div class="ms-hint">' + tH('app_theme_hint') + '</div>' +
-    // Darken raw articles (default follows the app theme).
-    '<label class="ms-check" style="margin-top:14px"><input type="checkbox" id="ms-darken-articles"' + (darkenOn ? ' checked' : '') +
+    // Reading: article-appearance options, grouped apart from the app chrome.
+    // Darken raw (non-Reader-View) articles — default follows the app theme.
+    '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_reader_section') + '</div>' +
+    '<label class="ms-check"><input type="checkbox" id="ms-darken-articles"' + (darkenOn ? ' checked' : '') +
       ' onchange="_setDarkenArticles(this.checked)"> ' + tH('darken_articles') + '</label>' +
     '<div class="ms-hint">' + tH('darken_articles_hint') + '</div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
@@ -8766,52 +8768,51 @@ async function _renderMirrorSection() {
   const disA = (locked) => ((!btOn || locked) ? ' disabled' : '');
   const lockA = (locked) => (locked ? ' data-envlock="1"' : '');
 
-  const ratioRow = '<div class="share-field"><label>' + tH('seed_ratio_label') + '</label>' +
+  // The rows below form a strict two-column grid (label | control), aligned via
+  // .share-bt-controls in app.css. Each .share-field carries exactly two
+  // children — a <label> and one control group — so their columns line up.
+  // Verbose guidance lives in the label's title= tooltip, not an inline note
+  // that would wrap into a paragraph on a phone.
+  const ratioRow = '<div class="share-field"><label title="' + escAttr(t('seed_ratio_zero_hint')) + '">' + tH('seed_ratio_label') + '</label>' +
     '<span class="share-port-group">' +
     '<input type="number" min="0" max="10" step="0.1" value="' + (m.seed_ratio_cap != null ? m.seed_ratio_cap : 2) + '"' +
     disA(m.seed_ratio_env_locked) + lockA(m.seed_ratio_env_locked) +
     ' class="share-num-input" aria-label="' + escAttr(t('seed_ratio_label')) + '" title="' + escAttr(t('seed_ratio_zero_hint')) + '" onchange="_setSeedRatio(this)">' +
-    '<span class="share-field-note">×</span></span>' +
-    '<span class="share-field-note">' + tH('seed_ratio_zero_inline') + '</span></div>';
+    '<span class="share-field-note">×</span></span></div>';
 
   // Upload bandwidth cap (MB/s in the UI, 0 = unlimited). Mirror + seeding ride
   // this too. The DOWNLOAD cap lives in the Downloads card below (one global
   // number governs HTTP + BT) so it isn't rendered twice.
   const upMb = m.bt_up_kb ? +(m.bt_up_kb / 1024).toFixed(2) : 0;
-  // Arrow sits to the RIGHT of the input so its left edge lines up with the
-  // ratio/port inputs above and below it.
-  const limitRow = '<div class="share-field"><label>' + tH('bt_up_limit_label') + '</label>' +
+  const limitRow = '<div class="share-field"><label title="' + escAttr(t('bt_limit_hint')) + '">' + tH('bt_up_limit_label') + '</label>' +
     '<span class="share-port-group">' +
     '<input type="number" min="0" step="0.5" value="' + upMb + '"' + disA(m.bt_up_env_locked) + lockA(m.bt_up_env_locked) +
-    ' class="share-num-input" aria-label="' + escAttr(t('bt_limit_up')) + '" onchange="_setBtLimit(this,\'up\')">' +
-    '<span class="share-field-note">↑ MB/s</span></span>' +
-    '<span class="share-field-note">' + tH('bt_limit_hint') + '</span></div>';
+    ' class="share-num-input" aria-label="' + escAttr(t('bt_limit_up')) + '" title="' + escAttr(t('bt_limit_hint')) + '" onchange="_setBtLimit(this,\'up\')">' +
+    '<span class="share-field-note">↑ MB/s</span></span></div>';
 
   // Concurrent downloads: how many run at once, the rest queue. Governs HTTP
   // and BT alike, so it stays editable even with the BT engine off
   // (data-nogate) — only an env var locks it.
-  const dlRow = '<div class="share-field"><label>' + tH('bt_max_dl_label') + '</label>' +
+  const dlRow = '<div class="share-field"><label title="' + escAttr(t('bt_max_dl_hint')) + '">' + tH('bt_max_dl_label') + '</label>' +
     '<span class="share-port-group">' +
     '<input type="number" min="1" max="20" step="1" value="' + (m.max_active_downloads != null ? m.max_active_downloads : 4) + '"' +
     (m.max_active_downloads_env_locked ? ' disabled' : '') + lockA(m.max_active_downloads_env_locked) + ' data-nogate="1"' +
-    ' class="share-num-input" aria-label="' + escAttr(t('bt_max_dl_label')) + '" onchange="_setBtMaxDl(this)">' +
-    '</span>' +
-    '<span class="share-field-note">' + tH('bt_max_dl_hint') + '</span></div>';
+    ' class="share-num-input" aria-label="' + escAttr(t('bt_max_dl_label')) + '" title="' + escAttr(t('bt_max_dl_hint')) + '" onchange="_setBtMaxDl(this)">' +
+    '</span></div>';
 
   // Max connections: libtorrent's global socket cap (real, enforced). Pure BT
   // engine setting, so it greys with the engine.
-  const connRow = '<div class="share-field"><label>' + tH('bt_max_conn_label') + '</label>' +
+  const connRow = '<div class="share-field"><label title="' + escAttr(t('bt_max_conn_hint')) + '">' + tH('bt_max_conn_label') + '</label>' +
     '<span class="share-port-group">' +
     '<input type="number" min="10" max="2000" step="10" value="' + (m.bt_max_connections != null ? m.bt_max_connections : 200) + '"' +
     disA(m.bt_max_connections_env_locked) + lockA(m.bt_max_connections_env_locked) +
-    ' class="share-num-input" aria-label="' + escAttr(t('bt_max_conn_label')) + '" onchange="_setBtMaxConn(this)">' +
-    '</span>' +
-    '<span class="share-field-note">' + tH('bt_max_conn_hint') + '</span></div>';
+    ' class="share-num-input" aria-label="' + escAttr(t('bt_max_conn_label')) + '" title="' + escAttr(t('bt_max_conn_hint')) + '" onchange="_setBtMaxConn(this)">' +
+    '</span></div>';
 
   const portRow = '<div class="share-field share-port-row" id="share-port-row">' + _portRowInner(bt || {}, btOn) + '</div>';
 
   const selfName = (peers && peers.self) || '';
-  const nameRow = '<div class="share-field"><label>' + tH('peer_advertising_as') + '</label>' +
+  const nameRow = '<div class="share-field"><label title="' + escAttr(t('peer_name_hint')) + '">' + tH('peer_advertising_as') + '</label>' +
     '<input type="text" class="peer-name-input" value="' + escAttr(selfName) + '" maxlength="63"' +
     (m.peer_name_env_locked ? ' disabled' : '') + lockA(m.peer_name_env_locked) +
     ' title="' + escAttr(t('peer_name_hint')) + '" aria-label="' + escAttr(t('peer_advertising_as')) + '" onchange="_setPeerName(this)"></div>';
@@ -9032,14 +9033,9 @@ function _downloadJson(filename, obj) {
   setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
 }
 
-function _backupOverwrite() {
-  var cb = document.getElementById('ms-backup-overwrite');
-  return !!(cb && cb.checked);
-}
-
-// Bookmarks/history live in localStorage; the server never sees them. Identity
-// is zim+path, newest (by timestamp) wins on conflict — mirrors the server's
-// merge rules for the pieces it does own.
+// Bookmarks/history live in localStorage; the server never sees them (a signed-in
+// user's copy rides in their own /userdata blob). Identity is zim+path, newest
+// (by timestamp) wins on conflict — mirrors the server's merge rules.
 function _bookmarkKey(b) {
   return (b && b.zim ? b.zim : '') + '\n' + (b && b.path ? b.path : '');
 }
@@ -11090,9 +11086,10 @@ function _readerFrameDoc() {
 var READER_FAMILIES = ['serif', 'sans'];
 // Concrete palettes the reader body can paint (rv-theme-* classes / bg map).
 var READER_THEMES = ['dark', 'light', 'sepia'];
-// User-selectable modes in the picker. 'auto' follows the app theme (dark→dark,
-// light→light); sepia stays a deliberate manual choice, so it's not in Auto's
-// resolution. Stored value is the MODE; _readerTheme() resolves it to a palette.
+// User-selectable modes in the picker. 'auto' follows the app theme: dark→dark,
+// light→SEPIA (a warm paper tone reads better out of the box than raw white).
+// A user's explicit pick (dark/light/sepia) always wins and persists. Stored
+// value is the MODE; _readerTheme() resolves it to a palette.
 var READER_THEME_MODES = ['auto', 'dark', 'light', 'sepia'];
 // The <body> background each theme paints — mirrors --rv-bg in the injected CSS.
 // Used to tint the iframe/loading chrome so AUTO mode never flashes ZIM-white.
@@ -11106,11 +11103,12 @@ function _readerThemeMode() {
   var v = localStorage.getItem(SK.READER_THEME);
   return READER_THEME_MODES.indexOf(v) >= 0 ? v : 'auto';
 }
-// The concrete palette actually painted. Auto resolves to the app theme's
-// dark/light so the reader matches the surrounding chrome.
+// The concrete palette actually painted. Auto resolves a dark app to 'dark' (the
+// reader matches the surrounding chrome) and a light app to 'sepia' (warm paper
+// out of the box, rather than a stark white page).
 function _readerTheme() {
   var m = _readerThemeMode();
-  if (m === 'auto') return _appThemeIsDark() ? 'dark' : 'light';
+  if (m === 'auto') return _appThemeIsDark() ? 'dark' : 'sepia';
   return READER_THEMES.indexOf(m) >= 0 ? m : 'dark';
 }
 function _readerAuto() { return _getStorageFlag(SK.READER_AUTO); }
@@ -12185,10 +12183,28 @@ function openReader(url) {
     // Inject responsive CSS + scroll-to-top button for mobile
     try {
       var _rStyle = frame.contentDocument.createElement('style');
-      // video/audio need the same 100% cap as img: TED/Khan talk pages carry a
-      // fixed width= (e.g. 640) that overflows a phone viewport without it.
-      _rStyle.textContent = 'img,video{max-width:100%;height:auto}audio{width:100%;max-width:100%}table{max-width:100%;overflow-x:auto;display:block}pre{overflow-x:auto;max-width:100%}' +
-        '#zimi-top{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;border:none;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:9999;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}';
+      _rStyle.textContent = [
+        // Horizontal containment for raw mwoffliner pages: the whole viewport must
+        // never scroll sideways on a phone (e.g. wikipedia/Caribbean's wide country
+        // tables + locator map). Genuinely-wide content (tables, <pre>) keeps its
+        // OWN inner scroll so it stays readable; everything else is capped to the
+        // column, and the body clips any last sliver of overflow. Mirrors the Reader
+        // View containment strategy — safe precisely because wide blocks inner-scroll.
+        'html,body{overflow-x:hidden;max-width:100%}',
+        // video/audio need the same 100% cap as img: TED/Khan talk pages carry a
+        // fixed width= (e.g. 640) that overflows a phone viewport without it.
+        'img,video{max-width:100%;height:auto}audio{width:100%;max-width:100%}',
+        // Wide tables inner-scroll instead of pushing the page; min-width:0 lets
+        // flex/table cells shrink below their content's intrinsic width.
+        'table{max-width:100%;overflow-x:auto;display:block}td,th{min-width:0}',
+        'pre{overflow-x:auto;max-width:100%}',
+        // Fixed-width mwoffliner blocks (image thumbs, locator maps, galleries,
+        // floated infoboxes) that carry an inline pixel width wider than a phone —
+        // rein them into the column so they don't force page-level overflow.
+        '.thumb,.thumbinner,figure,.gallery,.mw-kartographer-map,.mw-kartographer-maplink,' +
+          '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}',
+        '#zimi-top{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;border:none;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:9999;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}'
+      ].join('');
       frame.contentDocument.head.appendChild(_rStyle);
       var _topBtn = frame.contentDocument.createElement('button');
       _topBtn.id = 'zimi-top';
@@ -12838,7 +12854,6 @@ function openArticle(zim, path, title, opts) {
 function closeReader() {
   if (!readerOpen) return;
   _ttsStop(); // stop read-aloud when leaving the reader
-  _defineExitLookupMode(); // never leave the reader armed for a word tap
   // Sync the address bar back to the view the reader was covering — an
   // explicit close otherwise strands the article URL (a reload would
   // reopen the closed article). On popstate-driven closes the history
@@ -13145,13 +13160,6 @@ function _buildTopbarMenuHtml() {
       readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
-    }
-    // 3b. Look up a word — teaching affordance for Define. Only when a wiktionary
-    // is installed (else Define is dormant). Arms tap-to-define; a re-tap exits.
-    if (_defineFindWiktionary(_ttsLang(_readerFrameDoc()))) {
-      readerGroup += '<button class="topbar-menu-item" id="tbm-define" aria-pressed="' + (_defineLookupMode ? 'true' : 'false') +
-        '" onclick="event.stopPropagation();_closeTopbarMenu();_defineToggleLookupMode()">' + _DEFINE_BOOK_ICON +
-        ' <span class="tbm-label">' + tH('define_lookup') + '</span></button>';
     }
     // 4. Open in browser — LAST, and only where it's meaningful: the desktop app
     // or an installed/standalone PWA. In a plain browser tab you're already in a
@@ -13572,20 +13580,31 @@ function _definePosition(rect) {
   _definePopover.classList.add('open');
   var w = _definePopover.offsetWidth || 200;
   var h = _definePopover.offsetHeight || 60;
+  var vw = window.innerWidth, vh = window.innerHeight, M = 8;
   var x = rect.x, y = rect.y;
-  if (x + w > window.innerWidth - 8) x = window.innerWidth - w - 8;
-  if (x < 8) x = 8;
   // On touch, the OS callout normally renders ABOVE the selection (our chip
   // defaults below it, via the margin in _defineRangeRect) — but near the top
   // of the viewport iOS has no room above and flips its callout below instead,
   // so flip our chip above to stay out of its way.
   if (_defineIsTouch() && rect.top < _DEFINE_NEAR_TOP_PX) {
-    y = Math.max(8, rect.top - h - _DEFINE_TOUCH_MARGIN);
+    y = rect.top - h - _DEFINE_TOUCH_MARGIN;
   }
   // Flip above the selection if it would overflow the bottom.
-  if (y + h > window.innerHeight - 8) y = Math.max(8, rect.top - h - 8);
+  if (y + h > vh - M) y = rect.top - h - M;
+  // Hard clamp to the viewport on all four edges — a selection near any edge (or
+  // a card that grew taller/wider than the chip) must never spill off-screen.
+  x = Math.max(M, Math.min(x, vw - w - M));
+  y = Math.max(M, Math.min(y, vh - h - M));
   _definePopover.style.left = x + 'px';
   _definePopover.style.top = y + 'px';
+}
+
+// Re-run positioning against the anchor rect stored at trigger time. Called after
+// the popover's content swaps (chip → loading → card), since the card is taller
+// and wider than the chip and would otherwise keep the chip's coordinates and
+// spill off-screen.
+function _defineReposition() {
+  if (_defineState && _defineState.rect) _definePosition(_defineState.rect);
 }
 
 function _defineHide() {
@@ -13595,9 +13614,15 @@ function _defineHide() {
   _defineState = null;
 }
 
+// Any scroll — inside the article iframe or the outer page — invalidates the
+// popover's anchor, so dismiss it. Cheap no-op when nothing is open.
+function _defineHideOnScroll() {
+  if (_definePopover && _definePopover.classList.contains('open')) _defineHide();
+}
+
 // Stage 1 — show the "Define" trigger next to the selected word.
 function _defineShowTrigger(frame, word, wikt, rect) {
-  _defineState = { word: word, zim: wikt.name, path: null };
+  _defineState = { word: word, zim: wikt.name, path: null, rect: rect };
   _definePopover.innerHTML = '<div class="define-trigger" onclick="_defineRun()">' +
     _DEFINE_BOOK_ICON + '<span>' + tH('define') + '</span></div>';
   _definePosition(rect);
@@ -13612,6 +13637,7 @@ function _defineRun() {
   _definePopover.innerHTML = '<div class="define-card"><div class="define-word">' +
     esc(st.word) + '</div><div class="define-status">' + tH('define_loading') +
     '</div></div>';
+  _defineReposition(); // the card is bigger than the chip — re-clamp to viewport
   var q = st.word;
   fetch('/suggest?q=' + encodeURIComponent(q.toLowerCase()) + '&limit=6&zim=' + encodeURIComponent(st.zim))
     .then(function(r) { return r.json(); })
@@ -13638,6 +13664,7 @@ function _defineRenderMiss(word) {
   _definePopover.innerHTML = '<div class="define-card"><div class="define-word">' +
     esc(word) + '</div><div class="define-status">' + tH('define_no_results') +
     '</div></div>';
+  _defineReposition();
 }
 
 // Pull the first definition block(s) from a wiktionary article's raw HTML.
@@ -13685,6 +13712,7 @@ function _defineRenderResult(st, hit, html) {
     : '<div class="define-status">' + tH('define_no_results') + '</div>';
   _definePopover.innerHTML = '<div class="define-card">' + head + content +
     '<a class="define-open" onclick="_defineOpenFull()">' + tH('define_open_full') + '</a></div>';
+  _defineReposition(); // final card size known — re-clamp so it can't spill off-screen
 }
 
 function _defineOpenFull() {
@@ -13729,23 +13757,24 @@ function _defineAttachToDoc(frame) {
   // A right-click arms suppression (and clears any live trigger); the next
   // primary mousedown disarms it so ordinary selection/double-click still work.
   doc.addEventListener('contextmenu', function() { _defineSuppressChip = true; _defineHide(); }, true);
-  // Tapping/scrolling inside the article dismisses a stale popover.
+  // Tapping inside the article dismisses a stale popover.
   doc.addEventListener('mousedown', function(e) {
     if (e.button === 0) _defineSuppressChip = false;
     if (_defineState && _defineState.path !== null) _defineHide();
   }, true);
+  // Scrolling the article moves the anchor word out from under the popover, so
+  // dismiss it (like a native selection callout) rather than leave it stranded at
+  // a stale position. Covers both the raw frame and Reader View (same window).
+  try { frame.contentWindow.addEventListener('scroll', _defineHideOnScroll, { passive: true }); } catch (e) {}
   // First article open with a wiktionary installed → one-shot discovery tip.
   _maybeShowDefineHint(doc);
 }
 
 // ── Define discoverability ──
-// Two teaching affordances layered on top of the select-a-word gesture, which
-// stays the fast path: (a) a one-shot bottom tip the first time an article opens
-// with a wiktionary installed, and (b) a "Look up a word" ⋯-menu entry that arms
-// a tap-to-define mode for people who never think to select text.
-
-// (a) One-shot tip — shows at most once per browser. Skipped entirely when no
-// wiktionary is installed (feature dormant) or the reader has already met Define.
+// A one-shot teaching tip layered on top of the select-a-word / double-tap
+// gesture, which is the only surface for Define. Shows at most once per browser.
+// Skipped entirely when no wiktionary is installed (feature dormant) or the
+// reader has already met Define.
 function _maybeShowDefineHint(doc) {
   if (_getStorageFlag(SK.DEFINE_HINT)) return;
   if (!readerOpen) return;
@@ -13766,112 +13795,17 @@ function _maybeShowDefineHint(doc) {
   tip.addEventListener('click', function() { clearTimeout(timer); kill(); });
 }
 
-// (b) Tap-to-define lookup mode. Armed from the ⋯ menu; the next tap on a word in
-// the article selects that word and runs the same Define path, then disarms. A
-// subtle banner explains it; Escape or re-tapping the menu entry exits.
-var _defineLookupMode = false;
-var _defineLookupBanner = null;
-var _defineLookupDetach = null;
-
-// The word under a point inside the reader document → { word, rect } (rect in
-// PARENT coords), or null. Uses caretRange/PositionFromPoint then expands to word
-// boundaries in the text node (letters, digits, hyphen, apostrophe). Reads the
-// word and rect straight off the Range so it works even when a programmatic
-// iframe selection doesn't "stick" (unfocused iframe); it still applies the
-// selection as visual feedback, best-effort.
-function _defineWordAt(frame, doc, win, x, y) {
-  var range = null;
-  if (doc.caretRangeFromPoint) {
-    range = doc.caretRangeFromPoint(x, y);
-  } else if (doc.caretPositionFromPoint) {
-    var pos = doc.caretPositionFromPoint(x, y);
-    if (pos) { range = doc.createRange(); range.setStart(pos.offsetNode, pos.offset); range.collapse(true); }
-  }
-  if (!range || range.startContainer.nodeType !== 3) return null; // need a text node
-  var node = range.startContainer, text = node.textContent || '', off = range.startOffset;
-  var isW = function(c) { return !!c && /[\p{L}\p{N}'’-]/u.test(c); };
-  var start = off, end = off;
-  while (start > 0 && isW(text[start - 1])) start--;
-  while (end < text.length && isW(text[end])) end++;
-  if (end <= start) return null;
-  var wr = doc.createRange();
-  wr.setStart(node, start); wr.setEnd(node, end);
-  var word = (wr.toString() || '').trim();
-  if (!word) return null;
-  var rect = _defineRangeRect(frame, wr);
-  try { var sel = win.getSelection(); sel.removeAllRanges(); sel.addRange(wr); } catch (e) {}
-  return { word: word, rect: rect };
-}
-
-function _defineToggleLookupMode() {
-  if (_defineLookupMode) { _defineExitLookupMode(); return; }
-  _defineEnterLookupMode();
-}
-
-function _defineEnterLookupMode() {
-  if (_defineLookupMode || !readerOpen) return;
-  var frame = document.getElementById('reader-frame');
-  var doc, win;
-  try { doc = frame.contentDocument; win = frame.contentWindow; } catch (e) { return; }
-  if (!doc || !win) return;
-  if (!_defineFindWiktionary(_ttsLang(doc))) return; // dormant
-  // Using lookup mode also counts as discovering Define — retire the tip.
-  try { localStorage.setItem(SK.DEFINE_HINT, '1'); } catch (e) {}
-  _defineLookupMode = true;
-  document.body.classList.add('define-lookup-armed');
-  _defineHide();
-
-  var banner = document.createElement('div');
-  banner.className = 'define-lookup-banner';
-  banner.setAttribute('role', 'status');
-  banner.innerHTML = _DEFINE_BOOK_ICON + '<span>' + tH('define_lookup_prompt') + '</span>';
-  banner.addEventListener('click', function() { _defineExitLookupMode(); });
-  document.body.appendChild(banner);
-  _defineLookupBanner = banner;
-  requestAnimationFrame(function() { banner.classList.add('visible'); });
-
-  // The next tap in the article defines that word (capture, so it runs before the
-  // frame's own link-click handler and never navigates). Escape exits.
-  var onClick = function(e) {
-    e.preventDefault(); e.stopPropagation();
-    var hit = null;
-    try { hit = _defineWordAt(frame, doc, win, e.clientX, e.clientY); } catch (ex) {}
-    _defineExitLookupMode();
-    if (hit && hit.rect && _defineIsWord(hit.word)) {
-      var wikt = _defineFindWiktionary(_ttsLang(doc));
-      if (wikt) { _defineSuppressChip = false; _defineShowTrigger(frame, hit.word, wikt, hit.rect); }
-    }
-  };
-  var onKey = function(e) { if (e.key === 'Escape') _defineExitLookupMode(); };
-  doc.addEventListener('click', onClick, true);
-  doc.addEventListener('keydown', onKey, true);
-  document.addEventListener('keydown', onKey, true);
-  _defineLookupDetach = function() {
-    try { doc.removeEventListener('click', onClick, true); } catch (ex) {}
-    try { doc.removeEventListener('keydown', onKey, true); } catch (ex) {}
-    document.removeEventListener('keydown', onKey, true);
-  };
-}
-
-function _defineExitLookupMode() {
-  if (!_defineLookupMode) return;
-  _defineLookupMode = false;
-  document.body.classList.remove('define-lookup-armed');
-  if (_defineLookupDetach) { _defineLookupDetach(); _defineLookupDetach = null; }
-  var banner = _defineLookupBanner;
-  _defineLookupBanner = null;
-  if (banner) {
-    banner.classList.remove('visible');
-    setTimeout(function() { if (banner.parentNode) banner.remove(); }, 200);
-  }
-}
-
 // Close context menu on click anywhere
 document.addEventListener('click', function() { _hideLinkCtxMenu(); });
 // Tap outside the Define popover closes it (clicks inside are handled by its own controls).
 document.addEventListener('mousedown', function(e) {
   if (_definePopover && _definePopover.classList.contains('open') && !_definePopover.contains(e.target)) _defineHide();
 }, true);
+// Outer-page scroll (capture, so it also catches scroll on any nested container)
+// dismisses the popover; the iframe's own scroll is wired per-load in
+// _defineAttachToDoc since iframe scroll events don't bubble to the parent.
+window.addEventListener('scroll', _defineHideOnScroll, { passive: true });
+document.addEventListener('scroll', _defineHideOnScroll, { passive: true, capture: true });
 document.addEventListener('contextmenu', function(e) {
   // If clicking outside existing menu, close it
   if (_linkCtxMenu.classList.contains('open') && !_linkCtxMenu.contains(e.target)) {

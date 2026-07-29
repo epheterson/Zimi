@@ -403,6 +403,7 @@
   "ms_server": "Servidor",
   "ms_security": "Seguridad",
   "ms_display_section": "Visualización",
+  "ms_reader_section": "Lectura",
   "welcome_lang_title": "¿Buscas contenido en {lang}?",
   "welcome_lang_body": "Zimi almacena enciclopedias enteras sin conexión. Explora el Catálogo para descargar Wikipedia en {lang} y más.",
   "welcome_lang_browse": "Explorar Catálogo",

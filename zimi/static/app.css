@@ -223,28 +223,9 @@
   .define-hint .define-hint-icon { color: var(--amber); flex-shrink: 0; display: flex; }
   .define-hint .define-hint-icon svg { width: 18px; height: 18px; }
 
-  /* Lookup mode: a subtle top banner while the reader is armed to define the
-     next tapped word (⋯ › Look up a word). Tap the banner or Escape to exit. */
-  .define-lookup-banner {
-    position: fixed; z-index: 9998; left: 50%; top: 12px;
-    transform: translateX(-50%) translateY(-6px);
-    display: flex; align-items: center; gap: 8px;
-    min-height: 40px; box-sizing: border-box;
-    background: var(--amber); color: var(--on-amber);
-    font-size: 12.5px; font-weight: 600; line-height: 1.3;
-    padding: 8px 14px; border-radius: 999px;
-    box-shadow: var(--shadow-popup); cursor: pointer;
-    opacity: 0; transition: opacity .18s, transform .18s;
-  }
-  .define-lookup-banner.visible { opacity: 1; transform: translateX(-50%); }
-  .define-lookup-banner svg { width: 16px; height: 16px; flex-shrink: 0; }
-  /* While armed, hint the target: a crosshair over article content. */
-  body.define-lookup-armed #reader-frame { cursor: crosshair; }
-
   @media (prefers-reduced-motion: reduce) {
-    .define-hint, .define-lookup-banner { transition: opacity .18s; }
+    .define-hint { transition: opacity .18s; }
     .define-hint.visible { transform: translateX(-50%); }
-    .define-lookup-banner.visible { transform: translateX(-50%); }
   }
 
   /* ── History trail dropdown ── */
@@ -974,7 +955,10 @@
     position: fixed; z-index: 10001; display: none;
     background: var(--card-bg, #1a1a1a); border: 1px solid var(--border);
     border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-    color: var(--text); font-size: 13px; max-width: 320px;
+    color: var(--text); font-size: 13px;
+    /* Never wider than the viewport minus the 8px edge margins the JS clamps to,
+       so a card near the right edge still fits after _definePosition runs. */
+    max-width: min(320px, calc(100vw - 16px));
   }
   .define-popover.open { display: block; }
   /* Stage 1: the compact "Define" trigger button */
@@ -1402,8 +1386,21 @@
   .dl-retry-btn:hover { border-color: var(--amber); color: var(--amber); }
   .dl-mirror { font-size: 11px; color: var(--text2); flex: 1; }
   /* BT card controls: always rendered (fixed height); dimmed + non-interactive
-     when BT is off so a toggle never adds/removes rows and nothing jumps. */
-  .share-bt-controls { margin-top: 8px; }
+     when BT is off so a toggle never adds/removes rows and nothing jumps.
+     A strict two-column grid (label | control) so every textbox lines up in a
+     single column, however wide the label. Each .share-field goes
+     display:contents so its <label> + control drop straight into this grid. */
+  .share-bt-controls { margin-top: 8px; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 7px 12px; align-items: center; }
+  .share-bt-controls .share-field { display: contents; }
+  .share-bt-controls .share-field > label { min-width: 0; }
+  /* The controls share the card row with the toggle, so column 2 is narrow on a
+     phone. The wide port group (input + dot + recheck + UPnP) wraps within its
+     cell — its input stays top-left, aligned with the numeric inputs above,
+     while the extras drop to a second line rather than overrun the card. */
+  .share-bt-controls .share-port-group { flex-wrap: wrap; row-gap: 5px; }
+  /* Server name fills its grid cell rather than a fixed 130-160px that would
+     overrun the narrow phone column; border-box so padding stays inside. */
+  .share-bt-controls .peer-name-input { width: 100%; box-sizing: border-box; }
   .share-bt-controls.share-controls-off { opacity: 0.4; }
   .share-bt-controls.share-controls-off .share-port-dot { opacity: 0.5; }
   .share-inactive { opacity: 0.5; }
@@ -1479,6 +1476,7 @@
   @media (max-width: 600px) {
     .share-field { flex-wrap: wrap; row-gap: 5px; }
     .share-field > label { min-width: 62px; }
+    .share-bt-controls { column-gap: 8px; }
     .share-row-right { gap: 6px; }
     .peer-name-input { width: 130px; }
     .share-port-group { gap: 8px; }

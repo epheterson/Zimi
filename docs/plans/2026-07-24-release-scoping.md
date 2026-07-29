@@ -130,3 +130,9 @@ Surface this list at the start of every release cycle.
 - Onboarding / feature tour (Eric, 2026-07-28): "In time we may need
   readme or onboarding to show users all features and how to." A
   first-run "What can Zimi do?" tour or Help panel — 1.9 candidate.
+- Private-mode content-cache hardening (1.9): the SW keeps article
+  content (/read, /w/) cached for offline reading — after logout on a
+  private instance, previously-viewed articles remain readable on that
+  device. Same-device-only, low severity, deliberate 1.8.1 tradeoff
+  (identity/library endpoints are network-only as of the r3 fix).
+  Candidate: purge content caches on logout when mode=private.

@@ -403,6 +403,7 @@
   "ms_server": "服务器",
   "ms_security": "安全",
   "ms_display_section": "显示",
+  "ms_reader_section": "阅读",
   "welcome_lang_title": "在寻找{lang}内容？",
   "welcome_lang_body": "Zimi 可离线存储整部百科全书。浏览目录下载{lang}维基百科等来源。",
   "welcome_lang_browse": "浏览目录",

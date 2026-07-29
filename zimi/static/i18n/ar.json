@@ -403,6 +403,7 @@
   "ms_server": "الخادم",
   "ms_security": "الأمان",
   "ms_display_section": "العرض",
+  "ms_reader_section": "القراءة",
   "welcome_lang_title": "تبحث عن محتوى بـ{lang}؟",
   "welcome_lang_body": "Zimi يخزن موسوعات كاملة دون اتصال. تصفح الفهرس لتنزيل ويكيبيديا بـ{lang} والمزيد.",
   "welcome_lang_browse": "تصفح الفهرس",
