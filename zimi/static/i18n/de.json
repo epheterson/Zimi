@@ -1152,5 +1152,21 @@
   "remove_section": "Kategorie entfernen",
   "section_exists": "Diese Kategorie existiert bereits",
   "reorder_moved_hint": "Die Kategoriereihenfolge befindet sich jetzt in den Bibliothekseinstellungen.",
-  "open_library_settings": "Bibliothekseinstellungen"
+  "open_library_settings": "Bibliothekseinstellungen",
+  "backup_mydata_title": "My data",
+  "backup_mydata_intro": "Your bookmarks, reading history, and preferences. They live in this browser — export a copy to a file, or sync them to your account.",
+  "backup_server_title": "Server backup",
+  "backup_server_intro": "The whole server: library list, collections, home layout, user accounts (with password hashes), access policy, schedule, sharing, seed intents, hot list, auto-update, event history, and every user's saved data. Keep this file private.",
+  "backup_export_file": "Export to file",
+  "backup_import_file": "Import from file",
+  "backup_save_server": "Save to server",
+  "backup_restore_server": "Restore from server",
+  "backup_mydata_exported": "My data downloaded",
+  "backup_mydata_imported": "My data restored",
+  "backup_saved_server": "Saved to your account",
+  "backup_restored_server": "Restored from your account",
+  "backup_wrong_card_server": "That's a full server backup — import it in the Server backup card.",
+  "backup_wrong_card_mydata": "That's a My data backup — import it in the My data card.",
+  "backup_pv_history": "Event history: {n} events",
+  "backup_pv_userdata": "Saved user data: {n} users"
 }

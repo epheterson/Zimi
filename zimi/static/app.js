@@ -7184,6 +7184,11 @@ function _renderUserManage() {
       '<div class="ms-actions" style="margin-top:16px">' +
         '<button class="manage-btn-action" onclick="userLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('log_out') + '</button>' +
       '</div>' +
+      // A signed-in user's own "My data" card: export/import a file, or sync
+      // bookmarks/history/preferences to their server account (Save/Restore).
+      '<div style="border-top:1px solid var(--border);margin-top:18px;padding-top:14px">' +
+        _myDataCardHtml() +
+      '</div>' +
     '</div></div>';
 }
 
@@ -8137,9 +8142,9 @@ function _msServerHtml() {
   h += '<div class="ms-section-label">' + tH('downloads_section') + '</div>' +
     '<div id="ms-dl-schedule" class="ms-dl-schedule">' + tH('loading') + '</div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
-  // Backup & export hub — filled async after the pane paints.
-  h += '<div class="ms-section-label">' + tH('backup_section') + '</div>' +
-    '<div id="ms-backup" class="ms-backup">' + _backupHubHtml() + '</div>' +
+  // Backup & export hub — two self-titled cards (My data + Server backup), so no
+  // extra "Backup" group heading is needed above them.
+  h += '<div id="ms-backup" class="ms-backup">' + _backupHubHtml() + '</div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
   h += '<div class="ms-section-label">' + tH('storage_section') + '</div>' +
     '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
@@ -8936,13 +8941,21 @@ function _setUploadTrickle(input) {
 
 
 // ── Backup & export hub ──────────────────────────────────────────────────
-// A backup bundle (schema "zimi-backup") is assembled from two sources:
-//   • SERVER  — library list, collections/favorites, home layout (/manage/backup)
-//   • BROWSER — bookmarks, history, and the preference localStorage keys below
-// Export merges both into one file; import writes the server half via
-// /manage/backup and the browser half straight back into localStorage. Keep
-// _PREF_KEYS and the server's _BACKUP_SCHEMA_VERSION in lockstep.
+// The hub is TWO clearly separated cards, each with its own Export + Import:
+//   • "My data"      — this browser's bookmarks, history and preferences. Always
+//                      exportable/importable to a file; a signed-in NAMED user
+//                      also gets Save-to / Restore-from their own server account
+//                      (POST/GET /userdata). Admin-without-a-user stays file-only.
+//   • "Server backup"— ADMIN-only, the full server bundle (/manage/backup
+//                      scope=server): library list, collections, layout, users
+//                      with hashes, access policy, schedule, sharing prefs, seed
+//                      intents, hot list, auto-update, event history, per-user
+//                      data. Preview-then-apply.
+// Import validates the bundle's scope against the card it landed on (a server
+// bundle rejected by the My-data card and vice-versa). Keep _PREF_KEYS and
+// _BACKUP_SCHEMA_VERSION in lockstep with the server.
 var _BACKUP_SCHEMA = 'zimi-backup';
+var _BACKUP_SCHEMA_VERSION = 3;
 var _PREF_KEYS = [
   SK.UI_LANG, SK.HIDE_DISCOVER, SK.HIDE_LANG_CHOOSER, SK.HIDE_XZIM_LINKS,
   SK.A11Y_REWRITE, SK.LIBRARY_VIEW, SK.PREF_LANGUAGES, SK.PREF_FLAVOR,
@@ -8957,23 +8970,57 @@ function _collectPreferences() {
   return out;
 }
 
-// The parsed bundle awaiting the admin's Apply confirmation. Nothing is written
-// until _backupApply() runs — the import is strictly preview-then-apply.
-var _pendingBackup = null;
+// The parsed SERVER bundle awaiting the admin's Apply confirmation. Nothing is
+// written until _serverBackupApply() runs — server import is preview-then-apply.
+var _pendingServerBackup = null;
+
+function _setBackupStatus(id, key) {
+  var el = document.getElementById(id);
+  if (el) el.textContent = key ? t(key) : '';
+}
+
+function _cbChecked(id) {
+  var cb = document.getElementById(id);
+  return !!(cb && cb.checked);
+}
+
+// ── Card markup ──
+// "My data" is the only card a signed-in non-admin sees (rendered standalone by
+// _renderUserManage); the admin Server pane shows both via _backupHubHtml.
+function _myDataCardHtml() {
+  var signedIn = !!(_userSession && _userSession.name);
+  var serverBtns = signedIn
+    ? '<button class="pill" onclick="saveMyDataToServer()">' + tH('backup_save_server') + '</button>' +
+      '<button class="pill" onclick="restoreMyDataFromServer()">' + tH('backup_restore_server') + '</button>'
+    : '';
+  return '<div class="ms-section-label">' + tH('backup_mydata_title') + '</div>' +
+    '<div class="ms-hint">' + tH('backup_mydata_intro') + '</div>' +
+    '<div class="ms-backup-actions">' +
+      '<button class="pill" onclick="exportMyData()">' + tH('backup_export_file') + '</button>' +
+      '<button class="pill" onclick="document.getElementById(\'ms-mydata-file\').click()">' + tH('backup_import_file') + '</button>' +
+      serverBtns +
+      '<input type="file" id="ms-mydata-file" accept="application/json,.json" style="display:none" onchange="importMyDataFile(this)">' +
+      '<span id="ms-mydata-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
+    '</div>' +
+    '<label class="ms-toggle-row"><input type="checkbox" id="ms-mydata-overwrite"> ' + tH('backup_overwrite') + '</label>' +
+    '<div id="ms-mydata-result" class="ms-backup-import"></div>';
+}
+
+function _serverBackupCardHtml() {
+  return '<div class="ms-section-label" style="margin-top:22px">' + tH('backup_server_title') + '</div>' +
+    '<div class="ms-hint">' + tH('backup_server_intro') + '</div>' +
+    '<div class="ms-backup-actions">' +
+      '<button class="pill" onclick="exportServerBackup()">' + tH('backup_export_file') + '</button>' +
+      '<button class="pill" onclick="document.getElementById(\'ms-server-file\').click()">' + tH('backup_import_file') + '</button>' +
+      '<input type="file" id="ms-server-file" accept="application/json,.json" style="display:none" onchange="importServerBackupFile(this)">' +
+      '<span id="ms-server-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
+    '</div>' +
+    '<label class="ms-toggle-row"><input type="checkbox" id="ms-server-overwrite"> ' + tH('backup_overwrite') + '</label>' +
+    '<div id="ms-server-import" class="ms-backup-import"></div>';
+}
 
 function _backupHubHtml() {
-  return '<div class="ms-hint">' + tH('backup_intro') + '</div>' +
-    '<div class="ms-backup-actions">' +
-      '<button class="pill" onclick="exportBackup(\'device\')">' + tH('backup_export_device') + '</button>' +
-      '<button class="pill" onclick="exportBackup(\'server\')">' + tH('backup_export_server') + '</button>' +
-      '<button class="pill" onclick="document.getElementById(\'ms-backup-file\').click()">' + tH('backup_import') + '</button>' +
-      '<input type="file" id="ms-backup-file" accept="application/json,.json" style="display:none" onchange="importBackupFile(this)">' +
-      '<span id="ms-backup-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
-    '</div>' +
-    '<div class="ms-hint">' + tH('backup_scope_device') + '</div>' +
-    '<div class="ms-hint">' + tH('backup_scope_server') + '</div>' +
-    '<label class="ms-toggle-row"><input type="checkbox" id="ms-backup-overwrite"> ' + tH('backup_overwrite') + '</label>' +
-    '<div id="ms-backup-import" class="ms-backup-import"></div>';
+  return _myDataCardHtml() + _serverBackupCardHtml();
 }
 
 function _downloadJson(filename, obj) {
@@ -9011,54 +9058,141 @@ function _mergeByKey(current, incoming, keyFn, overwrite) {
   return { list: out, added: added, dupes: dupes };
 }
 
-async function exportBackup(scope) {
-  scope = scope === 'server' ? 'server' : 'device';
-  var status = document.getElementById('ms-backup-status');
-  if (status) status.textContent = t('working');
-  var bundle = null;
-  try {
-    var res = await manageFetch('/manage/backup?scope=' + scope);
-    if (!res.ok) throw new Error('http ' + res.status);
-    bundle = await res.json();
-  } catch (e) {
-    // A server backup needs the server half; a device backup stays available to
-    // everyone even when the server half is unreachable — fall back to the
-    // browser-only bundle so bookmarks/history/prefs still export.
-    if (scope === 'server') { if (status) status.textContent = t('error'); return; }
-    bundle = { schema: _BACKUP_SCHEMA, scope: 'device' };
-  }
-  bundle.bookmarks = _getStorageJSON(SK.BOOKMARKS, []);
-  bundle.history = _getStorageJSON(SK.BROWSE_HISTORY, []);
-  bundle.preferences = _collectPreferences();
-  _downloadJson('zimi-backup-' + scope + '-' + new Date().toISOString().slice(0, 10) + '.json', bundle);
-  if (status) status.textContent = t('backup_exported');
+// ── My data (browser half) — the one payload the My-data card moves, whether to
+// a file, from a file, or to/from the signed-in user's server account. ──
+function _collectBrowserData() {
+  return {
+    bookmarks: _getStorageJSON(SK.BOOKMARKS, []),
+    history: _getStorageJSON(SK.BROWSE_HISTORY, []),
+    preferences: _collectPreferences(),
+  };
 }
 
-function importBackupFile(input) {
+function _applyBrowserData(data, overwrite) {
+  var res = { bm: { added: 0, dupes: 0 } };
+  if (data && data.preferences && typeof data.preferences === 'object') {
+    Object.keys(data.preferences).forEach(function(k) {
+      if (_PREF_KEYS.indexOf(k) === -1) return;  // ignore unknown/foreign keys
+      try { localStorage.setItem(k, data.preferences[k]); } catch (e) {}
+    });
+  }
+  if (data && Array.isArray(data.bookmarks)) {
+    res.bm = _mergeByKey(_getStorageJSON(SK.BOOKMARKS, []), data.bookmarks, _bookmarkKey, overwrite);
+    _setStorageJSON(SK.BOOKMARKS, res.bm.list);
+  }
+  if (data && Array.isArray(data.history)) {
+    _setStorageJSON(SK.BROWSE_HISTORY, _mergeByKey(_getStorageJSON(SK.BROWSE_HISTORY, []), data.history, _bookmarkKey, overwrite).list);
+  }
+  return res;
+}
+
+function _showMyDataResult(res) {
+  var box = document.getElementById('ms-mydata-result');
+  if (box) box.innerHTML = '<div class="ms-backup-pv-line">' +
+    tH('backup_pv_bookmarks', { added: res.bm.added, dupes: res.bm.dupes }) + '</div>';
+}
+
+function exportMyData() {
+  var bundle = Object.assign({
+    schema: _BACKUP_SCHEMA,
+    schema_version: _BACKUP_SCHEMA_VERSION,
+    scope: 'my-data',
+    created: new Date().toISOString(),
+  }, _collectBrowserData());
+  _downloadJson('zimi-my-data-' + new Date().toISOString().slice(0, 10) + '.json', bundle);
+  _setBackupStatus('ms-mydata-status', 'backup_mydata_exported');
+}
+
+function importMyDataFile(input) {
   var f = input.files && input.files[0];
   if (!f) return;
   var reader = new FileReader();
-  reader.onload = function() { _previewBackup(reader.result); input.value = ''; };
-  reader.onerror = function() {
-    var status = document.getElementById('ms-backup-status');
-    if (status) status.textContent = t('backup_bad_file');
-    input.value = '';
-  };
+  reader.onload = function() { _applyMyDataFile(reader.result); input.value = ''; };
+  reader.onerror = function() { _setBackupStatus('ms-mydata-status', 'backup_bad_file'); input.value = ''; };
+  reader.readAsText(f);
+}
+
+function _applyMyDataFile(text) {
+  var bundle;
+  try { bundle = JSON.parse(text); } catch (e) { bundle = null; }
+  if (!bundle || bundle.schema !== _BACKUP_SCHEMA) {
+    _setBackupStatus('ms-mydata-status', 'backup_bad_file');
+    return;
+  }
+  // Scope-vs-card guard: a server bundle belongs on the Server backup card.
+  if (bundle.scope === 'server') {
+    _setBackupStatus('ms-mydata-status', 'backup_wrong_card_server');
+    return;
+  }
+  var res = _applyBrowserData(bundle, _cbChecked('ms-mydata-overwrite'));
+  _setBackupStatus('ms-mydata-status', 'backup_mydata_imported');
+  _showMyDataResult(res);
+}
+
+async function saveMyDataToServer() {
+  _setBackupStatus('ms-mydata-status', 'working');
+  try {
+    var res = await fetch('/userdata', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_collectBrowserData()),
+    });
+    if (!res.ok) throw new Error('http ' + res.status);
+    _setBackupStatus('ms-mydata-status', 'backup_saved_server');
+  } catch (e) { _setBackupStatus('ms-mydata-status', 'error'); }
+}
+
+async function restoreMyDataFromServer() {
+  _setBackupStatus('ms-mydata-status', 'working');
+  var data;
+  try {
+    var res = await fetch('/userdata', { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('http ' + res.status);
+    data = await res.json();
+  } catch (e) { _setBackupStatus('ms-mydata-status', 'error'); return; }
+  var res2 = _applyBrowserData(data || {}, _cbChecked('ms-mydata-overwrite'));
+  _setBackupStatus('ms-mydata-status', 'backup_restored_server');
+  _showMyDataResult(res2);
+}
+
+// ── Server backup (admin) — full bundle, preview-then-apply ──
+async function exportServerBackup() {
+  _setBackupStatus('ms-server-status', 'working');
+  var bundle;
+  try {
+    var res = await manageFetch('/manage/backup?scope=server');
+    if (!res.ok) throw new Error('http ' + res.status);
+    bundle = await res.json();
+  } catch (e) { _setBackupStatus('ms-server-status', 'error'); return; }
+  _downloadJson('zimi-server-backup-' + new Date().toISOString().slice(0, 10) + '.json', bundle);
+  _setBackupStatus('ms-server-status', 'backup_exported');
+}
+
+function importServerBackupFile(input) {
+  var f = input.files && input.files[0];
+  if (!f) return;
+  var reader = new FileReader();
+  reader.onload = function() { _previewServerBackup(reader.result); input.value = ''; };
+  reader.onerror = function() { _setBackupStatus('ms-server-status', 'backup_bad_file'); input.value = ''; };
   reader.readAsText(f);
 }
 
 // Step 1 of 2: compute the diff and show it. Applies NOTHING.
-async function _previewBackup(text) {
-  var status = document.getElementById('ms-backup-status');
+async function _previewServerBackup(text) {
   var bundle;
   try { bundle = JSON.parse(text); } catch (e) { bundle = null; }
   if (!bundle || bundle.schema !== _BACKUP_SCHEMA) {
-    if (status) status.textContent = t('backup_bad_file');
+    _setBackupStatus('ms-server-status', 'backup_bad_file');
     return;
   }
-  _pendingBackup = bundle;
-  if (status) status.textContent = t('working');
-  var overwrite = _backupOverwrite();
+  // Scope-vs-card guard: a My-data bundle belongs on the My data card.
+  if (bundle.scope !== 'server') {
+    _setBackupStatus('ms-server-status', 'backup_wrong_card_mydata');
+    return;
+  }
+  _pendingServerBackup = bundle;
+  _setBackupStatus('ms-server-status', 'working');
+  var overwrite = _cbChecked('ms-server-overwrite');
   var srv = {};
   try {
     var res = await manageFetch('/manage/backup', {
@@ -9066,28 +9200,27 @@ async function _previewBackup(text) {
       body: JSON.stringify(Object.assign({}, bundle, { action: 'preview', overwrite: overwrite })),
     });
     var d = await res.json().catch(function() { return {}; });
-    if (!res.ok) { if (status) status.textContent = t('error'); return; }
+    if (!res.ok) { _setBackupStatus('ms-server-status', 'error'); return; }
     srv = d.preview || {};
-  } catch (e) { if (status) status.textContent = t('error'); return; }
-  // Browser-half counts are computed client-side (the server never sees them).
-  var bm = _mergeByKey(_getStorageJSON(SK.BOOKMARKS, []), bundle.bookmarks || [], _bookmarkKey, overwrite);
-  if (status) status.textContent = '';
-  _renderBackupPreview(srv, bm, bundle);
+  } catch (e) { _setBackupStatus('ms-server-status', 'error'); return; }
+  _setBackupStatus('ms-server-status', '');
+  _renderServerBackupPreview(srv);
 }
 
-function _renderBackupPreview(srv, bm, bundle) {
-  var box = document.getElementById('ms-backup-import');
+function _renderServerBackupPreview(srv) {
+  var box = document.getElementById('ms-server-import');
   if (!box) return;
   var lines = [];
   if (srv.collections) {
     lines.push(tH('backup_pv_collections', { added: srv.collections.col_added, replaced: srv.collections.col_replaced }));
     lines.push(tH('backup_pv_favorites', { added: srv.collections.fav_added, dupes: srv.collections.fav_dupes }));
   }
-  lines.push(tH('backup_pv_bookmarks', { added: bm.added, dupes: bm.dupes }));
   if (srv.layout && (srv.layout.over_added || srv.layout.over_changed)) {
     lines.push(tH('backup_pv_overrides', { added: srv.layout.over_added, changed: srv.layout.over_changed }));
   }
   if (srv.users) lines.push(tH('backup_pv_users', { added: srv.users.added, replaced: srv.users.replaced }));
+  if (srv.user_data) lines.push(tH('backup_pv_userdata', { n: srv.user_data.users }));
+  if (srv.history) lines.push(tH('backup_pv_history', { n: srv.history.events }));
   if (srv.settings && srv.settings.length) lines.push(tH('backup_pv_settings', { n: srv.settings.length }));
   if (srv.missing_zims) lines.push(tH('backup_pv_missing', { n: srv.missing_zims }));
   box.innerHTML =
@@ -9095,55 +9228,39 @@ function _renderBackupPreview(srv, bm, bundle) {
       '<div class="ms-hint">' + tH('backup_preview_title') + '</div>' +
       lines.map(function(l) { return '<div class="ms-backup-pv-line">' + l + '</div>'; }).join('') +
       '<div class="ms-backup-actions">' +
-        '<button class="pill" onclick="_backupApply()">' + tH('backup_apply') + '</button>' +
-        '<button class="pill" onclick="_backupCancel()">' + tH('backup_cancel') + '</button>' +
+        '<button class="pill" onclick="_serverBackupApply()">' + tH('backup_apply') + '</button>' +
+        '<button class="pill" onclick="_serverBackupCancel()">' + tH('backup_cancel') + '</button>' +
       '</div>' +
     '</div>';
 }
 
-function _backupCancel() {
-  _pendingBackup = null;
-  var box = document.getElementById('ms-backup-import');
+function _serverBackupCancel() {
+  _pendingServerBackup = null;
+  var box = document.getElementById('ms-server-import');
   if (box) box.innerHTML = '';
-  var status = document.getElementById('ms-backup-status');
-  if (status) status.textContent = t('backup_cancelled');
+  _setBackupStatus('ms-server-status', 'backup_cancelled');
 }
 
-// Step 2 of 2: the admin confirmed — write the server half then the browser half.
-async function _backupApply() {
-  var bundle = _pendingBackup;
+// Step 2 of 2: the admin confirmed — write the server bundle.
+async function _serverBackupApply() {
+  var bundle = _pendingServerBackup;
   if (!bundle) return;
-  var status = document.getElementById('ms-backup-status');
-  var overwrite = _backupOverwrite();
-  if (status) status.textContent = t('working');
+  var overwrite = _cbChecked('ms-server-overwrite');
+  _setBackupStatus('ms-server-status', 'working');
   try {
     await manageFetch('/manage/backup', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(Object.assign({}, bundle, { action: 'apply', overwrite: overwrite })),
     });
   } catch (e) {}
-  // Per-browser: preferences (whole-replace of known keys), bookmarks + history
-  // (merged, or replaced under overwrite).
-  if (bundle.preferences && typeof bundle.preferences === 'object') {
-    Object.keys(bundle.preferences).forEach(function(k) {
-      if (_PREF_KEYS.indexOf(k) === -1) return;  // ignore unknown/foreign keys
-      try { localStorage.setItem(k, bundle.preferences[k]); } catch (e) {}
-    });
-  }
-  if (Array.isArray(bundle.bookmarks)) {
-    _setStorageJSON(SK.BOOKMARKS, _mergeByKey(_getStorageJSON(SK.BOOKMARKS, []), bundle.bookmarks, _bookmarkKey, overwrite).list);
-  }
-  if (Array.isArray(bundle.history)) {
-    _setStorageJSON(SK.BROWSE_HISTORY, _mergeByKey(_getStorageJSON(SK.BROWSE_HISTORY, []), bundle.history, _bookmarkKey, overwrite).list);
-  }
-  if (status) status.textContent = t('backup_imported');
-  _pendingBackup = null;
+  _setBackupStatus('ms-server-status', 'backup_imported');
+  _pendingServerBackup = null;
   // Library: offer to re-seed any ZIMs the backup lists but we don't have.
   _renderMissingZims(bundle.library || []);
 }
 
 async function _renderMissingZims(library) {
-  var box = document.getElementById('ms-backup-import');
+  var box = document.getElementById('ms-server-import');
   if (!box) return;
   box.innerHTML = '';
   if (!Array.isArray(library) || !library.length) return;
