@@ -121,3 +121,76 @@ def build_wiki_fixture_zim(path: str) -> str:
         creator.add_metadata("Description", "tiny wiki fixture")
     assert os.path.exists(path)
     return path
+
+
+class _MediaItem(Item):
+    """A media entry (video/audio) with arbitrary bytes — including zero, to
+    stand in for a broken/partial scrape's empty placeholder."""
+
+    def __init__(self, path: str, mimetype: str, content: bytes):
+        super().__init__()
+        self._path = path
+        self._mimetype = mimetype
+        self._content = content
+
+    def get_path(self) -> str:
+        return self._path
+
+    def get_title(self) -> str:
+        return ""
+
+    def get_mimetype(self) -> str:
+        return self._mimetype
+
+    def get_contentprovider(self) -> ContentProvider:
+        return _StringProvider(self._content)
+
+    def get_hints(self) -> dict:
+        return {Hint.FRONT_ARTICLE: False}
+
+
+def build_empty_text_fixture_zim(path: str) -> str:
+    """Write a ZIM that opens fine and has entries, but every text/html article
+    is 0-byte — the media-free shape of a broken scrape. The health check's
+    text-sanity sampler must flag it even though the media sampler finds nothing.
+    Returns the path."""
+    articles = [
+        ("A/Alpha", "Alpha", b""),
+        ("A/Bravo", "Bravo", b""),
+        ("A/Charlie", "Charlie", b""),
+    ]
+    with Creator(path).config_indexing(True, "eng") as creator:
+        creator.set_mainpath("A/Alpha")
+        for p, t, h in articles:
+            creator.add_item(_Article(p, t, h))
+        creator.add_metadata("Title", "Empty Scrape")
+        creator.add_metadata("Language", "eng")
+        creator.add_metadata("Description", "empty-article fixture")
+    assert os.path.exists(path)
+    return path
+
+
+def build_media_fixture_zim(path: str) -> str:
+    """Write a ZIM with one article, one real video, and one ZERO-BYTE video.
+
+    Mirrors the partial-scrape shape (e.g. ted_en_technology_2023-09: real
+    .webm alongside 0-byte .mp4 placeholders) so the health check's media
+    sampler has a genuine empty media entry to flag. Returns the path."""
+    with Creator(path).config_indexing(True, "eng") as creator:
+        creator.set_mainpath("A/Talks")
+        creator.add_item(
+            _Article(
+                "A/Talks",
+                "Talks",
+                b"<html><body><h1>Talks</h1></body></html>",
+            )
+        )
+        creator.add_item(
+            _MediaItem("videos/1/video.webm", "video/webm", b"\x1aE\xdf\xa3real")
+        )
+        creator.add_item(_MediaItem("videos/2/video.webm", "video/webm", b""))
+        creator.add_metadata("Title", "Test Talks")
+        creator.add_metadata("Language", "eng")
+        creator.add_metadata("Description", "media fixture")
+    assert os.path.exists(path)
+    return path
