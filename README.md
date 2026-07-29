@@ -1,7 +1,7 @@
 # Zimi
 
 [![CI](https://github.com/epheterson/Zimi/actions/workflows/ci.yml/badge.svg)](https://github.com/epheterson/Zimi/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-1042%20passing-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/tests-1244%20passing-brightgreen)](#)
 [![Lighthouse Accessibility](https://img.shields.io/badge/Lighthouse%20a11y-100%2F100-success?logo=lighthouse&logoColor=white)](docs/plans/2026-04-26-accessibility.md)
 [![WCAG 2.1 AA](https://img.shields.io/badge/WCAG%202.1-AA-blue)](docs/plans/2026-04-26-accessibility.md)
 [![i18n](https://img.shields.io/badge/i18n-10%20languages-blueviolet)](#languages)
@@ -19,6 +19,7 @@ A modern experience for your ZIM files.
 - **Search that hits everything.** One query, every source, 100M+ articles, the right answer on top. Fast.
 - **Multilingual.** Switch any article into any language it has. Ten UI languages built in.
 - **A real library.** 1,000+ archives one click away, auto-updates, collections, batch downloads, bookmarks and history.
+- **Yours or everyone's.** Serve the whole library openly, limit anonymous visitors to a chosen set of ZIMs, or require sign-in — with named accounts and per-ZIM access lists on top.
 - **Your own network.** Your machines find each other and pass ZIMs around at LAN speed, no internet needed.
 - **A good citizen.** Downloads arrive over BitTorrent and seed back to the Kiwix network. One switch makes you a full mirror.
 - **Fresh daily.** Picture of the Day, On This Day, a word, a quote, a comic, a live almanac sky. All computed locally, forever.
@@ -139,6 +140,7 @@ Most people set nothing: every setting below has a sensible default or lives in 
 | `ZIM_DIR` | `/zims` | Path to ZIM files (scanned for `*.zim` on startup) |
 | `ZIMI_DATA_DIR` | `/config` (Docker) or `$ZIM_DIR/.zimi` | Cache, indexes, and settings. Mount separately in Docker. |
 | `ZIMI_MANAGE_PASSWORD` | _(none)_ | Protect library management |
+| `ZIMI_PUBLIC_ACCESS` | `open` | What an anonymous visitor sees: `open` (whole library), `limited` (an admin-chosen allowlist), or `private` (sign-in required). Also a UI setting; the env var wins when set. |
 | `ZIMI_BT` | `on` | BitTorrent: `off`, or `on,port=6881,ratio=2,up=2048,seed=on,mirror=off,upnp=on,dht=on,active=4,conns=200`. `seed`, `upnp`, and `dht` default on. `active` caps concurrent downloads (the rest queue; governs HTTP too — legacy `ZIMI_MAX_CONCURRENT_DOWNLOADS` still works), `conns` is the global peer-connection limit. Fields you set are locked in the UI; fields you leave out stay UI-controlled. `ratio=0` means never seed. |
 | `ZIMI_NEARBY` | `off` | LAN sharing: `off`, or `on,name=my-zimi,public=off,ip=192.168.1.20`. Controls serving *and* fetching between your Zimi devices. Set `ip=` to your host's LAN address when running Docker in bridge mode. |
 

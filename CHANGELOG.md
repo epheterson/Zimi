@@ -5,6 +5,141 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.1] - 2026-07-28
+
+A polish-and-hardening release on top of the Community Edition. The headline is
+access control: a Zimi server can now be open, limited to a chosen set of ZIMs,
+or sign-in-required — with the security model tightened end to end so private
+really means private. "Did you mean?" grows up into the coverage 1.8.0 promised,
+"sections" become "Categories", light mode gets a real contrast pass, and
+downloads gain a nightly window and bandwidth caps.
+
+### Added
+
+- **Public-access modes — open / limited / private.** An anonymous (not
+  signed-in) visitor now sees one of three things, set by the admin: the whole
+  library (**open**, the default and the legacy behaviour), a chosen allowlist
+  of ZIMs (**limited**), or a **sign-in-required** gate (**private**). Anonymous
+  simply gets an allow-set instead of the all-access sentinel, so every existing
+  choke point (`get_zim_files` / `list_zims` / `zim_allowed` / the search-cache
+  key) filters it with no new leak surface. Admin-only `GET`/`POST
+  /manage/public-access`, an `ZIMI_PUBLIC_ACCESS` env override, and a picker in
+  the Users pane. A corrupt policy file fails **closed** to private.
+- **Per-user server-side data.** A signed-in named user can save their
+  bookmarks, history and preferences to their own server account (`/userdata`
+  GET/POST), stored per-user under `ZIMI_DATA_DIR/userdata/`. The blob is gated
+  to the **session** user — a user can only ever touch their own data; an
+  anonymous or admin-without-a-named-user visitor keeps everything in the
+  browser as before. Casefolded keys, size-capped, path-traversal refused.
+- **Backup & export hub, rebuilt as two cards.** "**My data**" (this browser's
+  bookmarks / history / preferences) and "**Server backup**" (the admin's
+  library, collections and layout, plus every user's server-side data) are now
+  clearly separated, each with its own Export and Import. Imports **merge** by
+  default (union by identity, incoming wins) via a two-step preview→apply, with
+  an overwrite escape hatch, and are **scope-validated** so a My-data bundle
+  can't be applied on the Server card or vice-versa. Signed-in users get
+  Save-to-server / Restore-from-server for their own data.
+- **Scheduled downloads.** An optional nightly window (server-local time,
+  overnight-spanning) holds downloads started outside it as `scheduled` and
+  releases them when the window opens, with a per-download **start-now**
+  override. Configurable in the UI or via `ZIMI_DL_WINDOW`.
+- **Download bandwidth caps.** A shared token-bucket throttle paces all
+  concurrent HTTP pulls to a single global **download** cap (N streams sum to
+  the cap, not N × the cap); the cap is the same number as the BitTorrent down
+  limit. An **upload** cap too, plus bulk **Pause / Resume / Delete-all**
+  controls over the download queue.
+- **BitTorrent tunables.** Max concurrent downloads (`active`) and the global
+  peer-connection limit (`conns`) are now adjustable in Settings and via
+  `ZIMI_BT`; the connection limit lands on the session at startup and can be
+  changed live.
+- **"Did you mean?" — the widening 1.8.0 promised.** The vocabulary now uses
+  lossy-counting eviction plus stride sampling, so words spread thin across many
+  titles (mitochondria, photosynthesis) survive the build instead of being
+  dropped; a trigram index adds **distance-2** corrections for long words
+  (`fotosynthesis` → `photosynthesis`); a frequency-ratio guard corrects a
+  common-typo that is itself in the vocabulary (`einstien` → `einstein`) while
+  leaving genuinely common words alone; and the vocabulary is persisted to disk
+  and reloaded (invalidated by index changes or a builder-version bump) so it
+  isn't rescanned every boot. Still fully offline and time-budgeted.
+- **App theme switch — Auto / Dark / Light** for the whole UI, plus
+  **auto-darken** for raw (non-Reader-View) ZIM articles when the app is dark,
+  and a **Reader View Auto** theme that renders sepia in light mode.
+- **zimgit / PDF collections, first-class.** A `zimgit-*` collection now renders
+  as a searchable document list (title, author, size, description) instead of a
+  raw ZIM page.
+- **Video-ZIM polish** — a resume ledger that restores playback position,
+  correct sizing on mobile, and a random-video card.
+- **Almanac** — a real bright-star field in the sky scene, a **Regional /
+  Worldwide** holidays toggle, a wider city set (~500) with click-anywhere map
+  selection, its own header identity, and a larger library tap-through link map
+  (every added Q-ID dual-verified against Wikidata).
+
+### Changed
+
+- **libtorrent now installs by default** via `pip` wherever a prebuilt wheel
+  exists — CPython 3.9–3.13 on manylinux **and** musllinux (incl. aarch64),
+  macOS and Windows — marker-gated below Python 3.14 (no wheel there yet, and no
+  sdist) so a plain install never breaks on a new interpreter. Where no wheel
+  exists, Zimi runs HTTP-only and prints the one-line fix; `pip install zimi[bt]`
+  forces the attempt. The Dockerfile drops its separate libtorrent step (the
+  requirement now resolves from `requirements.txt`); Python 3.13 is added to the
+  classifiers.
+- **Reader Define** popover clamps fully to the viewport and dismisses on scroll
+  like a native menu; on touch it clears more room below the selection (away
+  from the iOS system callout) and flips above when near the top of the screen.
+- Server backup bundle bumped to **schema v3** (carries per-user server data).
+- Repo layout: desktop build entry-points moved under `desktop/`, the Playwright
+  config under `tests/`.
+
+### Fixed
+
+- **#38 — same-page `#fragment` links.** An in-page anchor in a single-page doc
+  now scrolls in place instantly; it previously routed through a full
+  `location.replace()` and hung behind the 15-second safety overlay, making
+  every anchor jump look like a 15s page load.
+- **Health report flags broken scrapes.** A ZIM that opens and reports entries
+  can still be broken — every article a 0-byte shell, or its media all empty. A
+  universal text-sanity sampler and a media sampler now catch both and demote
+  the ZIM to a warning; a stray `.zim.torrent` metadata file is surfaced as a
+  distinct info row, never as a broken ZIM.
+- **iFixit snippets.** `extract_snippet` prefers a device page's own summary
+  block over the one repeated featured-guide `<meta description>` baked into
+  every iFixit page, without regressing ZIMs (wikipedia / gutenberg / ted) whose
+  meta description *is* the right snippet.
+- **Light mode contrast pass (WCAG AA)** — toggles, badges, amber ink, and
+  disabled-field / blank-icon legibility; a redesigned, deterministic tile card;
+  and a fix for the Safari tab-switch theme flash.
+- **Move to…** stays in place when used from Settings, and its submenu clamps to
+  the viewport.
+- Raw-article horizontal overflow on narrow screens.
+- iOS input-zoom guard on the private-mode login field; the inert Cancel button
+  is hidden in the non-dismissible login gate.
+
+### Security
+
+- **Private/limited mode is fail-closed.** In private mode the request gate
+  401s every read/data endpoint that isn't on a tiny login-surface allowlist —
+  default-deny, so a newly added read endpoint is covered automatically rather
+  than leaking until someone remembers to list it. In limited mode anonymous is
+  filtered by every choke point, including the `zim_allowed` bypass paths
+  (`/languages`, `/article-languages`, almanac-links).
+- **The service worker never caches or serves stale identity endpoints.**
+  `/whoami`, `/login`, `/logout`, `/list`, `/search`, `/suggest` and `/random`
+  are now network-only. This closes two field bugs: a stale cached anonymous
+  `/whoami` that re-showed the login screen after a successful sign-in ("sign in
+  twice"), and a cached full-library `/list` that could be served to a
+  now-anonymous visitor of a private instance on a network blip.
+- **Admin session cookie.** The primary admin authenticates with a password
+  Bearer that only rides `/manage/*`; the data endpoints (`/list`, `/search`)
+  and the `/w/` reader iframe carry no Authorization header, so a private- or
+  limited-mode admin loaded an empty library and blank article frames. Login and
+  `/whoami` now mint an HttpOnly `zimi_session` admin cookie that authenticates
+  both transports. It is unforgeable, never resolves as a named user, and is
+  revoked server-side on logout and on password rotation.
+- The `zimi_session` cookie sets `Secure` only behind an HTTPS proxy (a browser
+  silently drops a Secure cookie over plain http, which is what broke logins on
+  the LAN); `HttpOnly` and `SameSite=Lax` are always present.
+
 ## [1.8.0] - 2026-07-28 — the Community Edition
 
 A release shaped by the people using Zimi: the open issues, the long-standing
