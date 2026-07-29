@@ -101,3 +101,61 @@ test('admin sign-in sticks across reload (Bearer token, not re-gated)', async ({
   expect(await page.evaluate(() => window._loginRequired)).toBeFalsy();
   await expect(page.locator('#pw-overlay.open')).toHaveCount(0);
 });
+
+// Read the server's identity + library-access as the CLIENT sees it right now,
+// through the (SW-controlled) fetch path. This is the security contract that
+// matters — not DOM text, which depends on how many ZIMs the fixture installs.
+async function serverView(page) {
+  return page.evaluate(async () => {
+    const who = await (await fetch('/whoami', { credentials: 'same-origin' })).json();
+    const listStatus = (await fetch('/list?layout=1', { credentials: 'same-origin' })).status;
+    return { role: who.role, listStatus };
+  });
+}
+
+// BUG 2 (field): "Private mode I had to sign in twice and saw nothing still."
+// A single sign-in must clear the gate AND leave the client authenticated with
+// live library access. The root cause was the service worker serving a STALE
+// anonymous /whoami after the post-login reload, which re-showed the gate and
+// left the client seeing an anonymous (empty/401) library — see
+// tests/test_sw_route_classification.py for the SW-level guard.
+test('named-user sign-in authenticates on the FIRST try (no re-gate, live access)', async ({ page }) => {
+  await page.goto(BASE);
+  await page.waitForFunction(() => window._loginRequired === true, { timeout: 8000 });
+  await page.fill('#pw-username', USER);
+  await page.fill('#pw-input', USER_PW);
+  await page.evaluate(() => submitPw());
+  // Gate must clear and STAY clear — no second prompt.
+  await expect.poll(() => page.evaluate(() => window._loginRequired), { timeout: 8000 }).toBeFalsy();
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window._loginRequired)).toBeFalsy();
+  await expect(page.locator('#pw-overlay.open')).toHaveCount(0);
+  // The client is authenticated and the library is accessible — NOT the stale
+  // anonymous view the SW used to serve after the reload.
+  const view = await serverView(page);
+  expect(view.role).toBe('user');
+  expect(view.listStatus).toBe(200);
+});
+
+// BUG 1 (field): "I set private access, logged out and saw everything." Logging
+// out must return straight to the non-dismissible gate AND cut off library
+// access. The bug was that logout dropped credentials but never re-ran the boot
+// gate, so the full library the session had already loaded stayed on screen and
+// the client still believed it was authorized.
+test('logout in private mode returns to the gate and cuts off access', async ({ page }) => {
+  await page.goto(BASE);
+  await page.waitForFunction(() => window._loginRequired === true, { timeout: 8000 });
+  await page.fill('#pw-username', USER);
+  await page.fill('#pw-input', USER_PW);
+  await page.evaluate(() => submitPw());
+  await expect.poll(() => page.evaluate(() => window._loginRequired), { timeout: 8000 }).toBeFalsy();
+  expect((await serverView(page)).role).toBe('user');
+  // Log out (userLogout reloads); the boot gate must re-show the login overlay.
+  await page.evaluate(() => userLogout());
+  await page.waitForFunction(() => window._loginRequired === true, { timeout: 8000 });
+  await expect(page.locator('#pw-overlay.open')).toBeVisible();
+  // Anonymous again: the server denies the library (401), and the client agrees.
+  const view = await serverView(page);
+  expect(view.role).toBe('anonymous');
+  expect(view.listStatus).toBe(401);
+});

@@ -67,50 +67,82 @@ async function checkVersion() {
   }
 }
 
+// Identity + auth-scoped data endpoints. Their responses vary by the
+// authenticated identity (anonymous vs named user vs admin) AND by the
+// public-access mode, so the service worker MUST NEVER cache or serve them
+// stale. Caching them leaks one identity's view to another:
+//   - a stale /whoami re-shows the login gate to a just-signed-in user (they
+//     "sign in twice"), or hides it from someone who logged out;
+//   - a cached full-library /list (or /search) served on a network blip shows
+//     the whole library to a now-anonymous visitor of a private instance.
+// These fail CLOSED: on network failure they return the offline page rather
+// than a wrong-identity cached response. Kept as a single source of truth so
+// the classification is testable (see tests/test_sw_route_classification.mjs).
+const NETWORK_ONLY_PREFIXES = ['/whoami', '/login', '/logout', '/list', '/search', '/suggest', '/random'];
+
+// Non-identity API/data (article reads, health, manage, language lists). These
+// do not expose the library index and tolerate a cached fallback when offline.
+const NETWORK_FIRST_PREFIXES = ['/read', '/health', '/manage', '/article-languages', '/languages'];
+
+function _hasPrefix(path, prefixes) {
+  for (let i = 0; i < prefixes.length; i++) {
+    if (path === prefixes[i] || path.startsWith(prefixes[i] + '/') ||
+        path.startsWith(prefixes[i] + '?')) return true;
+  }
+  return false;
+}
+
+// The single source of truth for which cache strategy a request uses. Pure
+// function of the pathname + request mode so it can be asserted directly.
+function routeStrategy(path, requestMode) {
+  if (_hasPrefix(path, NETWORK_ONLY_PREFIXES)) return 'networkOnly';
+  if (_hasPrefix(path, NETWORK_FIRST_PREFIXES)) return 'networkFirst';
+  // ZIM content: top-level navigation (reload/bookmark) needs the SPA shell so
+  // the client-side router handles the deep link; sub-resources cache-first.
+  if (path.startsWith('/w/')) {
+    return requestMode === 'navigate' ? 'navigateShell' : 'cacheFirst';
+  }
+  if (path.startsWith('/static/')) return 'staleWhileRevalidate';
+  // Root page: network-first (always serve latest after deploy).
+  if (path === '/' || requestMode === 'navigate') return 'networkFirst';
+  return 'staleWhileRevalidate';
+}
+self.routeStrategy = routeStrategy;  // test hook
+
 // Fetch strategy router
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
-  const path = url.pathname;
-
-  // API calls: network-first
-  if (path.startsWith('/search') || path.startsWith('/read') ||
-      path.startsWith('/list') || path.startsWith('/suggest') ||
-      path.startsWith('/random') || path.startsWith('/health') ||
-      path.startsWith('/manage') || path.startsWith('/article-languages') ||
-      path.startsWith('/languages')) {
-    event.respondWith(networkFirst(event.request));
-    return;
-  }
-
-  // ZIM content: top-level navigation (reload/bookmark) needs the SPA shell
-  // so the client-side router handles the deep link. Fetch from network; if
-  // offline, fall back to the cached root '/' (same SPA shell).
-  // Sub-resource requests (iframe, images, CSS) use cache-first for speed.
-  if (path.startsWith('/w/')) {
-    if (event.request.mode === 'navigate') {
+  switch (routeStrategy(url.pathname, event.request.mode)) {
+    case 'networkOnly':
+      event.respondWith(networkOnly(event.request));
+      return;
+    case 'networkFirst':
+      event.respondWith(networkFirst(event.request));
+      return;
+    case 'navigateShell':
+      // Fetch from network; if offline, fall back to the cached SPA shell '/'.
       event.respondWith(
         fetch(event.request).catch(() => caches.match('/').then(r => r || offlineResponse()))
       );
-    } else {
+      return;
+    case 'cacheFirst':
       event.respondWith(cacheFirst(event.request));
-    }
-    return;
-  }
-
-  // Static assets: stale-while-revalidate
-  if (path.startsWith('/static/')) {
-    event.respondWith(staleWhileRevalidate(event.request));
-    return;
-  }
-
-  // Root page: network-first (always serve latest after deploy)
-  // Favicons/other assets: stale-while-revalidate
-  if (path === '/' || event.request.mode === 'navigate') {
-    event.respondWith(networkFirst(event.request));
-  } else {
-    event.respondWith(staleWhileRevalidate(event.request));
+      return;
+    default:
+      event.respondWith(staleWhileRevalidate(event.request));
   }
 });
+
+// Network-only: never read or write the cache. Identity/auth-scoped endpoints
+// use this so a stale response can never stand in for the live, correctly
+// authorized one. Offline → the offline page, never a wrong-identity cache hit.
+async function networkOnly(request) {
+  try {
+    return await fetch(request);
+  } catch (e) {
+    return offlineResponse();
+  }
+}
 
 // Network-first: try network, fall back to cache, then offline page
 async function networkFirst(request) {

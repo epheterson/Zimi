@@ -244,7 +244,24 @@ class TestPrivateGate(_AccessBase):
             self.assertEqual(h.responses, [], p)
 
     def test_read_endpoints_blocked_for_anonymous(self):
-        for p in ("/search", "/list", "/read", "/suggest", "/w/wiki/Foo", "/random"):
+        # The full read/data surface, not a cherry-pick: every endpoint that can
+        # reveal library contents must 401 an anonymous visitor in private mode.
+        # A new read endpoint that isn't on the tiny login allowlist lands here
+        # automatically (the gate denies everything it doesn't explicitly permit).
+        for p in (
+            "/search",
+            "/list",
+            "/read",
+            "/suggest",
+            "/w/wiki/Foo",
+            "/random",
+            "/chunks",
+            "/almanac-links",
+            "/languages",
+            "/article-languages",
+            "/snippet",
+            "/openapi.json",
+        ):
             h = _FakeHandler(private=False)
             self.assertTrue(_gate(h, p), p)
             code, body = h.last
