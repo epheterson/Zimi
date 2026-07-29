@@ -127,3 +127,6 @@ Surface this list at the start of every release cycle.
   download (zip stays for portable users) — Eric on first launch: the
   bare onedir "_internal" folder look is odd; Program Files install
   hides it. Pairs with the Authenticode cert decision.
+- Onboarding / feature tour (Eric, 2026-07-28): "In time we may need
+  readme or onboarding to show users all features and how to." A
+  first-run "What can Zimi do?" tour or Help panel — 1.9 candidate.
