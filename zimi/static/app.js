@@ -1965,19 +1965,72 @@ function _rerenderReorderPanel() {
   if (cont) cont.innerHTML = _reorderSectionsHtml();
 }
 
-// Create a new empty section (a declared category). Rejects blanks and
-// case-insensitive duplicates of an existing section, then persists to the
-// `sections` half of the layout and re-renders the panel in place.
-function _addSection() {
-  var name = prompt(t('add_section_prompt'));
-  if (name == null) return;
-  name = name.trim();
-  if (!name) return;
-  var canon = _catCanonKey(name);
-  var exists = _currentReorderSections().some(function(s) {
-    return s.key.indexOf('cat:') === 0 && _catCanonKey(s.key.slice(4)) === canon;
+// Swap the "+ Add category" pill for an inline input row (no prompt() dialog):
+// autofocus, Enter commits, Esc/blank cancels. Lives inside #ms-reorder so the
+// delegated drag/click handlers still see it, but the input's own key/blur
+// listeners own the commit/cancel flow.
+function _showAddSectionInput() {
+  var cont = document.getElementById('ms-reorder');
+  if (!cont) return;
+  var addBtn = cont.querySelector('.reorder-add');
+  if (!addBtn) return;
+  var row = document.createElement('div');
+  row.className = 'reorder-add-row';
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'reorder-add-input';
+  input.maxLength = 60;
+  input.placeholder = t('add_section_prompt');
+  input.setAttribute('aria-label', t('add_section_prompt'));
+  var ok = document.createElement('button');
+  ok.type = 'button'; ok.className = 'reorder-add-ok';
+  ok.setAttribute('aria-label', t('add_section'));
+  ok.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+  var cancel = document.createElement('button');
+  cancel.type = 'button'; cancel.className = 'reorder-add-cancel';
+  cancel.setAttribute('aria-label', t('cancel'));
+  cancel.textContent = '×';
+  row.appendChild(input); row.appendChild(ok); row.appendChild(cancel);
+  addBtn.replaceWith(row);
+  input.focus();
+  var closed = false;
+  function restore() { if (!closed) { closed = true; _rerenderReorderPanel(); } }
+  function commit() {
+    if (closed) return;
+    var name = input.value.trim();
+    if (!name) { restore(); return; }
+    var canon = _catCanonKey(name);
+    var dup = _currentReorderSections().some(function(s) {
+      return s.key.indexOf('cat:') === 0 && _catCanonKey(s.key.slice(4)) === canon;
+    });
+    if (dup) { _showToast(t('section_exists')); input.focus(); input.select(); return; }
+    closed = true;
+    _commitAddSection(name);
+  }
+  input.addEventListener('keydown', function(e) {
+    // stopPropagation so Enter/Esc commit or cancel the add only — they must not
+    // bubble to the global keydown handler and close the whole manage overlay.
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); restore(); }
   });
-  if (exists) { _showToast(t('section_exists')); return; }
+  ok.addEventListener('click', commit);
+  cancel.addEventListener('click', restore);
+  input.addEventListener('blur', function() {
+    // A blur onto the ✓/× buttons is handled by their click; otherwise a blank
+    // blur just tidies the row away. Defer so the button click lands first.
+    setTimeout(function() {
+      if (closed) return;
+      var a = document.activeElement;
+      if (a === ok || a === cancel) return;
+      if (!input.value.trim()) restore();
+    }, 120);
+  });
+}
+
+// Persist a new empty section (a declared category): append to `sections`, then
+// re-render the panel. Validation (blank/duplicate) happens in the inline input
+// flow above before we get here.
+function _commitAddSection(name) {
   _declaredSections = (_declaredSections || []).concat([name]);
   _rerenderReorderPanel();
   _saveLibraryLayout({ sections: _declaredSections }).then(function(res) {
@@ -2012,7 +2065,7 @@ function _removeSection(name) {
 // Delegated clicks inside #ms-reorder: Add section, remove an empty section, and
 // the ▲▼ keyboard fallback for drag (move a row up/down within the list).
 function _reorderClick(e) {
-  if (e.target.closest('[data-add]')) { _addSection(); return; }
+  if (e.target.closest('[data-add]')) { _showAddSectionInput(); return; }
   var rm = e.target.closest('[data-remove]');
   if (rm) { _removeSection(rm.dataset.remove); return; }
   var btn = e.target.closest('.reorder-btn');
@@ -2056,6 +2109,71 @@ function _reorderDragEnd() {
   _reorderRefreshDisabled();
   _persistReorder();
 }
+
+// ── Touch reordering (mobile) ──
+// HTML5 drag doesn't fire on touch, so the reorder rows also support a
+// long-press-drag started on the row's grip (touch-action:none in CSS lets us
+// own the gesture there instead of the list scrolling). A short hold arms the
+// drag (haptic confirm); after that, touchmove reorders the DOM live and locks
+// page scroll (preventDefault), and touchend persists. The ▲▼ keyboard fallback
+// is untouched. Delegated on document so it survives every panel re-render.
+var _reTouch = null;  // {row, startY, dragging, timer, onGrip}
+var _RE_TOUCH_HOLD_MS = 160;
+function _reorderTouchStart(e) {
+  if (e.touches.length !== 1) return;
+  var grip = e.target.closest && e.target.closest('.reorder-grip');
+  if (!grip) return;
+  var row = grip.closest('.reorder-row');
+  if (!row || !row.parentNode || !document.getElementById('ms-reorder')) return;
+  var t = e.touches[0];
+  _reTouch = { row: row, startY: t.clientY, dragging: false, timer: null };
+  _reTouch.timer = setTimeout(function() {
+    if (!_reTouch) return;
+    _reTouch.timer = null;
+    _reTouch.dragging = true;
+    row.classList.add('dragging');
+    if (navigator.vibrate) { try { navigator.vibrate(8); } catch (_) {} }
+  }, _RE_TOUCH_HOLD_MS);
+}
+function _reorderTouchMove(e) {
+  if (!_reTouch) return;
+  var t = e.touches[0];
+  if (!t) return;
+  if (!_reTouch.dragging) {
+    // Moving from the grip before the hold arms is still drag intent — start now.
+    if (Math.abs(t.clientY - _reTouch.startY) > 6) {
+      if (_reTouch.timer) { clearTimeout(_reTouch.timer); _reTouch.timer = null; }
+      _reTouch.dragging = true;
+      _reTouch.row.classList.add('dragging');
+    } else return;
+  }
+  e.preventDefault();  // scroll lock while dragging
+  var row = _reTouch.row;
+  var list = row.parentNode;
+  var rows = list.querySelectorAll('.reorder-row');
+  for (var i = 0; i < rows.length; i++) {
+    var other = rows[i];
+    if (other === row) continue;
+    var rect = other.getBoundingClientRect();
+    if (t.clientY >= rect.top && t.clientY <= rect.bottom) {
+      var after = (t.clientY - rect.top) > rect.height / 2;
+      list.insertBefore(row, after ? other.nextSibling : other);
+      break;
+    }
+  }
+}
+function _reorderTouchEnd() {
+  if (!_reTouch) return;
+  if (_reTouch.timer) clearTimeout(_reTouch.timer);
+  var wasDragging = _reTouch.dragging;
+  _reTouch.row.classList.remove('dragging');
+  _reTouch = null;
+  if (wasDragging) { _reorderRefreshDisabled(); _persistReorder(); }
+}
+document.addEventListener('touchstart', _reorderTouchStart, { passive: true });
+document.addEventListener('touchmove', _reorderTouchMove, { passive: false });
+document.addEventListener('touchend', _reorderTouchEnd);
+document.addEventListener('touchcancel', _reorderTouchEnd);
 
 // ── Render: Home ──
 function renderHome(filter) {
@@ -3618,33 +3736,40 @@ function _moveZimTo(zim, category) {
     }
   });
 
+  var CTX_SUB_W = 190;  // .ctx-sub min-width (170) + padding/border headroom
   function posMenu(x, y) {
     menu.style.left = '0'; menu.style.top = '0';
     menu.classList.add('visible');
+    var vw = window.innerWidth, vh = window.innerHeight;
     var mw = menu.offsetWidth, mh = menu.offsetHeight;
-    var finalX = Math.min(x, window.innerWidth - mw - 8);
+    // Clamp the menu fully on-screen on both axes — a long-press near the
+    // bottom or left edge of a phone must never park the menu off-viewport.
+    // Math.max(8,…) guards the near edge; the outer Math.max keeps the near
+    // edge winning when the menu is taller/wider than the viewport itself.
+    var finalX = Math.min(Math.max(8, x), Math.max(8, vw - mw - 8));
+    var finalY = Math.min(Math.max(8, y), Math.max(8, vh - mh - 8));
     menu.style.left = finalX + 'px';
-    menu.style.top = Math.min(y, window.innerHeight - mh - 8) + 'px';
-    // Flip every submenu left if the menu sits near the right edge
-    var flip = finalX + mw + 170 > window.innerWidth;
-    menu.querySelectorAll('.ctx-sub').forEach(function(sub) {
-      sub.classList.toggle('flip-left', flip);
-    });
-    // Every submenu (Move to…'s category list, Collections, …) opens flush
-    // with its trigger's TOP edge by default. A trigger sitting near the
-    // bottom of the viewport — e.g. the last row of a long Installed-tab
-    // list — would run that list off screen with no way to reach the lower
-    // items. Flip it to hang from the trigger's BOTTOM edge instead when
-    // there's more room above, and cap its height to whatever room is
-    // actually available so its own scroll (see .ctx-sub max-height in CSS)
-    // kicks in at the right size instead of just overflowing. Done once here,
-    // for every trigger in the menu, so every submenu benefits — not just
+    menu.style.top = finalY + 'px';
+    // Each submenu (Move to…'s category list, Collections, …) opens from its
+    // trigger's top-right by default. Per trigger, decide horizontal side and
+    // vertical direction from the room actually available, then clamp width and
+    // height so a long list scrolls inside the viewport rather than running off
+    // any edge — the mobile failure mode. Done for every trigger, not just
     // Move to….
     _ctxItems(menu).forEach(function(item) {
       var sub = _ctxSubOf(item);
       if (!sub) return;
       var r = item.getBoundingClientRect();
-      var spaceBelow = window.innerHeight - r.top - 8;
+      // Horizontal: open right unless it lacks room and the left side has it.
+      var rightFits = r.right + CTX_SUB_W <= vw - 8;
+      var leftFits = r.left - CTX_SUB_W >= 8;
+      var goLeft = !rightFits && leftFits;
+      sub.classList.toggle('flip-left', goLeft);
+      var availW = (goLeft ? r.left : vw - r.right) - 8;
+      sub.style.maxWidth = Math.max(140, availW) + 'px';
+      // Vertical: hang from the top edge unless the bottom lacks room and the
+      // top has more; cap height to the room so .ctx-sub's own scroll kicks in.
+      var spaceBelow = vh - r.top - 8;
       var spaceAbove = r.bottom - 8;
       var flipUp = spaceBelow < 120 && spaceAbove > spaceBelow;
       sub.classList.toggle('flip-up', flipUp);
@@ -3757,13 +3882,23 @@ function _moveZimTo(zim, category) {
     }
     return zim ? { card: card, zim: zim } : null;
   }
-  function _lpCancel() { if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; } }
+  // While a press is armed (or has fired), the card must not start a text
+  // selection under the finger. A root class flips user-select off on the cards
+  // (app.css), and the selectstart guard below blocks the range outright.
+  function _lpCancel() {
+    if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
+    document.documentElement.classList.remove('lp-armed');
+  }
+  document.addEventListener('selectstart', function(e) {
+    if (_lpTimer || _lpFired) e.preventDefault();
+  });
   document.addEventListener('touchstart', function(e) {
     if (e.touches.length !== 1) { _lpCancel(); return; }
     var hit = _lpHit(e.target);
     if (!hit) return;
     var t = e.touches[0];
     _lpStartX = t.clientX; _lpStartY = t.clientY; _lpFired = false;
+    document.documentElement.classList.add('lp-armed');
     _lpTimer = setTimeout(function() {
       _lpTimer = null; _lpFired = true; _lpCard = hit.card;
       if (navigator.vibrate) { try { navigator.vibrate(10); } catch (_) {} }
@@ -3789,6 +3924,13 @@ function _moveZimTo(zim, category) {
     if (_lpFired && _lpCard && _lpCard.contains(e.target)) {
       e.preventDefault(); e.stopPropagation(); _lpFired = false;
     }
+  }, true);
+
+  // Dismiss on scroll like a native menu: the fixed-position menu would
+  // otherwise float detached over scrolled-away content. Capture so a scroll in
+  // any nested scroller (the manage list, the home grid) closes it too.
+  window.addEventListener('scroll', function() {
+    if (menu.classList.contains('visible')) closeCtx();
   }, true);
 
   menu.addEventListener('click', function(e) {
@@ -7868,9 +8010,15 @@ function _msReorderHtml() {
       ' ondragover="_reorderDragOver(event)" ondrop="_reorderDrop(event)"' +
       ' ondragend="_reorderDragEnd(event)">' + _reorderSectionsHtml() + '</div>';
   if (reOpen) {
+    // Deep-linked open from the "Customize categories" pill: scroll the panel
+    // into view AND flash it, so the pointer lands the eye on the block (same
+    // scroll+flash the almanac holidays caption uses for its location control).
     setTimeout(function() {
       var el = document.getElementById('ms-reorder');
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ms-flash');
+      setTimeout(function() { el.classList.remove('ms-flash'); }, 1600);
     }, 60);
   }
   return h;

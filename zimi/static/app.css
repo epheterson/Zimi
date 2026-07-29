@@ -1920,6 +1920,13 @@
   .star-btn:hover { opacity: 1; color: var(--amber); transform: scale(1.2); }
   .star-btn.starred { opacity: 1; color: var(--amber); }
   .stat-card { position: relative; }
+  /* While a long-press is armed/fired (#37), suppress text selection on the
+     pressed cards so the hold opens the menu instead of highlighting a label.
+     Scoped to the armed root and only for the press duration (user-select
+     inherits to the card's children). */
+  .lp-armed .stat-card, .lp-armed .catalog-item {
+    -webkit-user-select: none; user-select: none;
+  }
   /* "New"/"Updated" flag for recently-installed or changed ZIMs (#34). In the
      full list it sits inline at the head of the title — it can never cover the
      left icon. A subtle outlined amber pill in small caps, matching the app's
@@ -1986,8 +1993,10 @@
   }
   .reorder-row-col { border-style: dashed; }
   .reorder-row.dragging { opacity: 0.5; cursor: grabbing; border-color: var(--amber); }
-  /* Grip is the drag affordance; the ▲▼ buttons remain the keyboard fallback. */
-  .reorder-grip { flex-shrink: 0; color: var(--text3); display: inline-flex; align-items: center; }
+  /* Grip is the drag affordance; the ▲▼ buttons remain the keyboard fallback.
+     touch-action:none lets the touch drag own the gesture that starts on the
+     grip (the list still scrolls when a drag starts anywhere else). */
+  .reorder-grip { flex-shrink: 0; color: var(--text3); display: inline-flex; align-items: center; cursor: grab; touch-action: none; }
   /* Type icon: collections read amber (their signature), categories muted. */
   .reorder-type { flex-shrink: 0; display: inline-flex; align-items: center; color: var(--text2); }
   .reorder-row-col .reorder-type { color: var(--amber); }
@@ -2021,6 +2030,34 @@
     background: var(--amber-glow);
   }
   .reorder-add:hover { color: var(--amber); border-color: var(--amber); background: var(--amber-glow); border-style: dashed; }
+  /* Inline "Add category" input row (replaces the old prompt() dialog). */
+  .reorder-add-row {
+    display: flex; align-items: center; gap: 6px; margin-top: 10px;
+  }
+  .reorder-add-input {
+    flex: 1; min-width: 0; padding: 8px 12px; font-size: 13px;
+    background: var(--surface); border: 1px solid var(--amber-border);
+    border-radius: var(--radius); color: var(--text); outline: none;
+  }
+  .reorder-add-input:focus { border-color: var(--amber); }
+  .reorder-add-ok, .reorder-add-cancel {
+    flex-shrink: 0; width: 30px; height: 32px; padding: 0; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); cursor: pointer;
+    transition: color 0.1s, border-color 0.1s, background 0.1s;
+  }
+  .reorder-add-ok { color: var(--amber); border-color: var(--amber-border); }
+  .reorder-add-ok:hover { border-color: var(--amber); background: var(--amber-glow); }
+  .reorder-add-cancel { color: var(--text3); font-size: 17px; }
+  .reorder-add-cancel:hover { color: var(--text); border-color: var(--text3); }
+  /* Brief highlight when the "Customize categories" pointer scrolls the panel
+     into view (mirrors the almanac holidays caption's scroll+flash). */
+  .ms-flash { animation: msFlash 1.6s ease-out; border-radius: var(--radius); }
+  @keyframes msFlash {
+    0%, 20% { box-shadow: 0 0 0 2px var(--amber), 0 0 14px var(--amber-glow); }
+    100% { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent; }
+  }
 
   /* ── Collections manage ── */
   .coll-form { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
