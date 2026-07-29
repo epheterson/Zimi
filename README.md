@@ -29,9 +29,17 @@ A modern experience for your ZIM files.
 
 ## Screenshots
 
-![Zimi walkthrough — search across sources, read, switch an article's language live, and check the almanac](screenshots/walkthrough.gif)
+| Homepage | Search Results |
+|----------|---------------|
+| ![Homepage](screenshots/homepage.png) | ![Search](screenshots/search.png) |
 
-*One offline session: browse the library, search every source at once, read in a clean reader, switch an article's language live, and glance at the almanac.*
+| Language Switching | Catalog |
+|-------------------|---------|
+| ![Languages](screenshots/language-dropdown.png) | ![Catalog](screenshots/browse-library.png) |
+
+| Sharing |
+|---------|
+| ![Sharing](screenshots/sharing.png) |
 
 ## Languages
 
