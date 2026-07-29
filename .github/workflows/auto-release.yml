@@ -95,11 +95,11 @@ jobs:
           # re-run) instead of creating a duplicate. `gh release view` finds
           # drafts by tag too.
           if gh release view "v${VERSION}" >/dev/null 2>&1; then
-            echo "Release v${VERSION} already exists — updating its notes in place"
-            gh release edit "v${VERSION}" \
-              --draft \
-              --title "Zimi v${VERSION}" \
-              --notes-file /tmp/release-notes.md
+            # A curated draft already exists (a human wrote the release body).
+            # Preserve it — do NOT overwrite the notes with the changelog
+            # extract. The tag was created above; the draft binds to it on
+            # publish. This is the one-draft-per-tag path.
+            echo "Release v${VERSION} already exists — preserving its curated notes"
           else
             gh release create "v${VERSION}" \
               --draft \
