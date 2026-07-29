@@ -80,18 +80,6 @@ function _almSetHolidayScope(scope) {
   if (typeof _drawAlmanacGrid === 'function') _drawAlmanacGrid();
 }
 
-// Scroll the location control (the Sun & Daylight world map — where a click sets
-// the location that drives holidays) into view and flash it. Target of the
-// holidays caption, so a reader who wonders "whose holidays?" lands on the
-// control that answers it.
-function _almScrollToLocation() {
-  var el = document.getElementById('almanac-sunmap');
-  if (!el) return;
-  try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { el.scrollIntoView(); }
-  el.classList.add('alm-loc-flash');
-  setTimeout(function () { el.classList.remove('alm-loc-flash'); }, 1600);
-}
-
 function _signalDelay(au) {
   var sec = au * 499;
   return { h: Math.floor(sec / 3600), m: Math.floor((sec % 3600) / 60) };
@@ -4550,34 +4538,6 @@ function _drawAlmanacGrid() {
   html += '<button class="alm-today-btn" onclick="_almToday()"' + (isCurrentMonth && isToSelected ? ' style="visibility:hidden"' : '') + '>' + t('alm_today') + '</button>';
   html += '</div>';
 
-  // Holiday scope row — lives right under the month header, tied to the grid
-  // it filters rather than floating below the day-detail panel. A two-segment
-  // pill (Regional/Worldwide) sets the scope explicitly; the caption text next
-  // to it names the region (or "every country") and doubles as a plain-hover
-  // link back to the location control. Gregorian only — the national packs are
-  // keyed to Gregorian month/day, not the other calendar systems.
-  if (_almSystem === 'gregorian') {
-    var scope = _almHolidayScope();
-    var regionName = _almRegionName(_almRegion());
-    var capText = (scope === 'worldwide')
-      ? _tLookup('alm_showing_all_countries', "Showing every country's holidays")
-      : (regionName
-        ? _tLookup('alm_showing_holidays', 'Showing {c} holidays').replace('{c}', regionName.replace(/</g, '&lt;'))
-        : _tLookup('alm_showing_worldwide', 'Showing worldwide holidays'));
-    html += '<div class="alm-hol-row">' +
-      '<div class="alm-scope-seg" role="tablist" aria-label="' +
-        _tLookup('alm_scope_toggle_hint', 'Switch between your region and every country').replace(/"/g, '&quot;') + '">' +
-        '<button type="button" class="alm-scope-btn' + (scope === 'region' ? ' active' : '') + '" role="tab" aria-selected="' + (scope === 'region') + '" onclick="_almSetHolidayScope(\'region\')">' +
-          _tLookup('alm_scope_regional', 'Regional') + '</button>' +
-        '<button type="button" class="alm-scope-btn' + (scope === 'worldwide' ? ' active' : '') + '" role="tab" aria-selected="' + (scope === 'worldwide') + '" onclick="_almSetHolidayScope(\'worldwide\')">' +
-          _tLookup('alm_scope_worldwide', 'Worldwide') + '</button>' +
-      '</div>' +
-      '<button type="button" class="alm-hol-cap" onclick="_almScrollToLocation()" title="' +
-        _tLookup('alm_holidays_follow_hint', 'Follows your location on the map').replace(/"/g, '&quot;') + '">' +
-        capText + '</button>' +
-      '</div>';
-  }
-
   // Grid
   html += '<div class="alm-grid">';
   var _dlLocale = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
@@ -4632,6 +4592,23 @@ function _drawAlmanacGrid() {
     html += '<div class="alm-cell alm-empty"></div>';
   }
   html += '</div>';
+
+  // Holiday scope pill — centered directly under the calendar grid it filters.
+  // A two-segment pill (Regional/Worldwide) sets the scope; the location
+  // affordance lives on the sun-map, so no caption here. Gregorian only — the
+  // national packs are keyed to Gregorian month/day, not other systems.
+  if (_almSystem === 'gregorian') {
+    var scope = _almHolidayScope();
+    html += '<div class="alm-hol-row">' +
+      '<div class="alm-scope-seg" role="tablist" aria-label="' +
+        _tLookup('alm_scope_toggle_hint', 'Switch between your region and every country').replace(/"/g, '&quot;') + '">' +
+        '<button type="button" class="alm-scope-btn' + (scope === 'region' ? ' active' : '') + '" role="tab" aria-selected="' + (scope === 'region') + '" onclick="_almSetHolidayScope(\'region\')">' +
+          _tLookup('alm_scope_regional', 'Regional') + '</button>' +
+        '<button type="button" class="alm-scope-btn' + (scope === 'worldwide' ? ' active' : '') + '" role="tab" aria-selected="' + (scope === 'worldwide') + '" onclick="_almSetHolidayScope(\'worldwide\')">' +
+          _tLookup('alm_scope_worldwide', 'Worldwide') + '</button>' +
+      '</div>' +
+      '</div>';
+  }
 
   // Selected day detail — full event list for the selected day
   var selCal = _jdnToCalendar(_almSystem, _almSelectedJDN);

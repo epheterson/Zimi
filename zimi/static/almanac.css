@@ -63,13 +63,12 @@
    keeps the cursor on it and hover repaints the amber border grey. */
 .alm-tz-city-card.alm-tz-city-active,
 .alm-tz-city-card.alm-tz-city-active:hover { border: 2px solid var(--amber); background: var(--amber-glow); box-shadow: 0 0 10px var(--amber-glow); padding: 5px 3px; }
-/* Holiday scope row — sits under the month header, tied to the grid it
-   filters. A recessed segmented pill (Regional/Worldwide) sets the scope
-   explicitly, amber-filled when active — same control language as the
-   app-theme picker (app.css .app-theme-seg) so the two families read as one
-   system. The caption text names the region and doubles as a plain-hover
-   link back to the location control; no underline, just a colour shift. */
-.alm-hol-row { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; font-size: 11px; }
+/* Holiday scope pill — centered directly under the calendar grid it filters.
+   A recessed segmented pill (Regional/Worldwide) sets the scope explicitly,
+   amber-filled when active — same control language as the app-theme picker
+   (app.css .app-theme-seg) so the two families read as one system. The
+   location affordance lives on the sun-map, so there is no caption. */
+.alm-hol-row { display: flex; justify-content: center; align-items: center; margin-top: 14px; }
 .alm-scope-seg { display: flex; gap: 3px; padding: 3px; border-radius: 999px; background: var(--surface2); border: 1px solid var(--border); }
 .alm-scope-btn {
   border: none; border-radius: 999px; padding: 3px 12px; font: inherit; font-size: 11px;
@@ -78,11 +77,6 @@
 }
 .alm-scope-btn:hover { color: var(--amber); }
 .alm-scope-btn.active { background: var(--amber); color: #000; font-weight: 600; }
-.alm-hol-cap { background: none; border: none; padding: 0; margin: 0; font: inherit; color: var(--text3); cursor: pointer; }
-.alm-hol-cap:hover { color: var(--amber); }
-/* Brief highlight when the holidays caption jumps focus to the location map. */
-.alm-loc-flash { animation: almLocFlash 1.6s ease-out; border-radius: 8px; }
-@keyframes almLocFlash { 0%, 20% { box-shadow: 0 0 0 2px var(--amber), 0 0 14px var(--amber-glow); } 100% { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent; } }
 .alm-tz-city-active .alm-tz-city-name { color: var(--amber); font-weight: 600; }
 .alm-tz-city-active .alm-tz-city-time { color: var(--amber); }
 .almanac-hero { display: flex; flex-direction: column; align-items: center; margin-bottom: 32px; position: relative; }
