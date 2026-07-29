@@ -916,6 +916,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path == "/whoami":
                 return self._handle_whoami()
 
+            elif parsed.path == "/userdata":
+                return self._handle_userdata_get()
+
             elif parsed.path == "/languages":
                 # Installed language summary with native names and ZIM counts
                 lang_zims = {}  # {lang_code: [zim_name, ...]}
@@ -1371,12 +1374,18 @@ class ZimHandler(BaseHTTPRequestHandler):
             return
         try:
             content_len = int(self.headers.get("Content-Length", "0"))
-            if content_len > _srv.MAX_POST_BODY:
+            # Backup import + per-user data save legitimately run large (a full
+            # server bundle carries users/history/every per-user blob); every
+            # other endpoint stays under the tight default cap.
+            body_cap = (
+                _srv.MAX_BACKUP_BODY
+                if parsed.path in ("/manage/backup", "/userdata")
+                else _srv.MAX_POST_BODY
+            )
+            if content_len > body_cap:
                 return self._json(
                     413,
-                    {
-                        "error": f"Request body too large (max {_srv.MAX_POST_BODY} bytes)"
-                    },
+                    {"error": f"Request body too large (max {body_cap} bytes)"},
                 )
             body = self.rfile.read(content_len) if content_len > 0 else b"{}"
             try:
@@ -1399,6 +1408,9 @@ class ZimHandler(BaseHTTPRequestHandler):
 
             if parsed.path == "/logout":
                 return self._handle_logout()
+
+            if parsed.path == "/userdata":
+                return self._handle_userdata_post(data)
 
             if parsed.path == "/resolve":
                 retry_after = _check_rate_limit(
@@ -2311,6 +2323,28 @@ class ZimHandler(BaseHTTPRequestHandler):
             if mode == "private":
                 resp["login_required"] = True
         return self._json(200, resp)
+
+    def _handle_userdata_get(self):
+        """GET /userdata — the signed-in user's own server-stored My-data blob
+        (bookmarks/history/preferences). Only a NAMED user resolves here; an
+        admin-without-a-user or an anonymous visitor gets 401 and keeps their
+        data in the browser."""
+        name = _users.resolve_request_user(self)
+        if not name:
+            return self._json(401, {"error": "sign in required"})
+        return self._json(200, _users.load_user_data(name))
+
+    def _handle_userdata_post(self, data):
+        """POST /userdata — save the signed-in user's own My-data blob. A user
+        can only ever touch their OWN data: the target is the session identity,
+        never a name from the body, so there is no cross-user write path."""
+        name = _users.resolve_request_user(self)
+        if not name:
+            return self._json(401, {"error": "sign in required"})
+        ok, err = _users.save_user_data(name, data if isinstance(data, dict) else {})
+        if not ok:
+            return self._json(400, {"error": err})
+        return self._json(200, {"status": "ok"})
 
     def log_message(self, format, *args):
         # Light logging: errors + slow requests. Suppress 200/304 noise.

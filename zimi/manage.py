@@ -499,15 +499,20 @@ def _apply_library_layout(overrides, order, sections=None):
 # ============================================================================
 # Backup bundle — export/import a Zimi setup.
 #
-# SCHEMA (zimi-backup, version 2). Two scopes:
+# SCHEMA (zimi-backup, version 3). Two scopes:
 #   • "device" — everyone's backup: the installed library list, collections/
 #     favorites, and the home layout. The client folds its own per-browser
 #     state (bookmarks/history/preferences) in on top; that never touches the
-#     server. This is the v1 shape plus a `scope` field.
+#     server. This is the v1 shape plus a `scope` field. (The redesigned SPA
+#     splits this: the "My data" card round-trips the per-browser half through
+#     /userdata for a signed-in user; the "Server backup" card owns everything
+#     below. The device bundle stays for API clients and back-compat.)
 #   • "server" — ADMIN-ONLY. Everything the server owns: the device fields
 #     PLUS users.json (WITH password hashes — it's the admin's own backup),
 #     the anonymous-access policy, the download schedule, the BitTorrent/
-#     sharing prefs, and the seed-intent ledger.
+#     sharing prefs, the seed-intent ledger, and (v3) the hot-cache list, the
+#     auto-update config, the server-side event history, and every named
+#     user's server-stored My-data blob (user_data).
 #
 # Import MERGES by default (union by identity, incoming wins on conflict) and
 # is a two-step: a "preview" pass returns a diff summary and applies nothing;
@@ -517,7 +522,7 @@ def _apply_library_layout(overrides, order, sections=None):
 # ============================================================================
 
 _BACKUP_SCHEMA = "zimi-backup"
-_BACKUP_SCHEMA_VERSION = 2
+_BACKUP_SCHEMA_VERSION = 3
 
 
 def _bundle_scope(data):
@@ -563,6 +568,7 @@ def _build_backup_bundle(scope="device"):
 
         sched = _lib._load_download_schedule()
         mode, allow, _ = _users._load_access()
+        au_enabled, au_freq = _lib._load_auto_update_config()
         bundle["scope"] = "server"
         bundle["users"] = _users._load_users()  # WITH hashes — admin's own backup
         bundle["public_access"] = {"mode": mode, "allowlist": allow}
@@ -575,6 +581,13 @@ def _build_backup_bundle(scope="device"):
         }
         bundle["bt_prefs"] = p2p.all_prefs()
         bundle["seed_intents"] = _lib.seed_ledger_snapshot()
+        # v3 additions — the rest of what a full restore needs to resurrect an
+        # instance: the hot-cache list, the auto-update config, the server-side
+        # event history, and every named user's server-stored My-data blob.
+        bundle["hot_zims"] = _srv.get_hot_zims()
+        bundle["auto_update"] = {"enabled": au_enabled, "frequency": au_freq}
+        bundle["history"] = _srv._load_history()
+        bundle["user_data"] = _users.all_user_data()
     return bundle
 
 
@@ -828,9 +841,63 @@ def _plan_server_scope(data, overwrite, plan, preview):
             ("seed_intents", lambda i=intents: _lib.restore_seed_intents(i, overwrite))
         )
 
+    # v3 server state — hot list, auto-update, history, per-user data.
+    hot = data.get("hot_zims")
+    if isinstance(hot, list):
+        # Env-locked hot list (ZIMI_HOT_ZIMS) is authoritative — never clobber it.
+        if "ZIMI_HOT_ZIMS" not in os.environ:
+            if hot != _srv.get_hot_zims():
+                settings_changed.append("hot_zims")
+            plan.append(
+                (
+                    "hot_zims",
+                    lambda h=[s for s in hot if isinstance(s, str)]: _srv.set_hot_zims(
+                        h
+                    ),
+                )
+            )
+
+    au = data.get("auto_update")
+    if isinstance(au, dict) and "enabled" in au and "frequency" in au:
+        # Env-locked auto-update (ZIMI_AUTO_UPDATE) wins — skip the restore.
+        if not getattr(_srv, "_auto_update_env_locked", False):
+            cur_en, cur_fr = _lib._load_auto_update_config()
+            if bool(au["enabled"]) != cur_en or au["frequency"] != cur_fr:
+                settings_changed.append("auto_update")
+            plan.append(("auto_update", lambda a=au: _restore_auto_update(a)))
+
+    history = data.get("history")
+    if isinstance(history, list):
+        preview["history"] = {"events": len(history)}
+        plan.append(("history", lambda h=history: _restore_history(h, overwrite)))
+
+    ud = data.get("user_data")
+    if isinstance(ud, dict):
+        preview["user_data"] = {"users": len(ud)}
+        plan.append(("user_data", lambda u=ud: _users.restore_user_data(u, overwrite)))
+
     if settings_changed:
         preview["settings"] = settings_changed
     return None
+
+
+def _restore_auto_update(au):
+    from zimi import library as _lib
+
+    enabled, freq = bool(au.get("enabled")), au.get("frequency", "weekly")
+    _lib._save_auto_update_config(enabled, freq)
+    # Reflect into the live server namespace so /manage/status reads true without
+    # a restart (the loop reads these via _srv — see library._auto_update_loop).
+    _srv._auto_update_enabled = enabled
+    _srv._auto_update_freq = freq
+
+
+def _restore_history(entries, overwrite):
+    """Restore server-side event history. Replace when overwrite; otherwise fill
+    only when the current log is empty (a resurrected instance) so a normal merge
+    into a running server never duplicates or reorders its real event stream."""
+    if overwrite or not _srv._load_history():
+        _srv._save_history(entries)
 
 
 def _restore_schedule(sched):

@@ -456,6 +456,11 @@ MAX_SERVE_BYTES = (
     50 * 1024 * 1024
 )  # 50 MB — refuse to serve entries larger than this (prevents OOM)
 MAX_POST_BODY = 65536  # max bytes accepted in POST requests (64KB — handles ~500 URLs for batch resolve)
+# Backup bundles and per-user data blobs (bookmarks/history/preferences) are the
+# one class of POST that legitimately runs large — a full-server backup carries
+# users, history and every per-user blob. They get their own ceiling so the tight
+# 64 KB cap keeps guarding every other endpoint.
+MAX_BACKUP_BODY = 8 * 1024 * 1024  # 8 MB — backup import + /userdata save
 _BYTES_PER_GB = 1024**3
 
 
@@ -654,6 +659,14 @@ def _load_history():
         # look like data loss. Log so the real problem stays visible.
         log.warning("Could not read history file, returning empty: %s", e)
     return []
+
+
+def _save_history(entries):
+    """Replace the persistent event history with ``entries`` (capped, newest
+    first). Used by the full-server backup restore. Thread-safe."""
+    with _history_lock:
+        clean = [e for e in entries if isinstance(e, dict)][:_HISTORY_MAX]
+    _atomic_write_json(_history_file_path(), clean)
 
 
 def _append_history(event):

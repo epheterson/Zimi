@@ -387,6 +387,11 @@ def test_build_server_bundle_includes_hashes_and_policy(monkeypatch, tmp_path):
     assert bundle["schedule"]["upload_restrict"] is True
     assert bundle["bt_prefs"]["seed"] is False
     assert "wikipedia_en_2026.zim" in bundle["seed_intents"]
+    # v3 additions — the rest of a full-restore's coverage.
+    assert isinstance(bundle["hot_zims"], list)
+    assert set(bundle["auto_update"]) == {"enabled", "frequency"}
+    assert isinstance(bundle["history"], list)
+    assert isinstance(bundle["user_data"], dict)
 
 
 def test_device_bundle_has_no_server_state(monkeypatch, tmp_path):
@@ -394,7 +399,17 @@ def test_device_bundle_has_no_server_state(monkeypatch, tmp_path):
     _seed_server_state(monkeypatch, tmp_path)
     bundle = manage._build_backup_bundle()  # device
     assert bundle["scope"] == "device"
-    for k in ("users", "public_access", "schedule", "bt_prefs", "seed_intents"):
+    for k in (
+        "users",
+        "public_access",
+        "schedule",
+        "bt_prefs",
+        "seed_intents",
+        "hot_zims",
+        "auto_update",
+        "history",
+        "user_data",
+    ):
         assert k not in bundle
 
 
@@ -466,3 +481,86 @@ def test_device_bundle_ignores_stray_server_keys(monkeypatch, tmp_path):
     from zimi import users as _users
 
     assert "mallory" not in _users._load_users()
+
+
+# ── v3 server state: hot list, auto-update, history, per-user data round-trip ──
+
+
+def test_server_restore_roundtrips_v3_fields(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    _seed_server_state(monkeypatch, tmp_path)
+    monkeypatch.setattr(manage, "admin_kind", lambda h: "primary")
+    monkeypatch.setattr(
+        server,
+        "_AUTO_UPDATE_CONFIG",
+        str(tmp_path / "data" / "auto_update.json"),
+        raising=False,
+    )
+    monkeypatch.delenv("ZIMI_HOT_ZIMS", raising=False)
+    monkeypatch.delenv("ZIMI_AUTO_UPDATE", raising=False)
+    monkeypatch.setattr(server, "_auto_update_env_locked", False, raising=False)
+    from zimi import library as _lib
+
+    status, body = _apply(
+        _Handler(),
+        {
+            "schema": "zimi-backup",
+            "scope": "server",
+            "hot_zims": ["wikipedia_en", "gutenberg"],
+            "auto_update": {"enabled": True, "frequency": "daily"},
+            "history": [{"event": "download", "name": "x"}],
+            "user_data": {
+                "kid": {"version": 1, "bookmarks": [{"zim": "a", "path": "b"}]}
+            },
+        },
+    )
+    assert status == 200
+    for k in ("hot_zims", "auto_update", "history", "user_data"):
+        assert k in body["applied"]
+    assert server.get_hot_zims() == ["wikipedia_en", "gutenberg"]
+    assert _lib._load_auto_update_config() == (True, "daily")
+    assert server._load_history() == [{"event": "download", "name": "x"}]
+    from zimi import users as _users
+
+    assert _users.load_user_data("kid")["bookmarks"] == [{"zim": "a", "path": "b"}]
+
+
+def test_history_restore_preserves_running_log_without_overwrite(monkeypatch, tmp_path):
+    """Merge-mode restore into a NON-empty history is a no-op (a live server's
+    real event stream is never duplicated/reordered); overwrite replaces it."""
+    _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(manage, "admin_kind", lambda h: "primary")
+    server._save_history([{"event": "existing"}])
+    _apply(
+        _Handler(),
+        {
+            "schema": "zimi-backup",
+            "scope": "server",
+            "history": [{"event": "incoming"}],
+        },
+    )
+    assert server._load_history() == [{"event": "existing"}]  # unchanged
+    _post(
+        _Handler(),
+        {
+            "action": "apply",
+            "overwrite": True,
+            "schema": "zimi-backup",
+            "scope": "server",
+            "history": [{"event": "incoming"}],
+        },
+    )
+    assert server._load_history() == [{"event": "incoming"}]
+
+
+def test_hot_zims_env_lock_wins_over_restore(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(manage, "admin_kind", lambda h: "primary")
+    monkeypatch.setenv("ZIMI_HOT_ZIMS", "locked_zim")
+    status, body = _apply(
+        _Handler(),
+        {"schema": "zimi-backup", "scope": "server", "hot_zims": ["from_backup"]},
+    )
+    assert status == 200
+    assert "hot_zims" not in body["applied"]  # env-locked → skipped
+    assert server.get_hot_zims() == ["locked_zim"]

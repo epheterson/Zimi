@@ -316,6 +316,7 @@ def delete_user(name):
         del users[_key(name)]
         _save_users(users)
         _drop_user_sessions_locked(_key(name))
+    delete_user_data(name)  # their server-side bookmarks/history go with them
     log.info("User deleted: %s", name)
     return True, None
 
@@ -382,6 +383,155 @@ def is_admin_user(name):
     """True if ``name`` is a stored SECONDARY-admin account (role=admin)."""
     rec = _load_users().get(_key(name))
     return bool(rec) and _effective_role(rec) == "admin"
+
+
+# ============================================================================
+# Per-user data — bookmarks / history / preferences stored SERVER-SIDE per user
+# ============================================================================
+#
+# The tasteful bridge to the 1.9 full users-v2 migration: when a NAMED user is
+# signed in, their "My data" (the browser-half a device otherwise keeps only in
+# localStorage) round-trips through the server so it follows them across devices.
+# One opaque JSON doc per user under ZIMI_DATA_DIR/userdata/<casefold-key>.json,
+# atomic writes, deleted with the account. Anonymous / admin-without-a-named-user
+# never reach here — their bookmarks stay in the browser (see http.py's gate).
+
+_USERDATA_VERSION = 1
+#: Hard ceiling per blob so one account can't fill the disk (server-side twin of
+#: the client cap). Comfortably above a heavy bookmarks+history set.
+_USERDATA_MAX_BYTES = 4 * 1024 * 1024
+
+
+def _userdata_dir():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "userdata")
+
+
+def _safe_userdata_key(name):
+    """Casefold key for a user's data file, or None if it can't be a safe
+    filename. Names are validated on creation, but this is the last gate before
+    a path join, so it stays strict: no separators, no dot-only names."""
+    key = _key(name)
+    if (
+        not key
+        or key in (".", "..")
+        or os.sep in key
+        or (os.altsep and os.altsep in key)
+    ):
+        return None
+    return key
+
+
+def _userdata_path(name):
+    return os.path.join(_userdata_dir(), _safe_userdata_key(name) + ".json")
+
+
+def _empty_user_data():
+    return {
+        "version": _USERDATA_VERSION,
+        "bookmarks": [],
+        "history": [],
+        "preferences": {},
+    }
+
+
+def load_user_data(name):
+    """Return a user's stored data blob, or a fresh-empty one when none exists.
+    Caller has already authorized the requester for ``name``."""
+    if _safe_userdata_key(name) is None:
+        return _empty_user_data()
+    try:
+        import json
+
+        with open(_userdata_path(name), encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+    return _empty_user_data()
+
+
+def save_user_data(name, blob):
+    """Persist a user's data blob (bookmarks/history/preferences). Returns
+    (ok, error). Caller has already authorized the requester for ``name``."""
+    import json
+
+    if _safe_userdata_key(name) is None:
+        return False, "invalid user"
+    if not isinstance(blob, dict):
+        return False, "invalid data"
+    bookmarks = blob.get("bookmarks")
+    history = blob.get("history")
+    prefs = blob.get("preferences")
+    doc = {
+        "version": _USERDATA_VERSION,
+        "bookmarks": bookmarks if isinstance(bookmarks, list) else [],
+        "history": history if isinstance(history, list) else [],
+        "preferences": prefs if isinstance(prefs, dict) else {},
+        "updated": int(time.time()),
+    }
+    if len(json.dumps(doc)) > _USERDATA_MAX_BYTES:
+        return False, "data too large"
+    with _lock:
+        os.makedirs(_userdata_dir(), exist_ok=True)
+        _srv._atomic_write_json(_userdata_path(name), doc, indent=2)
+    return True, None
+
+
+def delete_user_data(name):
+    """Remove a user's stored data file (best-effort; a missing file is fine)."""
+    if _safe_userdata_key(name) is None:
+        return
+    try:
+        os.remove(_userdata_path(name))
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        log.warning("Could not delete user data for %s: %s", name, e)
+
+
+def all_user_data():
+    """Every per-user blob, keyed by casefold name — for the full-server backup.
+    Keys are the on-disk filenames (already casefold), so restore round-trips."""
+    import json
+
+    out = {}
+    d = _userdata_dir()
+    if not os.path.isdir(d):
+        return out
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return out
+    for fn in names:
+        if not fn.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(d, fn), encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                out[fn[: -len(".json")]] = data
+        except (ValueError, OSError):
+            pass
+    return out
+
+
+def restore_user_data(blobs, overwrite=False):
+    """Restore per-user blobs from a full-server backup. ``blobs`` is keyed by
+    casefold name (as ``all_user_data`` emits). ``overwrite`` clears every
+    existing blob first; otherwise incoming wins per user, others untouched.
+    Returns the number of user blobs written."""
+    if not isinstance(blobs, dict):
+        return 0
+    if overwrite:
+        for key in list(all_user_data().keys()):
+            delete_user_data(key)
+    written = 0
+    for key, blob in blobs.items():
+        ok, _ = save_user_data(key, blob)  # key is already casefold; _key is idempotent
+        if ok:
+            written += 1
+    return written
 
 
 # ============================================================================
