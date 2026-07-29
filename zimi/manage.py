@@ -129,6 +129,16 @@ def _set_manage_password(pw, username=None):
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(content)
     os.replace(tmp, pf)
+    # A password rotation must revoke old admin session cookies immediately (the
+    # pre-cookie model, where the Bearer WAS the password, did so implicitly). The
+    # rotating admin's own Bearer still authenticates and /whoami re-mints a fresh
+    # cookie, so this never locks out the person making the change.
+    try:
+        from zimi import users as _users
+
+        _users.drop_admin_sessions()
+    except Exception:
+        pass
     log.info("Manage password %s", "set" if pw else "cleared")
 
 

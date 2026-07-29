@@ -798,6 +798,16 @@ def drop_session(token):
             _save_sessions(sessions)
 
 
+def drop_admin_sessions():
+    """Invalidate every primary-admin session (see ``create_admin_session``).
+    Called when the manage password changes or clears so an old admin cookie
+    can't outlive a password rotation — matching the pre-cookie model where the
+    admin's Bearer WAS the password and changing it locked out the old one
+    immediately."""
+    with _lock:
+        _drop_user_sessions_locked(_ADMIN_SESSION_USER)
+
+
 def _drop_user_sessions_locked(key):
     """Remove every session for a casefold user key. Caller holds _lock."""
     sessions = _load_sessions()

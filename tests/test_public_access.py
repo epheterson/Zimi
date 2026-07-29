@@ -650,6 +650,14 @@ class TestAdminSessionToken(_AccessBase):
         self.assertEqual(h.last[1].get("role"), "admin")
         self.assertFalse(h.set_cookies, "no re-mint when a live admin cookie exists")
 
+    def test_password_rotation_revokes_admin_sessions(self):
+        # An old admin cookie must NOT outlive a password change — the pre-cookie
+        # model (Bearer == password) revoked instantly; this preserves that.
+        tok = users.create_admin_session()
+        self.assertTrue(users.is_admin_session(tok))
+        manage._set_manage_password("newpw")
+        self.assertFalse(users.is_admin_session(tok))
+
     def test_logout_drops_admin_session_server_side(self):
         tok = users.create_admin_session()
         self.assertTrue(users.is_admin_session(tok))
