@@ -752,11 +752,14 @@ function _applyUserSession(name) {
 function userLogout() {
   fetch('/logout', { method: 'POST', credentials: 'same-origin' }).catch(function(){}).then(function() {
     _userSession = null;
-    // Reload so the boot gate re-runs from a clean anonymous state. In private
-    // mode it re-shows the non-dismissible login gate (never a stale library);
-    // in open/limited it reboots into the anonymous/filtered view. An in-place
-    // refetch would strand a private instance on an empty home with no gate.
-    location.reload();
+    // Reboot at the ROOT so the boot gate re-runs from a clean anonymous state.
+    // In private mode it re-shows the non-dismissible login gate (never a stale
+    // library); in open/limited it reboots into the anonymous/filtered view. We
+    // navigate to '/' (not reload the current URL): the user may be on a /w/
+    // article that, reloaded anonymous in private mode, renders raw 401 JSON
+    // instead of the gate. An in-place refetch would strand a private instance
+    // on an empty home with no gate.
+    location.replace('/');
   });
 }
 
@@ -914,14 +917,16 @@ function manageLogout() {
   _manageToken = '';
   _clearManageToken();
   // Drop any server-side session too — a SECONDARY admin authenticates to a
-  // session cookie, not just the client-held token — then reload so the boot
-  // gate re-runs anonymous. Without the reload the admin keeps the full library
-  // they already loaded on screen: in private mode that reads as "logged out
-  // but still see everything" even though the server now 401s every anonymous
-  // read. Reload makes the client view match the server policy for every mode.
+  // session cookie, not just the client-held token — then reboot at the ROOT so
+  // the boot gate re-runs anonymous. Without the reboot the admin keeps the full
+  // library they already loaded on screen: in private mode that reads as "logged
+  // out but still see everything" even though the server now 401s every
+  // anonymous read. We navigate to '/' (not reload the current URL): an admin
+  // can now open articles in private mode, so the current URL may be a /w/
+  // article that, reloaded anonymous, renders raw 401 JSON instead of the gate.
   fetch('/logout', { method: 'POST', credentials: 'same-origin' })
     .catch(function(){})
-    .then(function() { location.reload(); });
+    .then(function() { location.replace('/'); });
 }
 
 // Element that had focus before the modal opened; we restore focus
