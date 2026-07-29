@@ -2479,9 +2479,17 @@ function renderHome(filter) {
   // Preserve existing discover content to avoid flash (pop-in → disappear → reappear)
   // But invalidate if the language changed (cached HTML has baked-in translated strings)
   var _prevDiscoverHtml = null;
+  var _prevDiscoverScroll = 0;
   if (_showDiscover) {
     var _prevRow = document.getElementById('discover-row');
-    if (_prevRow && _prevRow.innerHTML && _prevRow.dataset.lang === _currentLang) _prevDiscoverHtml = _prevRow.innerHTML;
+    if (_prevRow && _prevRow.innerHTML && _prevRow.dataset.lang === _currentLang) {
+      _prevDiscoverHtml = _prevRow.innerHTML;
+      // scrollLeft is a live DOM property, not serialized by innerHTML — capture
+      // it so the strip keeps its place across a home re-render (e.g. Back from
+      // an opened discover card) instead of snapping to the first card.
+      var _prevScrollEl = _prevRow.querySelector('.discover-scroll');
+      if (_prevScrollEl) _prevDiscoverScroll = _prevScrollEl.scrollLeft;
+    }
   }
   output.innerHTML = h;
   _placeViewToggle();
@@ -2489,7 +2497,13 @@ function renderHome(filter) {
     if (_prevDiscoverHtml) {
       // Restore cached discover DOM — avoid re-fetch flash
       var newRow = document.getElementById('discover-row');
-      if (newRow) { newRow.innerHTML = _prevDiscoverHtml; newRow.dataset.lang = _currentLang; }
+      if (newRow) {
+        newRow.innerHTML = _prevDiscoverHtml; newRow.dataset.lang = _currentLang;
+        if (_prevDiscoverScroll) {
+          var _newScrollEl = newRow.querySelector('.discover-scroll');
+          if (_newScrollEl) _newScrollEl.scrollLeft = _prevDiscoverScroll;
+        }
+      }
     } else {
       _loadDiscover();
     }
@@ -2517,8 +2531,10 @@ function _zimLangBadgeInfo(z, force) {
 // Inline language badge (search + full list rows). Full language name in the
 // tooltip; the visible label is the short code so identically-named ZIMs in
 // different languages are distinguishable at a glance. `force` forwards to
-// _zimLangBadgeInfo (see there).
-function _langBadge(z, force) {
+// _zimLangBadgeInfo (see there). `full` swaps the visible label to the native
+// full language name ("Français", not "FR") — used by the compact tiles, where
+// the chip owns its own line and has the width to spell the language out.
+function _langBadge(z, force, full) {
   var info = _zimLangBadgeInfo(z, force);
   if (!info) return '';
   if (info.multi) {
@@ -2526,6 +2542,11 @@ function _langBadge(z, force) {
       info.multi + ' ' + tH('language').toLowerCase() + '</span>';
   }
   var name = _langDisplayName(z.language) || info.code;
+  if (full) {
+    var lc = (z.language || '').toLowerCase().slice(0, 2);
+    var native = _NATIVE_LANG_NAMES[lc] || name;
+    return '<span class="lang-badge lang-badge-full" title="' + escAttr(name) + '">' + esc(native) + '</span>';
+  }
   return '<span class="lang-badge" title="' + escAttr(name) + '">' + esc(info.code) + '</span>';
 }
 
@@ -2673,7 +2694,8 @@ function _placeViewToggle() {
 function renderCardGrid(items, showStars, showCategory) {
   if (!items || !items.length) return '';
   const favs = (collectionsCache && collectionsCache.favorites) || [];
-  const gridCls = _getLibraryView() === 'tiles' ? 'stats-grid tiles' : 'stats-grid';
+  const isTiles = _getLibraryView() === 'tiles';
+  const gridCls = isTiles ? 'stats-grid tiles' : 'stats-grid';
   return '<div class="' + gridCls + '">' + items.map(z => {
     const icon = z.has_icon
       ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
@@ -2683,7 +2705,7 @@ function renderCardGrid(items, showStars, showCategory) {
       ? '<button class="star-btn' + (isFav ? ' starred' : '') + '" onclick="event.stopPropagation();toggleFavorite(\'' + escAttr(z.name) + '\')" title="' + escAttr(isFav ? t('remove_from_favorites') : t('add_to_favorites')) + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
       : '';
     const catPrefix = showCategory && z.category ? '<span class="card-cat">' + esc(z.category) + '</span> &middot; ' : '';
-    const badge = _langBadge(z);
+    const badge = _langBadge(z, false, isTiles);
     const qidIcon = z.has_qids
       ? '<span class="qid-badge" title="' + escAttr(t('cross_lang_linking')) + '"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l-3 3 3 3"/><path d="M1 9h10"/><path d="M12 10l3-3-3-3"/><path d="M15 7H5"/></svg></span>'
       : '';
@@ -6629,6 +6651,7 @@ function switchManageTab(tab) {
     renderCollectionsTab();
   } else if (tab === 'history') {
     q.placeholder = t('search_placeholder');
+    _histShowAll = false;  // re-entering the tab defaults back to the capped view
     renderHistoryTab();
   } else if (tab === 'activity') {
     q.placeholder = t('search_placeholder');
@@ -6803,6 +6826,12 @@ function _historyZimInfo(ev) {
   return null;
 }
 
+// Activity tab render cap. History is newest-first and server-capped at 500;
+// showing all of it makes the tab scroll forever, so render the most recent
+// _HIST_RENDER_CAP and expose the rest behind a "Show all" expander (per-view
+// flag, reset on tab re-entry via switchManageTab so it defaults back to capped).
+var _HIST_RENDER_CAP = 50;
+var _histShowAll = false;
 async function renderHistoryTab() {
   const el = document.getElementById('manage-history');
   if (!el) return;
@@ -6810,11 +6839,13 @@ async function renderHistoryTab() {
   try {
     const res = await manageFetch('/manage/history');
     const data = await res.json();
-    const events = data.history || [];
-    if (!events.length) {
+    const allEvents = data.history || [];
+    if (!allEvents.length) {
       el.innerHTML = '<div class="empty"><p>' + tH('no_history') + '</p><p class="hint">' + tH('history_hint') + '</p></div>';
       return;
     }
+    const capped = !_histShowAll && allEvents.length > _HIST_RENDER_CAP;
+    const events = capped ? allEvents.slice(0, _HIST_RENDER_CAP) : allEvents;
     // Group by day
     const days = {};
     for (const ev of events) {
@@ -6860,11 +6891,18 @@ async function renderHistoryTab() {
       }
       h += '</div>';
     }
+    if (capped) {
+      h += '<button class="dl-clear-btn hist-show-all" onclick="_histRevealAll()">' +
+        tH('show_all_n', {n: allEvents.length}) + '</button>';
+    }
     el.innerHTML = h;
   } catch(e) {
     el.innerHTML = '<div class="empty"><p>' + tH('could_not_load') + '</p></div>';
   }
 }
+
+// "Show all (N)" expander for the activity tab — drop the render cap and repaint.
+function _histRevealAll() { _histShowAll = true; renderHistoryTab(); }
 
 // ── Stats tab (merged server stats + usage) ──
 async function renderActivityTab() {
@@ -10093,6 +10131,18 @@ async function _refreshDownloadsInner(useCache) {
       pill('completed', tH('downloads_completed'), completedDls.length) +
       (seedingTorrents.length ? pill('seeding', tH('seeding_tab'), seedingTorrents.length) : '') +
     '</div>';
+    // Bulk controls — only meaningful with more than one download; single items
+    // have their own per-row controls. Pause/Resume all appear only when there's
+    // something in that state to act on; Delete all always confirms first.
+    if (dls.length >= 2) {
+      const pausableCount = downloadingDls.filter(d => !d.paused && !d.scheduled).length;
+      const resumableCount = dls.filter(d => d.paused).length;
+      h += '<div class="dl-bulk-bar">';
+      if (pausableCount) h += '<button class="dl-bulk-btn" onclick="pauseAllDownloads()">' + tH('dl_pause_all') + '</button>';
+      if (resumableCount) h += '<button class="dl-bulk-btn" onclick="resumeAllDownloads()">' + tH('dl_resume_all') + '</button>';
+      h += '<button class="dl-bulk-btn dl-bulk-danger" onclick="deleteAllDownloads()">' + tH('dl_delete_all') + '</button>';
+      h += '</div>';
+    }
     h += '<div class="dl-grid">';
     // Seed cards render under "Seeding" AND under "All" — All means all.
     // (With zero downloads and active seeds, All used to render blank.)
@@ -10439,6 +10489,35 @@ function pauseDownload(id, pause) {
 }
 
 function cancelDownload(id) { return _downloadAction('/manage/cancel', id); }
+
+// Bulk download controls. Download counts are small (a handful at most), so
+// fan out the existing per-item endpoints in parallel and refresh once at the
+// end rather than adding a batch endpoint. Each acts on the last-rendered list
+// (_dlLastDls); individual failures are swallowed so one bad id can't strand
+// the rest.
+function _bulkDownloadAction(path, targets) {
+  return Promise.all((targets || []).map(d => manageFetch(path, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: d.id}),
+  }).catch(() => {})));
+}
+async function pauseAllDownloads() {
+  const targets = (_dlLastDls || []).filter(d => !d.done && !d.queued && !d.scheduled && !d.paused);
+  await _bulkDownloadAction('/manage/pause', targets);
+  refreshDownloads();
+}
+async function resumeAllDownloads() {
+  const targets = (_dlLastDls || []).filter(d => d.paused);
+  await _bulkDownloadAction('/manage/resume', targets);
+  refreshDownloads();
+}
+async function deleteAllDownloads() {
+  if (!confirm(t('dl_delete_all_confirm'))) return;
+  // Cancel everything still in flight, then clear the finished rows.
+  const active = (_dlLastDls || []).filter(d => !d.done);
+  await _bulkDownloadAction('/manage/cancel', active);
+  try { await manageFetch('/manage/clear-downloads', { method: 'POST' }); } catch (e) {}
+  refreshDownloads();
+}
 
 // Override the nightly window for one scheduled item — start it now.
 function startDownloadNow(id) { return _downloadAction('/manage/download-start-now', id); }

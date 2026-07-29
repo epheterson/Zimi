@@ -104,6 +104,16 @@
   html { height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
   body { background: var(--bg); color: var(--text); min-height: 100%; padding-top: 56px; overflow: visible; }
 
+  /* Anti-flash guard. The head bootstrap stamps .theme-boot on <html> while it
+     (re)applies the theme, then removes it on the next committed paint. While it
+     is present, every element's transitions are killed so a bfcache restore /
+     tab re-activation can't animate a dark->light token flip on pills, cards,
+     and toggles (the residual Safari flash). Animations are left alone — only
+     the colour transitions cause the flash. */
+  html.theme-boot *,
+  html.theme-boot *::before,
+  html.theme-boot *::after { transition: none !important; }
+
   /* ── Accessibility ── */
   /* Visually-hide content but keep it readable for screen readers. */
   .sr-only {
@@ -852,7 +862,7 @@
   .stats-grid.tiles { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
   .stats-grid.tiles .stat-card {
     flex-direction: column; align-items: center; justify-content: flex-start;
-    gap: 8px; padding: 28px 12px 12px; text-align: center;
+    gap: 8px; padding: 20px 12px 12px; text-align: center;
   }
   .stats-grid.tiles .card-icon { align-self: center; }
   .stats-grid.tiles .card-info { align-items: center; padding-right: 0; gap: 6px; flex: 0 0 auto; }
@@ -872,10 +882,17 @@
   /* Deterministic badge layout: status chip top-left, star top-right — opposite
      corners, so they can never collide at any title length. The language chip
      flows on its own line under the title (always visible, never clipped by the
-     title clamp, never overlapping). Consistent tone with the list's inline chip. */
-  .stats-grid.tiles .new-badge { position: absolute; top: 8px; left: 8px; margin: 0; }
-  .stats-grid.tiles .star-btn { top: 6px; right: 6px; }
+     title clamp, never overlapping). Consistent tone with the list's inline chip.
+     The top band is tight (20px pad): the chips sit high enough to slightly
+     overlap the icon's top corners, which reads as intentional and reclaims a
+     few px of tile height. */
+  .stats-grid.tiles .new-badge { position: absolute; top: 6px; left: 8px; margin: 0; z-index: 1; }
+  .stats-grid.tiles .star-btn { top: 5px; right: 6px; z-index: 1; }
+  /* The chip owns its own line under the title and spells the language out in
+     full ("Français") — no letter-spacing tracking (that's for the terse code
+     form in list rows), and allow it to wrap rather than overflow the tile. */
   .stats-grid.tiles .lang-badge { margin: 0; }
+  .stats-grid.tiles .lang-badge-full { letter-spacing: 0; white-space: normal; max-width: 100%; }
   /* Compact view hides the empty (unfavorited) star — only a filled star or a
      hover (pointer devices) reveals it, so tiles aren't peppered with grey stars. */
   .stats-grid.tiles .star-btn:not(.starred) { opacity: 0; pointer-events: none; }
@@ -1183,6 +1200,12 @@
     border: 2px solid var(--text2); border-radius: 6px; background: var(--surface2);
     transition: background 0.15s, border-color 0.15s;
   }
+  /* Light theme: --surface2 is pure white, so the unchecked box vanished on the
+     near-white card. Match the fixed-toggle family — a stronger --border-strong
+     edge over a warm tinted fill — so the empty box clears the 3:1 contrast bar. */
+  :root[data-theme="light"] .catalog-grid .catalog-item .ci-select::before {
+    border-color: var(--border-strong); background: #e0dacd;
+  }
   .catalog-grid .catalog-item .ci-select:checked::before {
     border-color: var(--amber);
     background: var(--amber) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center/14px no-repeat;
@@ -1347,6 +1370,14 @@
   .dl-filter-pill {
     display: inline-flex; align-items: center; gap: 4px;
   }
+  /* Top-level bulk controls (Pause all / Resume all / Delete all). Shares the
+     download-row button shape; the danger variant flips to the error tone. */
+  .dl-bulk-bar { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px 0; }
+  .dl-bulk-btn { background: none; border: 1px solid var(--border); color: var(--text2);
+    padding: 4px 12px; border-radius: 12px; font-size: 11px; font-family: inherit; cursor: pointer;
+    transition: all 0.15s; min-height: 24px; }
+  .dl-bulk-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .dl-bulk-btn.dl-bulk-danger:hover { border-color: var(--error); color: var(--error); }
   /* background:none beats .pill.active's amber gradient (same specificity,
      later in source) — amber label on amber fill was unreadable. */
   .dl-filter-pill.active { color: var(--amber); border-color: var(--amber); background: none; font-weight: 600; }

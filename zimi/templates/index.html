@@ -30,19 +30,34 @@
      other script re-runs. -->
 <script>
 (function(){
+  var el = document.documentElement;
+  // Drop the transition-suppression guard once the themed first paint has
+  // committed (double rAF), so normal interactions still animate. A load
+  // backstop covers browsers that throttle rAF on a backgrounded/restored tab.
+  function settle(){
+    var done = false;
+    function clear(){ if (done) return; done = true; el.classList.remove('theme-boot'); }
+    requestAnimationFrame(function(){ requestAnimationFrame(clear); });
+    window.addEventListener('load', clear, { once: true });
+  }
   function apply(){
+    // Suppress theme-sensitive transitions while (re)stamping the theme so pills,
+    // cards, etc. never animate a dark->light flip — the residual Safari flash on
+    // tab return / bfcache restore, where the snapshot repaints before the token
+    // override settles. Removed again on the next committed paint.
+    el.classList.add('theme-boot');
     try {
       var m = localStorage.getItem('zimi_app_theme') || 'auto';
       var dark = m === 'dark' || (m !== 'light' && !(window.matchMedia &&
         window.matchMedia('(prefers-color-scheme: light)').matches));
       var t = dark ? 'dark' : 'light';
-      var el = document.documentElement;
       el.setAttribute('data-theme', t);
       el.style.colorScheme = t;
     } catch(e) {
-      document.documentElement.setAttribute('data-theme', 'dark');
-      document.documentElement.style.colorScheme = 'dark';
+      el.setAttribute('data-theme', 'dark');
+      el.style.colorScheme = 'dark';
     }
+    settle();
   }
   apply();
   window.addEventListener('pageshow', function(e){ if (e.persisted) apply(); });
