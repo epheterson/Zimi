@@ -67,6 +67,17 @@ _NAME_RE = re.compile(r"^[\w .\-]{1,32}$", re.UNICODE)
 
 _SESSION_TOKEN_BYTES = 32  # secrets.token_urlsafe(32) → ~43 url-safe chars
 
+#: sessions.json stores USER sessions keyed by casefold username. The PRIMARY
+#: admin is the password account, not a users.json record, so its session rides
+#: under a sentinel key that no real username can produce (names are
+#: ``[\w .\-]{1,32}`` — a NUL byte is unrepresentable). This lets the admin reuse
+#: the exact session machinery named users use (random token, hashed at rest, TTL
+#: expiry, logout drop) so header-less transports — the /w/ reader iframe and the
+#: plain-fetch data endpoints — can carry admin identity via the zimi_session
+#: cookie. Recognised by ``manage._primary_admin_authorized``; never resolves as a
+#: named user (see ``resolve_session``).
+_ADMIN_SESSION_USER = "\x00admin"
+
 #: Server-side session lifetime. The cookie carries a matching Max-Age, but that
 #: is a hint the holder controls — this is the half that actually expires a
 #: stolen token, and it bounds sessions.json instead of letting it grow one
@@ -712,9 +723,9 @@ def _session_expired(ent, now=None):
     return (now if now is not None else int(time.time())) - created > SESSION_TTL_S
 
 
-def create_session(name):
-    """Mint a random session token for a user, persist it (hashed), return the
-    plaintext token (shown once, delivered via cookie + login response)."""
+def _mint_session(user_key):
+    """Mint a random session token for a stored user key, persist it (hashed),
+    return the plaintext token. Shared by named-user and admin sessions."""
     token = secrets.token_urlsafe(_SESSION_TOKEN_BYTES)
     now = int(time.time())
     with _lock:
@@ -723,9 +734,39 @@ def create_session(name):
         # only grow by one entry between two sweeps of the same account.
         for h in [h for h, e in sessions.items() if _session_expired(e, now)]:
             del sessions[h]
-        sessions[_token_hash(token)] = {"user": _key(name), "created": now}
+        sessions[_token_hash(token)] = {"user": user_key, "created": now}
         _save_sessions(sessions)
     return token
+
+
+def create_session(name):
+    """Mint a random session token for a user, persist it (hashed), return the
+    plaintext token (shown once, delivered via cookie + login response)."""
+    return _mint_session(_key(name))
+
+
+def create_admin_session():
+    """Mint a session token for the PRIMARY admin (the password account) so
+    header-less transports carry admin identity via the zimi_session cookie: the
+    /w/ reader iframe (a browser navigation that cannot send an Authorization
+    header) and the plain-fetch data endpoints (/list, /search, …). Stored and
+    expired exactly like a user session; recognised by
+    ``manage._primary_admin_authorized`` via ``is_admin_session``."""
+    return _mint_session(_ADMIN_SESSION_USER)
+
+
+def is_admin_session(token):
+    """True if the token is a live PRIMARY-admin session (see
+    ``create_admin_session``). Fails closed: empty / unknown / expired → False.
+    As unforgeable as the password Bearer — a random token, hashed at rest."""
+    if not token:
+        return False
+    ent = _load_sessions().get(_token_hash(token))
+    return (
+        bool(ent)
+        and not _session_expired(ent)
+        and ent.get("user") == _ADMIN_SESSION_USER
+    )
 
 
 def resolve_session(token):
@@ -737,6 +778,10 @@ def resolve_session(token):
     sessions = _load_sessions()
     ent = sessions.get(_token_hash(token))
     if not ent or _session_expired(ent):
+        return None
+    # An admin session is not a named user — never let it resolve as one (it
+    # would fail the users.json lookup anyway; this is defence in depth).
+    if ent.get("user") == _ADMIN_SESSION_USER:
         return None
     rec = _load_users().get(ent.get("user"))
     if not rec:

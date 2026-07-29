@@ -29,17 +29,30 @@ from zimi.http import SESSION_COOKIE_MAX_AGE, ZimHandler  # noqa: E402
 
 
 class _FakeHandler:
-    """Minimal ZimHandler stand-in: headers + client privacy + _json capture."""
+    """Minimal ZimHandler stand-in: headers + client privacy + _json capture.
+
+    Borrows the real cookie builders (they only read ``self.headers``) so paths
+    that Set-Cookie — the admin whoami/login — exercise the true header, and
+    records each emitted cookie in ``set_cookies`` for assertions."""
+
+    _session_cookie = ZimHandler._session_cookie
+    _expire_cookie = ZimHandler._expire_cookie
 
     def __init__(self, headers=None, private=True):
         self.headers = headers or {}
         self._private = private
         self.responses = []
+        self.set_cookies = []
 
     def _is_private_client(self):
         return self._private
 
     def _json(self, code, data):
+        self.responses.append((code, data))
+        return None
+
+    def _json_cookie(self, code, data, set_cookie):
+        self.set_cookies.append(set_cookie)
         self.responses.append((code, data))
         return None
 
@@ -516,6 +529,136 @@ class TestWhoamiAdminToken(_AccessBase):
         self.assertEqual(code, 200)
         self.assertEqual(body.get("role"), "anonymous")
         self.assertTrue(body.get("login_required"))
+
+
+# ── Admin session cookie: the header-less-transport fix ────────────────────
+
+
+class TestAdminSessionToken(_AccessBase):
+    """The primary admin authenticates with a password Bearer, but the reader
+    iframe (/w/) and the plain-fetch data endpoints (/list, /search) send NO
+    Authorization header — only cookies. Without an admin session cookie a
+    private/limited-mode admin loaded an EMPTY library and blank article iframes
+    (the 1.8.1 ship blocker). create_admin_session mints an HttpOnly cookie that
+    _primary_admin_authorized accepts on both transports."""
+
+    def setUp(self):
+        super().setUp()
+        self._orig_manage = _srv.ZIMI_MANAGE
+        _srv.ZIMI_MANAGE = True
+        manage._set_manage_password("adminpw")
+
+    def tearDown(self):
+        _srv.ZIMI_MANAGE = self._orig_manage
+        super().tearDown()
+
+    # --- session primitives ---
+    def test_admin_session_recognised(self):
+        tok = users.create_admin_session()
+        self.assertTrue(users.is_admin_session(tok))
+
+    def test_admin_session_fails_closed_on_junk(self):
+        self.assertFalse(users.is_admin_session(""))
+        self.assertFalse(users.is_admin_session(None))
+        self.assertFalse(users.is_admin_session("not-a-real-token"))
+
+    def test_admin_session_is_not_a_named_user(self):
+        # An admin session must never resolve as a user (no allowlist confusion).
+        tok = users.create_admin_session()
+        self.assertIsNone(users.resolve_session(tok))
+        self.assertIsNone(users.resolve_request_user(_FakeHandler(_cookie(tok))))
+
+    def test_user_session_is_not_an_admin_session(self):
+        users.create_user("Kid", "pw", allowlist=["x"], role="limited")
+        tok = users.create_session("Kid")
+        self.assertFalse(users.is_admin_session(tok))
+
+    # --- transport: cookie-only requests resolve as admin ---
+    def test_cookie_only_request_is_primary_admin(self):
+        tok = users.create_admin_session()
+        h = _FakeHandler(_cookie(tok), private=False)  # NO Authorization header
+        self.assertTrue(manage._primary_admin_authorized(h))
+        self.assertIsNone(manage._check_manage_auth(h))
+        self.assertEqual(manage.admin_kind(h), "primary")
+
+    def test_bearer_admin_session_token_also_works(self):
+        tok = users.create_admin_session()
+        h = _FakeHandler(_bearer(tok), private=False)
+        self.assertTrue(manage._primary_admin_authorized(h))
+
+    # --- the actual bug: admin sees the full library on data endpoints ---
+    def test_private_admin_cookie_sees_all(self):
+        users.set_public_access("private")
+        tok = users.create_admin_session()
+        h = _FakeHandler(_cookie(tok), private=False)
+        self.assertIsNone(users.request_allow(h))  # all-access, not empty set
+
+    def test_limited_admin_cookie_sees_all(self):
+        users.set_public_access("limited", ["a"])
+        tok = users.create_admin_session()
+        h = _FakeHandler(_cookie(tok), private=False)
+        self.assertIsNone(users.request_allow(h))  # not just {"a"}
+
+    # --- the second transport gap: the /w/ iframe gate lets the admin in ---
+    def test_private_gate_passes_admin_cookie_iframe(self):
+        users.set_public_access("private")
+        tok = users.create_admin_session()
+        h = _FakeHandler(_cookie(tok), private=False)
+        # A /w/ content request carries only the cookie; the gate must NOT 401.
+        self.assertFalse(_gate(h, "/w/wikipedia/A/Some_Article"))
+
+    def test_private_gate_still_401s_anonymous_iframe(self):
+        # Regression guard: the fix must not open the gate for anonymous.
+        users.set_public_access("private")
+        h = _FakeHandler({}, private=False)
+        self.assertTrue(_gate(h, "/w/wikipedia/A/Some_Article"))
+        self.assertEqual(h.last[0], 401)
+
+    # --- login/logout wiring ---
+    def test_admin_login_sets_httponly_session_cookie(self):
+        users.set_public_access("private")
+        h = _FakeHandler({}, private=False)
+        ZimHandler._handle_login(
+            h, {"username": "admin", "password": "adminpw", "remember": False}
+        )
+        code, body = h.last
+        self.assertEqual(code, 200)
+        self.assertEqual(body.get("role"), "admin")
+        self.assertTrue(h.set_cookies, "admin login must Set-Cookie")
+        cookie = h.set_cookies[-1]
+        self.assertIn("zimi_session=", cookie)
+        self.assertIn("HttpOnly", cookie)
+        # And that cookie authenticates a subsequent cookie-only request.
+        tok = cookie.split("zimi_session=", 1)[1].split(";", 1)[0]
+        self.assertTrue(users.is_admin_session(tok))
+
+    def test_whoami_mints_cookie_for_bearer_admin_without_one(self):
+        users.set_public_access("private")
+        h = _FakeHandler(_bearer("adminpw"), private=False)
+        ZimHandler._handle_whoami(h)
+        self.assertEqual(h.last[1].get("role"), "admin")
+        self.assertTrue(h.set_cookies, "whoami must mint an admin cookie")
+        tok = h.set_cookies[-1].split("zimi_session=", 1)[1].split(";", 1)[0]
+        self.assertTrue(users.is_admin_session(tok))
+
+    def test_whoami_does_not_remint_when_cookie_present(self):
+        users.set_public_access("private")
+        tok = users.create_admin_session()
+        headers = {"Authorization": "Bearer adminpw", "Cookie": "zimi_session=" + tok}
+        h = _FakeHandler(headers, private=False)
+        ZimHandler._handle_whoami(h)
+        self.assertEqual(h.last[1].get("role"), "admin")
+        self.assertFalse(h.set_cookies, "no re-mint when a live admin cookie exists")
+
+    def test_logout_drops_admin_session_server_side(self):
+        tok = users.create_admin_session()
+        self.assertTrue(users.is_admin_session(tok))
+        h = _FakeHandler(_cookie(tok), private=False)
+        ZimHandler._handle_logout(h)
+        self.assertFalse(
+            users.is_admin_session(tok)
+        )  # dropped, not just expired client-side
+        self.assertIn("Max-Age=0", h.set_cookies[-1])
 
 
 if __name__ == "__main__":

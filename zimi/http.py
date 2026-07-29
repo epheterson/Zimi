@@ -2260,17 +2260,29 @@ class ZimHandler(BaseHTTPRequestHandler):
                 },
                 self._session_cookie(token, remember),
             )
-        # Admin account (the existing password account).
+        # Admin account (the existing password account). Mint an HttpOnly admin
+        # session cookie IN ADDITION to the client's password Bearer, so the
+        # header-less transports (reader iframe, plain-fetch data endpoints) carry
+        # admin identity — otherwise a private/limited-mode admin sees an empty
+        # library and blank article iframes. The client still keeps using the
+        # password as its manage Bearer token (unchanged).
         from zimi import manage as _manage
 
         if _manage.verify_admin_credentials(username, password):
-            return self._json(200, {"role": "admin"})
+            token = _users.create_admin_session()
+            log.info("Admin login (password account)")
+            return self._json_cookie(
+                200, {"role": "admin"}, self._session_cookie(token, remember)
+            )
         return self._json(401, {"error": "invalid credentials"})
 
     def _handle_logout(self):
-        """POST /logout — drop the current session + expire the cookie."""
-        token = _users._bearer_token(self) or _users._cookie_token(self)
-        _users.drop_session(token)
+        """POST /logout — drop the current session(s) + expire the cookie. Drops
+        BOTH the Bearer and cookie tokens: an admin's Bearer is the password (a
+        no-op drop) while its session rides the cookie, so dropping only the
+        first-present token could leave the admin session alive server-side."""
+        _users.drop_session(_users._bearer_token(self))
+        _users.drop_session(_users._cookie_token(self))
         return self._json_cookie(200, {"status": "ok"}, self._expire_cookie())
 
     def _handle_whoami(self):
@@ -2303,10 +2315,19 @@ class ZimHandler(BaseHTTPRequestHandler):
             and _manage._get_manage_password_hash()
             and _manage._check_manage_auth(self) is None
         ):
-            return self._json(
-                200,
-                {"role": "admin", "name": _manage._get_manage_user() or "admin"},
-            )
+            resp = {"role": "admin", "name": _manage._get_manage_user() or "admin"}
+            # Ensure the header-less transports (reader iframe, plain-fetch data
+            # endpoints) carry admin identity. If this admin was recognised by the
+            # password Bearer but has no live admin session cookie yet — first boot
+            # after a remembered login, or the cookie expired — mint one now. Boot
+            # awaits /whoami before the first /list, so the cookie lands in time. A
+            # session-scoped cookie (no Max-Age) keeps the "remember" contract: a
+            # non-remembered admin loses it on tab close (its stored Bearer is gone
+            # too), while a remembered admin re-mints from the Bearer each boot.
+            if not _users.is_admin_session(_users._cookie_token(self)):
+                token = _users.create_admin_session()
+                return self._json_cookie(200, resp, self._session_cookie(token, False))
+            return self._json(200, resp)
         # Anonymous. Expose a first-login hint ONLY when the default username
         # applies — no custom username AND no named users configured. This is
         # not an info leak: "the default username is admin" is in the docs.

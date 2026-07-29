@@ -223,6 +223,23 @@ def _primary_admin_authorized(handler):
         # Passwordless: LAN/loopback clients are the (only) primary admin.
         return handler._is_private_client()
 
+    # A primary-admin SESSION token (users.create_admin_session): minted when the
+    # admin password verified, delivered as the HttpOnly zimi_session cookie so
+    # header-less transports carry admin identity — the /w/ reader iframe (a
+    # browser navigation that can't send Authorization) and the plain-fetch data
+    # endpoints (/list, /search, …). Without this, a private/limited-mode admin
+    # loads an EMPTY library and blank article iframes. Checked FIRST (before the
+    # Bearer-format gate below) so a cookie-only request with no Authorization
+    # header still resolves as admin. Accepted from either the cookie (browsers)
+    # or the Bearer header (an API client may present it). As unforgeable as the
+    # password Bearer: a random token, hashed at rest.
+    from zimi import users as _users
+
+    if _users.is_admin_session(_users._cookie_token(handler)):
+        return True
+    if _users.is_admin_session(_users._bearer_token(handler)):
+        return True
+
     auth = handler.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         return False
