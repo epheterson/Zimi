@@ -70,7 +70,7 @@ downloads gain a nightly window and bandwidth caps.
 - **Video-ZIM polish** — a resume ledger that restores playback position,
   correct sizing on mobile, and a random-video card.
 - **Almanac** — a real bright-star field in the sky scene, a **Regional /
-  Worldwide** holidays toggle, a wider city set (~500) with click-anywhere map
+  Worldwide** holidays toggle, a wider city set with click-anywhere map
   selection, its own header identity, and a larger library tap-through link map
   (every added Q-ID dual-verified against Wikidata).
 
