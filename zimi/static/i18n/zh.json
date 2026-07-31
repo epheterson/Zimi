@@ -24,6 +24,7 @@
   "all_sources": "← 所有来源",
   "discover": "发现",
   "play_video": "播放视频",
+  "video_not_included": "此 ZIM 中未包含该视频",
   "discover_hidden": "发现已隐藏",
   "undo": "撤销",
   "today": "今天",
