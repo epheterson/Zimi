@@ -1267,6 +1267,12 @@ async function init() {
   // shown gate reloads the page on successful sign-in, so we stop the boot here.
   if (await _bootAuthGate()) return;
 
+  // Learn manage-auth state in parallel with /list. /manage/has-password is a
+  // cheap, lock-free endpoint, so this resolves long before /list on a large
+  // library — the gear is then live the moment the library paints instead of
+  // dead until the whole boot finishes (#44). _initSecondary reuses this probe.
+  _manageProbe = _probeManageAuth();
+
   output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
   // Only block on /list — everything else loads in background
   try {
@@ -1292,6 +1298,10 @@ async function init() {
 // pollers await this so they never fire an unauthenticated request (a 401
 // resource error in the console) during the bootstrap race.
 let _manageProbe = null;
+// True once _probeManageAuth has finished at least once — lets enterManage
+// tell "manage genuinely disabled" (bail) apart from "state not known yet"
+// (open on demand). See #44.
+let _manageProbed = false;
 
 async function _probeManageAuth() {
   try {
@@ -1323,13 +1333,17 @@ async function _probeManageAuth() {
       _managePwRequired = true;
     }
   } catch (e) {}
+  finally { _manageProbed = true; }
 }
 
 async function _initSecondary() {
   var needsRerender = false;
-  _manageProbe = _probeManageAuth().then(() => { needsRerender = true; });
+  // Reuse the probe init() already kicked off in parallel with /list; only
+  // start one here if that didn't run (e.g. a code path that skips init()).
+  if (!_manageProbe) _manageProbe = _probeManageAuth();
+  var _probeDone = _manageProbe.then(() => { needsRerender = true; });
   await Promise.allSettled([
-    _manageProbe,
+    _probeDone,
     // Collections/favorites
     fetch('/collections').then(async cres => {
       if (cres.ok) { collectionsCache = await cres.json(); needsRerender = true; }
@@ -5037,9 +5051,19 @@ function _restoreSavedReader() {
   return true;
 }
 
-function enterManage(e, section) {
+async function enterManage(e, section) {
   if (e && e.preventDefault) e.preventDefault();
-  if (!manageEnabled) return;
+  if (!manageEnabled) {
+    // The gear must respond from first paint. On a large library the boot's
+    // /list call blocks for seconds, and if the user clicks before the
+    // manage-auth probe has set manageEnabled we must not leave the button
+    // dead (#44). Resolve the probe on demand (cheap, lock-free endpoint) and
+    // only bail if management is genuinely disabled.
+    if (_manageProbed) return;            // probe already finished: disabled
+    if (!_manageProbe) _manageProbe = _probeManageAuth();
+    await _manageProbe;
+    if (!manageEnabled) return;           // resolved to disabled
+  }
   // Decide which settings section to land on: an explicit arg (deep link /
   // ?manage=<section>) wins, else a section a caller already staged in
   // _pendingMsSection (e.g. Reorder → preferences), else the last one used
