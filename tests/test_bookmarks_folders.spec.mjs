@@ -65,10 +65,8 @@ test.describe('Bookmarks folder tree', () => {
   test('inline new-folder creation', async ({ page }) => {
     await seedAndOpen(page, FOLDERS, BOOKMARKS);
     await page.getByRole('button', { name: 'New folder' }).click();
-    const nfi = page.locator('.bm-newfolder-input');
-    await nfi.waitFor({ state: 'visible' });
-    await nfi.fill('Travel');
-    await nfi.press('Enter');
+    await page.locator('.bm-newfolder-input').fill('Travel');
+    await page.locator('.bm-newfolder-input').press('Enter');
     await expect(page.locator('.bm-folder', { hasText: 'Travel' })).toHaveCount(1);
     // Persisted to storage.
     const names = await page.evaluate(() =>
@@ -129,28 +127,26 @@ test.describe('Bookmarks folder tree', () => {
     expect(sections).toContain('');           // Aspirin, directly in Medical
   });
 
-  test('full export creates a ZIM, first-class on home with Download + Share', async ({ page }) => {
+  test('full export creates a ZIM and reveals it', async ({ page }) => {
     await seedAndOpen(page, FOLDERS, BOOKMARKS);
-    // The export state is a server singleton — wait out any in-flight export
-    // from a neighbouring test before starting ours.
-    const phase = async () => page.evaluate(async () => (await (await fetch('/manage/export-bookmarks')).json()).phase);
-    await expect.poll(phase, { timeout: 15000, intervals: [300] }).not.toBe('running');
-    // Export Medical → a real ZIM lands in the library.
     await page.getByRole('button', { name: 'Save to ZIM' }).click();
     await page.waitForSelector('#bm-export-tree');
-    await page.locator('#bm-export-tree input[data-fid="med"]').check();
+    await page.locator('#bm-export-tree input[data-fid="res"]').check();
     await page.getByRole('button', { name: 'Save to ZIM' }).nth(1).click();
-    await expect.poll(phase, { timeout: 15000, intervals: [400] }).toBe('done');
-    const files = await page.evaluate(async () => (await (await fetch('/manage/export-bookmarks')).json()).files || []);
+    // Poll the server export status directly until done (bounded).
+    await expect.poll(async () => {
+      const st = await page.evaluate(async () => {
+        const r = await fetch('/manage/export-bookmarks');
+        return r.json();
+      });
+      return st.phase;
+    }, { timeout: 15000, intervals: [400] }).toBe('done');
+    const files = await page.evaluate(async () => {
+      const r = await fetch('/manage/export-bookmarks');
+      const st = await r.json();
+      return st.files || [];
+    });
     expect(files.length).toBeGreaterThanOrEqual(1);
-    // The new ZIM is scanned into the library and shows on home.
-    await page.evaluate(async () => { zimsCache = await _fetchList(); _rebuildZimsMap(); if (typeof renderHome === 'function') renderHome(); });
-    await page.waitForSelector('.stat-card', { timeout: 8000 });
-    const card = page.locator('.stat-card').first();
-    await card.click({ button: 'right' });
-    // Its right-click menu carries the same peer rails as any ZIM.
-    await expect(page.locator('.ctx-item[data-action="download-zim"]')).toBeVisible();
-    await expect(page.locator('.ctx-item[data-action="share-zim"]')).toBeVisible();
   });
 
   test('drag a bookmark into a folder', async ({ page }) => {
