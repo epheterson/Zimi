@@ -1187,5 +1187,6 @@
   "bm_export_all": "Select all",
   "bm_export_unfiled": "Loose bookmarks (top level)",
   "bm_export_none_selected": "Pick at least one folder to export.",
-  "bm_export_done": "Created {n} ZIM(s) — added to your library."
+  "bm_export_done": "Created {n} ZIM(s) — added to your library.",
+  "share_this_zim": "Share…"
 }

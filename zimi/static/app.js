@@ -3860,6 +3860,15 @@ function _moveZimTo(zim, category) {
     h += '</div></div>';
     var layoutItems = _layoutItemsHtml(zim);
     if (layoutItems) { h += '<div class="ctx-sep"></div>' + layoutItems; }
+    // Download + Share: every installed ZIM rides the same peer rails — direct
+    // HTTP (/dl/) download and LAN/BitTorrent sharing. Reuses existing transport;
+    // a generated bookmark ZIM is first-class here like any other.
+    var zi = _zimInfo(zim);
+    if (zi && zi.file) {
+      h += '<div class="ctx-sep"></div>';
+      h += '<div class="ctx-item" data-action="download-zim">⬇ ' + tH('download_zim') + '</div>';
+      h += '<div class="ctx-item" data-action="share-zim">' + tH('share_this_zim') + '</div>';
+    }
     if (manageEnabled) {
       h += '<div class="ctx-sep"></div>';
       h += '<div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
@@ -3999,6 +4008,20 @@ function _moveZimTo(zim, category) {
       closeCtx(); enterSource(zim, true);
     } else if (action === 'newtab') {
       closeCtx(); window.open('/w/' + encodeURIComponent(zim), '_blank');
+    } else if (action === 'download-zim') {
+      closeCtx();
+      var dzi = _zimInfo(zim);
+      if (dzi && dzi.file) {
+        // Peer download is share-gated server-side; if it's off, take the user
+        // to the sharing settings to turn it on rather than 403 on the click.
+        _probeDlShare(dzi.file).then(function (ok) {
+          if (ok) _downloadFile('/dl/' + encodeURIComponent(dzi.file));
+          else enterManage(null, 'server');
+        });
+      }
+    } else if (action === 'share-zim') {
+      closeCtx();
+      enterManage(null, 'server');  // sharing (Nearby/LAN + BitTorrent) lives here
     } else if (action === 'move-to') {
       var cat = item.dataset.cat;
       closeCtx();
