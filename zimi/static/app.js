@@ -11353,8 +11353,22 @@ function _readerViewInjectStyle(doc) {
     // overflows. Shared with the normal reader frame; see the constant above.
     _READER_LIGHTBOX_OVERLAY_CSS,
     '.zimi-reader figure{margin:1.3em auto}',
-    '.zimi-reader figcaption{font-size:0.78em;color:var(--rv-muted);font-family:-apple-system,sans-serif;',
-      'text-align:center;margin-top:0.4em;line-height:1.45}',
+    // Caption legibility: mwoffliner ships two markup generations — Parsoid
+    // (<figure typeof>/<figcaption>, background-color:inherit from a hardcoded
+    // #f9f9f9 painted on the figure) and legacy (.thumb>.thumbinner>.thumbcaption,
+    // no explicit color of its own). Either shape can carry a caption box
+    // color/background baked into the ZIM's own (still-live, see head comment
+    // above) stylesheet that has no idea which reader theme is active — it reads
+    // fine in the ZIM's native page but can land as illegible (e.g. dark text on
+    // a dark strip) once our light/dark/sepia palette is layered on top.
+    // !important forces both shapes onto the theme's own muted-text/no-fill
+    // pair so contrast always matches the active palette, never the source.
+    '.zimi-reader figcaption,.zimi-reader .thumbcaption{font-size:0.78em;',
+      'color:var(--rv-muted) !important;background:none !important;',
+      'font-family:-apple-system,sans-serif;margin-top:0.4em;line-height:1.45}',
+    '.zimi-reader figcaption{text-align:center}',
+    '.zimi-reader .thumb,.zimi-reader .thumbinner,.zimi-reader figure[typeof]{',
+      'background:none !important;border-color:var(--rv-border) !important}',
     '.zimi-reader ul,.zimi-reader ol{margin:0 0 1.1em 1.4em}',
     '.zimi-reader li{margin:0.3em 0}',
     '.zimi-reader blockquote{border-left:3px solid var(--rv-border);margin:1.3em 0;padding-left:1em;color:var(--rv-muted)}',
