@@ -493,9 +493,9 @@ function _almHeadHtml(focus) {
   var sunInfo0 = _computeSunTimes(focus, loc.lat, loc.lon, _locTzOff);
 
   html += '<div class="alm-cards">';
-  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_illuminated') + '</div><div class="alm-card-val">' + m.illumination + '%</div></div>';
-  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_moon_age') + '</div><div class="alm-card-val">' + age + ' ' + t('alm_days') + '</div></div>';
-  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_distance') + '</div><div class="alm-card-val">' + Math.round(dist).toLocaleString() + ' ' + t('alm_km') + '</div></div>';
+  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_illuminated') + '</div><div class="alm-card-val" id="alm-hc-illum">' + m.illumination + '%</div></div>';
+  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_moon_age') + '</div><div class="alm-card-val" id="alm-hc-age">' + age + ' ' + t('alm_days') + '</div></div>';
+  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_distance') + '</div><div class="alm-card-val" id="alm-hc-dist">' + Math.round(dist).toLocaleString() + ' ' + t('alm_km') + '</div></div>';
   var _nfm = _nextFullMoon(focus);
   if (_nfm) {
     var _nfmStr = _nfm.date.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
@@ -506,9 +506,9 @@ function _almHeadHtml(focus) {
   if (sunInfo0.polar) {
     html += '<div class="alm-card" style="grid-column:span 4"><div class="alm-card-val">' + sunInfo0.polar + '</div></div>';
   } else {
-    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_sunrise') + '</div><div class="alm-card-val">' + sunInfo0.sunrise + '</div></div>';
-    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_sunset') + '</div><div class="alm-card-val">' + sunInfo0.sunset + '</div></div>';
-    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_daylight') + '</div><div class="alm-card-val">' + sunInfo0.dayLength + '</div></div>';
+    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_sunrise') + '</div><div class="alm-card-val" id="alm-hc-sunrise">' + sunInfo0.sunrise + '</div></div>';
+    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_sunset') + '</div><div class="alm-card-val" id="alm-hc-sunset">' + sunInfo0.sunset + '</div></div>';
+    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_daylight') + '</div><div class="alm-card-val" id="alm-hc-daylight">' + sunInfo0.dayLength + '</div></div>';
     if (sunInfo0.goldenHour) {
       html += '<div class="alm-card"><div class="alm-card-lbl">' + _lterm('golden_hour', t('alm_golden')) + '</div><div class="alm-card-val" style="color:#d4aa64">' + sunInfo0.goldenHour + '</div></div>';
     }
@@ -670,6 +670,42 @@ function _almScrubClock(focus) {
   var tmEl = document.getElementById('almanac-head-time');
   if (d) d.textContent = cp.date;
   if (tmEl) tmEl.textContent = cp.time;
+}
+
+// Update the hero moon/sun readout cards in place (text nodes only, no header
+// rebuild). Pure date/astronomy math — cheap enough to run on every travel
+// frame. Approximate while scrubbing (a fixed tz offset, last-rendered card
+// structure); _almRepaintFocus recomputes them exactly on settle.
+function _almLiveHeadCards(focus) {
+  var set = function (id, val) { var e = document.getElementById(id); if (e) e.textContent = val; };
+  var m;
+  try { m = _moonPhase(focus); } catch (e) { return; }
+  set('alm-hc-illum', m.illumination + '%');
+  set('alm-hc-age', (m.phase * 29.53).toFixed(1) + ' ' + t('alm_days'));
+  try { var dist = _moonDistance(focus); if (dist) set('alm-hc-dist', Math.round(dist).toLocaleString() + ' ' + t('alm_km')); } catch (e) {}
+  try {
+    var loc = _getLocation();
+    var locTz = _almDisplayTz(loc);
+    var off;
+    try { off = _tzUtcOffsetMin(locTz, focus); } catch (e) { off = -focus.getTimezoneOffset(); }
+    var s = _computeSunTimes(focus, loc.lat, loc.lon, off);
+    if (!s.polar) { set('alm-hc-sunrise', s.sunrise); set('alm-hc-sunset', s.sunset); set('alm-hc-daylight', s.dayLength); }
+  } catch (e) {}
+}
+
+// The full per-frame live update run during time travel — the single hook both
+// the lever loop (_almTravelFrame) and the wheel/key stepper (_almScrubStep)
+// share. Everything here is pure math writing a handful of text nodes: the hero
+// clock (date + time) and the moon/sun readout cards. Heavier panels — the
+// calendar grid, orrery, meteor countdowns, deep-time, tonight's-sky planet
+// ephemeris, sun-map terminator, star chart and analemma — stay deferred to
+// _almScrubSettle on release: each is a full innerHTML rebuild and/or resolves
+// Q-ID deep-links, which would blow the ~0.21ms/frame budget the sky redraw
+// already lives inside. The sky scene + hero moon are retargeted separately by
+// the caller via _skySetInstant (canvas, not DOM).
+function _almTravelLive(focus) {
+  _almScrubClock(focus);
+  _almLiveHeadCards(focus);
 }
 
 function _almIsLiveNow(d) { return Math.abs(d.getTime() - Date.now()) < _SCRUB_LIVE_EPS; }
@@ -861,6 +897,7 @@ function _almTravelFrame(ts) {
     var next = _almClampInstant(new Date(base.getTime() + rate * dtReal));
     _almFocus = next;
     _almTmSoloUpdate(next);
+    _almTravelLive(next);
     if (!_almReduceMotion() && typeof _skySetInstant === 'function') _skySetInstant(next);
   }
 
@@ -935,7 +972,7 @@ function _almLeverEnd(e) {
 function _almScrubStep(deltaMs) {
   var next = _almClampInstant(new Date(_almFocusInstant().getTime() + deltaMs));
   _almFocus = next;
-  _almScrubClock(next);
+  _almTravelLive(next);
   if (!_almReduceMotion() && typeof _skySetInstant === 'function') _skySetInstant(next);
   _almTmSync();
   clearTimeout(_almScrubWheelTimer);
@@ -988,73 +1025,6 @@ function _renderAlmanacContent() {
   var m = _moonPhase(now);
 
   var html = '<div class="almanac-inner">';
-
-  // The time machine — the almanac's skeuomorphic time-travel instrument.
-  // Sticky so it stays reachable while the panels below scroll. Three faces
-  // (rest / motion / chooser) toggled by its data-mode; see the engine above.
-  html += '<div id="alm-tm" class="alm-tm" data-mode="rest">';
-  html +=   '<div class="alm-tm-panel">';
-  // Rest face — the three-row time circuit.
-  html +=     '<div class="alm-tm-rows">';
-  html +=       '<div class="alm-tm-row alm-tm-displayed">';
-  html +=         '<span class="alm-tm-label">' + t('alm_tm_displayed') + '</span>';
-  html +=         '<span class="alm-tm-time" id="alm-tm-displayed-val"></span>';
-  html +=       '</div>';
-  html +=       '<button type="button" class="alm-tm-row alm-tm-dest" onclick="_almTmOpenChooser()" title="' + _almEsc(t('alm_tm_set_dest')) + '" aria-label="' + _almEsc(t('alm_tm_set_dest')) + '">';
-  html +=         '<span class="alm-tm-label">' + t('alm_tm_destination') + '</span>';
-  html +=         '<span class="alm-tm-time" id="alm-tm-dest-val"></span>';
-  html +=         '<span class="alm-tm-dest-ic" aria-hidden="true">✎</span>';
-  html +=       '</button>';
-  html +=       '<div class="alm-tm-row alm-tm-now">';
-  html +=         '<span class="alm-tm-label">' + t('alm_tm_actual') + '</span>';
-  html +=         '<span class="alm-tm-time" id="alm-tm-now-val"></span>';
-  html +=         '<button type="button" class="alm-tm-return" id="alm-tm-return" onclick="_almTmReturnNow()" title="' + _almEsc(t('alm_back_to_now')) + '" hidden>↺ ' + t('alm_now') + '</button>';
-  html +=       '</div>';
-  html +=     '</div>';
-  // Motion face — one readout of the moving position; tap to return to rest.
-  html +=     '<button type="button" class="alm-tm-solo" onclick="_almTmToRest()" aria-label="' + _almEsc(t('alm_tm_traveling')) + '">';
-  html +=       '<span class="alm-tm-solo-lbl">' + t('alm_tm_traveling') + '</span>';
-  html +=       '<span class="alm-tm-solo-time" id="alm-tm-solo-val"></span>';
-  html +=     '</button>';
-  // Chooser face — pick any date+time; the year field accepts arbitrary and BCE.
-  var _tmFields = [
-    ['alm-tm-cy', t('alm_tm_year'), t('alm_tm_year_hint'), 'alm-tm-field-year'],
-    ['alm-tm-cmo', t('alm_tm_month'), '', ''],
-    ['alm-tm-cd', t('alm_tm_day'), '', ''],
-    ['alm-tm-ch', t('alm_tm_hour'), '', ''],
-    ['alm-tm-cmi', t('alm_tm_min'), '', '']
-  ];
-  html +=     '<div class="alm-tm-chooser">';
-  html +=       '<div class="alm-tm-fields">';
-  for (var _fi = 0; _fi < _tmFields.length; _fi++) {
-    var _f = _tmFields[_fi];
-    html +=       '<label class="alm-tm-field ' + _f[3] + '"><span class="alm-tm-field-lbl">' + _f[1] + '</span>' +
-                    '<input type="number" step="1" id="' + _f[0] + '" class="alm-tm-input" inputmode="numeric"' +
-                    ' aria-label="' + _almEsc(_f[1]) + '"' + (_f[2] ? ' title="' + _almEsc(_f[2]) + '"' : '') +
-                    ' onkeydown="_almTmChooserKey(event)"></label>';
-  }
-  html +=       '</div>';
-  html +=       '<div class="alm-tm-chooser-btns">';
-  html +=         '<button type="button" class="alm-tm-cancel" onclick="_almTmChooserCancel()">' + t('alm_tm_cancel') + '</button>';
-  html +=         '<button type="button" class="alm-tm-go" onclick="_almTmChooserGo()">' + t('alm_tw_go') + '</button>';
-  html +=       '</div>';
-  html +=     '</div>';
-  html +=   '</div>';
-  // Side-mounted lever — throw up for the future, down for the past.
-  html +=   '<div class="alm-tm-lever-col">';
-  html +=     '<div class="alm-tm-track" id="alm-tm-track">';
-  html +=       '<span class="alm-tm-endstop alm-tm-endstop-fwd" aria-hidden="true"></span>';
-  html +=       '<div class="alm-tm-lever alm-tm-lever-spring" id="alm-tm-lever" role="slider" tabindex="0"' +
-                  ' aria-label="' + _almEsc(t('alm_tm_lever_label')) + '" aria-orientation="vertical"' +
-                  ' aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0">' +
-                  '<span class="alm-tm-lever-grip" aria-hidden="true"></span>' +
-                '</div>';
-  html +=       '<span class="alm-tm-endstop alm-tm-endstop-back" aria-hidden="true"></span>';
-  html +=     '</div>';
-  html +=   '</div>';
-  // Close — returns the almanac to now and hides the instrument again.
-  html +=   '<button type="button" class="alm-tm-close" onclick="_almTmClose()" title="' + _almEsc(t('alm_tm_close')) + '" aria-label="' + _almEsc(t('alm_tm_close')) + '">×</button>';
-  html += '</div>';
 
   html += '<div id="almanac-head">' + _almHeadHtml(now) + '</div>';
   _almPrevFocusTime = now.getTime();   // seed the hero-moon sweep's start
@@ -1154,6 +1124,80 @@ function _renderAlmanacContent() {
   html += '<div id="almanac-rosetta"></div>';
   html += '</div>';
 
+
+  // The time machine — the almanac's skeuomorphic time-travel instrument.
+  // Docked at the BOTTOM of the layout and sticky to the viewport's bottom edge,
+  // so summoning it (hero-clock tap, calendar pick, lever) grows the page only
+  // below everything the reader is looking at — no scroll bump — while still
+  // riding into view as a dock. Three faces (rest / motion / chooser) toggled by
+  // its data-mode; see the engine above.
+  html += '<div id="alm-tm" class="alm-tm" data-mode="rest">';
+  html +=   '<div class="alm-tm-panel">';
+  // Rest face — the three-row time circuit.
+  html +=     '<div class="alm-tm-rows">';
+  html +=       '<div class="alm-tm-row alm-tm-displayed">';
+  html +=         '<span class="alm-tm-label">' + t('alm_tm_displayed') + '</span>';
+  html +=         '<span class="alm-tm-time" id="alm-tm-displayed-val"></span>';
+  html +=       '</div>';
+  html +=       '<button type="button" class="alm-tm-row alm-tm-dest" onclick="_almTmOpenChooser()" title="' + _almEsc(t('alm_tm_set_dest')) + '" aria-label="' + _almEsc(t('alm_tm_set_dest')) + '">';
+  html +=         '<span class="alm-tm-label">' + t('alm_tm_destination') + '</span>';
+  html +=         '<span class="alm-tm-time" id="alm-tm-dest-val"></span>';
+  html +=         '<span class="alm-tm-dest-ic" aria-hidden="true">✎</span>';
+  html +=       '</button>';
+  html +=       '<div class="alm-tm-row alm-tm-now">';
+  html +=         '<span class="alm-tm-label">' + t('alm_tm_actual') + '</span>';
+  html +=         '<span class="alm-tm-time" id="alm-tm-now-val"></span>';
+  html +=         '<button type="button" class="alm-tm-return" id="alm-tm-return" onclick="_almTmReturnNow()" title="' + _almEsc(t('alm_back_to_now')) + '" hidden>↺ ' + t('alm_now') + '</button>';
+  html +=       '</div>';
+  html +=     '</div>';
+  // Motion face — one readout of the moving position; tap to return to rest.
+  html +=     '<button type="button" class="alm-tm-solo" onclick="_almTmToRest()" aria-label="' + _almEsc(t('alm_tm_traveling')) + '">';
+  html +=       '<span class="alm-tm-solo-lbl">' + t('alm_tm_traveling') + '</span>';
+  html +=       '<span class="alm-tm-solo-time" id="alm-tm-solo-val"></span>';
+  html +=     '</button>';
+  // Chooser face — pick any date+time; the year field accepts arbitrary and BCE.
+  var _tmFields = [
+    ['alm-tm-cy', t('alm_tm_year'), t('alm_tm_year_hint'), 'alm-tm-field-year'],
+    ['alm-tm-cmo', t('alm_tm_month'), '', ''],
+    ['alm-tm-cd', t('alm_tm_day'), '', ''],
+    ['alm-tm-ch', t('alm_tm_hour'), '', ''],
+    ['alm-tm-cmi', t('alm_tm_min'), '', '']
+  ];
+  html +=     '<div class="alm-tm-chooser">';
+  html +=       '<div class="alm-tm-fields">';
+  for (var _fi = 0; _fi < _tmFields.length; _fi++) {
+    var _f = _tmFields[_fi];
+    html +=       '<label class="alm-tm-field ' + _f[3] + '"><span class="alm-tm-field-lbl">' + _f[1] + '</span>' +
+                    '<input type="number" step="1" id="' + _f[0] + '" class="alm-tm-input" inputmode="numeric"' +
+                    ' aria-label="' + _almEsc(_f[1]) + '"' + (_f[2] ? ' title="' + _almEsc(_f[2]) + '"' : '') +
+                    ' onkeydown="_almTmChooserKey(event)"></label>';
+  }
+  html +=       '</div>';
+  html +=       '<div class="alm-tm-chooser-btns">';
+  html +=         '<button type="button" class="alm-tm-cancel" onclick="_almTmChooserCancel()">' + t('alm_tm_cancel') + '</button>';
+  html +=         '<button type="button" class="alm-tm-go" onclick="_almTmChooserGo()">' + t('alm_tw_go') + '</button>';
+  html +=       '</div>';
+  html +=     '</div>';
+  html +=   '</div>';
+  // Side-mounted lever — a faceted crystal disc on a brass shaft (the 1960 Time
+  // Machine's spinning crystal). Throw up for the future, down for the past; the
+  // disc is the drag target, mechanics unchanged. The shaft is a static rod the
+  // disc rides along.
+  html +=   '<div class="alm-tm-lever-col">';
+  html +=     '<div class="alm-tm-track" id="alm-tm-track">';
+  html +=       '<span class="alm-tm-shaft" aria-hidden="true"></span>';
+  html +=       '<span class="alm-tm-endstop alm-tm-endstop-fwd" aria-hidden="true"></span>';
+  html +=       '<div class="alm-tm-lever alm-tm-lever-spring" id="alm-tm-lever" role="slider" tabindex="0"' +
+                  ' aria-label="' + _almEsc(t('alm_tm_lever_label')) + '" aria-orientation="vertical"' +
+                  ' aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0">' +
+                  '<span class="alm-tm-crystal" aria-hidden="true"><span class="alm-tm-crystal-facets"></span></span>' +
+                '</div>';
+  html +=       '<span class="alm-tm-endstop alm-tm-endstop-back" aria-hidden="true"></span>';
+  html +=     '</div>';
+  html +=   '</div>';
+  // Close — returns the almanac to now and hides the instrument again.
+  html +=   '<button type="button" class="alm-tm-close" onclick="_almTmClose()" title="' + _almEsc(t('alm_tm_close')) + '" aria-label="' + _almEsc(t('alm_tm_close')) + '">×</button>';
+  html += '</div>';
 
   // Footer
   html += '<div style="margin-top:40px;text-align:center;font-size:11px;color:var(--text3)">' +
@@ -4186,9 +4230,11 @@ function _applyRegionHolidays(region, year, month, add, worldwide) {
   var pack = _REGION_HOLIDAYS[region];
   if (!pack) return;
   // Region-scoped: the caption already names the country, so each entry's tag is
-  // just its colour. Worldwide: 18 packs at once, so every entry carries a
-  // compact country code ("Bastille Day · FR") to say whose day it is.
-  var src = worldwide ? region : _almRegionName(region);
+  // just its colour. Worldwide: 18 packs at once, so every entry carries the
+  // full country name ("Bastille Day · France") to say whose day it is — the
+  // same ISO→name map the cell tooltip uses, falling back to the ISO code if
+  // Intl.DisplayNames is unavailable.
+  var src = _almRegionName(region) || region;
   var i;
   for (i = 0; i < (pack.fixed || []).length; i++) {
     var fx = pack.fixed[i];
