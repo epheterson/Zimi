@@ -12621,6 +12621,7 @@ function renderLibraryPanel() {
     html += _renderBookmarksContent();
   }
   panel.innerHTML = html;
+  _bmEnsureBound();  // idempotent — attaches the bookmark-tree delegation once
 }
 function _renderHistoryContent() {
   var h = _histLoad();
@@ -12684,26 +12685,439 @@ function _renderHistoryContent() {
   if (currentGroup) html += '</div>';
   return html;
 }
+// \u2500\u2500 Bookmarks tab: folder tree (v2) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// Rows are data-attribute driven so one delegated handler set on the persistent
+// #history-panel covers click-to-open, collapse, context menus and pointer DnD
+// across innerHTML re-renders (see _bmEnsureBound). Folders render above their
+// bookmarks within a parent; each is independently ordered.
+var _BM_INDENT = 14;        // px of indent per nesting level
+var _bmBound = false;       // delegated listeners attached once to the panel
+
 function _renderBookmarksContent() {
   var bk = _bkLoad();
-  if (!bk.length) {
-    return '<div class="hp-empty">' + tH('no_bookmarks') + '</div>';
+  var folders = _folLoad();
+  if (!bk.length && !folders.length) {
+    // Still offer New folder so an empty library can start organizing.
+    return '<div class="hp-actions bm-actions">' +
+      '<button class="hp-action-btn" onclick="_bmNewFolderPrompt(\'\')">' + tH('bm_new_folder') + '</button></div>' +
+      '<div class="hp-empty">' + tH('no_bookmarks') + '</div>';
   }
-  var html = '<div class="hp-actions"><button id="export-bookmarks-btn" class="hp-action-btn" onclick="exportBookmarksToZim()">' + tH('save_to_zim') + '</button>' +
+  var html = '<div class="hp-actions bm-actions">' +
+    '<button class="hp-action-btn" onclick="_bmNewFolderPrompt(\'\')">' + tH('bm_new_folder') + '</button>' +
+    '<button id="export-bookmarks-btn" class="hp-action-btn" onclick="_bmOpenExport()">' + tH('save_to_zim') + '</button>' +
     '<span id="export-bookmarks-status" class="hp-action-status"></span></div>';
-  html += '<div class="hp-group">';
-  for (var i = 0; i < bk.length; i++) {
-    var b = bk[i];
-    var icon = b.zim ? _sourceIconHtml(b.zim, 20) : '\uD83D\uDCC4';
-    var sub = b.zim ? _zimTitleWithLang(b.zim) : '';
-    html += '<div class="hp-item" onclick="_closeLibraryPanel();openArticle(\'' + escJs(b.zim) + '\',\'' + escJs(b.path) + '\',\'' + escJs(b.title || '') + '\')">' +
-      '<div class="hp-icon">' + icon + '</div>' +
-      '<div class="hp-detail"><div class="hp-title">' + esc(b.title || _titleFromPath(b.path)) + '</div>' +
-      '<div class="hp-sub">' + esc(sub) + '</div></div>' +
-      '<button class="hp-item-del" onclick="event.stopPropagation();_bkRemove(\'' + escJs(b.zim) + '\',\'' + escJs(b.path) + '\');renderLibraryPanel()">\u2715</button></div>';
-  }
-  html += '</div>';
+  html += '<div class="bm-tree" id="bm-tree" data-fid="">' + _bmChildrenHtml(_BM_ROOT, 0) + '</div>';
   return html;
+}
+
+// Recursive body of a folder (its child folders, then its bookmarks).
+function _bmChildrenHtml(folderId, depth) {
+  var html = '';
+  _folChildren(folderId).forEach(function (f) {
+    html += _bmFolderRowHtml(f, depth);
+    if (!_folIsCollapsed(f.id)) html += _bmChildrenHtml(f.id, depth + 1);
+  });
+  _bkInFolder(folderId).forEach(function (b) { html += _bmBookmarkRowHtml(b, depth); });
+  return html;
+}
+
+function _bmFolderRowHtml(f, depth) {
+  var collapsed = _folIsCollapsed(f.id);
+  var count = _folBookmarkCount(f.id);
+  var pad = 6 + depth * _BM_INDENT;
+  return '<div class="bm-row bm-folder" data-fid="' + escAttr(f.id) + '" data-depth="' + depth + '"' +
+    ' style="padding-left:' + pad + 'px" role="treeitem" aria-expanded="' + (!collapsed) + '" tabindex="0">' +
+    '<span class="bm-twist' + (collapsed ? '' : ' open') + '" data-role="twist">\u25B8</span>' +
+    '<span class="bm-ficon">' + (collapsed ? '\uD83D\uDCC1' : '\uD83D\uDCC2') + '</span>' +
+    '<span class="bm-name">' + esc(f.name) + '</span>' +
+    '<span class="bm-count">' + count + '</span>' +
+    '<button class="bm-gear" data-role="menu" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">\u22EF</button>' +
+    '</div>';
+}
+
+function _bmBookmarkRowHtml(b, depth) {
+  var icon = b.zim ? _sourceIconHtml(b.zim, 20) : '\uD83D\uDCC4';
+  var sub = b.zim ? _zimTitleWithLang(b.zim) : '';
+  var pad = 6 + depth * _BM_INDENT;
+  return '<div class="bm-row bm-bk" data-zim="' + escAttr(b.zim) + '" data-path="' + escAttr(b.path) + '"' +
+    ' data-fid="' + escAttr(_folNorm(b.folder)) + '" data-depth="' + depth + '"' +
+    ' style="padding-left:' + pad + 'px" role="treeitem" tabindex="0">' +
+    '<span class="bm-bicon">' + icon + '</span>' +
+    '<span class="bm-detail"><span class="bm-name">' + esc(b.title || _titleFromPath(b.path)) + '</span>' +
+    (sub ? '<span class="bm-sub">' + esc(sub) + '</span>' : '') + '</span>' +
+    '<button class="bm-gear" data-role="menu" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">\u22EF</button>' +
+    '</div>';
+}
+
+// Re-render the bookmarks tab. renderLibraryPanel rebuilds the panel innerHTML;
+// the delegated listeners live on the persistent panel element so they survive.
+function _bmRerender() {
+  if (_getLibraryTab() !== 'bookmarks') return;
+  renderLibraryPanel();
+}
+
+// Export selector entry point — replaced with the tree selector in Phase 3.
+// Until then, "Export" runs the whole-library export (back-compat).
+function _bmOpenExport(folderId) {
+  if (typeof _bmExportSelector === 'function') { _bmExportSelector(folderId); return; }
+  exportBookmarksToZim();
+}
+
+// \u2500\u2500 New folder (inline input, not prompt()) \u2500\u2500
+function _bmNewFolderPrompt(parentId) {
+  _bmCloseInlineInput();
+  var host = document.getElementById('bm-tree');
+  if (!host) { // empty state: rerender with a tree first
+    _bmRerender();
+    host = document.getElementById('bm-tree');
+    if (!host) return;
+  }
+  var depth = 0;
+  if (parentId) {
+    var pr = host.querySelector('.bm-folder[data-fid="' + (window.CSS && CSS.escape ? CSS.escape(parentId) : parentId) + '"]');
+    depth = pr ? (parseInt(pr.dataset.depth, 10) + 1) : 0;
+  }
+  var wrap = document.createElement('div');
+  wrap.className = 'bm-row bm-newfolder';
+  wrap.style.paddingLeft = (6 + depth * _BM_INDENT) + 'px';
+  wrap.innerHTML = '<span class="bm-ficon">\uD83D\uDCC1</span>' +
+    '<input class="bm-newfolder-input" type="text" placeholder="' + escAttr(t('bm_folder_name')) + '" maxlength="60">';
+  // Insert at the top of the target parent's child region (root: top of tree).
+  if (parentId) {
+    var anchor = host.querySelector('.bm-folder[data-fid="' + (window.CSS && CSS.escape ? CSS.escape(parentId) : parentId) + '"]');
+    if (anchor && anchor.nextSibling) host.insertBefore(wrap, anchor.nextSibling);
+    else host.appendChild(wrap);
+  } else {
+    host.insertBefore(wrap, host.firstChild);
+  }
+  var input = wrap.querySelector('input');
+  input.focus();
+  var commit = function (save) {
+    if (wrap._done) return; wrap._done = true;
+    if (save) {
+      var name = input.value.trim();
+      if (name) { _folCreate(name, parentId); }
+    }
+    _bmRerender();
+  };
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+  });
+  input.addEventListener('blur', function () { commit(true); });
+}
+function _bmCloseInlineInput() {
+  var ex = document.querySelector('.bm-newfolder, .bm-renaming');
+  if (ex && ex.parentNode) ex.parentNode.removeChild(ex);
+}
+
+// \u2500\u2500 Inline rename \u2500\u2500
+function _bmRenameFolder(fid) {
+  var f = _folById(fid);
+  if (!f) return;
+  var row = document.querySelector('.bm-folder[data-fid="' + (window.CSS && CSS.escape ? CSS.escape(fid) : fid) + '"]');
+  if (!row) return;
+  var nameEl = row.querySelector('.bm-name');
+  if (!nameEl) return;
+  var input = document.createElement('input');
+  input.className = 'bm-rename-input';
+  input.type = 'text'; input.value = f.name; input.maxLength = 60;
+  nameEl.replaceWith(input);
+  row.classList.add('bm-renaming');
+  input.focus(); input.select();
+  var done = function (save) {
+    if (row._renDone) return; row._renDone = true;
+    if (save && input.value.trim()) _folRename(fid, input.value.trim());
+    _bmRerender();
+  };
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); done(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); done(false); }
+  });
+  input.addEventListener('blur', function () { done(true); });
+}
+
+// \u2500\u2500 Delete (a non-empty folder asks what to do with its contents) \u2500\u2500
+function _bmDeleteFolder(fid) {
+  var f = _folById(fid);
+  if (!f) return;
+  var count = _folBookmarkCount(fid);
+  var hasKids = _folChildren(fid).length > 0;
+  if (!count && !hasKids) { _folDelete(fid, 'promote'); _bmRerender(); return; }
+  // Non-empty \u2192 offer Move-out vs Delete-all. Reuse the generic menu at center.
+  // Deferred so the folder menu's own closeCtx (fired after this action) doesn't
+  // immediately close the choice menu we're opening.
+  var html = '<div class="ctx-note">' + tH('bm_delete_folder_q', { name: f.name, n: count }) + '</div>' +
+    '<div class="ctx-item" data-action="promote">' + tH('bm_delete_keep') + '</div>' +
+    '<div class="ctx-item danger" data-action="purge">' + tH('bm_delete_all') + '</div>';
+  var vw = window.innerWidth, vh = window.innerHeight;
+  setTimeout(function () {
+    window._openMenuAt(html, vw / 2 - 90, vh / 2 - 60, function (action) {
+      if (action === 'promote') { _folDelete(fid, 'promote'); _bmRerender(); }
+      else if (action === 'purge') { _folDelete(fid, 'contents'); _bmRerender(); }
+    });
+  }, 0);
+}
+
+// \u2500\u2500 Move to\u2026 submenu (flat, indented list of every folder + Root) \u2500\u2500
+function _bmMoveSubmenuHtml(excludeFolderId) {
+  // excludeFolderId (for moving a FOLDER) hides itself and its subtree so a
+  // cycle can't be picked.
+  var banned = {};
+  if (excludeFolderId) {
+    banned[_folNorm(excludeFolderId)] = 1;
+    _folDescendants(excludeFolderId).forEach(function (d) { banned[d] = 1; });
+  }
+  var html = '<div class="ctx-item" data-action="mv-root">' + tH('bm_root') + '</div>';
+  var walk = function (parentId, depth) {
+    _folChildren(parentId).forEach(function (f) {
+      if (banned[f.id]) return;
+      html += '<div class="ctx-item" data-action="mv" data-fid="' + escAttr(f.id) + '"' +
+        ' style="padding-left:' + (10 + depth * 12) + 'px">\uD83D\uDCC1 ' + esc(f.name) + '</div>';
+      walk(f.id, depth + 1);
+    });
+  };
+  walk(_BM_ROOT, 0);
+  return html;
+}
+
+function _bmFolderMenu(fid, x, y) {
+  var f = _folById(fid);
+  if (!f) return;
+  var html = '<div class="ctx-item" data-action="newsub">' + tH('bm_new_subfolder') + '</div>' +
+    '<div class="ctx-item">' + tH('move_to') + ' \u203A<div class="ctx-sub">' + _bmMoveSubmenuHtml(fid) + '</div></div>' +
+    '<div class="ctx-item" data-action="rename">' + tH('rename') + '</div>' +
+    '<div class="ctx-sep"></div>' +
+    '<div class="ctx-item" data-action="export">' + tH('bm_export_folder') + '</div>' +
+    '<div class="ctx-sep"></div>' +
+    '<div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
+  window._openMenuAt(html, x, y, function (action, itemEl) {
+    if (action === 'newsub') _bmNewFolderPrompt(fid);
+    else if (action === 'rename') _bmRenameFolder(fid);
+    else if (action === 'delete') _bmDeleteFolder(fid);
+    else if (action === 'export') _bmOpenExport(fid);
+    else if (action === 'mv-root') { _folReparent(fid, _BM_ROOT); _bmRerender(); }
+    else if (action === 'mv') { _folReparent(fid, itemEl.dataset.fid); _bmRerender(); }
+  });
+}
+
+function _bmBookmarkMenu(zim, path, x, y) {
+  var html = '<div class="ctx-item" data-action="open">' + tH('open') + '</div>' +
+    '<div class="ctx-item">' + tH('move_to') + ' \u203A<div class="ctx-sub">' + _bmMoveSubmenuHtml('') + '</div></div>' +
+    '<div class="ctx-sep"></div>' +
+    '<div class="ctx-item danger" data-action="remove">' + tH('bm_remove') + '</div>';
+  window._openMenuAt(html, x, y, function (action, itemEl) {
+    if (action === 'open') { _closeLibraryPanel(); openArticle(zim, path, ''); }
+    else if (action === 'remove') { _bkRemove(zim, path); _bmRerender(); }
+    else if (action === 'mv-root') { _bkSetFolder(zim, path, _BM_ROOT); _bmRerender(); }
+    else if (action === 'mv') { _bkSetFolder(zim, path, itemEl.dataset.fid); _bmRerender(); }
+  });
+}
+
+// \u2500\u2500 Delegated interaction: click / contextmenu / pointer DnD + long-press \u2500\u2500
+var _bmDrag = null;        // active drag state
+var _bmLpTimer = null;     // touch long-press timer
+var _bmPointerStart = null;
+
+function _bmEnsureBound() {
+  if (_bmBound) return;
+  var panel = document.getElementById('history-panel');
+  if (!panel) return;
+  _bmBound = true;
+
+  panel.addEventListener('click', function (e) {
+    if (_getLibraryTab() !== 'bookmarks') return;
+    var menuBtn = e.target.closest('.bm-gear');
+    var row = e.target.closest('.bm-row');
+    if (!row) return;
+    if (menuBtn) {
+      e.preventDefault(); e.stopPropagation();
+      var r = menuBtn.getBoundingClientRect();
+      _bmOpenRowMenu(row, r.left, r.bottom + 2);
+      return;
+    }
+    if (row.classList.contains('bm-folder')) {
+      // Twist or anywhere on the folder row toggles collapse.
+      _folToggleCollapse(row.dataset.fid);
+      _bmRerender();
+    } else if (row.classList.contains('bm-bk')) {
+      _closeLibraryPanel();
+      openArticle(row.dataset.zim, row.dataset.path, row.querySelector('.bm-name') ? row.querySelector('.bm-name').textContent : '');
+    }
+  });
+
+  panel.addEventListener('contextmenu', function (e) {
+    if (_getLibraryTab() !== 'bookmarks') return;
+    var row = e.target.closest('.bm-row');
+    if (!row) return;
+    e.preventDefault();
+    e.stopPropagation();  // keep the document-level closeCtx from closing what we just opened
+    _bmOpenRowMenu(row, e.clientX + 2, e.clientY + 2);
+  });
+
+  // Pointer DnD + touch long-press. One handler set, both input types.
+  panel.addEventListener('pointerdown', _bmPointerDown);
+}
+
+function _bmOpenRowMenu(row, x, y) {
+  if (row.classList.contains('bm-folder')) _bmFolderMenu(row.dataset.fid, x, y);
+  else if (row.classList.contains('bm-bk')) _bmBookmarkMenu(row.dataset.zim, row.dataset.path, x, y);
+}
+
+function _bmPointerDown(e) {
+  if (_getLibraryTab() !== 'bookmarks') return;
+  if (e.button && e.button !== 0) return;  // primary button only — right-click opens the menu
+  if (e.target.closest('.bm-gear') || e.target.closest('input')) return; // let buttons/inputs work
+  var row = e.target.closest('.bm-row');
+  if (!row || row.classList.contains('bm-newfolder') || row.classList.contains('bm-renaming')) return;
+  var touch = e.pointerType === 'touch';
+  _bmPointerStart = { x: e.clientX, y: e.clientY, row: row, id: e.pointerId, touch: touch, moved: false };
+  document.addEventListener('pointermove', _bmPointerMove, { passive: false });
+  document.addEventListener('pointerup', _bmPointerUp);
+  document.addEventListener('pointercancel', _bmPointerUp);
+  if (touch) {
+    // Long-press-to-lift: hold 320ms without a scroll \u2192 drag mode + haptic.
+    _bmLpTimer = setTimeout(function () {
+      _bmLpTimer = null;
+      if (_bmPointerStart && !_bmPointerStart.moved) {
+        if (navigator.vibrate) { try { navigator.vibrate(8); } catch (_) {} }
+        _bmBeginDrag(_bmPointerStart.row, _bmPointerStart.x, _bmPointerStart.y);
+      }
+    }, 320);
+  }
+}
+
+function _bmBeginDrag(row, x, y) {
+  var kind = row.classList.contains('bm-folder') ? 'folder' : 'bk';
+  var ghost = document.createElement('div');
+  ghost.className = 'bm-drag-ghost';
+  ghost.textContent = (row.querySelector('.bm-name') || {}).textContent || '';
+  document.body.appendChild(ghost);
+  ghost.style.left = x + 'px'; ghost.style.top = y + 'px';
+  row.classList.add('bm-dragging');
+  _bmDrag = { kind: kind, row: row, ghost: ghost, liftX: x, liftY: y, movedSinceLift: false };
+}
+
+function _bmPointerMove(e) {
+  if (!_bmPointerStart) return;
+  var dx = e.clientX - _bmPointerStart.x, dy = e.clientY - _bmPointerStart.y;
+  if (!_bmDrag) {
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      _bmPointerStart.moved = true;
+      if (_bmPointerStart.touch) {
+        // Movement before the hold fired = a scroll; let it be, cancel the lift.
+        if (_bmLpTimer) { clearTimeout(_bmLpTimer); _bmLpTimer = null; _bmTeardownPointer(); }
+        return;
+      }
+      _bmBeginDrag(_bmPointerStart.row, e.clientX, e.clientY);  // mouse: lift on move
+    } else { return; }
+  }
+  e.preventDefault();
+  _bmDrag.movedSinceLift = _bmDrag.movedSinceLift || Math.abs(e.clientX - _bmDrag.liftX) > 4 || Math.abs(e.clientY - _bmDrag.liftY) > 4;
+  _bmDrag.ghost.style.left = e.clientX + 'px';
+  _bmDrag.ghost.style.top = e.clientY + 'px';
+  _bmUpdateDropTarget(e.clientX, e.clientY);
+}
+
+// Resolve what a drop at (x,y) would do and reflect it with indicator classes.
+function _bmUpdateDropTarget(x, y) {
+  _bmClearDropMarks();
+  var el = document.elementFromPoint(x, y);
+  var host = document.getElementById('bm-tree');
+  if (!host) return;
+  var row = el && el.closest ? el.closest('.bm-row') : null;
+  if (row && (row === _bmDrag.row)) { _bmDrag.drop = null; return; }
+  if (!row) {
+    // Over the tree but not a row \u2192 drop into root (append).
+    if (host.contains(el)) { host.classList.add('bm-drop-root'); _bmDrag.drop = { mode: 'into', fid: _BM_ROOT }; }
+    else { _bmDrag.drop = null; }
+    return;
+  }
+  var rect = row.getBoundingClientRect();
+  var rel = (y - rect.top) / rect.height;
+  if (row.classList.contains('bm-folder')) {
+    // Dropping a folder into its own descendant is illegal \u2014 treat as reorder.
+    var intoOk = !(_bmDrag.kind === 'folder' && (_folWouldCycle(_bmDrag.row.dataset.fid, row.dataset.fid)));
+    if (rel < 0.30 || !intoOk) {
+      row.classList.add('bm-drop-before');
+      _bmDrag.drop = { mode: 'before-folder', fid: row.dataset.fid };
+    } else {
+      row.classList.add('bm-drop-into');
+      _bmDrag.drop = { mode: 'into', fid: row.dataset.fid };
+    }
+  } else {  // bookmark row \u2192 reorder within its folder (before / after)
+    if (rel < 0.5) { row.classList.add('bm-drop-before'); _bmDrag.drop = { mode: 'before-bk', row: row }; }
+    else { row.classList.add('bm-drop-after'); _bmDrag.drop = { mode: 'after-bk', row: row }; }
+  }
+}
+
+function _bmClearDropMarks() {
+  var host = document.getElementById('history-panel');
+  if (!host) return;
+  host.classList && document.getElementById('bm-tree') && document.getElementById('bm-tree').classList.remove('bm-drop-root');
+  host.querySelectorAll('.bm-drop-into,.bm-drop-before,.bm-drop-after').forEach(function (n) {
+    n.classList.remove('bm-drop-into', 'bm-drop-before', 'bm-drop-after');
+  });
+}
+
+function _bmPointerUp(e) {
+  if (_bmLpTimer) { clearTimeout(_bmLpTimer); _bmLpTimer = null; }
+  var drag = _bmDrag, start = _bmPointerStart;
+  _bmTeardownPointer();
+  if (!drag) return;  // was never lifted \u2192 a plain click/scroll, handled elsewhere
+  if (drag.ghost && drag.ghost.parentNode) drag.ghost.parentNode.removeChild(drag.ghost);
+  drag.row.classList.remove('bm-dragging');
+  _bmClearDropMarks();
+  // Touch lift released in place without moving \u2192 show the context menu instead.
+  if (start && start.touch && !drag.movedSinceLift) {
+    _bmOpenRowMenu(drag.row, start.x + 2, start.y + 2);
+    _bmDrag = null;
+    return;
+  }
+  _bmCommitDrop(drag);
+  _bmDrag = null;
+}
+
+function _bmCommitDrop(drag) {
+  var d = drag.drop;
+  if (!d) return;
+  if (drag.kind === 'bk') {
+    var zim = drag.row.dataset.zim, path = drag.row.dataset.path;
+    if (d.mode === 'into') _bkSetFolder(zim, path, d.fid);
+    else if (d.mode === 'before-folder') _bkSetFolder(zim, path, d.fid);  // land inside the folder before which we hovered? no \u2192 its parent
+    else if (d.mode === 'before-bk' || d.mode === 'after-bk') {
+      var tgt = d.row;
+      var destFid = tgt.dataset.fid;
+      var beforeKey = null;
+      if (d.mode === 'before-bk') beforeKey = tgt.dataset.zim + '\n' + tgt.dataset.path;
+      else {
+        // after \u2192 before the NEXT bookmark sibling in the same folder, if any
+        var sibs = _bkInFolder(destFid);
+        var ti = sibs.findIndex(function (b) { return b.zim === tgt.dataset.zim && b.path === tgt.dataset.path; });
+        if (ti >= 0 && ti + 1 < sibs.length) beforeKey = sibs[ti + 1].zim + '\n' + sibs[ti + 1].path;
+      }
+      _bkSetFolder(zim, path, destFid, beforeKey);
+    }
+  } else {  // folder
+    var fid = drag.row.dataset.fid;
+    if (d.mode === 'into') _folReparent(fid, d.fid);
+    else if (d.mode === 'before-folder') {
+      var tf = _folById(d.fid);
+      if (tf) {
+        // reparent to the target's parent, then order before it
+        if (_folNorm(tf.parent) !== _folNorm(_folById(fid).parent)) _folReparent(fid, tf.parent);
+        _folReorder(fid, d.fid);
+      }
+    }
+  }
+  _bmRerender();
+}
+
+function _bmTeardownPointer() {
+  document.removeEventListener('pointermove', _bmPointerMove);
+  document.removeEventListener('pointerup', _bmPointerUp);
+  document.removeEventListener('pointercancel', _bmPointerUp);
+  _bmPointerStart = null;
 }
 
 function _pushArticleHistory(zim, path) {

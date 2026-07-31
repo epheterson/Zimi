@@ -2152,6 +2152,65 @@
   .hp-item-del:hover { opacity: 1 !important; color: var(--error); }
   .hp-empty { padding: 32px 16px; text-align: center; color: var(--text2); font-size: 13px; }
 
+  /* ── Bookmarks tab: folder tree (v2) ── */
+  .bm-actions { border-bottom: 1px solid var(--border); }
+  .bm-tree { padding: 6px 10px 16px; -webkit-user-select: none; user-select: none; touch-action: pan-y; }
+  .bm-tree.bm-drop-root { background: var(--amber-glow); border-radius: 8px; }
+  .bm-row {
+    position: relative; display: flex; align-items: center; gap: 8px;
+    padding: 7px 8px 7px 6px; border-radius: 7px; cursor: pointer; min-height: 34px;
+  }
+  .bm-row:hover { background: var(--surface2); }
+  .bm-row:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+  .bm-folder .bm-name { font-weight: 600; }
+  .bm-twist {
+    flex-shrink: 0; width: 14px; text-align: center; color: var(--text2);
+    font-size: 10px; transition: transform 0.15s; transform: rotate(0deg);
+  }
+  .bm-twist.open { transform: rotate(90deg); }
+  .bm-ficon, .bm-bicon { flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .bm-ficon { width: 20px; font-size: 15px; }
+  .bm-bicon { width: 24px; height: 24px; border-radius: 5px; background: var(--surface2); font-size: 13px; }
+  .bm-bicon img { width: 18px; height: 18px; border-radius: 3px; }
+  .bm-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .bm-name { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bm-sub { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bm-folder .bm-name { flex: 1; min-width: 0; }
+  .bm-count {
+    flex-shrink: 0; font-size: 11px; color: var(--text2); background: var(--surface2);
+    border-radius: 10px; padding: 1px 7px; min-width: 20px; text-align: center;
+  }
+  .bm-gear {
+    flex-shrink: 0; background: none; border: none; color: var(--text2); font-size: 16px;
+    cursor: pointer; padding: 0 4px; opacity: 0; line-height: 1; border-radius: 5px;
+  }
+  .bm-row:hover .bm-gear, .bm-row:focus-within .bm-gear { opacity: 0.55; }
+  .bm-gear:hover { opacity: 1 !important; color: var(--amber); background: var(--amber-glow); }
+  /* Touch: no hover, so keep the gear always faintly visible. */
+  @media (hover: none) { .bm-gear { opacity: 0.45; } }
+  /* Inline new-folder / rename inputs */
+  .bm-newfolder, .bm-row.bm-renaming { display: flex; align-items: center; gap: 8px; padding: 7px 8px 7px 6px; min-height: 34px; }
+  .bm-newfolder-input, .bm-rename-input {
+    flex: 1; min-width: 0; background: var(--surface); color: var(--text); font-size: 13px;
+    border: 1px solid var(--amber-border); border-radius: 6px; padding: 4px 8px; outline: none;
+  }
+  .bm-rename-input { font-weight: 600; }
+  /* Drag feedback */
+  .bm-row.bm-dragging { opacity: 0.4; }
+  .bm-row.bm-drop-into { background: var(--amber-glow); box-shadow: inset 0 0 0 2px var(--amber-border); }
+  .bm-row.bm-drop-before::before, .bm-row.bm-drop-after::after {
+    content: ''; position: absolute; left: 6px; right: 8px; height: 2px; background: var(--amber); border-radius: 2px;
+  }
+  .bm-row.bm-drop-before::before { top: -1px; }
+  .bm-row.bm-drop-after::after { bottom: -1px; }
+  .bm-drag-ghost {
+    position: fixed; z-index: 9999; pointer-events: none; transform: translate(8px, 8px);
+    background: var(--surface); color: var(--text); border: 1px solid var(--amber-border);
+    border-radius: 7px; padding: 6px 12px; font-size: 13px; font-weight: 600;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.28); max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ctx-note { padding: 8px 12px; font-size: 12px; color: var(--text2); border-bottom: 1px solid var(--border); max-width: 240px; white-space: normal; line-height: 1.4; }
+
   /* ── Discover homepage — horizontal scroll row ── */
   .discover-section { margin-bottom: 20px; }
   .discover-label {
