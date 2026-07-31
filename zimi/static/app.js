@@ -9448,27 +9448,19 @@ function getInstalledPillsHtml() {
       langCounts[lang] = (langCounts[lang] || 0) + 1;
     }
   }
-  // The reorder surface shows every home section — collections AND categories —
-  // in the saved order, so what you drag is exactly what home renders (dragging
-  // a category can no longer jump invisibly past a collection). Collection pills
-  // are visually distinct (glyph + col-pill) and open the Collections tab;
-  // category pills double as filters. Both are draggable. `allCats` is still
-  // computed above purely to gate the language row below.
+  // Sections are read in the saved home order so the filter pills match what
+  // home renders. `allCats` is still computed above purely to gate the language
+  // row below.
   const allCats = _orderCatsBySaved([...new Set(Object.keys(langsByCat))]);
   const sections = _currentReorderSections();
   let h = '';
-  // These pills FILTER the installed library (click a category to scope, click a
-  // collection to open its tab). Reordering is not done here — it lives in its
-  // own view behind the trailing link-out pill, which opens the reorder panel.
+  // These pills FILTER the installed library: one row, one job. Collections
+  // live in their own tab and reordering lives in Library settings, so neither
+  // gets a look-alike pill here that navigates away instead of filtering.
   if (sections.length > 1) {
     h += '<div class="pills installed-cat-pills" style="margin-bottom:8px">';
     for (const s of sections) {
-      if (s.key.indexOf('col:') === 0) {
-        h += '<button type="button" class="pill col-pill" data-key="' + escAttr(s.key) +
-          '" onclick="switchManageTab(\'collections\')">' +
-          _COLLECTION_GLYPH + esc(s.label) + '</button>';
-        continue;
-      }
+      if (s.key.indexOf('col:') === 0) continue;
       // The Other catch-all rides the reserved 'other' key (not a cat: slice).
       const cat = s.key === OTHER_KEY ? OTHER_CAT : s.key.slice(4);
       const dimmed = manageLangFilter && langsByCat[cat] && !langsByCat[cat].has(manageLangFilter);
@@ -9476,12 +9468,6 @@ function getInstalledPillsHtml() {
         '" data-key="' + escAttr(s.key) + '" data-cat="' + escAttr(cat) +
         '" onclick="filterManageCategory(\'' + escAttr(cat) + '\')">' + esc(_catDisplayName(cat)) + '</button>';
     }
-    // Link-out ACTION pill (not a filter) → the separate reorder view.
-    h += '<button type="button" class="pill reorder-pill" onclick="_openReorderPanel()" title="' +
-      escAttr(t('reorder_sections')) + '" aria-label="' + escAttr(t('reorder_sections')) + '">' +
-      esc(t('reorder')) +
-      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>' +
-      '</button>';
     h += '</div>';
   }
   // Language pills — horizontal scroll with counts, no search button
@@ -11598,6 +11584,60 @@ function _bindVideoResume(frame, zim, path) {
   })(vids[i], i);
 }
 
+// Graceful "video not included in this ZIM" affordance. Broken-scrape ZIMs
+// (e.g. ted_en_technology) render an article whose <video> points at a 0-byte /
+// missing media entry — the player just sits dead. On a GENUINE load/decode
+// failure we swap the dead player for a small centered message. "Genuine" =
+// the element carries a MediaError (v.error) or has exhausted every <source>
+// with none playable (networkState === NETWORK_NO_SOURCE). A healthy video mid-
+// load is networkState LOADING with error === null, so it never trips this.
+// The box uses neutral grey tones + color:inherit so it reads correctly whether
+// the app is light, dark, or the raw page is running under the auto-dark invert.
+function _bindVideoError(frame) {
+  var doc; try { doc = frame.contentDocument; } catch(e) { return; }
+  if (!doc) return;
+  var vids = doc.querySelectorAll('video');
+  for (var i = 0; i < vids.length; i++) (function(v) {
+    if (v.__zimiErrBound) return;
+    v.__zimiErrBound = true;
+    var shown = false;
+    function failed() {
+      // NETWORK_NO_SOURCE === 3: browser tried all sources, none playable.
+      return !!v.error || v.networkState === 3;
+    }
+    function show() {
+      if (shown || !failed() || !v.parentNode) return;
+      shown = true;
+      var w = v.offsetWidth || parseInt(v.getAttribute('width'), 10) || 0;
+      var h = v.offsetHeight || parseInt(v.getAttribute('height'), 10) || 0;
+      var box = doc.createElement('div');
+      box.className = 'zimi-video-missing';
+      box.setAttribute('role', 'status');
+      box.style.cssText = 'display:flex;flex-direction:column;gap:10px;' +
+        'align-items:center;justify-content:center;text-align:center;' +
+        'box-sizing:border-box;padding:24px 16px;border-radius:8px;' +
+        'background:rgba(127,127,127,0.14);border:1px solid rgba(127,127,127,0.35);' +
+        'color:inherit;font:500 14px/1.4 system-ui,-apple-system,sans-serif;' +
+        'min-height:' + (h > 40 ? h : 160) + 'px;' +
+        (w > 40 ? 'max-width:' + w + 'px;' : '') + 'width:100%;';
+      box.innerHTML = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" ' +
+        'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" ' +
+        'stroke-linejoin="round" style="opacity:.7"><path d="m23 7-7 5 7 5V7z"/>' +
+        '<rect x="1" y="5" width="15" height="14" rx="2" ry="2"/><line x1="2" y1="2" x2="22" y2="22"/></svg>' +
+        '<span></span>';
+      box.lastChild.textContent = t('video_not_included');
+      v.parentNode.insertBefore(box, v);
+      v.style.display = 'none';
+    }
+    // Capture so a failing <source> child's error (which doesn't bubble) is seen.
+    v.addEventListener('error', show, true);
+    v.addEventListener('stalled', show);
+    v.addEventListener('emptied', show);
+    // Catch sources that already resolved to nothing before we bound.
+    if (failed()) show(); else setTimeout(show, 1500);
+  })(vids[i]);
+}
+
 // Bind the tap-to-full-size lightbox to the NORMAL (non-Reader-View) article
 // frame, reusing the Reader View overlay + open/mark helpers. Two differences
 // from the Reader View binding: eligibility also excludes article-navigating
@@ -12292,6 +12332,9 @@ function openReader(url) {
         var _vm = _frameLoc.match(/^\/w\/([^\/]+)\/(.+)$/);
         if (_vm) _bindVideoResume(frame, decodeURIComponent(_vm[1]), decodeURIComponent(_vm[2]));
       } catch(e) {}
+      // Dead-player affordance for broken-scrape ZIMs (0-byte / missing media).
+      // Independent of the resume binding above — runs for any /w/ article frame.
+      try { _bindVideoError(frame); } catch(e) {}
       var _handleFrameLink = function(e) {
         var a = e.target.closest('a[href]');
         if (!a) return;
