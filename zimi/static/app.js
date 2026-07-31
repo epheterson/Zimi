@@ -13077,7 +13077,8 @@ function _bmUpdateDropTarget(x, y) {
 function _bmClearDropMarks() {
   var host = document.getElementById('history-panel');
   if (!host) return;
-  host.classList && document.getElementById('bm-tree') && document.getElementById('bm-tree').classList.remove('bm-drop-root');
+  var tree = document.getElementById('bm-tree');
+  if (tree) tree.classList.remove('bm-drop-root');
   host.querySelectorAll('.bm-drop-into,.bm-drop-before,.bm-drop-after').forEach(function (n) {
     n.classList.remove('bm-drop-into', 'bm-drop-before', 'bm-drop-after');
   });
