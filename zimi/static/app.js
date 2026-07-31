@@ -21,6 +21,12 @@ var SK = {
   LIBRARY_VIEW: 'zimi_library_view',
   BROWSE_HISTORY: 'zimi_browse_history',
   BOOKMARKS: 'zimi_bookmarks',
+  // Bookmark folders (v2) — array of {id,name,parent,order}. Root is implicit
+  // (a bookmark/folder with parent null|"" is top-level). Rides in the same
+  // /userdata + My-data backup blob as BOOKMARKS.
+  BM_FOLDERS: 'zimi_bm_folders',
+  // Per-device UI state: ids of collapsed folders in the bookmarks tree.
+  BM_COLLAPSED: 'zimi_bm_collapsed',
   MANAGE_PW: 'zimi_manage_pw',
   // Optional management username (v1.8) — a plain identifier, stored next to
   // the token so a remembered session keeps sending its X-Zimi-User header.
@@ -9064,10 +9070,16 @@ function _mergeByKey(current, incoming, keyFn, overwrite) {
 function _collectBrowserData() {
   return {
     bookmarks: _getStorageJSON(SK.BOOKMARKS, []),
+    folders: _getStorageJSON(SK.BM_FOLDERS, []),
     history: _getStorageJSON(SK.BROWSE_HISTORY, []),
     preferences: _collectPreferences(),
   };
 }
+
+// Folders merge by id (not zim+path). Newer (higher order/updated wins isn't
+// meaningful for folders, so incoming simply overrides an existing id) — this
+// keeps a restored/synced tree consistent with the bookmarks that reference it.
+function _folderKey(f) { return (f && f.id) ? String(f.id) : ''; }
 
 function _applyBrowserData(data, overwrite) {
   var res = { bm: { added: 0, dupes: 0 } };
@@ -9080,6 +9092,12 @@ function _applyBrowserData(data, overwrite) {
   if (data && Array.isArray(data.bookmarks)) {
     res.bm = _mergeByKey(_getStorageJSON(SK.BOOKMARKS, []), data.bookmarks, _bookmarkKey, overwrite);
     _setStorageJSON(SK.BOOKMARKS, res.bm.list);
+    if (typeof _bookmarks !== 'undefined') _bookmarks = null;  // drop the in-memory cache
+  }
+  if (data && Array.isArray(data.folders)) {
+    var fm = _mergeByKey(_getStorageJSON(SK.BM_FOLDERS, []), data.folders, _folderKey, overwrite);
+    _setStorageJSON(SK.BM_FOLDERS, fm.list);
+    if (typeof _bmFolders !== 'undefined') _bmFolders = null;  // drop the in-memory cache
   }
   if (data && Array.isArray(data.history)) {
     _setStorageJSON(SK.BROWSE_HISTORY, _mergeByKey(_getStorageJSON(SK.BROWSE_HISTORY, []), data.history, _bookmarkKey, overwrite).list);
@@ -12690,6 +12708,188 @@ function _bkRemove(zim, path) {
   var idx = _bkFind(zim, path);
   if (idx >= 0) { _bkLoad().splice(idx, 1); _bkSave(); }
 }
+
+// ── Bookmark folders (v2) ──────────────────────────────────────────────────
+// Nested folders, arbitrary depth. Folders are their own records keyed by a
+// generated id; each bookmark carries a `folder` id (null/"" = root) plus an
+// `order` for intra-folder sort. Migration is implicit: a pre-v2 bookmark has
+// no `folder` (→ root) and no `order` (→ falls back to timestamp-desc). Empty
+// folders are representable (the whole reason folders are separate records).
+// The two localStorage keys ride in the same /userdata + backup blob as
+// BOOKMARKS (see _collectBrowserData). ROOT is the implicit null parent.
+var _BM_ROOT = '';               // canonical root folder id
+var _bmFolders = null;           // in-memory cache of the folders array
+
+function _folLoad() {
+  if (_bmFolders !== null) return _bmFolders;
+  try { _bmFolders = JSON.parse(localStorage.getItem(SK.BM_FOLDERS)) || []; }
+  catch (e) { _bmFolders = []; }
+  if (!Array.isArray(_bmFolders)) _bmFolders = [];
+  return _bmFolders;
+}
+function _folSave() {
+  if (!_bmFolders) return;
+  try { localStorage.setItem(SK.BM_FOLDERS, JSON.stringify(_bmFolders)); } catch (e) {}
+}
+function _folNorm(id) { return (id == null) ? _BM_ROOT : String(id); }
+function _folById(id) {
+  id = _folNorm(id);
+  if (id === _BM_ROOT) return null;
+  return _folLoad().find(function (f) { return f.id === id; }) || null;
+}
+function _folExists(id) { return _folNorm(id) === _BM_ROOT || !!_folById(id); }
+// A stable, collision-resistant id — time in base36 plus a little randomness.
+function _folNewId() {
+  return 'f_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+}
+// Child folders of `parentId`, ordered by `order` then name (case-insensitive).
+function _folChildren(parentId) {
+  parentId = _folNorm(parentId);
+  return _folLoad().filter(function (f) { return _folNorm(f.parent) === parentId; })
+    .sort(function (a, b) {
+      var d = (a.order || 0) - (b.order || 0);
+      return d || (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
+    });
+}
+// Bookmarks directly inside `folderId`, ordered by `order` then timestamp-desc
+// (so pre-v2 bookmarks — no order — keep their recency ordering).
+function _bkInFolder(folderId) {
+  folderId = _folNorm(folderId);
+  return _bkLoad().filter(function (b) { return _folNorm(b.folder) === folderId; })
+    .sort(function (a, b) {
+      var ao = (a.order == null) ? Infinity : a.order;
+      var bo = (b.order == null) ? Infinity : b.order;
+      if (ao !== bo) return ao - bo;
+      return (b.timestamp || 0) - (a.timestamp || 0);
+    });
+}
+// Every descendant folder id of `id` (not including `id`) — for delete + the
+// reparent cycle guard.
+function _folDescendants(id) {
+  var out = [], stack = _folChildren(id).map(function (f) { return f.id; });
+  while (stack.length) {
+    var cur = stack.pop();
+    out.push(cur);
+    _folChildren(cur).forEach(function (f) { stack.push(f.id); });
+  }
+  return out;
+}
+// True if `candidate` is `id` or an ancestor of it — a folder can't be moved
+// into itself or its own subtree.
+function _folWouldCycle(id, candidateParent) {
+  candidateParent = _folNorm(candidateParent);
+  if (candidateParent === _folNorm(id)) return true;
+  return _folDescendants(id).indexOf(candidateParent) >= 0;
+}
+function _folNextOrder(parentId) {
+  var kids = _folChildren(parentId);
+  return kids.length ? (kids[kids.length - 1].order || 0) + 1 : 0;
+}
+function _bkNextOrder(folderId) {
+  var items = _bkInFolder(folderId);
+  var last = items[items.length - 1];
+  var lo = last && last.order != null ? last.order : items.length - 1;
+  return (items.length ? lo : -1) + 1;
+}
+function _folCreate(name, parentId) {
+  name = (name || '').trim() || t('bm_untitled_folder');
+  parentId = _folNorm(parentId);
+  var rec = { id: _folNewId(), name: name, parent: parentId, order: _folNextOrder(parentId) };
+  _folLoad().push(rec);
+  _folSave();
+  return rec.id;
+}
+function _folRename(id, name) {
+  var f = _folById(id);
+  if (!f) return;
+  f.name = (name || '').trim() || f.name;
+  _folSave();
+}
+// Reparent a folder. Returns false (no-op) when the move would create a cycle.
+function _folReparent(id, newParent) {
+  var f = _folById(id);
+  if (!f) return false;
+  newParent = _folNorm(newParent);
+  if (_folWouldCycle(id, newParent)) return false;
+  f.parent = newParent;
+  f.order = _folNextOrder(newParent);
+  _folSave();
+  return true;
+}
+// Delete a folder. mode 'contents' removes its bookmarks + subfolders (deep);
+// mode 'promote' lifts its bookmarks and child folders up to its own parent.
+function _folDelete(id, mode) {
+  var f = _folById(id);
+  if (!f) return;
+  var parent = _folNorm(f.parent);
+  var subtree = _folDescendants(id).concat([id]);
+  if (mode === 'promote') {
+    _bkLoad().forEach(function (b) { if (_folNorm(b.folder) === _folNorm(id)) b.folder = parent; });
+    _folChildren(id).forEach(function (c) { c.parent = parent; });
+    _bmFolders = _folLoad().filter(function (x) { return x.id !== id; });
+  } else {  // 'contents' (default): purge everything under this folder
+    var kill = {};
+    subtree.forEach(function (sid) { kill[sid] = 1; });
+    _bookmarks = _bkLoad().filter(function (b) { return !kill[_folNorm(b.folder)]; });
+    _bmFolders = _folLoad().filter(function (x) { return !kill[x.id]; });
+    _bkSave();
+  }
+  _folSave();
+}
+// Move a bookmark into `folderId`. `beforeKey` (a _bookmarkKey) optionally
+// places it right before that sibling; omitted → appended to the end.
+function _bkSetFolder(zim, path, folderId, beforeKey) {
+  var idx = _bkFind(zim, path);
+  if (idx < 0) return;
+  var bk = _bkLoad();
+  var b = bk[idx];
+  folderId = _folExists(folderId) ? _folNorm(folderId) : _BM_ROOT;
+  b.folder = folderId;
+  // Reorder within the destination: rebuild the ordered sibling list with `b`
+  // inserted at the requested slot, then write back contiguous order values.
+  var sibs = _bkInFolder(folderId).filter(function (x) { return x !== b; });
+  var at = sibs.length;
+  if (beforeKey) {
+    var p = sibs.findIndex(function (x) { return _bookmarkKey(x) === beforeKey; });
+    if (p >= 0) at = p;
+  }
+  sibs.splice(at, 0, b);
+  sibs.forEach(function (x, i) { x.order = i; });
+  _bkSave();
+}
+// Reorder a folder among its siblings, before `beforeId` (or append).
+function _folReorder(id, beforeId) {
+  var f = _folById(id);
+  if (!f) return;
+  var sibs = _folChildren(f.parent).filter(function (x) { return x.id !== id; });
+  var at = sibs.length;
+  if (beforeId) {
+    var p = sibs.findIndex(function (x) { return x.id === beforeId; });
+    if (p >= 0) at = p;
+  }
+  sibs.splice(at, 0, f);
+  sibs.forEach(function (x, i) { x.order = i; });
+  _folSave();
+}
+// Per-device collapse state (not synced — it's UI, not data).
+function _folCollapsedSet() {
+  try { return new Set(JSON.parse(localStorage.getItem(SK.BM_COLLAPSED)) || []); }
+  catch (e) { return new Set(); }
+}
+function _folIsCollapsed(id) { return _folCollapsedSet().has(_folNorm(id)); }
+function _folToggleCollapse(id) {
+  var s = _folCollapsedSet();
+  id = _folNorm(id);
+  if (s.has(id)) s.delete(id); else s.add(id);
+  try { localStorage.setItem(SK.BM_COLLAPSED, JSON.stringify(Array.from(s))); } catch (e) {}
+}
+// Recursive count of bookmarks under a folder (self + descendants) — the badge.
+function _folBookmarkCount(id) {
+  var ids = [_folNorm(id)].concat(_folDescendants(id).map(_folNorm));
+  var set = {}; ids.forEach(function (x) { set[x] = 1; });
+  return _bkLoad().filter(function (b) { return set[_folNorm(b.folder)]; }).length;
+}
+
 // Save to ZIM: POST the client's bookmark list (server has no copy) and poll
 // until the export ZIM is written and rescanned into the library.
 var _exportPoll = null;

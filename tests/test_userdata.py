@@ -47,6 +47,29 @@ def test_load_missing_returns_empty(monkeypatch, tmp_path):
     assert (
         blob["bookmarks"] == [] and blob["history"] == [] and blob["preferences"] == {}
     )
+    assert blob["folders"] == []  # v2: folders are first-class in the empty blob
+
+
+def test_folders_roundtrip(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    folders = [{"id": "f1", "name": "Medical", "parent": "", "order": 0}]
+    bookmarks = [{"zim": "a", "path": "b", "folder": "f1", "order": 0}]
+    ok, err = users.save_user_data(
+        "Alice", {"bookmarks": bookmarks, "folders": folders}
+    )
+    assert ok and err is None
+    blob = users.load_user_data("Alice")
+    assert blob["folders"] == folders
+    # The per-bookmark folder/order fields ride opaquely inside the list.
+    assert blob["bookmarks"][0]["folder"] == "f1"
+
+
+def test_folders_default_empty_when_absent(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    # A pre-v2 blob (no folders key) saves cleanly with folders → [].
+    ok, _ = users.save_user_data("Bob", {"bookmarks": [{"zim": "a", "path": "b"}]})
+    assert ok
+    assert users.load_user_data("Bob")["folders"] == []
 
 
 def test_key_is_casefolded(monkeypatch, tmp_path):

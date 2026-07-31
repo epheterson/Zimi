@@ -440,6 +440,7 @@ def _empty_user_data():
     return {
         "version": _USERDATA_VERSION,
         "bookmarks": [],
+        "folders": [],
         "history": [],
         "preferences": {},
     }
@@ -472,11 +473,13 @@ def save_user_data(name, blob):
     if not isinstance(blob, dict):
         return False, "invalid data"
     bookmarks = blob.get("bookmarks")
+    folders = blob.get("folders")
     history = blob.get("history")
     prefs = blob.get("preferences")
     doc = {
         "version": _USERDATA_VERSION,
         "bookmarks": bookmarks if isinstance(bookmarks, list) else [],
+        "folders": folders if isinstance(folders, list) else [],
         "history": history if isinstance(history, list) else [],
         "preferences": prefs if isinstance(prefs, dict) else {},
         "updated": int(time.time()),
