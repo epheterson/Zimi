@@ -1181,5 +1181,11 @@
   "bm_delete_keep": "Delete folder, keep bookmarks",
   "bm_delete_all": "Delete folder and its contents",
   "more_actions": "More actions",
-  "rename": "Rename"
+  "rename": "Rename",
+  "bm_export_title": "Export bookmarks to ZIM",
+  "bm_export_desc": "One ZIM per selected top-level folder. Subfolders become sections inside it. Images and styling are carried in so the ZIM resembles the originals.",
+  "bm_export_all": "Select all",
+  "bm_export_unfiled": "Loose bookmarks (top level)",
+  "bm_export_none_selected": "Pick at least one folder to export.",
+  "bm_export_done": "Created {n} ZIM(s) — added to your library."
 }

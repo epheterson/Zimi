@@ -76,3 +76,88 @@ def test_output_path_does_not_clobber(tmp_path):
     b = zw.build_bookmarks_zim(_bookmarks(), str(tmp_path), reader=_fake_reader)
     assert a != b
     assert os.path.exists(a) and os.path.exists(b)
+
+
+# ── v2: real asset carrying, sections, multi-ZIM jobs ──
+
+
+def _img_reader(zim, path):
+    return (
+        "<html><head>"
+        "<link rel='stylesheet' href='../-/style.css'>"
+        f"<title>{path}</title></head><body>"
+        f"<h1>{path}</h1><img src='../I/pic.png'><p>text</p></body></html>"
+    )
+
+
+def _asset_reader(zim, path):
+    if path == "I/pic.png":
+        return (b"\x89PNG\r\n\x1a\nFAKEPNGDATA", "image/png")
+    if path == "-/style.css":
+        return (b"body{color:red} h1{background:url('../I/bg.png')}", "text/css")
+    if path == "I/bg.png":
+        return (b"BGIMAGEBYTES", "image/png")
+    return None
+
+
+def test_carries_images_and_styles(tmp_path):
+    out = zw.build_bookmarks_zim(
+        [{"zim": "wiki", "path": "A/Water", "title": "Water"}],
+        str(tmp_path),
+        reader=_img_reader,
+        asset_reader=_asset_reader,
+    )
+    arc = Archive(out)
+    # The image entry was carried into the export, namespaced by source ZIM.
+    assert arc.has_entry_by_path("_assets/wiki/I/pic.png")
+    png = bytes(arc.get_entry_by_path("_assets/wiki/I/pic.png").get_item().content)
+    assert png == b"\x89PNG\r\n\x1a\nFAKEPNGDATA"
+    # The article's <img> now points at the carried asset (rewritten ../ ref).
+    art = bytes(arc.get_entry_by_path("A/0_Water").get_item().content).decode("utf-8")
+    assert "../_assets/wiki/I/pic.png" in art
+    # Stylesheet was inlined into the head, not left as an external <link>.
+    assert "color:red" in art
+    assert "<link" not in art
+    # The CSS's own url() font/image was carried one level deep too.
+    assert arc.has_entry_by_path("_assets/wiki/I/bg.png")
+
+
+def test_sections_group_the_index(tmp_path):
+    bms = [
+        {"zim": "w", "path": "A/H", "title": "Heart", "section": "Cardiology"},
+        {"zim": "w", "path": "A/A", "title": "Aspirin", "section": ""},
+    ]
+    out = zw.build_bookmarks_zim(bms, str(tmp_path), reader=_fake_reader)
+    idx = bytes(Archive(out).get_entry_by_path("index").get_item().content).decode(
+        "utf-8"
+    )
+    assert "zimi-section" in idx  # section headers rendered
+    assert "Cardiology" in idx
+
+
+def test_build_export_jobs_writes_one_zim_each(tmp_path):
+    jobs = [
+        {
+            "name": "medical",
+            "title": "Medical",
+            "bookmarks": [{"zim": "w", "path": "A/H", "title": "Heart"}],
+        },
+        {
+            "name": "research",
+            "title": "Research",
+            "bookmarks": [{"zim": "w", "path": "A/P", "title": "Paper"}],
+        },
+    ]
+    outs = zw.build_export_jobs(jobs, str(tmp_path), reader=_fake_reader)
+    assert len(outs) == 2
+    names = sorted(os.path.basename(p) for p in outs)
+    assert names == ["medical.zim", "research.zim"]
+    assert all(os.path.exists(p) for p in outs)
+
+
+def test_normalize_jobs_accepts_flat_or_jobs():
+    flat = zw._normalize_jobs([{"zim": "a", "path": "b"}])
+    assert len(flat) == 1 and len(flat[0]["bookmarks"]) == 1
+    jobs = zw._normalize_jobs([{"name": "x", "bookmarks": [{"zim": "a", "path": "b"}]}])
+    assert len(jobs) == 1 and jobs[0]["name"] == "x"
+    assert zw._normalize_jobs([]) == []

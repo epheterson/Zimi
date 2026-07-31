@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import threading
 import time
 
@@ -1862,25 +1863,58 @@ def handle_manage_post(handler, parsed, data):
         )
 
     elif parsed.path == "/manage/export-bookmarks":
-        # Save bookmarks to a standalone ZIM. The client POSTs its localStorage
-        # bookmark list (client-side only — server has no copy).
+        # Save bookmarks to standalone ZIM(s). The client POSTs its localStorage
+        # bookmarks (client-side only — server has no copy) as either:
+        #   {"bookmarks": [...]}                       → one ZIM (v1 / Export all)
+        #   {"exports":  [{"name","title","bookmarks":[...]}, ...]}  → one ZIM each
         from zimi import zimwriter as _zw
 
-        bookmarks = data.get("bookmarks")
-        if not isinstance(bookmarks, list) or not bookmarks:
-            return handler._json(400, {"error": "No bookmarks to export"})
-        if len(bookmarks) > 500:
-            return handler._json(400, {"error": "Too many bookmarks (max 500)"})
-        cleaned = [
-            {
+        def _clean_bm(b):
+            return {
                 "zim": str(b.get("zim", "")),
                 "path": str(b.get("path", "")),
                 "title": str(b.get("title", "")),
+                "section": str(b.get("section", "")),
             }
-            for b in bookmarks
-            if isinstance(b, dict)
-        ]
-        started, msg = _zw.start_export(cleaned)
+
+        def _safe_name(s):
+            s = re.sub(r"[^a-zA-Z0-9._-]+", "_", str(s or "")).strip("_.")
+            return s[:60] or None
+
+        exports = data.get("exports")
+        total = 0
+        if isinstance(exports, list) and exports:
+            payload = []
+            for job in exports:
+                if not isinstance(job, dict):
+                    continue
+                bms = [
+                    _clean_bm(b)
+                    for b in (job.get("bookmarks") or [])
+                    if isinstance(b, dict)
+                ]
+                if not bms:
+                    continue
+                total += len(bms)
+                payload.append(
+                    {
+                        "name": _safe_name(job.get("name")),
+                        "title": str(job.get("title") or "")[:120] or None,
+                        "bookmarks": bms,
+                    }
+                )
+            if not payload:
+                return handler._json(400, {"error": "No bookmarks to export"})
+        else:
+            bookmarks = data.get("bookmarks")
+            if not isinstance(bookmarks, list) or not bookmarks:
+                return handler._json(400, {"error": "No bookmarks to export"})
+            payload = [_clean_bm(b) for b in bookmarks if isinstance(b, dict)]
+            total = len(payload)
+
+        if total > 2000:
+            return handler._json(400, {"error": "Too many bookmarks (max 2000)"})
+        started, msg = _zw.start_export(payload)
         return handler._json(
             200, {"status": "started" if started else "busy", "detail": msg}
         )

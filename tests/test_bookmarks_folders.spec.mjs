@@ -112,6 +112,43 @@ test.describe('Bookmarks folder tree', () => {
     expect(state.bookmarks.length).toBe(3); // nothing deleted
   });
 
+  test('export selector builds one job per top-level folder with sections', async ({ page }) => {
+    await seedAndOpen(page, FOLDERS, BOOKMARKS);
+    await page.getByRole('button', { name: 'Save to ZIM' }).click();
+    await page.waitForSelector('#bm-export-tree');
+    // Select Medical (auto-checks its Cardiology subfolder).
+    await page.locator('#bm-export-tree input[data-fid="med"]').check();
+    const built = await page.evaluate(() => _bmBuildExportJobs());
+    // One job (Medical); Cardiology's bookmark rides as a section, not its own ZIM.
+    expect(built.jobs.length).toBe(1);
+    expect(built.jobs[0].title).toBe('Medical');
+    const sections = built.jobs[0].bookmarks.map((b) => b.section).sort();
+    expect(sections).toContain('Cardiology'); // Heart, nested
+    expect(sections).toContain('');           // Aspirin, directly in Medical
+  });
+
+  test('full export creates a ZIM and reveals it', async ({ page }) => {
+    await seedAndOpen(page, FOLDERS, BOOKMARKS);
+    await page.getByRole('button', { name: 'Save to ZIM' }).click();
+    await page.waitForSelector('#bm-export-tree');
+    await page.locator('#bm-export-tree input[data-fid="res"]').check();
+    await page.getByRole('button', { name: 'Save to ZIM' }).nth(1).click();
+    // Poll the server export status directly until done (bounded).
+    await expect.poll(async () => {
+      const st = await page.evaluate(async () => {
+        const r = await fetch('/manage/export-bookmarks');
+        return r.json();
+      });
+      return st.phase;
+    }, { timeout: 15000, intervals: [400] }).toBe('done');
+    const files = await page.evaluate(async () => {
+      const r = await fetch('/manage/export-bookmarks');
+      const st = await r.json();
+      return st.files || [];
+    });
+    expect(files.length).toBeGreaterThanOrEqual(1);
+  });
+
   test('drag a bookmark into a folder', async ({ page }) => {
     await seedAndOpen(page, FOLDERS, BOOKMARKS);
     const src = page.locator('.bm-bk[data-path="A/Loose"]');

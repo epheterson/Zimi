@@ -13344,6 +13344,157 @@ function _folBookmarkCount(id) {
 
 // Save to ZIM: POST the client's bookmark list (server has no copy) and poll
 // until the export ZIM is written and rescanned into the library.
+// ── Tree export selector (Phase 3) ──────────────────────────────────────────
+// A folder-tree checkbox picker. Grouping DECISION: one ZIM per selected
+// TOP-LEVEL folder (a checked folder with no checked ancestor); its selected
+// subfolders become SECTIONS inside that ZIM. A subfolder checked on its own
+// (no checked ancestor) becomes its own ZIM. Unfiled (root) bookmarks export as
+// a "Bookmarks" ZIM. Each ZIM carries the real article HTML + images + styling.
+function _bmExportSelector(preFolderId) {
+  _bmCloseExport();
+  var rootBk = _bkInFolder(_BM_ROOT).length;
+  var tree = '';
+  var walk = function (parentId, depth) {
+    _folChildren(parentId).forEach(function (f) {
+      var checked = preFolderId && (f.id === preFolderId || _folDescendants(preFolderId).indexOf(f.id) >= 0);
+      tree += '<label class="bm-exp-row" style="padding-left:' + (8 + depth * 16) + 'px">' +
+        '<input type="checkbox" data-fid="' + escAttr(f.id) + '"' + (checked ? ' checked' : '') + '>' +
+        '<span class="bm-exp-name">📁 ' + esc(f.name) + '</span>' +
+        '<span class="bm-exp-count">' + _folBookmarkCount(f.id) + '</span></label>';
+      walk(f.id, depth + 1);
+    });
+  };
+  walk(_BM_ROOT, 0);
+  if (rootBk) {
+    tree += '<label class="bm-exp-row" style="padding-left:8px">' +
+      '<input type="checkbox" data-fid="__unfiled__"' + (!preFolderId ? '' : '') + '>' +
+      '<span class="bm-exp-name">📄 ' + tH('bm_export_unfiled') + '</span>' +
+      '<span class="bm-exp-count">' + rootBk + '</span></label>';
+  }
+  if (!tree) tree = '<div class="bm-exp-empty">' + tH('no_bookmarks') + '</div>';
+  var ov = document.createElement('div');
+  ov.className = 'bm-export-overlay';
+  ov.id = 'bm-export-overlay';
+  ov.innerHTML =
+    '<div class="bm-export-modal" role="dialog" aria-modal="true" aria-label="' + escAttr(t('bm_export_title')) + '">' +
+    '<div class="bm-export-head">' + tH('bm_export_title') + '</div>' +
+    '<div class="bm-export-desc">' + tH('bm_export_desc') + '</div>' +
+    '<div class="bm-export-tree" id="bm-export-tree">' + tree + '</div>' +
+    '<div class="bm-export-status" id="bm-export-status"></div>' +
+    '<div class="bm-export-actions">' +
+    '<button class="hp-action-btn" onclick="_bmExportSelectAll()">' + tH('bm_export_all') + '</button>' +
+    '<span style="flex:1"></span>' +
+    '<button class="hp-action-btn" onclick="_bmCloseExport()">' + tH('cancel') + '</button>' +
+    '<button class="hp-action-btn primary" id="bm-export-go" onclick="_bmExportSubmit()">' + tH('save_to_zim') + '</button>' +
+    '</div></div>';
+  document.body.appendChild(ov);
+  // Checking a folder auto-(un)checks its descendants; you can still uncheck one.
+  ov.querySelector('#bm-export-tree').addEventListener('change', function (e) {
+    var cb = e.target.closest('input[type=checkbox]');
+    if (!cb || cb.dataset.fid === '__unfiled__') return;
+    var descs = _folDescendants(cb.dataset.fid);
+    descs.forEach(function (id) {
+      var d = ov.querySelector('input[data-fid="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+      if (d) d.checked = cb.checked;
+    });
+  });
+  ov.addEventListener('click', function (e) { if (e.target === ov) _bmCloseExport(); });
+}
+function _bmCloseExport() {
+  clearTimeout(_exportPoll);
+  var ov = document.getElementById('bm-export-overlay');
+  if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+}
+function _bmExportSelectAll() {
+  var ov = document.getElementById('bm-export-overlay');
+  if (!ov) return;
+  ov.querySelectorAll('#bm-export-tree input[type=checkbox]').forEach(function (cb) { cb.checked = true; });
+}
+// Turn the checked folders into export jobs (one per top-level selection).
+function _bmBuildExportJobs() {
+  var ov = document.getElementById('bm-export-overlay');
+  if (!ov) return { jobs: [], unfiled: false };
+  var selected = {};
+  var unfiled = false;
+  ov.querySelectorAll('#bm-export-tree input[type=checkbox]:checked').forEach(function (cb) {
+    if (cb.dataset.fid === '__unfiled__') unfiled = true;
+    else selected[cb.dataset.fid] = 1;
+  });
+  var hasSelectedAncestor = function (fid) {
+    var p = _folNorm(_folById(fid).parent);
+    while (p !== _BM_ROOT) { if (selected[p]) return true; p = _folNorm(_folById(p).parent); }
+    return false;
+  };
+  var jobs = [];
+  Object.keys(selected).forEach(function (rootId) {
+    if (hasSelectedAncestor(rootId)) return;  // it's a section inside another ZIM
+    var root = _folById(rootId);
+    if (!root) return;
+    var bms = [];
+    var stack = [rootId];
+    while (stack.length) {
+      var cur = stack.pop();
+      var isSelf = (cur === rootId);
+      var secName = isSelf ? '' : _folById(cur).name;
+      _bkInFolder(cur).forEach(function (b) {
+        bms.push({ zim: b.zim, path: b.path, title: b.title || '', section: secName });
+      });
+      _folChildren(cur).forEach(function (c) { if (selected[c.id]) stack.push(c.id); });
+    }
+    if (bms.length) jobs.push({ name: root.name, title: root.name, bookmarks: bms });
+  });
+  return { jobs: jobs, unfiled: unfiled };
+}
+function _bmExportSubmit() {
+  var built = _bmBuildExportJobs();
+  var jobs = built.jobs;
+  if (built.unfiled) {
+    var rootBms = _bkInFolder(_BM_ROOT).map(function (b) {
+      return { zim: b.zim, path: b.path, title: b.title || '', section: '' };
+    });
+    if (rootBms.length) jobs.push({ name: 'Bookmarks', title: 'Bookmarks', bookmarks: rootBms });
+  }
+  var status = document.getElementById('bm-export-status');
+  var go = document.getElementById('bm-export-go');
+  if (!jobs.length) {
+    if (status) { status.textContent = t('bm_export_none_selected'); status.style.color = 'var(--amber)'; }
+    return;
+  }
+  if (go) go.disabled = true;
+  if (status) { status.style.color = ''; status.textContent = t('save_to_zim_working'); }
+  manageFetch('/manage/export-bookmarks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ exports: jobs }),
+  }).then(function (r) { return r.json(); }).then(function (res) {
+    if (res && res.error) { _bmExportModalFail(); return; }
+    _bmPollExport();
+  }).catch(_bmExportModalFail);
+}
+function _bmExportModalFail() {
+  var status = document.getElementById('bm-export-status');
+  var go = document.getElementById('bm-export-go');
+  if (go) go.disabled = false;
+  if (status) { status.textContent = t('save_to_zim_failed'); status.style.color = 'var(--amber)'; }
+}
+function _bmPollExport() {
+  clearTimeout(_exportPoll);
+  manageFetch('/manage/export-bookmarks').then(function (r) { return r.json(); }).then(function (st) {
+    var status = document.getElementById('bm-export-status');
+    if (st.phase === 'running') {
+      if (status) status.textContent = t('save_to_zim_working') + (st.total ? ' (' + st.done + '/' + st.total + ')' : '');
+      _exportPoll = setTimeout(_bmPollExport, 600);
+    } else if (st.phase === 'done') {
+      var files = (st.files && st.files.length) ? st.files : (st.file ? [st.file] : []);
+      if (status) { status.style.color = '#34d399'; status.textContent = t('bm_export_done', { n: files.length }); }
+      // Close the modal shortly, then reveal the first new ZIM in the library.
+      setTimeout(function () { _bmCloseExport(); _revealExportedZim(files[0]); }, 900);
+    } else if (st.phase === 'error') {
+      _bmExportModalFail();
+    }
+  }).catch(_bmExportModalFail);
+}
+
 var _exportPoll = null;
 function exportBookmarksToZim() {
   var bk = _bkLoad();
