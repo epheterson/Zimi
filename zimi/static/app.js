@@ -200,10 +200,19 @@ var _ARTICLE_DARKEN_STYLE_ID = 'zimi-article-darken';
 var _ARTICLE_DARKEN_CSS = [
   'html{background:#ffffff !important;filter:invert(1) hue-rotate(180deg) !important;',
     '-webkit-filter:invert(1) hue-rotate(180deg) !important}',
+  // Counter-invert media + anything painting its own image so photos, diagrams,
+  // maps and icons keep true colour under the root flip.
   'img,video,picture,canvas,svg,image,embed,object,iframe,',
-  '[style*="background-image"],.mwe-math-element,.mwe-math-fallback-image-inline,',
-  '.mwe-math-fallback-image-display{filter:invert(1) hue-rotate(180deg) !important;',
-    '-webkit-filter:invert(1) hue-rotate(180deg) !important}'
+  '[style*="background-image"]{filter:invert(1) hue-rotate(180deg) !important;',
+    '-webkit-filter:invert(1) hue-rotate(180deg) !important}',
+  // MediaWiki math is black line-art on a TRANSPARENT ground — an <img> fallback
+  // (caught by the img rule above) or an inline <svg>. It must invert WITH the
+  // page like text, NOT be counter-inverted, or the glyphs stay black on the dark
+  // page and vanish. filter:none here leaves only the root flip → white glyphs.
+  // Outranks the generic img/svg counter-invert by class specificity.
+  '.mwe-math-element,.mwe-math-element img,.mwe-math-element svg,',
+  '.mwe-math-fallback-image-inline,.mwe-math-fallback-image-display{',
+    'filter:none !important;-webkit-filter:none !important}'
 ].join('');
 // A page "declares its own dark scheme" (so we must NOT invert it, or we'd flip it
 // back to blinding white) when it opts into dark via <meta name="color-scheme">
