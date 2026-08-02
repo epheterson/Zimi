@@ -717,17 +717,20 @@ function _almScrubClock(focus) {
   if (tmEl) tmEl.textContent = cp.time;
 }
 
-// Some things on screen cost too much to recompute on every travel frame, but
-// leaving them frozen beside values that do update is the contradiction this
-// whole path exists to prevent — so they update on a throttle instead of not at
-// all. 60ms keeps the worst-case gap under the ~100ms at which two moving
-// things read as out of sync, while costing ~3% of the frame budget: measured,
-// a travel frame is 1.2ms throttled against 3.0ms if the grid rebuilt every
-// frame, on a 16.7ms budget the sky canvas also draws inside.
+// Escape hatch for anything too expensive to recompute on every travel frame.
+// Leaving a value frozen beside ones that do update is the contradiction this
+// whole path exists to prevent, so a throttled update is the fallback, never no
+// update at all. 60ms keeps the worst-case gap under the ~100ms at which two
+// moving things read as out of sync.
 //
-// It only bites during a fast throw. Scrubbing slowly — the case where someone
-// is actually reading the numbers — leaves the focused day unchanged most
-// frames, and both throttled updates then short-circuit for free.
+// Only the next-full-moon card uses this. The calendar grid did too, and that
+// was wrong: throttled, it disagreed with the dock driving it on 80 of 117
+// frames of a full lever throw, and not by a day — the rate outruns 60ms so far
+// that the grid showed the 25th while the dock read the 11th. That is exactly
+// the contradiction the rule forbids, visible precisely when someone throws the
+// lever hard and stares at it. The grid rebuilds every frame now: 2.1ms per
+// travel frame all-in (grid 1.45ms, cards 0.63ms) against a 16.7ms budget,
+// measured, and the disagreement is gone (0 of 109 frames).
 var _ALM_TRAVEL_THROTTLE_MS = 60;
 var _almTravelThrottleAt = {};
 
@@ -803,9 +806,9 @@ function _almLiveHeadCards(focus) {
 // than nothing being live at all, because the display then disagrees with
 // itself in front of the viewer. So everything the traveller can see at the
 // same time as the clock updates with it — the clock, the hero disc, the phase
-// name, every readout card, and the calendar grid. Cheap values go every
-// frame; the two that cannot (next full moon, the grid rebuild) go on a
-// throttle rather than being left standing.
+// name, every readout card, and the calendar grid. All of those go every frame;
+// only the next-full-moon card is heavy enough to ride a throttle, and it is
+// the one value here that cannot change faster than once a lunation anyway.
 //
 // Panels below the fold stay deferred to _almScrubSettle: the orrery, meteor
 // countdowns, deep-time, tonight's-sky planet ephemeris, sun-map terminator,
@@ -819,8 +822,10 @@ function _almTravelLive(focus) {
   _almLiveHeadCards(focus);
   // The grid sits on screen with the header on any desktop-height viewport, so
   // a month left standing on the departure date contradicts the clock above it.
-  // Throttled, and a no-op whenever the focused day hasn't moved.
-  _almTravelThrottled('grid', _almSyncSelectedToFocus);
+  // Every frame, not throttled: the dock drives this grid, and a throttle let
+  // the two disagree by a day mid-throw. It self-limits anyway, since the
+  // rebuild is skipped whenever the focused day hasn't moved.
+  _almSyncSelectedToFocus();
 }
 
 function _almIsLiveNow(d) { return Math.abs(d.getTime() - Date.now()) < _SCRUB_LIVE_EPS; }
@@ -2302,59 +2307,88 @@ function _tzUtcOffsetMin(tz, now) {
   return Math.round((new Date(enFmt(tz)) - new Date(enFmt('UTC'))) / 60000);
 }
 
-// Best _TZ_CITIES match for an arbitrary lat/lon. No offline tz database, so
-// approximate: geographic distance dominates (same-region cities usually
-// share a zone, DST included), with the gap between the city's civil offset
-// and the location's solar offset (lon/15 h) as a mild tie-break — 1 h of
-// offset mismatch costs the same as 1° of distance.
-// Denser anchor set for mapping a clicked location to its timezone. The
-// world-clock GRID stays one-city-per-offset (_TZ_CITIES); resolution needs
-// more points or wide political zones misroute — Central European Time
-// spans Madrid to Warsaw, so with Paris as the only CET anchor, Germany
-// landed on London (#28). Pure nearest-distance over real IANA zones — no
-// solar-time term (that was what tipped eastern-CET onto UK time).
+// Anchor set for mapping an arbitrary lat/lon to a timezone. There is no
+// offline tz database to consult, so resolution is nearest-anchor over real
+// IANA zones. The world-clock GRID stays one-city-per-offset (_TZ_CITIES);
+// resolution needs many more points, because a wide political zone with only a
+// far anchor misroutes everything at its edges — Central European Time spans
+// Madrid to Warsaw, and with Paris as the only CET anchor Germany landed on
+// London (#28). Several zones therefore carry more than one anchor.
+//
+// Anchors are chosen so that a change is only ever additive: adding one can
+// only alter results near itself, so each is validated against a fixed city
+// list (tests/test_almanac_tz_resolution.cjs) that requires the resolved zone
+// to match the true zone's UTC offset in BOTH January and July. Checking both
+// is what catches a same-offset/different-DST mismatch, e.g. Phoenix standing
+// in for Denver.
 var _TZ_ANCHORS = [
   // Americas
   [21.31, -157.86, 'Pacific/Honolulu'], [61.22, -149.90, 'America/Anchorage'],
   [34.05, -118.24, 'America/Los_Angeles'], [49.28, -123.12, 'America/Vancouver'],
-  [39.74, -104.99, 'America/Denver'], [33.45, -112.07, 'America/Phoenix'],
-  [41.88, -87.63, 'America/Chicago'], [19.43, -99.13, 'America/Mexico_City'],
-  [40.71, -74.01, 'America/New_York'], [43.65, -79.38, 'America/Toronto'],
-  [4.71, -74.07, 'America/Bogota'], [-12.05, -77.04, 'America/Lima'],
+  [39.74, -104.99, 'America/Denver'], [35.08, -106.65, 'America/Denver'],
+  [33.45, -112.07, 'America/Phoenix'], [53.55, -113.49, 'America/Edmonton'],
+  [41.88, -87.63, 'America/Chicago'], [32.78, -96.80, 'America/Chicago'],
+  [19.43, -99.13, 'America/Mexico_City'],
+  [40.71, -74.01, 'America/New_York'], [35.78, -78.64, 'America/New_York'],
+  [43.65, -79.38, 'America/Toronto'],
+  [4.71, -74.07, 'America/Bogota'], [10.48, -66.90, 'America/Caracas'],
+  [-12.05, -77.04, 'America/Lima'], [-16.50, -68.15, 'America/La_Paz'],
   [-33.45, -70.67, 'America/Santiago'], [-23.55, -46.63, 'America/Sao_Paulo'],
   [-34.60, -58.38, 'America/Argentina/Buenos_Aires'],
   // Europe / Africa
   [64.15, -21.94, 'Atlantic/Reykjavik'], [51.51, -0.13, 'Europe/London'],
   [53.35, -6.26, 'Europe/Dublin'], [38.72, -9.14, 'Europe/Lisbon'],
-  [40.42, -3.70, 'Europe/Madrid'], [48.86, 2.35, 'Europe/Paris'],
+  [40.42, -3.70, 'Europe/Madrid'], [41.39, 2.17, 'Europe/Madrid'],
+  [36.72, -4.42, 'Europe/Madrid'], [48.86, 2.35, 'Europe/Paris'],
   [52.52, 13.40, 'Europe/Berlin'], [52.37, 4.90, 'Europe/Amsterdam'],
   [41.90, 12.50, 'Europe/Rome'], [47.37, 8.54, 'Europe/Zurich'],
   [52.23, 21.01, 'Europe/Warsaw'], [59.33, 18.06, 'Europe/Stockholm'],
+  [59.91, 10.75, 'Europe/Oslo'], [44.79, 20.45, 'Europe/Belgrade'],
   [37.98, 23.73, 'Europe/Athens'], [60.17, 24.94, 'Europe/Helsinki'],
   [44.43, 26.10, 'Europe/Bucharest'], [50.45, 30.52, 'Europe/Kyiv'],
   [41.01, 28.98, 'Europe/Istanbul'], [55.76, 37.62, 'Europe/Moscow'],
-  [6.52, 3.38, 'Africa/Lagos'], [30.04, 31.24, 'Africa/Cairo'],
+  [59.93, 30.34, 'Europe/Moscow'],
+  [6.52, 3.38, 'Africa/Lagos'], [5.60, -0.19, 'Africa/Accra'],
+  [30.04, 31.24, 'Africa/Cairo'], [36.75, 3.06, 'Africa/Algiers'],
+  [36.81, 10.18, 'Africa/Tunis'],
   [-1.29, 36.82, 'Africa/Nairobi'], [-26.20, 28.05, 'Africa/Johannesburg'],
   [33.57, -7.59, 'Africa/Casablanca'],
   // Asia / Middle East / Oceania
   [35.69, 51.39, 'Asia/Tehran'], [24.71, 46.68, 'Asia/Riyadh'],
-  [25.20, 55.27, 'Asia/Dubai'], [24.86, 67.01, 'Asia/Karachi'],
-  [19.08, 72.88, 'Asia/Kolkata'], [27.72, 85.32, 'Asia/Kathmandu'],
+  [33.31, 44.36, 'Asia/Baghdad'], [25.29, 51.53, 'Asia/Qatar'],
+  [25.20, 55.27, 'Asia/Dubai'], [34.56, 69.21, 'Asia/Kabul'],
+  [41.30, 69.24, 'Asia/Tashkent'],
+  [24.86, 67.01, 'Asia/Karachi'], [33.68, 73.05, 'Asia/Karachi'],
+  [19.08, 72.88, 'Asia/Kolkata'], [28.61, 77.21, 'Asia/Kolkata'],
+  [27.72, 85.32, 'Asia/Kathmandu'],
   [23.81, 90.41, 'Asia/Dhaka'], [13.76, 100.50, 'Asia/Bangkok'],
-  [-6.21, 106.85, 'Asia/Jakarta'], [1.35, 103.82, 'Asia/Singapore'],
+  [21.03, 105.85, 'Asia/Ho_Chi_Minh'],
+  [-6.21, 106.85, 'Asia/Jakarta'], [-5.13, 119.42, 'Asia/Makassar'],
+  [1.35, 103.82, 'Asia/Singapore'],
   [22.32, 114.17, 'Asia/Hong_Kong'], [31.23, 121.47, 'Asia/Shanghai'],
+  [29.56, 106.55, 'Asia/Shanghai'], [41.80, 123.43, 'Asia/Shanghai'],
   [14.60, 120.98, 'Asia/Manila'], [-31.95, 115.86, 'Australia/Perth'],
   [37.57, 126.98, 'Asia/Seoul'], [35.68, 139.69, 'Asia/Tokyo'],
+  [-12.46, 130.85, 'Australia/Darwin'],
   [-34.93, 138.60, 'Australia/Adelaide'], [-27.47, 153.03, 'Australia/Brisbane'],
+  [-37.81, 144.96, 'Australia/Melbourne'],
   [-33.87, 151.21, 'Australia/Sydney'], [-36.85, 174.76, 'Pacific/Auckland']
 ];
 
+// Longitude is compared in RAW degrees, deliberately not scaled by cos(lat).
+// Scaling it is what a true surface distance wants, and it is wrong here:
+// timezones are longitude bands, so shrinking the longitude term makes the one
+// axis that actually determines the answer count for less, and the shrink grows
+// without bound toward the poles. At Tromso's 69.7°N cos(lat) is 0.35, so being
+// 6° of longitude adrift — a whole zone and a half — scored as 2°, and pure
+// latitude proximity handed northern Norway to Helsinki, an hour east. Removing
+// the factor also fixed Kiruna, Beijing and Tashkent, and regressed nothing.
 function _almTzForLocation(lat, lon) {
   var best = null, bestD = Infinity;
   for (var i = 0; i < _TZ_ANCHORS.length; i++) {
     var a = _TZ_ANCHORS[i];
     var dlat = lat - a[0];
-    var dlon = (lon - a[1]) * Math.cos(lat * DEG_TO_RAD);
+    var dlon = lon - a[1];
     var d = dlat * dlat + dlon * dlon;
     if (d < bestD) { bestD = d; best = a[2]; }
   }
