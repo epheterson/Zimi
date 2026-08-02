@@ -24,6 +24,16 @@ jobs:
       - name: Run integration tests
         run: python -m pytest tests/test_server.py -v
 
+      # Standalone node tests (vm-extracted client logic). They are not
+      # collected by pytest, so without this step they only ever run by hand
+      # and rot silently.
+      - name: Run standalone JS tests
+        run: |
+          for f in tests/*.cjs; do
+            echo "--- $f"
+            node "$f"
+          done
+
       - name: Verify CLI entry point
         run: zimi --help
 
