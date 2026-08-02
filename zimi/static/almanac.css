@@ -8,6 +8,11 @@
 .alm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
 .alm-card-lbl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alm-card-val { font-size: 14px; font-weight: 500; color: var(--text); white-space: nowrap; }
+/* Value tints. Classes, not inline styles: travel toggles the supermoon tint on
+   and off per scrub, which a style attribute written at render time cannot do. */
+.alm-card-super { color: #e0b060; }
+.alm-card-golden { color: #d4aa64; }
+.alm-card[hidden] { display: none; }
 /* Clock row (analog + digital box side by side) above the grid */
 .alm-tz-wrap { margin-top: 24px; display: flex; flex-direction: column; gap: 14px; align-items: center; }
 .alm-tz-clock-side { flex: 0 0 auto; display: flex; align-items: center; gap: 18px; justify-content: center; }

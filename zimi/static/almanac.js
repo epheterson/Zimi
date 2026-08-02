@@ -432,14 +432,21 @@ function _almIsToday(d) {
 // truth so the full header render and the lightweight scrub updater
 // (_almScrubClock) read time identically.
 //
-// The live "now" header must always read the VIEWER's own local time: the
-// person is at their device, and "what time is it right now" is unambiguous. A
-// stored almanac location drives the sky/sun math, but its derived zone must
-// never override the live clock -- a stale or wrong-hemisphere stored location
-// (e.g. a western longitude persisted with the wrong sign) otherwise resolves
-// to a far-eastern zone and paints tomorrow morning onto today's sky. Only a
-// scrubbed (non-today) focus, which has no "now", keeps the location zone so
-// its date reads consistently with the panels below.
+// The header clock always reads the VIEWER's own local time, travelling or
+// not. A stored almanac location drives the sky/sun math, but its derived zone
+// must never drive this clock: a stale or wrong-hemisphere stored location
+// (e.g. a western longitude persisted with the wrong sign) resolves to a
+// far-eastern zone and paints tomorrow morning onto today's sky.
+//
+// It must not switch zones on travel either, which it used to. The rest of the
+// instrument reads the focus instant in device-local fields -- the time
+// machine's readout via _almTmFmt, the calendar grid via
+// _almSyncSelectedToFocus, the destination chooser via _almMakeInstant, which
+// is also what makes a typed destination round-trip unchanged. A header on the
+// location's zone therefore disagreed with all three, by a whole day within a
+// zone-offset of midnight: pick 23:50 from Los Angeles with Tokyo stored and
+// the grid highlights the 22nd while the header reads the 23rd. One zone for
+// the whole instrument, and it is the device's.
 function _almClockParts(focus) {
   var loc = _getLocation();
   var locTz = null;
@@ -447,7 +454,7 @@ function _almClockParts(focus) {
   var live = _almIsToday(focus);
   var deviceTz = null;
   try { deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) {}
-  var displayTz = live ? (deviceTz || locTz) : locTz;
+  var displayTz = deviceTz || locTz;
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   var _dtOpts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
   var _tmOpts = { hour: 'numeric', minute: '2-digit' };
@@ -482,39 +489,73 @@ function _almHeadHtml(focus) {
   var moonTilt = _heroMoonTiltDeg(focus, loc);
   html += '<div class="almanac-hero">';
   html += _renderAlmanacMoon(m, moonTilt);
-  html += '<div class="almanac-moon-name">' + _lterm('lunar_phase', _localMoonName(m.name)) + '</div>';
+  // The name sits in its own span inside the deep-link wrapper so travel can
+  // rewrite the text without tearing out the encyclopedia link around it.
+  html += '<div class="almanac-moon-name">' + _lterm('lunar_phase', '<span id="alm-hc-phase">' + _localMoonName(m.name) + '</span>') + '</div>';
   html += '</div>';
 
-  // Sun cards render in the shown location's timezone (same locTz as the
-  // header), so the clock, sun times and moon all agree.
+  // Sun cards render in the LOCATION's timezone, not the header clock's: a
+  // sunrise is a fact about a place, and reading "sunrise 8:07 PM" because the
+  // viewer's own zone was applied to somewhere else's sky helps nobody. The two
+  // only differ once a location has actually been chosen (_almDisplayTz falls
+  // back to the device zone otherwise), and the header states its zone.
   var _locTzOff;
   try { _locTzOff = _tzUtcOffsetMin(locTz, focus); }
   catch (e) { _locTzOff = -focus.getTimezoneOffset(); }
   var sunInfo0 = _computeSunTimes(focus, loc.lat, loc.lon, _locTzOff);
 
-  html += '<div class="alm-cards">';
-  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_illuminated') + '</div><div class="alm-card-val" id="alm-hc-illum">' + m.illumination + '%</div></div>';
-  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_moon_age') + '</div><div class="alm-card-val" id="alm-hc-age">' + age + ' ' + t('alm_days') + '</div></div>';
-  html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_distance') + '</div><div class="alm-card-val" id="alm-hc-dist">' + Math.round(dist).toLocaleString() + ' ' + t('alm_km') + '</div></div>';
   var _nfm = _nextFullMoon(focus);
-  if (_nfm) {
-    var _nfmStr = _nfm.date.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
-    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_next_full') + '</div><div class="alm-card-val"' +
-      (_nfm.isSuper ? ' style="color:#e0b060"' : '') + '>' + _nfmStr +
-      (_nfm.isSuper ? ' \u00b7 ' + _lterm('supermoon', t('alm_supermoon')) : '') + '</div></div>';
-  }
-  if (sunInfo0.polar) {
-    html += '<div class="alm-card" style="grid-column:span 4"><div class="alm-card-val">' + sunInfo0.polar + '</div></div>';
-  } else {
-    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_sunrise') + '</div><div class="alm-card-val" id="alm-hc-sunrise">' + sunInfo0.sunrise + '</div></div>';
-    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_sunset') + '</div><div class="alm-card-val" id="alm-hc-sunset">' + sunInfo0.sunset + '</div></div>';
-    html += '<div class="alm-card"><div class="alm-card-lbl">' + t('alm_daylight') + '</div><div class="alm-card-val" id="alm-hc-daylight">' + sunInfo0.dayLength + '</div></div>';
-    if (sunInfo0.goldenHour) {
-      html += '<div class="alm-card"><div class="alm-card-lbl">' + _lterm('golden_hour', t('alm_golden')) + '</div><div class="alm-card-val" style="color:#d4aa64">' + sunInfo0.goldenHour + '</div></div>';
-    }
-  }
+
+  html += '<div class="alm-cards">';
+  html += _almHeadCard(t('alm_illuminated'), m.illumination + '%', 'alm-hc-illum');
+  html += _almHeadCard(t('alm_moon_age'), age + ' ' + t('alm_days'), 'alm-hc-age');
+  html += _almHeadCard(t('alm_distance'), Math.round(dist).toLocaleString() + ' ' + t('alm_km'), 'alm-hc-dist');
+  html += _almHeadCard(t('alm_next_full'), _almNextFullHtml(_nfm, lang, focus), 'alm-hc-nextfull',
+    { cardId: 'alm-hc-nextfull-card', hidden: !_nfm, valClass: _nfm && _nfm.isSuper ? 'alm-card-super' : '' });
+  // Both faces of the sun row live in the DOM at once and only their `hidden`
+  // flags move. Travel crosses into and out of a polar day mid-scrub, and
+  // flipping a flag is something the per-frame updater can do; rebuilding the
+  // card grid is not, so the alternative was a stale row contradicting the
+  // date beside it.
+  html += _almHeadCard('', sunInfo0.polar || '', 'alm-hc-polar',
+    { cardId: 'alm-hc-polar-card', span: 4, hidden: !sunInfo0.polar });
+  html += _almHeadCard(t('alm_sunrise'), sunInfo0.sunrise || '', 'alm-hc-sunrise',
+    { cardId: 'alm-hc-sunrise-card', hidden: !!sunInfo0.polar });
+  html += _almHeadCard(t('alm_sunset'), sunInfo0.sunset || '', 'alm-hc-sunset',
+    { cardId: 'alm-hc-sunset-card', hidden: !!sunInfo0.polar });
+  html += _almHeadCard(t('alm_daylight'), sunInfo0.dayLength || '', 'alm-hc-daylight',
+    { cardId: 'alm-hc-daylight-card', hidden: !!sunInfo0.polar });
+  html += _almHeadCard(_lterm('golden_hour', t('alm_golden')), sunInfo0.goldenHour || '', 'alm-hc-golden',
+    { cardId: 'alm-hc-golden-card', hidden: !sunInfo0.goldenHour, valClass: 'alm-card-golden' });
   html += '</div>';
   return html;
+}
+
+// One card in the hero readout grid. Every value node carries an id so the
+// per-frame travel updater can rewrite it in place instead of the whole grid.
+// opts: cardId (id on the card, for hiding it), span (grid columns), hidden,
+// valClass (colour variant).
+function _almHeadCard(lbl, valHtml, valId, opts) {
+  opts = opts || {};
+  return '<div class="alm-card"' + (opts.cardId ? ' id="' + opts.cardId + '"' : '') +
+    (opts.span ? ' style="grid-column:span ' + opts.span + '"' : '') +
+    (opts.hidden ? ' hidden' : '') + '>' +
+    (lbl ? '<div class="alm-card-lbl">' + lbl + '</div>' : '') +
+    '<div class="alm-card-val' + (opts.valClass ? ' ' + opts.valClass : '') + '" id="' + valId + '">' +
+    valHtml + '</div></div>';
+}
+
+// Value markup for the next-full-moon card, shared by the full render and the
+// throttled travel refresh so the two can never disagree on format. The year
+// shows only when the full moon falls outside the focused year: a bare "Aug 27"
+// is unambiguous beside a header reading 2026 and meaningless beside one
+// reading 2183, and the card is a quarter of the grid wide.
+function _almNextFullHtml(nfm, lang, focus) {
+  if (!nfm) return '';
+  var opts = { month: 'short', day: 'numeric' };
+  if (nfm.date.getFullYear() !== focus.getFullYear()) opts.year = 'numeric';
+  return nfm.date.toLocaleDateString(lang, opts) +
+    (nfm.isSuper ? ' \u00b7 ' + _lterm('supermoon', t('alm_supermoon')) : '');
 }
 
 // Render one panel resiliently. Travel now reaches arbitrary epochs, where a
@@ -540,6 +581,10 @@ function _almSafePanel(fn, containerId) {
 function _almRepaintFocus() {
   var focus = _almFocusInstant();
   var loc = _getLocation();
+  // Every settle path lands here, so this is where live travel ends: drop the
+  // scrub overlay before the header is rebuilt, leaving _almHeroMoonSweep free
+  // to open a fresh one for the arrival sweep.
+  _heroMoonTravelEnd();
   var m;
   try { m = _moonPhase(focus); } catch (e) { m = null; }
   var head = document.getElementById('almanac-head');
@@ -672,49 +717,125 @@ function _almScrubClock(focus) {
   if (tmEl) tmEl.textContent = cp.time;
 }
 
-// Update the hero moon/sun readout cards in place (text nodes only, no header
-// rebuild). Pure date/astronomy math — cheap enough to run on every travel
-// frame. Approximate while scrubbing (a fixed tz offset, last-rendered card
-// structure); _almRepaintFocus recomputes them exactly on settle.
+// Some things on screen cost too much to recompute on every travel frame, but
+// leaving them frozen beside values that do update is the contradiction this
+// whole path exists to prevent — so they update on a throttle instead of not at
+// all. 60ms keeps the worst-case gap under the ~100ms at which two moving
+// things read as out of sync, while costing ~3% of the frame budget: measured,
+// a travel frame is 1.2ms throttled against 3.0ms if the grid rebuilt every
+// frame, on a 16.7ms budget the sky canvas also draws inside.
+//
+// It only bites during a fast throw. Scrubbing slowly — the case where someone
+// is actually reading the numbers — leaves the focused day unchanged most
+// frames, and both throttled updates then short-circuit for free.
+var _ALM_TRAVEL_THROTTLE_MS = 60;
+var _almTravelThrottleAt = {};
+
+function _almTravelThrottled(key, fn) {
+  var now = performance.now();
+  if (now - (_almTravelThrottleAt[key] || 0) < _ALM_TRAVEL_THROTTLE_MS) return;
+  _almTravelThrottleAt[key] = now;
+  fn();
+}
+
+// Refresh the next-full-moon card. _nextFullMoon walks up to 45 days an hour at
+// a time (~0.3ms), several times the per-frame budget the sky redraw lives
+// inside, so it rides the throttle.
+function _almLiveNextFull(focus) {
+  var card = document.getElementById('alm-hc-nextfull-card');
+  var val = document.getElementById('alm-hc-nextfull');
+  if (!card || !val) return;
+  var nfm = null;
+  try { nfm = _nextFullMoon(focus); } catch (e) {}
+  card.hidden = !nfm;
+  if (!nfm) return;
+  val.innerHTML = _almNextFullHtml(nfm, (typeof _currentLang !== 'undefined') ? _currentLang : 'en', focus);
+  val.classList.toggle('alm-card-super', !!nfm.isSuper);
+}
+
+// Update the hero moon/sun readouts in place (text nodes and `hidden` flags, no
+// header rebuild). Pure date/astronomy math, cheap enough per travel frame.
+//
+// The governing rule is that nothing on screen may contradict anything else on
+// screen: the phase NAME, the disc and the illumination figure all come from
+// the one _moonPhase call below, and the sun row swaps between its polar and
+// its sunrise/sunset face rather than leaving yesterday's face standing. Only
+// _nextFullMoon is too heavy for that and rides a throttle instead.
+// _almRepaintFocus recomputes everything exactly on settle.
 function _almLiveHeadCards(focus) {
   var set = function (id, val) { var e = document.getElementById(id); if (e) e.textContent = val; };
+  var show = function (id, on) { var e = document.getElementById(id); if (e) e.hidden = !on; };
   var m;
   try { m = _moonPhase(focus); } catch (e) { return; }
   set('alm-hc-illum', m.illumination + '%');
   set('alm-hc-age', (m.phase * 29.53).toFixed(1) + ' ' + t('alm_days'));
+  set('alm-hc-phase', _localMoonName(m.name));
+  _heroMoonTravelDraw(focus, m);
   try { var dist = _moonDistance(focus); if (dist) set('alm-hc-dist', Math.round(dist).toLocaleString() + ' ' + t('alm_km')); } catch (e) {}
+  _almTravelThrottled('nextfull', function () { _almLiveNextFull(focus); });
   try {
     var loc = _getLocation();
-    var locTz = _almDisplayTz(loc);
     var off;
-    try { off = _tzUtcOffsetMin(locTz, focus); } catch (e) { off = -focus.getTimezoneOffset(); }
+    try { off = _tzUtcOffsetMin(_almDisplayTz(loc), focus); } catch (e) { off = -focus.getTimezoneOffset(); }
     var s = _computeSunTimes(focus, loc.lat, loc.lon, off);
-    if (!s.polar) { set('alm-hc-sunrise', s.sunrise); set('alm-hc-sunset', s.sunset); set('alm-hc-daylight', s.dayLength); }
+    show('alm-hc-polar-card', !!s.polar);
+    show('alm-hc-sunrise-card', !s.polar);
+    show('alm-hc-sunset-card', !s.polar);
+    show('alm-hc-daylight-card', !s.polar);
+    show('alm-hc-golden-card', !!s.goldenHour);
+    if (s.polar) {
+      set('alm-hc-polar', s.polar);
+    } else {
+      set('alm-hc-sunrise', s.sunrise);
+      set('alm-hc-sunset', s.sunset);
+      set('alm-hc-daylight', s.dayLength);
+      if (s.goldenHour) set('alm-hc-golden', s.goldenHour);
+    }
   } catch (e) {}
 }
 
 // The full per-frame live update run during time travel — the single hook both
 // the lever loop (_almTravelFrame) and the wheel/key stepper (_almScrubStep)
-// share. Everything here is pure math writing a handful of text nodes: the hero
-// clock (date + time) and the moon/sun readout cards. Heavier panels — the
-// calendar grid, orrery, meteor countdowns, deep-time, tonight's-sky planet
-// ephemeris, sun-map terminator, star chart and analemma — stay deferred to
-// _almScrubSettle on release: each is a full innerHTML rebuild and/or resolves
-// Q-ID deep-links, which would blow the ~0.21ms/frame budget the sky redraw
-// already lives inside. The sky scene + hero moon are retargeted separately by
-// the caller via _skySetInstant (canvas, not DOM).
+// share.
+//
+// What goes in here is decided by one rule: nothing on screen may contradict
+// anything else on screen. A frozen figure sitting beside a live one is worse
+// than nothing being live at all, because the display then disagrees with
+// itself in front of the viewer. So everything the traveller can see at the
+// same time as the clock updates with it — the clock, the hero disc, the phase
+// name, every readout card, and the calendar grid. Cheap values go every
+// frame; the two that cannot (next full moon, the grid rebuild) go on a
+// throttle rather than being left standing.
+//
+// Panels below the fold stay deferred to _almScrubSettle: the orrery, meteor
+// countdowns, deep-time, tonight's-sky planet ephemeris, sun-map terminator,
+// star chart and analemma are each a full innerHTML rebuild and/or resolve Q-ID
+// deep-links, which would blow the ~0.21ms/frame budget the sky redraw already
+// lives inside — and none of them shares a screen with the instrument. The sky
+// scene is retargeted separately by the caller via _skySetInstant (canvas, not
+// DOM).
 function _almTravelLive(focus) {
   _almScrubClock(focus);
   _almLiveHeadCards(focus);
+  // The grid sits on screen with the header on any desktop-height viewport, so
+  // a month left standing on the departure date contradicts the clock above it.
+  // Throttled, and a no-op whenever the focused day hasn't moved.
+  _almTravelThrottled('grid', _almSyncSelectedToFocus);
 }
 
 function _almIsLiveNow(d) { return Math.abs(d.getTime() - Date.now()) < _SCRUB_LIVE_EPS; }
 
-// Move the calendar selection + browsed month onto the focused instant's day.
+// Move the calendar selection + browsed month onto the focused instant's day,
+// reading the instant in device-local fields — the same zone the header clock
+// and the time machine's readout use, so the three never disagree on the date.
+// Redraws only when the day actually moved: the grid is a full innerHTML
+// rebuild (~1.5ms), and scrubbing within a single day changes nothing in it.
 function _almSyncSelectedToFocus() {
   var f = _almFocusInstant();
-  _almSelectedJDN = _gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate());
-  var cal = _jdnToCalendar(_almSystem, _almSelectedJDN);
+  var jdn = _gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate());
+  var cal = _jdnToCalendar(_almSystem, jdn);
+  if (jdn === _almSelectedJDN && cal.year === _almYear && cal.month === _almMonth) return;
+  _almSelectedJDN = jdn;
   _almYear = cal.year;
   _almMonth = cal.month;
   _drawAlmanacGrid();
@@ -1362,8 +1483,35 @@ function _almHeroMoonSweep(head, fromTime, toTime, loc) {
   };
 }
 
-// Per-frame hook, called from the sky rAF. Advances a discrete jump sweep and,
-// failing that, keeps the hero flowing while the time lever is engaged.
+// ── Hero moon during live travel ──
+// The disc is drawn from the SAME _moonPhase result the readout cards are
+// written from, in the same call, so it cannot show a crescent while the
+// illumination beside it reads 94% — which is what happened while this hung off
+// the sky loop's own rAF: that branch only ran for the lever (never for wheel
+// or arrow-key steps) and only while a sky canvas happened to be alive.
+// Illumination is quantised to _HERO_MOON_PHASE_STEP so every frame hits the
+// sprite cache; a full-resolution re-shade per frame is what makes this
+// expensive, and 2% of a disc is far below what an eye resolves.
+var _heroMoonTravelOn = false;
+
+function _heroMoonTravelDraw(focus, m) {
+  var heroEl = document.querySelector('#almanac-head .almanac-hero');
+  if (!heroEl || !heroEl.querySelector('.almanac-moon')) return;
+  _heroMoonAnim = null;              // a live scrub supersedes any settle sweep
+  _heroMoonTravelOn = true;
+  var illumFrac = Math.round(m.illumination / 100 / _HERO_MOON_PHASE_STEP) * _HERO_MOON_PHASE_STEP;
+  var tilt = _heroMoonTiltDeg(focus, _getLocation());
+  _heroMoonDrawCanvas(_heroMoonEnsureOverlay(heroEl), illumFrac, m.phase < 0.5, tilt, _HERO_MOON_ANIM_SIZE);
+}
+
+// End travel and drop the overlay, revealing the resting <img> beneath.
+function _heroMoonTravelEnd() {
+  _heroMoonTravelOn = false;
+  if (_heroMoonOverlay) _heroMoonRemoveOverlay();
+}
+
+// Per-frame hook, called from the sky rAF, for the discrete settle sweep only.
+// Live travel draws itself (above) rather than waiting on this loop.
 function _heroMoonTick(ts) {
   if (_heroMoonAnim) {
     var a = _heroMoonAnim, cv = _heroMoonOverlay;
@@ -1384,19 +1532,8 @@ function _heroMoonTick(ts) {
     _heroMoonDrawCanvas(cv, illumFrac, ph.phase < 0.5, tilt, _HERO_MOON_ANIM_SIZE);
     return;
   }
-  // Live lever travel: the header isn't rebuilt per frame, so drive the disc
-  // straight from the current focus. Real tilt at a single instant is stable
-  // (no daily-parallactic strobe, which only shows when sampling ACROSS days).
-  var travel = (typeof _almLeverActive !== 'undefined') && (_almLeverActive || _almLeverDecel);
-  if (travel) {
-    var heroEl = document.querySelector('#almanac-head .almanac-hero');
-    if (!heroEl || !heroEl.querySelector('.almanac-moon')) return;
-    var cv2 = _heroMoonEnsureOverlay(heroEl);
-    var f = _almFocusInstant(), loc2 = _getLocation(), m = _moonPhase(f);
-    _heroMoonDrawCanvas(cv2, m.illumination / 100, m.phase < 0.5, _heroMoonTiltDeg(f, loc2), _HERO_MOON_ANIM_SIZE);
-    return;
-  }
-  if (_heroMoonOverlay) _heroMoonRemoveOverlay();   // travel ended: reveal the img
+  // Not sweeping and not travelling: reveal the resting img.
+  if (!_heroMoonTravelOn && _heroMoonOverlay) _heroMoonRemoveOverlay();
 }
 
 // Almanac hero moon — delegates to _renderMoonHTML (defined in app.js)
