@@ -12685,6 +12685,7 @@ function renderLibraryPanel() {
   }
   panel.innerHTML = html;
   _bmEnsureBound();  // idempotent — attaches the bookmark-tree delegation once
+  if (!isHistory) _bmSyncRovingTabindex(false);
 }
 function _renderHistoryContent() {
   var h = _histLoad();
@@ -12769,7 +12770,8 @@ function _renderBookmarksContent() {
     '<button class="hp-action-btn" onclick="_bmNewFolderPrompt(\'\')">' + tH('bm_new_folder') + '</button>' +
     '<button id="export-bookmarks-btn" class="hp-action-btn" onclick="_bmOpenExport()">' + tH('save_to_zim') + '</button>' +
     '<span id="export-bookmarks-status" class="hp-action-status"></span></div>';
-  html += '<div class="bm-tree" id="bm-tree" data-fid="">' + _bmChildrenHtml(_BM_ROOT, 0) + '</div>';
+  html += '<div class="bm-tree" id="bm-tree" data-fid="" role="tree"' +
+    ' aria-label="' + escAttr(t('bookmarks')) + '">' + _bmChildrenHtml(_BM_ROOT, 0) + '</div>';
   return html;
 }
 
@@ -12789,7 +12791,8 @@ function _bmFolderRowHtml(f, depth) {
   var count = _folBookmarkCount(f.id);
   var pad = 6 + depth * _BM_INDENT;
   return '<div class="bm-row bm-folder" data-fid="' + escAttr(f.id) + '" data-depth="' + depth + '"' +
-    ' style="padding-left:' + pad + 'px" role="treeitem" aria-expanded="' + (!collapsed) + '" tabindex="0">' +
+    ' style="padding-left:' + pad + 'px" role="treeitem" aria-level="' + (depth + 1) + '"' +
+    ' aria-expanded="' + (!collapsed) + '" tabindex="-1">' +
     '<span class="bm-twist' + (collapsed ? '' : ' open') + '" data-role="twist">\u25B8</span>' +
     '<span class="bm-ficon">' + (collapsed ? '\uD83D\uDCC1' : '\uD83D\uDCC2') + '</span>' +
     '<span class="bm-name">' + esc(f.name) + '</span>' +
@@ -12814,7 +12817,7 @@ function _bmBookmarkRowHtml(b, depth) {
   return '<div class="bm-row bm-bk' + (missing ? ' bm-missing' : '') + '"' +
     ' data-zim="' + escAttr(b.zim) + '" data-path="' + escAttr(b.path) + '"' +
     ' data-fid="' + escAttr(_bkFolderOf(b)) + '" data-depth="' + depth + '"' +
-    ' style="padding-left:' + pad + 'px" role="treeitem" tabindex="0">' +
+    ' style="padding-left:' + pad + 'px" role="treeitem" aria-level="' + (depth + 1) + '" tabindex="-1">' +
     // Stands in for the folder rows' twist so a bookmark sits to the RIGHT of
     // the folder holding it, not left of it.
     '<span class="bm-twist bm-twist-gap"></span>' +
@@ -12825,11 +12828,98 @@ function _bmBookmarkRowHtml(b, depth) {
     '</div>';
 }
 
+// ── Keyboard: the tree behaves like one ────────────────────────────────────
+// Roving tabindex (ARIA tree pattern): Tab reaches the tree once, arrows move
+// within it. Rows are rebuilt wholesale on every change, so the focused row is
+// remembered by key and re-focused after the rebuild.
+var _bmFocusKey = null;
+
+function _bmRowKey(row) {
+  if (!row) return null;
+  return row.classList.contains('bm-folder')
+    ? 'f:' + row.dataset.fid
+    : 'b:' + row.dataset.zim + '\n' + row.dataset.path;
+}
+function _bmRowByKey(key) {
+  if (!key) return null;
+  var host = document.getElementById('bm-tree');
+  if (!host) return null;
+  if (key.slice(0, 2) === 'f:') return host.querySelector('.bm-folder[data-fid="' + _cssEsc(key.slice(2)) + '"]');
+  var parts = key.slice(2).split('\n');
+  return host.querySelector('.bm-bk[data-zim="' + _cssEsc(parts[0]) + '"][data-path="' + _cssEsc(parts[1]) + '"]');
+}
+function _bmRows() {
+  var host = document.getElementById('bm-tree');
+  return host ? Array.prototype.slice.call(host.querySelectorAll('.bm-row')) : [];
+}
+// Exactly one row is tabbable: the remembered one, else the first.
+function _bmSyncRovingTabindex(focus) {
+  var rows = _bmRows();
+  if (!rows.length) return;
+  var target = _bmRowByKey(_bmFocusKey) || rows[0];
+  rows.forEach(function (r) { r.tabIndex = (r === target) ? 0 : -1; });
+  if (focus) target.focus();
+}
+function _bmFocusRow(row) {
+  if (!row) return;
+  _bmFocusKey = _bmRowKey(row);
+  _bmRows().forEach(function (r) { r.tabIndex = (r === row) ? 0 : -1; });
+  row.focus();
+}
+// The row whose subtree contains `row` — Left arrow's "go to my parent".
+function _bmParentRow(row) {
+  var fid = row.classList.contains('bm-folder')
+    ? _folNorm((_folById(row.dataset.fid) || {}).parent)
+    : _folNorm(row.dataset.fid);
+  if (fid === _BM_ROOT) return null;
+  return _bmRowByKey('f:' + fid);
+}
+
+function _bmTreeKeydown(e) {
+  var row = e.target.closest ? e.target.closest('.bm-row') : null;
+  if (!row || !row.parentNode || row.parentNode.id !== 'bm-tree') return;
+  var rows = _bmRows();
+  var i = rows.indexOf(row);
+  var isFolder = row.classList.contains('bm-folder');
+  var expanded = isFolder && !_folIsCollapsed(row.dataset.fid);
+  switch (e.key) {
+    case 'ArrowDown': e.preventDefault(); _bmFocusRow(rows[Math.min(i + 1, rows.length - 1)]); break;
+    case 'ArrowUp': e.preventDefault(); _bmFocusRow(rows[Math.max(i - 1, 0)]); break;
+    case 'Home': e.preventDefault(); _bmFocusRow(rows[0]); break;
+    case 'End': e.preventDefault(); _bmFocusRow(rows[rows.length - 1]); break;
+    case 'ArrowRight':
+      e.preventDefault();
+      if (isFolder && !expanded) { _bmFocusKey = _bmRowKey(row); _folToggleCollapse(row.dataset.fid); _bmRerender(); }
+      else if (isFolder && rows[i + 1]) _bmFocusRow(rows[i + 1]);
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      if (isFolder && expanded) { _bmFocusKey = _bmRowKey(row); _folToggleCollapse(row.dataset.fid); _bmRerender(); }
+      else _bmFocusRow(_bmParentRow(row));
+      break;
+    case 'Enter': case ' ':
+      e.preventDefault();
+      _bmFocusKey = _bmRowKey(row);
+      row.click();
+      break;
+    case 'ContextMenu': case 'F2': {
+      e.preventDefault();
+      var r = row.getBoundingClientRect();
+      _bmOpenRowMenu(row, r.left + 24, r.bottom + 2);
+      break;
+    }
+    default: return;
+  }
+}
+
 // Re-render the bookmarks tab. renderLibraryPanel rebuilds the panel innerHTML;
 // the delegated listeners live on the persistent panel element so they survive.
 function _bmRerender() {
   if (_getLibraryTab() !== 'bookmarks') return;
+  var hadFocus = document.activeElement && document.activeElement.closest &&
+    !!document.activeElement.closest('.bm-row');
   renderLibraryPanel();
+  _bmSyncRovingTabindex(hadFocus);
 }
 
 // Export selector entry point — replaced with the tree selector in Phase 3.
@@ -13042,6 +13132,15 @@ function _bmEnsureBound() {
 
   // Pointer DnD + touch long-press. One handler set, both input types.
   panel.addEventListener('pointerdown', _bmPointerDown);
+  panel.addEventListener('keydown', function (e) {
+    if (_getLibraryTab() !== 'bookmarks') return;
+    _bmTreeKeydown(e);
+  });
+  // Clicking a row makes it the tabbable one, so Tab returns where you were.
+  panel.addEventListener('focusin', function (e) {
+    var row = e.target.closest ? e.target.closest('.bm-row') : null;
+    if (row) _bmFocusKey = _bmRowKey(row);
+  });
 }
 
 function _bmOpenRowMenu(row, x, y) {

@@ -196,6 +196,43 @@ test.describe('Bookmarks folder tree', () => {
     await expect(page.locator('.bm-bk[data-path="A/Loose"][data-fid="res"]')).toHaveCount(1);
   });
 
+  test('the tree is navigable by keyboard (ARIA tree pattern)', async ({ page }) => {
+    await seedAndOpen(page, FOLDERS, BOOKMARKS);
+    await expect(page.locator('#bm-tree')).toHaveAttribute('role', 'tree');
+    // Roving tabindex: Tab reaches the tree once, not once per row.
+    const tabbable = () => page.locator('#bm-tree .bm-row[tabindex="0"]').count();
+    expect(await tabbable()).toBe(1);
+
+    const focused = () => page.evaluate(() => {
+      const a = document.activeElement;
+      const n = a && a.querySelector && a.querySelector('.bm-name');
+      return { row: !!(a && a.classList && a.classList.contains('bm-row')), name: n ? n.textContent : null };
+    });
+    await page.locator('.bm-folder[data-fid="med"]').focus();
+    await page.keyboard.press('ArrowDown');
+    expect((await focused()).name).toBe('Cardiology');
+    await page.keyboard.press('ArrowUp');
+    expect((await focused()).name).toBe('Medical');
+
+    // Left collapses, Right expands, and focus survives the rebuild both ways.
+    await page.keyboard.press('ArrowLeft');
+    expect(await page.evaluate(() => _folIsCollapsed('med'))).toBe(true);
+    expect((await focused()).name).toBe('Medical');
+    await page.keyboard.press('ArrowRight');
+    expect(await page.evaluate(() => _folIsCollapsed('med'))).toBe(false);
+    expect((await focused()).name).toBe('Medical');
+    expect(await tabbable()).toBe(1);
+
+    // Left on a bookmark walks up to the folder holding it.
+    await page.locator('.bm-bk[data-path="A/Heart"]').focus();
+    await page.keyboard.press('ArrowLeft');
+    expect((await focused()).name).toBe('Cardiology');
+
+    // F2 raises the same menu right-click does.
+    await page.keyboard.press('F2');
+    await expect(page.locator('#zim-ctx-menu')).toHaveClass(/visible/);
+  });
+
   test('Save to ZIM opens with the whole library ticked', async ({ page }) => {
     await seedAndOpen(page, FOLDERS, BOOKMARKS);
     await page.getByRole('button', { name: 'Save to ZIM' }).click();
