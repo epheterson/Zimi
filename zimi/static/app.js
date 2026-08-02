@@ -1377,8 +1377,11 @@ async function _initSecondary() {
     enterManage(null, _validMsSection(params.get('manage')));
     return;
   }
-  // Re-render homepage if manage/collections changed (adds collection sections, manage button)
-  if (needsRerender && !readerOpen && !currentSource && !readerSource) renderHome();
+  // Re-render homepage if manage/collections changed (adds collection sections,
+  // manage button). Not while manage is open: on a slow library the gear can be
+  // used long before this resolves, and painting home over it leaves the manage
+  // chrome (X button, catalog placeholder) on top of the home view.
+  if (needsRerender && mode !== 'manage' && !readerOpen && !currentSource && !readerSource) renderHome();
 }
 
 function route(push) {
@@ -11366,7 +11369,11 @@ function _readerViewInjectStyle(doc) {
       'color:var(--rv-muted) !important;background:none !important;',
       'font-family:-apple-system,sans-serif;margin-top:0.4em;line-height:1.45}',
     '.zimi-reader figcaption{text-align:center}',
-    '.zimi-reader .thumb,.zimi-reader .thumbinner,.zimi-reader figure[typeof]{',
+    // Every figure shape, not just the two MediaWiki ones — a warc2zim or
+    // devdocs capture emits a bare <figure> with its own fill, and forcing the
+    // caption to the theme's muted ink over a fill we left alone is how a
+    // legible caption becomes an illegible one.
+    '.zimi-reader .thumb,.zimi-reader .thumbinner,.zimi-reader figure{',
       'background:none !important;border-color:var(--rv-border) !important}',
     '.zimi-reader ul,.zimi-reader ol{margin:0 0 1.1em 1.4em}',
     '.zimi-reader li{margin:0.3em 0}',
