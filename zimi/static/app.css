@@ -357,7 +357,7 @@
   .catalog-lang-search-btn.expanded { width: 140px; border-color: var(--amber-border); background: var(--surface); justify-content: flex-start; gap: 6px; padding: 0 10px; }
   .catalog-lang-search-btn.expanded input { border: none; background: transparent; color: var(--text); font-size: 11px; outline: none; width: 100%; font-weight: 500; }
   /* One base geometry for every filter/category/source/language/recency pill.
-     Variants (.cat-pill, .col-pill, .reorder-pill, .dl-filter-pill, .lang-pill…)
+     Variants (.cat-pill, .reorder-pill, .dl-filter-pill, .lang-pill…)
      ride on top of .pill and may override colour/accent ONLY — never height,
      padding, or font-size, so rows never render at mismatched heights. */
   .pill, .lang-pill {
@@ -380,7 +380,6 @@
   .pills-divider { width: 60px; height: 1px; background: var(--border); margin: 0 auto 4px; opacity: 0.5; }
   /* Collection pills carry the layers glyph so they read as groupings, not
      categories, in the filter row. */
-  .col-pill { display: inline-flex; align-items: center; gap: 5px; border-style: dashed; }
   .col-pill-glyph { flex-shrink: 0; opacity: 0.8; }
   /* "Reorder" is a link-OUT action (opens a separate view), not a filter —
      amber outline + the trailing ↗ glyph set it apart. */

@@ -9469,10 +9469,12 @@ function getInstalledPillsHtml() {
   // These pills FILTER the installed library: one row, one job. Collections
   // live in their own tab and reordering lives in Library settings, so neither
   // gets a look-alike pill here that navigates away instead of filtering.
-  if (sections.length > 1) {
+  // Count only what actually renders: a lone category pill filters nothing, so
+  // the row stays hidden until there are at least two categories to choose from.
+  const catSections = sections.filter(function(s) { return s.key.indexOf('col:') !== 0; });
+  if (catSections.length > 1) {
     h += '<div class="pills installed-cat-pills" style="margin-bottom:8px">';
-    for (const s of sections) {
-      if (s.key.indexOf('col:') === 0) continue;
+    for (const s of catSections) {
       // The Other catch-all rides the reserved 'other' key (not a cat: slice).
       const cat = s.key === OTHER_KEY ? OTHER_CAT : s.key.slice(4);
       const dimmed = manageLangFilter && langsByCat[cat] && !langsByCat[cat].has(manageLangFilter);
