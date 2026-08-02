@@ -10269,10 +10269,11 @@ async function _refreshDownloadsInner(useCache) {
       } catch (e) {}
     }
     _dlPrevCompletedCount = completedDls.length;
-    let h = '<div class="manage-card"><h2>' + tH('downloads') + '</h2>';
+    let h = '<div class="manage-card"><div class="dl-head"><h2>' + tH('downloads') + '</h2>';
     if (allDone) {
       h += '<button class="dl-clear-btn" onclick="clearDownloads()">' + tH('clear') + '</button>';
     }
+    h += '</div>';
     // Filter pill bar — All / Downloading / Queued / Completed
     const pill = (key, label, count) =>
       '<button class="pill dl-filter-pill' + (filter === key ? ' active' : '') +
@@ -10339,10 +10340,10 @@ async function _refreshDownloadsInner(useCache) {
           '<span class="dl-size">' + meta + '</span></div>' +
           '<div class="dl-seed-goal">' + esc(goalStr) + '</div>' +
           (isMirror ? '' : '<div class="dl-progress" title="' + escAttr(t('seed_bar_tip', {cap: seedingCap})) + '"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>') +
-          '<div class="dl-actions">' +
+          '<div class="dl-actions"><div class="dl-meta"></div><div class="dl-btns">' +
             '<button class="dl-pause-btn" onclick="_seedAction(\'' + escAttr(escJs(sd.id)) + '\', \'' + (paused ? 'resume' : 'pause') + '\', this)">' + (paused ? tH('resume') : tH('pause')) + '</button>' +
             '<button class="dl-cancel-btn" onclick="_seedAction(\'' + escAttr(escJs(sd.id)) + '\', \'stop\', this)">' + tH('stop_seed') + '</button>' +
-          '</div>' +
+          '</div></div>' +
           '</div>';
       }
       if (filter === 'seeding') {
@@ -10425,11 +10426,14 @@ async function _refreshDownloadsInner(useCache) {
             ? '<button class="dl-pause-btn" disabled>' + tH('dl_switching_direct') + '</button>'
             : '<button class="dl-pause-btn" onclick="switchToDirect(\'' + escAttr(dl.id) + '\')" title="' + escAttr(t('dl_switch_direct_tip')) + '">' + tH('dl_switch_direct') + '</button>';
         }
-        h += '<div class="dl-actions">' + sourcePill + reusePill + mirrorInfo + switchBtn + startNowBtn + pauseBtn +
-          '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">' + tH('cancel') + '</button></div>';
+        // Status chips left, controls right — the same two columns in every row.
+        h += '<div class="dl-actions"><div class="dl-meta">' + sourcePill + reusePill + mirrorInfo +
+          '</div><div class="dl-btns">' + switchBtn + startNowBtn + pauseBtn +
+          '<button class="dl-cancel-btn" onclick="cancelDownload(\'' + escAttr(dl.id) + '\')">' + tH('cancel') + '</button></div></div>';
       }
       if (dl.error && dl.error !== 'Cancelled') {
-        h += '<div class="dl-actions"><button class="dl-retry-btn" onclick="downloadZim(\'' + escAttr(dl.url) + '\')">' + tH('retry') + '</button></div>';
+        h += '<div class="dl-actions"><div class="dl-meta"></div><div class="dl-btns">' +
+          '<button class="dl-retry-btn" onclick="downloadZim(\'' + escAttr(dl.url) + '\')">' + tH('retry') + '</button></div></div>';
       }
       h += '</div>';
     }

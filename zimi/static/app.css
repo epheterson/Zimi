@@ -362,7 +362,7 @@
      padding, or font-size, so rows never render at mismatched heights. */
   .pill, .lang-pill {
     display: inline-flex; align-items: center; gap: 5px; box-sizing: border-box;
-    min-height: 28px; padding: 6px 14px; font-size: 12px; line-height: 1;
+    min-height: 28px; padding: 6px 14px; font-family: inherit; font-size: 12px; line-height: 1;
     font-weight: 500; white-space: nowrap;
     background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
     color: var(--text2); cursor: pointer; transition: color 0.2s, background 0.2s, border-color 0.2s;
@@ -1308,13 +1308,17 @@
   .flavor-option-check { width: 16px; color: var(--amber); font-weight: bold; text-align: center; flex-shrink: 0; }
   .flavor-popup-backdrop { position: fixed; inset: 0; z-index: 999; }
   .ci-section-label { padding: 16px 0 8px; }
-  .dl-item { padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 6px; font-size: 13px; }
-  .dl-row { display: flex; gap: 12px; align-items: center; }
-  .dl-item .dl-name { flex: 1; color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* min-width:0 — a grid item defaults to min-width:auto, so a wide action row
+     used to stretch its column and push the whole page into horizontal scroll. */
+  .dl-item { padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; font-size: 13px; }
+  /* Wraps, so a long status moves to its own line instead of crushing the title
+     down to an ellipsis. Seed cards use the same rule (they used to re-declare it). */
+  .dl-row { display: flex; flex-wrap: wrap; column-gap: 10px; row-gap: 4px; align-items: center; }
+  .dl-item .dl-name { flex: 1 1 150px; min-width: 0; color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dl-item .dl-size { color: var(--text2); flex-shrink: 0; }
   .dl-item .dl-done { color: var(--amber); font-weight: 600; }
-  .dl-item .dl-error { color: var(--error); font-weight: 600; }
-  .dl-item .dl-scheduled { color: var(--text2); flex-shrink: 0; font-weight: 500; }
+  .dl-item .dl-error { color: var(--error); font-weight: 600; min-width: 0; }
+  .dl-item .dl-scheduled { color: var(--text2); flex-shrink: 0; font-weight: 500; white-space: nowrap; }
   /* Download-scheduling card */
   .ms-toggle-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
   /* Match the app's styled checkbox (amber accent) instead of the bare native
@@ -1344,7 +1348,20 @@
   .ms-dl-trickle { margin-top: 8px; }
   .dl-progress { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
   .dl-progress-bar { height: 100%; background: var(--amber); border-radius: 2px; transition: width 0.5s; }
-  .dl-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  /* Two aligned columns: status badges/mirror on the left, buttons on the right,
+     in every row whatever it contains. Both groups wrap internally, so a long
+     label or a five-button cluster reflows inside the card instead of escaping
+     it (the buttons used to overflow by up to 72px at 390px — issue #46). */
+  .dl-actions {
+    display: flex; flex-wrap: wrap; align-items: center;
+    column-gap: 10px; row-gap: 6px; margin-top: 8px; min-width: 0;
+  }
+  .dl-meta, .dl-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+  .dl-meta { flex: 1 1 auto; }
+  /* margin-left:auto (not justify-content) so the cluster hugs the right edge
+     whether it shares the line with the chips or wraps onto one of its own —
+     auto margins resolve per flex line, justify-content does not. */
+  .dl-btns { flex: 0 0 auto; margin-left: auto; }
   /* Same auto-fit grid pattern as catalog so the two views feel consistent */
   .dl-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -1359,21 +1376,29 @@
   }
   /* Top-level bulk controls (Pause all / Resume all / Delete all). Shares the
      download-row button shape; the danger variant flips to the error tone. */
-  .dl-bulk-bar { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px 0; }
-  .dl-bulk-btn { background: none; border: 1px solid var(--border); color: var(--text2);
-    padding: 4px 12px; border-radius: 12px; font-size: 11px; font-family: inherit; cursor: pointer;
-    transition: all 0.15s; min-height: 24px; }
-  .dl-bulk-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .dl-bulk-bar { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 10px 0; }
   .dl-bulk-btn.dl-bulk-danger:hover { border-color: var(--error); color: var(--error); }
   /* background:none beats .pill.active's amber gradient (same specificity,
      later in source) — amber label on amber fill was unreadable. */
   .dl-filter-pill.active { color: var(--amber); border-color: var(--amber); background: none; font-weight: 600; }
   .dl-filter-pill.active .pill-count { opacity: 1; background: var(--amber); color: var(--on-amber); padding: 1px 6px; border-radius: 8px; }
-  /* One shape for the whole download-row button family */
-  .dl-pause-btn, .dl-cancel-btn, .dl-retry-btn { background: none; border: 1px solid var(--border); color: var(--text2);
-    padding: 4px 12px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s;
-    min-height: 24px; }
-  .dl-pause-btn:hover { border-color: var(--amber); color: var(--amber); }
+  /* One shape for EVERY button in the downloads panel — per-row controls, the
+     bulk bar and the clear/show-all buttons alike. They had accreted three
+     different shapes across features; the row buttons also missed
+     font-family:inherit, so they rendered in the UA font (Arial) next to the
+     bulk bar's app font. Fixed height + nowrap is what keeps them equal: a long
+     label ("Switch to direct download") used to wrap to 49px against its 24px
+     neighbours. Variants below may override colour ONLY — never the geometry. */
+  .dl-pause-btn, .dl-cancel-btn, .dl-retry-btn, .dl-bulk-btn, .dl-clear-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: 0 0 auto; box-sizing: border-box; height: 26px; min-width: 62px; padding: 0 12px;
+    background: none; border: 1px solid var(--border); color: var(--text2);
+    border-radius: 999px; font-family: inherit; font-size: 11px; line-height: 1;
+    white-space: nowrap; cursor: pointer; transition: all 0.15s;
+  }
+  .dl-pause-btn:disabled, .dl-cancel-btn:disabled, .dl-retry-btn:disabled,
+  .dl-bulk-btn:disabled, .dl-clear-btn:disabled { opacity: 0.55; cursor: default; }
+  .dl-pause-btn:not(:disabled):hover, .dl-bulk-btn:hover { border-color: var(--amber); color: var(--amber); }
   .dl-progress.dl-paused .dl-progress-bar { opacity: 0.5; }
   /* Total size unknown (BT metadata / finding peers) — sweeping indeterminate bar */
   .dl-progress.dl-indeterminate .dl-progress-bar {
@@ -1387,7 +1412,11 @@
   }
   .dl-cancel-btn:hover { border-color: var(--error); color: var(--error); }
   .dl-retry-btn:hover { border-color: var(--amber); color: var(--amber); }
-  .dl-mirror { font-size: 11px; color: var(--text2); flex: 1; }
+  /* Ellipsises rather than forcing the row wide — mirror hostnames run long. */
+  .dl-mirror {
+    font-size: 11px; color: var(--text2); flex: 1 1 120px; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   /* BT card controls: always rendered (fixed height); dimmed + non-interactive
      when BT is off so a toggle never adds/removes rows and nothing jumps.
      A strict two-column grid (label | control) so every textbox lines up in a
@@ -1460,12 +1489,11 @@
   .dl-seed-link { cursor: pointer; }
   .dl-seed-link:hover { color: var(--amber); }
   /* Seed cards: icon + title on the first row, the "Sharing · …" status
-     wraps to its own full-width row below so it never crushes the title. */
-  .dl-seed-item .dl-row { flex-wrap: wrap; row-gap: 3px; column-gap: 8px; }
+     wraps to its own full-width row below so it never crushes the title.
+     (The wrap itself now comes from the shared .dl-row rule.) */
   .dl-seed-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; overflow: hidden; background: var(--surface2); }
   .dl-seed-icon img { width: 22px; height: 22px; object-fit: contain; }
   .dl-seed-icon .rs-letter { font-size: 12px; font-weight: 600; color: var(--text2); }
-  .dl-seed-item .dl-name { flex: 1 1 auto; min-width: 0; }
   .dl-seed-item .dl-size { flex: 1 1 100%; min-width: 0; color: var(--text2); }
   /* Uploaded-vs-goal line under the seed row: quiet, tabular, its own row. */
   .dl-seed-goal { margin-top: 6px; font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
@@ -1486,13 +1514,22 @@
     .share-port-row { gap: 8px; }
     .share-port-input { width: 70px; }
   }
-  .dl-source { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
-    color: var(--text2); white-space: nowrap; }
+  /* Rounded like every other status chip in the app (.dl-window-chip geometry)
+     rather than the square 3px tag it used to be. */
+  .dl-source { flex: 0 0 auto; font-size: 10px; font-weight: 600; padding: 2px 8px;
+    border-radius: 999px; border: 1px solid var(--border);
+    color: var(--text2); white-space: nowrap; line-height: 1.5; }
   .dl-source-bt { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   /* Delta-update salvage badge: a "savings" cue, distinct from the amber BT pill. */
   .dl-source-reuse { color: #4fd1a5; border-color: rgba(79,209,165,.35); background: rgba(79,209,165,.10); }
-  .dl-clear-btn { float: right; background: none; border: 1px solid var(--border); color: var(--text2); font-size: 11px; padding: 2px 10px; border-radius: 4px; cursor: pointer; margin-top: -28px; }
   .dl-clear-btn:hover { border-color: var(--amber); color: var(--amber); }
+  /* Card header: title left, Clear right. Replaces a float + margin-top:-28px
+     that lifted the button onto the h2's line and narrowed the filter bar
+     (a flex container won't overlap a float). */
+  .dl-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+  .dl-head h2 { margin: 0; }
+  /* Same button, standing alone at the end of the Activity list. */
+  .hist-show-all { display: flex; margin: 10px 0 0 auto; }
 
   /* ── Manage tabs ── */
   .manage-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
