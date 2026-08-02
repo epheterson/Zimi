@@ -110,6 +110,103 @@ test.describe('Bookmarks folder tree', () => {
     expect(state.folders.find((f) => f.id === 'med')).toBeUndefined();
     expect(state.folders.find((f) => f.id === 'card').parent).toBe('');
     expect(state.bookmarks.length).toBe(3); // nothing deleted
+    // The promoted bookmark must be written back pointing at the surviving
+    // parent — keeping the dead folder id strands it in no folder at all.
+    expect(state.bookmarks.find((b) => b.path === 'A/Aspirin').folder).toBe('');
+  });
+
+  test('promoted bookmarks are still in the tree after a reload', async ({ page }) => {
+    await seedAndOpen(page, FOLDERS, BOOKMARKS);
+    await page.locator('.bm-folder[data-fid="med"]').click({ button: 'right' });
+    await page.locator('.ctx-item', { hasText: 'Delete' }).click();
+    await page.locator('.ctx-item', { hasText: 'keep bookmarks' }).click();
+    await expect(page.locator('.bm-bk')).toHaveCount(3);
+    await page.reload();
+    await page.evaluate(() => toggleLibraryPanel('bookmarks'));
+    await page.waitForSelector('#bm-tree');
+    await expect(page.locator('.bm-bk')).toHaveCount(3);
+  });
+
+  test('a bookmark pointing at a deleted folder shows at the top level', async ({ page }) => {
+    // Data written by another device (or an older build) can reference a folder
+    // that no longer exists; it must not vanish from every folder at once.
+    await seedAndOpen(page, FOLDERS, [
+      { zim: 'wikipedia', path: 'A/Ghost', title: 'Ghost', folder: 'gone', order: 0 },
+    ]);
+    await expect(page.locator('.bm-bk[data-path="A/Ghost"]')).toHaveCount(1);
+    const fid = await page.locator('.bm-bk[data-path="A/Ghost"]').getAttribute('data-fid');
+    expect(fid).toBe('');
+  });
+
+  test('a bookmark row is indented past the folder holding it', async ({ page }) => {
+    await seedAndOpen(page, FOLDERS, BOOKMARKS);
+    const folderIcon = await page.locator('.bm-folder[data-fid="card"] .bm-ficon').boundingBox();
+    const bookmarkIcon = await page.locator('.bm-bk[data-path="A/Heart"] .bm-bicon').boundingBox();
+    expect(bookmarkIcon.x).toBeGreaterThan(folderIcon.x);
+  });
+
+  test('drag a folder onto a bookmark row moves it into that bookmark\'s folder', async ({ page }) => {
+    await seedAndOpen(page, FOLDERS, BOOKMARKS);
+    const src = page.locator('.bm-folder[data-fid="res"]');
+    const dst = page.locator('.bm-bk[data-path="A/Aspirin"]');  // lives in Medical
+    const s = await src.boundingBox();
+    const d = await dst.boundingBox();
+    await page.mouse.move(s.x + s.width / 2, s.y + s.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(s.x + s.width / 2, s.y + s.height / 2 - 10, { steps: 4 });
+    await page.mouse.move(d.x + d.width / 2, d.y + d.height * 0.6, { steps: 6 });
+    // The folder the drop resolves to is the one highlighted, not the row hovered.
+    await expect(page.locator('.bm-folder[data-fid="med"].bm-drop-into')).toHaveCount(1);
+    await page.mouse.up();
+    await page.waitForTimeout(100);
+    const parent = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('zimi_bm_folders')).find((f) => f.id === 'res').parent);
+    expect(parent).toBe('med');
+  });
+
+  test('dropping into a collapsed folder expands it', async ({ page }) => {
+    await seedAndOpen(page, FOLDERS, BOOKMARKS);
+    await page.evaluate(() => {
+      localStorage.setItem('zimi_bm_collapsed', JSON.stringify(['res']));
+      _bmRerender();
+    });
+    const src = page.locator('.bm-bk[data-path="A/Loose"]');
+    const dst = page.locator('.bm-folder[data-fid="res"]');
+    const s = await src.boundingBox();
+    const d = await dst.boundingBox();
+    await page.mouse.move(s.x + s.width / 2, s.y + s.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(s.x + s.width / 2 + 12, s.y + s.height / 2 + 12, { steps: 4 });
+    await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => _folIsCollapsed('res'))).toBe(false);
+    await expect(page.locator('.bm-bk[data-path="A/Loose"][data-fid="res"]')).toHaveCount(1);
+  });
+
+  test('Save to ZIM opens with the whole library ticked', async ({ page }) => {
+    await seedAndOpen(page, FOLDERS, BOOKMARKS);
+    await page.getByRole('button', { name: 'Save to ZIM' }).click();
+    await page.waitForSelector('#bm-export-tree');
+    const boxes = page.locator('#bm-export-tree input[type=checkbox]');
+    const total = await boxes.count();
+    expect(total).toBeGreaterThan(0);
+    expect(await boxes.evaluateAll((els) => els.filter((e) => e.checked).length)).toBe(total);
+    // With everything ticked the shared button offers the other direction.
+    await expect(page.locator('#bm-export-all')).toHaveText('Select none');
+    await page.locator('#bm-export-all').click();
+    expect(await boxes.evaluateAll((els) => els.filter((e) => e.checked).length)).toBe(0);
+    await expect(page.locator('#bm-export-all')).toHaveText('Select all');
+  });
+
+  test('a folder menu export ticks only that subtree', async ({ page }) => {
+    await seedAndOpen(page, FOLDERS, BOOKMARKS);
+    await page.evaluate(() => _bmOpenExport('med'));
+    await page.waitForSelector('#bm-export-tree');
+    expect(await page.locator('#bm-export-tree input[data-fid="med"]').isChecked()).toBe(true);
+    expect(await page.locator('#bm-export-tree input[data-fid="card"]').isChecked()).toBe(true);
+    expect(await page.locator('#bm-export-tree input[data-fid="res"]').isChecked()).toBe(false);
+    expect(await page.locator('#bm-export-tree input[data-fid="__unfiled__"]').isChecked()).toBe(false);
   });
 
   test('export selector builds one job per top-level folder with sections', async ({ page }) => {

@@ -12189,7 +12189,7 @@ function openReader(url) {
         var _fdoc = _frame0.contentDocument;
         var _dec = _frag; try { _dec = decodeURIComponent(_frag); } catch (e) {}
         var _tgt = _fdoc.getElementById(_dec) || _fdoc.getElementById(_frag) ||
-                   _fdoc.querySelector('[name="' + (window.CSS && CSS.escape ? CSS.escape(_dec) : _dec) + '"]');
+                   _fdoc.querySelector('[name="' + _cssEsc(_dec) + '"]');
         if (_tgt) _tgt.scrollIntoView();
       } catch (e) {}
       updateTopbar();
@@ -12796,8 +12796,11 @@ function _bmBookmarkRowHtml(b, depth) {
   var sub = b.zim ? _zimTitleWithLang(b.zim) : '';
   var pad = 6 + depth * _BM_INDENT;
   return '<div class="bm-row bm-bk" data-zim="' + escAttr(b.zim) + '" data-path="' + escAttr(b.path) + '"' +
-    ' data-fid="' + escAttr(_folNorm(b.folder)) + '" data-depth="' + depth + '"' +
+    ' data-fid="' + escAttr(_bkFolderOf(b)) + '" data-depth="' + depth + '"' +
     ' style="padding-left:' + pad + 'px" role="treeitem" tabindex="0">' +
+    // Stands in for the folder rows' twist so a bookmark sits to the RIGHT of
+    // the folder holding it, not left of it.
+    '<span class="bm-twist bm-twist-gap"></span>' +
     '<span class="bm-bicon">' + icon + '</span>' +
     '<span class="bm-detail"><span class="bm-name">' + esc(b.title || _titleFromPath(b.path)) + '</span>' +
     (sub ? '<span class="bm-sub">' + esc(sub) + '</span>' : '') + '</span>' +
@@ -12830,7 +12833,7 @@ function _bmNewFolderPrompt(parentId) {
   }
   var depth = 0;
   if (parentId) {
-    var pr = host.querySelector('.bm-folder[data-fid="' + (window.CSS && CSS.escape ? CSS.escape(parentId) : parentId) + '"]');
+    var pr = host.querySelector('.bm-folder[data-fid="' + _cssEsc(parentId) + '"]');
     depth = pr ? (parseInt(pr.dataset.depth, 10) + 1) : 0;
   }
   var wrap = document.createElement('div');
@@ -12840,7 +12843,7 @@ function _bmNewFolderPrompt(parentId) {
     '<input class="bm-newfolder-input" type="text" placeholder="' + escAttr(t('bm_folder_name')) + '" maxlength="60">';
   // Insert at the top of the target parent's child region (root: top of tree).
   if (parentId) {
-    var anchor = host.querySelector('.bm-folder[data-fid="' + (window.CSS && CSS.escape ? CSS.escape(parentId) : parentId) + '"]');
+    var anchor = host.querySelector('.bm-folder[data-fid="' + _cssEsc(parentId) + '"]');
     if (anchor && anchor.nextSibling) host.insertBefore(wrap, anchor.nextSibling);
     else host.appendChild(wrap);
   } else {
@@ -12871,7 +12874,7 @@ function _bmCloseInlineInput() {
 function _bmRenameFolder(fid) {
   var f = _folById(fid);
   if (!f) return;
-  var row = document.querySelector('.bm-folder[data-fid="' + (window.CSS && CSS.escape ? CSS.escape(fid) : fid) + '"]');
+  var row = document.querySelector('.bm-folder[data-fid="' + _cssEsc(fid) + '"]');
   if (!row) return;
   var nameEl = row.querySelector('.bm-name');
   if (!nameEl) return;
@@ -12898,12 +12901,16 @@ function _bmDeleteFolder(fid) {
   var f = _folById(fid);
   if (!f) return;
   var count = _folBookmarkCount(fid);
-  var hasKids = _folChildren(fid).length > 0;
-  if (!count && !hasKids) { _folDelete(fid, 'promote'); _bmRerender(); return; }
+  var kids = _folChildren(fid).length;
+  if (!count && !kids) { _folDelete(fid, 'promote'); _bmRerender(); return; }
   // Non-empty \u2192 offer Move-out vs Delete-all. Reuse the generic menu at center.
   // Deferred so the folder menu's own closeCtx (fired after this action) doesn't
-  // immediately close the choice menu we're opening.
-  var html = '<div class="ctx-note">' + tH('bm_delete_folder_q', { name: f.name, n: count }) + '</div>' +
+  // immediately close the choice menu we're opening. A folder holding only
+  // subfolders is counted in subfolders \u2014 "0 bookmarks" is not what's at stake.
+  var note = count
+    ? tH('bm_delete_folder_q', { name: f.name, n: count })
+    : tH('bm_delete_folder_subs_q', { name: f.name, n: kids });
+  var html = '<div class="ctx-note">' + note + '</div>' +
     '<div class="ctx-item" data-action="promote">' + tH('bm_delete_keep') + '</div>' +
     '<div class="ctx-item danger" data-action="purge">' + tH('bm_delete_all') + '</div>';
   var vw = window.innerWidth, vh = window.innerHeight;
@@ -13070,9 +13077,37 @@ function _bmPointerMove(e) {
   }
   e.preventDefault();
   _bmDrag.movedSinceLift = _bmDrag.movedSinceLift || Math.abs(e.clientX - _bmDrag.liftX) > 4 || Math.abs(e.clientY - _bmDrag.liftY) > 4;
+  _bmDrag.x = e.clientX; _bmDrag.y = e.clientY;
   _bmDrag.ghost.style.left = e.clientX + 'px';
   _bmDrag.ghost.style.top = e.clientY + 'px';
   _bmUpdateDropTarget(e.clientX, e.clientY);
+  _bmEdgeScroll(e.clientY);
+}
+
+// Hold the pointer near the top or bottom edge of the panel and the tree
+// scrolls under it. Without this, a drop target more than one screen away from
+// the lift point is simply unreachable — which is every real library.
+var _BM_EDGE = 52;          // px from a panel edge that starts the scroll
+var _BM_EDGE_STEP = 14;     // px per frame
+var _bmEdgeTimer = null, _bmEdgeDir = 0;
+function _bmEdgeScroll(y) {
+  var panel = document.getElementById('history-panel');
+  if (!panel) return;
+  var r = panel.getBoundingClientRect();
+  _bmEdgeDir = (y < r.top + _BM_EDGE) ? -1 : (y > r.bottom - _BM_EDGE) ? 1 : 0;
+  if (!_bmEdgeDir) { _bmStopEdgeScroll(); return; }
+  if (_bmEdgeTimer) return;
+  _bmEdgeTimer = setInterval(function () {
+    if (!_bmDrag) { _bmStopEdgeScroll(); return; }
+    var before = panel.scrollTop;
+    panel.scrollTop += _bmEdgeDir * _BM_EDGE_STEP;
+    if (panel.scrollTop === before) { _bmStopEdgeScroll(); return; }  // hit an end
+    _bmUpdateDropTarget(_bmDrag.x, _bmDrag.y);  // rows moved under a still pointer
+  }, 16);
+}
+function _bmStopEdgeScroll() {
+  if (_bmEdgeTimer) { clearInterval(_bmEdgeTimer); _bmEdgeTimer = null; }
+  _bmEdgeDir = 0;
 }
 
 // Resolve what a drop at (x,y) would do and reflect it with indicator classes.
@@ -13092,8 +13127,16 @@ function _bmUpdateDropTarget(x, y) {
   var rect = row.getBoundingClientRect();
   var rel = (y - rect.top) / rect.height;
   if (row.classList.contains('bm-folder')) {
+    if (_bmDrag.kind === 'bk') {
+      // A bookmark can only ever go INSIDE a folder \u2014 bookmarks always sort
+      // after folders within a parent, so "before this folder" has no meaning.
+      // Show the one thing that can happen rather than a line that lies.
+      row.classList.add('bm-drop-into');
+      _bmDrag.drop = { mode: 'into', fid: row.dataset.fid };
+      return;
+    }
     // Dropping a folder into its own descendant is illegal \u2014 treat as reorder.
-    var intoOk = !(_bmDrag.kind === 'folder' && (_folWouldCycle(_bmDrag.row.dataset.fid, row.dataset.fid)));
+    var intoOk = !_folWouldCycle(_bmDrag.row.dataset.fid, row.dataset.fid);
     if (rel < 0.30 || !intoOk) {
       row.classList.add('bm-drop-before');
       _bmDrag.drop = { mode: 'before-folder', fid: row.dataset.fid };
@@ -13101,10 +13144,28 @@ function _bmUpdateDropTarget(x, y) {
       row.classList.add('bm-drop-into');
       _bmDrag.drop = { mode: 'into', fid: row.dataset.fid };
     }
-  } else {  // bookmark row \u2192 reorder within its folder (before / after)
+  } else if (_bmDrag.kind === 'folder') {
+    // A folder over a bookmark resolves to that bookmark's folder \u2014 otherwise
+    // every bookmark row is a dead zone that still draws a drop line.
+    var into = _folNorm(row.dataset.fid);
+    if (_folNorm(_folById(_bmDrag.row.dataset.fid).parent) === into ||
+        _folWouldCycle(_bmDrag.row.dataset.fid, into)) { _bmDrag.drop = null; return; }
+    _bmMarkFolderTarget(into);
+    _bmDrag.drop = { mode: 'into', fid: into };
+  } else {  // bookmark over bookmark \u2192 reorder within its folder (before / after)
     if (rel < 0.5) { row.classList.add('bm-drop-before'); _bmDrag.drop = { mode: 'before-bk', row: row }; }
     else { row.classList.add('bm-drop-after'); _bmDrag.drop = { mode: 'after-bk', row: row }; }
   }
+}
+
+// Highlight the row of the folder a drop would land in (the tree itself when
+// that folder is root), so the target is never left to inference.
+function _bmMarkFolderTarget(fid) {
+  var host = document.getElementById('bm-tree');
+  if (!host) return;
+  if (_folNorm(fid) === _BM_ROOT) { host.classList.add('bm-drop-root'); return; }
+  var row = host.querySelector('.bm-folder[data-fid="' + _cssEsc(fid) + '"]');
+  if (row) row.classList.add('bm-drop-into');
 }
 
 function _bmClearDropMarks() {
@@ -13138,10 +13199,10 @@ function _bmPointerUp(e) {
 function _bmCommitDrop(drag) {
   var d = drag.drop;
   if (!d) return;
+  if (d.mode === 'into') _folExpand(d.fid);  // never drop something into a folder that hides it
   if (drag.kind === 'bk') {
     var zim = drag.row.dataset.zim, path = drag.row.dataset.path;
     if (d.mode === 'into') _bkSetFolder(zim, path, d.fid);
-    else if (d.mode === 'before-folder') _bkSetFolder(zim, path, d.fid);  // land inside the folder before which we hovered? no \u2192 its parent
     else if (d.mode === 'before-bk' || d.mode === 'after-bk') {
       var tgt = d.row;
       var destFid = tgt.dataset.fid;
@@ -13171,6 +13232,7 @@ function _bmCommitDrop(drag) {
 }
 
 function _bmTeardownPointer() {
+  _bmStopEdgeScroll();
   document.removeEventListener('pointermove', _bmPointerMove);
   document.removeEventListener('pointerup', _bmPointerUp);
   document.removeEventListener('pointercancel', _bmPointerUp);
@@ -13260,11 +13322,19 @@ function _folChildren(parentId) {
       return d || (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
     });
 }
+// The folder a bookmark actually lives in. A reference to a folder that no
+// longer exists (a merge from a device that deleted it, or data written by a
+// build that dropped a save) resolves to root, so such a bookmark stays
+// reachable instead of disappearing from every folder at once.
+function _bkFolderOf(b) {
+  var id = _folNorm(b.folder);
+  return _folExists(id) ? id : _BM_ROOT;
+}
 // Bookmarks directly inside `folderId`, ordered by `order` then timestamp-desc
 // (so pre-v2 bookmarks — no order — keep their recency ordering).
 function _bkInFolder(folderId) {
   folderId = _folNorm(folderId);
-  return _bkLoad().filter(function (b) { return _folNorm(b.folder) === folderId; })
+  return _bkLoad().filter(function (b) { return _bkFolderOf(b) === folderId; })
     .sort(function (a, b) {
       var ao = (a.order == null) ? Infinity : a.order;
       var bo = (b.order == null) ? Infinity : b.order;
@@ -13336,6 +13406,7 @@ function _folDelete(id, mode) {
     _bkLoad().forEach(function (b) { if (_folNorm(b.folder) === _folNorm(id)) b.folder = parent; });
     _folChildren(id).forEach(function (c) { c.parent = parent; });
     _bmFolders = _folLoad().filter(function (x) { return x.id !== id; });
+    _bkSave();  // the promoted bookmarks changed folder — persist, or they orphan
   } else {  // 'contents' (default): purge everything under this folder
     var kill = {};
     subtree.forEach(function (sid) { kill[sid] = 1; });
@@ -13386,17 +13457,24 @@ function _folCollapsedSet() {
   catch (e) { return new Set(); }
 }
 function _folIsCollapsed(id) { return _folCollapsedSet().has(_folNorm(id)); }
+function _folSaveCollapsed(s) {
+  try { localStorage.setItem(SK.BM_COLLAPSED, JSON.stringify(Array.from(s))); } catch (e) {}
+}
 function _folToggleCollapse(id) {
   var s = _folCollapsedSet();
   id = _folNorm(id);
   if (s.has(id)) s.delete(id); else s.add(id);
-  try { localStorage.setItem(SK.BM_COLLAPSED, JSON.stringify(Array.from(s))); } catch (e) {}
+  _folSaveCollapsed(s);
+}
+function _folExpand(id) {
+  var s = _folCollapsedSet();
+  if (s.delete(_folNorm(id))) _folSaveCollapsed(s);
 }
 // Recursive count of bookmarks under a folder (self + descendants) — the badge.
 function _folBookmarkCount(id) {
   var ids = [_folNorm(id)].concat(_folDescendants(id).map(_folNorm));
   var set = {}; ids.forEach(function (x) { set[x] = 1; });
-  return _bkLoad().filter(function (b) { return set[_folNorm(b.folder)]; }).length;
+  return _bkLoad().filter(function (b) { return set[_bkFolderOf(b)]; }).length;
 }
 
 // Save to ZIM: POST the client's bookmark list (server has no copy) and poll
@@ -13411,9 +13489,15 @@ function _bmExportSelector(preFolderId) {
   _bmCloseExport();
   var rootBk = _bkInFolder(_BM_ROOT).length;
   var tree = '';
+  // Opened from a folder's menu → just that subtree. Opened from the tab's
+  // "Save to ZIM" → everything, matching what that button did before the
+  // selector existed. Opening a picker with nothing ticked makes its own
+  // primary button fail on the first press.
   var walk = function (parentId, depth) {
     _folChildren(parentId).forEach(function (f) {
-      var checked = preFolderId && (f.id === preFolderId || _folDescendants(preFolderId).indexOf(f.id) >= 0);
+      var checked = preFolderId
+        ? (f.id === preFolderId || _folDescendants(preFolderId).indexOf(f.id) >= 0)
+        : true;
       tree += '<label class="bm-exp-row" style="padding-left:' + (8 + depth * 16) + 'px">' +
         '<input type="checkbox" data-fid="' + escAttr(f.id) + '"' + (checked ? ' checked' : '') + '>' +
         '<span class="bm-exp-name">📁 ' + esc(f.name) + '</span>' +
@@ -13424,7 +13508,7 @@ function _bmExportSelector(preFolderId) {
   walk(_BM_ROOT, 0);
   if (rootBk) {
     tree += '<label class="bm-exp-row" style="padding-left:8px">' +
-      '<input type="checkbox" data-fid="__unfiled__"' + (!preFolderId ? '' : '') + '>' +
+      '<input type="checkbox" data-fid="__unfiled__"' + (preFolderId ? '' : ' checked') + '>' +
       '<span class="bm-exp-name">📄 ' + tH('bm_export_unfiled') + '</span>' +
       '<span class="bm-exp-count">' + rootBk + '</span></label>';
   }
@@ -13439,7 +13523,7 @@ function _bmExportSelector(preFolderId) {
     '<div class="bm-export-tree" id="bm-export-tree">' + tree + '</div>' +
     '<div class="bm-export-status" id="bm-export-status"></div>' +
     '<div class="bm-export-actions">' +
-    '<button class="hp-action-btn" onclick="_bmExportSelectAll()">' + tH('bm_export_all') + '</button>' +
+    '<button class="hp-action-btn" id="bm-export-all" onclick="_bmExportToggleAll()"></button>' +
     '<span style="flex:1"></span>' +
     '<button class="hp-action-btn" onclick="_bmCloseExport()">' + tH('cancel') + '</button>' +
     '<button class="hp-action-btn primary" id="bm-export-go" onclick="_bmExportSubmit()">' + tH('save_to_zim') + '</button>' +
@@ -13448,24 +13532,41 @@ function _bmExportSelector(preFolderId) {
   // Checking a folder auto-(un)checks its descendants; you can still uncheck one.
   ov.querySelector('#bm-export-tree').addEventListener('change', function (e) {
     var cb = e.target.closest('input[type=checkbox]');
-    if (!cb || cb.dataset.fid === '__unfiled__') return;
-    var descs = _folDescendants(cb.dataset.fid);
-    descs.forEach(function (id) {
-      var d = ov.querySelector('input[data-fid="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
-      if (d) d.checked = cb.checked;
-    });
+    if (!cb) return;
+    if (cb.dataset.fid !== '__unfiled__') {
+      _folDescendants(cb.dataset.fid).forEach(function (id) {
+        var d = ov.querySelector('input[data-fid="' + _cssEsc(id) + '"]');
+        if (d) d.checked = cb.checked;
+      });
+    }
+    _bmExportSyncAllBtn();
   });
   ov.addEventListener('click', function (e) { if (e.target === ov) _bmCloseExport(); });
+  _bmExportSyncAllBtn();
 }
 function _bmCloseExport() {
   clearTimeout(_exportPoll);
   var ov = document.getElementById('bm-export-overlay');
   if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
 }
-function _bmExportSelectAll() {
+// One button for both directions — with the tree pre-ticked, a "Select all"
+// that can only ever be a no-op is a dead control.
+function _bmExportBoxes() {
   var ov = document.getElementById('bm-export-overlay');
-  if (!ov) return;
-  ov.querySelectorAll('#bm-export-tree input[type=checkbox]').forEach(function (cb) { cb.checked = true; });
+  return ov ? Array.prototype.slice.call(ov.querySelectorAll('#bm-export-tree input[type=checkbox]')) : [];
+}
+function _bmExportToggleAll() {
+  var boxes = _bmExportBoxes();
+  var wantAll = boxes.some(function (cb) { return !cb.checked; });
+  boxes.forEach(function (cb) { cb.checked = wantAll; });
+  _bmExportSyncAllBtn();
+}
+function _bmExportSyncAllBtn() {
+  var btn = document.getElementById('bm-export-all');
+  if (!btn) return;
+  var boxes = _bmExportBoxes();
+  btn.textContent = boxes.length && boxes.every(function (cb) { return cb.checked; })
+    ? t('select_none') : t('select_all');
 }
 // Turn the checked folders into export jobs (one per top-level selection).
 function _bmBuildExportJobs() {
@@ -13612,7 +13713,7 @@ async function _revealExportedZim(file) {
   _closeLibraryPanel();
   // Defer so the freshly rendered cards + the panel close settle first.
   setTimeout(function() {
-    var sel = '.stat-card[data-zim="' + ((window.CSS && CSS.escape) ? CSS.escape(name) : name) + '"]';
+    var sel = '.stat-card[data-zim="' + _cssEsc(name) + '"]';
     var card = document.querySelector(sel);
     if (!card) return;
     try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { try { card.scrollIntoView(); } catch (e2) {} }
@@ -14269,6 +14370,9 @@ window.addEventListener('popstate', (e) => {
 // ── Util ──
 function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 function escAttr(s) { return esc(s).replace(/'/g, '&#39;').replace(/"/g, '&quot;'); }
+// Escape a value for use inside a CSS attribute selector. Generated ids and ZIM
+// names reach querySelector all over the app; older engines lack CSS.escape.
+function _cssEsc(s) { s = String(s == null ? '' : s); return (window.CSS && CSS.escape) ? CSS.escape(s) : s; }
 // Escape for JS string literal inside HTML onclick attribute (survives HTML decode then JS parse)
 // Escape a value for a JS string literal INSIDE an onclick="..." attribute.
 // The result is parsed as HTML first, so quotes/&/< are emitted as HTML

@@ -2205,6 +2205,9 @@
     font-size: 10px; transition: transform 0.15s; transform: rotate(0deg);
   }
   .bm-twist.open { transform: rotate(90deg); }
+  /* Empty twist column on bookmark rows — keeps a bookmark indented past the
+     folder that holds it instead of hanging left of it. */
+  .bm-twist-gap { visibility: hidden; }
   .bm-ficon, .bm-bicon { flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .bm-ficon { width: 20px; font-size: 15px; }
   .bm-bicon { width: 24px; height: 24px; border-radius: 5px; background: var(--surface2); font-size: 13px; }
