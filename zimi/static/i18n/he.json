@@ -1177,6 +1177,7 @@
   "bm_untitled_folder": "תיקייה ללא שם",
   "bm_root": "סימניות (רמה עליונה)",
   "bm_remove": "הסרת הסימנייה",
+  "bm_source_missing": "המקור כבר לא מותקן",
   "bm_export_folder": "ייצוא התיקייה הזו…",
   "bm_delete_folder_q": "למחוק את \"{name}\"? יש בה {n} סימניות.",
   "bm_delete_folder_subs_q": "למחוק את \"{name}\"? יש בה {n} תת-תיקיות.",

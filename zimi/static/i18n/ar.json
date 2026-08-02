@@ -1177,6 +1177,7 @@
   "bm_untitled_folder": "مجلد بلا اسم",
   "bm_root": "المفضلة (المستوى الأعلى)",
   "bm_remove": "إزالة من المفضلة",
+  "bm_source_missing": "المصدر لم يعد مثبتًا",
   "bm_export_folder": "تصدير هذا المجلد…",
   "bm_delete_folder_q": "حذف «{name}»؟ يحتوي على {n} من المفضلة.",
   "bm_delete_folder_subs_q": "حذف «{name}»؟ يحتوي على {n} مجلد فرعي.",

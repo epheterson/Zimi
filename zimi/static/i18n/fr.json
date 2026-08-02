@@ -1177,6 +1177,7 @@
   "bm_untitled_folder": "Dossier sans titre",
   "bm_root": "Signets (niveau supérieur)",
   "bm_remove": "Retirer le signet",
+  "bm_source_missing": "Source qui n’est plus installée",
   "bm_export_folder": "Exporter ce dossier…",
   "bm_delete_folder_q": "Supprimer « {name} » ? Ce dossier contient {n} signet(s).",
   "bm_delete_folder_subs_q": "Supprimer « {name} » ? Ce dossier contient {n} sous-dossier(s).",

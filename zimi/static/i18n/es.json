@@ -1177,6 +1177,7 @@
   "bm_untitled_folder": "Carpeta sin título",
   "bm_root": "Marcadores (nivel superior)",
   "bm_remove": "Quitar marcador",
+  "bm_source_missing": "La fuente ya no está instalada",
   "bm_export_folder": "Exportar esta carpeta…",
   "bm_delete_folder_q": "¿Eliminar «{name}»? Contiene {n} marcador(es).",
   "bm_delete_folder_subs_q": "¿Eliminar «{name}»? Contiene {n} subcarpeta(s).",

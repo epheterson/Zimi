@@ -12798,11 +12798,21 @@ function _bmFolderRowHtml(f, depth) {
     '</div>';
 }
 
+// True once the library list has arrived and this bookmark's ZIM is not in it \u2014
+// the source was deleted or renamed under the bookmark. Opening one of these
+// lands the reader on a page that never loads, so the row says so up front.
+// Gated on a loaded list, or every row would read as dead during boot.
+function _bkSourceMissing(b) {
+  return !!(b.zim && zimsCache && zimsCache.length && !_zimInfo(b.zim));
+}
+
 function _bmBookmarkRowHtml(b, depth) {
+  var missing = _bkSourceMissing(b);
   var icon = b.zim ? _sourceIconHtml(b.zim, 20) : '\uD83D\uDCC4';
-  var sub = b.zim ? _zimTitleWithLang(b.zim) : '';
+  var sub = missing ? t('bm_source_missing') : (b.zim ? _zimTitleWithLang(b.zim) : '');
   var pad = 6 + depth * _BM_INDENT;
-  return '<div class="bm-row bm-bk" data-zim="' + escAttr(b.zim) + '" data-path="' + escAttr(b.path) + '"' +
+  return '<div class="bm-row bm-bk' + (missing ? ' bm-missing' : '') + '"' +
+    ' data-zim="' + escAttr(b.zim) + '" data-path="' + escAttr(b.path) + '"' +
     ' data-fid="' + escAttr(_bkFolderOf(b)) + '" data-depth="' + depth + '"' +
     ' style="padding-left:' + pad + 'px" role="treeitem" tabindex="0">' +
     // Stands in for the folder rows' twist so a bookmark sits to the RIGHT of
@@ -12972,7 +12982,11 @@ function _bmFolderMenu(fid, x, y) {
 }
 
 function _bmBookmarkMenu(zim, path, x, y) {
-  var html = '<div class="ctx-item" data-action="open">' + tH('open') + '</div>' +
+  var row = document.querySelector('.bm-bk[data-zim="' + _cssEsc(zim) + '"][data-path="' + _cssEsc(path) + '"]');
+  var missing = !!(row && row.classList.contains('bm-missing'));
+  var html = (missing
+      ? '<div class="ctx-note">' + tH('bm_source_missing') + '</div>'
+      : '<div class="ctx-item" data-action="open">' + tH('open') + '</div>') +
     '<div class="ctx-item">' + tH('move_to') + ' \u203A<div class="ctx-sub">' + _bmMoveSubmenuHtml('') + '</div></div>' +
     '<div class="ctx-sep"></div>' +
     '<div class="ctx-item danger" data-action="remove">' + tH('bm_remove') + '</div>';
@@ -13011,6 +13025,7 @@ function _bmEnsureBound() {
       _folToggleCollapse(row.dataset.fid);
       _bmRerender();
     } else if (row.classList.contains('bm-bk')) {
+      if (row.classList.contains('bm-missing')) { _showToast(t('bm_source_missing')); return; }
       _closeLibraryPanel();
       openArticle(row.dataset.zim, row.dataset.path, row.querySelector('.bm-name') ? row.querySelector('.bm-name').textContent : '');
     }
@@ -13195,6 +13210,7 @@ function _bmPointerUp(e) {
   _bmClearDropMarks();
   // Touch lift released in place without moving \u2192 show the context menu instead.
   if (start && start.touch && !drag.movedSinceLift) {
+    _bmSwallowNextClick();
     _bmOpenRowMenu(drag.row, start.x + 2, start.y + 2);
     _bmDrag = null;
     return;
@@ -13236,6 +13252,22 @@ function _bmCommitDrop(drag) {
     }
   }
   _bmRerender();
+}
+
+// A touch release fires a synthetic click a moment later. Left alone it lands
+// outside the menu the long-press just opened, and the document's
+// outside-dismiss handler shuts it again — making the row menu unreachable by
+// finger. Swallow that one click, and only while it can still be that one:
+// a real tap on a menu item takes far longer than this to arrive.
+var _BM_SYNTH_CLICK_MS = 400;
+function _bmSwallowNextClick() {
+  var until = Date.now() + _BM_SYNTH_CLICK_MS;
+  var kill = function (e) {
+    document.removeEventListener('click', kill, true);
+    if (Date.now() < until) { e.preventDefault(); e.stopPropagation(); }
+  };
+  document.addEventListener('click', kill, true);
+  setTimeout(function () { document.removeEventListener('click', kill, true); }, _BM_SYNTH_CLICK_MS);
 }
 
 function _bmTeardownPointer() {

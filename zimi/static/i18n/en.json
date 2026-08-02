@@ -1177,6 +1177,7 @@
   "bm_untitled_folder": "Untitled folder",
   "bm_root": "Bookmarks (top level)",
   "bm_remove": "Remove bookmark",
+  "bm_source_missing": "Source no longer installed",
   "bm_export_folder": "Export this folder…",
   "bm_delete_folder_q": "Delete \"{name}\"? It holds {n} bookmark(s).",
   "bm_delete_folder_subs_q": "Delete \"{name}\"? It holds {n} subfolder(s).",

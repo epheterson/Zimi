@@ -1177,6 +1177,7 @@
   "bm_untitled_folder": "बिना नाम का फ़ोल्डर",
   "bm_root": "बुकमार्क (शीर्ष स्तर)",
   "bm_remove": "बुकमार्क हटाएं",
+  "bm_source_missing": "स्रोत अब स्थापित नहीं है",
   "bm_export_folder": "यह फ़ोल्डर निर्यात करें…",
   "bm_delete_folder_q": "\"{name}\" हटाएं? इसमें {n} बुकमार्क हैं।",
   "bm_delete_folder_subs_q": "\"{name}\" हटाएं? इसमें {n} सबफ़ोल्डर हैं।",

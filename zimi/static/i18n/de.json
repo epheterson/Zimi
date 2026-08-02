@@ -1177,6 +1177,7 @@
   "bm_untitled_folder": "Unbenannter Ordner",
   "bm_root": "Lesezeichen (oberste Ebene)",
   "bm_remove": "Lesezeichen entfernen",
+  "bm_source_missing": "Quelle nicht mehr installiert",
   "bm_export_folder": "Diesen Ordner exportieren…",
   "bm_delete_folder_q": "„{name}“ löschen? Der Ordner enthält {n} Lesezeichen.",
   "bm_delete_folder_subs_q": "„{name}“ löschen? Der Ordner enthält {n} Unterordner.",

@@ -1177,6 +1177,7 @@
   "bm_untitled_folder": "Pasta sem título",
   "bm_root": "Favoritos (nível superior)",
   "bm_remove": "Remover favorito",
+  "bm_source_missing": "A fonte não está mais instalada",
   "bm_export_folder": "Exportar esta pasta…",
   "bm_delete_folder_q": "Excluir “{name}”? A pasta tem {n} favorito(s).",
   "bm_delete_folder_subs_q": "Excluir “{name}”? A pasta tem {n} subpasta(s).",

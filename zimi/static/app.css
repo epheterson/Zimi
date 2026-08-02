@@ -2216,6 +2216,11 @@
   .bm-name { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bm-sub { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bm-folder .bm-name { flex: 1; min-width: 0; }
+  /* Source no longer installed — readable, not decorative: the row still has to
+     be findable and movable, it just can't be opened. */
+  .bm-missing .bm-bicon { opacity: 0.4; }
+  .bm-missing .bm-name { color: var(--text2); font-style: italic; }
+  .bm-missing .bm-sub { color: var(--error); }
   .bm-count {
     flex-shrink: 0; font-size: 11px; color: var(--text2); background: var(--surface2);
     border-radius: 10px; padding: 1px 7px; min-width: 20px; text-align: center;

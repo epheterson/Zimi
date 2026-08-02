@@ -138,6 +138,18 @@ test.describe('Bookmarks folder tree', () => {
     expect(fid).toBe('');
   });
 
+  test('a bookmark whose ZIM is gone says so instead of opening a dead reader', async ({ page }) => {
+    await seedAndOpen(page, [], [
+      { zim: 'a_zim_that_is_not_installed', path: 'A/Gone', title: 'Orphan', folder: '', order: 0 },
+    ]);
+    const row = page.locator('.bm-bk[data-path="A/Gone"]');
+    await expect(row).toHaveClass(/bm-missing/);
+    await row.click();
+    // The panel stays open — no navigation into a reader that will never load.
+    await expect(page.locator('#history-panel')).toHaveClass(/open/);
+    await expect(page.locator('#bm-tree')).toBeVisible();
+  });
+
   test('a bookmark row is indented past the folder holding it', async ({ page }) => {
     await seedAndOpen(page, FOLDERS, BOOKMARKS);
     const folderIcon = await page.locator('.bm-folder[data-fid="card"] .bm-ficon').boundingBox();
