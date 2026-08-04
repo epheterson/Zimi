@@ -174,3 +174,43 @@ stars wheel). That is the payoff shot.
 
 Scope: too big for a dot release. 1.9 candidate at the earliest, plausibly the
 2.0 "Time Machine" centerpiece alongside the period-newspaper idea.
+
+## Vision: accurate tides in the live sky (Eric, 2026-08-03)
+
+"Live sky can show accurate tides for location."
+
+**The astronomy is already free.** Tide-generating force is a function of Moon
+and Sun position, which the almanac computes accurately today. From that alone,
+with no data files and no network:
+- spring vs neap tides (the Moon/Sun alignment IS the mechanism)
+- the semidiurnal rhythm on the 24h50m lunar day
+- tidal phase through the month, and how it tracks the phase display already
+  on screen
+This is the "equilibrium tide" and it is honest physics, not an approximation
+of someone else's table.
+
+**What needs data: height in metres at a named coast.** Real amplitude depends
+on bathymetry and coastline resonance (Bay of Fundy vs Mediterranean), which
+is why tide tables use per-station harmonic constants. Two tiers, both small
+enough to ship offline:
+1. **Lunitidal interval** — ONE number per port (delay between the Moon's
+   transit and local high water). The traditional almanac method. Gives usable
+   high/low TIMES. A few hundred ports is a couple of KB.
+2. **Harmonic constants** — M2/S2/N2/K1/O1 amplitude+phase, ~8-10 numbers per
+   port, gives real HEIGHTS. Still tiny. Sourcing/licensing needs checking
+   (NOAA publishes US stations; global sets vary).
+
+**Design fit:** tide tables are a classic almanac feature, and computing them
+from first principles with no network is exactly the Zimi story. Pairs with the
+Time Machine (scrub time, watch the tide curve move with the Moon) and with the
+hero-moon-in-real-space vision, where the same geometry drives both.
+
+**Honesty constraints (non-negotiable if this ships):**
+- Inland locations have no tide; say so rather than inventing one, or offer the
+  nearest coastal reference explicitly labelled as such.
+- Accuracy varies enormously by coast. Present as an almanac estimate.
+- NEVER present as navigational authority. People take boats out on tide data.
+  A clear "not for navigation" framing is required, not optional.
+
+Scope: the equilibrium-tide half could land in a dot release; named-port
+heights want the data question answered first. 1.9 candidate.
