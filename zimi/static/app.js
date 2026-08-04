@@ -12969,8 +12969,11 @@ function _bmNewFolderPrompt(parentId) {
     _bmRerender();
   };
   input.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); commit(true); }
-    else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+    // Stop the key from bubbling to the global handler, where Escape would read
+    // #history-panel.open and slam the whole panel shut while we only meant to
+    // cancel this inline input.
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); commit(false); }
   });
   input.addEventListener('blur', function () { commit(true); });
 }
@@ -12999,8 +13002,10 @@ function _bmRenameFolder(fid) {
     _bmRerender();
   };
   input.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); done(true); }
-    else if (e.key === 'Escape') { e.preventDefault(); done(false); }
+    // See _bmNewFolderPrompt: keep Escape from bubbling to the global handler
+    // and closing the whole panel when we only want to cancel the rename.
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); done(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); }
   });
   input.addEventListener('blur', function () { done(true); });
 }
