@@ -193,12 +193,10 @@ of someone else's table.
 on bathymetry and coastline resonance (Bay of Fundy vs Mediterranean), which
 is why tide tables use per-station harmonic constants. Two tiers, both small
 enough to ship offline:
-1. **Lunitidal interval** — ONE number per port (delay between the Moon's
-   transit and local high water). The traditional almanac method. Gives usable
-   high/low TIMES. A few hundred ports is a couple of KB.
-2. **Harmonic constants** — M2/S2/N2/K1/O1 amplitude+phase, ~8-10 numbers per
-   port, gives real HEIGHTS. Still tiny. Sourcing/licensing needs checking
-   (NOAA publishes US stations; global sets vary).
+DECIDED (Eric, 2026-08-03): go straight to **harmonic constants** —
+M2/S2/N2/K1/O1 amplitude+phase, ~8-10 numbers per port, real HEIGHTS, still
+tiny offline. Skip the lunitidal-interval tier. Sourcing/licensing homework
+before build: NOAA publishes US station constants; global coverage varies.
 
 **Design fit:** tide tables are a classic almanac feature, and computing them
 from first principles with no network is exactly the Zimi story. Pairs with the
@@ -214,3 +212,17 @@ hero-moon-in-real-space vision, where the same geometry drives both.
 
 Scope: the equilibrium-tide half could land in a dot release; named-port
 heights want the data question answered first. 1.9 candidate.
+
+## Addendum to the hero-moon vision (Eric, 2026-08-03)
+
+"When we do the new system we can change the hero to any planet or star or hop
+into a full drivable solar system and zoom out or hero in on anything." He
+immediately asked whether that is scope creep. Ruling recorded here:
+
+It is the ACCEPTANCE CRITERION for the scene-graph engine, not a scheduled
+feature. Built correctly (one simulation, one scene graph, a movable camera),
+"hero on Saturn" or "zoom out to everything" is just pointing the camera —
+nearly free. If those are expensive, the engine was built wrong. So: design the
+2.0 engine so that a drivable system falls out of it; commit to shipping only
+the moon hero first. The drive-anywhere mode ships when it is a camera change,
+and not before.
