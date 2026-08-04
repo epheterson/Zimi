@@ -3797,10 +3797,19 @@ function _moveZimTo(zim, category) {
 
   var CTX_SUB_W = 190;  // .ctx-sub min-width (170) + padding/border headroom
   function posMenu(x, y) {
+    // Measure off-paint: reveal for layout but keep it invisible until it sits at
+    // its final spot, so it never flashes at (0,0) before we know its size — the
+    // "flaky open"/edge-flash the two-step position used to show for a frame.
+    menu.style.maxHeight = ''; menu.style.overflowY = '';  // clear any prior clamp
+    menu.style.visibility = 'hidden';
     menu.style.left = '0'; menu.style.top = '0';
     menu.classList.add('visible');
     var vw = window.innerWidth, vh = window.innerHeight;
     var mw = menu.offsetWidth, mh = menu.offsetHeight;
+    // A menu taller than the viewport must scroll inside itself, not run off the
+    // bottom: cap its height and let it scroll before the on-screen clamp runs.
+    var maxH = vh - 16;
+    if (mh > maxH) { menu.style.maxHeight = maxH + 'px'; menu.style.overflowY = 'auto'; mh = maxH; }
     // Clamp the menu fully on-screen on both axes — a long-press near the
     // bottom or left edge of a phone must never park the menu off-viewport.
     // Math.max(8,…) guards the near edge; the outer Math.max keeps the near
@@ -3809,6 +3818,7 @@ function _moveZimTo(zim, category) {
     var finalY = Math.min(Math.max(8, y), Math.max(8, vh - mh - 8));
     menu.style.left = finalX + 'px';
     menu.style.top = finalY + 'px';
+    menu.style.visibility = '';  // reveal at the final position: a single paint
     // Each submenu (Move to…'s category list, Collections, …) opens from its
     // trigger's top-right by default. Per trigger, decide horizontal side and
     // vertical direction from the room actually available, then clamp width and
@@ -3926,10 +3936,21 @@ function _moveZimTo(zim, category) {
   // ── Long-press = right-click on touch (#37) ──
   // Touch has no contextmenu, so a 500ms press on a ZIM card (home .stat-card or
   // an Installed row) opens the same menu right-click does — the mobile answer to
-  // "where's Move to…". Movement cancels it (so it never hijacks a scroll), a
-  // short haptic confirms it fired, and the synthetic click that follows is
-  // swallowed so the press doesn't also open the ZIM. iOS's own callout is killed
-  // by -webkit-touch-callout:none on the cards (app.css).
+  // "where's Move to…". iOS's own callout is killed by -webkit-touch-callout:none
+  // on the cards (app.css).
+  //
+  // One lifecycle, one latch (`_lpFired` = "this gesture opened the menu"):
+  //   arm     touchstart on a card → reset the latch, add lp-armed, start 500ms timer
+  //   fire    timer elapses undisturbed → latch=true, haptic, open menu at the press
+  //   cancel  a >10px move (a scroll) or multi-touch clears the armed timer
+  //   suppress touchend after a fire eats the ONE trailing synthetic click on the
+  //           pressed card (so the press doesn't also open the ZIM)
+  //   dismiss tap-away / scroll / Esc / action-selected — the shared menu machinery
+  //
+  // The latch MUST describe only the gesture that is ending. It is reset at the top
+  // of every touchstart so a fire never leaks into the next tap: a stale true there
+  // made touchend swallow the tap-away's dismiss click, leaving the menu closeable
+  // only by scrolling — the exact inversion field-testing hit.
   var _lpTimer = null, _lpCard = null, _lpStartX = 0, _lpStartY = 0, _lpFired = false;
   function _lpHit(target) {
     var card = target.closest && target.closest('.stat-card, .catalog-item[data-zim]');
@@ -3952,11 +3973,12 @@ function _moveZimTo(zim, category) {
     if (_lpTimer || _lpFired) e.preventDefault();
   });
   document.addEventListener('touchstart', function(e) {
+    _lpFired = false;  // gesture start: never inherit a prior press's fired latch
     if (e.touches.length !== 1) { _lpCancel(); return; }
     var hit = _lpHit(e.target);
     if (!hit) return;
     var t = e.touches[0];
-    _lpStartX = t.clientX; _lpStartY = t.clientY; _lpFired = false;
+    _lpStartX = t.clientX; _lpStartY = t.clientY;
     document.documentElement.classList.add('lp-armed');
     _lpTimer = setTimeout(function() {
       _lpTimer = null; _lpFired = true; _lpCard = hit.card;
@@ -3972,13 +3994,17 @@ function _moveZimTo(zim, category) {
     var t = e.touches[0];
     if (t && (Math.abs(t.clientX - _lpStartX) > 10 || Math.abs(t.clientY - _lpStartY) > 10)) _lpCancel();
   }, { passive: true });
+  // Suppress the ONE synthetic open-click a fire leaves behind, two ways for two
+  // engines — both now safe because the latch can't outlive its gesture (reset at
+  // the next touchstart). iOS: preventDefault on touchend cancels the simulated
+  // click outright. Android: touchend can't, so the capture-phase guard below eats
+  // it — but only when it lands on the pressed card, so a tap-away is never caught
+  // and always reaches the outside-dismiss handler.
   document.addEventListener('touchend', function(e) {
     _lpCancel();
-    if (_lpFired) e.preventDefault();  // block the trailing synthetic click/open
+    if (_lpFired) e.preventDefault();
   });
   document.addEventListener('touchcancel', _lpCancel, { passive: true });
-  // Capture-phase guard: swallow the click a long-press would otherwise fire on
-  // the pressed card (not menu taps — those land outside the card).
   document.addEventListener('click', function(e) {
     if (_lpFired && _lpCard && _lpCard.contains(e.target)) {
       e.preventDefault(); e.stopPropagation(); _lpFired = false;
@@ -13316,7 +13342,7 @@ function _bmPointerUp(e) {
   _bmClearDropMarks();
   // Touch lift released in place without moving \u2192 show the context menu instead.
   if (start && start.touch && !drag.movedSinceLift) {
-    _bmSwallowNextClick();
+    _bmSwallowNextClick(drag.row);
     _bmOpenRowMenu(drag.row, start.x + 2, start.y + 2);
     _bmDrag = null;
     return;
@@ -13360,17 +13386,18 @@ function _bmCommitDrop(drag) {
   _bmRerender();
 }
 
-// A touch release fires a synthetic click a moment later. Left alone it lands
-// outside the menu the long-press just opened, and the document's
-// outside-dismiss handler shuts it again — making the row menu unreachable by
-// finger. Swallow that one click, and only while it can still be that one:
-// a real tap on a menu item takes far longer than this to arrive.
+// A touch release fires a synthetic click a moment later. Left alone it lands on
+// the row, and the document's outside-dismiss handler shuts the menu the
+// long-press just opened — making the row menu unreachable by finger. Swallow
+// that one click, but scope it to the pressed ROW: an early tap on a menu item
+// (which sits outside the row) must still reach the menu, or opening then quickly
+// choosing an action reads as flaky. Time-boxed and one-shot as a backstop.
 var _BM_SYNTH_CLICK_MS = 400;
-function _bmSwallowNextClick() {
+function _bmSwallowNextClick(row) {
   var until = Date.now() + _BM_SYNTH_CLICK_MS;
   var kill = function (e) {
     document.removeEventListener('click', kill, true);
-    if (Date.now() < until) { e.preventDefault(); e.stopPropagation(); }
+    if (Date.now() < until && (!row || row.contains(e.target))) { e.preventDefault(); e.stopPropagation(); }
   };
   document.addEventListener('click', kill, true);
   setTimeout(function () { document.removeEventListener('click', kill, true); }, _BM_SYNTH_CLICK_MS);
