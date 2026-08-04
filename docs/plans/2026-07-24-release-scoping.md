@@ -136,3 +136,41 @@ Surface this list at the start of every release cycle.
   device. Same-device-only, low severity, deliberate 1.8.1 tradeoff
   (identity/library endpoints are network-only as of the r3 fix).
   Candidate: purge content caches on logout when mode=private.
+
+## Vision: the hero moon lives in the real solar system (Eric, 2026-08-03)
+
+"The moon hero in almanac is in place in the real solar system / universe with
+the rest semi visible somehow and accurately placed."
+
+Why it's more than decoration: today the moon's phase is COMPUTED and then
+drawn as a shaded disc. In this version the phase EMERGES from geometry. The
+moon occupies its true position relative to Earth and Sun; the terminator is a
+consequence of where the sun actually is, not a separate calculation. That is
+the same principle that just fixed the 1.8.2 travel bug (disc and readout
+derived from one source cannot disagree) taken to its conclusion: ONE
+simulation drives every number on the page.
+
+What "accurately placed" buys, concretely:
+- Sun direction implied/visible, so the lit limb points at the real sun.
+- Earth present enough for earthshine on the dark limb (a real, visible effect).
+- Libration: the moon genuinely wobbles and shows ~59% of its surface over
+  time. A fixed texture is a lie the time machine makes obvious.
+- Apparent size varies with perigee/apogee (~14%). Supermoons become real
+  rather than a label.
+- Parallactic angle already computed for the observer's location: the moon
+  tilts correctly for where you are, not just what phase it is.
+- Planets and bright stars ghosted at true positions behind it ("semi visible"),
+  so the disc is IN space rather than on a card.
+
+Pieces already exist and are accurate; this is unification, not new astronomy:
+- almanac-orrery.js: Keplerian planet positions.
+- almanac-sky.js: real HYG bright-star catalogue + horizon projection.
+- almanac.js: moon phase/age/distance/tilt, all real.
+The work is a shared scene graph + a camera, not new math.
+
+Pairs with the Time Machine: scrubbing should move ONE simulation, so the
+whole scene evolves together (moon orbits, phase follows, planets march,
+stars wheel). That is the payoff shot.
+
+Scope: too big for a dot release. 1.9 candidate at the earliest, plausibly the
+2.0 "Time Machine" centerpiece alongside the period-newspaper idea.
