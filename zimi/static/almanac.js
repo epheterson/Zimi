@@ -4435,8 +4435,9 @@ function _applyRegionHolidays(region, year, month, add, worldwide) {
 }
 
 // Worldwide scope: layer every national pack (skipping the EU pseudo-region,
-// which carries no national days of its own — only a DST rule). Each entry is
-// tagged with its ISO country code via the worldwide path of _applyRegionHolidays.
+// which carries no national days of its own, only a DST rule). Each entry is
+// tagged with its full country name (ISO code as fallback) via the worldwide
+// path of _applyRegionHolidays.
 function _applyAllRegionHolidays(year, month, add) {
   for (var iso in _REGION_HOLIDAYS) {
     if (iso === 'EU') continue;
