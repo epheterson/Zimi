@@ -3797,23 +3797,35 @@ function _moveZimTo(zim, category) {
 
   var CTX_EDGE = 8;     // keep-clear margin from every viewport edge
   var CTX_SUB_TOP = 4;  // a submenu overhangs its trigger's top edge by this much
+  var CTX_SUB_GAP = 4;  // clearance a pinned submenu keeps from its trigger row
   // Where a submenu of size sw×sh goes, given its trigger's viewport rect `r`.
   // Horizontally it prefers to open right, else flips left, else PINS to the
   // viewport: the parent menu is itself clamped on screen, so on a phone its
   // right edge sits ~8px from the edge and neither side has room — the old
   // "no room right, not enough room left, open right anyway" path is what put
-  // the category list off screen with every label truncated. A pinned submenu
-  // overlaps its parent, which is the only thing a 390px viewport has room for.
+  // the category list off screen with every label truncated.
   // Vertically it hangs from the trigger's top edge, pulled up and capped so a
   // long category list scrolls inside itself rather than running off the bottom.
   // Pure function of numbers so the contract is unit-testable.
   function _ctxSubPlacement(r, sw, sh, vw, vh) {
     var w = Math.min(sw, vw - 2 * CTX_EDGE), h = Math.min(sh, vh - 2 * CTX_EDGE);
-    var x, pinned = false;
+    var x, y, pinned = false;
     if (r.right + w <= vw - CTX_EDGE) x = r.right;
     else if (r.left - w >= CTX_EDGE) x = r.left - w;
     else { pinned = true; x = Math.min(Math.max(CTX_EDGE, r.left), vw - w - CTX_EDGE); }
-    var y = Math.max(CTX_EDGE, Math.min(r.top - CTX_SUB_TOP, vh - h - CTX_EDGE));
+    if (!pinned) {
+      y = Math.max(CTX_EDGE, Math.min(r.top - CTX_SUB_TOP, vh - h - CTX_EDGE));
+    } else {
+      // Pinned means the submenu lands on top of its own parent menu, so it has
+      // to clear the TRIGGER ROW: the finger that opened it is still on that
+      // row, and the click that tap becomes would otherwise activate whichever
+      // category ended up underneath — one tap silently moving a ZIM. Drop it
+      // below the trigger, else above, else take the taller side and scroll.
+      var below = vh - r.bottom - CTX_EDGE - CTX_SUB_GAP;
+      var above = r.top - CTX_EDGE - CTX_SUB_GAP;
+      if (h <= below || below >= above) { h = Math.min(h, below); y = r.bottom + CTX_SUB_GAP; }
+      else { h = Math.min(h, above); y = r.top - CTX_SUB_GAP - h; }
+    }
     return { x: x, y: y, w: w, h: h, pinned: pinned };
   }
   function posMenu(x, y) {
