@@ -45,13 +45,24 @@ function _getLocation() {
   return { lat: 34, lon: -new Date().getTimezoneOffset() / 60 * 15, name: '', stored: false };
 }
 
+// The device's IANA zone, resolved once. It cannot change within a page
+// lifetime, but Intl.DateTimeFormat().resolvedOptions() builds a full
+// formatter every call — far too heavy for the per-frame travel path that
+// reads this (measured ~1ms per construction).
+var _almDeviceTzCache;
+function _almDeviceTz() {
+  if (_almDeviceTzCache === undefined) {
+    try { _almDeviceTzCache = Intl.DateTimeFormat().resolvedOptions().timeZone || null; }
+    catch (e) { _almDeviceTzCache = null; }
+  }
+  return _almDeviceTzCache;
+}
+
 // Timezone used to DISPLAY times for the almanac's home location: the chosen
 // location's zone, or the device's own zone when nothing was ever chosen.
 function _almDisplayTz(loc) {
   loc = loc || _getLocation();
-  return loc.stored
-    ? _almTzForLocation(loc.lat, loc.lon)
-    : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return loc.stored ? _almTzForLocation(loc.lat, loc.lon) : _almDeviceTz();
 }
 
 function _saveLocation(lat, lon, name) {
@@ -265,9 +276,18 @@ function _reopenAlmanacFromLink() {
 }
 
 // ── Timezone formatting ──
+// Cached per lang|tz: the travel clock reads this every frame, and the name
+// was always computed from NOW (not the focused instant), so within a session
+// it is constant. (A session running across a live DST switch would keep the
+// pre-switch abbreviation until reload — an acceptable trade for dropping a
+// formatter construction + formatToParts from the per-frame path.)
+var _formatTzCache = {};
 function _formatTimezone(lang, tz) {
+  var loc = lang || ((typeof _currentLang !== 'undefined') ? _currentLang : 'en');
+  var key = loc + '|' + (tz || '');
+  if (key in _formatTzCache) return _formatTzCache[key];
+  var name = '';
   try {
-    var loc = lang || ((typeof _currentLang !== 'undefined') ? _currentLang : 'en');
     // Locale-aware short zone name (e.g. "PST"). An explicit tz names the
     // shown location's zone, not the device's.
     var opts = { timeZoneName: 'short' };
@@ -275,10 +295,11 @@ function _formatTimezone(lang, tz) {
     var fmt = new Intl.DateTimeFormat(loc, opts);
     var parts = fmt.formatToParts(new Date());
     for (var i = 0; i < parts.length; i++) {
-      if (parts[i].type === 'timeZoneName') return parts[i].value;
+      if (parts[i].type === 'timeZoneName') { name = parts[i].value; break; }
     }
-    return '';
-  } catch(e) { return ''; }
+  } catch(e) { name = ''; }
+  _formatTzCache[key] = name;
+  return name;
 }
 
 // Curated offline "on this day" feed — space & science milestones, keyed by
@@ -452,17 +473,14 @@ function _almClockParts(focus) {
   var locTz = null;
   try { locTz = _almDisplayTz(loc); } catch (e) {}
   var live = _almIsToday(focus);
-  var deviceTz = null;
-  try { deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) {}
-  var displayTz = deviceTz || locTz;
+  var displayTz = _almDeviceTz() || locTz;
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
-  var _dtOpts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
-  var _tmOpts = { hour: 'numeric', minute: '2-digit' };
-  if (displayTz) { _dtOpts.timeZone = displayTz; _tmOpts.timeZone = displayTz; }
+  // Cached formatters (_tzFmt), not toLocale*String: this runs on every travel
+  // frame, and each toLocale* call builds a fresh Intl.DateTimeFormat.
   return {
     loc: loc, locTz: locTz, lang: lang, live: live,
-    date: focus.toLocaleDateString(lang, _dtOpts),
-    time: focus.toLocaleTimeString(lang, _tmOpts),
+    date: _tzFmt(displayTz, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(focus),
+    time: _tzFmt(displayTz, { hour: 'numeric', minute: '2-digit' }).format(focus),
     tz: _formatTimezone(lang, displayTz)
   };
 }
@@ -509,7 +527,7 @@ function _almHeadHtml(focus) {
   html += '<div class="alm-cards">';
   html += _almHeadCard(t('alm_illuminated'), m.illumination + '%', 'alm-hc-illum');
   html += _almHeadCard(t('alm_moon_age'), age + ' ' + t('alm_days'), 'alm-hc-age');
-  html += _almHeadCard(t('alm_distance'), Math.round(dist).toLocaleString() + ' ' + t('alm_km'), 'alm-hc-dist');
+  html += _almHeadCard(t('alm_distance'), _almFmtNum(Math.round(dist)) + ' ' + t('alm_km'), 'alm-hc-dist');
   html += _almHeadCard(t('alm_next_full'), _almNextFullHtml(_nfm, lang, focus), 'alm-hc-nextfull',
     { cardId: 'alm-hc-nextfull-card', hidden: !_nfm, valClass: _nfm && _nfm.isSuper ? 'alm-card-super' : '' });
   // Both faces of the sun row live in the DOM at once and only their `hidden`
@@ -636,8 +654,8 @@ function _almBackToToday() {
 //            rendering), DESTINATION (neutral, tap to choose a time), NOW
 //            (dimmed, ticks).
 //   MOTION — while the side lever is thrown, the panel collapses to one large
-//            readout of the moving position. It stays collapsed after you land
-//            until tapped, then flips back to the three rows.
+//            readout of the moving position. Landing (the settle) flips it
+//            back to the three rows on its own.
 // The lever is a *displacement* control: distance from neutral sets a
 // directional speed (nonlinear — minutes/sec near the middle, centuries/sec at
 // the ends), springing back to neutral on release. All the time-state
@@ -698,13 +716,25 @@ function _almYearBeyondPrecise(y) { return Math.abs(y - 2000) > _ALM_PRECISE_SPA
 // proleptic-Gregorian number (negative = BCE), matching the chooser's field so
 // it round-trips exactly.
 function _almTmFmt(d) {
-  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   var mon, hm;
-  try { mon = d.toLocaleDateString(lang, { month: 'short' }).toUpperCase(); }
+  // Cached formatters (_tzFmt): the motion face re-renders this every frame.
+  try { mon = _tzFmt(null, { month: 'short' }).format(d).toUpperCase(); }
   catch (e) { mon = ('0' + (d.getMonth() + 1)).slice(-2); }
-  try { hm = d.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', hour12: false }); }
+  try { hm = _tzFmt(null, { hour: '2-digit', minute: '2-digit', hour12: false }).format(d); }
   catch (e) { hm = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
   return mon + ' ' + ('0' + d.getDate()).slice(-2) + ' ' + d.getFullYear() + ' ' + hm;
+}
+
+// Cached default-locale number formatter for the km distance readout — it is
+// rewritten on every travel frame, and bare Number.toLocaleString builds a
+// fresh Intl.NumberFormat per call.
+var _almNumFmtCache = null;
+function _almFmtNum(n) {
+  if (!_almNumFmtCache) {
+    try { _almNumFmtCache = new Intl.NumberFormat(); }
+    catch (e) { _almNumFmtCache = { format: String }; }
+  }
+  return _almNumFmtCache.format(n);
 }
 
 // Lightweight per-frame clock update while stepping -- just the two hero text
@@ -774,7 +804,7 @@ function _almLiveHeadCards(focus) {
   set('alm-hc-age', (m.phase * 29.53).toFixed(1) + ' ' + t('alm_days'));
   set('alm-hc-phase', _localMoonName(m.name));
   _heroMoonTravelDraw(focus, m);
-  try { var dist = _moonDistance(focus); if (dist) set('alm-hc-dist', Math.round(dist).toLocaleString() + ' ' + t('alm_km')); } catch (e) {}
+  try { var dist = _moonDistance(focus); if (dist) set('alm-hc-dist', _almFmtNum(Math.round(dist)) + ' ' + t('alm_km')); } catch (e) {}
   _almTravelThrottled('nextfull', function () { _almLiveNextFull(focus); });
   try {
     var loc = _getLocation();
@@ -857,6 +887,11 @@ function _almScrubSettle(target, opts) {
     _almFocus = _almClampInstant(target);
     _almSyncSelectedToFocus();
     _almRepaintFocus();
+    // Landing always returns the dock to the three-row circuit. The motion
+    // face used to stay up until tapped, which read as the instrument still
+    // "Traveling" after the lever had already been released.
+    var tm = document.getElementById('alm-tm');
+    if (tm && tm.getAttribute('data-mode') === 'motion') _almTmMode('rest');
     _almTmSync();
   }
   if (opts && opts.land) _almTmLand();
@@ -1321,8 +1356,13 @@ function _renderAlmanacContent() {
   html +=       '<span class="alm-tm-endstop alm-tm-endstop-back" aria-hidden="true"></span>';
   html +=     '</div>';
   html +=   '</div>';
-  // Close — returns the almanac to now and hides the instrument again.
-  html +=   '<button type="button" class="alm-tm-close" onclick="_almTmClose()" title="' + _almEsc(t('alm_tm_close')) + '" aria-label="' + _almEsc(t('alm_tm_close')) + '">×</button>';
+  // Close — returns the almanac to now and hides the instrument again. A small
+  // brass-ringed stud on the dock's corner (same material language as the
+  // lever shaft); the thin stroked cross scales cleanly where a text × cannot.
+  // Its CSS ::after pad extends the 22px stud to a 44px touch target.
+  html +=   '<button type="button" class="alm-tm-close" onclick="_almTmClose()" title="' + _almEsc(t('alm_tm_close')) + '" aria-label="' + _almEsc(t('alm_tm_close')) + '">' +
+              '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 L8 8 M8 2 L2 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>' +
+            '</button>';
   html += '</div>';
 
   // Footer
@@ -2083,17 +2123,24 @@ var _sunMapFlashTimer = 0;
 
 // Equirectangular projection helpers — the map spans the full -180..180 by
 // -90..90 rectangle, so both are straight linear maps. Every point plotted on
-// the map (cities, the picked location, the subsolar point, the meridians)
-// goes through these two rather than repeating the arithmetic.
+// the map (cities, the picked location, the subsolar point, the time zone
+// borders) goes through these two rather than repeating the arithmetic.
 function _sunMapLonToX(lon, W) { return (lon + 180) / 360 * W; }
 function _sunMapLatToY(lat, H) { return (90 - lat) / 180 * H; }
 
-// ── Nominal time zone meridians ──
-// One hour of solar time is 15 degrees of longitude, so these 24 meridians are
-// the zones an almanac prints. Civil time zones are political: they follow
-// borders, bend around islands and take half-hour offsets, and none of that is
-// drawn here. These lines are a solar-time reference, nothing more, which is
-// why nothing on the map labels them as boundaries.
+// ── Real time zone boundaries ──
+// The actual, irregular civil zone borders — China spanning one zone, India's
+// half-hour band, Australia's three-way split, the jagged date line — not the
+// clean 15-degree solar meridians an almanac prints. Polylines come from
+// /static/tz-borders.json (built by scripts/build-tz-borders.py from Natural
+// Earth's public-domain 10m Time Zones; at sea the borders are the straight
+// nautical meridians by definition, on land they follow the politics).
+//
+// The asset is fetched lazily the first time the map draws — never on app
+// boot — and a miss is tolerated silently: the map simply has no borders
+// until the network returns (the service worker's stale-while-revalidate
+// /static/ route caches it after the first successful load, so offline
+// visits after that get it from cache).
 var _SM_TZ_STEP_HOURS = 3;      // label every N hours, widened when it gets tight
 var _SM_TZ_LABEL_PITCH = 40;    // min CSS px between labels before widening
 
@@ -2110,15 +2157,17 @@ function _sunMapLabelStep(W, dpr) {
   return step;
 }
 
-// The map's unchanging layer: background, world image and the meridian rules.
+// The map's unchanging layer: background, world image and the zone borders.
 // None of it moves as time travels, so it is rendered once per size into an
 // offscreen canvas and blitted each frame — which costs less than the old code
-// paid to re-rasterise the SVG on every redraw, meridians or not.
+// paid to re-rasterise the SVG on every redraw, borders or not. The key
+// carries the border-data flag so the layer rebuilds once when the lazy
+// fetch lands.
 var _sunMapBase = null;
 var _sunMapBaseKey = '';
 
 function _sunMapBaseLayer(W, H, dpr) {
-  var key = W + 'x' + H + ':' + dpr + ':' + (_sunMapLoaded ? '1' : '0');
+  var key = W + 'x' + H + ':' + dpr + ':' + (_sunMapLoaded ? '1' : '0') + ':' + (_tzBorders ? '1' : '0');
   if (_sunMapBase && _sunMapBaseKey === key) return _sunMapBase;
   var cv = _sunMapBase || document.createElement('canvas');
   cv.width = W; cv.height = H;
@@ -2130,41 +2179,80 @@ function _sunMapBaseLayer(W, H, dpr) {
     c.drawImage(_sunMapImg, 0, 0, W, H);
     c.globalAlpha = 1;
   }
-  _sunMapDrawMeridians(c, W, H, dpr);
+  _sunMapDrawTzBorders(c, W, H, dpr);
   _sunMapBase = cv;
   _sunMapBaseKey = key;
   return cv;
 }
 
-// The meridians themselves plus the label gutter they sit above. Drawn as
-// fillRect rather than stroked paths so each rule lands on whole device pixels
-// and stays a crisp hairline at any DPR.
-function _sunMapDrawMeridians(c, W, H, dpr) {
+// Lazy-loaded border polylines: each entry is a flat [lon, lat, lon, lat, ...]
+// array, pre-split in the build script so no segment crosses the antimeridian
+// (a crossing would stroke a streak across the whole map).
+var _tzBorders = null;
+var _tzBordersFetched = false;
+var _tzBordersPath = null;
+var _tzBordersPathKey = '';
+
+function _tzBordersEnsure() {
+  if (_tzBordersFetched) return;
+  _tzBordersFetched = true;
+  // ?v= matches the world-map.svg convention: /static/ is served immutable
+  // for a year, so a regenerated asset must bump the version to bust caches.
+  fetch('/static/tz-borders.json?v=1')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (!data || !data.lines || !data.lines.length) return;
+      _tzBorders = data.lines;
+      _sunMapBaseKey = '';   // stale key → base layer rebuilds with borders
+      _drawSunMap();
+    })
+    .catch(function () { /* offline before first cache fill — no borders */ });
+}
+
+// One Path2D per map size, projected through the shared lon/lat helpers so
+// the borders stay registered with the terminator. Built only when the cached
+// base layer rebuilds, then stamped with a single stroke — zero per-frame
+// geometry cost.
+function _tzBordersPathFor(W, H) {
+  var key = W + 'x' + H;
+  if (_tzBordersPath && _tzBordersPathKey === key) return _tzBordersPath;
+  var p = new Path2D();
+  for (var i = 0; i < _tzBorders.length; i++) {
+    var line = _tzBorders[i];
+    p.moveTo(_sunMapLonToX(line[0], W), _sunMapLatToY(line[1], H));
+    for (var j = 2; j < line.length; j += 2) {
+      p.lineTo(_sunMapLonToX(line[j], W), _sunMapLatToY(line[j + 1], H));
+    }
+  }
+  _tzBordersPath = p;
+  _tzBordersPathKey = key;
+  return p;
+}
+
+// The real zone borders plus the label gutter under them. Hairline and
+// low-contrast so the irregular shapes read as texture under the terminator,
+// which stays the brightest line on the map.
+function _sunMapDrawTzBorders(c, W, H, dpr) {
   var gutter = _sunMapGutter(H, dpr);
   var top = H - gutter;
+
+  if (_tzBorders) {
+    c.save();
+    c.beginPath();
+    c.rect(0, 0, W, top);    // keep strokes out of the label gutter
+    c.clip();
+    c.strokeStyle = 'rgba(210,180,120,0.16)';
+    c.lineWidth = Math.max(1, Math.round(dpr));
+    c.lineJoin = 'round';
+    c.stroke(_tzBordersPathFor(W, H));
+    c.restore();
+  }
 
   // Label gutter — a faint dark strip so the offsets read against the map.
   c.fillStyle = 'rgba(4,7,12,0.45)';
   c.fillRect(0, top, W, gutter);
   c.fillStyle = 'rgba(210,180,120,0.10)';
   c.fillRect(0, Math.round(top), W, Math.max(1, Math.round(dpr)));
-
-  var thin = Math.max(1, Math.round(dpr));
-  var thick = Math.max(1, Math.round(1.5 * dpr));
-  for (var off = -12; off <= 12; off++) {
-    var prime = off === 0, dateline = Math.abs(off) === 12;
-    var lw = prime ? thick : thin;
-    var x = _sunMapLonToX(off * 15, W);
-    // Clamp the two edge rules fully inside the canvas — at ±180 half the
-    // width would otherwise fall outside and vanish.
-    var rx = Math.min(Math.max(Math.round(x - lw / 2), 0), W - lw);
-    // Kept below the terminator's own amber so the day/night edge stays the
-    // brightest line on the map.
-    c.fillStyle = prime ? 'rgba(245,158,11,0.22)'
-      : dateline ? 'rgba(210,180,120,0.20)'
-      : 'rgba(210,180,120,0.12)';
-    c.fillRect(rx, 0, lw, top);
-  }
 }
 
 // The UTC offsets. They belong on top of the night shading — sunk underneath it
@@ -2204,16 +2292,21 @@ function _sunMapDrawTzLabels(c, W, H, dpr) {
   c.drawImage(strip, 0, H - strip.height);
 }
 
-// A faint amber wash over the 15-degree band holding the picked location, so
-// the map ties back to the clock and the world-clock pills below it. Drawn over
-// the night shading — under it the wash all but disappears on the dark half and
-// the band looks broken at the terminator.
+// A faint amber wash over the solar band matching the picked location's REAL
+// UTC offset, so the map ties back to the clock and the world-clock pills
+// below it. Centred on offset x 15 degrees — India's +5:30 puts the band at
+// 82.5E, not snapped to a whole meridian — falling back to the nominal
+// longitude band only when the zone lookup failed. Drawn over the night
+// shading — under it the wash all but disappears on the dark half and the
+// band looks broken at the terminator.
 function _sunMapDrawZoneBand(c, W, H, dpr) {
   if (!_sunMapHasLocation) return;
   var gutter = _sunMapGutter(H, dpr);
   var top = H - gutter;
-  var off = Math.round(_sunMapLon / 15);
-  var x0 = _sunMapLonToX(off * 15 - 7.5, W);
+  // Offset minutes → degrees is /60*15, i.e. /4.
+  var centerLon = _sunMapOffMin === null ? Math.round(_sunMapLon / 15) * 15 : _sunMapOffMin / 4;
+  if (centerLon > 180) centerLon -= 360;   // UTC+13/+14 live past the map edge
+  var x0 = _sunMapLonToX(centerLon - 7.5, W);
   var span = W / 24;
   // The ±12 band straddles the antimeridian, so it paints as two pieces.
   var pieces = [[x0, span]];
@@ -2250,6 +2343,7 @@ var _sunMapLat = 34;
 var _sunMapLon = -118;
 var _sunMapLocName = '';
 var _sunMapHasLocation = false;
+var _sunMapOffMin = null;   // location's real UTC offset (minutes), null = unresolved
 
 function _renderSunMap(now) {
   var el = document.getElementById('almanac-sunmap');
@@ -2265,8 +2359,8 @@ function _renderSunMap(now) {
   // Compute sun info in the CLICKED location's timezone, not the device's
   // (F6) — resolve the point's zone the same way the world clock does.
   var _smOff;
-  try { _smOff = _tzUtcOffsetMin(_almTzForLocation(_sunMapLat, _sunMapLon), _sunMapNow); }
-  catch (e) { _smOff = -_sunMapNow.getTimezoneOffset(); }
+  try { _smOff = _tzUtcOffsetMin(_almTzForLocation(_sunMapLat, _sunMapLon), _sunMapNow); _sunMapOffMin = _smOff; }
+  catch (e) { _smOff = -_sunMapNow.getTimezoneOffset(); _sunMapOffMin = null; }
   var sunInfo = _computeSunTimes(_sunMapNow, _sunMapLat, _sunMapLon, _smOff);
 
   var html = '<div style="margin-top:16px">';
@@ -2453,8 +2547,11 @@ var _TZ_CITIES = [
 ];
 
 function _tzUtcOffsetMin(tz, now) {
+  // Cached formatters (_tzFmt, en-US so the output stays Date-parseable):
+  // this runs per travel frame via the head cards, and building two fresh
+  // Intl.DateTimeFormat objects per call dominated that path.
   var fmtOpts = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false };
-  var enFmt = function(z) { return new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: z }, fmtOpts)).format(now); };
+  var enFmt = function(z) { return _tzFmt(z, fmtOpts, 'en-US').format(now); };
   return Math.round((new Date(enFmt(tz)) - new Date(enFmt('UTC'))) / 60000);
 }
 
@@ -2864,12 +2961,24 @@ function _tickDigit(colEl, ch) {
 }
 
 
-// Cached Intl.DateTimeFormat objects — avoid 180+ allocations/sec in the RAF loop
+// Cached Intl.DateTimeFormat objects — avoid 180+ allocations/sec in the RAF
+// loop. Constructing a formatter costs ~1ms; .format() on a cached one is
+// microseconds, so every per-frame path (travel clock, head cards, the dock's
+// readouts) must come through here rather than calling toLocale*String, each
+// of which builds a fresh formatter internally. tz may be null/undefined for
+// the device zone; lang overrides the UI language (e.g. the offset math needs
+// 'en-US' for a parseable date string).
 var _tzFmtCache = {};
-function _tzFmt(tz, opts) {
-  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
-  var key = lang + '|' + tz + '|' + Object.values(opts).join(',');
-  if (!_tzFmtCache[key]) _tzFmtCache[key] = new Intl.DateTimeFormat(lang, Object.assign({ timeZone: tz }, opts));
+function _tzFmt(tz, opts, lang) {
+  lang = lang || ((typeof _currentLang !== 'undefined') ? _currentLang : 'en');
+  // JSON key, not Object.values().join: two option sets with different keys
+  // but the same values ("numeric,2-digit") must not share a formatter.
+  var key = lang + '|' + (tz || '') + '|' + JSON.stringify(opts);
+  if (!_tzFmtCache[key]) {
+    var o = Object.assign({}, opts);
+    if (tz) o.timeZone = tz;
+    _tzFmtCache[key] = new Intl.DateTimeFormat(lang, o);
+  }
   return _tzFmtCache[key];
 }
 
@@ -2952,7 +3061,11 @@ function _drawSunMap() {
   // click-to-set-location handler.
   if (!W || !H) return;
 
-  // Background, world image and the nominal time zone meridians, all cached
+  // First draw kicks off the border fetch; when it lands the base layer is
+  // invalidated and this repaints with the borders in place.
+  _tzBordersEnsure();
+
+  // Background, world image and the real time zone borders, all cached
   ctx.drawImage(_sunMapBaseLayer(W, H, dpr), 0, 0);
 
   // Compute sun subsolar point
@@ -3762,8 +3875,8 @@ function _promptAlmanacLocation() {
 function _fmtMinutes(m) {
   m = ((m % 1440) + 1440) % 1440;
   var d = new Date(2023, 0, 1, Math.floor(m / 60), Math.round(m % 60));
-  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
-  return d.toLocaleTimeString(lang, { hour: 'numeric', minute: '2-digit' });
+  // Cached formatter: sunrise/sunset/golden-hour readouts run per travel frame.
+  return _tzFmt(null, { hour: 'numeric', minute: '2-digit' }).format(d);
 }
 
 // ── Live Sky Scene ──

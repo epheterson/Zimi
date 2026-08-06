@@ -1,7 +1,12 @@
 /* ── Almanac mini-app ── */
 .almanac-view { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
 .almanac-view.open { display: flex; animation: fadeIn 0.15s ease; }
-.almanac-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: 24px 16px 80px; overscroll-behavior: contain; }
+/* Bottom padding is deliberately small: the sticky time-machine dock sticks
+   relative to this scroller's padding box, so every px of bottom padding here
+   pushes the dock that much further off the screen edge. The dock's own
+   margins provide the flow spacing; 8px is just edge breathing for the
+   footer. */
+.almanac-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: 24px 16px 8px; overscroll-behavior: contain; }
 .almanac-inner { max-width: 600px; margin: 0 auto; }
 
 .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
@@ -326,9 +331,11 @@
    travelling readout (motion), and the destination chooser. Monospace,
    tabular figures; transitions 150–250ms except the travel effects. */
 .alm-tm {
-  position: sticky; bottom: 6px; z-index: 20;
+  /* Hugs the bottom edge: 2px of breathing room plus the iOS home-indicator
+     inset so the dock rides just above the screen's true bottom. */
+  position: sticky; bottom: calc(2px + env(safe-area-inset-bottom, 0px)); z-index: 20;
   display: none; align-items: stretch; gap: 8px;
-  max-width: 380px; margin: 18px auto 6px; padding: 10px;
+  max-width: 380px; margin: 18px auto 2px; padding: 10px;
   background: linear-gradient(180deg, rgba(30,30,34,0.96), rgba(14,14,16,0.96));
   border: 1px solid var(--amber-border); border-radius: 14px;
   box-shadow: 0 6px 22px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
@@ -344,13 +351,27 @@
   from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+/* Close — a brass-ringed stud riding the dock's top-right corner, the same
+   material language as the lever shaft. Visually 22px; the transparent ::after
+   pad extends the hit area to 44px for touch. */
 .alm-tm-close {
-  position: absolute; top: 5px; right: 6px; z-index: 2;
-  width: 18px; height: 18px; padding: 0; line-height: 15px;
-  border: 0; border-radius: 50%; background: transparent;
-  color: var(--text3); font-size: 15px; cursor: pointer; transition: color .15s;
+  position: absolute; top: -8px; right: -8px; z-index: 3;
+  width: 22px; height: 22px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255,224,160,0.4); border-radius: 50%;
+  background:
+    radial-gradient(circle at 36% 30%, rgba(255,236,196,0.28), transparent 60%),
+    linear-gradient(180deg, #2c2c30, #131315);
+  color: rgba(255,224,160,0.75); cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+  transition: color .15s, border-color .15s, box-shadow .15s;
 }
-.alm-tm-close:hover { color: var(--amber); }
+.alm-tm-close::after { content: ""; position: absolute; inset: -11px; border-radius: 50%; }
+.alm-tm-close svg { width: 9px; height: 9px; display: block; }
+.alm-tm-close:hover, .alm-tm-close:focus-visible {
+  color: var(--amber); border-color: rgba(255,224,160,0.85); outline: none;
+  box-shadow: 0 0 10px rgba(245,158,11,0.35), 0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+}
 /* The hero clock time is the discoverable way in — flag it as tappable. */
 .almanac-head-time-btn { cursor: pointer; border-radius: 4px; transition: color .15s; }
 .almanac-head-time-btn:hover { color: var(--amber); }
