@@ -2944,6 +2944,13 @@ function _drawSunMap() {
   var ctx = _sunMapCanvas.getContext('2d');
   var W = _sunMapCanvas.width, H = _sunMapCanvas.height;
   var dpr = window.devicePixelRatio || 1;
+  // The panel can be rendered before it has been laid out (a hidden ancestor
+  // leaves clientWidth at 0), and a zero-area cache layer is an illegal
+  // drawImage source — it throws where drawing the map image straight to the
+  // context used to be a silent no-op. Bail out instead: there is nothing to
+  // paint, and throwing here would abort _renderSunMap before it binds the
+  // click-to-set-location handler.
+  if (!W || !H) return;
 
   // Background, world image and the nominal time zone meridians, all cached
   ctx.drawImage(_sunMapBaseLayer(W, H, dpr), 0, 0);
