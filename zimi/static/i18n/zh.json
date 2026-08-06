@@ -1189,5 +1189,16 @@
   "bm_export_desc": "每个勾选的顶层文件夹生成一个 ZIM，其子文件夹成为其中的分节。文章保留图片和样式。",
   "bm_export_unfiled": "零散书签（顶层）",
   "bm_export_none_selected": "请至少选择一个要导出的文件夹。",
-  "bm_export_done": "已创建 {n} 个 ZIM — 已加入书库。"
+  "bm_export_done": "已创建 {n} 个 ZIM — 已加入书库。",
+  "conn_offline_msg": "无法连接到您的 Zimi 服务器。正在重新连接…",
+  "conn_error_msg": "您的 Zimi 服务器已响应，但媒体库未能加载。",
+  "conn_library_stale_msg": "已重新连接。正在重新加载媒体库…",
+  "conn_retry": "重试",
+  "conn_retrying": "正在重试…",
+  "conn_restored": "已恢复连接 — 媒体库已重新加载",
+  "library_unavailable": "您的媒体库在服务器上，而我们无法连接它",
+  "library_unavailable_hint": "没有任何内容丢失。您的 ZIM 都在服务器上，服务器恢复后就会回来；本设备上已缓存的内容仍可阅读。",
+  "search_offline": "搜索需要您的 Zimi 服务器",
+  "search_offline_hint": "重新连接后即可搜索媒体库。已打开过的文章仍可阅读。",
+  "almanac_unavailable_offline": "年鉴尚未下载到本设备 — 联网一次后即可离线使用。"
 }

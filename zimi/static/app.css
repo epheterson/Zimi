@@ -31,6 +31,13 @@
        themes). Light theme darkens the ink for contrast on paper. */
     --success: #6ec56e; --success-strong: #84d684;
     --radius: 10px; --shadow-popup: 0 8px 32px rgba(0,0,0,0.5);
+    /* Height of the connection banner (0 when connected). Measured by
+       _syncConnBannerHeight() because the banner wraps on narrow screens.
+       Every surface anchored under the 56px topbar offsets by it, so the
+       banner PUSHES content instead of covering it — an offline notice must
+       never sit on top of the article someone is reading. */
+    --conn-h: 0px;
+    --under-topbar: calc(56px + var(--conn-h));
     color-scheme: dark;
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
   }
@@ -102,7 +109,7 @@
   }
 
   html { height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
-  body { background: var(--bg); color: var(--text); min-height: 100%; padding-top: 56px; overflow: visible; }
+  body { background: var(--bg); color: var(--text); min-height: 100%; padding-top: var(--under-topbar); overflow: visible; }
 
   /* Anti-flash guard. The head bootstrap stamps .theme-boot on <html> while it
      (re)applies the theme, then removes it on the next committed paint. While it
@@ -166,6 +173,39 @@
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+
+  /* ── Connection banner ──
+     Shown whenever the app cannot vouch for what it is displaying: the server
+     is unreachable, or answered but the library did not load. Calm by design —
+     a thin bar in the app's own surface colours with an amber status dot, not a
+     red alarm. Being offline is normal for an offline-first app; it should feel
+     handled. Never a modal: cached articles, bookmarks and the almanac stay
+     usable behind it. */
+  .conn-banner {
+    position: fixed; top: 56px; left: 0; right: 0; z-index: 190;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px; font-size: 13px; line-height: 1.35;
+    color: var(--text2); background: var(--surface);
+    border-bottom: 1px solid var(--amber-border);
+  }
+  .conn-banner .conn-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    background: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow);
+    animation: conn-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes conn-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .conn-banner .conn-msg { flex: 1; min-width: 0; }
+  .conn-retry {
+    flex-shrink: 0; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+    color: var(--amber); background: var(--amber-glow);
+    border: 1px solid var(--amber-border); border-radius: 6px; padding: 4px 12px;
+  }
+  .conn-retry:hover:not(:disabled) { background: var(--amber); color: var(--on-amber); border-color: var(--amber); }
+  .conn-retry:disabled { opacity: 0.5; cursor: default; }
+  .conn-retry-inline { margin-top: 16px; padding: 6px 16px; font-size: 13px; }
+  .conn-empty .hint { opacity: 0.75; max-width: 34em; margin: 0 auto; }
+  @media (prefers-reduced-motion: reduce) { .conn-banner .conn-dot { animation: none; } }
+  @media (max-width: 600px) { .conn-banner { padding: 8px 12px; gap: 8px; font-size: 12.5px; } }
 
   .back-btn {
     display: none; align-items: center; justify-content: center;
@@ -936,7 +976,7 @@
   .ci-add-btn:hover { border-color: var(--amber-border); background: var(--amber-glow); }
 
   /* ── Reader ── */
-  .reader-view { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
+  .reader-view { position: fixed; top: var(--under-topbar); left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
   .reader-view.open { display: flex; animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   #reader-frame { flex: 1; border: none; width: 100%; background: #fff; }
@@ -2155,7 +2195,7 @@
   /* ── History panel ── */
   /* .library-btn base styles in shared .random-btn,.manage-btn,.newtab-btn,.library-btn rule above */
   .history-panel {
-    display: none; position: fixed; top: 56px; right: 0; bottom: 0; width: 360px; max-width: 100vw;
+    display: none; position: fixed; top: var(--under-topbar); right: 0; bottom: 0; width: 360px; max-width: 100vw;
     background: var(--surface); border-left: 1px solid var(--border); z-index: 180;
     overflow-y: auto; box-shadow: -4px 0 24px rgba(0,0,0,0.4);
   }
@@ -2432,3 +2472,7 @@
     font-size: 11px; font-weight: 600; line-height: 1.4;
     font-variant-numeric: tabular-nums;
   }
+
+  /* almanac.css loads after this file and pins .almanac-view to a literal 56px;
+     the body prefix wins on specificity so the almanac clears the banner too. */
+  body .almanac-view { top: var(--under-topbar); }

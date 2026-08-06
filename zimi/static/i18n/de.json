@@ -1189,5 +1189,16 @@
   "bm_export_desc": "Ein ZIM pro angehaktem Ordner der obersten Ebene – dessen Unterordner werden zu Abschnitten darin. Artikel behalten Bilder und Gestaltung.",
   "bm_export_unfiled": "Lose Lesezeichen (oberste Ebene)",
   "bm_export_none_selected": "Wählen Sie mindestens einen Ordner zum Exportieren.",
-  "bm_export_done": "{n} ZIM erstellt – zur Bibliothek hinzugefügt."
+  "bm_export_done": "{n} ZIM erstellt – zur Bibliothek hinzugefügt.",
+  "conn_offline_msg": "Zimi-Server nicht erreichbar. Verbindung wird wiederhergestellt…",
+  "conn_error_msg": "Ihr Zimi-Server hat geantwortet, aber die Bibliothek konnte nicht geladen werden.",
+  "conn_library_stale_msg": "Wieder verbunden. Bibliothek wird neu geladen…",
+  "conn_retry": "Erneut versuchen",
+  "conn_retrying": "Neuer Versuch…",
+  "conn_restored": "Wieder online — Bibliothek neu geladen",
+  "library_unavailable": "Ihre Bibliothek liegt auf dem Server, und er ist nicht erreichbar",
+  "library_unavailable_hint": "Es ist nichts verloren gegangen. Ihre ZIMs liegen auf dem Server und sind zurück, sobald er antwortet; alles, was auf diesem Gerät bereits zwischengespeichert ist, bleibt lesbar.",
+  "search_offline": "Die Suche benötigt Ihren Zimi-Server",
+  "search_offline_hint": "Stellen Sie die Verbindung wieder her, um Ihre Bibliothek zu durchsuchen. Bereits geöffnete Artikel bleiben lesbar.",
+  "almanac_unavailable_offline": "Der Almanach wurde auf dieses Gerät noch nicht geladen — verbinden Sie sich einmal, um ihn offline zu nutzen."
 }

@@ -1189,5 +1189,16 @@
   "bm_export_desc": "Un ZIM por cada carpeta de nivel superior marcada; sus subcarpetas se convierten en secciones. Los artículos conservan sus imágenes y estilos.",
   "bm_export_unfiled": "Marcadores sueltos (nivel superior)",
   "bm_export_none_selected": "Elige al menos una carpeta para exportar.",
-  "bm_export_done": "Se crearon {n} ZIM: añadidos a tu biblioteca."
+  "bm_export_done": "Se crearon {n} ZIM: añadidos a tu biblioteca.",
+  "conn_offline_msg": "No se puede contactar con tu servidor Zimi. Reconectando…",
+  "conn_error_msg": "Tu servidor Zimi respondió, pero la biblioteca no se cargó.",
+  "conn_library_stale_msg": "Reconectado. Recargando tu biblioteca…",
+  "conn_retry": "Reintentar",
+  "conn_retrying": "Reintentando…",
+  "conn_restored": "De nuevo en línea: biblioteca recargada",
+  "library_unavailable": "Tu biblioteca está en el servidor y no podemos contactarlo",
+  "library_unavailable_hint": "No se ha perdido nada. Tus ZIM están en el servidor y volverán en cuanto lo haga; todo lo que ya esté en caché en este dispositivo sigue siendo legible.",
+  "search_offline": "La búsqueda necesita tu servidor Zimi",
+  "search_offline_hint": "Vuelve a conectarte para buscar en tu biblioteca. Los artículos que ya abriste siguen siendo legibles.",
+  "almanac_unavailable_offline": "El Almanaque aún no se ha descargado en este dispositivo: conéctate una vez para usarlo sin conexión."
 }

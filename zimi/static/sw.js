@@ -196,10 +196,20 @@ async function staleWhileRevalidate(request) {
   return offlineResponse();
 }
 
-// Offline fallback response
+// Offline fallback response.
+//
+// The X-Zimi-Offline header is the contract with the app shell: this body was
+// synthesised here because the network never answered, NOT by the server. The
+// client's serverFetch() keys off it to tell "the server said you have no
+// ZIMs" apart from "we could not ask" — without it a /list that resolves to
+// this 503 HTML looks, after a failed .json(), exactly like an empty library.
 function offlineResponse() {
   return new Response(OFFLINE_HTML, {
     status: 503,
-    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'X-Zimi-Offline': '1',
+      'Cache-Control': 'no-store'
+    }
   });
 }

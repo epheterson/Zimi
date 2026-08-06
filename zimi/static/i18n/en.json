@@ -1189,5 +1189,16 @@
   "bm_export_desc": "One ZIM per ticked top-level folder — its subfolders become sections inside it. Articles keep their images and styling.",
   "bm_export_unfiled": "Loose bookmarks (top level)",
   "bm_export_none_selected": "Pick at least one folder to export.",
-  "bm_export_done": "Created {n} ZIM(s) — added to your library."
+  "bm_export_done": "Created {n} ZIM(s) — added to your library.",
+  "conn_offline_msg": "Can't reach your Zimi server. Reconnecting…",
+  "conn_error_msg": "Your Zimi server answered, but the library didn't load.",
+  "conn_library_stale_msg": "Reconnected. Reloading your library…",
+  "conn_retry": "Retry",
+  "conn_retrying": "Retrying…",
+  "conn_restored": "Back online — library reloaded",
+  "library_unavailable": "Your library is on the server, and we can't reach it",
+  "library_unavailable_hint": "Nothing has been lost. Your ZIMs are on the server and come back as soon as it does; anything already cached on this device stays readable.",
+  "search_offline": "Search needs your Zimi server",
+  "search_offline_hint": "Reconnect to search your library. Articles you've already opened are still readable.",
+  "almanac_unavailable_offline": "The Almanac hasn't been downloaded to this device yet — reconnect once to use it offline."
 }

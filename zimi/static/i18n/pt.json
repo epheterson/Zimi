@@ -1189,5 +1189,16 @@
   "bm_export_desc": "Um ZIM para cada pasta de nível superior marcada — as subpastas viram seções dentro dele. Os artigos mantêm imagens e estilo.",
   "bm_export_unfiled": "Favoritos avulsos (nível superior)",
   "bm_export_none_selected": "Escolha pelo menos uma pasta para exportar.",
-  "bm_export_done": "{n} ZIM criado(s) — adicionado(s) à sua biblioteca."
+  "bm_export_done": "{n} ZIM criado(s) — adicionado(s) à sua biblioteca.",
+  "conn_offline_msg": "Não foi possível contactar o seu servidor Zimi. A reconectar…",
+  "conn_error_msg": "O seu servidor Zimi respondeu, mas a biblioteca não carregou.",
+  "conn_library_stale_msg": "Reconectado. A recarregar a sua biblioteca…",
+  "conn_retry": "Tentar novamente",
+  "conn_retrying": "A tentar novamente…",
+  "conn_restored": "Online novamente — biblioteca recarregada",
+  "library_unavailable": "A sua biblioteca está no servidor e não conseguimos contactá-lo",
+  "library_unavailable_hint": "Nada foi perdido. Os seus ZIM estão no servidor e voltam assim que ele voltar; tudo o que já está em cache neste dispositivo continua legível.",
+  "search_offline": "A pesquisa precisa do seu servidor Zimi",
+  "search_offline_hint": "Volte a ligar-se para pesquisar na sua biblioteca. Os artigos que já abriu continuam legíveis.",
+  "almanac_unavailable_offline": "O Almanaque ainda não foi transferido para este dispositivo — ligue-se uma vez para o usar offline."
 }

@@ -451,7 +451,7 @@ let _pendingMsSection = null;
 // stashes the section order as a side effect. Older/plain array responses still
 // work (section order simply stays empty).
 async function _fetchList() {
-  const r = await fetch('/list?layout=1');
+  const r = await serverFetch('/list?layout=1');
   const data = await r.json();
   if (Array.isArray(data)) { _sectionOrder = []; _declaredSections = []; return data; }
   _sectionOrder = Array.isArray(data.section_order) ? data.section_order : [];
@@ -780,7 +780,13 @@ function userLogout() {
 
 // Reload the library after a login/logout so the filtered view is reflected.
 async function _refreshAfterAuthChange() {
-  try { zimsCache = await _fetchList(); _rebuildZimsMap(); } catch (e) { zimsCache = []; }
+  try { zimsCache = await _fetchList(); _rebuildZimsMap(); _libraryKnown = true; }
+  catch (e) {
+    zimsCache = [];
+    _libraryKnown = false;
+    _noteConn(_isOfflineError(e) ? CONN_OFFLINE : CONN_ERROR);
+    _renderConnBanner();
+  }
   if (typeof goHome === 'function') goHome();
   else route(false);
 }
@@ -801,13 +807,16 @@ async function _bootAuthGate() {
   if (!_manageToken) { var saved = _readManageToken(); if (saved) _manageToken = saved; }
   var j;
   try {
-    var r = await fetch('/whoami', {
+    var r = await serverFetch('/whoami', {
       credentials: 'same-origin',
       headers: _manageToken ? _authHeaders() : {},
     });
     j = await r.json();
   } catch (e) {
-    return false;  // network hiccup — fall through to the normal boot
+    // Unreachable server: we cannot know whether this instance is private, so
+    // we do NOT gate. Fall through to the normal boot, where /list will fail
+    // the same way and the offline state (not a fake empty library) paints.
+    return false;
   }
   // First-login hint: the server only sends this when the default username
   // ("admin") applies (no custom username, no named users). The login modal
@@ -1256,6 +1265,246 @@ function updateFooter() {
   }
 }
 
+// ── Connection state ──
+//
+// Absence of data is not data. The PWA shell is service-worker cached, so it
+// boots perfectly well with a dead backend; before this, every data fetch that
+// failed fell into the same `catch { zimsCache = [] }` as a server that
+// genuinely answered "you have zero ZIMs", and home rendered a confident "No
+// knowledge sources found". That reads as "my library was wiped".
+//
+// Every server exchange is classified into exactly one of three states:
+//   'online'  — the server answered. ANY HTTP status counts, including 401/403
+//               /404/500: an answer is an answer, and the auth gate owns 401.
+//   'offline' — the request never reached the server: fetch threw at the
+//               network layer, or the service worker returned its synthetic
+//               offline response (X-Zimi-Offline) in place of one.
+//   'error'   — the server answered but the payload was unusable (malformed
+//               JSON, unexpected shape). Rare, and still not "you own nothing".
+// Auth-gating is deliberately NOT a connection state: _bootAuthGate owns it.
+const CONN_OK = 'online', CONN_OFFLINE = 'offline', CONN_ERROR = 'error';
+// Reconnect probe backoff, ms. Capped so a long outage settles into a cheap
+// 30s heartbeat rather than hammering a server that may be mid-restart.
+const CONN_PROBE_STEPS = [3000, 5000, 10000, 20000, 30000];
+let _connState = CONN_OK;
+// False once an attempt to load /list failed for ANY reason. Gates every
+// "no ZIMs" claim in the UI: we only assert an empty library when the server
+// actually told us it was empty.
+let _libraryKnown = true;
+let _connProbeTimer = null;
+let _connProbeStep = 0;
+let _connProbeSeq = 0;
+let _connRecovering = false;
+
+// Tagged error meaning "never reached the server". Thrown by serverFetch so
+// callers can branch on cause without re-sniffing the failure.
+function _offlineError() {
+  const e = new Error('zimi-offline');
+  e.zimiOffline = true;
+  return e;
+}
+function _isOfflineError(e) { return !!(e && e.zimiOffline); }
+
+// The service worker's stand-in for an answer, not an answer from the server.
+function _isOfflineResponse(res) {
+  if (!res) return false;
+  try {
+    if (res.headers.get('X-Zimi-Offline') === '1') return true;
+    // Older cached SW without the header: its offline page is the only 503 that
+    // returns HTML from an endpoint the app only ever asks for JSON.
+    return res.status === 503 && (res.headers.get('Content-Type') || '').indexOf('text/html') === 0;
+  } catch (e) { return false; }
+}
+
+// Mirrors sw.js NETWORK_ONLY_PREFIXES. A 200 from any OTHER route may have come
+// out of the service worker's cache, which proves nothing about the server being
+// up — it is exactly how a dead backend came to look reachable. Only these
+// routes (and the cache-busted /health probe) can promote the state to online.
+const _LIVE_PROOF_PREFIXES = ['/whoami', '/login', '/logout', '/list', '/search', '/suggest', '/random'];
+function _isLiveProof(url) {
+  const p = String(url).split('?')[0];
+  for (let i = 0; i < _LIVE_PROOF_PREFIXES.length; i++) {
+    const pre = _LIVE_PROOF_PREFIXES[i];
+    if (p === pre || p.indexOf(pre + '/') === 0) return true;
+  }
+  return String(url).indexOf('/health?ping=') === 0;
+}
+
+// The single front door for anything that talks to the Zimi server. Classifies
+// the outcome (updating the banner as a side effect) and throws a tagged
+// offline error rather than letting an unreachable server masquerade as data.
+//
+// The classification is deliberately asymmetric: a failure ALWAYS proves the
+// server is unreachable (nothing else produces the SW's offline response), but a
+// success only proves it when the route could not have been served from cache.
+async function serverFetch(url, opts) {
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (e) {
+    _noteConn(CONN_OFFLINE);
+    throw _offlineError();
+  }
+  if (_isOfflineResponse(res)) {
+    _noteConn(CONN_OFFLINE);
+    throw _offlineError();
+  }
+  if (_isLiveProof(url)) _noteConn(CONN_OK);
+  return res;
+}
+
+// Record the outcome of a server exchange. Transitions drive the banner and,
+// on a fall to offline, start the reconnect probe.
+function _noteConn(state) {
+  if (state === _connState) {
+    // Still online and the library is stale-unknown from an earlier outage
+    // (e.g. only /list failed): keep probing until the library is back.
+    if (state === CONN_OK && !_libraryKnown && !_connProbeTimer) _scheduleConnProbe();
+    return;
+  }
+  _connState = state;
+  if (state === CONN_OK) {
+    _stopConnProbe();
+    _renderConnBanner();
+  } else {
+    _renderConnBanner();
+    _scheduleConnProbe();
+  }
+}
+
+// ── Connection banner ──
+// Calm, persistent, non-blocking. Sits between the topbar and the content (it
+// pushes rather than overlays, so cached articles and the almanac stay fully
+// readable) and offers an explicit Retry alongside the automatic probe.
+function _connBannerEl() {
+  let el = document.getElementById('conn-banner');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'conn-banner';
+  el.className = 'conn-banner';
+  el.setAttribute('role', 'status');
+  el.setAttribute('aria-live', 'polite');
+  document.body.appendChild(el);
+  return el;
+}
+
+function _renderConnBanner() {
+  const offline = _connState !== CONN_OK;
+  if (!offline && _libraryKnown) {
+    const existing = document.getElementById('conn-banner');
+    if (existing) existing.remove();
+    document.documentElement.style.setProperty('--conn-h', '0px');
+    return;
+  }
+  const el = _connBannerEl();
+  // Server answered but we still can't show the library: a different, honest
+  // sentence from "no network at all".
+  const msgKey = _connState === CONN_OFFLINE ? 'conn_offline_msg'
+    : (_connState === CONN_ERROR ? 'conn_error_msg' : 'conn_library_stale_msg');
+  el.innerHTML =
+    '<span class="conn-dot" aria-hidden="true"></span>' +
+    '<span class="conn-msg">' + tH(msgKey) + '</span>' +
+    '<button type="button" class="conn-retry" onclick="_connRetryClick(this)">' + tH('conn_retry') + '</button>';
+  _syncConnBannerHeight();
+}
+
+// The banner's height is content-dependent (it wraps on narrow screens), so the
+// layout offset every under-topbar surface uses is measured, not assumed.
+function _syncConnBannerHeight() {
+  const el = document.getElementById('conn-banner');
+  const h = el ? el.offsetHeight : 0;
+  document.documentElement.style.setProperty('--conn-h', h + 'px');
+}
+
+function _connRetryClick(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = t('conn_retrying'); }
+  _connProbeStep = 0;
+  _connProbeNow();
+}
+
+function _stopConnProbe() {
+  if (_connProbeTimer) { clearTimeout(_connProbeTimer); _connProbeTimer = null; }
+  _connProbeStep = 0;
+}
+
+function _scheduleConnProbe() {
+  if (_connProbeTimer) return;
+  const delay = CONN_PROBE_STEPS[Math.min(_connProbeStep, CONN_PROBE_STEPS.length - 1)];
+  _connProbeTimer = setTimeout(function() {
+    _connProbeTimer = null;
+    _connProbeStep++;
+    _connProbeNow();
+  }, delay);
+}
+
+// One reachability check. The cache-busting query is deliberate: /health is a
+// network-first route, so a plain request could be answered from the SW cache
+// and report a dead server as alive.
+async function _connProbeNow() {
+  if (_connRecovering) return;
+  const seq = ++_connProbeSeq;
+  _connRecovering = true;
+  let reachable = false;
+  try {
+    await serverFetch('/health?ping=' + Date.now(), { cache: 'no-store' });
+    reachable = true;
+  } catch (e) {
+    reachable = false;
+  }
+  _connRecovering = false;
+  if (seq !== _connProbeSeq) return;  // superseded by a newer probe
+  if (!reachable) { _renderConnBanner(); _scheduleConnProbe(); return; }
+  await _connRecover();
+}
+
+// The server is back. Reload the library and repaint whatever the user is
+// looking at, so recovery needs no manual reload.
+async function _connRecover() {
+  const hadLibrary = _libraryKnown;
+  try {
+    zimsCache = await _fetchList();
+    _rebuildZimsMap();
+    _libraryKnown = true;
+  } catch (e) {
+    _noteConn(_isOfflineError(e) ? CONN_OFFLINE : CONN_ERROR);
+    _scheduleConnProbe();
+    return;
+  }
+  _stopConnProbe();
+  _renderConnBanner();
+  if (!hadLibrary) {
+    // Only announce when something actually changed on screen.
+    _showToast(t('conn_restored'));
+    if (mode === 'manage') renderInstalled();
+    else if (!readerOpen && !currentSource && !readerSource) renderHome();
+  }
+}
+
+// Browser-level connectivity events are a hint, not the truth (a laptop can be
+// on Wi-Fi with the Zimi server down, or offline-flagged yet reachable on LAN),
+// so a regain triggers a probe rather than clearing the banner outright.
+function _bindConnEvents() {
+  window.addEventListener('online', function() { _connProbeStep = 0; _connProbeNow(); });
+  window.addEventListener('offline', function() { _noteConn(CONN_OFFLINE); });
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && (_connState !== CONN_OK || !_libraryKnown)) {
+      _connProbeStep = 0;
+      _connProbeNow();
+    }
+  });
+  window.addEventListener('resize', _syncConnBannerHeight);
+}
+
+// Shared honest-empty markup for any surface that would otherwise assert "no
+// ZIMs" while _libraryKnown is false.
+function _libraryUnavailableHtml() {
+  return '<div class="empty conn-empty">' +
+    '<p>' + tH('library_unavailable') + '</p>' +
+    '<p class="hint">' + tH('library_unavailable_hint') + '</p>' +
+    '<button type="button" class="conn-retry conn-retry-inline" onclick="_connRetryClick(this)">' + tH('conn_retry') + '</button>' +
+    '</div>';
+}
+
 // ── Init ──
 async function init() {
   // Re-apply the app theme (the head bootstrap already stamped it pre-paint) and
@@ -1282,11 +1531,21 @@ async function init() {
   // dead until the whole boot finishes (#44). _initSecondary reuses this probe.
   _manageProbe = _probeManageAuth();
 
+  _bindConnEvents();
   output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
-  // Only block on /list — everything else loads in background
+  // Only block on /list — everything else loads in background.
+  // A failure here must NOT collapse into "the library is empty": zimsCache
+  // stays a safe [] for the hundreds of call sites that iterate it, but
+  // _libraryKnown records that the emptiness is our ignorance, not a fact.
   try {
     zimsCache = await _fetchList();
-  } catch(e) { zimsCache = []; }
+    _libraryKnown = true;
+  } catch(e) {
+    zimsCache = [];
+    _libraryKnown = false;
+    _noteConn(_isOfflineError(e) ? CONN_OFFLINE : CONN_ERROR);
+    _renderConnBanner();
+  }
   _rebuildZimsMap();
   // Migrate bookmarks if ZIM names changed
   _migrateBookmarks();
@@ -1315,7 +1574,7 @@ let _manageProbed = false;
 async function _probeManageAuth() {
   try {
     // Public pre-auth endpoint — learns password state without a 401 probe.
-    const hres = await fetch('/manage/has-password');
+    const hres = await serverFetch('/manage/has-password');
     if (!hres.ok) { manageEnabled = false; return; }  // 404 = manage disabled
     manageEnabled = true;
     const h = await hres.json();
@@ -2214,6 +2473,15 @@ document.addEventListener('touchcancel', _reorderTouchEnd);
 
 // ── Render: Home ──
 function renderHome(filter) {
+  // We could not ask the server. Say so — never "No knowledge sources found",
+  // which reads as "your library was wiped". Discover is skipped too: its cards
+  // are drawn from the (unknown) installed set.
+  if (!_libraryKnown) {
+    statsBar.innerHTML = ''; statsBar.style.display = 'none';
+    pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
+    output.innerHTML = _libraryUnavailableHtml();
+    return;
+  }
   if (!zimsCache || zimsCache.length === 0) {
     statsBar.innerHTML = ''; statsBar.style.display = 'none';
     pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
@@ -3140,7 +3408,14 @@ function openAlmanac(replaceState) {
       var s = document.createElement('script');
       s.src = almanacModules[i];
       s.onload = function() { loadNext(i + 1); };
-      s.onerror = function() { console.error('Failed to load ' + almanacModules[i]); };
+      // Offline with a cold cache: these modules were never fetched, so there is
+      // nothing to serve. Say so — a console line and a button that appears to
+      // do nothing is the same "silent absence" the connection banner exists to
+      // eliminate.
+      s.onerror = function() {
+        console.error('Failed to load ' + almanacModules[i]);
+        _showToast(t('almanac_unavailable_offline'));
+      };
       document.head.appendChild(s);
     };
     loadNext(0);
@@ -4516,7 +4791,7 @@ async function doSearch(query, push) {
   try {
     // ── Progressive two-phase search: fast title matches first, then full FTS ──
     // Phase 1: fast title search (parallel per-ZIM, no lock contention)
-    const r1 = await fetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam + '&fast=1',
+    const r1 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam + '&fast=1',
       { signal: searchController.signal });
     const d1 = await r1.json();
     const phase1Elapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
@@ -4558,7 +4833,7 @@ async function doSearch(query, push) {
       }, 1000);
 
       // Phase 2: full Xapian FTS (sequential under _zim_lock, searches every ZIM)
-      const r2 = await fetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam,
+      const r2 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam,
         { signal: searchController.signal });
       const d2 = await r2.json();
       clearInterval(timerInterval);
@@ -4569,6 +4844,14 @@ async function doSearch(query, push) {
     }
   } catch(e) {
     if (e.name === 'AbortError') return;
+    // "Search failed / try again" implies the server tried and something went
+    // wrong there. If we never reached it, say that instead and offer Retry.
+    if (_isOfflineError(e)) {
+      output.innerHTML = '<div class="empty conn-empty"><p>' + tH('search_offline') + '</p>' +
+        '<p class="hint">' + tH('search_offline_hint') + '</p>' +
+        '<button type="button" class="conn-retry conn-retry-inline" onclick="_connRetryClick(this)">' + tH('conn_retry') + '</button></div>';
+      return;
+    }
     output.innerHTML = '<div class="empty"><p>' + tH('search_failed') + '</p><p class="hint">' + tH('try_again') + '</p></div>';
   }
 }
@@ -9392,12 +9675,17 @@ async function _renderMissingZims(library) {
   if (!box) return;
   box.innerHTML = '';
   if (!Array.isArray(library) || !library.length) return;
-  // Which backup ZIMs aren't installed here?
+  // Which backup ZIMs aren't installed here? An unreachable server would leave
+  // this set empty and declare every ZIM in the backup missing — a fabricated
+  // shopping list. Bail with an honest note instead.
   var installed = new Set();
   try {
-    var list = await (await fetch('/list')).json();
+    var list = await (await serverFetch('/list')).json();
     (Array.isArray(list) ? list : (list.zims || [])).forEach(function(z) { if (z && z.name) installed.add(z.name); });
-  } catch (e) {}
+  } catch (e) {
+    box.innerHTML = '<div class="ms-hint">' + tH('conn_offline_msg') + '</div>';
+    return;
+  }
   var missing = library.filter(function(z) { return z && z.name && !installed.has(z.name); });
   if (!missing.length) {
     box.innerHTML = '<div class="ms-hint">' + tH('backup_library_complete') + '</div>';
@@ -9624,6 +9912,8 @@ function renderInstalled(filterText) {
   const el = document.getElementById('manage-installed');
   if (!el) return;
   const zims = zimsCache || [];
+  // Same rule as home: only claim "nothing installed" when the server said so.
+  if (!_libraryKnown) { el.innerHTML = _libraryUnavailableHtml(); return; }
   if (!zims.length) {
     el.innerHTML = '<div class="empty"><p>' + tH('no_zims_installed') + '</p><div class="hint">' + tH('switch_to_catalog') + '</div></div>';
     return;

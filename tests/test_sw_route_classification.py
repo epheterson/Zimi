@@ -65,8 +65,16 @@ function makeEnv() {
   };
   const ctx = {
     self, caches, URL,
-    fetch: () => Promise.resolve({ ok: true, clone: () => ({}) }),
-    Response: class { constructor(b, o) { this.body = b; Object.assign(this, o); } },
+    fetch: FETCH_FAILS
+      ? () => Promise.reject(new TypeError('Failed to fetch'))
+      : () => Promise.resolve({ ok: true, clone: () => ({}) }),
+    Response: class { constructor(b, o) { this.body = b; Object.assign(this, o || {});
+      const h = (o && o.headers) || {};
+      this.headers = { get: (k) => {
+        for (const key of Object.keys(h)) if (key.toLowerCase() === k.toLowerCase()) return h[key];
+        return null;
+      } };
+    } },
     setInterval: () => {}, console,
   };
   vm.createContext(ctx);
@@ -80,8 +88,14 @@ async function probe(path, mode) {
   let responded = null;
   env.listeners.fetch({ request: { url: 'http://x' + path, mode: mode || 'cors' },
                         respondWith: (p) => { responded = p; } });
-  try { await responded; } catch (e) {}
-  return { strategy, touchedCache: env.cacheReads.length + env.cacheWrites.length };
+  let resp = null;
+  try { resp = await responded; } catch (e) {}
+  return {
+    strategy,
+    touchedCache: env.cacheReads.length + env.cacheWrites.length,
+    status: resp ? resp.status : null,
+    offlineHeader: resp && resp.headers ? resp.headers.get('X-Zimi-Offline') : null,
+  };
 }
 
 (async () => {
@@ -93,12 +107,13 @@ async function probe(path, mode) {
 """
 
 
-def _run_driver(paths):
+def _run_driver(paths, fetch_fails=False):
     node = shutil.which("node")
     if not node:
         raise unittest.SkipTest("node not available")
+    driver = ("const FETCH_FAILS = %s;\n" % ("true" if fetch_fails else "false")) + _DRIVER
     proc = subprocess.run(
-        [node, "-e", _DRIVER, os.path.abspath(_SW), json.dumps(paths)],
+        [node, "-e", driver, os.path.abspath(_SW), json.dumps(paths)],
         capture_output=True,
         text=True,
         timeout=30,
@@ -131,6 +146,21 @@ class TestSwRouteClassification(unittest.TestCase):
         for p in IDENTITY_WITH_QUERY:
             self.assertEqual(res[p]["strategy"], "networkOnly", p)
             self.assertEqual(res[p]["touchedCache"], 0, p)
+
+    def test_offline_fallback_is_labelled_as_synthetic(self):
+        """A response the SW invented because the network died must announce
+        itself.
+
+        Without the ``X-Zimi-Offline`` marker the client cannot tell "the server
+        answered: you have zero ZIMs" from "we never reached the server" — a
+        ``/list`` that resolves to the offline HTML fails ``.json()`` and lands
+        in the same catch as an empty library, which is how the app came to
+        claim "No knowledge sources found" during an outage.
+        """
+        res = _run_driver(["/list", "/whoami", "/search?q=x"], fetch_fails=True)
+        for p in ["/list", "/whoami", "/search?q=x"]:
+            self.assertEqual(res[p]["status"], 503, p)
+            self.assertEqual(res[p]["offlineHeader"], "1", f"{p} must be labelled offline")
 
     def test_static_assets_still_cache(self):
         # Guard the negative: static assets must remain cacheable (offline PWA),

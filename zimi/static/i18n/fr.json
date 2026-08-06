@@ -1189,5 +1189,16 @@
   "bm_export_desc": "Un ZIM par dossier de premier niveau coché — ses sous-dossiers en deviennent les sections. Les articles gardent leurs images et leur mise en forme.",
   "bm_export_unfiled": "Signets isolés (niveau supérieur)",
   "bm_export_none_selected": "Choisissez au moins un dossier à exporter.",
-  "bm_export_done": "{n} ZIM créé(s) — ajouté(s) à votre bibliothèque."
+  "bm_export_done": "{n} ZIM créé(s) — ajouté(s) à votre bibliothèque.",
+  "conn_offline_msg": "Serveur Zimi injoignable. Reconnexion…",
+  "conn_error_msg": "Votre serveur Zimi a répondu, mais la bibliothèque n'a pas pu être chargée.",
+  "conn_library_stale_msg": "Reconnecté. Rechargement de votre bibliothèque…",
+  "conn_retry": "Réessayer",
+  "conn_retrying": "Nouvelle tentative…",
+  "conn_restored": "De retour en ligne — bibliothèque rechargée",
+  "library_unavailable": "Votre bibliothèque est sur le serveur, et il est injoignable",
+  "library_unavailable_hint": "Rien n'est perdu. Vos ZIM sont sur le serveur et reviendront dès qu'il sera de retour ; tout ce qui est déjà en cache sur cet appareil reste lisible.",
+  "search_offline": "La recherche nécessite votre serveur Zimi",
+  "search_offline_hint": "Reconnectez-vous pour chercher dans votre bibliothèque. Les articles déjà ouverts restent lisibles.",
+  "almanac_unavailable_offline": "L'Almanach n'a pas encore été téléchargé sur cet appareil — reconnectez-vous une fois pour l'utiliser hors ligne."
 }
