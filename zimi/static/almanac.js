@@ -2081,6 +2081,157 @@ var _sunMapCanvas = null;
 var _sunMapCycle = { x: -999, y: -999, list: '', idx: 0 }; // click-cycle overlaps
 var _sunMapFlashTimer = 0;
 
+// Equirectangular projection helpers — the map spans the full -180..180 by
+// -90..90 rectangle, so both are straight linear maps. Every point plotted on
+// the map (cities, the picked location, the subsolar point, the meridians)
+// goes through these two rather than repeating the arithmetic.
+function _sunMapLonToX(lon, W) { return (lon + 180) / 360 * W; }
+function _sunMapLatToY(lat, H) { return (90 - lat) / 180 * H; }
+
+// ── Nominal time zone meridians ──
+// One hour of solar time is 15 degrees of longitude, so these 24 meridians are
+// the zones an almanac prints. Civil time zones are political: they follow
+// borders, bend around islands and take half-hour offsets, and none of that is
+// drawn here. These lines are a solar-time reference, nothing more, which is
+// why nothing on the map labels them as boundaries.
+var _SM_TZ_STEP_HOURS = 3;      // label every N hours, widened when it gets tight
+var _SM_TZ_LABEL_PITCH = 40;    // min CSS px between labels before widening
+
+// Height of the strip along the bottom edge that carries the UTC labels. Sized
+// off the map so it stays proportional, floored so the type never collides.
+function _sunMapGutter(H, dpr) { return Math.max(12 * dpr, H * 0.07); }
+
+// How many hours between labels at this width — 3, then 6, then 12, so the
+// labels stay a readable distance apart down to phone widths.
+function _sunMapLabelStep(W, dpr) {
+  var pxPerHour = W / dpr / 24;
+  var step = _SM_TZ_STEP_HOURS;
+  while (step < 12 && pxPerHour * step < _SM_TZ_LABEL_PITCH) step += _SM_TZ_STEP_HOURS;
+  return step;
+}
+
+// The map's unchanging layer: background, world image and the meridian rules.
+// None of it moves as time travels, so it is rendered once per size into an
+// offscreen canvas and blitted each frame — which costs less than the old code
+// paid to re-rasterise the SVG on every redraw, meridians or not.
+var _sunMapBase = null;
+var _sunMapBaseKey = '';
+
+function _sunMapBaseLayer(W, H, dpr) {
+  var key = W + 'x' + H + ':' + dpr + ':' + (_sunMapLoaded ? '1' : '0');
+  if (_sunMapBase && _sunMapBaseKey === key) return _sunMapBase;
+  var cv = _sunMapBase || document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  var c = cv.getContext('2d');
+  c.fillStyle = '#0d1117';
+  c.fillRect(0, 0, W, H);
+  if (_sunMapLoaded) {
+    c.globalAlpha = 0.4;
+    c.drawImage(_sunMapImg, 0, 0, W, H);
+    c.globalAlpha = 1;
+  }
+  _sunMapDrawMeridians(c, W, H, dpr);
+  _sunMapBase = cv;
+  _sunMapBaseKey = key;
+  return cv;
+}
+
+// The meridians themselves plus the label gutter they sit above. Drawn as
+// fillRect rather than stroked paths so each rule lands on whole device pixels
+// and stays a crisp hairline at any DPR.
+function _sunMapDrawMeridians(c, W, H, dpr) {
+  var gutter = _sunMapGutter(H, dpr);
+  var top = H - gutter;
+
+  // Label gutter — a faint dark strip so the offsets read against the map.
+  c.fillStyle = 'rgba(4,7,12,0.45)';
+  c.fillRect(0, top, W, gutter);
+  c.fillStyle = 'rgba(210,180,120,0.10)';
+  c.fillRect(0, Math.round(top), W, Math.max(1, Math.round(dpr)));
+
+  var thin = Math.max(1, Math.round(dpr));
+  var thick = Math.max(1, Math.round(1.5 * dpr));
+  for (var off = -12; off <= 12; off++) {
+    var prime = off === 0, dateline = Math.abs(off) === 12;
+    var lw = prime ? thick : thin;
+    var x = _sunMapLonToX(off * 15, W);
+    // Clamp the two edge rules fully inside the canvas — at ±180 half the
+    // width would otherwise fall outside and vanish.
+    var rx = Math.min(Math.max(Math.round(x - lw / 2), 0), W - lw);
+    // Kept below the terminator's own amber so the day/night edge stays the
+    // brightest line on the map.
+    c.fillStyle = prime ? 'rgba(245,158,11,0.22)'
+      : dateline ? 'rgba(210,180,120,0.20)'
+      : 'rgba(210,180,120,0.12)';
+    c.fillRect(rx, 0, lw, top);
+  }
+}
+
+// The UTC offsets. They belong on top of the night shading — sunk underneath it
+// the labels on the dark half come out half as bright as the lit half — but
+// they never move, so they are cached too. The strip is only as tall as the
+// gutter, so this costs a few hundred KB less than a second full-size layer.
+var _sunMapLabels = null;
+var _sunMapLabelsKey = '';
+
+function _sunMapLabelStrip(W, H, dpr) {
+  var gutter = Math.round(_sunMapGutter(H, dpr));
+  var key = W + 'x' + gutter + ':' + dpr;
+  if (_sunMapLabels && _sunMapLabelsKey === key) return _sunMapLabels;
+  var cv = _sunMapLabels || document.createElement('canvas');
+  cv.width = W; cv.height = gutter;
+  var c = cv.getContext('2d');
+  c.clearRect(0, 0, W, gutter);
+  c.font = Math.round(8.5 * dpr) + 'px ui-monospace, SFMono-Regular, Menlo, monospace';
+  c.textBaseline = 'middle';
+  var step = _sunMapLabelStep(W, dpr);
+  for (var off = -12; off <= 12; off += step) {
+    var x = _sunMapLonToX(off * 15, W);
+    // The outermost labels straddle the canvas edge; anchor them inward.
+    if (off <= -12) { c.textAlign = 'left'; x += 3 * dpr; }
+    else if (off >= 12) { c.textAlign = 'right'; x -= 3 * dpr; }
+    else c.textAlign = 'center';
+    c.fillStyle = off === 0 ? 'rgba(245,158,11,0.80)' : 'rgba(210,180,120,0.45)';
+    c.fillText(off === 0 ? 'UTC' : (off > 0 ? '+' + off : String(off)), x, gutter / 2);
+  }
+  _sunMapLabels = cv;
+  _sunMapLabelsKey = key;
+  return cv;
+}
+
+function _sunMapDrawTzLabels(c, W, H, dpr) {
+  var strip = _sunMapLabelStrip(W, H, dpr);
+  c.drawImage(strip, 0, H - strip.height);
+}
+
+// A faint amber wash over the 15-degree band holding the picked location, so
+// the map ties back to the clock and the world-clock pills below it. Drawn over
+// the night shading — under it the wash all but disappears on the dark half and
+// the band looks broken at the terminator.
+function _sunMapDrawZoneBand(c, W, H, dpr) {
+  if (!_sunMapHasLocation) return;
+  var gutter = _sunMapGutter(H, dpr);
+  var top = H - gutter;
+  var off = Math.round(_sunMapLon / 15);
+  var x0 = _sunMapLonToX(off * 15 - 7.5, W);
+  var span = W / 24;
+  // The ±12 band straddles the antimeridian, so it paints as two pieces.
+  var pieces = [[x0, span]];
+  if (x0 < 0) pieces = [[0, x0 + span], [W + x0, -x0]];
+  else if (x0 + span > W) pieces = [[x0, W - x0], [0, x0 + span - W]];
+  var edge = Math.max(1, Math.round(dpr));
+  for (var i = 0; i < pieces.length; i++) {
+    var px = pieces[i][0], pw = pieces[i][1];
+    c.fillStyle = 'rgba(245,158,11,0.07)';
+    c.fillRect(px, 0, pw, top);
+    // Soft edges: at phone width a UTC-zone selection puts these within a few
+    // pixels of the prime meridian, and hard rules there read as a glitch.
+    c.fillStyle = 'rgba(245,158,11,0.18)';
+    c.fillRect(Math.round(px), 0, edge, top);
+    c.fillRect(Math.round(px + pw) - edge, 0, edge, top);
+  }
+}
+
 // Brief label over the map naming the city just picked (and the cycle hint when
 // several cities overlap). Recreated each time — the map re-renders on a pick.
 function _sunMapFlash(text) {
@@ -2794,16 +2945,8 @@ function _drawSunMap() {
   var W = _sunMapCanvas.width, H = _sunMapCanvas.height;
   var dpr = window.devicePixelRatio || 1;
 
-  // Background
-  ctx.fillStyle = '#0d1117';
-  ctx.fillRect(0, 0, W, H);
-
-  // Draw map image if loaded
-  if (_sunMapLoaded) {
-    ctx.globalAlpha = 0.4;
-    ctx.drawImage(_sunMapImg, 0, 0, W, H);
-    ctx.globalAlpha = 1;
-  }
+  // Background, world image and the nominal time zone meridians, all cached
+  ctx.drawImage(_sunMapBaseLayer(W, H, dpr), 0, 0);
 
   // Compute sun subsolar point
   var now = _sunMapNow;
@@ -2820,8 +2963,7 @@ function _drawSunMap() {
     var lon = (px / W) * 360 - 180;
     var dlon = (lon - sunLon) * DEG_TO_RAD;
     var termLat = Math.atan(-Math.cos(dlon) / Math.tan(decl)) * 180 / Math.PI;
-    var termY = (90 - termLat) / 180 * H;
-    termPoints.push({ x: px, y: termY });
+    termPoints.push({ x: px, y: _sunMapLatToY(termLat, H) });
   }
 
   // Fill night side
@@ -2847,9 +2989,14 @@ function _drawSunMap() {
   ctx.lineWidth = 1.5 * dpr;
   ctx.stroke();
 
+  // Time zone reference — the picked zone's band, then the UTC offsets. Both
+  // sit above the night shading so neither is swallowed by it.
+  _sunMapDrawZoneBand(ctx, W, H, dpr);
+  _sunMapDrawTzLabels(ctx, W, H, dpr);
+
   // Sub-solar point — where the sun is directly overhead right now
-  var sunX = ((sunLon + 180 + 360) % 360) / 360 * W;
-  var sunY = (90 - declDeg) / 180 * H;
+  var sunX = _sunMapLonToX(((sunLon + 180 + 360) % 360) - 180, W);
+  var sunY = _sunMapLatToY(declDeg, H);
   // Sun rays
   ctx.strokeStyle = 'rgba(251,191,36,0.25)';
   ctx.lineWidth = 1 * dpr;
@@ -2868,8 +3015,8 @@ function _drawSunMap() {
   // City dots
   for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
     var c = _MAP_CITIES[ci];
-    var cx = (c.lon + 180) / 360 * W;
-    var cy = (90 - c.lat) / 180 * H;
+    var cx = _sunMapLonToX(c.lon, W);
+    var cy = _sunMapLatToY(c.lat, H);
     ctx.beginPath();
     ctx.arc(cx, cy, 2 * dpr, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(210,180,120,0.5)';
@@ -2878,8 +3025,8 @@ function _drawSunMap() {
 
   // Current location marker — only if explicitly set
   if (_sunMapHasLocation) {
-    var locX = (_sunMapLon + 180) / 360 * W;
-    var locY = (90 - _sunMapLat) / 180 * H;
+    var locX = _sunMapLonToX(_sunMapLon, W);
+    var locY = _sunMapLatToY(_sunMapLat, H);
     ctx.beginPath();
     ctx.arc(locX, locY, 5 * dpr, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(245,158,11,0.8)';
