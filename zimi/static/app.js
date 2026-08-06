@@ -3795,7 +3795,27 @@ function _moveZimTo(zim, category) {
     }
   });
 
-  var CTX_SUB_W = 190;  // .ctx-sub min-width (170) + padding/border headroom
+  var CTX_EDGE = 8;     // keep-clear margin from every viewport edge
+  var CTX_SUB_TOP = 4;  // a submenu overhangs its trigger's top edge by this much
+  // Where a submenu of size sw×sh goes, given its trigger's viewport rect `r`.
+  // Horizontally it prefers to open right, else flips left, else PINS to the
+  // viewport: the parent menu is itself clamped on screen, so on a phone its
+  // right edge sits ~8px from the edge and neither side has room — the old
+  // "no room right, not enough room left, open right anyway" path is what put
+  // the category list off screen with every label truncated. A pinned submenu
+  // overlaps its parent, which is the only thing a 390px viewport has room for.
+  // Vertically it hangs from the trigger's top edge, pulled up and capped so a
+  // long category list scrolls inside itself rather than running off the bottom.
+  // Pure function of numbers so the contract is unit-testable.
+  function _ctxSubPlacement(r, sw, sh, vw, vh) {
+    var w = Math.min(sw, vw - 2 * CTX_EDGE), h = Math.min(sh, vh - 2 * CTX_EDGE);
+    var x, pinned = false;
+    if (r.right + w <= vw - CTX_EDGE) x = r.right;
+    else if (r.left - w >= CTX_EDGE) x = r.left - w;
+    else { pinned = true; x = Math.min(Math.max(CTX_EDGE, r.left), vw - w - CTX_EDGE); }
+    var y = Math.max(CTX_EDGE, Math.min(r.top - CTX_SUB_TOP, vh - h - CTX_EDGE));
+    return { x: x, y: y, w: w, h: h, pinned: pinned };
+  }
   function posMenu(x, y) {
     // Measure off-paint: reveal for layout but keep it invisible until it sits at
     // its final spot, so it never flashes at (0,0) before we know its size — the
@@ -3818,32 +3838,32 @@ function _moveZimTo(zim, category) {
     var finalY = Math.min(Math.max(8, y), Math.max(8, vh - mh - 8));
     menu.style.left = finalX + 'px';
     menu.style.top = finalY + 'px';
-    menu.style.visibility = '';  // reveal at the final position: a single paint
-    // Each submenu (Move to…'s category list, Collections, …) opens from its
-    // trigger's top-right by default. Per trigger, decide horizontal side and
-    // vertical direction from the room actually available, then clamp width and
-    // height so a long list scrolls inside the viewport rather than running off
-    // any edge — the mobile failure mode. Done for every trigger, not just
-    // Move to….
+    // Place every submenu (Move to…'s categories, Collections, the Users role
+    // list) while the menu is still hidden, so the whole assembly appears in one
+    // paint. Each one is MEASURED rather than assumed: the width a submenu
+    // actually wants decides which side it can open on, and it is measured twice
+    // — once for its natural width, then again for the height that width implies
+    // once long labels wrap. Assuming a fixed width is what made the old
+    // flip-left test answer "there's room" when there wasn't.
     _ctxItems(menu).forEach(function(item) {
       var sub = _ctxSubOf(item);
       if (!sub) return;
       var r = item.getBoundingClientRect();
-      // Horizontal: open right unless it lacks room and the left side has it.
-      var rightFits = r.right + CTX_SUB_W <= vw - 8;
-      var leftFits = r.left - CTX_SUB_W >= 8;
-      var goLeft = !rightFits && leftFits;
-      sub.classList.toggle('flip-left', goLeft);
-      var availW = (goLeft ? r.left : vw - r.right) - 8;
-      sub.style.maxWidth = Math.max(140, availW) + 'px';
-      // Vertical: hang from the top edge unless the bottom lacks room and the
-      // top has more; cap height to the room so .ctx-sub's own scroll kicks in.
-      var spaceBelow = vh - r.top - 8;
-      var spaceAbove = r.bottom - 8;
-      var flipUp = spaceBelow < 120 && spaceAbove > spaceBelow;
-      sub.classList.toggle('flip-up', flipUp);
-      sub.style.maxHeight = Math.max(100, flipUp ? spaceAbove : spaceBelow) + 'px';
+      sub.classList.remove('fitted');
+      sub.style.cssText = 'visibility:hidden;display:block;width:auto;max-width:none;max-height:none';
+      var natW = sub.offsetWidth;
+      var w = Math.min(natW, vw - 2 * CTX_EDGE);
+      sub.style.width = w + 'px';
+      // Narrower than it wants: labels wrap onto a second line instead of being
+      // cut off, and the height below accounts for the taller result.
+      if (w < natW) sub.classList.add('fitted');
+      var p = _ctxSubPlacement(r, w, sub.offsetHeight, vw, vh);
+      // Offsets are relative to the trigger (its padding box is the submenu's
+      // containing block); the values above are viewport coordinates.
+      sub.style.cssText = 'left:' + (p.x - r.left) + 'px;top:' + (p.y - r.top) + 'px;' +
+        'width:' + p.w + 'px;max-height:' + p.h + 'px';
     });
+    menu.style.visibility = '';  // reveal at the final position: a single paint
     _prepMenuA11y();
   }
 
@@ -4014,7 +4034,22 @@ function _moveZimTo(zim, category) {
   // Dismiss on scroll like a native menu: the fixed-position menu would
   // otherwise float detached over scrolled-away content. Capture so a scroll in
   // any nested scroller (the manage list, the home grid) closes it too.
+  //
+  // …but only for a scroll the USER started. A tap that lands on the menu makes
+  // a scroll-snap container underneath it (the discover strip) re-snap and emit
+  // a scroll event with its offsets unchanged — dismissing on that closed the
+  // whole menu the instant a finger touched "Move to…", which is what made the
+  // submenu look unreachable on a phone. A pointer that went down inside the
+  // menu cannot be dragging the page, so any scroll it produces is the menu's
+  // own doing; a wheel outside the menu is a real scroll and re-arms dismissal.
+  var _ctxSelfScroll = false;
+  function _ctxTrackPointer(e) { _ctxSelfScroll = menu.contains(e.target); }
+  document.addEventListener('touchstart', _ctxTrackPointer, { capture: true, passive: true });
+  document.addEventListener('mousedown', _ctxTrackPointer, true);
+  document.addEventListener('wheel', function(e) { if (!menu.contains(e.target)) _ctxSelfScroll = false; },
+    { capture: true, passive: true });
   window.addEventListener('scroll', function() {
+    if (_ctxSelfScroll) return;
     if (menu.classList.contains('visible')) closeCtx();
   }, true);
 

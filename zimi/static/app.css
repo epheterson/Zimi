@@ -2030,21 +2030,23 @@
   .ctx-item { padding: 8px 16px; font-size: 13px; color: var(--text); cursor: pointer; transition: background 0.1s; white-space: nowrap; position: relative; }
   .ctx-item.danger:hover { background: rgba(239,68,68,0.08); color: var(--error); }
   .ctx-sep { height: 1px; background: var(--border); margin: 4px 0; }
+  /* left/top/width/max-height are overwritten inline by posMenu, which places
+     each submenu against the viewport; these are the pre-measurement defaults.
+     Move-to can list many categories, so it always scrolls inside its cap. */
   .ctx-sub {
     display: none; position: absolute; left: 100%; top: -4px;
-    min-width: 170px; background: var(--surface); border: 1px solid var(--border);
+    min-width: 170px; max-height: 60vh; overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius); box-shadow: var(--shadow-popup);
     padding: 4px 0; z-index: 10000;
   }
-  .ctx-sub.flip-left { left: auto; right: 100%; }
-  .ctx-sub.flip-up { top: auto; bottom: -4px; }
+  /* Too narrow for its labels (a phone pins it to the viewport): wrap them
+     rather than let the text run out of the box. */
+  .ctx-sub.fitted > .ctx-item { white-space: normal; }
   .ctx-item:hover > .ctx-sub, .ctx-item.kb-open > .ctx-sub { display: block; }
   /* Keyboard focus reads like hover (roving tabindex, ARIA menu pattern). */
   .ctx-item:focus, .ctx-item:focus-visible { background: var(--amber-glow); color: var(--amber); outline: none; }
   .ctx-item.danger:focus, .ctx-item.danger:focus-visible { background: rgba(239,68,68,0.08); color: var(--error); }
-  /* Move-to can list many categories — cap height and scroll rather than
-     overflow the viewport. */
-  .ctx-sub { max-height: 60vh; overflow-y: auto; }
 
   /* ── Manage-row gear (opens the same Move to… menu) ── */
   .ci-gear {
