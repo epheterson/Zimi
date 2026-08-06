@@ -13126,10 +13126,14 @@ function _renderBookmarksContent() {
   var bk = _bkLoad();
   var folders = _folLoad();
   if (!bk.length && !folders.length) {
-    // Still offer New folder so an empty library can start organizing.
+    // Still offer New folder so an empty library can start organizing. The
+    // (empty) tree host must exist even now, because _bmNewFolderPrompt mounts
+    // its inline input INTO #bm-tree — without it the very first folder could
+    // never be created (the button did nothing on a pristine bookmarks tab).
     return '<div class="hp-actions bm-actions">' +
       '<button class="hp-action-btn" onclick="_bmNewFolderPrompt(\'\')">' + tH('bm_new_folder') + '</button></div>' +
-      '<div class="hp-empty">' + tH('no_bookmarks') + '</div>';
+      '<div class="hp-empty">' + tH('no_bookmarks') + '</div>' +
+      '<div class="bm-tree" id="bm-tree" data-fid="" role="tree" aria-label="' + escAttr(t('bookmarks')) + '"></div>';
   }
   var html = '<div class="hp-actions bm-actions">' +
     '<button class="hp-action-btn" onclick="_bmNewFolderPrompt(\'\')">' + tH('bm_new_folder') + '</button>' +
