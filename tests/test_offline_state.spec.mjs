@@ -98,6 +98,11 @@ async function primeServiceWorker(page, base) {
   }
   const controlled = await page.evaluate(() => !!navigator.serviceWorker.controller);
   if (!controlled) throw new Error('service worker never took control');
+  // Control and coverage are different milestones. claim() can land mid-load,
+  // after this document's boot fetches already went straight to the network, so
+  // a controlling worker does not imply it cached anything. One more full
+  // navigation guarantees a whole load passed through it.
+  await page.reload({ waitUntil: 'load' });
   await page.waitForTimeout(1500);
 }
 
@@ -249,14 +254,18 @@ test.describe('offline honesty', () => {
       // worker answers it from cache with a perfectly ordinary 200. Reading that
       // as "the server is up" promoted the state to connected and parked the
       // banner on "Reconnected. Reloading…" with the library never arriving.
-      const cached = await page.evaluate(async () => {
+      // Bounded poll, not a single sample: the entry is written by the worker
+      // asynchronously. Waiting cannot mask a failure here, since a test whose
+      // premise never materialises throws rather than silently passing.
+      await page.waitForFunction(async () => {
         for (const k of await caches.keys()) {
           const c = await caches.open(k);
           if (await c.match('/manage/has-password')) return true;
         }
         return false;
+      }, null, { timeout: 15000 }).catch(() => {
+        throw new Error('the cached 200 this test turns on was never written');
       });
-      expect(cached, 'the cached 200 this test turns on must exist').toBe(true);
 
       await page.evaluate(() => _stopConnProbe());
       await page.evaluate(() => _probeManageAuth());
