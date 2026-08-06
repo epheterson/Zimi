@@ -228,3 +228,43 @@ def test_seed_cumulative_prefers_ledger(tmp_path, monkeypatch):
     body = _call_seeding(monkeypatch, managed, tmp_path)
     t = body["torrents"][0]
     assert t["cumulative_uploaded_bytes"] == 9000  # ledger wins over session
+
+
+def test_seed_age_comes_from_ledger_intent(tmp_path, monkeypatch):
+    """The seed card's age line uses the ledger's `added` intent timestamp;
+    a seed with no ledger entry reports 0 so the client hides the age."""
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
+    from zimi import library as _lib
+
+    monkeypatch.setattr(
+        _lib,
+        "seed_ledger_snapshot",
+        lambda: {
+            "wikipedia_en_2026-06.zim": {
+                "uploaded": 0,
+                "origin": "download",
+                "added": 1753000000.7,
+            }
+        },
+    )
+    ledgered = tmp_path / "wikipedia_en_2026-06.zim"
+    ledgered.write_bytes(b"x" * 10)
+    unledgered = tmp_path / "wiktionary_fr_2026-06.zim"
+    unledgered.write_bytes(b"x" * 10)
+    row = {
+        "status": "active",
+        "completedLength": "1000",
+        "totalLength": "1000",
+        "uploadLength": "0",
+        "connections": "0",
+        "seeder": "true",
+    }
+    managed = [
+        dict(row, gid="g-led", files=[{"path": str(ledgered)}], infoHash="aa"),
+        dict(row, gid="g-raw", files=[{"path": str(unledgered)}], infoHash="bb"),
+    ]
+    body = _call_seeding(monkeypatch, managed, tmp_path)
+    by_gid = {t["id"]: t for t in body["torrents"]}
+    assert by_gid["g-led"]["added"] == 1753000000  # int() of the ledger float
+    assert by_gid["g-raw"]["added"] == 0

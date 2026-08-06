@@ -97,7 +97,12 @@
      on the overlay container re-establishes the dark palette for every child
      (cards, text, pills) without touching almanac.css. The result is a light app
      chrome over a deliberately dark cosmic panel — a seam by design, not a bug. */
-  :root[data-theme="light"] .almanac-view {
+  /* The topbar joins the seam while the almanac is open (body.almanac-mode):
+     a light header floating over the night-sky panel was the one jarring strip
+     left in the light theme. Same token block, second scope — the class comes
+     off with the almanac, so the header reverts the moment you leave. */
+  :root[data-theme="light"] .almanac-view,
+  :root[data-theme="light"] body.almanac-mode .topbar {
     --bg: #0a0a0b; --surface: #141416; --surface2: #1c1c20;
     --border: #27272b; --text: #e8e8ed; --text2: #8a8a94;
     --accent: #f5f5f7; --amber: #f59e0b; --amber2: #d97706;
@@ -105,6 +110,11 @@
     --text3: #6e6e7a; --text-dim: #6e6e7a; --hover: rgba(245, 158, 11, 0.08);
     --error: #ef4444; --card-bg: #1a1a1a;
     --success: #6ec56e; --success-strong: #84d684;
+    /* Dark-only tokens the light root overrides above: the topbar (and its
+       menu) read these, so they must flip back with the rest of the set. */
+    --on-amber: #000; --border-strong: var(--border);
+    --topbar-bg: rgba(10, 10, 11, 0.85);
+    --shadow-popup: 0 8px 32px rgba(0, 0, 0, 0.5);
     color-scheme: dark;
   }
 
@@ -397,7 +407,7 @@
   .catalog-lang-search-btn.expanded { width: 140px; border-color: var(--amber-border); background: var(--surface); justify-content: flex-start; gap: 6px; padding: 0 10px; }
   .catalog-lang-search-btn.expanded input { border: none; background: transparent; color: var(--text); font-size: 11px; outline: none; width: 100%; font-weight: 500; }
   /* One base geometry for every filter/category/source/language/recency pill.
-     Variants (.cat-pill, .reorder-pill, .dl-filter-pill, .lang-pill…)
+     Variants (.cat-pill, .dl-filter-pill, .lang-pill…)
      ride on top of .pill and may override colour/accent ONLY — never height,
      padding, or font-size, so rows never render at mismatched heights. */
   .pill, .lang-pill {
@@ -421,11 +431,6 @@
   /* Collection pills carry the layers glyph so they read as groupings, not
      categories, in the filter row. */
   .col-pill-glyph { flex-shrink: 0; opacity: 0.8; }
-  /* "Reorder" is a link-OUT action (opens a separate view), not a filter —
-     amber outline + the trailing ↗ glyph set it apart. */
-  .reorder-pill { display: inline-flex; align-items: center; gap: 4px; color: var(--amber); border-color: var(--amber-border); border-style: dashed; background: var(--amber-glow); }
-  .reorder-pill:hover { color: var(--amber); border-color: var(--amber); background: var(--amber-glow); border-style: dashed; }
-
   /* ── Language pills (above source pills in search results) ── */
   .lang-pills { display: flex; align-items: center; gap: 6px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; width: 100%; }
   .lang-pills::-webkit-scrollbar { display: none; }
@@ -1194,7 +1199,10 @@
   .catalog-grid .catalog-item .ci-icon img { width: 28px; height: 28px; }
   .catalog-grid .catalog-item .ci-icon .ci-letter { width: 32px; height: 32px; font-size: 14px; }
   .catalog-grid .catalog-item .ci-info { grid-area: info; min-width: 0; }
-  .catalog-grid .catalog-item .ci-title { font-size: 13px; margin-bottom: 1px; padding-right: 22px; }
+  /* 32px clears the 22px checkbox visual (which sits centred in its 40px hit
+     area, intruding ~21px past the card padding) plus a breathing gap, so long
+     titles never run under the box. */
+  .catalog-grid .catalog-item .ci-title { font-size: 13px; margin-bottom: 1px; padding-right: 32px; }
   .catalog-grid .catalog-item .ci-meta { font-size: 11px; }
   .catalog-grid .catalog-item .ci-actions {
     grid-area: actions; justify-content: flex-end; margin-left: 0;
@@ -1232,16 +1240,21 @@
   :root[data-theme="light"] .catalog-grid .catalog-item .ci-select::before {
     border-color: var(--border-strong); background: #e0dacd;
   }
-  .catalog-grid .catalog-item .ci-select:checked::before {
+  /* The light-theme unchecked rule above is more specific (extra :root[data-theme])
+     than a bare :checked selector, which left checked boxes rendering as empty in
+     light mode — hence the doubled selectors so checked/focus win in BOTH themes. */
+  .catalog-grid .catalog-item .ci-select:checked::before,
+  :root[data-theme="light"] .catalog-grid .catalog-item .ci-select:checked::before {
     border-color: var(--amber);
     background: var(--amber) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center/14px no-repeat;
   }
   .catalog-grid .catalog-item .ci-select:focus-visible { outline: none; }
-  .catalog-grid .catalog-item .ci-select:focus-visible::before {
+  .catalog-grid .catalog-item .ci-select:focus-visible::before,
+  :root[data-theme="light"] .catalog-grid .catalog-item .ci-select:focus-visible::before {
     border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow);
   }
   [dir="rtl"] .catalog-grid .catalog-item .ci-select { right: auto; left: 0; }
-  [dir="rtl"] .catalog-grid .catalog-item .ci-title { padding-right: 0; padding-left: 22px; }
+  [dir="rtl"] .catalog-grid .catalog-item .ci-title { padding-right: 0; padding-left: 32px; }
   .mc-row-clickable:hover, .mc-row-clickable:focus-visible { color: var(--amber); }
   /* Caret hints the Updates line expands; nudges right on hover. */
   .mc-caret { vertical-align: -2px; margin-left: 4px; opacity: 0.7; transition: transform 0.12s; }
@@ -1359,7 +1372,9 @@
   .dl-item .dl-error { color: var(--error); font-weight: 600; min-width: 0; }
   .dl-item .dl-scheduled { color: var(--text2); flex-shrink: 0; font-weight: 500; white-space: nowrap; }
   /* Download-scheduling card */
-  .ms-toggle-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
+  /* 12px of air above every toggle row: keeps the checkbox off the hint text /
+     button row that precedes it (Downloads restrictor, both Overwrite rows). */
+  .ms-toggle-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--text); cursor: pointer; }
   /* Match the app's styled checkbox (amber accent) instead of the bare native
      square — consistent with .ms-check / .share-upnp elsewhere in the pane. */
   .ms-toggle-row input[type="checkbox"] { accent-color: var(--amber); width: 15px; height: 15px; flex-shrink: 0; }
@@ -1510,9 +1525,10 @@
   .share-field { display: flex; align-items: center; gap: 10px; margin-top: 7px; font-size: 12px; color: var(--text2); }
   .share-field > label { min-width: 78px; color: var(--text2); }
   .share-field-note { color: var(--text3); font-size: 11px; }
-  /* Sized for the 1-4 digit values they hold (ratio 1.5, MB/s caps) rather than
-     the old label-width default; the port needs room for 5 digits + spinner. */
-  .share-num-input { width: 6ch; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 6px; text-align: left; }
+  /* Sized for the 1-4 digit values they hold (ratio 1.5, conn cap 200, MB/s
+     caps) PLUS the number spinner arrows — the old 6ch left ~2 digits visible
+     once the spinner ate its share. The port needs 5 digits + spinner (78px). */
+  .share-num-input { width: 64px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 6px; text-align: left; }
   /* 5 digits of monospace + left/right padding + the number spinner arrows;
      8ch clipped the last digit once the spinner was accounted for. */
   .share-port-input { width: 78px; }
@@ -1536,8 +1552,11 @@
   .dl-seed-item .dl-size { flex: 1 1 100%; min-width: 0; color: var(--text2); }
   /* Uploaded-vs-goal line under the seed row: quiet, tabular, its own row. */
   .dl-seed-goal { margin-top: 6px; font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
-  /* Stop-all spans the grid instead of squatting an empty card cell */
-  .dl-seed-actions { grid-column: 1 / -1; margin-top: 8px; text-align: right; }
+  /* Seed age ("added 3 days ago"): quieter still — context, not data. */
+  .dl-seed-age { color: var(--text3); }
+  /* Bulk seed controls span the grid instead of squatting an empty card cell;
+     flex + gap keeps Pause all / Resume all / Stop all from touching. */
+  .dl-seed-actions { grid-column: 1 / -1; margin-top: 8px; display: flex; justify-content: flex-end; gap: 8px; }
   /* Sharing cards on phones: text keeps its width, fields wrap cleanly */
   .share-row-text { flex: 1; min-width: 0; }
   /* UPnP + dot + retry wrap as one unit, never leaving the retry circle
@@ -2167,14 +2186,6 @@
   .reorder-add-ok:hover { border-color: var(--amber); background: var(--amber-glow); }
   .reorder-add-cancel { color: var(--text3); font-size: 17px; }
   .reorder-add-cancel:hover { color: var(--text); border-color: var(--text3); }
-  /* Brief highlight when the "Customize categories" pointer scrolls the panel
-     into view (mirrors the almanac holidays caption's scroll+flash). */
-  .ms-flash { animation: msFlash 1.6s ease-out; border-radius: var(--radius); }
-  @keyframes msFlash {
-    0%, 20% { box-shadow: 0 0 0 2px var(--amber), 0 0 14px var(--amber-glow); }
-    100% { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent; }
-  }
-
   /* ── Collections manage ── */
   .coll-form { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
   .coll-form input {

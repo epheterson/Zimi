@@ -441,9 +441,7 @@ let _declaredSections = [];
 const OTHER_CAT = '__other__';
 // The reserved section-order key for the Other section (server mirrors it).
 const OTHER_KEY = 'other';
-// Deep-link state for the manage reorder panel: expand it on next render, and
-// which ms-nav section to jump to after the (async) manage view mounts.
-let _reorderAutoExpand = false;
+// Which ms-nav section to jump to after the (async) manage view mounts.
 let _pendingMsSection = null;
 
 // Single reader of /list — normalizes the additive ?layout=1 envelope
@@ -2116,17 +2114,6 @@ function _currentReorderSections() {
 function _ciGearClick(btn) {
   var r = btn.getBoundingClientRect();
   _openZimMenu(btn.dataset.zim, r.left, r.bottom + 2, true);
-}
-
-// Deep-link from the card menu to the manage reorder panel (expanded).
-function _openReorderPanel() {
-  _reorderAutoExpand = true;
-  if (mode === 'manage' && manageTab === 'settings') {
-    switchMs('library');
-  } else {
-    _pendingMsSection = 'library';
-    enterManage();
-  }
 }
 
 // Tag glyph marking a category reorder row, so collections (layers glyph) and
@@ -7749,6 +7736,9 @@ function _msUsersHtml() {
   h += _publicAccessCard();
 
   h += '<div class="ms-users-section">';
+  // Titled like the two cards above it (Your account / Public access), so the
+  // pane reads as three named sections instead of an unlabeled list.
+  h += '<div class="ms-section-label">' + tH('ms_users') + '</div>';
   h += '<div class="ms-users-intro">' + tH('users_intro') + '</div>';
   if (others.length) {
     h += '<div class="ms-users-list">';
@@ -8443,31 +8433,16 @@ function _msToggleCollapse(id, btn) {
 }
 
 // Section reorder + add-section panel (#37). Lives under Library settings — the
-// one obvious home for organizing the library. Collapsed by default; deep-linked
-// open from the card menu and the Installed-tab "Reorder" pill via
-// _reorderAutoExpand. Draggable rows, ▲▼ keyboard fallback, Add/remove sections.
+// one obvious home for organizing the library. Collapsed by default.
+// Draggable rows, ▲▼ keyboard fallback, Add/remove sections.
 function _msReorderHtml() {
-  var reOpen = _reorderAutoExpand; _reorderAutoExpand = false;
-  var h = '<div class="ms-section-label" style="margin-top:20px">' + tH('reorder_sections') + '</div>' +
+  return '<div class="ms-section-label" style="margin-top:20px">' + tH('reorder_sections') + '</div>' +
     '<div class="ms-hint">' + tH('reorder_hint') + '</div>' +
-    '<button class="pill" onclick="_msToggleCollapse(\'ms-reorder\', this)">' + (reOpen ? tH('hide_list') : tH('show_list')) + '</button>' +
-    '<div class="ms-collapsed-list' + (reOpen ? ' ms-open' : '') + '" id="ms-reorder"' +
+    '<button class="pill" onclick="_msToggleCollapse(\'ms-reorder\', this)">' + tH('show_list') + '</button>' +
+    '<div class="ms-collapsed-list" id="ms-reorder"' +
       ' onclick="_reorderClick(event)" ondragstart="_reorderDragStart(event)"' +
       ' ondragover="_reorderDragOver(event)" ondrop="_reorderDrop(event)"' +
       ' ondragend="_reorderDragEnd(event)">' + _reorderSectionsHtml() + '</div>';
-  if (reOpen) {
-    // Deep-linked open from the "Customize categories" pill: scroll the panel
-    // into view AND flash it, so the pointer lands the eye on the block (same
-    // scroll+flash the almanac holidays caption uses for its location control).
-    setTimeout(function() {
-      var el = document.getElementById('ms-reorder');
-      if (!el) return;
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.classList.add('ms-flash');
-      setTimeout(function() { el.classList.remove('ms-flash'); }, 1600);
-    }, 60);
-  }
-  return h;
 }
 
 function _msPreferencesHtml() {
@@ -8507,14 +8482,6 @@ function _msPreferencesHtml() {
     '<div class="ms-hint" style="margin-top:8px">' + tH('catalog_languages_hint_short') + '</div>' +
     '<button class="pill" onclick="_msToggleCollapse(\'ms-lang-pills\', this)">' + tH('show_list') + '</button>' +
     '<div class="ms-lang-pills ms-collapsed-list" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>';
-  // Section reorder moved to Library settings (#37). Leave a one-release pointer
-  // here so anyone who remembers the old home still lands in the right place.
-  h += '<div class="ms-section-label" style="margin-top:20px">' + tH('reorder_sections') + '</div>' +
-    '<div class="ms-hint">' + tH('reorder_moved_hint') + '</div>' +
-    '<button type="button" class="pill reorder-pill" onclick="_openReorderPanel()">' +
-      esc(t('open_library_settings')) +
-      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>' +
-    '</button>';
   // Reader section — mirror of the in-article palette's AUTO switch, so the
   // setting is discoverable without first opening an article. Same wording,
   // same localStorage key (via _setReaderAuto).
@@ -10706,7 +10673,9 @@ async function _refreshDownloadsInner(useCache) {
           '<span class="dl-name dl-seed-link" onclick="enterSource(\'' + escAttr(escJs(zimName)) + '\', true)" title="' + escAttr(sName) + '">' + esc(sName) + '</span>' +
           _dlLangBadge(zimName, (_zimInfo(zimName) || {}).language) +
           '<span class="dl-size">' + meta + '</span></div>' +
-          '<div class="dl-seed-goal">' + esc(goalStr) + '</div>' +
+          '<div class="dl-seed-goal">' + esc(goalStr) +
+            (sd.added ? '<span class="dl-seed-age"> · ' + tH('seed_added_when', {when: _relTime(sd.added)}) + '</span>' : '') +
+          '</div>' +
           (isMirror ? '' : '<div class="dl-progress" title="' + escAttr(t('seed_bar_tip', {cap: seedingCap})) + '"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>') +
           '<div class="dl-actions"><div class="dl-meta"></div><div class="dl-btns">' +
             '<button class="dl-pause-btn" onclick="_seedAction(\'' + escAttr(escJs(sd.id)) + '\', \'' + (paused ? 'resume' : 'pause') + '\', this)">' + (paused ? tH('resume') : tH('pause')) + '</button>' +
@@ -10714,9 +10683,20 @@ async function _refreshDownloadsInner(useCache) {
           '</div></div>' +
           '</div>';
       }
-      if (filter === 'seeding') {
-        if (!seedingTorrents.length) h += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
-        else h += '<div class="dl-seed-actions"><button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)">' + tH('stop_all_seeds') + '</button></div>';
+      if (filter === 'seeding' && !seedingTorrents.length) {
+        h += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
+      } else if (seedingTorrents.length && (filter === 'seeding' || seedingTorrents.length >= 2)) {
+        // Bulk seed controls mirror the downloads bulk bar above: Pause/Resume
+        // all only when a seed is in that state to act on; Stop all always.
+        // Under "All" they appear once there are 2+ seeds (a single seed's
+        // own row buttons cover it).
+        const anyPausableSeed = seedingTorrents.some(s => s.state !== 'paused');
+        const anyResumableSeed = seedingTorrents.some(s => s.state === 'paused');
+        h += '<div class="dl-seed-actions">' +
+          (anyPausableSeed ? '<button class="dl-bulk-btn" onclick="pauseAllSeeds()">' + tH('dl_pause_all') + '</button>' : '') +
+          (anyResumableSeed ? '<button class="dl-bulk-btn" onclick="resumeAllSeeds()">' + tH('dl_resume_all') + '</button>' : '') +
+          '<button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)">' + tH('stop_all_seeds') + '</button>' +
+        '</div>';
       }
     }
     if (filter !== 'seeding' && filter !== 'all' && !visibleDls.length) {
@@ -11044,6 +11024,25 @@ async function deleteAllDownloads() {
   await _bulkDownloadAction('/manage/cancel', active);
   try { await manageFetch('/manage/clear-downloads', { method: 'POST' }); } catch (e) {}
   refreshDownloads();
+}
+
+// Bulk seed controls: fan out the existing per-seed pause/resume endpoint over
+// the last-rendered seed list (same pattern as _bulkDownloadAction — seed
+// counts are small, and each call is one independent engine flag, so a batch
+// endpoint would buy nothing). Failures are swallowed per seed.
+async function _bulkSeedAction(action, targets) {
+  await Promise.all((targets || []).map(s => manageFetch('/manage/seeding-action', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: s.id, action: action}),
+  }).catch(() => {})));
+  refreshDownloads();
+  _renderSeedingSection();
+}
+function pauseAllSeeds() {
+  return _bulkSeedAction('pause', (_dlLastSeeds || []).filter(s => s.state !== 'paused'));
+}
+function resumeAllSeeds() {
+  return _bulkSeedAction('resume', (_dlLastSeeds || []).filter(s => s.state === 'paused'));
 }
 
 // Override the nightly window for one scheduled item — start it now.
@@ -13245,6 +13244,12 @@ function _bmParentRow(row) {
 }
 
 function _bmTreeKeydown(e) {
+  // An inline edit (rename / new folder) owns the keyboard. Without this guard
+  // the tree handler steals ArrowUp/Down (focus moves to another row, the input
+  // blurs and commits) and Space (preventDefault + row.click() rerenders the
+  // tree), killing the edit mid-word.
+  var tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
   var row = e.target.closest ? e.target.closest('.bm-row') : null;
   if (!row || !row.parentNode || row.parentNode.id !== 'bm-tree') return;
   var rows = _bmRows();
@@ -13298,6 +13303,22 @@ function _bmOpenExport(folderId) {
   exportBookmarksToZim();
 }
 
+// One keyboard contract for every inline edit input in the tree: Enter commits,
+// Escape cancels, and EVERY key stops here. The blanket stopPropagation is the
+// fix for edits dying mid-word \u2014 upstream of this input sit the tree's
+// delegated keydown (_bmTreeKeydown: arrows move row focus, blurring the input,
+// which commits; Space "clicks" the row) and the document-level Escape handler
+// that would slam the whole panel shut. Blur commits, so clicking away keeps
+// what was typed.
+function _bmBindEditInput(input, commit) {
+  input.addEventListener('keydown', function (e) {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+  });
+  input.addEventListener('blur', function () { commit(true); });
+}
+
 // \u2500\u2500 New folder (inline input, not prompt()) \u2500\u2500
 function _bmNewFolderPrompt(parentId) {
   _bmCloseInlineInput();
@@ -13335,46 +13356,47 @@ function _bmNewFolderPrompt(parentId) {
     }
     _bmRerender();
   };
-  input.addEventListener('keydown', function (e) {
-    // Stop the key from bubbling to the global handler, where Escape would read
-    // #history-panel.open and slam the whole panel shut while we only meant to
-    // cancel this inline input.
-    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(true); }
-    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); commit(false); }
-  });
-  input.addEventListener('blur', function () { commit(true); });
+  _bmBindEditInput(input, commit);
 }
 function _bmCloseInlineInput() {
   var ex = document.querySelector('.bm-newfolder, .bm-renaming');
   if (ex && ex.parentNode) ex.parentNode.removeChild(ex);
 }
 
-// \u2500\u2500 Inline rename \u2500\u2500
-function _bmRenameFolder(fid) {
-  var f = _folById(fid);
-  if (!f) return;
-  var row = document.querySelector('.bm-folder[data-fid="' + _cssEsc(fid) + '"]');
+// \u2500\u2500 Inline rename (folders and bookmarks share one mechanism) \u2500\u2500
+// Swap the row's .bm-name for an input; Enter/blur commit (apply gets the
+// trimmed value, empty string included), Escape cancels. Semantics of an empty
+// commit are the caller's call: folders keep their old name, bookmarks revert
+// to the article's own title.
+function _bmInlineRenameRow(row, value, apply) {
   if (!row) return;
   var nameEl = row.querySelector('.bm-name');
   if (!nameEl) return;
   var input = document.createElement('input');
   input.className = 'bm-rename-input';
-  input.type = 'text'; input.value = f.name; input.maxLength = 60;
+  input.type = 'text'; input.value = value; input.maxLength = 60;
   nameEl.replaceWith(input);
   row.classList.add('bm-renaming');
   input.focus(); input.select();
   var done = function (save) {
     if (row._renDone) return; row._renDone = true;
-    if (save && input.value.trim()) _folRename(fid, input.value.trim());
+    if (save) apply(input.value.trim());
     _bmRerender();
   };
-  input.addEventListener('keydown', function (e) {
-    // See _bmNewFolderPrompt: keep Escape from bubbling to the global handler
-    // and closing the whole panel when we only want to cancel the rename.
-    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); done(true); }
-    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); }
-  });
-  input.addEventListener('blur', function () { done(true); });
+  _bmBindEditInput(input, done);
+}
+function _bmRenameFolder(fid) {
+  var f = _folById(fid);
+  if (!f) return;
+  var row = document.querySelector('.bm-folder[data-fid="' + _cssEsc(fid) + '"]');
+  _bmInlineRenameRow(row, f.name, function (name) { if (name) _folRename(fid, name); });
+}
+function _bmRenameBookmark(zim, path) {
+  var idx = _bkFind(zim, path);
+  if (idx < 0) return;
+  var b = _bkLoad()[idx];
+  var row = document.querySelector('.bm-bk[data-zim="' + _cssEsc(zim) + '"][data-path="' + _cssEsc(path) + '"]');
+  _bmInlineRenameRow(row, b.title || _titleFromPath(b.path), function (name) { _bkRename(zim, path, name); });
 }
 
 // \u2500\u2500 Delete (a non-empty folder asks what to do with its contents) \u2500\u2500
@@ -13452,10 +13474,12 @@ function _bmBookmarkMenu(zim, path, x, y) {
       ? '<div class="ctx-note">' + tH('bm_source_missing') + '</div>'
       : '<div class="ctx-item" data-action="open">' + tH('open') + '</div>') +
     '<div class="ctx-item">' + tH('move_to') + ' \u203A<div class="ctx-sub">' + _bmMoveSubmenuHtml('') + '</div></div>' +
+    '<div class="ctx-item" data-action="rename">' + tH('rename') + '</div>' +
     '<div class="ctx-sep"></div>' +
     '<div class="ctx-item danger" data-action="remove">' + tH('bm_remove') + '</div>';
   window._openMenuAt(html, x, y, function (action, itemEl) {
     if (action === 'open') { _closeLibraryPanel(); openArticle(zim, path, ''); }
+    else if (action === 'rename') _bmRenameBookmark(zim, path);
     else if (action === 'remove') { _bkRemove(zim, path); _bmRerender(); }
     else if (action === 'mv-root') { _bkSetFolder(zim, path, _BM_ROOT); _bmRerender(); }
     else if (action === 'mv') { _bkSetFolder(zim, path, itemEl.dataset.fid); _bmRerender(); }
@@ -13478,6 +13502,9 @@ function _bmEnsureBound() {
     var menuBtn = e.target.closest('.bm-gear');
     var row = e.target.closest('.bm-row');
     if (!row) return;
+    // A row mid-edit acts as a form, not a row: a click inside it must neither
+    // open the article nor toggle collapse (the input's blur already committed).
+    if (row.classList.contains('bm-renaming') || row.classList.contains('bm-newfolder')) return;
     if (menuBtn) {
       e.preventDefault(); e.stopPropagation();
       var r = menuBtn.getBoundingClientRect();
@@ -13791,6 +13818,20 @@ function _bkAdd(zim, path, title) {
 function _bkRemove(zim, path) {
   var idx = _bkFind(zim, path);
   if (idx >= 0) { _bkLoad().splice(idx, 1); _bkSave(); }
+}
+// Rename a bookmark. The record's `title` stays THE display field, so every
+// consumer (tree rows, export-to-ZIM article titles, /userdata sync blob) sees
+// the custom name with no extra plumbing; the article's own title moves to
+// `origTitle` so an empty rename can restore it. Typing the original back is
+// the same revert (origTitle cleared) rather than a no-op custom name.
+function _bkRename(zim, path, name) {
+  var idx = _bkFind(zim, path);
+  if (idx < 0) return;
+  var b = _bkLoad()[idx];
+  var orig = (b.origTitle != null && b.origTitle !== '') ? b.origTitle : (b.title || _titleFromPath(b.path));
+  if (name && name !== orig) { b.origTitle = orig; b.title = name; }
+  else { delete b.origTitle; b.title = orig; }
+  _bkSave();
 }
 
 // ── Bookmark folders (v2) ──────────────────────────────────────────────────

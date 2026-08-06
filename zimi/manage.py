@@ -1425,6 +1425,10 @@ def handle_manage_get(handler, parsed, params):
                         "file_size_bytes": file_size,
                         "uploaded_bytes": uploaded,
                         "cumulative_uploaded_bytes": cumulative,
+                        # Ledger intent time = when Zimi first decided to seed
+                        # this file (download completion / mirror sync). 0 when
+                        # the ledger has no entry — the client hides the age.
+                        "added": int(led.get("added") or 0),
                         "cap_bytes": cap_bytes,
                         "mirror": is_mirror,
                         "ratio": round(ratio, 3),
