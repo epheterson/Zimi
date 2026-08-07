@@ -228,6 +228,42 @@ const CITIES = [
   ['WaitangiChatham', -43.95, -176.56, 'Pacific/Chatham'],
   ['Nukualofa', -21.14, -175.20, 'Pacific/Tongatapu'],
   ['Kiritimati', 1.87, -157.43, 'Pacific/Kiritimati'],
+  // Per-POLYGON map dots (the per-offset pass above still left whole zone
+  // polygons dotless — tests/test_tz_borders.cjs now enumerates them). Every
+  // dot must resolve to its true zone's offset here. Gdansk (already listed
+  // above) is the shadow guard for the Kaliningrad anchor, the same trap class
+  // as Suva/Apia; Yangon gained its own anchor in the same pass because it
+  // used to fall to Bangkok, a half hour off.
+  ['Minsk', 53.90, 27.56, 'Europe/Minsk'],
+  ['Kaliningrad', 54.71, 20.51, 'Europe/Kaliningrad'],
+  ['Novosibirsk', 55.03, 82.92, 'Asia/Novosibirsk'],
+  ['Irkutsk', 52.29, 104.28, 'Asia/Irkutsk'],
+  ['Yakutsk', 62.03, 129.73, 'Asia/Yakutsk'],
+  ['Verkhoyansk', 67.55, 133.39, 'Asia/Vladivostok'],
+  ['Vladivostok', 43.12, 131.89, 'Asia/Vladivostok'],
+  ['PetropavlovskKamchatsky', 53.02, 158.65, 'Asia/Kamchatka'],
+  ['Provideniya', 64.42, -173.23, 'Asia/Anadyr'],
+  ['Ittoqqortoormiit', 70.49, -21.97, 'America/Scoresbysund'],
+  ['Danmarkshavn', 76.77, -18.67, 'America/Danmarkshavn'],
+  ['SaintPierre', 46.78, -56.17, 'America/Miquelon'],
+  ['PortBlair', 11.62, 92.73, 'Asia/Kolkata'],
+  ['Kavaratti', 10.57, 72.64, 'Asia/Kolkata'],
+  ['DiegoGarcia', -7.31, 72.41, 'Indian/Chagos'],
+  ['Thimphu', 27.47, 89.64, 'Asia/Thimphu'],
+  ['Yangon', 16.87, 96.20, 'Asia/Yangon'],
+  ['CocosWestIsland', -12.19, 96.83, 'Indian/Cocos'],
+  ['MataUtuWallis', -13.28, -176.17, 'Pacific/Wallis'],
+  ['MidwayAtoll', 28.21, -177.38, 'Pacific/Midway'],
+  ['McMurdo', -77.85, 166.67, 'Antarctica/McMurdo'],
+  ['Troll', -72.01, 2.53, 'Antarctica/Troll'],
+  ['Syowa', -69.00, 39.58, 'Antarctica/Syowa'],
+  ['Mawson', -67.60, 62.87, 'Antarctica/Mawson'],
+  ['Davis', -68.60, 78.20, 'Antarctica/Davis'],
+  ['Vostok', -78.46, 106.84, 'Antarctica/Vostok'],
+  ['Casey', -66.28, 110.53, 'Antarctica/Casey'],
+  ['DumontDUrville', -66.66, 140.00, 'Antarctica/DumontDUrville'],
+  ['Rothera', -67.57, -68.13, 'Antarctica/Rothera'],
+  ['Palmer', -64.77, -64.05, 'Antarctica/Palmer'],
 ];
 
 // Known residuals: real zone boundaries too fine for anchor resolution to

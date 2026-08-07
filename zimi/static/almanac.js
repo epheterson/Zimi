@@ -129,8 +129,6 @@ function _lc(name) { var s = _tc(name); var k = _CONST_KEYS[name]; return k ? _a
 function _lterm(suffix, html) { return _alLink('term:' + suffix, html); }
 // Link a season by its article key ('winter'|'spring'|'summer'|'autumn').
 function _lseason(key, html) { return key ? _alLink('season:' + key, html) : html; }
-// Link a Messages Across Time inscription by its manifest id (key = 'rosetta:<id>').
-function _lrosetta(id, html) { return id ? _alLink('rosetta:' + id, html) : html; }
 
 function _dayOfYear(date) {
   // setFullYear, not new Date(year,…): the constructor folds years 0–99 into
@@ -891,11 +889,48 @@ var _almTravelFrozen = false;
 function _almTravelFreeze() {
   if (_almTravelFrozen) return;
   _almTravelFrozen = true;
+  // Record where each pinned section and its next sibling sit BEFORE pinning:
+  // the pin itself moves them (below), and these are the positions to restore.
+  var marks = [];
   for (var i = 0; i < _ALM_TRAVEL_FREEZE_IDS.length; i++) {
     var el = document.getElementById(_ALM_TRAVEL_FREEZE_IDS[i]);
     if (!el || !el.offsetHeight) continue;
-    el.style.height = el.offsetHeight + 'px';
-    el.style.overflow = 'hidden';
+    marks.push({
+      el: el, next: el.nextElementSibling,
+      top: el.getBoundingClientRect().top,
+      nextTop: el.nextElementSibling ? el.nextElementSibling.getBoundingClientRect().top : null
+    });
+  }
+  for (i = 0; i < marks.length; i++) {
+    marks[i].el.style.height = marks[i].el.offsetHeight + 'px';
+    marks[i].el.style.overflow = 'hidden';
+  }
+  // Pinning changes margin behaviour: a fixed height plus clipped overflow
+  // stops child margins collapsing out of the section (the hero card grid's
+  // 20px bottom margin, the calendar nav's 16px top margin), so the gaps those
+  // escaped margins formed vanish and the sky scene slides up into the hero
+  // cards for the duration of the throw. Give each pinned section explicit
+  // margins that put itself and its neighbour back exactly where they were;
+  // the extra passes absorb adjacent-sibling margin collapse, which can eat
+  // part of a first correction.
+  for (var pass = 0; pass < 3; pass++) {
+    var moved = false;
+    for (i = 0; i < marks.length; i++) {
+      var mk = marks[i];
+      var dTop = mk.top - mk.el.getBoundingClientRect().top;
+      if (Math.abs(dTop) > 0.5) {
+        mk.el.style.marginTop = ((parseFloat(getComputedStyle(mk.el).marginTop) || 0) + dTop) + 'px';
+        moved = true;
+      }
+      if (mk.next) {
+        var dNext = mk.nextTop - mk.next.getBoundingClientRect().top;
+        if (Math.abs(dNext) > 0.5) {
+          mk.el.style.marginBottom = ((parseFloat(getComputedStyle(mk.el).marginBottom) || 0) + dNext) + 'px';
+          moved = true;
+        }
+      }
+    }
+    if (!moved) break;
   }
 }
 
@@ -907,6 +942,8 @@ function _almTravelUnfreeze() {
     if (!el) continue;
     el.style.height = '';
     el.style.overflow = '';
+    el.style.marginTop = '';
+    el.style.marginBottom = '';
   }
 }
 
@@ -2342,9 +2379,29 @@ function _sunMapDrawTzBorders(c, W, H, dpr) {
 var _sunMapLabels = null;
 var _sunMapLabelsKey = '';
 
+// An offset's nominal meridian, wrapped into the map's -180..180 span: the
+// +13/+14 zones (Tonga, Samoa, the Line Islands) physically sit WEST of the
+// date line, so their strip position is the wrapped -165/-150, not an
+// off-canvas 195/210. Shared by the minor ticks and the selected-zone label.
+function _sunMapOffsetLon(offMin) {
+  var lon = offMin / 4;                    // 60 min of offset = 15 deg of lon
+  return ((lon + 180) % 360 + 360) % 360 - 180;
+}
+
+// "UTC" at zero, otherwise a signed hour with minutes only when fractional:
+// +5:30, -9:30, +14. Same voice as the integer strip labels.
+function _sunMapOffsetLabel(offMin) {
+  if (!offMin) return 'UTC';
+  var a = Math.abs(offMin);
+  var mm = a % 60;
+  return (offMin < 0 ? '-' : '+') + Math.floor(a / 60) + (mm ? ':' + ('0' + mm).slice(-2) : '');
+}
+
 function _sunMapLabelStrip(W, H, dpr) {
   var gutter = Math.round(_sunMapGutter(H, dpr));
-  var key = W + 'x' + gutter + ':' + dpr;
+  // The zones flag mirrors the base layer's key: the minor ticks come from the
+  // lazily fetched zone list, so the cached strip rebuilds once when it lands.
+  var key = W + 'x' + gutter + ':' + dpr + ':' + (_tzZones ? '1' : '0');
   if (_sunMapLabels && _sunMapLabelsKey === key) return _sunMapLabels;
   var cv = _sunMapLabels || document.createElement('canvas');
   cv.width = W; cv.height = gutter;
@@ -2362,6 +2419,27 @@ function _sunMapLabelStrip(W, H, dpr) {
     c.fillStyle = off === 0 ? 'rgba(245,158,11,0.80)' : 'rgba(210,180,120,0.45)';
     c.fillText(off === 0 ? 'UTC' : (off > 0 ? '+' + off : String(off)), x, gutter / 2);
   }
+  // Minor ticks — one per real zone offset that has no integer label of its
+  // own: the fractional zones (+5:30, +5:45, +9:30, -3:30 ...) and the +13/+14
+  // extensions at their wrapped date-line positions. Forty labels can't fit as
+  // text; a quiet tick marks that a zone lives between the printed hours, and
+  // picking one lights its exact offset in amber (see
+  // _sunMapDrawSelectedOffset).
+  if (_tzZones) {
+    c.strokeStyle = 'rgba(210,180,120,0.38)';
+    c.lineWidth = Math.max(1, dpr);
+    var seen = {};
+    for (var zi = 0; zi < _tzZones.length; zi++) {
+      var zo = _tzZones[zi][0];
+      if (seen[zo] || (zo % 60 === 0 && zo >= -720 && zo <= 720)) continue;
+      seen[zo] = 1;
+      var tx = Math.round(_sunMapLonToX(_sunMapOffsetLon(zo), W)) + 0.5;
+      c.beginPath();
+      c.moveTo(tx, 0);
+      c.lineTo(tx, gutter * 0.3);
+      c.stroke();
+    }
+  }
   _sunMapLabels = cv;
   _sunMapLabelsKey = key;
   return cv;
@@ -2370,6 +2448,44 @@ function _sunMapLabelStrip(W, H, dpr) {
 function _sunMapDrawTzLabels(c, W, H, dpr) {
   var strip = _sunMapLabelStrip(W, H, dpr);
   c.drawImage(strip, 0, H - strip.height);
+}
+
+// The picked location's exact offset, amber on the strip: an integer-hour pick
+// re-inks its label; a fractional pick gets the small amber "+5:30"-style
+// label at its tick, where no text normally fits. The number shown is the LIVE
+// offset of the resolved IANA zone (DST included) — the same figure the world
+// clock prints for the place — not the polygon's nominal stamp, which for the
+// stale-politics shapes (2010s Russia) can be an hour off today's truth.
+function _sunMapDrawSelectedOffset(c, W, H, dpr) {
+  if (!_sunMapHasLocation || !_sunMapNow) return;
+  var off;
+  try { off = _tzUtcOffsetMin(_almTzForLocation(_sunMapLat, _sunMapLon), _sunMapNow); }
+  catch (e) { return; }
+  if (off == null || isNaN(off)) return;
+  var gutter = Math.round(_sunMapGutter(H, dpr));
+  var top = H - gutter;
+  var x = _sunMapLonToX(_sunMapOffsetLon(off), W);
+  var label = _sunMapOffsetLabel(off);
+  c.save();
+  c.font = Math.round(8.5 * dpr) + 'px ui-monospace, SFMono-Regular, Menlo, monospace';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  var pad = 3 * dpr;
+  var tw = c.measureText(label).width;
+  // The tick stands at the exact meridian; the label pill clamps inward so it
+  // never leaves the canvas at the date-line edges.
+  var lx = Math.max(tw / 2 + pad, Math.min(W - tw / 2 - pad, x));
+  c.fillStyle = 'rgba(4,7,12,0.85)';
+  c.fillRect(lx - tw / 2 - pad, top, tw + pad * 2, gutter);
+  c.strokeStyle = 'rgba(245,158,11,0.95)';
+  c.lineWidth = Math.max(1, dpr);
+  c.beginPath();
+  c.moveTo(Math.round(x) + 0.5, top);
+  c.lineTo(Math.round(x) + 0.5, top + gutter * 0.3);
+  c.stroke();
+  c.fillStyle = 'rgba(245,158,11,0.95)';
+  c.fillText(label, lx, top + gutter / 2 + gutter * 0.08);
+  c.restore();
 }
 
 // The picked location's time zone, lit up as its TRUE shape — the polygon
@@ -2789,7 +2905,29 @@ var _TZ_ANCHORS = [
   [-31.55, 159.08, 'Australia/Lord_Howe'], [-22.28, 166.46, 'Pacific/Noumea'],
   [-29.06, 167.96, 'Pacific/Norfolk'], [-17.77, 177.97, 'Pacific/Fiji'],
   [-43.95, -176.56, 'Pacific/Chatham'], [-21.14, -175.20, 'Pacific/Tongatapu'],
-  [1.87, -157.43, 'Pacific/Kiritimati']
+  [1.87, -157.43, 'Pacific/Kiritimati'],
+  // Per-polygon map dots (Siberian belts, Greenland outposts, Indian Ocean
+  // territories, Antarctic stations). Each dot whose nearest pre-existing
+  // anchor lands on the wrong offset carries its own anchor here; the Gdansk
+  // guard exists because the Kaliningrad anchor would otherwise capture it
+  // (same shadow class as Suva/Apia above). Yangon's anchor also fixes a
+  // pre-existing miss: without it Myanmar's +6:30 resolved to Bangkok's +7.
+  [53.90, 27.56, 'Europe/Minsk'], [54.71, 20.51, 'Europe/Kaliningrad'],
+  [54.35, 18.65, 'Europe/Warsaw'],
+  [55.03, 82.92, 'Asia/Novosibirsk'], [52.29, 104.28, 'Asia/Irkutsk'],
+  [62.03, 129.73, 'Asia/Yakutsk'], [67.55, 133.39, 'Asia/Vladivostok'],
+  [43.12, 131.89, 'Asia/Vladivostok'], [53.02, 158.65, 'Asia/Kamchatka'],
+  [64.42, -173.23, 'Asia/Anadyr'],
+  [70.49, -21.97, 'America/Scoresbysund'], [76.77, -18.67, 'America/Danmarkshavn'],
+  [46.78, -56.17, 'America/Miquelon'],
+  [11.62, 92.73, 'Asia/Kolkata'], [16.87, 96.20, 'Asia/Yangon'],
+  [-7.31, 72.41, 'Indian/Chagos'], [-12.19, 96.83, 'Indian/Cocos'],
+  [-13.28, -176.17, 'Pacific/Wallis'], [28.21, -177.38, 'Pacific/Midway'],
+  [-77.85, 166.67, 'Antarctica/McMurdo'], [-72.01, 2.53, 'Antarctica/Troll'],
+  [-69.00, 39.58, 'Antarctica/Syowa'], [-67.60, 62.87, 'Antarctica/Mawson'],
+  [-68.60, 78.20, 'Antarctica/Davis'], [-78.46, 106.84, 'Antarctica/Vostok'],
+  [-66.28, 110.53, 'Antarctica/Casey'], [-66.66, 140.00, 'Antarctica/DumontDUrville'],
+  [-67.57, -68.13, 'Antarctica/Rothera'], [-64.77, -64.05, 'Antarctica/Palmer']
 ];
 
 // Longitude is compared in RAW degrees, deliberately not scaled by cos(lat).
@@ -3278,10 +3416,12 @@ function _drawSunMap() {
   ctx.lineWidth = 1.5 * dpr;
   ctx.stroke();
 
-  // Time zone reference — the picked zone's true shape, then the UTC offsets.
-  // Both sit above the night shading so neither is swallowed by it.
+  // Time zone reference — the picked zone's true shape, then the UTC offsets,
+  // then the picked zone's exact offset lit amber over the strip. All sit
+  // above the night shading so none is swallowed by it.
   _sunMapDrawZoneHighlight(ctx, W, H, dpr);
   _sunMapDrawTzLabels(ctx, W, H, dpr);
+  _sunMapDrawSelectedOffset(ctx, W, H, dpr);
 
   // Sub-solar point — where the sun is directly overhead right now
   var sunX = _sunMapLonToX(((sunLon + 180 + 360) % 360) - 180, W);
@@ -3529,7 +3669,45 @@ var _MAP_CITIES = [
   { name: 'Kingston, Norfolk Island', lat: -29.06, lon: 167.96 },
   { name: 'Waitangi, Chatham Islands, New Zealand', lat: -43.95, lon: -176.56 },
   { name: 'Nukuʻalofa, Tonga', lat: -21.14, lon: -175.20 },
-  { name: 'Kiritimati, Line Islands, Kiribati', lat: 1.87, lon: -157.43 }
+  { name: 'Kiritimati, Line Islands, Kiribati', lat: 1.87, lon: -157.43 },
+  // Per-POLYGON representatives: the offset coverage above still left whole
+  // zone polygons with no dot inside them (Siberia's belts, Belarus, the
+  // Indian Ocean territories, Greenland's outposts, the Antarctic stations).
+  // One settlement per tappable polygon; tests/test_tz_borders.cjs enumerates
+  // every polygon and holds the documented exemption list to uninhabited
+  // ocean/ice sectors and sub-tap-size slivers.
+  { name: 'Minsk, Belarus', lat: 53.90, lon: 27.56 },
+  { name: 'Kaliningrad, Russia', lat: 54.71, lon: 20.51 },
+  { name: 'Novosibirsk, Russia', lat: 55.03, lon: 82.92 },
+  { name: 'Irkutsk, Russia', lat: 52.29, lon: 104.28 },
+  { name: 'Yakutsk, Sakha Republic, Russia', lat: 62.03, lon: 129.73 },
+  { name: 'Verkhoyansk, Sakha Republic, Russia', lat: 67.55, lon: 133.39 },
+  { name: 'Vladivostok, Russia', lat: 43.12, lon: 131.89 },
+  { name: 'Petropavlovsk-Kamchatsky, Russia', lat: 53.02, lon: 158.65 },
+  { name: 'Provideniya, Chukotka, Russia', lat: 64.42, lon: -173.23 },
+  { name: 'Ittoqqortoormiit, Greenland', lat: 70.49, lon: -21.97 },
+  { name: 'Danmarkshavn, Greenland', lat: 76.77, lon: -18.67 },
+  { name: 'Saint-Pierre, Saint Pierre and Miquelon', lat: 46.78, lon: -56.17 },
+  { name: 'Port Blair, Andaman and Nicobar Islands, India', lat: 11.62, lon: 92.73 },
+  { name: 'Kavaratti, Lakshadweep, India', lat: 10.57, lon: 72.64 },
+  { name: 'Diego Garcia, Chagos Archipelago', lat: -7.31, lon: 72.41 },
+  { name: 'Thimphu, Bhutan', lat: 27.47, lon: 89.64 },
+  { name: 'West Island, Cocos (Keeling) Islands', lat: -12.19, lon: 96.83 },
+  { name: 'Mata-Utu, Wallis and Futuna', lat: -13.28, lon: -176.17 },
+  { name: 'Midway Atoll, United States Minor Outlying Islands', lat: 28.21, lon: -177.38 },
+  // Antarctic research stations — the year-round settlements of their sectors.
+  // Davis is plotted ~0.1° off the station so its dot sits inside the
+  // station's own +7 polygon rather than the +5 ocean zone overlapping it.
+  { name: 'McMurdo Station, Antarctica', lat: -77.85, lon: 166.67 },
+  { name: 'Troll Station, Antarctica', lat: -72.01, lon: 2.53 },
+  { name: 'Syowa Station, Antarctica', lat: -69.00, lon: 39.58 },
+  { name: 'Mawson Station, Antarctica', lat: -67.60, lon: 62.87 },
+  { name: 'Davis Station, Antarctica', lat: -68.60, lon: 78.20 },
+  { name: 'Vostok Station, Antarctica', lat: -78.46, lon: 106.84 },
+  { name: 'Casey Station, Antarctica', lat: -66.28, lon: 110.53 },
+  { name: 'Dumont d’Urville Station, Antarctica', lat: -66.66, lon: 140.00 },
+  { name: 'Rothera Station, Antarctica', lat: -67.57, lon: -68.13 },
+  { name: 'Palmer Station, Antarctica', lat: -64.77, lon: -64.05 }
 ];
 
 // Extra cities the location SEARCH can resolve (no map dots — the map plots
@@ -6099,16 +6277,21 @@ async function _renderRosettaStone(now) {
   var _cl = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   function _rf(e, f) { return (e.i18n && e.i18n[_cl] && e.i18n[_cl][f]) || e[f]; }
 
-  // Inscription pills (top row)
+  // Inscription pills (top row). The active pill doubles as the encyclopedia
+  // link: a second tap on it opens the article (same closed-set Q-ID open the
+  // old in-body title link used). The underline + tooltip affordance appears
+  // only when the curated Q-ID actually resolved to an installed article.
   var html = '<div class="rosetta-pills">';
   for (var si = 0; si < manifest.length; si++) {
-    var cls = si === _rosettaTextIdx ? 'pill active' : 'pill';
-    html += '<button class="' + cls + '" onclick="_selectRosettaText(' + si + ')">' + _rf(manifest[si], 'title') + '</button>';
+    var isSel = si === _rosettaTextIdx;
+    var linkable = isSel && window.AlmanacLinks && AlmanacLinks.linkFor('rosetta:' + manifest[si].id);
+    var cls = 'pill' + (isSel ? ' active' : '') + (linkable ? ' rosetta-pill-link' : '');
+    var hint = linkable
+      ? ' title="' + _almEsc(t('alm_open_article')) + '" aria-label="' + _almEsc(_rf(manifest[si], 'title') + '. ' + t('alm_open_article')) + '"'
+      : '';
+    html += '<button class="' + cls + '" aria-pressed="' + (isSel ? 'true' : 'false') + '"' + hint + ' onclick="_selectRosettaText(' + si + ')">' + _rf(manifest[si], 'title') + '</button>';
   }
   html += '</div>';
-
-  // Title (linked to the encyclopedia article when the curated Q-ID resolves)
-  html += '<div class="rosetta-title-link">' + _lrosetta(entry.id, _almEsc(_rf(entry, 'title'))) + '</div>';
 
   // Metadata
   html += '<div class="rosetta-meta">' + _rf(entry, 'date') + ' \u00b7 ' + _rf(entry, 'place') + ' \u00b7 ' + _rf(entry, 'medium') + '</div>';
@@ -6254,8 +6437,24 @@ function _renderGrLightbox() {
     '<button class="gr-lb-arrow gr-lb-next" onclick="event.stopPropagation();_grNav(1)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,2 12,8 6,14"/></svg></button>';
 }
 
+// Timestamp of the last selection change: a ghost/double tap landing right
+// after a pill becomes active must not immediately fire the article open.
+var _rosettaSelectedAt = 0;
+var _ROSETTA_NAV_GUARD_MS = 350;
+
 function _selectRosettaText(idx) {
+  if (idx === _rosettaTextIdx) {
+    // Second tap on the already-active pill opens the encyclopedia article,
+    // through the same closed-set resolution the in-body title link used.
+    // AlmanacLinks.open() is a no-op when the Q-ID did not resolve.
+    if (Date.now() - _rosettaSelectedAt < _ROSETTA_NAV_GUARD_MS) return;
+    var manifest = _rosettaManifest || [];
+    var entry = manifest[idx];
+    if (entry && window.AlmanacLinks) AlmanacLinks.open('rosetta:' + entry.id);
+    return;
+  }
   _rosettaTextIdx = idx;
+  _rosettaSelectedAt = Date.now();
   _renderRosettaStone(new Date());
 }
 
@@ -6277,6 +6476,7 @@ async function _scrollToGoldenRecord() {
   for (var i = 0; i < manifest.length; i++) {
     if (manifest[i].id === 'golden-record') { _rosettaTextIdx = i; break; }
   }
+  _rosettaSelectedAt = Date.now();  // programmatic selection: same nav guard as a pill tap
   await _renderRosettaStone(new Date());
   var el = document.getElementById('almanac-rosetta');
   if (el) el.scrollIntoView({behavior:'smooth',block:'start'});

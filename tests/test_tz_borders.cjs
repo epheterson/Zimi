@@ -203,7 +203,7 @@ const NO_CITY_OFFSETS = new Set([-720]);
 const cityListSrc = extract(/var _MAP_CITIES = \[[\s\S]*?\n\];/, '_MAP_CITIES');
 vm.runInContext(cityListSrc, zoneSandbox);
 const mapCities = zoneSandbox._MAP_CITIES;
-check(Array.isArray(mapCities) && mapCities.length >= 140,
+check(Array.isArray(mapCities) && mapCities.length >= 170,
   `_MAP_CITIES extracted (${mapCities.length} cities)`);
 const covered = new Map();
 for (const c of mapCities) {
@@ -220,6 +220,111 @@ check(uncovered.length === 0,
   check(covered.has(Number(o)),
     `fractional/remote offset ${fmtOff(Number(o))} covered (${(covered.get(Number(o)) || '').split(',')[0]})`);
 });
+
+// 9b. Per-POLYGON city coverage — one offset can span many disjoint polygons,
+// and a tappable polygon with no dot inside it is unreachable by city click
+// even when its offset is "covered" elsewhere. Resolve every city through the
+// SHIPPED first-containing-zone scan, then require every polygon to hold a dot
+// unless an exemption rule says why not. The rules are geography, not a magic
+// index list, so a regenerated asset re-justifies itself:
+//   - UTC-12: no permanent habitation anywhere on Earth;
+//   - Antarctic/Southern Ocean sectors (entirely south of 45S) with no
+//     year-round station dot — the staffed sectors carry station dots
+//     (McMurdo, Troll, Syowa, Mawson, Davis, Vostok, Casey, Dumont d'Urville,
+//     Rothera, Palmer);
+//   - Arctic Ocean wedges (entirely north of 66.5N) — open sea ice;
+//   - slivers under 2 deg^2 (sub-tap-size at map scale) share their offset's
+//     existing dot;
+//   - a short named list of open-ocean strips that fit none of the above.
+const OCEAN_EXEMPT = new Set([
+  '-540:-142:-75',  // SE Pacific between the Gambier and Chilean waters
+  '540:128:-67',    // Southern Ocean strip south of Australia
+  '-660:-172:-2',   // Palmyra/Jarvis waters (uninhabited US minor islands)
+  '-600:170:48',    // NW Pacific strip off Kamchatka
+  '300:49:-47',     // Crozet Islands (research staff only, no settlement)
+]);
+const zonesOfCities = new Map();
+for (const c of mapCities) {
+  const idx = vm.runInContext(`_tzZoneIdx = -2; _tzZoneFor(${c.lat}, ${c.lon})`, zoneSandbox);
+  if (idx >= 0 && !zonesOfCities.has(idx)) zonesOfCities.set(idx, c.name);
+}
+function ringAreaDeg2(ring) {
+  let a = 0;
+  for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+    a += ring[j] * ring[i + 1] - ring[i] * ring[j + 1];
+  }
+  return Math.abs(a / 2);
+}
+const unexempted = [];
+let polysCovered = 0, polysExempt = 0;
+for (let zi = 0; zi < doc.zones.length; zi++) {
+  if (zonesOfCities.has(zi)) { polysCovered++; continue; }
+  const [off, rings] = doc.zones[zi];
+  let area = 0, minLon = 999, minLat = 999, maxLat = -999;
+  for (const ring of rings) {
+    area += ringAreaDeg2(ring);
+    for (let j = 0; j < ring.length; j += 2) {
+      minLon = Math.min(minLon, ring[j]);
+      minLat = Math.min(minLat, ring[j + 1]);
+      maxLat = Math.max(maxLat, ring[j + 1]);
+    }
+  }
+  const exempt = off === -720 || maxLat <= -45 || minLat >= 66.5 || area < 2 ||
+    OCEAN_EXEMPT.has(off + ':' + Math.round(minLon) + ':' + Math.round(minLat));
+  if (exempt) polysExempt++;
+  else unexempted.push(`zone ${zi} ${fmtOff(off)} area ${area.toFixed(1)} lat ${minLat.toFixed(0)}..${maxLat.toFixed(0)}`);
+}
+check(unexempted.length === 0,
+  `every tappable zone polygon holds a city dot (${polysCovered} covered, ${polysExempt} exempt` +
+  (unexempted.length ? '; missing: ' + unexempted.join(' | ') : '') + ')');
+check(polysCovered >= 74, `polygon coverage count ${polysCovered} >= 74`);
+['Minsk', 'Yakutsk', 'Vladivostok', 'Thimphu', 'Port Blair', 'McMurdo', 'Danmarkshavn'].forEach((name) => {
+  check(mapCities.some((c) => c.name.indexOf(name) === 0), `representative dot present: ${name}`);
+});
+
+// 11. The UTC label strip represents all 40 real offsets: integer hours as
+// text labels, fractional and beyond-12 offsets as minor ticks through
+// _sunMapOffsetLon (which wraps +13/+14 to their west-of-dateline meridians),
+// and the selected zone's exact live offset re-inked in amber
+// (_sunMapDrawSelectedOffset). Drive the shipped helpers over every offset the
+// asset carries.
+const stripSrc =
+  extract(/function _sunMapOffsetLon\(offMin\) \{[\s\S]*?\n\}/, '_sunMapOffsetLon') + '\n' +
+  extract(/function _sunMapOffsetLabel\(offMin\) \{[\s\S]*?\n\}/, '_sunMapOffsetLabel');
+vm.runInContext(stripSrc, sandbox);
+const allOffsets = [...offsets].sort((a, b) => a - b);
+let stripBad = 0;
+for (const off of allOffsets) {
+  const lon = vm.runInContext(`_sunMapOffsetLon(${off})`, sandbox);
+  const x = vm.runInContext(`_sunMapLonToX(_sunMapOffsetLon(${off}), ${W})`, sandbox);
+  if (!(lon >= -180 && lon <= 180) || !(x >= 0 && x <= W)) stripBad++;
+  // In-range fractional offsets must sit strictly between their integer
+  // neighbours' meridians, where their tick renders.
+  if (off % 60 !== 0 && off > -720 && off < 720) {
+    const lo = vm.runInContext(`_sunMapLonToX(_sunMapOffsetLon(${Math.floor(off / 60) * 60}), ${W})`, sandbox);
+    const hi = vm.runInContext(`_sunMapLonToX(_sunMapOffsetLon(${Math.ceil(off / 60) * 60}), ${W})`, sandbox);
+    // hi < lo only at the +12 seam, where the upper neighbour wraps to the
+    // map's left edge (+11:30's ceiling is +12 at x=0) — order is meaningless
+    // across the wrap, so only in-span pairs are asserted.
+    if (lo < hi && !(x > lo && x < hi)) stripBad++;
+  }
+}
+check(stripBad === 0, `all ${allOffsets.length} zone offsets project onto the strip at ordered positions`);
+check(vm.runInContext('_sunMapOffsetLon(780)', sandbox) === -165 &&
+      vm.runInContext('_sunMapOffsetLon(840)', sandbox) === -150,
+  '+13/+14 wrap to their west-of-dateline meridians (-165, -150)');
+const labelCases = [[0, 'UTC'], [330, '+5:30'], [345, '+5:45'], [525, '+8:45'],
+  [-570, '-9:30'], [-210, '-3:30'], [765, '+12:45'], [840, '+14'], [-660, '-11']];
+let labelBad = 0;
+for (const [off, want] of labelCases) {
+  const got = vm.runInContext(`_sunMapOffsetLabel(${off})`, sandbox);
+  if (got !== want) { labelBad++; console.error(`    label(${off}) = ${got}, want ${want}`); }
+}
+check(labelBad === 0, 'offset labels format as +H:MM / -H:MM / UTC');
+check(alm.includes('_sunMapDrawSelectedOffset(ctx, W, H, dpr)'),
+  'sun map draws the selected zone\'s exact offset over the strip');
+check(/if \(_tzZones\) \{[\s\S]{0,600}gutter \* 0\.3/.test(alm),
+  'label strip draws minor ticks for the fractional/extended offsets');
 
 // 10. Free-click contract — clicking open map (no city within snap range) must
 // select that exact spot. The handler inverts the projection with
