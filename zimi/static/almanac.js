@@ -781,6 +781,69 @@ function _almTmSetCells(idBase, d) {
   return p;
 }
 
+// -- Offset from the present ------------------------------------------------
+// The instrument's one live quantity while travelling: how far the readout is
+// from real now, in human terms ("+3 days", "-41 years 2 months", "+7 hours").
+// Calendar-aware above a day so a year reads as a year rather than 365.2422 of
+// them; clock arithmetic below one. At most two units, largest first, and the
+// smaller unit is dropped when it is zero — that keeps the lamp short enough to
+// share the legend line with the plate's stamped label at 320px.
+var _ALM_MS_MIN = 60000;
+var _ALM_MS_HOUR = 3600000;
+var _ALM_TM_DELTA_UNITS = { y: 'alm_tm_dyear', mo: 'alm_tm_dmonth', d: 'alm_tm_dday', h: 'alm_tm_dhour', mi: 'alm_tm_dmin' };
+
+// Whole calendar years/months/days between two local dates, `a` no later than
+// `b`. Borrowing walks back through the real length of the month it lands in,
+// so 31 Jan → 1 Mar is "1 month 1 day", not "1 month 4 days".
+function _almTmYmdBetween(a, b) {
+  var y = b.getFullYear() - a.getFullYear();
+  var mo = b.getMonth() - a.getMonth();
+  var d = b.getDate() - a.getDate();
+  if (d < 0) {
+    mo--;
+    d += new Date(b.getFullYear(), b.getMonth(), 0).getDate();  // day 0 = last day of previous month
+  }
+  if (mo < 0) { y--; mo += 12; }
+  return { y: y, mo: mo, d: d };
+}
+
+// The travelling face repaints this every animation frame, and tPlural builds
+// a fresh Intl.PluralRules per call. The rendered string only changes when a
+// whole unit does, so memoize on the unit tuple: at 60fps almost every frame is
+// a cache hit, and a miss costs what one repaint used to.
+var _almTmDeltaMemo = { key: null, text: '', lang: null };
+
+function _almTmDeltaText(d, now) {
+  var ms = d.getTime() - now.getTime();
+  var abs = Math.abs(ms);
+  if (abs < _ALM_MS_MIN) return '';                 // sitting on the present
+  var sign = ms < 0 ? '-' : '+';    // ASCII, so it keeps the monospace advance
+  var lo = ms < 0 ? d : now, hi = ms < 0 ? now : d;
+  var c = _almTmYmdBetween(lo, hi);
+  var u1, n1, u2 = null, n2 = 0;
+  if (c.y > 0)            { u1 = 'y';  n1 = c.y;  u2 = 'mo'; n2 = c.mo; }
+  else if (c.mo > 0)      { u1 = 'mo'; n1 = c.mo; u2 = 'd';  n2 = c.d; }
+  else if (c.d > 0)       { u1 = 'd';  n1 = c.d; }
+  else if (abs >= _ALM_MS_HOUR) { u1 = 'h';  n1 = Math.floor(abs / _ALM_MS_HOUR); }
+  else                    { u1 = 'mi'; n1 = Math.round(abs / _ALM_MS_MIN); }
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  var key = sign + u1 + n1 + (u2 && n2 > 0 ? '|' + u2 + n2 : '');
+  if (_almTmDeltaMemo.key === key && _almTmDeltaMemo.lang === lang) return _almTmDeltaMemo.text;
+  var out = sign + tPlural(_ALM_TM_DELTA_UNITS[u1], n1);
+  if (u2 && n2 > 0) out += ' ' + tPlural(_ALM_TM_DELTA_UNITS[u2], n2);
+  _almTmDeltaMemo = { key: key, text: out, lang: lang };
+  return out;
+}
+
+// Paint one offset lamp. Empty text collapses the element (CSS :empty), so a
+// readout parked on the present shows a clean plate.
+function _almTmSetDelta(id, d) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  var txt = _almTmDeltaText(d, new Date());
+  if (el.textContent !== txt) el.textContent = txt;   // no write, no invalidation
+}
+
 // Approximate rendered width of a segment value in ch: CJK and other wide
 // glyphs occupy two monospace cells, everything else one.
 function _almTmChLen(s) {
@@ -1099,11 +1162,15 @@ function _almTmSync() {
     root.style.setProperty('--tm-year-ch', Math.max(4, pf.year.length, pn.year.length));
     root.classList.toggle('alm-tm-away', traveling);
   }
+  _almTmSetDelta('alm-tm-delta', f);
   var ret = document.getElementById('alm-tm-return');
   if (ret) ret.hidden = !traveling;
 }
 
-function _almTmSoloUpdate(d) { _almTmSetCells('alm-tm-solo', d); }
+function _almTmSoloUpdate(d) {
+  _almTmSetCells('alm-tm-solo', d);
+  _almTmSetDelta('alm-tm-solo-delta', d);
+}
 
 // -- Landing ("zap to it"): brief shake + a short haptic pulse on arrival. --
 function _almTmLand() {
@@ -1550,38 +1617,47 @@ function _renderAlmanacContent() {
   // engine above.
   html += '<div id="alm-tm" class="alm-tm" data-mode="rest">';
   html +=   '<div class="alm-tm-panel">';
-  // Rest face — three LED time circuits (the film's stack, in Zimi's
-  // brass/amber): each a strip of segment cells over a small label plate.
-  // DESTINATION is the editable one — its cells carry hidden in-place inputs.
+  // Rest face — one lit glass window over two fine engravings, not three equal
+  // rows. DESTINATION is the window and the control: its fields carry hidden
+  // in-place inputs. The offset-from-now lamp rides the legend line's right
+  // half, which was dead space, so all three readings plus the delta fit in
+  // roughly two thirds of the height the stacked rows needed.
   html +=     '<div class="alm-tm-rows">';
-  html +=       '<div class="alm-tm-circuit alm-tm-displayed">';
-  html +=         '<div class="alm-tm-row">' + _almTmCellsHtml('alm-tm-disp') + '</div>';
-  html +=         '<div class="alm-tm-label">' + t('alm_tm_displayed') + '</div>';
+  html +=       '<div class="alm-tm-caps">';
+  html +=         '<span class="alm-tm-cap">' + t('alm_tm_destination') + '</span>';
+  html +=         '<span class="alm-tm-delta" id="alm-tm-delta" title="' + _almEsc(t('alm_tm_offset')) + '"></span>';
   html +=       '</div>';
-  html +=       '<div class="alm-tm-circuit alm-tm-dest">';
-  html +=         '<div class="alm-tm-row" role="button" tabindex="0" onclick="_almTmEditStart(event)" onkeydown="_almTmDestKey(event)" title="' + _almEsc(t('alm_tm_set_dest')) + '">' + _almTmCellsHtml('alm-tm-dest', true) + '</div>';
-  html +=         '<div class="alm-tm-label">' + t('alm_tm_destination') + '</div>';
+  html +=       '<div class="alm-tm-glass alm-tm-dest" role="button" tabindex="0" onclick="_almTmEditStart(event)" onkeydown="_almTmDestKey(event)" title="' + _almEsc(t('alm_tm_set_dest')) + '">' + _almTmCellsHtml('alm-tm-dest', true) + '</div>';
+  html +=       '<div class="alm-tm-rail" aria-hidden="true"></div>';
+  html +=       '<div class="alm-tm-sec">';
+  html +=         '<div class="alm-tm-secrow alm-tm-displayed">';
+  html +=           '<span class="alm-tm-seccap">' + t('alm_tm_displayed') + '</span>' + _almTmCellsHtml('alm-tm-disp');
+  html +=         '</div>';
+  html +=         '<div class="alm-tm-secrow alm-tm-now">';
+  html +=           '<span class="alm-tm-seccap">' + t('alm_tm_actual') + '</span>' + _almTmCellsHtml('alm-tm-now');
+  html +=         '</div>';
   html +=       '</div>';
-  html +=       '<div class="alm-tm-circuit alm-tm-now">';
-  html +=         '<div class="alm-tm-row">' + _almTmCellsHtml('alm-tm-now') + '</div>';
-  html +=         '<div class="alm-tm-label">' + t('alm_tm_actual') + '</div>';
-  html +=       '</div>';
-  // Keypad strip — small instrument keys under the circuits. The strip keeps
-  // its height in every state so the dock never resizes: NOW shows while
-  // parked away from the present; GO/X replace it during a destination edit
-  // (tap targets for mobile, where numeric keyboards have no Enter key).
+  // Keypad strip — small brass keys under the readings. The strip keeps its
+  // height in every state so the dock never resizes: NOW shows while parked
+  // away from the present; GO/X replace it during a destination edit (tap
+  // targets for mobile, where numeric keyboards have no Enter key).
   html +=       '<div class="alm-tm-keys">';
   html +=         '<button type="button" class="alm-tm-key alm-tm-key-cancel" onclick="_almTmEditCancel()" title="' + _almEsc(t('alm_tm_cancel')) + '" aria-label="' + _almEsc(t('alm_tm_cancel')) + '">&#10005;</button>';
   html +=         '<button type="button" class="alm-tm-key alm-tm-key-go" onclick="_almTmEditCommit()">' + t('alm_tw_go') + '</button>';
   html +=         '<button type="button" class="alm-tm-key alm-tm-key-now" id="alm-tm-return" onclick="_almTmReturnNow()" title="' + _almEsc(t('alm_back_to_now')) + '" hidden>&#8634; ' + t('alm_now') + '</button>';
   html +=       '</div>';
   html +=     '</div>';
-  // Motion face — one large readout in the same LED cells, overlaid on the
-  // (hidden but still laid out) circuits so the dock's size never changes
-  // when the lever is grabbed; tap to return to rest.
+  // Motion face — the same legend line and the same glass window, one size up,
+  // overlaid on the (hidden but still laid out) rest face so the dock's size
+  // never changes when the lever is grabbed; tap to return to rest. The offset
+  // lamp keeps its exact position, so it reads as one instrument counting off
+  // the distance travelled rather than a second screen.
   html +=     '<button type="button" class="alm-tm-solo" onclick="_almTmToRest()" aria-label="' + _almEsc(t('alm_tm_traveling')) + '">';
-  html +=       '<span class="alm-tm-solo-lbl">' + t('alm_tm_traveling') + '</span>';
-  html +=       _almTmCellsHtml('alm-tm-solo');
+  html +=       '<span class="alm-tm-caps">';
+  html +=         '<span class="alm-tm-cap">' + t('alm_tm_traveling') + '</span>';
+  html +=         '<span class="alm-tm-delta" id="alm-tm-solo-delta"></span>';
+  html +=       '</span>';
+  html +=       '<span class="alm-tm-glass">' + _almTmCellsHtml('alm-tm-solo') + '</span>';
   html +=     '</button>';
   html +=   '</div>';
   // Side-mounted lever — a faceted crystal disc on a brass shaft (the 1960 Time
@@ -3455,8 +3531,10 @@ function _startTzClock() {
       _tzGridMinute = now.getMinutes();
       _initTzClock(now);
       // Keep the time machine's ACTUAL row ticking (HH:MM resolution, so a
-      // once-per-minute refresh is enough) while parked in the past/future.
+      // once-per-minute refresh is enough) while parked in the past/future —
+      // and with it the offset lamp, which is measured against that row.
       _almTmSetCells('alm-tm-now', now);
+      _almTmSetDelta('alm-tm-delta', _almFocusInstant());
     }
     _tzClockRAF = requestAnimationFrame(tick);
   }
