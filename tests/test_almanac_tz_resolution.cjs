@@ -181,6 +181,15 @@ const CITIES = [
   ['Tashkent', 41.30, 69.24, 'Asia/Tashkent'],
   ['Lahore', 31.55, 74.34, 'Asia/Karachi'],
   ['Delhi', 28.61, 77.21, 'Asia/Kolkata'],
+  // Promoted out of KNOWN_RESIDUALS once Kolkata got its own anchor: ~2 deg of
+  // longitude from Dhaka across an international border, and it used to fall to
+  // it, a half hour off inside India's own zone.
+  ['Kolkata', 22.57, 88.36, 'Asia/Kolkata'],
+  // The Caucasus (+4, no DST). With no anchor of its own, Tbilisi fell to
+  // Baghdad (+3) and Baku to Tehran (+3:30) — both are clickable dots on the
+  // sun map, so both printed a wrong clock.
+  ['Tbilisi', 41.69, 44.80, 'Asia/Tbilisi'],
+  ['Baku', 40.41, 49.87, 'Asia/Baku'],
   ['Chennai', 13.08, 80.27, 'Asia/Kolkata'],
   ['Bangalore', 12.97, 77.59, 'Asia/Kolkata'],
   ['Colombo', 6.93, 79.86, 'Asia/Colombo'],
@@ -273,9 +282,6 @@ const KNOWN_RESIDUALS = {
   // Jordan (UTC+3, no DST) has no anchor; Cairo is the nearest and follows
   // Egypt's DST.
   Amman: [31.96, 35.94, 'Asia/Amman'],
-  // Kolkata sits ~2deg of longitude from Dhaka across an international border,
-  // inside India's own half-hour offset.
-  Kolkata: [22.57, 88.36, 'Asia/Kolkata'],
 };
 
 let failed = 0;

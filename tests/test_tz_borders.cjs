@@ -122,17 +122,20 @@ function extract(re, label) {
 }
 const zoneSrc =
   extract(/function _tzZoneContains\(rings, lon, lat\) \{[\s\S]*?\n\}/, '_tzZoneContains') + '\n' +
-  extract(/function _tzZoneFor\(lat, lon\) \{[\s\S]*?\n\}/, '_tzZoneFor');
+  extract(/function _tzGroupByOffset\(zones\) \{[\s\S]*?\n\}/, '_tzGroupByOffset') + '\n' +
+  extract(/function _tzZoneOffsetFor\(lat, lon\) \{[\s\S]*?\n\}/, '_tzZoneOffsetFor');
 const zoneSandbox = {
   DEG_TO_RAD: Math.PI / 180,
-  _tzZones: doc.zones, _tzZoneIdx: -2, _tzZoneKey: '',
+  _tzZones: doc.zones, _tzZoneOff: null, _tzZoneKey: '',
   _tzZonePath: null, _tzZonePathKey: ''
 };
 vm.createContext(zoneSandbox);
-vm.runInContext(zoneSrc, zoneSandbox);
+vm.runInContext(zoneSrc + '\n_tzZonesByOffset = _tzGroupByOffset(_tzZones);', zoneSandbox);
+// The resolver returns the OFFSET of the entry containing the pick (a zone is
+// its offset, not one polygon part — see tests/test_tz_zone_grouping.cjs), so
+// '' the cache key rather than a sentinel index to force a fresh resolve.
 function zoneOffsetAt(lat, lon) {
-  const idx = vm.runInContext(`_tzZoneIdx = -2; _tzZoneFor(${lat}, ${lon})`, zoneSandbox);
-  return idx < 0 ? null : doc.zones[idx][0];
+  return vm.runInContext(`_tzZoneKey = ''; _tzZoneOffsetFor(${lat}, ${lon})`, zoneSandbox);
 }
 check(zoneOffsetAt(34.05, -118.24) === -480,
   'Los Angeles (34.05,-118.24) -> UTC-8 zone (standard shape, not the DST -7 band)');
@@ -164,11 +167,12 @@ const pathSrc =
   extract(/function _sunMapLonToX[^\n]*/, '_sunMapLonToX') + '\n' +
   extract(/function _sunMapLatToY[^\n]*/, '_sunMapLatToY') + '\n' +
   extract(/function _tzBordersPathFor\(W, H\) \{[\s\S]*?\n\}/, '_tzBordersPathFor') + '\n' +
-  extract(/function _tzZonePathFor\(idx, W, H\) \{[\s\S]*?\n\}/, '_tzZonePathFor');
+  extract(/function _tzZonePathFor\(off, W, H\) \{[\s\S]*?\n\}/, '_tzZonePathFor');
 const sandbox = {
   Path2D: Path2DStub,
   _tzBorders: doc.lines, _tzBordersPath: null, _tzBordersPathKey: '',
-  _tzZones: doc.zones, _tzZonePath: null, _tzZonePathKey: ''
+  _tzZones: doc.zones, _tzZonePath: null, _tzZonePathKey: '',
+  _tzZonesByOffset: zoneSandbox._tzZonesByOffset
 };
 vm.createContext(sandbox);
 vm.runInContext(pathSrc + '\n_tzBordersPathFor(800, 400);', sandbox);
@@ -181,10 +185,12 @@ check(recorded.points.length === pts,
   `border path builder projects every point (${recorded.points.length})`);
 check(offCanvas === 0, 'all projected border points land inside the canvas');
 
-// Same stub through the highlight builder for every zone.
+// Same stub through the highlight builder, now once per OFFSET: each build
+// emits every ring of every entry at that offset, and the 40 offset groups
+// partition all 117 entries, so the totals must still come to zRings/zPts.
 recorded.moves = 0; recorded.closes = 0; recorded.points = [];
 vm.runInContext(
-  'for (var zi = 0; zi < _tzZones.length; zi++) { _tzZonePath = null; _tzZonePathKey = ""; _tzZonePathFor(zi, 800, 400); }',
+  'Object.keys(_tzZonesByOffset).forEach(function (o) { _tzZonePath = null; _tzZonePathKey = ""; _tzZonePathFor(Number(o), 800, 400); });',
   sandbox);
 offCanvas = recorded.points.filter(([x, y]) =>
   !(x >= 0 && x <= W && y >= 0 && y <= H)).length;
@@ -243,10 +249,18 @@ const OCEAN_EXEMPT = new Set([
   '-600:170:48',    // NW Pacific strip off Kamchatka
   '300:49:-47',     // Crozet Islands (research staff only, no settlement)
 ]);
+// The resolver now answers in offsets, so per-POLYGON coverage is measured by
+// driving the shipped containment predicate over each entry directly — this is
+// a property of the DATA (no polygon left dotless), not of the resolver.
+const zoneSandboxContains = zoneSandbox._tzZoneContains;
 const zonesOfCities = new Map();
 for (const c of mapCities) {
-  const idx = vm.runInContext(`_tzZoneIdx = -2; _tzZoneFor(${c.lat}, ${c.lon})`, zoneSandbox);
-  if (idx >= 0 && !zonesOfCities.has(idx)) zonesOfCities.set(idx, c.name);
+  for (let zi = 0; zi < doc.zones.length; zi++) {
+    if (zoneSandboxContains(doc.zones[zi][1], c.lon, c.lat)) {
+      if (!zonesOfCities.has(zi)) zonesOfCities.set(zi, c.name);
+      break;   // first containing entry, matching the shipped scan order
+    }
+  }
 }
 function ringAreaDeg2(ring) {
   let a = 0;
@@ -323,7 +337,7 @@ for (const [off, want] of labelCases) {
 check(labelBad === 0, 'offset labels format as +H:MM / -H:MM / UTC');
 check(alm.includes('_sunMapDrawSelectedOffset(ctx, W, H, dpr)'),
   'sun map draws the selected zone\'s exact offset over the strip');
-check(/if \(_tzZones\) \{[\s\S]{0,600}gutter \* 0\.3/.test(alm),
+check(/if \(_tzZonesByOffset\) \{[\s\S]{0,600}gutter \* 0\.3/.test(alm),
   'label strip draws minor ticks for the fractional/extended offsets');
 
 // 10. Free-click contract — clicking open map (no city within snap range) must

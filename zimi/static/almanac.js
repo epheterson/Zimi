@@ -2583,7 +2583,9 @@ function _tzBordersEnsure() {
       if (!data || !data.lines || !data.lines.length) return;
       _tzBorders = data.lines;
       _tzZones = (data.zones && data.zones.length) ? data.zones : null;
-      _tzZoneIdx = -2;       // re-resolve the highlight for the current pick
+      _tzZonesByOffset = _tzZones ? _tzGroupByOffset(_tzZones) : null;
+      _tzZoneKey = '';       // re-resolve the highlight for the current pick
+      _tzZonePathKey = '';
       _sunMapBaseKey = '';   // stale key → base layer rebuilds with borders
       _drawSunMap();
     })
@@ -2691,14 +2693,14 @@ function _sunMapLabelStrip(W, H, dpr) {
   // text; a quiet tick marks that a zone lives between the printed hours, and
   // picking one lights its exact offset in amber (see
   // _sunMapDrawSelectedOffset).
-  if (_tzZones) {
+  if (_tzZonesByOffset) {
     c.strokeStyle = 'rgba(210,180,120,0.38)';
     c.lineWidth = Math.max(1, dpr);
-    var seen = {};
-    for (var zi = 0; zi < _tzZones.length; zi++) {
-      var zo = _tzZones[zi][0];
-      if (seen[zo] || (zo % 60 === 0 && zo >= -720 && zo <= 720)) continue;
-      seen[zo] = 1;
+    // The grouping map's keys ARE the distinct offsets, so no dedupe pass.
+    var zoneOffsets = Object.keys(_tzZonesByOffset);
+    for (var zi = 0; zi < zoneOffsets.length; zi++) {
+      var zo = Number(zoneOffsets[zi]);
+      if (zo % 60 === 0 && zo >= -720 && zo <= 720) continue;
       var tx = Math.round(_sunMapLonToX(_sunMapOffsetLon(zo), W)) + 0.5;
       c.beginPath();
       c.moveTo(tx, 0);
@@ -2762,11 +2764,34 @@ function _sunMapDrawSelectedOffset(c, W, H, dpr) {
 // DST-proof. Natural Earth's zones cover the whole globe — nominal zones at
 // sea, both poles — so every pick resolves; the nearest-vertex pass below
 // only mops up hairline slivers between independently simplified neighbours.
-var _tzZones = null;     // [[offsetMinutes, [flat unclosed ring, ...]], ...]
-var _tzZoneIdx = -2;     // index into _tzZones; -1 = no zone, -2 = unresolved
-var _tzZoneKey = '';     // "lat,lon" the cached index was resolved for
-var _tzZonePath = null;  // cached Path2D of the winning zone's rings
+//
+// A zone is identified by its UTC OFFSET, not by one polygon. The asset stores
+// 117 entries over only 40 distinct offsets, because the build dissolved by
+// offset and then emitted one entry per polygon part: India's +5:30 is three
+// entries (mainland, Lakshadweep, the Andamans), +6 is seven. Lighting the one
+// entry that contains the pick lit one landmass and left the rest of the same
+// zone dark — Kavaratti and Port Blair sat outside the shape their own country
+// was lit in. The highlight therefore covers EVERY entry sharing the resolved
+// offset, drawn as one path.
+var _tzZones = null;         // [[offsetMinutes, [flat unclosed ring, ...]], ...]
+var _tzZonesByOffset = null; // offsetMinutes -> [entry, ...]; built once on load
+var _tzZoneOff = null;       // offset of the pick's zone; null = no zone
+var _tzZoneKey = '';         // "lat,lon" _tzZoneOff was resolved for; '' = unresolved
+var _tzZonePath = null;      // cached Path2D of every entry at one offset
 var _tzZonePathKey = '';
+
+// Offset -> its entries, computed once when the asset lands. The highlight
+// needs the whole group on every location change, and rescanning all 117
+// entries for each one is work the data shape already answers.
+function _tzGroupByOffset(zones) {
+  var by = {};
+  for (var i = 0; i < zones.length; i++) {
+    var off = zones[i][0];
+    if (!by[off]) by[off] = [];
+    by[off].push(zones[i]);
+  }
+  return by;
+}
 
 // Even-odd ray cast over one zone's rings (flat [lon,lat,...], unclosed — the
 // j-wraps-to-last-point seam supplies the closing edge). Holes and multi-part
@@ -2784,19 +2809,21 @@ function _tzZoneContains(rings, lon, lat) {
   return inside;
 }
 
-// Which zone contains the pick. Runs at location-change time ONLY (the result
-// is cached on the lat,lon key), never per frame — a full scan is ~5k vertices
-// and the winner is stored until the pick moves. When no polygon contains the
-// point (a sliver between simplified neighbours), the nearest ring vertex
-// within 2 degrees decides; vertex pitch is ~0.25 deg, plenty for a sliver.
-function _tzZoneFor(lat, lon) {
+// Which OFFSET the pick sits in — the offset stamped on the entry containing
+// it. Runs at location-change time ONLY (the result is cached on the lat,lon
+// key), never per frame: a full scan is ~5k vertices and the answer is stored
+// until the pick moves. When no polygon contains the point (a sliver between
+// independently simplified neighbours), the nearest ring vertex within 2
+// degrees decides; vertex pitch is ~0.25 deg, plenty for a sliver. Returns
+// null only when the point is farther than that from every zone on Earth.
+function _tzZoneOffsetFor(lat, lon) {
   var key = lat.toFixed(4) + ',' + lon.toFixed(4);
-  if (_tzZoneIdx !== -2 && _tzZoneKey === key) return _tzZoneIdx;
-  var idx = -1, i, r, ring, j;
+  if (_tzZoneKey === key) return _tzZoneOff;
+  var off = null, i, r, ring, j;
   for (i = 0; i < _tzZones.length; i++) {
-    if (_tzZoneContains(_tzZones[i][1], lon, lat)) { idx = i; break; }
+    if (_tzZoneContains(_tzZones[i][1], lon, lat)) { off = _tzZones[i][0]; break; }
   }
-  if (idx < 0) {
+  if (off === null) {
     var best = 4;   // 2 deg squared — beyond that it is a data gap, not a sliver
     var cosLat = Math.cos(lat * DEG_TO_RAD);
     for (i = 0; i < _tzZones.length; i++) {
@@ -2806,32 +2833,36 @@ function _tzZoneFor(lat, lon) {
         for (j = 0; j < ring.length; j += 2) {
           var dlon = (ring[j] - lon) * cosLat, dlat = ring[j + 1] - lat;
           var dd = dlon * dlon + dlat * dlat;
-          if (dd < best) { best = dd; idx = i; }
+          if (dd < best) { best = dd; off = _tzZones[i][0]; }
         }
       }
     }
   }
-  _tzZoneIdx = idx;
+  _tzZoneOff = off;
   _tzZoneKey = key;
-  return idx;
+  return off;
 }
 
-// One Path2D per zone per map size, through the shared projection helpers so
-// the highlight stays registered with the borders and terminator. Rings never
-// span the antimeridian (the build source keeps every ring inside -180..180),
-// so closePath draws real zone edges, never a wrap streak.
-function _tzZonePathFor(idx, W, H) {
-  var key = idx + ':' + W + 'x' + H;
+// One Path2D per OFFSET per map size — every entry at that offset, all its
+// rings, in a single path — through the shared projection helpers so the
+// highlight stays registered with the borders and terminator. Rings never span
+// the antimeridian (the build source keeps every ring inside -180..180), so
+// closePath draws real zone edges, never a wrap streak.
+function _tzZonePathFor(off, W, H) {
+  var key = off + ':' + W + 'x' + H;
   if (_tzZonePath && _tzZonePathKey === key) return _tzZonePath;
+  var group = (_tzZonesByOffset && _tzZonesByOffset[off]) || [];
   var p = new Path2D();
-  var rings = _tzZones[idx][1];
-  for (var r = 0; r < rings.length; r++) {
-    var ring = rings[r];
-    p.moveTo(_sunMapLonToX(ring[0], W), _sunMapLatToY(ring[1], H));
-    for (var j = 2; j < ring.length; j += 2) {
-      p.lineTo(_sunMapLonToX(ring[j], W), _sunMapLatToY(ring[j + 1], H));
+  for (var e = 0; e < group.length; e++) {
+    var rings = group[e][1];
+    for (var r = 0; r < rings.length; r++) {
+      var ring = rings[r];
+      p.moveTo(_sunMapLonToX(ring[0], W), _sunMapLatToY(ring[1], H));
+      for (var j = 2; j < ring.length; j += 2) {
+        p.lineTo(_sunMapLonToX(ring[j], W), _sunMapLatToY(ring[j + 1], H));
+      }
+      p.closePath();
     }
-    p.closePath();
   }
   _tzZonePath = p;
   _tzZonePathKey = key;
@@ -2844,15 +2875,23 @@ function _tzZonePathFor(idx, W, H) {
 // broken at the terminator.
 function _sunMapDrawZoneHighlight(c, W, H, dpr) {
   if (!_sunMapHasLocation || !_tzZones) return;
-  var idx = _tzZoneFor(_sunMapLat, _sunMapLon);
-  if (idx < 0) return;
-  var p = _tzZonePathFor(idx, W, H);
+  var off = _tzZoneOffsetFor(_sunMapLat, _sunMapLon);
+  if (off === null) return;
+  var p = _tzZonePathFor(off, W, H);
   c.save();
   c.beginPath();
   c.rect(0, 0, W, H - _sunMapGutter(H, dpr));  // keep out of the label gutter
   c.clip();
   c.fillStyle = 'rgba(245,158,11,0.09)';
-  c.fill(p, 'evenodd');
+  // NONZERO, not even-odd. Even-odd gives enclave holes for free, but it also
+  // turns any OVERLAP into a hole — and same-offset entries do overlap: in
+  // Antarctica, Natural Earth's nominal hour wedges overlap the coastal zone
+  // shapes in 20 same-offset pairs, so an even-odd union punched a hole
+  // through the continent at exactly the spot Antarctic picks light up.
+  // Nonzero unions instead, and still cuts the enclave holes correctly because
+  // every inner ring in the asset winds against its outer ring
+  // (tests/test_tz_zone_grouping.cjs gates both facts).
+  c.fill(p);
   c.strokeStyle = 'rgba(245,158,11,0.30)';
   c.lineWidth = Math.max(0.75, 0.75 * dpr);
   c.lineJoin = 'round';
@@ -3147,8 +3186,16 @@ var _TZ_ANCHORS = [
   [33.31, 44.36, 'Asia/Baghdad'], [25.29, 51.53, 'Asia/Qatar'],
   [25.20, 55.27, 'Asia/Dubai'], [34.56, 69.21, 'Asia/Kabul'],
   [41.30, 69.24, 'Asia/Tashkent'],
+  // The Caucasus (+4, no DST) had no anchor of its own, so Tbilisi fell to
+  // Baghdad (+3) and Baku to Tehran (+3:30) — both map dots printed a clock an
+  // hour or more off, and both sit inside the asset's +4 polygon, which was
+  // right all along.
+  [41.69, 44.80, 'Asia/Tbilisi'], [40.41, 49.87, 'Asia/Baku'],
   [24.86, 67.01, 'Asia/Karachi'], [33.68, 73.05, 'Asia/Karachi'],
   [19.08, 72.88, 'Asia/Kolkata'], [28.61, 77.21, 'Asia/Kolkata'],
+  // Kolkata sits ~2 deg of longitude from Dhaka across an international border
+  // and used to fall to it, a half hour off inside India's own zone.
+  [22.57, 88.36, 'Asia/Kolkata'],
   [27.72, 85.32, 'Asia/Kathmandu'],
   [23.81, 90.41, 'Asia/Dhaka'], [13.76, 100.50, 'Asia/Bangkok'],
   [21.03, 105.85, 'Asia/Ho_Chi_Minh'],
