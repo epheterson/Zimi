@@ -772,6 +772,33 @@ function _almTmCellsHtml(idBase, editable) {
     '<span class="alm-tm-colon" aria-hidden="true">:</span>' + _almTmCellHtml(idBase, 'mi', editable) + '</span>' +
     '</span>';
 }
+// Column headers over the primary readout — the one cue borrowed from the film's
+// time circuits, where every digit group is labelled MONTH DAY YEAR above the
+// lamps. Built from the very same cell classes as the readout, so the headers
+// and the figures are one grid: retrack a column and its label moves with it.
+// No AM/PM column, the instrument is 24-hour. The words reuse the five field
+// labels that already name the edit inputs, so this adds no new strings in any
+// locale. aria-hidden: each input already announces the same word as its own
+// accessible name, and the readout is read as a whole date, so exposing these
+// would make a screen reader say every field twice.
+// The word sits in a CHILD of the cell, not in the cell. The column widths are
+// in `ch` and `ch` is measured in the element's own font, so a header cell must
+// keep the readout's face and size or it would size itself to its label and the
+// header grid would come apart from the figures beneath it.
+function _almTmColCapHtml(part) {
+  return '<span class="alm-tm-cell alm-tm-cell-' + part + '">' +
+    '<span class="alm-tm-colcap">' + _almEsc(t(_ALM_TM_FIELD_LBL[part])) + '</span></span>';
+}
+function _almTmColsHtml() {
+  return '<div class="alm-tm-cols" aria-hidden="true"><span class="alm-tm-cells">' +
+    _almTmColCapHtml('mon') + _almTmColCapHtml('day') + _almTmColCapHtml('year') +
+    '<span class="alm-tm-cell-group">' + _almTmColCapHtml('hh') +
+    // The colon rides along invisibly so HOUR and MIN sit over their own drums
+    // rather than drifting by the colon's negative margins.
+    '<span class="alm-tm-colon alm-tm-colon-ghost">:</span>' + _almTmColCapHtml('mi') +
+    '</span></span></div>';
+}
+
 function _almTmSetCells(idBase, d) {
   var p = _almTmParts(d);
   for (var i = 0; i < _ALM_TM_FIELDS.length; i++) {
@@ -1141,8 +1168,8 @@ function _almTmMode(mode) {
 function _almTmToRest() { _almTmMode('rest'); _almTmSync(); }
 
 // Refresh the three-row circuit. DESTINATION mirrors DISPLAYED at rest (and
-// is left alone mid-edit — the user's keystrokes own it); the NOW key shows
-// only while parked away from live.
+// is left alone mid-edit — the user's keystrokes own it); the ACTUAL reading
+// is live as a return-to-now control only while parked away from the present.
 function _almTmSync() {
   var f = _almFocusInstant();
   var traveling = _almFocus != null && !_almIsLiveNow(_almFocus);
@@ -1163,8 +1190,12 @@ function _almTmSync() {
     root.classList.toggle('alm-tm-away', traveling);
   }
   _almTmSetDelta('alm-tm-delta', f);
+  // The ACTUAL engraving is the way back to the present, so it is only a
+  // control while there is somewhere to come back from. `disabled` (not a
+  // class) is what drops the pointer cursor, the hover lamp-up and the tab
+  // stop in one move, and keeps assistive tech from offering a dead action.
   var ret = document.getElementById('alm-tm-return');
-  if (ret) ret.hidden = !traveling;
+  if (ret) ret.disabled = !traveling;
 }
 
 function _almTmSoloUpdate(d) {
@@ -1189,8 +1220,8 @@ function _almTmLand() {
 // an input in the same cell: same order, same geometry, no pencil, no format
 // flip. Arrows step a field (months, hours and minutes wrap), typing replaces
 // it, Enter or the GO key commits and travels, Esc or the X key reverts. The
-// keypad strip under the rows carries GO/X while editing (mobile numeric
-// keyboards have no Enter), and the NOW key otherwise.
+// keypad strip carries GO/X while editing (mobile numeric keyboards have no
+// Enter) and is absent otherwise.
 var _almTmEditing = false;
 var _almTmEditPrev = null;              // instant to revert to on cancel
 var _almTmMonCache = null;              // localized month abbreviations, by lang
@@ -1321,7 +1352,7 @@ function _almTmEditCancel() {
   _almTmSync();
 }
 
-// Return-to-now, with the landing zap (button + Home key).
+// Return-to-now, with the landing zap (the ACTUAL engraving + the Home key).
 function _almTmReturnNow() { _almBackToToday(); _almTmLand(); }
 
 // -- Lever: displacement -> directional speed, spring back on release. --
@@ -1627,24 +1658,33 @@ function _renderAlmanacContent() {
   html +=         '<span class="alm-tm-cap">' + t('alm_tm_destination') + '</span>';
   html +=         '<span class="alm-tm-delta" id="alm-tm-delta" title="' + _almEsc(t('alm_tm_offset')) + '"></span>';
   html +=       '</div>';
+  html +=       _almTmColsHtml();
   html +=       '<div class="alm-tm-glass alm-tm-dest" role="button" tabindex="0" onclick="_almTmEditStart(event)" onkeydown="_almTmDestKey(event)" title="' + _almEsc(t('alm_tm_set_dest')) + '">' + _almTmCellsHtml('alm-tm-dest', true) + '</div>';
   html +=       '<div class="alm-tm-rail" aria-hidden="true"></div>';
   html +=       '<div class="alm-tm-sec">';
   html +=         '<div class="alm-tm-secrow alm-tm-displayed">';
   html +=           '<span class="alm-tm-seccap">' + t('alm_tm_displayed') + '</span>' + _almTmCellsHtml('alm-tm-disp');
   html +=         '</div>';
-  html +=         '<div class="alm-tm-secrow alm-tm-now">';
+  // ACTUAL is both the reading of the present AND the way back to it: the
+  // engraving itself is the control, so the plate needs no return key. It is a
+  // real <button> (keyboard-focusable, Enter/Space) and carries `disabled`
+  // whenever the almanac already reads the present — there is nothing to
+  // return to then, so it must not take a tab stop or a hover.
+  html +=         '<button type="button" class="alm-tm-secrow alm-tm-now" id="alm-tm-return"' +
+                    ' onclick="_almTmReturnNow()" title="' + _almEsc(t('alm_back_to_now')) + '"' +
+                    ' aria-label="' + _almEsc(t('alm_back_to_now')) + '" disabled>';
   html +=           '<span class="alm-tm-seccap">' + t('alm_tm_actual') + '</span>' + _almTmCellsHtml('alm-tm-now');
+  html +=         '</button>';
+  // Keypad strip — GO/X only, and only during a destination edit (tap targets
+  // for mobile, where numeric keyboards have no Enter key). It lives INSIDE the
+  // secondary block and is absolutely positioned over it; the two engravings go
+  // visibility:hidden for the duration of the edit. So the keys cost the plate
+  // no height of their own, the dock measures the same in rest, edit and
+  // motion, and removing the old NOW key made the whole instrument shorter.
+  html +=         '<div class="alm-tm-keys">';
+  html +=           '<button type="button" class="alm-tm-key alm-tm-key-cancel" onclick="_almTmEditCancel()" title="' + _almEsc(t('alm_tm_cancel')) + '" aria-label="' + _almEsc(t('alm_tm_cancel')) + '">&#10005;</button>';
+  html +=           '<button type="button" class="alm-tm-key alm-tm-key-go" onclick="_almTmEditCommit()">' + t('alm_tw_go') + '</button>';
   html +=         '</div>';
-  html +=       '</div>';
-  // Keypad strip — small brass keys under the readings. The strip keeps its
-  // height in every state so the dock never resizes: NOW shows while parked
-  // away from the present; GO/X replace it during a destination edit (tap
-  // targets for mobile, where numeric keyboards have no Enter key).
-  html +=       '<div class="alm-tm-keys">';
-  html +=         '<button type="button" class="alm-tm-key alm-tm-key-cancel" onclick="_almTmEditCancel()" title="' + _almEsc(t('alm_tm_cancel')) + '" aria-label="' + _almEsc(t('alm_tm_cancel')) + '">&#10005;</button>';
-  html +=         '<button type="button" class="alm-tm-key alm-tm-key-go" onclick="_almTmEditCommit()">' + t('alm_tw_go') + '</button>';
-  html +=         '<button type="button" class="alm-tm-key alm-tm-key-now" id="alm-tm-return" onclick="_almTmReturnNow()" title="' + _almEsc(t('alm_back_to_now')) + '" hidden>&#8634; ' + t('alm_now') + '</button>';
   html +=       '</div>';
   html +=     '</div>';
   // Motion face — the same legend line and the same glass window, one size up,

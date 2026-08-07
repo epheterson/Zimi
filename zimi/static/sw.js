@@ -2,7 +2,15 @@
 // Substituted at serve time to match the running server version (see
 // http.py); the literal below is only a fallback for direct file use.
 const CACHE_VERSION = 'zimi-vdev';
-const PRECACHE_URLS = ['/', '/favicon.png', '/apple-touch-icon.png'];
+// The almanac's segment readout face is precached rather than left to the
+// /static/ stale-while-revalidate path: it is a font, so a cold offline start
+// that misses it falls back to system mono and the time machine's digits
+// change face under the reader. Small enough (~6KB) to carry on install.
+// Adding an entry here needs no CACHE_VERSION bump: changing these bytes makes
+// the browser install a new SW, and install's addAll() adds into whatever
+// cache CACHE_VERSION names (the server pins it to the asset-bundle hash).
+const PRECACHE_URLS = ['/', '/favicon.png', '/apple-touch-icon.png',
+                       '/static/fonts/DSEG14Classic-Bold.woff2'];
 
 const OFFLINE_HTML = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

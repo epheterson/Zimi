@@ -325,13 +325,31 @@
 .alm-link:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; color: var(--amber); }
 .alm-crossref-label .alm-link:hover, .alm-crossref-active .alm-crossref-label .alm-link { color: var(--amber); }
 
+/* ── Readout face for the time machine ─────────────────────────────────────
+   The dock's figures are a real fourteen-segment display face, bundled locally
+   under static/fonts/ and loaded from disk — the almanac must render
+   identically with the network unplugged, so nothing here may ever point at a
+   CDN. The license text ships beside the file in the same directory.
+
+     DSEG14 Classic Bold  SIL OFL 1.1  keshikan  DSEG14Classic-OFL.txt
+
+   It is wired in through the single --tm-digit-font line on .alm-tm below, and
+   applies only to the readout cells — legends and keys keep the UI mono. */
+@font-face {
+  font-family: 'DSEG14 Classic';
+  src: url('fonts/DSEG14Classic-Bold.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+
 /* ── The time machine — the almanac's one deliberately skeuomorphic object ──
    Date control still lives in the calendar; this is TIME control, built in the
    same material world as the crystal lever and the brass close stud: a
    blackened-brass case holding a bevelled faceplate, four domed screws, an
    engraved brass hairline rail, and one recessed glass window with an amber
    lamp burning behind the digits. Antique chronometer panel, not a movie prop.
-   Every material is a CSS gradient or shadow — no images, no webfonts.
+   Every material is a CSS gradient or shadow — no images. The only optional
+   asset is the readout face itself (see --tm-digit-font above), and the
+   default stack ships no font file at all.
 
    Hierarchy is vertical, not three equal rows: DESTINATION is the lit primary
    window (and the thing you edit); DISPLAYED and ACTUAL are fine engravings
@@ -355,7 +373,27 @@
     inset 0 1px 0 rgba(255,240,205,0.15),
     inset 0 -1px 0 rgba(0,0,0,0.6);
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-  font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+  /* Two faces on this instrument, named once each. --tm-ui-font is the plate's
+     lettering (legends, column headers, offset lamp, keys); --tm-digit-font is
+     the readout. The column headers need to name the UI face explicitly because
+     they live inside readout cells, which have already switched to the other. */
+  --tm-ui-font: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+  font-family: var(--tm-ui-font);
+  /* Readout size, shared: the column headers reuse it so their `ch`-based
+     widths resolve to the same numbers as the figures they label. */
+  --tm-digit-size: 15px;
+  /* ── READOUT FACE — the one line that picks the dock's figures ──────────
+     The legends, the offset lamp and the keys keep the stack above; only the
+     readout cells (DESTINATION, DISPLAYED, ACTUAL and the edit inputs) follow
+     this custom property, so the face can change without touching anything
+     else on the plate. The fallbacks are the system mono stack, which is what
+     shows for the one frame before the segment face is decoded. */
+  --tm-digit-font: 'DSEG14 Classic', 'SF Mono', ui-monospace, monospace;
+  /* Gutter each readout cell carries around its figures — the visual space
+     between MON, DD, YYYY and HH:MM. One number, used by all three cell-width
+     calcs, because narrow phones tighten it (see the ≤380px block below) and a
+     segment face is wider per character than the system mono it replaced. */
+  --tm-cell-pad: 0.6em;
 }
 /* Hidden until summoned (hero-clock tap, calendar pick, or lever). Because it
    is the last thing in the layout and sticks to the bottom, showing it only
@@ -409,7 +447,10 @@
   /* --tm-inset is the window's inner gutter; the engraved readings and the keys
      share it so every column on the plate lines up on one right-hand edge. */
   --tm-inset: 5px;
-  padding: 6px 11px; border-radius: 9px;
+  /* 8px top/bottom, not 6: at 6 the legend sat almost on the screw heads and
+     the whole plate read as packed on a phone. The extra two pixels each way
+     is most of what "give it room" turned out to mean. */
+  padding: 8px 11px; border-radius: 9px;
   background:
     linear-gradient(180deg, rgba(255,244,214,0.13), transparent 22%),
     repeating-linear-gradient(93deg, rgba(255,244,214,0.035) 0 1px, rgba(0,0,0,0.045) 1px 2px),
@@ -471,11 +512,34 @@
 @media (max-width: 380px) {
   .alm-tm-cap { letter-spacing: 0.1em; }
   .alm-tm-delta { font-size: 9px; }
-  /* Same for the travelling window: its digits are the widest thing on the
-     instrument, and a clipped year is not a readout. */
-  .alm-tm-solo .alm-tm-glass { height: 44px; }
-  .alm-tm-solo .alm-tm-glass .alm-tm-cell { font-size: 15px; }
+  /* The travelling window's narrow-phone sizing lives with the motion face's
+     own rules further down, not here: these two selectors have the same
+     specificity as the base ones, so a copy up here simply lost on source
+     order and never applied at any width. */
 }
+
+/* Column headers — MONTH DAY YEAR HOUR MIN stamped into the plate directly over
+   the digit groups they name, the time-circuits cue. Engraved exactly like the
+   legends above them (light face, hard black shadow a pixel down) but a size
+   smaller and dimmer, because they are a permanent map of the readout rather
+   than anything that changes: they should be there when you look for them and
+   invisible when you are not. Fixed height so they cost the plate the same few
+   pixels whatever the locale's words are. */
+.alm-tm-cols { display: flex; justify-content: center; height: 9px; margin-bottom: 1px; }
+/* Header cells ARE readout cells: same class, same width calc, same digit size
+   (see --tm-digit-size), so the two rows are one grid. They hold no ink of
+   their own; the word is the child below. */
+.alm-tm-cols .alm-tm-cell { font-size: var(--tm-digit-size); height: 9px; overflow: hidden; }
+.alm-tm-colcap {
+  max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-family: var(--tm-ui-font);        /* the UI mono, not the segment face */
+  font-size: 7px; font-weight: 700; line-height: 9px; letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255,236,196,0.4); text-shadow: 0 1px 0 rgba(0,0,0,0.85);
+}
+/* The header row's stand-in for the readout's colon: same box, same negative
+   margins, no ink — HOUR and MIN stay centred over their own fields. */
+.alm-tm-colon-ghost { visibility: hidden; }
 
 /* The window — a well cut through the faceplate, ringed in brass, glazed. The
    radial from below is the lamp burning behind the digits; the inset dark is
@@ -483,7 +547,7 @@
    bezel catching the room. ::after is the cover glass's diagonal reflection. */
 .alm-tm-glass {
   position: relative; display: flex; align-items: center; justify-content: center;
-  width: 100%; height: 30px; margin-top: 3px; padding: 0 var(--tm-inset);
+  width: 100%; height: 32px; margin-top: 2px; padding: 0 var(--tm-inset);
   border: 0; border-radius: 5px; overflow: hidden;
   background:
     radial-gradient(125% 150% at 50% 122%, rgba(245,158,11,0.36), rgba(245,158,11,0.09) 46%, transparent 72%),
@@ -507,14 +571,36 @@
    aligned grid, and so swapping a value for its edit input cannot move a single
    pixel. LTR even in RTL locales: it is an instrument readout, not prose. */
 .alm-tm-cells { display: flex; align-items: center; justify-content: center; gap: 2px; min-width: 0; direction: ltr; }
+.alm-tm-cell, .alm-tm-colon {
+  /* Set here rather than on the dock so the legends and keys keep the UI mono
+     while the figures take the instrument face. .alm-tm-cin inherits it through
+     its font: inherit, so an edited field never changes face mid-typing. The
+     ch-based cell widths above resolve against this font, so the grid retracks
+     itself whenever the face changes. */
+  font-family: var(--tm-digit-font, 'SF Mono', 'Fira Code', ui-monospace, monospace);
+}
 .alm-tm-cell {
+  /* flex: 0 0 auto, because these widths are a grid, not a suggestion. As flex
+     items they defaulted to shrink:1, so on a 320px plate the cells quietly
+     compressed a couple of pixels each to fit — enough that the column headers,
+     which are laid out on the full plate width, no longer sat over the figures
+     they name. A readout that does not fit should overflow visibly, not
+     silently retract its own grid. */
+  flex: 0 0 auto;
+  /* NO overflow: hidden here. The lamp's bloom is a 14px text-shadow; clipping
+     it to the cell box chopped the glow into one hard-edged slab per field, and
+     because the ch-based widths land on fractional pixels those slab edges read
+     as hairline seams — the window looked like five lit boxes butted together
+     instead of one dial. Nothing needs the clip: an <input> scrolls its own
+     value rather than overflowing, and the month/year columns are already sized
+     from the longest possible content by _almTmSync. */
   display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 3px; overflow: hidden;
+  border-radius: 3px;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-.alm-tm-cell-mon  { width: calc(var(--tm-mon-ch, 3) * 1ch + 0.6em); }
-.alm-tm-cell-year { width: calc(var(--tm-year-ch, 4) * 1ch + 0.6em); }
-.alm-tm-cell-day, .alm-tm-cell-hh, .alm-tm-cell-mi { width: calc(2ch + 0.6em); }
+.alm-tm-cell-mon  { width: calc(var(--tm-mon-ch, 3) * 1ch + var(--tm-cell-pad)); }
+.alm-tm-cell-year { width: calc(var(--tm-year-ch, 4) * 1ch + var(--tm-cell-pad)); }
+.alm-tm-cell-day, .alm-tm-cell-hh, .alm-tm-cell-mi { width: calc(2ch + var(--tm-cell-pad)); }
 /* HH:MM is one reading, so the colon tucks between its two fields rather than
    sitting in the inter-field rhythm of the date. */
 .alm-tm-cell-group { display: inline-flex; align-items: center; }
@@ -522,7 +608,7 @@
 /* Primary lamp: warm filament core, close halo, wide bloom, and a hard dark
    edge underneath so the glyph sits behind glass instead of floating on it. */
 .alm-tm-glass .alm-tm-cell {
-  font-size: 15px; font-weight: 700; letter-spacing: 0.04em;
+  font-size: var(--tm-digit-size); font-weight: 700; letter-spacing: 0.04em;
   color: #ffd489;
   text-shadow: 0 0 5px rgba(245,158,11,0.85), 0 0 14px rgba(245,158,11,0.38), 0 1px 0 rgba(0,0,0,0.9);
 }
@@ -531,7 +617,9 @@
 /* Brass hairline rail — the engraved divider between the lit primary and the
    fine secondary readings. Same alloy ramp as the lever shaft. */
 .alm-tm-rail {
-  height: 2px; margin: 4px 0 3px; border-radius: 1px;
+  /* The rail's margins are the breathing space between the lit primary and the
+     fine engravings; at 4/3 the two halves of the plate crowded each other. */
+  height: 2px; margin: 8px 0 7px; border-radius: 1px;
   /* A cut groove, not a printed line: a dark score with a lit brass lip under
      it, so the light reads as coming from above the plate. */
   background:
@@ -541,9 +629,17 @@
 
 /* Secondary readings — engraved straight into the plate, no window, no boxes:
    DISPLAYED (what the almanac is rendering) then ACTUAL (the present). Right-
-   aligned so the two columns of figures line up under each other. */
-.alm-tm-sec { display: flex; flex-direction: column; gap: 2px; }
-.alm-tm-secrow { display: flex; align-items: center; gap: 6px; height: 14px; padding-right: var(--tm-inset); }
+   aligned so the two columns of figures line up under each other.
+   position: relative because the keypad strip is absolutely positioned over
+   this block during an edit rather than reserving a row of its own. */
+.alm-tm-sec { position: relative; display: flex; flex-direction: column; gap: 4px; }
+.alm-tm-secrow {
+  /* ACTUAL is a <button> (it returns you to the present), DISPLAYED is a div;
+     the button reset here keeps them pixel-identical engravings either way. */
+  display: flex; align-items: center; gap: 6px; width: 100%; height: 14px;
+  padding: 0 var(--tm-inset) 0 0; margin: 0;
+  border: 0; background: none; color: inherit; font: inherit; text-align: left;
+}
 .alm-tm-seccap {
   flex: 0 0 auto; white-space: nowrap;
   font-size: 8px; font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase;
@@ -556,6 +652,32 @@
 /* The present keeps time: its colon ticks once a second. */
 .alm-tm-now .alm-tm-colon { animation: alm-tm-tick 1s steps(1) infinite; }
 @keyframes alm-tm-tick { 50% { opacity: 0.15; } }
+
+/* ACTUAL is also the way home: click the engraving and the almanac returns to
+   the present. Live only while parked away from now — _almTmSync flips the
+   button's `disabled`, which is what removes the cursor, the hover and the tab
+   stop when there is nothing to return to.
+   The interactive treatment is a lamp coming up behind lettering already cut
+   into the plate: the engraving brightens and gains a small amber halo, plus a
+   soft inset wash on the row. No box, no border, no rule that would look like
+   a control pasted onto the brass. */
+.alm-tm-now:enabled { cursor: pointer; transition: background .15s; }
+/* A radial that dies out well before the row's edges, not a filled rectangle:
+   an inset box-shadow or a flat wash would draw a lit oblong on the brass, and
+   the whole point of an engraving is that it has no box. The lamp sits under
+   the figures, which are right-aligned. */
+.alm-tm-now:enabled:hover, .alm-tm-now:enabled:focus-visible {
+  outline: none;
+  background: radial-gradient(85% 260% at 74% 52%, rgba(245,158,11,0.16), rgba(245,158,11,0.06) 45%, transparent 78%);
+}
+.alm-tm-now:enabled:hover .alm-tm-cell, .alm-tm-now:enabled:hover .alm-tm-colon,
+.alm-tm-now:enabled:focus-visible .alm-tm-cell, .alm-tm-now:enabled:focus-visible .alm-tm-colon {
+  color: #ffd489; text-shadow: 0 0 6px rgba(245,158,11,0.5), 0 1px 0 rgba(0,0,0,0.9);
+}
+.alm-tm-now:enabled:hover .alm-tm-seccap, .alm-tm-now:enabled:focus-visible .alm-tm-seccap {
+  color: rgba(255,236,196,0.9);
+}
+.alm-tm-now:enabled:active { background: radial-gradient(85% 260% at 74% 52%, rgba(245,158,11,0.26), rgba(245,158,11,0.09) 45%, transparent 78%); }
 
 /* DESTINATION is the editable readout — the window itself is the control. */
 .alm-tm-dest { cursor: pointer; }
@@ -590,10 +712,21 @@
   box-shadow: inset 0 0 0 1px rgba(255,212,137,0.85), inset 0 0 8px rgba(245,158,11,0.35);
 }
 
-/* Keypad strip — small brass keys under the readings, right-aligned.
-   min-height reserves the strip in every state so showing NOW or GO/X never
-   changes the dock's height; nothing here can collide, down to 320px. */
-.alm-tm-keys { display: flex; justify-content: flex-end; align-items: center; gap: 6px; min-height: 18px; margin-top: 3px; padding-right: var(--tm-inset); }
+/* Keypad strip — two small brass keys, right-aligned, shown only while a
+   destination is being typed. It is absolutely positioned over the secondary
+   readings (which go visibility:hidden for the duration) instead of occupying
+   a row of its own: out of flow means it cannot add height, so the dock is
+   identical in rest, edit and motion, and the plate is a row shorter than it
+   was when a NOW key had to be parked here permanently. */
+.alm-tm-keys {
+  position: absolute; inset: 0; z-index: 2;
+  display: none; justify-content: flex-end; align-items: center; gap: 6px;
+  padding-right: var(--tm-inset);
+}
+.alm-tm-editing .alm-tm-keys { display: flex; }
+/* The engravings step aside for the keys. visibility (not display) so the
+   block keeps its exact 30px, which is what pins the dock's height. */
+.alm-tm-editing .alm-tm-secrow { visibility: hidden; }
 .alm-tm-key {
   display: inline-flex; align-items: center; justify-content: center; gap: 3px;
   min-height: 18px; padding: 1px 9px; border-radius: 5px;
@@ -609,11 +742,6 @@
 .alm-tm-key:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--amber-glow), 0 1px 0 rgba(0,0,0,0.7); }
 .alm-tm-key-go { background: linear-gradient(180deg, #fbbf24, #d97706); border-color: rgba(255,240,205,0.75); color: #241a05; }
 .alm-tm-key-go:hover { color: #000; }
-/* Which keys show: GO/X only while editing, NOW otherwise (its `hidden`
-   attribute — flipped by _almTmSync — keeps it to parked-away times). */
-.alm-tm-key-go, .alm-tm-key-cancel { display: none; }
-.alm-tm-editing .alm-tm-key-go, .alm-tm-editing .alm-tm-key-cancel { display: inline-flex; }
-.alm-tm-editing .alm-tm-key-now, .alm-tm-key[hidden] { display: none; }
 
 /* Motion face — "only one time matters": the same plate legend and the same
    glass window, one size up, laid over the (hidden but still measured) rest
@@ -632,6 +760,42 @@
 .alm-tm-solo:focus-visible { outline: none; }
 .alm-tm-solo:focus-visible .alm-tm-glass {
   box-shadow: inset 0 2px 5px rgba(0,0,0,0.9), 0 0 0 1px var(--amber), 0 0 9px var(--amber-glow);
+}
+/* Narrow phones: the travelling window's digits are the widest thing on the
+   instrument and a clipped year is not a readout, so the motion face steps
+   down a size. It must sit AFTER the base rules above — same specificity, so
+   source order is the whole argument. The dock does not resize either way:
+   the motion face is absolutely positioned over the (still measured) rest
+   face, so its height is not the dock's height. */
+@media (max-width: 380px) {
+  .alm-tm-solo .alm-tm-glass { height: 44px; }
+  .alm-tm-solo .alm-tm-glass .alm-tm-cell { font-size: 15px; }
+  /* Tighten the gutters rather than shrink the figures: a 320px plate is
+     ~179px of readout, and the segment face's characters are wider than the
+     system mono's, so MON DD YYYY HH:MM at the full 0.6em gutter clipped a
+     couple of pixels off each end of the window. Smaller digits would have
+     been the wrong trade on the one screen where legibility matters most.
+     A point off the figures comes with it: MON DD YYYY HH:MM is thirteen
+     characters, and thirteen characters of a segment face simply do not fit a
+     320px plate at 15px however the gutters are cut. 14px bold segments are
+     still the largest, brightest thing on the instrument.
+     Placed after the width declarations above deliberately: this overrides
+     .alm-tm at equal specificity, so source order is what decides it. */
+  .alm-tm { --tm-cell-pad: 0.36em; --tm-digit-size: 14px; }
+  /* The window's own inner gutter comes in with it — and because every column
+     on the plate is aligned off --tm-inset, the engravings and the keys move
+     with the glass rather than drifting out of register. */
+  .alm-tm-panel { --tm-inset: 3px; }
+  /* The engraved rows take a step down too, and their legends give up some
+     letter-spacing. DISPLAYED is the longest word on the plate and its figures
+     are right-aligned into whatever is left over; at full size the segment face
+     filled that remainder exactly and the digits butted into the word. */
+  .alm-tm-secrow .alm-tm-cell { font-size: 10px; }
+  .alm-tm-seccap { letter-spacing: 0.06em; }
+  /* Column headers give up spacing before they give up letters: the HOUR
+     column is only two figures wide, and the longest translation of it
+     ("Stunde") ellipsized on a 320px plate at the full tracking. */
+  .alm-tm-colcap { font-size: 6.5px; letter-spacing: 0.03em; }
 }
 
 /* Side-mounted lever — the 1960 Time Machine's spinning crystal disc on a
