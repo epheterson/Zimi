@@ -1241,6 +1241,32 @@ def handle_manage_get(handler, parsed, params):
                     )
         except Exception:
             pass
+
+        # Other long-running jobs a user starts and then navigates away from:
+        # bookmark→ZIM export and the library health check. Both keep their
+        # phase/done/total in module memory, so this stays poll-cheap. Only
+        # the brief shape is forwarded (health's full report can be large).
+        def _op_brief(mod_state):
+            return {
+                "phase": mod_state.get("phase"),
+                "done": mod_state.get("done", 0),
+                "total": mod_state.get("total", 0),
+            }
+
+        export_op = {"phase": None, "done": 0, "total": 0}
+        try:
+            from zimi import zimwriter as _zw
+
+            export_op = _op_brief(_zw.get_export_state())
+        except Exception:
+            pass
+        health_op = {"phase": None, "done": 0, "total": 0}
+        try:
+            from zimi import health as _health
+
+            health_op = _op_brief(_health.get_state())
+        except Exception:
+            pass
         return handler._json(
             200,
             {
@@ -1256,6 +1282,8 @@ def handle_manage_get(handler, parsed, params):
                     "name": first_name,
                 },
                 "seeding": {"torrents": seeding_count},
+                "export": export_op,
+                "health": health_op,
             },
         )
 

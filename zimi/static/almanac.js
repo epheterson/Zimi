@@ -463,7 +463,7 @@ function _almIsToday(d) {
 //
 // It must not switch zones on travel either, which it used to. The rest of the
 // instrument reads the focus instant in device-local fields -- the time
-// machine's readout via _almTmFmt, the calendar grid via
+// machine's readout via _almTmParts, the calendar grid via
 // _almSyncSelectedToFocus, the destination chooser via _almMakeInstant, which
 // is also what makes a typed destination round-trip unchanged. A header on the
 // location's zone therefore disagreed with all three, by a whole day within a
@@ -498,9 +498,18 @@ function _almHeadHtml(focus) {
   var cp = _almClockParts(focus);
   var loc = cp.loc, locTz = cp.locTz, lang = cp.lang;
 
+  // Both the big date and the time beneath it summon the time machine — the
+  // heading is the almanac's clearest "this is the moment shown" surface, so
+  // tapping it is the discoverable way into changing that moment. Shared
+  // attributes built once (DRY): only the id and content differ.
+  var tmTap = ' class="alm-head-tap" role="button" tabindex="0" onclick="_almTmShow()"' +
+    ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();_almTmShow();}"' +
+    ' title="' + _almEsc(t('alm_tm_open')) + '" aria-label="' + _almEsc(t('alm_tm_open')) + '"';
   var html = '<div style="text-align:center;margin-bottom:16px">';
-  html += '<div id="almanac-head-date" style="font-size:22px;font-weight:600;color:var(--text)">' + cp.date + '</div>';
-  html += '<div style="font-size:16px;color:var(--text2);margin-top:4px"><span id="almanac-head-time" class="almanac-head-time-btn" onclick="_almTmShow()" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();_almTmShow();}" title="' + _almEsc(t('alm_tm_open')) + '" aria-label="' + _almEsc(t('alm_tm_open')) + '">' + cp.time + '</span>' + (cp.tz ? ' &middot; ' + cp.tz : '') +
+  // No inline color: it would outrank .alm-head-tap:hover's amber. The body
+  // text color is var(--text) already.
+  html += '<div id="almanac-head-date"' + tmTap + ' style="font-size:22px;font-weight:600">' + cp.date + '</div>';
+  html += '<div style="font-size:16px;color:var(--text2);margin-top:4px"><span id="almanac-head-time"' + tmTap + '>' + cp.time + '</span>' + (cp.tz ? ' &middot; ' + cp.tz : '') +
     (cp.live ? '' : ' <button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button>') + '</div>';
   html += '</div>';
 
@@ -654,9 +663,9 @@ function _almBackToToday() {
 
 // == Time machine — the almanac's skeuomorphic time-travel instrument ========
 // Replaces the old velocity scrubber + flux panel. Two faces on one object:
-//   REST   — a three-row time circuit: DISPLAYED (amber, what every panel is
-//            rendering), DESTINATION (neutral, tap to choose a time), NOW
-//            (dimmed, ticks).
+//   REST   — three LED time circuits: DISPLAYED (warm white, what every panel
+//            is rendering), DESTINATION (amber, tap its segments to edit the
+//            time in place), ACTUAL (dimmed, ticks).
 //   MOTION — while the side lever is thrown, the panel collapses to one large
 //            readout of the moving position. Landing (the settle) flips it
 //            back to the three rows on its own.
@@ -715,18 +724,69 @@ function _almClampInstant(dt) {
 
 function _almYearBeyondPrecise(y) { return Math.abs(y - 2000) > _ALM_PRECISE_SPAN; }
 
-// Readout formatting: MON DD YEAR  HH:MM in the viewer's language, month
-// abbreviation upper-cased, 24-hour tabular time. The year is the signed
-// proleptic-Gregorian number (negative = BCE), matching the chooser's field so
-// it round-trips exactly.
-function _almTmFmt(d) {
-  var mon, hm;
-  // Cached formatters (_tzFmt): the motion face re-renders this every frame.
-  try { mon = _tzFmt(null, { month: 'short' }).format(d).toUpperCase(); }
+// Readout fields: MON DD YEAR HH:MM. Month abbreviation localized and
+// upper-cased (any trailing locale dot dropped so it sits clean in its
+// segment cell), day/time zero-padded, 24-hour. The year is the signed
+// proleptic-Gregorian number (negative = BCE), matching the in-place edit
+// field so it round-trips exactly. Split into parts because every readout on
+// the instrument is a row of per-field LED segment cells, not one string.
+var _ALM_TM_FIELDS = ['mon', 'day', 'year', 'hh', 'mi'];
+function _almTmParts(d) {
+  var mon;
+  // Cached formatter (_tzFmt): the motion face re-renders this every frame.
+  try { mon = _tzFmt(null, { month: 'short' }).format(d).toUpperCase().replace(/\./g, ''); }
   catch (e) { mon = ('0' + (d.getMonth() + 1)).slice(-2); }
-  try { hm = _tzFmt(null, { hour: '2-digit', minute: '2-digit', hour12: false }).format(d); }
-  catch (e) { hm = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
-  return mon + ' ' + ('0' + d.getDate()).slice(-2) + ' ' + d.getFullYear() + ' ' + hm;
+  return {
+    mon: mon,
+    day: ('0' + d.getDate()).slice(-2),
+    year: String(d.getFullYear()),
+    hh: ('0' + d.getHours()).slice(-2),
+    mi: ('0' + d.getMinutes()).slice(-2)
+  };
+}
+
+// One LED readout: MON DD YYYY HH:MM as individual recessed segment cells,
+// shared by all three circuit rows and the solo travelling face so no two
+// readouts can disagree on format. `editable` adds the DESTINATION row's
+// in-place inputs, hidden at rest and revealed by .alm-tm-editing with the
+// exact geometry of the value they replace: identical view, click, type.
+var _ALM_TM_FIELD_LBL = { mon: 'alm_tm_month', day: 'alm_tm_day', year: 'alm_tm_year', hh: 'alm_tm_hour', mi: 'alm_tm_min' };
+function _almTmCellHtml(idBase, part, editable) {
+  var h = '<span class="alm-tm-cell alm-tm-cell-' + part + '">' +
+    '<span class="alm-tm-cval" id="' + idBase + '-' + part + '"></span>';
+  if (editable) {
+    h += '<input type="text" class="alm-tm-cin" id="alm-tm-in-' + part + '"' +
+      (part === 'mon' ? '' : ' inputmode="numeric"') +
+      ' autocomplete="off" spellcheck="false" aria-label="' + _almEsc(t(_ALM_TM_FIELD_LBL[part])) + '"' +
+      (part === 'year' ? ' title="' + _almEsc(t('alm_tm_year_hint')) + '" oninput="_almTmYearGrew(this)"' : '') +
+      ' onkeydown="_almTmEditKey(event, \'' + part + '\')" onfocus="this.select()">';
+  }
+  return h + '</span>';
+}
+function _almTmCellsHtml(idBase, editable) {
+  return '<span class="alm-tm-cells">' +
+    _almTmCellHtml(idBase, 'mon', editable) +
+    _almTmCellHtml(idBase, 'day', editable) +
+    _almTmCellHtml(idBase, 'year', editable) +
+    '<span class="alm-tm-cell-group">' + _almTmCellHtml(idBase, 'hh', editable) +
+    '<span class="alm-tm-colon" aria-hidden="true">:</span>' + _almTmCellHtml(idBase, 'mi', editable) + '</span>' +
+    '</span>';
+}
+function _almTmSetCells(idBase, d) {
+  var p = _almTmParts(d);
+  for (var i = 0; i < _ALM_TM_FIELDS.length; i++) {
+    var el = document.getElementById(idBase + '-' + _ALM_TM_FIELDS[i]);
+    if (el) el.textContent = p[_ALM_TM_FIELDS[i]];
+  }
+  return p;
+}
+
+// Approximate rendered width of a segment value in ch: CJK and other wide
+// glyphs occupy two monospace cells, everything else one.
+function _almTmChLen(s) {
+  var n = 0;
+  for (var i = 0; i < s.length; i++) n += (s.charCodeAt(i) > 0x2e7f) ? 2 : 1;
+  return n;
 }
 
 // Cached default-locale number formatter for the km distance readout — it is
@@ -991,8 +1051,8 @@ function _almScrubSettle(target, opts) {
 
 // -- Visibility -----------------------------------------------------------
 // The instrument is hidden until summoned, so the almanac opens on the sky, not
-// a control panel. It appears when the user taps the hero clock (the
-// discoverable entry), picks a different calendar day, or engages the lever;
+// a control panel. It appears when the user taps the header date or time (the
+// discoverable entries), picks a different calendar day, or engages the lever;
 // the × closes it, snapping back to now via the existing back-to-now path so
 // the almanac is left reading the present.
 function _almTmShow() {
@@ -1007,7 +1067,7 @@ function _almTmHide() {
   var el = document.getElementById('alm-tm');
   if (el) el.classList.remove('alm-tm-open');
 }
-function _almTmClose() { _almBackToToday(); _almTmHide(); }
+function _almTmClose() { _almTmEditCancel(); _almBackToToday(); _almTmHide(); }
 
 // -- Panel faces & readouts --
 function _almTmMode(mode) {
@@ -1017,27 +1077,33 @@ function _almTmMode(mode) {
 // Tapping the collapsed readout returns to the three-row circuit.
 function _almTmToRest() { _almTmMode('rest'); _almTmSync(); }
 
-// Refresh the three-row circuit. DESTINATION mirrors DISPLAYED at rest; the
-// return-to-now control shows only while parked away from live.
+// Refresh the three-row circuit. DESTINATION mirrors DISPLAYED at rest (and
+// is left alone mid-edit — the user's keystrokes own it); the NOW key shows
+// only while parked away from live.
 function _almTmSync() {
   var f = _almFocusInstant();
   var traveling = _almFocus != null && !_almIsLiveNow(_almFocus);
-  var disp = document.getElementById('alm-tm-displayed-val');
-  if (disp) disp.textContent = _almTmFmt(f);
-  var dest = document.getElementById('alm-tm-dest-val');
-  if (dest) dest.textContent = _almTmFmt(f);
-  var nowEl = document.getElementById('alm-tm-now-val');
-  if (nowEl) nowEl.textContent = _almTmFmt(new Date());
+  var pf = _almTmSetCells('alm-tm-disp', f);
+  if (!_almTmEditing) _almTmSetCells('alm-tm-dest', f);
+  var pn = _almTmSetCells('alm-tm-now', new Date());
+  var root = document.getElementById('alm-tm');
+  if (root) {
+    // Shared segment widths (CSS vars, in ch) so the three rows stay one
+    // aligned fixed grid even when a BCE year sits above a 4-digit one. The
+    // month column is sized to the LONGEST localized abbreviation so arrow-
+    // stepping through months mid-edit can never clip or jitter a cell.
+    var monCh = 3;
+    var abbrs = _almTmMonAbbrs();
+    for (var i = 0; i < abbrs.length; i++) monCh = Math.max(monCh, _almTmChLen(abbrs[i]));
+    root.style.setProperty('--tm-mon-ch', monCh);
+    root.style.setProperty('--tm-year-ch', Math.max(4, pf.year.length, pn.year.length));
+    root.classList.toggle('alm-tm-away', traveling);
+  }
   var ret = document.getElementById('alm-tm-return');
   if (ret) ret.hidden = !traveling;
-  var root = document.getElementById('alm-tm');
-  if (root) root.classList.toggle('alm-tm-away', traveling);
 }
 
-function _almTmSoloUpdate(d) {
-  var el = document.getElementById('alm-tm-solo-val');
-  if (el) el.textContent = _almTmFmt(d);
-}
+function _almTmSoloUpdate(d) { _almTmSetCells('alm-tm-solo', d); }
 
 // -- Landing ("zap to it"): brief shake + a short haptic pulse on arrival. --
 function _almTmLand() {
@@ -1051,47 +1117,141 @@ function _almTmLand() {
   setTimeout(function () { el.classList.remove('alm-tm-zap'); }, 480);
 }
 
-// -- Destination chooser — arbitrary date+time, any year including BCE. --
-function _almTmChooserSet(f) {
-  var vals = {
-    'alm-tm-cy': f.getFullYear(), 'alm-tm-cmo': f.getMonth() + 1, 'alm-tm-cd': f.getDate(),
-    'alm-tm-ch': f.getHours(), 'alm-tm-cmi': f.getMinutes()
-  };
-  for (var id in vals) { var el = document.getElementById(id); if (el) el.value = vals[id]; }
+// -- Destination edit — in place, in the same cells. -------------------------
+// The DESTINATION row IS the editor. Clicking a segment swaps each value for
+// an input in the same cell: same order, same geometry, no pencil, no format
+// flip. Arrows step a field (months, hours and minutes wrap), typing replaces
+// it, Enter or the GO key commits and travels, Esc or the X key reverts. The
+// keypad strip under the rows carries GO/X while editing (mobile numeric
+// keyboards have no Enter), and the NOW key otherwise.
+var _almTmEditing = false;
+var _almTmEditPrev = null;              // instant to revert to on cancel
+var _almTmMonCache = null;              // localized month abbreviations, by lang
+
+function _almTmMonAbbrs() {
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  if (_almTmMonCache && _almTmMonCache.lang === lang) return _almTmMonCache.list;
+  var out = [];
+  for (var m = 0; m < 12; m++) out.push(_almTmParts(new Date(2024, m, 15)).mon);
+  _almTmMonCache = { lang: lang, list: out };
+  return out;
 }
 
-function _almTmOpenChooser() {
-  _almTmChooserSet(_almFocusInstant());
-  _almTmMode('chooser');
-  var y = document.getElementById('alm-tm-cy');
-  if (y) { y.focus(); if (y.select) y.select(); }
+// Month field accepts the localized abbreviation (as shown), a typed prefix of
+// one, or a plain 1-12.
+function _almTmMonParse(v, dflt) {
+  v = (v == null ? '' : String(v)).trim();
+  if (!v) return dflt;
+  var n = parseInt(v, 10);
+  if (!isNaN(n)) return Math.min(12, Math.max(1, n));
+  var abbrs = _almTmMonAbbrs();
+  var up = v.toUpperCase();
+  for (var i = 0; i < 12; i++) {
+    if (abbrs[i].indexOf(up) === 0 || up.indexOf(abbrs[i]) === 0) return i + 1;
+  }
+  return dflt;
 }
 
-function _almTmChooserVal(id, dflt, lo, hi) {
+function _almTmEditStart(ev) {
+  if (_almTmEditing) return;
+  var root = document.getElementById('alm-tm');
+  if (!root) return;
+  _almTmEditing = true;
+  _almTmEditPrev = _almFocusInstant();
+  root.classList.add('alm-tm-editing');
+  var p = _almTmParts(_almTmEditPrev);
+  for (var i = 0; i < _ALM_TM_FIELDS.length; i++) {
+    var el = document.getElementById('alm-tm-in-' + _ALM_TM_FIELDS[i]);
+    if (el) el.value = p[_ALM_TM_FIELDS[i]];
+  }
+  // Focus the segment that was tapped; the month cell otherwise.
+  var cell = ev && ev.target && ev.target.closest ? ev.target.closest('.alm-tm-cell') : null;
+  var input = (cell && cell.querySelector('.alm-tm-cin')) || document.getElementById('alm-tm-in-mon');
+  if (input) input.focus();
+}
+
+// Keyboard path onto the row itself (role=button). Keystrokes inside the
+// field inputs bubble up here too — those belong to _almTmEditKey (a commit's
+// Enter must not bounce straight back into a fresh edit).
+function _almTmDestKey(e) {
+  if (_almTmEditing || (e.target && e.target.tagName === 'INPUT')) return;
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _almTmEditStart(e); }
+}
+
+// Arrow stepping per field. Month/day/hour/minute wrap; the year clamps to
+// the instrument's travel range.
+var _ALM_TM_FIELD_RANGE = { day: [1, 31], hh: [0, 23], mi: [0, 59] };
+function _almTmEditStep(part, dir) {
+  var el = document.getElementById('alm-tm-in-' + part);
+  if (!el) return;
+  var prev = _almTmEditPrev || new Date();
+  if (part === 'mon') {
+    var m = _almTmMonParse(el.value, prev.getMonth() + 1) - 1 + dir;
+    el.value = _almTmMonAbbrs()[((m % 12) + 12) % 12];
+    return;
+  }
+  var n = parseInt(el.value, 10);
+  if (part === 'year') {
+    if (isNaN(n)) n = prev.getFullYear();
+    el.value = String(Math.max(_ALM_YEAR_MIN, Math.min(_ALM_YEAR_MAX, n + dir)));
+    return;
+  }
+  var r = _ALM_TM_FIELD_RANGE[part];
+  if (isNaN(n)) n = r[0];
+  var span = r[1] - r[0] + 1;
+  n = (((n - r[0] + dir) % span) + span) % span + r[0];
+  el.value = ('0' + n).slice(-2);
+}
+
+function _almTmEditKey(e, part) {
+  if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); _almTmEditCommit(); }
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); _almTmEditCancel(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); _almTmEditStep(part, 1); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); _almTmEditStep(part, -1); }
+}
+
+// A long typed year (5+ digits, BCE sign) widens the shared year column so
+// the digits never clip; _almTmSync trues it back up after the trip.
+function _almTmYearGrew(el) {
+  var root = document.getElementById('alm-tm');
+  if (root) {
+    var cur = parseInt(root.style.getPropertyValue('--tm-year-ch'), 10) || 4;
+    var len = Math.max(4, (el.value || '').length);
+    if (len > cur) root.style.setProperty('--tm-year-ch', len);
+  }
+}
+
+function _almTmEditInt(id, dflt, lo, hi) {
   var el = document.getElementById(id);
   var n = el ? parseInt(el.value, 10) : NaN;
   if (isNaN(n)) n = dflt;
-  if (lo != null) n = Math.max(lo, n);
-  if (hi != null) n = Math.min(hi, n);
-  return n;
+  return Math.max(lo, Math.min(hi, n));
 }
 
-function _almTmChooserGo() {
-  var now = new Date();
-  var y = _almTmChooserVal('alm-tm-cy', now.getFullYear(), _ALM_YEAR_MIN, _ALM_YEAR_MAX);
-  var mo = _almTmChooserVal('alm-tm-cmo', 1, 1, 12);
-  var d = _almTmChooserVal('alm-tm-cd', 1, 1, 31);
-  var h = _almTmChooserVal('alm-tm-ch', 0, 0, 23);
-  var mi = _almTmChooserVal('alm-tm-cmi', 0, 0, 59);
-  _almTmMode('rest');
+function _almTmEditStop() {
+  _almTmEditing = false;
+  _almTmEditPrev = null;
+  var root = document.getElementById('alm-tm');
+  if (root) root.classList.remove('alm-tm-editing');
+}
+
+function _almTmEditCommit() {
+  if (!_almTmEditing) return;
+  var prev = _almTmEditPrev || _almFocusInstant();
+  var monEl = document.getElementById('alm-tm-in-mon');
+  var mo = _almTmMonParse(monEl ? monEl.value : '', prev.getMonth() + 1);
+  var y = _almTmEditInt('alm-tm-in-year', prev.getFullYear(), _ALM_YEAR_MIN, _ALM_YEAR_MAX);
+  var d = _almTmEditInt('alm-tm-in-day', prev.getDate(), 1, 31);
+  var h = _almTmEditInt('alm-tm-in-hh', prev.getHours(), 0, 23);
+  var mi = _almTmEditInt('alm-tm-in-mi', prev.getMinutes(), 0, 59);
+  _almTmEditStop();
   _almScrubSettle(_almClampInstant(_almMakeInstant(y, mo, d, h, mi)), { land: true });
 }
 
-function _almTmChooserCancel() { _almTmMode('rest'); _almTmSync(); }
-
-function _almTmChooserKey(e) {
-  if (e.key === 'Enter') { e.preventDefault(); _almTmChooserGo(); }
-  else if (e.key === 'Escape') { e.preventDefault(); _almTmChooserCancel(); }
+function _almTmEditCancel() {
+  if (!_almTmEditing) return;
+  _almTmEditStop();
+  _almTmSync();
 }
 
 // Return-to-now, with the landing zap (button + Home key).
@@ -1179,6 +1339,7 @@ function _almLeverStart(e) {
   _almTmHalf = Math.max(1, tr.height / 2 - knob.offsetHeight / 2);
   _almLeverActive = true;
   _almLeverDecel = false;
+  _almTmEditCancel();                    // a thrown lever outranks a half-typed destination
   _almTmShow();                          // engaging the lever reveals the instrument
   knob.classList.remove('alm-tm-lever-spring');
   if (knob.setPointerCapture && e.pointerId != null) { try { knob.setPointerCapture(e.pointerId); } catch (err) {} }
@@ -1384,55 +1545,44 @@ function _renderAlmanacContent() {
   // Docked at the BOTTOM of the layout and sticky to the viewport's bottom edge,
   // so summoning it (hero-clock tap, calendar pick, lever) grows the page only
   // below everything the reader is looking at — no scroll bump — while still
-  // riding into view as a dock. Three faces (rest / motion / chooser) toggled by
-  // its data-mode; see the engine above.
+  // riding into view as a dock. Two faces (rest / motion) toggled by its
+  // data-mode, plus an in-place destination edit on the rest face; see the
+  // engine above.
   html += '<div id="alm-tm" class="alm-tm" data-mode="rest">';
   html +=   '<div class="alm-tm-panel">';
-  // Rest face — the three-row time circuit.
+  // Rest face — three LED time circuits (the film's stack, in Zimi's
+  // brass/amber): each a strip of segment cells over a small label plate.
+  // DESTINATION is the editable one — its cells carry hidden in-place inputs.
   html +=     '<div class="alm-tm-rows">';
-  html +=       '<div class="alm-tm-row alm-tm-displayed">';
-  html +=         '<span class="alm-tm-label">' + t('alm_tm_displayed') + '</span>';
-  html +=         '<span class="alm-tm-time" id="alm-tm-displayed-val"></span>';
+  html +=       '<div class="alm-tm-circuit alm-tm-displayed">';
+  html +=         '<div class="alm-tm-row">' + _almTmCellsHtml('alm-tm-disp') + '</div>';
+  html +=         '<div class="alm-tm-label">' + t('alm_tm_displayed') + '</div>';
   html +=       '</div>';
-  html +=       '<button type="button" class="alm-tm-row alm-tm-dest" onclick="_almTmOpenChooser()" title="' + _almEsc(t('alm_tm_set_dest')) + '" aria-label="' + _almEsc(t('alm_tm_set_dest')) + '">';
-  html +=         '<span class="alm-tm-label">' + t('alm_tm_destination') + '</span>';
-  html +=         '<span class="alm-tm-time" id="alm-tm-dest-val"></span>';
-  html +=         '<span class="alm-tm-dest-ic" aria-hidden="true">✎</span>';
-  html +=       '</button>';
-  html +=       '<div class="alm-tm-row alm-tm-now">';
-  html +=         '<span class="alm-tm-label">' + t('alm_tm_actual') + '</span>';
-  html +=         '<span class="alm-tm-time" id="alm-tm-now-val"></span>';
-  html +=         '<button type="button" class="alm-tm-return" id="alm-tm-return" onclick="_almTmReturnNow()" title="' + _almEsc(t('alm_back_to_now')) + '" hidden>↺ ' + t('alm_now') + '</button>';
+  html +=       '<div class="alm-tm-circuit alm-tm-dest">';
+  html +=         '<div class="alm-tm-row" role="button" tabindex="0" onclick="_almTmEditStart(event)" onkeydown="_almTmDestKey(event)" title="' + _almEsc(t('alm_tm_set_dest')) + '">' + _almTmCellsHtml('alm-tm-dest', true) + '</div>';
+  html +=         '<div class="alm-tm-label">' + t('alm_tm_destination') + '</div>';
+  html +=       '</div>';
+  html +=       '<div class="alm-tm-circuit alm-tm-now">';
+  html +=         '<div class="alm-tm-row">' + _almTmCellsHtml('alm-tm-now') + '</div>';
+  html +=         '<div class="alm-tm-label">' + t('alm_tm_actual') + '</div>';
+  html +=       '</div>';
+  // Keypad strip — small instrument keys under the circuits. The strip keeps
+  // its height in every state so the dock never resizes: NOW shows while
+  // parked away from the present; GO/X replace it during a destination edit
+  // (tap targets for mobile, where numeric keyboards have no Enter key).
+  html +=       '<div class="alm-tm-keys">';
+  html +=         '<button type="button" class="alm-tm-key alm-tm-key-cancel" onclick="_almTmEditCancel()" title="' + _almEsc(t('alm_tm_cancel')) + '" aria-label="' + _almEsc(t('alm_tm_cancel')) + '">&#10005;</button>';
+  html +=         '<button type="button" class="alm-tm-key alm-tm-key-go" onclick="_almTmEditCommit()">' + t('alm_tw_go') + '</button>';
+  html +=         '<button type="button" class="alm-tm-key alm-tm-key-now" id="alm-tm-return" onclick="_almTmReturnNow()" title="' + _almEsc(t('alm_back_to_now')) + '" hidden>&#8634; ' + t('alm_now') + '</button>';
   html +=       '</div>';
   html +=     '</div>';
-  // Motion face — one readout of the moving position; tap to return to rest.
+  // Motion face — one large readout in the same LED cells, overlaid on the
+  // (hidden but still laid out) circuits so the dock's size never changes
+  // when the lever is grabbed; tap to return to rest.
   html +=     '<button type="button" class="alm-tm-solo" onclick="_almTmToRest()" aria-label="' + _almEsc(t('alm_tm_traveling')) + '">';
   html +=       '<span class="alm-tm-solo-lbl">' + t('alm_tm_traveling') + '</span>';
-  html +=       '<span class="alm-tm-solo-time" id="alm-tm-solo-val"></span>';
+  html +=       _almTmCellsHtml('alm-tm-solo');
   html +=     '</button>';
-  // Chooser face — pick any date+time; the year field accepts arbitrary and BCE.
-  var _tmFields = [
-    ['alm-tm-cy', t('alm_tm_year'), t('alm_tm_year_hint'), 'alm-tm-field-year'],
-    ['alm-tm-cmo', t('alm_tm_month'), '', ''],
-    ['alm-tm-cd', t('alm_tm_day'), '', ''],
-    ['alm-tm-ch', t('alm_tm_hour'), '', ''],
-    ['alm-tm-cmi', t('alm_tm_min'), '', '']
-  ];
-  html +=     '<div class="alm-tm-chooser">';
-  html +=       '<div class="alm-tm-fields">';
-  for (var _fi = 0; _fi < _tmFields.length; _fi++) {
-    var _f = _tmFields[_fi];
-    html +=       '<label class="alm-tm-field ' + _f[3] + '"><span class="alm-tm-field-lbl">' + _f[1] + '</span>' +
-                    '<input type="number" step="1" id="' + _f[0] + '" class="alm-tm-input" inputmode="numeric"' +
-                    ' aria-label="' + _almEsc(_f[1]) + '"' + (_f[2] ? ' title="' + _almEsc(_f[2]) + '"' : '') +
-                    ' onkeydown="_almTmChooserKey(event)"></label>';
-  }
-  html +=       '</div>';
-  html +=       '<div class="alm-tm-chooser-btns">';
-  html +=         '<button type="button" class="alm-tm-cancel" onclick="_almTmChooserCancel()">' + t('alm_tm_cancel') + '</button>';
-  html +=         '<button type="button" class="alm-tm-go" onclick="_almTmChooserGo()">' + t('alm_tw_go') + '</button>';
-  html +=       '</div>';
-  html +=     '</div>';
   html +=   '</div>';
   // Side-mounted lever — a faceted crystal disc on a brass shaft (the 1960 Time
   // Machine's spinning crystal). Throw up for the future, down for the past; the
@@ -3304,10 +3454,9 @@ function _startTzClock() {
     if (now.getMinutes() !== _tzGridMinute) {
       _tzGridMinute = now.getMinutes();
       _initTzClock(now);
-      // Keep the time machine's NOW row ticking (HH:MM resolution, so a
+      // Keep the time machine's ACTUAL row ticking (HH:MM resolution, so a
       // once-per-minute refresh is enough) while parked in the past/future.
-      var _nowRow = document.getElementById('alm-tm-now-val');
-      if (_nowRow) _nowRow.textContent = _almTmFmt(now);
+      _almTmSetCells('alm-tm-now', now);
     }
     _tzClockRAF = requestAnimationFrame(tick);
   }
@@ -5332,7 +5481,8 @@ function _drawAlmanacGrid() {
   // including 0, five-figure years, or a negative year for BCE.
   html += '<div class="alm-nav">';
   html += '<button class="alm-arrow" onclick="_almPrev()">\u25C0</button>';
-  html += '<div class="alm-title">' + monthName + ' ' +
+  html += '<div class="alm-title">' +
+    '<span class="alm-month" tabindex="0" role="button" aria-haspopup="menu" onclick="_almMonthPick(event)" onkeydown="_almMonthTitleKey(event)" title="' + _almEsc(_tLookup('alm_month_pick', 'Choose month')) + '">' + monthName + '</span> ' +
     '<span class="alm-year" tabindex="0" role="button" onclick="_almYearEdit(event)" onkeydown="_almYearTitleKey(event)" title="' + _almEsc(t('alm_tm_year_hint')) + '">' +
     _almYear + '</span>' + _calYearSuffix(_almSystem) + '</div>';
   html += '<button class="alm-arrow" onclick="_almNext()">\u25B6</button>';
@@ -5557,6 +5707,60 @@ function _almYearEdit(e) {
 
 function _almYearTitleKey(e) {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _almYearEdit(e); }
+}
+
+// The month name in the calendar title opens a compact month grid — the month
+// counterpart of the typable year beside it. Built from _calMonthName each
+// time, so a 13-month lunisolar year simply shows 13 cells and localized
+// names come for free. Picking a month redraws the grid (which also removes
+// the pop, since it lives inside the calendar container).
+function _almMonthPick(e) {
+  if (e) e.stopPropagation();
+  var old = document.getElementById('alm-month-pop');
+  if (old) { old.remove(); return; }
+  var nav = document.querySelector('#almanac-calendar .alm-nav');
+  if (!nav) return;
+  var count = _calMonthCount(_almSystem, _almYear);
+  var pop = document.createElement('div');
+  pop.id = 'alm-month-pop';
+  pop.className = 'alm-month-pop';
+  pop.setAttribute('role', 'menu');
+  pop.setAttribute('aria-label', _tLookup('alm_month_pick', 'Choose month'));
+  for (var m = 1; m <= count; m++) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'alm-month-cell' + (m === _almMonth ? ' alm-month-cur' : '');
+    b.setAttribute('role', 'menuitem');
+    b.textContent = _calMonthName(_almSystem, _almYear, m);
+    b.onclick = (function (mm) { return function () { _almMonth = mm; _drawAlmanacGrid(); }; })(m);
+    pop.appendChild(b);
+  }
+  nav.appendChild(pop);
+  var cur = pop.querySelector('.alm-month-cur');
+  if (cur) cur.focus();
+  // Dismiss on an outside tap or Escape. The handlers detach themselves the
+  // moment the pop is gone, however it went (pick, redraw, outside tap). A tap
+  // on the month name itself is left to the name's own click handler, which
+  // toggles.
+  var detach = function () {
+    document.removeEventListener('pointerdown', dismiss, true);
+    document.removeEventListener('keydown', dismiss, true);
+  };
+  var dismiss = function (ev) {
+    var p = document.getElementById('alm-month-pop');
+    if (!p) { detach(); return; }
+    if (ev.type === 'keydown' && ev.key !== 'Escape') return;
+    if (ev.type === 'pointerdown' && ev.target && ev.target.closest &&
+        (p.contains(ev.target) || ev.target.closest('.alm-month'))) return;
+    p.remove();
+    detach();
+  };
+  document.addEventListener('pointerdown', dismiss, true);
+  document.addEventListener('keydown', dismiss, true);
+}
+
+function _almMonthTitleKey(e) {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _almMonthPick(e); }
 }
 
 // Jump the browsed calendar to an arbitrary year in the current system. Clamp

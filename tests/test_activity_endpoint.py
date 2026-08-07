@@ -78,6 +78,50 @@ class ActivityEndpointTests(unittest.TestCase):
         self.assertIn("active", body["downloads"])
         self.assertIn("queued", body["downloads"])
         self.assertIn("torrents", body["seeding"])
+        # Background jobs (bookmark→ZIM export, library health check) ride
+        # along as brief {phase, done, total} snapshots — same keys idle or not.
+        for op in ("export", "health"):
+            self.assertIn(op, body)
+            self.assertIn("phase", body[op])
+            self.assertIn("done", body[op])
+            self.assertIn("total", body[op])
+
+    def test_export_and_health_passthrough(self):
+        """Running export/health state surfaces as phase/done/total briefs;
+        health's heavy `report` payload must NOT be forwarded on a 5s poll."""
+        from zimi import health as _health
+        from zimi import zimwriter as _zw
+
+        export_state = {
+            "phase": "running",
+            "done": 3,
+            "total": 9,
+            "file": None,
+            "files": [],
+            "count": 3,
+            "error": None,
+        }
+        health_state = {
+            "phase": "running",
+            "done": 12,
+            "total": 53,
+            "report": [{"name": "big"}] * 53,
+            "summary": None,
+        }
+        with (
+            mock.patch.object(
+                _srv, "_get_title_index_status_brief", return_value=self._idle_status()
+            ),
+            mock.patch.object(_srv, "_get_downloads", return_value=[]),
+            mock.patch.object(_zw, "get_export_state", return_value=export_state),
+            mock.patch.object(_health, "get_state", return_value=health_state),
+        ):
+            status, body = self._call()
+        self.assertEqual(status, 200)
+        self.assertEqual(body["export"], {"phase": "running", "done": 3, "total": 9})
+        self.assertEqual(body["health"], {"phase": "running", "done": 12, "total": 53})
+        self.assertNotIn("report", body["health"])
+        self.assertNotIn("files", body["export"])
 
     def test_counts_match_real_download_shape(self):
         """Mirrors the actual fields _get_downloads() returns (library.py:1209,

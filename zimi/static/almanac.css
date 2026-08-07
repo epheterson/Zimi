@@ -374,95 +374,130 @@
   color: var(--amber); border-color: rgba(255,224,160,0.85); outline: none;
   box-shadow: 0 0 10px rgba(245,158,11,0.35), 0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
 }
-/* The hero clock time is the discoverable way in — flag it as tappable. */
-.almanac-head-time-btn { cursor: pointer; border-radius: 4px; transition: color .15s; }
-.almanac-head-time-btn:hover { color: var(--amber); }
-.almanac-head-time-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--amber-glow); }
-.alm-tm-panel { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+/* Tappable header date/time — both summon the time machine. The resting
+   dotted underline borrows the .alm-link idiom ("this text does something")
+   so the way in is discoverable before the first hover. */
+.alm-head-tap {
+  cursor: pointer; border-radius: 4px; transition: color .15s;
+  text-decoration: underline; text-decoration-style: dotted;
+  text-decoration-color: var(--amber-border); text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+.alm-head-tap:hover { color: var(--amber); text-decoration-color: var(--amber); }
+.alm-head-tap:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--amber-glow); }
+.alm-tm-panel { position: relative; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
 
-/* Face switching driven by data-mode */
-.alm-tm-rows, .alm-tm-solo, .alm-tm-chooser { display: none; }
-.alm-tm[data-mode="rest"] .alm-tm-rows { display: flex; flex-direction: column; gap: 4px; }
-.alm-tm[data-mode="motion"] .alm-tm-solo { display: flex; }
-.alm-tm[data-mode="chooser"] .alm-tm-chooser { display: flex; flex-direction: column; gap: 8px; }
+/* Face switching driven by data-mode. The circuits keep their layout while
+   the motion face overlays them, so the dock is the same size in every state
+   — grabbing the lever can never resize the instrument under a finger. */
+.alm-tm-solo { display: none; }
+.alm-tm-rows { display: flex; flex-direction: column; gap: 6px; }
+.alm-tm[data-mode="motion"] .alm-tm-rows { visibility: hidden; }
+.alm-tm[data-mode="motion"] .alm-tm-solo { display: flex; position: absolute; inset: 0; }
 
-/* Rest face — three recessed "display glass" strips */
+/* Rest face — three LED time circuits (the film's stack, adapted to Zimi's
+   brass/amber): a recessed strip of segment cells over a small label plate.
+   Tints: DESTINATION amber-bright (the row you set), DISPLAYED warm white
+   (what the almanac renders), ACTUAL dimmed (the present). */
+.alm-tm-circuit { display: flex; flex-direction: column; gap: 2px; }
 .alm-tm-row {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 5px 8px; border: 0; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; width: 100%;
+  padding: 3px 6px; border: 0; border-radius: 8px;
   background: rgba(0,0,0,0.32); box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
-  font-family: inherit; text-align: left; color: inherit;
+  font-family: inherit; color: inherit;
 }
-button.alm-tm-row { cursor: pointer; transition: background .15s, box-shadow .15s; }
 .alm-tm-label {
-  flex: 0 0 auto; width: 74px; font-size: 9px; font-weight: 700;
-  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text3);
+  text-align: center; font-size: 7.5px; font-weight: 700; line-height: 1.5;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--text3);
+  white-space: nowrap; overflow: hidden;
 }
-.alm-tm-time {
-  flex: 1 1 auto; min-width: 0; font-size: 15px; font-weight: 600;
-  letter-spacing: 0.02em; font-variant-numeric: tabular-nums;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+/* Segment cells — MON DD YYYY HH:MM, each field its own recessed LED module.
+   Fixed widths ride --tm-mon-ch / --tm-year-ch (set by _almTmSync from the
+   longest value on the instrument) so the rows stay one aligned grid, and so
+   swapping a value for its edit input cannot move a single pixel. LTR even in
+   RTL locales: it is an instrument readout, not prose. */
+.alm-tm-cells { display: flex; align-items: center; justify-content: center; gap: 3px; min-width: 0; direction: ltr; }
+.alm-tm-cell {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 24px; padding: 0 3px; border-radius: 4px; overflow: hidden;
+  background: rgba(0,0,0,0.5);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.65), inset 0 -1px 0 rgba(255,255,255,0.03);
+  font-size: 14px; font-weight: 600; letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-.alm-tm-displayed .alm-tm-time { color: var(--amber); text-shadow: 0 0 8px var(--amber-glow); }
-.alm-tm-dest .alm-tm-time { color: var(--text); }
-.alm-tm-now .alm-tm-time { color: var(--text3); font-size: 13px; }
-.alm-tm-dest:hover { background: rgba(0,0,0,0.5); box-shadow: inset 0 0 0 1px var(--amber-border); }
-/* The ACTUAL row carries the return-to-now button. At narrow dock widths the
-   full date plus the button exceed one line, and the old clip cut the date
-   mid-glyph right against the button — it read as the button overlapping the
-   date. Let the row wrap instead: flex line-breaking uses the date's content
-   width, so the button sits beside it whenever it fits and otherwise drops to
-   its own right-aligned line with the date left whole. */
-.alm-tm-now { flex-wrap: wrap; row-gap: 3px; }
-.alm-tm-dest-ic { flex: 0 0 auto; font-size: 11px; color: var(--text3); }
-.alm-tm-dest:hover .alm-tm-dest-ic { color: var(--amber); }
-.alm-tm-return {
-  flex: 0 0 auto; margin-left: auto; background: none; border: 1px solid var(--amber-border);
-  color: var(--amber); font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
-  padding: 2px 8px; border-radius: 10px; cursor: pointer; font-family: inherit;
-  transition: background .15s, border-color .15s;
-}
-.alm-tm-return:hover { background: var(--amber-glow); border-color: var(--amber); }
+.alm-tm-cell-mon  { width: calc(var(--tm-mon-ch, 3) * 1ch + 0.6em); }
+.alm-tm-cell-year { width: calc(var(--tm-year-ch, 4) * 1ch + 0.6em); }
+.alm-tm-cell-day, .alm-tm-cell-hh, .alm-tm-cell-mi { width: calc(2ch + 0.6em); }
+.alm-tm-cell-group { display: inline-flex; align-items: center; gap: 2px; }
+.alm-tm-colon { font-weight: 700; opacity: 0.65; }
+/* Row tints */
+.alm-tm-displayed .alm-tm-cell { color: #f3e9d2; text-shadow: 0 0 7px rgba(255,236,196,0.28); }
+.alm-tm-dest .alm-tm-cell { color: var(--amber); text-shadow: 0 0 8px var(--amber-glow); }
+.alm-tm-dest .alm-tm-label { color: rgba(245,158,11,0.7); }
+.alm-tm-now .alm-tm-cell { color: rgba(231,207,144,0.48); }
+/* The present keeps time: its colon ticks once a second. */
+.alm-tm-now .alm-tm-colon { animation: alm-tm-tick 1s steps(1) infinite; }
+@keyframes alm-tm-tick { 50% { opacity: 0.15; } }
+/* DESTINATION is the editable row */
+.alm-tm-dest .alm-tm-row { cursor: pointer; transition: background .15s, box-shadow .15s; }
+.alm-tm-dest .alm-tm-row:hover { background: rgba(0,0,0,0.48); box-shadow: inset 0 1px 2px rgba(0,0,0,0.5), inset 0 0 0 1px var(--amber-border); }
+.alm-tm-dest .alm-tm-row:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--amber), 0 0 8px var(--amber-glow); }
+.alm-tm-editing .alm-tm-dest .alm-tm-row,
+.alm-tm-editing .alm-tm-dest .alm-tm-row:hover { cursor: default; background: rgba(0,0,0,0.48); box-shadow: inset 0 1px 2px rgba(0,0,0,0.5); }
 
-/* Motion face — "only one time matters": a single large readout */
+/* Destination edit — the same cells become fields: value out, input in, same
+   geometry, same order. No pencil, no format flip. */
+.alm-tm-cin {
+  display: none; width: 100%; min-width: 0; background: none; border: 0;
+  padding: 0; margin: 0; font: inherit; color: inherit; letter-spacing: inherit;
+  text-align: center; caret-color: var(--amber);
+}
+.alm-tm-cin:focus { outline: none; }
+.alm-tm-cin::selection { background: rgba(245,158,11,0.35); }
+.alm-tm-editing .alm-tm-dest .alm-tm-cval { display: none; }
+.alm-tm-editing .alm-tm-dest .alm-tm-cin { display: block; }
+.alm-tm-editing .alm-tm-dest .alm-tm-cell:has(.alm-tm-cin:focus) {
+  background: rgba(0,0,0,0.7); box-shadow: inset 0 0 0 1px var(--amber), inset 0 1px 2px rgba(0,0,0,0.65);
+}
+
+/* Keypad strip — small instrument keys under the circuits, right-aligned.
+   min-height reserves the strip in every state so showing NOW or GO/X never
+   changes the dock's height; nothing here can collide, down to 320px. */
+.alm-tm-keys { display: flex; justify-content: flex-end; align-items: center; gap: 6px; min-height: 22px; }
+.alm-tm-key {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  min-height: 21px; padding: 2px 10px; border-radius: 6px;
+  background: linear-gradient(180deg, #2e2e33, #17171a);
+  border: 1px solid rgba(255,224,160,0.35);
+  box-shadow: 0 2px 0 rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.07);
+  color: rgba(255,224,160,0.85); cursor: pointer; font-family: inherit;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  transition: color .15s, border-color .15s, transform .05s, box-shadow .05s;
+}
+.alm-tm-key:hover { color: var(--amber); border-color: var(--amber-border); }
+.alm-tm-key:active { transform: translateY(1px); box-shadow: 0 1px 0 rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05); }
+.alm-tm-key:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--amber-glow), 0 2px 0 rgba(0,0,0,0.55); }
+.alm-tm-key-go { background: linear-gradient(180deg, #fbbf24, #d97706); border-color: rgba(255,224,160,0.7); color: #241a05; }
+.alm-tm-key-go:hover { color: #000; border-color: var(--amber); }
+/* Which keys show: GO/X only while editing, NOW otherwise (its `hidden`
+   attribute — flipped by _almTmSync — keeps it to parked-away times). */
+.alm-tm-key-go, .alm-tm-key-cancel { display: none; }
+.alm-tm-editing .alm-tm-key-go, .alm-tm-editing .alm-tm-key-cancel { display: inline-flex; }
+.alm-tm-editing .alm-tm-key-now, .alm-tm-key[hidden] { display: none; }
+
+/* Motion face — "only one time matters": the same LED cells, large */
 .alm-tm-solo {
-  width: 100%; flex-direction: column; align-items: flex-start; gap: 2px;
+  width: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
   padding: 10px; border: 0; border-radius: 10px; cursor: pointer;
   background: rgba(0,0,0,0.4); box-shadow: inset 0 1px 3px rgba(0,0,0,0.55);
-  font-family: inherit; text-align: left;
+  font-family: inherit;
 }
 .alm-tm-solo-lbl { font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--amber2); opacity: 0.85; }
-.alm-tm-solo-time {
-  font-size: 24px; font-weight: 700; letter-spacing: 0.01em; line-height: 1.1;
-  font-variant-numeric: tabular-nums; color: var(--amber);
-  text-shadow: 0 0 12px var(--amber-glow); white-space: nowrap;
+.alm-tm-solo .alm-tm-cells { flex-wrap: wrap; row-gap: 3px; }
+.alm-tm-solo .alm-tm-cell {
+  height: 30px; font-size: 17px; font-weight: 700;
+  color: var(--amber); text-shadow: 0 0 12px var(--amber-glow);
 }
-
-/* Chooser face — arbitrary date+time; the year field takes any/BCE year */
-.alm-tm-fields { display: flex; gap: 5px; align-items: flex-end; }
-.alm-tm-field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 0; min-width: 0; }
-.alm-tm-field-year { flex: 1.7 1 0; }
-.alm-tm-field-lbl { font-size: 8px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); }
-.alm-tm-input {
-  width: 100%; min-width: 0; background: var(--surface); color: var(--amber);
-  border: 1px solid var(--amber-border); border-radius: 6px; padding: 5px 6px;
-  font-size: 13px; font-family: inherit; font-variant-numeric: tabular-nums;
-  color-scheme: dark; text-align: center;
-}
-.alm-tm-input:focus { outline: none; border-color: var(--amber); }
-.alm-tm-chooser-btns { display: flex; gap: 6px; justify-content: flex-end; }
-.alm-tm-cancel {
-  background: none; border: 1px solid var(--border); color: var(--text2);
-  border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 600;
-  cursor: pointer; font-family: inherit;
-}
-.alm-tm-cancel:hover { color: var(--text); border-color: var(--amber-border); }
-.alm-tm-go {
-  background: var(--amber); color: #000; border: none; border-radius: 6px;
-  padding: 5px 16px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
-  cursor: pointer; font-family: inherit;
-}
-.alm-tm-go:hover { background: var(--amber2); }
 
 /* Side-mounted lever — the 1960 Time Machine's spinning crystal disc on a
    brass shaft. A recessed track holds a static rod (the "stick"); the crystal
@@ -538,6 +573,26 @@ button.alm-tm-row { cursor: pointer; transition: background .15s, box-shadow .15
 /* Beyond the precise-astronomy window — a quiet note, never an error. */
 .alm-beyond { font-size: 11px; color: var(--text3); font-style: italic; text-align: center; margin-top: 6px; }
 
+/* Directly pickable calendar month — a compact grid pops under the title
+   (the month counterpart of the typable year beside it). */
+.alm-month { cursor: pointer; border-radius: 4px; padding: 0 2px; transition: background .12s, color .12s; }
+.alm-month:hover, .alm-month:focus-visible { color: var(--amber); background: var(--amber-glow); outline: none; }
+.alm-month-pop {
+  position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  z-index: 30; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+  width: min(320px, calc(100vw - 32px)); padding: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+}
+.alm-month-cell {
+  border: 1px solid transparent; border-radius: 8px; padding: 7px 4px;
+  background: none; color: var(--text2); font: inherit; font-size: 13px; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+  transition: color .12s, background .12s, border-color .12s;
+}
+.alm-month-cell:hover, .alm-month-cell:focus-visible { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); outline: none; }
+.alm-month-cell.alm-month-cur, .alm-month-cell.alm-month-cur:hover { background: var(--amber); color: #000; font-weight: 600; }
+
 /* Directly typable calendar year */
 .alm-year { cursor: text; border-radius: 4px; padding: 0 2px; transition: background .12s, color .12s; }
 .alm-year:hover, .alm-year:focus-visible { color: var(--amber); background: var(--amber-glow); outline: none; }
@@ -549,7 +604,7 @@ button.alm-tm-row { cursor: pointer; transition: background .15s, box-shadow .15
 .alm-year-input:focus { outline: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .alm-tm-lever-spring, button.alm-tm-row, .alm-tm-return, .alm-tm-dest, .alm-year { transition: none; }
-  .alm-tm-zap, .alm-tm-crystal-facets { animation: none; }
+  .alm-tm-lever-spring, .alm-tm-dest .alm-tm-row, .alm-tm-key, .alm-year, .alm-month, .alm-month-cell, .alm-head-tap { transition: none; }
+  .alm-tm-zap, .alm-tm-crystal-facets, .alm-tm-now .alm-tm-colon { animation: none; }
   .alm-tm.alm-tm-open { animation: none; }
 }

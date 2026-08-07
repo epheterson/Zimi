@@ -6959,7 +6959,7 @@ function renderCatalogItem(group) {
     const withLabels = variants.filter(v => v.download_url).map(v => {
       const label = variantLabel(v.download_url) || t('full');
       const size = formatSize(v.size_bytes);
-      return { label, size, url: v.download_url };
+      return { label, size, url: v.download_url, bytes: v.size_bytes || 0 };
     });
     withLabels.sort((a, b) => _flavorOrder(b.url) - _flavorOrder(a.url));
     if (withLabels.length > 1) {
@@ -7046,6 +7046,16 @@ function _toggleDownloadSelection(cb) {
     _selectedDownloads.delete(url);
   }
   _renderSelectionBar();
+}
+
+// Re-key a selected download when its flavor changes so the selection-bar
+// total tracks the chosen variant (a checked item plus a flavor switch used
+// to keep totalling the OLD flavor's size). Returns true when it changed.
+function _reselectDownloadUrl(oldUrl, newUrl, bytes) {
+  if (oldUrl === newUrl || !_selectedDownloads.has(oldUrl)) return false;
+  _selectedDownloads.delete(oldUrl);
+  _selectedDownloads.set(newUrl, bytes || 0);
+  return true;
 }
 
 function _renderSelectionBar() {
@@ -9472,8 +9482,11 @@ function _myDataCardHtml() {
     ? '<button class="pill" onclick="saveMyDataToServer()">' + tH('backup_save_server') + '</button>' +
       '<button class="pill" onclick="restoreMyDataFromServer()">' + tH('backup_restore_server') + '</button>'
     : '';
+  // Signed-in named users get the account explanation (Save to server exists
+  // for them); everyone else gets browser-local + file export only.
+  var intro = signedIn ? tH('backup_mydata_intro_account') : tH('backup_mydata_intro');
   return '<div class="ms-section-label">' + tH('backup_mydata_title') + '</div>' +
-    '<div class="ms-hint">' + tH('backup_mydata_intro') + '</div>' +
+    '<div class="ms-hint">' + intro + '</div>' +
     '<div class="ms-backup-actions">' +
       '<button class="pill" onclick="exportMyData()">' + tH('backup_export_file') + '</button>' +
       '<button class="pill" onclick="document.getElementById(\'ms-mydata-file\').click()">' + tH('backup_import_file') + '</button>' +
@@ -10389,6 +10402,15 @@ function selectCatalogFlavor(optionEl, index) {
   split.dataset.selected = index;
   var mainBtn = split.querySelector('.ci-dl-main');
   mainBtn.textContent = t('download_size', {size: v.label + ' (' + v.size + ')'});
+  // Point the row's multi-select checkbox at the chosen flavor too; if the
+  // item is already checked, re-total the selection bar with the new size.
+  var itemEl = split.closest('.catalog-item');
+  var cb = itemEl ? itemEl.querySelector('.ci-select') : null;
+  if (cb) {
+    if (_reselectDownloadUrl(cb.dataset.url, v.url, v.bytes)) _renderSelectionBar();
+    cb.dataset.url = v.url;
+    cb.dataset.size = String(v.bytes || 0);
+  }
 }
 
 async function _downloadPack(btn, urls) {
@@ -10622,7 +10644,53 @@ function _updateDownloadsTabBadge(activeCount) {
 let _dlRefreshing = false;
 // Last downloads payload, cached so tapping a filter pill can repaint instantly
 // from data we already have instead of waiting for the next fetch (#6).
-let _dlLastDls = null, _dlLastSeeds = [], _dlLastSeedCap = 2;
+let _dlLastDls = null, _dlLastSeeds = [], _dlLastSeedCap = 2, _dlLastOps = null;
+// The export state persists server-side until the NEXT export, so a done/error
+// card is only shown after we watched this export run in this page session —
+// otherwise last week's export would haunt the panel forever.
+let _dlExportSeen = false;
+
+// Synthetic job cards for background server operations (bookmark→ZIM export,
+// library health check). Visibility only — controls live in their own UIs.
+function _dlOpsCardsHtml(ops) {
+  const ex = (ops && ops.export) || {};
+  const hc = (ops && ops.health) || {};
+  if (ex.phase === 'running') _dlExportSeen = true;
+  const bar = (done, total) => {
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    return '<div class="dl-progress' + (total ? '' : ' dl-indeterminate') +
+      '"><div class="dl-progress-bar"' + (total ? ' style="width:' + pct + '%"' : '') + '></div></div>';
+  };
+  const row = (label, right) =>
+    '<div class="dl-row"><span class="dl-name">' + label + '</span>' + right + '</div>';
+  let h = '';
+  if (ex.phase === 'running') {
+    h += '<div class="dl-item dl-op-item">' +
+      row(tH('dl_export_job'), '<span class="dl-size">' + (ex.total ? (ex.done || 0) + ' / ' + ex.total : '') + '</span>') +
+      bar(ex.done || 0, ex.total || 0) + '</div>';
+  } else if (_dlExportSeen && ex.phase === 'done') {
+    h += '<div class="dl-item dl-op-item">' +
+      row(tH('dl_export_job'), '<span class="dl-done">\u2713 ' + tH('dl_complete') + '</span>') + '</div>';
+  } else if (_dlExportSeen && ex.phase === 'error') {
+    h += '<div class="dl-item dl-op-item">' +
+      row(tH('dl_export_job'), '<span class="dl-error">' + tH('save_to_zim_failed') + '</span>') + '</div>';
+  }
+  if (hc.phase === 'running') {
+    h += '<div class="dl-item dl-op-item">' +
+      row(tH('dl_health_job'), '<span class="dl-size">' + (hc.total ? (hc.done || 0) + ' / ' + hc.total : '') + '</span>') +
+      bar(hc.done || 0, hc.total || 0) + '</div>';
+  }
+  return h;
+}
+
+// True while an op should keep the downloads panel alive (rendered card or
+// active work) — feeds both the empty-state check and the poll cadence.
+function _dlOpsActive(ops) {
+  const ex = (ops && ops.export) || {};
+  const hc = (ops && ops.health) || {};
+  return ex.phase === 'running' || hc.phase === 'running' ||
+    (_dlExportSeen && (ex.phase === 'done' || ex.phase === 'error'));
+}
 async function refreshDownloads() {
   // Re-entrancy guard: overlapping calls double-fetch /list and corrupt
   // the completed-count bookkeeping.
@@ -10638,13 +10706,14 @@ async function _refreshDownloadsInner(useCache) {
   const dlEl = document.getElementById('manage-downloads');
   if (!dlEl) return;
   try {
-    let dls, seedingTorrents = [], seedingCap = 2;
+    let dls, seedingTorrents = [], seedingCap = 2, ops = null;
     if (useCache && _dlLastDls) {
-      dls = _dlLastDls; seedingTorrents = _dlLastSeeds; seedingCap = _dlLastSeedCap;
+      dls = _dlLastDls; seedingTorrents = _dlLastSeeds; seedingCap = _dlLastSeedCap; ops = _dlLastOps;
     } else {
-      const [res, seedRes] = await Promise.all([
+      const [res, seedRes, actRes] = await Promise.all([
         manageFetch('/manage/downloads'),
         authedFetch('/manage/seeding').catch(() => null),
+        authedFetch('/manage/activity', { credentials: 'same-origin' }).catch(() => null),
       ]);
       const data = await res.json();
       dls = data.downloads || [];
@@ -10655,9 +10724,13 @@ async function _refreshDownloadsInner(useCache) {
           seedingCap = sd.ratio_cap || 2;
         } catch (e) {}
       }
-      _dlLastDls = dls; _dlLastSeeds = seedingTorrents; _dlLastSeedCap = seedingCap;
+      if (actRes && actRes.ok) {
+        try { ops = await actRes.json(); } catch (e) {}
+      }
+      _dlLastDls = dls; _dlLastSeeds = seedingTorrents; _dlLastSeedCap = seedingCap; _dlLastOps = ops;
     }
-    if (!dls.length && !seedingTorrents.length) {
+    const opsHtml = _dlOpsCardsHtml(ops);
+    if (!dls.length && !seedingTorrents.length && !opsHtml) {
       // Grace period: keep polling fast for 10s after a download was started
       // (server may not have registered it yet)
       if (!useCache && _dlRecentStart && Date.now() - _dlRecentStart < 10000) {
@@ -10745,6 +10818,9 @@ async function _refreshDownloadsInner(useCache) {
       h += '</div>';
     }
     h += '<div class="dl-grid">';
+    // Background-operation cards ride at the top of the default view only —
+    // they aren't downloads, so the specific filters leave them out.
+    if (filter === 'all') h += opsHtml;
     // Seed cards render under "Seeding" AND under "All" — All means all.
     // (With zero downloads and active seeds, All used to render blank.)
     if (filter === 'seeding' || filter === 'all') {
@@ -10763,7 +10839,7 @@ async function _refreshDownloadsInner(useCache) {
           '<div class="dl-seed-actions">' +
             (anyPausableSeed ? '<button class="dl-bulk-btn" onclick="pauseAllSeeds()">' + tH('dl_pause_all') + '</button>' : '') +
             (anyResumableSeed ? '<button class="dl-bulk-btn" onclick="resumeAllSeeds()">' + tH('dl_resume_all') + '</button>' : '') +
-            '<button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)">' + tH('stop_all_seeds') + '</button>' +
+            '<button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)" title="' + escAttr(t('stop_all_seeds_tip')) + '">' + tH('stop_all_seeds') + '</button>' +
           '</div></div>' +
           '<div class="dl-seed-hint">' + tH('seed_remove_hint') + '</div>';
       }
@@ -11008,6 +11084,7 @@ async function _refreshDownloadsInner(useCache) {
       const sel = document.getElementById('auto-update-freq');
       const autoOn = sel && sel.value !== 'disabled';
       if (anyActive) _dlTimer = setTimeout(refreshDownloads, 2000);
+      else if (_dlOpsActive(ops)) _dlTimer = setTimeout(refreshDownloads, 2000);
       else if (autoOn) _dlTimer = setTimeout(refreshDownloads, 10000);
     }
   } catch(e) {
@@ -11036,6 +11113,7 @@ async function _seedAction(id, action, btn) {
 async function clearDownloads() {
   try {
     await manageFetch('/manage/clear-downloads', { method: 'POST' });
+    _dlExportSeen = false; // also dismiss a finished export's job card
     const dlEl = document.getElementById('manage-downloads');
     if (dlEl) dlEl.innerHTML = '';
   } catch(e) {}
@@ -15772,6 +15850,15 @@ function _renderActivity(a) {
   if ((dl.queued || 0) > 0) parts.push(dl.queued + ' ' + t('activity_queued'));
   const seed = (a.seeding || {}).torrents || 0;
   if (seed > 0) parts.push(seed + ' ' + t('activity_seeding'));
+  // Other background jobs: bookmark→ZIM export, library health check.
+  const ex = a.export || {};
+  if (ex.phase === 'running') {
+    parts.push(t('activity_exporting') + (ex.total ? ' ' + (ex.done || 0) + '/' + ex.total : ''));
+  }
+  const hc = a.health || {};
+  if (hc.phase === 'running') {
+    parts.push(t('activity_health') + (hc.total ? ' ' + (hc.done || 0) + '/' + hc.total : ''));
+  }
 
   _activityBadge.count = dlCount;
   _activityBadge.active = parts.length > 0;
