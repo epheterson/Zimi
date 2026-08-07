@@ -554,7 +554,22 @@ def get_mirror_status() -> dict:
             _disc.is_share_enabled() and _disc.advertised_ip_looks_unreachable()
         ),
         "progress": _mirror_progress_snapshot(),
+        # When the offline catalog copy was last written (file mtime of the
+        # persisted OPDS cache). It refreshes on any catalog revalidation and
+        # on every 12h maintenance pass — the same pass that keeps the mirror
+        # seeds and .torrent archive current, so it's the honest "backup
+        # updated" time the settings UI shows. 0 = no copy yet.
+        "catalog_backup_ts": _catalog_backup_ts(),
     }
+
+
+def _catalog_backup_ts() -> int:
+    try:
+        from zimi import library as _lib
+
+        return int(os.path.getmtime(_lib._catalog_cache_path()))
+    except Exception:
+        return 0
 
 
 def _mirror_progress_snapshot() -> dict:

@@ -233,9 +233,9 @@ test.describe('Bookmarks folder tree', () => {
     await expect(page.locator('#zim-ctx-menu')).toHaveClass(/visible/);
   });
 
-  test('Save to ZIM opens with the whole library ticked', async ({ page }) => {
+  test('Export to ZIM opens with the whole library ticked', async ({ page }) => {
     await seedAndOpen(page, FOLDERS, BOOKMARKS);
-    await page.getByRole('button', { name: 'Save to ZIM' }).click();
+    await page.getByRole('button', { name: 'Export to ZIM' }).click();
     await page.waitForSelector('#bm-export-tree');
     const boxes = page.locator('#bm-export-tree input[type=checkbox]');
     const total = await boxes.count();
@@ -258,27 +258,41 @@ test.describe('Bookmarks folder tree', () => {
     expect(await page.locator('#bm-export-tree input[data-fid="__unfiled__"]').isChecked()).toBe(false);
   });
 
-  test('export selector builds one job per top-level folder with sections', async ({ page }) => {
+  test('export selector composes ONE job; empty folders become sections', async ({ page }) => {
     await seedAndOpen(page, FOLDERS, BOOKMARKS);
-    await page.getByRole('button', { name: 'Save to ZIM' }).click();
+    await page.getByRole('button', { name: 'Export to ZIM' }).click();
     await page.waitForSelector('#bm-export-tree');
-    // Select Medical (auto-checks its Cardiology subfolder).
-    await page.locator('#bm-export-tree input[data-fid="med"]').check();
-    const built = await page.evaluate(() => _bmBuildExportJobs());
-    // One job (Medical); Cardiology's bookmark rides as a section, not its own ZIM.
-    expect(built.jobs.length).toBe(1);
-    expect(built.jobs[0].title).toBe('Medical');
-    const sections = built.jobs[0].bookmarks.map((b) => b.section).sort();
-    expect(sections).toContain('Cardiology'); // Heart, nested
-    expect(sections).toContain('');           // Aspirin, directly in Medical
+    // Everything is ticked: Medical (+Cardiology), the EMPTY Research folder
+    // and the loose bookmark. One ZIM; folders become sections; the empty
+    // Research selection is preserved as a section, not silently dropped.
+    const job = await page.evaluate(() => {
+      const sel = _bmExportSelection();
+      return _bmComposeExportJob(sel.ids, sel.unfiled, 'My Export');
+    });
+    expect(job.title).toBe('My Export');
+    expect(job.name).toBe('My_Export');
+    expect(job.sections).toContain('Medical');
+    expect(job.sections).toContain('Medical / Cardiology');
+    expect(job.sections).toContain('Research'); // empty, still a section
+    expect(job.bookmarks.length).toBe(3);
+    // Name field prefills "Bookmarks" for a multi-folder selection and the
+    // live count reads 3 articles.
+    expect(await page.locator('#bm-export-name').inputValue()).toBe('Bookmarks');
+    await expect(page.locator('#bm-export-count')).toHaveText(/3/);
+    // Unticking everything but the empty Research folder disables Export.
+    await page.locator('#bm-export-all').click(); // Select none
+    await page.locator('#bm-export-tree input[data-fid="res"]').check();
+    await expect(page.locator('#bm-export-go')).toBeDisabled();
+    // A single ticked folder prefills its own name.
+    expect(await page.locator('#bm-export-name').inputValue()).toBe('Research');
   });
 
   test('full export creates a ZIM and reveals it', async ({ page }) => {
     await seedAndOpen(page, FOLDERS, BOOKMARKS);
-    await page.getByRole('button', { name: 'Save to ZIM' }).click();
+    await page.getByRole('button', { name: 'Export to ZIM' }).click();
     await page.waitForSelector('#bm-export-tree');
     await page.locator('#bm-export-tree input[data-fid="res"]').check();
-    await page.getByRole('button', { name: 'Save to ZIM' }).nth(1).click();
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
     // Poll the server export status directly until done (bounded).
     await expect.poll(async () => {
       const st = await page.evaluate(async () => {

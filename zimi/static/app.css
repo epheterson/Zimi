@@ -97,12 +97,22 @@
      on the overlay container re-establishes the dark palette for every child
      (cards, text, pills) without touching almanac.css. The result is a light app
      chrome over a deliberately dark cosmic panel — a seam by design, not a bug. */
-  /* The topbar joins the seam while the almanac is open (body.almanac-mode):
+  /* The whole chrome joins the seam while the almanac is open (body.almanac-mode):
      a light header floating over the night-sky panel was the one jarring strip
-     left in the light theme. Same token block, second scope — the class comes
-     off with the almanac, so the header reverts the moment you leave. */
+     left in the light theme. The tokens scope to the BODY, not just .topbar, for
+     two reasons found the hard way: (1) .topbar declares no `color`, so its
+     glyphs (logo, breadcrumb calendar icon) inherit body's computed light-theme
+     ink — retinting tokens on .topbar alone left dark ink on a dark bar; and
+     (2) --topbar-bg is translucent, so the bar composites over the body
+     background — over paper it rendered a lighter, warmer strip than the true
+     dark topbar. On body, `background: var(--bg)` and `color: var(--text)`
+     re-resolve with the dark set, making the chrome pixel-identical to the dark
+     theme. html.almanac-boot covers the reload-into-almanac window before
+     almanac.js has added body.almanac-mode, so even the first paint is dark.
+     The classes come off with the almanac, so everything reverts on leave. */
   :root[data-theme="light"] .almanac-view,
-  :root[data-theme="light"] body.almanac-mode .topbar {
+  :root[data-theme="light"] body.almanac-mode,
+  :root[data-theme="light"].almanac-boot body {
     --bg: #0a0a0b; --surface: #141416; --surface2: #1c1c20;
     --border: #27272b; --text: #e8e8ed; --text2: #8a8a94;
     --accent: #f5f5f7; --amber: #f59e0b; --amber2: #d97706;
@@ -115,8 +125,17 @@
     --on-amber: #000; --border-strong: var(--border);
     --topbar-bg: rgba(10, 10, 11, 0.85);
     --shadow-popup: 0 8px 32px rgba(0, 0, 0, 0.5);
+    /* Light-only card tokens return to their dark-theme fallbacks (usage is
+       var(--card-border, var(--border)) / var(--card-shadow, none)). */
+    --card-border: var(--border); --card-shadow: none;
     color-scheme: dark;
   }
+  /* Reload-into-almanac boot gate. The head bootstrap stamps html.almanac-boot
+     synchronously when the URL hash is #almanac (removed by _openAlmanacInner,
+     or by the load-failure paths), so the home/library view never paints first
+     and the almanac's dark shell shows immediately — before almanac.js loads. */
+  html.almanac-boot #main-view { display: none !important; }
+  html.almanac-boot #almanac-view { display: flex; }
 
   html { height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
   body { background: var(--bg); color: var(--text); min-height: 100%; padding-top: var(--under-topbar); overflow: visible; }
@@ -1058,7 +1077,7 @@
   }
   .health-row .health-redownload-btn:hover { border-color: var(--amber); }
   .health-row .health-redownload-btn.confirming { background: var(--amber-glow, rgba(245,158,11,.15)); font-weight: 600; }
-  /* ── Bookmarks panel: Save to ZIM ── */
+  /* ── Bookmarks panel: Export to ZIM ── */
   .hp-actions { display: flex; align-items: center; gap: 10px; padding: 8px 12px; flex-wrap: wrap; }
   .hp-action-btn {
     font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
@@ -1198,11 +1217,14 @@
   .catalog-grid .catalog-item .ci-icon { grid-area: icon; width: 32px; height: 32px; }
   .catalog-grid .catalog-item .ci-icon img { width: 28px; height: 28px; }
   .catalog-grid .catalog-item .ci-icon .ci-letter { width: 32px; height: 32px; font-size: 14px; }
-  .catalog-grid .catalog-item .ci-info { grid-area: info; min-width: 0; }
-  /* 32px clears the 22px checkbox visual (which sits centred in its 40px hit
-     area, intruding ~21px past the card padding) plus a breathing gap, so long
-     titles never run under the box. */
-  .catalog-grid .catalog-item .ci-title { font-size: 13px; margin-bottom: 1px; padding-right: 32px; }
+  /* Reserve the checkbox corner on the WHOLE text column, not just the title:
+     the 18px visual box (centred in its 40px hit area) reaches 29px in from
+     the card's right edge, i.e. 19px past the 10px card padding. 24px here
+     keeps every line — title, description AND meta — clear of it with a
+     breathing gap, at any viewport. (Padding only the title let long
+     descriptions run under the box.) */
+  .catalog-grid .catalog-item .ci-info { grid-area: info; min-width: 0; padding-right: 24px; }
+  .catalog-grid .catalog-item .ci-title { font-size: 13px; margin-bottom: 1px; }
   .catalog-grid .catalog-item .ci-meta { font-size: 11px; }
   .catalog-grid .catalog-item .ci-actions {
     grid-area: actions; justify-content: flex-end; margin-left: 0;
@@ -1216,9 +1238,11 @@
   /* Batch checkbox: a custom appearance:none box drawn entirely in CSS so it
      renders identically across engines. A native checkbox scales with its
      width/height/padding on iOS Safari into a huge dark rounded square — the
-     bug this replaces. 40px transparent hit area (tap target) centring a 22px
-     visual box (::before), pinned to the card's top-right corner. The checked
-     black-on-amber check matches the .pill.active convention. */
+     bug this replaces. 40px transparent hit area (tap target) centring an 18px
+     visual box (::before), pinned to the card's top-right corner. The check
+     stroke is theme-scoped: black on the bright dark-theme amber (#f59e0b),
+     white on the dark light-theme amber (#9d4a08) — black-on-#9d4a08 was
+     nearly invisible. */
   .catalog-grid .catalog-item .ci-select {
     appearance: none; -webkit-appearance: none;
     position: absolute; top: 0; right: 0; margin: 0; padding: 0;
@@ -1227,11 +1251,11 @@
     display: grid; place-content: center;
   }
   .catalog-grid .catalog-item .ci-select::before {
-    content: ""; width: 22px; height: 22px; box-sizing: border-box;
+    content: ""; width: 18px; height: 18px; box-sizing: border-box;
     /* Unchecked contrast: a --border (#27272b) box on a --surface (#141416) card
        nearly vanished on-device. --text2 (#8a8a94) border + --surface2 (#1c1c20)
        fill (one step lighter than the card) reads clearly as an empty checkbox. */
-    border: 2px solid var(--text2); border-radius: 6px; background: var(--surface2);
+    border: 2px solid var(--text2); border-radius: 4px; background: var(--surface2);
     transition: background 0.15s, border-color 0.15s;
   }
   /* Light theme: --surface2 is pure white, so the unchecked box vanished on the
@@ -1246,7 +1270,14 @@
   .catalog-grid .catalog-item .ci-select:checked::before,
   :root[data-theme="light"] .catalog-grid .catalog-item .ci-select:checked::before {
     border-color: var(--amber);
-    background: var(--amber) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center/14px no-repeat;
+    background: var(--amber) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center/12px no-repeat;
+  }
+  /* Light theme's --amber (#9d4a08) is a dark burnt orange — the black check
+     above disappeared on it. Swap in a white stroke there (same geometry).
+     Must come AFTER the doubled checked rule so equal specificity resolves
+     by source order. */
+  :root[data-theme="light"] .catalog-grid .catalog-item .ci-select:checked::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
   }
   .catalog-grid .catalog-item .ci-select:focus-visible { outline: none; }
   .catalog-grid .catalog-item .ci-select:focus-visible::before,
@@ -1254,7 +1285,7 @@
     border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow);
   }
   [dir="rtl"] .catalog-grid .catalog-item .ci-select { right: auto; left: 0; }
-  [dir="rtl"] .catalog-grid .catalog-item .ci-title { padding-right: 0; padding-left: 32px; }
+  [dir="rtl"] .catalog-grid .catalog-item .ci-info { padding-right: 0; padding-left: 24px; }
   .mc-row-clickable:hover, .mc-row-clickable:focus-visible { color: var(--amber); }
   /* Caret hints the Updates line expands; nudges right on hover. */
   .mc-caret { vertical-align: -2px; margin-left: 4px; opacity: 0.7; transition: transform 0.12s; }
@@ -1525,13 +1556,12 @@
   .share-field { display: flex; align-items: center; gap: 10px; margin-top: 7px; font-size: 12px; color: var(--text2); }
   .share-field > label { min-width: 78px; color: var(--text2); }
   .share-field-note { color: var(--text3); font-size: 11px; }
-  /* Sized for the 1-4 digit values they hold (ratio 1.5, conn cap 200, MB/s
-     caps) PLUS the number spinner arrows — the old 6ch left ~2 digits visible
-     once the spinner ate its share. The port needs 5 digits + spinner (78px). */
-  .share-num-input { width: 64px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 6px; text-align: left; }
-  /* 5 digits of monospace + left/right padding + the number spinner arrows;
-     8ch clipped the last digit once the spinner was accounted for. */
-  .share-port-input { width: 78px; }
+  /* One width for EVERY small numeric field in Settings — sized to the widest
+     tenant, the 5-digit port (digits + padding + the number spinner arrows).
+     The ratio/limit/connection boxes used to be a narrower 64px, which made
+     the column read as two mismatched families; extra room on a 3-digit value
+     is free. .share-port-input needs no width of its own anymore. */
+  .share-num-input { width: 78px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 6px; text-align: left; }
   /* Disabled (env-locked / BT-off) port + numeric fields: half-opacity turned the
      value into illegible grey-on-grey on paper. Keep the value readable with a
      muted colour on a recessed fill instead — still clearly inactive, but the
@@ -1554,9 +1584,14 @@
   .dl-seed-goal { margin-top: 6px; font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
   /* Seed age ("added 3 days ago"): quieter still — context, not data. */
   .dl-seed-age { color: var(--text3); }
-  /* Bulk seed controls span the grid instead of squatting an empty card cell;
-     flex + gap keeps Pause all / Resume all / Stop all from touching. */
-  .dl-seed-actions { grid-column: 1 / -1; margin-top: 8px; display: flex; justify-content: flex-end; gap: 8px; }
+  /* Seeds section header: title left, bulk actions (Pause all / Resume all /
+     Remove all) top right — same reading order as the downloads bulk bar.
+     Spans the card grid; wraps to two lines on phones instead of crushing. */
+  .dl-seed-head { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; }
+  .dl-seed-head-title { font-size: 13px; font-weight: 600; color: var(--accent); }
+  .dl-seed-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  /* What Remove means — files stay on disk. Quiet, its own grid row. */
+  .dl-seed-hint { grid-column: 1 / -1; font-size: 11px; color: var(--text3); margin: -2px 0 2px; }
   /* Sharing cards on phones: text keeps its width, fields wrap cleanly */
   .share-row-text { flex: 1; min-width: 0; }
   /* UPnP + dot + retry wrap as one unit, never leaving the retry circle
@@ -1570,7 +1605,8 @@
     .peer-name-input { width: 130px; }
     .share-port-group { gap: 8px; }
     .share-port-row { gap: 8px; }
-    .share-port-input { width: 70px; }
+    /* Whole numeric family narrows together on phones, keeping the one-width rule */
+    .share-num-input { width: 70px; }
   }
   /* Rounded like every other status chip in the app (.dl-window-chip geometry)
      rather than the square 3px tag it used to be. */
@@ -1943,10 +1979,8 @@
     /* v1.6: Language dropdown — full width on mobile */
     .lang-dropdown { min-width: 160px; }
     /* Catalog checkbox is engine-independent now (custom CSS box, sized in the
-       base .catalog-grid rule) — no mobile size override needed. Just keep the
-       title clear of the corner box. */
-    .catalog-grid .catalog-item .ci-title { padding-right: 30px; }
-    [dir="rtl"] .catalog-grid .catalog-item .ci-title { padding-right: 0; padding-left: 30px; }
+       base .catalog-grid rule) — no mobile size override needed; the base
+       .ci-info corner reserve covers phones too. */
     /* Selection bar — a single-row pill centred above the tab bar, never
        wrapping into a blob that overlaps cards. */
     .ci-selection-bar {
@@ -2333,6 +2367,16 @@
   .bm-exp-name { flex: 1; min-width: 0; font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bm-exp-count { flex-shrink: 0; font-size: 11px; color: var(--text2); background: var(--surface2); border-radius: 10px; padding: 1px 7px; }
   .bm-exp-empty { padding: 24px; text-align: center; color: var(--text2); font-size: 13px; }
+  .bm-export-name-row {
+    display: flex; align-items: center; gap: 10px; padding: 12px 18px 0;
+    font-size: 12.5px; color: var(--text2); white-space: nowrap;
+  }
+  .bm-export-name-row input {
+    flex: 1; min-width: 0; background: var(--surface); color: var(--text); font-size: 13px;
+    border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; outline: none;
+  }
+  .bm-export-name-row input:focus { border-color: var(--amber-border); }
+  .bm-export-count { padding: 6px 18px 0; font-size: 12px; color: var(--text2); }
   .bm-export-status { padding: 8px 18px 0; font-size: 12.5px; color: var(--text2); min-height: 18px; }
   .bm-export-actions { display: flex; align-items: center; gap: 8px; padding: 12px 18px 16px; }
   .bm-export-actions .primary { background: var(--amber); color: var(--on-amber); border-color: transparent; }

@@ -969,6 +969,23 @@ def _apply_backup_bundle(data, overwrite=False):
 # ============================================================================
 
 
+def _bt_still_downloading(raw):
+    """True when a list_managed() row is an in-flight BT download rather than
+    a seed: total known, not yet complete, and the engine hasn't flagged it a
+    seeder. Shared by the /manage/seeding list (which hides such rows) and the
+    stop_all seeding action (which must not cancel them — their payload lives
+    in staging, where remove(delete_files=True) really deletes)."""
+    completed = int(raw.get("completedLength", 0))
+    total = int(raw.get("totalLength", 0))
+    seeder = raw.get("seeder") in ("true", True)
+    return (
+        raw.get("status", "unknown") not in ("error", "complete")
+        and not seeder
+        and total > 0
+        and completed < total
+    )
+
+
 def handle_manage_get(handler, parsed, params):
     """Handle all GET /manage/* requests. Called from ZimHandler.do_GET."""
 
@@ -1388,16 +1405,10 @@ def handle_manage_get(handler, parsed, params):
                 # seed — list_managed() returns downloading torrents too, so
                 # without this a BT download double-surfaces (one download
                 # card AND one "seed" card for the same .zim under "All").
-                # Only skip when we KNOW it's still downloading: total known,
-                # not yet complete, and the engine hasn't flagged it a seeder.
+                # Only skip when we KNOW it's still downloading (shared
+                # predicate with the stop_all action).
                 total = int(raw.get("totalLength", 0))
-                seeder = raw.get("seeder") in ("true", True)
-                if (
-                    state not in ("error", "complete")
-                    and not seeder
-                    and total > 0
-                    and completed < total
-                ):
+                if _bt_still_downloading(raw):
                     continue
                 # Honesty: a seed whose file vanished (or that errored) is
                 # snagged, not seeding — surface it, don't hide it.
@@ -1900,10 +1911,18 @@ def handle_manage_post(handler, parsed, data):
                 if not bms:
                     continue
                 total += len(bms)
+                # Section headers the index must render even when empty (an
+                # exported empty folder is shown, never silently dropped).
+                sections = [
+                    str(s)[:120]
+                    for s in (job.get("sections") or [])[:200]
+                    if isinstance(s, str) and s.strip()
+                ]
                 payload.append(
                     {
                         "name": _safe_name(job.get("name")),
                         "title": str(job.get("title") or "")[:120] or None,
+                        "sections": sections,
                         "bookmarks": bms,
                     }
                 )
@@ -2165,15 +2184,24 @@ def handle_manage_post(handler, parsed, data):
                 for raw in backend.list_managed():
                     files = raw.get("files", [])
                     fname = os.path.basename(files[0].get("path", "")) if files else ""
-                    if fname.endswith(".zim"):
-                        try:
-                            backend.remove(raw.get("gid", ""), delete_files=True)
-                            stopped += 1
-                            # A user stop is deliberate — don't resurrect it
-                            # from the intent ledger at next startup.
-                            _lib_seeds.unrecord_seed(fname)
-                        except Exception:
-                            pass
+                    if not fname.endswith(".zim"):
+                        continue
+                    # Same in-flight guard as the /manage/seeding list:
+                    # list_managed() returns downloading torrents too, and an
+                    # active BT download lives in the staging dir — where
+                    # remove(delete_files=True) really deletes payload. The
+                    # seeds panel never showed those rows; the button that
+                    # says "remove from seeding" must not cancel downloads.
+                    if _bt_still_downloading(raw):
+                        continue
+                    try:
+                        backend.remove(raw.get("gid", ""), delete_files=True)
+                        stopped += 1
+                        # A user stop is deliberate — don't resurrect it
+                        # from the intent ledger at next startup.
+                        _lib_seeds.unrecord_seed(fname)
+                    except Exception:
+                        pass
             except Exception:
                 pass
             log.info("Seeding: stopped all (%d)", stopped)

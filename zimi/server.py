@@ -1153,6 +1153,7 @@ def _extract_zim_metadata(name, path):
     meta_desc = ""
     meta_date = ""
     meta_lang = ""
+    meta_creator = ""
     has_icon = False
     main_path = ""
     archive = None
@@ -1176,6 +1177,8 @@ def _extract_zim_metadata(name, path):
                     meta_desc = val.decode("utf-8", errors="replace").strip()
                 elif key == "Date":
                     meta_date = val.decode("utf-8", errors="replace").strip()
+                elif key == "Creator":
+                    meta_creator = val.decode("utf-8", errors="replace").strip()
                 elif key == "Language":
                     raw_lang = val.decode("utf-8", errors="replace").strip().lower()
                     # Handle multilingual ZIMs (comma-separated codes)
@@ -1229,6 +1232,10 @@ def _extract_zim_metadata(name, path):
     }
     if article_count is not None:
         info["article_count"] = article_count
+    # Additive flag: a ZIM Zimi itself exported (bookmark exports). The UI
+    # shows these with their full creation date.
+    if meta_creator == "Zimi":
+        info["zimi_export"] = True
     return info, archive
 
 
@@ -1494,6 +1501,9 @@ def load_cache(force=False):
             # field existed — the UI falls back to `entries` when it's missing.
             if cached.get("article_count") is not None:
                 entry["article_count"] = cached["article_count"]
+            # Additive: Zimi-exported flag (bookmark exports show full dates).
+            if cached.get("zimi_export"):
+                entry["zimi_export"] = True
             info.append(entry)
             cached_out = dict(cached)
             if first_seen is not None:
@@ -1526,6 +1536,8 @@ def load_cache(force=False):
             }
             if entry.get("article_count") is not None:
                 new_cached["article_count"] = entry["article_count"]
+            if entry.get("zimi_export"):
+                new_cached["zimi_export"] = True
             if first_seen is not None:
                 new_cached["first_seen"] = first_seen
             if updated_at is not None:

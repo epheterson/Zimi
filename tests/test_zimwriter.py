@@ -161,3 +161,54 @@ def test_normalize_jobs_accepts_flat_or_jobs():
     jobs = zw._normalize_jobs([{"name": "x", "bookmarks": [{"zim": "a", "path": "b"}]}])
     assert len(jobs) == 1 and jobs[0]["name"] == "x"
     assert zw._normalize_jobs([]) == []
+
+
+def test_normalize_jobs_keeps_sections():
+    jobs = zw._normalize_jobs(
+        [
+            {
+                "name": "x",
+                "sections": ["Kept", 7, "Also kept"],
+                "bookmarks": [{"zim": "a", "path": "b"}],
+            }
+        ]
+    )
+    assert jobs[0]["sections"] == ["Kept", "Also kept"]  # non-strings dropped
+
+
+def test_empty_selected_folder_renders_as_empty_section(tmp_path):
+    # The Eric bug: an exported empty folder must appear in the index (with an
+    # honest "no bookmarks" note), never be silently dropped.
+    bms = [{"zim": "w", "path": "A/H", "title": "Heart", "section": "Medical"}]
+    out = zw.build_bookmarks_zim(
+        bms, str(tmp_path), reader=_fake_reader, sections=["Medical", "Research"]
+    )
+    idx = bytes(Archive(out).get_entry_by_path("index").get_item().content).decode(
+        "utf-8"
+    )
+    assert "Research" in idx  # empty section header rendered
+    assert "No bookmarks in this folder." in idx
+    assert idx.index("Medical") < idx.index("Research")  # caller order kept
+
+
+def test_index_and_description_use_proper_plurals(tmp_path):
+    one = zw.build_bookmarks_zim(
+        [{"zim": "w", "path": "A/H", "title": "Heart"}],
+        str(tmp_path),
+        reader=_fake_reader,
+        name="one",
+    )
+    many = zw.build_bookmarks_zim(_bookmarks(), str(tmp_path), reader=_fake_reader)
+    arc_one, arc_many = Archive(one), Archive(many)
+    idx_one = bytes(arc_one.get_entry_by_path("index").get_item().content).decode(
+        "utf-8"
+    )
+    idx_many = bytes(arc_many.get_entry_by_path("index").get_item().content).decode(
+        "utf-8"
+    )
+    assert "1 article" in idx_one and "article(s)" not in idx_one
+    assert "2 articles" in idx_many
+    desc_one = bytes(arc_one.get_metadata("Description")).decode("utf-8")
+    desc_many = bytes(arc_many.get_metadata("Description")).decode("utf-8")
+    assert desc_one == "1 bookmarked article exported by Zimi"
+    assert desc_many == "2 bookmarked articles exported by Zimi"

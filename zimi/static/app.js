@@ -518,6 +518,23 @@ function t(key, vars) {
 function tH(key, vars) {
   return t(key, vars).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+// Localized pluralization: picks "<base>_<category>" via Intl.PluralRules for
+// the active UI language, falling back to "<base>_other" when that category
+// key does not exist. Locale files currently ship only _one/_other; languages
+// with richer plural categories (ru few/many, ar, he...) resolve to _other
+// until per-category keys are added. {n} is injected automatically.
+function tPlural(base, n, vars) {
+  var cat = 'other';
+  try { cat = new Intl.PluralRules(_currentLang).select(Number(n) || 0); } catch (e) {}
+  var key = base + '_' + cat;
+  if (_i18n[key] === undefined && _i18nFallback[key] === undefined) key = base + '_other';
+  var v = { n: n };
+  if (vars) for (var k in vars) v[k] = vars[k];
+  return t(key, v);
+}
+function tPluralH(base, n, vars) {
+  return tPlural(base, n, vars).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 function _loadingHtml(key) { return '<div class="loading"><span class="spinner-inline"></span>' + tH(key || 'loading') + '</div>'; }
 
 async function _loadI18n(lang) {
@@ -676,6 +693,13 @@ function fmtSize(gb, html) {
 function _zimCountHtml(z) {
   const n = (z && typeof z.article_count === 'number') ? z.article_count : (z ? z.entries : undefined);
   return typeof n === 'number' ? t('n_entries', {n: n.toLocaleString()}) : '';
+}
+// True for ZIMs Zimi itself exported (bookmark exports). Server flags them
+// from Creator metadata; the description sniff covers caches built before the
+// flag existed. Their cards show the full creation date — for an export,
+// "when did I make this" is the date that matters.
+function _isZimiExport(z) {
+  return !!(z && (z.zimi_export || /exported by Zimi/.test(z.description || '')));
 }
 // ── DOM refs ──
 const q = document.getElementById('q');
@@ -1645,10 +1669,18 @@ function route(push) {
   const path = location.pathname;
   const search = location.search;
   const params = new URLSearchParams(search);
-  // Restore Almanac on reload if #almanac hash is present
+  // Restore Almanac on reload if #almanac hash is present. The head bootstrap
+  // already stamped html.almanac-boot, so the home render below stays invisible
+  // and the dark almanac shell is what the first paint shows.
   if (location.hash === '#almanac') {
     enterHome(false);
     openAlmanac(true);
+    // Backstop: if the almanac never comes up (a module error mid-parse slips
+    // past the loader's onerror), drop the boot gate so the library isn't left
+    // permanently hidden behind an empty shell.
+    setTimeout(function () {
+      if (!_almanacOpen) document.documentElement.classList.remove('almanac-boot');
+    }, 8000);
     return;
   }
   if (params.get('manage') !== null && manageEnabled) { enterManage(null, _validMsSection(params.get('manage'))); return; }
@@ -3019,6 +3051,7 @@ function renderCardGrid(items, showStars, showCategory) {
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
         '<div class="detail">' + catPrefix + _zimCountHtml(z) +
         ' &middot; ' + fmtSize(z.size_gb) +
+        (_isZimiExport(z) && z.date ? ' &middot; ' + esc(z.date) : '') +
         '</div>' +
       '</div></div>';
   }).join('') + '</div>';
@@ -3401,6 +3434,9 @@ function openAlmanac(replaceState) {
       // eliminate.
       s.onerror = function() {
         console.error('Failed to load ' + almanacModules[i]);
+        // Drop the reload-into-almanac boot gate so the library becomes
+        // visible again instead of an empty dark shell.
+        document.documentElement.classList.remove('almanac-boot');
         _showToast(t('almanac_unavailable_offline'));
       };
       document.head.appendChild(s);
@@ -9200,7 +9236,12 @@ async function _renderMirrorSection() {
   const mirrorStatus = '<div id="ms-mirror-active" class="share-bt-status-right">' +
     _mirrorStatusHtml(mirrorActive) + '</div>';
   const prog = m.progress || {};
-  const mirrorInner =
+  // "When is the backup updated?" — surface the offline catalog copy's last
+  // write (refreshed on catalog revalidation and every 12h maintenance pass,
+  // the same pass that refreshes mirror seeds + the .torrent archive).
+  const backupTs = m.enabled && m.catalog_backup_ts
+    ? '<div class="ms-hint">' + tH('mirror_backup_updated', {when: _relTime(m.catalog_backup_ts)}) + '</div>' : '';
+  const mirrorInner = backupTs +
     '<div class="ms-hint share-mirror-progress" id="mirror-progress-line"' + (prog.phase ? '' : ' style="display:none"') + '>' +
       (prog.phase ? _mirrorProgressText(prog) : '') + '</div>';
 
@@ -9936,8 +9977,10 @@ function renderInstalled(filterText) {
       const countHtml = _zimCountHtml(z);
       if (countHtml) meta.push(countHtml);
       meta.push(fmtSize(z.size_gb));
-      // Show date from ZIM metadata
-      const dateStr = z.date ? z.date.substring(0, 7) : null;
+      // Show date from ZIM metadata. Bookmark exports keep the full creation
+      // date (their whole identity is "what I saved, when"); catalog ZIMs
+      // stay on the YYYY-MM release stamp.
+      const dateStr = z.date ? (_isZimiExport(z) ? z.date : z.date.substring(0, 7)) : null;
       if (dateStr) meta.push(dateStr);
       // Flavor badge from filename
       const flavor = variantLabel(z.file);
@@ -10638,6 +10681,25 @@ async function _refreshDownloadsInner(useCache) {
     // Seed cards render under "Seeding" AND under "All" — All means all.
     // (With zero downloads and active seeds, All used to render blank.)
     if (filter === 'seeding' || filter === 'all') {
+      // Bulk seed controls sit at the TOP RIGHT of the seeds section (title
+      // left, actions right — same reading order as the downloads bulk bar).
+      // Pause/Resume all only when a seed is in that state to act on;
+      // Remove all always. Under "All" they appear once there are 2+ seeds
+      // (a single seed's own row buttons cover it). The hint line spells out
+      // what Remove actually does — see /manage/seeding-action: the torrent
+      // is de-listed and its ledger intent dropped, files stay on disk.
+      if (seedingTorrents.length && (filter === 'seeding' || seedingTorrents.length >= 2)) {
+        const anyPausableSeed = seedingTorrents.some(s => s.state !== 'paused');
+        const anyResumableSeed = seedingTorrents.some(s => s.state === 'paused');
+        h += '<div class="dl-seed-head">' +
+          '<span class="dl-seed-head-title">' + tH('seeding_tab') + '</span>' +
+          '<div class="dl-seed-actions">' +
+            (anyPausableSeed ? '<button class="dl-bulk-btn" onclick="pauseAllSeeds()">' + tH('dl_pause_all') + '</button>' : '') +
+            (anyResumableSeed ? '<button class="dl-bulk-btn" onclick="resumeAllSeeds()">' + tH('dl_resume_all') + '</button>' : '') +
+            '<button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)">' + tH('stop_all_seeds') + '</button>' +
+          '</div></div>' +
+          '<div class="dl-seed-hint">' + tH('seed_remove_hint') + '</div>';
+      }
       for (const sd of seedingTorrents) {
         // Prefer the installed ZIM's real title; the card opens it
         const base = (sd.filename || '').replace(/\.zim$/, '');
@@ -10685,18 +10747,6 @@ async function _refreshDownloadsInner(useCache) {
       }
       if (filter === 'seeding' && !seedingTorrents.length) {
         h += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
-      } else if (seedingTorrents.length && (filter === 'seeding' || seedingTorrents.length >= 2)) {
-        // Bulk seed controls mirror the downloads bulk bar above: Pause/Resume
-        // all only when a seed is in that state to act on; Stop all always.
-        // Under "All" they appear once there are 2+ seeds (a single seed's
-        // own row buttons cover it).
-        const anyPausableSeed = seedingTorrents.some(s => s.state !== 'paused');
-        const anyResumableSeed = seedingTorrents.some(s => s.state === 'paused');
-        h += '<div class="dl-seed-actions">' +
-          (anyPausableSeed ? '<button class="dl-bulk-btn" onclick="pauseAllSeeds()">' + tH('dl_pause_all') + '</button>' : '') +
-          (anyResumableSeed ? '<button class="dl-bulk-btn" onclick="resumeAllSeeds()">' + tH('dl_resume_all') + '</button>' : '') +
-          '<button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)">' + tH('stop_all_seeds') + '</button>' +
-        '</div>';
       }
     }
     if (filter !== 'seeding' && filter !== 'all' && !visibleDls.length) {
@@ -13136,8 +13186,7 @@ function _renderBookmarksContent() {
   }
   var html = '<div class="hp-actions bm-actions">' +
     '<button class="hp-action-btn" onclick="_bmNewFolderPrompt(\'\')">' + tH('bm_new_folder') + '</button>' +
-    '<button id="export-bookmarks-btn" class="hp-action-btn" onclick="_bmOpenExport()">' + tH('save_to_zim') + '</button>' +
-    '<span id="export-bookmarks-status" class="hp-action-status"></span></div>';
+    '<button id="export-bookmarks-btn" class="hp-action-btn" onclick="_bmOpenExport()">' + tH('save_to_zim') + '</button></div>';
   html += '<div class="bm-tree" id="bm-tree" data-fid="" role="tree"' +
     ' aria-label="' + escAttr(t('bookmarks')) + '">' + _bmChildrenHtml(_BM_ROOT, 0) + '</div>';
   return html;
@@ -13296,11 +13345,9 @@ function _bmRerender() {
   _bmSyncRovingTabindex(hadFocus);
 }
 
-// Export selector entry point — replaced with the tree selector in Phase 3.
-// Until then, "Export" runs the whole-library export (back-compat).
+// Export entry point: the tree selector, optionally pre-ticked to one folder.
 function _bmOpenExport(folderId) {
-  if (typeof _bmExportSelector === 'function') { _bmExportSelector(folderId); return; }
-  exportBookmarksToZim();
+  _bmExportSelector(folderId);
 }
 
 // One keyboard contract for every inline edit input in the tree: Enter commits,
@@ -14031,20 +14078,24 @@ function _folBookmarkCount(id) {
   return _bkLoad().filter(function (b) { return set[_bkFolderOf(b)]; }).length;
 }
 
-// Save to ZIM: POST the client's bookmark list (server has no copy) and poll
+// Export to ZIM: POST the client's bookmark list (server has no copy) and poll
 // until the export ZIM is written and rescanned into the library.
-// ── Tree export selector (Phase 3) ──────────────────────────────────────────
-// A folder-tree checkbox picker. Grouping DECISION: one ZIM per selected
-// TOP-LEVEL folder (a checked folder with no checked ancestor); its selected
-// subfolders become SECTIONS inside that ZIM. A subfolder checked on its own
-// (no checked ancestor) becomes its own ZIM. Unfiled (root) bookmarks export as
-// a "Bookmarks" ZIM. Each ZIM carries the real article HTML + images + styling.
+// ── Tree export selector ─────────────────────────────────────────────────────
+// A folder-tree checkbox picker. Grouping DECISION (v1.8.2): ONE ZIM per
+// export, named by the user (the name field prefills from the selection).
+// Every selected top-level folder becomes a SECTION inside that ZIM; nested
+// selected subfolders keep their place as "Parent / Child" sections. A single
+// selected folder keeps the old shape (its own bookmarks unsectioned, its
+// subfolders as sections). An EMPTY selected folder still contributes its
+// section header — a ticked folder is never silently dropped — and a selection
+// with zero articles overall disables Export with a "nothing to export" note.
+// Each ZIM carries the real article HTML + images + styling.
 function _bmExportSelector(preFolderId) {
   _bmCloseExport();
   var rootBk = _bkInFolder(_BM_ROOT).length;
   var tree = '';
   // Opened from a folder's menu → just that subtree. Opened from the tab's
-  // "Save to ZIM" → everything, matching what that button did before the
+  // "Export to ZIM" → everything, matching what that button did before the
   // selector existed. Opening a picker with nothing ticked makes its own
   // primary button fail on the first press.
   var walk = function (parentId, depth) {
@@ -14075,14 +14126,22 @@ function _bmExportSelector(preFolderId) {
     '<div class="bm-export-head">' + tH('bm_export_title') + '</div>' +
     '<div class="bm-export-desc">' + tH('bm_export_desc') + '</div>' +
     '<div class="bm-export-tree" id="bm-export-tree">' + tree + '</div>' +
+    '<label class="bm-export-name-row" for="bm-export-name">' + tH('bm_export_name_label') +
+    '<input id="bm-export-name" type="text" maxlength="60" spellcheck="false" autocomplete="off"></label>' +
+    '<div class="bm-export-count" id="bm-export-count"></div>' +
     '<div class="bm-export-status" id="bm-export-status"></div>' +
     '<div class="bm-export-actions">' +
     '<button class="hp-action-btn" id="bm-export-all" onclick="_bmExportToggleAll()"></button>' +
     '<span style="flex:1"></span>' +
     '<button class="hp-action-btn" onclick="_bmCloseExport()">' + tH('cancel') + '</button>' +
-    '<button class="hp-action-btn primary" id="bm-export-go" onclick="_bmExportSubmit()">' + tH('save_to_zim') + '</button>' +
+    '<button class="hp-action-btn primary" id="bm-export-go" onclick="_bmExportSubmit()">' + tH('bm_export_go') + '</button>' +
     '</div></div>';
   document.body.appendChild(ov);
+  // Name prefills from the selection and keeps tracking it until the user
+  // types; a manual edit pins it (the picker never overwrites user input).
+  var nameInput = ov.querySelector('#bm-export-name');
+  nameInput.value = _bmExportDefaultName();
+  nameInput.addEventListener('input', function () { nameInput.dataset.dirty = '1'; });
   // Checking a folder auto-(un)checks its descendants; you can still uncheck one.
   ov.querySelector('#bm-export-tree').addEventListener('change', function (e) {
     var cb = e.target.closest('input[type=checkbox]');
@@ -14093,10 +14152,10 @@ function _bmExportSelector(preFolderId) {
         if (d) d.checked = cb.checked;
       });
     }
-    _bmExportSyncAllBtn();
+    _bmExportSyncUI();
   });
   ov.addEventListener('click', function (e) { if (e.target === ov) _bmCloseExport(); });
-  _bmExportSyncAllBtn();
+  _bmExportSyncUI();
 }
 function _bmCloseExport() {
   clearTimeout(_exportPoll);
@@ -14122,54 +14181,126 @@ function _bmExportSyncAllBtn() {
   btn.textContent = boxes.length && boxes.every(function (cb) { return cb.checked; })
     ? t('select_none') : t('select_all');
 }
-// Turn the checked folders into export jobs (one per top-level selection).
-function _bmBuildExportJobs() {
+// One pass that keeps the modal honest after every tick: the Select all/none
+// label, the live article count, the name prefill (until user-edited) and the
+// Export button. ZERO selected articles disables Export — an all-empty
+// selection reads "nothing to export" instead of silently writing a husk.
+function _bmExportSyncUI() {
+  _bmExportSyncAllBtn();
   var ov = document.getElementById('bm-export-overlay');
-  if (!ov) return { jobs: [], unfiled: false };
-  var selected = {};
-  var unfiled = false;
-  ov.querySelectorAll('#bm-export-tree input[type=checkbox]:checked').forEach(function (cb) {
+  if (!ov) return;
+  var nameInput = ov.querySelector('#bm-export-name');
+  if (nameInput && !nameInput.dataset.dirty) nameInput.value = _bmExportDefaultName();
+  var sel = _bmExportSelection();
+  var picked = sel.ids.length > 0 || sel.unfiled;
+  var n = _bmComposeExportJob(sel.ids, sel.unfiled, '').bookmarks.length;
+  var countEl = ov.querySelector('#bm-export-count');
+  if (countEl) countEl.textContent = tPlural('bm_count', n);
+  var go = ov.querySelector('#bm-export-go');
+  if (go) go.disabled = !n;
+  var status = ov.querySelector('#bm-export-status');
+  if (status) {
+    status.style.color = picked && !n ? 'var(--amber)' : '';
+    status.textContent = !picked ? t('bm_export_none_selected') : (!n ? t('bm_export_nothing') : '');
+  }
+}
+// Checked folder ids in tree (DOM) order + the unfiled flag.
+function _bmExportSelection() {
+  var ids = [], unfiled = false;
+  _bmExportBoxes().forEach(function (cb) {
+    if (!cb.checked) return;
     if (cb.dataset.fid === '__unfiled__') unfiled = true;
-    else selected[cb.dataset.fid] = 1;
+    else ids.push(cb.dataset.fid);
   });
-  var hasSelectedAncestor = function (fid) {
-    var p = _folNorm(_folById(fid).parent);
-    while (p !== _BM_ROOT) { if (selected[p]) return true; p = _folNorm(_folById(p).parent); }
-    return false;
+  return { ids: ids, unfiled: unfiled };
+}
+// Client mirror of the server's _safe_name (manage.py): the characters a ZIM
+// filename base may carry. Used only for the prefill/preview; the server
+// re-sanitizes what it receives.
+function _bmSanitizeZimName(s) {
+  s = String(s == null ? '' : s).replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^[_.]+/, '').replace(/[_.]+$/, '');
+  return s.slice(0, 60);
+}
+function _bmHasSelectedAncestor(fid, selSet) {
+  var f = _folById(fid);
+  var p = f ? _folNorm(f.parent) : _BM_ROOT;
+  while (p !== _BM_ROOT) {
+    if (selSet[p]) return true;
+    var pf = _folById(p);
+    p = pf ? _folNorm(pf.parent) : _BM_ROOT;
+  }
+  return false;
+}
+// The name the picker suggests: the folder's own name when exactly one
+// top-level folder is ticked, otherwise plain "Bookmarks".
+function _bmExportDefaultName() {
+  var sel = _bmExportSelection();
+  var selSet = {};
+  sel.ids.forEach(function (id) { selSet[id] = 1; });
+  var roots = sel.ids.filter(function (id) {
+    return _folById(id) && !_bmHasSelectedAncestor(id, selSet);
+  });
+  if (roots.length === 1 && !sel.unfiled) return _folById(roots[0]).name;
+  return 'Bookmarks';
+}
+// Compose THE export job (one ZIM per export — see the grouping decision
+// above). `ids` = checked folder ids in tree order, `unfiled` = loose
+// bookmarks ticked, `nameRaw` = the user's name-field text. Empty selected
+// folders still land in `sections` so the ZIM index shows them honestly.
+function _bmComposeExportJob(ids, unfiled, nameRaw) {
+  var selSet = {};
+  ids.forEach(function (id) { selSet[id] = 1; });
+  var roots = ids.filter(function (id) {
+    return _folById(id) && !_bmHasSelectedAncestor(id, selSet);
+  });
+  var single = roots.length === 1 && !unfiled;
+  var bms = [];
+  var sections = [];
+  var addSection = function (name) {
+    if (name && sections.indexOf(name) < 0) sections.push(name);
   };
-  var jobs = [];
-  Object.keys(selected).forEach(function (rootId) {
-    if (hasSelectedAncestor(rootId)) return;  // it's a section inside another ZIM
-    var root = _folById(rootId);
-    if (!root) return;
-    var bms = [];
-    var stack = [rootId];
-    while (stack.length) {
-      var cur = stack.pop();
+  roots.forEach(function (rootId) {
+    var rootName = _folById(rootId).name;
+    var queue = [rootId];
+    while (queue.length) {
+      var cur = queue.shift();
       var isSelf = (cur === rootId);
-      var secName = isSelf ? '' : _folById(cur).name;
+      var secName = single
+        ? (isSelf ? '' : _folById(cur).name)
+        : (isSelf ? rootName : rootName + ' / ' + _folById(cur).name);
+      addSection(secName);
       _bkInFolder(cur).forEach(function (b) {
         bms.push({ zim: b.zim, path: b.path, title: b.title || '', section: secName });
       });
-      _folChildren(cur).forEach(function (c) { if (selected[c.id]) stack.push(c.id); });
+      _folChildren(cur).forEach(function (c) { if (selSet[c.id]) queue.push(c.id); });
     }
-    if (bms.length) jobs.push({ name: root.name, title: root.name, bookmarks: bms });
   });
-  return { jobs: jobs, unfiled: unfiled };
+  if (unfiled) {
+    _bkInFolder(_BM_ROOT).forEach(function (b) {
+      bms.push({ zim: b.zim, path: b.path, title: b.title || '', section: '' });
+    });
+  }
+  var title = String(nameRaw || '').trim().slice(0, 120);
+  return {
+    name: _bmSanitizeZimName(title) || null,
+    title: title || null,
+    sections: sections,
+    bookmarks: bms,
+  };
 }
 function _bmExportSubmit() {
-  var built = _bmBuildExportJobs();
-  var jobs = built.jobs;
-  if (built.unfiled) {
-    var rootBms = _bkInFolder(_BM_ROOT).map(function (b) {
-      return { zim: b.zim, path: b.path, title: b.title || '', section: '' };
-    });
-    if (rootBms.length) jobs.push({ name: 'Bookmarks', title: 'Bookmarks', bookmarks: rootBms });
-  }
+  var sel = _bmExportSelection();
+  var nameEl = document.getElementById('bm-export-name');
+  var job = _bmComposeExportJob(sel.ids, sel.unfiled, nameEl ? nameEl.value : '');
   var status = document.getElementById('bm-export-status');
   var go = document.getElementById('bm-export-go');
-  if (!jobs.length) {
+  if (!sel.ids.length && !sel.unfiled) {
     if (status) { status.textContent = t('bm_export_none_selected'); status.style.color = 'var(--amber)'; }
+    return;
+  }
+  if (!job.bookmarks.length) {
+    if (status) { status.textContent = t('bm_export_nothing'); status.style.color = 'var(--amber)'; }
     return;
   }
   if (go) go.disabled = true;
@@ -14177,7 +14308,7 @@ function _bmExportSubmit() {
   manageFetch('/manage/export-bookmarks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ exports: jobs }),
+    body: JSON.stringify({ exports: [job] }),
   }).then(function (r) { return r.json(); }).then(function (res) {
     if (res && res.error) { _bmExportModalFail(); return; }
     _bmPollExport();
@@ -14198,7 +14329,7 @@ function _bmPollExport() {
       _exportPoll = setTimeout(_bmPollExport, 600);
     } else if (st.phase === 'done') {
       var files = (st.files && st.files.length) ? st.files : (st.file ? [st.file] : []);
-      if (status) { status.style.color = '#34d399'; status.textContent = t('bm_export_done', { n: files.length }); }
+      if (status) { status.style.color = '#34d399'; status.textContent = tPlural('bm_export_done', files.length); }
       // Close the modal shortly, then reveal the first new ZIM in the library.
       setTimeout(function () { _bmCloseExport(); _revealExportedZim(files[0]); }, 900);
     } else if (st.phase === 'error') {
@@ -14208,47 +14339,6 @@ function _bmPollExport() {
 }
 
 var _exportPoll = null;
-function exportBookmarksToZim() {
-  var bk = _bkLoad();
-  if (!bk.length) return; // guard: nothing to export
-  var btn = document.getElementById('export-bookmarks-btn');
-  var status = document.getElementById('export-bookmarks-status');
-  if (btn) btn.disabled = true;
-  if (status) status.textContent = t('save_to_zim_working');
-  var payload = bk.map(function(b) { return { zim: b.zim, path: b.path, title: b.title || '' }; });
-  manageFetch('/manage/export-bookmarks', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookmarks: payload }),
-  }).then(function(r) { return r.json(); }).then(function(res) {
-    if (res && res.error) { _exportBookmarksFail(); return; }
-    _pollExportBookmarks();
-  }).catch(_exportBookmarksFail);
-}
-function _exportBookmarksFail() {
-  var btn = document.getElementById('export-bookmarks-btn');
-  var status = document.getElementById('export-bookmarks-status');
-  if (btn) btn.disabled = false;
-  if (status) { status.textContent = t('save_to_zim_failed'); status.style.color = 'var(--amber)'; }
-}
-function _pollExportBookmarks() {
-  clearTimeout(_exportPoll);
-  manageFetch('/manage/export-bookmarks').then(function(r) { return r.json(); }).then(function(st) {
-    var btn = document.getElementById('export-bookmarks-btn');
-    var status = document.getElementById('export-bookmarks-status');
-    if (st.phase === 'running') {
-      _exportPoll = setTimeout(_pollExportBookmarks, 600);
-    } else if (st.phase === 'done') {
-      if (btn) btn.disabled = false;
-      if (status) { status.style.color = '#34d399'; status.textContent = t('save_to_zim_done', { file: st.file || '' }); }
-      _revealExportedZim(st.file); // surface the new ZIM in the library without a manual refresh
-    } else if (st.phase === 'error') {
-      _exportBookmarksFail();
-    } else {
-      if (btn) btn.disabled = false; // idle/unknown
-    }
-  }).catch(_exportBookmarksFail);
-}
 // After a successful bookmark export, pull the refreshed library list (the
 // server already rescanned the new file into its cache), re-render the home
 // library so the new source's card exists, close the library panel so it's

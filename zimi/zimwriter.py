@@ -1,4 +1,4 @@
-"""Save to ZIM v2 — export bookmarked articles to standalone .zim files.
+"""Export to ZIM — write bookmarked articles into standalone .zim files.
 
 Each bookmark becomes one HTML article. v2 carries the source article's real
 IMAGES and STYLING into the export so the result RESEMBLES the original — not
@@ -339,11 +339,19 @@ def _article_html(title, source_zim, source_path, body, extra_css=""):
     ).encode("utf-8")
 
 
-def _index_html(entries, date_str, heading):
+def _plural(n, singular, plural=None):
+    """Grammatically correct English count phrase: "1 article", "3 articles"."""
+    return f"{n} {singular if n == 1 else (plural or singular + 's')}"
+
+
+def _index_html(entries, date_str, heading, sections=None):
     """Build the main-entry index. `entries` is a list of
     (path, title, source_zim, section). Grouped under section headers when any
-    entry carries a non-empty section."""
-    has_sections = any((e[3] or "").strip() for e in entries)
+    entry carries a non-empty section. ``sections`` (optional, ordered) names
+    section headers that must render even when they hold no entries — an
+    exported empty folder shows up honestly instead of vanishing."""
+    sections = [s.strip() for s in (sections or []) if (s or "").strip()]
+    has_sections = bool(sections) or any((e[3] or "").strip() for e in entries)
     body = ""
     if not has_sections:
         items = "".join(
@@ -355,17 +363,17 @@ def _index_html(entries, date_str, heading):
             f"<ol class='zimi-index'>{items or '<li><em>No bookmarks.</em></li>'}</ol>"
         )
     else:
-        # Stable section order: first appearance; unfiled ("") last.
-        order = []
+        # Stable section order: the caller-provided list first, then first
+        # appearance among the entries; unfiled ("") last.
+        order = list(sections)
         for _p, _t, _z, s in entries:
             s = (s or "").strip()
             if s not in order:
                 order.append(s)
-        # `order` is already first-appearance; just push unfiled ("") last.
         order = [s for s in order if s != ""] + ([""] if "" in order else [])
         for sec in order:
             group = [e for e in entries if (e[3] or "").strip() == sec]
-            if not group:
+            if not group and sec not in sections:
                 continue
             label = sec if sec else "General"
             items = "".join(
@@ -373,11 +381,15 @@ def _index_html(entries, date_str, heading):
                 f" <span style='color:#999'>· {_html.escape(z)}</span></li>"
                 for (p, tt, z, _s) in group
             )
+            if not items:
+                # An explicitly exported folder that held nothing — say so
+                # rather than dropping the header the user asked for.
+                items = "<li><em>No bookmarks in this folder.</em></li>"
             body += f"<h2 class='zimi-section'>{_html.escape(label)}</h2><ol class='zimi-index'>{items}</ol>"
     return (
         _page_head(_html.escape(heading)) + "<body>"
         f"<h1>{_html.escape(heading)}</h1><p style='color:#666'>Exported {date_str} · "
-        f"{len(entries)} article(s)</p>{body}</body></html>"
+        f"{_plural(len(entries), 'article')}</p>{body}</body></html>"
     ).encode("utf-8")
 
 
@@ -399,6 +411,7 @@ def build_bookmarks_zim(
     progress=None,
     name=None,
     title=None,
+    sections=None,
 ):
     """Write ONE ZIM containing an article per bookmark plus an index page.
 
@@ -406,8 +419,10 @@ def build_bookmarks_zim(
     ``reader(zim, path)`` fetches source HTML; ``asset_reader(zim, path)``
     fetches raw asset bytes (both injectable for tests). ``progress(done, total)``
     is called per article. ``name`` sets the output basename (default
-    ``zimi-bookmarks_<date>``); ``title`` sets the ZIM Title metadata. Returns
-    the output file path. Raises ValueError when ``bookmarks`` is empty.
+    ``zimi-bookmarks_<date>``); ``title`` sets the ZIM Title metadata.
+    ``sections`` (optional, ordered) lists section headers the index must show
+    even when empty — exported empty folders are never silently dropped.
+    Returns the output file path. Raises ValueError when ``bookmarks`` is empty.
     """
     from libzim.writer import Blob, ContentProvider, Creator, Hint, Item
 
@@ -504,13 +519,17 @@ def build_bookmarks_zim(
                 )
                 entries.append((art_path, title_i, zim, section))
             creator.add_item(
-                _Article("index", heading, _index_html(entries, date_str, heading))
+                _Article(
+                    "index",
+                    heading,
+                    _index_html(entries, date_str, heading, sections=sections),
+                )
             )
             creator.add_metadata("Title", heading)
             creator.add_metadata("Language", "eng")
             creator.add_metadata(
                 "Description",
-                f"{len(entries)} bookmarked article(s) exported by Zimi",
+                f"{_plural(len(entries), 'bookmarked article')} exported by Zimi",
             )
             creator.add_metadata("Creator", "Zimi")
             creator.add_metadata("Publisher", "Zimi")
@@ -550,6 +569,7 @@ def build_export_jobs(jobs, zim_dir, progress=None, **kw):
             progress=_agg,
             name=job.get("name"),
             title=job.get("title"),
+            sections=job.get("sections"),
             **kw,
         )
         out_paths.append(out)
@@ -618,6 +638,9 @@ def _normalize_jobs(payload):
                     {
                         "name": j.get("name") or None,
                         "title": j.get("title") or None,
+                        "sections": [
+                            s for s in (j.get("sections") or []) if isinstance(s, str)
+                        ],
                         "bookmarks": bms,
                     }
                 )
