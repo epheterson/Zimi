@@ -674,6 +674,17 @@ _lt_import_failed = False
 TORRENT_FETCH_TIMEOUT_S = 30
 TORRENT_FETCH_MAX_BYTES = 10 * 1024 * 1024
 
+
+def _user_agent():
+    """Zimi's identifying User-Agent (lazy import avoids a module cycle)."""
+    try:
+        from zimi import library as _lib
+
+        return _lib.USER_AGENT
+    except Exception:
+        return "Zimi"
+
+
 # How long the alert pump blocks per iteration. Also the unit the fastresume
 # checkpoint cadence counts in, so the two must be read together.
 ALERT_TICK_S = 1.0
@@ -1018,7 +1029,7 @@ class LibtorrentBackend(BTBackend):
         session. Holding the full metadata up front is what makes 'complete'
         unambiguously mean the *content* is complete — a two-phase add can
         report complete on metadata alone and hand back a truncated ZIM."""
-        req = urllib.request.Request(url, headers={"User-Agent": "zimi"})
+        req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
         with urllib.request.urlopen(req, timeout=TORRENT_FETCH_TIMEOUT_S) as resp:
             data = resp.read(TORRENT_FETCH_MAX_BYTES + 1)
         if len(data) > TORRENT_FETCH_MAX_BYTES:

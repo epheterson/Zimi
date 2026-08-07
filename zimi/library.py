@@ -6,6 +6,7 @@ maintain a single source of truth.
 """
 
 import glob
+import gzip
 import ipaddress
 import json
 import logging
@@ -24,6 +25,13 @@ from urllib.parse import urlparse, urlencode, quote
 import zimi.server as _srv
 
 log = logging.getLogger("zimi")
+
+# Identify ourselves to Kiwix (and mirror) operators: real version plus a
+# contact URL, so fleet traffic is attributable and they can reach us if a
+# release ever misbehaves. Every outbound request Zimi makes uses this.
+USER_AGENT = "Zimi/%s (+https://github.com/epheterson/Zimi)" % getattr(
+    _srv, "ZIMI_VERSION", "unknown"
+)
 
 
 # Hosts we trust to serve ZIM and .torrent companion URLs. Kiwix runs
@@ -801,7 +809,7 @@ def ensure_magnets_for_installed(spacing=0.4):
     # Exact-filename matches from the catalog (stale copy works offline)
     catalog_urls = {}
     try:
-        _total, items, _err = _fetch_kiwix_catalog("", "eng", 500, 0)
+        _total, items, _err = _fetch_kiwix_catalog("", "eng", 500, 0, _internal=True)
         if _err:
             raise RuntimeError(_err)
         for it in items or []:
@@ -836,7 +844,7 @@ def ensure_magnets_for_installed(spacing=0.4):
         elif filename in catalog_urls:
             try:
                 req = urllib.request.Request(
-                    catalog_urls[filename], headers={"User-Agent": "Zimi/1.0"}
+                    catalog_urls[filename], headers={"User-Agent": USER_AGENT}
                 )
                 with urllib.request.urlopen(
                     req, timeout=20, context=_srv.SSL_CTX
@@ -1350,9 +1358,32 @@ _opds_disk_loaded = False
 _opds_refreshing = set()
 _OPDS_BG_REFRESH = True
 
+# HTTP validators (ETag / Last-Modified) per catalog cache key, plus any
+# server-granted TTL longer than ours. With a cached body to fall back on,
+# a stale page revalidates with a conditional GET and a 304 answer costs
+# Kiwix a header exchange instead of a full ~570 KB page. Kept in a sidecar
+# file so the on-disk catalog cache format stays unchanged.
+_opds_validators = {}
+
+# After a failed Kiwix round trip, hold off background revalidation for a
+# cooldown window: stale-serving callers would otherwise re-kick a doomed
+# refresh on every request while Kiwix (or the network) is down.
+_opds_last_fail = 0.0
+_OPDS_FAIL_COOLDOWN = 300  # seconds
+
+# The standing 12h maintenance refresh only runs for instances that actually
+# consume the catalog: Mirror mode, auto-update, or a user who browsed the
+# catalog recently. An idle unattended Zimi makes zero kiwix.org requests.
+_catalog_last_used = 0.0
+_CATALOG_USED_WINDOW = 7 * 86400  # a week of quiet = stop standing refreshes
+
 
 def _catalog_cache_path():
     return os.path.join(_srv.ZIMI_DATA_DIR, "catalog_cache.json")
+
+
+def _validators_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "catalog_validators.json")
 
 
 def _load_opds_disk_cache():
@@ -1371,6 +1402,15 @@ def _load_opds_disk_cache():
             log.info("Catalog cache loaded from disk (%d queries)", len(data))
     except (OSError, ValueError):
         pass
+    try:
+        with open(_validators_path(), encoding="utf-8") as f:
+            vals = json.load(f)
+        with _opds_lock:
+            for key, v in vals.items():
+                if isinstance(v, dict):
+                    _opds_validators.setdefault(key, v)
+    except (OSError, ValueError):
+        pass
 
 
 def _is_browse_key(key):
@@ -1387,9 +1427,13 @@ def _persist_opds_cache():
         with _opds_lock:
             entries = list(_opds_cache.items())
         entries.sort(key=lambda kv: (not _is_browse_key(kv[0]), -kv[1][0]))
-        _srv._atomic_write_json(
-            _catalog_cache_path(), dict(entries[:_OPDS_DISK_KEYS_MAX])
-        )
+        kept = dict(entries[:_OPDS_DISK_KEYS_MAX])
+        _srv._atomic_write_json(_catalog_cache_path(), kept)
+        # Validators only matter for pages we still hold a body for; prune
+        # to the persisted set so the sidecar cannot grow unbounded.
+        with _opds_lock:
+            vals = {k: v for k, v in _opds_validators.items() if k in kept}
+        _srv._atomic_write_json(_validators_path(), vals)
     except OSError as e:
         log.debug("catalog cache persist failed: %s", e)
 
@@ -1422,7 +1466,7 @@ def _fetch_thumb(url):
     # redirects library → opds); a redirect off-Kiwix is blocked (SSRF).
     try:
         opener = _KIWIX_REDIRECT_OPENER
-        req = urllib.request.Request(url, headers={"User-Agent": "Zimi/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with opener.open(req, timeout=10) as resp:
             ct = resp.headers.get("Content-Type", "image/png")
             # Only serve image content types
@@ -1447,12 +1491,15 @@ def _clear_thumb_cache():
         shutil.rmtree(d, ignore_errors=True)
 
 
-def _kick_catalog_refresh(query, lang, count, start):
+def _kick_catalog_refresh(query, lang, count, start, _internal=False):
     """Spawn at most one background thread per cache key to revalidate a stale
     catalog page against Kiwix. Concurrent callers hitting the same stale page
     share the single in-flight refresh — no thundering herd on Kiwix. No-op
-    when background refresh is disabled."""
+    when background refresh is disabled, and backs off for a cooldown after a
+    failed round trip so an outage is not retried hot on every stale serve."""
     if not _OPDS_BG_REFRESH:
+        return
+    if time.time() - _opds_last_fail < _OPDS_FAIL_COOLDOWN:
         return
     cache_key = f"{query}|{lang}|{count}|{start}"
     with _opds_lock:
@@ -1462,7 +1509,9 @@ def _kick_catalog_refresh(query, lang, count, start):
 
     def _run():
         try:
-            _fetch_kiwix_catalog(query, lang, count, start, _background=True)
+            _fetch_kiwix_catalog(
+                query, lang, count, start, _background=True, _internal=_internal
+            )
         except Exception as e:
             log.debug("background catalog refresh failed: %s", e)
         finally:
@@ -1472,9 +1521,20 @@ def _kick_catalog_refresh(query, lang, count, start):
     threading.Thread(target=_run, name="catalog-refresh", daemon=True).start()
 
 
-def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0, _background=False):
+def _fetch_kiwix_catalog(
+    query="", lang="eng", count=20, start=0, _background=False, _internal=False
+):
     """Fetch and parse the Kiwix OPDS catalog. Returns (total, items, error).
     Results are cached server-side (24h TTL) to avoid hammering Kiwix.
+
+    Politeness: requests go out gzip-encoded (a 500-entry page is ~44 KB
+    compressed vs ~570 KB raw) and, when a cached body exists, conditionally
+    (If-None-Match / If-Modified-Since). Kiwix's Varnish answers 304 when
+    nothing changed, so a routine revalidation costs them almost nothing.
+    A server Cache-Control max-age longer than our TTL is honored.
+    `_internal=True` marks machinery calls (maintenance, auto-update, magnet
+    manifest, mirror archive) so they neither count as user catalog activity
+    nor trigger the thumbnail prefetch.
 
     Stale-while-revalidate: when a cached copy exists but has expired, the
     stale copy is returned *immediately* (marked stale for the client) and a
@@ -1482,15 +1542,23 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0, _background=Fa
     never blocks on a NAS→Kiwix round trip. A cold cache (no copy at all) still
     fetches synchronously. Background refreshes pass `_background=True` to skip
     the stale-serve shortcut and actually hit the network."""
-    global _catalog_stale_ts
+    global _catalog_stale_ts, _opds_last_fail, _catalog_last_used
     _load_opds_disk_cache()
+    if not _background and not _internal:
+        # A real consumer (catalog UI via /manage/catalog) touched the
+        # catalog: keep the standing maintenance refresh alive for a while.
+        _catalog_last_used = time.time()
     cache_key = f"{query}|{lang}|{count}|{start}"
     serve_stale = None
     with _opds_lock:
         cached = _opds_cache.get(cache_key)
+        validators = dict(_opds_validators.get(cache_key) or {})
         if cached:
             ts, total, items = cached
-            if time.time() - ts < _OPDS_CACHE_TTL:
+            # Honor a server-granted TTL when it is longer than our default
+            # (today Kiwix sends max-age=0, so this is our 24h).
+            ttl = max(_OPDS_CACHE_TTL, validators.get("ttl") or 0)
+            if time.time() - ts < ttl:
                 _catalog_stale_ts = None
                 return total, items, None
             # Expired but present. Foreground callers get it instantly
@@ -1508,7 +1576,7 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0, _background=Fa
 
     if serve_stale is not None:
         # Hand back the stale copy now; revalidate in the background.
-        _kick_catalog_refresh(query, lang, count, start)
+        _kick_catalog_refresh(query, lang, count, start, _internal=_internal)
         return serve_stale[0], serve_stale[1], None
 
     params = {"count": str(count), "start": str(start)}
@@ -1518,11 +1586,46 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0, _background=Fa
         params["lang"] = lang
     url = KIWIX_OPDS_BASE + "?" + urlencode(params)
 
+    headers = {"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"}
+    if cached:
+        # Only revalidate when a cached body exists to fall back on; a 304
+        # with nothing cached would leave us empty-handed.
+        if validators.get("etag"):
+            headers["If-None-Match"] = validators["etag"]
+        if validators.get("last_modified"):
+            headers["If-Modified-Since"] = validators["last_modified"]
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Zimi/1.0"})
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=15, context=_srv.SSL_CTX) as resp:
             xml_bytes = resp.read()
+            resp_headers = getattr(resp, "headers", None)
+        if (
+            resp_headers is not None
+            and (resp_headers.get("Content-Encoding") or "").lower() == "gzip"
+        ):
+            xml_bytes = gzip.decompress(xml_bytes)
+        if resp_headers is not None:
+            _note_opds_response_headers(cache_key, resp_headers)
+    except urllib.error.HTTPError as e:
+        if e.code == 304 and cached:
+            # Not modified: the cached copy is still current. Refresh its
+            # TTL and keep serving it; Kiwix paid only a header exchange.
+            ts, total, items = cached
+            with _opds_lock:
+                _opds_cache[cache_key] = (time.time(), total, items)
+            _catalog_stale_ts = None
+            _persist_opds_cache()
+            return total, items, None
+        _opds_last_fail = time.time()
+        log.warning("OPDS fetch failed: %s", e)
+        if cached:
+            ts, total, items = cached
+            _catalog_stale_ts = ts
+            log.info("Serving stale catalog from %s", time.ctime(ts))
+            return total, items, None
+        return 0, [], "Catalog fetch failed"
     except Exception as e:
+        _opds_last_fail = time.time()
         log.warning("OPDS fetch failed: %s", e)
         if cached:
             # Offline: a day-old catalog beats an error page (post-world:
@@ -1656,8 +1759,62 @@ def _fetch_kiwix_catalog(query="", lang="eng", count=20, start=0, _background=Fa
         _opds_cache[cache_key] = (time.time(), total, items)
     _catalog_stale_ts = None
     _persist_opds_cache()
-    _prefetch_thumbs(items)
+    if not _internal:
+        # Warm thumbnails only off user-facing fetches; headless machinery
+        # (maintenance, auto-update) should not pull images nobody views.
+        _prefetch_thumbs(items)
     return total, items, None
+
+
+def _note_opds_response_headers(cache_key, headers):
+    """Record HTTP validators and any server-granted TTL for a catalog page.
+
+    Kiwix's Varnish sends an ETag and max-age=0/must-revalidate today; if it
+    ever grants a max-age longer than our 24h TTL we honor theirs instead."""
+    try:
+        val = {}
+        etag = headers.get("ETag")
+        if etag:
+            val["etag"] = etag
+        lm = headers.get("Last-Modified")
+        if lm:
+            val["last_modified"] = lm
+        m = re.search(r"max-age=(\d+)", headers.get("Cache-Control") or "")
+        if m and int(m.group(1)) > _OPDS_CACHE_TTL:
+            val["ttl"] = int(m.group(1))
+        with _opds_lock:
+            if val:
+                _opds_validators[cache_key] = val
+            else:
+                _opds_validators.pop(cache_key, None)
+    except Exception as e:
+        log.debug("catalog validator capture failed: %s", e)
+
+
+def _catalog_refresh_wanted():
+    """Does this instance actually consume a fresh catalog?"""
+    from zimi import p2p as _p2p
+
+    if _p2p.is_torrent_enabled() and _p2p.is_mirror_enabled():
+        return True  # mirrors hold the full catalog plus the torrent archive
+    if getattr(_srv, "_auto_update_enabled", _auto_update_enabled):
+        return True  # update checks match installed ZIMs against the catalog
+    return (time.time() - _catalog_last_used) < _CATALOG_USED_WINDOW
+
+
+def maintenance_catalog_refresh():
+    """Standing 12h catalog upkeep, gated on actual need.
+
+    Idle instances (no Mirror mode, no auto-update, catalog not browsed in a
+    week) skip the fetch entirely, so a fleet of unattended Zimis puts zero
+    standing load on kiwix.org. The stale-while-revalidate path still
+    refreshes on the next real use, and a needed refresh is a conditional
+    request that usually ends in a 304."""
+    if not _catalog_refresh_wanted():
+        log.debug("maintenance: catalog refresh skipped (idle instance)")
+        return False
+    _fetch_kiwix_catalog("", "eng", 500, 0, _internal=True)
+    return True
 
 
 _thumb_prefetch_started = False
@@ -1757,7 +1914,7 @@ def _mirror_sync_locked(_p2p):
     # Catalog lookup (stale copy is fine — that's the post-world path)
     catalog_urls = {}
     try:
-        _total, items, _err = _fetch_kiwix_catalog("", "eng", 500, 0)
+        _total, items, _err = _fetch_kiwix_catalog("", "eng", 500, 0, _internal=True)
         for it in items or []:
             url = (it.get("download_url") or "").split("?")[0]
             if url.endswith(".meta4"):
@@ -1844,7 +2001,7 @@ def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
         if os.path.exists(dest):
             continue
         try:
-            req = urllib.request.Request(turl, headers={"User-Agent": "Zimi/1.0"})
+            req = urllib.request.Request(turl, headers={"User-Agent": USER_AGENT})
             with urllib.request.urlopen(req, timeout=20, context=_srv.SSL_CTX) as resp:
                 data = resp.read(_max_bytes + 1)
             # bencoded dict or it isn't a torrent (error pages, redirects)
@@ -2616,7 +2773,7 @@ def _full_catalog(lang=""):
     rather than truncating the rest of an otherwise-successful fetch.
     """
     total, items, err = _fetch_kiwix_catalog(
-        query="", lang=lang, count=_FULL_CATALOG_PAGE_SIZE, start=0
+        query="", lang=lang, count=_FULL_CATALOG_PAGE_SIZE, start=0, _internal=True
     )
     if err:
         return []
@@ -2632,7 +2789,11 @@ def _full_catalog(lang=""):
         try:
             with sem:
                 _t, more, page_err = _fetch_kiwix_catalog(
-                    query="", lang=lang, count=_FULL_CATALOG_PAGE_SIZE, start=start
+                    query="",
+                    lang=lang,
+                    count=_FULL_CATALOG_PAGE_SIZE,
+                    start=start,
+                    _internal=True,
                 )
             pages[start] = None if page_err else (more or None)
         except Exception as e:
@@ -2767,7 +2928,7 @@ def _download_from_url(dl, url, tmp_dest):
     existing_size = 0
     if os.path.exists(tmp_dest):
         existing_size = os.path.getsize(tmp_dest)
-    req = urllib.request.Request(url, headers={"User-Agent": "Zimi/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     if existing_size > 0:
         req.add_header("Range", f"bytes={existing_size}-")
         log.info(
@@ -3098,7 +3259,7 @@ def _download_thread(dl):
 def _fetch_mirrors(meta4_url):
     """Fetch mirror URLs from a Metalink .meta4 file. Returns list of URLs sorted by priority."""
     try:
-        req = urllib.request.Request(meta4_url, headers={"User-Agent": "Zimi/1.0"})
+        req = urllib.request.Request(meta4_url, headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=15, context=_srv.SSL_CTX) as resp:
             xml_bytes = resp.read()
         root = ET.fromstring(xml_bytes)

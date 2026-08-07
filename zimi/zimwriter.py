@@ -518,6 +518,12 @@ def build_bookmarks_zim(
                     )
                 )
                 entries.append((art_path, title_i, zim, section))
+            if progress:
+                # Every article is in. What remains is the Creator's close
+                # (full-text index build + cluster compression), the longest
+                # single phase for a large export, so report N/N now instead
+                # of freezing the client's counter at N-1/N while it runs.
+                progress(total, total)
             creator.add_item(
                 _Article(
                     "index",

@@ -230,7 +230,10 @@ def _maintenance_pass():
     except Exception as e:
         log.debug("maintenance: NAT renew failed: %s", e)
     try:
-        _lib._fetch_kiwix_catalog("", "eng", 500, 0)
+        # Gated: only instances that consume the catalog (Mirror mode,
+        # auto-update, recent user browsing) refresh it; idle Zimis make
+        # zero standing kiwix.org requests.
+        _lib.maintenance_catalog_refresh()
         _lib._magnets_ensured = False
         _lib.ensure_magnets_for_installed()
         _lib.retire_stale_seeds()
@@ -1715,8 +1718,15 @@ def main():
         # Start auto-update thread if enabled
         global _auto_update_thread
         if _auto_update_enabled:
+            import random as _rand_mod
+
             _auto_update_thread = threading.Thread(
-                target=_auto_update_loop, daemon=True
+                target=_auto_update_loop,
+                # Jittered first check: a fleet booting together (power
+                # restored, coordinated deploy) must not stampede Kiwix
+                # with simultaneous catalog fetches at startup.
+                kwargs={"initial_delay": int(_rand_mod.uniform(60, 900))},
+                daemon=True,
             )
             _auto_update_thread.start()
         print(f"Endpoints: /search, /read, /suggest, /list, /health")
@@ -2061,6 +2071,8 @@ from zimi.library import (  # noqa: E402, F401
     _start_import,
     _get_downloads,
     _fetch_kiwix_catalog,
+    maintenance_catalog_refresh,
+    USER_AGENT,
     _check_updates,
     _fetch_thumb,
     _clear_thumb_cache,

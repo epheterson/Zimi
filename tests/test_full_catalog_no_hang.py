@@ -23,7 +23,7 @@ _TOTAL = 2000  # 4 pages at count=500 → page 0 sync, starts [500, 1000, 1500]
 
 
 def _make_fetch(*, raise_starts=(), hang_starts=(), hang_event=None):
-    def fake(query="", lang="eng", count=500, start=0, _background=False):
+    def fake(query="", lang="eng", count=500, start=0, _background=False, **_kw):
         if start in raise_starts:
             raise RuntimeError("simulated page fetch failure")
         if start in hang_starts:
