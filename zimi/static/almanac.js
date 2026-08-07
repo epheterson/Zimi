@@ -759,6 +759,9 @@ function _almTmCellHtml(idBase, part, editable) {
       (part === 'mon' ? '' : ' inputmode="numeric"') +
       ' autocomplete="off" spellcheck="false" aria-label="' + _almEsc(t(_ALM_TM_FIELD_LBL[part])) + '"' +
       (part === 'year' ? ' title="' + _almEsc(t('alm_tm_year_hint')) + '" oninput="_almTmYearGrew(this)"' : '') +
+      // Typing into MONTH re-lights the matching cell on the month plate, so
+      // the plate and the field can never disagree about which month is set.
+      (part === 'mon' ? ' oninput="_almTmMonPopMark()"' : '') +
       ' onkeydown="_almTmEditKey(event, \'' + part + '\')" onfocus="this.select()">';
   }
   return h + '</span>';
@@ -1250,8 +1253,115 @@ function _almTmMonParse(v, dflt) {
   return dflt;
 }
 
+// -- Dismissal, shared by the almanac's two pop-over grids -------------------
+// Outside pointerdown or Escape closes the pop, and the handlers detach
+// themselves the moment it is gone, however it went (picked, redrawn, tapped
+// away). Used by the calendar's month grid and by the dock's month plate; they
+// differ only in the options, which is the whole reason this is one function.
+//   keep       selector for the control that opened the pop — a tap there
+//              belongs to that control's own handler, which toggles.
+//   swallowEsc the pop is open over a live field: the Escape that shuts the
+//              pop must not reach the field and cancel the edit behind it.
+//              (A second Escape finds no pop, so it does reach the field.)
+//   alsoClose  extra keys that end the pop's usefulness — for the dock, Enter
+//              (commits and travels) and Tab (moves to another field). These
+//              are NOT swallowed: the key still does its job.
+function _almPopDismissOn(id, opts) {
+  opts = opts || {};
+  var detach = function () {
+    document.removeEventListener('pointerdown', dismiss, true);
+    document.removeEventListener('keydown', dismiss, true);
+  };
+  var dismiss = function (ev) {
+    var p = document.getElementById(id);
+    if (!p) { detach(); return; }
+    if (ev.type === 'keydown') {
+      if (ev.key === 'Escape') {
+        if (opts.swallowEsc) { ev.preventDefault(); ev.stopPropagation(); }
+      } else if (!opts.alsoClose || opts.alsoClose.indexOf(ev.key) < 0) return;
+    } else if (ev.target && ev.target.closest &&
+               (p.contains(ev.target) || (opts.keep && ev.target.closest(opts.keep)))) return;
+    p.remove();
+    detach();
+  };
+  document.addEventListener('pointerdown', dismiss, true);
+  document.addEventListener('keydown', dismiss, true);
+}
+
+// -- The month plate ---------------------------------------------------------
+// MONTH is the one destination field that takes a word rather than digits, so
+// it gets the same treatment the calendar's month name already has: a compact
+// grid of the twelve months. The abbreviations come from _almTmMonAbbrs, the
+// same list the readout itself shows, so the plate and the window can never
+// disagree and every locale is free.
+// The plate does not replace the field, it sits over it: the input stays
+// focused underneath, so typing and the arrow keys work exactly as before, and
+// picking a month only WRITES the abbreviation into the field. GO still
+// commits. One commit path, unchanged.
+var _ALM_TM_MONPOP = 'alm-tm-monpop';
+
+function _almTmMonPopMark() {
+  var pop = document.getElementById(_ALM_TM_MONPOP);
+  var input = document.getElementById('alm-tm-in-mon');
+  if (!pop || !input) return;
+  // 0 for an unreadable field: nothing lit is truer than lighting January.
+  var cur = _almTmMonParse(input.value, 0);
+  for (var i = 0; i < pop.children.length; i++) {
+    pop.children[i].classList.toggle('alm-tm-mon-cur', i + 1 === cur);
+  }
+}
+
+// Toggles, like the calendar's month name does — a second tap on MONTH puts
+// the plate away.
+function _almTmMonPop() {
+  if (document.getElementById(_ALM_TM_MONPOP)) { _almTmMonPopClose(); return; }
+  var panel = document.querySelector('#alm-tm .alm-tm-panel');
+  var input = document.getElementById('alm-tm-in-mon');
+  if (!panel || !input) return;
+  var abbrs = _almTmMonAbbrs();
+  var pop = document.createElement('div');
+  pop.id = _ALM_TM_MONPOP;
+  pop.className = 'alm-tm-monpop';
+  pop.setAttribute('role', 'menu');
+  pop.setAttribute('aria-label', _tLookup('alm_month_pick', 'Choose month'));
+  for (var m = 0; m < 12; m++) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    // The cells ARE the plate's keys — same class, so the brass, the lit top
+    // edge and the press come from one place (see .alm-tm-moncell).
+    b.className = 'alm-tm-key alm-tm-moncell';
+    b.setAttribute('role', 'menuitem');
+    b.textContent = abbrs[m];
+    // Pressing a cell must not take the caret: the field behind the plate stays
+    // focused, so the arrows keep stepping and Enter still commits from it.
+    b.addEventListener('mousedown', _almTmMonPopHold);
+    b.onclick = (function (mm) {
+      return function () {
+        input.value = abbrs[mm];
+        _almTmMonPopClose();
+        input.focus();
+      };
+    })(m);
+    pop.appendChild(b);
+  }
+  panel.appendChild(pop);
+  _almTmMonPopMark();
+  _almPopDismissOn(_ALM_TM_MONPOP, { keep: '.alm-tm-cell-mon', swallowEsc: true, alsoClose: ['Enter', 'Tab'] });
+}
+
+function _almTmMonPopHold(ev) { ev.preventDefault(); }
+
+function _almTmMonPopClose() {
+  var pop = document.getElementById(_ALM_TM_MONPOP);
+  if (pop) pop.remove();
+}
+
 function _almTmEditStart(ev) {
-  if (_almTmEditing) return;
+  // Which segment was tapped, decided before the early return: MONTH drops its
+  // plate whether the edit is starting now or already under way.
+  var cell = ev && ev.target && ev.target.closest ? ev.target.closest('.alm-tm-cell') : null;
+  var onMon = !!(cell && cell.classList.contains('alm-tm-cell-mon'));
+  if (_almTmEditing) { if (onMon) _almTmMonPop(); return; }
   var root = document.getElementById('alm-tm');
   if (!root) return;
   _almTmEditing = true;
@@ -1263,9 +1373,9 @@ function _almTmEditStart(ev) {
     if (el) el.value = p[_ALM_TM_FIELDS[i]];
   }
   // Focus the segment that was tapped; the month cell otherwise.
-  var cell = ev && ev.target && ev.target.closest ? ev.target.closest('.alm-tm-cell') : null;
   var input = (cell && cell.querySelector('.alm-tm-cin')) || document.getElementById('alm-tm-in-mon');
   if (input) input.focus();
+  if (onMon) _almTmMonPop();
 }
 
 // Keyboard path onto the row itself (role=button). Keystrokes inside the
@@ -1286,6 +1396,7 @@ function _almTmEditStep(part, dir) {
   if (part === 'mon') {
     var m = _almTmMonParse(el.value, prev.getMonth() + 1) - 1 + dir;
     el.value = _almTmMonAbbrs()[((m % 12) + 12) % 12];
+    _almTmMonPopMark();   // the plate follows the field it is stepping
     return;
   }
   var n = parseInt(el.value, 10);
@@ -1348,6 +1459,7 @@ function _almTmEditCommit() {
 
 function _almTmEditCancel() {
   if (!_almTmEditing) return;
+  _almTmMonPopClose();
   _almTmEditStop();
   _almTmSync();
 }
@@ -5903,25 +6015,14 @@ function _almMonthPick(e) {
   nav.appendChild(pop);
   var cur = pop.querySelector('.alm-month-cur');
   if (cur) cur.focus();
-  // Dismiss on an outside tap or Escape. The handlers detach themselves the
-  // moment the pop is gone, however it went (pick, redraw, outside tap). A tap
-  // on the month name itself is left to the name's own click handler, which
-  // toggles.
-  var detach = function () {
-    document.removeEventListener('pointerdown', dismiss, true);
-    document.removeEventListener('keydown', dismiss, true);
-  };
-  var dismiss = function (ev) {
-    var p = document.getElementById('alm-month-pop');
-    if (!p) { detach(); return; }
-    if (ev.type === 'keydown' && ev.key !== 'Escape') return;
-    if (ev.type === 'pointerdown' && ev.target && ev.target.closest &&
-        (p.contains(ev.target) || ev.target.closest('.alm-month'))) return;
-    p.remove();
-    detach();
-  };
-  document.addEventListener('pointerdown', dismiss, true);
-  document.addEventListener('keydown', dismiss, true);
+  // Outside tap or Escape puts it away — the same dismissal the dock's month
+  // plate uses (_almPopDismissOn). A tap on the month name itself is left to
+  // the name's own click handler, which toggles.
+  // swallowEsc for the same reason the app's own key handler puts "topmost
+  // popovers first": the Escape that shuts this grid must not carry on to the
+  // document handler, which would close the whole almanac out from under a
+  // keyboard user who only meant to put the month list away.
+  _almPopDismissOn('alm-month-pop', { keep: '.alm-month', swallowEsc: true });
 }
 
 function _almMonthTitleKey(e) {

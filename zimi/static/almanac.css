@@ -773,8 +773,61 @@
 .alm-tm-key:hover { color: #fff3d8; border-color: rgba(255,240,205,0.85); }
 .alm-tm-key:active { transform: translateY(1px); box-shadow: 0 0 0 rgba(0,0,0,0.7), inset 0 1px 2px rgba(0,0,0,0.6); }
 .alm-tm-key:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--amber-glow), 0 1px 0 rgba(0,0,0,0.7); }
-.alm-tm-key-go { background: linear-gradient(180deg, #fbbf24, #d97706); border-color: rgba(255,240,205,0.75); color: #241a05; }
-.alm-tm-key-go:hover { color: #000; }
+/* The lit key: GO on the keypad, and the month you are already on over on the
+   month plate. One filament, named once — if the amber ever changes it must
+   change in both places or the instrument stops looking wired together. */
+.alm-tm-key-go, .alm-tm-mon-cur { background: linear-gradient(180deg, #fbbf24, #d97706); border-color: rgba(255,240,205,0.75); color: #241a05; }
+.alm-tm-key-go:hover, .alm-tm-mon-cur:hover { color: #000; }
+
+/* Month plate — the dock's answer to the calendar's month grid, for the one
+   destination field that takes a word instead of digits. Tapping MONTH drops
+   this out of the instrument while the field underneath stays focused and
+   typable; a cell only writes into that field, GO still travels.
+
+   It is built out of the dock's own materials, not the app's card surface: the
+   faceplate's brushed-brass ramp and bevel for the plate, the keypad's key for
+   the cells, the plate legends' hard black shadow for the lettering. A generic
+   dark popover with a soft drop shadow — which is what the calendar's grid is,
+   correctly, since it belongs to a card — would read here as a web widget
+   pasted onto a machined instrument. Same mistake the selected-field highlight
+   was making before it became a lamp.
+
+   Opens UPWARD, and that is not a preference: the dock is sticky to the bottom
+   of the viewport, so the calendar's `top: calc(100% + 6px)` would put every
+   cell off-screen. The 12px clears the case's 7px padding and its lit top lip
+   with a little air. Absolutely positioned inside the faceplate, so it is out
+   of flow — the dock measures the same open, closed, editing or travelling. */
+.alm-tm-monpop {
+  position: absolute; bottom: calc(100% + 12px); left: 0; right: 0; z-index: 30;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+  padding: 6px; border-radius: 8px;
+  /* The faceplate's three layers, one radius smaller: sheen, brush grain, the
+     97deg brass ramp. Opaque, because it hangs over the page. */
+  background:
+    linear-gradient(180deg, rgba(255,244,214,0.13), transparent 22%),
+    repeating-linear-gradient(93deg, rgba(255,244,214,0.035) 0 1px, rgba(0,0,0,0.045) 1px 2px),
+    linear-gradient(97deg, #201808 0%, #372a11 14%, #4c3b1a 26%, #2a2010 42%, #3f3113 60%, #503e1b 76%, #241b0b 100%);
+  border: 1px solid rgba(231,207,144,0.3);
+  /* The plate's own bevel, plus a real cast shadow — this one is off the case
+     and over the page, so it is the only part of the dock that throws one. */
+  box-shadow:
+    inset 0 1px 0 rgba(255,244,214,0.3),
+    inset 0 -1px 0 rgba(0,0,0,0.65),
+    0 8px 22px rgba(0,0,0,0.6);
+  /* Rises the way the dock itself does — same keyframes, so there is one
+     motion on this instrument rather than two that nearly match. */
+  animation: alm-tm-rise .16s cubic-bezier(.22,1,.36,1) both;
+}
+/* A cell IS a keypad key (.alm-tm-key carries the brass, the lit top edge, the
+   press and the focus ring); only the shape differs, so only the shape is
+   restated. 26px tall by ~48px wide on a 320px plate — the largest target the
+   instrument's own scale allows, and comfortably tappable. The tighter
+   tracking is because twelve abbreviations have to sit in four columns at
+   every locale's word length, and Cyrillic and German both run long. */
+.alm-tm-moncell {
+  min-height: 26px; padding: 2px 1px; letter-spacing: 0.06em; font-size: 9.5px;
+  overflow: hidden; white-space: nowrap;
+}
 
 /* Motion face — "only one time matters": the same plate legend and the same
    glass window, one size up, laid over the (hidden but still measured) rest
@@ -967,5 +1020,8 @@
 @media (prefers-reduced-motion: reduce) {
   .alm-tm-lever-spring, .alm-tm-glass, .alm-tm-key, .alm-year, .alm-month, .alm-month-cell, .alm-head-tap { transition: none; }
   .alm-tm-zap, .alm-tm-crystal-facets, .alm-tm-now .alm-tm-colon { animation: none; }
+  /* The month plate still appears, it just does not rise. (Its cells need no
+     line of their own — they are .alm-tm-key, already listed above.) */
+  .alm-tm-monpop { animation: none; }
   .alm-tm.alm-tm-open { animation: none; }
 }
