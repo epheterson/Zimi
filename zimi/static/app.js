@@ -3192,6 +3192,31 @@ function _renderMoonSprite(illumFrac, waxing, sizePx) {
   return url;
 }
 
+// The unshaded source pixels for a sprite size — the moon photo (or, before it
+// loads, a neutral grey disc) rasterized at N and read back ONCE per size.
+// _moonSpriteCanvas used to drawImage + getImageData per phase bucket; the
+// readback is a GPU sync stall (WebKit measured ~6.6ms/bucket at 128px, ~100
+// buckets on a cold fast lever throw). Shading now copies these cached pixels,
+// so a new bucket costs only the JS shading loop + one putImageData.
+var _moonTexBaseCache = {};
+function _moonTexBaseData(N) {
+  var key = N + (_moonTexReady ? 't' : '');
+  if (_moonTexBaseCache[key]) return _moonTexBaseCache[key];
+  var cv = document.createElement('canvas');
+  cv.width = cv.height = N;
+  var ctx = cv.getContext('2d', { willReadFrequently: true });
+  // Same-origin photo, so getImageData won't taint.
+  if (_moonTexReady) {
+    ctx.drawImage(_MOON_TEX, 0, 0, N, N);
+  } else {
+    ctx.fillStyle = '#b8b4aa';
+    ctx.beginPath(); ctx.arc(N / 2, N / 2, N / 2, 0, Math.PI * 2); ctx.fill();
+  }
+  var img = ctx.getImageData(0, 0, N, N);
+  _moonTexBaseCache[key] = img;
+  return img;
+}
+
 // The shaded moon as a <canvas> (cached) — the sky scene draws it directly so
 // its dark side shows the same earthshine as the hero, not a black shadow.
 var _moonSpriteCanvasCache = {};
@@ -3210,15 +3235,8 @@ function _moonSpriteCanvas(illumFrac, waxing, sizePx) {
   var cv = document.createElement('canvas');
   cv.width = cv.height = N;
   var ctx = cv.getContext('2d');
-  // Base: the moon photo (same-origin, so getImageData won't taint). Before it
-  // loads, a neutral grey disc so the shape is still right.
-  if (_moonTexReady) {
-    ctx.drawImage(_MOON_TEX, 0, 0, N, N);
-  } else {
-    ctx.fillStyle = '#b8b4aa';
-    ctx.beginPath(); ctx.arc(N / 2, N / 2, N / 2, 0, Math.PI * 2); ctx.fill();
-  }
-  var img = ctx.getImageData(0, 0, N, N);
+  var base = _moonTexBaseData(N);
+  var img = new ImageData(new Uint8ClampedArray(base.data), N, N);
   var data = img.data;
 
   // Sun direction: phase angle P from illuminated fraction (k = (1+cosP)/2).
@@ -3266,7 +3284,7 @@ function _moonSpriteCanvas(illumFrac, waxing, sizePx) {
 // untilted so it's phase-cacheable; orientation is a whole-disc rotation).
 function _renderMoonHTML(m, wrapClass, tiltDeg) {
   var illumFrac = m.illumination / 100;
-  var waxing = m.phase < 0.5;
+  var waxing = _moonIsWaxing(m);
   var isHero = wrapClass === 'almanac-moon';
   var size = isHero ? 200 : 48;
   var url = _renderMoonSprite(illumFrac, waxing, size);
@@ -3297,28 +3315,77 @@ function _repaintMoons() {
   }
 }
 
-// Lightweight parallactic angle for Today card (runs before almanac.js loads).
-// Uses same math as _moonPosition but only computes the tilt angle.
-function _quickMoonTilt(date) {
+// ── Canonical moon orientation — ONE derivation for every renderer ──
+// The hero disc (almanac.js _heroMoonTiltDeg), the sky-scene moon
+// (almanac-sky.js) and the Today discover card (below) must all show the SAME
+// moon for the same instant and place. They all rotate the same untilted
+// sprite (lit limb at 3 o'clock when waxing) by the screen tilt computed here:
+// -(chi - q) - 90, where chi is the bright-limb position angle (Meeus 48.5)
+// and q the parallactic angle. This lives in app.js because the Today card
+// renders before almanac.js loads; almanac.js delegates to it.
+
+// Geocentric equatorial coordinates of the Moon — the same orbital-element
+// evaluation _moonPosition (almanac.js) starts from, hoisted here so the two
+// files cannot drift apart.
+function _moonEqCoords(date) {
   var JD = 2440587.5 + date.getTime() / 86400000;
   var T = (JD - 2451545.0) / 36525;
   var D2R = Math.PI / 180;
-  var L0 = (218.3165 + 481267.8813 * T) % 360;
-  var M  = (134.9634 + 477198.8676 * T) % 360;
-  var Ms = (357.5291 + 35999.0503 * T) % 360;
-  var F  = (93.2720  + 483202.0175 * T) % 360;
-  var D  = (297.8502 + 445267.1115 * T) % 360;
-  var lng = L0 + 6.289*Math.sin(M*D2R) - 1.274*Math.sin((2*D-M)*D2R) - 0.658*Math.sin(2*D*D2R);
-  var lat_ec = 5.128*Math.sin(F*D2R);
-  var eps = 23.44 * D2R, lngR = lng*D2R, latR = lat_ec*D2R;
-  var dec = Math.asin(Math.sin(latR)*Math.cos(eps) + Math.cos(latR)*Math.sin(eps)*Math.sin(lngR));
-  var ra = Math.atan2(Math.sin(lngR)*Math.cos(eps) - Math.tan(latR)*Math.sin(eps), Math.cos(lngR));
+  var L0 = (218.3165 + 481267.8813 * T) % 360;   // mean longitude
+  var M  = (134.9634 + 477198.8676 * T) % 360;   // mean anomaly
+  var Ms = (357.5291 +  35999.0503 * T) % 360;   // sun mean anomaly
+  var F  = (93.2720  + 483202.0175 * T) % 360;   // argument of latitude
+  var D  = (297.8502 + 445267.1115 * T) % 360;   // mean elongation
+  var lng = L0
+    + 6.289 * Math.sin(M * D2R)
+    - 1.274 * Math.sin((2 * D - M) * D2R)
+    - 0.658 * Math.sin(2 * D * D2R)
+    - 0.214 * Math.sin(2 * M * D2R)
+    - 0.186 * Math.sin(Ms * D2R);
+  var lat_ec = 5.128 * Math.sin(F * D2R)
+    + 0.281 * Math.sin((M + F) * D2R)
+    + 0.278 * Math.sin((F - M) * D2R);
+  var eps = 23.44 * D2R;
+  var lngR = lng * D2R, latR = lat_ec * D2R;
+  var dec = Math.asin(Math.sin(latR) * Math.cos(eps) + Math.cos(latR) * Math.sin(eps) * Math.sin(lngR));
+  var ra = Math.atan2(Math.sin(lngR) * Math.cos(eps) - Math.tan(latR) * Math.sin(eps), Math.cos(lngR));
+  return { JD: JD, T: T, ra: ra, dec: dec, eps: eps, Ms: Ms };
+}
+
+// Screen tilt (degrees, CSS/canvas rotation sense) of the untilted moon sprite
+// for an observer at lat/lon: the bright limb faces the Sun as seen in that
+// sky. chi is measured from celestial north; subtracting the parallactic
+// angle q gives it from the observer's vertical; the sprite's lit limb starts
+// at 3 o'clock and CSS rotation runs opposite the position-angle sense, hence
+// -(chi - q) - 90.
+function _moonScreenTiltDeg(date, lat, lon) {
+  var eq = _moonEqCoords(date);
+  var D2R = Math.PI / 180;
+  var GMST = (280.46061837 + 360.98564736629 * (eq.JD - 2451545.0)) % 360;
+  var HA = (GMST + lon) * D2R - eq.ra;
+  var latR = lat * D2R;
+  var q = Math.atan2(Math.sin(HA), Math.tan(latR) * Math.cos(eq.dec) - Math.sin(eq.dec) * Math.cos(HA));
+  // Sun's equatorial position (low-precision) for the bright-limb angle chi.
+  var Lsun = 280.4665 + 36000.7698 * eq.T;
+  var lamSun = (Lsun + 1.915 * Math.sin(eq.Ms * D2R) + 0.020 * Math.sin(2 * eq.Ms * D2R)) * D2R;
+  var raSun = Math.atan2(Math.cos(eq.eps) * Math.sin(lamSun), Math.cos(lamSun));
+  var decSun = Math.asin(Math.sin(eq.eps) * Math.sin(lamSun));
+  var dA = raSun - eq.ra;
+  var chi = Math.atan2(Math.cos(decSun) * Math.sin(dA),
+    Math.sin(decSun) * Math.cos(eq.dec) - Math.cos(decSun) * Math.sin(eq.dec) * Math.cos(dA));
+  return -((chi - q) * 180 / Math.PI) - 90;
+}
+
+// Waxing predicate — shared so no renderer flips the terminator side on its
+// own convention (the sky scene once used <= where the hero used <).
+function _moonIsWaxing(m) { return m.phase < 0.5; }
+
+// Today-card tilt: canonical derivation at the almanac's location fallback
+// (same synthetic default as almanac.js _getLocation, which may not be loaded).
+function _quickMoonTilt(date) {
   var ll = _getSessionJSON(SK.ALMANAC_LOC, null);
-  var obsLat = ll ? ll.lat : 34, obsLon = ll ? ll.lon : -date.getTimezoneOffset() / 60 * 15;
-  var LST = ((280.46061837 + 360.98564736629*(JD-2451545.0))%360 + obsLon) * D2R;
-  var HA = LST - ra;
-  var latR2 = obsLat * D2R;
-  return Math.atan2(Math.sin(HA), Math.tan(latR2)*Math.cos(dec) - Math.sin(dec)*Math.cos(HA)) * 180 / Math.PI;
+  var lat = ll ? ll.lat : 34, lon = ll ? ll.lon : -date.getTimezoneOffset() / 60 * 15;
+  return _moonScreenTiltDeg(date, lat, lon);
 }
 
 // Lightweight almanac teaser for the Today discover card.
@@ -3394,7 +3461,7 @@ function _renderTodayCard() {
   var glowOpacity = (m.illumination / 100 * 0.12 + 0.02).toFixed(2);
   return '<div class="dc-today">' + stars +
     '<div class="dc-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + glowOpacity + ') 0%, transparent 65%)"></div>' +
-    _renderMoonHTML(m, 'dc-moon-wrap', tilt, 0.5) +
+    _renderMoonHTML(m, 'dc-moon-wrap', tilt) +
     '</div>';
 }
 
@@ -13148,7 +13215,7 @@ function _renderHistoryContent() {
       }
       i = j;
     } else if (item.type === 'article') {
-      var aIcon = item.zim ? _sourceIconHtml(item.zim, 20) : '\uD83D\uDCC4';
+      var aIcon = item.zim ? _sourceIconHtml(item.zim, 20) : _BM_PAGE_SVG;
       var aSub = item.zim ? _zimTitleWithLang(item.zim) : '';
       html += '<div class="hp-item" onclick="_closeLibraryPanel();openArticle(\'' + escJs(item.zim) + '\',\'' + escJs(item.path) + '\',\'' + escJs(item.title || '') + '\')">' +
         '<div class="hp-icon">' + aIcon + '</div>' +
@@ -13170,6 +13237,14 @@ function _renderHistoryContent() {
 // bookmarks within a parent; each is independently ordered.
 var _BM_INDENT = 14;        // px of indent per nesting level
 var _bmBound = false;       // delegated listeners attached once to the panel
+
+// Folder/page glyphs in the app's own icon language (thin stroke, currentColor,
+// round caps and joins, the same family as the topbar SVGs). The OS-flavored
+// emoji folder read as foreign next to them and ignored the theme ink.
+var _BM_SVG_ATTRS = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+var _BM_FOLDER_SVG = '<svg width="17" height="17" ' + _BM_SVG_ATTRS + '><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>';
+var _BM_FOLDER_OPEN_SVG = '<svg width="17" height="17" ' + _BM_SVG_ATTRS + '><path d="M6 14l1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2"/></svg>';
+var _BM_PAGE_SVG = '<svg width="15" height="15" ' + _BM_SVG_ATTRS + '><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
 
 function _renderBookmarksContent() {
   var bk = _bkLoad();
@@ -13211,7 +13286,7 @@ function _bmFolderRowHtml(f, depth) {
     ' style="padding-left:' + pad + 'px" role="treeitem" aria-level="' + (depth + 1) + '"' +
     ' aria-expanded="' + (!collapsed) + '" tabindex="-1">' +
     '<span class="bm-twist' + (collapsed ? '' : ' open') + '" data-role="twist">\u25B8</span>' +
-    '<span class="bm-ficon">' + (collapsed ? '\uD83D\uDCC1' : '\uD83D\uDCC2') + '</span>' +
+    '<span class="bm-ficon">' + (collapsed ? _BM_FOLDER_SVG : _BM_FOLDER_OPEN_SVG) + '</span>' +
     '<span class="bm-name">' + esc(f.name) + '</span>' +
     '<span class="bm-count">' + count + '</span>' +
     '<button class="bm-gear" data-role="menu" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">\u22EF</button>' +
@@ -13228,7 +13303,7 @@ function _bkSourceMissing(b) {
 
 function _bmBookmarkRowHtml(b, depth) {
   var missing = _bkSourceMissing(b);
-  var icon = b.zim ? _sourceIconHtml(b.zim, 20) : '\uD83D\uDCC4';
+  var icon = b.zim ? _sourceIconHtml(b.zim, 20) : _BM_PAGE_SVG;
   var sub = missing ? t('bm_source_missing') : (b.zim ? _zimTitleWithLang(b.zim) : '');
   var pad = 6 + depth * _BM_INDENT;
   return '<div class="bm-row bm-bk' + (missing ? ' bm-missing' : '') + '"' +
@@ -13383,7 +13458,7 @@ function _bmNewFolderPrompt(parentId) {
   var wrap = document.createElement('div');
   wrap.className = 'bm-row bm-newfolder';
   wrap.style.paddingLeft = (6 + depth * _BM_INDENT) + 'px';
-  wrap.innerHTML = '<span class="bm-ficon">\uD83D\uDCC1</span>' +
+  wrap.innerHTML = '<span class="bm-ficon">' + _BM_FOLDER_SVG + '</span>' +
     '<input class="bm-newfolder-input" type="text" placeholder="' + escAttr(t('bm_folder_name')) + '" maxlength="60">';
   // Insert at the top of the target parent's child region (root: top of tree).
   if (parentId) {
@@ -13486,7 +13561,7 @@ function _bmMoveSubmenuHtml(excludeFolderId) {
     _folChildren(parentId).forEach(function (f) {
       if (banned[f.id]) return;
       html += '<div class="ctx-item" data-action="mv" data-fid="' + escAttr(f.id) + '"' +
-        ' style="padding-left:' + (10 + depth * 12) + 'px">\uD83D\uDCC1 ' + esc(f.name) + '</div>';
+        ' style="padding-left:' + (10 + depth * 12) + 'px"><span class="ctx-fico">' + _BM_FOLDER_SVG + '</span>' + esc(f.name) + '</div>';
       walk(f.id, depth + 1);
     });
   };
@@ -14105,7 +14180,8 @@ function _bmExportSelector(preFolderId) {
         : true;
       tree += '<label class="bm-exp-row" style="padding-left:' + (8 + depth * 16) + 'px">' +
         '<input type="checkbox" data-fid="' + escAttr(f.id) + '"' + (checked ? ' checked' : '') + '>' +
-        '<span class="bm-exp-name">📁 ' + esc(f.name) + '</span>' +
+        '<span class="bm-exp-ico">' + _BM_FOLDER_SVG + '</span>' +
+        '<span class="bm-exp-name">' + esc(f.name) + '</span>' +
         '<span class="bm-exp-count">' + _folBookmarkCount(f.id) + '</span></label>';
       walk(f.id, depth + 1);
     });
@@ -14114,7 +14190,8 @@ function _bmExportSelector(preFolderId) {
   if (rootBk) {
     tree += '<label class="bm-exp-row" style="padding-left:8px">' +
       '<input type="checkbox" data-fid="__unfiled__"' + (preFolderId ? '' : ' checked') + '>' +
-      '<span class="bm-exp-name">📄 ' + tH('bm_export_unfiled') + '</span>' +
+      '<span class="bm-exp-ico">' + _BM_PAGE_SVG + '</span>' +
+      '<span class="bm-exp-name">' + tH('bm_export_unfiled') + '</span>' +
       '<span class="bm-exp-count">' + rootBk + '</span></label>';
   }
   if (!tree) tree = '<div class="bm-exp-empty">' + tH('no_bookmarks') + '</div>';

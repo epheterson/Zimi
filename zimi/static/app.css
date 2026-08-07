@@ -2270,6 +2270,7 @@
   .hp-item:hover { opacity: 0.8; }
   .hp-icon { flex-shrink: 0; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--surface2); font-size: 14px; }
   .hp-icon img { width: 20px; height: 20px; border-radius: 3px; }
+  .hp-icon svg { color: var(--text2); }
   .hp-detail { flex: 1; min-width: 0; }
   .hp-title { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hp-sub { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2301,9 +2302,15 @@
      folder that holds it instead of hanging left of it. */
   .bm-twist-gap { visibility: hidden; }
   .bm-ficon, .bm-bicon { flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-  .bm-ficon { width: 20px; font-size: 15px; }
-  .bm-bicon { width: 24px; height: 24px; border-radius: 5px; background: var(--surface2); font-size: 13px; }
+  .bm-ficon { width: 20px; color: var(--text2); }
+  .bm-ficon svg { display: block; }
+  /* Drop target: the folder about to receive the drag lights its glyph too. */
+  .bm-row.bm-drop-into .bm-ficon { color: var(--amber); }
+  .bm-bicon { width: 24px; height: 24px; border-radius: 5px; background: var(--surface2); font-size: 13px; color: var(--text2); }
   .bm-bicon img { width: 18px; height: 18px; border-radius: 3px; }
+  /* Letter tile fallback for sources without an icon; unscoped it rendered as
+     a bare floating character that read as a broken image. */
+  .bm-bicon .rs-letter { font-size: 11px; font-weight: 600; color: var(--text2); line-height: 1; }
   .bm-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .bm-name { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bm-sub { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2347,6 +2354,9 @@
     box-shadow: 0 6px 20px rgba(0,0,0,0.28); max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .ctx-note { padding: 8px 12px; font-size: 12px; color: var(--text2); border-bottom: 1px solid var(--border); max-width: 240px; white-space: normal; line-height: 1.4; }
+  /* Folder glyph inside Move to... submenu rows. */
+  .ctx-fico { display: inline-flex; vertical-align: -3px; margin-inline-end: 6px; color: var(--text2); }
+  .ctx-fico svg { width: 14px; height: 14px; }
 
   /* Export selector modal */
   .bm-export-overlay {
@@ -2364,6 +2374,7 @@
   .bm-exp-row { display: flex; align-items: center; gap: 8px; padding: 7px 6px; cursor: pointer; border-radius: 6px; }
   .bm-exp-row:hover { background: var(--surface2); }
   .bm-exp-row input { accent-color: var(--amber); width: 15px; height: 15px; flex-shrink: 0; }
+  .bm-exp-ico { flex-shrink: 0; display: flex; align-items: center; color: var(--text2); }
   .bm-exp-name { flex: 1; min-width: 0; font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bm-exp-count { flex-shrink: 0; font-size: 11px; color: var(--text2); background: var(--surface2); border-radius: 10px; padding: 1px 7px; }
   .bm-exp-empty { padding: 24px; text-align: center; color: var(--text2); font-size: 13px; }

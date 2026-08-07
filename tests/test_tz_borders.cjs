@@ -194,6 +194,52 @@ check(recorded.points.length === zPts,
   `zone path builder projects every point (${recorded.points.length})`);
 check(offCanvas === 0, 'all projected zone points land inside the canvas');
 
+// 9. Per-offset city coverage — every distinct UTC offset in the zone asset
+// must contain at least one _MAP_CITIES dot (resolved through the SHIPPED
+// containment fn), so every zone painted on the map is reachable with one
+// click on a city. Sole exemption: UTC-12 (Baker/Howland waters) has no
+// permanent habitation anywhere on Earth.
+const NO_CITY_OFFSETS = new Set([-720]);
+const cityListSrc = extract(/var _MAP_CITIES = \[[\s\S]*?\n\];/, '_MAP_CITIES');
+vm.runInContext(cityListSrc, zoneSandbox);
+const mapCities = zoneSandbox._MAP_CITIES;
+check(Array.isArray(mapCities) && mapCities.length >= 140,
+  `_MAP_CITIES extracted (${mapCities.length} cities)`);
+const covered = new Map();
+for (const c of mapCities) {
+  const off = zoneOffsetAt(c.lat, c.lon);
+  if (off !== null && !covered.has(off)) covered.set(off, c.name);
+}
+const fmtOff = (o) => 'UTC' + (o < 0 ? '-' : '+') + Math.floor(Math.abs(o) / 60) +
+  (Math.abs(o) % 60 ? ':' + String(Math.abs(o) % 60).padStart(2, '0') : '');
+const uncovered = [...offsets].filter((o) => !covered.has(o) && !NO_CITY_OFFSETS.has(o));
+check(uncovered.length === 0,
+  'every zone offset has a city dot (uncovered: ' +
+  (uncovered.map(fmtOff).join(', ') || 'none') + '; ' + covered.size + '/' + offsets.size + ' covered)');
+['-570', '-210', '270', '525', '630', '765', '780', '840'].forEach((o) => {
+  check(covered.has(Number(o)),
+    `fractional/remote offset ${fmtOff(Number(o))} covered (${(covered.get(Number(o)) || '').split(',')[0]})`);
+});
+
+// 10. Free-click contract — clicking open map (no city within snap range) must
+// select that exact spot. The handler inverts the projection with
+// lon = x/W*360-180, lat = 90-y/H*180; drive the SHIPPED forward projection
+// through that inverse and require an exact round trip, then pin the handler's
+// save-any-point branch and the stored-keyed marker in the source.
+let rtBad = 0;
+for (const [lat, lon] of [[0, 0], [47.56, -52.71], [-43.95, -176.56], [1.87, -157.43], [89.9, 179.9], [-89.9, -179.9]]) {
+  const x = vm.runInContext(`_sunMapLonToX(${lon}, ${W})`, sandbox);
+  const y = vm.runInContext(`_sunMapLatToY(${lat}, ${H})`, sandbox);
+  const lon2 = (x / W) * 360 - 180;
+  const lat2 = 90 - (y / H) * 180;
+  if (Math.abs(lon2 - lon) > 1e-9 || Math.abs(lat2 - lat) > 1e-9) rtBad++;
+}
+check(rtBad === 0, 'click-handler inverse projection round-trips the shipped forward projection');
+check(alm.includes("_saveLocation(lat, lon, '')"),
+  'free-click branch saves the arbitrary point as the location');
+check(alm.includes('_sunMapHasLocation = smLoc.stored'),
+  'marker/highlight key off STORED, so nameless free-click picks draw too');
+
 if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
 console.log('all tz-borders checks passed (' + doc.lines.length + ' lines, ' + pts +
   ' pts; ' + doc.zones.length + ' zones, ' + zPts + ' pts)');

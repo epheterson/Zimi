@@ -27,15 +27,15 @@ var MOON_TWEEN_MS = 500;
 function _moonEaseOut(p) { return 1 - Math.pow(1 - p, 3); }
 
 // Shortest signed delta (degrees) from `from` to `to`, wrapping at 360 -- so
-// azimuth/parallactic tweening sweeps the short way around the 0/360 seam
+// azimuth/tilt tweening sweeps the short way around the 0/360 seam
 // instead of the long way when a jump straddles it.
 function _angleDelta(from, to) { return ((to - from) % 360 + 540) % 360 - 180; }
 
 // Sample the moon's tweened state at time `ts` (a performance.now()/rAF
-// timestamp). Position (altitude/azimuth/parallactic) eases geometrically;
-// phase is sampled from REAL astronomy at the interpolated instant via
-// _moonAnimPhaseAt, so the lit fraction sweeps its true path across the jump
-// rather than snapping. The re-shade this costs is bounded by
+// timestamp). Position (altitude/azimuth) and the disc's screen tilt ease
+// geometrically; phase is sampled from REAL astronomy at the interpolated
+// instant via _moonAnimPhaseAt, so the lit fraction sweeps its true path
+// across the jump rather than snapping. The re-shade this costs is bounded by
 // _moonSpriteCanvas's cache (illumination rounded to 1%): at the sky moon's
 // ~14 px radius a full sweep is a few dozen tiny sprites, generated once.
 function _skyMoonAt(s, ts) {
@@ -48,9 +48,9 @@ function _skyMoonAt(s, ts) {
   return {
     pos: {
       altitude: fp.altitude + (tp.altitude - fp.altitude) * e,
-      azimuth: fp.azimuth + _angleDelta(fp.azimuth, tp.azimuth) * e,
-      parallactic: fp.parallactic + _angleDelta(fp.parallactic, tp.parallactic) * e
+      azimuth: fp.azimuth + _angleDelta(fp.azimuth, tp.azimuth) * e
     },
+    tilt: (anim.from.tilt || 0) + _angleDelta(anim.from.tilt || 0, anim.to.tilt || 0) * e,
     phase: _moonAnimPhaseAt(anim.fromTime, anim.toTime, e)
   };
 }
@@ -85,7 +85,9 @@ function _skyFrame(now, lat, lon, cw, ch) {
   } else {
     labelText += ' · ' + t('alm_moon') + ' ' + t('alm_below_horizon');
   }
-  return { sunPos: sunPos, moonData: { pos: moonPos0, phase: moonM0 }, projStars: projStars, projField: projField, labelText: labelText };
+  // tilt: canonical screen tilt from app.js — the SAME derivation the hero
+  // disc and the Today card rotate by, so all three moons agree.
+  return { sunPos: sunPos, moonData: { pos: moonPos0, tilt: _moonScreenTiltDeg(now, lat, lon), phase: moonM0 }, projStars: projStars, projField: projField, labelText: labelText };
 }
 
 // `animateMoon` -- true only for a repaint that reinitializes this same canvas
@@ -617,15 +619,17 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, elapsed, labelText, p
       ctx.beginPath(); ctx.arc(moonX, moonY, moonR * 2.5, 0, Math.PI * 2); ctx.fill();
     }
     // The moon IS the hero's shaded sprite now — a soft terminator and a dim,
-    // visible earthshine dark side, not a black cut-out — rotated by the
-    // parallactic angle so its tilt matches the real sky.
-    var pAngleBody = (moonPos.parallactic || 0) * DEG_TO_RAD;
+    // visible earthshine dark side, not a black cut-out — rotated by the SAME
+    // canonical screen tilt (_moonScreenTiltDeg, app.js) as the hero disc and
+    // the Today card, so the terminator leans identically everywhere.
+    var moonTilt = (moonData && moonData.tilt != null)
+      ? moonData.tilt : _moonScreenTiltDeg(now, lat, lon);
     var spr = (typeof _moonSpriteCanvas === 'function' && _moonTexReady)
-      ? _moonSpriteCanvas(m.illumination / 100, m.phase <= 0.5, moonR / dpr) : null;
+      ? _moonSpriteCanvas(m.illumination / 100, _moonIsWaxing(m), moonR / dpr) : null;
     ctx.save();
     ctx.globalAlpha = moonAlpha;
     ctx.translate(moonX, moonY);
-    ctx.rotate(pAngleBody);
+    ctx.rotate(moonTilt * DEG_TO_RAD);
     if (spr) {
       ctx.drawImage(spr, -moonR, -moonR, moonR * 2, moonR * 2);
       if (isDaytime) {

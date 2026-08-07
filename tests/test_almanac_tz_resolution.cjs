@@ -209,6 +209,25 @@ const CITIES = [
   ['Christchurch', -43.53, 172.64, 'Pacific/Auckland'],
   ['Dunedin', -45.87, 170.50, 'Pacific/Auckland'],
   ['Wellington', -41.29, 174.78, 'Pacific/Auckland'],
+  // Remote and fractional island zones — the sun map plots a clickable dot in
+  // every distinct UTC-offset zone (tests/test_tz_borders.cjs gates that), and
+  // each dot must also resolve to the right IANA zone here. Fiji and Apia are
+  // the anchor-shadow cases: without their own anchors Suva falls to Noumea
+  // (+11, an hour off) and Samoa to Pago Pago (a full day off).
+  ['PagoPago', -14.28, -170.70, 'Pacific/Pago_Pago'],
+  ['Apia', -13.83, -171.77, 'Pacific/Apia'],
+  ['Taiohae', -8.91, -140.10, 'Pacific/Marquesas'],
+  ['StJohns', 47.56, -52.71, 'America/St_Johns'],
+  ['Grytviken', -54.28, -36.51, 'Atlantic/South_Georgia'],
+  ['PontaDelgada', 37.74, -25.67, 'Atlantic/Azores'],
+  ['Eucla', -31.68, 128.89, 'Australia/Eucla'],
+  ['LordHowe', -31.55, 159.08, 'Australia/Lord_Howe'],
+  ['Noumea', -22.28, 166.46, 'Pacific/Noumea'],
+  ['KingstonNorfolk', -29.06, 167.96, 'Pacific/Norfolk'],
+  ['Suva', -17.77, 177.97, 'Pacific/Fiji'],
+  ['WaitangiChatham', -43.95, -176.56, 'Pacific/Chatham'],
+  ['Nukualofa', -21.14, -175.20, 'Pacific/Tongatapu'],
+  ['Kiritimati', 1.87, -157.43, 'Pacific/Kiritimati'],
 ];
 
 // Known residuals: real zone boundaries too fine for anchor resolution to

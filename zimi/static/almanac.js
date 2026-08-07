@@ -763,6 +763,13 @@ function _almScrubClock(focus) {
 // a quiet period fires immediately), so a single wheel notch or arrow key
 // updates the text with no perceptible delay.
 var _ALM_TRAVEL_DOM_MS = 100;
+// The calendar grid gets its own, coarser cadence: _almSyncSelectedToFocus is
+// a full month-grid innerHTML rebuild + style/layout/paint pass, and at full
+// lever speed the day moves every DOM tick, so at 100ms it fired 10x/s.
+// Measured in Playwright WebKit (warm, fast throw): grid on the 100ms tick =
+// p95 52ms frames; grid disabled = p95 31ms. At 300ms the rebuild still flips
+// months faster than the eye tracks them, and the settle repaint is exact.
+var _ALM_TRAVEL_GRID_MS = 300;
 var _almTravelThrottleAt = {};
 
 function _almTravelThrottled(key, ms, fn) {
@@ -853,13 +860,18 @@ function _almTravelLive(focus) {
   var m = null;
   try { m = _moonPhase(focus); } catch (e) {}
   if (m) _heroMoonTravelDraw(focus, m);
-  // DOM tier — one throttle key, so the clock, cards and grid always move as
-  // one and can never disagree with each other mid-scrub.
+  // DOM tier — one throttle key for the text, so the clock and cards always
+  // move as one and can never disagree with each other mid-scrub. The
+  // calendar grid rides its own coarser cadence (see _ALM_TRAVEL_GRID_MS):
+  // it is the tier's one full innerHTML rebuild, and in WebKit its layout
+  // pass was most of the remaining scrub jank. A month trailing the clock by
+  // up to ~300ms at multi-month-per-second speeds is imperceptible, and
+  // _almScrubSettle redraws it exactly the moment motion stops.
   _almTravelThrottled('dom', _ALM_TRAVEL_DOM_MS, function () {
     _almScrubClock(focus);
     _almLiveHeadCards(focus);
-    _almSyncSelectedToFocus();
   });
+  _almTravelThrottled('grid', _ALM_TRAVEL_GRID_MS, _almSyncSelectedToFocus);
 }
 
 function _almIsLiveNow(d) { return Math.abs(d.getTime() - Date.now()) < _SCRUB_LIVE_EPS; }
@@ -1490,13 +1502,11 @@ function _cacheAlmanacHighlights(now, moon) {
 // ── Moon rendering ──
 
 // Screen tilt (degrees) of the hero disc at a given instant: the bright limb
-// faces the Sun as the observer sees it. brightLimb (chi - q) is the physical
-// quantity; the base art has its lit limb at 3 o'clock and CSS rotation runs
-// opposite to the position-angle sense, so the screen tilt is -(chi-q) - 90.
+// faces the Sun as the observer sees it. Delegates to the canonical
+// _moonScreenTiltDeg in app.js — the ONE derivation the hero, the sky-scene
+// moon and the Today discover card all share.
 function _heroMoonTiltDeg(date, loc) {
-  var mp = _moonPosition(date, loc.lat, loc.lon);
-  var limb = (mp.brightLimb != null ? mp.brightLimb : mp.parallactic) || 0;
-  return -limb - 90;
+  return _moonScreenTiltDeg(date, loc.lat, loc.lon);
 }
 
 // ── Hero moon time-travel sweep ──
@@ -1510,14 +1520,15 @@ function _heroMoonTiltDeg(date, loc) {
 // that img is revealed with no visible seam. Reduced motion snaps (caller +
 // CSS guard). Position never changes -- the hero is centred -- so only phase
 // and tilt animate.
-var _HERO_MOON_ANIM_SIZE = 128;   // sprite gen size while moving (cheap; scaled to fill)
-// Sprite pixels are capped at 128 real pixels during motion, dpr included:
-// _moonSpriteCanvas multiplies its size argument by devicePixelRatio, and a
-// cold cache shades ~100 phase buckets across the first fast throw — at retina
-// dpr that is 4x the per-pixel shading work, measured at 790ms of a 3s throw
-// (worst single re-shade 541ms with the GPU readback stall). A disc in motion
-// cannot show the extra resolution; the landing frame still renders at full
-// 200px x dpr through the resting <img>.
+var _HERO_MOON_ANIM_SIZE = 256;   // sprite pixels while moving (device px, dpr included)
+// Motion sprites are capped at 256 real pixels: _moonSpriteCanvas multiplies
+// its size argument by devicePixelRatio, and a cold cache shades ~50 phase
+// buckets across the first fast throw. 256 was unaffordable when every bucket
+// paid a drawImage + getImageData GPU readback (~6.6ms/bucket at 128 in
+// WebKit); with the base pixels cached once per size (_moonTexBaseData) a
+// bucket is just the shading loop, so motion quality rises from the old chunky
+// 128 while the throw stays cheaper than it was. The resting <img> still
+// renders at full 200px x dpr; only frames in motion use this.
 function _heroMoonAnimGenSize() {
   return _HERO_MOON_ANIM_SIZE / (window.devicePixelRatio || 1);
 }
@@ -1531,14 +1542,15 @@ function _moonEaseInOut(p) {
 }
 
 // The overlay canvas laid over the current hero moon (created lazily, reused).
+// Backing store is the motion sprite size — the sprite blits 1:1 and CSS
+// scales the element to the 200px disc; rotation is a compositor transform.
 function _heroMoonEnsureOverlay(hero) {
   if (_heroMoonOverlay && _heroMoonOverlay.isConnected) return _heroMoonOverlay;
-  var dpr = window.devicePixelRatio || 1;
   var cv = document.createElement('canvas');
   cv.className = 'almanac-moon-anim';
   cv.setAttribute('aria-hidden', 'true');
-  cv.width = Math.round(200 * dpr);
-  cv.height = Math.round(200 * dpr);
+  cv.width = _HERO_MOON_ANIM_SIZE;
+  cv.height = _HERO_MOON_ANIM_SIZE;
   hero.appendChild(cv);
   _heroMoonOverlay = cv;
   return cv;
@@ -1551,20 +1563,23 @@ function _heroMoonRemoveOverlay() {
   _heroMoonOverlay = null;
 }
 
-// Draw the moon into the overlay: cached shaded sprite (drawImage is ~free once
-// the 1% bucket exists) rotated by the interpolated tilt. genSize controls the
-// sprite resolution -- small while moving, full on the landing frame so the
-// hand-off to the resting img is seamless.
-function _heroMoonDrawCanvas(cv, illumFrac, waxing, tiltDeg, genSize) {
-  var ctx = cv.getContext('2d');
-  var W = cv.width, c = W / 2;
-  ctx.clearRect(0, 0, W, W);
-  var spr = _moonSpriteCanvas(illumFrac, waxing, genSize);
-  ctx.save();
-  ctx.translate(c, c);
-  ctx.rotate(tiltDeg * Math.PI / 180);
-  ctx.drawImage(spr, -c, -c, W, W);
-  ctx.restore();
+// Draw the moon into the overlay. The canvas repaints only when the phase
+// BUCKET changes (a few times a second at travel speed); the per-frame tilt is
+// a CSS transform on the element, which the compositor rotates without
+// touching a pixel. The old version cleared + rotated + drawImage'd the full
+// 200px x dpr backing every frame — ~4.3ms/frame in WebKit even with a warm
+// sprite cache, a quarter of the whole frame budget.
+function _heroMoonDrawCanvas(cv, illumFrac, waxing, tiltDeg) {
+  var key = Math.round(illumFrac * 100) + (waxing ? 'w' : 'a') + (_moonTexReady ? 't' : '');
+  if (cv._moonBucket !== key) {
+    cv._moonBucket = key;
+    var ctx = cv.getContext('2d');
+    var W = cv.width;
+    ctx.clearRect(0, 0, W, W);
+    ctx.drawImage(_moonSpriteCanvas(illumFrac, waxing, _heroMoonAnimGenSize()), 0, 0, W, W);
+  }
+  // Compose with the stylesheet's translateX(-50%) centring (.almanac-moon-anim).
+  cv.style.transform = 'translateX(-50%) rotate(' + tiltDeg.toFixed(2) + 'deg)';
 }
 
 // Begin a hero sweep from fromTime to toTime (focus instants, ms). Called right
@@ -1601,7 +1616,7 @@ function _heroMoonTravelDraw(focus, m) {
   _heroMoonTravelOn = true;
   var illumFrac = Math.round(m.illumination / 100 / _HERO_MOON_PHASE_STEP) * _HERO_MOON_PHASE_STEP;
   var tilt = _heroMoonTiltDeg(focus, _getLocation());
-  _heroMoonDrawCanvas(_heroMoonEnsureOverlay(heroEl), illumFrac, m.phase < 0.5, tilt, _heroMoonAnimGenSize());
+  _heroMoonDrawCanvas(_heroMoonEnsureOverlay(heroEl), illumFrac, _moonIsWaxing(m), tilt);
 }
 
 // End travel and drop the overlay, revealing the resting <img> beneath.
@@ -1618,9 +1633,10 @@ function _heroMoonTick(ts) {
     if (!cv || !cv.isConnected) { _heroMoonAnim = null; return; }
     var p = (ts - a.start) / a.dur;
     if (p >= 1) {
-      // Land at full resolution so removing the overlay reveals an identical img.
-      var end = _moonPhase(new Date(a.toTime));
-      _heroMoonDrawCanvas(cv, end.illumination / 100, end.phase < 0.5, a.toTilt, 200);
+      // Removing the overlay reveals the resting <img>, which the header
+      // rebuild already rendered at the destination phase and full resolution.
+      // (A final full-res canvas draw here was never composited — the removal
+      // lands in the same tick — so it was pure waste.)
       _heroMoonRemoveOverlay();
       _heroMoonAnim = null;
       return;
@@ -1629,7 +1645,7 @@ function _heroMoonTick(ts) {
     var ph = _moonAnimPhaseAt(a.fromTime, a.toTime, e);
     var illumFrac = Math.round(ph.illumination / 100 / _HERO_MOON_PHASE_STEP) * _HERO_MOON_PHASE_STEP;
     var tilt = a.fromTilt + _angleDelta(a.fromTilt, a.toTilt) * e;
-    _heroMoonDrawCanvas(cv, illumFrac, ph.phase < 0.5, tilt, _heroMoonAnimGenSize());
+    _heroMoonDrawCanvas(cv, illumFrac, _moonIsWaxing(ph), tilt);
     return;
   }
   // Not sweeping and not travelling: reveal the resting img.
@@ -1642,7 +1658,7 @@ function _renderAlmanacMoon(m, tiltDeg) {
   var illumFrac = m.illumination / 100;
   var glowOpacity = (illumFrac * 0.15 + 0.02).toFixed(2);
   return '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + glowOpacity + ') 0%, transparent 65%)"></div>' +
-    _renderMoonHTML(m, 'almanac-moon', tiltDeg, 1.0);
+    _renderMoonHTML(m, 'almanac-moon', tiltDeg);
 }
 
 // Next full moon after fromDate, with its distance and whether it's a
@@ -2231,7 +2247,11 @@ function _sunMapBaseLayer(W, H, dpr) {
   c.fillStyle = '#0d1117';
   c.fillRect(0, 0, W, H);
   if (_sunMapLoaded) {
-    c.globalAlpha = 0.4;
+    // 0.45, up from the 0.40 the map launched with: the hairline zone borders
+    // added a competing texture over the land, and at 0.40 the continents read
+    // washed out underneath them. One step brighter keeps the muted night-map
+    // voice while letting the coastlines win back the mid-ground.
+    c.globalAlpha = 0.45;
     c.drawImage(_sunMapImg, 0, 0, W, H);
     c.globalAlpha = 1;
   }
@@ -2486,7 +2506,12 @@ function _renderSunMap(now) {
   var smLoc = _getLocation();
   _sunMapLat = smLoc.lat; _sunMapLon = smLoc.lon;
   _sunMapLocName = smLoc.name;
-  _sunMapHasLocation = !!smLoc.name;
+  // A free click on open map (or a manual lat/lon entry) stores coordinates
+  // with no city name — that pick is every bit as real as a snapped city, so
+  // the marker, the zone highlight and the coordinate line key off STORED,
+  // not off having a name. Keying off the name left arbitrary-point picks
+  // invisible: the location changed but no marker or highlight ever drew.
+  _sunMapHasLocation = smLoc.stored;
 
   // Compute sun info in the CLICKED location's timezone, not the device's
   // (F6) — resolve the point's zone the same way the world clock does.
@@ -2715,6 +2740,8 @@ var _TZ_ANCHORS = [
   [-12.05, -77.04, 'America/Lima'], [-16.50, -68.15, 'America/La_Paz'],
   [-33.45, -70.67, 'America/Santiago'], [-23.55, -46.63, 'America/Sao_Paulo'],
   [-34.60, -58.38, 'America/Argentina/Buenos_Aires'],
+  [47.56, -52.71, 'America/St_Johns'], [-54.28, -36.51, 'Atlantic/South_Georgia'],
+  [37.74, -25.67, 'Atlantic/Azores'],
   // Europe / Africa
   [64.15, -21.94, 'Atlantic/Reykjavik'], [51.51, -0.13, 'Europe/London'],
   [53.35, -6.26, 'Europe/Dublin'], [38.72, -9.14, 'Europe/Lisbon'],
@@ -2752,7 +2779,17 @@ var _TZ_ANCHORS = [
   [-12.46, 130.85, 'Australia/Darwin'],
   [-34.93, 138.60, 'Australia/Adelaide'], [-27.47, 153.03, 'Australia/Brisbane'],
   [-37.81, 144.96, 'Australia/Melbourne'],
-  [-33.87, 151.21, 'Australia/Sydney'], [-36.85, 174.76, 'Pacific/Auckland']
+  [-33.87, 151.21, 'Australia/Sydney'], [-36.85, 174.76, 'Pacific/Auckland'],
+  // Remote and fractional island zones, matching the map's remote-zone city
+  // dots. Fiji and Apia carry anchors of their own even without dots: without
+  // them Suva would fall to the new Noumea anchor (+11, an hour off) and
+  // Samoa to Pago Pago (across a full-day offset gap).
+  [-14.28, -170.70, 'Pacific/Pago_Pago'], [-13.83, -171.77, 'Pacific/Apia'],
+  [-8.91, -140.10, 'Pacific/Marquesas'], [-31.68, 128.89, 'Australia/Eucla'],
+  [-31.55, 159.08, 'Australia/Lord_Howe'], [-22.28, 166.46, 'Pacific/Noumea'],
+  [-29.06, 167.96, 'Pacific/Norfolk'], [-17.77, 177.97, 'Pacific/Fiji'],
+  [-43.95, -176.56, 'Pacific/Chatham'], [-21.14, -175.20, 'Pacific/Tongatapu'],
+  [1.87, -157.43, 'Pacific/Kiritimati']
 ];
 
 // Longitude is compared in RAW degrees, deliberately not scaled by cos(lat).
@@ -3365,6 +3402,7 @@ var _MAP_CITIES = [
   { name: 'Guadalajara, Jalisco, Mexico', lat: 20.67, lon: -103.35 },
   { name: 'Havana, Cuba', lat: 23.11, lon: -82.37 },
   { name: 'San Juan, Puerto Rico', lat: 18.47, lon: -66.11 },
+  { name: 'St. John’s, Newfoundland, Canada', lat: 47.56, lon: -52.71 },
   // South America
   { name: 'S\u00e3o Paulo, Brazil', lat: -23.55, lon: -46.63 },
   { name: 'Rio de Janeiro, Brazil', lat: -22.91, lon: -43.17 },
@@ -3463,6 +3501,7 @@ var _MAP_CITIES = [
   { name: 'Yangon, Myanmar', lat: 16.87, lon: 96.20 },
   { name: 'Phnom Penh, Cambodia', lat: 11.56, lon: 104.93 },
   // Central Asia
+  { name: 'Kabul, Afghanistan', lat: 34.56, lon: 69.21 },
   { name: 'Tashkent, Uzbekistan', lat: 41.30, lon: 69.28 },
   { name: 'Almaty, Kazakhstan', lat: 43.24, lon: 76.95 },
   { name: 'Tbilisi, Georgia', lat: 41.69, lon: 44.80 },
@@ -3475,7 +3514,22 @@ var _MAP_CITIES = [
   { name: 'Adelaide, South Australia, Australia', lat: -34.93, lon: 138.60 },
   { name: 'Auckland, New Zealand', lat: -36.85, lon: 174.76 },
   { name: 'Wellington, New Zealand', lat: -41.29, lon: 174.78 },
-  { name: 'Suva, Fiji', lat: -17.77, lon: 177.97 }
+  { name: 'Suva, Fiji', lat: -17.77, lon: 177.97 },
+  // Remote-zone representatives: with these, every UTC offset the real zone
+  // map carries (fractional and island zones included) has at least one
+  // clickable dot, except uninhabited UTC-12 open ocean. Each is gated by the
+  // per-offset coverage check in tests/test_tz_borders.cjs.
+  { name: 'Pago Pago, American Samoa', lat: -14.28, lon: -170.70 },
+  { name: 'Taiohae, Marquesas Islands, French Polynesia', lat: -8.91, lon: -140.10 },
+  { name: 'Grytviken, South Georgia', lat: -54.28, lon: -36.51 },
+  { name: 'Ponta Delgada, Azores, Portugal', lat: 37.74, lon: -25.67 },
+  { name: 'Eucla, Western Australia, Australia', lat: -31.68, lon: 128.89 },
+  { name: 'Lord Howe Island, New South Wales, Australia', lat: -31.55, lon: 159.08 },
+  { name: 'Nouméa, New Caledonia', lat: -22.28, lon: 166.46 },
+  { name: 'Kingston, Norfolk Island', lat: -29.06, lon: 167.96 },
+  { name: 'Waitangi, Chatham Islands, New Zealand', lat: -43.95, lon: -176.56 },
+  { name: 'Nukuʻalofa, Tonga', lat: -21.14, lon: -175.20 },
+  { name: 'Kiritimati, Line Islands, Kiribati', lat: 1.87, lon: -157.43 }
 ];
 
 // Extra cities the location SEARCH can resolve (no map dots — the map plots
@@ -4040,44 +4094,17 @@ function _sunPosition(date, lat, lon) {
 }
 
 // ── Moon position — simplified lunar alt/az ──
-// Uses mean orbital elements to estimate the Moon's equatorial position,
-// then converts to horizontal coordinates (same pipeline as the sun).
+// Equatorial coordinates come from the canonical _moonEqCoords in app.js (the
+// same evaluation every moon renderer derives from); this converts them to
+// horizontal coordinates (same pipeline as the sun). The disc's screen tilt is
+// NOT here — that is _moonScreenTiltDeg (app.js), shared by the hero, the
+// sky-scene moon and the Today card.
 function _moonPosition(date, lat, lon) {
-  var JD = _dateToJD(date.getTime());
-  var T = _jdToJulianCentury(JD);
-
-  // Mean orbital elements (degrees)
-  var L0 = (218.3165 + 481267.8813 * T) % 360;         // mean longitude
-  var M  = (134.9634 + 477198.8676 * T) % 360;          // mean anomaly
-  var Ms = (357.5291 +  35999.0503 * T) % 360;          // sun mean anomaly
-  var F  = (93.2720  + 483202.0175 * T) % 360;          // argument of latitude
-  var D  = (297.8502 + 445267.1115 * T) % 360;          // mean elongation
-
-  // Ecliptic longitude (principal terms only)
-  var lng = L0
-    + 6.289 * Math.sin(M * DEG_TO_RAD)
-    - 1.274 * Math.sin((2*D - M) * DEG_TO_RAD)
-    - 0.658 * Math.sin(2*D * DEG_TO_RAD)
-    - 0.214 * Math.sin(2*M * DEG_TO_RAD)
-    - 0.186 * Math.sin(Ms * DEG_TO_RAD);
-
-  // Ecliptic latitude
-  var lat_ec = 5.128 * Math.sin(F * DEG_TO_RAD)
-    + 0.281 * Math.sin((M + F) * DEG_TO_RAD)
-    + 0.278 * Math.sin((F - M) * DEG_TO_RAD);
-
-  // Ecliptic to equatorial (obliquity ≈ 23.44°)
-  var eps = 23.44 * DEG_TO_RAD;
-  var lngR = lng * DEG_TO_RAD, latR = lat_ec * DEG_TO_RAD;
-  var sinDec = Math.sin(latR) * Math.cos(eps) + Math.cos(latR) * Math.sin(eps) * Math.sin(lngR);
-  var dec = Math.asin(sinDec);
-  var ra = Math.atan2(
-    Math.sin(lngR) * Math.cos(eps) - Math.tan(latR) * Math.sin(eps),
-    Math.cos(lngR)
-  );
+  var eq = _moonEqCoords(date);
+  var dec = eq.dec, ra = eq.ra;
 
   // Local sidereal time
-  var GMST = (280.46061837 + 360.98564736629 * (JD - JD_J2000)) % 360;
+  var GMST = (280.46061837 + 360.98564736629 * (eq.JD - JD_J2000)) % 360;
   var LST = (GMST + lon) * DEG_TO_RAD;
   var HA = LST - ra;
   HA = ((HA % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI; // normalize to [-pi, pi]
@@ -4096,25 +4123,7 @@ function _moonPosition(date, lat, lon) {
   var hp = Math.asin(6378.14 / _moonDistance(date)) * 180 / Math.PI; // horizontal parallax
   altitude = altitude - hp * Math.cos(altitude * DEG_TO_RAD);
   if (altitude > -1) altitude += (1 / Math.tan((altitude + 7.31 / (altitude + 4.4)) * DEG_TO_RAD)) / 60; // Bennett refraction, deg
-  // Parallactic angle q: rotation from celestial north to the observer's
-  // local vertical. q = atan2(sin HA, tan(lat)·cos dec − sin dec·cos HA)
-  var parallactic = Math.atan2(Math.sin(HA), Math.tan(latR2) * Math.cos(dec) - Math.sin(dec) * Math.cos(HA));
-  // Bright-limb position angle chi (Meeus 48.5): direction of the Sun from the
-  // Moon's disc, measured from celestial north. Needs the Sun's equatorial
-  // position. The terminator's tilt as the observer SEES it is chi − q — the
-  // old code used q alone, tilting the crescent's horns 10-25° off.
-  var Lsun = 280.4665 + 36000.7698 * T;
-  var lamSun = (Lsun + 1.915 * Math.sin(Ms * DEG_TO_RAD) + 0.020 * Math.sin(2 * Ms * DEG_TO_RAD)) * DEG_TO_RAD;
-  var raSun = Math.atan2(Math.cos(eps) * Math.sin(lamSun), Math.cos(lamSun));
-  var decSun = Math.asin(Math.sin(eps) * Math.sin(lamSun));
-  var dA = raSun - ra;
-  var chi = Math.atan2(Math.cos(decSun) * Math.sin(dA),
-    Math.sin(decSun) * Math.cos(dec) - Math.cos(decSun) * Math.sin(dec) * Math.cos(dA));
-  return {
-    altitude: altitude, azimuth: azimuth,
-    parallactic: parallactic * 180 / Math.PI,
-    brightLimb: (chi - parallactic) * 180 / Math.PI
-  };
+  return { altitude: altitude, azimuth: azimuth };
 }
 
 // ── Star catalog — bright stars with real RA/Dec coordinates ──
