@@ -150,16 +150,6 @@
   html.theme-boot *::before,
   html.theme-boot *::after { transition: none !important; }
 
-  /* Anti-flash guard. The head bootstrap stamps .theme-boot on <html> while it
-     (re)applies the theme, then removes it on the next committed paint. While it
-     is present, every element's transitions are killed so a bfcache restore /
-     tab re-activation can't animate a dark->light token flip on pills, cards,
-     and toggles (the residual Safari flash). Animations are left alone — only
-     the colour transitions cause the flash. */
-  html.theme-boot *,
-  html.theme-boot *::before,
-  html.theme-boot *::after { transition: none !important; }
-
   /* ── Accessibility ── */
   /* Visually-hide content but keep it readable for screen readers. */
   .sr-only {
