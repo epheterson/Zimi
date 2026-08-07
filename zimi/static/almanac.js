@@ -5898,6 +5898,22 @@ function _almSelectDay(jdn) {
   _drawAlmanacGrid();
 }
 
+// Is a _jdnToCalendar result a date a human could actually read? Non-finite is
+// the obvious failure, but the interesting one is finite garbage: the Meeus
+// series the Chinese calendar is built on are truncated fits, and three million
+// lunations out from J2000 they stop describing the Moon — month lengths spread
+// from 24 to 38 days, so a day can fall outside every month of the year it was
+// looked up in and come back as "day 93 of month 12". Finite, plausible-looking,
+// and meaningless. Any month past 13 or day past 31 means the conversion has
+// left the span where it means anything.
+var _CAL_MAX_MONTHS = 13;              // lunisolar leap years reach 13
+var _CAL_MAX_DAY = 31;
+function _calResultUsable(cal) {
+  return !!cal && isFinite(cal.year) && isFinite(cal.month) && isFinite(cal.day) &&
+    cal.month >= 1 && cal.month <= _CAL_MAX_MONTHS &&
+    cal.day >= 1 && cal.day <= _CAL_MAX_DAY;
+}
+
 function _almRenderCrossRef(jdn) {
   var greg = _jdnToGregorian(jdn);
   var html = '<div class="alm-crossref">';
@@ -5909,7 +5925,7 @@ function _almRenderCrossRef(jdn) {
     var dateStr;
     try {
       var cal = _jdnToCalendar(sys, jdn);
-      if (!isFinite(cal.year) || !isFinite(cal.month) || !isFinite(cal.day)) throw 0;
+      if (!_calResultUsable(cal)) throw 0;
       var monthName = _calMonthName(sys, cal.year, cal.month);
       var yearStr = cal.year + _calYearSuffix(sys);
       dateStr = monthName + ' ' + cal.day + ', ' + yearStr;
@@ -6105,6 +6121,13 @@ function _hebrewLeapYear(yr) { return ((7 * yr + 1) % 19) < 7; }
 
 // Hebrew calendar (Maimonides algorithm)
 // Persian (Solar Hijri) Calendar — algorithmic
+// Floored modulo. JS `%` truncates toward zero, so `-5 % 3` is -2, not 1 — but
+// the cycle arithmetic below pairs every remainder with a `Math.floor` quotient,
+// which floors. The two only agree while the dividend is positive, i.e. for
+// Gregorian years after roughly -974. Travel further back (the time machine
+// reaches -270000) and the mismatch surfaces as negative months and days.
+function _floorMod(a, n) { return ((a % n) + n) % n; }
+
 function _gregorianToPersian(gy, gm, gd) {
   // 33-year subcycle algorithm (jalaali-js, well-tested)
   var gdm = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
@@ -6113,9 +6136,9 @@ function _gregorianToPersian(gy, gm, gd) {
     Math.floor((gy2 + 99) / 100) + Math.floor((gy2 + 399) / 400) + gd + gdm[gm - 1];
 
   var jy = -1595 + 33 * Math.floor(days / 12053);
-  days = days % 12053;
+  days = _floorMod(days, 12053);
   jy += 4 * Math.floor(days / 1461);
-  days = days % 1461;
+  days = _floorMod(days, 1461);
   if (days > 365) {
     jy += Math.floor((days - 1) / 365);
     days = (days - 1) % 365;
@@ -6208,10 +6231,14 @@ function _jdnToHijri(jdn) {
 // Persian → Gregorian (reverse of 33-year subcycle)
 function _persianToGregorian(jy, jm, jd) {
   var jy2 = jy + 1595;
-  var days = -355668 + (365 * jy2) + Math.floor(jy2 / 33) * 8 + Math.floor((jy2 % 33 + 3) / 4) + jd;
+  // _floorMod for the same reason as the forward direction: these remainders
+  // are paired with Math.floor quotients, and both dividends go negative for
+  // Persian years before its epoch. Left truncated, the round-trip through
+  // _persianToJDN drifted ~404 years for any BCE date.
+  var days = -355668 + (365 * jy2) + Math.floor(jy2 / 33) * 8 + Math.floor((_floorMod(jy2, 33) + 3) / 4) + jd;
   days += (jm < 7) ? (jm - 1) * 31 : ((jm - 7) * 30 + 186);
   var gy = 400 * Math.floor(days / 146097);
-  days = days % 146097;
+  days = _floorMod(days, 146097);
   if (days > 36524) {
     gy += 100 * Math.floor(--days / 36524);
     days = days % 36524;
@@ -6355,13 +6382,24 @@ var _CN_SYN = 29.530588861;
 var _CN_TZ = 8 / 24;   // China Standard Time offset (days)
 
 // ΔT (TT−UT) in days, Espenak–Meeus piecewise — good for 1900–2150.
+//
+// Each piece is only valid inside its own window, and OUTSIDE 1900–2150 the
+// answer is the Espenak–Meeus long-term parabola, not a continuation of the
+// nearest piece. That distinction is load-bearing, not pedantry: the 1900–1920
+// quartic's -0.000197·w⁴ term reaches -1.2e13 DAYS at year -270000, which makes
+// _cnChinaDay(k) *rise* as k falls. _cnNm11 searches for a lunation by walking
+// k against that comparison, so a diverging ΔT turns its scan into an infinite
+// loop and locks the tab. The parabola stays inside ±2800 days across the whole
+// travel range and keeps _cnChinaDay strictly increasing in k, so the scan
+// always terminates. Behaviour for 1900–2150 is unchanged.
 function _cnDeltaTdays(jde) {
   var y = _jdnToGregorian(Math.floor(jde + 0.5)).year;
   var t = y - 2000, s;
   if (y >= 2005 && y <= 2050) s = 62.92 + 0.32217 * t + 0.005589 * t * t;
   else if (y >= 1986 && y < 2005) s = 63.86 + 0.3345 * t - 0.060374 * t * t + 0.0017275 * Math.pow(t, 3) + 0.000651814 * Math.pow(t, 4) + 0.00002373599 * Math.pow(t, 5);
-  else if (y > 2050) { var u = (y - 1820) / 100; s = -20 + 32 * u * u - 0.5628 * (2150 - y); }
-  else { var w = y - 1900; s = -2.79 + 1.494119 * w - 0.0598939 * w * w + 0.0061966 * Math.pow(w, 3) - 0.000197 * Math.pow(w, 4); }
+  else if (y > 2050 && y <= 2150) { var u2 = (y - 1820) / 100; s = -20 + 32 * u2 * u2 - 0.5628 * (2150 - y); }
+  else if (y >= 1900 && y < 1986) { var w = y - 1900; s = -2.79 + 1.494119 * w - 0.0598939 * w * w + 0.0061966 * Math.pow(w, 3) - 0.000197 * Math.pow(w, 4); }
+  else { var u = (y - 1820) / 100; s = -20 + 32 * u * u; }
   return s / 86400;
 }
 
@@ -6430,21 +6468,70 @@ function _cnMonthHasZhongqi(k) {
 }
 
 // Lunation index k of the month-11 new moon whose December solstice it contains.
-function _cnNm11(gy) {
-  var ws = _cnSolarTermJDE(_gregorianToJDN(gy, 12, 21) + 0.5, 270);
+//
+// The seed inverts _cnNewMoonJDE by fixed-point iteration rather than dividing
+// the solstice by the mean synodic month: dividing ignores the series' T³/T⁴
+// terms, which reach ~4e4 days (≈1400 lunations) at the ends of the travel
+// range, so the scans below would have to walk that whole distance one lunation
+// at a time. Inverting lands within a lunation everywhere, so the scans are the
+// ±1 correction they were meant to be. dJDE/dk ≈ _CN_SYN, so the iteration is a
+// contraction and four passes are ample.
+//
+// The scans are then hard-bounded. They are one-directional walks over a
+// _cnNewMoonDay that is strictly increasing in k, so the bound is unreachable
+// unless that monotonicity is broken (which is exactly the class of bug that
+// hung the tab). Stopping one lunation off beats never returning.
+var _CN_NM11_SEED_PASSES = 4;
+var _CN_NM11_MAX_STEPS = 64;
+var _CN_TROPICAL_YEAR = 365.2422;      // days between December solstices
+function _cnNm11FromSolstice(ws) {
   var wsD = _cnChinaDay(ws);
-  var k = Math.floor((ws - 2451550.09766) / _CN_SYN);
-  while (_cnNewMoonDay(k) > wsD) k--;
-  while (_cnNewMoonDay(k + 1) <= wsD) k++;
+  var k = Math.round((ws - 2451550.09766) / _CN_SYN), i;
+  for (i = 0; i < _CN_NM11_SEED_PASSES; i++) k = Math.round(k + (ws - _cnNewMoonJDE(k)) / _CN_SYN);
+  for (i = 0; i < _CN_NM11_MAX_STEPS && _cnNewMoonDay(k) > wsD; i++) k--;
+  for (i = 0; i < _CN_NM11_MAX_STEPS && _cnNewMoonDay(k + 1) <= wsD; i++) k++;
   return k;
 }
 
+// The December solstice as a TT instant. Seeded in TT, not civil time:
+// everything downstream of _cnSolarTermJDE is TT, so handing it a raw civil JDN
+// silently assumes ΔT ≈ 0. That holds to five minutes for 1900–2150 (the search
+// converges to the same root either way, so nothing moves there), but ΔT reaches
+// ~2700 days at the ends of the travel range — enough to settle on the solstice
+// of a different year entirely.
+function _cnSolsticeTT(gy) {
+  var civil = _gregorianToJDN(gy, 12, 21);
+  return _cnSolarTermJDE(civil + 0.5 + _cnDeltaTdays(civil), 270);
+}
+function _cnNm11(gy) { return _cnNm11FromSolstice(_cnSolsticeTT(gy)); }
+
 // Build the suì starting at month-11 lunation k11: [{k,num,leap,start,end}].
+// Bounded so a long scrub — the lever reaches ~300 simulated years per second,
+// and every calendar day it crosses asks for a suì — cannot grow this without
+// limit. The cache is a scrubbing optimisation, not state, so dropping it
+// wholesale is free.
+var _CN_SUI_CACHE_MAX = 4096;
 var _cnSuiCache = {};
+var _cnSuiCacheCount = 0;
 function _cnBuildSui(k11) {
   if (_cnSuiCache[k11]) return _cnSuiCache[k11];
-  var k11n = _cnNm11(_jdnToGregorian(_cnNewMoonDay(k11)).year + 1);
-  var n = k11n - k11, leap = (n === 13), leapK = -1, i;
+  // Chain to the next suì through the SOLSTICE, not through a Gregorian year
+  // label. Labelling used the year of this suì's month-11 new moon and added
+  // one — which assumes that new moon shares a year with the solstice it
+  // contains. Near the ends of the travel range the Gregorian year has slipped
+  // weeks against the tropical year, that assumption breaks, and the chain
+  // skipped a whole suì: _cnYearMonths then stitched two non-adjacent halves
+  // together and _jdnToChineseLunar reported days like "day 93 of month 12".
+  // This suì's solstice lives inside month 11 by definition, so start there and
+  // step one tropical year.
+  var ws = _cnSolarTermJDE(_cnNewMoonJDE(k11) + 15, 270);
+  var k11n = _cnNm11FromSolstice(_cnSolarTermJDE(ws + _CN_TROPICAL_YEAR, 270));
+  var n = k11n - k11, leapK = -1, i;
+  // A suì is 12 or 13 lunations by construction. Anything else means the
+  // solstice search drifted, and n feeds a push loop below — clamp it so a bad
+  // n can never turn that loop into an allocation bomb. (NaN clamps to 12.)
+  if (!(n >= 12 && n <= 13)) n = (n > 13) ? 13 : 12;
+  var leap = (n === 13);
   if (leap) {
     for (i = 0; i < n; i++) {
       if (!_cnMonthHasZhongqi(k11 + i)) { leapK = k11 + i; break; }
@@ -6459,7 +6546,9 @@ function _cnBuildSui(k11) {
     months.push({ k: k, num: thisNum, leap: isLeap, start: _cnNewMoonDay(k), end: _cnNewMoonDay(k + 1) });
     if (!isLeap) { prevNum = num; num = (num % 12) + 1; }
   }
+  if (_cnSuiCacheCount >= _CN_SUI_CACHE_MAX) { _cnSuiCache = {}; _cnSuiCacheCount = 0; }
   _cnSuiCache[k11] = months;
+  _cnSuiCacheCount++;
   return months;
 }
 
