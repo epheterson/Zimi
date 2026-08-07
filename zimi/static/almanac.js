@@ -186,6 +186,9 @@ var _almReturnScroll = null;
 function _openAlmanacInner(replaceState) {
   _almanacOpen = true;
   document.body.classList.add('almanac-mode');
+  // The reload-into-almanac boot gate (stamped by the head bootstrap before
+  // first paint) has done its job once the real almanac chrome is up.
+  document.documentElement.classList.remove('almanac-boot');
   var url = location.pathname + location.search + '#almanac';
   if (replaceState) history.replaceState({ mode: 'almanac' }, '', url);
   else history.pushState({ mode: 'almanac' }, '', url);
@@ -209,6 +212,7 @@ function _openAlmanacInner(replaceState) {
 function _almanacTeardown() {
   _almanacOpen = false;
   document.body.classList.remove('almanac-mode');
+  if (typeof _almTravelUnfreeze === 'function') _almTravelUnfreeze();
   _cancelAllRAF();
   _activeSkyLoop = null;
   _almSelectedTz = null;
@@ -634,6 +638,8 @@ function _almRepaintFocus() {
 }
 
 function _almBackToToday() {
+  // Reachable mid-hold via the Home key: make sure no height pin outlives it.
+  _almTravelUnfreeze();
   _almFocus = null;
   _almSelectedJDN = _almTodayJDN;
   // Snap the browsed month back to the present too — otherwise the grid is
@@ -747,26 +753,21 @@ function _almScrubClock(focus) {
   if (tmEl) tmEl.textContent = cp.time;
 }
 
-// Escape hatch for anything too expensive to recompute on every travel frame.
-// Leaving a value frozen beside ones that do update is the contradiction this
-// whole path exists to prevent, so a throttled update is the fallback, never no
-// update at all. 60ms keeps the worst-case gap under the ~100ms at which two
-// moving things read as out of sync.
-//
-// Only the next-full-moon card uses this. The calendar grid did too, and that
-// was wrong: throttled, it disagreed with the dock driving it on 80 of 117
-// frames of a full lever throw, and not by a day — the rate outruns 60ms so far
-// that the grid showed the 25th while the dock read the 11th. That is exactly
-// the contradiction the rule forbids, visible precisely when someone throws the
-// lever hard and stares at it. The grid rebuilds every frame now: 2.1ms per
-// travel frame all-in (grid 1.45ms, cards 0.63ms) against a 16.7ms budget,
-// measured, and the disagreement is gone (0 of 109 frames).
-var _ALM_TRAVEL_THROTTLE_MS = 60;
+// Travel updates run in two tiers (the visuals-first rule, see _almTravelLive):
+// canvases every frame, DOM text/layout at this cadence. 100ms nominal: the
+// throttle fires on the first rAF after the interval elapses, so with frame
+// quantization the worst observed gap stays under the ~150ms bound where a
+// lagging readout still reads as "with" the visuals (measured max 152ms at
+// 120ms nominal — the bound exactly, so one notch tighter). The settle repaint
+// makes everything exact the moment motion stops. Leading-edge (first call in
+// a quiet period fires immediately), so a single wheel notch or arrow key
+// updates the text with no perceptible delay.
+var _ALM_TRAVEL_DOM_MS = 100;
 var _almTravelThrottleAt = {};
 
-function _almTravelThrottled(key, fn) {
+function _almTravelThrottled(key, ms, fn) {
   var now = performance.now();
-  if (now - (_almTravelThrottleAt[key] || 0) < _ALM_TRAVEL_THROTTLE_MS) return;
+  if (now - (_almTravelThrottleAt[key] || 0) < ms) return;
   _almTravelThrottleAt[key] = now;
   fn();
 }
@@ -786,14 +787,15 @@ function _almLiveNextFull(focus) {
   val.classList.toggle('alm-card-super', !!nfm.isSuper);
 }
 
-// Update the hero moon/sun readouts in place (text nodes and `hidden` flags, no
-// header rebuild). Pure date/astronomy math, cheap enough per travel frame.
+// Update the moon/sun readout cards in place (text nodes and `hidden` flags, no
+// header rebuild). DOM tier only — the hero disc itself is drawn by
+// _almTravelLive's visual tier, every frame, from its own _moonPhase call.
 //
-// The governing rule is that nothing on screen may contradict anything else on
-// screen: the phase NAME, the disc and the illumination figure all come from
-// the one _moonPhase call below, and the sun row swaps between its polar and
-// its sunrise/sunset face rather than leaving yesterday's face standing. Only
-// _nextFullMoon is too heavy for that and rides a throttle instead.
+// Within this tier nothing may contradict anything else in it: the phase NAME
+// and the illumination figure come from the one _moonPhase call below, and the
+// sun row swaps between its polar and its sunrise/sunset face rather than
+// leaving yesterday's face standing. The next-full-moon card updates here too —
+// at this cadence its own throttle is redundant.
 // _almRepaintFocus recomputes everything exactly on settle.
 function _almLiveHeadCards(focus) {
   var set = function (id, val) { var e = document.getElementById(id); if (e) e.textContent = val; };
@@ -803,9 +805,8 @@ function _almLiveHeadCards(focus) {
   set('alm-hc-illum', m.illumination + '%');
   set('alm-hc-age', (m.phase * 29.53).toFixed(1) + ' ' + t('alm_days'));
   set('alm-hc-phase', _localMoonName(m.name));
-  _heroMoonTravelDraw(focus, m);
   try { var dist = _moonDistance(focus); if (dist) set('alm-hc-dist', _almFmtNum(Math.round(dist)) + ' ' + t('alm_km')); } catch (e) {}
-  _almTravelThrottled('nextfull', function () { _almLiveNextFull(focus); });
+  _almLiveNextFull(focus);
   try {
     var loc = _getLocation();
     var off;
@@ -827,38 +828,75 @@ function _almLiveHeadCards(focus) {
   } catch (e) {}
 }
 
-// The full per-frame live update run during time travel — the single hook both
-// the lever loop (_almTravelFrame) and the wheel/key stepper (_almScrubStep)
-// share.
+// The live update run during time travel — the single hook both the lever loop
+// (_almTravelFrame) and the wheel/key stepper (_almScrubStep) share.
 //
-// What goes in here is decided by one rule: nothing on screen may contradict
-// anything else on screen. A frozen figure sitting beside a live one is worse
-// than nothing being live at all, because the display then disagrees with
-// itself in front of the viewer. So everything the traveller can see at the
-// same time as the clock updates with it — the clock, the hero disc, the phase
-// name, every readout card, and the calendar grid. All of those go every frame;
-// only the next-full-moon card is heavy enough to ride a throttle, and it is
-// the one value here that cannot change faster than once a lunation anyway.
+// Two tiers, by decree (visuals first): what makes travel FEEL fast is the
+// picture moving, so the canvases — the hero moon disc here, the sky scene via
+// the caller's _skySetInstant — redraw every frame; they cost no style, layout
+// or reflow work. DOM text and anything that can move layout (the head clock,
+// the readout cards' text and hidden flags, the calendar grid rebuild) update
+// together on the _ALM_TRAVEL_DOM_MS cadence instead: per-frame innerHTML
+// rebuilds bought per-frame style/layout passes, which is exactly the jank a
+// fast throw exposed. The anti-contradiction rule survives in relaxed form —
+// every DOM value in the throttled tier updates in the same tick, so text
+// always agrees with text, may trail the visuals by at most ~150ms while the
+// lever is held, and _almScrubSettle recomputes everything exactly the moment
+// motion stops.
 //
 // Panels below the fold stay deferred to _almScrubSettle: the orrery, meteor
 // countdowns, deep-time, tonight's-sky planet ephemeris, sun-map terminator,
 // star chart and analemma are each a full innerHTML rebuild and/or resolve Q-ID
-// deep-links, which would blow the ~0.21ms/frame budget the sky redraw already
-// lives inside — and none of them shares a screen with the instrument. The sky
-// scene is retargeted separately by the caller via _skySetInstant (canvas, not
-// DOM).
+// deep-links — and none of them shares a screen with the instrument.
 function _almTravelLive(focus) {
-  _almScrubClock(focus);
-  _almLiveHeadCards(focus);
-  // The grid sits on screen with the header on any desktop-height viewport, so
-  // a month left standing on the departure date contradicts the clock above it.
-  // Every frame, not throttled: the dock drives this grid, and a throttle let
-  // the two disagree by a day mid-throw. It self-limits anyway, since the
-  // rebuild is skipped whenever the focused day hasn't moved.
-  _almSyncSelectedToFocus();
+  // Visual tier — every frame.
+  var m = null;
+  try { m = _moonPhase(focus); } catch (e) {}
+  if (m) _heroMoonTravelDraw(focus, m);
+  // DOM tier — one throttle key, so the clock, cards and grid always move as
+  // one and can never disagree with each other mid-scrub.
+  _almTravelThrottled('dom', _ALM_TRAVEL_DOM_MS, function () {
+    _almScrubClock(focus);
+    _almLiveHeadCards(focus);
+    _almSyncSelectedToFocus();
+  });
 }
 
 function _almIsLiveNow(d) { return Math.abs(d.getTime() - Date.now()) < _SCRUB_LIVE_EPS; }
+
+// -- Scrub-time layout freeze ------------------------------------------------
+// The header card grid and the calendar panel change height as travel crosses
+// months (a five- vs six-week grid, a day-detail holiday list growing and
+// shrinking, polar sun cards swapping in). Mid-scrub that reflowed the whole
+// page every DOM tick — visible jank, and the sticky dock under the lever
+// shifted under the user's finger. So travel pins each variable-height section
+// at its current height (overflow clipped; a truncated holiday list for the
+// duration of a throw is invisible next to the page breathing) and releases the
+// pins on settle, when the exact repaint lands.
+var _ALM_TRAVEL_FREEZE_IDS = ['almanac-head', 'almanac-calendar'];
+var _almTravelFrozen = false;
+
+function _almTravelFreeze() {
+  if (_almTravelFrozen) return;
+  _almTravelFrozen = true;
+  for (var i = 0; i < _ALM_TRAVEL_FREEZE_IDS.length; i++) {
+    var el = document.getElementById(_ALM_TRAVEL_FREEZE_IDS[i]);
+    if (!el || !el.offsetHeight) continue;
+    el.style.height = el.offsetHeight + 'px';
+    el.style.overflow = 'hidden';
+  }
+}
+
+function _almTravelUnfreeze() {
+  if (!_almTravelFrozen) return;
+  _almTravelFrozen = false;
+  for (var i = 0; i < _ALM_TRAVEL_FREEZE_IDS.length; i++) {
+    var el = document.getElementById(_ALM_TRAVEL_FREEZE_IDS[i]);
+    if (!el) continue;
+    el.style.height = '';
+    el.style.overflow = '';
+  }
+}
 
 // Move the calendar selection + browsed month onto the focused instant's day,
 // reading the instant in device-local fields — the same zone the header clock
@@ -881,6 +919,11 @@ function _almSyncSelectedToFocus() {
 // "zap" (shake + vibration) — used for deliberate arrivals (lever release, a
 // chosen destination), not for discrete wheel/key steps.
 function _almScrubSettle(target, opts) {
+  // Motion is over: release the height pins before the exact repaint below so
+  // the landed layout is the true one, and reset the DOM-tier throttle so the
+  // next gesture's first frame updates the text immediately.
+  _almTravelUnfreeze();
+  _almTravelThrottleAt = {};
   if (_almIsLiveNow(target)) {
     _almBackToToday();
   } else {
@@ -1072,6 +1115,7 @@ function _almTravelFrame(ts) {
 
 function _almTravelStart() {
   if (_almTravelRAF) return;
+  _almTravelFreeze();
   _almTravelLastTs = 0;
   _almTravelRAF = requestAnimationFrame(_almTravelFrame);
 }
@@ -1133,6 +1177,7 @@ function _almLeverEnd(e) {
 function _almScrubStep(deltaMs) {
   var next = _almClampInstant(new Date(_almFocusInstant().getTime() + deltaMs));
   _almFocus = next;
+  _almTravelFreeze();                    // released by the debounced settle
   _almTravelLive(next);
   if (!_almReduceMotion() && typeof _skySetInstant === 'function') _skySetInstant(next);
   _almTmSync();
@@ -1466,6 +1511,16 @@ function _heroMoonTiltDeg(date, loc) {
 // CSS guard). Position never changes -- the hero is centred -- so only phase
 // and tilt animate.
 var _HERO_MOON_ANIM_SIZE = 128;   // sprite gen size while moving (cheap; scaled to fill)
+// Sprite pixels are capped at 128 real pixels during motion, dpr included:
+// _moonSpriteCanvas multiplies its size argument by devicePixelRatio, and a
+// cold cache shades ~100 phase buckets across the first fast throw — at retina
+// dpr that is 4x the per-pixel shading work, measured at 790ms of a 3s throw
+// (worst single re-shade 541ms with the GPU readback stall). A disc in motion
+// cannot show the extra resolution; the landing frame still renders at full
+// 200px x dpr through the resting <img>.
+function _heroMoonAnimGenSize() {
+  return _HERO_MOON_ANIM_SIZE / (window.devicePixelRatio || 1);
+}
 var _HERO_MOON_PHASE_STEP = 0.02; // quantise illum to ~50 buckets so re-shades stay cached
 var _HERO_MOON_MIN_SPAN_MS = 1000;// jumps under this (e.g. a location refresh) just snap
 var _heroMoonAnim = null;         // active discrete-jump descriptor, or null
@@ -1546,7 +1601,7 @@ function _heroMoonTravelDraw(focus, m) {
   _heroMoonTravelOn = true;
   var illumFrac = Math.round(m.illumination / 100 / _HERO_MOON_PHASE_STEP) * _HERO_MOON_PHASE_STEP;
   var tilt = _heroMoonTiltDeg(focus, _getLocation());
-  _heroMoonDrawCanvas(_heroMoonEnsureOverlay(heroEl), illumFrac, m.phase < 0.5, tilt, _HERO_MOON_ANIM_SIZE);
+  _heroMoonDrawCanvas(_heroMoonEnsureOverlay(heroEl), illumFrac, m.phase < 0.5, tilt, _heroMoonAnimGenSize());
 }
 
 // End travel and drop the overlay, revealing the resting <img> beneath.
@@ -1574,7 +1629,7 @@ function _heroMoonTick(ts) {
     var ph = _moonAnimPhaseAt(a.fromTime, a.toTime, e);
     var illumFrac = Math.round(ph.illumination / 100 / _HERO_MOON_PHASE_STEP) * _HERO_MOON_PHASE_STEP;
     var tilt = a.fromTilt + _angleDelta(a.fromTilt, a.toTilt) * e;
-    _heroMoonDrawCanvas(cv, illumFrac, ph.phase < 0.5, tilt, _HERO_MOON_ANIM_SIZE);
+    _heroMoonDrawCanvas(cv, illumFrac, ph.phase < 0.5, tilt, _heroMoonAnimGenSize());
     return;
   }
   // Not sweeping and not travelling: reveal the resting img.
@@ -2131,10 +2186,11 @@ function _sunMapLatToY(lat, H) { return (90 - lat) / 180 * H; }
 // ── Real time zone boundaries ──
 // The actual, irregular civil zone borders — China spanning one zone, India's
 // half-hour band, Australia's three-way split, the jagged date line — not the
-// clean 15-degree solar meridians an almanac prints. Polylines come from
-// /static/tz-borders.json (built by scripts/build-tz-borders.py from Natural
-// Earth's public-domain 10m Time Zones; at sea the borders are the straight
-// nautical meridians by definition, on land they follow the politics).
+// clean 15-degree solar meridians an almanac prints. Polylines and per-zone
+// polygons come from /static/tz-borders.json (built by
+// scripts/build-tz-borders.py from Natural Earth's public-domain 10m Time
+// Zones; at sea the borders are the straight nautical meridians by
+// definition, on land they follow the politics).
 //
 // The asset is fetched lazily the first time the map draws — never on app
 // boot — and a miss is tolerated silently: the map simply has no borders
@@ -2198,11 +2254,13 @@ function _tzBordersEnsure() {
   _tzBordersFetched = true;
   // ?v= matches the world-map.svg convention: /static/ is served immutable
   // for a year, so a regenerated asset must bump the version to bust caches.
-  fetch('/static/tz-borders.json?v=1')
+  fetch('/static/tz-borders.json?v=2')
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (data) {
       if (!data || !data.lines || !data.lines.length) return;
       _tzBorders = data.lines;
+      _tzZones = (data.zones && data.zones.length) ? data.zones : null;
+      _tzZoneIdx = -2;       // re-resolve the highlight for the current pick
       _sunMapBaseKey = '';   // stale key → base layer rebuilds with borders
       _drawSunMap();
     })
@@ -2241,8 +2299,10 @@ function _sunMapDrawTzBorders(c, W, H, dpr) {
     c.beginPath();
     c.rect(0, 0, W, top);    // keep strokes out of the label gutter
     c.clip();
-    c.strokeStyle = 'rgba(210,180,120,0.16)';
-    c.lineWidth = Math.max(1, Math.round(dpr));
+    // A single device pixel (0.5 CSS px on 2x backing) at reduced alpha —
+    // heavier reads as a grid fighting the terminator for attention.
+    c.strokeStyle = 'rgba(210,180,120,0.13)';
+    c.lineWidth = Math.max(0.5, 0.5 * dpr);
     c.lineJoin = 'round';
     c.stroke(_tzBordersPathFor(W, H));
     c.restore();
@@ -2292,37 +2352,110 @@ function _sunMapDrawTzLabels(c, W, H, dpr) {
   c.drawImage(strip, 0, H - strip.height);
 }
 
-// A faint amber wash over the solar band matching the picked location's REAL
-// UTC offset, so the map ties back to the clock and the world-clock pills
-// below it. Centred on offset x 15 degrees — India's +5:30 puts the band at
-// 82.5E, not snapped to a whole meridian — falling back to the nominal
-// longitude band only when the zone lookup failed. Drawn over the night
-// shading — under it the wash all but disappears on the dark half and the
-// band looks broken at the terminator.
-function _sunMapDrawZoneBand(c, W, H, dpr) {
-  if (!_sunMapHasLocation) return;
-  var gutter = _sunMapGutter(H, dpr);
-  var top = H - gutter;
-  // Offset minutes → degrees is /60*15, i.e. /4.
-  var centerLon = _sunMapOffMin === null ? Math.round(_sunMapLon / 15) * 15 : _sunMapOffMin / 4;
-  if (centerLon > 180) centerLon -= 360;   // UTC+13/+14 live past the map edge
-  var x0 = _sunMapLonToX(centerLon - 7.5, W);
-  var span = W / 24;
-  // The ±12 band straddles the antimeridian, so it paints as two pieces.
-  var pieces = [[x0, span]];
-  if (x0 < 0) pieces = [[0, x0 + span], [W + x0, -x0]];
-  else if (x0 + span > W) pieces = [[x0, W - x0], [0, x0 + span - W]];
-  var edge = Math.max(1, Math.round(dpr));
-  for (var i = 0; i < pieces.length; i++) {
-    var px = pieces[i][0], pw = pieces[i][1];
-    c.fillStyle = 'rgba(245,158,11,0.07)';
-    c.fillRect(px, 0, pw, top);
-    // Soft edges: at phone width a UTC-zone selection puts these within a few
-    // pixels of the prime meridian, and hard rules there read as a glitch.
-    c.fillStyle = 'rgba(245,158,11,0.18)';
-    c.fillRect(Math.round(px), 0, edge, top);
-    c.fillRect(Math.round(px + pw) - edge, 0, edge, top);
+// The picked location's time zone, lit up as its TRUE shape — the polygon
+// that CONTAINS the point, found by ray cast. Matching on the live UTC offset
+// (the old band) can never be right year-round: in August Los Angeles runs
+// UTC-7 under DST while its geographic zone is the standard-time -8 shape, so
+// an offset-centred band misses the city for half the year. Containment is
+// DST-proof. Natural Earth's zones cover the whole globe — nominal zones at
+// sea, both poles — so every pick resolves; the nearest-vertex pass below
+// only mops up hairline slivers between independently simplified neighbours.
+var _tzZones = null;     // [[offsetMinutes, [flat unclosed ring, ...]], ...]
+var _tzZoneIdx = -2;     // index into _tzZones; -1 = no zone, -2 = unresolved
+var _tzZoneKey = '';     // "lat,lon" the cached index was resolved for
+var _tzZonePath = null;  // cached Path2D of the winning zone's rings
+var _tzZonePathKey = '';
+
+// Even-odd ray cast over one zone's rings (flat [lon,lat,...], unclosed — the
+// j-wraps-to-last-point seam supplies the closing edge). Holes and multi-part
+// zones fall out of the even-odd rule for free.
+function _tzZoneContains(rings, lon, lat) {
+  var inside = false;
+  for (var r = 0; r < rings.length; r++) {
+    var ring = rings[r];
+    for (var i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+      var yi = ring[i + 1], yj = ring[j + 1];
+      if ((yi > lat) !== (yj > lat) &&
+          lon < (ring[j] - ring[i]) * (lat - yi) / (yj - yi) + ring[i]) inside = !inside;
+    }
   }
+  return inside;
+}
+
+// Which zone contains the pick. Runs at location-change time ONLY (the result
+// is cached on the lat,lon key), never per frame — a full scan is ~5k vertices
+// and the winner is stored until the pick moves. When no polygon contains the
+// point (a sliver between simplified neighbours), the nearest ring vertex
+// within 2 degrees decides; vertex pitch is ~0.25 deg, plenty for a sliver.
+function _tzZoneFor(lat, lon) {
+  var key = lat.toFixed(4) + ',' + lon.toFixed(4);
+  if (_tzZoneIdx !== -2 && _tzZoneKey === key) return _tzZoneIdx;
+  var idx = -1, i, r, ring, j;
+  for (i = 0; i < _tzZones.length; i++) {
+    if (_tzZoneContains(_tzZones[i][1], lon, lat)) { idx = i; break; }
+  }
+  if (idx < 0) {
+    var best = 4;   // 2 deg squared — beyond that it is a data gap, not a sliver
+    var cosLat = Math.cos(lat * DEG_TO_RAD);
+    for (i = 0; i < _tzZones.length; i++) {
+      var rings = _tzZones[i][1];
+      for (r = 0; r < rings.length; r++) {
+        ring = rings[r];
+        for (j = 0; j < ring.length; j += 2) {
+          var dlon = (ring[j] - lon) * cosLat, dlat = ring[j + 1] - lat;
+          var dd = dlon * dlon + dlat * dlat;
+          if (dd < best) { best = dd; idx = i; }
+        }
+      }
+    }
+  }
+  _tzZoneIdx = idx;
+  _tzZoneKey = key;
+  return idx;
+}
+
+// One Path2D per zone per map size, through the shared projection helpers so
+// the highlight stays registered with the borders and terminator. Rings never
+// span the antimeridian (the build source keeps every ring inside -180..180),
+// so closePath draws real zone edges, never a wrap streak.
+function _tzZonePathFor(idx, W, H) {
+  var key = idx + ':' + W + 'x' + H;
+  if (_tzZonePath && _tzZonePathKey === key) return _tzZonePath;
+  var p = new Path2D();
+  var rings = _tzZones[idx][1];
+  for (var r = 0; r < rings.length; r++) {
+    var ring = rings[r];
+    p.moveTo(_sunMapLonToX(ring[0], W), _sunMapLatToY(ring[1], H));
+    for (var j = 2; j < ring.length; j += 2) {
+      p.lineTo(_sunMapLonToX(ring[j], W), _sunMapLatToY(ring[j + 1], H));
+    }
+    p.closePath();
+  }
+  _tzZonePath = p;
+  _tzZonePathKey = key;
+  return p;
+}
+
+// A faint amber wash over the containing zone's shape with a slightly firmer
+// outline — same voice the old band spoke in. Drawn over the night shading —
+// under it the wash all but disappears on the dark half and the shape looks
+// broken at the terminator.
+function _sunMapDrawZoneHighlight(c, W, H, dpr) {
+  if (!_sunMapHasLocation || !_tzZones) return;
+  var idx = _tzZoneFor(_sunMapLat, _sunMapLon);
+  if (idx < 0) return;
+  var p = _tzZonePathFor(idx, W, H);
+  c.save();
+  c.beginPath();
+  c.rect(0, 0, W, H - _sunMapGutter(H, dpr));  // keep out of the label gutter
+  c.clip();
+  c.fillStyle = 'rgba(245,158,11,0.09)';
+  c.fill(p, 'evenodd');
+  c.strokeStyle = 'rgba(245,158,11,0.30)';
+  c.lineWidth = Math.max(0.75, 0.75 * dpr);
+  c.lineJoin = 'round';
+  c.stroke(p);
+  c.restore();
 }
 
 // Brief label over the map naming the city just picked (and the cycle hint when
@@ -2343,7 +2476,6 @@ var _sunMapLat = 34;
 var _sunMapLon = -118;
 var _sunMapLocName = '';
 var _sunMapHasLocation = false;
-var _sunMapOffMin = null;   // location's real UTC offset (minutes), null = unresolved
 
 function _renderSunMap(now) {
   var el = document.getElementById('almanac-sunmap');
@@ -2359,8 +2491,8 @@ function _renderSunMap(now) {
   // Compute sun info in the CLICKED location's timezone, not the device's
   // (F6) — resolve the point's zone the same way the world clock does.
   var _smOff;
-  try { _smOff = _tzUtcOffsetMin(_almTzForLocation(_sunMapLat, _sunMapLon), _sunMapNow); _sunMapOffMin = _smOff; }
-  catch (e) { _smOff = -_sunMapNow.getTimezoneOffset(); _sunMapOffMin = null; }
+  try { _smOff = _tzUtcOffsetMin(_almTzForLocation(_sunMapLat, _sunMapLon), _sunMapNow); }
+  catch (e) { _smOff = -_sunMapNow.getTimezoneOffset(); }
   var sunInfo = _computeSunTimes(_sunMapNow, _sunMapLat, _sunMapLon, _smOff);
 
   var html = '<div style="margin-top:16px">';
@@ -3109,9 +3241,9 @@ function _drawSunMap() {
   ctx.lineWidth = 1.5 * dpr;
   ctx.stroke();
 
-  // Time zone reference — the picked zone's band, then the UTC offsets. Both
-  // sit above the night shading so neither is swallowed by it.
-  _sunMapDrawZoneBand(ctx, W, H, dpr);
+  // Time zone reference — the picked zone's true shape, then the UTC offsets.
+  // Both sit above the night shading so neither is swallowed by it.
+  _sunMapDrawZoneHighlight(ctx, W, H, dpr);
   _sunMapDrawTzLabels(ctx, W, H, dpr);
 
   // Sub-solar point — where the sun is directly overhead right now
