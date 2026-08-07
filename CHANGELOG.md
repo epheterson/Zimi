@@ -7,21 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.8.2] - 2026-08-07
 
-Bookmarks v2 is the centerpiece: nested folders, drag and drop, context menus, rename everywhere, and export to a named ZIM with sections (#45). The Almanac gains a time machine — a brass instrument docked at the bottom of the page that travels live at 60fps with one canonical moon across every view — and its world map gains real timezone geometry with true-shape zone highlighting and click-anywhere location. Zimi also becomes a markedly politer member of the Kiwix ecosystem: idle instances make zero catalog requests and active ones revalidate conditionally with gzip.
+Bookmarks v2 is the centerpiece: nested folders, drag and drop, context menus, rename everywhere, and export to a named ZIM with sections (#45). Zimi also becomes a markedly politer member of the Kiwix ecosystem, with idle instances making zero catalog requests and active ones revalidating conditionally with gzip, and downloads and seeding get bulk controls and honest copy about what removing a seed actually does.
 
 ### Added
 
 - **Bookmark folders.** Nested folders with inline create, collapse, drag and drop (bookmarks and folders), and right-click or long-press menus: Open, Move to, Rename, Remove. Individual bookmarks can be renamed, with empty rename reverting to the article title. Deleting a folder asks what happens to its contents.
 - **Export bookmarks to ZIM (#45).** Tree selection across any mix of top-level and sub-folders, a user-chosen sanitized name, folders as sections inside one ZIM, empty folders kept as labeled sections instead of silently dropped, proper localized plurals, and creation dates shown on generated ZIMs.
-- **The time machine.** A blackened-brass instrument docked at the bottom of the Almanac: a lit glass window over two engraved readings, a crystal lever, and a segment readout (DSEG14 Classic, bundled, SIL OFL) under MONTH / DAY / YEAR / HOUR / MIN column headers. DESTINATION is edited in place by tapping its fields, with a twelve-key month plate for the month; ACTUAL is both the reading of the present and the way back to it, so the plate needs no return key; the offset from now rides the legend line as a small lamp. The dock is the same height in every state, so nothing resizes under a finger. Tapping the date heading summons it. Canvases update every frame while scrubbing and text on a short tick that always agrees at settle; page height is pinned during travel. 60fps in Chromium and WebKit.
-- **One moon derivation.** Hero, Today card, and sky scene share one computation for phase, tilt, and orientation, gated by a regression test. The card and sky previously used incorrect tilt quantities.
-- **Real timezone map.** Natural Earth boundaries (public domain), true-shape zone highlight via point-in-polygon containment (DST-proof), every part of a zone lit together rather than only the landmass under the pick, click anywhere to set location, 173 clickable cities covering every zone polygon big enough to tap (including ten Antarctic stations), and a UTC strip with ticks for every offset plus an amber live-offset readout for the selected zone.
 - **Activity feed depth.** Bookmark exports and health checks appear in the activity badge and downloads panel with live progress.
-- **Messages Across Time pills.** The selected pill is the article link, underlined only when the article resolved in your library; the redundant in-body link is gone.
 - **Seed controls.** Pause all and Resume all for downloads and seeds, per-seed age from the seeding ledger, and Remove semantics with honest copy: sharing stops, files stay.
 - **Offline honesty.** A cached app shell with an unreachable server shows a connection banner instead of an empty library.
 - **Catalog backup timestamp.** The Mirror row shows when the offline catalog copy last updated.
 - **Health report** flags zero-byte and missing media entries.
+- **Almanac.** A time machine docked at the bottom of the page: tap the date heading to summon it, scrub the lever to travel, or type a destination into its readout. Travel stays live at 60fps. The world map gains real timezone geometry (Natural Earth, public domain) with true-shape zone highlighting, click-anywhere location, and 173 clickable cities. Moon phase, tilt and orientation now come from one shared computation everywhere they are drawn. Messages Across Time pills are themselves the article link.
 
 ### Changed
 
@@ -38,10 +35,9 @@ Bookmarks v2 is the centerpiece: nested folders, drag and drop, context menus, r
 - Settings gear now works during the initial library scan (#44).
 - Downloads panel buttons share one size system and no longer overflow (#46).
 - Broken video articles show a clear "not included in this ZIM" message instead of a dead player (#43).
-- **Deep time could hang the page.** The Espenak-Meeus delta-T fit for 1900-1920 was applied to every year before 1986; its quartic term reaches -1.2e13 days in the far past, which inverts the sign of the Chinese calendar's day number and left its new-moon search walking away from its exit condition forever. Reachable from about year -13000 onward, well inside the range the Almanac calls precise. Each piece is now restricted to its own domain and every scan in that path is bounded. Nothing changes for 1900-2150.
-- Calendar conversions in deep time returned finite garbage rather than NaN, so "beyond this calendar's range" never appeared where it was meant to; the sui chain stepped by a Gregorian year label and could skip an entire sui; and the Persian conversions mixed truncating and flooring division, which put any BCE round-trip about 404 years off.
-- Timezone anchors for Tbilisi and Baku fell through to Baghdad and Tehran, and Kolkata to Dhaka, so those cities printed a clock up to an hour wrong.
-- Escape inside the calendar's month grid closed the whole Almanac instead of the grid.
+- Travelling to a distant enough year could hang the page: an unbounded delta-T term inverted the Chinese calendar's day ordering and left its new-moon search running forever. The astronomy is now bounded on both ends, deep-time conversions say "beyond this calendar's range" instead of printing dates that do not exist, and BCE Persian dates round-trip correctly. Nothing changes for 1900-2150.
+- Timezone anchors for Tbilisi and Baku fell through to Baghdad and Tehran, and Kolkata to Dhaka, so those cities showed a clock up to an hour wrong.
+- Escape inside a month grid closed the whole Almanac instead of the grid.
 - "Delete folder, keep bookmarks" orphaned the bookmarks invisibly; never shipped, caught in QA.
 - "Remove all from seeding" could cancel in-flight downloads and delete their partial files.
 - Bookmark rename input no longer exits edit mode on arrow keys or spacebar.
