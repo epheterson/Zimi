@@ -488,10 +488,19 @@
 /* Fixed height, not content height: the lamp's 10px type is taller than the
    legend's 8px, so an unpinned row would grow by a pixel and a half the moment
    an offset appeared — a resize on state change, which this dock must never do. */
-.alm-tm-caps { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 12px; }
+/* The right padding is --tm-inset, the same gutter the window and the engraved
+   rows use, so the offset lamp stops one column short of the plate edge and
+   lands on the same right-hand rule as the DISPLAYED/ACTUAL figures below it.
+   Without it the lamp was the only thing on the instrument touching the brass
+   edge, which is what read as crammed into the corner. 14px rather than 12
+   because a 10px lamp in a 12px box has a pixel of air above and below it. */
+.alm-tm-caps {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  height: 14px; padding-right: var(--tm-inset);
+}
 .alm-tm-cap {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 8px; font-weight: 700; line-height: 12px;
+  font-size: 8px; font-weight: 700; line-height: 14px;
   letter-spacing: 0.18em; text-transform: uppercase;
   /* Stamped-and-filled lettering: light face, hard black shadow one pixel
      down, so it reads as cut into the metal rather than printed on it. */
@@ -501,7 +510,7 @@
    than an engraving, because it is the live quantity while you travel. */
 .alm-tm-delta {
   flex: 0 0 auto; white-space: nowrap;
-  font-size: 10px; line-height: 12px; font-weight: 700; letter-spacing: 0.02em;
+  font-size: 10px; line-height: 14px; font-weight: 700; letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
   color: #ffd489; text-shadow: 0 0 7px rgba(245,158,11,0.7), 0 1px 0 rgba(0,0,0,0.8);
 }
@@ -705,11 +714,26 @@
 .alm-tm-cin::selection { background: rgba(245,158,11,0.35); }
 .alm-tm-editing .alm-tm-dest .alm-tm-cval { display: none; }
 .alm-tm-editing .alm-tm-dest .alm-tm-cin { display: block; }
-/* The field under the caret lights up inside the window — an inset ring only,
-   so nothing about the cell's box changes and no digit moves. */
+/* Which field the caret is in, said with the lamp rather than with a box. The
+   whole readout falls back to a dim filament and the field being typed burns
+   at full brightness with a lit rule under it — the way a field is picked out
+   on a real instrument. The earlier treatment (an amber fill plus a 1px inset
+   ring) drew a hard-edged rounded rectangle inside the glass, which read as a
+   UI chip pasted onto the readout: the one element on the plate that looked
+   like a web page. Nothing here touches the cell's box, so no digit moves. */
+.alm-tm-editing .alm-tm-dest .alm-tm-cell,
+.alm-tm-editing .alm-tm-dest .alm-tm-colon {
+  color: rgba(255,212,137,0.44); text-shadow: 0 1px 0 rgba(0,0,0,0.9);
+}
+.alm-tm-editing .alm-tm-dest .alm-tm-cell:has(.alm-tm-cin:focus),
+.alm-tm-editing .alm-tm-dest .alm-tm-cell-group:has(.alm-tm-cin:focus) .alm-tm-colon {
+  color: #ffe3ab;
+  text-shadow: 0 0 5px rgba(245,158,11,0.9), 0 0 15px rgba(245,158,11,0.45), 0 1px 0 rgba(0,0,0,0.9);
+}
+/* The rule under the live field: an inset shadow rather than a border, so it
+   is drawn inside the existing box and adds no width. */
 .alm-tm-editing .alm-tm-dest .alm-tm-cell:has(.alm-tm-cin:focus) {
-  background: rgba(245,158,11,0.14);
-  box-shadow: inset 0 0 0 1px rgba(255,212,137,0.85), inset 0 0 8px rgba(245,158,11,0.35);
+  box-shadow: inset 0 -2px 0 -1px rgba(255,212,137,0.9);
 }
 
 /* Keypad strip — two small brass keys, right-aligned, shown only while a
@@ -719,14 +743,23 @@
    identical in rest, edit and motion, and the plate is a row shorter than it
    was when a NOW key had to be parked here permanently. */
 .alm-tm-keys {
-  position: absolute; inset: 0; z-index: 2;
+  /* Over the LAST engraved row only (bottom-anchored, one row tall), not over
+     the whole secondary block. Covering both rows left two small keys floating
+     in an otherwise empty half-plate, which is what made an edit look like a
+     different, emptier instrument. Anchoring to the bottom row keeps DISPLAYED
+     on the plate while you type, so the readout you are changing still has the
+     reading it is being changed from sitting under it. The -2px lets the 18px
+     keys centre on a 14px row; the panel's 8px bottom padding absorbs it. */
+  position: absolute; inset: auto 0 -2px 0; height: 18px; z-index: 2;
   display: none; justify-content: flex-end; align-items: center; gap: 6px;
   padding-right: var(--tm-inset);
 }
 .alm-tm-editing .alm-tm-keys { display: flex; }
-/* The engravings step aside for the keys. visibility (not display) so the
-   block keeps its exact 30px, which is what pins the dock's height. */
-.alm-tm-editing .alm-tm-secrow { visibility: hidden; }
+/* Only ACTUAL steps aside for the keys, and by visibility (not display) so the
+   block keeps its exact height, which is what pins the dock's. Losing the way
+   home for the length of an edit costs nothing: × is right there, and it is
+   the row the keys have to stand on. */
+.alm-tm-editing .alm-tm-now { visibility: hidden; }
 .alm-tm-key {
   display: inline-flex; align-items: center; justify-content: center; gap: 3px;
   min-height: 18px; padding: 1px 9px; border-radius: 5px;
@@ -753,23 +786,49 @@
   flex-direction: column; justify-content: center; gap: 2px;
   padding: 0; border: 0; background: none; cursor: pointer; font-family: inherit;
   color: inherit; text-align: left;
+  /* The travelling readout sizes itself to this box (see the font-size below).
+     Safe as a query container: the width comes from the left/right insets that
+     position this face over the plate, never from its own contents. */
+  container-type: inline-size;
 }
-.alm-tm-solo .alm-tm-glass { height: 52px; }
-.alm-tm-solo .alm-tm-glass .alm-tm-cell { font-size: 21px; }
+/* 10px of glass either side of the figures — the gutter the travelling face
+   never had. */
+.alm-tm-solo .alm-tm-glass { height: 52px; padding: 0 10px; }
+/* The one number on the instrument that cannot be a constant. The readout is
+   thirteen fixed-width segment characters plus its inter-field gutters, so its
+   width is ~13.6× the font size; a fixed 21px was ~290px of figures in a
+   ~250px window on a phone, and the glass's overflow:hidden quietly sliced a
+   character off each end — the travelling face was clipped at EVERY width, not
+   just narrow ones. 6.5cqw is that ratio inverted against the window it has to
+   fit, so the figures grow to fill a wide plate and step down on a narrow one,
+   always landing inside the gutters above. The 21px cap keeps them from
+   outgrowing the glass on a tablet.
+   The gutter between fields is deliberately left at the rest face's --tm-cell-
+   pad rather than tightened to buy a bigger figure: at 0.4em the separation
+   stopped scaling with the glyphs, and a date like JUL 21 2141 ran its day and
+   year together into "212141". Field spacing has to stay proportional to the
+   figures, so the size is what gives.
+   The plain 13px above is for engines without container queries: smaller than
+   ideal on a wide plate, but it fits the narrowest one, and a readout that
+   fits is worth more than one that is the right size on some screens and
+   clipped on others. */
+.alm-tm-solo .alm-tm-glass .alm-tm-cell { font-size: 13px; font-size: min(21px, 6.5cqw); }
 .alm-tm-solo .alm-tm-cap { color: rgba(255,212,137,0.9); }
 .alm-tm-solo:focus-visible { outline: none; }
 .alm-tm-solo:focus-visible .alm-tm-glass {
   box-shadow: inset 0 2px 5px rgba(0,0,0,0.9), 0 0 0 1px var(--amber), 0 0 9px var(--amber-glow);
 }
-/* Narrow phones: the travelling window's digits are the widest thing on the
-   instrument and a clipped year is not a readout, so the motion face steps
-   down a size. It must sit AFTER the base rules above — same specificity, so
-   source order is the whole argument. The dock does not resize either way:
-   the motion face is absolutely positioned over the (still measured) rest
-   face, so its height is not the dock's height. */
+/* Narrow phones. The dock does not resize here either way: the motion face is
+   absolutely positioned over the (still measured) rest face, so its height is
+   not the dock's height. These must sit AFTER the base rules above — same
+   specificity, so source order is the whole argument. */
 @media (max-width: 380px) {
-  .alm-tm-solo .alm-tm-glass { height: 44px; }
-  .alm-tm-solo .alm-tm-glass .alm-tm-cell { font-size: 15px; }
+  .alm-tm-solo .alm-tm-glass { height: 44px; padding: 0 8px; }
+  /* A shade more of the window than the base ratio takes, because the narrow
+     breakpoint also tightens --tm-cell-pad below: the readout is proportionally
+     narrower here, so the same 6.5cqw would have left twenty pixels of dark
+     glass at each end on a 360px phone rather than filled it. */
+  .alm-tm-solo .alm-tm-glass .alm-tm-cell { font-size: min(21px, 7cqw); }
   /* Tighten the gutters rather than shrink the figures: a 320px plate is
      ~179px of readout, and the segment face's characters are wider than the
      system mono's, so MON DD YYYY HH:MM at the full 0.6em gutter clipped a
