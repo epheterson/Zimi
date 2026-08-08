@@ -790,20 +790,71 @@ def _torrent_info_hash(data):
 
 
 _magnets_ensured = False
+_magnets_lock = threading.Lock()
+
+# One-way latch: may ensure_magnets_for_installed() touch the network when
+# the caller didn't say? False for the entire boot window by construction —
+# the only code that flips it is maintenance_catalog_refresh(), which runs
+# exclusively on the jittered 12h maintenance loop, hours after startup.
+# WHY a latch instead of a parameter at the call sites: the boot call and
+# the maintenance call in server.py are textually identical
+# (ensure_magnets_for_installed() with no arguments), and server.py cannot
+# be edited from a magnet bugfix without dragging the whole startup path
+# into review. The latch encodes "a maintenance pass has happened" — the
+# earliest moment the 1.8.2 politeness contract allows background traffic.
+_magnet_network_ok = False
 
 
-def ensure_magnets_for_installed(spacing=0.4):
+def ensure_magnets_for_installed(spacing=0.4, network_ok=None):
     """Every user keeps the catalog + a magnet per installed ZIM; only
     mirrors keep the .torrent files themselves (Eric's split). For
-    installed ZIMs with no recorded infohash, fetch the matching catalog
-    .torrent, extract the infohash, store filename -> magnet in the
-    manifest — and keep the torrent bytes on disk only in mirror mode.
-    Once per run, politely paced."""
+    installed ZIMs with no recorded infohash, extract the infohash from an
+    archived .torrent when one is on disk (fully offline), else download
+    the catalog's matching .torrent — network permitting. Keeps the
+    torrent bytes on disk only in mirror mode. Once per run, politely
+    paced; re-arms itself whenever work remains.
+
+    Network discipline (the 1.8.2 promise: an idle instance makes zero
+    catalog requests — and boot makes zero network requests, period):
+
+    * The catalog is NEVER fetched from here. The filename -> torrent-URL
+      map comes exclusively from browse pages already cached on disk
+      (_cached_catalog_zim_urls), stale included. A ZIM the user already
+      holds has a fixed dated filename, so even a weeks-old page maps it
+      correctly; at worst the entry is absent and resolution waits for
+      the next trigger. This function historically called
+      _fetch_kiwix_catalog at boot, which made every default install hit
+      library.kiwix.org seconds after start — the exact traffic the
+      1.8.2 gating was built to eliminate.
+
+    * .torrent downloads happen only when network_ok resolves True:
+      passed explicitly by _kick_magnet_resolution (the catalog was just
+      fetched over the network for a real reason — piggyback on that
+      moment), or via the _magnet_network_ok maintenance latch. The boot
+      call passes nothing and predates the first maintenance pass, so it
+      is offline by construction and still harvests archived .torrent
+      files — which is all boot-time seeding of already-known torrents
+      needs."""
     global _magnets_ensured
     from zimi import p2p as _p2p
 
     if _magnets_ensured or not _p2p.is_torrent_enabled():
         return 0
+    if network_ok is None:
+        network_ok = _magnet_network_ok
+    # The piggyback thread and the maintenance pass can overlap; whoever
+    # holds the lock does the (paced, slow) work, the loser walks away —
+    # same non-blocking pattern as _mirror_sync_lock.
+    if not _magnets_lock.acquire(blocking=False):
+        return 0
+    try:
+        return _ensure_magnets_locked(spacing, network_ok, _p2p)
+    finally:
+        _magnets_lock.release()
+
+
+def _ensure_magnets_locked(spacing, network_ok, _p2p):
+    global _magnets_ensured
     _magnets_ensured = True
 
     manifest_path = _torrents_manifest_path()
@@ -818,32 +869,14 @@ def ensure_magnets_for_installed(spacing=0.4):
     if not missing:
         return 0
 
-    # Exact-filename matches from the catalog (stale copy works offline)
-    catalog_urls = {}
-    try:
-        _total, items, _err = _fetch_kiwix_catalog("", "eng", 500, 0, _internal=True)
-        if _err:
-            raise RuntimeError(_err)
-        for it in items or []:
-            u = (it.get("download_url") or "").split("?")[0]
-            if u.endswith(".meta4"):
-                u = u[: -len(".meta4")]
-            if u.endswith(".zim"):
-                catalog_urls[os.path.basename(u)] = u + ".torrent"
-    except Exception as e:
-        # Archived .torrent files still work offline — process those now,
-        # and retry the catalog-dependent rest on the next maintenance
-        # pass instead of silently never building the manifest.
-        log.info(
-            "Magnet manifest: catalog unavailable (%s) — using archived torrents only",
-            e,
-        )
-        catalog_urls = {}
-        _magnets_ensured = False
+    # Exact-filename matches from catalog pages already on disk — never a
+    # fetch, stale is fine (see docstring).
+    catalog_urls = {f: u + ".torrent" for f, u in _cached_catalog_zim_urls().items()}
 
     keep_files = _p2p.is_mirror_enabled()
     tdir = os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents")
     updated = 0
+    unresolved = 0
     for filename in missing:
         data = None
         archived = os.path.join(tdir, filename + ".torrent")
@@ -853,7 +886,7 @@ def ensure_magnets_for_installed(spacing=0.4):
                     data = f.read()
             except OSError:
                 data = None
-        elif filename in catalog_urls:
+        elif network_ok and filename in catalog_urls:
             try:
                 req = urllib.request.Request(
                     catalog_urls[filename], headers={"User-Agent": USER_AGENT}
@@ -866,9 +899,11 @@ def ensure_magnets_for_installed(spacing=0.4):
                 data = None
             time.sleep(spacing)
         if not data:
+            unresolved += 1
             continue
         info_hash = _torrent_info_hash(data)
         if not info_hash:
+            unresolved += 1
             continue
         entry = dict(manifest.get(filename) or {})
         entry["info_hash"] = info_hash
@@ -890,6 +925,22 @@ def ensure_magnets_for_installed(spacing=0.4):
         os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
         _srv._atomic_write_json(manifest_path, manifest)
         log.info("Magnet manifest: %d installed ZIM(s) added", updated)
+    if unresolved:
+        # Re-arm the once-per-run guard: work remains, whether because
+        # this was the offline boot pass, no catalog page is cached yet,
+        # or a .torrent fetch failed transiently. The next trigger — a
+        # real catalog fetch (piggyback) or the maintenance pass — gets
+        # to retry instead of the manifest silently never completing.
+        # ZIMs that simply aren't in the Kiwix catalog (self-built) stay
+        # "unresolved" forever; each retry costs one glob and a dict
+        # lookup, no network, so that steady state is harmless.
+        _magnets_ensured = False
+        log.debug(
+            "Magnet manifest: %d pending (network_ok=%s, %d catalog URLs cached)",
+            unresolved,
+            network_ok,
+            len(catalog_urls),
+        )
     return updated
 
 
@@ -1450,6 +1501,73 @@ def _persist_opds_cache():
         log.debug("catalog cache persist failed: %s", e)
 
 
+def _catalog_zim_urls(items):
+    """filename -> canonical .zim URL for catalog items. Kiwix advertises
+    mirrored .meta4 links, sometimes with query strings — strip both so the
+    basename matches the installed file exactly. (Shared by the magnet
+    manifest, mirror sync, and the torrent archive — this mapping used to
+    be copy-pasted at all three sites.)"""
+    urls = {}
+    for it in items or []:
+        u = (it.get("download_url") or "").split("?")[0]
+        if u.endswith(".meta4"):
+            u = u[: -len(".meta4")]
+        if u.endswith(".zim"):
+            urls[os.path.basename(u)] = u
+    return urls
+
+
+def _cached_catalog_zim_urls():
+    """The filename -> .zim URL map answerable with ZERO network: the union
+    of every catalog browse page already cached (memory or the persisted
+    disk copy), stale included. This is the stale-only sibling of
+    _fetch_kiwix_catalog — that function always falls through to a fetch on
+    a cold or expired cache, which is exactly what background machinery
+    must never trigger. Reading all cached browse pages (not just page 0)
+    also covers installs whose entry sits past the first 500 catalog items,
+    which the old single-page lookup silently missed."""
+    _load_opds_disk_cache()
+    with _opds_lock:
+        pages = [v for k, v in _opds_cache.items() if _is_browse_key(k)]
+    urls = {}
+    for _ts, _total, items in pages:
+        urls.update(_catalog_zim_urls(items))
+    return urls
+
+
+def _kick_magnet_resolution():
+    """A catalog page was just fetched over the network for a real reason
+    (user browsing, auto-update, mirror sync, a wanted maintenance
+    refresh). That is the polite moment to also resolve missing magnets:
+    the instance is demonstrably not idle, and the freshly cached page is
+    the URL source, so no extra catalog request is ever made. Runs the
+    paced .torrent downloads in a background thread so the catalog caller
+    never waits on them; the guards stay synchronous and cheap (one glob,
+    one small JSON read) so instances with nothing missing — and the test
+    suite's ZIM-less fixtures — never spawn a thread at all. Returns the
+    Thread when one was started (test seam), else None."""
+    from zimi import p2p as _p2p
+
+    if _magnets_ensured or not _p2p.is_torrent_enabled():
+        return None
+    manifest = _get_torrent_metadata()
+    if not any(
+        not (manifest.get(os.path.basename(p)) or {}).get("info_hash")
+        for p in glob.glob(os.path.join(_srv.ZIM_DIR, "*.zim"))
+    ):
+        return None
+
+    def _run():
+        try:
+            ensure_magnets_for_installed(network_ok=True)
+        except Exception as e:
+            log.debug("magnet piggyback failed: %s", e)
+
+    t = threading.Thread(target=_run, daemon=True, name="magnet-resolve")
+    t.start()
+    return t
+
+
 def _thumb_dir():
     """Lazily create and return thumbnail cache directory."""
     d = os.path.join(_srv.ZIMI_DATA_DIR, "thumbs")
@@ -1627,6 +1745,9 @@ def _fetch_kiwix_catalog(
                 _opds_cache[cache_key] = (time.time(), total, items)
             _catalog_stale_ts = None
             _persist_opds_cache()
+            # A 304 is still a real network round trip made for a real
+            # reason — as valid a piggyback moment as a 200 (below).
+            _kick_magnet_resolution()
             return total, items, None
         _opds_last_fail = time.time()
         log.warning("OPDS fetch failed: %s", e)
@@ -1775,6 +1896,12 @@ def _fetch_kiwix_catalog(
         # Warm thumbnails only off user-facing fetches; headless machinery
         # (maintenance, auto-update) should not pull images nobody views.
         _prefetch_thumbs(items)
+    # The catalog just crossed the network for a real reason — resolve any
+    # missing magnets off the back of it (never triggers its own catalog
+    # fetch; see _kick_magnet_resolution). Deliberately NOT on the
+    # stale-serve or failure paths above: those make no successful network
+    # contact, so they earn no follow-on traffic.
+    _kick_magnet_resolution()
     return total, items, None
 
 
@@ -1822,6 +1949,16 @@ def maintenance_catalog_refresh():
     standing load on kiwix.org. The stale-while-revalidate path still
     refreshes on the next real use, and a needed refresh is a conditional
     request that usually ends in a 304."""
+    global _magnet_network_ok
+    # Reaching here means a maintenance pass is underway — the earliest
+    # moment magnet resolution may use the network. Flipped even when the
+    # catalog refresh below is skipped as idle: resolving from a STALE
+    # cached page costs kiwix.org zero catalog requests, and the .torrent
+    # downloads themselves are finite (once per installed ZIM, then
+    # recorded in the manifest forever). What stays forbidden is the boot
+    # window — server startup happens daily on desktops; maintenance
+    # passes start hours later and are jittered.
+    _magnet_network_ok = True
     if not _catalog_refresh_wanted():
         log.debug("maintenance: catalog refresh skipped (idle instance)")
         return False
@@ -1927,12 +2064,7 @@ def _mirror_sync_locked(_p2p):
     catalog_urls = {}
     try:
         _total, items, _err = _fetch_kiwix_catalog("", "eng", 500, 0, _internal=True)
-        for it in items or []:
-            url = (it.get("download_url") or "").split("?")[0]
-            if url.endswith(".meta4"):
-                url = url[: -len(".meta4")]
-            if url.endswith(".zim"):
-                catalog_urls[os.path.basename(url)] = url
+        catalog_urls = _catalog_zim_urls(items)
     except Exception:
         pass
 
@@ -1991,17 +2123,11 @@ def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
     os.makedirs(tdir, exist_ok=True)
 
     # Full catalog, all pages (English slice, as before).
-    urls = {}
     catalog = _full_catalog("eng")
     if not catalog:
         _catalog_torrents_archived = False  # retry next run
         return 0
-    for it in catalog:
-        u = (it.get("download_url") or "").split("?")[0]
-        if u.endswith(".meta4"):
-            u = u[: -len(".meta4")]
-        if u.endswith(".zim"):
-            urls[os.path.basename(u)] = u + ".torrent"
+    urls = {f: u + ".torrent" for f, u in _catalog_zim_urls(catalog).items()}
 
     fetched = 0
     fetched_bytes = 0
