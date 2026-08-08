@@ -131,6 +131,25 @@ class ConfigManager:
         return not os.path.exists(self.path)
 
 
+def _discover_portable_zim_dir(config):
+    """Zero-config portable discovery for the desktop app, or None.
+
+    Gated by the 1.9 compatibility contract: only a FIRST run (no config.json,
+    so `zim_dir` is nothing but the hardcoded ~/Zimi fallback) with no explicit
+    ZIM_DIR in the environment may be redirected to ZIMs found next to the app
+    bundle / executable or in the launch folder. A folder the user ever chose
+    in Settings — even one equal to the default — lives in config.json and
+    therefore always wins.
+    """
+    if not config.is_first_run or "ZIM_DIR" in os.environ:
+        return None
+    # Imported here, not at module top: the zimi package is heavy, and every
+    # non-first-run launch should skip it until ServerThread needs it.
+    from zimi.server import discover_zim_dir
+
+    return discover_zim_dir()
+
+
 # ---------------------------------------------------------------------------
 # ServerThread — runs Zimi HTTP server in background
 # ---------------------------------------------------------------------------
@@ -633,6 +652,14 @@ def _run():
 
     config = ConfigManager()
     zim_dir = config.get("zim_dir")
+    discovered = _discover_portable_zim_dir(config)
+    if discovered:
+        zim_dir = discovered
+        # In-memory only, never saved here: persisting would promote a
+        # discovery into a "user choice" that then shadows the stick (or its
+        # absence) on every later launch. The settings UI reads this value,
+        # and saving from there is the moment it becomes a real choice.
+        config.set("zim_dir", zim_dir)
     os.makedirs(zim_dir, exist_ok=True)
 
     # Set macOS Dock icon and process name before creating any windows
@@ -780,6 +807,12 @@ def _serve_headless():
     if zim_dir is None:
         config = ConfigManager()
         zim_dir = config.get("zim_dir")
+        # Same portable discovery as the GUI path — a --zim-dir flag above
+        # skipped this entirely, and the gate inside refuses unless this is a
+        # true first run with no ZIM_DIR env.
+        discovered = _discover_portable_zim_dir(config)
+        if discovered:
+            zim_dir = discovered
 
     os.environ["ZIM_DIR"] = zim_dir
     os.environ["ZIMI_MANAGE"] = "1"

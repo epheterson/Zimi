@@ -273,6 +273,75 @@ DEFAULT_DATA_DIR_NAME = ".zimi"
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8899
 
+# ---------------------------------------------------------------------------
+# Zero-config ZIM discovery (1.9 portable mode)
+#
+# When NOTHING names a ZIM directory — no flag, no env, no config file — the
+# resolver used to fall straight to the hardcoded fallback (`/zims`, or the
+# desktop app's `~/Zimi`). Discovery slots in strictly between "nobody said
+# anything" and that fallback: it probes the directory holding the executable
+# (a frozen build on a USB stick), the folder a macOS .app bundle sits in, and
+# the working directory, for `*.zim` files or a `zims/` child holding them.
+#
+# The compatibility contract (docs/plans/2026-08-07-v19-plan.md) is why this
+# is a separate, explicitly-passed layer rather than a smarter default: an
+# explicit ZIM_DIR, --zim-dir, config-file zim_dir, or a desktop-configured
+# folder must ALWAYS beat a discovered one, and the precedence tests pin that.
+# ---------------------------------------------------------------------------
+
+DISCOVERY_ZIMS_SUBDIR = "zims"
+# The locations the last discover_zim_dir() call actually probed — surfaced in
+# the empty-library boot message so "where should I put my files?" has a
+# concrete answer for every install type, not just Docker.
+_discovery_probed = []
+
+
+def _dir_holding_zims(candidate):
+    """The directory Zimi should serve from `candidate`, or None.
+
+    A hit is `*.zim` directly in the candidate, else in a `zims/` child —
+    the two shapes a hand-assembled folder of ZIMs actually has."""
+    for d in (candidate, os.path.join(candidate, DISCOVERY_ZIMS_SUBDIR)):
+        if glob.glob(os.path.join(d, "*.zim")):
+            return d
+    return None
+
+
+def discovery_candidates():
+    """Where discovery looks, in priority order: executable dir (frozen
+    builds only — for a source checkout it would be the Python bin dir),
+    the folder a macOS .app bundle sits in, then the working directory."""
+    cands = []
+    if getattr(sys, "frozen", False) or getattr(sys, "_MEIPASS", None):
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        cands.append(exe_dir)
+        # Zimi.app/Contents/MacOS/<exe> → the folder holding Zimi.app; that is
+        # the stick root when someone drags the app next to their ZIMs.
+        if exe_dir.replace("\\", "/").endswith(".app/Contents/MacOS"):
+            cands.append(os.path.dirname(os.path.dirname(os.path.dirname(exe_dir))))
+    try:
+        cands.append(os.getcwd())
+    except OSError:
+        pass  # cwd can be deleted from under a long-lived shell
+    seen = set()
+    return [c for c in cands if not (c in seen or seen.add(c))]
+
+
+def discover_zim_dir(candidates=None):
+    """Probe the candidate locations for ZIMs. First hit wins; None if none.
+
+    Only ever consulted when zim_dir would otherwise resolve to the hardcoded
+    default — callers pass the result into resolve_settings(), which applies
+    it below every explicit source."""
+    global _discovery_probed
+    candidates = discovery_candidates() if candidates is None else list(candidates)
+    _discovery_probed = candidates
+    for cand in candidates:
+        hit = _dir_holding_zims(cand)
+        if hit:
+            return hit
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Headless configuration file
@@ -401,7 +470,13 @@ def find_config_file(config_flag=None, env=None, data_dir=None):
     return None
 
 
-def load_config(zim_dir_flag=None, data_dir_flag=None, config_flag=None, env=None):
+def load_config(
+    zim_dir_flag=None,
+    data_dir_flag=None,
+    config_flag=None,
+    env=None,
+    discovered_zim_dir=None,
+):
     """Discovery + read: the one impure step. Returns ``(config, path_or_None)``.
 
     Kept separate from resolution so ``resolve_settings`` stays a pure function
@@ -410,12 +485,15 @@ def load_config(zim_dir_flag=None, data_dir_flag=None, config_flag=None, env=Non
 
     Note the small circularity in the implicit location: to look for
     ``<data dir>/zimi.json`` we must first know the data dir, which is resolved
-    from flags and env only. That is deliberate — a file can only be *found*
-    somewhere the flags/env/defaults already point, and a file found there may
-    still relocate the data dir for everything else.
+    from flags, env and the discovery probe only. That is deliberate — a file
+    can only be *found* somewhere the flags/env/defaults (or a discovered stick,
+    whose ``<stick>/.zimi/zimi.json`` makes it self-describing) already point,
+    and a file found there may still relocate the data dir for everything else.
     """
     env = os.environ if env is None else env
-    _, probe_data_dir = resolve_data_paths(zim_dir_flag, data_dir_flag, env)
+    _, probe_data_dir = resolve_data_paths(
+        zim_dir_flag, data_dir_flag, env, discovered_zim_dir=discovered_zim_dir
+    )
     path = find_config_file(config_flag, env, probe_data_dir)
     if not path:
         return {}, None
@@ -430,6 +508,7 @@ def resolve_settings(
     env=None,
     config=None,
     config_path=None,
+    discovered_zim_dir=None,
 ):
     """Resolve every boot setting, with the provenance of each one.
 
@@ -438,8 +517,13 @@ def resolve_settings(
     "where did this value come from" is the question that actually costs people
     time when a deployment misbehaves.
 
-    Precedence, strictly: flag > environment > config file > built-in default.
-    Pure: pass ``env`` and ``config`` in, get values out.
+    Precedence, strictly: flag > environment > config file > discovered >
+    built-in default. ``discovered_zim_dir`` is the fifth, lowest layer: it
+    only ever replaces the hardcoded fallback, never a value any person or
+    file supplied — that is the 1.9 compatibility contract, and it is why
+    discovery is an argument (the impure probe stays in the caller) rather
+    than something this function goes looking for.
+    Pure: pass ``env``, ``config`` and ``discovered_zim_dir`` in, get values out.
     """
     env = os.environ if env is None else env
     config = {} if config is None else config
@@ -459,6 +543,12 @@ def resolve_settings(
     zim_dir, zim_dir_src = pick(
         zim_dir_flag, "--zim-dir", "ZIM_DIR", "zim_dir", DEFAULT_ZIM_DIR
     )
+    # Discovery fills in ONLY what was the hardcoded fallback: `pick` says
+    # "default" exactly when no flag, env or config named a zim_dir. Applied
+    # before the data-dir derivation below so a discovered stick carries its
+    # state (`<stick>/.zimi`) with it.
+    if discovered_zim_dir is not None and zim_dir_src.startswith("default"):
+        zim_dir, zim_dir_src = discovered_zim_dir, f"discovered: {discovered_zim_dir}"
     # The derived `<zim dir>/.zimi` is a *default*, so an explicit data dir from
     # any layer beats it — that is what keeps `--zim-dir /media/usb` from
     # dragging state away from a configured ZIMI_DATA_DIR.
@@ -495,16 +585,27 @@ def format_config_report(settings):
     return "\n".join(lines)
 
 
-def resolve_data_paths(zim_dir_flag=None, data_dir_flag=None, env=None, config=None):
+def resolve_data_paths(
+    zim_dir_flag=None,
+    data_dir_flag=None,
+    env=None,
+    config=None,
+    discovered_zim_dir=None,
+):
     """Resolve ``(ZIM_DIR, ZIMI_DATA_DIR)`` from flags, environment and config.
 
-    Precedence is flag > environment > config file > default, and the default
-    data dir follows whichever ZIM dir won — so ``--zim-dir`` alone moves the
-    state with it, while an explicit ``ZIMI_DATA_DIR`` stays put. Pure so the
-    precedence rules can be tested without touching the process globals.
+    Precedence is flag > environment > config file > discovered > default, and
+    the default data dir follows whichever ZIM dir won — so ``--zim-dir`` alone
+    moves the state with it, while an explicit ``ZIMI_DATA_DIR`` stays put.
+    Pure so the precedence rules can be tested without touching the process
+    globals.
     """
     settings = resolve_settings(
-        zim_dir_flag=zim_dir_flag, data_dir_flag=data_dir_flag, env=env, config=config
+        zim_dir_flag=zim_dir_flag,
+        data_dir_flag=data_dir_flag,
+        env=env,
+        config=config,
+        discovered_zim_dir=discovered_zim_dir,
     )
     return settings["zim_dir"][0], settings["data_dir"][0]
 
@@ -514,7 +615,9 @@ ZIMI_MANAGE = os.environ.get("ZIMI_MANAGE", "1") == "1"
 _initialized = False
 
 
-def apply_data_paths(zim_dir_flag=None, data_dir_flag=None, config=None):
+def apply_data_paths(
+    zim_dir_flag=None, data_dir_flag=None, config=None, discovered_zim_dir=None
+):
     """Rebind the path globals from CLI flags, before anything reads them.
 
     Every consumer resolves ``_srv.ZIM_DIR`` / ``_srv.ZIMI_DATA_DIR`` at call
@@ -525,7 +628,10 @@ def apply_data_paths(zim_dir_flag=None, data_dir_flag=None, config=None):
     """
     global ZIM_DIR, ZIMI_DATA_DIR
     ZIM_DIR, ZIMI_DATA_DIR = resolve_data_paths(
-        zim_dir_flag, data_dir_flag, config=config
+        zim_dir_flag,
+        data_dir_flag,
+        config=config,
+        discovered_zim_dir=discovered_zim_dir,
     )
     return ZIM_DIR, ZIMI_DATA_DIR
 
@@ -1248,13 +1354,24 @@ def _zim_short_name(filename):
 
 
 def _scan_zim_files():
-    """Scan filesystem for ZIM files. Returns {short_name: path} mapping.
+    """Scan ZIM_DIR plus exactly one level of subdirectories for ZIM files.
+    Returns {short_name: path} mapping.
 
-    When two files produce the same short name (e.g. maxi vs mini flavors),
-    the larger file wins so the richest content is served.
+    Collision rule (documented, deliberate): root-level files are scanned
+    before subdirectory files, each group sorted; when two files produce the
+    same short name (maxi vs mini flavors, or the same file present both in
+    the root and in a subfolder) the LARGER file wins so the richest content
+    is served, and a size tie keeps the earlier — root — copy, so a duplicate
+    dropped into a subfolder can never displace the file already being served.
+    Every collision is logged. glob's `*` never matches dotted names, so the
+    `.zimi` state directory is not scanned as content; deeper nesting is
+    deliberately out of scope (the empty-library boot hint says so).
     """
     zims = {}
-    for path in sorted(glob.glob(os.path.join(ZIM_DIR, "*.zim"))):
+    paths = sorted(glob.glob(os.path.join(ZIM_DIR, "*.zim"))) + sorted(
+        glob.glob(os.path.join(ZIM_DIR, "*", "*.zim"))
+    )
+    for path in paths:
         filename = os.path.basename(path)
         name = _zim_short_name(filename)
         if name in zims:
@@ -1850,22 +1967,28 @@ def load_cache(force=False):
             flush=True,
         )
     else:
-        print(f"  No ZIM files found in {ZIM_DIR}", flush=True)
+        # Install-neutral empty state: this line is read by Docker admins,
+        # stick users and source checkouts alike, so it names every location
+        # that was actually searched instead of assuming a volume mount.
+        searched = [ZIM_DIR] + [p for p in _discovery_probed if p != ZIM_DIR]
+        missing = "" if os.path.isdir(ZIM_DIR) else " (directory does not exist)"
+        print(f"  No ZIM files found in {ZIM_DIR}{missing}", flush=True)
         if os.path.isdir(ZIM_DIR):
-            # Check if ZIMs are in subdirectories (common mistake)
-            import glob as _g
-
-            sub_zims = _g.glob(os.path.join(ZIM_DIR, "**", "*.zim"), recursive=True)
-            if sub_zims:
+            # The scan covers ZIM_DIR plus one level of subfolders; only files
+            # nested deeper than that are invisible now, so only they get the
+            # hint (a recursive glob at boot is fine — the library is empty).
+            deep_zims = glob.glob(os.path.join(ZIM_DIR, "**", "*.zim"), recursive=True)
+            if deep_zims:
                 print(
-                    f"  Found {len(sub_zims)} ZIM file(s) in subdirectories — move them to {ZIM_DIR}/ (Zimi doesn't scan subdirectories)",
+                    f"  Found {len(deep_zims)} ZIM file(s) nested deeper than one folder — "
+                    f"Zimi scans {ZIM_DIR} and its immediate subfolders only",
                     flush=True,
                 )
-        else:
-            print(
-                f"  Directory {ZIM_DIR} does not exist — check your volume mount",
-                flush=True,
-            )
+        print(
+            f"  Searched: {', '.join(searched)}. Put .zim files in any of these, "
+            f"or point ZIM_DIR / --zim-dir at your ZIM folder.",
+            flush=True,
+        )
 
     # Rebuild domain map whenever ZIM list changes
     _build_domain_zim_map()
@@ -2113,9 +2236,16 @@ def main():
         k: getattr(args, k, None)
         for k in ("zim_dir", "data_dir", "host", "port", "config")
     }
+    # The one impure discovery probe, shared by every resolution below so all
+    # of them agree on the same answer. Cheap (a few globs), and inert unless
+    # zim_dir would otherwise fall to the hardcoded default.
+    discovered = discover_zim_dir()
     try:
         config, config_path = load_config(
-            flags["zim_dir"], flags["data_dir"], flags["config"]
+            flags["zim_dir"],
+            flags["data_dir"],
+            flags["config"],
+            discovered_zim_dir=discovered,
         )
         settings = resolve_settings(
             zim_dir_flag=flags["zim_dir"],
@@ -2124,11 +2254,17 @@ def main():
             port_flag=flags["port"],
             config=config,
             config_path=config_path,
+            discovered_zim_dir=discovered,
         )
     except ConfigError as e:
         print(f"zimi: {e}", file=sys.stderr)
         sys.exit(2)
-    apply_data_paths(flags["zim_dir"], flags["data_dir"], config=config)
+    apply_data_paths(
+        flags["zim_dir"],
+        flags["data_dir"],
+        config=config,
+        discovered_zim_dir=discovered,
+    )
     host = settings["host"][0]
     port = settings["port"][0]
 

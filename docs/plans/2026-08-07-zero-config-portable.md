@@ -1,6 +1,6 @@
 # Zero-config portable mode (1.9)
 
-Status: planned, not started. Branch `v1.9`.
+Status: Phase 1 shipped (all four items, plus item 9's empty-state rewrite pulled forward). Both pre-flight bugs fixed. Phases 2–3 remain opportunistic. Branch `v1.9`.
 
 Eric's framing, which this plan serves the bottom half of: "a USB drive standalone in a bunker inside a folder of ZIMs that automatically just works. Up to a deployed maintained secure system used by millions. And the dude with a NAS. Ready, for anyone."
 
@@ -19,7 +19,7 @@ There is no large work here. The architecture already made most of the right cal
 
 So this is a discovery problem plus a handful of default flips, not a re-architecture. What follows is ordered by leverage, not by size.
 
-## Two bugs found on the way, fix these regardless
+## Two bugs found on the way, fix these regardless — ✅ both fixed earlier in 1.9 (tests/test_magnet_boot_politeness.py, tests/test_cli_paths.py)
 
 **A boot-time call to kiwix.org that bypasses the politeness gate.** `start_background_services` calls `ensure_magnets_for_installed` (server.py:187), which fetches the Kiwix OPDS catalog (library.py:812) gated only on `is_torrent_enabled()` — which defaults True — and on some installed ZIM lacking a recorded infohash, which is always the case for a preloaded stick or any library not downloaded through Zimi. It never consults `_catalog_refresh_wanted`. Verified: a fresh instance with one ZIM wrote `catalog_cache.json` within twelve seconds of boot; the same run with `ZIMI_TORRENT=0` wrote nothing. It runs once per process, not on a timer, so this is one request per start rather than a standing poll — but the 1.8.2 release notes say an idle instance makes zero catalog requests, and that is not currently true for the first few seconds of one. Gate it, or make it opportunistic on first real catalog use.
 
@@ -39,10 +39,10 @@ Also unresolved and deliberately not assumed here: whether `<ZIM_DIR>/.zimi` sho
 
 ### Phase 1, discovery. The whole feature in four changes.
 
-1. **Binary-adjacent and cwd ZIM discovery.** Before falling back to `~/Zimi` or `/zims`, probe the directory containing the executable (and the `.app` container, already computed at `desktop/zimi_desktop.py:403-405`) and the working directory, for `*.zim` or a `zims/` subdirectory. Single highest-leverage change in this document; two call sites.
-2. **`--zim-dir`, `--data-dir` and `--host` on `serve`.** server.py:1630 has only `--port` and `--ui`. Env-only configuration is hostile to anyone not writing a compose file, and `0.0.0.0` is the wrong default for a stick plugged into an untrusted network.
-3. **One-level-deep ZIM scan.** server.py:984 is a flat glob and server.py:1586 already prints a hint when it finds ZIMs in subdirectories, so the user need is proven by our own warning text.
-4. **Suppress the onboarding overlay when ZIMs were auto-discovered.** app.js:15650 keys on `zimsCache.length === 0`, so change 1 should suppress it for free. Verify rather than assume, and confirm no restart is triggered — choosing a folder currently restarts the app via `os._exit(42)`.
+1. ✅ **Binary-adjacent and cwd ZIM discovery.** SHIPPED. `discover_zim_dir()` / `discovery_candidates()` in server.py probe the frozen executable's directory, the macOS `.app` container, and the cwd for `*.zim` or a `zims/` child. Wired as the fifth, lowest resolution layer in `resolve_settings` (flag > env > config file > discovered > default) with provenance shown by `zimi config` as `(discovered: /path)`. Desktop gate is `_discover_portable_zim_dir()` in zimi_desktop.py: first run only (no config.json), no `ZIM_DIR` env, never persisted to config.json. The implicit config-file lookup follows discovery too, so a stick carrying `<stick>/.zimi/zimi.json` is self-describing. Precedence pinned by tests/test_zim_discovery.py — one explicit-beats-discovered test per layer and per discovery path.
+2. ✅ **`--zim-dir`, `--data-dir` and `--host` on `serve`.** SHIPPED earlier in 1.9 (see tests/test_cli_paths.py); `serve`/`config`/`backup`/`restore` all share the boot flags.
+3. ✅ **One-level-deep ZIM scan.** SHIPPED. `_scan_zim_files()` scans `ZIM_DIR` plus exactly one level of subdirectories (dotted dirs like `.zimi` excluded by glob). Collision rule, documented in the docstring and pinned by tests: root files scan first, the larger file wins per short name, a size tie keeps the root copy, every collision logged. Known accepted degradations for subdir ZIMs (all root-glob consumers in library.py, untouched by this change): no magnet/seeding enrolment, catalog installed-detection misses them, delta-update predecessor lookup won't find them, `/manage/delete` can't remove them, and the disk-usage `zim_size_gb` stat excludes them. Serving, search, title/Q-ID indexes, health checks and peer `/dl/` all work — they resolve name→path through `get_zim_files()`.
+4. ✅ **Suppress the onboarding overlay when ZIMs were auto-discovered.** SHIPPED via change 1, verified rather than assumed: app.js keys the overlay on `zimsCache.length === 0`, and a discovery boot serves a non-empty `/list`, so the overlay never opens; no app.js change needed. Verified end to end through `zimi_desktop.py --serve` with a fresh HOME: ZIMs discovered from the launch folder, no config.json written, no restart (`os._exit(42)`) triggered, `is_first_run` preserved.
 
 ### Phase 2, honesty about the network.
 
@@ -55,7 +55,7 @@ The Sparkle point is not only a portability concern. A bunker deployment and a m
 
 7. **Automatic data-dir fallback when the ZIM dir is unwritable.** Probe at `_init()` (server.py:260); on failure fall back to a platform cache dir and log once. Turns today's four-error degraded boot into a clean one, and restores the title index, did-you-mean and Q-ID links that a read-only stick currently loses.
 8. **Fail soft in the last two write paths.** `_set_manage_password` (manage.py:130) and `_generate_api_token` (manage.py:170) use bare `open()` and raise on read-only media instead of returning a clean error.
-9. **Replace the Docker-flavored empty state.** server.py:1593 says "check your volume mount", which is wrong for every non-Docker user and actively confusing for the audience this feature exists for.
+9. ✅ **Replace the Docker-flavored empty state.** SHIPPED with Phase 1 (it was one print statement away). The empty-library boot message now names every location actually searched — `ZIM_DIR` plus the discovery candidates — says when the directory itself is missing, and hints only about ZIMs nested deeper than the one level the scan now covers.
 
 ## The one real product decision
 
