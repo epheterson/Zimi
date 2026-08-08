@@ -6414,6 +6414,16 @@ var _CN_SYN = 29.530588861;
 var _CN_TZ = 8 / 24;   // China Standard Time offset (days)
 
 // ΔT (TT−UT) in days, Espenak–Meeus piecewise — good for 1900–2150.
+// Coefficients verbatim from Espenak & Meeus, "Polynomial Expressions for
+// Delta T (ΔT)", NASA Eclipse Web Site (Five Millennium Canon):
+// https://eclipse.gsfc.nasa.gov/SEcat5/deltatpoly.html
+//
+// 1920–1986 uses the three pieces Espenak–Meeus define for it (1920–1941,
+// 1941–1961, 1961–1986). An earlier revision stretched the 1900–1920 quartic
+// across that whole span; that quartic leaves its fitted window fast — at 1985
+// it read ≈-6787 s where the observed value is ≈+54 s, ~113 minutes of error
+// feeding straight into _cnChinaDay's midnight floor, plus an 0.08-day jump at
+// the 1986 seam.
 //
 // Each piece is only valid inside its own window, and OUTSIDE 1900–2150 the
 // answer is the Espenak–Meeus long-term parabola, not a continuation of the
@@ -6423,14 +6433,17 @@ var _CN_TZ = 8 / 24;   // China Standard Time offset (days)
 // k against that comparison, so a diverging ΔT turns its scan into an infinite
 // loop and locks the tab. The parabola stays inside ±2800 days across the whole
 // travel range and keeps _cnChinaDay strictly increasing in k, so the scan
-// always terminates. Behaviour for 1900–2150 is unchanged.
+// always terminates.
 function _cnDeltaTdays(jde) {
   var y = _jdnToGregorian(Math.floor(jde + 0.5)).year;
   var t = y - 2000, s;
   if (y >= 2005 && y <= 2050) s = 62.92 + 0.32217 * t + 0.005589 * t * t;
   else if (y >= 1986 && y < 2005) s = 63.86 + 0.3345 * t - 0.060374 * t * t + 0.0017275 * Math.pow(t, 3) + 0.000651814 * Math.pow(t, 4) + 0.00002373599 * Math.pow(t, 5);
   else if (y > 2050 && y <= 2150) { var u2 = (y - 1820) / 100; s = -20 + 32 * u2 * u2 - 0.5628 * (2150 - y); }
-  else if (y >= 1900 && y < 1986) { var w = y - 1900; s = -2.79 + 1.494119 * w - 0.0598939 * w * w + 0.0061966 * Math.pow(w, 3) - 0.000197 * Math.pow(w, 4); }
+  else if (y >= 1961 && y < 1986) { var t61 = y - 1975; s = 45.45 + 1.067 * t61 - t61 * t61 / 260 - Math.pow(t61, 3) / 718; }
+  else if (y >= 1941 && y < 1961) { var t41 = y - 1950; s = 29.07 + 0.407 * t41 - t41 * t41 / 233 + Math.pow(t41, 3) / 2547; }
+  else if (y >= 1920 && y < 1941) { var t20 = y - 1920; s = 21.20 + 0.84493 * t20 - 0.076100 * t20 * t20 + 0.0020936 * Math.pow(t20, 3); }
+  else if (y >= 1900 && y < 1920) { var w = y - 1900; s = -2.79 + 1.494119 * w - 0.0598939 * w * w + 0.0061966 * Math.pow(w, 3) - 0.000197 * Math.pow(w, 4); }
   else { var u = (y - 1820) / 100; s = -20 + 32 * u * u; }
   return s / 86400;
 }

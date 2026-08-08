@@ -22,8 +22,9 @@
 //      astronomical evaluations — the assertion that actually says "does not
 //      hang". The counter throws past its cap, so a regression fails the test
 //      instead of hanging it.
-//   4. deltaT and known Chinese New Year dates are unchanged for 1900-2150,
-//      so the fix bought termination without moving any real-world date.
+//   4. deltaT and known Chinese New Year dates stay pinned in the modern era.
+//      (The 1920-1986 span later got the proper Espenak-Meeus pieces — see
+//      tests/test_almanac_deltat.cjs for that fix's reference tables.)
 //
 // Pure-helper approach, matching tests/test_moon_derivation.cjs: pull the
 // functions straight out of the shipped source by name and eval them in a
@@ -241,9 +242,9 @@ check(nowruz.year === 1358 && nowruz.month === 1 && nowruz.day === 1,
   'Nowruz 1979-03-21 is still 1/1/1358 (' + JSON.stringify(nowruz) + ')');
 
 // ── 6. Nothing moved in the era people actually live in ──────────────────
-// deltaT for 1900-2150 comes from the same piecewise fits as before, so real
+// deltaT for 1900-2150 comes from the Espenak-Meeus piecewise fits, so real
 // dates must be untouched. Chinese New Year per the HK Observatory civil
-// calendar.
+// calendar. (test_almanac_deltat.cjs covers 1920-1986 exhaustively.)
 const CNY = {
   1900: '1900-1-31', 1949: '1949-1-29', 1997: '1997-2-7', 2020: '2020-1-25',
   2024: '2024-2-10', 2026: '2026-2-17', 2033: '2033-1-31', 2100: '2100-2-9'
