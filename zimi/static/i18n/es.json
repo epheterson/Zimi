@@ -1228,5 +1228,21 @@
   "library_unavailable_hint": "No se ha perdido nada. Tus ZIM están en el servidor y volverán en cuanto lo haga; todo lo que ya esté en caché en este dispositivo sigue siendo legible.",
   "search_offline": "La búsqueda necesita tu servidor Zimi",
   "search_offline_hint": "Vuelve a conectarte para buscar en tu biblioteca. Los artículos que ya abriste siguen siendo legibles.",
-  "almanac_unavailable_offline": "El Almanaque aún no se ha descargado en este dispositivo: conéctate una vez para usarlo sin conexión."
+  "almanac_unavailable_offline": "El Almanaque aún no se ha descargado en este dispositivo: conéctate una vez para usarlo sin conexión.",
+  "app_update_section": "Actualizaciones de la app",
+  "app_update_version": "Versión actual",
+  "app_update_up_to_date": "Actualizado",
+  "app_update_available": "Actualización disponible: {v}",
+  "app_update_check_now": "Comprobar ahora",
+  "app_update_checking": "Comprobando…",
+  "app_update_failed": "No se pudo comprobar si hay actualizaciones",
+  "app_update_offline": "Las comprobaciones de actualización están desactivadas en modo sin conexión",
+  "app_update_never": "Aún no comprobado",
+  "app_update_releases": "Página de versiones",
+  "app_update_how_docker": "Actualiza la imagen del contenedor y reinícialo:",
+  "app_update_how_pip": "Actualiza con pip:",
+  "app_update_how_brew": "Actualiza con Homebrew:",
+  "app_update_how_snap": "Snap mantiene Zimi actualizado automáticamente.",
+  "app_update_how_desktop": "La aplicación de escritorio se actualiza sola.",
+  "app_update_how_releases": "Descarga la última versión desde la página de versiones."
 }

@@ -1228,5 +1228,21 @@
   "library_unavailable_hint": "Nothing has been lost. Your ZIMs are on the server and come back as soon as it does; anything already cached on this device stays readable.",
   "search_offline": "Search needs your Zimi server",
   "search_offline_hint": "Reconnect to search your library. Articles you've already opened are still readable.",
-  "almanac_unavailable_offline": "The Almanac hasn't been downloaded to this device yet — reconnect once to use it offline."
+  "almanac_unavailable_offline": "The Almanac hasn't been downloaded to this device yet — reconnect once to use it offline.",
+  "app_update_section": "App updates",
+  "app_update_version": "Current version",
+  "app_update_up_to_date": "Up to date",
+  "app_update_available": "Update available: {v}",
+  "app_update_check_now": "Check now",
+  "app_update_checking": "Checking…",
+  "app_update_failed": "Couldn't check for updates",
+  "app_update_offline": "Update checks are disabled in offline mode",
+  "app_update_never": "Not checked yet",
+  "app_update_releases": "Releases page",
+  "app_update_how_docker": "Update the container image, then restart it:",
+  "app_update_how_pip": "Update with pip:",
+  "app_update_how_brew": "Update with Homebrew:",
+  "app_update_how_snap": "Snap keeps Zimi up to date automatically.",
+  "app_update_how_desktop": "The desktop app keeps itself up to date.",
+  "app_update_how_releases": "Download the latest version from the releases page."
 }

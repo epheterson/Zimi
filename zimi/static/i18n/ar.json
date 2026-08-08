@@ -1228,5 +1228,21 @@
   "library_unavailable_hint": "لم يضع أي شيء. ملفات ZIM موجودة على الخادم وستعود فور عودته؛ وكل ما تم تخزينه مؤقتًا على هذا الجهاز يبقى قابلاً للقراءة.",
   "search_offline": "البحث يتطلب خادم Zimi",
   "search_offline_hint": "أعد الاتصال للبحث في مكتبتك. المقالات التي فتحتها من قبل لا تزال قابلة للقراءة.",
-  "almanac_unavailable_offline": "لم يتم تنزيل التقويم على هذا الجهاز بعد — اتصل مرة واحدة لاستخدامه دون اتصال."
+  "almanac_unavailable_offline": "لم يتم تنزيل التقويم على هذا الجهاز بعد — اتصل مرة واحدة لاستخدامه دون اتصال.",
+  "app_update_section": "تحديثات التطبيق",
+  "app_update_version": "الإصدار الحالي",
+  "app_update_up_to_date": "محدَّث",
+  "app_update_available": "يتوفر تحديث: {v}",
+  "app_update_check_now": "تحقق الآن",
+  "app_update_checking": "جارٍ التحقق…",
+  "app_update_failed": "تعذر التحقق من التحديثات",
+  "app_update_offline": "التحقق من التحديثات معطل في وضع عدم الاتصال",
+  "app_update_never": "لم يتم التحقق بعد",
+  "app_update_releases": "صفحة الإصدارات",
+  "app_update_how_docker": "حدِّث صورة الحاوية ثم أعد تشغيلها:",
+  "app_update_how_pip": "حدِّث باستخدام pip:",
+  "app_update_how_brew": "حدِّث باستخدام Homebrew:",
+  "app_update_how_snap": "يحافظ Snap على تحديث Zimi تلقائيًا.",
+  "app_update_how_desktop": "يقوم تطبيق سطح المكتب بتحديث نفسه تلقائيًا.",
+  "app_update_how_releases": "نزِّل أحدث إصدار من صفحة الإصدارات."
 }

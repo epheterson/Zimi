@@ -1228,5 +1228,21 @@
   "library_unavailable_hint": "Rien n'est perdu. Vos ZIM sont sur le serveur et reviendront dès qu'il sera de retour ; tout ce qui est déjà en cache sur cet appareil reste lisible.",
   "search_offline": "La recherche nécessite votre serveur Zimi",
   "search_offline_hint": "Reconnectez-vous pour chercher dans votre bibliothèque. Les articles déjà ouverts restent lisibles.",
-  "almanac_unavailable_offline": "L'Almanach n'a pas encore été téléchargé sur cet appareil — reconnectez-vous une fois pour l'utiliser hors ligne."
+  "almanac_unavailable_offline": "L'Almanach n'a pas encore été téléchargé sur cet appareil — reconnectez-vous une fois pour l'utiliser hors ligne.",
+  "app_update_section": "Mises à jour de l'app",
+  "app_update_version": "Version actuelle",
+  "app_update_up_to_date": "À jour",
+  "app_update_available": "Mise à jour disponible : {v}",
+  "app_update_check_now": "Vérifier maintenant",
+  "app_update_checking": "Vérification…",
+  "app_update_failed": "Impossible de vérifier les mises à jour",
+  "app_update_offline": "La vérification des mises à jour est désactivée en mode hors ligne",
+  "app_update_never": "Pas encore vérifié",
+  "app_update_releases": "Page des versions",
+  "app_update_how_docker": "Mettez à jour l'image du conteneur, puis redémarrez-le :",
+  "app_update_how_pip": "Mettez à jour avec pip :",
+  "app_update_how_brew": "Mettez à jour avec Homebrew :",
+  "app_update_how_snap": "Snap maintient Zimi à jour automatiquement.",
+  "app_update_how_desktop": "L'application de bureau se met à jour toute seule.",
+  "app_update_how_releases": "Téléchargez la dernière version depuis la page des versions."
 }

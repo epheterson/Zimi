@@ -1228,5 +1228,21 @@
   "library_unavailable_hint": "कुछ भी नहीं खोया है। आपके ZIM सर्वर पर हैं और सर्वर लौटते ही वापस आ जाएंगे; इस डिवाइस पर पहले से कैश्ड सामग्री पढ़ी जा सकती है।",
   "search_offline": "खोज के लिए आपका Zimi सर्वर चाहिए",
   "search_offline_hint": "लाइब्रेरी में खोजने के लिए फिर से जुड़ें। पहले खोले गए लेख अब भी पढ़े जा सकते हैं।",
-  "almanac_unavailable_offline": "पंचांग अभी इस डिवाइस पर डाउनलोड नहीं हुआ है — ऑफ़लाइन उपयोग के लिए एक बार कनेक्ट करें।"
+  "almanac_unavailable_offline": "पंचांग अभी इस डिवाइस पर डाउनलोड नहीं हुआ है — ऑफ़लाइन उपयोग के लिए एक बार कनेक्ट करें।",
+  "app_update_section": "ऐप अपडेट",
+  "app_update_version": "वर्तमान संस्करण",
+  "app_update_up_to_date": "अप टू डेट",
+  "app_update_available": "अपडेट उपलब्ध: {v}",
+  "app_update_check_now": "अभी जाँचें",
+  "app_update_checking": "जाँच रही है…",
+  "app_update_failed": "अपडेट की जाँच नहीं हो सकी",
+  "app_update_offline": "ऑफ़लाइन मोड में अपडेट जाँच बंद है",
+  "app_update_never": "अभी तक जाँच नहीं हुई",
+  "app_update_releases": "रिलीज़ पेज",
+  "app_update_how_docker": "कंटेनर इमेज अपडेट करें, फिर उसे रीस्टार्ट करें:",
+  "app_update_how_pip": "pip से अपडेट करें:",
+  "app_update_how_brew": "Homebrew से अपडेट करें:",
+  "app_update_how_snap": "Snap ज़िमी को अपने आप अपडेट रखता है।",
+  "app_update_how_desktop": "डेस्कटॉप ऐप खुद को अपडेट रखता है।",
+  "app_update_how_releases": "रिलीज़ पेज से नवीनतम संस्करण डाउनलोड करें।"
 }

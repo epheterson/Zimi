@@ -1228,5 +1228,21 @@
   "library_unavailable_hint": "没有任何内容丢失。您的 ZIM 都在服务器上，服务器恢复后就会回来；本设备上已缓存的内容仍可阅读。",
   "search_offline": "搜索需要您的 Zimi 服务器",
   "search_offline_hint": "重新连接后即可搜索媒体库。已打开过的文章仍可阅读。",
-  "almanac_unavailable_offline": "年鉴尚未下载到本设备 — 联网一次后即可离线使用。"
+  "almanac_unavailable_offline": "年鉴尚未下载到本设备 — 联网一次后即可离线使用。",
+  "app_update_section": "应用更新",
+  "app_update_version": "当前版本",
+  "app_update_up_to_date": "已是最新版本",
+  "app_update_available": "有可用更新：{v}",
+  "app_update_check_now": "立即检查",
+  "app_update_checking": "正在检查…",
+  "app_update_failed": "无法检查更新",
+  "app_update_offline": "离线模式下已禁用更新检查",
+  "app_update_never": "尚未检查",
+  "app_update_releases": "发布页面",
+  "app_update_how_docker": "更新容器镜像并重启：",
+  "app_update_how_pip": "使用 pip 更新：",
+  "app_update_how_brew": "使用 Homebrew 更新：",
+  "app_update_how_snap": "Snap 会自动保持 Zimi 为最新版本。",
+  "app_update_how_desktop": "桌面应用会自动更新。",
+  "app_update_how_releases": "从发布页面下载最新版本。"
 }

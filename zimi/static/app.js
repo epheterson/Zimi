@@ -8729,6 +8729,82 @@ function _msPreferencesHtml() {
   return h;
 }
 
+// ---- App updates (Manage ▸ Server) ----------------------------------------
+// The Zimi APPLICATION's own release check — a different feature from the
+// "Auto-update" toggle elsewhere in Manage, which refreshes ZIM content.
+// Shell snippets are deliberately NOT i18n'd: commands are commands.
+var _APP_UPDATE_CMDS = {
+  docker: 'docker compose pull && docker compose up -d',
+  pip: 'pip install --upgrade zimi',
+  homebrew: 'brew upgrade --cask zimi'
+};
+
+function _appUpdateReleasesLink(d) {
+  return '<a class="app-update-link" href="' + escAttr(d.releases_url || 'https://github.com/epheterson/Zimi/releases') +
+    '" target="_blank" rel="noopener">' + tH('app_update_releases') + '</a>';
+}
+
+// The per-install-type upgrade instruction, shown only when an update exists.
+function _appUpdateHowHtml(d) {
+  var type = d.install_type || '';
+  var cmd = _APP_UPDATE_CMDS[type];
+  if (cmd) {
+    var hintKey = type === 'docker' ? 'app_update_how_docker'
+      : type === 'homebrew' ? 'app_update_how_brew' : 'app_update_how_pip';
+    return '<div class="ms-hint">' + tH(hintKey) + '</div>' +
+      '<code class="app-update-cmd">' + esc(cmd) + '</code>';
+  }
+  if (type === 'snap') return '<div class="ms-hint">' + tH('app_update_how_snap') + '</div>';
+  if (type === 'desktop-mac' || type === 'desktop-windows') {
+    // Sparkle/WinSparkle self-updates — unless offline mode disabled the
+    // appcast, in which case the releases page is the only path.
+    return d.offline
+      ? '<div class="ms-hint">' + tH('app_update_how_releases') + ' ' + _appUpdateReleasesLink(d) + '</div>'
+      : '<div class="ms-hint">' + tH('app_update_how_desktop') + '</div>';
+  }
+  // appimage, plain frozen linux, and anything unrecognized: point at releases.
+  return '<div class="ms-hint">' + tH('app_update_how_releases') + ' ' + _appUpdateReleasesLink(d) + '</div>';
+}
+
+function _appUpdateHtml(d) {
+  var status;
+  if (d.update_available) {
+    status = '<span class="app-update-badge">' + tH('app_update_available', { v: d.latest }) + '</span>';
+  } else if (d.offline) {
+    status = '<span class="app-update-quiet">' + tH('app_update_offline') + '</span>';
+  } else if (d.latest && !d.error) {
+    // Up to date: one quiet line, no celebration.
+    status = '<span class="app-update-quiet">' + tH('app_update_up_to_date') + '</span>';
+  } else {
+    status = '<span class="app-update-quiet">' + tH(d.error ? 'app_update_failed' : 'app_update_never') + '</span>';
+  }
+  var h = '<div class="mc-row"><span class="mc-label">' + tH('app_update_version') + '</span>' +
+    '<span class="mc-value">' + esc(d.current || '?') + '</span></div>' +
+    '<div class="mc-row"><span class="mc-label">' + status + '</span><span class="mc-value">' +
+    (d.offline ? '' : '<button class="pill" onclick="_appUpdateCheckNow()">' + tH('app_update_check_now') + '</button>') +
+    '</span></div>';
+  if (d.update_available) h += _appUpdateHowHtml(d);
+  return h;
+}
+
+function _renderAppUpdate(force) {
+  var el = document.getElementById('ms-app-update');
+  if (!el) return;
+  if (force) el.innerHTML = '<div class="ms-hint">' + tH('app_update_checking') + '</div>';
+  var req = force
+    ? manageFetch('/manage/app-update-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    : manageFetch('/manage/app-update');
+  req.then(function(r) { return r.json(); }).then(function(d) {
+    var slot = document.getElementById('ms-app-update');
+    if (slot) slot.innerHTML = _appUpdateHtml(d);
+  }).catch(function() {
+    var slot = document.getElementById('ms-app-update');
+    if (slot) slot.innerHTML = '<div class="ms-hint">' + tH('app_update_failed') + '</div>';
+  });
+}
+
+function _appUpdateCheckNow() { _renderAppUpdate(true); }
+
 function _msServerHtml() {
   // Sharing is the star of v1.7 — it leads the Server pane. Render the
   // last-known rows immediately (stale toggles beat a blank slab that
@@ -8767,6 +8843,11 @@ function _msServerHtml() {
   } else {
     h += '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
   }
+  // App updates — the Zimi application itself. NOT the ZIM-content
+  // "Auto-update" toggle; wording and ids stay app_update-prefixed.
+  h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
+    '<div class="ms-section-label">' + tH('app_update_section') + '</div>' +
+    '<div id="ms-app-update" class="ms-app-update">' + tH('loading') + '</div></div>';
   // Security: password + API token
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
     '<div id="ms-security">' + tH('loading') + '</div></div>';
@@ -8804,6 +8885,7 @@ function _msServerHtml() {
     _renderSeedingSection();
     _renderMirrorSection();
     _renderDownloadSchedule();
+    _renderAppUpdate();
   }, 0);
   // Cache info section
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
