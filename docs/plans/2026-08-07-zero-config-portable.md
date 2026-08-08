@@ -25,6 +25,16 @@ So this is a discovery problem plus a handful of default flips, not a re-archite
 
 **A split-brain data directory.** Five data-dir paths are frozen at import time: `search.py:243` (title indexes), `search.py:1218` (did-you-mean vocab), `interlang.py:141` (Q-ID indexes), `library.py:147` (auto-update config), `library.py:350` (download schedule). The desktop launcher patches the module attribute after import and then hand-repairs exactly one of them (`desktop/zimi_desktop.py:179`). A user who sets a custom data dir in Settings therefore gets title indexes in the new location and Q-ID indexes, vocab and auto-update config in the old one. Make them functions and delete the hand-patching.
 
+## Scope discipline
+
+Eric, 2026-08-07: "This isn't the most important piece but would be nice to get right, don't harp on it or get too distracted and ensure our existing flow(s) continue to work well, i.e. defining a separate folder and installing normally."
+
+So this workstream is bounded to Phase 1 plus the two bugs. Phases 2 and 3 are opportunistic. If any item here starts growing, cut it rather than pursue it: the greater 1.9 plan is `2026-08-07-v19-plan.md` and this serves one end of its range.
+
+The compatibility contract in that document governs every change below. Restated for the part that matters most here: auto-discovery only ever fills in a value that was previously a hardcoded fallback (`/zims`, `~/Zimi`). An explicit `ZIM_DIR`, `ZIMI_DATA_DIR`, Docker mount, or a folder the user chose in the desktop app always wins, and an existing `<ZIM_DIR>/.zimi` is never moved or migrated. Each discovery change ships with a test asserting the explicit path still beats the discovered one.
+
+Also unresolved and deliberately not assumed here: whether `<ZIM_DIR>/.zimi` should stay the default state location at all. Eric: "not all folks want a .zimi dir in their zim dir so we need to know what we're doing and make smart defaults." That default is what makes a stick work and what makes a shared ZIM folder untidy, and the two pull opposite ways. Decide it in the greater plan, not here, and change nothing for existing installs either way.
+
 ## Plan
 
 ### Phase 1, discovery. The whole feature in four changes.
