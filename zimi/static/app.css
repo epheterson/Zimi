@@ -248,6 +248,7 @@
   .catalog-lang-search-btn:hover,
   .lang-selector-btn:hover,
   .library-btn.panel-open,
+  .reader-btn.panel-open,
   #readerview-btn[aria-pressed="true"],
   #tts-btn.speaking { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   /* Reader View ON: the book button becomes the settings affordance — a small
@@ -1974,7 +1975,8 @@
     #font-btn, #tts-btn, #readerview-btn, #newtab-btn { display: none !important; }
     .topbar-more { display: flex !important; }
     .topbar.search-focused .topbar-more,
-    .topbar.search-focused .library-btn { display: none !important; }
+    .topbar.search-focused .library-btn,
+    .topbar.search-focused #bm-panel-btn { display: none !important; }
     .topbar.search-focused .lang-dropdown { display: none !important; }
     /* v1.6: Language dropdown — full width on mobile */
     .lang-dropdown { min-width: 160px; }

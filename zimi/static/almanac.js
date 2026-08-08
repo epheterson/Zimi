@@ -5866,6 +5866,38 @@ function _drawAlmanacGrid() {
   html += _almRenderCrossRef(_almSelectedJDN);
 
   el.innerHTML = html;
+  _almGlideGrid(el);
+}
+
+// -- Month glide (#75) --------------------------------------------------------
+// Which month the grid last painted, as {sys, y, m}; null until the first paint.
+var _almGridShownYM = null;
+
+// Slide the freshly painted grid in when browsing landed on a different month
+// (day pick outside the view, month plate, arrows, Today). Entry-only: the old
+// grid is a full innerHTML teardown, so there is nothing left to animate out —
+// a short directional slide-and-fade on the incoming month reads as the page
+// turning. Inert on the travel path: the lever repaints the grid on its own
+// cadence with the panel height pinned (_almTravelFrozen), and the motion face
+// means a throw is in flight even around those frames — an entry animation
+// there would fight the scrub.
+function _almGlideGrid(el) {
+  var prev = _almGridShownYM;
+  _almGridShownYM = { sys: _almSystem, y: _almYear, m: _almMonth };
+  // First paint, a same-month repaint (day pick within view, scope toggle), or
+  // a calendar-system switch (a relabelling of the same day, not a jump).
+  if (!prev || prev.sys !== _almSystem) return;
+  if (prev.y === _almYear && prev.m === _almMonth) return;
+  var tm = document.getElementById('alm-tm');
+  if (_almTravelFrozen || (tm && tm.getAttribute('data-mode') === 'motion')) return;
+  var grid = el.querySelector('.alm-grid');
+  if (!grid) return;
+  var forward = (_almYear > prev.y) || (_almYear === prev.y && _almMonth > prev.m);
+  var cls = forward ? 'alm-glide-next' : 'alm-glide-prev';
+  grid.classList.add(cls);
+  // Drop the class once the glide ends so a later same-month repaint (which
+  // reuses fresh DOM anyway) can never replay it.
+  grid.addEventListener('animationend', function () { grid.classList.remove(cls); }, { once: true });
 }
 
 function _almSwitchSystem(sys) {

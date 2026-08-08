@@ -1210,6 +1210,13 @@ function updateTopbar() {
   var _readingArticle = readerOpen && !_almanacOpen;
   var fontBtn = document.getElementById('font-btn');
   if (fontBtn) fontBtn.style.display = _readingArticle ? 'flex' : 'none';
+  // Bookmarks-panel opener — reader only (#65). Everywhere else the library
+  // button already opens the panel, but while reading it becomes the
+  // save-bookmark toggle, which left the bookmark tree unreachable without
+  // leaving the article. Deliberately NOT folded into the ⋯ menu: reaching a
+  // saved article should stay one tap from the page you're on.
+  var bmPanelBtn = document.getElementById('bm-panel-btn');
+  if (bmPanelBtn) bmPanelBtn.style.display = _readingArticle ? 'flex' : 'none';
   var ttsBtn = document.getElementById('tts-btn');
   if (ttsBtn) ttsBtn.style.display = (_readingArticle && _TTS_AVAILABLE) ? 'flex' : 'none';
   _syncReaderViewBtn(); // book/reader-view glyph — gated on extractable content
@@ -13199,27 +13206,33 @@ function _histDateGroup(ts) {
   if (d >= weekAgo) return t('this_week');
   return t('older');
 }
+// Both panel openers (the app-wide library button and the reader's bookmarks
+// button, #65) mirror the panel's open state with the same class.
+function _libPanelBtnState(open) {
+  ['library-btn', 'bm-panel-btn'].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) b.classList.toggle('panel-open', open);
+  });
+}
 function toggleLibraryPanel(forceTab) {
   var panel = document.getElementById('history-panel');
-  var btn = document.getElementById('library-btn');
   var isOpen = panel.classList.contains('open');
   if (isOpen && (!forceTab || forceTab === _getLibraryTab())) {
     // Close if already open on same tab (or no tab specified)
     panel.classList.remove('open');
-    if (btn) btn.classList.remove('panel-open');
+    _libPanelBtnState(false);
   } else {
     // Open (or switch tabs if already open on different tab)
     if (forceTab) { _setLibraryTab(forceTab); _updateLibraryBtnIcon(); }
     renderLibraryPanel();
     panel.classList.add('open');
-    if (btn) btn.classList.add('panel-open');
+    _libPanelBtnState(true);
   }
 }
 function _closeLibraryPanel() {
   var panel = document.getElementById('history-panel');
-  var btn = document.getElementById('library-btn');
   if (panel) panel.classList.remove('open');
-  if (btn) btn.classList.remove('panel-open');
+  _libPanelBtnState(false);
 }
 function _switchLibraryTab(tab) {
   _setLibraryTab(tab);
