@@ -70,6 +70,7 @@ Usage (HTTP API):
 import argparse
 import collections
 import glob
+import hashlib
 import json
 import logging
 import os
@@ -610,7 +611,151 @@ def resolve_data_paths(
     return settings["zim_dir"][0], settings["data_dir"][0]
 
 
+# ---------------------------------------------------------------------------
+# Read-only media: automatic data-dir fallback (1.9 portable mode, phase 3)
+#
+# A ZIM library on a read-only stick/DVD/locked share used to boot with four
+# permission errors and silently lose the title index, did-you-mean and Q-ID
+# links, and rebuild the metadata cache on every start. When the data dir is
+# the DERIVED default (`<zim_dir>/.zimi`) and turns out unwritable, state is
+# rerouted to a stable per-library directory under the platform user-cache
+# location instead, so indexes persist across boots of the same library.
+#
+# Two deliberate asymmetries:
+#   * An EXPLICITLY configured data dir (--data-dir, ZIMI_DATA_DIR, config
+#     file) that is unwritable is an error, never a fallback — the user asked
+#     for that path, and dying with one clear line beats silently writing
+#     somewhere else.
+#   * If `<zim_dir>/.zimi` already EXISTS but is unwritable, its contents are
+#     ignored and the cache dir is used wholesale. Reading stick indexes while
+#     writing new state elsewhere would be a two-layer overlay; the simple
+#     rule (documented in docs/plans/2026-08-07-zero-config-portable.md) is
+#     one data dir at a time.
+# ---------------------------------------------------------------------------
+
+
+class DataDirError(Exception):
+    """An explicitly configured data dir cannot be written.
+
+    Same contract as ConfigError: an operator mistake reported as one clear
+    line (main() exits 2), never a traceback."""
+
+
+def _platform_cache_root():
+    """Per-user cache location, stdlib only (no platformdirs dependency)."""
+    if sys.platform == "darwin":
+        return os.path.expanduser(os.path.join("~", "Library", "Caches", "Zimi"))
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser(
+            os.path.join("~", "AppData", "Local")
+        )
+        return os.path.join(base, "Zimi", "Cache")
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser(
+        os.path.join("~", ".cache")
+    )
+    # Lowercase on XDG systems, capitalized on macOS/Windows — each platform's
+    # own convention for vendor dirs.
+    return os.path.join(base, "zimi")
+
+
+def fallback_data_dir(zim_dir):
+    """The stable cache-dir stand-in for an unwritable `<zim_dir>/.zimi`.
+
+    Stability is the point: indexes built on the first boot of a read-only
+    library must be found again on the next one, so the name is a pure
+    function of the library's real path — a readable prefix (the folder name,
+    sanitized) plus a hash tail that disambiguates same-named folders on
+    different mounts."""
+    real = os.path.realpath(zim_dir)
+    tail = hashlib.sha256(real.encode("utf-8", "surrogatepass")).hexdigest()[:10]
+    base = os.path.basename(real.rstrip("/\\")) or "library"
+    prefix = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip("-.")[:40] or "library"
+    return os.path.join(_platform_cache_root(), f"{prefix}-{tail}")
+
+
+def _dir_is_writable(path):
+    """Probe writability by actually writing: mkdir + tempfile + unlink.
+
+    Not os.access(): network mounts and read-only remounts routinely report
+    writable modes for directories that reject every write. If the probe had
+    to create the directory, it removes it again on the way out — `zimi
+    config` must be able to ask the question without scattering empty dirs."""
+    existed = os.path.isdir(path)
+    try:
+        os.makedirs(path, exist_ok=True)
+        fd, probe = tempfile.mkstemp(dir=path, prefix=".zimi-write-probe-")
+        os.close(fd)
+        os.remove(probe)
+        ok = True
+    except OSError:
+        ok = False
+    if not existed:
+        try:
+            os.rmdir(path)  # only succeeds when empty, so state is never lost
+        except OSError:
+            pass
+    return ok
+
+
+def _ensure_writable_data_dir():
+    """Reroute ZIMI_DATA_DIR to the per-library cache dir when the derived
+    default is unwritable. Raises DataDirError for an explicit dir instead.
+
+    Idempotent and cheap: after a reroute the bound dir IS writable, so a
+    second call (main() runs it early for the CLI exit-code contract, _init()
+    runs it for library/desktop entry points) is a silent no-op — the log
+    line below appears exactly once per boot."""
+    global ZIMI_DATA_DIR, _data_dir_fallback_from
+    if _dir_is_writable(ZIMI_DATA_DIR):
+        return
+    if not _data_dir_source.startswith("default"):
+        raise DataDirError(
+            f"data dir {ZIMI_DATA_DIR} is not writable ({_data_dir_source}); "
+            "fix its permissions or point --data-dir/ZIMI_DATA_DIR at a "
+            "writable location"
+        )
+    # A missing ZIM dir means there is no library to keep state for — keep
+    # today's fail-soft boot rather than manufacturing a cache dir for it.
+    if not os.path.isdir(ZIM_DIR):
+        return
+    stale_state = os.path.isdir(ZIMI_DATA_DIR)
+    fallback = fallback_data_dir(ZIM_DIR)
+    if not _dir_is_writable(fallback):
+        log.warning(
+            "Data dir %s is not writable and neither is the cache fallback %s; "
+            "state writes will fail soft",
+            ZIMI_DATA_DIR,
+            fallback,
+        )
+        return
+    # The one promised log line: where state went, and why. When a read-only
+    # `.zimi` already sits beside the ZIMs it is NOT read live (no two-layer
+    # overlay): the standard cross-directory migration in _migrate_data_files
+    # copies it once into a fresh fallback dir, and after that the cache dir
+    # is the sole data dir.
+    log.warning(
+        "Data dir %s is not writable (read-only media?); keeping state in %s "
+        "instead — it persists there across boots of this library%s",
+        ZIMI_DATA_DIR,
+        fallback,
+        (
+            "; the read-only state beside the ZIMs stays untouched (seeded "
+            "into the cache dir once, never read live)"
+            if stale_state
+            else ""
+        ),
+    )
+    _data_dir_fallback_from = ZIMI_DATA_DIR
+    ZIMI_DATA_DIR = fallback
+
+
 ZIM_DIR, ZIMI_DATA_DIR = resolve_data_paths()
+# Provenance of the bound data dir, kept in lockstep with the binding above and
+# in apply_data_paths(). "default: …" is the derived `<zim_dir>/.zimi`; anything
+# else marks an explicit choice, which _ensure_writable_data_dir refuses to
+# override. _data_dir_fallback_from records a reroute for `zimi config`.
+_data_dir_source = resolve_settings()["data_dir"][1]
+_data_dir_fallback_from = None
 ZIMI_MANAGE = os.environ.get("ZIMI_MANAGE", "1") == "1"
 _initialized = False
 
@@ -626,13 +771,18 @@ def apply_data_paths(
     and runs migrations. ``main()`` calls this immediately after argparse and
     before ``load_cache()``.
     """
-    global ZIM_DIR, ZIMI_DATA_DIR
-    ZIM_DIR, ZIMI_DATA_DIR = resolve_data_paths(
-        zim_dir_flag,
-        data_dir_flag,
+    global ZIM_DIR, ZIMI_DATA_DIR, _data_dir_source, _data_dir_fallback_from
+    settings = resolve_settings(
+        zim_dir_flag=zim_dir_flag,
+        data_dir_flag=data_dir_flag,
         config=config,
         discovered_zim_dir=discovered_zim_dir,
     )
+    ZIM_DIR, ZIMI_DATA_DIR = settings["zim_dir"][0], settings["data_dir"][0]
+    # Rebinding invalidates any earlier read-only reroute: the fallback
+    # decision belongs to whichever paths are bound when _init() runs.
+    _data_dir_source = settings["data_dir"][1]
+    _data_dir_fallback_from = None
     return ZIM_DIR, ZIMI_DATA_DIR
 
 
@@ -642,6 +792,10 @@ def _init():
     if _initialized:
         return
     _initialized = True
+    # Read-only media check first, so the makedirs below (and every migration
+    # after it) already targets the rerouted dir. Raises DataDirError for an
+    # explicitly configured unwritable dir — main() converts that to exit 2.
+    _ensure_writable_data_dir()
     try:
         os.makedirs(ZIMI_DATA_DIR, exist_ok=True)
     except OSError:
@@ -2265,6 +2419,21 @@ def main():
         config=config,
         discovered_zim_dir=discovered,
     )
+    # Read-only media check, up front for every subcommand: an explicitly
+    # configured unwritable data dir is an operator mistake (one line, exit 2,
+    # same convention as ConfigError), while an unwritable DERIVED default
+    # reroutes to the per-library cache dir — and `zimi config` must report
+    # the reroute as the provenance of the value actually in effect.
+    try:
+        _ensure_writable_data_dir()
+    except DataDirError as e:
+        print(f"zimi: {e}", file=sys.stderr)
+        sys.exit(2)
+    if _data_dir_fallback_from:
+        settings["data_dir"] = (
+            ZIMI_DATA_DIR,
+            f"fallback: {_data_dir_fallback_from} not writable",
+        )
     host = settings["host"][0]
     port = settings["port"][0]
 

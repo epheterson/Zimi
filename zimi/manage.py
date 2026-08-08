@@ -6,11 +6,14 @@ history, stats, and admin authentication. Called from ZimHandler in http.py.
 
 import hashlib
 import hmac
+import json
 import logging
 import os
 import re
+import sys
 import threading
 import time
+import urllib.request
 
 import zimi.server as _srv
 
@@ -46,9 +49,34 @@ def _verify_legacy(candidate, stored):
 
 def _upgrade_legacy_hash(candidate):
     """Re-hash a verified password from v1.5 format to PBKDF2. Called after
-    successful legacy verification to transparently migrate the password file."""
-    _set_manage_password(candidate)
-    log.info("Migrated password from v1.5 SHA-256 to PBKDF2")
+    successful legacy verification to transparently migrate the password file.
+
+    Best-effort: on read-only media the write fails soft and the legacy hash
+    simply keeps verifying on every login — migration retries next time."""
+    if _set_manage_password(candidate):
+        log.info("Migrated password from v1.5 SHA-256 to PBKDF2")
+
+
+def _atomic_write_text(path, content):
+    """Write a small credential file via tmp + os.replace. True on success.
+
+    Same error discipline as server._atomic_write_json: never raises. These
+    were the last two write paths that threw a traceback on read-only media —
+    the HTTP callers turn a False into a generic 500 JSON, and the real
+    OSError stays in the server log (repo rule: no str(e) in responses)."""
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, path)
+        return True
+    except OSError as e:
+        log.warning("Cannot write %s: %s", path, e)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False
 
 
 _env_pw_hash_cache = None  # cached hash for ZIMI_MANAGE_PASSWORD env var
@@ -116,9 +144,12 @@ def _set_manage_password(pw, username=None):
 
     username semantics: None preserves whatever username the file already had
     (so a plain password change never wipes it); '' clears it; a non-empty
-    string sets it. Clearing the password (pw falsy) clears username too."""
+    string sets it. Clearing the password (pw falsy) clears username too.
+
+    Returns True on success, False when the file cannot be written (read-only
+    media) — in which case nothing below (session drop, log) happens either,
+    because the old password is still the one in force."""
     pf = _password_file()
-    tmp = pf + ".tmp"
     if not pw:
         content = ""  # cleared — no hash, no username
     else:
@@ -127,9 +158,8 @@ def _set_manage_password(pw, username=None):
         content = _hash_pw(pw)
         if username and username.strip():
             content += "\n" + username.strip()
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(content)
-    os.replace(tmp, pf)
+    if not _atomic_write_text(pf, content):
+        return False
     # A password rotation must revoke old admin session cookies immediately (the
     # pre-cookie model, where the Bearer WAS the password, did so implicitly). The
     # rotating admin's own Bearer still authenticates and /whoami re-mints a fresh
@@ -141,6 +171,7 @@ def _set_manage_password(pw, username=None):
     except Exception:
         pass
     log.info("Manage password %s", "set" if pw else "cleared")
+    return True
 
 
 def _api_token_file():
@@ -161,15 +192,16 @@ def _get_api_token():
 
 
 def _generate_api_token():
-    """Generate a new random API token, save to disk, return it. Uses atomic write."""
+    """Generate a new random API token, save to disk, return it.
+
+    Returns None when the token cannot be persisted (read-only media): a
+    token handed out but not on disk would stop authenticating at the next
+    restart, which is worse than a clean refusal now."""
     import secrets
 
     token = secrets.token_urlsafe(32)
-    tf = _api_token_file()
-    tmp = tf + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(token)
-    os.replace(tmp, tf)
+    if not _atomic_write_text(_api_token_file(), token):
+        return None
     log.info("API token generated")
     return token
 
@@ -344,6 +376,181 @@ def _manage_auth_challenge(handler):
     if result == PUBLIC_LOCKED:
         return (403, {"error": "public_locked", "needs_password": False})
     return (401, {"error": "unauthorized", "needs_password": True})
+
+
+# ============================================================================
+# App update check — is a newer ZIMI APPLICATION release out?
+#
+# Deliberately distinct from the ZIM-content "Auto-update" feature
+# (library.py / /manage/auto-update), which refreshes installed ZIM files.
+# Keep every name here prefixed "app_update" so the two can never be
+# conflated in code, endpoints, or UI strings.
+# ============================================================================
+
+_APP_UPDATE_URL = "https://api.github.com/repos/epheterson/Zimi/releases/latest"
+_APP_RELEASES_PAGE = "https://github.com/epheterson/Zimi/releases"
+# Passive reads (opening the Manage server pane) reuse the cached answer for
+# a day; a failed check backs off only an hour so one DNS hiccup doesn't
+# blind the row for 24h. "Check now" bypasses both but keeps a short flood
+# guard — GitHub's anonymous API quota is 60 req/h and a mashed button must
+# not eat it. There is NO boot-time or background caller by design: the only
+# trigger is an admin actually looking at (or poking) the Manage row.
+_APP_UPDATE_TTL = 24 * 3600
+_APP_UPDATE_ERROR_TTL = 3600
+_APP_UPDATE_FORCE_GUARD = 60
+_app_update_lock = threading.Lock()  # single-flight: concurrent admins share one fetch
+
+
+def _app_update_cache_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "app_update.json")
+
+
+def _parse_app_version(tag):
+    """'v1.9.0' / '1.9' / '1.9.0-beta1' → ((1, 9, 0), 'beta1'), else None.
+
+    The numeric tuple (padded to three parts so 1.9 == 1.9.0) drives the
+    comparison; the suffix only marks pre-releases. Unparseable tags return
+    None so a garbage GitHub tag can never masquerade as an update."""
+    m = re.match(r"[vV]?(\d+(?:\.\d+)*)[-+.]?(.*)$", (tag or "").strip())
+    if not m or not m.group(1):
+        return None
+    nums = tuple(int(p) for p in m.group(1).split("."))
+    return (nums + (0,) * 3)[: max(3, len(nums))], m.group(2).strip()
+
+
+def _app_version_newer(remote, current):
+    """True only when `remote` is a strictly newer release than `current`.
+
+    Same-number comparisons are conservative: a final release outranks its
+    own pre-releases, but beta-vs-beta or beta-vs-final never reports an
+    update — better to miss an edge case than nag someone already current."""
+    r, c = _parse_app_version(remote), _parse_app_version(current)
+    if not r or not c:
+        return False
+    rn, cn = r[0], c[0]
+    # Pad to equal length so (1, 9) vs (1, 9, 0, 1) compares positionally.
+    width = max(len(rn), len(cn))
+    rn, cn = rn + (0,) * (width - len(rn)), cn + (0,) * (width - len(cn))
+    if rn != cn:
+        return rn > cn
+    return bool(c[1]) and not r[1]
+
+
+def detect_install_type():
+    """Best-effort: how was this Zimi installed? Drives which upgrade
+    instruction the Manage UI shows — a wrong guess only yields a suboptimal
+    instruction, so lean conservative and fall through to 'pip'.
+
+    Order matters: container/package sandboxes outrank the frozen-app flag
+    because the outermost wrapper decides how you upgrade."""
+    env = os.environ
+    declared = env.get("ZIMI_INSTALL_TYPE", "").strip().lower()
+    if declared:
+        # Escape hatch for packagers (and tests): trust an explicit label.
+        return declared
+    if (
+        os.path.exists("/.dockerenv")
+        or os.path.exists("/run/.containerenv")  # podman's marker file
+        or env.get("container")  # OCI convention (podman, systemd-nspawn)
+    ):
+        return "docker"
+    if env.get("SNAP") and env.get("SNAP_NAME"):
+        return "snap"
+    if env.get("APPIMAGE"):
+        return "appimage"
+    if getattr(sys, "frozen", False) or getattr(sys, "_MEIPASS", None):
+        if sys.platform == "darwin":
+            return "desktop-mac"
+        if sys.platform.startswith("win"):
+            return "desktop-windows"
+        return "desktop"  # frozen Linux build outside an AppImage wrapper
+    paths = "%s %s" % (sys.prefix or "", sys.executable or "")
+    if "/Cellar/" in paths or "/opt/homebrew/" in paths or "/home/linuxbrew/" in paths:
+        # Heuristic only: a plain pip install into a brew-owned Python
+        # matches too. The brew instruction is still the closest fit we can
+        # detect from inside the process.
+        return "homebrew"
+    return "pip"
+
+
+def _read_app_update_cache():
+    try:
+        with open(_app_update_cache_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def check_app_update(force=False):
+    """Return {latest, checked_at, url, error?}, hitting GitHub only when the
+    cached answer is stale (or `force`, for the Check-now button).
+
+    ZIMI_OFFLINE outranks everything including force — zero network calls.
+    Network failures are silent by contract: one debug line, the last good
+    answer keeps serving, and the failure is stamped so passive reads back
+    off instead of re-probing a dead link on every pane visit."""
+    from zimi import p2p  # is_offline() — the single air-gap switch
+
+    if p2p.is_offline():
+        return dict(_read_app_update_cache(), offline=True)
+    now = time.time()
+
+    def _fresh(entry):
+        age = now - entry.get("checked_at", 0)
+        if force:
+            return age < _APP_UPDATE_FORCE_GUARD
+        return age < (_APP_UPDATE_ERROR_TTL if entry.get("error") else _APP_UPDATE_TTL)
+
+    cached = _read_app_update_cache()
+    if _fresh(cached):
+        return cached
+    with _app_update_lock:
+        cached = _read_app_update_cache()  # a concurrent caller may have won
+        if _fresh(cached):
+            return cached
+        try:
+            req = urllib.request.Request(
+                _APP_UPDATE_URL,
+                headers={
+                    "User-Agent": "Zimi/%s (+%s)"
+                    % (_srv.ZIMI_VERSION, _APP_RELEASES_PAGE),
+                    "Accept": "application/vnd.github+json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=10, context=_srv.SSL_CTX) as resp:
+                rel = json.loads(resp.read().decode("utf-8", "replace"))
+            entry = {
+                "checked_at": now,
+                # Tags arrive as "v1.9.0" — store the bare version the UI shows.
+                "latest": (rel.get("tag_name") or "").strip().lstrip("vV"),
+                "url": rel.get("html_url") or _APP_RELEASES_PAGE,
+            }
+        except Exception as e:
+            log.debug("app-update check failed: %s", e)
+            entry = dict(cached, checked_at=now, error=True)
+        _srv._atomic_write_json(_app_update_cache_path(), entry)
+        return entry
+
+
+def _app_update_payload(force=False):
+    """The /manage/app-update response: check state + install-type routing."""
+    from zimi import p2p
+
+    state = check_app_update(force=force)
+    latest = state.get("latest") or None
+    return {
+        "current": _srv.ZIMI_VERSION,
+        "latest": latest,
+        "update_available": bool(
+            latest and _app_version_newer(latest, _srv.ZIMI_VERSION)
+        ),
+        "checked_at": state.get("checked_at") or None,
+        "error": bool(state.get("error")),
+        "offline": p2p.is_offline(),
+        "install_type": detect_install_type(),
+        "releases_url": state.get("url") or _APP_RELEASES_PAGE,
+    }
 
 
 def _cache_info_payload():
@@ -1218,6 +1425,13 @@ def handle_manage_get(handler, parsed, params):
         updates = _srv._check_updates()
         return handler._json(200, {"updates": updates, "count": len(updates)})
 
+    elif parsed.path == "/manage/app-update":
+        # The Zimi APP itself — not /manage/auto-update (ZIM-content refresh)
+        # and not /manage/updates (per-ZIM update list). Passive read: serves
+        # the cached answer, refreshing at most once a day. Never runs at
+        # boot — the only trigger is an admin opening the Manage server pane.
+        return handler._json(200, _app_update_payload())
+
     elif parsed.path == "/manage/downloads":
         return handler._json(200, {"downloads": _srv._get_downloads()})
 
@@ -1733,7 +1947,12 @@ def handle_manage_post(handler, parsed, data):
         new_user = data.get("username")
         if new_user is not None and os.environ.get("ZIMI_MANAGE_USER", "").strip():
             new_user = None
-        _set_manage_password(new_pw, username=new_user)
+        if not _set_manage_password(new_pw, username=new_user):
+            # Generic on purpose: the OSError detail is already in the server
+            # log, and error bodies never carry internal paths or str(e).
+            return handler._json(
+                500, {"error": "Could not save the password (storage is not writable)"}
+            )
         return handler._json(
             200, {"status": "password set" if new_pw else "password cleared"}
         )
@@ -1748,6 +1967,11 @@ def handle_manage_post(handler, parsed, data):
                 400, {"error": "Set a password before generating an API token"}
             )
         token = _generate_api_token()
+        if not token:
+            # Same discipline as set-password above: log has the real reason.
+            return handler._json(
+                500, {"error": "Could not save the API token (storage is not writable)"}
+            )
         return handler._json(200, {"token": token})
     if parsed.path == "/manage/revoke-token":
         challenge = _manage_auth_challenge(handler)
@@ -2137,6 +2361,12 @@ def handle_manage_post(handler, parsed, data):
             200,
             {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq},
         )
+
+    elif parsed.path == "/manage/app-update-check":
+        # "Check now" for the Zimi APP release check — bypasses the daily
+        # cache but keeps a short flood guard (see check_app_update). Distinct
+        # from /manage/auto-update directly above, which is ZIM content.
+        return handler._json(200, _app_update_payload(force=True))
 
     elif parsed.path == "/manage/download-schedule":
         # Night-window queueing + the global download-speed cap. Same env-lock
