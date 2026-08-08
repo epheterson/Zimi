@@ -168,6 +168,16 @@ _POLL_PATHS = frozenset(
         "/manage/mirror",
         "/manage/health",
         "/manage/export-bookmarks",
+        # /metrics is the same shape of traffic from a different client: a
+        # Prometheus scraper polling on a fixed interval (15s is the stock
+        # default, and several replicas may scrape the same target). It is a
+        # cheap in-memory read, so it belongs on the generous content bucket
+        # rather than competing with search for the 60/min API budget. It must
+        # be rate-limited AT ALL, though: it is admin-gated, and that gate can
+        # run PBKDF2 on an attacker-supplied Bearer, so leaving it unlimited
+        # would hand out a CPU-exhaustion oracle that every /manage/ path
+        # already denies.
+        "/metrics",
     )
 )
 
@@ -277,37 +287,243 @@ _metrics = {
 }
 _metrics_lock = threading.Lock()
 
+# The endpoint keys in _metrics are a CLOSED SET of source literals — every
+# _record_metric call site passes a hardcoded string ("/search", "/read",
+# "/chunks", "/suggest", "/snippet", "/random"). That invariant is what makes
+# it safe to publish them as a Prometheus label: label cardinality is bounded
+# by the number of call sites, not by traffic.
+#
+# NEVER pass a request-derived value here (parsed.path, a ZIM name, a query, a
+# user agent). A crawler walking /w/<zim>/<anything> would mint a new time
+# series per URL, and an unbounded label is how you take down the scraper's
+# TSDB from the outside. The cap below is the belt to that suspenders: once we
+# hold this many distinct endpoints, new keys stop being created (existing ones
+# keep counting), the same bounding _SEARCH_QUERY_CAP applies to query stats.
+# It cannot trigger today; it exists so a future careless call site degrades
+# into a missing series instead of a cardinality explosion.
+_METRIC_ENDPOINT_CAP = 64
+
 
 def _record_metric(endpoint, latency, error=False):
     """Record a request metric."""
     with _metrics_lock:
-        _metrics["requests"][endpoint] = _metrics["requests"].get(endpoint, 0) + 1
-        _metrics["latency_sum"][endpoint] = (
-            _metrics["latency_sum"].get(endpoint, 0) + latency
-        )
+        known = endpoint in _metrics["requests"]
+        if known or len(_metrics["requests"]) < _METRIC_ENDPOINT_CAP:
+            _metrics["requests"][endpoint] = _metrics["requests"].get(endpoint, 0) + 1
+            _metrics["latency_sum"][endpoint] = (
+                _metrics["latency_sum"].get(endpoint, 0) + latency
+            )
         if error:
             _metrics["errors"] += 1
 
 
-def _get_metrics():
-    """Get current metrics snapshot."""
+def _metrics_snapshot():
+    """A consistent copy of the RAW counters, taken under one lock acquisition.
+
+    Both renderers (the JSON at /manage/stats and the Prometheus exposition at
+    /metrics) build from this, so they can never disagree about what a request
+    count was, and neither holds the lock while formatting strings. Raw means
+    raw: the latency SUM, not a derived average — Prometheus needs the sum and
+    the count separately, and the JSON does its own rounding.
+    """
     with _metrics_lock:
-        uptime = time.time() - _metrics["start_time"]
-        total_reqs = sum(_metrics["requests"].values())
-        endpoints = {}
-        for ep, count in _metrics["requests"].items():
-            avg_latency = _metrics["latency_sum"].get(ep, 0) / count if count > 0 else 0
-            endpoints[ep] = {
-                "count": count,
-                "avg_latency_ms": round(avg_latency * 1000, 1),
-            }
         return {
-            "uptime_seconds": round(uptime),
-            "total_requests": total_reqs,
+            "start_time": _metrics["start_time"],
+            "requests": dict(_metrics["requests"]),
+            "latency_sum": dict(_metrics["latency_sum"]),
             "errors": _metrics["errors"],
             "rate_limited": _metrics["rate_limited"],
-            "endpoints": endpoints,
         }
+
+
+def _get_metrics():
+    """Get current metrics snapshot.
+
+    This shape is consumed by the admin UI (via /manage/stats) and is frozen —
+    /metrics adds a second rendering of the same counters, it does not replace
+    this one.
+    """
+    snap = _metrics_snapshot()
+    uptime = time.time() - snap["start_time"]
+    total_reqs = sum(snap["requests"].values())
+    endpoints = {}
+    for ep, count in snap["requests"].items():
+        avg_latency = snap["latency_sum"].get(ep, 0) / count if count > 0 else 0
+        endpoints[ep] = {
+            "count": count,
+            "avg_latency_ms": round(avg_latency * 1000, 1),
+        }
+    return {
+        "uptime_seconds": round(uptime),
+        "total_requests": total_reqs,
+        "errors": snap["errors"],
+        "rate_limited": snap["rate_limited"],
+        "endpoints": endpoints,
+    }
+
+
+# ── Prometheus text exposition (GET /metrics) ────────────────────────────────
+#
+# Why a SEPARATE PATH rather than ?format=prometheus or Accept negotiation on
+# the existing JSON:
+#
+#   * There is no JSON caller at /metrics to keep compatible. The snapshot has
+#     never had a URL of its own — it is one field of the admin-only
+#     /manage/stats payload the SPA reads. So "add a format, don't replace one"
+#     is satisfied by construction: /manage/stats is not touched.
+#   * `metrics_path` in a Prometheus scrape_config already defaults to
+#     /metrics. A separate path means an operator writes a target and nothing
+#     else. A query parameter would work (`params: {format: [prometheus]}`) but
+#     it is a stanza every operator has to know about and every copy-pasted
+#     config has to carry — a contortion for zero gain.
+#   * Accept negotiation is the worst of the three: the scraper sends its own
+#     Accept header (an OpenMetrics/text preference list), so we would be
+#     negotiating against a header we do not control, and per-scrape request
+#     headers are a recent and unevenly available Prometheus feature.
+#
+# The exposition follows text format version 0.0.4: HELP and TYPE exactly once
+# per family, counters suffixed _total, latency published as a summary's _sum
+# and _count pair. We deliberately do NOT publish a precomputed average — an
+# average is not aggregatable across instances or over time, which is the whole
+# reason the format wants sum and count. The JSON keeps its avg_latency_ms
+# because the admin UI displays exactly one instance.
+#
+# Not a histogram: a histogram would need bucket boundaries chosen up front and
+# a per-bucket counter recorded at request time, i.e. a change to what
+# _record_metric stores. That is a real upgrade (it buys you quantiles and
+# proper SLO math) and a real cost (more series, and a choice of buckets that is
+# wrong for somebody). It is a deliberate follow-up, not a silent one; today's
+# data is a sum and a count and a summary is its exact, honest mapping.
+
+_PROM_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
+
+# Label-value escaping per the exposition format. Backslash MUST be replaced
+# first, or the backslashes introduced by the quote/newline escapes would
+# themselves be doubled on a later pass.
+_PROM_LABEL_ESCAPES = (("\\", "\\\\"), ('"', '\\"'), ("\n", "\\n"))
+
+
+def _prom_escape(value):
+    """Escape a label value: backslash, double quote, newline."""
+    text = str(value)
+    for raw, escaped in _PROM_LABEL_ESCAPES:
+        text = text.replace(raw, escaped)
+    return text
+
+
+def _prom_labels(labels):
+    """Render ``{k="v",...}`` for a label mapping, or ``""`` when empty."""
+    if not labels:
+        return ""
+    return "{" + ",".join(f'{k}="{_prom_escape(v)}"' for k, v in labels.items()) + "}"
+
+
+def _prom_value(value):
+    """Format a sample value.
+
+    Integers stay exact. Floats get fixed six-decimal notation rather than
+    repr(): exponent form ("1e-05") is legal in the spec but trips naive
+    parsers and is harder to eyeball, and microsecond resolution is more than
+    enough for a latency sum measured in seconds.
+    """
+    if isinstance(value, bool) or isinstance(value, int):
+        return str(int(value))
+    return f"{float(value):.6f}"
+
+
+def _prom_family(lines, name, help_text, metric_type, samples):
+    """Append one metric family to ``lines``: its HELP/TYPE header, then its
+    samples.
+
+    ``samples`` is an iterable of ``(name_suffix, labels, value)``. The suffix
+    exists for summaries, whose samples are ``<name>_sum`` and ``<name>_count``
+    while HELP and TYPE are declared once, on the base name. Emitting the
+    header exactly once per family is not cosmetic — a second HELP or TYPE for
+    a name already seen is a hard parse error at the scraper, which drops the
+    whole scrape, not just the offending line.
+    """
+    lines.append(f"# HELP {name} {help_text}")
+    lines.append(f"# TYPE {name} {metric_type}")
+    for suffix, labels, value in samples:
+        lines.append(f"{name}{suffix}{_prom_labels(labels)} {_prom_value(value)}")
+
+
+def _prometheus_metrics(zim_count=0, version=None):
+    """Render the current counters as Prometheus text exposition (a str ending
+    in a newline — the format requires a trailing newline).
+
+    Takes ``zim_count``/``version`` as arguments rather than reading server
+    state so the renderer stays a pure function of its inputs and can be tested
+    without a ZIM library on disk.
+    """
+    snap = _metrics_snapshot()
+    lines = []
+
+    # The conventional way to expose a version: a constant-1 gauge carrying the
+    # version as a label, so a dashboard can join on it and an upgrade shows up
+    # as a label change rather than an unhelpful numeric series.
+    _prom_family(
+        lines,
+        "zimi_build_info",
+        "Zimi build information; always 1, the version lives in the label.",
+        "gauge",
+        [("", {"version": version or _srv.ZIMI_VERSION}, 1)],
+    )
+    _prom_family(
+        lines,
+        "zimi_uptime_seconds",
+        "Seconds since this Zimi process started.",
+        "gauge",
+        [("", None, int(round(time.time() - snap["start_time"])))],
+    )
+    _prom_family(
+        lines,
+        "zimi_zim_files",
+        "ZIM files currently visible to this instance.",
+        "gauge",
+        [("", None, int(zim_count))],
+    )
+
+    # Sorted so the output is stable between scrapes. Prometheus does not care
+    # about ordering, but a stable byte layout makes diffs and tests readable.
+    endpoints = sorted(snap["requests"])
+    _prom_family(
+        lines,
+        "zimi_http_requests_total",
+        "Instrumented HTTP requests handled, by endpoint.",
+        "counter",
+        [("", {"endpoint": ep}, snap["requests"][ep]) for ep in endpoints],
+    )
+    _prom_family(
+        lines,
+        "zimi_http_request_duration_seconds",
+        "Instrumented HTTP request latency, by endpoint.",
+        "summary",
+        [
+            sample
+            for ep in endpoints
+            for sample in (
+                ("_sum", {"endpoint": ep}, float(snap["latency_sum"].get(ep, 0.0))),
+                ("_count", {"endpoint": ep}, snap["requests"][ep]),
+            )
+        ],
+    )
+    _prom_family(
+        lines,
+        "zimi_http_errors_total",
+        "Instrumented requests that ended in a handler error.",
+        "counter",
+        [("", None, snap["errors"])],
+    )
+    _prom_family(
+        lines,
+        "zimi_http_rate_limited_total",
+        "Requests rejected with 429 by the rate limiter.",
+        "counter",
+        [("", None, snap["rate_limited"])],
+    )
+
+    return "\n".join(lines) + "\n"
 
 
 # ============================================================================
@@ -1082,6 +1298,39 @@ class ZimHandler(BaseHTTPRequestHandler):
                     },
                 )
 
+            elif parsed.path == "/metrics":
+                # Gated by the SAME admin challenge as /manage/stats, which is
+                # where these counters have always been readable. Request
+                # volumes and endpoint mix are operational intelligence about a
+                # private library; nothing here becomes public. Concretely:
+                # passwordless + private client → allowed (unchanged legacy
+                # open-admin rule); passwordless + non-private client → 403
+                # public_locked; password set → Bearer (admin password or API
+                # token) or an admin session cookie.
+                #
+                # A scraper cannot carry a session cookie, so the API token is
+                # the supported path: Prometheus `authorization: {credentials:
+                # <token>}` sends exactly the Bearer header _primary_admin_
+                # authorized already accepts. No new credential type, no
+                # metrics-only bypass — one more way in is one more thing to
+                # get wrong.
+                from zimi import manage as _manage
+
+                challenge = _manage._manage_auth_challenge(self)
+                if challenge:
+                    return self._json(*challenge)
+                body = _prometheus_metrics(
+                    zim_count=len(_srv.get_zim_files()),
+                    version=_srv.ZIMI_VERSION,
+                )
+                # no-store: a cached scrape is a lying scrape.
+                return self._send(
+                    200,
+                    body.encode("utf-8"),
+                    _PROM_CONTENT_TYPE,
+                    cache="no-store",
+                )
+
             elif parsed.path == "/random":
                 zim = param("zim")  # optional: scope to specific ZIM
                 if zim:
@@ -1352,6 +1601,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                             "/list",
                             "/catalog",
                             "/health",
+                            "/metrics",
                             "/w/",
                         ],
                     },
