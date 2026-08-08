@@ -6514,14 +6514,19 @@ function _enrichCatalogInstalled(items) {
   // "canadian_prep_winterprepping" for a file actually named
   // "canadian_prepper_winterprepping_en_2026-02.zim"). Falling back to the
   // prefix derived from the download URL recovers those cases.
+  //
+  // Two passes over the items. Prefix alone conflates flavor editions:
+  // "mdwiki_en_all" prefix-matches the installed mdwiki_en_all_maxi_* file,
+  // so the unsuffixed video-build entry claimed a maxi install (and vice
+  // versa) — the badge, delete button, and update pick all pointed at the
+  // wrong edition (#50). Pass 1 therefore requires the filename flavor token
+  // to agree. Pass 2 is the loose fallback for files NO entry claimed, so an
+  // install whose exact flavor Kiwix has since delisted still shows as
+  // installed instead of inviting a duplicate download.
   if (!zimsCache) return;
-  for (const item of items) {
-    item.installed = false;
-    item._installedDate = null;
-    item._installedFile = null;
-    item._installedName = null;
-    item._installedSizeGb = null;
 
+  const claimed = new Set();
+  const tryMatch = (item, strict) => {
     // Build candidate prefixes to match installed filenames against.
     const prefixes = [item.name];
     if (item.download_url) {
@@ -6532,20 +6537,32 @@ function _enrichCatalogInstalled(items) {
       const urlPrefix = fname.replace(/_\d{4}-\d{2}$/, '');
       if (urlPrefix && urlPrefix !== item.name) prefixes.push(urlPrefix);
     }
-
+    const itemTok = _flavorToken(item.download_url || item.name);
     for (const z of zimsCache) {
       const fb = (z.file || '').replace(/\.zim$/, '');
-      const hit = prefixes.some(p => fb === p || fb.startsWith(p + '_'));
-      if (hit) {
-        item.installed = true;
-        const m = fb.match(/(\d{4}-\d{2})$/);
-        item._installedDate = m ? m[1] : null;
-        item._installedFile = z.file;
-        item._installedName = z.name;
-        item._installedSizeGb = z.size_gb;
-        break;
-      }
+      if (!prefixes.some(p => fb === p || fb.startsWith(p + '_'))) continue;
+      if (strict ? _flavorToken(fb) !== itemTok : claimed.has(z.file)) continue;
+      item.installed = true;
+      const m = fb.match(/(\d{4}-\d{2})$/);
+      item._installedDate = m ? m[1] : null;
+      item._installedFile = z.file;
+      item._installedName = z.name;
+      item._installedSizeGb = z.size_gb;
+      claimed.add(z.file);
+      return;
     }
+  };
+
+  for (const item of items) {
+    item.installed = false;
+    item._installedDate = null;
+    item._installedFile = null;
+    item._installedName = null;
+    item._installedSizeGb = null;
+    tryMatch(item, true);
+  }
+  for (const item of items) {
+    if (!item.installed) tryMatch(item, false);
   }
 }
 
@@ -6630,8 +6647,10 @@ function buildFeaturedCarousel(items) {
       || allMatches.find(function(g) { return (g.language || '').startsWith('en'); });
     if (!best) continue;
     var variants = best.variants || [best];
+    // Sibling URLs keep colliding labels apart (unsuffixed vs maxi, #50).
+    var vUrls = variants.map(function(v) { return v.download_url; });
     var withLabels = variants.filter(function(v) { return v.download_url; }).map(function(v) {
-      return { label: variantLabel(v.download_url) || t('full'), size: formatSize(v.size_bytes), url: v.download_url, bytes: v.size_bytes || 0 };
+      return { label: variantLabel(v.download_url, vUrls) || t('full'), size: formatSize(v.size_bytes), url: v.download_url, bytes: v.size_bytes || 0 };
     });
     withLabels.sort(function(a, b) { return _flavorOrder(b.url) - _flavorOrder(a.url); }); // Full first
     if (!withLabels.length) continue;
@@ -7001,40 +7020,75 @@ function groupVariants(items) {
     if (item.article_count > (groups[key].article_count || 0)) groups[key].article_count = item.article_count;
     if (item.summary && !groups[key].summary) groups[key].summary = item.summary;
     if (item.icon_url && !groups[key].icon_url) groups[key].icon_url = item.icon_url;
+    // The card's date tag should reflect the group's NEWEST edition, not
+    // whichever entry the catalog happened to list first.
+    if ((item.date || '') > (groups[key].date || '')) groups[key].date = item.date;
   }
+  // Same name + same flavor token = two DATE EDITIONS of one build, not two
+  // flavors. Rendering both gives identically-labeled rows that invite a
+  // second, redundant download (#50) — keep only the newest edition of each.
+  for (const g of Object.values(groups)) g.variants = _newestPerFlavor(g.variants);
   return Object.values(groups);
 }
 
-function variantLabel(url) {
+// Flavor token from a ZIM filename or download URL — the client twin of
+// library.py's _detect_flavor. The token in the filename is the only flavor
+// signal the client and server share; the OPDS `flavour` field is unreliable
+// (empty on Kiwix's unsuffixed complete builds). null = the unsuffixed build.
+function _flavorToken(url) {
+  const f = ((url || '').split('/').pop() || '').replace(/\.zim(\.meta4)?$/, '');
+  if (/(^|_)maxi(_|$)/.test(f)) return 'maxi';
+  if (/(^|_)nopic(_|$)/.test(f)) return 'nopic';
+  if (/(^|_)mini(_|$)/.test(f)) return 'mini';
+  return null;
+}
+
+// Collapse same-flavor-token entries (date editions of one build) down to the
+// newest edition. Items must carry download_url + date (OPDS shape).
+function _newestPerFlavor(list) {
+  const out = [];
+  for (const item of list) {
+    // No URL = nothing downloadable to conflate; never merge those, and never
+    // let one displace a real entry (that would drop the group's only URL).
+    const i = item.download_url
+      ? out.findIndex(v => v.download_url && _flavorToken(v.download_url) === _flavorToken(item.download_url))
+      : -1;
+    if (i < 0) out.push(item);
+    else if ((item.date || '') > (out[i].date || '')) out[i] = item;
+  }
+  return out;
+}
+
+// siblingUrls (optional): download URLs of the other variants in the same
+// group. Needed to disambiguate Kiwix's unsuffixed complete build: alone it
+// reads as the default "Full", but next to a maxi sibling (mdwiki_en_all,
+// wikipedia_en_100, ...) both would say "Full" while differing by gigabytes
+// of video (#50) — so the unsuffixed one must say what it adds.
+function variantLabel(url, siblingUrls) {
   if (!url) return '';
-  const f = url.split('/').pop() || '';
-  if (f.includes('_maxi_')) return t('full');
-  if (f.includes('_nopic_')) return t('no_images');
-  if (f.includes('_mini_')) return t('mini');
+  const tok = _flavorToken(url);
+  if (tok === 'maxi') return t('full');
+  if (tok === 'nopic') return t('no_images');
+  if (tok === 'mini') return t('mini');
+  if (siblingUrls && siblingUrls.some(u => u && u !== url && _flavorToken(u) === 'maxi')) {
+    return t('full_video');
+  }
   return '';
 }
 
 // Higher = preferred. Highest score belongs to the user's preferred flavor.
 // Used by sort callers — DESC sort puts the preferred flavor first.
+// maxi outranks the unsuffixed complete build under the "full" preference:
+// that preference promises articles+images, not a surprise multi-GB video
+// edition — the video build stays an explicit dropdown choice (#50).
+const _FLAVOR_RANKS = {
+  full:  { maxi: 4, plain: 3, nopic: 2, mini: 1 },
+  nopic: { nopic: 4, maxi: 3, plain: 2, mini: 1 },
+  mini:  { mini: 4, nopic: 3, maxi: 2, plain: 1 },
+};
 function _flavorOrder(url) {
-  const isMini = url.includes('_mini_');
-  const isNopic = url.includes('_nopic_');
-  const isFull = !isMini && !isNopic;
-  const pref = _getPrefFlavor();
-  if (pref === 'mini') {
-    if (isMini) return 3;
-    if (isNopic) return 2;
-    return 1;
-  }
-  if (pref === 'nopic') {
-    if (isNopic) return 3;
-    if (isFull) return 2;
-    return 1;
-  }
-  // default 'full'
-  if (isFull) return 3;
-  if (isNopic) return 2;
-  return 1;
+  const ranks = _FLAVOR_RANKS[_getPrefFlavor()] || _FLAVOR_RANKS.full;
+  return ranks[_flavorToken(url) || 'plain'];
 }
 
 function renderCatalogItem(group) {
@@ -7059,11 +7113,17 @@ function renderCatalogItem(group) {
   let actionsHtml = '';
   if (anyInstalled) {
     const instVariant = variants.find(v => v.installed) || item;
-    const hasUpdate = instVariant._installedDate && item.date && instVariant._installedDate < item.date.substring(0, 7);
+    // An update must be the SAME flavor edition as the installed file. The
+    // old "first non-installed variant" pick could hand a maxi install the
+    // group's unsuffixed video build — a 10+ GB different edition downloaded
+    // ALONGSIDE the existing one instead of replacing it (#50, echoes #16).
+    const instTok = _flavorToken(instVariant._installedFile || '');
+    const updVariant = variants.find(v => v.download_url && _flavorToken(v.download_url) === instTok) || instVariant;
+    const hasUpdate = instVariant._installedDate && updVariant.date && updVariant.download_url
+      && instVariant._installedDate < updVariant.date.substring(0, 7);
     if (hasUpdate) {
       // Update available — show update button (same style as manage view)
-      const updUrl = variants.find(v => v.download_url && !v.installed);
-      actionsHtml = '<button class="ci-update-btn" onclick="downloadZim(\'' + escAttr((updUrl || item).download_url) + '\', this, true)" title="' + escAttr(t('from_to_update', {from: instVariant._installedDate, to: item.date})) + '">' +
+      actionsHtml = '<button class="ci-update-btn" onclick="downloadZim(\'' + escAttr(updVariant.download_url) + '\', this, true)" title="' + escAttr(t('from_to_update', {from: instVariant._installedDate, to: updVariant.date})) + '">' +
         tH('update') + '</button>';
     } else {
       actionsHtml = '<span class="ci-installed-badge">' + tH('installed_badge') + '</span>';
@@ -7072,8 +7132,11 @@ function renderCatalogItem(group) {
       actionsHtml += '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(instVariant._installedFile) + '\', this)" title="' + escAttr(t('delete_zim')) + '">\u00D7</button>';
     }
   } else {
+    // Sibling URLs disambiguate colliding labels (unsuffixed vs maxi → both
+    // "Full" without them, see variantLabel).
+    const vUrls = variants.map(v => v.download_url);
     const withLabels = variants.filter(v => v.download_url).map(v => {
-      const label = variantLabel(v.download_url) || t('full');
+      const label = variantLabel(v.download_url, vUrls) || t('full');
       const size = formatSize(v.size_bytes);
       return { label, size, url: v.download_url, bytes: v.size_bytes || 0 };
     });
@@ -10260,9 +10323,12 @@ function renderInstalled(filterText) {
       // stay on the YYYY-MM release stamp.
       const dateStr = z.date ? (_isZimiExport(z) ? z.date : z.date.substring(0, 7)) : null;
       if (dateStr) meta.push(dateStr);
-      // Flavor badge from filename
-      const flavor = variantLabel(z.file);
+      // Flavor badge from filename. When catalog variants exist, the current
+      // variant's label is group-aware — an installed unsuffixed build shows
+      // "Full + video" next to a maxi sibling instead of a second "Full" (#50).
       const variants = getFlavorVariants(z);
+      const _curVariant = variants.find(v => v.current);
+      const flavor = _curVariant ? _curVariant.label : variantLabel(z.file);
       // Show flavor as clickable pill if alternatives exist, otherwise just text
       if (variants.length > 1) {
         const vid = '_fv_' + z.name;
@@ -10482,25 +10548,29 @@ async function _revokeToken() {
 }
 
 function getFlavorVariants(installedZim) {
-  // Find catalog variants that match this installed ZIM's base name
+  // Find catalog variants that match this installed ZIM's base name.
+  // Same-token date editions collapse to the newest — two dropdown rows for
+  // one build would both read as the same flavor (#50).
   if (!_catalogCache) return [];
   // Installed file: "wikipedia_en_all_maxi_2024-05.zim" → base: "wikipedia_en_all"
   const fb = (installedZim.file || '').replace(/\.zim$/, '');
-  const matching = _catalogCache.filter(item => {
+  const matching = _newestPerFlavor(_catalogCache.filter(item => {
     return fb.startsWith(item.name + '_') || fb === item.name;
-  });
+  }));
   if (matching.length <= 1) return [];
-  // Build variant list with labels and sizes
-  const currentFlavor = variantLabel(installedZim.file) || 'Full';
+  // "Current" compares filename flavor TOKENS, not rendered labels: label
+  // equality marked BOTH mdwiki builds current (both read "Full"), leaving
+  // two checkmarks and nothing switchable (#50). Sorting by token (not the
+  // English label strings) also survives translation.
+  const instTok = _flavorToken(installedZim.file);
+  const urls = matching.map(item => item.download_url);
+  const rank = u => ({ mini: 0, nopic: 1, maxi: 2 })[_flavorToken(u)] ?? 3;
   return matching.map(item => ({
-    label: variantLabel(item.download_url) || 'Full',
+    label: variantLabel(item.download_url, urls) || t('full'),
     size: formatSize(item.size_bytes),
     url: item.download_url,
-    current: (variantLabel(item.download_url) || 'Full') === currentFlavor,
-  })).sort((a, b) => {
-    const order = { 'Mini': 0, 'No images': 1, 'Full': 2 };
-    return (order[a.label] ?? 1) - (order[b.label] ?? 1);
-  });
+    current: _flavorToken(item.download_url) === instTok,
+  })).sort((a, b) => rank(a.url) - rank(b.url));
 }
 
 function showFlavorPicker(btn, zimName, variants) {
@@ -10516,7 +10586,7 @@ function showFlavorPicker(btn, zimName, variants) {
   const popup = document.createElement('div');
   popup.className = 'flavor-popup';
   popup.id = 'flavor-popup';
-  let html = '<div class="flavor-popup-title">Choose flavor</div>';
+  let html = '<div class="flavor-popup-title">' + tH('choose_flavor') + '</div>';
   for (const v of variants) {
     if (v.current) {
       html += '<div class="flavor-option current">' +
