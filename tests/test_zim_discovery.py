@@ -262,14 +262,30 @@ def test_scan_skips_dot_directories(scan_dir):
     assert server._scan_zim_files() == {}
 
 
-def test_scan_collision_larger_file_wins_across_directories(scan_dir):
-    """Same basename in root and a subfolder: one entry survives, and it is
-    the larger file regardless of which directory holds it."""
+def test_scan_collision_root_always_wins(scan_dir):
+    """Same basename in root and a subfolder: the ROOT copy serves, even when
+    the subfolder copy is larger. Retired the original larger-file-wins rule
+    after the first real library: a corrupt-quarantine/ held a bigger, broken
+    copy of a healthy root file, and larger-wins would have served the corrupt
+    one. Root is where downloads land and where the operator curates."""
     _touch_zim(scan_dir, "dup_en_all_2026-01.zim", size=4)
     _touch_zim(os.path.join(scan_dir, "sub"), "dup_en_all_2026-01.zim", size=64)
     zims = server._scan_zim_files()
     assert list(zims) == ["dup"]
-    assert zims["dup"] == os.path.join(scan_dir, "sub", "dup_en_all_2026-01.zim")
+    assert zims["dup"] == os.path.join(scan_dir, "dup_en_all_2026-01.zim")
+
+
+def test_scan_skips_quarantine_eadir_and_nozim(scan_dir):
+    """The deny list and the .nozim marker keep non-library folders out:
+    quarantines hold files pulled OUT of service, @eaDir is Synology junk,
+    and .nozim is the documented opt-out for staging/archive folders."""
+    _touch_zim(scan_dir, "good_en_all_2026-01.zim", size=4)
+    _touch_zim(os.path.join(scan_dir, "corrupt-quarantine"), "bad_en_all_2026-01.zim", size=64)
+    _touch_zim(os.path.join(scan_dir, "@eaDir"), "junk_en_all_2026-01.zim", size=4)
+    _touch_zim(os.path.join(scan_dir, "archive"), "old_en_all_2026-01.zim", size=4)
+    open(os.path.join(scan_dir, "archive", ".nozim"), "w").close()
+    zims = server._scan_zim_files()
+    assert sorted(zims) == ["good"]
 
 
 def test_scan_collision_size_tie_keeps_the_root_copy(scan_dir):

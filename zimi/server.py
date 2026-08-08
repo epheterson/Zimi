@@ -1507,53 +1507,64 @@ def _zim_short_name(filename):
     return name
 
 
+# Subdirectories the one-level scan must never treat as library content.
+# Learned from the first real deployment, not invented: Eric's NAS carries a
+# corrupt-quarantine/ full of ZIMs the kiwix-zim updater script deliberately
+# pulled OUT of service after failed integrity checks, and Synology mints
+# @eaDir metadata trees beside everything it touches. Serving quarantined
+# files back to readers is the exact opposite of what a quarantine means.
+_SCAN_SKIP_DIRS = {
+    "@eadir",  # Synology metadata
+    "lost+found",  # fsck droppings
+    "system volume information",  # Windows-formatted sticks
+    "corrupt-quarantine",  # kiwix-zim's convention for failed integrity checks
+    "quarantine",
+}
+_SCAN_IGNORE_MARKER = ".nozim"  # drop this file in any subfolder to opt it out
+
+
 def _scan_zim_files():
     """Scan ZIM_DIR plus exactly one level of subdirectories for ZIM files.
     Returns {short_name: path} mapping.
 
-    Collision rule (documented, deliberate): root-level files are scanned
-    before subdirectory files, each group sorted; when two files produce the
-    same short name (maxi vs mini flavors, or the same file present both in
-    the root and in a subfolder) the LARGER file wins so the richest content
-    is served, and a size tie keeps the earlier — root — copy, so a duplicate
-    dropped into a subfolder can never displace the file already being served.
-    Every collision is logged. glob's `*` never matches dotted names, so the
-    `.zimi` state directory is not scanned as content; deeper nesting is
-    deliberately out of scope (the empty-library boot hint says so).
+    Subfolder eligibility: dotted names are never scanned (glob semantics, so
+    `.zimi` stays state, not content), the deny list above is skipped, and a
+    subfolder containing a `.nozim` marker file is skipped — that is the
+    documented way to keep a staging or archive folder beside the library.
+
+    Collision rule (documented, deliberate): a ROOT-level file always beats a
+    subfolder file with the same short name. The root of the library is where
+    downloads land and where the operator curates; a same-name copy in a
+    subfolder is a backup, an old edition, or a quarantined reject, and none
+    of those should ever displace the file being served. The original
+    larger-file-wins rule was retired after one real library: it would have
+    preferred a quarantined corrupt copy over the healthy root file had their
+    sizes leaned that way. Between two SUBFOLDER files with the same name,
+    first in sorted order wins. Every collision is logged.
     """
     zims = {}
-    paths = sorted(glob.glob(os.path.join(ZIM_DIR, "*.zim"))) + sorted(
-        glob.glob(os.path.join(ZIM_DIR, "*", "*.zim"))
-    )
-    for path in paths:
+    root_paths = sorted(glob.glob(os.path.join(ZIM_DIR, "*.zim")))
+    sub_paths = []
+    for sub in sorted(glob.glob(os.path.join(ZIM_DIR, "*", ""))):
+        base = os.path.basename(sub.rstrip(os.sep))
+        if base.lower() in _SCAN_SKIP_DIRS:
+            continue
+        if os.path.exists(os.path.join(sub, _SCAN_IGNORE_MARKER)):
+            log.info("Skipping %s (has %s marker)", base, _SCAN_IGNORE_MARKER)
+            continue
+        sub_paths.extend(sorted(glob.glob(os.path.join(sub, "*.zim"))))
+    for path in root_paths + sub_paths:
         filename = os.path.basename(path)
         name = _zim_short_name(filename)
         if name in zims:
-            existing = zims[name]
-            try:
-                existing_size = os.path.getsize(existing)
-                new_size = os.path.getsize(path)
-            except OSError:
-                existing_size = new_size = 0
-            if new_size > existing_size:
-                log.info(
-                    "ZIM name collision '%s': %s (%.1f GB) replaces %s (%.1f GB)",
-                    name,
-                    filename,
-                    new_size / _BYTES_PER_GB,
-                    os.path.basename(existing),
-                    existing_size / _BYTES_PER_GB,
-                )
-                zims[name] = path
-            else:
-                log.info(
-                    "ZIM name collision '%s': keeping %s (%.1f GB), skipping %s (%.1f GB)",
-                    name,
-                    os.path.basename(existing),
-                    existing_size / _BYTES_PER_GB,
-                    filename,
-                    new_size / _BYTES_PER_GB,
-                )
+            # Root files were inserted first, so whatever holds the slot
+            # outranks this later, deeper path by construction.
+            log.info(
+                "ZIM name collision '%s': keeping %s, ignoring %s",
+                name,
+                os.path.relpath(zims[name], ZIM_DIR),
+                os.path.relpath(path, ZIM_DIR),
+            )
         else:
             zims[name] = path
     return zims
@@ -2239,16 +2250,28 @@ def register_zim_file(path, removed_files=()):
         log.warning("register_zim_file: cannot stat %s: %s", path, e)
         return False
 
-    # Mirror _scan_zim_files' collision rule: when a DIFFERENT file already
-    # backs this short name, the larger file keeps serving. The routine case
-    # — an update replacing an older dated file the caller just deleted —
-    # falls through because the old path no longer stats.
+    # Mirror _scan_zim_files' collision rule: a root-level file always beats a
+    # subfolder file for the same short name — the root is where downloads
+    # land and where the operator curates; a same-name subfolder copy is a
+    # backup, an old edition, or a quarantined reject. Registration only ever
+    # lands files in the root, so an existing ROOT holder that still stats is
+    # only displaced by this new root file, while an existing SUBFOLDER holder
+    # always yields. The routine case — an update replacing an older dated
+    # file the caller just deleted — falls through because the old path no
+    # longer stats.
     existing_path = _zim_files_cache.get(name)
     if existing_path and os.path.realpath(existing_path) != os.path.realpath(path):
         try:
-            if os.path.getsize(existing_path) >= st.st_size:
+            os.stat(existing_path)
+            existing_in_root = os.path.dirname(
+                os.path.realpath(existing_path)
+            ) == os.path.realpath(ZIM_DIR)
+            new_in_root = os.path.dirname(os.path.realpath(path)) == os.path.realpath(
+                ZIM_DIR
+            )
+            if existing_in_root and not new_in_root:
                 log.info(
-                    "ZIM name collision '%s': keeping %s, new %s stays shadowed",
+                    "ZIM name collision '%s': keeping root %s, new %s stays shadowed",
                     name,
                     os.path.basename(existing_path),
                     filename,
