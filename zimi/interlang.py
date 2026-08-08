@@ -138,7 +138,6 @@ def _detect_query_language(query):
 # This avoids a 24-hour upfront scan of the 115GB English Wikipedia while
 # still providing authoritative Q-ID matching on first use.
 
-_QID_INDEX_DIR = os.path.join(_srv.ZIMI_DATA_DIR, "qids")
 _QID_INDEX_VERSION = "3"
 _QID_RE = re.compile(rb"wikidata\.org/wiki/(Q\d+)")
 # Authority control Q-ID pattern (article's own Q-ID, not cited references)
@@ -182,12 +181,19 @@ _qid_db_pool = {}  # {zim_name: sqlite3.Connection}
 _qid_db_pool_lock = threading.Lock()
 
 
+def _qid_index_dir():
+    """Where Q-ID indexes live. A function, not a constant: ZIMI_DATA_DIR can be
+    repointed after import (CLI flag, desktop settings), and a frozen value
+    would leave these indexes behind in the old data dir."""
+    return os.path.join(_srv.ZIMI_DATA_DIR, "qids")
+
+
 def _qid_index_path(zim_name):
-    return os.path.join(_QID_INDEX_DIR, f"{zim_name}.qid.db")
+    return os.path.join(_qid_index_dir(), f"{zim_name}.qid.db")
 
 
 def _qid_cache_path():
-    return os.path.join(_QID_INDEX_DIR, "_qid_cache.db")
+    return os.path.join(_qid_index_dir(), "_qid_cache.db")
 
 
 def _get_qid_db(zim_name):
@@ -215,7 +221,7 @@ def _build_qid_index(zim_name, zim_path):
     Opens a dedicated Archive handle (not from the pool) so this is safe
     to run without _zim_lock. Only used for small ZIMs (< 200K entries).
     """
-    os.makedirs(_QID_INDEX_DIR, exist_ok=True)
+    os.makedirs(_qid_index_dir(), exist_ok=True)
     db_path = _qid_index_path(zim_name)
     tmp_path = db_path + ".tmp"
     for suffix in ("", "-shm", "-wal"):
@@ -338,7 +344,7 @@ def _get_qid_cache():
     with _qid_cache_lock:
         if _qid_cache_conn is not None:
             return _qid_cache_conn
-        os.makedirs(_QID_INDEX_DIR, exist_ok=True)
+        os.makedirs(_qid_index_dir(), exist_ok=True)
         conn = sqlite3.connect(_qid_cache_path(), timeout=5, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
@@ -824,7 +830,7 @@ def _build_all_qid_indexes_inner():
     Phase 2: For all ZIMs without an index, sample one article to detect Q-ID support.
     Sets has_qids on _zim_list_cache entries and persists to disk cache.
     """
-    os.makedirs(_QID_INDEX_DIR, exist_ok=True)
+    os.makedirs(_qid_index_dir(), exist_ok=True)
     zims = _srv.get_zim_files()
     zim_info = {
         z.get("name"): z.get("entries", 0) for z in (_srv._zim_list_cache or [])
@@ -863,8 +869,9 @@ def _build_all_qid_indexes_inner():
 
     # Clean stale indexes + .tmp orphans from interrupted builds (SIGKILL
     # mid-build leaves <name>.qid.db.tmp files that aren't tracked anymore).
-    for f in os.listdir(_QID_INDEX_DIR):
-        full = os.path.join(_QID_INDEX_DIR, f)
+    index_dir = _qid_index_dir()
+    for f in os.listdir(index_dir):
+        full = os.path.join(index_dir, f)
         if (
             f.endswith(".qid.db.tmp")
             or f.endswith(".qid.db.tmp-shm")

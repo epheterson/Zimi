@@ -20,12 +20,7 @@ import zimi.server as server  # noqa: E402
 @pytest.fixture(autouse=True)
 def _reset(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "ZIM_DIR", str(tmp_path))
-    monkeypatch.setattr(
-        server,
-        "_DOWNLOAD_SCHEDULE_CONFIG",
-        str(tmp_path / "download_schedule.json"),
-        raising=False,
-    )
+    monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path))
     monkeypatch.delenv("ZIMI_DL_WINDOW", raising=False)
     with library._download_lock:
         library._active_downloads.clear()
@@ -197,7 +192,7 @@ def test_upload_window_idempotent_no_transition(monkeypatch):
 
 
 def test_malformed_persisted_times_fall_back():
-    cfg = server._DOWNLOAD_SCHEDULE_CONFIG
+    cfg = library._download_schedule_config_path()
     with open(cfg, "w") as f:
         f.write('{"enabled": true, "start": "nope", "end": "99:99"}')
     sched = library._load_download_schedule()

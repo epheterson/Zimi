@@ -362,12 +362,6 @@ def _seed_server_state(monkeypatch, tmp_path):
     from zimi import p2p
     from zimi import users as _users
 
-    monkeypatch.setattr(
-        server,
-        "_DOWNLOAD_SCHEDULE_CONFIG",
-        str(tmp_path / "data" / "download_schedule.json"),
-        raising=False,
-    )
     p2p.set_prefs_path(str(tmp_path / "data" / "bt_prefs.json"))
     _users._save_users({"alice": {"name": "alice", "pw": "HASH", "role": "user"}})
     _users.set_public_access("open")
@@ -490,12 +484,6 @@ def test_server_restore_roundtrips_v3_fields(monkeypatch, tmp_path):
     _setup(monkeypatch, tmp_path)
     _seed_server_state(monkeypatch, tmp_path)
     monkeypatch.setattr(manage, "admin_kind", lambda h: "primary")
-    monkeypatch.setattr(
-        server,
-        "_AUTO_UPDATE_CONFIG",
-        str(tmp_path / "data" / "auto_update.json"),
-        raising=False,
-    )
     monkeypatch.delenv("ZIMI_HOT_ZIMS", raising=False)
     monkeypatch.delenv("ZIMI_AUTO_UPDATE", raising=False)
     monkeypatch.setattr(server, "_auto_update_env_locked", False, raising=False)

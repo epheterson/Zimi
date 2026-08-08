@@ -60,7 +60,7 @@ class _Handler:
 class _QidFixtureMixin:
     def _setup_qids(self):
         self.tmp = tempfile.mkdtemp(prefix="zimi-alm-")
-        self._patch_dir = mock.patch.object(_interlang, "_QID_INDEX_DIR", self.tmp)
+        self._patch_dir = mock.patch.object(_interlang, "_qid_index_dir", lambda: self.tmp)
         self._patch_dir.start()
         # Isolate the pooled connections + on-demand cache for the temp dir.
         self._saved_pool = dict(_interlang._qid_db_pool)

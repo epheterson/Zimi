@@ -27,8 +27,11 @@ Table of contents (this file: ~980 lines)
     zimi/previews.py  (~600 lines)   — content preview extraction
 
 Configuration:
-  ZIM_DIR      Path to directory containing *.zim files (default: /zims)
-  ZIMI_MANAGE  Enabled by default; set to "0" to disable management endpoints
+  ZIM_DIR        Path to directory containing *.zim files (default: /zims)
+  ZIMI_DATA_DIR  Where Zimi keeps its own state (default: <ZIM_DIR>/.zimi)
+  ZIMI_MANAGE    Enabled by default; set to "0" to disable management endpoints
+
+  `serve` also takes --zim-dir/--data-dir/--host; a flag beats the env var.
 
 Usage (CLI):
   zimi search "water purification" --limit 10
@@ -251,10 +254,51 @@ logging.basicConfig(
     format="%(asctime)s %(message)s", datefmt="%H:%M:%S", level=logging.INFO
 )
 
-ZIM_DIR = os.environ.get("ZIM_DIR", "/zims")
+DEFAULT_ZIM_DIR = "/zims"
+DEFAULT_DATA_DIR_NAME = ".zimi"
+DEFAULT_HOST = "0.0.0.0"
+
+
+def resolve_data_paths(zim_dir_flag=None, data_dir_flag=None, env=None):
+    """Resolve ``(ZIM_DIR, ZIMI_DATA_DIR)`` from flags and environment.
+
+    Precedence is flag > environment > default, and the default data dir
+    follows whichever ZIM dir won — so ``--zim-dir`` alone moves the state
+    with it, while an explicit ``ZIMI_DATA_DIR`` stays put. Pure so the
+    precedence rules can be tested without touching the process globals.
+    """
+    env = os.environ if env is None else env
+    zim_dir = (
+        zim_dir_flag
+        if zim_dir_flag is not None
+        else env.get("ZIM_DIR", DEFAULT_ZIM_DIR)
+    )
+    if data_dir_flag is not None:
+        data_dir = data_dir_flag
+    else:
+        data_dir = env.get(
+            "ZIMI_DATA_DIR", os.path.join(zim_dir, DEFAULT_DATA_DIR_NAME)
+        )
+    return zim_dir, data_dir
+
+
+ZIM_DIR, ZIMI_DATA_DIR = resolve_data_paths()
 ZIMI_MANAGE = os.environ.get("ZIMI_MANAGE", "1") == "1"
-ZIMI_DATA_DIR = os.environ.get("ZIMI_DATA_DIR", os.path.join(ZIM_DIR, ".zimi"))
 _initialized = False
+
+
+def apply_data_paths(zim_dir_flag=None, data_dir_flag=None):
+    """Rebind the path globals from CLI flags, before anything reads them.
+
+    Every consumer resolves ``_srv.ZIM_DIR`` / ``_srv.ZIMI_DATA_DIR`` at call
+    time (no module derives a constant from either), so rebinding here is
+    enough — but only if it happens before ``_init()`` creates the data dir
+    and runs migrations. ``main()`` calls this immediately after argparse and
+    before ``load_cache()``.
+    """
+    global ZIM_DIR, ZIMI_DATA_DIR
+    ZIM_DIR, ZIMI_DATA_DIR = resolve_data_paths(zim_dir_flag, data_dir_flag)
+    return ZIM_DIR, ZIMI_DATA_DIR
 
 
 def _init():
@@ -1629,6 +1673,23 @@ def main():
 
     p_serve = sub.add_parser("serve", help="Start HTTP API server")
     p_serve.add_argument("--port", type=int, default=8899)
+    # default=None, not the real default: it is how apply_data_paths tells
+    # "flag omitted" (fall through to the env var) from "flag given".
+    p_serve.add_argument(
+        "--zim-dir",
+        default=None,
+        help=f"Directory containing *.zim files (overrides ZIM_DIR, default: {DEFAULT_ZIM_DIR})",
+    )
+    p_serve.add_argument(
+        "--data-dir",
+        default=None,
+        help=f"Directory for Zimi's own state (overrides ZIMI_DATA_DIR, default: <zim-dir>/{DEFAULT_DATA_DIR_NAME})",
+    )
+    p_serve.add_argument(
+        "--host",
+        default=DEFAULT_HOST,
+        help=f"Address to bind (default: {DEFAULT_HOST})",
+    )
     p_serve.add_argument(
         "--ui",
         action="store_true",
@@ -1641,6 +1702,11 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Before anything can read a path: argparse runs long after the module-level
+    # env read, so the flags have to be folded back into the globals here.
+    if args.command == "serve":
+        apply_data_paths(args.zim_dir, args.data_dir)
 
     if args.command == "search":
         results = search_all(args.query, limit=args.limit, filter_zim=args.zim)
@@ -1745,7 +1811,7 @@ def main():
 
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
-        server = ThreadingHTTPServer(("0.0.0.0", args.port), ZimHandler)
+        server = ThreadingHTTPServer((args.host, args.port), ZimHandler)
         # Emit READY <actual-port> so wrapper scripts (CI smoke tests, the
         # desktop launcher) can capture the bound port — important when
         # --port 0 is used to let the OS pick a free port.
@@ -1978,6 +2044,7 @@ from zimi.search import (  # noqa: E402, F401
     # Title index
     _get_title_db,
     _close_title_db,
+    _title_index_dir,
     _title_index_path,
     _title_index_is_current,
     _build_title_index,
@@ -2050,7 +2117,7 @@ from zimi.interlang import (  # noqa: E402, F401
 
 from zimi.library import (  # noqa: E402, F401
     # Auto-update
-    _AUTO_UPDATE_CONFIG,
+    _auto_update_config_path,
     _auto_update_env_locked,
     _load_auto_update_config,
     _save_auto_update_config,

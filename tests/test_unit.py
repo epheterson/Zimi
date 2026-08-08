@@ -1016,15 +1016,15 @@ class TestAutoUpdateConfig(unittest.TestCase):
 
         self.zimi = zimi
         self.tmpdir = tempfile.mkdtemp()
-        self._orig = self.zimi._AUTO_UPDATE_CONFIG
-        self.zimi._AUTO_UPDATE_CONFIG = os.path.join(self.tmpdir, "auto_update.json")
+        self._orig = self.zimi.ZIMI_DATA_DIR
+        self.zimi.ZIMI_DATA_DIR = self.tmpdir
         self._orig_locked = self.zimi._auto_update_env_locked
         self.zimi._auto_update_env_locked = False
 
     def tearDown(self):
         import shutil
 
-        self.zimi._AUTO_UPDATE_CONFIG = self._orig
+        self.zimi.ZIMI_DATA_DIR = self._orig
         self.zimi._auto_update_env_locked = self._orig_locked
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 

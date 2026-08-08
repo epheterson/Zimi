@@ -144,15 +144,21 @@ def _is_trusted_kiwix_url(url):
 
 # If ZIMI_AUTO_UPDATE env var is set, it's an admin override (UI locked).
 # If not set, the UI controls it and settings persist to disk.
-_AUTO_UPDATE_CONFIG = os.path.join(_srv.ZIMI_DATA_DIR, "auto_update.json")
 _auto_update_env_locked = "ZIMI_AUTO_UPDATE" in os.environ
+
+
+def _auto_update_config_path():
+    """Where auto-update settings persist. A function, not a constant: the data
+    dir isn't final at import time (CLI flag, desktop settings), and freezing
+    this path is how a repointed data dir used to end up split in two."""
+    return os.path.join(_srv.ZIMI_DATA_DIR, "auto_update.json")
 
 
 def _load_auto_update_config():
     """Load auto-update settings. Env var overrides; otherwise use persisted config."""
     # Look up through _srv so test monkey-patches on server.py propagate
     locked = getattr(_srv, "_auto_update_env_locked", _auto_update_env_locked)
-    config_path = getattr(_srv, "_AUTO_UPDATE_CONFIG", _AUTO_UPDATE_CONFIG)
+    config_path = _auto_update_config_path()
     if locked:
         enabled = os.environ.get("ZIMI_AUTO_UPDATE", "0") == "1"
         freq = os.environ.get("ZIMI_UPDATE_FREQ", "weekly")
@@ -167,7 +173,7 @@ def _load_auto_update_config():
 
 def _save_auto_update_config(enabled, freq):
     """Persist auto-update settings to disk."""
-    config_path = getattr(_srv, "_AUTO_UPDATE_CONFIG", _AUTO_UPDATE_CONFIG)
+    config_path = _auto_update_config_path()
     _srv._atomic_write_json(config_path, {"enabled": enabled, "frequency": freq})
 
 
@@ -347,7 +353,6 @@ def _download_rate_bps():
 # a background watcher promotes them once the window opens. Disabled by default
 # (new downloads start right away — the pre-existing behavior). Times are
 # minutes-since-local-midnight; a window may span midnight (start > end).
-_DOWNLOAD_SCHEDULE_CONFIG = os.path.join(_srv.ZIMI_DATA_DIR, "download_schedule.json")
 _DEFAULT_WINDOW_START = "01:00"
 _DEFAULT_WINDOW_END = "07:00"
 # Trickle cap (KB/s) applied to seeding when uploads are restricted to the
@@ -359,6 +364,13 @@ _schedule_watcher_thread = None
 # Last (restrict, in_window) tuple pushed to the BT session by the upload
 # restrictor, so a 60s tick only touches libtorrent on an actual transition.
 _upload_window_applied = None
+
+
+def _download_schedule_config_path():
+    """Where the download window persists. A function, not a constant, for the
+    same reason as _auto_update_config_path(): ZIMI_DATA_DIR can move after
+    import and every piece of state has to move with it."""
+    return os.path.join(_srv.ZIMI_DATA_DIR, "download_schedule.json")
 
 
 def _parse_hhmm(s):
@@ -402,7 +414,7 @@ def _load_download_schedule():
                 "upload_restrict": False,
                 "upload_trickle_kb": _DEFAULT_UPLOAD_TRICKLE_KB,
             }
-    cfg_path = getattr(_srv, "_DOWNLOAD_SCHEDULE_CONFIG", _DOWNLOAD_SCHEDULE_CONFIG)
+    cfg_path = _download_schedule_config_path()
     try:
         with open(cfg_path, encoding="utf-8") as f:
             cfg = json.loads(f.read())
@@ -458,7 +470,7 @@ def _save_download_schedule(
         trickle = max(1, int(upload_trickle_kb))
     except (ValueError, TypeError):
         trickle = _DEFAULT_UPLOAD_TRICKLE_KB
-    cfg_path = getattr(_srv, "_DOWNLOAD_SCHEDULE_CONFIG", _DOWNLOAD_SCHEDULE_CONFIG)
+    cfg_path = _download_schedule_config_path()
     try:
         _srv._atomic_write_json(
             cfg_path,

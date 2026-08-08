@@ -34,7 +34,6 @@ def _start_server(zim_dir, port=0):
     zimi.ZIMI_DATA_DIR = os.path.join(zim_dir, ".zimi")
     os.makedirs(zimi.ZIMI_DATA_DIR, exist_ok=True)
     zimi.ZIMI_MANAGE = True
-    zimi._TITLE_INDEX_DIR = os.path.join(zimi.ZIMI_DATA_DIR, "titles")
     zimi.load_cache()
 
     server = ThreadingHTTPServer(("127.0.0.1", port), zimi.ZimHandler)

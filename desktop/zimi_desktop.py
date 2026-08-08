@@ -176,7 +176,6 @@ class ServerThread(threading.Thread):
             zimi.ZIMI_DATA_DIR = self.data_dir
             os.makedirs(zimi.ZIMI_DATA_DIR, exist_ok=True)
             zimi.ZIMI_MANAGE = True
-            zimi._TITLE_INDEX_DIR = os.path.join(zimi.ZIMI_DATA_DIR, "titles")
             zimi.load_cache()
             zimi._migrate_data_files()
 
@@ -741,7 +740,6 @@ def _serve_headless():
     zimi.ZIMI_DATA_DIR = data_dir
     os.makedirs(zimi.ZIMI_DATA_DIR, exist_ok=True)
     zimi.ZIMI_MANAGE = True
-    zimi._TITLE_INDEX_DIR = os.path.join(zimi.ZIMI_DATA_DIR, "titles")
     zimi.load_cache()
     zimi._migrate_data_files()
 
