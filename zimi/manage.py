@@ -552,6 +552,25 @@ def _apply_library_layout(overrides, order, sections=None):
 _BACKUP_SCHEMA = "zimi-backup"
 _BACKUP_SCHEMA_VERSION = 3
 
+# Every restorable state key a bundle can carry, in plan order. The headless
+# CLI (`zimi restore`) reports "skipped" as the bundle keys the apply plan did
+# not touch (env-locked settings, server keys riding on a device-scope
+# bundle), so this list must stay in lockstep with the labels that
+# _compute_backup and _plan_server_scope emit.
+_BUNDLE_STATE_KEYS = (
+    "collections",
+    "library_layout",
+    "users",
+    "public_access",
+    "schedule",
+    "bt_prefs",
+    "seed_intents",
+    "hot_zims",
+    "auto_update",
+    "history",
+    "user_data",
+)
+
 
 def _bundle_scope(data):
     """The scope a bundle declares. Missing (v1 bundles) → 'device'. Anything

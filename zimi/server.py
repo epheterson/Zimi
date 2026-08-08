@@ -107,6 +107,13 @@ _MAINTENANCE_INTERVAL = 12 * 3600
 _background_services_started = False
 
 
+def _bt_prefs_path():
+    """Where the BT/sharing prefs live. One derivation shared by the serve
+    boot and the headless backup/restore CLI — if the two disagreed, a CLI
+    backup would silently carry empty sharing prefs."""
+    return os.path.join(ZIMI_DATA_DIR, "bt", "prefs.json")
+
+
 def start_background_services(http_port):
     """P2P init, download resume, NAT/UPnP probe, LAN discovery, mirror
     upkeep, and the 12h maintenance loop — shared by the serve CLI and
@@ -125,7 +132,7 @@ def start_background_services(http_port):
 
     # Prefs path must be set before the first request can read/write BT
     # settings — cheap, so it stays synchronous.
-    p2p.set_prefs_path(os.path.join(ZIMI_DATA_DIR, "bt", "prefs.json"))
+    p2p.set_prefs_path(_bt_prefs_path())
 
     # Registered unconditionally, not just when the startup start succeeds:
     # the session can come up LATER (port change, mirror enable, lazy
@@ -1872,6 +1879,128 @@ def load_cache(force=False):
 # ============================================================================
 
 
+def _cli_die(msg):
+    """One-line CLI refusal, exit code 2 — the same convention main() uses for
+    a ConfigError. No traceback: these are operator mistakes, not bugs."""
+    print(f"zimi: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def _headless_state_boot():
+    """Point the state machinery at the resolved paths WITHOUT a running
+    server. Backup-before-upgrade is the whole point of the CLI, so it must
+    work while Zimi is stopped: load_cache() runs _init() (data-dir creation +
+    migrations) and fills the library metadata cache, and the BT prefs path —
+    normally wired up by start_background_services(), which never runs here —
+    is set explicitly so sharing prefs actually reach the bundle."""
+    from zimi import p2p
+
+    p2p.set_prefs_path(_bt_prefs_path())
+    load_cache()
+
+
+def _cli_backup(file_arg):
+    """`zimi backup [FILE]` — write a server-scope bundle (the same payload as
+    GET /manage/backup?scope=server) to a local file."""
+    from zimi import manage as _manage
+
+    _headless_state_boot()
+    bundle = _manage._build_backup_bundle(scope="server")
+    path = os.path.abspath(file_arg or time.strftime("zimi-backup-%Y-%m-%d.json"))
+    payload = json.dumps(bundle, ensure_ascii=False, indent=2)
+    try:
+        # 0600 from the first byte: the bundle carries password hashes, so
+        # there must be no window in which another local user can read it. The
+        # explicit chmod covers a pre-existing file — O_CREAT's mode argument
+        # only applies when the file is actually created.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(payload)
+        os.chmod(path, 0o600)
+    except OSError as e:
+        _cli_die(f"cannot write {path}: {e.strerror or e}")
+    pa = bundle.get("public_access") or {}
+    coll = bundle.get("collections") or {}
+    print(f"Backup written: {path}")
+    print(
+        f"  scope: server (schema v{bundle['schema_version']}, "
+        f"zimi {bundle['zimi_version']})"
+    )
+    print(
+        f"  library manifest: {len(bundle.get('library') or [])} ZIM(s) "
+        "(metadata only — ZIM files are re-downloadable, not bundled)"
+    )
+    print(
+        f"  users: {len(bundle.get('users') or {})} account(s), "
+        f"public access: {pa.get('mode', '?')}"
+    )
+    print(
+        f"  collections: {len(coll.get('collections') or {})}, "
+        f"favorites: {len(coll.get('favorites') or [])}"
+    )
+    print(
+        "  settings: download schedule, auto-update, sharing prefs, "
+        f"{len(bundle.get('seed_intents') or {})} seed intent(s), "
+        f"{len(bundle.get('hot_zims') or [])} hot ZIM(s)"
+    )
+    print(
+        f"  history: {len(bundle.get('history') or [])} event(s), "
+        f"per-user data: {len(bundle.get('user_data') or {})} user(s)"
+    )
+    print(
+        "Note: this bundle includes user password hashes; "
+        "file mode is 0600 — keep it private."
+    )
+
+
+def _cli_restore(path, overwrite):
+    """`zimi restore FILE [--overwrite]` — apply a bundle with the same
+    merge/overwrite semantics as POST /manage/backup. Headless and ungated:
+    whoever can run the CLI against the data dir already owns it."""
+    from zimi import manage as _manage
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        _cli_die(f"backup file not found: {path}")
+    except IsADirectoryError:
+        _cli_die(f"not a file: {path}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        _cli_die(f"not a valid backup (malformed JSON): {path}")
+    except OSError as e:
+        _cli_die(f"cannot read {path}: {e.strerror or e}")
+    # The HTTP route tolerates a missing schema key (hand-assembled payloads);
+    # the CLI does not — a stray JSON file (say, zimi.json) fed to `restore`
+    # must refuse outright, not half-apply.
+    if not isinstance(data, dict) or data.get("schema") != _manage._BACKUP_SCHEMA:
+        _cli_die(f"not a Zimi backup bundle: {path}")
+
+    _headless_state_boot()
+    result, err = _manage._apply_backup_bundle(data, overwrite=overwrite)
+    if err:
+        _cli_die(f"restore failed: {err}")
+    applied = result["applied"]
+    # Present-but-untouched keys: env-locked settings (ZIMI_HOT_ZIMS,
+    # ZIMI_AUTO_UPDATE) or server keys riding on a device-scope bundle, which
+    # the plan deliberately strips. Saying so beats a silent partial restore.
+    skipped = [k for k in _manage._BUNDLE_STATE_KEYS if k in data and k not in applied]
+    preview = result["preview"]
+    print(
+        f"Restored from {path} (scope: {preview['scope']}, "
+        f"mode: {'overwrite' if overwrite else 'merge'})"
+    )
+    print("  applied: " + (", ".join(applied) if applied else "nothing (empty bundle)"))
+    if skipped:
+        print("  skipped: " + ", ".join(skipped))
+    missing = preview.get("missing_zims")
+    if missing:
+        print(
+            f"  note: {missing} ZIM(s) in the bundle's library manifest are not "
+            "installed; re-download them from the catalog"
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(description="ZIM Knowledge Base Reader")
     sub = parser.add_subparsers(dest="command")
@@ -1937,6 +2066,34 @@ def main():
         "config", help="Print the resolved configuration and where each value came from"
     )
     add_boot_flags(p_config)
+
+    # backup/restore take the same boot flags as serve/config so they operate
+    # on exactly the paths a `serve` with the same arguments would use — the
+    # point is backing up the RIGHT instance, not whichever one env defaults
+    # happen to name.
+    p_backup = sub.add_parser(
+        "backup",
+        help="Write a full-server backup bundle (users, access policy, "
+        "settings, collections) to a JSON file",
+    )
+    p_backup.add_argument(
+        "file",
+        nargs="?",
+        default=None,
+        help="Output path (default: ./zimi-backup-<date>.json)",
+    )
+    add_boot_flags(p_backup)
+
+    p_restore = sub.add_parser(
+        "restore", help="Apply a backup bundle (merges by default)"
+    )
+    p_restore.add_argument("file", help="Backup bundle (JSON) to apply")
+    p_restore.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace matching state wholesale instead of merging",
+    )
+    add_boot_flags(p_restore)
 
     sub.add_parser(
         "desktop",
@@ -2014,6 +2171,12 @@ def main():
             print(
                 f"  {z['name']:40s} {z['size_gb']:>8.1f} GB  {entries:>10} entries  ({z['file']})"
             )
+
+    elif args.command == "backup":
+        _cli_backup(args.file)
+
+    elif args.command == "restore":
+        _cli_restore(args.file, args.overwrite)
 
     elif args.command == "desktop" or (args.command == "serve" and args.ui):
         try:
