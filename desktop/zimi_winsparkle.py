@@ -108,6 +108,18 @@ def _bind_signatures(dll):
     # init / cleanup / check_* take no args and return void — ctypes defaults fine.
 
 
+def _offline():
+    """ZIMI_OFFLINE=1 — the same air-gap switch the server (zimi/p2p.py)
+    and the mac launcher honor. Parsed locally because this module
+    deliberately imports nothing from zimi (see module docstring)."""
+    return os.environ.get("ZIMI_OFFLINE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def _resolve_appcast_url(explicit=None):
     """Feed URL to use: explicit arg > ZIMI_APPCAST_URL env > production default.
 
@@ -129,6 +141,11 @@ def init_updater(version, appcast_url=None, pubkey=WINSPARKLE_EDDSA_PUBLIC_KEY):
     own thread and message loop.
     """
     global _dll
+    # Air-gap gate first, before any DLL lookup: "disabled" means the
+    # WinSparkle machinery is never loaded, not loaded-and-silenced.
+    if _offline():
+        _log_once("ZIMI_OFFLINE set — auto-update disabled")
+        return False
     appcast_url = _resolve_appcast_url(appcast_url)
     dll_path = _find_dll()
     if not dll_path:
