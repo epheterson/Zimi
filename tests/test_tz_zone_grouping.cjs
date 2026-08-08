@@ -1,9 +1,10 @@
 // A time zone is its OFFSET, not one polygon part.
 //
-// zimi/static/tz-borders.json stores 117 entries over only 40 distinct offsets:
-// the build dissolved Natural Earth by offset and then emitted one entry per
-// polygon PART, so a single civil zone is spread across several entries —
-// India's +5:30 is three (mainland, Lakshadweep, the Andamans), +6 is seven.
+// zimi/static/tz-borders.json (v3, timezone-boundary-builder 2026c) stores 310
+// entries over 38 distinct offsets: the build dissolves tz-database zones to
+// standard-offset regions and emits one entry per polygon PART, so a single
+// civil zone is spread across several entries — India's +5:30 is five
+// (mainland+Sri Lanka, Lakshadweep, the Andamans and two fragments), +6 is 13.
 //
 // The sun map used to resolve a pick to the ONE entry containing it and light
 // only that entry, which meant clicking Delhi lit the Indian mainland and left
@@ -13,21 +14,24 @@
 //
 // What is asserted:
 //
-//   1. Grouping — _tzGroupByOffset partitions all 117 entries into exactly 40
+//   1. Grouping — _tzGroupByOffset partitions all 310 entries into exactly 38
 //      offset groups, losing and duplicating nothing.
 //   2. Multi-part lighting — a pick inside ONE India polygon builds a highlight
-//      covering all three +5:30 entries, and the other two India dots land
-//      inside it. Same for a multi-part zone on the other side of the world.
-//   3. Fill rule — the shipped highlight fills NONZERO, and the data justifies
-//      it: same-offset entries genuinely OVERLAP (the Antarctic wedges), which
-//      even-odd would punch into holes, while every enclave hole ring winds
-//      AGAINST its outer ring, which is what makes nonzero still cut holes.
+//      covering all +5:30 entries, and the other two India dots land inside
+//      it. Same for a multi-part zone on the other side of the world.
+//   3. Fill rule — the shipped highlight fills NONZERO. In v3 the zones come
+//      from ONE polygonized linework, so same-offset entries never overlap
+//      (asserted) and nonzero agrees with even-odd everywhere — what keeps
+//      nonzero cutting enclaves is that every hole ring winds AGAINST its
+//      outer ring (also asserted).
 //   4. City dots — every _MAP_CITIES dot resolves through the shipped scan into
 //      a real polygon (no dot adrift in a geometry gap), and the offset it
 //      resolves to matches its true IANA zone's standard offset, except for a
-//      commented list of places where the SHIPPED ASSET is politically stale
-//      or Antarctica's nominal wedges deliberately disagree with the station
-//      clock.
+//      commented list of places where the polygon is AHEAD of the host tzdata
+//      or of the anchor resolver. The 13 politically-stale v2 zones (Russia
+//      2014, Istanbul 2016, Caracas 2016, Casablanca 2018, Norfolk 2015,
+//      Almaty 2024, Ittoqqortoormiit 2024) and Antarctica's nominal wedges
+//      are gone: those cities now assert like any other.
 //
 // Same vm-extraction approach as tests/test_tz_borders.cjs: the shipped
 // functions are pulled out of almanac.js by source markers and run against the
@@ -98,8 +102,8 @@ function pathFor(off, W, H) {
 // ── 1. Grouping is a partition ─────────────────────────────────────────────
 const offKeys = Object.keys(byOffset);
 const grouped = offKeys.reduce((n, k) => n + byOffset[k].length, 0);
-check(offKeys.length === 40, `grouping yields 40 distinct offsets (${offKeys.length})`);
-check(grouped === doc.zones.length && doc.zones.length === 117,
+check(offKeys.length === 38, `grouping yields 38 distinct offsets (${offKeys.length})`);
+check(grouped === doc.zones.length && doc.zones.length === 310,
   `grouping totals ${grouped} entries across ${offKeys.length} offsets (asset has ${doc.zones.length})`);
 const seenEntries = new Set();
 let dupes = 0, misfiled = 0;
@@ -112,7 +116,7 @@ for (const k of offKeys) {
 }
 check(dupes === 0 && misfiled === 0 && seenEntries.size === doc.zones.length,
   'every entry lands in exactly one group, under its own offset');
-check(byOffset[330].length === 3 && byOffset[360].length === 7,
+check(byOffset[330].length === 5 && byOffset[360].length === 13,
   `the split zones group: +5:30 has ${byOffset[330].length} entries, +6 has ${byOffset[360].length}`);
 
 // ── 2. A pick in one part lights every part ────────────────────────────────
@@ -154,19 +158,14 @@ check(litAt(indiaPath, KAVARATTI[0], KAVARATTI[1]),
   'Kavaratti (Lakshadweep, a separate +5:30 entry) lights with it');
 check(litAt(indiaPath, PORT_BLAIR[0], PORT_BLAIR[1]),
   'Port Blair (Andamans, a third +5:30 entry) lights with it');
-// Each of the three entries contributes lit area, so this is a union, not one
-// part that happens to cover the others.
-let indiaPartsLit = 0;
-for (const entry of byOffset[330]) {
-  const ring = entry[1][0];
-  // a vertex-adjacent interior probe: the ring centroid is inside for these
-  // simple parts, and the whole-group path must light it.
-  let cx = 0, cy = 0, n = ring.length / 2;
-  for (let j = 0; j < ring.length; j += 2) { cx += ring[j]; cy += ring[j + 1]; }
-  cx /= n; cy /= n;
-  if (contains(entry[1], cx, cy) && litAt(indiaPath, cy, cx)) indiaPartsLit++;
-}
-check(indiaPartsLit === 3, `all 3 +5:30 parts contribute lit area (${indiaPartsLit})`);
+// The three dots sit in three DISTINCT entries — one lit pick genuinely unions
+// separate polygon parts, not one part that happens to cover the others.
+// (Ring-centroid probes are no longer usable here: the v3 Andamans ring is a
+// concave island chain whose centroid falls in the sea beside it.)
+const entryIndexOf = (lat, lon) => doc.zones.findIndex((z) => contains(z[1], lon, lat));
+const indiaEntries = new Set([DELHI, KAVARATTI, PORT_BLAIR].map(([la, lo]) => entryIndexOf(la, lo)));
+check(indiaEntries.size === 3 && !indiaEntries.has(-1),
+  `Delhi, Kavaratti and Port Blair sit in 3 distinct +5:30 entries (${[...indiaEntries].join(', ')})`);
 
 // A multi-part zone on the other side of the world: +8 is China+SE Asia and an
 // Antarctic wedge. Perth and Beijing are in the same entry; Casey Station is in
@@ -196,7 +195,10 @@ check(!litAt(indiaPath, 40.71, -74.01) && !litAt(p8, 51.51, -0.13),
 check(/c\.fill\(p\);/.test(alm) && !/c\.fill\(p, 'evenodd'\)/.test(alm),
   "highlight fills nonzero (c.fill(p)), not even-odd");
 
-// 3a. Same-offset entries really do overlap — the reason even-odd is wrong.
+// 3a. Same-offset entries never overlap. v2's Natural Earth wedges overlapped
+// in Antarctica (which made nonzero mandatory); v3 polygonizes ONE shared
+// linework into disjoint faces, so any overlap found here means the build's
+// tiling guarantee broke and a pick could double-count under nonzero.
 function bbox(rings) {
   let b = [999, 999, -999, -999];
   for (const r of rings) for (let j = 0; j < r.length; j += 2) {
@@ -205,7 +207,7 @@ function bbox(rings) {
   }
   return b;
 }
-let overlapPairs = 0, overlapMinLat = 90;   // becomes the northernmost overlapping POINT
+let overlapPairs = 0;
 for (const k of offKeys) {
   const g = byOffset[k];
   for (let a = 0; a < g.length; a++) for (let b = a + 1; b < g.length; b++) {
@@ -213,22 +215,17 @@ for (const k of offKeys) {
     if (A[0] > B[2] || B[0] > A[2] || A[1] > B[3] || B[1] > A[3]) continue;
     const x0 = Math.max(A[0], B[0]), x1 = Math.min(A[2], B[2]);
     const y0 = Math.max(A[1], B[1]), y1 = Math.min(A[3], B[3]);
-    let hit = false, topLat = -90;
-    for (let i = 0; i <= 60; i++) for (let j = 0; j <= 60; j++) {
+    let hit = false;
+    for (let i = 0; i <= 60 && !hit; i++) for (let j = 0; j <= 60 && !hit; j++) {
       const lon = x0 + (x1 - x0) * i / 60, lat = y0 + (y1 - y0) * j / 60;
-      if (contains(g[a][1], lon, lat) && contains(g[b][1], lon, lat)) {
-        hit = true;
-        topLat = Math.max(topLat, lat);   // where the overlap actually IS
-      }
+      if (contains(g[a][1], lon, lat) && contains(g[b][1], lon, lat)) hit = true;
     }
-    if (hit) { overlapPairs++; overlapMinLat = Math.max(overlapMinLat === 90 ? -90 : overlapMinLat, topLat); }
+    if (hit) overlapPairs++;
   }
 }
-check(overlapPairs > 0,
-  `same-offset entries overlap (${overlapPairs} pairs) — even-odd would punch these into holes`);
-check(overlapMinLat < -60,
-  `every overlap is Antarctic — northernmost overlapping POINT is at ${overlapMinLat.toFixed(1)} lat, ` +
-  'so no populated place is at risk of being punched out');
+check(overlapPairs === 0,
+  `same-offset entries are disjoint (${overlapPairs} overlapping pairs) — ` +
+  'the polygonized tiling holds, so nonzero and even-odd agree everywhere');
 
 // 3b. Enclave holes wind against their outer ring, which is what lets nonzero
 // keep cutting them. If a regenerated asset ever normalised all rings to one
@@ -303,36 +300,25 @@ function tzOffsetMin(tz, d) {
 }
 const stdOffset = (tz) => Math.min(tzOffsetMin(tz, JAN), tzOffsetMin(tz, JUL));
 
-// The exceptions, each with its reason. NONE of these is fixable in
-// _MAP_CITIES — the dots' coordinates are right; the SHIPPED ASSET's polygons
-// carry offsets that are either politically stale (Natural Earth's 10m Time
-// Zones is a 2010s snapshot) or, in Antarctica, deliberately nominal. Fixing
-// them means regenerating tz-borders.json, not editing the city list.
+// The exceptions, each with its reason. The v2 STALE_ASSET list (13 cities
+// where Natural Earth predated 2014-2024 political changes, plus two nominal
+// Antarctic wedges) is GONE — v3's timezone-boundary-builder source carries
+// them all correctly, and those cities assert below like any other. What
+// remains is the opposite class: places where the 2026c ASSET knows more than
+// this test's yardsticks do.
 //
-// [name prefix, true IANA zone, polygon offset, why]
-const STALE_ASSET = [
-  ['Moscow', 'Europe/Moscow', 240, 'asset predates Russia dropping permanent DST in 2014 (+4 -> +3)'],
-  ['St. Petersburg', 'Europe/Moscow', 240, 'same 2014 Russian change'],
-  ['Kaliningrad', 'Europe/Kaliningrad', 180, 'same 2014 Russian change (+3 -> +2)'],
-  ['Irkutsk', 'Asia/Irkutsk', 540, 'same 2014 Russian change (+9 -> +8)'],
-  ['Yakutsk', 'Asia/Yakutsk', 600, 'same 2014 Russian change (+10 -> +9)'],
-  ['Vladivostok', 'Asia/Vladivostok', 660, 'same 2014 Russian change (+11 -> +10)'],
-  ['Verkhoyansk', 'Asia/Vladivostok', 660, 'same 2014 Russian change'],
-  ['Istanbul', 'Europe/Istanbul', 120, 'asset predates Turkey going permanent +3 in 2016'],
-  ['Casablanca', 'Africa/Casablanca', 0, 'asset predates Morocco going permanent +1 in 2018'],
-  ['Caracas', 'America/Caracas', -270, 'asset predates Venezuela returning to -4 in 2016'],
-  ['Kingston, Norfolk', 'Pacific/Norfolk', 690, 'asset predates Norfolk Island moving to +11 in 2015'],
-  ['Almaty', 'Asia/Almaty', 360, 'asset predates Kazakhstan unifying on +5 in 2024'],
-  ['Ittoqqortoormiit', 'America/Scoresbysund', -60, 'asset predates Greenland moving Scoresbysund to -2 in 2024'],
-  // Antarctica has no native time zones: Natural Earth fills it with nominal
-  // hour-wide longitude wedges, while each station keeps its supply country's
-  // clock. A wedge disagreeing with the station is CORRECT DATA on both sides.
-  ['Vostok', 'Antarctica/Vostok', 360, 'Antarctic nominal wedge; Vostok keeps +5 (Russian resupply)'],
-  ['Palmer', 'Antarctica/Palmer', -240, 'Antarctic nominal wedge; Palmer keeps -3 (Chilean resupply)'],
+// [name prefix, polygon offset, why]
+const POLYGON_EXCEPTIONS = [
+  ['Vancouver', -420, '2026c encodes BC going permanent -7 (merged with America/Phoenix ' +
+    'in the -now source); this host\'s ICU tzdata still has America/Vancouver on -8/-7, ' +
+    'so the Intl-based yardstick lags the asset'],
+  ['Amman', 180, 'the polygon carries Jordan\'s true permanent +3 (since 2022); the anchor ' +
+    'RESOLVER has no Jordan anchor and falls to a +2 neighbour — a documented ' +
+    'KNOWN_RESIDUAL of tests/test_almanac_tz_resolution.cjs, not an asset defect'],
 ];
-const exceptionFor = (name) => STALE_ASSET.find((e) => name.indexOf(e[0]) === 0);
+const exceptionFor = (name) => POLYGON_EXCEPTIONS.find((e) => name.indexOf(e[0]) === 0);
 
-let matched = 0, unexplained = [], staleConfirmed = 0, staleDrifted = [];
+let matched = 0, unexplained = [], exceptionsConfirmed = 0, exceptionsDrifted = [];
 for (const c of cities) {
   const off = offsetAt(c.lat, c.lon);
   const ex = exceptionFor(c.name);
@@ -343,12 +329,12 @@ for (const c of cities) {
     matched++;
     continue;
   }
-  if (off === ex[2] && stdOffset(ex[1]) !== ex[2]) staleConfirmed++;
-  else staleDrifted.push(`${c.name}: polygon ${fmtOff(off)}, expected exception ${fmtOff(ex[2])}, true ${fmtOff(stdOffset(ex[1]))}`);
+  if (off === ex[1]) exceptionsConfirmed++;
+  else exceptionsDrifted.push(`${c.name}: polygon ${fmtOff(off)}, documented ${fmtOff(ex[1])}`);
 }
-check(staleDrifted.length === 0,
-  `all ${staleConfirmed} documented asset/reality disagreements still read exactly as documented` +
-  (staleDrifted.length ? ' (drifted: ' + staleDrifted.join(' | ') + ')' : ''));
+check(exceptionsDrifted.length === 0,
+  `all ${exceptionsConfirmed} documented polygon exceptions still read exactly as documented` +
+  (exceptionsDrifted.length ? ' (drifted: ' + exceptionsDrifted.join(' | ') + ')' : ''));
 
 // The unexceptional dots: polygon offset must equal the true zone's standard
 // offset. The true zone comes from the shipped anchor resolver, which
@@ -365,20 +351,25 @@ for (const c of cities) {
   if (off !== std) unexplained.push(`${c.name} (${c.lat},${c.lon}): polygon ${fmtOff(off)} vs zone standard ${fmtOff(std)}`);
 }
 check(unexplained.length === 0,
-  `every unexcepted city dot sits in a polygon carrying its zone's standard offset (${cities.length - STALE_ASSET.length} dots)` +
+  `every unexcepted city dot sits in a polygon carrying its zone's standard offset (${cities.length - POLYGON_EXCEPTIONS.length} dots)` +
   (unexplained.length ? '\n    ' + unexplained.join('\n    ') : ''));
+// When a yardstick catches up (ICU learns BC's -7; a Jordan anchor lands),
+// surface it so the exception gets retired rather than fossilising.
+for (const c of cities) {
+  const ex = exceptionFor(c.name);
+  if (ex && stdOffset(tzFor(c.lat, c.lon)) === ex[1]) {
+    console.log(`NOTE ${c.name}: yardstick now agrees with the polygon — retire its POLYGON_EXCEPTIONS entry`);
+  }
+}
 
 // ── 5. Antarctica, factually ───────────────────────────────────────────────
 // Reported because Eric asked directly: is Antarctica one zone or many here?
-const antarcticOffsets = new Set();
-let antarcticEntries = 0;
-for (const z of doc.zones) {
-  const b = bbox(z[1]);
-  if (b[3] <= -60) { antarcticEntries++; antarcticOffsets.add(z[0]); }
-}
-check(antarcticOffsets.size > 1,
-  `Antarctica is MANY zones in this asset: ${antarcticEntries} entries spanning ` +
-  `${antarcticOffsets.size} offsets (nominal hour-wide longitude wedges, not civil zones)`);
+// v3 upgraded the answer: Natural Earth filled the continent with nominal
+// hour-wide longitude wedges that ignored the stations; timezone-boundary-
+// builder carries the REAL station zones (each keeps its supply line's
+// clock), so every station's polygon now agrees with its civil time and the
+// continent spans many offsets because the stations genuinely do.
+const stationOffsets = new Set();
 const STATIONS = [
   ['McMurdo', -77.85, 166.67, 'Antarctica/McMurdo'],
   ['Troll', -72.01, 2.53, 'Antarctica/Troll'],
@@ -391,17 +382,20 @@ const STATIONS = [
   ['Rothera', -67.57, -68.13, 'Antarctica/Rothera'],
   ['Palmer', -64.77, -64.05, 'Antarctica/Palmer'],
 ];
-let wedgeAgrees = 0, wedgeDiffers = [];
+let stationDisagrees = [];
 for (const [name, lat, lon, tz] of STATIONS) {
   const off = offsetAt(lat, lon);
   const std = stdOffset(tz);
-  if (off === std) wedgeAgrees++;
-  else wedgeDiffers.push(`${name} station ${fmtOff(std)} in ${fmtOff(off)} wedge`);
-  // whichever it is, the station dot must light with its wedge
+  if (off !== std) stationDisagrees.push(`${name} station ${fmtOff(std)} in ${fmtOff(off)} polygon`);
+  stationOffsets.add(off);
+  // and the station dot must light inside its own pick
   check(litAt(pathFor(off, W, H), lat, lon), `${name} Station lights inside its own pick`);
 }
-console.log(`  note: ${wedgeAgrees}/10 Antarctic stations keep the clock of the wedge they stand in; ` +
-  `differing: ${wedgeDiffers.join(', ') || 'none'}`);
+check(stationDisagrees.length === 0,
+  'every Antarctic station polygon carries the station\'s real clock' +
+  (stationDisagrees.length ? ' (differing: ' + stationDisagrees.join(', ') + ')' : ''));
+check(stationOffsets.size >= 8,
+  `Antarctica is MANY zones: the 10 stations span ${stationOffsets.size} distinct offsets`);
 
 if (failures) { console.error('\n' + failures + ' failure(s)'); process.exit(1); }
 console.log(`\nall zone-grouping checks passed (${doc.zones.length} entries -> ${offKeys.length} offsets, ` +

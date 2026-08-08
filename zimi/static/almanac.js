@@ -2689,7 +2689,7 @@ function _tzBordersEnsure() {
   _tzBordersFetched = true;
   // ?v= matches the world-map.svg convention: /static/ is served immutable
   // for a year, so a regenerated asset must bump the version to bust caches.
-  fetch('/static/tz-borders.json?v=2')
+  fetch('/static/tz-borders.json?v=3')
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (data) {
       if (!data || !data.lines || !data.lines.length) return;
