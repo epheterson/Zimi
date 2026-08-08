@@ -3059,6 +3059,11 @@ function renderCardGrid(items, showStars, showCategory) {
         '<div class="detail">' + catPrefix + _zimCountHtml(z) +
         ' &middot; ' + fmtSize(z.size_gb) +
         (_isZimiExport(z) && z.date ? ' &middot; ' + esc(z.date) : '') +
+        // Exports exist to travel: give the card a save-the-file affordance
+        // (other ZIMs re-download from the catalog, so only exports carry it).
+        (_isZimiExport(z) && z.file
+          ? ' &middot; ' + _exportDlBtnHtml(z.file, 'card-dl-pill')
+          : '') +
         '</div>' +
       '</div></div>';
   }).join('') + '</div>';
@@ -4521,6 +4526,29 @@ function _moveZimTo(zim, category) {
 function _dlPillHtml(file, cls) {
   return '<a class="' + (cls || 'pill dl-pill') + '" href="/dl/' + encodeURIComponent(file) +
     '" download="' + escAttr(file) + '">⬇ ' + tH('download_zim') + '</a>';
+}
+
+// Download button for a Zimi bookmark export — the "get it onto another
+// device" half of the export feature. Unlike the probe-gated pills above it
+// is ALWAYS rendered for exports, so the path stays discoverable while /dl/
+// is gated; the click probes first and explains instead of saving a 403 body.
+function _exportDlBtnHtml(file, cls) {
+  return '<a class="' + (cls || 'pill dl-pill') + '" href="/dl/' + encodeURIComponent(file) +
+    '" download="' + escAttr(file) + '" title="' + escAttr(t('download_zim')) + '"' +
+    ' onclick="event.stopPropagation();return _exportDlClick(this)">⬇ ' + tH('download') + '</a>';
+}
+
+// Only follow the export-download link once the peer-share probe says /dl/
+// will actually serve this client. Gated (sharing off, or a WAN client on a
+// non-public instance) → name the one switch that opens it. Live → a plain
+// navigation is enough: /dl/ answers Content-Disposition: attachment, so the
+// browser saves the file without leaving the page.
+function _exportDlClick(a) {
+  _probeDlShare(a.getAttribute('download')).then(function(ok) {
+    if (ok) window.location.href = a.href;
+    else _showToast(t('dl_needs_sharing'));
+  });
+  return false;
 }
 
 // Probe the peer-share endpoint once and cache whether it will serve files to
@@ -6130,6 +6158,12 @@ let _catalogInstalledNames = new Set();
 // after catalog loads. Empty when no peers / not yet loaded.
 let _catalogPeerStems = new Map();  // stem → [peerName, ...]  (display)
 let _catalogPeerFiles = new Map();  // stem → [{peer, file, size}]  (download)
+// Everything every peer advertises, flat. Feeds the "Nearby" catalog section:
+// peer ZIMs that match NO catalog item (bookmark exports, custom imports)
+// would otherwise be invisible — the stem maps above only annotate items the
+// Kiwix catalog already knows about.
+let _peerZimEntries = [];           // [{peer, file, size, title, export, stems:[...]}]
+let _peerMatchedStems = new Set();  // stems _enrichCatalogPeers found a catalog item for
 let _peersLoadedAt = 0;
 const PEER_LIST_REFRESH_MS = 60_000;
 
@@ -6156,9 +6190,11 @@ async function _loadPeerData() {
   }
   const newMap = new Map();
   const newFiles = new Map();
+  const newEntries = [];
   if (!peers.length) {
     _catalogPeerStems = newMap;
     _catalogPeerFiles = newFiles;
+    _peerZimEntries = newEntries;
     _peersLoadedAt = Date.now();
     return false;
   }
@@ -6187,16 +6223,26 @@ async function _loadPeerData() {
           if (!newFiles.has(key)) newFiles.set(key, []);
           if (file) newFiles.get(key).push(entry);
         }
+        if (file) {
+          newEntries.push({
+            peer: p.name, file: file, size: z.size_bytes,
+            title: z.title || z.name || fb,
+            export: !!z.zimi_export,
+            stems: [stem, dated],
+          });
+        }
       }
     } catch (_) {}
   }));
   _catalogPeerStems = newMap;
   _catalogPeerFiles = newFiles;
+  _peerZimEntries = newEntries;
   _peersLoadedAt = Date.now();
   return true;
 }
 
 function _enrichCatalogPeers(items) {
+  _peerMatchedStems = new Set();
   if (!_catalogPeerStems.size) {
     for (const it of items) { it.peer_names = []; it.peer_entries = []; }
     return;
@@ -6213,11 +6259,71 @@ function _enrichCatalogPeers(items) {
     let entries = [];
     for (const c of candidates) {
       const hit = _catalogPeerStems.get(c);
-      if (hit && hit.length) { names = hit; entries = _catalogPeerFiles.get(c) || []; break; }
+      if (hit && hit.length) {
+        names = hit;
+        entries = _catalogPeerFiles.get(c) || [];
+        _peerMatchedStems.add(c);
+        break;
+      }
     }
     it.peer_names = names;
     it.peer_entries = entries;
   }
+}
+
+// Peer ZIMs the Kiwix catalog knows nothing about, grouped by file across
+// peers. This is how another device's bookmark exports (or custom imports)
+// surface here at all. Files already in the local library are kept but
+// badged installed, matching how catalog rows treat what you have.
+function _peerOnlyEntries() {
+  if (!_peerZimEntries.length) return [];
+  const localFiles = new Set((zimsCache || []).map(z => z.file));
+  const byFile = new Map();
+  for (const e of _peerZimEntries) {
+    if (e.stems.some(s => _peerMatchedStems.has(s))) continue;
+    let g = byFile.get(e.file);
+    if (!g) {
+      g = {file: e.file, title: e.title, size: e.size, export: e.export,
+           peers: [], installed: localFiles.has(e.file)};
+      byFile.set(e.file, g);
+    }
+    if (!g.peers.includes(e.peer)) g.peers.push(e.peer);
+  }
+  return [...byFile.values()]
+    .sort((a, b) => (a.title || a.file).localeCompare(b.title || b.file));
+}
+
+// "Nearby" catalog section: rows for peer-only ZIMs, pullable over the LAN
+// via the same /manage/download-from-peer path the peer pills use. Empty
+// string when every advertised file matched a catalog item (the common case).
+function _nearbyPeerSectionHtml() {
+  const entries = _peerOnlyEntries();
+  if (!entries.length) return '';
+  let rows = '';
+  for (const e of entries) {
+    const peerNames = e.peers.map(p => p.replace(/^zimi-/, '')).join(', ');
+    const action = e.installed
+      ? '<span class="ci-installed-badge">' + tH('installed_badge') + '</span>'
+      : '<button class="ci-add-btn" onclick="event.stopPropagation();_downloadFromPeer(\'' +
+          escJs(e.peers[0]) + '\', \'' + escJs(e.file) + '\')">' +
+          // _fmtBytes, not formatSize: exports are typically well under the
+          // 1 MB floor formatSize rounds to ("Download 0 MB" reads broken).
+          (e.size ? tH('download_size', {size: esc(_fmtBytes(e.size))}) : tH('download')) +
+        '</button>';
+    rows += '<div class="catalog-item" style="margin-bottom:4px">' +
+      '<div class="ci-icon" style="width:32px;text-align:center;display:flex;align-items:center;justify-content:center;color:var(--text2)">' +
+        (e.export ? '🔖' : '📡') + '</div>' +
+      '<div class="ci-info" style="flex:1;min-width:0">' +
+        '<div class="ci-title" style="font-size:13px">' + esc(e.title) + '</div>' +
+        '<div class="ci-meta"><span>' + tH('nearby_on_device', {peers: esc(peerNames)}) + '</span></div>' +
+      '</div>' +
+      '<div class="ci-actions">' + action + '</div>' +
+    '</div>';
+  }
+  return '<div class="featured-section" style="padding:0 0 8px">' +
+    '<div class="ci-section-label">📡 ' + tH('nearby_section') + '</div>' +
+    rows +
+  '</div>';
 }
 
 function _peerHint(item) {
@@ -6660,6 +6766,9 @@ function renderBrowseGallery() {
     // Language pills from full (unfiltered) catalog
     h += _renderLangPills(_countLangsByCategory(items, null), 'filterCatalogLang');
     if (!manageLangFilter) h += buildFeaturedCarousel(items);
+    // Peer-only ZIMs (bookmark exports, custom imports) have no language
+    // metadata worth filtering on — Nearby shows whenever peers offer them.
+    h += _nearbyPeerSectionHtml();
     h += '<div class="browse-grid">';
 
     for (const cat of BROWSE_CATEGORIES) {
@@ -10094,8 +10203,12 @@ function renderInstalled(filterText) {
         actionsHtml = '<span class="ci-installed-badge">' + tH('installed_badge') + '</span>' +
           '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="' + escAttr(t('delete_zim')) + '">\u00D7</button>';
       }
-      // Download slot \u2014 filled by _fillInstalledDownloads only when peer-share is live.
-      actionsHtml += '<span class="ci-dl" data-file="' + escAttr(z.file) + '" hidden></span>';
+      // Download slot \u2014 filled by _fillInstalledDownloads only when peer-share is
+      // live. Bookmark exports skip the probe gate: their button always shows
+      // (a gated click explains the sharing switch instead of hiding the path).
+      actionsHtml += _isZimiExport(z)
+        ? _exportDlBtnHtml(z.file, 'ci-installed-badge dl-pill')
+        : '<span class="ci-dl" data-file="' + escAttr(z.file) + '" hidden></span>';
       // Same Move to\u2026 gear the catalog rows carry \u2014 the Installed tab is where
       // a user organizes their library, so it needs the entry point too. data-zim
       // + delegated handler, one submenu impl, no user strings in inline onclick.

@@ -815,6 +815,13 @@
   .sh-desc { font-size: 13px; color: var(--text2); margin-top: 4px; line-height: 1.5; }
   .sh-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
   .dl-pill { text-decoration: none; display: inline-block; }
+  /* Compact download link on home cards for bookmark exports — lives inline in
+     the .detail meta line, so it dresses like the text until hovered. */
+  .card-dl-pill {
+    text-decoration: none; color: var(--text2); font-weight: 600;
+    border-bottom: 1px dotted var(--border);
+  }
+  .card-dl-pill:hover { color: var(--amber); border-bottom-color: var(--amber-border); }
   /* zimgit "document collection" flag in the source header meta line */
   .sh-chip {
     display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
