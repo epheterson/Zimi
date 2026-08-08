@@ -383,3 +383,48 @@ Alerting on the healthcheck plus these counters covers the usual questions: is i
 ### The JSON is still there
 
 The admin UI reads the same counters as JSON inside `GET /manage/stats` (field `metrics`). That payload is unchanged — `/metrics` adds a second rendering of the same numbers, it does not replace the first. Scripts already parsing `/manage/stats` keep working.
+
+## Offline / air-gapped operation — `ZIMI_OFFLINE`
+
+At default settings a running Zimi generates this network activity:
+
+| Activity | Direction | When |
+|---|---|---|
+| BitTorrent engine (libtorrent): tracker announces, DHT, peer traffic | internet | BT is on by default; session starts at boot and when seeding/downloading |
+| Boot-time magnet/torrent metadata fetch for seedable ZIMs | internet | rides the BT path — only when BT is enabled |
+| NAT probe: SSDP multicast + UPnP SOAP to the gateway, then `https://portcheck.transmissionbt.com/<port>` | LAN + internet | at BT engine start, on the 12h maintenance loop, and on the explicit "recheck" button — all of it torrent-gated, so it never runs with BT off |
+| Kiwix catalog refresh (`library.kiwix.org`) | internet | user-initiated browsing, Mirror mode, or auto-update — idle instances make zero standing requests |
+| Desktop appcast check (Sparkle on macOS, WinSparkle on Windows) | internet | once per launch of the desktop app |
+| mDNS LAN peer discovery (`_zimi._tcp`) | LAN multicast only | always, when Nearby sharing is on |
+
+**`ZIMI_OFFLINE=1` is the single switch that turns off everything internet-bound**, regardless of any other setting (it outranks even an explicit `ZIMI_BT=on`):
+
+- **BitTorrent entirely** — `is_torrent_enabled()` is forced false, so no libtorrent session, no DHT, no trackers, no boot-time magnet fetch, and downloads fall back to the plain HTTP path (which only runs when you explicitly ask for a download).
+- **The whole NAT probe** — no SSDP multicast, no UPnP port mapping, no external-IP SOAP call, no `portcheck.transmissionbt.com` request. The probe is doubly covered: every caller is torrent-gated, and `p2p_nat.probe()` itself refuses under the flag so the guarantee doesn't depend on caller discipline.
+- **The desktop auto-updater** — Sparkle/WinSparkle is never initialized (no framework load, no appcast fetch), not merely told to skip a check.
+
+**What stays on, deliberately: mDNS LAN discovery** (`p2p_discovery.py`). It is link-local multicast that never leaves your network segment, it works on a fully air-gapped LAN, and offline peer-to-peer ZIM sharing (direct HTTP pulls between Zimis at `/dl/<name>`) is a headline feature exactly in that setting. "Offline" means no internet, not no network. Turn it off separately with `ZIMI_NEARBY=off` if you want radio silence on the LAN too.
+
+Catalog browsing and update checks remain user-initiated actions; on an air-gapped network they fail cleanly with no retry loop.
+
+The desktop app additionally honors a persisted config key, `auto_update_check` (in the desktop `config.json`, default `true`), for turning off just the appcast check without going fully offline. There is no UI toggle for either switch yet — that needs i18n across the 10 locale files and a settings-design pass, and is tracked as a follow-up.
+
+## Backup and restore — `zimi backup` / `zimi restore` {#backup-and-restore}
+
+One command each way, and neither needs the server running — back up *before* an upgrade, restore onto a fresh box.
+
+```bash
+# Dump everything that makes this instance THIS instance to one JSON file
+zimi backup                        # writes ./zimi-backup-<date>.json
+zimi backup /mnt/nas/zimi.json     # or name the destination
+
+# Bring a (new or wiped) instance back
+zimi restore /mnt/nas/zimi.json                # merges into existing state
+zimi restore /mnt/nas/zimi.json --overwrite    # replaces matching state wholesale
+```
+
+The bundle is the same server-scope payload the admin UI's backup hub produces (`GET /manage/backup?scope=server`): user accounts **including password hashes**, the anonymous-access policy, collections and favorites, home layout, download schedule, auto-update setting, sharing/BitTorrent prefs, seed intents, hot-ZIM list, event history, and each user's server-stored data. It does **not** contain ZIM files — those are re-downloadable, and the bundle carries a library manifest so a restored instance knows what to fetch again.
+
+Because password hashes ride along, the file is written with mode `0600`; treat it like a credentials file.
+
+Both commands take the same `--zim-dir` / `--data-dir` / `--config` flags as `serve`, with the same precedence (flag > environment > config file > default), so they operate on exactly the instance a `serve` with the same arguments would boot. `restore` merges by default — same-named users and collections from the bundle win, everything else is unioned — and prints what it applied and what it skipped (for example a setting pinned by an environment variable like `ZIMI_HOT_ZIMS`, which always wins over restored state). A file that is missing, not JSON, or not a Zimi bundle is refused with a one-line error and exit code 2 before anything is touched.
