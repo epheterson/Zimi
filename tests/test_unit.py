@@ -2098,7 +2098,10 @@ class TestSetPasswordAuthGate(unittest.TestCase):
             _patch.object(
                 manage,
                 "_set_manage_password",
-                side_effect=lambda pw, username=None: set_calls.append(pw),
+                # Must return True: the handler now treats a falsy return as
+                # "could not write the password file" (read-only media) and
+                # answers 500. list.append returns None, which read as failure.
+                side_effect=lambda pw, username=None: (set_calls.append(pw), True)[1],
             ),
         ):
             manage.os.environ.pop("ZIMI_MANAGE_PASSWORD", None)

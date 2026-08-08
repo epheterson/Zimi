@@ -2424,11 +2424,19 @@ def main():
     # same convention as ConfigError), while an unwritable DERIVED default
     # reroutes to the per-library cache dir — and `zimi config` must report
     # the reroute as the provenance of the value actually in effect.
+    #
+    # EXCEPT `zimi config` itself: it is the diagnostic you reach for to debug
+    # exactly this misconfiguration, so it must never refuse to print. It
+    # reports the problem beneath the table instead of dying above it.
+    data_dir_problem = None
     try:
         _ensure_writable_data_dir()
     except DataDirError as e:
-        print(f"zimi: {e}", file=sys.stderr)
-        sys.exit(2)
+        if args.command == "config":
+            data_dir_problem = str(e)
+        else:
+            print(f"zimi: {e}", file=sys.stderr)
+            sys.exit(2)
     if _data_dir_fallback_from:
         settings["data_dir"] = (
             ZIMI_DATA_DIR,
@@ -2439,6 +2447,10 @@ def main():
 
     if args.command == "config":
         print(format_config_report(settings))
+        if data_dir_problem:
+            # Diagnosis, not death: the whole point of this command is seeing
+            # the resolution that a failing serve/backup would die over.
+            print(f"\nwarning: {data_dir_problem}")
         if not config_path:
             # The most common config-file support question is "why is my file
             # not being read", and the answer is nearly always that it is not

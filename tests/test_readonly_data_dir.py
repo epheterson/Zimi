@@ -237,20 +237,24 @@ def _run_cli(args, env):
 
 
 def test_cli_explicit_unwritable_data_dir_exits_2(ro_zim_dir, tmp_path):
+    """An explicit unwritable data dir is fatal for commands that would write
+    (exit 2, one line) — but `zimi config` is the diagnostic you reach for to
+    debug exactly that misconfiguration, so it prints the resolution with a
+    warning underneath instead of refusing to print at all."""
     zims = tmp_path / "zims"
     zims.mkdir()
-    proc = _run_cli(
-        [
-            "config",
-            "--zim-dir",
-            str(zims),
-            "--data-dir",
-            os.path.join(ro_zim_dir, "state"),
-        ],
-        _cache_env(str(tmp_path)),
-    )
+    args = ["--zim-dir", str(zims), "--data-dir", os.path.join(ro_zim_dir, "state")]
+    env = _cache_env(str(tmp_path))
+
+    # backup, not list: only serve/config/backup/restore carry the boot flags.
+    proc = _run_cli(["backup", str(tmp_path / "out.json")] + args, env)
     assert proc.returncode == 2
     assert "not writable" in proc.stderr
+    assert "Traceback" not in proc.stderr
+
+    proc = _run_cli(["config"] + args, env)
+    assert proc.returncode == 0
+    assert "warning:" in proc.stdout and "not writable" in proc.stdout
     assert "Traceback" not in proc.stderr
 
 
