@@ -34,7 +34,7 @@ Bookmarks v2 is the centerpiece: nested folders, drag and drop, context menus, r
 
 - Settings gear now works during the initial library scan (#44).
 - Downloads panel buttons share one size system and no longer overflow (#46).
-- Broken video articles show a clear "not included in this ZIM" message instead of a dead player (#43).
+- Broken video articles show a clear "not included in this ZIM" message instead of a dead player.
 - Travelling to a distant enough year could hang the page: an unbounded delta-T term inverted the Chinese calendar's day ordering and left its new-moon search running forever. The astronomy is now bounded on both ends, deep-time conversions say "beyond this calendar's range" instead of printing dates that do not exist, and BCE Persian dates round-trip correctly. Nothing changes for 1900-2150.
 - Timezone anchors for Tbilisi and Baku fell through to Baghdad and Tehran, and Kolkata to Dhaka, so those cities showed a clock up to an hour wrong.
 - Escape inside a month grid closed the whole Almanac instead of the grid.
