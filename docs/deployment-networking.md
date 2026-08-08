@@ -1,5 +1,7 @@
 # Networking & Deployment Modes
 
+To describe an instance in one file instead of a series of flags and environment variables, see [Configuration file](#configuration-file) at the end of this document.
+
 Zimi has two LAN-aware features that depend on how the container is networked:
 
 1. **mDNS / LAN peer discovery** (`_zimi._tcp.local`) — needs link-local
@@ -95,3 +97,289 @@ on your router. LAN seeding works regardless.
 If WAN seeding isn't reachable, Zimi auto-detects via
 `/manage/bt-status` (status: `unavailable`) and the UI surfaces
 "leech-only mode". Downloads still work; you just can't help others.
+
+## Configuration file
+
+Zimi reads a single JSON file that says where the ZIMs are, where its own state goes, and what it binds. Drop it next to a deployment and the instance is fully described — no environment plumbing, no click-through setup. It is JSON because Zimi supports Python 3.9 (no `tomllib`) and ships with no third-party dependencies (no PyYAML), and because every other file Zimi writes is already JSON.
+
+### Keys
+
+Only settings that must be known before the server boots are in the file. Anything that already has its own state file and an admin UI — access mode, auto-update, download schedule, seeding — is configured there and is deliberately not duplicated here.
+
+| Key        | Type   | Default                | Environment variable | Flag         |
+| ---------- | ------ | ---------------------- | -------------------- | ------------ |
+| `zim_dir`  | string | `/zims`                | `ZIM_DIR`            | `--zim-dir`  |
+| `data_dir` | string | `<zim_dir>/.zimi`      | `ZIMI_DATA_DIR`      | `--data-dir` |
+| `host`     | string | `0.0.0.0`              | `ZIMI_HOST`          | `--host`     |
+| `port`     | number | `8899`                 | `ZIMI_PORT`          | `--port`     |
+
+`data_dir` defaults to `.zimi` inside whichever `zim_dir` won, which is what makes a USB stick or a single mounted folder self-contained. Set `data_dir` explicitly to keep Zimi's state out of a shared ZIM folder.
+
+Unknown keys are ignored with a warning naming them, so a forward-compatible file written for a later version still boots — but a typo (`zimdir`) is reported rather than silently doing nothing. A file that does not parse is fatal, and the error names the file.
+
+### Precedence
+
+Strictly, highest first:
+
+1. **CLI flag** — `--zim-dir`, `--data-dir`, `--host`, `--port`
+2. **Environment variable** — `ZIM_DIR`, `ZIMI_DATA_DIR`, `ZIMI_HOST`, `ZIMI_PORT`
+3. **Config file**
+4. **Built-in default**
+
+The file sits *below* the environment on purpose. An existing Docker, compose or NAS deployment that sets `ZIM_DIR` keeps winning, so adding a config file to a running instance can never change how it behaves — the file only fills in what nothing else specified.
+
+### Where Zimi looks
+
+In order, first hit wins:
+
+1. `--config PATH`
+2. the `ZIMI_CONFIG` environment variable
+3. `<data dir>/zimi.json`, if it exists
+
+A path you name explicitly (`--config` or `ZIMI_CONFIG`) must exist; Zimi refuses to start rather than boot with silently different settings from a typo'd path. The implicit `<data dir>/zimi.json` is the opposite: no file is the normal case and Zimi says nothing about it.
+
+Note that the implicit location depends on the data dir, which is itself resolved from flags, environment and defaults *before* the file is read. In practice that means a file left at `<zim_dir>/.zimi/zimi.json` is found on a plain `zimi serve`, and it may still point `data_dir` elsewhere for everything except itself.
+
+### Example
+
+A complete file — every key is optional, and this one sets all four:
+
+```json
+{
+  "zim_dir": "/srv/zims",
+  "data_dir": "/var/lib/zimi",
+  "host": "0.0.0.0",
+  "port": 8899
+}
+```
+
+Boot with it:
+
+```bash
+zimi serve --config /etc/zimi.json
+# or
+ZIMI_CONFIG=/etc/zimi.json zimi serve
+```
+
+In Docker, mount the file into the data dir and it is picked up with no flag at all — `/config` is already `ZIMI_DATA_DIR` in the shipped image:
+
+```yaml
+services:
+  zimi:
+    image: epheterson/zimi
+    network_mode: host
+    volumes:
+      - /srv/zims:/zims
+      - /srv/zimi-config:/config
+      - ./zimi.json:/config/zimi.json:ro
+```
+
+One caveat specific to the official image, and it follows directly from the precedence rules. The image sets `ZIM_DIR=/zims` and `ZIMI_DATA_DIR=/config` as environment variables and starts with `serve --port 8899`, so those three values are already spoken for by a higher layer: a mounted config file cannot move a running container's ZIMs, its state, or its port. That is the compatibility rule doing its job rather than a limitation to work around, and inside a container the volume mounts are the natural place to say where things live anyway.
+
+If you do want the file to own them, override the layer that is winning. A Dockerfile `ENV` cannot be unset from compose, so set it to the value you want instead; and drop the `--port` flag by overriding `command`:
+
+```yaml
+services:
+  zimi:
+    image: epheterson/zimi
+    network_mode: host
+    command: ["python3", "-m", "zimi", "serve"]
+    volumes:
+      - /srv/zims:/zims
+      - /srv/zimi-config:/config
+      - ./zimi.json:/config/zimi.json:ro
+```
+
+The image's `HEALTHCHECK` polls `http://localhost:8899/health`, so if the file moves the port off 8899 also override `healthcheck:` to match, or the container will report unhealthy while serving perfectly.
+
+### Checking what an instance resolved to
+
+`zimi config` prints the effective configuration and where each value came from. This is the first thing to run when a deployment is not using the settings you thought it was:
+
+```
+$ zimi config --config /etc/zimi.json --port 8899
+zim_dir   /srv/zims      (config file: /etc/zimi.json)
+data_dir  /var/lib/zimi  (env: ZIMI_DATA_DIR)
+host      0.0.0.0        (default)
+port      8899           (flag: --port)
+```
+
+With no file in use it says so, and names the path it looked in:
+
+```
+$ zimi config
+zim_dir   /zims        (default)
+data_dir  /zims/.zimi  (default: <zim_dir>/.zimi)
+host      0.0.0.0      (default)
+port      8899         (default)
+
+no config file in use (looked for /zims/.zimi/zimi.json)
+```
+
+## Healthcheck — `GET /health`
+
+Unauthenticated, cheap, and safe to hammer. It reads in-memory state only — no ZIM archive is opened and no disk is walked — so a one-second interval costs nothing. This is the endpoint for a Docker `HEALTHCHECK`, a Kubernetes liveness/readiness probe, a Traefik/Caddy backend check, or an uptime monitor.
+
+```bash
+curl -s http://<host>:8899/health
+```
+
+```json
+{
+  "status": "ok",
+  "version": "1.8.2",
+  "asset_version": "zimi-v1.8.2-0c8b51a5",
+  "zim_count": 53,
+  "pdf_support": true
+}
+```
+
+| Field           | Meaning                                                              |
+| ----            | ----                                                                 |
+| `status`        | Always `"ok"` when the server answers. Liveness is the 200, not this string. |
+| `version`       | Zimi release version.                                                |
+| `asset_version` | Content token for the web assets; changes on every deploy. The service worker uses it to drop a stale cache. |
+| `zim_count`     | ZIM files visible to the caller. `0` is a valid healthy state (an empty library still serves the UI). |
+| `pdf_support`   | Whether PyMuPDF is available for PDF rendering.                      |
+
+**What a failure looks like.** There is no unhealthy JSON body — the endpoint either answers `200` with the payload above or it does not answer at all. Probe on the HTTP status and the connection, not on the body:
+
+- **Connection refused / timeout** — process is down or still binding. On a cold start with a large library, metadata caching can hold the first request; give the probe a start period of 30–60s.
+- **`503`, `502`, `504`** — these come from a reverse proxy in front of Zimi, never from Zimi itself.
+- **`401`** — the instance runs in `private` public-access mode *and* something ahead of Zimi is rewriting the path. `/health` is on the private-mode login surface and stays reachable anonymously by design; a 401 here means the proxy is not sending `/health`.
+
+`HEAD /health` also returns `200` for probes that prefer it.
+
+Compose:
+
+```yaml
+services:
+  zim-reader:
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8899/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+```
+
+Kubernetes:
+
+```yaml
+livenessProbe:
+  httpGet: { path: /health, port: 8899 }
+  initialDelaySeconds: 30
+  periodSeconds: 30
+readinessProbe:
+  httpGet: { path: /health, port: 8899 }
+  periodSeconds: 10
+```
+
+## Metrics — `GET /metrics` (Prometheus)
+
+Zimi speaks the Prometheus text exposition format (version `0.0.4`) at the conventional path, so a scrape config needs a target and nothing else — no exporter sidecar, no `metrics_path` override, no query parameters.
+
+### Authentication
+
+**`/metrics` is admin-gated. It is not public.** Request volumes and endpoint mix are operational intelligence about a private library, so the endpoint sits behind exactly the same challenge as `/manage/stats`, where these counters have always been readable:
+
+| Instance posture                     | Anonymous scrape | With `Authorization: Bearer <api-token>` |
+| ----                                 | ----             | ----                                     |
+| No manage password, client on LAN/loopback | `200` (legacy open-admin rule) | `200`                        |
+| No manage password, client is public | `403 public_locked` | `403` — set a password first          |
+| Manage password set                  | `401`            | `200`                                    |
+
+A scraper cannot carry a session cookie, so the **API token is the supported credential**. Generate one in Manage → API token (or set `ZIMI_API_TOKEN` in the environment; it requires a manage password to be set as well). Prometheus sends it with the `authorization` block below, which produces the same `Authorization: Bearer …` header the API already accepts. Prefer `authorization.credentials_file` over an inline token so the secret is not in the config.
+
+### Scrape config
+
+```yaml
+scrape_configs:
+  - job_name: zimi
+    # metrics_path defaults to /metrics — nothing to override.
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["knowledge.example.lan:8899"]
+        labels:
+          instance: "nas"
+    authorization:
+      type: Bearer
+      # Contents of the file: the API token on one line, nothing else.
+      credentials_file: /etc/prometheus/zimi_api_token
+```
+
+Over HTTPS behind a reverse proxy, add `scheme: https`. If the proxy terminates TLS with an internal CA, add `tls_config: { ca_file: /etc/prometheus/internal-ca.pem }`.
+
+Verify before wiring Grafana:
+
+```bash
+curl -s -H "Authorization: Bearer $ZIMI_API_TOKEN" http://<host>:8899/metrics
+```
+
+### What is exposed
+
+```
+# HELP zimi_build_info Zimi build information; always 1, the version lives in the label.
+# TYPE zimi_build_info gauge
+zimi_build_info{version="1.8.2"} 1
+# HELP zimi_uptime_seconds Seconds since this Zimi process started.
+# TYPE zimi_uptime_seconds gauge
+zimi_uptime_seconds 13
+# HELP zimi_zim_files ZIM files currently visible to this instance.
+# TYPE zimi_zim_files gauge
+zimi_zim_files 53
+# HELP zimi_http_requests_total Instrumented HTTP requests handled, by endpoint.
+# TYPE zimi_http_requests_total counter
+zimi_http_requests_total{endpoint="/search"} 2
+zimi_http_requests_total{endpoint="/suggest"} 1
+# HELP zimi_http_request_duration_seconds Instrumented HTTP request latency, by endpoint.
+# TYPE zimi_http_request_duration_seconds summary
+zimi_http_request_duration_seconds_sum{endpoint="/search"} 0.000306
+zimi_http_request_duration_seconds_count{endpoint="/search"} 2
+zimi_http_request_duration_seconds_sum{endpoint="/suggest"} 0.000043
+zimi_http_request_duration_seconds_count{endpoint="/suggest"} 1
+# HELP zimi_http_errors_total Instrumented requests that ended in a handler error.
+# TYPE zimi_http_errors_total counter
+zimi_http_errors_total 0
+# HELP zimi_http_rate_limited_total Requests rejected with 429 by the rate limiter.
+# TYPE zimi_http_rate_limited_total counter
+zimi_http_rate_limited_total 0
+```
+
+| Metric                                  | Type    | Notes                                                     |
+| ----                                    | ----    | ----                                                      |
+| `zimi_build_info`                       | gauge   | Always `1`; join on the `version` label to annotate upgrades. |
+| `zimi_uptime_seconds`                   | gauge   | Seconds since this process started. A reset means a restart. |
+| `zimi_zim_files`                        | gauge   | ZIM files visible to the (admin) scraper.                 |
+| `zimi_http_requests_total`              | counter | Labelled by `endpoint`. Counts the instrumented endpoints only — `/search`, `/read`, `/suggest`, `/random`, `/chunks`, `/snippet` — not static assets or article bytes. |
+| `zimi_http_request_duration_seconds`    | summary | `_sum` and `_count` per endpoint.                         |
+| `zimi_http_errors_total`                | counter | Instrumented requests that ended in a handler error.      |
+| `zimi_http_rate_limited_total`          | counter | Requests rejected with `429` by the rate limiter.         |
+
+All counters reset to zero when the process restarts; that is normal, and `rate()` / `increase()` handle it via `zimi_uptime_seconds` dropping.
+
+**Latency is published as a sum and a count, never as an average.** An average cannot be aggregated across instances or re-aggregated over a different time window, which is the whole reason the format asks for the two raw numbers. Compute the mean at query time:
+
+```promql
+# mean request latency per endpoint over 5m
+  rate(zimi_http_request_duration_seconds_sum[5m])
+/ rate(zimi_http_request_duration_seconds_count[5m])
+
+# request rate per endpoint
+rate(zimi_http_requests_total[5m])
+
+# error ratio
+rate(zimi_http_errors_total[5m]) / sum(rate(zimi_http_requests_total[5m]))
+```
+
+Quantiles (p95, p99) are **not** available: that needs a histogram, which means choosing bucket boundaries and recording a per-bucket counter at request time. It is a deliberate future change to what Zimi records, not something the exposition layer can invent from a sum.
+
+### Cardinality
+
+The `endpoint` label is bounded. It is never derived from the request path — every call site passes one of six hardcoded strings — so a crawler walking `/w/<zim>/<anything>` cannot mint new time series. A hard cap (64 distinct endpoints) backs the invariant up: past it, new keys stop being created rather than growing without limit.
+
+Alerting on the healthcheck plus these counters covers the usual questions: is it up (`up{job="zimi"}`), is it serving (`rate(zimi_http_requests_total[5m])`), is it failing (`zimi_http_errors_total`), is it being throttled (`zimi_http_rate_limited_total`).
+
+### The JSON is still there
+
+The admin UI reads the same counters as JSON inside `GET /manage/stats` (field `metrics`). That payload is unchanged — `/metrics` adds a second rendering of the same numbers, it does not replace the first. Scripts already parsing `/manage/stats` keep working.

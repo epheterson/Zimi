@@ -29,9 +29,15 @@ Table of contents (this file: ~980 lines)
 Configuration:
   ZIM_DIR        Path to directory containing *.zim files (default: /zims)
   ZIMI_DATA_DIR  Where Zimi keeps its own state (default: <ZIM_DIR>/.zimi)
+  ZIMI_HOST      Address to bind (default: 0.0.0.0)
+  ZIMI_PORT      Port to bind (default: 8899)
+  ZIMI_CONFIG    Path to a JSON config file (default: <data dir>/zimi.json)
   ZIMI_MANAGE    Enabled by default; set to "0" to disable management endpoints
 
-  `serve` also takes --zim-dir/--data-dir/--host; a flag beats the env var.
+  Precedence is CLI flag > environment > config file > built-in default: the
+  file sits below the environment so adding one can never change how a running
+  deployment behaves. `zimi config` prints the resolved values and their
+  provenance.
 
 Usage (CLI):
   zimi search "water purification" --limit 10
@@ -62,6 +68,7 @@ Usage (HTTP API):
 # ============================================================================
 
 import argparse
+import collections
 import glob
 import json
 import logging
@@ -257,29 +264,242 @@ logging.basicConfig(
 DEFAULT_ZIM_DIR = "/zims"
 DEFAULT_DATA_DIR_NAME = ".zimi"
 DEFAULT_HOST = "0.0.0.0"
+DEFAULT_PORT = 8899
 
 
-def resolve_data_paths(zim_dir_flag=None, data_dir_flag=None, env=None):
-    """Resolve ``(ZIM_DIR, ZIMI_DATA_DIR)`` from flags and environment.
+# ---------------------------------------------------------------------------
+# Headless configuration file
+#
+# One JSON file that describes an instance, so a deployment can be handed over
+# without click-through setup. JSON and not TOML/YAML on purpose: the package
+# supports Python 3.9 (no `tomllib`) and stays stdlib-only (no PyYAML), and
+# every other file Zimi writes is already JSON.
+#
+# Scope is deliberately small: only settings that must be known *before* the
+# server boots. Everything that already has its own state file plus an admin UI
+# (access mode, auto-update, download schedule, seeding) stays where it is —
+# folding those in is a migration question, not a config question.
+#
+# The file sits BELOW the environment in precedence, which is the whole
+# compatibility argument: a running Docker/compose deployment that sets ZIM_DIR
+# keeps winning, so dropping a config file next to an existing instance can
+# never change how it behaves. Adding config can only fill in what nobody else
+# said.
+# ---------------------------------------------------------------------------
 
-    Precedence is flag > environment > default, and the default data dir
-    follows whichever ZIM dir won — so ``--zim-dir`` alone moves the state
-    with it, while an explicit ``ZIMI_DATA_DIR`` stays put. Pure so the
-    precedence rules can be tested without touching the process globals.
+CONFIG_FILENAME = "zimi.json"
+CONFIG_ENV_VAR = "ZIMI_CONFIG"
+# The only keys v1 understands. Anything else is warned about, never fatal:
+# failing a boot over an unknown key punishes people for a forward-compatible
+# file, but silently swallowing a typo is a support ticket.
+CONFIG_KEYS = ("zim_dir", "data_dir", "host", "port")
+
+
+class ConfigError(Exception):
+    """A config file was found but cannot be used.
+
+    Always carries the offending path in the message — "invalid JSON" with no
+    filename is exactly the error someone with three mounted config files
+    cannot act on.
+    """
+
+
+def load_config_file(path):
+    """Read and validate one config file. Returns a dict of known keys.
+
+    Raises ConfigError (never a traceback) for anything a deployer can fix:
+    unreadable file, malformed JSON, a top-level array, a wrong-typed value.
+    Unknown keys are logged and dropped.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+    except OSError as e:
+        raise ConfigError(f"config file {path}: cannot read it ({e.strerror})")
+    # An empty file is a legitimate "I have nothing to say" — treat it as {}
+    # rather than as a JSON syntax error, since `touch zimi.json` is a normal
+    # first step and failing there is a bad first impression.
+    if not raw.strip():
+        return {}
+    try:
+        data = json.loads(raw)
+    except ValueError as e:
+        raise ConfigError(f"config file {path}: invalid JSON ({e})")
+    if not isinstance(data, dict):
+        raise ConfigError(
+            f"config file {path}: expected a JSON object, got {type(data).__name__}"
+        )
+
+    unknown = [k for k in data if k not in CONFIG_KEYS]
+    if unknown:
+        log.warning(
+            "config file %s: ignoring unknown key(s): %s (known keys: %s)",
+            path,
+            ", ".join(sorted(unknown)),
+            ", ".join(CONFIG_KEYS),
+        )
+
+    config = {}
+    for key in CONFIG_KEYS:
+        if key not in data:
+            continue
+        value = data[key]
+        if key == "port":
+            config[key] = _coerce_port(value, f"config file {path}")
+        elif not isinstance(value, str):
+            raise ConfigError(
+                f"config file {path}: {key} must be a string, "
+                f"got {type(value).__name__}"
+            )
+        else:
+            config[key] = value
+    return config
+
+
+def _coerce_port(value, origin):
+    """Ports arrive as a JSON number, an env string, or an argparse int."""
+    if isinstance(value, bool):  # bool is an int subclass; reject it explicitly
+        raise ConfigError(f"{origin}: port must be a number, got boolean")
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        raise ConfigError(f"{origin}: port must be a number, got {value!r}")
+    # 0 stays legal: `--port 0` is how the smoke tests ask the OS for a free one.
+    if not 0 <= port <= 65535:
+        raise ConfigError(f"{origin}: port {port} is outside 0-65535")
+    return port
+
+
+def find_config_file(config_flag=None, env=None, data_dir=None):
+    """Locate the config file: --config, else ZIMI_CONFIG, else <data dir>/zimi.json.
+
+    A path someone named explicitly must exist — a typo'd --config that boots
+    with silently different settings is worse than a refusal. The implicit
+    ``<data dir>`` location is the opposite: absence is the normal case for
+    every install that predates this feature, so it is silent.
     """
     env = os.environ if env is None else env
-    zim_dir = (
-        zim_dir_flag
-        if zim_dir_flag is not None
-        else env.get("ZIM_DIR", DEFAULT_ZIM_DIR)
+    for value, origin in (
+        (config_flag, "--config"),
+        (env.get(CONFIG_ENV_VAR), CONFIG_ENV_VAR),
+    ):
+        if value:
+            if not os.path.isfile(value):
+                raise ConfigError(f"config file {value}: no such file ({origin})")
+            return value
+    if data_dir:
+        implicit = os.path.join(data_dir, CONFIG_FILENAME)
+        if os.path.isfile(implicit):
+            return implicit
+    return None
+
+
+def load_config(zim_dir_flag=None, data_dir_flag=None, config_flag=None, env=None):
+    """Discovery + read: the one impure step. Returns ``(config, path_or_None)``.
+
+    Kept separate from resolution so ``resolve_settings`` stays a pure function
+    of (flags, env, config) and the precedence matrix is testable without
+    touching a filesystem.
+
+    Note the small circularity in the implicit location: to look for
+    ``<data dir>/zimi.json`` we must first know the data dir, which is resolved
+    from flags and env only. That is deliberate — a file can only be *found*
+    somewhere the flags/env/defaults already point, and a file found there may
+    still relocate the data dir for everything else.
+    """
+    env = os.environ if env is None else env
+    _, probe_data_dir = resolve_data_paths(zim_dir_flag, data_dir_flag, env)
+    path = find_config_file(config_flag, env, probe_data_dir)
+    if not path:
+        return {}, None
+    return load_config_file(path), path
+
+
+def resolve_settings(
+    zim_dir_flag=None,
+    data_dir_flag=None,
+    host_flag=None,
+    port_flag=None,
+    env=None,
+    config=None,
+    config_path=None,
+):
+    """Resolve every boot setting, with the provenance of each one.
+
+    Returns an ordered ``{key: (value, source)}`` mapping where source is a
+    human string like ``env: ZIM_DIR`` — `zimi config` prints it verbatim, and
+    "where did this value come from" is the question that actually costs people
+    time when a deployment misbehaves.
+
+    Precedence, strictly: flag > environment > config file > built-in default.
+    Pure: pass ``env`` and ``config`` in, get values out.
+    """
+    env = os.environ if env is None else env
+    config = {} if config is None else config
+    file_source = f"config file: {config_path}" if config_path else "config file"
+
+    def pick(flag, flag_name, env_key, key, default, default_note=None):
+        if flag is not None:
+            return flag, f"flag: {flag_name}"
+        # `in`, not `.get()` truthiness: `ZIM_DIR=` resolves to the empty
+        # string today and must keep doing so.
+        if env_key in env:
+            return env[env_key], f"env: {env_key}"
+        if key in config:
+            return config[key], file_source
+        return default, f"default: {default_note}" if default_note else "default"
+
+    zim_dir, zim_dir_src = pick(
+        zim_dir_flag, "--zim-dir", "ZIM_DIR", "zim_dir", DEFAULT_ZIM_DIR
     )
-    if data_dir_flag is not None:
-        data_dir = data_dir_flag
-    else:
-        data_dir = env.get(
-            "ZIMI_DATA_DIR", os.path.join(zim_dir, DEFAULT_DATA_DIR_NAME)
+    # The derived `<zim dir>/.zimi` is a *default*, so an explicit data dir from
+    # any layer beats it — that is what keeps `--zim-dir /media/usb` from
+    # dragging state away from a configured ZIMI_DATA_DIR.
+    data_dir, data_dir_src = pick(
+        data_dir_flag,
+        "--data-dir",
+        "ZIMI_DATA_DIR",
+        "data_dir",
+        os.path.join(zim_dir, DEFAULT_DATA_DIR_NAME),
+        f"<zim_dir>/{DEFAULT_DATA_DIR_NAME}",
+    )
+    host, host_src = pick(host_flag, "--host", "ZIMI_HOST", "host", DEFAULT_HOST)
+    port, port_src = pick(port_flag, "--port", "ZIMI_PORT", "port", DEFAULT_PORT)
+    if not isinstance(port, int) or isinstance(port, bool):
+        port = _coerce_port(port, port_src)
+
+    return collections.OrderedDict(
+        (
+            ("zim_dir", (zim_dir, zim_dir_src)),
+            ("data_dir", (data_dir, data_dir_src)),
+            ("host", (host, host_src)),
+            ("port", (port, port_src)),
         )
-    return zim_dir, data_dir
+    )
+
+
+def format_config_report(settings):
+    """Render `zimi config` output: value plus where it came from, one per line."""
+    name_w = max(len(k) for k in settings)
+    value_w = max(len(str(v)) for v, _ in settings.values())
+    lines = []
+    for key, (value, source) in settings.items():
+        lines.append(f"{key:<{name_w}}  {str(value):<{value_w}}  ({source})")
+    return "\n".join(lines)
+
+
+def resolve_data_paths(zim_dir_flag=None, data_dir_flag=None, env=None, config=None):
+    """Resolve ``(ZIM_DIR, ZIMI_DATA_DIR)`` from flags, environment and config.
+
+    Precedence is flag > environment > config file > default, and the default
+    data dir follows whichever ZIM dir won — so ``--zim-dir`` alone moves the
+    state with it, while an explicit ``ZIMI_DATA_DIR`` stays put. Pure so the
+    precedence rules can be tested without touching the process globals.
+    """
+    settings = resolve_settings(
+        zim_dir_flag=zim_dir_flag, data_dir_flag=data_dir_flag, env=env, config=config
+    )
+    return settings["zim_dir"][0], settings["data_dir"][0]
 
 
 ZIM_DIR, ZIMI_DATA_DIR = resolve_data_paths()
@@ -287,7 +507,7 @@ ZIMI_MANAGE = os.environ.get("ZIMI_MANAGE", "1") == "1"
 _initialized = False
 
 
-def apply_data_paths(zim_dir_flag=None, data_dir_flag=None):
+def apply_data_paths(zim_dir_flag=None, data_dir_flag=None, config=None):
     """Rebind the path globals from CLI flags, before anything reads them.
 
     Every consumer resolves ``_srv.ZIM_DIR`` / ``_srv.ZIMI_DATA_DIR`` at call
@@ -297,7 +517,9 @@ def apply_data_paths(zim_dir_flag=None, data_dir_flag=None):
     before ``load_cache()``.
     """
     global ZIM_DIR, ZIMI_DATA_DIR
-    ZIM_DIR, ZIMI_DATA_DIR = resolve_data_paths(zim_dir_flag, data_dir_flag)
+    ZIM_DIR, ZIMI_DATA_DIR = resolve_data_paths(
+        zim_dir_flag, data_dir_flag, config=config
+    )
     return ZIM_DIR, ZIMI_DATA_DIR
 
 
@@ -1671,30 +1893,50 @@ def main():
 
     sub.add_parser("list", help="List available ZIM files")
 
+    # Every path/bind flag defaults to None, not to its real default: that is
+    # how resolve_settings tells "flag omitted" (fall through to env, then the
+    # config file) from "flag given". Shared by `serve` and `config` so the
+    # latter reports exactly what the former would boot with.
+    def add_boot_flags(p):
+        p.add_argument(
+            "--port",
+            type=int,
+            default=None,
+            help=f"Port to bind (overrides ZIMI_PORT, default: {DEFAULT_PORT})",
+        )
+        p.add_argument(
+            "--zim-dir",
+            default=None,
+            help=f"Directory containing *.zim files (overrides ZIM_DIR, default: {DEFAULT_ZIM_DIR})",
+        )
+        p.add_argument(
+            "--data-dir",
+            default=None,
+            help=f"Directory for Zimi's own state (overrides ZIMI_DATA_DIR, default: <zim-dir>/{DEFAULT_DATA_DIR_NAME})",
+        )
+        p.add_argument(
+            "--host",
+            default=None,
+            help=f"Address to bind (default: {DEFAULT_HOST})",
+        )
+        p.add_argument(
+            "--config",
+            default=None,
+            help=f"Path to a JSON config file (overrides {CONFIG_ENV_VAR}, default: <data-dir>/{CONFIG_FILENAME} if present)",
+        )
+
     p_serve = sub.add_parser("serve", help="Start HTTP API server")
-    p_serve.add_argument("--port", type=int, default=8899)
-    # default=None, not the real default: it is how apply_data_paths tells
-    # "flag omitted" (fall through to the env var) from "flag given".
-    p_serve.add_argument(
-        "--zim-dir",
-        default=None,
-        help=f"Directory containing *.zim files (overrides ZIM_DIR, default: {DEFAULT_ZIM_DIR})",
-    )
-    p_serve.add_argument(
-        "--data-dir",
-        default=None,
-        help=f"Directory for Zimi's own state (overrides ZIMI_DATA_DIR, default: <zim-dir>/{DEFAULT_DATA_DIR_NAME})",
-    )
-    p_serve.add_argument(
-        "--host",
-        default=DEFAULT_HOST,
-        help=f"Address to bind (default: {DEFAULT_HOST})",
-    )
+    add_boot_flags(p_serve)
     p_serve.add_argument(
         "--ui",
         action="store_true",
         help="Open in a native desktop window (requires pywebview)",
     )
+
+    p_config = sub.add_parser(
+        "config", help="Print the resolved configuration and where each value came from"
+    )
+    add_boot_flags(p_config)
 
     sub.add_parser(
         "desktop",
@@ -1704,11 +1946,46 @@ def main():
     args = parser.parse_args()
 
     # Before anything can read a path: argparse runs long after the module-level
-    # env read, so the flags have to be folded back into the globals here.
-    if args.command == "serve":
-        apply_data_paths(args.zim_dir, args.data_dir)
+    # env read, so the flags (and the config file, which only argparse can point
+    # us at) have to be folded back into the globals here. Done for every
+    # subcommand, not just `serve`, so one file describes the whole instance —
+    # with no config file present this resolves to exactly today's values.
+    # getattr with a default: only `serve` and `config` carry these flags, and
+    # the rest of the subcommands still want the file's zim_dir/data_dir.
+    flags = {
+        k: getattr(args, k, None)
+        for k in ("zim_dir", "data_dir", "host", "port", "config")
+    }
+    try:
+        config, config_path = load_config(
+            flags["zim_dir"], flags["data_dir"], flags["config"]
+        )
+        settings = resolve_settings(
+            zim_dir_flag=flags["zim_dir"],
+            data_dir_flag=flags["data_dir"],
+            host_flag=flags["host"],
+            port_flag=flags["port"],
+            config=config,
+            config_path=config_path,
+        )
+    except ConfigError as e:
+        print(f"zimi: {e}", file=sys.stderr)
+        sys.exit(2)
+    apply_data_paths(flags["zim_dir"], flags["data_dir"], config=config)
+    host = settings["host"][0]
+    port = settings["port"][0]
 
-    if args.command == "search":
+    if args.command == "config":
+        print(format_config_report(settings))
+        if not config_path:
+            # The most common config-file support question is "why is my file
+            # not being read", and the answer is nearly always that it is not
+            # where Zimi looked.
+            print(
+                f"\nno config file in use (looked for {os.path.join(ZIMI_DATA_DIR, CONFIG_FILENAME)})"
+            )
+
+    elif args.command == "search":
         results = search_all(args.query, limit=args.limit, filter_zim=args.zim)
         print(json.dumps(results, indent=2, ensure_ascii=False))
 
@@ -1757,7 +2034,7 @@ def main():
         desktop_main()
 
     elif args.command == "serve":
-        print(f"ZIM Reader API starting on port {args.port}")
+        print(f"ZIM Reader API starting on port {port}")
         print(f"ZIM directory: {ZIM_DIR}")
         load_cache()
         # Startup partial-download sweep. Keep partials that a download record
@@ -1780,7 +2057,7 @@ def main():
             except OSError:
                 pass
         warm_indexes()
-        start_background_services(args.port)
+        start_background_services(port)
         # Start auto-update thread if enabled
         global _auto_update_thread
         if _auto_update_enabled:
@@ -1811,7 +2088,7 @@ def main():
 
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
-        server = ThreadingHTTPServer((args.host, args.port), ZimHandler)
+        server = ThreadingHTTPServer((host, port), ZimHandler)
         # Emit READY <actual-port> so wrapper scripts (CI smoke tests, the
         # desktop launcher) can capture the bound port — important when
         # --port 0 is used to let the OS pick a free port.
