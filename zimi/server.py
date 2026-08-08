@@ -2148,6 +2148,231 @@ def load_cache(force=False):
     _build_domain_zim_map()
 
 
+def _domain_map_entries_for_zim(name, filename, source_meta):
+    """Domain→ZIM entries ONE ZIM contributes, without opening any archive.
+
+    Mirrors the three discovery methods of interlang._build_domain_zim_map
+    (filename prefix, Source metadata, name-based TLD inference) plus its
+    www./mobile variant expansion — keep the two in sync. The full rebuild
+    still owns startup and manual refresh; this exists because the rebuild
+    calls get_archive() for every unmapped ZIM, and with a cold archive pool
+    that re-opens the whole library — minutes under _zim_lock on a Pi with a
+    NAS mount, the exact starvation register_zim_file removes (#51). Here the
+    Source string is read from the registration's own private handle, so the
+    merge is pure string work.
+    """
+    domains = []
+
+    def _add(domain):
+        domain = (domain or "").lower().strip()
+        if not domain or "." not in domain:
+            return
+        domains.append(domain)
+        if domain.startswith("www."):
+            domains.append(domain[4:])
+        else:
+            domains.append("www." + domain)
+        m = re.match(r"^(\w{2,3})\.(wiki\w+\.org)$", domain)
+        if m:
+            domains.append(f"{m.group(1)}.m.{m.group(2)}")
+        if domain in ("stackoverflow.com", "stackexchange.com"):
+            domains.append("m." + domain)
+
+    base = filename.split(".zim")[0]
+    m = re.match(r"^([a-zA-Z0-9.-]+\.[a-z]{2,})_", base)
+    if m:
+        _add(m.group(1))
+    elif source_meta:
+        from urllib.parse import urlparse  # local: server.py has no other use
+
+        try:
+            if "://" in source_meta:
+                _add(urlparse(source_meta).hostname or "")
+            else:
+                _add(source_meta.split("/")[0])
+        except Exception as e:
+            log.debug("Failed to parse Source %r for %s: %s", source_meta, name, e)
+    elif not name.startswith("zimgit") and "_en_" not in name:
+        for tld in (".com", ".org", ".io", ".net"):
+            _add(name + tld)
+    return {d: name for d in domains}
+
+
+def register_zim_file(path, removed_files=()):
+    """Incrementally register ONE just-downloaded ZIM into the live library.
+
+    Replaces the post-download ``load_cache(force=True)`` full rebuild, which
+    re-opened and re-scanned EVERY archive in the library while the caller
+    held ``_zim_lock``. On a small box (Raspberry Pi) serving a big library
+    from network storage that held the lock for minutes — every request that
+    touches libzim starved until the browser gave up, which reads as a server
+    crash (#51). The forced rebuild also pooled every archive at once, a
+    memory spike small boards can't absorb.
+
+    Shape: the expensive work (archive open + metadata extraction — real I/O
+    on a slow mount) runs BEFORE the lock on a private handle; ``_zim_lock``
+    is held only to splice the result into the in-memory registry. Opening a
+    private Archive off-lock is safe: libzim's hazard is two threads on ONE
+    Archive object, and this handle is not shared until after the splice
+    (same practice as the post-download validation open in library.py).
+
+    ``removed_files``: basenames of older versions the caller already deleted
+    from disk; they are dropped from the registry and disk cache in the same
+    splice.
+
+    Returns True when the library reflects the file; False when the file
+    could not be read — the caller should fall back to a full load_cache().
+    """
+    global _zim_files_cache, _zim_list_cache, _cache_generation
+    _init()
+    if _zim_files_cache is None or _zim_list_cache is None:
+        # Library was never scanned (headless/startup edge): there is nothing
+        # to splice into, and a plain load — which will pick the new file up
+        # from disk along with everything else — is the cheap normal path.
+        load_cache()
+        return True
+    filename = os.path.basename(path)
+    name = _zim_short_name(filename)
+    try:
+        st = os.stat(path)
+    except OSError as e:
+        log.warning("register_zim_file: cannot stat %s: %s", path, e)
+        return False
+
+    # Mirror _scan_zim_files' collision rule: when a DIFFERENT file already
+    # backs this short name, the larger file keeps serving. The routine case
+    # — an update replacing an older dated file the caller just deleted —
+    # falls through because the old path no longer stats.
+    existing_path = _zim_files_cache.get(name)
+    if existing_path and os.path.realpath(existing_path) != os.path.realpath(path):
+        try:
+            if os.path.getsize(existing_path) >= st.st_size:
+                log.info(
+                    "ZIM name collision '%s': keeping %s, new %s stays shadowed",
+                    name,
+                    os.path.basename(existing_path),
+                    filename,
+                )
+                return True  # library correctly unchanged
+        except OSError:
+            pass  # existing file is gone — the new one takes over
+
+    # ---- Phase 1: metadata extraction, deliberately WITHOUT _zim_lock ----
+    entry, archive = _extract_zim_metadata(name, path)
+    if entry.get("entries") == "?":
+        # Unreadable despite the download path's libzim validation — let the
+        # caller run the full-scan fallback rather than splice a broken entry.
+        return False
+    # Source metadata feeds the domain-map merge below; read it here on the
+    # private handle so the merge itself never touches libzim.
+    try:
+        source_meta = (
+            bytes(archive.get_metadata("Source")).decode("utf-8", "replace").strip()
+        )
+    except Exception:
+        source_meta = ""
+
+    # New/Updated stamps, same semantics as load_cache: a new dated filename
+    # of an already-known ZIM inherits the ORIGINAL first_seen and stamps
+    # updated_at (badge reads "Updated"); a genuinely new ZIM derives
+    # first_seen from its own mtime (badge reads "New").
+    disk_cache = _load_disk_cache()
+    prior_first_seen = None
+    if disk_cache:
+        for _fn, _ce in disk_cache.items():
+            if _fn == filename or not isinstance(_ce, dict):
+                continue
+            if _zim_short_name(_fn) == name:
+                _fs = _ce.get("first_seen")
+                if _fs is not None and (
+                    prior_first_seen is None or _fs < prior_first_seen
+                ):
+                    prior_first_seen = _fs
+    now = time.time()
+    if prior_first_seen is not None:
+        entry["first_seen"] = prior_first_seen
+        entry["updated_at"] = now
+    else:
+        entry["first_seen"] = min(st.st_mtime, now)
+        entry["updated_at"] = None
+
+    # Disk-cache record, same shape load_cache's scan branch writes.
+    new_cached = {
+        "name": name,
+        "mtime": st.st_mtime,
+        "size": st.st_size,
+        "size_gb": entry["size_gb"],
+        "entries": entry["entries"],
+        "title": entry["title"],
+        "description": entry["description"],
+        "date": entry.get("date", ""),
+        "language": entry.get("language", ""),
+        "has_icon": entry["has_icon"],
+        "main_path": entry["main_path"],
+    }
+    for _opt in ("article_count", "zimi_export", "first_seen", "updated_at"):
+        if entry.get(_opt) is not None:
+            new_cached[_opt] = entry[_opt]
+
+    removed = {os.path.basename(f) for f in removed_files}
+
+    # ---- Phase 2: splice under _zim_lock — dict surgery + a small json ----
+    with _zim_lock:
+        # Rebind fresh containers instead of mutating: readers iterate these
+        # without the lock, and an atomic rebind can never trip them mid-walk.
+        files = dict(_zim_files_cache)
+        files[name] = path
+        _zim_files_cache = files
+        listing = [
+            z
+            for z in (_zim_list_cache or [])
+            if z.get("name") != name and z.get("file") not in removed
+        ]
+        listing.append(entry)
+        _zim_list_cache = listing
+        with _archive_lock:
+            # Hand the already-open archive to the pool (and drop any handle
+            # still pointing at a replaced file) so nothing re-opens it.
+            _archive_pool[name] = archive
+        # Invalidates /w/ entry ETags and the interlang resolution caches —
+        # cross-ZIM answers can genuinely change when a ZIM arrives.
+        _cache_generation += 1
+        # Re-read the disk cache under the lock: the phase-1 copy fed the
+        # stamp inheritance, but a concurrent full load_cache (manage
+        # refresh) may have rewritten the file since — mutate the freshest
+        # version so its work isn't clobbered.
+        disk_now = _load_disk_cache()
+        if disk_now is not None:
+            for _fn in list(disk_now):
+                if _fn in removed or _zim_short_name(_fn) == name:
+                    disk_now.pop(_fn, None)
+            disk_now[filename] = new_cached
+            _save_disk_cache(disk_now)
+        # Domain map: merge ONLY this ZIM's domains. The full rebuild
+        # (_build_domain_zim_map) opens every unmapped archive via
+        # get_archive — with a cold pool (e.g. right after a previous
+        # download's cache clear) that re-opens the whole library under this
+        # lock, the same minutes-long starvation this function exists to
+        # remove. Existing entries win, matching the rebuild's first-wins
+        # rule; the map is rebound (not mutated) in interlang, whose
+        # _resolve_url_to_zim is the live consumer.
+        import zimi.interlang as _interlang
+
+        merged = dict(_interlang._domain_zim_map)
+        for _d, _n in _domain_map_entries_for_zim(name, filename, source_meta).items():
+            merged.setdefault(_d, _n)
+        _interlang._domain_zim_map = merged
+        # Keep this module's re-export binding fresh too (manage/status reads
+        # it via _srv; the import-time binding would otherwise go stale).
+        globals()["_domain_zim_map"] = merged
+    log.info(
+        "Registered %s (%s entries) without a library rescan",
+        filename,
+        entry.get("entries"),
+    )
+    return True
+
+
 # (HTTP Request Handler extracted to zimi/http.py)
 
 

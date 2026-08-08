@@ -32,6 +32,13 @@ from zimi.manage import (
 
 log = logging.getLogger("zimi")
 
+# A client that hangs up mid-response surfaces as one of these when the
+# handler writes to the dead socket. That is the CLIENT's doing, not a server
+# error — under load (e.g. every UI poller timing out at once, #51) treating
+# it as an error printed an interleaved traceback storm plus bogus 500s that
+# read like a crash. Every dispatch backstop routes these to one debug line.
+_DISCONNECT_ERRS = (BrokenPipeError, ConnectionResetError)
+
 # ============================================================================
 # Rate Limiting
 # ============================================================================
@@ -756,6 +763,38 @@ def _asset_version():
 class ZimHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 30  # seconds — prevents slow-client DoS on POST bodies
+
+    def handle_one_request(self):
+        """Backstop for disconnects escaping ANY write path (rate-limit
+        responses, HEAD, auth denials…). Without this they reach
+        socketserver.handle_error, which prints a full unlocked traceback per
+        request — many threads at once interleave into unreadable noise."""
+        try:
+            super().handle_one_request()
+        except _DISCONNECT_ERRS:
+            # The connection is unusable; make the keep-alive loop stop.
+            self.close_connection = True
+            log.debug("client disconnected: %s", getattr(self, "path", "?"))
+
+    def _dispatch_error(self, e):
+        """Terminal `except` for the do_* dispatchers. Disconnects get one
+        debug line and NO 500 — the socket is dead and writing to it would
+        just raise again. Real failures keep the traceback + generic 500."""
+        if isinstance(e, _DISCONNECT_ERRS):
+            log.debug(
+                "client disconnected mid-response: %s %s", self.command, self.path
+            )
+            return
+        traceback.print_exc()
+        try:
+            return self._json(500, {"error": "Internal server error"})
+        except _DISCONNECT_ERRS:
+            # Client vanished between the failure and the error reply.
+            log.debug(
+                "client disconnected before error reply: %s %s",
+                self.command,
+                self.path,
+            )
 
     def do_HEAD(self):
         """Handle HEAD requests (Traefik health checks, uptime monitors)."""
@@ -1608,8 +1647,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 )
 
         except Exception as e:
-            traceback.print_exc()
-            return self._json(500, {"error": "Internal server error"})
+            return self._dispatch_error(e)
         finally:
             _srv.clear_request_allow()
 
@@ -1770,8 +1808,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._json(404, {"error": "not found"})
 
         except Exception as e:
-            traceback.print_exc()
-            return self._json(500, {"error": "Internal server error"})
+            return self._dispatch_error(e)
         finally:
             _srv.clear_request_allow()
 
@@ -1804,8 +1841,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             else:
                 return self._json(404, {"error": "not found"})
         except Exception as e:
-            traceback.print_exc()
-            return self._json(500, {"error": "Internal server error"})
+            return self._dispatch_error(e)
 
     def _serve_zim_icon(self, zim_name, archive):
         """Serve the ZIM's 48x48 illustration as a PNG."""

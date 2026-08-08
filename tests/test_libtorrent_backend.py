@@ -70,6 +70,23 @@ class TestAddTorrent:
         h = backend._handles[tid]
         assert h._atp.save_path == str(tmp_path / "staging")
 
+    def test_seed_mode_option_sets_flag(self, backend, tmp_path):
+        """The post-download library re-seed vouches for a payload the engine
+        just piece-verified; seed_mode skips the full re-hash that pinned a
+        Pi's NAS mount for minutes right at registration time (#51)."""
+        tid = backend.add_torrent(
+            MAGNET, dest_dir=str(tmp_path / "zims"), options={"seed_mode": True}
+        )
+        h = backend._handles[tid]
+        assert h._atp.flags & fake_lt.torrent_flags.seed_mode
+
+    def test_no_seed_mode_by_default(self, backend, tmp_path):
+        """Ordinary adds (downloads, ledger re-seeds after unknown downtime)
+        must keep the full hash check — only an explicit vouch skips it."""
+        tid = backend.add_torrent(MAGNET, dest_dir=str(tmp_path / "staging"))
+        h = backend._handles[tid]
+        assert not (h._atp.flags & fake_lt.torrent_flags.seed_mode)
+
     def test_reseed_waits_out_async_remove_and_adopts_new_save_path(
         self, backend, tmp_path
     ):

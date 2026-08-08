@@ -404,8 +404,9 @@ def test_reseed_normal_cap_readds_from_library(tmp_path, monkeypatch):
     assert len(readds) == 1
     args, kwargs = readds[0]
     assert kwargs["dest_dir"] == str(tmp_path)
-    # No per-torrent options: engine seeds uncapped, ledger enforces the cap.
-    assert kwargs["options"] is None
+    # seed_mode only (pieces were verified during the download; skip the
+    # full re-hash) — no ratio cap: engine seeds uncapped, ledger enforces.
+    assert kwargs["options"] == {"seed_mode": True}
     backend.remove.assert_called_with("gid-001", delete_files=True)
 
 
@@ -469,8 +470,8 @@ def test_reseed_survives_when_add_raises(tmp_path, monkeypatch):
 def test_reseed_mirror_mode_is_uncapped(tmp_path, monkeypatch):
     backend = _run_completion(tmp_path, monkeypatch, seeding=True, mirror=True, cap=2.0)
     _args, kwargs = backend.add_torrent.call_args_list[1]
-    # Mirror re-adds the library seed with no per-torrent options (uncapped).
-    assert kwargs["options"] is None
+    # Mirror re-adds the library seed uncapped, in seed_mode (no re-hash).
+    assert kwargs["options"] == {"seed_mode": True}
 
 
 def test_reseed_cap_zero_means_leech_only(tmp_path, monkeypatch):

@@ -1006,6 +1006,15 @@ class LibtorrentBackend(BTBackend):
         # forever (never downloads, never seeds). Clear paused so it starts;
         # Zimi drives pause()/resume() explicitly from here on.
         atp.flags &= ~lt.torrent_flags.paused
+        if options and options.get("seed_mode"):
+            # Caller vouches the payload on disk is complete and verified —
+            # only set for the post-download library re-seed, where every
+            # piece was hash-checked as it arrived and the file was merely
+            # moved. Skips the full-file re-check a fresh add otherwise
+            # runs; libtorrent still verifies each piece before its first
+            # upload and exits seed mode on mismatch, so a wrong vouch
+            # degrades to a re-check instead of poisoning the swarm.
+            atp.flags |= getattr(lt.torrent_flags, "seed_mode", 0)
         tid = str(atp.info_hashes.v1)
         with self._lock:
             if tid in self._handles and self._handles[tid].is_valid():

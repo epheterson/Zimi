@@ -2676,15 +2676,23 @@ def _try_bt_download(
                 try:
                     _meta = _get_torrent_metadata().get(dl["filename"]) or {}
                     _src = _meta.get("torrent_file") or torrent_url
-                    # No per-torrent options: the engine seeds the existing
-                    # file uncapped and Zimi enforces the user's cap in
-                    # apply_seed_policy (a positive engine cap would measure
-                    # this session's DOWNLOAD — zero for a re-seed — and kill
-                    # the seed on its first uploaded piece).
+                    # seed_mode: every piece of this payload was already
+                    # hash-verified by the engine during the download and the
+                    # file was only MOVED since, so a fresh full re-hash buys
+                    # nothing — and on a Pi seeding a multi-GB ZIM from a NAS
+                    # mount it pins the disk for minutes right when the
+                    # library registers the new ZIM (#51). Still honest:
+                    # libtorrent verifies each piece on first upload and
+                    # drops out of seed mode on any mismatch. No ratio cap in
+                    # options: the engine seeds uncapped and Zimi enforces
+                    # the user's cap in apply_seed_policy (a positive engine
+                    # cap would measure this session's DOWNLOAD — zero for a
+                    # re-seed — and kill the seed on its first uploaded
+                    # piece).
                     seed_gid = backend.add_torrent(
                         _src,
                         dest_dir=os.path.dirname(dl["dest"]),
-                        options=None,
+                        options={"seed_mode": True},
                     )
                     if seed_gid:
                         tid = seed_gid  # track the library seed, not staging
@@ -3192,6 +3200,7 @@ def _post_download_finalize(dl):
     appends to history. Idempotent — safe if dl['dest'] already exists.
     """
     # Remove older versions of the same ZIM
+    removed_versions = []
     base = re.match(r"^(.+?)_\d{4}-\d{2}\.zim$", dl["filename"])
     if base:
         prefix = base.group(1)
@@ -3204,13 +3213,31 @@ def _post_download_finalize(dl):
                 ):
                     try:
                         os.remove(os.path.join(_srv.ZIM_DIR, f))
+                        removed_versions.append(f)
                         log.info("Removed old version: %s", f)
                     except OSError:
                         pass
         except OSError:
             pass
-    with _srv._zim_lock:
-        _srv.load_cache(force=True)
+    # Register ONLY the new file. The old shape here — load_cache(force=True)
+    # under _zim_lock — re-scanned every archive in the library while holding
+    # the lock every libzim request needs; on a Pi serving a big library off a
+    # NAS mount that starved all requests for minutes and read as a crash
+    # (#51). register_zim_file extracts the new ZIM's metadata OFF the lock
+    # and only splices under it; the full rescan survives as the fallback.
+    registered = False
+    try:
+        registered = _srv.register_zim_file(dl["dest"], removed_files=removed_versions)
+    except Exception as e:
+        log.warning(
+            "Incremental registration of %s failed (%s) — falling back to a "
+            "full library rescan",
+            dl["filename"],
+            e,
+        )
+    if not registered:
+        with _srv._zim_lock:
+            _srv.load_cache(force=True)
     _srv._search_cache_clear()
     _srv._suggest_cache_clear()
     _srv._clean_stale_title_indexes()
