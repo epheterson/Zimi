@@ -128,3 +128,15 @@ Honesty first: nobody needs "SCIM 2.0, the RFC." Okta and Entra each exercise a 
 - OpenID Connect Core 1.0, §3.1.3.7 ID Token Validation (rule 6: TLS in place of signature check for direct token-endpoint delivery; rules 7–8 on `alg`) — https://openid.net/specs/openid-connect-core-1_0.html
 - Okta, "SCIM 2.0 protocol reference" (PUT vs PATCH behavior, `userName eq` matching, pagination, deactivation, Group Push verbs) — https://developer.okta.com/docs/api/openapi/okta-scim/guides/scim-20 and "SCIM integration concepts and requirements" — https://developer.okta.com/docs/concepts/scim/faqs/
 - Microsoft Learn, "Develop a SCIM endpoint for user provisioning from Microsoft Entra ID" (requirements table: create/PATCH/query/pagination/`active=false`/`/Schemas`; `eq`+`and` only; case-mangled PATCH ops; secret-token auth recommendation) — https://learn.microsoft.com/en-us/entra/identity/app-provisioning/use-scim-to-provision-users-and-groups
+
+## Amendment 2026-08-08 — Cloudflare Access / trusted-header SSO comes first
+
+Eric's own deployment (knowledge.zosia.io) runs behind a Cloudflare Tunnel, and his question "will this interface with our cloudflare oauth" exposed a gap: Cloudflare Access is not an IdP an application talks to, it is an identity-aware proxy that authenticates at the edge and forwards the result as a signed JWT in the Cf-Access-Jwt-Assertion header. The code flow above never fires in that topology.
+
+So the plan gains a mode, and it moves to the front of the queue because it is the one a real deployment here would use, and because the same pattern covers Authelia, authentik, oauth2-proxy and every other identity-aware proxy in the self-hosted world:
+
+**Trusted-header SSO.** Zimi validates the proxy's JWT against the issuer's published JWKS (for Cloudflare: the team domain's /cdn-cgi/access/certs), checks aud against the configured Access application tag, and maps the email claim onto the existing users store, creating-on-first-login with a configured default role. Config: issuer URL, audience, claim-to-user mapping, default role, and an enable flag that also requires the request to have arrived from the tunnel/proxy (loopback or a configured upstream address) so the header cannot be forged by a direct LAN client.
+
+**Honest cost this mode reimports:** the header JWT arrives in a request, not over our own TLS channel to a token endpoint, so OIDC Core 3.1.3.7 rule 6 does NOT apply and real RS256 verification is required. That means either the optional [sso] extra (PyJWT+cryptography) or the pure-stdlib verify-only implementation weighed in Decision 1. This does not reopen Decision 1 for the code flow; it means the stdlib-verify (or extra) work lands earlier than planned, with the code flow reusing it later. Verify-only RSA in stdlib remains acceptable: no signing, no timing-sensitive secret handling, JWKS parse plus PKCS1 v1.5 verify plus strict alg pinning to RS256 (reject none/HS256 outright).
+
+Phasing change: trusted-header SSO becomes Phase 1 of Workstream B, the OIDC code flow slides to Phase 2, both behind the same claim-mapping and session machinery so nothing is built twice.
