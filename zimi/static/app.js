@@ -1147,12 +1147,17 @@ function updateTopbar() {
     bcIcon.style.display = 'inline-flex';
     bcIcon.title = t('almanac');
     bcIcon.innerHTML = _ALMANAC_BC_ICON;
+    // Identity only — no destination behind it, so no link affordance either.
+    bcIcon.removeAttribute('href');
   } else if (activeSource) {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
     const info = _zimInfo(activeSource);
     const title = _zimTitle(activeSource);
     bcIcon.title = title;
+    // Real link (#49): the source view has a true URL, so right/middle/
+    // modifier clicks can open it in a new tab; bcClick keeps plain clicks SPA.
+    bcIcon.setAttribute('href', '/w/' + encodeURIComponent(activeSource));
     if (info && info.has_icon) {
       bcIcon.innerHTML = '<img src="/w/' + encodeURIComponent(activeSource) + '/-/icon" alt="" width="22" height="22" alt="' + escAttr(title) + '">';
     } else {
@@ -1162,6 +1167,7 @@ function updateTopbar() {
     bcSep.style.display = 'none';
     bcIcon.style.display = 'none';
     bcIcon.title = '';
+    bcIcon.removeAttribute('href');
   }
 
   // Manage/Almanac: gear → X close. Reader open: gear → X close reader.
@@ -1278,7 +1284,9 @@ function updateTopbar() {
 
 function bcClick(e) {
   // Clicking the icon in the breadcrumb goes to the source view
-  if (e.target.id === 'logo') return;
+  if (e.target.closest && e.target.closest('#logo')) return; // the logo's own handler navigates
+  if (_anchorNativeClick(e)) return; // bc-icon is a real link (#49) — new-tab gestures stay native
+  e.preventDefault();
   if (_almanacOpen) return; // the Almanac breadcrumb is identity only — no nav into the ZIM behind it
   if (currentSource && (readerOpen || mode === 'search')) {
     if (readerOpen) closeReader();
@@ -1839,6 +1847,9 @@ function _openInBrowser() {
 
 // ── Navigation ──
 function goHome(e) {
+  // The logo is a real <a href="/"> (#49): keep modified/non-primary clicks
+  // native so open-in-new-tab works; only a plain left click stays SPA.
+  if (e && _anchorNativeClick(e)) return;
   if (e) e.preventDefault();
   if (typeof _almReturnScroll !== 'undefined') _almReturnScroll = null; // explicit Home cancels almanac return
   if (_almanacOpen) closeAlmanac();
@@ -1902,10 +1913,12 @@ function _showHistoryTrail() {
   var h = '';
   for (var i = articleHistory.length - 1; i >= 0; i--) {
     var item = articleHistory[i];
-    h += '<div class="history-item" data-idx="' + i + '">';
+    // Real links (#49): each trail entry has a true deep-link URL, so
+    // right/middle/modifier clicks can open it in a new tab natively.
+    h += '<a class="history-item" href="' + escAttr(_articleDeepLinkPath(item.zim, item.path)) + '" data-idx="' + i + '">';
     h += '<span class="hi-source">' + esc(_zimTitle(item.zim)) + '</span>';
     h += '<span class="hi-title">' + esc(item.title || item.path) + '</span>';
-    h += '</div>';
+    h += '</a>';
   }
   _historyTrail.innerHTML = h;
   // Position below the back button
@@ -1932,8 +1945,13 @@ function _navigateHistoryItem(el) {
   return true;
 }
 
-// Click on trail item (for right-click-then-click flow)
-_historyTrail.addEventListener('click', function(e) { _navigateHistoryItem(e.target); });
+// Click on trail item (for right-click-then-click flow). Items are real
+// links (#49): keep new-tab gestures native, intercept plain clicks for SPA.
+_historyTrail.addEventListener('click', function(e) {
+  if (_anchorNativeClick(e)) return;
+  e.preventDefault();
+  _navigateHistoryItem(e.target);
+});
 
 // Hover highlight during long-press drag
 _historyTrail.addEventListener('mouseover', function(e) {
@@ -3032,8 +3050,10 @@ function renderCardGrid(items, showStars, showCategory) {
       ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
       : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
     const isFav = favs.includes(z.name);
+    // preventDefault too: the card is now an anchor (#49), and a button click
+    // inside a link otherwise still follows the link's href.
     const starHtml = showStars
-      ? '<button class="star-btn' + (isFav ? ' starred' : '') + '" onclick="event.stopPropagation();toggleFavorite(\'' + escAttr(z.name) + '\')" title="' + escAttr(isFav ? t('remove_from_favorites') : t('add_to_favorites')) + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
+      ? '<button class="star-btn' + (isFav ? ' starred' : '') + '" onclick="event.preventDefault();event.stopPropagation();toggleFavorite(\'' + escAttr(z.name) + '\')" title="' + escAttr(isFav ? t('remove_from_favorites') : t('add_to_favorites')) + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
       : '';
     const catPrefix = showCategory && z.category ? '<span class="card-cat">' + esc(z.category) + '</span> &middot; ' : '';
     const badge = _langBadge(z, false, isTiles);
@@ -3045,7 +3065,16 @@ function renderCardGrid(items, showStars, showCategory) {
     const newHtml = badgeInfo
       ? '<span class="new-badge' + (isUpd ? ' updated-badge' : '') + '" title="' + escAttr(t(isUpd ? 'recently_updated' : 'recently_installed')) + '">' + tH(isUpd ? 'updated_badge' : 'new_badge') + '</span>'
       : '';
-    return '<div class="stat-card' + (newHtml ? ' is-new' : '') + '" data-zim="' + escAttr(z.name) + '" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
+    // Exports embed their own download <a> in the detail row, and HTML forbids
+    // nested links (the parser would split the card apart) — so those cards
+    // stay divs with the legacy handler. Everything else is a real link (#49):
+    // right/middle/modifier clicks open the source natively in a new tab.
+    const dlHtml = (_isZimiExport(z) && z.file) ? ' &middot; ' + _exportDlBtnHtml(z.file, 'card-dl-pill') : '';
+    const cardTag = dlHtml ? 'div' : 'a';
+    const cardNav = dlHtml
+      ? ' tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)"'
+      : ' href="/w/' + encodeURIComponent(z.name) + '" onclick="return _spaSourceClick(event, this)"';
+    return '<' + cardTag + ' class="stat-card' + (newHtml ? ' is-new' : '') + '" data-zim="' + escAttr(z.name) + '"' + cardNav + '>' +
       starHtml +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info">' +
@@ -3061,11 +3090,9 @@ function renderCardGrid(items, showStars, showCategory) {
         (_isZimiExport(z) && z.date ? ' &middot; ' + esc(z.date) : '') +
         // Exports exist to travel: give the card a save-the-file affordance
         // (other ZIMs re-download from the catalog, so only exports carry it).
-        (_isZimiExport(z) && z.file
-          ? ' &middot; ' + _exportDlBtnHtml(z.file, 'card-dl-pill')
-          : '') +
+        dlHtml +
         '</div>' +
-      '</div></div>';
+      '</div></' + cardTag + '>';
   }).join('') + '</div>';
 }
 
@@ -3770,7 +3797,7 @@ function _renderDiscover(el, items) {
         }
       }
       var _teaser = _todayTeaser();
-      h += '<div class="discover-card" onclick="openAlmanac()">' +
+      h += '<a class="discover-card" href="/#almanac" onclick="return _spaNav(event, openAlmanac)">' +
         _renderTodayCard() +
         '<div class="dc-body">' +
           '<div class="dc-source"><span>' + tH('today') + '</span></div>' +
@@ -3778,7 +3805,7 @@ function _renderDiscover(el, items) {
           '<div class="dc-blurb">' + _localMoonName(_m.name) + (_seasonStr ? ' \u00b7 ' + _seasonStr : '') + '</div>' +
           '<div class="dc-blurb">' + _m.illumination + '% ' + tH('alm_illuminated') + '</div>' +
           (_teaser ? '<div class="dc-blurb" style="color:var(--amber)">' + _teaser + '</div>' : '') +
-        '</div></div>';
+        '</div></a>';
       continue;
     }
 
@@ -3852,25 +3879,25 @@ function _renderDiscover(el, items) {
       var attrLine = (attrName && attrName !== cleanQuote)
         ? '<div class="dc-attribution">\u2014 ' + esc(attrName) + '</div>'
         : '';
-      h += '<div class="discover-card dc-quote-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+      h += '<a class="discover-card dc-quote-card" href="' + escAttr(_articleDeepLinkPath(it.zim, it.path)) + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="return _spaCardClick(event, this)">' +
         '<div class="dc-body">' +
           '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel || t('quote_of_day')) + '</span></div>' +
           '<div class="dc-quote-mark">\u201C</div>' +
           '<div class="dc-blurb dc-quote">' + esc(cleanQuote) + '</div>' +
           attrLine +
-        '</div></div>';
+        '</div></a>';
 
     // ─── Card: Word of the Day ──────────────────────────────────────
     // Full-width card with headword, part of speech, and definition.
     // Used for Wiktionary content.
     } else if (/wiktionary/i.test(it.zim || '')) {
-      h += '<div class="discover-card dc-quote-card dc-word-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+      h += '<a class="discover-card dc-quote-card dc-word-card" href="' + escAttr(_articleDeepLinkPath(it.zim, it.path)) + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="return _spaCardClick(event, this)">' +
         '<div class="dc-body">' +
           '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel) + '</span></div>' +
           '<div class="dc-headword">' + esc(displayTitle) + '</div>' +
           (it.part_of_speech ? '<div class="dc-pos">' + esc(it.part_of_speech) + '</div>' : '') +
           (it.blurb ? '<div class="dc-def">' + esc(it.blurb) + '</div>' : '') +
-        '</div></div>';
+        '</div></a>';
 
     // ─── Card: Standard ─────────────────────────────────────────────
     // Thumbnail + source + title + blurb. Used for APOD, On This Day,
@@ -3908,14 +3935,14 @@ function _renderDiscover(el, items) {
       var _isVid = _isVideoZim(it.zim);
       var playBadge = _isVid ? '<span class="dc-play-badge" aria-hidden="true"></span>' : '';
       var vidAttrs = _isVid ? ' data-video="1" aria-label="' + escAttr(t('play_video') + ': ' + displayTitle) + '"' : '';
-      h += '<div class="discover-card' + (_isVid ? ' dc-video-card' : '') + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '"' + vidAttrs + ' onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+      h += '<a class="discover-card' + (_isVid ? ' dc-video-card' : '') + '" href="' + escAttr(_articleDeepLinkPath(it.zim, it.path)) + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '"' + vidAttrs + ' onclick="return _spaCardClick(event, this)">' +
         thumbHtml + playBadge +
         '<div class="dc-body">' +
           '<div class="dc-source">' + iconHtml + '<span>' + esc(sourceLabel) + '</span>' + badgeHtml + dateHtml + '</div>' +
           '<div class="dc-title">' + esc(displayTitle) + '</div>' +
           speakerHtml +
           showBlurb +
-        '</div></div>';
+        '</div></a>';
     }
   }
   h += '</div></div>';
@@ -4625,25 +4652,24 @@ var _zimgitZimName = '';   // ZIM they belong to (for the filter's re-render)
 
 function _zimgitDocHtml(name, d, i) {
   var hasPath = !!d.path;
-  var call = hasPath
-    ? "openArticle('" + escJs(name) + "', '" + escJs(d.path) + "', '" + escJs(d.title || '') + "')"
-    : '';
-  var clickAttr = hasPath
-    ? ' onclick="' + call + '" onkeydown="if(event.key===\'Enter\')' + call + '"'
+  // With a path the row is a real link (#49) — new-tab gestures work natively,
+  // and the anchor is focusable/Enter-activatable without div scaffolding.
+  var tag = hasPath ? 'a' : 'div';
+  var navAttrs = hasPath
+    ? ' href="' + escAttr(_articleDeepLinkPath(name, d.path)) + '" data-zim="' + escAttr(name) + '" data-path="' + escAttr(d.path) + '" data-title="' + escAttr(d.title || '') + '" onclick="return _spaCardClick(event, this)"'
     : '';
   var meta = [];
   if (d.author) meta.push(esc(d.author));
   if (d.size) meta.push(_fmtBytes(d.size));
   var metaHtml = meta.length ? '<div class="zg-meta">' + meta.join(' · ') + '</div>' : '';
-  return '<div class="result zg-doc"' +
-    (hasPath ? ' tabindex="0" role="button" data-zim="' + escAttr(name) + '" data-path="' + escAttr(d.path) + '" data-title="' + escAttr(d.title || '') + '"' : '') +
-    ' style="animation-delay:' + (i * 0.04) + 's"' + clickAttr + '>' +
+  return '<' + tag + ' class="result zg-doc"' + navAttrs +
+    ' style="animation-delay:' + (i * 0.04) + 's">' +
     '<div class="zg-icon" aria-hidden="true">PDF</div>' +
     '<div class="result-body">' +
       '<div class="title">' + esc(d.title) + '</div>' +
       (d.description ? '<div class="snippet">' + esc(d.description) + '</div>' : '') +
       metaHtml +
-    '</div></div>';
+    '</div></' + tag + '>';
 }
 
 function _renderZimgitCatalog(name, docs) {
@@ -5179,14 +5205,16 @@ function renderSearchResults(data, scope) {
         const icon = z.has_icon
           ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
           : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
-        return '<div class="stat-card" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
+        // Real link (#49) — and data-zim keeps the long-press context menu
+        // working now that there is no enterSource(...) onclick to parse.
+        return '<a class="stat-card" data-zim="' + escAttr(z.name) + '" href="/w/' + encodeURIComponent(z.name) + '" onclick="return _spaSourceClick(event, this)">' +
           '<div class="card-icon">' + icon + '</div>' +
           '<div class="card-info">' +
             '<div class="name">' + esc(z.title || z.name) + '</div>' +
             (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
             '<div class="detail">' + _zimCountHtml(z) +
             ' &middot; ' + fmtSize(z.size_gb) + '</div>' +
-          '</div></div>';
+          '</div></a>';
       }).join('') + '</div>';
     }
   }
@@ -5200,12 +5228,14 @@ function renderSearchResults(data, scope) {
       ? '<div class="result-source">' + _sourceIconHtml(r.zim, 20) +
         '<span class="rs-name">' + esc(_zimTitle(r.zim)) + '</span></div>'
       : '';
-    return '<div class="result" tabindex="0" role="button" data-zim="' + escAttr(r.zim) + '" data-path="' + escAttr(r.path) + '" data-title="' + escAttr(r.title || '') + '" style="animation-delay:' + (Math.min(i, 5) * 0.04) + 's" onclick="openArticle(\'' + escJs(r.zim) + '\', \'' + escJs(r.path) + '\', \'' + escJs(r.title || '') + '\')" onkeydown="if(event.key===\'Enter\')openArticle(\'' + escJs(r.zim) + '\', \'' + escJs(r.path) + '\', \'' + escJs(r.title || '') + '\')">' +
+    // Real link (#49): anchors are natively focusable and Enter-activatable,
+    // so the tabindex/role/onkeydown scaffolding a div needed goes away.
+    return '<a class="result" href="' + escAttr(_articleDeepLinkPath(r.zim, r.path)) + '" data-zim="' + escAttr(r.zim) + '" data-path="' + escAttr(r.path) + '" data-title="' + escAttr(r.title || '') + '" style="animation-delay:' + (Math.min(i, 5) * 0.04) + 's" onclick="return _spaCardClick(event, this)">' +
       '<div class="result-thumb" data-needs-thumb="1"></div>' +
       '<div class="result-body">' + sourceRow +
       '<div class="title">' + esc(r.title) + '</div>' +
       (r.snippet ? '<div class="snippet">' + esc(r.snippet) + '</div>' : '<div class="snippet" data-needs-snippet="1"></div>') +
-      '</div></div>';
+      '</div></a>';
   }).join('') + '</div>';
 
   if (remaining > 0) {
@@ -5518,7 +5548,9 @@ function toggleManage(e) {
     _manageToken = '';
     // Use history.back() to trigger popstate, which restores reader if saved
     if (_manageSavedReader) { history.back(); return; }
-    goHome(e); return;
+    // null, not e: this is a close action, not link navigation — a modifier
+    // held during the click must not make goHome defer to a native gesture.
+    goHome(null); return;
   }
   enterManage(e);
 }
@@ -15479,12 +15511,44 @@ function _isModClick() {
   return e.metaKey || e.ctrlKey || e.button === 1;
 }
 
+// ── Real-anchor SPA navigation (#49) ──
+// Primary navigation with a true URL is a real <a href>, so the browser's own
+// link affordances work: right-click → open in new tab, middle-click,
+// cmd/ctrl/shift-click, copy link, drag. Only a plain left click is
+// intercepted for in-app navigation.
+function _anchorNativeClick(e) {
+  return !!(e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey ||
+    (e.button != null && e.button !== 0)));
+}
+// Inline-handler shim: `onclick="return _spaNav(event, fn)"` — true lets the
+// browser follow the href natively, false cancels it after running the SPA
+// navigation instead.
+function _spaNav(e, fn) {
+  if (_anchorNativeClick(e)) return true;
+  e.preventDefault();
+  fn();
+  return false;
+}
+// Anchor-card variants reading the data-* the card already carries, so the
+// zim/path/title triple isn't escaped into the markup a second time.
+function _spaCardClick(e, el) {
+  return _spaNav(e, function () {
+    openArticle(el.getAttribute('data-zim'), el.getAttribute('data-path'), el.getAttribute('data-title') || '');
+  });
+}
+function _spaSourceClick(e, el) {
+  return _spaNav(e, function () { enterSource(el.getAttribute('data-zim'), true); });
+}
+
 // ── Middle-click (auxclick) handler for search results, discover cards, etc. ──
 // onclick doesn't fire on middle-click — auxclick does.
 document.addEventListener('auxclick', function(e) {
   if (e.button !== 1) return; // Only handle middle-click
   var el = e.target.closest('[data-zim][data-path]');
   if (!el) return;
+  // Real-link cards (#49): the browser's own middle-click already opens the
+  // href (the SPA deep link) — don't shadow it with a second tab.
+  if (el.tagName === 'A' && el.hasAttribute('href')) return;
   e.preventDefault();
   var zim = el.getAttribute('data-zim');
   var path = el.getAttribute('data-path');

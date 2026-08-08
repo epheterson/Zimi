@@ -966,6 +966,9 @@
   .meta .time { opacity: 0.6; }
 
   .results { display: flex; flex-direction: column; gap: 3px; }
+  /* Navigation cards are real links (#49) so browser link gestures work —
+     keep the card look, not the UA's blue underlined text. */
+  a.result, a.discover-card, a.history-item, a.bc-icon { color: inherit; text-decoration: none; }
   .result {
     display: flex; gap: 12px; padding: 14px 16px; background: var(--surface); border-radius: var(--radius);
     cursor: pointer; border: 1px solid transparent;

@@ -118,6 +118,10 @@
 .orrery-ctrl-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); border-radius: 6px; width: 32px; height: 28px; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
 .orrery-ctrl-btn:hover { color: var(--amber); border-color: var(--amber-border); }
 .orrery-slider { flex: 1; min-width: 60px; height: 4px; -webkit-appearance: none; appearance: none; background: var(--surface2); border-radius: 2px; outline: none; cursor: pointer; }
+/* While the time machine owns the clock the local controls are inert — say so. */
+.orrery-slider:disabled { opacity: 0.35; cursor: default; }
+.orrery-slider:disabled::-webkit-slider-thumb { background: var(--text3); cursor: default; box-shadow: none; }
+.orrery-slider:disabled::-moz-range-thumb { background: var(--text3); cursor: default; }
 .orrery-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--amber); border: none; cursor: pointer; box-shadow: 0 0 4px rgba(255,180,60,0.3); }
 .orrery-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--amber); border: none; cursor: pointer; }
 .orrery-speed-end { color: var(--text3); font-size: 9px; flex-shrink: 0; user-select: none; }

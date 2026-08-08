@@ -604,9 +604,10 @@ function _almSafePanel(fn, containerId) {
 }
 
 // Repaint every panel that describes a moment, in place, for the focused
-// instant. Two things deliberately stay out of it: the world clock (it is a
-// clock — it should always read now) and the orrery, which carries its own
-// date and speed and operates on a completely different time scale.
+// instant. One thing deliberately stays out of it: the world clock (it is a
+// clock — it should always read now). The orrery follows the focus too (#48):
+// its local speed/date controls only own the clock while the almanac is at
+// now — _orrerySyncToFocus below settles that precedence.
 function _almRepaintFocus() {
   var focus = _almFocusInstant();
   var loc = _getLocation();
@@ -637,6 +638,9 @@ function _almRepaintFocus() {
   _almSafePanel(function () { _renderMeteorShowers(focus, m); }, 'almanac-meteors');
   _almSafePanel(function () { _renderCelestialEvents(focus); }, 'almanac-events');
   _almSafePanel(function () { _renderDeepTime(focus); }, 'almanac-deeptime');
+  // Orrery: one exact frame + control state for the settled focus (or the
+  // handover back to its local clock when the focus returns to now).
+  _almSafePanel(function () { if (typeof _orrerySyncToFocus === 'function') _orrerySyncToFocus(); }, null);
   // Re-seeding the sky scene cancels the previous RAF, so loops don't stack.
   // animateMoon=true: this repaint always follows a focus-time change (scrub
   // settle, wheel/key step, "Go", Back to Now) -- let the moon glide onward
@@ -1002,10 +1006,11 @@ function _almLiveHeadCards(focus) {
 // lever is held, and _almScrubSettle recomputes everything exactly the moment
 // motion stops.
 //
-// Panels below the fold stay deferred to _almScrubSettle: the orrery, meteor
+// Panels below the fold stay deferred to _almScrubSettle: the meteor
 // countdowns, deep-time, tonight's-sky planet ephemeris, sun-map terminator,
 // star chart and analemma are each a full innerHTML rebuild and/or resolve Q-ID
-// deep-links — and none of them shares a screen with the instrument.
+// deep-links — and none of them shares a screen with the instrument. The
+// orrery is the exception (#48): it is a canvas, so it rides the visual tier.
 function _almTravelLive(focus) {
   // Visual tier — every frame.
   var m = null;
@@ -1018,9 +1023,14 @@ function _almTravelLive(focus) {
   // pass was most of the remaining scrub jank. A month trailing the clock by
   // up to ~300ms at multi-month-per-second speeds is imperceptible, and
   // _almScrubSettle redraws it exactly the moment motion stops.
+  // The orrery is a canvas too (#48): its own rAF loop already repaints with
+  // the moving focus every frame, so this tick only paints when that loop is
+  // parked at 1× speed. Its date readout is DOM text — it rides the DOM tier.
+  if (typeof _orreryTravelTick === 'function') _orreryTravelTick();
   _almTravelThrottled('dom', _ALM_TRAVEL_DOM_MS, function () {
     _almScrubClock(focus);
     _almLiveHeadCards(focus);
+    if (typeof _orreryUpdateDate === 'function' && !_almanacOrreryRAF) _orreryUpdateDate();
   });
   _almTravelThrottled('grid', _ALM_TRAVEL_GRID_MS, _almSyncSelectedToFocus);
 }
@@ -2334,7 +2344,7 @@ function _updateVoyagerCard() {
   var el = document.getElementById('voyager-card');
   if (!el) return;
   var v = _VOYAGERS[_voyagerCardIdx];
-  var simTime = Date.now() + _orreryTimeOffset;
+  var simTime = _orrerySimTime();
   var dist = _voyagerDist(v, simTime);
   var yearsInSpace = ((simTime - v.launch) / (365.25 * MS_PER_DAY));
   var speed = v.vel * 149597870.7 / (365.25 * 24 * 3600);
