@@ -1,0 +1,63 @@
+# Zimi, deployed from the published image.
+#
+# This is the file to copy if you are running Zimi rather than developing it.
+# The docker-compose.yml at the repo root builds from source and is for working
+# ON Zimi; this one pulls a released image and never needs the source tree.
+#
+#   1. Put your .zim files in ./zims (or point the volume somewhere else)
+#   2. docker compose -f deploy/docker-compose.yml up -d
+#   3. http://localhost:8899
+#
+# Nothing else is required. Zimi serves whatever ZIMs it finds, with no setup
+# step, no account, and no first-run wizard.
+
+services:
+  zimi:
+    image: epheterson/zimi:latest
+    container_name: zimi
+    restart: unless-stopped
+
+    # Bridge networking, deliberately, unlike the development compose.
+    #
+    # Host networking is what LAN peer discovery (mDNS, _zimi._tcp) and
+    # BitTorrent seeding want, because both need to see the LAN directly. It
+    # also puts the container on every interface the host has, which is the
+    # wrong default for a machine you did not build yourself. Start here; if
+    # you want peer discovery or WAN seeding, switch to network_mode: host and
+    # read docs/deployment-networking.md for what that exposes.
+    ports:
+      - "8899:8899"
+      # BitTorrent, inbound. Only needed if you enable seeding to the internet.
+      # LAN peer transfer is plain HTTP and does not use this.
+      # - "6881:6881/tcp"
+      # - "6881:6881/udp"
+
+    volumes:
+      # Your ZIM library. Read-only is safe and recommended when you manage the
+      # files yourself; drop the :ro if you want Zimi to download ZIMs for you.
+      - ./zims:/zims:ro
+      # Everything Zimi writes: metadata cache, search indexes, bookmarks,
+      # users, policies, download state. Back THIS up. The ZIMs are
+      # re-downloadable; this is the part that is yours.
+      - ./zimi-config:/config
+
+    environment:
+      - ZIM_DIR=/zims
+      - ZIMI_DATA_DIR=/config
+      # Serves the management UI. Set to 0 for a read-only public mirror.
+      - ZIMI_MANAGE=1
+      # Uncomment for an air-gapped or otherwise network-restricted deployment.
+      # Disables the BitTorrent engine, its DHT traffic, the NAT reachability
+      # probe, and the boot-time magnet lookup against library.kiwix.org.
+      # - ZIMI_TORRENT=0
+
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8899/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # A cold start builds SQLite title indexes for every ZIM. English
+      # Wikipedia alone can take several minutes on a slow disk, and a
+      # too-short grace period makes the orchestrator kill the container
+      # mid-build and then restart the same expensive work forever.
+      start_period: 10m
