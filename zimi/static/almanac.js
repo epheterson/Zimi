@@ -2624,6 +2624,56 @@ var _sunMapFlashTimer = 0;
 function _sunMapLonToX(lon, W) { return (lon + 180) / 360 * W; }
 function _sunMapLatToY(lat, H) { return (90 - lat) / 180 * H; }
 
+// ── Deep time: the civil-time layer fades with the era ──
+// Time zones are a 19th-century invention, not a feature of the planet. Travel
+// the almanac to 1500 and the map should show the world the sun lights, not the
+// borders a railway timetable drew three centuries later — a UTC+5:30 label
+// over Mughal India is a category error, not a detail. So the map splits in
+// two: coastlines, the terminator and the subsolar point are physics and draw
+// at every date; the zone borders, the UTC label strip and the picked zone's
+// highlight are civil constructs and ramp away as the focus date leaves the
+// civil-time era.
+//
+// The ramp spans the adoption curve rather than snapping at one date, because
+// standard time arrived in stages:
+//   1840  the Great Western Railway puts every station on London time —
+//         "railway time", the first clocks on Earth to stop meaning local solar
+//         noon. Britain alone for the next forty years.
+//   1883  North American railroads adopt the four US/Canada zones (Nov 18).
+//   1884  the International Meridian Conference settles on Greenwich.
+//   1918  the US Standard Time Act puts the zones into law.
+//   1929  hourly offsets are near-universal; the zone geometry on this map is
+//         recognisably the one it draws today.
+// Smoothstep between the ends rather than a straight line: real adoption was
+// S-shaped (one country, then most of the industrial world inside twenty
+// years), and easing at both ends also means scrubbing across either threshold
+// has no visible kink.
+var _MAP_TZ_ERA_DAWN_YEAR = 1840;
+var _MAP_TZ_ERA_FULL_YEAR = 1929;
+
+// 0 at or before the dawn year, 1 at or after the full year, smoothstep
+// between. Takes a fractional year so a scrub through the ramp is continuous
+// rather than stepping once each January 1.
+function _mapTzEraOpacity(year) {
+  var t = (year - _MAP_TZ_ERA_DAWN_YEAR) / (_MAP_TZ_ERA_FULL_YEAR - _MAP_TZ_ERA_DAWN_YEAR);
+  if (!(t > 0)) return 0;          // the negation also catches NaN
+  if (t >= 1) return 1;
+  return t * t * (3 - 2 * t);
+}
+
+// The same value for an instant. A missing or broken date means "now", which
+// is fully modern — the overlay must never vanish because of a bad argument.
+function _mapTzEraOpacityAt(date) {
+  if (!date || isNaN(date.getTime())) return 1;
+  var y = date.getUTCFullYear();
+  if (y <= _MAP_TZ_ERA_DAWN_YEAR) return 0;
+  if (y >= _MAP_TZ_ERA_FULL_YEAR) return 1;
+  // Inside the ramp the year is always four digits, so Date.UTC needs no
+  // setUTCFullYear dance to dodge its 0-99 -> 1900s fold.
+  var start = Date.UTC(y, 0, 1), next = Date.UTC(y + 1, 0, 1);
+  return _mapTzEraOpacity(y + (date.getTime() - start) / (next - start));
+}
+
 // ── Real time zone boundaries ──
 // The actual, irregular civil zone borders — China spanning one zone, India's
 // half-hour band, Australia's three-way split, the jagged date line — not the
@@ -2654,17 +2704,15 @@ function _sunMapLabelStep(W, dpr) {
   return step;
 }
 
-// The map's unchanging layer: background, world image and the zone borders.
-// None of it moves as time travels, so it is rendered once per size into an
-// offscreen canvas and blitted each frame — which costs less than the old code
-// paid to re-rasterise the SVG on every redraw, borders or not. The key
-// carries the border-data flag so the layer rebuilds once when the lazy
-// fetch lands.
+// The map's geography layer: background and world image. Physics and
+// coastlines only — nothing here depends on the era or the focus date, so it is
+// rendered once per size into an offscreen canvas and blitted each frame, which
+// costs less than the old code paid to re-rasterise the SVG on every redraw.
 var _sunMapBase = null;
 var _sunMapBaseKey = '';
 
-function _sunMapBaseLayer(W, H, dpr) {
-  var key = W + 'x' + H + ':' + dpr + ':' + (_sunMapLoaded ? '1' : '0') + ':' + (_tzBorders ? '1' : '0');
+function _sunMapBaseLayer(W, H) {
+  var key = W + 'x' + H + ':' + (_sunMapLoaded ? '1' : '0');
   if (_sunMapBase && _sunMapBaseKey === key) return _sunMapBase;
   var cv = _sunMapBase || document.createElement('canvas');
   cv.width = W; cv.height = H;
@@ -2680,9 +2728,30 @@ function _sunMapBaseLayer(W, H, dpr) {
     c.drawImage(_sunMapImg, 0, 0, W, H);
     c.globalAlpha = 1;
   }
-  _sunMapDrawTzBorders(c, W, H, dpr);
   _sunMapBase = cv;
   _sunMapBaseKey = key;
+  return cv;
+}
+
+// The map's political layer: the zone borders and the label gutter they sit
+// over. Kept in its own canvas rather than baked into the geography above so
+// the era fade is one globalAlpha on a blit — travelling out of the civil-time
+// era never re-rasterises the world SVG, and the two layers cache
+// independently. The key carries the border-data flag so the layer rebuilds
+// once when the lazy fetch lands.
+var _sunMapPolitical = null;
+var _sunMapPoliticalKey = '';
+
+function _sunMapPoliticalLayer(W, H, dpr) {
+  var key = W + 'x' + H + ':' + dpr + ':' + (_tzBorders ? '1' : '0');
+  if (_sunMapPolitical && _sunMapPoliticalKey === key) return _sunMapPolitical;
+  var cv = _sunMapPolitical || document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  var c = cv.getContext('2d');
+  c.clearRect(0, 0, W, H);
+  _sunMapDrawTzBorders(c, W, H, dpr);
+  _sunMapPolitical = cv;
+  _sunMapPoliticalKey = key;
   return cv;
 }
 
@@ -2706,9 +2775,9 @@ function _tzBordersEnsure() {
       _tzBorders = data.lines;
       _tzZones = (data.zones && data.zones.length) ? data.zones : null;
       _tzZonesByOffset = _tzZones ? _tzGroupByOffset(_tzZones) : null;
-      _tzZoneKey = '';       // re-resolve the highlight for the current pick
+      _tzZoneKey = '';           // re-resolve the highlight for the current pick
       _tzZonePathKey = '';
-      _sunMapBaseKey = '';   // stale key → base layer rebuilds with borders
+      _sunMapPoliticalKey = '';  // stale key → political layer rebuilds with borders
       _drawSunMap();
     })
     .catch(function () { /* offline before first cache fill — no borders */ });
@@ -3804,15 +3873,29 @@ function _drawSunMap() {
   // click-to-set-location handler.
   if (!W || !H) return;
 
-  // First draw kicks off the border fetch; when it lands the base layer is
+  // First draw kicks off the border fetch; when it lands the political layer is
   // invalidated and this repaints with the borders in place.
   _tzBordersEnsure();
 
-  // Background, world image and the real time zone borders, all cached
-  ctx.drawImage(_sunMapBaseLayer(W, H, dpr), 0, 0);
+  // _sunMapNow is the time machine's focus instant — _almRepaintFocus hands it
+  // to _renderSunMap on every settle — so it is also what decides whether civil
+  // time exists at the date being drawn.
+  var now = _sunMapNow;
+  var eraA = _mapTzEraOpacityAt(now);
+
+  // Background and world image, cached
+  ctx.drawImage(_sunMapBaseLayer(W, H), 0, 0);
+
+  // Zone borders and their label gutter, faded by era. Under the night shading,
+  // where they have always sat.
+  if (eraA > 0) {
+    ctx.save();
+    ctx.globalAlpha = eraA;
+    ctx.drawImage(_sunMapPoliticalLayer(W, H, dpr), 0, 0);
+    ctx.restore();
+  }
 
   // Compute sun subsolar point
-  var now = _sunMapNow;
   var doy = _dayOfYear(now);
   var B = _solarB(doy);
   var decl = _solarDeclination(B);
@@ -3854,10 +3937,17 @@ function _drawSunMap() {
 
   // Time zone reference — the picked zone's true shape, then the UTC offsets,
   // then the picked zone's exact offset lit amber over the strip. All sit
-  // above the night shading so none is swallowed by it.
-  _sunMapDrawZoneHighlight(ctx, W, H, dpr);
-  _sunMapDrawTzLabels(ctx, W, H, dpr);
-  _sunMapDrawSelectedOffset(ctx, W, H, dpr);
+  // above the night shading so none is swallowed by it, and all three fade with
+  // the era on the same alpha as the borders below, so the civil layer arrives
+  // and leaves as one thing rather than in pieces.
+  if (eraA > 0) {
+    ctx.save();
+    ctx.globalAlpha = eraA;
+    _sunMapDrawZoneHighlight(ctx, W, H, dpr);
+    _sunMapDrawTzLabels(ctx, W, H, dpr);
+    _sunMapDrawSelectedOffset(ctx, W, H, dpr);
+    ctx.restore();
+  }
 
   // Sub-solar point — where the sun is directly overhead right now
   var sunX = _sunMapLonToX(((sunLon + 180 + 360) % 360) - 180, W);
