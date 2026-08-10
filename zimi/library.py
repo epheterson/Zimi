@@ -1575,6 +1575,9 @@ def _thumb_dir():
     return d
 
 
+_THUMB_MAX_BYTES = 2 * 1024 * 1024  # ceiling on one cached catalog thumbnail
+
+
 def _fetch_thumb(url):
     """Fetch a thumbnail from Kiwix, caching to disk. Returns (bytes, content_type) or (None, None)."""
     # Only allow library.kiwix.org
@@ -1592,6 +1595,14 @@ def _fetch_thumb(url):
             ct = f.read().strip() or "image/png"
         with open(cache_path, "rb") as f:
             return f.read(), ct
+    # Cache miss means the network, so the air-gap switch decides here — the
+    # catalog grid asks for dozens of these at once, and ZIMI_OFFLINE promises
+    # no packets leave the box, not that they leave and time out.
+    from zimi import p2p as _p2p
+
+    if _p2p.is_offline():
+        log.debug("Offline: skipping thumbnail fetch for %s", url)
+        return None, None
     # Fetch from Kiwix. Follow redirects only within *.kiwix.org (Kiwix
     # redirects library → opds); a redirect off-Kiwix is blocked (SSRF).
     try:
@@ -1602,7 +1613,12 @@ def _fetch_thumb(url):
             # Only serve image content types
             if not ct.startswith("image/"):
                 return None, None
-            data = resp.read()
+            # Read one byte past the ceiling so an oversized body is detected
+            # and dropped rather than written into the cache dir.
+            data = resp.read(_THUMB_MAX_BYTES + 1)
+            if len(data) > _THUMB_MAX_BYTES:
+                log.debug("Thumbnail over %d bytes, dropped: %s", _THUMB_MAX_BYTES, url)
+                return None, None
         # Write to disk cache
         with open(cache_path, "wb") as f:
             f.write(data)
@@ -3555,8 +3571,11 @@ def _start_download(url, size_bytes=None):
         meta4_url = url
         url = url[: -len(".meta4")]
 
+    # A rejected name always comes back as (None, error) — testing the name
+    # rather than the message is the same check, and leaves no None to carry
+    # into the download record.
     filename, err = _validate_zim_filename(url.split("/")[-1])
-    if err:
+    if filename is None:
         log.info("download rejected: %s (url=%.120r)", err, url)
         return None, err
     return _enqueue_zim_download(
@@ -3585,7 +3604,7 @@ def _start_peer_download(peer_name, filename, size_bytes=None):
     from zimi import p2p_discovery as _disc
 
     filename, err = _validate_zim_filename(filename)
-    if err:
+    if filename is None:
         return None, err
 
     if not _disc.is_share_enabled():

@@ -1392,6 +1392,13 @@ def handle_manage_get(handler, parsed, params):
             return handler._json(400, {"error": "invalid thumbnail URL"})
         data, ct = _srv._fetch_thumb(url)
         if data is None:
+            # Already-cached thumbnails still serve offline (no packets); only
+            # a miss is a dead end there, and it is a 404, not an upstream
+            # failure the client should retry.
+            from zimi import p2p as _p2p
+
+            if _p2p.is_offline():
+                return handler._json(404, {"error": "thumbnail not available offline"})
             return handler._json(502, {"error": "failed to fetch thumbnail"})
         handler.send_response(200)
         handler.send_header("Content-Type", ct)
@@ -2422,8 +2429,25 @@ def handle_manage_post(handler, parsed, data):
                     **zim_info,
                 }
             )
-            with _srv._zim_lock:
-                _srv.load_cache(force=True)
+            # Splice the file out of the live library instead of rebuilding it.
+            # The old shape here — load_cache(force=True) under _zim_lock —
+            # re-opened and re-scanned every archive while holding the lock
+            # every libzim request needs, so pressing Delete froze search and
+            # reading for the length of the rescan (#51). The full rescan
+            # survives as the fallback for the cases the splice won't handle.
+            unregistered = False
+            try:
+                unregistered = _srv.unregister_zim_file(filename)
+            except Exception as e:
+                log.warning(
+                    "Incremental removal of %s failed (%s) — falling back to a "
+                    "full library rescan",
+                    filename,
+                    e,
+                )
+            if not unregistered:
+                with _srv._zim_lock:
+                    _srv.load_cache(force=True)
             _srv._search_cache_clear()
             _srv._suggest_cache_clear()
             _srv._clean_stale_title_indexes()

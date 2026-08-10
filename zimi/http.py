@@ -1138,8 +1138,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Closed-set Q-ID → installed-article batch resolution for the
                 # almanac. GET form: ?qids=Q1,Q2,...&langs=en,fr (POST carries
                 # the same shape as JSON, for large batches).
-                qids = [q for q in param("qids", "").split(",") if q]
-                langs = [x for x in param("langs", "").split(",") if x]
+                qids = [q for q in (param("qids") or "").split(",") if q]
+                langs = [x for x in (param("langs") or "").split(",") if x]
                 return _almanac_links_response(self, qids, langs)
 
             elif parsed.path == "/list":
@@ -1865,6 +1865,16 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(icon_data)
 
+    def _send_entry_too_large(self, total_size):
+        """413 for an entry Zimi refuses to materialize. Used by every /w/
+        branch that can't be answered with a bounded window."""
+        self.send_response(413)
+        self.send_header("Content-Type", "text/plain")
+        msg = f"Entry too large ({total_size // (1024*1024)} MB). Max: {_srv.MAX_SERVE_BYTES // (1024*1024)} MB.".encode()
+        self.send_header("Content-Length", str(len(msg)))
+        self.end_headers()
+        self.wfile.write(msg)
+
     def _serve_zim_content(self, zim_name, entry_path, *, a11y=False):
         """Serve raw ZIM content with correct MIME type for the /w/ endpoint.
 
@@ -1954,11 +1964,20 @@ class ZimHandler(BaseHTTPRequestHandler):
                 "application/epub",
             )
             epub_filename = None
+            # Bound before the branch: the EPUB path returns without touching
+            # them, and the response phase below reads them unconditionally.
+            is_streamable = False
+            etag = ""
+            range_start = range_end = None
             if is_epub:
                 mimetype = "application/epub+zip"
                 epub_filename = os.path.basename(entry_path)
                 if not epub_filename.endswith(".epub"):
                     epub_filename += ".epub"
+                # Size check BEFORE materializing: reading first and refusing
+                # afterwards is the OOM this cap exists to prevent.
+                if total_size > _srv.MAX_SERVE_BYTES:
+                    return self._send_entry_too_large(total_size)
                 content = bytes(item.content)
             else:
                 # ETag check BEFORE reading content — avoids materializing large
@@ -1979,12 +1998,31 @@ class ZimHandler(BaseHTTPRequestHandler):
                     self.end_headers()
                     return
 
-                range_start = range_end = None
                 if is_streamable:
+                    # Every served window is capped at MAX_SERVE_BYTES, whether
+                    # or not the client asked for one. A media entry fetched
+                    # without a Range — curl, <a download>, a chat app's link
+                    # fetcher — used to copy the WHOLE item into a bytes object
+                    # while holding _zim_lock; on a ZIM carrying a few hundred
+                    # MB of video that is an OOM kill on a small box, with
+                    # every other libzim request blocked behind it. Answering
+                    # the first window as 206 + Accept-Ranges costs a real
+                    # player nothing: it range-requests onward immediately.
                     range_header = self.headers.get("Range")
                     if range_header:
                         range_start, range_end = self._parse_range(
                             range_header, total_size
+                        )
+                    if range_start is None or range_end is None:
+                        # No Range, or one too malformed to honour.
+                        range_start = range_end = None
+                        if total_size > _srv.MAX_SERVE_BYTES:
+                            range_start, range_end = 0, _srv.MAX_SERVE_BYTES - 1
+                    else:
+                        # A satisfiable range still gets clamped — bytes=0- is
+                        # a request for the whole item through the ranged door.
+                        range_end = min(
+                            range_end, range_start + _srv.MAX_SERVE_BYTES - 1
                         )
                     if range_start is not None and range_end is not None:
                         content = bytes(item.content[range_start : range_end + 1])
@@ -1992,13 +2030,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                         content = bytes(item.content)
                 else:
                     if total_size > _srv.MAX_SERVE_BYTES:
-                        self.send_response(413)
-                        self.send_header("Content-Type", "text/plain")
-                        msg = f"Entry too large ({total_size // (1024*1024)} MB). Max: {_srv.MAX_SERVE_BYTES // (1024*1024)} MB.".encode()
-                        self.send_header("Content-Length", str(len(msg)))
-                        self.end_headers()
-                        self.wfile.write(msg)
-                        return
+                        return self._send_entry_too_large(total_size)
                     content = bytes(item.content)
         # Lock released — safe to do slow I/O
 
@@ -2601,7 +2633,10 @@ class ZimHandler(BaseHTTPRequestHandler):
             and _manage._get_manage_password_hash()
             and _manage._check_manage_auth(self) is None
         ):
-            resp = {"role": "admin", "name": _manage._get_manage_user() or "admin"}
+            resp: dict[str, object] = {
+                "role": "admin",
+                "name": _manage._get_manage_user() or "admin",
+            }
             # Ensure the header-less transports (reader iframe, plain-fetch data
             # endpoints) carry admin identity. If this admin was recognised by the
             # password Bearer but has no live admin session cookie yet — first boot

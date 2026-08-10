@@ -11,6 +11,7 @@ directly and the network helpers are stubbed to fail loudly if reached.
 serve path with the network dead. This one pins the kill switch itself.)
 """
 
+import hashlib
 import os
 import sys
 
@@ -22,6 +23,7 @@ sys.path.insert(0, REPO_ROOT)
 # test_winsparkle.py).
 sys.path.insert(0, os.path.join(REPO_ROOT, "desktop"))
 
+import zimi.library as library  # noqa: E402
 import zimi.p2p as p2p  # noqa: E402
 import zimi.p2p_nat as p2p_nat  # noqa: E402
 import zimi_desktop  # noqa: E402
@@ -144,6 +146,127 @@ def test_probe_runs_checks_when_online(monkeypatch):
     )
     p2p_nat.probe(6881, try_upnp=True)
     assert calls == ["listen", "upnp", "portcheck"]
+
+
+# ── Catalog thumbnail proxy ─────────────────────────────────────────────────
+
+THUMB_URL = "https://library.kiwix.org/catalog/v2/illustration/abc"
+
+
+def test_thumb_fetch_touches_no_network_when_offline(monkeypatch, tmp_path):
+    # /manage/thumb is a pre-auth public route and the catalog grid asks for
+    # dozens at once — under the air-gap switch every one of them used to open
+    # an outbound connection and wait out its 10 s timeout.
+    monkeypatch.setenv("ZIMI_OFFLINE", "1")
+    monkeypatch.setattr(library._srv, "ZIMI_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        library._KIWIX_REDIRECT_OPENER, "open", _forbid("thumbnail fetch")
+    )
+    assert library._fetch_thumb(THUMB_URL) == (None, None)
+
+
+def test_cached_thumb_still_serves_when_offline(monkeypatch, tmp_path):
+    # A thumbnail already on disk is local — offline browsing keeps its images.
+    monkeypatch.setattr(library._srv, "ZIMI_DATA_DIR", str(tmp_path))
+    key = hashlib.md5(THUMB_URL.encode()).hexdigest()
+    cache_path = os.path.join(library._thumb_dir(), key)
+    with open(cache_path, "wb") as f:
+        f.write(b"PNGDATA")
+    with open(cache_path + ".meta", "w", encoding="utf-8") as f:
+        f.write("image/png")
+
+    monkeypatch.setenv("ZIMI_OFFLINE", "1")
+    monkeypatch.setattr(
+        library._KIWIX_REDIRECT_OPENER, "open", _forbid("thumbnail fetch")
+    )
+    assert library._fetch_thumb(THUMB_URL) == (b"PNGDATA", "image/png")
+
+
+def test_oversized_thumb_is_dropped_not_cached(monkeypatch, tmp_path):
+    """The host is pinned to Kiwix, but nothing bounded what landed in the
+    cache dir — a capped read means one bad response can't fill the disk."""
+    monkeypatch.setattr(library._srv, "ZIMI_DATA_DIR", str(tmp_path))
+
+    class _FakeResp:
+        headers = {"Content-Type": "image/png"}
+
+        def read(self, n=-1):
+            # Honour the cap argument the way a real socket read does.
+            return b"x" * (n if n and n > 0 else 1)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(
+        library._KIWIX_REDIRECT_OPENER, "open", lambda *a, **k: _FakeResp()
+    )
+    assert library._fetch_thumb(THUMB_URL) == (None, None)
+    assert os.listdir(library._thumb_dir()) == []
+
+
+def test_in_bounds_thumb_is_cached(monkeypatch, tmp_path):
+    monkeypatch.setattr(library._srv, "ZIMI_DATA_DIR", str(tmp_path))
+
+    class _FakeResp:
+        headers = {"Content-Type": "image/png"}
+
+        def read(self, n=-1):
+            return b"PNGDATA"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(
+        library._KIWIX_REDIRECT_OPENER, "open", lambda *a, **k: _FakeResp()
+    )
+    assert library._fetch_thumb(THUMB_URL) == (b"PNGDATA", "image/png")
+    assert sorted(os.listdir(library._thumb_dir())) == sorted(
+        [
+            hashlib.md5(THUMB_URL.encode()).hexdigest(),
+            hashlib.md5(THUMB_URL.encode()).hexdigest() + ".meta",
+        ]
+    )
+
+
+class _StubHandler:
+    """Captures what a route answered, without a socket."""
+
+    def __init__(self):
+        self.sent: tuple | None = None
+
+    def _json(self, code, body):
+        self.sent = (code, body)
+
+
+def _thumb_route(monkeypatch):
+    import zimi.manage as manage
+    from urllib.parse import urlparse
+
+    monkeypatch.setattr(manage._srv, "ZIMI_MANAGE", True)
+    monkeypatch.setattr(manage._srv, "_fetch_thumb", lambda url: (None, None))
+    handler = _StubHandler()
+    manage.handle_manage_get(
+        handler, urlparse(f"/manage/thumb?url={THUMB_URL}"), {"url": [THUMB_URL]}
+    )
+    assert handler.sent is not None
+    return handler.sent
+
+
+def test_thumb_route_404s_when_offline(monkeypatch):
+    monkeypatch.setenv("ZIMI_OFFLINE", "1")
+    code, _body = _thumb_route(monkeypatch)
+    assert code == 404  # a dead end, not an upstream failure worth retrying
+
+
+def test_thumb_route_502s_when_online(monkeypatch):
+    code, _body = _thumb_route(monkeypatch)
+    assert code == 502
 
 
 # ── Desktop updater gate (decision functions, no GUI) ───────────────────────

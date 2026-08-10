@@ -2587,6 +2587,116 @@ def register_zim_file(path, removed_files=()):
     return True
 
 
+def unregister_zim_file(filename):
+    """Incrementally drop ONE just-deleted ZIM from the live library.
+
+    The removal counterpart of ``register_zim_file``, and it exists for the
+    same reason: deleting a ZIM used to end in ``load_cache(force=True)``
+    under ``_zim_lock``, re-opening and re-scanning EVERY archive in the
+    library while holding the one lock every libzim read needs. On a small
+    box serving a big library off network storage that froze search, reading
+    and suggest for the length of the rescan — issue #51's failure mode, on
+    an ordinary button.
+
+    A removal is strictly cheaper than a registration: nothing has to be read
+    out of a ZIM, so there is no archive to open at all. Phase 1 is one
+    directory listing off the lock; phase 2 is dict surgery under it, and
+    rebinds rather than mutates so the lock-free readers of these caches can
+    never be tripped mid-walk.
+
+    ``filename`` is the basename of the file the caller already removed from
+    disk. Returns True when the library reflects the removal; False when the
+    reconciliation would need metadata Zimi doesn't have — the caller should
+    fall back to a full ``load_cache(force=True)``.
+    """
+    global _zim_files_cache, _zim_list_cache, _cache_generation
+    _init()
+    if _zim_files_cache is None or _zim_list_cache is None:
+        # Library was never scanned: a plain load sees the post-delete state
+        # of the directory anyway, and is the cheap normal path.
+        load_cache()
+        return True
+    filename = os.path.basename(filename)
+
+    # ---- Phase 1: one directory listing, deliberately WITHOUT _zim_lock ----
+    # _scan_zim_files globs ZIM_DIR and its immediate subfolders. No stat, no
+    # archive open — this is the whole cost of a removal.
+    try:
+        on_disk = _scan_zim_files()
+    except OSError as e:
+        log.warning("unregister_zim_file: cannot scan %s: %s", ZIM_DIR, e)
+        return False
+    current = _zim_files_cache
+    # The splice only handles names LEAVING the library. A name that appeared,
+    # or one whose file changed — a subfolder copy promoted out of the deleted
+    # root file's shadow, per _scan_zim_files' collision rule — needs metadata
+    # that only an archive open can supply, so hand it to the full rescan.
+    for name, path in on_disk.items():
+        if current.get(name) != path:
+            return False
+    gone = {n for n in current if n not in on_disk}
+    # Disk-cache rows to drop: the deleted file, plus every file backing a name
+    # that left. Safe to match rows by short name here precisely because the
+    # check above proved no surviving file on disk still claims one.
+    dead_files = {filename} | {os.path.basename(current[n]) for n in gone}
+
+    # ---- Phase 2: splice under _zim_lock — dict surgery + a small json ----
+    with _zim_lock:
+        if gone:
+            _zim_files_cache = {
+                n: p for n, p in _zim_files_cache.items() if n not in gone
+            }
+            _zim_list_cache = [
+                z for z in (_zim_list_cache or []) if z.get("name") not in gone
+            ]
+            # Evict the pooled handles for the deleted files. Dropping them
+            # from the dicts only stops FUTURE use: a search thread already
+            # holding one keeps a valid mapping of an unlinked file until it
+            # finishes, which is why this needs no per-ZIM lock.
+            with _archive_lock:
+                for n in gone:
+                    _archive_pool.pop(n, None)
+            with _suggest_pool_lock:
+                for n in gone:
+                    _suggest_pool.pop(n, None)
+                    _suggest_zim_locks.pop(n, None)
+            with _fts_pool_lock:
+                for n in gone:
+                    _fts_pool.pop(n, None)
+                    _fts_zim_locks.pop(n, None)
+        # Invalidates /w/ entry ETags and the interlang resolution caches —
+        # cross-ZIM answers genuinely change when a ZIM leaves.
+        _cache_generation += 1
+        # Re-read under the lock: a concurrent load_cache may have rewritten
+        # the file since phase 1, so mutate the freshest version.
+        disk_now = _load_disk_cache()
+        if disk_now is not None:
+            dropped = [
+                fn for fn in disk_now if fn in dead_files or _zim_short_name(fn) in gone
+            ]
+            if dropped:
+                for fn in dropped:
+                    disk_now.pop(fn, None)
+                _save_disk_cache(disk_now)
+        if gone:
+            # Drop this ZIM's domain claims so _resolve_url_to_zim stops
+            # answering with a name that no longer resolves. Rebound, not
+            # mutated, for the same reason as the caches above.
+            import zimi.interlang as _interlang
+
+            pruned = {
+                d: n for d, n in _interlang._domain_zim_map.items() if n not in gone
+            }
+            _interlang._domain_zim_map = pruned
+            globals()["_domain_zim_map"] = pruned
+    log.info(
+        "Unregistered %s without a library rescan%s",
+        filename,
+        f" ({', '.join(sorted(gone))} left the library)" if gone else "",
+    )
+    return True
+
+
 # (HTTP Request Handler extracted to zimi/http.py)
 
 
