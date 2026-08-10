@@ -281,7 +281,17 @@ def build_openapi():
                                         "description": (
                                             "Effective category: a saved per-ZIM "
                                             "override (#37) when set, otherwise the "
-                                            "name-pattern heuristic. May be null."
+                                            "ZIM dir subfolder the file lives in, "
+                                            "otherwise the name-pattern heuristic. "
+                                            "May be null."
+                                        ),
+                                    },
+                                    "folder": {
+                                        "type": "string",
+                                        "description": (
+                                            "Raw name of the ZIM dir subfolder this "
+                                            "file lives in, prettified into "
+                                            "`category`. Absent for root-level files."
                                         ),
                                     },
                                     "article_count": {

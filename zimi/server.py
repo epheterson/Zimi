@@ -1359,6 +1359,53 @@ def _categorize_zim(name):
     return None
 
 
+#: Ceiling on a folder-derived category name, matching the cap a hand-set
+#: category override may hold (_LAYOUT_STR_MAX) so both paths agree on what the
+#: UI and the layout file can carry.
+_FOLDER_CATEGORY_MAX = 128
+#: Separators an admin uses in folder names where a space is meant.
+_FOLDER_SEPARATORS = str.maketrans("-_.", "   ")
+
+
+def _zim_folder(path):
+    """The immediate ZIM_DIR subfolder ``path`` lives in, '' for a root file.
+
+    Pure string work on a path the scan already produced — no stat, no listdir.
+    Anything nested deeper than one level (which the scan never yields) or
+    outside ZIM_DIR resolves to '' rather than guessing at a folder name.
+    """
+    parent = os.path.dirname(os.path.normpath(path))
+    root = os.path.normpath(ZIM_DIR)
+    if parent == root or os.path.dirname(parent) != root:
+        return ""
+    return os.path.basename(parent)
+
+
+def _folder_category(folder):
+    """Display category for a raw folder name: 'dev-docs' → 'Dev Docs'.
+
+    Separators become spaces and lowercase words are capitalized. A word that
+    already carries an uppercase letter is left alone, so 'DIY' and 'McGraw'
+    survive a rule that would otherwise flatten them to 'Diy' and 'Mcgraw'.
+    """
+    words = folder.translate(_FOLDER_SEPARATORS).split()
+    pretty = " ".join(
+        w if any(c.isupper() for c in w) else w.capitalize() for w in words
+    )
+    return pretty[:_FOLDER_CATEGORY_MAX]
+
+
+def _effective_category(name, path):
+    """A ZIM's category: its subfolder if it lives in one, else the heuristic.
+
+    Folder beats heuristic because the folder is an act of organization by the
+    operator — filing a ZIM under medical/ says more than any guess made from
+    its filename. A hand-set per-ZIM override still beats both; that is applied
+    at the /list boundary, not baked in here.
+    """
+    return _folder_category(_zim_folder(path)) or _categorize_zim(name)
+
+
 # ============================================================================
 # History, Favorites & Collections
 # ============================================================================
@@ -1976,9 +2023,15 @@ def _extract_zim_metadata(name, path):
         "date": meta_date,
         "language": meta_lang,
         "has_icon": has_icon,
-        "category": _categorize_zim(name),
+        "category": _effective_category(name, path),
         "main_path": main_path,
     }
+    # Additive: the raw subfolder name behind a folder-derived category, so a
+    # client can tell "filed under medical/" from a name-heuristic guess. Absent
+    # for root-level files, which keep heuristic categorization untouched.
+    folder = _zim_folder(path)
+    if folder:
+        info["folder"] = folder
     if article_count is not None:
         info["article_count"] = article_count
     # Additive flag: a ZIM Zimi itself exported (bookmark exports). The UI
@@ -2239,11 +2292,20 @@ def load_cache(force=False):
                 "date": cached.get("date", ""),
                 "language": cached.get("language", ""),
                 "has_icon": cached.get("has_icon", False),
-                "category": _categorize_zim(name),
+                # Category and folder come from the live path, never the cache
+                # record: moving a ZIM into (or out of) a folder changes neither
+                # its mtime nor its size, so a cached copy of either would go
+                # stale on exactly the move that should re-file it. Deriving
+                # here is pure string work, so an existing library re-files on
+                # the next boot with no rescan and no extra I/O.
+                "category": _effective_category(name, path),
                 "main_path": cached.get("main_path", ""),
                 "first_seen": first_seen,
                 "updated_at": updated_at,
             }
+            folder = _zim_folder(path)
+            if folder:
+                entry["folder"] = folder
             if "has_qids" in cached:
                 entry["has_qids"] = cached["has_qids"]
             # Additive: real article count. Absent in caches built before this
