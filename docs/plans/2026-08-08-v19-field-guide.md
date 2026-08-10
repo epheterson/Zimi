@@ -123,6 +123,17 @@ Almanac → sun map, then time machine → GO to 1500. The zone borders, label g
 
 Bookmarks → Export to ZIM on the preview. The moment the export lands, search in another tab — no stall. Before wave 4 the export finished by re-scanning all 69 ZIMs under the global lock, same bug class as the Pi crash in #51.
 
+## zimi create — a folder or a page becomes a ZIM
+
+```
+mkdir -p /tmp/pack && printf '# Field Notes\n\nWater: boil 1 min.\n' > /tmp/pack/README.md
+cp ~/Documents/*.pdf /tmp/pack/ 2>/dev/null
+python3 -m zimi create /tmp/pack --title "Field Notes" --out /tmp/pack.zim
+ZIM_DIR=/tmp your-favorite-check: python3 -m zimi list
+```
+
+Expect: a real ZIM with your markdown rendered and PDFs inside, openable in any Kiwix reader. Then try a live page: `python3 -m zimi create https://example.com --out /tmp/page.zim`. Try it on a JS-heavy SPA and it refuses with a message naming zimit instead of packaging a loading spinner. `ZIMI_OFFLINE=1` refuses URL mode outright.
+
 ## What has no demo yet
 
 Identity (design only, waiting on your OIDC/Cloudflare call), k8s manifest against a real cluster, and the two P0s from the Pi audit (delete-under-lock, uncapped media serve) which are queued but not yet fixed. If it's not in this guide, treat it as unproven.
