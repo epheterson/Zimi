@@ -90,6 +90,37 @@ Preview → Almanac → sun map. Click Moscow: +3 lights all of western Russia (
 
 The proof is reference data, not our own output: `tests/test_almanac_deltat.cjs` pins all 67 Chinese New Years 1920–1986 and the 16 moved month boundaries to the Hong Kong Observatory's published conversion tables (hko.gov.hk, T-year files). Spot-check one by hand: HKO's T1954e.txt says CNY 1954 = Feb 3; we now say Feb 3; we used to say Feb 4.
 
+## The config file carries real settings now (wave 4)
+
+```
+cd /tmp && mkdir -p cfgdemo && cat > cfgdemo/zimi.json <<'EOF'
+{"zim_dir": "/tmp/zimi-empty", "manage": false, "offline": true, "hot_zims": ["wikipedia_en_all_maxi"]}
+EOF
+ZIMI_CONFIG=/tmp/cfgdemo/zimi.json python3 -m zimi config
+```
+
+Expect eleven rows, with manage/offline/hot_zims showing `(config file: ...)` as their source and the secrets masked. Then export `ZIMI_OFFLINE=0` and re-run: offline flips to `(env: ZIMI_OFFLINE)` — your environment always beats the file.
+
+## Update channels
+
+Preview → Manage → Server → App updates now has a channel select (Stable / Latest). Latest surfaces prereleases with a quiet marker; stable behaves exactly as before. Set `ZIMI_UPDATE_CHANNEL=stable` on a server and the select greys out with an env-controlled note, and writes to it return 403. `ZIMI_OFFLINE` still silences the whole feature, control and all.
+
+## Air-gapped install bundle
+
+```
+cd ~/Repos/zimi && ./scripts/make-airgap-bundle.sh --out /tmp/bundle
+```
+
+Expect ~34 wheels, an install.sh, INSTALL.md, SHA256SUMS, and a tarball. The install refuses to run if any file's checksum fails, and the build refuses to include a source distribution (an sdist is a promise to download build tools the target can't keep). Cross-build for a Pi with `--target linux-arm64`.
+
+## Deep time has no timezones
+
+Almanac → sun map, then time machine → GO to 1500. The zone borders, label gutter and offset chips are gone — clean continents and terminator only. Try 1885: the civil layer sits at half strength (and the Paris offset chip reads +0:09, which is not a bug, it is Paris Mean Time). Return to now: full grid back.
+
+## Export without the freeze
+
+Bookmarks → Export to ZIM on the preview. The moment the export lands, search in another tab — no stall. Before wave 4 the export finished by re-scanning all 69 ZIMs under the global lock, same bug class as the Pi crash in #51.
+
 ## What has no demo yet
 
-Identity (design only, waiting on your OIDC/Cloudflare call), config-file widening, update channels, air-gapped bundle, k8s manifest against a real cluster. If it's not in this guide, treat it as unproven.
+Identity (design only, waiting on your OIDC/Cloudflare call), k8s manifest against a real cluster, and the two P0s from the Pi audit (delete-under-lock, uncapped media serve) which are queued but not yet fixed. If it's not in this guide, treat it as unproven.
