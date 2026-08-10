@@ -1245,5 +1245,10 @@
   "app_update_how_brew": "Обновите через Homebrew:",
   "app_update_how_snap": "Snap обновляет Zimi автоматически.",
   "app_update_how_desktop": "Настольное приложение обновляется само.",
-  "app_update_how_releases": "Скачайте последнюю версию со страницы релизов."
+  "app_update_how_releases": "Скачайте последнюю версию со страницы релизов.",
+  "app_update_channel": "Канал обновлений",
+  "app_update_channel_stable": "Стабильный",
+  "app_update_channel_latest": "Последний",
+  "app_update_channel_hint": "Стабильный канал показывает только финальные выпуски. Последний — ещё и бета-версии с релиз-кандидатами.",
+  "app_update_prerelease": "предварительный выпуск"
 }

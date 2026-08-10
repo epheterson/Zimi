@@ -1245,5 +1245,10 @@
   "app_update_how_brew": "Homebrew से अपडेट करें:",
   "app_update_how_snap": "Snap ज़िमी को अपने आप अपडेट रखता है।",
   "app_update_how_desktop": "डेस्कटॉप ऐप खुद को अपडेट रखता है।",
-  "app_update_how_releases": "रिलीज़ पेज से नवीनतम संस्करण डाउनलोड करें।"
+  "app_update_how_releases": "रिलीज़ पेज से नवीनतम संस्करण डाउनलोड करें।",
+  "app_update_channel": "अपडेट चैनल",
+  "app_update_channel_stable": "स्थिर",
+  "app_update_channel_latest": "नवीनतम",
+  "app_update_channel_hint": "स्थिर चैनल केवल अंतिम रिलीज़ दिखाता है। नवीनतम चैनल बीटा और रिलीज़ कैंडिडेट भी दिखाता है।",
+  "app_update_prerelease": "पूर्व-रिलीज़"
 }

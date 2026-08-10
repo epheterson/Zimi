@@ -1245,5 +1245,10 @@
   "app_update_how_brew": "حدِّث باستخدام Homebrew:",
   "app_update_how_snap": "يحافظ Snap على تحديث Zimi تلقائيًا.",
   "app_update_how_desktop": "يقوم تطبيق سطح المكتب بتحديث نفسه تلقائيًا.",
-  "app_update_how_releases": "نزِّل أحدث إصدار من صفحة الإصدارات."
+  "app_update_how_releases": "نزِّل أحدث إصدار من صفحة الإصدارات.",
+  "app_update_channel": "قناة التحديث",
+  "app_update_channel_stable": "مستقرة",
+  "app_update_channel_latest": "الأحدث",
+  "app_update_channel_hint": "القناة المستقرة تعرض الإصدارات النهائية فقط. قناة الأحدث تعرض أيضًا إصدارات بيتا والإصدارات المرشحة.",
+  "app_update_prerelease": "إصدار أولي"
 }

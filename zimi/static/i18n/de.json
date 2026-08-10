@@ -1245,5 +1245,10 @@
   "app_update_how_brew": "Mit Homebrew aktualisieren:",
   "app_update_how_snap": "Snap hält Zimi automatisch aktuell.",
   "app_update_how_desktop": "Die Desktop-App aktualisiert sich selbst.",
-  "app_update_how_releases": "Die neueste Version gibt es auf der Releases-Seite."
+  "app_update_how_releases": "Die neueste Version gibt es auf der Releases-Seite.",
+  "app_update_channel": "Update-Kanal",
+  "app_update_channel_stable": "Stabil",
+  "app_update_channel_latest": "Neueste",
+  "app_update_channel_hint": "Stabil bietet nur fertige Versionen. Neueste zeigt auch Betas und Release Candidates.",
+  "app_update_prerelease": "Vorabversion"
 }

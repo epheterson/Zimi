@@ -1245,5 +1245,10 @@
   "app_update_how_brew": "Update with Homebrew:",
   "app_update_how_snap": "Snap keeps Zimi up to date automatically.",
   "app_update_how_desktop": "The desktop app keeps itself up to date.",
-  "app_update_how_releases": "Download the latest version from the releases page."
+  "app_update_how_releases": "Download the latest version from the releases page.",
+  "app_update_channel": "Update channel",
+  "app_update_channel_stable": "Stable",
+  "app_update_channel_latest": "Latest",
+  "app_update_channel_hint": "Stable offers final releases only. Latest also surfaces betas and release candidates.",
+  "app_update_prerelease": "prerelease"
 }

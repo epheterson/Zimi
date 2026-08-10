@@ -388,6 +388,12 @@ def _manage_auth_challenge(handler):
 # ============================================================================
 
 _APP_UPDATE_URL = "https://api.github.com/repos/epheterson/Zimi/releases/latest"
+# The "latest" channel needs the full list: GitHub's /releases/latest endpoint
+# deliberately skips pre-releases, so a beta is only reachable by listing.
+# Newest-first, one page is far more history than a version check needs.
+_APP_UPDATE_LIST_URL = (
+    "https://api.github.com/repos/epheterson/Zimi/releases?per_page=20"
+)
 _APP_RELEASES_PAGE = "https://github.com/epheterson/Zimi/releases"
 # Passive reads (opening the Manage server pane) reuse the cached answer for
 # a day; a failed check backs off only an hour so one DNS hiccup doesn't
@@ -400,9 +406,82 @@ _APP_UPDATE_ERROR_TTL = 3600
 _APP_UPDATE_FORCE_GUARD = 60
 _app_update_lock = threading.Lock()  # single-flight: concurrent admins share one fetch
 
+# Update channels. "stable" (the default, and what every install had before
+# channels existed) only ever sees final releases; "latest" also surfaces
+# betas and release candidates. Two channels, not three — a "beta" that is
+# separate from "latest" would mean maintaining two pre-release streams.
+APP_UPDATE_CHANNELS = ("stable", "latest")
+APP_UPDATE_CHANNEL_DEFAULT = "stable"
+APP_UPDATE_CHANNEL_ENV = "ZIMI_UPDATE_CHANNEL"
+# Names people reach for that mean one of the two real channels. Accepting
+# them beats rejecting a deploy because someone wrote the obvious word.
+_APP_UPDATE_CHANNEL_ALIASES = {
+    "beta": "latest",
+    "betas": "latest",
+    "pre": "latest",
+    "prerelease": "latest",
+    "pre-release": "latest",
+    "edge": "latest",
+    "release": "stable",
+    "releases": "stable",
+    "final": "stable",
+    "stable-only": "stable",
+}
+# Ordering for pre-release suffixes within one numeric version. Unknown words
+# land above rc so a novel stream ("1.9.0-preview2") still moves forward, and
+# ties break on the word itself for determinism.
+_PRERELEASE_STAGES = {"alpha": 0, "a": 0, "beta": 1, "b": 1, "rc": 2, "c": 2}
+_PRERELEASE_UNKNOWN_STAGE = 3
+_FINAL_STAGE = 9  # a final release outranks every pre-release of its version
+
 
 def _app_update_cache_path():
     return os.path.join(_srv.ZIMI_DATA_DIR, "app_update.json")
+
+
+def _app_update_channel_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "app_update_channel.json")
+
+
+def normalize_update_channel(value):
+    """'Beta ' → 'latest', 'stable' → 'stable', junk → None."""
+    name = (value or "").strip().lower()
+    name = _APP_UPDATE_CHANNEL_ALIASES.get(name, name)
+    return name if name in APP_UPDATE_CHANNELS else None
+
+
+def is_update_channel_env_locked():
+    """True when ZIMI_UPDATE_CHANNEL names a real channel. Same contract as
+    every other env-locked setting: the environment wins and the UI says so
+    rather than offering a control that silently does nothing."""
+    return normalize_update_channel(os.environ.get(APP_UPDATE_CHANNEL_ENV)) is not None
+
+
+def get_update_channel():
+    """The channel in force: env var, then the saved preference, then stable."""
+    from_env = normalize_update_channel(os.environ.get(APP_UPDATE_CHANNEL_ENV))
+    if from_env:
+        return from_env
+    try:
+        with open(_app_update_channel_path(), "r", encoding="utf-8") as f:
+            saved = json.load(f)
+    except (OSError, ValueError):
+        saved = None
+    if not isinstance(saved, dict):
+        return APP_UPDATE_CHANNEL_DEFAULT
+    return normalize_update_channel(saved.get("channel")) or APP_UPDATE_CHANNEL_DEFAULT
+
+
+def set_update_channel(value):
+    """Persist the channel preference. Returns (channel, error) — error is a
+    short code the caller turns into an HTTP status."""
+    channel = normalize_update_channel(value)
+    if not channel:
+        return None, "invalid_channel"
+    if is_update_channel_env_locked():
+        return None, "env_locked"
+    _srv._atomic_write_json(_app_update_channel_path(), {"channel": channel})
+    return channel, None
 
 
 def _parse_app_version(tag):
@@ -418,22 +497,48 @@ def _parse_app_version(tag):
     return (nums + (0,) * 3)[: max(3, len(nums))], m.group(2).strip()
 
 
-def _app_version_newer(remote, current):
+def _prerelease_rank(suffix):
+    """Sortable rank for a version suffix: '' (a final release) outranks every
+    pre-release of the same numbers, and within pre-releases alpha < beta < rc
+    < anything unrecognized, then by trailing number."""
+    if not suffix:
+        return (_FINAL_STAGE, 0, "")
+    m = re.match(r"([A-Za-z]*)[.\-_]?(\d*)", suffix)
+    word = (m.group(1) if m else "").lower()
+    num = int(m.group(2)) if m and m.group(2) else 0
+    stage = _PRERELEASE_STAGES.get(word, _PRERELEASE_UNKNOWN_STAGE)
+    return (stage, num, "" if word in _PRERELEASE_STAGES else word)
+
+
+def _app_version_sort_key(tag):
+    """(numbers, pre-release rank) for a tag, or None if it can't be parsed."""
+    parsed = _parse_app_version(tag)
+    if not parsed:
+        return None
+    nums, suffix = parsed
+    # Pad to a fixed width so (1, 9) and (1, 9, 0, 1) compare positionally.
+    return (nums + (0,) * 4)[:4], _prerelease_rank(suffix)
+
+
+def _app_version_newer(remote, current, allow_prerelease=False):
     """True only when `remote` is a strictly newer release than `current`.
 
-    Same-number comparisons are conservative: a final release outranks its
-    own pre-releases, but beta-vs-beta or beta-vs-final never reports an
-    update — better to miss an edge case than nag someone already current."""
-    r, c = _parse_app_version(remote), _parse_app_version(current)
+    Same-number comparisons are conservative by default: a final release
+    outranks its own pre-releases, but beta-vs-beta never reports an update —
+    better to miss an edge case than nag someone already current. On the
+    "latest" channel `allow_prerelease` turns that ordering on, because
+    telling an rc1 user about rc2 is the entire point of the channel."""
+    r, c = _app_version_sort_key(remote), _app_version_sort_key(current)
     if not r or not c:
         return False
-    rn, cn = r[0], c[0]
-    # Pad to equal length so (1, 9) vs (1, 9, 0, 1) compares positionally.
-    width = max(len(rn), len(cn))
-    rn, cn = rn + (0,) * (width - len(rn)), cn + (0,) * (width - len(cn))
-    if rn != cn:
-        return rn > cn
-    return bool(c[1]) and not r[1]
+    if r[0] != c[0]:
+        return r[0] > c[0]
+    r_final, c_final = r[1][0] == _FINAL_STAGE, c[1][0] == _FINAL_STAGE
+    if r_final != c_final:
+        return r_final  # a final beats its own pre-release, never the reverse
+    if not allow_prerelease:
+        return False  # pre-vs-pre on the stable channel: stay quiet
+    return r[1] > c[1]
 
 
 def detect_install_type():
@@ -482,21 +587,58 @@ def _read_app_update_cache():
         return {}
 
 
-def check_app_update(force=False):
-    """Return {latest, checked_at, url, error?}, hitting GitHub only when the
-    cached answer is stale (or `force`, for the Check-now button).
+def _github_json(url):
+    """GET a GitHub API URL and decode it. Raises on anything but success —
+    every caller is inside the check's try/except."""
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Zimi/%s (+%s)" % (_srv.ZIMI_VERSION, _APP_RELEASES_PAGE),
+            "Accept": "application/vnd.github+json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=10, context=_srv.SSL_CTX) as resp:
+        return json.loads(resp.read().decode("utf-8", "replace"))
 
-    ZIMI_OFFLINE outranks everything including force — zero network calls.
-    Network failures are silent by contract: one debug line, the last good
-    answer keeps serving, and the failure is stamped so passive reads back
-    off instead of re-probing a dead link on every pane visit."""
+
+def _pick_newest_release(releases):
+    """The highest-versioned published release in a GitHub /releases list.
+
+    Sorting by version rather than trusting the list order matters: GitHub
+    orders by publish date, so a stable patch cut after a beta would otherwise
+    hide the beta from the channel that exists to show it. Drafts and
+    unparseable tags are skipped."""
+    best, best_key = None, None
+    for rel in releases if isinstance(releases, list) else []:
+        if not isinstance(rel, dict) or rel.get("draft"):
+            continue
+        key = _app_version_sort_key(rel.get("tag_name"))
+        if key and (best_key is None or key > best_key):
+            best, best_key = rel, key
+    return best
+
+
+def check_app_update(force=False, channel=None):
+    """Return {latest, checked_at, url, channel, error?}, hitting GitHub only
+    when the cached answer is stale (or `force`, for the Check-now button).
+
+    ZIMI_OFFLINE outranks everything including force and channel — zero
+    network calls. Network failures are silent by contract: one debug line,
+    the last good answer keeps serving, and the failure is stamped so passive
+    reads back off instead of re-probing a dead link on every pane visit.
+
+    A cached answer from the other channel is never reused: switching channel
+    is exactly when the admin wants a fresh look."""
     from zimi import p2p  # is_offline() — the single air-gap switch
 
     if p2p.is_offline():
         return dict(_read_app_update_cache(), offline=True)
+    channel = normalize_update_channel(channel) or get_update_channel()
     now = time.time()
 
     def _fresh(entry):
+        if entry.get("channel", APP_UPDATE_CHANNEL_DEFAULT) != channel:
+            return False
         age = now - entry.get("checked_at", 0)
         if force:
             return age < _APP_UPDATE_FORCE_GUARD
@@ -510,25 +652,25 @@ def check_app_update(force=False):
         if _fresh(cached):
             return cached
         try:
-            req = urllib.request.Request(
-                _APP_UPDATE_URL,
-                headers={
-                    "User-Agent": "Zimi/%s (+%s)"
-                    % (_srv.ZIMI_VERSION, _APP_RELEASES_PAGE),
-                    "Accept": "application/vnd.github+json",
-                },
-            )
-            with urllib.request.urlopen(req, timeout=10, context=_srv.SSL_CTX) as resp:
-                rel = json.loads(resp.read().decode("utf-8", "replace"))
+            if channel == "stable":
+                # /releases/latest is already "newest final release" — one
+                # request, and GitHub does the pre-release filtering.
+                rel = _github_json(_APP_UPDATE_URL)
+            else:
+                rel = _pick_newest_release(_github_json(_APP_UPDATE_LIST_URL))
+            if not isinstance(rel, dict):
+                raise ValueError("no usable release in feed")
             entry = {
                 "checked_at": now,
                 # Tags arrive as "v1.9.0" — store the bare version the UI shows.
                 "latest": (rel.get("tag_name") or "").strip().lstrip("vV"),
                 "url": rel.get("html_url") or _APP_RELEASES_PAGE,
+                "channel": channel,
+                "prerelease": bool(rel.get("prerelease")),
             }
         except Exception as e:
             log.debug("app-update check failed: %s", e)
-            entry = dict(cached, checked_at=now, error=True)
+            entry = dict(cached, checked_at=now, channel=channel, error=True)
         _srv._atomic_write_json(_app_update_cache_path(), entry)
         return entry
 
@@ -537,19 +679,28 @@ def _app_update_payload(force=False):
     """The /manage/app-update response: check state + install-type routing."""
     from zimi import p2p
 
-    state = check_app_update(force=force)
+    channel = get_update_channel()
+    state = check_app_update(force=force, channel=channel)
     latest = state.get("latest") or None
     return {
         "current": _srv.ZIMI_VERSION,
         "latest": latest,
         "update_available": bool(
-            latest and _app_version_newer(latest, _srv.ZIMI_VERSION)
+            latest
+            and _app_version_newer(
+                latest, _srv.ZIMI_VERSION, allow_prerelease=(channel == "latest")
+            )
         ),
         "checked_at": state.get("checked_at") or None,
         "error": bool(state.get("error")),
         "offline": p2p.is_offline(),
         "install_type": detect_install_type(),
         "releases_url": state.get("url") or _APP_RELEASES_PAGE,
+        "channel": channel,
+        "channels": list(APP_UPDATE_CHANNELS),
+        "channel_locked": is_update_channel_env_locked(),
+        "channel_env": APP_UPDATE_CHANNEL_ENV,
+        "prerelease": bool(state.get("prerelease")),
     }
 
 
@@ -991,7 +1142,7 @@ def _compute_backup(data, overwrite):
         return None, None, "not a Zimi backup"
     scope = _bundle_scope(data)
     plan = []
-    preview = {"scope": scope}
+    preview: dict = {"scope": scope}
 
     coll = data.get("collections")
     if coll is not None:
@@ -1181,7 +1332,7 @@ def _apply_backup_bundle(data, overwrite=False):
     plan in one shot for direct callers/tests. ``result`` carries the applied
     keys plus the preview summary."""
     plan, preview, err = _compute_backup(data, overwrite)
-    if err:
+    if err or plan is None:
         return None, err
     applied = []
     for label, thunk in plan:
@@ -2367,6 +2518,29 @@ def handle_manage_post(handler, parsed, data):
         # cache but keeps a short flood guard (see check_app_update). Distinct
         # from /manage/auto-update directly above, which is ZIM content.
         return handler._json(200, _app_update_payload(force=True))
+
+    elif parsed.path == "/manage/app-update-channel":
+        # Stable vs latest for the APP release check. Same env-lock contract
+        # as the other settings endpoints: ZIMI_UPDATE_CHANNEL wins and the
+        # write is refused rather than silently ignored.
+        channel, err = set_update_channel(data.get("channel"))
+        if err == "env_locked":
+            return handler._json(
+                403,
+                {
+                    "error": "Update channel is controlled by the %s env var"
+                    % APP_UPDATE_CHANNEL_ENV
+                },
+            )
+        if err:
+            return handler._json(
+                400,
+                {"error": "Invalid channel. Use: %s" % ", ".join(APP_UPDATE_CHANNELS)},
+            )
+        log.info("App update channel set to %s", channel)
+        # Answer with the full payload so the pane repaints from one response;
+        # the channel switch invalidates the cache, so this re-checks.
+        return handler._json(200, _app_update_payload())
 
     elif parsed.path == "/manage/download-schedule":
         # Night-window queueing + the global download-speed cap. Same env-lock

@@ -8861,10 +8861,42 @@ function _appUpdateHowHtml(d) {
   return '<div class="ms-hint">' + tH('app_update_how_releases') + ' ' + _appUpdateReleasesLink(d) + '</div>';
 }
 
+// Stable vs latest. Locked (ZIMI_UPDATE_CHANNEL) renders the same select,
+// disabled with the standard env-controlled note, so the setting stays
+// visible instead of vanishing on the deployments most likely to set it.
+var _APP_UPDATE_CHANNEL_LABELS = {
+  stable: 'app_update_channel_stable',
+  latest: 'app_update_channel_latest'
+};
+
+function _appUpdateChannelHtml(d) {
+  var cur = d.channel || 'stable';
+  var opts = (d.channels || ['stable', 'latest']).map(function(c) {
+    var key = _APP_UPDATE_CHANNEL_LABELS[c];
+    return '<option value="' + escAttr(c) + '"' + (c === cur ? ' selected' : '') + '>' +
+      esc(key ? t(key) : c) + '</option>';
+  }).join('');
+  var lock = d.channel_locked
+    ? ' disabled title="' + escAttr(t('env_controlled', { v: d.channel_env || 'ZIMI_UPDATE_CHANNEL' })) + '"'
+    : '';
+  return '<div class="mc-row" style="align-items:center">' +
+      '<span class="mc-label">' + tH('app_update_channel') + '</span>' +
+      '<span class="mc-value"><select id="app-update-channel" style="font-size:12px;padding:3px 8px;border-radius:4px;' +
+        'border:1px solid var(--border);background:var(--surface2);color:var(--text)' +
+        (d.channel_locked ? ';opacity:0.5' : '') + '"' +
+        lock + ' onchange="_appUpdateSetChannel(this.value)">' + opts + '</select></span></div>' +
+    '<div class="ms-hint">' +
+      (d.channel_locked
+        ? tH('env_controlled', { v: d.channel_env || 'ZIMI_UPDATE_CHANNEL' })
+        : tH('app_update_channel_hint')) +
+    '</div>';
+}
+
 function _appUpdateHtml(d) {
   var status;
   if (d.update_available) {
-    status = '<span class="app-update-badge">' + tH('app_update_available', { v: d.latest }) + '</span>';
+    status = '<span class="app-update-badge">' + tH('app_update_available', { v: d.latest }) + '</span>' +
+      (d.prerelease ? ' <span class="app-update-quiet">' + tH('app_update_prerelease') + '</span>' : '');
   } else if (d.offline) {
     status = '<span class="app-update-quiet">' + tH('app_update_offline') + '</span>';
   } else if (d.latest && !d.error) {
@@ -8879,6 +8911,9 @@ function _appUpdateHtml(d) {
     (d.offline ? '' : '<button class="pill" onclick="_appUpdateCheckNow()">' + tH('app_update_check_now') + '</button>') +
     '</span></div>';
   if (d.update_available) h += _appUpdateHowHtml(d);
+  // Offline mode does no checking at all, so a channel choice would be a
+  // control with nothing behind it.
+  if (!d.offline) h += _appUpdateChannelHtml(d);
   return h;
 }
 
@@ -8899,6 +8934,25 @@ function _renderAppUpdate(force) {
 }
 
 function _appUpdateCheckNow() { _renderAppUpdate(true); }
+
+// Switching channel re-checks server-side (the cached answer belongs to the
+// other channel), so the response is already the repainted state.
+function _appUpdateSetChannel(channel) {
+  var el = document.getElementById('ms-app-update');
+  if (el) el.innerHTML = '<div class="ms-hint">' + tH('app_update_checking') + '</div>';
+  manageFetch('/manage/app-update-channel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channel: channel })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    var slot = document.getElementById('ms-app-update');
+    if (!slot) return;
+    // The only reachable error is the env lock (the select is disabled then,
+    // so this is a second instance racing a config change).
+    if (d && d.error) { _showToast(t('env_controlled', { v: 'ZIMI_UPDATE_CHANNEL' })); _renderAppUpdate(false); return; }
+    slot.innerHTML = _appUpdateHtml(d);
+  }).catch(function() { _renderAppUpdate(false); });
+}
 
 function _msServerHtml() {
   // Sharing is the star of v1.7 — it leads the Server pane. Render the

@@ -1245,5 +1245,10 @@
   "app_update_how_brew": "עדכן באמצעות Homebrew:",
   "app_update_how_snap": "Snap שומר על Zimi מעודכן אוטומטית.",
   "app_update_how_desktop": "אפליקציית שולחן העבודה מתעדכנת בעצמה.",
-  "app_update_how_releases": "הורד את הגרסה האחרונה מעמוד הגרסאות."
+  "app_update_how_releases": "הורד את הגרסה האחרונה מעמוד הגרסאות.",
+  "app_update_channel": "ערוץ עדכונים",
+  "app_update_channel_stable": "יציב",
+  "app_update_channel_latest": "האחרון",
+  "app_update_channel_hint": "הערוץ היציב מציג גרסאות סופיות בלבד. הערוץ האחרון מציג גם גרסאות בטא ומועמדות לשחרור.",
+  "app_update_prerelease": "גרסה מוקדמת"
 }
