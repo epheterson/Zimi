@@ -142,16 +142,38 @@ Note that the implicit location depends on the data dir, which is itself resolve
 
 ### Example
 
-A complete file — every key is optional, and this one sets all four:
+Every key is optional. The four path/bind keys have matching CLI flags; the rest have none, and the config file is the only alternative to an environment variable:
 
 ```json
 {
   "zim_dir": "/srv/zims",
   "data_dir": "/var/lib/zimi",
   "host": "0.0.0.0",
-  "port": 8899
+  "port": 8899,
+
+  "manage": true,
+  "manage_user": "admin",
+  "manage_password": "correct-horse-battery-staple",
+  "api_token": "a-long-random-string",
+  "offline": false,
+  "hot_zims": ["wikipedia_en_all_maxi", "stackoverflow"],
+  "index_throttle": true
 }
 ```
+
+| key | environment variable | type |
+| --- | --- | --- |
+| `manage` | `ZIMI_MANAGE` | boolean — false serves the library with no management endpoints at all |
+| `manage_user` | `ZIMI_MANAGE_USER` | string — optional management username; falls back to the password file |
+| `manage_password` | `ZIMI_MANAGE_PASSWORD` | string — plaintext, hashed at startup; falls back to the password file |
+| `api_token` | `ZIMI_API_TOKEN` | string — falls back to the token file |
+| `offline` | `ZIMI_OFFLINE` | boolean — the air-gap switch: no BT, no NAT probe, no appcast |
+| `hot_zims` | `ZIMI_HOT_ZIMS` | list of strings (a comma-separated string also works) |
+| `index_throttle` | `ZIMI_INDEX_THROTTLE` | boolean — false stops index builds yielding to system load |
+
+A setting from the file is applied by exporting it into its environment variable at startup, and only ever when the file is the layer that won — so an environment variable you exported yourself is never overwritten, and a setting you left out stays genuinely unset rather than being pinned to its default.
+
+Two consequences worth knowing. `manage_password` and `api_token` are secrets in a plaintext file: `chmod 600` it, and mount it read-only in Docker. And `zimi config` masks both, so its output is safe to paste into a bug report.
 
 Boot with it:
 
@@ -174,7 +196,7 @@ services:
       - ./zimi.json:/config/zimi.json:ro
 ```
 
-One caveat specific to the official image, and it follows directly from the precedence rules. The image sets `ZIM_DIR=/zims` and `ZIMI_DATA_DIR=/config` as environment variables and starts with `serve --port 8899`, so those three values are already spoken for by a higher layer: a mounted config file cannot move a running container's ZIMs, its state, or its port. That is the compatibility rule doing its job rather than a limitation to work around, and inside a container the volume mounts are the natural place to say where things live anyway.
+One caveat specific to the official image, and it follows directly from the precedence rules. The image sets `ZIM_DIR=/zims` and `ZIMI_DATA_DIR=/config` as environment variables and starts with `serve --port 8899`, so those three values are already spoken for by a higher layer: a mounted config file cannot move a running container's ZIMs, its state, or its port. That is the compatibility rule doing its job rather than a limitation to work around, and inside a container the volume mounts are the natural place to say where things live anyway. The shipped image also sets `ZIMI_MANAGE=1`, so `"manage": false` in a mounted file does not disable management in Docker for the same reason — override it in compose (`ZIMI_MANAGE=0`) rather than in the file.
 
 If you do want the file to own them, override the layer that is winning. A Dockerfile `ENV` cannot be unset from compose, so set it to the value you want instead; and drop the `--port` flag by overriding `command`:
 

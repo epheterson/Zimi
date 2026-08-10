@@ -39,6 +39,12 @@ Configuration:
   deployment behaves. `zimi config` prints the resolved values and their
   provenance.
 
+  The config file also carries settings that have no flag and are read by other
+  modules: manage, manage_user, manage_password, api_token, offline, hot_zims,
+  index_throttle (see CONFIG_ENV_SETTINGS). A value that comes from the file is
+  published into the matching environment variable at startup, so one file can
+  describe a whole instance without a click-through setup.
+
 Usage (CLI):
   zimi search "water purification" --limit 10
   zimi read stackoverflow "Questions/12345"
@@ -82,6 +88,7 @@ import threading
 import time
 from http.server import ThreadingHTTPServer
 import ssl
+from typing import Any, NoReturn
 
 import certifi
 
@@ -362,14 +369,85 @@ def discover_zim_dir(candidates=None):
 # keeps winning, so dropping a config file next to an existing instance can
 # never change how it behaves. Adding config can only fill in what nobody else
 # said.
+#
+# Two families of key, resolved by the same precedence chain but delivered
+# differently:
+#
+#   * The four PATH/BIND keys (zim_dir, data_dir, host, port) are consumed by
+#     this module directly — resolve_settings() hands them to apply_data_paths()
+#     and to serve().
+#   * The ENVIRONMENT-BACKED keys below name settings that had no input other
+#     than an environment variable, read at call time by whichever module owns
+#     the feature. Rather than teaching each of those modules about the config
+#     file — one more resolution path and one more precedence bug apiece — the
+#     single resolution here PUBLISHES its answer into os.environ, but only when
+#     the answer came from the file. An environment variable is never
+#     overwritten, precedence stays exactly what resolve_settings() computed,
+#     and the owning module remains the only thing that interprets the string.
+#
+# The credential keys (manage_user, manage_password, api_token) look like an
+# exception to the scope note above, since each also has a state file and an
+# admin UI. They are not: their environment variable ALREADY outranks that file,
+# and the config file feeds that same override layer rather than adding a third
+# opinion. Provisioning credentials is also the one thing that makes headless
+# setup headless — without it, first boot is a click-through.
+#
+# The bar for adding an environment-backed key: the setting must be read at call
+# time. ZIMI_RATE_LIMIT, ZIMI_RATE_LIMIT_TRUSTED, ZIMI_RATE_LIMIT_LOGIN,
+# ZIMI_TRUST_CGNAT and ZIMI_TRUSTED_PROXIES are all frozen into module constants
+# when zimi.http is imported — which happens while this module is still being
+# imported, long before argparse can point us at a file — so publishing them
+# would be a silent no-op. They need their consumer to read them lazily first.
 # ---------------------------------------------------------------------------
 
 CONFIG_FILENAME = "zimi.json"
 CONFIG_ENV_VAR = "ZIMI_CONFIG"
-# The only keys v1 understands. Anything else is warned about, never fatal:
+# The path/bind keys, each with its own flag and its own consumer in this file.
+CONFIG_PATH_KEYS = ("zim_dir", "data_dir", "host", "port")
+
+# kind: how a JSON value is validated and encoded into the string its
+#   environment variable would have carried ("str", "bool" or "csv").
+# default: what the report shows when nobody set it — the string form of the
+#   consumer's own built-in default. NEVER published; a default must stay
+#   indistinguishable from "unset" so consumers that treat an absent variable
+#   specially (get_hot_zims falls back to hot.json) keep doing so.
+# secret: masked in `zimi config` output, because that report is what people
+#   paste into bug threads.
+ConfigSetting = collections.namedtuple(
+    "ConfigSetting", "key env_var kind default default_note secret"
+)
+
+CONFIG_ENV_SETTINGS = (
+    ConfigSetting("manage", "ZIMI_MANAGE", "bool", "1", None, False),
+    ConfigSetting("manage_user", "ZIMI_MANAGE_USER", "str", "", "password file", True),
+    ConfigSetting(
+        "manage_password", "ZIMI_MANAGE_PASSWORD", "str", "", "password file", True
+    ),
+    ConfigSetting("api_token", "ZIMI_API_TOKEN", "str", "", "token file", True),
+    ConfigSetting("offline", "ZIMI_OFFLINE", "bool", "0", None, False),
+    ConfigSetting("hot_zims", "ZIMI_HOT_ZIMS", "csv", "", "hot.json", False),
+    ConfigSetting("index_throttle", "ZIMI_INDEX_THROTTLE", "bool", "1", None, False),
+)
+_CONFIG_ENV_BY_KEY = {s.key: s for s in CONFIG_ENV_SETTINGS}
+
+# Every key v1 understands. Anything else is warned about, never fatal:
 # failing a boot over an unknown key punishes people for a forward-compatible
 # file, but silently swallowing a typo is a support ticket.
-CONFIG_KEYS = ("zim_dir", "data_dir", "host", "port")
+CONFIG_KEYS = CONFIG_PATH_KEYS + tuple(s.key for s in CONFIG_ENV_SETTINGS)
+
+# The spellings accepted for a boolean written as a string, mapped to the
+# canonical form. JSON booleans are the documented way; these exist because
+# people copy values out of a compose file.
+_CONFIG_BOOL_WORDS = {
+    "1": "1",
+    "true": "1",
+    "yes": "1",
+    "on": "1",
+    "0": "0",
+    "false": "0",
+    "no": "0",
+    "off": "0",
+}
 
 
 class ConfigError(Exception):
@@ -421,8 +499,11 @@ def load_config_file(path):
         if key not in data:
             continue
         value = data[key]
+        origin = f"config file {path}"
         if key == "port":
-            config[key] = _coerce_port(value, f"config file {path}")
+            config[key] = _coerce_port(value, origin)
+        elif key in _CONFIG_ENV_BY_KEY:
+            config[key] = _encode_env_value(_CONFIG_ENV_BY_KEY[key], value, origin)
         elif not isinstance(value, str):
             raise ConfigError(
                 f"config file {path}: {key} must be a string, "
@@ -431,6 +512,45 @@ def load_config_file(path):
         else:
             config[key] = value
     return config
+
+
+def _encode_env_value(setting, value, origin):
+    """Validate one environment-backed value and render it as the string its
+    environment variable would have carried.
+
+    Encoding at parse time (like ``_coerce_port``) is what keeps
+    ``resolve_settings`` type-agnostic: by the time precedence runs, every
+    layer — flag, env, file, default — is speaking the same string, and the
+    module that owns the feature stays the only thing that interprets it.
+    Idempotent, so re-encoding an already-encoded value is safe.
+    """
+    if setting.kind == "bool":
+        if isinstance(value, bool):
+            return "1" if value else "0"
+        word = (
+            _CONFIG_BOOL_WORDS.get(value.strip().lower())
+            if isinstance(value, str)
+            else None
+        )
+        if word is None:
+            raise ConfigError(
+                f"{origin}: {setting.key} must be true or false, got {value!r}"
+            )
+        return word
+    if setting.kind == "csv":
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list) and all(isinstance(v, str) for v in value):
+            return ",".join(v.strip() for v in value if v.strip())
+        raise ConfigError(
+            f"{origin}: {setting.key} must be a list of strings (or a "
+            f"comma-separated string), got {type(value).__name__}"
+        )
+    if not isinstance(value, str):
+        raise ConfigError(
+            f"{origin}: {setting.key} must be a string, got {type(value).__name__}"
+        )
+    return value
 
 
 def _coerce_port(value, origin):
@@ -510,13 +630,16 @@ def resolve_settings(
     config=None,
     config_path=None,
     discovered_zim_dir=None,
-):
+) -> "collections.OrderedDict[str, tuple[Any, str]]":
     """Resolve every boot setting, with the provenance of each one.
 
     Returns an ordered ``{key: (value, source)}`` mapping where source is a
     human string like ``env: ZIM_DIR`` — `zimi config` prints it verbatim, and
     "where did this value come from" is the question that actually costs people
-    time when a deployment misbehaves.
+    time when a deployment misbehaves. The four path/bind keys come first, then
+    every environment-backed key in CONFIG_ENV_SETTINGS; those resolve through
+    the same chain with no flag layer (they have no flags) and their values are
+    always the string their environment variable carries.
 
     Precedence, strictly: flag > environment > config file > discovered >
     built-in default. ``discovered_zim_dir`` is the fifth, lowest layer: it
@@ -566,7 +689,13 @@ def resolve_settings(
     if not isinstance(port, int) or isinstance(port, bool):
         port = _coerce_port(port, port_src)
 
-    return collections.OrderedDict(
+    # Annotated rather than inferred: from the literal below a checker deduces
+    # a key type of Literal["zim_dir", ...] and a value type that is the union
+    # of exactly these four tuples, which then rejects both the loop that adds
+    # the environment-backed keys and any caller indexing one of them. The
+    # value is genuinely per-key (port is an int, everything else a string), so
+    # `Any` is the honest element type for a heterogeneous settings map.
+    settings: "collections.OrderedDict[str, tuple[Any, str]]" = collections.OrderedDict(
         (
             ("zim_dir", (zim_dir, zim_dir_src)),
             ("data_dir", (data_dir, data_dir_src)),
@@ -574,16 +703,78 @@ def resolve_settings(
             ("port", (port, port_src)),
         )
     )
+    for setting in CONFIG_ENV_SETTINGS:
+        value, source = pick(
+            None,
+            None,
+            setting.env_var,
+            setting.key,
+            setting.default,
+            setting.default_note,
+        )
+        # Environment values and defaults are already strings; a native JSON
+        # type only survives this far when a caller hand-built `config` instead
+        # of going through load_config_file, so encode defensively — same shape
+        # as the port coercion above.
+        if not isinstance(value, str):
+            value = _encode_env_value(setting, value, source)
+        settings[setting.key] = (value, source)
+    return settings
+
+
+CONFIG_SECRET_MASK = "********"
+# An empty value gets a visible stand-in so the column never collapses and a
+# reader can tell "set to empty" from a formatting accident.
+CONFIG_EMPTY_MASK = '""'
+
+
+def _report_value(key, value):
+    """What `zimi config` shows for one value: never a secret, never blank."""
+    setting = _CONFIG_ENV_BY_KEY.get(key)
+    shown = str(value)
+    if setting is not None and setting.secret and shown:
+        return CONFIG_SECRET_MASK
+    return shown or CONFIG_EMPTY_MASK
 
 
 def format_config_report(settings):
     """Render `zimi config` output: value plus where it came from, one per line."""
-    name_w = max(len(k) for k in settings)
-    value_w = max(len(str(v)) for v, _ in settings.values())
+    shown = [(key, _report_value(key, v), src) for key, (v, src) in settings.items()]
+    name_w = max(len(key) for key, _, _ in shown)
+    value_w = max(len(value) for _, value, _ in shown)
     lines = []
-    for key, (value, source) in settings.items():
-        lines.append(f"{key:<{name_w}}  {str(value):<{value_w}}  ({source})")
+    for key, value, source in shown:
+        lines.append(f"{key:<{name_w}}  {value:<{value_w}}  ({source})")
     return "\n".join(lines)
+
+
+def apply_env_settings(settings):
+    """Publish file-sourced settings into os.environ, and rebind ZIMI_MANAGE.
+
+    The delivery half of the environment-backed keys. Only values whose
+    provenance is the config file are written: a variable the operator actually
+    exported is never touched (it already won in ``resolve_settings``), and a
+    built-in default is never written at all, so "nobody configured this" stays
+    distinguishable from "configured to the default value" for consumers that
+    care about the difference.
+
+    Must run before anything reads these settings — ``main()`` calls it right
+    after resolution, ahead of ``_init()`` and ``serve()``. Returns the list of
+    variables written, for tests and for logging.
+    """
+    global ZIMI_MANAGE
+    published = []
+    for setting in CONFIG_ENV_SETTINGS:
+        value, source = settings[setting.key]
+        if source.startswith("config file"):
+            os.environ[setting.env_var] = value
+            published.append(setting.env_var)
+    # ZIMI_MANAGE is the one environment-backed setting this module reads into a
+    # global at import time, so publishing alone would be too late for it. The
+    # `== "1"` test is the same one the import-time read uses, which is what
+    # keeps every existing ZIMI_MANAGE spelling behaving exactly as before.
+    ZIMI_MANAGE = settings["manage"][0] == "1"
+    return published
 
 
 def resolve_data_paths(
@@ -2404,9 +2595,13 @@ def register_zim_file(path, removed_files=()):
 # ============================================================================
 
 
-def _cli_die(msg):
+def _cli_die(msg) -> NoReturn:
     """One-line CLI refusal, exit code 2 — the same convention main() uses for
-    a ConfigError. No traceback: these are operator mistakes, not bugs."""
+    a ConfigError. No traceback: these are operator mistakes, not bugs.
+
+    Annotated NoReturn so callers can treat it as terminal: without it a type
+    checker reads every `except: _cli_die(...)` branch as falling through, and
+    reports the variable the `try` was binding as possibly unbound."""
     print(f"zimi: {msg}", file=sys.stderr)
     sys.exit(2)
 
@@ -2503,8 +2698,12 @@ def _cli_restore(path, overwrite):
 
     _headless_state_boot()
     result, err = _manage._apply_backup_bundle(data, overwrite=overwrite)
-    if err:
-        _cli_die(f"restore failed: {err}")
+    # `result is None` is the same condition as `err` in every current path
+    # (_apply_backup_bundle returns (None, err) on refusal), but the two are
+    # independent values — checking both is what makes the reads below safe
+    # rather than merely correct-by-convention.
+    if err or result is None:
+        _cli_die(f"restore failed: {err or 'no result'}")
     applied = result["applied"]
     # Present-but-untouched keys: env-locked settings (ZIMI_HOT_ZIMS,
     # ZIMI_AUTO_UPDATE) or server keys riding on a device-scope bundle, which
@@ -2661,6 +2860,10 @@ def main():
     except ConfigError as e:
         print(f"zimi: {e}", file=sys.stderr)
         sys.exit(2)
+    # Hand the file's answer to the modules that own each setting, before any of
+    # them is asked for it. Done for every subcommand: `backup` and `restore`
+    # have to see the same instance `serve` would.
+    apply_env_settings(settings)
     apply_data_paths(
         flags["zim_dir"],
         flags["data_dir"],
