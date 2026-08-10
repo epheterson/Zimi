@@ -18,6 +18,7 @@ thread. Source READS (article HTML and asset bytes) still touch libzim
 ``_srv._zim_lock``-guarded path.
 """
 
+import contextlib
 import datetime
 import html as _html
 import logging
@@ -404,31 +405,19 @@ def _output_path(zim_dir, base):
     return candidate
 
 
-def build_bookmarks_zim(
-    bookmarks,
-    zim_dir,
-    reader=_read_source_article,
-    asset_reader=_read_source_item,
-    progress=None,
-    name=None,
-    title=None,
-    sections=None,
-):
-    """Write ONE ZIM containing an article per bookmark plus an index page.
+# Writer plumbing shared with zimi.creator (folder/page → ZIM). libzim.writer
+# is imported lazily so this module still imports where the writer is absent
+# (the read-only install case) — the class pair is built once and cached.
+_static_item_cls = None
 
-    ``bookmarks`` is a list of ``{"zim","path","title"[,"section"]}`` dicts.
-    ``reader(zim, path)`` fetches source HTML; ``asset_reader(zim, path)``
-    fetches raw asset bytes (both injectable for tests). ``progress(done, total)``
-    is called per article. ``name`` sets the output basename (default
-    ``zimi-bookmarks_<date>``); ``title`` sets the ZIM Title metadata.
-    ``sections`` (optional, ordered) lists section headers the index must show
-    even when empty — exported empty folders are never silently dropped.
-    Returns the output file path. Raises ValueError when ``bookmarks`` is empty.
-    """
-    from libzim.writer import Blob, ContentProvider, Creator, Hint, Item
 
-    if not bookmarks:
-        raise ValueError("no bookmarks to export")
+def zim_static_item_class():
+    """The one Item class every Zimi-written ZIM entry uses: full content in
+    memory, mimetype and FRONT_ARTICLE hint per entry."""
+    global _static_item_cls
+    if _static_item_cls is not None:
+        return _static_item_cls
+    from libzim.writer import Blob, ContentProvider, Hint, Item
 
     class _Provider(ContentProvider):
         def __init__(self, content):
@@ -445,7 +434,7 @@ def build_bookmarks_zim(
             self._fed = True
             return Blob(self._content)
 
-    class _Article(Item):
+    class _StaticItem(Item):
         def __init__(
             self, path, title, content, mimetype="text/html;charset=utf-8", front=True
         ):
@@ -473,77 +462,29 @@ def build_bookmarks_zim(
             # type error against the base Item even though it runs fine.
             return {Hint.FRONT_ARTICLE: 1} if self._front else {}
 
-    def _make_asset(path, mimetype, data):
-        return _Article(
-            path, path.rsplit("/", 1)[-1], data, mimetype=mimetype, front=False
-        )
+    _static_item_cls = _StaticItem
+    return _StaticItem
 
-    date_str = datetime.date.today().isoformat()
-    base = name or f"zimi-bookmarks_{date_str}"
-    heading = title or f"Zimi Bookmarks · {date_str}"
-    out_path = _output_path(zim_dir, base)
+
+def make_asset_item(path, mimetype, data):
+    """A non-front entry (image, CSS, font) — the shape _AssetCarrier feeds."""
+    cls = zim_static_item_class()
+    return cls(path, path.rsplit("/", 1)[-1], data, mimetype=mimetype, front=False)
+
+
+@contextlib.contextmanager
+def atomic_zim_creator(out_path, language="eng"):
+    """Yield a libzim Creator writing to ``<out_path>.tmp``; rename over
+    ``out_path`` only on clean exit, remove the tmp on any error. A partially
+    written ZIM must never appear under its final name — libzim#1106 upstream
+    is exactly the bug where half-written files got picked up as valid."""
+    from libzim.writer import Creator
+
     tmp_path = out_path + ".tmp"
-    total = len(bookmarks)
-    entries = []  # (path, title, source_zim, section) for the index
-
     try:
         # Creator takes a Path; tmp_path stays a str for os.replace below.
-        with Creator(pathlib.Path(tmp_path)).config_indexing(True, "eng") as creator:
-            creator.set_mainpath("index")
-            carrier = _AssetCarrier(creator.add_item, _make_asset, asset_reader)
-            for i, bk in enumerate(bookmarks):
-                if progress:
-                    progress(i, total)
-                zim = (bk.get("zim") or "").strip()
-                path = (bk.get("path") or "").strip()
-                title_i = (bk.get("title") or "").strip() or path or f"Bookmark {i + 1}"
-                section = (bk.get("section") or "").strip()
-                art_path = f"A/{i}_{_slug(title_i, str(i))}"
-                raw = reader(zim, path) if (zim and path) else None
-                extra_css = ""
-                if raw is None:
-                    body = (
-                        "<p><em>The source article could not be read "
-                        "(the ZIM may have been removed).</em></p>"
-                    )
-                else:
-                    # Carry styling + images BEFORE stripping the raw document.
-                    try:
-                        extra_css = carrier.collect_styles(zim, path, raw)
-                        raw = carrier.rewrite_media(zim, path, raw)
-                    except Exception as e:  # never let one bad article kill the export
-                        log.debug("asset carry failed for %s/%s: %s", zim, path, e)
-                    body = _extract_body(raw)
-                creator.add_item(
-                    _Article(
-                        art_path,
-                        title_i,
-                        _article_html(title_i, zim, path, body, extra_css),
-                    )
-                )
-                entries.append((art_path, title_i, zim, section))
-            if progress:
-                # Every article is in. What remains is the Creator's close
-                # (full-text index build + cluster compression), the longest
-                # single phase for a large export, so report N/N now instead
-                # of freezing the client's counter at N-1/N while it runs.
-                progress(total, total)
-            creator.add_item(
-                _Article(
-                    "index",
-                    heading,
-                    _index_html(entries, date_str, heading, sections=sections),
-                )
-            )
-            creator.add_metadata("Title", heading)
-            creator.add_metadata("Language", "eng")
-            creator.add_metadata(
-                "Description",
-                f"{_plural(len(entries), 'bookmarked article')} exported by Zimi",
-            )
-            creator.add_metadata("Creator", "Zimi")
-            creator.add_metadata("Publisher", "Zimi")
-            creator.add_metadata("Date", date_str)
+        with Creator(pathlib.Path(tmp_path)).config_indexing(True, language) as creator:
+            yield creator
         os.replace(tmp_path, out_path)
     except Exception:
         try:
@@ -552,6 +493,116 @@ def build_bookmarks_zim(
         except OSError:
             pass
         raise
+
+
+def add_standard_metadata(
+    creator,
+    *,
+    title,
+    description,
+    language="eng",
+    creator_name="Zimi",
+    source=None,
+    date_str=None,
+):
+    """The standard Zimi metadata block, in the order readers expect. `source`
+    (a URL) is only written when given — page captures carry provenance."""
+    creator.add_metadata("Title", title)
+    creator.add_metadata("Language", language)
+    creator.add_metadata("Description", description)
+    creator.add_metadata("Creator", creator_name)
+    creator.add_metadata("Publisher", "Zimi")
+    creator.add_metadata("Date", date_str or datetime.date.today().isoformat())
+    if source:
+        creator.add_metadata("Source", source)
+
+
+def build_bookmarks_zim(
+    bookmarks,
+    zim_dir,
+    reader=_read_source_article,
+    asset_reader=_read_source_item,
+    progress=None,
+    name=None,
+    title=None,
+    sections=None,
+):
+    """Write ONE ZIM containing an article per bookmark plus an index page.
+
+    ``bookmarks`` is a list of ``{"zim","path","title"[,"section"]}`` dicts.
+    ``reader(zim, path)`` fetches source HTML; ``asset_reader(zim, path)``
+    fetches raw asset bytes (both injectable for tests). ``progress(done, total)``
+    is called per article. ``name`` sets the output basename (default
+    ``zimi-bookmarks_<date>``); ``title`` sets the ZIM Title metadata.
+    ``sections`` (optional, ordered) lists section headers the index must show
+    even when empty — exported empty folders are never silently dropped.
+    Returns the output file path. Raises ValueError when ``bookmarks`` is empty.
+    """
+    if not bookmarks:
+        raise ValueError("no bookmarks to export")
+
+    _Article = zim_static_item_class()
+
+    date_str = datetime.date.today().isoformat()
+    base = name or f"zimi-bookmarks_{date_str}"
+    heading = title or f"Zimi Bookmarks · {date_str}"
+    out_path = _output_path(zim_dir, base)
+    total = len(bookmarks)
+    entries = []  # (path, title, source_zim, section) for the index
+
+    with atomic_zim_creator(out_path) as creator:
+        creator.set_mainpath("index")
+        carrier = _AssetCarrier(creator.add_item, make_asset_item, asset_reader)
+        for i, bk in enumerate(bookmarks):
+            if progress:
+                progress(i, total)
+            zim = (bk.get("zim") or "").strip()
+            path = (bk.get("path") or "").strip()
+            title_i = (bk.get("title") or "").strip() or path or f"Bookmark {i + 1}"
+            section = (bk.get("section") or "").strip()
+            art_path = f"A/{i}_{_slug(title_i, str(i))}"
+            raw = reader(zim, path) if (zim and path) else None
+            extra_css = ""
+            if raw is None:
+                body = (
+                    "<p><em>The source article could not be read "
+                    "(the ZIM may have been removed).</em></p>"
+                )
+            else:
+                # Carry styling + images BEFORE stripping the raw document.
+                try:
+                    extra_css = carrier.collect_styles(zim, path, raw)
+                    raw = carrier.rewrite_media(zim, path, raw)
+                except Exception as e:  # never let one bad article kill the export
+                    log.debug("asset carry failed for %s/%s: %s", zim, path, e)
+                body = _extract_body(raw)
+            creator.add_item(
+                _Article(
+                    art_path,
+                    title_i,
+                    _article_html(title_i, zim, path, body, extra_css),
+                )
+            )
+            entries.append((art_path, title_i, zim, section))
+        if progress:
+            # Every article is in. What remains is the Creator's close
+            # (full-text index build + cluster compression), the longest
+            # single phase for a large export, so report N/N now instead
+            # of freezing the client's counter at N-1/N while it runs.
+            progress(total, total)
+        creator.add_item(
+            _Article(
+                "index",
+                heading,
+                _index_html(entries, date_str, heading, sections=sections),
+            )
+        )
+        add_standard_metadata(
+            creator,
+            title=heading,
+            description=f"{_plural(len(entries), 'bookmarked article')} exported by Zimi",
+            date_str=date_str,
+        )
     if progress:
         progress(total, total)
     return out_path

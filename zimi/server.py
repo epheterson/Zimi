@@ -3000,6 +3000,36 @@ def main():
     )
     add_boot_flags(p_restore)
 
+    # create takes the boot flags for the same reason backup/restore do: the
+    # default output directory is THIS instance's ZIM dir, resolved exactly
+    # the way `serve` would resolve it.
+    p_create = sub.add_parser(
+        "create",
+        help="Create a ZIM from a folder of files (HTML/Markdown/PDF) or "
+        "from a single web page URL",
+    )
+    p_create.add_argument("source", help="Folder path, or a single-page http(s):// URL")
+    p_create.add_argument(
+        "--title", default=None, help="ZIM title (default: folder name / page title)"
+    )
+    p_create.add_argument("--description", default=None, help="ZIM description")
+    p_create.add_argument(
+        "--language",
+        default="eng",
+        help="ISO 639-3 content language for metadata and the full-text index "
+        "(default: eng)",
+    )
+    p_create.add_argument(
+        "--creator", default="Zimi", help="Creator metadata (default: Zimi)"
+    )
+    p_create.add_argument(
+        "--out",
+        default=None,
+        help="Explicit output .zim path (default: the ZIM directory, with "
+        "library registration)",
+    )
+    add_boot_flags(p_create)
+
     sub.add_parser(
         "desktop",
         help="Start server and open in a native desktop window (requires pywebview)",
@@ -3126,6 +3156,11 @@ def main():
 
     elif args.command == "restore":
         _cli_restore(args.file, args.overwrite)
+
+    elif args.command == "create":
+        from zimi import creator as _creator
+
+        _creator.cli_create(args)
 
     elif args.command == "desktop" or (args.command == "serve" and args.ui):
         try:
