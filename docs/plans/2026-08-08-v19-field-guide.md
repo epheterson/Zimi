@@ -101,9 +101,11 @@ ZIMI_CONFIG=/tmp/cfgdemo/zimi.json python3 -m zimi config
 
 Expect eleven rows, with manage/offline/hot_zims showing `(config file: ...)` as their source and the secrets masked. Then export `ZIMI_OFFLINE=0` and re-run: offline flips to `(env: ZIMI_OFFLINE)` — your environment always beats the file.
 
-## Update channels
+## Update channels and the update delay
 
-Preview → Manage → Server → App updates now has a channel select (Stable / Latest). Latest surfaces prereleases with a quiet marker; stable behaves exactly as before. Set `ZIMI_UPDATE_CHANNEL=stable` on a server and the select greys out with an env-controlled note, and writes to it return 403. `ZIMI_OFFLINE` still silences the whole feature, control and all.
+Preview → Manage → Server → App updates now has a channel select (Latest (recommended) / Beta (early releases)). Latest is the default and behaves exactly as the check always did: finished releases, the day they ship. Beta takes whatever is newest — pre-release or final — and marks a prerelease quietly. There is no "Stable" channel by design; `stable` is accepted as a synonym for `latest` in the env var, over the API, and in a preference file written by an earlier build. Set `ZIMI_UPDATE_CHANNEL=latest` on a server and the select greys out with an env-controlled note, and writes to it return 403.
+
+Below it sits Update delay: None / 1 / 3 / 7 / 14 / 30 days. Pick 7 and a release published today is not offered until next week — Manage says "1.9.1 is out — offering it in 7 days" rather than claiming you are up to date. `ZIMI_UPDATE_DELAY_DAYS` locks it the same way the channel variable does, and accepts any whole number of days, not just the presets. `ZIMI_OFFLINE` still silences the whole feature, both controls and all.
 
 ## Air-gapped install bundle
 

@@ -1247,8 +1247,14 @@
   "app_update_how_desktop": "डेस्कटॉप ऐप खुद को अपडेट रखता है।",
   "app_update_how_releases": "रिलीज़ पेज से नवीनतम संस्करण डाउनलोड करें।",
   "app_update_channel": "अपडेट चैनल",
-  "app_update_channel_stable": "स्थिर",
-  "app_update_channel_latest": "नवीनतम",
-  "app_update_channel_hint": "स्थिर चैनल केवल अंतिम रिलीज़ दिखाता है। नवीनतम चैनल बीटा और रिलीज़ कैंडिडेट भी दिखाता है।",
+  "app_update_channel_latest": "नवीनतम (अनुशंसित)",
+  "app_update_channel_beta": "बीटा (शुरुआती रिलीज़)",
+  "app_update_channel_hint": "नवीनतम चैनल पूरी हो चुकी रिलीज़ उसी दिन देता है जिस दिन वे आती हैं। बीटा चैनल बीटा और रिलीज़ कैंडिडेट भी देता है — पहले मिलती हैं, पर कम लोगों ने आज़माई होती हैं।",
+  "app_update_delay": "अपडेट विलंब",
+  "app_update_delay_none": "कोई नहीं",
+  "app_update_delay_days_one": "{n} दिन",
+  "app_update_delay_days_other": "{n} दिन",
+  "app_update_delay_hint": "रिलीज़ प्रकाशित होने के बाद इतने समय तक प्रतीक्षा करें, फिर उसे दिखाएँ। पहले दूसरों को खामियाँ मिलने दें।",
+  "app_update_held": "{v} आ गया है — {d} में दिखाया जाएगा",
   "app_update_prerelease": "पूर्व-रिलीज़"
 }

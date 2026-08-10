@@ -1247,8 +1247,14 @@
   "app_update_how_desktop": "يقوم تطبيق سطح المكتب بتحديث نفسه تلقائيًا.",
   "app_update_how_releases": "نزِّل أحدث إصدار من صفحة الإصدارات.",
   "app_update_channel": "قناة التحديث",
-  "app_update_channel_stable": "مستقرة",
-  "app_update_channel_latest": "الأحدث",
-  "app_update_channel_hint": "القناة المستقرة تعرض الإصدارات النهائية فقط. قناة الأحدث تعرض أيضًا إصدارات بيتا والإصدارات المرشحة.",
+  "app_update_channel_latest": "الأحدث (موصى به)",
+  "app_update_channel_beta": "بيتا (إصدارات مبكرة)",
+  "app_update_channel_hint": "قناة الأحدث تعرض الإصدارات النهائية يوم صدورها. قناة بيتا تعرض أيضًا إصدارات بيتا والإصدارات المرشحة: تصل أبكر، وجرّبها عدد أقل من الناس.",
+  "app_update_delay": "تأخير التحديث",
+  "app_update_delay_none": "بدون",
+  "app_update_delay_days_one": "يوم واحد",
+  "app_update_delay_days_other": "{n} يوم",
+  "app_update_delay_hint": "الانتظار هذه المدة بعد نشر الإصدار قبل عرضه. دع الآخرين يكتشفون المشكلات أولًا.",
+  "app_update_held": "صدر {v} — سيُعرض خلال {d}",
   "app_update_prerelease": "إصدار أولي"
 }

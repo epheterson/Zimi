@@ -1247,8 +1247,14 @@
   "app_update_how_desktop": "אפליקציית שולחן העבודה מתעדכנת בעצמה.",
   "app_update_how_releases": "הורד את הגרסה האחרונה מעמוד הגרסאות.",
   "app_update_channel": "ערוץ עדכונים",
-  "app_update_channel_stable": "יציב",
-  "app_update_channel_latest": "האחרון",
-  "app_update_channel_hint": "הערוץ היציב מציג גרסאות סופיות בלבד. הערוץ האחרון מציג גם גרסאות בטא ומועמדות לשחרור.",
+  "app_update_channel_latest": "האחרון (מומלץ)",
+  "app_update_channel_beta": "בטא (גרסאות מוקדמות)",
+  "app_update_channel_hint": "הערוץ האחרון מציע גרסאות מוגמרות ביום שהן יוצאות. ערוץ הבטא מציע גם גרסאות בטא ומועמדות לשחרור: מוקדם יותר, ופחות אנשים כבר התנסו בהן.",
+  "app_update_delay": "השהיית עדכון",
+  "app_update_delay_none": "ללא",
+  "app_update_delay_days_one": "יום אחד",
+  "app_update_delay_days_other": "{n} ימים",
+  "app_update_delay_hint": "להמתין פרק זמן זה מרגע פרסום הגרסה לפני שמציעים אותה. שאחרים יגלו את התקלות ראשונים.",
+  "app_update_held": "{v} יצאה — תוצע בעוד {d}",
   "app_update_prerelease": "גרסה מוקדמת"
 }

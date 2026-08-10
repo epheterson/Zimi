@@ -609,36 +609,79 @@ def _get_usage_stats():
         }
 
 
-def _get_disk_usage():
-    """Get disk usage info for ZIM directory. Works on all platforms."""
+# The space figures cost a statvfs plus a getsize() over every .zim in the
+# library — cheap on an SSD, seconds on a spun-down NAS or a Pi's SD card, and
+# several UI panes poll /manage/stats. They are gigabyte-rounded, so a half
+# minute of staleness is imperceptible and they are memoized. The partials
+# list is NOT: it is a handful of stats, and it changes the moment a download
+# starts, so a stale one would visibly lie.
+_DISK_USAGE_TTL = 30
+# (zim_dir, computed_at, payload) — one tuple, swapped atomically. The
+# directory is part of the key because it can change under a running server
+# (the desktop folder picker), and pointing at another drive must not keep
+# reporting the old one's free space.
+_disk_usage_cache = (None, 0.0, None)
+
+
+def _reset_disk_usage_cache():
+    """Drop the memoized answer. For the moments the library provably changed
+    size (a deletion), where showing the old free-space figure looks broken."""
+    global _disk_usage_cache
+    _disk_usage_cache = (None, 0.0, None)
+
+
+def _get_disk_space():
+    """The memoized half of the disk report: free/used space and library size.
+
+    A racing caller may recompute rather than wait — duplicated work is
+    harmless here, a lock held across a slow filesystem walk is not."""
+    global _disk_usage_cache
+    zim_dir, computed_at, cached = _disk_usage_cache
+    if (
+        cached is not None
+        and zim_dir == _srv.ZIM_DIR
+        and (time.time() - computed_at) < _DISK_USAGE_TTL
+    ):
+        return cached
+    space = _read_disk_space()
+    _disk_usage_cache = (_srv.ZIM_DIR, time.time(), space)
+    return space
+
+
+def _read_disk_space():
     try:
         usage = shutil.disk_usage(_srv.ZIM_DIR)
         total = usage.total
-        free = usage.free
-        used = usage.used
         zim_size = sum(
             os.path.getsize(os.path.join(_srv.ZIM_DIR, f))
             for f in os.listdir(_srv.ZIM_DIR)
             if f.endswith(".zim")
         )
-        # Only surface genuinely orphaned partials for cleanup — an active,
-        # queued, or resumable-with-progress .zim.tmp is still wanted and must
-        # never be offered for deletion.
-        from zimi import library as _lib
-
-        _protected, tmp_files = _lib.classify_partials()
         return {
             "zim_dir": _srv.ZIM_DIR,
             "data_dir": _srv.ZIMI_DATA_DIR,
             "disk_total_gb": round(total / _srv._BYTES_PER_GB, 1),
-            "disk_free_gb": round(free / _srv._BYTES_PER_GB, 1),
-            "disk_used_gb": round(used / _srv._BYTES_PER_GB, 1),
-            "disk_pct": round(used / total * 100, 1) if total > 0 else 0,
+            "disk_free_gb": round(usage.free / _srv._BYTES_PER_GB, 1),
+            "disk_used_gb": round(usage.used / _srv._BYTES_PER_GB, 1),
+            "disk_pct": round(usage.used / total * 100, 1) if total > 0 else 0,
             "zim_size_gb": round(zim_size / _srv._BYTES_PER_GB, 1),
-            "tmp_files": tmp_files,
         }
     except (OSError, AttributeError):
         return {}
+
+
+def _get_disk_usage():
+    """Get disk usage info for ZIM directory. Works on all platforms."""
+    space = _get_disk_space()
+    if not space:
+        return {}
+    # Only surface genuinely orphaned partials for cleanup — an active,
+    # queued, or resumable-with-progress .zim.tmp is still wanted and must
+    # never be offered for deletion.
+    from zimi import library as _lib
+
+    _protected, tmp_files = _lib.classify_partials()
+    return dict(space, tmp_files=tmp_files)
 
 
 # ============================================================================
@@ -769,13 +812,21 @@ class ZimHandler(BaseHTTPRequestHandler):
         """Backstop for disconnects escaping ANY write path (rate-limit
         responses, HEAD, auth denials…). Without this they reach
         socketserver.handle_error, which prints a full unlocked traceback per
-        request — many threads at once interleave into unreadable noise."""
+        request — many threads at once interleave into unreadable noise.
+
+        Also the single place the per-request ZIM allowlist is cleared. The
+        dispatchers set it early and then have several ways out that never
+        reach their own cleanup (the private-mode 401, the 429), so the clear
+        belongs at the one point every request — of every method — passes
+        through on its way out."""
         try:
             super().handle_one_request()
         except _DISCONNECT_ERRS:
             # The connection is unusable; make the keep-alive loop stop.
             self.close_connection = True
             log.debug("client disconnected: %s", getattr(self, "path", "?"))
+        finally:
+            _srv.clear_request_allow()
 
     def _dispatch_error(self, e):
         """Terminal `except` for the do_* dispatchers. Disconnects get one
@@ -883,10 +934,6 @@ class ZimHandler(BaseHTTPRequestHandler):
         _, reason = _sso.resolve(self)
         if not reason:
             return False
-        # This returns ahead of the set_request_allow/finally pair, so drop any
-        # allow set a previous request on this thread left behind rather than
-        # leave a stale one parked in the thread-local.
-        _srv.clear_request_allow()
         # The reason stays in the log. A client learns only that it must
         # authenticate — a verifier that explains itself is a tuning oracle.
         self._json(401, {"error": "authentication required"})
@@ -928,11 +975,11 @@ class ZimHandler(BaseHTTPRequestHandler):
 
         # Multi-user: restrict this request's ZIM view to the logged-in user's
         # allowlist (None = admin/anonymous/all-access). Set FIRST so a kept-alive
-        # connection re-sets it per request; cleared in the finally for hygiene.
+        # connection re-sets it per request; handle_one_request clears it on the
+        # way out, including the early returns below.
         _srv.set_request_allow(_users.request_allow(self))
 
-        # Private mode: block anonymous reads before any handler runs. The
-        # finally below still clears the request-allow context.
+        # Private mode: block anonymous reads before any handler runs.
         try:
             if self._private_access_block(parsed):
                 return
@@ -1678,8 +1725,6 @@ class ZimHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             return self._dispatch_error(e)
-        finally:
-            _srv.clear_request_allow()
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -1842,8 +1887,6 @@ class ZimHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             return self._dispatch_error(e)
-        finally:
-            _srv.clear_request_allow()
 
     def do_DELETE(self):
         parsed = urlparse(self.path)

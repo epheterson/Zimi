@@ -1247,8 +1247,14 @@
   "app_update_how_desktop": "O app de desktop se atualiza sozinho.",
   "app_update_how_releases": "Baixe a versão mais recente na página de versões.",
   "app_update_channel": "Canal de atualização",
-  "app_update_channel_stable": "Estável",
-  "app_update_channel_latest": "Mais recente",
-  "app_update_channel_hint": "Estável oferece apenas versões finais. Mais recente também mostra betas e candidatas a lançamento.",
+  "app_update_channel_latest": "Mais recente (recomendado)",
+  "app_update_channel_beta": "Beta (versões antecipadas)",
+  "app_update_channel_hint": "Mais recente oferece as versões terminadas no dia em que saem. Beta oferece também betas e candidatas a lançamento: chegam mais cedo e foram usadas por menos gente.",
+  "app_update_delay": "Atraso de atualização",
+  "app_update_delay_none": "Nenhum",
+  "app_update_delay_days_one": "{n} dia",
+  "app_update_delay_days_other": "{n} dias",
+  "app_update_delay_hint": "Aguardar este tempo após o lançamento antes de o oferecer. Deixa que outros encontrem os defeitos primeiro.",
+  "app_update_held": "{v} já saiu — será oferecido em {d}",
   "app_update_prerelease": "pré-lançamento"
 }

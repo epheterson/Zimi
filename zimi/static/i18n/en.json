@@ -1247,8 +1247,14 @@
   "app_update_how_desktop": "The desktop app keeps itself up to date.",
   "app_update_how_releases": "Download the latest version from the releases page.",
   "app_update_channel": "Update channel",
-  "app_update_channel_stable": "Stable",
-  "app_update_channel_latest": "Latest",
-  "app_update_channel_hint": "Stable offers final releases only. Latest also surfaces betas and release candidates.",
+  "app_update_channel_latest": "Latest (recommended)",
+  "app_update_channel_beta": "Beta (early releases)",
+  "app_update_channel_hint": "Latest offers finished releases the day they ship. Beta also offers betas and release candidates — earlier, and less used before you get them.",
+  "app_update_delay": "Update delay",
+  "app_update_delay_none": "None",
+  "app_update_delay_days_one": "{n} day",
+  "app_update_delay_days_other": "{n} days",
+  "app_update_delay_hint": "Wait this long after a release is published before offering it. Lets other people find the rough edges first.",
+  "app_update_held": "{v} is out — offering it in {d}",
   "app_update_prerelease": "prerelease"
 }

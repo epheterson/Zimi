@@ -177,7 +177,7 @@ def update_env(monkeypatch, tmp_path):
     """Isolated data dir + a urlopen spy that must be explicitly armed."""
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path))
     monkeypatch.delenv("ZIMI_OFFLINE", raising=False)
-    # Channel-free baseline: these tests pin the stable-channel behavior, so a
+    # Channel-free baseline: these tests pin the default-channel behavior, so a
     # developer running with ZIMI_UPDATE_CHANNEL set must not change them.
     monkeypatch.delenv(manage.APP_UPDATE_CHANNEL_ENV, raising=False)
     calls = []

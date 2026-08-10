@@ -1247,8 +1247,14 @@
   "app_update_how_desktop": "L'application de bureau se met à jour toute seule.",
   "app_update_how_releases": "Téléchargez la dernière version depuis la page des versions.",
   "app_update_channel": "Canal de mise à jour",
-  "app_update_channel_stable": "Stable",
-  "app_update_channel_latest": "Dernière",
-  "app_update_channel_hint": "Stable ne propose que les versions finales. Dernière affiche aussi les bêtas et les versions candidates.",
+  "app_update_channel_latest": "Dernière (recommandé)",
+  "app_update_channel_beta": "Bêta (versions en avance)",
+  "app_update_channel_hint": "Dernière propose les versions finalisées dès leur publication. Bêta propose en plus les bêtas et les versions candidates : plus tôt, et moins éprouvées.",
+  "app_update_delay": "Délai de mise à jour",
+  "app_update_delay_none": "Aucun",
+  "app_update_delay_days_one": "{n} jour",
+  "app_update_delay_days_other": "{n} jours",
+  "app_update_delay_hint": "Attendre ce délai après la publication avant de proposer une version. Les autres repèrent les défauts en premier.",
+  "app_update_held": "{v} est disponible — proposée dans {d}",
   "app_update_prerelease": "préversion"
 }

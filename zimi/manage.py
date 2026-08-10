@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import urllib.request
+from datetime import datetime, timezone
 
 import zimi.server as _srv
 
@@ -388,7 +389,7 @@ def _manage_auth_challenge(handler):
 # ============================================================================
 
 _APP_UPDATE_URL = "https://api.github.com/repos/epheterson/Zimi/releases/latest"
-# The "latest" channel needs the full list: GitHub's /releases/latest endpoint
+# The "beta" channel needs the full list: GitHub's /releases/latest endpoint
 # deliberately skips pre-releases, so a beta is only reachable by listing.
 # Newest-first, one page is far more history than a version check needs.
 _APP_UPDATE_LIST_URL = (
@@ -406,27 +407,43 @@ _APP_UPDATE_ERROR_TTL = 3600
 _APP_UPDATE_FORCE_GUARD = 60
 _app_update_lock = threading.Lock()  # single-flight: concurrent admins share one fetch
 
-# Update channels. "stable" (the default, and what every install had before
-# channels existed) only ever sees final releases; "latest" also surfaces
-# betas and release candidates. Two channels, not three — a "beta" that is
-# separate from "latest" would mean maintaining two pre-release streams.
-APP_UPDATE_CHANNELS = ("stable", "latest")
-APP_UPDATE_CHANNEL_DEFAULT = "stable"
+# Update channels. "latest" (the default, and what every install had before
+# channels existed) only ever sees finished releases, the day they ship;
+# "beta" takes whatever is newest — a pre-release or a final, whichever is
+# higher-versioned. Deliberately NOT called "stable": that word promises a
+# validation program this project does not run, and the two channels ship the
+# same code with the same testing, only at different times.
+APP_UPDATE_CHANNELS = ("latest", "beta")
+APP_UPDATE_CHANNEL_DEFAULT = "latest"
 APP_UPDATE_CHANNEL_ENV = "ZIMI_UPDATE_CHANNEL"
 # Names people reach for that mean one of the two real channels. Accepting
-# them beats rejecting a deploy because someone wrote the obvious word.
+# them beats rejecting a deploy because someone wrote the obvious word —
+# "stable" most of all, since it is the word everyone types for a default
+# channel and the one an earlier build of this feature wrote to disk.
 _APP_UPDATE_CHANNEL_ALIASES = {
-    "beta": "latest",
-    "betas": "latest",
-    "pre": "latest",
-    "prerelease": "latest",
-    "pre-release": "latest",
-    "edge": "latest",
-    "release": "stable",
-    "releases": "stable",
-    "final": "stable",
-    "stable-only": "stable",
+    "stable": "latest",
+    "stable-only": "latest",
+    "release": "latest",
+    "releases": "latest",
+    "final": "latest",
+    "betas": "beta",
+    "pre": "beta",
+    "prerelease": "beta",
+    "pre-release": "beta",
+    "edge": "beta",
+    "newest": "beta",
 }
+
+# Update delay: hold a release back until it has been public for N days, so a
+# fleet can let other people find the sharp edges first. 0 (the default, and
+# every pre-1.9 install's behavior) offers a release the moment it exists.
+# The choices the UI offers; any integer in range is still accepted over the
+# API and the env var, because a fleet policy of "11 days" is nobody's bug.
+APP_UPDATE_DELAY_ENV = "ZIMI_UPDATE_DELAY_DAYS"
+APP_UPDATE_DELAY_DEFAULT = 0
+APP_UPDATE_DELAY_CHOICES = (0, 1, 3, 7, 14, 30)
+APP_UPDATE_DELAY_MAX = 365  # a year of deferral is already an eternity
+
 # Ordering for pre-release suffixes within one numeric version. Unknown words
 # land above rc so a novel stream ("1.9.0-preview2") still moves forward, and
 # ties break on the word itself for determinism.
@@ -439,15 +456,50 @@ def _app_update_cache_path():
     return os.path.join(_srv.ZIMI_DATA_DIR, "app_update.json")
 
 
-def _app_update_channel_path():
+def _app_update_prefs_path():
+    """Both app-update preferences (channel + delay) share one small file. The
+    name is the one the channel-only build wrote, so an existing preference
+    survives the upgrade untouched."""
     return os.path.join(_srv.ZIMI_DATA_DIR, "app_update_channel.json")
 
 
+def _read_app_update_prefs():
+    try:
+        with open(_app_update_prefs_path(), "r", encoding="utf-8") as f:
+            saved = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return saved if isinstance(saved, dict) else {}
+
+
+def _write_app_update_prefs(**updates):
+    """Merge into the prefs file — writing the channel must never drop the
+    delay, and vice versa."""
+    prefs = _read_app_update_prefs()
+    prefs.update(updates)
+    _srv._atomic_write_json(_app_update_prefs_path(), prefs)
+
+
 def normalize_update_channel(value):
-    """'Beta ' → 'latest', 'stable' → 'stable', junk → None."""
+    """'Beta ' → 'beta', 'latest' → 'latest', 'stable' → 'latest' (the word
+    for this channel that the API, the env var and an earlier build all
+    accept), junk → None."""
     name = (value or "").strip().lower()
     name = _APP_UPDATE_CHANNEL_ALIASES.get(name, name)
     return name if name in APP_UPDATE_CHANNELS else None
+
+
+def normalize_update_delay_days(value):
+    """A whole number of days in [0, APP_UPDATE_DELAY_MAX], or None for
+    anything that isn't one. Strings are accepted so an env var and a JSON
+    body can share this path; booleans are not, because True is not 1 day."""
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        days = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return days if 0 <= days <= APP_UPDATE_DELAY_MAX else None
 
 
 def is_update_channel_env_locked():
@@ -457,19 +509,27 @@ def is_update_channel_env_locked():
     return normalize_update_channel(os.environ.get(APP_UPDATE_CHANNEL_ENV)) is not None
 
 
+def is_update_delay_env_locked():
+    """True when ZIMI_UPDATE_DELAY_DAYS holds a usable number of days."""
+    return normalize_update_delay_days(os.environ.get(APP_UPDATE_DELAY_ENV)) is not None
+
+
 def get_update_channel():
-    """The channel in force: env var, then the saved preference, then stable."""
+    """The channel in force: env var, then the saved preference, then latest."""
     from_env = normalize_update_channel(os.environ.get(APP_UPDATE_CHANNEL_ENV))
     if from_env:
         return from_env
-    try:
-        with open(_app_update_channel_path(), "r", encoding="utf-8") as f:
-            saved = json.load(f)
-    except (OSError, ValueError):
-        saved = None
-    if not isinstance(saved, dict):
-        return APP_UPDATE_CHANNEL_DEFAULT
-    return normalize_update_channel(saved.get("channel")) or APP_UPDATE_CHANNEL_DEFAULT
+    saved = normalize_update_channel(_read_app_update_prefs().get("channel"))
+    return saved or APP_UPDATE_CHANNEL_DEFAULT
+
+
+def get_update_delay_days():
+    """The delay in force: env var, then the saved preference, then none."""
+    from_env = normalize_update_delay_days(os.environ.get(APP_UPDATE_DELAY_ENV))
+    if from_env is not None:
+        return from_env
+    saved = normalize_update_delay_days(_read_app_update_prefs().get("delay_days"))
+    return APP_UPDATE_DELAY_DEFAULT if saved is None else saved
 
 
 def set_update_channel(value):
@@ -480,8 +540,19 @@ def set_update_channel(value):
         return None, "invalid_channel"
     if is_update_channel_env_locked():
         return None, "env_locked"
-    _srv._atomic_write_json(_app_update_channel_path(), {"channel": channel})
+    _write_app_update_prefs(channel=channel)
     return channel, None
+
+
+def set_update_delay_days(value):
+    """Persist the update delay. Same (value, error) contract as the channel."""
+    days = normalize_update_delay_days(value)
+    if days is None:
+        return None, "invalid_delay"
+    if is_update_delay_env_locked():
+        return None, "env_locked"
+    _write_app_update_prefs(delay_days=days)
+    return days, None
 
 
 def _parse_app_version(tag):
@@ -526,7 +597,7 @@ def _app_version_newer(remote, current, allow_prerelease=False):
     Same-number comparisons are conservative by default: a final release
     outranks its own pre-releases, but beta-vs-beta never reports an update —
     better to miss an edge case than nag someone already current. On the
-    "latest" channel `allow_prerelease` turns that ordering on, because
+    "beta" channel `allow_prerelease` turns that ordering on, because
     telling an rc1 user about rc2 is the entire point of the channel."""
     r, c = _app_version_sort_key(remote), _app_version_sort_key(current)
     if not r or not c:
@@ -537,7 +608,7 @@ def _app_version_newer(remote, current, allow_prerelease=False):
     if r_final != c_final:
         return r_final  # a final beats its own pre-release, never the reverse
     if not allow_prerelease:
-        return False  # pre-vs-pre on the stable channel: stay quiet
+        return False  # pre-vs-pre off the beta channel: stay quiet
     return r[1] > c[1]
 
 
@@ -605,7 +676,7 @@ def _pick_newest_release(releases):
     """The highest-versioned published release in a GitHub /releases list.
 
     Sorting by version rather than trusting the list order matters: GitHub
-    orders by publish date, so a stable patch cut after a beta would otherwise
+    orders by publish date, so a final patch cut after a beta would otherwise
     hide the beta from the channel that exists to show it. Drafts and
     unparseable tags are skipped."""
     best, best_key = None, None
@@ -616,6 +687,36 @@ def _pick_newest_release(releases):
         if key and (best_key is None or key > best_key):
             best, best_key = rel, key
     return best
+
+
+def _parse_release_timestamp(value):
+    """GitHub's `published_at` ('2026-08-01T12:00:00Z') → epoch seconds, or
+    None when it is missing or unparseable. A release with no usable stamp
+    can't be aged, and is treated as mature everywhere downstream: an update
+    must never become permanently invisible because a field went missing."""
+    text = (value or "").strip() if isinstance(value, str) else ""
+    if not text:
+        return None
+    try:
+        stamp = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)  # GitHub always sends UTC
+    return stamp.timestamp()
+
+
+def _update_hold_until(published_ts, delay_days, now=None):
+    """The epoch second an update this fresh becomes offerable, or None when
+    it already is (no delay set, no publish date, or the wait is over).
+
+    Evaluated on every read rather than baked into the cache, so a verdict of
+    "too fresh" ages out on its own instead of being frozen for a day by the
+    cached check that produced it."""
+    if not delay_days or not published_ts:
+        return None
+    ready_at = published_ts + delay_days * 86400
+    return ready_at if (now or time.time()) < ready_at else None
 
 
 def check_app_update(force=False, channel=None):
@@ -637,7 +738,11 @@ def check_app_update(force=False, channel=None):
     now = time.time()
 
     def _fresh(entry):
-        if entry.get("channel", APP_UPDATE_CHANNEL_DEFAULT) != channel:
+        # Raw comparison against the canonical name we write, deliberately not
+        # run through the alias table: a cached entry labelled with a name this
+        # build no longer writes came from a build whose channel names meant
+        # something else, and re-checking is cheaper than trusting it.
+        if entry.get("channel") != channel:
             return False
         age = now - entry.get("checked_at", 0)
         if force:
@@ -652,7 +757,7 @@ def check_app_update(force=False, channel=None):
         if _fresh(cached):
             return cached
         try:
-            if channel == "stable":
+            if channel == "latest":
                 # /releases/latest is already "newest final release" — one
                 # request, and GitHub does the pre-release filtering.
                 rel = _github_json(_APP_UPDATE_URL)
@@ -667,6 +772,9 @@ def check_app_update(force=False, channel=None):
                 "url": rel.get("html_url") or _APP_RELEASES_PAGE,
                 "channel": channel,
                 "prerelease": bool(rel.get("prerelease")),
+                # Kept raw (epoch) so the update delay is re-evaluated on every
+                # read instead of the cache freezing a "too fresh" verdict.
+                "published_ts": _parse_release_timestamp(rel.get("published_at")),
             }
         except Exception as e:
             log.debug("app-update check failed: %s", e)
@@ -676,21 +784,41 @@ def check_app_update(force=False, channel=None):
 
 
 def _app_update_payload(force=False):
-    """The /manage/app-update response: check state + install-type routing."""
+    """The /manage/app-update response: check state + install-type routing.
+
+    A newer release that hasn't been public long enough for the configured
+    delay reports `update_held` + `held_until` instead of `update_available`,
+    so the UI can say "1.9.1 is out, offering it in 3 days" rather than
+    pretending the release doesn't exist.
+
+    Note the two unrelated meanings of the word in this payload: the `latest`
+    field is the newest version string on whichever channel is in force, while
+    the `channel` field being "latest" names the finished-releases channel."""
     from zimi import p2p
 
     channel = get_update_channel()
+    delay_days = get_update_delay_days()
     state = check_app_update(force=force, channel=channel)
     latest = state.get("latest") or None
+    newer = bool(
+        latest
+        and _app_version_newer(
+            latest, _srv.ZIMI_VERSION, allow_prerelease=(channel == "beta")
+        )
+    )
+    held_until = (
+        _update_hold_until(state.get("published_ts"), delay_days) if newer else None
+    )
     return {
         "current": _srv.ZIMI_VERSION,
         "latest": latest,
-        "update_available": bool(
-            latest
-            and _app_version_newer(
-                latest, _srv.ZIMI_VERSION, allow_prerelease=(channel == "latest")
-            )
-        ),
+        "update_available": newer and held_until is None,
+        "update_held": held_until is not None,
+        "held_until": held_until,
+        "delay_days": delay_days,
+        "delay_days_locked": is_update_delay_env_locked(),
+        "delay_env": APP_UPDATE_DELAY_ENV,
+        "delay_choices": list(APP_UPDATE_DELAY_CHOICES),
         "checked_at": state.get("checked_at") or None,
         "error": bool(state.get("error")),
         "offline": p2p.is_offline(),
@@ -1441,7 +1569,14 @@ def handle_manage_get(handler, parsed, params):
             "frequency": _srv._auto_update_freq,
             "last_check": _srv._auto_update_last_check,
         }
-        title_index = _srv._get_title_index_stats()
+        # The per-index walk opens every title index on disk — far too costly
+        # for the callers that only want disk paths or partial-download info.
+        # ?detail=1 is the opt-in for the one view that renders the index list.
+        title_index = (
+            _srv._get_title_index_stats()
+            if param("detail") == "1"
+            else _srv._get_title_index_status_brief()
+        )
         with _srv._xzim_refs_lock:
             xzim_refs = sorted(
                 [
@@ -2451,6 +2586,12 @@ def handle_manage_post(handler, parsed, data):
             _srv._search_cache_clear()
             _srv._suggest_cache_clear()
             _srv._clean_stale_title_indexes()
+            # The library just changed size — don't show the pre-delete free
+            # space for the rest of the memo window. Imported here, not at
+            # module scope: http.py imports this module.
+            from zimi import http as _http
+
+            _http._reset_disk_usage_cache()
             # Stop seeding the file we just deleted. Without this the engine
             # keeps advertising (and hash-check failing) the missing file
             # until the 12h maintenance pass or a restart. peek_backend()
@@ -2543,8 +2684,33 @@ def handle_manage_post(handler, parsed, data):
         # from /manage/auto-update directly above, which is ZIM content.
         return handler._json(200, _app_update_payload(force=True))
 
+    elif parsed.path == "/manage/app-update-delay":
+        # How long a release must have been public before this instance is
+        # offered it. Same env-lock contract as the channel above.
+        days, err = set_update_delay_days(data.get("delay_days"))
+        if err == "env_locked":
+            return handler._json(
+                403,
+                {
+                    "error": "Update delay is controlled by the %s env var"
+                    % APP_UPDATE_DELAY_ENV
+                },
+            )
+        if err:
+            return handler._json(
+                400,
+                {
+                    "error": "Invalid delay. Use whole days, 0 to %d"
+                    % APP_UPDATE_DELAY_MAX
+                },
+            )
+        log.info("App update delay set to %d day(s)", days)
+        # The delay is applied when the payload is built, so no re-check is
+        # needed — the cached answer is still the right answer.
+        return handler._json(200, _app_update_payload())
+
     elif parsed.path == "/manage/app-update-channel":
-        # Stable vs latest for the APP release check. Same env-lock contract
+        # Latest vs beta for the APP release check. Same env-lock contract
         # as the other settings endpoints: ZIMI_UPDATE_CHANNEL wins and the
         # write is refused rather than silently ignored.
         channel, err = set_update_channel(data.get("channel"))
