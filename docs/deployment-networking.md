@@ -98,6 +98,73 @@ If WAN seeding isn't reachable, Zimi auto-detects via
 `/manage/bt-status` (status: `unavailable`) and the UI surfaces
 "leech-only mode". Downloads still work; you just can't help others.
 
+## Single sign-on behind Cloudflare Access {#sso}
+
+Cloudflare Access is not an identity provider Zimi talks to. It authenticates people at the edge — Google, Entra, GitHub, a one-time PIN, whatever your Access policy says — and forwards the result to the origin as a signed JWT in the `Cf-Access-Jwt-Assertion` header. Zimi verifies that token's signature against your team's published keys and signs the person in as an ordinary Zimi user, creating the account on their first visit. Nobody types a Zimi password.
+
+The same shape works for any identity-aware proxy that forwards a signed assertion (Authelia, authentik, oauth2-proxy); today the verification is written for Cloudflare's issuer and certificate layout.
+
+### Turning it on
+
+Two values, both public identifiers, both available in the Cloudflare Zero Trust dashboard:
+
+| Setting | Environment variable | What it is |
+| ------- | -------------------- | ---------- |
+| `sso_team` | `ZIMI_SSO_TEAM` | Your team domain — `yourteam`, `yourteam.cloudflareaccess.com`, or the full `https://` URL |
+| `sso_aud` | `ZIMI_SSO_AUD` | The **Application Audience (AUD) tag** of the Access application in front of Zimi (Access → Applications → your app → Overview) |
+| `sso_role` | `ZIMI_SSO_ROLE` | Role given to an account on its first sign-in: `user` (default, whole library), `limited` (empty shelf until an admin grants ZIMs), or `admin` (a secondary admin) |
+| `sso_proxy` | `ZIMI_SSO_PROXY` | Comma-separated CIDRs the header may arrive from. Default: any private/loopback peer |
+
+SSO is off until **both** `sso_team` and `sso_aud` are set. That is deliberate: anyone can send a header, so an install that trusted one by default would have no login at all.
+
+```yaml
+services:
+  zimi:
+    environment:
+      ZIMI_SSO_TEAM: yourteam.cloudflareaccess.com
+      ZIMI_SSO_AUD: 8f1b2c3d…            # the AUD tag, not a secret
+      ZIMI_SSO_ROLE: user
+      ZIMI_SSO_PROXY: 172.20.0.0/16       # the cloudflared container's subnet
+```
+
+The AUD tag is what pins a token to *this* application. Without it, a token minted for any other Access application in the same Cloudflare account would be accepted here — so Zimi refuses to enable SSO without one rather than fall back to a weaker check.
+
+### The one deployment rule
+
+**With SSO on, Zimi must not be reachable except through the proxy.** Cloudflare guarantees that a request arriving through the tunnel carries a genuine assertion; it cannot say anything about a request that never went through it. Anyone who can open a TCP connection to Zimi's port can send whatever header they like.
+
+Zimi enforces what it can: the header is honored only when the *direct socket peer* (not a forwarded header — that would be circular) is the proxy. The default trusts any private/loopback peer, which covers `cloudflared` running beside Zimi or in a sibling container, and Zimi logs a warning at startup saying so. On a network where other machines can also reach Zimi directly, set `ZIMI_SSO_PROXY` to the tunnel's address and the rest of the LAN loses the ability to assert an identity.
+
+Concretely, on a NAS with `cloudflared` in Docker: bind Zimi to the bridge address the tunnel uses rather than `0.0.0.0`, or set `ZIMI_SSO_PROXY` to that container's subnet. A header from anywhere else is ignored entirely — treated as if it were never sent — so the request continues as a normal anonymous or password-authenticated one.
+
+### What Zimi verifies
+
+Every request with the header, before anything else runs:
+
+- **Signature**, RS256 against the team's published keys at `https://<team>/cdn-cgi/access/certs`. The algorithm is pinned: `none` and an HS256 downgrade are rejected before a key is even looked up.
+- **`aud`** contains your configured AUD tag — this is what stops a token for another Access application being replayed here.
+- **`iss`** is exactly your team's URL.
+- **`exp` / `iat` / `nbf`**, with 60 seconds of clock tolerance.
+- **`email`**, the claim the account is mapped from.
+
+A header that fails any of these gets `401` with no explanation of which check failed (a verifier that explains itself is a tuning aid for whoever is probing it); the reason is in the server log. A failure never falls through to "treat as anonymous" — on an `open` instance that would quietly serve the library to an expired or forged token.
+
+Service tokens (machine access, which carries `common_name` and no email) are not mapped to accounts. Use Zimi's API token for automation.
+
+### Accounts
+
+The account name comes from the email: `eric@zosia.io` becomes `eric`. If that name is already taken by someone else, the full address is used instead (`eric-other.example`), so two people who share a local part across domains never collide.
+
+An existing local-password account is **never** adopted by a matching claim — signing someone into an account because a claim happened to match its name is the classic federation takeover bug. The SSO identity gets its own account, and the user list shows which is which. If you want your existing admin account to be the SSO one, delete it after your first SSO sign-in and promote the new account (or rename around it).
+
+Accounts created this way store no password, so the password login path refuses them outright. `ZIMI_SSO_ROLE` is a *creation* default, not a per-login assertion: promote or restrict an account afterwards and the change sticks. Group-driven role mapping arrives with the OIDC work.
+
+### Failure modes, on purpose
+
+- **Certs endpoint unreachable, or `ZIMI_OFFLINE=1`** — the last fetched keys are cached in memory and on disk (`<data dir>/sso_jwks.json`) and keep verifying for up to 7 days, so a restart or a network blip does not lock people out. Past that, tokens are rejected. A stale *public* key can only verify signatures it could already verify, so this widens nothing.
+- **Password and API-token auth are untouched by any of this.** They do not consult the header, so an SSO outage never blocks an operator who can reach the instance directly on the LAN. This is the deliberate escape hatch: keep a management password set.
+- **Logging out of Zimi does not log you out of Cloudflare Access.** The edge decides; use `https://<team>.cloudflareaccess.com/cdn-cgi/access/logout`.
+
 ## Configuration file
 
 Zimi reads a single JSON file that says where the ZIMs are, where its own state goes, and what it binds. Drop it next to a deployment and the instance is fully described — no environment plumbing, no click-through setup. It is JSON because Zimi supports Python 3.9 (no `tomllib`) and ships with no third-party dependencies (no PyYAML), and because every other file Zimi writes is already JSON.
@@ -157,7 +224,12 @@ Every key is optional. The four path/bind keys have matching CLI flags; the rest
   "api_token": "a-long-random-string",
   "offline": false,
   "hot_zims": ["wikipedia_en_all_maxi", "stackoverflow"],
-  "index_throttle": true
+  "index_throttle": true,
+
+  "sso_team": "yourteam.cloudflareaccess.com",
+  "sso_aud": "8f1b2c3d4e5f6071829",
+  "sso_role": "user",
+  "sso_proxy": ["172.20.0.0/16"]
 }
 ```
 
@@ -170,6 +242,10 @@ Every key is optional. The four path/bind keys have matching CLI flags; the rest
 | `offline` | `ZIMI_OFFLINE` | boolean — the air-gap switch: no BT, no NAT probe, no appcast |
 | `hot_zims` | `ZIMI_HOT_ZIMS` | list of strings (a comma-separated string also works) |
 | `index_throttle` | `ZIMI_INDEX_THROTTLE` | boolean — false stops index builds yielding to system load |
+| `sso_team` | `ZIMI_SSO_TEAM` | string — Cloudflare Access team domain; with `sso_aud`, turns on [trusted-header SSO](#sso) |
+| `sso_aud` | `ZIMI_SSO_AUD` | string — the Access application's AUD tag |
+| `sso_role` | `ZIMI_SSO_ROLE` | string — `user` (default), `limited` or `admin`, given to an account on first sign-in |
+| `sso_proxy` | `ZIMI_SSO_PROXY` | list of CIDRs (a comma-separated string also works) — who may send the identity header; default any private peer |
 
 A setting from the file is applied by exporting it into its environment variable at startup, and only ever when the file is the layer that won — so an environment variable you exported yourself is never overwritten, and a setting you left out stays genuinely unset rather than being pinned to its default.
 

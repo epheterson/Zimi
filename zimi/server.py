@@ -427,6 +427,15 @@ CONFIG_ENV_SETTINGS = (
     ConfigSetting("offline", "ZIMI_OFFLINE", "bool", "0", None, False),
     ConfigSetting("hot_zims", "ZIMI_HOT_ZIMS", "csv", "", "hot.json", False),
     ConfigSetting("index_throttle", "ZIMI_INDEX_THROTTLE", "bool", "1", None, False),
+    # Trusted-header SSO (zimi/sso.py). Both the team domain and the audience
+    # tag must be present for the feature to switch on at all, which is what
+    # keeps a bare install from trusting an identity header anyone can send.
+    # Neither is a secret: they identify the Access org and application, and a
+    # masked value in `zimi config` would hide the most common misconfiguration.
+    ConfigSetting("sso_team", "ZIMI_SSO_TEAM", "str", "", "SSO off", False),
+    ConfigSetting("sso_aud", "ZIMI_SSO_AUD", "str", "", "SSO off", False),
+    ConfigSetting("sso_role", "ZIMI_SSO_ROLE", "str", "user", None, False),
+    ConfigSetting("sso_proxy", "ZIMI_SSO_PROXY", "csv", "", "private networks", False),
 )
 _CONFIG_ENV_BY_KEY = {s.key: s for s in CONFIG_ENV_SETTINGS}
 
@@ -3183,6 +3192,9 @@ def main():
                 log.info(
                     "Library management enabled (no password — set one in Settings for public servers)"
                 )
+        from zimi import sso as _sso
+
+        _sso.log_boot_state()
         # docker stop / systemd / CI teardown send SIGTERM, which by default
         # kills Python without running atexit — skipping the clean engine
         # shutdown that flushes fastresume + the final upload accounting.

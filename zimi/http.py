@@ -23,6 +23,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote, quote
 
 import zimi.server as _srv
+from zimi import sso as _sso
 from zimi import users as _users
 from zimi.manage import (
     _manage_auth_challenge,
@@ -868,6 +869,29 @@ class ZimHandler(BaseHTTPRequestHandler):
             return "proxy-unknown"
         return direct_ip
 
+    def _sso_block(self):
+        """Enforce trusted-header SSO. Returns True (and sends a 401) when the
+        request carries an identity header from the proxy that does not verify;
+        False to proceed.
+
+        Runs before anything else resolves identity so a bad assertion can never
+        fall through to being treated as anonymous — which, on an ``open``
+        instance, would silently serve the library to a forged or expired token
+        instead of refusing it. A request with NO header takes the (None, None)
+        path and every existing auth route is untouched.
+        """
+        _, reason = _sso.resolve(self)
+        if not reason:
+            return False
+        # This returns ahead of the set_request_allow/finally pair, so drop any
+        # allow set a previous request on this thread left behind rather than
+        # leave a stale one parked in the thread-local.
+        _srv.clear_request_allow()
+        # The reason stays in the log. A client learns only that it must
+        # authenticate — a verifier that explains itself is a tuning oracle.
+        self._json(401, {"error": "authentication required"})
+        return True
+
     def _private_access_block(self, parsed):
         """Enforce ``private`` public-access mode. Returns True (and sends a 401)
         when an ANONYMOUS request targets anything outside the login surface;
@@ -895,6 +919,12 @@ class ZimHandler(BaseHTTPRequestHandler):
 
         def param(key, default=None):
             return params.get(key, [default])[0]
+
+        # Trusted-header SSO: verify (once per request — a keep-alive connection
+        # reuses this handler) before any identity is resolved from it.
+        _sso.clear_request_cache(self)
+        if self._sso_block():
+            return
 
         # Multi-user: restrict this request's ZIM view to the logged-in user's
         # allowlist (None = admin/anonymous/all-access). Set FIRST so a kept-alive
@@ -1653,6 +1683,9 @@ class ZimHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        _sso.clear_request_cache(self)
+        if self._sso_block():
+            return
         _srv.set_request_allow(_users.request_allow(self))
         try:
             if self._private_access_block(parsed):
@@ -1815,6 +1848,9 @@ class ZimHandler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
+        _sso.clear_request_cache(self)
+        if self._sso_block():
+            return
         # Rate limit write endpoints
         retry_after = _check_rate_limit(
             self._client_ip(), limit=self._rate_limit_for_request()
