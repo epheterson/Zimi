@@ -22,6 +22,7 @@ import datetime
 import html as _html
 import logging
 import os
+import pathlib
 import posixpath
 import re
 import threading
@@ -468,7 +469,9 @@ def build_bookmarks_zim(
             return _Provider(self._content)
 
         def get_hints(self):
-            return {Hint.FRONT_ARTICLE: True} if self._front else {}
+            # libzim types hint values as int, not bool — a True here is a
+            # type error against the base Item even though it runs fine.
+            return {Hint.FRONT_ARTICLE: 1} if self._front else {}
 
     def _make_asset(path, mimetype, data):
         return _Article(
@@ -484,7 +487,8 @@ def build_bookmarks_zim(
     entries = []  # (path, title, source_zim, section) for the index
 
     try:
-        with Creator(tmp_path).config_indexing(True, "eng") as creator:
+        # Creator takes a Path; tmp_path stays a str for os.replace below.
+        with Creator(pathlib.Path(tmp_path)).config_indexing(True, "eng") as creator:
             creator.set_mainpath("index")
             carrier = _AssetCarrier(creator.add_item, _make_asset, asset_reader)
             for i, bk in enumerate(bookmarks):
@@ -585,6 +589,38 @@ def build_export_jobs(jobs, zim_dir, progress=None, **kw):
     return out_paths
 
 
+def _register_exports(out_paths):
+    """Make the just-written export ZIMs visible in the library.
+
+    The old shape here — ``load_cache(force=True)`` under ``_zim_lock`` — re-
+    opened and re-scanned EVERY archive in the library while holding the lock
+    that every libzim request needs. Exporting three bookmarks off a 53-ZIM
+    library on a NAS mount therefore froze every reader for as long as the
+    rescan took. ``register_zim_file`` extracts each new ZIM's metadata off the
+    lock and holds it only for the splice; the full rescan survives as the
+    fallback for a file that cannot be read incrementally.
+    """
+    needs_rescan = False
+    for path in out_paths:
+        try:
+            if not _srv.register_zim_file(path):
+                needs_rescan = True
+        except Exception as e:
+            log.warning(
+                "Incremental registration of %s failed (%s) — falling back to a "
+                "full library rescan",
+                os.path.basename(path),
+                e,
+            )
+            needs_rescan = True
+    if needs_rescan:
+        with _srv._zim_lock:
+            _srv.load_cache(force=True)
+    # Cached result sets predate the new ZIM and would hide it until their TTL.
+    _srv._search_cache_clear()
+    _srv._suggest_cache_clear()
+
+
 def start_export(payload):
     """Kick off a bookmark export on a daemon worker thread.
 
@@ -609,8 +645,7 @@ def start_export(payload):
                 _set_export_state(done=done, total=total)
 
             out_paths = build_export_jobs(jobs, _srv.ZIM_DIR, progress=_prog)
-            with _srv._zim_lock:
-                _srv.load_cache(force=True)  # make the new files visible in the library
+            _register_exports(out_paths)
             names = [os.path.basename(p) for p in out_paths]
             _set_export_state(
                 phase="done",
