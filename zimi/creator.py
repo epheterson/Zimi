@@ -16,11 +16,16 @@ instead of at a source ZIM. No crawling, no JavaScript execution: a page
 that is an empty script shell is refused with a pointer at browser-based
 capture (zimit) instead of producing a ZIM full of loading spinners.
 
-Both modes share the writer plumbing in ``zimwriter``: the lazy item
-classes, ``atomic_zim_creator`` (tmp-then-replace — a partial ZIM never
-appears under its final name), ``add_standard_metadata``, and
-``_register_exports`` so a ZIM written into the library directory shows up
-without a full rescan.
+``render_captured_page`` is that per-page pipeline on its own — fetch-time
+rewriting of assets, links, and scripts against one carrier — so the bounded
+site crawl in ``zimi.crawler`` runs the identical steps per page and differs
+only in how a link is resolved: to a sibling article when the crawl captured
+the target, to the live web when it did not.
+
+All modes share the writer plumbing in ``zimwriter``: the lazy item classes,
+``atomic_zim_creator`` (tmp-then-replace — a partial ZIM never appears under
+its final name), ``add_standard_metadata``, and ``_register_exports`` so a
+ZIM written into the library directory shows up without a full rescan.
 """
 
 import html as _html
@@ -34,6 +39,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from typing import Any
 
 import zimi.server as _srv
 from zimi.zimwriter import (
@@ -76,6 +82,16 @@ DEFAULT_MAX_REDIRECTS = 5
 # magnitude, and a false "SPA" verdict on a tiny page is a clear error
 # message, not a broken ZIM.
 SPA_MIN_TEXT_CHARS = 200
+# One refusal message for both capture modes. A site crawl runs the check on
+# its FIRST page and refuses the whole crawl there — spending an hour to
+# produce two hundred loading spinners is the worst possible outcome.
+SPA_REFUSAL = (
+    "this page is an empty application shell — its content is built "
+    "by JavaScript in the browser, and Zimi does not run one. "
+    "Capture it with a browser-based tool such as zimit "
+    "(https://github.com/openzim/zimit), then add the resulting ZIM "
+    "to your library."
+)
 
 _MD_EXTS = {".md", ".markdown"}
 _HTML_EXTS = {".html", ".htm"}
@@ -804,11 +820,15 @@ def _carry_inline_styles(carrier, label, page_path, page):
     return _STYLE_ELEM_RE.sub(fix_block, page)
 
 
-def _externalize_links(page, base_url):
-    """Make every off-page ``<a href>`` absolute against the final URL —
-    a single-page ZIM has nowhere else to navigate, so links point back at
-    the live web (the reader marks absolute URLs as external). Fragment,
-    mailto:, javascript:, and data: links stay untouched."""
+def _externalize_links(page, base_url, resolve=None):
+    """Resolve every ``<a href>`` against the page's final URL.
+
+    ``resolve(absolute_url)`` gets first refusal and returns an in-ZIM
+    reference when the capture holds that page — that is how a site crawl
+    turns a link between two captured pages into internal navigation. Without
+    it (single-page capture) every off-page link becomes absolute and points
+    back at the live web, which the reader marks as external. Fragment,
+    mailto:, javascript:, and data: links stay untouched either way."""
 
     def fix(m):
         tag = m.group(0)
@@ -820,12 +840,9 @@ def _externalize_links(page, base_url):
             head = val.split("/", 1)[0]
             if ":" in head and not val.lower().startswith(("http:", "https:")):
                 return hm.group(0)  # mailto:, javascript:, data:, tel:
-            return (
-                "href="
-                + hm.group(1)
-                + urllib.parse.urljoin(base_url, val)
-                + hm.group(1)
-            )
+            absolute = urllib.parse.urljoin(base_url, val)
+            internal = resolve(absolute) if resolve else None
+            return "href=" + hm.group(1) + (internal or absolute) + hm.group(1)
 
         return _HREF_RE.sub(fix_href, tag, count=1)
 
@@ -840,6 +857,76 @@ def _strip_scripts(page):
     page = _SCRIPT_VOID_RE.sub("", page)
     page = _NOSCRIPT_RE.sub("", page)
     return _BASE_TAG_RE.sub("", page)
+
+
+# ── the shared per-page pipeline (single page AND every page of a crawl) ────
+
+
+def _fetch_html(url, *, timeout, max_redirects):
+    """Fetch one URL as an HTML document. Returns
+    ``(final_url, page_text, byte_count)``; raises ``CreateError`` for a
+    transport failure or for a response that is not HTML."""
+    final_url, data, ctype = _fetch_page(
+        url, timeout=timeout, max_redirects=max_redirects
+    )
+    if ctype and "html" not in ctype.lower():
+        raise CreateError(
+            f"not an HTML page (Content-Type: {ctype.split(';')[0]}) — "
+            "only web pages can be captured this way"
+        )
+    return final_url, _decode_page(data, ctype), len(data)
+
+
+def _url_page_path(final_url):
+    """The URL's path as an asset-resolution base: a directory URL (or a bare
+    origin) resolves relative refs as if it were that directory's index."""
+    path = urllib.parse.urlsplit(final_url).path.lstrip("/")
+    if not path or path.endswith("/"):
+        path += "index.html"
+    return path
+
+
+def http_asset_carrier(add_item, final_url, timeout, *, carried=None, budget=None):
+    """An ``_AssetCarrier`` that pulls same-origin assets over HTTP.
+
+    ``carried`` shares ONE dedupe map across the pages of a site crawl — a
+    site's common stylesheet is fetched and stored once, and every page's
+    ``<link>`` points at that single copy — while each page still gets a
+    fresh carrier so the per-page asset caps stay per page, exactly as in
+    single-page capture. ``budget`` is anything with ``spend(n) -> bool``;
+    it is charged for each fetched asset and stops asset traffic for good
+    once a crawl-wide byte budget is spent."""
+    origin, variants = _origin_variants(final_url)
+    fetch = _http_asset_reader(origin, variants, timeout)
+
+    def read(label, resolved):
+        if budget is not None and not budget.spend(0):
+            return None
+        got = fetch(label, resolved)
+        if got and budget is not None and not budget.spend(len(got[0])):
+            return None
+        return got
+
+    carrier = _AssetCarrier(add_item, make_asset_item, read)
+    if carried is not None:
+        carrier._carried = carried
+    return carrier
+
+
+def render_captured_page(carrier, page, *, final_url, resolve_link=None):
+    """Turn one fetched page into the HTML that ships inside the ZIM: carry
+    its stylesheets, inline-style backgrounds and media through ``carrier``,
+    resolve its links, and drop the JavaScript that could never run offline.
+    ``resolve_link`` is passed through to ``_externalize_links``."""
+    _origin, variants = _origin_variants(final_url)
+    page_path = _url_page_path(final_url)
+    label = urllib.parse.urlsplit(final_url).hostname or "page"
+    page = _relativize_html(page, variants)
+    page = _carry_stylesheets(carrier, label, page_path, page)
+    page = _carry_inline_styles(carrier, label, page_path, page)
+    page = carrier.rewrite_media(label, page_path, page)
+    page = _externalize_links(page, final_url, resolve_link)
+    return _strip_scripts(page)
 
 
 def create_page_zim(
@@ -872,48 +959,19 @@ def create_page_zim(
     if scheme not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
 
-    final_url, data, ctype = _fetch_page(
-        url, timeout=timeout, max_redirects=max_redirects
-    )
-    if ctype and "html" not in ctype.lower():
-        raise CreateError(
-            f"not an HTML page (Content-Type: {ctype.split(';')[0]}) — "
-            "only web pages can be captured this way"
-        )
-    page = _decode_page(data, ctype)
+    final_url, page, _n = _fetch_html(url, timeout=timeout, max_redirects=max_redirects)
     if looks_like_spa(page):
-        raise CreateError(
-            "this page is an empty application shell — its content is built "
-            "by JavaScript in the browser, and Zimi does not run one. "
-            "Capture it with a browser-based tool such as zimit "
-            "(https://github.com/openzim/zimit), then add the resulting ZIM "
-            "to your library."
-        )
+        raise CreateError(SPA_REFUSAL)
 
     parsed = urllib.parse.urlsplit(final_url)
-    origin, variants = _origin_variants(final_url)
-    page_path = parsed.path.lstrip("/")
-    if not page_path or page_path.endswith("/"):
-        page_path += "index.html"
-    label = parsed.hostname or "page"
-
     zim_title = title or _page_title_from_html(page, parsed.netloc + parsed.path)
     base = _slug(f"{parsed.netloc} {parsed.path}", "page")
     out = _finish_output(out_dir or _srv.ZIM_DIR, out_path, base)
 
     static_cls = zim_static_item_class()
     with atomic_zim_creator(out, language) as creator:
-        carrier = _AssetCarrier(
-            creator.add_item,
-            make_asset_item,
-            _http_asset_reader(origin, variants, timeout),
-        )
-        page = _relativize_html(page, variants)
-        page = _carry_stylesheets(carrier, label, page_path, page)
-        page = _carry_inline_styles(carrier, label, page_path, page)
-        page = carrier.rewrite_media(label, page_path, page)
-        page = _externalize_links(page, final_url)
-        page = _strip_scripts(page)
+        carrier = http_asset_carrier(creator.add_item, final_url, timeout)
+        page = render_captured_page(carrier, page, final_url=final_url)
         creator.add_item(static_cls("A/index", zim_title, page.encode("utf-8")))
         creator.set_mainpath("A/index")
         add_standard_metadata(
@@ -940,15 +998,37 @@ def create_page_zim(
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
 
-def cli_create(args):
-    """`zimi create <folder-or-url>` — dispatch, then print a short honest
-    summary. Exit 2 with a one-line message on any user-fixable failure,
-    matching the backup/restore CLI convention."""
-    src = args.source
-    is_url = bool(re.match(r"^https?://", src, re.IGNORECASE))
-    build = create_page_zim if is_url else create_folder_zim
-    try:
-        info = build(
+def _note(message):
+    """Progress for the CLI: one line, flushed, so a forty-minute crawl looks
+    alive in a terminal and in a piped log alike."""
+    print(message, flush=True)
+
+
+def _build_from_args(args, src, is_url):
+    """Pick the capture and run it. Folder, single page, bounded site crawl,
+    or the zimit container — the flags that only make sense for one of those
+    are refused here rather than silently ignored."""
+    engine = getattr(args, "engine", "builtin")
+    site = bool(getattr(args, "site", False))
+    crawl_flags = {
+        "--site": site,
+        "--engine": engine != "builtin",
+        "--max-pages": getattr(args, "max_pages", None) is not None,
+        "--max-depth": getattr(args, "max_depth", None) is not None,
+        "--max-bytes": getattr(args, "max_bytes", None) is not None,
+        "--delay": getattr(args, "delay", None) is not None,
+        "--ignore-robots": bool(getattr(args, "ignore_robots", False)),
+        "--engine-arg": bool(getattr(args, "engine_arg", None)),
+    }
+
+    def refuse(flags, because):
+        named = [flag for flag in flags if crawl_flags[flag]]
+        if named:
+            raise CreateError(f"{', '.join(named)} {because}")
+
+    if not is_url:
+        refuse(crawl_flags, f"only applies to a URL capture — {src} is a folder")
+        return create_folder_zim(
             src,
             title=args.title,
             description=args.description,
@@ -957,11 +1037,90 @@ def cli_create(args):
             out_path=args.out,
             register=not args.out,
         )
+
+    from zimi import crawler
+
+    common: "dict[str, Any]" = dict(
+        title=args.title,
+        description=args.description,
+        language=args.language,
+        creator_name=args.creator,
+        out_path=args.out,
+        register=not args.out,
+    )
+    builtin_only = ("--max-depth", "--max-bytes", "--delay", "--ignore-robots")
+    if engine == "zimit":
+        # zimit has its own crawl controls and its own robots policy; Zimi's
+        # would be quietly dropped on the floor. --engine-arg is how you
+        # reach them.
+        refuse(
+            builtin_only,
+            "belongs to Zimi's own crawler, not to zimit — pass zimit's "
+            "equivalent with --engine-arg",
+        )
+        return crawler.create_zimit_zim(
+            src,
+            site=site,
+            max_pages=getattr(args, "max_pages", None),
+            engine_args=getattr(args, "engine_arg", None) or (),
+            progress=_note,
+            **common,
+        )
+    refuse(("--engine-arg",), "only applies to --engine zimit")
+    if not site:
+        refuse(
+            ("--max-pages",) + builtin_only,
+            "needs --site — without it Zimi captures exactly one page",
+        )
+        return create_page_zim(src, **common)
+    return crawler.create_site_zim(
+        src,
+        max_pages=_flag_or(args, "max_pages", crawler.DEFAULT_MAX_PAGES),
+        max_depth=_flag_or(args, "max_depth", crawler.DEFAULT_MAX_DEPTH),
+        max_bytes=(
+            crawler.parse_size(args.max_bytes)
+            if getattr(args, "max_bytes", None) is not None
+            else crawler.DEFAULT_MAX_BYTES
+        ),
+        delay=_flag_or(args, "delay", crawler.DEFAULT_DELAY),
+        ignore_robots=bool(getattr(args, "ignore_robots", False)),
+        progress=_note,
+        **common,
+    )
+
+
+def _flag_or(args, name, default):
+    value = getattr(args, name, None)
+    return default if value is None else value
+
+
+def cli_create(args):
+    """`zimi create <folder-or-url>` — dispatch, then print a short honest
+    summary. Exit 2 with a one-line message on any user-fixable failure,
+    matching the backup/restore CLI convention."""
+    src = args.source
+    is_url = bool(re.match(r"^https?://", src, re.IGNORECASE))
+    try:
+        info = _build_from_args(args, src, is_url)
     except CreateError as e:
         print(f"zimi: {e}", file=sys.stderr)
         sys.exit(2)
     print(f"ZIM written: {info['path']}")
-    if is_url:
+    if info.get("engine") == "zimit":
+        print(f"  captured by zimit: {info['url']}")
+    elif is_url and info.get("bytes") is not None:
+        print(f"  captured: {info['url']}")
+        print(
+            f"  {_plural(info['pages'], 'page')}, "
+            f"{_plural(info['assets'], 'asset')}, "
+            f"{_fmt_bytes(info['bytes'])} fetched"
+        )
+        if info.get("stopped"):
+            print(
+                f"  the crawl stopped at its {info['stopped']} — everything "
+                "captured up to that point is in the ZIM"
+            )
+    elif is_url:
         print(f"  captured: {info['url']}")
         print(f"  assets carried: {info['assets']}")
     else:

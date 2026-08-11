@@ -3003,12 +3003,17 @@ def main():
     # create takes the boot flags for the same reason backup/restore do: the
     # default output directory is THIS instance's ZIM dir, resolved exactly
     # the way `serve` would resolve it.
+    # The crawl defaults belong to the crawler, and the help text has to show
+    # them, so they are read from it rather than restated here. Import cost is
+    # stdlib-only and the module is loaded for `zimi create` regardless.
+    from zimi import crawler as _crawler
+
     p_create = sub.add_parser(
         "create",
-        help="Create a ZIM from a folder of files (HTML/Markdown/PDF) or "
-        "from a single web page URL",
+        help="Create a ZIM from a folder of files (HTML/Markdown/PDF), from a "
+        "single web page, or from a bounded crawl of one site (--site)",
     )
-    p_create.add_argument("source", help="Folder path, or a single-page http(s):// URL")
+    p_create.add_argument("source", help="Folder path, or an http(s):// URL")
     p_create.add_argument(
         "--title", default=None, help="ZIM title (default: folder name / page title)"
     )
@@ -3027,6 +3032,63 @@ def main():
         default=None,
         help="Explicit output .zim path (default: the ZIM directory, with "
         "library registration)",
+    )
+    # Crawl flags. Every one of them defaults to None rather than to its real
+    # default so the CLI can tell "the user asked for this" from "nobody
+    # said" — that difference is what lets a flag that only applies to a
+    # site crawl be refused instead of silently ignored, and what keeps a
+    # flag Zimi guessed at from being sent to another engine.
+    p_create.add_argument(
+        "--site",
+        action="store_true",
+        help="Capture a bounded same-origin crawl instead of a single page",
+    )
+    p_create.add_argument(
+        "--engine",
+        choices=("builtin", "zimit"),
+        default="builtin",
+        help="Capture engine: builtin (no JavaScript, no install) or zimit "
+        "(openZIM's browser-based crawler, needs docker)",
+    )
+    p_create.add_argument(
+        "--max-pages",
+        type=int,
+        default=None,
+        help=f"Pages to capture at most (--site default: {_crawler.DEFAULT_MAX_PAGES})",
+    )
+    p_create.add_argument(
+        "--max-depth",
+        type=int,
+        default=None,
+        help="Link hops from the starting page "
+        f"(--site default: {_crawler.DEFAULT_MAX_DEPTH})",
+    )
+    p_create.add_argument(
+        "--max-bytes",
+        default=None,
+        help="Total fetch budget for pages and assets, e.g. 512MiB or 2G "
+        f"(--site default: {_crawler.DEFAULT_MAX_BYTES // 1024**2}MiB)",
+    )
+    p_create.add_argument(
+        "--delay",
+        type=float,
+        default=None,
+        help="Seconds to wait between page requests; robots.txt Crawl-delay "
+        f"wins when it asks for more (--site default: {_crawler.DEFAULT_DELAY})",
+    )
+    p_create.add_argument(
+        "--ignore-robots",
+        action="store_true",
+        help="Crawl pages robots.txt disallows (--site only; prints a warning)",
+    )
+    p_create.add_argument(
+        "--engine-arg",
+        action="append",
+        default=None,
+        metavar="ARG",
+        help="Extra argument passed straight to the engine, repeatable "
+        "(--engine zimit only). Write it attached — --engine-arg=--workers=2 "
+        "— because argparse reads a bare flag-shaped value as a missing one",
     )
     add_boot_flags(p_create)
 
