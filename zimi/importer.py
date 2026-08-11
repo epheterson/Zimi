@@ -1,0 +1,385 @@
+"""WARC/WACZ → library ZIM — `zimi import <file.warc|.warc.gz|.wacz>`.
+
+Conversion is done by openZIM's warc2zim, which can never be a direct Zimi
+dependency: it pins ``requires-python >=3.14,<3.15`` plus a stack of exact
+native-dep versions, and it is GPL-3 — the dependency boundary and the
+license boundary are the same boundary. So warc2zim runs as a SIDECAR: a
+dedicated venv under ``<data_dir>/tools/warc2zim/``, created on first use
+with the best suitable interpreter on the machine and invoked strictly as a
+subprocess.
+
+Sidecar contract:
+
+* Location: ``<data_dir>/tools/warc2zim/`` (a normal venv; its console
+  script at ``bin/warc2zim`` — ``Scripts\\warc2zim.exe`` on Windows — is
+  what Zimi runs). The venv is built in place and stamped with a marker
+  file (``.zimi-sidecar.json``) only after ``pip install warc2zim``
+  succeeds; a dir without the marker is a broken half-install and gets
+  rebuilt. Venvs bake absolute paths into their scripts, so the build
+  cannot use tmp-then-rename — the marker is the atomicity substitute.
+* Interpreter: warc2zim requires Python >=3.14,<3.15. Zimi probes, in
+  order, its own interpreter, ``python3.14``, and ``python3``, and takes
+  the first whose version fits. None suitable → a clear error naming the
+  requirement.
+* Network: creating the venv runs ``pip install`` — a network operation.
+  Under ``ZIMI_OFFLINE`` it is refused with a message pointing at the
+  pre-seed path: run ``zimi import --setup`` once while the machine is
+  connected (or install manually:
+  ``python3.14 -m venv <data_dir>/tools/warc2zim`` then
+  ``<venv>/bin/pip install warc2zim``, then run ``--setup`` to stamp it —
+  or simply run one import). The conversion itself is fully local, so an
+  air-gapped box with a pre-seeded sidecar imports archives forever.
+
+The archive itself is deliberately uncapped — multi-GB WARCs are the
+point. warc2zim's output streams through line by line, the finished ZIM is
+staged next to its final path and ``os.replace``d into place (a partial
+ZIM never appears under its final name), and the result registers into the
+library through the same incremental path ``zimi create`` uses.
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+import zimi.server as _srv
+from zimi.creator import CreateError, _finish_output, _try_register
+from zimi.p2p import is_offline
+from zimi.zimwriter import _slug
+
+# warc2zim's own pin (see docs/plans/2026-08-10-zim-creation-landscape.md §5):
+# a single Python minor version. Bump both bounds together when upstream moves.
+WARC2ZIM_PY_MIN = (3, 14)
+WARC2ZIM_PY_MAX_EXCL = (3, 15)
+WARC2ZIM_REQUIREMENT = "warc2zim"
+PY_REQUIREMENT_TEXT = "Python >=3.14,<3.15"
+
+_SIDECAR_MARKER = ".zimi-sidecar.json"
+ARCHIVE_EXTS = (".warc", ".warc.gz", ".wacz")
+
+OFFLINE_PRESEED_MSG = (
+    "ZIMI_OFFLINE is set — installing the warc2zim sidecar needs the network "
+    "(pip install into {dir}). Pre-seed it while connected: run "
+    "`zimi import --setup` once, or manually create the venv with "
+    "`python3.14 -m venv {dir}` and `{dir}/bin/pip install warc2zim`. "
+    "Conversion itself is fully local once the sidecar exists."
+)
+
+
+# ── subprocess seams (monkeypatched in tests — no real pip runs there) ──────
+
+
+def _run_capture(cmd, timeout=60):
+    """Run a short command, return ``(returncode, stripped stdout)``. Any
+    launch failure reads as a nonzero exit — probes treat both the same."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return 1, ""
+    return p.returncode, (p.stdout or "").strip()
+
+
+def _run_stream(cmd, sink):
+    """Run a command, streaming every combined-output line through ``sink``.
+    No timeout — warc2zim over a multi-GB WARC legitimately runs for hours."""
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+    except OSError as e:
+        sink(f"cannot run {cmd[0]}: {e}")
+        return 1
+    for line in proc.stdout or ():
+        sink(line.rstrip("\n"))
+    return proc.wait()
+
+
+# ── sidecar venv management ─────────────────────────────────────────────────
+
+
+def sidecar_dir():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "tools", "warc2zim")
+
+
+def _venv_bin(venv, name):
+    if os.name == "nt":
+        return os.path.join(venv, "Scripts", name + ".exe")
+    return os.path.join(venv, "bin", name)
+
+
+def _marker_path(venv):
+    return os.path.join(venv, _SIDECAR_MARKER)
+
+
+def _read_marker(venv):
+    try:
+        with open(_marker_path(venv), encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_marker(venv, **fields):
+    with open(_marker_path(venv), "w", encoding="utf-8") as f:
+        json.dump(fields, f, indent=2)
+
+
+def _installed(venv):
+    """Installed = console script present AND the post-install marker exists.
+    A dir missing either is a broken half-install and gets rebuilt."""
+    return os.path.exists(_venv_bin(venv, "warc2zim")) and os.path.exists(
+        _marker_path(venv)
+    )
+
+
+def _python_candidates():
+    cands = [sys.executable, "python3.14", "python3"]
+    seen = set()
+    out = []
+    for c in cands:
+        if c and c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
+
+
+def _probe_python(cand):
+    """``(major, minor)`` reported by the candidate interpreter, or None."""
+    rc, out = _run_capture(
+        [cand, "-c", "import sys; print('%d %d' % sys.version_info[:2])"]
+    )
+    if rc != 0:
+        return None
+    try:
+        major, minor = (int(x) for x in out.split())
+    except ValueError:
+        return None
+    return major, minor
+
+
+def _find_python():
+    """First interpreter satisfying warc2zim's pin; CreateError names the
+    requirement (and what WAS found) when nothing fits."""
+    found = []
+    for cand in _python_candidates():
+        ver = _probe_python(cand)
+        if ver is None:
+            continue
+        if WARC2ZIM_PY_MIN <= ver < WARC2ZIM_PY_MAX_EXCL:
+            return cand, ver
+        found.append(f"{cand} is {ver[0]}.{ver[1]}")
+    detail = f" (checked: {'; '.join(found)})" if found else ""
+    raise CreateError(
+        f"warc2zim requires {PY_REQUIREMENT_TEXT} and no suitable interpreter "
+        f"was found{detail}. Install Python 3.14 and re-run."
+    )
+
+
+def _tool_version(exe):
+    rc, out = _run_capture([exe, "--version"])
+    if rc != 0 or not out:
+        return None
+    return out.split()[-1]
+
+
+def ensure_sidecar(sink=None):
+    """Return the warc2zim console-script path, installing the sidecar venv
+    on first use. Raises CreateError when offline (with the pre-seed story),
+    when no suitable Python exists, or when the install fails."""
+    say = sink or (lambda _line: None)
+    venv = sidecar_dir()
+    exe = _venv_bin(venv, "warc2zim")
+    if _installed(venv):
+        return exe
+    if is_offline():
+        raise CreateError(OFFLINE_PRESEED_MSG.format(dir=venv))
+    if os.path.isdir(venv):
+        # No marker: a previous install died mid-flight. Rebuild from scratch —
+        # a venv can't be repaired-in-place with any confidence.
+        shutil.rmtree(venv)
+    py, ver = _find_python()
+    os.makedirs(os.path.dirname(venv), exist_ok=True)
+    say(f"creating warc2zim sidecar (Python {ver[0]}.{ver[1]} via {py}) at {venv}")
+    rc = _run_stream([py, "-m", "venv", venv], say)
+    if rc == 0:
+        rc = _run_stream(
+            [
+                _venv_bin(venv, "python"),
+                "-m",
+                "pip",
+                "install",
+                "--upgrade",
+                WARC2ZIM_REQUIREMENT,
+            ],
+            say,
+        )
+    if rc != 0 or not os.path.exists(exe):
+        shutil.rmtree(venv, ignore_errors=True)
+        raise CreateError(
+            "warc2zim sidecar install failed — see the output above. "
+            "Nothing was left behind; re-run to try again."
+        )
+    version = _tool_version(exe)
+    _write_marker(venv, warc2zim=version, python=f"{ver[0]}.{ver[1]}")
+    say(f"warc2zim {version or '(unknown version)'} ready")
+    return exe
+
+
+def sidecar_status():
+    """``{"dir", "installed", "version", "python"}`` — version live from the
+    tool when possible, else from the install marker."""
+    venv = sidecar_dir()
+    installed = _installed(venv)
+    marker = _read_marker(venv) if installed else {}
+    version = None
+    if installed:
+        version = _tool_version(_venv_bin(venv, "warc2zim")) or marker.get("warc2zim")
+    return {
+        "dir": venv,
+        "installed": installed,
+        "version": version,
+        "python": marker.get("python"),
+    }
+
+
+# ── the import itself ───────────────────────────────────────────────────────
+
+
+def _archive_stem(filename):
+    low = filename.lower()
+    for ext in (".warc.gz",) + ARCHIVE_EXTS:
+        if low.endswith(ext):
+            return filename[: -len(ext)]
+    return os.path.splitext(filename)[0]
+
+
+def import_archive(
+    archive,
+    *,
+    name=None,
+    title=None,
+    description=None,
+    out_dir=None,
+    out_path=None,
+    register=False,
+    sink=None,
+):
+    """Convert one WARC/WARC.GZ/WACZ into a ZIM via the sidecar. Returns
+    ``{"path", "name", "registered"}``; raises CreateError with a user-facing
+    message on refusal. The archive size is deliberately uncapped."""
+    say = sink or (lambda _line: None)
+    archive = os.path.abspath(archive)
+    if not os.path.isfile(archive):
+        raise CreateError(f"archive not found: {archive}")
+    if not archive.lower().endswith(ARCHIVE_EXTS):
+        raise CreateError(
+            "not a web archive — expected .warc, .warc.gz or .wacz, got "
+            + os.path.basename(archive)
+        )
+    exe = ensure_sidecar(sink=sink)
+
+    stem = _archive_stem(os.path.basename(archive))
+    zim_name = name or _slug(stem, "archive")
+    out = _finish_output(out_dir or _srv.ZIM_DIR, out_path, zim_name)
+
+    # warc2zim writes into a staging dir BESIDE the final path (same
+    # filesystem, so the finishing os.replace is atomic — a partial ZIM
+    # never appears under its final name).
+    staging = tempfile.mkdtemp(prefix=".zimi-import-", dir=os.path.dirname(out))
+    cmd = [
+        exe,
+        archive,
+        "--name",
+        zim_name,
+        "--output",
+        staging,
+        "--zim-file",
+        os.path.basename(out),
+    ]
+    if title:
+        cmd += ["--title", title]
+    if description:
+        cmd += ["--description", description]
+    try:
+        say(f"converting {os.path.basename(archive)} with warc2zim…")
+        rc = _run_stream(cmd, say)
+        if rc != 0:
+            raise CreateError(f"warc2zim failed (exit {rc}) — see the output above")
+        staged = os.path.join(staging, os.path.basename(out))
+        if not os.path.exists(staged):
+            raise CreateError("warc2zim reported success but produced no ZIM file")
+        os.replace(staged, out)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+    registered = _try_register(out) if register else False
+    return {"path": out, "name": zim_name, "registered": registered}
+
+
+# ── CLI ─────────────────────────────────────────────────────────────────────
+
+
+def cli_import(args):
+    """`zimi import` — convert an archive, or report/prepare the sidecar.
+    Exit 2 with a one-line message on any user-fixable failure, matching the
+    create/backup CLI convention."""
+    if args.status:
+        st = sidecar_status()
+        if st["installed"]:
+            ver = st["version"] or "unknown version"
+            py = f", Python {st['python']}" if st["python"] else ""
+            print(f"warc2zim sidecar: installed (warc2zim {ver}{py})")
+            print(f"  venv: {st['dir']}")
+        else:
+            print("warc2zim sidecar: not installed")
+            print(f"  would live at: {st['dir']}")
+            print(
+                "  it is created automatically on the first `zimi import "
+                "<archive>` (network needed once);"
+            )
+            print(
+                "  pre-seed offline machines with `zimi import --setup` "
+                "while connected."
+            )
+        return
+    try:
+        if args.setup:
+            ensure_sidecar(sink=print)
+            st = sidecar_status()
+            print(f"sidecar ready: warc2zim {st['version'] or '?'} at {st['dir']}")
+            if not args.file:
+                return
+        if not args.file:
+            print(
+                "zimi: nothing to import — pass a .warc/.warc.gz/.wacz file "
+                "(or use --status / --setup)",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        info = import_archive(
+            args.file,
+            name=args.name,
+            title=args.title,
+            description=args.description,
+            out_path=args.out,
+            register=not args.out,
+            sink=print,
+        )
+    except CreateError as e:
+        print(f"zimi: {e}", file=sys.stderr)
+        sys.exit(2)
+    print(f"ZIM written: {info['path']}")
+    if info["registered"]:
+        print("  registered in the library — no rescan needed")
+    elif not args.out:
+        print(
+            "  note: library registration failed; the file is in place and "
+            "will appear on the next library scan"
+        )

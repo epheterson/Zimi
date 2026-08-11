@@ -1100,6 +1100,12 @@ def cli_create(args):
     matching the backup/restore CLI convention."""
     src = args.source
     is_url = bool(re.match(r"^https?://", src, re.IGNORECASE))
+    if is_url:
+        from zimi import video as _video
+
+        if _video.wants_url(src, args):
+            _video.cli_create_video(args)
+            return
     try:
         info = _build_from_args(args, src, is_url)
     except CreateError as e:
