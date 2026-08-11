@@ -24,7 +24,10 @@ class _Handler:
 
     def __init__(self, private=True, headers=None):
         self.status = None
-        self.body = None
+        # A dict from the start, not None: every assertion below reads it as
+        # one, and a route that answered nothing should fail on a missing key
+        # rather than on the shape of the recorder.
+        self.body: dict = {}
         self.headers = headers or {}
         self._private = private
 
@@ -212,6 +215,259 @@ def test_an_overlong_source_is_refused():
         "/manage/create", {"mode": "page", "source": "https://e.org/" + "a" * 4000}
     )
     assert h.status == 400
+
+
+# ── advanced options ────────────────────────────────────────────────────────
+
+
+def test_advanced_site_options_reach_the_engine(stub_engine):
+    """Depth, budget, delay and the robots override are all real crawl bounds,
+    so they have to arrive as the typed values the crawler expects."""
+    _post(
+        "/manage/create",
+        {
+            "mode": "site",
+            "source": "https://example.org/",
+            "max_depth": "2",
+            "max_bytes": "2G",
+            "delay": "1.5",
+            "language": "FRA",
+            "ignore_robots": True,
+        },
+    )
+    _wait_done()
+    opts = stub_engine["opts"]
+    assert opts["max_depth"] == 2
+    assert opts["max_bytes"] == 2 * 1024**3
+    assert opts["delay"] == 1.5
+    assert opts["ignore_robots"] is True
+    # Case is the admin's business; the metadata field is lowercase.
+    assert opts["language"] == "fra"
+
+
+def test_a_size_budget_that_is_not_a_size_is_refused_with_the_reason():
+    """The refusal names what was typed and what would work — the same sentence
+    the CLI gives, because it is the same parser."""
+    h = _post(
+        "/manage/create",
+        {"mode": "site", "source": "https://example.org/", "max_bytes": "banana"},
+    )
+    assert h.status == 400
+    assert "banana" in h.body["error"]
+    assert "512MiB" in h.body["error"]
+
+    # And nothing absurd gets through by being long instead of malformed.
+    h = _post(
+        "/manage/create",
+        {"mode": "site", "source": "https://example.org/", "max_bytes": "9" * 40},
+    )
+    assert h.status == 400
+
+
+def test_a_huge_size_budget_is_clamped_not_refused(stub_engine):
+    _post(
+        "/manage/create",
+        {"mode": "site", "source": "https://example.org/", "max_bytes": "500T"},
+    )
+    _wait_done()
+    assert stub_engine["opts"]["max_bytes"] == manage.CREATE_MAX_BYTES_CEILING
+
+
+def test_out_of_range_depth_and_delay_clamp(stub_engine):
+    _post(
+        "/manage/create",
+        {
+            "mode": "site",
+            "source": "https://example.org/",
+            "max_depth": 999,
+            "delay": "1e9",
+        },
+    )
+    _wait_done()
+    assert stub_engine["opts"]["max_depth"] == manage.CREATE_MAX_DEPTH_CEILING
+    assert stub_engine["opts"]["delay"] == manage.CREATE_MAX_DELAY
+
+
+def test_the_ignore_robots_flag_is_a_bool_not_the_string_the_form_sent(stub_engine):
+    for sent, expected in ((True, True), ("", False), (None, False)):
+        manage._create_job = None
+        _post(
+            "/manage/create",
+            {
+                "mode": "site",
+                "source": "https://example.org/",
+                "ignore_robots": sent,
+            },
+        )
+        _wait_done()
+        assert stub_engine["opts"]["ignore_robots"] is expected
+
+
+def test_only_named_video_presets_are_accepted(stub_engine):
+    """yt-dlp's format argument is an expression language. A named preset is the
+    only thing the web form may ask for — the full selector stays on the CLI,
+    where the person typing it is already at a shell on this machine."""
+    for arbitrary in (
+        "bestvideo+bestaudio",
+        "best[height<=2160]",
+        "worst",
+        "720P",
+        "; rm -rf /",
+    ):
+        h = _post(
+            "/manage/create",
+            {"mode": "video", "source": "https://example.org/l", "format": arbitrary},
+        )
+        assert h.status == 400, arbitrary
+        assert "yt-dlp" not in h.body["error"]
+
+    _post(
+        "/manage/create",
+        {"mode": "video", "source": "https://example.org/l", "format": "1080p"},
+    )
+    _wait_done()
+    assert stub_engine["opts"]["fmt"] == manage.CREATE_VIDEO_FORMATS["1080p"]
+
+
+def test_the_default_preset_defers_to_the_engine(stub_engine):
+    """720p is what the engine already does, so asking for it says nothing —
+    the option is left out rather than restating the default in a second place
+    that could drift from the first."""
+    _post(
+        "/manage/create",
+        {"mode": "video", "source": "https://example.org/l", "format": "720p"},
+    )
+    _wait_done()
+    assert stub_engine["opts"]["fmt"] is None
+
+
+def test_audio_only_drops_the_quality_preset(stub_engine):
+    _post(
+        "/manage/create",
+        {
+            "mode": "video",
+            "source": "https://example.org/l",
+            "format": "1080p",
+            "audio_only": True,
+        },
+    )
+    _wait_done()
+    assert stub_engine["opts"]["fmt"] is None
+    assert stub_engine["opts"]["audio_only"] is True
+
+
+def test_a_language_must_look_like_a_language_code():
+    for bad in ("english", "e", "fr-FR", "../..", "eng eng"):
+        h = _post(
+            "/manage/create",
+            {"mode": "folder", "source": "/tmp", "language": bad},
+        )
+        assert h.status == 400, bad
+        assert "code" in h.body["error"]
+
+
+def test_an_import_name_cannot_walk_out_of_the_zim_directory(tmp_path):
+    """The name becomes a filename joined onto the ZIM directory. It is checked
+    against a charset rather than cleaned up, so a name that would need
+    sanitising is refused and retyped instead of quietly becoming another one."""
+    archive = tmp_path / "cap.wacz"
+    archive.write_bytes(b"x")
+    for bad in ("../../etc/passwd", "a/b", ".hidden", "name with spaces", "x" * 200):
+        h = _post(
+            "/manage/create",
+            {"mode": "import", "source": str(archive), "name": bad},
+        )
+        assert h.status == 400, bad
+
+
+def test_a_good_import_name_reaches_the_engine(tmp_path, stub_engine):
+    archive = tmp_path / "cap.wacz"
+    archive.write_bytes(b"x")
+    _post(
+        "/manage/create",
+        {"mode": "import", "source": str(archive), "name": "field-notes_2026.v2"},
+    )
+    _wait_done()
+    assert stub_engine["opts"]["name"] == "field-notes_2026.v2"
+
+
+def test_unset_options_never_reach_the_engine_as_none(monkeypatch):
+    """Every engine defaults these itself. Passing None would override a real
+    default with nothing, so an option nobody set must not appear at all."""
+    seen = {}
+
+    def fake_site(url, **kwargs):
+        seen.update(kwargs)
+        return {"path": "/zims/x.zim", "registered": True}
+
+    from zimi import crawler
+
+    monkeypatch.setattr(crawler, "create_site_zim", fake_site)
+    _post("/manage/create", {"mode": "site", "source": "https://example.org/"})
+    _wait_done()
+    assert "max_depth" not in seen
+    assert "max_bytes" not in seen
+    assert "language" not in seen
+    # The one option that IS always sent: a False override is a real answer.
+    assert seen["ignore_robots"] is False
+
+
+def test_set_options_arrive_as_engine_keywords(monkeypatch):
+    """The other half of the same contract: what the admin did set has to land
+    under the keyword the engine actually reads."""
+    seen = {}
+
+    def fake_site(url, **kwargs):
+        seen.update(kwargs)
+        return {"path": "/zims/x.zim", "registered": True}
+
+    from zimi import crawler
+
+    monkeypatch.setattr(crawler, "create_site_zim", fake_site)
+    _post(
+        "/manage/create",
+        {
+            "mode": "site",
+            "source": "https://example.org/",
+            "max_pages": 12,
+            "max_depth": 1,
+            "max_bytes": "10M",
+            "delay": 0.25,
+            "language": "spa",
+            "ignore_robots": True,
+        },
+    )
+    _wait_done()
+    assert seen["max_pages"] == 12
+    assert seen["max_depth"] == 1
+    assert seen["max_bytes"] == 10 * 1024**2
+    assert seen["delay"] == 0.25
+    assert seen["language"] == "spa"
+    assert seen["ignore_robots"] is True
+
+
+def test_the_video_preset_arrives_as_the_engines_fmt_keyword(monkeypatch):
+    seen = {}
+
+    def fake_video(url, **kwargs):
+        seen.update(kwargs)
+        return {"path": "/zims/v.zim", "registered": True}
+
+    from zimi import video
+
+    monkeypatch.setattr(video, "create_video_zim", fake_video)
+    _post(
+        "/manage/create",
+        {
+            "mode": "video",
+            "source": "https://example.org/l",
+            "format": "480p",
+            "max_bytes": "1G",
+        },
+    )
+    _wait_done()
+    assert seen["fmt"] == manage.CREATE_VIDEO_FORMATS["480p"]
+    assert seen["max_bytes"] == 1024**3
 
 
 # ── one job at a time ───────────────────────────────────────────────────────

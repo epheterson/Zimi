@@ -6,11 +6,12 @@
 // POST /manage/create/cancel.
 //
 // The whole design is one idea: pick what you are packaging, give it the one
-// thing it needs, watch it run. Every mode has exactly one primary input and at
-// most two flags; depth limits, byte budgets, media formats, language and
-// description stay on the command line, and the caption says so rather than
-// leaving people to guess. Fewer controls IS the feature — a form with fifteen
-// fields would be easier to write and much worse to use.
+// thing it needs, watch it run. Every mode shows exactly one primary input and
+// at most two flags — that is the form you see. Depth limits, byte budgets,
+// media quality and content language are real controls people need, so they
+// live one click away behind "Advanced" rather than in a manual: simple by
+// default, complete when asked. Fewer VISIBLE controls IS the feature; fewer
+// controls full stop just moves the work somewhere the browser cannot go.
 
 // Poll cadence. The floor is deliberate: this runs on a Pi that is also serving
 // the library, and a crawl emits at most a line per page. On 429 or a network
@@ -32,36 +33,109 @@ var _CREATE_ICONS = {
 };
 
 // The one description of every mode: what it is called, what it asks for, what
-// it needs to work, and which flags it offers. Tiles, forms and the request
-// body are all derived from this — adding a mode means adding a row here.
+// it needs to work, and which options it offers where. Tiles, forms and the
+// request body are all derived from this — adding a mode means adding a row.
 //
 //   network     — refuses to run when ZIMI_OFFLINE is set
 //   sidecar     — needs the warc2zim helper (installed on first use, online)
-//   flags       — the 2-3 knobs worth a form field; everything else is CLI-only
+//   flags       — shown on the form itself; two is the ceiling, on purpose
+//   advanced    — shown inside the collapsed "Advanced" disclosure
+//   hints       — per-mode placeholder overrides, where one field's real
+//                 default differs by engine (a crawl budget is not a video one)
 var CREATE_MODE_DEFS = [
   {
     id: 'folder', network: false,
-    label: 'create_label_folder', placeholder: 'create_ph_folder', flags: []
+    label: 'create_label_folder', placeholder: 'create_ph_folder',
+    flags: [], advanced: ['language']
   },
   {
     id: 'page', network: true,
-    label: 'create_label_page_url', placeholder: 'create_ph_url', flags: []
+    label: 'create_label_page_url', placeholder: 'create_ph_url',
+    flags: [], advanced: ['language']
   },
   {
     id: 'site', network: true,
     label: 'create_label_site_url', placeholder: 'create_ph_url',
-    flags: ['max_pages']
+    flags: ['max_pages'],
+    advanced: ['max_depth', 'max_bytes', 'delay', 'language', 'ignore_robots'],
+    hints: { max_bytes: '512M' }
   },
   {
     id: 'video', network: true,
     label: 'create_label_video_url', placeholder: 'create_ph_video',
-    flags: ['audio_only', 'limit']
+    flags: ['audio_only', 'limit'],
+    advanced: ['format', 'max_bytes', 'language'],
+    hints: { max_bytes: '4G' }
   },
   {
     id: 'import', network: false, sidecar: true,
-    label: 'create_label_archive', placeholder: 'create_ph_archive', flags: []
+    label: 'create_label_archive', placeholder: 'create_ph_archive',
+    flags: [], advanced: ['name']
   }
 ];
+
+// Every option any form can show, described once: which control draws it, how
+// it is read back out of the DOM, and how it becomes a request field. The
+// server re-validates all of it — these bounds are about not sending obvious
+// nonsense, never about being the check that matters.
+//
+//   control — number | text | check | select
+//   kind    — how the value is coerced: int, num (fractional), bool, text
+//   min     — below this the field means "use the engine's default", so it is
+//             left out entirely rather than sent as 0
+var CREATE_FIELDS = {
+  max_pages: {
+    id: 'create-max-pages', control: 'number', label: 'create_max_pages',
+    kind: 'int', min: 1, max: 5000, ph: '200'
+  },
+  limit: {
+    id: 'create-limit', control: 'number', label: 'create_video_limit',
+    kind: 'int', min: 1, max: 500, ph: '25'
+  },
+  audio_only: {
+    id: 'create-audio-only', control: 'check', label: 'create_audio_only',
+    kind: 'bool', onchange: '_createSyncFormat()'
+  },
+  max_depth: {
+    id: 'create-max-depth', control: 'number', label: 'create_max_depth',
+    kind: 'int', min: 0, max: 10, ph: '5'
+  },
+  delay: {
+    id: 'create-delay', control: 'number', label: 'create_delay',
+    kind: 'num', min: 0, max: 60, step: '0.1', ph: '0.5'
+  },
+  max_bytes: {
+    id: 'create-max-bytes', control: 'text', label: 'create_max_bytes',
+    kind: 'text', ph: '500M'
+  },
+  ignore_robots: {
+    id: 'create-ignore-robots', control: 'check', label: 'create_ignore_robots',
+    kind: 'bool', note: 'create_ignore_robots_note'
+  },
+  language: {
+    id: 'create-language', control: 'text', label: 'create_language',
+    kind: 'text', ph: 'eng'
+  },
+  // Named presets only. The server accepts these four words and nothing else —
+  // a yt-dlp format expression is a downloader instruction, and it stays on the
+  // command line where the person typing it is already at a shell.
+  format: {
+    id: 'create-format', control: 'select', label: 'create_format',
+    kind: 'text', options: ['720p', '1080p', '480p', 'best']
+  },
+  name: {
+    id: 'create-name', control: 'text', label: 'create_name',
+    kind: 'text', ph: 'my-archive'
+  }
+};
+
+// Where another project does the actual work, its name goes on the surface that
+// does it — the form you fill in and the pane you watch. Same shape as the
+// footer's "Powered by Kiwix": a fact, quietly stated, and a link out.
+var CREATE_CREDITS = {
+  video: { name: 'yt-dlp', url: 'https://github.com/yt-dlp/yt-dlp' },
+  'import': { name: 'warc2zim', url: 'https://github.com/openzim/warc2zim' }
+};
 
 // ── state ───────────────────────────────────────────────────────────────────
 var _createSelected = null;   // mode id whose form is expanded, or null
@@ -94,30 +168,56 @@ function _createModeAvailable(def, offline, importReady) {
   return true;
 }
 
-// Form fields → request body. The server re-validates all of it; this is about
-// sending exactly what a mode means and nothing it does not.
-function _createBuildRequest(modeId, fields) {
-  var def = null;
+function _createDef(id) {
   for (var i = 0; i < CREATE_MODE_DEFS.length; i++) {
-    if (CREATE_MODE_DEFS[i].id === modeId) def = CREATE_MODE_DEFS[i];
+    if (CREATE_MODE_DEFS[i].id === id) return CREATE_MODE_DEFS[i];
   }
+  return null;
+}
+
+// Every option a mode owns, in the order it is drawn: the visible flags first,
+// then whatever the disclosure holds.
+function _createModeFields(def) {
+  return (def.flags || []).concat(def.advanced || []);
+}
+
+// One raw form value → what belongs in the request body, or undefined for
+// "say nothing and let the engine use its own default". Blank, unparseable and
+// below-minimum all collapse to that same silence: they are the same statement.
+function _createFieldValue(key, fields) {
+  var f = CREATE_FIELDS[key];
+  if (!f) return undefined;
+  var raw = fields ? fields[key] : undefined;
+  if (f.kind === 'bool') return raw ? true : undefined;
+  var text = String(raw === undefined || raw === null ? '' : raw).trim();
+  if (!text) return undefined;
+  if (f.kind === 'int' || f.kind === 'num') {
+    var n = f.kind === 'int' ? parseInt(text, 10) : parseFloat(text);
+    if (!isFinite(n) || n < f.min) return undefined;
+    return n;
+  }
+  return text;
+}
+
+// Form fields → request body. The server re-validates all of it; this is about
+// sending exactly what a mode means and nothing it does not — a value left in
+// the DOM by a form the user closed belongs to that form, not to this one.
+function _createBuildRequest(modeId, fields) {
+  var def = _createDef(modeId);
   if (!def) return null;
   var source = String((fields && fields.source) || '').trim();
   if (!source) return null;
   var body = { mode: def.id, source: source };
   var title = String((fields && fields.title) || '').trim();
   if (title) body.title = title;
-  if (def.flags.indexOf('max_pages') >= 0) {
-    var pages = parseInt(fields.max_pages, 10);
-    if (pages > 0) body.max_pages = pages;
+  var keys = _createModeFields(def);
+  for (var i = 0; i < keys.length; i++) {
+    var value = _createFieldValue(keys[i], fields);
+    if (value !== undefined) body[keys[i]] = value;
   }
-  if (def.flags.indexOf('audio_only') >= 0 && fields.audio_only) {
-    body.audio_only = true;
-  }
-  if (def.flags.indexOf('limit') >= 0) {
-    var limit = parseInt(fields.limit, 10);
-    if (limit > 0) body.limit = limit;
-  }
+  // Audio-only picks the format itself, so a quality preset alongside it would
+  // describe a preference nothing reads. The server drops it too.
+  if (body.audio_only) delete body.format;
   return body;
 }
 
@@ -224,11 +324,60 @@ function _createSelectMode(id) {
   if (input) input.focus();
 }
 
-function _createDef(id) {
-  for (var i = 0; i < CREATE_MODE_DEFS.length; i++) {
-    if (CREATE_MODE_DEFS[i].id === id) return CREATE_MODE_DEFS[i];
+// One option's control. Everything that varies between them — the element, the
+// bounds, the placeholder — comes from CREATE_FIELDS, so a new option is a row
+// in that table and nothing here changes.
+function _createFieldHtml(key, def) {
+  var f = CREATE_FIELDS[key];
+  if (!f) return '';
+  var label = tH(f.label);
+  if (f.control === 'check') {
+    return '<label class="create-flag">' +
+      '<input type="checkbox" id="' + f.id + '"' +
+      (f.onchange ? ' onchange="' + f.onchange + '"' : '') + '>' + label + '</label>';
   }
-  return null;
+  if (f.control === 'select') {
+    var opts = '';
+    for (var i = 0; i < f.options.length; i++) {
+      opts += '<option value="' + escAttr(f.options[i]) + '">' +
+        tH(f.label + '_' + f.options[i]) + '</option>';
+    }
+    return '<label class="create-flag">' + label +
+      '<select class="create-field create-pick" id="' + f.id + '">' + opts + '</select></label>';
+  }
+  var ph = (def && def.hints && def.hints[key]) || f.ph || '';
+  var number = f.control === 'number';
+  return '<label class="create-flag">' + label +
+    '<input type="' + (number ? 'number' : 'text') + '"' +
+    ' class="create-field ' + (number ? 'create-num' : 'create-short') + '" id="' + f.id + '"' +
+    (f.min !== undefined ? ' min="' + f.min + '"' : '') +
+    (f.max !== undefined ? ' max="' + f.max + '"' : '') +
+    (f.step ? ' step="' + f.step + '"' : '') +
+    ' spellcheck="false" autocapitalize="none" autocorrect="off"' +
+    ' placeholder="' + escAttr(ph) + '"></label>';
+}
+
+// A row of controls plus any warnings they carry. The notes sit under the row
+// rather than in it: a sentence wrapped inside a flex row of short fields reads
+// as a broken control, not as a caution.
+function _createFieldsHtml(keys, def) {
+  var controls = '';
+  var notes = '';
+  for (var i = 0; i < keys.length; i++) {
+    controls += _createFieldHtml(keys[i], def);
+    var f = CREATE_FIELDS[keys[i]];
+    if (f && f.note) notes += '<div class="create-caption">' + tH(f.note) + '</div>';
+  }
+  return controls ? '<div class="create-flags">' + controls + '</div>' + notes : '';
+}
+
+// The credit line for a mode whose work is really another project's.
+function _createCreditHtml(modeId) {
+  var c = CREATE_CREDITS[modeId];
+  if (!c) return '';
+  return '<div class="create-caption create-credit">' + tH('powered_by') + ' ' +
+    '<a href="' + escAttr(c.url) + '" target="_blank" rel="noopener">' + esc(c.name) + '</a>' +
+    '</div>';
 }
 
 function _renderCreateForm() {
@@ -236,33 +385,20 @@ function _renderCreateForm() {
   if (!slot) return;
   var def = _createDef(_createSelected);
   if (!def) { slot.innerHTML = ''; return; }
-  var flags = '';
-  if (def.flags.indexOf('max_pages') >= 0) {
-    flags +=
-      '<label class="create-flag">' + tH('create_max_pages') +
-        '<input type="number" class="create-field create-num" id="create-max-pages" min="1" max="5000" placeholder="200">' +
-      '</label>';
-  }
-  if (def.flags.indexOf('audio_only') >= 0) {
-    flags +=
-      '<label class="create-flag">' +
-        '<input type="checkbox" id="create-audio-only">' + tH('create_audio_only') +
-      '</label>';
-  }
-  if (def.flags.indexOf('limit') >= 0) {
-    flags +=
-      '<label class="create-flag">' + tH('create_video_limit') +
-        '<input type="number" class="create-field create-num" id="create-limit" min="1" max="500" placeholder="25">' +
-      '</label>';
-  }
+  var advanced = _createFieldsHtml(def.advanced || [], def);
   slot.innerHTML =
     '<div class="create-form">' +
       '<label class="ms-form-label" for="create-source">' + tH(def.label) + '</label>' +
       '<input type="text" class="create-field" id="create-source" spellcheck="false" autocapitalize="none" autocorrect="off" placeholder="' + escAttr(t(def.placeholder)) + '">' +
       '<label class="ms-form-label" for="create-title">' + tH('create_label_title') + '</label>' +
       '<input type="text" class="create-field" id="create-title" placeholder="' + escAttr(t('create_ph_title')) + '">' +
-      (flags ? '<div class="create-flags">' + flags + '</div>' : '') +
-      '<div class="create-caption">' + tH('create_advanced_note') + ' <code>zimi create --help</code></div>' +
+      _createFieldsHtml(def.flags || [], def) +
+      (advanced
+        ? '<details class="create-adv">' +
+            '<summary>' + tH('create_advanced') + '</summary>' + advanced +
+          '</details>'
+        : '') +
+      _createCreditHtml(def.id) +
       '<div class="create-actions">' +
         '<button type="button" class="ms-btn ms-btn-primary" id="create-start" onclick="_createSubmit()">' + tH('create_start') + '</button>' +
         '<span class="create-error" id="create-form-error"></span>' +
@@ -274,18 +410,31 @@ function _renderCreateForm() {
       if (e.key === 'Enter') { e.preventDefault(); _createSubmit(); }
     });
   }
+  _createSyncFormat();
+}
+
+// Audio-only makes the quality preset moot. Greying it out says that where the
+// admin is looking, instead of leaving a live-looking control that changes
+// nothing about the job.
+function _createSyncFormat() {
+  var fmt = document.getElementById(CREATE_FIELDS.format.id);
+  var audio = document.getElementById(CREATE_FIELDS.audio_only.id);
+  if (fmt) fmt.disabled = !!(audio && audio.checked);
 }
 
 function _createFormFields() {
-  function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
-  function checked(id) { var el = document.getElementById(id); return !!(el && el.checked); }
-  return {
-    source: val('create-source'),
-    title: val('create-title'),
-    max_pages: val('create-max-pages'),
-    limit: val('create-limit'),
-    audio_only: checked('create-audio-only')
+  var el = function(id) { return document.getElementById(id); };
+  var fields = {
+    source: (el('create-source') || {}).value || '',
+    title: (el('create-title') || {}).value || ''
   };
+  for (var key in CREATE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(CREATE_FIELDS, key)) continue;
+    var f = CREATE_FIELDS[key];
+    var node = el(f.id);
+    fields[key] = !node ? '' : (f.control === 'check' ? !!node.checked : node.value);
+  }
+  return fields;
 }
 
 function _createFormError(msg) {
@@ -482,7 +631,7 @@ function _renderCreateRun() {
       '</div>';
   }
 
-  host.innerHTML = head + done + log + actions;
+  host.innerHTML = head + done + log + _createCreditHtml(s.mode) + actions;
   // Follow the tail. A user who has scrolled up to read an earlier line keeps
   // their place — only pin to the bottom when we were already there.
   var logEl = document.getElementById('create-log');

@@ -43,7 +43,7 @@ function eq(got, want, label) {
 }
 
 const {
-  CREATE_MODE_DEFS, CREATE_LOG_MAX,
+  CREATE_MODE_DEFS, CREATE_FIELDS, CREATE_CREDITS, CREATE_LOG_MAX,
   _createModeAvailable, _createBuildRequest, _createMergeLines
 } = sandbox;
 
@@ -63,10 +63,68 @@ eq(CREATE_MODE_DEFS.map(d => d.id),
   ['folder', 'page', 'site', 'video', 'import'],
   'mode ids match the server CREATE_MODES tuple');
 
-// Elegance is a contract here, not a mood: no mode may grow past two flags
-// without someone deciding to. Everything else stays on the CLI.
+// Elegance is a contract here, not a mood: the form you SEE stays small. Two
+// visible flags is the ceiling, and everything else a mode offers has to live
+// behind the Advanced disclosure rather than growing the default view.
 for (const d of CREATE_MODE_DEFS) {
-  check(d.flags.length <= 2, `${d.id} exposes at most two flags`);
+  check(d.flags.length <= 2,
+    `${d.id} shows at most two flags outside the Advanced disclosure`);
+}
+
+// Every option a mode names must exist in the field table, or it renders as
+// nothing and silently stops being sent.
+for (const d of CREATE_MODE_DEFS) {
+  for (const key of d.flags.concat(d.advanced || [])) {
+    check(!!CREATE_FIELDS[key], `${d.id}'s "${key}" is described in CREATE_FIELDS`);
+  }
+  for (const key of Object.keys(d.hints || {})) {
+    check((d.advanced || []).concat(d.flags).indexOf(key) >= 0,
+      `${d.id}'s hint for "${key}" belongs to a field it actually shows`);
+  }
+}
+
+// No option may be listed twice — once outside and once inside the disclosure
+// would render two controls writing the same request field.
+for (const d of CREATE_MODE_DEFS) {
+  const all = d.flags.concat(d.advanced || []);
+  check(new Set(all).size === all.length, `${d.id} lists each option once`);
+}
+
+// Every field in the table is reachable from some mode: an orphan row is a
+// control nobody can see and a request field the server will never be sent.
+const used = new Set();
+for (const d of CREATE_MODE_DEFS) {
+  for (const key of d.flags.concat(d.advanced || [])) used.add(key);
+}
+for (const key of Object.keys(CREATE_FIELDS)) {
+  check(used.has(key), `the "${key}" field is offered by at least one mode`);
+}
+
+// The advanced sets, pinned. These are the flags the engines take that a
+// browser can reach; changing one is a product decision, not a refactor.
+eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
+  ['folder', ['language']],
+  ['page', ['language']],
+  ['site', ['max_depth', 'max_bytes', 'delay', 'language', 'ignore_robots']],
+  ['video', ['format', 'max_bytes', 'language']],
+  ['import', ['name']]
+], 'each mode advertises its documented advanced options');
+
+// Quality is a closed list of preset NAMES. A yt-dlp format expression is an
+// instruction to a downloader, and it stays on the CLI — so this select must
+// never become free text.
+eq(CREATE_FIELDS.format.control, 'select', 'quality is a select, never free text');
+eq(CREATE_FIELDS.format.options, ['720p', '1080p', '480p', 'best'],
+  'the quality presets match the server whitelist');
+
+// ── attribution ─────────────────────────────────────────────────────────────
+
+eq(Object.keys(CREATE_CREDITS).sort(), ['import', 'video'],
+  'the modes another project does the work for are the ones that carry a credit');
+eq(CREATE_CREDITS.video.name, 'yt-dlp', 'video credits yt-dlp');
+eq(CREATE_CREDITS['import'].name, 'warc2zim', 'import credits warc2zim');
+for (const [mode, c] of Object.entries(CREATE_CREDITS)) {
+  check(/^https:\/\//.test(c.url), `${mode}'s credit links out over https`);
 }
 
 // ── availability ────────────────────────────────────────────────────────────
@@ -130,6 +188,67 @@ eq(_createBuildRequest('video', { source: 'https://e.org/', limit: '0' }),
 eq(_createBuildRequest('video', { source: 'https://e.org/', audio_only: false }),
   { mode: 'video', source: 'https://e.org/' },
   'an unchecked audio_only is omitted');
+
+// ── advanced options ────────────────────────────────────────────────────────
+
+eq(_createBuildRequest('site', {
+  source: 'https://e.org/', max_pages: '50', max_depth: '2',
+  max_bytes: ' 2G ', delay: '1.5', language: 'fra', ignore_robots: true
+}), {
+  mode: 'site', source: 'https://e.org/', max_pages: 50, max_depth: 2,
+  max_bytes: '2G', delay: 1.5, language: 'fra', ignore_robots: true
+}, 'site sends its whole advanced set, sizes as typed and delays fractional');
+
+eq(_createBuildRequest('folder', { source: '/srv/docs', language: 'deu' }),
+  { mode: 'folder', source: '/srv/docs', language: 'deu' },
+  'folder sends language and nothing else');
+
+eq(_createBuildRequest('import', { source: '/srv/a.wacz', name: 'my-archive' }),
+  { mode: 'import', source: '/srv/a.wacz', name: 'my-archive' },
+  'import sends the name override');
+
+// Depth zero is a real answer — the seed page and nothing it links to — so it
+// must survive the "blank means default" filter that eats a zero page count.
+eq(_createBuildRequest('site', { source: 'https://e.org/', max_depth: '0', delay: '0' }),
+  { mode: 'site', source: 'https://e.org/', max_depth: 0, delay: 0 },
+  'a zero depth and a zero delay are sent, not swallowed');
+
+eq(_createBuildRequest('site', { source: 'https://e.org/', ignore_robots: false }),
+  { mode: 'site', source: 'https://e.org/' },
+  'an unchecked ignore_robots is omitted rather than sent as false');
+
+eq(_createBuildRequest('site', { source: 'https://e.org/', max_bytes: '   ' }),
+  { mode: 'site', source: 'https://e.org/' },
+  'a blank size budget is omitted');
+
+// A size that is not a size still goes to the server: parsing sizes is the
+// server's job (it owns the same parser the CLI uses) and it answers with the
+// message that names the fix. The client must not invent a second dialect.
+eq(_createBuildRequest('site', { source: 'https://e.org/', max_bytes: 'banana' }),
+  { mode: 'site', source: 'https://e.org/', max_bytes: 'banana' },
+  'an unparseable size is passed through for the server to refuse');
+
+// Advanced options belong to their mode exactly as visible flags do.
+const advNoise = {
+  source: 'https://e.org/', max_depth: '3', delay: '2',
+  language: 'eng', name: 'stolen', ignore_robots: true, format: 'best'
+};
+eq(_createBuildRequest('page', advNoise),
+  { mode: 'page', source: 'https://e.org/', language: 'eng' },
+  'page takes only language from a form full of another mode\'s values');
+eq(_createBuildRequest('video', advNoise),
+  { mode: 'video', source: 'https://e.org/', format: 'best', language: 'eng' },
+  'video takes only its own advanced options');
+eq(_createBuildRequest('import', advNoise),
+  { mode: 'import', source: 'https://e.org/', name: 'stolen' },
+  'import takes only the name');
+
+// Audio-only owns the format. Sending both would describe a preference that
+// nothing downstream reads — the engine picks the audio selector regardless.
+eq(_createBuildRequest('video', {
+  source: 'https://e.org/', audio_only: true, format: '1080p'
+}), { mode: 'video', source: 'https://e.org/', audio_only: true },
+  'audio-only drops the quality preset');
 
 // ── the polling cursor ──────────────────────────────────────────────────────
 

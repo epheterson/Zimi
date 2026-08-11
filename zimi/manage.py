@@ -1497,8 +1497,32 @@ CREATE_MAX_SOURCE = 2048  # a path or URL longer than this is not a real one
 CREATE_MAX_TITLE = 200
 # Site crawls: what the form offers. Wider bounds live on the CLI.
 CREATE_MAX_PAGES_CEILING = 5000
+CREATE_MAX_DEPTH_CEILING = 10
+CREATE_MAX_DELAY = 60.0  # seconds between page requests
 # Video jobs: a playlist cap, same reasoning.
 CREATE_VIDEO_LIMIT_CEILING = 500
+# Size budgets. The ceiling is not a guess about disk, it is about the shape of
+# a job a browser tab is willing to watch — past this, use the CLI.
+CREATE_MAX_BYTES_CEILING = 64 * 1024**3
+CREATE_MAX_SIZE_TEXT = 32  # "512MiB" is 6; nothing real is longer than this
+CREATE_MAX_NAME = 64
+# An import name becomes a FILENAME under the ZIM directory, so it is checked
+# against a charset rather than sanitised: a name that would need cleaning up is
+# a name the admin should retype.
+_CREATE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_CREATE_LANGUAGE_RE = re.compile(r"^[a-z]{2,3}$")
+# The video quality the web form may ask for, as named presets mapped to yt-dlp
+# selectors. A preset name is the ONLY thing accepted over HTTP: yt-dlp's format
+# argument is an expression language, and an arbitrary expression arriving from
+# a browser is not a preference, it is an instruction to a downloader. The full
+# selector stays on `zimi create --format`, where the person typing it is at a
+# shell on the machine already.
+CREATE_VIDEO_FORMATS = {
+    "720p": None,  # the engine's own default
+    "1080p": "best[height<=1080][ext=mp4]/best[height<=1080]/best",
+    "480p": "best[height<=480][ext=mp4]/best[height<=480]/best",
+    "best": "best",
+}
 
 _create_lock = threading.Lock()
 _create_job = None  # the one _CreateJob, running or last finished
@@ -1592,14 +1616,30 @@ def _create_validate(data):
         if parts.scheme.lower() not in ("http", "https") or not parts.netloc:
             raise ValueError("not an http(s) URL")
 
+    # Options. Numbers clamp (an absurd one means the admin misjudged a bound,
+    # and the nearest legal value is what they meant); anything that is not a
+    # number at all raises, because there is no "nearest" size or language code
+    # and quietly running with a different one is worse than a refusal.
     opts = {}
+    if mode in ("folder", "page", "site", "video"):
+        opts["language"] = _create_language(data.get("language"))
     if mode == "site":
         opts["max_pages"] = _create_int(
             data.get("max_pages"), 1, CREATE_MAX_PAGES_CEILING
         )
+        opts["max_depth"] = _create_int(
+            data.get("max_depth"), 0, CREATE_MAX_DEPTH_CEILING
+        )
+        opts["max_bytes"] = _create_bytes(data.get("max_bytes"))
+        opts["delay"] = _create_float(data.get("delay"), 0.0, CREATE_MAX_DELAY)
+        opts["ignore_robots"] = bool(data.get("ignore_robots"))
     elif mode == "video":
         opts["audio_only"] = bool(data.get("audio_only"))
         opts["limit"] = _create_int(data.get("limit"), 1, CREATE_VIDEO_LIMIT_CEILING)
+        opts["max_bytes"] = _create_bytes(data.get("max_bytes"))
+        opts["fmt"] = _create_video_format(data.get("format"), opts["audio_only"])
+    elif mode == "import":
+        opts["name"] = _create_name(data.get("name"))
     return mode, source, title, opts
 
 
@@ -1615,6 +1655,89 @@ def _create_int(value, low, high):
     return max(low, min(high, n))
 
 
+def _create_float(value, low, high):
+    """The fractional twin of ``_create_int`` — crawl delay is sub-second."""
+    if value in (None, ""):
+        return None
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return None
+    if n != n or n in (float("inf"), float("-inf")):  # NaN / inf are not delays
+        return None
+    return max(low, min(high, n))
+
+
+def _create_bytes(value):
+    """A size budget typed as ``500M`` or ``2G``, in bytes and under the web
+    ceiling. None when absent. Raises ValueError — which the route turns into a
+    400 naming the fix — when it is not a size at all, because a budget nobody
+    can read is not a budget to guess at."""
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if len(text) > CREATE_MAX_SIZE_TEXT:
+        raise ValueError("that is not a byte size")
+    # The crawler's parser is the one that already understands every form the
+    # CLI accepts (512MiB, 2G, 1048576); the web form must not invent a second
+    # dialect of the same field.
+    from zimi.crawler import parse_size
+    from zimi.creator import CreateError
+
+    try:
+        return min(CREATE_MAX_BYTES_CEILING, parse_size(text))
+    except CreateError as e:
+        raise ValueError(str(e))
+
+
+def _create_language(value):
+    """An ISO 639-3 content language for the ZIM's metadata and its full-text
+    index. Free text, so it is checked rather than clamped."""
+    if value in (None, ""):
+        return None
+    code = str(value).strip().lower()
+    if not _CREATE_LANGUAGE_RE.match(code):
+        raise ValueError("language must be a code like eng, fra or ara")
+    return code
+
+
+def _create_name(value):
+    """The filename stem for an imported ZIM. Checked hard: it is joined onto
+    the ZIM directory, so anything with a separator or a leading dot in it is
+    refused outright rather than cleaned up into something else."""
+    if value in (None, ""):
+        return None
+    name = str(value).strip()
+    if not name:
+        return None
+    if len(name) > CREATE_MAX_NAME or not _CREATE_NAME_RE.match(name):
+        raise ValueError(
+            "name may use letters, digits, dot, dash and underscore, "
+            "and must start with a letter or digit"
+        )
+    return name
+
+
+def _create_video_format(value, audio_only):
+    """A named quality preset from the form, as the engine's format selector.
+    Audio-only owns the format entirely, so a preset alongside it is dropped
+    rather than fought over."""
+    if audio_only or value in (None, ""):
+        return None
+    key = str(value).strip()
+    if key not in CREATE_VIDEO_FORMATS:
+        raise ValueError("unknown video quality — pick one of the offered ones")
+    return CREATE_VIDEO_FORMATS[key]
+
+
+def _create_kwargs(opts, *names):
+    """Only the options the admin actually set. Every engine defaults these
+    itself, and passing None would override the default with nothing."""
+    return {name: opts[name] for name in names if opts.get(name) is not None}
+
+
 def _create_run(job, opts):
     """Drive the engine for one job. Imports are deferred to here: the writer
     stack and yt-dlp are heavy, and a server that never creates a ZIM should
@@ -1623,22 +1746,39 @@ def _create_run(job, opts):
         from zimi.creator import create_folder_zim
 
         job.note(f"packaging {job.source}")
-        return create_folder_zim(job.source, title=job.title or None, register=True)
+        return create_folder_zim(
+            job.source,
+            title=job.title or None,
+            register=True,
+            **_create_kwargs(opts, "language"),
+        )
     if job.mode == "page":
         from zimi.creator import create_page_zim
 
         job.note(f"fetching {job.source}")
-        return create_page_zim(job.source, title=job.title or None, register=True)
+        return create_page_zim(
+            job.source,
+            title=job.title or None,
+            register=True,
+            **_create_kwargs(opts, "language"),
+        )
     if job.mode == "site":
         from zimi.crawler import create_site_zim
 
-        kwargs = {"max_pages": opts["max_pages"]} if opts.get("max_pages") else {}
         return create_site_zim(
             job.source,
             title=job.title or None,
             register=True,
             progress=job.note,
-            **kwargs,
+            **_create_kwargs(
+                opts,
+                "max_pages",
+                "max_depth",
+                "max_bytes",
+                "delay",
+                "ignore_robots",
+                "language",
+            ),
         )
     if job.mode == "video":
         from zimi.video import create_video_zim
@@ -1647,14 +1787,18 @@ def _create_run(job, opts):
             job.source,
             title=job.title or None,
             audio_only=opts.get("audio_only", False),
-            limit=opts.get("limit"),
             register=True,
             progress=job.note,
+            **_create_kwargs(opts, "limit", "max_bytes", "fmt", "language"),
         )
     from zimi.importer import import_archive
 
     return import_archive(
-        job.source, title=job.title or None, register=True, sink=job.note
+        job.source,
+        title=job.title or None,
+        register=True,
+        sink=job.note,
+        **_create_kwargs(opts, "name"),
     )
 
 

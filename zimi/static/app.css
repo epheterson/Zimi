@@ -626,8 +626,26 @@
   .create-flag { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); cursor: pointer; }
   .create-flag input[type="checkbox"] { accent-color: var(--amber); width: 15px; height: 15px; flex-shrink: 0; }
   .create-num { width: 96px; flex: 0 0 auto; }
+  .create-short { width: 140px; flex: 0 0 auto; }
+  .create-pick { width: auto; flex: 0 0 auto; padding-right: 6px; }
+  .create-field:disabled { opacity: 0.5; cursor: not-allowed; }
   .create-caption { font-size: 12px; color: var(--text2); }
-  .create-caption code { font-family: monospace; font-size: 11px; color: var(--amber); white-space: nowrap; }
+  /* "Advanced" is a sentence you can open, not a control: the default marker is
+     replaced by a caret and there is deliberately no box, border or button
+     around it — the simple form has to stay the thing you see. */
+  .create-adv > summary { display: flex; align-items: center; gap: 6px; width: fit-content; list-style: none; cursor: pointer; font-size: 12px; color: var(--text2); }
+  .create-adv > summary::-webkit-details-marker { display: none; }
+  .create-adv > summary::before { content: "\203A"; display: inline-block; transition: transform 0.15s ease; }
+  .create-adv[open] > summary::before { transform: rotate(90deg); }
+  /* The caret is a mirrored character, so RTL already flips it to point at the
+     text — which means the open state has to turn the other way to end up
+     pointing DOWN rather than back up at the topbar. */
+  [dir="rtl"] .create-adv[open] > summary::before { transform: rotate(-90deg); }
+  .create-adv > summary:hover { color: var(--amber); }
+  .create-adv[open] > summary { margin-bottom: 10px; }
+  .create-adv .create-caption { margin-top: 8px; }
+  .create-credit a { color: var(--text2); text-decoration: underline; text-underline-offset: 2px; }
+  .create-credit a:hover { color: var(--amber); }
   .create-actions { display: flex; align-items: center; gap: 8px; }
   /* The running tail. Bounded height so a thousand-page crawl scrolls inside
      its own box instead of walking the page down forever. */
@@ -642,6 +660,7 @@
   @media (prefers-reduced-motion: reduce) {
     .create-view.open { animation: none; }
     .create-tile { transition: none; }
+    .create-adv > summary::before { transition: none; }
   }
 
   /* ── Reader View settings palette ── */
