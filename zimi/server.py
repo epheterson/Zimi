@@ -2450,8 +2450,15 @@ def load_cache(force=False):
             flush=True,
         )
 
-    # Rebuild domain map whenever ZIM list changes
+    # Rebuild domain map whenever ZIM list changes — and sync this module's
+    # re-export alias, which /resolve?domains=1 serves. The build rebinds
+    # interlang's global; without the sync here, a normally-booted server
+    # hands the client an EMPTY domain map forever and the browser's
+    # cross-ZIM pre-check quietly dies (register/unregister already sync).
     _build_domain_zim_map()
+    import zimi.interlang as _interlang
+
+    globals()["_domain_zim_map"] = _interlang._domain_zim_map
 
 
 def _domain_map_entries_for_zim(name, filename, source_meta):
@@ -3697,6 +3704,8 @@ from zimi.interlang import (  # noqa: E402, F401
     _xzim_refs_lock,
     _build_domain_zim_map,
     _resolve_url_to_zim,
+    zim_domain,
+    canonical_url,
     # Article language matching
     get_article_languages,
     _zim_project_name,

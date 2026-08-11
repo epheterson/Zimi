@@ -62,6 +62,21 @@ _SRCSET_RE = re.compile(
 )
 _CSS_URL_RE = re.compile(r"""url\(\s*(['"]?)([^'")]+)\1\s*\)""", re.IGNORECASE)
 
+# Link rewriting. The scheme list is explicit rather than a general
+# `^scheme:` match because ZIM article paths look exactly like URI schemes —
+# "Category:Water" and "Help:Contents" are entries, not protocols.
+_NON_PATH_SCHEME_RE = re.compile(
+    r"^(mailto|tel|sms|javascript|data|about|blob|file|geo|ftp|irc|magnet|xmpp):",
+    re.IGNORECASE,
+)
+_ANCHOR_RE = re.compile(r"<a\b([^>]*)>(.*?)</a\s*>", re.IGNORECASE | re.DOTALL)
+_ANCHOR_HREF_RE = re.compile(
+    r"""\s*\bhref\s*=\s*(["'])(.*?)\1""", re.IGNORECASE | re.DOTALL
+)
+_ANCHOR_TITLE_RE = re.compile(
+    r"""\s*\btitle\s*=\s*(["'])(.*?)\1""", re.IGNORECASE | re.DOTALL
+)
+
 # Bounds so a runaway article/ZIM can't be produced (a bookmark ZIM is small).
 _MAX_ASSET_BYTES = 5 * 1024 * 1024  # per single asset
 _MAX_TOTAL_ASSET_BYTES = 80 * 1024 * 1024  # per whole ZIM
@@ -144,12 +159,14 @@ def _read_source_item(zim, path):
 
 
 def _resolve_ref(base_path, ref):
-    """Resolve an in-article reference (img src, css url) to a ZIM entry path,
-    or None for external / data / anchor-only refs we don't carry."""
+    """Resolve an in-article reference (img src, css url, link href) to a ZIM
+    entry path, or None for external / data / anchor-only refs we don't carry."""
     if not ref:
         return None
     ref = ref.split("#", 1)[0].split("?", 1)[0].strip()
-    if not ref or ref.startswith("data:") or ref.startswith("//") or "://" in ref:
+    if not ref or ref.startswith("//") or "://" in ref:
+        return None
+    if _NON_PATH_SCHEME_RE.match(ref):
         return None
     if ref.startswith("/"):
         return ref.lstrip("/")
@@ -209,6 +226,12 @@ class _AssetCarrier:
             return None
         self.mimetypes.add(mime or "application/octet-stream")
         return in_path
+
+    def carried_path(self, zim, resolved):
+        """Where an already-carried source entry lives in the export, or None.
+        Lets the link rewriter point an ``<a href>`` at a file the export
+        genuinely has (an image it linked to full-size) instead of the web."""
+        return self._carried.get(zim + "\n" + resolved)
 
     def _rewrite_css(self, zim, css_path, data):
         try:
@@ -300,6 +323,124 @@ class _AssetCarrier:
         return "\n".join(css_chunks)
 
 
+def _source_url(zim, path):
+    """The live-web URL a source article came from, or None when the source
+    ZIM's origin is unknown. Injectable at ``build_bookmarks_zim(url_for=…)``
+    so the export can be exercised without an installed library."""
+    try:
+        return _srv.canonical_url(zim, path)
+    except Exception as e:  # a missing library must never fail an export
+        log.debug("no canonical URL for %s/%s: %s", zim, path, e)
+        return None
+
+
+def _strip_namespace(path):
+    """A ZIM path without its legacy ``A/`` namespace prefix. Old ZIMs store
+    articles at ``A/Title`` and new ones at ``Title``; a link may be written
+    either way, so both shapes have to match the same bookmark."""
+    return path[2:] if path.startswith("A/") else path
+
+
+def _bookmark_fields(bk, index):
+    """``(zim, path, title, section)`` for one bookmark, with the title
+    fallbacks applied. One chokepoint, because the link map and the write loop
+    must agree exactly on the title — it decides the article's export path."""
+    zim = (bk.get("zim") or "").strip()
+    path = (bk.get("path") or "").strip()
+    title = (bk.get("title") or "").strip() or path or f"Bookmark {index + 1}"
+    return zim, path, title, (bk.get("section") or "").strip()
+
+
+def _export_article_path(index, title):
+    """Where bookmark ``index`` lives inside the export. Deterministic, so
+    every article's destination is known before the first one is written."""
+    return f"A/{index}_{_slug(title, str(index))}"
+
+
+def _export_link_map(bookmarks):
+    """``{(source zim, source path): in-export article path}`` covering every
+    bookmark, keyed on the path as given AND on its namespace-stripped form."""
+    mapping = {}
+    for i, bk in enumerate(bookmarks):
+        zim, path, title, _section = _bookmark_fields(bk, i)
+        if not (zim and path):
+            continue
+        art = _export_article_path(i, title)
+        mapping.setdefault((zim, path), art)
+        mapping.setdefault((zim, _strip_namespace(path)), art)
+    return mapping
+
+
+def _unlinked_anchor(attrs, text, zim):
+    """An anchor stripped of its href — the last-resort case. The text stays
+    (losing a sentence's wording to a dead link would be the worse trade) and a
+    title says where the article actually lives."""
+    attrs = _ANCHOR_TITLE_RE.sub("", _ANCHOR_HREF_RE.sub("", attrs))
+    note = f"Not in this export — this article is in the {zim} ZIM"
+    return f'<a{attrs} title="{_html.escape(note, quote=True)}">{text}</a>'
+
+
+def _rewrite_links(
+    html, zim, article_path, export_path, link_map, url_for, carried=None
+):
+    """Rewrite an article's ``<a href>`` links so NONE of them dangles.
+
+    A bookmark export carries a handful of articles out of a ZIM that holds
+    millions, so most of a page's links point at articles that did not come
+    along. Left alone they are broken paths: ``zimcheck -U`` fails on them and
+    any reader 404s. Three cases, in order:
+
+    1. **The target IS in this export** — another bookmarked article, or a file
+       the asset carrier already pulled in (the full-size image behind a
+       thumbnail). The link stays internal, repointed at the export's own copy
+       with its fragment preserved.
+    2. **The target is not, but its source ZIM has a known domain** — the link
+       becomes that article's canonical LIVE WEB URL. It is then an honest
+       external link: valid to ``zimcheck``, and it reaches the real article in
+       any reader. Inside Zimi it is better than that — cross-ZIM resolution
+       maps the URL straight back into the installed source ZIM, so the link
+       lands on the local copy and never touches the network.
+    3. **Neither** (a source ZIM whose origin Zimi never learned) — the anchor
+       is unwrapped: text kept, href dropped, a title naming the ZIM that has
+       the article. No URL can be invented honestly, so none is.
+
+    Links that were already external, plus ``mailto:``/``tel:``/``data:`` and
+    same-page ``#anchor`` refs, are left exactly as they were.
+    """
+    here = posixpath.dirname(export_path)
+
+    def fix(m):
+        attrs, text = m.group(1), m.group(2)
+        hrefm = _ANCHOR_HREF_RE.search(attrs)
+        if not hrefm:
+            return m.group(0)
+        href = hrefm.group(2)
+        target = _resolve_ref(article_path, href)
+        if not target:
+            return m.group(0)
+        fragment = "#" + href.split("#", 1)[1] if "#" in href else ""
+        in_export = (
+            link_map.get((zim, target))
+            or link_map.get((zim, _strip_namespace(target)))
+            or (carried(zim, target) if carried else None)
+        )
+        if in_export:
+            new_href = posixpath.relpath(in_export, here) + fragment
+        else:
+            url = url_for(zim, target) if url_for else None
+            if not url:
+                return _unlinked_anchor(attrs, text, zim)
+            new_href = url + fragment
+        rewritten = (
+            attrs[: hrefm.start()]
+            + f' href="{_html.escape(new_href, quote=True)}"'
+            + attrs[hrefm.end() :]
+        )
+        return f"<a{rewritten}>{text}</a>"
+
+    return _ANCHOR_RE.sub(fix, html)
+
+
 def _extract_body(raw_html):
     """Return the inner <body> HTML of a source article, scripts/styles/links
     stripped. Falls back to the whole (stripped) document when there is no
@@ -336,10 +477,15 @@ def _page_head(title, extra_css=""):
     )
 
 
-def _article_html(title, source_zim, source_path, body, extra_css=""):
-    """Wrap a source body as a standalone export article."""
+def _article_html(title, source_zim, source_path, body, extra_css="", source_url=None):
+    """Wrap a source body as a standalone export article. When the source
+    article's canonical URL is known, the provenance line links to it — the
+    same round trip the body's links take (live web elsewhere, back into the
+    installed source ZIM inside Zimi)."""
     src = _html.escape(source_zim)
     spath = _html.escape(source_path)
+    if source_url:
+        spath = f'<a href="{_html.escape(source_url, quote=True)}">{spath}</a>'
     return (
         _page_head(_html.escape(title), extra_css)
         + "<body><header class='zimi-src'>From <strong>"
@@ -931,6 +1077,7 @@ def build_bookmarks_zim(
     zim_dir,
     reader=_read_source_article,
     asset_reader=_read_source_item,
+    url_for=_source_url,
     progress=None,
     name=None,
     title=None,
@@ -940,7 +1087,10 @@ def build_bookmarks_zim(
 
     ``bookmarks`` is a list of ``{"zim","path","title"[,"section"]}`` dicts.
     ``reader(zim, path)`` fetches source HTML; ``asset_reader(zim, path)``
-    fetches raw asset bytes (both injectable for tests). ``progress(done, total)``
+    fetches raw asset bytes; ``url_for(zim, path)`` gives a source article's
+    canonical web URL (all three injectable for tests). Every ``<a href>`` in
+    the carried bodies is rewritten so none of them dangles — see
+    ``_rewrite_links`` for the three cases. ``progress(done, total)``
     is called per article. ``name`` sets the output basename (default
     ``zimi-bookmarks_<date>``); ``title`` sets the ZIM Title metadata.
     ``sections`` (optional, ordered) lists section headers the index must show
@@ -958,6 +1108,9 @@ def build_bookmarks_zim(
     out_path = _output_path(zim_dir, base)
     total = len(bookmarks)
     entries = []  # (path, title, source_zim, section) for the index
+    # Every article's destination, known up front: a link may point forward to
+    # a bookmark this loop has not written yet.
+    link_map = _export_link_map(bookmarks)
 
     with atomic_zim_creator(out_path) as creator:
         creator.set_mainpath("index")
@@ -965,11 +1118,8 @@ def build_bookmarks_zim(
         for i, bk in enumerate(bookmarks):
             if progress:
                 progress(i, total)
-            zim = (bk.get("zim") or "").strip()
-            path = (bk.get("path") or "").strip()
-            title_i = (bk.get("title") or "").strip() or path or f"Bookmark {i + 1}"
-            section = (bk.get("section") or "").strip()
-            art_path = f"A/{i}_{_slug(title_i, str(i))}"
+            zim, path, title_i, section = _bookmark_fields(bk, i)
+            art_path = _export_article_path(i, title_i)
             raw = reader(zim, path) if (zim and path) else None
             extra_css = ""
             if raw is None:
@@ -984,12 +1134,30 @@ def build_bookmarks_zim(
                     raw = carrier.rewrite_media(zim, path, raw)
                 except Exception as e:  # never let one bad article kill the export
                     log.debug("asset carry failed for %s/%s: %s", zim, path, e)
+                raw = _rewrite_links(
+                    raw,
+                    zim,
+                    path,
+                    art_path,
+                    link_map,
+                    url_for,
+                    carried=carrier.carried_path,
+                )
                 body = _extract_body(raw)
             creator.add_item(
                 _Article(
                     art_path,
                     title_i,
-                    _article_html(title_i, zim, path, body, extra_css),
+                    _article_html(
+                        title_i,
+                        zim,
+                        path,
+                        body,
+                        extra_css,
+                        source_url=(
+                            url_for(zim, path) if (url_for and zim and path) else None
+                        ),
+                    ),
                 )
             )
             entries.append((art_path, title_i, zim, section))

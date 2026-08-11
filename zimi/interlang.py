@@ -15,7 +15,7 @@ import re
 import sqlite3
 import threading
 import time
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, quote, unquote
 
 import zimi.server as _srv
 from zimi.search import _loadavg_throttle
@@ -1046,6 +1046,109 @@ def _build_domain_zim_map():
     log.info("Domain map: %d domains → %d ZIMs", len(dmap), len(set(dmap.values())))
 
 
+# The URL shapes Zimi knows how to translate between the live web and a ZIM's
+# entry paths. Matched as substrings of the host, longest-standing behaviour
+# preserved: the first family whose marker appears in the host wins.
+_URL_FAMILIES = (
+    (
+        "wikimedia",
+        (
+            "wikipedia.org",
+            "wiktionary.org",
+            "wikivoyage.org",
+            "wikibooks.org",
+            "wikiversity.org",
+            "wikiquote.org",
+            "wikinews.org",
+        ),
+    ),
+    (
+        "stackexchange",
+        (
+            "stackexchange.com",
+            "stackoverflow.com",
+            "serverfault.com",
+            "superuser.com",
+            "askubuntu.com",
+        ),
+    ),
+    ("mediawiki", ("rationalwiki.org", "appropedia.org")),
+    ("explainxkcd", ("explainxkcd.com",)),
+    ("wikihow", ("wikihow.com",)),
+)
+
+# The TLDs _build_domain_zim_map GUESSES at for a ZIM it could not map from
+# evidence. A guess is a fine lookup key but never a canonical answer.
+_INFERRED_TLDS = (".com", ".org", ".io", ".net")
+
+# Sub-delimiters and ":@" are legal unencoded in a URL path, and Wikipedia
+# titles are full of them — "Chlorine_(disinfectant)" should stay readable.
+_URL_PATH_SAFE = "/:@!$&'()*+,;="
+
+
+def _url_family(host):
+    """Which URL family a host belongs to: the shape of its article paths."""
+    host = (host or "").lower()
+    for family, markers in _URL_FAMILIES:
+        if any(marker in host for marker in markers):
+            return family
+    return "general"
+
+
+def zim_domain(zim_name):
+    """The web domain an installed ZIM was scraped FROM, or None.
+
+    The inverse of the domain map, with two corrections. Only EVIDENCE-backed
+    domains count: ``_build_domain_zim_map``'s third discovery method guesses
+    ``<name>.com/.org/.io/.net`` for a ZIM it could not map from a filename or
+    Source metadata, which is harmless as a lookup key (an incoming URL still
+    has to match a real entry path) but must never be handed back as a ZIM's
+    home — that would invent a website. And of the variants the map registers
+    for one real domain, the BARE one is the answer: ``www.`` and mobile
+    (``en.m.``) forms exist only so inbound links resolve.
+    """
+    candidates = [d for d, n in _domain_zim_map.items() if n == zim_name]
+    if not candidates:
+        return None
+    if sum(1 for tld in _INFERRED_TLDS if zim_name + tld in candidates) >= 2:
+        return None  # the TLD-guessing branch produced these, not evidence
+    bare = [
+        d
+        for d in candidates
+        if not d.startswith("www.") and "m" not in d.split(".")[:-2]
+    ]
+    return sorted(bare or candidates, key=lambda d: (len(d), d))[0]
+
+
+def canonical_url(zim_name, entry_path, domain=None):
+    """The live-web URL an entry in an installed ZIM came from, or None.
+
+    The inverse of ``_resolve_url_to_zim``: same host families, same path
+    shapes, run backwards. ``None`` when the ZIM has no known domain — there is
+    no honest URL to give for a ZIM whose origin Zimi never learned.
+
+    The round trip is the point. A link rewritten to this URL is a genuine
+    external link everywhere (so ``zimcheck -U`` passes and any reader reaches
+    the live article), and inside Zimi ``_resolve_url_to_zim`` maps it straight
+    back into the installed source ZIM.
+    """
+    domain = domain or zim_domain(zim_name)
+    rest = (entry_path or "").lstrip("/")
+    if rest.startswith("A/"):
+        rest = rest[2:]
+    if not domain or not rest:
+        return None
+    family = _url_family(domain)
+    if family in ("wikimedia", "mediawiki"):
+        rest = "wiki/" + rest
+    elif family == "explainxkcd":
+        rest = "wiki/index.php/" + rest
+    elif family == "general" and rest.startswith(domain + "/"):
+        # Mirrors the map's host-prefixed candidate (apod.nasa.gov/apod/...).
+        rest = rest[len(domain) + 1 :]
+    return "https://" + domain + "/" + quote(rest, safe=_URL_PATH_SAFE)
+
+
 def _resolve_url_to_zim(url_str):
     """Resolve an external URL to a ZIM name + entry path, or None.
 
@@ -1077,15 +1180,8 @@ def _resolve_url_to_zim(url_str):
 
     # Build candidate paths based on domain type
     candidates = []
-    if (
-        "wikipedia.org" in host
-        or "wiktionary.org" in host
-        or "wikivoyage.org" in host
-        or "wikibooks.org" in host
-        or "wikiversity.org" in host
-        or "wikiquote.org" in host
-        or "wikinews.org" in host
-    ):
+    family = _url_family(host)
+    if family == "wikimedia":
         # Wikimedia: /wiki/Article_Name → A/Article_Name
         rest = re.sub(r"^wiki/", "", url_path)
         # Handle ?title=Article&oldid=... style URLs (MediaWiki index.php format)
@@ -1101,17 +1197,11 @@ def _resolve_url_to_zim(url_str):
         if ns_stripped != rest:
             candidates.append(ns_stripped)
             candidates.append("A/" + ns_stripped)
-    elif (
-        "stackexchange.com" in host
-        or "stackoverflow.com" in host
-        or "serverfault.com" in host
-        or "superuser.com" in host
-        or "askubuntu.com" in host
-    ):
+    elif family == "stackexchange":
         # Stack Exchange: /questions/12345/title → A/questions/12345/title
         candidates.append("A/" + url_path)
         candidates.append(url_path)
-    elif "rationalwiki.org" in host or "appropedia.org" in host:
+    elif family == "mediawiki":
         # MediaWiki sites: /wiki/Article → Article (no A/ prefix)
         rest = re.sub(r"^wiki/", "", url_path)
         # Handle ?title=Article&oldid=... style URLs
@@ -1122,12 +1212,12 @@ def _resolve_url_to_zim(url_str):
             rest = qs["title"][0]
         candidates.append(rest)
         candidates.append("A/" + rest)
-    elif "explainxkcd.com" in host:
+    elif family == "explainxkcd":
         # /wiki/index.php/1234 → 1234:_Title (try number prefix match)
         rest = re.sub(r"^wiki/index\.php/", "", url_path)
         candidates.append(rest)
         candidates.append("A/" + rest)
-    elif "wikihow.com" in host:
+    elif family == "wikihow":
         # WikiHow: /Article-Name → A/Article-Name
         candidates.append("A/" + url_path)
         candidates.append(url_path)
