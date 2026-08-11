@@ -906,7 +906,7 @@
   "stop_seed": "Entfernen",
   "seed_remove_hint": "Entfernen beendet das Teilen. Deine Dateien bleiben auf der Festplatte.",
   "seed_waiting": "Wird geteilt · inaktiv · {n} verbunden",
-  "seed_active": "Wird geteilt · ↑ {up} · {n} verbunden",
+  "seed_active": "Wird geteilt · ↑ {speed}/s · {n} verbunden",
   "seed_uploaded_of": "{up} von {goal} (Verhältnis {ratio} / {cap})",
   "seed_mirror_uploaded": "{up} geteilt · Spiegel ∞",
   "seed_paused_note": "Teilen pausiert",

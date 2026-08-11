@@ -906,7 +906,7 @@
   "stop_seed": "हटाएँ",
   "seed_remove_hint": "हटाने से साझा करना बंद हो जाता है। आपकी फ़ाइलें डिस्क पर बनी रहती हैं।",
   "seed_waiting": "साझा किया जा रहा है · निष्क्रिय · {n} जुड़े",
-  "seed_active": "साझा किया जा रहा है · ↑ {up} · {n} जुड़े",
+  "seed_active": "साझा किया जा रहा है · ↑ {speed}/s · {n} जुड़े",
   "seed_uploaded_of": "{goal} में से {up} (अनुपात {ratio} / {cap})",
   "seed_mirror_uploaded": "{up} साझा · मिरर ∞",
   "seed_paused_note": "साझा करना रुका हुआ",

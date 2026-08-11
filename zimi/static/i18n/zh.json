@@ -906,7 +906,7 @@
   "stop_seed": "移除",
   "seed_remove_hint": "移除会停止分享。你的文件仍保留在磁盘上。",
   "seed_waiting": "分享中 · 空闲 · {n} 已连接",
-  "seed_active": "分享中 · ↑ {up} · {n} 已连接",
+  "seed_active": "分享中 · ↑ {speed}/s · {n} 已连接",
   "seed_uploaded_of": "{up} / {goal}（分享率 {ratio} / {cap}）",
   "seed_mirror_uploaded": "已分享 {up} · 镜像 ∞",
   "seed_paused_note": "分享已暂停",

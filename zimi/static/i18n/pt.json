@@ -906,7 +906,7 @@
   "stop_seed": "Remover",
   "seed_remove_hint": "Remover para de compartilhar. Seus arquivos permanecem no disco.",
   "seed_waiting": "Partilhando · inativo · {n} ligados",
-  "seed_active": "Partilhando · ↑ {up} · {n} ligados",
+  "seed_active": "Partilhando · ↑ {speed}/s · {n} ligados",
   "seed_uploaded_of": "{up} de {goal} (proporção {ratio} / {cap})",
   "seed_mirror_uploaded": "{up} compartilhado · espelho ∞",
   "seed_paused_note": "Partilha em pausa",

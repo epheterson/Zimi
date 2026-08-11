@@ -11331,8 +11331,11 @@ async function _refreshDownloadsInner(useCache) {
         // "Sharing" reads as a state a person understands. Idle = nobody's
         // pulling right now (not broken); active = show what's going out.
         // (Replaces the old "waiting for requests" copy that confused.)
-        const idle = !sd.uploaded_bytes && !sd.up_speed;
-        const upNow = sd.up_speed > 1024 ? ' · ↑ ' + (sd.up_speed / (1024 * 1024)).toFixed(1) + ' MB/s' : '';
+        // Idle = nothing moving right now, even for a seed that has uploaded
+        // plenty before. The meta line carries the LIVE rate; the lifetime
+        // total lives on the goal line below — it used to appear in both,
+        // which read as the same number printed twice.
+        const idle = !sd.up_speed;
         // Lifetime uploaded bytes vs the goal (ratio cap x file size). Mirror
         // seeds run uncapped, so they show uploaded + an ∞ label instead.
         const up = sd.cumulative_uploaded_bytes != null ? sd.cumulative_uploaded_bytes : (sd.uploaded_bytes || 0);
@@ -11348,7 +11351,7 @@ async function _refreshDownloadsInner(useCache) {
           ? tH('seed_paused_note')
           : idle
             ? tH('seed_waiting', {n: connected})
-            : tH('seed_active', {up: _fmtBytes(up), n: connected}) + upNow;
+            : tH('seed_active', {speed: _fmtBytes(sd.up_speed), n: connected});
         h += '<div class="dl-item dl-seed-item">' +
           '<div class="dl-row">' +
           '<span class="dl-seed-icon">' + _sourceIconHtml(zimName, 22) + '</span>' +

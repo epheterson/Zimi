@@ -906,7 +906,7 @@
   "stop_seed": "Убрать",
   "seed_remove_hint": "«Убрать» прекращает раздачу. Ваши файлы остаются на диске.",
   "seed_waiting": "Раздаётся · простой · {n} подключено",
-  "seed_active": "Раздаётся · ↑ {up} · {n} подключено",
+  "seed_active": "Раздаётся · ↑ {speed}/s · {n} подключено",
   "seed_uploaded_of": "{up} из {goal} (коэффициент {ratio} / {cap})",
   "seed_mirror_uploaded": "{up} отдано · зеркало ∞",
   "seed_paused_note": "Раздача приостановлена",

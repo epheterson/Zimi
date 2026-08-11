@@ -906,7 +906,7 @@
   "stop_seed": "إزالة",
   "seed_remove_hint": "الإزالة توقف المشاركة. تبقى ملفاتك على القرص.",
   "seed_waiting": "جارٍ المشاركة · خامل · {n} متصل",
-  "seed_active": "جارٍ المشاركة · ↑ {up} · {n} متصل",
+  "seed_active": "جارٍ المشاركة · ↑ {speed}/s · {n} متصل",
   "seed_uploaded_of": "{up} من {goal} (النسبة {ratio} / {cap})",
   "seed_mirror_uploaded": "تمت مشاركة {up} · مرآة ∞",
   "seed_paused_note": "المشاركة متوقفة مؤقتًا",

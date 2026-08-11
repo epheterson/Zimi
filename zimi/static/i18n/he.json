@@ -906,7 +906,7 @@
   "stop_seed": "הסר",
   "seed_remove_hint": "הסרה מפסיקה את השיתוף. הקבצים שלך נשארים בדיסק.",
   "seed_waiting": "משתף · במנוחה · {n} מחוברים",
-  "seed_active": "משתף · ↑ {up} · {n} מחוברים",
+  "seed_active": "משתף · ↑ {speed}/s · {n} מחוברים",
   "seed_uploaded_of": "{up} מתוך {goal} (יחס {ratio} / {cap})",
   "seed_mirror_uploaded": "{up} שותף · מראה ∞",
   "seed_paused_note": "השיתוף מושהה",
