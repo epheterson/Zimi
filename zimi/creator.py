@@ -28,6 +28,7 @@ its final name), ``add_standard_metadata``, and ``_register_exports`` so a
 ZIM written into the library directory shows up without a full rescan.
 """
 
+import hashlib
 import html as _html
 import logging
 import mimetypes
@@ -61,6 +62,7 @@ from zimi.zimwriter import (
     illustration_from_image,
     make_asset_item,
     media_tags,
+    normalize_language,
     zim_name,
     zim_static_item_class,
 )
@@ -101,6 +103,14 @@ SPA_REFUSAL = (
     "(https://github.com/openzim/zimit), then add the resulting ZIM "
     "to your library."
 )
+# The language a capture asks for when it wants the DOCUMENT to decide. The
+# fallback is only ever reached when nothing on the page says anything.
+LANGUAGE_AUTO = "auto"
+DEFAULT_LANGUAGE = "eng"
+# How many URLs one multi-page capture may merge. The cap is about the artifact,
+# not about the machine: past this the generated index stops being a page anyone
+# reads and becomes a list nobody does. A bigger set is a site crawl.
+MAX_PAGE_URLS = 20
 
 _MD_EXTS = {".md", ".markdown"}
 _HTML_EXTS = {".html", ".htm"}
@@ -135,6 +145,21 @@ _DOCTYPE_RE = re.compile(r"<!DOCTYPE\b[^>]*>", re.IGNORECASE)
 _A_TAG_RE = re.compile(r"<a\b[^>]*>", re.IGNORECASE)
 _ABS_ATTR_RE = re.compile(
     r"""(\b(src|href|srcset)\s*=\s*)(["'])(.*?)\3""", re.IGNORECASE | re.DOTALL
+)
+_HTML_LANG_RE = re.compile(
+    r"""<html\b[^>]*?\blang\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))""", re.IGNORECASE
+)
+_META_LANG_RE = re.compile(
+    r"""<meta\b[^>]*?\bhttp-equiv\s*=\s*["']?content-language["']?[^>]*>""",
+    re.IGNORECASE,
+)
+# og:locale is the one non-standard tag worth reading: sites that declare
+# nothing else very often declare this, and its values are unambiguous.
+_OG_LOCALE_RE = re.compile(
+    r"""<meta\b[^>]*?\bproperty\s*=\s*["']?og:locale["']?[^>]*>""", re.IGNORECASE
+)
+_META_CONTENT_RE = re.compile(
+    r"""\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))""", re.IGNORECASE
 )
 
 
@@ -478,6 +503,49 @@ def _pick_main(zim_paths):
     return None
 
 
+# How many of a folder's HTML files are sniffed for a language declaration, and
+# how much of each is read. Deliberately cheap: this runs before a Pi starts
+# packaging, the answer is almost always in the first tag of the first file, and
+# a folder with no declaration anywhere is simply English by default.
+_FOLDER_LANG_SAMPLE_FILES = 20
+_FOLDER_LANG_SAMPLE_BYTES = 4096
+
+
+def folder_language(requested, files):
+    """The language for a folder capture, as ``(code, how)``.
+
+    Auto means: read the ``<html lang>`` of the first handful of HTML files and
+    take the majority. "Trivially possible" is the whole bar — a folder of
+    Markdown and PDFs declares nothing, and guessing at prose would be a worse
+    answer than the honest default."""
+    named = requested_language(requested)
+    if named:
+        return named, "requested"
+    codes = []
+    opened = 0
+    for fs_path, zim_path in files:
+        # The budget counts files OPENED, not answers found. Counting answers
+        # would make a folder of ten thousand HTML files that declare nothing
+        # open all ten thousand of them — on a Pi, before packaging even starts.
+        if opened >= _FOLDER_LANG_SAMPLE_FILES:
+            break
+        if os.path.splitext(zim_path)[1].lower() not in _HTML_EXTS:
+            continue
+        opened += 1
+        try:
+            with open(fs_path, encoding="utf-8", errors="replace") as fh:
+                head = fh.read(_FOLDER_LANG_SAMPLE_BYTES)
+        except OSError:
+            continue
+        m = _HTML_LANG_RE.search(head)
+        code = language_tag_to_iso3(_first_group(m)) if m else None
+        if code:
+            codes.append(code)
+    if not codes:
+        return DEFAULT_LANGUAGE, "fallback"
+    return max(set(codes), key=lambda c: (codes.count(c), -codes.index(c))), "html-lang"
+
+
 def _index_tree_html(title, pages, assets):
     """The generated main page: the content tree as nested lists, pages
     first (with their real titles), assets after."""
@@ -522,14 +590,14 @@ def create_folder_zim(
     out_path=None,
     title=None,
     description=None,
-    language="eng",
+    language=LANGUAGE_AUTO,
     creator_name="Zimi",
     register=False,
 ):
     """Package a folder of files into one ZIM. Returns a summary dict:
-    ``{"path", "pages", "assets", "main", "registered"}``. Raises
-    ``CreateError`` for anything the user must fix (missing folder, size
-    caps, unwritable output)."""
+    ``{"path", "pages", "assets", "main", "registered", "language",
+    "language_source"}``. Raises ``CreateError`` for anything the user must fix
+    (missing folder, size caps, unwritable output)."""
     folder = os.path.abspath(folder)
     if not os.path.isdir(folder):
         raise CreateError(
@@ -541,6 +609,7 @@ def create_folder_zim(
     if not files:
         raise CreateError(f"nothing to package — no files found in {folder}")
 
+    language, language_source = folder_language(language, files)
     base_name = os.path.basename(folder.rstrip(os.sep)) or "folder"
     zim_title = title or base_name
     out = _finish_output(out_dir or _srv.ZIM_DIR, out_path, _slug(base_name, "folder"))
@@ -650,6 +719,8 @@ def create_folder_zim(
         "assets": len(assets),
         "main": main_path,
         "registered": registered,
+        "language": language,
+        "language_source": language_source,
     }
 
 
@@ -694,11 +765,12 @@ def _fetch_page(url, *, timeout, max_redirects):
         with resp:
             data = resp.read(MAX_PAGE_FETCH_BYTES + 1)
             ctype = (resp.headers.get("Content-Type") or "").strip()
+            clang = (resp.headers.get("Content-Language") or "").strip()
         if len(data) > MAX_PAGE_FETCH_BYTES:
             raise CreateError(
                 f"page is over the {_fmt_bytes(MAX_PAGE_FETCH_BYTES)} fetch cap"
             )
-        return url, data, ctype
+        return url, data, ctype, clang
     raise CreateError(f"too many redirects (more than {max_redirects}) fetching {url}")
 
 
@@ -727,6 +799,102 @@ def looks_like_spa(page):
     if not re.search(r"<script\b", page, re.IGNORECASE):
         return False
     return len(_visible_text(page)) < SPA_MIN_TEXT_CHARS
+
+
+# ── content language ────────────────────────────────────────────────────────
+#
+# What language a page is written in is a FACT ABOUT THE PAGE, not a preference
+# the person capturing it should have to look up. Every URL capture reads it off
+# the document at capture time, and the answer travels back in the result so the
+# caller can say which way it went — a guess nobody can see is worse than no
+# guess at all.
+
+
+def _first_group(match):
+    """The first non-empty capture of an alternation of quoted forms."""
+    for value in match.groups():
+        if value:
+            return value
+    return ""
+
+
+def detect_page_language(page, content_language=None):
+    """The language a fetched document declares, as ``(iso639_3, where)``.
+
+    The three places a page can honestly state it, best evidence first: the
+    ``<html lang>`` attribute (what browsers themselves obey), a
+    ``content-language``/``og:locale`` meta, then the HTTP ``Content-Language``
+    header. ``(None, "")`` when the page says nothing — silence is reported as
+    silence and the caller decides, rather than being handed a guess wearing
+    the same shape as a fact."""
+    text = page or ""
+    m = _HTML_LANG_RE.search(text)
+    if m:
+        code = language_tag_to_iso3(_first_group(m))
+        if code:
+            return code, "html-lang"
+    for regex in (_META_LANG_RE, _OG_LOCALE_RE):
+        for tag in regex.finditer(text):
+            content = _META_CONTENT_RE.search(tag.group(0))
+            if not content:
+                continue
+            code = language_tag_to_iso3(_first_group(content))
+            if code:
+                return code, "meta"
+    code = language_tag_to_iso3(content_language)
+    if code:
+        return code, "http-header"
+    return None, ""
+
+
+def language_tag_to_iso3(raw):
+    """One BCP-47-ish tag (``en``, ``en-US``, ``fr_FR``, ``eng``) as the ISO
+    639-3 code a ZIM stores, or None when it is not resolvable.
+
+    A two-letter tag must be in the reader's own ISO 639 table to be accepted —
+    inventing a three-letter code from two letters we do not recognise is how a
+    ZIM ends up lying about itself. A three-letter tag is taken at its word:
+    639-3 has thousands of valid codes and a page that names one is better
+    evidence than our thirty-odd-entry table."""
+    tag = str(raw or "").strip().lower().replace("_", "-")
+    primary = tag.split(",")[0].strip().split("-")[0].strip()
+    if not primary.isalpha():
+        return None
+    if len(primary) == 2:
+        return {v: k for k, v in _srv._ISO639_3_TO_1.items()}.get(primary)
+    return primary if len(primary) == 3 else None
+
+
+def requested_language(requested):
+    """A language the caller named, validated, or None when they named none
+    (or named ``auto``, which is naming none out loud).
+
+    A bad code is a mistake the person can fix, so it surfaces as ``CreateError``
+    like every other one — ``normalize_language`` raises ValueError, which would
+    otherwise reach a CLI user as a traceback and a web user as a 500."""
+    asked = str(requested or "").strip().lower()
+    if not asked or asked == LANGUAGE_AUTO:
+        return None
+    try:
+        return normalize_language(asked)
+    except ValueError as e:
+        raise CreateError(str(e))
+
+
+def resolve_language(requested, page=None, content_language=None):
+    """The language to stamp on a capture, as ``(code, how)``.
+
+    A caller that named a code gets it (validated). ``auto`` — and saying
+    nothing at all, which is the web form's default — hands the decision to the
+    document, and English is only ever reached by falling through everything
+    else."""
+    named = requested_language(requested)
+    if named:
+        return named, "requested"
+    code, where = detect_page_language(page or "", content_language)
+    if code:
+        return code, where
+    return DEFAULT_LANGUAGE, "fallback"
 
 
 def _origin_variants(final_url):
@@ -926,9 +1094,11 @@ def _normalize_charset(page):
 
 def _fetch_html(url, *, timeout, max_redirects):
     """Fetch one URL as an HTML document. Returns
-    ``(final_url, page_text, byte_count)``; raises ``CreateError`` for a
+    ``(final_url, page_text, byte_count, content_language)`` — the header rides
+    along because it is the last resort of language detection and re-fetching
+    the page to read one header would be absurd. Raises ``CreateError`` for a
     transport failure or for a response that is not HTML."""
-    final_url, data, ctype = _fetch_page(
+    final_url, data, ctype, clang = _fetch_page(
         url, timeout=timeout, max_redirects=max_redirects
     )
     if ctype and "html" not in ctype.lower():
@@ -936,7 +1106,7 @@ def _fetch_html(url, *, timeout, max_redirects):
             f"not an HTML page (Content-Type: {ctype.split(';')[0]}) — "
             "only web pages can be captured this way"
         )
-    return final_url, _decode_page(data, ctype), len(data)
+    return final_url, _decode_page(data, ctype), len(data), clang
 
 
 def _url_page_path(final_url):
@@ -1022,18 +1192,26 @@ def create_page_zim(
     out_path=None,
     title=None,
     description=None,
-    language="eng",
+    language=LANGUAGE_AUTO,
     creator_name="Zimi",
     timeout=DEFAULT_FETCH_TIMEOUT,
     max_redirects=DEFAULT_MAX_REDIRECTS,
     register=False,
+    progress=None,
 ):
     """Fetch ONE page over HTTP(S) and package it with its same-origin
     assets. No crawling, no JavaScript. Returns the same summary dict shape
-    as ``create_folder_zim`` (plus ``"url"``); raises ``CreateError`` with a
-    user-facing message on refusal (offline mode, SPA shell, non-HTML,
-    caps, network failure)."""
+    as ``create_folder_zim`` (plus ``"url"``, ``"language"`` and
+    ``"language_source"``); raises ``CreateError`` with a user-facing message
+    on refusal (offline mode, SPA shell, non-HTML, caps, network failure).
+
+    ``progress`` is called at each phase boundary. It is not decoration: the
+    web job's sink RAISES out of it to cancel, so a capture with no callback
+    is a capture whose cancel button cannot work. The phases are the two that
+    can actually take time — the fetch, and carrying the page's assets."""
     from zimi.p2p import is_offline
+
+    note = progress or (lambda _message: None)
 
     if is_offline():
         raise CreateError(
@@ -1045,15 +1223,20 @@ def create_page_zim(
     if scheme not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
 
-    final_url, page, _n = _fetch_html(url, timeout=timeout, max_redirects=max_redirects)
+    note(f"fetching {url}")
+    final_url, page, _n, clang = _fetch_html(
+        url, timeout=timeout, max_redirects=max_redirects
+    )
     if looks_like_spa(page):
         raise CreateError(SPA_REFUSAL)
+    language, language_source = resolve_language(language, page, clang)
 
     parsed = urllib.parse.urlsplit(final_url)
     zim_title = title or _page_title_from_html(page, parsed.netloc + parsed.path)
     base = _slug(f"{parsed.netloc} {parsed.path}", "page")
     out = _finish_output(out_dir or _srv.ZIM_DIR, out_path, base)
 
+    note(f"packaging {final_url}")
     static_cls = zim_static_item_class()
     with atomic_zim_creator(out, language) as creator:
         carrier = http_asset_carrier(creator.add_item, final_url, timeout)
@@ -1089,6 +1272,420 @@ def create_page_zim(
         "main": "A/index",
         "registered": registered,
         "url": final_url,
+        "language": language,
+        "language_source": language_source,
+    }
+
+
+# ── Tier 2b: several pages → one ZIM ────────────────────────────────────────
+
+
+def _pages_index_html(title, entries, skipped):
+    """The cover of a multi-page capture: what is inside, in the order it was
+    asked for, each page named by its own title and labelled with where it came
+    from. Pages that could not be captured are named too — a collection that
+    quietly drops two of five URLs is a collection that lies about itself."""
+    body = [f"<h1>{_html.escape(title)}</h1>"]
+    body.append(
+        "<p style='color:#666'>"
+        + _plural(len(entries), "page")
+        + " captured by Zimi</p>"
+    )
+    body.append("<ol class='zimi-index'>")
+    for entry in entries:
+        parsed = urllib.parse.urlsplit(entry["final_url"])
+        where = _html.escape(parsed.netloc + parsed.path)
+        body.append(
+            f"<li><a href='{_html.escape(entry['name'])}'>"
+            f"{_html.escape(entry['title'])}</a>"
+            f"<br><span style='color:#999;font-size:.85em'>{where}</span></li>"
+        )
+    body.append("</ol>")
+    if skipped:
+        body.append("<h2 class='zimi-section'>Not captured</h2>")
+        body.append("<ol class='zimi-index'>")
+        for url, why in skipped:
+            body.append(
+                f"<li style='color:#999'>{_html.escape(url)} — {_html.escape(why)}</li>"
+            )
+        body.append("</ol>")
+    return (
+        _page_head(_html.escape(title)) + "<body>" + "".join(body) + "</body></html>"
+    ).encode("utf-8")
+
+
+def _pages_title(entries):
+    """A title for a collection nobody named: the shared host when every page
+    came from one, else the first host and a count."""
+    hosts = []
+    for entry in entries:
+        host = urllib.parse.urlsplit(entry["final_url"]).netloc
+        if host and host not in hosts:
+            hosts.append(host)
+    if len(hosts) == 1:
+        return f"{_plural(len(entries), 'page')} from {hosts[0]}"
+    return f"{_plural(len(entries), 'page')} from {hosts[0]} and elsewhere"
+
+
+def _pages_scope(entries):
+    """The IDENTITY of a multi-page capture: the SET of URLs it holds. Two
+    captures of the same set are editions of one ZIM; add a URL and it is a
+    different collection, which is exactly what a different Name means. The
+    digest is over the sorted final URLs, so the order they were typed in does
+    not fork the identity."""
+    urls = sorted(entry["final_url"] for entry in entries)
+    digest = hashlib.sha1("\n".join(urls).encode("utf-8")).hexdigest()[:10]
+    host = urllib.parse.urlsplit(urls[0]).netloc or "pages"
+    return f"{host} pages {digest}"
+
+
+def create_pages_zim(
+    urls,
+    *,
+    out_dir=None,
+    out_path=None,
+    title=None,
+    description=None,
+    language=LANGUAGE_AUTO,
+    creator_name="Zimi",
+    timeout=DEFAULT_FETCH_TIMEOUT,
+    max_redirects=DEFAULT_MAX_REDIRECTS,
+    register=False,
+    progress=None,
+):
+    """Capture SEVERAL pages into ONE ZIM with a generated index.
+
+    Each page runs the identical ``render_captured_page`` pipeline as a single
+    capture; what is added is a shared asset dedupe map (one copy of a
+    stylesheet two pages both pull), link resolution BETWEEN the captured pages
+    (a link from one to another lands inside the ZIM), and the cover page that
+    makes the result a collection rather than a heap.
+
+    A single URL is handed straight to ``create_page_zim`` — one page is one
+    page, and wrapping it in an index nobody asked for would be a worse ZIM."""
+    from zimi.p2p import is_offline
+
+    note = progress or (lambda _m: None)
+    wanted = []
+    for raw in urls or ():
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        if urllib.parse.urlsplit(text).scheme.lower() not in ("http", "https"):
+            raise CreateError(f"not an http(s) URL: {text}")
+        if text not in wanted:
+            wanted.append(text)
+    if not wanted:
+        raise CreateError("no URLs to capture")
+    if len(wanted) > MAX_PAGE_URLS:
+        raise CreateError(
+            f"that is {len(wanted)} URLs and the limit is {MAX_PAGE_URLS} — "
+            "capture the rest separately, or crawl the site with --site"
+        )
+    if len(wanted) == 1:
+        return create_page_zim(
+            wanted[0],
+            out_dir=out_dir,
+            out_path=out_path,
+            title=title,
+            description=description,
+            language=language,
+            creator_name=creator_name,
+            timeout=timeout,
+            max_redirects=max_redirects,
+            register=register,
+            progress=progress,
+        )
+    if is_offline():
+        raise CreateError(
+            "ZIMI_OFFLINE is set — refusing to fetch from the network. "
+            "Page capture needs internet access; folder mode "
+            "(zimi create <folder>) works fully offline."
+        )
+
+    from zimi.crawler import normalize_url
+
+    entries, skipped, taken, detected = [], [], {"index"}, []
+    for url in wanted:
+        note(f"fetching {url}")
+        try:
+            final_url, page, _n, clang = _fetch_html(
+                url, timeout=timeout, max_redirects=max_redirects
+            )
+        except CreateError as e:
+            note(f"  skipped {url}: {e}")
+            skipped.append((url, str(e)))
+            continue
+        if looks_like_spa(page):
+            note(f"  skipped {url}: it is an empty application shell")
+            skipped.append((url, "an empty application shell — nothing to capture"))
+            continue
+        parsed = urllib.parse.urlsplit(final_url)
+        base = _slug(f"{parsed.netloc} {parsed.path}", "page")
+        name, n = base, 2
+        while name in taken:
+            name = f"{base}_{n}"
+            n += 1
+        taken.add(name)
+        code, where = detect_page_language(page, clang)
+        if code:
+            detected.append((code, where))
+        entries.append(
+            {
+                "name": name,
+                "requested": url,
+                "final_url": final_url,
+                "page": page,
+                "title": _page_title_from_html(page, parsed.netloc + parsed.path),
+            }
+        )
+    if not entries:
+        raise CreateError(
+            "none of those pages could be captured — "
+            + "; ".join(f"{url}: {why}" for url, why in skipped)
+        )
+
+    # One ZIM carries one Language. The pages voted; the most common answer
+    # wins, and the first page breaks a tie because it is the one the person
+    # typed first.
+    named = requested_language(language)
+    if named:
+        language, language_source = named, "requested"
+    elif detected:
+        codes = [code for code, _where in detected]
+        language = max(set(codes), key=lambda c: (codes.count(c), -codes.index(c)))
+        language_source = next(w for c, w in detected if c == language)
+    else:
+        language, language_source = DEFAULT_LANGUAGE, "fallback"
+
+    zim_title = title or _pages_title(entries)
+    out = _finish_output(
+        out_dir or _srv.ZIM_DIR, out_path, _slug(_pages_scope(entries), "pages")
+    )
+    # A link may name either what was typed or where that landed, so both
+    # identities resolve into the ZIM.
+    by_key = {}
+    for entry in entries:
+        by_key.setdefault(normalize_url(entry["final_url"]), entry["name"])
+        by_key.setdefault(normalize_url(entry["requested"]), entry["name"])
+
+    def resolve(absolute):
+        target, sep, fragment = absolute.partition("#")
+        name = by_key.get(normalize_url(target))
+        if not name:
+            return None
+        return name + (sep + fragment if sep else "")
+
+    static_cls = zim_static_item_class()
+    carried, mimetypes = {}, set()
+    with atomic_zim_creator(out, language) as creator:
+        for entry in entries:
+            note(f"packaging {entry['final_url']}")
+            # One carrier per page over a SHARED dedupe map — the same reason
+            # the site crawl does it: common assets stored once, per-page caps
+            # still per page.
+            carrier = http_asset_carrier(
+                creator.add_item, entry["final_url"], timeout, carried=carried
+            )
+            html = render_captured_page(
+                carrier,
+                entry["page"],
+                final_url=entry["final_url"],
+                resolve_link=resolve,
+            )
+            creator.add_item(
+                static_cls("A/" + entry["name"], entry["title"], html.encode("utf-8"))
+            )
+            mimetypes |= carrier.mimetypes
+            entry["page"] = None  # written; do not hold every page at once
+        creator.add_item(
+            static_cls(
+                "A/index", zim_title, _pages_index_html(zim_title, entries, skipped)
+            )
+        )
+        creator.set_mainpath("A/index")
+        asset_count = sum(1 for v in carried.values() if v)
+        add_standard_metadata(
+            creator,
+            title=zim_title,
+            description=description
+            or f"{_plural(len(entries), 'page')} captured from the web by Zimi",
+            language=language,
+            creator_name=creator_name,
+            source=entries[0]["final_url"],
+            name=zim_name(_pages_scope(entries), language),
+            tags=media_tags(mimetypes),
+            illustration=site_illustration(entries[0]["final_url"], timeout),
+            history=history_record(
+                "created",
+                "pages",
+                f"captured {_plural(len(entries), 'page')} from the web"
+                + (f", skipping {len(skipped)}" if skipped else ""),
+                counts={"pages": len(entries), "assets": asset_count},
+            ),
+        )
+
+    return {
+        "path": out,
+        "pages": len(entries),
+        "assets": asset_count,
+        "main": "A/index",
+        "registered": _try_register(out) if register else False,
+        "url": entries[0]["final_url"],
+        "urls": [entry["final_url"] for entry in entries],
+        "skipped": [url for url, _why in skipped],
+        "language": language,
+        "language_source": language_source,
+    }
+
+
+# ── pre-flight probes ───────────────────────────────────────────────────────
+#
+# A capture is a commitment: minutes of a Pi's attention, a file in the library,
+# sometimes gigabytes. The probes exist so nobody has to make that commitment
+# blind — they answer "what would this actually give me?" using a tiny, HARD-
+# CAPPED fraction of the work the real run would do. Every one of them is
+# bounded by construction rather than by good behaviour, because the machine
+# under this is often a Raspberry Pi that is also serving the library.
+
+_ASSET_REF_RE = re.compile(
+    r"""<(?:img|source|link|script)\b[^>]*?\b(?:src|href)\s*=\s*"""
+    r"""(?:"([^"]*)"|'([^']*)'|([^\s">]+))""",
+    re.IGNORECASE,
+)
+
+
+def probe_page(
+    url, *, timeout=DEFAULT_FETCH_TIMEOUT, max_redirects=DEFAULT_MAX_REDIRECTS
+):
+    """Fetch ONE page and report what capturing it would produce. Exactly one
+    HTTP request — the same one the real capture starts with — so the preview
+    costs what looking at the page in a browser costs."""
+    final_url, page, nbytes, clang = _fetch_html(
+        url, timeout=timeout, max_redirects=max_redirects
+    )
+    parsed = urllib.parse.urlsplit(final_url)
+    language, language_source = resolve_language(LANGUAGE_AUTO, page, clang)
+    # Asset count WITHOUT fetching anything: every same-origin src/href a
+    # capture would try to carry. An estimate that spends twenty requests to be
+    # exact is not a preview.
+    _origin, variants = _origin_variants(final_url)
+    assets = set()
+    for m in _ASSET_REF_RE.finditer(page):
+        ref = _strip_origin(_first_group(m).strip(), variants)
+        if ref and not ref.startswith(("#", "data:")) and "://" not in ref:
+            assets.add(ref)
+    return {
+        "url": final_url,
+        "title": _page_title_from_html(page, parsed.netloc + parsed.path),
+        "language": language,
+        "language_source": language_source,
+        "spa": looks_like_spa(page),
+        "bytes": nbytes,
+        "assets": len(assets),
+    }
+
+
+# How far a folder preview looks and how much of it it is willing to read. Two
+# levels is what a person can take in at a glance, and the entry cap is what
+# keeps a preview of a 200,000-file volume from being a disk-thrashing scan.
+PROBE_FOLDER_DEPTH = 2
+PROBE_FOLDER_MAX_ENTRIES = 4000
+_DOC_EXTS = {".pdf", ".epub", ".txt", ".rst"}
+_MEDIA_EXTS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".svg",
+    ".bmp",
+    ".ico",
+    ".mp4",
+    ".webm",
+    ".mkv",
+    ".mov",
+    ".mp3",
+    ".m4a",
+    ".ogg",
+    ".opus",
+    ".wav",
+}
+
+
+def _file_kind(name):
+    """Which column of a folder preview a file belongs in."""
+    ext = os.path.splitext(name)[1].lower()
+    if ext in _HTML_EXTS or ext in _MD_EXTS:
+        return "pages"
+    if ext in _DOC_EXTS:
+        return "documents"
+    if ext in _MEDIA_EXTS:
+        return "media"
+    return "other"
+
+
+def _empty_counts():
+    return {"pages": 0, "documents": 0, "media": 0, "other": 0}
+
+
+def probe_folder(
+    root, *, depth=PROBE_FOLDER_DEPTH, max_entries=PROBE_FOLDER_MAX_ENTRIES
+):
+    """What packaging this folder would sweep up, two levels down.
+
+    Counts are per directory and NOT recursive past the depth shown — a preview
+    that recursed a whole volume to be exact would be the expensive thing the
+    preview exists to avoid. ``truncated`` says when the entry budget ran out,
+    so a partial answer never reads as a complete one."""
+    root = os.path.realpath(os.path.expanduser(root))
+    if not os.path.isdir(root):
+        raise CreateError(f"not a folder: {root}")
+    budget = [max_entries]
+
+    def scan(path, level):
+        node = {"counts": _empty_counts(), "children": [], "deeper": False}
+        try:
+            with os.scandir(path) as it:
+                for entry in it:
+                    if budget[0] <= 0:
+                        node["deeper"] = True
+                        break
+                    budget[0] -= 1
+                    if entry.name.startswith(".") or entry.name.lower() in _JUNK_NAMES:
+                        continue
+                    if entry.is_symlink():
+                        continue  # a capture never follows one; nor does its preview
+                    if entry.is_dir(follow_symlinks=False):
+                        if level < depth:
+                            child = scan(entry.path, level + 1)
+                            child["name"] = entry.name
+                            node["children"].append(child)
+                        else:
+                            node["deeper"] = True
+                    elif entry.is_file(follow_symlinks=False):
+                        node["counts"][_file_kind(entry.name)] += 1
+        except OSError as e:
+            raise CreateError(f"cannot read that folder: {e.strerror or e}")
+        node["children"].sort(key=lambda c: c["name"].lower())
+        return node
+
+    tree = scan(root, 0)
+    tree["name"] = os.path.basename(root.rstrip(os.sep)) or root
+    totals = _empty_counts()
+
+    def add(node):
+        for key, value in node["counts"].items():
+            totals[key] += value
+        for child in node["children"]:
+            add(child)
+
+    add(tree)
+    return {
+        "path": root,
+        "tree": tree,
+        "totals": totals,
+        "truncated": budget[0] <= 0,
     }
 
 
@@ -1101,15 +1698,13 @@ def _note(message):
     print(message, flush=True)
 
 
-def _build_from_args(args, src, is_url):
-    """Pick the capture and run it. Folder, single page, bounded site crawl,
-    or the zimit container — the flags that only make sense for one of those
-    are refused here rather than silently ignored."""
-    engine = getattr(args, "engine", "builtin")
-    site = bool(getattr(args, "site", False))
-    crawl_flags = {
-        "--site": site,
-        "--engine": engine != "builtin",
+def _crawl_flag_state(args):
+    """Which capture-shaping flags the command line actually set. Every caller
+    that refuses a flag reads this, so "was it given?" is decided in one place
+    and a new flag becomes one row rather than three."""
+    return {
+        "--site": bool(getattr(args, "site", False)),
+        "--engine": getattr(args, "engine", "builtin") != "builtin",
         "--max-pages": getattr(args, "max_pages", None) is not None,
         "--max-depth": getattr(args, "max_depth", None) is not None,
         "--max-bytes": getattr(args, "max_bytes", None) is not None,
@@ -1117,6 +1712,48 @@ def _build_from_args(args, src, is_url):
         "--ignore-robots": bool(getattr(args, "ignore_robots", False)),
         "--engine-arg": bool(getattr(args, "engine_arg", None)),
     }
+
+
+def _is_http_url(text):
+    return bool(re.match(r"^https?://", str(text or ""), re.IGNORECASE))
+
+
+def _build_pages_from_args(args, sources):
+    """Several sources on one command line means ONE ZIM holding several
+    captured pages. Every flag that shapes a crawl or a video job is refused
+    here — none of them describes this shape, and silently ignoring a flag
+    somebody typed is how a capture surprises them."""
+    not_urls = [src for src in sources if not _is_http_url(src)]
+    if not_urls:
+        raise CreateError(
+            "several sources means several web pages in one ZIM, so every one "
+            f"of them must be a URL — {not_urls[0]} is not"
+        )
+    named = [flag for flag, given in _crawl_flag_state(args).items() if given]
+    if named:
+        raise CreateError(
+            f"{', '.join(named)} applies to capturing one source — "
+            "give a single URL to use it"
+        )
+    return create_pages_zim(
+        sources,
+        title=args.title,
+        description=args.description,
+        language=args.language,
+        creator_name=args.creator,
+        out_path=args.out,
+        register=not args.out,
+        progress=_note,
+    )
+
+
+def _build_from_args(args, src, is_url):
+    """Pick the capture and run it. Folder, single page, bounded site crawl,
+    or the zimit container — the flags that only make sense for one of those
+    are refused here rather than silently ignored."""
+    engine = getattr(args, "engine", "builtin")
+    site = bool(getattr(args, "site", False))
+    crawl_flags = _crawl_flag_state(args)
 
     def refuse(flags, because):
         named = [flag for flag in flags if crawl_flags[flag]]
@@ -1192,25 +1829,43 @@ def _flag_or(args, name, default):
 
 
 def cli_create(args):
-    """`zimi create <folder-or-url>` — dispatch, then print a short honest
-    summary. Exit 2 with a one-line message on any user-fixable failure,
+    """`zimi create <folder-or-url> [<url>…]` — dispatch, then print a short
+    honest summary. Exit 2 with a one-line message on any user-fixable failure,
     matching the backup/restore CLI convention."""
-    src = args.source
-    is_url = bool(re.match(r"^https?://", src, re.IGNORECASE))
-    if is_url:
+    sources = list(args.source) if isinstance(args.source, list) else [args.source]
+    src = sources[0]
+    # ONE source restores the exact pre-multi-URL contract for everything
+    # downstream — the video arm and the zimit arm both read args.source, and
+    # handing either of them a one-element list instead of the string it has
+    # always been would be a silent break nothing else would catch.
+    if len(sources) == 1:
+        args.source = src
+    is_url = _is_http_url(src)
+    if is_url and len(sources) == 1:
         from zimi import video as _video
 
         if _video.wants_url(src, args):
             _video.cli_create_video(args)
             return
     try:
-        info = _build_from_args(args, src, is_url)
+        info = (
+            _build_pages_from_args(args, sources)
+            if len(sources) > 1
+            else _build_from_args(args, src, is_url)
+        )
     except CreateError as e:
         print(f"zimi: {e}", file=sys.stderr)
         sys.exit(2)
     print(f"ZIM written: {info['path']}")
     if info.get("engine") == "zimit":
         print(f"  captured by zimit: {info['url']}")
+    elif info.get("urls") is not None:
+        print(f"  captured: {_plural(info['pages'], 'page')} into one ZIM")
+        for captured in info["urls"]:
+            print(f"    {captured}")
+        for missed in info.get("skipped") or ():
+            print(f"    not captured: {missed}")
+        print(f"  assets carried: {info['assets']}")
     elif is_url and info.get("bytes") is not None:
         print(f"  captured: {info['url']}")
         print(

@@ -154,6 +154,24 @@ Two refusals worth provoking. Type a path that does not exist and it says "not a
 
 Finally, `ZIMI_OFFLINE=1` on the same command: the web page, whole site and video tiles go grey with "Offline mode is on — this needs an internet connection." Folder stays live, and so does Import if the warc2zim helper is already installed, because that is the truth — it only needs the network for its first install.
 
+## The Create page tells you what you are getting (round 2)
+
+Round 1 of the + button was, in Eric's words, a shot in the dark: you typed a path you could not see and a language code you had to know. Same local server as the section above; this is what changed.
+
+**The folder picker.** Folder mode now has a Browse button beside the path field. It lists **directories only** — never file names — one level at a time, and walking into one and pressing "Use this folder" fills the field and immediately says what is in there. Type a path by hand and it still works; the picker is a convenience, not a gate. It is primary-admin-only, same as folder mode itself.
+
+**The preview.** Give any mode a source and tab away. Before anything runs, a box appears under the field with what the server actually found: for a folder, the file count, the total size and which file becomes the main page; for a web page, the real title, where the address finally landed and how big it is; for a whole site, whether robots.txt allows the crawl; for a playlist, how many videos are in it. Nothing has been written at this point — probe it, then walk away, and your library is untouched.
+
+**The refusal you want to see early.** Point Web page at a JavaScript app rather than an article — `http://127.0.0.1:8893/spa.html` if you built the fixture above, or any single-page app — and the preview box turns red and says Zimi cannot capture it, with the engine's own sentence naming zimit as the fix. Round 1 told you that after the job ran.
+
+**Language stopped being a memory test.** Advanced → Language is a dropdown now, opening on Auto-detect, and the preview reports what it found: capture a French page and the box reads `fra (detected)` and the dropdown has already moved there. Two detections are at work and they do different jobs — the engine decides what the finished ZIM is stamped with, the preview is what you see before committing. Pick a language by hand and neither one overrules you.
+
+**Size budgets stopped being a syntax.** Advanced → Max size is a dropdown of real amounts (100 MB through 64 GB, plus the engine's own default), and each mode arrives with a sensible one already chosen: 500 MB for a site crawl, 4 GB for videos.
+
+**Six tiles, reordered.** Folder and Bookmarks come first because they always work — no network, no configuration — then the network modes by rising cost, then Import. **Bookmarks** is new: it shows how many pages you have saved and hands off to the folder-picking export selector that already lives in the bookmarks panel, rather than growing a second one here. With no bookmarks saved the button is disabled rather than failing when you press it.
+
+**Web page takes a list.** Paste several addresses, one per line, up to twenty, and they become one ZIM with a generated index and working links between the captured pages. The preview counts them and describes the first. A line that is not a URL is named — "not an http(s) URL: nope" — before anything runs, rather than failing on page eleven. Page mode also grew a live log and a working Cancel button in the process; it had neither before.
+
 ## What has no demo yet
 
 Identity (design only, waiting on your OIDC/Cloudflare call), k8s manifest against a real cluster, and the two P0s from the Pi audit (delete-under-lock, uncapped media serve) which are queued but not yet fixed. If it's not in this guide, treat it as unproven.

@@ -776,3 +776,118 @@ def test_cli_bad_max_bytes_is_a_clear_message(tmp_path):
     r = _cli(tmp_path, "https://example.com/x", "--site", "--max-bytes", "lots")
     assert r.returncode == 2
     assert "not a byte size" in r.stderr
+
+
+# ── the pre-flight probe ────────────────────────────────────────────────────
+#
+# The probe is a crawl that only looks. These tests are about the two things
+# that make it useful rather than dangerous: it produces the TREE a crawl would
+# walk, and it cannot be talked into walking the whole thing.
+
+
+def test_probe_returns_the_tree_a_crawl_would_walk(fixture_server):
+    got = crawler.probe_site(BASE + "/")
+    assert got["title"] == "Fixture"
+    root = got["tree"]
+    assert root["path"] == "/" and root["fetched"] is True
+
+    children = {child["path"]: child for child in root["children"]}
+    # The seed's same-origin page links are all there…
+    assert "/docs/intro.html" in children and "/chain/0.html" in children
+    # …and the ones the crawl itself would never follow are not: robots.txt
+    # disallows /private/, the .png and .bin are not pages, and the off-site
+    # and mailto links belong to somebody else.
+    assert "/private/secret.html" not in children
+    assert not any(c.endswith((".png", ".bin")) for c in children)
+    assert not any("elsewhere.invalid" in (c or "") for c in children)
+
+    # Pages the probe actually fetched carry real titles and their own
+    # children; ones it only discovered are listed by path alone.
+    intro = children["/docs/intro.html"]
+    assert intro["fetched"] is True and intro["title"] == "Fixture"
+    assert any(c["path"] == "/docs/next.html" for c in intro["children"])
+
+
+def test_probe_never_exceeds_its_fetch_cap(fixture_server, monkeypatch):
+    # The chain is seven pages deep and the seed links plenty besides; the cap
+    # is a hard stop in the loop, not a default a caller can raise.
+    monkeypatch.setattr(crawler, "PROBE_MAX_FETCHES", 3)
+    got = crawler.probe_site(BASE + "/")
+    assert got["fetched"] == 3
+    assert got["truncated"] is True
+    pages = [r for r in REQUESTS if r not in ("/robots.txt",)]
+    assert len(pages) <= 3
+
+
+def test_probe_never_goes_deeper_than_two_hops(fixture_server):
+    # /chain/2.html is three hops from the seed. The probe sees the link (it is
+    # a child of a page it fetched) but never fetches it.
+    crawler.probe_site(BASE + "/chain/0.html")
+    assert "/chain/3.html" not in REQUESTS
+
+
+def test_probe_reports_the_robots_verdict_rather_than_refusing(fixture_server):
+    ROBOTS[0] = "User-agent: *\nDisallow: /\n"
+    got = crawler.probe_site(BASE + "/")
+    # A crawl would refuse here. The PREVIEW says so and still shows what is
+    # there — that is the whole point of looking before you commit.
+    assert got["robots"] == "disallowed"
+
+
+def test_probe_says_when_robots_is_absent(fixture_server):
+    ROBOTS[0] = None
+    assert crawler.probe_site(BASE + "/")["robots"] == "absent"
+
+
+def test_probe_detects_the_language_and_estimates_the_size(fixture_server):
+    got = crawler.probe_site(BASE + "/")
+    assert got["language"] == "eng" and got["language_source"] == "fallback"
+    assert got["avg_page_bytes"] > 0
+    # The estimate is rough by construction — pages measured, assets assumed —
+    # but it must be bounded by the crawler's own default page cap.
+    assert 0 < got["est_pages"] <= crawler.DEFAULT_MAX_PAGES
+    assert got["est_bytes"] >= got["bytes"]
+
+
+def test_probe_flags_an_spa_seed(fixture_server):
+    assert crawler.probe_site(BASE + "/spa.html")["spa"] is True
+
+
+def test_probe_refuses_offline(monkeypatch):
+    monkeypatch.setenv("ZIMI_OFFLINE", "1")
+    with pytest.raises(creator.CreateError, match="ZIMI_OFFLINE"):
+        crawler.probe_site("http://example.invalid/")
+
+
+# ── several URLs on one command line ────────────────────────────────────────
+
+
+def test_cli_multiple_urls_build_one_zim(fixture_server, tmp_path):
+    out = tmp_path / "cli-pages.zim"
+    r = _cli(
+        tmp_path,
+        f"{BASE}/docs/intro.html",
+        f"{BASE}/docs/next.html",
+        "--out",
+        str(out),
+    )
+    assert r.returncode == 0, r.stderr
+    assert "2 pages into one ZIM" in r.stdout
+    arc = Archive(str(out))
+    assert arc.main_entry.get_item().path == "A/index"
+    index = bytes(
+        arc.get_entry_by_path("A/index").get_item().content
+    ).decode("utf-8")
+    assert index.count("<li>") >= 2
+
+
+def test_cli_refuses_crawl_flags_with_several_urls(tmp_path):
+    r = _cli(tmp_path, "https://a.invalid/x", "https://b.invalid/y", "--site")
+    assert r.returncode == 2
+    assert "--site applies to capturing one source" in r.stderr
+
+
+def test_cli_refuses_a_folder_among_several_urls(tmp_path):
+    r = _cli(tmp_path, "https://a.invalid/x", str(tmp_path))
+    assert r.returncode == 2
+    assert "every one of them must be a URL" in r.stderr

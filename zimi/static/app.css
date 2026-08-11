@@ -136,6 +136,12 @@
      and the almanac's dark shell shows immediately — before almanac.js loads. */
   html.almanac-boot #main-view { display: none !important; }
   html.almanac-boot #almanac-view { display: flex; }
+  /* Reload-into-Create boot gate, same contract as the almanac one above:
+     stamped by the head bootstrap for #create, dropped by _openCreateInner (or
+     by the load-failure paths), so a shared Create URL opens ON Create instead
+     of flashing the library first. */
+  html.create-boot #main-view { display: none !important; }
+  html.create-boot #create-view { display: flex; }
 
   html { height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
   body { background: var(--bg); color: var(--text); min-height: 100%; padding-top: var(--under-topbar); overflow: visible; }
@@ -647,6 +653,31 @@
   .create-credit a { color: var(--text2); text-decoration: underline; text-underline-offset: 2px; }
   .create-credit a:hover { color: var(--amber); }
   .create-actions { display: flex; align-items: center; gap: 8px; }
+  /* ── Pre-flight preview ──
+     What the server found at the source, shown before anything runs. Quieter
+     than the form it sits inside: it is an answer, not another control. The
+     not-ok variant borrows the error token for its edge so a refusal reads as
+     a refusal without shouting in red over the whole box. */
+  .create-source-row { display: flex; gap: 8px; align-items: center; }
+  .create-source-row .create-field { flex: 1 1 auto; min-width: 0; }
+  .create-preview-box { margin-top: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); display: flex; flex-direction: column; gap: 4px; }
+  .create-preview-box.not-ok { border-color: var(--error); }
+  .create-pv-row { display: flex; gap: 10px; font-size: 12px; align-items: baseline; }
+  .create-pv-k { color: var(--text2); flex: 0 0 auto; min-width: 92px; }
+  .create-pv-v { color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+  .create-pv-warn { font-size: 12px; color: var(--error); }
+  .create-pv-detail { color: var(--text2); margin-top: 4px; }
+  /* ── Folder picker ──
+     Directories only, never file names — see the design note on _create_browse
+     in manage.py. It is a list of buttons rather than a tree: one level at a
+     time is the whole interaction, and a tree would imply a recursion the
+     endpoint deliberately does not do. */
+  .create-browse-box { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); display: flex; flex-direction: column; gap: 8px; }
+  .create-browse-head { font-family: monospace; font-size: 11.5px; color: var(--text2); overflow-wrap: anywhere; }
+  .create-browse-list { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; overscroll-behavior: contain; }
+  .create-dir { text-align: left; font-family: inherit; font-size: 13px; color: var(--text); background: none; border: 1px solid transparent; border-radius: 6px; padding: 5px 8px; cursor: pointer; }
+  .create-dir:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .create-dir.up { color: var(--text2); }
   /* The running tail. Bounded height so a thousand-page crawl scrolls inside
      its own box instead of walking the page down forever. */
   .create-log { max-height: 260px; overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); font-family: monospace; font-size: 11.5px; line-height: 1.6; color: var(--text2); }
@@ -2053,8 +2084,14 @@
     .ms-pane { padding: 14px 12px; }
     .manage-tab { padding: 8px 14px; font-size: 12px; }
     body { overflow-x: hidden; }
-    /* Mobile: hide secondary actions, show overflow menu */
-    .random-btn, .lang-selector-btn, .manage-btn { display: none !important; }
+    /* Mobile: hide secondary actions, show overflow menu.
+       The + joins them rather than keeping an inline slot. Creating a ZIM is a
+       deliberate, occasional, admin-only act; search is why the topbar exists
+       and it is what a phone should give its width to. Same reasoning that put
+       Random, Language and Manage in here — and the ⋯ menu row it becomes is
+       reachable in one extra tap, which is the right price for an action you
+       take once a week. */
+    .random-btn, .lang-selector-btn, .manage-btn, .create-btn { display: none !important; }
     /* Reader controls (font size, read-aloud, pop-out) migrate into the ...
        menu on mobile — the topbar is too tight to hold them inline. */
     #font-btn, #tts-btn, #readerview-btn, #newtab-btn { display: none !important; }

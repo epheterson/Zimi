@@ -11,6 +11,10 @@ var SK = {
   ALMANAC_LOC: 'zimi_almanac_location',
   ALMANAC_HL: 'zimi_almanac_highlights',
   HIDE_LANG_CHOOSER: 'zimi_hide_lang_chooser',
+  // Last KNOWN answer to "may this browser create ZIMs?" — a boot-time hint so
+  // the + can be drawn before the manage probe lands, never an authority. See
+  // _createCanShow for why optimism here is safe in one direction only.
+  CAN_CREATE: 'zimi_can_create',
   HIDE_XZIM_LINKS: 'zimi_hide_cross_zim_links',
   // When set, ZIM article HTML is run through the server-side a11y
   // rewriter (alt="" on images, h1 promotion, html lang). Off by
@@ -1242,8 +1246,9 @@ function updateTopbar() {
   // search, source, manage, almanac, and the Create page itself — it is gone.
   var createBtn = document.getElementById('create-btn');
   if (createBtn) {
+    _createRememberCanShow();
     createBtn.style.display =
-      (mode === 'home' && !readerOpen && !_almanacOpen && !_createOpen && _canCreate())
+      (mode === 'home' && !readerOpen && !_almanacOpen && !_createOpen && _createCanShow())
         ? 'flex' : 'none';
   }
   document.getElementById('lang-selector-btn').style.display =
@@ -1580,6 +1585,13 @@ async function init() {
   _manageProbe = _probeManageAuth();
 
   _bindConnEvents();
+  // Paint the topbar BEFORE blocking on /list. The shell is fully interactive
+  // from here on — the + (from the remembered hint), the ⋯ menu, search — so a
+  // tap during a slow library load reaches a live control instead of landing on
+  // a button that has not been drawn yet. updateTopbar runs again with real
+  // authority once /list and the manage probe land, and corrects anything the
+  // hint got wrong.
+  updateTopbar();
   output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
   // Only block on /list — everything else loads in background.
   // A failure here must NOT collapse into "the library is empty": zimsCache
@@ -1678,6 +1690,14 @@ async function _initSecondary() {
   ]);
   // Always update topbar after secondary data (manage status determines gear visibility)
   updateTopbar();
+  // Create was opened before we could know whether this client may create —
+  // either from a cold /#create load or from a tap during the library fetch.
+  // Now we know. If the answer is no, leave rather than sit on a page whose
+  // every button the server will refuse.
+  if (_createOpen && !_canCreate()) {
+    closeCreate();
+    _showToast(t('create_needs_admin'));
+  }
   // Re-check URL for ?manage now that manageEnabled is known (route() ran before this resolved)
   var params = new URLSearchParams(location.search);
   if (params.get('manage') !== null && manageEnabled && mode !== 'manage') {
@@ -1709,6 +1729,21 @@ function route(push) {
     }, 8000);
     return;
   }
+  // Same for the Create page (#create). Opened optimistically: whether this
+  // client may create is not known until the manage probe lands, and every
+  // /manage/create* route is admin-gated server-side anyway — so the page
+  // opens now and _initSecondary closes it if the answer comes back no. The
+  // alternative, waiting, is the home-then-switch flash Eric asked us to kill.
+  if (location.hash === '#create') {
+    enterHome(false);
+    openCreate(true);
+    setTimeout(function () {
+      if (!_createOpen) document.documentElement.classList.remove('create-boot');
+    }, 8000);
+    return;
+  }
+  // A view the user opened during a slow boot is not something to route over.
+  if (_createOpen) return;
   if (params.get('manage') !== null && manageEnabled) { enterManage(null, _validMsSection(params.get('manage'))); return; }
   // Article deep link: /?a=<zim>/<path>. Root path always boots the SPA, so this
   // reliably opens full Zimi chrome on the target article regardless of browser
@@ -3524,15 +3559,28 @@ function _renderTodayCard() {
 var _createOpen = false;
 var _createLoaded = false;
 
-function openCreate() {
+// ``replaceState`` true means "this history entry IS Create" (a cold load of
+// /#create), false means "Create is a step forward from where we were".
+function openCreate(replaceState) {
+  // Modifier-click: open Create in a new browser tab, like the Almanac.
+  if (_isModClick()) {
+    _lastMouseEvent = null;
+    window.open('/#create', '_blank');
+    return;
+  }
   if (_createOpen) return;
-  if (_createLoaded) { _openCreateInner(); return; }
+  if (_createLoaded) { _openCreateInner(replaceState); return; }
   var el = document.createElement('script');
   el.src = '/static/create.js?v=1';
-  el.onload = function() { _createLoaded = true; _openCreateInner(); };
+  el.onload = function() { _createLoaded = true; _openCreateInner(replaceState); };
   // Offline with a cold cache: the module was never fetched. Say so rather
   // than leaving a button that appears to do nothing.
-  el.onerror = function() { _showToast(t('create_unavailable_offline')); };
+  el.onerror = function() {
+    // Drop the boot gate too, or a cold load of /#create leaves the library
+    // hidden behind a shell that is never going to fill in.
+    document.documentElement.classList.remove('create-boot');
+    _showToast(t('create_unavailable_offline'));
+  };
   document.head.appendChild(el);
 }
 
@@ -3545,7 +3593,18 @@ function closeCreate() {
   document.getElementById('create-view').classList.remove('open');
   mainView.classList.remove('hidden');
   _setWindowTitle('Zimi');
+  _dropCreateHash();
   updateTopbar();
+}
+
+// Strip #create without adding a history entry — the almanac's contract, so
+// closing Create leaves the URL as the page behind it rather than a hash that
+// would reopen on reload.
+function _dropCreateHash() {
+  if (location.hash !== '#create') return;
+  try {
+    history.replaceState(history.state, '', location.pathname + location.search);
+  } catch (e) {}
 }
 
 // True when an admin may create ZIMs from this client: management is on, and
@@ -3554,6 +3613,32 @@ function closeCreate() {
 // server enforces that regardless of what this returns.
 function _canCreate() {
   return manageEnabled && !_userSession && !_managePwRequired && !_managePublicLocked;
+}
+
+// Whether to DRAW the + before we can prove the answer.
+//
+// _canCreate() needs the manage probe, which lands after /list on a cold boot —
+// so on a big library the + was simply missing for as long as the library took
+// to arrive, and a tap in that window hit nothing. A dead button is worse than
+// an early one, so the last KNOWN answer is remembered and used until the real
+// one arrives; _createRememberCanShow reconciles it every time updateTopbar
+// runs with authority.
+//
+// The optimism is one-directional and that is the whole safety argument: the
+// hint is only ever written by an authoritative check, so a browser that was
+// never an admin never shows a +. The only wrong state possible is an admin
+// who has since been demoted seeing the button for the length of one probe,
+// and every /manage/create* route is admin-gated server-side regardless.
+function _createCanShow() {
+  return _manageProbed ? _canCreate() : _getStorageFlag(SK.CAN_CREATE);
+}
+
+function _createRememberCanShow() {
+  if (!_manageProbed) return;  // nothing authoritative to record yet
+  try {
+    if (_canCreate()) localStorage.setItem(SK.CAN_CREATE, '1');
+    else localStorage.removeItem(SK.CAN_CREATE);
+  } catch (e) {}
 }
 
 // -- Almanac mini-app (lazy-loaded from /static/almanac.js) --
@@ -15344,6 +15429,8 @@ function _isNarrow() {
 // Compact SVGs reused by the reader controls when they migrate into the ... menu.
 var _TBM_TTS_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
 var _TBM_NEWTAB_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+// The same + the inline button draws, at menu-row weight.
+var _TBM_CREATE_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
 
 // Keep the font + TTS menu rows (if the menu is open) in sync with live state.
 // _cycleReaderFont / _ttsSetSpeaking call this so the label updates in place
@@ -15426,6 +15513,14 @@ function _buildTopbarMenuHtml() {
   // would double them up (the desktop reader duplication bug).
   var navGroup = '';
   if (_isNarrow()) {
+    // Create a ZIM — the inline + is hidden at this width, so this row IS the
+    // button on a phone. Same visibility rule as the inline one: the home
+    // screen, and an admin. _createCanShow() carries the boot-time hint, so
+    // the row is there on a cold load instead of appearing a second later.
+    if (mode === 'home' && !readerOpen && !_almanacOpen && !_createOpen && _createCanShow()) {
+      navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();openCreate()">' +
+        _TBM_CREATE_ICON + ' ' + tH('create_zim') + '</button>';
+    }
     navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
     if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
     // Manage row: while downloads are active, carry the count and route the tap

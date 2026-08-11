@@ -36,11 +36,14 @@ import tempfile
 
 import zimi.server as _srv
 from zimi.creator import (
+    DEFAULT_LANGUAGE,
+    LANGUAGE_AUTO,
     CreateError,
     _finish_output,
     _fmt_bytes,
     _try_register,
     _zim_file_item_class,
+    language_tag_to_iso3,
 )
 from zimi.p2p import is_offline
 from zimi.zimwriter import (
@@ -63,6 +66,10 @@ DEFAULT_MAX_ZIM_BYTES = 4 * 1024**3  # total budget: keep video ZIMs shareable
 DEFAULT_VIDEO_FORMAT = "best[height<=720][ext=mp4]/best[height<=720]/best"
 DEFAULT_AUDIO_FORMAT = "bestaudio[ext=m4a]/bestaudio/best"
 SUBTITLE_MIME = "text/vtt"
+# Per-socket ceiling for the metadata-only playlist read. Bounds the preview
+# (and the build's first step) against a host that accepts a connection and
+# then says nothing.
+FLAT_PROBE_SOCKET_TIMEOUT = 15.0
 INSTALL_HINT = (
     "yt-dlp is not installed — video capture needs it. "
     "Install it with: pip install yt-dlp"
@@ -218,12 +225,20 @@ def _unique_id(base, used):
 
 def _flat_entries(mod, url, limit):
     """Cheap flat probe: the playlist head plus its entry list (no media).
-    A non-playlist URL comes back as a single-entry list."""
+    A non-playlist URL comes back as a single-entry list.
+
+    ``socket_timeout`` is not optional politeness. This is the one network call
+    the pre-flight preview makes, and a preview that can hang forever on an
+    unresponsive host is not bounded — it is just a slow job wearing a
+    preview's name. yt-dlp's own default here is "wait", so the bound has to be
+    stated. It applies to the real build too, which wants it for the same
+    reason on a Pi."""
     opts = {
         "quiet": True,
         "no_warnings": True,
         "extract_flat": "in_playlist",
         "skip_download": True,
+        "socket_timeout": FLAT_PROBE_SOCKET_TIMEOUT,
     }
     if limit:
         opts["playlistend"] = limit
@@ -392,7 +407,83 @@ def _index_html(title, subtitle, rows, skipped, max_bytes):
     ).encode("utf-8")
 
 
+# ── the pre-flight probe ────────────────────────────────────────────────────
+
+# What the preview reads and shows. The flat probe downloads NO media — it is
+# the same metadata call the real build already makes first — so the cap here
+# is about the size of the answer, not about the cost of getting it.
+PROBE_MAX_ENTRIES = 500
+PROBE_SAMPLE = 6
+
+
+def probe_video(url, limit=None):
+    """Read a playlist/channel without downloading a byte of it: how many
+    entries, how long in total, and the first few titles.
+
+    This is yt-dlp's flat extraction — exactly what ``create_video_zim`` runs
+    before it starts downloading — so the preview tells the truth about what
+    the real job would find, and costs one metadata request to say it."""
+    mod = _yt_dlp()
+    if mod is None:
+        raise CreateError(INSTALL_HINT)
+    if is_offline():
+        raise CreateError("ZIMI_OFFLINE is set — refusing to fetch from the network.")
+    head, entries = _flat_entries(
+        mod, url, min(limit or PROBE_MAX_ENTRIES, PROBE_MAX_ENTRIES)
+    )
+    total = 0
+    known = 0
+    sample = []
+    for entry in entries:
+        seconds = entry.get("duration")
+        if isinstance(seconds, (int, float)) and seconds > 0:
+            total += int(seconds)
+            known += 1
+        if len(sample) < PROBE_SAMPLE:
+            sample.append(
+                {
+                    "title": str(entry.get("title") or entry.get("id") or "video"),
+                    "duration": _fmt_duration(seconds),
+                }
+            )
+    return {
+        "url": url,
+        "title": str(head.get("title") or entries[0].get("title") or "Videos"),
+        "uploader": str(head.get("uploader") or head.get("channel") or ""),
+        "playlist": head.get("_type") == "playlist",
+        "entries": len(entries),
+        # Durations come back per entry and sometimes missing; say how many of
+        # them the total actually covers rather than presenting a short total
+        # as if it were complete.
+        "duration": _fmt_duration(total) if total else "",
+        "duration_known": known,
+        "sample": sample,
+    }
+
+
 # ── the build ───────────────────────────────────────────────────────────────
+
+
+def _video_language(requested, videos):
+    """The language for a video ZIM, as ``(code, how)``.
+
+    yt-dlp reports a ``language`` per entry when the platform knows one; that
+    is the only honest signal here, so auto uses it and nothing else. A
+    playlist that declares nothing is English by default, exactly as before —
+    guessing a language from a filename would be worse than saying so."""
+    from zimi.creator import requested_language
+
+    named = requested_language(requested)
+    if named:
+        return named, "requested"
+    codes = []
+    for v in videos:
+        code = language_tag_to_iso3((v.get("info") or {}).get("language"))
+        if code:
+            codes.append(code)
+    if not codes:
+        return DEFAULT_LANGUAGE, "fallback"
+    return max(set(codes), key=lambda c: (codes.count(c), -codes.index(c))), "media"
 
 
 def create_video_zim(
@@ -402,7 +493,7 @@ def create_video_zim(
     out_path=None,
     title=None,
     description=None,
-    language="eng",
+    language=LANGUAGE_AUTO,
     creator_name="Zimi",
     fmt=None,
     audio_only=False,
@@ -473,6 +564,9 @@ def create_video_zim(
         if not videos:
             raise CreateError("nothing fit under the size budget — raise --max-bytes")
 
+        language, language_source = _video_language(language, videos)
+        if language_source != "requested":
+            say(f"content language: {language} (from the media metadata)")
         out = _finish_output(
             out_dir or _srv.ZIM_DIR, out_path, _slug(zim_title, "videos")
         )
@@ -610,6 +704,8 @@ def create_video_zim(
         "main": "index",
         "registered": registered,
         "url": url,
+        "language": language,
+        "language_source": language_source,
     }
 
 

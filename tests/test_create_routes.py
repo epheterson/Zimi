@@ -211,10 +211,18 @@ def test_option_clamping_keeps_absurd_numbers_out_of_the_engine(stub_engine):
 
 
 def test_an_overlong_source_is_refused():
-    h = _post(
+    """Page mode's whole-field ceiling is the URL cap times a URL, so a single
+    absurd line has to be caught per-address rather than by the total."""
+    one_huge = _post(
         "/manage/create", {"mode": "page", "source": "https://e.org/" + "a" * 4000}
     )
-    assert h.status == 400
+    assert one_huge.status == 400
+    assert _post("/manage/create", {"mode": "site", "source": "https://e.org/" + "a" * 4000}).status == 400
+    whole_field = _post(
+        "/manage/create",
+        {"mode": "page", "source": "\n".join(["https://e.org/x"] * 100000)},
+    )
+    assert whole_field.status == 400
 
 
 # ── advanced options ────────────────────────────────────────────────────────
@@ -627,9 +635,11 @@ def test_cancel_stops_a_streaming_job_and_says_nothing_was_added(monkeypatch):
     assert "nothing was added" in body["error"]
 
 
-def test_folder_and_page_jobs_declare_themselves_uncancellable(monkeypatch, tmp_path):
-    """Those engines take no progress callback, so there is no line boundary to
-    interrupt at. The status says so instead of showing a button that lies."""
+def test_a_folder_job_declares_itself_uncancellable(monkeypatch, tmp_path):
+    """create_folder_zim takes no progress callback, so there is no line
+    boundary to interrupt at. The status says so instead of showing a button
+    that lies. Page mode used to be in this boat and no longer is: it runs
+    through create_pages_zim, which reports progress."""
     gate = {"go": False}
 
     def slow_run(job, opts):
@@ -641,6 +651,29 @@ def test_folder_and_page_jobs_declare_themselves_uncancellable(monkeypatch, tmp_
     (tmp_path / "src").mkdir()
     _post("/manage/create", {"mode": "folder", "source": str(tmp_path / "src")})
     assert _get("/manage/create/status").body["cancellable"] is False
+    gate["go"] = True
+    _wait_done()
+
+
+def test_every_mode_with_a_progress_callback_is_cancellable(monkeypatch, tmp_path):
+    """The two lists have to agree: a mode is cancellable exactly when its
+    engine takes a progress sink, because that callback IS the cancel."""
+    gate = {"go": False}
+
+    def slow_run(job, opts):
+        while not gate["go"]:
+            time.sleep(0.005)
+        return {"path": str(tmp_path / "x.zim")}
+
+    monkeypatch.setattr(manage, "_create_run", slow_run)
+    for mode, source in (
+        ("page", "https://example.org/a"),
+        ("site", "https://example.org/"),
+        ("video", "https://example.org/list"),
+    ):
+        manage._create_job = None
+        _post("/manage/create", {"mode": mode, "source": source})
+        assert _get("/manage/create/status").body["cancellable"] is True, mode
     gate["go"] = True
     _wait_done()
 

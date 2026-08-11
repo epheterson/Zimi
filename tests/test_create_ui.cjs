@@ -57,11 +57,27 @@ for (const [name, fn] of Object.entries({
 
 const def = id => CREATE_MODE_DEFS.find(d => d.id === id);
 
-// ── the five modes are the five the server accepts ──────────────────────────
+// ── the modes, and which of them the server has ever heard of ───────────────
 
+// Order is LIKELY USE. Capturing something off the web is why almost everyone
+// opens this page, so the URL modes lead; the two that start from something
+// already on the server come last. Folder must NOT be first — leading with
+// "type a path on the server" is the round-one complaint this page exists to
+// answer, so this assertion is a product decision, not a detail.
 eq(CREATE_MODE_DEFS.map(d => d.id),
-  ['folder', 'page', 'site', 'video', 'import'],
-  'mode ids match the server CREATE_MODES tuple');
+  ['page', 'site', 'video', 'bookmarks', 'folder', 'import'],
+  'tile order: the web modes first, bookmarks, then the server-side two');
+check(CREATE_MODE_DEFS[0].id !== 'folder', 'folder is never the first tile');
+
+// Bookmarks is a CLIENT mode — its source is this browser's localStorage, and
+// the server's CREATE_MODES tuple does not contain it. Sending one would be a
+// 400 at best; this is the assertion that keeps the two lists honest.
+eq(CREATE_MODE_DEFS.filter(d => !d.client).map(d => d.id).sort(),
+  ['folder', 'import', 'page', 'site', 'video'],
+  'the server-bound modes are exactly the server CREATE_MODES tuple');
+
+check(_createBuildRequest('bookmarks', { source: 'anything at all' }) === null,
+  'a client mode refuses to build a server request, whatever is in the field');
 
 // Elegance is a contract here, not a mood: the form you SEE stays small. Two
 // visible flags is the ceiling, and everything else a mode offers has to live
@@ -103,10 +119,11 @@ for (const key of Object.keys(CREATE_FIELDS)) {
 // The advanced sets, pinned. These are the flags the engines take that a
 // browser can reach; changing one is a product decision, not a refactor.
 eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
-  ['folder', ['language']],
   ['page', ['language']],
   ['site', ['max_depth', 'max_bytes', 'delay', 'language', 'ignore_robots']],
   ['video', ['format', 'max_bytes', 'language']],
+  ['bookmarks', []],
+  ['folder', ['language']],
   ['import', ['name']]
 ], 'each mode advertises its documented advanced options');
 
@@ -134,11 +151,11 @@ for (const d of CREATE_MODE_DEFS) {
     `${d.id} is available when the server is online`);
 }
 eq(CREATE_MODE_DEFS.filter(d => _createModeAvailable(d, true, true)).map(d => d.id),
-  ['folder', 'import'],
-  'offline with the sidecar installed leaves folder + import');
+  ['bookmarks', 'folder', 'import'],
+  'offline with the sidecar installed leaves bookmarks, folder and import');
 eq(CREATE_MODE_DEFS.filter(d => _createModeAvailable(d, true, false)).map(d => d.id),
-  ['folder'],
-  'offline without the sidecar leaves folder alone — import needs one online run');
+  ['bookmarks', 'folder'],
+  'offline without the sidecar: import drops out, the two local modes stay');
 
 // ── request mapping ─────────────────────────────────────────────────────────
 
@@ -282,6 +299,80 @@ s = _createMergeLines([], 0, { lines: flood, cursor: flood.length });
 check(s.lines.length === CREATE_LOG_MAX, 'the client tail is bounded too');
 check(s.lines[s.lines.length - 1] === flood[flood.length - 1],
   'the bounded tail keeps the NEWEST lines');
+
+// ── round 2: the preview rows ───────────────────────────────────────────────
+//
+// What the preview claims is the entire promise the page makes before a job
+// runs. A preview that says the wrong number is worse than no preview: it is
+// the shot in the dark with a confident voice.
+
+const { _createPreviewRows } = sandbox;
+check(typeof _createPreviewRows === 'function', 'extracted _createPreviewRows');
+
+// The sandbox has no app.js, so lend it the two globals the rows are built from.
+sandbox._fmtBytes = b => b + ' B';
+sandbox.t = k => k;
+
+const rowMap = p => Object.fromEntries(_createPreviewRows(p).map(r => [r.k, r.v]));
+
+eq(rowMap({ mode: 'folder', files: 47, bytes: 1024, main: 'index.html', language: 'fra' }),
+  {
+    create_pv_files: '47',
+    create_pv_size: '1024 B',
+    create_pv_main: 'index.html',
+    create_pv_language: 'fra create_pv_detected'
+  },
+  'folder rows: count, size, main page, detected language');
+
+check(rowMap({ mode: 'folder', files: 20000, files_capped: true, bytes: 0 }).create_pv_files === '20000+',
+  'a capped count says so rather than claiming an exact total');
+
+// Absent facts are absent rows. A preview line reading "Main page:" with
+// nothing after it is a worse answer than not asking the question.
+eq(_createPreviewRows({ mode: 'folder', files: 0, bytes: 0 }).map(r => r.k),
+  ['create_pv_files', 'create_pv_size'],
+  'a missing main page and language drop their rows entirely');
+
+eq(_createPreviewRows({ mode: 'page', title: 'Handbuch', final_url: 'http://x/', bytes: 8 }).map(r => r.k),
+  ['create_pv_title', 'create_pv_address', 'create_pv_size'],
+  'page rows, with no robots line when the server did not report one');
+
+check(rowMap({ mode: 'site', title: 'T', final_url: 'u', bytes: 1, robots_allowed: false })
+  .create_pv_robots === 'create_pv_robots_no',
+  'site rows carry the robots verdict when there is one');
+
+check(rowMap({ mode: 'video', videos: 12 }).create_pv_videos === '12+',
+  'a playlist sampled to the cap is reported as "12+", not as exactly 12');
+check(rowMap({ mode: 'video', videos: 3 }).create_pv_videos === '3',
+  'a playlist shorter than the cap is reported exactly');
+
+check(rowMap({ mode: 'import', bytes: 9, sidecar_ready: false }).create_pv_helper === 'create_pv_installs',
+  'import says whether its helper still has to install');
+
+eq(_createPreviewRows(null), [], 'no probe reply means no rows');
+
+// ── round 2: the option tables ──────────────────────────────────────────────
+
+const { CREATE_SIZE_OPTIONS, CREATE_LANGUAGE_OPTIONS } = sandbox;
+check(CREATE_SIZE_OPTIONS[0].v === '' && !!CREATE_SIZE_OPTIONS[0].k,
+  'the size select opens on "engine default", carrying an i18n key');
+check(CREATE_LANGUAGE_OPTIONS[0].v === '' && !!CREATE_LANGUAGE_OPTIONS[0].k,
+  'the language select opens on Auto');
+check(CREATE_LANGUAGE_OPTIONS.slice(1).every(o => /^[a-z]{3}$/.test(o.v)),
+  'every language option is an ISO 639-3 code the server will accept');
+check(CREATE_LANGUAGE_OPTIONS.slice(1).every(o => !!o.t && !o.k),
+  'language names are literals, not translation keys');
+
+// Per-mode budget defaults have to name options that exist, or the select
+// silently falls back to its first entry and the default is a lie.
+for (const d of CREATE_MODE_DEFS) {
+  if (!d.pick) continue;
+  for (const key of Object.keys(d.pick)) {
+    const opts = (sandbox.CREATE_FIELDS[key].options || []).map(o => (typeof o === 'string' ? o : o.v));
+    check(opts.indexOf(d.pick[key]) >= 0,
+      `${d.id}'s preselected ${key} (${d.pick[key]}) is a real option`);
+  }
+}
 
 if (failures) {
   console.error(`\n${failures} failure(s)`);

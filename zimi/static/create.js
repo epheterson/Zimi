@@ -23,12 +23,16 @@ var CREATE_POLL_MAX_MS = 10000;
 // Mirrors the server's ring buffer, so the client never holds more tail than
 // the server is willing to produce.
 var CREATE_LOG_MAX = 500;
+// What the server's probe stops counting at, so the preview can say "12+"
+// rather than claiming a playlist is exactly as long as the sample.
+var CREATE_PROBE_CAP = 12;
 
 var _CREATE_ICONS = {
   folder: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   page: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/></svg>',
   site: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/></svg>',
   video: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><polygon points="10 9 15 12 10 15 10 9"/></svg>',
+  bookmarks: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>',
   'import': '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M10 12h4"/></svg>'
 };
 
@@ -40,16 +44,31 @@ var _CREATE_ICONS = {
 //   sidecar     — needs the warc2zim helper (installed on first use, online)
 //   flags       — shown on the form itself; two is the ceiling, on purpose
 //   advanced    — shown inside the collapsed "Advanced" disclosure
-//   hints       — per-mode placeholder overrides, where one field's real
-//                 default differs by engine (a crawl budget is not a video one)
+//   hints       — per-mode placeholder overrides, for text and number fields
+//   pick        — per-mode preselected option, for selects, where one field's
+//                 real default differs by engine (a crawl budget is not a
+//                 video one). A select has no placeholder, so a default it is
+//                 meant to arrive with has to be a chosen option.
+//   browse      — the source is a server path, so offer the folder picker
+// Bookmarks is one of the six ways to make a ZIM and the only one whose source
+// is not on the server: the bookmarks live in this browser's localStorage. So it
+// is a CLIENT mode — it never reaches /manage/create, and its button hands off
+// to the export selector that already exists in the bookmarks panel rather than
+// growing a second, worse folder picker here.
+var CREATE_BOOKMARKS_DEF = {
+  id: 'bookmarks', network: false, client: true, flags: [], advanced: []
+};
+
+// Order is LIKELY USE, which is not the same as likely to succeed. Capturing
+// something off the web is why almost everyone opens this page, so the three
+// URL modes lead, cheapest first; then bookmarks, which is a handful of
+// articles you already chose; then the two that start from something already
+// sitting on the server, which is the rarest way in and the one you only reach
+// deliberately. Folder is emphatically not first — leading with "type a path on
+// the server" is what made round one feel like a shot in the dark.
 var CREATE_MODE_DEFS = [
   {
-    id: 'folder', network: false,
-    label: 'create_label_folder', placeholder: 'create_ph_folder',
-    flags: [], advanced: ['language']
-  },
-  {
-    id: 'page', network: true,
+    id: 'page', network: true, multiline: true,
     label: 'create_label_page_url', placeholder: 'create_ph_url',
     flags: [], advanced: ['language']
   },
@@ -58,20 +77,70 @@ var CREATE_MODE_DEFS = [
     label: 'create_label_site_url', placeholder: 'create_ph_url',
     flags: ['max_pages'],
     advanced: ['max_depth', 'max_bytes', 'delay', 'language', 'ignore_robots'],
-    hints: { max_bytes: '512M' }
+    pick: { max_bytes: '500M' }
   },
   {
     id: 'video', network: true,
     label: 'create_label_video_url', placeholder: 'create_ph_video',
     flags: ['audio_only', 'limit'],
     advanced: ['format', 'max_bytes', 'language'],
-    hints: { max_bytes: '4G' }
+    pick: { max_bytes: '4G' }
+  },
+  CREATE_BOOKMARKS_DEF,
+  {
+    id: 'folder', network: false, browse: true,
+    label: 'create_label_folder', placeholder: 'create_ph_folder',
+    flags: [], advanced: ['language']
   },
   {
     id: 'import', network: false, sidecar: true,
     label: 'create_label_archive', placeholder: 'create_ph_archive',
     flags: [], advanced: ['name']
   }
+];
+
+// Size budgets, as amounts rather than as a syntax to remember. The values are
+// the strings the engines' own parse_size already accepts, so the web form does
+// not invent a second dialect of a field the CLI already has. Empty means "the
+// engine's own default", which is the honest name for leaving it alone.
+var CREATE_SIZE_OPTIONS = [
+  { v: '', k: 'create_size_default' },
+  { v: '100M', t: '100 MB' },
+  { v: '500M', t: '500 MB' },
+  { v: '1G', t: '1 GB' },
+  { v: '4G', t: '4 GB' },
+  { v: '16G', t: '16 GB' },
+  { v: '64G', t: '64 GB' }
+];
+
+// Content languages, ISO 639-3, in each language's own name — someone choosing
+// the language of their content reads it in that language. Not a complete list
+// and not meant to be: it is the common cases, and the probe's detection covers
+// the rest by reading what the source itself declares.
+var CREATE_LANGUAGE_OPTIONS = [
+  { v: '', k: 'create_language_auto' },
+  { v: 'ara', t: 'العربية (ara)' },
+  { v: 'ben', t: 'বাংলা (ben)' },
+  { v: 'deu', t: 'Deutsch (deu)' },
+  { v: 'eng', t: 'English (eng)' },
+  { v: 'fas', t: 'فارسی (fas)' },
+  { v: 'fra', t: 'Français (fra)' },
+  { v: 'heb', t: 'עברית (heb)' },
+  { v: 'hin', t: 'हिन्दी (hin)' },
+  { v: 'ind', t: 'Indonesia (ind)' },
+  { v: 'ita', t: 'Italiano (ita)' },
+  { v: 'jpn', t: '日本語 (jpn)' },
+  { v: 'kor', t: '한국어 (kor)' },
+  { v: 'nld', t: 'Nederlands (nld)' },
+  { v: 'pol', t: 'Polski (pol)' },
+  { v: 'por', t: 'Português (por)' },
+  { v: 'rus', t: 'Русский (rus)' },
+  { v: 'spa', t: 'Español (spa)' },
+  { v: 'swa', t: 'Kiswahili (swa)' },
+  { v: 'tur', t: 'Türkçe (tur)' },
+  { v: 'ukr', t: 'Українська (ukr)' },
+  { v: 'vie', t: 'Tiếng Việt (vie)' },
+  { v: 'zho', t: '中文 (zho)' }
 ];
 
 // Every option any form can show, described once: which control draws it, how
@@ -83,6 +152,8 @@ var CREATE_MODE_DEFS = [
 //   kind    — how the value is coerced: int, num (fractional), bool, text
 //   min     — below this the field means "use the engine's default", so it is
 //             left out entirely rather than sent as 0
+//   options — for selects: bare strings (label from an i18n key built off the
+//             field name) or {v, t|k} rows carrying a literal label or a key
 var CREATE_FIELDS = {
   max_pages: {
     id: 'create-max-pages', control: 'number', label: 'create_max_pages',
@@ -105,16 +176,19 @@ var CREATE_FIELDS = {
     kind: 'num', min: 0, max: 60, step: '0.1', ph: '0.5'
   },
   max_bytes: {
-    id: 'create-max-bytes', control: 'text', label: 'create_max_bytes',
-    kind: 'text', ph: '500M'
+    id: 'create-max-bytes', control: 'select', label: 'create_max_bytes',
+    kind: 'text', options: CREATE_SIZE_OPTIONS
   },
   ignore_robots: {
     id: 'create-ignore-robots', control: 'check', label: 'create_ignore_robots',
     kind: 'bool', note: 'create_ignore_robots_note'
   },
+  // Auto first, and the probe fills it in: the page you are capturing already
+  // declares its language, so making someone recall an ISO 639-3 code was the
+  // purest form of the shot in the dark.
   language: {
-    id: 'create-language', control: 'text', label: 'create_language',
-    kind: 'text', ph: 'eng'
+    id: 'create-language', control: 'select', label: 'create_language',
+    kind: 'text', options: CREATE_LANGUAGE_OPTIONS
   },
   // Named presets only. The server accepts these four words and nothing else —
   // a yt-dlp format expression is a downloader instruction, and it stays on the
@@ -154,6 +228,15 @@ var _createSubmitting = false;
 // a finished one only stays on screen if this page put it there.
 var _createAdopted = false;
 var _createTilesKey = null;   // availability the tiles were last drawn from
+// The last probe reply, and what it was a reply ABOUT. Keeping the source
+// alongside it is what stops a preview of the previous folder sitting
+// underneath the path you have since retyped.
+var _createPreview = null;
+var _createPreviewSource = '';
+var _createProbing = false;
+// The folder picker's current directory, or null when it is closed.
+var _createBrowsePath = null;
+var _createBrowseRows = null;
 
 // ── pure logic (unit-tested in tests/test_create_ui.cjs) ─────────────────────
 
@@ -162,6 +245,7 @@ var _createTilesKey = null;   // availability the tiles were last drawn from
 // import only needs the network the FIRST time, to install its helper — so an
 // offline machine with the helper already there keeps the tile live.
 function _createModeAvailable(def, offline, importReady) {
+  if (def.client) return true;   // nothing to fetch and nothing to install
   if (!offline) return true;
   if (def.network) return false;
   if (def.sidecar) return !!importReady;
@@ -204,7 +288,7 @@ function _createFieldValue(key, fields) {
 // the DOM by a form the user closed belongs to that form, not to this one.
 function _createBuildRequest(modeId, fields) {
   var def = _createDef(modeId);
-  if (!def) return null;
+  if (!def || def.client) return null;
   var source = String((fields && fields.source) || '').trim();
   if (!source) return null;
   var body = { mode: def.id, source: source };
@@ -219,6 +303,42 @@ function _createBuildRequest(modeId, fields) {
   // describe a preference nothing reads. The server drops it too.
   if (body.audio_only) delete body.format;
   return body;
+}
+
+// A probe reply as the lines the preview shows, in reading order. Pure and
+// table-driven so the .cjs test can hold every mode's shape: what the preview
+// claims is the whole promise the page makes before a job runs, and a preview
+// that says the wrong number is worse than no preview at all.
+//
+// Rows are {k, v}: an i18n KEY and an already-formatted value. The server sends
+// counts and byte totals, never sentences, so nothing here needs translating at
+// the far end.
+function _createPreviewRows(p) {
+  if (!p) return [];
+  var rows = [];
+  var add = function(k, v) { if (v !== undefined && v !== null && v !== '') rows.push({ k: k, v: String(v) }); };
+  if (p.mode === 'folder') {
+    add('create_pv_files', p.files + (p.files_capped ? '+' : ''));
+    add('create_pv_size', _fmtBytes(p.bytes || 0));
+    add('create_pv_main', p.main);
+  } else if (p.mode === 'video') {
+    add('create_pv_videos', p.videos + (p.videos >= CREATE_PROBE_CAP ? '+' : ''));
+    add('create_pv_playlist', p.playlist);
+    add('create_pv_channel', p.uploader);
+  } else if (p.mode === 'import') {
+    add('create_pv_size', _fmtBytes(p.bytes || 0));
+    add('create_pv_helper', t(p.sidecar_ready ? 'create_pv_ready' : 'create_pv_installs'));
+  } else {
+    if (p.urls > 1) add('create_pv_pages', String(p.urls));
+    add('create_pv_title', p.title);
+    add(p.urls > 1 ? 'create_pv_first' : 'create_pv_address', p.final_url);
+    add('create_pv_size', _fmtBytes(p.bytes || 0));
+    if (p.robots_allowed !== undefined) {
+      add('create_pv_robots', t(p.robots_allowed ? 'create_pv_robots_ok' : 'create_pv_robots_no'));
+    }
+  }
+  if (p.language) add('create_pv_language', p.language + ' ' + t('create_pv_detected'));
+  return rows;
 }
 
 // Fold a status reply into the tail we are showing. The server sends only what
@@ -237,8 +357,20 @@ function _createMergeLines(lines, cursor, payload) {
 
 // ── the surface ─────────────────────────────────────────────────────────────
 
-function _openCreateInner() {
+// ``replaceState`` true means this history entry IS Create — a cold load of
+// /#create, where pushing would leave a phantom entry behind the page you
+// landed on. False means Create is a step forward, so Back returns to where
+// you came from.
+function _openCreateInner(replaceState) {
   _createOpen = true;
+  // The reload-into-Create boot gate (stamped by the head bootstrap before the
+  // first paint) has done its job once the real Create chrome is up.
+  document.documentElement.classList.remove('create-boot');
+  var url = location.pathname + location.search + '#create';
+  try {
+    if (replaceState) history.replaceState({ mode: 'create' }, '', url);
+    else history.pushState({ mode: 'create' }, '', url);
+  } catch (e) {}
   document.getElementById('create-view').classList.add('open');
   var mv = document.getElementById('main-view');
   if (mv) mv.classList.add('hidden');
@@ -258,6 +390,9 @@ function closeCreate() {
   var mv = document.getElementById('main-view');
   if (mv) mv.classList.remove('hidden');
   _setWindowTitle('Zimi');
+  // Shared with the pre-load shell in app.js so both paths strip the hash the
+  // same way — a leftover #create would reopen this page on the next reload.
+  if (typeof _dropCreateHash === 'function') _dropCreateHash();
   if (typeof updateTopbar === 'function') updateTopbar();
 }
 
@@ -318,6 +453,11 @@ function _createAvailabilityKey() {
 
 function _createSelectMode(id) {
   _createSelected = _createSelected === id ? null : id;
+  // A preview describes one source under one mode. Neither survives the switch.
+  _createPreview = null;
+  _createPreviewSource = '';
+  _createBrowsePath = null;
+  _createBrowseRows = null;
   _renderCreateTiles();
   _renderCreateForm();
   var input = document.getElementById('create-source');
@@ -337,10 +477,18 @@ function _createFieldHtml(key, def) {
       (f.onchange ? ' onchange="' + f.onchange + '"' : '') + '>' + label + '</label>';
   }
   if (f.control === 'select') {
+    // Options are either bare strings, whose label is an i18n key built from
+    // the field name (the original convention, kept for the video presets), or
+    // {v, t|k} rows carrying a literal label or a key of their own. Language
+    // and size names are literals on purpose: "Français" and "500 MB" read the
+    // same in every UI language, and translating them would be inventing work.
     var opts = '';
     for (var i = 0; i < f.options.length; i++) {
-      opts += '<option value="' + escAttr(f.options[i]) + '">' +
-        tH(f.label + '_' + f.options[i]) + '</option>';
+      var o = f.options[i];
+      var value = typeof o === 'string' ? o : o.v;
+      var text = typeof o === 'string' ? tH(f.label + '_' + o) : (o.k ? tH(o.k) : esc(o.t));
+      var pre = (def && def.pick && def.pick[key] === value) ? ' selected' : '';
+      opts += '<option value="' + escAttr(value) + '"' + pre + '>' + text + '</option>';
     }
     return '<label class="create-flag">' + label +
       '<select class="create-field create-pick" id="' + f.id + '">' + opts + '</select></label>';
@@ -380,16 +528,212 @@ function _createCreditHtml(modeId) {
     '</div>';
 }
 
+// ── the preview ─────────────────────────────────────────────────────────────
+
+function _renderCreatePreview() {
+  var host = document.getElementById('create-preview');
+  if (!host) return;
+  if (_createProbing) {
+    host.innerHTML = '<div class="create-status"><span class="spinner-inline" aria-hidden="true"></span>' +
+      '<span>' + tH('create_pv_looking') + '</span></div>';
+    return;
+  }
+  var p = _createPreview;
+  if (!p) { host.innerHTML = ''; return; }
+  var rows = _createPreviewRows(p);
+  var html = '';
+  for (var i = 0; i < rows.length; i++) {
+    html += '<div class="create-pv-row"><span class="create-pv-k">' + tH(rows[i].k) +
+      '</span><span class="create-pv-v">' + esc(rows[i].v) + '</span></div>';
+  }
+  // A warning is the whole point of looking first, so it sits above the facts
+  // and keeps the engine's own sentence when there is one.
+  var warn = '';
+  if (p.warning_key || p.detail) {
+    warn = '<div class="create-pv-warn">' +
+      (p.warning_key ? tH(p.warning_key) : '') +
+      (p.detail ? '<div class="create-pv-detail">' + esc(p.detail) + '</div>' : '') +
+      '</div>';
+  }
+  host.innerHTML = '<div class="create-preview-box' + (p.ok ? '' : ' not-ok') + '">' +
+    warn + html + '</div>';
+}
+
+// Ask the server what is actually there. Fired when the source stops changing,
+// which is the moment the question becomes answerable.
+async function _createProbeSource() {
+  var fields = _createFormFields();
+  var body = _createBuildRequest(_createSelected, fields);
+  if (!body) { _createPreview = null; _createPreviewSource = ''; _renderCreatePreview(); return; }
+  if (body.source === _createPreviewSource && _createPreview) return;  // already answered
+  _createProbing = true;
+  _createPreviewSource = body.source;
+  _renderCreatePreview();
+  try {
+    var res = await authedFetch('/manage/create/probe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    var data = {};
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) {
+      // A refusal here is the same refusal the run would give, so it belongs
+      // where the run's refusals go rather than in the preview box.
+      _createPreview = null;
+      _createFormError(data.error || t('create_error_generic'));
+    } else {
+      _createPreview = data;
+      _createFormError('');
+      _createApplyDetectedLanguage(data);
+    }
+  } catch (e) {
+    _createPreview = null;
+  } finally {
+    _createProbing = false;
+    _renderCreatePreview();
+  }
+}
+
+// The payoff for detecting a language: put it in the control, but never over
+// a choice the admin already made by hand.
+function _createApplyDetectedLanguage(p) {
+  if (!p || !p.language) return;
+  var el = document.getElementById(CREATE_FIELDS.language.id);
+  if (!el || el.value) return;
+  for (var i = 0; i < el.options.length; i++) {
+    if (el.options[i].value === p.language) { el.value = p.language; return; }
+  }
+}
+
+// ── the folder picker ───────────────────────────────────────────────────────
+
+function _createToggleBrowse() {
+  if (_createBrowsePath !== null) {
+    _createBrowsePath = null;
+    _createBrowseRows = null;
+    _renderCreateBrowse();
+    return;
+  }
+  var src = document.getElementById('create-source');
+  _createBrowseLoad((src && src.value.trim()) || '');
+}
+
+async function _createBrowseLoad(path) {
+  try {
+    var res = await authedFetch('/manage/create/browse?path=' + encodeURIComponent(path || ''));
+    var data = await res.json();
+    if (!res.ok) {
+      // An unreadable or missing directory is not a dead end: fall back to
+      // wherever the picker opens by default rather than closing on an error.
+      if (path) { _createBrowseLoad(''); return; }
+      _createFormError(data.error || t('create_error_generic'));
+      return;
+    }
+    _createBrowsePath = data.path;
+    _createBrowseRows = data;
+    _renderCreateBrowse();
+  } catch (e) {
+    _createFormError(t('create_error_generic'));
+  }
+}
+
+// Choosing a folder fills the field AND asks what is in it, because the two
+// questions ("which folder" and "what is in it") are one question.
+function _createBrowsePick() {
+  var src = document.getElementById('create-source');
+  if (src && _createBrowsePath) src.value = _createBrowsePath;
+  _createBrowsePath = null;
+  _createBrowseRows = null;
+  _renderCreateBrowse();
+  _createProbeSource();
+}
+
+function _renderCreateBrowse() {
+  var host = document.getElementById('create-browse');
+  if (!host) return;
+  var d = _createBrowseRows;
+  if (_createBrowsePath === null || !d) { host.innerHTML = ''; return; }
+  var rows = '';
+  if (d.parent) {
+    rows += '<button type="button" class="create-dir up" onclick="_createBrowseLoad(' +
+      "'" + escJs(d.parent) + "'" + ')">' + tH('create_browse_up') + '</button>';
+  }
+  for (var i = 0; i < d.entries.length; i++) {
+    var child = d.path.replace(/\/$/, '') + '/' + d.entries[i];
+    rows += '<button type="button" class="create-dir" onclick="_createBrowseLoad(' +
+      "'" + escJs(child) + "'" + ')">' + esc(d.entries[i]) + '</button>';
+  }
+  if (!d.entries.length) rows += '<div class="create-caption">' + tH('create_browse_empty') + '</div>';
+  host.innerHTML =
+    '<div class="create-browse-box">' +
+      '<div class="create-browse-head">' + esc(d.path) + '</div>' +
+      '<div class="create-browse-list">' + rows + '</div>' +
+      (d.truncated ? '<div class="create-caption">' + tH('create_browse_truncated') + '</div>' : '') +
+      '<div class="create-actions">' +
+        '<button type="button" class="ms-btn ms-btn-primary" onclick="_createBrowsePick()">' + tH('create_browse_use') + '</button>' +
+        '<button type="button" class="ms-btn" onclick="_createToggleBrowse()">' + tH('cancel') + '</button>' +
+      '</div>' +
+    '</div>';
+}
+
+// The bookmarks form: a count and a handoff. There is already a folder-picking
+// export selector in the bookmarks panel, and it is the right one — rebuilding a
+// second, thinner version of it here would mean two places to fix the day the
+// export grammar changes.
+function _createBookmarksFormHtml() {
+  var n = (typeof _bkLoad === 'function') ? _bkLoad().length : 0;
+  return '<div class="create-form">' +
+    '<div class="create-pv-row"><span class="create-pv-k">' + tH('create_pv_bookmarks') + '</span>' +
+      '<span class="create-pv-v">' + esc(String(n)) + '</span></div>' +
+    '<div class="create-caption">' + tH('create_bookmarks_note') + '</div>' +
+    '<div class="create-actions">' +
+      '<button type="button" class="ms-btn ms-btn-primary"' + (n ? '' : ' disabled') +
+        ' onclick="_createOpenBookmarkExport()">' + tH('create_bookmarks_choose') + '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+// Leave the Create page on the way through: the selector is a modal over the
+// library, and stacking it over a full-page surface it knows nothing about is
+// how you get two Escape handlers arguing.
+function _createOpenBookmarkExport() {
+  closeCreate();
+  if (typeof _bmOpenExport === 'function') _bmOpenExport();
+}
+
+// The source control. Three shapes, one decision: a list of addresses needs
+// room to be a list, a server path needs the picker beside it, everything else
+// is one line.
+function _createSourceControlHtml(def) {
+  var attrs = ' class="create-field" id="create-source" spellcheck="false"' +
+    ' autocapitalize="none" autocorrect="off" placeholder="' + escAttr(t(def.placeholder)) + '"';
+  if (def.multiline) {
+    return '<textarea rows="3"' + attrs + '></textarea>' +
+      '<div class="create-caption">' + tH('create_pages_note') + '</div>';
+  }
+  if (def.browse) {
+    return '<div class="create-source-row">' +
+      '<input type="text"' + attrs + '>' +
+      '<button type="button" class="ms-btn" onclick="_createToggleBrowse()">' + tH('create_browse') + '</button>' +
+    '</div>';
+  }
+  return '<input type="text"' + attrs + '>';
+}
+
 function _renderCreateForm() {
   var slot = document.getElementById('create-form-slot');
   if (!slot) return;
   var def = _createDef(_createSelected);
   if (!def) { slot.innerHTML = ''; return; }
+  if (def.client) { slot.innerHTML = _createBookmarksFormHtml(); return; }
   var advanced = _createFieldsHtml(def.advanced || [], def);
   slot.innerHTML =
     '<div class="create-form">' +
       '<label class="ms-form-label" for="create-source">' + tH(def.label) + '</label>' +
-      '<input type="text" class="create-field" id="create-source" spellcheck="false" autocapitalize="none" autocorrect="off" placeholder="' + escAttr(t(def.placeholder)) + '">' +
+      _createSourceControlHtml(def) +
+      '<div id="create-browse"></div>' +
+      '<div id="create-preview"></div>' +
       '<label class="ms-form-label" for="create-title">' + tH('create_label_title') + '</label>' +
       '<input type="text" class="create-field" id="create-title" placeholder="' + escAttr(t('create_ph_title')) + '">' +
       _createFieldsHtml(def.flags || [], def) +
@@ -407,10 +751,17 @@ function _renderCreateForm() {
   var src = document.getElementById('create-source');
   if (src) {
     src.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') { e.preventDefault(); _createSubmit(); }
+      // In a list of addresses, Enter starts the next one.
+      if (e.key === 'Enter' && !def.multiline) { e.preventDefault(); _createSubmit(); }
     });
+    // 'change' rather than 'input': it fires when the value has settled and
+    // focus leaves, which is exactly when the question "what is there?" becomes
+    // answerable without probing every keystroke.
+    src.addEventListener('change', function() { _createProbeSource(); });
   }
   _createSyncFormat();
+  _renderCreatePreview();
+  _renderCreateBrowse();
 }
 
 // Audio-only makes the quality preset moot. Greying it out says that where the

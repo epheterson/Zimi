@@ -52,6 +52,7 @@ import zimi.server as _srv
 from zimi.creator import (
     DEFAULT_FETCH_TIMEOUT,
     DEFAULT_MAX_REDIRECTS,
+    LANGUAGE_AUTO,
     SPA_REFUSAL,
     _A_TAG_RE,
     _fetch_html,
@@ -65,6 +66,7 @@ from zimi.creator import (
     http_asset_carrier,
     looks_like_spa,
     render_captured_page,
+    resolve_language,
     site_illustration,
 )
 from zimi.zimwriter import (
@@ -394,7 +396,7 @@ def _crawl(
         if delay:
             time.sleep(delay)
         try:
-            final_url, text, nbytes = _fetch_html(
+            final_url, text, nbytes, _clang = _fetch_html(
                 url, timeout=timeout, max_redirects=max_redirects
             )
         except CreateError as e:
@@ -480,7 +482,7 @@ def create_site_zim(
     out_path=None,
     title=None,
     description=None,
-    language="eng",
+    language=LANGUAGE_AUTO,
     creator_name="Zimi",
     max_pages=DEFAULT_MAX_PAGES,
     max_depth=DEFAULT_MAX_DEPTH,
@@ -528,7 +530,7 @@ def create_site_zim(
         delay = _robots_delay(robots, delay, note)
 
     budget = ByteBudget(max_bytes)
-    seed_url, seed_text, seed_bytes = _fetch_html(
+    seed_url, seed_text, seed_bytes, seed_clang = _fetch_html(
         url, timeout=timeout, max_redirects=max_redirects
     )
     budget.spend(seed_bytes)
@@ -536,6 +538,11 @@ def create_site_zim(
         raise CreateError(SPA_REFUSAL)
     if not same_origin(seed_url, origin):
         origin = _origin_of(seed_url)  # the seed redirected; that is the site
+    # The seed decides the crawl's language: it is the page the person named,
+    # and a same-origin crawl is overwhelmingly one site in one language.
+    language, language_source = resolve_language(language, seed_text, seed_clang)
+    if language_source != "requested":
+        note(f"content language: {language} (detected from the site)")
 
     parsed = urllib.parse.urlsplit(seed_url)
     zim_title = title or _page_title_from_html(seed_text, parsed.netloc)
@@ -641,6 +648,160 @@ def create_site_zim(
         "url": seed_url,
         "bytes": budget.used,
         "stopped": reason,
+        "language": language,
+        "language_source": language_source,
+    }
+
+
+# ── the pre-flight probe ────────────────────────────────────────────────────
+#
+# A shallow, hard-capped version of the crawl above, run before anybody commits
+# to the real one. It answers the question the form cannot: what IS this site,
+# where would a crawl go, and roughly how big is that. Every bound here is a
+# HARD cap enforced in the loop, not a default a caller may raise — a preview
+# that can be talked into a thousand fetches is just a crawl with a nicer name.
+
+PROBE_MAX_FETCHES = 20  # pages the probe will fetch, ever
+PROBE_MAX_DEPTH = 2  # link hops it will look down
+PROBE_TIMEOUT = 8.0  # per request; a slow site must not hold the pane
+PROBE_DEADLINE = 20.0  # wall clock for the whole probe
+PROBE_DELAY = 0.1  # politeness between probe requests
+PROBE_LINKS_PER_NODE = 12  # unfetched children listed under one page
+# What the size estimate assumes a page drags along with it. Pages are measured;
+# their images and stylesheets are not fetched at all, so this factor is the one
+# honest guess in the payload and the UI labels the number as rough.
+PROBE_ASSET_FACTOR = 3.0
+
+
+def _probe_path(url):
+    """The short label a tree row shows for a URL: its path and pagination
+    query, which is all that distinguishes one page of a site from another."""
+    parts = urllib.parse.urlsplit(url)
+    path = parts.path or "/"
+    return path + (("?" + parts.query) if parts.query else "")
+
+
+def probe_site(url, *, ignore_robots=False, timeout=PROBE_TIMEOUT):
+    """Look at a site the way a crawl would, for at most ``PROBE_MAX_FETCHES``
+    pages and ``PROBE_DEADLINE`` seconds, and return what was found.
+
+    The reply carries the link TREE (what the crawl would walk, with real page
+    titles for everything actually fetched and bare paths for what was only
+    discovered), the robots verdict, and a rough size estimate. It never writes
+    anything and never runs an engine — refusing here is the point: a site that
+    would fail the real capture fails the preview first, cheaply."""
+    from zimi.p2p import is_offline
+
+    if is_offline():
+        raise CreateError("ZIMI_OFFLINE is set — refusing to fetch from the network.")
+    if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
+        raise CreateError(f"not an http(s) URL: {url}")
+
+    deadline = time.monotonic() + PROBE_DEADLINE
+    origin = _origin_of(url)
+    robots = None if ignore_robots else load_robots(origin, timeout=timeout)
+    verdict = (
+        "ignored" if ignore_robots else ("absent" if robots is None else "allowed")
+    )
+    if robots is not None and not _robots_allows(robots, url):
+        verdict = "disallowed"
+
+    seed_url, seed_text, seed_bytes, seed_clang = _fetch_html(
+        url, timeout=timeout, max_redirects=DEFAULT_MAX_REDIRECTS
+    )
+    if not same_origin(seed_url, origin):
+        origin = _origin_of(seed_url)
+    language, language_source = resolve_language(LANGUAGE_AUTO, seed_text, seed_clang)
+
+    root = {
+        "path": _probe_path(seed_url),
+        "url": seed_url,
+        "title": _page_title_from_html(seed_text, _probe_path(seed_url)),
+        "fetched": True,
+        "children": [],
+    }
+    nodes = {normalize_url(seed_url): root}
+    seen = {normalize_url(seed_url)}
+    queue = deque()
+    total_bytes = seed_bytes
+    fetched = 1
+    truncated = False
+
+    def discover(node, text, base_url, depth):
+        """Attach this page's same-origin links as children, queueing the ones
+        the probe may still go and look at."""
+        nonlocal truncated
+        listed = 0
+        for link in extract_links(text, base_url):
+            key = normalize_url(link)
+            if (
+                key in seen
+                or not same_origin(key, origin)
+                or not looks_like_a_page(key)
+            ):
+                continue
+            if robots is not None and not _robots_allows(robots, key):
+                continue
+            seen.add(key)
+            if listed >= PROBE_LINKS_PER_NODE:
+                truncated = True
+                continue
+            listed += 1
+            child = {
+                "path": _probe_path(key),
+                "url": key,
+                "title": "",
+                "fetched": False,
+                "children": [],
+            }
+            node["children"].append(child)
+            nodes[key] = child
+            if depth < PROBE_MAX_DEPTH:
+                queue.append((key, depth + 1))
+
+    discover(root, seed_text, seed_url, 0)
+    while queue:
+        if fetched >= PROBE_MAX_FETCHES or time.monotonic() >= deadline:
+            truncated = True
+            break
+        key, depth = queue.popleft()
+        time.sleep(PROBE_DELAY)
+        try:
+            final_url, text, nbytes, _clang = _fetch_html(
+                key, timeout=timeout, max_redirects=DEFAULT_MAX_REDIRECTS
+            )
+        except CreateError as e:
+            log.debug("probe skipping %s: %s", key, e)
+            continue
+        if not same_origin(final_url, origin):
+            continue
+        fetched += 1
+        total_bytes += nbytes
+        node = nodes[key]
+        node["fetched"] = True
+        node["title"] = _page_title_from_html(text, node["path"])
+        discover(node, text, final_url, depth)
+
+    avg = total_bytes // max(1, fetched)
+    est_pages = min(len(seen), DEFAULT_MAX_PAGES)
+    return {
+        "url": seed_url,
+        "title": root["title"],
+        "language": language,
+        "language_source": language_source,
+        "spa": looks_like_spa(seed_text),
+        "robots": verdict,
+        "crawl_delay": _robots_delay(robots, 0.0, _noop) or None,
+        "fetched": fetched,
+        "discovered": len(seen),
+        "bytes": total_bytes,
+        "avg_page_bytes": avg,
+        # Rough by construction and labelled as such: pages measured, assets
+        # assumed. A number with a stated basis beats no number at all.
+        "est_pages": est_pages,
+        "est_bytes": int(avg * est_pages * PROBE_ASSET_FACTOR),
+        "tree": root,
+        "truncated": truncated,
     }
 
 

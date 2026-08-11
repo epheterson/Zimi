@@ -3065,16 +3065,27 @@ def main():
         help="Create a ZIM from a folder of files (HTML/Markdown/PDF), from a "
         "single web page, or from a bounded crawl of one site (--site)",
     )
-    p_create.add_argument("source", help="Folder path, or an http(s):// URL")
+    # Repeatable: several URLs are ONE ZIM holding all of those pages plus a
+    # generated index. One source keeps every existing behaviour exactly —
+    # folder, single page, --site crawl, video URL — because one page is one
+    # page and wrapping it in an index nobody asked for is a worse ZIM.
+    p_create.add_argument(
+        "source",
+        nargs="+",
+        help="Folder path, or one or more http(s):// URLs (several URLs are "
+        "captured into a single ZIM with an index page)",
+    )
     p_create.add_argument(
         "--title", default=None, help="ZIM title (default: folder name / page title)"
     )
     p_create.add_argument("--description", default=None, help="ZIM description")
     p_create.add_argument(
         "--language",
-        default="eng",
-        help="ISO 639-3 content language for metadata and the full-text index "
-        "(default: eng)",
+        default=None,
+        help="ISO 639-3 content language for metadata and the full-text index. "
+        "Default: read it off the source — the page's own lang attribute, a "
+        "folder's HTML, the platform's video metadata — falling back to eng "
+        "when the source declares nothing",
     )
     p_create.add_argument(
         "--creator", default="Zimi", help="Creator metadata (default: Zimi)"
