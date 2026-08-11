@@ -946,6 +946,12 @@ def cli_create(args):
     matching the backup/restore CLI convention."""
     src = args.source
     is_url = bool(re.match(r"^https?://", src, re.IGNORECASE))
+    if is_url:
+        from zimi import video as _video
+
+        if _video.wants_url(src, args):
+            _video.cli_create_video(args)
+            return
     build = create_page_zim if is_url else create_folder_zim
     try:
         info = build(

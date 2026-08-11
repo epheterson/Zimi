@@ -3028,7 +3028,61 @@ def main():
         help="Explicit output .zim path (default: the ZIM directory, with "
         "library registration)",
     )
+    # Video-source flags (playlist/channel URLs; all substance in zimi/video.py).
+    p_create.add_argument(
+        "--format",
+        default=None,
+        help="Video sources: yt-dlp format selector (default: ~720p cap)",
+    )
+    p_create.add_argument(
+        "--audio-only",
+        action="store_true",
+        help="Video sources: keep audio only",
+    )
+    p_create.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Video sources: package at most N playlist/channel entries",
+    )
+    p_create.add_argument(
+        "--max-bytes",
+        default=None,
+        help="Video sources: total size budget, e.g. 500M or 4G (default: 4G)",
+    )
     add_boot_flags(p_create)
+
+    p_import = sub.add_parser(
+        "import",
+        help="Convert a web archive (.warc/.warc.gz/.wacz) into a library "
+        "ZIM via the warc2zim sidecar",
+    )
+    p_import.add_argument(
+        "file", nargs="?", default=None, help="Web archive to convert"
+    )
+    p_import.add_argument(
+        "--name", default=None, help="ZIM name (default: derived from the filename)"
+    )
+    p_import.add_argument("--title", default=None, help="ZIM title")
+    p_import.add_argument("--description", default=None, help="ZIM description")
+    p_import.add_argument(
+        "--out",
+        default=None,
+        help="Explicit output .zim path (default: the ZIM directory, with "
+        "library registration)",
+    )
+    p_import.add_argument(
+        "--status",
+        action="store_true",
+        help="Report the warc2zim sidecar's state and version",
+    )
+    p_import.add_argument(
+        "--setup",
+        action="store_true",
+        help="Install the warc2zim sidecar venv now (network; pre-seeds "
+        "offline machines)",
+    )
+    add_boot_flags(p_import)
 
     sub.add_parser(
         "desktop",
@@ -3161,6 +3215,11 @@ def main():
         from zimi import creator as _creator
 
         _creator.cli_create(args)
+
+    elif args.command == "import":
+        from zimi import importer as _importer
+
+        _importer.cli_import(args)
 
     elif args.command == "desktop" or (args.command == "serve" and args.ui):
         try:
