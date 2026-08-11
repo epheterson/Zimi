@@ -418,3 +418,47 @@ def test_config_discovery_loses_to_env(tmp_tree):
     assert proc.returncode == 0, proc.stderr
     assert "(env: ZIM_DIR)" in proc.stdout
     assert "discovered" not in proc.stdout
+
+
+def test_scan_collision_same_dir_richer_flavor_wins(scan_dir):
+    """Two root-level builds of the same source: flavor richness decides, in
+    both insertion orders — nopic (full text) must beat mini (intros only)
+    even though 'mini' sorts first alphabetically. Found live on prod, where
+    wikipedia_he served a January mini over a fuller July nopic."""
+    _touch_zim(scan_dir, "wikipedia_he_all_mini_2026-01.zim", size=4)
+    _touch_zim(scan_dir, "wikipedia_he_all_nopic_2026-07.zim", size=4)
+    zims = server._scan_zim_files()
+    assert zims["wikipedia_he"].endswith("nopic_2026-07.zim")
+
+
+def test_scan_collision_same_dir_maxi_beats_everything(scan_dir):
+    _touch_zim(scan_dir, "wikipedia_en_all_maxi_2026-02.zim", size=4)
+    _touch_zim(scan_dir, "wikipedia_en_all_mini_2026-03.zim", size=4)
+    _touch_zim(scan_dir, "wikipedia_en_all_nopic_2026-07.zim", size=4)
+    zims = server._scan_zim_files()
+    assert zims["wikipedia"].endswith("maxi_2026-02.zim")
+
+
+def test_scan_collision_same_flavor_newer_date_wins(scan_dir):
+    """Same flavor twice: the newer edition serves. Found live on prod, where
+    wikipedia_zh kept a May mini over July's."""
+    _touch_zim(scan_dir, "wikipedia_zh_all_mini_2026-05.zim", size=4)
+    _touch_zim(scan_dir, "wikipedia_zh_all_mini_2026-07b.zim", size=4)
+    zims = server._scan_zim_files()
+    assert zims["wikipedia_zh"].endswith("mini_2026-07b.zim")
+
+
+def test_scan_collision_untagged_full_slots_between_maxi_and_nopic(scan_dir):
+    _touch_zim(scan_dir, "source_en_all_2026-01.zim", size=4)
+    _touch_zim(scan_dir, "source_en_all_nopic_2026-07.zim", size=4)
+    zims = server._scan_zim_files()
+    assert zims["source"].endswith("_all_2026-01.zim")
+
+
+def test_scan_collision_root_mini_still_beats_subfolder_maxi(scan_dir):
+    """Tier outranks richness: the operator pulled that maxi out of the root
+    for a reason — a subfolder copy never displaces the served root file."""
+    _touch_zim(scan_dir, "wikipedia_fr_all_mini_2026-01.zim", size=4)
+    _touch_zim(os.path.join(scan_dir, "old"), "wikipedia_fr_all_maxi_2026-07.zim", size=64)
+    zims = server._scan_zim_files()
+    assert zims["wikipedia_fr"].endswith("mini_2026-01.zim")

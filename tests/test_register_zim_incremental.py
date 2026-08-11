@@ -347,3 +347,31 @@ def test_finalize_passes_removed_old_versions(tmp_path, monkeypatch):
     library._post_download_finalize(_mk_dl(tmp_path))
     assert registered == [("thing_en_2026-01.zim",)]
     assert not old.exists()
+
+
+def test_register_poorer_flavor_never_displaces_richer_holder(tmp_path, monkeypatch):
+    """A freshly downloaded mini must not displace the maxi being served —
+    same-tier collisions resolve by build rank at registration exactly as
+    they do in the scan."""
+    zdir = _setup_library(tmp_path, monkeypatch, n_existing=0)
+    maxi = str(zdir / "wikipedia_xx_all_maxi_2026-02.zim")
+    build_fixture_zim(maxi)
+    server.load_cache(force=True)
+    assert server._zim_files_cache["wikipedia_xx"] == maxi
+
+    mini = str(zdir / "wikipedia_xx_all_mini_2026-07.zim")
+    build_fixture_zim(mini)
+    assert server.register_zim_file(mini) is True
+    assert server._zim_files_cache["wikipedia_xx"] == maxi
+
+
+def test_register_newer_same_flavor_displaces_older(tmp_path, monkeypatch):
+    zdir = _setup_library(tmp_path, monkeypatch, n_existing=0)
+    old = str(zdir / "wikipedia_xx_all_maxi_2026-02.zim")
+    build_fixture_zim(old)
+    server.load_cache(force=True)
+
+    new = str(zdir / "wikipedia_xx_all_maxi_2026-08.zim")
+    build_fixture_zim(new)
+    assert server.register_zim_file(new) is True
+    assert server._zim_files_cache["wikipedia_xx"] == new

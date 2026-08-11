@@ -105,7 +105,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.8.2"
+ZIMI_VERSION = "1.9.0-dev"
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
 # 24h — run every 12h so both stay fresh at half-life.
@@ -1769,6 +1769,23 @@ _SCAN_SKIP_DIRS = {
 }
 _SCAN_IGNORE_MARKER = ".nozim"  # drop this file in any subfolder to opt it out
 
+_FLAVOR_TOKEN_RE = re.compile(r"_(maxi|nopic|mini)(?:_|\.zim$)")
+_DATE_TOKEN_RE = re.compile(r"(\d{4}-\d{2}[a-z]?)\.zim$")
+# Kiwix flavors are strictly nested — maxi carries everything, nopic is full
+# text without media, mini is intros only — so richer beats newer: an old
+# maxi still contains more than this month's mini. An untagged filename is
+# a full build and slots between maxi and nopic.
+_FLAVOR_RANKS = {"maxi": 4, None: 3, "nopic": 2, "mini": 1}
+
+
+def _zim_build_rank(filename):
+    """Rank a build for same-name collisions in the same directory tier:
+    flavor richness first, then the trailing date token (newer wins)."""
+    fname = filename.lower()
+    m = _FLAVOR_TOKEN_RE.search(fname)
+    d = _DATE_TOKEN_RE.search(fname)
+    return (_FLAVOR_RANKS[m.group(1) if m else None], d.group(1) if d else "")
+
 
 def _scan_zim_files():
     """Scan ZIM_DIR plus exactly one level of subdirectories for ZIM files.
@@ -1786,10 +1803,13 @@ def _scan_zim_files():
     of those should ever displace the file being served. The original
     larger-file-wins rule was retired after one real library: it would have
     preferred a quarantined corrupt copy over the healthy root file had their
-    sizes leaned that way. Between two SUBFOLDER files with the same name,
-    first in sorted order wins. Every collision is logged.
+    sizes leaned that way. Within the SAME tier (both root, or both in
+    subfolders), the richer build wins — flavor first, then newer date, per
+    _zim_build_rank — so a maxi is never shadowed by the mini beside it and
+    two editions of the same flavor resolve to the newer one. Every
+    collision is logged.
     """
-    zims = {}
+    zims = {}  # name -> (path, tier)
     root_paths = sorted(glob.glob(os.path.join(ZIM_DIR, "*.zim")))
     sub_paths = []
     for sub in sorted(glob.glob(os.path.join(ZIM_DIR, "*", ""))):
@@ -1800,21 +1820,34 @@ def _scan_zim_files():
             log.info("Skipping %s (has %s marker)", base, _SCAN_IGNORE_MARKER)
             continue
         sub_paths.extend(sorted(glob.glob(os.path.join(sub, "*.zim"))))
-    for path in root_paths + sub_paths:
-        filename = os.path.basename(path)
-        name = _zim_short_name(filename)
-        if name in zims:
-            # Root files were inserted first, so whatever holds the slot
-            # outranks this later, deeper path by construction.
-            log.info(
-                "ZIM name collision '%s': keeping %s, ignoring %s",
-                name,
-                os.path.relpath(zims[name], ZIM_DIR),
-                os.path.relpath(path, ZIM_DIR),
-            )
-        else:
-            zims[name] = path
-    return zims
+    for tier, paths in ((0, root_paths), (1, sub_paths)):
+        for path in paths:
+            filename = os.path.basename(path)
+            name = _zim_short_name(filename)
+            if name not in zims:
+                zims[name] = (path, tier)
+                continue
+            held_path, held_tier = zims[name]
+            # Root files were inserted first, so a cross-tier collision can
+            # only be a subfolder file arriving second — the root holds.
+            if held_tier == tier and _zim_build_rank(filename) > _zim_build_rank(
+                os.path.basename(held_path)
+            ):
+                log.info(
+                    "ZIM name collision '%s': keeping %s, ignoring %s",
+                    name,
+                    os.path.relpath(path, ZIM_DIR),
+                    os.path.relpath(held_path, ZIM_DIR),
+                )
+                zims[name] = (path, tier)
+            else:
+                log.info(
+                    "ZIM name collision '%s': keeping %s, ignoring %s",
+                    name,
+                    os.path.relpath(held_path, ZIM_DIR),
+                    os.path.relpath(path, ZIM_DIR),
+                )
+    return {name: path for name, (path, _tier) in zims.items()}
 
 
 def get_zim_files():
@@ -2534,6 +2567,18 @@ def register_zim_file(path, removed_files=()):
             if existing_in_root and not new_in_root:
                 log.info(
                     "ZIM name collision '%s': keeping root %s, new %s stays shadowed",
+                    name,
+                    os.path.basename(existing_path),
+                    filename,
+                )
+                return True  # library correctly unchanged
+            if existing_in_root == new_in_root and _zim_build_rank(
+                os.path.basename(existing_path)
+            ) > _zim_build_rank(filename):
+                # Same tier, poorer build arriving: a freshly downloaded mini
+                # must never displace the maxi already being served.
+                log.info(
+                    "ZIM name collision '%s': keeping richer %s, new %s stays shadowed",
                     name,
                     os.path.basename(existing_path),
                     filename,
