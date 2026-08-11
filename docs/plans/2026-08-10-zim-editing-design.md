@@ -17,6 +17,15 @@ From the landscape research (zim-requests, nautilus's collection.json pain, foru
 5. **Reader-mode all pages** — strip site chrome from captured pages down to article text. We already ship an accessibility rewriter (`a11y.py`) that knows how to walk and rewrite ZIM HTML; this is a batch application of that idea with a readability pass. Genuinely differentiating — no other ZIM tool offers it. **v2.**
 6. **Merge two ZIMs** — the trip-pack builder in disguise. **v2, pairs with the delight-pass "trip packs" idea.**
 
+## Provenance: history and sources (Eric, 2026-08-10: "include change history and sources and stuff somehow")
+
+Every ZIM Zimi creates or edits carries its own paper trail in custom metadata entries — the format allows arbitrary metadata, so this travels WITH the file to any reader, any peer, any sneakernet copy:
+
+- `X-Zimi-Source` — where the content came from: the captured URL, the folder path's basename, the playlist URL, the imported archive's name. Creation already stamps Source where it's meaningful; this makes it uniform.
+- `X-Zimi-History` — a JSON list of records, append-only: `{ts, zimi_version, op, detail}`. Creation writes the first record (`created: site capture of https://…, 12 pages`); every edit appends (`removed 3 entries`, `new cover page`, `title changed`). Bounded (say 100 records) with the oldest collapsed into a `…earlier history truncated` record rather than lost silently.
+
+The Edit surface shows this as a readable timeline ("Created Aug 10 from sive.rs · Edited Aug 11: new cover, 2 entries removed"), and the library card's detail view gets the one-line summary. Nothing invents history for ZIMs made elsewhere — a Kiwix ZIM simply shows its own publisher metadata, honestly.
+
 ## The UI shape
 
 An **Edit** action on a library card (admin-only, any ZIM — not just created ones; pruning a downloaded ZIM is legitimate). It opens the same full-page surface pattern as Create, with the operation list on the left and a live preview iframe on the right where it matters (the cover composer is WYSIWYG-ish: edit fields, preview rerenders). Apply = one derivation job through the existing create-job machinery (one at a time, streamed progress, cancel-safe because the original is untouched).
@@ -34,8 +43,8 @@ The cover composer is the emotional center: pick "Cover sheet," type a title, cl
 - In-place binary patching. Never; fights checksums, torrents, and sanity.
 - A WYSIWYG HTML editor for arbitrary articles. That's a CMS; the moment we want it we should want the annotations-layer idea from the 2.0 list instead.
 
-## Open questions for Eric
+## Decisions (Eric, 2026-08-10)
 
-1. v1 cut as scoped (cover + add/remove + metadata) — go?
-2. Keep `.prev` of the replaced ZIM by default (disk cost, instant undo) or make keeping opt-in?
-3. Does Edit make 1.9, or is it the first 1.9.x headline? Honest note: 1.9 is enormous already, and Edit v1 is a fresh engine + a fresh surface — my instinct says it rides 1.9 only if your validation pass on everything else comes back clean.
+- Change history + sources: in scope, per the provenance section above.
+- Placement: **Edit v1 targets 1.9.1** ("okay it can be 1.9.1. Maybe at least v1"). Built on branch `edit-v1` off v1.9 so the 1.9 ship never waits on it; if v1 lands verified before Eric ships 1.9, pulling it in is his one-word call.
+- Still open: keep `.prev` of the replaced ZIM by default, or opt-in? (Building v1 with keep-by-default + a setting; cheap to flip.)
