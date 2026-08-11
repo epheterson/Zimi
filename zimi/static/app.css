@@ -244,6 +244,7 @@
   }
   .back-btn:hover,
   .random-btn:hover, .manage-btn:hover, .newtab-btn:hover, .library-btn:hover,
+  .create-btn:hover,
   .reader-btn:hover,
   .catalog-lang-search-btn:hover,
   .lang-selector-btn:hover,
@@ -375,7 +376,8 @@
   .suggest-item .sg-title { color: var(--text); }
   .suggest-item .sg-source { font-size: 11px; color: var(--text2); margin-top: 1px; }
 
-  .random-btn, .manage-btn, .newtab-btn, .library-btn, .lang-selector-btn, .reader-btn {
+  .random-btn, .manage-btn, .newtab-btn, .library-btn, .lang-selector-btn, .reader-btn,
+  .create-btn {
     display: flex; align-items: center; justify-content: center;
     color: var(--text2); flex-shrink: 0; width: 36px; height: 28px;
     border-radius: var(--radius); transition: color 0.2s, background 0.2s, border-color 0.2s;
@@ -539,7 +541,8 @@
   .ms-user-addbar { margin-top: 16px; }
   .ms-user-add { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
   .ms-user-add[hidden] { display: none; }  /* [hidden] must beat the display:flex above */
-  .ms-user-add input { padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); box-sizing: border-box; width: 100%; }
+  .ms-user-add input, .create-field { padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); box-sizing: border-box; width: 100%; }
+  .ms-user-add input:focus, .create-field:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
   .ms-form-label { font-size: 12px; color: var(--text2); }
   .ms-user-account { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
   /* "Your Account" now leads the pane: no top border, and a divider below it
@@ -583,10 +586,14 @@
   .ms-pa-env { font-size: 12px; color: var(--text2); background: var(--amber-glow); border: 1px solid var(--amber-border); border-radius: var(--radius); padding: 6px 10px; margin-bottom: 12px; }
   .ms-pa-env code { font-size: 11px; color: var(--amber); }
   .ms-pa-choices { display: flex; flex-direction: column; gap: 8px; max-width: 480px; }
-  .ms-pa-choice { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s; }
-  .ms-pa-choice:hover { border-color: var(--amber-border); background: var(--amber-glow); }
-  .ms-pa-choice.active { border-color: var(--amber-border); background: var(--amber-glow); }
-  .ms-pa-choice.disabled { opacity: 0.55; cursor: not-allowed; }
+  /* The choice tile is the app's one "pick one of these" surface. The Create
+     page's mode tiles ARE this control (a button rather than a label, hence the
+     reset properties below), so they share the recipe instead of copying it. */
+  .ms-pa-choice, .create-tile { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s; }
+  .ms-pa-choice:hover, .create-tile:hover { border-color: var(--amber-border); background: var(--amber-glow); }
+  .ms-pa-choice.active, .create-tile.active { border-color: var(--amber-border); background: var(--amber-glow); }
+  .ms-pa-choice.disabled, .create-tile.disabled { opacity: 0.55; cursor: not-allowed; }
+  .create-tile.disabled:hover { border-color: var(--border); background: none; }
   .ms-pa-choice input { accent-color: var(--amber); margin-top: 2px; flex-shrink: 0; width: 15px; height: 15px; }
   .ms-pa-choice-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .ms-pa-choice-title { font-size: 13px; font-weight: 600; color: var(--text); }
@@ -594,6 +601,48 @@
   .ms-pa-allowlist { margin-top: 12px; max-width: 480px; }
   .ms-pa-allowlist[hidden] { display: none; }
   .ms-pa-save { margin-top: 12px; }
+
+  /* ── Create a ZIM ──
+     A full-page surface over the library, same geometry as the Almanac overlay
+     but built entirely from the manage-settings vocabulary above: .ms-pa-choice
+     tiles, .ms-pa-choice-title/-desc text, .create-field inputs (which share the
+     .ms-user-add input recipe), .ms-btn / .ms-btn-primary actions and
+     .ms-section-label headings. Only the geometry and the log pane are new.
+     Elegance here is subtraction: one primary input per mode and at most three
+     flags — the wider bounds stay on the CLI, and the caption says so. */
+  .create-view { position: fixed; top: var(--under-topbar); left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
+  .create-view.open { display: flex; animation: fadeIn 0.15s ease; }
+  .create-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: 24px 16px 40px; overscroll-behavior: contain; }
+  .create-inner { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+  .create-head { display: flex; flex-direction: column; gap: 4px; }
+  .create-title { font-size: 20px; font-weight: 600; color: var(--text); }
+  .create-tiles { display: flex; flex-direction: column; gap: 8px; }
+  /* Button reset — the tile recipe assumes a label, these are real buttons. */
+  .create-tile { width: 100%; text-align: left; background: none; font-family: inherit; }
+  .create-tile-glyph { flex-shrink: 0; width: 20px; display: flex; justify-content: center; color: var(--text2); margin-top: 1px; }
+  .create-tile.active .create-tile-glyph { color: var(--amber); }
+  .create-form { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--amber-border); border-radius: 10px; background: var(--surface); }
+  .create-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+  .create-flag { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); cursor: pointer; }
+  .create-flag input[type="checkbox"] { accent-color: var(--amber); width: 15px; height: 15px; flex-shrink: 0; }
+  .create-num { width: 96px; flex: 0 0 auto; }
+  .create-caption { font-size: 12px; color: var(--text2); }
+  .create-caption code { font-family: monospace; font-size: 11px; color: var(--amber); white-space: nowrap; }
+  .create-actions { display: flex; align-items: center; gap: 8px; }
+  /* The running tail. Bounded height so a thousand-page crawl scrolls inside
+     its own box instead of walking the page down forever. */
+  .create-log { max-height: 260px; overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); font-family: monospace; font-size: 11.5px; line-height: 1.6; color: var(--text2); }
+  .create-log-line { white-space: pre-wrap; word-break: break-word; }
+  .create-log-line:last-child { color: var(--text); }
+  .create-empty { color: var(--text3); }
+  .create-status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
+  .create-error { font-size: 13px; color: var(--error); white-space: pre-wrap; }
+  .create-done { padding: 12px; border: 1px solid var(--amber-border); border-radius: 10px; background: var(--amber-glow); display: flex; flex-direction: column; gap: 8px; }
+  .create-done-name { font-size: 14px; font-weight: 600; color: var(--text); word-break: break-all; }
+  @media (prefers-reduced-motion: reduce) {
+    .create-view.open { animation: none; }
+    .create-tile { transition: none; }
+  }
 
   /* ── Reader View settings palette ── */
   /* Popover from the book button (desktop) / ⋯ Reader View row (mobile). Anchored
@@ -1106,6 +1155,7 @@
   .reader-loading.hidden { opacity: 0; pointer-events: none; }
   .reader-loading .spinner,
   .loading .spinner-inline,
+  .create-status .spinner-inline,
   .content-search-indicator .spinner-inline { border: 2px solid var(--border); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.7s linear infinite; }
   .reader-loading .spinner { width: 24px; height: 24px; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -1121,7 +1171,8 @@
 
   /* ── Utility ── */
   .loading { text-align: center; padding: 40px; color: var(--text2); font-size: 13px; }
-  .loading .spinner-inline { display: inline-block; width: 14px; height: 14px; vertical-align: middle; margin-right: 8px; }
+  .loading .spinner-inline,
+  .create-status .spinner-inline { display: inline-block; width: 14px; height: 14px; vertical-align: middle; margin-right: 8px; }
   .content-search-indicator { text-align: center; padding: 12px; color: var(--text2); font-size: 12px; animation: fadeIn 0.3s ease; }
   .content-search-indicator .spinner-inline { display: inline-block; width: 12px; height: 12px; vertical-align: middle; margin-right: 6px; }
   .empty { text-align: center; padding: 48px 20px; color: var(--text2); }
@@ -1989,6 +2040,7 @@
        menu on mobile — the topbar is too tight to hold them inline. */
     #font-btn, #tts-btn, #readerview-btn, #newtab-btn { display: none !important; }
     .topbar-more { display: flex !important; }
+    .topbar.search-focused .create-btn,
     .topbar.search-focused .topbar-more,
     .topbar.search-focused .library-btn,
     .topbar.search-focused #bm-panel-btn { display: none !important; }

@@ -221,6 +221,40 @@ Built in California by [@epheterson](https://github.com/epheterson) and [Claude 
 
 ---
 
+## Section 1a: creation changes the pitch (added 2026-08-10)
+
+Section 1 was written on 2026-08-08, before `zimi create` and the + button landed. Every sentence in it describes a program that serves ZIM files other people made. That is no longer the whole product, and the gap shows in the first line: "Zimi is a self-hosted server for ZIM files" is now an undersell of the thing that most distinguishes it from kiwix-serve.
+
+This matters more than a feature bullet. Serving is a crowded shelf. Kiwix serves ZIMs, and serves them well, and has for years. Making them is where the shelf is nearly empty: zimit needs Docker and a browser engine, `zimwriterfs` needs a build toolchain and a correctly shaped directory, and neither has a UI. A NAS owner who wants their own documentation, a captured site and a folder of PDFs in the same searchable library currently has no path that does not involve a terminal and an afternoon. Zimi now has one, and it is a + in the title bar.
+
+### Proposed replacement for the README opening (verbatim, replaces the two paragraphs under `# Zimi`)
+
+Zimi is a self-hosted server for ZIM files, the format [Kiwix](https://kiwix.org) uses to pack entire websites, Wikipedia included, into single files. Point it at a folder of ZIMs and you get search across every source at once, a clean reader, a JSON API, and an MCP server for AI agents, all of it working with no internet at all.
+
+It also makes them. A folder of documents, a web page, a whole site, a playlist of videos or an existing web archive becomes a ZIM from the command line or from a button in the title bar, and lands in your library the moment it finishes.
+
+It runs the same from a USB stick in a basement to a NAS in a closet to a managed fleet. One package, no editions, no setup wizard: Zimi serves whatever ZIMs it finds.
+
+### Proposed new differentiator (verbatim, goes FIRST in "What makes it different")
+
+**A library you can add to.** Most ZIM tools assume someone else authored the archive. `zimi create` turns a folder of HTML, Markdown and PDFs into a ZIM, captures a single page or a bounded crawl of a site, packages a video playlist, or converts a WARC or WACZ you already have. The same five jobs live behind a + on the home screen, with one input each and a live log, so making an archive of your own is a two minute job rather than an afternoon with Docker.
+
+### On the name "Creator's Edition"
+
+Recommend against it, and this is a real objection rather than a style note. On 2026-08-07 you killed the open-core split in your own words: "Keeping some parts disabled or separate is interesting but also feels like extra baggage, if we could build it lean and integrated we could ship one package." The README draft above sells that decision explicitly, twice: "One package, no editions, no setup wizard" and "It runs the same from a USB stick in a basement to a managed fleet."
+
+"Creator's Edition" reintroduces exactly the thing you removed, as a word. A reader who sees it will look for the edition that is not the creator's one, and the honest answer is that there isn't one. It also costs something real: the strongest claim Zimi has against a commercial-tier competitor is that there is no tier, and edition language spends that for nothing.
+
+What the framing is actually reaching for is fine and worth keeping: Zimi went from a reader to a reader that makes. Say that as a capability, not a SKU. If a short label is wanted for a launch post, "make your own" or "bring your own content" carries the meaning without implying a product boundary.
+
+### Open questions for Eric
+
+- The opening now runs three paragraphs instead of two. If that is one too many, the creation paragraph can fold into the first as a third sentence, at the cost of some of its weight.
+- Screenshots: the section above has five, none of which show creation. The Create page with a folder job running is the most persuasive single image in the app now, and the current set predates it.
+- Show HN framing in Section 3 still leads with serving. If creation ships in 1.9, that post should lead with "I built a thing that makes and serves offline archives," because the making half is what earns the comments.
+
+---
+
 ## Section 2: GitHub repo polish checklist
 
 Current state, verified read-only on 2026-08-08 via `gh repo view` / `gh release list`.

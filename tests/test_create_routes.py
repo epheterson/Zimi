@@ -1,0 +1,409 @@
+"""The /manage/create routes: auth, validation, the single-job rule, and the
+cursor contract the progress pane polls.
+
+The engines themselves are exercised by test_creator_*.py / test_importer.py;
+here they are stubbed so the tests stay about the ROUTES — who may call them,
+what they refuse, and whether the job model reports honestly.
+"""
+
+import os
+import sys
+import time
+from urllib.parse import urlparse
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import zimi.manage as manage  # noqa: E402
+import zimi.server as server  # noqa: E402
+
+
+class _Handler:
+    """Minimal ZimHandler stand-in: privacy + captured JSON response."""
+
+    def __init__(self, private=True, headers=None):
+        self.status = None
+        self.body = None
+        self.headers = headers or {}
+        self._private = private
+
+    def _json(self, status, body):
+        self.status = status
+        self.body = body
+
+    def _is_private_client(self):
+        return self._private
+
+
+def _post(path, data, private=True):
+    h = _Handler(private=private)
+    manage.handle_manage_post(h, urlparse(path), data)
+    return h
+
+
+def _get(path, private=True, params=None):
+    h = _Handler(private=private)
+    manage.handle_manage_get(h, urlparse(path), params or {})
+    return h
+
+
+def _wait_done(tries=400):
+    for _ in range(tries):
+        body = _get("/manage/create/status").body
+        if body.get("done") or not body.get("active"):
+            return body
+        time.sleep(0.01)
+    raise AssertionError("creation job never finished")
+
+
+@pytest.fixture(autouse=True)
+def clean_job():
+    """Every test starts with no job and leaves none behind."""
+    manage._create_job = None
+    yield
+    job = manage._create_job
+    if job is not None and not job.done:
+        job.cancel_requested = True
+        for _ in range(200):
+            if job.done:
+                break
+            time.sleep(0.01)
+    manage._create_job = None
+
+
+@pytest.fixture
+def stub_engine(monkeypatch):
+    """Replace the engine dispatch with something scriptable. Returns a dict
+    the test fills in: ``lines`` to emit, ``result`` to return, ``raise_``."""
+    script = {"lines": [], "result": {"path": "/zims/made.zim", "registered": True}}
+
+    def fake_run(job, opts):
+        script["opts"] = opts
+        for line in script["lines"]:
+            job.note(line)
+            time.sleep(0.005)
+        if script.get("raise_"):
+            raise script["raise_"]
+        return script["result"]
+
+    monkeypatch.setattr(manage, "_create_run", fake_run)
+    return script
+
+
+# ── auth ────────────────────────────────────────────────────────────────────
+
+
+def test_all_three_routes_require_admin(monkeypatch):
+    """A non-private client on a passwordless instance is public_locked, and a
+    wrong credential on a protected one is unauthorized — for every route."""
+    monkeypatch.setattr(manage, "_get_manage_password_hash", lambda: "")
+    for path, call in (
+        ("/manage/create", lambda: _post("/manage/create", {}, private=False)),
+        (
+            "/manage/create/cancel",
+            lambda: _post("/manage/create/cancel", {}, private=False),
+        ),
+        (
+            "/manage/create/status",
+            lambda: _get("/manage/create/status", private=False),
+        ),
+    ):
+        h = call()
+        assert h.status == 403, path
+        assert h.body["error"] == "public_locked", path
+
+    monkeypatch.setattr(manage, "_get_manage_password_hash", lambda: "deadbeef$cafe")
+    for path, call in (
+        ("/manage/create", lambda: _post("/manage/create", {}, private=True)),
+        (
+            "/manage/create/cancel",
+            lambda: _post("/manage/create/cancel", {}, private=True),
+        ),
+        (
+            "/manage/create/status",
+            lambda: _get("/manage/create/status", private=True),
+        ),
+    ):
+        h = call()
+        assert h.status == 401, path
+        assert h.body["needs_password"] is True, path
+
+
+# ── validation ──────────────────────────────────────────────────────────────
+
+
+def test_unknown_mode_and_missing_source_are_refused():
+    assert _post("/manage/create", {"mode": "wat", "source": "/tmp"}).status == 400
+    assert _post("/manage/create", {"mode": "folder", "source": ""}).status == 400
+    assert _post("/manage/create", {}).status == 400
+
+
+def test_folder_mode_requires_an_existing_readable_directory(tmp_path):
+    missing = _post(
+        "/manage/create", {"mode": "folder", "source": str(tmp_path / "nope")}
+    )
+    assert missing.status == 400
+    assert "folder" in missing.body["error"]
+
+    afile = tmp_path / "a.txt"
+    afile.write_text("hi")
+    assert (
+        _post("/manage/create", {"mode": "folder", "source": str(afile)}).status == 400
+    )
+
+
+def test_folder_mode_normalizes_the_path(tmp_path, stub_engine):
+    """A traversal-shaped path is resolved before use, so what runs is the real
+    directory — and what the status reports is that same resolved path."""
+    (tmp_path / "docs").mkdir()
+    messy = str(tmp_path / "docs" / ".." / "docs" / ".")
+    assert _post("/manage/create", {"mode": "folder", "source": messy}).status == 200
+    _wait_done()
+    assert _get("/manage/create/status").body["source"] == os.path.realpath(
+        str(tmp_path / "docs")
+    )
+
+
+def test_import_mode_requires_an_existing_file(tmp_path):
+    assert (
+        _post("/manage/create", {"mode": "import", "source": str(tmp_path)}).status
+        == 400
+    )
+
+
+def test_url_modes_reject_non_http_schemes():
+    for bad in (
+        "file:///etc/passwd",
+        "ftp://example.org/x",
+        "javascript:alert(1)",
+        "//example.org",
+    ):
+        for mode in ("page", "site", "video"):
+            h = _post("/manage/create", {"mode": mode, "source": bad})
+            assert h.status == 400, (mode, bad)
+
+
+def test_option_clamping_keeps_absurd_numbers_out_of_the_engine(stub_engine):
+    _post(
+        "/manage/create",
+        {"mode": "site", "source": "https://example.org/", "max_pages": 10**9},
+    )
+    _wait_done()
+    assert stub_engine["opts"]["max_pages"] == manage.CREATE_MAX_PAGES_CEILING
+
+    manage._create_job = None
+    _post(
+        "/manage/create",
+        {
+            "mode": "video",
+            "source": "https://example.org/list",
+            "limit": "not a number",
+            "audio_only": 1,
+        },
+    )
+    _wait_done()
+    assert stub_engine["opts"]["limit"] is None
+    assert stub_engine["opts"]["audio_only"] is True
+
+
+def test_an_overlong_source_is_refused():
+    h = _post(
+        "/manage/create", {"mode": "page", "source": "https://e.org/" + "a" * 4000}
+    )
+    assert h.status == 400
+
+
+# ── one job at a time ───────────────────────────────────────────────────────
+
+
+def test_second_job_gets_409_while_the_first_runs(monkeypatch, tmp_path):
+    gate = {"go": False}
+
+    def slow_run(job, opts):
+        while not gate["go"]:
+            time.sleep(0.005)
+        return {"path": str(tmp_path / "x.zim"), "registered": True}
+
+    monkeypatch.setattr(manage, "_create_run", slow_run)
+    (tmp_path / "src").mkdir()
+    first = _post("/manage/create", {"mode": "folder", "source": str(tmp_path / "src")})
+    assert first.status == 200
+
+    second = _post("/manage/create", {"mode": "page", "source": "https://example.org/"})
+    assert second.status == 409
+    assert second.body["mode"] == "folder"
+
+    gate["go"] = True
+    _wait_done()
+    # Once it is done the slot is free again.
+    assert (
+        _post(
+            "/manage/create", {"mode": "folder", "source": str(tmp_path / "src")}
+        ).status
+        == 200
+    )
+
+
+# ── status + cursor contract ────────────────────────────────────────────────
+
+
+def test_status_with_no_job_is_inert():
+    body = _get("/manage/create/status").body
+    assert body["active"] is False
+    assert body["done"] is False
+    assert body["lines"] == []
+    assert body["cursor"] == 0
+    assert "import_ready" not in body
+
+
+def test_probe_adds_the_sidecar_answer_only_when_asked():
+    body = _get("/manage/create/status", params={"probe": ["1"]}).body
+    assert isinstance(body["import_ready"], bool)
+    assert isinstance(body["offline"], bool)
+
+
+def test_cursor_delivers_each_line_exactly_once(stub_engine):
+    stub_engine["lines"] = ["one", "two", "three"]
+    _post("/manage/create", {"mode": "site", "source": "https://example.org/"})
+    _wait_done()
+
+    first = _get("/manage/create/status", params={"since": ["0"]}).body
+    # "done" is appended by the worker after a successful run.
+    assert first["lines"][:3] == ["one", "two", "three"]
+    assert first["cursor"] == len(first["lines"])
+
+    again = _get("/manage/create/status", params={"since": [str(first["cursor"])]}).body
+    assert again["lines"] == []
+    assert again["cursor"] == first["cursor"]
+
+
+def test_the_line_buffer_is_bounded(stub_engine):
+    stub_engine["lines"] = [f"line {i}" for i in range(manage.CREATE_LOG_LINES + 50)]
+    _post("/manage/create", {"mode": "site", "source": "https://example.org/"})
+    _wait_done()
+    body = _get("/manage/create/status", params={"since": ["0"]}).body
+    assert len(body["lines"]) == manage.CREATE_LOG_LINES
+    # A cursor older than the buffer snaps forward instead of replaying wrong.
+    assert body["cursor"] > manage.CREATE_LOG_LINES
+    assert body["lines"][-1] == "done"
+
+
+def test_success_reports_the_new_zims_library_name(stub_engine, tmp_path):
+    stub_engine["result"] = {"path": str(tmp_path / "my_notes.zim"), "registered": True}
+    (tmp_path / "src").mkdir()
+    _post("/manage/create", {"mode": "folder", "source": str(tmp_path / "src")})
+    body = _wait_done()
+    assert body["ok"] is True
+    assert body["result"]["name"] == "my_notes"
+    assert body["result"]["registered"] is True
+
+
+# ── failures ────────────────────────────────────────────────────────────────
+
+
+def test_a_create_error_reaches_the_client_verbatim(stub_engine):
+    """The SPA refusal and the yt-dlp hint are the whole point of CreateError:
+    they name the fix, so they must not be flattened into a generic message."""
+    from zimi.creator import SPA_REFUSAL, CreateError
+
+    stub_engine["raise_"] = CreateError(SPA_REFUSAL)
+    _post("/manage/create", {"mode": "page", "source": "https://example.org/app"})
+    body = _wait_done()
+    assert body["ok"] is False
+    assert body["error"] == SPA_REFUSAL
+    assert "zimit" in body["error"]
+
+
+def test_an_unexpected_exception_is_generic(stub_engine):
+    stub_engine["raise_"] = RuntimeError("/secret/internal/path blew up")
+    _post("/manage/create", {"mode": "site", "source": "https://example.org/"})
+    body = _wait_done()
+    assert body["ok"] is False
+    assert "secret" not in body["error"]
+    assert body["error"] == "creation failed — see the server log for details"
+
+
+def test_offline_refusal_from_the_engine_is_surfaced(monkeypatch, tmp_path):
+    """ZIMI_OFFLINE is enforced by the engines, and the status reports it so
+    the UI can stop offering what cannot work."""
+    from zimi import p2p
+
+    monkeypatch.setattr(p2p, "is_offline", lambda: True)
+    assert _get("/manage/create/status").body["offline"] is True
+
+    server_dir = tmp_path / "zims"
+    server_dir.mkdir()
+    monkeypatch.setattr(server, "ZIM_DIR", str(server_dir))
+    _post("/manage/create", {"mode": "page", "source": "https://example.org/a"})
+    body = _wait_done()
+    assert body["ok"] is False
+    assert "ZIMI_OFFLINE" in body["error"]
+
+
+# ── cancel ──────────────────────────────────────────────────────────────────
+
+
+def test_cancel_with_no_job_is_409():
+    h = _post("/manage/create/cancel", {})
+    assert h.status == 409
+
+
+def test_cancel_stops_a_streaming_job_and_says_nothing_was_added(monkeypatch):
+    def long_run(job, opts):
+        for i in range(10000):
+            job.note(f"page {i}")  # raises once cancel is requested
+            time.sleep(0.002)
+        return {"path": "/never.zim"}
+
+    monkeypatch.setattr(manage, "_create_run", long_run)
+    _post("/manage/create", {"mode": "site", "source": "https://example.org/"})
+    for _ in range(200):
+        if _get("/manage/create/status").body["lines"]:
+            break
+        time.sleep(0.01)
+    h = _post("/manage/create/cancel", {})
+    assert h.status == 200
+    assert h.body["cancellable"] is True
+    body = _wait_done()
+    assert body["cancelled"] is True
+    assert body["ok"] is False
+    assert "nothing was added" in body["error"]
+
+
+def test_folder_and_page_jobs_declare_themselves_uncancellable(monkeypatch, tmp_path):
+    """Those engines take no progress callback, so there is no line boundary to
+    interrupt at. The status says so instead of showing a button that lies."""
+    gate = {"go": False}
+
+    def slow_run(job, opts):
+        while not gate["go"]:
+            time.sleep(0.005)
+        return {"path": str(tmp_path / "x.zim")}
+
+    monkeypatch.setattr(manage, "_create_run", slow_run)
+    (tmp_path / "src").mkdir()
+    _post("/manage/create", {"mode": "folder", "source": str(tmp_path / "src")})
+    assert _get("/manage/create/status").body["cancellable"] is False
+    gate["go"] = True
+    _wait_done()
+
+
+def test_server_path_modes_need_the_primary_admin(monkeypatch, tmp_path, stub_engine):
+    """Folder and import read arbitrary server paths — that power stays with
+    the primary admin. Secondary admins keep the URL modes."""
+    monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: False)
+    r = _post("/manage/create", {"mode": "folder", "source": str(tmp_path)})
+    assert r.status == 403
+    f = tmp_path / "a.wacz"
+    f.write_bytes(b"x")
+    r = _post("/manage/create", {"mode": "import", "source": str(f)})
+    assert r.status == 403
+    # URL modes stay open to any authorized admin — invalid scheme still 400s,
+    # proving the request reached validation rather than the tier gate.
+    r = _post("/manage/create", {"mode": "page", "source": "ftp://nope"})
+    assert r.status == 400
+
+    monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: True)
+    r = _post("/manage/create", {"mode": "folder", "source": str(tmp_path)})
+    assert r.status == 200

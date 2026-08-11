@@ -91,6 +91,10 @@
     <span class="kbd">/</span>
     <div id="suggest-dropdown" class="suggest-dropdown"></div>
   </div>
+  <!-- Create a ZIM. Home view only, and only for an admin — it writes to the
+       library. updateTopbar() owns the visibility; it ships hidden so a
+       non-admin never sees it flash during boot. -->
+  <button id="create-btn" class="create-btn" style="display:none" title="Create a ZIM" data-i18n-title="create_zim" aria-label="Create a ZIM" data-i18n-aria="create_zim" onclick="openCreate()"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
   <a href="#" id="random-btn" class="random-btn" title="Random article (R)" data-i18n-title="random_article" aria-label="Random article" data-i18n-aria="random_article" onclick="randomArticle(event)"><span class="dice" aria-hidden="true">&#x1F3B2;</span></a>
   <button id="library-btn" class="library-btn" title="Library (H)" data-i18n-title="library" aria-label="Library" data-i18n-aria="library" onclick="if(readerOpen){toggleBookmark();_updateLibraryBtnIcon()}else{toggleLibraryPanel()}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
   <button id="bm-panel-btn" class="reader-btn" style="display:none" title="Bookmarks" data-i18n-title="kbd_bookmark" aria-label="Bookmarks" data-i18n-aria="kbd_bookmark" onclick="toggleLibraryPanel('bookmarks')"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="11 3 11 11 14 8 17 11 17 3"/></svg></button>
@@ -196,6 +200,11 @@
 </div>
 <div id="almanac-view" class="almanac-view">
   <div class="almanac-content" id="almanac-content"></div>
+</div>
+<!-- Create a ZIM (create.js, lazy-loaded on first open) — same shell shape as
+     the Almanac: an empty surface the module renders into. -->
+<div id="create-view" class="create-view">
+  <div class="create-content" id="create-content"></div>
 </div>
 <div id="zim-ctx-menu"></div>
 <div id="link-ctx-menu" class="zimi-ctx"></div>

@@ -1173,14 +1173,22 @@ function updateTopbar() {
   // Manage/Almanac: gear → X close. Reader open: gear → X close reader.
   // Always show this button so topbar has a stable 4-icon layout.
   var _closeSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-  if (mode === 'manage') {
-    manageBtnEl.style.display = 'flex';
+  // Every "this slot is now a close X" case differs only in what the click does
+  // and whether the button is highlighted, so they share one setter.
+  var _setCloseBtn = function(onclick, highlighted) {
     manageBtnEl.innerHTML = _closeSvg;
     manageBtnEl.title = t('close');
-    manageBtnEl.style.color = 'var(--amber)';
-    manageBtnEl.style.borderColor = 'var(--amber-border)';
-    manageBtnEl.style.background = 'var(--amber-glow)';
-    manageBtnEl.onclick = function(e) { toggleManage(e); };
+    manageBtnEl.style.color = highlighted ? 'var(--amber)' : '';
+    manageBtnEl.style.borderColor = highlighted ? 'var(--amber-border)' : '';
+    manageBtnEl.style.background = highlighted ? 'var(--amber-glow)' : '';
+    manageBtnEl.onclick = onclick;
+  };
+  if (mode === 'manage') {
+    manageBtnEl.style.display = 'flex';
+    _setCloseBtn(function(e) { toggleManage(e); }, true);
+  } else if (_createOpen) {
+    manageBtnEl.style.display = 'flex';
+    _setCloseBtn(closeCreate, false);
   } else if (_almanacOpen || readerOpen) {
     // Hide X when another button takes the 4th slot (save on desktop, pop-out on
     // web). On mobile .manage-btn is hidden anyway (close is the back-btn /
@@ -1192,12 +1200,7 @@ function updateTopbar() {
     // (the close X takes the slot back).
     var hasNewtab = !_almanacOpen && readerOpen && _isStandalonePWA();
     manageBtnEl.style.display = (hasSaveBtn || hasNewtab) ? 'none' : 'flex';
-    manageBtnEl.innerHTML = _closeSvg;
-    manageBtnEl.title = t('close');
-    manageBtnEl.style.color = '';
-    manageBtnEl.style.borderColor = '';
-    manageBtnEl.style.background = '';
-    manageBtnEl.onclick = _almanacOpen ? closeAlmanac : function() { closeReader(); goHome(); };
+    _setCloseBtn(_almanacOpen ? closeAlmanac : function() { closeReader(); goHome(); }, false);
   } else {
     manageBtnEl.style.display = 'flex';
     manageBtnEl.innerHTML = _gearSvg;
@@ -1233,8 +1236,16 @@ function updateTopbar() {
       /\.(pdf|epub)$/i.test(currentArticle.path || '');
     saveBtn.style.display = showSave ? 'flex' : 'none';
   }
-  randomBtn.style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
-  document.getElementById('library-btn').style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
+  randomBtn.style.display = (mode !== 'manage' && !_almanacOpen && !_createOpen) ? 'flex' : 'none';
+  document.getElementById('library-btn').style.display = (mode !== 'manage' && !_almanacOpen && !_createOpen) ? 'flex' : 'none';
+  // The + belongs to the home screen and to an admin. Everywhere else — reader,
+  // search, source, manage, almanac, and the Create page itself — it is gone.
+  var createBtn = document.getElementById('create-btn');
+  if (createBtn) {
+    createBtn.style.display =
+      (mode === 'home' && !readerOpen && !_almanacOpen && !_createOpen && _canCreate())
+        ? 'flex' : 'none';
+  }
   document.getElementById('lang-selector-btn').style.display =
     _getStorageFlag(SK.HIDE_LANG_CHOOSER) ? 'none' : '';
   _updateLibraryBtnIcon();
@@ -1852,6 +1863,7 @@ function goHome(e) {
   if (e && _anchorNativeClick(e)) return;
   if (e) e.preventDefault();
   if (typeof _almReturnScroll !== 'undefined') _almReturnScroll = null; // explicit Home cancels almanac return
+  if (_createOpen) closeCreate();
   if (_almanacOpen) closeAlmanac();
   // Clear manage auth when leaving manage
   if (mode === 'manage' && !_hasStoredManageToken()) _manageToken = '';
@@ -1871,6 +1883,7 @@ function goHome(e) {
 }
 
 function goBack() {
+  if (_createOpen) { closeCreate(); return; }
   if (_almanacOpen) { closeAlmanac(); return; }
   if (readerOpen) {
     // Step back through article history before closing reader
@@ -3504,6 +3517,45 @@ function _renderTodayCard() {
     '</div>';
 }
 
+// -- Create a ZIM (lazy-loaded from /static/create.js) --
+// Same shape as the Almanac below: a full-page surface over the library, its
+// module fetched only when an admin actually opens it. The module overrides
+// _openCreateInner and closeCreate; what lives here is the shell.
+var _createOpen = false;
+var _createLoaded = false;
+
+function openCreate() {
+  if (_createOpen) return;
+  if (_createLoaded) { _openCreateInner(); return; }
+  var el = document.createElement('script');
+  el.src = '/static/create.js?v=1';
+  el.onload = function() { _createLoaded = true; _openCreateInner(); };
+  // Offline with a cold cache: the module was never fetched. Say so rather
+  // than leaving a button that appears to do nothing.
+  el.onerror = function() { _showToast(t('create_unavailable_offline')); };
+  document.head.appendChild(el);
+}
+
+// Both overridden by create.js once it loads.
+function _openCreateInner() {}
+
+function closeCreate() {
+  if (!_createOpen) return;
+  _createOpen = false;
+  document.getElementById('create-view').classList.remove('open');
+  mainView.classList.remove('hidden');
+  _setWindowTitle('Zimi');
+  updateTopbar();
+}
+
+// True when an admin may create ZIMs from this client: management is on, and
+// the client either holds admin credentials or needs none. Creation writes to
+// the library, so it is admin-only by the same rule as the gear — and the
+// server enforces that regardless of what this returns.
+function _canCreate() {
+  return manageEnabled && !_userSession && !_managePwRequired && !_managePublicLocked;
+}
+
 // -- Almanac mini-app (lazy-loaded from /static/almanac.js) --
 var _almanacOpen = false;
 var _almanacLoaded = false;
@@ -4922,6 +4974,7 @@ async function doSearch(query, push) {
 
   // Close reader or almanac if open
   if (readerOpen) closeReader();
+  if (_createOpen) closeCreate();
   if (_almanacOpen) closeAlmanac();
 
   mainView.classList.remove('hidden');
@@ -15450,6 +15503,7 @@ function _migrateBookmarks() {
 // ── Random ──
 async function randomArticle(event) {
   if (event) event.preventDefault();
+  if (_createOpen) closeCreate();
   if (_almanacOpen) closeAlmanac();
   if (mode === 'manage') { mode = 'home'; updateTopbar(); }
   var btn = document.getElementById('random-btn');
@@ -15510,6 +15564,7 @@ document.addEventListener('keydown', e => {
     var _hp = document.getElementById('history-panel');
     if (_hp && _hp.classList.contains('open')) { _closeLibraryPanel(); return; }
     if (suggestDropdown.style.display !== 'none') { hideSuggest(); return; }
+    if (_createOpen) { closeCreate(); return; }
     if (_almanacOpen) { closeAlmanac(); return; }
     if (readerOpen) { goBack(); return; }
     if (q.value) { q.value = ''; hideSuggest(); clearSearch(); return; }
@@ -15533,6 +15588,7 @@ document.addEventListener('keydown', e => {
 window.addEventListener('popstate', (e) => {
   hideSuggest();
   _hideHistoryTrail();
+  if (_createOpen) { closeCreate(); return; }
   // Close Space if open
   if (_almanacOpen) { closeAlmanac(); return; }
   // Restore reader when navigating back from manage view

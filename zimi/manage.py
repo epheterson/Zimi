@@ -13,6 +13,7 @@ import re
 import sys
 import threading
 import time
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
@@ -1470,6 +1471,321 @@ def _apply_backup_bundle(data, overwrite=False):
 
 
 # ============================================================================
+# ZIM creation jobs — the web face of `zimi create` / `zimi import`
+#
+# ONE job at a time, deliberately. The hardware floor for Zimi is a Pi that is
+# also serving the library; a second concurrent crawl would not go twice as
+# fast, it would make reading the library miserable while both crawl badly.
+# A second request gets 409 with the running job named, not a queue.
+#
+# The engines (zimi.creator / crawler / video / importer) are untouched: each
+# already takes a per-line progress callback, and this module wires that into
+# a bounded ring buffer the browser polls with a cursor. Cancellation is
+# cooperative through that same callback — it raises out of the engine at the
+# next line, which unwinds through ``atomic_zim_creator`` so no partial ZIM is
+# ever left under a real name. Modes whose engine takes no callback (folder,
+# page) therefore cannot be interrupted mid-run, and the status says so rather
+# than pretending.
+# ============================================================================
+
+CREATE_MODES = ("folder", "page", "site", "video", "import")
+# Ring-buffer depth for job output. A long crawl emits a line per page, so the
+# buffer is a live tail, not a transcript — the browser polls faster than it
+# fills and keeps everything it has already seen.
+CREATE_LOG_LINES = 500
+CREATE_MAX_SOURCE = 2048  # a path or URL longer than this is not a real one
+CREATE_MAX_TITLE = 200
+# Site crawls: what the form offers. Wider bounds live on the CLI.
+CREATE_MAX_PAGES_CEILING = 5000
+# Video jobs: a playlist cap, same reasoning.
+CREATE_VIDEO_LIMIT_CEILING = 500
+
+_create_lock = threading.Lock()
+_create_job = None  # the one _CreateJob, running or last finished
+
+
+class _CreateCancelled(Exception):
+    """Raised out of a job's progress callback when the admin cancels."""
+
+
+class _CreateJob:
+    """One creation run: its identity, its output tail, and its outcome."""
+
+    def __init__(self, mode, source, title):
+        self.mode = mode
+        self.source = source
+        self.title = title
+        self.lines = []  # tail, trimmed to CREATE_LOG_LINES
+        self.emitted = 0  # total lines ever produced — the cursor space
+        self.started = time.time()
+        self.finished = None
+        self.done = False
+        self.ok = False
+        self.cancelled = False
+        self.cancel_requested = False
+        self.error = ""
+        self.result = None
+
+    # -- output ------------------------------------------------------------
+    def note(self, message):
+        """Progress sink handed to the engines. Doubles as the cancellation
+        checkpoint: a pending cancel raises here, at a line boundary."""
+        if self.cancel_requested:
+            raise _CreateCancelled()
+        text = str(message).rstrip("\n")
+        with _create_lock:
+            self.lines.append(text)
+            self.emitted += 1
+            if len(self.lines) > CREATE_LOG_LINES:
+                del self.lines[: len(self.lines) - CREATE_LOG_LINES]
+
+    def tail(self, cursor):
+        """Lines from ``cursor`` onward plus the new cursor. A cursor older
+        than the buffer silently snaps forward — dropped lines are gone, and
+        replaying nothing beats replaying the wrong window."""
+        with _create_lock:
+            first = self.emitted - len(self.lines)
+            start = max(0, cursor - first)
+            return self.lines[start:], self.emitted
+
+
+def _create_name_of(path):
+    """The library name for a freshly written ZIM: its filename without the
+    extension, which is exactly how the rest of the app addresses it."""
+    base = os.path.basename(path or "")
+    return base[:-4] if base.lower().endswith(".zim") else base
+
+
+def _create_validate(data):
+    """Validate a create request. Returns ``(mode, source, title, opts)`` or
+    raises ValueError whose message is safe to send to the client — every one
+    of them names something the admin typed, never anything internal."""
+    mode = str(data.get("mode") or "").strip().lower()
+    if mode not in CREATE_MODES:
+        raise ValueError("unknown creation mode")
+    source = str(data.get("source") or "").strip()
+    if not source:
+        raise ValueError("missing source")
+    if len(source) > CREATE_MAX_SOURCE:
+        raise ValueError("source is too long")
+    title = str(data.get("title") or "").strip()[:CREATE_MAX_TITLE]
+
+    if mode == "folder":
+        # A server-side path typed by an admin. Normalized and required to be
+        # a real, readable directory HERE so the answer is immediate instead
+        # of arriving as a job failure. There is deliberately no directory
+        # listing endpoint anywhere in Zimi — the admin knows their own paths,
+        # and a browsable server filesystem is not a feature we want to own.
+        source = os.path.realpath(os.path.expanduser(source))
+        if not os.path.isdir(source):
+            raise ValueError("not a folder on this server")
+        if not os.access(source, os.R_OK | os.X_OK):
+            raise ValueError("that folder is not readable by the server")
+    elif mode == "import":
+        source = os.path.realpath(os.path.expanduser(source))
+        if not os.path.isfile(source):
+            raise ValueError("not a file on this server")
+        if not os.access(source, os.R_OK):
+            raise ValueError("that file is not readable by the server")
+    else:
+        parts = urllib.parse.urlsplit(source)
+        if parts.scheme.lower() not in ("http", "https") or not parts.netloc:
+            raise ValueError("not an http(s) URL")
+
+    opts = {}
+    if mode == "site":
+        opts["max_pages"] = _create_int(
+            data.get("max_pages"), 1, CREATE_MAX_PAGES_CEILING
+        )
+    elif mode == "video":
+        opts["audio_only"] = bool(data.get("audio_only"))
+        opts["limit"] = _create_int(data.get("limit"), 1, CREATE_VIDEO_LIMIT_CEILING)
+    return mode, source, title, opts
+
+
+def _create_int(value, low, high):
+    """Clamp an optional numeric form field into range; None when absent or
+    unparseable, which every engine reads as "use your own default"."""
+    if value in (None, ""):
+        return None
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(low, min(high, n))
+
+
+def _create_run(job, opts):
+    """Drive the engine for one job. Imports are deferred to here: the writer
+    stack and yt-dlp are heavy, and a server that never creates a ZIM should
+    never pay for them."""
+    if job.mode == "folder":
+        from zimi.creator import create_folder_zim
+
+        job.note(f"packaging {job.source}")
+        return create_folder_zim(job.source, title=job.title or None, register=True)
+    if job.mode == "page":
+        from zimi.creator import create_page_zim
+
+        job.note(f"fetching {job.source}")
+        return create_page_zim(job.source, title=job.title or None, register=True)
+    if job.mode == "site":
+        from zimi.crawler import create_site_zim
+
+        kwargs = {"max_pages": opts["max_pages"]} if opts.get("max_pages") else {}
+        return create_site_zim(
+            job.source,
+            title=job.title or None,
+            register=True,
+            progress=job.note,
+            **kwargs,
+        )
+    if job.mode == "video":
+        from zimi.video import create_video_zim
+
+        return create_video_zim(
+            job.source,
+            title=job.title or None,
+            audio_only=opts.get("audio_only", False),
+            limit=opts.get("limit"),
+            register=True,
+            progress=job.note,
+        )
+    from zimi.importer import import_archive
+
+    return import_archive(
+        job.source, title=job.title or None, register=True, sink=job.note
+    )
+
+
+def _create_worker(job, opts):
+    """Job thread body. Never raises — every outcome becomes job state."""
+    from zimi.creator import CreateError
+
+    try:
+        result = _create_run(job, opts)
+        job.result = {
+            "name": _create_name_of(result.get("path")),
+            # What the admin asked this ZIM to be called, when they said. The
+            # library lists ZIMs by title, so a done card that only showed the
+            # filename would name it differently from where it just landed.
+            "title": job.title,
+            "path": result.get("path"),
+            "registered": bool(result.get("registered")),
+        }
+        job.ok = True
+        job.note("done")
+    except _CreateCancelled:
+        job.cancelled = True
+        job.error = "cancelled — nothing was added to the library"
+    except CreateError as e:
+        # The ONE place a caught message reaches the client verbatim, and it is
+        # the point of the exception: CreateError carries the sentence that
+        # names the fix ("capture it with zimit…", "yt-dlp is not installed…").
+        # Every other exception below stays generic.
+        job.error = str(e)
+    except Exception:
+        log.exception("ZIM creation failed (%s)", job.mode)
+        job.error = "creation failed — see the server log for details"
+    finally:
+        job.done = True
+        job.finished = time.time()
+
+
+def _create_start(data):
+    """Validate, claim the single job slot, and start the worker. Returns
+    ``(payload, status)`` ready to send."""
+    try:
+        mode, source, title, opts = _create_validate(data)
+    except ValueError as e:
+        return {"error": str(e)}, 400
+    global _create_job
+    with _create_lock:
+        if _create_job is not None and not _create_job.done:
+            return (
+                {
+                    "error": "a ZIM is already being created — "
+                    "wait for it to finish or cancel it",
+                    "mode": _create_job.mode,
+                },
+                409,
+            )
+        job = _CreateJob(mode, source, title)
+        _create_job = job
+    threading.Thread(
+        target=_create_worker, args=(job, opts), daemon=True, name="zimi-create"
+    ).start()
+    return {"status": "started", "mode": mode}, 200
+
+
+def _create_status(cursor, probe=False):
+    """Poll payload. ``cursor`` is the client's line count so far; the reply
+    carries only what is new plus the cursor to send next time."""
+    job = _create_job
+    payload: dict = {"offline": _is_offline_mode()}
+    if probe:
+        # Only on the page's first poll: one cheap subprocess, not per-second.
+        payload["import_ready"] = _create_import_ready()
+    if job is None:
+        payload.update({"active": False, "done": False, "lines": [], "cursor": 0})
+        return payload
+    lines, next_cursor = job.tail(max(0, cursor))
+    payload.update(
+        {
+            "active": not job.done,
+            "mode": job.mode,
+            "source": job.source,
+            "title": job.title,
+            "lines": lines,
+            "cursor": next_cursor,
+            "done": job.done,
+            "ok": job.ok,
+            "cancelled": job.cancelled,
+            "cancelling": job.cancel_requested and not job.done,
+            "error": job.error,
+            "result": job.result,
+            # Folder and page runs have no progress callback to interrupt, so
+            # the cancel button would be a lie. Say which kind of job this is.
+            "cancellable": job.mode in ("site", "video", "import"),
+            "elapsed": round((job.finished or time.time()) - job.started, 1),
+        }
+    )
+    return payload
+
+
+def _create_cancel():
+    """Signal the running job. Cooperative: it lands at the engine's next
+    progress line, so the reply promises a request, not a stop."""
+    job = _create_job
+    if job is None or job.done:
+        return {"error": "no creation job is running"}, 409
+    job.cancel_requested = True
+    return {
+        "status": "cancelling",
+        "cancellable": job.mode in ("site", "video", "import"),
+    }, 200
+
+
+def _is_offline_mode():
+    from zimi import p2p
+
+    return bool(p2p.is_offline())
+
+
+def _create_import_ready():
+    """True when the warc2zim sidecar is already installed — the one thing
+    that decides whether archive import can run on a machine with no
+    internet."""
+    try:
+        from zimi.importer import sidecar_status
+
+        return bool(sidecar_status().get("installed"))
+    except Exception:
+        log.exception("warc2zim sidecar probe failed")
+        return False
+
+
+# ============================================================================
 # Manage GET Routes
 # ============================================================================
 
@@ -1706,6 +2022,17 @@ def handle_manage_get(handler, parsed, params):
             resp["stale"] = True
             resp["fetched_at"] = _lib._catalog_stale_ts
         return handler._json(200, resp)
+
+    elif parsed.path == "/manage/create/status":
+        # Polled ~2s while a job runs. Everything here is in-memory except the
+        # optional one-shot sidecar probe, so the poll stays cheap on a Pi.
+        return handler._json(
+            200,
+            _create_status(
+                _create_int(param("since"), 0, 2**31) or 0,
+                probe=param("probe") == "1",
+            ),
+        )
 
     elif parsed.path == "/manage/check-updates":
         updates = _srv._check_updates()
@@ -2281,6 +2608,23 @@ def handle_manage_post(handler, parsed, data):
 
     if parsed.path == "/manage/public-access":
         return _handle_public_access_post(handler, data)
+
+    if parsed.path == "/manage/create":
+        # Folder and import modes read arbitrary server paths — a package-
+        # /etc-into-a-ZIM primitive. That power stays with the primary admin;
+        # secondary admins (an SSO role can mint them) keep the URL modes.
+        if data.get("mode") in ("folder", "import") and not _primary_admin_authorized(
+            handler
+        ):
+            return handler._json(
+                403, {"error": "Server-path creation needs the primary admin"}
+            )
+        payload, status = _create_start(data)
+        return handler._json(status, payload)
+
+    if parsed.path == "/manage/create/cancel":
+        payload, status = _create_cancel()
+        return handler._json(status, payload)
 
     if parsed.path == "/manage/download":
         url = data.get("url", "")

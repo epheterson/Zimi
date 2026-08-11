@@ -134,6 +134,26 @@ ZIM_DIR=/tmp your-favorite-check: python3 -m zimi list
 
 Expect: a real ZIM with your markdown rendered and PDFs inside, openable in any Kiwix reader. Then try a live page: `python3 -m zimi create https://example.com --out /tmp/page.zim`. Try it on a JS-heavy SPA and it refuses with a message naming zimit instead of packaging a loading spinner. `ZIMI_OFFLINE=1` refuses URL mode outright.
 
+## The + button — making a ZIM without the command line
+
+This one needs a server that can see the folder you want to package, so run it locally rather than on the preview (the preview's filesystem is the container's, and the only interesting folder in there is the ZIM library itself).
+
+```
+mkdir -p /tmp/pack && printf '# Field Notes\n\nWater: boil 1 min.\n' > /tmp/pack/README.md
+mkdir -p /tmp/mylib && cp /tmp/zimi-empty/*.zim /tmp/mylib/ 2>/dev/null
+cd ~/Repos/zimi && ZIM_DIR=/tmp/mylib ZIMI_DATA_DIR=/tmp/mydata python3 -m zimi serve --port 8899
+```
+
+Open http://localhost:8899. A **+** sits in the title bar, immediately left of the dice. Now try to make it disappear, because that is the part worth checking: search for something and press Enter, open an article, step into a source, open Manage, open the Almanac — it is gone in every one of those and back the moment you return home. It is also admin-only. On a password-protected instance it stays hidden until you sign in as the admin, and a signed-in named user never sees it at all — nor can they reach it around the back: `POST /manage/create` answers them 401, same as every other manage write. (One quirk that is not new: with exactly one ZIM installed Zimi auto-enters that source, so home never renders and you reach the + by clicking the Zimi logo first.)
+
+Click it. Five tiles, one line each — a folder on this server, one web page, a whole site, a video or playlist, a web archive to import. Click **Folder on this server** and the form opens directly underneath that tile: one path field, an optional title, and a quiet caption saying depth, size budgets, media formats and language live on `zimi create --help`. That is the entire interface. Click through the other four and count the controls: site adds max-pages, video adds audio-only and a video cap, page and import add nothing.
+
+Type `/tmp/pack`, title it "Field Notes", click Create. Expect a running pane with the job's output streaming into it, then a card saying **Added to your library** with the title, the `.zim` filename under it, and an Open button. Click Open: you land inside the new ZIM immediately — it registered itself as it was written, so no restart and no cache refresh.
+
+Two refusals worth provoking. Type a path that does not exist and it says "not a folder on this server" before anything starts. Start a slow job (Whole site against any real URL, max pages 200), then in a second browser tab open the + and try to start another: "a ZIM is already being created" — one job at a time, because a Pi cannot crawl and serve at once. While the crawl runs, Cancel it; it stops at the next page boundary and says nothing was added to your library. Folder and page jobs honestly say they cannot be cancelled instead of showing a button that would lie.
+
+Finally, `ZIMI_OFFLINE=1` on the same command: the web page, whole site and video tiles go grey with "Offline mode is on — this needs an internet connection." Folder stays live, and so does Import if the warc2zim helper is already installed, because that is the truth — it only needs the network for its first install.
+
 ## What has no demo yet
 
 Identity (design only, waiting on your OIDC/Cloudflare call), k8s manifest against a real cluster, and the two P0s from the Pi audit (delete-under-lock, uncapped media serve) which are queued but not yet fixed. If it's not in this guide, treat it as unproven.
