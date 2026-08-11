@@ -65,6 +65,10 @@
   // visible first — CSS hides #main-view and shows the dark almanac shell
   // until almanac.js takes over and removes the class (_openAlmanacInner).
   if (location.hash === '#almanac') el.classList.add('almanac-boot');
+  // Same contract for the Create page (#create): a URL you can send someone
+  // has to LAND on that page, not show the library and then swap. The class
+  // holds the library back until create.js takes over (_openCreateInner).
+  if (location.hash === '#create') el.classList.add('create-boot');
   window.addEventListener('pageshow', function(e){ if (e.persisted) apply(); });
 })();
 </script>
