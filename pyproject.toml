@@ -74,6 +74,10 @@ zimi = ["templates/**", "static/**", "assets/**"]
 # over time, so failures there are signal about ZIM data, not code.
 # Run it explicitly with `pytest tests/test_article_languages.py` when needed.
 addopts = "--ignore=tests/test_article_languages.py"
+# tests_release/ is the pre-release gate (scripts/release-gate.sh): it boots
+# real servers and takes minutes, so a bare `pytest` must not pick it up.
+# Naming it explicitly still runs it.
+testpaths = ["tests"]
 markers = [
     "real_engine: opts a test out of the autouse libtorrent guard (may start a live libtorrent session)",
 ]

@@ -172,6 +172,14 @@ Round 1 of the + button was, in Eric's words, a shot in the dark: you typed a pa
 
 **Web page takes a list.** Paste several addresses, one per line, up to twenty, and they become one ZIM with a generated index and working links between the captured pages. The preview counts them and describes the first. A line that is not a URL is named — "not an http(s) URL: nope" — before anything runs, rather than failing on page eleven. Page mode also grew a live log and a working Cancel button in the process; it had neither before.
 
+## The release gate — one command, scoreboard out
+
+```
+./scripts/release-gate.sh
+```
+
+**Expect:** about twenty seconds and a scoreboard, one line per feature — search and read, cross-ZIM links, language switching, ZIM creation, bookmark export, library operations, config provenance and offline boot, authentication. Each line boots a real server on a port the OS picks against real fixture ZIMs and drives it over HTTP the way the browser does, so a feature that is wired up correctly everywhere and still dead end to end fails here instead of in your hands. It is not part of `pytest tests/` — it runs before a release, not on every save.
+
 ## What has no demo yet
 
 Identity (design only, waiting on your OIDC/Cloudflare call), k8s manifest against a real cluster, and the two P0s from the Pi audit (delete-under-lock, uncapped media serve) which are queued but not yet fixed. If it's not in this guide, treat it as unproven.

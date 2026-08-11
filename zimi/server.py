@@ -2450,15 +2450,11 @@ def load_cache(force=False):
             flush=True,
         )
 
-    # Rebuild domain map whenever ZIM list changes — and sync this module's
-    # re-export alias, which /resolve?domains=1 serves. The build rebinds
-    # interlang's global; without the sync here, a normally-booted server
-    # hands the client an EMPTY domain map forever and the browser's
-    # cross-ZIM pre-check quietly dies (register/unregister already sync).
+    # Rebuild domain map whenever the ZIM list changes. The build REBINDS
+    # interlang's global; /resolve?domains=1 reads it as _srv._domain_zim_map,
+    # which resolves live through this module's __getattr__ (see the
+    # stale-alias note on the re-export block) rather than an import-time copy.
     _build_domain_zim_map()
-    import zimi.interlang as _interlang
-
-    globals()["_domain_zim_map"] = _interlang._domain_zim_map
 
 
 def _domain_map_entries_for_zim(name, filename, source_meta):
@@ -2699,9 +2695,6 @@ def register_zim_file(path, removed_files=()):
         for _d, _n in _domain_map_entries_for_zim(name, filename, source_meta).items():
             merged.setdefault(_d, _n)
         _interlang._domain_zim_map = merged
-        # Keep this module's re-export binding fresh too (manage/status reads
-        # it via _srv; the import-time binding would otherwise go stale).
-        globals()["_domain_zim_map"] = merged
     log.info(
         "Registered %s (%s entries) without a library rescan",
         filename,
@@ -2811,7 +2804,6 @@ def unregister_zim_file(filename):
                 d: n for d, n in _interlang._domain_zim_map.items() if n not in gone
             }
             _interlang._domain_zim_map = pruned
-            globals()["_domain_zim_map"] = pruned
     log.info(
         "Unregistered %s without a library rescan%s",
         filename,
@@ -3629,6 +3621,56 @@ def warm_indexes():
 # ============================================================================
 # These keep ``zimi.server.search_all`` etc. working so callers (tests,
 # mcp_server.py, handler code still in this file) need zero changes.
+#
+# THE STALE-ALIAS TRAP — read before adding a name below.
+#
+# ``from zimi.x import name`` copies the *current binding* into this module's
+# namespace once, at import time. Whether that copy stays correct depends
+# entirely on what the owning module does to the name afterwards:
+#
+#   function / class          immune. The object is never replaced.
+#   container, mutated only   safe. ``d[k] = v`` / ``d.clear()`` / ``lst.append``
+#     in place                mutate the shared object; both names still point
+#                             at it. Most caches here are this class.
+#   constant, never assigned  safe. Includes module-level values finalised
+#     after import            during the owning module's own body (e.g.
+#                             SEARCH_UI_HTML, which http.py rewrites several
+#                             times before server.py ever imports it).
+#   REBOUND after import      BROKEN. ``global name; name = something_else``
+#                             inside a function rebinds only the owning
+#                             module's global. The alias here keeps pointing
+#                             at the original object forever, and every
+#                             consumer that reads it through ``_srv.name``
+#                             sees import-time state for the life of the
+#                             process.
+#
+# That last class shipped a silent production bug: /resolve?domains=1 served
+# ``_srv._domain_zim_map``, but _build_domain_zim_map rebinds interlang's
+# global, so a normally-booted server handed the browser an empty domain map
+# forever and cross-ZIM link resolution was quietly dead.
+#
+# So rebind-class names are NOT imported by value. They are listed in
+# _REBOUND_ALIASES and resolved on every access by the module __getattr__
+# below, which cannot go stale. If you add a ``global`` rebind to a name that
+# server.py re-exports, move it into that table — tests/test_alias_freshness.py
+# re-derives the classification from the AST and fails if you don't.
+
+# Names whose owning module rebinds them at runtime. Resolved live instead of
+# copied, so ``_srv.<name>`` is always the owner's current value.
+_REBOUND_ALIASES = {
+    "_domain_zim_map": "zimi.interlang",  # rebuilt by _build_domain_zim_map
+    "_download_counter": "zimi.library",  # bumped per download / import
+    "_env_pw_hash_cache": "zimi.manage",  # memoised on first password check
+}
+
+
+def __getattr__(name):
+    """Resolve rebind-class re-exports live (PEP 562). See the trap note above."""
+    owner = _REBOUND_ALIASES.get(name)
+    if owner is not None:
+        return getattr(sys.modules[owner], name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 from zimi.search import (  # noqa: E402, F401
     # Search / suggest caches (dicts + constants + functions)
@@ -3709,8 +3751,7 @@ from zimi.interlang import (  # noqa: E402, F401
     # Almanac deep-links (closed-set Q-ID → article batch resolution)
     resolve_almanac_qids,
     ALMANAC_QID_BATCH_MAX,
-    # Cross-ZIM resolution
-    _domain_zim_map,
+    # Cross-ZIM resolution (_domain_zim_map is rebind-class — see _REBOUND_ALIASES)
     _xzim_refs,
     _xzim_refs_lock,
     _build_domain_zim_map,
@@ -3739,7 +3780,7 @@ from zimi.library import (  # noqa: E402, F401
     # Downloads & catalog
     _active_downloads,
     _download_lock,
-    _download_counter,
+    # _download_counter is rebind-class — see _REBOUND_ALIASES
     _opds_cache,
     _OPDS_CACHE_TTL,
     _start_download,
@@ -3764,7 +3805,7 @@ from zimi.manage import (  # noqa: E402, F401
     # Password & authentication
     _hash_pw,
     _PW_ITERATIONS,
-    _env_pw_hash_cache,
+    # _env_pw_hash_cache is rebind-class — see _REBOUND_ALIASES
     _get_manage_password_hash,
     _api_token_file,
     _get_api_token,

@@ -32,6 +32,7 @@ Before tagging, verify these on the feature branch:
 - [ ] `desktop-release.yml` smoke test commands work with current auth model (e.g. `Sec-Fetch-Site` header for manage endpoints)
 - [ ] `node -c zimi/static/app.js` passes (no syntax errors)
 - [ ] `python3 -m pytest tests/ -q` passes
+- [ ] `./scripts/release-gate.sh` passes — boots real servers against real ZIM files and drives every headline feature over HTTP, which is the only way to catch a feature that is correct in every module and still dead end to end (cross-ZIM link resolution once shipped serving an empty domain map, and no unit test noticed)
 - [ ] CHANGELOG updated, README current, screenshots current
 - [ ] No debug print statements or console.logs that shouldn't ship
 
