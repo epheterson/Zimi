@@ -56,7 +56,12 @@ from zimi.zimwriter import (
     _slug,
     add_standard_metadata,
     atomic_zim_creator,
+    has_image_support,
+    history_record,
+    illustration_from_image,
     make_asset_item,
+    media_tags,
+    zim_name,
     zim_static_item_class,
 )
 
@@ -75,7 +80,11 @@ MAX_SOURCE_FILE_BYTES = 1024**3  # 1 GiB per raw file
 MAX_TOTAL_SOURCE_BYTES = 8 * 1024**3  # 8 GiB per ZIM
 MAX_TEXT_SOURCE_BYTES = 16 * 1024**2  # 16 MiB per HTML/Markdown file
 MAX_PAGE_FETCH_BYTES = 10 * 1024**2  # 10 MiB fetched page document
+MAX_FAVICON_BYTES = 512 * 1024  # a site icon; anything larger is not one
 DEFAULT_FETCH_TIMEOUT = 30.0
+# Best icon first. apple-touch-icon is a large clean PNG where it exists,
+# which downscales to 48px far better than a 16px .ico does.
+_FAVICON_CANDIDATES = ("apple-touch-icon.png", "favicon.png", "favicon.ico")
 DEFAULT_MAX_REDIRECTS = 5
 # An SPA shell has scripts and (nearly) no server-rendered text. The
 # threshold is deliberately low: real articles clear it by an order of
@@ -96,7 +105,12 @@ SPA_REFUSAL = (
 _MD_EXTS = {".md", ".markdown"}
 _HTML_EXTS = {".html", ".htm"}
 _JUNK_NAMES = {"thumbs.db", "desktop.ini", "__pycache__"}
-_HTML_MIME = "text/html;charset=utf-8"
+# A BARE mimetype, deliberately: libzim aggregates entry mimetypes verbatim
+# into the Counter metadata, whose spec regex admits no ";" or "=" — a
+# "text/html;charset=utf-8" entry makes every ZIM fail `zimcheck -M`. The
+# charset lives where every other scraper puts it, in the document's own
+# <meta charset> (see _normalize_charset).
+_HTML_MIME = "text/html"
 
 _TITLE_TAG_RE = re.compile(r"<title[^>]*>(.*?)</title\s*>", re.IGNORECASE | re.DOTALL)
 _H1_RE = re.compile(r"<h1[^>]*>(.*?)</h1\s*>", re.IGNORECASE | re.DOTALL)
@@ -110,6 +124,14 @@ _STYLE_ELEM_RE = re.compile(
     r"(<style\b[^>]*>)(.*?)(</style\s*>)", re.IGNORECASE | re.DOTALL
 )
 _BASE_TAG_RE = re.compile(r"<base\b[^>]*/?>", re.IGNORECASE)
+_CHARSET_META = "<meta charset='utf-8'>"
+_META_CONTENT_TYPE_RE = re.compile(
+    r"""<meta\b[^>]*http-equiv\s*=\s*["']?content-type["']?[^>]*>""", re.IGNORECASE
+)
+_META_CHARSET_RE = re.compile(r"""<meta\b[^>]*\bcharset\s*=[^>]*>""", re.IGNORECASE)
+_HEAD_OPEN_RE = re.compile(r"<head\b[^>]*>", re.IGNORECASE)
+_HTML_OPEN_RE = re.compile(r"<html\b[^>]*>", re.IGNORECASE)
+_DOCTYPE_RE = re.compile(r"<!DOCTYPE\b[^>]*>", re.IGNORECASE)
 _A_TAG_RE = re.compile(r"<a\b[^>]*>", re.IGNORECASE)
 _ABS_ATTR_RE = re.compile(
     r"""(\b(src|href|srcset)\s*=\s*)(["'])(.*?)\3""", re.IGNORECASE | re.DOTALL
@@ -528,6 +550,7 @@ def create_folder_zim(
     total_bytes = 0
     pages = []  # (zim_path, title) — front articles for the generated index
     assets = []  # zim_path
+    mimetypes = set()  # evidence for the _pictures:/_videos: tags
     main_path = _pick_main(p for _f, p in files)
 
     with atomic_zim_creator(out, language) as creator:
@@ -559,12 +582,15 @@ def create_folder_zim(
                 except OSError as e:
                     raise CreateError(f"cannot read {zim_path}: {e.strerror or e}")
                 if ext in _HTML_EXTS:
-                    # Pass through untouched: relative links resolve because
-                    # the whole folder ships at its original paths.
+                    # Otherwise untouched — relative links resolve because the
+                    # whole folder ships at its original paths. Only the
+                    # charset declaration is rewritten, because the file was
+                    # just read as UTF-8 and is stored as UTF-8, and the ZIM
+                    # entry's bare text/html mimetype no longer says so.
                     page_title = _page_title_from_html(
                         text, posixpath.splitext(stem)[0]
                     )
-                    content = text.encode("utf-8")
+                    content = _normalize_charset(text).encode("utf-8")
                 else:
                     content, page_title = _render_markdown_page(
                         text, posixpath.splitext(stem)[0]
@@ -574,10 +600,10 @@ def create_folder_zim(
                 )
                 pages.append((zim_path, page_title))
             else:
-                creator.add_item(
-                    file_cls(zim_path, stem, fs_path, _guess_mime(zim_path))
-                )
+                mime = _guess_mime(zim_path)
+                creator.add_item(file_cls(zim_path, stem, fs_path, mime))
                 assets.append(zim_path)
+                mimetypes.add(mime)
 
         if main_path is None:
             taken = {p for _f, p in files}
@@ -596,6 +622,25 @@ def create_folder_zim(
             f"{_plural(len(assets), 'file')} packaged by Zimi",
             language=language,
             creator_name=creator_name,
+            # The folder's NAME, never its path — see the privacy rule in
+            # zimwriter's provenance block.
+            source=base_name,
+            # Repackaging the same folder next month is a new EDITION of this
+            # ZIM, so the Name comes from the folder, never from the date.
+            name=zim_name(base_name, language),
+            tags=media_tags(mimetypes),
+            history=history_record(
+                "created",
+                "folder",
+                f'packaged the folder "{base_name}" — '
+                f"{_plural(len(pages), 'page')} and "
+                f"{_plural(len(assets), 'file')}",
+                counts={
+                    "pages": len(pages),
+                    "assets": len(assets),
+                    "bytes": total_bytes,
+                },
+            ),
         )
 
     registered = _try_register(out) if register else False
@@ -859,6 +904,23 @@ def _strip_scripts(page):
     return _BASE_TAG_RE.sub("", page)
 
 
+def _normalize_charset(page):
+    """Make the page's declared charset tell the truth. A capture is decoded
+    from whatever the server claimed and re-encoded as UTF-8, so a surviving
+    ``<meta charset=windows-1252>`` now describes bytes that no longer exist —
+    and since ZIM entries carry a BARE ``text/html`` mimetype (the charset
+    suffix is what makes libzim's Counter metadata violate the spec's regex),
+    this tag is what a browser will actually believe. Every declaration is
+    replaced with one canonical UTF-8 one."""
+    page = _META_CONTENT_TYPE_RE.sub("", page)
+    page = _META_CHARSET_RE.sub("", page)
+    for anchor in (_HEAD_OPEN_RE, _HTML_OPEN_RE, _DOCTYPE_RE):
+        m = anchor.search(page)
+        if m:
+            return page[: m.end()] + _CHARSET_META + page[m.end() :]
+    return _CHARSET_META + page
+
+
 # ── the shared per-page pipeline (single page AND every page of a crawl) ────
 
 
@@ -913,6 +975,30 @@ def http_asset_carrier(add_item, final_url, timeout, *, carried=None, budget=Non
     return carrier
 
 
+def site_illustration(final_url, timeout):
+    """The site's own icon, re-encoded as the 48x48 PNG the spec wants, or
+    None to fall back to a generated one. Best effort on purpose: an icon is
+    decoration and a capture must never fail because a favicon 404'd. Needs
+    Pillow to rescale, so a machine without it is not asked to fetch at all."""
+    if not has_image_support():
+        return None
+    origin, _variants = _origin_variants(final_url)
+    for candidate in _FAVICON_CANDIDATES:
+        url = origin + "/" + candidate
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = resp.read(MAX_FAVICON_BYTES + 1)
+        except OSError as e:
+            log.debug("favicon fetch failed %s: %s", url, e)
+            continue
+        if data and len(data) <= MAX_FAVICON_BYTES:
+            png = illustration_from_image(data)
+            if png:
+                return png
+    return None
+
+
 def render_captured_page(carrier, page, *, final_url, resolve_link=None):
     """Turn one fetched page into the HTML that ships inside the ZIM: carry
     its stylesheets, inline-style backgrounds and media through ``carrier``,
@@ -926,7 +1012,7 @@ def render_captured_page(carrier, page, *, final_url, resolve_link=None):
     page = _carry_inline_styles(carrier, label, page_path, page)
     page = carrier.rewrite_media(label, page_path, page)
     page = _externalize_links(page, final_url, resolve_link)
-    return _strip_scripts(page)
+    return _normalize_charset(_strip_scripts(page))
 
 
 def create_page_zim(
@@ -982,6 +1068,17 @@ def create_page_zim(
             language=language,
             creator_name=creator_name,
             source=final_url,
+            # The whole URL: two pages from one site are two ZIMs, and
+            # recapturing either one is a new edition of that one.
+            name=zim_name(final_url, language),
+            tags=media_tags(carrier.mimetypes),
+            illustration=site_illustration(final_url, timeout),
+            history=history_record(
+                "created",
+                "page",
+                f"captured one page from {final_url}",
+                counts={"pages": 1, "assets": carrier.count},
+            ),
         )
 
     registered = _try_register(out) if register else False

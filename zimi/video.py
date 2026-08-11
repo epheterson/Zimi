@@ -49,6 +49,10 @@ from zimi.zimwriter import (
     _slug,
     add_standard_metadata,
     atomic_zim_creator,
+    history_record,
+    media_tags,
+    scraper_string,
+    zim_name,
     zim_static_item_class,
 )
 
@@ -93,6 +97,16 @@ def _yt_dlp():
         return importlib.import_module("yt_dlp")
     except ImportError:
         return None
+
+
+def yt_dlp_version(mod):
+    """The version yt-dlp reports for itself, or None when it reports none.
+    Provenance records name the tool that did the work, and yt-dlp's release
+    is dated enough that "which one" is a real question a year later."""
+    version = getattr(getattr(mod, "version", None), "__version__", None) or getattr(
+        mod, "__version__", None
+    )
+    return str(version) if version else None
 
 
 def claims_url(url):
@@ -466,6 +480,7 @@ def create_video_zim(
         file_cls = _zim_file_item_class()
         used_ids = set()
         rows = []
+        media_mimes = set()  # evidence for the _pictures:/_videos: tags
         with atomic_zim_creator(out, language) as creator:
             for v in videos:
                 info = v["info"]
@@ -476,6 +491,7 @@ def create_video_zim(
                 ext = os.path.splitext(v["media"])[1].lower()
                 media_path = f"media/{vid}{ext}"
                 media_mime = _media_mime(v["media"])
+                media_mimes.add(media_mime)
                 # Streams from disk via FileProvider — never into memory.
                 creator.add_item(file_cls(media_path, v_title, v["media"], media_mime))
                 sub_paths = []
@@ -497,13 +513,15 @@ def create_video_zim(
                     thumb_path = (
                         f"thumbs/{vid}{os.path.splitext(v['thumb'])[1].lower()}"
                     )
+                    thumb_mime = _media_mime(v["thumb"])
+                    media_mimes.add(thumb_mime)
                     with open(v["thumb"], "rb") as f:
                         creator.add_item(
                             static_cls(
                                 thumb_path,
                                 v_title,
                                 f.read(),
-                                mimetype=_media_mime(v["thumb"]),
+                                mimetype=thumb_mime,
                                 front=False,
                             )
                         )
@@ -551,6 +569,7 @@ def create_video_zim(
                 )
             )
             creator.set_mainpath("index")
+            tool_version = yt_dlp_version(mod)
             add_standard_metadata(
                 creator,
                 title=zim_title,
@@ -562,6 +581,22 @@ def create_video_zim(
                 language=language,
                 creator_name=creator_name,
                 source=url,
+                # The playlist/channel URL itself: re-running it next month is
+                # a new edition of this ZIM.
+                name=zim_name(url, language),
+                tags=media_tags(media_mimes),
+                # An audio-only build of a playlist is a genuinely different
+                # edition of the same source — exactly what Flavour is for.
+                flavour="audio" if audio_only else None,
+                scraper=scraper_string("yt-dlp", tool_version),
+                history=history_record(
+                    "created",
+                    "video",
+                    f"downloaded {_plural(len(rows), 'video')} from {url}"
+                    + (" (audio only)" if audio_only else ""),
+                    tools={"yt-dlp": tool_version},
+                    counts={"videos": len(rows), "bytes": used},
+                ),
             )
     finally:
         shutil.rmtree(staging, ignore_errors=True)

@@ -47,7 +47,7 @@ import tempfile
 import zimi.server as _srv
 from zimi.creator import CreateError, _finish_output, _try_register
 from zimi.p2p import is_offline
-from zimi.zimwriter import _slug
+from zimi.zimwriter import _slug, scraper_string
 
 # warc2zim's own pin (see docs/plans/2026-08-10-zim-creation-landscape.md §5):
 # a single Python minor version. Bump both bounds together when upstream moves.
@@ -58,6 +58,8 @@ PY_REQUIREMENT_TEXT = "Python >=3.14,<3.15"
 
 _SIDECAR_MARKER = ".zimi-sidecar.json"
 ARCHIVE_EXTS = (".warc", ".warc.gz", ".wacz")
+# warc2zim's flag for appending to the Scraper metadata it writes.
+SCRAPER_SUFFIX_FLAG = "--scraper-suffix"
 
 OFFLINE_PRESEED_MSG = (
     "ZIMI_OFFLINE is set — installing the warc2zim sidecar needs the network "
@@ -182,6 +184,14 @@ def _find_python():
     )
 
 
+def _supports_flag(exe, flag):
+    """Whether this warc2zim knows ``flag``. The sidecar is whatever pip had
+    on the day it was built, so a stamp Zimi wants must never be the reason an
+    import fails — an older warc2zim simply doesn't get asked for it."""
+    rc, out = _run_capture([exe, "--help"])
+    return rc == 0 and flag in out
+
+
 def _tool_version(exe):
     rc, out = _run_capture([exe, "--version"])
     if rc != 0 or not out:
@@ -273,7 +283,11 @@ def import_archive(
 ):
     """Convert one WARC/WARC.GZ/WACZ into a ZIM via the sidecar. Returns
     ``{"path", "name", "registered"}``; raises CreateError with a user-facing
-    message on refusal. The archive size is deliberately uncapped."""
+    message on refusal. The archive size is deliberately uncapped.
+
+    Provenance is thinner than in Zimi's own engines because warc2zim writes
+    the ZIM: there is no Creator to add ``X-Zimi-History`` to. Zimi stamps what
+    it can reach — its name and version, appended to warc2zim's Scraper."""
     say = sink or (lambda _line: None)
     archive = os.path.abspath(archive)
     if not os.path.isfile(archive):
@@ -307,6 +321,11 @@ def import_archive(
         cmd += ["--title", title]
     if description:
         cmd += ["--description", description]
+    # warc2zim writes the ZIM, so Zimi has no Creator to add its own metadata
+    # to. The Scraper string is the one field it can reach: warc2zim appends
+    # this suffix to its own, so the ZIM still says which Zimi made it.
+    if _supports_flag(exe, SCRAPER_SUFFIX_FLAG):
+        cmd += [SCRAPER_SUFFIX_FLAG, scraper_string()]
     try:
         say(f"converting {os.path.basename(archive)} with warc2zim…")
         rc = _run_stream(cmd, say)

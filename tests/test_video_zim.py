@@ -21,9 +21,12 @@ sys.path.insert(0, REPO_ROOT)
 
 from libzim.reader import Archive  # noqa: E402
 
+import zimi.server as _srv  # noqa: E402
 import zimi.video as video  # noqa: E402
+from zimi.zimwriter import HISTORY_METADATA_KEY, parse_history  # noqa: E402
 
 PLAYLIST_URL = "https://faketube.test/playlist?list=PL1"
+FAKE_YTDLP_VERSION = "2026.07.04"
 
 
 def _watch_url(vid):
@@ -172,6 +175,11 @@ def _install_fake_ytdlp(monkeypatch, videos, playlist_title="Fake Playlist"):
             open(os.path.join(workdir, f"{v.vid}.{ext}.part"), "wb").close()
             return v.full_info(media)
 
+    # yt-dlp reports its own version through a submodule; provenance records
+    # name it, so the fake carries one too.
+    fake_version = types.ModuleType("yt_dlp.version")
+    fake_version.__version__ = FAKE_YTDLP_VERSION
+    fake.version = fake_version
     fake.YoutubeDL = YoutubeDL
     fake.extractor = fake_ex
     fake.download_log = download_log
@@ -262,6 +270,94 @@ def test_playlist_zim_end_to_end(monkeypatch, tmp_path):
 
     assert bytes(arc.get_metadata("Title")).decode() == "Fake Playlist"
     assert bytes(arc.get_metadata("Source")).decode() == PLAYLIST_URL
+
+
+def test_video_zim_records_its_birth_and_the_tool_that_did_it(monkeypatch, tmp_path):
+    _install_fake_ytdlp(monkeypatch, _videos())
+    info = video.create_video_zim(
+        PLAYLIST_URL, out_dir=str(tmp_path / "out"), work_dir=str(tmp_path)
+    )
+    arc = Archive(info["path"])
+    # The engine that did the work is named in the formal field readers show.
+    assert bytes(arc.get_metadata("Scraper")).decode() == (
+        f"Zimi {_srv.ZIMI_VERSION} + yt-dlp {FAKE_YTDLP_VERSION}"
+    )
+    assert bytes(arc.get_metadata("X-Zimi-Source")).decode() == PLAYLIST_URL
+
+    records = parse_history(arc.get_metadata(HISTORY_METADATA_KEY))
+    assert len(records) == 1, "creation writes exactly one record"
+    rec = records[0]
+    assert rec["op"] == "created" and rec["mode"] == "video"
+    assert rec["zimi"] == _srv.ZIMI_VERSION
+    assert rec["tools"] == {"yt-dlp": FAKE_YTDLP_VERSION}
+    assert rec["counts"] == {"videos": info["videos"], "bytes": info["bytes"]}
+    assert PLAYLIST_URL in rec["detail"] and "audio only" not in rec["detail"]
+
+
+def test_audio_only_is_a_flavour_of_the_same_source(monkeypatch, tmp_path):
+    _install_fake_ytdlp(monkeypatch, _videos())
+    full = video.create_video_zim(
+        PLAYLIST_URL, out_dir=str(tmp_path / "a"), work_dir=str(tmp_path)
+    )
+    audio = video.create_video_zim(
+        PLAYLIST_URL,
+        out_dir=str(tmp_path / "b"),
+        work_dir=str(tmp_path),
+        audio_only=True,
+    )
+    arc_full, arc_audio = Archive(full["path"]), Archive(audio["path"])
+    # One source, one Name — the audio build is a FLAVOUR of it, which is
+    # exactly the distinction the spec keeps those two fields for.
+    name = bytes(arc_full.get_metadata("Name")).decode()
+    assert name == bytes(arc_audio.get_metadata("Name")).decode()
+    assert name == "zimi_eng_faketube_test_playlist_list_PL1"
+    assert "Flavour" not in arc_full.metadata_keys
+    assert bytes(arc_audio.get_metadata("Flavour")).decode() == "audio"
+    # Tags claim media from evidence: video files in one, none in the other.
+    assert "_videos:yes" in bytes(arc_full.get_metadata("Tags")).decode()
+    assert "_videos:no" in bytes(arc_audio.get_metadata("Tags")).decode()
+
+
+def test_two_playlists_on_one_host_are_not_the_same_zim(monkeypatch, tmp_path):
+    _install_fake_ytdlp(monkeypatch, _videos())
+    one = video.create_video_zim(
+        PLAYLIST_URL, out_dir=str(tmp_path / "a"), work_dir=str(tmp_path)
+    )
+    two = video.create_video_zim(
+        "https://faketube.test/playlist?list=PL2",
+        out_dir=str(tmp_path / "b"),
+        work_dir=str(tmp_path),
+    )
+    assert bytes(Archive(one["path"]).get_metadata("Name")) != bytes(
+        Archive(two["path"]).get_metadata("Name")
+    )
+
+
+def test_audio_only_says_so_in_its_history(monkeypatch, tmp_path):
+    _install_fake_ytdlp(monkeypatch, _videos())
+    info = video.create_video_zim(
+        PLAYLIST_URL,
+        out_dir=str(tmp_path / "out"),
+        work_dir=str(tmp_path),
+        audio_only=True,
+    )
+    rec = parse_history(Archive(info["path"]).get_metadata(HISTORY_METADATA_KEY))[0]
+    assert "(audio only)" in rec["detail"]
+
+
+def test_history_survives_a_yt_dlp_that_reports_no_version(monkeypatch, tmp_path):
+    fake = _install_fake_ytdlp(monkeypatch, _videos())
+    del fake.version  # older builds, or a vendored copy, report nothing
+    info = video.create_video_zim(
+        PLAYLIST_URL, out_dir=str(tmp_path / "out"), work_dir=str(tmp_path)
+    )
+    arc = Archive(info["path"])
+    # No version to name, so the field says only what is true.
+    assert bytes(arc.get_metadata("Scraper")).decode() == (
+        f"Zimi {_srv.ZIMI_VERSION} + yt-dlp"
+    )
+    rec = parse_history(arc.get_metadata(HISTORY_METADATA_KEY))[0]
+    assert "tools" not in rec
 
 
 def test_budget_stops_cleanly_and_index_names_skipped(monkeypatch, tmp_path):

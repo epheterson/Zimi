@@ -5,6 +5,7 @@ importorskip so the suite still collects where the writer is absent.
 """
 
 import os
+import struct
 import sys
 
 import pytest
@@ -16,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from libzim.reader import Archive  # noqa: E402
 
+import zimi.server as _srv  # noqa: E402
 import zimi.zimwriter as zw  # noqa: E402
 
 
@@ -212,3 +214,162 @@ def test_index_and_description_use_proper_plurals(tmp_path):
     desc_many = bytes(arc_many.get_metadata("Description")).decode("utf-8")
     assert desc_one == "1 bookmarked article exported by Zimi"
     assert desc_many == "2 bookmarked articles exported by Zimi"
+
+
+# ── provenance ──────────────────────────────────────────────────────────────
+
+
+def test_bookmark_export_records_its_birth(tmp_path):
+    out = zw.build_bookmarks_zim(_bookmarks(), str(tmp_path), reader=_fake_reader)
+    arc = Archive(out)
+    assert bytes(arc.get_metadata("Scraper")).decode() == f"Zimi {_srv.ZIMI_VERSION}"
+    # An export has no outside source, so the source fields stay off entirely
+    # rather than claiming something untrue.
+    assert "Source" not in arc.metadata_keys
+    assert zw.SOURCE_METADATA_KEY not in arc.metadata_keys
+
+    records = zw.parse_history(arc.get_metadata(zw.HISTORY_METADATA_KEY))
+    assert len(records) == 1, "creation writes exactly one record"
+    rec = records[0]
+    assert rec["op"] == "created" and rec["mode"] == "bookmarks"
+    assert rec["zimi"] == _srv.ZIMI_VERSION
+    assert rec["counts"] == {"pages": 2}
+    assert "2 bookmarked articles" in rec["detail"]
+
+
+def test_source_label_keeps_urls_and_strips_every_path():
+    assert zw.source_label("https://sive.rs/blog") == "https://sive.rs/blog"
+    assert zw.source_label("/Users/somebody/Field Notes") == "Field Notes"
+    assert zw.source_label("/var/data/zims/trip.warc.gz") == "trip.warc.gz"
+    assert zw.source_label(r"C:\Users\somebody\Docs\guide") == "guide"
+    assert zw.source_label("/Users/somebody/guide/") == "guide"
+    assert zw.source_label(None) == ""
+
+
+def test_scraper_string_names_the_engine_when_one_ran():
+    assert zw.scraper_string() == f"Zimi {_srv.ZIMI_VERSION}"
+    assert zw.scraper_string("yt-dlp", "2026.07.04") == (
+        f"Zimi {_srv.ZIMI_VERSION} + yt-dlp 2026.07.04"
+    )
+    assert zw.scraper_string("warc2zim") == f"Zimi {_srv.ZIMI_VERSION} + warc2zim"
+
+
+def test_history_record_omits_what_it_does_not_know():
+    rec = zw.history_record("created", "folder", "packaged a folder", ts=1786000000)
+    assert rec == {
+        "ts": 1786000000,
+        "zimi": _srv.ZIMI_VERSION,
+        "op": "created",
+        "mode": "folder",
+        "detail": "packaged a folder",
+    }
+    full = zw.history_record(
+        "created",
+        "video",
+        "one video",
+        tools={"yt-dlp": "2026.07.04", "ffmpeg": None},
+        counts={"videos": 1, "bytes": 0, "pages": None},
+    )
+    # Empty tool slots and unknown counts are left out; a real zero is kept.
+    assert full["tools"] == {"yt-dlp": "2026.07.04"}
+    assert full["counts"] == {"videos": 1, "bytes": 0}
+
+
+def test_history_is_bounded_and_says_what_it_dropped():
+    records = []
+    for i in range(zw.MAX_HISTORY_RECORDS + 25):
+        records = zw.append_history(
+            records, zw.history_record("edited", "entries", f"edit {i}")
+        )
+    assert len(records) == zw.MAX_HISTORY_RECORDS
+    marker = records[0]
+    assert marker["op"] == zw.TRUNCATED_OP
+    assert marker["counts"]["records"] == 26  # everything before the kept 99
+    assert "26 earlier records" in marker["detail"]
+    # One marker, ever — the collapse folds into the existing one.
+    assert sum(1 for r in records if r["op"] == zw.TRUNCATED_OP) == 1
+    assert records[-1]["detail"] == f"edit {zw.MAX_HISTORY_RECORDS + 24}"
+
+
+def test_history_of_a_zim_made_elsewhere_reads_as_none():
+    assert zw.parse_history(None) == []
+    assert zw.parse_history(b"not json at all") == []
+    assert zw.parse_history('{"op": "created"}') == []  # an object, not a list
+    assert zw.parse_history(b'[{"op":"created"},7]') == [{"op": "created"}]
+
+
+# ── openZIM conformance ─────────────────────────────────────────────────────
+
+
+def _png_size(data):
+    """(width, height) straight out of a PNG's IHDR — no image library."""
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
+    return struct.unpack(">II", data[16:24])
+
+
+def test_fit_text_cuts_on_a_word_boundary_and_says_so():
+    assert zw.fit_text("short enough", 30) == "short enough"
+    assert zw.fit_text("  collapses   whitespace ", 30) == "collapses whitespace"
+    long_title = "A Really Rather Long Title That Will Not Fit The Cap"
+    fitted = zw.fit_text(long_title, zw.MAX_TITLE_LENGTH)
+    assert len(fitted) <= zw.MAX_TITLE_LENGTH
+    assert fitted.endswith("…") and not fitted.endswith(" …")
+    assert long_title.startswith(fitted[:-1])
+    # A single unbroken word still has to fit.
+    assert len(zw.fit_text("x" * 200, 30)) == 30
+
+
+def test_language_is_forced_to_iso_639_3():
+    assert zw.normalize_language("eng") == "eng"
+    assert zw.normalize_language("EN") == "eng"  # the code people actually type
+    assert zw.normalize_language("fr") == "fra"
+    assert zw.normalize_language("eng,fra") == "eng,fra"
+    assert zw.normalize_language("eng, eng") == "eng"  # deduped, spaces dropped
+    assert zw.normalize_language(None) == "eng"
+    for bad in ("english", "e", "xx"):
+        with pytest.raises(ValueError, match="639-3"):
+            zw.normalize_language(bad)
+
+
+def test_zim_name_is_stable_per_source_and_distinct_between_sources():
+    # Same source, twice: one identity, so a library sees a new EDITION.
+    assert zw.zim_name("https://sive.rs/blog") == zw.zim_name("https://sive.rs/blog")
+    # Path and query are part of that identity — this is the collision an
+    # earlier basename-only version of this function actually produced.
+    assert zw.zim_name("https://a.example/blog/post.html") != zw.zim_name(
+        "https://b.example/blog/post.html"
+    )
+    assert zw.zim_name("https://t.example/p?list=A") != zw.zim_name(
+        "https://t.example/p?list=B"
+    )
+    assert zw.zim_name("https://sive.rs/blog") == "zimi_eng_sive_rs_blog"
+    assert zw.zim_name("Field Guide") == "zimi_eng_Field_Guide"
+    assert zw.zim_name("guide", "fr") == "zimi_fra_guide"
+    # A local path is still reduced to its basename — the privacy rule holds
+    # here too, because Name travels with the file like everything else.
+    assert zw.zim_name("/Users/somebody/Secret/guide") == "zimi_eng_guide"
+
+
+def test_generated_illustration_is_a_real_48x48_png_and_is_deterministic():
+    one = zw.default_illustration("zimi_eng_guide")
+    assert _png_size(one) == (zw.ILLUSTRATION_SIZE, zw.ILLUSTRATION_SIZE)
+    assert one == zw.default_illustration("zimi_eng_guide")
+    assert one != zw.default_illustration("zimi_eng_other")
+
+
+def test_tags_follow_the_semicolon_convention():
+    assert zw.tags_string() == "_category:other;_ftindex:yes"
+    assert zw.tags_string(["_videos:yes", "_category:other"]) == (
+        "_category:other;_ftindex:yes;_videos:yes"
+    )
+    assert zw.media_tags(["image/png", "text/css"]) == ["_pictures:yes", "_videos:no"]
+    assert zw.media_tags([]) == ["_pictures:no", "_videos:no"]
+    assert zw.media_tags(["video/mp4"]) == ["_pictures:no", "_videos:yes"]
+
+
+def test_short_description_ships_alone(tmp_path):
+    out = zw.build_bookmarks_zim(_bookmarks(), str(tmp_path), reader=_fake_reader)
+    arc = Archive(out)
+    # Nothing was cut, so there is no longer description to tell — and the
+    # spec's optional field stays off rather than repeating the short one.
+    assert "LongDescription" not in arc.metadata_keys

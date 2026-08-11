@@ -65,12 +65,17 @@ from zimi.creator import (
     http_asset_carrier,
     looks_like_spa,
     render_captured_page,
+    site_illustration,
 )
 from zimi.zimwriter import (
     _plural,
     _slug,
     add_standard_metadata,
     atomic_zim_creator,
+    history_record,
+    media_tags,
+    scraper_string,
+    zim_name,
     zim_static_item_class,
 )
 
@@ -124,6 +129,10 @@ _NON_PAGE_MIMES = frozenset(
 
 ZIMIT_IMAGE = "ghcr.io/openzim/zimit:latest"
 _DOCKER_PROBE_TIMEOUT = 20.0
+# Starting a container to read `zimit --help` is slower than inspecting one.
+_ZIMIT_HELP_TIMEOUT = 60.0
+# warc2zim's flag for appending to the Scraper metadata; zimit forwards it.
+SCRAPER_SUFFIX_FLAG = "--scraper-suffix"
 
 
 def _noop(_message):
@@ -537,7 +546,8 @@ def create_site_zim(
     # space — never in /tmp, which is RAM on more than one of Zimi's targets.
     spool_dir = tempfile.mkdtemp(prefix=".zimi-crawl-", dir=os.path.dirname(out))
     stop = _StopFlag()
-    pages, reason, carried = [], None, {}
+    pages, reason, carried, asset_count = [], None, {}, 0
+    seen_mimetypes = set()
     try:
         with _interruptible(stop, note):
             pages, reason = _crawl(
@@ -588,7 +598,11 @@ def create_site_zim(
                     creator.add_item(
                         static_cls(page["article"], page_title, html.encode("utf-8"))
                     )
+                    # Each page gets its own carrier, so the crawl-wide record
+                    # of what shipped has to be accumulated here.
+                    seen_mimetypes |= carrier.mimetypes
                 creator.set_mainpath("A/index")
+                asset_count = sum(1 for v in carried.values() if v)
                 add_standard_metadata(
                     creator,
                     title=zim_title,
@@ -598,6 +612,22 @@ def create_site_zim(
                     language=language,
                     creator_name=creator_name,
                     source=seed_url,
+                    # The HOST alone: a re-crawl of the same site, however
+                    # deep it goes this time, is a new edition of this ZIM.
+                    name=zim_name(parsed.netloc, language),
+                    tags=media_tags(seen_mimetypes),
+                    illustration=site_illustration(seed_url, timeout),
+                    history=history_record(
+                        "created",
+                        "site",
+                        f"captured {_plural(len(pages), 'page')} from {seed_url}"
+                        + (f" — stopped early at the {reason}" if reason else ""),
+                        counts={
+                            "pages": len(pages),
+                            "assets": asset_count,
+                            "bytes": budget.used,
+                        },
+                    ),
                 )
     finally:
         shutil.rmtree(spool_dir, ignore_errors=True)
@@ -605,7 +635,7 @@ def create_site_zim(
     return {
         "path": out,
         "pages": len(pages),
-        "assets": sum(1 for v in carried.values() if v),
+        "assets": asset_count,
         "main": "A/index",
         "registered": _try_register(out) if register else False,
         "url": seed_url,
@@ -679,6 +709,23 @@ def _probe(cmd):
         return False
 
 
+def _image_supports_flag(docker, image, flag):
+    """Whether the zimit image knows ``flag``. zimit forwards warc2zim's own
+    options, but an older image predates the one Zimi wants — so ask, rather
+    than let a provenance stamp be the thing that fails a two-hour crawl. Any
+    probe trouble reads as "no": the stamp is optional, the crawl is not."""
+    try:
+        done = subprocess.run(
+            [docker, "run", "--rm", image, "zimit", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=_ZIMIT_HELP_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return done.returncode == 0 and flag in (done.stdout or "") + (done.stderr or "")
+
+
 def _ensure_image(docker, image, note):
     """Make sure the image is local. A pull is a large download and is never
     started silently — it is announced first, then streamed."""
@@ -725,6 +772,10 @@ def _zimit_command(docker, image, container, tmp_dir, url, opts):
         ("--description", opts.get("description")),
         ("--creator", opts.get("creator")),
         ("--lang", opts.get("language")),
+        # zimit writes the ZIM itself, so the Scraper string is the one piece
+        # of provenance Zimi can reach — appended to zimit's own, never
+        # replacing it. Omitted entirely when the image predates the flag.
+        (SCRAPER_SUFFIX_FLAG, opts.get("scraper_suffix")),
     ):
         if value:
             cmd += [flag, str(value)]
@@ -760,7 +811,12 @@ def create_zimit_zim(
 
     Orchestration only — Zimi never imports zimit. Returns the usual summary
     dict (``"pages"`` is None: only zimit knows what it captured, and it does
-    not report a count Zimi can trust)."""
+    not report a count Zimi can trust).
+
+    Provenance is thinner here than in Zimi's own engines for the same reason:
+    zimit writes the ZIM, so there is no Creator for Zimi to add metadata to
+    and no honest count to record. What Zimi can do it does — its name and
+    version are appended to the Scraper string the image writes."""
     from zimi.p2p import is_offline
 
     note = progress or _noop
@@ -807,6 +863,11 @@ def create_zimit_zim(
             "site": site,
             "max_pages": max_pages,
             "engine_args": engine_args,
+            "scraper_suffix": (
+                scraper_string()
+                if _image_supports_flag(docker, image, SCRAPER_SUFFIX_FLAG)
+                else None
+            ),
         },
     )
     note(f"running zimit: {' '.join(cmd)}")

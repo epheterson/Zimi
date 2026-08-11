@@ -18,15 +18,23 @@ thread. Source READS (article HTML and asset bytes) still touch libzim
 ``_srv._zim_lock``-guarded path.
 """
 
+import colorsys
 import contextlib
 import datetime
+import hashlib
 import html as _html
+import io
+import json
 import logging
 import os
 import pathlib
 import posixpath
 import re
+import struct
 import threading
+import time
+import urllib.parse
+import zlib
 
 import zimi.server as _srv
 
@@ -162,6 +170,9 @@ class _AssetCarrier:
         self._carried = {}  # resolved source path -> in-ZIM path (or None if skipped)
         self.total_bytes = 0
         self.count = 0
+        # What actually went in, so the Tags metadata can claim `_pictures:` /
+        # `_videos:` from evidence instead of from a guess.
+        self.mimetypes = set()
 
     def _carry(self, zim, resolved, depth=0):
         """Ensure `resolved` (a path in `zim`) is in the export; return its
@@ -196,6 +207,7 @@ class _AssetCarrier:
             log.debug("asset add failed %s: %s", in_path, e)
             self._carried[key] = None
             return None
+        self.mimetypes.add(mime or "application/octet-stream")
         return in_path
 
     def _rewrite_css(self, zim, css_path, data):
@@ -435,9 +447,7 @@ def zim_static_item_class():
             return Blob(self._content)
 
     class _StaticItem(Item):
-        def __init__(
-            self, path, title, content, mimetype="text/html;charset=utf-8", front=True
-        ):
+        def __init__(self, path, title, content, mimetype=_HTML_MIME, front=True):
             super().__init__()
             self._path = path
             self._title = title
@@ -495,6 +505,344 @@ def atomic_zim_creator(out_path, language="eng"):
         raise
 
 
+# ── provenance ──────────────────────────────────────────────────────────────
+#
+# Every ZIM Zimi writes carries its own paper trail IN METADATA, so the record
+# travels with the file to any reader, any peer, any sneakernet copy:
+#
+#   Scraper         the formal openZIM field readers display: "Zimi <version>",
+#                   plus the engine that did the work when one ran
+#                   ("Zimi 1.9.0-dev + yt-dlp 2026.07.04").
+#   Source          the standard field, kept to its openZIM meaning — a URL.
+#                   Written only when the source actually IS one.
+#   X-Zimi-Source   the uniform field: URL, folder name, archive name, playlist
+#                   — whatever the content came from, written whenever known.
+#   X-Zimi-History  a JSON array of records. Creation writes the first one;
+#                   every later edit appends, so a ZIM's whole life is legible
+#                   from the file alone.
+#
+# PRIVACY (hard rule): none of this may carry a full local path, a hostname, a
+# username, or an environment value. ZIMs get shared; the paper trail must
+# never leak the machine that made them. `source_label` reduces anything that
+# is not a URL to its basename, and every source value goes through it.
+
+SCRAPER_METADATA_KEY = "Scraper"
+SOURCE_METADATA_KEY = "X-Zimi-Source"
+HISTORY_METADATA_KEY = "X-Zimi-History"
+
+# ── openZIM conformance ─────────────────────────────────────────────────────
+#
+# The spec's own enforcement tables are the authority, not prose: zim-tools'
+# reservedMetadataInfoTable (src/metadata_constraints.cpp, what `zimcheck -M`
+# actually applies) and python-scraperlib's zimscraperlib/zim/metadata.py.
+# What they require of every ZIM:
+#
+#   Name                  MANDATORY. The identifier that stays STABLE across
+#                         editions of the same source — how a library knows
+#                         today's capture is a newer copy of last month's
+#                         rather than a second unrelated file. So it is
+#                         derived from the SOURCE, never from the date or a
+#                         title the user may retype.
+#   Title                 MANDATORY, 1–30 characters.
+#   Language              MANDATORY, ISO 639-3, ^\w{3}(,\w{3})*$.
+#   Creator, Publisher    MANDATORY, non-empty.
+#   Date                  MANDATORY, exactly YYYY-MM-DD.
+#   Description           MANDATORY, 1–80 characters.
+#   Illustration_48x48@1  MANDATORY, a real 48x48 PNG.
+#   LongDescription       optional, ≤4000, and never SHORTER than Description.
+#   Tags/Flavour/Source/License/Relation/Scraper: optional.
+#   Counter               written by libzim itself — a scraper must not.
+#
+# Titles and descriptions are shortened HERE and only here: the ZIM's own
+# index page keeps the full heading, so the cap costs a metadata field its
+# tail rather than costing the content its name.
+
+# Bare, with no charset suffix: libzim folds entry mimetypes verbatim into the
+# Counter metadata, whose spec regex admits neither ";" nor "=", so a
+# "text/html;charset=utf-8" entry makes the whole ZIM fail `zimcheck -M`. Every
+# page Zimi generates declares its own <meta charset>, which is where the rest
+# of the ZIM world puts it too.
+_HTML_MIME = "text/html"
+
+MAX_TITLE_LENGTH = 30
+MAX_DESCRIPTION_LENGTH = 80
+MAX_LONG_DESCRIPTION_LENGTH = 4000
+ILLUSTRATION_SIZE = 48
+
+# Tags use the spec's semicolon convention. Only the two that a reader really
+# consumes are written by default: `_category:` groups a ZIM in a library, and
+# `_ftindex:yes` is true of every ZIM Zimi writes because `atomic_zim_creator`
+# always turns on full-text indexing. The `_pictures:`/`_videos:`/`_details:`
+# trio describes flavour VARIANTS of one source (Kiwix's maxi/nopic/mini), so
+# it is written only where an engine actually knows the answer.
+DEFAULT_TAGS = ("_category:other", "_ftindex:yes")
+
+_LANGUAGE_RE = re.compile(r"^[a-z]{3}(,[a-z]{3})*$")
+
+# Bounded so a heavily edited ZIM cannot grow an unbounded metadata entry. The
+# overflow is collapsed into one honest marker record, never dropped silently.
+MAX_HISTORY_RECORDS = 100
+TRUNCATED_OP = "truncated"
+
+
+def _is_url(value):
+    return str(value or "").lower().startswith(("http://", "https://"))
+
+
+def source_label(value):
+    """A SHAREABLE source label: URLs verbatim, anything else reduced to its
+    last path segment. This is the privacy chokepoint — a caller that hands
+    over a full local path still only ever gets its basename into the file."""
+    text = str(value or "").strip()
+    if not text or _is_url(text):
+        return text
+    return text.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+
+
+def fit_text(text, limit):
+    """``text`` collapsed to one line and shortened to ``limit`` characters,
+    cut on a word boundary with an ellipsis whenever anything was dropped. The
+    spec's length caps are hard, so something has to give; a visible ellipsis
+    is the honest way to say "there was more"."""
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    cut = text[: limit - 1].rstrip()
+    space = cut.rfind(" ")
+    if space >= limit // 2:
+        cut = cut[:space].rstrip()
+    return cut + "…"
+
+
+def normalize_language(value):
+    """A spec-legal ``Language``: lowercase ISO 639-3, comma-joined, no spaces.
+    Two-letter codes are widely typed and just as widely wrong here, so the
+    well-known ones are translated (reusing the table the reader already
+    keeps) rather than written out of spec. Raises ValueError on anything that
+    cannot be resolved — a bad language code is a fixable mistake, and a ZIM
+    that lies about its language is not."""
+    two_to_three = {v: k for k, v in _srv._ISO639_3_TO_1.items()}
+    codes = []
+    for part in str(value or "").lower().replace(";", ",").split(","):
+        code = re.sub(r"[^a-z]", "", part)
+        if not code:
+            continue
+        code = two_to_three.get(code, code) if len(code) == 2 else code
+        if len(code) != 3:
+            raise ValueError(
+                f"not an ISO 639-3 language code: {part.strip()!r} "
+                "(the ZIM spec wants three letters, e.g. eng, fra, spa)"
+            )
+        if code not in codes:
+            codes.append(code)
+    joined = ",".join(codes) or "eng"
+    if not _LANGUAGE_RE.match(joined):
+        raise ValueError(f"not an ISO 639-3 language code: {value!r}")
+    return joined
+
+
+def zim_name(scope, language="eng"):
+    """The ``Name`` metadata: ``zimi_<language>_<scope>``, following the
+    ``creator_lang_scope`` convention Kiwix libraries key on. ``scope`` must
+    identify the SOURCE — a URL, a hostname, a folder name — so that
+    recapturing it next month produces the same Name and a library treats the
+    result as a new edition rather than an unrelated file.
+
+    A URL keeps host, path AND query, because ``/blog/post.html`` on two
+    different sites (or two playlists on one host) must never collapse into
+    one identity. Anything else goes through ``source_label``, so a caller
+    that hands over a local path still cannot put one in the file."""
+    text = str(scope or "").strip()
+    if _is_url(text):
+        parts = urllib.parse.urlsplit(text)
+        text = " ".join(p for p in (parts.netloc, parts.path, parts.query) if p)
+    else:
+        text = source_label(text)
+    lang = normalize_language(language).split(",")[0]
+    return f"zimi_{lang}_{_slug(text, 'zim')}"
+
+
+def tags_string(extra=()):
+    """The ``Tags`` value: the defaults every Zimi ZIM can honestly claim,
+    plus whatever the engine knows, deduped and semicolon-joined."""
+    tags = []
+    for tag in list(DEFAULT_TAGS) + list(extra or ()):
+        tag = str(tag).strip()
+        if tag and tag not in tags:
+            tags.append(tag)
+    return ";".join(tags)
+
+
+def media_tags(mimetypes):
+    """``_pictures:``/``_videos:`` for a set of mimetypes actually written into
+    the ZIM. Only claims what was seen — an engine that does not track its
+    mimetypes passes nothing and the tags are simply absent."""
+    kinds = {str(m).split("/", 1)[0].lower() for m in mimetypes if m}
+    return [
+        f"_pictures:{'yes' if 'image' in kinds else 'no'}",
+        f"_videos:{'yes' if 'video' in kinds else 'no'}",
+    ]
+
+
+def _png(rows, width, height):
+    """A minimal 8-bit RGB PNG. Written by hand because the illustration is
+    MANDATORY metadata and Zimi must produce one on a machine with no image
+    library at all — zlib and struct are always there."""
+    raw = b"".join(b"\x00" + bytes(row) for row in rows)
+
+    def chunk(tag, data):
+        body = tag + data
+        return (
+            struct.pack(">I", len(data))
+            + body
+            + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+        )
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(raw, 9))
+        + chunk(b"IEND", b"")
+    )
+
+
+def default_illustration(seed, size=ILLUSTRATION_SIZE):
+    """A 48x48 identicon PNG derived from ``seed`` (the ZIM's Name): a
+    mirrored 5x5 block pattern in a colour picked from the seed's hash. The
+    same source always yields the same icon, and two different ZIMs almost
+    never collide — which is the whole job of a shelf icon."""
+    digest = hashlib.sha256(str(seed).encode("utf-8")).digest()
+    hue = digest[0] / 255.0
+    r, g, b = colorsys.hsv_to_rgb(hue, 0.62, 0.96)
+    fg = (int(r * 255), int(g * 255), int(b * 255))
+    bg = (20, 20, 22)  # the app's own surface tone, so tiles sit on the shelf
+    cells, margin = 5, 4
+    step = (size - 2 * margin) // cells
+    on = set()
+    for col in range(3):  # left half plus the middle column, then mirrored
+        for row in range(cells):
+            if digest[1 + col * cells + row] & 1:
+                on.add((col, row))
+                on.add((cells - 1 - col, row))
+    rows = []
+    for y in range(size):
+        row = bytearray()
+        cell_y = (y - margin) // step if margin <= y < margin + cells * step else -1
+        for x in range(size):
+            cell_x = (x - margin) // step if margin <= x < margin + cells * step else -1
+            paint = fg if (cell_x, cell_y) in on else bg
+            row += bytes(paint)
+        rows.append(row)
+    return _png(rows, size, size)
+
+
+def has_image_support():
+    """Whether Pillow is importable. It is a soft dependency — the only way to
+    rescale an arbitrary favicon into the 48x48 the spec demands — so callers
+    check before spending network on an icon they could not use anyway."""
+    try:
+        import PIL.Image  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def illustration_from_image(data, size=ILLUSTRATION_SIZE):
+    """``data`` (a favicon, any format) re-encoded as a ``size``x``size`` PNG,
+    or None. Needs Pillow, which Zimi does not depend on — without it there is
+    no honest way to rescale an arbitrary image, so the caller falls back to a
+    generated icon rather than shipping a wrong-sized one."""
+    if not data:
+        return None
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    # Pillow moved the filter constants under Image.Resampling in 9.1 and kept
+    # the old aliases; Zimi does not pin Pillow, so ask for whichever is there.
+    resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            square = img.convert("RGBA").resize((size, size), resample)
+            flat = Image.new("RGBA", (size, size), (20, 20, 22, 255))
+            flat.alpha_composite(square)
+            buf = io.BytesIO()
+            flat.convert("RGB").save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception as e:  # a favicon is decoration; never fail a build for it
+        log.debug("favicon could not be used as an illustration: %s", e)
+        return None
+
+
+def scraper_string(tool=None, version=None):
+    """The formal Scraper value: Zimi, plus the engine that did the work when
+    one did ("Zimi 1.9.0-dev + yt-dlp 2026.07.04")."""
+    base = f"Zimi {_srv.ZIMI_VERSION}"
+    if not tool:
+        return base
+    return f"{base} + {tool} {version}" if version else f"{base} + {tool}"
+
+
+def history_record(op, mode, detail, *, tools=None, counts=None, ts=None):
+    """One provenance record. ``op`` is what happened ("created"), ``mode`` how
+    ("folder", "page", "site", "video", "import", "bookmarks"), ``detail`` one
+    human sentence. ``tools`` names the outside engine and version when one ran;
+    ``counts`` carries whichever of pages/assets/videos/bytes are known. Keys
+    with nothing to say are left out rather than written empty."""
+    record = {
+        "ts": int(ts if ts is not None else time.time()),
+        "zimi": _srv.ZIMI_VERSION,
+        "op": op,
+        "mode": mode,
+        "detail": str(detail),
+    }
+    named_tools = {k: str(v) for k, v in (tools or {}).items() if v}
+    if named_tools:
+        record["tools"] = named_tools
+    known_counts = {k: int(v) for k, v in (counts or {}).items() if v is not None}
+    if known_counts:
+        record["counts"] = known_counts
+    return record
+
+
+def parse_history(raw):
+    """The records in an ``X-Zimi-History`` value — ``[]`` for anything that
+    isn't a JSON array of objects. A ZIM made elsewhere, or one with a mangled
+    entry, reads as "no history", never as an error."""
+    if isinstance(raw, (bytes, bytearray, memoryview)):
+        raw = bytes(raw).decode("utf-8", "replace")
+    try:
+        records = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(records, list):
+        return []
+    return [r for r in records if isinstance(r, dict)]
+
+
+def append_history(records, record, limit=MAX_HISTORY_RECORDS):
+    """``records`` plus ``record``, bounded. Overflow collapses into a single
+    leading marker naming how many records it stands for — the history shrinks
+    visibly instead of losing its beginning in silence."""
+    out = list(records) + [record]
+    if len(out) <= limit:
+        return out
+    dropped = 0
+    if out and out[0].get("op") == TRUNCATED_OP:
+        dropped = int((out[0].get("counts") or {}).get("records") or 0)
+        out = out[1:]
+    keep = out[-(limit - 1) :] if limit > 1 else []
+    dropped += len(out) - len(keep)
+    marker = history_record(
+        TRUNCATED_OP,
+        "history",
+        f"{_plural(dropped, 'earlier record')} collapsed to keep this history bounded",
+        counts={"records": dropped},
+    )
+    return [marker] + keep
+
+
 def add_standard_metadata(
     creator,
     *,
@@ -504,17 +852,78 @@ def add_standard_metadata(
     creator_name="Zimi",
     source=None,
     date_str=None,
+    scraper=None,
+    history=None,
+    name=None,
+    tags=(),
+    illustration=None,
+    flavour=None,
+    long_description=None,
+    license=None,
+    relation=None,
 ):
-    """The standard Zimi metadata block, in the order readers expect. `source`
-    (a URL) is only written when given — page captures carry provenance."""
-    creator.add_metadata("Title", title)
+    """The full openZIM metadata block — every mandatory key, conforming — plus
+    the Zimi provenance block. One chokepoint, so no engine can forget a key.
+
+    ``name`` is the stable cross-edition identifier (see ``zim_name``); it
+    falls back to one derived from the title, but an engine that knows its
+    source should always pass its own. ``title`` and ``description`` are
+    shortened to the spec's caps here; when the description does not fit, the
+    full text is kept as ``LongDescription`` rather than lost. ``tags`` are
+    extras folded in beside the defaults. ``illustration`` is PNG bytes for
+    the mandatory 48x48 icon — omit it and a generated identicon is used.
+    ``license`` and ``relation`` are written only when the caller actually
+    knows them; nothing here invents a licence claim.
+
+    ``source`` is where the content came from. A URL is written to BOTH the
+    standard ``Source`` field (whose openZIM meaning is a URL) and
+    ``X-Zimi-Source``; anything else is reduced to its basename and written to
+    ``X-Zimi-Source`` alone, so the standard field keeps its meaning while the
+    Zimi field stays uniform across every creation mode. ``scraper`` defaults
+    to ``scraper_string()``; an engine that did the work passes an enriched
+    one. ``history`` is one record from ``history_record`` (or a list of them),
+    written as the ``X-Zimi-History`` array that later edits append to."""
+    language = normalize_language(language)
+    short_title = fit_text(title, MAX_TITLE_LENGTH)
+    full_description = " ".join(str(description or "").split())
+    short_description = fit_text(full_description, MAX_DESCRIPTION_LENGTH)
+    long_text = fit_text(
+        long_description or full_description, MAX_LONG_DESCRIPTION_LENGTH
+    )
+
+    creator.add_metadata("Name", name or zim_name(title, language))
+    creator.add_metadata("Title", short_title)
     creator.add_metadata("Language", language)
-    creator.add_metadata("Description", description)
+    creator.add_metadata("Description", short_description)
+    # The spec forbids a LongDescription shorter than the Description, so it
+    # ships only when it genuinely says more than the short one already did.
+    if len(long_text) > len(short_description):
+        creator.add_metadata("LongDescription", long_text)
     creator.add_metadata("Creator", creator_name)
     creator.add_metadata("Publisher", "Zimi")
     creator.add_metadata("Date", date_str or datetime.date.today().isoformat())
-    if source:
-        creator.add_metadata("Source", source)
+    creator.add_metadata("Tags", tags_string(tags))
+    if flavour:
+        creator.add_metadata("Flavour", str(flavour))
+    if license:
+        creator.add_metadata("License", str(license))
+    if relation:
+        creator.add_metadata("Relation", str(relation))
+    creator.add_illustration(
+        ILLUSTRATION_SIZE,
+        illustration or default_illustration(name or zim_name(title, language)),
+    )
+    creator.add_metadata(SCRAPER_METADATA_KEY, scraper or scraper_string())
+    if _is_url(source):
+        creator.add_metadata("Source", str(source))
+    label = source_label(source)
+    if label:
+        creator.add_metadata(SOURCE_METADATA_KEY, label)
+    if history:
+        records = [history] if isinstance(history, dict) else list(history)
+        creator.add_metadata(
+            HISTORY_METADATA_KEY, json.dumps(records, separators=(",", ":"))
+        )
 
 
 def build_bookmarks_zim(
@@ -602,6 +1011,19 @@ def build_bookmarks_zim(
             title=heading,
             description=f"{_plural(len(entries), 'bookmarked article')} exported by Zimi",
             date_str=date_str,
+            # The Name must survive re-exporting the same selection tomorrow,
+            # so it drops the date the filename carries.
+            name=zim_name(
+                re.sub(r"^zimi[-_]|[_-]?\d{4}-\d{2}-\d{2}$", "", base) or "bookmarks"
+            ),
+            tags=media_tags(carrier.mimetypes),
+            history=history_record(
+                "created",
+                "bookmarks",
+                f"exported {_plural(len(entries), 'bookmarked article')} "
+                "from the library",
+                counts={"pages": len(entries)},
+            ),
         )
     if progress:
         progress(total, total)

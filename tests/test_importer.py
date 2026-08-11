@@ -227,6 +227,44 @@ def test_import_subprocess_contract(data_dir, tmp_path, monkeypatch):
     assert sorted(os.listdir(tmp_path / "zims")) == ["My_Crawl.zim"]
 
 
+def _import_recording_cmd(data_dir, tmp_path, monkeypatch, help_text):
+    """Run an import against a warc2zim whose --help says ``help_text``, and
+    return the argv it was invoked with."""
+    _fake_sidecar(data_dir)
+    archive = tmp_path / "site.warc"
+    archive.write_bytes(b"WARC/1.1")
+    seen = {}
+
+    def fake_stream(cmd, sink):
+        seen["cmd"] = list(cmd)
+        return _fake_convert_ok()(cmd, sink)
+
+    monkeypatch.setattr(
+        importer, "_run_capture", lambda cmd, timeout=60: (0, help_text)
+    )
+    monkeypatch.setattr(importer, "_run_stream", fake_stream)
+    importer.import_archive(str(archive), out_dir=str(tmp_path / "zims"))
+    return seen["cmd"]
+
+
+def test_import_stamps_zimi_into_the_scraper_string(data_dir, tmp_path, monkeypatch):
+    # warc2zim writes the ZIM, so Zimi cannot add metadata of its own — the
+    # Scraper suffix is the one field it can reach, and it asks for it by name.
+    cmd = _import_recording_cmd(
+        data_dir, tmp_path, monkeypatch, "usage: warc2zim\n  --scraper-suffix TEXT\n"
+    )
+    assert cmd[cmd.index("--scraper-suffix") + 1] == f"Zimi {_srv.ZIMI_VERSION}"
+
+
+def test_import_survives_a_warc2zim_without_the_flag(data_dir, tmp_path, monkeypatch):
+    # The sidecar is whatever pip had the day it was built. An older one loses
+    # the stamp; it must not lose the import.
+    cmd = _import_recording_cmd(
+        data_dir, tmp_path, monkeypatch, "usage: warc2zim\n  --title TEXT\n"
+    )
+    assert "--scraper-suffix" not in cmd
+
+
 def test_import_output_does_not_clobber(data_dir, tmp_path, monkeypatch):
     _fake_sidecar(data_dir)
     archive = tmp_path / "site.warc"

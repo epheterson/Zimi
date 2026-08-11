@@ -7,6 +7,7 @@ read back with libzim's Archive.
 
 import http.server
 import os
+import struct
 import sys
 import threading
 
@@ -20,7 +21,9 @@ sys.path.insert(0, REPO_ROOT)
 from libzim.reader import Archive  # noqa: E402
 
 import zimi.creator as creator  # noqa: E402
+import zimi.server as _srv  # noqa: E402
 import zimi.zimwriter as zimwriter  # noqa: E402
+from zimi.zimwriter import parse_history  # noqa: E402
 
 PORT = 8897
 HOST = "127.0.0.1"
@@ -52,6 +55,13 @@ PAGE = f"""<html><head><title>Test Page</title>
 SPA = """<html><head><title>App</title></head>
 <body><div id="root"></div><script src="/bundle.js"></script></body></html>"""
 
+# A page that is NOT UTF-8 and says so, the way plenty of the older web does.
+LEGACY = (
+    "<html><head><title>Legacy</title>"
+    '<meta http-equiv="Content-Type" content="text/html; charset=windows-1252">'
+    f"</head><body><h1>Legacy</h1><p>£20 café</p><p>{FILLER}</p></body></html>"
+)
+
 ROUTES = {
     "/blog/post.html": (200, "text/html; charset=utf-8", PAGE.encode()),
     "/spa.html": (200, "text/html; charset=utf-8", SPA.encode()),
@@ -67,7 +77,19 @@ ROUTES = {
     "/blog/img/pic.png": (200, "image/png", b"PICBYTES"),
     "/img/abs.png": (200, "image/png", b"ABSBYTES"),
     "/blog/img/hero.png": (200, "image/png", b"HEROBYTES"),
+    "/legacy.html": (
+        200,
+        "text/html; charset=windows-1252",
+        LEGACY.encode("windows-1252"),
+    ),
     "/data.bin": (200, "application/octet-stream", b"\x00\x01"),
+    # A real (decodable) site icon, so the capture can prove it prefers the
+    # site's own over a generated one. Built by Zimi's own PNG writer.
+    "/apple-touch-icon.png": (
+        200,
+        "image/png",
+        zimwriter.default_illustration("f", 64),
+    ),
     "/r1": (302, "/blog/post.html", b""),
     "/loop": (302, "/loop", b""),
 }
@@ -158,6 +180,57 @@ def test_page_capture_end_to_end(fixture_server, tmp_path):
     assert bytes(arc.get_metadata("Title")).decode() == "Test Page"
     assert bytes(arc.get_metadata("Creator")).decode() == "Zimi"
     assert info["assets"] == 6
+
+
+def test_page_zim_records_its_birth(fixture_server, tmp_path):
+    info = creator.create_page_zim(f"{BASE}/blog/post.html", out_dir=str(tmp_path))
+    arc = Archive(info["path"])
+    url = f"{BASE}/blog/post.html"
+    # A URL source is BOTH the standard Source and the uniform Zimi one.
+    assert bytes(arc.get_metadata("Source")).decode() == url
+    assert bytes(arc.get_metadata("X-Zimi-Source")).decode() == url
+    assert bytes(arc.get_metadata("Scraper")).decode() == f"Zimi {_srv.ZIMI_VERSION}"
+
+    records = parse_history(arc.get_metadata(zimwriter.HISTORY_METADATA_KEY))
+    assert len(records) == 1, "creation writes exactly one record"
+    rec = records[0]
+    assert rec["op"] == "created" and rec["mode"] == "page"
+    assert rec["zimi"] == _srv.ZIMI_VERSION
+    assert url in rec["detail"]
+    assert rec["counts"] == {"pages": 1, "assets": info["assets"]}
+
+
+def test_page_zim_conforms_and_wears_the_site_icon(fixture_server, tmp_path):
+    info = creator.create_page_zim(f"{BASE}/blog/post.html", out_dir=str(tmp_path))
+    arc = Archive(info["path"])
+    # The Name keeps host AND path: another site's /blog/post.html is a
+    # different ZIM, not another edition of this one.
+    name = bytes(arc.get_metadata("Name")).decode()
+    assert name == "zimi_eng_127_0_0_1_8897_blog_post_html"
+    assert bytes(arc.get_metadata("Tags")).decode().startswith("_category:other;")
+
+    png = bytes(arc.get_metadata("Illustration_48x48@1"))
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    assert struct.unpack(">II", png[16:24]) == (48, 48)
+    if zimwriter.has_image_support():
+        # The site's own icon was fetched and rescaled, not the generated one.
+        assert png != zimwriter.default_illustration(name)
+    else:
+        assert png == zimwriter.default_illustration(name)
+
+
+def test_captured_page_declares_utf8_whatever_the_original_said(
+    fixture_server, tmp_path
+):
+    info = creator.create_page_zim(f"{BASE}/legacy.html", out_dir=str(tmp_path))
+    art = _entry_text(Archive(info["path"]), "A/index")
+    # The capture was decoded and re-encoded as UTF-8, so the original
+    # windows-1252 declaration would now be a lie — and with entries carrying
+    # a bare text/html mimetype, this tag is what a browser believes.
+    assert "windows-1252" not in art.lower()
+    assert art.lower().count("charset") == 1
+    assert "charset='utf-8'" in art
+    assert "£20 café" in art  # the bytes still say what they said
 
 
 def test_redirect_followed_to_final_base(fixture_server, tmp_path):

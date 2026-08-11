@@ -6,6 +6,9 @@ still collects where the writer is absent.
 """
 
 import os
+import re
+import socket
+import struct
 import subprocess
 import sys
 
@@ -19,6 +22,8 @@ sys.path.insert(0, REPO_ROOT)
 from libzim.reader import Archive  # noqa: E402
 
 import zimi.creator as creator  # noqa: E402
+import zimi.server as _srv  # noqa: E402
+from zimi.zimwriter import HISTORY_METADATA_KEY, parse_history  # noqa: E402
 
 FAKE_PNG = b"\x89PNG\r\n\x1a\nFAKEPNGDATA"
 FAKE_PDF = b"%PDF-1.4\nfake pdf body\n%%EOF"
@@ -126,6 +131,138 @@ def test_folder_zim_end_to_end(tmp_path):
     assert bytes(arc.get_metadata("Title")).decode() == "guide"
     assert bytes(arc.get_metadata("Creator")).decode() == "Zimi"
     assert bytes(arc.get_metadata("Language")).decode() == "eng"
+    assert bytes(arc.get_metadata("Scraper")).decode() == f"Zimi {_srv.ZIMI_VERSION}"
+
+
+def test_folder_zim_records_its_birth(tmp_path):
+    src = tmp_path / "guide"
+    src.mkdir()
+    _make_fixture(src)
+    info = creator.create_folder_zim(str(src), out_dir=str(tmp_path / "out"))
+    arc = Archive(info["path"])
+
+    # The source is the folder's NAME. A ZIM gets shared; the path it was
+    # built from is nobody else's business.
+    assert bytes(arc.get_metadata("X-Zimi-Source")).decode() == "guide"
+
+    records = parse_history(arc.get_metadata(HISTORY_METADATA_KEY))
+    assert len(records) == 1, "creation writes exactly one record"
+    rec = records[0]
+    assert rec["op"] == "created" and rec["mode"] == "folder"
+    assert rec["zimi"] == _srv.ZIMI_VERSION
+    assert isinstance(rec["ts"], int) and rec["ts"] > 1_700_000_000
+    assert '"guide"' in rec["detail"]
+    assert rec["counts"]["pages"] == info["pages"]
+    assert rec["counts"]["assets"] == info["assets"]
+    assert rec["counts"]["bytes"] > 0
+
+
+def test_folder_zim_conforms_to_the_openzim_metadata_spec(tmp_path):
+    """Every MANDATORY key, in the format zim-tools' own table enforces."""
+    src = tmp_path / "guide"
+    src.mkdir()
+    _make_fixture(src)
+    info = creator.create_folder_zim(str(src), out_dir=str(tmp_path / "out"))
+    arc = Archive(info["path"])
+    meta = {k: bytes(arc.get_metadata(k)) for k in arc.metadata_keys}
+
+    for key in (
+        "Name",
+        "Title",
+        "Language",
+        "Creator",
+        "Publisher",
+        "Date",
+        "Description",
+        "Illustration_48x48@1",
+    ):
+        assert key in meta, f"mandatory metadata missing: {key}"
+        assert meta[key], f"mandatory metadata empty: {key}"
+
+    assert 1 <= len(meta["Title"].decode()) <= 30
+    assert 1 <= len(meta["Description"].decode()) <= 80
+    assert re.fullmatch(r"\w{3}(,\w{3})*", meta["Language"].decode())
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", meta["Date"].decode())
+    assert (
+        re.fullmatch(r"[^;]+(;[^;]+)*", meta["Tags"].decode())
+        and "_category:other" in meta["Tags"].decode()
+    )
+    # The illustration is a real 48x48 PNG, not a placeholder byte string.
+    png = meta["Illustration_48x48@1"]
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    assert struct.unpack(">II", png[16:24]) == (48, 48)
+    # Counter is libzim's to write, and its spec regex admits no ";" or "="
+    # inside a mimetype — which is why entries carry a BARE text/html.
+    assert re.fullmatch(
+        r"([a-zA-Z]+/[a-zA-Z0-9.\-+]+=\d+)(;[a-zA-Z0-9]+/[a-zA-Z0-9.\-+]+=\d+)*;?",
+        meta["Counter"].decode(),
+    ), meta["Counter"]
+
+
+def test_name_is_the_same_for_two_builds_of_one_folder(tmp_path):
+    src = tmp_path / "guide"
+    src.mkdir()
+    _make_fixture(src)
+    first = creator.create_folder_zim(str(src), out_dir=str(tmp_path / "a"))
+    second = creator.create_folder_zim(str(src), out_dir=str(tmp_path / "b"))
+    name_of = lambda p: bytes(Archive(p).get_metadata("Name")).decode()  # noqa: E731
+    # Same source, so a library sees the second file as a newer EDITION of the
+    # first rather than an unrelated ZIM. The filenames still differ.
+    assert name_of(first["path"]) == name_of(second["path"]) == "zimi_eng_guide"
+    assert first["path"] != second["path"]
+
+
+def test_overlong_title_and_description_are_cut_to_spec(tmp_path):
+    src = tmp_path / "guide"
+    src.mkdir()
+    _make_fixture(src)
+    long_title = "A Field Guide To Absolutely Every Mushroom In The Region"
+    long_desc = (
+        "A description that runs on well past the eighty character limit the "
+        "openZIM specification imposes on this particular metadata field"
+    )
+    info = creator.create_folder_zim(
+        str(src),
+        out_dir=str(tmp_path / "out"),
+        title=long_title,
+        description=long_desc,
+    )
+    arc = Archive(info["path"])
+    title = bytes(arc.get_metadata("Title")).decode()
+    short = bytes(arc.get_metadata("Description")).decode()
+    full = bytes(arc.get_metadata("LongDescription")).decode()
+    assert len(title) <= 30 and title.endswith("…")
+    assert len(short) <= 80 and short.endswith("…")
+    # Nothing is lost: the full description becomes the LongDescription, which
+    # the spec requires to be no shorter than the short one.
+    assert full == long_desc and len(full) >= len(short)
+    # A ZIM whose index page Zimi generates still carries the WHOLE title —
+    # the cap costs a metadata field its tail, not the content its name.
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    (plain / "manual.pdf").write_bytes(FAKE_PDF)
+    generated = creator.create_folder_zim(
+        str(plain), out_dir=str(tmp_path / "out2"), title=long_title
+    )
+    index = _entry_text(Archive(generated["path"]), generated["main"])
+    assert long_title in index
+
+
+def test_provenance_never_leaks_the_machine_that_built_it(tmp_path):
+    """Hard rule: no local path, no username, no hostname reaches the file."""
+    src = tmp_path / "guide"
+    src.mkdir()
+    _make_fixture(src)
+    info = creator.create_folder_zim(str(src), out_dir=str(tmp_path / "out"))
+    arc = Archive(info["path"])
+
+    leaks = [str(tmp_path), os.path.expanduser("~"), socket.gethostname()]
+    blob = "\n".join(
+        f"{key}={bytes(arc.get_metadata(key)).decode('utf-8', 'replace')}"
+        for key in arc.metadata_keys
+    )
+    for secret in leaks:
+        assert secret and secret not in blob, f"metadata leaked {secret!r}"
 
 
 def test_index_html_wins_over_readme(tmp_path):

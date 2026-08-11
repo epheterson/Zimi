@@ -27,6 +27,7 @@ from libzim.reader import Archive  # noqa: E402
 import zimi.crawler as crawler  # noqa: E402
 import zimi.creator as creator  # noqa: E402
 import zimi.server as _srv  # noqa: E402
+from zimi.zimwriter import HISTORY_METADATA_KEY, parse_history  # noqa: E402
 
 PORT = 8894
 HOST = "127.0.0.1"
@@ -252,6 +253,33 @@ def test_site_capture_end_to_end(fixture_server, tmp_path):
     assert bytes(arc.get_metadata("Source")).decode() == f"{BASE}/"
     assert bytes(arc.get_metadata("Creator")).decode() == "Zimi"
     assert "captured from" in bytes(arc.get_metadata("Description")).decode()
+
+
+def test_site_zim_records_its_birth(fixture_server, tmp_path):
+    info = _site(tmp_path, "/", max_depth=2)
+    arc = Archive(info["path"])
+    assert bytes(arc.get_metadata("Scraper")).decode() == f"Zimi {_srv.ZIMI_VERSION}"
+    assert bytes(arc.get_metadata("X-Zimi-Source")).decode() == f"{BASE}/"
+
+    records = parse_history(arc.get_metadata(HISTORY_METADATA_KEY))
+    assert len(records) == 1, "creation writes exactly one record"
+    rec = records[0]
+    assert rec["op"] == "created" and rec["mode"] == "site"
+    assert rec["zimi"] == _srv.ZIMI_VERSION
+    assert isinstance(rec["ts"], int) and rec["ts"] > 1_700_000_000
+    assert BASE in rec["detail"]
+    assert rec["counts"]["pages"] == info["pages"]
+    assert rec["counts"]["assets"] == info["assets"]
+    assert rec["counts"]["bytes"] == info["bytes"]
+    assert "tools" not in rec, "Zimi's own crawler is not an outside tool"
+
+
+def test_a_capped_crawl_says_so_in_its_history(fixture_server, tmp_path):
+    info = _site(tmp_path, "/", max_depth=3, max_pages=2)
+    rec = parse_history(Archive(info["path"]).get_metadata(HISTORY_METADATA_KEY))[0]
+    # The ZIM itself admits it is partial — the reason lives in the file, not
+    # only in the console output of whoever ran the crawl.
+    assert "stopped early" in rec["detail"] and "page cap" in rec["detail"]
 
 
 def test_fragment_into_a_captured_page_keeps_its_anchor(fixture_server, tmp_path):
@@ -499,7 +527,7 @@ def test_interrupt_writes_a_valid_zim_of_what_was_captured(fixture_server, tmp_p
 def zimit_docker(monkeypatch, tmp_path):
     """Docker present, daemon up, image local. Returns the recorder the tests
     inspect; no subprocess is ever spawned."""
-    seen = {"runs": [], "probes": []}
+    seen = {"runs": [], "probes": [], "flag_probes": [], "flag_supported": True}
 
     def probe(cmd):
         seen["probes"].append(cmd)
@@ -513,9 +541,16 @@ def zimit_docker(monkeypatch, tmp_path):
             fh.write(b"ZIMITOUTPUT")
         return 0, ["crawl finished"]
 
+    def supports(docker, image, flag):
+        seen["flag_probes"].append((image, flag))
+        return seen["flag_supported"]
+
     monkeypatch.setattr(crawler, "_docker_cli", lambda: "/usr/local/bin/docker")
     monkeypatch.setattr(crawler, "_probe", probe)
     monkeypatch.setattr(crawler, "_run_streaming", run)
+    # The flag probe starts a container of its own — a seam, or a machine with
+    # a live daemon would pull zimit during the test suite.
+    monkeypatch.setattr(crawler, "_image_supports_flag", supports)
     monkeypatch.setattr(_srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
     return seen
 
@@ -561,6 +596,18 @@ def test_zimit_command_contract(zimit_docker, tmp_path):
     with open(info["path"], "rb") as fh:
         assert fh.read() == b"ZIMITOUTPUT"
     assert info["engine"] == "zimit" and info["pages"] is None
+    # zimit writes the ZIM, so the Scraper suffix is the only provenance Zimi
+    # can reach — asked for by name, appended to zimit's own string.
+    assert zimit_docker["flag_probes"] == [(crawler.ZIMIT_IMAGE, "--scraper-suffix")]
+    assert cmd[cmd.index("--scraper-suffix") + 1] == f"Zimi {_srv.ZIMI_VERSION}"
+
+
+def test_zimit_image_without_the_flag_still_runs(zimit_docker, tmp_path):
+    zimit_docker["flag_supported"] = False
+    crawler.create_zimit_zim("https://example.com/", out_dir=str(tmp_path / "zims"))
+    # An older image loses the stamp and nothing else — a provenance nicety
+    # must never be what fails a two-hour crawl.
+    assert "--scraper-suffix" not in zimit_docker["runs"][0]
 
 
 def test_zimit_site_scope_and_engine_arg_passthrough(zimit_docker, tmp_path):
