@@ -1317,7 +1317,7 @@
   "create_log": "Journal du serveur",
   "create_recent": "Récents",
   "create_hist_interrupted": "Interrompu par un redémarrage du serveur",
-  "create_hist_stalled": "A cessé de progresser",
+  "create_stalled": "A cessé de progresser",
   "create_restarted": "Le serveur a redémarré pendant cette tâche. Elle ne s'est pas terminée et rien n'a été ajouté à votre bibliothèque.",
   "create_queued": "En file d'attente — position {n}",
   "create_queue_drop": "Retirer",

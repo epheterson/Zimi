@@ -1317,7 +1317,7 @@
   "create_log": "Registo do servidor",
   "create_recent": "Recentes",
   "create_hist_interrupted": "Interrompido por um reinício do servidor",
-  "create_hist_stalled": "Deixou de progredir",
+  "create_stalled": "Deixou de progredir",
   "create_restarted": "O servidor reiniciou durante esta tarefa. Não terminou e nada foi adicionado à sua biblioteca.",
   "create_queued": "Na fila — posição {n}",
   "create_queue_drop": "Remover",

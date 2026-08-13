@@ -1317,7 +1317,7 @@
   "create_log": "सर्वर लॉग",
   "create_recent": "हाल के",
   "create_hist_interrupted": "सर्वर पुनःआरंभ से बाधित",
-  "create_hist_stalled": "आगे बढ़ना रुक गया",
+  "create_stalled": "आगे बढ़ना रुक गया",
   "create_restarted": "इस कार्य के दौरान सर्वर पुनः आरंभ हुआ। यह पूरा नहीं हुआ, और आपकी लाइब्रेरी में कुछ नहीं जोड़ा गया।",
   "create_queued": "कतार में — स्थान {n}",
   "create_queue_drop": "हटाएँ",

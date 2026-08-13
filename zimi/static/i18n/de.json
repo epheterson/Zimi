@@ -1317,7 +1317,7 @@
   "create_log": "Serverprotokoll",
   "create_recent": "Zuletzt",
   "create_hist_interrupted": "Durch einen Serverneustart unterbrochen",
-  "create_hist_stalled": "Kam nicht mehr voran",
+  "create_stalled": "Kam nicht mehr voran",
   "create_restarted": "Der Server wurde während dieses Auftrags neu gestartet. Er wurde nicht fertig, und Ihrer Bibliothek wurde nichts hinzugefügt.",
   "create_queued": "In der Warteschlange — Position {n}",
   "create_queue_drop": "Entfernen",

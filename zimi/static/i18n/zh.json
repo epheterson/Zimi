@@ -1317,7 +1317,7 @@
   "create_log": "服务器日志",
   "create_recent": "最近",
   "create_hist_interrupted": "因服务器重启而中断",
-  "create_hist_stalled": "停止了进展",
+  "create_stalled": "停止了进展",
   "create_restarted": "服务器在此任务运行期间重启。任务未完成，也没有内容加入你的库。",
   "create_queued": "排队中 — 第 {n} 位",
   "create_queue_drop": "移除",

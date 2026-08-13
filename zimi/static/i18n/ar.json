@@ -1317,7 +1317,7 @@
   "create_log": "سجل الخادم",
   "create_recent": "الأخيرة",
   "create_hist_interrupted": "توقف بسبب إعادة تشغيل الخادم",
-  "create_hist_stalled": "توقّف عن التقدّم",
+  "create_stalled": "توقّف عن التقدّم",
   "create_restarted": "أُعيد تشغيل الخادم أثناء هذه المهمة. لم تكتمل، ولم يُضف شيء إلى مكتبتك.",
   "create_queued": "في قائمة الانتظار — الموضع {n}",
   "create_queue_drop": "إزالة",
