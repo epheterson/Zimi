@@ -2389,13 +2389,18 @@ def _create_finish(job, **outcome):
             return False
         for key, value in outcome.items():
             setattr(job, key, value)
-        job.done = True
+        if job.phase != "done":
+            job.phase = "done"
         job.finished = time.time()
-    job.settled.set()
-    if job.phase != "done":
-        job.phase = "done"
+        # Journal BEFORE done becomes visible: a status poll learns "done"
+        # from the flag, and history must already agree by then — otherwise
+        # one reply can say done while its own history says running. The
+        # journal write is a ~1KB file behind its own lock; paying it inside
+        # this lock is what makes the two truths one truth.
+        job.done = True
+        _create_journal_put(job)
     _create_emit(job, {"t": "phase", "phase": "done", "detail": _create_job_state(job)})
-    _create_journal_put(job)
+    job.settled.set()
     _create_start_next()
     return True
 
@@ -2543,9 +2548,9 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
         # yes/no about whether server-path capture exists on this instance at
         # all, and an empty string is a path that happens to be blank.
         payload["create_root"] = _create_root() or None
-    if history:
-        payload["history"] = _create_history()
     if job is None:
+        if history:
+            payload["history"] = _create_history()
         payload.update(
             {
                 "active": False,
@@ -2557,35 +2562,44 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
             }
         )
         return payload
+    # tail()/event_tail() take _create_lock themselves — call them OUTSIDE
+    # the snapshot block below (the lock is not reentrant).
     lines, next_cursor = job.tail(max(0, cursor))
     events, next_events = job.event_tail(max(0, events_cursor))
-    payload.update(
-        {
-            "id": job.id,
-            "active": not job.done,
-            "mode": job.mode,
-            "source": job.source,
-            "title": job.title,
-            "phase": job.phase,
-            "lines": lines,
-            "cursor": next_cursor,
-            "events": events,
-            "event_cursor": next_events,
-            "done": job.done,
-            "ok": job.ok,
-            "cancelled": job.cancelled,
-            "stalled": job.stalled,
-            "cancelling": job.cancel_requested and not job.done,
-            "error": job.error,
-            "result": job.result,
-            # See CREATE_CANCELLABLE_MODES: a cancel button on a job with no
-            # progress callback to interrupt would be a lie.
-            "cancellable": job.mode in CREATE_CANCELLABLE_MODES,
-            "elapsed": round(
-                (job.finished or time.time()) - (job.started or job.queued_at), 1
-            ),
-        }
-    )
+    # Snapshot the scalar fields UNDER the finish lock, and read history only
+    # after: _create_finish journals before it lets done become visible inside
+    # the same critical section, so this ordering is what guarantees one reply
+    # never says done while its own history still says running.
+    with _create_lock:
+        payload.update(
+            {
+                "id": job.id,
+                "active": not job.done,
+                "mode": job.mode,
+                "source": job.source,
+                "title": job.title,
+                "phase": job.phase,
+                "lines": lines,
+                "cursor": next_cursor,
+                "events": events,
+                "event_cursor": next_events,
+                "done": job.done,
+                "ok": job.ok,
+                "cancelled": job.cancelled,
+                "stalled": job.stalled,
+                "cancelling": job.cancel_requested and not job.done,
+                "error": job.error,
+                "result": job.result,
+                # See CREATE_CANCELLABLE_MODES: a cancel button on a job with
+                # no progress callback to interrupt would be a lie.
+                "cancellable": job.mode in CREATE_CANCELLABLE_MODES,
+                "elapsed": round(
+                    (job.finished or time.time()) - (job.started or job.queued_at), 1
+                ),
+            }
+        )
+    if history:
+        payload["history"] = _create_history()
     return payload
 
 
