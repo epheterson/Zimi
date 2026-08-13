@@ -87,6 +87,9 @@ var _CREATE_ICONS = {
 //   browse      — the source is a server path, so offer the folder picker
 //   needsRoot   — the mode reads a directory the operator names, so the web
 //                 surface stays CLOSED until they have named one. See below.
+//   serverPath  — the source is somewhere on the SERVER'S disk rather than out
+//                 on the web, which is why the server keeps these two for the
+//                 primary admin alone. A creator account never sees them.
 // Bookmarks is one of the six ways to make a ZIM and the only one whose source
 // is not on the server: the bookmarks live in this browser's localStorage. So it
 // is a CLIENT mode — it never reaches /manage/create, and its button hands off
@@ -125,12 +128,12 @@ var CREATE_MODE_DEFS = [
   },
   CREATE_BOOKMARKS_DEF,
   {
-    id: 'folder', network: false, browse: true, needsRoot: true,
+    id: 'folder', network: false, browse: true, needsRoot: true, serverPath: true,
     label: 'create_label_folder', placeholder: 'create_ph_folder',
     flags: [], advanced: ['language']
   },
   {
-    id: 'import', network: false, sidecar: true,
+    id: 'import', network: false, sidecar: true, serverPath: true,
     label: 'create_label_archive', placeholder: 'create_ph_archive',
     flags: [], advanced: ['name']
   }
@@ -280,17 +283,27 @@ function _createModeAvailable(def, offline, importReady) {
   return true;
 }
 
-// Whether a mode is offered on the WEB at all, which is a different question
-// from whether it would work. Folder mode reads a directory tree and shows it
-// to you, and pointing that at "/" from a browser is a filesystem viewer nobody
-// asked for. So the web surface stays closed until the operator names a root
-// (ZIMI_CREATE_ROOT); the CLI, where you already have a shell on the machine,
-// is untouched. Hidden rather than disabled on purpose: a greyed-out tile is an
-// advertisement for a feature, and on a server with no root configured there is
-// nothing to advertise. The server enforces the same rule independently — this
-// is which door is drawn, never which door is locked.
-function _createModeVisible(def, createRoot) {
-  return def.needsRoot ? !!createRoot : true;
+// Whether a mode is offered to THIS viewer at all, which is a different
+// question from whether it would work. Two reasons a mode is not on the page,
+// and both of them are the server's rules drawn honestly:
+//
+//   the operator has named no root — folder mode reads a directory tree and
+//     shows it to you, and pointing that at "/" from a browser is a filesystem
+//     viewer nobody asked for, so the web surface stays closed until
+//     ZIMI_CREATE_ROOT says which tree is fair game. The CLI, where you already
+//     have a shell on the machine, is untouched.
+//   the viewer is a creator, not an admin — a creator account may capture the
+//     web and package its own bookmarks, but the two modes that read the
+//     SERVER'S disk stay with the primary admin.
+//
+// Hidden rather than disabled in both cases: a greyed-out chip advertises a
+// feature, and there is nothing here to advertise to someone who will never be
+// allowed it. The server enforces both rules independently — this decides which
+// door is drawn, never which door is locked.
+function _createModeVisible(def, createRoot, creatorOnly) {
+  if (def.serverPath && creatorOnly) return false;
+  if (def.needsRoot && !createRoot) return false;
+  return true;
 }
 
 function _createDef(id) {
@@ -637,7 +650,7 @@ var CREATE_HISTORY_KEYS = {
   ok: 'create_done_title',
   failed: 'create_failed',
   cancelled: 'create_cancelled',
-  stalled: 'create_hist_stalled',
+  stalled: 'create_stalled',
   interrupted: 'create_hist_interrupted'
 };
 
@@ -816,11 +829,23 @@ function _renderCreateModes() {
 }
 
 function _createVisibleModes() {
+  var creatorOnly = _createViewerIsCreator();
   var out = [];
   for (var i = 0; i < CREATE_MODE_DEFS.length; i++) {
-    if (_createModeVisible(CREATE_MODE_DEFS[i], _createRoot)) out.push(CREATE_MODE_DEFS[i]);
+    if (_createModeVisible(CREATE_MODE_DEFS[i], _createRoot, creatorOnly)) {
+      out.push(CREATE_MODE_DEFS[i]);
+    }
   }
   return out;
+}
+
+// True when the viewer is a signed-in creator account rather than an admin.
+// app.js keeps _userSession null for admins and anonymous viewers, so a session
+// that exists AND carries the create permission is exactly a creator. Read
+// defensively: this file's pure prefix is evaluated in the .cjs test sandbox,
+// where app.js does not exist.
+function _createViewerIsCreator() {
+  return !!(typeof _userSession !== 'undefined' && _userSession && _userSession.canCreate);
 }
 
 function _createModeInList(list, id) {
@@ -843,7 +868,7 @@ function _createDefaultMode(list) {
 // its mind about what is possible.
 function _createAvailabilityKey() {
   return (_createOffline ? '1' : '0') + (_createImportReady ? '1' : '0') +
-    (_createRoot ? '1' : '0');
+    (_createRoot ? '1' : '0') + (_createViewerIsCreator() ? '1' : '0');
 }
 
 function _createSelectMode(id) {
@@ -1816,7 +1841,11 @@ function _createSyncOutcome(s) {
   if (s.cancelled) {
     fail.innerHTML = '<div class="create-status">' + tH('create_cancelled') + '</div>';
   } else {
-    fail.innerHTML = '<div class="create-status">' + tH('create_failed') + '</div>' +
+    // A job the watchdog gave up on did not fail at anything — it stopped
+    // getting answers. "Creation failed" over the server's own sentence about
+    // ten minutes of silence reads like a bug in what you typed.
+    fail.innerHTML =
+      '<div class="create-status">' + tH(s.stalled ? 'create_stalled' : 'create_failed') + '</div>' +
       (s.error ? '<div class="create-error">' + esc(s.error) + '</div>' : '');
   }
 }

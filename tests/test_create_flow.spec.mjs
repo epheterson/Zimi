@@ -75,8 +75,63 @@ test.beforeAll(async () => {
   fixtureUrl = `http://127.0.0.1:${fixture.address().port}/`;
 });
 
+// A second fixture whose ASSETS are slow, and where every page carries its own.
+// This is the shape that produced Eric's hang: the site engine's write pass
+// fetches each page's images behind what used to be a single line of output, so
+// packaging was the longest phase and the one that looked frozen. Slow assets
+// are the only way to hold the Package step on screen long enough to prove the
+// counter moves.
+const SLOW_SECTIONS = ['docs', 'blog'];
+const SLOW_PER_SECTION = 28;
+const SLOW_ASSET_MS = 120;
+const PNG = Buffer.from(
+  '89504e470d0a1a0a0000000d4948445200000001000000010806000000' +
+  '1f15c4890000000d4944415478da63f8ffff3f0005fe02fea6b7d3e400' +
+  '00000049454e44ae426082', 'hex');
+
+let slowFixture;
+let slowUrl;
+
+test.beforeAll(async () => {
+  slowFixture = http.createServer(async (req, res) => {
+    const path = (req.url || '/').split('?')[0];
+    const html = body => {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(body);
+    };
+    if (path.startsWith('/img/')) {
+      await new Promise(r => setTimeout(r, SLOW_ASSET_MS));   // the whole point
+      res.writeHead(200, { 'Content-Type': 'image/png' });
+      res.end(PNG);
+      return;
+    }
+    const fig = name => `<p><img src="/img/${name}.png" alt="fig"></p>`;
+    if (path === '/') {
+      html(fixturePage('Slow Fixture',
+        SLOW_SECTIONS.map(s => `<a href="/${s}/">${s}</a>`).join(' ') + fig('home')));
+      return;
+    }
+    const parts = path.split('/').filter(Boolean);
+    if (parts.length === 1 && SLOW_SECTIONS.includes(parts[0])) {
+      const rows = Array.from({ length: SLOW_PER_SECTION }, (_, n) =>
+        `<a href="/${parts[0]}/p${n}.html">${n}</a>`).join(' ');
+      html(fixturePage(parts[0], rows + fig(parts[0])));
+      return;
+    }
+    if (parts.length === 2 && SLOW_SECTIONS.includes(parts[0])) {
+      const name = parts[1].replace(/\.html$/, '');
+      html(fixturePage(`${parts[0]} ${name}`, '<p>Fixture.</p>' + fig(parts[0] + '-' + name)));
+      return;
+    }
+    res.writeHead(404); res.end('no');
+  });
+  await new Promise(resolve => slowFixture.listen(0, '127.0.0.1', resolve));
+  slowUrl = `http://127.0.0.1:${slowFixture.address().port}/`;
+});
+
 test.afterAll(async () => {
   await new Promise(resolve => fixture.close(resolve));
+  await new Promise(resolve => slowFixture.close(resolve));
 });
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -231,6 +286,35 @@ test.describe('folder mode is CLI-only until a root is configured', () => {
     await pickMode(page, 'folder');
     await expect(page.locator('.create-panel')).toContainText('/srv/library-sources');
   });
+
+  test('a creator account never sees the two server-path modes', async ({ page }) => {
+    // A signed-in user with the per-user create permission may capture the web
+    // and package their bookmarks. Folder and import read the SERVER'S disk and
+    // the server keeps them for the primary admin, so they are not drawn —
+    // even with a root configured, which is the case that could tempt it.
+    await page.route('**/manage/create/status*', async route => {
+      const res = await route.fetch();
+      const body = await res.json();
+      body.create_root = '/srv/library-sources';
+      await route.fulfill({ response: res, json: body });
+    });
+    await page.goto(BASE);
+    await page.waitForFunction(() => typeof window.openCreate === 'function');
+    // app.js keeps _userSession null for admins; a session carrying canCreate
+    // is exactly a creator.
+    await page.evaluate(() => {
+      window._userSession = { name: 'maker', restricted: true, canCreate: true };
+      window.openCreate();
+    });
+    await page.waitForSelector('.create-chip', { state: 'attached' });
+    await page.waitForFunction(() => window._createRoot === '/srv/library-sources');
+    await expect.poll(() => page.evaluate(() =>
+      [...document.querySelectorAll('.create-chip')].map(c => c.textContent.trim()).join(' | ')
+    )).not.toMatch(/Folder|Import/i);
+    // And what remains is still a working picker, not an empty page.
+    expect(await page.locator('.create-chip').count()).toBe(4);
+    await expect(page.locator('.create-chip.active')).toHaveCount(1);
+  });
 });
 
 // ── an offline server ───────────────────────────────────────────────────────
@@ -323,6 +407,77 @@ test.describe('watching a real crawl', () => {
       const el = document.getElementById('create-done-bytes');
       return el ? el.textContent : '';
     }), { timeout: 5000 }).not.toMatch(/^0 B$/);
+  });
+
+  test('packaging visibly moves, which is the whole complaint', async ({ page }) => {
+    // Eric, on the round-2 page: packaging hung forever. lane-jobs fixed the
+    // engine (it reports and checkpoints per page now); this is the client half
+    // of that fix — while the strip sits on Package, the entry counter has to
+    // CLIMB, against a total, rather than sit still behind a spinner.
+    await pickMode(page, 'site');
+    await page.fill('#create-source', slowUrl);
+    await page.fill('#create-max-pages', '60');
+    await page.click('#create-start');
+
+    await expect(page.locator('.create-step[data-state="active"]'))
+      .toHaveText(/Package/, { timeout: 90000 });
+
+    // Sample the counter while Package is lit. It must strictly increase, and
+    // it must be a fraction — an indeterminate number is a spinner with digits.
+    const seen = [];
+    for (let i = 0; i < 12; i++) {
+      const reading = await page.evaluate(() => {
+        const c = window._createViz.counts.entries;
+        const lit = document.querySelector('.create-step[data-state="active"]');
+        return {
+          n: c ? c.n : null,
+          total: c ? c.total : null,
+          onPackage: !!lit && lit.textContent.indexOf('Package') >= 0,
+          shown: document.querySelector('.create-metric-n').textContent,
+        };
+      });
+      if (reading.onPackage) seen.push(reading);
+      if (!reading.onPackage && seen.length) break;
+      await page.waitForTimeout(1200);
+    }
+    expect(seen.length).toBeGreaterThanOrEqual(3);
+    expect(seen[seen.length - 1].n).toBeGreaterThan(seen[0].n);
+    expect(seen[0].total).toBeGreaterThan(0);
+    // And the number on screen is the number in the model, not a stale paint.
+    expect(seen[seen.length - 1].shown).toBe(String(seen[seen.length - 1].n));
+
+    await page.waitForFunction(() => window._createStatus && window._createStatus.done,
+      null, { timeout: 120000 });
+    expect(await page.evaluate(() => window._createStatus.ok)).toBe(true);
+  });
+
+  test('assets land in the node that wanted them', async ({ page }) => {
+    // The other half of Eric's picture: "then the fetching of assets filling in
+    // each node". The crawler names the page each asset belongs to, so a page
+    // row carries its own counter and its own fill.
+    await pickMode(page, 'site');
+    await page.fill('#create-source', slowUrl);
+    await page.fill('#create-max-pages', '20');
+    await page.click('#create-start');
+    await page.waitForFunction(() => window._createStatus && window._createStatus.done,
+      null, { timeout: 120000 });
+
+    const bars = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('.create-node')];
+      const filled = rows.filter(n => {
+        const bar = n.querySelector(':scope > .create-node-bar');
+        return bar && !bar.hidden && bar.firstElementChild.style.width === '100%';
+      });
+      return {
+        rows: rows.length,
+        filled: filled.length,
+        counter: filled.length ? filled[0].querySelector('.create-node-assets').textContent : '',
+      };
+    });
+    expect(bars.rows).toBeGreaterThan(2);
+    // Every page in this fixture carries exactly one image of its own.
+    expect(bars.filled).toBe(bars.rows);
+    expect(bars.counter).toBe('1/1');
   });
 
   test('the log is still there, one click away', async ({ page }) => {

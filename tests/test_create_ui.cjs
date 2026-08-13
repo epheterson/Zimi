@@ -584,21 +584,40 @@ eq(_createHistoryLabel({ result: 'my_book', source: 'http://x/' }), 'my_book',
 eq(_createHistoryLabel({ source: 'http://x/' }), 'http://x/', 'then what was typed in');
 eq(_createHistoryLabel({ mode: 'site' }), 'create_mode_site', 'then the mode, but never nothing');
 
-// -- folder retreats from the web --------------------------------------------
+// -- who is offered which mode -----------------------------------------------
 //
-// Eric, on the round-2 folder flow: "I don't love showing the whole file system
-// there." The web surface stays CLOSED until the operator names a root. Hidden
-// rather than disabled: a greyed-out tile advertises a feature, and on a server
-// with no root there is nothing to advertise. The server enforces this
-// independently — this decides which door is DRAWN, never which one is locked.
+// Two reasons a mode is not drawn, and both are the server's rules shown
+// honestly. Eric, on the round-2 folder flow: "I don't love showing the whole
+// file system there." So the web surface stays CLOSED until the operator names
+// a root. And a creator account — a signed-in user with the per-user create
+// permission — never sees the two modes that read the SERVER'S disk, because
+// the server keeps those for the primary admin.
+//
+// Hidden rather than disabled in both cases: a greyed-out chip advertises a
+// feature, and there is nothing to advertise to someone who will never be
+// allowed it. The server enforces both independently — this decides which door
+// is DRAWN, never which one is locked.
 const folder = def('folder');
 check(folder.needsRoot === true, 'folder mode is the one that needs a root');
-check(_createModeVisible(folder, '') === false, 'no root configured, no folder tile');
-check(_createModeVisible(folder, '/srv/sources') === true, 'a root configured brings it back');
+check(_createModeVisible(folder, '', false) === false, 'no root configured, no folder chip');
+check(_createModeVisible(folder, '/srv/sources', false) === true,
+  'a root configured brings it back');
 for (const d of CREATE_MODE_DEFS) {
   if (d.id === 'folder') continue;
-  check(_createModeVisible(d, '') === true, `${d.id} is offered whatever the root setting is`);
+  check(_createModeVisible(d, '', false) === true,
+    `${d.id} is offered to an admin whatever the root setting is`);
 }
+
+// The two server-path modes are exactly folder and import — the pair the
+// server gates to the primary admin. Marked in the table rather than named in
+// an if, so adding a third server-path mode cannot forget this rule.
+eq(CREATE_MODE_DEFS.filter(d => d.serverPath).map(d => d.id), ['folder', 'import'],
+  'folder and import are the modes that read the server\'s own disk');
+eq(CREATE_MODE_DEFS.filter(d => _createModeVisible(d, '/srv/sources', true)).map(d => d.id),
+  ['page', 'site', 'video', 'bookmarks'],
+  'a creator gets the web modes and bookmarks, never the two server-path ones');
+check(_createModeVisible(folder, '/srv/sources', true) === false,
+  'a configured root does NOT open folder mode to a creator');
 
 check(CREATE_TREE_MAX_NODES > 0 && CREATE_TREE_MAX_NODES <= 1000,
   'the tree draws a bounded number of rows, whatever the crawl size');
