@@ -592,14 +592,11 @@
   .ms-pa-env { font-size: 12px; color: var(--text2); background: var(--amber-glow); border: 1px solid var(--amber-border); border-radius: var(--radius); padding: 6px 10px; margin-bottom: 12px; }
   .ms-pa-env code { font-size: 11px; color: var(--amber); }
   .ms-pa-choices { display: flex; flex-direction: column; gap: 8px; max-width: 480px; }
-  /* The choice tile is the app's one "pick one of these" surface. The Create
-     page's mode tiles ARE this control (a button rather than a label, hence the
-     reset properties below), so they share the recipe instead of copying it. */
-  .ms-pa-choice, .create-tile { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s; }
-  .ms-pa-choice:hover, .create-tile:hover { border-color: var(--amber-border); background: var(--amber-glow); }
-  .ms-pa-choice.active, .create-tile.active { border-color: var(--amber-border); background: var(--amber-glow); }
-  .ms-pa-choice.disabled, .create-tile.disabled { opacity: 0.55; cursor: not-allowed; }
-  .create-tile.disabled:hover { border-color: var(--border); background: none; }
+  /* The choice tile is the app's one "pick one of these" surface. */
+  .ms-pa-choice { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s; }
+  .ms-pa-choice:hover { border-color: var(--amber-border); background: var(--amber-glow); }
+  .ms-pa-choice.active { border-color: var(--amber-border); background: var(--amber-glow); }
+  .ms-pa-choice.disabled { opacity: 0.55; cursor: not-allowed; }
   .ms-pa-choice input { accent-color: var(--amber); margin-top: 2px; flex-shrink: 0; width: 15px; height: 15px; }
   .ms-pa-choice-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .ms-pa-choice-title { font-size: 13px; font-weight: 600; color: var(--text); }
@@ -610,24 +607,46 @@
 
   /* ── Create a ZIM ──
      A full-page surface over the library, same geometry as the Almanac overlay
-     but built entirely from the manage-settings vocabulary above: .ms-pa-choice
-     tiles, .ms-pa-choice-title/-desc text, .create-field inputs (which share the
-     .ms-user-add input recipe), .ms-btn / .ms-btn-primary actions and
-     .ms-section-label headings. Only the geometry and the log pane are new.
-     Elegance here is subtraction: one primary input per mode and at most three
-     flags — the wider bounds stay on the CLI, and the caption says so. */
+     but built from the manage-settings vocabulary above: .create-field inputs
+     (which share the .ms-user-add input recipe), .ms-btn / .ms-btn-primary
+     actions and .ms-form-label headings.
+
+     Round 3's shape: a row of mode CHIPS, then ONE panel carrying whichever
+     mode is lit. Round 2 gave every mode its own expanding form, each with its
+     own copy of Title and Advanced, and the page read as six near-identical
+     sections — worse, an open form's Create button sat one row above the tile
+     that opened the next mode, so reaching for Create and hitting "Video"
+     instead was a matter of a few pixels. Hence .create-go: the primary action
+     is full-width, rule-separated, at the bottom of the panel, with nothing
+     beside it to land on by accident. */
   .create-view { position: fixed; top: var(--under-topbar); left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
   .create-view.open { display: flex; animation: fadeIn 0.15s ease; }
   .create-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: 24px 16px 40px; overscroll-behavior: contain; }
   .create-inner { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
   .create-head { display: flex; flex-direction: column; gap: 4px; }
   .create-title { font-size: 20px; font-weight: 600; color: var(--text); }
-  .create-tiles { display: flex; flex-direction: column; gap: 8px; }
-  /* Button reset — the tile recipe assumes a label, these are real buttons. */
-  .create-tile { width: 100%; text-align: left; background: none; font-family: inherit; }
-  .create-tile-glyph { flex-shrink: 0; width: 20px; display: flex; justify-content: center; color: var(--text2); margin-top: 1px; }
-  .create-tile.active .create-tile-glyph { color: var(--amber); }
-  .create-form { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--amber-border); border-radius: 10px; background: var(--surface); }
+  /* Mode chips. A chip is a name and a glyph; the sentence explaining the mode
+     belongs to the panel of the one you picked, not to five you did not. */
+  /* A display rule beats the `hidden` attribute. Every flex container on this
+     page that JS hides needs saying twice, or `el.hidden = true` is a no-op:
+     the picker would stay on screen underneath the job it just started, and an
+     old server with no events would show an inert phase strip and an empty
+     tree box — the two things the degraded path exists to avoid. */
+  .create-picker[hidden], .create-phases[hidden], .create-tree-wrap[hidden] { display: none; }
+  .create-picker { display: flex; flex-direction: column; gap: 12px; }
+  .create-modes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .create-chip { display: flex; align-items: center; gap: 7px; padding: 7px 12px; font-family: inherit; font-size: 13px; color: var(--text2); background: none; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; transition: all 0.15s; }
+  .create-chip:hover { color: var(--text); border-color: var(--amber-border); background: var(--amber-glow); }
+  .create-chip.active { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .create-chip.disabled { opacity: 0.45; cursor: not-allowed; }
+  .create-chip.disabled:hover { color: var(--text2); border-color: var(--border); background: none; }
+  .create-chip-glyph { display: flex; flex-shrink: 0; }
+  .create-chip-name { white-space: nowrap; }
+  .create-panel { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .create-panel-desc { font-size: 12.5px; color: var(--text2); }
+  .create-panel-blocked { font-size: 13px; color: var(--text2); padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); }
+  .create-go { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .create-go-btn { width: 100%; padding: 10px 12px; font-size: 13px; font-weight: 600; }
   .create-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
   .create-flag { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); cursor: pointer; }
   .create-flag input[type="checkbox"] { accent-color: var(--amber); width: 15px; height: 15px; flex-shrink: 0; }
@@ -638,17 +657,21 @@
   .create-caption { font-size: 12px; color: var(--text2); }
   /* "Advanced" is a sentence you can open, not a control: the default marker is
      replaced by a caret and there is deliberately no box, border or button
-     around it — the simple form has to stay the thing you see. */
-  .create-adv > summary { display: flex; align-items: center; gap: 6px; width: fit-content; list-style: none; cursor: pointer; font-size: 12px; color: var(--text2); }
-  .create-adv > summary::-webkit-details-marker { display: none; }
-  .create-adv > summary::before { content: "\203A"; display: inline-block; transition: transform 0.15s ease; }
-  .create-adv[open] > summary::before { transform: rotate(90deg); }
+     around it — the simple form has to stay the thing you see. The run pane's
+     log toggle is the same idea and shares the recipe: the log is the truth,
+     but the picture is what you watch, so the truth waits behind one quiet
+     word rather than filling the pane by default. */
+  .create-adv > summary, .create-logbox > summary { display: flex; align-items: center; gap: 6px; width: fit-content; list-style: none; cursor: pointer; font-size: 12px; color: var(--text2); }
+  .create-adv > summary::-webkit-details-marker, .create-logbox > summary::-webkit-details-marker { display: none; }
+  .create-adv > summary::before, .create-logbox > summary::before { content: "\203A"; display: inline-block; transition: transform 0.15s ease; }
+  .create-adv[open] > summary::before, .create-logbox[open] > summary::before { transform: rotate(90deg); }
   /* The caret is a mirrored character, so RTL already flips it to point at the
      text — which means the open state has to turn the other way to end up
      pointing DOWN rather than back up at the topbar. */
-  [dir="rtl"] .create-adv[open] > summary::before { transform: rotate(-90deg); }
-  .create-adv > summary:hover { color: var(--amber); }
-  .create-adv[open] > summary { margin-bottom: 10px; }
+  [dir="rtl"] .create-adv[open] > summary::before,
+  [dir="rtl"] .create-logbox[open] > summary::before { transform: rotate(-90deg); }
+  .create-adv > summary:hover, .create-logbox > summary:hover { color: var(--amber); }
+  .create-adv[open] > summary, .create-logbox[open] > summary { margin-bottom: 10px; }
   .create-adv .create-caption { margin-top: 8px; }
   .create-credit a { color: var(--text2); text-decoration: underline; text-underline-offset: 2px; }
   .create-credit a:hover { color: var(--amber); }
@@ -678,20 +701,118 @@
   .create-dir { text-align: left; font-family: inherit; font-size: 13px; color: var(--text); background: none; border: 1px solid transparent; border-radius: 6px; padding: 5px 8px; cursor: pointer; }
   .create-dir:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .create-dir.up { color: var(--text2); }
+  /* ── Watching the work ──
+     Round 2 showed a spinner and a log, which says "something is happening" and
+     nothing more; an hour-long crawl looked identical to a hung one, and the
+     packaging phase — where the engine writes tens of thousands of entries with
+     nothing to say about it — looked exactly like a crash. What the server now
+     emits is structure: phases, page nodes with their assets, and counters. So
+     this is a phase strip, a tree that grows, and numbers that move. */
+  .create-run { display: flex; flex-direction: column; gap: 14px; }
+  .create-phases { display: flex; align-items: flex-start; }
+  .create-step { flex: 1 1 0; position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text3); text-align: center; }
+  /* The rail between two steps belongs to the one on the right, which is what
+     lets the step on its LEFT light it with a sibling selector. */
+  .create-step + .create-step::before { content: ""; position: absolute; top: 5px; left: -50%; right: 50%; height: 1px; background: var(--border); }
+  .create-step[data-state="done"] + .create-step::before { background: var(--amber-border); }
+  .create-step-dot { position: relative; z-index: 1; width: 11px; height: 11px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--surface2); }
+  .create-step[data-state="done"] { color: var(--text2); }
+  .create-step[data-state="done"] .create-step-dot { border-color: var(--amber-border); background: var(--amber-border); }
+  .create-step[data-state="active"] { color: var(--amber); }
+  .create-step[data-state="active"] .create-step-dot { border-color: var(--amber); background: var(--amber); animation: createPulse 1.6s ease-in-out infinite; }
+  .create-phase-detail { min-height: 16px; font-size: 12px; color: var(--text2); text-align: center; overflow-wrap: anywhere; }
+  .create-metrics { display: flex; flex-wrap: wrap; gap: 8px; }
+  .create-metric { display: flex; align-items: baseline; gap: 5px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); }
+  .create-metric-n { font-size: 16px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+  .create-metric-of { font-size: 12px; color: var(--text3); font-variant-numeric: tabular-nums; }
+  .create-metric-k { font-size: 11.5px; color: var(--text2); }
+  /* The tree. Rows are nested rather than indented by a computed depth, so the
+     guide line is the parent's own border and no arithmetic can get it wrong.
+     Bounded height, and bounded node count in create.js — a five-thousand-page
+     crawl keeps counting and stops drawing. */
+  .create-tree-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .create-tree { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); }
+  .create-node-kids { margin-left: 7px; padding-left: 10px; border-left: 1px solid var(--border); }
+  .create-node-kids:empty { display: none; }
+  .create-node-row { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 2px 0; font-size: 12px; }
+  .create-node-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--text3); }
+  .create-node-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); }
+  .create-node-assets { flex: 0 0 auto; margin-left: auto; font-size: 11px; color: var(--text3); font-variant-numeric: tabular-nums; }
+  .create-node-bar { height: 2px; margin: 0 0 3px 13px; border-radius: 1px; background: var(--border); overflow: hidden; }
+  .create-node-bar > i { display: block; height: 100%; width: 0; background: var(--amber-border); transition: width 0.3s ease; }
+  .create-node[data-state="active"] > .create-node-row .create-node-dot { background: var(--amber); animation: createPulse 1.6s ease-in-out infinite; }
+  .create-node[data-state="active"] > .create-node-row .create-node-label { color: var(--text); }
+  .create-node[data-state="done"] > .create-node-row .create-node-dot { background: var(--success); }
+  .create-node[data-state="failed"] > .create-node-row .create-node-dot { background: var(--error); }
+  .create-node[data-state="failed"] > .create-node-row .create-node-label { color: var(--error); }
+  .create-node-new > .create-node-row { animation: createNodeIn 0.28s ease both; }
+  .create-tree-more { font-size: 11.5px; color: var(--text3); }
+  @keyframes createPulse {
+    0%, 100% { box-shadow: 0 0 0 0 var(--amber-glow); }
+    50% { box-shadow: 0 0 0 5px var(--amber-glow); }
+  }
+  @keyframes createNodeIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
   /* The running tail. Bounded height so a thousand-page crawl scrolls inside
      its own box instead of walking the page down forever. */
   .create-log { max-height: 260px; overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); font-family: monospace; font-size: 11.5px; line-height: 1.6; color: var(--text2); }
   .create-log-line { white-space: pre-wrap; word-break: break-word; }
   .create-log-line:last-child { color: var(--text); }
-  .create-empty { color: var(--text3); }
   .create-status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
   .create-error { font-size: 13px; color: var(--error); white-space: pre-wrap; }
-  .create-done { padding: 12px; border: 1px solid var(--amber-border); border-radius: 10px; background: var(--amber-glow); display: flex; flex-direction: column; gap: 8px; }
-  .create-done-name { font-size: 14px; font-weight: 600; color: var(--text); word-break: break-all; }
+  .create-notice { font-size: 13px; color: var(--text2); padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); }
+  /* ── The done moment ──
+     The reward is the thing you made, arriving: the icon lands, the name
+     settles under it, the size rolls up to what it really is, and the way in
+     appears. Under a second and a half, once. It celebrates a finished ZIM and
+     nothing else — there is no streak here and nothing to come back for. */
+  .create-done { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--amber-border); border-radius: var(--radius); background: var(--amber-glow); }
+  .create-done-icon { flex: 0 0 auto; display: flex; color: var(--amber); }
+  .create-done-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .create-done-name { font-size: 15px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+  .create-done-facts { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11.5px; color: var(--text2); }
+  .create-done-fact { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .create-done-open { flex: 0 0 auto; }
+  .create-done-anim { animation: createDoneIn 0.32s cubic-bezier(0.2, 0.8, 0.3, 1.2) both; }
+  .create-done-anim .create-done-icon { animation: createIconIn 0.42s cubic-bezier(0.2, 0.9, 0.25, 1.35) both; }
+  .create-done-anim .create-done-body { animation: createSettleIn 0.36s ease both 0.14s; }
+  .create-done-anim .create-done-open { animation: createSoftIn 0.3s ease both 0.5s; }
+  @keyframes createDoneIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes createIconIn { from { opacity: 0; transform: scale(0.5) rotate(-8deg); } to { opacity: 1; transform: none; } }
+  @keyframes createSettleIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @keyframes createSoftIn { from { opacity: 0; } to { opacity: 1; } }
+  /* ── Recent jobs and the queue ──
+     Before round 3 a crawl that finished while the tab was closed left no trace
+     on this page at all, and a job the server restart took left a spinner that
+     never stopped. Both are rows here now. */
+  .create-recent { display: flex; flex-direction: column; gap: 6px; }
+  .create-hist { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .create-hist-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--text3); }
+  .create-hist[data-state="ok"] .create-hist-dot { background: var(--success); }
+  .create-hist[data-state="failed"] .create-hist-dot { background: var(--error); }
+  .create-hist[data-state="interrupted"] .create-hist-dot { background: var(--amber); }
+  .create-hist-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .create-hist-name { font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+  .create-hist-why { font-size: 11.5px; color: var(--text2); overflow-wrap: anywhere; }
+  .create-queued { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: var(--radius); font-size: 12.5px; color: var(--text2); }
+  .create-queued.mine { border-color: var(--amber-border); color: var(--text); }
+  .create-queued-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .create-queued-pos { flex: 0 0 auto; margin-left: auto; color: var(--text2); font-variant-numeric: tabular-nums; }
   @media (prefers-reduced-motion: reduce) {
     .create-view.open { animation: none; }
-    .create-tile { transition: none; }
-    .create-adv > summary::before { transition: none; }
+    .create-chip { transition: none; }
+    .create-adv > summary::before, .create-logbox > summary::before { transition: none; }
+    /* Everything the run pane does to celebrate or to draw attention. The
+       arrival animations resolve to their finished state; the two pulses stop
+       being pulses. create.js also skips the byte roll-up under this setting,
+       so the done card is simply COMPLETE in one frame rather than fast. */
+    .create-node-new > .create-node-row,
+    .create-step[data-state="active"] .create-step-dot,
+    .create-node[data-state="active"] > .create-node-row .create-node-dot,
+    .create-done-anim,
+    .create-done-anim .create-done-icon,
+    .create-done-anim .create-done-body,
+    .create-done-anim .create-done-open { animation: none; }
+    .create-node-bar > i { transition: none; }
   }
 
   /* ── Reader View settings palette ── */

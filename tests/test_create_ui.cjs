@@ -374,6 +374,235 @@ for (const d of CREATE_MODE_DEFS) {
   }
 }
 
+// ── round 3: the progress model ─────────────────────────────────────────────
+//
+// The visualization is fed by a stream the client does not control and cannot
+// replay. Every rule below is one the server is allowed to break — a poll that
+// answers twice, a phase name from a newer build, a node that arrives before
+// its parent — and the model has to survive all of them without the person
+// watching ever knowing it happened.
+
+const {
+  _createMergeEvents, _createApplyEvents, _createNewViz, _createPhaseStep,
+  _createPathOf, _createParentByPath, _createHistoryState, _createHistoryLabel,
+  _createModeVisible, CREATE_HISTORY_KEYS, CREATE_PHASE_STEPS, CREATE_STEP_KEYS,
+  CREATE_TREE_MAX_NODES
+} = sandbox;
+
+for (const [name, fn] of Object.entries({
+  _createMergeEvents, _createApplyEvents, _createPhaseStep, _createPathOf,
+  _createParentByPath, _createHistoryState, _createModeVisible
+})) {
+  check(typeof fn === 'function', 'extracted ' + name);
+}
+
+// -- support detection -------------------------------------------------------
+//
+// A build that predates events sends neither field. The answer to that is the
+// log view exactly as it was, so "supported" has to be false for the old shape
+// and true for the new one even when the new one has nothing to say yet.
+check(_createMergeEvents(0, { lines: [], cursor: 0 }).supported === false,
+  'a reply with no events fields means this server does not speak events');
+check(_createMergeEvents(0, { events: [], event_cursor: 0 }).supported === true,
+  'an empty event batch still means the server speaks events');
+check(_createMergeEvents(0, { event_cursor: 4 }).supported === true,
+  'a cursor alone is enough to prove support');
+
+let e = _createMergeEvents(0, { events: [{ i: 0 }, { i: 1 }], event_cursor: 2 });
+eq([e.cursor, e.events.length, e.reset], [2, 2, false], 'first event poll takes everything');
+e = _createMergeEvents(2, { events: [], event_cursor: 2 });
+eq([e.cursor, e.reset], [2, false], 'an empty event reply holds position');
+e = _createMergeEvents(9, { events: [{ i: 0 }], event_cursor: 1 });
+eq([e.cursor, e.reset], [1, true], 'an event cursor that went backwards is a new job');
+e = _createMergeEvents(5, { lines: [] });
+eq([e.cursor, e.supported], [5, false], 'a reply with no event cursor holds position');
+
+// -- phases ------------------------------------------------------------------
+//
+// Six server phases, four visible steps. The fold is what a person watching
+// actually distinguishes: fetching a page and fetching that page's images are
+// one activity to everyone except the crawler.
+eq(Object.keys(CREATE_PHASE_STEPS).sort(),
+  ['assets', 'done', 'fetch', 'package', 'probe', 'register'],
+  'every phase the server documents has a step');
+check(CREATE_STEP_KEYS.length === 4, 'the strip shows four steps');
+for (const phase of Object.keys(CREATE_PHASE_STEPS)) {
+  const step = _createPhaseStep(phase);
+  check(step >= 0 && step < CREATE_STEP_KEYS.length,
+    `the "${phase}" phase maps onto a step that exists`);
+}
+check(_createPhaseStep('fetch') === _createPhaseStep('assets'),
+  'fetching a page and fetching its assets are one step');
+// A newer server inventing a seventh phase must leave the strip where it was,
+// not throw it back to the beginning.
+check(_createPhaseStep('teleporting') === -1, 'an unknown phase moves nothing');
+check(_createPhaseStep(undefined) === -1, 'a missing phase moves nothing');
+
+// -- the model ---------------------------------------------------------------
+
+const viz = () => _createNewViz();
+const node = (id, extra) => Object.assign({ t: 'node', kind: 'page', id: id, label: id }, extra);
+
+let v = viz();
+let ch = _createApplyEvents(v, [
+  { t: 'phase', phase: 'fetch', detail: 'site' },
+  node('a', { state: 'active' }),
+  { t: 'count', what: 'entries', n: 1, total: 10 }
+]);
+eq([ch.phase, ch.counts, ch.added], [true, true, ['a']], 'one batch reports what it moved');
+eq([v.step, v.pages, v.counts.entries.n], [1, 1, 1], 'and the model holds it');
+
+// The same batch applied twice must change nothing. This is the whole defence
+// against a duplicated poll: there is no per-event ledger, so every operation
+// has to be idempotent by construction.
+const before = JSON.stringify(v);
+_createApplyEvents(v, [
+  { t: 'phase', phase: 'fetch', detail: 'site' },
+  node('a', { state: 'active' }),
+  { t: 'count', what: 'entries', n: 1, total: 10 }
+]);
+check(JSON.stringify(v) === before, 'replaying a batch changes nothing');
+
+// A phase only ever moves forward: the server reports "done" for one file
+// while a later line is still being derived, and the strip must not rewind.
+_createApplyEvents(v, [{ t: 'phase', phase: 'package' }]);
+_createApplyEvents(v, [{ t: 'phase', phase: 'fetch' }]);
+check(v.step === 2, 'the strip never goes backwards');
+
+// -- assets fill the page they landed on -------------------------------------
+v = viz();
+_createApplyEvents(v, [node('p1')]);
+_createApplyEvents(v, [
+  { t: 'node', kind: 'asset', id: 'p1#css', parent: 'p1', state: 'active' },
+  { t: 'node', kind: 'asset', id: 'p1#img', parent: 'p1', state: 'active' }
+]);
+eq([v.nodes.p1.assets.total, v.nodes.p1.assets.done], [2, 0],
+  'assets in flight are counted but have not landed');
+_createApplyEvents(v, [
+  { t: 'node', kind: 'asset', id: 'p1#css', parent: 'p1', state: 'done' },
+  { t: 'node', kind: 'asset', id: 'p1#img', parent: 'p1', state: 'failed' }
+]);
+eq([v.nodes.p1.assets.total, v.nodes.p1.assets.done], [2, 2],
+  'a failed asset has landed too — the page is not still waiting for it');
+_createApplyEvents(v, [{ t: 'node', kind: 'asset', id: 'p1#css', parent: 'p1', state: 'done' }]);
+eq([v.nodes.p1.assets.total, v.nodes.p1.assets.done], [2, 2],
+  'a repeated asset never double-counts');
+check(v.pages === 1, 'assets are not pages');
+
+// -- a node re-sent is an update, never a second row -------------------------
+v = viz();
+_createApplyEvents(v, [node('u', { state: 'active', label: '/slow' })]);
+ch = _createApplyEvents(v, [{ t: 'node', kind: 'page', id: 'u', state: 'done' }]);
+eq([ch.added, ch.updated], [[], ['u']], 'the same id again is an update');
+eq([v.nodes.u.state, v.nodes.u.label], ['done', '/slow'],
+  'and an omitted field keeps its previous value');
+check(v.pages === 1, 'an update does not count as another page');
+
+// -- out-of-order parents ----------------------------------------------------
+//
+// A child held for a parent that never arrives would be a page the crawl
+// captured and the tree never showed. It is released as a root at the end of
+// the batch instead: in the wrong place beats invisible.
+v = viz();
+ch = _createApplyEvents(v, [
+  node('kid', { parent: 'mum' }),
+  node('mum')
+]);
+eq(ch.added, ['mum', 'kid'], 'a parent later in the batch still adopts its child');
+check(v.nodes.kid.parent === 'mum', 'and the child keeps the parent it was given');
+
+v = viz();
+ch = _createApplyEvents(v, [node('orphan', { parent: 'never-arrives' })]);
+eq(ch.added, ['orphan'], 'a parent that never arrives releases the child as a root');
+check(v.nodes.orphan.parent === '', 'and the dangling parent reference is dropped');
+
+// -- the derived tree --------------------------------------------------------
+//
+// The crawler reports which page it captured, never which page linked to it,
+// so the tree branches on the site's own address space. Every row is still a
+// page the crawl really fetched.
+eq([_createPathOf('example.org'), _createPathOf('/docs/'), _createPathOf('/docs/install.html'),
+    _createPathOf('/docs/list?page=2'), _createPathOf('/'), _createPathOf('Some Video Title')],
+  ['', '/docs', '/docs/install.html', '/docs/list', '', ''],
+  'a label becomes the path it addresses, or the root');
+
+v = viz();
+_createApplyEvents(v, [
+  node('seed', { label: 'example.org' }),
+  node('d', { label: '/docs/' }),
+  node('i', { label: '/docs/install.html' }),
+  node('deep', { label: '/docs/guide/advanced.html' }),
+  node('lone', { label: '/about.html' })
+]);
+eq([v.nodes.d.parent, v.nodes.i.parent, v.nodes.lone.parent],
+  ['seed', 'd', 'seed'],
+  'pages hang off the section they are in, and off the seed otherwise');
+check(v.nodes.deep.parent === 'd',
+  'a page below an uncaptured level attaches to the deepest ancestor there is');
+eq(v.roots, ['seed'], 'one root: the page the crawl started from');
+
+// A server that DOES report parentage always wins — the derived tree is the
+// fallback, not an override.
+v = viz();
+_createApplyEvents(v, [
+  node('seed', { label: 'example.org' }),
+  node('a', { label: '/docs/' }),
+  node('b', { label: '/docs/x.html', parent: 'seed' })
+]);
+check(v.nodes.b.parent === 'seed', 'a server-sent parent beats the derived one');
+
+// Two ids landing on one address (a redirect) must not make the second the
+// parent of the first's children.
+v = viz();
+_createApplyEvents(v, [
+  node('first', { label: '/docs/' }),
+  node('second', { label: '/docs/' }),
+  node('child', { label: '/docs/x.html' })
+]);
+check(v.nodes.child.parent === 'first', 'the first claim on an address keeps it');
+
+// -- history -----------------------------------------------------------------
+//
+// Interrupted is deliberately NOT a failure: the job did not fail, the machine
+// went away underneath it, and calling that a failure sends someone hunting
+// for a bug in a URL that was fine.
+for (const state of ['ok', 'failed', 'cancelled', 'stalled', 'interrupted']) {
+  check(_createHistoryState({ state: state }) === state,
+    `the server's own "${state}" verdict is taken as it is`);
+  check(!!CREATE_HISTORY_KEYS[state], `"${state}" has a sentence to show`);
+}
+check(_createHistoryState({ ok: true }) === 'ok',
+  'a record with only booleans still resolves');
+check(_createHistoryState({ ok: false }) === 'failed', 'and defaults to failed');
+check(_createHistoryState({ state: 'running' }) === 'failed',
+  'a live state is not one of the four endings');
+
+eq(_createHistoryLabel({ title: 'My Book', result: 'my_book', source: 'http://x/' }), 'My Book',
+  'the admin\'s own title names the row');
+eq(_createHistoryLabel({ result: 'my_book', source: 'http://x/' }), 'my_book',
+  'then the file it wrote');
+eq(_createHistoryLabel({ source: 'http://x/' }), 'http://x/', 'then what was typed in');
+eq(_createHistoryLabel({ mode: 'site' }), 'create_mode_site', 'then the mode, but never nothing');
+
+// -- folder retreats from the web --------------------------------------------
+//
+// Eric, on the round-2 folder flow: "I don't love showing the whole file system
+// there." The web surface stays CLOSED until the operator names a root. Hidden
+// rather than disabled: a greyed-out tile advertises a feature, and on a server
+// with no root there is nothing to advertise. The server enforces this
+// independently — this decides which door is DRAWN, never which one is locked.
+const folder = def('folder');
+check(folder.needsRoot === true, 'folder mode is the one that needs a root');
+check(_createModeVisible(folder, '') === false, 'no root configured, no folder tile');
+check(_createModeVisible(folder, '/srv/sources') === true, 'a root configured brings it back');
+for (const d of CREATE_MODE_DEFS) {
+  if (d.id === 'folder') continue;
+  check(_createModeVisible(d, '') === true, `${d.id} is offered whatever the root setting is`);
+}
+
+check(CREATE_TREE_MAX_NODES > 0 && CREATE_TREE_MAX_NODES <= 1000,
+  'the tree draws a bounded number of rows, whatever the crawl size');
+
 if (failures) {
   console.error(`\n${failures} failure(s)`);
   process.exit(1);

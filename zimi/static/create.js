@@ -2,16 +2,36 @@
 //
 // Lazy-loaded by openCreate() in app.js the first time an admin taps the +.
 // Renders a full-page surface over the library (the Almanac's shape) and talks
-// to three endpoints: POST /manage/create, GET /manage/create/status, and
-// POST /manage/create/cancel.
+// to four endpoints: POST /manage/create, GET /manage/create/status,
+// POST /manage/create/probe and POST /manage/create/cancel.
 //
-// The whole design is one idea: pick what you are packaging, give it the one
-// thing it needs, watch it run. Every mode shows exactly one primary input and
-// at most two flags — that is the form you see. Depth limits, byte budgets,
-// media quality and content language are real controls people need, so they
-// live one click away behind "Advanced" rather than in a manual: simple by
-// default, complete when asked. Fewer VISIBLE controls IS the feature; fewer
-// controls full stop just moves the work somewhere the browser cannot go.
+// ROUND 3 — the shape of this page, and why.
+//
+// Round 2 gave every mode its own expanding form, and each of those forms
+// carried its own Title field and its own Advanced disclosure. Six copies of
+// the same two controls is not six choices, it is one control rendered six
+// times, and the page read as a stack of near-identical sections. Worse, the
+// Create button of an open form sat one row above the tile that opens the next
+// one, so reaching for Create and landing on "Video" — which then wiped what
+// you had typed — was a matter of a few pixels.
+//
+// So: ONE panel. The modes are a compact row of chips at the top; the panel
+// below them carries the source field, the preview, Title, the flags and
+// Advanced for whichever chip is lit. Switching chips swaps the panel's
+// contents and NOTHING ELSE, and every mode keeps its own answers while you
+// look at another one (_createModeState) — peeking at Video no longer costs you
+// the URL you typed under Web page. Create is a full-width button at the very
+// bottom of the panel, as far from the chips as the panel is tall.
+//
+// The second half of round 3 is watching the work. A crawl used to be a
+// spinner and a log, which says "something is happening" and nothing else. The
+// server now emits structured events beside its log lines, and this file turns
+// them into the thing that is actually happening: a phase strip, a tree of
+// pages that grows as they are discovered and fills as their assets land, and
+// a counter that keeps moving through packaging — the phase that used to look
+// like a hang. The log is still there, one click away, and it is still the
+// truth; the visualization is the joy. A server that sends no events gets the
+// log view exactly as before, with nothing broken and nothing to configure.
 
 // Poll cadence. The floor is deliberate: this runs on a Pi that is also serving
 // the library, and a crawl emits at most a line per page. On 429 or a network
@@ -26,6 +46,18 @@ var CREATE_LOG_MAX = 500;
 // What the server's probe stops counting at, so the preview can say "12+"
 // rather than claiming a playlist is exactly as long as the sample.
 var CREATE_PROBE_CAP = 12;
+// Rows the tree will draw. A site crawl may legitimately reach five thousand
+// pages; five thousand DOM subtrees on a phone is a frozen tab. Past this the
+// pages keep being counted and the surplus collapses into one summary row, so
+// the structure stays readable and the numbers stay true. The ceiling is well
+// clear of any crawl a browser tab is a sensible place to watch.
+var CREATE_TREE_MAX_NODES = 300;
+// How long the finished ZIM's byte total takes to roll up. Long enough to read
+// as movement, short enough that nobody waits for it.
+var CREATE_ROLL_MS = 700;
+// Recent jobs shown under the picker. The server bounds its own history; this
+// is the client refusing to draw a wall of them if it ever stops.
+var CREATE_RECENT_MAX = 10;
 
 var _CREATE_ICONS = {
   folder: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
@@ -33,16 +65,19 @@ var _CREATE_ICONS = {
   site: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/></svg>',
   video: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><polygon points="10 9 15 12 10 15 10 9"/></svg>',
   bookmarks: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>',
-  'import': '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M10 12h4"/></svg>'
+  'import': '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M10 12h4"/></svg>',
+  // The finished article. Bigger than the chip glyphs because it is the one
+  // thing on the done card that is purely an image of what you just made.
+  zim: '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h11a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2z"/><path d="M4 17.5A2 2 0 0 1 6 16h12"/><path d="M9 4v9l2.5-1.6L14 13V4"/></svg>'
 };
 
 // The one description of every mode: what it is called, what it asks for, what
-// it needs to work, and which options it offers where. Tiles, forms and the
+// it needs to work, and which options it offers where. Chips, the panel and the
 // request body are all derived from this — adding a mode means adding a row.
 //
 //   network     — refuses to run when ZIMI_OFFLINE is set
 //   sidecar     — needs the warc2zim helper (installed on first use, online)
-//   flags       — shown on the form itself; two is the ceiling, on purpose
+//   flags       — shown on the panel itself; two is the ceiling, on purpose
 //   advanced    — shown inside the collapsed "Advanced" disclosure
 //   hints       — per-mode placeholder overrides, for text and number fields
 //   pick        — per-mode preselected option, for selects, where one field's
@@ -50,6 +85,8 @@ var _CREATE_ICONS = {
 //                 video one). A select has no placeholder, so a default it is
 //                 meant to arrive with has to be a chosen option.
 //   browse      — the source is a server path, so offer the folder picker
+//   needsRoot   — the mode reads a directory the operator names, so the web
+//                 surface stays CLOSED until they have named one. See below.
 // Bookmarks is one of the six ways to make a ZIM and the only one whose source
 // is not on the server: the bookmarks live in this browser's localStorage. So it
 // is a CLIENT mode — it never reaches /manage/create, and its button hands off
@@ -88,7 +125,7 @@ var CREATE_MODE_DEFS = [
   },
   CREATE_BOOKMARKS_DEF,
   {
-    id: 'folder', network: false, browse: true,
+    id: 'folder', network: false, browse: true, needsRoot: true,
     label: 'create_label_folder', placeholder: 'create_ph_folder',
     flags: [], advanced: ['language']
   },
@@ -211,32 +248,23 @@ var CREATE_CREDITS = {
   'import': { name: 'warc2zim', url: 'https://github.com/openzim/warc2zim' }
 };
 
-// ── state ───────────────────────────────────────────────────────────────────
-var _createSelected = null;   // mode id whose form is expanded, or null
-var _createCursor = 0;        // lines consumed so far (server's cursor space)
-var _createLines = [];        // the tail we are showing
-var _createTimer = null;
-var _createPollMs = CREATE_POLL_MS;
-var _createStatus = null;     // last status payload
-var _createOffline = false;
-var _createImportReady = true;
-var _createSubmitting = false;
-// Whether the job the server is holding is OURS to show. The server keeps the
-// last job around after it finishes, which is what lets a reopened page pick a
-// running crawl back up — but it also means yesterday's finished job would
-// otherwise greet you instead of the picker. An active job is adopted on sight;
-// a finished one only stays on screen if this page put it there.
-var _createAdopted = false;
-var _createTilesKey = null;   // availability the tiles were last drawn from
-// The last probe reply, and what it was a reply ABOUT. Keeping the source
-// alongside it is what stops a preview of the previous folder sitting
-// underneath the path you have since retyped.
-var _createPreview = null;
-var _createPreviewSource = '';
-var _createProbing = false;
-// The folder picker's current directory, or null when it is closed.
-var _createBrowsePath = null;
-var _createBrowseRows = null;
+// ── the progress model ──────────────────────────────────────────────────────
+//
+// The server emits six phases; the strip shows four steps. The fold is not
+// laziness, it is what a person watching actually distinguishes: fetching a
+// page and fetching that page's images are the same activity to everyone
+// except the crawler, and registering the finished file is the last half-second
+// of packaging it. Four steps that each visibly take time beat six where two
+// blink past.
+var CREATE_PHASE_STEPS = {
+  probe: 0, fetch: 1, assets: 1, 'package': 2, register: 3, done: 3
+};
+var CREATE_STEP_KEYS = [
+  'create_step_discover', 'create_step_fetch', 'create_step_package', 'create_step_ready'
+];
+// Counters worth a headline, in reading order. Anything else the server counts
+// is folded into the tree rather than given a number of its own.
+var CREATE_COUNT_KEYS = ['entries', 'assets', 'bytes'];
 
 // ── pure logic (unit-tested in tests/test_create_ui.cjs) ─────────────────────
 
@@ -250,6 +278,19 @@ function _createModeAvailable(def, offline, importReady) {
   if (def.network) return false;
   if (def.sidecar) return !!importReady;
   return true;
+}
+
+// Whether a mode is offered on the WEB at all, which is a different question
+// from whether it would work. Folder mode reads a directory tree and shows it
+// to you, and pointing that at "/" from a browser is a filesystem viewer nobody
+// asked for. So the web surface stays closed until the operator names a root
+// (ZIMI_CREATE_ROOT); the CLI, where you already have a shell on the machine,
+// is untouched. Hidden rather than disabled on purpose: a greyed-out tile is an
+// advertisement for a feature, and on a server with no root configured there is
+// nothing to advertise. The server enforces the same rule independently — this
+// is which door is drawn, never which door is locked.
+function _createModeVisible(def, createRoot) {
+  return def.needsRoot ? !!createRoot : true;
 }
 
 function _createDef(id) {
@@ -284,8 +325,8 @@ function _createFieldValue(key, fields) {
 }
 
 // Form fields → request body. The server re-validates all of it; this is about
-// sending exactly what a mode means and nothing it does not — a value left in
-// the DOM by a form the user closed belongs to that form, not to this one.
+// sending exactly what a mode means and nothing it does not — a value belonging
+// to a mode the user merely looked at belongs to that mode, not to this one.
 function _createBuildRequest(modeId, fields) {
   var def = _createDef(modeId);
   if (!def || def.client) return null;
@@ -355,6 +396,319 @@ function _createMergeLines(lines, cursor, payload) {
   return { lines: merged, cursor: Math.max(next, cursor) };
 }
 
+// The same cursor arithmetic for the event stream, with one addition: whether
+// this server speaks events at all. A build that predates them sends neither
+// field, and the answer to that is the log view exactly as it was — not an
+// error, not an empty tree, and nothing in the console.
+function _createMergeEvents(cursor, payload) {
+  var supported = !!payload &&
+    (typeof payload.event_cursor === 'number' || Array.isArray(payload.events));
+  var next = payload && typeof payload.event_cursor === 'number'
+    ? payload.event_cursor : cursor;
+  var reset = next < cursor;
+  if (reset) cursor = 0;
+  return {
+    supported: supported,
+    reset: reset,
+    events: (payload && payload.events) || [],
+    cursor: Math.max(next, cursor)
+  };
+}
+
+// The visualization's whole state, as data. Kept separate from the DOM so the
+// renderer can be incremental — a tree that is rebuilt from scratch on every
+// two-second poll would restart every animation and lose the scroll position of
+// the person reading it.
+function _createNewViz() {
+  return {
+    phase: '',        // the last phase the server named
+    step: -1,         // furthest step reached, so a skipped phase strands nothing
+    detail: '',       // the server's caption for that phase, if it sent one
+    nodes: {},        // id → {id, parent, label, state, assets:{total,done}}
+    order: [],        // node ids, in the order they were first seen
+    roots: [],        // node ids with no parent
+    holding: {},      // parent id → child ids waiting for that parent to arrive
+    assets: {},       // asset id → its last state, so a repeat never double-counts
+    counts: {},       // what → {n, total}
+    byPath: {},       // site path → the id of the page that claimed it
+    pages: 0          // captured pages, for the "and N more" line
+  };
+}
+
+function _createNewNode(ev) {
+  return {
+    id: ev.id, parent: ev.parent || '', label: ev.label || ev.id,
+    state: ev.state || 'pending', assets: { total: 0, done: 0 }
+  };
+}
+
+// Is an asset's state one it will not come back from? Only a final state
+// advances a page's fill; "active" means the request is in flight.
+function _createAssetFinal(state) {
+  return state === 'done' || state === 'failed';
+}
+
+// Where a captured page hangs, when the engine did not say.
+//
+// The crawler reports which page it captured, never which page linked to it,
+// and the server is right not to invent the second from the first — a
+// discovery tree nobody measured would be a prettier lie than a flat list. So
+// the tree branches on the one relationship that IS in the data: the site's own
+// address space. `/docs/install` sits under `/docs` when `/docs` was captured
+// too, and under the seed page otherwise. Every row is a page the crawl really
+// fetched — there are no containers invented to make the picture prettier.
+//
+// A server-supplied `parent` always wins over this, so the day an engine does
+// report parentage the renderer needs no changes at all.
+
+// A node's address as a path, with the query and any trailing slash off, and ''
+// for the site root — which is what a bare host (the seed page's label) and a
+// video title both amount to.
+function _createPathOf(label) {
+  var text = String(label || '');
+  if (text.indexOf('/') < 0) return '';   // a host, a playlist title: the root
+  var cut = text.indexOf('?');
+  if (cut >= 0) text = text.slice(0, cut);
+  while (text.length > 1 && text.charAt(text.length - 1) === '/') {
+    text = text.slice(0, -1);
+  }
+  return text === '/' ? '' : text;
+}
+
+// The deepest already-captured page this path sits inside, or '' for a row that
+// belongs at the top level. Longest match wins, so a page lands as close to
+// home as the crawl has actually been.
+function _createParentByPath(viz, path) {
+  if (!path) return '';
+  var at = path.lastIndexOf('/');
+  while (at > 0) {
+    var ancestor = path.slice(0, at);
+    if (viz.byPath[ancestor]) return viz.byPath[ancestor];
+    at = ancestor.lastIndexOf('/');
+  }
+  return viz.byPath[''] || '';   // the seed page, when there is one
+}
+
+
+// Fold a batch of events into the view model, and report what moved so the DOM
+// layer can touch only those rows.
+//
+// Every operation here is idempotent: a node re-sent with the same state is a
+// no-op, a count is an absolute value rather than an increment, and the phase
+// only ever moves forward. That is what lets the client tolerate a duplicated
+// poll, a retried request and events arriving out of order without keeping a
+// per-event ledger of what it has already applied.
+function _createApplyEvents(viz, events) {
+  // `touched` is the dedupe index behind `updated`. A five-thousand-page crawl
+  // arriving in one batch is fifteen thousand asset events, and scanning a
+  // growing array for each of them turns this into an O(n²) pass that visibly
+  // stutters — measured at 673ms for that batch before this map, 19ms after.
+  var changed = { phase: false, counts: false, added: [], updated: [], touched: {} };
+  var list = events || [];
+  var i;
+  for (i = 0; i < list.length; i++) {
+    var ev = list[i];
+    if (!ev || !ev.t) continue;
+    if (ev.t === 'phase') {
+      viz.phase = ev.phase || '';
+      viz.detail = ev.detail || '';
+      var step = _createPhaseStep(ev.phase);
+      if (step > viz.step) viz.step = step;
+      changed.phase = true;
+    } else if (ev.t === 'count') {
+      if (!ev.what) continue;
+      viz.counts[ev.what] = { n: Number(ev.n) || 0, total: ev.total };
+      changed.counts = true;
+    } else if (ev.t === 'node') {
+      _createApplyNode(viz, ev, changed);
+    }
+  }
+  // A child whose parent never showed up would otherwise wait forever. Events
+  // that belong together arrive in one poll, so a parent later in the same
+  // batch has already been caught above; anything still held at the end of the
+  // batch is treated as a root, because showing it in the wrong place beats not
+  // showing that the page was captured at all.
+  for (var parentId in viz.holding) {
+    if (!Object.prototype.hasOwnProperty.call(viz.holding, parentId)) continue;
+    var held = viz.holding[parentId];
+    for (i = 0; i < held.length; i++) {
+      var node = viz.nodes[held[i]];
+      if (!node) continue;
+      node.parent = '';
+      viz.roots.push(node.id);
+      changed.added.push(node.id);
+    }
+    delete viz.holding[parentId];
+  }
+  return changed;
+}
+
+// One row to redraw, recorded once however many events touched it.
+function _createMarkUpdated(changed, id) {
+  if (changed.touched[id]) return;
+  changed.touched[id] = 1;
+  changed.updated.push(id);
+}
+
+// One node event. Pages become rows; assets fill the row of the page they were
+// found on and are never rows themselves — a hundred stylesheet URLs is a log,
+// not a picture. "entry" is reserved for the packaging side and ignored here.
+function _createApplyNode(viz, ev, changed) {
+  if (!ev.id) return;
+  if (ev.kind === 'asset') {
+    var owner = viz.nodes[ev.parent];
+    var was = viz.assets[ev.id];
+    viz.assets[ev.id] = ev.state || 'pending';
+    if (!owner) return;
+    if (was === undefined) owner.assets.total++;
+    if (_createAssetFinal(ev.state) && !_createAssetFinal(was)) owner.assets.done++;
+    _createMarkUpdated(changed, owner.id);
+    return;
+  }
+  if (ev.kind && ev.kind !== 'page') return;
+  var existing = viz.nodes[ev.id];
+  if (existing) {
+    // Omitted fields keep their previous value: the server re-sends an id to
+    // move its state or to attach the title it did not have at discovery.
+    if (ev.label) existing.label = ev.label;
+    if (ev.state) existing.state = ev.state;
+    _createMarkUpdated(changed, ev.id);
+    return;
+  }
+  var node = _createNewNode(ev);
+  viz.nodes[node.id] = node;
+  viz.order.push(node.id);
+  viz.pages++;
+  // First claim on an address wins it: a redirect chain that lands two ids on
+  // one path must not make the second the parent of the first's children.
+  var path = _createPathOf(node.label);
+  if (viz.byPath[path] === undefined) viz.byPath[path] = node.id;
+  if (!node.parent) node.parent = _createParentByPath(viz, path);
+  if (node.parent && !viz.nodes[node.parent]) {
+    (viz.holding[node.parent] = viz.holding[node.parent] || []).push(node.id);
+    return;   // held out of `added` so the DOM never has to insert under a
+              // parent row that does not exist yet
+  }
+  if (!node.parent) viz.roots.push(node.id);
+  changed.added.push(node.id);
+  var waiting = viz.holding[node.id];
+  if (waiting) {
+    delete viz.holding[node.id];
+    for (var i = 0; i < waiting.length; i++) changed.added.push(waiting[i]);
+  }
+}
+
+// A server phase → the visible step it belongs to, or -1 for a phase name this
+// client has never heard of. An unknown phase must not move the strip: a newer
+// server inventing a seventh phase should leave the strip where it was rather
+// than throwing it back to Discover.
+function _createPhaseStep(phase) {
+  var step = CREATE_PHASE_STEPS[phase];
+  return step === undefined ? -1 : step;
+}
+
+// Which sentence a finished job gets. The server's journal already names its
+// own state, so this mostly agrees with it; the fallback is for a record from
+// a build that only recorded the booleans.
+//
+// Interrupted is deliberately NOT a failure: the job did not fail, the machine
+// went away underneath it, and calling that a failure sends someone hunting for
+// a bug in a URL that was fine.
+function _createHistoryState(h) {
+  if (!h) return '';
+  if (h.state && CREATE_HISTORY_KEYS[h.state]) return h.state;
+  if (h.interrupted) return 'interrupted';
+  if (h.cancelled) return 'cancelled';
+  if (h.ok) return 'ok';
+  return 'failed';
+}
+
+// A job the Recent list has nothing to say about yet: it is on screen right
+// now, as the run pane or as a queue row.
+function _createHistoryLive(h) {
+  return !!h && (h.state === 'running' || h.state === 'queued');
+}
+
+// Most of these sentences already exist, because a finished job says the same
+// thing an hour later as it did the moment it landed. Only the two ways a job
+// can end without anyone deciding it should are new — nothing on this page
+// could say either of them before.
+var CREATE_HISTORY_KEYS = {
+  ok: 'create_done_title',
+  failed: 'create_failed',
+  cancelled: 'create_cancelled',
+  stalled: 'create_hist_stalled',
+  interrupted: 'create_hist_interrupted'
+};
+
+// What a history row is called. The admin's own title wins, then the ZIM's
+// filename, then what was typed in, then the mode — a row reading only "Whole
+// site" is still better than a row reading nothing.
+function _createHistoryLabel(h) {
+  if (!h) return '';
+  return String(h.title || h.result || h.source ||
+    (h.mode ? t('create_mode_' + h.mode) : '') || '');
+}
+
+// ── state ───────────────────────────────────────────────────────────────────
+var _createSelected = null;   // the lit chip's mode id
+var _createCursor = 0;        // log lines consumed so far (server's cursor space)
+var _createLines = [];        // the tail we are showing
+var _createLogCursor = 0;     // lines already IN the DOM, in that same space
+var _createEventCursor = 0;   // events consumed so far
+var _createEventsOk = false;  // this server speaks events
+var _createViz = _createNewViz();
+var _createVizChanges = null; // what the last merge moved, awaiting the DOM
+var _createTimer = null;
+var _createPollMs = CREATE_POLL_MS;
+var _createStatus = null;     // last status payload
+var _createOffline = false;
+var _createImportReady = true;
+var _createRoot = '';         // ZIMI_CREATE_ROOT, or '' when folder mode is off
+var _createHistory = [];
+var _createWantHistory = false;
+var _createJobId = null;      // the server's id for the job on screen
+var _createQueue = [];
+var _createQueuedId = null;   // our own submission, while it waits its turn
+var _createSubmitting = false;
+// Whether the job the server is holding is OURS to show. The server keeps the
+// last job around after it finishes, which is what lets a reopened page pick a
+// running crawl back up — but it also means yesterday's finished job would
+// otherwise greet you instead of the picker. An active job is adopted on sight;
+// a finished one only stays on screen if this page put it there.
+var _createAdopted = false;
+// The two halves of the restart story. We saw a job running; then the server
+// said there is no job at all, which only happens when the process that was
+// running it went away. That is a sentence, not a spinner.
+var _createSawActive = false;
+var _createInterrupted = false;
+var _createTilesKey = null;   // availability the chips were last drawn from
+// The last probe reply, and what it was a reply ABOUT. Keeping the source
+// alongside it is what stops a preview of the previous folder sitting
+// underneath the path you have since retyped.
+var _createPreview = null;
+var _createPreviewSource = '';
+var _createProbing = false;
+// The folder picker's current directory, or null when it is closed.
+var _createBrowsePath = null;
+var _createBrowseRows = null;
+// Every mode's answers, kept while you look at another mode. Round 2 threw
+// these away on every switch, which made the chips feel like a trapdoor: one
+// curious click at "Video" and the address you had pasted under "Web page" was
+// gone. Session-scoped on purpose — this is "do not lose my work mid-thought",
+// not a draft that outlives the tab.
+var _createModeState = {};
+// Which run pane is mounted, and which job it belongs to. A new job rebuilds
+// the pane; a poll on the same job updates it in place.
+var _createRunKey = null;
+var _createRunSeq = 0;
+var _createIdleKey = null;
+var _createTreeMounted = false;
+var _createNodeEls = {};      // node id → its row element
+var _createTreeShown = 0;
+var _createTreeElided = 0;
+var _createDoneMounted = false;
+
 // ── the surface ─────────────────────────────────────────────────────────────
 
 // ``replaceState`` true means this history entry IS Create — a cold load of
@@ -377,8 +731,9 @@ function _openCreateInner(replaceState) {
   _setWindowTitle(t('create_zim'));
   if (typeof updateTopbar === 'function') updateTopbar();
   _renderCreate();
-  // First poll carries probe=1: it is the one call that pays for the sidecar
-  // check, and it also picks up a job already running from another tab.
+  // First poll carries probe=1 and history=1: the one call that pays for the
+  // sidecar check and the recent list, and the one that picks up a job already
+  // running from another tab.
   _createPoll(true);
 }
 
@@ -405,64 +760,165 @@ function _renderCreate() {
         '<div class="create-title">' + tH('create_zim') + '</div>' +
         '<div class="ms-pa-sub">' + tH('create_intro') + '</div>' +
       '</div>' +
-      '<div id="create-picker">' +
-        '<div class="create-tiles" id="create-tiles"></div>' +
+      '<div id="create-picker" class="create-picker">' +
+        '<div class="create-modes" id="create-modes" role="tablist"' +
+          ' aria-label="' + escAttr(t('create_zim')) + '"></div>' +
+        '<div id="create-panel"></div>' +
       '</div>' +
+      '<div id="create-queue"></div>' +
       '<div id="create-run"></div>' +
+      '<div id="create-recent"></div>' +
     '</div>';
-  _renderCreateTiles();
-  _renderCreateForm();
+  _createRunKey = null;
+  _createIdleKey = null;
+  _renderCreateModes();
+  _renderCreatePanel();
 }
 
-// The tile list, with the open form spliced in directly beneath the tile it
-// belongs to — a form that appears at the bottom of the list reads as a
-// separate thing rather than as that tile opening up.
-function _renderCreateTiles() {
-  var host = document.getElementById('create-tiles');
+// The chips. Compact by design: a mode is a name and a glyph, and the sentence
+// explaining it belongs to the panel of the mode you actually chose, not to
+// five modes you did not. Six one-line descriptions stacked above the form was
+// most of what made round 2 feel like a wall.
+function _renderCreateModes() {
+  var host = document.getElementById('create-modes');
   if (!host) return;
   _createTilesKey = _createAvailabilityKey();
+  var visible = _createVisibleModes();
+  // Whatever was lit may have stopped being a thing you can do. The chips are
+  // drawn before the first poll answers, so the common case is exactly this:
+  // the page opens on Web page, the server then says it is offline, and Web
+  // page cannot run. Landing on the first mode that CAN run is the whole fix —
+  // and nothing is lost, because each mode keeps its own answers.
+  if (!_createSelected || !_createModeInList(visible, _createSelected) ||
+      !_createModeAvailable(_createDef(_createSelected), _createOffline, _createImportReady)) {
+    _createSelected = _createDefaultMode(visible);
+  }
   var html = '';
-  for (var i = 0; i < CREATE_MODE_DEFS.length; i++) {
-    var def = CREATE_MODE_DEFS[i];
+  for (var i = 0; i < visible.length; i++) {
+    var def = visible[i];
     var live = _createModeAvailable(def, _createOffline, _createImportReady);
-    var desc = live
-      ? tH('create_mode_' + def.id + '_desc')
-      : tH(def.sidecar ? 'create_offline_sidecar_note' : 'create_offline_note');
+    var on = _createSelected === def.id;
+    // The reason a chip is dead is a whole sentence, and a chip has no room for
+    // one. It goes where a sentence fits: the tooltip, and the panel below.
+    var why = live ? '' :
+      t(def.sidecar ? 'create_offline_sidecar_note' : 'create_offline_note');
     html +=
-      '<button type="button" class="create-tile' +
-        (_createSelected === def.id ? ' active' : '') + (live ? '' : ' disabled') + '"' +
-        (live ? '' : ' disabled') +
-        ' aria-pressed="' + (_createSelected === def.id ? 'true' : 'false') + '"' +
+      '<button type="button" role="tab" class="create-chip' +
+        (on ? ' active' : '') + (live ? '' : ' disabled') + '"' +
+        (live ? '' : ' disabled title="' + escAttr(why) + '"') +
+        ' aria-selected="' + (on ? 'true' : 'false') + '"' +
         ' onclick="_createSelectMode(\'' + def.id + '\')">' +
-        '<span class="create-tile-glyph">' + _CREATE_ICONS[def.id] + '</span>' +
-        '<span class="ms-pa-choice-body">' +
-          '<span class="ms-pa-choice-title">' + tH('create_mode_' + def.id) + '</span>' +
-          '<span class="ms-pa-choice-desc">' + desc + '</span>' +
-        '</span>' +
+        '<span class="create-chip-glyph">' + _CREATE_ICONS[def.id] + '</span>' +
+        '<span class="create-chip-name">' + tH('create_mode_' + def.id) + '</span>' +
       '</button>';
-    if (_createSelected === def.id) html += '<div id="create-form-slot"></div>';
   }
   host.innerHTML = html;
 }
 
-// What the tiles are drawn FROM. Re-rendering them on every poll would wipe a
-// half-typed form, so the run pane only redraws them when this changes.
+function _createVisibleModes() {
+  var out = [];
+  for (var i = 0; i < CREATE_MODE_DEFS.length; i++) {
+    if (_createModeVisible(CREATE_MODE_DEFS[i], _createRoot)) out.push(CREATE_MODE_DEFS[i]);
+  }
+  return out;
+}
+
+function _createModeInList(list, id) {
+  for (var i = 0; i < list.length; i++) if (list[i].id === id) return true;
+  return false;
+}
+
+// The chip that is lit when the page opens. A picker with nothing picked is a
+// panel with nothing in it, so something is always selected — the first mode
+// that can actually run, which on an offline server is not "Web page".
+function _createDefaultMode(list) {
+  for (var i = 0; i < list.length; i++) {
+    if (_createModeAvailable(list[i], _createOffline, _createImportReady)) return list[i].id;
+  }
+  return list.length ? list[0].id : null;
+}
+
+// What the chips are drawn FROM. Re-drawing them on every poll would mean
+// re-drawing the panel underneath, so this only changes when the server changes
+// its mind about what is possible.
 function _createAvailabilityKey() {
-  return (_createOffline ? '1' : '0') + (_createImportReady ? '1' : '0');
+  return (_createOffline ? '1' : '0') + (_createImportReady ? '1' : '0') +
+    (_createRoot ? '1' : '0');
 }
 
 function _createSelectMode(id) {
-  _createSelected = _createSelected === id ? null : id;
-  // A preview describes one source under one mode. Neither survives the switch.
-  _createPreview = null;
-  _createPreviewSource = '';
+  if (_createSelected === id) return;
+  _createStashMode();
+  _createSelected = id;
+  // The picker belongs to the folder mode you left, and a preview belongs to
+  // the source that was probed under one mode. Both are per-mode; both are
+  // restored from that mode's own slot when you come back to it.
   _createBrowsePath = null;
   _createBrowseRows = null;
-  _renderCreateTiles();
-  _renderCreateForm();
+  _renderCreateModes();
+  _renderCreatePanel();
   var input = document.getElementById('create-source');
   if (input) input.focus();
 }
+
+// ── per-mode state ──────────────────────────────────────────────────────────
+
+function _createStateFor(id) {
+  if (!_createModeState[id]) {
+    _createModeState[id] = { values: {}, preview: null, previewSource: '' };
+  }
+  return _createModeState[id];
+}
+
+// Read the panel back into the mode that owns it. Only that mode's own fields:
+// the DOM holds one panel at a time, so every other field reads as empty, and
+// storing those emptiness would wipe what the other modes remember.
+function _createStashMode() {
+  var def = _createDef(_createSelected);
+  if (!def || def.client) return;
+  var state = _createStateFor(def.id);
+  var src = document.getElementById('create-source');
+  var title = document.getElementById('create-title');
+  if (!src && !title) return;   // the panel is not mounted; nothing to read
+  if (src) state.source = src.value;
+  if (title) state.title = title.value;
+  var keys = _createModeFields(def);
+  for (var i = 0; i < keys.length; i++) {
+    var f = CREATE_FIELDS[keys[i]];
+    var node = document.getElementById(f.id);
+    if (!node) continue;
+    state.values[keys[i]] = f.control === 'check' ? !!node.checked : node.value;
+  }
+  state.preview = _createPreview;
+  state.previewSource = _createPreviewSource;
+}
+
+// Put a mode's answers back. A stored value is applied EXACTLY, including an
+// empty one: having deliberately set the size budget back to "engine default"
+// and finding 500 MB again on your return is the same broken promise as losing
+// the URL. Nothing stored means the freshly rendered defaults stand.
+function _createRestoreMode() {
+  var def = _createDef(_createSelected);
+  if (!def || def.client) return;
+  var state = _createModeState[def.id];
+  _createPreview = state ? (state.preview || null) : null;
+  _createPreviewSource = state ? (state.previewSource || '') : '';
+  if (!state) return;
+  var src = document.getElementById('create-source');
+  if (src && state.source !== undefined) src.value = state.source;
+  var title = document.getElementById('create-title');
+  if (title && state.title !== undefined) title.value = state.title;
+  for (var key in state.values) {
+    if (!Object.prototype.hasOwnProperty.call(state.values, key)) continue;
+    var f = CREATE_FIELDS[key];
+    var node = f && document.getElementById(f.id);
+    if (!node) continue;
+    if (f.control === 'check') node.checked = !!state.values[key];
+    else node.value = state.values[key];
+  }
+}
+
+// ── the panel ───────────────────────────────────────────────────────────────
 
 // One option's control. Everything that varies between them — the element, the
 // bounds, the placeholder — comes from CREATE_FIELDS, so a new option is a row
@@ -528,6 +984,139 @@ function _createCreditHtml(modeId) {
     '</div>';
 }
 
+// The source control. Three shapes, one decision: a list of addresses needs
+// room to be a list, a server path needs the picker beside it, everything else
+// is one line.
+function _createSourceControlHtml(def) {
+  var attrs = ' class="create-field" id="create-source" spellcheck="false"' +
+    ' autocapitalize="none" autocorrect="off" placeholder="' + escAttr(t(def.placeholder)) + '"';
+  if (def.multiline) {
+    return '<textarea rows="3"' + attrs + '></textarea>' +
+      '<div class="create-caption">' + tH('create_pages_note') + '</div>';
+  }
+  if (def.browse) {
+    return '<div class="create-source-row">' +
+      '<input type="text"' + attrs + '>' +
+      '<button type="button" class="ms-btn" onclick="_createToggleBrowse()">' + tH('create_browse') + '</button>' +
+    '</div>' +
+    (_createRoot
+      ? '<div class="create-caption">' + tH('create_folder_root', { path: _createRoot }) + '</div>'
+      : '');
+  }
+  return '<input type="text"' + attrs + '>';
+}
+
+// The one panel. Everything the selected mode needs, once, in the order you
+// answer it: what am I packaging, what did the server find, what shall it be
+// called, the two flags that matter, everything else behind a disclosure — and
+// then, alone at the bottom with nothing beside it to misclick, Create.
+function _renderCreatePanel() {
+  var host = document.getElementById('create-panel');
+  if (!host) return;
+  var def = _createDef(_createSelected);
+  if (!def) { host.innerHTML = ''; return; }
+  var live = _createModeAvailable(def, _createOffline, _createImportReady);
+  var desc = '<div class="create-panel-desc">' + tH('create_mode_' + def.id + '_desc') + '</div>';
+  if (!live) {
+    host.innerHTML = '<div class="create-panel">' + desc +
+      '<div class="create-panel-blocked">' +
+        tH(def.sidecar ? 'create_offline_sidecar_note' : 'create_offline_note') +
+      '</div></div>';
+    return;
+  }
+  if (def.client) { host.innerHTML = '<div class="create-panel">' + desc + _createBookmarksBodyHtml() + '</div>'; return; }
+  var advanced = _createFieldsHtml(def.advanced || [], def);
+  host.innerHTML =
+    '<div class="create-panel">' +
+      desc +
+      '<label class="ms-form-label" for="create-source">' + tH(def.label) + '</label>' +
+      _createSourceControlHtml(def) +
+      '<div id="create-browse"></div>' +
+      '<div id="create-preview"></div>' +
+      '<label class="ms-form-label" for="create-title">' + tH('create_label_title') + '</label>' +
+      '<input type="text" class="create-field" id="create-title" placeholder="' + escAttr(t('create_ph_title')) + '">' +
+      _createFieldsHtml(def.flags || [], def) +
+      (advanced
+        ? '<details class="create-adv">' +
+            '<summary>' + tH('create_advanced') + '</summary>' + advanced +
+          '</details>'
+        : '') +
+      _createCreditHtml(def.id) +
+      '<div class="create-go">' +
+        '<button type="button" class="ms-btn ms-btn-primary create-go-btn" id="create-start"' +
+          ' onclick="_createSubmit()">' + tH('create_start') + '</button>' +
+        '<div class="create-error" id="create-form-error"></div>' +
+      '</div>' +
+    '</div>';
+  var src = document.getElementById('create-source');
+  if (src) {
+    src.addEventListener('keydown', function(e) {
+      // In a list of addresses, Enter starts the next one.
+      if (e.key === 'Enter' && !def.multiline) { e.preventDefault(); _createSubmit(); }
+    });
+    // 'change' rather than 'input': it fires when the value has settled and
+    // focus leaves, which is exactly when the question "what is there?" becomes
+    // answerable without probing every keystroke.
+    src.addEventListener('change', function() { _createProbeSource(); });
+  }
+  _createRestoreMode();
+  _createSyncFormat();
+  _renderCreatePreview();
+  _renderCreateBrowse();
+}
+
+// The bookmarks panel: a count and a handoff. There is already a folder-picking
+// export selector in the bookmarks panel, and it is the right one — rebuilding a
+// second, thinner version of it here would mean two places to fix the day the
+// export grammar changes.
+function _createBookmarksBodyHtml() {
+  var n = (typeof _bkLoad === 'function') ? _bkLoad().length : 0;
+  return '<div class="create-pv-row"><span class="create-pv-k">' + tH('create_pv_bookmarks') + '</span>' +
+      '<span class="create-pv-v">' + esc(String(n)) + '</span></div>' +
+    '<div class="create-caption">' + tH('create_bookmarks_note') + '</div>' +
+    '<div class="create-go">' +
+      '<button type="button" class="ms-btn ms-btn-primary create-go-btn"' + (n ? '' : ' disabled') +
+        ' onclick="_createOpenBookmarkExport()">' + tH('create_bookmarks_choose') + '</button>' +
+    '</div>';
+}
+
+// Leave the Create page on the way through: the selector is a modal over the
+// library, and stacking it over a full-page surface it knows nothing about is
+// how you get two Escape handlers arguing.
+function _createOpenBookmarkExport() {
+  closeCreate();
+  if (typeof _bmOpenExport === 'function') _bmOpenExport();
+}
+
+// Audio-only makes the quality preset moot. Greying it out says that where the
+// admin is looking, instead of leaving a live-looking control that changes
+// nothing about the job.
+function _createSyncFormat() {
+  var fmt = document.getElementById(CREATE_FIELDS.format.id);
+  var audio = document.getElementById(CREATE_FIELDS.audio_only.id);
+  if (fmt) fmt.disabled = !!(audio && audio.checked);
+}
+
+function _createFormFields() {
+  var el = function(id) { return document.getElementById(id); };
+  var fields = {
+    source: (el('create-source') || {}).value || '',
+    title: (el('create-title') || {}).value || ''
+  };
+  for (var key in CREATE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(CREATE_FIELDS, key)) continue;
+    var f = CREATE_FIELDS[key];
+    var node = el(f.id);
+    fields[key] = !node ? '' : (f.control === 'check' ? !!node.checked : node.value);
+  }
+  return fields;
+}
+
+function _createFormError(msg) {
+  var el = document.getElementById('create-form-error');
+  if (el) el.textContent = msg || '';
+}
+
 // ── the preview ─────────────────────────────────────────────────────────────
 
 function _renderCreatePreview() {
@@ -562,8 +1151,9 @@ function _renderCreatePreview() {
 // Ask the server what is actually there. Fired when the source stops changing,
 // which is the moment the question becomes answerable.
 async function _createProbeSource() {
+  var mode = _createSelected;
   var fields = _createFormFields();
-  var body = _createBuildRequest(_createSelected, fields);
+  var body = _createBuildRequest(mode, fields);
   if (!body) { _createPreview = null; _createPreviewSource = ''; _renderCreatePreview(); return; }
   if (body.source === _createPreviewSource && _createPreview) return;  // already answered
   _createProbing = true;
@@ -577,6 +1167,14 @@ async function _createProbeSource() {
     });
     var data = {};
     try { data = await res.json(); } catch (e) {}
+    // The panel may have moved on while the server was looking. A reply about
+    // the mode you left belongs to that mode's slot, never to the one on screen.
+    if (mode !== _createSelected) {
+      var slot = _createStateFor(mode);
+      slot.preview = res.ok ? data : null;
+      slot.previewSource = body.source;
+      return;
+    }
     if (!res.ok) {
       // A refusal here is the same refusal the run would give, so it belongs
       // where the run's refusals go rather than in the preview box.
@@ -588,10 +1186,10 @@ async function _createProbeSource() {
       _createApplyDetectedLanguage(data);
     }
   } catch (e) {
-    _createPreview = null;
+    if (mode === _createSelected) _createPreview = null;
   } finally {
     _createProbing = false;
-    _renderCreatePreview();
+    if (mode === _createSelected) _renderCreatePreview();
   }
 }
 
@@ -624,8 +1222,9 @@ async function _createBrowseLoad(path) {
     var res = await authedFetch('/manage/create/browse?path=' + encodeURIComponent(path || ''));
     var data = await res.json();
     if (!res.ok) {
-      // An unreadable or missing directory is not a dead end: fall back to
-      // wherever the picker opens by default rather than closing on an error.
+      // An unreadable, missing or out-of-bounds directory is not a dead end:
+      // fall back to wherever the picker opens by default rather than closing
+      // on an error. With a root configured, that default IS the root.
       if (path) { _createBrowseLoad(''); return; }
       _createFormError(data.error || t('create_error_generic'));
       return;
@@ -677,127 +1276,14 @@ function _renderCreateBrowse() {
     '</div>';
 }
 
-// The bookmarks form: a count and a handoff. There is already a folder-picking
-// export selector in the bookmarks panel, and it is the right one — rebuilding a
-// second, thinner version of it here would mean two places to fix the day the
-// export grammar changes.
-function _createBookmarksFormHtml() {
-  var n = (typeof _bkLoad === 'function') ? _bkLoad().length : 0;
-  return '<div class="create-form">' +
-    '<div class="create-pv-row"><span class="create-pv-k">' + tH('create_pv_bookmarks') + '</span>' +
-      '<span class="create-pv-v">' + esc(String(n)) + '</span></div>' +
-    '<div class="create-caption">' + tH('create_bookmarks_note') + '</div>' +
-    '<div class="create-actions">' +
-      '<button type="button" class="ms-btn ms-btn-primary"' + (n ? '' : ' disabled') +
-        ' onclick="_createOpenBookmarkExport()">' + tH('create_bookmarks_choose') + '</button>' +
-    '</div>' +
-  '</div>';
-}
-
-// Leave the Create page on the way through: the selector is a modal over the
-// library, and stacking it over a full-page surface it knows nothing about is
-// how you get two Escape handlers arguing.
-function _createOpenBookmarkExport() {
-  closeCreate();
-  if (typeof _bmOpenExport === 'function') _bmOpenExport();
-}
-
-// The source control. Three shapes, one decision: a list of addresses needs
-// room to be a list, a server path needs the picker beside it, everything else
-// is one line.
-function _createSourceControlHtml(def) {
-  var attrs = ' class="create-field" id="create-source" spellcheck="false"' +
-    ' autocapitalize="none" autocorrect="off" placeholder="' + escAttr(t(def.placeholder)) + '"';
-  if (def.multiline) {
-    return '<textarea rows="3"' + attrs + '></textarea>' +
-      '<div class="create-caption">' + tH('create_pages_note') + '</div>';
-  }
-  if (def.browse) {
-    return '<div class="create-source-row">' +
-      '<input type="text"' + attrs + '>' +
-      '<button type="button" class="ms-btn" onclick="_createToggleBrowse()">' + tH('create_browse') + '</button>' +
-    '</div>';
-  }
-  return '<input type="text"' + attrs + '>';
-}
-
-function _renderCreateForm() {
-  var slot = document.getElementById('create-form-slot');
-  if (!slot) return;
-  var def = _createDef(_createSelected);
-  if (!def) { slot.innerHTML = ''; return; }
-  if (def.client) { slot.innerHTML = _createBookmarksFormHtml(); return; }
-  var advanced = _createFieldsHtml(def.advanced || [], def);
-  slot.innerHTML =
-    '<div class="create-form">' +
-      '<label class="ms-form-label" for="create-source">' + tH(def.label) + '</label>' +
-      _createSourceControlHtml(def) +
-      '<div id="create-browse"></div>' +
-      '<div id="create-preview"></div>' +
-      '<label class="ms-form-label" for="create-title">' + tH('create_label_title') + '</label>' +
-      '<input type="text" class="create-field" id="create-title" placeholder="' + escAttr(t('create_ph_title')) + '">' +
-      _createFieldsHtml(def.flags || [], def) +
-      (advanced
-        ? '<details class="create-adv">' +
-            '<summary>' + tH('create_advanced') + '</summary>' + advanced +
-          '</details>'
-        : '') +
-      _createCreditHtml(def.id) +
-      '<div class="create-actions">' +
-        '<button type="button" class="ms-btn ms-btn-primary" id="create-start" onclick="_createSubmit()">' + tH('create_start') + '</button>' +
-        '<span class="create-error" id="create-form-error"></span>' +
-      '</div>' +
-    '</div>';
-  var src = document.getElementById('create-source');
-  if (src) {
-    src.addEventListener('keydown', function(e) {
-      // In a list of addresses, Enter starts the next one.
-      if (e.key === 'Enter' && !def.multiline) { e.preventDefault(); _createSubmit(); }
-    });
-    // 'change' rather than 'input': it fires when the value has settled and
-    // focus leaves, which is exactly when the question "what is there?" becomes
-    // answerable without probing every keystroke.
-    src.addEventListener('change', function() { _createProbeSource(); });
-  }
-  _createSyncFormat();
-  _renderCreatePreview();
-  _renderCreateBrowse();
-}
-
-// Audio-only makes the quality preset moot. Greying it out says that where the
-// admin is looking, instead of leaving a live-looking control that changes
-// nothing about the job.
-function _createSyncFormat() {
-  var fmt = document.getElementById(CREATE_FIELDS.format.id);
-  var audio = document.getElementById(CREATE_FIELDS.audio_only.id);
-  if (fmt) fmt.disabled = !!(audio && audio.checked);
-}
-
-function _createFormFields() {
-  var el = function(id) { return document.getElementById(id); };
-  var fields = {
-    source: (el('create-source') || {}).value || '',
-    title: (el('create-title') || {}).value || ''
-  };
-  for (var key in CREATE_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(CREATE_FIELDS, key)) continue;
-    var f = CREATE_FIELDS[key];
-    var node = el(f.id);
-    fields[key] = !node ? '' : (f.control === 'check' ? !!node.checked : node.value);
-  }
-  return fields;
-}
-
-function _createFormError(msg) {
-  var el = document.getElementById('create-form-error');
-  if (el) el.textContent = msg || '';
-}
+// ── submitting ──────────────────────────────────────────────────────────────
 
 async function _createSubmit() {
   if (_createSubmitting) return;
   var body = _createBuildRequest(_createSelected, _createFormFields());
   if (!body) { _createFormError(t('create_needs_source')); return; }
   _createFormError('');
+  _createStashMode();
   _createSubmitting = true;
   var btn = document.getElementById('create-start');
   if (btn) btn.disabled = true;
@@ -815,12 +1301,7 @@ async function _createSubmit() {
       _createFormError(data.error || t('create_error_generic'));
       return;
     }
-    // A new job resets the tail; the merge helper also guards this server-side.
-    _createLines = [];
-    _createCursor = 0;
-    _createAdopted = true;
-    _createPollMs = CREATE_POLL_MS;
-    _createPoll();
+    _createStartWatching(data);
   } catch (e) {
     _createFormError(t('create_error_generic'));
   } finally {
@@ -830,23 +1311,61 @@ async function _createSubmit() {
   }
 }
 
-async function _createCancel() {
-  var btn = document.getElementById('create-cancel-btn');
-  if (btn) btn.disabled = true;
-  try {
-    await authedFetch('/manage/create/cancel', { method: 'POST' });
-  } catch (e) {}
+// A fresh submission: throw away the last job's tail, tree and counters, and
+// remember our place in the queue if the server put us in one.
+function _createStartWatching(data) {
+  _createResetRun();
+  _createAdopted = true;
+  _createInterrupted = false;
+  _createQueuedId = (data && data.status === 'queued' && data.id) ? data.id : null;
+  if (data && data.status === 'queued' && typeof data.position === 'number') {
+    _createQueue = [{ id: data.id, position: data.position, mode: data.mode }];
+    _renderCreateQueue();
+  }
+  _createPollMs = CREATE_POLL_MS;
   _createPoll();
 }
 
-// Leave the finished job on screen behind us and go back to the picker.
+function _createResetRun() {
+  _createLines = [];
+  _createCursor = 0;
+  _createLogCursor = 0;
+  _createEventCursor = 0;
+  _createViz = _createNewViz();
+  _createVizChanges = null;
+  _createNodeEls = {};
+  _createTreeShown = 0;
+  _createTreeElided = 0;
+  _createTreeMounted = false;
+  _createDoneMounted = false;
+  _createRunSeq++;
+  _createRunKey = null;
+}
+
+// Cancel the running job, or drop a queued one. Both are the same endpoint; an
+// id names a job that has not started, an empty body means "whatever is
+// running", which is what every build of the server has always understood.
+async function _createCancel(queuedId) {
+  var btn = document.getElementById('create-cancel-btn');
+  if (btn) btn.disabled = true;
+  try {
+    await authedFetch('/manage/create/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(queuedId ? { id: queuedId } : {})
+    });
+  } catch (e) {}
+  if (queuedId && queuedId === _createQueuedId) _createQueuedId = null;
+  _createPoll();
+}
+
+// Leave the finished job behind and go back to the picker.
 function _createReset() {
   _createStatus = null;
   _createAdopted = false;
-  _createLines = [];
-  _createCursor = 0;
-  _createSelected = null;
-  _renderCreate();
+  _createInterrupted = false;
+  _createResetRun();
+  _renderCreateRun();
 }
 
 async function _createOpenResult(name) {
@@ -872,10 +1391,14 @@ function _createSchedulePoll() {
   _createTimer = setTimeout(function() { _createPoll(); }, _createPollMs);
 }
 
-async function _createPoll(probe) {
+async function _createPoll(first) {
   _createStopPolling();
   if (!_createOpen) return;
-  var url = '/manage/create/status?since=' + _createCursor + (probe ? '&probe=1' : '');
+  var wantHistory = first || _createWantHistory;
+  _createWantHistory = false;
+  var url = '/manage/create/status?since=' + _createCursor +
+    '&events_since=' + _createEventCursor +
+    (first ? '&probe=1' : '') + (wantHistory ? '&history=1' : '');
   try {
     var res = await authedFetch(url);
     if (!res.ok) {
@@ -886,105 +1409,541 @@ async function _createPoll(probe) {
     }
     var data = await res.json();
     _createPollMs = CREATE_POLL_MS;
-    _createOffline = !!data.offline;
-    if (typeof data.import_ready === 'boolean') _createImportReady = data.import_ready;
-    if (data.active) _createAdopted = true;
-    var merged = _createMergeLines(_createLines, _createCursor, data);
-    _createLines = merged.lines;
-    _createCursor = merged.cursor;
-    _createStatus = _createAdopted ? data : null;
+    _createIngest(data);
+    _renderCreateQueue();
     _renderCreateRun();
-    if (data.active) _createSchedulePoll();
+    // One more poll after a job finishes, to collect the history entry it just
+    // became. Without it the Recent list would sit a poll behind for good.
+    if (data.active || _createQueue.length || _createWantHistory) _createSchedulePoll();
   } catch (e) {
     _createPollMs = Math.min(_createPollMs * 2, CREATE_POLL_MAX_MS);
     _createSchedulePoll();
   }
 }
 
-// ── running / done / failed ─────────────────────────────────────────────────
+// One status reply, folded into everything it touches. Kept apart from the poll
+// so a test can drive it with a payload and no network.
+function _createIngest(data) {
+  _createOffline = !!data.offline;
+  if (typeof data.import_ready === 'boolean') _createImportReady = data.import_ready;
+  if (typeof data.create_root === 'string' || data.create_root === null) {
+    _createRoot = data.create_root || '';
+  }
+  // The server holds one job at a time and hands it an id. A different id is a
+  // different job — our queued submission reaching the front, or someone else's
+  // run starting — and nothing of the last one's tree, tail or counters belongs
+  // on top of it.
+  if (data.id && data.id !== _createJobId) {
+    _createJobId = data.id;
+    _createResetRun();
+  }
+  if (Array.isArray(data.history)) {
+    var recent = [];
+    for (var h = 0; h < data.history.length && recent.length < CREATE_RECENT_MAX; h++) {
+      // A job that is running or still waiting is already on screen as the run
+      // pane or a queue row; listing it under "Recent" as well would be the
+      // same job twice, described two different ways.
+      if (!_createHistoryLive(data.history[h])) recent.push(data.history[h]);
+    }
+    _createHistory = recent;
+  }
+  // The recent list is fetched when the page opens, so a job that finishes
+  // while you watch would otherwise leave it a poll out of date forever.
+  if (_createStatus && _createStatus.active && data.done) _createWantHistory = true;
+  // A server with no queue support never sends the field, so the optimistic
+  // entry a submission put there has to be cleared by the first reply that
+  // proves the job is no longer waiting. A queue strip nobody can clear is the
+  // eternal spinner wearing a different hat.
+  if (Array.isArray(data.queue)) _createQueue = data.queue;
+  else if (data.active || data.done) _createQueue = [];
+
+  if (data.active) {
+    _createAdopted = true;
+    _createSawActive = true;
+    _createInterrupted = false;
+    _createQueuedId = null;   // whatever we queued is either running or gone
+  } else if (_createSawActive && !data.done) {
+    // We watched a job run and the server now says there is no job at all. The
+    // only way that happens is the process going away underneath it.
+    _createSawActive = false;
+    _createInterrupted = true;
+    _createAdopted = false;
+    _createQueue = [];
+    _createQueuedId = null;
+  }
+
+  var lines = _createMergeLines(_createLines, _createCursor, data);
+  if (lines.cursor < _createCursor) _createLogCursor = 0;
+  _createLines = lines.lines;
+  _createCursor = lines.cursor;
+
+  var events = _createMergeEvents(_createEventCursor, data);
+  if (events.supported) _createEventsOk = true;
+  if (events.reset) { _createViz = _createNewViz(); _createTreeMounted = false; }
+  _createEventCursor = events.cursor;
+  var moved = _createApplyEvents(_createViz, events.events);
+  _createVizChanges = _createVizChanges ? _createMergeChanges(_createVizChanges, moved) : moved;
+
+  _createStatus = _createAdopted ? data : null;
+}
+
+// Two batches of pending DOM work, combined — a render that was skipped (the
+// pane was not mounted yet) must not lose the rows it was going to draw.
+function _createMergeChanges(a, b) {
+  var merged = {
+    phase: a.phase || b.phase,
+    counts: a.counts || b.counts,
+    added: a.added.concat(b.added),
+    updated: [],
+    touched: {}
+  };
+  var all = a.updated.concat(b.updated);
+  for (var i = 0; i < all.length; i++) _createMarkUpdated(merged, all[i]);
+  return merged;
+}
+
+// ── the run pane ────────────────────────────────────────────────────────────
+
+function _createReduceMotion() {
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch (e) { return false; }
+}
 
 function _renderCreateRun() {
   var host = document.getElementById('create-run');
   var picker = document.getElementById('create-picker');
   if (!host) return;
   var s = _createStatus;
-  // Nothing has ever run in this server's lifetime, or we reset: only the picker.
-  if (!s || (!s.active && !s.done)) {
-    host.innerHTML = '';
-    if (picker) picker.hidden = false;
-    // Only when the server changed its mind about what is possible — otherwise
-    // the probe reply would erase a form the user is already typing into.
-    if (_createTilesKey !== _createAvailabilityKey()) {
-      _renderCreateTiles();
-      _renderCreateForm();
+  var running = !!s && (s.active || s.done);
+  if (!running) {
+    // Nothing of ours is on the server: the picker, plus whatever explanation
+    // the last job left behind.
+    var key = _createInterrupted ? 'i' : '-';
+    if (_createIdleKey !== key) {
+      host.innerHTML = _createInterrupted ? _createInterruptedHtml() : '';
+      _createIdleKey = key;
     }
+    _createRunKey = null;
+    if (picker) picker.hidden = false;
+    if (_createTilesKey !== _createAvailabilityKey()) {
+      _createStashMode();
+      _renderCreateModes();
+      _renderCreatePanel();
+    }
+    _renderCreateRecent();
     return;
   }
   if (picker) picker.hidden = true;
-
-  var head;
-  if (s.active) {
-    head =
-      '<div class="create-status">' +
-        '<span class="spinner-inline" aria-hidden="true"></span>' +
-        '<span>' + tH(s.cancelling ? 'create_cancelling' : 'create_running') + '</span>' +
-      '</div>';
-  } else if (s.cancelled) {
-    head = '<div class="create-status">' + tH('create_cancelled') + '</div>';
-  } else if (s.ok) {
-    head = '';
-  } else {
-    head =
-      '<div class="create-status">' + tH('create_failed') + '</div>' +
-      '<div class="create-error">' + esc(s.error || '') + '</div>';
+  _renderCreateRecent();
+  _createIdleKey = null;
+  var shellKey = (s.id || s.mode) + ':' + _createRunSeq;
+  if (_createRunKey !== shellKey) {
+    host.innerHTML = _createRunShellHtml(s);
+    _createRunKey = shellKey;
+    _createTreeMounted = false;
+    _createNodeEls = {};
+    _createTreeShown = 0;
+    _createTreeElided = 0;
+    _createLogCursor = 0;
+    _createDoneMounted = false;
   }
+  _createSyncRun(s);
+}
 
-  var log = '';
-  if (_createLines.length) {
-    var body = '';
-    for (var i = 0; i < _createLines.length; i++) {
-      body += '<div class="create-log-line">' + esc(_createLines[i]) + '</div>';
+// The pane, drawn once per job. Everything inside it is then updated in place:
+// rebuilding this on a two-second timer is what would make the tree flicker,
+// restart every row's arrival animation and yank the log back to the bottom
+// under someone who had scrolled up to read it.
+function _createRunShellHtml(s) {
+  return '<div class="create-run">' +
+    _createPhaseStripHtml() +
+    '<div class="create-phase-detail" id="create-phase-detail" aria-live="polite"></div>' +
+    '<div class="create-metrics" id="create-metrics"></div>' +
+    '<div class="create-tree-wrap" id="create-tree-wrap" hidden>' +
+      '<div class="create-tree" id="create-tree"></div>' +
+      '<div class="create-tree-more" id="create-tree-more" hidden></div>' +
+    '</div>' +
+    '<div id="create-done-slot"></div>' +
+    '<div id="create-fail-slot"></div>' +
+    '<details class="create-logbox" id="create-logbox">' +
+      '<summary>' + tH('create_log') + '</summary>' +
+      '<div class="create-log" id="create-log"></div>' +
+    '</details>' +
+    _createCreditHtml(s.mode) +
+    '<div class="create-actions" id="create-run-actions"></div>' +
+  '</div>';
+}
+
+// Four steps, and the one that is lit is the one happening now. A server that
+// sends no phase events leaves the strip out entirely rather than showing four
+// grey boxes that never move — an inert progress indicator is worse than none.
+function _createPhaseStripHtml() {
+  var html = '';
+  for (var i = 0; i < CREATE_STEP_KEYS.length; i++) {
+    html += '<div class="create-step" data-step="' + i + '">' +
+      '<span class="create-step-dot" aria-hidden="true"></span>' +
+      '<span class="create-step-name">' + tH(CREATE_STEP_KEYS[i]) + '</span>' +
+    '</div>';
+  }
+  return '<div class="create-phases" id="create-phases" hidden>' + html + '</div>';
+}
+
+function _createSyncRun(s) {
+  _createSyncPhases(s);
+  _createSyncMetrics(s);
+  _createSyncTree(s);
+  _createSyncLog();
+  _createSyncActions(s);
+  _createSyncOutcome(s);
+  _createVizChanges = null;
+}
+
+function _createSyncPhases(s) {
+  var strip = document.getElementById('create-phases');
+  if (!strip) return;
+  var viz = _createViz;
+  // The status carries the job's phase outright, which is what lets a page
+  // opened halfway through a crawl light the right step immediately rather
+  // than waiting for the next phase event — there may not be another one.
+  var step = Math.max(viz.step, _createPhaseStep(s.phase));
+  // A finished job is finished whatever the last phase event said: a crawl that
+  // failed in Fetch must not leave the strip claiming it is still fetching, and
+  // one that succeeded is Ready even if "done" never arrived as an event.
+  if (s.done && s.ok) step = CREATE_STEP_KEYS.length - 1;
+  if (step < 0 && !_createEventsOk) { strip.hidden = true; return; }
+  strip.hidden = false;
+  var kids = strip.children;
+  for (var i = 0; i < kids.length; i++) {
+    var state = i < step ? 'done' : (i === step ? (s.done ? 'done' : 'active') : 'pending');
+    kids[i].setAttribute('data-state', state);
+    if (state === 'active') kids[i].setAttribute('aria-current', 'step');
+    else kids[i].removeAttribute('aria-current');
+  }
+  var detail = document.getElementById('create-phase-detail');
+  if (detail) {
+    // A detail that is just the mode name says nothing the chip above did not
+    // already say, and the server sends exactly that when it has nothing
+    // better. What belongs on this line then is what the job is doing — and on
+    // a job that is over, nothing: the card below says how it ended, and the
+    // engine's last word for itself ("ok") is not a sentence for anyone.
+    var extra = (s.active && viz.detail && viz.detail !== s.mode) ? viz.detail : '';
+    var text = s.active
+      ? (extra || t(s.cancelling ? 'create_cancelling' : 'create_running'))
+      : '';
+    if (detail.textContent !== text) detail.textContent = text;
+  }
+}
+
+// The counters. Bytes are formatted here and never on the server; entries are
+// the number Eric asked for by name, because packaging used to be the phase
+// where a long job sat perfectly still and looked hung.
+function _createSyncMetrics(s) {
+  var host = document.getElementById('create-metrics');
+  if (!host) return;
+  var counts = _createViz.counts;
+  var html = '';
+  for (var i = 0; i < CREATE_COUNT_KEYS.length; i++) {
+    var what = CREATE_COUNT_KEYS[i];
+    var c = counts[what];
+    if (!c) continue;
+    var value = what === 'bytes' ? _fmtBytes(c.n) : Number(c.n).toLocaleString();
+    var of = (typeof c.total === 'number' && c.total > 0)
+      ? '<span class="create-metric-of">/ ' +
+        (what === 'bytes' ? esc(_fmtBytes(c.total)) : esc(c.total.toLocaleString())) + '</span>'
+      : '';
+    html += '<div class="create-metric">' +
+      '<span class="create-metric-n">' + esc(value) + '</span>' + of +
+      '<span class="create-metric-k">' + tH('create_metric_' + what) + '</span>' +
+    '</div>';
+  }
+  // No counters and no tree is the old bare spinner, so keep one honest line of
+  // movement while a job with a silent engine runs.
+  if (!html && s.active && !_createViz.order.length) {
+    html = '<div class="create-status"><span class="spinner-inline" aria-hidden="true"></span>' +
+      '<span>' + tH(s.cancelling ? 'create_cancelling' : 'create_running') + '</span></div>';
+  }
+  if (host.innerHTML !== html) host.innerHTML = html;
+}
+
+// ── the tree ────────────────────────────────────────────────────────────────
+
+// Incremental by construction: added rows are inserted under their parent,
+// updated rows have three attributes rewritten, and nothing else in the tree is
+// touched. That is what holds at two hundred nodes and at two thousand.
+function _createSyncTree() {
+  var wrap = document.getElementById('create-tree-wrap');
+  var root = document.getElementById('create-tree');
+  if (!wrap || !root) return;
+  var viz = _createViz;
+  if (!viz.order.length) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+  var atBottom = root.scrollTop + root.clientHeight >= root.scrollHeight - 24;
+  if (!_createTreeMounted) {
+    root.innerHTML = '';
+    _createNodeEls = {};
+    _createTreeShown = 0;
+    _createTreeElided = 0;
+    // order is discovery order, and a node is only ever added after its parent,
+    // so one pass places every row correctly.
+    for (var i = 0; i < viz.order.length; i++) _createAddNode(viz.order[i]);
+    _createTreeMounted = true;
+  } else {
+    var ch = _createVizChanges;
+    if (ch) {
+      for (var a = 0; a < ch.added.length; a++) _createAddNode(ch.added[a]);
+      for (var u = 0; u < ch.updated.length; u++) _createUpdateNode(ch.updated[u]);
     }
-    log = '<div class="create-log" id="create-log">' + body + '</div>';
-  } else if (s.active) {
-    log = '<div class="create-log create-empty">' + tH('create_no_output') + '</div>';
   }
+  _createSyncTreeMore();
+  // Follow the crawl, but never over the shoulder of someone reading back up
+  // through it.
+  if (atBottom) root.scrollTop = root.scrollHeight;
+}
 
-  var actions = '';
+function _createAddNode(id) {
+  var node = _createViz.nodes[id];
+  if (!node || _createNodeEls[id]) return;
+  if (_createTreeShown >= CREATE_TREE_MAX_NODES) {
+    _createTreeElided++;   // counted, not drawn
+    return;
+  }
+  var parentEl = node.parent && _createNodeEls[node.parent];
+  var host = parentEl ? parentEl.lastElementChild : document.getElementById('create-tree');
+  if (!host) return;
+  var el = document.createElement('div');
+  el.className = 'create-node create-node-new';
+  el.setAttribute('data-nid', id);
+  el.innerHTML =
+    '<div class="create-node-row">' +
+      '<span class="create-node-dot" aria-hidden="true"></span>' +
+      '<span class="create-node-label"></span>' +
+      '<span class="create-node-assets"></span>' +
+    '</div>' +
+    '<div class="create-node-bar"><i></i></div>' +
+    '<div class="create-node-kids"></div>';
+  host.appendChild(el);
+  _createNodeEls[id] = el;
+  _createTreeShown++;
+  _createUpdateNode(id);
+}
+
+function _createUpdateNode(id) {
+  var node = _createViz.nodes[id];
+  var el = _createNodeEls[id];
+  if (!node || !el) return;
+  el.setAttribute('data-state', node.state || '');
+  var label = el.querySelector('.create-node-label');
+  if (label && label.textContent !== node.label) label.textContent = node.label;
+  var total = node.assets.total;
+  var counter = el.querySelector('.create-node-assets');
+  if (counter) {
+    var text = total ? node.assets.done + '/' + total : '';
+    if (counter.textContent !== text) counter.textContent = text;
+  }
+  var bar = el.querySelector('.create-node-bar');
+  if (bar) {
+    bar.hidden = !total;
+    var pct = total ? Math.round((node.assets.done / total) * 100) : 0;
+    bar.firstElementChild.style.width = pct + '%';
+  }
+}
+
+// What the tree is not showing. The pages keep being counted whether or not
+// there is a row for them, so this row is the difference between the two — and
+// the metrics above still report the real total.
+function _createSyncTreeMore() {
+  var more = document.getElementById('create-tree-more');
+  if (!more) return;
+  more.hidden = _createTreeElided <= 0;
+  if (_createTreeElided > 0) {
+    var text = t('create_tree_more', { n: _createTreeElided.toLocaleString() });
+    if (more.textContent !== text) more.textContent = text;
+  }
+}
+
+// ── the log ─────────────────────────────────────────────────────────────────
+
+// Appended, never rebuilt. The cursor is in the server's line space, so the
+// arithmetic survives the tail being trimmed underneath us: what is new is
+// always the last (cursor - shown) lines of whatever we are holding.
+function _createSyncLog() {
+  var el = document.getElementById('create-log');
+  if (!el) return;
+  if (_createLogCursor > _createCursor) { el.innerHTML = ''; _createLogCursor = 0; }
+  var fresh = Math.min(_createCursor - _createLogCursor, _createLines.length);
+  if (fresh <= 0) return;
+  var atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 24;
+  var start = _createLines.length - fresh;
+  for (var i = start; i < _createLines.length; i++) {
+    var line = document.createElement('div');
+    line.className = 'create-log-line';
+    line.textContent = _createLines[i];
+    el.appendChild(line);
+  }
+  while (el.childElementCount > CREATE_LOG_MAX) el.removeChild(el.firstElementChild);
+  _createLogCursor = _createCursor;
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+
+// ── actions and outcome ─────────────────────────────────────────────────────
+
+function _createSyncActions(s) {
+  var host = document.getElementById('create-run-actions');
+  if (!host) return;
+  var html;
   if (s.active) {
-    actions =
-      '<div class="create-actions">' +
-        (s.cancellable
-          ? '<button type="button" class="ms-btn ms-btn-danger" id="create-cancel-btn"' +
-            (s.cancelling ? ' disabled' : '') + ' onclick="_createCancel()">' +
-            tH(s.cancelling ? 'create_cancelling' : 'create_cancel') + '</button>'
-          : '<span class="create-caption">' + tH('create_uncancellable') + '</span>') +
-      '</div>';
+    html = s.cancellable
+      ? '<button type="button" class="ms-btn ms-btn-danger" id="create-cancel-btn"' +
+        (s.cancelling ? ' disabled' : '') + ' onclick="_createCancel()">' +
+        tH(s.cancelling ? 'create_cancelling' : 'create_cancel') + '</button>'
+      : '<span class="create-caption">' + tH('create_uncancellable') + '</span>';
   } else {
-    actions =
-      '<div class="create-actions">' +
-        '<button type="button" class="ms-btn" onclick="_createReset()">' + tH('create_another') + '</button>' +
-      '</div>';
+    html = '<button type="button" class="ms-btn" onclick="_createReset()">' +
+      tH('create_another') + '</button>';
   }
+  if (host.innerHTML !== html) host.innerHTML = html;
+}
 
-  var done = '';
-  if (s.done && s.ok && s.result && s.result.name) {
-    done =
-      '<div class="create-done">' +
-        '<div class="ms-pa-choice-title">' + tH('create_done_title') + '</div>' +
-        '<div class="create-done-name">' + esc(s.result.title || s.result.name) + '</div>' +
-        (s.result.title && s.result.title !== s.result.name
-          ? '<div class="create-caption">' + esc(s.result.name) + '.zim</div>' : '') +
-        '<div class="create-actions">' +
-          '<button type="button" class="ms-btn ms-btn-primary" onclick="_createOpenResult(\'' +
-            escJs(s.result.name) + '\')">' + tH('create_open') + '</button>' +
+// The end of the story: the card, or the reason there is no card. Mounted once
+// — re-running this every poll would restart the arrival animation forever.
+function _createSyncOutcome(s) {
+  if (!s.done || _createDoneMounted) return;
+  _createDoneMounted = true;
+  if (s.ok && s.result && s.result.name) { _createMountDone(s); return; }
+  var fail = document.getElementById('create-fail-slot');
+  if (!fail) return;
+  if (s.cancelled) {
+    fail.innerHTML = '<div class="create-status">' + tH('create_cancelled') + '</div>';
+  } else {
+    fail.innerHTML = '<div class="create-status">' + tH('create_failed') + '</div>' +
+      (s.error ? '<div class="create-error">' + esc(s.error) + '</div>' : '');
+  }
+}
+
+// THE DONE MOMENT.
+//
+// The reward is the thing you made, arriving. The icon lands, the name settles
+// under it, the size counts up to what it really is, and the way in appears.
+// Under a second and a half, once, and never again — and with reduced motion it
+// is simply there, complete, in one frame. It celebrates a finished ZIM and
+// nothing else: there is no streak, no score and nothing to come back for.
+function _createMountDone(s) {
+  var host = document.getElementById('create-done-slot');
+  if (!host) return;
+  var r = s.result || {};
+  var bytes = _createResultBytes(s);
+  var entries = _createViz.counts.entries;
+  var facts = '';
+  if (entries && entries.n) {
+    facts += '<span class="create-done-fact">' +
+      esc(Number(entries.n).toLocaleString()) + ' ' + tH('create_metric_entries') + '</span>';
+  }
+  if (bytes) facts += '<span class="create-done-fact" id="create-done-bytes">' + esc(_fmtBytes(0)) + '</span>';
+  host.innerHTML =
+    '<div class="create-done' + (_createReduceMotion() ? '' : ' create-done-anim') + '">' +
+      '<span class="create-done-icon">' + _CREATE_ICONS.zim + '</span>' +
+      '<div class="create-done-body">' +
+        '<div class="create-caption">' + tH('create_done_title') + '</div>' +
+        '<div class="create-done-name">' + esc(r.title || r.name) + '</div>' +
+        '<div class="create-done-facts">' +
+          '<span class="create-done-fact">' + esc(r.name) + '.zim</span>' + facts +
         '</div>' +
+      '</div>' +
+      '<button type="button" class="ms-btn ms-btn-primary create-done-open"' +
+        ' onclick="_createOpenResult(\'' + escJs(r.name) + '\')">' + tH('create_open') + '</button>' +
+    '</div>';
+  if (bytes) _createRollBytes(document.getElementById('create-done-bytes'), bytes);
+}
+
+// How big it turned out. The status reply may carry it; otherwise the last
+// bytes counter the job emitted is the same number by a different route.
+function _createResultBytes(s) {
+  var fromResult = s.result && Number(s.result.bytes);
+  if (fromResult > 0) return fromResult;
+  var c = _createViz.counts.bytes;
+  return c && c.n > 0 ? c.n : 0;
+}
+
+function _createRollBytes(el, to) {
+  if (!el) return;
+  if (_createReduceMotion()) { el.textContent = _fmtBytes(to); return; }
+  var start = 0;
+  var step = function(now) {
+    if (!start) start = now;
+    var p = Math.min(1, (now - start) / CREATE_ROLL_MS);
+    var eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = _fmtBytes(Math.round(to * eased));
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// ── the queue ───────────────────────────────────────────────────────────────
+
+// One job at a time is the server's rule and a good one on a Pi. What the queue
+// changes is only what happens to the SECOND request: it waits its turn and
+// says where it is in line, instead of being refused with a sentence.
+function _renderCreateQueue() {
+  var host = document.getElementById('create-queue');
+  if (!host) return;
+  if (!_createQueue.length) { host.innerHTML = ''; return; }
+  var html = '';
+  for (var i = 0; i < _createQueue.length; i++) {
+    var q = _createQueue[i];
+    var mine = q.id && q.id === _createQueuedId;
+    var name = q.title || (q.mode ? t('create_mode_' + q.mode) : '');
+    html += '<div class="create-queued' + (mine ? ' mine' : '') + '">' +
+      '<span class="create-queued-name">' + esc(name) + '</span>' +
+      '<span class="create-queued-pos">' +
+        tH('create_queued', { n: q.position === undefined ? i + 1 : q.position }) + '</span>' +
+      (q.id
+        ? '<button type="button" class="ms-btn" onclick="_createCancel(\'' + escJs(q.id) + '\')">' +
+          tH('create_queue_drop') + '</button>'
+        : '') +
+    '</div>';
+  }
+  host.innerHTML = html;
+}
+
+// ── recent jobs ─────────────────────────────────────────────────────────────
+
+// The server remembers what it did; before round 3 the page did not ask. A
+// crawl that finished while the tab was closed, one that failed at three in the
+// morning, one the restart took — all of it was invisible, and the only way to
+// find out whether last night's job worked was to go looking in the library.
+function _renderCreateRecent() {
+  var host = document.getElementById('create-recent');
+  if (!host) return;
+  // Recent belongs to the picker. While a run pane is up it would list the very
+  // job whose progress fills the screen above it.
+  if (!_createHistory.length || _createStatus) { host.innerHTML = ''; return; }
+  var rows = '';
+  for (var i = 0; i < _createHistory.length; i++) {
+    var h = _createHistory[i];
+    var state = _createHistoryState(h);
+    rows +=
+      '<div class="create-hist" data-state="' + escAttr(state) + '">' +
+        '<span class="create-hist-dot" aria-hidden="true"></span>' +
+        '<span class="create-hist-body">' +
+          '<span class="create-hist-name">' + esc(_createHistoryLabel(h)) + '</span>' +
+          '<span class="create-hist-why">' + tH(CREATE_HISTORY_KEYS[state]) +
+            (state === 'failed' && h.error ? ' — ' + esc(h.error) : '') +
+          '</span>' +
+        '</span>' +
+        (state === 'ok' && h.result
+          ? '<button type="button" class="ms-btn" onclick="_createOpenResult(\'' +
+            escJs(h.result) + '\')">' + tH('create_open') + '</button>'
+          : '') +
       '</div>';
   }
+  host.innerHTML = '<div class="create-recent">' +
+    '<div class="ms-form-label">' + tH('create_recent') + '</div>' + rows + '</div>';
+}
 
-  host.innerHTML = head + done + log + _createCreditHtml(s.mode) + actions;
-  // Follow the tail. A user who has scrolled up to read an earlier line keeps
-  // their place — only pin to the bottom when we were already there.
-  var logEl = document.getElementById('create-log');
-  if (logEl && s.active) logEl.scrollTop = logEl.scrollHeight;
+// The eternal spinner's replacement. A job that was running when the server
+// went down did not fail and is not still going; it stopped, and saying so in
+// one sentence is the whole fix.
+function _createInterruptedHtml() {
+  return '<div class="create-notice">' + tH('create_restarted') + '</div>';
 }
