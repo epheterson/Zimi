@@ -34,6 +34,9 @@ services:
       - ZIMI_DATA_DIR=/data
       - ZIMI_MANAGE=1
       - ZIMI_BT=port=16881  # gluetun owns host 6881; on/off stays UI-controlled
+      # Folder/import creation from the web is confined to this one directory
+      # (drop source folders in over SMB: /volume1/docker/kiwix/created).
+      - ZIMI_CREATE_ROOT=/zims/created
     # Low resource footprint — only loads ZIM indexes on query
     mem_limit: 4g
     labels:
