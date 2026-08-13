@@ -279,6 +279,7 @@ def list_users():
                 "auth": rec.get("auth") or "local",
                 "all_access": allowlist is None,
                 "allowlist": allowlist if isinstance(allowlist, list) else [],
+                "can_create": _rec_can_create(rec),
                 "flags": rec.get("flags", {}) or {},
                 "created": rec.get("created", 0),
                 "last_login": rec.get("last_login", 0),
@@ -397,6 +398,63 @@ def is_admin_user(name):
     """True if ``name`` is a stored SECONDARY-admin account (role=admin)."""
     rec = _load_users().get(_key(name))
     return bool(rec) and _effective_role(rec) == "admin"
+
+
+# ============================================================================
+# Create permission — a non-admin account that may make ZIMs from the web
+# ============================================================================
+#
+# ``can_create`` is an ADDITIVE per-user key: absent on every pre-1.9 record
+# (absent → False), written only when granted, removed again when revoked — so
+# users.json stays at schema version 1 and a roster that never uses the feature
+# is byte-for-byte identical to what 1.8 wrote. (Bumping the version would make
+# ``_load_users`` blank the roster on older code; see the federated-accounts
+# note below for why that rule is absolute.)
+#
+# Admins (any role=admin record) create implicitly — the flag exists so a plain
+# or limited account can capture the web WITHOUT any manage powers. The scope
+# is deliberately narrower than admin creation: manage.py grants such an
+# account only the URL modes; folder/import (server-path reads) and the folder
+# browser stay primary-admin-only.
+
+
+def _rec_can_create(rec):
+    """Whether a stored record may create ZIMs: admins implicitly, everyone
+    else by the additive ``can_create`` flag."""
+    if not isinstance(rec, dict):
+        return False
+    if _effective_role(rec) == "admin":
+        return True
+    return rec.get("can_create") is True
+
+
+def user_can_create(name):
+    """True if the named account may create ZIMs (see ``_rec_can_create``)."""
+    return _rec_can_create(_load_users().get(_key(name)))
+
+
+def set_can_create(name, value):
+    """Grant or revoke the create permission. Returns (ok, error).
+
+    Revoking REMOVES the key (never writes ``false``) so an ungranted record
+    stays byte-identical to a 1.8 one. Admin-role accounts are refused: they
+    create implicitly, and a stored flag on them would silently spring back to
+    life on a later role change nobody intended to carry it through.
+    """
+    with _lock:
+        users = _load_users()
+        rec = users.get(_key(name))
+        if not rec:
+            return False, "user not found"
+        if _effective_role(rec) == "admin":
+            return False, "admins can always create"
+        if value:
+            rec["can_create"] = True
+        else:
+            rec.pop("can_create", None)
+        _save_users(users)
+    log.info("User can_create set: %s -> %s", name, bool(value))
+    return True, None
 
 
 # ============================================================================
