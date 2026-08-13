@@ -76,6 +76,10 @@ def clean_job(tmp_path, monkeypatch):
     wrote it to the real data dir would be scribbling on a running server's."""
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path / "data"))
     (tmp_path / "data").mkdir()
+    # Server-path modes need an operator-configured root or they are refused
+    # outright (see test_create_probe.py for the gate itself). Every folder and
+    # import test here builds its source under tmp_path, so that is the root.
+    monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(tmp_path))
     manage._create_job = None
     manage._create_queue.clear()
     manage._create_journal = None
@@ -386,11 +390,15 @@ def test_audio_only_drops_the_quality_preset(stub_engine):
     assert stub_engine["opts"]["audio_only"] is True
 
 
-def test_a_language_must_look_like_a_language_code():
+def test_a_language_must_look_like_a_language_code(tmp_path):
+    # A real source inside the configured root: the path is checked before the
+    # options are, so an out-of-root source would be refused for the wrong
+    # reason and this test would pass without testing anything.
+    (tmp_path / "src").mkdir(exist_ok=True)
     for bad in ("english", "e", "fr-FR", "../..", "eng eng"):
         h = _post(
             "/manage/create",
-            {"mode": "folder", "source": "/tmp", "language": bad},
+            {"mode": "folder", "source": str(tmp_path / "src"), "language": bad},
         )
         assert h.status == 400, bad
         assert "code" in h.body["error"]

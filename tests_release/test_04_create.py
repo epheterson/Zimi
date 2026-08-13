@@ -81,6 +81,45 @@ def test_a_folder_becomes_a_zim_that_serves(gate_server, source_folder):
     assert results["results"], f"nothing searchable in the created ZIM: {results}"
 
 
+def test_without_a_configured_root_the_web_cannot_reach_the_filesystem(
+    gate_library, tmp_path_factory, source_folder
+):
+    """The default posture, booted for real. Eric's objection to the round-2
+    folder flow was that it showed him the whole file system; the answer is
+    that with no ZIMI_CREATE_ROOT the web cannot list a directory or package a
+    server path at all. A client that hides the chip is not the boundary —
+    this is, so it is checked against a server that never had one."""
+    import os
+    import shutil
+
+    from conftest import boot, clean_env
+
+    root = tmp_path_factory.mktemp("gate-noroot")
+    zim_dir = os.path.join(str(root), "zims")
+    shutil.copytree(gate_library, zim_dir)
+    env = clean_env()
+    env.pop("ZIMI_CREATE_ROOT", None)
+    with boot(
+        zim_dir=zim_dir, data_dir=os.path.join(str(root), "data"), env=env
+    ) as server:
+        status, body = server.get_json("/manage/create/browse?path=/")
+        assert status == 403, f"the picker listed a directory with no root set: {body}"
+        for mode, source in (("folder", source_folder), ("import", __file__)):
+            status, body = server.post_json(
+                "/manage/create", {"mode": mode, "source": source}
+            )
+            assert status == 403, f"{mode} capture ran with no root set: {body}"
+            status, body = server.post_json(
+                "/manage/create/probe", {"mode": mode, "source": source}
+            )
+            assert status == 403, f"{mode} probe read the filesystem: {body}"
+        # …and the URL modes, which read nothing local, are unaffected.
+        status, body = server.post_json(
+            "/manage/create/probe", {"mode": "page", "source": "nonsense"}
+        )
+        assert status == 400, body
+
+
 def test_a_finished_job_is_findable_after_the_fact(gate_server, source_folder):
     """An admin who closed the tab and came back must be able to find out what
     happened. The job log survives the job; if this breaks, the answer to "did

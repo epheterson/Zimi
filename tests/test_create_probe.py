@@ -21,7 +21,10 @@ import zimi.server as server  # noqa: E402
 class _Handler:
     def __init__(self, private=True, headers=None):
         self.status = None
-        self.body = None
+        # A dict from the start, like the twin in test_create_routes.py: every
+        # assertion below reads it as one, and a route that answered nothing
+        # should fail on a missing key rather than on the shape of the recorder.
+        self.body: dict = {}
         self.headers = headers or {}
         self._private = private
 
@@ -50,6 +53,17 @@ def no_job():
     manage._create_job = None
     yield
     manage._create_job = None
+
+
+@pytest.fixture(autouse=True)
+def create_root(tmp_path, monkeypatch):
+    """Every server-path test runs on an instance whose operator has opened one
+    directory — the test's own tmp_path. Without ZIMI_CREATE_ROOT the web
+    cannot package a server path at all, which is the DEFAULT and has its own
+    tests below; making it the ambient state here would be testing the gate
+    over and over instead of what it gates."""
+    monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(tmp_path))
+    return tmp_path
 
 
 @pytest.fixture
@@ -256,11 +270,15 @@ def test_browse_does_not_follow_symlinks(tmp_path):
     assert b["entries"] == []
 
 
-def test_browse_offers_a_way_up_until_the_root(tmp_path):
-    b = _get("/manage/create/browse", {"path": [str(tmp_path)]}).body
-    assert b["parent"] == os.path.realpath(str(tmp_path.parent))
-    root = _get("/manage/create/browse", {"path": [os.sep]}).body
-    assert root["parent"] is None
+def test_browse_offers_a_way_up_until_the_configured_root(tmp_path):
+    """ "Up" stops at the root. A picker that offers a parent one level above
+    the directory the operator opened is a picker that walks out of it."""
+    (tmp_path / "inner").mkdir()
+    inner = _get("/manage/create/browse", {"path": [str(tmp_path / "inner")]}).body
+    assert inner["parent"] == os.path.realpath(str(tmp_path))
+    at_root = _get("/manage/create/browse", {"path": [str(tmp_path)]}).body
+    assert at_root["parent"] is None
+    assert at_root["root"] == os.path.realpath(str(tmp_path))
 
 
 def test_browse_is_bounded(tmp_path, monkeypatch):
@@ -279,12 +297,16 @@ def test_browse_refuses_a_path_that_is_not_a_folder(tmp_path):
     assert h.status == 400
 
 
-def test_browse_opens_somewhere_sensible_with_no_path(tmp_path, monkeypatch):
+def test_browse_opens_at_the_root_with_no_path(tmp_path, monkeypatch):
+    """The picker used to open beside the ZIM library, which was a guess at
+    where content lives. With a root configured there is nothing to guess: the
+    operator already said which directory this is about."""
     zdir = tmp_path / "library" / "zims"
     zdir.mkdir(parents=True)
     monkeypatch.setattr(server, "ZIM_DIR", str(zdir))
     b = _get("/manage/create/browse").body
-    assert b["path"] == os.path.realpath(str(tmp_path / "library"))
+    assert b["path"] == os.path.realpath(str(tmp_path))
+    assert b["parent"] is None
 
 
 # ── the gate ────────────────────────────────────────────────────────────────
@@ -310,6 +332,138 @@ def test_browse_and_probe_need_the_primary_admin_for_server_paths(
     assert (
         _post("/manage/create/probe", {"mode": "page", "source": "not a url"}).status
         == 400
+    )
+
+
+# ── the server-path root ────────────────────────────────────────────────────
+#
+# Eric on the round-2 folder flow: "The folder flow feels sketchy I don't love
+# showing the whole file system there. Maybe folder is CLI only?" The answer is
+# a door that is closed by default and opens only as wide as ZIMI_CREATE_ROOT
+# says. The Create page hides the folder chip when no root is set, but hiding a
+# chip stops nobody from posting the JSON by hand, so every one of these is
+# about the server refusing on its own.
+
+
+def _unset_root(monkeypatch):
+    monkeypatch.delenv(manage.CREATE_ROOT_ENV, raising=False)
+
+
+def test_with_no_root_the_picker_refuses_outright(monkeypatch, tmp_path):
+    """403 and not an empty listing: this is the filesystem-disclosure surface
+    Eric objected to, and with no root configured it should not answer."""
+    _unset_root(monkeypatch)
+    h = _get("/manage/create/browse", {"path": [str(tmp_path)]})
+    assert h.status == 403
+    assert "ZIMI_CREATE_ROOT" in h.body["error"]
+    assert h.body["create_root"] is None
+    assert "entries" not in h.body
+
+
+def test_with_no_root_folder_and_import_are_refused_everywhere(monkeypatch, tmp_path):
+    """Both server-path modes, through both doors. A hidden chip is cosmetic;
+    these four refusals are the boundary."""
+    _unset_root(monkeypatch)
+    (tmp_path / "docs").mkdir()
+    archive = tmp_path / "cap.warc.gz"
+    archive.write_bytes(b"\x1f\x8b")
+    for mode, source in (("folder", tmp_path / "docs"), ("import", archive)):
+        for path in ("/manage/create", "/manage/create/probe"):
+            h = _post(path, {"mode": mode, "source": str(source)})
+            assert h.status == 403, (mode, path)
+            assert "ZIMI_CREATE_ROOT" in h.body["error"], (mode, path)
+
+
+def test_with_no_root_the_url_modes_are_untouched(monkeypatch):
+    """The root gates SERVER PATHS. Capturing a URL reads nothing local and is
+    not what Eric was uneasy about."""
+    _unset_root(monkeypatch)
+    h = _post("/manage/create/probe", {"mode": "page", "source": "not a url"})
+    assert h.status == 400  # refused as a bad URL, never as a policy matter
+
+
+def test_the_status_probe_reports_the_root(monkeypatch, tmp_path):
+    body = _get("/manage/create/status", {"probe": ["1"]}).body
+    assert body["create_root"] == os.path.realpath(str(tmp_path))
+    _unset_root(monkeypatch)
+    assert _get("/manage/create/status", {"probe": ["1"]}).body["create_root"] is None
+    # Not on every poll — it is configuration, not progress.
+    assert "create_root" not in _get("/manage/create/status").body
+
+
+def test_a_sibling_directory_sharing_the_roots_name_is_not_inside_it(
+    monkeypatch, tmp_path
+):
+    """The classic naive-prefix hole: /srv/library-sources-evil starts with
+    /srv/library-sources and is nowhere near inside it."""
+    root = tmp_path / "sources"
+    root.mkdir()
+    evil = tmp_path / "sources-evil"
+    evil.mkdir()
+    monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(root))
+
+    h = _post("/manage/create/probe", {"mode": "folder", "source": str(evil)})
+    assert h.status == 400
+    assert "outside" in h.body["error"]
+    # …and the picker lands back at the root rather than showing it.
+    assert _get("/manage/create/browse", {"path": [str(evil)]}).body[
+        "path"
+    ] == os.path.realpath(str(root))
+
+
+def test_a_symlink_out_of_the_root_is_resolved_before_it_is_judged(
+    monkeypatch, tmp_path
+):
+    """Comparing the typed string would let a link planted inside the root walk
+    straight out of it. Both sides are realpath'd, so it cannot."""
+    root = tmp_path / "sources"
+    root.mkdir()
+    outside = tmp_path / "elsewhere"
+    (outside / "secrets").mkdir(parents=True)
+    os.symlink(str(outside), str(root / "escape"))
+    monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(root))
+
+    through_link = str(root / "escape" / "secrets")
+    h = _post("/manage/create/probe", {"mode": "folder", "source": through_link})
+    assert h.status == 400
+    assert "outside" in h.body["error"]
+    assert _get("/manage/create/browse", {"path": [through_link]}).body[
+        "path"
+    ] == os.path.realpath(str(root))
+
+
+def test_import_takes_the_same_root_as_folder(monkeypatch, tmp_path):
+    """A server path is a server path. Import reads one, the server reads it,
+    and it lands in the library — the same gesture with a different noun."""
+    root = tmp_path / "sources"
+    root.mkdir()
+    monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(root))
+    inside = root / "cap.warc.gz"
+    inside.write_bytes(b"\x1f\x8b")
+    outside = tmp_path / "cap.warc.gz"
+    outside.write_bytes(b"\x1f\x8b")
+
+    assert (
+        _post("/manage/create/probe", {"mode": "import", "source": str(outside)}).status
+        == 400
+    )
+    # The one inside gets as far as the engine's own answer about the file.
+    assert (
+        _post("/manage/create/probe", {"mode": "import", "source": str(inside)}).status
+        == 200
+    )
+
+
+def test_the_root_itself_is_inside_the_root(monkeypatch, tmp_path):
+    """An operator who names /srv/sources means that directory too, not only
+    the things under it."""
+    root = tmp_path / "sources"
+    (root / "docs").mkdir(parents=True)
+    (root / "index.html").write_text("<html><body>hi</body></html>")
+    monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(root))
+    assert (
+        _post("/manage/create/probe", {"mode": "folder", "source": str(root)}).status
+        == 200
     )
 
 
@@ -353,7 +507,9 @@ def test_a_bad_line_is_named_rather_than_failing_on_page_eleven():
 
 
 def test_the_list_is_capped_and_says_what_to_do_instead():
-    many = "\n".join(f"https://e.example/{i}" for i in range(manage.CREATE_MAX_PAGE_URLS + 1))
+    many = "\n".join(
+        f"https://e.example/{i}" for i in range(manage.CREATE_MAX_PAGE_URLS + 1)
+    )
     with pytest.raises(ValueError) as e:
         manage._create_validate({"mode": "page", "source": many})
     assert "site crawl" in str(e.value)

@@ -250,12 +250,20 @@ def gate_library(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def gate_server(gate_library, tmp_path_factory):
-    """A private server with its own copy of the library, one per test module."""
+    """A private server with its own copy of the library, one per test module.
+
+    ZIMI_CREATE_ROOT is set to the run's scratch area because folder and import
+    capture are refused outright without it — that door is closed by default,
+    and an operator who wants the web to package server paths opens exactly one
+    directory. Here that directory is the one every fixture builds its sources
+    under. The closed default has its own gate check in test_04_create.py."""
     root = tmp_path_factory.mktemp("gate-instance")
     zim_dir = os.path.join(str(root), "zims")
     data_dir = os.path.join(str(root), "data")
     shutil.copytree(gate_library, zim_dir)
-    with boot(zim_dir=zim_dir, data_dir=data_dir) as server:
+    env = clean_env()
+    env["ZIMI_CREATE_ROOT"] = str(tmp_path_factory.getbasetemp())
+    with boot(zim_dir=zim_dir, data_dir=data_dir, env=env) as server:
         yield server
 
 

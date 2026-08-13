@@ -459,6 +459,32 @@ def _assign_article_paths(pages):
     return by_key
 
 
+def _report_new_assets(carried, seen, page_url, note):
+    """Report every asset this page pulled in, as a line per asset naming what
+    it was and which page wanted it.
+
+    Read off the carrier's own dedupe map rather than emitted by the carrier,
+    for one hard reason: ``_AssetCarrier._carry`` wraps its add_item call in a
+    bare ``except Exception``, so a cancellation raised from inside there would
+    be swallowed and logged as a failed asset. Out here each line is a real
+    cancellation checkpoint, and the whole page's assets are visible at once —
+    including the ones that did NOT land, which the carrier records as a None
+    and which no other line has ever mentioned.
+
+    ``seen`` is the caller's running set of keys already reported; the map is
+    shared across the whole crawl so a site's common stylesheet belongs to the
+    first page that wanted it and is not re-reported for every page after."""
+    for key, in_zim_path in carried.items():
+        if key in seen:
+            continue
+        seen.add(key)
+        # The carrier keys by "<label>\n<resolved>", which for a site crawl is
+        # the host and the asset's path — together, the asset's identity.
+        label, _sep, resolved = key.partition("\n")
+        state = "done" if in_zim_path else "failed"
+        note(f"    asset {state} {label}/{resolved} for {page_url}")
+
+
 def _link_resolver(by_key):
     """Turn an absolute link into a sibling article reference when this
     capture holds the target, else None so it stays external. The fragment
@@ -579,6 +605,7 @@ def create_site_zim(
 
             static_cls = zim_static_item_class()
             carried = {}
+            reported = set()  # asset keys already announced; see _report_new_assets
             with atomic_zim_creator(out, language) as creator:
                 for packaged, page in enumerate(pages, 1):
                     with open(page["spool"], encoding="utf-8") as fh:
@@ -608,6 +635,7 @@ def create_site_zim(
                     # Each page gets its own carrier, so the crawl-wide record
                     # of what shipped has to be accumulated here.
                     seen_mimetypes |= carrier.mimetypes
+                    _report_new_assets(carried, reported, page["final_url"], note)
                     # Per page, not per batch. This pass is not the cheap tail
                     # of a crawl — it fetches every page's images and
                     # stylesheets, so on a real site it is the LONGEST phase,

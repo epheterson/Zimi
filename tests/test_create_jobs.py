@@ -594,6 +594,41 @@ def test_the_packaging_pass_reports_every_page_it_writes(fixture_site, tmp_path)
     assert packaged[-1].startswith(f"packaged {result['pages']}/{result['pages']}")
 
 
+def test_a_real_crawl_reports_its_assets_against_the_page_that_wanted_them(
+    fixture_site, tmp_path, stub_engine
+):
+    """The per-page fill bars in the Create page are drawn from asset nodes and
+    their parent. Derivation is unit-tested above; this is the end-to-end
+    check that a REAL crawl actually emits lines those rules recognise — the
+    half that used to be missing, so the bars never appeared on a real job."""
+    import zimi.crawler as crawler
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    lines = []
+    crawler.create_site_zim(
+        fixture_site,
+        out_dir=str(out_dir),
+        max_pages=_FIXTURE_PAGES,
+        delay=0,
+        ignore_robots=True,
+        progress=lines.append,
+    )
+    # Push the real crawl's own output back through the real adapter.
+    events = _events_of(stub_engine, lines)
+
+    assets = [e for e in events if e["t"] == "node" and e["kind"] == "asset"]
+    assert assets, "a crawl of a site with images and a stylesheet emitted no assets"
+    pages = {e["id"] for e in events if e["t"] == "node" and e["kind"] == "page"}
+    for asset in assets:
+        assert asset["parent"], f"asset with no page behind it: {asset}"
+        assert asset["parent"] in pages, f"asset hung off an uncaptured page: {asset}"
+        assert asset["state"] in ("done", "failed")
+    # The fixture's stylesheet is shared by every page and stored once, so it
+    # belongs to the first page that wanted it and is not re-reported after.
+    assert len(assets) == len({asset["id"] for asset in assets})
+
+
 def test_cancelling_during_packaging_leaves_nothing_behind(fixture_site, tmp_path):
     """Cancellation is raised out of the sink, so this is the real cancel path,
     landing where it could not land before: inside the write pass. Driven

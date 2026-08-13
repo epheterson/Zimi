@@ -1717,9 +1717,16 @@ class _CreateJob:
 #
 # ``count`` is scoped to the phase in force when it arrives: entries during
 # ``fetch`` are pages pulled off the network, entries during ``package`` are
-# pages written into the ZIM. ``parent`` is always None: the crawler reports
-# which page it captured, never which page linked to it, and inventing a tree
-# the engine did not report would be a prettier lie than a flat list.
+# pages written into the ZIM.
+#
+# ``parent`` is set on ASSET nodes and null on page nodes, and the difference
+# is what the engine actually knows. The crawler fetches an asset because a
+# named page referenced it, so that parentage is measured. It reports which
+# page it captured but never which page linked to it, so page parentage would
+# have to be invented — and a tree the engine did not measure is a prettier lie
+# than a flat list. The client derives page parentage from the site's own
+# address space and lets a server-supplied parent win, so if the crawler ever
+# does report link provenance nothing downstream has to change.
 
 _CREATE_RE_STEP = re.compile(r"^\[(\d+)/(\d+)\]\s+(.+)$")
 _CREATE_RE_CRAWL_TAIL = re.compile(r"\s*\((\d+) queued(?:, (.+?) fetched)?\)$")
@@ -1728,6 +1735,7 @@ _CREATE_RE_PACKAGING_MANY = re.compile(r"^packaging (\d+) pages?\b")
 _CREATE_RE_FETCHING = re.compile(r"^fetching (\S+)$")
 _CREATE_RE_PACKAGING_ONE = re.compile(r"^packaging (\S+)$")
 _CREATE_RE_SKIPPED = re.compile(r"^skipped (\S+):")
+_CREATE_RE_ASSET = re.compile(r"^asset (done|failed) (\S+) for (\S+)$")
 _CREATE_LABEL_MAX = 80
 
 
@@ -1761,12 +1769,12 @@ def _create_parse_bytes(text):
         return None
 
 
-def _create_node_event(kind, node_id, state, label=None):
+def _create_node_event(kind, node_id, state, label=None, parent=None):
     return {
         "t": "node",
         "kind": kind,
         "id": str(node_id)[:CREATE_MAX_SOURCE],
-        "parent": None,
+        "parent": str(parent)[:CREATE_MAX_SOURCE] if parent else None,
         "label": _create_short_label(label if label is not None else node_id),
         "state": state,
     }
@@ -1809,6 +1817,20 @@ def _create_derive_line(job, text):
         events.append(_create_node_event("entry", match.group(3), "done"))
         events.append(
             _create_count_event("entries", match.group(1), int(match.group(2)))
+        )
+        return events, phase
+
+    match = _CREATE_RE_ASSET.match(line)
+    if match:  # one image, stylesheet or font, and the page that wanted it
+        state, asset_id, page_id = match.groups()
+        events.append(
+            _create_node_event(
+                "asset",
+                asset_id,
+                state,
+                label=asset_id.rsplit("/", 1)[-1],
+                parent=page_id,
+            )
         )
         return events, phase
 
@@ -2021,16 +2043,18 @@ def _create_validate(data):
     if mode == "folder":
         # A server-side path typed by an admin. Normalized and required to be
         # a real, readable directory HERE so the answer is immediate instead
-        # of arriving as a job failure. There is deliberately no directory
-        # listing endpoint anywhere in Zimi — the admin knows their own paths,
-        # and a browsable server filesystem is not a feature we want to own.
+        # of arriving as a job failure — and required to sit under the one
+        # directory tree this server packages from, because the route's gate
+        # only proves a root EXISTS, not that this path is inside it.
         source = os.path.realpath(os.path.expanduser(source))
+        _create_require_within_root(source)
         if not os.path.isdir(source):
             raise ValueError("not a folder on this server")
         if not os.access(source, os.R_OK | os.X_OK):
             raise ValueError("that folder is not readable by the server")
     elif mode == "import":
         source = os.path.realpath(os.path.expanduser(source))
+        _create_require_within_root(source)
         if not os.path.isfile(source):
             raise ValueError("not a file on this server")
         if not os.access(source, os.R_OK):
@@ -2484,6 +2508,10 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
     if probe:
         # Only on the page's first poll: one cheap subprocess, not per-second.
         payload["import_ready"] = _create_import_ready()
+        # None, not "", when no root is configured: the client reads it as a
+        # yes/no about whether server-path capture exists on this instance at
+        # all, and an empty string is a path that happens to be blank.
+        payload["create_root"] = _create_root() or None
     if history:
         payload["history"] = _create_history()
     if job is None:
@@ -2569,6 +2597,107 @@ def _is_offline_mode():
     from zimi import p2p
 
     return bool(p2p.is_offline())
+
+
+# ── the server-path gate ────────────────────────────────────────────────────
+#
+# Folder and import capture read a path an admin types and package whatever is
+# under it. On the CLI that is unremarkable — someone at a shell on the machine
+# already has the filesystem. Over the WEB it is a package-/etc-into-a-ZIM
+# primitive plus, with the directory picker, a filesystem browser; Eric's round-2
+# verdict on it was "the folder flow feels sketchy, I don't love showing the
+# whole file system there. Maybe folder is CLI only?"
+#
+# The answer is a door that is CLOSED by default and opens exactly as wide as
+# the operator says: ZIMI_CREATE_ROOT names one directory tree, and with it
+# unset the web cannot package a server path at all. It is not a filter that
+# starts wide open, and it is not a client-side courtesy — the Create page hides
+# the folder chip when it is unset, but hiding a chip stops nobody from posting
+# the JSON by hand, so all three doors (browse, create, probe) check it here.
+#
+# Import takes the same root as folder. It is the same gesture with a different
+# noun: a path on the server, read by the server, packaged into the library.
+#
+# Containment compares RESOLVED paths on both sides. A naive prefix test on the
+# typed string lets /srv/library-sources-evil pass as being inside
+# /srv/library-sources, and lets a symlink planted inside the root walk straight
+# out of it.
+
+CREATE_ROOT_ENV = "ZIMI_CREATE_ROOT"
+
+
+def _create_root():
+    """The one directory tree the web may package from, resolved, or "" when
+    the operator has named none. Read at call time, like every other
+    environment-backed setting, so a config file published into the
+    environment at startup is picked up without a second resolution path."""
+    raw = os.environ.get(CREATE_ROOT_ENV, "").strip()
+    if not raw:
+        return ""
+    return os.path.realpath(os.path.expanduser(raw))
+
+
+def _create_within_root(resolved, root):
+    """True when an already-resolved path IS the root or lives under it.
+
+    Both sides must come from ``os.path.realpath`` — see the note above. The
+    rstrip matters for a root of "/", where root + os.sep would be "//" and
+    nothing on earth would match it."""
+    if not root:
+        return False
+    return resolved == root or resolved.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def _create_root_refusal():
+    """The ``(payload, status)`` every door sends when no root is configured.
+    It names the setting, because the person reading it is the one who can
+    change it."""
+    return (
+        {
+            "error": (
+                "packaging a server path from the web is switched off. Set "
+                "ZIMI_CREATE_ROOT to the one directory this server may package "
+                "from, or run `zimi create` on the machine itself."
+            ),
+            "create_root": None,
+        },
+        403,
+    )
+
+
+def _create_root_gate():
+    """The refusal when the web may not package a server path at all, else
+    None to carry on."""
+    return None if _create_root() else _create_root_refusal()
+
+
+def _create_require_within_root(resolved):
+    """Raise the client-safe ValueError ``_create_validate`` turns into a 400
+    when a resolved server path is not inside the configured root. Naming the
+    root is not disclosure: the caller is the primary admin, and the Create
+    page prints the same path under the field they typed into."""
+    root = _create_root()
+    if not root:
+        raise ValueError(
+            "packaging a server path from the web is switched off on this "
+            "server — set ZIMI_CREATE_ROOT, or run `zimi create` on the "
+            "machine itself"
+        )
+    if not _create_within_root(resolved, root):
+        raise ValueError(
+            f"that path is outside {root}, the only place this server packages from"
+        )
+
+
+def _create_server_path_gate(handler, mode):
+    """Both doors a server path can come through, in one place: folder and
+    import are the primary admin's alone, AND only within the configured root.
+    Returns ``(payload, status)`` to send, or None to carry on."""
+    if mode not in ("folder", "import"):
+        return None
+    if not _primary_admin_authorized(handler):
+        return {"error": "Server-path creation needs the primary admin"}, 403
+    return _create_root_gate()
 
 
 def _create_import_ready():
@@ -2827,7 +2956,9 @@ def _probe_import(source):
 #   - DIRECTORIES ONLY. Never file names. The preview needs counts and a total
 #     size, which the probe computes; a list of filenames would be disclosure
 #     with no purpose on screen.
-#   - The SAME primary-admin gate as folder mode itself, checked at the route.
+#   - The SAME primary-admin gate as folder mode itself, checked at the route,
+#     and the SAME ZIMI_CREATE_ROOT confinement — with no root configured this
+#     endpoint refuses outright rather than listing anything at all.
 #   - Bounded per response, and never recursive.
 #   - Symlinks are dropped rather than followed, matching `_scan_folder`, so a
 #     link cannot walk the picker somewhere the packager would refuse to go.
@@ -2838,9 +2969,20 @@ CREATE_BROWSE_MAX_ENTRIES = 500
 
 
 def _create_browse(path):
-    """One directory's subdirectories. Returns ``(payload, status)``."""
+    """One directory's subdirectories, within the configured root. Returns
+    ``(payload, status)``."""
+    root = _create_root()
+    if not root:
+        # Not an empty listing: with no root named, this endpoint has nothing
+        # it is allowed to describe and should not answer at all.
+        return _create_root_refusal()
     raw = str(path or "").strip()
-    target = os.path.realpath(os.path.expanduser(raw)) if raw else _create_browse_home()
+    target = os.path.realpath(os.path.expanduser(raw)) if raw else root
+    if not _create_within_root(target, root):
+        # Not an error to explain. Somewhere outside the root is simply not
+        # somewhere this picker goes, and landing back at the root is what the
+        # picker already does with a path it cannot open.
+        target = root
     if not os.path.isdir(target):
         return {"error": "not a folder on this server"}, 400
     entries = []
@@ -2866,27 +3008,18 @@ def _create_browse(path):
         return {"error": "could not read that folder"}, 400
     entries.sort(key=str.lower)
     parent = os.path.dirname(target)
+    if parent == target or not _create_within_root(parent, root):
+        # None at the root, which is how the client knows to stop offering
+        # "up" rather than looping on "/" — or, here, walking out of the one
+        # directory this server agreed to show.
+        parent = None
     return {
         "path": target,
-        # None at the filesystem root, which is how the client knows to stop
-        # offering "up" rather than looping on "/".
-        "parent": parent if parent and parent != target else None,
+        "parent": parent,
+        "root": root,
         "entries": entries,
         "truncated": truncated,
     }, 200
-
-
-def _create_browse_home():
-    """Where the picker opens. The ZIM library's own parent is the most likely
-    neighbourhood for content worth packaging, and it is somewhere the admin
-    has certainly already been."""
-    for candidate in (
-        os.path.dirname(os.path.abspath(_srv.ZIM_DIR or "")),
-        os.path.expanduser("~"),
-    ):
-        if candidate and os.path.isdir(candidate):
-            return os.path.realpath(candidate)
-    return os.path.realpath(os.sep)
 
 
 def _create_probe(data):
@@ -3777,15 +3910,13 @@ def handle_manage_post(handler, parsed, data):
         return _handle_public_access_post(handler, data)
 
     if parsed.path == "/manage/create":
-        # Folder and import modes read arbitrary server paths — a package-
-        # /etc-into-a-ZIM primitive. That power stays with the primary admin;
-        # secondary admins (an SSO role can mint them) keep the URL modes.
-        if data.get("mode") in ("folder", "import") and not _primary_admin_authorized(
-            handler
-        ):
-            return handler._json(
-                403, {"error": "Server-path creation needs the primary admin"}
-            )
+        # Folder and import modes read server paths — a package-/etc-into-a-ZIM
+        # primitive. That power stays with the primary admin (secondary admins,
+        # which an SSO role can mint, keep the URL modes) and only within
+        # ZIMI_CREATE_ROOT. See `_create_server_path_gate`.
+        gate = _create_server_path_gate(handler, data.get("mode"))
+        if gate:
+            return handler._json(gate[1], gate[0])
         payload, status = _create_start(data)
         return handler._json(status, payload)
 
@@ -3799,12 +3930,9 @@ def handle_manage_post(handler, parsed, data):
         # The probe reads exactly what the run would read, so it inherits the
         # run's gate verbatim — otherwise it becomes the cheaper way to ask the
         # same question of the same filesystem.
-        if data.get("mode") in ("folder", "import") and not _primary_admin_authorized(
-            handler
-        ):
-            return handler._json(
-                403, {"error": "Server-path creation needs the primary admin"}
-            )
+        gate = _create_server_path_gate(handler, data.get("mode"))
+        if gate:
+            return handler._json(gate[1], gate[0])
         payload, status = _create_probe(data)
         return handler._json(status, payload)
 

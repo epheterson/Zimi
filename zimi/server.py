@@ -427,6 +427,12 @@ CONFIG_ENV_SETTINGS = (
     ConfigSetting("offline", "ZIMI_OFFLINE", "bool", "0", None, False),
     ConfigSetting("hot_zims", "ZIMI_HOT_ZIMS", "csv", "", "hot.json", False),
     ConfigSetting("index_throttle", "ZIMI_INDEX_THROTTLE", "bool", "1", None, False),
+    # The one directory tree the WEB may package a ZIM from (zimi.manage's
+    # folder and import modes, and the directory picker that feeds them).
+    # Unset — the default — means the web cannot package a server path at all;
+    # it is not a filter that starts wide open. The CLI is unaffected: someone
+    # at a shell on the machine already has the filesystem.
+    ConfigSetting("create_root", "ZIMI_CREATE_ROOT", "str", "", "web off", False),
     # Trusted-header SSO (zimi/sso.py). Both the team domain and the audience
     # tag must be present for the feature to switch on at all, which is what
     # keeps a bare install from trusting an identity header anyone can send.
