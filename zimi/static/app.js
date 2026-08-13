@@ -7507,8 +7507,9 @@ function switchManageTab(tab) {
     renderCollectionsTab();
   } else if (tab === 'history') {
     q.placeholder = t('search_placeholder');
-    _histShowAll = false;  // re-entering the tab defaults back to the capped view
-    renderHistoryTab();
+    _act.showAll = false;   // re-entering the tab defaults back to the capped view
+    _act.panelOpen = false;
+    renderActivityLog();
   } else if (tab === 'activity') {
     q.placeholder = t('search_placeholder');
     renderActivityTab();
@@ -7657,108 +7658,263 @@ async function toggleCollZim(collName, zimName) {
 }
 
 // ── History tab ──
-function _historyZimInfo(ev) {
-  // Prefer the live library record — it carries has_icon and a clickable
-  // name. The event's cached copy (_fromEvent) is the fallback for ZIMs
-  // that no longer exist; it renders a letter icon and isn't clickable.
-  var filename = ev.filename;
-  if (zimsCache) {
-    var z = zimsCache.find(function(z) { return z.file === filename; });
-    if (z) return z;
+// ── Activity ────────────────────────────────────────────────────────────────
+// Everything that has happened to this library, in one list: a download, an
+// auto-update, a creation run, an export, a deletion — each line saying what it
+// was, how it went and WHO did it. A ZIM updated by the auto-updater and the
+// same ZIM updated by a person are the same transfer and different events, and
+// only one of them means somebody made a decision.
+//
+// The server keeps the journal (/manage/activity-log, last 200 records). The
+// fetch here is deliberately unfiltered: 200 records is one small read, and
+// filtering in the client is what lets the type and actor boxes be multi-select
+// and repaint with no round trip. The endpoint takes ?type= / ?actor= for API
+// callers who want the server to do it.
+
+var _ACT_RENDER_CAP = 50;  // rows before the "Show all" expander
+
+// One glyph per type, so the list is scannable before a word of it is read.
+function _actGlyph(d) {
+  return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
+}
+var _ACT_GLYPHS = {
+  download: _actGlyph('<path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/>'),
+  update:   _actGlyph('<path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/>'),
+  create:   _actGlyph('<path d="M12 5v14"/><path d="M5 12h14"/>'),
+  import:   _actGlyph('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>'),
+  export:   _actGlyph('<path d="M12 21V9"/><path d="M8 13l4-4 4 4"/><path d="M4 9V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"/>'),
+  delete:   _actGlyph('<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/>'),
+  health:   _actGlyph('<path d="M3 12h4l2-5 3 10 2-5h7"/>'),
+  restore:  _actGlyph('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/>')
+};
+var _ACT_FALLBACK_GLYPH = _actGlyph('<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>');
+
+// A record with no subject is about the server itself, not about one ZIM —
+// named here so it is named in the reader's language.
+var _ACT_SUBJECT_FALLBACK = {
+  health: 'act_subject_library',
+  restore: 'act_subject_backup',
+  export: 'act_subject_bookmarks'
+};
+// What the optional count counts, per type.
+var _ACT_COUNT_LABEL = {export: 'act_n_bookmarks', restore: 'act_n_sections'};
+
+// View state. Filters are stored as what is turned OFF, so a type that first
+// appears in the journal after the panel was opened is visible, not hidden.
+var _act = {
+  records: [], types: [], actors: [],
+  offTypes: {}, offActors: {},
+  showAll: false, panelOpen: false
+};
+
+// The filter value for a record's actor: a username, or the kind. Mirrors the
+// server's _activity_actor_key so both sides group the same way.
+function _actActorKey(r) {
+  var a = r.actor || {};
+  return (a.kind === 'user' && a.name) ? a.name : (a.kind || 'server');
+}
+function _actActorLabel(key) {
+  if (key === 'server') return t('act_actor_server');
+  if (key === 'unknown') return t('act_actor_unknown');
+  return key;
+}
+function _actTypeLabel(type) {
+  var key = 'act_type_' + type;
+  var label = t(key);
+  return label === key ? type : label;
+}
+// The verb for a row: past tense when it worked ("Downloaded"), the noun plus
+// what went wrong when it didn't ("Download · Failed").
+function _actVerb(r) {
+  if (r.outcome === 'ok') {
+    var key = 'act_ev_' + r.type;
+    var verb = t(key);
+    return verb === key ? _actTypeLabel(r.type) : verb;
   }
-  // Strip date suffix to match by name prefix
-  var name = (filename || '').replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '');
-  var z2 = _zimInfo(name) || (ev.name ? _zimInfo(ev.name) : null);
-  if (z2) return z2;
-  // Cached ZIM info from the event (survives deletion)
-  if (ev.title) return { title: ev.title, name: ev.name || '', has_icon: ev.has_icon, language: ev.language || '', _fromEvent: true };
-  // Try catalog cache for downloads that never completed
-  if (_catalogCache) {
-    var catMatch = _catalogCache.find(function(it) {
-      return it.download_url && it.download_url.split('/').pop() === filename;
-    });
-    if (catMatch) return { title: catMatch.title, name: catMatch.name || name, has_icon: false, language: catMatch.language || '', _fromEvent: true };
-  }
-  return null;
+  return _actTypeLabel(r.type) + ' · ' + t('act_out_' + r.outcome);
 }
 
-// Activity tab render cap. History is newest-first and server-capped at 500;
-// showing all of it makes the tab scroll forever, so render the most recent
-// _HIST_RENDER_CAP and expose the rest behind a "Show all" expander (per-view
-// flag, reset on tab re-entry via switchManageTab so it defaults back to capped).
-var _HIST_RENDER_CAP = 50;
-var _histShowAll = false;
-async function renderHistoryTab() {
+function _actFilterCount() {
+  return Object.keys(_act.offTypes).length + Object.keys(_act.offActors).length;
+}
+function _actVisibleRecords() {
+  return _act.records.filter(function(r) {
+    return !_act.offTypes[r.type] && !_act.offActors[_actActorKey(r)];
+  });
+}
+
+// The live library record for a journal subject, when the ZIM is still here —
+// it carries the icon and makes the row clickable. Matched on title first
+// (what the journal stores) and on name second (what an older record or a
+// filename-derived subject looks like).
+function _actZim(subject) {
+  if (!subject || !zimsCache) return null;
+  return zimsCache.find(function(z) { return z.title === subject; }) ||
+         zimsCache.find(function(z) { return z.name === subject; }) || null;
+}
+
+async function renderActivityLog(refetch) {
   const el = document.getElementById('manage-history');
   if (!el) return;
-  el.innerHTML = _loadingHtml();
-  try {
-    const res = await manageFetch('/manage/history');
-    const data = await res.json();
-    const allEvents = data.history || [];
-    if (!allEvents.length) {
-      el.innerHTML = '<div class="empty"><p>' + tH('no_history') + '</p><p class="hint">' + tH('history_hint') + '</p></div>';
+  if (refetch !== false || !_act.records.length) {
+    el.innerHTML = _loadingHtml();
+    try {
+      const res = await manageFetch('/manage/activity-log');
+      const data = await res.json();
+      _act.records = data.records || [];
+      _act.types = data.types || [];
+      _act.actors = data.actors || [];
+    } catch (e) {
+      el.innerHTML = '<div class="empty"><p>' + tH('could_not_load') + '</p></div>';
       return;
     }
-    const capped = !_histShowAll && allEvents.length > _HIST_RENDER_CAP;
-    const events = capped ? allEvents.slice(0, _HIST_RENDER_CAP) : allEvents;
-    // Group by day
-    const days = {};
-    for (const ev of events) {
-      const d = new Date(ev.ts * 1000);
-      const key = d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-      if (!days[key]) days[key] = [];
-      days[key].push(ev);
-    }
-    let h = '';
-    for (const [day, evts] of Object.entries(days)) {
-      h += '<div style="margin-bottom:20px">';
-      h += '<div class="ci-section-label">' + esc(day) + '</div>';
-      for (const ev of evts) {
-        const time = new Date(ev.ts * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        const zim = _historyZimInfo(ev);
-        const title = zim ? (zim.title || zim.name) : (ev.filename || '').replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '').replace(/_/g, ' ');
-        const canShowIcon = zim && zim.has_icon && zim.name && !zim._fromEvent;
-        const iconHtml = canShowIcon
-          ? '<img src="/w/' + encodeURIComponent(zim.name) + '/-/icon" alt="" width="40" height="40" loading="lazy">'
-          : '<span class="ci-letter">' + (esc(title)[0] || '?').toUpperCase() + '</span>';
-
-        let label = '', labelColor = 'var(--text2)';
-        if (ev.event === 'updated') { label = t('event_updated'); }
-        else if (ev.event === 'download') { label = t('event_downloaded'); }
-        else if (ev.event === 'download_failed') { label = t('event_failed'); labelColor = 'var(--error)'; }
-        else if (ev.event === 'deleted') { label = t('event_deleted'); }
-        else { label = ev.event; }
-
-        const meta = [];
-        if (ev.size_bytes) meta.push(fmtSize(ev.size_bytes / (1024 * 1024 * 1024)));
-        meta.push(time);
-
-        const clickable = zim && !zim._fromEvent;
-        var evLangTag = zim ? _catLangTag(zim.language, zim.name) : '';
-        h += '<div class="catalog-item"' + (clickable ? ' style="cursor:pointer" onclick="enterSource(\'' + escJs(zim.name) + '\',true)"' : '') + '>' +
-          '<div class="ci-icon">' + iconHtml + '</div>' +
-          '<div class="ci-info">' +
-            '<div class="ci-title">' + esc(title) + evLangTag + '</div>' +
-            '<div class="ci-meta">' + meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
-          '</div>' +
-          '<div class="ci-actions"><span style="font-size:12px;font-weight:600;color:' + labelColor + '">' + label + '</span></div>' +
-        '</div>';
-      }
-      h += '</div>';
-    }
-    if (capped) {
-      h += '<button class="dl-clear-btn hist-show-all" onclick="_histRevealAll()">' +
-        tH('show_all_n', {n: allEvents.length}) + '</button>';
-    }
-    el.innerHTML = h;
-  } catch(e) {
-    el.innerHTML = '<div class="empty"><p>' + tH('could_not_load') + '</p></div>';
   }
+  el.innerHTML = _actHeaderHtml() + _actListHtml();
 }
 
-// "Show all (N)" expander for the activity tab — drop the render cap and repaint.
-function _histRevealAll() { _histShowAll = true; renderHistoryTab(); }
+function _actHeaderHtml() {
+  // Nothing to filter yet: an empty journal gets the empty state, not a button
+  // that opens an empty box.
+  if (!_act.records.length) return '';
+  var n = _actFilterCount();
+  return '<div class="act-bar">' +
+    '<button class="act-filter-btn' + (n ? ' filtered' : '') + '" onclick="_actTogglePanel(event)" ' +
+      'aria-expanded="' + (_act.panelOpen ? 'true' : 'false') + '">' +
+      '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" ' +
+        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>' +
+      tH('act_filter') + (n ? '<span class="act-filter-n">' + n + '</span>' : '') +
+    '</button>' +
+    (_act.panelOpen ? _actPanelHtml() : '') +
+  '</div>';
+}
+
+function _actPanelHtml() {
+  var h = '<div class="act-panel" onclick="event.stopPropagation()">';
+  h += _actPanelGroup(tH('act_filter_types'), _act.types, _act.offTypes, 'type', _actTypeLabel);
+  h += _actPanelGroup(tH('act_filter_who'), _act.actors, _act.offActors, 'actor', _actActorLabel);
+  if (_actFilterCount()) {
+    h += '<button class="act-panel-clear" onclick="_actClearFilters()">' + tH('act_filter_clear') + '</button>';
+  }
+  h += '</div>';
+  return h;
+}
+
+// One checkbox group. `off` is the map of turned-off values, so an empty map
+// means everything in this group is showing.
+function _actPanelGroup(title, values, off, kind, label) {
+  if (!values.length) return '';
+  var h = '<div class="act-panel-group"><div class="act-panel-title">' + title + '</div>';
+  for (var i = 0; i < values.length; i++) {
+    var v = values[i];
+    var on = !off[v];
+    h += '<label class="act-check' + (on ? ' on' : '') + '">' +
+      '<input type="checkbox"' + (on ? ' checked' : '') +
+        ' onchange="_actToggleFilter(\'' + kind + '\', \'' + escAttr(v) + '\')">' +
+      '<span>' + esc(label(v)) + '</span>' +
+    '</label>';
+  }
+  return h + '</div>';
+}
+
+function _actListHtml() {
+  var all = _actVisibleRecords();
+  if (!all.length) {
+    if (_actFilterCount()) {
+      return '<div class="empty"><p>' + tH('act_empty_filtered') + '</p>' +
+        '<p class="hint"><a href="#" onclick="_actClearFilters();return false">' + tH('act_filter_clear') + '</a></p></div>';
+    }
+    return '<div class="empty"><p>' + tH('act_empty') + '</p><p class="hint">' + tH('act_empty_hint') + '</p></div>';
+  }
+  var capped = !_act.showAll && all.length > _ACT_RENDER_CAP;
+  var records = capped ? all.slice(0, _ACT_RENDER_CAP) : all;
+  var h = '';
+  var day = null;
+  for (var i = 0; i < records.length; i++) {
+    var r = records[i];
+    var d = new Date((r.ts || 0) * 1000);
+    var key = d.toLocaleDateString(_currentLang || 'en', {year: 'numeric', month: 'short', day: 'numeric'});
+    if (key !== day) {
+      if (day !== null) h += '</div>';
+      h += '<div class="act-day"><div class="ci-section-label">' + esc(key) + '</div>';
+      day = key;
+    }
+    h += _actRowHtml(r);
+  }
+  if (day !== null) h += '</div>';
+  if (capped) {
+    h += '<button class="dl-clear-btn hist-show-all" onclick="_actRevealAll()">' +
+      tH('show_all_n', {n: all.length}) + '</button>';
+  }
+  return h;
+}
+
+function _actRowHtml(r) {
+  var fallback = _ACT_SUBJECT_FALLBACK[r.type];
+  var subject = r.subject || (fallback ? t(fallback) : _actTypeLabel(r.type));
+  var zim = _actZim(r.subject);
+  var icon = (zim && zim.has_icon && zim.name)
+    ? '<img src="/w/' + encodeURIComponent(zim.name) + '/-/icon" alt="" width="40" height="40" loading="lazy">'
+    : (_ACT_GLYPHS[r.type] || _ACT_FALLBACK_GLYPH);
+
+  var meta = ['<span class="act-verb' + (r.outcome === 'ok' ? '' : ' bad') + '">' + esc(_actVerb(r)) + '</span>'];
+  if (r.bytes) meta.push('<span>' + fmtSize(r.bytes / 1073741824) + '</span>');
+  if (r.count && _ACT_COUNT_LABEL[r.type]) {
+    meta.push('<span>' + esc(t(_ACT_COUNT_LABEL[r.type], {n: r.count})) + '</span>');
+  }
+  if (r.detail) meta.push('<span class="act-detail">' + esc(r.detail) + '</span>');
+
+  var actorKey = _actActorKey(r);
+  var chip = '<span class="act-chip act-chip-' + esc(actorKey === 'server' || actorKey === 'unknown' ? actorKey : 'user') + '">' +
+    esc(_actActorLabel(actorKey)) + '</span>';
+
+  return '<div class="catalog-item act-row"' +
+      (zim ? ' style="cursor:pointer" onclick="enterSource(\'' + escJs(zim.name) + '\',true)"' : '') + '>' +
+    '<div class="ci-icon act-icon">' + icon + '</div>' +
+    '<div class="ci-info">' +
+      '<div class="ci-title">' + esc(subject) + '</div>' +
+      '<div class="ci-meta">' + meta.join(' &middot; ') + '</div>' +
+    '</div>' +
+    '<div class="ci-actions act-side">' + chip +
+      '<span class="act-time">' + esc(_relTime(r.ts)) + '</span>' +
+    '</div>' +
+  '</div>';
+}
+
+// Repaint from the records already in hand — filtering never re-fetches.
+function _actRepaint() { renderActivityLog(false); }
+
+function _actToggleFilter(kind, value) {
+  var off = kind === 'type' ? _act.offTypes : _act.offActors;
+  if (off[value]) delete off[value]; else off[value] = true;
+  _actRepaint();
+}
+function _actClearFilters() {
+  _act.offTypes = {};
+  _act.offActors = {};
+  _actRepaint();
+}
+function _actRevealAll() { _act.showAll = true; _actRepaint(); }
+
+// The panel closes on the next click anywhere else — a filter you have to hunt
+// for a close button on is not a small popover. Escape closes it too, from the
+// one keyboard chain at the bottom of this file, so a panel over the manage
+// view can't fall through to "leave the manage view".
+function _actTogglePanel(ev) {
+  if (ev) ev.stopPropagation();
+  if (_act.panelOpen) { _actClosePanel(); return; }
+  _act.panelOpen = true;
+  _actRepaint();
+  // Next tick: this very click must not be the one that closes it again.
+  setTimeout(function() { document.addEventListener('click', _actClosePanel); }, 0);
+}
+function _actClosePanel() {
+  document.removeEventListener('click', _actClosePanel);
+  if (!_act.panelOpen) return;
+  _act.panelOpen = false;
+  _actRepaint();
+}
 
 // ── Stats tab (merged server stats + usage) ──
 async function renderActivityTab() {
@@ -8007,7 +8163,7 @@ async function renderManage() {
   } else if (manageTab === 'collections') {
     renderCollectionsTab();
   } else if (manageTab === 'history') {
-    renderHistoryTab();
+    renderActivityLog();
   } else if (manageTab === 'activity') {
     renderActivityTab();
   } else {
@@ -15683,6 +15839,7 @@ document.addEventListener('keydown', e => {
     var _hp = document.getElementById('history-panel');
     if (_hp && _hp.classList.contains('open')) { _closeLibraryPanel(); return; }
     if (suggestDropdown.style.display !== 'none') { hideSuggest(); return; }
+    if (_act.panelOpen) { _actClosePanel(); return; }
     if (_createOpen) { closeCreate(); return; }
     if (_almanacOpen) { closeAlmanac(); return; }
     if (readerOpen) { goBack(); return; }
@@ -16522,7 +16679,16 @@ async function _pollActivity() {
     const res = await authedFetch('/manage/activity', { credentials: 'same-origin' });
     if (res.ok) {
       const data = await res.json();
+      // What the LAST poll saw, read before this one repaints the badge.
+      const wasActive = !!(_activityBadge && _activityBadge.active);
       const stillActive = _renderActivity(data);
+      // Background work just finished while the Activity view is open — the
+      // journal gained a line the reader is looking straight at. This is the
+      // only moment worth a refetch: the badge poll already told us something
+      // ended, so the list costs one small read instead of a timer of its own.
+      if (wasActive && !stillActive && mode === 'manage' && manageTab === 'history') {
+        renderActivityLog();
+      }
       _scheduleNextActivityPoll(!stillActive);
       return;
     }

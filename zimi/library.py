@@ -3209,6 +3209,55 @@ def _title_from_filename(filename):
     return {"title": name.replace("_", " ").title(), "name": name}
 
 
+def _download_by_id(dl_id):
+    """The download record with this id — active or still queued — or None."""
+    with _download_lock:
+        dl = _active_downloads.get(dl_id)
+        if dl is not None:
+            return dl
+        return next((q for q in _download_queue if q.get("id") == dl_id), None)
+
+
+def download_subject(dl):
+    """What to call this transfer in the activity journal: the library's title
+    for the ZIM if it already knows one, else the name read off the filename.
+    Never the path — the journal is read by people, and it travels in backups.
+    """
+    filename = dl.get("filename", "")
+    try:
+        for z in _srv._zim_list_cache or []:
+            if z.get("file") == filename:
+                return z.get("title") or z.get("name") or filename
+    except Exception as e:
+        log.debug("Could not name %s from the library cache: %s", filename, e)
+    named = _title_from_filename(filename)
+    return named.get("title") or named.get("name") or filename
+
+
+def _record_download_activity(dl, outcome, detail=""):
+    """File a finished transfer in the activity journal, under whoever asked.
+
+    A download with no actor on it is one the SERVER started: the auto-updater,
+    the nightly scheduler, or a resume after a restart (the pending-downloads
+    snapshot deliberately keeps only what it takes to restart a transfer, so a
+    resumed one is genuinely the server's doing).
+    """
+    tag = dl.get("_activity") or {}
+    try:
+        from zimi import manage as _manage
+
+        _manage.record_activity(
+            tag.get("type") or ("update" if dl.get("is_update") else "download"),
+            download_subject(dl),
+            outcome=outcome,
+            detail=detail,
+            actor=tag.get("actor"),
+            size_bytes=dl.get("total_bytes") or dl.get("size_bytes"),
+        )
+    except Exception as e:
+        log.debug("Could not journal activity for %s: %s", dl.get("filename"), e)
+
+
 def _post_download_finalize(dl):
     """Bookkeeping shared by both the HTTP-mirror and BT success paths.
 
@@ -3270,6 +3319,7 @@ def _post_download_finalize(dl):
                 break
     except Exception as e:
         log.debug("Failed to cache ZIM metadata for download history: %s", e)
+    _record_download_activity(dl, "ok")
     event_type = "updated" if dl.get("is_update") else "download"
     _srv._append_history(
         {
@@ -3365,6 +3415,7 @@ def _download_thread(dl):
         if not success:
             dl["done"] = True
             dl["error"] = f"All {len(mirrors)} mirror(s) failed. Last: {last_error}"
+            _record_download_activity(dl, "failed", str(last_error or ""))
             _srv._append_history(
                 {
                     "event": "download_failed",
@@ -3414,6 +3465,10 @@ def _download_thread(dl):
         )
         dl["error"] = "Download failed"
         if not dl.get("cancelled"):
+            # dl["error"], not str(e): the exception can name a local path and
+            # the journal is a display surface (and travels in backups). The
+            # traceback is already in the log above.
+            _record_download_activity(dl, "failed", dl["error"])
             _srv._append_history(
                 {
                     "event": "download_failed",
@@ -3540,12 +3595,15 @@ def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
     return dl_id, None
 
 
-def _start_download(url, size_bytes=None):
+def _start_download(url, size_bytes=None, actor=None):
     """Start a background download via urllib. Returns (download_id, error).
 
     If the concurrent-download cap is reached, the download is queued.
     `size_bytes` is used to order the queue smallest-first; pass it from the
     catalog when available. Unknown sizes are dispatched after known ones.
+    `actor` is whoever asked for it (None = the server did), carried on the
+    record so the activity journal can say who when the transfer lands — an
+    hour later, on a thread that never saw the request.
     """
     # Validate URL — only allow Kiwix-controlled hosts (download.kiwix.org,
     # lbo.download.kiwix.org load-balanced origin, dumps.wikimedia.org/kiwix
@@ -3578,16 +3636,19 @@ def _start_download(url, size_bytes=None):
     if filename is None:
         log.info("download rejected: %s (url=%.120r)", err, url)
         return None, err
+    extra = {"_activity": {"actor": actor}}
+    if meta4_url:
+        extra["_meta4"] = meta4_url
     return _enqueue_zim_download(
         url,
         [url],
         filename,
         size_bytes=size_bytes,
-        extra={"_meta4": meta4_url} if meta4_url else None,
+        extra=extra,
     )
 
 
-def _start_peer_download(peer_name, filename, size_bytes=None):
+def _start_peer_download(peer_name, filename, size_bytes=None, actor=None):
     """Download a ZIM directly from a discovered LAN peer over HTTP.
 
     Gated on the share toggle in BOTH directions — with sharing off the
@@ -3635,11 +3696,15 @@ def _start_peer_download(peer_name, filename, size_bytes=None):
         [url],
         filename,
         size_bytes=size_bytes,
-        extra={"_source": "peer", "peer_name": peer_name},
+        extra={
+            "_source": "peer",
+            "peer_name": peer_name,
+            "_activity": {"actor": actor},
+        },
     )
 
 
-def _start_import(url, size_bytes=None):
+def _start_import(url, size_bytes=None, actor=None):
     """Start a background download from any HTTPS URL. Returns download ID."""
     global _download_counter
     if not url.startswith("https://"):
@@ -3675,6 +3740,9 @@ def _start_import(url, size_bytes=None):
             "error": None,
             "is_update": False,
             "size_bytes": size_bytes,
+            # An import is its own kind of event in the activity journal: the
+            # admin pointed at a URL nobody's catalog knows about.
+            "_activity": {"actor": actor, "type": "import"},
         }
         _enqueue_or_start(dl)
     return dl_id, None

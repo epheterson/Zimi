@@ -1502,6 +1502,366 @@ def _apply_backup_bundle(data, overwrite=False):
 
 
 # ============================================================================
+# The activity journal — what happened to this library, and who did it
+#
+# Every kind of change already left a trace SOMEWHERE: downloads and updates in
+# history.json, creation runs in create_jobs.json, health checks and exports in
+# a status dict that a restart forgets. None of them recorded WHO, which is the
+# question an operator actually asks of a shared server — a ZIM updated by the
+# auto-updater and the same ZIM updated by a person are the same row in the old
+# history, and only one of them means someone made a decision.
+#
+# So: one line per thing that happened, stamped where it happens, carrying the
+# actor with it. Downloads learn their actor at submission and carry it to the
+# finish line (the stamp fires in a background thread minutes later, long after
+# the request that asked for it is gone).
+#
+# The discipline is the create journal's: bounded, atomic, and soft — a journal
+# that cannot be written costs a log line, never the operation. Nothing in here
+# may raise into a caller's success path.
+# ============================================================================
+
+ACTIVITY_FILE = "activity.json"
+# Deep enough to cover a busy week of a real library, shallow enough that the
+# whole file is one small read and the view never needs paging.
+ACTIVITY_RECORDS = 200
+# The kinds of thing that happen to a library. A type outside this set is still
+# recorded — the client renders it with the generic icon — but everything Zimi
+# itself stamps is named here, and the filter is built from what is present.
+ACTIVITY_TYPES = (
+    "download",
+    "update",
+    "create",
+    "export",
+    "delete",
+    "health",
+    "restore",
+    "import",
+)
+ACTIVITY_OUTCOMES = ("ok", "failed", "cancelled", "interrupted")
+# Both are display fields; a runaway error string must not be able to grow the
+# journal past the size that keeps it a cheap read.
+ACTIVITY_SUBJECT_MAX = 160
+ACTIVITY_DETAIL_MAX = 200
+# The name a request gets when it is authenticated as the primary admin — the
+# account with a password rather than a user record, so there is no username to
+# borrow. Secondary admins and ordinary users keep their own names.
+ACTIVITY_ADMIN = "admin"
+# Work nobody asked for in the moment: the auto-updater, the download scheduler,
+# resumes after a restart. `name` stays null — "server" is the whole identity.
+ACTIVITY_SERVER_ACTOR = {"kind": "server", "name": None}
+# Pre-1.9 history has no actor, and guessing one would be worse than saying so.
+ACTIVITY_UNKNOWN_ACTOR = {"kind": "unknown", "name": None}
+# How the pre-1.9 event names map into activity types when the old history is
+# folded in (see _activity_seed).
+_ACTIVITY_FROM_HISTORY = {
+    "download": ("download", "ok"),
+    "updated": ("update", "ok"),
+    "download_failed": ("download", "failed"),
+    "deleted": ("delete", "ok"),
+}
+
+_activity_lock = threading.Lock()
+_activity = None  # list of records, oldest first; loaded once per process
+
+
+def _activity_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, ACTIVITY_FILE)
+
+
+def activity_actor(handler=None):
+    """Who is responsible for what is about to happen.
+
+    ``handler`` is the request that asked for it, or None for work the server
+    started by itself. Every caller with a request passes it — these routes are
+    admin-gated, so a request that got this far is *somebody*, and the only
+    question is whether that somebody has a name of their own.
+    """
+    if handler is None:
+        return dict(ACTIVITY_SERVER_ACTOR)
+    name = None
+    try:
+        from zimi import users as _users
+
+        name = _users.resolve_request_user(handler)
+    except Exception as e:
+        # An unreadable session store must not cost the operation its actor
+        # line, let alone the operation.
+        log.debug("Could not resolve the actor for an activity record: %s", e)
+    return {"kind": "user", "name": name or ACTIVITY_ADMIN}
+
+
+def _activity_clean_actor(actor):
+    """A stored actor dict, whatever shape the caller handed us."""
+    if not isinstance(actor, dict):
+        return dict(ACTIVITY_SERVER_ACTOR)
+    kind = actor.get("kind")
+    if kind not in ("user", "server", "unknown"):
+        kind = "server"
+    name = actor.get("name")
+    if kind != "user" or not isinstance(name, str) or not name.strip():
+        return {"kind": kind, "name": None}
+    return {"kind": "user", "name": name.strip()[:ACTIVITY_SUBJECT_MAX]}
+
+
+def _activity_seed():
+    """The journal a fresh install of 1.9 is born with: the old history.
+
+    An upgrade must not look like data loss. Everything the pre-1.9 history
+    recorded is an activity record missing exactly one field — who — so it
+    converts cleanly, and the actor it converts to is ``unknown`` rather than a
+    guess. Runs once: after this the file exists and the stamps take over.
+    """
+    seeded = []
+    try:
+        events = _srv._load_history()
+    except Exception as e:
+        log.debug("No history to seed the activity journal from: %s", e)
+        return seeded
+    # History is newest first and this journal is oldest first.
+    for event in reversed(events if isinstance(events, list) else []):
+        if not isinstance(event, dict):
+            continue
+        mapped = _ACTIVITY_FROM_HISTORY.get(str(event.get("event") or ""))
+        if not mapped:
+            continue
+        event_type, outcome = mapped
+        subject = (
+            event.get("title")
+            or event.get("name")
+            or str(event.get("filename") or "").removesuffix(".zim")
+        )
+        seeded.append(
+            _activity_record(
+                event_type,
+                subject,
+                outcome=outcome,
+                detail=str(event.get("error") or "")[:ACTIVITY_DETAIL_MAX],
+                actor=dict(ACTIVITY_UNKNOWN_ACTOR),
+                size_bytes=event.get("size_bytes"),
+                ts=event.get("ts"),
+            )
+        )
+    return seeded[-ACTIVITY_RECORDS:]
+
+
+def _activity_load():
+    """The journal, loaded once per process. Caller holds ``_activity_lock``."""
+    global _activity
+    if _activity is not None:
+        return _activity
+    records = None
+    try:
+        with open(_activity_path(), encoding="utf-8") as fh:
+            loaded = json.load(fh)
+        if isinstance(loaded, list):
+            records = [r for r in loaded if isinstance(r, dict)]
+    except FileNotFoundError:
+        pass  # fresh install, or the first boot after the upgrade
+    except (OSError, ValueError) as e:
+        # Corrupt or unreadable degrades to empty: the view is a nicety, and
+        # nothing else in the server may fail because of it.
+        log.warning("Cannot read the activity journal: %s", e)
+        records = []
+    fresh = records is None
+    if fresh:
+        records = _activity_seed()
+    trimmed = len(records) > ACTIVITY_RECORDS
+    if trimmed:
+        # Trimmed on the way in as well as out — the bound is what the file is
+        # allowed to be, not merely what this process appends to it.
+        del records[: len(records) - ACTIVITY_RECORDS]
+    _activity = records
+    if (fresh and records) or trimmed:
+        _activity_save()
+    return records
+
+
+def _activity_save():
+    """Caller holds ``_activity_lock``. Never raises: a thing that happened
+    still happened when the disk says no."""
+    _srv._atomic_write_json(_activity_path(), _activity or [])
+
+
+def _activity_record(
+    event_type,
+    subject,
+    outcome="ok",
+    detail="",
+    actor=None,
+    size_bytes=None,
+    count=None,
+    ts=None,
+):
+    """One journal record. Every field is already visible to the admin who is
+    reading it — subjects are library names and titles, never server paths.
+
+    ``detail`` is a locale-neutral FRAGMENT, not a sentence: a source URL, a
+    ratio, an error the transport handed us. The verb around it ("Downloaded",
+    "Update installed") is an i18n key on the client, because a sentence
+    written here would be the one line of the UI that cannot be translated.
+    ``bytes`` and ``count`` travel as numbers for the same reason — the client
+    formats them in the reader's locale. What ``count`` counts is fixed per
+    type: bookmarks for an export, restored sections for a restore.
+    """
+    record = {
+        "ts": round(float(ts if ts is not None else time.time()), 3),
+        "type": str(event_type or "")[:40],
+        "actor": _activity_clean_actor(actor),
+        "subject": str(subject or "")[:ACTIVITY_SUBJECT_MAX],
+        "outcome": outcome if outcome in ACTIVITY_OUTCOMES else "ok",
+        "detail": str(detail or "")[:ACTIVITY_DETAIL_MAX],
+    }
+    if isinstance(size_bytes, (int, float)) and size_bytes > 0:
+        record["bytes"] = int(size_bytes)
+    if isinstance(count, int) and count > 0:
+        record["count"] = count
+    return record
+
+
+def record_activity(
+    event_type,
+    subject,
+    outcome="ok",
+    detail="",
+    actor=None,
+    size_bytes=None,
+    count=None,
+):
+    """Append one line to the activity journal. Never raises.
+
+    Called from request handlers, from download threads long after their
+    request ended, and from the create watchdog — so it takes its own lock and
+    holds no other.
+    """
+    try:
+        record = _activity_record(
+            event_type,
+            subject,
+            outcome=outcome,
+            detail=detail,
+            actor=actor,
+            size_bytes=size_bytes,
+            count=count,
+        )
+        with _activity_lock:
+            records = _activity_load()
+            records.append(record)
+            if len(records) > ACTIVITY_RECORDS:
+                del records[: len(records) - ACTIVITY_RECORDS]
+            _activity_save()
+        return record
+    except Exception as e:
+        log.warning("Could not journal a %s activity record: %s", event_type, e)
+        return None
+
+
+# Two operations answer their caller immediately and finish on a worker thread:
+# the library health check and the bookmark export. Both report through a status
+# dict the client polls, and neither should learn about this journal — one of
+# them writes ZIMs for a living. So the route that started the work watches that
+# status instead, and files the line when it settles.
+ACTIVITY_WATCH_TICK = 1.0
+# Long enough for a health check over a 600 GB library on a spinning NAS disk,
+# short enough that a wedged worker does not leave a thread waiting forever.
+ACTIVITY_WATCH_MAX = 6 * 3600
+
+
+def _activity_after(state_fn, finish):
+    """Watch a background job's status dict; call ``finish(state)`` once it
+    leaves the running phase. Runs on its own daemon thread and never raises
+    into it."""
+
+    def _wait():
+        deadline = time.time() + ACTIVITY_WATCH_MAX
+        while time.time() < deadline:
+            time.sleep(ACTIVITY_WATCH_TICK)
+            try:
+                state = state_fn() or {}
+            except Exception as e:
+                log.debug("Activity watch could not read a job's state: %s", e)
+                return
+            if state.get("phase") == "running":
+                continue
+            try:
+                finish(state)
+            except Exception as e:
+                log.warning("Activity watch could not file its record: %s", e)
+            return
+        # Past the deadline the honest thing is silence: a record saying "ok"
+        # would be a guess, and one saying "failed" would be a lie about work
+        # that may still be running.
+        log.info("Activity watch gave up waiting for a background job to settle")
+
+    threading.Thread(target=_wait, daemon=True, name="zimi-activity-watch").start()
+
+
+def _activity_health_finish(actor):
+    """Journal a finished library health check under whoever asked for it."""
+
+    def _finish(state):
+        summary = state.get("summary") or {}
+        total = summary.get("total") or 0
+        healthy = summary.get("healthy") or 0
+        record_activity(
+            "health",
+            "",  # the whole library — the client names it in the reader's language
+            outcome="ok" if state.get("phase") == "done" else "failed",
+            detail=f"{healthy}/{total}" if total else "",
+            actor=actor,
+        )
+
+    return _finish
+
+
+def _activity_export_finish(actor, total):
+    """Journal a finished bookmark export. ``total`` is what was handed to the
+    writer — the count the person chose, which is the count they'll recognize
+    even if a source article turned out to be unreadable."""
+
+    def _finish(state):
+        files = [str(f) for f in (state.get("files") or []) if f]
+        record_activity(
+            "export",
+            ", ".join(f.removesuffix(".zim") for f in files),
+            outcome="ok" if state.get("phase") == "done" else "failed",
+            detail=str(state.get("error") or ""),
+            actor=actor,
+            count=total,
+        )
+
+    return _finish
+
+
+def _activity_actor_key(record):
+    """The filter value for a record's actor: a username, or the kind."""
+    actor = record.get("actor") or {}
+    if actor.get("kind") == "user" and actor.get("name"):
+        return actor["name"]
+    return actor.get("kind") or "server"
+
+
+def activity_payload(type_filter=None, actor_filter=None):
+    """The activity view's data: records newest first, plus the vocabulary the
+    filter is built from.
+
+    The type and actor lists are always computed over the WHOLE journal, never
+    over the filtered slice — a filter whose own options disappear the moment
+    you use one is a filter you cannot get back out of.
+    """
+    with _activity_lock:
+        records = list(_activity_load())
+    types = sorted({str(r.get("type") or "") for r in records} - {""})
+    actors = sorted({_activity_actor_key(r) for r in records})
+    if type_filter:
+        records = [r for r in records if r.get("type") == type_filter]
+    if actor_filter:
+        records = [r for r in records if _activity_actor_key(r) == actor_filter]
+    records.reverse()  # newest first, the way it is read
+    return {"records": records, "types": types, "actors": actors}
+
+
+# ============================================================================
 # ZIM creation jobs — the web face of `zimi create` / `zimi import`
 #
 # ONE job RUNS at a time, deliberately. The hardware floor for Zimi is a Pi
@@ -1642,6 +2002,9 @@ class _CreateJob:
         self.mode = mode
         self.source = source
         self.title = title
+        # Whoever submitted it, for the activity journal. A job created outside
+        # a request (the CLI, a test) belongs to the server.
+        self.actor = dict(ACTIVITY_SERVER_ACTOR)
         self.lines = []  # tail, trimmed to CREATE_LOG_LINES
         self.emitted = 0  # total lines ever produced — the cursor space
         self.events = []  # tail, trimmed to CREATE_EVENT_BUFFER
@@ -1975,7 +2338,35 @@ def _create_job_record(job):
         "ok": bool(job.ok),
         "error": job.error,
         "result": (job.result or {}).get("name"),
+        "actor": _activity_clean_actor(getattr(job, "actor", None)),
     }
+
+
+# A create job's own word for how it ended, in the activity journal's words. A
+# stalled job failed — "gave up waiting" is the detail, not a fifth outcome.
+_CREATE_ACTIVITY_OUTCOME = {
+    "ok": "ok",
+    "failed": "failed",
+    "cancelled": "cancelled",
+    "stalled": "failed",
+    "interrupted": "interrupted",
+}
+
+
+def _create_activity(job):
+    """File a settled creation run in the activity journal."""
+    result = job.result or {}
+    state = _create_job_state(job)
+    record_activity(
+        "create",
+        result.get("title") or job.title or result.get("name") or job.source,
+        outcome=_CREATE_ACTIVITY_OUTCOME.get(state, "failed"),
+        # What it was made from is the one fact the subject cannot carry: two
+        # ZIMs called "Docs" are told apart by the site they came from.
+        detail=(job.error or job.source or job.mode),
+        actor=getattr(job, "actor", None),
+        size_bytes=result.get("bytes"),
+    )
 
 
 def _create_journal_load():
@@ -2012,6 +2403,20 @@ def _create_journal_load():
             record["state"] = "interrupted"
             record["error"] = "not started: the server restarted before this job began"
             stale = True
+        else:
+            continue
+        # A job the server lost is still something that happened to this
+        # library, and the activity view is where an operator looks to find out
+        # why last night's ZIM never appeared. Recorded once: the reconcile
+        # rewrites the state, so the next boot sees "interrupted" and no longer
+        # matches here.
+        record_activity(
+            "create",
+            record.get("title") or record.get("result") or record.get("source") or "",
+            outcome="interrupted",
+            detail=record.get("error") or "",
+            actor=record.get("actor"),
+        )
     _create_journal = records
     if stale:
         _create_journal_save()
@@ -2400,6 +2805,15 @@ def _create_finish(job, **outcome):
         job.done = True
         _create_journal_put(job)
     _create_emit(job, {"t": "phase", "phase": "done", "detail": _create_job_state(job)})
+    # The create journal serves the Create page; the activity journal serves the
+    # operator asking what has been happening to this library. A settled job is
+    # one line in each — but this one is written HERE, after the done event is
+    # published and before waiters are released. Between the done FLAG going up
+    # (under the lock, with the create journal) and the done EVENT reaching the
+    # stream there must be nothing: a poll that sees done and then reads the
+    # events expects the last one to be there, and a file write in that gap is
+    # long enough to lose the race.
+    _create_activity(job)
     job.settled.set()
     _create_start_next()
     return True
@@ -2475,16 +2889,22 @@ def _create_start_next():
     _create_launch(job, opts)
 
 
-def _create_start(data):
+def _create_start(data, actor=None):
     """Validate, then either claim the single job slot or take a place in the
     queue behind whatever holds it. Returns ``(payload, status)`` ready to
-    send."""
+    send.
+
+    ``actor`` is whoever submitted it — captured here because the job outlives
+    its request by an hour, and the activity journal is written at the end.
+    """
     try:
         mode, source, title, opts = _create_validate(data)
     except ValueError as e:
         return {"error": str(e)}, 400
     global _create_job
     job = _CreateJob(mode, source, title)
+    if actor:
+        job.actor = actor
     position = 0
     with _create_lock:
         running = _create_job if (_create_job and not _create_job.done) else None
@@ -3562,6 +3982,12 @@ def handle_manage_get(handler, parsed, params):
     elif parsed.path == "/manage/history":
         return handler._json(200, {"history": _srv._load_history()})
 
+    elif parsed.path == "/manage/activity-log":
+        # The unified journal behind the Activity view. Named -log because
+        # /manage/activity is the live "what is happening right now" poll that
+        # feeds the topbar badge; this is "what has happened".
+        return handler._json(200, activity_payload(param("type"), param("actor")))
+
     elif parsed.path == "/manage/cache-info":
         return handler._json(200, _cache_info_payload())
 
@@ -3988,7 +4414,7 @@ def handle_manage_post(handler, parsed, data):
         if gate:
             return handler._json(gate[1], gate[0])
         if parsed.path == "/manage/create":
-            payload, status = _create_start(data)
+            payload, status = _create_start(data, actor=activity_actor(handler))
         else:
             payload, status = _create_probe(data)
         return handler._json(status, payload)
@@ -4008,7 +4434,9 @@ def handle_manage_post(handler, parsed, data):
         size_bytes = data.get("size_bytes")
         if not url:
             return handler._json(400, {"error": "missing 'url' in request body"})
-        dl_id, err = _srv._start_download(url, size_bytes=size_bytes)
+        dl_id, err = _srv._start_download(
+            url, size_bytes=size_bytes, actor=activity_actor(handler)
+        )
         if err:
             return handler._json(400, {"error": err})
         return handler._json(200, {"status": "started", "id": dl_id})
@@ -4022,6 +4450,8 @@ def handle_manage_post(handler, parsed, data):
             sizes = []
         ids = []
         errors = []
+        # One resolution for the whole batch — it is one click by one person.
+        actor = activity_actor(handler)
         for i, url in enumerate(urls):
             if not isinstance(url, str) or not url:
                 ids.append(None)
@@ -4032,7 +4462,7 @@ def handle_manage_post(handler, parsed, data):
                 if i < len(sizes) and isinstance(sizes[i], (int, float))
                 else None
             )
-            dl_id, err = _srv._start_download(url, size_bytes=sz)
+            dl_id, err = _srv._start_download(url, size_bytes=sz, actor=actor)
             ids.append(dl_id)
             errors.append(err)
         succeeded = sum(1 for x in ids if x is not None)
@@ -4048,7 +4478,9 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(400, {"error": "missing 'peer'"})
         if not isinstance(fname, str) or not fname:
             return handler._json(400, {"error": "missing 'file'"})
-        dl_id, err = _srv._start_peer_download(peer, fname)
+        dl_id, err = _srv._start_peer_download(
+            peer, fname, actor=activity_actor(handler)
+        )
         if err:
             return handler._json(400, {"error": err})
         return handler._json(200, {"status": "started", "id": dl_id})
@@ -4057,20 +4489,31 @@ def handle_manage_post(handler, parsed, data):
         url = data.get("url", "")
         if not url:
             return handler._json(400, {"error": "missing 'url' in request body"})
-        dl_id, err = _srv._start_import(url)
+        dl_id, err = _srv._start_import(url, actor=activity_actor(handler))
         if err:
             return handler._json(400, {"error": err})
         return handler._json(200, {"status": "started", "id": dl_id})
 
     elif parsed.path == "/manage/cancel":
         dl_id = data.get("id", "")
-        from zimi.library import _cancel_download
+        from zimi.library import _cancel_download, _download_by_id, download_subject
 
+        # Read the transfer's identity BEFORE cancelling it: a cancelled
+        # download leaves the queue, and the journal line still has to name
+        # what it was.
+        cancelled = _download_by_id(dl_id)
         status, code = _cancel_download(dl_id)
         if status == "not_found":
             return handler._json(404, {"error": "Download not found"})
         if status == "already_done":
             return handler._json(400, {"error": "Download already finished"})
+        if cancelled:
+            record_activity(
+                "update" if cancelled.get("is_update") else "download",
+                download_subject(cancelled),
+                outcome="cancelled",
+                actor=activity_actor(handler),
+            )
         return handler._json(code, {"status": status, "id": dl_id})
 
     elif parsed.path == "/manage/download-start-now":
@@ -4158,6 +4601,11 @@ def handle_manage_post(handler, parsed, data):
         from zimi import health as _health
 
         started, msg = _health.start_check()
+        if started:
+            _activity_after(
+                _health.get_state,
+                _activity_health_finish(activity_actor(handler)),
+            )
         return handler._json(
             200, {"status": "started" if started else "running", "detail": msg}
         )
@@ -4223,6 +4671,11 @@ def handle_manage_post(handler, parsed, data):
         if total > 2000:
             return handler._json(400, {"error": "Too many bookmarks (max 2000)"})
         started, msg = _zw.start_export(payload)
+        if started:
+            _activity_after(
+                _zw.get_export_state,
+                _activity_export_finish(activity_actor(handler), total),
+            )
         return handler._json(
             200, {"status": "started" if started else "busy", "detail": msg}
         )
@@ -4276,6 +4729,12 @@ def handle_manage_post(handler, parsed, data):
                 pass
             os.remove(filepath)
             log.info(f"Deleted ZIM: {filename}")
+            record_activity(
+                "delete",
+                zim_info.get("title") or zim_info.get("name") or filename,
+                actor=activity_actor(handler),
+                size_bytes=file_size,
+            )
             _srv._append_history(
                 {
                     "event": "deleted",
@@ -4353,10 +4812,13 @@ def handle_manage_post(handler, parsed, data):
         # Trigger manual update: check for updates and start downloads
         updates = _srv._check_updates()
         started = []
+        # Eric's case exactly: this is the same work the auto-updater does, and
+        # the only difference worth recording is that a person asked for it.
+        actor = activity_actor(handler)
         for upd in updates:
             url = upd.get("download_url")
             if url:
-                dl_id, err = _srv._start_download(url)
+                dl_id, err = _srv._start_download(url, actor=actor)
                 if not err:
                     started.append({"name": upd.get("name", "?"), "id": dl_id})
         return handler._json(
@@ -4914,6 +5376,14 @@ def handle_manage_post(handler, parsed, data):
         overwrite = bool(data.get("overwrite"))
         if action == "apply":
             result, err = _apply_backup_bundle(data, overwrite=overwrite)
+            record_activity(
+                "restore",
+                "",  # the server's own state — named on the client
+                outcome="failed" if err else "ok",
+                detail=err or "",
+                actor=activity_actor(handler),
+                count=len((result or {}).get("applied") or []),
+            )
             if err:
                 return handler._json(400, {"error": err})
             return handler._json(200, result)

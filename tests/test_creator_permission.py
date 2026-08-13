@@ -191,7 +191,7 @@ class _RouteBase(_Base):
         self._orig = {}
         for fn in ("_create_start", "_create_probe", "_create_cancel"):
             self._orig[fn] = getattr(manage, fn)
-        manage._create_start = lambda data: ({"sentinel": "start"}, 200)
+        manage._create_start = lambda data, actor=None: ({"sentinel": "start"}, 200)
         manage._create_probe = lambda data: ({"sentinel": "probe"}, 200)
         manage._create_cancel = lambda job_id=None: ({"sentinel": "cancel"}, 200)
         self._orig["_create_browse"] = manage._create_browse
