@@ -580,7 +580,7 @@ def create_site_zim(
             static_cls = zim_static_item_class()
             carried = {}
             with atomic_zim_creator(out, language) as creator:
-                for page in pages:
+                for packaged, page in enumerate(pages, 1):
                     with open(page["spool"], encoding="utf-8") as fh:
                         text = fh.read()
                     os.remove(page["spool"])
@@ -608,6 +608,15 @@ def create_site_zim(
                     # Each page gets its own carrier, so the crawl-wide record
                     # of what shipped has to be accumulated here.
                     seen_mimetypes |= carrier.mimetypes
+                    # Per page, not per batch. This pass is not the cheap tail
+                    # of a crawl — it fetches every page's images and
+                    # stylesheets, so on a real site it is the LONGEST phase,
+                    # and a single "packaging N pages…" line made it look
+                    # frozen for as long as it ran. It is also the only
+                    # cancellation checkpoint the write pass has: a caller's
+                    # sink is what raises, so a line per page is the difference
+                    # between a cancel button that works and one that lies.
+                    note(f"  packaged {packaged}/{len(pages)}  {page['article']}")
                 creator.set_mainpath("A/index")
                 asset_count = sum(1 for v in carried.values() if v)
                 add_standard_metadata(

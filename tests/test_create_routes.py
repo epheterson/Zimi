@@ -46,8 +46,16 @@ def _post(path, data, private=True):
 
 
 def _get(path, private=True, params=None):
+    """``params`` is written here as plain strings and wrapped the way
+    ``urllib.parse.parse_qs`` delivers a real query string. The route reads
+    ``params[key][0]``, so a bare string would hand it the first CHARACTER —
+    a cursor of "10" would arrive as 1 and quietly replay nine events."""
     h = _Handler(private=private)
-    manage.handle_manage_get(h, urlparse(path), params or {})
+    query = {
+        key: (value if isinstance(value, list) else [value])
+        for key, value in (params or {}).items()
+    }
+    manage.handle_manage_get(h, urlparse(path), query)
     return h
 
 
@@ -61,10 +69,18 @@ def _wait_done(tries=400):
 
 
 @pytest.fixture(autouse=True)
-def clean_job():
-    """Every test starts with no job and leaves none behind."""
+def clean_job(tmp_path, monkeypatch):
+    """Every test starts with no job, no queue and an empty journal, and leaves
+    none behind. The journal is redirected into the test's own tmp dir: it is
+    the one piece of job state that outlives the process, and a test suite that
+    wrote it to the real data dir would be scribbling on a running server's."""
+    monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    (tmp_path / "data").mkdir()
     manage._create_job = None
+    manage._create_queue.clear()
+    manage._create_journal = None
     yield
+    manage._create_queue.clear()
     job = manage._create_job
     if job is not None and not job.done:
         job.cancel_requested = True
@@ -73,6 +89,7 @@ def clean_job():
                 break
             time.sleep(0.01)
     manage._create_job = None
+    manage._create_journal = None
 
 
 @pytest.fixture
@@ -217,7 +234,12 @@ def test_an_overlong_source_is_refused():
         "/manage/create", {"mode": "page", "source": "https://e.org/" + "a" * 4000}
     )
     assert one_huge.status == 400
-    assert _post("/manage/create", {"mode": "site", "source": "https://e.org/" + "a" * 4000}).status == 400
+    assert (
+        _post(
+            "/manage/create", {"mode": "site", "source": "https://e.org/" + "a" * 4000}
+        ).status
+        == 400
+    )
     whole_field = _post(
         "/manage/create",
         {"mode": "page", "source": "\n".join(["https://e.org/x"] * 100000)},
@@ -481,7 +503,9 @@ def test_the_video_preset_arrives_as_the_engines_fmt_keyword(monkeypatch):
 # ── one job at a time ───────────────────────────────────────────────────────
 
 
-def test_second_job_gets_409_while_the_first_runs(monkeypatch, tmp_path):
+def test_a_second_job_queues_behind_the_first(monkeypatch, tmp_path):
+    """Round 3 replaced the 409 with a queue: submitting twice is what people
+    do, and the second submission is a plan, not a mistake."""
     gate = {"go": False}
 
     def slow_run(job, opts):
@@ -493,20 +517,28 @@ def test_second_job_gets_409_while_the_first_runs(monkeypatch, tmp_path):
     (tmp_path / "src").mkdir()
     first = _post("/manage/create", {"mode": "folder", "source": str(tmp_path / "src")})
     assert first.status == 200
+    assert first.body["status"] == "started"
 
     second = _post("/manage/create", {"mode": "page", "source": "https://example.org/"})
-    assert second.status == 409
-    assert second.body["mode"] == "folder"
+    assert second.status == 200
+    assert second.body["status"] == "queued"
+    assert second.body["position"] == 1
+    assert second.body["running"]["mode"] == "folder"
+
+    # And the queue is visible to anyone polling, not just to whoever filed it.
+    status = _get("/manage/create/status").body
+    assert [entry["mode"] for entry in status["queue"]] == ["page"]
 
     gate["go"] = True
-    _wait_done()
-    # Once it is done the slot is free again.
-    assert (
-        _post(
-            "/manage/create", {"mode": "folder", "source": str(tmp_path / "src")}
-        ).status
-        == 200
-    )
+    # The queued job takes the slot by itself, with no second submission.
+    for _ in range(400):
+        body = _get("/manage/create/status").body
+        if body.get("mode") == "page":
+            break
+        time.sleep(0.01)
+    else:
+        raise AssertionError("the queued job never started")
+    assert _get("/manage/create/status").body["queue"] == []
 
 
 # ── status + cursor contract ────────────────────────────────────────────────

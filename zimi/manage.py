@@ -1473,19 +1473,41 @@ def _apply_backup_bundle(data, overwrite=False):
 # ============================================================================
 # ZIM creation jobs — the web face of `zimi create` / `zimi import`
 #
-# ONE job at a time, deliberately. The hardware floor for Zimi is a Pi that is
-# also serving the library; a second concurrent crawl would not go twice as
-# fast, it would make reading the library miserable while both crawl badly.
-# A second request gets 409 with the running job named, not a queue.
+# ONE job RUNS at a time, deliberately. The hardware floor for Zimi is a Pi
+# that is also serving the library; a second concurrent crawl would not go
+# twice as fast, it would make reading the library miserable while both crawl
+# badly. What a second submission gets is a place in a short FIFO queue, not a
+# refusal — "start it, I'll come back" is what people actually mean when they
+# fill the form twice, and a queue says that honestly where a 409 made them
+# babysit the tab.
 #
-# The engines (zimi.creator / crawler / video / importer) are untouched: each
-# already takes a per-line progress callback, and this module wires that into
-# a bounded ring buffer the browser polls with a cursor. Cancellation is
-# cooperative through that same callback — it raises out of the engine at the
-# next line, which unwinds through ``atomic_zim_creator`` so no partial ZIM is
-# ever left under a real name. Modes whose engine takes no callback (folder,
-# page) therefore cannot be interrupted mid-run, and the status says so rather
-# than pretending.
+# The engines (zimi.creator / crawler / video / importer) stay almost
+# untouched: each already takes a per-line progress callback, and this module
+# wires that into a bounded ring buffer the browser polls with a cursor.
+# Cancellation is cooperative through that same callback — it raises out of
+# the engine at the next line, which unwinds through ``atomic_zim_creator`` so
+# no partial ZIM is ever left under a real name. Folder mode is the one engine
+# with no callback, so it cannot be interrupted mid-run and the status says so
+# rather than pretending.
+#
+# Three things the round-3 field test asked for, and where each lives:
+#
+#   "is it stable if I close the page?"  — the job runs in a server thread and
+#       its state is server-side, so closing the tab changes nothing. What was
+#       missing is what happens when the SERVER goes away mid-job: the journal
+#       below records every job to disk, and a record still marked running at
+#       the next boot becomes an honest "interrupted", not a ghost that polls
+#       forever. The atomic writer has already removed its partial output.
+#   "can I find in-progress ones?"       — ``/manage/create/status?history=1``
+#       hands back the last CREATE_JOURNAL_RECORDS jobs, so a returning admin
+#       finds what happened while they were gone.
+#   "do multiple queue?"                 — yes; see CREATE_QUEUE_MAX.
+#
+# Alongside the human log lines, the poll carries STRUCTURED events (phase /
+# node / count) on their own cursor. They are DERIVED here by reading the same
+# lines the engines already emit — the engines do not learn a second output
+# format they would then have to keep in step, and a line this adapter cannot
+# read costs one event, never a crash.
 # ============================================================================
 
 CREATE_MODES = ("folder", "page", "site", "video", "import")
@@ -1537,8 +1559,41 @@ CREATE_VIDEO_FORMATS = {
     "best": "best",
 }
 
+# How many submissions may wait behind the running one. Five is a queue an
+# admin can hold in their head; past that the honest answer is "come back
+# later" (429) rather than a backlog nobody remembers filing.
+CREATE_QUEUE_MAX = 5
+# Structured events, bounded exactly like the log lines. A long crawl emits
+# one per page twice over (fetched, then packaged), so this is a live tail too.
+CREATE_EVENT_BUFFER = 2000
+# A job that has not said anything for this long is not working, it is wedged —
+# a host that accepted a connection and never answered, a subprocess that never
+# wrote another line. Ten minutes is longer than any single legitimate step:
+# every engine reports per page, per entry or per subprocess line, and the
+# slowest of those is one HTTP fetch at DEFAULT_FETCH_TIMEOUT (30s).
+CREATE_STALL_SECONDS = 600
+CREATE_STALL_TICK = 15.0  # how often the watchdog looks
+# The on-disk job journal: how a returning admin finds out what happened while
+# they were away, and how a job that was running when the server died stops
+# being a job that is running forever.
+CREATE_JOURNAL_FILE = "create_jobs.json"
+CREATE_JOURNAL_RECORDS = 20
+# The phases a job moves through, in order. The client renders them; the
+# adapter below decides when each begins by reading the engines' own lines.
+CREATE_PHASES = ("probe", "fetch", "assets", "package", "register", "done")
+# Where a mode's work starts. The URL modes fetch first; folder and import have
+# nothing to fetch, they go straight to writing a ZIM.
+CREATE_START_PHASE = {
+    "folder": "package",
+    "import": "package",
+    "page": "fetch",
+    "site": "fetch",
+    "video": "fetch",
+}
+
 _create_lock = threading.Lock()
-_create_job = None  # the one _CreateJob, running or last finished
+_create_job = None  # the one _CreateJob running (or the last one to finish)
+_create_queue = []  # [(job, opts)] waiting their turn, FIFO
 
 
 class _CreateCancelled(Exception):
@@ -1549,32 +1604,83 @@ class _CreateJob:
     """One creation run: its identity, its output tail, and its outcome."""
 
     def __init__(self, mode, source, title):
+        # Short, random, and only ever compared for equality: the client uses it
+        # to tell "my job" from "the job that started after mine finished", and
+        # the journal uses it to update a record in place.
+        self.id = os.urandom(6).hex()
         self.mode = mode
         self.source = source
         self.title = title
         self.lines = []  # tail, trimmed to CREATE_LOG_LINES
         self.emitted = 0  # total lines ever produced — the cursor space
-        self.started = time.time()
+        self.events = []  # tail, trimmed to CREATE_EVENT_BUFFER
+        self.events_emitted = 0  # the events' own cursor space
+        self.phase = CREATE_START_PHASE.get(mode, "fetch")
+        self.queued_at = time.time()
+        self.started = None  # set when it actually leaves the queue
         self.finished = None
+        # Last sign of life, for the watchdog. A job that has never emitted a
+        # line is measured from the moment it started, not from creation, or a
+        # long wait in the queue would count against it.
+        self.progressed = None
         self.done = False
         self.ok = False
         self.cancelled = False
         self.cancel_requested = False
+        self.stalled = False
         self.error = ""
         self.result = None
+        # Set the moment the job is closed out, whoever closes it. The watchdog
+        # waits on this rather than on a clock, so it wakes exactly once per
+        # tick while the job runs and not at all after it ends — no thread
+        # loitering behind a finished job with a sleep still to serve.
+        self.settled = threading.Event()
 
     # -- output ------------------------------------------------------------
     def note(self, message):
         """Progress sink handed to the engines. Doubles as the cancellation
-        checkpoint: a pending cancel raises here, at a line boundary."""
+        checkpoint: a pending cancel raises here, at a line boundary.
+
+        Takes a line of text, as every engine sends today, or a ready-made
+        event dict for a caller that has something structured to say and no
+        sentence to go with it. Engines only ever send text — the CLI's sink
+        prints whatever it is handed, and a dict on a terminal is not progress.
+        """
         if self.cancel_requested:
             raise _CreateCancelled()
+        now = time.time()
+        if isinstance(message, dict):
+            with _create_lock:
+                self.progressed = now
+                self._push_events([dict(message)])
+            return
         text = str(message).rstrip("\n")
+        # Derived outside the lock: it parses a string and may import a module,
+        # and the sink is called from the job thread on every line.
+        events, phase = _create_derive(self, text)
         with _create_lock:
+            self.progressed = now
             self.lines.append(text)
             self.emitted += 1
             if len(self.lines) > CREATE_LOG_LINES:
                 del self.lines[: len(self.lines) - CREATE_LOG_LINES]
+            self._push_events(events)
+        if phase:
+            # A phase change is rare (four or five in a whole job) and is
+            # exactly what a returning admin wants to see, so it is worth a
+            # journal write where a per-page line would not be.
+            self.phase = phase
+            _create_journal_put(self)
+
+    def _push_events(self, events):
+        """Stamp each event with its sequence number and file it. Caller holds
+        ``_create_lock``."""
+        for event in events:
+            event["i"] = self.events_emitted
+            self.events_emitted += 1
+            self.events.append(event)
+        if len(self.events) > CREATE_EVENT_BUFFER:
+            del self.events[: len(self.events) - CREATE_EVENT_BUFFER]
 
     def tail(self, cursor):
         """Lines from ``cursor`` onward plus the new cursor. A cursor older
@@ -1584,6 +1690,307 @@ class _CreateJob:
             first = self.emitted - len(self.lines)
             start = max(0, cursor - first)
             return self.lines[start:], self.emitted
+
+    def event_tail(self, cursor):
+        """The same contract as ``tail``, in the events' own cursor space."""
+        with _create_lock:
+            first = self.events_emitted - len(self.events)
+            start = max(0, cursor - first)
+            return list(self.events[start:]), self.events_emitted
+
+
+# ── structured progress events ──────────────────────────────────────────────
+#
+# The engines speak in sentences meant for a human reading a log. The Create
+# page wants a shape: which phase, which node, how many of how many. Rather
+# than teach five engines a second output format — one more thing to keep in
+# step, and one more way for a CLI sink to print a dict at somebody — this
+# reads the lines that already exist and derives the shape from them.
+#
+# Three event kinds, all carrying an ``i`` sequence number stamped on the way
+# into the buffer:
+#
+#   {"i", "t":"phase", "phase": <CREATE_PHASES>, "detail": <short>}
+#   {"i", "t":"node",  "kind":"page|asset|entry", "id", "parent", "label",
+#                      "state":"pending|active|done|failed"}
+#   {"i", "t":"count", "what":"entries|bytes|assets", "n", "total"}
+#
+# ``count`` is scoped to the phase in force when it arrives: entries during
+# ``fetch`` are pages pulled off the network, entries during ``package`` are
+# pages written into the ZIM. ``parent`` is always None: the crawler reports
+# which page it captured, never which page linked to it, and inventing a tree
+# the engine did not report would be a prettier lie than a flat list.
+
+_CREATE_RE_STEP = re.compile(r"^\[(\d+)/(\d+)\]\s+(.+)$")
+_CREATE_RE_CRAWL_TAIL = re.compile(r"\s*\((\d+) queued(?:, (.+?) fetched)?\)$")
+_CREATE_RE_PACKAGED = re.compile(r"^packaged (\d+)/(\d+)\s+(.+)$")
+_CREATE_RE_PACKAGING_MANY = re.compile(r"^packaging (\d+) pages?\b")
+_CREATE_RE_FETCHING = re.compile(r"^fetching (\S+)$")
+_CREATE_RE_PACKAGING_ONE = re.compile(r"^packaging (\S+)$")
+_CREATE_RE_SKIPPED = re.compile(r"^skipped (\S+):")
+_CREATE_LABEL_MAX = 80
+
+
+def _create_short_label(target):
+    """The bit of a URL or article path worth showing in a node: the path (and
+    the query that paginates it), or the host when the path is just ``/``."""
+    text = str(target).strip()
+    if text.startswith(("http://", "https://")):
+        parts = urllib.parse.urlsplit(text)
+        path = parts.path or "/"
+        if path == "/" and parts.netloc:
+            text = parts.netloc
+        else:
+            text = path + (("?" + parts.query) if parts.query else "")
+    return text[:_CREATE_LABEL_MAX]
+
+
+def _create_parse_bytes(text):
+    """The byte count back out of a size the engines formatted ("759.0 KB").
+    ``crawler.parse_size`` already reads every spelling the CLI accepts, so it
+    reads this one too — bar the bare "N bytes" form, unwrapped here so the
+    two halves stay one dialect. None when it is not a size at all."""
+    raw = str(text).strip()
+    if raw.lower().endswith("bytes"):
+        raw = raw[:-5].strip()
+    try:
+        from zimi.crawler import parse_size
+
+        return parse_size(raw)
+    except Exception:
+        return None
+
+
+def _create_node_event(kind, node_id, state, label=None):
+    return {
+        "t": "node",
+        "kind": kind,
+        "id": str(node_id)[:CREATE_MAX_SOURCE],
+        "parent": None,
+        "label": _create_short_label(label if label is not None else node_id),
+        "state": state,
+    }
+
+
+def _create_count_event(what, n, total=None):
+    return {"t": "count", "what": what, "n": int(n), "total": total}
+
+
+def _create_derive(job, text):
+    """Events (and the phase they imply) from one line of engine output.
+
+    Returns ``(events, phase_or_None)``. Never raises: a line this does not
+    recognise is simply a line with no events behind it, which is the right
+    outcome for engine output that is prose."""
+    try:
+        return _create_derive_line(job, text)
+    except Exception:  # a log line must never be able to fail a job
+        log.debug("could not derive create events from %r", text, exc_info=True)
+        return [], None
+
+
+def _create_derive_line(job, text):
+    line = text.strip()
+    events, phase = [], None
+
+    def enter(name):
+        nonlocal phase
+        # The membership check is the contract, enforced: the client renders a
+        # fixed set of phases, and a name outside it would be a phase that
+        # silently draws nothing.
+        assert name in CREATE_PHASES, name
+        if job.phase != name and phase != name:
+            phase = name
+            events.append({"t": "phase", "phase": name, "detail": job.mode})
+
+    match = _CREATE_RE_PACKAGED.match(line)
+    if match:  # site capture, one page written into the ZIM
+        enter("package")
+        events.append(_create_node_event("entry", match.group(3), "done"))
+        events.append(
+            _create_count_event("entries", match.group(1), int(match.group(2)))
+        )
+        return events, phase
+
+    match = _CREATE_RE_PACKAGING_MANY.match(line)
+    if match:  # site capture, the whole write pass announcing its size
+        enter("package")
+        events.append(_create_count_event("entries", 0, int(match.group(1))))
+        return events, phase
+
+    match = _CREATE_RE_STEP.match(line)
+    if match:
+        done, total, rest = int(match.group(1)), int(match.group(2)), match.group(3)
+        enter("fetch")
+        tail = _CREATE_RE_CRAWL_TAIL.search(rest)
+        if tail:  # a site crawl: the remainder is a URL plus the running totals
+            url = rest[: tail.start()].strip()
+            events.append(_create_node_event("page", url, "done"))
+            fetched = _create_parse_bytes(tail.group(2) or "")
+            if fetched is not None:
+                events.append(_create_count_event("bytes", fetched))
+        else:  # a video playlist: the remainder is a title, not an address
+            events.append(_create_node_event("entry", rest, "done"))
+        events.append(_create_count_event("entries", done, total))
+        return events, phase
+
+    match = _CREATE_RE_FETCHING.match(line)
+    if match:
+        enter("fetch")
+        events.append(_create_node_event("page", match.group(1), "active"))
+        return events, phase
+
+    match = _CREATE_RE_SKIPPED.match(line)
+    if match:
+        events.append(_create_node_event("page", match.group(1), "failed"))
+        return events, phase
+
+    match = _CREATE_RE_PACKAGING_ONE.match(line)
+    if match:
+        enter("package")
+        target = match.group(1)
+        if target.startswith(("http://", "https://")):
+            # Multi-page capture writes one page at a time and says which.
+            events.append(_create_node_event("page", target, "done"))
+        return events, phase
+
+    # The engines' closing "done" line is deliberately NOT read as the done
+    # phase: only the job knows whether it finished, was cancelled or was given
+    # up on, so _create_finish is the single place that says so.
+    return events, phase
+
+
+def _create_emit(job, *events):
+    """File events that did not come from a line — the totals a finished run
+    knows and no sentence carried. Deliberately not ``job.note``: that is the
+    cancellation checkpoint, and a job that has already succeeded must not be
+    turned into a cancelled one by its own closing bookkeeping."""
+    with _create_lock:
+        job._push_events([dict(event) for event in events])
+
+
+# ── the job journal ─────────────────────────────────────────────────────────
+#
+# Jobs live in memory, which is right for a live log and wrong for the only
+# question an admin asks after a redeploy: what happened to the thing I
+# started? The journal is a small JSON file of the last CREATE_JOURNAL_RECORDS
+# jobs, rewritten at the few moments a job's state actually changes (queued,
+# started, each phase, finished) — a handful of writes per job, not one per
+# page.
+#
+# On the first read of a new process, any record still marked running or queued
+# belongs to a server that is no longer here, and becomes "interrupted". That
+# is not a guess: this process is holding the file, so nothing else is advancing
+# those jobs. Their partial output is already gone — ``atomic_zim_creator``
+# writes to ``<name>.zim.tmp`` and only renames on a clean exit, so a killed
+# process leaves a tmp file and never a half-written ZIM under a real name.
+
+_create_journal_lock = threading.Lock()
+_create_journal = None  # list of records, loaded and reconciled once
+
+
+def _create_journal_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, CREATE_JOURNAL_FILE)
+
+
+def _create_job_state(job):
+    """The one word for a job's state that the journal and the history view
+    both use. Ordered by precedence: how it ended beats that it ended."""
+    if not job.done:
+        return "running" if job.started else "queued"
+    if job.cancelled:
+        return "cancelled"
+    if job.stalled:
+        return "stalled"
+    return "ok" if job.ok else "failed"
+
+
+def _create_job_record(job):
+    """One journal record. Everything here is already visible to the admin who
+    submitted the job — no server paths beyond the source they typed, and the
+    result named the way the library names it."""
+    return {
+        "id": job.id,
+        "mode": job.mode,
+        "source": job.source[:CREATE_MAX_SOURCE],
+        "title": job.title,
+        "queued": round(job.queued_at, 3),
+        "started": round(job.started, 3) if job.started else None,
+        "finished": round(job.finished, 3) if job.finished else None,
+        "phase": job.phase,
+        "state": _create_job_state(job),
+        "ok": bool(job.ok),
+        "error": job.error,
+        "result": (job.result or {}).get("name"),
+    }
+
+
+def _create_journal_load():
+    """The journal, reconciled once per process. Caller must hold
+    ``_create_journal_lock``."""
+    global _create_journal
+    if _create_journal is not None:
+        return _create_journal
+    records = []
+    try:
+        with open(_create_journal_path(), encoding="utf-8") as fh:
+            loaded = json.load(fh)
+        if isinstance(loaded, list):
+            records = [r for r in loaded if isinstance(r, dict)]
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError) as e:
+        log.warning("Cannot read the create journal: %s", e)
+    stale = False
+    if len(records) > CREATE_JOURNAL_RECORDS:
+        # Trimmed on the way IN as well as on the way out: the bound is what
+        # this file is allowed to be, not merely what this process appends to
+        # it, and a journal that arrived oversized (an older build, a hand
+        # edit) must not be served or rewritten at that size.
+        del records[: len(records) - CREATE_JOURNAL_RECORDS]
+        stale = True
+    for record in records:
+        state = record.get("state")
+        if state == "running":
+            record["state"] = "interrupted"
+            record["error"] = "interrupted: the server restarted during this job"
+            stale = True
+        elif state == "queued":
+            record["state"] = "interrupted"
+            record["error"] = "not started: the server restarted before this job began"
+            stale = True
+    _create_journal = records
+    if stale:
+        _create_journal_save()
+    return records
+
+
+def _create_journal_save():
+    """Caller holds ``_create_journal_lock``. Never raises: a job that cannot
+    be journalled is still a job that ran."""
+    _srv._atomic_write_json(_create_journal_path(), _create_journal or [])
+
+
+def _create_journal_put(job):
+    """Record this job's current state, replacing its earlier record."""
+    record = _create_job_record(job)
+    with _create_journal_lock:
+        records = _create_journal_load()
+        for index, existing in enumerate(records):
+            if existing.get("id") == job.id:
+                records[index] = record
+                break
+        else:
+            records.append(record)
+        if len(records) > CREATE_JOURNAL_RECORDS:
+            del records[: len(records) - CREATE_JOURNAL_RECORDS]
+        _create_journal_save()
+
+
+def _create_history():
+    """The recent jobs, newest first — what a returning admin came back for."""
+    with _create_journal_lock:
+        return list(reversed(_create_journal_load()))
 
 
 def _create_name_of(path):
@@ -1863,106 +2270,297 @@ def _create_worker(job, opts):
     """Job thread body. Never raises — every outcome becomes job state."""
     from zimi.creator import CreateError
 
+    outcome: dict = {}
     try:
         result = _create_run(job, opts)
-        job.result = {
-            "name": _create_name_of(result.get("path")),
-            # What the admin asked this ZIM to be called, when they said. The
-            # library lists ZIMs by title, so a done card that only showed the
-            # filename would name it differently from where it just landed.
-            "title": job.title,
-            "path": result.get("path"),
-            "registered": bool(result.get("registered")),
+        outcome = {
+            "ok": True,
+            "result": {
+                "name": _create_name_of(result.get("path")),
+                # What the admin asked this ZIM to be called, when they said.
+                # The library lists ZIMs by title, so a done card that only
+                # showed the filename would name it differently from where it
+                # just landed.
+                "title": job.title,
+                "path": result.get("path"),
+                "registered": bool(result.get("registered")),
+            },
         }
-        job.ok = True
+        # What the run counted, when it counted anything: every engine returns a
+        # different subset, and a done card that can say "40 pages, 118 assets"
+        # should not have to read it back out of the log.
+        for key in ("pages", "assets", "bytes", "files", "videos", "entries"):
+            if isinstance(result.get(key), int):
+                outcome["result"][key] = result[key]
+        # Totals only the finished run knows: no line carried them, so they are
+        # filed straight rather than parsed back out of prose.
+        totals = [
+            _create_count_event(what, result[key])
+            for what, key in (("entries", "pages"), ("assets", "assets"))
+            if isinstance(result.get(key), int)
+        ]
+        if totals:
+            _create_emit(job, *totals)
+        if result.get("registered"):
+            _create_emit(job, {"t": "phase", "phase": "register", "detail": job.mode})
         job.note("done")
     except _CreateCancelled:
-        job.cancelled = True
-        job.error = "cancelled — nothing was added to the library"
+        outcome = {
+            "cancelled": True,
+            "error": "cancelled — nothing was added to the library",
+        }
     except CreateError as e:
         # The ONE place a caught message reaches the client verbatim, and it is
         # the point of the exception: CreateError carries the sentence that
         # names the fix ("capture it with zimit…", "yt-dlp is not installed…").
         # Every other exception below stays generic.
-        job.error = str(e)
+        outcome = {"error": str(e)}
     except Exception:
         log.exception("ZIM creation failed (%s)", job.mode)
-        job.error = "creation failed — see the server log for details"
-    finally:
+        outcome = {"error": "creation failed — see the server log for details"}
+    _create_finish(job, **outcome)
+
+
+def _create_finish(job, **outcome):
+    """Close a job ONCE and hand the slot to whatever is waiting.
+
+    Both the worker thread and the watchdog can arrive here for the same job —
+    a stalled job that later unwedges, say — so the first one wins and the
+    second is a no-op. Otherwise a job could be finished twice and the queue
+    advanced twice, running two creations at once on a machine chosen for
+    being able to run one."""
+    with _create_lock:
+        if job.done:
+            return False
+        for key, value in outcome.items():
+            setattr(job, key, value)
         job.done = True
         job.finished = time.time()
+    job.settled.set()
+    if job.phase != "done":
+        job.phase = "done"
+    _create_emit(job, {"t": "phase", "phase": "done", "detail": _create_job_state(job)})
+    _create_journal_put(job)
+    _create_start_next()
+    return True
+
+
+def _create_watch(job):
+    """Watchdog thread. A job that has not reported for CREATE_STALL_SECONDS is
+    not slow, it is stuck on something that will never answer, and the honest
+    thing is to say so and free the slot rather than spin a progress bar until
+    somebody restarts the server.
+
+    It cannot KILL the worker — Python threads do not work that way, and the
+    thread is blocked inside a socket read. So it does both things it can: ask
+    for cancellation, which lands if the engine ever reaches another checkpoint,
+    and close the job out. Whatever the wedged step was doing carries on in the
+    background until it times out; it writes to a temp file under a name of its
+    own, so nothing it does can corrupt what the library already has."""
+    tick = min(CREATE_STALL_TICK, max(0.01, CREATE_STALL_SECONDS))
+    while not job.settled.wait(tick):
+        since = job.progressed or job.started or job.queued_at
+        if time.time() - since < CREATE_STALL_SECONDS:
+            continue
+        job.cancel_requested = True
+        minutes = int(CREATE_STALL_SECONDS // 60) or 1
+        log.warning(
+            "create job %s (%s) made no progress for %ss — abandoning it",
+            job.id,
+            job.mode,
+            int(CREATE_STALL_SECONDS),
+        )
+        _create_finish(
+            job,
+            stalled=True,
+            error=(
+                f"no progress for {minutes} minutes — giving up on this job. "
+                "Whatever it was waiting for never answered. Nothing has been "
+                "added to the library."
+            ),
+        )
+        return
+
+
+def _create_launch(job, opts):
+    """Start a claimed job: its worker thread and its watchdog."""
+    job.started = time.time()
+    job.progressed = job.started
+    # The opening phase, so the event stream describes itself from event 0 and
+    # a client that joined late is never guessing which phase the counts below
+    # belong to.
+    _create_emit(job, {"t": "phase", "phase": job.phase, "detail": job.mode})
+    _create_journal_put(job)
+    threading.Thread(
+        target=_create_worker, args=(job, opts), daemon=True, name="zimi-create"
+    ).start()
+    threading.Thread(
+        target=_create_watch, args=(job,), daemon=True, name="zimi-create-watch"
+    ).start()
+
+
+def _create_start_next():
+    """Hand the slot to the head of the queue, if anything is waiting and the
+    slot is actually free. The free check is not belt-and-braces: dropping a
+    QUEUED job also finishes a job, and that must not start a second one on top
+    of the one already running."""
+    global _create_job
+    with _create_lock:
+        if _create_job is not None and not _create_job.done:
+            return
+        if not _create_queue:
+            return
+        job, opts = _create_queue.pop(0)
+        _create_job = job
+    _create_launch(job, opts)
 
 
 def _create_start(data):
-    """Validate, claim the single job slot, and start the worker. Returns
-    ``(payload, status)`` ready to send."""
+    """Validate, then either claim the single job slot or take a place in the
+    queue behind whatever holds it. Returns ``(payload, status)`` ready to
+    send."""
     try:
         mode, source, title, opts = _create_validate(data)
     except ValueError as e:
         return {"error": str(e)}, 400
     global _create_job
+    job = _CreateJob(mode, source, title)
+    position = 0
     with _create_lock:
-        if _create_job is not None and not _create_job.done:
-            return (
-                {
-                    "error": "a ZIM is already being created — "
-                    "wait for it to finish or cancel it",
-                    "mode": _create_job.mode,
-                },
-                409,
-            )
-        job = _CreateJob(mode, source, title)
-        _create_job = job
-    threading.Thread(
-        target=_create_worker, args=(job, opts), daemon=True, name="zimi-create"
-    ).start()
-    return {"status": "started", "mode": mode}, 200
+        running = _create_job if (_create_job and not _create_job.done) else None
+        if running is not None:
+            if len(_create_queue) >= CREATE_QUEUE_MAX:
+                return (
+                    {
+                        "error": (
+                            f"{CREATE_QUEUE_MAX} jobs are already waiting — "
+                            "let some of them finish first"
+                        ),
+                        "queued": len(_create_queue),
+                    },
+                    429,
+                )
+            _create_queue.append((job, opts))
+            position = len(_create_queue)
+        else:
+            _create_job = job
+    if running is not None:
+        _create_journal_put(job)
+        return {
+            "status": "queued",
+            "id": job.id,
+            "mode": mode,
+            "position": position,
+            # What it is waiting behind, so the reply explains itself without a
+            # second round trip.
+            "running": {"id": running.id, "mode": running.mode},
+        }, 200
+    _create_launch(job, opts)
+    return {"status": "started", "id": job.id, "mode": mode}, 200
 
 
-def _create_status(cursor, probe=False):
-    """Poll payload. ``cursor`` is the client's line count so far; the reply
-    carries only what is new plus the cursor to send next time."""
+def _create_queue_view():
+    """The waiting jobs, in the order they will run."""
+    with _create_lock:
+        waiting = list(_create_queue)
+    return [
+        {
+            "id": job.id,
+            "mode": job.mode,
+            "source": job.source,
+            "title": job.title,
+            "position": position,
+        }
+        for position, (job, _opts) in enumerate(waiting, 1)
+    ]
+
+
+def _create_status(cursor, probe=False, events_cursor=0, history=False):
+    """Poll payload. ``cursor`` is the client's line count so far and
+    ``events_cursor`` its event count; the reply carries only what is new in
+    each, plus the cursor to send next time."""
     job = _create_job
-    payload: dict = {"offline": _is_offline_mode()}
+    payload: dict = {"offline": _is_offline_mode(), "queue": _create_queue_view()}
     if probe:
         # Only on the page's first poll: one cheap subprocess, not per-second.
         payload["import_ready"] = _create_import_ready()
+    if history:
+        payload["history"] = _create_history()
     if job is None:
-        payload.update({"active": False, "done": False, "lines": [], "cursor": 0})
+        payload.update(
+            {
+                "active": False,
+                "done": False,
+                "lines": [],
+                "cursor": 0,
+                "events": [],
+                "event_cursor": 0,
+            }
+        )
         return payload
     lines, next_cursor = job.tail(max(0, cursor))
+    events, next_events = job.event_tail(max(0, events_cursor))
     payload.update(
         {
+            "id": job.id,
             "active": not job.done,
             "mode": job.mode,
             "source": job.source,
             "title": job.title,
+            "phase": job.phase,
             "lines": lines,
             "cursor": next_cursor,
+            "events": events,
+            "event_cursor": next_events,
             "done": job.done,
             "ok": job.ok,
             "cancelled": job.cancelled,
+            "stalled": job.stalled,
             "cancelling": job.cancel_requested and not job.done,
             "error": job.error,
             "result": job.result,
             # See CREATE_CANCELLABLE_MODES: a cancel button on a job with no
             # progress callback to interrupt would be a lie.
             "cancellable": job.mode in CREATE_CANCELLABLE_MODES,
-            "elapsed": round((job.finished or time.time()) - job.started, 1),
+            "elapsed": round(
+                (job.finished or time.time()) - (job.started or job.queued_at), 1
+            ),
         }
     )
     return payload
 
 
-def _create_cancel():
-    """Signal the running job. Cooperative: it lands at the engine's next
-    progress line, so the reply promises a request, not a stop."""
+def _create_cancel(job_id=None):
+    """Cancel the running job, or drop a queued one by id.
+
+    Cancelling the running job is cooperative: it lands at the engine's next
+    progress line, so the reply promises a request, not a stop. Dropping a
+    queued job is immediate — it has not started, so there is nothing to
+    unwind."""
+    job_id = str(job_id or "").strip()
+    if job_id:
+        with _create_lock:
+            for index, (job, _opts) in enumerate(_create_queue):
+                if job.id == job_id:
+                    del _create_queue[index]
+                    break
+            else:
+                job = None
+        if job is not None:
+            _create_finish(
+                job, cancelled=True, error="removed from the queue before it started"
+            )
+            return {"status": "dequeued", "id": job_id}, 200
+        running = _create_job
+        if running is None or running.done or running.id != job_id:
+            return {"error": "no such creation job is waiting or running"}, 409
     job = _create_job
     if job is None or job.done:
         return {"error": "no creation job is running"}, 409
     job.cancel_requested = True
     return {
         "status": "cancelling",
+        "id": job.id,
         "cancellable": job.mode in CREATE_CANCELLABLE_MODES,
     }, 200
 
@@ -2596,6 +3194,10 @@ def handle_manage_get(handler, parsed, params):
             _create_status(
                 _create_int(param("since"), 0, 2**31) or 0,
                 probe=param("probe") == "1",
+                events_cursor=_create_int(param("events_since"), 0, 2**31) or 0,
+                # Asked for when the page opens, not every poll: it reads a
+                # file, and what happened yesterday does not change per second.
+                history=param("history") == "1",
             ),
         )
 
@@ -3188,7 +3790,9 @@ def handle_manage_post(handler, parsed, data):
         return handler._json(status, payload)
 
     if parsed.path == "/manage/create/cancel":
-        payload, status = _create_cancel()
+        # With an id: that job, wherever it is — the running one or one still
+        # waiting. Without: whatever is running, as it has always been.
+        payload, status = _create_cancel(data.get("id"))
         return handler._json(status, payload)
 
     if parsed.path == "/manage/create/probe":

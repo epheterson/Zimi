@@ -81,6 +81,73 @@ def test_a_folder_becomes_a_zim_that_serves(gate_server, source_folder):
     assert results["results"], f"nothing searchable in the created ZIM: {results}"
 
 
+def test_a_finished_job_is_findable_after_the_fact(gate_server, source_folder):
+    """An admin who closed the tab and came back must be able to find out what
+    happened. The job log survives the job; if this breaks, the answer to "did
+    my capture finish?" goes back to being "look at the library and guess"."""
+    status, state = gate_server.get_json("/manage/create/status?history=1")
+    assert status == 200, state
+    history = state.get("history")
+    assert isinstance(history, list) and history, f"no job history at all: {state}"
+    mine = [record for record in history if record.get("title") == "Gate Field Notes"]
+    assert mine, f"the finished job is missing from the history: {history}"
+    assert mine[0]["state"] == "ok", mine[0]
+    assert mine[0]["mode"] == "folder"
+    assert mine[0]["result"], f"the history does not name what was created: {mine[0]}"
+
+
+def test_a_second_submission_queues_and_can_be_dropped(gate_server, source_folder):
+    """Two submissions are a plan, not a mistake. The queue is what makes the
+    Create page usable by somebody who knows what they want to build."""
+    first = gate_server.post_json(
+        "/manage/create", {"mode": "folder", "source": source_folder, "title": "Q1"}
+    )
+    assert first[0] == 200, first
+    second_status, second = gate_server.post_json(
+        "/manage/create", {"mode": "folder", "source": source_folder, "title": "Q2"}
+    )
+    assert second_status == 200, second
+    # The first job may already have finished — a folder capture this small is
+    # quick — so either answer is correct, and both must be honest about which.
+    if second.get("status") == "queued":
+        assert second["position"] == 1
+        dropped_status, dropped = gate_server.post_json(
+            "/manage/create/cancel", {"id": second["id"]}
+        )
+        assert dropped_status == 200, dropped
+        assert dropped["status"] == "dequeued"
+    else:
+        assert second["status"] == "started", second
+    state = gate_server.poll_json(
+        "/manage/create/status",
+        lambda s: s.get("done") is True and not s.get("queue"),
+        timeout=CREATE_TIMEOUT_SEC,
+    )
+    assert state.get("queue") == [], state
+
+
+def test_the_progress_stream_carries_structured_events(gate_server, source_folder):
+    """The Create page draws its progress from these, not from the log text.
+    An empty or malformed stream means a progress view that cannot move."""
+    status, body = gate_server.post_json(
+        "/manage/create",
+        {"mode": "folder", "source": source_folder, "title": "Gate Events"},
+    )
+    assert status == 200, body
+    state = gate_server.poll_json(
+        "/manage/create/status?events_since=0",
+        lambda s: s.get("done") is True,
+        timeout=CREATE_TIMEOUT_SEC,
+    )
+    events = state.get("events")
+    assert isinstance(events, list) and events, f"no structured events: {state}"
+    assert [event["i"] for event in events] == list(range(len(events)))
+    assert all(event["t"] in ("phase", "node", "count") for event in events), events
+    phases = [event["phase"] for event in events if event["t"] == "phase"]
+    assert phases[-1] == "done", phases
+    assert state["event_cursor"] == len(events)
+
+
 def test_the_created_zim_carries_its_provenance(gate_server, source_folder, tmp_path):
     """Every ZIM Zimi writes says who made it. A reader that trusts a ZIM's
     origin needs that metadata present, not just intended."""
