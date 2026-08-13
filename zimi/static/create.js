@@ -252,6 +252,16 @@ function _createModeAvailable(def, offline, importReady) {
   return true;
 }
 
+// Whether a mode's tile is shown to this viewer at all. A creator account
+// (a signed-in user with the per-user create permission) gets the modes that
+// capture the web plus bookmarks; folder and import read the SERVER'S disk,
+// which the server refuses them (primary admin only) — so the tiles never
+// appear rather than appearing and failing. Admin visibility is unchanged.
+function _createModeVisible(def, creatorOnly) {
+  if (!creatorOnly) return true;
+  return def.id !== 'folder' && def.id !== 'import';
+}
+
 function _createDef(id) {
   for (var i = 0; i < CREATE_MODE_DEFS.length; i++) {
     if (CREATE_MODE_DEFS[i].id === id) return CREATE_MODE_DEFS[i];
@@ -421,9 +431,11 @@ function _renderCreateTiles() {
   var host = document.getElementById('create-tiles');
   if (!host) return;
   _createTilesKey = _createAvailabilityKey();
+  var creatorOnly = _createViewerIsCreator();
   var html = '';
   for (var i = 0; i < CREATE_MODE_DEFS.length; i++) {
     var def = CREATE_MODE_DEFS[i];
+    if (!_createModeVisible(def, creatorOnly)) continue;
     var live = _createModeAvailable(def, _createOffline, _createImportReady);
     var desc = live
       ? tH('create_mode_' + def.id + '_desc')
@@ -449,6 +461,13 @@ function _renderCreateTiles() {
 // half-typed form, so the run pane only redraws them when this changes.
 function _createAvailabilityKey() {
   return (_createOffline ? '1' : '0') + (_createImportReady ? '1' : '0');
+}
+
+// True when the viewer is a signed-in creator account rather than an admin —
+// feeds _createModeVisible. Reads app.js's session state defensively so the
+// pure prefix of this file stays evaluable in the .cjs test sandbox.
+function _createViewerIsCreator() {
+  return !!(typeof _userSession !== 'undefined' && _userSession && _userSession.canCreate);
 }
 
 function _createSelectMode(id) {

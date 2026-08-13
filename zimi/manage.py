@@ -380,6 +380,37 @@ def _manage_auth_challenge(handler):
     return (401, {"error": "unauthorized", "needs_password": True})
 
 
+def _creator_authorized(handler):
+    """True if the request may drive ZIM creation: any authorized admin
+    (primary or secondary, including the passwordless-private legacy admin),
+    or a signed-in named user whose account carries ``can_create``."""
+    if _check_manage_auth(handler) is None:
+        return True
+    from zimi import users as _users
+
+    name = _users.resolve_request_user(handler)
+    return bool(name) and _users.user_can_create(name)
+
+
+def _creator_denial(handler):
+    """The ``(status, body)`` refusing a create-surface request, or ``None``
+    when authorized (see ``_creator_authorized``).
+
+    A signed-in user WITHOUT the permission gets a plain 403 — they are
+    authenticated, so the admin password prompt (``needs_password``) would be
+    the wrong door to point at. Everyone else gets the standard manage
+    challenge: 401 for anonymous/wrong credentials, ``public_locked`` for the
+    passwordless-public case.
+    """
+    if _creator_authorized(handler):
+        return None
+    from zimi import users as _users
+
+    if _users.resolve_request_user(handler):
+        return (403, {"error": "creation is not enabled for this account"})
+    return _manage_auth_challenge(handler)
+
+
 # ============================================================================
 # App update check — is a newer ZIMI APPLICATION release out?
 #
@@ -2407,6 +2438,37 @@ def handle_manage_get(handler, parsed, params):
         handler.end_headers()
         handler.wfile.write(data)
         return
+    # The create surfaces gate themselves: a creator account (can_create) is
+    # not an admin, so these two run BEFORE the admin challenge below.
+    # Everything else on /manage/* stays admin-only exactly as before.
+    if parsed.path == "/manage/create/status":
+        denial = _creator_denial(handler)
+        if denial:
+            return handler._json(*denial)
+        # Polled ~2s while a job runs. Everything here is in-memory except the
+        # optional one-shot sidecar probe, so the poll stays cheap on a Pi.
+        return handler._json(
+            200,
+            _create_status(
+                _create_int(param("since"), 0, 2**31) or 0,
+                probe=param("probe") == "1",
+            ),
+        )
+    if parsed.path == "/manage/create/browse":
+        # Same gate as folder mode itself: this endpoint exists to feed it, and
+        # a discovery surface that outranks the thing it discovers for is a
+        # hole. See the design note above `_create_browse`. The creator gate in
+        # front only shapes the refusal: a signed-in creator gets a clean 403
+        # instead of a password prompt for a power they can never hold.
+        denial = _creator_denial(handler)
+        if denial:
+            return handler._json(*denial)
+        if not _primary_admin_authorized(handler):
+            return handler._json(
+                403, {"error": "Server-path creation needs the primary admin"}
+            )
+        payload, status = _create_browse(param("path"))
+        return handler._json(status, payload)
     challenge = _manage_auth_challenge(handler)
     if challenge:
         return handler._json(*challenge)
@@ -2576,28 +2638,6 @@ def handle_manage_get(handler, parsed, params):
             resp["stale"] = True
             resp["fetched_at"] = _lib._catalog_stale_ts
         return handler._json(200, resp)
-
-    elif parsed.path == "/manage/create/browse":
-        # Same gate as folder mode itself: this endpoint exists to feed it, and
-        # a discovery surface that outranks the thing it discovers for is a
-        # hole. See the design note above `_create_browse`.
-        if not _primary_admin_authorized(handler):
-            return handler._json(
-                403, {"error": "Server-path creation needs the primary admin"}
-            )
-        payload, status = _create_browse(param("path"))
-        return handler._json(status, payload)
-
-    elif parsed.path == "/manage/create/status":
-        # Polled ~2s while a job runs. Everything here is in-memory except the
-        # optional one-shot sidecar probe, so the poll stays cheap on a Pi.
-        return handler._json(
-            200,
-            _create_status(
-                _create_int(param("since"), 0, 2**31) or 0,
-                probe=param("probe") == "1",
-            ),
-        )
 
     elif parsed.path == "/manage/check-updates":
         updates = _srv._check_updates()
@@ -3038,8 +3078,9 @@ def _handle_public_access_post(handler, data):
 
 def _handle_users_post(handler, data):
     """Admin-only user CRUD (multi-user v1). action ∈ {create, delete,
-    set-password, set-allowlist, set-role}. Errors are returned generically; on
-    success the fresh roster (no hashes) is echoed so the UI re-renders in one
+    set-password, set-allowlist, set-role, set-can-create}. Errors are
+    returned generically; on success the fresh roster (no hashes) is echoed so
+    the UI re-renders in one
     round trip. Reaching here means the admin-auth challenge already passed.
 
     Hierarchy (see ``users`` module docstring): only the PRIMARY admin may
@@ -3080,6 +3121,11 @@ def _handle_users_post(handler, data):
         ok, err = _users.set_allowlist(name, data.get("allowlist"))
     elif action == "set-role":
         ok, err = _users.set_role(name, role, data.get("allowlist"))
+    elif action == "set-can-create":
+        # Grant/revoke the per-user create permission (see users.set_can_create).
+        # The hierarchy gate above already bars a secondary admin from touching
+        # admin accounts; admins themselves are refused there (implicitly true).
+        ok, err = _users.set_can_create(name, bool(data.get("can_create")))
     else:
         return handler._json(400, {"error": "unknown action"})
     if not ok:
@@ -3164,6 +3210,40 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(*challenge)
         _revoke_api_token()
         return handler._json(200, {"status": "token revoked"})
+
+    # ZIM creation — a creator account (can_create) may drive the URL modes
+    # without admin credentials, so these routes gate themselves ahead of the
+    # generic admin challenge below. Folder and import read arbitrary server
+    # paths — a package-/etc-into-a-ZIM primitive — so those modes, like the
+    # folder browser that feeds them, stay with the PRIMARY admin: a creator
+    # captures the web, never the server's disk. (Secondary admins keep the
+    # URL modes, as before.)
+    if parsed.path in (
+        "/manage/create",
+        "/manage/create/cancel",
+        "/manage/create/probe",
+    ):
+        denial = _creator_denial(handler)
+        if denial:
+            return handler._json(*denial)
+        if parsed.path == "/manage/create/cancel":
+            payload, status = _create_cancel()
+            return handler._json(status, payload)
+        # The probe reads exactly what the run would read, so it inherits the
+        # run's gate verbatim — otherwise it becomes the cheaper way to ask
+        # the same question of the same filesystem.
+        if data.get("mode") in ("folder", "import") and not _primary_admin_authorized(
+            handler
+        ):
+            return handler._json(
+                403, {"error": "Server-path creation needs the primary admin"}
+            )
+        if parsed.path == "/manage/create":
+            payload, status = _create_start(data)
+        else:
+            payload, status = _create_probe(data)
+        return handler._json(status, payload)
+
     challenge = _manage_auth_challenge(handler)
     if challenge:
         return handler._json(*challenge)
@@ -3173,36 +3253,6 @@ def handle_manage_post(handler, parsed, data):
 
     if parsed.path == "/manage/public-access":
         return _handle_public_access_post(handler, data)
-
-    if parsed.path == "/manage/create":
-        # Folder and import modes read arbitrary server paths — a package-
-        # /etc-into-a-ZIM primitive. That power stays with the primary admin;
-        # secondary admins (an SSO role can mint them) keep the URL modes.
-        if data.get("mode") in ("folder", "import") and not _primary_admin_authorized(
-            handler
-        ):
-            return handler._json(
-                403, {"error": "Server-path creation needs the primary admin"}
-            )
-        payload, status = _create_start(data)
-        return handler._json(status, payload)
-
-    if parsed.path == "/manage/create/cancel":
-        payload, status = _create_cancel()
-        return handler._json(status, payload)
-
-    if parsed.path == "/manage/create/probe":
-        # The probe reads exactly what the run would read, so it inherits the
-        # run's gate verbatim — otherwise it becomes the cheaper way to ask the
-        # same question of the same filesystem.
-        if data.get("mode") in ("folder", "import") and not _primary_admin_authorized(
-            handler
-        ):
-            return handler._json(
-                403, {"error": "Server-path creation needs the primary admin"}
-            )
-        payload, status = _create_probe(data)
-        return handler._json(status, payload)
 
     if parsed.path == "/manage/download":
         url = data.get("url", "")

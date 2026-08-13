@@ -44,13 +44,15 @@ function eq(got, want, label) {
 
 const {
   CREATE_MODE_DEFS, CREATE_FIELDS, CREATE_CREDITS, CREATE_LOG_MAX,
-  _createModeAvailable, _createBuildRequest, _createMergeLines
+  _createModeAvailable, _createBuildRequest, _createMergeLines,
+  _createModeVisible
 } = sandbox;
 
 // The slice must actually contain the logic — a refactor that moves one of
 // these below the marker would otherwise silently stop testing it.
 for (const [name, fn] of Object.entries({
-  _createModeAvailable, _createBuildRequest, _createMergeLines
+  _createModeAvailable, _createBuildRequest, _createMergeLines,
+  _createModeVisible
 })) {
   check(typeof fn === 'function', 'extracted ' + name);
 }
@@ -373,6 +375,20 @@ for (const d of CREATE_MODE_DEFS) {
       `${d.id}'s preselected ${key} (${d.pick[key]}) is a real option`);
   }
 }
+
+// ── round 3: who sees which tiles ───────────────────────────────────────────
+// A creator account (a signed-in user with can_create) captures the web, never
+// the server's disk: folder and import — the modes the server refuses them —
+// are hidden rather than shown-and-failing. Admin visibility is untouched.
+
+check(CREATE_MODE_DEFS.every(d => _createModeVisible(d, false)),
+  'an admin viewer sees every tile');
+eq(CREATE_MODE_DEFS.filter(d => _createModeVisible(d, true)).map(d => d.id),
+  ['page', 'site', 'video', 'bookmarks'],
+  'a creator viewer sees the web modes plus bookmarks, never folder/import');
+eq(CREATE_MODE_DEFS.filter(d => !_createModeVisible(d, true)).map(d => d.id),
+  ['folder', 'import'],
+  'the hidden set matches the server-path modes the server 403s for creators');
 
 if (failures) {
   console.error(`\n${failures} failure(s)`);

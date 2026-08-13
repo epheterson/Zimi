@@ -747,7 +747,9 @@ let _pwReject = null;
 // ── Multi-user session (v1.8) ──
 // A logged-in NAMED USER (not admin). The session cookie does the actual
 // server-side filtering; this just shapes the client chrome (hide the admin
-// gear, show name + logout). null = admin or anonymous. {name, restricted}.
+// gear, show name + logout). null = admin or anonymous.
+// {name, restricted, canCreate} — canCreate mirrors the account's per-user
+// create permission (/whoami can_create); the server gates regardless.
 let _userSession = null;
 // When true, the password modal is in "sign in" mode (POST /login: user OR
 // admin) rather than the admin-only manage-retry flow.
@@ -782,8 +784,8 @@ function doLogin(username, password, remember) {
 
 // Apply a user session to the UI. Server-side filtering is already live via the
 // cookie; here we hide manage and reload the (now restricted) library view.
-function _applyUserSession(name) {
-  _userSession = { name: name, restricted: true };
+function _applyUserSession(name, canCreate) {
+  _userSession = { name: name, restricted: true, canCreate: !!canCreate };
   // A user is never admin — drop any admin token so ambient manage polls stop.
   _manageToken = ''; _clearManageToken();
   if (manageBtnEl) manageBtnEl.style.display = 'none';
@@ -849,7 +851,7 @@ async function _bootAuthGate() {
   // reads it to show "Default username: admin".
   _defaultUsernameHint = (j && j.default_username) || '';
   if (j && j.role === 'user') {
-    _userSession = { name: j.name, restricted: !!j.restricted };
+    _userSession = { name: j.name, restricted: !!j.restricted, canCreate: !!j.can_create };
     if (manageBtnEl) manageBtnEl.style.display = 'none';
     return false;
   }
@@ -1088,7 +1090,7 @@ function submitPw() {
         // state so the whole app boots with the session's filtered view.
         if (_loginRequired) { _exitLoginGate(); location.reload(); return; }
         closePwModal();
-        _applyUserSession(res.j.name);
+        _applyUserSession(res.j.name, !!res.j.can_create);
         return;
       }
       // Admin via the sign-in modal. A SECONDARY admin authenticates to a
@@ -3607,12 +3609,14 @@ function _dropCreateHash() {
   } catch (e) {}
 }
 
-// True when an admin may create ZIMs from this client: management is on, and
-// the client either holds admin credentials or needs none. Creation writes to
-// the library, so it is admin-only by the same rule as the gear — and the
-// server enforces that regardless of what this returns.
+// True when THIS client may create ZIMs: management is on, and the viewer is
+// either an admin (holds credentials or needs none) or a signed-in user whose
+// account carries the per-user create permission (/whoami can_create). The
+// server enforces the answer regardless of what this returns.
 function _canCreate() {
-  return manageEnabled && !_userSession && !_managePwRequired && !_managePublicLocked;
+  if (!manageEnabled) return false;
+  if (_userSession) return !!_userSession.canCreate;
+  return !_managePwRequired && !_managePublicLocked;
 }
 
 // Whether to DRAW the + before we can prove the answer.
@@ -8226,6 +8230,9 @@ function _msUsersHtml() {
       var seen = u.last_login
         ? tH('users_last_login') + ' ' + esc(_relTime(u.last_login))
         : tH('users_last_never');
+      // Surface the create grant on the row itself — the toggle lives in the
+      // ⋯ menu, but a permission nobody can see is a permission nobody audits.
+      if (u.can_create && u.role !== 'admin') seen += ' · ' + tH('users_can_create');
       var menuAttr = canManage
         ? 'onclick="event.stopPropagation();_openUserMenu(this,' + escAttr(JSON.stringify(u.name)) + ')" title="' + escAttr(t('users_options')) + '" aria-label="' + escAttr(t('users_options')) + '" aria-haspopup="menu"'
         : '';
@@ -8280,12 +8287,18 @@ function _openUserMenu(btn, name) {
   if (u.role === 'limited') {
     h += '<div class="ctx-item" data-action="allowlist">' + tH('users_edit_allowlist') + '</div>';
   }
+  // Per-user create permission — a checkable toggle, admin-role rows excluded
+  // (admins create implicitly; the server refuses the flag on them).
+  if (u.role !== 'admin') {
+    h += '<div class="ctx-item" data-action="can-create">' + (u.can_create ? '✓ ' : '') + tH('users_can_create') + '</div>';
+  }
   h += '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
   var r = btn.getBoundingClientRect();
   window._openMenuAt(h, r.left, r.bottom + 2, function(action, item) {
     if (action === 'set-pw') _setUserPassword(name);
     else if (action === 'role') _setUserRole(name, item.dataset.role);
     else if (action === 'allowlist') _editUserAllowlist(name);
+    else if (action === 'can-create') _setUserCanCreate(name, !u.can_create);
     else if (action === 'delete') _deleteUser(name);
   });
 }
@@ -8596,6 +8609,14 @@ function _setUserRole(name, role) {
   var payload = { action: 'set-role', name: name, role: role };
   if (role === 'limited') payload.allowlist = (u && u.allowlist) || [];
   _usersPost(payload).then(function(r) {
+    if (r.ok) { _usersData = r.j; _refreshUsersPane(); }
+  });
+}
+
+// Grant or revoke the per-user create permission from the ⋯ menu. Admin-role
+// accounts never show the item (they create implicitly).
+function _setUserCanCreate(name, on) {
+  _usersPost({ action: 'set-can-create', name: name, can_create: !!on }).then(function(r) {
     if (r.ok) { _usersData = r.j; _refreshUsersPane(); }
   });
 }

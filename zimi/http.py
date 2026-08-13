@@ -2654,6 +2654,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     "token": token,
                     "restricted": isinstance(allowlist, list),
                     "allowlist": allowlist if isinstance(allowlist, list) else [],
+                    "can_create": _users.user_can_create(name),
                 },
                 self._session_cookie(token, remember),
             )
@@ -2704,6 +2705,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     "role": "user",
                     "name": name,
                     "restricted": isinstance(allowlist, list),
+                    # Per-user create permission — the client's + button and
+                    # Create page consult this (the server gates regardless).
+                    "can_create": _users.user_can_create(name),
                 },
             )
 

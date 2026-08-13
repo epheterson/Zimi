@@ -1114,6 +1114,7 @@
   "users_last_never": "Ни разу не входил",
   "users_your_account": "Ваша учётная запись",
   "users_scope_limited": "Ограниченный доступ",
+  "users_can_create": "Может создавать ZIM",
   "library_view": "Вид библиотеки",
   "view_list": "Списком",
   "view_tiles": "Плиткой",
