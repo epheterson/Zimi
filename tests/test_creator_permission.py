@@ -196,10 +196,19 @@ class _RouteBase(_Base):
         manage._create_cancel = lambda job_id=None: ({"sentinel": "cancel"}, 200)
         self._orig["_create_browse"] = manage._create_browse
         manage._create_browse = lambda path: ({"sentinel": "browse"}, 200)
+        # Server-path modes are additionally gated on ZIMI_CREATE_ROOT (the
+        # folder-retreat rule): without one, even the primary admin is refused.
+        # The matrix is about WHO, not WHERE, so give it a root.
+        self._root = tempfile.mkdtemp(prefix="zimi-create-root-")
+        os.environ["ZIMI_CREATE_ROOT"] = self._root
 
     def tearDown(self):
         for fn, orig in self._orig.items():
             setattr(manage, fn, orig)
+        os.environ.pop("ZIMI_CREATE_ROOT", None)
+        import shutil
+
+        shutil.rmtree(self._root, ignore_errors=True)
         super().tearDown()
 
     def _post(self, path, data, headers):
