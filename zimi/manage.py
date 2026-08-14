@@ -2130,6 +2130,7 @@ _CREATE_RE_FETCHING = re.compile(r"^fetching (\S+)$")
 _CREATE_RE_PACKAGING_ONE = re.compile(r"^packaging (\S+)$")
 _CREATE_RE_SKIPPED = re.compile(r"^skipped (\S+):")
 _CREATE_RE_ASSET = re.compile(r"^asset (done|failed) (\S+) for (\S+)$")
+_CREATE_RE_TITLE = re.compile(r"^title: (.+)$")
 _CREATE_LABEL_MAX = 80
 
 
@@ -2268,6 +2269,17 @@ def _create_derive_line(job, text):
         if target.startswith(("http://", "https://")):
             # Multi-page capture writes one page at a time and says which.
             events.append(_create_node_event("page", target, "done"))
+        return events, phase
+
+    match = _CREATE_RE_TITLE.match(line)
+    if match:
+        # The engine has read what the thing it is making is called. Worth
+        # having only when nobody typed a title — an admin's own title is a
+        # decision, not a guess to be improved on. It goes straight onto the
+        # job rather than out as an event: every status reply already carries
+        # `title`, and the job's own thread is the only writer there is.
+        if not job.title:
+            job.title = match.group(1).strip()[:CREATE_MAX_TITLE]
         return events, phase
 
     # The engines' closing "done" line is deliberately NOT read as the done

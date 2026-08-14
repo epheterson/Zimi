@@ -1118,7 +1118,9 @@ def _url_page_path(final_url):
     return path
 
 
-def http_asset_carrier(add_item, final_url, timeout, *, carried=None, budget=None):
+def http_asset_carrier(
+    add_item, final_url, timeout, *, carried=None, budget=None, item_factory=None
+):
     """An ``_AssetCarrier`` that pulls same-origin assets over HTTP.
 
     ``carried`` shares ONE dedupe map across the pages of a site crawl — a
@@ -1127,7 +1129,14 @@ def http_asset_carrier(add_item, final_url, timeout, *, carried=None, budget=Non
     fresh carrier so the per-page asset caps stay per page, exactly as in
     single-page capture. ``budget`` is anything with ``spend(n) -> bool``;
     it is charged for each fetched asset and stops asset traffic for good
-    once a crawl-wide byte budget is spent."""
+    once a crawl-wide byte budget is spent.
+
+    ``item_factory`` is what a carried asset BECOMES before it reaches
+    ``add_item``. Single-page capture makes a libzim Item and hands it to a
+    live Creator; a crawl has no Creator yet when it fetches, so it makes a
+    plain tuple and hands it to an ``AssetSpool`` (see
+    ``spooling_asset_carrier``). Everything between the fetch and that last
+    step is the same code either way, which is the point."""
     origin, variants = _origin_variants(final_url)
     fetch = _http_asset_reader(origin, variants, timeout)
 
@@ -1139,10 +1148,89 @@ def http_asset_carrier(add_item, final_url, timeout, *, carried=None, budget=Non
             return None
         return got
 
-    carrier = _AssetCarrier(add_item, make_asset_item, read)
+    carrier = _AssetCarrier(add_item, item_factory or make_asset_item, read)
     if carried is not None:
         carrier._carried = carried
     return carrier
+
+
+def _spooled_asset(path, mimetype, data):
+    """The ``_AssetCarrier`` item factory for a crawl: no libzim, just the
+    three facts an asset is."""
+    return (path, mimetype, data)
+
+
+class AssetSpool:
+    """A crawl's carried assets, held on DISK between the two passes.
+
+    A site capture fetches an asset the moment the page that referenced it is
+    captured, so a page's progress can mean "fully downloaded" rather than
+    "downloaded except for the part that happens later". But the ZIM cannot be
+    written until the capture set is final, so the bytes have to wait
+    somewhere — and that somewhere is one file per asset beside the page
+    spool, never a dict of bytes: a site's assets run to eighty megabytes and
+    the machines Zimi targets do not have that to spare on top of everything
+    else a crawl is holding."""
+
+    def __init__(self, directory):
+        os.makedirs(directory, exist_ok=True)
+        self._dir = directory
+        self._entries = []  # (in-ZIM path, mimetype, spool file)
+
+    def __len__(self):
+        return len(self._entries)
+
+    def add(self, carried):
+        """The sink an ``_AssetCarrier`` adds to, taking what
+        ``_spooled_asset`` made."""
+        in_path, mimetype, data = carried
+        path = os.path.join(self._dir, f"{len(self._entries):06d}.bin")
+        with open(path, "wb") as fh:
+            fh.write(data)
+        self._entries.append((in_path, mimetype, path))
+
+    def drain(self, add_item):
+        """Hand every spooled asset to a Creator and return how many landed.
+
+        One at a time, each deleted as it goes: the peak here is one asset,
+        which is the same peak the fetch itself had."""
+        written = 0
+        for in_path, mimetype, path in self._entries:
+            try:
+                with open(path, "rb") as fh:
+                    data = fh.read()
+            except OSError as e:
+                log.warning("spooled asset %s is unreadable: %s", in_path, e)
+                continue
+            try:
+                add_item(make_asset_item(in_path, mimetype, data))
+                written += 1
+            except Exception as e:
+                # The article that referenced this asset was rewritten to point
+                # at it during the crawl, so a failure here leaves a dangling
+                # in-ZIM reference rather than an honest external one. It is
+                # logged loudly for that reason: nothing else will notice.
+                log.warning("could not write carried asset %s: %s", in_path, e)
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        self._entries = []
+        return written
+
+
+def spooling_asset_carrier(spool, final_url, timeout, *, carried=None, budget=None):
+    """``http_asset_carrier``'s crawl-pass twin: identical fetching, identical
+    rewriting, but what it carries lands in ``spool`` on disk instead of in a
+    Creator that does not exist yet."""
+    return http_asset_carrier(
+        spool.add,
+        final_url,
+        timeout,
+        carried=carried,
+        budget=budget,
+        item_factory=_spooled_asset,
+    )
 
 
 def site_illustration(final_url, timeout):

@@ -469,6 +469,21 @@ def test_page_mode_lines_mark_a_page_active_then_done_or_failed(stub_engine):
     ]
 
 
+def test_a_title_the_engine_read_names_the_job_unless_one_was_typed(stub_engine):
+    # The run header needs a name from the first seconds, and for a site
+    # capture the site declares one. It is adopted only into an empty field.
+    _events_of(stub_engine, ["title: The Handbook"])
+    assert _get("/manage/create/status").body["title"] == "The Handbook"
+
+    stub_engine["lines"] = ["title: The Handbook"]
+    _post(
+        "/manage/create",
+        {"mode": "site", "source": "https://e.org/", "title": "My Own Name"},
+    )
+    _wait_done()
+    assert _get("/manage/create/status").body["title"] == "My Own Name"
+
+
 def test_a_line_the_adapter_cannot_read_costs_no_events(stub_engine):
     stub_engine["lines"] = [
         "robots.txt asks for a 2s crawl delay — honoring it",
@@ -627,6 +642,52 @@ def test_a_real_crawl_reports_its_assets_against_the_page_that_wanted_them(
     # The fixture's stylesheet is shared by every page and stored once, so it
     # belongs to the first page that wanted it and is not re-reported after.
     assert len(assets) == len({asset["id"] for asset in assets})
+
+
+def test_a_page_goes_green_only_after_every_asset_it_wanted(
+    fixture_site, tmp_path, stub_engine
+):
+    """Eric, on the round-3 page: "why are all the dots green right away are
+    the downloads done then or still more during packaging?" They were still
+    more — assets were fetched in the write pass, long after the row that
+    wanted them had gone green. This is the invariant that replaced that, read
+    off a REAL crawl's output through the REAL adapter: for every page, the
+    events go active, then its assets, then done. Nothing is outstanding behind
+    a green dot."""
+    import zimi.crawler as crawler
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    lines = []
+    crawler.create_site_zim(
+        fixture_site,
+        out_dir=str(out_dir),
+        max_pages=_FIXTURE_PAGES,
+        delay=0,
+        ignore_robots=True,
+        progress=lines.append,
+    )
+    events = _events_of(stub_engine, lines)
+    nodes = [e for e in events if e["t"] == "node"]
+
+    def where(kind, node_id, state):
+        return next(
+            i
+            for i, e in enumerate(nodes)
+            if e["kind"] == kind and e["id"] == node_id and e["state"] == state
+        )
+
+    pages = {e["id"] for e in nodes if e["kind"] == "page" and e["state"] == "done"}
+    assert len(pages) > 1
+    checked = 0
+    for page in pages:
+        opened, closed = where("page", page, "active"), where("page", page, "done")
+        assert opened < closed, f"{page} was reported done before it was started"
+        for i, event in enumerate(nodes):
+            if event["kind"] == "asset" and event["parent"] == page:
+                assert opened < i < closed, f"{event['id']} landed outside its page"
+                checked += 1
+    assert checked, "no assets were attributed to any page"
 
 
 def test_cancelling_during_packaging_leaves_nothing_behind(fixture_site, tmp_path):

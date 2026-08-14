@@ -309,9 +309,15 @@ check(s.lines[s.lines.length - 1] === flood[flood.length - 1],
 const { _createPreviewRows } = sandbox;
 check(typeof _createPreviewRows === 'function', 'extracted _createPreviewRows');
 
-// The sandbox has no app.js, so lend it the two globals the rows are built from.
+// The sandbox has no app.js, so lend it the two globals the rows are built
+// from. `t` substitutes exactly as the real one does, so a phrase built from a
+// key AND its numbers can be asserted whole.
 sandbox._fmtBytes = b => b + ' B';
-sandbox.t = k => k;
+sandbox.t = (k, vars) => {
+  let s = k;
+  if (vars) for (const name in vars) s = s.split('{' + name + '}').join(vars[name]);
+  return s;
+};
 
 const rowMap = p => Object.fromEntries(_createPreviewRows(p).map(r => [r.k, r.v]));
 
@@ -341,6 +347,18 @@ check(rowMap({ mode: 'site', title: 'T', final_url: 'u', bytes: 1, robots_allowe
   .create_pv_robots === 'create_pv_robots_no',
   'site rows carry the robots verdict when there is one');
 
+// Round 4, Eric: "The size shown up front isn't close to this why bother
+// showing it?" The probe reads ONE page of a site; a crawl's bytes are mostly
+// the assets of pages it never looked at. So site mode promises no size — the
+// counter during the run is the number, and it counts real responses.
+eq(_createPreviewRows({ mode: 'site', title: 'T', final_url: 'http://x/', bytes: 4096 })
+  .map(r => r.k),
+  ['create_pv_title', 'create_pv_address'],
+  'site mode shows no size it cannot measure');
+check(rowMap({ mode: 'page', title: 'T', final_url: 'http://x/', bytes: 4096 })
+  .create_pv_size === '4096 B',
+  'one page IS the whole capture, so page mode keeps its measured size');
+
 check(rowMap({ mode: 'video', videos: 12 }).create_pv_videos === '12+',
   'a playlist sampled to the cap is reported as "12+", not as exactly 12');
 check(rowMap({ mode: 'video', videos: 3 }).create_pv_videos === '3',
@@ -350,6 +368,123 @@ check(rowMap({ mode: 'import', bytes: 9, sidecar_ready: false }).create_pv_helpe
   'import says whether its helper still has to install');
 
 eq(_createPreviewRows(null), [], 'no probe reply means no rows');
+
+// ── round 4: how much longer ─────────────────────────────────────────────────
+//
+// Eric, watching a crawl sit at 8/200: "Super slow can you see it? can we
+// provide time estimates for any of these steps?" The estimate is a rolling
+// rate against a known remainder, and the whole risk in it is the case where
+// it should say nothing at all — an ETA that outlives the rate it came from
+// turns a stall into a promise.
+
+const { _createEstimate, _createEtaText, _createPushSample,
+  CREATE_ETA_WINDOW, CREATE_ETA_STALE_MS } = sandbox;
+
+// A run at a steady two per second, sampled once a second.
+const steady = (from, to) =>
+  Array.from({ length: to - from + 1 }, (_, i) => ({ t: 1000 + i * 1000, n: (from + i) * 2 }));
+
+let est = _createEstimate(steady(0, 9), 100, 1000 + 9000);
+check(Math.round(est.rate) === 2, 'the rate is read off the window, in units a second');
+check(est.remaining === 100 - 18, 'what is left is the total minus where it got to');
+check(Math.round(est.ms / 1000) === 41, 'and the wait is that remainder at that rate');
+
+// Revision: the same run, slowed to one per second half way, must report the
+// NEW rate. That is what the window is for.
+const slowed = [
+  { t: 1000, n: 0 }, { t: 2000, n: 2 }, { t: 3000, n: 4 },
+  { t: 8000, n: 5 }, { t: 13000, n: 6 },
+];
+check(_createEstimate(slowed, 100, 13000).rate < 1,
+  'a crawl that slows down is reported at the rate it slowed to');
+
+// An unknown or already-passed total buys a rate and nothing more: a finish
+// line nobody reported is not one to invent.
+check(_createEstimate(steady(0, 9), undefined, 10000).ms === null,
+  'no total, no finish line — the rate stands alone');
+check(_createEstimate(steady(0, 9), 5, 10000).ms === null,
+  'a total the count has already passed is not a remainder');
+
+// The four ways there is nothing defensible to say.
+check(_createEstimate([{ t: 1000, n: 1 }], 100, 2000) === null, 'one sample is not a rate');
+check(_createEstimate([], 100, 2000) === null, 'no samples, no estimate');
+check(_createEstimate([{ t: 1000, n: 4 }, { t: 1500, n: 5 }], 100, 1500) === null,
+  'a window younger than the minimum span is not divided by');
+check(_createEstimate([{ t: 1000, n: 4 }, { t: 9000, n: 4 }], 100, 9000) === null,
+  'a count that has not moved has no rate');
+// The one that matters most: the stream went quiet, so the estimate goes away
+// rather than freezing at whatever it last said.
+check(_createEstimate(steady(0, 9), 100, 10000 + CREATE_ETA_STALE_MS + 1) === null,
+  'a stale window yields NO estimate — a frozen ETA is a lie about a stall');
+
+// The window is bounded and only records movement: a repeated count carries no
+// time information and would only stretch the span it is averaged over.
+let win = [];
+for (let i = 0; i < CREATE_ETA_WINDOW + 20; i++) _createPushSample(win, i, 1000 + i * 10);
+check(win.length === CREATE_ETA_WINDOW, 'the window is bounded');
+check(win[win.length - 1].n === CREATE_ETA_WINDOW + 19, 'and keeps the NEWEST samples');
+win = [];
+_createPushSample(win, 7, 1000);
+_createPushSample(win, 7, 2000);
+_createPushSample(win, 8, 3000);
+eq(win.map(s => s.n), [7, 8], 'a repeated count is not a new sample');
+
+// The one that broke this on its first run: a poll delivering four pages
+// delivers them at ONE instant, and four samples sharing a timestamp fill the
+// window with a span of zero — which reads as "not enough history yet" forever.
+win = [];
+_createPushSample(win, 1, 5000);
+_createPushSample(win, 2, 5000);
+_createPushSample(win, 3, 5000);
+eq(win, [{ t: 5000, n: 3 }], 'one instant is one sample, at the newest count');
+_createPushSample(win, 9, 9000);
+check(_createEstimate(win, 100, 9000) !== null,
+  'so a window built from two polls is a window with a span');
+
+// The phrasing, asserted as the sentence a person actually reads: for this
+// stretch `t` is backed by the shipped English locale, so a missing key or a
+// placeholder that does not match its format shows up here rather than on the
+// page. Restored afterwards — everything else in this file asserts on keys.
+const keyStub = sandbox.t;
+const EN = JSON.parse(fs.readFileSync(
+  path.join(__dirname, '..', 'zimi', 'static', 'i18n', 'en.json'), 'utf8'));
+sandbox.t = (k, vars) => keyStub(EN[k] === undefined ? k : EN[k], vars);
+
+check(_createEtaText(null) === '', 'no estimate, no phrase');
+check(_createEtaText({ rate: 0.2, remaining: null, ms: null }) === '12/min',
+  'a rate with no finish line is shown as a rate');
+check(_createEtaText({ rate: 0.004, remaining: null, ms: null }) === '',
+  'a pace that rounds to "0/min" says nothing rather than saying zero');
+check(_createEtaText({ rate: 1, remaining: 30, ms: 30000 }) === 'under a minute left',
+  'under a minute is a phrase, not "~0 min"');
+check(_createEtaText({ rate: 1, remaining: 240, ms: 240000 }) === '~4 min left',
+  'minutes read as minutes');
+check(_createEtaText({ rate: 1, remaining: 5000, ms: 5000000 }) === '~1 h 23 min left',
+  'and an hour-long crawl says hours');
+// Every phrase is hedged or bounded — none of them promises a finish time.
+for (const phrase of ['create_eta_min', 'create_eta_hour']) {
+  check(EN[phrase].indexOf('~') === 0, phrase + ' leads with the hedge');
+}
+sandbox.t = keyStub;
+
+// ── round 4: the run header's source line ───────────────────────────────────
+//
+// The run pane is headed by what is being made for as long as it is being
+// made, and the second half of that line is the address. An address has no
+// natural length, and this page has no horizontal scroll.
+
+const { _createShortSource, CREATE_SOURCE_MAX } = sandbox;
+check(_createShortSource('https://example.org/docs/') === 'example.org/docs/',
+  'the scheme is dropped: every source here is http and it buys nothing');
+check(_createShortSource('http://example.org/') === 'example.org/',
+  'http goes too, not just https');
+check(_createShortSource('') === '' && _createShortSource(null) === '',
+  'no source is an empty line, never the string "null"');
+const long = _createShortSource('https://e.org/' + 'x'.repeat(400));
+check(long.length === CREATE_SOURCE_MAX, 'a long address is clamped to the budget');
+check(long.slice(-1) === '…', 'and says it was clamped');
+check(_createShortSource('e.org/short') === 'e.org/short',
+  'a short address is left exactly as it is');
 
 // ── round 2: the option tables ──────────────────────────────────────────────
 
@@ -462,6 +597,10 @@ _createApplyEvents(v, [
   { t: 'count', what: 'entries', n: 1, total: 10 }
 ]);
 check(JSON.stringify(v) === before, 'replaying a batch changes nothing');
+// Including the ETA's timing window, which is the one piece of state that
+// carries a clock: a re-sent phase must not throw the rate away, and a count
+// that has not moved must not be timed twice.
+eq(v.samples.map(s => s.n), [1], 'a replayed batch does not disturb the window');
 
 // A phase only ever moves forward: the server reports "done" for one file
 // while a later line is still being derived, and the strip must not rewind.

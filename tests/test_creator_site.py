@@ -368,6 +368,115 @@ def test_redirect_off_origin_is_not_captured(fixture_server, tmp_path):
     assert not arc_has(info, "elsewhere")
 
 
+# ── one pass does the fetching, the other does the writing ──────────────────
+#
+# The whole shape of round 4. A page is announced, its document and every
+# asset it references come down, and only then is it reported captured — so
+# "captured" is a fact rather than a promise, and the write pass afterwards is
+# disk work that no longer waits on anybody's server.
+
+
+def _phases(said):
+    """The progress lines split at the write pass's opening line."""
+    at = next(i for i, m in enumerate(said) if m.startswith("packaging "))
+    return said[:at], said[at:]
+
+
+def test_resolving_links_twice_is_the_same_as_resolving_them_once():
+    """The invariant the split rests on.
+
+    The crawl renders each page with no resolver, so every link comes out
+    absolute; the write pass runs the SAME rewriter again, this time knowing
+    which of those addresses the capture holds. That only works because the
+    second pass over an already-absolute href is a no-op — join an absolute
+    URL onto any base and you get the URL back. Break this and a crawl ships
+    links pointing at the live web that should have been internal."""
+    base = "http://site.test/docs/index.html"
+
+    def resolver(url):
+        return "a_html" if url == "http://site.test/docs/a.html" else None
+
+    for markup in (
+        '<a href="/docs/a.html">captured</a>',
+        "<a href='rel.html#frag'>a fragment</a>",
+        '<a class="q" href="../up.html" data-x="1">other attributes</a>',
+        '<a href="#top">t</a><a href="mailto:a@b.c">m</a><a href="js.html">j</a>',
+        '<a href="https://other.invalid/p">off site</a>',
+    ):
+        once = creator._externalize_links(markup, base, resolver)
+        split = creator._externalize_links(
+            creator._externalize_links(markup, base, None), base, resolver
+        )
+        assert split == once, markup
+
+
+def test_a_page_is_reported_captured_only_once_its_assets_are_in(
+    fixture_server, tmp_path
+):
+    said = []
+    crawler.create_site_zim(
+        f"{BASE}/", out_dir=str(tmp_path), delay=0, max_depth=1, progress=said.append
+    )
+    crawl, _write = _phases(said)
+    # The seed page: announced, then its assets, then done. The dot cannot go
+    # green while anything it referenced is still coming.
+    announced = crawl.index(f"fetching {BASE}/")
+    css = next(i for i, m in enumerate(crawl) if "static/site.css" in m)
+    logo = next(i for i, m in enumerate(crawl) if "img/logo.png" in m)
+    done = next(i for i, m in enumerate(crawl) if m.startswith("  [1/"))
+    assert announced < css < done and announced < logo < done
+    # Every asset line names the page that wanted it, under the same identity
+    # the page node was announced with — otherwise the count has no row.
+    assert all(m.endswith(f" for {BASE}/") for m in (crawl[css], crawl[logo]))
+
+
+def test_every_page_is_announced_before_it_is_fetched(fixture_server, tmp_path):
+    said = []
+    crawler.create_site_zim(
+        f"{BASE}/chain/0.html",
+        out_dir=str(tmp_path),
+        delay=0,
+        max_pages=4,
+        progress=said.append,
+    )
+    crawl, _write = _phases(said)
+    starts = [m[len("fetching ") :] for m in crawl if m.startswith("fetching ")]
+    dones = [m.split()[1] for m in crawl if m.lstrip().startswith("[")]
+    # Same pages, same order, and the announcement always comes first.
+    assert starts == dones
+    for url in dones:
+        assert crawl.index(f"fetching {url}") < crawl.index(
+            next(m for m in crawl if m.lstrip().startswith("[") and url in m)
+        )
+
+
+def test_the_write_pass_makes_no_requests_at_all(fixture_server, tmp_path):
+    # Eric, watching round 3: "why are all the dots green right away are the
+    # downloads done then or still more during packaging?" They were still
+    # more. Now the write pass is disk and CPU — the site never hears from it,
+    # including for the favicon, which comes down with the seed.
+    during = {}
+
+    def note(message):
+        if str(message).startswith("packaging "):
+            during["at"] = len(REQUESTS)
+
+    crawler.create_site_zim(
+        f"{BASE}/", out_dir=str(tmp_path), delay=0, max_depth=2, progress=note
+    )
+    assert during["at"] == len(REQUESTS)
+
+
+def test_the_seed_says_what_the_zim_will_be_called(fixture_server, tmp_path):
+    said = []
+    _site(tmp_path, "/", max_depth=0, progress=said.append)
+    assert "title: Fixture" in said
+    # A title that was asked for is not overwritten by one that was read.
+    said.clear()
+    _site(tmp_path, "/", max_depth=0, title="My Copy", progress=said.append)
+    assert "title: My Copy" in said
+
+
 # ── bounds ──────────────────────────────────────────────────────────────────
 
 
@@ -404,7 +513,12 @@ def test_byte_budget_also_stops_asset_traffic(fixture_server, tmp_path):
     # ZIM is still valid, the references are honestly unrewritten.
     info = _site(tmp_path, "/", max_bytes=len(INDEX) + 1, max_depth=1)
     assert info["assets"] == 0
-    assert "/static/site.css" not in REQUESTS
+    # The budget is charged when a response arrives, so exactly one asset may
+    # be in flight when it runs out — the same single overshoot the page loop
+    # allows. Everything after it is refused before the request is made: no
+    # image, and none of the CSS's own url() refs.
+    assert "/img/logo.png" not in REQUESTS
+    assert "/static/bg.png" not in REQUESTS
     assert Archive(info["path"]).has_entry_by_path("A/index")
 
 
@@ -416,25 +530,71 @@ def test_bounds_must_be_positive(tmp_path):
 
 
 # ── politeness ──────────────────────────────────────────────────────────────
+#
+# The delay is a MINIMUM INTERVAL between page requests, not a sleep bolted on
+# after each one. Asserting that needs a clock, so these tests substitute the
+# crawler's whole `time` module: it only moves when something sleeps, which
+# makes every wait exactly the gap the crawl still owed the site.
 
 
-def test_delay_is_applied_between_page_requests(fixture_server, tmp_path, monkeypatch):
-    slept = []
-    monkeypatch.setattr(crawler.time, "sleep", lambda s: slept.append(s))
+class _FakeClock:
+    """`time`, for a crawl in a test: nothing takes any time unless a test
+    says it does."""
+
+    def __init__(self):
+        self.now = 1000.0
+        self.slept = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.slept.append(seconds)
+        self.now += seconds
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    fake = _FakeClock()
+    monkeypatch.setattr(crawler, "time", fake)
+    return fake
+
+
+def test_delay_is_applied_between_page_requests(fixture_server, tmp_path, clock):
     info = crawler.create_site_zim(
         f"{BASE}/chain/0.html", out_dir=str(tmp_path), delay=0.25, max_pages=3
     )
     # One wait per page fetched after the seed — never before the first.
-    assert slept == [0.25] * (info["pages"] - 1)
+    assert clock.slept == [0.25] * (info["pages"] - 1)
 
 
-def test_robots_crawl_delay_wins_when_it_asks_for_more(
-    fixture_server, tmp_path, monkeypatch
+def test_asset_time_is_spent_inside_the_interval_not_added_to_it(
+    fixture_server, tmp_path, clock
 ):
+    # The site's cadence is what it was; the assets ride in the gap. Each
+    # asset that lands costs three seconds of clock here, and the seed page
+    # pulls two of them (its stylesheet, and the background that stylesheet
+    # references), so six of the five-second interval are already spent by the
+    # time the crawl wants the next page — and it waits no further. The page
+    # after that carries no NEW assets, so its full interval is owed and slept.
+    def note(message):
+        if str(message).strip().startswith("asset "):
+            clock.now += 3.0
+
+    info = crawler.create_site_zim(
+        f"{BASE}/chain/0.html",
+        out_dir=str(tmp_path),
+        delay=5,
+        max_pages=3,
+        progress=note,
+    )
+    assert info["assets"] == 2
+    assert clock.slept == [5]
+
+
+def test_robots_crawl_delay_wins_when_it_asks_for_more(fixture_server, tmp_path, clock):
     ROBOTS[0] = "User-agent: *\nCrawl-delay: 2\n"
-    slept = []
     said = []
-    monkeypatch.setattr(crawler.time, "sleep", lambda s: slept.append(s))
     crawler.create_site_zim(
         f"{BASE}/chain/0.html",
         out_dir=str(tmp_path),
@@ -442,20 +602,16 @@ def test_robots_crawl_delay_wins_when_it_asks_for_more(
         max_pages=2,
         progress=said.append,
     )
-    assert slept == [2.0]
+    assert clock.slept == [2.0]
     assert any("2s crawl delay" in m for m in said)
 
 
-def test_our_delay_wins_when_it_is_the_politer_one(
-    fixture_server, tmp_path, monkeypatch
-):
+def test_our_delay_wins_when_it_is_the_politer_one(fixture_server, tmp_path, clock):
     ROBOTS[0] = "User-agent: *\nCrawl-delay: 1\n"
-    slept = []
-    monkeypatch.setattr(crawler.time, "sleep", lambda s: slept.append(s))
     crawler.create_site_zim(
         f"{BASE}/chain/0.html", out_dir=str(tmp_path), delay=5, max_pages=2
     )
-    assert slept == [5]
+    assert clock.slept == [5]
 
 
 # ── refusals ────────────────────────────────────────────────────────────────
@@ -839,14 +995,25 @@ def test_probe_says_when_robots_is_absent(fixture_server):
     assert crawler.probe_site(BASE + "/")["robots"] == "absent"
 
 
-def test_probe_detects_the_language_and_estimates_the_size(fixture_server):
+def test_probe_detects_the_language_and_counts_pages(fixture_server):
     got = crawler.probe_site(BASE + "/")
     assert got["language"] == "eng" and got["language_source"] == "fallback"
-    assert got["avg_page_bytes"] > 0
-    # The estimate is rough by construction — pages measured, assets assumed —
-    # but it must be bounded by the crawler's own default page cap.
+    # A page count is defensible from a sample and is bounded by the crawler's
+    # own default cap.
     assert 0 < got["est_pages"] <= crawler.DEFAULT_MAX_PAGES
-    assert got["est_bytes"] >= got["bytes"]
+    # `bytes` is what the PROBE fetched, and says so by being no larger than
+    # the twenty documents it is allowed to read.
+    assert got["bytes"] > 0
+
+
+def test_probe_promises_no_size_it_cannot_measure(fixture_server):
+    # A depth-2 sample cannot see a site's asset tail, and the projection built
+    # on it was not close to what capturing the site really cost. It is gone
+    # rather than relabelled: the byte counter during the run is the honest
+    # number, and it counts real responses.
+    got = crawler.probe_site(BASE + "/")
+    assert "est_bytes" not in got and "avg_page_bytes" not in got
+    assert not hasattr(crawler, "PROBE_ASSET_FACTOR")
 
 
 def test_probe_flags_an_spa_seed(fixture_server):
@@ -875,9 +1042,7 @@ def test_cli_multiple_urls_build_one_zim(fixture_server, tmp_path):
     assert "2 pages into one ZIM" in r.stdout
     arc = Archive(str(out))
     assert arc.main_entry.get_item().path == "A/index"
-    index = bytes(
-        arc.get_entry_by_path("A/index").get_item().content
-    ).decode("utf-8")
+    index = bytes(arc.get_entry_by_path("A/index").get_item().content).decode("utf-8")
     assert index.count("<li>") >= 2
 
 

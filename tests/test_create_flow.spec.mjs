@@ -188,6 +188,20 @@ test.describe('the shared panel', () => {
     }
   });
 
+  test('the page explains itself with a title and six tiles, nothing else',
+    async ({ page }) => {
+      // Eric on the subtitle that used to sit here: "This copy sucks… Not just
+      // my own content. Not just my own library. Less is more." Every qualifier
+      // in it was wrong and none of it was load-bearing, so the heading is now
+      // the whole of the page's own voice.
+      await openCreate(page);
+      const head = page.locator('.create-inner > .create-head');
+      await expect(head).toHaveText('Create a ZIM');
+      expect(await head.locator('> *').count()).toBe(1);
+      // The tiles do the explaining, as they always did.
+      expect(await page.locator('.create-chip').count()).toBeGreaterThan(3);
+    });
+
   test('the chips are a selector, not six stacked forms', async ({ page }) => {
     await openCreate(page);
     // One chip per usable mode, and exactly one of them lit at any moment.
@@ -412,47 +426,134 @@ test.describe('watching a real crawl', () => {
     }), { timeout: 5000 }).not.toMatch(/^0 B$/);
   });
 
-  test('packaging visibly moves, which is the whole complaint', async ({ page }) => {
-    // Eric, on the round-2 page: packaging hung forever. lane-jobs fixed the
-    // engine (it reports and checkpoints per page now); this is the client half
-    // of that fix — while the strip sits on Package, the entry counter has to
-    // CLIMB, against a total, rather than sit still behind a spinner.
+  test('packaging is no longer where the time goes', async ({ page }) => {
+    // Round 2, Eric: packaging hung forever. Round 3 made it report per page,
+    // so it moved. Round 4 made it stop taking any time at all: the assets it
+    // used to fetch now come down during the crawl, and the write pass is disk
+    // and CPU. So the thing to prove is no longer that the counter climbs — it
+    // is that the phase is BRIEF, and brief relative to the fetching that is
+    // the real work. Fail this and assets have crept back into the write pass.
     await openCreate(page);
     await pickMode(page, 'site');
     await page.fill('#create-source', slowUrl);
     await page.fill('#create-max-pages', '60');
+
+    // A recorder in the page: this phase is far too short to aim an await at.
+    await page.evaluate(() => {
+      window.__phases = [];
+      window.__phaseTimer = setInterval(() => {
+        const s = window._createStatus;
+        if (!s || !s.id) return;
+        const phase = s.done ? 'done' : (s.phase || '');
+        const last = window.__phases[window.__phases.length - 1];
+        if (!last || last.phase !== phase) {
+          window.__phases.push({ phase: phase, at: Date.now() });
+        }
+      }, 100);
+    });
+    await page.click('#create-start');
+    // Wait for the RECORDER to have seen the end, not merely for the status to
+    // say so: the two run at different rates, and stopping the clock before
+    // the last tick would read as a phase that never ended.
+    await page.waitForFunction(
+      () => window.__phases.some(p => p.phase === 'done'), null, { timeout: 180000 });
+    const phases = await page.evaluate(() => {
+      clearInterval(window.__phaseTimer);
+      return window.__phases;
+    });
+    expect(await page.evaluate(() => window._createStatus.ok)).toBe(true);
+
+    const spanOf = name => {
+      const at = phases.findIndex(p => p.phase === name);
+      if (at < 0 || at + 1 >= phases.length) return 0;
+      return phases[at + 1].at - phases[at].at;
+    };
+    // Fetching is the work: sixty pages behind slow images, and it shows.
+    expect(spanOf('fetch')).toBeGreaterThan(3000);
+    // Packaging is not. It is measured at 0 when the phase came and went
+    // between two of the page's own two-second polls and was never sampled at
+    // all — which is not a gap in the test, it is the result. Put the assets
+    // back in the write pass and this becomes tens of seconds again.
+    expect(spanOf('package')).toBeLessThan(6000);
+    expect(spanOf('package')).toBeLessThan(spanOf('fetch') / 3);
+
+    // …and it did happen, briefly: every page was written, the count landed on
+    // the number the finished job reports, and the log says so.
+    const done = await page.evaluate(() => ({
+      n: window._createViz.counts.entries.n,
+      pages: window._createStatus.result.pages,
+      shown: document.querySelector('.create-metric-n').textContent,
+      wrote: window._createLines.filter(l => l.indexOf('packaged ') >= 0).length,
+    }));
+    expect(done.n).toBe(done.pages);
+    expect(done.n).toBeGreaterThan(1);
+    expect(done.shown).toBe(String(done.n));
+    expect(done.wrote).toBeGreaterThan(0);
+  });
+
+  test('a long fetch says how much longer', async ({ page }) => {
+    // Eric, watching a crawl sit at 8/200: "Super slow can you see it? can we
+    // provide time estimates for any of these steps?" The pace is the
+    // politeness delay doing its job; what was missing was any way to tell a
+    // knowable wait from an unknowable one.
+    await openCreate(page);
+    await pickMode(page, 'site');
+    await page.fill('#create-source', slowUrl);
+    await page.fill('#create-max-pages', '40');
     await page.click('#create-start');
 
-    await expect(page.locator('.create-step[data-state="active"]'))
-      .toHaveText(/Package/, { timeout: 90000 });
-
-    // Sample the counter while Package is lit. It must strictly increase, and
-    // it must be a fraction — an indeterminate number is a spinner with digits.
-    const seen = [];
-    for (let i = 0; i < 12; i++) {
-      const reading = await page.evaluate(() => {
-        const c = window._createViz.counts.entries;
-        const lit = document.querySelector('.create-step[data-state="active"]');
-        return {
-          n: c ? c.n : null,
-          total: c ? c.total : null,
-          onPackage: !!lit && lit.textContent.indexOf('Package') >= 0,
-          shown: document.querySelector('.create-metric-n').textContent,
-        };
-      });
-      if (reading.onPackage) seen.push(reading);
-      if (!reading.onPackage && seen.length) break;
-      await page.waitForTimeout(1200);
-    }
-    expect(seen.length).toBeGreaterThanOrEqual(3);
-    expect(seen[seen.length - 1].n).toBeGreaterThan(seen[0].n);
-    expect(seen[0].total).toBeGreaterThan(0);
-    // And the number on screen is the number in the model, not a stale paint.
-    expect(seen[seen.length - 1].shown).toBe(String(seen[seen.length - 1].n));
+    // It appears once there is a rate to read, and it is hedged: a "~" or the
+    // under-a-minute phrase, never a bare countdown.
+    await expect(page.locator('#create-phase-detail'))
+      .toHaveText(/~\s*\d+\s*(min|h)|under a minute|\d+\/min/, { timeout: 60000 });
+    // …alongside what the job is doing, not instead of it.
+    await expect(page.locator('#create-phase-detail')).toContainText('Creating');
 
     await page.waitForFunction(() => window._createStatus && window._createStatus.done,
-      null, { timeout: 120000 });
-    expect(await page.evaluate(() => window._createStatus.ok)).toBe(true);
+      null, { timeout: 180000 });
+    // And it is gone when there is nothing left to wait for.
+    await expect(page.locator('#create-phase-detail')).toHaveText('');
+  });
+
+  test('a page goes green only once its assets are in', async ({ page }) => {
+    // Eric, watching round 3: "Why are all the dots green right away are the
+    // downloads done then or still more during packaging?" Still more. Now a
+    // page is announced, its assets come down, and only then is it reported —
+    // so a green row has nothing outstanding behind it, and a row that is
+    // still amber is a row still downloading.
+    await openCreate(page);
+    await pickMode(page, 'site');
+    await page.fill('#create-source', slowUrl);
+    await page.fill('#create-max-pages', '24');
+
+    await page.evaluate(() => {
+      window.__amber = 0;
+      window.__lies = [];
+      window.__watch = setInterval(() => {
+        const nodes = (window._createViz && window._createViz.nodes) || {};
+        for (const id in nodes) {
+          const n = nodes[id];
+          if (n.state === 'active') window.__amber++;
+          if (n.state === 'done' && n.assets.done < n.assets.total) {
+            window.__lies.push(id + ' ' + n.assets.done + '/' + n.assets.total);
+          }
+        }
+      }, 100);
+    });
+    await page.click('#create-start');
+    await page.waitForFunction(() => window._createStatus && window._createStatus.done,
+      null, { timeout: 180000 });
+    const seen = await page.evaluate(() => {
+      clearInterval(window.__watch);
+      return { amber: window.__amber, lies: window.__lies };
+    });
+
+    // Never, at any sample, a green row with an asset still outstanding.
+    expect(seen.lies).toEqual([]);
+    // And amber was a real state, not a frame nobody could see: every page of
+    // this fixture carries a slow image, so a page in flight is amber for as
+    // long as its download takes.
+    expect(seen.amber).toBeGreaterThan(0);
   });
 
   test('assets land in the node that wanted them', async ({ page }) => {
@@ -487,6 +588,44 @@ test.describe('watching a real crawl', () => {
     expect(bars.filled).toBe(bars.rows);
     expect(bars.counter).toMatch(/^(\d+)\/\1$/);
     expect(Number(bars.counter.split('/')[0])).toBeGreaterThan(0);
+  });
+
+  test('the run pane says what is being made, and how, the whole time',
+    async ({ page }) => {
+      // Eric: "Create page while it's happening should show title and type."
+      // A pane that opens with a progress strip and nothing else asks you to
+      // remember what you started, and by the time you come back you do not.
+      await openCreate(page);
+      await pickMode(page, 'site');
+      await page.fill('#create-source', fixtureUrl);
+      await page.fill('#create-max-pages', '6');
+      await page.fill('#create-title', 'The Field Guide');
+      await page.click('#create-start');
+
+      // Named from the first frame, before any page has been captured.
+      await expect(page.locator('#create-run-title')).toHaveText('The Field Guide');
+      await expect(page.locator('#create-run-sub')).toContainText('Whole site');
+      await expect(page.locator('#create-run-sub')).toContainText('127.0.0.1');
+
+      await page.waitForFunction(() => window._createStatus && window._createStatus.done,
+        null, { timeout: 120000 });
+      // Still there when it is over: the header names the finished thing too.
+      await expect(page.locator('#create-run-title')).toHaveText('The Field Guide');
+    });
+
+  test('a title nobody typed is the one the site declares', async ({ page }) => {
+    // The engine reads the seed's own <title> and says so; the server puts it
+    // on the job, and the header stops standing in with the address.
+    await openCreate(page);
+    await pickMode(page, 'site');
+    await page.fill('#create-source', fixtureUrl);
+    await page.fill('#create-max-pages', '4');
+    await page.click('#create-start');
+    await expect(page.locator('#create-run-title')).toHaveText('Fixture Site',
+      { timeout: 30000 });
+    await expect(page.locator('#create-run-sub')).toContainText('Whole site');
+    await page.waitForFunction(() => window._createStatus && window._createStatus.done,
+      null, { timeout: 120000 });
   });
 
   test('the log is still there, one click away', async ({ page }) => {

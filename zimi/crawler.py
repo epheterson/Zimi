@@ -12,18 +12,34 @@ Every page goes through the SAME pipeline as single-page capture
 (``creator.render_captured_page``); the crawl adds only the part that needs
 crawl-wide knowledge — a link whose target this crawl captured becomes
 internal ZIM navigation, and every other link stays absolute and external.
-That knowledge is why the capture is two passes: the crawl spools each page's
-HTML to disk (one page in memory at a time, never the whole site), and only
-once the captured set is final does the writer run, when it can tell an
-internal link from an external one without guessing at the future.
+That knowledge is why the capture is two passes: only once the captured set is
+final can the writer tell an internal link from an external one without
+guessing at the future.
+
+ALL the network is in the first pass. A page is fetched, rendered, and its
+images and stylesheets pulled down immediately, before the crawl moves on —
+so when a page is reported captured, nothing about it is still outstanding.
+The rendered HTML and the asset bytes go to a spool on disk (one page in
+memory at a time, never the whole site) and the write pass reads them back:
+disk-bound, seconds, no requests. That ordering is not a performance trick
+first and an honesty fix second, it is one change with both effects. Fetching
+assets in the pass that has nothing else to do — the crawl spends most of its
+time waiting out the politeness delay — is where they were always free; doing
+it there is also the only way "this page is done" can be true when it is said.
+Resolving links stays in the second pass, because that is the part that
+genuinely needs to know the future.
 
 Bounds are enforced as they are spent, not checked afterwards: pages, depth,
-a total fetched-byte budget shared by pages and assets, and a polite delay
-between page requests. robots.txt is honored — including its Crawl-delay when
-it asks for more patience than the flag does. SIGINT/SIGTERM finish the page
-in flight and then write a valid ZIM of everything captured so far, because a
-crawl that dies with nothing to show for forty minutes of traffic is the
-failure mode zimit is most complained about for.
+a total fetched-byte budget shared by pages and assets, and a polite MINIMUM
+INTERVAL between page requests — assets fetched inside that interval ride in
+the gap rather than adding to it, so the page cadence the site sees is exactly
+what it was and the peak request rate is lower than it used to be (the old
+write pass fetched every asset back to back with no delay at all). robots.txt
+is honored — including its Crawl-delay when it asks for more patience than the
+flag does. SIGINT/SIGTERM finish the page in flight and then write a valid ZIM
+of everything captured so far, because a crawl that dies with nothing to show
+for forty minutes of traffic is the failure mode zimit is most complained
+about for.
 
 The zimit engine (``--engine zimit``) is orchestration only: find a docker
 CLI, run ``ghcr.io/openzim/zimit``, stream its progress, move the ZIM it
@@ -55,6 +71,7 @@ from zimi.creator import (
     LANGUAGE_AUTO,
     SPA_REFUSAL,
     _A_TAG_RE,
+    _externalize_links,
     _fetch_html,
     _finish_output,
     _fmt_bytes,
@@ -62,12 +79,13 @@ from zimi.creator import (
     _page_title_from_html,
     _try_register,
     _user_agent,
+    AssetSpool,
     CreateError,
-    http_asset_carrier,
     looks_like_spa,
     render_captured_page,
     resolve_language,
     site_illustration,
+    spooling_asset_carrier,
 )
 from zimi.zimwriter import (
     _plural,
@@ -327,9 +345,11 @@ def _spool_page(spool_dir, index, text):
 
 
 def _crawl(
+    seed_id,
     seed_url,
     seed_text,
     spool_dir,
+    spool,
     *,
     origin,
     robots,
@@ -342,24 +362,31 @@ def _crawl(
     max_redirects,
     note,
 ):
-    """Breadth-first over one origin, spooling each captured page to disk.
+    """Breadth-first over one origin, capturing each page COMPLETELY as it
+    goes: fetched, rendered, its assets pulled down, page and assets spooled.
 
-    Returns ``(pages, reason)`` where each page is a dict of ``keys`` (every
-    normalized URL that should resolve to it), ``final_url``, ``depth``, and
-    ``spool``. ``reason`` names the bound that ended the crawl, or None when
-    the frontier simply ran dry."""
-    seed_key = normalize_url(seed_url)
-    pages = [
-        {
-            "keys": [seed_key],
-            "final_url": seed_url,
-            "depth": 0,
-            "spool": _spool_page(spool_dir, 0, seed_text),
-        }
-    ]
-    seen = {seed_key}
+    Returns ``(pages, reason, mimetypes)`` where each page is a dict of
+    ``keys`` (every normalized URL that should resolve to it), ``final_url``,
+    ``depth``, ``title`` and ``spool``. ``reason`` names the bound that ended
+    the crawl, or None when the frontier simply ran dry; ``mimetypes`` is what
+    the assets turned out to be, which is the evidence behind the ZIM's
+    ``_pictures:`` / ``_videos:`` tags.
+
+    The two lines a page produces are the honest bracket around its work:
+    ``fetching <id>`` when the request goes out, and ``[n/max] <id>`` when
+    the page and everything it references are on disk. Nothing about a page is
+    still outstanding once the second line has been printed."""
+    pages = []
+    seen = set()
     queue = deque()
     reason = None
+    carried = {}  # asset key -> in-ZIM path (or None), shared by every page
+    reported = set()  # asset keys already announced; see _report_new_assets
+    mimetypes_seen = set()
+    # The page cadence, as a clock rather than as a sleep: the next page
+    # request may go out at this time and not before. Asset traffic in the
+    # meantime spends the interval instead of extending it.
+    next_fetch_at = time.monotonic() + delay
 
     def enqueue(links, depth):
         if depth > max_depth:
@@ -379,8 +406,40 @@ def _crawl(
             seen.add(key)
             queue.append((key, depth))
 
+    def capture(keys, final_url, depth, text):
+        """Everything one page needs before the crawl may move on."""
+        page = {
+            "keys": keys,
+            "final_url": final_url,
+            "depth": depth,
+            "title": _page_title_from_html(text, _page_label(final_url)),
+        }
+        carrier = spooling_asset_carrier(
+            spool, final_url, timeout, carried=carried, budget=budget
+        )
+        # Links are left absolute here on purpose: which of them are internal
+        # is not known until the crawl ends, and the write pass resolves them
+        # then. Everything else about the page is finished now.
+        html = render_captured_page(carrier, text, final_url=final_url)
+        page["spool"] = _spool_page(spool_dir, len(pages), html)
+        mimetypes_seen.update(carrier.mimetypes)
+        pages.append(page)
+        # keys[0], not final_url: this is the name the page was announced
+        # under, and an asset that claims a parent no row answers to is an
+        # asset nothing counts.
+        _report_new_assets(carried, reported, keys[0], note)
+        note(
+            f"  [{len(pages)}/{max_pages}] {keys[0]}  "
+            f"({len(queue)} queued, {_fmt_bytes(budget.used)} fetched)"
+        )
+
+    seed_keys = [seed_id]
+    seed_final = normalize_url(seed_url)
+    if seed_final != seed_id:
+        seed_keys.append(seed_final)  # the seed redirected; both keys are it
+    seen.update(seed_keys)
     enqueue(extract_links(seed_text, seed_url), 1)
-    note(f"  [1/{max_pages}] {seed_key}  ({len(queue)} queued)")
+    capture(seed_keys, seed_url, 0, seed_text)
 
     while queue:
         if stop.hit:
@@ -393,42 +452,37 @@ def _crawl(
             reason = f"byte budget ({_fmt_bytes(budget.limit)})"
             break
         url, depth = queue.popleft()
-        if delay:
-            time.sleep(delay)
+        waiting = next_fetch_at - time.monotonic()
+        if waiting > 0:
+            time.sleep(waiting)
+        next_fetch_at = time.monotonic() + delay
+        note(f"fetching {url}")
         try:
             final_url, text, nbytes, _clang = _fetch_html(
                 url, timeout=timeout, max_redirects=max_redirects
             )
         except CreateError as e:
             log.debug("skipping %s: %s", url, e)
+            note(f"skipped {url}: {str(e).splitlines()[0]}")
             continue
         budget.spend(nbytes)
         # A redirect can walk off the origin; the page it landed on is not
         # ours to capture, and its own links certainly are not.
         if not same_origin(final_url, origin):
             log.debug("skipping %s: redirected off-origin to %s", url, final_url)
+            note(f"skipped {url}: redirected off-origin")
             continue
         keys = [url]
         final_key = normalize_url(final_url)
         if final_key != url:
             if final_key in seen and any(final_key in p["keys"] for p in pages):
-                continue  # already captured under its post-redirect identity
+                note(f"skipped {url}: already captured after its redirect")
+                continue
             seen.add(final_key)
             keys.append(final_key)
-        pages.append(
-            {
-                "keys": keys,
-                "final_url": final_url,
-                "depth": depth,
-                "spool": _spool_page(spool_dir, len(pages), text),
-            }
-        )
         enqueue(extract_links(text, final_url), depth + 1)
-        note(
-            f"  [{len(pages)}/{max_pages}] {final_key}  "
-            f"({len(queue)} queued, {_fmt_bytes(budget.used)} fetched)"
-        )
-    return pages, reason
+        capture(keys, final_url, depth, text)
+    return pages, reason, mimetypes_seen
 
 
 def _assign_article_paths(pages):
@@ -473,7 +527,11 @@ def _report_new_assets(carried, seen, page_url, note):
 
     ``seen`` is the caller's running set of keys already reported; the map is
     shared across the whole crawl so a site's common stylesheet belongs to the
-    first page that wanted it and is not re-reported for every page after."""
+    first page that wanted it and is not re-reported for every page after.
+
+    Called from the crawl, between a page's last asset landing and the line
+    that reports the page captured. That position is the contract: everything
+    a page dragged along is on the wire BEFORE the page is called done."""
     for key, in_zim_path in carried.items():
         if key in seen:
             continue
@@ -556,6 +614,11 @@ def create_site_zim(
         delay = _robots_delay(robots, delay, note)
 
     budget = ByteBudget(max_bytes)
+    # Announced under the identity every later line will use, so the seed is
+    # one row that goes amber then green rather than two rows that disagree
+    # about whether "example.com" and "example.com/" are the same page.
+    seed_id = normalize_url(url)
+    note(f"fetching {seed_id}")
     seed_url, seed_text, seed_bytes, seed_clang = _fetch_html(
         url, timeout=timeout, max_redirects=max_redirects
     )
@@ -572,21 +635,32 @@ def create_site_zim(
 
     parsed = urllib.parse.urlsplit(seed_url)
     zim_title = title or _page_title_from_html(seed_text, parsed.netloc)
+    # What this is going to be called, said out loud while it is being made.
+    # The web job lifts it into the run header; the CLI just prints it.
+    note(f"title: {zim_title}")
+    # The site's icon, fetched here with the rest of the seed's belongings.
+    # It used to be read during the write, which made the write pass reach for
+    # the network one last time after everything else had stopped — and the
+    # claim this capture now makes is that packaging touches nothing.
+    illustration = site_illustration(seed_url, timeout)
     out = _finish_output(
         out_dir or _srv.ZIM_DIR, out_path, _slug(f"{parsed.netloc} site", "site")
     )
     # The spool lives beside the output so it shares that filesystem's free
     # space — never in /tmp, which is RAM on more than one of Zimi's targets.
     spool_dir = tempfile.mkdtemp(prefix=".zimi-crawl-", dir=os.path.dirname(out))
+    spool = AssetSpool(os.path.join(spool_dir, "assets"))
     stop = _StopFlag()
-    pages, reason, carried, asset_count = [], None, {}, 0
+    pages, reason, asset_count = [], None, 0
     seen_mimetypes = set()
     try:
         with _interruptible(stop, note):
-            pages, reason = _crawl(
+            pages, reason, seen_mimetypes = _crawl(
+                seed_id,
                 seed_url,
                 seed_text,
                 spool_dir,
+                spool,
                 origin=origin,
                 robots=robots,
                 budget=budget,
@@ -604,49 +678,27 @@ def create_site_zim(
             note(f"packaging {_plural(len(pages), 'page')}…")
 
             static_cls = zim_static_item_class()
-            carried = {}
-            reported = set()  # asset keys already announced; see _report_new_assets
             with atomic_zim_creator(out, language) as creator:
                 for packaged, page in enumerate(pages, 1):
                     with open(page["spool"], encoding="utf-8") as fh:
-                        text = fh.read()
+                        html = fh.read()
                     os.remove(page["spool"])
-                    page_title = _page_title_from_html(text, page["article"])
-                    # One carrier per page over a SHARED dedupe map: the site's
-                    # common assets are stored once, per-page caps stay per page.
-                    # Once interrupted, assets stop being fetched — the pages
-                    # already captured still have to be written, and quickly.
-                    carrier = http_asset_carrier(
-                        creator.add_item,
-                        page["final_url"],
-                        timeout,
-                        carried=carried,
-                        budget=(budget if not stop.hit else ByteBudget(0)),
-                    )
-                    html = render_captured_page(
-                        carrier,
-                        text,
-                        final_url=page["final_url"],
-                        resolve_link=resolve,
-                    )
+                    # The ONE thing that could not be decided during the crawl:
+                    # a link is internal exactly when this capture holds its
+                    # target, and that set was not final until now. Everything
+                    # else about the page was finished the moment it was
+                    # fetched, which is why this loop touches no network.
+                    html = _externalize_links(html, page["final_url"], resolve)
                     creator.add_item(
-                        static_cls(page["article"], page_title, html.encode("utf-8"))
+                        static_cls(page["article"], page["title"], html.encode("utf-8"))
                     )
-                    # Each page gets its own carrier, so the crawl-wide record
-                    # of what shipped has to be accumulated here.
-                    seen_mimetypes |= carrier.mimetypes
-                    _report_new_assets(carried, reported, page["final_url"], note)
-                    # Per page, not per batch. This pass is not the cheap tail
-                    # of a crawl — it fetches every page's images and
-                    # stylesheets, so on a real site it is the LONGEST phase,
-                    # and a single "packaging N pages…" line made it look
-                    # frozen for as long as it ran. It is also the only
-                    # cancellation checkpoint the write pass has: a caller's
-                    # sink is what raises, so a line per page is the difference
-                    # between a cancel button that works and one that lies.
+                    # Still per page, and still the write pass's only
+                    # cancellation checkpoint — a caller's sink is what raises.
+                    # It is no longer where the time goes, though: this loop is
+                    # disk and CPU, and it runs at thousands of pages a minute.
                     note(f"  packaged {packaged}/{len(pages)}  {page['article']}")
+                asset_count = spool.drain(creator.add_item)
                 creator.set_mainpath("A/index")
-                asset_count = sum(1 for v in carried.values() if v)
                 add_standard_metadata(
                     creator,
                     title=zim_title,
@@ -660,7 +712,7 @@ def create_site_zim(
                     # deep it goes this time, is a new edition of this ZIM.
                     name=zim_name(parsed.netloc, language),
                     tags=media_tags(seen_mimetypes),
-                    illustration=site_illustration(seed_url, timeout),
+                    illustration=illustration,
                     history=history_record(
                         "created",
                         "site",
@@ -704,10 +756,12 @@ PROBE_TIMEOUT = 8.0  # per request; a slow site must not hold the pane
 PROBE_DEADLINE = 20.0  # wall clock for the whole probe
 PROBE_DELAY = 0.1  # politeness between probe requests
 PROBE_LINKS_PER_NODE = 12  # unfetched children listed under one page
-# What the size estimate assumes a page drags along with it. Pages are measured;
-# their images and stylesheets are not fetched at all, so this factor is the one
-# honest guess in the payload and the UI labels the number as rough.
-PROBE_ASSET_FACTOR = 3.0
+# There is deliberately NO size estimate here. A depth-2 sample of twenty pages
+# can measure documents and cannot see the asset tail behind them, which on a
+# real site is most of the bytes — so any projection was a page count times a
+# guess, and it was not close. The honest number is the byte counter that runs
+# during the capture itself, against real responses. A count of pages IS
+# defensible from a sample, and that is what this still reports.
 
 
 def _probe_path(url):
@@ -716,6 +770,12 @@ def _probe_path(url):
     parts = urllib.parse.urlsplit(url)
     path = parts.path or "/"
     return path + (("?" + parts.query) if parts.query else "")
+
+
+def _page_label(url):
+    """What to call a page that never said what it was called. Its address,
+    host and all — the path alone would leave a site's front page titled "/"."""
+    return (urllib.parse.urlsplit(url).netloc or "") + _probe_path(url)
 
 
 def probe_site(url, *, ignore_robots=False, timeout=PROBE_TIMEOUT):
@@ -819,7 +879,6 @@ def probe_site(url, *, ignore_robots=False, timeout=PROBE_TIMEOUT):
         node["title"] = _page_title_from_html(text, node["path"])
         discover(node, text, final_url, depth)
 
-    avg = total_bytes // max(1, fetched)
     est_pages = min(len(seen), DEFAULT_MAX_PAGES)
     return {
         "url": seed_url,
@@ -831,12 +890,11 @@ def probe_site(url, *, ignore_robots=False, timeout=PROBE_TIMEOUT):
         "crawl_delay": _robots_delay(robots, 0.0, _noop) or None,
         "fetched": fetched,
         "discovered": len(seen),
+        # What this probe itself fetched — a measurement of the sample, never
+        # a claim about the capture. See PROBE_LINKS_PER_NODE's neighbours for
+        # why there is no projected total here.
         "bytes": total_bytes,
-        "avg_page_bytes": avg,
-        # Rough by construction and labelled as such: pages measured, assets
-        # assumed. A number with a stated basis beats no number at all.
         "est_pages": est_pages,
-        "est_bytes": int(avg * est_pages * PROBE_ASSET_FACTOR),
         "tree": root,
         "truncated": truncated,
     }

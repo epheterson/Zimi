@@ -58,6 +58,9 @@ var CREATE_ROLL_MS = 700;
 // Recent jobs shown under the picker. The server bounds its own history; this
 // is the client refusing to draw a wall of them if it ever stops.
 var CREATE_RECENT_MAX = 10;
+// How much of a source address the run header shows before cutting it. The
+// full value stays on the element as a tooltip; see _createShortSource.
+var CREATE_SOURCE_MAX = 56;
 
 var _CREATE_ICONS = {
   folder: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
@@ -269,6 +272,95 @@ var CREATE_STEP_KEYS = [
 // is folded into the tree rather than given a number of its own.
 var CREATE_COUNT_KEYS = ['entries', 'assets', 'bytes'];
 
+// ── how much longer ─────────────────────────────────────────────────────────
+//
+// Eric, watching a crawl sit at 8/200: "Super slow can you see it? can we
+// provide time estimates for any of these steps?" The pace is the politeness
+// delay doing its job, but "8/200" alone makes a knowable wait feel like an
+// unknowable one. So the client times itself: it already receives a running
+// count on every poll, and a count against a clock is a rate.
+//
+// ONE estimator serves every phase and every engine, because the event stream
+// has already flattened them into the same `entries` count — a crawl's captured
+// pages, a write pass's written entries, a playlist's downloaded videos. Three
+// special cases would be three copies of one division.
+//
+// What it will NOT do is hold still. An ETA that keeps displaying after the
+// rate it was computed from has stopped existing is the worst thing on this
+// page: it turns a stall into a promise. When the count stops arriving the
+// estimate disappears, and the watchdog — which is the thing that actually
+// knows — is left to say a job has died.
+
+// Count samples the rate is averaged over. Short enough to follow a crawl that
+// speeds up when it hits a fast section, long enough that one slow page does
+// not swing the answer.
+var CREATE_ETA_WINDOW = 8;
+// A newest sample older than this means nothing is arriving any more, so there
+// is no rate to divide by and the estimate goes away.
+var CREATE_ETA_STALE_MS = 30000;
+// Under this the window is too young to divide by: two samples a poll apart
+// on a job that just started say almost nothing.
+var CREATE_ETA_MIN_SPAN_MS = 4000;
+
+// The rolling rate, and what it implies about what is left.
+//
+// `samples` are {t, n} in arrival order, `total` the denominator the server
+// reported (or undefined). Returns {rate (per second), remaining, ms}, with
+// `remaining` and `ms` null when the total is unknown — a rate is still worth
+// showing, an invented finish line is not. Null when there is nothing
+// defensible to say at all.
+function _createEstimate(samples, total, now) {
+  if (!samples || samples.length < 2) return null;
+  var first = samples[0];
+  var last = samples[samples.length - 1];
+  if (now - last.t > CREATE_ETA_STALE_MS) return null;
+  var span = last.t - first.t;
+  var moved = last.n - first.n;
+  if (span < CREATE_ETA_MIN_SPAN_MS || moved <= 0) return null;
+  var rate = moved / (span / 1000);
+  // A total the count has already passed is a total that meant something else
+  // (a cap the crawl is about to stop at, a estimate the engine revised), and
+  // subtracting from it would give a negative wait.
+  if (typeof total !== 'number' || total <= last.n) {
+    return { rate: rate, remaining: null, ms: null };
+  }
+  var remaining = total - last.n;
+  return { rate: rate, remaining: remaining, ms: Math.round((remaining / rate) * 1000) };
+}
+
+// One sample per count that actually moved, and never two at one instant.
+//
+// Both rules are about the SPAN the rate is divided by. A repeated value
+// carries no time information. And a poll that delivers four pages delivers
+// them all at the same millisecond — recording four samples there would fill
+// the window with one moment and leave the span at zero, which is exactly how
+// this failed the first time it ran.
+function _createPushSample(samples, n, now) {
+  var last = samples[samples.length - 1];
+  if (last && last.n === n) return samples;
+  if (last && last.t === now) samples.pop();
+  samples.push({ t: now, n: n });
+  if (samples.length > CREATE_ETA_WINDOW) samples.splice(0, samples.length - CREATE_ETA_WINDOW);
+  return samples;
+}
+
+// An estimate as the one short phrase it is allowed to be. Always hedged: the
+// frontier of a crawl grows while it is being walked, so every number here is
+// a reading of the present rate and not a commitment.
+function _createEtaText(est) {
+  if (!est) return '';
+  if (est.ms === null) {
+    // A pace slower than one a minute rounds to "0/min", which is a page
+    // saying nothing is happening while something is. Better to say nothing.
+    var perMinute = Math.round(est.rate * 60);
+    return perMinute > 0 ? t('create_eta_rate', { n: perMinute }) : '';
+  }
+  if (est.ms < 60000) return t('create_eta_soon');
+  var mins = Math.round(est.ms / 60000);
+  if (mins < 60) return t('create_eta_min', { n: mins });
+  return t('create_eta_hour', { h: Math.floor(mins / 60), m: mins % 60 });
+}
+
 // ── pure logic (unit-tested in tests/test_create_ui.cjs) ─────────────────────
 
 // A mode's availability, given what the server told us about itself. Offline is
@@ -386,13 +478,32 @@ function _createPreviewRows(p) {
     if (p.urls > 1) add('create_pv_pages', String(p.urls));
     add('create_pv_title', p.title);
     add(p.urls > 1 ? 'create_pv_first' : 'create_pv_address', p.final_url);
-    add('create_pv_size', _fmtBytes(p.bytes || 0));
+    // Site mode gets no size. The probe reads ONE page, and a crawl's bytes
+    // are mostly the images and stylesheets of pages it has not looked at —
+    // so this row was a number nowhere near the outcome, which is worse than
+    // no number at all. The byte counter during the run is the honest one.
+    if (p.mode !== 'site') add('create_pv_size', _fmtBytes(p.bytes || 0));
     if (p.robots_allowed !== undefined) {
       add('create_pv_robots', t(p.robots_allowed ? 'create_pv_robots_ok' : 'create_pv_robots_no'));
     }
   }
   if (p.language) add('create_pv_language', p.language + ' ' + t('create_pv_detected'));
   return rows;
+}
+
+// Text a one-line header can hold. Neither a URL with a long query nor a title
+// somebody pasted has a natural end, and this page has no horizontal scroll to
+// spare them; the full value goes on as a tooltip at the call site.
+function _createClamp(text) {
+  var out = String(text || '');
+  return out.length > CREATE_SOURCE_MAX
+    ? out.slice(0, CREATE_SOURCE_MAX - 1) + '…' : out;
+}
+
+// A source, as a header shows it: without the scheme, since every one of these
+// is http and the eight characters buy nothing.
+function _createShortSource(text) {
+  return _createClamp(String(text || '').replace(/^https?:\/\//i, ''));
 }
 
 // Fold a status reply into the tail we are showing. The server sends only what
@@ -443,6 +554,7 @@ function _createNewViz() {
     holding: {},      // parent id → child ids waiting for that parent to arrive
     assets: {},       // asset id → its last state, so a repeat never double-counts
     counts: {},       // what → {n, total}
+    samples: [],      // {t, n} for the entries count, newest last; see _createEstimate
     byPath: {},       // site path → the id of the page that claimed it
     pages: 0          // captured pages, for the "and N more" line
   };
@@ -523,6 +635,12 @@ function _createApplyEvents(viz, events) {
     var ev = list[i];
     if (!ev || !ev.t) continue;
     if (ev.t === 'phase') {
+      // Fetching pages and writing them run at rates that have nothing to do
+      // with each other, so the window starts again at a phase BOUNDARY —
+      // when the phase actually changes, never merely when a phase event
+      // arrives. A duplicated poll re-sends the one it already sent, and
+      // throwing the window away for it would be a rate that never settles.
+      if (viz.phase !== (ev.phase || '')) viz.samples = [];
       viz.phase = ev.phase || '';
       viz.detail = ev.detail || '';
       var step = _createPhaseStep(ev.phase);
@@ -535,6 +653,12 @@ function _createApplyEvents(viz, events) {
     } else if (ev.t === 'node') {
       _createApplyNode(viz, ev, changed);
     }
+  }
+  // The rate is timed in POLLS, not in events: a batch that carries four pages
+  // carries them at one instant, so it is one reading of how far the job has
+  // got and not four. Taken after the batch, so it is the newest count in it.
+  if (changed.counts && viz.counts.entries) {
+    _createPushSample(viz.samples, viz.counts.entries.n, Date.now());
   }
   // A child whose parent never showed up would otherwise wait forever. Events
   // that belong together arrive in one poll, so a parent later in the same
@@ -769,9 +893,11 @@ function _renderCreate() {
   if (!el) return;
   el.innerHTML =
     '<div class="create-inner">' +
+      // No subtitle. Six self-describing tiles sit directly below this, and
+      // the sentence that used to be here qualified the page into being wrong:
+      // not your own content, not your own library.
       '<div class="create-head">' +
         '<div class="create-title">' + tH('create_zim') + '</div>' +
-        '<div class="ms-pa-sub">' + tH('create_intro') + '</div>' +
       '</div>' +
       '<div id="create-picker" class="create-picker">' +
         '<div class="create-modes" id="create-modes" role="tablist"' +
@@ -1582,6 +1708,10 @@ function _renderCreateRun() {
 // under someone who had scrolled up to read it.
 function _createRunShellHtml(s) {
   return '<div class="create-run">' +
+    '<div class="create-head">' +
+      '<div class="create-title" id="create-run-title"></div>' +
+      '<div class="create-caption" id="create-run-sub"></div>' +
+    '</div>' +
     _createPhaseStripHtml() +
     '<div class="create-phase-detail" id="create-phase-detail" aria-live="polite"></div>' +
     '<div class="create-metrics" id="create-metrics"></div>' +
@@ -1615,6 +1745,7 @@ function _createPhaseStripHtml() {
 }
 
 function _createSyncRun(s) {
+  _createSyncHead(s);
   _createSyncPhases(s);
   _createSyncMetrics(s);
   _createSyncTree(s);
@@ -1622,6 +1753,38 @@ function _createSyncRun(s) {
   _createSyncActions(s);
   _createSyncOutcome(s);
   _createVizChanges = null;
+}
+
+// What is being made, named, for the whole time it is being made.
+//
+// A run pane that opens with a progress strip and nothing else asks you to
+// remember what you just started, and by the time you come back to the tab you
+// do not. So: the title on top, the mode under it, from the first frame to the
+// last. The title is whatever is honestly known — the one that was typed, else
+// the one the engine read off the source once it had the source in hand (site
+// capture says so in a line, and the server puts it on the job), else the
+// address itself, which is always known and is never nothing.
+function _createSyncHead(s) {
+  var head = document.getElementById('create-run-title');
+  var sub = document.getElementById('create-run-sub');
+  if (!head || !sub) return;
+  var title = String(s.title || '');
+  var source = String(s.source || '');
+  // Only ever ONE of the two lines carries the address: repeating it under
+  // itself is noise, and the mode alone is the useful second line once the
+  // thing has a name.
+  var mode = s.mode ? t('create_mode_' + s.mode) : '';
+  _createSetLine(head, title || _createShortSource(source), title ? '' : source);
+  _createSetLine(sub, title ? mode + ' · ' + _createShortSource(source) : mode,
+    title ? source : '');
+}
+
+// Set an element's text, and give it the full value as a tooltip when what is
+// shown had to be cut. Kept together so the two can never disagree.
+function _createSetLine(el, text, full) {
+  if (el.textContent !== text) el.textContent = text;
+  if (full && full !== text) el.setAttribute('title', full);
+  else el.removeAttribute('title');
 }
 
 function _createSyncPhases(s) {
@@ -1656,6 +1819,16 @@ function _createSyncPhases(s) {
     var text = s.active
       ? (extra || t(s.cancelling ? 'create_cancelling' : 'create_running'))
       : '';
+    // How much longer, on the same line and after it — a second line of its
+    // own would give a hedged number more room than the thing it hedges. A job
+    // being cancelled is not estimated: what is left is the current page, and
+    // that is not a rate.
+    if (text && !s.cancelling) {
+      var counts = viz.counts.entries;
+      var eta = _createEtaText(
+        _createEstimate(viz.samples, counts && counts.total, Date.now()));
+      if (eta) text += ' · ' + eta;
+    }
     if (detail.textContent !== text) detail.textContent = text;
   }
 }
