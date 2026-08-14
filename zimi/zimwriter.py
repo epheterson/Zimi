@@ -930,12 +930,20 @@ def scraper_string(tool=None, version=None):
     return f"{base} + {tool} {version}" if version else f"{base} + {tool}"
 
 
-def history_record(op, mode, detail, *, tools=None, counts=None, ts=None):
+def history_record(op, mode, detail, *, tools=None, counts=None, blocked=None, ts=None):
     """One provenance record. ``op`` is what happened ("created"), ``mode`` how
     ("folder", "page", "site", "video", "import", "bookmarks"), ``detail`` one
     human sentence. ``tools`` names the outside engine and version when one ran;
-    ``counts`` carries whichever of pages/assets/videos/bytes are known. Keys
-    with nothing to say are left out rather than written empty."""
+    ``counts`` carries whichever of pages/assets/videos/bytes are known;
+    ``blocked`` is what a capture REFUSED, when it refused anything — see
+    ``zimi.blocklist.blocked_record`` for its shape. Keys with nothing to say
+    are left out rather than written empty.
+
+    ``blocked`` is a nested object rather than two more ``counts`` entries
+    because it is not only counts: it names the published list and the snapshot
+    date they came from, and those belong beside the numbers they explain
+    rather than scattered across a flat map of integers. Readers of this schema
+    tolerate fields they do not know, which is what makes adding one safe."""
     record = {
         "ts": int(ts if ts is not None else time.time()),
         "zimi": _srv.ZIMI_VERSION,
@@ -949,6 +957,8 @@ def history_record(op, mode, detail, *, tools=None, counts=None, ts=None):
     known_counts = {k: int(v) for k, v in (counts or {}).items() if v is not None}
     if known_counts:
         record["counts"] = known_counts
+    if blocked:
+        record["blocked"] = dict(blocked)
     return record
 
 

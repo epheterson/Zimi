@@ -1295,6 +1295,8 @@
   "create_delay": "השהיה (שניות)",
   "create_ignore_robots": "התעלמות מ-robots.txt",
   "create_ignore_robots_note": "הקובץ robots.txt הוא בקשת האתר לא לסרוק אותו. עקיפה שלו היא החלטה באחריותך.",
+  "create_block_ads": "חסימת פרסומות ועוקבים",
+  "create_block_ads_note": "בקשות של פרסום, אנליטיקה וניהול הסכמה נדחות בזמן הלכידה. קובץ ה-ZIM יוצא קטן יותר, ודף שממתין לאחד השירותים האלה מקבל דחייה שהוא יודע לטפל בה במקום בקשה שנתקעת.",
   "create_language": "שפה",
   "create_format": "איכות",
   "create_format_720p": "720p (ברירת מחדל)",

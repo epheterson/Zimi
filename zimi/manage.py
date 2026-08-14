@@ -1908,6 +1908,14 @@ CREATE_MODES = ("folder", "page", "site", "video", "import")
 # below pins the two together. zimit is deliberately NOT offered over the web —
 # it wants a docker daemon, and a web form is the wrong place to discover that.
 CREATE_ENGINES = ("builtin", "rendered", "alive")
+# The engines that can refuse a request before it is made — the ones that drive
+# a browser. Mirrors creator.BLOCKING_ENGINES, held here for the same reason
+# CREATE_ENGINES is, and pinned to it by the same test.
+CREATE_BLOCKING_ENGINES = ("rendered", "alive")
+# What ad blocking does when the form says nothing. Mirrors
+# renderer.BLOCK_ADS_DEFAULT: the checkbox arrives checked, so a request with no
+# opinion in it is one where the field never rendered at all.
+CREATE_BLOCK_ADS = True
 # Ring-buffer depth for job output. A long crawl emits a line per page, so the
 # buffer is a live tail, not a transcript — the browser polls faster than it
 # fills and keeps everything it has already seen.
@@ -2552,6 +2560,13 @@ def _create_validate(data):
         # rather than clamped, like every other named value: silently capturing
         # the other way is the one outcome nobody asked for.
         opts["engine"] = _create_engine(data.get("engine"))
+        # Ad and tracker blocking, but only for an engine that can do it. A
+        # form left open while the engine radio moved back to the fast one can
+        # send this; DROPPING it there is right where the CLI's refusal is
+        # right — nobody typed this, a stale checkbox did, and refusing a whole
+        # capture over a field that describes nothing would be theatre.
+        if _create_blocking_engine(opts["engine"]):
+            opts["block_ads"] = _create_bool(data.get("block_ads"), CREATE_BLOCK_ADS)
     if mode == "site":
         opts["max_pages"] = _create_int(
             data.get("max_pages"), 1, CREATE_MAX_PAGES_CEILING
@@ -2702,6 +2717,29 @@ def _create_engine(value):
     return name
 
 
+def _create_blocking_engine(engine):
+    """Whether the chosen engine can block anything. ``None`` is the fast
+    engine — the default lives in the engines, and it does not block."""
+    return str(engine or "").strip().lower() in CREATE_BLOCKING_ENGINES
+
+
+def _create_bool(value, default):
+    """A checkbox that is CHECKED by default, read as a real bool.
+
+    Every other bool on this form is off until someone turns it on, so absence
+    and false are the same statement and ``bool(value)`` is the whole reader.
+    This one is on until someone turns it OFF, which makes absence ambiguous —
+    a client that omits the field means "I never drew this", and only an
+    explicit ``false`` means "I unticked it"."""
+    if value is None:
+        return default
+    if isinstance(value, str):
+        # A form-encoded post has no JSON booleans; "false" from one of those
+        # is a false, not a non-empty string.
+        return value.strip().lower() not in ("", "0", "false", "no", "off")
+    return bool(value)
+
+
 def _create_video_format(value, audio_only):
     """A named quality preset from the form, as the engine's format selector.
     Audio-only owns the format entirely, so a preset alongside it is dropped
@@ -2745,7 +2783,7 @@ def _create_run(job, opts):
             title=job.title or None,
             register=True,
             progress=job.note,
-            **_create_kwargs(opts, "language", "engine"),
+            **_create_kwargs(opts, "language", "engine", "block_ads"),
         )
     if job.mode == "site":
         from zimi.crawler import create_site_zim
@@ -2764,6 +2802,7 @@ def _create_run(job, opts):
                 "ignore_robots",
                 "language",
                 "engine",
+                "block_ads",
             ),
         )
     if job.mode == "video":

@@ -1295,6 +1295,8 @@
   "create_delay": "Verzögerung (Sekunden)",
   "create_ignore_robots": "robots.txt ignorieren",
   "create_ignore_robots_note": "robots.txt ist die Bitte der Website, nicht gecrawlt zu werden. Sich darüber hinwegzusetzen ist eine Entscheidung, die Sie verantworten.",
+  "create_block_ads": "Werbung und Tracker blockieren",
+  "create_block_ads_note": "Anfragen für Werbung, Analyse und Einwilligungsbanner werden während der Aufnahme abgelehnt. Das ZIM wird kleiner, und eine Seite, die auf einen dieser Dienste wartet, bekommt eine Absage, die sie behandeln kann, statt einer Anfrage, die hängen bleibt.",
   "create_language": "Sprache",
   "create_format": "Qualität",
   "create_format_720p": "720p (Standard)",

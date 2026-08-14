@@ -43,6 +43,7 @@ import urllib.request
 from typing import Any
 
 import zimi.server as _srv
+from zimi.blocklist import blocked_phrase
 from zimi.zimwriter import (
     _CSS_URL_RE,
     _HREF_RE,
@@ -1341,7 +1342,14 @@ class BuiltinCapture:
         carried=None,
         note=None,
         work_dir=None,
+        block_ads=None,
     ):
+        # ``work_dir`` and ``block_ads`` are accepted and unused, the way every
+        # engine accepts the shared option set: one construction call has to
+        # serve three engines. Blocking genuinely means nothing here — this
+        # engine fetches what a page's own markup names and nothing else — and
+        # the surfaces refuse the flag rather than let anyone believe otherwise
+        # (see ``_block_ads_from_args`` and ``manage._create_validate``).
         self._timeout = timeout
         self._max_redirects = max_redirects
         self._budget = budget
@@ -1384,6 +1392,41 @@ class BuiltinCapture:
         self.close()
 
 
+# Engines that can refuse a request before it is made, which is to say the ones
+# that drive a browser. The fast engine fetches only what a page's own markup
+# references; there is no third-party sprawl there to block, and offering the
+# option would be offering a switch that does nothing.
+BLOCKING_ENGINES = ("rendered", "alive")
+
+
+def engine_blocks_ads(engine):
+    """Whether ad blocking means anything for the named engine."""
+    return str(engine or DEFAULT_ENGINE).strip().lower() in BLOCKING_ENGINES
+
+
+def report_blocked(capture, note):
+    """Say what a capture refused, and hand back the provenance object.
+
+    ``{"blocked": {…}}`` when anything was blocked and ``{}`` when nothing was.
+    Spread-ready in both shapes, which is the point: every call site puts it
+    into a result dict with ``**`` and into the creation record with
+    ``blocked=…``, and neither has to ask whether blocking ran.
+
+    An empty dict rather than a zero, deliberately. A ``blocked`` field that
+    said nothing was refused would be indistinguishable in the stored record
+    from a capture that ran with blocking switched off, and those are different
+    facts about how a ZIM was made."""
+    from zimi.blocklist import blocked_record, blocked_summary
+
+    requests = int(getattr(capture, "blocked", 0) or 0)
+    if requests <= 0:
+        return {}
+    domains = len(getattr(capture, "blocked_hosts", None) or ())
+    note(blocked_summary(requests, domains))
+    record = blocked_record(requests, domains, getattr(capture, "blocklist", None))
+    return {"blocked": record} if record else {}
+
+
 def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
     """The named engine, ready to start. Raises ``CreateError`` for a name
     nothing answers to — a typo must not silently capture the other way."""
@@ -1401,6 +1444,7 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
             budget=kwargs.get("budget"),
             carried=kwargs.get("carried"),
             note=kwargs.get("note"),
+            block_ads=kwargs.get("block_ads"),
         )
     if name == "alive":
         from zimi.alive import AliveCapture
@@ -1410,6 +1454,7 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
             budget=kwargs.get("budget"),
             carried=kwargs.get("carried"),
             note=kwargs.get("note"),
+            block_ads=kwargs.get("block_ads"),
         )
     raise CreateError(
         f"unknown capture engine: {engine} — the engines are "
@@ -1429,6 +1474,7 @@ def create_page_zim(
     timeout=DEFAULT_FETCH_TIMEOUT,
     max_redirects=DEFAULT_MAX_REDIRECTS,
     engine=DEFAULT_ENGINE,
+    block_ads=None,
     register=False,
     progress=None,
 ):
@@ -1461,6 +1507,7 @@ def create_page_zim(
             description=description,
             language=language,
             creator_name=creator_name,
+            block_ads=block_ads,
             register=register,
             progress=progress,
         )
@@ -1480,10 +1527,13 @@ def create_page_zim(
         max_redirects=max_redirects,
         note=note,
         work_dir=out_dir or _srv.ZIM_DIR,
+        block_ads=block_ads,
     )
+    blocked = {}
     try:
         note(f"fetching {url}")
         final_url, page, _n, clang = capture.fetch(url)
+        blocked = report_blocked(capture, note)
         if capture.refuses_spa and looks_like_spa(page):
             raise CreateError(SPA_REFUSAL)
         language, language_source = resolve_language(language, page, clang)
@@ -1515,8 +1565,10 @@ def create_page_zim(
                 history=history_record(
                     "created",
                     "page",
-                    f"captured one page from {final_url}",
+                    f"captured one page from {final_url}"
+                    + blocked_phrase(blocked.get("blocked")),
                     counts={"pages": 1, "assets": capture.count},
+                    blocked=blocked.get("blocked"),
                 ),
             )
     finally:
@@ -1537,6 +1589,7 @@ def create_page_zim(
         "engine": capture.name,
         "language": language,
         "language_source": language_source,
+        **blocked,
     }
 
 
@@ -1614,6 +1667,7 @@ def create_pages_zim(
     timeout=DEFAULT_FETCH_TIMEOUT,
     max_redirects=DEFAULT_MAX_REDIRECTS,
     engine=DEFAULT_ENGINE,
+    block_ads=None,
     register=False,
     progress=None,
 ):
@@ -1672,6 +1726,7 @@ def create_pages_zim(
             timeout=timeout,
             max_redirects=max_redirects,
             engine=engine,
+            block_ads=block_ads,
             register=register,
             progress=progress,
         )
@@ -1696,8 +1751,10 @@ def create_pages_zim(
         max_redirects=max_redirects,
         note=note,
         work_dir=out_dir or _srv.ZIM_DIR,
+        block_ads=block_ads,
     )
     entries, skipped, taken, detected = [], [], {"index"}, []
+    blocked = {}
     try:
         for url in wanted:
             note(f"fetching {url}")
@@ -1730,6 +1787,7 @@ def create_pages_zim(
                     "title": _page_title_from_html(page, parsed.netloc + parsed.path),
                 }
             )
+        blocked = report_blocked(capture, note)
         if not entries:
             raise CreateError(
                 "none of those pages could be captured — "
@@ -1808,8 +1866,10 @@ def create_pages_zim(
                     "created",
                     "pages",
                     f"captured {_plural(len(entries), 'page')} from the web"
-                    + (f", skipping {len(skipped)}" if skipped else ""),
+                    + (f", skipping {len(skipped)}" if skipped else "")
+                    + blocked_phrase(blocked.get("blocked")),
                     counts={"pages": len(entries), "assets": asset_count},
+                    blocked=blocked.get("blocked"),
                 ),
             )
     finally:
@@ -1827,6 +1887,7 @@ def create_pages_zim(
         "skipped": [url for url, _why in skipped],
         "language": language,
         "language_source": language_source,
+        **blocked,
     }
 
 
@@ -2002,6 +2063,9 @@ def _crawl_flag_state(args):
         "--delay": getattr(args, "delay", None) is not None,
         "--ignore-robots": bool(getattr(args, "ignore_robots", False)),
         "--engine-arg": bool(getattr(args, "engine_arg", None)),
+        # Either spelling — --block-ads or --no-block-ads — sets this away from
+        # None, and both are "the user said something about blocking".
+        "--block-ads": getattr(args, "block_ads", None) is not None,
     }
 
 
@@ -2025,8 +2089,10 @@ def _build_pages_from_args(args, sources):
     if engine in CAPTURE_ENGINES:
         # Which ENGINE captures a page is not a crawl flag — it is the one
         # choice that means the same thing for one page and for twenty. zimit
-        # is the exception and stays refused: it takes a single URL.
+        # is the exception and stays refused: it takes a single URL. Blocking
+        # travels with the engine for the same reason.
         given["--engine"] = False
+        given["--block-ads"] = False
     named = [flag for flag, was_given in given.items() if was_given]
     if named:
         raise CreateError(
@@ -2041,9 +2107,28 @@ def _build_pages_from_args(args, sources):
         creator_name=args.creator,
         out_path=args.out,
         engine=engine,
+        block_ads=_block_ads_from_args(args, engine),
         register=not args.out,
         progress=_note,
     )
+
+
+def _block_ads_from_args(args, engine):
+    """The blocking answer for this run, or None for "nobody said".
+
+    Refused rather than ignored when the engine cannot block: --block-ads
+    against the fast engine describes something that will not happen, and a
+    flag that is accepted and does nothing is how a person ends up believing
+    their capture blocked the advertising when it carried all of it."""
+    wanted = getattr(args, "block_ads", None)
+    if wanted is not None and not engine_blocks_ads(engine):
+        raise CreateError(
+            "--block-ads and --no-block-ads apply to --engine rendered and "
+            "--engine alive, which drive a browser. The fast engine fetches "
+            "only what the page's own markup references, so there is no "
+            "third-party traffic there to refuse."
+        )
+    return wanted
 
 
 def _build_from_args(args, src, is_url):
@@ -2083,11 +2168,11 @@ def _build_from_args(args, src, is_url):
     )
     builtin_only = ("--max-depth", "--max-bytes", "--delay", "--ignore-robots")
     if engine == "zimit":
-        # zimit has its own crawl controls and its own robots policy; Zimi's
-        # would be quietly dropped on the floor. --engine-arg is how you
-        # reach them.
+        # zimit has its own crawl controls, its own robots policy and its own
+        # browser; Zimi's would be quietly dropped on the floor. --engine-arg
+        # is how you reach them.
         refuse(
-            builtin_only,
+            builtin_only + ("--block-ads",),
             "belongs to Zimi's own crawler, not to zimit — pass zimit's "
             "equivalent with --engine-arg",
         )
@@ -2100,15 +2185,21 @@ def _build_from_args(args, src, is_url):
             **common,
         )
     refuse(("--engine-arg",), "only applies to --engine zimit")
+    # Refused HERE for both shapes: blocking is the engine's property, so the
+    # check is about which ENGINE was named and never about --site.
+    block_ads = _block_ads_from_args(args, engine)
     if not site:
         refuse(
             ("--max-pages",) + builtin_only,
             "needs --site — without it Zimi captures exactly one page",
         )
-        return create_page_zim(src, engine=engine, progress=_note, **common)
+        return create_page_zim(
+            src, engine=engine, block_ads=block_ads, progress=_note, **common
+        )
     return crawler.create_site_zim(
         src,
         engine=engine,
+        block_ads=block_ads,
         max_pages=_flag_or(args, "max_pages", crawler.DEFAULT_MAX_PAGES),
         max_depth=_flag_or(args, "max_depth", crawler.DEFAULT_MAX_DEPTH),
         max_bytes=(

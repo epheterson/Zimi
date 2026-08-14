@@ -113,13 +113,13 @@ var CREATE_MODE_DEFS = [
   {
     id: 'page', network: true, multiline: true,
     label: 'create_label_page_url', placeholder: 'create_ph_url',
-    flags: ['engine'], advanced: ['language']
+    flags: ['engine'], advanced: ['block_ads', 'language']
   },
   {
     id: 'site', network: true,
     label: 'create_label_site_url', placeholder: 'create_ph_url',
     flags: ['engine', 'max_pages'],
-    advanced: ['max_depth', 'max_bytes', 'delay', 'language', 'ignore_robots'],
+    advanced: ['max_depth', 'max_bytes', 'delay', 'block_ads', 'language', 'ignore_robots'],
     pick: { max_bytes: '500M' }
   },
   {
@@ -271,6 +271,20 @@ var CREATE_FIELDS = {
   ignore_robots: {
     id: 'create-ignore-robots', control: 'check', label: 'create_ignore_robots',
     kind: 'bool', note: 'create_ignore_robots_note'
+  },
+  // The only checkbox on this page that starts CHECKED, which is why it is a
+  // kind of its own: every other one is off until you turn it on, so it can say
+  // nothing when unticked and let the server default. This one has to be able
+  // to say `false`, or unticking it would be a click that changed nothing.
+  //
+  // `needsEngine` is what keeps it honest: blocking is something a BROWSER does
+  // to requests it is about to make, and the fast engine fetches only what the
+  // page's own markup names. Under that engine the row is not drawn and the
+  // field is not sent — see _createFieldApplies.
+  block_ads: {
+    id: 'create-block-ads', control: 'check', label: 'create_block_ads',
+    kind: 'bool', on: true, needsEngine: ['rendered', 'alive'],
+    note: 'create_block_ads_note'
   },
   // Auto first, and the probe fills it in: the page you are capturing already
   // declares its language, so making someone recall an ISO 639-3 code was the
@@ -458,13 +472,28 @@ function _createModeFields(def) {
   return (def.flags || []).concat(def.advanced || []);
 }
 
+// Whether a field means anything under the engine currently chosen. A field
+// with no `needsEngine` always does — which is all of them but one.
+function _createFieldApplies(f, engine) {
+  if (!f || !f.needsEngine) return true;
+  return f.needsEngine.indexOf(String(engine || '')) >= 0;
+}
+
 // One raw form value → what belongs in the request body, or undefined for
 // "say nothing and let the engine use its own default". Blank, unparseable and
 // below-minimum all collapse to that same silence: they are the same statement.
 function _createFieldValue(key, fields) {
   var f = CREATE_FIELDS[key];
   if (!f) return undefined;
+  if (!_createFieldApplies(f, fields && fields.engine)) return undefined;
   var raw = fields ? fields[key] : undefined;
+  // A checkbox that starts checked has to send both answers — its unticked
+  // state is a decision, where an ordinary flag's is the absence of one. What
+  // it must NOT do is send `false` for a control that was never drawn: an
+  // unmounted field reads as '' here, and that is silence, not a refusal.
+  if (f.kind === 'bool' && f.on) {
+    return (raw === undefined || raw === null || raw === '') ? undefined : !!raw;
+  }
   if (f.kind === 'bool') return raw ? true : undefined;
   var text = String(raw === undefined || raw === null ? '' : raw).trim();
   if (!text) return undefined;
@@ -1154,8 +1183,11 @@ function _createFieldHtml(key, def) {
   var label = tH(f.label);
   if (f.control === 'engine') return _createEngineHtml(f);
   if (f.control === 'check') {
-    return '<label class="create-flag">' +
-      '<input type="checkbox" id="' + f.id + '"' +
+    // The row carries an id of its own so a field that only applies to some
+    // engines can be hidden whole — label and all — rather than left as a
+    // dangling word beside a checkbox that went away.
+    return '<label class="create-flag" id="' + f.id + '-row">' +
+      '<input type="checkbox" id="' + f.id + '"' + (f.on ? ' checked' : '') +
       (f.onchange ? ' onchange="' + f.onchange + '"' : '') + '>' + label + '</label>';
   }
   if (f.control === 'select') {
@@ -1221,7 +1253,8 @@ function _createEngineHtml(f) {
     if (off) _createAddCommands(commands, o.needs);
     html += '<label class="create-seg-opt' + (off ? ' is-off' : '') + '">' +
       '<input type="radio" name="' + f.id + '" value="' + escAttr(o.v) + '"' +
-      (i === 0 ? ' checked' : '') + (off ? ' disabled' : '') + '>' +
+      (i === 0 ? ' checked' : '') + (off ? ' disabled' : '') +
+      ' onchange="_createSyncEngine()">' +
       '<span class="create-seg-name">' + tH(o.k) + '</span>' +
       '<span class="create-seg-desc">' + tH(o.d) + '</span>' +
     '</label>';
@@ -1262,7 +1295,10 @@ function _createFieldsHtml(keys, def) {
   for (var i = 0; i < keys.length; i++) {
     controls += _createFieldHtml(keys[i], def);
     var f = CREATE_FIELDS[keys[i]];
-    if (f && f.note) notes += '<div class="create-caption">' + tH(f.note) + '</div>';
+    if (f && f.note) {
+      notes += '<div class="create-caption" id="' + f.id + '-note">' +
+        tH(f.note) + '</div>';
+    }
   }
   return controls ? '<div class="create-flags">' + controls + '</div>' + notes : '';
 }
@@ -1353,6 +1389,7 @@ function _renderCreatePanel() {
   }
   _createRestoreMode();
   _createSyncFormat();
+  _createSyncEngine();
   _renderCreatePreview();
   _renderCreateBrowse();
 }
@@ -1387,6 +1424,27 @@ function _createSyncFormat() {
   var fmt = document.getElementById(CREATE_FIELDS.format.id);
   var audio = document.getElementById(CREATE_FIELDS.audio_only.id);
   if (fmt) fmt.disabled = !!(audio && audio.checked);
+}
+
+// Options that belong to one engine appear when that engine is chosen and are
+// gone otherwise — HIDDEN rather than disabled, which is the opposite of what
+// the engine picker itself does, and deliberately. A disabled engine is a thing
+// Zimi does that this machine has not installed, and saying so is useful. Ad
+// blocking under the fast engine is not installable; it is not a thing at all,
+// and a permanently greyed control would only invite the question.
+function _createSyncEngine() {
+  var engine = _createCheckedRadio(CREATE_FIELDS.engine.id);
+  for (var key in CREATE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(CREATE_FIELDS, key)) continue;
+    var f = CREATE_FIELDS[key];
+    if (!f.needsEngine) continue;
+    var applies = _createFieldApplies(f, engine);
+    var parts = [f.id + '-row', f.id + '-note'];
+    for (var i = 0; i < parts.length; i++) {
+      var node = document.getElementById(parts[i]);
+      if (node) node.hidden = !applies;
+    }
+  }
 }
 
 function _createFormFields() {

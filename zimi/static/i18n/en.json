@@ -1295,6 +1295,8 @@
   "create_delay": "Delay (seconds)",
   "create_ignore_robots": "Ignore robots.txt",
   "create_ignore_robots_note": "robots.txt is the site asking not to be crawled. Overriding it is a decision to own.",
+  "create_block_ads": "Block ads and trackers",
+  "create_block_ads_note": "Advertising, analytics and consent-manager requests are refused while capturing. The ZIM comes out smaller, and a page that waits on one of those endpoints gets a refusal it can handle instead of a request that hangs.",
   "create_language": "Language",
   "create_format": "Quality",
   "create_format_720p": "720p (default)",

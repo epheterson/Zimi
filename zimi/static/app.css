@@ -633,6 +633,10 @@
      old server with no events would show an inert phase strip and an empty
      tree box — the two things the degraded path exists to avoid. */
   .create-picker[hidden], .create-phases[hidden], .create-tree-wrap[hidden] { display: none; }
+  /* An option that belongs to one engine, hidden when another is chosen (see
+     _createSyncEngine). [hidden] must beat the display:flex below, exactly as
+     it must for .ms-user-add. */
+  .create-flag[hidden] { display: none; }
   .create-picker { display: flex; flex-direction: column; gap: 12px; }
   .create-modes { display: flex; flex-wrap: wrap; gap: 6px; }
   .create-chip { display: flex; align-items: center; gap: 7px; padding: 7px 12px; font-family: inherit; font-size: 13px; color: var(--text2); background: none; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; transition: all 0.15s; }

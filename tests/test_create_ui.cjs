@@ -119,8 +119,8 @@ for (const key of Object.keys(CREATE_FIELDS)) {
 // The advanced sets, pinned. These are the flags the engines take that a
 // browser can reach; changing one is a product decision, not a refactor.
 eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
-  ['page', ['language']],
-  ['site', ['max_depth', 'max_bytes', 'delay', 'language', 'ignore_robots']],
+  ['page', ['block_ads', 'language']],
+  ['site', ['max_depth', 'max_bytes', 'delay', 'block_ads', 'language', 'ignore_robots']],
   ['video', ['format', 'max_bytes', 'language']],
   ['bookmarks', []],
   ['folder', ['language']],
@@ -261,6 +261,53 @@ for (const o of sandbox.CREATE_ENGINE_OPTIONS) {
   check(!!sandbox.CREATE_ENGINE_NEEDS[o.needs],
     `the "${o.needs}" capability has a row in CREATE_ENGINE_NEEDS`);
 }
+
+// ── blocking ads and trackers ───────────────────────────────────────────────
+//
+// The one checked-by-default checkbox on the page, and the one field that only
+// belongs to some engines. Both of those are ways to send the wrong thing, so
+// both are pinned here.
+
+for (const id of ['page', 'site']) {
+  check((def(id).advanced || []).includes('block_ads'),
+    `${id} offers ad blocking, behind Advanced`);
+}
+for (const id of ['video', 'folder', 'import']) {
+  const d = def(id);
+  check(!d.flags.concat(d.advanced || []).includes('block_ads'),
+    `${id} does not offer ad blocking — nothing there drives a browser`);
+}
+
+check(sandbox.CREATE_FIELDS.block_ads.on === true,
+  'the ad-blocking checkbox is drawn already ticked');
+
+eq(_createBuildRequest('page',
+  { source: 'https://e.org/', engine: 'rendered', block_ads: true }),
+  { mode: 'page', source: 'https://e.org/', engine: 'rendered', block_ads: true },
+  'blocking left on is sent as a real true, not as silence');
+eq(_createBuildRequest('page',
+  { source: 'https://e.org/', engine: 'alive', block_ads: false }),
+  { mode: 'page', source: 'https://e.org/', engine: 'alive', block_ads: false },
+  'unticking it sends false — the whole reason this field is not an ordinary flag');
+eq(_createBuildRequest('site',
+  { source: 'https://e.org/', engine: 'rendered', block_ads: false }),
+  { mode: 'site', source: 'https://e.org/', engine: 'rendered', block_ads: false },
+  'site mode carries the same answer');
+eq(_createBuildRequest('page',
+  { source: 'https://e.org/', engine: '', block_ads: true }),
+  { mode: 'page', source: 'https://e.org/' },
+  'under the fast engine the field is not sent at all — it would describe nothing');
+eq(_createBuildRequest('page',
+  { source: 'https://e.org/', engine: 'rendered', block_ads: '' }),
+  { mode: 'page', source: 'https://e.org/', engine: 'rendered' },
+  'a control that was never drawn is silence, never an unticked box');
+
+check(sandbox._createFieldApplies(sandbox.CREATE_FIELDS.block_ads, 'rendered'),
+  'the field applies under the rendered engine');
+check(!sandbox._createFieldApplies(sandbox.CREATE_FIELDS.block_ads, ''),
+  'the field does not apply under the fast engine');
+check(sandbox._createFieldApplies(sandbox.CREATE_FIELDS.language, ''),
+  'a field with no engine requirement applies everywhere');
 
 // ── advanced options ────────────────────────────────────────────────────────
 

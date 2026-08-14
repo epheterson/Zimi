@@ -3116,6 +3116,25 @@ def main():
         "browser above plus `zimi import --setup`), or zimit (openZIM's "
         "browser-based crawler, needs docker)",
     )
+    # On by default for the two browser engines, and the pair of flags exists
+    # so "nobody said" stays distinguishable from "somebody asked for it" —
+    # which is what lets --block-ads against the fast engine, where it would do
+    # nothing, be refused rather than quietly accepted.
+    p_create.add_argument(
+        "--block-ads",
+        dest="block_ads",
+        action="store_true",
+        default=None,
+        help="Refuse ad, tracker and consent-manager requests while capturing "
+        "(--engine rendered/alive; on by default). Smaller ZIMs, and pages "
+        "that gate themselves on those endpoints render their real content",
+    )
+    p_create.add_argument(
+        "--no-block-ads",
+        dest="block_ads",
+        action="store_false",
+        help="Capture every request the page makes, advertising included",
+    )
     p_create.add_argument(
         "--max-pages",
         type=int,

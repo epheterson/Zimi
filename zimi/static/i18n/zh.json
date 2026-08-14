@@ -1295,6 +1295,8 @@
   "create_delay": "延迟（秒）",
   "create_ignore_robots": "忽略 robots.txt",
   "create_ignore_robots_note": "robots.txt 是网站请求不要抓取它。绕过它是你自己的决定，也由你自己承担。",
+  "create_block_ads": "拦截广告与追踪器",
+  "create_block_ads_note": "抓取时拒绝广告、分析和同意管理请求。ZIM 会更小；等待这类接口的页面会拿到一个它能处理的拒绝，而不是一个一直挂着的请求。",
   "create_language": "语言",
   "create_format": "画质",
   "create_format_720p": "720p（默认）",

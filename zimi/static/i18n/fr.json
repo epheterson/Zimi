@@ -1295,6 +1295,8 @@
   "create_delay": "Délai (secondes)",
   "create_ignore_robots": "Ignorer robots.txt",
   "create_ignore_robots_note": "robots.txt, c'est le site qui demande à ne pas être exploré. Passer outre est une décision à assumer.",
+  "create_block_ads": "Bloquer les publicités et les traceurs",
+  "create_block_ads_note": "Les requêtes publicitaires, de mesure d'audience et de gestion du consentement sont refusées pendant la capture. Le ZIM est plus petit, et une page qui attend l'un de ces services reçoit un refus qu'elle sait traiter au lieu d'une requête qui reste en suspens.",
   "create_language": "Langue",
   "create_format": "Qualité",
   "create_format_720p": "720p (par défaut)",

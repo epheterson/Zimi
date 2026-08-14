@@ -85,10 +85,12 @@ from zimi.creator import (
     capture_engine,
     CreateError,
     looks_like_spa,
+    report_blocked,
     resolve_language,
     site_illustration,
     spool_target,
 )
+from zimi.blocklist import blocked_phrase
 from zimi.zimwriter import (
     _plural,
     _slug,
@@ -576,6 +578,7 @@ def create_site_zim(
     timeout=DEFAULT_FETCH_TIMEOUT,
     max_redirects=DEFAULT_MAX_REDIRECTS,
     engine=DEFAULT_ENGINE,
+    block_ads=None,
     register=False,
     progress=None,
 ):
@@ -610,6 +613,7 @@ def create_site_zim(
             delay=delay,
             ignore_robots=ignore_robots,
             timeout=timeout,
+            block_ads=block_ads,
             register=register,
             progress=progress,
         )
@@ -650,8 +654,10 @@ def create_site_zim(
         budget=budget,
         note=note,
         work_dir=out_dir or _srv.ZIM_DIR,
+        block_ads=block_ads,
     )
     spool_dir = None
+    blocked = {}
     pages, reason, asset_count = [], None, 0
     seen_mimetypes = set()
     try:
@@ -710,6 +716,7 @@ def create_site_zim(
                 note=note,
             )
             del seed_text  # spooled; the crawl holds one page at a time
+            blocked = report_blocked(capture, note)
             by_key = _assign_article_paths(pages)
             resolve = _link_resolver(by_key)
             note(f"packaging {_plural(len(pages), 'page')}…")
@@ -754,12 +761,14 @@ def create_site_zim(
                         "created",
                         "site",
                         f"captured {_plural(len(pages), 'page')} from {seed_url}"
-                        + (f" — stopped early at the {reason}" if reason else ""),
+                        + (f" — stopped early at the {reason}" if reason else "")
+                        + blocked_phrase(blocked.get("blocked")),
                         counts={
                             "pages": len(pages),
                             "assets": asset_count,
                             "bytes": budget.used,
                         },
+                        blocked=blocked.get("blocked"),
                     ),
                 )
     finally:
@@ -779,6 +788,7 @@ def create_site_zim(
         "stopped": reason,
         "language": language,
         "language_source": language_source,
+        **blocked,
     }
 
 

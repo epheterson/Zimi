@@ -64,6 +64,7 @@ import threading
 import time
 import urllib.parse
 
+from zimi.blocklist import host_of as _host_of, load as _load_blocklist
 from zimi.creator import (
     CreateError,
     _CSS_URL_RE,
@@ -130,6 +131,22 @@ IMAGE_SETTLE_TICK = 0.25
 # Killing the child: how long a browser gets to exit politely before it is
 # taken out. A wedged renderer must never outlive the job that started it.
 KILL_GRACE = 3.0
+
+# ── ad and tracker blocking ─────────────────────────────────────────────────
+#
+# On by default for both browser engines. See zimi.blocklist for the list, its
+# provenance and how a machine overrides it; the mechanism is one route handler
+# installed on the context, which is the earliest point at which a request can
+# be refused — earlier than the recorder, earlier than the subresource spool, so
+# neither of them ever sees a blocked request at all.
+BLOCK_ADS_DEFAULT = True
+# What the browser is told a blocked request failed with. Chromium's own code
+# for "the client refused this", which is what an ad blocker returns and what
+# the scripts on an ad-funded page already have a fallback path for. Failing
+# IMMEDIATELY and with a reason is the part that matters: a script handed an
+# error takes its error branch, where a request left to hang leaves the page
+# that is waiting on it still waiting.
+BLOCK_ABORT_CODE = "blockedbyclient"
 
 # ── recording bounds (the alive engine; see zimi.alive) ─────────────────────
 #
@@ -444,10 +461,19 @@ class RenderedSession:
         viewport=VIEWPORT,
         recorder=None,
         extra_wait=0.0,
+        block_ads=None,
     ):
         self._budget = budget
         self._note = note or (lambda _m: None)
         self._viewport = viewport
+        # Ad and tracker blocking. None means "the default", which lives in one
+        # place (BLOCK_ADS_DEFAULT) rather than in every caller that can leave
+        # the question open. The list itself is loaded at start(), not here: a
+        # session that is never started must not read two megabytes of gzip.
+        self._block_ads = BLOCK_ADS_DEFAULT if block_ads is None else bool(block_ads)
+        self._blocklist = None
+        self.blocked = 0  # requests refused, this session
+        self.blocked_hosts = set()  # the distinct domains they were going to
         # A ``zimi.warc.WarcWriter``, or None. When one is here the session is
         # RECORDING: every response goes into the archive as it stands, and the
         # per-page subresource spool is not built at all — the two are
@@ -463,6 +489,13 @@ class RenderedSession:
         self._driver_pid = None
         self._killed = False
         self._closed = False
+
+    @property
+    def blocklist(self):
+        """The list this session is actually running, or None when it is not
+        blocking. Read by the provenance record, which has to name what did the
+        refusing rather than only how much it refused."""
+        return self._blocklist
 
     # -- lifecycle ---------------------------------------------------------
     def start(self):
@@ -488,9 +521,65 @@ class RenderedSession:
             ignore_https_errors=False,
         )
         self._context.set_default_timeout(int(NAV_TIMEOUT * 1000))
+        self._install_blocking()
         with _sessions_lock:
             _sessions.append(self)
         return self
+
+    def _install_blocking(self):
+        """Refuse the ad and tracker traffic, on the CONTEXT rather than on
+        each page.
+
+        Context-level because a page is not the only thing that fetches: a
+        popup the site opens, an iframe navigating itself, a page this session
+        opens later in the same crawl. One handler covers all of them and
+        cannot be forgotten at the one call site that makes a new page.
+
+        A failure to install is a capture without blocking, logged — never a
+        capture that does not happen. Blocking makes a capture better and it is
+        not what anyone asked for when they asked for a capture."""
+        if not self._block_ads or self._context is None:
+            return
+        self._blocklist = _load_blocklist()
+        if not self._blocklist:
+            log.info("ad blocking is on but the list is empty; nothing to refuse")
+            return
+        try:
+            self._context.route("**/*", self._route)
+        except Exception as e:
+            log.warning("could not install the ad blocker: %s", _playwright_reason(e))
+            self._blocklist = None
+
+    def _route(self, route):
+        """One request, judged. Abort what is on the list, let everything else
+        through untouched.
+
+        ``continue_`` rather than ``fallback`` because this is the only handler
+        on the context, and every exception here is swallowed for a reason that
+        is not laziness: a route callback that raises leaves Playwright holding
+        a request nobody ever answered, and the page waits for it until the
+        navigation times out. Both arms end with the request decided, and
+        reading the request's own URL is inside the guard for the same reason:
+        a request this cannot even ask about is one it must still answer."""
+        url = ""
+        try:
+            if self._blocklist is not None:
+                url = route.request.url or ""
+                host = _host_of(url)
+                if host and self._blocklist.blocks(host):
+                    route.abort(BLOCK_ABORT_CODE)
+                    # Counted only once the abort has actually landed. A count
+                    # that included the requests it FAILED to block would be
+                    # the one number nobody could check.
+                    self.blocked += 1
+                    self.blocked_hosts.add(host)
+                    return
+        except Exception as e:
+            log.debug("ad blocker could not judge %s: %s", url or "a request", e)
+        try:
+            route.continue_()
+        except Exception as e:
+            log.debug("could not continue %s: %s", url, e)
 
     def _user_agent(self):
         """Chromium's own UA with Zimi's appended. Both halves are true and
@@ -1366,14 +1455,35 @@ class RenderedCapture:
     # inherit the fast engine's refusal of one.
     refuses_spa = False
 
-    def __init__(self, *, work_dir=None, budget=None, carried=None, note=None):
-        self._session = RenderedSession(work_dir=work_dir, budget=budget, note=note)
+    def __init__(
+        self, *, work_dir=None, budget=None, carried=None, note=None, block_ads=None
+    ):
+        self._session = RenderedSession(
+            work_dir=work_dir, budget=budget, note=note, block_ads=block_ads
+        )
         self._budget = budget
         self.carried = {} if carried is None else carried
         self.mimetypes = set()
         self.count = 0
         self._pages = {}  # final URL -> RenderedPage awaiting its render
         self._started = False
+
+    # What the session refused, read through the engine. The callers that write
+    # provenance and progress lines hold an engine, not a session, and every
+    # engine answers the same three questions — see
+    # ``zimi.creator.report_blocked``. ``blocklist`` is the LIST that ran, which
+    # the creation record needs in order to name what did the refusing.
+    @property
+    def blocked(self):
+        return self._session.blocked
+
+    @property
+    def blocked_hosts(self):
+        return self._session.blocked_hosts
+
+    @property
+    def blocklist(self):
+        return self._session.blocklist
 
     def start(self):
         if not self._started:
