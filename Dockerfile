@@ -1,4 +1,14 @@
+# The warc2zim SIDECAR (the alive engine's conversion step) requires Python
+# >=3.14,<3.15 while the app itself must stay on 3.11 — libtorrent's wheels
+# stop at cp313. Two interpreters, one image: 3.14 rides along in /opt/py314
+# via a stage copy (same debian/glibc base, ABI-compatible), and the importer
+# finds it as python3.14 on PATH. It exists ONLY for the sidecar venv.
+FROM python:3.14-slim AS py314
+
 FROM python:3.11-slim
+COPY --from=py314 /usr/local /opt/py314
+RUN ln -s /opt/py314/bin/python3.14 /usr/local/bin/python3.14 && \
+    /usr/local/bin/python3.14 --version
 
 COPY requirements.txt .
 # requirements.txt pins libtorrent 2.0 (the in-process BT engine, ON by
