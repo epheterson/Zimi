@@ -7,6 +7,27 @@ COPY requirements.txt .
 # no apt/dist-packages games and no separate install step.
 RUN pip install --no-cache-dir -r requirements.txt
 
+# The rendered capture engine: Playwright plus a real headless Chromium, run as
+# a CHILD PROCESS of the server — never a second container, and never through a
+# docker socket. It is its own layer, before the source is copied, so editing
+# Zimi's code does not re-download a browser; it costs roughly 400MB in the
+# image, which is the price of capturing pages that build themselves in
+# JavaScript.
+#
+# PLAYWRIGHT_BROWSERS_PATH matters: the default install location is the
+# INSTALLING user's home (root's), and this container runs as `zimi`. A
+# world-readable path is what makes the browser findable at runtime.
+#
+# --with-deps is the apt half — the fonts and shared libraries Chromium needs
+# on a slim base. Inside the container Chromium cannot use its own sandbox
+# (Docker's seccomp profile blocks the user namespaces it needs); the renderer
+# detects that and steps down for exactly that launch, saying so in the log.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN pip install --no-cache-dir "playwright>=1.40" \
+ && playwright install --with-deps chromium \
+ && chmod -R a+rx /ms-playwright \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY zimi/ ./zimi/
 

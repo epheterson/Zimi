@@ -206,6 +206,46 @@ eq(_createBuildRequest('video', { source: 'https://e.org/', audio_only: false })
   { mode: 'video', source: 'https://e.org/' },
   'an unchecked audio_only is omitted');
 
+// ── the capture engine ──────────────────────────────────────────────────────
+//
+// The one option on this page that changes what the ZIM CONTAINS rather than
+// how much of it there is, so the wiring gets its own block: the fast engine
+// must send nothing (the default lives on the server, in one place), and the
+// rendered engine must reach the two modes that capture a web page and no
+// others.
+
+for (const id of ['page', 'site']) {
+  check(def(id).flags.includes('engine'),
+    `${id} offers the engine choice on the panel, not behind Advanced`);
+}
+for (const id of ['video', 'folder', 'import']) {
+  const d = def(id);
+  check(!d.flags.concat(d.advanced).includes('engine'),
+    `${id} does not offer an engine choice — it does not capture a web page`);
+}
+
+eq(_createBuildRequest('page', { source: 'https://e.org/', engine: 'rendered' }),
+  { mode: 'page', source: 'https://e.org/', engine: 'rendered' },
+  'page: the rendered engine is sent');
+eq(_createBuildRequest('site', { source: 'https://e.org/', engine: 'rendered' }),
+  { mode: 'site', source: 'https://e.org/', engine: 'rendered' },
+  'site: the rendered engine is sent');
+eq(_createBuildRequest('site', { source: 'https://e.org/', engine: '' }),
+  { mode: 'site', source: 'https://e.org/' },
+  'the fast engine sends nothing — the default belongs to the server');
+eq(_createBuildRequest('video', { source: 'https://e.org/', engine: 'rendered' }),
+  { mode: 'video', source: 'https://e.org/' },
+  'a stale engine value from another mode never rides along');
+
+check(sandbox.CREATE_ENGINE_OPTIONS[0].v === '',
+  'the fast engine is the first option, and it is the empty one');
+check(sandbox.CREATE_ENGINE_OPTIONS.some(o => o.v === 'rendered' && o.needs === 'browser'),
+  'the rendered option declares the capability the server has to report');
+for (const o of sandbox.CREATE_ENGINE_OPTIONS) {
+  check(!!o.k && !!o.d,
+    'every engine option carries a name AND the sentence under it');
+}
+
 // ── advanced options ────────────────────────────────────────────────────────
 
 eq(_createBuildRequest('site', {

@@ -1902,6 +1902,12 @@ def activity_payload(type_filter=None, actor_filter=None):
 # ============================================================================
 
 CREATE_MODES = ("folder", "page", "site", "video", "import")
+# Which engine captures a web page. Mirrors creator.CAPTURE_ENGINES, held here
+# as a literal for the same reason CREATE_MAX_PAGE_URLS is: validating a
+# request must not drag the writer stack into the request thread. The test
+# below pins the two together. zimit is deliberately NOT offered over the web —
+# it wants a docker daemon, and a web form is the wrong place to discover that.
+CREATE_ENGINES = ("builtin", "rendered")
 # Ring-buffer depth for job output. A long crawl emits a line per page, so the
 # buffer is a live tail, not a transcript — the browser polls faster than it
 # fills and keeps everything it has already seen.
@@ -2527,6 +2533,11 @@ def _create_validate(data):
         opts["urls"] = page_urls
     if mode in ("folder", "page", "site", "video"):
         opts["language"] = _create_language(data.get("language"))
+    if mode in ("page", "site"):
+        # The two modes that capture a web page get to choose HOW. Refused
+        # rather than clamped, like every other named value: silently capturing
+        # the other way is the one outcome nobody asked for.
+        opts["engine"] = _create_engine(data.get("engine"))
     if mode == "site":
         opts["max_pages"] = _create_int(
             data.get("max_pages"), 1, CREATE_MAX_PAGES_CEILING
@@ -2653,6 +2664,25 @@ def _create_name(value):
     return name
 
 
+def _create_engine(value):
+    """Which capture engine a web capture asked for. None when nobody said,
+    which every caller reads as "the fast one" — the default lives in the
+    engines, not in three copies of the word "builtin"."""
+    if value in (None, ""):
+        return None
+    name = str(value).strip().lower()
+    if name not in CREATE_ENGINES:
+        raise ValueError("unknown capture engine")
+    if name == "rendered" and not _create_browser_ready():
+        # Refused HERE rather than an hour into a job: the browser is a
+        # separate install, and a form that accepts a choice this machine
+        # cannot honour is a form that lies.
+        raise ValueError(
+            "the rendered engine needs a browser this server does not have " "installed"
+        )
+    return name
+
+
 def _create_video_format(value, audio_only):
     """A named quality preset from the form, as the engine's format selector.
     Audio-only owns the format entirely, so a preset alongside it is dropped
@@ -2696,7 +2726,7 @@ def _create_run(job, opts):
             title=job.title or None,
             register=True,
             progress=job.note,
-            **_create_kwargs(opts, "language"),
+            **_create_kwargs(opts, "language", "engine"),
         )
     if job.mode == "site":
         from zimi.crawler import create_site_zim
@@ -2714,6 +2744,7 @@ def _create_run(job, opts):
                 "delay",
                 "ignore_robots",
                 "language",
+                "engine",
             ),
         )
     if job.mode == "video":
@@ -2849,6 +2880,11 @@ def _create_watch(job):
         if time.time() - since < CREATE_STALL_SECONDS:
             continue
         job.cancel_requested = True
+        # A cooperative cancel lands at the engine's next progress line, and a
+        # wedged job by definition may never reach one. A browser is the one
+        # thing that can be stopped from out here regardless: it is a child
+        # process, and a signal does not need the job's thread to cooperate.
+        _create_kill_browsers()
         minutes = int(CREATE_STALL_SECONDS // 60) or 1
         log.warning(
             "create job %s (%s) made no progress for %ss — abandoning it",
@@ -2976,6 +3012,10 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
     if probe:
         # Only on the page's first poll: one cheap subprocess, not per-second.
         payload["import_ready"] = _create_import_ready()
+        # Whether the rendered engine's browser is installed here. Same
+        # contract as import_ready: asked once, on the page's first poll, and
+        # answered from a cache after that.
+        payload["browser_ready"] = _create_browser_ready()
         # None, not "", when no root is configured: the client reads it as a
         # yes/no about whether server-path capture exists on this instance at
         # all, and an empty string is a path that happens to be blank.
@@ -3190,6 +3230,40 @@ def _create_import_ready():
         return False
 
 
+def _create_browser_ready():
+    """True when the rendered engine can actually run here — Playwright
+    importable AND a Chromium that launches.
+
+    Finding out costs a browser launch, so the renderer caches the answer for
+    the life of the process and this is a dictionary lookup after the first
+    call. It is asked on the Create page's first poll and when a request names
+    the rendered engine; never per second, and never per page."""
+    try:
+        from zimi.renderer import browser_available
+
+        return bool(browser_available())
+    except Exception:
+        log.exception("rendered-engine probe failed")
+        return False
+
+
+def _create_kill_browsers():
+    """Kill any headless browser a create job left running.
+
+    Only reached when the watchdog gives up on a job: by then the job's thread
+    is wedged somewhere that will not return, so the engine's own `finally`
+    cannot be relied on to close its browser. Imported by NAME rather than
+    directly, so a server whose jobs never render a page never loads the
+    renderer at all."""
+    module = sys.modules.get("zimi.renderer")
+    if module is None:
+        return
+    try:
+        module.shutdown_sessions()
+    except Exception:
+        log.exception("could not shut down a rendered capture's browser")
+
+
 # ============================================================================
 # Pre-flight probe — look before you leap
 #
@@ -3307,11 +3381,18 @@ def _read_language_head(fs_path, limit=65536):
         return None
 
 
-def _probe_url(source, *, want_robots=False):
+def _probe_url(source, *, want_robots=False, engine=None):
     """Fetch ONE page and report what the capture would be working with: where
     it really landed, what it is called, whether it is an application shell
     that would produce a ZIM full of loading spinners, and — for a crawl — what
-    the site's robots.txt has to say about the seed."""
+    the site's robots.txt has to say about the seed.
+
+    ONE plain HTTP fetch, whichever engine the job will use. Previewing a
+    rendered capture by rendering it would cost a browser launch per keystroke
+    settled, and the answers the preview gives — where the URL lands, what it
+    is called, what language it declares — are the same either way. What the
+    engine changes is the VERDICT: an application shell is a refusal for the
+    fast engine and the entire point of the rendered one."""
     from zimi.creator import (
         _decode_page,
         _fetch_page,
@@ -3325,21 +3406,29 @@ def _probe_url(source, *, want_robots=False):
     page = _decode_page(data, ctype)
     is_html = "html" in (ctype or "").lower()
     spa = bool(is_html and looks_like_spa(page))
+    rendered = engine == "rendered"
     # The document's own `<html lang>` first, the Content-Language header
     # second: the header is server configuration and is often a site-wide
     # default, while the attribute was written about this page.
     language = _detect_html_language(page) if is_html else None
     out = {
-        "ok": is_html and not spa,
+        "ok": is_html and (not spa or rendered),
         "final_url": final_url,
         "title": _page_title_from_html(page, "") if is_html else "",
         "content_type": (ctype or "").split(";")[0].strip(),
         "bytes": len(data),
+        "spa": spa,
         "language": language or _iso3_of(clang),
         "warning_key": None,
     }
     if not is_html:
         out["warning_key"] = "create_warn_not_html"
+    elif spa and rendered:
+        # Not a warning: a page built in JavaScript is the case the rendered
+        # engine exists for. Said out loud anyway, because "this page has no
+        # server-rendered text" is the reason the capture will take twenty
+        # seconds instead of one.
+        out["note_key"] = "create_note_spa_rendered"
     elif spa:
         # The engine's own refusal, verbatim: it names zimit, which is the fix.
         from zimi.creator import SPA_REFUSAL
@@ -3528,10 +3617,12 @@ def _create_probe(data):
             # thing that captures well?", and the first address answers it. The
             # count is what makes the rest of the list visible.
             urls = opts.get("urls") or [source]
-            result = _probe_url(urls[0])
+            result = _probe_url(urls[0], engine=opts.get("engine"))
             result["urls"] = len(urls)
         else:
-            result = _probe_url(source, want_robots=(mode == "site"))
+            result = _probe_url(
+                source, want_robots=(mode == "site"), engine=opts.get("engine")
+            )
     except CreateError as e:
         # Already a user-facing sentence, and the one that names the fix.
         return {"ok": False, "mode": mode, "detail": str(e)}, 200

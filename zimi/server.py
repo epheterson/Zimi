@@ -3106,10 +3106,12 @@ def main():
     )
     p_create.add_argument(
         "--engine",
-        choices=("builtin", "zimit"),
+        choices=("builtin", "rendered", "zimit"),
         default="builtin",
-        help="Capture engine: builtin (no JavaScript, no install) or zimit "
-        "(openZIM's browser-based crawler, needs docker)",
+        help="Capture engine: builtin (no JavaScript, no install), rendered "
+        "(runs a headless Chromium in this process — needs "
+        "`pip install 'zimi[browser]'` and `playwright install chromium`), or "
+        "zimit (openZIM's browser-based crawler, needs docker)",
     )
     p_create.add_argument(
         "--max-pages",

@@ -66,6 +66,7 @@ from collections import deque
 
 import zimi.server as _srv
 from zimi.creator import (
+    DEFAULT_ENGINE,
     DEFAULT_FETCH_TIMEOUT,
     DEFAULT_MAX_REDIRECTS,
     LANGUAGE_AUTO,
@@ -80,12 +81,12 @@ from zimi.creator import (
     _try_register,
     _user_agent,
     AssetSpool,
+    capture_engine,
     CreateError,
     looks_like_spa,
-    render_captured_page,
     resolve_language,
     site_illustration,
-    spooling_asset_carrier,
+    spool_target,
 )
 from zimi.zimwriter import (
     _plural,
@@ -349,8 +350,9 @@ def _crawl(
     seed_url,
     seed_text,
     spool_dir,
-    spool,
+    target,
     *,
+    engine,
     origin,
     robots,
     budget,
@@ -358,8 +360,6 @@ def _crawl(
     max_pages,
     max_depth,
     delay,
-    timeout,
-    max_redirects,
     note,
 ):
     """Breadth-first over one origin, capturing each page COMPLETELY as it
@@ -375,14 +375,19 @@ def _crawl(
     The two lines a page produces are the honest bracket around its work:
     ``fetching <id>`` when the request goes out, and ``[n/max] <id>`` when
     the page and everything it references are on disk. Nothing about a page is
-    still outstanding once the second line has been printed."""
+    still outstanding once the second line has been printed.
+
+    ``engine`` decides what a page IS — one HTTP fetch, or a browser that runs
+    it — and that is the ONLY thing an engine decides. The frontier, the robots
+    policy, the politeness interval, the budgets, the cancellation checkpoints
+    and these two lines belong to the crawl, and are identical whichever engine
+    is doing the walking."""
     pages = []
     seen = set()
     queue = deque()
     reason = None
-    carried = {}  # asset key -> in-ZIM path (or None), shared by every page
+    carried = engine.carried  # asset key -> in-ZIM path (or None), every page
     reported = set()  # asset keys already announced; see _report_new_assets
-    mimetypes_seen = set()
     # The page cadence, as a clock rather than as a sleep: the next page
     # request may go out at this time and not before. Asset traffic in the
     # meantime spends the interval instead of extending it.
@@ -414,15 +419,11 @@ def _crawl(
             "depth": depth,
             "title": _page_title_from_html(text, _page_label(final_url)),
         }
-        carrier = spooling_asset_carrier(
-            spool, final_url, timeout, carried=carried, budget=budget
-        )
         # Links are left absolute here on purpose: which of them are internal
         # is not known until the crawl ends, and the write pass resolves them
         # then. Everything else about the page is finished now.
-        html = render_captured_page(carrier, text, final_url=final_url)
+        html = engine.render(target, text, final_url)
         page["spool"] = _spool_page(spool_dir, len(pages), html)
-        mimetypes_seen.update(carrier.mimetypes)
         pages.append(page)
         # keys[0], not final_url: this is the name the page was announced
         # under, and an asset that claims a parent no row answers to is an
@@ -458,9 +459,7 @@ def _crawl(
         next_fetch_at = time.monotonic() + delay
         note(f"fetching {url}")
         try:
-            final_url, text, nbytes, _clang = _fetch_html(
-                url, timeout=timeout, max_redirects=max_redirects
-            )
+            final_url, text, nbytes, _clang = engine.fetch(url)
         except CreateError as e:
             log.debug("skipping %s: %s", url, e)
             note(f"skipped {url}: {str(e).splitlines()[0]}")
@@ -482,7 +481,7 @@ def _crawl(
             keys.append(final_key)
         enqueue(extract_links(text, final_url), depth + 1)
         capture(keys, final_url, depth, text)
-    return pages, reason, mimetypes_seen
+    return pages, reason, engine.mimetypes
 
 
 def _assign_article_paths(pages):
@@ -575,6 +574,7 @@ def create_site_zim(
     ignore_robots=False,
     timeout=DEFAULT_FETCH_TIMEOUT,
     max_redirects=DEFAULT_MAX_REDIRECTS,
+    engine=DEFAULT_ENGINE,
     register=False,
     progress=None,
 ):
@@ -614,53 +614,67 @@ def create_site_zim(
         delay = _robots_delay(robots, delay, note)
 
     budget = ByteBudget(max_bytes)
-    # Announced under the identity every later line will use, so the seed is
-    # one row that goes amber then green rather than two rows that disagree
-    # about whether "example.com" and "example.com/" are the same page.
-    seed_id = normalize_url(url)
-    note(f"fetching {seed_id}")
-    seed_url, seed_text, seed_bytes, seed_clang = _fetch_html(
-        url, timeout=timeout, max_redirects=max_redirects
+    # Built before the seed is fetched, because the seed is a page like every
+    # other one and goes through the same engine. A rendered crawl's browser
+    # starts here and lives until the `finally` below, whatever happens in
+    # between: one browser for the whole crawl, and never one that outlives it.
+    capture = capture_engine(
+        engine,
+        timeout=timeout,
+        max_redirects=max_redirects,
+        budget=budget,
+        note=note,
+        work_dir=out_dir or _srv.ZIM_DIR,
     )
-    budget.spend(seed_bytes)
-    if looks_like_spa(seed_text):
-        raise CreateError(SPA_REFUSAL)
-    if not same_origin(seed_url, origin):
-        origin = _origin_of(seed_url)  # the seed redirected; that is the site
-    # The seed decides the crawl's language: it is the page the person named,
-    # and a same-origin crawl is overwhelmingly one site in one language.
-    language, language_source = resolve_language(language, seed_text, seed_clang)
-    if language_source != "requested":
-        note(f"content language: {language} (detected from the site)")
-
-    parsed = urllib.parse.urlsplit(seed_url)
-    zim_title = title or _page_title_from_html(seed_text, parsed.netloc)
-    # What this is going to be called, said out loud while it is being made.
-    # The web job lifts it into the run header; the CLI just prints it.
-    note(f"title: {zim_title}")
-    # The site's icon, fetched here with the rest of the seed's belongings.
-    # It used to be read during the write, which made the write pass reach for
-    # the network one last time after everything else had stopped — and the
-    # claim this capture now makes is that packaging touches nothing.
-    illustration = site_illustration(seed_url, timeout)
-    out = _finish_output(
-        out_dir or _srv.ZIM_DIR, out_path, _slug(f"{parsed.netloc} site", "site")
-    )
-    # The spool lives beside the output so it shares that filesystem's free
-    # space — never in /tmp, which is RAM on more than one of Zimi's targets.
-    spool_dir = tempfile.mkdtemp(prefix=".zimi-crawl-", dir=os.path.dirname(out))
-    spool = AssetSpool(os.path.join(spool_dir, "assets"))
-    stop = _StopFlag()
+    spool_dir = None
     pages, reason, asset_count = [], None, 0
     seen_mimetypes = set()
     try:
+        # Announced under the identity every later line will use, so the seed
+        # is one row that goes amber then green rather than two rows that
+        # disagree about whether "example.com" and "example.com/" are the same
+        # page.
+        seed_id = normalize_url(url)
+        note(f"fetching {seed_id}")
+        seed_url, seed_text, seed_bytes, seed_clang = capture.fetch(url)
+        budget.spend(seed_bytes)
+        if capture.refuses_spa and looks_like_spa(seed_text):
+            raise CreateError(SPA_REFUSAL)
+        if not same_origin(seed_url, origin):
+            origin = _origin_of(seed_url)  # the seed redirected; that is the site
+        # The seed decides the crawl's language: it is the page the person
+        # named, and a same-origin crawl is overwhelmingly one site in one
+        # language.
+        language, language_source = resolve_language(language, seed_text, seed_clang)
+        if language_source != "requested":
+            note(f"content language: {language} (detected from the site)")
+
+        parsed = urllib.parse.urlsplit(seed_url)
+        zim_title = title or _page_title_from_html(seed_text, parsed.netloc)
+        # What this is going to be called, said out loud while it is being made.
+        # The web job lifts it into the run header; the CLI just prints it.
+        note(f"title: {zim_title}")
+        # The site's icon, fetched here with the rest of the seed's belongings.
+        # It used to be read during the write, which made the write pass reach
+        # for the network one last time after everything else had stopped — and
+        # the claim this capture now makes is that packaging touches nothing.
+        illustration = site_illustration(seed_url, timeout)
+        out = _finish_output(
+            out_dir or _srv.ZIM_DIR, out_path, _slug(f"{parsed.netloc} site", "site")
+        )
+        # The spool lives beside the output so it shares that filesystem's free
+        # space — never in /tmp, which is RAM on more than one of Zimi's targets.
+        spool_dir = tempfile.mkdtemp(prefix=".zimi-crawl-", dir=os.path.dirname(out))
+        spool = AssetSpool(os.path.join(spool_dir, "assets"))
+        stop = _StopFlag()
         with _interruptible(stop, note):
             pages, reason, seen_mimetypes = _crawl(
                 seed_id,
                 seed_url,
                 seed_text,
                 spool_dir,
-                spool,
+                spool_target(spool),
+                engine=capture,
                 origin=origin,
                 robots=robots,
                 budget=budget,
@@ -668,8 +682,6 @@ def create_site_zim(
                 max_pages=max_pages,
                 max_depth=max_depth,
                 delay=delay,
-                timeout=timeout,
-                max_redirects=max_redirects,
                 note=note,
             )
             del seed_text  # spooled; the crawl holds one page at a time
@@ -726,7 +738,9 @@ def create_site_zim(
                     ),
                 )
     finally:
-        shutil.rmtree(spool_dir, ignore_errors=True)
+        capture.close()
+        if spool_dir:
+            shutil.rmtree(spool_dir, ignore_errors=True)
 
     return {
         "path": out,
@@ -735,6 +749,7 @@ def create_site_zim(
         "main": "A/index",
         "registered": _try_register(out) if register else False,
         "url": seed_url,
+        "engine": capture.name,
         "bytes": budget.used,
         "stopped": reason,
         "language": language,

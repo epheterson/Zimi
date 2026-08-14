@@ -113,12 +113,12 @@ var CREATE_MODE_DEFS = [
   {
     id: 'page', network: true, multiline: true,
     label: 'create_label_page_url', placeholder: 'create_ph_url',
-    flags: [], advanced: ['language']
+    flags: ['engine'], advanced: ['language']
   },
   {
     id: 'site', network: true,
     label: 'create_label_site_url', placeholder: 'create_ph_url',
-    flags: ['max_pages'],
+    flags: ['engine', 'max_pages'],
     advanced: ['max_depth', 'max_bytes', 'delay', 'language', 'ignore_robots'],
     pick: { max_bytes: '500M' }
   },
@@ -197,7 +197,28 @@ var CREATE_LANGUAGE_OPTIONS = [
 //             left out entirely rather than sent as 0
 //   options — for selects: bare strings (label from an i18n key built off the
 //             field name) or {v, t|k} rows carrying a literal label or a key
+// The two ways to capture a web page, as the two ways they are. Not a select
+// and not behind Advanced: which engine runs is the one choice that changes
+// what the ZIM CONTAINS rather than how much of it there is, so it is on the
+// panel, both answers visible, with the cost of each written under it.
+//
+// The empty value is the fast engine, so choosing it sends nothing and the
+// server's own default is what runs — there is one place the default lives and
+// it is not here. `needs` names a capability the server has to report before
+// the option is live at all; see _createEngineHtml.
+var CREATE_ENGINE_OPTIONS = [
+  { v: '', k: 'create_engine_fast', d: 'create_engine_fast_desc' },
+  {
+    v: 'rendered', k: 'create_engine_rendered', d: 'create_engine_rendered_desc',
+    needs: 'browser'
+  }
+];
+
 var CREATE_FIELDS = {
+  engine: {
+    id: 'create-engine', control: 'engine', label: 'create_engine',
+    kind: 'text', options: CREATE_ENGINE_OPTIONS
+  },
   max_pages: {
     id: 'create-max-pages', control: 'number', label: 'create_max_pages',
     kind: 'int', min: 1, max: 5000, ph: '200'
@@ -801,6 +822,12 @@ var _createPollMs = CREATE_POLL_MS;
 var _createStatus = null;     // last status payload
 var _createOffline = false;
 var _createImportReady = true;
+// Whether this server can run the rendered engine. Starts FALSE, unlike
+// import_ready: the browser is an extra install and most servers will not have
+// it, so the honest opening state is "not until the server says so" — a toggle
+// that offers itself and then refuses the job is worse than one that arrives a
+// poll late.
+var _createBrowserReady = false;
 var _createRoot = '';         // ZIMI_CREATE_ROOT, or '' when folder mode is off
 var _createHistory = [];
 var _createWantHistory = false;
@@ -994,6 +1021,7 @@ function _createDefaultMode(list) {
 // its mind about what is possible.
 function _createAvailabilityKey() {
   return (_createOffline ? '1' : '0') + (_createImportReady ? '1' : '0') +
+    (_createBrowserReady ? '1' : '0') +
     (_createRoot ? '1' : '0') + (_createViewerIsCreator() ? '1' : '0');
 }
 
@@ -1038,7 +1066,9 @@ function _createStashMode() {
     var f = CREATE_FIELDS[keys[i]];
     var node = document.getElementById(f.id);
     if (!node) continue;
-    state.values[keys[i]] = f.control === 'check' ? !!node.checked : node.value;
+    state.values[keys[i]] = f.control === 'check' ? !!node.checked
+      : f.control === 'engine' ? _createCheckedRadio(f.id)
+      : node.value;
   }
   state.preview = _createPreview;
   state.previewSource = _createPreviewSource;
@@ -1065,6 +1095,7 @@ function _createRestoreMode() {
     var node = f && document.getElementById(f.id);
     if (!node) continue;
     if (f.control === 'check') node.checked = !!state.values[key];
+    else if (f.control === 'engine') _createSetRadio(f.id, state.values[key]);
     else node.value = state.values[key];
   }
 }
@@ -1078,6 +1109,7 @@ function _createFieldHtml(key, def) {
   var f = CREATE_FIELDS[key];
   if (!f) return '';
   var label = tH(f.label);
+  if (f.control === 'engine') return _createEngineHtml(f);
   if (f.control === 'check') {
     return '<label class="create-flag">' +
       '<input type="checkbox" id="' + f.id + '"' +
@@ -1110,6 +1142,44 @@ function _createFieldHtml(key, def) {
     (f.step ? ' step="' + f.step + '"' : '') +
     ' spellcheck="false" autocapitalize="none" autocorrect="off"' +
     ' placeholder="' + escAttr(ph) + '"></label>';
+}
+
+// The exact command that installs the rendered engine. Not translated — it is
+// something you paste into a shell.
+var CREATE_BROWSER_INSTALL = "pip install 'zimi[browser]' && playwright install chromium";
+
+// The engine picker: two radios drawn as one control, each with the sentence
+// that tells you which one you want. It takes the full width of the flags row
+// on purpose — it is a choice with consequences, not a checkbox.
+//
+// An option whose capability the server does not have is DISABLED rather than
+// hidden, and this is the one place on the page where that is right: the
+// rendered engine is a thing Zimi does, it is simply not installed here, and
+// the fix is one command the caption prints. Hiding it would leave someone
+// believing Zimi cannot do this at all.
+function _createEngineHtml(f) {
+  var html = '<div class="create-seg-field">' +
+    '<div class="create-seg-label">' + tH(f.label) + '</div>' +
+    '<div class="create-seg" id="' + f.id + '" role="radiogroup"' +
+    ' aria-label="' + escAttr(t(f.label)) + '">';
+  var missing = false;
+  for (var i = 0; i < f.options.length; i++) {
+    var o = f.options[i];
+    var off = o.needs === 'browser' && !_createBrowserReady;
+    if (off) missing = true;
+    html += '<label class="create-seg-opt' + (off ? ' is-off' : '') + '">' +
+      '<input type="radio" name="' + f.id + '" value="' + escAttr(o.v) + '"' +
+      (i === 0 ? ' checked' : '') + (off ? ' disabled' : '') + '>' +
+      '<span class="create-seg-name">' + tH(o.k) + '</span>' +
+      '<span class="create-seg-desc">' + tH(o.d) + '</span>' +
+    '</label>';
+  }
+  html += '</div>';
+  if (missing) {
+    html += '<div class="create-caption">' + tH('create_engine_missing') +
+      ' <code>' + esc(CREATE_BROWSER_INSTALL) + '</code></div>';
+  }
+  return html + '</div>';
 }
 
 // A row of controls plus any warnings they carry. The notes sit under the row
@@ -1258,9 +1328,28 @@ function _createFormFields() {
     if (!Object.prototype.hasOwnProperty.call(CREATE_FIELDS, key)) continue;
     var f = CREATE_FIELDS[key];
     var node = el(f.id);
-    fields[key] = !node ? '' : (f.control === 'check' ? !!node.checked : node.value);
+    fields[key] = !node ? ''
+      : f.control === 'check' ? !!node.checked
+      : f.control === 'engine' ? _createCheckedRadio(f.id)
+      : node.value;
   }
   return fields;
+}
+
+// A radio group has no value of its own — the checked input has it.
+function _createCheckedRadio(name) {
+  var hit = document.querySelector('input[name="' + name + '"]:checked');
+  return hit ? hit.value : '';
+}
+
+// Restoring a radio group. A stored choice the server can no longer honour —
+// "rendered" on a machine whose browser has since gone — leaves the default
+// checked rather than checking a disabled option nothing would run.
+function _createSetRadio(name, value) {
+  var opts = document.querySelectorAll('input[name="' + name + '"]');
+  for (var i = 0; i < opts.length; i++) {
+    if (opts[i].value === value && !opts[i].disabled) { opts[i].checked = true; return; }
+  }
 }
 
 function _createFormError(msg) {
@@ -1295,8 +1384,11 @@ function _renderCreatePreview() {
       (p.detail ? '<div class="create-pv-detail">' + esc(p.detail) + '</div>' : '') +
       '</div>';
   }
+  // A note is not a warning: it says something true about the source that
+  // changes what to expect, and it sits under the facts rather than over them.
+  var note = p.note_key ? '<div class="create-caption">' + tH(p.note_key) + '</div>' : '';
   host.innerHTML = '<div class="create-preview-box' + (p.ok ? '' : ' not-ok') + '">' +
-    warn + html + '</div>';
+    warn + html + note + '</div>';
 }
 
 // Ask the server what is actually there. Fired when the source stops changing,
@@ -1577,6 +1669,7 @@ async function _createPoll(first) {
 function _createIngest(data) {
   _createOffline = !!data.offline;
   if (typeof data.import_ready === 'boolean') _createImportReady = data.import_ready;
+  if (typeof data.browser_ready === 'boolean') _createBrowserReady = data.browser_ready;
   if (typeof data.create_root === 'string' || data.create_root === null) {
     _createRoot = data.create_root || '';
   }

@@ -650,6 +650,28 @@
   .create-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
   .create-flag { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); cursor: pointer; }
   .create-flag input[type="checkbox"] { accent-color: var(--amber); width: 15px; height: 15px; flex-shrink: 0; }
+  /* ── The capture engine picker ──
+     Two answers side by side, each with the sentence that tells you which one
+     you want, taking the whole width of the flags row: this is the one control
+     on the panel that changes what the ZIM CONTAINS, and burying it in a
+     dropdown beside "Max pages" would have said the opposite. The lit state is
+     the page's own amber, the same one a chosen chip wears. An option this
+     server cannot run is dimmed rather than removed — see _createEngineHtml. */
+  .create-seg-field { flex: 1 0 100%; display: flex; flex-direction: column; gap: 6px; }
+  .create-seg-label { font-size: 13px; color: var(--text2); }
+  .create-seg { display: flex; flex-wrap: wrap; gap: 8px; }
+  .create-seg-opt { flex: 1 1 220px; display: grid; grid-template-columns: auto 1fr;
+    align-items: start; gap: 2px 8px; padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--surface2); cursor: pointer; }
+  .create-seg-opt:hover { border-color: var(--amber-border); }
+  .create-seg-opt input[type="radio"] { accent-color: var(--amber); width: 15px; height: 15px;
+    margin: 2px 0 0; grid-row: 1 / span 2; }
+  .create-seg-name { font-size: 13px; color: var(--text); }
+  .create-seg-desc { grid-column: 2; font-size: 12px; color: var(--text2); }
+  .create-seg-opt:has(input:checked) { border-color: var(--amber-border); background: var(--amber-glow); }
+  .create-seg-opt:has(input:checked) .create-seg-name { color: var(--amber); }
+  .create-seg-opt.is-off { opacity: 0.45; cursor: not-allowed; }
+  .create-seg-opt.is-off:hover { border-color: var(--border); }
   .create-num { width: 96px; flex: 0 0 auto; }
   .create-short { width: 140px; flex: 0 0 auto; }
   .create-pick { width: auto; flex: 0 0 auto; padding-right: 6px; }

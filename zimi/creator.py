@@ -98,10 +98,12 @@ SPA_MIN_TEXT_CHARS = 200
 # produce two hundred loading spinners is the worst possible outcome.
 SPA_REFUSAL = (
     "this page is an empty application shell — its content is built "
-    "by JavaScript in the browser, and Zimi does not run one. "
-    "Capture it with a browser-based tool such as zimit "
-    "(https://github.com/openzim/zimit), then add the resulting ZIM "
-    "to your library."
+    "by JavaScript in the browser, and the fast engine does not run one. "
+    "Capture it with the rendered engine instead (the Rendered toggle on the "
+    "Create page, or --engine rendered), which drives a real browser and keeps "
+    "what it draws. For a fully interactive archive, zimit "
+    "(https://github.com/openzim/zimit) writes a ZIM you can add to your "
+    "library."
 )
 # The language a capture asks for when it wants the DOCUMENT to decide. The
 # fallback is only ever reached when nothing on the page says anything.
@@ -1273,6 +1275,132 @@ def render_captured_page(carrier, page, *, final_url, resolve_link=None):
     return _normalize_charset(_strip_scripts(page))
 
 
+# ── capture engines ─────────────────────────────────────────────────────────
+#
+# Two ways to turn a URL into ZIM-ready HTML, behind one two-call interface:
+#
+#   fetch(url)                          -> (final_url, html, bytes, language)
+#   render(target, html, final_url, …)  -> the HTML that ships in the ZIM
+#
+# ``builtin`` is what Zimi has always done: fetch the document the server sent,
+# carry its same-origin assets, drop the JavaScript that could never run
+# offline. ``rendered`` (zimi.renderer, soft dependency) drives a headless
+# Chromium and keeps what the BROWSER ended up with — the lazy-loaded images,
+# the cross-origin fonts, the pages that build themselves.
+#
+# The interface exists so the three capture shapes — one page, several pages,
+# a bounded site crawl — each run either engine over the SAME frontier, robots
+# policy, politeness interval, budgets and progress lines. An engine decides
+# what a page is; it decides nothing about how a capture behaves.
+#
+# ``target`` is the ``(add_item, item_factory)`` pair an asset ends up in: a
+# live Creator for the page modes, the crawl's on-disk AssetSpool when there is
+# no Creator yet. Passed per call rather than held, because a single-page
+# capture does not know its Creator until after it has fetched.
+
+CAPTURE_ENGINES = ("builtin", "rendered")
+DEFAULT_ENGINE = "builtin"
+
+
+def creator_target(creator):
+    """Assets go straight into a live Creator."""
+    return (creator.add_item, make_asset_item)
+
+
+def spool_target(spool):
+    """Assets go to disk, to be drained into a Creator that does not exist
+    yet — see ``AssetSpool``."""
+    return (spool.add, _spooled_asset)
+
+
+class BuiltinCapture:
+    """The fast engine: one HTTP fetch per page, no JavaScript.
+
+    Holds only what is shared ACROSS pages — the asset dedupe map, the byte
+    budget, the mimetypes that landed. Every page still gets its own carrier,
+    so the per-page asset caps stay per page exactly as they always have."""
+
+    name = "builtin"
+    # An application shell has nothing in it for this engine to capture, and
+    # saying so is better than writing a ZIM full of loading spinners.
+    refuses_spa = True
+
+    def __init__(
+        self,
+        *,
+        timeout=DEFAULT_FETCH_TIMEOUT,
+        max_redirects=DEFAULT_MAX_REDIRECTS,
+        budget=None,
+        carried=None,
+        note=None,
+        work_dir=None,
+    ):
+        self._timeout = timeout
+        self._max_redirects = max_redirects
+        self._budget = budget
+        self.carried = {} if carried is None else carried
+        self.mimetypes = set()
+        self.count = 0
+
+    def start(self):
+        return self
+
+    def fetch(self, url):
+        return _fetch_html(
+            url, timeout=self._timeout, max_redirects=self._max_redirects
+        )
+
+    def render(self, target, html, final_url, resolve_link=None):
+        sink, item_factory = target
+        carrier = http_asset_carrier(
+            sink,
+            final_url,
+            self._timeout,
+            carried=self.carried,
+            budget=self._budget,
+            item_factory=item_factory,
+        )
+        out = render_captured_page(
+            carrier, html, final_url=final_url, resolve_link=resolve_link
+        )
+        self.mimetypes |= carrier.mimetypes
+        self.count += carrier.count
+        return out
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self.start()
+
+    def __exit__(self, *_exc):
+        self.close()
+
+
+def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
+    """The named engine, ready to start. Raises ``CreateError`` for a name
+    nothing answers to — a typo must not silently capture the other way."""
+    name = str(engine or DEFAULT_ENGINE).strip().lower()
+    if name in ("", "builtin"):
+        return BuiltinCapture(**kwargs)
+    if name == "rendered":
+        # Imported here and nowhere else: the rendered engine reaches for
+        # Playwright, and a Zimi that never renders a page never pays for the
+        # import.
+        from zimi.renderer import RenderedCapture
+
+        return RenderedCapture(
+            work_dir=kwargs.get("work_dir"),
+            budget=kwargs.get("budget"),
+            carried=kwargs.get("carried"),
+            note=kwargs.get("note"),
+        )
+    raise CreateError(
+        f"unknown capture engine: {engine} — the engines are "
+        + ", ".join(CAPTURE_ENGINES)
+    )
+
+
 def create_page_zim(
     url,
     *,
@@ -1284,6 +1412,7 @@ def create_page_zim(
     creator_name="Zimi",
     timeout=DEFAULT_FETCH_TIMEOUT,
     max_redirects=DEFAULT_MAX_REDIRECTS,
+    engine=DEFAULT_ENGINE,
     register=False,
     progress=None,
 ):
@@ -1311,55 +1440,67 @@ def create_page_zim(
     if scheme not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
 
-    note(f"fetching {url}")
-    final_url, page, _n, clang = _fetch_html(
-        url, timeout=timeout, max_redirects=max_redirects
+    capture = capture_engine(
+        engine,
+        timeout=timeout,
+        max_redirects=max_redirects,
+        note=note,
+        work_dir=out_dir or _srv.ZIM_DIR,
     )
-    if looks_like_spa(page):
-        raise CreateError(SPA_REFUSAL)
-    language, language_source = resolve_language(language, page, clang)
+    try:
+        note(f"fetching {url}")
+        final_url, page, _n, clang = capture.fetch(url)
+        if capture.refuses_spa and looks_like_spa(page):
+            raise CreateError(SPA_REFUSAL)
+        language, language_source = resolve_language(language, page, clang)
 
-    parsed = urllib.parse.urlsplit(final_url)
-    zim_title = title or _page_title_from_html(page, parsed.netloc + parsed.path)
-    base = _slug(f"{parsed.netloc} {parsed.path}", "page")
-    out = _finish_output(out_dir or _srv.ZIM_DIR, out_path, base)
+        parsed = urllib.parse.urlsplit(final_url)
+        zim_title = title or _page_title_from_html(page, parsed.netloc + parsed.path)
+        base = _slug(f"{parsed.netloc} {parsed.path}", "page")
+        out = _finish_output(out_dir or _srv.ZIM_DIR, out_path, base)
 
-    note(f"packaging {final_url}")
-    static_cls = zim_static_item_class()
-    with atomic_zim_creator(out, language) as creator:
-        carrier = http_asset_carrier(creator.add_item, final_url, timeout)
-        page = render_captured_page(carrier, page, final_url=final_url)
-        creator.add_item(static_cls("A/index", zim_title, page.encode("utf-8")))
-        creator.set_mainpath("A/index")
-        add_standard_metadata(
-            creator,
-            title=zim_title,
-            description=description
-            or f"One page captured from {parsed.netloc} by Zimi",
-            language=language,
-            creator_name=creator_name,
-            source=final_url,
-            # The whole URL: two pages from one site are two ZIMs, and
-            # recapturing either one is a new edition of that one.
-            name=zim_name(final_url, language),
-            tags=media_tags(carrier.mimetypes),
-            illustration=site_illustration(final_url, timeout),
-            history=history_record(
-                "created",
-                "page",
-                f"captured one page from {final_url}",
-                counts={"pages": 1, "assets": carrier.count},
-            ),
-        )
+        note(f"packaging {final_url}")
+        static_cls = zim_static_item_class()
+        with atomic_zim_creator(out, language) as creator:
+            page = capture.render(creator_target(creator), page, final_url)
+            creator.add_item(static_cls("A/index", zim_title, page.encode("utf-8")))
+            creator.set_mainpath("A/index")
+            add_standard_metadata(
+                creator,
+                title=zim_title,
+                description=description
+                or f"One page captured from {parsed.netloc} by Zimi",
+                language=language,
+                creator_name=creator_name,
+                source=final_url,
+                # The whole URL: two pages from one site are two ZIMs, and
+                # recapturing either one is a new edition of that one.
+                name=zim_name(final_url, language),
+                tags=media_tags(capture.mimetypes),
+                illustration=site_illustration(final_url, timeout),
+                history=history_record(
+                    "created",
+                    "page",
+                    f"captured one page from {final_url}",
+                    counts={"pages": 1, "assets": capture.count},
+                ),
+            )
+    finally:
+        # However this ended — written, refused, cancelled from the progress
+        # sink — the browser goes with it. A rendered capture that leaves a
+        # Chromium behind is a capture that leaks a couple of hundred megabytes
+        # per attempt.
+        capture.close()
 
     registered = _try_register(out) if register else False
     return {
         "path": out,
         "pages": 1,
-        "assets": carrier.count,
+        "assets": capture.count,
         "main": "A/index",
         "registered": registered,
         "url": final_url,
+        "engine": capture.name,
         "language": language,
         "language_source": language_source,
     }
@@ -1438,16 +1579,24 @@ def create_pages_zim(
     creator_name="Zimi",
     timeout=DEFAULT_FETCH_TIMEOUT,
     max_redirects=DEFAULT_MAX_REDIRECTS,
+    engine=DEFAULT_ENGINE,
     register=False,
     progress=None,
 ):
     """Capture SEVERAL pages into ONE ZIM with a generated index.
 
-    Each page runs the identical ``render_captured_page`` pipeline as a single
-    capture; what is added is a shared asset dedupe map (one copy of a
-    stylesheet two pages both pull), link resolution BETWEEN the captured pages
-    (a link from one to another lands inside the ZIM), and the cover page that
-    makes the result a collection rather than a heap.
+    Each page runs the identical per-page pipeline as a single capture; what is
+    added is a shared asset dedupe map (one copy of a stylesheet two pages both
+    pull), link resolution BETWEEN the captured pages (a link from one to
+    another lands inside the ZIM), and the cover page that makes the result a
+    collection rather than a heap.
+
+    The two passes — fetch everything, then write everything — are what the
+    ZIM's own identity needs: its language is a vote of the pages and its Name
+    is a digest of the set, so neither is knowable until the last page is in.
+    Both engines survive the gap because neither holds a page's assets in
+    memory across it: the fast engine has not fetched them yet, and the
+    rendered engine has them spooled on disk.
 
     A single URL is handed straight to ``create_page_zim`` — one page is one
     page, and wrapping it in an index nobody asked for would be a worse ZIM."""
@@ -1481,6 +1630,7 @@ def create_pages_zim(
             creator_name=creator_name,
             timeout=timeout,
             max_redirects=max_redirects,
+            engine=engine,
             register=register,
             progress=progress,
         )
@@ -1493,130 +1643,136 @@ def create_pages_zim(
 
     from zimi.crawler import normalize_url
 
-    entries, skipped, taken, detected = [], [], {"index"}, []
-    for url in wanted:
-        note(f"fetching {url}")
-        try:
-            final_url, page, _n, clang = _fetch_html(
-                url, timeout=timeout, max_redirects=max_redirects
-            )
-        except CreateError as e:
-            note(f"  skipped {url}: {e}")
-            skipped.append((url, str(e)))
-            continue
-        if looks_like_spa(page):
-            note(f"  skipped {url}: it is an empty application shell")
-            skipped.append((url, "an empty application shell — nothing to capture"))
-            continue
-        parsed = urllib.parse.urlsplit(final_url)
-        base = _slug(f"{parsed.netloc} {parsed.path}", "page")
-        name, n = base, 2
-        while name in taken:
-            name = f"{base}_{n}"
-            n += 1
-        taken.add(name)
-        code, where = detect_page_language(page, clang)
-        if code:
-            detected.append((code, where))
-        entries.append(
-            {
-                "name": name,
-                "requested": url,
-                "final_url": final_url,
-                "page": page,
-                "title": _page_title_from_html(page, parsed.netloc + parsed.path),
-            }
-        )
-    if not entries:
-        raise CreateError(
-            "none of those pages could be captured — "
-            + "; ".join(f"{url}: {why}" for url, why in skipped)
-        )
-
-    # One ZIM carries one Language. The pages voted; the most common answer
-    # wins, and the first page breaks a tie because it is the one the person
-    # typed first.
-    named = requested_language(language)
-    if named:
-        language, language_source = named, "requested"
-    elif detected:
-        codes = [code for code, _where in detected]
-        language = max(set(codes), key=lambda c: (codes.count(c), -codes.index(c)))
-        language_source = next(w for c, w in detected if c == language)
-    else:
-        language, language_source = DEFAULT_LANGUAGE, "fallback"
-
-    zim_title = title or _pages_title(entries)
-    out = _finish_output(
-        out_dir or _srv.ZIM_DIR, out_path, _slug(_pages_scope(entries), "pages")
+    capture = capture_engine(
+        engine,
+        timeout=timeout,
+        max_redirects=max_redirects,
+        note=note,
+        work_dir=out_dir or _srv.ZIM_DIR,
     )
-    # A link may name either what was typed or where that landed, so both
-    # identities resolve into the ZIM.
-    by_key = {}
-    for entry in entries:
-        by_key.setdefault(normalize_url(entry["final_url"]), entry["name"])
-        by_key.setdefault(normalize_url(entry["requested"]), entry["name"])
+    entries, skipped, taken, detected = [], [], {"index"}, []
+    try:
+        for url in wanted:
+            note(f"fetching {url}")
+            try:
+                final_url, page, _n, clang = capture.fetch(url)
+            except CreateError as e:
+                note(f"  skipped {url}: {e}")
+                skipped.append((url, str(e)))
+                continue
+            if capture.refuses_spa and looks_like_spa(page):
+                note(f"  skipped {url}: it is an empty application shell")
+                skipped.append((url, "an empty application shell — nothing to capture"))
+                continue
+            parsed = urllib.parse.urlsplit(final_url)
+            base = _slug(f"{parsed.netloc} {parsed.path}", "page")
+            name, n = base, 2
+            while name in taken:
+                name = f"{base}_{n}"
+                n += 1
+            taken.add(name)
+            code, where = detect_page_language(page, clang)
+            if code:
+                detected.append((code, where))
+            entries.append(
+                {
+                    "name": name,
+                    "requested": url,
+                    "final_url": final_url,
+                    "page": page,
+                    "title": _page_title_from_html(page, parsed.netloc + parsed.path),
+                }
+            )
+        if not entries:
+            raise CreateError(
+                "none of those pages could be captured — "
+                + "; ".join(f"{url}: {why}" for url, why in skipped)
+            )
 
-    def resolve(absolute):
-        target, sep, fragment = absolute.partition("#")
-        name = by_key.get(normalize_url(target))
-        if not name:
-            return None
-        return name + (sep + fragment if sep else "")
+        # One ZIM carries one Language. The pages voted; the most common answer
+        # wins, and the first page breaks a tie because it is the one the person
+        # typed first.
+        named = requested_language(language)
+        if named:
+            language, language_source = named, "requested"
+        elif detected:
+            codes = [code for code, _where in detected]
+            language = max(set(codes), key=lambda c: (codes.count(c), -codes.index(c)))
+            language_source = next(w for c, w in detected if c == language)
+        else:
+            language, language_source = DEFAULT_LANGUAGE, "fallback"
 
-    static_cls = zim_static_item_class()
-    carried, mimetypes = {}, set()
-    with atomic_zim_creator(out, language) as creator:
+        zim_title = title or _pages_title(entries)
+        out = _finish_output(
+            out_dir or _srv.ZIM_DIR, out_path, _slug(_pages_scope(entries), "pages")
+        )
+        # A link may name either what was typed or where that landed, so both
+        # identities resolve into the ZIM.
+        by_key = {}
         for entry in entries:
-            note(f"packaging {entry['final_url']}")
-            # One carrier per page over a SHARED dedupe map — the same reason
-            # the site crawl does it: common assets stored once, per-page caps
-            # still per page.
-            carrier = http_asset_carrier(
-                creator.add_item, entry["final_url"], timeout, carried=carried
-            )
-            html = render_captured_page(
-                carrier,
-                entry["page"],
-                final_url=entry["final_url"],
-                resolve_link=resolve,
-            )
+            by_key.setdefault(normalize_url(entry["final_url"]), entry["name"])
+            by_key.setdefault(normalize_url(entry["requested"]), entry["name"])
+
+        def resolve(absolute):
+            target, sep, fragment = absolute.partition("#")
+            name = by_key.get(normalize_url(target))
+            if not name:
+                return None
+            return name + (sep + fragment if sep else "")
+
+        static_cls = zim_static_item_class()
+        with atomic_zim_creator(out, language) as creator:
+            for entry in entries:
+                note(f"packaging {entry['final_url']}")
+                # Assets go through the engine's SHARED dedupe map — the same
+                # reason the site crawl does it: common assets stored once,
+                # per-page caps still per page.
+                html = capture.render(
+                    creator_target(creator),
+                    entry["page"],
+                    entry["final_url"],
+                    resolve_link=resolve,
+                )
+                creator.add_item(
+                    static_cls(
+                        "A/" + entry["name"], entry["title"], html.encode("utf-8")
+                    )
+                )
+                entry["page"] = None  # written; do not hold every page at once
             creator.add_item(
-                static_cls("A/" + entry["name"], entry["title"], html.encode("utf-8"))
+                static_cls(
+                    "A/index", zim_title, _pages_index_html(zim_title, entries, skipped)
+                )
             )
-            mimetypes |= carrier.mimetypes
-            entry["page"] = None  # written; do not hold every page at once
-        creator.add_item(
-            static_cls(
-                "A/index", zim_title, _pages_index_html(zim_title, entries, skipped)
+            creator.set_mainpath("A/index")
+            asset_count = sum(1 for v in capture.carried.values() if v)
+            add_standard_metadata(
+                creator,
+                title=zim_title,
+                description=description
+                or f"{_plural(len(entries), 'page')} captured from the web by Zimi",
+                language=language,
+                creator_name=creator_name,
+                source=entries[0]["final_url"],
+                name=zim_name(_pages_scope(entries), language),
+                tags=media_tags(capture.mimetypes),
+                illustration=site_illustration(entries[0]["final_url"], timeout),
+                history=history_record(
+                    "created",
+                    "pages",
+                    f"captured {_plural(len(entries), 'page')} from the web"
+                    + (f", skipping {len(skipped)}" if skipped else ""),
+                    counts={"pages": len(entries), "assets": asset_count},
+                ),
             )
-        )
-        creator.set_mainpath("A/index")
-        asset_count = sum(1 for v in carried.values() if v)
-        add_standard_metadata(
-            creator,
-            title=zim_title,
-            description=description
-            or f"{_plural(len(entries), 'page')} captured from the web by Zimi",
-            language=language,
-            creator_name=creator_name,
-            source=entries[0]["final_url"],
-            name=zim_name(_pages_scope(entries), language),
-            tags=media_tags(mimetypes),
-            illustration=site_illustration(entries[0]["final_url"], timeout),
-            history=history_record(
-                "created",
-                "pages",
-                f"captured {_plural(len(entries), 'page')} from the web"
-                + (f", skipping {len(skipped)}" if skipped else ""),
-                counts={"pages": len(entries), "assets": asset_count},
-            ),
-        )
+    finally:
+        capture.close()
 
     return {
         "path": out,
         "pages": len(entries),
         "assets": asset_count,
+        "engine": capture.name,
         "main": "A/index",
         "registered": _try_register(out) if register else False,
         "url": entries[0]["final_url"],
@@ -1817,7 +1973,14 @@ def _build_pages_from_args(args, sources):
             "several sources means several web pages in one ZIM, so every one "
             f"of them must be a URL — {not_urls[0]} is not"
         )
-    named = [flag for flag, given in _crawl_flag_state(args).items() if given]
+    engine = getattr(args, "engine", DEFAULT_ENGINE)
+    given = _crawl_flag_state(args)
+    if engine in CAPTURE_ENGINES:
+        # Which ENGINE captures a page is not a crawl flag — it is the one
+        # choice that means the same thing for one page and for twenty. zimit
+        # is the exception and stays refused: it takes a single URL.
+        given["--engine"] = False
+    named = [flag for flag, was_given in given.items() if was_given]
     if named:
         raise CreateError(
             f"{', '.join(named)} applies to capturing one source — "
@@ -1830,6 +1993,7 @@ def _build_pages_from_args(args, sources):
         language=args.language,
         creator_name=args.creator,
         out_path=args.out,
+        engine=engine,
         register=not args.out,
         progress=_note,
     )
@@ -1894,9 +2058,10 @@ def _build_from_args(args, src, is_url):
             ("--max-pages",) + builtin_only,
             "needs --site — without it Zimi captures exactly one page",
         )
-        return create_page_zim(src, **common)
+        return create_page_zim(src, engine=engine, progress=_note, **common)
     return crawler.create_site_zim(
         src,
+        engine=engine,
         max_pages=_flag_or(args, "max_pages", crawler.DEFAULT_MAX_PAGES),
         max_depth=_flag_or(args, "max_depth", crawler.DEFAULT_MAX_DEPTH),
         max_bytes=(
