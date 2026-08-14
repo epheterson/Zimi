@@ -7,8 +7,13 @@ FROM python:3.14-slim AS py314
 
 FROM python:3.11-slim
 COPY --from=py314 /usr/local /opt/py314
-RUN ln -s /opt/py314/bin/python3.14 /usr/local/bin/python3.14 && \
-    /usr/local/bin/python3.14 --version
+# END of PATH, never a symlink: a venv records its creating interpreter's
+# directory as `home`, and a symlink in /usr/local/bin would point that at a
+# directory with no 3.14 stdlib — every venv python then dies at 'encodings'.
+# Appending keeps python3 = 3.11 (the app) while python3.14 resolves to the
+# real binary, whose venvs find their stdlib where it actually is.
+ENV PATH="${PATH}:/opt/py314/bin"
+RUN python3.14 --version && python3 --version
 
 COPY requirements.txt .
 # requirements.txt pins libtorrent 2.0 (the in-process BT engine, ON by
