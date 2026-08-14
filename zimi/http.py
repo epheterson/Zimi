@@ -2396,15 +2396,26 @@ class ZimHandler(BaseHTTPRequestHandler):
             body = APP_JS_REWRITTEN.encode("utf-8")
             content_type = "application/javascript"
         else:
+            # The cache is validated against the file's mtime: one stat per
+            # request instead of one read. Without it, an edited JS/CSS file
+            # stayed invisible until restart — harmless behind a deploy that
+            # restarts the container, but a debug-cycle trap for development
+            # and long-lived Playwright servers (same class as the
+            # read-once-at-import template gotcha in CLAUDE.md).
+            base = ZimHandler._static_base_dir()
+            if not base:
+                return self._json(404, {"error": "static directory not found"})
+            probe_path = os.path.normpath(os.path.join(base, rel_path))
+            try:
+                current_mtime = os.stat(probe_path).st_mtime
+            except OSError:
+                current_mtime = None
             with ZimHandler._static_cache_lock:
                 cached = ZimHandler._static_cache.get(rel_path)
-            if cached:
-                body, content_type = cached
+            if cached and current_mtime is not None and cached[2] == current_mtime:
+                body, content_type = cached[0], cached[1]
             else:
-                base = ZimHandler._static_base_dir()
-                if not base:
-                    return self._json(404, {"error": "static directory not found"})
-                file_path = os.path.normpath(os.path.join(base, rel_path))
+                file_path = probe_path
                 # Ensure resolved path is still inside the static dir
                 if not file_path.startswith(
                     os.path.normpath(base) + os.sep
@@ -2430,7 +2441,15 @@ class ZimHandler(BaseHTTPRequestHandler):
                     )
                 # Cache in memory (vendor files are immutable, ~8MB total for pdf.js)
                 with ZimHandler._static_cache_lock:
-                    ZimHandler._static_cache[rel_path] = (body, content_type)
+                    try:
+                        stored_mtime = os.stat(file_path).st_mtime
+                    except OSError:
+                        stored_mtime = None
+                    ZimHandler._static_cache[rel_path] = (
+                        body,
+                        content_type,
+                        stored_mtime,
+                    )
 
         # Compress text-based static files (viewer.mjs, viewer.css, etc.)
         ct_base = content_type.split(";")[0]
