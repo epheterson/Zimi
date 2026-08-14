@@ -689,16 +689,69 @@ def test_closing_a_session_leaves_no_browser_behind(tmp_path):
 @browser
 def test_a_browser_can_be_killed_from_another_thread(tmp_path):
     # What the create watchdog does to a wedged job, exactly: reach in from
-    # outside and stop the child.
-    session = renderer.RenderedSession(work_dir=str(tmp_path)).start()
-    pid = session._driver_pid
+    # outside and stop the child. The session lives in a scratch thread the
+    # way a real job does, because an abrupt driver kill leaves THAT thread's
+    # asyncio loop flagged running forever — Playwright's sync API then
+    # refuses the next start on the same thread. Production never reuses the
+    # thread (each job is a fresh worker); a test that ran the session on the
+    # pytest thread would poison every rendered test after it.
+    holder = {}
+    started = threading.Event()
+
+    def job_thread():
+        try:
+            holder["session"] = renderer.RenderedSession(work_dir=str(tmp_path)).start()
+        finally:
+            started.set()
+        # Park like a wedged job; the kill unblocks us by breaking the session.
+        holder["dead"].wait(30)
+
+    holder["dead"] = threading.Event()
+    worker = threading.Thread(target=job_thread, daemon=True)
+    worker.start()
+    assert started.wait(30) and "session" in holder
+    pid = holder["session"]._driver_pid
     done = threading.Event()
     threading.Thread(
         target=lambda: (renderer.shutdown_sessions(), done.set()), daemon=True
     ).start()
     assert done.wait(20)
     assert not _alive(pid)
-    session.close()
+    holder["dead"].set()
+
+
+def test_a_fresh_thread_can_render_after_a_kill(tmp_path):
+    # The production guarantee behind the watchdog: killing a wedged job's
+    # browser must not cost the NEXT job its browser. Each web job runs in a
+    # fresh worker thread, so a fresh thread starting cleanly is the contract.
+    scratch = {}
+
+    def sacrifice():
+        (tmp_path / "a").mkdir(exist_ok=True)
+        s = renderer.RenderedSession(work_dir=str(tmp_path / "a")).start()
+        scratch["pid"] = s._driver_pid
+        renderer.shutdown_sessions()
+
+    t1 = threading.Thread(target=sacrifice, daemon=True)
+    t1.start()
+    t1.join(30)
+    assert not _alive(scratch["pid"])
+    result = {}
+
+    def next_job():
+        try:
+            (tmp_path / "b").mkdir(exist_ok=True)
+            s = renderer.RenderedSession(work_dir=str(tmp_path / "b")).start()
+            result["ok"] = True
+            s.close()
+        except Exception as e:  # pragma: no cover - the failure IS the report
+            result["ok"] = False
+            result["err"] = str(e)
+
+    t2 = threading.Thread(target=next_job, daemon=True)
+    t2.start()
+    t2.join(60)
+    assert result.get("ok"), result.get("err")
 
 
 def _alive(pid):
