@@ -80,6 +80,7 @@ from zimi.creator import (
     _page_title_from_html,
     _try_register,
     _user_agent,
+    ARCHIVE_ENGINES,
     AssetSpool,
     capture_engine,
     CreateError,
@@ -588,6 +589,30 @@ def create_site_zim(
     from zimi.p2p import is_offline
 
     note = progress or _noop
+    # An alive crawl walks THIS frontier — it calls _crawl below with the same
+    # bounds and the same politeness — but it ends in a WARC and a warc2zim
+    # run rather than in the Creator this function opens. Handed over before
+    # anything starts; see zimi.alive.
+    if str(engine or "").strip().lower() in ARCHIVE_ENGINES:
+        from zimi.alive import create_alive_site_zim
+
+        return create_alive_site_zim(
+            url,
+            out_dir=out_dir,
+            out_path=out_path,
+            title=title,
+            description=description,
+            language=language,
+            creator_name=creator_name,
+            max_pages=max_pages,
+            max_depth=max_depth,
+            max_bytes=max_bytes,
+            delay=delay,
+            ignore_robots=ignore_robots,
+            timeout=timeout,
+            register=register,
+            progress=progress,
+        )
     if is_offline():
         raise CreateError(
             "ZIMI_OFFLINE is set — refusing to fetch from the network. "

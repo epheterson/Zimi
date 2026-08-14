@@ -241,9 +241,25 @@ check(sandbox.CREATE_ENGINE_OPTIONS[0].v === '',
   'the fast engine is the first option, and it is the empty one');
 check(sandbox.CREATE_ENGINE_OPTIONS.some(o => o.v === 'rendered' && o.needs === 'browser'),
   'the rendered option declares the capability the server has to report');
+check(sandbox.CREATE_ENGINE_OPTIONS.some(o => o.v === 'alive' && o.needs === 'alive'),
+  'the alive option declares its own capability, not the browser it also needs');
 for (const o of sandbox.CREATE_ENGINE_OPTIONS) {
   check(!!o.k && !!o.d,
     'every engine option carries a name AND the sentence under it');
+}
+
+// Order is what SURVIVES a capture: the text, then the picture, then the
+// behaviour. Each step up costs an install and a wait, which is what the
+// sentence under each one says.
+eq(sandbox.CREATE_ENGINE_OPTIONS.map(o => o.v), ['', 'rendered', 'alive'],
+  'the engines are offered in order of how much of the page comes with them');
+
+// Every capability an option names must have a row saying how to install it,
+// or a server without it shows a disabled option and no way to fix it.
+for (const o of sandbox.CREATE_ENGINE_OPTIONS) {
+  if (!o.needs) continue;
+  check(!!sandbox.CREATE_ENGINE_NEEDS[o.needs],
+    `the "${o.needs}" capability has a row in CREATE_ENGINE_NEEDS`);
 }
 
 // ── advanced options ────────────────────────────────────────────────────────
@@ -594,11 +610,12 @@ eq([e.cursor, e.supported], [5, false], 'a reply with no event cursor holds posi
 
 // -- phases ------------------------------------------------------------------
 //
-// Six server phases, four visible steps. The fold is what a person watching
+// Seven server phases, four visible steps. The fold is what a person watching
 // actually distinguishes: fetching a page and fetching that page's images are
-// one activity to everyone except the crawler.
+// one activity to everyone except the crawler, and packaging a ZIM and
+// converting a recording into one are both "it is writing the file now".
 eq(Object.keys(CREATE_PHASE_STEPS).sort(),
-  ['assets', 'done', 'fetch', 'package', 'probe', 'register'],
+  ['assets', 'convert', 'done', 'fetch', 'package', 'probe', 'register'],
   'every phase the server documents has a step');
 check(CREATE_STEP_KEYS.length === 4, 'the strip shows four steps');
 for (const phase of Object.keys(CREATE_PHASE_STEPS)) {

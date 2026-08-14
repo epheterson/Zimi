@@ -1298,8 +1298,15 @@ def render_captured_page(carrier, page, *, final_url, resolve_link=None):
 # no Creator yet. Passed per call rather than held, because a single-page
 # capture does not know its Creator until after it has fetched.
 
-CAPTURE_ENGINES = ("builtin", "rendered")
+# ``alive`` (zimi.alive) is a third shape rather than a third engine of the
+# same kind: it satisfies the same two calls, but its product is a WARC on
+# disk that warc2zim turns into a ZIM, not items in a Creator. The callers that
+# package a ZIM themselves therefore dispatch it away before they start; see
+# ``create_page_zim`` and ``crawler.create_site_zim``.
+CAPTURE_ENGINES = ("builtin", "rendered", "alive")
 DEFAULT_ENGINE = "builtin"
+# Engines that write their own output file instead of filling a Creator.
+ARCHIVE_ENGINES = ("alive",)
 
 
 def creator_target(creator):
@@ -1395,6 +1402,15 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
             carried=kwargs.get("carried"),
             note=kwargs.get("note"),
         )
+    if name == "alive":
+        from zimi.alive import AliveCapture
+
+        return AliveCapture(
+            work_dir=kwargs.get("work_dir"),
+            budget=kwargs.get("budget"),
+            carried=kwargs.get("carried"),
+            note=kwargs.get("note"),
+        )
     raise CreateError(
         f"unknown capture engine: {engine} — the engines are "
         + ", ".join(CAPTURE_ENGINES)
@@ -1430,6 +1446,24 @@ def create_page_zim(
 
     note = progress or (lambda _message: None)
 
+    # The alive engine does not fill a Creator, so it cannot come down this
+    # function — everything below here writes a ZIM and it writes a WARC. Sent
+    # on before any of that starts, with the same arguments; the checks this
+    # skips (offline, scheme) are the first thing it does itself.
+    if str(engine or "").strip().lower() in ARCHIVE_ENGINES:
+        from zimi.alive import create_alive_page_zim
+
+        return create_alive_page_zim(
+            url,
+            out_dir=out_dir,
+            out_path=out_path,
+            title=title,
+            description=description,
+            language=language,
+            creator_name=creator_name,
+            register=register,
+            progress=progress,
+        )
     if is_offline():
         raise CreateError(
             "ZIMI_OFFLINE is set — refusing to fetch from the network. "
@@ -1599,7 +1633,14 @@ def create_pages_zim(
     rendered engine has them spooled on disk.
 
     A single URL is handed straight to ``create_page_zim`` — one page is one
-    page, and wrapping it in an index nobody asked for would be a worse ZIM."""
+    page, and wrapping it in an index nobody asked for would be a worse ZIM.
+
+    The alive engine is REFUSED here for more than one URL, and the refusal is
+    the honest answer rather than a missing feature: this shape's whole product
+    is a generated cover page linking captured articles together, and an alive
+    capture has no articles to link — warc2zim writes the ZIM and its entries
+    are URLs, so there is nowhere for a Zimi-authored index to live and nothing
+    for it to point at."""
     from zimi.p2p import is_offline
 
     note = progress or (lambda _m: None)
@@ -1633,6 +1674,12 @@ def create_pages_zim(
             engine=engine,
             register=register,
             progress=progress,
+        )
+    if str(engine or "").strip().lower() in ARCHIVE_ENGINES:
+        raise CreateError(
+            "the alive engine captures one page or one site, not a list of "
+            f"pages — give it a single URL, or crawl {urllib.parse.urlsplit(wanted[0]).netloc} "
+            "with --site"
         )
     if is_offline():
         raise CreateError(

@@ -12949,13 +12949,33 @@ function _bindVideoError(frame) {
       box.lastChild.textContent = t('video_not_included');
       v.parentNode.insertBefore(box, v);
       v.style.display = 'none';
+      v.__zimiErrBox = box;
+    }
+    function recover() {
+      // NETWORK_NO_SOURCE was not a final verdict: on a page whose own JS
+      // attaches sources late (an alive-engine capture of apple.com does),
+      // the video can come good AFTER the overlay went up. A real error
+      // never fires loadeddata, so this only ever unwinds false alarms.
+      if (!shown || !v.__zimiErrBox) return;
+      if (v.__zimiErrBox.parentNode) v.__zimiErrBox.parentNode.removeChild(v.__zimiErrBox);
+      v.__zimiErrBox = null;
+      v.style.display = '';
+      shown = false;
     }
     // Capture so a failing <source> child's error (which doesn't bubble) is seen.
     v.addEventListener('error', show, true);
     v.addEventListener('stalled', show);
     v.addEventListener('emptied', show);
-    // Catch sources that already resolved to nothing before we bound.
-    if (failed()) show(); else setTimeout(show, 1500);
+    v.addEventListener('loadeddata', recover);
+    v.addEventListener('canplay', recover);
+    // Catch sources that already resolved to nothing before we bound — but a
+    // no-source state gets a second look before it is believed: scripts that
+    // build their <source> list at runtime are legitimate, not broken.
+    if (v.error) show();
+    else setTimeout(function () {
+      if (v.error) { show(); return; }
+      if (v.networkState === 3) setTimeout(show, 1500);
+    }, 1500);
   })(vids[i]);
 }
 

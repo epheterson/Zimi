@@ -270,39 +270,35 @@ def _archive_stem(filename):
     return os.path.splitext(filename)[0]
 
 
-def import_archive(
+def convert_archive(
     archive,
+    out,
     *,
-    name=None,
+    zim_name,
     title=None,
     description=None,
-    out_dir=None,
-    out_path=None,
-    register=False,
+    main_url=None,
+    language=None,
+    tags=None,
+    creator_name=None,
+    source=None,
     sink=None,
 ):
-    """Convert one WARC/WARC.GZ/WACZ into a ZIM via the sidecar. Returns
-    ``{"path", "name", "registered"}``; raises CreateError with a user-facing
-    message on refusal. The archive size is deliberately uncapped.
+    """Run the sidecar over one archive and land the ZIM at ``out``.
 
-    Provenance is thinner than in Zimi's own engines because warc2zim writes
-    the ZIM: there is no Creator to add ``X-Zimi-History`` to. Zimi stamps what
-    it can reach — its name and version, appended to warc2zim's Scraper."""
+    The conversion, alone: no path derivation, no library registration, no
+    argument validation beyond what warc2zim itself will do. ``zimi import``
+    reaches this through ``import_archive`` and the alive engine reaches it
+    directly, which is the whole reason it is its own function — the alive
+    engine already knows its output path, its title and which URL is the main
+    page, and none of that should have to be reverse-engineered from a
+    filename.
+
+    Every optional field is omitted from the command line when it is not
+    given, so the flags ``zimi import`` sends are exactly the flags it has
+    always sent. Raises CreateError on any failure."""
     say = sink or (lambda _line: None)
-    archive = os.path.abspath(archive)
-    if not os.path.isfile(archive):
-        raise CreateError(f"archive not found: {archive}")
-    if not archive.lower().endswith(ARCHIVE_EXTS):
-        raise CreateError(
-            "not a web archive — expected .warc, .warc.gz or .wacz, got "
-            + os.path.basename(archive)
-        )
     exe = ensure_sidecar(sink=sink)
-
-    stem = _archive_stem(os.path.basename(archive))
-    zim_name = name or _slug(stem, "archive")
-    out = _finish_output(out_dir or _srv.ZIM_DIR, out_path, zim_name)
-
     # warc2zim writes into a staging dir BESIDE the final path (same
     # filesystem, so the finishing os.replace is atomic — a partial ZIM
     # never appears under its final name).
@@ -321,6 +317,18 @@ def import_archive(
         cmd += ["--title", title]
     if description:
         cmd += ["--description", description]
+    # Which URL the ZIM opens on. Without it warc2zim takes the first text/html
+    # record it meets, which for a site crawl is the seed only by luck.
+    if main_url:
+        cmd += ["--url", main_url]
+    if language:
+        cmd += ["--lang", language]
+    if tags:
+        cmd += ["--tags", tags]
+    if creator_name:
+        cmd += ["--creator", creator_name]
+    if source:
+        cmd += ["--source", source]
     # warc2zim writes the ZIM, so Zimi has no Creator to add its own metadata
     # to. The Scraper string is the one field it can reach: warc2zim appends
     # this suffix to its own, so the ZIM still says which Zimi made it.
@@ -337,7 +345,51 @@ def import_archive(
         os.replace(staged, out)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+    return out
 
+
+def import_archive(
+    archive,
+    *,
+    name=None,
+    title=None,
+    description=None,
+    out_dir=None,
+    out_path=None,
+    register=False,
+    sink=None,
+):
+    """Convert one WARC/WARC.GZ/WACZ into a ZIM via the sidecar. Returns
+    ``{"path", "name", "registered"}``; raises CreateError with a user-facing
+    message on refusal. The archive size is deliberately uncapped.
+
+    Provenance is thinner than in Zimi's own engines because warc2zim writes
+    the ZIM: there is no Creator to add ``X-Zimi-History`` to. Zimi stamps what
+    it can reach — its name and version, appended to warc2zim's Scraper."""
+    archive = os.path.abspath(archive)
+    if not os.path.isfile(archive):
+        raise CreateError(f"archive not found: {archive}")
+    if not archive.lower().endswith(ARCHIVE_EXTS):
+        raise CreateError(
+            "not a web archive — expected .warc, .warc.gz or .wacz, got "
+            + os.path.basename(archive)
+        )
+    # Before the output path is resolved, which creates a directory: a machine
+    # with no sidecar and no network refuses this import, and it must refuse it
+    # without having made anything first. convert_archive asks again, and the
+    # second ask is two stat calls.
+    ensure_sidecar(sink=sink)
+    stem = _archive_stem(os.path.basename(archive))
+    zim_name = name or _slug(stem, "archive")
+    out = _finish_output(out_dir or _srv.ZIM_DIR, out_path, zim_name)
+    convert_archive(
+        archive,
+        out,
+        zim_name=zim_name,
+        title=title,
+        description=description,
+        sink=sink,
+    )
     registered = _try_register(out) if register else False
     return {"path": out, "name": zim_name, "registered": registered}
 

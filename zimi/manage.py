@@ -1907,7 +1907,7 @@ CREATE_MODES = ("folder", "page", "site", "video", "import")
 # request must not drag the writer stack into the request thread. The test
 # below pins the two together. zimit is deliberately NOT offered over the web —
 # it wants a docker daemon, and a web form is the wrong place to discover that.
-CREATE_ENGINES = ("builtin", "rendered")
+CREATE_ENGINES = ("builtin", "rendered", "alive")
 # Ring-buffer depth for job output. A long crawl emits a line per page, so the
 # buffer is a live tail, not a transcript — the browser polls faster than it
 # fills and keeps everything it has already seen.
@@ -1977,7 +1977,13 @@ CREATE_JOURNAL_FILE = "create_jobs.json"
 CREATE_JOURNAL_RECORDS = 20
 # The phases a job moves through, in order. The client renders them; the
 # adapter below decides when each begins by reading the engines' own lines.
-CREATE_PHASES = ("probe", "fetch", "assets", "package", "register", "done")
+# ``convert`` is the warc2zim subprocess: the phase where a recording (alive)
+# or an archive somebody brought (import) becomes a ZIM. It sits beside
+# ``package`` rather than replacing it because they are alternatives — a job
+# does one or the other, never both — and the client folds them onto the same
+# visible step, which is the right answer for a person watching: both of them
+# are "it is writing the file now".
+CREATE_PHASES = ("probe", "fetch", "assets", "package", "convert", "register", "done")
 # Where a mode's work starts. The URL modes fetch first; folder and import have
 # nothing to fetch, they go straight to writing a ZIM.
 CREATE_START_PHASE = {
@@ -2137,6 +2143,10 @@ _CREATE_RE_PACKAGING_ONE = re.compile(r"^packaging (\S+)$")
 _CREATE_RE_SKIPPED = re.compile(r"^skipped (\S+):")
 _CREATE_RE_ASSET = re.compile(r"^asset (done|failed) (\S+) for (\S+)$")
 _CREATE_RE_TITLE = re.compile(r"^title: (.+)$")
+# Both doors into warc2zim announce themselves the same way — the alive engine
+# handing over its recording, and `zimi import` handing over an archive
+# somebody else made.
+_CREATE_RE_CONVERTING = re.compile(r"^converting\b")
 _CREATE_LABEL_MAX = 80
 
 
@@ -2275,6 +2285,10 @@ def _create_derive_line(job, text):
         if target.startswith(("http://", "https://")):
             # Multi-page capture writes one page at a time and says which.
             events.append(_create_node_event("page", target, "done"))
+        return events, phase
+
+    if _CREATE_RE_CONVERTING.match(line):
+        enter("convert")
         return events, phase
 
     match = _CREATE_RE_TITLE.match(line)
@@ -2673,12 +2687,17 @@ def _create_engine(value):
     name = str(value).strip().lower()
     if name not in CREATE_ENGINES:
         raise ValueError("unknown capture engine")
+    # Refused HERE rather than an hour into a job: both of these are separate
+    # installs, and a form that accepts a choice this machine cannot honour is
+    # a form that lies.
     if name == "rendered" and not _create_browser_ready():
-        # Refused HERE rather than an hour into a job: the browser is a
-        # separate install, and a form that accepts a choice this machine
-        # cannot honour is a form that lies.
         raise ValueError(
             "the rendered engine needs a browser this server does not have " "installed"
+        )
+    if name == "alive" and not _create_alive_ready():
+        raise ValueError(
+            "the alive engine needs both a browser and the warc2zim sidecar, "
+            "and this server is missing at least one of them"
         )
     return name
 
@@ -3016,6 +3035,12 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
         # contract as import_ready: asked once, on the page's first poll, and
         # answered from a cache after that.
         payload["browser_ready"] = _create_browser_ready()
+        # And whether BOTH halves of the alive engine are here. Reported as its
+        # own answer rather than left for the client to compute from the other
+        # two: what the alive engine needs is the alive engine's business, and
+        # a client that inferred it would have to be updated the day that
+        # changes.
+        payload["alive_ready"] = _create_alive_ready()
         # None, not "", when no root is configured: the client reads it as a
         # yes/no about whether server-path capture exists on this instance at
         # all, and an empty string is a path that happens to be blank.
@@ -3247,6 +3272,23 @@ def _create_browser_ready():
         return False
 
 
+def _create_alive_ready():
+    """True when the alive engine can run here — which needs BOTH halves, the
+    browser to record with and the warc2zim sidecar to convert with.
+
+    Deliberately its own probe rather than ``browser and import`` computed at
+    the call site: the two halves are independent facts, the engine that owns
+    them is the one that should decide what "ready" means, and the client is
+    told each of the three separately so it can say which one is missing."""
+    try:
+        from zimi.alive import alive_available
+
+        return bool(alive_available())
+    except Exception:
+        log.exception("alive-engine probe failed")
+        return False
+
+
 def _create_kill_browsers():
     """Kill any headless browser a create job left running.
 
@@ -3392,7 +3434,7 @@ def _probe_url(source, *, want_robots=False, engine=None):
     settled, and the answers the preview gives — where the URL lands, what it
     is called, what language it declares — are the same either way. What the
     engine changes is the VERDICT: an application shell is a refusal for the
-    fast engine and the entire point of the rendered one."""
+    fast engine and the entire point of the rendered and alive ones."""
     from zimi.creator import (
         _decode_page,
         _fetch_page,
@@ -3406,7 +3448,9 @@ def _probe_url(source, *, want_robots=False, engine=None):
     page = _decode_page(data, ctype)
     is_html = "html" in (ctype or "").lower()
     spa = bool(is_html and looks_like_spa(page))
-    rendered = engine == "rendered"
+    # Both browser engines answer the SPA question the same way, so they are
+    # one flag rather than two comparisons that could drift apart.
+    rendered = engine in ("rendered", "alive")
     # The document's own `<html lang>` first, the Content-Language header
     # second: the header is server configuration and is often a site-wide
     # default, while the attribute was written about this page.
@@ -3424,11 +3468,14 @@ def _probe_url(source, *, want_robots=False, engine=None):
     if not is_html:
         out["warning_key"] = "create_warn_not_html"
     elif spa and rendered:
-        # Not a warning: a page built in JavaScript is the case the rendered
-        # engine exists for. Said out loud anyway, because "this page has no
+        # Not a warning: a page built in JavaScript is the case these engines
+        # exist for. Said out loud anyway, because "this page has no
         # server-rendered text" is the reason the capture will take twenty
-        # seconds instead of one.
-        out["note_key"] = "create_note_spa_rendered"
+        # seconds instead of one — and the two engines promise different things
+        # about it, so they say different sentences.
+        out["note_key"] = (
+            "create_note_spa_alive" if engine == "alive" else "create_note_spa_rendered"
+        )
     elif spa:
         # The engine's own refusal, verbatim: it names zimit, which is the fix.
         from zimi.creator import SPA_REFUSAL

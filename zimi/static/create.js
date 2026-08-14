@@ -197,22 +197,47 @@ var CREATE_LANGUAGE_OPTIONS = [
 //             left out entirely rather than sent as 0
 //   options — for selects: bare strings (label from an i18n key built off the
 //             field name) or {v, t|k} rows carrying a literal label or a key
-// The two ways to capture a web page, as the two ways they are. Not a select
-// and not behind Advanced: which engine runs is the one choice that changes
-// what the ZIM CONTAINS rather than how much of it there is, so it is on the
-// panel, both answers visible, with the cost of each written under it.
+// The three ways to capture a web page, as the three ways they are. Not a
+// select and not behind Advanced: which engine runs is the one choice that
+// changes what the ZIM CONTAINS rather than how much of it there is, so it is
+// on the panel, every answer visible, with the cost of each written under it.
+//
+// They are in order of what survives. Fast keeps the text. Rendered keeps the
+// picture. Alive keeps the behaviour — and each step up costs an install and
+// a wait, which is what the descriptions say.
 //
 // The empty value is the fast engine, so choosing it sends nothing and the
 // server's own default is what runs — there is one place the default lives and
 // it is not here. `needs` names a capability the server has to report before
-// the option is live at all; see _createEngineHtml.
+// the option is live at all, and it is a key into CREATE_ENGINE_NEEDS rather
+// than a boolean, because "what is missing" is what the caption has to say;
+// see _createEngineHtml.
 var CREATE_ENGINE_OPTIONS = [
   { v: '', k: 'create_engine_fast', d: 'create_engine_fast_desc' },
   {
     v: 'rendered', k: 'create_engine_rendered', d: 'create_engine_rendered_desc',
     needs: 'browser'
+  },
+  {
+    v: 'alive', k: 'create_engine_alive', d: 'create_engine_alive_desc',
+    needs: 'alive'
   }
 ];
+
+// What each capability is MADE OF, as parts that install separately. The alive
+// engine needs two of them and the caption has to name the one that is
+// actually missing — a server that has the browser and not the sidecar should
+// see one command, not both.
+var CREATE_ENGINE_NEEDS = {
+  browser: ['browser'],
+  alive: ['browser', 'sidecar']
+};
+// The exact command that installs each part. Not translated — these are things
+// you paste into a shell.
+var CREATE_PART_INSTALL = {
+  browser: "pip install 'zimi[browser]' && playwright install chromium",
+  sidecar: 'zimi import --setup'
+};
 
 var CREATE_FIELDS = {
   engine: {
@@ -277,14 +302,15 @@ var CREATE_CREDITS = {
 
 // ── the progress model ──────────────────────────────────────────────────────
 //
-// The server emits six phases; the strip shows four steps. The fold is not
+// The server emits seven phases; the strip shows four steps. The fold is not
 // laziness, it is what a person watching actually distinguishes: fetching a
 // page and fetching that page's images are the same activity to everyone
-// except the crawler, and registering the finished file is the last half-second
-// of packaging it. Four steps that each visibly take time beat six where two
-// blink past.
+// except the crawler, registering the finished file is the last half-second of
+// packaging it, and packaging a ZIM and converting a recording into one are
+// the same sentence — "it is writing the file now". Four steps that each
+// visibly take time beat seven where three blink past.
 var CREATE_PHASE_STEPS = {
-  probe: 0, fetch: 1, assets: 1, 'package': 2, register: 3, done: 3
+  probe: 0, fetch: 1, assets: 1, 'package': 2, convert: 2, register: 3, done: 3
 };
 var CREATE_STEP_KEYS = [
   'create_step_discover', 'create_step_fetch', 'create_step_package', 'create_step_ready'
@@ -828,6 +854,23 @@ var _createImportReady = true;
 // that offers itself and then refuses the job is worse than one that arrives a
 // poll late.
 var _createBrowserReady = false;
+// Whether BOTH halves of the alive engine are here, as the server's own
+// verdict — never inferred from the other two flags, because what the alive
+// engine needs is the server's to decide and this client should not be the
+// place that has to be updated when it changes. False until told, for the same
+// reason as the browser.
+var _createAliveReady = false;
+// The warc2zim sidecar alone. Not a third question to the server — it is
+// `import_ready`, which the page already asks for, under the name that says
+// what it means to an ENGINE rather than to the import mode. It exists so the
+// missing-install caption can name the one command that is actually missing.
+//
+// FALSE until told, unlike `_createImportReady` which starts true. They are
+// read for different things and the honest default differs: the Import TILE
+// should not flicker out from under someone, while an install hint that stayed
+// silent about a genuinely missing sidecar would leave a disabled option with
+// no way to fix it.
+var _createSidecarReady = false;
 var _createRoot = '';         // ZIMI_CREATE_ROOT, or '' when folder mode is off
 var _createHistory = [];
 var _createWantHistory = false;
@@ -1021,7 +1064,7 @@ function _createDefaultMode(list) {
 // its mind about what is possible.
 function _createAvailabilityKey() {
   return (_createOffline ? '1' : '0') + (_createImportReady ? '1' : '0') +
-    (_createBrowserReady ? '1' : '0') +
+    (_createBrowserReady ? '1' : '0') + (_createAliveReady ? '1' : '0') +
     (_createRoot ? '1' : '0') + (_createViewerIsCreator() ? '1' : '0');
 }
 
@@ -1144,29 +1187,38 @@ function _createFieldHtml(key, def) {
     ' placeholder="' + escAttr(ph) + '"></label>';
 }
 
-// The exact command that installs the rendered engine. Not translated — it is
-// something you paste into a shell.
-var CREATE_BROWSER_INSTALL = "pip install 'zimi[browser]' && playwright install chromium";
+// Whether the server has reported a capability as usable. The server's own
+// verdict where it has one — what the alive engine needs is the server's
+// business, not something this client should be re-deriving from parts.
+function _createCapabilityReady(name) {
+  return name === 'alive' ? _createAliveReady : _createBrowserReady;
+}
 
-// The engine picker: two radios drawn as one control, each with the sentence
+// Whether one PART of a capability is installed. Only ever used to decide
+// which install command the caption prints; never to enable an option.
+function _createPartReady(part) {
+  return part === 'sidecar' ? _createSidecarReady : _createBrowserReady;
+}
+
+// The engine picker: the radios drawn as one control, each with the sentence
 // that tells you which one you want. It takes the full width of the flags row
 // on purpose — it is a choice with consequences, not a checkbox.
 //
 // An option whose capability the server does not have is DISABLED rather than
-// hidden, and this is the one place on the page where that is right: the
-// rendered engine is a thing Zimi does, it is simply not installed here, and
-// the fix is one command the caption prints. Hiding it would leave someone
-// believing Zimi cannot do this at all.
+// hidden, and this is the one place on the page where that is right: these are
+// things Zimi does, they are simply not installed here, and the fix is the
+// command the caption prints. Hiding them would leave someone believing Zimi
+// cannot do this at all.
 function _createEngineHtml(f) {
   var html = '<div class="create-seg-field">' +
     '<div class="create-seg-label">' + tH(f.label) + '</div>' +
     '<div class="create-seg" id="' + f.id + '" role="radiogroup"' +
     ' aria-label="' + escAttr(t(f.label)) + '">';
-  var missing = false;
+  var commands = [];
   for (var i = 0; i < f.options.length; i++) {
     var o = f.options[i];
-    var off = o.needs === 'browser' && !_createBrowserReady;
-    if (off) missing = true;
+    var off = !!o.needs && !_createCapabilityReady(o.needs);
+    if (off) _createAddCommands(commands, o.needs);
     html += '<label class="create-seg-opt' + (off ? ' is-off' : '') + '">' +
       '<input type="radio" name="' + f.id + '" value="' + escAttr(o.v) + '"' +
       (i === 0 ? ' checked' : '') + (off ? ' disabled' : '') + '>' +
@@ -1175,11 +1227,30 @@ function _createEngineHtml(f) {
     '</label>';
   }
   html += '</div>';
-  if (missing) {
-    html += '<div class="create-caption">' + tH('create_engine_missing') +
-      ' <code>' + esc(CREATE_BROWSER_INSTALL) + '</code></div>';
+  if (commands.length) {
+    var code = '';
+    for (var c = 0; c < commands.length; c++) {
+      code += ' <code>' + esc(commands[c]) + '</code>';
+    }
+    html += '<div class="create-caption">' + tH('create_engine_missing') + code + '</div>';
   }
   return html + '</div>';
+}
+
+// Append one unmet capability's install commands to the caption's list: the
+// parts it is missing, minus anything another option already asked for — the
+// browser is missing for two of the three engines and printing its command
+// twice would read as a stutter.
+//
+// Before the server's first probe answers, every part reads as not-installed
+// and the caption prints the lot. That is the honest opening state: a disabled
+// option with no reason beside it is worse than one command too many.
+function _createAddCommands(into, capability) {
+  var parts = CREATE_ENGINE_NEEDS[capability] || [];
+  for (var i = 0; i < parts.length; i++) {
+    var cmd = CREATE_PART_INSTALL[parts[i]];
+    if (cmd && !_createPartReady(parts[i]) && into.indexOf(cmd) < 0) into.push(cmd);
+  }
 }
 
 // A row of controls plus any warnings they carry. The notes sit under the row
@@ -1668,8 +1739,15 @@ async function _createPoll(first) {
 // so a test can drive it with a payload and no network.
 function _createIngest(data) {
   _createOffline = !!data.offline;
-  if (typeof data.import_ready === 'boolean') _createImportReady = data.import_ready;
+  if (typeof data.import_ready === 'boolean') {
+    // One fact, two readers: the Import mode asks "can this server convert an
+    // archive at all", the engine picker asks "is the alive engine's second
+    // half here". Same sidecar, same answer.
+    _createImportReady = data.import_ready;
+    _createSidecarReady = data.import_ready;
+  }
   if (typeof data.browser_ready === 'boolean') _createBrowserReady = data.browser_ready;
+  if (typeof data.alive_ready === 'boolean') _createAliveReady = data.alive_ready;
   if (typeof data.create_root === 'string' || data.create_root === null) {
     _createRoot = data.create_root || '';
   }

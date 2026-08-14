@@ -53,6 +53,7 @@ memory event. See ``RenderedSession``.
 
 import hashlib
 import logging
+import mimetypes
 import os
 import posixpath
 import re
@@ -129,6 +130,33 @@ IMAGE_SETTLE_TICK = 0.25
 # Killing the child: how long a browser gets to exit politely before it is
 # taken out. A wedged renderer must never outlive the job that started it.
 KILL_GRACE = 3.0
+
+# ── recording bounds (the alive engine; see zimi.alive) ─────────────────────
+#
+# A RECORDING session keeps the traffic rather than the painting, so its bounds
+# are different bounds. They live here because they are properties of the
+# navigation, not of the conversion that happens afterwards.
+
+# The extra quiet time a recording pass allows after everything the snapshot
+# engine waits for. A frozen snapshot only needs the pixels; a recording needs
+# the deferred fetch that populates a carousel three seconds in, because the
+# script that asked for it WILL ask again during replay and there has to be an
+# answer. Zero is a legal setting and means "no extra wait".
+ALIVE_EXTRA_WAIT = 3.0
+# The largest single response that goes into an archive. Far larger than the
+# snapshot engine's per-asset cap, because this is the mechanism by which a
+# page works rather than a picture on it: a 4MB JavaScript bundle is over the
+# snapshot cap and is the entire application. The ceiling exists so one
+# hero-video autoplay cannot turn a page capture into a gigabyte.
+ALIVE_MAX_RESPONSE_BYTES = 96 * 1024 * 1024
+# URL schemes that are not traffic. A data: URL was never fetched, a blob: is
+# something the page made out of bytes it already had, and neither has a server
+# that could be replayed.
+ALIVE_SKIP_SCHEMES = ("data:", "blob:", "about:", "chrome-extension:", "file:")
+# How long a media re-fetch gets (see _refetch_partials). Longer than a
+# subresource deserves and shorter than forever: this is a whole video file,
+# and the capture is already finished waiting for everything else.
+ALIVE_REFETCH_TIMEOUT = 60.0
 
 # Which of the browser's requests are worth keeping. Scripts are deliberately
 # absent — they are stripped from the stored page, so carrying their bytes
@@ -407,10 +435,26 @@ class RenderedSession:
     thread is wedged inside a navigation. It signals the driver process
     instead, which is a thing any thread may do."""
 
-    def __init__(self, *, work_dir=None, budget=None, note=None, viewport=VIEWPORT):
+    def __init__(
+        self,
+        *,
+        work_dir=None,
+        budget=None,
+        note=None,
+        viewport=VIEWPORT,
+        recorder=None,
+        extra_wait=0.0,
+    ):
         self._budget = budget
         self._note = note or (lambda _m: None)
         self._viewport = viewport
+        # A ``zimi.warc.WarcWriter``, or None. When one is here the session is
+        # RECORDING: every response goes into the archive as it stands, and the
+        # per-page subresource spool is not built at all — the two are
+        # alternatives, and doing both would read every body twice.
+        self._recorder = recorder
+        self._extra_wait = max(0.0, float(extra_wait or 0.0))
+        self.recorded = 0  # responses written to the archive, this session
         self._pw = None
         self._browser = None
         self._context = None
@@ -569,14 +613,24 @@ class RenderedSession:
             self._quiet(page, SCROLL_QUIET_TIMEOUT)
             self._image_settle(page)
             _sleep(SETTLE)
+            self._settle_further(page)
             final_url = page.url or url
+            # The recording happens BEFORE the page is serialized, because
+            # serializing MUTATES it — dropping `loading="lazy"` alone can send
+            # a browser after images the page itself had decided not to want.
+            # The archive is meant to hold what this page did, not what Zimi
+            # provoked it into doing on the way out.
+            recorded = self._record(responses) if self._recorder is not None else None
             try:
                 html = page.evaluate(_PREPARE_JS)
             except Exception as e:
                 raise CreateError(
                     f"cannot read {url} after rendering it: " f"{_playwright_reason(e)}"
                 )
-            resources, doc_bytes = self._collect(responses, final_url)
+            if recorded is None:
+                resources, doc_bytes = self._collect(responses, final_url)
+            else:
+                resources, doc_bytes = {}, recorded
         finally:
             try:
                 page.close()
@@ -652,6 +706,158 @@ class RenderedSession:
                 _sleep(IMAGE_SETTLE_TICK)
         except Exception as e:  # a page that refuses the question is done asking
             log.debug("image settle poll failed: %s", e)
+
+    def _settle_further(self, page):
+        """The recording pass's extra wait, and the honest edge of v1.
+
+        A snapshot is finished when the pixels stop moving. A RECORDING is
+        finished when the page has stopped asking for things, and those are not
+        the same moment: a script that populates a carousel on a three-second
+        timer will ask again during replay, and an archive that stopped
+        listening at two seconds has no answer for it.
+
+        THE TUNING FRONTIER, stated rather than hidden. What this deliberately
+        does NOT do is drive the page: no hovering the nav to pull down the
+        menu images, no clicking the accordions, no dismissing the cookie
+        banner, no stepping the carousel to fetch slides two through five.
+        Every one of those would deepen a recording, and every one of them is
+        also a way to submit a form, start a checkout or trip a rate limit on
+        somebody else's site while nobody is watching. The conservative version
+        ships first; interaction simulation is the next round's work, and it
+        needs an opt-in and a safety model, not a wider default."""
+        if self._extra_wait:
+            _sleep(self._extra_wait)
+            self._quiet(page, self._extra_wait)
+
+    def _record(self, responses):
+        """Every response this navigation produced, into the archive.
+
+        Returns the byte count of the page's OWN document, for the crawl's
+        budget. Nothing is filtered by resource type — that filter belongs to
+        the snapshot engine, whose stored page cannot use a script and should
+        not carry one. Here the script IS the page: strip the JavaScript and
+        the XHR it fired and what is left replays as a spinner.
+
+        Bodies are read here rather than in the response handler for exactly
+        the reason ``_collect`` reads them here: fetching a body is a round
+        trip to the browser, and making that call from inside the callback
+        announcing the next response deadlocks the sync API."""
+        doc_bytes = 0
+        recorder = self._recorder
+        if recorder is None:
+            return doc_bytes
+        partial = []
+        for response in responses:
+            try:
+                url = response.url
+                status = response.status
+                kind = response.request.resource_type
+                method = response.request.method
+            except Exception:
+                continue
+            if url.startswith(ALIVE_SKIP_SCHEMES):
+                continue
+            if status == 206:
+                # A RANGE. Not the resource — a slice of it, and a browser
+                # fetching a video sends several: an opening probe that it
+                # usually abandons with an empty body, then whichever pieces it
+                # decided to play. Archiving those produces exactly one bad
+                # outcome, observed on apple.com: the empty probe lands first,
+                # becomes the entry for that URL, and every real slice after it
+                # is discarded as a duplicate — so the video 404s on replay
+                # while the archive swears it holds it.
+                #
+                # So no range is ever archived. The URL is remembered instead,
+                # and fetched WHOLE below.
+                if url not in partial:
+                    partial.append(url)
+                continue
+            body = b""
+            # A redirect and a 304 have no body by definition, and asking for
+            # one costs a failed round trip per record. Everything else is
+            # fetched, including the errors — a 404 that a script probes for is
+            # part of how the page behaves, and a replay that answers it with
+            # nothing behaves differently.
+            if status not in (204, 304) and not (300 <= status < 400):
+                body = _body(response) or b""
+                if len(body) > ALIVE_MAX_RESPONSE_BYTES:
+                    log.debug("not archiving %s: %d bytes", url, len(body))
+                    continue
+            if self._budget is not None and body and not self._budget.spend(len(body)):
+                log.debug("byte budget spent; not archiving %s", url)
+                continue
+            try:
+                written = recorder.write_exchange(
+                    url,
+                    status=status,
+                    response_headers=_typed(_headers_of(response), url),
+                    body=body,
+                    method=method,
+                    request_headers=_request_headers_of(response),
+                    reason=_status_text_of(response),
+                )
+            except Exception as e:
+                # One unwritable record must not lose the other four hundred.
+                log.warning("could not archive %s: %s", url, e)
+                continue
+            if written is not None:
+                self.recorded += 1
+            if kind == "document":
+                doc_bytes = max(doc_bytes, len(body))
+        self._refetch_partials(partial)
+        return doc_bytes
+
+    def _refetch_partials(self, urls):
+        """Fetch WHOLE the resources the browser only ever fetched in ranges.
+
+        This is what puts video into an archive. A browser never asks for a
+        media file in one piece — it opens a range, decides how much it wants,
+        and asks for slices — so a recording that only listens has, at the end,
+        several fragments and no file. The fix is not cleverer bookkeeping over
+        the fragments (a replay would still have to serve ranges it was never
+        given): it is to ask once, plainly, for the whole thing.
+
+        Through the page's OWN context, so the request carries the cookies and
+        the session the page had — a video behind a login is not a video this
+        can fetch from a fresh connection. Every failure here is a debug line
+        and a missing file, never a failed capture: this runs after the page is
+        finished, and nothing else depends on it."""
+        if not urls or self._context is None or self._recorder is None:
+            return
+        for url in urls:
+            try:
+                reply = self._context.request.get(
+                    url, timeout=int(ALIVE_REFETCH_TIMEOUT * 1000)
+                )
+                status = reply.status
+                body = reply.body()
+                headers = reply.headers or {}
+            except Exception as e:
+                log.debug("could not re-fetch %s whole: %s", url, _playwright_reason(e))
+                continue
+            if not (200 <= status < 300) or not body:
+                log.debug("re-fetching %s whole returned %s", url, status)
+                continue
+            if len(body) > ALIVE_MAX_RESPONSE_BYTES:
+                log.debug("not archiving %s: %d bytes", url, len(body))
+                continue
+            if self._budget is not None and not self._budget.spend(len(body)):
+                log.debug("byte budget spent; not archiving %s", url)
+                continue
+            try:
+                # Recorded as the 200 it is. The browser asked for a range and
+                # this asked for the file; what the archive holds is the file,
+                # which is the only form a replay can serve any range out of.
+                if self._recorder.write_exchange(
+                    url,
+                    status=200,
+                    response_headers=_typed(headers, url),
+                    body=body,
+                    method="GET",
+                ):
+                    self.recorded += 1
+            except Exception as e:
+                log.warning("could not archive %s: %s", url, e)
 
     def _collect(self, responses, final_url):
         """Every kept response body, spooled to disk as it is read.
@@ -790,6 +996,71 @@ def _mimetype_of(response):
         raw = ""
     mime = raw.split(";")[0].strip().lower()
     return mime or "application/octet-stream"
+
+
+def _headers_of(response):
+    """The response's headers as the browser saw them.
+
+    ``all_headers()`` first: it is the one that reports what actually arrived
+    over HTTP/2 and after any redirect, where the cheaper ``headers`` property
+    reports Playwright's cached view. Falling back rather than failing, because
+    a header set is not worth losing a record over."""
+    for reader in ("all_headers", "headers"):
+        try:
+            value = getattr(response, reader)
+            got = value() if callable(value) else value
+            if got:
+                return got
+        except Exception as e:
+            log.debug("could not read response headers (%s): %s", reader, e)
+    return {}
+
+
+def _request_headers_of(response):
+    """The request's headers. Recorded because a replay is allowed to care:
+    the Accept and Sec-Fetch-* set is how a server chose between the AVIF and
+    the JPEG, and a record that omits the question keeps only half the
+    exchange."""
+    try:
+        return response.request.headers or {}
+    except Exception as e:
+        log.debug("could not read request headers: %s", e)
+        return {}
+
+
+def _status_text_of(response):
+    try:
+        return response.status_text or ""
+    except Exception:
+        return ""
+
+
+def _typed(headers, url):
+    """The response's headers, with a Content-Type supplied when the server
+    sent NONE at all.
+
+    Recorded headers are evidence and this module does not rewrite them — an
+    archive that improves on what a site said is an archive that replays
+    something the site never sent. Supplying an ABSENT one is the different
+    case, and apple.com is the worked example: its CDN serves the homepage's
+    hero videos with no Content-Type whatsoever, because a live browser will
+    sniff the container and it does not need to be told. A ZIM entry cannot
+    sniff. Without this the file lands as application/octet-stream and no
+    <video> element will touch it — the bytes are all there and the video is
+    dead.
+
+    So: only when the header is missing, only from the extension the site
+    itself put in the URL, and never over the top of an answer the server
+    actually gave."""
+    for name in headers or ():
+        if str(name).strip().lower() == "content-type":
+            return headers
+    guessed, _encoding = mimetypes.guess_type(urllib.parse.urlsplit(url).path)
+    if not guessed:
+        return headers
+    out = dict(headers or {})
+    out["Content-Type"] = guessed
+    return out
 
 
 def _content_language(responses, final_url):
