@@ -1916,6 +1916,16 @@ CREATE_BLOCKING_ENGINES = ("rendered", "alive")
 # renderer.BLOCK_ADS_DEFAULT: the checkbox arrives checked, so a request with no
 # opinion in it is one where the field never rendered at all.
 CREATE_BLOCK_ADS = True
+# The engines that sweep up the image sizes THIS screen did not ask for. Only
+# the recording engine does: a rendered capture keeps one candidate per srcset
+# and has no archive to put the others in, so offering the switch alongside it
+# would be offering a switch over nothing. Mirrors the gate in
+# renderer.RenderedSession._record_variants, pinned by a test.
+CREATE_VARIANT_ENGINES = ("alive",)
+# What the variant sweep does when the form says nothing. Mirrors
+# renderer.VARIANT_SWEEP_DEFAULT — checked by default, so silence means the
+# field never rendered rather than "the admin unticked it".
+CREATE_CAPTURE_VARIANTS = True
 # Ring-buffer depth for job output. A long crawl emits a line per page, so the
 # buffer is a live tail, not a transcript — the browser polls faster than it
 # fills and keeps everything it has already seen.
@@ -2567,6 +2577,14 @@ def _create_validate(data):
         # capture over a field that describes nothing would be theatre.
         if _create_blocking_engine(opts["engine"]):
             opts["block_ads"] = _create_bool(data.get("block_ads"), CREATE_BLOCK_ADS)
+        # The responsive-variant sweep, on the one engine that does it, and
+        # dropped elsewhere for exactly the reason block_ads is dropped: a
+        # stale checkbox from a form whose engine radio has since moved is not
+        # a request anybody made.
+        if _create_variant_engine(opts["engine"]):
+            opts["capture_variants"] = _create_bool(
+                data.get("capture_variants"), CREATE_CAPTURE_VARIANTS
+            )
     if mode == "site":
         opts["max_pages"] = _create_int(
             data.get("max_pages"), 1, CREATE_MAX_PAGES_CEILING
@@ -2723,6 +2741,12 @@ def _create_blocking_engine(engine):
     return str(engine or "").strip().lower() in CREATE_BLOCKING_ENGINES
 
 
+def _create_variant_engine(engine):
+    """Whether the chosen engine sweeps up responsive image variants, which is
+    to say whether the switch means anything. ``None`` is the fast engine."""
+    return str(engine or "").strip().lower() in CREATE_VARIANT_ENGINES
+
+
 def _create_bool(value, default):
     """A checkbox that is CHECKED by default, read as a real bool.
 
@@ -2783,7 +2807,9 @@ def _create_run(job, opts):
             title=job.title or None,
             register=True,
             progress=job.note,
-            **_create_kwargs(opts, "language", "engine", "block_ads"),
+            **_create_kwargs(
+                opts, "language", "engine", "block_ads", "capture_variants"
+            ),
         )
     if job.mode == "site":
         from zimi.crawler import create_site_zim
@@ -2803,6 +2829,7 @@ def _create_run(job, opts):
                 "language",
                 "engine",
                 "block_ads",
+                "capture_variants",
             ),
         )
     if job.mode == "video":
@@ -3328,6 +3355,92 @@ def _create_alive_ready():
         return False
 
 
+def _creator_payload():
+    """Everything the Manage view's Creator section shows, in one read.
+
+    Gathered here rather than left scattered across the create page's own poll
+    because these are SERVER facts — what this machine can capture with, where
+    it is allowed to write, what it refuses by default, what is waiting — and
+    an admin looking for them should not have to open the create form and infer
+    them from which options are greyed.
+
+    The two subprocess-backed probes are the reason this is its own endpoint
+    and not a field on the status poll: they are cheap but they are not free,
+    and the Manage view asks once when the section is opened."""
+    sidecar = {"installed": False, "version": None}
+    try:
+        from zimi.importer import sidecar_status
+
+        status = sidecar_status()
+        sidecar = {
+            "installed": bool(status.get("installed")),
+            "version": status.get("version"),
+        }
+    except Exception:
+        log.exception("sidecar status probe failed")
+    return {
+        "browser_ready": _create_browser_ready(),
+        "alive_ready": _create_alive_ready(),
+        "sidecar": sidecar,
+        # None, not "", when no root is configured — the same shape the create
+        # page's probe uses, so both readers treat "unset" the same way.
+        "create_root": _create_root() or None,
+        "block_ads_default": CREATE_BLOCK_ADS,
+        "capture_variants_default": CREATE_CAPTURE_VARIANTS,
+        "queue": len(_create_queue_view()),
+        "offline": _is_offline_mode(),
+    }
+
+
+def _auto_update_view():
+    """The ZIM auto-updater's state: whether it runs, how often, when it last
+    ran and when it runs next.
+
+    ``last_check`` is process memory — the updater stamps it at the top of each
+    cycle and nothing persists it — so it is None after a restart, and the
+    client must say "not since this server started" rather than "never".
+    ``next_check`` is derived from it rather than stored, because the loop
+    sleeps a fixed interval after each pass; None when there is nothing to
+    derive it from, which is either disabled or not-yet-run."""
+    freq = _srv._auto_update_freq
+    last = _srv._auto_update_last_check
+    interval = _srv._FREQ_SECONDS.get(freq)
+    nxt = None
+    if _srv._auto_update_enabled and last and interval:
+        nxt = last + interval
+    return {
+        "enabled": _srv._auto_update_enabled,
+        "frequency": freq,
+        "locked": _srv._auto_update_env_locked,
+        "last_check": last,
+        "next_check": nxt,
+    }
+
+
+def _auto_update_coverage():
+    """Which installed ZIMs the auto-updater can actually maintain, and why it
+    passes over the rest.
+
+    Not a preference and not an opt-out list — Zimi has neither. It is the
+    updater's real reach, made visible: matching an installed file to a newer
+    edition needs a dated filename (``…_YYYY-MM.zim``), so anything without one
+    is invisible to it. That is most locally created ZIMs, and until now the
+    only way to discover it was to notice a file never updating.
+
+    Returns ``{"tracked": [names], "skipped": [{"name", "reason"}]}``, sorted,
+    so the client can say the true sentence in the reader's language."""
+    tracked, skipped = [], []
+    for name, path in sorted(_srv.get_zim_files().items()):
+        _base, date = _srv._extract_zim_date(os.path.basename(path))
+        if date:
+            tracked.append(name)
+        else:
+            # One reason today, named rather than implied, so a second reason
+            # is a new value here and not a new shape at the call site.
+            skipped.append({"name": name, "reason": "undated"})
+    return {"tracked": tracked, "skipped": skipped}
+
+
 def _create_kill_browsers():
     """Kill any headless browser a create job left running.
 
@@ -3843,22 +3956,29 @@ def handle_manage_get(handler, parsed, params):
                 "manage_enabled": True,
                 "linked_zims": linked_zims,
                 "domain_count": len(_srv._domain_zim_map),
-                "auto_update": {
-                    "enabled": _srv._auto_update_enabled,
-                    "frequency": _srv._auto_update_freq,
-                    "locked": _srv._auto_update_env_locked,
-                },
+                "auto_update": _auto_update_view(),
             },
         )
+
+    elif parsed.path == "/manage/auto-update":
+        # The GET half of the same path the POST below writes. Everything the
+        # auto-update section renders, including the coverage list, which is
+        # the one part that walks the library and so is not on the status poll.
+        payload = _auto_update_view()
+        payload["coverage"] = _auto_update_coverage()
+        return handler._json(200, payload)
+
+    elif parsed.path == "/manage/creator":
+        return handler._json(200, _creator_payload())
 
     elif parsed.path == "/manage/stats":
         metrics = _srv._get_metrics()
         disk = _srv._get_disk_usage()
-        auto_update = {
-            "enabled": _srv._auto_update_enabled,
-            "frequency": _srv._auto_update_freq,
-            "last_check": _srv._auto_update_last_check,
-        }
+        # The same view /manage/status serves. It used to be a third hand-built
+        # dict here that omitted `locked` and a second one there that omitted
+        # `last_check`, so which facts a caller got depended on which endpoint
+        # it happened to poll.
+        auto_update = _auto_update_view()
         # The per-index walk opens every title index on disk — far too costly
         # for the callers that only want disk paths or partial-download info.
         # ?detail=1 is the opt-in for the one view that renders the index list.

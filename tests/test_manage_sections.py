@@ -1,0 +1,182 @@
+"""The Manage view's two new server reads: the Creator section and the ZIM
+auto-updater's real state.
+
+Both exist because the facts were already true and simply unreachable. The
+creation capabilities lived only inside the create page's own poll, so an admin
+had to open the create form and infer them from which options were greyed; the
+auto-updater reported a different subset of itself from each of two endpoints
+and never reported when it would next run, nor which of the installed ZIMs it
+is able to maintain at all.
+
+The last of those is the one worth stating plainly, because it is a limitation
+rather than a feature: matching an installed file to a newer edition needs a
+dated filename, so an undated ZIM — which is most of what `zimi create` writes
+— is invisible to the updater. There is no per-ZIM opt-out setting in Zimi;
+this is the reach the mechanism actually has, and the point of surfacing it is
+that a file which never updates should say why.
+"""
+
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import zimi.manage as manage  # noqa: E402
+import zimi.server as server  # noqa: E402
+from tests.test_create_routes import _get  # noqa: E402
+
+# ── the creator section ─────────────────────────────────────────────────────
+
+
+def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
+    """One read, and the section can draw itself. A missing key here is a row
+    that renders as "loading" forever."""
+    monkeypatch.setattr(manage, "_create_browser_ready", lambda: True)
+    monkeypatch.setattr(manage, "_create_alive_ready", lambda: False)
+    monkeypatch.setattr(manage, "_create_root", lambda: "/srv/zims")
+
+    body = _get("/manage/creator").body
+    assert set(body) == {
+        "browser_ready",
+        "alive_ready",
+        "sidecar",
+        "create_root",
+        "block_ads_default",
+        "capture_variants_default",
+        "queue",
+        "offline",
+    }
+    assert body["browser_ready"] is True
+    assert body["alive_ready"] is False
+    assert body["create_root"] == "/srv/zims"
+    assert set(body["sidecar"]) == {"installed", "version"}
+
+
+def test_an_unconfigured_create_root_is_null_not_empty(monkeypatch):
+    """The same shape the create page's probe uses. "" and None would be two
+    spellings of "unset" for two readers to disagree about."""
+    monkeypatch.setattr(manage, "_create_root", lambda: "")
+    assert _get("/manage/creator").body["create_root"] is None
+
+
+def test_the_defaults_it_reports_are_the_ones_the_engines_use(monkeypatch):
+    """The section states what a capture refuses and sweeps by default. If it
+    drifted from the constant the validator applies, it would be describing a
+    server other than this one."""
+    monkeypatch.setattr(manage, "_create_browser_ready", lambda: False)
+    monkeypatch.setattr(manage, "_create_alive_ready", lambda: False)
+    body = _get("/manage/creator").body
+    assert body["block_ads_default"] is manage.CREATE_BLOCK_ADS
+    assert body["capture_variants_default"] is manage.CREATE_CAPTURE_VARIANTS
+
+
+def test_a_probe_that_explodes_costs_a_row_not_the_section(monkeypatch):
+    """The sidecar probe shells out. A broken install must leave the rest of
+    the section readable rather than 500 the whole endpoint."""
+
+    def boom():
+        raise OSError("no venv here")
+
+    monkeypatch.setattr(manage, "_create_browser_ready", lambda: True)
+    monkeypatch.setattr(manage, "_create_alive_ready", lambda: False)
+    monkeypatch.setitem(sys.modules, "zimi.importer", None)
+    h = _get("/manage/creator")
+    assert h.status == 200
+    assert h.body["sidecar"] == {"installed": False, "version": None}
+    assert h.body["browser_ready"] is True
+
+
+# ── the auto-updater ────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def au(monkeypatch):
+    """A running auto-updater with a known last pass."""
+    monkeypatch.setattr(server, "_auto_update_enabled", True)
+    monkeypatch.setattr(server, "_auto_update_freq", "weekly")
+    monkeypatch.setattr(server, "_auto_update_env_locked", False)
+    monkeypatch.setattr(server, "_auto_update_last_check", 1_700_000_000.0)
+    return server
+
+
+def test_the_next_run_is_derived_from_the_last_one(au):
+    body = _get("/manage/auto-update").body
+    assert body["last_check"] == 1_700_000_000.0
+    assert body["next_check"] == 1_700_000_000.0 + server._FREQ_SECONDS["weekly"]
+    assert body["enabled"] is True
+    assert body["frequency"] == "weekly"
+    assert body["locked"] is False
+
+
+def test_a_never_run_updater_promises_no_next_run(au, monkeypatch):
+    """`last_check` is process memory, so it is None after every restart. A
+    next run computed from nothing would be a time invented out of thin air."""
+    monkeypatch.setattr(server, "_auto_update_last_check", None)
+    assert _get("/manage/auto-update").body["next_check"] is None
+
+
+def test_a_disabled_updater_promises_no_next_run(au, monkeypatch):
+    monkeypatch.setattr(server, "_auto_update_enabled", False)
+    body = _get("/manage/auto-update").body
+    assert body["enabled"] is False
+    assert body["next_check"] is None
+    # The last pass still happened, and saying so is the difference between
+    # "off" and "off, and it had never run anyway".
+    assert body["last_check"] == 1_700_000_000.0
+
+
+def test_status_and_stats_report_the_same_auto_update(au):
+    """They used to each hand-build a different subset: /manage/status omitted
+    `last_check`, /manage/stats omitted `locked`. Which facts a caller got
+    depended on which endpoint it happened to poll."""
+    from_status = _get("/manage/status").body["auto_update"]
+    from_stats = _get("/manage/stats").body["auto_update"]
+    assert from_status == from_stats
+    assert set(from_status) == {
+        "enabled",
+        "frequency",
+        "locked",
+        "last_check",
+        "next_check",
+    }
+
+
+# ── which ZIMs it can actually maintain ─────────────────────────────────────
+
+
+def test_coverage_splits_the_library_by_what_the_updater_can_match(monkeypatch):
+    """A dated filename is what makes a ZIM updatable — the updater matches an
+    installed file to a newer edition by that suffix. Undated files are not
+    opted out; they are unreachable, and the list says which are which."""
+    monkeypatch.setattr(
+        server,
+        "get_zim_files",
+        lambda: {
+            "wikipedia_en_all": "/z/wikipedia_en_all_maxi_2026-05.zim",
+            "field_notes": "/z/field_notes.zim",
+            "gutenberg_en": "/z/gutenberg_en_all_2026-01.zim",
+        },
+    )
+    coverage = _get("/manage/auto-update").body["coverage"]
+    assert coverage["tracked"] == ["gutenberg_en", "wikipedia_en_all"]
+    assert coverage["skipped"] == [{"name": "field_notes", "reason": "undated"}]
+
+
+def test_an_empty_library_covers_nothing_without_erroring(monkeypatch):
+    monkeypatch.setattr(server, "get_zim_files", lambda: {})
+    coverage = _get("/manage/auto-update").body["coverage"]
+    assert coverage == {"tracked": [], "skipped": []}
+
+
+def test_the_get_does_not_write_anything(au, monkeypatch):
+    """The path is shared with a POST that reconfigures the updater. Reading it
+    must not be a way to change it."""
+    saved = []
+    monkeypatch.setattr(server, "_save_auto_update_config", lambda *a: saved.append(a))
+    monkeypatch.setattr(server, "get_zim_files", lambda: {})
+    _get("/manage/auto-update")
+    assert saved == []
+    assert server._auto_update_freq == "weekly"
+    assert server._auto_update_enabled is True
