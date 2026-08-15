@@ -1,7 +1,7 @@
 # Zimi
 
 [![CI](https://github.com/epheterson/Zimi/actions/workflows/ci.yml/badge.svg)](https://github.com/epheterson/Zimi/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-1244%20passing-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/tests-2360%20passing-brightgreen)](#)
 [![Lighthouse Accessibility](https://img.shields.io/badge/Lighthouse%20a11y-100%2F100-success?logo=lighthouse&logoColor=white)](docs/plans/2026-04-26-accessibility.md)
 [![WCAG 2.1 AA](https://img.shields.io/badge/WCAG%202.1-AA-blue)](docs/plans/2026-04-26-accessibility.md)
 [![i18n](https://img.shields.io/badge/i18n-10%20languages-blueviolet)](#languages)
@@ -16,6 +16,7 @@ A modern experience for your ZIM files.
 ## What is Zimi?
 
 - **The offline internet.** Entire websites, cross-ZIM linking, search engine and native browser experience.
+- **Make your own.** A folder, a web page, a whole site, or a video playlist becomes a ZIM in your library — captured with a real browser when fidelity demands it.
 - **Search that hits everything.** One query, every source, 100M+ articles, the right answer on top. Fast.
 - **Multilingual.** Switch any article into any language it has. Ten UI languages built in.
 - **A real library.** 1,000+ archives one click away, auto-updates, collections, batch downloads, bookmarks and history.
@@ -58,6 +59,20 @@ Three switches in Server Settings control all of it:
 - **Mirror** (off). Lifts the seeding cap, for people who want to run a long-term Kiwix mirror.
 
 Seeding needs no router setup: Zimi opens the BitTorrent port automatically (UPnP) and the settings show whether peers can reach you, with a retry when they can't. DHT is on too, so magnet links and trackerless swarms just work.
+
+## Make your own ZIMs
+
+The library isn't only what you download. Zimi packages new ZIMs from the **+** button in the web app or `zimi create` on the command line. Every mode previews what you'll get before anything runs, streams a live log while it works, and the result joins your library the moment it finishes.
+
+- **A folder** — HTML, Markdown (rendered by a built-in converter), and PDFs become a browsable ZIM, cross-file links intact.
+- **A web page** — one URL, or a list of up to twenty, captured with its images, styles, and fonts.
+- **A whole site** — a bounded, polite, same-origin crawl: page, depth, and byte budgets, robots.txt honored, and Ctrl-C still writes a valid ZIM of everything captured so far.
+- **Videos** — a playlist or channel becomes an offline video ZIM with subtitles, powered by yt-dlp.
+- **A web archive** — `zimi import` converts WARC and WACZ files from ArchiveBox, Webrecorder, browsertrix, or HTTrack. Powered by warc2zim.
+
+Three capture engines trade speed for fidelity: **Fast** (no browser required), **Rendered** (a real headless Chromium draws pages that build themselves in JavaScript), and **Alive** (records the browser session so the page's own JavaScript still runs offline — menus, galleries, videos). Rendered and Alive can block ads and trackers at capture time from a published blocklist.
+
+Every created ZIM carries honest provenance — which Zimi, which tools, how many pages and bytes, what was blocked — as openZIM-spec metadata validated with zimcheck. Right-click any library card → **About this ZIM** to see it.
 
 ## Install
 
@@ -156,8 +171,23 @@ Most people set nothing: every setting below has a sensible default or lives in 
 | `ZIMI_RATE_LIMIT_TRUSTED` | `600` | Budget for logged-in clients (and private-network clients on passwordless instances). |
 | `ZIMI_API_TOKEN` | _(none)_ | Pin the API token instead of generating in the UI |
 | `ZIMI_HOT_ZIMS` | _(none)_ | Comma-separated ZIM names to pre-warm at startup |
+| `ZIMI_OFFLINE` | `0` | `1` guarantees zero outbound traffic: no update checks, no catalog fetches, no torrent stack. For air-gapped machines. |
+| `ZIMI_CREATE_ROOT` | _(none)_ | Directory the web UI's folder-to-ZIM mode may read from. Unset, server-path creation stays off. |
 
 </details>
+
+## Self-hosting & operations
+
+Zimi runs seriously with zero ceremony: `zimi serve` in or beside a folder of ZIMs discovers it and keeps its state in a `.zimi` folder next to the content — a USB stick is a valid deployment. When you want more control:
+
+- **One config file.** `zimi.json` holds paths, auth, sharing, and serving settings; `zimi config` prints every effective value and exactly where it came from — flag, environment, file, discovery, or default.
+- **Backup and restore.** `zimi backup` writes settings, bookmarks, collections, and user data to one file; `zimi restore` brings a fresh install back from it.
+- **Provable offline.** `ZIMI_OFFLINE=1` is a real air-gap switch, verified by a test that records every outbound socket.
+- **Monitoring.** `GET /health` for liveness, `GET /metrics` in Prometheus exposition format for the rest.
+- **Reference manifests.** `deploy/` carries docker-compose and Kubernetes examples, and `scripts/make-airgap-bundle.sh` builds a wheels-only installer for machines that will never see the internet.
+- **Update awareness.** Manage shows the current version and checks for releases on demand — Latest or Beta channel, with an optional hold-back delay.
+
+Single sign-on through Cloudflare Access is available for tunnel deployments (experimental) — see [docs/deployment-networking.md](docs/deployment-networking.md).
 
 ## API
 
@@ -235,10 +265,7 @@ Tools: `search` (with `lang` filter), `read`, `get_chunks`, `suggest`, `list_sou
 
 ## Long-requested, shipped here
 
-Every issue filed against Zimi has been answered — #33 country holiday colors,
-#34 new-ZIM badges and recency filters, #36 Tailscale-friendly management,
-#37 library organization, #38 fragment links and stray-torrent confusion.
-And features the wider ZIM ecosystem has been asking for, available today:
+Every issue filed against Zimi has been answered — #33 country holiday colors, #34 new-ZIM badges and recency filters, #36 Tailscale-friendly management, #37 library organization, #38 fragment links, #44–46 access modes and per-user data, #48–51 almanac, anchor, flavor, and Raspberry Pi fixes, #65 in-article bookmarks, #76 update awareness. And features the wider ZIM ecosystem has been asking for, available today:
 
 - **Spelling suggestions** — "did you mean?" on weak searches, fully offline ([libzim #731](https://github.com/openzim/libzim/issues/731))
 - **Read-aloud** — text-to-speech in the reader via the offline Web Speech API ([kiwix-js #166](https://github.com/kiwix/kiwix-js/issues/166))
