@@ -2629,10 +2629,22 @@ class ZimHandler(BaseHTTPRequestHandler):
                     mimetype.startswith(t)
                     for t in ("video/", "audio/", "application/ogg")
                 )
+                # The validator is the FILE's identity (size + mtime), not the
+                # registry generation: a generation bump on ANY library change
+                # used to invalidate every cached asset of every ZIM at once,
+                # while what actually matters is whether THIS archive is still
+                # the same file. Delete-then-recreate under a reused name (or
+                # an in-place update) changes the stat and every stale copy
+                # fails validation immediately.
+                try:
+                    st = os.stat(_srv.get_zim_files().get(zim_name, ""))
+                    file_id = f"{st.st_size}-{int(st.st_mtime)}"
+                except OSError:
+                    file_id = str(_srv._cache_generation)
                 etag = (
                     '"'
                     + hashlib.md5(
-                        f"{zim_name}/{entry_path}/{_srv._cache_generation}".encode()
+                        f"{zim_name}/{entry_path}/{file_id}".encode()
                     ).hexdigest()[:16]
                     + '"'
                 )
@@ -2724,7 +2736,13 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.send_response(200)
 
         self.send_header("Content-Type", mimetype)
-        self.send_header("Cache-Control", "public, max-age=86400, immutable")
+        # no-cache means "store, but ASK before serving" — never immutable.
+        # ZIM content is only immutable while the archive is the same file:
+        # auto-update replaces files in place, and delete-then-recreate reuses
+        # names (Eric's phone spent an afternoon showing a deleted capture's
+        # unstyled pages out of a 24h immutable cache). Asking is one
+        # conditional GET answered by the ETag above with an empty 304.
+        self.send_header("Cache-Control", "no-cache")
         self.send_header("Vary", "Sec-Fetch-Dest")
         self.send_header("ETag", etag)
 

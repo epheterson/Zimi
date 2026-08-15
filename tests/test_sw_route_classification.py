@@ -111,7 +111,9 @@ def _run_driver(paths, fetch_fails=False):
     node = shutil.which("node")
     if not node:
         raise unittest.SkipTest("node not available")
-    driver = ("const FETCH_FAILS = %s;\n" % ("true" if fetch_fails else "false")) + _DRIVER
+    driver = (
+        "const FETCH_FAILS = %s;\n" % ("true" if fetch_fails else "false")
+    ) + _DRIVER
     proc = subprocess.run(
         [node, "-e", driver, os.path.abspath(_SW), json.dumps(paths)],
         capture_output=True,
@@ -160,13 +162,29 @@ class TestSwRouteClassification(unittest.TestCase):
         res = _run_driver(["/list", "/whoami", "/search?q=x"], fetch_fails=True)
         for p in ["/list", "/whoami", "/search?q=x"]:
             self.assertEqual(res[p]["status"], 503, p)
-            self.assertEqual(res[p]["offlineHeader"], "1", f"{p} must be labelled offline")
+            self.assertEqual(
+                res[p]["offlineHeader"], "1", f"{p} must be labelled offline"
+            )
 
     def test_static_assets_still_cache(self):
         # Guard the negative: static assets must remain cacheable (offline PWA),
         # so the network-only rule didn't accidentally swallow everything.
         res = _run_driver(["/static/app.js"])
         self.assertEqual(res["/static/app.js"]["strategy"], "staleWhileRevalidate")
+
+    def test_zim_content_asks_the_network_before_the_cache(self):
+        """/w/ sub-resources are network-first, never cache-first.
+
+        A ZIM name outlives its file: auto-update replaces archives in place,
+        and delete-then-recreate reuses names. Cache-first never revalidates,
+        which is how a phone spent an afternoon rendering a DELETED capture's
+        unstyled pages (2026-08-15). The server pairs this with a
+        file-identity ETag and Cache-Control: no-cache, so online the network
+        path costs a conditional GET, and the cache still answers offline."""
+        res = _run_driver(["/w/apple/www.apple.com/style.css"])
+        self.assertEqual(
+            res["/w/apple/www.apple.com/style.css"]["strategy"], "networkFirst"
+        )
 
 
 if __name__ == "__main__":

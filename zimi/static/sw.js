@@ -106,9 +106,15 @@ function routeStrategy(path, requestMode) {
   if (_hasPrefix(path, NETWORK_ONLY_PREFIXES)) return 'networkOnly';
   if (_hasPrefix(path, NETWORK_FIRST_PREFIXES)) return 'networkFirst';
   // ZIM content: top-level navigation (reload/bookmark) needs the SPA shell so
-  // the client-side router handles the deep link; sub-resources cache-first.
+  // the client-side router handles the deep link. Sub-resources are
+  // network-first, NOT cache-first: a ZIM name outlives its file (auto-update
+  // replaces archives in place; delete-then-recreate reuses names), and a
+  // cache-first hit never asks again — a phone spent an afternoon rendering a
+  // deleted capture's pages. The server answers /w/ with an ETag keyed to the
+  // file's identity and Cache-Control: no-cache, so the network path is a
+  // cheap conditional GET online, and the cache still carries reads offline.
   if (path.startsWith('/w/')) {
-    return requestMode === 'navigate' ? 'navigateShell' : 'cacheFirst';
+    return requestMode === 'navigate' ? 'navigateShell' : 'networkFirst';
   }
   if (path.startsWith('/static/')) return 'staleWhileRevalidate';
   // Root page: network-first (always serve latest after deploy).
