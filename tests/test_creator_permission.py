@@ -7,8 +7,9 @@ Three contracts under test:
   code loads under the PRIOR loader's semantics — the additive-key rule).
 - manage.py: the route matrix. Anonymous → 401; a signed-in user WITHOUT the
   flag → 403; a creator → 200 on the URL-mode create/status/probe/cancel
-  surfaces but 403 on folder/import/browse (server-path reads stay with the
-  primary admin); admins are unchanged.
+  surfaces but 403 on import (server-path reads stay with the primary admin);
+  admins are unchanged. Folder mode and its picker are CLI-only now — the
+  picker route answers 410 for everyone the auth gate lets through.
 - http.py: /whoami exposes ``can_create`` so the client can shape its UI.
 """
 
@@ -194,11 +195,10 @@ class _RouteBase(_Base):
         manage._create_start = lambda data, actor=None: ({"sentinel": "start"}, 200)
         manage._create_probe = lambda data: ({"sentinel": "probe"}, 200)
         manage._create_cancel = lambda job_id=None: ({"sentinel": "cancel"}, 200)
-        self._orig["_create_browse"] = manage._create_browse
-        manage._create_browse = lambda path: ({"sentinel": "browse"}, 200)
-        # Server-path modes are additionally gated on ZIMI_CREATE_ROOT (the
-        # folder-retreat rule): without one, even the primary admin is refused.
-        # The matrix is about WHO, not WHERE, so give it a root.
+        # The server-path mode (import) is additionally gated on
+        # ZIMI_CREATE_ROOT (the folder-retreat rule): without one, even the
+        # primary admin is refused. The matrix is about WHO, not WHERE, so
+        # give it a root.
         self._root = tempfile.mkdtemp(prefix="zimi-create-root-")
         os.environ["ZIMI_CREATE_ROOT"] = self._root
 
@@ -225,7 +225,6 @@ class _RouteBase(_Base):
 
 
 URL_BODY = {"mode": "page", "source": "https://example.org/"}
-FOLDER_BODY = {"mode": "folder", "source": "/etc"}
 IMPORT_BODY = {"mode": "import", "source": "/etc/passwd"}
 
 
@@ -266,14 +265,17 @@ class TestRouteMatrix(_RouteBase):
 
     def test_creator_never_touches_the_server_disk(self):
         for status, body in (
-            self._post("/manage/create", dict(FOLDER_BODY), self.creator),
             self._post("/manage/create", dict(IMPORT_BODY), self.creator),
-            self._post("/manage/create/probe", dict(FOLDER_BODY), self.creator),
             self._post("/manage/create/probe", dict(IMPORT_BODY), self.creator),
-            self._get("/manage/create/browse", self.creator),
         ):
             self.assertEqual(status, 403)
             self.assertIn("primary admin", body["error"])
+        # The old folder picker refuses for EVERYONE who is allowed to ask —
+        # a clean 410 naming the CLI, never a listing. (Folder mode itself is
+        # refused at validation; see test_create_routes.py.)
+        status, body = self._get("/manage/create/browse", self.creator)
+        self.assertEqual(status, 410)
+        self.assertIn("CLI-only", body["error"])
 
     def test_revoking_the_flag_closes_the_door(self):
         users.set_can_create("Maker", False)
@@ -281,21 +283,22 @@ class TestRouteMatrix(_RouteBase):
         self.assertEqual(status, 403)
 
     def test_primary_admin_is_unchanged(self):
-        status, body = self._post("/manage/create", dict(FOLDER_BODY), self.primary)
+        status, body = self._post("/manage/create", dict(IMPORT_BODY), self.primary)
         self.assertEqual((status, body["sentinel"]), (200, "start"))
+        # The folder picker is gone for the primary admin too — CLI-only.
         status, body = self._get("/manage/create/browse", self.primary)
-        self.assertEqual((status, body["sentinel"]), (200, "browse"))
+        self.assertEqual(status, 410)
         status, _ = self._get("/manage/create/status", self.primary)
         self.assertEqual(status, 200)
 
     def test_secondary_admin_keeps_url_modes_only(self):
         status, body = self._post("/manage/create", dict(URL_BODY), self.secondary)
         self.assertEqual((status, body["sentinel"]), (200, "start"))
-        status, body = self._post("/manage/create", dict(FOLDER_BODY), self.secondary)
+        status, body = self._post("/manage/create", dict(IMPORT_BODY), self.secondary)
         self.assertEqual(status, 403)
         self.assertIn("primary admin", body["error"])
         status, _ = self._get("/manage/create/browse", self.secondary)
-        self.assertEqual(status, 403)
+        self.assertEqual(status, 410)
 
 
 # ── Granting through /manage/users ──────────────────────────────────────────

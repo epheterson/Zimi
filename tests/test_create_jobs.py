@@ -74,19 +74,23 @@ def held_engine(monkeypatch):
     _wait(lambda: gate["running"] == 0, why="a held engine thread never exited")
 
 
-def _start_folder(tmp_path, name):
-    (tmp_path / name).mkdir(exist_ok=True)
-    return _post("/manage/create", {"mode": "folder", "source": str(tmp_path / name)})
+def _start_job(name):
+    """File one job. Site mode with a distinct path: validation only checks
+    the URL's shape, and every test here stubs the engine, so nothing touches
+    the network. (These used to be folder jobs; folder mode is CLI-only now.)"""
+    return _post(
+        "/manage/create", {"mode": "site", "source": f"https://example.test/{name}"}
+    )
 
 
 # ── the queue ───────────────────────────────────────────────────────────────
 
 
 def test_jobs_run_in_the_order_they_were_filed(tmp_path, held_engine):
-    first = _start_folder(tmp_path, "a")
+    first = _start_job("a")
     assert first.body["status"] == "started"
     for position, name in enumerate(("b", "c"), 1):
-        queued = _start_folder(tmp_path, name)
+        queued = _start_job(name)
         assert queued.status == 200
         assert queued.body["status"] == "queued"
         assert queued.body["position"] == position
@@ -102,10 +106,10 @@ def test_jobs_run_in_the_order_they_were_filed(tmp_path, held_engine):
 
 
 def test_the_queue_is_bounded_and_says_so(tmp_path, held_engine):
-    _start_folder(tmp_path, "running")
+    _start_job("running")
     for _ in range(manage.CREATE_QUEUE_MAX):
-        assert _start_folder(tmp_path, "waiting").body["status"] == "queued"
-    refused = _start_folder(tmp_path, "one-too-many")
+        assert _start_job("waiting").body["status"] == "queued"
+    refused = _start_job("one-too-many")
     assert refused.status == 429
     assert refused.body["queued"] == manage.CREATE_QUEUE_MAX
     assert str(manage.CREATE_QUEUE_MAX) in refused.body["error"]
@@ -114,9 +118,9 @@ def test_the_queue_is_bounded_and_says_so(tmp_path, held_engine):
 def test_a_queued_job_can_be_dropped_without_touching_the_running_one(
     tmp_path, held_engine
 ):
-    _start_folder(tmp_path, "running")
-    doomed = _start_folder(tmp_path, "doomed").body["id"]
-    keeper = _start_folder(tmp_path, "keeper").body["id"]
+    _start_job("running")
+    doomed = _start_job("doomed").body["id"]
+    keeper = _start_job("keeper").body["id"]
 
     dropped = _post("/manage/create/cancel", {"id": doomed})
     assert dropped.status == 200
@@ -132,7 +136,7 @@ def test_a_queued_job_can_be_dropped_without_touching_the_running_one(
 
 
 def test_cancel_by_the_running_jobs_id_cancels_that_job(tmp_path, held_engine):
-    running = _start_folder(tmp_path, "running").body["id"]
+    running = _start_job("running").body["id"]
     answer = _post("/manage/create/cancel", {"id": running})
     assert answer.status == 200
     assert answer.body["status"] == "cancelling"
@@ -141,7 +145,7 @@ def test_cancel_by_the_running_jobs_id_cancels_that_job(tmp_path, held_engine):
 
 
 def test_cancel_with_an_unknown_id_is_refused(tmp_path, held_engine):
-    _start_folder(tmp_path, "running")
+    _start_job("running")
     assert _post("/manage/create/cancel", {"id": "nosuchjob"}).status == 409
     held_engine["go"] = True
 
@@ -155,8 +159,8 @@ def _journal(tmp_path):
 
 
 def test_a_job_is_journalled_from_queue_through_to_its_outcome(tmp_path, held_engine):
-    running = _start_folder(tmp_path, "running").body["id"]
-    queued = _start_folder(tmp_path, "queued").body["id"]
+    running = _start_job("running").body["id"]
+    queued = _start_job("queued").body["id"]
 
     states = {r["id"]: r["state"] for r in _journal(tmp_path)}
     assert states[running] == "running"
@@ -170,7 +174,7 @@ def test_a_job_is_journalled_from_queue_through_to_its_outcome(tmp_path, held_en
     )
     finished = {r["id"]: r for r in _journal(tmp_path)}
     assert finished[running]["state"] == "ok"
-    assert finished[running]["mode"] == "folder"
+    assert finished[running]["mode"] == "site"
     assert finished[running]["result"] == "held"
     assert finished[running]["finished"] >= finished[running]["started"]
 
@@ -233,10 +237,9 @@ def test_an_unwritable_data_dir_does_not_stop_a_job(tmp_path, monkeypatch, stub_
     the job."""
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path / "nowhere" / "deeper"))
     manage._create_journal = None
-    (tmp_path / "src").mkdir()
     assert (
         _post(
-            "/manage/create", {"mode": "folder", "source": str(tmp_path / "src")}
+            "/manage/create", {"mode": "site", "source": "https://example.test/src"}
         ).status
         == 200
     )
@@ -280,7 +283,7 @@ def test_a_job_that_stops_reporting_is_failed_not_spun(
         return {"path": "/zims/never.zim", "registered": False}
 
     monkeypatch.setattr(manage, "_create_run", wedged_run)
-    _start_folder(tmp_path, "wedged")
+    _start_job("wedged")
     body = _wait_done()
     assert body["done"] is True
     assert body["ok"] is False
@@ -301,7 +304,7 @@ def test_a_job_that_keeps_reporting_is_left_alone(
         return {"path": "/zims/fine.zim", "registered": False}
 
     monkeypatch.setattr(manage, "_create_run", chatty_run)
-    _start_folder(tmp_path, "chatty")
+    _start_job("chatty")
     body = _wait_done()
     assert body["ok"] is True
     assert body["stalled"] is False
@@ -320,8 +323,8 @@ def test_a_stalled_job_hands_the_slot_to_the_queue(
         return {"path": "/zims/x.zim", "registered": False}
 
     monkeypatch.setattr(manage, "_create_run", maybe_wedged_run)
-    _start_folder(tmp_path, "wedged")
-    _start_folder(tmp_path, "next")
+    _start_job("wedged")
+    _start_job("next")
     _wait(lambda: len(ran) == 2, why="the queue stayed stuck behind the wedged job")
     release.set()
 
@@ -330,8 +333,8 @@ def test_a_job_finished_twice_only_counts_once(tmp_path, held_engine):
     """The watchdog and the worker can both reach the finish line for the same
     job. If both counted, the queue would advance twice and two creations would
     run at once on a machine chosen for being able to run one."""
-    _start_folder(tmp_path, "running")
-    _start_folder(tmp_path, "queued")
+    _start_job("running")
+    _start_job("queued")
     job = manage._create_job
     assert manage._create_finish(job, error="first") is True
     assert manage._create_finish(job, error="second") is False
@@ -521,9 +524,9 @@ def test_a_finished_run_files_the_totals_no_line_carried(stub_engine):
 
 
 def test_the_status_reports_the_phase_a_job_is_in(tmp_path, held_engine):
-    _start_folder(tmp_path, "folder")
-    # Folder mode has nothing to fetch; it starts in the phase it will die in.
-    assert _get("/manage/create/status").body["phase"] == "package"
+    _start_job("held")
+    # A site job starts in fetch and stays there while the engine is held.
+    assert _get("/manage/create/status").body["phase"] == "fetch"
     held_engine["go"] = True
     _wait_done()
     assert _get("/manage/create/status").body["phase"] == "done"

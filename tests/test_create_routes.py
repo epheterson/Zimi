@@ -76,8 +76,8 @@ def clean_job(tmp_path, monkeypatch):
     wrote it to the real data dir would be scribbling on a running server's."""
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path / "data"))
     (tmp_path / "data").mkdir()
-    # Server-path modes need an operator-configured root or they are refused
-    # outright (see test_create_probe.py for the gate itself). Every folder and
+    # The server-path mode (import) needs an operator-configured root or it is
+    # refused outright (see test_create_probe.py for the gate itself). Every
     # import test here builds its source under tmp_path, so that is the root.
     monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(tmp_path))
     manage._create_job = None
@@ -163,29 +163,28 @@ def test_unknown_mode_and_missing_source_are_refused():
     assert _post("/manage/create", {}).status == 400
 
 
-def test_folder_mode_requires_an_existing_readable_directory(tmp_path):
-    missing = _post(
-        "/manage/create", {"mode": "folder", "source": str(tmp_path / "nope")}
-    )
-    assert missing.status == 400
-    assert "folder" in missing.body["error"]
-
-    afile = tmp_path / "a.txt"
-    afile.write_text("hi")
-    assert (
-        _post("/manage/create", {"mode": "folder", "source": str(afile)}).status == 400
-    )
+def test_folder_mode_is_cli_only_and_the_refusal_says_so(tmp_path):
+    """Round 3, Eric: "do remove folder I said that would be CLI only." The
+    refusal names the door that is still open, and it does not depend on the
+    directory existing — the mode is gone, not misconfigured."""
+    (tmp_path / "src").mkdir()
+    for source in (str(tmp_path / "src"), str(tmp_path / "nope")):
+        h = _post("/manage/create", {"mode": "folder", "source": source})
+        assert h.status == 400, source
+        assert "CLI-only" in h.body["error"], source
+        assert "zimi create" in h.body["error"], source
 
 
-def test_folder_mode_normalizes_the_path(tmp_path, stub_engine):
+def test_import_mode_normalizes_the_path(tmp_path, stub_engine):
     """A traversal-shaped path is resolved before use, so what runs is the real
-    directory — and what the status reports is that same resolved path."""
+    file — and what the status reports is that same resolved path."""
     (tmp_path / "docs").mkdir()
-    messy = str(tmp_path / "docs" / ".." / "docs" / ".")
-    assert _post("/manage/create", {"mode": "folder", "source": messy}).status == 200
+    (tmp_path / "docs" / "cap.wacz").write_bytes(b"x")
+    messy = str(tmp_path / "docs" / ".." / "docs" / "." / "cap.wacz")
+    assert _post("/manage/create", {"mode": "import", "source": messy}).status == 200
     _wait_done()
     assert _get("/manage/create/status").body["source"] == os.path.realpath(
-        str(tmp_path / "docs")
+        str(tmp_path / "docs" / "cap.wacz")
     )
 
 
@@ -390,15 +389,11 @@ def test_audio_only_drops_the_quality_preset(stub_engine):
     assert stub_engine["opts"]["audio_only"] is True
 
 
-def test_a_language_must_look_like_a_language_code(tmp_path):
-    # A real source inside the configured root: the path is checked before the
-    # options are, so an out-of-root source would be refused for the wrong
-    # reason and this test would pass without testing anything.
-    (tmp_path / "src").mkdir(exist_ok=True)
+def test_a_language_must_look_like_a_language_code():
     for bad in ("english", "e", "fr-FR", "../..", "eng eng"):
         h = _post(
             "/manage/create",
-            {"mode": "folder", "source": str(tmp_path / "src"), "language": bad},
+            {"mode": "site", "source": "https://example.org/", "language": bad},
         )
         assert h.status == 400, bad
         assert "code" in h.body["error"]
@@ -522,8 +517,7 @@ def test_a_second_job_queues_behind_the_first(monkeypatch, tmp_path):
         return {"path": str(tmp_path / "x.zim"), "registered": True}
 
     monkeypatch.setattr(manage, "_create_run", slow_run)
-    (tmp_path / "src").mkdir()
-    first = _post("/manage/create", {"mode": "folder", "source": str(tmp_path / "src")})
+    first = _post("/manage/create", {"mode": "site", "source": "https://example.org/"})
     assert first.status == 200
     assert first.body["status"] == "started"
 
@@ -531,7 +525,7 @@ def test_a_second_job_queues_behind_the_first(monkeypatch, tmp_path):
     assert second.status == 200
     assert second.body["status"] == "queued"
     assert second.body["position"] == 1
-    assert second.body["running"]["mode"] == "folder"
+    assert second.body["running"]["mode"] == "site"
 
     # And the queue is visible to anyone polling, not just to whoever filed it.
     status = _get("/manage/create/status").body
@@ -595,8 +589,7 @@ def test_the_line_buffer_is_bounded(stub_engine):
 
 def test_success_reports_the_new_zims_library_name(stub_engine, tmp_path):
     stub_engine["result"] = {"path": str(tmp_path / "my_notes.zim"), "registered": True}
-    (tmp_path / "src").mkdir()
-    _post("/manage/create", {"mode": "folder", "source": str(tmp_path / "src")})
+    _post("/manage/create", {"mode": "site", "source": "https://example.org/"})
     body = _wait_done()
     assert body["ok"] is True
     assert body["result"]["name"] == "my_notes"
@@ -675,26 +668,6 @@ def test_cancel_stops_a_streaming_job_and_says_nothing_was_added(monkeypatch):
     assert "nothing was added" in body["error"]
 
 
-def test_a_folder_job_declares_itself_uncancellable(monkeypatch, tmp_path):
-    """create_folder_zim takes no progress callback, so there is no line
-    boundary to interrupt at. The status says so instead of showing a button
-    that lies. Page mode used to be in this boat and no longer is: it runs
-    through create_pages_zim, which reports progress."""
-    gate = {"go": False}
-
-    def slow_run(job, opts):
-        while not gate["go"]:
-            time.sleep(0.005)
-        return {"path": str(tmp_path / "x.zim")}
-
-    monkeypatch.setattr(manage, "_create_run", slow_run)
-    (tmp_path / "src").mkdir()
-    _post("/manage/create", {"mode": "folder", "source": str(tmp_path / "src")})
-    assert _get("/manage/create/status").body["cancellable"] is False
-    gate["go"] = True
-    _wait_done()
-
-
 def test_every_mode_with_a_progress_callback_is_cancellable(monkeypatch, tmp_path):
     """The two lists have to agree: a mode is cancellable exactly when its
     engine takes a progress sink, because that callback IS the cancel."""
@@ -718,21 +691,25 @@ def test_every_mode_with_a_progress_callback_is_cancellable(monkeypatch, tmp_pat
     _wait_done()
 
 
-def test_server_path_modes_need_the_primary_admin(monkeypatch, tmp_path, stub_engine):
-    """Folder and import read arbitrary server paths — that power stays with
-    the primary admin. Secondary admins keep the URL modes."""
+def test_server_path_mode_needs_the_primary_admin(monkeypatch, tmp_path, stub_engine):
+    """Import reads arbitrary server paths — that power stays with the primary
+    admin. Secondary admins keep the URL modes. Folder is not a permissions
+    question any more: the web refuses the mode for everyone."""
     monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: False)
-    r = _post("/manage/create", {"mode": "folder", "source": str(tmp_path)})
-    assert r.status == 403
     f = tmp_path / "a.wacz"
     f.write_bytes(b"x")
     r = _post("/manage/create", {"mode": "import", "source": str(f)})
     assert r.status == 403
+    # Folder answers with the CLI pointer, not with the tier gate: 400 for the
+    # primary admin and everyone else alike.
+    r = _post("/manage/create", {"mode": "folder", "source": str(tmp_path)})
+    assert r.status == 400
+    assert "CLI-only" in r.body["error"]
     # URL modes stay open to any authorized admin — invalid scheme still 400s,
     # proving the request reached validation rather than the tier gate.
     r = _post("/manage/create", {"mode": "page", "source": "ftp://nope"})
     assert r.status == 400
 
     monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: True)
-    r = _post("/manage/create", {"mode": "folder", "source": str(tmp_path)})
+    r = _post("/manage/create", {"mode": "import", "source": str(f)})
     assert r.status == 200
