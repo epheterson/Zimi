@@ -113,13 +113,14 @@ var CREATE_MODE_DEFS = [
   {
     id: 'page', network: true, multiline: true,
     label: 'create_label_page_url', placeholder: 'create_ph_url',
-    flags: ['engine'], advanced: ['block_ads', 'language']
+    flags: ['engine'], advanced: ['block_ads', 'capture_variants', 'language']
   },
   {
     id: 'site', network: true,
     label: 'create_label_site_url', placeholder: 'create_ph_url',
     flags: ['engine', 'max_pages'],
-    advanced: ['max_depth', 'max_bytes', 'delay', 'block_ads', 'language', 'ignore_robots'],
+    advanced: ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
+      'language', 'ignore_robots'],
     pick: { max_bytes: '500M' }
   },
   {
@@ -285,6 +286,22 @@ var CREATE_FIELDS = {
     id: 'create-block-ads', control: 'check', label: 'create_block_ads',
     kind: 'bool', on: true, needsEngine: ['rendered', 'alive'],
     note: 'create_block_ads_note'
+  },
+  // The responsive-image sweep, which is the second default-CHECKED box and
+  // reads the same way as the first: silence means the row never drew, and an
+  // explicit false means somebody unticked it.
+  //
+  // `needsEngine` is the RECORDING engine alone, and narrower than block_ads on
+  // purpose. A browser asks for one image out of each srcset — the one that
+  // suits the screen it has — so every other size is a request the replay will
+  // make on a differently shaped screen and the archive cannot answer. Only the
+  // alive engine keeps an archive to put them in; a rendered capture stores the
+  // one picture it rendered and has nowhere for the rest. Drawing this under
+  // the rendered engine would be a switch over nothing.
+  capture_variants: {
+    id: 'create-capture-variants', control: 'check', label: 'create_capture_variants',
+    kind: 'bool', on: true, needsEngine: ['alive'],
+    note: 'create_capture_variants_note'
   },
   // Auto first, and the probe fills it in: the page you are capturing already
   // declares its language, so making someone recall an ISO 639-3 code was the
@@ -876,31 +893,78 @@ var _createTimer = null;
 var _createPollMs = CREATE_POLL_MS;
 var _createStatus = null;     // last status payload
 var _createOffline = false;
-var _createImportReady = true;
-// Whether this server can run the rendered engine. Starts FALSE, unlike
-// import_ready: the browser is an extra install and most servers will not have
-// it, so the honest opening state is "not until the server says so" — a toggle
-// that offers itself and then refuses the job is worse than one that arrives a
-// poll late.
-var _createBrowserReady = false;
+// ── what this server can do, and whether we have asked yet ──────────────────
+//
+// Probing a capability costs a subprocess, so it rides the page's first poll
+// only. That used to mean every cold open drew the browser engines greyed with
+// an install command underneath, then un-greyed them a fraction of a second
+// later when the reply landed. Nothing had changed; the page had simply been
+// guessing "not installed" out loud and then correcting itself.
+//
+// So a capability has THREE states, and the third is the whole fix: true,
+// false, and null for "not asked yet". Only a KNOWN false greys an option.
+// Null renders it plainly — no grey, no install command — so the answer
+// arriving CONFIRMS the picture instead of redrawing it.
+//
+// Null is also only ever reachable on the very first visit, because the last
+// answer this browser got is remembered: a server that genuinely lacks the
+// browser settles into greyed once and stays there across reloads, rather than
+// re-deriving itself every time the page opens. The remembered value is a
+// hint, never an authority — the probe overwrites it on every open.
+var CREATE_CAPS_KEY = 'zimi_create_caps';
+
+// Read defensively: this file's pure prefix is evaluated in the .cjs test
+// sandbox, where there is no localStorage at all. A ReferenceError inside the
+// try is caught like any other, and an unreadable cache is simply no cache.
+function _createCapsLoad() {
+  try {
+    var saved = JSON.parse(localStorage.getItem(CREATE_CAPS_KEY) || '{}');
+    if (saved && typeof saved === 'object') return saved;
+  } catch (e) {}
+  return {};
+}
+
+var _createCaps = _createCapsLoad();
+
+// A remembered capability, or null when this browser has never been told.
+function _createCapBoot(name) {
+  return typeof _createCaps[name] === 'boolean' ? _createCaps[name] : null;
+}
+
+// Record one answer, and write the cache only when the answer is news. A probe
+// reply that agrees with what we already knew is the common case, and touching
+// localStorage on every one of them would put a synchronous disk write on the
+// two-second poll of a running job.
+function _createRemember(name, value) {
+  if (_createCaps[name] === value) return;
+  _createCaps[name] = value;
+  try {
+    localStorage.setItem(CREATE_CAPS_KEY, JSON.stringify(_createCaps));
+  } catch (e) {}
+}
+
+// Whether the server can convert an archive at all — the Import TILE's own
+// question. Optimistic when unknown, because a tile that is there and then
+// vanishes from under a click is worse than one that admits the job late.
+// Once known, it is the known answer, so the tile stops vanishing entirely.
+var _createImportReady = _createCapBoot('sidecar') !== false;
+// Whether this server can run the rendered engine — the server's answer, or
+// null until it gives one.
+var _createBrowserReady = _createCapBoot('browser');
 // Whether BOTH halves of the alive engine are here, as the server's own
 // verdict — never inferred from the other two flags, because what the alive
 // engine needs is the server's to decide and this client should not be the
-// place that has to be updated when it changes. False until told, for the same
-// reason as the browser.
-var _createAliveReady = false;
+// place that has to be updated when it changes.
+var _createAliveReady = _createCapBoot('alive');
 // The warc2zim sidecar alone. Not a third question to the server — it is
 // `import_ready`, which the page already asks for, under the name that says
 // what it means to an ENGINE rather than to the import mode. It exists so the
 // missing-install caption can name the one command that is actually missing.
-//
-// FALSE until told, unlike `_createImportReady` which starts true. They are
-// read for different things and the honest default differs: the Import TILE
-// should not flicker out from under someone, while an install hint that stayed
-// silent about a genuinely missing sidecar would leave a disabled option with
-// no way to fix it.
-var _createSidecarReady = false;
-var _createRoot = '';         // ZIMI_CREATE_ROOT, or '' when folder mode is off
+var _createSidecarReady = _createCapBoot('sidecar');
+// ZIMI_CREATE_ROOT, or '' when folder mode is off. Remembered for the same
+// reason as the capabilities: the Folder tile appearing a poll into the page
+// is the same flicker wearing a different hat.
+var _createRoot = typeof _createCaps.root === 'string' ? _createCaps.root : '';
 var _createHistory = [];
 var _createWantHistory = false;
 var _createJobId = null;      // the server's id for the job on screen
@@ -1091,9 +1155,16 @@ function _createDefaultMode(list) {
 // What the chips are drawn FROM. Re-drawing them on every poll would mean
 // re-drawing the panel underneath, so this only changes when the server changes
 // its mind about what is possible.
+// A capability's three states as one character, so "not asked yet" is distinct
+// from "asked, and no". Collapsing them to a boolean here would re-introduce
+// the flicker at the redraw layer even with the tri-state held correctly.
+function _createCapChar(v) {
+  return v === true ? '1' : v === false ? '0' : '?';
+}
+
 function _createAvailabilityKey() {
   return (_createOffline ? '1' : '0') + (_createImportReady ? '1' : '0') +
-    (_createBrowserReady ? '1' : '0') + (_createAliveReady ? '1' : '0') +
+    _createCapChar(_createBrowserReady) + _createCapChar(_createAliveReady) +
     (_createRoot ? '1' : '0') + (_createViewerIsCreator() ? '1' : '0');
 }
 
@@ -1222,6 +1293,7 @@ function _createFieldHtml(key, def) {
 // Whether the server has reported a capability as usable. The server's own
 // verdict where it has one — what the alive engine needs is the server's
 // business, not something this client should be re-deriving from parts.
+// Tri-state: true, false, or null for "the server has not said yet".
 function _createCapabilityReady(name) {
   return name === 'alive' ? _createAliveReady : _createBrowserReady;
 }
@@ -1230,6 +1302,12 @@ function _createCapabilityReady(name) {
 // which install command the caption prints; never to enable an option.
 function _createPartReady(part) {
   return part === 'sidecar' ? _createSidecarReady : _createBrowserReady;
+}
+
+// Whether to grey an option out. KNOWN missing only — an unanswered probe is
+// not a refusal, and rendering it as one is what made the picker flicker.
+function _createCapabilityMissing(name) {
+  return _createCapabilityReady(name) === false;
 }
 
 // The engine picker: the radios drawn as one control, each with the sentence
@@ -1249,7 +1327,7 @@ function _createEngineHtml(f) {
   var commands = [];
   for (var i = 0; i < f.options.length; i++) {
     var o = f.options[i];
-    var off = !!o.needs && !_createCapabilityReady(o.needs);
+    var off = !!o.needs && _createCapabilityMissing(o.needs);
     if (off) _createAddCommands(commands, o.needs);
     html += '<label class="create-seg-opt' + (off ? ' is-off' : '') + '">' +
       '<input type="radio" name="' + f.id + '" value="' + escAttr(o.v) + '"' +
@@ -1271,18 +1349,20 @@ function _createEngineHtml(f) {
 }
 
 // Append one unmet capability's install commands to the caption's list: the
-// parts it is missing, minus anything another option already asked for — the
-// browser is missing for two of the three engines and printing its command
-// twice would read as a stutter.
+// parts it is KNOWN to be missing, minus anything another option already asked
+// for — the browser is missing for two of the three engines and printing its
+// command twice would read as a stutter.
 //
-// Before the server's first probe answers, every part reads as not-installed
-// and the caption prints the lot. That is the honest opening state: a disabled
-// option with no reason beside it is worse than one command too many.
+// A part the server has not reported on prints nothing. This function only
+// runs for an option that is already greyed on a known-false capability, so
+// the caption can still come out empty — a capability whose own flag is false
+// while its parts are unreported. An install line that names no command is
+// better than one that names a command the server never asked for.
 function _createAddCommands(into, capability) {
   var parts = CREATE_ENGINE_NEEDS[capability] || [];
   for (var i = 0; i < parts.length; i++) {
     var cmd = CREATE_PART_INSTALL[parts[i]];
-    if (cmd && !_createPartReady(parts[i]) && into.indexOf(cmd) < 0) into.push(cmd);
+    if (cmd && _createPartReady(parts[i]) === false && into.indexOf(cmd) < 0) into.push(cmd);
   }
 }
 
@@ -1797,17 +1877,29 @@ async function _createPoll(first) {
 // so a test can drive it with a payload and no network.
 function _createIngest(data) {
   _createOffline = !!data.offline;
+  // Capability fields ride the probe poll only, so an ordinary poll simply
+  // does not carry them — and must leave what we know alone. Each is written
+  // only when the reply actually states it; anything else would let a two-
+  // second heartbeat un-answer a question the server has already answered.
   if (typeof data.import_ready === 'boolean') {
     // One fact, two readers: the Import mode asks "can this server convert an
     // archive at all", the engine picker asks "is the alive engine's second
     // half here". Same sidecar, same answer.
     _createImportReady = data.import_ready;
     _createSidecarReady = data.import_ready;
+    _createRemember('sidecar', data.import_ready);
   }
-  if (typeof data.browser_ready === 'boolean') _createBrowserReady = data.browser_ready;
-  if (typeof data.alive_ready === 'boolean') _createAliveReady = data.alive_ready;
+  if (typeof data.browser_ready === 'boolean') {
+    _createBrowserReady = data.browser_ready;
+    _createRemember('browser', data.browser_ready);
+  }
+  if (typeof data.alive_ready === 'boolean') {
+    _createAliveReady = data.alive_ready;
+    _createRemember('alive', data.alive_ready);
+  }
   if (typeof data.create_root === 'string' || data.create_root === null) {
     _createRoot = data.create_root || '';
+    _createRemember('root', _createRoot);
   }
   // The server holds one job at a time and hands it an id. A different id is a
   // different job — our queued submission reaching the front, or someone else's

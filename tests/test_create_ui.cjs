@@ -119,8 +119,9 @@ for (const key of Object.keys(CREATE_FIELDS)) {
 // The advanced sets, pinned. These are the flags the engines take that a
 // browser can reach; changing one is a product decision, not a refactor.
 eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
-  ['page', ['block_ads', 'language']],
-  ['site', ['max_depth', 'max_bytes', 'delay', 'block_ads', 'language', 'ignore_robots']],
+  ['page', ['block_ads', 'capture_variants', 'language']],
+  ['site', ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
+    'language', 'ignore_robots']],
   ['video', ['format', 'max_bytes', 'language']],
   ['bookmarks', []],
   ['folder', ['language']],
@@ -308,6 +309,44 @@ check(!sandbox._createFieldApplies(sandbox.CREATE_FIELDS.block_ads, ''),
   'the field does not apply under the fast engine');
 check(sandbox._createFieldApplies(sandbox.CREATE_FIELDS.language, ''),
   'a field with no engine requirement applies everywhere');
+
+// ── the responsive-variant sweep ────────────────────────────────────────────
+//
+// The second default-ticked box, and the narrower one. Sweeping up the image
+// sizes this screen did not ask for is something only the RECORDING engine can
+// do — a rendered capture keeps the one picture it rendered and has no archive
+// to put the others in — so offering the switch beside the rendered engine
+// would be offering a switch over nothing.
+
+check(sandbox.CREATE_FIELDS.capture_variants.on === true,
+  'the variant sweep is drawn already ticked — a recording that replays on '
+  + "somebody else's screen is the default worth having");
+eq(sandbox.CREATE_FIELDS.capture_variants.needsEngine, ['alive'],
+  'and only the recording engine offers it');
+
+check(sandbox._createFieldApplies(sandbox.CREATE_FIELDS.capture_variants, 'alive'),
+  'the field applies under the alive engine');
+check(!sandbox._createFieldApplies(sandbox.CREATE_FIELDS.capture_variants, 'rendered'),
+  'it does NOT apply under the rendered engine, which never sweeps');
+check(!sandbox._createFieldApplies(sandbox.CREATE_FIELDS.capture_variants, ''),
+  'nor under the fast engine');
+
+eq(_createBuildRequest('page',
+  { source: 'https://e.org/', engine: 'alive', capture_variants: false }),
+  { mode: 'page', source: 'https://e.org/', engine: 'alive', capture_variants: false },
+  'unticking the sweep sends a real false — this-screen-only is a choice');
+eq(_createBuildRequest('page',
+  { source: 'https://e.org/', engine: 'alive', capture_variants: true }),
+  { mode: 'page', source: 'https://e.org/', engine: 'alive', capture_variants: true },
+  'and leaving it on says so rather than relying on the server default');
+eq(_createBuildRequest('page',
+  { source: 'https://e.org/', engine: 'rendered', capture_variants: false }),
+  { mode: 'page', source: 'https://e.org/', engine: 'rendered' },
+  'under an engine that cannot sweep the field is not sent at all');
+eq(_createBuildRequest('site',
+  { source: 'https://e.org/', engine: 'alive', capture_variants: false }),
+  { mode: 'site', source: 'https://e.org/', engine: 'alive', capture_variants: false },
+  'a site recording carries the same answer');
 
 // ── advanced options ────────────────────────────────────────────────────────
 

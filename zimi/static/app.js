@@ -7818,7 +7818,6 @@ function switchManageTab(tab) {
   } else if (tab === 'history') {
     q.placeholder = t('search_placeholder');
     _act.showAll = false;   // re-entering the tab defaults back to the capped view
-    _act.panelOpen = false;
     renderActivityLog();
   } else if (tab === 'activity') {
     q.placeholder = t('search_placeholder');
@@ -8011,11 +8010,16 @@ var _ACT_SUBJECT_FALLBACK = {
 var _ACT_COUNT_LABEL = {export: 'act_n_bookmarks', restore: 'act_n_sections'};
 
 // View state. Filters are stored as what is turned OFF, so a type that first
-// appears in the journal after the panel was opened is visible, not hidden.
+// appears in the journal after the view was opened is visible, not hidden —
+// and so the pills come up with everything lit, which is what "you are looking
+// at all of it" should look like.
 var _act = {
   records: [], types: [], actors: [],
   offTypes: {}, offActors: {},
-  showAll: false, panelOpen: false
+  showAll: false,
+  // A "show me only this type from only this actor" request from elsewhere in
+  // Manage, waiting for the journal's vocabulary to arrive. See _actFocus.
+  focus: null
 };
 
 // The filter value for a record's actor: a username, or the kind. Mirrors the
@@ -8024,10 +8028,27 @@ function _actActorKey(r) {
   var a = r.actor || {};
   return (a.kind === 'user' && a.name) ? a.name : (a.kind || 'server');
 }
+// Pre-1.9 history has no actor, and "Unknown" read as an accusation — as
+// though somebody had done this and Zimi would not say who. An em-dash is the
+// truthful shape: there is nothing in this column, because nothing was ever
+// recorded there. The sentence explaining that lives in the tooltip, where a
+// sentence fits, and the chip stays dim so the eye skips it.
+var ACT_ACTOR_NONE = '—';
+
 function _actActorLabel(key) {
   if (key === 'server') return t('act_actor_server');
-  if (key === 'unknown') return t('act_actor_unknown');
+  if (key === 'unknown') return ACT_ACTOR_NONE;
   return key;
+}
+
+// The hover sentence for an actor chip, or '' for one that needs none. Two
+// values are jargon to everyone who did not build this: the em-dash, and
+// "admin" — which is not a username but the password holder, and is worth
+// distinguishing from a person with an account of that name.
+function _actActorTitle(key) {
+  if (key === 'unknown') return t('act_actor_unknown_hint');
+  if (key === 'admin') return t('act_actor_admin_hint');
+  return '';
 }
 function _actTypeLabel(type) {
   var key = 'act_type_' + type;
@@ -8080,52 +8101,70 @@ async function renderActivityLog(refetch) {
       return;
     }
   }
+  _actApplyFocus();
   el.innerHTML = _actHeaderHtml() + _actListHtml();
 }
 
+// The filters, as two rows of pills across the top rather than a popover.
+//
+// A popover was the wrong container for this. Filtering here is the normal way
+// to read the journal, not an occasional adjustment — "what did the
+// auto-updater do" and "what did I do" are the two questions the view exists
+// to answer — and a filter you have to open, read, tick and dismiss makes the
+// normal case the expensive one. It also hid its own state: the button showed
+// a count, so the only way to see WHICH four things were off was to reopen the
+// box. Pills are the state and the control at once, and they are the pattern
+// the rest of the app already filters with.
 function _actHeaderHtml() {
-  // Nothing to filter yet: an empty journal gets the empty state, not a button
-  // that opens an empty box.
+  // Nothing to filter yet: an empty journal gets the empty state, not a row of
+  // pills with nothing behind them.
   if (!_act.records.length) return '';
-  var n = _actFilterCount();
-  return '<div class="act-bar">' +
-    '<button class="act-filter-btn' + (n ? ' filtered' : '') + '" onclick="_actTogglePanel(event)" ' +
-      'aria-expanded="' + (_act.panelOpen ? 'true' : 'false') + '">' +
-      '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" ' +
-        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-        '<path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>' +
-      tH('act_filter') + (n ? '<span class="act-filter-n">' + n + '</span>' : '') +
-    '</button>' +
-    (_act.panelOpen ? _actPanelHtml() : '') +
+  return '<div class="act-filters">' +
+    _actPillRow(tH('act_filter_types'), _act.types, _act.offTypes, 'type', _actTypeLabel) +
+    _actPillRow(tH('act_filter_who'), _act.actors, _act.offActors, 'actor', _actActorLabel) +
   '</div>';
 }
 
-function _actPanelHtml() {
-  var h = '<div class="act-panel" onclick="event.stopPropagation()">';
-  h += _actPanelGroup(tH('act_filter_types'), _act.types, _act.offTypes, 'type', _actTypeLabel);
-  h += _actPanelGroup(tH('act_filter_who'), _act.actors, _act.offActors, 'actor', _actActorLabel);
-  if (_actFilterCount()) {
-    h += '<button class="act-panel-clear" onclick="_actClearFilters()">' + tH('act_filter_clear') + '</button>';
+// How many records carry one value on one axis, over the WHOLE journal rather
+// than the filtered slice — the same rule the server follows for the
+// vocabulary itself. A count that moved as you filtered would be telling you
+// about your own clicks instead of about the library.
+function _actAxisCount(kind, value) {
+  var n = 0;
+  for (var i = 0; i < _act.records.length; i++) {
+    var r = _act.records[i];
+    if ((kind === 'type' ? r.type : _actActorKey(r)) === value) n++;
   }
-  h += '</div>';
-  return h;
+  return n;
 }
 
-// One checkbox group. `off` is the map of turned-off values, so an empty map
-// means everything in this group is showing.
-function _actPanelGroup(title, values, off, kind, label) {
+// One axis. `off` is the map of turned-off values, so an empty map means every
+// pill in this row is lit — and the leading All pill is lit with them, because
+// "all" is a true description of what is showing, not a fifth choice.
+function _actPillRow(title, values, off, kind, label) {
   if (!values.length) return '';
-  var h = '<div class="act-panel-group"><div class="act-panel-title">' + title + '</div>';
+  var all = !Object.keys(off).length;
+  var h = '<div class="act-filter-row">' +
+    '<span class="act-filter-label">' + title + '</span>' +
+    '<div class="pills-row act-filter-pills">' +
+    '<button class="pill act-pill' + (all ? ' active' : '') + '"' +
+      ' aria-pressed="' + (all ? 'true' : 'false') + '"' +
+      ' onclick="_actClearAxis(\'' + kind + '\')">' + tH('filter_all') + '</button>';
   for (var i = 0; i < values.length; i++) {
     var v = values[i];
     var on = !off[v];
-    h += '<label class="act-check' + (on ? ' on' : '') + '">' +
-      '<input type="checkbox"' + (on ? ' checked' : '') +
-        ' onchange="_actToggleFilter(\'' + kind + '\', \'' + escAttr(v) + '\')">' +
-      '<span>' + esc(label(v)) + '</span>' +
-    '</label>';
+    var title2 = kind === 'actor' ? _actActorTitle(v) : '';
+    // escJs, not escAttr: an entity-escaped quote decodes back to a live quote
+    // inside the onclick JS string, and an actor value is a username somebody
+    // else chose.
+    h += '<button class="pill act-pill' + (on ? ' active' : '') + '"' +
+      ' aria-pressed="' + (on ? 'true' : 'false') + '"' +
+      (title2 ? ' title="' + escAttr(title2) + '"' : '') +
+      ' onclick="_actToggleFilter(\'' + kind + '\', \'' + escJs(v) + '\')">' +
+      esc(label(v)) + ' <span class="pill-count">' + _actAxisCount(kind, v) + '</span>' +
+    '</button>';
   }
-  return h + '</div>';
+  return h + '</div></div>';
 }
 
 function _actListHtml() {
@@ -8176,7 +8215,9 @@ function _actRowHtml(r) {
   if (r.detail) meta.push('<span class="act-detail">' + esc(r.detail) + '</span>');
 
   var actorKey = _actActorKey(r);
-  var chip = '<span class="act-chip act-chip-' + esc(actorKey === 'server' || actorKey === 'unknown' ? actorKey : 'user') + '">' +
+  var actorTitle = _actActorTitle(actorKey);
+  var chip = '<span class="act-chip act-chip-' + esc(actorKey === 'server' || actorKey === 'unknown' ? actorKey : 'user') + '"' +
+    (actorTitle ? ' title="' + escAttr(actorTitle) + '"' : '') + '>' +
     esc(_actActorLabel(actorKey)) + '</span>';
 
   return '<div class="catalog-item act-row"' +
@@ -8205,25 +8246,44 @@ function _actClearFilters() {
   _act.offActors = {};
   _actRepaint();
 }
+
+// One axis back to everything, which is what the All pill does. The other axis
+// is left exactly as it was: the rows are independent questions, and clearing
+// both from one click would undo a choice the user can still see lit.
+function _actClearAxis(kind) {
+  if (kind === 'type') _act.offTypes = {}; else _act.offActors = {};
+  _actRepaint();
+}
+
 function _actRevealAll() { _act.showAll = true; _actRepaint(); }
 
-// The panel closes on the next click anywhere else — a filter you have to hunt
-// for a close button on is not a small popover. Escape closes it too, from the
-// one keyboard chain at the bottom of this file, so a panel over the manage
-// view can't fall through to "leave the manage view".
-function _actTogglePanel(ev) {
-  if (ev) ev.stopPropagation();
-  if (_act.panelOpen) { _actClosePanel(); return; }
-  _act.panelOpen = true;
-  _actRepaint();
-  // Next tick: this very click must not be the one that closes it again.
-  setTimeout(function() { document.addEventListener('click', _actClosePanel); }, 0);
+// Open Activity showing ONE type from ONE actor. Used by the auto-update
+// section, whose "what did the last run do" is exactly the type=update,
+// actor=server intersection — two axes at once, which the pills can express in
+// clicks but nothing was linking to.
+//
+// Recorded as an intent rather than applied here, because the axes are turned
+// off by NAMING the values to hide, and the vocabulary to name them from
+// arrives with the journal. Applied by _actApplyFocus once the records land.
+function _actFocus(type, actorKey) {
+  _act.focus = { type: type, actor: actorKey };
+  _act.showAll = false;
+  switchManageTab('history');
 }
-function _actClosePanel() {
-  document.removeEventListener('click', _actClosePanel);
-  if (!_act.panelOpen) return;
-  _act.panelOpen = false;
-  _actRepaint();
+
+// Turn the pending focus into off-maps, now that the vocabulary is known.
+function _actApplyFocus() {
+  var f = _act.focus;
+  if (!f) return;
+  _act.focus = null;
+  _act.offTypes = {};
+  _act.offActors = {};
+  for (var i = 0; i < _act.types.length; i++) {
+    if (_act.types[i] !== f.type) _act.offTypes[_act.types[i]] = true;
+  }
+  for (var j = 0; j < _act.actors.length; j++) {
+    if (_act.actors[j] !== f.actor) _act.offActors[_act.actors[j]] = true;
+  }
 }
 
 // ── Stats tab (merged server stats + usage) ──
@@ -8422,6 +8482,7 @@ async function renderManage() {
       '<div class="ms-nav" id="ms-nav">' +
         '<button class="ms-nav-item active" data-ms="library" onclick="switchMs(\'library\')">' + tH('ms_library') + '</button>' +
         '<button class="ms-nav-item" data-ms="preferences" onclick="switchMs(\'preferences\')">' + tH('ms_display') + '</button>' +
+        '<button class="ms-nav-item" data-ms="creator" onclick="switchMs(\'creator\')">' + tH('ms_creator') + '</button>' +
         '<button class="ms-nav-item" data-ms="server" onclick="switchMs(\'server\')">' + tH('ms_server') + '</button>' +
         '<button class="ms-nav-item" data-ms="users" onclick="switchMs(\'users\')">' + tH('ms_users') + '</button>' +
       '</div>' +
@@ -8562,7 +8623,7 @@ function _prefetchServerSettings() {
 
 // Manage settings sections + the URL/session plumbing that lets a reload (or a
 // fresh tap on Manage) land back on the section the user last had open.
-var _MS_SECTIONS = ['library', 'preferences', 'server', 'users'];
+var _MS_SECTIONS = ['library', 'preferences', 'creator', 'server', 'users'];
 function _validMsSection(s) { return _MS_SECTIONS.indexOf(s) >= 0 ? s : null; }
 function _msSectionUrl(section) { return (!section || section === 'library') ? '/?manage' : '/?manage=' + section; }
 function _lastMsSection() {
@@ -8587,13 +8648,18 @@ function switchMs(section) {
   switch(section) {
     case 'library': pane.innerHTML = _msLibraryHtml(); break;
     case 'preferences': pane.innerHTML = _msPreferencesHtml(); break;
+    case 'creator': pane.innerHTML = _msCreatorHtml(); break;
     case 'server': pane.innerHTML = _msServerHtml(); break;
     case 'users': _renderMsUsers(); break;
   }
   // The library pane owns the Updates line — refresh it on every mount so a
   // re-entry (nav away and back) never re-renders "Checking…" and then strands
   // there. checkForUpdates repaints instantly from cache when it's fresh.
-  if (section === 'library') { _renderUpdatesSummary(); checkForUpdates(); }
+  if (section === 'library') {
+    _renderUpdatesSummary();
+    checkForUpdates();
+    _renderAutoUpdateSection();
+  }
 }
 
 // ── Users management (admin-only, multi-user v1) ──
@@ -9107,6 +9173,194 @@ function _saveUserAllowlist(name) {
   });
 }
 
+// ── Creator settings ────────────────────────────────────────────────────────
+//
+// What this server can capture with, where it may write, what it refuses by
+// default, and what is waiting. Every one of these facts already existed — but
+// only inside the create page's own status poll, which meant the only way for
+// an admin to learn that the browser engine was missing was to open the create
+// form and notice an option greyed out. Capabilities of the SERVER belong with
+// the server's other settings; the create form should be where you use them,
+// not where you discover them.
+//
+// Read-only on purpose. Every value here is set by an install or an env var,
+// and a control that looked editable but wasn't would be worse than a row.
+
+// A yes/no capability as a coloured word rather than a checkbox — nothing here
+// is settable from this pane, so a control would be a lie.
+function _creatorStateHtml(ready, hint) {
+  var cls = ready ? 'app-update-badge' : 'app-update-quiet';
+  var text = tH(ready ? 'creator_installed' : 'creator_not_installed');
+  return '<span class="' + cls + '"' + (hint ? ' title="' + escAttr(hint) + '"' : '') + '>' + text + '</span>';
+}
+
+// The one command that fixes a missing part. Shown under the row it belongs
+// to, and only when that part is actually missing.
+function _creatorInstallHtml(ready, cmd) {
+  return ready ? '' : '<code class="app-update-cmd">' + esc(cmd) + '</code>';
+}
+
+function _msCreatorHtml() {
+  var h = '<div class="ms-section-label">' + tH('creator_engines') + '</div>' +
+    '<div class="ms-hint">' + tH('creator_engines_hint') + '</div>' +
+    '<div id="ms-creator" class="ms-creator">' + tH('loading') + '</div>';
+  setTimeout(function() {
+    if (_msSection !== 'creator') return;
+    _renderCreatorSection();
+  }, 0);
+  return h;
+}
+
+function _creatorHtml(d) {
+  var sidecar = d.sidecar || {};
+  var h = _mcRow(tH('creator_browser'), _creatorStateHtml(d.browser_ready)) +
+    _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium") +
+    _mcRow(tH('creator_sidecar'),
+      _creatorStateHtml(sidecar.installed) +
+      (sidecar.version ? ' <span class="app-update-quiet">' + esc(sidecar.version) + '</span>' : '')) +
+    _creatorInstallHtml(sidecar.installed, 'zimi import --setup') +
+    // The recording engine needs both halves, and the server is the one that
+    // decides that — this is its verdict, not this client's arithmetic.
+    _mcRow(tH('creator_alive'), _creatorStateHtml(d.alive_ready));
+
+  h += '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
+    '<div class="ms-section-label">' + tH('creator_output') + '</div>' +
+    _mcRow(tH('creator_root'),
+      d.create_root
+        ? '<code class="app-update-cmd">' + esc(d.create_root) + '</code>'
+        : '<span class="app-update-quiet">' + tH('creator_root_unset') + '</span>') +
+    '<div class="ms-hint">' + tH(d.create_root ? 'creator_root_hint' : 'creator_root_unset_hint') + '</div>';
+
+  h += '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
+    '<div class="ms-section-label">' + tH('creator_defaults') + '</div>' +
+    _mcRow(tH('create_block_ads'), tH(d.block_ads_default ? 'creator_on' : 'creator_off')) +
+    _mcRow(tH('create_capture_variants'), tH(d.capture_variants_default ? 'creator_on' : 'creator_off')) +
+    '<div class="ms-hint">' + tH('creator_defaults_hint') + '</div>';
+
+  h += '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
+    '<div class="ms-section-label">' + tH('creator_queue') + '</div>' +
+    _mcRow(tH('creator_queued'), d.queue
+      ? esc(t('creator_queue_n', { n: d.queue }))
+      : '<span class="app-update-quiet">' + tH('creator_queue_empty') + '</span>');
+  return h;
+}
+
+function _renderCreatorSection() {
+  if (!document.getElementById('ms-creator')) return;
+  manageFetch('/manage/creator').then(function(r) { return r.json(); }).then(function(d) {
+    var slot = document.getElementById('ms-creator');
+    if (slot) slot.innerHTML = _creatorHtml(d);
+  }).catch(function() {
+    var slot = document.getElementById('ms-creator');
+    if (slot) slot.innerHTML = '<div class="ms-hint">' + tH('could_not_load') + '</div>';
+  });
+}
+
+// ── ZIM auto-update ─────────────────────────────────────────────────────────
+//
+// Was one select. A select is a fine control and a terrible report: it said
+// how often the updater is *supposed* to run and nothing about whether it ever
+// had, what it did, or when it would go again — so the only way to find out
+// was to notice a ZIM's date changing. Everything here already existed on the
+// server; none of it had a place to be read.
+//
+// The coverage line is the part that earns the section. Zimi has no per-ZIM
+// opt-out; what it has is a reach — the updater matches an installed file to a
+// newer edition by the date in its filename, so an undated ZIM is invisible to
+// it. That is most of what `zimi create` writes, and a file that silently
+// never updates is exactly the kind of thing a library owner should not have
+// to deduce.
+var AU_FREQUENCIES = ['disabled', 'daily', 'weekly', 'monthly'];
+var _AU_SELECT_CSS = 'font-size:12px;padding:3px 8px;border-radius:4px;' +
+  'border:1px solid var(--border);background:var(--surface2);color:var(--text)';
+
+// The frequency control. Same id, same handler, same env lock as before — the
+// poll gating and two other renderers read #auto-update-freq by name.
+function _autoUpdateSelectHtml(au) {
+  var cur = au.enabled ? (au.frequency || 'weekly') : 'disabled';
+  var opts = AU_FREQUENCIES.map(function(f) {
+    return '<option value="' + f + '"' + (f === cur ? ' selected' : '') + '>' +
+      esc(t('au_' + f)) + '</option>';
+  }).join('');
+  var lock = au.locked
+    ? ' disabled title="' + escAttr(t('au_controlled_by_env')) + '" style="' + _AU_SELECT_CSS + ';opacity:0.5"'
+    : ' style="' + _AU_SELECT_CSS + '"';
+  return '<select id="auto-update-freq" onchange="toggleAutoUpdate()"' + lock + '>' + opts + '</select>';
+}
+
+// One label/value row, which is the shape every settings row in these panes
+// already has.
+function _mcRow(label, value) {
+  return '<div class="mc-row"><span class="mc-label">' + label +
+    '</span><span class="mc-value">' + value + '</span></div>';
+}
+
+// What the last pass did, as a link into the journal rather than a summary
+// duplicated here. Auto-update work is exactly the type=update, actor=server
+// intersection, and the Activity view is where that already reads properly.
+function _autoUpdateLastHtml(au) {
+  if (!au.last_check) {
+    // Not "never": the stamp is process memory, so a restart erases it while
+    // the updater's history stays in the journal. Saying "never" would be a
+    // claim about the library that this field cannot support.
+    return '<span style="color:var(--text2)">' + tH('au_not_this_session') + '</span>';
+  }
+  // The time IS the link. A separate "see what it did" beside it was a second
+  // thing to read in a row that has room for one, and the timestamp is what
+  // anyone wanting the detail would aim at anyway.
+  return '<a href="#" class="app-update-link" title="' + escAttr(t('au_see_activity')) +
+    '" onclick="_actFocus(\'update\',\'server\');return false">' +
+    esc(_relTime(au.last_check)) + '</a>';
+}
+
+function _autoUpdateNextHtml(au) {
+  if (!au.enabled) return '<span style="color:var(--text2)">' + tH('au_disabled') + '</span>';
+  // Enabled but never run this session: the loop's first pass is 30 seconds
+  // after it starts, so there is no useful time to print — only "imminently".
+  if (!au.next_check) return '<span style="color:var(--text2)">' + tH('au_next_soon') + '</span>';
+  return esc(_relTime(au.next_check));
+}
+
+// Which ZIMs the updater can maintain, and the ones it cannot with the reason.
+// Rendered only when something IS skipped: a library where everything is
+// tracked needs no explanation, and a row saying "0 skipped" is clutter.
+function _autoUpdateCoverageHtml(coverage) {
+  if (!coverage) return '';
+  var tracked = coverage.tracked || [];
+  var skipped = coverage.skipped || [];
+  var total = tracked.length + skipped.length;
+  if (!total) return '';
+  var h = _mcRow(tH('au_coverage'), esc(t('au_coverage_n', { n: tracked.length, total: total })));
+  if (!skipped.length) return h;
+  h += '<div class="ms-hint">' + tH('au_skipped_hint') + '</div>' +
+    '<div class="au-skipped">';
+  for (var i = 0; i < skipped.length; i++) {
+    h += '<span class="act-chip" title="' + escAttr(t('au_reason_undated')) + '">' +
+      esc(skipped[i].name) + '</span>';
+  }
+  return h + '</div>';
+}
+
+function _autoUpdateHtml(au, coverage) {
+  return '<div class="ms-section-label">' + tH('auto_update') + '</div>' +
+    _mcRow(tH('au_frequency'), _autoUpdateSelectHtml(au)) +
+    _mcRow(tH('au_last_run'), _autoUpdateLastHtml(au)) +
+    _mcRow(tH('au_next_run'), _autoUpdateNextHtml(au)) +
+    _autoUpdateCoverageHtml(coverage);
+}
+
+// Repaint the section from server truth. The library pane draws it once from
+// the status payload it already has (so the select is never missing while a
+// second request is in flight), then this fills in last/next/coverage.
+function _renderAutoUpdateSection() {
+  var el = document.getElementById('ms-auto-update');
+  if (!el) return;
+  manageFetch('/manage/auto-update').then(function(r) { return r.json(); }).then(function(d) {
+    var slot = document.getElementById('ms-auto-update');
+    if (slot) slot.innerHTML = _autoUpdateHtml(d, d.coverage);
+  }).catch(function() {});
+}
+
 function _msLibraryHtml() {
   var d = _manageStatusData;
   if (!d) return '<div class="loading"><span class="spinner-inline"></span>Loading\u2026</div>';
@@ -9119,19 +9373,7 @@ function _msLibraryHtml() {
       '<span class="mc-label">' + tH('updates') + '</span>' +
       '<span class="mc-value" style="color:var(--text2)"><span class="spinner-inline"></span>' + tH('updates_checking') + '</span></div>' +
     '<div id="updates-detail" class="updates-detail" style="display:none"></div>' +
-    '<div class="mc-row" style="align-items:center">' +
-      '<span class="mc-label">' + tH('auto_update') + '</span>' +
-      '<span class="mc-value">' +
-        (function() {
-          var au = (d.auto_update || {});
-          var cur = au.enabled ? (au.frequency || 'weekly') : 'disabled';
-          var opts = [['disabled',t('au_disabled')],['daily',t('au_daily')],['weekly',t('au_weekly')],['monthly',t('au_monthly')]];
-          var optHtml = opts.map(function(o) { return '<option value="' + o[0] + '"' + (o[0] === cur ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
-          var extra = au.locked ? ' disabled title="' + escAttr(t('au_controlled_by_env')) + '" style="font-size:12px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);opacity:0.5"' : ' style="font-size:12px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"';
-          return '<select id="auto-update-freq" onchange="toggleAutoUpdate()"' + extra + '>' + optHtml + '</select>';
-        })() +
-      '</span>' +
-    '</div>' +
+    '<div id="ms-auto-update">' + _autoUpdateHtml(d.auto_update || {}, null) + '</div>' +
     '<div class="ms-actions">' +
       '<button class="manage-btn-action" onclick="manageImportZim()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('import_zim') + '</button>' +
       '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('refresh_cache') + '</button>' +
@@ -9567,7 +9809,84 @@ function _appUpdateHeldDays(d) {
   return Math.max(1, Math.ceil(ms / _MS_PER_DAY));
 }
 
+// The app-update block, as three independently repaintable slots.
+//
+// It used to be one string, and "Check now" replaced the whole of it with a
+// single "Checking…" line: the block collapsed from five rows to one, shoving
+// everything below it up the pane and back down a moment later, and the two
+// selects were destroyed and rebuilt around a request that could not change
+// them. That read as the pane reloading itself. Now a check touches the status
+// slot alone, so the block keeps its height and its controls keep their
+// identity — and a settings save repaints the same way, instead of deleting
+// the select the admin just used.
+var _APP_UPDATE_ID = 'ms-app-update';
+var _APP_UPDATE_STATUS_ID = 'ms-app-update-status';
+var _APP_UPDATE_HOW_ID = 'ms-app-update-how';
+var _APP_UPDATE_SETTINGS_ID = 'ms-app-update-settings';
+
+// The last payload, kept so the checking state can be drawn over the version
+// and the settings that are still true while the request is in flight.
+var _appUpdateData = null;
+
+// Write into a slot only when the markup actually differs. A <select> that is
+// re-assigned identical HTML is still a NEW element — it loses focus and shuts
+// an open dropdown — so "no change" has to mean "do not touch it".
+function _setHtmlIfChanged(id, html) {
+  var el = document.getElementById(id);
+  if (el && el.innerHTML !== html) el.innerHTML = html;
+}
+
+// The version row and the status row: the two lines a check can change.
+// `checking` swaps the verdict for the in-flight line and the button for a
+// spinner, keeping both rows exactly where they were.
+function _appUpdateStatusHtml(d, checking) {
+  var status = checking
+    ? '<span class="app-update-quiet">' + tH('app_update_checking') + '</span>'
+    : _appUpdateVerdictHtml(d);
+  var action = checking
+    ? '<span class="spinner-inline" aria-hidden="true"></span>'
+    : (d.offline ? '' : '<button class="pill" onclick="_appUpdateCheckNow()">' +
+        tH('app_update_check_now') + '</button>');
+  return '<div class="mc-row"><span class="mc-label">' + tH('app_update_version') + '</span>' +
+    '<span class="mc-value">' + esc(d.current || '?') + '</span></div>' +
+    '<div class="mc-row"><span class="mc-label">' + status + '</span>' +
+    '<span class="mc-value">' + action + '</span></div>';
+}
+
+function _appUpdateHowSlot(d) {
+  return d.update_available ? _appUpdateHowHtml(d) : '';
+}
+
+// Offline mode does no checking at all, so these would be controls with
+// nothing behind them.
+function _appUpdateSettingsSlot(d) {
+  return d.offline ? '' : _appUpdateChannelHtml(d) + _appUpdateDelayHtml(d);
+}
+
 function _appUpdateHtml(d) {
+  return '<div id="' + _APP_UPDATE_STATUS_ID + '">' + _appUpdateStatusHtml(d, false) + '</div>' +
+    '<div id="' + _APP_UPDATE_HOW_ID + '">' + _appUpdateHowSlot(d) + '</div>' +
+    '<div id="' + _APP_UPDATE_SETTINGS_ID + '">' + _appUpdateSettingsSlot(d) + '</div>';
+}
+
+// Repaint from a payload: the whole block on first mount, and slot by slot
+// after that, so nothing that did not change is rebuilt.
+function _appUpdatePaint(d) {
+  _appUpdateData = d;
+  var host = document.getElementById(_APP_UPDATE_ID);
+  if (!host) return;
+  if (!document.getElementById(_APP_UPDATE_STATUS_ID)) {
+    host.innerHTML = _appUpdateHtml(d);
+    return;
+  }
+  _setHtmlIfChanged(_APP_UPDATE_STATUS_ID, _appUpdateStatusHtml(d, false));
+  _setHtmlIfChanged(_APP_UPDATE_HOW_ID, _appUpdateHowSlot(d));
+  _setHtmlIfChanged(_APP_UPDATE_SETTINGS_ID, _appUpdateSettingsSlot(d));
+}
+
+// One line of the status slot: what this build is, relative to what is out
+// there. Split out of the block so a check can redraw the verdict alone.
+function _appUpdateVerdictHtml(d) {
   var status;
   if (d.update_available) {
     status = '<span class="app-update-badge">' + tH('app_update_available', { v: d.latest }) + '</span>' +
@@ -9585,32 +9904,42 @@ function _appUpdateHtml(d) {
   } else {
     status = '<span class="app-update-quiet">' + tH(d.error ? 'app_update_failed' : 'app_update_never') + '</span>';
   }
-  var h = '<div class="mc-row"><span class="mc-label">' + tH('app_update_version') + '</span>' +
-    '<span class="mc-value">' + esc(d.current || '?') + '</span></div>' +
-    '<div class="mc-row"><span class="mc-label">' + status + '</span><span class="mc-value">' +
-    (d.offline ? '' : '<button class="pill" onclick="_appUpdateCheckNow()">' + tH('app_update_check_now') + '</button>') +
-    '</span></div>';
-  if (d.update_available) h += _appUpdateHowHtml(d);
-  // Offline mode does no checking at all, so these would be controls with
-  // nothing behind them.
-  if (!d.offline) h += _appUpdateChannelHtml(d) + _appUpdateDelayHtml(d);
-  return h;
+  return status;
+}
+
+// Show the in-flight state without moving anything: the status row alone
+// changes, and only when the block is already mounted. On a cold mount there
+// is no shape to preserve and the loading placeholder is still right.
+function _appUpdateShowChecking() {
+  if (!document.getElementById(_APP_UPDATE_STATUS_ID)) return;
+  _setHtmlIfChanged(_APP_UPDATE_STATUS_ID,
+    _appUpdateStatusHtml(_appUpdateData || {}, true));
+}
+
+// A failed check must not take the settings down with it. The verdict line
+// says so and everything else stays put — the channel and delay the admin set
+// are still true, whatever the network did.
+function _appUpdateShowError() {
+  var host = document.getElementById(_APP_UPDATE_ID);
+  if (!host) return;
+  if (!document.getElementById(_APP_UPDATE_STATUS_ID)) {
+    host.innerHTML = '<div class="ms-hint">' + tH('app_update_failed') + '</div>';
+    return;
+  }
+  var d = _appUpdateData || {};
+  _setHtmlIfChanged(_APP_UPDATE_STATUS_ID,
+    _appUpdateStatusHtml({ current: d.current, offline: d.offline, error: true }, false));
 }
 
 function _renderAppUpdate(force) {
-  var el = document.getElementById('ms-app-update');
-  if (!el) return;
-  if (force) el.innerHTML = '<div class="ms-hint">' + tH('app_update_checking') + '</div>';
+  if (!document.getElementById(_APP_UPDATE_ID)) return;
+  if (force) _appUpdateShowChecking();
   var req = force
     ? manageFetch('/manage/app-update-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
     : manageFetch('/manage/app-update');
-  req.then(function(r) { return r.json(); }).then(function(d) {
-    var slot = document.getElementById('ms-app-update');
-    if (slot) slot.innerHTML = _appUpdateHtml(d);
-  }).catch(function() {
-    var slot = document.getElementById('ms-app-update');
-    if (slot) slot.innerHTML = '<div class="ms-hint">' + tH('app_update_failed') + '</div>';
-  });
+  req.then(function(r) { return r.json(); })
+    .then(_appUpdatePaint)
+    .catch(_appUpdateShowError);
 }
 
 function _appUpdateCheckNow() { _renderAppUpdate(true); }
@@ -9620,17 +9949,15 @@ function _appUpdateCheckNow() { _renderAppUpdate(true); }
 // (the select is disabled then, so that means a second browser raced a config
 // change) — say so and repaint from server truth.
 function _appUpdateSaveSetting(path, body, envVar) {
-  var el = document.getElementById('ms-app-update');
-  if (el) el.innerHTML = '<div class="ms-hint">' + tH('app_update_checking') + '</div>';
+  if (!document.getElementById(_APP_UPDATE_ID)) return;
+  _appUpdateShowChecking();
   manageFetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   }).then(function(r) { return r.json(); }).then(function(d) {
-    var slot = document.getElementById('ms-app-update');
-    if (!slot) return;
     if (d && d.error) { _showToast(t('env_controlled', { v: envVar })); _renderAppUpdate(false); return; }
-    slot.innerHTML = _appUpdateHtml(d);
+    _appUpdatePaint(d);
   }).catch(function() { _renderAppUpdate(false); });
 }
 
@@ -9687,7 +10014,7 @@ function _msServerHtml() {
   // "Auto-update" toggle; wording and ids stay app_update-prefixed.
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
     '<div class="ms-section-label">' + tH('app_update_section') + '</div>' +
-    '<div id="ms-app-update" class="ms-app-update">' + tH('loading') + '</div></div>';
+    '<div id="' + _APP_UPDATE_ID + '" class="ms-app-update">' + tH('loading') + '</div></div>';
   // Security: password + API token
   h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
     '<div id="ms-security">' + tH('loading') + '</div></div>';
@@ -10909,17 +11236,14 @@ async function toggleAutoUpdate() {
       body: JSON.stringify({enabled: enabled, frequency: enabled ? val : 'weekly'})
     });
   } catch(e) { /* ignore */ }
-  // Update timer icon next to update count
-  const el = document.getElementById('update-status');
-  if (el) {
-    const timer = _autoUpdateTimerHtml();
-    const count = Object.keys(_availableUpdates).length;
-    if (count > 0) {
-      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--amber)">' + timer + tH('updates_available', {n: count}) + '</span>';
-    } else {
-      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('all_up_to_date') + '</span>';
-    }
-  }
+  // The summary line carries the auto-update timer glyph, so it restates
+  // itself when the frequency changes. Through the single writer rather than
+  // the hand-patch that used to live here: that copy rebuilt the row without
+  // its caret or its click handler, so changing the frequency while updates
+  // were pending silently made the "3 updates available" row unopenable.
+  _renderUpdatesSummary();
+  // Last run and next run both move when the schedule does.
+  _renderAutoUpdateSection();
   // Start fast polling when enabling — server starts downloads after 30s delay
   if (enabled && !_dlTimer) {
     _dlTimer = setTimeout(refreshDownloads, 3000);
@@ -16169,7 +16493,6 @@ document.addEventListener('keydown', e => {
     var _hp = document.getElementById('history-panel');
     if (_hp && _hp.classList.contains('open')) { _closeLibraryPanel(); return; }
     if (suggestDropdown.style.display !== 'none') { hideSuggest(); return; }
-    if (_act.panelOpen) { _actClosePanel(); return; }
     if (_createOpen) { closeCreate(); return; }
     if (_almanacOpen) { closeAlmanac(); return; }
     if (readerOpen) { goBack(); return; }

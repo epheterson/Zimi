@@ -122,11 +122,17 @@ test('the filter narrows by type and by whom, and comes back', async ({ page }) 
   const rows = page.locator('.act-row');
   const total = await rows.count();
 
-  await page.locator('.act-filter-btn').click();
-  await expect(page.locator('.act-panel')).toBeVisible();
-  // Both axes are offered, built from what the journal actually contains.
-  await expect(page.locator('.act-panel-group')).toHaveCount(2);
-  await expect(page.locator('.act-check', { hasText: 'Server' })).toHaveCount(1);
+  // Both axes are on screen from the start — no box to open. Each row leads
+  // with All, so the pill count is the vocabulary plus one.
+  await expect(page.locator('.act-filter-row')).toHaveCount(2);
+  const typeRow = page.locator('.act-filter-row').first();
+  const actorRow = page.locator('.act-filter-row').last();
+  const types = typeRow.locator('.act-pill');
+  const actors = actorRow.locator('.act-pill');
+  await expect(page.locator('.act-pill', { hasText: 'Server' })).toHaveCount(1);
+  // Nothing filtered: every pill is lit, All included — "all" is a true
+  // description of what is showing, not a fifth choice sitting unlit beside it.
+  await expect(typeRow.locator('.act-pill.active')).toHaveCount(await types.count());
 
   // Expected counts come from the journal the page is holding, not from a
   // number written here — the seed can grow without the test going stale.
@@ -135,37 +141,50 @@ test('the filter narrows by type and by whom, and comes back', async ({ page }) 
   const priyaLeft = await page.evaluate(() =>
     _act.records.filter(r => r.type !== 'update' && r.actor.name === 'priya').length);
 
-  // Turn off one type: fewer rows, and the button says the filter is on.
-  await page.locator('.act-check', { hasText: 'Update' }).locator('input').uncheck();
-  await expect(rows).toHaveCount(total - updates);
-  await expect(page.locator('.act-filter-btn.filtered')).toHaveCount(1);
-  await expect(page.locator('.act-filter-n')).toHaveText('1');
+  // Every pill states its own count, over the whole journal.
+  await expect(page.locator('.act-pill', { hasText: 'Update' }).locator('.pill-count'))
+    .toHaveText(String(updates));
 
-  // Turn off an actor too — the axes compose.
-  await page.locator('.act-check', { hasText: 'priya' }).locator('input').uncheck();
+  // Turn one type off: fewer rows, and that pill alone goes dark.
+  const update = page.locator('.act-pill', { hasText: 'Update' });
+  await update.click();
+  await expect(rows).toHaveCount(total - updates);
+  await expect(update).not.toHaveClass(/active/);
+  await expect(update).toHaveAttribute('aria-pressed', 'false');
+  // All stops being true the moment it stops being true.
+  await expect(types.first()).not.toHaveClass(/active/);
+
+  // Turn off an actor too — the axes compose, and each row's All is its own.
+  await page.locator('.act-pill', { hasText: 'priya' }).click();
   await expect(rows).toHaveCount(total - updates - priyaLeft);
-  await expect(page.locator('.act-filter-n')).toHaveText('2');
+  await expect(actors.first()).not.toHaveClass(/active/);
 
   // The vocabulary does not shrink with the results: a filter whose options
   // vanish as you use it is one you cannot get back out of.
-  await expect(page.locator('.act-check', { hasText: 'Update' })).toHaveCount(1);
+  await expect(page.locator('.act-pill', { hasText: 'Update' })).toHaveCount(1);
+  await expect(page.locator('.act-pill', { hasText: 'Update' }).locator('.pill-count'))
+    .toHaveText(String(updates));
 
-  await page.locator('.act-panel-clear').click();
+  // All on one row restores that row only — the other axis stays as it was.
+  await types.first().click();
+  await expect(rows).toHaveCount(total - priyaLeft);
+  await expect(update).toHaveClass(/active/);
+  await expect(actors.first()).not.toHaveClass(/active/);
+  await actors.first().click();
   await expect(rows).toHaveCount(total);
-  await expect(page.locator('.act-filter-btn.filtered')).toHaveCount(0);
 });
 
-test('the popover closes on Escape and on a click outside', async ({ page }) => {
+test('an unrecorded actor says nothing rather than accusing anyone', async ({ page }) => {
   await enterActivity(page);
-  await page.locator('.act-filter-btn').click();
-  await expect(page.locator('.act-panel')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.locator('.act-panel')).toHaveCount(0);
-
-  await page.locator('.act-filter-btn').click();
-  await expect(page.locator('.act-panel')).toBeVisible();
-  await page.locator('.act-row').first().click({ position: { x: 5, y: 5 } });
-  await expect(page.locator('.act-panel')).toHaveCount(0);
+  // Pre-1.9 records have no actor. The chip is an em-dash with the reason on
+  // hover, not the word "Unknown", which read as though somebody had done it
+  // and Zimi were refusing to say who.
+  const chip = page.locator('.act-chip-unknown').first();
+  await expect(chip).toHaveText('\u2014');
+  await expect(chip).toHaveAttribute('title', /before Zimi tracked/i);
+  // "admin" is the password holder, not a person with an account by that name.
+  await expect(page.locator('.act-chip', { hasText: /^admin$/ }).first())
+    .toHaveAttribute('title', /admin password/i);
 });
 
 for (const theme of ['dark', 'light']) {
@@ -175,8 +194,8 @@ for (const theme of ['dark', 'light']) {
       page.evaluate(() => document.documentElement.getAttribute('data-theme'))
     ).toBe(theme);
     await page.screenshot({ path: `ui-review/activity-${theme}.png`, fullPage: true });
-    await page.locator('.act-filter-btn').click();
-    await expect(page.locator('.act-panel')).toBeVisible();
+    // Filtered, so the lit/unlit contrast is what the screenshot shows.
+    await page.locator('.act-pill', { hasText: 'Update' }).click();
     await page.screenshot({ path: `ui-review/activity-filter-${theme}.png` });
   });
 }
@@ -184,9 +203,9 @@ for (const theme of ['dark', 'light']) {
 test('the list survives a narrow phone viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await enterActivity(page);
-  await page.locator('.act-filter-btn').click();
-  await expect(page.locator('.act-panel')).toBeVisible();
-  // The popover stays inside the viewport instead of pushing the page sideways.
+  // Two pill rows must scroll within themselves rather than push the page
+  // sideways — the reason each row is its own overflow container.
+  await expect(page.locator('.act-filter-row')).toHaveCount(2);
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width).toBeLessThanOrEqual(390);
   await page.screenshot({ path: 'ui-review/activity-mobile.png', fullPage: true });

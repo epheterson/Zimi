@@ -31,7 +31,8 @@ function ok(label, cond, detail) {
 // _actVerb detect a type the server invented after this build shipped.
 const STRINGS = {
   act_actor_server: 'Server',
-  act_actor_unknown: 'Unknown',
+  act_actor_unknown_hint: 'recorded before Zimi tracked who',
+  act_actor_admin_hint: 'signed in with the admin password',
   act_type_download: 'Download',
   act_type_update: 'Update',
   act_type_create: 'Creation',
@@ -50,8 +51,11 @@ function sandboxWith(records) {
   };
   vm.createContext(sandbox);
   vm.runInContext(
+    extract(/var ACT_ACTOR_NONE = '[^']*';/, 'ACT_ACTOR_NONE') +
     extract(/function _actActorKey\(r\)\s*\{[\s\S]*?\n\}/, '_actActorKey') +
     extract(/function _actActorLabel\(key\)\s*\{[\s\S]*?\n\}/, '_actActorLabel') +
+    extract(/function _actActorTitle\(key\)\s*\{[\s\S]*?\n\}/, '_actActorTitle') +
+    extract(/function _actAxisCount\(kind, value\)\s*\{[\s\S]*?\n\}/, '_actAxisCount') +
     extract(/function _actTypeLabel\(type\)\s*\{[\s\S]*?\n\}/, '_actTypeLabel') +
     extract(/function _actVerb\(r\)\s*\{[\s\S]*?\n\}/, '_actVerb') +
     extract(/function _actFilterCount\(\)\s*\{[\s\S]*?\n\}/, '_actFilterCount') +
@@ -71,7 +75,21 @@ function sandboxWith(records) {
   ok('a record with no actor at all still groups', key(undefined) === 'server');
 
   ok('the server chip is localized', vm.runInContext("_actActorLabel('server')", sb) === 'Server');
-  ok('the unknown chip is localized', vm.runInContext("_actActorLabel('unknown')", sb) === 'Unknown');
+  // A record from before Zimi tracked actors says nothing rather than accusing
+  // somebody of being "Unknown" — the em-dash IS the answer, and the sentence
+  // that explains it is the tooltip's job.
+  ok('an unrecorded actor is an em-dash, not a word',
+    vm.runInContext("_actActorLabel('unknown')", sb) === '\u2014');
+  ok('and the em-dash carries its explanation',
+    vm.runInContext("_actActorTitle('unknown')", sb) === 'recorded before Zimi tracked who');
+  // "admin" is the password holder, not a person with an account of that name,
+  // and the difference is the whole reason the chip needs a hover.
+  ok('the admin chip explains what admin means',
+    vm.runInContext("_actActorTitle('admin')", sb) === 'signed in with the admin password');
+  ok('a real username needs no explaining',
+    vm.runInContext("_actActorTitle('priya')", sb) === '');
+  ok('the server needs no explaining',
+    vm.runInContext("_actActorTitle('server')", sb) === '');
   // A username is a name, not a string to translate.
   ok('a username is shown verbatim', vm.runInContext("_actActorLabel('priya')", sb) === 'priya');
 }
@@ -124,6 +142,17 @@ function sandboxWith(records) {
   vm.runInContext("_act.offActors['server'] = true", sb);
   ok('an actor filter separates a hand update from an auto-update',
     subjects() === 'Gutenberg,Field Notes,Old ZIM');
+
+  // Every pill carries a count, and it counts the WHOLE journal rather than
+  // what is currently showing. A count that shrank as you filtered would be
+  // reporting your own clicks back at you instead of describing the library.
+  const count = (kind, v) =>
+    vm.runInContext(`_actAxisCount(${JSON.stringify(kind)}, ${JSON.stringify(v)})`, sb);
+  ok('a type pill counts its records', count('type', 'update') === 2);
+  ok('an actor pill counts across types', count('actor', 'eric') === 2);
+  ok('a value nothing matches counts zero', count('type', 'export') === 0);
+  vm.runInContext("_act.offTypes['update'] = true; _act.offActors['eric'] = true", sb);
+  ok('the counts do not move when the filters do', count('type', 'update') === 2);
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');
