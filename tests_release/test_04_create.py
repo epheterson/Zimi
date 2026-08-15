@@ -249,7 +249,9 @@ def test_the_created_zim_carries_its_provenance(gate_server):
     assert status == 200
     created = [z for z in listing if z.get("title") == "Gate Field Notes"]
     assert created, "run after the creation check — nothing was created"
-    path = os.path.join(gate_server.zim_dir, created[0]["file"])
+    # Web creations land on the Created shelf (<zim_dir>/created), not in the
+    # library root; /list carries the bare filename either way.
+    path = os.path.join(gate_server.zim_dir, "created", created[0]["file"])
     assert os.path.exists(path), path
 
     archive = Archive(path)

@@ -1795,6 +1795,18 @@ function _createIngest(data) {
     _createAliveReady = data.alive_ready;
     _createRemember('alive', data.alive_ready);
   }
+  // The instance's stored capture defaults (Manage → Creator toggles) become
+  // the checkboxes' initial state, so a default the admin flipped there is
+  // what a fresh form shows. An explicit choice stashed for this mode still
+  // wins when the stash restores over the render.
+  if (data.capture_defaults) {
+    if (typeof data.capture_defaults.block_ads === 'boolean') {
+      CREATE_FIELDS.block_ads.on = data.capture_defaults.block_ads;
+    }
+    if (typeof data.capture_defaults.capture_variants === 'boolean') {
+      CREATE_FIELDS.capture_variants.on = data.capture_defaults.capture_variants;
+    }
+  }
   // The server holds one job at a time and hands it an id. A different id is a
   // different job — our queued submission reaching the front, or someone else's
   // run starting — and nothing of the last one's tree, tail or counters belongs
