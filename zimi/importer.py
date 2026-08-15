@@ -233,9 +233,11 @@ def ensure_sidecar(sink=None):
         )
     if rc != 0 or not os.path.exists(exe):
         shutil.rmtree(venv, ignore_errors=True)
+        # Never "see the output above": by the time anyone reads this in a
+        # journal or an activity row, the stream it pointed at is gone.
         raise CreateError(
-            "warc2zim sidecar install failed — see the output above. "
-            "Nothing was left behind; re-run to try again."
+            "warc2zim sidecar install failed (the job log has the tool's "
+            "output). Nothing was left behind; re-run to try again."
         )
     version = _tool_version(exe)
     _write_marker(venv, warc2zim=version, python=f"{ver[0]}.{ver[1]}")
@@ -351,7 +353,8 @@ def convert_archive(
         rc = _run_stream(cmd, _say_and_keep)
         if rc != 0:
             detail = "; ".join(t.strip() for t in tail if t.strip())[-400:]
-            raise CreateError(f"warc2zim failed (exit {rc}): {detail}")
+            suffix = f": {detail}" if detail else " and printed nothing"
+            raise CreateError(f"warc2zim failed (exit {rc}){suffix}")
         staged = os.path.join(staging, os.path.basename(out))
         if not os.path.exists(staged):
             raise CreateError("warc2zim reported success but produced no ZIM file")

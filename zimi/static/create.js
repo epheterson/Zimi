@@ -1622,8 +1622,17 @@ async function _createSubmit() {
   _createFormError('');
   _createStashMode();
   _createSubmitting = true;
+  // The press must answer the finger NOW, not after the round trip: the
+  // button goes busy synchronously (label swap + disabled) so the click never
+  // reads as ignored while the server thinks (Eric: "it doesn't immediately
+  // respond... it should have some kinda instant feedback not just sit there").
   var btn = document.getElementById('create-start');
-  if (btn) btn.disabled = true;
+  var btnLabel = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('busy');
+    btn.textContent = _createT('create_starting');
+  }
   try {
     var res = await authedFetch('/manage/create', {
       method: 'POST',
@@ -1644,7 +1653,11 @@ async function _createSubmit() {
   } finally {
     _createSubmitting = false;
     var b = document.getElementById('create-start');
-    if (b) b.disabled = false;
+    if (b) {
+      b.disabled = false;
+      b.classList.remove('busy');
+      if (btnLabel) b.innerHTML = btnLabel;
+    }
   }
 }
 
@@ -1923,12 +1936,16 @@ function _createRunShellHtml(s) {
     '</div>' +
     '<div id="create-done-slot"></div>' +
     '<div id="create-fail-slot"></div>' +
-    '<details class="create-logbox" id="create-logbox">' +
+    // Actions directly under the progress, log disclosure LAST and pushed
+    // well clear of them: the log summary used to sit one row above Stop
+    // early / Cancel, and a finger reaching to watch progress could end the
+    // run instead (Eric: "scary close... I don't want to mis-click").
+    '<div class="create-actions" id="create-run-actions"></div>' +
+    _createCreditHtml(s.mode) +
+    '<details class="create-logbox" id="create-logbox" style="margin-top:28px">' +
       '<summary>' + tH('create_log') + '</summary>' +
       '<div class="create-log" id="create-log"></div>' +
     '</details>' +
-    _createCreditHtml(s.mode) +
-    '<div class="create-actions" id="create-run-actions"></div>' +
   '</div>';
 }
 
@@ -2194,10 +2211,14 @@ function _createSyncLog() {
 // to another change): t() falls back to the raw key, and a raw key on a
 // button is worse than English. A translation added later wins automatically,
 // because the key is still asked for first.
+// "Stop early", not "Finish now": the button ends the crawl before its
+// bounds, and calling that finishing reads as if the run were completing on
+// its own terms (Eric: "it's not like finish finish it's like end early").
 var CREATE_FALLBACK_TEXT = {
-  create_finish_now: 'Finish now',
-  create_finishing: 'Finishing…',
-  create_stopped_early: 'Stopped early — this is everything captured up to the stop.'
+  create_finish_now: 'Stop early',
+  create_finishing: 'Stopping…',
+  create_stopped_early: 'Stopped early — this is everything captured up to the stop.',
+  create_starting: 'Starting…'
 };
 
 function _createT(key) {
