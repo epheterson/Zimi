@@ -2480,6 +2480,18 @@ def _create_job_record(job):
         "ok": bool(job.ok),
         "error": job.error,
         "result": (job.result or {}).get("name"),
+        # What the run counted and whether it stopped short of its bounds.
+        # Without these the journal answers "did my capture finish?" with a
+        # bare ok — a crawl that died at its byte budget after 38 of a site's
+        # pages read exactly like one that got everything (Eric's apple run:
+        # diagnosing it meant re-deriving the budget math by hand).
+        "counts": {
+            k: v
+            for k, v in (job.result or {}).items()
+            if k in ("pages", "assets", "bytes", "files", "videos", "entries")
+        }
+        or None,
+        "stopped": (job.result or {}).get("stopped"),
         "actor": _activity_clean_actor(getattr(job, "actor", None)),
     }
 

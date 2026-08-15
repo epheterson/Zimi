@@ -541,6 +541,40 @@ function tPluralH(base, n, vars) {
 }
 function _loadingHtml(key) { return '<div class="loading"><span class="spinner-inline"></span>' + tH(key || 'loading') + '</div>'; }
 
+// In-app confirmation — replaces window.confirm everywhere (Eric: "Delete
+// confirmation should be in app ui"). Reuses the password overlay's shell so
+// it themes correctly on both palettes. Resolves true only on the primary
+// button; overlay tap, Cancel, and Escape all resolve false.
+function _appConfirm(message, okLabel) {
+  return new Promise(function(resolve) {
+    var overlay = document.createElement('div');
+    overlay.className = 'pw-overlay open';
+    overlay.innerHTML =
+      '<div class="pw-box" role="alertdialog" aria-modal="true">' +
+        '<h3>' + esc(message) + '</h3>' +
+        '<div class="pw-actions">' +
+          '<button type="button" id="ac-cancel">' + tH('cancel') + '</button>' +
+          '<button type="button" class="pw-primary" id="ac-ok">' + esc(okLabel || t('ok')) + '</button>' +
+        '</div>' +
+      '</div>';
+    function done(answer) {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey, true);
+      resolve(answer);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.stopPropagation(); done(false); }
+    }
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) done(false); });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
+    overlay.querySelector('#ac-cancel').onclick = function() { done(false); };
+    var ok = overlay.querySelector('#ac-ok');
+    ok.onclick = function() { done(true); };
+    ok.focus();
+  });
+}
+
 async function _loadI18n(lang) {
   if (lang === 'en') {
     // Load English inline (always available)
@@ -5036,7 +5070,8 @@ function _moveZimTo(zim, category) {
       closeCtx();
       var zinfo = _zimInfo(zim);
       if (!zinfo || !zinfo.file) return;
-      if (!confirm(t('delete_zim_confirm', {name: zinfo.title || zim}))) return;
+      _appConfirm(t('delete_zim_confirm', {name: zinfo.title || zim}), t('delete')).then(function(sure) {
+      if (!sure) return;
       // Optimistic: remove card immediately
       if (card) card.style.display = 'none';
       zimsCache = zimsCache.filter(function(z) { return z.name !== zim; });
@@ -5046,6 +5081,7 @@ function _moveZimTo(zim, category) {
         body: JSON.stringify({filename: zinfo.file})
       }).then(function() {
         renderHome();
+      });
       });
     }
   });
@@ -9168,9 +9204,11 @@ function _createUser() {
 }
 
 function _deleteUser(name) {
-  if (!confirm(t('users_delete_confirm').replace('{name}', name))) return;
+  _appConfirm(t('users_delete_confirm').replace('{name}', name), t('delete')).then(function(sure) {
+  if (!sure) return;
   _usersPost({ action: 'delete', name: name }).then(function(r) {
     if (r.ok) { _usersData = r.j; _refreshUsersPane(); }
+  });
   });
 }
 
@@ -11748,13 +11786,13 @@ async function _generateToken() {
 }
 
 async function _regenerateToken() {
-  if (!confirm(t('confirm_regenerate_token'))) return;
+  if (!(await _appConfirm(t('confirm_regenerate_token')))) return;
   await manageFetch('/manage/revoke-token', { method: 'POST' });
   _generateToken();
 }
 
 async function _revokeToken() {
-  if (!confirm(t('confirm_revoke_token'))) return;
+  if (!(await _appConfirm(t('confirm_revoke_token')))) return;
   await manageFetch('/manage/revoke-token', { method: 'POST' });
   switchMs('server');
 }
@@ -12700,7 +12738,7 @@ async function resumeAllDownloads() {
   refreshDownloads();
 }
 async function deleteAllDownloads() {
-  if (!confirm(t('dl_delete_all_confirm'))) return;
+  if (!(await _appConfirm(t('dl_delete_all_confirm'), t('delete')))) return;
   // Cancel everything still in flight, then clear the finished rows.
   const active = (_dlLastDls || []).filter(d => !d.done);
   await _bulkDownloadAction('/manage/cancel', active);

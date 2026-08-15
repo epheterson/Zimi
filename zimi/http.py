@@ -1147,6 +1147,20 @@ _UNCAPTURED_STRINGS = {
     "uncaptured_back": "Go back",
 }
 
+# The page for a ZIM that is not installed (deleted, renamed, or never here).
+# A person lands on this from an old bookmark, a history entry, or a link
+# minted while the source still existed; raw JSON here reads as a server
+# fault on a phone screen. Same self-contained shell as the uncaptured page.
+_GONE_STRINGS = {
+    "zim_gone_title": "This source isn't in the library",
+    "zim_gone_body": (
+        "The source this page belonged to has been removed or renamed. "
+        "Old bookmarks and history entries keep pointing here — the rest "
+        "of the library is fine."
+    ),
+    "zim_gone_home": "Back to the library",
+}
+
 # Deliberately self-contained: no app.css, no app.js. This renders inside the
 # reader's iframe, where the SPA's stylesheet would style a document it was
 # never written for, and it has to be readable when the page it replaces was
@@ -2499,6 +2513,35 @@ class ZimHandler(BaseHTTPRequestHandler):
             cache="no-store",
         )
 
+    def _send_zim_gone_page(self, zim_name):
+        """The page for a document request against a ZIM that is not
+        installed. Reuses the uncaptured page's shell (same styles, same
+        localStorage theme/language pickup) with its own three strings and a
+        single action: back to the library, top-level so it escapes the
+        reader iframe."""
+
+        def _text(value):
+            return escape(value, quote=False)
+
+        body = _UNCAPTURED_PAGE.format(
+            url_attr="/",
+            url_text=_text(zim_name),
+            zim=_text(zim_name),
+            lang_key=_UI_LANG_KEY,
+            theme_key=_APP_THEME_KEY,
+            title=_text(_GONE_STRINGS["zim_gone_title"]),
+            body=_text(_GONE_STRINGS["zim_gone_body"]),
+            url_label=_text("Source"),
+            open_label=_text(_GONE_STRINGS["zim_gone_home"]),
+            back_label=_text(_UNCAPTURED_STRINGS["uncaptured_back"]),
+        ).replace('target="_blank"', 'target="_top"')
+        return self._send(
+            200,
+            body.encode("utf-8"),
+            "text/html; charset=utf-8",
+            cache="no-store",
+        )
+
     def _send_entry_too_large(self, total_size):
         """413 for an entry Zimi refuses to materialize. Used by every /w/
         branch that can't be answered with a bounded window."""
@@ -2525,6 +2568,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         with _srv._zim_lock:
             archive = _srv.get_archive(zim_name)
             if archive is None:
+                # A page being OPENED gets prose — a deleted source's old
+                # bookmarks and history entries land here, and raw JSON on a
+                # phone reads as a server fault (Eric hit exactly that). A
+                # script or image fetching keeps the JSON it can parse.
+                if self._wants_html_document():
+                    return self._send_zim_gone_page(zim_name)
                 return self._json(404, {"error": f"ZIM '{zim_name}' not found"})
 
             # Serve ZIM icon from metadata
