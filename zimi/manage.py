@@ -2833,6 +2833,16 @@ def _create_kwargs(opts, *names):
     return {name: opts[name] for name in names if opts.get(name) is not None}
 
 
+def _create_out_dir():
+    """Web-created ZIMs land in <zim_dir>/created — the folder the library
+    files as its Created section, which is where an admin who just watched a
+    job finish goes looking. A ZIM dropped in the library root instead is
+    filed under its language with everything else and reads as missing (found
+    the hard way: Eric's first real capture "didn't show in the created
+    list"). The CLI keeps the root default; --out keeps winning there."""
+    return os.path.join(_srv.ZIM_DIR, "created")
+
+
 def _create_run(job, opts):
     """Drive the engine for one job. Imports are deferred to here: the writer
     stack and yt-dlp are heavy, and a server that never creates a ZIM should
@@ -2847,6 +2857,7 @@ def _create_run(job, opts):
         return create_pages_zim(
             opts.get("urls") or [job.source],
             title=job.title or None,
+            out_dir=_create_out_dir(),
             register=True,
             progress=job.note,
             **_create_kwargs(
@@ -2866,6 +2877,7 @@ def _create_run(job, opts):
         return create_site_zim(
             job.source,
             title=job.title or None,
+            out_dir=_create_out_dir(),
             register=True,
             progress=job.note,
             stop=stop,
@@ -2888,6 +2900,7 @@ def _create_run(job, opts):
         return create_video_zim(
             job.source,
             title=job.title or None,
+            out_dir=_create_out_dir(),
             audio_only=opts.get("audio_only", False),
             register=True,
             progress=job.note,
@@ -2898,6 +2911,7 @@ def _create_run(job, opts):
     return import_archive(
         job.source,
         title=job.title or None,
+        out_dir=_create_out_dir(),
         register=True,
         sink=job.note,
         **_create_kwargs(opts, "name"),

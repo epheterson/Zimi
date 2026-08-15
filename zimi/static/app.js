@@ -1250,8 +1250,11 @@ function updateTopbar() {
   // style; the mobile !important rules still win) whenever the menu would
   // carry the Create row. See _buildTopbarMenuHtml.
   _createRememberCanShow();
+  // Also revealed while the Create page itself is up: with + gone from the
+  // topbar, the ⋯ menu is the only route OUT of that page (Manage, Language)
+  // on a wide viewport — hiding it there strands the admin.
   var moreBtn = document.querySelector('.topbar-more');
-  if (moreBtn) moreBtn.style.display = _createMenuRowAvailable() ? 'flex' : '';
+  if (moreBtn) moreBtn.style.display = (_createMenuRowAvailable() || _createOpen) ? 'flex' : '';
   document.getElementById('lang-selector-btn').style.display =
     _getStorageFlag(SK.HIDE_LANG_CHOOSER) ? 'none' : '';
   _updateLibraryBtnIcon();
@@ -6055,6 +6058,13 @@ async function enterManage(e, section) {
   // this session, else Library. renderManage honors _pendingMsSection.
   var _msTarget = _validMsSection(section) || _pendingMsSection || _lastMsSection() || 'library';
   _pendingMsSection = _msTarget;
+  // Manage is reachable from the Create page's ⋯ menu. Create is a full-page
+  // surface that hides #main-view — left open, Manage renders under a dead
+  // Create page (Eric, mobile: "go to manage from create view it doesn't
+  // load right"). closeCreate no-ops when the surface is down.
+  if (_createOpen && typeof closeCreate === 'function') {
+    try { closeCreate(); } catch (err) {}
+  }
   // The History/Bookmarks side panel floats over the right edge; close it so
   // it doesn't overlap and truncate the full Manage view.
   _closeLibraryPanel();
@@ -16373,7 +16383,10 @@ function _buildTopbarMenuHtml() {
     navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();openCreate()">' +
       _TBM_CREATE_ICON + ' ' + tH('create_zim') + '</button>';
   }
-  if (_isNarrow()) {
+  // The Create page hides the inline Random/Language/gear buttons at every
+  // width, so while it is open the ⋯ menu must carry the nav group even on a
+  // wide viewport — otherwise a desktop admin has no route to Manage at all.
+  if (_isNarrow() || _createOpen) {
     navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
     if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
     // Manage row: while downloads are active, carry the count and route the tap
