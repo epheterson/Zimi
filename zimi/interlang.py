@@ -1014,9 +1014,24 @@ def _build_domain_zim_map():
                 bytes(archive.get_metadata("Source")).decode("utf-8", "replace").strip()
             )
         except Exception as e:
+            # Absent Source RAISES rather than returning empty — fall through
+            # to the main-entry-path discovery below instead of giving up.
             log.debug("Failed to read Source metadata for %s: %s", name, e)
-            continue
+            source = ""
         if not source:
+            # 2b. A web-mirroring ZIM (alive/zimit) has no Source metadata —
+            # warc2zim accepts --source and writes nothing — but its MAIN
+            # ENTRY PATH literally is the site's address ("www.apple.com/").
+            # Learning the domain from it is what lets absolute links inside
+            # such a ZIM resolve back into the archive instead of leaking to
+            # the live web.
+            try:
+                main = archive.main_entry.get_item().path
+            except Exception:
+                main = ""
+            host = (main or "").split("/", 1)[0]
+            if re.match(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$", host or ""):
+                _add_domain(host, name)
             continue
         try:
             if "://" in source:
