@@ -14258,8 +14258,20 @@ function openReader(url) {
     try { _defineAttachToDoc(frame); } catch(e) {}
     // Inject responsive CSS + scroll-to-top button for mobile
     try {
+      // Web-mirror pages (alive engine, zimit) ship a browser's-eye recording of
+      // a real site: their own viewport meta, their own responsive CSS, their own
+      // replay shim (wombat). The mwoffliner first-aid below actively BREAKS them
+      // — max-width:100% on img squishes apple.com's 734px container-cropped
+      // tiles into the 393px viewport while the site's height rule holds, so
+      // every tile distorts. Wombat's presence in the document IS the web-mirror
+      // signal: such pages get only the scroll-to-top button, never the corset.
+      var _isWebMirror = false;
+      try {
+        _isWebMirror = !!(frame.contentWindow._wb_wombat ||
+          frame.contentDocument.querySelector('script[src*="wombat"]'));
+      } catch(e) { _isWebMirror = false; }
       var _rStyle = frame.contentDocument.createElement('style');
-      _rStyle.textContent = [
+      _rStyle.textContent = (_isWebMirror ? [] : [
         // Horizontal containment for raw mwoffliner pages: the whole viewport must
         // never scroll sideways on a phone (e.g. wikipedia/Caribbean's wide country
         // tables + locator map). Genuinely-wide content (tables, <pre>) keeps its
@@ -14278,9 +14290,10 @@ function openReader(url) {
         // floated infoboxes) that carry an inline pixel width wider than a phone —
         // rein them into the column so they don't force page-level overflow.
         '.thumb,.thumbinner,figure,.gallery,.mw-kartographer-map,.mw-kartographer-maplink,' +
-          '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}',
+          '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}'
+      ]).concat([
         '#zimi-top{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;border:none;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:9999;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}'
-      ].join('');
+      ]).join('');
       frame.contentDocument.head.appendChild(_rStyle);
       var _topBtn = frame.contentDocument.createElement('button');
       _topBtn.id = 'zimi-top';
