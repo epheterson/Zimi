@@ -268,50 +268,33 @@ test.describe('the shared panel', () => {
   });
 });
 
-// ── D4: folder retreats from the web ────────────────────────────────────────
+// ── D4: folder left the web ─────────────────────────────────────────────────
 
-test.describe('folder mode is CLI-only until a root is configured', () => {
+test.describe('folder mode is CLI-only', () => {
   // The service worker would answer the status poll itself, and a request the
   // browser never makes is a request page.route cannot script.
   test.use({ serviceWorkers: 'block' });
 
-  test('no chip at all when the server names no root', async ({ page }) => {
+  test('no folder chip, whatever the server reports', async ({ page }) => {
+    // Round 3, Eric: "do remove folder I said that would be CLI only." Even a
+    // server that names a create root gets no folder tile — the root now
+    // exists solely for import's confinement.
+    await page.route('**/manage/create/status*', async route => {
+      const res = await route.fetch();
+      const body = await res.json();
+      body.create_root = '/srv/library-sources';
+      await route.fulfill({ response: res, json: body });
+    });
     await openCreate(page);
     const modes = await page.evaluate(() =>
       [...document.querySelectorAll('.create-chip')].map(c => c.textContent.trim()));
     expect(modes.join(' | ')).not.toMatch(/Folder/i);
-    expect(await page.evaluate(() => window._createRoot)).toBe('');
   });
 
-  test('the chip appears, rooted, when the server reports one', async ({ page }) => {
-    // The client gate is cosmetic — the server enforces the confinement — so
-    // this asserts what the page DRAWS when told a root exists.
-    await page.route('**/manage/create/status*', async route => {
-      const res = await route.fetch();
-      const body = await res.json();
-      body.create_root = '/srv/library-sources';
-      await route.fulfill({ response: res, json: body });
-    });
-    await openCreate(page);
-    await page.waitForFunction(() => window._createRoot === '/srv/library-sources');
-    const modes = await page.evaluate(() =>
-      [...document.querySelectorAll('.create-chip')].map(c => c.textContent.trim()));
-    expect(modes.join(' | ')).toMatch(/Folder/i);
-    await pickMode(page, 'folder');
-    await expect(page.locator('.create-panel')).toContainText('/srv/library-sources');
-  });
-
-  test('a creator account never sees the two server-path modes', async ({ page }) => {
+  test('a creator account never sees the server-path mode', async ({ page }) => {
     // A signed-in user with the per-user create permission may capture the web
-    // and package their bookmarks. Folder and import read the SERVER'S disk and
-    // the server keeps them for the primary admin, so they are not drawn —
-    // even with a root configured, which is the case that could tempt it.
-    await page.route('**/manage/create/status*', async route => {
-      const res = await route.fetch();
-      const body = await res.json();
-      body.create_root = '/srv/library-sources';
-      await route.fulfill({ response: res, json: body });
-    });
+    // and package their bookmarks. Import reads the SERVER'S disk and the
+    // server keeps it for the primary admin, so it is not drawn.
     await page.goto(BASE);
     await page.waitForFunction(() => typeof window.openCreate === 'function');
     // app.js keeps _userSession null for admins; a session carrying canCreate
@@ -324,7 +307,6 @@ test.describe('folder mode is CLI-only until a root is configured', () => {
       window.openCreate();
     });
     await page.waitForSelector('.create-chip', { state: 'attached' });
-    await page.waitForFunction(() => window._createRoot === '/srv/library-sources');
     await expect.poll(() => page.evaluate(() =>
       [...document.querySelectorAll('.create-chip')].map(c => c.textContent.trim()).join(' | ')
     )).not.toMatch(/Folder|Import/i);

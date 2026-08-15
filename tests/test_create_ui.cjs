@@ -60,21 +60,25 @@ const def = id => CREATE_MODE_DEFS.find(d => d.id === id);
 // ── the modes, and which of them the server has ever heard of ───────────────
 
 // Order is LIKELY USE. Capturing something off the web is why almost everyone
-// opens this page, so the URL modes lead; the two that start from something
-// already on the server come last. Folder must NOT be first — leading with
-// "type a path on the server" is the round-one complaint this page exists to
-// answer, so this assertion is a product decision, not a detail.
+// opens this page, so the URL modes lead; the one that starts from something
+// already on the server comes last. Folder is not merely never-first any
+// more — it is GONE, by decree ("do remove folder I said that would be CLI
+// only"): the server refuses the mode from the web, so a tile for it would be
+// a door drawn on a wall.
 eq(CREATE_MODE_DEFS.map(d => d.id),
-  ['page', 'site', 'video', 'bookmarks', 'folder', 'import'],
-  'tile order: the web modes first, bookmarks, then the server-side two');
-check(CREATE_MODE_DEFS[0].id !== 'folder', 'folder is never the first tile');
+  ['page', 'site', 'video', 'bookmarks', 'import'],
+  'tile order: the web modes first, bookmarks, then import');
+check(!CREATE_MODE_DEFS.some(d => d.id === 'folder'),
+  'folder mode is not offered at all — it is CLI-only');
 
 // Bookmarks is a CLIENT mode — its source is this browser's localStorage, and
 // the server's CREATE_MODES tuple does not contain it. Sending one would be a
-// 400 at best; this is the assertion that keeps the two lists honest.
+// 400 at best. The server tuple still names "folder" so its refusal can point
+// at the CLI, but the web never offers it — the page's list is the tuple
+// minus that one word.
 eq(CREATE_MODE_DEFS.filter(d => !d.client).map(d => d.id).sort(),
-  ['folder', 'import', 'page', 'site', 'video'],
-  'the server-bound modes are exactly the server CREATE_MODES tuple');
+  ['import', 'page', 'site', 'video'],
+  'the server-bound modes are the server CREATE_MODES tuple minus folder');
 
 check(_createBuildRequest('bookmarks', { source: 'anything at all' }) === null,
   'a client mode refuses to build a server request, whatever is in the field');
@@ -124,7 +128,6 @@ eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
     'language', 'ignore_robots']],
   ['video', ['format', 'max_bytes', 'language']],
   ['bookmarks', []],
-  ['folder', ['language']],
   ['import', ['name']]
 ], 'each mode advertises its documented advanced options');
 
@@ -152,26 +155,28 @@ for (const d of CREATE_MODE_DEFS) {
     `${d.id} is available when the server is online`);
 }
 eq(CREATE_MODE_DEFS.filter(d => _createModeAvailable(d, true, true)).map(d => d.id),
-  ['bookmarks', 'folder', 'import'],
-  'offline with the sidecar installed leaves bookmarks, folder and import');
+  ['bookmarks', 'import'],
+  'offline with the sidecar installed leaves bookmarks and import');
 eq(CREATE_MODE_DEFS.filter(d => _createModeAvailable(d, true, false)).map(d => d.id),
-  ['bookmarks', 'folder'],
-  'offline without the sidecar: import drops out, the two local modes stay');
+  ['bookmarks'],
+  'offline without the sidecar: import drops out, bookmarks stays');
 
 // ── request mapping ─────────────────────────────────────────────────────────
 
-eq(_createBuildRequest('folder', { source: '  /srv/docs  ', title: ' Notes ' }),
-  { mode: 'folder', source: '/srv/docs', title: 'Notes' },
-  'folder: source and title are trimmed');
+eq(_createBuildRequest('import', { source: '  /srv/a.wacz  ', title: ' Notes ' }),
+  { mode: 'import', source: '/srv/a.wacz', title: 'Notes' },
+  'import: source and title are trimmed');
 
-eq(_createBuildRequest('folder', { source: '/srv/docs', title: '   ' }),
-  { mode: 'folder', source: '/srv/docs' },
+eq(_createBuildRequest('import', { source: '/srv/a.wacz', title: '   ' }),
+  { mode: 'import', source: '/srv/a.wacz' },
   'a blank title is omitted, not sent as an empty string');
 
-check(_createBuildRequest('folder', { source: '   ' }) === null,
+check(_createBuildRequest('import', { source: '   ' }) === null,
   'an empty source refuses to build a request');
 check(_createBuildRequest('nope', { source: '/srv/docs' }) === null,
   'an unknown mode refuses to build a request');
+check(_createBuildRequest('folder', { source: '/srv/docs' }) === null,
+  'folder is an unknown mode HERE — the CLI is its only door');
 
 // Flags belong to the mode that declares them. A stale value left in the DOM
 // from a previously-open form must not ride along with the next submission.
@@ -219,7 +224,7 @@ for (const id of ['page', 'site']) {
   check(def(id).flags.includes('engine'),
     `${id} offers the engine choice on the panel, not behind Advanced`);
 }
-for (const id of ['video', 'folder', 'import']) {
+for (const id of ['video', 'import']) {
   const d = def(id);
   check(!d.flags.concat(d.advanced).includes('engine'),
     `${id} does not offer an engine choice — it does not capture a web page`);
@@ -273,7 +278,7 @@ for (const id of ['page', 'site']) {
   check((def(id).advanced || []).includes('block_ads'),
     `${id} offers ad blocking, behind Advanced`);
 }
-for (const id of ['video', 'folder', 'import']) {
+for (const id of ['video', 'import']) {
   const d = def(id);
   check(!d.flags.concat(d.advanced || []).includes('block_ads'),
     `${id} does not offer ad blocking — nothing there drives a browser`);
@@ -357,10 +362,6 @@ eq(_createBuildRequest('site', {
   mode: 'site', source: 'https://e.org/', max_pages: 50, max_depth: 2,
   max_bytes: '2G', delay: 1.5, language: 'fra', ignore_robots: true
 }, 'site sends its whole advanced set, sizes as typed and delays fractional');
-
-eq(_createBuildRequest('folder', { source: '/srv/docs', language: 'deu' }),
-  { mode: 'folder', source: '/srv/docs', language: 'deu' },
-  'folder sends language and nothing else');
 
 eq(_createBuildRequest('import', { source: '/srv/a.wacz', name: 'my-archive' }),
   { mode: 'import', source: '/srv/a.wacz', name: 'my-archive' },
@@ -463,23 +464,17 @@ sandbox.t = (k, vars) => {
 
 const rowMap = p => Object.fromEntries(_createPreviewRows(p).map(r => [r.k, r.v]));
 
-eq(rowMap({ mode: 'folder', files: 47, bytes: 1024, main: 'index.html', language: 'fra' }),
-  {
-    create_pv_files: '47',
-    create_pv_size: '1024 B',
-    create_pv_main: 'index.html',
-    create_pv_language: 'fra create_pv_detected'
-  },
-  'folder rows: count, size, main page, detected language');
+// Folder rows are gone with folder mode itself — a preview for a form that no
+// longer exists would be dead weight kept honest for nobody.
+check(_createPreviewRows({ mode: 'folder', files: 47, bytes: 1024 }).length === 0
+  || !rowMap({ mode: 'folder', files: 47, bytes: 1024 }).create_pv_files,
+  'no folder preview rows remain');
 
-check(rowMap({ mode: 'folder', files: 20000, files_capped: true, bytes: 0 }).create_pv_files === '20000+',
-  'a capped count says so rather than claiming an exact total');
-
-// Absent facts are absent rows. A preview line reading "Main page:" with
-// nothing after it is a worse answer than not asking the question.
-eq(_createPreviewRows({ mode: 'folder', files: 0, bytes: 0 }).map(r => r.k),
-  ['create_pv_files', 'create_pv_size'],
-  'a missing main page and language drop their rows entirely');
+// Absent facts are absent rows. A preview line reading "Title:" with nothing
+// after it is a worse answer than not asking the question.
+eq(_createPreviewRows({ mode: 'page', final_url: 'http://x/', bytes: 8 }).map(r => r.k),
+  ['create_pv_address', 'create_pv_size'],
+  'a missing title and language drop their rows entirely');
 
 eq(_createPreviewRows({ mode: 'page', title: 'Handbuch', final_url: 'http://x/', bytes: 8 }).map(r => r.k),
   ['create_pv_title', 'create_pv_address', 'create_pv_size'],
@@ -868,38 +863,29 @@ eq(_createHistoryLabel({ mode: 'site' }), 'create_mode_site', 'then the mode, bu
 
 // -- who is offered which mode -----------------------------------------------
 //
-// Two reasons a mode is not drawn, and both are the server's rules shown
-// honestly. Eric, on the round-2 folder flow: "I don't love showing the whole
-// file system there." So the web surface stays CLOSED until the operator names
-// a root. And a creator account — a signed-in user with the per-user create
-// permission — never sees the two modes that read the SERVER'S disk, because
-// the server keeps those for the primary admin.
+// One reason a mode is not drawn, and it is the server's rule shown honestly:
+// a creator account — a signed-in user with the per-user create permission —
+// never sees the mode that reads the SERVER'S disk, because the server keeps
+// it for the primary admin. (Folder, the other server-path mode, is not
+// hidden but GONE: CLI-only, refused by the server, asserted above.)
 //
-// Hidden rather than disabled in both cases: a greyed-out chip advertises a
-// feature, and there is nothing to advertise to someone who will never be
-// allowed it. The server enforces both independently — this decides which door
-// is DRAWN, never which one is locked.
-const folder = def('folder');
-check(folder.needsRoot === true, 'folder mode is the one that needs a root');
-check(_createModeVisible(folder, '', false) === false, 'no root configured, no folder chip');
-check(_createModeVisible(folder, '/srv/sources', false) === true,
-  'a root configured brings it back');
+// Hidden rather than disabled: a greyed-out chip advertises a feature, and
+// there is nothing to advertise to someone who will never be allowed it. The
+// server enforces the rule independently — this decides which door is DRAWN,
+// never which one is locked.
 for (const d of CREATE_MODE_DEFS) {
-  if (d.id === 'folder') continue;
-  check(_createModeVisible(d, '', false) === true,
-    `${d.id} is offered to an admin whatever the root setting is`);
+  check(_createModeVisible(d, false) === true,
+    `${d.id} is offered to an admin`);
 }
 
-// The two server-path modes are exactly folder and import — the pair the
-// server gates to the primary admin. Marked in the table rather than named in
-// an if, so adding a third server-path mode cannot forget this rule.
-eq(CREATE_MODE_DEFS.filter(d => d.serverPath).map(d => d.id), ['folder', 'import'],
-  'folder and import are the modes that read the server\'s own disk');
-eq(CREATE_MODE_DEFS.filter(d => _createModeVisible(d, '/srv/sources', true)).map(d => d.id),
+// The server-path mode is exactly import — the one the server gates to the
+// primary admin. Marked in the table rather than named in an if, so adding a
+// second server-path mode cannot forget this rule.
+eq(CREATE_MODE_DEFS.filter(d => d.serverPath).map(d => d.id), ['import'],
+  'import is the one mode that reads the server\'s own disk');
+eq(CREATE_MODE_DEFS.filter(d => _createModeVisible(d, true)).map(d => d.id),
   ['page', 'site', 'video', 'bookmarks'],
-  'a creator gets the web modes and bookmarks, never the two server-path ones');
-check(_createModeVisible(folder, '/srv/sources', true) === false,
-  'a configured root does NOT open folder mode to a creator');
+  'a creator gets the web modes and bookmarks, never the server-path one');
 
 check(CREATE_TREE_MAX_NODES > 0 && CREATE_TREE_MAX_NODES <= 1000,
   'the tree draws a bounded number of rows, whatever the crawl size');
