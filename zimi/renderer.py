@@ -714,8 +714,17 @@ class RenderedSession:
         if sync_playwright is None:
             self._cleanup_spool()
             raise CreateError(RENDERER_MISSING)
+        # This line is also the run pane's cue (zimi.manage derives a structured
+        # event from it): Chromium can take many seconds to boot, and until the
+        # first page reports, this sentence is the only sign of life there is.
         self._note("starting a headless browser…")
         try:
+            # THE EFFICIENCY GUARANTEE: at most one Chromium serves creation at
+            # a time. Every engine builds exactly one session per job, and the
+            # create queue in zimi.manage is single-slot — a second job waits in
+            # line rather than launching a second browser beside this one. (The
+            # only other launch in this module is the one-shot availability
+            # probe, cached for the life of the process.)
             self._pw = sync_playwright().start()
             self._browser = _launch(self._pw.chromium)
         except Exception as e:

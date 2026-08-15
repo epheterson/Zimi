@@ -63,7 +63,6 @@ var CREATE_RECENT_MAX = 10;
 var CREATE_SOURCE_MAX = 56;
 
 var _CREATE_ICONS = {
-  folder: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   page: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/></svg>',
   site: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/></svg>',
   video: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><polygon points="10 9 15 12 10 15 10 9"/></svg>',
@@ -87,12 +86,12 @@ var _CREATE_ICONS = {
 //                 real default differs by engine (a crawl budget is not a
 //                 video one). A select has no placeholder, so a default it is
 //                 meant to arrive with has to be a chosen option.
-//   browse      — the source is a server path, so offer the folder picker
-//   needsRoot   — the mode reads a directory the operator names, so the web
-//                 surface stays CLOSED until they have named one. See below.
 //   serverPath  — the source is somewhere on the SERVER'S disk rather than out
-//                 on the web, which is why the server keeps these two for the
-//                 primary admin alone. A creator account never sees them.
+//                 on the web, which is why the server keeps it for the primary
+//                 admin alone. A creator account never sees it. Import is the
+//                 only one left: folder mode is CLI-only now ("do remove
+//                 folder, I said that would be CLI only"), refused by the
+//                 server and drawn nowhere here.
 // Bookmarks is one of the six ways to make a ZIM and the only one whose source
 // is not on the server: the bookmarks live in this browser's localStorage. So it
 // is a CLIENT mode — it never reaches /manage/create, and its button hands off
@@ -105,10 +104,9 @@ var CREATE_BOOKMARKS_DEF = {
 // Order is LIKELY USE, which is not the same as likely to succeed. Capturing
 // something off the web is why almost everyone opens this page, so the three
 // URL modes lead, cheapest first; then bookmarks, which is a handful of
-// articles you already chose; then the two that start from something already
-// sitting on the server, which is the rarest way in and the one you only reach
-// deliberately. Folder is emphatically not first — leading with "type a path on
-// the server" is what made round one feel like a shot in the dark.
+// articles you already chose; then import, which starts from something
+// already sitting on the server — the rarest way in and the one you only
+// reach deliberately.
 var CREATE_MODE_DEFS = [
   {
     id: 'page', network: true, multiline: true,
@@ -131,11 +129,6 @@ var CREATE_MODE_DEFS = [
     pick: { max_bytes: '4G' }
   },
   CREATE_BOOKMARKS_DEF,
-  {
-    id: 'folder', network: false, browse: true, needsRoot: true, serverPath: true,
-    label: 'create_label_folder', placeholder: 'create_ph_folder',
-    flags: [], advanced: ['language']
-  },
   {
     id: 'import', network: false, sidecar: true, serverPath: true,
     label: 'create_label_archive', placeholder: 'create_ph_archive',
@@ -454,26 +447,18 @@ function _createModeAvailable(def, offline, importReady) {
 }
 
 // Whether a mode is offered to THIS viewer at all, which is a different
-// question from whether it would work. Two reasons a mode is not on the page,
-// and both of them are the server's rules drawn honestly:
+// question from whether it would work. One reason a mode is not on the page,
+// and it is the server's rule drawn honestly: the viewer is a creator, not an
+// admin — a creator account may capture the web and package its own
+// bookmarks, but the mode that reads the SERVER'S disk (import) stays with
+// the primary admin.
 //
-//   the operator has named no root — folder mode reads a directory tree and
-//     shows it to you, and pointing that at "/" from a browser is a filesystem
-//     viewer nobody asked for, so the web surface stays closed until
-//     ZIMI_CREATE_ROOT says which tree is fair game. The CLI, where you already
-//     have a shell on the machine, is untouched.
-//   the viewer is a creator, not an admin — a creator account may capture the
-//     web and package its own bookmarks, but the two modes that read the
-//     SERVER'S disk stay with the primary admin.
-//
-// Hidden rather than disabled in both cases: a greyed-out chip advertises a
-// feature, and there is nothing here to advertise to someone who will never be
-// allowed it. The server enforces both rules independently — this decides which
-// door is drawn, never which door is locked.
-function _createModeVisible(def, createRoot, creatorOnly) {
-  if (def.serverPath && creatorOnly) return false;
-  if (def.needsRoot && !createRoot) return false;
-  return true;
+// Hidden rather than disabled: a greyed-out chip advertises a feature, and
+// there is nothing here to advertise to someone who will never be allowed it.
+// The server enforces the rule independently — this decides which door is
+// drawn, never which door is locked.
+function _createModeVisible(def, creatorOnly) {
+  return !(def.serverPath && creatorOnly);
 }
 
 function _createDef(id) {
@@ -556,11 +541,7 @@ function _createPreviewRows(p) {
   if (!p) return [];
   var rows = [];
   var add = function(k, v) { if (v !== undefined && v !== null && v !== '') rows.push({ k: k, v: String(v) }); };
-  if (p.mode === 'folder') {
-    add('create_pv_files', p.files + (p.files_capped ? '+' : ''));
-    add('create_pv_size', _fmtBytes(p.bytes || 0));
-    add('create_pv_main', p.main);
-  } else if (p.mode === 'video') {
+  if (p.mode === 'video') {
     add('create_pv_videos', p.videos + (p.videos >= CREATE_PROBE_CAP ? '+' : ''));
     add('create_pv_playlist', p.playlist);
     add('create_pv_channel', p.uploader);
@@ -961,10 +942,6 @@ var _createAliveReady = _createCapBoot('alive');
 // what it means to an ENGINE rather than to the import mode. It exists so the
 // missing-install caption can name the one command that is actually missing.
 var _createSidecarReady = _createCapBoot('sidecar');
-// ZIMI_CREATE_ROOT, or '' when folder mode is off. Remembered for the same
-// reason as the capabilities: the Folder tile appearing a poll into the page
-// is the same flicker wearing a different hat.
-var _createRoot = typeof _createCaps.root === 'string' ? _createCaps.root : '';
 var _createHistory = [];
 var _createWantHistory = false;
 var _createJobId = null;      // the server's id for the job on screen
@@ -989,9 +966,6 @@ var _createTilesKey = null;   // availability the chips were last drawn from
 var _createPreview = null;
 var _createPreviewSource = '';
 var _createProbing = false;
-// The folder picker's current directory, or null when it is closed.
-var _createBrowsePath = null;
-var _createBrowseRows = null;
 // Every mode's answers, kept while you look at another mode. Round 2 threw
 // these away on every switch, which made the chips feel like a trapdoor: one
 // curious click at "Video" and the address you had pasted under "Web page" was
@@ -1121,7 +1095,7 @@ function _createVisibleModes() {
   var creatorOnly = _createViewerIsCreator();
   var out = [];
   for (var i = 0; i < CREATE_MODE_DEFS.length; i++) {
-    if (_createModeVisible(CREATE_MODE_DEFS[i], _createRoot, creatorOnly)) {
+    if (_createModeVisible(CREATE_MODE_DEFS[i], creatorOnly)) {
       out.push(CREATE_MODE_DEFS[i]);
     }
   }
@@ -1165,18 +1139,13 @@ function _createCapChar(v) {
 function _createAvailabilityKey() {
   return (_createOffline ? '1' : '0') + (_createImportReady ? '1' : '0') +
     _createCapChar(_createBrowserReady) + _createCapChar(_createAliveReady) +
-    (_createRoot ? '1' : '0') + (_createViewerIsCreator() ? '1' : '0');
+    (_createViewerIsCreator() ? '1' : '0');
 }
 
 function _createSelectMode(id) {
   if (_createSelected === id) return;
   _createStashMode();
   _createSelected = id;
-  // The picker belongs to the folder mode you left, and a preview belongs to
-  // the source that was probed under one mode. Both are per-mode; both are
-  // restored from that mode's own slot when you come back to it.
-  _createBrowsePath = null;
-  _createBrowseRows = null;
   _renderCreateModes();
   _renderCreatePanel();
   var input = document.getElementById('create-source');
@@ -1392,24 +1361,14 @@ function _createCreditHtml(modeId) {
     '</div>';
 }
 
-// The source control. Three shapes, one decision: a list of addresses needs
-// room to be a list, a server path needs the picker beside it, everything else
-// is one line.
+// The source control. Two shapes, one decision: a list of addresses needs
+// room to be a list, everything else is one line.
 function _createSourceControlHtml(def) {
   var attrs = ' class="create-field" id="create-source" spellcheck="false"' +
     ' autocapitalize="none" autocorrect="off" placeholder="' + escAttr(t(def.placeholder)) + '"';
   if (def.multiline) {
     return '<textarea rows="3"' + attrs + '></textarea>' +
       '<div class="create-caption">' + tH('create_pages_note') + '</div>';
-  }
-  if (def.browse) {
-    return '<div class="create-source-row">' +
-      '<input type="text"' + attrs + '>' +
-      '<button type="button" class="ms-btn" onclick="_createToggleBrowse()">' + tH('create_browse') + '</button>' +
-    '</div>' +
-    (_createRoot
-      ? '<div class="create-caption">' + tH('create_folder_root', { path: _createRoot }) + '</div>'
-      : '');
   }
   return '<input type="text"' + attrs + '>';
 }
@@ -1439,7 +1398,6 @@ function _renderCreatePanel() {
       desc +
       '<label class="ms-form-label" for="create-source">' + tH(def.label) + '</label>' +
       _createSourceControlHtml(def) +
-      '<div id="create-browse"></div>' +
       '<div id="create-preview"></div>' +
       '<label class="ms-form-label" for="create-title">' + tH('create_label_title') + '</label>' +
       '<input type="text" class="create-field" id="create-title" placeholder="' + escAttr(t('create_ph_title')) + '">' +
@@ -1471,7 +1429,6 @@ function _renderCreatePanel() {
   _createSyncFormat();
   _createSyncEngine();
   _renderCreatePreview();
-  _renderCreateBrowse();
 }
 
 // The bookmarks panel: a count and a handoff. There is already a folder-picking
@@ -1656,78 +1613,6 @@ function _createApplyDetectedLanguage(p) {
   }
 }
 
-// ── the folder picker ───────────────────────────────────────────────────────
-
-function _createToggleBrowse() {
-  if (_createBrowsePath !== null) {
-    _createBrowsePath = null;
-    _createBrowseRows = null;
-    _renderCreateBrowse();
-    return;
-  }
-  var src = document.getElementById('create-source');
-  _createBrowseLoad((src && src.value.trim()) || '');
-}
-
-async function _createBrowseLoad(path) {
-  try {
-    var res = await authedFetch('/manage/create/browse?path=' + encodeURIComponent(path || ''));
-    var data = await res.json();
-    if (!res.ok) {
-      // An unreadable, missing or out-of-bounds directory is not a dead end:
-      // fall back to wherever the picker opens by default rather than closing
-      // on an error. With a root configured, that default IS the root.
-      if (path) { _createBrowseLoad(''); return; }
-      _createFormError(data.error || t('create_error_generic'));
-      return;
-    }
-    _createBrowsePath = data.path;
-    _createBrowseRows = data;
-    _renderCreateBrowse();
-  } catch (e) {
-    _createFormError(t('create_error_generic'));
-  }
-}
-
-// Choosing a folder fills the field AND asks what is in it, because the two
-// questions ("which folder" and "what is in it") are one question.
-function _createBrowsePick() {
-  var src = document.getElementById('create-source');
-  if (src && _createBrowsePath) src.value = _createBrowsePath;
-  _createBrowsePath = null;
-  _createBrowseRows = null;
-  _renderCreateBrowse();
-  _createProbeSource();
-}
-
-function _renderCreateBrowse() {
-  var host = document.getElementById('create-browse');
-  if (!host) return;
-  var d = _createBrowseRows;
-  if (_createBrowsePath === null || !d) { host.innerHTML = ''; return; }
-  var rows = '';
-  if (d.parent) {
-    rows += '<button type="button" class="create-dir up" onclick="_createBrowseLoad(' +
-      "'" + escJs(d.parent) + "'" + ')">' + tH('create_browse_up') + '</button>';
-  }
-  for (var i = 0; i < d.entries.length; i++) {
-    var child = d.path.replace(/\/$/, '') + '/' + d.entries[i];
-    rows += '<button type="button" class="create-dir" onclick="_createBrowseLoad(' +
-      "'" + escJs(child) + "'" + ')">' + esc(d.entries[i]) + '</button>';
-  }
-  if (!d.entries.length) rows += '<div class="create-caption">' + tH('create_browse_empty') + '</div>';
-  host.innerHTML =
-    '<div class="create-browse-box">' +
-      '<div class="create-browse-head">' + esc(d.path) + '</div>' +
-      '<div class="create-browse-list">' + rows + '</div>' +
-      (d.truncated ? '<div class="create-caption">' + tH('create_browse_truncated') + '</div>' : '') +
-      '<div class="create-actions">' +
-        '<button type="button" class="ms-btn ms-btn-primary" onclick="_createBrowsePick()">' + tH('create_browse_use') + '</button>' +
-        '<button type="button" class="ms-btn" onclick="_createToggleBrowse()">' + tH('cancel') + '</button>' +
-      '</div>' +
-    '</div>';
-}
-
 // ── submitting ──────────────────────────────────────────────────────────────
 
 async function _createSubmit() {
@@ -1896,10 +1781,6 @@ function _createIngest(data) {
   if (typeof data.alive_ready === 'boolean') {
     _createAliveReady = data.alive_ready;
     _createRemember('alive', data.alive_ready);
-  }
-  if (typeof data.create_root === 'string' || data.create_root === null) {
-    _createRoot = data.create_root || '';
-    _createRemember('root', _createRoot);
   }
   // The server holds one job at a time and hands it an id. A different id is a
   // different job — our queued submission reaching the front, or someone else's
@@ -2138,13 +2019,15 @@ function _createSyncPhases(s) {
     // engine's last word for itself ("ok") is not a sentence for anyone.
     var extra = (s.active && viz.detail && viz.detail !== s.mode) ? viz.detail : '';
     var text = s.active
-      ? (extra || t(s.cancelling ? 'create_cancelling' : 'create_running'))
+      ? (s.cancelling ? t('create_cancelling')
+        : s.finishing ? _createT('create_finishing')
+        : (extra || t('create_running')))
       : '';
     // How much longer, on the same line and after it — a second line of its
     // own would give a hedged number more room than the thing it hedges. A job
-    // being cancelled is not estimated: what is left is the current page, and
-    // that is not a rate.
-    if (text && !s.cancelling) {
+    // being cancelled or finished early is not estimated: what is left is the
+    // current page, and that is not a rate.
+    if (text && !s.cancelling && !s.finishing) {
       var counts = viz.counts.entries;
       var eta = _createEtaText(
         _createEstimate(viz.samples, counts && counts.total, Date.now()));
@@ -2307,13 +2190,39 @@ function _createSyncLog() {
 
 // ── actions and outcome ─────────────────────────────────────────────────────
 
+// Copy this build introduces ahead of its i18n keys (the locale files belong
+// to another change): t() falls back to the raw key, and a raw key on a
+// button is worse than English. A translation added later wins automatically,
+// because the key is still asked for first.
+var CREATE_FALLBACK_TEXT = {
+  create_finish_now: 'Finish now',
+  create_finishing: 'Finishing…',
+  create_stopped_early: 'Stopped early — this is everything captured up to the stop.'
+};
+
+function _createT(key) {
+  var out = t(key);
+  return out === key && CREATE_FALLBACK_TEXT[key] ? CREATE_FALLBACK_TEXT[key] : out;
+}
+
 function _createSyncActions(s) {
   var host = document.getElementById('create-run-actions');
   if (!host) return;
   var html;
   if (s.active) {
+    // "Finish now" is Cancel's keeping twin, drawn only while the server says
+    // it would still change anything (a site crawl in its network pass) and
+    // gone the moment packaging starts. Cancel keeps meaning discard.
+    var finish = (s.finishable || s.finishing)
+      ? '<button type="button" class="ms-btn" id="create-finish-btn"' +
+        (s.finishing || s.cancelling ? ' disabled' : '') +
+        ' onclick="_createFinishNow()">' +
+        esc(_createT(s.finishing ? 'create_finishing' : 'create_finish_now')) +
+        '</button>'
+      : '';
     html = s.cancellable
-      ? '<button type="button" class="ms-btn ms-btn-danger" id="create-cancel-btn"' +
+      ? finish +
+        '<button type="button" class="ms-btn ms-btn-danger" id="create-cancel-btn"' +
         (s.cancelling ? ' disabled' : '') + ' onclick="_createCancel()">' +
         tH(s.cancelling ? 'create_cancelling' : 'create_cancel') + '</button>'
       : '<span class="create-caption">' + tH('create_uncancellable') + '</span>';
@@ -2322,6 +2231,22 @@ function _createSyncActions(s) {
       tH('create_another') + '</button>';
   }
   if (host.innerHTML !== html) host.innerHTML = html;
+}
+
+// Ask the running site crawl to stop fetching at the next page boundary and
+// package everything captured so far — the CLI's Ctrl-C, as a button. The
+// reply promises a request, not a stop; the poll carries the rest.
+async function _createFinishNow() {
+  var btn = document.getElementById('create-finish-btn');
+  if (btn) btn.disabled = true;
+  try {
+    await authedFetch('/manage/create/finish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+  } catch (e) {}
+  _createPoll();
 }
 
 // The end of the story: the card, or the reason there is no card. Mounted once
@@ -2372,6 +2297,12 @@ function _createMountDone(s) {
         '<div class="create-done-facts">' +
           '<span class="create-done-fact">' + esc(r.name) + '.zim</span>' + facts +
         '</div>' +
+        // A crawl that stopped at a bound — the finish button, a page cap, a
+        // byte budget — says so on the card: "40 pages" without "and I stopped
+        // there" reads like a capture that believes it got everything.
+        (r.stopped
+          ? '<div class="create-caption">' + esc(_createT('create_stopped_early')) + '</div>'
+          : '') +
       '</div>' +
       '<button type="button" class="ms-btn ms-btn-primary create-done-open"' +
         ' onclick="_createOpenResult(\'' + escJs(r.name) + '\')">' + tH('create_open') + '</button>' +

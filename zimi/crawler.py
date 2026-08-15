@@ -582,6 +582,7 @@ def create_site_zim(
     capture_variants=None,
     register=False,
     progress=None,
+    stop=None,
 ):
     """Capture a bounded same-origin crawl as one ZIM.
 
@@ -589,7 +590,13 @@ def create_site_zim(
     URL), ``"bytes"`` (everything fetched), and ``"stopped"`` (the bound that
     ended the crawl, or None). Raises ``CreateError`` for anything the user
     must fix — offline mode, a non-HTML or SPA seed, a robots.txt that
-    disallows the seed, an unwritable output."""
+    disallows the seed, an unwritable output.
+
+    ``stop`` is an optional caller-owned flag in the ``_StopFlag`` shape:
+    setting its ``hit`` ends the crawl at the next page boundary and packages
+    everything captured so far — exactly what SIGINT does on the CLI, and how
+    the web's finish-early control reaches a crawl running on a worker thread,
+    where signal handlers do not exist."""
     from zimi.p2p import is_offline
 
     note = progress or _noop
@@ -618,6 +625,7 @@ def create_site_zim(
             capture_variants=capture_variants,
             register=register,
             progress=progress,
+            stop=stop,
         )
     if is_offline():
         raise CreateError(
@@ -700,7 +708,8 @@ def create_site_zim(
         # space — never in /tmp, which is RAM on more than one of Zimi's targets.
         spool_dir = tempfile.mkdtemp(prefix=".zimi-crawl-", dir=os.path.dirname(out))
         spool = AssetSpool(os.path.join(spool_dir, "assets"))
-        stop = _StopFlag()
+        if stop is None:
+            stop = _StopFlag()
         with _interruptible(stop, note):
             pages, reason, seen_mimetypes = _crawl(
                 seed_id,

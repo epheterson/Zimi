@@ -1901,6 +1901,10 @@ def activity_payload(type_filter=None, actor_filter=None):
 # read costs one event, never a crash.
 # ============================================================================
 
+# "folder" stays in the tuple although the web REFUSES it (Eric: "remove
+# folder, I said that would be CLI only") — recognising the mode is what lets
+# the refusal point at `zimi create <folder>` instead of shrugging "unknown
+# creation mode" at someone who read about it in the docs.
 CREATE_MODES = ("folder", "page", "site", "video", "import")
 # Which engine captures a web page. Mirrors creator.CAPTURE_ENGINES, held here
 # as a literal for the same reason CREATE_MAX_PAGE_URLS is: validating a
@@ -1938,12 +1942,22 @@ CREATE_MAX_PAGE_URLS = 20
 
 # Which jobs can actually be interrupted. Cancellation is cooperative — it
 # raises out of the engine's progress callback — so a mode belongs here exactly
-# when its engine takes one. Folder is the lone holdout: create_folder_zim has
-# no progress parameter, so there is no line boundary to stop at, and the UI
-# says so rather than showing a button that would lie. Page joined the list when
-# it moved onto create_pages_zim, which reports progress; the round-1 comment
-# saying otherwise is no longer true.
+# when its engine takes one. Every mode the web still runs qualifies (folder,
+# the one engine with no progress callback, is CLI-only now), but the list and
+# the `cancellable` field stay: the client's button should keep answering to
+# the server's word rather than to an assumption a future mode could break.
 CREATE_CANCELLABLE_MODES = ("page", "site", "video", "import")
+# Which jobs can FINISH EARLY — stop fetching at the next page boundary and
+# package everything captured so far, exactly what SIGINT does to a CLI crawl.
+# Site capture alone: it is the one mode whose work is an open-ended frontier
+# with something worth keeping at every prefix. A page list or a playlist is a
+# finite order (cancel covers changing your mind), and an import has no
+# fetching to stop.
+CREATE_FINISHABLE_MODES = ("site",)
+# The phases in which finishing early still means anything: the network pass.
+# From `package`/`convert` on, the fetching is over and the button would stop
+# nothing — the client hides it the moment the server stops saying so.
+CREATE_FINISHABLE_PHASES = ("probe", "fetch", "assets")
 CREATE_MAX_TITLE = 200
 # Site crawls: what the form offers. Wider bounds live on the CLI.
 CREATE_MAX_PAGES_CEILING = 5000
@@ -2002,10 +2016,9 @@ CREATE_JOURNAL_RECORDS = 20
 # visible step, which is the right answer for a person watching: both of them
 # are "it is writing the file now".
 CREATE_PHASES = ("probe", "fetch", "assets", "package", "convert", "register", "done")
-# Where a mode's work starts. The URL modes fetch first; folder and import have
-# nothing to fetch, they go straight to writing a ZIM.
+# Where a mode's work starts. The URL modes fetch first; import has nothing to
+# fetch, it goes straight to writing a ZIM.
 CREATE_START_PHASE = {
-    "folder": "package",
     "import": "package",
     "page": "fetch",
     "site": "fetch",
@@ -2054,6 +2067,16 @@ class _CreateJob:
         self.stalled = False
         self.error = ""
         self.result = None
+        # Finish-early (site mode): the admin asked the crawl to stop fetching
+        # and package what it has. `stop_flag` is the crawler's own stop flag,
+        # attached by _create_run once the crawl exists; the boolean is set
+        # first so a request that lands in the gap is honored when it does.
+        self.finish_requested = False
+        self.stop_flag = None
+        # A transient caption ("starting a headless browser…") is on the run
+        # pane and the next real progress event should take it down. Only ever
+        # touched from the job's own thread, inside _create_derive.
+        self.transient_detail = False
         # Set the moment the job is closed out, whoever closes it. The watchdog
         # waits on this rather than on a clock, so it wakes exactly once per
         # tick while the job runs and not at all after it ends — no thread
@@ -2165,6 +2188,11 @@ _CREATE_RE_TITLE = re.compile(r"^title: (.+)$")
 # handing over its recording, and `zimi import` handing over an archive
 # somebody else made.
 _CREATE_RE_CONVERTING = re.compile(r"^converting\b")
+# The renderer's one line between "job started" and its first page: Chromium
+# can take many seconds to boot, and without this the run pane sat silent for
+# all of them (Eric: "show something right now — I need to open the log thing
+# to see what's happening").
+_CREATE_RE_BROWSER = re.compile(r"^starting a headless browser")
 _CREATE_LABEL_MAX = 80
 
 
@@ -2238,11 +2266,32 @@ def _create_derive_line(job, text):
         assert name in CREATE_PHASES, name
         if job.phase != name and phase != name:
             phase = name
+            job.transient_detail = False  # a fresh phase brings its own detail
             events.append({"t": "phase", "phase": name, "detail": job.mode})
+
+    def settle():
+        """Real progress after a transient caption: re-state the phase with its
+        plain detail — the client blanks detail == mode — so "starting a
+        headless browser…" comes down the moment actual work reports again."""
+        if job.transient_detail:
+            job.transient_detail = False
+            if not any(e.get("t") == "phase" for e in events):
+                events.append({"t": "phase", "phase": job.phase, "detail": job.mode})
+
+    if _CREATE_RE_BROWSER.match(line):
+        # Between a rendered/alive job starting and its first page there are
+        # 5–15 silent seconds of Chromium booting. Re-announcing the CURRENT
+        # phase with this line as its detail puts the sentence on the run pane
+        # the moment it happens — same event vocabulary, no second channel —
+        # and settle() above takes it back down at the next real progress.
+        job.transient_detail = True
+        events.append({"t": "phase", "phase": job.phase, "detail": line})
+        return events, phase
 
     match = _CREATE_RE_PACKAGED.match(line)
     if match:  # site capture, one page written into the ZIM
         enter("package")
+        settle()
         events.append(_create_node_event("entry", match.group(3), "done"))
         events.append(
             _create_count_event("entries", match.group(1), int(match.group(2)))
@@ -2252,6 +2301,7 @@ def _create_derive_line(job, text):
     match = _CREATE_RE_ASSET.match(line)
     if match:  # one image, stylesheet or font, and the page that wanted it
         state, asset_id, page_id = match.groups()
+        settle()
         events.append(
             _create_node_event(
                 "asset",
@@ -2266,6 +2316,7 @@ def _create_derive_line(job, text):
     match = _CREATE_RE_PACKAGING_MANY.match(line)
     if match:  # site capture, the whole write pass announcing its size
         enter("package")
+        settle()
         events.append(_create_count_event("entries", 0, int(match.group(1))))
         return events, phase
 
@@ -2273,6 +2324,7 @@ def _create_derive_line(job, text):
     if match:
         done, total, rest = int(match.group(1)), int(match.group(2)), match.group(3)
         enter("fetch")
+        settle()
         tail = _CREATE_RE_CRAWL_TAIL.search(rest)
         if tail:  # a site crawl: the remainder is a URL plus the running totals
             url = rest[: tail.start()].strip()
@@ -2288,6 +2340,7 @@ def _create_derive_line(job, text):
     match = _CREATE_RE_FETCHING.match(line)
     if match:
         enter("fetch")
+        settle()  # a page in flight means the browser is up
         events.append(_create_node_event("page", match.group(1), "active"))
         return events, phase
 
@@ -2527,17 +2580,15 @@ def _create_validate(data):
     page_urls = []
 
     if mode == "folder":
-        # A server-side path typed by an admin. Normalized and required to be
-        # a real, readable directory HERE so the answer is immediate instead
-        # of arriving as a job failure — and required to sit under the one
-        # directory tree this server packages from, because the route's gate
-        # only proves a root EXISTS, not that this path is inside it.
-        source = os.path.realpath(os.path.expanduser(source))
-        _create_require_within_root(source)
-        if not os.path.isdir(source):
-            raise ValueError("not a folder on this server")
-        if not os.access(source, os.R_OK | os.X_OK):
-            raise ValueError("that folder is not readable by the server")
+        # CLI-only, by decree (Eric, round 3: "remove folder, I said that
+        # would be CLI only"). The engine (creator.create_folder_zim) is
+        # untouched — someone at a shell already has the filesystem this mode
+        # reads. What is gone is the web door, and the refusal names the one
+        # that is still open.
+        raise ValueError(
+            "folder capture is CLI-only — run `zimi create <folder>` "
+            "on the server itself"
+        )
     elif mode == "import":
         source = os.path.realpath(os.path.expanduser(source))
         _create_require_within_root(source)
@@ -2785,17 +2836,8 @@ def _create_kwargs(opts, *names):
 def _create_run(job, opts):
     """Drive the engine for one job. Imports are deferred to here: the writer
     stack and yt-dlp are heavy, and a server that never creates a ZIM should
-    never pay for them."""
-    if job.mode == "folder":
-        from zimi.creator import create_folder_zim
-
-        job.note(f"packaging {job.source}")
-        return create_folder_zim(
-            job.source,
-            title=job.title or None,
-            register=True,
-            **_create_kwargs(opts, "language"),
-        )
+    never pay for them. (Folder mode never reaches here — the web refuses it
+    at validation; `zimi create <folder>` is its only door.)"""
     if job.mode == "page":
         # create_pages_zim hands a single URL to create_page_zim itself, so one
         # entry point covers both shapes — and it takes a progress callback,
@@ -2812,13 +2854,21 @@ def _create_run(job, opts):
             ),
         )
     if job.mode == "site":
-        from zimi.crawler import create_site_zim
+        from zimi.crawler import _StopFlag, create_site_zim
 
+        # The finish-early control's handle on the crawl: the same stop flag
+        # the CLI's SIGINT sets, owned by the job so the route can reach it.
+        # Seeded from finish_requested so a request that raced job startup is
+        # not lost in the gap.
+        stop = _StopFlag()
+        stop.hit = job.finish_requested
+        job.stop_flag = stop
         return create_site_zim(
             job.source,
             title=job.title or None,
             register=True,
             progress=job.note,
+            stop=stop,
             **_create_kwargs(
                 opts,
                 "max_pages",
@@ -2880,6 +2930,12 @@ def _create_worker(job, opts):
         for key in ("pages", "assets", "bytes", "files", "videos", "entries"):
             if isinstance(result.get(key), int):
                 outcome["result"][key] = result[key]
+        # The bound that ended a crawl early ("interrupted", "page cap (200)"),
+        # when one did. The done card owes the admin that honesty — a ZIM that
+        # says "40 pages" without saying "and I stopped there on purpose" reads
+        # like a capture that thinks it got everything.
+        if result.get("stopped"):
+            outcome["result"]["stopped"] = str(result["stopped"])
         # Totals only the finished run knows: no line carried them, so they are
         # filed straight rather than parsed back out of prose.
         totals = [
@@ -3156,6 +3212,11 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
                 # See CREATE_CANCELLABLE_MODES: a cancel button on a job with
                 # no progress callback to interrupt would be a lie.
                 "cancellable": job.mode in CREATE_CANCELLABLE_MODES,
+                # The finish-early pair: whether the button means anything
+                # right now, and whether it has already been pressed. Both
+                # computed here so the client never has to know the rules.
+                "finishable": _create_finishable(job),
+                "finishing": job.finish_requested and not job.done,
                 "elapsed": round(
                     (job.finished or time.time()) - (job.started or job.queued_at), 1
                 ),
@@ -3201,6 +3262,53 @@ def _create_cancel(job_id=None):
     }, 200
 
 
+def _create_finishable(job):
+    """Whether "finish now" would still change anything: a site crawl that is
+    in its network pass, not already being stopped some other way. From
+    ``package``/``convert`` on the fetching is over and the offer would be
+    theatre."""
+    return (
+        job.mode in CREATE_FINISHABLE_MODES
+        and not job.done
+        and not job.cancel_requested
+        and job.phase in CREATE_FINISHABLE_PHASES
+    )
+
+
+def _create_finish_now():
+    """Stop fetching and package what is captured — the web's SIGINT.
+
+    Sets the crawl's own stop flag, so the loop ends at the next PAGE boundary
+    and everything already captured proceeds to packaging/conversion exactly as
+    a Ctrl-C'd CLI crawl does. The reply promises a request, not a stop, for
+    the same reason cancel's does: the flag is read between pages, and the page
+    in flight finishes first. Distinct from cancel in the one way that matters
+    — cancel discards, this keeps."""
+    job = _create_job
+    if job is None or job.done:
+        return {"error": "no creation job is running"}, 409
+    if job.mode not in CREATE_FINISHABLE_MODES:
+        return {"error": "only a site capture can be finished early"}, 409
+    if job.cancel_requested:
+        return {"error": "this job is already being cancelled"}, 409
+    already = job.finish_requested
+    job.finish_requested = True
+    flag = job.stop_flag
+    if flag is not None:
+        flag.hit = True
+    if not already:
+        try:
+            # Through note() so the sentence lands in the log AND the journal's
+            # progress clock moves — this is progress, of the human kind.
+            job.note(
+                "finish requested — completing the page in flight, then "
+                "packaging everything captured so far"
+            )
+        except _CreateCancelled:
+            pass  # a cancel landed in the gap above; it wins
+    return {"status": "finishing", "id": job.id}, 200
+
+
 def _is_offline_mode():
     from zimi import p2p
 
@@ -3209,22 +3317,19 @@ def _is_offline_mode():
 
 # ── the server-path gate ────────────────────────────────────────────────────
 #
-# Folder and import capture read a path an admin types and package whatever is
-# under it. On the CLI that is unremarkable — someone at a shell on the machine
-# already has the filesystem. Over the WEB it is a package-/etc-into-a-ZIM
-# primitive plus, with the directory picker, a filesystem browser; Eric's round-2
-# verdict on it was "the folder flow feels sketchy, I don't love showing the
-# whole file system there. Maybe folder is CLI only?"
+# Import capture reads a path an admin types and packages what is there. On
+# the CLI that is unremarkable — someone at a shell on the machine already has
+# the filesystem. Over the WEB it is a read-the-server's-disk primitive;
+# Eric's round-2 verdict on the sibling folder flow was "the folder flow feels
+# sketchy, I don't love showing the whole file system there. Maybe folder is
+# CLI only?" — and round 3 made that literal: folder mode is refused from the
+# web outright, so import is the ONE server-path door left.
 #
-# The answer is a door that is CLOSED by default and opens exactly as wide as
-# the operator says: ZIMI_CREATE_ROOT names one directory tree, and with it
-# unset the web cannot package a server path at all. It is not a filter that
-# starts wide open, and it is not a client-side courtesy — the Create page hides
-# the folder chip when it is unset, but hiding a chip stops nobody from posting
-# the JSON by hand, so all three doors (browse, create, probe) check it here.
-#
-# Import takes the same root as folder. It is the same gesture with a different
-# noun: a path on the server, read by the server, packaged into the library.
+# For it, the answer is a door that is CLOSED by default and opens exactly as
+# wide as the operator says: ZIMI_CREATE_ROOT names one directory tree, and
+# with it unset the web cannot package a server path at all. It is not a
+# client-side courtesy — hiding a form stops nobody from posting the JSON by
+# hand, so both doors (create, probe) check it here.
 #
 # Containment compares RESOLVED paths on both sides. A naive prefix test on the
 # typed string lets /srv/library-sources-evil pass as being inside
@@ -3298,10 +3403,13 @@ def _create_require_within_root(resolved):
 
 
 def _create_server_path_gate(handler, mode):
-    """Both doors a server path can come through, in one place: folder and
-    import are the primary admin's alone, AND only within the configured root.
-    Returns ``(payload, status)`` to send, or None to carry on."""
-    if mode not in ("folder", "import"):
+    """The one door a server path still comes through: import is the primary
+    admin's alone, AND only within the configured root. Folder is deliberately
+    NOT gated here any more — the web refuses that mode outright in
+    ``_create_validate``, and the refusal that points at the CLI is more useful
+    than a root complaint about a mode no root would reopen. Returns
+    ``(payload, status)`` to send, or None to carry on."""
+    if mode != "import":
         return None
     if not _primary_admin_authorized(handler):
         return {"error": "Server-path creation needs the primary admin"}, 403
@@ -3467,6 +3575,7 @@ def _create_kill_browsers():
 # an hour on whatever it got. The probe runs the half of each job that only
 # LOOKS — count a folder, fetch one page, list a playlist — and hands back what
 # the real run would find, so the answer arrives before the commitment.
+# (Folder probing left with folder mode itself — CLI-only now.)
 #
 # It writes nothing, downloads no media, and crawls no links. Every mode is
 # bounded by both a count and a clock, because a preview that outlasts your
@@ -3478,7 +3587,6 @@ def _create_kill_browsers():
 # ============================================================================
 
 CREATE_PROBE_TIMEOUT = 12.0
-CREATE_PROBE_MAX_FILES = 20000  # stop counting and say "more than this"
 CREATE_PROBE_MAX_EXAMPLES = 6
 CREATE_PROBE_VIDEO_LIMIT = 12
 
@@ -3522,57 +3630,6 @@ def _detect_html_language(text):
             if code:
                 return code
     return None
-
-
-def _probe_folder(source):
-    """Count what is there. Bounded twice over: a folder with a million files
-    is a mistake the admin should hear about as a number, not as a hung page."""
-    from zimi.creator import _pick_main, _scan_folder
-
-    deadline = time.monotonic() + CREATE_PROBE_TIMEOUT
-    files = 0
-    total = 0
-    capped = False
-    examples = []
-    zim_paths = []
-    language = None
-    for fs_path, zim_path in _scan_folder(source):
-        files += 1
-        try:
-            total += os.path.getsize(fs_path)
-        except OSError:
-            pass  # vanished mid-scan; it is a count, not an inventory
-        if len(examples) < CREATE_PROBE_MAX_EXAMPLES:
-            examples.append(zim_path)
-        if len(zim_paths) < 4096:
-            zim_paths.append(zim_path)
-        # The first HTML file speaks for the folder. Reading every one of them
-        # to take a vote would turn a preview into a scan.
-        if language is None and zim_path.lower().endswith((".html", ".htm")):
-            language = _read_language_head(fs_path)
-        if files >= CREATE_PROBE_MAX_FILES or time.monotonic() > deadline:
-            capped = True
-            break
-    return {
-        "ok": files > 0,
-        "files": files,
-        "files_capped": capped,
-        "bytes": total,
-        "main": _pick_main(zim_paths) if zim_paths else None,
-        "examples": examples,
-        "language": language,
-        "warning_key": None if files else "create_warn_empty_folder",
-    }
-
-
-def _read_language_head(fs_path, limit=65536):
-    """`<html lang>` from the head of a file. Only the head is read: the
-    attribute is in the first tag or it is not there at all."""
-    try:
-        with open(fs_path, "rb") as fh:
-            return _detect_html_language(fh.read(limit).decode("utf-8", "replace"))
-    except OSError:
-        return None
 
 
 def _probe_url(source, *, want_robots=False, engine=None):
@@ -3706,85 +3763,10 @@ def _probe_import(source):
     }
 
 
-# ── the folder picker ───────────────────────────────────────────────────────
-#
-# Round 1 said, as a rule: never add a directory-listing endpoint. This reverses
-# that, deliberately, because Eric's "shot in the dark" IS this: folder mode
-# asks for a path on a machine you are not sitting at.
-#
-# The reversal is defensible on capability grounds. Folder mode already packages
-# ANY readable directory into a ZIM you can then read, so a lister hands the
-# primary admin no power they did not have; it makes an existing power
-# discoverable. It is still a new disclosure surface, so it is built to give up
-# the least that is still useful:
-#
-#   - DIRECTORIES ONLY. Never file names. The preview needs counts and a total
-#     size, which the probe computes; a list of filenames would be disclosure
-#     with no purpose on screen.
-#   - The SAME primary-admin gate as folder mode itself, checked at the route,
-#     and the SAME ZIMI_CREATE_ROOT confinement — with no root configured this
-#     endpoint refuses outright rather than listing anything at all.
-#   - Bounded per response, and never recursive.
-#   - Symlinks are dropped rather than followed, matching `_scan_folder`, so a
-#     link cannot walk the picker somewhere the packager would refuse to go.
-#
-# The typed field stays, so the picker never has to be exhaustive.
-
-CREATE_BROWSE_MAX_ENTRIES = 500
-
-
-def _create_browse(path):
-    """One directory's subdirectories, within the configured root. Returns
-    ``(payload, status)``."""
-    root = _create_root()
-    if not root:
-        # Not an empty listing: with no root named, this endpoint has nothing
-        # it is allowed to describe and should not answer at all.
-        return _create_root_refusal()
-    raw = str(path or "").strip()
-    target = os.path.realpath(os.path.expanduser(raw)) if raw else root
-    if not _create_within_root(target, root):
-        # Not an error to explain. Somewhere outside the root is simply not
-        # somewhere this picker goes, and landing back at the root is what the
-        # picker already does with a path it cannot open.
-        target = root
-    if not os.path.isdir(target):
-        return {"error": "not a folder on this server"}, 400
-    entries = []
-    truncated = False
-    try:
-        with os.scandir(target) as it:
-            for entry in it:
-                if entry.name.startswith("."):
-                    continue
-                try:
-                    if entry.is_symlink() or not entry.is_dir():
-                        continue
-                except OSError:
-                    continue
-                if len(entries) >= CREATE_BROWSE_MAX_ENTRIES:
-                    truncated = True
-                    break
-                entries.append(entry.name)
-    except PermissionError:
-        return {"error": "that folder is not readable by the server"}, 400
-    except OSError:
-        log.exception("browse failed")
-        return {"error": "could not read that folder"}, 400
-    entries.sort(key=str.lower)
-    parent = os.path.dirname(target)
-    if parent == target or not _create_within_root(parent, root):
-        # None at the root, which is how the client knows to stop offering
-        # "up" rather than looping on "/" — or, here, walking out of the one
-        # directory this server agreed to show.
-        parent = None
-    return {
-        "path": target,
-        "parent": parent,
-        "root": root,
-        "entries": entries,
-        "truncated": truncated,
-    }, 200
+# The folder picker (`/manage/create/browse`, `_create_browse`) lived here
+# until folder mode left the web. The route remains and refuses with the CLI
+# pointer — see handle_manage_get — because a lister whose only customer was
+# that form is a directory-disclosure surface with no purpose left on screen.
 
 
 def _create_probe(data):
@@ -3805,9 +3787,7 @@ def _create_probe(data):
         # network. One at a time here too.
         return {"error": "a ZIM is being created — wait for it to finish"}, 409
     try:
-        if mode == "folder":
-            result = _probe_folder(source)
-        elif mode == "import":
+        if mode == "import":
             result = _probe_import(source)
         elif mode == "video":
             result = _probe_video(source, opts.get("limit"))
@@ -3926,20 +3906,23 @@ def handle_manage_get(handler, parsed, params):
             ),
         )
     if parsed.path == "/manage/create/browse":
-        # Same gate as folder mode itself: this endpoint exists to feed it, and
-        # a discovery surface that outranks the thing it discovers for is a
-        # hole. See the design note above `_create_browse`. The creator gate in
-        # front only shapes the refusal: a signed-in creator gets a clean 403
-        # instead of a password prompt for a power they can never hold.
+        # The folder picker's feed, and folder mode left the web (CLI-only, by
+        # decree) — so the lister that existed solely to make it discoverable
+        # refuses cleanly rather than keeping a directory-disclosure surface
+        # alive for a form that no longer exists. 410: it was here, it is gone,
+        # and the refusal names the door that still opens.
         denial = _creator_denial(handler)
         if denial:
             return handler._json(*denial)
-        if not _primary_admin_authorized(handler):
-            return handler._json(
-                403, {"error": "Server-path creation needs the primary admin"}
-            )
-        payload, status = _create_browse(param("path"))
-        return handler._json(status, payload)
+        return handler._json(
+            410,
+            {
+                "error": (
+                    "the folder picker is gone — folder capture is CLI-only "
+                    "now. Run `zimi create <folder>` on the server itself."
+                )
+            },
+        )
     challenge = _manage_auth_challenge(handler)
     if challenge:
         return handler._json(*challenge)
@@ -4697,14 +4680,15 @@ def handle_manage_post(handler, parsed, data):
 
     # ZIM creation — a creator account (can_create) may drive the URL modes
     # without admin credentials, so these routes gate themselves ahead of the
-    # generic admin challenge below. Folder and import read arbitrary server
-    # paths — a package-/etc-into-a-ZIM primitive — so those modes, like the
-    # folder browser that feeds them, stay with the PRIMARY admin: a creator
-    # captures the web, never the server's disk. (Secondary admins keep the
-    # URL modes, as before.)
+    # generic admin challenge below. Import reads a server path — a
+    # read-the-server's-disk primitive — so that mode stays with the PRIMARY
+    # admin: a creator captures the web, never the server's disk. (Folder mode
+    # is refused from the web entirely; secondary admins keep the URL modes,
+    # as before.)
     if parsed.path in (
         "/manage/create",
         "/manage/create/cancel",
+        "/manage/create/finish",
         "/manage/create/probe",
     ):
         denial = _creator_denial(handler)
@@ -4714,6 +4698,11 @@ def handle_manage_post(handler, parsed, data):
             # With an id: that job, wherever it is — the running one or one
             # still waiting. Without: whatever is running.
             payload, status = _create_cancel(data.get("id"))
+            return handler._json(status, payload)
+        if parsed.path == "/manage/create/finish":
+            # Cancel's keeping twin: stop FETCHING at the next page boundary
+            # and package everything captured so far. Same auth as cancel.
+            payload, status = _create_finish_now()
             return handler._json(status, payload)
         # The probe reads exactly what the run would read, so it inherits the
         # run's gate verbatim — otherwise it becomes the cheaper way to ask

@@ -191,6 +191,7 @@ class AliveCapture:
         # the last thing that should be held there.
         work_dir = work_dir or _srv.ZIM_DIR
         os.makedirs(work_dir, exist_ok=True)
+        made_warc = warc_path is None
         if warc_path is None:
             fd, warc_path = tempfile.mkstemp(
                 prefix=".zimi-alive-", suffix=".warc.gz", dir=work_dir
@@ -198,23 +199,33 @@ class AliveCapture:
             os.close(fd)
         self.warc_path = warc_path
         self.warc = WarcWriter(warc_path, software=scraper_string())
-        self._session = RenderedSession(
-            work_dir=work_dir,
-            budget=budget,
-            note=note,
-            recorder=self.warc,
-            extra_wait=ALIVE_EXTRA_WAIT if extra_wait is None else extra_wait,
-            # Blocking matters more here than to a frozen snapshot. A replay
-            # cannot answer a request the recording never captured, and an ad
-            # or consent endpoint is exactly the class of request a recording
-            # has no answer for — so every one of them that a script fires
-            # during replay is a call into nothing. Refusing them at capture
-            # time means the script is refused instead of ignored, which is a
-            # case its own code already handles. Measured on cnn.com: the ZIM
-            # came out 41% smaller and replayed no worse.
-            block_ads=block_ads,
-            capture_variants=capture_variants,
-        )
+        try:
+            self._session = RenderedSession(
+                work_dir=work_dir,
+                budget=budget,
+                note=note,
+                recorder=self.warc,
+                extra_wait=ALIVE_EXTRA_WAIT if extra_wait is None else extra_wait,
+                # Blocking matters more here than to a frozen snapshot. A replay
+                # cannot answer a request the recording never captured, and an ad
+                # or consent endpoint is exactly the class of request a recording
+                # has no answer for — so every one of them that a script fires
+                # during replay is a call into nothing. Refusing them at capture
+                # time means the script is refused instead of ignored, which is a
+                # case its own code already handles. Measured on cnn.com: the ZIM
+                # came out 41% smaller and replayed no worse.
+                block_ads=block_ads,
+                capture_variants=capture_variants,
+            )
+        except BaseException:
+            # A half-constructed engine is one nobody will ever close, so the
+            # archive must not outlive this frame: close it, and delete it when
+            # it was ours to make (a caller-named path is the caller's file).
+            try:
+                self.warc.discard() if made_warc else self.warc.close()
+            except Exception:
+                log.exception("could not tidy up a failed alive engine")
+            raise
         # The shared-with-the-crawl dedupe map. It stays EMPTY: this engine
         # carries no assets into a ZIM, because the archive already holds every
         # byte and warc2zim decides what becomes an entry. The attribute exists
@@ -458,6 +469,7 @@ def create_alive_site_zim(
     capture_variants=None,
     register=False,
     progress=None,
+    stop=None,
     **_ignored,
 ):
     """Record a bounded same-origin crawl into ONE archive and convert it.
@@ -560,7 +572,10 @@ def create_alive_site_zim(
         # crawl UNMODIFIED, and one frontier implementation is worth more than
         # the handful of kilobytes it writes and deletes.
         spool_dir = tempfile.mkdtemp(prefix=".zimi-crawl-", dir=os.path.dirname(out))
-        stop = _StopFlag()
+        # A caller-owned flag (the web's finish-early control) or our own for
+        # the CLI's signals — see create_site_zim, whose contract this shares.
+        if stop is None:
+            stop = _StopFlag()
         with _interruptible(stop, note):
             pages, reason, _mimes = _crawl(
                 seed_id,
