@@ -1,7 +1,7 @@
 # Zimi
 
 [![CI](https://github.com/epheterson/Zimi/actions/workflows/ci.yml/badge.svg)](https://github.com/epheterson/Zimi/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-2360%20passing-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/tests-2388%20passing-brightgreen)](#)
 [![Lighthouse Accessibility](https://img.shields.io/badge/Lighthouse%20a11y-100%2F100-success?logo=lighthouse&logoColor=white)](docs/plans/2026-04-26-accessibility.md)
 [![WCAG 2.1 AA](https://img.shields.io/badge/WCAG%202.1-AA-blue)](docs/plans/2026-04-26-accessibility.md)
 [![i18n](https://img.shields.io/badge/i18n-10%20languages-blueviolet)](#languages)
@@ -64,11 +64,11 @@ Seeding needs no router setup: Zimi opens the BitTorrent port automatically (UPn
 
 The library isn't only what you download. Zimi packages new ZIMs from the **+** button in the web app or `zimi create` on the command line. Every mode previews what you'll get before anything runs, streams a live log while it works, and the result joins your library the moment it finishes.
 
-- **A folder** — HTML, Markdown (rendered by a built-in converter), and PDFs become a browsable ZIM, cross-file links intact.
+- **A folder** — HTML, Markdown (rendered by a built-in converter), and PDFs become a browsable ZIM, cross-file links intact. Command line only (`zimi create ./folder`) — the web app deliberately doesn't read the server's filesystem.
 - **A web page** — one URL, or a list of up to twenty, captured with its images, styles, and fonts.
 - **A whole site** — a bounded, polite, same-origin crawl: page, depth, and byte budgets, robots.txt honored, and Ctrl-C still writes a valid ZIM of everything captured so far.
 - **Videos** — a playlist or channel becomes an offline video ZIM with subtitles, powered by yt-dlp.
-- **A web archive** — `zimi import` converts WARC and WACZ files from ArchiveBox, Webrecorder, browsertrix, or HTTrack. Powered by warc2zim.
+- **A web archive** — `zimi import` converts WARC and WACZ files from ArchiveBox, Webrecorder, browsertrix, or HTTrack. Powered by a managed warc2zim sidecar (needs Python 3.14 and libmagic on the machine — the Docker image ships both).
 
 Three capture engines trade speed for fidelity: **Fast** (no browser required), **Rendered** (a real headless Chromium draws pages that build themselves in JavaScript), and **Alive** (records the browser session so the page's own JavaScript still runs offline — menus, galleries, videos). Rendered and Alive can block ads and trackers at capture time from a published blocklist.
 
@@ -172,7 +172,9 @@ Most people set nothing: every setting below has a sensible default or lives in 
 | `ZIMI_API_TOKEN` | _(none)_ | Pin the API token instead of generating in the UI |
 | `ZIMI_HOT_ZIMS` | _(none)_ | Comma-separated ZIM names to pre-warm at startup |
 | `ZIMI_OFFLINE` | `0` | `1` guarantees zero outbound traffic: no update checks, no catalog fetches, no torrent stack. For air-gapped machines. |
-| `ZIMI_CREATE_ROOT` | _(none)_ | Directory the web UI's folder-to-ZIM mode may read from. Unset, server-path creation stays off. |
+| `ZIMI_CREATE_ROOT` | _(none)_ | The one directory tree the web UI may package a server path from (the import mode's server-path field). Unset, server-path packaging from the web stays off entirely. The CLI is unaffected. |
+| `ZIMI_UPDATE_CHANNEL` | `latest` | App release channel: `latest` (finished releases) or `beta` (prereleases too). Locks the UI choice when set. |
+| `ZIMI_UPDATE_DELAY_DAYS` | `0` | Hold a release back until it has been public this many days (0–365). |
 
 </details>
 

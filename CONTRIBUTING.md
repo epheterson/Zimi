@@ -26,7 +26,7 @@ python3 tests/test_unit.py --perf             # Performance benchmarks
 
 Before tagging, verify these on the feature branch:
 
-- [ ] Versions match: `ZIMI_VERSION` in `server.py`, `version` in `pyproject.toml`, `version` in `snap/snapcraft.yaml`
+- [ ] Versions match: `ZIMI_VERSION` in `zimi/server.py` and `version` in `pyproject.toml` (`snap/snapcraft.yaml` is stamped from the tag by CI — no need to touch it)
 - [ ] `desktop/zimi_desktop.spec` `hiddenimports` includes ALL `zimi/*.py` modules (add any new ones from server split)
 - [ ] Smoke test locally: `python3 desktop/zimi_desktop.py --serve --port 0` starts and prints `READY`
 - [ ] `desktop-release.yml` smoke test commands work with current auth model (e.g. `Sec-Fetch-Site` header for manage endpoints)
@@ -55,7 +55,7 @@ Before publishing, verify on real hardware:
 - [ ] Cross-language article switching works
 - [ ] Password set/change/remove works
 - [ ] Catalog browse, download, and language filter
-- [ ] Docker: `docker pull epheterson/zimi:vX.X.X` and run
+- [ ] Docker: `docker pull epheterson/zimi:X.X.X` and run (image tags have no `v` prefix)
 
 When QA passes:
 
@@ -97,4 +97,4 @@ CI handles signing and notarization automatically. See `.github/workflows/deskto
 - The `.spec` file includes `zimi/templates/`, `zimi/assets/`, and `zimi/static/` as data
 - **When splitting modules:** any new `zimi/*.py` file must be added to `hiddenimports` in `desktop/zimi_desktop.spec` AND the CI smoke test must still pass. PyInstaller can't discover runtime imports.
 - **Workflow dispatch and refs:** `gh workflow run --ref v1.X.0` runs the workflow YAML from the tag, not main. Fixes to the workflow on main won't apply unless you omit `--ref`.
-- Windows: use `pip install zimi` (no desktop build currently)
+- Windows: CI builds a desktop app (`Zimi-windows-x64.zip`, WinSparkle auto-update) via `desktop-release.yml`; `pip install zimi` also works
