@@ -32,12 +32,20 @@ WHAT A RENDERED CAPTURE IS, precisely, so nobody is surprised by it:
     browser CHOSE at a 1280px viewport, because that is the honest answer to
     "which of these five files is the page" — the alternative is carrying all
     five or guessing at one.
+  * Media is carried WHOLE. Chromium streams video in ranges, so the body it
+    holds for such a response is the first few kilobytes; those responses are
+    asked for again in full rather than stored truncated, because a hero video
+    is usually the largest thing a page is remembered for. A <video> that was
+    playing — or that is muted with no controls, which is what every
+    background animation on the web looks like — keeps its playback state, so
+    the page does not open on an empty grey box where its hero used to be.
   * SCRIPTS ARE STRIPPED. This is a frozen snapshot: pixel-faithful where the
     page had finished painting, and inert. A carousel does not turn, a menu
     that needs JavaScript to open does not open, and a page that renders
     nothing until a fetch() resolves stays as blank as it was at capture. Full
-    interactive replay is what WARC and zimit exist for; this engine sets its
-    ceiling out loud rather than shipping half a browser and hoping.
+    interactive replay is what WARC and zimit exist for (see zimi.alive); this
+    engine sets its ceiling out loud rather than shipping half a browser and
+    hoping.
 
 The engine object at the bottom is the same shape as the fast engine's
 (``zimi.creator.BuiltinCapture``): ``fetch`` a URL, ``render`` what came back
@@ -68,6 +76,7 @@ from zimi.blocklist import host_of as _host_of, load as _load_blocklist
 from zimi.creator import (
     CreateError,
     _CSS_URL_RE,
+    _fmt_bytes,
     _externalize_links,
     _normalize_charset,
     _strip_scripts,
@@ -132,6 +141,28 @@ IMAGE_SETTLE_TICK = 0.25
 # taken out. A wedged renderer must never outlive the job that started it.
 KILL_GRACE = 3.0
 
+# ── how much a rendered capture may carry ───────────────────────────────────
+#
+# Wider than the bookmark exporter's caps, which is where the shared numbers
+# come from. That exporter carries the illustrations of articles already in
+# somebody's library; this engine carries the whole of a page as a browser
+# rendered it, and on the modern web the single most memorable thing on a page
+# is often a video several megabytes long. Refusing it would leave a hole
+# exactly where the fidelity was supposed to be. The peak MEMORY is still one
+# asset — everything is spooled to disk as it arrives — and a site crawl is
+# still bounded by its own byte budget on top of these.
+MAX_ASSET_BYTES = max(_MAX_ASSET_BYTES, 32 * 1024**2)
+MAX_TOTAL_ASSET_BYTES = max(_MAX_TOTAL_ASSET_BYTES, 192 * 1024**2)
+# What one JOB may hold on disk between fetching a page and writing it. A crawl
+# writes each page as it goes and never accumulates; a multi-page capture must
+# fetch every page before it can name the ZIM, so its media waits. This is the
+# ceiling on that wait — generous, and finite, which is the part that matters on
+# a Pi whose ZIM directory is the same disk everything else lives on.
+SPOOL_MAX_BYTES = 512 * 1024**2
+# A ranged reply. Chromium asks for media this way, so what it holds for such a
+# response is a slice of the file rather than the file.
+PARTIAL_CONTENT = 206
+
 # ── ad and tracker blocking ─────────────────────────────────────────────────
 #
 # On by default for both browser engines. See zimi.blocklist for the list, its
@@ -174,6 +205,32 @@ ALIVE_SKIP_SCHEMES = ("data:", "blob:", "about:", "chrome-extension:", "file:")
 # subresource deserves and shorter than forever: this is a whole video file,
 # and the capture is already finished waiting for everything else.
 ALIVE_REFETCH_TIMEOUT = 60.0
+
+# The RESPONSIVE VARIANTS a recording must hold and a navigation never fetches.
+#
+# A browser asks for exactly one image out of a `srcset` — the one that suits
+# the viewport it has and the pixel ratio it renders at. A recording that keeps
+# only the traffic therefore holds one candidate out of five, and the replay is
+# perfect on a screen shaped like the recorder's and broken on every other one:
+# apple.com on a 2x display asks for `..._large_2x.jpg`, which a 1x capture
+# never saw, and the page comes up with holes in it. The DOM is the record of
+# what could be asked for, so after the page settles every candidate in it is
+# enumerated and the ones the navigation missed are fetched deliberately.
+#
+# Both caps are per navigation. The count keeps a gallery page from turning
+# into a thousand small requests; the byte cap is what stops a page whose
+# candidates are all 8MB from quietly tripling the archive. Neither is a
+# quality knob — a capture that hits them is one that recorded the traffic and
+# the first N variants, which is still strictly more than it held before.
+ALIVE_MAX_VARIANTS = 240
+ALIVE_VARIANT_MAX_BYTES = 64 * 1024 * 1024
+# One variant is a picture on a page that has already finished loading. It gets
+# less patience than a whole video and more than nothing.
+ALIVE_VARIANT_TIMEOUT = 20.0
+# How many elements the computed-style sweep looks at. Bounded because the
+# sweep is the one part of the enumeration whose cost scales with the DOM
+# rather than with the number of images, and a 50,000-node page is a real thing.
+ALIVE_VARIANT_SCAN_ELEMENTS = 4000
 
 # Which of the browser's requests are worth keeping. Scripts are deliberately
 # absent — they are stripped from the stored page, so carrying their bytes
@@ -325,6 +382,88 @@ def _launch(chromium):
 # what a relative reference resolves to under this document's <base>, and what
 # the DOM looks like after the page finished building it.
 
+# Every image URL this document could ever ask for, absolute. Runs in the page
+# after it has settled and BEFORE _PREPARE_JS, which destroys most of what this
+# reads (it collapses srcset to the one chosen candidate and removes the
+# <picture> sources entirely). Takes the element cap as its argument.
+#
+# Four sources, because that is where the web keeps its alternates: the srcset
+# attributes on <img> and on <picture><source>, the imagesrcset of a preload
+# link, the url() tokens of picture-bearing CSS declarations in every
+# stylesheet this document is allowed to read, and the computed backgrounds
+# actually applied to elements — the last of which is what catches a background
+# whose stylesheet is cross-origin and therefore unreadable rule by rule.
+_IMAGE_CANDIDATES_JS = r"""(maxElements) => {
+  const seen = new Set();
+  const out = [];
+  const add = (raw, base) => {
+    if (!raw) return;
+    const value = String(raw).trim().replace(/^["']|["']$/g, '');
+    if (!value || value.startsWith('data:') || value.startsWith('#')) return;
+    let href;
+    try { href = new URL(value, base || document.baseURI).href; } catch (e) { return; }
+    if (!/^https?:/i.test(href) || seen.has(href)) return;
+    seen.add(href);
+    out.push(href);
+  };
+  const addSrcset = (value, base) => {
+    if (!value) return;
+    String(value).split(',').forEach(part => add(part.trim().split(/\s+/)[0], base));
+  };
+
+  document.querySelectorAll('img').forEach(img => {
+    add(img.getAttribute('src'));
+    addSrcset(img.getAttribute('srcset'));
+    if (img.currentSrc) add(img.currentSrc);
+  });
+  document.querySelectorAll('source[srcset]').forEach(s => addSrcset(s.getAttribute('srcset')));
+  document.querySelectorAll('link[as="image"][href], link[imagesrcset]').forEach(l => {
+    add(l.getAttribute('href'));
+    addSrcset(l.getAttribute('imagesrcset'));
+  });
+  document.querySelectorAll('[poster]').forEach(el => add(el.getAttribute('poster')));
+
+  // The CSS half. Only the properties that name a picture are read: a sweep of
+  // every url() in every rule would also drag in every font weight the site
+  // ships and none of them are what is missing.
+  const PROPS = ['background-image', 'background', 'mask-image',
+                 '-webkit-mask-image', 'border-image-source',
+                 'list-style-image', 'content'];
+  const URL_RE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
+  const fromValue = (value, base) => {
+    if (!value || value.indexOf('url(') < 0) return;
+    let m;
+    URL_RE.lastIndex = 0;
+    while ((m = URL_RE.exec(value)) !== null) add(m[2], base);
+  };
+  const walkRules = (rules, base) => {
+    for (const rule of rules) {
+      if (rule.style) PROPS.forEach(p => fromValue(rule.style.getPropertyValue(p), base));
+      let nested = null;
+      try { nested = rule.cssRules; } catch (e) { nested = null; }
+      if (nested) walkRules(nested, base);
+    }
+  };
+  Array.from(document.styleSheets).forEach(sheet => {
+    let rules = null;
+    // A cross-origin sheet throws here rather than answering. That is not an
+    // error: the computed-style sweep below sees what it applied.
+    try { rules = sheet.cssRules; } catch (e) { return; }
+    if (rules) walkRules(rules, sheet.href || document.baseURI);
+  });
+  const elements = Array.from(document.querySelectorAll('*')).slice(0, maxElements);
+  elements.forEach(el => {
+    [null, '::before', '::after'].forEach(pseudo => {
+      let style;
+      try { style = getComputedStyle(el, pseudo); } catch (e) { return; }
+      if (!style) return;
+      // Computed values are already absolute.
+      PROPS.forEach(p => fromValue(style.getPropertyValue(p), document.baseURI));
+    });
+  });
+  return out;
+}"""
+
 _PREPARE_JS = r"""() => {
   const absolutize = (el, attr) => {
     const raw = el.getAttribute(attr);
@@ -366,6 +505,31 @@ _PREPARE_JS = r"""() => {
     document.querySelectorAll(tag + '[' + attr + ']').forEach(el => absolutize(el, attr));
   });
   document.querySelectorAll('source[srcset], img[srcset]').forEach(absSrcset);
+
+  // A video that was PLAYING when the snapshot was taken keeps playing in the
+  // snapshot. Modern hero sections are a muted, looping <video> that a script
+  // starts — the file is carried like any other asset, but offline nothing
+  // calls play() and `preload="none"` means the browser will not even fetch
+  // it, so the biggest thing on the page renders as an empty box. Copying the
+  // playback state the capture actually observed is the honest fix: it says
+  // "this was moving when we looked", and it says nothing about videos that
+  // were sitting behind a poster waiting to be clicked.
+  document.querySelectorAll('video').forEach(v => {
+    if (!(v.currentSrc || v.getAttribute('src') || v.querySelector('source[src]'))) return;
+    // preload="none" is a bandwidth decision about a file on the far side of
+    // the internet. Inside a ZIM the file is already here, and honouring that
+    // attribute would mean shipping the bytes and then refusing to show them.
+    v.setAttribute('preload', 'auto');
+    // Playing at capture time, or decorative by construction — muted with no
+    // controls is the shape of every hero animation on the web, and nobody can
+    // press play on it offline because the script that would have is gone.
+    if (!v.paused || (v.muted && !v.controls)) {
+      v.setAttribute('autoplay', '');
+      v.setAttribute('muted', '');     // the only way autoplay is allowed
+      v.muted = true;
+      v.setAttribute('playsinline', '');
+    }
+  });
 
   // Links that only ever meant something to a live browser: a preload is a
   // request to fetch something sooner, and offline it is a dead reference.
@@ -422,14 +586,22 @@ class RenderedPage:
         self.resources = resources  # absolute URL -> _Resource
 
     def discard(self):
-        """Delete this page's spooled resource files. Called once the page has
-        been rendered into the ZIM and its bytes are somewhere else."""
+        """Delete this page's spooled resource files and report how many bytes
+        that gave back. Called once the page has been rendered into the ZIM and
+        its bytes are somewhere else.
+
+        The number is what keeps the session's spool ceiling honest: it bounds
+        what is held AT ONCE, and a crawl that writes each page as it goes
+        should never approach it however long it runs."""
+        freed = 0
         for resource in self.resources.values():
+            freed += resource.size
             try:
                 os.remove(resource.path)
             except OSError:
                 pass
         self.resources = {}
+        return freed
 
 
 # ── the browser ─────────────────────────────────────────────────────────────
@@ -481,11 +653,18 @@ class RenderedSession:
         self._recorder = recorder
         self._extra_wait = max(0.0, float(extra_wait or 0.0))
         self.recorded = 0  # responses written to the archive, this session
+        # Every URL this session has already put to the archive — recorded,
+        # deduplicated, or deliberately skipped. What the variant sweep asks
+        # before it fetches anything, so a page that already loaded an image at
+        # one size is never asked for it a second time.
+        self._archived = set()
         self._pw = None
         self._browser = None
         self._context = None
         self._spool = tempfile.mkdtemp(prefix=".zimi-render-", dir=work_dir)
         self._spooled = 0
+        self._spool_bytes = 0
+        self._spool_full = False
         self._driver_pid = None
         self._killed = False
         self._closed = False
@@ -668,6 +847,14 @@ class RenderedSession:
                     return
                 time.sleep(0.05)
 
+    def release(self, freed):
+        """Give spool room back. See ``SPOOL_MAX_BYTES``: the ceiling is on
+        what a job holds at once, not on what it has ever written, so a crawl
+        that discards each page as it packages it never approaches it."""
+        self._spool_bytes = max(0, self._spool_bytes - int(freed or 0))
+        if self._spool_full and self._spool_bytes < SPOOL_MAX_BYTES:
+            self._spool_full = False
+
     def _cleanup_spool(self):
         shutil.rmtree(self._spool, ignore_errors=True)
 
@@ -709,7 +896,14 @@ class RenderedSession:
             # a browser after images the page itself had decided not to want.
             # The archive is meant to hold what this page did, not what Zimi
             # provoked it into doing on the way out.
-            recorded = self._record(responses) if self._recorder is not None else None
+            recorded = None
+            if self._recorder is not None:
+                recorded = self._record(responses)
+                # And then the variants the page could have asked for and did
+                # not, while the DOM still holds them: _PREPARE_JS below
+                # collapses every srcset to the one candidate this viewport
+                # chose and deletes the <picture> sources outright.
+                self._record_variants(page)
             try:
                 html = page.evaluate(_PREPARE_JS)
             except Exception as e:
@@ -846,6 +1040,10 @@ class RenderedSession:
                 continue
             if url.startswith(ALIVE_SKIP_SCHEMES):
                 continue
+            # Seen is seen, whatever happens to the body below. A response this
+            # skipped for its size or its budget is not one the variant sweep
+            # should go and fetch again for the same reasons.
+            self._archived.add(url)
             if status == 206:
                 # A RANGE. Not the resource — a slice of it, and a browser
                 # fetching a video sends several: an opening probe that it
@@ -906,47 +1104,108 @@ class RenderedSession:
         the fragments (a replay would still have to serve ranges it was never
         given): it is to ask once, plainly, for the whole thing.
 
-        Through the page's OWN context, so the request carries the cookies and
-        the session the page had — a video behind a login is not a video this
-        can fetch from a fresh connection. Every failure here is a debug line
-        and a missing file, never a failed capture: this runs after the page is
-        finished, and nothing else depends on it."""
+        Every failure here is a debug line and a missing file, never a failed
+        capture: this runs after the page is finished, and nothing else depends
+        on it."""
         if not urls or self._context is None or self._recorder is None:
             return
         for url in urls:
-            try:
-                reply = self._context.request.get(
-                    url, timeout=int(ALIVE_REFETCH_TIMEOUT * 1000)
-                )
-                status = reply.status
-                body = reply.body()
-                headers = reply.headers or {}
-            except Exception as e:
-                log.debug("could not re-fetch %s whole: %s", url, _playwright_reason(e))
+            self._fetch_into_archive(url, ALIVE_REFETCH_TIMEOUT)
+
+    def _record_variants(self, page):
+        """Archive the image variants this DOM could ask for and never did.
+
+        The recording holds the ONE candidate this viewport and this pixel
+        ratio chose out of each srcset. Every other candidate is a request the
+        replay will make on a differently shaped screen and the archive cannot
+        answer — which is the whole of what a person sees as "the images are
+        missing", and it is why this sweep is not an optimisation.
+
+        Bounded three ways and none of them is a failure: the count cap, the
+        byte cap here, and the crawl's own byte budget underneath. Every miss
+        is a debug line — the page is already captured and nothing downstream
+        depends on this."""
+        if self._recorder is None or self._context is None:
+            return
+        try:
+            candidates = page.evaluate(
+                _IMAGE_CANDIDATES_JS, ALIVE_VARIANT_SCAN_ELEMENTS
+            )
+        except Exception as e:
+            log.debug("could not enumerate image candidates: %s", _playwright_reason(e))
+            return
+        spent = 0
+        tried = 0
+        found = 0
+        for url in candidates or []:
+            if url in self._archived or url.startswith(ALIVE_SKIP_SCHEMES):
                 continue
-            if not (200 <= status < 300) or not body:
-                log.debug("re-fetching %s whole returned %s", url, status)
+            # A candidate on the blocklist is not fetched and is not counted as
+            # blocked either: the counters report requests the BROWSER made and
+            # this one was never made at all.
+            if self._blocklist is not None and self._blocklist.blocks_url(url):
+                self._archived.add(url)
                 continue
-            if len(body) > ALIVE_MAX_RESPONSE_BYTES:
-                log.debug("not archiving %s: %d bytes", url, len(body))
-                continue
-            if self._budget is not None and not self._budget.spend(len(body)):
-                log.debug("byte budget spent; not archiving %s", url)
-                continue
-            try:
-                # Recorded as the 200 it is. The browser asked for a range and
-                # this asked for the file; what the archive holds is the file,
-                # which is the only form a replay can serve any range out of.
-                if self._recorder.write_exchange(
-                    url,
-                    status=200,
-                    response_headers=_typed(headers, url),
-                    body=body,
-                    method="GET",
-                ):
-                    self.recorded += 1
-            except Exception as e:
-                log.warning("could not archive %s: %s", url, e)
+            # The count cap is on ATTEMPTS, not on hits: a page whose
+            # candidates all 404 costs exactly as many round trips as one whose
+            # candidates all exist, and it is the round trips that need the
+            # ceiling.
+            if tried >= ALIVE_MAX_VARIANTS or spent >= ALIVE_VARIANT_MAX_BYTES:
+                log.debug("variant sweep stopped at its cap on %s", page.url)
+                break
+            tried += 1
+            written = self._fetch_into_archive(url, ALIVE_VARIANT_TIMEOUT)
+            if written:
+                found += 1
+                spent += written
+        if found:
+            self._note(f"archived {found} image variant{'s' if found != 1 else ''}")
+
+    def _fetch_into_archive(self, url, timeout):
+        """GET one URL through the page's own context and write what comes
+        back. Returns the body size stored, or 0.
+
+        Through the CONTEXT rather than a fresh connection so the request
+        carries the cookies and the session the page had — a video behind a
+        login, or an image on a host that only answers to a warm session, is
+        not something a cold client can fetch.
+
+        Stored as the 200 it is: this asked for the whole resource plainly, and
+        the whole resource under its own URL is the only form a replay can
+        serve any request out of."""
+        if self._context is None or self._recorder is None:
+            return 0
+        self._archived.add(url)
+        try:
+            reply = self._context.request.get(url, timeout=int(timeout * 1000))
+            status = reply.status
+            body = reply.body()
+            headers = reply.headers or {}
+        except Exception as e:
+            log.debug("could not fetch %s: %s", url, _playwright_reason(e))
+            return 0
+        if not (200 <= status < 300) or not body:
+            log.debug("fetching %s returned %s", url, status)
+            return 0
+        if len(body) > ALIVE_MAX_RESPONSE_BYTES:
+            log.debug("not archiving %s: %d bytes", url, len(body))
+            return 0
+        if self._budget is not None and not self._budget.spend(len(body)):
+            log.debug("byte budget spent; not archiving %s", url)
+            return 0
+        try:
+            if self._recorder.write_exchange(
+                url,
+                status=200,
+                response_headers=_typed(headers, url),
+                body=body,
+                method="GET",
+            ):
+                self.recorded += 1
+        except Exception as e:
+            log.warning("could not archive %s: %s", url, e)
+            return 0
+        return len(body)
 
     def _collect(self, responses, final_url):
         """Every kept response body, spooled to disk as it is read.
@@ -973,14 +1232,51 @@ class RenderedSession:
                 continue
             if kind not in KEPT_RESOURCE_TYPES or url in resources:
                 continue
-            body = _body(response)
-            if body is None or not body or len(body) > _MAX_ASSET_BYTES:
+            mime = _mimetype_of(response, url)
+            body = None if status == PARTIAL_CONTENT else _body(response)
+            if body is None:
+                # A 206, or a body the browser will not hand back. Video is the
+                # whole reason this branch exists: Chromium streams media in
+                # ranges, so what it holds for that response is the first few
+                # kilobytes of the file — storing THAT would put a truncated
+                # video in the ZIM under a name that promises a whole one. Ask
+                # again for the entire thing, through the same context, so
+                # cookies and headers are the ones that worked a moment ago.
+                if _declared_size(response) > MAX_ASSET_BYTES:
+                    # It already said how big it is and it is over the cap.
+                    # Downloading it in full to drop it would be the one
+                    # request in this whole engine that buys nothing.
+                    log.debug("not re-fetching %s: over the per-asset cap", url)
+                    continue
+                got = self._refetch(url)
+                if got is None:
+                    continue
+                body, refetched_mime = got
+                mime = refetched_mime or mime
+            if not body or len(body) > MAX_ASSET_BYTES:
                 continue
             if self._budget is not None and not self._budget.spend(len(body)):
                 # The job's byte budget is spent. Later pages still render —
                 # their text is the point — they simply stop carrying media.
                 log.debug("byte budget spent; not keeping %s", url)
                 continue
+            if self._spool_bytes + len(body) > SPOOL_MAX_BYTES:
+                # The floor under every other bound. A crawl has a byte budget
+                # and a single page has the asset caps, but a MULTI-page capture
+                # has neither — twenty rendered URLs would otherwise be twenty
+                # pages' media sitting on disk at once, waiting for a write pass
+                # that cannot start until the last one is fetched. Past this the
+                # capture keeps going and stops keeping media, which is the same
+                # way every other bound here degrades.
+                if not self._spool_full:
+                    self._spool_full = True
+                    log.warning(
+                        "rendered capture has spooled %s of subresources; "
+                        "keeping no more media for this job",
+                        _fmt_bytes(self._spool_bytes),
+                    )
+                continue
+            self._spool_bytes += len(body)
             path = os.path.join(self._spool, f"{self._spooled:06d}.bin")
             self._spooled += 1
             try:
@@ -989,8 +1285,24 @@ class RenderedSession:
             except OSError as e:
                 log.warning("could not spool %s: %s", url, e)
                 continue
-            resources[url] = _Resource(url, _mimetype_of(response), path, len(body))
+            resources[url] = _Resource(url, mime, path, len(body))
         return resources, doc_bytes
+
+    def _refetch(self, url):
+        """The whole file, asked for again through the browser's own request
+        context. ``(bytes, mimetype)`` or None."""
+        if self._context is None:
+            return None
+        try:
+            reply = self._context.request.get(url, timeout=int(NAV_TIMEOUT * 1000))
+            if not (200 <= reply.status < 300):
+                return None
+            body = reply.body()
+            mime = (reply.headers.get("content-type") or "").split(";")[0].strip()
+            return body, mime.lower()
+        except Exception as e:
+            log.debug("could not re-fetch %s in full: %s", url, e)
+            return None
 
 
 def shutdown_sessions():
@@ -1078,13 +1390,43 @@ def _body_length(response):
     return len(body) if body else 0
 
 
-def _mimetype_of(response):
+def _declared_size(response):
+    """How big the far end says the whole file is, or 0 when it did not say.
+
+    A ranged reply reports the SLICE in Content-Length and the whole thing in
+    Content-Range ("bytes 0-1023/1536130"), so the total is the part after the
+    slash — which is exactly the number worth knowing before deciding to fetch
+    it all over again."""
+    try:
+        headers = response.headers
+    except Exception:
+        return 0
+    rng = headers.get("content-range") or ""
+    total = rng.rsplit("/", 1)[-1].strip() if "/" in rng else ""
+    for value in (total, headers.get("content-length") or ""):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return 0
+
+
+def _mimetype_of(response, url=""):
+    """What the server said this is, or what its name says it is.
+
+    The fallback matters more than it looks: a ZIM entry's mimetype is what the
+    reader serves it as, and "application/octet-stream" on a webm is a video a
+    browser will refuse to play."""
     try:
         raw = response.headers.get("content-type") or ""
     except Exception:
         raw = ""
     mime = raw.split(";")[0].strip().lower()
-    return mime or "application/octet-stream"
+    return (
+        mime
+        or mimetypes.guess_type(urllib.parse.urlsplit(url).path)[0]
+        or ("application/octet-stream")
+    )
 
 
 def _headers_of(response):
@@ -1263,11 +1605,11 @@ class RenderedAssets:
             # never used (a print stylesheet, a poster the video element
             # ignored), or something that failed. Left external, honestly.
             return None
-        if self.count >= _MAX_ASSETS or self.total_bytes >= _MAX_TOTAL_ASSET_BYTES:
+        if self.count >= _MAX_ASSETS or self.total_bytes >= MAX_TOTAL_ASSET_BYTES:
             self.carried[key] = None
             return None
         data = resource.read()
-        if not data or len(data) > _MAX_ASSET_BYTES:
+        if not data or len(data) > MAX_ASSET_BYTES:
             self.carried[key] = None
             return None
         mime = resource.mimetype
@@ -1522,12 +1864,12 @@ class RenderedCapture:
             self.mimetypes |= assets.mimetypes
             self.count += assets.count
             if page is not None:
-                page.discard()
+                self._session.release(page.discard())
         return out
 
     def close(self):
         for page in self._pages.values():
-            page.discard()
+            self._session.release(page.discard())
         self._pages.clear()
         self._session.close()
 

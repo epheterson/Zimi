@@ -2440,6 +2440,22 @@
     background: var(--amber-glow); color: var(--amber);
     box-shadow: inset 0 0 0 1px var(--amber-border);
   }
+  /* Provenance type badge — what a Zimi-made ZIM IS (folder, page, site, video,
+     bookmarks, import, alive), derived from its metadata and never from its
+     title. Deliberately the quietest chip on the card: amber is spoken for by
+     New/Updated, which are transient and want the eye; this one is permanent
+     and must not. A Kiwix ZIM carries no badge at all, so the absence is the
+     signal that this library did not make the file. */
+  .prov-badge {
+    display: inline-block; vertical-align: middle; margin-inline-start: 6px;
+    font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 5px; line-height: 1.2;
+    background: var(--surface2); color: var(--text2);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  /* A replay ZIM is the one kind that behaves differently once opened, so it is
+     the one kind that gets an outline instead of blending in. */
+  .prov-badge.prov-alive { color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber-border); }
 
   /* ── Context menu ──
      Z-order contract: content layers (cards, their badges/stars) live at
@@ -2727,6 +2743,106 @@
   .bm-export-actions { display: flex; align-items: center; gap: 8px; padding: 12px 18px 16px; }
   .bm-export-actions .primary { background: var(--amber); color: var(--on-amber); border-color: transparent; }
   .bm-export-actions .primary:hover:not(:disabled) { color: var(--on-amber); filter: brightness(1.05); }
+
+  /* ── About this ZIM ──
+     A reading panel, not a form: no primary action, nothing to submit, one way
+     out. It shares the export modal's overlay geometry (centred, capped at 80vh,
+     scrolls inside itself) because a ZIM's metadata is exactly as long as it is
+     and a 4000-character LongDescription must not push the close button off
+     screen. Every colour is a token, so light theme needs no rules of its own. */
+  .zi-overlay {
+    position: fixed; inset: 0; z-index: 10000; display: flex;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.5); padding: 20px;
+  }
+  .zi-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    width: min(520px, 100%); max-height: 84vh; display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4); overflow: hidden;
+  }
+  .zi-head {
+    display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .zi-head-title { font-size: 15px; font-weight: 600; color: var(--text); flex: 1; }
+  .zi-close {
+    background: none; border: none; color: var(--text2); font-size: 15px; line-height: 1;
+    cursor: pointer; padding: 4px 6px; border-radius: 6px;
+  }
+  .zi-close:hover { color: var(--text); background: var(--surface2); }
+  .zi-body { overflow-y: auto; padding: 16px; }
+  .zi-none { color: var(--text2); font-size: 12.5px; line-height: 1.5; padding: 4px 0; }
+  .zi-warn {
+    color: var(--text2); font-size: 12.5px; line-height: 1.5; margin-bottom: 12px;
+    padding: 8px 10px; border-radius: 8px; background: var(--surface2);
+    border: 1px solid var(--border);
+  }
+  .zi-id { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+  .zi-icon img { border-radius: 8px; display: block; background: var(--surface2); }
+  .zi-letter {
+    display: flex; align-items: center; justify-content: center;
+    width: 48px; height: 48px; border-radius: 8px; background: var(--surface2);
+    color: var(--text2); font-size: 20px; font-weight: 600;
+  }
+  .zi-id-text { min-width: 0; flex: 1; }
+  .zi-title { font-size: 16px; font-weight: 600; color: var(--text); line-height: 1.3; }
+  .zi-desc { font-size: 12.5px; color: var(--text2); line-height: 1.45; margin-top: 3px; }
+  .zi-long {
+    font-size: 12.5px; color: var(--text2); line-height: 1.5; margin-bottom: 14px;
+    white-space: pre-wrap;
+  }
+  /* Label/value pairs. The label column is fixed so the values line up, and it
+     wraps rather than truncates — a translated label is often longer. */
+  .zi-rows { display: flex; flex-direction: column; gap: 6px; }
+  .zi-row { display: flex; gap: 10px; align-items: baseline; font-size: 12.5px; }
+  .zi-k {
+    flex: 0 0 92px; color: var(--text2); text-transform: uppercase;
+    letter-spacing: 0.05em; font-size: 10px; font-weight: 600; padding-top: 2px;
+  }
+  /* overflow-wrap, not ellipsis: a Source URL or a Scraper string is the whole
+     point of the row, so it wraps instead of losing its tail. */
+  /* A raw metadata key is the FILE's spelling — never title-cased by the UI. */
+  .zi-k-raw { text-transform: none; letter-spacing: 0; font-size: 11px; }
+  .zi-v { flex: 1; min-width: 0; color: var(--text); overflow-wrap: anywhere; }
+  .zi-v a { color: var(--amber); text-decoration: none; }
+  .zi-v a:hover { text-decoration: underline; }
+  .zi-tag {
+    display: inline-block; margin: 0 4px 4px 0; padding: 2px 7px; border-radius: 10px;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text2); font-size: 11px;
+  }
+  .zi-sec {
+    margin: 18px 0 10px; font-size: 10px; font-weight: 600; color: var(--text2);
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  /* The provenance timeline: one entry per record, oldest first, joined by a
+     rule down the left so a ZIM's life reads as a sequence rather than a list. */
+  .zi-timeline { list-style: none; margin: 0; padding: 0 0 0 16px; border-inline-start: 1px solid var(--border); }
+  .zi-ev { position: relative; padding-bottom: 14px; }
+  .zi-ev:last-child { padding-bottom: 0; }
+  .zi-ev::before {
+    content: ''; position: absolute; inset-inline-start: -21px; top: 5px;
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--surface); box-shadow: inset 0 0 0 2px var(--amber);
+  }
+  .zi-ev-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .zi-ev-op { font-size: 13px; font-weight: 600; color: var(--text); }
+  .zi-ev-mode {
+    font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 5px; background: var(--surface2); color: var(--text2);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .zi-ev-when { font-size: 11px; color: var(--text2); margin-inline-start: auto; }
+  .zi-ev-detail { font-size: 12.5px; color: var(--text); line-height: 1.45; margin-top: 3px; }
+  .zi-ev-fact { font-size: 11.5px; color: var(--text2); line-height: 1.45; margin-top: 2px; }
+  .zi-ev-sub { color: var(--text3); }
+  @media (max-width: 600px) {
+    .zi-overlay { padding: 0; align-items: stretch; }
+    .zi-panel { width: 100%; max-height: 100%; border-radius: 0; border: none; }
+    /* The label column costs too much of a phone's width — stack instead. */
+    .zi-row { flex-direction: column; gap: 1px; }
+    .zi-k { flex: none; padding-top: 0; }
+  }
 
   /* ── Discover homepage — horizontal scroll row ── */
   .discover-section { margin-bottom: 20px; }

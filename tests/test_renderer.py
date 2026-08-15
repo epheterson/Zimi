@@ -17,8 +17,8 @@ Two layers, deliberately:
     wrote.
 
 Nothing here reaches the real network. The browser tests drive two local
-fixture servers — one "site", one "CDN" on another port, which is a different
-origin by every rule that matters.
+fixture servers — one "site", one "CDN" on a second port the OS chooses, which
+is a different origin by every rule that matters.
 """
 
 import http.server
@@ -26,6 +26,7 @@ import json
 import os
 import sys
 import threading
+import urllib.parse
 
 import pytest
 
@@ -37,10 +38,11 @@ import zimi.manage as manage  # noqa: E402
 import zimi.renderer as renderer  # noqa: E402
 
 HOST = "127.0.0.1"
-SITE_PORT = 8897
-CDN_PORT = 8898
-SITE = f"http://{HOST}:{SITE_PORT}"
-CDN = f"http://{HOST}:{CDN_PORT}"
+# EPHEMERAL ports, always: the fixture servers bind port 0 and the tests read
+# back what the OS gave them. A fixed port is a name shared with every other
+# test module in the repo AND with any other copy of this suite running at the
+# same moment — both of which turn into "address already in use" at setup, and
+# neither of which is about the code under test.
 
 
 # ── the fake resource map ───────────────────────────────────────────────────
@@ -73,10 +75,13 @@ class _Sink:
         return [path for path, _mime, _data in self.items]
 
     def body(self, path):
+        """The bytes stored at an in-ZIM path. Asserts rather than returns None
+        for a path nothing wrote: every caller is checking what landed, and
+        "nothing did" is worth failing on by name."""
         for got, _mime, data in self.items:
             if got == path:
                 return data
-        return None
+        raise AssertionError(f"nothing was stored at {path}")
 
 
 def _tuple_item(path, mimetype, data):
@@ -94,6 +99,15 @@ def _assets(tmp_path, entries, **kw):
 # ── the mirror layout ───────────────────────────────────────────────────────
 
 
+def asset_path(url):
+    """``_asset_path`` for a URL that is supposed to have one. The assertion
+    belongs here rather than at each call site: every test below is about WHAT
+    the path is, and "it was None" is a different failure worth naming once."""
+    got = renderer._asset_path(url)
+    assert got is not None, f"no asset path for {url}"
+    return got
+
+
 def test_an_asset_path_mirrors_host_and_path():
     assert (
         renderer._asset_path("https://example.com/img/logo.png")
@@ -102,15 +116,15 @@ def test_an_asset_path_mirrors_host_and_path():
 
 
 def test_two_hosts_with_the_same_path_are_two_entries():
-    one = renderer._asset_path("https://a.example/s/app.css")
-    two = renderer._asset_path("https://b.example/s/app.css")
+    one = asset_path("https://a.example/s/app.css")
+    two = asset_path("https://b.example/s/app.css")
     assert one != two and one.endswith("/s/app.css") and two.endswith("/s/app.css")
 
 
 def test_a_query_is_part_of_an_assets_identity():
-    plain = renderer._asset_path("https://e.com/i.png")
-    small = renderer._asset_path("https://e.com/i.png?w=100")
-    large = renderer._asset_path("https://e.com/i.png?w=900")
+    plain = asset_path("https://e.com/i.png")
+    small = asset_path("https://e.com/i.png?w=100")
+    large = asset_path("https://e.com/i.png?w=900")
     assert len({plain, small, large}) == 3
     # …and it stays a path with an extension, not a query pretending to be one.
     assert small.endswith(".png") and "?" not in small
@@ -122,18 +136,18 @@ def test_the_same_url_always_lands_at_the_same_path():
 
 
 def test_a_directory_url_gets_a_name():
-    assert renderer._asset_path("https://e.com/dir/").endswith("/dir/index")
-    assert renderer._asset_path("https://e.com").endswith("/index")
+    assert asset_path("https://e.com/dir/").endswith("/dir/index")
+    assert asset_path("https://e.com").endswith("/index")
 
 
 def test_path_traversal_and_junk_never_reach_the_entry_path():
-    got = renderer._asset_path("https://e.com/../../etc/passwd")
+    got = asset_path("https://e.com/../../etc/passwd")
     assert ".." not in got and got.startswith("_assets/e_com/")
-    assert " " not in renderer._asset_path("https://e.com/a b/c d.png")
+    assert " " not in asset_path("https://e.com/a b/c d.png")
 
 
 def test_an_absurd_url_is_capped_not_carried_whole():
-    got = renderer._asset_path("https://e.com/" + "x" * 4000 + ".png")
+    got = asset_path("https://e.com/" + "x" * 4000 + ".png")
     assert len(got) < 300
 
 
@@ -190,7 +204,7 @@ def test_the_same_asset_on_two_pages_is_stored_once(tmp_path):
 
 
 def test_an_oversized_asset_is_dropped(tmp_path):
-    big = b"x" * (renderer._MAX_ASSET_BYTES + 1)
+    big = b"x" * (renderer.MAX_ASSET_BYTES + 1)
     _sink, assets = _assets(tmp_path, {"https://e.com/huge.bin": ("video/mp4", big)})
     assert assets.carry("https://e.com/huge.bin") is None
 
@@ -538,7 +552,14 @@ browser = pytest.mark.skipif(
 
 # A page that is EMPTY until JavaScript runs, holds an image only a scroll
 # reveals, pulls a stylesheet from another origin, and writes its own links.
-SITE_INDEX = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+def site_index(cdn):
+    """The seed page. Takes the CDN's address because a cross-origin
+    stylesheet cannot be written down before the OS has said where the other
+    server lives."""
+    return SITE_INDEX_TEMPLATE % (cdn,)
+
+
+SITE_INDEX_TEMPLATE = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <title>Rendered fixture</title>
 <link rel="stylesheet" href="%s/style.css">
 </head><body><div id="app"></div>
@@ -555,7 +576,7 @@ SITE_INDEX = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
       if (e.isIntersecting) { img.src = img.dataset.src; obs.unobserve(img); }
     });
   }).observe(img);
-</script></body></html>""" % (CDN,)
+</script></body></html>"""
 
 SITE_SECOND = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <title>Second</title></head><body><h1>Second page</h1>
@@ -568,18 +589,21 @@ PNG = (
     b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
 )
 
-SITE_ROUTES = {
-    "/": ("text/html; charset=utf-8", SITE_INDEX.encode()),
-    "/second.html": ("text/html; charset=utf-8", SITE_SECOND.encode()),
-    "/img/late.png": ("image/png", PNG),
-    "/robots.txt": ("text/plain", b"User-agent: *\nAllow: /\n"),
-}
+def site_routes(cdn):
+    return {
+        "/": ("text/html; charset=utf-8", site_index(cdn).encode()),
+        "/second.html": ("text/html; charset=utf-8", SITE_SECOND.encode()),
+        "/img/late.png": ("image/png", PNG),
+        "/robots.txt": ("text/plain", b"User-agent: *\nAllow: /\n"),
+    }
+
+
 CDN_ROUTES = {
     "/style.css": ("text/css", b"body{font-family:sans-serif;background:#fff}"),
 }
 
 
-def _server(port, routes):
+def _server(routes):
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
             route = routes.get(self.path.split("?", 1)[0])
@@ -593,22 +617,32 @@ def _server(port, routes):
             self.end_headers()
             self.wfile.write(body)
 
-        def log_message(self, *_a):
+        def log_message(self, format, *args):  # noqa: A002 (the base's name)
             pass
 
-    srv = http.server.ThreadingHTTPServer((HOST, port), Handler)
+    srv = http.server.ThreadingHTTPServer((HOST, 0), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    return srv
+    return srv, f"http://{HOST}:{srv.server_port}"
 
 
 @pytest.fixture(scope="module")
 def fixture_servers():
-    site = _server(SITE_PORT, SITE_ROUTES)
-    cdn = _server(CDN_PORT, CDN_ROUTES)
-    yield SITE
+    """``(site_url, cdn_url)`` — two origins, both on ports the OS chose.
+
+    The CDN comes up first because the site's markup has to name it."""
+    cdn, cdn_url = _server(CDN_ROUTES)
+    site, site_url = _server(site_routes(cdn_url))
+    yield site_url, cdn_url
     for srv in (site, cdn):
         srv.shutdown()
         srv.server_close()
+
+
+def _host_slug(url):
+    """How an in-ZIM asset path spells this server's origin."""
+    from zimi.zimwriter import _slug
+
+    return _slug(urllib.parse.urlsplit(url).netloc, "host")
 
 
 @pytest.fixture(autouse=True)
@@ -632,7 +666,8 @@ def _zim_paths(path):
 @browser
 def test_a_rendered_page_capture_keeps_what_the_browser_drew(fixture_servers, tmp_path):
     pytest.importorskip("libzim.writer")
-    info = creator.create_page_zim(SITE + "/", out_dir=str(tmp_path), engine="rendered")
+    site, cdn = fixture_servers
+    info = creator.create_page_zim(site + "/", out_dir=str(tmp_path), engine="rendered")
     assert info["engine"] == "rendered"
     html = _zim_text(info["path"], "A/index")
     # The whole point: a page the fast engine would have refused as an empty
@@ -644,7 +679,7 @@ def test_a_rendered_page_capture_keeps_what_the_browser_drew(fixture_servers, tm
     assert any(path.endswith("img/late.png") for path in paths)
     # The stylesheet from the OTHER origin, which no same-origin rule would
     # have carried.
-    assert any("127_0_0_1_8898" in path for path in paths)
+    assert any(_host_slug(cdn) in path for path in paths)
     # And no JavaScript ships, however much of it built the page.
     assert "<script" not in html.lower()
 
@@ -654,8 +689,9 @@ def test_a_rendered_crawl_follows_links_a_script_wrote(fixture_servers, tmp_path
     pytest.importorskip("libzim.writer")
     from zimi import crawler
 
+    site, _cdn = fixture_servers
     info = crawler.create_site_zim(
-        SITE + "/",
+        site + "/",
         out_dir=str(tmp_path),
         engine="rendered",
         delay=0,
@@ -672,8 +708,61 @@ def test_the_same_crawl_with_the_fast_engine_finds_one_page(fixture_servers, tmp
     pytest.importorskip("libzim.writer")
     from zimi import crawler
 
+    site, _cdn = fixture_servers
     with pytest.raises(creator.CreateError, match="application shell"):
-        crawler.create_site_zim(SITE + "/", out_dir=str(tmp_path), delay=0)
+        crawler.create_site_zim(site + "/", out_dir=str(tmp_path), delay=0)
+
+
+@browser
+def test_cancelling_a_rendered_crawl_takes_its_browser_with_it(
+    fixture_servers, tmp_path, monkeypatch
+):
+    """The ordinary cancel, as the Create page's button produces it.
+
+    A cancel is raised out of the engine's progress callback and unwinds the
+    whole crawl; what this asserts is that the browser goes with it rather than
+    surviving as an orphan holding a couple of hundred megabytes. The watchdog
+    kill is the OTHER path (see above) and only exists for a job whose thread
+    never reaches another line."""
+    pytest.importorskip("libzim.writer")
+    from zimi import crawler
+
+    # The pid is recorded at START, not read back afterwards: closing a session
+    # forgets its child on purpose, so asking later would ask nothing.
+    sessions = []
+    real_start = renderer.RenderedCapture.start
+
+    def remember(self):
+        out = real_start(self)
+        if not sessions:
+            sessions.append((self._session, self._session._driver_pid))
+        return out
+
+    monkeypatch.setattr(renderer.RenderedCapture, "start", remember)
+
+    class Cancelled(Exception):
+        pass
+
+    def sink(_message):
+        # The web job's sink raises out of the engine exactly like this.
+        if sessions:
+            raise Cancelled()
+
+    site, _cdn = fixture_servers
+    with pytest.raises(Cancelled):
+        crawler.create_site_zim(
+            site + "/",
+            out_dir=str(tmp_path),
+            engine="rendered",
+            delay=0,
+            progress=sink,
+        )
+    assert sessions, "the crawl never started a browser, so this proved nothing"
+    session, pid = sessions[0]
+    assert pid, "no driver pid to check"
+    assert not _alive(pid)
+    # And nothing of the capture is left on disk either.
+    assert not os.path.exists(session._spool)
 
 
 @browser
@@ -775,16 +864,55 @@ def test_a_rendered_capture_reports_its_memory_honestly(fixture_servers, tmp_pat
     pytest.importorskip("libzim.writer")
     from zimi import crawler
 
+    site, _cdn = fixture_servers
     before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     crawler.create_site_zim(
-        SITE + "/", out_dir=str(tmp_path), engine="rendered", delay=0, max_pages=5
+        site + "/", out_dir=str(tmp_path), engine="rendered", delay=0, max_pages=5
     )
     after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     # ru_maxrss is KB on Linux and bytes on macOS; normalise to MB either way.
     scale = 1024 if sys.platform == "darwin" else 1
     grew_mb = (after - before) / (1024.0 * scale)
     print(json.dumps({"rss_growth_mb": round(grew_mb, 1)}))
-    # The browser is a CHILD process, so it is not in this number at all. What
-    # is in it is whatever the engine kept — and the engine's claim is that it
-    # keeps one asset at a time.
-    assert grew_mb < 150
+    # A generous ceiling, and deliberately so: ru_maxrss is a high-water MARK,
+    # so what it measures depends on what ran before it in this process. A
+    # tight bound here would be a test that fails for the order the suite
+    # happened to run in. The claim being guarded is an order of magnitude —
+    # the browser is a child process and is not in this number at all, and the
+    # engine holds one asset at a time rather than a site's worth.
+    assert grew_mb < 400
+    # The structural half of the same claim, which does NOT depend on what else
+    # ran: nothing is still held when the capture is over.
+    engine = renderer.RenderedCapture(work_dir=str(tmp_path))
+    try:
+        assert engine._pages == {}
+    finally:
+        engine.close()
+
+
+def test_the_spool_ceiling_counts_what_is_held_not_what_has_passed_through(tmp_path):
+    """A crawl writes each page as it goes, so its spool never grows.
+
+    The ceiling exists for a MULTI-page capture, which must hold every page's
+    media until the last URL is fetched. Measuring the lifetime total instead
+    would make a long crawl trip a bound it never actually approached — which
+    is a capture that silently stops keeping images two hundred pages in."""
+    session = renderer.RenderedSession(work_dir=str(tmp_path))
+    try:
+        session._spool_bytes = renderer.SPOOL_MAX_BYTES
+        session._spool_full = True
+        page = renderer.RenderedPage(
+            "https://e.com/",
+            "<html></html>",
+            10,
+            "",
+            _resources(tmp_path, {"https://e.com/a.png": ("image/png", b"P" * 100)}),
+        )
+        session.release(page.discard())
+        assert session._spool_bytes == renderer.SPOOL_MAX_BYTES - 100
+        assert session._spool_full is False
+        # And it never goes negative, however many times it is handed back.
+        session.release(10**12)
+        assert session._spool_bytes == 0
+    finally:
+        session.close()

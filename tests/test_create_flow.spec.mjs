@@ -334,6 +334,116 @@ test.describe('folder mode is CLI-only until a root is configured', () => {
   });
 });
 
+// ── the capture engine toggle ───────────────────────────────────────────────
+//
+// Eric asked for a browser behind the + button: "We can offer a toggle for
+// webpage and website to use either flow. I want this." The toggle is drawn
+// from what the SERVER says it has — a headless Chromium is a separate install
+// — so both states are driven here by scripting the status poll, and the
+// request that a chosen engine produces is asserted without running a job.
+
+test.describe('the capture engine', () => {
+  test.use({ serviceWorkers: 'block' });
+
+  // The status poll, with browser_ready forced either way.
+  async function withBrowser(page, ready) {
+    await page.route('**/manage/create/status*', async route => {
+      const res = await route.fetch();
+      const body = await res.json();
+      if (typeof body.browser_ready === 'boolean') body.browser_ready = ready;
+      await route.fulfill({ response: res, json: body });
+    });
+  }
+
+  test('both web modes offer the engines, fast first', async ({ page }) => {
+    await withBrowser(page, true);
+    await openCreate(page);
+    await page.waitForFunction(() => window._createBrowserReady === true);
+    for (const mode of ['page', 'site']) {
+      await pickMode(page, mode);
+      const opts = page.locator('#create-engine input[type="radio"]');
+      expect(await opts.count()).toBeGreaterThanOrEqual(2);
+      // Fast leads, it is checked, and it is the one that sends nothing.
+      expect(await opts.nth(0).inputValue()).toBe('');
+      await expect(opts.nth(0)).toBeChecked();
+      const rendered = page.locator('#create-engine input[value="rendered"]');
+      await expect(rendered).toHaveCount(1);
+      await expect(rendered).toBeEnabled();
+      await expect(page.locator('.create-seg')).toContainText('Fast');
+      await expect(page.locator('.create-seg')).toContainText('Rendered');
+    }
+    // The modes that do not capture a web page do not offer the choice.
+    for (const mode of ['video', 'import']) {
+      await pickMode(page, mode);
+      await expect(page.locator('#create-engine')).toHaveCount(0);
+    }
+  });
+
+  test('without a browser installed the option is disabled and says how',
+    async ({ page }) => {
+      await withBrowser(page, false);
+      await openCreate(page);
+      await pickMode(page, 'site');
+      const rendered = page.locator('#create-engine input[value="rendered"]');
+      await expect(rendered).toBeDisabled();
+      await expect(page.locator('#create-engine input[value=""]')).toBeChecked();
+      // Disabled, not hidden: the fix is one command and the page prints it.
+      await expect(page.locator('.create-panel')).toContainText('playwright install chromium');
+    });
+
+  test('choosing Rendered is what the submitted job asks for', async ({ page }) => {
+    await withBrowser(page, true);
+    await openCreate(page);
+    await page.waitForFunction(() => window._createBrowserReady === true);
+    await pickMode(page, 'site');
+    await page.check('#create-engine input[value="rendered"]');
+
+    // Catch the submission rather than run it: what this test is about is the
+    // wiring from a radio to a request field, and a real rendered crawl needs a
+    // browser on the SERVER, which is a different machine's problem.
+    let body = null;
+    await page.route('**/manage/create', async route => {
+      body = JSON.parse(route.request().postData() || '{}');
+      await route.fulfill({ status: 200, json: { status: 'started', id: 'x', mode: 'site' } });
+    });
+    await page.fill('#create-source', fixtureUrl);
+    await page.click('#create-start');
+    await expect.poll(() => body).not.toBeNull();
+    expect(body.mode).toBe('site');
+    expect(body.engine).toBe('rendered');
+  });
+
+  test('the fast engine sends no engine field at all', async ({ page }) => {
+    // The default lives on the server. A client that sent "builtin" would be a
+    // second place the default was written down.
+    await withBrowser(page, true);
+    await openCreate(page);
+    await pickMode(page, 'page');
+    let body = null;
+    await page.route('**/manage/create', async route => {
+      body = JSON.parse(route.request().postData() || '{}');
+      await route.fulfill({ status: 200, json: { status: 'started', id: 'x', mode: 'page' } });
+    });
+    await page.fill('#create-source', fixtureUrl);
+    await page.click('#create-start');
+    await expect.poll(() => body).not.toBeNull();
+    expect(body.engine).toBeUndefined();
+  });
+
+  test('the engine choice survives a mode switch like every other answer',
+    async ({ page }) => {
+      await withBrowser(page, true);
+      await openCreate(page);
+      await page.waitForFunction(() => window._createBrowserReady === true);
+      await pickMode(page, 'site');
+      await page.check('#create-engine input[value="rendered"]');
+      await pickMode(page, 'page');
+      await expect(page.locator('#create-engine input[value=""]')).toBeChecked();
+      await pickMode(page, 'site');
+      await expect(page.locator('#create-engine input[value="rendered"]')).toBeChecked();
+    });
+});
+
 // ── an offline server ───────────────────────────────────────────────────────
 
 test.describe('offline', () => {

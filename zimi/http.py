@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 import traceback
+from html import escape
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote, quote
 
@@ -800,6 +801,461 @@ def _asset_version():
 
 
 # ============================================================================
+# About this ZIM — the file's own metadata, and the provenance it carries
+# ============================================================================
+#
+# What a ZIM says about itself lives in its metadata, and every reader of the
+# library is entitled to see it: this is description, not administration, so it
+# is gated exactly like /list (allowlist-filtered, anonymous-readable on an open
+# instance) rather than like /manage/* (admin-only). Two shapes on one path:
+#
+#   /zim-info?zim=<name>  everything one ZIM knows about itself — the openZIM
+#                         fields plus, when the file carries one, the parsed
+#                         X-Zimi-History provenance records.
+#   /zim-info?kinds=1     the compact per-ZIM provenance FACTS the library cards
+#                         turn into type badges, for every ZIM Zimi made.
+#
+# Nothing here invents a field. A ZIM published by somebody else simply has no
+# history and no kind, and both shapes say so by omission.
+
+# Illustrations are PNG bytes; every other metadata value is text.
+_ILLUSTRATION_METADATA_PREFIX = "Illustration"
+_TAG_SEPARATOR = ";"
+# The tag zimi.alive writes. A replay ZIM is a genuinely different artifact from
+# an article ZIM, and this is the one place the file says which it is.
+_ALIVE_TAG = "zimi:alive"
+_ALIVE_SCRAPER_MARKER = "warc2zim"
+# Metadata keys the panel gives a row (or the timeline) of their own. Everything
+# else a publisher wrote travels in `other` and is listed verbatim, so a ZIM's
+# own extra fields are shown rather than silently dropped — the panel's whole
+# job is to say what the file says.
+_PRESENTED_METADATA_KEYS = frozenset(
+    {
+        "Title",
+        "Description",
+        "LongDescription",
+        "Language",
+        "Date",
+        "Creator",
+        "Publisher",
+        "Source",
+        "Scraper",
+        "Flavour",
+        "Tags",
+        "X-Zimi-History",
+    }
+)
+
+# Provenance facts, memoized per process: reading them means opening the
+# archive, and a large library must pay that at most once. Keyed by ZIM name,
+# invalidated by the file identity the list cache already tracks.
+_zim_kind_memo = {}
+_zim_kind_lock = threading.Lock()
+
+
+def _zim_list_entry(name):
+    """The list entry for ``name``, or None. The metadata cache already holds
+    size/date/counts, so the panel never re-stats a 100 GB file.
+
+    Deliberately via ``list_zims()`` rather than the raw ``_zim_list_cache``:
+    that is the call /list itself makes, and it is where the per-request
+    allowlist is applied. Reading the cache directly would answer for a ZIM the
+    requester may not see — the panel becoming exactly the leak the listing
+    exists to prevent."""
+    for z in _srv.list_zims():
+        if z.get("name") == name:
+            return z
+    return None
+
+
+def _zim_file_sig(entry):
+    """The file identity a memoized provenance record is valid for."""
+    return (entry or {}).get("file", ""), (entry or {}).get("size_bytes", 0)
+
+
+def _read_zim_metadata(archive):
+    """Every TEXT metadata entry of an open archive, decoded and stripped.
+
+    Illustrations are skipped (they are PNG bytes, and the reader already serves
+    them at /w/<zim>/-/icon). An entry that will not decode is dropped rather
+    than failing the read — one bad field must not cost the panel every other."""
+    out = {}
+    for key in archive.metadata_keys:
+        if key.startswith(_ILLUSTRATION_METADATA_PREFIX):
+            continue
+        try:
+            out[key] = (
+                bytes(archive.get_metadata(key)).decode("utf-8", "replace").strip()
+            )
+        except Exception as e:
+            log.debug("metadata key %r unreadable: %s", key, e)
+    return out
+
+
+def _split_tags(value):
+    """A Tags value as a list. The spec's separator is ";"."""
+    return [t.strip() for t in str(value or "").split(_TAG_SEPARATOR) if t.strip()]
+
+
+def _creation_record(history):
+    """The record that says what a ZIM IS — its creation. Later records are
+    edits to it, and a truncated history may have lost the original, in which
+    case the earliest surviving record that names a real mode stands in for it.
+
+    The truncation marker is skipped in that fallback: its ``mode`` is the
+    bookkeeping value ``history``, not a capture mode, and letting it win would
+    badge an over-edited ZIM with the name of its own overflow record."""
+    from zimi import zimwriter as _zw
+
+    for record in history:
+        if record.get("op") == "created" and record.get("mode"):
+            return record
+    for record in history:
+        if record.get("mode") and record.get("op") != _zw.TRUNCATED_OP:
+            return record
+    return None
+
+
+def _zimi_kind(meta):
+    """The provenance FACTS a Zimi-made ZIM carries, or None for one Zimi did
+    not make. Facts only — the label and the sentence are the client's job, in
+    the reader's language.
+
+    ``engine`` is "alive" for a replay capture and "" otherwise. It deliberately
+    does NOT distinguish the rendered (headless-browser) engine from the builtin
+    fetcher: those two write identical metadata today, so claiming to tell them
+    apart would be a guess dressed as a fact.
+
+    The two warc2zim-written kinds are told apart by the tag, not the Scraper:
+    `zimi import` and the alive engine both run the same converter, and only the
+    alive engine writes ``zimi:alive``. Neither leaves an X-Zimi-History, so the
+    Scraper suffix Zimi appends is the whole signal that Zimi was involved —
+    matched with its trailing space so the unrelated "zimit" scraper cannot."""
+    from zimi import zimwriter as _zw
+
+    history = _zw.parse_history(meta.get(_zw.HISTORY_METADATA_KEY, ""))
+    tags = _split_tags(meta.get("Tags"))
+    scraper = meta.get("Scraper") or ""
+    alive = _ALIVE_TAG in tags
+    converted = _ALIVE_SCRAPER_MARKER in scraper.lower()
+    made_by_zimi = bool(history) or alive or "Zimi " in scraper
+    if not made_by_zimi:
+        return None
+    created = _creation_record(history)
+    kind = {
+        # A converted archive that is not a live capture is an import, and its
+        # mode is the only one no history record ever states.
+        "mode": (created or {}).get("mode", "")
+        or ("import" if converted and not alive else ""),
+        "engine": "alive" if alive else "",
+        # How many times this ZIM was touched AFTER it was made. Zero for a
+        # freshly created file; the tooltip says so only when it isn't.
+        "edits": max(0, len(history) - 1),
+    }
+    if created:
+        if created.get("ts"):
+            kind["ts"] = created["ts"]
+        if created.get("counts"):
+            kind["counts"] = created["counts"]
+        if created.get("blocked"):
+            kind["blocked"] = created["blocked"]
+    return kind
+
+
+def _zim_metadata_for(name):
+    """``(metadata, readable)`` for one installed, permitted ZIM.
+
+    ``readable`` is False when the archive will not open — a broken or empty
+    ZIM still deserves the panel its cached facts can fill, so this reports the
+    failure instead of raising it. Takes the libzim lock for the duration of the
+    read and no longer: a library-wide walk must never hold it across files."""
+    with _srv._zim_lock:
+        archive = _srv.get_archive(name)
+        if archive is None:
+            return {}, False
+        try:
+            return _read_zim_metadata(archive), True
+        except Exception as e:
+            log.debug("metadata unreadable for %s: %s", name, e)
+            return {}, False
+
+
+def _zim_kind_for(entry):
+    """Memoized provenance facts for one list entry. Reads the archive at most
+    once per file identity per process."""
+    name = entry.get("name")
+    sig = _zim_file_sig(entry)
+    with _zim_kind_lock:
+        memo = _zim_kind_memo.get(name)
+    if memo and memo[0] == sig:
+        return memo[1]
+    meta, readable = _zim_metadata_for(name)
+    kind = _zimi_kind(meta) if readable else None
+    with _zim_kind_lock:
+        _zim_kind_memo[name] = (sig, kind)
+    return kind
+
+
+def _zim_kinds():
+    """``{name: facts}`` for every permitted ZIM that Zimi made. ZIMs published
+    by somebody else are absent rather than present-and-empty — a card with no
+    entry here gets no badge, which is the whole point."""
+    t0 = time.time()
+    entries = _srv.list_zims()
+    kinds = {}
+    for entry in entries:
+        kind = _zim_kind_for(entry)
+        if kind:
+            kinds[entry["name"]] = kind
+    elapsed = time.time() - t0
+    # Only the cold pass costs anything (every later one is memoized), and on a
+    # large library that pass is worth a line in the log.
+    if elapsed > 1:
+        log.info("provenance scan: %d ZIMs in %.1fs", len(entries), elapsed)
+    return kinds
+
+
+def _zim_info(name):
+    """Everything one ZIM knows about itself, or None when it is not installed
+    (or not permitted, which reads the same way to a restricted user).
+
+    Every field comes from the file: the openZIM metadata as written, the size
+    and counts the library cache already holds, and the parsed X-Zimi-History
+    records when the file carries them."""
+    from zimi import zimwriter as _zw
+
+    entry = _zim_list_entry(name)
+    meta, readable = _zim_metadata_for(name)
+    if entry is None and not readable:
+        return None
+    entry = entry or {"name": name}
+    history = _zw.parse_history(meta.get(_zw.HISTORY_METADATA_KEY, ""))
+    # openZIM's Source is a URL and is written only when the source IS one;
+    # X-Zimi-Source is the uniform field (folder name, playlist, archive) that
+    # Zimi writes whenever it knows the answer. Prefer the standard field.
+    source = meta.get("Source") or meta.get(_zw.SOURCE_METADATA_KEY) or ""
+    info = {
+        "name": name,
+        "file": entry.get("file", ""),
+        # The card's title/description come from the same cache, so the panel
+        # agrees with the card it opened from even for an unreadable archive.
+        "title": meta.get("Title") or entry.get("title") or name,
+        "description": meta.get("Description") or entry.get("description", ""),
+        "long_description": meta.get("LongDescription", ""),
+        # The normalized code the rest of the UI speaks (the cache resolves
+        # ISO 639-3 and the filename fallback); the raw field rides along.
+        "language": entry.get("language", ""),
+        "language_raw": meta.get("Language", ""),
+        # Whether /w/<name>/-/icon will actually serve something, so the panel
+        # falls back to the same initial-letter tile the cards use instead of
+        # painting an empty frame.
+        "has_icon": bool(entry.get("has_icon")),
+        "date": meta.get("Date") or entry.get("date", ""),
+        "size_bytes": entry.get("size_bytes", 0),
+        "size_gb": entry.get("size_gb", 0),
+        "entries": entry.get("entries", "?"),
+        "creator": meta.get("Creator", ""),
+        "publisher": meta.get("Publisher", ""),
+        "source": source,
+        "scraper": meta.get("Scraper", ""),
+        "flavour": meta.get("Flavour", ""),
+        "tags": _split_tags(meta.get("Tags")),
+        "history": history,
+        "kind": _zimi_kind(meta),
+        "readable": readable,
+    }
+    if entry.get("article_count") is not None:
+        info["article_count"] = entry["article_count"]
+    if entry.get("first_seen"):
+        info["first_seen"] = entry["first_seen"]
+    if entry.get("updated_at"):
+        info["updated_at"] = entry["updated_at"]
+    # Anything else the publisher wrote, so the panel can show a ZIM's own
+    # extra fields instead of silently dropping them.
+    other = {
+        k: v
+        for k, v in sorted(meta.items())
+        if k not in _PRESENTED_METADATA_KEYS and v
+        # X-Zimi-Source is the uniform twin of Source; listing it again when it
+        # says the same thing is noise, and listing it when it does NOT is the
+        # only way to see that the two disagree.
+        and not (k == _zw.SOURCE_METADATA_KEY and v == source)
+    }
+    if other:
+        info["other"] = other
+    return info
+
+
+# ============================================================================
+# Mirrored-URL ZIMs, and the page for one that stops short
+# ============================================================================
+#
+# Most ZIMs hold ARTICLES: the entry path is a title, and a path that is not
+# there is a broken link inside the file. A ZIM written by warc2zim holds a
+# WEBSITE: every entry path is the URL it was fetched from, minus the scheme.
+# In one of those, a missing entry means something completely different and
+# much less alarming — a page of a real site that this capture did not reach —
+# and it is answerable, because the path IS the address.
+#
+# Two ways to know a ZIM is one of those, because there are two ways to get
+# one. Zimi's own alive engine writes _ALIVE_TAG (see zimi.alive._tags);
+# anything else warc2zim produced — Kiwix's zimit ZIMs, a hand-run conversion —
+# is known by the replay shell it embeds, which is a file at a fixed path.
+_REPLAY_SHELL_ENTRY = "_zim_static/wombat.js"
+# {zim name: (cache generation, answer)}. The probe is two libzim reads and the
+# answer only changes when the library is rescanned, which is exactly what the
+# generation counter marks.
+_mirrors_urls_cache = {}
+_mirrors_urls_lock = threading.Lock()
+
+# The localStorage keys the interstitial reads, owned by app.js (SK.UI_LANG and
+# SK.APP_THEME). Named here rather than repeated in the template so the day one
+# of them moves there is one place to follow it to.
+_UI_LANG_KEY = "zimi_ui_lang"
+_APP_THEME_KEY = "zimi_app_theme"
+
+# English, and the fallback for every language: the page is rendered with these
+# server-side and re-translated in the browser, so a reader with no JavaScript
+# still gets a sentence rather than a key name. The keys are the SAME ones in
+# static/i18n/*.json — one string per idea, one place to change it.
+_UNCAPTURED_STRINGS = {
+    "uncaptured_title": "This page wasn't captured",
+    "uncaptured_body": (
+        "This archive holds part of a website, and this page is not one of the "
+        "parts that was recorded. Nothing is broken — it was simply never "
+        "collected."
+    ),
+    "uncaptured_url_label": "The page you asked for",
+    "uncaptured_open": "Open on the live web",
+    "uncaptured_back": "Go back",
+}
+
+# Deliberately self-contained: no app.css, no app.js. This renders inside the
+# reader's iframe, where the SPA's stylesheet would style a document it was
+# never written for, and it has to be readable when the page it replaces was
+# opened directly. The colours are app.css's, restated rather than imported —
+# both themes, because the reader has both and this page picks up whichever one
+# the reader is in.
+#
+# The external link is `rel="noreferrer"` and `target="_blank"`: leaving the
+# archive is a decision the reader makes explicitly, in a new tab, and the site
+# it lands on learns nothing about where it came from.
+_UNCAPTURED_PAGE = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title} — {zim}</title>
+<style>
+  :root {{ color-scheme: dark;
+    --bg:#0a0a0b; --surface:#141416; --border:#27272b;
+    --text:#e8e8ed; --text2:#8a8a94; --amber:#f59e0b; --on-amber:#000; }}
+  html[data-theme="light"] {{ color-scheme: light;
+    --bg:#f2efe8; --surface:#fbfaf6; --border:#e4dfd4;
+    --text:#26241f; --text2:#6a675e; --amber:#9d4a08; --on-amber:#fff; }}
+  body {{ margin:0; min-height:100vh; display:flex; align-items:center;
+    justify-content:center; padding:32px 20px; box-sizing:border-box;
+    background:var(--bg); color:var(--text);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; }}
+  main {{ max-width:36rem; width:100%; }}
+  h1 {{ font-size:1.4rem; font-weight:600; margin:0 0 12px; }}
+  p {{ margin:0 0 20px; color:var(--text2); }}
+  .url {{ display:block; padding:12px 14px; margin:0 0 20px;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:var(--text); word-break:break-all; }}
+  .label {{ display:block; font-size:11px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--text2); margin:0 0 6px; }}
+  .actions {{ display:flex; flex-wrap:wrap; gap:10px; }}
+  a.btn, button.btn {{ display:inline-block; padding:9px 16px; border-radius:999px;
+    font:inherit; font-size:.95rem; cursor:pointer; text-decoration:none;
+    border:1px solid var(--border); background:transparent; color:var(--text); }}
+  a.primary {{ background:var(--amber); border-color:var(--amber); color:var(--on-amber); }}
+  a.btn:focus-visible, button.btn:focus-visible {{ outline:2px solid var(--amber);
+    outline-offset:2px; }}
+</style></head>
+<body><main>
+  <h1 data-i18n="uncaptured_title">{title}</h1>
+  <p data-i18n="uncaptured_body">{body}</p>
+  <span class="label" data-i18n="uncaptured_url_label">{url_label}</span>
+  <!-- dir=ltr because a URL is left-to-right text even on a right-to-left
+       page: without it the trailing slash of https://host/path/ jumps to the
+       front and the address reads as something the site never served. -->
+  <code class="url" dir="ltr">{url_text}</code>
+  <div class="actions">
+    <a class="btn primary" href="{url_attr}" target="_blank" rel="noreferrer noopener"
+       data-i18n="uncaptured_open">{open_label}</a>
+    <button class="btn" onclick="history.back()"
+       data-i18n="uncaptured_back">{back_label}</button>
+  </div>
+</main>
+<script>
+(function () {{
+  // Theme and language both live in the reader's own localStorage, which this
+  // page shares because it is served from the same origin. Everything here is
+  // best-effort: a browser that refuses storage gets the dark English page it
+  // was already sent.
+  try {{
+    var theme = localStorage.getItem('{theme_key}');
+    if (theme === 'light' || theme === 'dark') {{
+      document.documentElement.setAttribute('data-theme', theme);
+    }} else if (window.matchMedia &&
+               window.matchMedia('(prefers-color-scheme: light)').matches) {{
+      document.documentElement.setAttribute('data-theme', 'light');
+    }}
+  }} catch (e) {{}}
+  var lang;
+  try {{ lang = localStorage.getItem('{lang_key}'); }} catch (e) {{}}
+  if (!lang || lang === 'en' || !/^[a-z]{{2}}$/.test(lang)) return;
+  fetch('/static/i18n/' + lang + '.json')
+    .then(function (r) {{ return r.ok ? r.json() : null; }})
+    .then(function (strings) {{
+      if (!strings) return;
+      document.documentElement.lang = lang;
+      // The same four languages app.js turns the interface around for.
+      if (['ar', 'he', 'fa', 'ur'].indexOf(lang) >= 0) {{
+        document.documentElement.setAttribute('dir', 'rtl');
+      }}
+      document.querySelectorAll('[data-i18n]').forEach(function (el) {{
+        var s = strings[el.dataset.i18n];
+        if (s) el.textContent = s;
+      }});
+    }})
+    .catch(function () {{}});
+}})();
+</script>
+</body></html>
+"""
+
+
+def _mirrors_web_urls(zim_name, archive):
+    """Whether this ZIM's entry paths are web URLs — a warc2zim capture.
+
+    Answered from the ZIM itself rather than from its filename or its
+    registration, because the property belongs to the file: a zimit ZIM
+    downloaded from Kiwix has it and was never near this machine's capture
+    engine. Cached per library generation; any failure to read is a No, which
+    leaves the caller on the path it took before this existed."""
+    generation = _srv._cache_generation
+    with _mirrors_urls_lock:
+        cached = _mirrors_urls_cache.get(zim_name)
+    if cached is not None and cached[0] == generation:
+        return cached[1]
+    answer = False
+    try:
+        tags = bytes(archive.get_metadata("Tags")).decode("utf-8", "replace")
+        answer = _ALIVE_TAG in _split_tags(tags)
+    except Exception:
+        pass  # a ZIM without Tags is most ZIMs
+    if not answer:
+        try:
+            answer = bool(archive.has_entry_by_path(_REPLAY_SHELL_ENTRY))
+        except Exception as e:
+            log.debug("could not probe %s for a replay shell: %s", zim_name, e)
+    with _mirrors_urls_lock:
+        _mirrors_urls_cache[zim_name] = (generation, answer)
+    return answer
+
+
+# ============================================================================
 # HTTP Request Handler
 # ============================================================================
 
@@ -1244,6 +1700,19 @@ class ZimHandler(BaseHTTPRequestHandler):
                         },
                     )
                 return self._json(200, result)
+
+            elif parsed.path == "/zim-info":
+                # Sits beside /list, and is gated by exactly the same thing: a
+                # ZIM's own description belongs to whoever may see the ZIM.
+                if param("kinds"):
+                    return self._json(200, {"kinds": _zim_kinds()})
+                zim = param("zim")
+                if not zim:
+                    return self._json(400, {"error": "missing ?zim= parameter"})
+                info = _zim_info(zim)
+                if info is None:
+                    return self._json(404, {"error": f"ZIM '{zim}' not found"})
+                return self._json(200, info)
 
             elif parsed.path == "/whoami":
                 return self._handle_whoami()
@@ -1715,6 +2184,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                             "/chunks",
                             "/suggest",
                             "/list",
+                            "/zim-info",
                             "/catalog",
                             "/health",
                             "/metrics",
@@ -1944,6 +2414,74 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(icon_data)
 
+    def _wants_html_document(self):
+        """Whether THIS request is a page being opened, rather than a
+        subresource being fetched by one.
+
+        The distinction decides whether a miss may be answered with a human
+        page: an HTML body handed to a `<script src>` is a syntax error and one
+        handed to a `fetch()` is garbage, so only navigations get prose.
+
+        ``Sec-Fetch-Dest`` names a subresource reliably and a NAVIGATION only
+        sometimes, which is why Accept is consulted rather than ignored: when
+        Zimi's service worker forwards the reader iframe's navigation, Chrome
+        stamps the forwarded request ``Sec-Fetch-Dest: empty`` — measured, and
+        the whole reason this is not a one-line header check. Accept survives
+        that trip intact, and a navigation's Accept (``text/html,...``) is
+        nothing like a script's (``*/*``) or an image's."""
+        dest = (self.headers.get("Sec-Fetch-Dest") or "").lower()
+        if dest in ("document", "iframe", "frame", "embed", "object"):
+            return True
+        # Anything else NAMED is a subresource and settles it. "empty" is the
+        # one value that decides nothing: it covers both fetch()/XHR and a
+        # service-worker-forwarded page load.
+        if dest and dest != "empty":
+            return False
+        return "text/html" in (self.headers.get("Accept") or "").lower()
+
+    def _send_uncaptured_page(self, zim_name, entry_path):
+        """The page a mirrored-URL ZIM shows for an entry it does not hold.
+
+        In a ZIM whose entries ARE web URLs, a missing entry is not a broken
+        link — it is a page of a real website that this archive did not
+        capture, and the reader knows both facts: which URL it was, and that
+        the live one still exists. Saying that is strictly better than the JSON
+        404 a person used to get, which read like a server fault and named a
+        path nobody recognised as an address.
+
+        Answered 200 because the interstitial IS the answer to the request —
+        the entry is genuinely absent, and a browser handed a 4xx renders its
+        own error chrome around the explanation or replaces it outright."""
+        # The entry path IS the URL, minus the scheme warc2zim drops. https is
+        # the assumption, and the honest one: a site served over plain http in
+        # 2026 redirects to https anyway, and the reader can see the address it
+        # is being offered before choosing to follow it.
+        url = "https://" + entry_path.lstrip("/")
+
+        # Text is escaped as text and the one attribute as an attribute: an
+        # entry path came off the web, and it is being shown to somebody.
+        def _text(value):
+            return escape(value, quote=False)
+
+        body = _UNCAPTURED_PAGE.format(
+            url_attr=escape(url, quote=True),
+            url_text=_text(url),
+            zim=_text(zim_name),
+            lang_key=_UI_LANG_KEY,
+            theme_key=_APP_THEME_KEY,
+            title=_text(_UNCAPTURED_STRINGS["uncaptured_title"]),
+            body=_text(_UNCAPTURED_STRINGS["uncaptured_body"]),
+            url_label=_text(_UNCAPTURED_STRINGS["uncaptured_url_label"]),
+            open_label=_text(_UNCAPTURED_STRINGS["uncaptured_open"]),
+            back_label=_text(_UNCAPTURED_STRINGS["uncaptured_back"]),
+        )
+        return self._send(
+            200,
+            body.encode("utf-8"),
+            "text/html; charset=utf-8",
+            cache="no-store",
+        )
+
     def _send_entry_too_large(self, total_size):
         """413 for an entry Zimi refuses to materialize. Used by every /w/
         branch that can't be answered with a bounded window."""
@@ -2007,6 +2545,15 @@ class ZimHandler(BaseHTTPRequestHandler):
                         self.send_header("Content-Length", "0")
                         self.end_headers()
                         return
+                # In a ZIM whose paths are web addresses, a miss is a page of a
+                # real site that this capture did not reach — and a person who
+                # clicked a link deserves to be told that in words, with the
+                # address they were asking for. Only for something being OPENED:
+                # a script or an image that misses still gets the JSON, because
+                # an HTML body is not a thing either of them can use.
+                if entry_path and self._wants_html_document():
+                    if _mirrors_web_urls(zim_name, archive):
+                        return self._send_uncaptured_page(zim_name, entry_path)
                 return self._json(
                     404, {"error": f"Entry '{entry_path}' not found in {zim_name}"}
                 )

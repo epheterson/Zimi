@@ -306,6 +306,44 @@ fetch('/data.json').then(function(r) { return r.json(); }).then(function(d) {
 SECOND = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <title>Second</title></head><body><h1>Second page</h1></body></html>"""
 
+# A page shaped like every modern one: the same picture at several sizes, and
+# the browser asking for exactly ONE of them. At the capture viewport (1280
+# wide, 1x) it takes hero.png and nothing else — the 2x candidates are for a
+# denser screen, the <picture> source is behind a media query no desktop
+# viewport matches, and the CSS background's 2x form is chosen by pixel ratio.
+# Every one of those is a request a replay WILL make on somebody else's screen.
+VARIANTS = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<title>Variants</title><link rel="stylesheet" href="/v.css"></head>
+<body><h1>Variants</h1>
+<img src="/img/hero.png" srcset="/img/hero.png 1x, /img/hero_2x.png 2x" alt="hero">
+<picture>
+  <source media="(min-width: 3000px)"
+          srcset="/img/wide.png 1x, /img/wide_2x.png 2x">
+  <img src="/img/hero.png" alt="wide">
+</picture>
+<div class="tile"></div>
+</body></html>"""
+
+VARIANTS_CSS = b""".tile { width: 40px; height: 40px;
+  background-image: image-set(url(/img/bg.png) 1x, url(/img/bg_2x.png) 2x); }"""
+
+PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+    b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+# Each variant is its OWN bytes, because a WARC stores identical payloads once
+# and a test that shipped six copies of the same PNG would pass on a revisit
+# record instead of on the file it claims to be checking.
+VARIANT_IMAGES = (
+    "hero.png",
+    "hero_2x.png",
+    "wide.png",
+    "wide_2x.png",
+    "bg.png",
+    "bg_2x.png",
+)
+
 ROUTES = {
     "/": ("text/html; charset=utf-8", INDEX.encode()),
     "/second.html": ("text/html; charset=utf-8", SECOND.encode()),
@@ -318,7 +356,15 @@ ROUTES = {
     ),
     "/s.css": ("text/css", b"body{background:#fff}"),
     "/robots.txt": ("text/plain", b"User-agent: *\nAllow: /\n"),
+    "/variants.html": ("text/html; charset=utf-8", VARIANTS.encode()),
+    "/v.css": ("text/css", VARIANTS_CSS),
 }
+ROUTES.update(
+    {
+        f"/img/{name}": ("image/png", PNG + b"\x00" * (n + 1))
+        for n, name in enumerate(VARIANT_IMAGES)
+    }
+)
 
 
 @pytest.fixture(scope="module")
@@ -417,6 +463,67 @@ def test_the_fetch_returns_the_rendered_dom_for_the_crawl_to_read(
     finally:
         capture.close()
     assert "Arrived by fetch" in html
+
+
+@browser
+def test_the_image_sizes_the_page_did_not_choose_are_archived_too(
+    fixture_site, tmp_path
+):
+    """The defect this exists for: a recording holds ONE candidate per srcset —
+    the one this viewport and this pixel ratio picked — and every other screen
+    then asks the replay for a file it never saw. Measured on apple.com, which
+    came up with holes in it on a 2x display."""
+    capture = alive.AliveCapture(work_dir=str(tmp_path), extra_wait=0.3)
+    try:
+        capture.fetch(fixture_site + "/variants.html")
+    finally:
+        capture.close()
+    stored = _recorded(capture.warc_path)
+    for name in VARIANT_IMAGES:
+        assert fixture_site + "/img/" + name in stored, f"{name} is not in the archive"
+    # And each one is its own file, not a stand-in for the one before it.
+    assert (
+        stored[fixture_site + "/img/hero_2x.png"].payload()
+        == ROUTES["/img/hero_2x.png"][1]
+    )
+
+
+@browser
+def test_the_variant_sweep_has_a_ceiling(fixture_site, tmp_path, monkeypatch):
+    """Bounded, and bounded where a person can see it. Zero is the honest
+    extreme of the same setting: the traffic is still recorded, and nothing
+    beyond it is."""
+    monkeypatch.setattr(renderer, "ALIVE_MAX_VARIANTS", 0)
+    capture = alive.AliveCapture(work_dir=str(tmp_path), extra_wait=0.3)
+    try:
+        capture.fetch(fixture_site + "/variants.html")
+    finally:
+        capture.close()
+    stored = _recorded(capture.warc_path)
+    assert fixture_site + "/img/hero.png" in stored  # the browser asked for it
+    assert fixture_site + "/img/hero_2x.png" not in stored  # the sweep did not
+
+
+@browser
+def test_the_variant_sweep_spends_the_crawls_byte_budget(fixture_site, tmp_path):
+    """A site crawl's ceiling is one number for the whole job, and an image
+    fetched deliberately costs the same as one that arrived on its own."""
+    from zimi.crawler import ByteBudget
+
+    budget = ByteBudget(1024 * 1024)
+    capture = alive.AliveCapture(work_dir=str(tmp_path), budget=budget, extra_wait=0.3)
+    try:
+        capture.fetch(fixture_site + "/variants.html")
+    finally:
+        capture.close()
+    stored = _recorded(capture.warc_path)
+    swept = sum(
+        len(stored[fixture_site + "/img/" + n].payload())
+        for n in VARIANT_IMAGES
+        if fixture_site + "/img/" + n in stored
+    )
+    assert swept > 0
+    assert budget.used >= swept
 
 
 @browser
@@ -604,9 +711,7 @@ def test_a_video_is_archived_whole_rather_than_as_the_ranges_it_arrived_in(
                 chunk = body[:1000]
                 self.send_response(206)
                 self.send_header("Content-Type", "video/webm")
-                self.send_header(
-                    "Content-Range", f"bytes 0-999/{len(body)}"
-                )
+                self.send_header("Content-Range", f"bytes 0-999/{len(body)}")
                 self.send_header("Content-Length", str(len(chunk)))
                 self.end_headers()
                 self.wfile.write(chunk)

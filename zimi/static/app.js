@@ -2892,6 +2892,10 @@ function renderHome(filter) {
   }
   output.innerHTML = h;
   _placeViewToggle();
+  // The library is on screen; only now go find out what made each of these
+  // ZIMs. Deliberately after the paint — reading provenance opens archives, and
+  // no card should wait on that. A no-op once the map has arrived.
+  _loadZimKinds();
   if (_showDiscover) {
     if (_prevDiscoverHtml) {
       // Restore cached discover DOM — avoid re-fetch flash
@@ -3090,6 +3094,300 @@ function _placeViewToggle() {
   heading.insertAdjacentHTML('beforeend', _libViewToggleHtml());
 }
 
+// ── About this ZIM: provenance badges, and the panel behind them ────────────
+//
+// Every ZIM carries its own description in metadata, and the ones Zimi made
+// carry a provenance history besides. Two surfaces read it, both from
+// /zim-info: a quiet type badge on the card (what this ZIM IS), and a panel on
+// right-click/long-press (everything the file says about itself). Neither
+// invents a row — a ZIM published by somebody else shows its publisher's own
+// fields and no history, because that is the truth about it.
+//
+// The badge is derived from METADATA and never from the title. A capture whose
+// title happens to read "(alive)" gets no badge for it; a capture whose Tags
+// carry zimi:alive does.
+
+// {name: {mode, engine, edits, ts, counts, blocked}} for the ZIMs Zimi made.
+// A name absent from the map gets no badge — which is every Kiwix ZIM.
+var _zimKinds = null;
+var _zimKindsPending = false;
+
+// A creation mode → the badge's label key. `import` is the one mode no history
+// record states: it is inferred server-side from the converter that wrote the
+// file (see _zimi_kind in http.py).
+var _PROV_MODE_KEYS = {
+  folder: 'zi_kind_folder',
+  page: 'zi_kind_page',
+  pages: 'zi_kind_pages',
+  site: 'zi_kind_site',
+  video: 'zi_kind_video',
+  bookmarks: 'zi_kind_bookmarks',
+  import: 'zi_kind_import',
+};
+// The engine outranks the mode where the two differ: a replay ZIM opens into a
+// replay shell and behaves unlike an article ZIM, whatever it captured.
+function _provKindKey(kind) {
+  if (!kind) return '';
+  if (kind.engine === 'alive') return 'zi_kind_alive';
+  return _PROV_MODE_KEYS[kind.mode] || 'zi_kind_zimi';
+}
+
+// The badge's tooltip: one sentence saying where this ZIM came from. Whole
+// sentences per case rather than glued fragments, so every language can put the
+// clauses in its own order.
+function _provSummary(kind) {
+  if (!kind) return '';
+  var when = kind.ts ? _relTime(kind.ts) : '';
+  if (!when) return t('zi_tip_made');
+  if (kind.edits > 0) return tPlural('zi_tip_edited', kind.edits, { when: when });
+  return t('zi_tip_made_when', { when: when });
+}
+
+// The badge for a kind — no kind, no badge, which is every ZIM Zimi did not
+// make. The panel renders from the kind its own fetch returned; the cards
+// render from the map (below), so neither has to wait on the other.
+function _provBadgeFor(kind) {
+  if (!kind) return '';
+  return '<span class="prov-badge' + (kind.engine === 'alive' ? ' prov-alive' : '') +
+    '" title="' + escAttr(_provSummary(kind)) + '">' + tH(_provKindKey(kind)) + '</span>';
+}
+
+function _provBadgeHtml(name) {
+  return _provBadgeFor(_zimKinds && _zimKinds[name]);
+}
+
+// Fetched once per page load, after the first paint: reading provenance means
+// opening archives, and no card should wait on that. Every render after this
+// resolves includes the badges inline; the cards already on screen get them
+// from _paintProvBadges.
+function _loadZimKinds() {
+  if (_zimKinds || _zimKindsPending) return;
+  _zimKindsPending = true;
+  serverFetch('/zim-info?kinds=1')
+    .then(function (r) { return r.json(); })
+    .then(function (d) { _zimKinds = (d && d.kinds) || {}; _paintProvBadges(); })
+    .catch(function () { _zimKinds = {}; })
+    .finally(function () { _zimKindsPending = false; });
+}
+
+// No-op on a card that already carries its badge, so this is safe to call after
+// any render.
+function _paintProvBadges() {
+  if (!_zimKinds) return;
+  document.querySelectorAll('.stat-card[data-zim]').forEach(function (card) {
+    if (card.querySelector('.prov-badge')) return;
+    var html = _provBadgeHtml(card.dataset.zim);
+    if (!html) return;
+    var nameRow = card.querySelector('.name');
+    if (nameRow) nameRow.insertAdjacentHTML('beforeend', html);
+  });
+}
+
+// ── The panel ──
+
+var _ZI_OVERLAY_ID = 'zim-about';
+// Which count keys a provenance record can carry, and what each one is called.
+var _ZI_COUNT_KEYS = { pages: 'zi_n_pages', assets: 'zi_n_assets', videos: 'zi_n_videos' };
+var _ZI_OP_KEYS = { created: 'zi_op_created', edited: 'zi_op_edited', truncated: 'zi_op_truncated' };
+// The mode the truncation marker carries — a bookkeeping value, not a capture
+// mode, so it never gets a chip of its own.
+var _ZI_HISTORY_MODE = 'history';
+
+// Absolute local date-time for a provenance timestamp. The relative form rides
+// in the tooltip, where it explains the absolute one instead of replacing it.
+function _ziWhen(tsSec) {
+  var d = new Date(tsSec * 1000);
+  try {
+    return d.toLocaleString(_currentLang || 'en',
+      { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return d.toLocaleString();
+  }
+}
+
+function _ziRow(labelKey, valueHtml) {
+  if (!valueHtml) return '';
+  return '<div class="zi-row"><span class="zi-k">' + tH(labelKey) + '</span>' +
+    '<span class="zi-v">' + valueHtml + '</span></div>';
+}
+
+// A Source is linked only when it IS a URL — openZIM's own rule for the field,
+// and the reason a folder name stays plain text here.
+function _ziSourceHtml(source) {
+  if (!source) return '';
+  if (!/^https?:\/\//i.test(source)) return esc(source);
+  return '<a href="' + escAttr(source) + '" target="_blank" rel="noopener noreferrer">' + esc(source) + '</a>';
+}
+
+function _ziTagsHtml(tags) {
+  if (!tags || !tags.length) return '';
+  return tags.map(function (tag) {
+    return '<span class="zi-tag">' + esc(tag) + '</span>';
+  }).join('');
+}
+
+// The numbers a record knows, in one line. Only the keys actually present are
+// named — a record that never counted assets must not claim zero of them.
+function _ziCountsText(counts) {
+  if (!counts) return '';
+  var out = [];
+  for (var key in _ZI_COUNT_KEYS) {
+    if (typeof counts[key] === 'number') out.push(tPlural(_ZI_COUNT_KEYS[key], counts[key]));
+  }
+  if (typeof counts.records === 'number') out.push(tPlural('zi_n_records', counts.records));
+  if (typeof counts.bytes === 'number') out.push(_fmtBytes(counts.bytes));
+  return out.join(' · ');
+}
+
+// What a capture REFUSED, when it refused anything. The list identity belongs
+// beside the number: "214 blocked" is a fact about the capture, and which
+// published list said so is what makes it reproducible.
+function _ziBlockedHtml(blocked) {
+  if (!blocked || !blocked.requests) return '';
+  var base = blocked.list
+    ? tPlural('zi_blocked', blocked.requests, { list: blocked.list })
+    : tPlural('zi_blocked_bare', blocked.requests);
+  var sub = [];
+  if (blocked.domains) sub.push(tPlural('zi_n_domains', blocked.domains));
+  if (blocked.snapshot) sub.push(t('zi_blocked_snapshot', { date: blocked.snapshot }));
+  if (blocked.override) sub.push(t('zi_blocked_override'));
+  return '<div class="zi-ev-fact zi-ev-blocked">' + esc(base) + '</div>' +
+    (sub.length ? '<div class="zi-ev-fact zi-ev-sub">' + esc(sub.join(' · ')) + '</div>' : '');
+}
+
+// The engines that ran, named with their versions — plus Zimi's own version,
+// which every record stamps.
+function _ziToolsText(record) {
+  var out = [];
+  if (record.zimi) out.push('Zimi ' + record.zimi);
+  var tools = record.tools || {};
+  for (var name in tools) out.push(name + ' ' + tools[name]);
+  return out.join(' · ');
+}
+
+function _ziRecordHtml(record) {
+  var op = _ZI_OP_KEYS[record.op] ? t(_ZI_OP_KEYS[record.op]) : (record.op || '');
+  var mode = record.mode && record.mode !== _ZI_HISTORY_MODE
+    ? '<span class="zi-ev-mode">' + tH(_PROV_MODE_KEYS[record.mode] || 'zi_kind_zimi') + '</span>'
+    : '';
+  var when = record.ts
+    ? '<span class="zi-ev-when" title="' + escAttr(_relTime(record.ts)) + '">' + esc(_ziWhen(record.ts)) + '</span>'
+    : '';
+  var counts = _ziCountsText(record.counts);
+  var tools = _ziToolsText(record);
+  return '<li class="zi-ev">' +
+    '<div class="zi-ev-head"><span class="zi-ev-op">' + esc(op) + '</span>' + mode + when + '</div>' +
+    // The detail sentence is what the FILE says, written when the ZIM was made.
+    // It is provenance, not UI copy, so it is shown verbatim and never
+    // translated — a record that changed wording per reader would be worthless.
+    (record.detail ? '<div class="zi-ev-detail">' + esc(record.detail) + '</div>' : '') +
+    (counts ? '<div class="zi-ev-fact">' + esc(counts) + '</div>' : '') +
+    _ziBlockedHtml(record.blocked) +
+    (tools ? '<div class="zi-ev-fact zi-ev-sub">' + esc(tools) + '</div>' : '') +
+    '</li>';
+}
+
+// Metadata fields with no row of their own, listed under their own keys. The
+// keys are the file's, not the UI's, so they are shown verbatim rather than
+// translated or title-cased.
+function _ziOtherHtml(other) {
+  var keys = other ? Object.keys(other) : [];
+  if (!keys.length) return '';
+  return '<div class="zi-sec">' + tH('zi_other') + '</div><div class="zi-rows">' +
+    keys.map(function (key) {
+      return '<div class="zi-row"><span class="zi-k zi-k-raw">' + esc(key) + '</span>' +
+        '<span class="zi-v">' + esc(other[key]) + '</span></div>';
+    }).join('') + '</div>';
+}
+
+function _ziBodyHtml(info) {
+  // Same icon rule the cards follow: the ZIM's own illustration when it has
+  // one, its initial otherwise. An empty frame would read as a broken image.
+  var iconHtml = '<span class="zi-icon">' + (info.has_icon
+    ? '<img src="/w/' + encodeURIComponent(info.name) + '/-/icon" alt="" width="48" height="48">'
+    : '<span class="zi-letter">' + (esc(info.title || info.name)[0] || '?').toUpperCase() + '</span>') +
+    '</span>';
+  // Articles and entries are different numbers (entries count redirects and
+  // assets too), and the panel is the one place precise enough to say both.
+  var num = function (v) { return typeof v === 'number' ? esc(v.toLocaleString()) : ''; };
+  var head = '<div class="zi-id">' + iconHtml +
+    // From the kind this fetch returned, not the cards' map: the panel opens
+    // from surfaces the map was never loaded for.
+    '<div class="zi-id-text"><div class="zi-title">' + esc(info.title || info.name) +
+    _provBadgeFor(info.kind) + '</div>' +
+    (info.description ? '<div class="zi-desc">' + esc(info.description) + '</div>' : '') +
+    '</div></div>';
+  var rows =
+    (info.long_description ? '<div class="zi-long">' + esc(info.long_description) + '</div>' : '') +
+    '<div class="zi-rows">' +
+    _ziRow('zi_identifier', esc(info.name)) +
+    _ziRow('zi_file', esc(info.file)) +
+    _ziRow('language', info.language ? esc(_langDisplayName(info.language) || info.language) : '') +
+    _ziRow('zi_articles', num(info.article_count)) +
+    _ziRow('zi_entries', num(info.entries)) +
+    _ziRow('zi_size', info.size_bytes ? esc(_fmtBytes(info.size_bytes)) : '') +
+    _ziRow('zi_date', esc(info.date)) +
+    _ziRow('zi_creator', esc(info.creator)) +
+    _ziRow('zi_publisher', esc(info.publisher)) +
+    _ziRow('zi_source', _ziSourceHtml(info.source)) +
+    _ziRow('zi_scraper', esc(info.scraper)) +
+    _ziRow('zi_flavour', esc(info.flavour)) +
+    _ziRow('zi_tags', _ziTagsHtml(info.tags)) +
+    '</div>';
+  // A ZIM Zimi did not make has no history, and says so plainly rather than
+  // showing an empty heading or inventing rows from its publisher's fields.
+  var history = (info.history && info.history.length)
+    ? '<div class="zi-sec">' + tH('zi_history') + '</div><ul class="zi-timeline">' +
+      info.history.map(_ziRecordHtml).join('') + '</ul>'
+    : '<div class="zi-none">' + tH('zi_no_history') + '</div>';
+  var warn = info.readable ? '' : '<div class="zi-warn">' + tH('zi_unreadable') + '</div>';
+  // Whatever else the publisher wrote goes last, under its own keys: a field
+  // this build has no row for is still a field the file carries, but it is a
+  // footnote to the story the timeline tells, not a preface to it.
+  return warn + head + rows + history + _ziOtherHtml(info.other);
+}
+
+function _ziKeydown(e) {
+  if (e.key === 'Escape') { e.preventDefault(); _closeZimAbout(); }
+}
+
+function _closeZimAbout() {
+  var ov = document.getElementById(_ZI_OVERLAY_ID);
+  if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+  document.removeEventListener('keydown', _ziKeydown);
+}
+
+// Opens the panel immediately with a loading line, then fills it — the fetch
+// opens the archive, and on a cold library that is not instant. Every write
+// re-finds the body, so a panel closed mid-flight is never resurrected.
+function _openZimAbout(zim) {
+  _closeZimAbout();
+  var ov = document.createElement('div');
+  ov.className = 'zi-overlay';
+  ov.id = _ZI_OVERLAY_ID;
+  ov.innerHTML =
+    '<div class="zi-panel" role="dialog" aria-modal="true" aria-label="' + escAttr(t('about_zim')) + '">' +
+    '<div class="zi-head"><span class="zi-head-title">' + tH('about_zim') + '</span>' +
+    '<button class="zi-close" aria-label="' + escAttr(t('close')) + '" onclick="_closeZimAbout()">✕</button>' +
+    '</div><div class="zi-body"><div class="zi-none">' + tH('loading') + '</div></div></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click', function (e) { if (e.target === ov) _closeZimAbout(); });
+  document.addEventListener('keydown', _ziKeydown);
+  var closeBtn = ov.querySelector('.zi-close');
+  if (closeBtn) closeBtn.focus();
+  var write = function (html) {
+    var body = document.querySelector('#' + _ZI_OVERLAY_ID + ' .zi-body');
+    if (body) body.innerHTML = html;
+  };
+  serverFetch('/zim-info?zim=' + encodeURIComponent(zim))
+    .then(function (r) {
+      if (!r.ok) throw new Error('zim-info ' + r.status);
+      return r.json();
+    })
+    .then(function (info) { write(_ziBodyHtml(info)); })
+    .catch(function () { write('<div class="zi-none">' + tH('zi_load_failed') + '</div>'); });
+}
+
 function renderCardGrid(items, showStars, showCategory) {
   if (!items || !items.length) return '';
   const favs = (collectionsCache && collectionsCache.favorites) || [];
@@ -3133,7 +3431,7 @@ function renderCardGrid(items, showStars, showCategory) {
         // The title text is wrapped in .zt so the tile layout can clamp it to two
         // lines independently and drop the language chip onto its own line below
         // (in the list the .zt span is inline, so nothing changes there).
-        '<div class="name">' + newHtml + '<span class="zt">' + esc(z.title || z.name) + '</span>' + badge + qidIcon + '</div>' +
+        '<div class="name">' + newHtml + '<span class="zt">' + esc(z.title || z.name) + '</span>' + badge + qidIcon + _provBadgeHtml(z.name) + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
         '<div class="detail">' + catPrefix + _zimCountHtml(z) +
         ' &middot; ' + fmtSize(z.size_gb) +
@@ -4434,8 +4732,12 @@ function _moveZimTo(zim, category) {
 
   function showMainMenu() {
     var zim = _ctxZim;
+    // About belongs on EVERY library card, so both menu shapes carry it — the
+    // compact gear menu (an Installed row) as much as the full card menu.
+    var aboutItem = '<div class="ctx-item" data-action="about">' + tH('about_zim') + '</div>';
     if (_ctxCompact) {
-      menu.innerHTML = _layoutItemsHtml(zim);
+      var layout = _layoutItemsHtml(zim);
+      menu.innerHTML = aboutItem + (layout ? '<div class="ctx-sep"></div>' + layout : '');
       posMenu(_ctxX, _ctxY);
       return;
     }
@@ -4459,6 +4761,7 @@ function _moveZimTo(zim, category) {
     h += '</div></div>';
     var layoutItems = _layoutItemsHtml(zim);
     if (layoutItems) { h += '<div class="ctx-sep"></div>' + layoutItems; }
+    h += '<div class="ctx-sep"></div>' + aboutItem;
     if (manageEnabled) {
       h += '<div class="ctx-sep"></div>';
       h += '<div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
@@ -4487,17 +4790,22 @@ function _moveZimTo(zim, category) {
     posMenu(x, y);
   };
 
+  // Right-click resolves its ZIM through _lpHit, the same way long-press does.
+  // It used to read the name out of the card's `onclick` attribute, which only
+  // the export variant still has: since cards became real links (#49) an
+  // ordinary ZIM has an href and no onclick, so right-click silently did
+  // nothing on almost every card in the library while touch kept working. One
+  // resolver, both input types, and neither can rot without the other.
   document.addEventListener('contextmenu', function(e) {
-    var card = e.target.closest('.stat-card');
-    if (!card) { closeCtx(); return; }
+    var hit = _lpHit(e.target);
+    if (!hit) { closeCtx(); return; }
     e.preventDefault();
     // Prevent text selection
     window.getSelection().removeAllRanges();
-    var m = (card.getAttribute('onclick') || '').match(/enterSource\('([^']+)'/);
-    if (!m) return;
-    _ctxZim = m[1];
-    _ctxCard = card;
+    _ctxZim = hit.zim;
+    _ctxCard = hit.card;
     _ctxCompact = false;
+    _ctxCustomAction = null;
     _ctxX = e.clientX + 2;
     _ctxY = e.clientY + 2;
     showMainMenu();
@@ -4627,6 +4935,8 @@ function _moveZimTo(zim, category) {
 
     if (action === 'open') {
       closeCtx(); enterSource(zim, true);
+    } else if (action === 'about') {
+      closeCtx(); _openZimAbout(zim);
     } else if (action === 'newtab') {
       closeCtx(); window.open('/w/' + encodeURIComponent(zim), '_blank');
     } else if (action === 'move-to') {
