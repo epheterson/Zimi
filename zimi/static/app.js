@@ -14373,13 +14373,30 @@ function openReader(url) {
             return;
           }
           var fromZim = readerSource || (currentArticle && currentArticle.zim) || '';
+          // When resolve says "not captured" but the domain BELONGS to an
+          // installed ZIM, stay in the archive: navigate to the mirrored
+          // path so the reader serves the page if it exists and the
+          // not-captured interstitial (with its explicit live-web link) if
+          // it does not. Leaving the archive is always a stated choice, so
+          // window.open(live) is reserved for domains no ZIM claims.
+          var _mapped = _domainZimMap[linkHost] || _domainZimMap[linkBare] || '';
+          function _stayInArchive() {
+            try {
+              var u = new URL(fullUrl);
+              openArticle(_mapped, u.hostname + u.pathname + (u.search || ''));
+              return true;
+            } catch (ex) { return false; }
+          }
           fetch('/resolve?url=' + encodeURIComponent(fullUrl) + (fromZim ? '&from=' + encodeURIComponent(fromZim) : ''))
             .then(function(r) { return r.json(); })
             .then(function(data) {
               if (data.found) openArticle(data.zim, data.path);
+              else if (_mapped && _stayInArchive()) return;
               else window.open(fullUrl, '_blank');
             })
-            .catch(function() { window.open(fullUrl, '_blank'); });
+            .catch(function() {
+              if (!(_mapped && _stayInArchive())) window.open(fullUrl, '_blank');
+            });
         }
       };
       // capture: true so we run before wombat's own click interceptor.
