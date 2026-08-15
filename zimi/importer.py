@@ -37,6 +37,7 @@ ZIM never appears under its final name), and the result registers into the
 library through the same incremental path ``zimi create`` uses.
 """
 
+import collections
 import json
 import os
 import shutil
@@ -336,9 +337,21 @@ def convert_archive(
         cmd += [SCRAPER_SUFFIX_FLAG, scraper_string()]
     try:
         say(f"converting {os.path.basename(archive)} with warc2zim…")
-        rc = _run_stream(cmd, say)
+        # Keep the last few output lines riding along with the failure. The
+        # live log is a stream: by the time anyone reads a failed job's journal
+        # record, "the output above" no longer exists anywhere. A prod
+        # conversion failure was undiagnosable for exactly this reason (the
+        # real error — a missing libmagic — lived only in the vanished stream).
+        tail = collections.deque(maxlen=6)
+
+        def _say_and_keep(line):
+            tail.append(line)
+            say(line)
+
+        rc = _run_stream(cmd, _say_and_keep)
         if rc != 0:
-            raise CreateError(f"warc2zim failed (exit {rc}) — see the output above")
+            detail = "; ".join(t.strip() for t in tail if t.strip())[-400:]
+            raise CreateError(f"warc2zim failed (exit {rc}): {detail}")
         staged = os.path.join(staging, os.path.basename(out))
         if not os.path.exists(staged):
             raise CreateError("warc2zim reported success but produced no ZIM file")

@@ -43,6 +43,14 @@ RUN pip install --no-cache-dir "playwright>=1.40" \
  && chmod -R a+rx /ms-playwright \
  && rm -rf /var/lib/apt/lists/*
 
+# libmagic1 is the warc2zim sidecar's one system dependency (python-magic
+# binds it at import). Without it every WARC conversion — the alive engine's
+# exit — dies before reading a byte. Its own layer, after the browser layer,
+# so it never invalidates the 400MB Chromium download above.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libmagic1 \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY zimi/ ./zimi/
 
