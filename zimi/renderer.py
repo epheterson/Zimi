@@ -231,6 +231,12 @@ ALIVE_VARIANT_TIMEOUT = 20.0
 # sweep is the one part of the enumeration whose cost scales with the DOM
 # rather than with the number of images, and a 50,000-node page is a real thing.
 ALIVE_VARIANT_SCAN_ELEMENTS = 4000
+# On by default: a recording that replays correctly on somebody else's screen
+# is worth more than a smaller one that does not, and the reader's screen is
+# never the recorder's. Off is a real choice rather than a penny-pinch —
+# capturing for a known display, or for a bunker where the bytes are the
+# binding constraint — and it costs exactly the sizes this viewport skipped.
+VARIANT_SWEEP_DEFAULT = True
 
 # Which of the browser's requests are worth keeping. Scripts are deliberately
 # absent — they are stripped from the stored page, so carrying their bytes
@@ -634,6 +640,7 @@ class RenderedSession:
         recorder=None,
         extra_wait=0.0,
         block_ads=None,
+        capture_variants=None,
     ):
         self._budget = budget
         self._note = note or (lambda _m: None)
@@ -651,7 +658,20 @@ class RenderedSession:
         # per-page subresource spool is not built at all — the two are
         # alternatives, and doing both would read every body twice.
         self._recorder = recorder
+        # Whether to sweep up the image sizes this viewport did NOT choose.
+        # None means the default, in the same one place as block_ads. Off keeps
+        # only what this screen actually asked for, which is a smaller archive
+        # that replays correctly at THIS width and thins out on a phone.
+        self._capture_variants = (
+            VARIANT_SWEEP_DEFAULT
+            if capture_variants is None
+            else bool(capture_variants)
+        )
         self._extra_wait = max(0.0, float(extra_wait or 0.0))
+        # Chromium's own version string, learned at launch and kept for the
+        # provenance record. None until start() runs, and on an engine that
+        # never started there is nothing to claim.
+        self._browser_version = None
         self.recorded = 0  # responses written to the archive, this session
         # Every URL this session has already put to the archive — recorded,
         # deduplicated, or deliberately skipped. What the variant sweep asks
@@ -676,6 +696,18 @@ class RenderedSession:
         refusing rather than only how much it refused."""
         return self._blocklist
 
+    @property
+    def tools(self):
+        """The outside programs that made this capture, ``{name: version}``.
+
+        Empty until the browser is up, and empty forever on a session that
+        never started — which is the honest answer, because a session that
+        rendered nothing had no tool do anything. This is what tells a rendered
+        capture apart from a builtin one after the fact: the two write
+        otherwise identical metadata, so without a named engine version the
+        reader is left guessing which one made the file."""
+        return {"chromium": self._browser_version} if self._browser_version else {}
+
     # -- lifecycle ---------------------------------------------------------
     def start(self):
         sync_playwright = _playwright_module()
@@ -693,6 +725,14 @@ class RenderedSession:
             raise CreateError(
                 CHROMIUM_MISSING if self._pw is not None else RENDERER_MISSING
             )
+        # Ask the browser what it is, once, while it is up. Playwright reports
+        # the real Chromium build rather than the pinned one Zimi asked for, and
+        # a capture's provenance should name what actually rendered it. Best
+        # effort: an unreadable version costs the record a field, never the run.
+        try:
+            self._browser_version = str(self._browser.version) or None
+        except Exception as e:
+            log.debug("browser version is not readable: %s", e)
         self._driver_pid = _driver_pid(self._pw)
         self._context = self._browser.new_context(
             viewport={"width": self._viewport[0], "height": self._viewport[1]},
@@ -1125,6 +1165,12 @@ class RenderedSession:
         byte cap here, and the crawl's own byte budget underneath. Every miss
         is a debug line — the page is already captured and nothing downstream
         depends on this."""
+        # Switched off means this screen only: the archive keeps the candidates
+        # the navigation actually fetched and nothing else. The provenance is
+        # unaffected either way — the counts have always reported what was
+        # really written, not what was attempted.
+        if not self._capture_variants:
+            return
         if self._recorder is None or self._context is None:
             return
         try:
@@ -1798,10 +1844,21 @@ class RenderedCapture:
     refuses_spa = False
 
     def __init__(
-        self, *, work_dir=None, budget=None, carried=None, note=None, block_ads=None
+        self,
+        *,
+        work_dir=None,
+        budget=None,
+        carried=None,
+        note=None,
+        block_ads=None,
+        capture_variants=None,
     ):
         self._session = RenderedSession(
-            work_dir=work_dir, budget=budget, note=note, block_ads=block_ads
+            work_dir=work_dir,
+            budget=budget,
+            note=note,
+            block_ads=block_ads,
+            capture_variants=capture_variants,
         )
         self._budget = budget
         self.carried = {} if carried is None else carried
@@ -1826,6 +1883,10 @@ class RenderedCapture:
     @property
     def blocklist(self):
         return self._session.blocklist
+
+    @property
+    def tools(self):
+        return self._session.tools
 
     def start(self):
         if not self._started:

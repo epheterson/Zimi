@@ -181,6 +181,7 @@ class AliveCapture:
         extra_wait=None,
         warc_path=None,
         block_ads=None,
+        capture_variants=None,
     ):
         from zimi.renderer import ALIVE_EXTRA_WAIT, RenderedSession
 
@@ -212,6 +213,7 @@ class AliveCapture:
             # case its own code already handles. Measured on cnn.com: the ZIM
             # came out 41% smaller and replayed no worse.
             block_ads=block_ads,
+            capture_variants=capture_variants,
         )
         # The shared-with-the-crawl dedupe map. It stays EMPTY: this engine
         # carries no assets into a ZIM, because the archive already holds every
@@ -350,6 +352,7 @@ def create_alive_page_zim(
     creator_name="Zimi",
     extra_wait=None,
     block_ads=None,
+    capture_variants=None,
     register=False,
     progress=None,
     **_ignored,
@@ -377,7 +380,11 @@ def create_alive_page_zim(
 
     out_dir = out_dir or _srv.ZIM_DIR
     capture = AliveCapture(
-        work_dir=out_dir, note=note, extra_wait=extra_wait, block_ads=block_ads
+        work_dir=out_dir,
+        note=note,
+        extra_wait=extra_wait,
+        block_ads=block_ads,
+        capture_variants=capture_variants,
     )
     out = None
     blocked = {}
@@ -448,6 +455,7 @@ def create_alive_site_zim(
     timeout=None,
     extra_wait=None,
     block_ads=None,
+    capture_variants=None,
     register=False,
     progress=None,
     **_ignored,
@@ -526,6 +534,7 @@ def create_alive_site_zim(
         note=note,
         extra_wait=extra_wait,
         block_ads=block_ads,
+        capture_variants=capture_variants,
     )
     spool_dir = None
     out = None

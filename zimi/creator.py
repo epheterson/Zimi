@@ -1332,6 +1332,10 @@ class BuiltinCapture:
     # An application shell has nothing in it for this engine to capture, and
     # saying so is better than writing a ZIM full of loading spinners.
     refuses_spa = True
+    # No outside program makes this capture — it is urllib and this file. The
+    # empty dict is the answer, not a missing one, and it is what leaves a
+    # builtin ZIM's provenance naming no engine version.
+    tools = {}
 
     def __init__(
         self,
@@ -1343,13 +1347,16 @@ class BuiltinCapture:
         note=None,
         work_dir=None,
         block_ads=None,
+        capture_variants=None,
     ):
-        # ``work_dir`` and ``block_ads`` are accepted and unused, the way every
-        # engine accepts the shared option set: one construction call has to
-        # serve three engines. Blocking genuinely means nothing here — this
-        # engine fetches what a page's own markup names and nothing else — and
-        # the surfaces refuse the flag rather than let anyone believe otherwise
-        # (see ``_block_ads_from_args`` and ``manage._create_validate``).
+        # ``work_dir``, ``block_ads`` and ``capture_variants`` are accepted and
+        # unused, the way every engine accepts the shared option set: one
+        # construction call has to serve three engines. Both switches genuinely
+        # mean nothing here — this engine fetches what a page's own markup names
+        # and nothing else, so there is no third-party request to refuse and no
+        # archive to sweep variants into — and the surfaces refuse the flags
+        # rather than let anyone believe otherwise (see ``_block_ads_from_args``
+        # and ``manage._create_validate``).
         self._timeout = timeout
         self._max_redirects = max_redirects
         self._budget = budget
@@ -1427,6 +1434,18 @@ def report_blocked(capture, note):
     return {"blocked": record} if record else {}
 
 
+def capture_tools(capture):
+    """The outside programs a capture ran, ``{name: version}``, for the
+    provenance record.
+
+    Read through ``getattr`` for the same reason ``report_blocked`` does: the
+    call sites hold an engine, and an engine that names no outside tool simply
+    has nothing to say. ``history_record`` drops an empty dict, so a builtin
+    capture's record comes out exactly as it did before this existed — which is
+    what makes the presence of a tool a fact rather than a default."""
+    return dict(getattr(capture, "tools", None) or {})
+
+
 def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
     """The named engine, ready to start. Raises ``CreateError`` for a name
     nothing answers to — a typo must not silently capture the other way."""
@@ -1445,6 +1464,7 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
             carried=kwargs.get("carried"),
             note=kwargs.get("note"),
             block_ads=kwargs.get("block_ads"),
+            capture_variants=kwargs.get("capture_variants"),
         )
     if name == "alive":
         from zimi.alive import AliveCapture
@@ -1455,6 +1475,7 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
             carried=kwargs.get("carried"),
             note=kwargs.get("note"),
             block_ads=kwargs.get("block_ads"),
+            capture_variants=kwargs.get("capture_variants"),
         )
     raise CreateError(
         f"unknown capture engine: {engine} — the engines are "
@@ -1475,6 +1496,7 @@ def create_page_zim(
     max_redirects=DEFAULT_MAX_REDIRECTS,
     engine=DEFAULT_ENGINE,
     block_ads=None,
+    capture_variants=None,
     register=False,
     progress=None,
 ):
@@ -1508,6 +1530,7 @@ def create_page_zim(
             language=language,
             creator_name=creator_name,
             block_ads=block_ads,
+            capture_variants=capture_variants,
             register=register,
             progress=progress,
         )
@@ -1528,6 +1551,7 @@ def create_page_zim(
         note=note,
         work_dir=out_dir or _srv.ZIM_DIR,
         block_ads=block_ads,
+        capture_variants=capture_variants,
     )
     blocked = {}
     try:
@@ -1567,6 +1591,7 @@ def create_page_zim(
                     "page",
                     f"captured one page from {final_url}"
                     + blocked_phrase(blocked.get("blocked")),
+                    tools=capture_tools(capture),
                     counts={"pages": 1, "assets": capture.count},
                     blocked=blocked.get("blocked"),
                 ),
@@ -1668,6 +1693,7 @@ def create_pages_zim(
     max_redirects=DEFAULT_MAX_REDIRECTS,
     engine=DEFAULT_ENGINE,
     block_ads=None,
+    capture_variants=None,
     register=False,
     progress=None,
 ):
@@ -1727,6 +1753,7 @@ def create_pages_zim(
             max_redirects=max_redirects,
             engine=engine,
             block_ads=block_ads,
+            capture_variants=capture_variants,
             register=register,
             progress=progress,
         )
@@ -1752,6 +1779,7 @@ def create_pages_zim(
         note=note,
         work_dir=out_dir or _srv.ZIM_DIR,
         block_ads=block_ads,
+        capture_variants=capture_variants,
     )
     entries, skipped, taken, detected = [], [], {"index"}, []
     blocked = {}
@@ -1868,6 +1896,7 @@ def create_pages_zim(
                     f"captured {_plural(len(entries), 'page')} from the web"
                     + (f", skipping {len(skipped)}" if skipped else "")
                     + blocked_phrase(blocked.get("blocked")),
+                    tools=capture_tools(capture),
                     counts={"pages": len(entries), "assets": asset_count},
                     blocked=blocked.get("blocked"),
                 ),

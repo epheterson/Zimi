@@ -916,15 +916,32 @@ def _creation_record(history):
     return None
 
 
+# The tool a rendered capture names in its creation record. One key, because
+# one browser drives the engine; a capture that ran anything else is not this.
+_RENDERED_TOOL = "chromium"
+
+
+def _rendered_engine(created):
+    """ "rendered" when the creation record names the browser that made it, "" when
+    it names none. Evidence, not inference — the alternative is telling a
+    builtin capture apart from a browser one by the shape of its metadata,
+    which the two have in common."""
+    tools = (created or {}).get("tools") or {}
+    return "rendered" if tools.get(_RENDERED_TOOL) else ""
+
+
 def _zimi_kind(meta):
     """The provenance FACTS a Zimi-made ZIM carries, or None for one Zimi did
     not make. Facts only — the label and the sentence are the client's job, in
     the reader's language.
 
-    ``engine`` is "alive" for a replay capture and "" otherwise. It deliberately
-    does NOT distinguish the rendered (headless-browser) engine from the builtin
-    fetcher: those two write identical metadata today, so claiming to tell them
-    apart would be a guess dressed as a fact.
+    ``engine`` is "alive" for a replay capture, "rendered" for a headless-
+    browser one, and "" for the builtin fetcher. Rendered is read from the
+    creation record's named tools rather than guessed: a browser capture stamps
+    the Chromium version it actually ran, and a ZIM that names no browser was
+    not made by one. ZIMs written before that stamp existed name no tools and
+    so read as "" — the old answer, which was always the honest one for a file
+    that carries no evidence either way.
 
     The two warc2zim-written kinds are told apart by the tag, not the Scraper:
     `zimi import` and the alive engine both run the same converter, and only the
@@ -947,7 +964,7 @@ def _zimi_kind(meta):
         # mode is the only one no history record ever states.
         "mode": (created or {}).get("mode", "")
         or ("import" if converted and not alive else ""),
-        "engine": "alive" if alive else "",
+        "engine": "alive" if alive else _rendered_engine(created),
         # How many times this ZIM was touched AFTER it was made. Zero for a
         # freshly created file; the tooltip says so only when it isn't.
         "edits": max(0, len(history) - 1),

@@ -579,6 +579,7 @@ def create_site_zim(
     max_redirects=DEFAULT_MAX_REDIRECTS,
     engine=DEFAULT_ENGINE,
     block_ads=None,
+    capture_variants=None,
     register=False,
     progress=None,
 ):
@@ -614,6 +615,7 @@ def create_site_zim(
             ignore_robots=ignore_robots,
             timeout=timeout,
             block_ads=block_ads,
+            capture_variants=capture_variants,
             register=register,
             progress=progress,
         )
@@ -655,6 +657,7 @@ def create_site_zim(
         note=note,
         work_dir=out_dir or _srv.ZIM_DIR,
         block_ads=block_ads,
+        capture_variants=capture_variants,
     )
     spool_dir = None
     blocked = {}
