@@ -1,13 +1,23 @@
-"""Making a ZIM: point Zimi at a folder and get a served source out of it."""
+"""Making a ZIM from the web: point Zimi at a page and get a served source.
 
+Folder capture left the web by decree (it is `zimi create <folder>` on the
+server itself now), so the gate's creation journey rides the page mode: a
+tiny fixture site served over local HTTP, captured with the builtin engine.
+The journeys are unchanged — probe first, create, find it after the fact,
+queue a second, read the event stream, check the provenance — and the
+folder door is checked to be closed, not merely hidden.
+"""
+
+import http.server
 import os
+import threading
 
 import pytest
 
 from fixtures_zim import build_source_folder
 from conftest import quote
 
-pytestmark = pytest.mark.gate("ZIM creation from a folder")
+pytestmark = pytest.mark.gate("ZIM creation from the web")
 
 CREATE_TIMEOUT_SEC = 180
 
@@ -17,33 +27,79 @@ def source_folder(tmp_path_factory):
     return build_source_folder(str(tmp_path_factory.mktemp("gate-source")))
 
 
-def test_probe_describes_the_folder_before_committing(gate_server, source_folder):
-    """The Create page shows you what you are about to get. If the probe lies or
-    breaks, every creation becomes a leap of faith."""
+@pytest.fixture(scope="module")
+def gate_server(gate_library, tmp_path_factory):
+    """This module's server boots WITHOUT ZIMI_OFFLINE, overriding the shared
+    fixture: web creation is a network feature by nature, and under the
+    offline switch page capture correctly refuses to fetch (that refusal is
+    itself gate-checked in the offline feature). The capture target is the
+    loopback fixture site, so the gate still runs on a machine with no
+    internet. ZIMI_CREATE_ROOT is set for the same reason as the shared
+    fixture: import capture is refused outright without it."""
+    import shutil
+
+    from conftest import boot, clean_env
+
+    root = tmp_path_factory.mktemp("gate-create-instance")
+    zim_dir = os.path.join(str(root), "zims")
+    shutil.copytree(gate_library, zim_dir)
+    env = clean_env()
+    env.pop("ZIMI_OFFLINE", None)
+    env["ZIMI_CREATE_ROOT"] = str(tmp_path_factory.getbasetemp())
+    with boot(
+        zim_dir=zim_dir, data_dir=os.path.join(str(root), "data"), env=env
+    ) as server:
+        yield server
+
+
+@pytest.fixture(scope="module")
+def source_site(source_folder):
+    """The fixture folder, served over real HTTP on an ephemeral port —
+    what the web creation flow actually points at."""
+
+    class QuietHandler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, directory=source_folder, **kw)
+
+        def log_message(self, *a):
+            pass
+
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), QuietHandler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{httpd.server_address[1]}/index.html"
+    finally:
+        httpd.shutdown()
+
+
+def test_probe_describes_the_page_before_committing(gate_server, source_site):
+    """The Create page shows you what you are about to get. If the probe lies
+    or breaks, every creation becomes a leap of faith."""
     status, body = gate_server.post_json(
-        "/manage/create/probe", {"mode": "folder", "source": source_folder}
+        "/manage/create/probe", {"mode": "page", "source": source_site}
     )
     assert status == 200, body
-    assert body.get("ok") is True, f"probe refused a plain readable folder: {body}"
-    assert body["mode"] == "folder"
-    assert body["files"] == 3, f"probe miscounted the folder: {body}"
-    assert body["bytes"] > 0
-    assert body["main"] == "index.html", f"probe picked the wrong main page: {body}"
+    assert body.get("ok") is True, f"probe refused a plain served page: {body}"
+    assert body["mode"] == "page"
+    assert body["title"] == "Field notes", f"probe misread the page: {body}"
 
 
-def test_probe_refuses_a_path_that_is_not_a_folder(gate_server, tmp_path):
-    missing = str(tmp_path / "there-is-nothing-here")
-    status, body = gate_server.post_json(
-        "/manage/create/probe", {"mode": "folder", "source": missing}
-    )
-    assert status == 400, body
-    assert "error" in body
+def test_folder_mode_is_a_closed_door_not_a_hidden_one(gate_server, source_folder):
+    """The web refuses folder capture outright and names the CLI. A client
+    that no longer shows the tile is not the boundary — this is."""
+    for endpoint in ("/manage/create/probe", "/manage/create"):
+        status, body = gate_server.post_json(
+            endpoint, {"mode": "folder", "source": source_folder}
+        )
+        assert status == 400, f"{endpoint} accepted folder mode: {body}"
+        assert "CLI" in body.get("error", ""), body
 
 
-def test_a_folder_becomes_a_zim_that_serves(gate_server, source_folder):
+def test_a_page_becomes_a_zim_that_serves(gate_server, source_site):
     status, body = gate_server.post_json(
         "/manage/create",
-        {"mode": "folder", "source": source_folder, "title": "Gate Field Notes"},
+        {"mode": "page", "source": source_site, "title": "Gate Field Notes"},
     )
     assert status == 200, body
     assert body.get("status") == "started", body
@@ -82,14 +138,13 @@ def test_a_folder_becomes_a_zim_that_serves(gate_server, source_folder):
 
 
 def test_without_a_configured_root_the_web_cannot_reach_the_filesystem(
-    gate_library, tmp_path_factory, source_folder
+    gate_library, tmp_path_factory
 ):
     """The default posture, booted for real. Eric's objection to the round-2
-    folder flow was that it showed him the whole file system; the answer is
-    that with no ZIMI_CREATE_ROOT the web cannot list a directory or package a
-    server path at all. A client that hides the chip is not the boundary —
-    this is, so it is checked against a server that never had one."""
-    import os
+    folder flow was that it showed him the whole file system; the answer today
+    is layered: folder mode refuses from the web no matter what, the picker
+    endpoint is gone, and with no ZIMI_CREATE_ROOT the import mode cannot
+    read a server path either. Checked against a server that never had one."""
     import shutil
 
     from conftest import boot, clean_env
@@ -103,16 +158,12 @@ def test_without_a_configured_root_the_web_cannot_reach_the_filesystem(
         zim_dir=zim_dir, data_dir=os.path.join(str(root), "data"), env=env
     ) as server:
         status, body = server.get_json("/manage/create/browse?path=/")
-        assert status == 403, f"the picker listed a directory with no root set: {body}"
-        for mode, source in (("folder", source_folder), ("import", __file__)):
+        assert status == 410, f"the retired picker endpoint answered: {body}"
+        for endpoint in ("/manage/create", "/manage/create/probe"):
             status, body = server.post_json(
-                "/manage/create", {"mode": mode, "source": source}
+                endpoint, {"mode": "import", "source": __file__}
             )
-            assert status == 403, f"{mode} capture ran with no root set: {body}"
-            status, body = server.post_json(
-                "/manage/create/probe", {"mode": mode, "source": source}
-            )
-            assert status == 403, f"{mode} probe read the filesystem: {body}"
+            assert status == 403, f"import reached the filesystem with no root: {body}"
         # …and the URL modes, which read nothing local, are unaffected.
         status, body = server.post_json(
             "/manage/create/probe", {"mode": "page", "source": "nonsense"}
@@ -120,7 +171,7 @@ def test_without_a_configured_root_the_web_cannot_reach_the_filesystem(
         assert status == 400, body
 
 
-def test_a_finished_job_is_findable_after_the_fact(gate_server, source_folder):
+def test_a_finished_job_is_findable_after_the_fact(gate_server):
     """An admin who closed the tab and came back must be able to find out what
     happened. The job log survives the job; if this breaks, the answer to "did
     my capture finish?" goes back to being "look at the library and guess"."""
@@ -131,23 +182,24 @@ def test_a_finished_job_is_findable_after_the_fact(gate_server, source_folder):
     mine = [record for record in history if record.get("title") == "Gate Field Notes"]
     assert mine, f"the finished job is missing from the history: {history}"
     assert mine[0]["state"] == "ok", mine[0]
-    assert mine[0]["mode"] == "folder"
+    assert mine[0]["mode"] == "page"
     assert mine[0]["result"], f"the history does not name what was created: {mine[0]}"
 
 
-def test_a_second_submission_queues_and_can_be_dropped(gate_server, source_folder):
+def test_a_second_submission_queues_and_can_be_dropped(gate_server, source_site):
     """Two submissions are a plan, not a mistake. The queue is what makes the
     Create page usable by somebody who knows what they want to build."""
     first = gate_server.post_json(
-        "/manage/create", {"mode": "folder", "source": source_folder, "title": "Q1"}
+        "/manage/create", {"mode": "page", "source": source_site, "title": "Q1"}
     )
     assert first[0] == 200, first
     second_status, second = gate_server.post_json(
-        "/manage/create", {"mode": "folder", "source": source_folder, "title": "Q2"}
+        "/manage/create", {"mode": "page", "source": source_site, "title": "Q2"}
     )
     assert second_status == 200, second
-    # The first job may already have finished — a folder capture this small is
-    # quick — so either answer is correct, and both must be honest about which.
+    # The first job may already have finished — a one-page capture from
+    # localhost is quick — so either answer is correct, and both must be
+    # honest about which.
     if second.get("status") == "queued":
         assert second["position"] == 1
         dropped_status, dropped = gate_server.post_json(
@@ -165,12 +217,12 @@ def test_a_second_submission_queues_and_can_be_dropped(gate_server, source_folde
     assert state.get("queue") == [], state
 
 
-def test_the_progress_stream_carries_structured_events(gate_server, source_folder):
+def test_the_progress_stream_carries_structured_events(gate_server, source_site):
     """The Create page draws its progress from these, not from the log text.
     An empty or malformed stream means a progress view that cannot move."""
     status, body = gate_server.post_json(
         "/manage/create",
-        {"mode": "folder", "source": source_folder, "title": "Gate Events"},
+        {"mode": "page", "source": source_site, "title": "Gate Events"},
     )
     assert status == 200, body
     state = gate_server.poll_json(
@@ -187,7 +239,7 @@ def test_the_progress_stream_carries_structured_events(gate_server, source_folde
     assert state["event_cursor"] == len(events)
 
 
-def test_the_created_zim_carries_its_provenance(gate_server, source_folder, tmp_path):
+def test_the_created_zim_carries_its_provenance(gate_server):
     """Every ZIM Zimi writes says who made it. A reader that trusts a ZIM's
     origin needs that metadata present, not just intended."""
     pytest.importorskip("libzim.reader")
