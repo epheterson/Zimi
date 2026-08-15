@@ -826,3 +826,51 @@ def test_every_engine_the_registry_advertises_can_actually_be_built(tmp_path):
             )
         finally:
             engine.close()
+
+
+@browser
+def test_a_303_hop_is_archived_as_a_302_the_converter_keeps(tmp_path):
+    """warc2zim keeps every redirect status except 303, which it silently
+    drops (verified against 2.3.1: 301/302/307/308 become redirect entries,
+    303 vanishes). apple.com's shop links answer 303, so every one of them
+    replayed as a missing page while the crawl swore it followed them. In a
+    replay archive every request is a GET — the one distinction 303 exists to
+    force — so the recorder files the hop as a 302, which carries the same
+    instruction and survives conversion."""
+
+    final = b"<html><head><title>F</title></head><body>arrived</body></html>"
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/goto":
+                self.send_response(303)
+                self.send_header("Location", "/final")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(final)))
+            self.end_headers()
+            self.wfile.write(final)
+
+        def log_message(self, *_a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer((HOST, 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://{HOST}:{srv.server_address[1]}"
+    capture = alive.AliveCapture(work_dir=str(tmp_path), extra_wait=0.5)
+    try:
+        capture.fetch(base + "/goto")
+    finally:
+        capture.close()
+        srv.shutdown()
+        srv.server_close()
+    records = _recorded(capture.warc_path)
+    hop = records.get(base + "/goto")
+    assert hop is not None, "the redirect hop never reached the archive"
+    assert hop.http_status() == 302, (
+        f"the hop must survive warc2zim, got {hop.http_status()}"
+    )
+    assert records[base + "/final"].payload() == final

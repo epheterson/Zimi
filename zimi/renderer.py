@@ -1122,6 +1122,16 @@ class RenderedSession:
             if self._budget is not None and body and not self._budget.spend(len(body)):
                 log.debug("byte budget spent; not archiving %s", url)
                 continue
+            # A 303 is archived as a 302. warc2zim keeps every other redirect
+            # status but silently DROPS 303s (verified empirically against
+            # 2.3.1: 301/302/307/308 become redirect entries, 303 vanishes) —
+            # and apple.com's shop links answer 303, so every one of them died
+            # at the missing-entry page while the crawl swore it followed
+            # them. In a replay archive every request is a GET, which is
+            # exactly the distinction 303 exists to force, so 302 carries the
+            # identical instruction.
+            if status == 303:
+                status = 302
             try:
                 written = recorder.write_exchange(
                     url,
