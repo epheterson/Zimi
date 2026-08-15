@@ -30,7 +30,7 @@ function ok(label, cond, detail) {
 // real t() does for a missing string — which is also how _actTypeLabel and
 // _actVerb detect a type the server invented after this build shipped.
 const STRINGS = {
-  act_actor_server: 'Zimi · automatic',
+  act_actor_server: 'Server',
   act_actor_unknown_hint: 'recorded before Zimi tracked who',
   act_actor_admin_hint: 'signed in with the admin password',
   act_type_download: 'Download',
@@ -47,7 +47,7 @@ const STRINGS = {
 function sandboxWith(records) {
   const sandbox = {
     t: (key) => (key in STRINGS ? STRINGS[key] : key),
-    _act: { records: records || [], types: [], actors: [], offTypes: {}, offActors: {} },
+    _act: { records: records || [], types: [], actors: [], selTypes: {}, selActors: {} },
   };
   vm.createContext(sandbox);
   vm.runInContext(
@@ -74,9 +74,10 @@ function sandboxWith(records) {
   ok('a user with no name falls back to the kind', key({ kind: 'user' }) === 'user');
   ok('a record with no actor at all still groups', key(undefined) === 'server');
 
-  // The server actor gets a real, honest label — never the em-dash (that stays
-  // reserved for pre-tracking records whose actor was simply never written).
-  ok('the server chip is localized', vm.runInContext("_actActorLabel('server')", sb) === 'Zimi · automatic');
+  // The server actor gets a real, honest label — a plain localized "Server",
+  // never the em-dash (that stays reserved for pre-tracking records whose
+  // actor was simply never written).
+  ok('the server chip is localized', vm.runInContext("_actActorLabel('server')", sb) === 'Server');
   // A record from before Zimi tracked actors says nothing rather than accusing
   // somebody of being "Unknown" — the em-dash IS the answer, and the sentence
   // that explains it is the tooltip's job.
@@ -128,22 +129,29 @@ function sandboxWith(records) {
   const subjects = () =>
     vm.runInContext('_actVisibleRecords().map(function(r){return r.subject})', sb).join(',');
 
-  ok('nothing filtered shows everything', subjects() === 'Wikipedia,Gutenberg,Field Notes,Old ZIM');
+  // The pills come up DESELECTED (Library-view grammar): empty selection on an
+  // axis means no filter on that axis, so the fresh view shows everything.
+  ok('nothing selected shows everything', subjects() === 'Wikipedia,Gutenberg,Field Notes,Old ZIM');
   ok('no filter is no badge', vm.runInContext('_actFilterCount()', sb) === 0);
 
-  vm.runInContext("_act.offTypes['update'] = true", sb);
-  ok('a turned-off type drops its rows', subjects() === 'Field Notes,Old ZIM');
+  vm.runInContext("_act.selTypes['update'] = true", sb);
+  ok('a selected type narrows to its rows', subjects() === 'Wikipedia,Gutenberg');
 
-  vm.runInContext("_act.offActors['eric'] = true", sb);
-  ok('the two axes compose', subjects() === 'Old ZIM');
+  vm.runInContext("_act.selActors['eric'] = true", sb);
+  ok('the two axes compose', subjects() === 'Gutenberg');
   ok('the badge counts both axes', vm.runInContext('_actFilterCount()', sb) === 2);
+
+  // Two selections on ONE axis are a union, not an impossible intersection.
+  vm.runInContext('_act.selTypes = {}; _act.selActors = {}', sb);
+  vm.runInContext("_act.selTypes['update'] = true; _act.selTypes['create'] = true", sb);
+  ok('two types on one axis are a union', subjects() === 'Wikipedia,Gutenberg,Field Notes');
 
   // Eric's case: the same event type from two actors, told apart by the actor
   // axis alone.
-  vm.runInContext('_act.offTypes = {}; _act.offActors = {}', sb);
-  vm.runInContext("_act.offActors['server'] = true", sb);
+  vm.runInContext('_act.selTypes = {}; _act.selActors = {}', sb);
+  vm.runInContext("_act.selActors['server'] = true", sb);
   ok('an actor filter separates a hand update from an auto-update',
-    subjects() === 'Gutenberg,Field Notes,Old ZIM');
+    subjects() === 'Wikipedia');
 
   // Every pill carries a count, and it counts the WHOLE journal rather than
   // what is currently showing. A count that shrank as you filtered would be
@@ -153,7 +161,7 @@ function sandboxWith(records) {
   ok('a type pill counts its records', count('type', 'update') === 2);
   ok('an actor pill counts across types', count('actor', 'eric') === 2);
   ok('a value nothing matches counts zero', count('type', 'export') === 0);
-  vm.runInContext("_act.offTypes['update'] = true; _act.offActors['eric'] = true", sb);
+  vm.runInContext("_act.selTypes['create'] = true; _act.selActors['eric'] = true", sb);
   ok('the counts do not move when the filters do', count('type', 'update') === 2);
 }
 

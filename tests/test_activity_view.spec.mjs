@@ -100,7 +100,7 @@ test('the same event from two actors reads as two different things', async ({ pa
   // server actor wears a real label — never an em-dash (that stays reserved
   // for pre-tracking records).
   const auto = page.locator('.act-row', { hasText: 'Stack Overflow' });
-  await expect(auto.locator('.act-chip')).toHaveText('Zimi · automatic');
+  await expect(auto.locator('.act-chip')).toHaveText('Server');
   await expect(auto.locator('.act-chip')).toHaveClass(/act-chip-server/);
   const byHand = page.locator('.act-row', { hasText: 'Lit' }).first();
   await expect(byHand.locator('.act-chip')).toHaveText('eric');
@@ -124,42 +124,38 @@ test('the filter narrows by type and by whom, and comes back', async ({ page }) 
   const rows = page.locator('.act-row');
   const total = await rows.count();
 
-  // Both axes are on screen from the start — no box to open. Each row leads
-  // with All, so the pill count is the vocabulary plus one.
+  // Both axes are on screen from the start — no box to open, and no All pill:
+  // the Library-view grammar. Every pill starts DESELECTED, which means
+  // everything is showing.
   await expect(page.locator('.act-filter-row')).toHaveCount(2);
   const typeRow = page.locator('.act-filter-row').first();
   const actorRow = page.locator('.act-filter-row').last();
-  const types = typeRow.locator('.act-pill');
-  const actors = actorRow.locator('.act-pill');
-  await expect(page.locator('.act-pill', { hasText: 'Zimi · automatic' })).toHaveCount(1);
-  // Nothing filtered: every pill is lit, All included — "all" is a true
-  // description of what is showing, not a fifth choice sitting unlit beside it.
-  await expect(typeRow.locator('.act-pill.active')).toHaveCount(await types.count());
+  await expect(page.locator('.act-pill', { hasText: 'Server' })).toHaveCount(1);
+  await expect(typeRow.locator('.act-pill.active')).toHaveCount(0);
+  await expect(actorRow.locator('.act-pill.active')).toHaveCount(0);
+  await expect(rows).toHaveCount(total);
 
   // Expected counts come from the journal the page is holding, not from a
   // number written here — the seed can grow without the test going stale.
   const updates = await page.evaluate(() =>
     _act.records.filter(r => r.type === 'update').length);
-  const priyaLeft = await page.evaluate(() =>
-    _act.records.filter(r => r.type !== 'update' && r.actor.name === 'priya').length);
+  const priyaUpdates = await page.evaluate(() =>
+    _act.records.filter(r => r.type === 'update' && r.actor.name === 'priya').length);
 
   // Every pill states its own count, over the whole journal.
   await expect(page.locator('.act-pill', { hasText: 'Update' }).locator('.pill-count'))
     .toHaveText(String(updates));
 
-  // Turn one type off: fewer rows, and that pill alone goes dark.
+  // Tap one type: it lights, and the list narrows to it.
   const update = page.locator('.act-pill', { hasText: 'Update' });
   await update.click();
-  await expect(rows).toHaveCount(total - updates);
-  await expect(update).not.toHaveClass(/active/);
-  await expect(update).toHaveAttribute('aria-pressed', 'false');
-  // All stops being true the moment it stops being true.
-  await expect(types.first()).not.toHaveClass(/active/);
+  await expect(rows).toHaveCount(updates);
+  await expect(update).toHaveClass(/active/);
+  await expect(update).toHaveAttribute('aria-pressed', 'true');
 
-  // Turn off an actor too — the axes compose, and each row's All is its own.
+  // Select an actor too — the axes compose (updates BY priya).
   await page.locator('.act-pill', { hasText: 'priya' }).click();
-  await expect(rows).toHaveCount(total - updates - priyaLeft);
-  await expect(actors.first()).not.toHaveClass(/active/);
+  await expect(rows).toHaveCount(priyaUpdates);
 
   // The vocabulary does not shrink with the results: a filter whose options
   // vanish as you use it is one you cannot get back out of.
@@ -167,12 +163,13 @@ test('the filter narrows by type and by whom, and comes back', async ({ page }) 
   await expect(page.locator('.act-pill', { hasText: 'Update' }).locator('.pill-count'))
     .toHaveText(String(updates));
 
-  // All on one row restores that row only — the other axis stays as it was.
-  await types.first().click();
-  await expect(rows).toHaveCount(total - priyaLeft);
-  await expect(update).toHaveClass(/active/);
-  await expect(actors.first()).not.toHaveClass(/active/);
-  await actors.first().click();
+  // Tapping a lit pill lets it go — each axis on its own.
+  await update.click();
+  await expect(update).not.toHaveClass(/active/);
+  const priyaAll = await page.evaluate(() =>
+    _act.records.filter(r => r.actor.name === 'priya').length);
+  await expect(rows).toHaveCount(priyaAll);
+  await page.locator('.act-pill', { hasText: 'priya' }).click();
   await expect(rows).toHaveCount(total);
 });
 

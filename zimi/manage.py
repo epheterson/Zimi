@@ -1930,6 +1930,45 @@ CREATE_VARIANT_ENGINES = ("alive",)
 # renderer.VARIANT_SWEEP_DEFAULT — checked by default, so silence means the
 # field never rendered rather than "the admin unticked it".
 CREATE_CAPTURE_VARIANTS = True
+# ── Stored capture defaults ──────────────────────────────────────────────────
+# The two module constants above (CREATE_BLOCK_ADS / CREATE_CAPTURE_VARIANTS)
+# are the FACTORY defaults — what the engines do on a machine nobody has
+# configured. An admin may override either from Manage → Creator, and that
+# choice persists in the data dir like every other manage-set preference (see
+# _write_app_update_prefs for the pattern). Every reader of a default goes
+# through _create_default so a stored choice wins everywhere at once: the
+# validator applying it to a silent request, and the payload reporting it.
+
+
+def _create_defaults_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "create_defaults.json")
+
+
+def _read_create_defaults():
+    try:
+        with open(_create_defaults_path(), "r", encoding="utf-8") as f:
+            saved = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return saved if isinstance(saved, dict) else {}
+
+
+def _create_default(key, fallback):
+    """The stored default for ``key``, or ``fallback`` when nobody ever set
+    one. Only a real boolean in the file counts — a hand-edited string like
+    "yes" falls back rather than being guessed at."""
+    value = _read_create_defaults().get(key)
+    return value if isinstance(value, bool) else fallback
+
+
+def _write_create_defaults(**updates):
+    """Merge into the defaults file — setting one switch must never drop the
+    other's stored answer."""
+    prefs = _read_create_defaults()
+    prefs.update(updates)
+    _srv._atomic_write_json(_create_defaults_path(), prefs)
+
+
 # Ring-buffer depth for job output. A long crawl emits a line per page, so the
 # buffer is a live tail, not a transcript — the browser polls faster than it
 # fills and keeps everything it has already seen.
@@ -2627,14 +2666,17 @@ def _create_validate(data):
         # right — nobody typed this, a stale checkbox did, and refusing a whole
         # capture over a field that describes nothing would be theatre.
         if _create_blocking_engine(opts["engine"]):
-            opts["block_ads"] = _create_bool(data.get("block_ads"), CREATE_BLOCK_ADS)
+            opts["block_ads"] = _create_bool(
+                data.get("block_ads"), _create_default("block_ads", CREATE_BLOCK_ADS)
+            )
         # The responsive-variant sweep, on the one engine that does it, and
         # dropped elsewhere for exactly the reason block_ads is dropped: a
         # stale checkbox from a form whose engine radio has since moved is not
         # a request anybody made.
         if _create_variant_engine(opts["engine"]):
             opts["capture_variants"] = _create_bool(
-                data.get("capture_variants"), CREATE_CAPTURE_VARIANTS
+                data.get("capture_variants"),
+                _create_default("capture_variants", CREATE_CAPTURE_VARIANTS),
             )
     if mode == "site":
         opts["max_pages"] = _create_int(
@@ -3177,6 +3219,15 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
         # a client that inferred it would have to be updated the day that
         # changes.
         payload["alive_ready"] = _create_alive_ready()
+        # The instance's stored capture defaults (Manage → Creator toggles),
+        # so the form's checkboxes start where the admin set them instead of
+        # at the factory state — the toggle would otherwise LOOK ignored.
+        payload["capture_defaults"] = {
+            "block_ads": _create_default("block_ads", CREATE_BLOCK_ADS),
+            "capture_variants": _create_default(
+                "capture_variants", CREATE_CAPTURE_VARIANTS
+            ),
+        }
         # None, not "", when no root is configured: the client reads it as a
         # yes/no about whether server-path capture exists on this instance at
         # all, and an empty string is a path that happens to be blank.
@@ -3507,8 +3558,10 @@ def _creator_payload():
         # None, not "", when no root is configured — the same shape the create
         # page's probe uses, so both readers treat "unset" the same way.
         "create_root": _create_root() or None,
-        "block_ads_default": CREATE_BLOCK_ADS,
-        "capture_variants_default": CREATE_CAPTURE_VARIANTS,
+        "block_ads_default": _create_default("block_ads", CREATE_BLOCK_ADS),
+        "capture_variants_default": _create_default(
+            "capture_variants", CREATE_CAPTURE_VARIANTS
+        ),
         "queue": len(_create_queue_view()),
         "offline": _is_offline_mode(),
     }
@@ -4734,6 +4787,34 @@ def handle_manage_post(handler, parsed, data):
     challenge = _manage_auth_challenge(handler)
     if challenge:
         return handler._json(*challenge)
+
+    if parsed.path == "/manage/creator":
+        # The write half of the Creator section: the two capture defaults the
+        # Manage toggles set. Booleans only — a request that sends anything
+        # else is a caller confused about the contract, and refusing is kinder
+        # than storing junk a future job would silently obey. Admin-gated by
+        # the challenge above, like every other manage settings write.
+        updates = {}
+        for key in ("block_ads", "capture_variants"):
+            if key in data:
+                value = data.get(key)
+                if not isinstance(value, bool):
+                    return handler._json(
+                        400, {"error": f"'{key}' must be true or false"}
+                    )
+                updates[key] = value
+        if not updates:
+            return handler._json(400, {"error": "nothing to change"})
+        _write_create_defaults(**updates)
+        return handler._json(
+            200,
+            {
+                "block_ads_default": _create_default("block_ads", CREATE_BLOCK_ADS),
+                "capture_variants_default": _create_default(
+                    "capture_variants", CREATE_CAPTURE_VARIANTS
+                ),
+            },
+        )
 
     if parsed.path == "/manage/users":
         return _handle_users_post(handler, data)

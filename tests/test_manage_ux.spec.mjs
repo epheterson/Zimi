@@ -182,17 +182,60 @@ test('the creator section reports what this server can capture with', async ({ p
   // the capability probes, which shell out. They are cached for the life of the
   // process afterwards (the endpoint answers in about a millisecond once warm),
   // but that first one has been measured at twelve seconds on a machine already
-  // busy running crawls. The section shows "Loading" until it lands, which is
-  // the correct behaviour — so the test waits rather than pretending it is fast.
+  // busy running crawls. The FIRST-EVER open shows the styled loading line
+  // until it lands — so the test waits rather than pretending it is fast.
   await expect.poll(() => pane.innerText(), { timeout: 30000 }).not.toContain('Loading');
   // Every engine is named with a verdict beside it, installed or not.
   for (const label of ['Browser engine', 'Archive converter', 'Recording engine']) {
     await expect(page.locator('.mc-label', { hasText: label })).toHaveCount(1);
   }
-  // And the facts the create form used to be the only place to learn.
-  await expect(page.locator('.ms-section-label', { hasText: 'Output' })).toHaveCount(1);
+  // The Capture root row is gone — CLI-only fact, ripped out by decree. The
+  // capture defaults stayed and grew real switches; the queue stayed a row.
+  await expect(page.locator('.ms-section-label', { hasText: 'Output' })).toHaveCount(0);
+  await expect(pane).not.toContainText('Capture root');
   await expect(page.locator('.ms-section-label', { hasText: 'Capture defaults' })).toHaveCount(1);
+  await expect(page.locator('#ms-cr-block_ads')).toHaveCount(1);
+  await expect(page.locator('#ms-cr-capture_variants')).toHaveCount(1);
   await expect(page.locator('.ms-section-label', { hasText: 'Queue' })).toHaveCount(1);
+});
+
+test('re-entering the creator section paints instantly from cache — no Loading flash', async ({ page }) => {
+  await enterSection(page, 'creator');
+  const pane = page.locator('#ms-creator');
+  await expect.poll(() => pane.innerText(), { timeout: 30000 }).not.toContain('Loading');
+  // Leave, come back — the cached payload must paint synchronously. The old
+  // pane refetched on every entry and flashed an unstyled "Loading..." each
+  // time ("it goes back to loading every time I tab in!?").
+  for (const away of ['library', 'server']) {
+    await page.evaluate((s) => switchMs(s), away);
+    // switchMs is synchronous; the very first paint of the re-entered pane is
+    // what must already carry the rows.
+    const firstPaint = await page.evaluate(() => {
+      switchMs('creator');
+      return document.getElementById('ms-creator').innerText;
+    });
+    expect(firstPaint).not.toContain('Loading');
+    expect(firstPaint).toContain('Browser engine');
+  }
+});
+
+test('a capture-default toggle persists server-side and survives a reload', async ({ page }) => {
+  await enterSection(page, 'creator');
+  await expect.poll(() => page.locator('#ms-cr-block_ads').count(), { timeout: 30000 }).toBe(1);
+  const sw = page.locator('#ms-cr-block_ads');
+  const before = await sw.isChecked();
+  // Flip it; the switch settles on the server's stored answer.
+  await sw.click({ force: true });  // the input is visually under .switch-slider
+  await expect.poll(() => sw.isChecked()).toBe(!before);
+  // A fresh GET reports the stored value — the whole point of the toggle.
+  const reported = await page.evaluate(async () => {
+    const r = await fetch('/manage/creator');
+    return (await r.json()).block_ads_default;
+  });
+  expect(reported).toBe(!before);
+  // Put it back for the next test run.
+  await sw.click({ force: true });
+  await expect.poll(() => sw.isChecked()).toBe(before);
 });
 
 test('the creator section is addressable, so a reload lands back on it', async ({ page }) => {
@@ -212,6 +255,36 @@ for (const theme of ['dark', 'light']) {
     await page.screenshot({ path: `ui-review/manage-creator-${theme}.png`, fullPage: true });
   });
 }
+
+// ── 5. no ⋯ menu for a single item ──────────────────────────────────────────
+// On a wide home screen the only row the ⋯ menu carried was Create a ZIM — a
+// menu of one ("No ... menu for a single item c'mon"). The rule is generic:
+// when the builder would render exactly one plain action, the trigger BECOMES
+// that action; a second row brings the menu back.
+
+test('a one-item overflow menu becomes the item itself', async ({ page }) => {
+  await fresh(page);
+  // A one-ZIM fixture auto-opens its source; the rule under test lives on the
+  // HOME screen, so go there first.
+  await page.evaluate(() => goHome());
+  await expect.poll(() => page.evaluate(() => mode)).toBe('home');
+  await page.evaluate(() => { manageEnabled = true; _manageProbed = true; updateTopbar(); });
+  const more = page.locator('.topbar-more');
+  await expect(more).toBeVisible();
+  // The trigger wears the solo action's identity, not "More".
+  await expect(more).toHaveAttribute('aria-label', 'Create a ZIM');
+  // Clicking performs the action directly — no intermediate menu appears.
+  await more.click();
+  await expect(page.locator('#topbar-menu')).not.toHaveClass(/visible/);
+  await page.waitForSelector('.create-chip', { state: 'attached' });
+  // On the Create page the menu holds several rows again (Random / Language /
+  // Manage), so the trigger goes back to being a real ⋯ menu.
+  await page.evaluate(() => updateTopbar());
+  await expect(more).not.toHaveAttribute('aria-label', 'Create a ZIM');
+  await more.click();
+  await expect(page.locator('#topbar-menu')).toHaveClass(/visible/);
+  expect(await page.locator('#topbar-menu .topbar-menu-item').count()).toBeGreaterThan(1);
+});
 
 // ── 6. auto-update, as a report rather than a control ───────────────────────
 

@@ -1254,7 +1254,10 @@ function updateTopbar() {
   // topbar, the ⋯ menu is the only route OUT of that page (Manage, Language)
   // on a wide viewport — hiding it there strands the admin.
   var moreBtn = document.querySelector('.topbar-more');
-  if (moreBtn) moreBtn.style.display = (_createMenuRowAvailable() || _createOpen) ? 'flex' : '';
+  if (moreBtn) {
+    moreBtn.style.display = (_createMenuRowAvailable() || _createOpen) ? 'flex' : '';
+    _syncTopbarMoreSolo(moreBtn);
+  }
   document.getElementById('lang-selector-btn').style.display =
     _getStorageFlag(SK.HIDE_LANG_CHOOSER) ? 'none' : '';
   _updateLibraryBtnIcon();
@@ -2178,13 +2181,29 @@ function _orderSections(sections) {
   return out;
 }
 
+// The bucket a ZIM Zimi itself made files under when nobody filed it anywhere
+// else. The literal matches what the created/ subfolder derives ('Created' via
+// _folder_category server-side), so folder-filed and loose creations share ONE
+// section instead of splitting on where the file happens to sit.
+var CREATED_CAT = 'Created';
+
 // A ZIM's effective category for grouping/ordering: its override/heuristic value,
 // or OTHER_CAT for the uncategorized catch-all (empty value, or the explicit
 // force-Other sentinel). One source of truth so home, the Installed list and the
 // reorder list bucket a ZIM identically.
+//
+// One insertion between those two: a ZIM with Zimi-made provenance (the kinds
+// map the type badges already fetch) and NO filing of its own — no category
+// from a folder, no heuristic hit, no override (an override, including the
+// force-Other sentinel, always arrives as a category and is respected) — files
+// under Created. This is what folds CLI creations and pre-created/-folder
+// captures into the same section the created/ folder feeds, with zero server
+// cost.
 function _zimCat(z) {
   if (!z) return OTHER_CAT;
-  return (z.category && z.category !== OTHER_CAT) ? z.category : OTHER_CAT;
+  if (z.category && z.category !== OTHER_CAT) return z.category;
+  if (!z.category && _zimKinds && z.name && _zimKinds[z.name]) return CREATED_CAT;
+  return OTHER_CAT;
 }
 
 // The unified {key,label} list of reorderable home sections — collections
@@ -3167,9 +3186,30 @@ function _loadZimKinds() {
   _zimKindsPending = true;
   serverFetch('/zim-info?kinds=1')
     .then(function (r) { return r.json(); })
-    .then(function (d) { _zimKinds = (d && d.kinds) || {}; _paintProvBadges(); })
+    .then(function (d) {
+      _zimKinds = (d && d.kinds) || {};
+      _paintProvBadges();
+      _refreshCreatedBuckets();
+    })
     .catch(function () { _zimKinds = {}; })
     .finally(function () { _zimKindsPending = false; });
+}
+
+// Kinds land after the first paint. If any uncategorized ZIM just gained its
+// Created filing (see _zimCat), repaint whichever list view is actually on
+// screen once, so home and the manage Library agree from the first look. Uses
+// the same view guard the connectivity-restore path uses: never repaint over
+// an open reader or source view.
+function _refreshCreatedBuckets() {
+  var moved = (zimsCache || []).some(function(z) {
+    return !z.category && _zimKinds && _zimKinds[z.name];
+  });
+  if (!moved) return;
+  if (mode === 'manage') {
+    if (manageTab === 'installed') renderInstalled();
+  } else if (!readerOpen && !currentSource && !readerSource) {
+    renderHome();
+  }
 }
 
 // No-op on a card that already carries its badge, so this is safe to call after
@@ -8027,13 +8067,15 @@ var _ACT_SUBJECT_FALLBACK = {
 // What the optional count counts, per type.
 var _ACT_COUNT_LABEL = {export: 'act_n_bookmarks', restore: 'act_n_sections'};
 
-// View state. Filters are stored as what is turned OFF, so a type that first
-// appears in the journal after the view was opened is visible, not hidden —
-// and so the pills come up with everything lit, which is what "you are looking
-// at all of it" should look like.
+// View state. Filters are stored as what is turned ON — the pills come up
+// deselected, which means "show everything", exactly like the Library view's
+// category pills: nothing is lit until you tap, a tap selects one value to
+// filter by, a second tap lets go of it. An empty selection on an axis is no
+// filter on that axis, so a type that first appears in the journal after the
+// view was opened is always visible.
 var _act = {
   records: [], types: [], actors: [],
-  offTypes: {}, offActors: {},
+  selTypes: {}, selActors: {},
   showAll: false
 };
 
@@ -8082,11 +8124,14 @@ function _actVerb(r) {
 }
 
 function _actFilterCount() {
-  return Object.keys(_act.offTypes).length + Object.keys(_act.offActors).length;
+  return Object.keys(_act.selTypes).length + Object.keys(_act.selActors).length;
 }
 function _actVisibleRecords() {
+  var anyType = Object.keys(_act.selTypes).length > 0;
+  var anyActor = Object.keys(_act.selActors).length > 0;
   return _act.records.filter(function(r) {
-    return !_act.offTypes[r.type] && !_act.offActors[_actActorKey(r)];
+    return (!anyType || _act.selTypes[r.type]) &&
+           (!anyActor || _act.selActors[_actActorKey(r)]);
   });
 }
 
@@ -8134,8 +8179,8 @@ function _actHeaderHtml() {
   // pills with nothing behind them.
   if (!_act.records.length) return '';
   return '<div class="act-filters">' +
-    _actPillRow(tH('act_filter_types'), _act.types, _act.offTypes, 'type', _actTypeLabel) +
-    _actPillRow(tH('act_filter_who'), _act.actors, _act.offActors, 'actor', _actActorLabel) +
+    _actPillRow(tH('act_filter_types'), _act.types, _act.selTypes, 'type', _actTypeLabel) +
+    _actPillRow(tH('act_filter_who'), _act.actors, _act.selActors, 'actor', _actActorLabel) +
   '</div>';
 }
 
@@ -8152,21 +8197,18 @@ function _actAxisCount(kind, value) {
   return n;
 }
 
-// One axis. `off` is the map of turned-off values, so an empty map means every
-// pill in this row is lit — and the leading All pill is lit with them, because
-// "all" is a true description of what is showing, not a fifth choice.
-function _actPillRow(title, values, off, kind, label) {
+// One axis. `sel` is the map of SELECTED values; empty means no filter, which
+// is how the row comes up — every pill dark, everything showing, the Library
+// view's own pill grammar. A lit pill is a filter you chose; tapping it again
+// lets it go, so there is no All pill to keep true.
+function _actPillRow(title, values, sel, kind, label) {
   if (!values.length) return '';
-  var all = !Object.keys(off).length;
   var h = '<div class="act-filter-row">' +
     '<span class="act-filter-label">' + title + '</span>' +
-    '<div class="pills-row act-filter-pills">' +
-    '<button class="pill act-pill' + (all ? ' active' : '') + '"' +
-      ' aria-pressed="' + (all ? 'true' : 'false') + '"' +
-      ' onclick="_actClearAxis(\'' + kind + '\')">' + tH('filter_all') + '</button>';
+    '<div class="pills-row act-filter-pills">';
   for (var i = 0; i < values.length; i++) {
     var v = values[i];
-    var on = !off[v];
+    var on = !!sel[v];
     var title2 = kind === 'actor' ? _actActorTitle(v) : '';
     // escJs, not escAttr: an entity-escaped quote decodes back to a live quote
     // inside the onclick JS string, and an actor value is a username somebody
@@ -8251,21 +8293,13 @@ function _actRowHtml(r) {
 function _actRepaint() { renderActivityLog(false); }
 
 function _actToggleFilter(kind, value) {
-  var off = kind === 'type' ? _act.offTypes : _act.offActors;
-  if (off[value]) delete off[value]; else off[value] = true;
+  var sel = kind === 'type' ? _act.selTypes : _act.selActors;
+  if (sel[value]) delete sel[value]; else sel[value] = true;
   _actRepaint();
 }
 function _actClearFilters() {
-  _act.offTypes = {};
-  _act.offActors = {};
-  _actRepaint();
-}
-
-// One axis back to everything, which is what the All pill does. The other axis
-// is left exactly as it was: the rows are independent questions, and clearing
-// both from one click would undo a choice the user can still see lit.
-function _actClearAxis(kind) {
-  if (kind === 'type') _act.offTypes = {}; else _act.offActors = {};
+  _act.selTypes = {};
+  _act.selActors = {};
   _actRepaint();
 }
 
@@ -9208,10 +9242,21 @@ function _creatorInstallHtml(ready, cmd) {
   return ready ? '' : '<code class="app-update-cmd">' + esc(cmd) + '</code>';
 }
 
+// The last /manage/creator payload, for the life of the page. The pane paints
+// from this INSTANTLY on every re-entry (the two subprocess-backed probes made
+// each entry flash "Loading…" for as long as the server took) and refreshes
+// silently behind that paint, patching only the leaves that changed — the same
+// scoped-update discipline the app-update block keeps (never rebuild a pane
+// that is already on screen).
+var _creatorData = null;
+
 function _msCreatorHtml() {
   var h = '<div class="ms-section-label">' + tH('creator_engines') + '</div>' +
     '<div class="ms-hint">' + tH('creator_engines_hint') + '</div>' +
-    '<div id="ms-creator" class="ms-creator">' + tH('loading') + '</div>';
+    '<div id="ms-creator" class="ms-creator">' +
+    // First-ever open: the app's styled loading line, never bare browser text.
+    (_creatorData ? _creatorHtml(_creatorData) : _loadingHtml()) +
+    '</div>';
   setTimeout(function() {
     if (_msSection !== 'creator') return;
     _renderCreatorSection();
@@ -9219,49 +9264,110 @@ function _msCreatorHtml() {
   return h;
 }
 
+// The sidecar's value cell: version first, muted, then the verdict — so the
+// verdict word right-aligns flush with every other row's, instead of the
+// version breaking the status column (Eric: "The version isn't aligned").
+function _creatorSidecarHtml(sidecar) {
+  return (sidecar.version ? '<span class="app-update-quiet">' + esc(sidecar.version) + '</span> ' : '') +
+    _creatorStateHtml(sidecar.installed);
+}
+
+// A capture-default switch — the app's own .switch control, wired to the
+// admin-only POST half of /manage/creator so the choice persists server-side.
+function _creatorDefaultSwitch(key, labelKey, on) {
+  return '<label class="switch"><input type="checkbox" role="switch" id="ms-cr-' + key + '"' +
+    (on ? ' checked' : '') +
+    ' aria-label="' + escAttr(t(labelKey)) + '"' +
+    ' onchange="_setCreatorDefault(\'' + key + '\', this)"><span class="switch-slider"></span></label>';
+}
+
+function _creatorQueueHtml(queue) {
+  return queue
+    ? esc(t('creator_queue_n', { n: queue }))
+    : '<span class="app-update-quiet">' + tH('creator_queue_empty') + '</span>';
+}
+
 function _creatorHtml(d) {
   var sidecar = d.sidecar || {};
-  var h = _mcRow(tH('creator_browser'), _creatorStateHtml(d.browser_ready)) +
-    _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium") +
-    _mcRow(tH('creator_sidecar'),
-      _creatorStateHtml(sidecar.installed) +
-      (sidecar.version ? ' <span class="app-update-quiet">' + esc(sidecar.version) + '</span>' : '')) +
-    _creatorInstallHtml(sidecar.installed, 'zimi import --setup') +
+  var h = _mcRow(tH('creator_browser'), '<span id="ms-cr-browser">' + _creatorStateHtml(d.browser_ready) + '</span>') +
+    '<div id="ms-cr-browser-cmd">' + _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium") + '</div>' +
+    _mcRow(tH('creator_sidecar'), '<span id="ms-cr-sidecar">' + _creatorSidecarHtml(sidecar) + '</span>') +
+    '<div id="ms-cr-sidecar-cmd">' + _creatorInstallHtml(sidecar.installed, 'zimi import --setup') + '</div>' +
     // The recording engine needs both halves, and the server is the one that
     // decides that — this is its verdict, not this client's arithmetic.
-    _mcRow(tH('creator_alive'), _creatorStateHtml(d.alive_ready));
-
-  h += '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
-    '<div class="ms-section-label">' + tH('creator_output') + '</div>' +
-    _mcRow(tH('creator_root'),
-      d.create_root
-        ? '<code class="app-update-cmd">' + esc(d.create_root) + '</code>'
-        : '<span class="app-update-quiet">' + tH('creator_root_unset') + '</span>') +
-    '<div class="ms-hint">' + tH(d.create_root ? 'creator_root_hint' : 'creator_root_unset_hint') + '</div>';
+    _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorStateHtml(d.alive_ready) + '</span>');
 
   h += '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
     '<div class="ms-section-label">' + tH('creator_defaults') + '</div>' +
-    _mcRow(tH('create_block_ads'), tH(d.block_ads_default ? 'creator_on' : 'creator_off')) +
-    _mcRow(tH('create_capture_variants'), tH(d.capture_variants_default ? 'creator_on' : 'creator_off')) +
+    _mcRow(tH('create_block_ads'), _creatorDefaultSwitch('block_ads', 'create_block_ads', d.block_ads_default)) +
+    _mcRow(tH('create_capture_variants'), _creatorDefaultSwitch('capture_variants', 'create_capture_variants', d.capture_variants_default)) +
     '<div class="ms-hint">' + tH('creator_defaults_hint') + '</div>';
 
   h += '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
     '<div class="ms-section-label">' + tH('creator_queue') + '</div>' +
-    _mcRow(tH('creator_queued'), d.queue
-      ? esc(t('creator_queue_n', { n: d.queue }))
-      : '<span class="app-update-quiet">' + tH('creator_queue_empty') + '</span>');
+    _mcRow(tH('creator_queued'), '<span id="ms-cr-queue">' + _creatorQueueHtml(d.queue) + '</span>');
   return h;
+}
+
+// Scoped background refresh: leaf nodes only, so a visible pane never rebuilds
+// under the reader (or under a finger halfway to a switch).
+function _patchCreatorSection(d) {
+  var sidecar = d.sidecar || {};
+  var put = function(id, html) {
+    var el = document.getElementById(id);
+    if (el && el.innerHTML !== html) el.innerHTML = html;
+  };
+  put('ms-cr-browser', _creatorStateHtml(d.browser_ready));
+  put('ms-cr-browser-cmd', _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium"));
+  put('ms-cr-sidecar', _creatorSidecarHtml(sidecar));
+  put('ms-cr-sidecar-cmd', _creatorInstallHtml(sidecar.installed, 'zimi import --setup'));
+  put('ms-cr-alive', _creatorStateHtml(d.alive_ready));
+  put('ms-cr-queue', _creatorQueueHtml(d.queue));
+  ['block_ads', 'capture_variants'].forEach(function(key) {
+    var input = document.getElementById('ms-cr-' + key);
+    if (input) input.checked = !!d[key + '_default'];
+  });
 }
 
 function _renderCreatorSection() {
   if (!document.getElementById('ms-creator')) return;
   manageFetch('/manage/creator').then(function(r) { return r.json(); }).then(function(d) {
+    var first = !_creatorData;
+    var changed = first || JSON.stringify(_creatorData) !== JSON.stringify(d);
+    _creatorData = d;
     var slot = document.getElementById('ms-creator');
-    if (slot) slot.innerHTML = _creatorHtml(d);
+    if (!slot || _msSection !== 'creator') return;
+    if (first) { slot.innerHTML = _creatorHtml(d); return; }
+    if (changed) _patchCreatorSection(d);
   }).catch(function() {
     var slot = document.getElementById('ms-creator');
-    if (slot) slot.innerHTML = '<div class="ms-hint">' + tH('could_not_load') + '</div>';
+    // A cached paint stays up through a failed refresh — stale beats blank.
+    if (slot && !_creatorData) slot.innerHTML = '<div class="ms-hint">' + tH('could_not_load') + '</div>';
   });
+}
+
+// A capture-default toggle flipped: persist server-side, and settle the switch
+// on whatever the server answers (revert on failure — the control must never
+// show a state the file does not hold).
+function _setCreatorDefault(key, input) {
+  var want = !!input.checked;
+  input.disabled = true;
+  var body = {};
+  body[key] = want;
+  manageFetch('/manage/creator', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(_msJson).then(function(d) {
+    if (_creatorData) {
+      _creatorData.block_ads_default = d.block_ads_default;
+      _creatorData.capture_variants_default = d.capture_variants_default;
+    }
+    input.checked = !!d[key + '_default'];
+    _showToast(t('saved'));
+  }).catch(function() {
+    input.checked = !want;
+    _showToast(t('error'));
+  }).finally(function() { input.disabled = false; });
 }
 
 // ── ZIM auto-update ─────────────────────────────────────────────────────────
@@ -11478,6 +11584,10 @@ function renderInstalled(filterText) {
   if (!items_h) items_h = '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
 
   el.innerHTML = getInstalledPillsHtml() + items_h;
+  // Provenance kinds feed the Created bucket (see _zimCat); a deep link that
+  // lands on Manage without ever painting home still needs them. No-op once
+  // the map has arrived.
+  _loadZimKinds();
   // Pointer DnD: drag a row onto a section header to move that ZIM there (#37).
   // Assigned per render (idempotent) since innerHTML above replaced the children.
   el.ondragstart = _installedDragStart;
@@ -16414,6 +16524,63 @@ function _buildTopbarMenuHtml() {
   if (readerGroup && navGroup) h += '<div class="topbar-menu-divider" role="separator"></div>';
   h += navGroup;
   return h;
+}
+
+// ── The one-item rule ────────────────────────────────────────────────────────
+// An overflow menu that would hold exactly ONE plain action is no menu at all
+// ("No ⋯ menu for a single item"): the trigger becomes that action — its icon,
+// its label, its click — and goes back to being ⋯ the moment a second row
+// exists. The rule is structural (it counts what the builder would render), so
+// any future state that leaves one row inherits it. Rows that are not plain
+// actions — a switch, a settings block, a signed-in label — keep the menu:
+// they need its chrome to live in.
+function _topbarMenuSoloItem() {
+  var probe = document.createElement('div');
+  probe.innerHTML = _buildTopbarMenuHtml();
+  if (probe.querySelector('.tbm-reader-settings, .topbar-menu-label, [role="switch"]')) return null;
+  var items = probe.querySelectorAll('.topbar-menu-item');
+  return items.length === 1 ? items[0] : null;
+}
+
+// The trigger's stock ⋯ face, captured from the markup the first time so the
+// restore path never hard-codes what index.html renders.
+var _topbarMoreDefault = null;
+var _topbarMoreIsSolo = false;
+function _syncTopbarMoreSolo(btn) {
+  if (!_topbarMoreDefault) {
+    // Clone-and-strip: the activity badge is a child _applyActivityBadge owns;
+    // baking a serialized copy of it into the stock face would duplicate it.
+    var stock = btn.cloneNode(true);
+    var badge = stock.querySelector('.topbar-badge');
+    if (badge) badge.remove();
+    _topbarMoreDefault = {
+      html: stock.innerHTML,
+      aria: btn.getAttribute('data-i18n-aria'),
+      label: btn.getAttribute('aria-label') || 'More'
+    };
+  }
+  var solo = _topbarMenuSoloItem();
+  if (solo) {
+    var label = (solo.textContent || '').trim();
+    var icon = solo.querySelector('svg, .dice');
+    btn.innerHTML = icon ? icon.outerHTML : _topbarMoreDefault.html;
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+    // Park the i18n hook: the language applier would stamp "More" back over
+    // the action's own name on the next language pass.
+    btn.removeAttribute('data-i18n-aria');
+    btn.onclick = function(e) { e.stopPropagation(); solo.click(); };
+    _topbarMoreIsSolo = true;
+  } else if (_topbarMoreIsSolo) {
+    btn.innerHTML = _topbarMoreDefault.html;
+    btn.title = '';
+    btn.setAttribute('aria-label', _topbarMoreDefault.label);
+    if (_topbarMoreDefault.aria) btn.setAttribute('data-i18n-aria', _topbarMoreDefault.aria);
+    // The solo assignment shadowed the inline attribute handler; hand the
+    // stock behaviour back explicitly.
+    btn.onclick = _toggleTopbarMenu;
+    _topbarMoreIsSolo = false;
+  }
 }
 
 function _toggleTopbarMenu(event) {

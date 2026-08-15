@@ -25,7 +25,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import zimi.manage as manage  # noqa: E402
 import zimi.server as server  # noqa: E402
-from tests.test_create_routes import _get  # noqa: E402
+from tests.test_create_routes import _get, _post  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def own_data_dir(tmp_path, monkeypatch):
+    """The stored capture defaults live in ZIMI_DATA_DIR; every test here gets
+    its own empty one so no test reads a real server's file or another test's
+    leftovers."""
+    monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    (tmp_path / "data").mkdir()
+
 
 # ── the creator section ─────────────────────────────────────────────────────
 
@@ -70,6 +80,82 @@ def test_the_defaults_it_reports_are_the_ones_the_engines_use(monkeypatch):
     body = _get("/manage/creator").body
     assert body["block_ads_default"] is manage.CREATE_BLOCK_ADS
     assert body["capture_variants_default"] is manage.CREATE_CAPTURE_VARIANTS
+
+
+def test_a_stored_default_wins_over_the_factory_constant(monkeypatch):
+    """The Manage toggles persist the instance's capture defaults. Once one is
+    stored, GET reports the stored answer, not the constant."""
+    monkeypatch.setattr(manage, "_create_browser_ready", lambda: False)
+    monkeypatch.setattr(manage, "_create_alive_ready", lambda: False)
+    h = _post("/manage/creator", {"block_ads": False})
+    assert h.status == 200
+    assert h.body == {
+        "block_ads_default": False,
+        "capture_variants_default": manage.CREATE_CAPTURE_VARIANTS,
+    }
+    body = _get("/manage/creator").body
+    assert body["block_ads_default"] is False
+    assert body["capture_variants_default"] is manage.CREATE_CAPTURE_VARIANTS
+
+
+def test_setting_one_default_never_drops_the_other(monkeypatch):
+    _post("/manage/creator", {"block_ads": False})
+    _post("/manage/creator", {"capture_variants": False})
+    body = _get("/manage/creator").body
+    assert body["block_ads_default"] is False
+    assert body["capture_variants_default"] is False
+
+
+def test_the_stored_default_survives_the_write_path_it_rides(tmp_path):
+    """Atomic file in the data dir, same discipline as every other manage-set
+    preference — and a fresh read of the file agrees with the endpoint."""
+    _post("/manage/creator", {"block_ads": False, "capture_variants": True})
+    path = manage._create_defaults_path()
+    assert os.path.dirname(path) == server.ZIMI_DATA_DIR
+    import json
+
+    with open(path, encoding="utf-8") as f:
+        assert json.load(f) == {"block_ads": False, "capture_variants": True}
+
+
+def test_a_non_boolean_default_is_refused_not_coerced():
+    assert _post("/manage/creator", {"block_ads": "yes"}).status == 400
+    assert _post("/manage/creator", {"capture_variants": 1}).status == 400
+    # Nothing was stored by either refusal.
+    assert not os.path.exists(manage._create_defaults_path())
+
+
+def test_an_empty_defaults_write_is_a_400_not_a_silent_ok():
+    assert _post("/manage/creator", {}).status == 400
+    assert _post("/manage/creator", {"unrelated": True}).status == 400
+
+
+def test_a_job_that_omits_the_field_gets_the_stored_default(monkeypatch):
+    """_create_validate applies the stored default exactly where the factory
+    constant used to sit: a request that says nothing about block_ads runs
+    with the instance's answer, and one that speaks keeps its own word."""
+    # The alive engine is the one that reads BOTH defaults; make the validator
+    # believe it is installed so the request survives to the option step.
+    monkeypatch.setattr(manage, "_create_browser_ready", lambda: True)
+    monkeypatch.setattr(manage, "_create_alive_ready", lambda: True)
+    manage._write_create_defaults(block_ads=False, capture_variants=False)
+    _, _, _, opts = manage._create_validate(
+        {"mode": "page", "source": "https://example.com/a", "engine": "alive"}
+    )
+    assert opts["block_ads"] is False
+    assert opts["capture_variants"] is False
+    # An explicit True from the client overrides the stored False.
+    _, _, _, opts = manage._create_validate(
+        {
+            "mode": "page",
+            "source": "https://example.com/a",
+            "engine": "alive",
+            "block_ads": True,
+            "capture_variants": True,
+        }
+    )
+    assert opts["block_ads"] is True
+    assert opts["capture_variants"] is True
 
 
 def test_a_probe_that_explodes_costs_a_row_not_the_section(monkeypatch):

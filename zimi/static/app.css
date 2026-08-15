@@ -1739,14 +1739,12 @@
   .dl-bulk-bar { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 10px 0; }
   .dl-bulk-btn.dl-bulk-danger:hover { border-color: var(--error); color: var(--error); }
   /* background:none beats .pill.active's amber gradient (same specificity,
-     later in source) — amber label on amber fill was unreadable. The activity
-     filters ride the same treatment for a second reason: those rows are
-     multi-select and open with EVERY pill lit, and a dozen amber-filled pills
-     is a wall of colour rather than a filter. */
-  .dl-filter-pill.active, .act-pill.active { color: var(--amber); border-color: var(--amber); background: none; font-weight: 600; }
-  .dl-filter-pill.active .pill-count, .act-pill.active .pill-count { opacity: 1; background: var(--amber); color: var(--on-amber); padding: 1px 6px; border-radius: 8px; }
-  /* An unlit pill is a value being HIDDEN, not one that is unavailable — it
-     stays fully legible so the row reads as a set of switches. */
+     later in source) — amber label on amber fill was unreadable. */
+  .dl-filter-pill.active { color: var(--amber); border-color: var(--amber); background: none; font-weight: 600; }
+  .dl-filter-pill.active .pill-count { opacity: 1; background: var(--amber); color: var(--on-amber); padding: 1px 6px; border-radius: 8px; }
+  /* Activity filter pills keep the base .pill treatment (amber fill when
+     active) on purpose: they open DESELECTED like the Library view's category
+     pills, so a lit pill is a filter the user chose — one or two at most. */
   .act-pill { flex: none; }
   /* One shape for EVERY button in the downloads panel — per-row controls, the
      bulk bar and the clear/show-all buttons alike. They had accreted three
