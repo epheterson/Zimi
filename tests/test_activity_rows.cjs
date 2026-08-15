@@ -30,7 +30,7 @@ function ok(label, cond, detail) {
 // real t() does for a missing string — which is also how _actTypeLabel and
 // _actVerb detect a type the server invented after this build shipped.
 const STRINGS = {
-  act_actor_server: 'Server',
+  act_actor_server: 'Zimi · automatic',
   act_actor_unknown_hint: 'recorded before Zimi tracked who',
   act_actor_admin_hint: 'signed in with the admin password',
   act_type_download: 'Download',
@@ -74,7 +74,9 @@ function sandboxWith(records) {
   ok('a user with no name falls back to the kind', key({ kind: 'user' }) === 'user');
   ok('a record with no actor at all still groups', key(undefined) === 'server');
 
-  ok('the server chip is localized', vm.runInContext("_actActorLabel('server')", sb) === 'Server');
+  // The server actor gets a real, honest label — never the em-dash (that stays
+  // reserved for pre-tracking records whose actor was simply never written).
+  ok('the server chip is localized', vm.runInContext("_actActorLabel('server')", sb) === 'Zimi · automatic');
   // A record from before Zimi tracked actors says nothing rather than accusing
   // somebody of being "Unknown" — the em-dash IS the answer, and the sentence
   // that explains it is the tooltip's job.

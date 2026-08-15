@@ -24,6 +24,12 @@
 
 import { test, expect } from '@playwright/test';
 
+// The stubs below ride page.route, and the app's service worker handles
+// /manage/* network-first — a fetch the SW mediates never reaches the route,
+// so whether a stub applied depended on whether the SW had claimed the page
+// yet. Nothing here tests the SW; take it out of the picture.
+test.use({ serviceWorkers: 'block' });
+
 const BASE = process.env.BASE_URL || 'http://localhost:8932';
 
 async function fresh(page, theme) {

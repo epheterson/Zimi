@@ -1,10 +1,12 @@
 // Download button on bookmark-export cards — the "save the .zim itself" half
 // of sharing exports between devices.
 //
-// The button is ALWAYS rendered on export cards so the path stays
-// discoverable; what the click does depends on the /dl/ gate:
-//   sharing on  → the file downloads (Content-Disposition: attachment)
-//   sharing off → a toast names the switch that opens it, nothing downloads
+// The button is probe-gated like every other download pill: the card carries a
+// hidden slot that fills only once /dl/ proves it will serve this client.
+//   sharing on  → the pill appears and the click downloads the file
+//                 (Content-Disposition: attachment)
+//   sharing off → no download affordance at all — no button that nags to
+//                 turn Nearby sharing on
 //
 // Real servers (one per gate state), a REAL zimwriter-built export ZIM, and
 // real browser download events — no route interception.
@@ -114,16 +116,15 @@ test.describe('export download button — sharing OFF (gated)', () => {
   });
   test.afterAll(() => { if (srv) srv.proc.kill('SIGKILL'); });
 
-  test('button still renders; click explains instead of downloading', async ({ page }) => {
+  test('no download affordance renders at all', async ({ page }) => {
+    // The slot only fills after the /dl/ probe answers — wait for that answer
+    // (a 403 here) so "no pill" means "gated", not "probe still in flight".
+    const probed = page.waitForResponse((r) => r.url().includes('/dl/'));
     await page.goto(srv.base);
-    const pill = page.locator(DL_PILL).first();
-    await expect(pill).toBeVisible(); // discoverable even while gated
-
-    let downloaded = false;
-    page.on('download', () => { downloaded = true; });
-    await pill.click();
-    // Toast copy from i18n key dl_needs_sharing.
-    await expect(page.getByText(/Nearby sharing/)).toBeVisible();
-    expect(downloaded).toBe(false);
+    await expect(page.locator('.stat-card .card-dl-slot')).toBeAttached(); // the slot exists…
+    await probed;
+    await expect(page.locator(DL_PILL)).toHaveCount(0);                   // …but never fills
+    // And nothing anywhere nags about turning sharing on.
+    await expect(page.getByText(/Nearby sharing/)).toHaveCount(0);
   });
 });

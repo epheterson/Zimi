@@ -1244,15 +1244,14 @@ function updateTopbar() {
   }
   randomBtn.style.display = (mode !== 'manage' && !_almanacOpen && !_createOpen) ? 'flex' : 'none';
   document.getElementById('library-btn').style.display = (mode !== 'manage' && !_almanacOpen && !_createOpen) ? 'flex' : 'none';
-  // The + belongs to the home screen and to an admin. Everywhere else — reader,
-  // search, source, manage, almanac, and the Create page itself — it is gone.
-  var createBtn = document.getElementById('create-btn');
-  if (createBtn) {
-    _createRememberCanShow();
-    createBtn.style.display =
-      (mode === 'home' && !readerOpen && !_almanacOpen && !_createOpen && _createCanShow())
-        ? 'flex' : 'none';
-  }
+  // Create-a-ZIM lives in the ⋯ menu at every width — creation is an
+  // occasional, deliberate act, so it stays out of the primary topbar. The ⋯
+  // trigger is CSS-hidden on a wide viewport at rest, so reveal it (inline
+  // style; the mobile !important rules still win) whenever the menu would
+  // carry the Create row. See _buildTopbarMenuHtml.
+  _createRememberCanShow();
+  var moreBtn = document.querySelector('.topbar-more');
+  if (moreBtn) moreBtn.style.display = _createMenuRowAvailable() ? 'flex' : '';
   document.getElementById('lang-selector-btn').style.display =
     _getStorageFlag(SK.HIDE_LANG_CHOOSER) ? 'none' : '';
   _updateLibraryBtnIcon();
@@ -1588,7 +1587,7 @@ async function init() {
 
   _bindConnEvents();
   // Paint the topbar BEFORE blocking on /list. The shell is fully interactive
-  // from here on — the + (from the remembered hint), the ⋯ menu, search — so a
+  // from here on — the ⋯ menu (Create rides the remembered hint), search — so a
   // tap during a slow library load reaches a live control instead of landing on
   // a button that has not been drawn yet. updateTopbar runs again with real
   // authority once /list and the manage probe land, and corrects anything the
@@ -3393,6 +3392,9 @@ function renderCardGrid(items, showStars, showCategory) {
   const favs = (collectionsCache && collectionsCache.favorites) || [];
   const isTiles = _getLibraryView() === 'tiles';
   const gridCls = isTiles ? 'stats-grid tiles' : 'stats-grid';
+  // Export cards carry a download slot that fills only when peer-share is live
+  // (see _fillCardDlSlots) — probed after the caller's synchronous insert.
+  if (items.some(z => _isZimiExport(z) && z.file)) setTimeout(_fillCardDlSlots, 0);
   return '<div class="' + gridCls + '">' + items.map(z => {
     const icon = z.has_icon
       ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
@@ -3413,11 +3415,14 @@ function renderCardGrid(items, showStars, showCategory) {
     const newHtml = badgeInfo
       ? '<span class="new-badge' + (isUpd ? ' updated-badge' : '') + '" title="' + escAttr(t(isUpd ? 'recently_updated' : 'recently_installed')) + '">' + tH(isUpd ? 'updated_badge' : 'new_badge') + '</span>'
       : '';
-    // Exports embed their own download <a> in the detail row, and HTML forbids
-    // nested links (the parser would split the card apart) — so those cards
-    // stay divs with the legacy handler. Everything else is a real link (#49):
-    // right/middle/modifier clicks open the source natively in a new tab.
-    const dlHtml = (_isZimiExport(z) && z.file) ? ' &middot; ' + _exportDlBtnHtml(z.file, 'card-dl-pill') : '';
+    // Exports carry a download slot in the detail row that may fill with an
+    // <a> once the peer-share probe answers, and HTML forbids nested links
+    // (the parser would split the card apart) — so those cards stay divs with
+    // the legacy handler. Everything else is a real link (#49): right/middle/
+    // modifier clicks open the source natively in a new tab.
+    const dlHtml = (_isZimiExport(z) && z.file)
+      ? '<span class="card-dl-slot" data-file="' + escAttr(z.file) + '" hidden></span>'
+      : '';
     const cardTag = dlHtml ? 'div' : 'a';
     const cardNav = dlHtml
       ? ' tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)"'
@@ -3436,8 +3441,8 @@ function renderCardGrid(items, showStars, showCategory) {
         '<div class="detail">' + catPrefix + _zimCountHtml(z) +
         ' &middot; ' + fmtSize(z.size_gb) +
         (_isZimiExport(z) && z.date ? ' &middot; ' + esc(z.date) : '') +
-        // Exports exist to travel: give the card a save-the-file affordance
-        // (other ZIMs re-download from the catalog, so only exports carry it).
+        // Exports exist to travel: a save-the-file slot, revealed only when
+        // sharing actually serves it (other ZIMs re-download from the catalog).
         dlHtml +
         '</div>' +
       '</div></' + cardTag + '>';
@@ -3941,6 +3946,14 @@ function _createRememberCanShow() {
     if (_canCreate()) localStorage.setItem(SK.CAN_CREATE, '1');
     else localStorage.removeItem(SK.CAN_CREATE);
   } catch (e) {}
+}
+
+// Whether the ⋯ menu should carry the Create-a-ZIM row right now: the home
+// screen, and a client the last authoritative answer (or the remembered boot
+// hint — see _createCanShow) says may create. One predicate, shared by the
+// menu builder and by updateTopbar's decision to reveal the ⋯ trigger.
+function _createMenuRowAvailable() {
+  return mode === 'home' && !readerOpen && !_almanacOpen && !_createOpen && _createCanShow();
 }
 
 // -- Almanac mini-app (lazy-loaded from /static/almanac.js) --
@@ -4999,34 +5012,14 @@ function _moveZimTo(zim, category) {
 })();
 
 // Markup for a "Download this ZIM" link (peer-share /dl/ endpoint, direct HTTP
-// range). Shared by the source header and every manage-list row so the pill is
-// defined once. `cls` lets each context match its neighbours' styling.
+// range). Shared by the source header and every download slot so the pill is
+// defined once. `cls` lets each context match its neighbours' styling. The
+// stopPropagation keeps the click off the card/row the pill sits inside —
+// /dl/ answers Content-Disposition: attachment, so the anchor's own default
+// saves the file without navigating.
 function _dlPillHtml(file, cls) {
   return '<a class="' + (cls || 'pill dl-pill') + '" href="/dl/' + encodeURIComponent(file) +
-    '" download="' + escAttr(file) + '">⬇ ' + tH('download_zim') + '</a>';
-}
-
-// Download button for a Zimi bookmark export — the "get it onto another
-// device" half of the export feature. Unlike the probe-gated pills above it
-// is ALWAYS rendered for exports, so the path stays discoverable while /dl/
-// is gated; the click probes first and explains instead of saving a 403 body.
-function _exportDlBtnHtml(file, cls) {
-  return '<a class="' + (cls || 'pill dl-pill') + '" href="/dl/' + encodeURIComponent(file) +
-    '" download="' + escAttr(file) + '" title="' + escAttr(t('download_zim')) + '"' +
-    ' onclick="event.stopPropagation();return _exportDlClick(this)">⬇ ' + tH('download') + '</a>';
-}
-
-// Only follow the export-download link once the peer-share probe says /dl/
-// will actually serve this client. Gated (sharing off, or a WAN client on a
-// non-public instance) → name the one switch that opens it. Live → a plain
-// navigation is enough: /dl/ answers Content-Disposition: attachment, so the
-// browser saves the file without leaving the page.
-function _exportDlClick(a) {
-  _probeDlShare(a.getAttribute('download')).then(function(ok) {
-    if (ok) window.location.href = a.href;
-    else _showToast(t('dl_needs_sharing'));
-  });
-  return false;
+    '" download="' + escAttr(file) + '" onclick="event.stopPropagation()">⬇ ' + tH('download_zim') + '</a>';
 }
 
 // Probe the peer-share endpoint once and cache whether it will serve files to
@@ -5069,18 +5062,33 @@ async function _probeZimDownload(name, info) {
   box.hidden = false;
 }
 
-// Reveal a download pill on every installed manage-list row, gated by a single
-// global peer-share probe (see _probeDlShare) — not one probe per row.
-function _fillInstalledDownloads(el) {
-  const slots = el.querySelectorAll('.ci-dl[data-file]');
+// Fill hidden download slots with a pill ONLY when the peer-share endpoint is
+// live for this client — one global probe gates every slot (see _probeDlShare),
+// and a gated client simply never sees a download affordance (no button that
+// nags to turn sharing on). `prefix` lets a slot carry its own separator so an
+// unfilled slot renders nothing at all.
+function _fillDlSlots(root, selector, cls, prefix) {
+  const slots = root.querySelectorAll(selector);
   if (!slots.length) return;
   _probeDlShare(slots[0].getAttribute('data-file')).then(function(ok) {
     if (!ok) return;
     slots.forEach(function(slot) {
       const file = slot.getAttribute('data-file');
-      if (file) { slot.innerHTML = _dlPillHtml(file, 'ci-installed-badge dl-pill'); slot.hidden = false; }
+      if (file) { slot.innerHTML = (prefix || '') + _dlPillHtml(file, cls); slot.hidden = false; }
     });
   });
+}
+
+// Reveal a download pill on every installed manage-list row.
+function _fillInstalledDownloads(el) {
+  _fillDlSlots(el, '.ci-dl[data-file]', 'ci-installed-badge dl-pill');
+}
+
+// Same reveal for the export cards on the home grid. renderCardGrid returns a
+// string its callers insert synchronously, so a 0-tick defer lands after the
+// slots are in the DOM.
+function _fillCardDlSlots() {
+  _fillDlSlots(document, '.card-dl-slot[data-file]', 'card-dl-pill', ' &middot; ');
 }
 
 // Jump straight into a source's homepage article in the reader (skip the
@@ -8016,10 +8024,7 @@ var _ACT_COUNT_LABEL = {export: 'act_n_bookmarks', restore: 'act_n_sections'};
 var _act = {
   records: [], types: [], actors: [],
   offTypes: {}, offActors: {},
-  showAll: false,
-  // A "show me only this type from only this actor" request from elsewhere in
-  // Manage, waiting for the journal's vocabulary to arrive. See _actFocus.
-  focus: null
+  showAll: false
 };
 
 // The filter value for a record's actor: a username, or the kind. Mirrors the
@@ -8101,7 +8106,6 @@ async function renderActivityLog(refetch) {
       return;
     }
   }
-  _actApplyFocus();
   el.innerHTML = _actHeaderHtml() + _actListHtml();
 }
 
@@ -8256,35 +8260,6 @@ function _actClearAxis(kind) {
 }
 
 function _actRevealAll() { _act.showAll = true; _actRepaint(); }
-
-// Open Activity showing ONE type from ONE actor. Used by the auto-update
-// section, whose "what did the last run do" is exactly the type=update,
-// actor=server intersection — two axes at once, which the pills can express in
-// clicks but nothing was linking to.
-//
-// Recorded as an intent rather than applied here, because the axes are turned
-// off by NAMING the values to hide, and the vocabulary to name them from
-// arrives with the journal. Applied by _actApplyFocus once the records land.
-function _actFocus(type, actorKey) {
-  _act.focus = { type: type, actor: actorKey };
-  _act.showAll = false;
-  switchManageTab('history');
-}
-
-// Turn the pending focus into off-maps, now that the vocabulary is known.
-function _actApplyFocus() {
-  var f = _act.focus;
-  if (!f) return;
-  _act.focus = null;
-  _act.offTypes = {};
-  _act.offActors = {};
-  for (var i = 0; i < _act.types.length; i++) {
-    if (_act.types[i] !== f.type) _act.offTypes[_act.types[i]] = true;
-  }
-  for (var j = 0; j < _act.actors.length; j++) {
-    if (_act.actors[j] !== f.actor) _act.offActors[_act.actors[j]] = true;
-  }
-}
 
 // ── Stats tab (merged server stats + usage) ──
 async function renderActivityTab() {
@@ -8781,6 +8756,13 @@ function _msUsersHtml() {
       '<div class="ms-form-label">' + tH('users_access_label') + '</div>' +
       _rolePills('new-user', 'user', isPrimary) +
       '<div id="new-user-allowlist" style="display:none;margin-top:8px">' + _allowlistPicker([]) + '</div>' +
+      // Creation, as its own labeled line: a regular user defaults to NOT
+      // creating and the checkbox is the explicit grant; when the admin role is
+      // picked the checkbox yields to a plain statement (admins always create).
+      '<div class="ms-form-label">' + tH('users_creation_label') + '</div>' +
+      '<label id="new-user-create-row" style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">' +
+        '<input type="checkbox" id="new-user-can-create"> ' + tH('users_can_create') + '</label>' +
+      '<div id="new-user-admin-creates" class="ms-hint" style="display:none">' + tH('users_admin_creates') + '</div>' +
       '<div id="new-user-error" class="pw-error" style="display:none"></div>' +
       '<div class="ms-actions">' +
         '<button class="ms-btn ms-btn-primary" onclick="_createUser()">' + tH('users_create') + '</button>' +
@@ -8819,11 +8801,13 @@ function _openUserMenu(btn, name) {
   if (u.role === 'limited') {
     h += '<div class="ctx-item" data-action="allowlist">' + tH('users_edit_allowlist') + '</div>';
   }
-  // Per-user create permission — a checkable toggle, admin-role rows excluded
-  // (admins create implicitly; the server refuses the flag on them).
-  if (u.role !== 'admin') {
-    h += '<div class="ctx-item" data-action="can-create">' + (u.can_create ? '✓ ' : '') + tH('users_can_create') + '</div>';
-  }
+  // Creation is its own section so the model reads at a glance: admins create
+  // implicitly (the server refuses the flag on them — a static line says so),
+  // everyone else defaults to no and the checkable item is the explicit grant.
+  h += '<div class="ctx-sep"></div>';
+  h += u.role === 'admin'
+    ? '<div class="ctx-item" style="cursor:default;color:var(--text2)" aria-disabled="true">' + tH('users_admin_creates') + '</div>'
+    : '<div class="ctx-item" data-action="can-create">' + (u.can_create ? '✓ ' : '') + tH('users_can_create') + '</div>';
   h += '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
   var r = btn.getBoundingClientRect();
   window._openMenuAt(h, r.left, r.bottom + 2, function(action, item) {
@@ -8915,6 +8899,12 @@ function _selectRole(idPrefix, role) {
   // Allowlist editor only makes sense for the limited role.
   var al = document.getElementById(idPrefix + '-allowlist');
   if (al) al.style.display = role === 'limited' ? 'block' : 'none';
+  // The Creation line follows the role: admins create implicitly, so the
+  // grant checkbox yields to the static "admins always create" note.
+  var grant = document.getElementById(idPrefix + '-create-row');
+  var implicit = document.getElementById(idPrefix + '-admin-creates');
+  if (grant) grant.style.display = role === 'admin' ? 'none' : 'flex';
+  if (implicit) implicit.style.display = role === 'admin' ? '' : 'none';
 }
 
 function _selectedRole(idPrefix) {
@@ -9119,9 +9109,17 @@ function _createUser() {
   if (!name || !pw) { errEl.textContent = t('users_need_name_pw'); errEl.style.display = 'block'; return; }
   var payload = { action: 'create', name: name, password: pw, role: role };
   if (role === 'limited') payload.allowlist = _collectAllowlist('new-user-allowlist');
+  var cb = document.getElementById('new-user-can-create');
+  var grantCreate = !!(cb && cb.checked && role !== 'admin');
   _usersPost(payload).then(function(r) {
     if (!r.ok) { errEl.textContent = t('users_create_failed'); errEl.style.display = 'block'; return; }
-    _usersData = r.j; _refreshUsersPane();
+    if (!grantCreate) { _usersData = r.j; _refreshUsersPane(); return; }
+    // The form's Creation checkbox rides the existing set-can-create action —
+    // the account exists either way, so refresh from whichever answer is last.
+    _usersPost({ action: 'set-can-create', name: name, can_create: true }).then(function(r2) {
+      _usersData = (r2.ok && r2.j) ? r2.j : r.j;
+      _refreshUsersPane();
+    });
   });
 }
 
@@ -9295,9 +9293,9 @@ function _mcRow(label, value) {
     '</span><span class="mc-value">' + value + '</span></div>';
 }
 
-// What the last pass did, as a link into the journal rather than a summary
-// duplicated here. Auto-update work is exactly the type=update, actor=server
-// intersection, and the Activity view is where that already reads properly.
+// What the last pass did: the timestamp, plain. The detail lives in the
+// Activity journal, where anyone curious will look anyway — a deep-link from
+// this row read as noise, not as help.
 function _autoUpdateLastHtml(au) {
   if (!au.last_check) {
     // Not "never": the stamp is process memory, so a restart erases it while
@@ -9305,12 +9303,7 @@ function _autoUpdateLastHtml(au) {
     // claim about the library that this field cannot support.
     return '<span style="color:var(--text2)">' + tH('au_not_this_session') + '</span>';
   }
-  // The time IS the link. A separate "see what it did" beside it was a second
-  // thing to read in a row that has room for one, and the timestamp is what
-  // anyone wanting the detail would aim at anyway.
-  return '<a href="#" class="app-update-link" title="' + escAttr(t('au_see_activity')) +
-    '" onclick="_actFocus(\'update\',\'server\');return false">' +
-    esc(_relTime(au.last_check)) + '</a>';
+  return esc(_relTime(au.last_check));
 }
 
 function _autoUpdateNextHtml(au) {
@@ -11452,12 +11445,10 @@ function renderInstalled(filterText) {
         actionsHtml = '<span class="ci-installed-badge">' + tH('installed_badge') + '</span>' +
           '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="' + escAttr(t('delete_zim')) + '">\u00D7</button>';
       }
-      // Download slot \u2014 filled by _fillInstalledDownloads only when peer-share is
-      // live. Bookmark exports skip the probe gate: their button always shows
-      // (a gated click explains the sharing switch instead of hiding the path).
-      actionsHtml += _isZimiExport(z)
-        ? _exportDlBtnHtml(z.file, 'ci-installed-badge dl-pill')
-        : '<span class="ci-dl" data-file="' + escAttr(z.file) + '" hidden></span>';
+      // Download slot \u2014 filled by _fillInstalledDownloads only when peer-share
+      // is live. Exports included: a gated client sees no download affordance
+      // at all rather than a button that nags to turn sharing on.
+      actionsHtml += '<span class="ci-dl" data-file="' + escAttr(z.file) + '" hidden></span>';
       // Same Move to\u2026 gear the catalog rows carry \u2014 the Installed tab is where
       // a user organizes their library, so it needs the entry point too. data-zim
       // + delegated handler, one submenu impl, no user strings in inline onclick.
@@ -16373,15 +16364,16 @@ function _buildTopbarMenuHtml() {
   // viewport Random / Language / Manage stay inline, so re-listing them here
   // would double them up (the desktop reader duplication bug).
   var navGroup = '';
+  // Create a ZIM — a ⋯ menu row at EVERY width (there is no inline + button):
+  // creation is an occasional act, so it lives out of the way but first in the
+  // list. Visible on the home screen to an admin/creator; _createCanShow()
+  // carries the boot-time hint, so the row is there on a cold load instead of
+  // appearing a second later. The /#create URL keeps working regardless.
+  if (_createMenuRowAvailable()) {
+    navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();openCreate()">' +
+      _TBM_CREATE_ICON + ' ' + tH('create_zim') + '</button>';
+  }
   if (_isNarrow()) {
-    // Create a ZIM — the inline + is hidden at this width, so this row IS the
-    // button on a phone. Same visibility rule as the inline one: the home
-    // screen, and an admin. _createCanShow() carries the boot-time hint, so
-    // the row is there on a cold load instead of appearing a second later.
-    if (mode === 'home' && !readerOpen && !_almanacOpen && !_createOpen && _createCanShow()) {
-      navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();openCreate()">' +
-        _TBM_CREATE_ICON + ' ' + tH('create_zim') + '</button>';
-    }
     navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
     if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
     // Manage row: while downloads are active, carry the count and route the tap

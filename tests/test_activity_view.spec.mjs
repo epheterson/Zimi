@@ -96,9 +96,11 @@ test('every kind of activity lands in one list', async ({ page }) => {
 
 test('the same event from two actors reads as two different things', async ({ page }) => {
   await enterActivity(page);
-  // An auto-update and a person's update: same transfer, different rows.
+  // An auto-update and a person's update: same transfer, different rows. The
+  // server actor wears a real label — never an em-dash (that stays reserved
+  // for pre-tracking records).
   const auto = page.locator('.act-row', { hasText: 'Stack Overflow' });
-  await expect(auto.locator('.act-chip')).toHaveText('Server');
+  await expect(auto.locator('.act-chip')).toHaveText('Zimi · automatic');
   await expect(auto.locator('.act-chip')).toHaveClass(/act-chip-server/);
   const byHand = page.locator('.act-row', { hasText: 'Lit' }).first();
   await expect(byHand.locator('.act-chip')).toHaveText('eric');
@@ -129,7 +131,7 @@ test('the filter narrows by type and by whom, and comes back', async ({ page }) 
   const actorRow = page.locator('.act-filter-row').last();
   const types = typeRow.locator('.act-pill');
   const actors = actorRow.locator('.act-pill');
-  await expect(page.locator('.act-pill', { hasText: 'Server' })).toHaveCount(1);
+  await expect(page.locator('.act-pill', { hasText: 'Zimi · automatic' })).toHaveCount(1);
   // Nothing filtered: every pill is lit, All included — "all" is a true
   // description of what is showing, not a fifth choice sitting unlit beside it.
   await expect(typeRow.locator('.act-pill.active')).toHaveCount(await types.count());
