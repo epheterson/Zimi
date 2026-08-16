@@ -1089,6 +1089,15 @@ class RenderedSession:
                 continue
             if url.startswith(ALIVE_SKIP_SCHEMES):
                 continue
+            # Already handled on an earlier page of this crawl (or earlier in
+            # this very pass): the archive deduped the RECORD all along, but
+            # the budget still paid for the body every time — every page of a
+            # site re-announces the same JS bundles, fonts and stylesheets, so
+            # a 3MB bundle billed across forty pages burned ~120MB of budget
+            # on bytes stored exactly once. Skipping here also skips the body
+            # round trip to the browser, which is wall-clock, not just budget.
+            if url in self._archived:
+                continue
             # Seen is seen, whatever happens to the body below. A response this
             # skipped for its size or its budget is not one the variant sweep
             # should go and fetch again for the same reasons.
