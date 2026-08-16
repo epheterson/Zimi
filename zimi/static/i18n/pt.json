@@ -1495,5 +1495,6 @@
   "create_finishing": "A parar…",
   "create_stopped_early": "Interrompido mais cedo — está incluído tudo o que foi capturado até à paragem.",
   "users_admin_creates": "Administradores sempre podem criar ZIMs",
-  "users_creation_label": "Criação"
+  "users_creation_label": "Criação",
+  "create_size_custom": "Personalizado…"
 }

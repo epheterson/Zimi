@@ -1495,5 +1495,6 @@
   "create_finishing": "Deteniendo…",
   "create_stopped_early": "Detenido antes de tiempo — se incluye todo lo capturado hasta la parada.",
   "users_admin_creates": "Los administradores siempre pueden crear ZIM",
-  "users_creation_label": "Creación"
+  "users_creation_label": "Creación",
+  "create_size_custom": "Personalizado…"
 }

@@ -147,6 +147,10 @@ var CREATE_SIZE_OPTIONS = [
   { v: '1G', t: '1 GB' },
   { v: '4G', t: '4 GB' },
   { v: '16G', t: '16 GB' },
+  // The escape hatch. The server's parser has always taken any size text
+  // ("2G", "750M", "512MiB") — only this list stood between the person and
+  // the value they meant (Eric wanted 2GB; the list jumped 1G to 4G).
+  { v: '__custom', k: 'create_size_custom' },
   { v: '64G', t: '64 GB' }
 ];
 
@@ -260,7 +264,7 @@ var CREATE_FIELDS = {
   },
   max_bytes: {
     id: 'create-max-bytes', control: 'select', label: 'create_max_bytes',
-    kind: 'text', options: CREATE_SIZE_OPTIONS
+    kind: 'text', options: CREATE_SIZE_OPTIONS, customSize: true
   },
   ignore_robots: {
     id: 'create-ignore-robots', control: 'check', label: 'create_ignore_robots',
@@ -1244,8 +1248,17 @@ function _createFieldHtml(key, def) {
       var pre = (def && def.pick && def.pick[key] === value) ? ' selected' : '';
       opts += '<option value="' + escAttr(value) + '"' + pre + '>' + text + '</option>';
     }
+    // A select that carries the custom-size hatch grows a free-entry box that
+    // shows only while "Custom…" is chosen. The value crosses in the same
+    // field; the server's size parser is the single grammar.
+    var extra = f.customSize
+      ? '<input type="text" class="create-field create-short" id="' + f.id + '-custom"' +
+        ' hidden placeholder="2G" spellcheck="false" autocapitalize="none" autocorrect="off"' +
+        ' aria-label="' + escAttr(tH('create_size_custom')) + '">'
+      : '';
+    var change = f.customSize ? ' onchange="_createSizeSelect(this)"' : '';
     return '<label class="create-flag">' + label +
-      '<select class="create-field create-pick" id="' + f.id + '">' + opts + '</select></label>';
+      '<select class="create-field create-pick" id="' + f.id + '"' + change + '>' + opts + '</select></label>' + extra;
   }
   var ph = (def && def.hints && def.hints[key]) || f.ph || '';
   var number = f.control === 'number';
@@ -1497,9 +1510,21 @@ function _createFormFields() {
     fields[key] = !node ? ''
       : f.control === 'check' ? !!node.checked
       : f.control === 'engine' ? _createCheckedRadio(f.id)
+      : f.customSize && node.value === '__custom'
+        ? ((document.getElementById(f.id + '-custom') || {}).value || '').trim()
       : node.value;
   }
   return fields;
+}
+
+// Reveal the free-entry size box only while its select says Custom…; focus
+// it on reveal so choosing Custom is one gesture, not two.
+function _createSizeSelect(sel) {
+  var box = document.getElementById(sel.id + '-custom');
+  if (!box) return;
+  var custom = sel.value === '__custom';
+  box.hidden = !custom;
+  if (custom) box.focus();
 }
 
 // A radio group has no value of its own — the checked input has it.

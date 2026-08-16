@@ -1495,5 +1495,6 @@
   "create_finishing": "עוצר…",
   "create_stopped_early": "נעצר מוקדם — כל מה שנלכד עד העצירה כלול.",
   "users_admin_creates": "מנהלים תמיד יכולים ליצור קובצי ZIM",
-  "users_creation_label": "יצירה"
+  "users_creation_label": "יצירה",
+  "create_size_custom": "מותאם אישית…"
 }
