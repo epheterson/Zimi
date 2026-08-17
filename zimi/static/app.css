@@ -678,6 +678,10 @@
   .create-seg-opt.is-off:hover { border-color: var(--border); }
   .create-num { width: 96px; flex: 0 0 auto; }
   .create-short { width: 140px; flex: 0 0 auto; }
+  /* 16px minimum on touch widths — iOS Safari auto-zooms (and stays zoomed)
+     on focus of any input smaller than 16px; the create form's address box
+     was the reported offender. Same rule .pw-box documents. */
+  @media (max-width: 720px) { .create-field { font-size: 16px; } }
   .create-pick { width: auto; flex: 0 0 auto; padding-right: 6px; }
   .create-field:disabled { opacity: 0.5; cursor: not-allowed; }
   .create-caption { font-size: 12px; color: var(--text2); }

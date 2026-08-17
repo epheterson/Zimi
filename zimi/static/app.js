@@ -5075,8 +5075,20 @@ function _moveZimTo(zim, category) {
     } else if (action === 'download-zim') {
       closeCtx();
       var zdl = _zimInfo(zim);
-      // The filename form keeps /dl/'s name resolution out of the picture.
-      location.href = '/dl/' + encodeURIComponent((zdl && zdl.file) || zim);
+      var dlFile = (zdl && zdl.file) || zim;
+      // A navigation carries no auth headers, so authorization travels as a
+      // one-time two-minute ticket minted here (POST /manage/dl-ticket) and
+      // spent by the URL — without it a passworded instance answered the
+      // navigation with an HTML refusal Safari saved as name.zim.html.
+      manageFetch('/manage/dl-ticket', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({file: dlFile})
+      }).then(function(r) { return r.json(); }).then(function(d) {
+        location.href = '/dl/' + encodeURIComponent(dlFile) +
+          (d && d.ticket ? '?t=' + encodeURIComponent(d.ticket) : '');
+      }).catch(function() {
+        location.href = '/dl/' + encodeURIComponent(dlFile);
+      });
     } else if (action === 'delete') {
       closeCtx();
       var zinfo = _zimInfo(zim);

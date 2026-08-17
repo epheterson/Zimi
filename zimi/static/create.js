@@ -1454,7 +1454,7 @@ function _createBookmarksBodyHtml() {
       '<span class="create-pv-v">' + esc(String(n)) + '</span></div>' +
     '<div class="create-caption">' + tH('create_bookmarks_note') + '</div>' +
     '<div class="create-go">' +
-      '<button type="button" class="ms-btn ms-btn-primary create-go-btn"' + (n ? '' : ' disabled') +
+      '<button type="button" class="ms-btn ms-btn-primary create-go-btn"' +
         ' onclick="_createOpenBookmarkExport()">' + tH('create_bookmarks_choose') + '</button>' +
     '</div>';
 }

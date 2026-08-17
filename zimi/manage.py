@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import sys
+import secrets
 import threading
 import time
 import urllib.parse
@@ -4684,6 +4685,26 @@ def _handle_users_post(handler, data):
 # ============================================================================
 
 
+# One-time download tickets: {token: (filename, expiry)}. Minted by an
+# authorized admin, spent by the very next /dl/ navigation, dead in two
+# minutes either way. In-memory on purpose — a restart invalidating tickets
+# is correct behavior for a credential.
+DL_TICKET_TTL_SEC = 120
+_dl_tickets: dict = {}
+_dl_ticket_lock = threading.Lock()
+
+
+def spend_dl_ticket(token, fname):
+    """True exactly once per ticket, and only for the file it was minted
+    for. Wrong file, reuse, expiry — all read as no ticket at all."""
+    if not token:
+        return False
+    now = time.time()
+    with _dl_ticket_lock:
+        entry = _dl_tickets.pop(token, None)
+    return bool(entry and entry[1] >= now and entry[0] == fname)
+
+
 def handle_manage_post(handler, parsed, data):
     """Handle all POST /manage/* requests. Called from ZimHandler.do_POST."""
     if not _srv.ZIMI_MANAGE:
@@ -4756,6 +4777,25 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(*challenge)
         _revoke_api_token()
         return handler._json(200, {"status": "token revoked"})
+    if parsed.path == "/manage/dl-ticket":
+        # A browser NAVIGATION to /dl/ carries none of Zimi's auth headers, so
+        # right-click -> Download on a passworded instance used to land on an
+        # HTML refusal Safari saved as name.zim.html. The authorized client
+        # mints a one-time ticket here; the /dl/ URL spends it within 120s.
+        challenge = _manage_auth_challenge(handler)
+        if challenge:
+            return handler._json(*challenge)
+        fname = str(data.get("file") or "").strip()
+        if not fname or "/" in fname or "\\" in fname or ".." in fname:
+            return handler._json(400, {"error": "that is not a ZIM filename"})
+        ticket = secrets.token_urlsafe(24)
+        now = time.time()
+        with _dl_ticket_lock:
+            # Expired tickets leave with every mint; the dict stays tiny.
+            for t in [t for t, (_, exp) in _dl_tickets.items() if exp < now]:
+                _dl_tickets.pop(t, None)
+            _dl_tickets[ticket] = (fname, now + DL_TICKET_TTL_SEC)
+        return handler._json(200, {"ticket": ticket})
 
     # ZIM creation — a creator account (can_create) may drive the URL modes
     # without admin credentials, so these routes gate themselves ahead of the

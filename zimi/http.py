@@ -2199,7 +2199,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # transport: another Zimi instance pulls a ZIM directly from
                 # us, no internet/Kiwix needed. Gated to private clients by
                 # default (see _serve_zim_file).
-                return self._serve_zim_file(unquote(parsed.path[4:]))
+                _dl_q = parse_qs(parsed.query or "")
+                return self._serve_zim_file(
+                    unquote(parsed.path[4:]),
+                    ticket=(_dl_q.get("t") or [""])[0],
+                )
 
             elif parsed.path.startswith("/w/"):
                 # /w/<zim_name>/<entry_path> — serve raw ZIM content
@@ -2924,15 +2928,23 @@ class ZimHandler(BaseHTTPRequestHandler):
             return RATE_LIMIT_TRUSTED
         return RATE_LIMIT
 
-    def _serve_zim_file(self, name):
+    def _serve_zim_file(self, name, ticket=""):
         """Stream a whole local .zim file to a LAN peer with Range support.
 
         Resolves `name` strictly against the known ZIM set (by ZIM name or
         file basename) so a request can never escape ZIM_DIR — there is no
         user-controlled path here. Streams from disk in chunks; never loads
         a multi-GB file into memory.
-        """
-        if not self._peer_share_allowed():
+
+        ``ticket`` is a one-time token minted by POST /manage/dl-ticket: a
+        browser NAVIGATION carries no auth headers, so right-click →
+        Download hands the authorization over in the URL, once, for this
+        file, for two minutes. No ticket → the normal sharing gates."""
+        from zimi import manage as _manage
+
+        if not (
+            ticket and _manage.spend_dl_ticket(ticket, name)
+        ) and not self._peer_share_allowed():
             return self._json(403, {"error": "peer sharing not available"})
 
         zims = _srv.get_zim_files()  # {name: path}
