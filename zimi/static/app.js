@@ -3480,7 +3480,7 @@ function renderCardGrid(items, showStars, showCategory) {
   const gridCls = isTiles ? 'stats-grid tiles' : 'stats-grid';
   // Export cards carry a download slot that fills only when peer-share is live
   // (see _fillCardDlSlots) — probed after the caller's synchronous insert.
-  if (items.some(z => _isZimiExport(z) && z.file)) setTimeout(_fillCardDlSlots, 0);
+  // Download-this-ZIM is right-click / Manage-⋯ only; no card pill.
   return '<div class="' + gridCls + '">' + items.map(z => {
     const icon = z.has_icon
       ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
@@ -3501,18 +3501,12 @@ function renderCardGrid(items, showStars, showCategory) {
     const newHtml = badgeInfo
       ? '<span class="new-badge' + (isUpd ? ' updated-badge' : '') + '" title="' + escAttr(t(isUpd ? 'recently_updated' : 'recently_installed')) + '">' + tH(isUpd ? 'updated_badge' : 'new_badge') + '</span>'
       : '';
-    // Exports carry a download slot in the detail row that may fill with an
-    // <a> once the peer-share probe answers, and HTML forbids nested links
-    // (the parser would split the card apart) — so those cards stay divs with
-    // the legacy handler. Everything else is a real link (#49): right/middle/
-    // modifier clicks open the source natively in a new tab.
-    const dlHtml = (_isZimiExport(z) && z.file)
-      ? '<span class="card-dl-slot" data-file="' + escAttr(z.file) + '" hidden></span>'
-      : '';
-    const cardTag = dlHtml ? 'div' : 'a';
-    const cardNav = dlHtml
-      ? ' tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)"'
-      : ' href="/w/' + encodeURIComponent(z.name) + '" onclick="return _spaSourceClick(event, this)"';
+    // Every card is a real link (#49): right/middle/modifier clicks open the
+    // source natively. Downloading the raw .zim is a rare, deliberate act —
+    // it lives on right-click and the Manage row's ⋯ menu, never as a pill
+    // taking space on the card (Eric: "no big buttons... it's rare to need").
+    const cardTag = 'a';
+    const cardNav = ' href="/w/' + encodeURIComponent(z.name) + '" onclick="return _spaSourceClick(event, this)"';
     return '<' + cardTag + ' class="stat-card' + (newHtml ? ' is-new' : '') + '" data-zim="' + escAttr(z.name) + '"' + cardNav + '>' +
       starHtml +
       '<div class="card-icon">' + icon + '</div>' +
@@ -5301,7 +5295,6 @@ async function renderSource(name) {
       '<div class="sh-meta">' + _zimCountHtml(info) +
       ' &middot; ' + fmtSize(info.size_gb) + collectionChip + '</div>' +
       (info.description ? '<div class="sh-desc">' + esc(info.description) + '</div>' : '') +
-      '<div class="sh-actions" id="sh-download" hidden></div>' +
     '</div></div>';
 
   // For ZIMs with a homepage, go straight to reader (skip intermediate page)
@@ -5316,10 +5309,8 @@ async function renderSource(name) {
   sourceHeaderEl.style.display = '';
   output.innerHTML = _loadingHtml();
 
-  // Reveal a "Download this ZIM" link only if the peer-share endpoint (/dl/)
-  // will actually serve this file to this client. Probed once per panel open —
-  // never per render tick — so the WAN (403) never sees a dead button.
-  _probeZimDownload(name, info);
+  // No download link in the source header \u2014 the raw .zim is a rare,
+  // deliberate grab that lives on right-click / the Manage \u22ef menu.
 
   // Try catalog (zimgit PDF collections show document list)
   try {
@@ -11689,10 +11680,8 @@ function renderInstalled(filterText) {
         actionsHtml = '<span class="ci-installed-badge">' + tH('installed_badge') + '</span>' +
           '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="' + escAttr(t('delete_zim')) + '">\u00D7</button>';
       }
-      // Download slot \u2014 filled by _fillInstalledDownloads only when peer-share
-      // is live. Exports included: a gated client sees no download affordance
-      // at all rather than a button that nags to turn sharing on.
-      actionsHtml += '<span class="ci-dl" data-file="' + escAttr(z.file) + '" hidden></span>';
+      // No inline download pill: the raw .zim lives on the row's \u22ef menu
+      // (Download ZIM file), which the peer-share gate still governs.
       // Same Move to\u2026 gear the catalog rows carry \u2014 the Installed tab is where
       // a user organizes their library, so it needs the entry point too. data-zim
       // + delegated handler, one submenu impl, no user strings in inline onclick.
@@ -11723,7 +11712,7 @@ function renderInstalled(filterText) {
   el.ondragleave = _installedDragLeave;
   el.ondrop = _installedDrop;
   el.ondragend = _installedDragEnd;
-  _fillInstalledDownloads(el);
+  // (installed download pills removed \u2014 \u22ef menu carries it)
 }
 
 // ── Installed-list drag-to-move (#37) ──

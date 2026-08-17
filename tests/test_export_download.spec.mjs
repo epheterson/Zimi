@@ -1,15 +1,10 @@
-// Download button on bookmark-export cards — the "save the .zim itself" half
-// of sharing exports between devices.
+// Downloading the raw .zim of an installed source.
 //
-// The button is probe-gated like every other download pill: the card carries a
-// hidden slot that fills only once /dl/ proves it will serve this client.
-//   sharing on  → the pill appears and the click downloads the file
-//                 (Content-Disposition: attachment)
-//   sharing off → no download affordance at all — no button that nags to
-//                 turn Nearby sharing on
-//
-// Real servers (one per gate state), a REAL zimwriter-built export ZIM, and
-// real browser download events — no route interception.
+// It is a rare, deliberate act, so it has NO card pill taking space (Eric:
+// "no big buttons... it's rare to need it"). The only affordances are
+// right-click → Download ZIM file on any card and the same item on the
+// Manage row's ⋯ menu. This test pins the absence of the old pills and the
+// presence of the context-menu item.
 //
 //   npx playwright test --config=tests/playwright.config.mjs tests/test_export_download.spec.mjs
 
@@ -72,59 +67,29 @@ async function startServer(port, env = {}) {
   throw new Error('server never became healthy on ' + port);
 }
 
-// The export card's download link on the home grid.
-const DL_PILL = '.stat-card .card-dl-pill';
-
-test.describe('export download button — sharing ON', () => {
+test.describe('raw .zim download — no card pills, menu only', () => {
   let srv;
   test.beforeAll(async () => {
+    // Sharing ON would be the state that used to reveal the pills; prove they
+    // are gone even then, so it is a real removal, not a gated hide.
     srv = await startServer(await freePort(), { ZIMI_PEER_SHARE: '1' });
   });
   test.afterAll(() => { if (srv) srv.proc.kill('SIGKILL'); });
 
-  test('home card shows the button and the click saves the .zim', async ({ page }) => {
-    await page.goto(srv.base);
-    const pill = page.locator(DL_PILL).first();
-    await expect(pill).toBeVisible();
-    await expect(pill).toHaveAttribute('download', /^zimi-bookmarks.*\.zim$/);
-
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      pill.click(),
-    ]);
-    expect(download.suggestedFilename()).toMatch(/^zimi-bookmarks.*\.zim$/);
-    // The saved bytes must be the real ZIM, not a JSON error body.
-    const stream = await download.createReadStream();
-    const first4 = await new Promise((resolve, reject) => {
-      stream.once('readable', () => resolve(stream.read(4)));
-      stream.once('error', reject);
-    });
-    expect(first4.toString('latin1')).toBe('ZIM\x04'); // libzim magic
-  });
-
-  test('non-export cards carry no download pill', async ({ page }) => {
+  test('no download pill renders on any card', async ({ page }) => {
     await page.goto(srv.base);
     await expect(page.locator('.stat-card')).toHaveCount(2);
-    await expect(page.locator(DL_PILL)).toHaveCount(1); // export only
+    await expect(page.locator('.card-dl-pill, .card-dl-slot')).toHaveCount(0);
+    // Cards are real links again, not the div workaround the pill forced.
+    await expect(page.locator('a.stat-card').first()).toBeVisible();
   });
-});
 
-test.describe('export download button — sharing OFF (gated)', () => {
-  let srv;
-  test.beforeAll(async () => {
-    srv = await startServer(await freePort(), { ZIMI_PEER_SHARE: '0' });
-  });
-  test.afterAll(() => { if (srv) srv.proc.kill('SIGKILL'); });
-
-  test('no download affordance renders at all', async ({ page }) => {
-    // The slot only fills after the /dl/ probe answers — wait for that answer
-    // (a 403 here) so "no pill" means "gated", not "probe still in flight".
-    const probed = page.waitForResponse((r) => r.url().includes('/dl/'));
+  test('right-click offers Download ZIM file', async ({ page }) => {
     await page.goto(srv.base);
-    await expect(page.locator('.stat-card .card-dl-slot')).toBeAttached(); // the slot exists…
-    await probed;
-    await expect(page.locator(DL_PILL)).toHaveCount(0);                   // …but never fills
-    // And nothing anywhere nags about turning sharing on.
-    await expect(page.getByText(/Nearby sharing/)).toHaveCount(0);
+    // Loopback client on a passwordless instance bootstraps as admin, so the
+    // admin-gated Download item is present.
+    await page.locator('.stat-card').first().click({ button: 'right' });
+    const item = page.locator('.ctx-item[data-action="download-zim"]');
+    await expect(item).toBeVisible();
   });
 });
