@@ -1514,7 +1514,6 @@
   "creator_col_size": "大小",
   "creator_col_when": "创建于",
   "au_from_catalog": "来自目录",
-  "au_from_catalog_n": "{total} 个中的 {n} 个 — 会检查更新",
-  "au_local_custom": "本地或自定义",
-  "au_local_custom_hint": "在此创建，或没有可匹配的带日期版本——无内容可检查。"
+  "au_from_catalog_n": "{total} 个中的 {n} 个",
+  "au_local_custom": "本地或自定义"
 }

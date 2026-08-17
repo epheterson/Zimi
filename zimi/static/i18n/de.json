@@ -1514,7 +1514,6 @@
   "creator_col_size": "Größe",
   "creator_col_when": "Erstellt",
   "au_from_catalog": "Aus dem Katalog",
-  "au_from_catalog_n": "{n} von {total} — auf Updates geprüft",
-  "au_local_custom": "Lokal oder eigen",
-  "au_local_custom_hint": "Hier erstellt oder ohne datierte Ausgabe zum Abgleich — es gibt nichts zu prüfen."
+  "au_from_catalog_n": "{n} von {total}",
+  "au_local_custom": "Lokal oder eigen"
 }

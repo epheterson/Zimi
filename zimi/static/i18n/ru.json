@@ -1514,7 +1514,6 @@
   "creator_col_size": "Размер",
   "creator_col_when": "Создано",
   "au_from_catalog": "Из каталога",
-  "au_from_catalog_n": "{n} из {total} — проверяются на обновления",
-  "au_local_custom": "Локальные или свои",
-  "au_local_custom_hint": "Созданы здесь или без датированной версии для сравнения — проверять нечего."
+  "au_from_catalog_n": "{n} из {total}",
+  "au_local_custom": "Локальные или свои"
 }

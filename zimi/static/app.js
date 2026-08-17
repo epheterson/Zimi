@@ -8144,8 +8144,13 @@ var _act = {
 // The filter value for a record's actor: a username, or the kind. Mirrors the
 // server's _activity_actor_key so both sides group the same way.
 function _actActorKey(r) {
+  // A named person is the notable case. Everything else — an explicit server
+  // action, or a pre-tracking record with no actor at all — is the server's
+  // own doing, so it groups as one "Server" rather than splitting into a
+  // mysterious dash beside it (Eric: "replace my '-' with Server... why are
+  // they not grouping like that already?").
   var a = r.actor || {};
-  return (a.kind === 'user' && a.name) ? a.name : (a.kind || 'server');
+  return (a.kind === 'user' && a.name) ? a.name : 'server';
 }
 // Pre-1.9 history has no actor, and "Unknown" read as an accusation — as
 // though somebody had done this and Zimi would not say who. An em-dash is the
@@ -9415,12 +9420,8 @@ function _creatorHtml(d) {
   var sidecar = d.sidecar || {};
   var sep = '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
 
-  // Lead with what you've made here — the human content of this pane.
-  var h = '<div class="ms-section-label">' + tH('creator_made') + '</div>' +
-    '<div id="ms-cr-made">' + _creatorMadeHtml(d) + '</div>';
-
-  // Then the defaults a new capture starts with.
-  h += sep + '<div class="ms-section-label">' + tH('creator_defaults') + '</div>' +
+  // Defaults a new capture starts with — the control you actually touch.
+  var h = '<div class="ms-section-label">' + tH('creator_defaults') + '</div>' +
     _mcRow(tH('create_block_ads'), _creatorDefaultSwitch('block_ads', 'create_block_ads', d.block_ads_default)) +
     _mcRow(tH('create_capture_variants'), _creatorDefaultSwitch('capture_variants', 'create_capture_variants', d.capture_variants_default)) +
     '<div class="ms-hint">' + tH('creator_defaults_hint') + '</div>';
@@ -9429,8 +9430,7 @@ function _creatorHtml(d) {
   h += sep + '<div class="ms-section-label">' + tH('creator_queue') + '</div>' +
     _mcRow(tH('creator_queued'), '<span id="ms-cr-queue">' + _creatorQueueHtml(d.queue) + '</span>');
 
-  // Capabilities LAST — the technical "what's installed" report, no longer the
-  // first thing the pane shows.
+  // Capabilities — the "what's installed" report.
   h += sep + '<div class="ms-section-label">' + tH('creator_engines') + '</div>' +
     '<div class="ms-hint" style="margin-bottom:10px">' + tH('creator_engines_hint') + '</div>' +
     _mcRow(tH('creator_browser'), '<span id="ms-cr-browser">' + _creatorStateHtml(d.browser_ready) + '</span>') +
@@ -9438,7 +9438,33 @@ function _creatorHtml(d) {
     _mcRow(tH('creator_sidecar'), '<span id="ms-cr-sidecar">' + _creatorSidecarHtml(sidecar) + '</span>') +
     '<div id="ms-cr-sidecar-cmd">' + _creatorInstallHtml(sidecar.installed, 'zimi import --setup') + '</div>' +
     _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorStateHtml(d.alive_ready) + '</span>');
+
+  // Made here LAST — an unbounded, growing list, and the slow half to gather
+  // (a provenance walk of the library), so it never blocks the pane. It fills
+  // in from its own request; until then a spinner sits in its slot.
+  h += sep + '<div class="ms-section-label">' + tH('creator_made') + '</div>' +
+    '<div id="ms-cr-made">' + _loadingHtml() + '</div>';
+  _creatorLoadInventory();
   return h;
+}
+
+// The made-here inventory rides its own request so the Creator pane can paint
+// instantly. Cached for the session; a background create/delete invalidates it
+// through _renderCreatorSection's refresh.
+var _creatorInventory = null;
+function _creatorLoadInventory() {
+  var fill = function() {
+    var el = document.getElementById('ms-cr-made');
+    if (el && _msSection === 'creator') el.innerHTML = _creatorMadeHtml(_creatorInventory || {});
+  };
+  if (_creatorInventory) { fill(); return; }
+  manageFetch('/manage/creator/inventory').then(function(r) { return r.json(); }).then(function(d) {
+    _creatorInventory = d;
+    fill();
+  }).catch(function() {
+    var el = document.getElementById('ms-cr-made');
+    if (el) el.innerHTML = '<div class="ms-hint">' + tH('creator_made_empty') + '</div>';
+  });
 }
 
 // The provenance types, in the order the breakdown reads them, paired with the
@@ -9480,7 +9506,8 @@ function _creatorMadeHtml(d) {
   var rows = list.map(function(z) {
     return '<tr>' +
       '<td class="cr-made-name"><a href="/w/' + encodeURIComponent(z.name) + '"' +
-        ' onclick="return _spaSourceClick(event, this)">' + esc(z.title || z.name) + '</a></td>' +
+        ' data-zim="' + escAttr(z.name) + '" onclick="return _spaSourceClick(event, this)">' +
+        esc(z.title || z.name) + '</a></td>' +
       '<td>' + tH(_CREATOR_TYPE_KEYS[z.type] || 'zi_kind_zimi') + '</td>' +
       '<td class="cr-made-num">' + (z.size_bytes ? fmtSize(z.size_bytes / (1024 * 1024 * 1024)) : '') + '</td>' +
       '<td class="cr-made-num">' + (z.created_ts ? _relTime(z.created_ts) : '') + '</td>' +
@@ -9499,7 +9526,7 @@ function _creatorSortBy(key) {
   if (_creatorSort.key === key) _creatorSort.dir = -_creatorSort.dir;
   else _creatorSort = { key: key, dir: key === 'title' ? 1 : -1 };
   var el = document.getElementById('ms-cr-made');
-  if (el && _creatorData) el.innerHTML = _creatorMadeHtml(_creatorData);
+  if (el && _creatorInventory) el.innerHTML = _creatorMadeHtml(_creatorInventory);
 }
 
 // Scoped background refresh: leaf nodes only, so a visible pane never rebuilds
@@ -9516,7 +9543,6 @@ function _patchCreatorSection(d) {
   put('ms-cr-sidecar-cmd', _creatorInstallHtml(sidecar.installed, 'zimi import --setup'));
   put('ms-cr-alive', _creatorStateHtml(d.alive_ready));
   put('ms-cr-queue', _creatorQueueHtml(d.queue));
-  put('ms-cr-made', _creatorMadeHtml(d));
   ['block_ads', 'capture_variants'].forEach(function(key) {
     var input = document.getElementById('ms-cr-' + key);
     if (input) input.checked = !!d[key + '_default'];
@@ -9632,15 +9658,12 @@ function _autoUpdateCoverageHtml(coverage) {
   if (!coverage) return '';
   var tracked = (coverage.tracked || []).length;
   var custom = (coverage.skipped || []).length;
-  var total = tracked + custom;
-  if (!total) return '';
-  var h = _mcRow(tH('au_from_catalog'),
-    esc(t('au_from_catalog_n', { n: tracked, total: total })));
-  if (custom) {
-    h += _mcRow(tH('au_local_custom'), esc(String(custom)));
-    h += '<div class="ms-hint">' + tH('au_local_custom_hint') + '</div>';
-  }
-  return h;
+  // Nothing local or custom → nothing worth explaining: every source is a
+  // catalog ZIM the updater checks, which is the quiet, expected state.
+  if (!custom) return '';
+  return _mcRow(tH('au_from_catalog'),
+      esc(t('au_from_catalog_n', { n: tracked, total: tracked + custom }))) +
+    _mcRow(tH('au_local_custom'), esc(String(custom)));
 }
 
 function _autoUpdateHtml(au, coverage) {
@@ -10330,9 +10353,10 @@ function _msServerHtml() {
     '<div style="margin-top:14px" id="ms-cache-info-wrap">' +
       '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
 
-  // Eric's order: Updates, Sharing, Downloads, Storage, My Data / Server
-  // Backups, API Token, then Hot ZIMs and cache together.
-  var h = [updatesSec, sharingSec, downloadsSec, storageSec, backupSec, tokenSec, hotSec].join(sep);
+  // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
+  // just before the API Token, and Hot ZIMs + cache last (Eric moved Updates
+  // down from the top on the second pass).
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec].join(sep);
   // Async fill security
   Promise.all([
     fetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),

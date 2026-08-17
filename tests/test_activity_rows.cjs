@@ -70,8 +70,11 @@ function sandboxWith(records) {
   const key = (actor) => vm.runInContext('_actActorKey(' + JSON.stringify({ actor }) + ')', sb);
   ok('a named user groups under their name', key({ kind: 'user', name: 'eric' }) === 'eric');
   ok('the server groups under "server"', key({ kind: 'server', name: null }) === 'server');
-  ok('a pre-1.9 record groups under "unknown"', key({ kind: 'unknown', name: null }) === 'unknown');
-  ok('a user with no name falls back to the kind', key({ kind: 'user' }) === 'user');
+  // Everything that is not a named person groups as the server's own doing —
+  // an explicit server action AND a pre-tracking record with no actor.
+  ok('a pre-1.9 record groups under "server"', key({ kind: 'unknown', name: null }) === 'server');
+  ok('a nameless user also groups as server', key({ kind: 'user' }) === 'server');
+  ok('an explicit server action stays server', key({ kind: 'server' }) === 'server');
   ok('a record with no actor at all still groups', key(undefined) === 'server');
 
   // The server actor gets a real, honest label — a plain localized "Server",

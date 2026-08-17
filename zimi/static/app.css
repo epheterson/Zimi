@@ -1955,6 +1955,12 @@
   .act-verb { font-weight: 600; color: var(--text); }
   .act-verb.bad { color: var(--error); }
   .act-detail { color: var(--text3); }
+  /* A failed job's reason can be a full sentence. Let the activity row's meta
+     wrap inside the card instead of running off its right edge (the catalog
+     row it borrows from is single-line); min-width:0 lets the flex column
+     actually shrink so the wrap takes effect. */
+  .act-row .ci-info { min-width: 0; }
+  .act-row .ci-meta { white-space: normal; overflow-wrap: anywhere; }
   .act-side { flex-direction: column; align-items: flex-end; gap: 4px; }
   .act-chip {
     font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px;

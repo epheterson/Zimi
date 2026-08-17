@@ -1514,7 +1514,6 @@
   "creator_col_size": "Tamaño",
   "creator_col_when": "Creado",
   "au_from_catalog": "Del catálogo",
-  "au_from_catalog_n": "{n} de {total} — se comprueban actualizaciones",
-  "au_local_custom": "Local o personalizado",
-  "au_local_custom_hint": "Creados aquí, o sin edición fechada que comparar — no hay nada que comprobar."
+  "au_from_catalog_n": "{n} de {total}",
+  "au_local_custom": "Local o personalizado"
 }
