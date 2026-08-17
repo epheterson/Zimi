@@ -66,19 +66,19 @@ const def = id => CREATE_MODE_DEFS.find(d => d.id === id);
 // only"): the server refuses the mode from the web, so a tile for it would be
 // a door drawn on a wall.
 eq(CREATE_MODE_DEFS.map(d => d.id),
-  ['page', 'site', 'video', 'bookmarks', 'import'],
-  'tile order: the web modes first, bookmarks, then import');
+  ['page', 'site', 'video', 'bookmarks'],
+  'tile order: the web modes first, then bookmarks (folder AND import are CLI-only)');
 check(!CREATE_MODE_DEFS.some(d => d.id === 'folder'),
   'folder mode is not offered at all — it is CLI-only');
 
-// Bookmarks is a CLIENT mode — its source is this browser's localStorage, and
-// the server's CREATE_MODES tuple does not contain it. Sending one would be a
-// 400 at best. The server tuple still names "folder" so its refusal can point
-// at the CLI, but the web never offers it — the page's list is the tuple
-// minus that one word.
+// Bookmarks is a CLIENT mode (its source is this browser's localStorage).
+// folder AND import are CLI-only — both read a server path, and a web door
+// onto the server's disk is what the folder retreat closed. The server tuple
+// still names them so its refusal can point at the CLI, but the web offers
+// only the URL-based server modes.
 eq(CREATE_MODE_DEFS.filter(d => !d.client).map(d => d.id).sort(),
-  ['import', 'page', 'site', 'video'],
-  'the server-bound modes are the server CREATE_MODES tuple minus folder');
+  ['page', 'site', 'video'],
+  'the web offers only the URL server modes — folder and import are CLI-only');
 
 check(_createBuildRequest('bookmarks', { source: 'anything at all' }) === null,
   'a client mode refuses to build a server request, whatever is in the field');
@@ -127,8 +127,7 @@ eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
   ['site', ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
     'language', 'ignore_robots']],
   ['video', ['format', 'max_bytes', 'language']],
-  ['bookmarks', []],
-  ['import', ['name']]
+  ['bookmarks', []]
 ], 'each mode advertises its documented advanced options');
 
 // Quality is a closed list of preset NAMES. A yt-dlp format expression is an
@@ -155,23 +154,23 @@ for (const d of CREATE_MODE_DEFS) {
     `${d.id} is available when the server is online`);
 }
 eq(CREATE_MODE_DEFS.filter(d => _createModeAvailable(d, true, true)).map(d => d.id),
-  ['bookmarks', 'import'],
-  'offline with the sidecar installed leaves bookmarks and import');
+  ['bookmarks'],
+  'offline leaves only bookmarks (import is CLI-only now)');
 eq(CREATE_MODE_DEFS.filter(d => _createModeAvailable(d, true, false)).map(d => d.id),
   ['bookmarks'],
-  'offline without the sidecar: import drops out, bookmarks stays');
+  'offline without the sidecar: still just bookmarks');
 
 // ── request mapping ─────────────────────────────────────────────────────────
 
-eq(_createBuildRequest('import', { source: '  /srv/a.wacz  ', title: ' Notes ' }),
-  { mode: 'import', source: '/srv/a.wacz', title: 'Notes' },
-  'import: source and title are trimmed');
+eq(_createBuildRequest('page', { source: '  https://e.org/  ', title: ' Notes ' }),
+  { mode: 'page', source: 'https://e.org/', title: 'Notes' },
+  'source and title are trimmed');
 
-eq(_createBuildRequest('import', { source: '/srv/a.wacz', title: '   ' }),
-  { mode: 'import', source: '/srv/a.wacz' },
+eq(_createBuildRequest('page', { source: 'https://e.org/', title: '   ' }),
+  { mode: 'page', source: 'https://e.org/' },
   'a blank title is omitted, not sent as an empty string');
 
-check(_createBuildRequest('import', { source: '   ' }) === null,
+check(_createBuildRequest('page', { source: '   ' }) === null,
   'an empty source refuses to build a request');
 check(_createBuildRequest('nope', { source: '/srv/docs' }) === null,
   'an unknown mode refuses to build a request');
@@ -193,9 +192,6 @@ eq(_createBuildRequest('site', noise),
 eq(_createBuildRequest('video', noise),
   { mode: 'video', source: 'https://example.org/', audio_only: true, limit: 9 },
   'video sends only audio_only + limit');
-eq(_createBuildRequest('import', noise),
-  { mode: 'import', source: 'https://example.org/' },
-  'import sends no flags at all');
 
 // Empty / nonsense numbers mean "use the engine's own default", so they are
 // left out rather than sent as 0 or NaN.
@@ -224,7 +220,7 @@ for (const id of ['page', 'site']) {
   check(def(id).flags.includes('engine'),
     `${id} offers the engine choice on the panel, not behind Advanced`);
 }
-for (const id of ['video', 'import']) {
+for (const id of ['video']) {
   const d = def(id);
   check(!d.flags.concat(d.advanced).includes('engine'),
     `${id} does not offer an engine choice — it does not capture a web page`);
@@ -278,7 +274,7 @@ for (const id of ['page', 'site']) {
   check((def(id).advanced || []).includes('block_ads'),
     `${id} offers ad blocking, behind Advanced`);
 }
-for (const id of ['video', 'import']) {
+for (const id of ['video']) {
   const d = def(id);
   check(!d.flags.concat(d.advanced || []).includes('block_ads'),
     `${id} does not offer ad blocking — nothing there drives a browser`);
@@ -363,9 +359,6 @@ eq(_createBuildRequest('site', {
   max_bytes: '2G', delay: 1.5, language: 'fra', ignore_robots: true
 }, 'site sends its whole advanced set, sizes as typed and delays fractional');
 
-eq(_createBuildRequest('import', { source: '/srv/a.wacz', name: 'my-archive' }),
-  { mode: 'import', source: '/srv/a.wacz', name: 'my-archive' },
-  'import sends the name override');
 
 // Depth zero is a real answer — the seed page and nothing it links to — so it
 // must survive the "blank means default" filter that eats a zero page count.
@@ -399,9 +392,6 @@ eq(_createBuildRequest('page', advNoise),
 eq(_createBuildRequest('video', advNoise),
   { mode: 'video', source: 'https://e.org/', format: 'best', language: 'eng' },
   'video takes only its own advanced options');
-eq(_createBuildRequest('import', advNoise),
-  { mode: 'import', source: 'https://e.org/', name: 'stolen' },
-  'import takes only the name');
 
 // Audio-only owns the format. Sending both would describe a preference that
 // nothing downstream reads — the engine picks the audio selector regardless.
@@ -881,8 +871,8 @@ for (const d of CREATE_MODE_DEFS) {
 // The server-path mode is exactly import — the one the server gates to the
 // primary admin. Marked in the table rather than named in an if, so adding a
 // second server-path mode cannot forget this rule.
-eq(CREATE_MODE_DEFS.filter(d => d.serverPath).map(d => d.id), ['import'],
-  'import is the one mode that reads the server\'s own disk');
+eq(CREATE_MODE_DEFS.filter(d => d.serverPath).map(d => d.id), [],
+  'no web mode reads the server disk — folder and import are CLI-only');
 eq(CREATE_MODE_DEFS.filter(d => _createModeVisible(d, true)).map(d => d.id),
   ['page', 'site', 'video', 'bookmarks'],
   'a creator gets the web modes and bookmarks, never the server-path one');

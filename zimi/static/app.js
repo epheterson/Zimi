@@ -1258,8 +1258,14 @@ function updateTopbar() {
   // reader isn't the active surface — and read-aloud never appears at all
   // when unsupported, so no dead button.
   var _readingArticle = readerOpen && !_almanacOpen;
+  // On a phone the reader topbar was carrying nine controls. Font size and
+  // Read aloud are the two least-reached, and both already live in the ⋯
+  // menu's reader group — so on a narrow viewport they fold there and leave
+  // the inline row to the essentials (Eric: reconsider what's behind ⋯, we
+  // have a lot going on). Desktop keeps them inline; the space is there.
+  var _foldReaderExtras = _readingArticle && _isNarrow();
   var fontBtn = document.getElementById('font-btn');
-  if (fontBtn) fontBtn.style.display = _readingArticle ? 'flex' : 'none';
+  if (fontBtn) fontBtn.style.display = (_readingArticle && !_foldReaderExtras) ? 'flex' : 'none';
   // Bookmarks-panel opener — reader only (#65). Everywhere else the library
   // button already opens the panel, but while reading it becomes the
   // save-bookmark toggle, which left the bookmark tree unreachable without
@@ -1268,7 +1274,7 @@ function updateTopbar() {
   var bmPanelBtn = document.getElementById('bm-panel-btn');
   if (bmPanelBtn) bmPanelBtn.style.display = _readingArticle ? 'flex' : 'none';
   var ttsBtn = document.getElementById('tts-btn');
-  if (ttsBtn) ttsBtn.style.display = (_readingArticle && _TTS_AVAILABLE) ? 'flex' : 'none';
+  if (ttsBtn) ttsBtn.style.display = (_readingArticle && _TTS_AVAILABLE && !_foldReaderExtras) ? 'flex' : 'none';
   _syncReaderViewBtn(); // book/reader-view glyph — gated on extractable content
   // Desktop: show save button when viewing a downloadable file (PDF, EPUB)
   var saveBtn = document.getElementById('save-btn');
@@ -14866,10 +14872,15 @@ function _histDateGroup(ts) {
 // Both panel openers (the app-wide library button and the reader's bookmarks
 // button, #65) mirror the panel's open state with the same class.
 function _libPanelBtnState(open) {
-  ['library-btn', 'bm-panel-btn'].forEach(function (id) {
-    var b = document.getElementById(id);
-    if (b) b.classList.toggle('panel-open', open);
-  });
+  // The panel-open highlight belongs to the button that OPENS the panel. In
+  // the reader the topbar library-btn is the bookmark-this-article toggle, not
+  // the panel opener, so it must never light up when the panel opens (Eric:
+  // tapping the bookmarks view highlighted the bookmark button). bm-panel-btn
+  // is the reader's panel opener and always reflects the state.
+  var bmBtn = document.getElementById('bm-panel-btn');
+  if (bmBtn) bmBtn.classList.toggle('panel-open', open);
+  var libBtn = document.getElementById('library-btn');
+  if (libBtn) libBtn.classList.toggle('panel-open', open && !readerOpen);
 }
 function toggleLibraryPanel(forceTab) {
   var panel = document.getElementById('history-panel');
@@ -16220,9 +16231,21 @@ function _updateLibraryBtnIcon() {
     btn.style.color = '';
     btn.title = t('bookmark_add');
   } else {
-    btn.innerHTML = (tab === 'bookmarks') ? _libBookmarkSvg : _libClockSvg;
+    // On the home grid the library button OPENS the panel. It carries the one
+    // library glyph — the same glyph the reader's bm-panel-btn carries — so
+    // "open the library" looks identical wherever you are (Eric: consistent
+    // icon on home and in zims). The open tab no longer changes the icon.
+    btn.innerHTML = _libClockSvg;
     btn.style.color = '';
-    btn.title = (tab === 'bookmarks') ? t('bookmarks') : t('history');
+    btn.title = t('library');
+  }
+  // Keep the reader's panel opener on the very same glyph, so it reads as
+  // "open the library" and never as a second bookmark button next to the
+  // add-bookmark toggle (library-btn) beside it.
+  var panelBtn = document.getElementById('bm-panel-btn');
+  if (panelBtn) {
+    panelBtn.innerHTML = _libClockSvg;
+    panelBtn.title = t('library');
   }
 }
 function openArticle(zim, path, title, opts) {

@@ -128,12 +128,10 @@ var CREATE_MODE_DEFS = [
     advanced: ['format', 'max_bytes', 'language'],
     pick: { max_bytes: '4G' }
   },
-  CREATE_BOOKMARKS_DEF,
-  {
-    id: 'import', network: false, sidecar: true, serverPath: true,
-    label: 'create_label_archive', placeholder: 'create_ph_archive',
-    flags: [], advanced: ['name']
-  }
+  CREATE_BOOKMARKS_DEF
+  // Import (WARC/WACZ) is CLI-only, like folder capture: it reads a server
+  // path, and a web door onto the server's disk is exactly what the folder
+  // retreat closed. `zimi import <file>` is its one door. No tile here.
 ];
 
 // Size budgets, as amounts rather than as a syntax to remember. The values are
@@ -313,11 +311,9 @@ var CREATE_FIELDS = {
   format: {
     id: 'create-format', control: 'select', label: 'create_format',
     kind: 'text', options: ['720p', '1080p', '480p', 'best']
-  },
-  name: {
-    id: 'create-name', control: 'text', label: 'create_name',
-    kind: 'text', ph: 'my-archive'
   }
+  // The `name` override belonged to import, which is CLI-only now
+  // (`zimi import <file> --name ...`); no web mode reaches it.
 };
 
 // Where another project does the actual work, its name goes on the surface that

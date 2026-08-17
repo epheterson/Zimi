@@ -638,7 +638,7 @@
      it must for .ms-user-add. */
   .create-flag[hidden] { display: none; }
   .create-picker { display: flex; flex-direction: column; gap: 12px; }
-  .create-modes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .create-modes { display: flex; flex-wrap: wrap; gap: 8px; }
   .create-chip { display: flex; align-items: center; gap: 7px; padding: 7px 12px; font-family: inherit; font-size: 13px; color: var(--text2); background: none; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; transition: all 0.15s; }
   .create-chip:hover { color: var(--text); border-color: var(--amber-border); background: var(--amber-glow); }
   .create-chip.active { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
@@ -646,10 +646,10 @@
   .create-chip.disabled:hover { color: var(--text2); border-color: var(--border); background: none; }
   .create-chip-glyph { display: flex; flex-shrink: 0; }
   .create-chip-name { white-space: nowrap; }
-  .create-panel { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .create-panel { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
   .create-panel-desc { font-size: 12.5px; color: var(--text2); }
   .create-panel-blocked { font-size: 13px; color: var(--text2); padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); }
-  .create-go { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .create-go { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--border); }
   .create-go-btn { width: 100%; padding: 10px 12px; font-size: 13px; font-weight: 600; }
   .create-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
   .create-flag { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); cursor: pointer; }
@@ -738,7 +738,7 @@
      nothing to say about it — looked exactly like a crash. What the server now
      emits is structure: phases, page nodes with their assets, and counters. So
      this is a phase strip, a tree that grows, and numbers that move. */
-  .create-run { display: flex; flex-direction: column; gap: 14px; }
+  .create-run { display: flex; flex-direction: column; gap: 16px; }
   .create-phases { display: flex; align-items: flex-start; }
   .create-step { flex: 1 1 0; position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text3); text-align: center; }
   /* The rail between two steps belongs to the one on the right, which is what
