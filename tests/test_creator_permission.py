@@ -7,9 +7,9 @@ Three contracts under test:
   code loads under the PRIOR loader's semantics — the additive-key rule).
 - manage.py: the route matrix. Anonymous → 401; a signed-in user WITHOUT the
   flag → 403; a creator → 200 on the URL-mode create/status/probe/cancel
-  surfaces but 403 on import (server-path reads stay with the primary admin);
-  admins are unchanged. Folder mode and its picker are CLI-only now — the
-  picker route answers 410 for everyone the auth gate lets through.
+  surfaces; admins are unchanged. Folder AND import are CLI-only now (both
+  read a server path) — refused at validation for everyone, and their web
+  door, the directory picker, answers 410 for everyone the auth gate admits.
 - http.py: /whoami exposes ``can_create`` so the client can shape its UI.
 """
 
@@ -263,16 +263,11 @@ class TestRouteMatrix(_RouteBase):
         self.assertEqual(status, 200)
         self.assertIn("active", body)
 
-    def test_creator_never_touches_the_server_disk(self):
-        for status, body in (
-            self._post("/manage/create", dict(IMPORT_BODY), self.creator),
-            self._post("/manage/create/probe", dict(IMPORT_BODY), self.creator),
-        ):
-            self.assertEqual(status, 403)
-            self.assertIn("primary admin", body["error"])
-        # The old folder picker refuses for EVERYONE who is allowed to ask —
-        # a clean 410 naming the CLI, never a listing. (Folder mode itself is
-        # refused at validation; see test_create_routes.py.)
+    def test_no_server_path_picker_for_creators(self):
+        # The server-path modes (folder, import) are CLI-only, so their web
+        # door — the directory picker — is gone for everyone who may create.
+        # A clean 410 naming the CLI, never a listing. (The mode refusals
+        # themselves live at validation; see test_create_routes.py.)
         status, body = self._get("/manage/create/browse", self.creator)
         self.assertEqual(status, 410)
         self.assertIn("CLI-only", body["error"])
@@ -283,7 +278,7 @@ class TestRouteMatrix(_RouteBase):
         self.assertEqual(status, 403)
 
     def test_primary_admin_is_unchanged(self):
-        status, body = self._post("/manage/create", dict(IMPORT_BODY), self.primary)
+        status, body = self._post("/manage/create", dict(URL_BODY), self.primary)
         self.assertEqual((status, body["sentinel"]), (200, "start"))
         # The folder picker is gone for the primary admin too — CLI-only.
         status, body = self._get("/manage/create/browse", self.primary)
@@ -291,12 +286,11 @@ class TestRouteMatrix(_RouteBase):
         status, _ = self._get("/manage/create/status", self.primary)
         self.assertEqual(status, 200)
 
-    def test_secondary_admin_keeps_url_modes_only(self):
+    def test_secondary_admin_keeps_url_modes(self):
+        # URL modes go through for the secondary admin; the server-path
+        # picker is gone (folder + import are CLI-only for everyone).
         status, body = self._post("/manage/create", dict(URL_BODY), self.secondary)
         self.assertEqual((status, body["sentinel"]), (200, "start"))
-        status, body = self._post("/manage/create", dict(IMPORT_BODY), self.secondary)
-        self.assertEqual(status, 403)
-        self.assertIn("primary admin", body["error"])
         status, _ = self._get("/manage/create/browse", self.secondary)
         self.assertEqual(status, 410)
 
