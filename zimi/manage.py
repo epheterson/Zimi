@@ -3643,7 +3643,6 @@ def _creator_payload():
         }
     except Exception:
         log.exception("sidecar status probe failed")
-    created_counts, created_list = _creator_inventory()
     return {
         "browser_ready": _create_browser_ready(),
         "alive_ready": _create_alive_ready(),
@@ -3657,12 +3656,17 @@ def _creator_payload():
         ),
         "queue": len(_create_queue_view()),
         "offline": _is_offline_mode(),
-        # What this instance has actually made, for the Creator pane's breakdown
-        # and its sortable table. Counts are a fixed-shape dict over
-        # _CREATOR_TYPES; the list is unsorted rows the client orders.
-        "created_counts": created_counts,
-        "created_list": created_list,
     }
+
+
+def _creator_inventory_payload():
+    """The Creator pane's made-here breakdown + sortable list, on its OWN
+    endpoint. Gathering it is a provenance walk of the whole library — the
+    slow, unbounded half of the pane — so it never rides the pane's own fast
+    payload. ``counts`` is a fixed-shape dict over _CREATOR_TYPES; ``list`` is
+    unsorted rows the client orders."""
+    counts, rows = _creator_inventory()
+    return {"created_counts": counts, "created_list": rows}
 
 
 def _auto_update_view():
@@ -4096,6 +4100,9 @@ def handle_manage_get(handler, parsed, params):
 
     elif parsed.path == "/manage/creator":
         return handler._json(200, _creator_payload())
+
+    elif parsed.path == "/manage/creator/inventory":
+        return handler._json(200, _creator_inventory_payload())
 
     elif parsed.path == "/manage/stats":
         metrics = _srv._get_metrics()

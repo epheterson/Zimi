@@ -58,8 +58,6 @@ def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
         "capture_variants_default",
         "queue",
         "offline",
-        "created_counts",
-        "created_list",
     }
     assert body["browser_ready"] is True
     assert body["alive_ready"] is False
@@ -67,8 +65,9 @@ def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
     assert set(body["sidecar"]) == {"installed", "version"}
     # Every type is present in the breakdown even when the library is empty, so
     # the client never has to guess a missing bucket is zero.
-    assert set(body["created_counts"]) == set(manage._CREATOR_TYPES)
-    assert isinstance(body["created_list"], list)
+    inv = _get("/manage/creator/inventory").body
+    assert set(inv["created_counts"]) == set(manage._CREATOR_TYPES)
+    assert isinstance(inv["created_list"], list)
 
 
 def test_an_unconfigured_create_root_is_null_not_empty(monkeypatch):
@@ -152,7 +151,7 @@ def test_creator_counts_break_down_made_here_zims_by_type(made_library):
     """One count per type, folding the modes that share a bucket: the single-
     and multi-page engines both read as "page", a bookmark export as "export".
     The ZIM Zimi did not make is in none of them."""
-    counts = _get("/manage/creator").body["created_counts"]
+    counts = _get("/manage/creator/inventory").body["created_counts"]
     assert counts == {
         "page": 2,
         "site": 1,
@@ -165,7 +164,7 @@ def test_creator_counts_break_down_made_here_zims_by_type(made_library):
 
 
 def test_creator_list_carries_the_sortable_fields(made_library):
-    rows = _get("/manage/creator").body["created_list"]
+    rows = _get("/manage/creator/inventory").body["created_list"]
     # Every ZIM Zimi made appears once; the downloaded one does not.
     assert {r["name"] for r in rows} == {
         "one-page",
@@ -198,7 +197,7 @@ def test_creator_list_carries_the_sortable_fields(made_library):
 
 def test_creator_inventory_is_empty_when_nothing_was_made(monkeypatch):
     monkeypatch.setattr(server, "list_zims", lambda *a, **k: [])
-    body = _get("/manage/creator").body
+    body = _get("/manage/creator/inventory").body
     assert body["created_list"] == []
     assert body["created_counts"] == {t: 0 for t in manage._CREATOR_TYPES}
 
