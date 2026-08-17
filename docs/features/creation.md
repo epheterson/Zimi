@@ -1,0 +1,48 @@
+# Creating ZIMs
+
+Turn a folder, a web page, a whole small site, or a video source into a ZIM that lives in your library and works forever offline.
+
+## How it works
+
+`zimi create` is one command with several input shapes. The positional `source` is either a folder path or one or more `http(s)://` URLs (several URLs land in a single ZIM behind a generated index page). Add `--site` to crawl one origin instead of capturing a single page; pass a video URL to package a playlist or channel via yt-dlp.
+
+Web captures run through one of four **engines**, chosen with `--engine`:
+
+- **builtin** (default) — no JavaScript, no install. Fetches HTML and assets directly. Fastest, smallest, and the only engine with zero dependencies.
+- **rendered** — runs a headless Chromium in-process so client-rendered pages produce real content. Needs `pip install 'zimi[browser]'` and `playwright install chromium`.
+- **alive** — records the live browser session to a WARC and converts it with warc2zim, so the saved site's JavaScript still runs inside the reader. Needs the browser extra above plus the warc2zim sidecar (`zimi import --setup`).
+- **zimit** — openZIM's browser-based crawler, run via Docker. Extra crawler arguments pass through with `--engine-arg` (write it attached, e.g. `--engine-arg=--workers=2`).
+
+**Capture defaults.** Ad, tracker, and consent-manager requests are blocked during capture by default (`--block-ads`, on for the rendered and alive engines) — smaller ZIMs, and pages that gate on those endpoints render their real content. `--no-block-ads` captures everything. The blocklist snapshot ships in `zimi/assets/blocklist-snapshot.txt.gz` (StevenBlack/hosts, MIT) and is not auto-refreshed. Image-variant capture is a Manage/Creator toggle (`capture_variants`) and a `create` internal option.
+
+**Size budget.** `--max-bytes` caps output (e.g. `512MiB`, `4G`). For `--site` it counts pages plus assets (default 512MiB); for video sources it caps total media (default 4G). Crawls are also bounded by `--max-pages` (site default 200), `--max-depth` (site default 5), and `--delay` between requests (site default 0.5s; robots.txt `Crawl-delay` wins when larger). `--ignore-robots` (site only) crawls disallowed pages and prints a warning.
+
+**Language** is read off the source (a page's `lang`, a folder's HTML, video metadata) and falls back to `eng`; override with `--language` (ISO 639-3). **Output** defaults to the ZIM directory with library registration; `--out` writes an explicit `.zim` path instead. Title/description/creator metadata is set with `--title` / `--description` / `--creator` (creator defaults to `Zimi`).
+
+**From the web UI.** The Create page (the topbar `+`) drives the URL-based modes — single page, `--site`, video — for admins and creator-role accounts. **Folder mode and web-archive import are CLI-only.** The web UI has no folder tile and no import tile: folder mode is refused from the web entirely, and import reads a server path, which stays a primary-admin, shell-only operation. Run `zimi create <folder>` / `zimi import <file>` from a terminal on the machine.
+
+## Configure
+
+| Setting | Where | Default | Effect |
+| --- | --- | --- | --- |
+| `--engine` | flag | `builtin` | `builtin` / `rendered` / `alive` / `zimit` |
+| `--block-ads` / `--no-block-ads` | flag | on (rendered/alive) | Block ad/tracker/consent requests at capture time |
+| `--max-bytes` | flag | 512MiB (site) / 4G (video) | Total size budget |
+| `--max-pages` | flag | 200 (site) | Page cap for `--site` |
+| `--max-depth` | flag | 5 (site) | Link hops from the start page |
+| `--delay` | flag | 0.5s (site) | Seconds between requests |
+| `--ignore-robots` | flag | off | Crawl robots-disallowed pages (site only) |
+| `--format` / `--audio-only` / `--limit` | flag | ~720p cap | Video source selection |
+| `--language` | flag | detected → `eng` | ISO 639-3 content language |
+| `--out` | flag | ZIM dir + register | Explicit output path |
+| `ZIMI_CREATE_ROOT` | env / config `create_root` | unset (web off) | The one directory tree the web UI may package a server path from. Unset means the web cannot read any server path; the CLI is unaffected. |
+
+## Troubleshoot
+
+- **`--engine rendered` fails to start / no Chromium** — install the browser extra: `pip install 'zimi[browser]'` then `playwright install chromium`.
+- **`--engine alive` errors on conversion** — it needs both the browser extra and the warc2zim sidecar. Run `zimi import --setup` once (network), then `zimi import --status` to confirm.
+- **`--engine zimit` can't run** — it shells out to Docker; ensure Docker is installed and the daemon is running.
+- **`--engine-arg` reads as a missing value** — argparse treats a bare flag-shaped token as missing. Write it attached: `--engine-arg=--workers=2`.
+- **Crawl stops early / ZIM smaller than expected** — you hit `--max-bytes`, `--max-pages`, or `--max-depth`, or robots.txt disallowed pages. Raise the caps or add `--ignore-robots` (site only) where appropriate.
+- **A page renders blank or paywalled** — it may gate on a blocked endpoint. Retry with `--no-block-ads`, or use `--engine rendered`/`alive` so scripts run.
+- **Web UI has no folder or import option** — by design. These are CLI-only: `zimi create <folder>` and `zimi import <file>`.
