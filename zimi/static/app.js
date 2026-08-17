@@ -8924,12 +8924,14 @@ function _msUsersHtml() {
       _rolePills('new-user', 'user', isPrimary) +
       '<div id="new-user-allowlist" style="display:none;margin-top:8px">' + _allowlistPicker([]) + '</div>' +
       // Creation, as its own labeled line: a regular user defaults to NOT
-      // creating and the checkbox is the explicit grant; when the admin role is
-      // picked the checkbox yields to a plain statement (admins always create).
-      '<div class="ms-form-label">' + tH('users_creation_label') + '</div>' +
-      '<label id="new-user-create-row" style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">' +
-        '<input type="checkbox" id="new-user-can-create"> ' + tH('users_can_create') + '</label>' +
-      '<div id="new-user-admin-creates" class="ms-hint" style="display:none">' + tH('users_admin_creates') + '</div>' +
+      // creating and the checkbox is the explicit grant. The WHOLE section
+      // disappears when the admin role is picked — admin means everything, so
+      // a creation control there is noise (Eric: "Admin means all we get it").
+      '<div id="new-user-creation">' +
+        '<div class="ms-form-label">' + tH('users_creation_label') + '</div>' +
+        '<label class="ms-check-row"><input type="checkbox" id="new-user-can-create"> ' +
+          tH('users_can_create') + '</label>' +
+      '</div>' +
       '<div id="new-user-error" class="pw-error" style="display:none"></div>' +
       '<div class="ms-actions">' +
         '<button class="ms-btn ms-btn-primary" onclick="_createUser()">' + tH('users_create') + '</button>' +
@@ -8968,13 +8970,13 @@ function _openUserMenu(btn, name) {
   if (u.role === 'limited') {
     h += '<div class="ctx-item" data-action="allowlist">' + tH('users_edit_allowlist') + '</div>';
   }
-  // Creation is its own section so the model reads at a glance: admins create
-  // implicitly (the server refuses the flag on them — a static line says so),
-  // everyone else defaults to no and the checkable item is the explicit grant.
-  h += '<div class="ctx-sep"></div>';
-  h += u.role === 'admin'
-    ? '<div class="ctx-item" style="cursor:default;color:var(--text2)" aria-disabled="true">' + tH('users_admin_creates') + '</div>'
-    : '<div class="ctx-item" data-action="can-create">' + (u.can_create ? '✓ ' : '') + tH('users_can_create') + '</div>';
+  // Creation is a per-user grant only for non-admins — an admin creates
+  // everything, so the row simply isn't there for them (no explanatory
+  // subtitle either; admin means all).
+  if (u.role !== 'admin') {
+    h += '<div class="ctx-sep"></div>';
+    h += '<div class="ctx-item" data-action="can-create">' + (u.can_create ? '✓ ' : '') + tH('users_can_create') + '</div>';
+  }
   h += '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
   var r = btn.getBoundingClientRect();
   window._openMenuAt(h, r.left, r.bottom + 2, function(action, item) {
@@ -9066,12 +9068,10 @@ function _selectRole(idPrefix, role) {
   // Allowlist editor only makes sense for the limited role.
   var al = document.getElementById(idPrefix + '-allowlist');
   if (al) al.style.display = role === 'limited' ? 'block' : 'none';
-  // The Creation line follows the role: admins create implicitly, so the
-  // grant checkbox yields to the static "admins always create" note.
-  var grant = document.getElementById(idPrefix + '-create-row');
-  var implicit = document.getElementById(idPrefix + '-admin-creates');
-  if (grant) grant.style.display = role === 'admin' ? 'none' : 'flex';
-  if (implicit) implicit.style.display = role === 'admin' ? '' : 'none';
+  // Creation is meaningless for an admin (admin creates everything), so the
+  // whole section disappears rather than turning into a subtitle.
+  var creation = document.getElementById(idPrefix + '-creation');
+  if (creation) creation.style.display = role === 'admin' ? 'none' : '';
 }
 
 function _selectedRole(idPrefix) {
@@ -9476,10 +9476,11 @@ function _creatorMadeHtml(d) {
   };
   var rows = list.map(function(z) {
     return '<tr>' +
-      '<td class="cr-made-name">' + esc(z.title || z.name) + '</td>' +
+      '<td class="cr-made-name"><a href="/w/' + encodeURIComponent(z.name) + '"' +
+        ' onclick="return _spaSourceClick(event, this)">' + esc(z.title || z.name) + '</a></td>' +
       '<td>' + tH(_CREATOR_TYPE_KEYS[z.type] || 'zi_kind_zimi') + '</td>' +
       '<td class="cr-made-num">' + (z.size_bytes ? fmtSize(z.size_bytes / (1024 * 1024 * 1024)) : '') + '</td>' +
-      '<td class="cr-made-num">' + (z.created_ts ? _relTime(z.created_ts * 1000) : '') + '</td>' +
+      '<td class="cr-made-num">' + (z.created_ts ? _relTime(z.created_ts) : '') + '</td>' +
     '</tr>';
   }).join('');
   return '<div class="cr-made-chips">' + chips + '</div>' +
@@ -12480,14 +12481,19 @@ async function _refreshDownloadsInner(useCache) {
     // Bulk controls — only meaningful with more than one download; single items
     // have their own per-row controls. Pause/Resume all appear only when there's
     // something in that state to act on; Delete all always confirms first.
+    // Bulk Pause/Resume only — each acts on a real, reversible download state.
+    // The old "Delete all" was removed: it wiped the visible list (and came
+    // back on reload), which read as broken rather than useful. Per-row
+    // controls remove a single download when that is actually what you want.
     if (dls.length >= 2) {
       const pausableCount = downloadingDls.filter(d => !d.paused && !d.scheduled).length;
       const resumableCount = dls.filter(d => d.paused).length;
-      h += '<div class="dl-bulk-bar">';
-      if (pausableCount) h += '<button class="dl-bulk-btn" onclick="pauseAllDownloads()">' + tH('dl_pause_all') + '</button>';
-      if (resumableCount) h += '<button class="dl-bulk-btn" onclick="resumeAllDownloads()">' + tH('dl_resume_all') + '</button>';
-      h += '<button class="dl-bulk-btn dl-bulk-danger" onclick="deleteAllDownloads()">' + tH('dl_delete_all') + '</button>';
-      h += '</div>';
+      if (pausableCount || resumableCount) {
+        h += '<div class="dl-bulk-bar">';
+        if (pausableCount) h += '<button class="dl-bulk-btn" onclick="pauseAllDownloads()">' + tH('dl_pause_all') + '</button>';
+        if (resumableCount) h += '<button class="dl-bulk-btn" onclick="resumeAllDownloads()">' + tH('dl_resume_all') + '</button>';
+        h += '</div>';
+      }
     }
     h += '<div class="dl-grid">';
     // Background-operation cards ride at the top of the default view only —
@@ -12887,15 +12893,6 @@ async function resumeAllDownloads() {
   await _bulkDownloadAction('/manage/resume', targets);
   refreshDownloads();
 }
-async function deleteAllDownloads() {
-  if (!(await _appConfirm(t('dl_delete_all_confirm'), t('delete')))) return;
-  // Cancel everything still in flight, then clear the finished rows.
-  const active = (_dlLastDls || []).filter(d => !d.done);
-  await _bulkDownloadAction('/manage/cancel', active);
-  try { await manageFetch('/manage/clear-downloads', { method: 'POST' }); } catch (e) {}
-  refreshDownloads();
-}
-
 // Bulk seed controls: fan out the existing per-seed pause/resume endpoint over
 // the last-rendered seed list (same pattern as _bulkDownloadAction — seed
 // counts are small, and each call is one independent engine flag, so a batch

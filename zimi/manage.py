@@ -3558,11 +3558,28 @@ _CREATOR_TYPE_BY_MODE = {
 }
 
 
-def _creator_type(mode):
-    """The Creator breakdown bucket for a provenance ``mode``, or the raw mode
-    for one the map does not know (kept so the row still says something rather
-    than vanishing — every mode Zimi stamps today is mapped)."""
-    return _CREATOR_TYPE_BY_MODE.get(mode or "", mode or "other")
+def _creator_type(mode, kind=None, basename=""):
+    """The Creator breakdown bucket for a made-here ZIM. The provenance
+    ``mode`` decides it when present; a warc2zim ZIM (alive engine, or an
+    import) carries no X-Zimi-History and so no mode, so we fall back to the
+    scope token the creator wrote into the filename (``..._site``, ``-page``,
+    ``-video``) and then to the recorded engine. Better an honest "Site" than
+    a bare "Zimi" on a ZIM whose own name says what it is."""
+    if mode:
+        return _CREATOR_TYPE_BY_MODE.get(mode, mode)
+    low = (basename or "").lower()
+    for token, bucket in (
+        ("video", "video"),
+        ("site", "site"),
+        ("page", "page"),
+        ("folder", "folder"),
+    ):
+        if token in low:
+            return bucket
+    engine = (kind or {}).get("engine")
+    if engine in ("alive", "rendered"):
+        return "site"  # a recorded web capture with no history record
+    return "other"
 
 
 def _creator_inventory():
@@ -3582,7 +3599,9 @@ def _creator_inventory():
         kind = _http._zim_kind_for(entry)
         if not kind:
             continue
-        ctype = _creator_type(kind.get("mode"))
+        ctype = _creator_type(
+            kind.get("mode"), kind=kind, basename=entry.get("file", "")
+        )
         if ctype in counts:
             counts[ctype] += 1
         rows.append(

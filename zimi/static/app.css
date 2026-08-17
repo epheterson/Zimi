@@ -548,6 +548,11 @@
   .ms-user-add { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
   .ms-user-add[hidden] { display: none; }  /* [hidden] must beat the display:flex above */
   .ms-user-add input, .create-field { padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); box-sizing: border-box; width: 100%; }
+  /* A checkbox is not a text field: the width:100% above stretched it across
+     the row and shoved its label to the far edge. Keep it its own size, and
+     lay the grant out as [box] label so they read as one control. */
+  .ms-user-add input[type="checkbox"] { width: auto; padding: 0; accent-color: var(--amber); }
+  .ms-check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
   .ms-user-add input:focus, .create-field:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
   .ms-form-label { font-size: 12px; color: var(--text2); }
   .ms-user-account { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
