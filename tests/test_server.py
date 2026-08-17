@@ -481,11 +481,19 @@ class TestServerEndpoints(unittest.TestCase):
     # ── /w/ content route ──
 
     def test_w_nonexistent_zim(self):
-        """Requesting content from a non-existent ZIM should 404."""
-        # /w/ routes serve HTML for browser nav, so request with Sec-Fetch-Dest: iframe
+        """A document request for a missing ZIM gets the styled gone-source
+        page (a deleted source's old bookmarks land here); a subresource still
+        gets the JSON 404 it can parse."""
         url = f"{self._base}/w/nonexistent_zim/A/Test"
+        # As a page being opened: prose, 200.
         req = urllib.request.Request(url)
         req.add_header("Sec-Fetch-Dest", "iframe")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            self.assertEqual(resp.status, 200)
+            self.assertIn(b"isn't in the library", resp.read())
+        # As an image subresource: JSON 404.
+        req = urllib.request.Request(url + ".png")
+        req.add_header("Sec-Fetch-Dest", "image")
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 status = resp.status

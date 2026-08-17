@@ -91,4 +91,5 @@ def test_export_bookmarks_creates_zim(zim_env):
     )
     assert body["phase"] == "done"
     assert body["file"].startswith("zimi-bookmarks_")
-    assert os.path.exists(os.path.join(str(zim_env), body["file"]))
+    # Exports land on the Created shelf (<zim_dir>/created), beside captures.
+    assert os.path.exists(os.path.join(str(zim_env), "created", body["file"]))
