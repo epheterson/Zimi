@@ -1504,5 +1504,13 @@
   "manage_setup_key_pw_ph": "Neues Administratorkennwort",
   "manage_setup_key_submit": "Kennwort festlegen",
   "manage_setup_key_needboth": "Setup-Schlüssel und ein neues Kennwort eingeben.",
-  "manage_setup_key_bad": "Dieser Setup-Schlüssel wurde nicht akzeptiert."
+  "manage_setup_key_bad": "Dieser Setup-Schlüssel wurde nicht akzeptiert.",
+  "zi_kind_export": "Lesezeichen",
+  "zi_kind_edit": "Bearbeitet",
+  "creator_made": "Hier erstellt",
+  "creator_made_empty": "Hier wurde noch nichts erstellt.",
+  "creator_col_name": "Name",
+  "creator_col_type": "Typ",
+  "creator_col_size": "Größe",
+  "creator_col_when": "Erstellt"
 }

@@ -1504,5 +1504,13 @@
   "manage_setup_key_pw_ph": "Nouveau mot de passe administrateur",
   "manage_setup_key_submit": "Définir le mot de passe",
   "manage_setup_key_needboth": "Saisissez la clé de configuration et un nouveau mot de passe.",
-  "manage_setup_key_bad": "Cette clé de configuration n'a pas été acceptée."
+  "manage_setup_key_bad": "Cette clé de configuration n'a pas été acceptée.",
+  "zi_kind_export": "Signets",
+  "zi_kind_edit": "Modifié",
+  "creator_made": "Créé ici",
+  "creator_made_empty": "Rien de créé ici pour l'instant.",
+  "creator_col_name": "Nom",
+  "creator_col_type": "Type",
+  "creator_col_size": "Taille",
+  "creator_col_when": "Créé"
 }

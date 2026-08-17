@@ -9431,7 +9431,71 @@ function _creatorHtml(d) {
   h += '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
     '<div class="ms-section-label">' + tH('creator_queue') + '</div>' +
     _mcRow(tH('creator_queued'), '<span id="ms-cr-queue">' + _creatorQueueHtml(d.queue) + '</span>');
+
+  h += '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
+    '<div class="ms-section-label">' + tH('creator_made') + '</div>' +
+    '<div id="ms-cr-made">' + _creatorMadeHtml(d) + '</div>';
   return h;
+}
+
+// The provenance types, in the order the breakdown reads them, paired with the
+// i18n key for each label. A type with a zero count is left out of the chip
+// row entirely — a wall of "0 · 0 · 0" is noise, not information.
+var _CREATOR_TYPE_KEYS = {
+  page: 'zi_kind_page', site: 'zi_kind_site', video: 'zi_kind_video',
+  import: 'zi_kind_import', folder: 'zi_kind_folder',
+  export: 'zi_kind_export', edit: 'zi_kind_edit'
+};
+var _creatorSort = { key: 'created_ts', dir: -1 };  // newest first by default
+
+// The by-type counts as amber chips, then a sortable table of everything Zimi
+// made. Client-side sort — the server sends the rows unsorted with every field
+// the header needs. Empty when nothing has been created here yet.
+function _creatorMadeHtml(d) {
+  var counts = d.created_counts || {};
+  var list = (d.created_list || []).slice();
+  if (!list.length) {
+    return '<div class="ms-hint">' + tH('creator_made_empty') + '</div>';
+  }
+  var chips = '';
+  Object.keys(_CREATOR_TYPE_KEYS).forEach(function(t) {
+    var n = counts[t] || 0;
+    if (!n) return;
+    chips += '<span class="cr-made-chip"><b>' + n + '</b> ' + tH(_CREATOR_TYPE_KEYS[t]) + '</span>';
+  });
+  var s = _creatorSort;
+  list.sort(function(a, b) {
+    var av = a[s.key], bv = b[s.key];
+    if (s.key === 'title') { av = (av || a.name || '').toLowerCase(); bv = (bv || b.name || '').toLowerCase(); }
+    else { av = av || 0; bv = bv || 0; }
+    return av < bv ? -s.dir : av > bv ? s.dir : 0;
+  });
+  var arrow = function(k) { return s.key === k ? (s.dir < 0 ? ' ↓' : ' ↑') : ''; };
+  var th = function(k, label) {
+    return '<th class="cr-made-th" onclick="_creatorSortBy(\'' + k + '\')">' + tH(label) + arrow(k) + '</th>';
+  };
+  var rows = list.map(function(z) {
+    return '<tr>' +
+      '<td class="cr-made-name">' + esc(z.title || z.name) + '</td>' +
+      '<td>' + tH(_CREATOR_TYPE_KEYS[z.type] || 'zi_kind_zimi') + '</td>' +
+      '<td class="cr-made-num">' + (z.size_bytes ? fmtSize(z.size_bytes / (1024 * 1024 * 1024)) : '') + '</td>' +
+      '<td class="cr-made-num">' + (z.created_ts ? _relTime(z.created_ts * 1000) : '') + '</td>' +
+    '</tr>';
+  }).join('');
+  return '<div class="cr-made-chips">' + chips + '</div>' +
+    '<div class="cr-made-wrap"><table class="cr-made-table"><thead><tr>' +
+      th('title', 'creator_col_name') + th('type', 'creator_col_type') +
+      th('size_bytes', 'creator_col_size') + th('created_ts', 'creator_col_when') +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+// Re-sort in place: same column flips direction, a new column sorts descending
+// (numbers big-first, names A-Z on the flip). Only the made-here block repaints.
+function _creatorSortBy(key) {
+  if (_creatorSort.key === key) _creatorSort.dir = -_creatorSort.dir;
+  else _creatorSort = { key: key, dir: key === 'title' ? 1 : -1 };
+  var el = document.getElementById('ms-cr-made');
+  if (el && _creatorData) el.innerHTML = _creatorMadeHtml(_creatorData);
 }
 
 // Scoped background refresh: leaf nodes only, so a visible pane never rebuilds
@@ -9448,6 +9512,7 @@ function _patchCreatorSection(d) {
   put('ms-cr-sidecar-cmd', _creatorInstallHtml(sidecar.installed, 'zimi import --setup'));
   put('ms-cr-alive', _creatorStateHtml(d.alive_ready));
   put('ms-cr-queue', _creatorQueueHtml(d.queue));
+  put('ms-cr-made', _creatorMadeHtml(d));
   ['block_ads', 'capture_variants'].forEach(function(key) {
     var input = document.getElementById('ms-cr-' + key);
     if (input) input.checked = !!d[key + '_default'];

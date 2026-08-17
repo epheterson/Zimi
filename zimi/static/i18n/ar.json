@@ -1504,5 +1504,13 @@
   "manage_setup_key_pw_ph": "كلمة مرور المسؤول الجديدة",
   "manage_setup_key_submit": "تعيين كلمة المرور",
   "manage_setup_key_needboth": "أدخل مفتاح الإعداد وكلمة مرور جديدة.",
-  "manage_setup_key_bad": "لم يتم قبول مفتاح الإعداد هذا."
+  "manage_setup_key_bad": "لم يتم قبول مفتاح الإعداد هذا.",
+  "zi_kind_export": "إشارات مرجعية",
+  "zi_kind_edit": "مُحرَّر",
+  "creator_made": "أُنشئ هنا",
+  "creator_made_empty": "لم يُنشأ شيء هنا بعد.",
+  "creator_col_name": "الاسم",
+  "creator_col_type": "النوع",
+  "creator_col_size": "الحجم",
+  "creator_col_when": "أُنشئ"
 }

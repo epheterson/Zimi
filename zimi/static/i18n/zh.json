@@ -1504,5 +1504,13 @@
   "manage_setup_key_pw_ph": "新管理员密码",
   "manage_setup_key_submit": "设置密码",
   "manage_setup_key_needboth": "请输入设置密钥和新密码。",
-  "manage_setup_key_bad": "该设置密钥未被接受。"
+  "manage_setup_key_bad": "该设置密钥未被接受。",
+  "zi_kind_export": "书签",
+  "zi_kind_edit": "已编辑",
+  "creator_made": "在此创建",
+  "creator_made_empty": "此处尚未创建任何内容。",
+  "creator_col_name": "名称",
+  "creator_col_type": "类型",
+  "creator_col_size": "大小",
+  "creator_col_when": "创建于"
 }

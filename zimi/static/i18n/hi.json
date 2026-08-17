@@ -1504,5 +1504,13 @@
   "manage_setup_key_pw_ph": "नया एडमिन पासवर्ड",
   "manage_setup_key_submit": "पासवर्ड सेट करें",
   "manage_setup_key_needboth": "सेटअप कुंजी और एक नया पासवर्ड दर्ज करें।",
-  "manage_setup_key_bad": "वह सेटअप कुंजी स्वीकार नहीं की गई।"
+  "manage_setup_key_bad": "वह सेटअप कुंजी स्वीकार नहीं की गई।",
+  "zi_kind_export": "बुकमार्क",
+  "zi_kind_edit": "संपादित",
+  "creator_made": "यहाँ बनाया",
+  "creator_made_empty": "यहाँ अभी तक कुछ नहीं बना।",
+  "creator_col_name": "नाम",
+  "creator_col_type": "प्रकार",
+  "creator_col_size": "आकार",
+  "creator_col_when": "बनाया"
 }

@@ -1504,5 +1504,13 @@
   "manage_setup_key_pw_ph": "Новый пароль администратора",
   "manage_setup_key_submit": "Задать пароль",
   "manage_setup_key_needboth": "Введите ключ настройки и новый пароль.",
-  "manage_setup_key_bad": "Этот ключ настройки не принят."
+  "manage_setup_key_bad": "Этот ключ настройки не принят.",
+  "zi_kind_export": "Закладки",
+  "zi_kind_edit": "Изменено",
+  "creator_made": "Создано здесь",
+  "creator_made_empty": "Здесь пока ничего не создано.",
+  "creator_col_name": "Имя",
+  "creator_col_type": "Тип",
+  "creator_col_size": "Размер",
+  "creator_col_when": "Создано"
 }

@@ -1504,5 +1504,13 @@
   "manage_setup_key_pw_ph": "Nova palavra-passe de administrador",
   "manage_setup_key_submit": "Definir palavra-passe",
   "manage_setup_key_needboth": "Introduza a chave de configuração e uma nova palavra-passe.",
-  "manage_setup_key_bad": "Essa chave de configuração não foi aceite."
+  "manage_setup_key_bad": "Essa chave de configuração não foi aceite.",
+  "zi_kind_export": "Marcadores",
+  "zi_kind_edit": "Editado",
+  "creator_made": "Criado aqui",
+  "creator_made_empty": "Ainda nada criado aqui.",
+  "creator_col_name": "Nome",
+  "creator_col_type": "Tipo",
+  "creator_col_size": "Tamanho",
+  "creator_col_when": "Criado"
 }

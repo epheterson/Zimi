@@ -1504,5 +1504,13 @@
   "manage_setup_key_pw_ph": "New admin password",
   "manage_setup_key_submit": "Set password",
   "manage_setup_key_needboth": "Enter the setup key and a new password.",
-  "manage_setup_key_bad": "That setup key was not accepted."
+  "manage_setup_key_bad": "That setup key was not accepted.",
+  "zi_kind_export": "Bookmarks",
+  "zi_kind_edit": "Edited",
+  "creator_made": "Made here",
+  "creator_made_empty": "Nothing created here yet.",
+  "creator_col_name": "Name",
+  "creator_col_type": "Type",
+  "creator_col_size": "Size",
+  "creator_col_when": "Created"
 }
