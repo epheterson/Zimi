@@ -1498,5 +1498,11 @@
   "users_creation_label": "Creation",
   "create_size_custom": "Custom…",
   "ctx_download_zim": "Download ZIM file",
-  "uncaptured_in_library": "Read it in this library"
+  "uncaptured_in_library": "Read it in this library",
+  "manage_setup_key_title": "Enter the setup key",
+  "manage_setup_key_body": "This server has no admin password yet. Set one from the machine running Zimi, or enter the one-time setup key it printed to its log to set the password from here.",
+  "manage_setup_key_pw_ph": "New admin password",
+  "manage_setup_key_submit": "Set password",
+  "manage_setup_key_needboth": "Enter the setup key and a new password.",
+  "manage_setup_key_bad": "That setup key was not accepted."
 }

@@ -3426,8 +3426,24 @@ def main():
             if _get_manage_password_hash():
                 log.info("Library management enabled (password protected)")
             else:
-                log.info(
-                    "Library management enabled (no password — set one in Settings for public servers)"
+                # No admin password yet. Set one from THIS machine freely; any
+                # other device needs the setup key below (GHSA-5mw2-53vv-9pw6).
+                from zimi import manage as _mng
+
+                key = _mng.ensure_setup_key()
+                log.info("Library management enabled — no admin password set yet.")
+                print(
+                    "\n"
+                    "  ┌─ Zimi first-run setup ──────────────────────────────\n"
+                    "  │  Set the admin password from this machine, or from\n"
+                    "  │  another device using this one-time setup key:\n"
+                    "  │\n"
+                    f"  │      SETUP KEY:  {key}\n"
+                    "  │\n"
+                    "  │  (also saved to the setup-key file in the data dir;\n"
+                    "  │   it stops working the moment a password is set)\n"
+                    "  └─────────────────────────────────────────────────────\n",
+                    flush=True,
                 )
         from zimi import sso as _sso
 

@@ -1498,5 +1498,11 @@
   "users_creation_label": "Erstellung",
   "create_size_custom": "Benutzerdefiniert…",
   "ctx_download_zim": "ZIM-Datei herunterladen",
-  "uncaptured_in_library": "In dieser Bibliothek lesen"
+  "uncaptured_in_library": "In dieser Bibliothek lesen",
+  "manage_setup_key_title": "Setup-Schlüssel eingeben",
+  "manage_setup_key_body": "Dieser Server hat noch kein Administratorkennwort. Legen Sie eines auf dem Rechner fest, auf dem Zimi läuft, oder geben Sie den einmaligen Setup-Schlüssel aus dem Protokoll ein, um das Kennwort hier festzulegen.",
+  "manage_setup_key_pw_ph": "Neues Administratorkennwort",
+  "manage_setup_key_submit": "Kennwort festlegen",
+  "manage_setup_key_needboth": "Setup-Schlüssel und ein neues Kennwort eingeben.",
+  "manage_setup_key_bad": "Dieser Setup-Schlüssel wurde nicht akzeptiert."
 }

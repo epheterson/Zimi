@@ -415,6 +415,7 @@ let _managePwRequired = false; // server is password-protected and we have no to
 // Passwordless instance reached over a non-private hop: management is LAN-only
 // and there is no password to enter, so we explain instead of prompting (#36).
 let _managePublicLocked = false;
+let _manageNeedsSetupKey = false;
 let _manageUnlocked = true; // manage is always available (auth via env var only)
 
 // May we hit ambient /manage/* endpoints (activity bar, peer discovery)?
@@ -1694,6 +1695,14 @@ async function _probeManageAuth() {
       // so surface an explanation instead of a bogus prompt (#36). manage stays
       // "enabled" so the tab is reachable and renders the locked banner.
       _managePublicLocked = true;
+      // Bootstrap-from-remote: the server has no password AND we are not on the
+      // host, so the door is the setup key it printed to its log, not a
+      // password (GHSA-5mw2-53vv-9pw6). Remember which locked state this is so
+      // the banner asks for the right thing.
+      try {
+        var _ld = await mres.clone().json();
+        _manageNeedsSetupKey = !!(_ld && _ld.needs_setup_key);
+      } catch (e) { _manageNeedsSetupKey = false; }
     } else if (mres.status === 401) {
       // Stored token went stale — drop BOTH copies (leaving the persisted
       // one meant every future load retried it, 401'd, and re-prompted).
@@ -8526,6 +8535,31 @@ async function renderActivityTab() {
 // Passwordless instance reachable from a non-private network: there is no
 // password to enter, so explain the LAN-only state instead of prompting (#36).
 function _renderManagePublicLocked() {
+  // Two locked shapes. Without a password AND off-host, the door is the
+  // one-time setup key the server logged — so offer a field for it, which on
+  // success sets the first admin password in the same step. Otherwise (the
+  // pre-existing #36 case) just explain the LAN-only state.
+  if (_manageNeedsSetupKey) {
+    output.innerHTML =
+      '<div class="manage-wrap"><div class="lang-welcome-card manage-locked-card">' +
+        '<div class="lang-welcome-text">' +
+          '<strong>' + tH('manage_setup_key_title') + '</strong>' +
+          '<p>' + tH('manage_setup_key_body') + '</p>' +
+          '<div class="ms-user-add" style="max-width:340px;margin-top:12px">' +
+            '<input type="text" id="setup-key-input" autocomplete="off" spellcheck="false" ' +
+              'autocapitalize="characters" placeholder="XXXX-XXXX-XXXX">' +
+            '<input type="password" id="setup-pw-input" autocomplete="new-password" ' +
+              'placeholder="' + escAttr(tH('manage_setup_key_pw_ph')) + '" style="margin-top:8px">' +
+            '<div class="pw-actions" style="margin-top:10px">' +
+              '<button class="ms-btn ms-btn-primary" onclick="_submitSetupKey()">' +
+                tH('manage_setup_key_submit') + '</button>' +
+            '</div>' +
+            '<div class="pw-error" id="setup-key-error"></div>' +
+          '</div>' +
+        '</div>' +
+      '</div></div>';
+    return;
+  }
   output.innerHTML =
     '<div class="manage-wrap">' +
       '<div class="lang-welcome-card manage-locked-card">' +
@@ -8535,6 +8569,39 @@ function _renderManagePublicLocked() {
         '</div>' +
       '</div>' +
     '</div>';
+}
+
+// Spend the setup key: set the first admin password with the key as the
+// bearer authorization the bootstrap gate accepts, then sign in with the
+// password just set. One gesture from a locked remote client to full admin.
+async function _submitSetupKey() {
+  var key = (document.getElementById('setup-key-input') || {}).value || '';
+  var pw = (document.getElementById('setup-pw-input') || {}).value || '';
+  var err = document.getElementById('setup-key-error');
+  key = key.trim();
+  if (!key || !pw) {
+    if (err) { err.textContent = tH('manage_setup_key_needboth'); err.style.display = 'block'; }
+    return;
+  }
+  try {
+    var res = await fetch('/manage/set-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Zimi-Setup-Key': key },
+      body: JSON.stringify({ password: pw })
+    });
+    if (!res.ok) {
+      if (err) { err.textContent = tH('manage_setup_key_bad'); err.style.display = 'block'; }
+      return;
+    }
+    // Password is set; the key is spent. Authenticate with it and enter.
+    _manageNeedsSetupKey = false;
+    _managePublicLocked = false;
+    _manageToken = pw;
+    _saveManageToken(pw);
+    location.reload();
+  } catch (e) {
+    if (err) { err.textContent = tH('manage_setup_key_bad'); err.style.display = 'block'; }
+  }
 }
 
 async function renderManage() {

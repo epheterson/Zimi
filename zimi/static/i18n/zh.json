@@ -1498,5 +1498,11 @@
   "users_creation_label": "创建",
   "create_size_custom": "自定义…",
   "ctx_download_zim": "下载 ZIM 文件",
-  "uncaptured_in_library": "在此文库中阅读"
+  "uncaptured_in_library": "在此文库中阅读",
+  "manage_setup_key_title": "输入设置密钥",
+  "manage_setup_key_body": "此服务器尚未设置管理员密码。请在运行 Zimi 的机器上设置，或输入其日志中打印的一次性设置密钥以在此处设置密码。",
+  "manage_setup_key_pw_ph": "新管理员密码",
+  "manage_setup_key_submit": "设置密码",
+  "manage_setup_key_needboth": "请输入设置密钥和新密码。",
+  "manage_setup_key_bad": "该设置密钥未被接受。"
 }

@@ -189,6 +189,8 @@ Zimi runs seriously with zero ceremony: `zimi serve` in or beside a folder of ZI
 - **Reference manifests.** `deploy/` carries docker-compose and Kubernetes examples, and `scripts/make-airgap-bundle.sh` builds a wheels-only installer for machines that will never see the internet.
 - **Update awareness.** Manage shows the current version and checks for releases on demand — Latest or Beta channel, with an optional hold-back delay.
 
+- **Secure first-run.** Until an admin password is set, the machine running Zimi can set one directly; any other device needs a one-time setup key Zimi prints to its log on first start. So a LAN, container, or tailnet neighbor can never claim the admin account before you do. Set `ZIMI_MANAGE_PASSWORD` to skip the bootstrap entirely.
+
 Single sign-on through Cloudflare Access is available for tunnel deployments (experimental) — see [docs/deployment-networking.md](docs/deployment-networking.md).
 
 ## API

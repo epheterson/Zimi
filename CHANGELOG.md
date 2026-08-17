@@ -35,6 +35,10 @@ Zimi makes ZIMs now. Point it at a folder, a web page, a whole site, a video pla
 - **Entry mimetypes are spec-clean.** HTML entries carry a bare text/html with the charset declared in the document itself, satisfying the ZIM Counter grammar and fixing a latent mojibake risk for non-UTF-8 captures along the way.
 - **`/manage/stats` is cheap by default,** with the expensive per-index walk behind an explicit detail flag, and disk usage memoized.
 
+### Security
+
+- **First-run admin takeover closed (GHSA-5mw2-53vv-9pw6, CWE-306).** On a passwordless instance, claiming the first admin password was allowed to any private-tier client — the whole LAN, a Docker bridge, a Tailscale tailnet — so an adjacent device could race the owner and lock them out. Bootstrap now has exactly two doors: the machine running Zimi sets the first password with no secret, and any other device must present a one-time setup key the server prints to its log on first start and invalidates the moment a password is set. Reported by EQSTLab.
+
 ### Fixed
 
 - **The Raspberry Pi crash (#51).** A finished download re-hashed the whole file and then re-scanned all installed archives while holding the lock every reader needs; on a Pi with a NAS mount that read as a crash. Registration is now incremental: worst lock wait measured from 10.6s down to 0.45s, archives opened from 53 down to 1. The same bug class was then hunted out of bookmark export and deletion.

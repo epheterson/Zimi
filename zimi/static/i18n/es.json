@@ -1498,5 +1498,11 @@
   "users_creation_label": "Creación",
   "create_size_custom": "Personalizado…",
   "ctx_download_zim": "Descargar archivo ZIM",
-  "uncaptured_in_library": "Leerlo en esta biblioteca"
+  "uncaptured_in_library": "Leerlo en esta biblioteca",
+  "manage_setup_key_title": "Introduce la clave de configuración",
+  "manage_setup_key_body": "Este servidor aún no tiene contraseña de administrador. Defínela desde la máquina que ejecuta Zimi, o introduce la clave de configuración de un solo uso que aparece en su registro para definir la contraseña aquí.",
+  "manage_setup_key_pw_ph": "Nueva contraseña de administrador",
+  "manage_setup_key_submit": "Definir contraseña",
+  "manage_setup_key_needboth": "Introduce la clave de configuración y una nueva contraseña.",
+  "manage_setup_key_bad": "Esa clave de configuración no se aceptó."
 }

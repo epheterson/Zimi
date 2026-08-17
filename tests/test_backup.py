@@ -347,6 +347,10 @@ def test_import_rejects_bad_layout(monkeypatch, tmp_path):
 
 
 def test_import_passwordless_public_locked(monkeypatch, tmp_path):
+    # A genuine public (non-private-tier) client on a passwordless instance
+    # gets the opaque lock — no hint a setup key exists. Only a private-tier
+    # peer who could read the log is told about the key (GHSA-5mw2-53vv-9pw6);
+    # that path is pinned in test_bootstrap_takeover.
     _setup(monkeypatch, tmp_path, private=False)
     status, body = _apply(_Handler(private=False), {"schema": "zimi-backup"})
     assert status == 403

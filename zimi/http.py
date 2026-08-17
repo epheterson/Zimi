@@ -2868,6 +2868,19 @@ class ZimHandler(BaseHTTPRequestHandler):
             return False
         return _is_trusted_net(ip)
 
+    def _is_loopback_client(self):
+        """True ONLY when the peer is the machine running Zimi (127.0.0.0/8,
+        ::1). This is the bootstrap trust boundary — being ON the host is the
+        one proof of ownership that needs no secret. A LAN or tailnet peer is
+        'private' but not the host, and must present the setup key instead
+        (GHSA-5mw2-53vv-9pw6: private-tier was too wide a door for claiming
+        the first admin password)."""
+        try:
+            ip = ipaddress.ip_address(self._client_ip())
+        except ValueError:
+            return False
+        return ip.is_loopback
+
     def _peer_share_allowed(self):
         """True if this client may pull whole ZIMs from /dl/.
 
@@ -2942,9 +2955,10 @@ class ZimHandler(BaseHTTPRequestHandler):
         file, for two minutes. No ticket → the normal sharing gates."""
         from zimi import manage as _manage
 
-        if not (
-            ticket and _manage.spend_dl_ticket(ticket, name)
-        ) and not self._peer_share_allowed():
+        if (
+            not (ticket and _manage.spend_dl_ticket(ticket, name))
+            and not self._peer_share_allowed()
+        ):
             return self._json(403, {"error": "peer sharing not available"})
 
         zims = _srv.get_zim_files()  # {name: path}

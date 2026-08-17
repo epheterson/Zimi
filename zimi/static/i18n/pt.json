@@ -1498,5 +1498,11 @@
   "users_creation_label": "Criação",
   "create_size_custom": "Personalizado…",
   "ctx_download_zim": "Transferir ficheiro ZIM",
-  "uncaptured_in_library": "Ler nesta biblioteca"
+  "uncaptured_in_library": "Ler nesta biblioteca",
+  "manage_setup_key_title": "Introduza a chave de configuração",
+  "manage_setup_key_body": "Este servidor ainda não tem palavra-passe de administrador. Defina uma a partir da máquina que executa o Zimi, ou introduza a chave de configuração única apresentada no seu registo para definir a palavra-passe aqui.",
+  "manage_setup_key_pw_ph": "Nova palavra-passe de administrador",
+  "manage_setup_key_submit": "Definir palavra-passe",
+  "manage_setup_key_needboth": "Introduza a chave de configuração e uma nova palavra-passe.",
+  "manage_setup_key_bad": "Essa chave de configuração não foi aceite."
 }

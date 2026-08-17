@@ -1498,5 +1498,11 @@
   "users_creation_label": "Création",
   "create_size_custom": "Personnalisé…",
   "ctx_download_zim": "Télécharger le fichier ZIM",
-  "uncaptured_in_library": "Le lire dans cette bibliothèque"
+  "uncaptured_in_library": "Le lire dans cette bibliothèque",
+  "manage_setup_key_title": "Saisir la clé de configuration",
+  "manage_setup_key_body": "Ce serveur n'a pas encore de mot de passe administrateur. Définissez-en un depuis la machine qui exécute Zimi, ou saisissez la clé de configuration unique affichée dans son journal pour définir le mot de passe ici.",
+  "manage_setup_key_pw_ph": "Nouveau mot de passe administrateur",
+  "manage_setup_key_submit": "Définir le mot de passe",
+  "manage_setup_key_needboth": "Saisissez la clé de configuration et un nouveau mot de passe.",
+  "manage_setup_key_bad": "Cette clé de configuration n'a pas été acceptée."
 }

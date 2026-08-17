@@ -1498,5 +1498,11 @@
   "users_creation_label": "الإنشاء",
   "create_size_custom": "مخصص…",
   "ctx_download_zim": "تنزيل ملف ZIM",
-  "uncaptured_in_library": "اقرأها في هذه المكتبة"
+  "uncaptured_in_library": "اقرأها في هذه المكتبة",
+  "manage_setup_key_title": "أدخل مفتاح الإعداد",
+  "manage_setup_key_body": "لا يوجد بعد كلمة مرور للمسؤول على هذا الخادم. عيّنها من الجهاز الذي يشغّل Zimi، أو أدخل مفتاح الإعداد لمرة واحدة الذي طُبع في سجله لتعيين كلمة المرور من هنا.",
+  "manage_setup_key_pw_ph": "كلمة مرور المسؤول الجديدة",
+  "manage_setup_key_submit": "تعيين كلمة المرور",
+  "manage_setup_key_needboth": "أدخل مفتاح الإعداد وكلمة مرور جديدة.",
+  "manage_setup_key_bad": "لم يتم قبول مفتاح الإعداد هذا."
 }

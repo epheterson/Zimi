@@ -87,7 +87,8 @@ def test_export_registers_without_full_rescan(tmp_path, monkeypatch):
     assert len(state["files"]) == 1
 
     out_name = state["files"][0]
-    assert os.path.exists(str(zdir / out_name))
+    # Exports land on the Created shelf (<zim_dir>/created), beside captures.
+    assert os.path.exists(str(zdir / "created" / out_name))
     # Only the exported file was opened for metadata — the existing ZIM was
     # left alone, which is exactly what the full rescan failed to do.
     assert len(extracted) == 1

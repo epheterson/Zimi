@@ -1498,5 +1498,11 @@
   "users_creation_label": "יצירה",
   "create_size_custom": "מותאם אישית…",
   "ctx_download_zim": "הורדת קובץ ZIM",
-  "uncaptured_in_library": "לקרוא בספרייה הזו"
+  "uncaptured_in_library": "לקרוא בספרייה הזו",
+  "manage_setup_key_title": "הזן את מפתח ההגדרה",
+  "manage_setup_key_body": "לשרת הזה עדיין אין סיסמת מנהל. הגדר אחת מהמחשב שמריץ את Zimi, או הזן את מפתח ההגדרה החד-פעמי שהודפס ביומן שלו כדי להגדיר את הסיסמה מכאן.",
+  "manage_setup_key_pw_ph": "סיסמת מנהל חדשה",
+  "manage_setup_key_submit": "הגדר סיסמה",
+  "manage_setup_key_needboth": "הזן את מפתח ההגדרה וסיסמה חדשה.",
+  "manage_setup_key_bad": "מפתח ההגדרה הזה לא התקבל."
 }

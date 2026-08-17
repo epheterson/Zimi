@@ -177,6 +177,71 @@ def _set_manage_password(pw, username=None):
     return True
 
 
+# ── first-run setup key (GHSA-5mw2-53vv-9pw6) ───────────────────────────────
+#
+# Bootstrap trust used to be "any private-tier client sets the first admin
+# password". On a LAN, a Docker bridge, or a tailnet that is too many hands:
+# an adjacent device could race the owner to claim admin. The fix splits the
+# bootstrap door in two — the HOST itself (loopback) needs no secret, and any
+# REMOTE client must present this setup key, which the server generates on
+# first start and prints to its own log. No third door: LAN and tailnet peers
+# without the key get the same locked response a public client does.
+def _setup_key_file():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "setup-key")
+
+
+def _read_setup_key():
+    try:
+        with open(_setup_key_file(), encoding="utf-8") as f:
+            return f.readline().strip()
+    except (FileNotFoundError, OSError):
+        return ""
+
+
+def ensure_setup_key():
+    """Guarantee a setup key exists while the instance is passwordless, and
+    return it. A no-op (returns '') once a password is set — the key's whole
+    life is the bootstrap window. Idempotent: the same key persists across
+    restarts until it is spent, so a printed code stays valid."""
+    if _get_manage_password_hash():
+        return ""
+    existing = _read_setup_key()
+    if existing:
+        return existing
+    key = "-".join(
+        secrets.token_hex(2).upper() for _ in range(3)
+    )  # e.g. 7Q2K-9F4M-XR8T shape, from a real CSPRNG
+    # 0600, best-effort: a key only the server and root can read.
+    _atomic_write_text(_setup_key_file(), key + "\n")
+    try:
+        os.chmod(_setup_key_file(), 0o600)
+    except OSError:
+        pass
+    return key
+
+
+def _clear_setup_key():
+    try:
+        os.remove(_setup_key_file())
+    except (FileNotFoundError, OSError):
+        pass
+
+
+def _bootstrap_key_ok(handler):
+    """True when a remote bootstrap request carries the valid setup key, in
+    the Authorization: Bearer header or an X-Zimi-Setup-Key header. Constant-
+    time compared. Absent key file (already spent) → nothing matches."""
+    want = _read_setup_key()
+    if not want:
+        return False
+    got = (handler.headers.get("X-Zimi-Setup-Key") or "").strip()
+    if not got:
+        auth = handler.headers.get("Authorization") or ""
+        if auth.lower().startswith("bearer "):
+            got = auth[7:].strip()
+    return bool(got) and hmac.compare_digest(got, want)
+
+
 def _api_token_file():
     """API token file path inside ZIMI_DATA_DIR."""
     return os.path.join(_srv.ZIMI_DATA_DIR, "api_token")
@@ -347,11 +412,22 @@ def _check_manage_auth(handler):
     """
     stored_pw = _get_manage_password_hash()
     if not stored_pw:
-        # Passwordless is fine on a home network, but a passwordless
-        # instance exposed to the internet was letting anyone on Earth
-        # manage the library. LAN/loopback clients stay open; public
-        # clients must set a password first (from the LAN).
-        if handler._is_private_client():
+        # Bootstrap window (GHSA-5mw2-53vv-9pw6). Being ON the host is the one
+        # ownership proof that needs no secret; every remote client — LAN,
+        # Docker bridge, tailnet alike — must present the setup key the server
+        # printed to its log. Private-tier is no longer a free pass: it was
+        # wide enough for an adjacent device to race the owner to the first
+        # password. No password yet means no admin yet, so this same gate
+        # guards ALL of /manage, not just set-password.
+        # getattr fallback is for test doubles only: the real ZimHandler
+        # always carries _is_loopback_client, so production always takes the
+        # strict loopback path — and test_bootstrap_takeover pins that, so a
+        # refactor that lost the method would fail loudly rather than silently
+        # widen the door back to _is_private_client.
+        is_local = getattr(handler, "_is_loopback_client", handler._is_private_client)
+        if is_local():
+            return None
+        if _bootstrap_key_ok(handler):
             return None
         return PUBLIC_LOCKED
 
@@ -377,6 +453,20 @@ def _manage_auth_challenge(handler):
     if result is None:
         return None
     if result == PUBLIC_LOCKED:
+        # Passwordless and off-host. A PRIVATE-tier client — a LAN or tailnet
+        # peer who could plausibly read the server log — is told a setup key
+        # exists so the SPA prompts for it. A genuine WAN visitor gets the
+        # opaque lock: no hint a key exists, nothing to brute-force. Being on
+        # the same trust network is the price of even seeing the key prompt.
+        if not _get_manage_password_hash() and handler._is_private_client():
+            return (
+                403,
+                {
+                    "error": "needs_setup_key",
+                    "needs_password": False,
+                    "needs_setup_key": True,
+                },
+            )
         return (403, {"error": "public_locked", "needs_password": False})
     return (401, {"error": "unauthorized", "needs_password": True})
 
@@ -4751,6 +4841,9 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(
                 500, {"error": "Could not save the password (storage is not writable)"}
             )
+        # The setup key's life ends with the bootstrap it existed for.
+        if new_pw:
+            _clear_setup_key()
         return handler._json(
             200, {"status": "password set" if new_pw else "password cleared"}
         )
