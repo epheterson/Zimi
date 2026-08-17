@@ -23,6 +23,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import zimi.http as zhttp  # noqa: E402
 import zimi.manage as manage  # noqa: E402
 import zimi.server as server  # noqa: E402
 from tests.test_create_routes import _get, _post  # noqa: E402
@@ -57,11 +58,17 @@ def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
         "capture_variants_default",
         "queue",
         "offline",
+        "created_counts",
+        "created_list",
     }
     assert body["browser_ready"] is True
     assert body["alive_ready"] is False
     assert body["create_root"] == "/srv/zims"
     assert set(body["sidecar"]) == {"installed", "version"}
+    # Every type is present in the breakdown even when the library is empty, so
+    # the client never has to guess a missing bucket is zero.
+    assert set(body["created_counts"]) == set(manage._CREATOR_TYPES)
+    assert isinstance(body["created_list"], list)
 
 
 def test_an_unconfigured_create_root_is_null_not_empty(monkeypatch):
@@ -69,6 +76,131 @@ def test_an_unconfigured_create_root_is_null_not_empty(monkeypatch):
     spellings of "unset" for two readers to disagree about."""
     monkeypatch.setattr(manage, "_create_root", lambda: "")
     assert _get("/manage/creator").body["create_root"] is None
+
+
+# ── the creator inventory: what Zimi has made, by type ───────────────────────
+#
+# The breakdown and the sortable table both come from _creator_inventory, which
+# reads two seams: the library list and the per-file provenance memo. These
+# patch both so the aggregation is tested on a known library without writing
+# real archives — that a kind is derived correctly from real metadata is
+# test_zim_info_endpoint.py's job, not this one's.
+
+
+@pytest.fixture
+def made_library(monkeypatch):
+    """A library with one ZIM of each capture type Zimi stamps, plus one it did
+    not make. ``a-channel`` carries no timestamp, standing in for a ZIM created
+    before the stamp existed."""
+    entries = [
+        {
+            "name": "one-page",
+            "title": "One Page",
+            "file": "one-page.zim",
+            "size_bytes": 100,
+        },
+        {
+            "name": "many-pages",
+            "title": "Many Pages",
+            "file": "many-pages.zim",
+            "size_bytes": 250,
+        },
+        {"name": "a-site", "title": "A Site", "file": "a-site.zim", "size_bytes": 4000},
+        {
+            "name": "a-channel",
+            "title": "A Channel",
+            "file": "a-channel.zim",
+            "size_bytes": 900000,
+        },
+        {
+            "name": "an-archive",
+            "title": "An Archive",
+            "file": "an-archive.zim",
+            "size_bytes": 7000,
+        },
+        {
+            "name": "my-bookmarks",
+            "title": "My Bookmarks",
+            "file": "my-bookmarks.zim",
+            "size_bytes": 500,
+        },
+        {
+            "name": "downloaded",
+            "title": "Somebody Else's",
+            "file": "downloaded.zim",
+            "size_bytes": 999,
+        },
+    ]
+    kinds = {
+        "one-page": {"mode": "page", "ts": 111},
+        "many-pages": {"mode": "pages", "ts": 222},
+        "a-site": {"mode": "site", "ts": 333},
+        "a-channel": {"mode": "video"},
+        "an-archive": {"mode": "import", "ts": 555},
+        "my-bookmarks": {"mode": "bookmarks", "ts": 666},
+        "downloaded": None,
+    }
+    monkeypatch.setattr(server, "list_zims", lambda *a, **k: list(entries))
+    monkeypatch.setattr(zhttp, "_zim_kind_for", lambda e: kinds.get(e["name"]))
+    # Keep the two subprocess-backed readiness probes off the unit path.
+    monkeypatch.setattr(manage, "_create_browser_ready", lambda: True)
+    monkeypatch.setattr(manage, "_create_alive_ready", lambda: True)
+    return entries, kinds
+
+
+def test_creator_counts_break_down_made_here_zims_by_type(made_library):
+    """One count per type, folding the modes that share a bucket: the single-
+    and multi-page engines both read as "page", a bookmark export as "export".
+    The ZIM Zimi did not make is in none of them."""
+    counts = _get("/manage/creator").body["created_counts"]
+    assert counts == {
+        "page": 2,
+        "site": 1,
+        "video": 1,
+        "import": 1,
+        "folder": 0,
+        "export": 1,
+        "edit": 0,
+    }
+
+
+def test_creator_list_carries_the_sortable_fields(made_library):
+    rows = _get("/manage/creator").body["created_list"]
+    # Every ZIM Zimi made appears once; the downloaded one does not.
+    assert {r["name"] for r in rows} == {
+        "one-page",
+        "many-pages",
+        "a-site",
+        "a-channel",
+        "an-archive",
+        "my-bookmarks",
+    }
+    for r in rows:
+        assert set(r) == {
+            "name",
+            "title",
+            "type",
+            "size_bytes",
+            "created_ts",
+            "path_basename",
+        }
+    by_name = {r["name"]: r for r in rows}
+    assert by_name["many-pages"]["type"] == "page"
+    assert by_name["my-bookmarks"]["type"] == "export"
+    assert by_name["a-site"]["size_bytes"] == 4000
+    assert by_name["a-site"]["title"] == "A Site"
+    assert by_name["a-site"]["path_basename"] == "a-site.zim"
+    assert by_name["one-page"]["created_ts"] == 111
+    # A ZIM whose provenance carries no timestamp still lists, with None — the
+    # client sorts the dated ones and leaves the rest where they fall.
+    assert by_name["a-channel"]["created_ts"] is None
+
+
+def test_creator_inventory_is_empty_when_nothing_was_made(monkeypatch):
+    monkeypatch.setattr(server, "list_zims", lambda *a, **k: [])
+    body = _get("/manage/creator").body
+    assert body["created_list"] == []
+    assert body["created_counts"] == {t: 0 for t in manage._CREATOR_TYPES}
 
 
 def test_the_defaults_it_reports_are_the_ones_the_engines_use(monkeypatch):

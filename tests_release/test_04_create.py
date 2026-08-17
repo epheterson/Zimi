@@ -34,8 +34,8 @@ def gate_server(gate_library, tmp_path_factory):
     offline switch page capture correctly refuses to fetch (that refusal is
     itself gate-checked in the offline feature). The capture target is the
     loopback fixture site, so the gate still runs on a machine with no
-    internet. ZIMI_CREATE_ROOT is set for the same reason as the shared
-    fixture: import capture is refused outright without it."""
+    internet. No ZIMI_CREATE_ROOT: the two modes that once read a server path
+    (folder, archive import) are both CLI-only now, so nothing here needs one."""
     import shutil
 
     from conftest import boot, clean_env
@@ -45,7 +45,6 @@ def gate_server(gate_library, tmp_path_factory):
     shutil.copytree(gate_library, zim_dir)
     env = clean_env()
     env.pop("ZIMI_OFFLINE", None)
-    env["ZIMI_CREATE_ROOT"] = str(tmp_path_factory.getbasetemp())
     with boot(
         zim_dir=zim_dir, data_dir=os.path.join(str(root), "data"), env=env
     ) as server:
@@ -96,6 +95,19 @@ def test_folder_mode_is_a_closed_door_not_a_hidden_one(gate_server, source_folde
         assert "CLI" in body.get("error", ""), body
 
 
+def test_import_mode_is_a_closed_door_not_a_hidden_one(gate_server):
+    """Archive import followed folder off the web ("remove archive as well only
+    in cli"). Refused through both doors, naming `zimi import` — and, like
+    folder, this holds even on an instance that has a root configured."""
+    for endpoint in ("/manage/create/probe", "/manage/create"):
+        status, body = gate_server.post_json(
+            endpoint, {"mode": "import", "source": __file__}
+        )
+        assert status == 400, f"{endpoint} accepted import mode: {body}"
+        assert "CLI" in body.get("error", ""), body
+        assert "zimi import" in body.get("error", ""), body
+
+
 def test_a_page_becomes_a_zim_that_serves(gate_server, source_site):
     status, body = gate_server.post_json(
         "/manage/create",
@@ -142,9 +154,10 @@ def test_without_a_configured_root_the_web_cannot_reach_the_filesystem(
 ):
     """The default posture, booted for real. Eric's objection to the round-2
     folder flow was that it showed him the whole file system; the answer today
-    is layered: folder mode refuses from the web no matter what, the picker
-    endpoint is gone, and with no ZIMI_CREATE_ROOT the import mode cannot
-    read a server path either. Checked against a server that never had one."""
+    is total: no web mode reads a path off the server's disk. Folder and archive
+    import both refuse from the web no matter what and name their CLI door, the
+    directory picker is gone, and the URL modes — which read nothing local — are
+    untouched. Checked against a server that never had a ZIMI_CREATE_ROOT."""
     import shutil
 
     from conftest import boot, clean_env
@@ -159,11 +172,16 @@ def test_without_a_configured_root_the_web_cannot_reach_the_filesystem(
     ) as server:
         status, body = server.get_json("/manage/create/browse?path=/")
         assert status == 410, f"the retired picker endpoint answered: {body}"
-        for endpoint in ("/manage/create", "/manage/create/probe"):
-            status, body = server.post_json(
-                endpoint, {"mode": "import", "source": __file__}
-            )
-            assert status == 403, f"import reached the filesystem with no root: {body}"
+        # Both server-path modes are CLI-only: refused with the CLI pointer, not
+        # a root complaint — the server never reaches the filesystem at all.
+        for mode, door in (("import", "zimi import"), ("folder", "zimi create")):
+            for endpoint in ("/manage/create", "/manage/create/probe"):
+                status, body = server.post_json(
+                    endpoint, {"mode": mode, "source": __file__}
+                )
+                assert status == 400, f"{endpoint} took {mode} with no root: {body}"
+                assert "CLI" in body.get("error", ""), body
+                assert door in body.get("error", ""), body
         # …and the URL modes, which read nothing local, are unaffected.
         status, body = server.post_json(
             "/manage/create/probe", {"mode": "page", "source": "nonsense"}

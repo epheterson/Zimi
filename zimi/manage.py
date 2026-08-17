@@ -2099,11 +2099,6 @@ CREATE_VIDEO_LIMIT_CEILING = 500
 # a job a browser tab is willing to watch — past this, use the CLI.
 CREATE_MAX_BYTES_CEILING = 64 * 1024**3
 CREATE_MAX_SIZE_TEXT = 32  # "512MiB" is 6; nothing real is longer than this
-CREATE_MAX_NAME = 64
-# An import name becomes a FILENAME under the ZIM directory, so it is checked
-# against a charset rather than sanitised: a name that would need cleaning up is
-# a name the admin should retype.
-_CREATE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _CREATE_LANGUAGE_RE = re.compile(r"^[a-z]{2,3}$")
 # The video quality the web form may ask for, as named presets mapped to yt-dlp
 # selectors. A preset name is the ONLY thing accepted over HTTP: yt-dlp's format
@@ -2732,12 +2727,15 @@ def _create_validate(data):
             "on the server itself"
         )
     elif mode == "import":
-        source = os.path.realpath(os.path.expanduser(source))
-        _create_require_within_root(source)
-        if not os.path.isfile(source):
-            raise ValueError("not a file on this server")
-        if not os.access(source, os.R_OK):
-            raise ValueError("that file is not readable by the server")
+        # CLI-only, by the same decree that took folder capture off the web
+        # (Eric: "remove archive as well only in cli"). The engine
+        # (importer.convert_archive) is untouched — `zimi import <file>` on the
+        # machine itself still runs it. What is gone is the web door that read a
+        # path off the server's disk, and the refusal names the one still open.
+        raise ValueError(
+            "web archive import is CLI-only — run `zimi import <file>` "
+            "on the server itself"
+        )
     elif mode == "page":
         # One page or twenty, it is the same gesture: paste what you want kept.
         # The engine sends a single URL down the single-page path itself, so
@@ -2796,8 +2794,6 @@ def _create_validate(data):
         opts["limit"] = _create_int(data.get("limit"), 1, CREATE_VIDEO_LIMIT_CEILING)
         opts["max_bytes"] = _create_bytes(data.get("max_bytes"))
         opts["fmt"] = _create_video_format(data.get("format"), opts["audio_only"])
-    elif mode == "import":
-        opts["name"] = _create_name(data.get("name"))
     return mode, source, title, opts
 
 
@@ -2890,23 +2886,6 @@ def _create_language(value):
     return code
 
 
-def _create_name(value):
-    """The filename stem for an imported ZIM. Checked hard: it is joined onto
-    the ZIM directory, so anything with a separator or a leading dot in it is
-    refused outright rather than cleaned up into something else."""
-    if value in (None, ""):
-        return None
-    name = str(value).strip()
-    if not name:
-        return None
-    if len(name) > CREATE_MAX_NAME or not _CREATE_NAME_RE.match(name):
-        raise ValueError(
-            "name may use letters, digits, dot, dash and underscore, "
-            "and must start with a letter or digit"
-        )
-    return name
-
-
 def _create_engine(value):
     """Which capture engine a web capture asked for. None when nobody said,
     which every caller reads as "the fast one" — the default lives in the
@@ -2991,8 +2970,9 @@ def _create_out_dir():
 def _create_run(job, opts):
     """Drive the engine for one job. Imports are deferred to here: the writer
     stack and yt-dlp are heavy, and a server that never creates a ZIM should
-    never pay for them. (Folder mode never reaches here — the web refuses it
-    at validation; `zimi create <folder>` is its only door.)"""
+    never pay for them. (Neither folder nor archive import reaches here — the
+    web refuses both at validation; `zimi create <folder>` and `zimi import
+    <file>` are their only doors.)"""
     if job.mode == "page":
         # create_pages_zim hands a single URL to create_page_zim itself, so one
         # entry point covers both shapes — and it takes a progress callback,
@@ -3051,16 +3031,10 @@ def _create_run(job, opts):
             progress=job.note,
             **_create_kwargs(opts, "limit", "max_bytes", "fmt", "language"),
         )
-    from zimi.importer import import_archive
-
-    return import_archive(
-        job.source,
-        title=job.title or None,
-        out_dir=_create_out_dir(),
-        register=True,
-        sink=job.note,
-        **_create_kwargs(opts, "name"),
-    )
+    # Only the three URL modes reach here; validation refuses everything else
+    # (folder and archive import are CLI-only). A job that arrived with any
+    # other mode is a bug in the caller, not an input to run.
+    raise ValueError(f"no web engine for mode {job.mode!r}")
 
 
 def _create_worker(job, opts):
@@ -3483,105 +3457,32 @@ def _is_offline_mode():
     return bool(p2p.is_offline())
 
 
-# ── the server-path gate ────────────────────────────────────────────────────
+# ── the server-path root, now a reported fact only ──────────────────────────
 #
-# Import capture reads a path an admin types and packages what is there. On
-# the CLI that is unremarkable — someone at a shell on the machine already has
-# the filesystem. Over the WEB it is a read-the-server's-disk primitive;
-# Eric's round-2 verdict on the sibling folder flow was "the folder flow feels
-# sketchy, I don't love showing the whole file system there. Maybe folder is
-# CLI only?" — and round 3 made that literal: folder mode is refused from the
-# web outright, so import is the ONE server-path door left.
+# There is no web create mode that reads a path off the server's disk any more.
+# Folder capture went to the CLI in round 3, and archive import followed it
+# ("remove archive as well only in cli") — both are refused outright in
+# ``_create_validate`` before anything touches the filesystem. So the gate,
+# the containment check and the closed-by-default door that guarded that
+# surface are all gone with the modes they guarded.
 #
-# For it, the answer is a door that is CLOSED by default and opens exactly as
-# wide as the operator says: ZIMI_CREATE_ROOT names one directory tree, and
-# with it unset the web cannot package a server path at all. It is not a
-# client-side courtesy — hiding a form stops nobody from posting the JSON by
-# hand, so both doors (create, probe) check it here.
-#
-# Containment compares RESOLVED paths on both sides. A naive prefix test on the
-# typed string lets /srv/library-sources-evil pass as being inside
-# /srv/library-sources, and lets a symlink planted inside the root walk straight
-# out of it.
+# ``ZIMI_CREATE_ROOT`` survives only as a fact the create page still reports
+# (``create_root`` in the poll and the Creator payload): the server no longer
+# acts on it, but the client reads it to describe the instance.
 
 CREATE_ROOT_ENV = "ZIMI_CREATE_ROOT"
 
 
 def _create_root():
-    """The one directory tree the web may package from, resolved, or "" when
-    the operator has named none. Read at call time, like every other
-    environment-backed setting, so a config file published into the
-    environment at startup is picked up without a second resolution path."""
+    """The ``ZIMI_CREATE_ROOT`` directory, resolved, or "" when unset. Read at
+    call time, like every other environment-backed setting, so a config file
+    published into the environment at startup is picked up without a second
+    resolution path. Nothing on the server acts on it any more — it is reported
+    to the create page as a fact about the instance, nothing more."""
     raw = os.environ.get(CREATE_ROOT_ENV, "").strip()
     if not raw:
         return ""
     return os.path.realpath(os.path.expanduser(raw))
-
-
-def _create_within_root(resolved, root):
-    """True when an already-resolved path IS the root or lives under it.
-
-    Both sides must come from ``os.path.realpath`` — see the note above. The
-    rstrip matters for a root of "/", where root + os.sep would be "//" and
-    nothing on earth would match it."""
-    if not root:
-        return False
-    return resolved == root or resolved.startswith(root.rstrip(os.sep) + os.sep)
-
-
-def _create_root_refusal():
-    """The ``(payload, status)`` every door sends when no root is configured.
-    It names the setting, because the person reading it is the one who can
-    change it."""
-    return (
-        {
-            "error": (
-                "packaging a server path from the web is switched off. Set "
-                "ZIMI_CREATE_ROOT to the one directory this server may package "
-                "from, or run `zimi create` on the machine itself."
-            ),
-            "create_root": None,
-        },
-        403,
-    )
-
-
-def _create_root_gate():
-    """The refusal when the web may not package a server path at all, else
-    None to carry on."""
-    return None if _create_root() else _create_root_refusal()
-
-
-def _create_require_within_root(resolved):
-    """Raise the client-safe ValueError ``_create_validate`` turns into a 400
-    when a resolved server path is not inside the configured root. Naming the
-    root is not disclosure: the caller is the primary admin, and the Create
-    page prints the same path under the field they typed into."""
-    root = _create_root()
-    if not root:
-        raise ValueError(
-            "packaging a server path from the web is switched off on this "
-            "server — set ZIMI_CREATE_ROOT, or run `zimi create` on the "
-            "machine itself"
-        )
-    if not _create_within_root(resolved, root):
-        raise ValueError(
-            f"that path is outside {root}, the only place this server packages from"
-        )
-
-
-def _create_server_path_gate(handler, mode):
-    """The one door a server path still comes through: import is the primary
-    admin's alone, AND only within the configured root. Folder is deliberately
-    NOT gated here any more — the web refuses that mode outright in
-    ``_create_validate``, and the refusal that points at the CLI is more useful
-    than a root complaint about a mode no root would reopen. Returns
-    ``(payload, status)`` to send, or None to carry on."""
-    if mode != "import":
-        return None
-    if not _primary_admin_authorized(handler):
-        return {"error": "Server-path creation needs the primary admin"}, 403
-    return _create_root_gate()
 
 
 def _create_import_ready():
@@ -3631,6 +3532,75 @@ def _create_alive_ready():
         return False
 
 
+# ── the Creator inventory: what Zimi has made, by type ──────────────────────
+#
+# The provenance a Zimi-made ZIM carries (http.py's kind machinery) names the
+# MODE it was captured with; the Creator pane groups those modes into the small
+# set of types a person thinks in. Several modes share a type: the single-page
+# and multi-page engines both stamp a page capture, and a bookmark export
+# stamps "bookmarks" — so the type the breakdown counts by is not always the
+# raw mode string. "edit" is here for the edit engine to fill; nothing stamps it
+# yet, and a bucket that is always present but sometimes zero is a stabler
+# contract than one that appears the day the first edit lands.
+
+_CREATOR_TYPES = ("page", "site", "video", "import", "folder", "export", "edit")
+
+_CREATOR_TYPE_BY_MODE = {
+    "page": "page",
+    "pages": "page",
+    "site": "site",
+    "video": "video",
+    "import": "import",
+    "folder": "folder",
+    "bookmarks": "export",
+    "edit": "edit",
+    "edited": "edit",
+}
+
+
+def _creator_type(mode):
+    """The Creator breakdown bucket for a provenance ``mode``, or the raw mode
+    for one the map does not know (kept so the row still says something rather
+    than vanishing — every mode Zimi stamps today is mapped)."""
+    return _CREATOR_TYPE_BY_MODE.get(mode or "", mode or "other")
+
+
+def _creator_inventory():
+    """``(counts, rows)`` for every ZIM Zimi made, wherever it lives.
+
+    One walk of the library. The per-file provenance memo in http.py answers
+    each ZIM at most once per process, so after the cold pass this is a dict
+    walk. ``counts`` partitions the made-here ZIMs across ``_CREATOR_TYPES``
+    (every bucket present, zero when nothing of that type exists); ``rows``
+    carries one entry per ZIM with the raw sortable fields and leaves the
+    ordering to the client."""
+    from zimi import http as _http
+
+    counts = {t: 0 for t in _CREATOR_TYPES}
+    rows = []
+    for entry in _srv.list_zims():
+        kind = _http._zim_kind_for(entry)
+        if not kind:
+            continue
+        ctype = _creator_type(kind.get("mode"))
+        if ctype in counts:
+            counts[ctype] += 1
+        rows.append(
+            {
+                "name": entry.get("name", ""),
+                "title": entry.get("title") or entry.get("name", ""),
+                "type": ctype,
+                "size_bytes": entry.get("size_bytes", 0),
+                # The creation timestamp the provenance record carries, or None
+                # for a Zimi ZIM old enough to predate the stamp — the client
+                # sorts the dated ones and leaves the rest where they fall.
+                "created_ts": kind.get("ts"),
+                "path_basename": entry.get("file", ""),
+            }
+        )
+    return counts, rows
+
+
 def _creator_payload():
     """Everything the Manage view's Creator section shows, in one read.
 
@@ -3654,6 +3624,7 @@ def _creator_payload():
         }
     except Exception:
         log.exception("sidecar status probe failed")
+    created_counts, created_list = _creator_inventory()
     return {
         "browser_ready": _create_browser_ready(),
         "alive_ready": _create_alive_ready(),
@@ -3667,6 +3638,11 @@ def _creator_payload():
         ),
         "queue": len(_create_queue_view()),
         "offline": _is_offline_mode(),
+        # What this instance has actually made, for the Creator pane's breakdown
+        # and its sortable table. Counts are a fixed-shape dict over
+        # _CREATOR_TYPES; the list is unsorted rows the client orders.
+        "created_counts": created_counts,
+        "created_list": created_list,
     }
 
 
@@ -3913,26 +3889,6 @@ def _probe_video(source, limit):
     }
 
 
-def _probe_import(source):
-    """Size and readiness. The sidecar answer is the one that decides whether
-    this can run at all on a machine with no internet."""
-    from zimi.importer import ARCHIVE_EXTS
-
-    ready = _create_import_ready()
-    known = source.lower().endswith(ARCHIVE_EXTS)
-    warning = None
-    if not known:
-        warning = "create_warn_not_archive"
-    elif not ready and _is_offline_mode():
-        warning = "create_warn_sidecar_offline"
-    return {
-        "ok": known and (ready or not _is_offline_mode()),
-        "bytes": os.path.getsize(source),
-        "sidecar_ready": ready,
-        "warning_key": warning,
-    }
-
-
 # The folder picker (`/manage/create/browse`, `_create_browse`) lived here
 # until folder mode left the web. The route remains and refuses with the CLI
 # pointer — see handle_manage_get — because a lister whose only customer was
@@ -3957,9 +3913,7 @@ def _create_probe(data):
         # network. One at a time here too.
         return {"error": "a ZIM is being created — wait for it to finish"}, 409
     try:
-        if mode == "import":
-            result = _probe_import(source)
-        elif mode == "video":
+        if mode == "video":
             result = _probe_video(source, opts.get("limit"))
         elif mode == "page":
             # One fetch, not twenty: the preview answers "is this the kind of
@@ -4890,13 +4844,12 @@ def handle_manage_post(handler, parsed, data):
             _dl_tickets[ticket] = (fname, now + DL_TICKET_TTL_SEC)
         return handler._json(200, {"ticket": ticket})
 
-    # ZIM creation — a creator account (can_create) may drive the URL modes
-    # without admin credentials, so these routes gate themselves ahead of the
-    # generic admin challenge below. Import reads a server path — a
-    # read-the-server's-disk primitive — so that mode stays with the PRIMARY
-    # admin: a creator captures the web, never the server's disk. (Folder mode
-    # is refused from the web entirely; secondary admins keep the URL modes,
-    # as before.)
+    # ZIM creation — a creator account (can_create) may drive these routes
+    # without admin credentials, so they gate themselves ahead of the generic
+    # admin challenge below. Every web mode captures the web, never the
+    # server's disk: folder and archive import are both refused outright in
+    # ``_create_validate`` (CLI-only), so there is no server-path mode left to
+    # hold to the primary admin.
     if parsed.path in (
         "/manage/create",
         "/manage/create/cancel",
@@ -4916,13 +4869,6 @@ def handle_manage_post(handler, parsed, data):
             # and package everything captured so far. Same auth as cancel.
             payload, status = _create_finish_now()
             return handler._json(status, payload)
-        # The probe reads exactly what the run would read, so it inherits the
-        # run's gate verbatim — otherwise it becomes the cheaper way to ask
-        # the same question of the same filesystem. The gate holds the
-        # server-path modes to the primary admin and to ZIMI_CREATE_ROOT.
-        gate = _create_server_path_gate(handler, data.get("mode"))
-        if gate:
-            return handler._json(gate[1], gate[0])
         if parsed.path == "/manage/create":
             payload, status = _create_start(data, actor=activity_actor(handler))
         else:

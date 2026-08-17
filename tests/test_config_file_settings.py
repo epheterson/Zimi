@@ -215,11 +215,11 @@ def test_defaults_are_never_published(clean_env):
 
 
 def test_create_root_travels_from_the_file_to_the_module_that_enforces_it(clean_env):
-    """The whole point of publication, on the one setting where getting it
-    wrong means a closed door stays closed: `zimi.manage` reads
-    ZIMI_CREATE_ROOT from the environment at call time and knows nothing about
-    config files, so a root named in the file has to arrive as that variable or
-    folder mode is refused on an instance the operator believes they opened."""
+    """The whole point of publication: `zimi.manage` reads ZIMI_CREATE_ROOT
+    from the environment at call time and knows nothing about config files, so
+    a root named in the file has to arrive as that variable or `_create_root`
+    never sees it. The value is a reported fact now — no web mode acts on it —
+    but the config→env plumbing under it still has to carry it."""
     import zimi.manage as manage
 
     settings = _sources(
@@ -233,14 +233,13 @@ def test_create_root_travels_from_the_file_to_the_module_that_enforces_it(clean_
     assert manage._create_root() == os.path.realpath("/srv/library-sources")
 
 
-def test_no_create_root_leaves_the_web_door_shut(clean_env):
-    """The default is not "the whole filesystem", it is "not from the web"."""
+def test_no_create_root_resolves_to_unset(clean_env):
+    """With nothing published, the variable stays absent and `_create_root`
+    reads it as unset — the None the create page shows for "no root here"."""
     import zimi.manage as manage
 
     assert server.apply_env_settings(_sources()) == []
     assert manage._create_root() == ""
-    gate = manage._create_root_gate()
-    assert gate is not None and gate[1] == 403
 
 
 def test_publication_never_overwrites_an_exported_variable(clean_env, monkeypatch):

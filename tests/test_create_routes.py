@@ -76,10 +76,6 @@ def clean_job(tmp_path, monkeypatch):
     wrote it to the real data dir would be scribbling on a running server's."""
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path / "data"))
     (tmp_path / "data").mkdir()
-    # The server-path mode (import) needs an operator-configured root or it is
-    # refused outright (see test_create_probe.py for the gate itself). Every
-    # import test here builds its source under tmp_path, so that is the root.
-    monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(tmp_path))
     manage._create_job = None
     manage._create_queue.clear()
     manage._create_journal = None
@@ -175,24 +171,17 @@ def test_folder_mode_is_cli_only_and_the_refusal_says_so(tmp_path):
         assert "zimi create" in h.body["error"], source
 
 
-def test_import_mode_normalizes_the_path(tmp_path, stub_engine):
-    """A traversal-shaped path is resolved before use, so what runs is the real
-    file — and what the status reports is that same resolved path."""
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "cap.wacz").write_bytes(b"x")
-    messy = str(tmp_path / "docs" / ".." / "docs" / "." / "cap.wacz")
-    assert _post("/manage/create", {"mode": "import", "source": messy}).status == 200
-    _wait_done()
-    assert _get("/manage/create/status").body["source"] == os.path.realpath(
-        str(tmp_path / "docs" / "cap.wacz")
-    )
-
-
-def test_import_mode_requires_an_existing_file(tmp_path):
-    assert (
-        _post("/manage/create", {"mode": "import", "source": str(tmp_path)}).status
-        == 400
-    )
+def test_import_mode_is_cli_only_and_the_refusal_says_so(tmp_path):
+    """Eric, this round: "remove archive as well only in cli." Import followed
+    folder off the web — the refusal names the CLI door, and (like folder) does
+    not depend on the file existing: the mode is gone, not misconfigured."""
+    archive = tmp_path / "cap.wacz"
+    archive.write_bytes(b"x")
+    for source in (str(archive), str(tmp_path / "nope.wacz"), str(tmp_path)):
+        h = _post("/manage/create", {"mode": "import", "source": source})
+        assert h.status == 400, source
+        assert "CLI-only" in h.body["error"], source
+        assert "zimi import" in h.body["error"], source
 
 
 def test_url_modes_reject_non_http_schemes():
@@ -397,31 +386,6 @@ def test_a_language_must_look_like_a_language_code():
         )
         assert h.status == 400, bad
         assert "code" in h.body["error"]
-
-
-def test_an_import_name_cannot_walk_out_of_the_zim_directory(tmp_path):
-    """The name becomes a filename joined onto the ZIM directory. It is checked
-    against a charset rather than cleaned up, so a name that would need
-    sanitising is refused and retyped instead of quietly becoming another one."""
-    archive = tmp_path / "cap.wacz"
-    archive.write_bytes(b"x")
-    for bad in ("../../etc/passwd", "a/b", ".hidden", "name with spaces", "x" * 200):
-        h = _post(
-            "/manage/create",
-            {"mode": "import", "source": str(archive), "name": bad},
-        )
-        assert h.status == 400, bad
-
-
-def test_a_good_import_name_reaches_the_engine(tmp_path, stub_engine):
-    archive = tmp_path / "cap.wacz"
-    archive.write_bytes(b"x")
-    _post(
-        "/manage/create",
-        {"mode": "import", "source": str(archive), "name": "field-notes_2026.v2"},
-    )
-    _wait_done()
-    assert stub_engine["opts"]["name"] == "field-notes_2026.v2"
 
 
 def test_unset_options_never_reach_the_engine_as_none(monkeypatch):
@@ -691,25 +655,20 @@ def test_every_mode_with_a_progress_callback_is_cancellable(monkeypatch, tmp_pat
     _wait_done()
 
 
-def test_server_path_mode_needs_the_primary_admin(monkeypatch, tmp_path, stub_engine):
-    """Import reads arbitrary server paths — that power stays with the primary
-    admin. Secondary admins keep the URL modes. Folder is not a permissions
-    question any more: the web refuses the mode for everyone."""
-    monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: False)
+def test_no_web_mode_reads_a_server_path(monkeypatch, tmp_path):
+    """The server-path modes both left the web. There is no primary-admin gate
+    to pass any more: folder and import are refused with the CLI pointer for
+    everyone, primary admin or not, and the URL modes reach validation as
+    before."""
     f = tmp_path / "a.wacz"
     f.write_bytes(b"x")
-    r = _post("/manage/create", {"mode": "import", "source": str(f)})
-    assert r.status == 403
-    # Folder answers with the CLI pointer, not with the tier gate: 400 for the
-    # primary admin and everyone else alike.
-    r = _post("/manage/create", {"mode": "folder", "source": str(tmp_path)})
-    assert r.status == 400
-    assert "CLI-only" in r.body["error"]
-    # URL modes stay open to any authorized admin — invalid scheme still 400s,
-    # proving the request reached validation rather than the tier gate.
-    r = _post("/manage/create", {"mode": "page", "source": "ftp://nope"})
-    assert r.status == 400
-
-    monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: True)
-    r = _post("/manage/create", {"mode": "import", "source": str(f)})
-    assert r.status == 200
+    for primary in (False, True):
+        monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: primary)
+        for mode, source in (("import", str(f)), ("folder", str(tmp_path))):
+            r = _post("/manage/create", {"mode": mode, "source": source})
+            assert r.status == 400, (mode, primary)
+            assert "CLI-only" in r.body["error"], (mode, primary)
+        # URL modes stay open to any authorized admin — invalid scheme still
+        # 400s, proving the request reached validation, not a tier gate.
+        r = _post("/manage/create", {"mode": "page", "source": "ftp://nope"})
+        assert r.status == 400

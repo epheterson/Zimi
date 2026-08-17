@@ -1,12 +1,13 @@
-"""The pre-flight probe, and the two web doors that closed with folder mode.
+"""The pre-flight probe, and the web doors that closed with the server-path modes.
 
 Round 1's Create page was, in Eric's words, "a shot in the dark": you typed a
 path you could not see and a language code you had to know, then waited. The
 probe is the cure, so the tests are about whether it actually tells the truth
-in advance. Folder mode itself — and the directory picker that fed it — left
-the web in round 3 ("do remove folder I said that would be CLI only"), so the
-other half of this file is about those doors refusing cleanly and pointing at
-the CLI instead of half-working.
+in advance. Both server-path modes left the web: folder in round 3 ("do remove
+folder I said that would be CLI only") and archive import right after ("remove
+archive as well only in cli"). So the other half of this file is about those
+doors refusing cleanly and pointing at the CLI instead of half-working, and
+about the directory picker that fed folder mode being gone entirely.
 """
 
 import os
@@ -59,21 +60,13 @@ def no_job():
 
 @pytest.fixture(autouse=True)
 def create_root(tmp_path, monkeypatch):
-    """Every server-path test runs on an instance whose operator has opened one
-    directory — the test's own tmp_path. Without ZIMI_CREATE_ROOT the web
-    cannot package a server path at all, which is the DEFAULT and has its own
-    tests below; making it the ambient state here would be testing the gate
-    over and over instead of what it gates."""
+    """ZIMI_CREATE_ROOT survives only as a fact the create page reports (the
+    status probe echoes it) — no web mode acts on it any more, since the two
+    modes that read a server path are both CLI-only now. Set to the test's own
+    tmp_path so the one test that checks the reported value has something to
+    read; harmless everywhere else."""
     monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(tmp_path))
     return tmp_path
-
-
-@pytest.fixture
-def archive(tmp_path):
-    """A file shaped like a capture, inside the configured root."""
-    f = tmp_path / "capture.warc.gz"
-    f.write_bytes(b"\x1f\x8b")
-    return f
 
 
 # ── the seam to the engines ─────────────────────────────────────────────────
@@ -168,12 +161,13 @@ def test_the_folder_refusal_does_not_depend_on_the_root(monkeypatch, tmp_path):
 
 def test_probe_reuses_the_real_validator(tmp_path):
     """A probe that accepted what a run refuses would be a preview of a
-    different job."""
-    missing = _post(
+    different job. Import is CLI-only, so the probe refuses it exactly as the
+    run does — the validator is the one seam."""
+    refused = _post(
         "/manage/create/probe", {"mode": "import", "source": str(tmp_path / "no.wacz")}
     )
-    assert missing.status == 400
-    assert missing.body["error"] == "not a file on this server"
+    assert refused.status == 400
+    assert "CLI-only" in refused.body["error"]
     assert (
         _post("/manage/create/probe", {"mode": "page", "source": "file:///etc"}).status
         == 400
@@ -189,46 +183,32 @@ def test_probe_is_refused_while_a_job_runs():
     assert h.status == 409
 
 
-# ── import probe ────────────────────────────────────────────────────────────
-
-
-def test_import_probe_names_a_wrong_extension(tmp_path):
-    f = tmp_path / "notes.txt"
-    f.write_text("not an archive")
-    b = _post("/manage/create/probe", {"mode": "import", "source": str(f)}).body
-    assert b["ok"] is False
-    assert b["warning_key"] == "create_warn_not_archive"
-    assert b["bytes"] == len("not an archive")
-
-
-def test_import_probe_reports_sidecar_readiness(archive):
-    b = _post("/manage/create/probe", {"mode": "import", "source": str(archive)}).body
-    assert isinstance(b["sidecar_ready"], bool)
-    assert b["warning_key"] is None or b["warning_key"] == "create_warn_sidecar_offline"
-
-
 # ── unexpected failures stay generic ────────────────────────────────────────
 
 
-def test_an_unexpected_probe_failure_leaks_nothing(monkeypatch, archive):
-    def boom(_source):
+def test_an_unexpected_probe_failure_leaks_nothing(monkeypatch):
+    def boom(*_a, **_k):
         raise RuntimeError("/secret/internal/path exploded")
 
-    monkeypatch.setattr(manage, "_probe_import", boom)
-    b = _post("/manage/create/probe", {"mode": "import", "source": str(archive)}).body
+    monkeypatch.setattr(manage, "_probe_url", boom)
+    b = _post(
+        "/manage/create/probe", {"mode": "site", "source": "https://example.org/"}
+    ).body
     assert b["ok"] is False
     assert b["warning_key"] == "create_warn_probe_failed"
     assert "secret" not in repr(b)
 
 
-def test_a_create_error_during_probe_reaches_the_client_verbatim(monkeypatch, archive):
+def test_a_create_error_during_probe_reaches_the_client_verbatim(monkeypatch):
     from zimi.creator import CreateError
 
-    def refuse(_source):
+    def refuse(*_a, **_k):
         raise CreateError("this page is an empty application shell — use zimit")
 
-    monkeypatch.setattr(manage, "_probe_import", refuse)
-    b = _post("/manage/create/probe", {"mode": "import", "source": str(archive)}).body
+    monkeypatch.setattr(manage, "_probe_url", refuse)
+    b = _post(
+        "/manage/create/probe", {"mode": "site", "source": "https://example.org/"}
+    ).body
     assert b["ok"] is False
     assert "zimit" in b["detail"]
 
@@ -265,53 +245,51 @@ def test_browse_requires_auth_at_all(monkeypatch, tmp_path):
     assert h.body["error"] == "public_locked"
 
 
-# ── the gate ────────────────────────────────────────────────────────────────
-
-
-def test_import_probe_needs_the_primary_admin(monkeypatch, tmp_path, archive):
-    """Import reads a server path — that power stays with the primary admin.
-    Secondary admins keep the URL modes, which read nothing local."""
-    monkeypatch.setattr(manage, "_get_manage_password_hash", lambda: "deadbeef$cafe")
-    monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: False)
-    monkeypatch.setattr(manage, "_secondary_admin_authorized", lambda h: True)
-
-    assert (
-        _post("/manage/create/probe", {"mode": "import", "source": str(archive)}).status
-        == 403
-    )
-    # A secondary admin keeps the URL modes, which read nothing local.
-    assert (
-        _post("/manage/create/probe", {"mode": "page", "source": "not a url"}).status
-        == 400
-    )
-
-
-# ── the server-path root ────────────────────────────────────────────────────
+# ── import is CLI-only ───────────────────────────────────────────────────────
 #
-# The door that is closed by default and opens only as wide as
-# ZIMI_CREATE_ROOT says. Import is the one mode left behind it — the Create
-# page never draws what a viewer may not use, but hiding a form stops nobody
-# from posting the JSON by hand, so every one of these is about the server
-# refusing on its own.
+# Archive import followed folder off the web ("remove archive as well only in
+# cli"). It is refused through both doors, for everyone, whatever the root —
+# the mode is gone, not gated. The server no longer reads a path off its own
+# disk for any create request; ZIMI_CREATE_ROOT survives only as a reported
+# fact.
 
 
 def _unset_root(monkeypatch):
     monkeypatch.delenv(manage.CREATE_ROOT_ENV, raising=False)
 
 
-def test_with_no_root_import_is_refused_through_both_doors(monkeypatch, tmp_path):
-    _unset_root(monkeypatch)
+def test_import_is_refused_through_both_doors(monkeypatch, tmp_path):
+    """Whether or not a root is set, and whoever asks: both doors answer with
+    the CLI pointer, never with a root complaint or a tier gate."""
     archive = tmp_path / "cap.warc.gz"
     archive.write_bytes(b"\x1f\x8b")
-    for path in ("/manage/create", "/manage/create/probe"):
-        h = _post(path, {"mode": "import", "source": str(archive)})
-        assert h.status == 403, path
-        assert "ZIMI_CREATE_ROOT" in h.body["error"], path
+    for rooted in (True, False):
+        if rooted:
+            monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(tmp_path))
+        else:
+            _unset_root(monkeypatch)
+        for path in ("/manage/create", "/manage/create/probe"):
+            h = _post(path, {"mode": "import", "source": str(archive)})
+            assert h.status == 400, (path, rooted)
+            assert "CLI-only" in h.body["error"], (path, rooted)
+            assert "zimi import" in h.body["error"], (path, rooted)
+
+
+def test_import_refusal_does_not_depend_on_the_primary_admin(monkeypatch, tmp_path):
+    """There is no primary-admin gate left: no web mode reads a server path, so
+    import refuses the primary admin and everyone else the same way."""
+    archive = tmp_path / "cap.warc.gz"
+    archive.write_bytes(b"\x1f\x8b")
+    for primary in (False, True):
+        monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: primary)
+        h = _post("/manage/create/probe", {"mode": "import", "source": str(archive)})
+        assert h.status == 400, primary
+        assert "CLI-only" in h.body["error"], primary
 
 
 def test_with_no_root_the_url_modes_are_untouched(monkeypatch):
-    """The root gates SERVER PATHS. Capturing a URL reads nothing local and is
-    not what Eric was uneasy about."""
+    """The URL modes read nothing local, so the (now purely reported) root has
+    never had anything to say about them."""
     _unset_root(monkeypatch)
     h = _post("/manage/create/probe", {"mode": "page", "source": "not a url"})
     assert h.status == 400  # refused as a bad URL, never as a policy matter
@@ -324,61 +302,6 @@ def test_the_status_probe_reports_the_root(monkeypatch, tmp_path):
     assert _get("/manage/create/status", {"probe": ["1"]}).body["create_root"] is None
     # Not on every poll — it is configuration, not progress.
     assert "create_root" not in _get("/manage/create/status").body
-
-
-def test_a_sibling_directory_sharing_the_roots_name_is_not_inside_it(
-    monkeypatch, tmp_path
-):
-    """The classic naive-prefix hole: /srv/library-sources-evil starts with
-    /srv/library-sources and is nowhere near inside it."""
-    root = tmp_path / "sources"
-    root.mkdir()
-    evil = tmp_path / "sources-evil"
-    evil.mkdir()
-    (evil / "cap.warc.gz").write_bytes(b"\x1f\x8b")
-    monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(root))
-
-    h = _post(
-        "/manage/create/probe",
-        {"mode": "import", "source": str(evil / "cap.warc.gz")},
-    )
-    assert h.status == 400
-    assert "outside" in h.body["error"]
-
-
-def test_a_symlink_out_of_the_root_is_resolved_before_it_is_judged(
-    monkeypatch, tmp_path
-):
-    """Comparing the typed string would let a link planted inside the root walk
-    straight out of it. Both sides are realpath'd, so it cannot."""
-    root = tmp_path / "sources"
-    root.mkdir()
-    outside = tmp_path / "elsewhere"
-    outside.mkdir()
-    (outside / "cap.warc.gz").write_bytes(b"\x1f\x8b")
-    os.symlink(str(outside), str(root / "escape"))
-    monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(root))
-
-    through_link = str(root / "escape" / "cap.warc.gz")
-    h = _post("/manage/create/probe", {"mode": "import", "source": through_link})
-    assert h.status == 400
-    assert "outside" in h.body["error"]
-
-
-def test_the_root_itself_is_inside_the_root(monkeypatch, tmp_path):
-    """An operator who names /srv/sources means that directory too, not only
-    the things under it."""
-    root = tmp_path / "sources"
-    root.mkdir()
-    (root / "cap.warc.gz").write_bytes(b"\x1f\x8b")
-    monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(root))
-    assert (
-        _post(
-            "/manage/create/probe",
-            {"mode": "import", "source": str(root / "cap.warc.gz")},
-        ).status
-        == 200
-    )
 
 
 # ── multi-URL page mode ─────────────────────────────────────────────────────
