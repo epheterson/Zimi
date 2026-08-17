@@ -1295,7 +1295,13 @@ def start_export(payload):
             def _prog(done, total):
                 _set_export_state(done=done, total=total)
 
-            out_paths = build_export_jobs(jobs, _srv.ZIM_DIR, progress=_prog)
+            # Exports land on the Created shelf beside web creations — both
+            # are made-here artifacts, and an export filed under Other while
+            # a capture filed under Created read as two rules where the
+            # person sees one act (Eric: "fix that").
+            _made_here = os.path.join(_srv.ZIM_DIR, "created")
+            os.makedirs(_made_here, exist_ok=True)
+            out_paths = build_export_jobs(jobs, _made_here, progress=_prog)
             _register_exports(out_paths)
             names = [os.path.basename(p) for p in out_paths]
             _set_export_state(
