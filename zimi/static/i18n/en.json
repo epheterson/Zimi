@@ -1512,5 +1512,9 @@
   "creator_col_name": "Name",
   "creator_col_type": "Type",
   "creator_col_size": "Size",
-  "creator_col_when": "Created"
+  "creator_col_when": "Created",
+  "au_from_catalog": "From the catalog",
+  "au_from_catalog_n": "{n} of {total} — checked for updates",
+  "au_local_custom": "Local or custom",
+  "au_local_custom_hint": "Made here, or with no dated edition to match — there's nothing to check."
 }

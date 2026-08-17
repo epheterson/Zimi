@@ -1512,5 +1512,9 @@
   "creator_col_name": "नाम",
   "creator_col_type": "प्रकार",
   "creator_col_size": "आकार",
-  "creator_col_when": "बनाया"
+  "creator_col_when": "बनाया",
+  "au_from_catalog": "कैटलॉग से",
+  "au_from_catalog_n": "{total} में से {n} — अपडेट के लिए जाँचे जाते हैं",
+  "au_local_custom": "लोकल या कस्टम",
+  "au_local_custom_hint": "यहाँ बने, या मिलान के लिए कोई दिनांकित संस्करण नहीं — जाँचने को कुछ नहीं।"
 }

@@ -1512,5 +1512,9 @@
   "creator_col_name": "Nom",
   "creator_col_type": "Type",
   "creator_col_size": "Taille",
-  "creator_col_when": "Créé"
+  "creator_col_when": "Créé",
+  "au_from_catalog": "Du catalogue",
+  "au_from_catalog_n": "{n} sur {total} — vérifiés pour les mises à jour",
+  "au_local_custom": "Local ou personnalisé",
+  "au_local_custom_hint": "Créés ici, ou sans édition datée à comparer — il n'y a rien à vérifier."
 }

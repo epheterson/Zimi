@@ -9376,9 +9376,11 @@ function _creatorInstallHtml(ready, cmd) {
 var _creatorData = null;
 
 function _msCreatorHtml() {
-  var h = '<div class="ms-section-label">' + tH('creator_engines') + '</div>' +
-    '<div class="ms-hint">' + tH('creator_engines_hint') + '</div>' +
-    '<div id="ms-creator" class="ms-creator">' +
+  // No technical "Capture engines / decided by what is installed" lead — the
+  // nav tab already says Creator, and that engine-status block reads as debug
+  // output (Eric: "starts with CAPTURE ENGINES... very weird"). The pane now
+  // opens with what you've made and the defaults; capabilities sit last.
+  var h = '<div id="ms-creator" class="ms-creator">' +
     // First-ever open: the app's styled loading line, never bare browser text.
     (_creatorData ? _creatorHtml(_creatorData) : _loadingHtml()) +
     '</div>';
@@ -9414,27 +9416,31 @@ function _creatorQueueHtml(queue) {
 
 function _creatorHtml(d) {
   var sidecar = d.sidecar || {};
-  var h = _mcRow(tH('creator_browser'), '<span id="ms-cr-browser">' + _creatorStateHtml(d.browser_ready) + '</span>') +
-    '<div id="ms-cr-browser-cmd">' + _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium") + '</div>' +
-    _mcRow(tH('creator_sidecar'), '<span id="ms-cr-sidecar">' + _creatorSidecarHtml(sidecar) + '</span>') +
-    '<div id="ms-cr-sidecar-cmd">' + _creatorInstallHtml(sidecar.installed, 'zimi import --setup') + '</div>' +
-    // The recording engine needs both halves, and the server is the one that
-    // decides that — this is its verdict, not this client's arithmetic.
-    _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorStateHtml(d.alive_ready) + '</span>');
+  var sep = '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
 
-  h += '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
-    '<div class="ms-section-label">' + tH('creator_defaults') + '</div>' +
+  // Lead with what you've made here — the human content of this pane.
+  var h = '<div class="ms-section-label">' + tH('creator_made') + '</div>' +
+    '<div id="ms-cr-made">' + _creatorMadeHtml(d) + '</div>';
+
+  // Then the defaults a new capture starts with.
+  h += sep + '<div class="ms-section-label">' + tH('creator_defaults') + '</div>' +
     _mcRow(tH('create_block_ads'), _creatorDefaultSwitch('block_ads', 'create_block_ads', d.block_ads_default)) +
     _mcRow(tH('create_capture_variants'), _creatorDefaultSwitch('capture_variants', 'create_capture_variants', d.capture_variants_default)) +
     '<div class="ms-hint">' + tH('creator_defaults_hint') + '</div>';
 
-  h += '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
-    '<div class="ms-section-label">' + tH('creator_queue') + '</div>' +
+  // The queue, when it matters.
+  h += sep + '<div class="ms-section-label">' + tH('creator_queue') + '</div>' +
     _mcRow(tH('creator_queued'), '<span id="ms-cr-queue">' + _creatorQueueHtml(d.queue) + '</span>');
 
-  h += '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
-    '<div class="ms-section-label">' + tH('creator_made') + '</div>' +
-    '<div id="ms-cr-made">' + _creatorMadeHtml(d) + '</div>';
+  // Capabilities LAST — the technical "what's installed" report, no longer the
+  // first thing the pane shows.
+  h += sep + '<div class="ms-section-label">' + tH('creator_engines') + '</div>' +
+    '<div class="ms-hint" style="margin-bottom:10px">' + tH('creator_engines_hint') + '</div>' +
+    _mcRow(tH('creator_browser'), '<span id="ms-cr-browser">' + _creatorStateHtml(d.browser_ready) + '</span>') +
+    '<div id="ms-cr-browser-cmd">' + _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium") + '</div>' +
+    _mcRow(tH('creator_sidecar'), '<span id="ms-cr-sidecar">' + _creatorSidecarHtml(sidecar) + '</span>') +
+    '<div id="ms-cr-sidecar-cmd">' + _creatorInstallHtml(sidecar.installed, 'zimi import --setup') + '</div>' +
+    _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorStateHtml(d.alive_ready) + '</span>');
   return h;
 }
 
@@ -9621,31 +9627,32 @@ function _autoUpdateNextHtml(au) {
   return esc(_relTime(au.next_check));
 }
 
-// Which ZIMs the updater can maintain, and the ones it cannot with the reason.
-// Rendered only when something IS skipped: a library where everything is
-// tracked needs no explanation, and a row saying "0 skipped" is clutter.
+// How the library splits for the updater: catalog ZIMs it can check against a
+// newer edition, versus local or custom ones (created here, or with no dated
+// edition to match) that there is simply nothing to check. Two plain counts,
+// no wall of filenames — those names read as debug output, not information.
 function _autoUpdateCoverageHtml(coverage) {
   if (!coverage) return '';
-  var tracked = coverage.tracked || [];
-  var skipped = coverage.skipped || [];
-  var total = tracked.length + skipped.length;
+  var tracked = (coverage.tracked || []).length;
+  var custom = (coverage.skipped || []).length;
+  var total = tracked + custom;
   if (!total) return '';
-  var h = _mcRow(tH('au_coverage'), esc(t('au_coverage_n', { n: tracked.length, total: total })));
-  if (!skipped.length) return h;
-  h += '<div class="ms-hint">' + tH('au_skipped_hint') + '</div>' +
-    '<div class="au-skipped">';
-  for (var i = 0; i < skipped.length; i++) {
-    h += '<span class="act-chip" title="' + escAttr(t('au_reason_undated')) + '">' +
-      esc(skipped[i].name) + '</span>';
+  var h = _mcRow(tH('au_from_catalog'),
+    esc(t('au_from_catalog_n', { n: tracked, total: total })));
+  if (custom) {
+    h += _mcRow(tH('au_local_custom'), esc(String(custom)));
+    h += '<div class="ms-hint">' + tH('au_local_custom_hint') + '</div>';
   }
-  return h + '</div>';
+  return h;
 }
 
 function _autoUpdateHtml(au, coverage) {
+  // Frequency + what the library splits into for the updater. The last-run /
+  // next-run clock rows are gone — operational noise the operator did not ask
+  // for; what they want to know is how much of the library is even checkable
+  // (Eric: "why not say how many are local/custom instead").
   return '<div class="ms-section-label">' + tH('auto_update') + '</div>' +
     _mcRow(tH('au_frequency'), _autoUpdateSelectHtml(au)) +
-    _mcRow(tH('au_last_run'), _autoUpdateLastHtml(au)) +
-    _mcRow(tH('au_next_run'), _autoUpdateNextHtml(au)) +
     _autoUpdateCoverageHtml(coverage);
 }
 
@@ -9673,7 +9680,9 @@ function _msLibraryHtml() {
       '<span class="mc-label">' + tH('updates') + '</span>' +
       '<span class="mc-value" style="color:var(--text2)"><span class="spinner-inline"></span>' + tH('updates_checking') + '</span></div>' +
     '<div id="updates-detail" class="updates-detail" style="display:none"></div>' +
-    '<div id="ms-auto-update">' + _autoUpdateHtml(d.auto_update || {}, null) + '</div>' +
+    // Space before the ZIM auto-update block so its header doesn't crowd the
+    // app-update line above it (Eric: "no spacing after Updates line").
+    '<div id="ms-auto-update" style="margin-top:16px">' + _autoUpdateHtml(d.auto_update || {}, null) + '</div>' +
     '<div class="ms-actions">' +
       '<button class="manage-btn-action" onclick="manageImportZim()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('import_zim') + '</button>' +
       '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('refresh_cache') + '</button>' +
@@ -10278,25 +10287,24 @@ function _msServerHtml() {
   // pops in); _renderMirrorSection repaints from server truth right after.
   var shareCached = '';
   try { shareCached = localStorage.getItem(SK.SHARE_ROWS) || ''; } catch (e) {}
-  var h = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
-    '<div id="ms-mirror-status" class="share-rows-slot">' +
-      (shareCached || _shareSkeletonHtml()) + '</div>' +
-    '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
-  // Downloads: nightly window scheduler + the global download speed cap.
-  h += '<div class="ms-section-label">' + tH('downloads_section') + '</div>' +
-    '<div id="ms-dl-schedule" class="ms-dl-schedule">' + tH('loading') + '</div>' +
-    '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
-  // Backup & export hub — two self-titled cards (My data + Server backup), so no
-  // extra "Backup" group heading is needed above them.
-  h += '<div id="ms-backup" class="ms-backup">' + _backupHubHtml() + '</div>' +
-    '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
-  h += '<div class="ms-section-label">' + tH('storage_section') + '</div>' +
-    '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
-    '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>';
+  var sep = '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
+
+  // App updates FIRST — the thing an operator opens Server settings to check.
+  // NOT the ZIM-content "Auto-update" toggle; ids stay app_update-prefixed.
+  var updatesSec = '<div class="ms-section-label">' + tH('app_update_section') + '</div>' +
+    '<div id="' + _APP_UPDATE_ID + '" class="ms-app-update">' + tH('loading') + '</div>';
+
+  var sharingSec = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
+    '<div id="ms-mirror-status" class="share-rows-slot">' + (shareCached || _shareSkeletonHtml()) + '</div>';
+
+  var downloadsSec = '<div class="ms-section-label">' + tH('downloads_section') + '</div>' +
+    '<div id="ms-dl-schedule" class="ms-dl-schedule">' + tH('loading') + '</div>';
+
+  // Storage owns its desktop variant so the section can move freely — the old
+  // reorder-fragile string split is gone.
+  var storageSec = '<div class="ms-section-label">' + tH('storage_section') + '</div>';
   if (IS_DESKTOP) {
-    // Desktop: add browse buttons for folder selection + port + save.
-    // Keep the sharing hero on top — rebuild only the fields part.
-    h = h.split('<div class="ms-field">')[0] +
+    storageSec +=
       '<div class="ms-field"><label>' + tH('zim_folder') + '</label>' +
       '<div style="display:flex;gap:8px"><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
       '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseZimFolder()">' + tH('choose_folder') + '</button></div></div>' +
@@ -10308,16 +10316,26 @@ function _msServerHtml() {
         '<button class="manage-btn-action" onclick="settingsSaveInline()" style="margin-inline-start:auto">' + tH('save') + '</button></div>' +
       '<div class="ms-hint">' + tH('restart_hint') + '</div>';
   } else {
-    h += '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
+    storageSec +=
+      '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
+      '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
+      '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
   }
-  // App updates — the Zimi application itself. NOT the ZIM-content
-  // "Auto-update" toggle; wording and ids stay app_update-prefixed.
-  h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
-    '<div class="ms-section-label">' + tH('app_update_section') + '</div>' +
-    '<div id="' + _APP_UPDATE_ID + '" class="ms-app-update">' + tH('loading') + '</div></div>';
-  // Security: password + API token
-  h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
-    '<div id="ms-security">' + tH('loading') + '</div></div>';
+
+  // My data + Server backups — two self-titled cards, no extra heading.
+  var backupSec = '<div id="ms-backup" class="ms-backup">' + _backupHubHtml() + '</div>';
+
+  var tokenSec = '<div id="ms-security">' + tH('loading') + '</div>';
+
+  var hotSec = '<div class="ms-section-label">' + tH('hot_zims') + '</div>' +
+    '<div class="ms-hint">' + tH('hot_zims_hint') + '</div>' +
+    '<div id="ms-hot-zims" style="margin-top:10px">' + tH('loading') + '</div>' +
+    '<div style="margin-top:14px" id="ms-cache-info-wrap">' +
+      '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
+
+  // Eric's order: Updates, Sharing, Downloads, Storage, My Data / Server
+  // Backups, API Token, then Hot ZIMs and cache together.
+  var h = [updatesSec, sharingSec, downloadsSec, storageSec, backupSec, tokenSec, hotSec].join(sep);
   // Async fill security
   Promise.all([
     fetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
@@ -10337,12 +10355,6 @@ function _msServerHtml() {
     sh += '</span></div>';
     el.innerHTML = sh;
   });
-  // Hot ZIMs section — pre-warmed at startup; cold ZIMs stay lazy.
-  h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
-    '<div class="ms-section-label">' + tH('hot_zims') + '</div>' +
-    '<div class="ms-hint">' + tH('hot_zims_hint') + '</div>' +
-    '<div id="ms-hot-zims" style="margin-top:10px">' + tH('loading') + '</div>' +
-    '</div>';
   // These populate elements by id, so they must run AFTER this HTML is in
   // the DOM — not mid-string. Deferring one tick also lets the cached
   // sharing rows paint first, so the section never flashes empty.
@@ -10354,9 +10366,6 @@ function _msServerHtml() {
     _renderDownloadSchedule();
     _renderAppUpdate();
   }, 0);
-  // Cache info section
-  h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
-    '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
   _msFetch('/manage/cache-info').then(function(d) {
     var el = document.getElementById('ms-cache-info');
     if (!el || !d.caches) return;

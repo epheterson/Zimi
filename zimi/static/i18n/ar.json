@@ -1512,5 +1512,9 @@
   "creator_col_name": "الاسم",
   "creator_col_type": "النوع",
   "creator_col_size": "الحجم",
-  "creator_col_when": "أُنشئ"
+  "creator_col_when": "أُنشئ",
+  "au_from_catalog": "من الكتالوج",
+  "au_from_catalog_n": "{n} من {total} — يتم فحص التحديثات",
+  "au_local_custom": "محلي أو مخصص",
+  "au_local_custom_hint": "أُنشئت هنا، أو بلا إصدار مؤرَّخ للمطابقة — لا شيء لفحصه."
 }

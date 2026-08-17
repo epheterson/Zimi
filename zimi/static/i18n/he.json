@@ -1512,5 +1512,9 @@
   "creator_col_name": "שם",
   "creator_col_type": "סוג",
   "creator_col_size": "גודל",
-  "creator_col_when": "נוצר"
+  "creator_col_when": "נוצר",
+  "au_from_catalog": "מהקטלוג",
+  "au_from_catalog_n": "{n} מתוך {total} — נבדקים לעדכונים",
+  "au_local_custom": "מקומי או מותאם",
+  "au_local_custom_hint": "נוצרו כאן, או ללא מהדורה מתוארכת להתאמה — אין מה לבדוק."
 }

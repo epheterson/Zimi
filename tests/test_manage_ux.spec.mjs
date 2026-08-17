@@ -288,16 +288,15 @@ test('a one-item overflow menu becomes the item itself', async ({ page }) => {
 
 // ── 6. auto-update, as a report rather than a control ───────────────────────
 
-test('auto-update says when it last ran, when it runs next, and what it covers', async ({ page }) => {
+test('auto-update shows the frequency control and the library split', async ({ page }) => {
   await enterSection(page, 'library');
   await expect.poll(() => page.locator('#auto-update-freq').count()).toBe(1);
   const section = page.locator('#ms-auto-update');
-  // The control is still the control — the poll gating and two other
-  // renderers read this select by name.
   await expect(section.locator('#auto-update-freq')).toHaveCount(1);
-  // What it never said before.
-  await expect(section.locator('.mc-label', { hasText: 'Last run' })).toHaveCount(1);
-  await expect(section.locator('.mc-label', { hasText: 'Next run' })).toHaveCount(1);
+  // The last-run / next-run clock rows are gone — operational noise. What the
+  // section reports now is how much of the library is even checkable.
+  await expect(section.locator('.mc-label', { hasText: 'Last run' })).toHaveCount(0);
+  await expect(section.locator('.mc-label', { hasText: 'Next run' })).toHaveCount(0);
 });
 
 test('a library of undated ZIMs is told that the updater cannot reach them', async ({ page }) => {
@@ -307,27 +306,15 @@ test('a library of undated ZIMs is told that the updater cannot reach them', asy
     coverage: { tracked: ['wikipedia_en_all'], skipped: [{ name: 'field_notes', reason: 'undated' }] },
   });
   await enterSection(page, 'library');
-  await expect(page.locator('#ms-auto-update .mc-label', { hasText: 'Kept up to date' }))
+  // Catalog ZIMs it can check, then the local/custom count — two plain numbers,
+  // no wall of filenames.
+  await expect(page.locator('#ms-auto-update .mc-label', { hasText: 'From the catalog' }))
     .toHaveCount(1);
   await expect(page.locator('#ms-auto-update .mc-value').filter({ hasText: '1 of 2' }))
     .toHaveCount(1);
-  // The ZIM it cannot reach is named, with the reason on hover — a file that
-  // silently never updates is the thing this section exists to prevent.
-  const chip = page.locator('.au-skipped .act-chip', { hasText: 'field_notes' });
-  await expect(chip).toHaveCount(1);
-  await expect(chip).toHaveAttribute('title', /no date in the filename/i);
-});
-
-test('a never-run updater does not invent a next run', async ({ page }) => {
-  await stubAutoUpdate(page, {
-    enabled: true, frequency: 'weekly', locked: false,
-    last_check: null, next_check: null, coverage: { tracked: [], skipped: [] },
-  });
-  await enterSection(page, 'library');
-  // "Not since this server started", never "never": the stamp is process
-  // memory, so a restart erases it while the journal keeps the history.
-  await expect(page.locator('#ms-auto-update')).toContainText('Not since this server started');
-  await expect(page.locator('#ms-auto-update')).toContainText('Shortly');
+  await expect(page.locator('#ms-auto-update .mc-label', { hasText: 'Local or custom' }))
+    .toHaveCount(1);
+  await expect(page.locator('.au-skipped')).toHaveCount(0);
 });
 
 for (const theme of ['dark', 'light']) {
@@ -339,7 +326,7 @@ for (const theme of ['dark', 'light']) {
         skipped: [{ name: 'field_notes', reason: 'undated' }] },
     });
     await enterSection(page, 'library', theme);
-    await expect(page.locator('#ms-auto-update .mc-label', { hasText: 'Kept up to date' }))
+    await expect(page.locator('#ms-auto-update .mc-label', { hasText: 'From the catalog' }))
       .toHaveCount(1);
     await page.locator('#ms-auto-update').screenshot({
       path: `ui-review/manage-autoupdate-${theme}.png`,
