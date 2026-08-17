@@ -1212,13 +1212,49 @@ _UNCAPTURED_PAGE = """<!DOCTYPE html>
        front and the address reads as something the site never served. -->
   <code class="url" dir="ltr">{url_text}</code>
   <div class="actions">
-    <a class="btn primary" href="{url_attr}" target="_blank" rel="noreferrer noopener"
+    <!-- data-zimi-live marks this as a DELIBERATE exit for the parent app's
+         link interceptor: without it the stay-in-archive fallback catches
+         the click (this domain maps to the ZIM that just missed) and
+         navigates straight back to this page. -->
+    <a class="btn primary" id="live-link" href="{url_attr}" target="_blank"
+       rel="noreferrer noopener" data-zimi-live="1"
        data-i18n="uncaptured_open">{open_label}</a>
     <button class="btn" onclick="history.back()"
        data-i18n="uncaptured_back">{back_label}</button>
   </div>
 </main>
 <script>
+(function () {{
+  // Cross-ZIM rescue: this archive missed, but ANOTHER installed source may
+  // hold the page (a fuller capture of the same site, a Wikipedia article
+  // behind a wiki URL). Ask the resolver; when it answers, offer the
+  // in-library copy as the first choice and let the live web stay the exit.
+  try {{
+    var missed = document.getElementById('live-link').getAttribute('href');
+    fetch('/resolve?url=' + encodeURIComponent(missed))
+      .then(function (r) {{ return r.ok ? r.json() : null; }})
+      .then(function (data) {{
+        if (!data || !data.found) return;
+        var live = document.getElementById('live-link');
+        var a = document.createElement('a');
+        a.className = 'btn primary';
+        a.href = '/w/' + encodeURIComponent(data.zim) + '/' +
+          data.path.split('/').map(encodeURIComponent).join('/');
+        a.setAttribute('data-i18n', 'uncaptured_in_library');
+        a.textContent = 'Read it in this library';
+        live.classList.remove('primary');
+        live.parentNode.insertBefore(a, live);
+        try {{
+          fetch('/static/i18n/' + (localStorage.getItem('{lang_key}') || 'en') + '.json')
+            .then(function (r) {{ return r.ok ? r.json() : null; }})
+            .then(function (s) {{
+              if (s && s.uncaptured_in_library) a.textContent = s.uncaptured_in_library;
+            }});
+        }} catch (e) {{}}
+      }})
+      .catch(function () {{}});
+  }} catch (e) {{}}
+}})();
 (function () {{
   // Theme and language both live in the reader's own localStorage, which this
   // page shares because it is served from the same origin. Everything here is
@@ -2839,6 +2875,21 @@ class ZimHandler(BaseHTTPRequestHandler):
         """
         from zimi import p2p_discovery as _disc
 
+        # An AUTHORIZED admin downloads any ZIM regardless of the sharing
+        # switches: it is their server and their file, and right-click →
+        # Download is the plainest way to carry a made-here ZIM elsewhere.
+        # Authorized under exactly the manage rules (None = authorized —
+        # the helper returns truthy REFUSALS): a credentialed admin from
+        # anywhere, or a private client on a passwordless instance, which
+        # is already this instance's whole trust boundary. A public client
+        # on a passwordless instance stays locked here like everywhere.
+        try:
+            from zimi import manage as _manage
+
+            if _manage._check_manage_auth(self) is None:
+                return True
+        except Exception:
+            pass
         if not _disc.is_share_enabled():
             return False
         if _disc.is_public_share_enabled():

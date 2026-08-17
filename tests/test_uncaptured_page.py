@@ -258,8 +258,17 @@ class TestUncapturedPage(unittest.TestCase):
         for key, text in zhttp._UNCAPTURED_STRINGS.items():
             self.assertEqual(strings.get(key), text, key)
 
-    def test_a_missing_zim_is_still_a_missing_zim(self):
+    def test_a_missing_zim_gets_prose_for_documents_and_json_for_assets(self):
+        """A deleted source's old bookmarks and history entries land here;
+        raw JSON on a phone screen reads as a server fault (it did, on
+        2026-08-15). A page being OPENED gets the gone-source page; a script
+        or image fetching keeps the JSON it can parse."""
         status, _headers, body = self._get("/w/nosuchzim/anything", AS_IFRAME)
+        self.assertEqual(status, 200)
+        self.assertIn("This source isn't in the library", body)
+        status, _headers, body = self._get(
+            "/w/nosuchzim/anything.png", {"Sec-Fetch-Dest": "image"}
+        )
         self.assertEqual(status, 404)
         self.assertIn("not found", json.loads(body)["error"])
 

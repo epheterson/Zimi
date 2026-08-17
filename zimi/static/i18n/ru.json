@@ -1496,5 +1496,7 @@
   "create_stopped_early": "Остановлено досрочно — включено всё, что было захвачено до остановки.",
   "users_admin_creates": "Администраторы всегда могут создавать ZIM",
   "users_creation_label": "Создание",
-  "create_size_custom": "Свой размер…"
+  "create_size_custom": "Свой размер…",
+  "ctx_download_zim": "Скачать файл ZIM",
+  "uncaptured_in_library": "Читать в этой библиотеке"
 }

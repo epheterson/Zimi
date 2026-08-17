@@ -82,10 +82,17 @@ class ExportDownloadHeaderTests(unittest.TestCase):
 
     def test_gate_matches_dl_posture(self):
         """Sharing off blocks the export download too — same switch, same gate.
+        A manage password is set for the check: without one, a loopback
+        client IS the passwordless admin and may download regardless of the
+        sharing switch (that path has its own test in test_peer_file_serve).
         (Loopback/LAN-only remains the default; WAN needs the public opt-in.)"""
         import urllib.error, urllib.request
 
         os.environ["ZIMI_PEER_SHARE"] = "0"
+        os.environ["ZIMI_MANAGE_PASSWORD"] = "gate-test-pw"
+        import zimi.manage as _m
+
+        _m._env_pw_hash_cache = None
         try:
             with self.assertRaises(urllib.error.HTTPError) as ctx:
                 urllib.request.urlopen(
@@ -94,6 +101,8 @@ class ExportDownloadHeaderTests(unittest.TestCase):
             self.assertEqual(ctx.exception.code, 403)
         finally:
             os.environ["ZIMI_PEER_SHARE"] = "1"
+            del os.environ["ZIMI_MANAGE_PASSWORD"]
+            _m._env_pw_hash_cache = None
 
 
 class ExportNameRoundTripTests(unittest.TestCase):

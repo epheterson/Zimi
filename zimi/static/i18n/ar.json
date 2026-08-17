@@ -1496,5 +1496,7 @@
   "create_stopped_early": "توقف مبكرًا — تم تضمين كل ما تم التقاطه حتى لحظة التوقف.",
   "users_admin_creates": "يمكن للمشرفين دائمًا إنشاء ملفات ZIM",
   "users_creation_label": "الإنشاء",
-  "create_size_custom": "مخصص…"
+  "create_size_custom": "مخصص…",
+  "ctx_download_zim": "تنزيل ملف ZIM",
+  "uncaptured_in_library": "اقرأها في هذه المكتبة"
 }

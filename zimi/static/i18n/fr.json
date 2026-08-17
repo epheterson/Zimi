@@ -1496,5 +1496,7 @@
   "create_stopped_early": "Arrêt anticipé — tout ce qui a été capturé jusqu'à l'arrêt est inclus.",
   "users_admin_creates": "Les admins peuvent toujours créer des ZIM",
   "users_creation_label": "Création",
-  "create_size_custom": "Personnalisé…"
+  "create_size_custom": "Personnalisé…",
+  "ctx_download_zim": "Télécharger le fichier ZIM",
+  "uncaptured_in_library": "Le lire dans cette bibliothèque"
 }

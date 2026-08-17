@@ -1496,5 +1496,7 @@
   "create_stopped_early": "जल्दी रोका गया — रोक तक कैप्चर की गई हर चीज़ शामिल है।",
   "users_admin_creates": "एडमिन हमेशा ZIM बना सकते हैं",
   "users_creation_label": "निर्माण",
-  "create_size_custom": "कस्टम…"
+  "create_size_custom": "कस्टम…",
+  "ctx_download_zim": "ZIM फ़ाइल डाउनलोड करें",
+  "uncaptured_in_library": "इस लाइब्रेरी में पढ़ें"
 }

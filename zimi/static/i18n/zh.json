@@ -1496,5 +1496,7 @@
   "create_stopped_early": "提前停止 — 已包含停止前捕获的全部内容。",
   "users_admin_creates": "管理员始终可以创建 ZIM",
   "users_creation_label": "创建",
-  "create_size_custom": "自定义…"
+  "create_size_custom": "自定义…",
+  "ctx_download_zim": "下载 ZIM 文件",
+  "uncaptured_in_library": "在此文库中阅读"
 }

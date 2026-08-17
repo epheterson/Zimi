@@ -4825,9 +4825,15 @@ function _moveZimTo(zim, category) {
     // About belongs on EVERY library card, so both menu shapes carry it — the
     // compact gear menu (an Installed row) as much as the full card menu.
     var aboutItem = '<div class="ctx-item" data-action="about">' + tH('about_zim') + '</div>';
+    // Download the raw .zim — the plainest way to carry a made-here ZIM to
+    // another machine. Admin-gated like delete: /dl/ answers the admin
+    // regardless of the sharing switches.
+    var dlItem = manageEnabled
+      ? '<div class="ctx-item" data-action="download-zim">' + tH('ctx_download_zim') + '</div>'
+      : '';
     if (_ctxCompact) {
       var layout = _layoutItemsHtml(zim);
-      menu.innerHTML = aboutItem + (layout ? '<div class="ctx-sep"></div>' + layout : '');
+      menu.innerHTML = aboutItem + dlItem + (layout ? '<div class="ctx-sep"></div>' + layout : '');
       posMenu(_ctxX, _ctxY);
       return;
     }
@@ -4851,7 +4857,7 @@ function _moveZimTo(zim, category) {
     h += '</div></div>';
     var layoutItems = _layoutItemsHtml(zim);
     if (layoutItems) { h += '<div class="ctx-sep"></div>' + layoutItems; }
-    h += '<div class="ctx-sep"></div>' + aboutItem;
+    h += '<div class="ctx-sep"></div>' + aboutItem + dlItem;
     if (manageEnabled) {
       h += '<div class="ctx-sep"></div>';
       h += '<div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
@@ -5066,6 +5072,11 @@ function _moveZimTo(zim, category) {
           collectionsCache = c; renderHome();
         });
       });
+    } else if (action === 'download-zim') {
+      closeCtx();
+      var zdl = _zimInfo(zim);
+      // The filename form keeps /dl/'s name resolution out of the picture.
+      location.href = '/dl/' + encodeURIComponent((zdl && zdl.file) || zim);
     } else if (action === 'delete') {
       closeCtx();
       var zinfo = _zimInfo(zim);
@@ -14478,6 +14489,16 @@ function openReader(url) {
         var href = a.getAttribute('href') || '';
         // Hash-only links (#/route, #heading): let iframe handle natively (SPA routing, anchors)
         if (href.startsWith('#')) return;
+        // The interstitial's own "Open on the live web" button. Without this
+        // bypass the stay-in-archive fallback below would catch it — the
+        // domain maps to the very ZIM that just missed — and navigate back to
+        // the same interstitial: a button that visibly does nothing (Eric,
+        // on exactly that button: "when I click open it isn't opening").
+        if (a.dataset && a.dataset.zimiLive === '1') {
+          e.preventDefault();
+          window.open(a.href, '_blank');
+          return;
+        }
         // Wombat (zimit-scraped ZIMs) rewrites <a href> ATTRIBUTES to look
         // like the original archived URL (e.g. "https://ersatztv.org/docs/")
         // and ALSO installs its own click handler that re-resolves them.

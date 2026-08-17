@@ -1496,5 +1496,7 @@
   "create_stopped_early": "Vorzeitig gestoppt — enthalten ist alles, was bis zum Stopp erfasst wurde.",
   "users_admin_creates": "Admins dürfen immer ZIMs erstellen",
   "users_creation_label": "Erstellung",
-  "create_size_custom": "Benutzerdefiniert…"
+  "create_size_custom": "Benutzerdefiniert…",
+  "ctx_download_zim": "ZIM-Datei herunterladen",
+  "uncaptured_in_library": "In dieser Bibliothek lesen"
 }
