@@ -3527,9 +3527,6 @@ function renderCardGrid(items, showStars, showCategory) {
         '<div class="detail">' + catPrefix + _zimCountHtml(z) +
         ' &middot; ' + fmtSize(z.size_gb) +
         (_isZimiExport(z) && z.date ? ' &middot; ' + esc(z.date) : '') +
-        // Exports exist to travel: a save-the-file slot, revealed only when
-        // sharing actually serves it (other ZIMs re-download from the catalog).
-        dlHtml +
         '</div>' +
       '</div></' + cardTag + '>';
   }).join('') + '</div>';
