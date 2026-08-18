@@ -2387,8 +2387,28 @@ def cli_create(args):
         from zimi import video as _video
 
         if _video.wants_url(src, args):
-            _video.cli_create_video(args)
-            return
+            if _video.forced_by_flags(args):
+                # Explicit video intent (--format/--audio-only/--limit): the
+                # video path succeeds or exits 2, no page-capture fallback.
+                _video.cli_create_video(args)
+                return
+            # Auto-detected as a video because a yt-dlp extractor claimed the
+            # URL — but many pages (a BBC news article, say) merely EMBED a
+            # video, so the guess is often wrong. Try it; if no video comes out,
+            # capture the PAGE instead of failing the whole command with a
+            # yt-dlp error (Eric: `zimi create <bbc.com/news/…>`).
+            try:
+                info = _video.build_video(args)
+            except Exception as e:
+                log.info(
+                    "video capture did not apply to %s (%s); capturing the page",
+                    src,
+                    e,
+                )
+                print("  no video here — capturing the page instead")
+            else:
+                _video.print_video_summary(info, args)
+                return
     try:
         info = (
             _build_pages_from_args(args, sources)

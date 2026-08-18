@@ -712,31 +712,38 @@ def create_video_zim(
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
 
-def cli_create_video(args):
-    """The video arm of `zimi create` — reached from ``creator.cli_create``
-    when yt-dlp claims the URL (or a video flag forces the route). Same
-    exit-2 convention as the rest of the create CLI."""
-    try:
-        max_bytes = (
-            parse_size(args.max_bytes) if args.max_bytes else DEFAULT_MAX_ZIM_BYTES
-        )
-        info = create_video_zim(
-            args.source,
-            title=args.title,
-            description=args.description,
-            language=args.language,
-            creator_name=args.creator,
-            out_path=args.out,
-            fmt=args.format,
-            audio_only=bool(args.audio_only),
-            limit=args.limit,
-            max_bytes=max_bytes,
-            register=not args.out,
-            progress=lambda msg: print(f"  {msg}"),
-        )
-    except CreateError as e:
-        print(f"zimi: {e}", file=sys.stderr)
-        sys.exit(2)
+def forced_by_flags(args):
+    """True when the user explicitly asked for the video path with a video-only
+    flag, rather than it being auto-detected from the URL. A forced video that
+    fails is a real error; an auto-detected one falls back to page capture."""
+    return any(getattr(args, n, None) for n in _VIDEO_FLAG_NAMES)
+
+
+def build_video(args):
+    """Run `zimi create`'s video capture and return the info dict. Raises —
+    CreateError for a user-fixable cause, or a yt-dlp/network error when the URL
+    turned out not to be a video. Printing and exit live in the CLI wrappers so
+    ``creator.cli_create`` can catch a failed auto-detection and fall back to
+    page capture."""
+    max_bytes = parse_size(args.max_bytes) if args.max_bytes else DEFAULT_MAX_ZIM_BYTES
+    return create_video_zim(
+        args.source,
+        title=args.title,
+        description=args.description,
+        language=args.language,
+        creator_name=args.creator,
+        out_path=args.out,
+        fmt=args.format,
+        audio_only=bool(args.audio_only),
+        limit=args.limit,
+        max_bytes=max_bytes,
+        register=not args.out,
+        progress=lambda msg: print(f"  {msg}"),
+    )
+
+
+def print_video_summary(info, args):
+    """The `zimi create` video-arm success summary."""
     print(f"ZIM written: {info['path']}")
     line = f"  {_plural(info['videos'], 'video')}, {_fmt_bytes(info['bytes'])} of media"
     if info["skipped"]:
@@ -749,3 +756,15 @@ def cli_create_video(args):
             "  note: library registration failed; the file is in place and "
             "will appear on the next library scan"
         )
+
+
+def cli_create_video(args):
+    """The video arm of `zimi create` — reached from ``creator.cli_create``
+    when yt-dlp claims the URL (or a video flag forces the route). Same
+    exit-2 convention as the rest of the create CLI."""
+    try:
+        info = build_video(args)
+    except CreateError as e:
+        print(f"zimi: {e}", file=sys.stderr)
+        sys.exit(2)
+    print_video_summary(info, args)

@@ -30,6 +30,8 @@ HOST = "127.0.0.1"
 BASE = f"http://{HOST}:{PORT}"
 # _slug() of the fixture hostname — the asset namespace inside the ZIM.
 NS = "_assets/127_0_0_1"
+
+
 # The flat article paths a multi-page capture assigns, derived the same way the
 # engine derives them (host and path, slugged) so a port change moves both.
 def _article_path(url_path):
@@ -377,9 +379,7 @@ def test_language_from_http_header(fixture_server, tmp_path):
     assert (info["language"], info["language_source"]) == ("jpn", "http-header")
 
 
-def test_language_falls_back_to_english_when_nothing_declared(
-    fixture_server, tmp_path
-):
+def test_language_falls_back_to_english_when_nothing_declared(fixture_server, tmp_path):
     info = creator.create_page_zim(f"{BASE}/blog/post.html", out_dir=str(tmp_path))
     assert (info["language"], info["language_source"]) == ("eng", "fallback")
 
@@ -431,9 +431,7 @@ def test_multi_page_capture_builds_an_index_of_its_pages(fixture_server, tmp_pat
     assert "Test Page" in _entry_text(arc, POST_ART)
 
 
-def test_multi_page_capture_resolves_links_between_its_pages(
-    fixture_server, tmp_path
-):
+def test_multi_page_capture_resolves_links_between_its_pages(fixture_server, tmp_path):
     # The French page links to the other captured page. Inside the ZIM that
     # link must land on the sibling article, not back out at the live web.
     info = _multi(tmp_path, "/blog/post.html", "/fr/page.html")
@@ -442,9 +440,7 @@ def test_multi_page_capture_resolves_links_between_its_pages(
     assert f"{BASE}/blog/post.html" not in art
 
 
-def test_multi_page_capture_shares_one_copy_of_a_shared_asset(
-    fixture_server, tmp_path
-):
+def test_multi_page_capture_shares_one_copy_of_a_shared_asset(fixture_server, tmp_path):
     # Two captures of the same page: the shared dedupe map means the stylesheet
     # and its dependencies are stored once, not once per page.
     one = creator.create_page_zim(f"{BASE}/blog/post.html", out_dir=str(tmp_path))
@@ -583,10 +579,57 @@ def test_cli_hands_the_video_arm_a_string_not_a_list(monkeypatch):
     monkeypatch.setattr(
         "zimi.video.cli_create_video", lambda args: seen.update(src=args.source)
     )
+    # audio_only forces the video path (an explicit flag), so it routes through
+    # cli_create_video rather than the auto-detected fallback below.
     creator.cli_create(
-        argparse.Namespace(source=["https://example.invalid/v"], title=None)
+        argparse.Namespace(
+            source=["https://example.invalid/v"],
+            title=None,
+            format=None,
+            audio_only=True,
+            limit=None,
+        )
     )
     assert seen["src"] == "https://example.invalid/v"
+
+
+def test_auto_detected_video_falls_back_to_page_capture(monkeypatch):
+    # A URL yt-dlp's extractors claim (a BBC news article) but that yields no
+    # video must capture the PAGE, not fail the command with a yt-dlp error.
+    import argparse
+
+    monkeypatch.setattr("zimi.video.wants_url", lambda url, args: True)
+
+    def no_video(args):
+        raise RuntimeError("[bbc] xyz: Unable to download webpage: HTTP Error 404")
+
+    monkeypatch.setattr("zimi.video.build_video", no_video)
+    captured = {}
+    monkeypatch.setattr(
+        creator,
+        "_build_from_args",
+        lambda args, src, is_url: captured.update(src=src, is_url=is_url)
+        or {
+            "path": "/tmp/x.zim",
+            "url": src,
+            "bytes": 10,
+            "pages": 1,
+            "assets": 0,
+            "registered": False,
+        },
+    )
+    creator.cli_create(
+        argparse.Namespace(
+            source=["https://www.bbc.com/news/articles/abc"],
+            title=None,
+            format=None,
+            audio_only=None,
+            limit=None,
+            out="/tmp/x.zim",
+        )
+    )
+    assert captured["src"] == "https://www.bbc.com/news/articles/abc"
+    assert captured["is_url"] is True
 
 
 def test_folder_language_is_read_from_the_html_inside_it(tmp_path):
