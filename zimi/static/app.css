@@ -142,6 +142,13 @@
      of flashing the library first. */
   html.create-boot #main-view { display: none !important; }
   html.create-boot #create-view { display: flex; }
+  /* Reload-into-Manage boot gate. Manage renders INTO #main-view (no view of
+     its own), so unlike the two above the gate can't swap containers — it hides
+     main-view's content (visibility, not display, so renderManage can still
+     measure layout) until enterManage has drawn manage in place and dropped the
+     class. If the client may not manage, enterManage drops the class and shows
+     the library instead. */
+  html.manage-boot #main-view { visibility: hidden; }
 
   html { height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
   body { background: var(--bg); color: var(--text); min-height: 100%; padding-top: var(--under-topbar); overflow: visible; }

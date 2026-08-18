@@ -1798,6 +1798,18 @@ function route(push) {
     }, 8000);
     return;
   }
+  // Booting straight into Manage (?manage in the URL). Same no-flash contract
+  // as #create: the head bootstrap stamped html.manage-boot to hold the library
+  // back, so open manage optimistically now — enterManage awaits the auth probe
+  // and drops the gate once it has rendered manage in place. If this client may
+  // not manage, enterManage reveals the library and the backstop drops the gate.
+  if (params.get('manage') !== null && document.documentElement.classList.contains('manage-boot')) {
+    enterManage(null, _validMsSection(params.get('manage')));
+    setTimeout(function () {
+      if (mode !== 'manage') document.documentElement.classList.remove('manage-boot');
+    }, 8000);
+    return;
+  }
   // A view the user opened during a slow boot is not something to route over.
   if (_createOpen) return;
   if (params.get('manage') !== null && manageEnabled) { enterManage(null, _validMsSection(params.get('manage'))); return; }
@@ -6149,10 +6161,10 @@ async function enterManage(e, section) {
     // manage-auth probe has set manageEnabled we must not leave the button
     // dead (#44). Resolve the probe on demand (cheap, lock-free endpoint) and
     // only bail if management is genuinely disabled.
-    if (_manageProbed) return;            // probe already finished: disabled
+    if (_manageProbed) { _dropManageBoot(); return; }   // probe finished: disabled
     if (!_manageProbe) _manageProbe = _probeManageAuth();
     await _manageProbe;
-    if (!manageEnabled) return;           // resolved to disabled
+    if (!manageEnabled) { _dropManageBoot(); return; }  // resolved to disabled
   }
   // Decide which settings section to land on: an explicit arg (deep link /
   // ?manage=<section>) wins, else a section a caller already staged in
@@ -6204,6 +6216,23 @@ async function enterManage(e, section) {
   history.pushState({ mode: 'manage' }, '', _msSectionUrl(_msTarget));
   updateTopbar();
   renderManage();
+  // Manage is now painted in #main-view — drop the cold-boot gate so it shows
+  // (no-op on the normal in-SPA path, where the class was never set).
+  document.documentElement.classList.remove('manage-boot');
+  // Warm the Creator inventory while the user reads whatever section greeted
+  // them, so opening the Creator tab is instant instead of waiting on the walk
+  // (#47). _creatorLoadInventory caches for the session and its DOM fill no-ops
+  // until the Creator pane is actually on screen.
+  if (typeof _creatorLoadInventory === 'function') _creatorLoadInventory();
+}
+
+// Reveal the library after a cold boot into ?manage that resolved to "you may
+// not manage": the manage-boot gate was hiding #main-view, so drop it and paint
+// home. A no-op when the gate was never set (the normal in-SPA path).
+function _dropManageBoot() {
+  if (!document.documentElement.classList.contains('manage-boot')) return;
+  document.documentElement.classList.remove('manage-boot');
+  enterHome(false);
 }
 
 let manageTab = 'installed';

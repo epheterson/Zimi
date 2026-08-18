@@ -69,6 +69,12 @@
   // has to LAND on that page, not show the library and then swap. The class
   // holds the library back until create.js takes over (_openCreateInner).
   if (location.hash === '#create') el.classList.add('create-boot');
+  // And for Manage (?manage=… in the query). Manage renders INTO #main-view and
+  // is admin-gated, so a cold boot would paint the library, resolve the auth
+  // probe, then swap to manage — the flash Eric flagged. The gate hides
+  // #main-view until enterManage has rendered manage in place (or, if this
+  // client may not manage, reveals the library instead).
+  if (/[?&]manage(=|&|$)/.test(location.search)) el.classList.add('manage-boot');
   window.addEventListener('pageshow', function(e){ if (e.persisted) apply(); });
 })();
 </script>
