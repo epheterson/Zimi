@@ -2376,3 +2376,118 @@ class TestParseRange(unittest.TestCase):
 
     def test_out_of_range(self):
         self.assertEqual(self._pr("bytes=5000-6000"), (None, None))
+
+
+class TestDeclaredIconUrls(unittest.TestCase):
+    """The Fast engine reads the icon a page DECLARES, not just /favicon.ico —
+    a blind probe handed Eric CNN's wrong favicon (CDN-hosted, versioned)."""
+
+    def _urls(self, html, base="https://www.cnn.com/2026/08/17/story"):
+        from zimi.creator import _declared_icon_urls
+
+        return _declared_icon_urls(html, base)
+
+    def test_prefers_apple_then_sized_then_plain(self):
+        html = (
+            '<link rel="shortcut icon" href="//cdn.cnn.com/favicon.ico">'
+            '<link rel="icon" sizes="32x32" href="/media/favicon-32x32.png">'
+            '<link rel="apple-touch-icon" href="https://www.cnn.com/apple.png">'
+        )
+        self.assertEqual(
+            self._urls(html),
+            [
+                "https://www.cnn.com/apple.png",
+                "https://www.cnn.com/media/favicon-32x32.png",
+                "https://cdn.cnn.com/favicon.ico",
+            ],
+        )
+
+    def test_resolves_relative_and_protocol_relative(self):
+        html = '<link rel="icon" href="/img/i.png">'
+        self.assertEqual(self._urls(html), ["https://www.cnn.com/img/i.png"])
+
+    def test_ignores_non_icon_links_and_data_uris(self):
+        html = (
+            '<link rel="stylesheet" href="/main.css">'
+            '<link rel="icon" href="data:image/png;base64,AAAA">'
+            '<link rel="preload" as="image" href="/hero.jpg">'
+        )
+        self.assertEqual(self._urls(html), [])
+
+    def test_empty_when_nothing_declared(self):
+        self.assertEqual(self._urls("<head><title>x</title></head>"), [])
+
+    def test_dedups_repeated_icon(self):
+        html = '<link rel="icon" href="/i.png">' '<link rel="icon" href="/i.png">'
+        self.assertEqual(self._urls(html), ["https://www.cnn.com/i.png"])
+
+
+class TestCrossOriginMediaCarry(unittest.TestCase):
+    """The Fast engine carries a page's CDN-hosted images (cross-origin), not
+    just same-origin assets — CNN serves 88% of its images off media.cnn.com."""
+
+    def _carrier(self, remote_reader):
+        from zimi.zimwriter import _AssetCarrier
+
+        self.added = []
+        return _AssetCarrier(
+            self.added.append,
+            lambda path, mime, data: (path, mime, data),
+            lambda zim, resolved: None,  # nothing same-origin
+            remote_reader=remote_reader,
+        )
+
+    def test_carries_cross_origin_src_and_srcset(self):
+        c = self._carrier(lambda url: (b"IMG", "image/jpeg"))
+        html = (
+            '<img src="https://media.cnn.com/a.JPG?c=16x9" alt="x">'
+            '<img srcset="https://media.cnn.com/s.jpg 320w, '
+            'https://media.cnn.com/b.jpg 800w">'
+        )
+        out = c.rewrite_media("z", "A/index", html)
+        self.assertNotIn("media.cnn.com", out)
+        self.assertEqual(out.count("../_assets/_remote/"), 3)
+        self.assertIn("320w", out)  # srcset descriptors preserved
+        self.assertEqual(len(self.added), 3)
+
+    def test_carries_protocol_relative_cross_origin(self):
+        # Wikipedia and most sites reference CDN images protocol-relative
+        # (//upload.wikimedia.org/...). These must be fetched, not mis-read as
+        # same-origin /upload.wikimedia.org/... and 404'd.
+        c = self._carrier(lambda url: (b"IMG", "image/png"))
+        html = '<img src="//upload.wikimedia.org/wikipedia/commons/x.png">'
+        out = c.rewrite_media("z", "A/index", html)
+        self.assertNotIn("upload.wikimedia.org", out)
+        self.assertIn("../_assets/_remote/", out)
+        self.assertEqual(len(self.added), 1)
+
+    def test_leaves_unresolvable_same_origin_ref_alone(self):
+        c = self._carrier(lambda url: (b"IMG", "image/png"))
+        html = '<img src="/local/only.png">'  # same-origin, reader returns None
+        out = c.rewrite_media("z", "A/index", html)
+        self.assertEqual(out, html)
+        self.assertEqual(len(self.added), 0)
+
+    def test_no_remote_reader_means_no_cross_origin_carry(self):
+        # The bookmark-export path builds the carrier WITHOUT a remote reader —
+        # cross-origin refs must be left exactly as they were.
+        from zimi.zimwriter import _AssetCarrier
+
+        added = []
+        c = _AssetCarrier(
+            added.append,
+            lambda path, mime, data: (path, mime, data),
+            lambda zim, resolved: None,
+        )
+        html = '<img src="https://media.cnn.com/a.jpg">'
+        self.assertEqual(c.rewrite_media("z", "A/index", html), html)
+        self.assertEqual(len(added), 0)
+
+    def test_remote_reader_refusal_leaves_ref_untouched(self):
+        # A remote reader that declines (non-media type, oversized, 404) must
+        # leave the tag as-is rather than point at a file that was never added.
+        c = self._carrier(lambda url: None)
+        html = '<img src="https://media.cnn.com/a.jpg">'
+        out = c.rewrite_media("z", "A/index", html)
+        self.assertEqual(out, html)
+        self.assertEqual(len(self.added), 0)

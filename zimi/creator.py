@@ -86,8 +86,21 @@ MAX_PAGE_FETCH_BYTES = 10 * 1024**2  # 10 MiB fetched page document
 MAX_FAVICON_BYTES = 512 * 1024  # a site icon; anything larger is not one
 DEFAULT_FETCH_TIMEOUT = 30.0
 # Best icon first. apple-touch-icon is a large clean PNG where it exists,
-# which downscales to 48px far better than a 16px .ico does.
+# which downscales to 48px far better than a 16px .ico does. These are the
+# blind-probe fallback — the icon a page actually DECLARES (below) is tried
+# first, since a modern site versions its icon or serves it from a CDN and a
+# bare /favicon.ico is often stale or a placeholder (Eric: CNN's Fast capture
+# got "the wrong favicon").
 _FAVICON_CANDIDATES = ("apple-touch-icon.png", "favicon.png", "favicon.ico")
+# <link rel="…icon…" href="…"> parsing: the tag, then rel/href in any order,
+# quoted or bare.
+_ICON_LINK_RE = re.compile(r"<link\b[^>]*>", re.IGNORECASE)
+_LINK_REL_RE = re.compile(
+    r"""\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""", re.IGNORECASE
+)
+_LINK_HREF_RE = re.compile(
+    r"""\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""", re.IGNORECASE
+)
 DEFAULT_MAX_REDIRECTS = 5
 # An SPA shell has scripts and (nearly) no server-rendered text. The
 # threshold is deliberately low: real articles clear it by an order of
@@ -980,6 +993,47 @@ def _http_asset_reader(origin, variants, timeout):
     return read
 
 
+# The Fast engine is same-origin for scripts and CSS on purpose, but a page's
+# images almost always live on a sibling CDN host (media.cnn.com, i.imgur.com),
+# so a same-origin-only image rule drops most of the modern web's pictures. This
+# reader carries those — and ONLY media (image/video/audio), so an <img> that
+# resolves to an HTML error page is not silently pulled in as a "picture".
+_REMOTE_MEDIA_MIME_RE = re.compile(r"^(image|video|audio)/", re.IGNORECASE)
+
+
+def _http_remote_reader(timeout):
+    """An ``_AssetCarrier`` remote reader: fetch one absolute (cross-origin)
+    media URL → (bytes, mime) | None. Best effort, media content-types only,
+    capped at the per-asset limit so an oversized asset is dropped without ever
+    being fully downloaded."""
+    import zimi.zimwriter as _zw
+
+    def read(url):
+        cap = _zw._MAX_ASSET_BYTES
+        req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                mime = (
+                    (resp.headers.get("Content-Type") or "")
+                    .split(";")[0]
+                    .strip()
+                    .lower()
+                )
+                # A declared, non-media type is a redirect-to-login or an error
+                # page — not the image the tag promised. Drop it before reading.
+                if mime and not _REMOTE_MEDIA_MIME_RE.match(mime):
+                    return None
+                data = resp.read(cap + 1)
+        except OSError as e:
+            log.debug("remote asset fetch failed %s: %s", url, e)
+            return None
+        if not data or len(data) > cap:
+            return None
+        return data, mime or "application/octet-stream"
+
+    return read
+
+
 def _replace_href(tag, new_ref):
     return _HREF_RE.sub(
         lambda m: "href=" + m.group(1) + new_ref + m.group(1), tag, count=1
@@ -1142,6 +1196,7 @@ def http_asset_carrier(
     step is the same code either way, which is the point."""
     origin, variants = _origin_variants(final_url)
     fetch = _http_asset_reader(origin, variants, timeout)
+    remote_fetch = _http_remote_reader(timeout)
 
     def read(label, resolved):
         if budget is not None and not budget.spend(0):
@@ -1151,7 +1206,17 @@ def http_asset_carrier(
             return None
         return got
 
-    carrier = _AssetCarrier(add_item, item_factory or make_asset_item, read)
+    def remote_read(url):
+        if budget is not None and not budget.spend(0):
+            return None
+        got = remote_fetch(url)
+        if got and budget is not None and not budget.spend(len(got[0])):
+            return None
+        return got
+
+    carrier = _AssetCarrier(
+        add_item, item_factory or make_asset_item, read, remote_reader=remote_read
+    )
     if carried is not None:
         carrier._carried = carried
     return carrier
@@ -1236,27 +1301,81 @@ def spooling_asset_carrier(spool, final_url, timeout, *, carried=None, budget=No
     )
 
 
-def site_illustration(final_url, timeout):
+def _declared_icon_urls(page, final_url):
+    """Absolute URLs of the icons the page's own ``<link rel="…icon…">`` tags
+    point at, best first: apple-touch-icon, then a ``sizes``-qualified icon,
+    then a plain one. Cross-origin is fine — an icon is one small file and worth
+    the fetch, and it's how a CDN-hosted or versioned favicon is found at all."""
+    apple, sized, plain = [], [], []
+    for m in _ICON_LINK_RE.finditer(page):
+        tag = m.group(0)
+        relm = _LINK_REL_RE.search(tag)
+        if not relm:
+            continue
+        rel = (relm.group(1) or relm.group(2) or relm.group(3) or "").lower()
+        if "icon" not in rel:
+            continue
+        hrefm = _LINK_HREF_RE.search(tag)
+        if not hrefm:
+            continue
+        href = (hrefm.group(1) or hrefm.group(2) or hrefm.group(3) or "").strip()
+        if not href or href.lower().startswith("data:"):
+            continue
+        try:
+            url = urllib.parse.urljoin(final_url, href)
+        except ValueError:
+            continue
+        if not url.lower().startswith(("http://", "https://")):
+            continue
+        if "apple-touch-icon" in rel:
+            apple.append(url)
+        elif "sizes" in tag.lower():
+            sized.append(url)
+        else:
+            plain.append(url)
+    seen, ordered = set(), []
+    for url in apple + sized + plain:
+        if url not in seen:
+            seen.add(url)
+            ordered.append(url)
+    return ordered
+
+
+def _fetch_icon_png(url, timeout):
+    """Fetch one icon URL, re-encoded as the spec's 48x48 PNG, or None. Best
+    effort: an icon must never fail a capture. Needs Pillow to rescale."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = resp.read(MAX_FAVICON_BYTES + 1)
+    except OSError as e:
+        log.debug("favicon fetch failed %s: %s", url, e)
+        return None
+    if data and len(data) <= MAX_FAVICON_BYTES:
+        return illustration_from_image(data)
+    return None
+
+
+def site_illustration(final_url, timeout, page=None):
     """The site's own icon, re-encoded as the 48x48 PNG the spec wants, or
     None to fall back to a generated one. Best effort on purpose: an icon is
     decoration and a capture must never fail because a favicon 404'd. Needs
-    Pillow to rescale, so a machine without it is not asked to fetch at all."""
+    Pillow to rescale, so a machine without it is not asked to fetch at all.
+
+    Prefers the icon the ``page`` actually declares over a blind /favicon.ico
+    probe — that probe is what handed Eric CNN's wrong favicon."""
     if not has_image_support():
         return None
-    origin, _variants = _origin_variants(final_url)
-    for candidate in _FAVICON_CANDIDATES:
-        url = origin + "/" + candidate
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = resp.read(MAX_FAVICON_BYTES + 1)
-        except OSError as e:
-            log.debug("favicon fetch failed %s: %s", url, e)
-            continue
-        if data and len(data) <= MAX_FAVICON_BYTES:
-            png = illustration_from_image(data)
+    if page:
+        for url in _declared_icon_urls(page, final_url):
+            png = _fetch_icon_png(url, timeout)
             if png:
                 return png
+    origin, _variants = _origin_variants(final_url)
+    for candidate in _FAVICON_CANDIDATES:
+        png = _fetch_icon_png(origin + "/" + candidate, timeout)
+        if png:
+            return png
     return None
 
 
@@ -1570,6 +1689,7 @@ def create_page_zim(
         note(f"packaging {final_url}")
         static_cls = zim_static_item_class()
         with atomic_zim_creator(out, language) as creator:
+            raw_page = page  # the declared <link rel=icon> lives in the raw HTML
             page = capture.render(creator_target(creator), page, final_url)
             creator.add_item(static_cls("A/index", zim_title, page.encode("utf-8")))
             creator.set_mainpath("A/index")
@@ -1585,7 +1705,7 @@ def create_page_zim(
                 # recapturing either one is a new edition of that one.
                 name=zim_name(final_url, language),
                 tags=media_tags(capture.mimetypes),
-                illustration=site_illustration(final_url, timeout),
+                illustration=site_illustration(final_url, timeout, raw_page),
                 history=history_record(
                     "created",
                     "page",
@@ -1889,7 +2009,9 @@ def create_pages_zim(
                 source=entries[0]["final_url"],
                 name=zim_name(_pages_scope(entries), language),
                 tags=media_tags(capture.mimetypes),
-                illustration=site_illustration(entries[0]["final_url"], timeout),
+                illustration=site_illustration(
+                    entries[0]["final_url"], timeout, entries[0].get("page")
+                ),
                 history=history_record(
                     "created",
                     "pages",

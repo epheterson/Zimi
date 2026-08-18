@@ -174,16 +174,51 @@ def _resolve_ref(base_path, ref):
     return posixpath.normpath(posixpath.join(base_dir, ref)).lstrip("/")
 
 
+# Extensions worth keeping on a hashed remote-asset name when the URL path
+# carries none — so the file reads as what it is and links look sane. The mime
+# is authoritative; this is only a display nicety.
+_EXT_FOR_MIME = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/svg+xml": ".svg",
+    "image/avif": ".avif",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+    "audio/mpeg": ".mp3",
+    "audio/ogg": ".ogg",
+}
+
+
+def _remote_asset_name(url, mime):
+    """A stable, collision-resistant in-ZIM filename for a cross-origin asset:
+    the URL hashed, with a sensible extension (from the URL path, else the
+    mime). Hashing the whole URL keeps two CDN images with the same basename
+    from clobbering each other."""
+    h = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
+    path = urllib.parse.urlsplit(url).path
+    ext = posixpath.splitext(path)[1].lower()
+    if not ext or len(ext) > 6:
+        ext = _EXT_FOR_MIME.get((mime or "").split(";")[0].strip().lower(), "")
+    return h + ext
+
+
 class _AssetCarrier:
     """Copies referenced assets from source ZIMs into the export, deduped and
     bounded. `add_item` is the Creator's, injected so the class stays testable.
     Rewrites references to the carried in-ZIM path (relative to an ``A/<slug>``
     article, i.e. ``../<path>``)."""
 
-    def __init__(self, add_item, item_factory, asset_reader):
+    def __init__(self, add_item, item_factory, asset_reader, remote_reader=None):
         self._add = add_item
         self._make = item_factory  # (path, mimetype, bytes) -> libzim Item
         self._read = asset_reader
+        # Optional (absolute_url) -> (bytes, mime) | None. When present, a media
+        # ref that isn't same-origin (a CDN-hosted <img>) is fetched through it
+        # instead of dropped. None on the bookmark-export path, whose reader
+        # only knows local ZIMs — so that path's behavior is unchanged.
+        self._remote = remote_reader
         self._carried = {}  # resolved source path -> in-ZIM path (or None if skipped)
         self.total_bytes = 0
         self.count = 0
@@ -227,6 +262,39 @@ class _AssetCarrier:
         self.mimetypes.add(mime or "application/octet-stream")
         return in_path
 
+    def _carry_remote(self, url):
+        """Carry a cross-origin media URL (a CDN-hosted <img>/<source>) and
+        return its in-ZIM path, or None. Same budget and caps as a same-origin
+        asset; a no-op when no ``remote_reader`` was supplied (export path)."""
+        if not self._remote:
+            return None
+        key = "\x00remote\n" + url
+        if key in self._carried:
+            return self._carried[key]
+        if self.count >= _MAX_ASSETS or self.total_bytes >= _MAX_TOTAL_ASSET_BYTES:
+            self._carried[key] = None
+            return None
+        got = self._remote(url)
+        if not got:
+            self._carried[key] = None
+            return None
+        data, mime = got
+        if not data or len(data) > _MAX_ASSET_BYTES:
+            self._carried[key] = None
+            return None
+        in_path = "_assets/_remote/" + _remote_asset_name(url, mime)
+        self._carried[key] = in_path
+        self.total_bytes += len(data)
+        self.count += 1
+        try:
+            self._add(self._make(in_path, mime or "application/octet-stream", data))
+        except Exception as e:
+            log.debug("remote asset add failed %s: %s", in_path, e)
+            self._carried[key] = None
+            return None
+        self.mimetypes.add(mime or "application/octet-stream")
+        return in_path
+
     def carried_path(self, zim, resolved):
         """Where an already-carried source entry lives in the export, or None.
         Lets the link rewriter point an ``<a href>`` at a file the export
@@ -263,14 +331,31 @@ class _AssetCarrier:
             # From an A/<slug> article, an in-ZIM path P is reached via ../P.
             return "../" + resolved_in_path
 
+        def carry_ref(ref):
+            # A cross-origin media ref (a CDN-hosted image) — absolute, or
+            # protocol-relative to another host. Same-origin protocol-relative
+            # refs were already rewritten to /path before we got here, so a //
+            # that survives points at a different host. Caught BEFORE
+            # _resolve_ref, which would mis-read //host/x as same-origin /host/x
+            # and 404 it. Only carried when this carrier has a remote reader
+            # (the create path) — a no-op on the export path.
+            r = ref.strip()
+            low = r.lower()
+            if low.startswith("http://") or low.startswith("https://"):
+                return self._carry_remote(r)
+            if r.startswith("//"):
+                return self._carry_remote("https:" + r)
+            # Same-origin: resolve against the article and carry from source.
+            resolved = _resolve_ref(article_path, ref)
+            if resolved:
+                return self._carry(zim, resolved)
+            return None
+
         def fix_tag(tagm):
             tag = tagm.group(0)
 
             def fix_src(m):
-                resolved = _resolve_ref(article_path, m.group(3))
-                if not resolved:
-                    return m.group(0)
-                in_path = self._carry(zim, resolved)
+                in_path = carry_ref(m.group(3))
                 if not in_path:
                     return m.group(0)
                 return m.group(1) + m.group(2) + in_zim_ref(in_path) + m.group(2)
@@ -282,11 +367,9 @@ class _AssetCarrier:
                     if not cand:
                         continue
                     bits = cand.split()
-                    resolved = _resolve_ref(article_path, bits[0])
-                    if resolved:
-                        in_path = self._carry(zim, resolved)
-                        if in_path:
-                            bits[0] = in_zim_ref(in_path)
+                    in_path = carry_ref(bits[0])
+                    if in_path:
+                        bits[0] = in_zim_ref(in_path)
                     parts.append(" ".join(bits))
                 return m.group(1) + m.group(2) + ", ".join(parts) + m.group(2)
 

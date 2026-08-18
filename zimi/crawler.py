@@ -700,7 +700,7 @@ def create_site_zim(
         # It used to be read during the write, which made the write pass reach
         # for the network one last time after everything else had stopped — and
         # the claim this capture now makes is that packaging touches nothing.
-        illustration = site_illustration(seed_url, timeout)
+        illustration = site_illustration(seed_url, timeout, seed_text)
         out = _finish_output(
             out_dir or _srv.ZIM_DIR, out_path, _slug(f"{parsed.netloc} site", "site")
         )
