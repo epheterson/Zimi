@@ -2461,6 +2461,20 @@ class TestCrossOriginMediaCarry(unittest.TestCase):
         self.assertIn("../_assets/_remote/", out)
         self.assertEqual(len(self.added), 1)
 
+    def test_unescapes_html_entities_in_cross_origin_url(self):
+        # src="...?a=1&amp;b=2" — the &amp; is HTML encoding; the fetch URL must
+        # carry a real & or the CDN 404s.
+        seen = []
+        c = self._carrier(lambda url: (seen.append(url), (b"IMG", "image/png"))[1])
+        c.rewrite_media(
+            "z",
+            "A/index",
+            '<img src="//cdn.example.com/x.png?a=1&amp;b=2">',
+        )
+        self.assertTrue(seen)
+        self.assertIn("a=1&b=2", seen[-1])
+        self.assertNotIn("&amp;", seen[-1])
+
     def test_leaves_unresolvable_same_origin_ref_alone(self):
         c = self._carrier(lambda url: (b"IMG", "image/png"))
         html = '<img src="/local/only.png">'  # same-origin, reader returns None

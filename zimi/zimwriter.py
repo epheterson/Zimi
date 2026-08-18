@@ -341,10 +341,14 @@ class _AssetCarrier:
             # (the create path) — a no-op on the export path.
             r = ref.strip()
             low = r.lower()
+            # An attribute value is HTML-encoded, so a tracking query arrives as
+            # ?a=1&amp;b=2 — unescape before it becomes a fetch URL, or the &amp;
+            # goes on the wire and the CDN 404s (Wikipedia's sister-project
+            # logos carry exactly this).
             if low.startswith("http://") or low.startswith("https://"):
-                return self._carry_remote(r)
+                return self._carry_remote(_html.unescape(r))
             if r.startswith("//"):
-                return self._carry_remote("https:" + r)
+                return self._carry_remote("https:" + _html.unescape(r))
             # Same-origin: resolve against the article and carry from source.
             resolved = _resolve_ref(article_path, ref)
             if resolved:
