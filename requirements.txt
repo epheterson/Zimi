@@ -3,6 +3,11 @@ PyMuPDF>=1.23.0
 mcp>=1.0.0
 certifi>=2024.1.1
 zeroconf>=0.130.0
+# Rescales a captured site's icon into the 48x48 ZIM illustration. Without it
+# has_image_support() is False and every created ZIM ships iconless — which is
+# exactly what happened on the Docker image, where Pillow was absent (Eric: CNN
+# capture "no favicon" on prod, present locally where Pillow is installed).
+Pillow>=10.0.0
 # BitTorrent accelerator. Marker-gated below 3.14 (no wheel there yet, and no
 # sdist) so a plain `pip install -r requirements.txt` never breaks on new
 # interpreters; missing = HTTP-only. Wheels cover manylinux + musllinux, macOS
