@@ -1322,6 +1322,26 @@ def _mirrors_web_urls(zim_name, archive):
     return answer
 
 
+def _reconstruct_source_url(archive, entry_path):
+    """The live URL a site-relative ``entry_path`` points at, built from the
+    ZIM's Source origin — so the uncaptured-page interstitial can offer the real
+    address for a link a single-page/site capture did not reach. None when the
+    ZIM records no http(s) Source (then the interstitial falls back to its own
+    scheme guess)."""
+    try:
+        source = (
+            bytes(archive.get_metadata("Source")).decode("utf-8", "replace").strip()
+        )
+    except Exception:
+        return None
+    if not source.lower().startswith(("http://", "https://")):
+        return None
+    parts = urlparse(source)
+    if not parts.netloc:
+        return None
+    return f"{parts.scheme}://{parts.netloc}/" + entry_path.lstrip("/")
+
+
 # ============================================================================
 # HTTP Request Handler
 # ============================================================================
@@ -2510,24 +2530,30 @@ class ZimHandler(BaseHTTPRequestHandler):
             return False
         return "text/html" in (self.headers.get("Accept") or "").lower()
 
-    def _send_uncaptured_page(self, zim_name, entry_path):
-        """The page a mirrored-URL ZIM shows for an entry it does not hold.
+    def _send_uncaptured_page(self, zim_name, entry_path, url=None):
+        """The page shown for a link into an entry this archive does not hold.
 
-        In a ZIM whose entries ARE web URLs, a missing entry is not a broken
-        link — it is a page of a real website that this archive did not
-        capture, and the reader knows both facts: which URL it was, and that
-        the live one still exists. Saying that is strictly better than the JSON
-        404 a person used to get, which read like a server fault and named a
-        path nobody recognised as an address.
+        A missing entry on a page the reader tried to OPEN is not a broken link
+        — it is a page of a real website that this capture did not reach, and
+        the reader knows both facts: which URL it was, and that the live one
+        still exists. Saying that is strictly better than the JSON 404 a person
+        used to get, which read like a server fault and named a path nobody
+        recognised as an address (Eric hit exactly this clicking a link in a
+        captured CNN page).
+
+        ``url`` is the live address to offer. For a URL-mirror ZIM (warc2zim /
+        alive) the entry path IS the URL minus its scheme, so it is derived here
+        when the caller passes None. A single-page/site capture passes the URL
+        it reconstructed from the ZIM's Source origin.
 
         Answered 200 because the interstitial IS the answer to the request —
         the entry is genuinely absent, and a browser handed a 4xx renders its
         own error chrome around the explanation or replaces it outright."""
-        # The entry path IS the URL, minus the scheme warc2zim drops. https is
-        # the assumption, and the honest one: a site served over plain http in
-        # 2026 redirects to https anyway, and the reader can see the address it
-        # is being offered before choosing to follow it.
-        url = "https://" + entry_path.lstrip("/")
+        # https is the assumption, and the honest one: a site served over plain
+        # http in 2026 redirects to https anyway, and the reader can see the
+        # address it is being offered before choosing to follow it.
+        if not url:
+            url = "https://" + entry_path.lstrip("/")
 
         # Text is escaped as text and the one attribute as an attribute: an
         # entry path came off the web, and it is being shown to somebody.
@@ -2660,6 +2686,19 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if entry_path and self._wants_html_document():
                     if _mirrors_web_urls(zim_name, archive):
                         return self._send_uncaptured_page(zim_name, entry_path)
+                    # A single-page or site capture (not a URL-mirror): the
+                    # reader routes a same-site link into the ZIM, and when the
+                    # target page was never captured a person deserves prose, not
+                    # the raw JSON they used to get (Eric clicked a link in a
+                    # captured CNN page). Only when the ZIM records a web Source
+                    # can the site-relative path be turned back into the live
+                    # address — an ordinary article ZIM (Wikipedia, Gutenberg)
+                    # has no such mapping and keeps the JSON below.
+                    live = _reconstruct_source_url(archive, entry_path)
+                    if live:
+                        return self._send_uncaptured_page(
+                            zim_name, entry_path, url=live
+                        )
                 return self._json(
                     404, {"error": f"Entry '{entry_path}' not found in {zim_name}"}
                 )

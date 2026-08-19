@@ -328,6 +328,25 @@ def test_a_single_page_still_looks_like_a_single_page():
     assert source == "https://a.example/1"
 
 
+def test_a_bare_host_is_normalized_to_https():
+    # Eric: "allow entering sites without https://". A bare host is the common
+    # shorthand and captures as https; a path rides along.
+    _m, source, _t, opts = manage._create_validate(
+        {"mode": "page", "source": "cnn.com"}
+    )
+    assert opts["urls"] == ["https://cnn.com"]
+    assert source == "https://cnn.com"
+    _m, source, _t, _o = manage._create_validate(
+        {"mode": "site", "source": "example.org/docs"}
+    )
+    assert source == "https://example.org/docs"
+    # An explicit scheme is left exactly as given.
+    _m, source, _t, _o = manage._create_validate(
+        {"mode": "site", "source": "http://plain.example/"}
+    )
+    assert source == "http://plain.example/"
+
+
 def test_a_bad_line_is_named_rather_than_failing_on_page_eleven():
     with pytest.raises(ValueError) as e:
         manage._create_validate(

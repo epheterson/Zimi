@@ -2109,10 +2109,14 @@ function _createSyncMetrics(s) {
       '<span class="create-metric-k">' + tH('create_metric_' + what) + '</span>' +
     '</div>';
   }
-  // No counters and no tree is the old bare spinner, so keep one honest line of
-  // movement while a job with a silent engine runs.
-  if (!html && s.active && !_createViz.order.length) {
-    html = '<div class="create-status"><span class="spinner-inline" aria-hidden="true"></span>' +
+  // Packaging (and warc2zim's convert) write one big file and emit no per-item
+  // events, so the counters above freeze at their fetch-phase totals and the
+  // page reads as stuck (Eric: "just sits there while packaging"). Keep a
+  // pulsing line of movement through those silent phases — appended below the
+  // frozen counts, or standing alone when a silent engine never filled a tree.
+  var silent = s.active && (_createViz.phase === 'package' || _createViz.phase === 'convert');
+  if (silent || (!html && s.active && !_createViz.order.length)) {
+    html += '<div class="create-status"><span class="spinner-inline" aria-hidden="true"></span>' +
       '<span>' + tH(s.cancelling ? 'create_cancelling' : 'create_running') + '</span></div>';
   }
   if (host.innerHTML !== html) host.innerHTML = html;

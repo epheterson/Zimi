@@ -59,9 +59,10 @@ class _FakeArchive:
     most ZIMs), and ``entries`` is everything it holds — including, for a
     warc2zim capture, the replay shell that identifies one structurally."""
 
-    def __init__(self, entries, tags=None):
+    def __init__(self, entries, tags=None, source=None):
         self._entries = entries
         self._tags = tags
+        self._source = source
 
     def get_entry_by_path(self, path):
         if path in self._entries:
@@ -74,6 +75,8 @@ class _FakeArchive:
     def get_metadata(self, name):
         if name == "Tags" and self._tags is not None:
             return self._tags.encode()
+        if name == "Source" and self._source is not None:
+            return self._source.encode()
         raise RuntimeError(f"no {name} in this fake archive")
 
 
@@ -91,11 +94,19 @@ ZIMIT_ENTRIES = {
 # An ordinary article ZIM, which must not change at all.
 ARTICLE_ZIM = "survival"
 ARTICLE_ENTRIES = {"A/Water": PAGE}
+# A Fast-engine single-page capture: NOT a URL-mirror (its entry is A/index),
+# but it records the Source it came from. A link into a page it never captured
+# must still get the interstitial, with the live URL rebuilt from that Source.
+FAST_ZIM = "www-cnn-com"
+FAST_ENTRIES = {"A/index": PAGE}
 
 _ARCHIVES = {
     ALIVE_ZIM: _FakeArchive(ALIVE_ENTRIES, tags="zimi:alive;_ftindex:yes"),
     ZIMIT_ZIM: _FakeArchive(ZIMIT_ENTRIES),
     ARTICLE_ZIM: _FakeArchive(ARTICLE_ENTRIES, tags="_category:other"),
+    FAST_ZIM: _FakeArchive(
+        FAST_ENTRIES, tags="_category:other", source="https://www.cnn.com"
+    ),
 }
 
 # What a browser sends when it navigates an iframe, and what Zimi's own service
@@ -176,6 +187,25 @@ class TestUncapturedPage(unittest.TestCase):
         self.assertIn("wasn't captured", body)
         # No JSON error survives anywhere in it.
         self.assertNotIn('{"error"', body)
+
+    def test_a_fast_capture_link_gets_prose_not_json(self):
+        """A single-page capture is not a URL-mirror, but a link into a page it
+        never captured must still get the interstitial — with the live URL
+        rebuilt from the ZIM's Source origin, not the raw JSON Eric clicked
+        into."""
+        status, headers, body = self._get(f"/w/{FAST_ZIM}/politics", AS_IFRAME)
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers.get("Content-Type", ""))
+        self.assertIn("https://www.cnn.com/politics", body)
+        self.assertIn("wasn't captured", body)
+        self.assertNotIn('{"error"', body)
+
+    def test_a_fast_capture_subresource_miss_still_gets_json(self):
+        """A script or image that misses needs the JSON it can parse, not an
+        HTML page — only a navigation gets prose."""
+        status, _headers, body = self._get(f"/w/{FAST_ZIM}/politics", AS_SCRIPT)
+        self.assertEqual(status, 404)
+        self.assertIn('"error"', body)
 
     def test_a_zimit_zim_is_recognised_without_zimis_tag(self):
         """The property belongs to the FILE. A zimit ZIM downloaded from Kiwix

@@ -2743,6 +2743,7 @@ def _create_validate(data):
         page_urls = _create_page_urls(source)
         source = page_urls[0] if len(page_urls) == 1 else "\n".join(page_urls)
     else:
+        source = _normalize_url_scheme(source)
         parts = urllib.parse.urlsplit(source)
         if parts.scheme.lower() not in ("http", "https") or not parts.netloc:
             raise ValueError("not an http(s) URL")
@@ -2797,6 +2798,23 @@ def _create_validate(data):
     return mode, source, title, opts
 
 
+def _normalize_url_scheme(text):
+    """Prepend https:// when someone typed a bare host — cnn.com, example.org/x
+    — the way people actually type an address (Eric: "allow entering sites
+    without https://"). An explicit scheme, a scheme-relative //host, a host:port,
+    or a first segment with no dot (a typo or a local name) is left exactly as
+    given for the validator to judge."""
+    t = text.strip()
+    if "://" in t or t.startswith("//"):
+        return t
+    head = t.split("/", 1)[0]
+    if ":" in head:  # host:port or an unknown scheme — don't second-guess it
+        return t
+    if "." in head and " " not in head:
+        return "https://" + t
+    return t
+
+
 def _create_page_urls(source):
     """One address per line into the list the multi-page capture takes. Blank
     lines are skipped and duplicates collapse, because pasting a list is how
@@ -2804,7 +2822,7 @@ def _create_page_urls(source):
     line that is wrong rather than failing an hour later on page eleven."""
     urls = []
     for line in str(source).splitlines():
-        text = line.strip()
+        text = _normalize_url_scheme(line.strip())
         if not text:
             continue
         # The whole-field ceiling is the cap times a URL, so it cannot catch a
