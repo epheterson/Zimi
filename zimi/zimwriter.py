@@ -191,6 +191,43 @@ _EXT_FOR_MIME = {
 }
 
 
+def _split_srcset(value):
+    """Split a srcset into (url, descriptor) pairs the way the HTML spec does.
+
+    Candidates are comma-separated, but a URL may itself CONTAIN commas — CNN's
+    image API puts them in the query (``?q=h_720,w_1280,c_fill/f_webp``). Naive
+    ``value.split(",")`` shredded one such URL into three bogus candidates, and
+    a phone (whose <source> matched where a desktop's did not) then picked the
+    garbage and showed a broken image. So: skip separators, take a run of
+    non-whitespace as the URL, then everything up to the next comma is its
+    descriptor.
+    """
+    out = []
+    i, n = 0, len(value)
+    while i < n:
+        while i < n and (value[i].isspace() or value[i] == ","):
+            i += 1
+        if i >= n:
+            break
+        start = i
+        while i < n and not value[i].isspace():
+            i += 1
+        url = value[start:i]
+        # A URL may end with commas, which are separators, not part of it.
+        stripped = url.rstrip(",")
+        if stripped != url:
+            out.append((stripped, ""))
+            continue
+        while i < n and value[i].isspace():
+            i += 1
+        d_start = i
+        while i < n and value[i] != ",":
+            i += 1
+        out.append((url, value[d_start:i].strip()))
+        i += 1
+    return out
+
+
 def _remote_asset_name(url, mime):
     """A stable, collision-resistant in-ZIM filename for a cross-origin asset:
     the URL hashed, with a sensible extension (from the URL path, else the
@@ -388,15 +425,10 @@ class _AssetCarrier:
 
             def fix_srcset(m):
                 parts = []
-                for cand in m.group(3).split(","):
-                    cand = cand.strip()
-                    if not cand:
-                        continue
-                    bits = cand.split()
-                    in_path = carry_ref(bits[0])
-                    if in_path:
-                        bits[0] = in_zim_ref(in_path)
-                    parts.append(" ".join(bits))
+                for url, descriptor in _split_srcset(m.group(3)):
+                    in_path = carry_ref(url)
+                    ref = in_zim_ref(in_path) if in_path else url
+                    parts.append((ref + " " + descriptor).strip())
                 return m.group(1) + m.group(2) + ", ".join(parts) + m.group(2)
 
             tag = _SRC_RE.sub(fix_src, tag)

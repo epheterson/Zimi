@@ -2450,6 +2450,38 @@ class TestCrossOriginMediaCarry(unittest.TestCase):
         self.assertIn("320w", out)  # srcset descriptors preserved
         self.assertEqual(len(self.added), 3)
 
+    def test_a_srcset_url_containing_commas_survives(self):
+        # CNN's image API puts commas INSIDE the URL
+        # (?q=h_720,w_1280,c_fill/f_webp). Splitting a srcset naively on commas
+        # shredded one URL into three bogus candidates; a phone whose <source>
+        # matched then picked the garbage and showed a broken image, while a
+        # desktop fell back to the good src and looked fine.
+        from zimi.zimwriter import _split_srcset
+
+        got = _split_srcset(
+            "https://m.cnn.com/a.jpg?q=h_720,w_1280,c_fill/f_webp 1x, "
+            "https://m.cnn.com/b.jpg?q=w_2560,c_fill 2x"
+        )
+        self.assertEqual(
+            got,
+            [
+                ("https://m.cnn.com/a.jpg?q=h_720,w_1280,c_fill/f_webp", "1x"),
+                ("https://m.cnn.com/b.jpg?q=w_2560,c_fill", "2x"),
+            ],
+        )
+
+    def test_a_comma_url_is_carried_whole_through_rewrite(self):
+        seen = []
+        c = self._carrier(lambda url: (seen.append(url), (b"IMG", "image/jpeg"))[1])
+        out = c.rewrite_media(
+            "z",
+            "A/index",
+            '<source srcset="https://m.cnn.com/a.jpg?q=h_720,w_1280,c_fill 1x">',
+        )
+        self.assertEqual(seen, ["https://m.cnn.com/a.jpg?q=h_720,w_1280,c_fill"])
+        self.assertIn("1x", out)
+        self.assertNotIn("w_1280,", out)  # no shredded remnant left behind
+
     def test_carries_protocol_relative_cross_origin(self):
         # Wikipedia and most sites reference CDN images protocol-relative
         # (//upload.wikimedia.org/...). These must be fetched, not mis-read as

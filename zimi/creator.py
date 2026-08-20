@@ -937,12 +937,17 @@ def _relativize_html(page, variants):
     def fix(m):
         prefix, attr, quote, val = m.group(1), m.group(2), m.group(3), m.group(4)
         if attr.lower() == "srcset":
+            # Split by the spec, not by comma: an image URL may CONTAIN commas
+            # (CNN's image API: ?q=h_720,w_1280,c_fill/f_webp). Splitting naively
+            # here shredded one URL into three bogus candidates before the asset
+            # carrier ever saw the tag, and a phone then picked the garbage and
+            # showed a broken image (Eric, on-device).
+            from zimi.zimwriter import _split_srcset
+
             parts = []
-            for cand in val.split(","):
-                bits = cand.strip().split()
-                if bits:
-                    bits[0] = _strip_origin(bits[0], variants)
-                parts.append(" ".join(bits))
+            for url, descriptor in _split_srcset(val):
+                fixed = _strip_origin(url, variants)
+                parts.append((fixed + " " + descriptor).strip())
             val = ", ".join(parts)
         else:
             val = _strip_origin(val, variants)
