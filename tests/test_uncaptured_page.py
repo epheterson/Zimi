@@ -200,6 +200,18 @@ class TestUncapturedPage(unittest.TestCase):
         self.assertIn("wasn't captured", body)
         self.assertNotIn('{"error"', body)
 
+    def test_an_offsite_link_is_not_given_two_origins(self):
+        """A capture stores its off-site links host-first, so the entry path is
+        already a scheme-less URL. Prepending the Source origin to that produced
+        https://www.cnn.com/www.cnn.com/2026/... (Eric: "links out ooops ...
+        doubled")."""
+        status, _h, body = self._get(
+            f"/w/{FAST_ZIM}/www.cnn.com/2026/08/20/politics/navy", AS_IFRAME
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("https://www.cnn.com/2026/08/20/politics/navy", body)
+        self.assertNotIn("cnn.com/www.cnn.com", body)
+
     def test_a_fast_capture_subresource_miss_still_gets_json(self):
         """A script or image that misses needs the JSON it can parse, not an
         HTML page — only a navigation gets prose."""

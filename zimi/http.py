@@ -1339,7 +1339,16 @@ def _reconstruct_source_url(archive, entry_path):
     parts = urlparse(source)
     if not parts.netloc:
         return None
-    return f"{parts.scheme}://{parts.netloc}/" + entry_path.lstrip("/")
+    path = entry_path.lstrip("/")
+    # The entry path may ALREADY be a scheme-less URL — a capture's off-site
+    # links are stored host-first ("www.cnn.com/2026/..."), and prepending the
+    # origin to that produced https://www.cnn.com/www.cnn.com/2026/... (Eric:
+    # "links out ooops ... doubled"). A first segment that looks like a host is
+    # one: give it a scheme instead of a second origin.
+    head = path.split("/", 1)[0].lower()
+    if head == parts.netloc.lower() or ("." in head and " " not in head):
+        return f"{parts.scheme}://{path}"
+    return f"{parts.scheme}://{parts.netloc}/" + path
 
 
 # ============================================================================
