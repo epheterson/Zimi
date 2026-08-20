@@ -12268,6 +12268,11 @@ async function deleteZim(filename, btn) {
     }
     if (card) card.remove();
     _catalogCache = null;
+    // A deleted ZIM may be one Zimi made — drop the cached made-here inventory
+    // so it (and the freed capture name) refresh, instead of lingering in the
+    // Creator list (Eric: "after I delete they still live there").
+    _creatorInventory = null;
+    if (typeof _creatorLoadInventory === 'function' && _msSection === 'creator') _creatorLoadInventory();
     zimsCache = await _fetchList();
     _rebuildZimsMap();
     const tabBtn = document.querySelector('.manage-tab[data-tab="installed"]');
