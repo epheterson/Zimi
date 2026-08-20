@@ -5,13 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.9.0] - 2026-08-13
+## [1.9.0] - 2026-08-20
 
 Zimi makes ZIMs now. Point it at a folder, a web page, a whole site, a video playlist, or an archive from any crawler, and it becomes a ZIM in your library: from the command line with `zimi create` and `zimi import`, or from a new + button that previews what you will get before anything runs. Underneath, this is also the release where Zimi grows up operationally: it discovers a folder of ZIMs with zero configuration on a USB stick, proves itself silent when told it is offline, exposes Prometheus metrics, backs itself up and restores from nothing, signs people in through Cloudflare Access without a password, and validates every one of those claims with a functional release gate before shipping.
 
 ### Added
 
-- **ZIM creation.** `zimi create <folder>` packages HTML, Markdown (rendered by a built-in converter), and PDFs with their assets, cross-file links intact. `zimi create <url>` captures one page, or a list of up to twenty, with same-origin images, styles and fonts carried in. `--site` runs a bounded, polite, same-origin crawl: page, depth and byte budgets enforced as they are spent, robots.txt honored including Crawl-delay, crawler traps collapsed, and Ctrl-C still writes a valid ZIM of everything captured so far. Pages built by JavaScript are refused with a pointer at zimit rather than packaged as loading spinners, and `--engine zimit` orchestrates that browser-based crawler as an optional Docker engine for exactly those sites.
+- **ZIM creation.** `zimi create <folder>` packages HTML, Markdown (rendered by a built-in converter), and PDFs with their assets, cross-file links intact. `zimi create <url>` captures one page, or a list of up to twenty, with images — including those served from a sibling CDN, which is where most of the modern web keeps its pictures — plus styles and fonts carried in. `--site` runs a bounded, polite, same-origin crawl: page, depth and byte budgets enforced as they are spent, robots.txt honored including Crawl-delay, crawler traps collapsed, and Ctrl-C still writes a valid ZIM of everything captured so far. Pages built by JavaScript are refused with a pointer at zimit rather than packaged as loading spinners, and `--engine zimit` orchestrates that browser-based crawler as an optional Docker engine for exactly those sites.
 - **Video ZIMs.** `zimi create` with a playlist or channel URL builds a video ZIM through yt-dlp (a soft dependency): an index page with thumbnails and durations, one page per video with subtitles as selectable tracks, a total size budget that stops cleanly, and an audio-only mode. Powered by yt-dlp, and the UI says so.
 - **Web archive import.** `zimi import` converts WARC and WACZ files from ArchiveBox, browsertrix, Webrecorder or HTTrack into library ZIMs through a managed warc2zim sidecar, with an offline pre-seed path for air-gapped machines. Powered by warc2zim.
 - **The + button.** Creation gets a full-page surface in the web app (admins only, `/#create` is a real URL, folds into the overflow menu on phones). Every mode answers before it acts: folders preview their file count and main page, pages preview their real title and detected language, sites preview robots permission, playlists preview their length and first titles. Language is an auto-detecting native-script picker, sizes are presets, the folder field has a server-side directory picker, and jobs stream a live log with a cancel that actually cancels.
@@ -50,6 +50,12 @@ Zimi makes ZIMs now. Point it at a folder, a web page, a whole site, a video pla
 - **Seeding display** shows the live upload rate next to connected peers, with the lifetime total in one place instead of two.
 - **A disconnecting reader is a debug line,** not a stack trace and a 500 in the log.
 - **Idle instances with torrenting enabled no longer fetch the catalog at boot.**
+- **Captured pages keep their pictures and their icon.** A capture now carries the images a page pulls from a sibling CDN (most of them, on a modern site) rather than dropping everything not same-origin, and reads the icon a page actually declares instead of blindly probing `/favicon.ico`. The Docker image ships Pillow so the icon is rescaled and written rather than silently skipped.
+- **A link into an uncaptured page explains itself.** Clicking through to a page a single-page or site capture never reached now lands on a short interstitial that names the live address, instead of a raw JSON error.
+- **A capture URL can be typed without its scheme.** `cnn.com` is understood as `https://cnn.com`; an explicit scheme is left alone.
+- **Packaging shows it is working.** The final write phase, which streams no per-item events, now keeps a live indicator moving instead of appearing to hang.
+- **A news article is captured, not refused.** A URL a video extractor claims but that turns out to be an ordinary page (a news article that merely embeds a player) falls back to page capture instead of failing with a downloader error.
+- **The MCP server survives `mcp` 2.0 (#52).** The 2.0 release moved FastMCP out of the `mcp` package; the dependency is pinned to the line that still ships it, and the import falls back to the standalone `fastmcp` package otherwise.
 
 ## [1.8.2] - 2026-08-07
 
