@@ -959,6 +959,34 @@ def _relativize_css(text, variants):
     return _CSS_URL_RE.sub(fix, text)
 
 
+_RETRYABLE_HTTP = frozenset((429, 500, 502, 503, 504))
+
+
+def _urlopen_retry(req, timeout, tries=3):
+    """``urlopen`` with a short backoff on the transient failures a burst of
+    same-host requests provokes: a CDN rate-limit (429/503) or a dropped
+    connection. A page can reference hundreds of images on one media host, and
+    firing them off back-to-back gets a slice of them throttled — which used to
+    leave those images silently uncarried (Eric: a captured CNN's top images
+    404'd). A real 404/403 is not retried; it will not get better. Raises the
+    last error when every try fails."""
+    import time
+
+    last = None
+    for i in range(tries):
+        try:
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            last = e
+            if e.code not in _RETRYABLE_HTTP:
+                raise
+        except OSError as e:
+            last = e
+        if i < tries - 1:
+            time.sleep(0.4 * (i + 1))
+    raise last if last is not None else OSError("fetch failed with no error")
+
+
 def _http_asset_reader(origin, variants, timeout):
     """An ``_AssetCarrier`` asset reader pointed at HTTP: fetches
     ``origin/<resolved>``, same-origin by construction. Reads are capped at
@@ -972,7 +1000,7 @@ def _http_asset_reader(origin, variants, timeout):
         url = origin + "/" + resolved
         req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with _urlopen_retry(req, timeout) as resp:
                 data = resp.read(cap + 1)
                 mime = (
                     (resp.headers.get("Content-Type") or "application/octet-stream")
@@ -1012,7 +1040,7 @@ def _http_remote_reader(timeout):
         cap = _zw._MAX_ASSET_BYTES
         req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with _urlopen_retry(req, timeout) as resp:
                 mime = (
                     (resp.headers.get("Content-Type") or "")
                     .split(";")[0]

@@ -183,6 +183,48 @@ def _entry_text(arc, path):
 # ── the capture, end to end ─────────────────────────────────────────────────
 
 
+def test_asset_fetch_retries_a_rate_limit_but_not_a_404():
+    # A page can reference hundreds of images on one CDN host; firing them off
+    # back-to-back gets a slice throttled, which used to drop them silently
+    # (Eric: a captured CNN's top images 404'd). A 429/503 is retried; a real
+    # 404 is not.
+    import urllib.error
+    import urllib.request
+    from unittest.mock import patch
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    calls = {"n": 0}
+
+    def flaky(req, timeout):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise urllib.error.HTTPError("u", 503, "busy", {}, None)
+        return _Resp()
+
+    with patch("urllib.request.urlopen", flaky):
+        assert isinstance(
+            creator._urlopen_retry(urllib.request.Request("http://x"), 5), _Resp
+        )
+    assert calls["n"] == 3
+
+    calls["n"] = 0
+
+    def hard(req, timeout):
+        calls["n"] += 1
+        raise urllib.error.HTTPError("u", 404, "nope", {}, None)
+
+    with patch("urllib.request.urlopen", hard):
+        with pytest.raises(urllib.error.HTTPError):
+            creator._urlopen_retry(urllib.request.Request("http://x"), 5)
+    assert calls["n"] == 1  # a 404 is final
+
+
 def test_page_capture_end_to_end(fixture_server, tmp_path):
     info = creator.create_page_zim(f"{BASE}/blog/post.html", out_dir=str(tmp_path))
     arc = Archive(info["path"])
