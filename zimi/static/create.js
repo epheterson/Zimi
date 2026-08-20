@@ -2372,8 +2372,11 @@ function _createCountLabel(metric, n) {
 // count as text in the legend, never color alone.
 var _CREATE_KIND_COLORS = {
   images: '#f59e0b',
+  video: '#a78bfa',
+  audio: '#c084fc',
   pages: '#60a5fa',
-  media: '#a78bfa',
+  documents: '#38bdf8',
+  data: '#22d3ee',
   fonts: '#34d399',
   styles: '#f472b6',
   scripts: '#fbbf24',

@@ -644,11 +644,19 @@ def _index_html(entries, date_str, heading, sections=None):
 # most-substantial first; anything unrecognised lands in "other".
 _CONTENT_BUCKETS = (
     ("images", ("image/",)),
-    ("media", ("video/", "audio/")),
+    # Video and audio are named separately: "media" made a person ask what was
+    # in it (Eric: "What's media?"), and the answer is worth a word.
+    ("video", ("video/",)),
+    ("audio", ("audio/",)),
     ("pages", ("text/html", "application/xhtml")),
     ("fonts", ("font/", "application/font", "application/vnd.ms-font")),
     ("styles", ("text/css",)),
     ("scripts", ("javascript", "ecmascript")),
+    # A capture can carry whole documents (a linked PDF, an EPUB) and plain
+    # data files (JSON an app reads, an XML feed, a .txt). Both used to vanish
+    # into "Other", which told nobody anything.
+    ("documents", ("application/pdf", "application/epub")),
+    ("data", ("application/json", "xml", "text/plain", "text/csv")),
 )
 
 
