@@ -1374,7 +1374,11 @@ def _fetch_icon_png(url, timeout):
     effort: an icon must never fail a capture. Needs Pillow to rescale."""
     try:
         req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        # Retried like any other asset: one transient hiccup on the icon used to
+        # cost the ZIM its real favicon for good, silently falling back to the
+        # generated identicon (Eric: an Apple capture that "looks pretty good but
+        # no favicon").
+        with _urlopen_retry(req, timeout) as resp:
             data = resp.read(MAX_FAVICON_BYTES + 1)
     except OSError as e:
         log.debug("favicon fetch failed %s: %s", url, e)
