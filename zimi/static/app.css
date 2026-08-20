@@ -814,6 +814,13 @@
   .create-done-facts { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11.5px; color: var(--text2); }
   .create-done-fact { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .create-done-open { flex: 0 0 auto; }
+  /* What the finished ZIM is made of: the shared segmented bar (.cache-bar /
+     .cache-legend) under the done card, with the on-disk total on its header
+     row. Sits on the 4px grid and borrows the card's radius. */
+  .create-inside { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .create-inside-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .create-inside-title { font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text3); }
+  .create-inside-total { font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
   .create-done-anim { animation: createDoneIn 0.32s cubic-bezier(0.2, 0.8, 0.3, 1.2) both; }
   .create-done-anim .create-done-icon { animation: createIconIn 0.42s cubic-bezier(0.2, 0.9, 0.25, 1.35) both; }
   .create-done-anim .create-done-body { animation: createSettleIn 0.36s ease both 0.14s; }
@@ -1436,6 +1443,9 @@
   .cache-legend-item { display: inline-flex; align-items: center; gap: 5px; }
   .cache-legend-swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
   .cache-legend-item b { color: var(--text); font-weight: 600; }
+  /* The per-kind count beside a value ("· 410"), quieter than the size it
+     qualifies. Shared with the create page's finished-capture summary. */
+  .cache-legend-n { color: var(--text3); font-variant-numeric: tabular-nums; }
   .cache-top-zims { font-size: 11px; color: var(--text2); margin-top: 8px; line-height: 1.5; }
   .cache-top-label { color: var(--text); font-weight: 600; }
   .manage-btn-action,

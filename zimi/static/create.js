@@ -1432,7 +1432,14 @@ function _renderCreatePanel() {
     // 'change' rather than 'input': it fires when the value has settled and
     // focus leaves, which is exactly when the question "what is there?" becomes
     // answerable without probing every keystroke.
-    src.addEventListener('change', function() { _createProbeSource(); });
+    src.addEventListener('change', function() {
+      // Typing a new address over a finished run means "make THAT one" — the
+      // done card for the last capture must not sit there looking like the
+      // answer to it (Eric: typing apple.com after CNN "reloaded the completed
+      // page for the last one").
+      _createClearFinished();
+      _createProbeSource();
+    });
   }
   _createRestoreMode();
   _createSyncFormat();
@@ -1695,6 +1702,24 @@ function _createStartWatching(data) {
   }
   _createPollMs = CREATE_POLL_MS;
   _createPoll();
+}
+
+// Take a FINISHED run off the screen (a running one is left alone — that is a
+// job in flight, not a stale answer). Used when a new source is entered over a
+// completed capture.
+function _createClearFinished() {
+  if (!_createDoneMounted) return;
+  var status = _createStatus;
+  if (status && status.active) return;
+  _createResetRun();
+  var slot = document.getElementById('create-done-slot');
+  if (slot) slot.innerHTML = '';
+  var tree = document.getElementById('create-tree-wrap');
+  if (tree) tree.hidden = true;
+  var metrics = document.getElementById('create-metrics');
+  if (metrics) metrics.innerHTML = '';
+  _createStatus = null;
+  _renderCreatePreview();
 }
 
 function _createResetRun() {
@@ -2333,6 +2358,53 @@ function _createSyncOutcome(s) {
 // under it, the size counts up to what it really is, and the way in appears.
 // Under a second and a half, once, and never again — and with reduced motion it
 // is simply there, complete, in one frame. It celebrates a finished ZIM and
+// "1 entry", not "1 entries" (Eric). Every counted metric carries a singular
+// partner key; anything without one falls back to the plural rather than
+// inventing grammar for a language this file cannot reason about.
+function _createCountLabel(metric, n) {
+  var key = 'create_metric_' + metric;
+  return tH(Number(n) === 1 ? key + '_one' : key);
+}
+
+// The finished ZIM's composition, as the same segmented bar the cache
+// breakdown uses (_segBarHtml, app.js) — one component, so the two never
+// drift. Colors are per content kind and each segment states its size and
+// count as text in the legend, never color alone.
+var _CREATE_KIND_COLORS = {
+  images: '#f59e0b',
+  pages: '#60a5fa',
+  media: '#a78bfa',
+  fonts: '#34d399',
+  styles: '#f472b6',
+  scripts: '#fbbf24',
+  other: '#6e6e7a',
+};
+
+function _createInsideHtml(shape) {
+  if (!shape || !shape.breakdown || !shape.breakdown.length) return '';
+  if (typeof _segBarHtml !== 'function') return '';
+  // Largest first, so the bar reads high-to-low and the legend matches it.
+  var segs = shape.breakdown.slice().sort(function(a, b) {
+    return (b.size_bytes || 0) - (a.size_bytes || 0);
+  });
+  // The bar is proportional to what is IN the ZIM; the headline number is the
+  // file on disk, which compression makes smaller. Two honest numbers, so the
+  // bar never has to pretend its segments add to the file size.
+  var inner = segs.reduce(function(a, x) { return a + (x.size_bytes || 0); }, 0);
+  var bar = _segBarHtml(segs, inner, _CREATE_KIND_COLORS, function(k) {
+    return tH('create_kind_' + k);
+  }, tH('create_inside_title'));
+  if (!bar) return '';
+  return '<div class="create-inside">' +
+    '<div class="create-inside-head">' +
+      '<span class="create-inside-title">' + tH('create_inside_title') + '</span>' +
+      (shape.file_bytes
+        ? '<span class="create-inside-total">' + esc(_fmtBytes(shape.file_bytes)) + '</span>'
+        : '') +
+    '</div>' + bar +
+  '</div>';
+}
+
 // nothing else: there is no streak, no score and nothing to come back for.
 function _createMountDone(s) {
   var host = document.getElementById('create-done-slot');
@@ -2343,7 +2415,7 @@ function _createMountDone(s) {
   var facts = '';
   if (entries && entries.n) {
     facts += '<span class="create-done-fact">' +
-      esc(Number(entries.n).toLocaleString()) + ' ' + tH('create_metric_entries') + '</span>';
+      esc(Number(entries.n).toLocaleString()) + ' ' + _createCountLabel('entries', entries.n) + '</span>';
   }
   if (bytes) facts += '<span class="create-done-fact" id="create-done-bytes">' + esc(_fmtBytes(0)) + '</span>';
   host.innerHTML =
@@ -2364,7 +2436,8 @@ function _createMountDone(s) {
       '</div>' +
       '<button type="button" class="ms-btn ms-btn-primary create-done-open"' +
         ' onclick="_createOpenResult(\'' + escJs(r.name) + '\')">' + tH('create_open') + '</button>' +
-    '</div>';
+    '</div>' +
+    _createInsideHtml(r.shape);
   if (bytes) _createRollBytes(document.getElementById('create-done-bytes'), bytes);
 }
 

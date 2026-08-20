@@ -640,6 +640,76 @@ def _index_html(entries, date_str, heading, sections=None):
     ).encode("utf-8")
 
 
+# What a finished ZIM is made of, in the buckets a person thinks in. Ordered
+# most-substantial first; anything unrecognised lands in "other".
+_CONTENT_BUCKETS = (
+    ("images", ("image/",)),
+    ("media", ("video/", "audio/")),
+    ("pages", ("text/html", "application/xhtml")),
+    ("fonts", ("font/", "application/font", "application/vnd.ms-font")),
+    ("styles", ("text/css",)),
+    ("scripts", ("javascript", "ecmascript")),
+)
+
+
+def _content_bucket(mimetype):
+    m = (mimetype or "").lower()
+    for key, prefixes in _CONTENT_BUCKETS:
+        if any(p in m if "/" not in p else m.startswith(p) for p in prefixes):
+            return key
+    return "other"
+
+
+def zim_content_breakdown(path):
+    """What a written ZIM is actually made of: total file size on disk, entry
+    count, and per-bucket byte totals and counts.
+
+    Answers the question a capture leaves open — "382 assets" says nothing about
+    whether that is mostly pictures or mostly fonts, and a number with no shape
+    is not information. Best effort: a ZIM that will not open returns None
+    rather than failing whatever is reporting."""
+    try:
+        from libzim.reader import Archive
+    except ImportError:
+        return None
+    try:
+        archive = Archive(path)
+    except Exception as e:
+        log.debug("could not open %s for a content breakdown: %s", path, e)
+        return None
+    sizes, counts = {}, {}
+    entries = 0
+    try:
+        for i in range(archive.entry_count):
+            try:
+                entry = archive._get_entry_by_id(i)
+                if entry.is_redirect:
+                    continue
+                item = entry.get_item()
+            except Exception:
+                continue
+            bucket = _content_bucket(item.mimetype)
+            sizes[bucket] = sizes.get(bucket, 0) + int(item.size or 0)
+            counts[bucket] = counts.get(bucket, 0) + 1
+            entries += 1
+    except Exception as e:
+        log.debug("content breakdown of %s stopped early: %s", path, e)
+    try:
+        total = os.path.getsize(path)
+    except OSError:
+        total = 0
+    order = [k for k, _p in _CONTENT_BUCKETS] + ["other"]
+    return {
+        "file_bytes": total,
+        "entries": entries,
+        "breakdown": [
+            {"key": k, "size_bytes": sizes[k], "count": counts[k]}
+            for k in order
+            if sizes.get(k)
+        ],
+    }
+
+
 def _output_path(zim_dir, base):
     """A non-clobbering output path: <base>.zim, then <base>-2.zim, …"""
     candidate = os.path.join(zim_dir, base + ".zim")

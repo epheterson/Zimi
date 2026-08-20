@@ -3087,6 +3087,20 @@ def _create_worker(job, opts):
         # like a capture that thinks it got everything.
         if result.get("stopped"):
             outcome["result"]["stopped"] = str(result["stopped"])
+        # What the finished ZIM is actually MADE of — on-disk size and the
+        # per-kind split behind it. "382 assets" says nothing about whether that
+        # is mostly pictures or mostly fonts, and a number with no shape is not
+        # information (Eric, on the done card: "show a storage breakdown, total
+        # size of the zim and its components"). Best effort by construction: a
+        # breakdown that cannot be read never costs a finished capture.
+        try:
+            from zimi.zimwriter import zim_content_breakdown
+
+            shape = zim_content_breakdown(result.get("path"))
+            if shape:
+                outcome["result"]["shape"] = shape
+        except Exception:
+            log.debug("content breakdown skipped", exc_info=True)
         # Totals only the finished run knows: no line carried them, so they are
         # filed straight rather than parsed back out of prose.
         totals = [

@@ -9925,6 +9925,37 @@ function _cacheSegLabel(key) {
   };
   return m[key] || key;
 }
+// The segmented proportion bar + its legend, shared by the cache breakdown
+// (Server settings) and the create page's finished-capture summary. One
+// component so the two never drift: same geometry, same accessibility contract
+// — every segment carries its label and value as TEXT in the legend and in its
+// own title, so the bar is never the only thing saying what is what.
+//
+// segs:   [{key, size_bytes, count}] — caller sorts; zero-size entries dropped
+// colors: {key: css color}, labelFn: key -> human label
+// Returns '' when there is nothing to show.
+function _segBarHtml(segs, total, colors, labelFn, ariaLabel) {
+  if (!total || !segs || !segs.length) return '';
+  var bars = '', legend = '', aria = [];
+  segs.forEach(function(s) {
+    if (!s.size_bytes) return;
+    var pct = s.size_bytes / total * 100;
+    var color = colors[s.key] || 'var(--text2)';
+    var label = labelFn(s.key);
+    var val = _fmtBytes(s.size_bytes);
+    // A count, where the caller tracked one: "images 50.9 MB · 410".
+    var countTxt = (typeof s.count === 'number' && s.count > 0) ? ' · ' + s.count : '';
+    bars += '<span class="cache-seg" style="width:' + pct.toFixed(2) + '%;background:' + color +
+      '" title="' + escAttr(label + ' — ' + val + countTxt) + '"></span>';
+    legend += '<span class="cache-legend-item"><span class="cache-legend-swatch" style="background:' + color + '"></span>' +
+      esc(label) + ' <b>' + val + '</b>' + (countTxt ? '<span class="cache-legend-n">' + esc(countTxt) + '</span>' : '') + '</span>';
+    aria.push(label + ' ' + val + countTxt);
+  });
+  if (!bars) return '';
+  return '<div class="cache-bar" role="img" aria-label="' + escAttr((ariaLabel || '') + ': ' + aria.join(', ')) + '">' + bars + '</div>' +
+    '<div class="cache-legend">' + legend + '</div>';
+}
+
 function _cacheBreakdownHtml(d) {
   // Sort segments largest→smallest so the bar reads high-to-low and the legend
   // order matches. Copy first — never mutate the fetched payload.
@@ -9935,26 +9966,13 @@ function _cacheBreakdownHtml(d) {
   var titleRow = '<div class="mc-section-title">' + tH('cache_storage_title') +
     (total ? ' · ' + _fmtBytes(total) : '') + '</div>';
   if (!total) return titleRow + '<div class="ms-hint" style="margin:2px 0 8px">' + tH('cache_empty') + '</div>';
-  var bars = '', legend = '', aria = [];
-  segs.forEach(function(s) {
-    if (!s.size_bytes) return;
-    var pct = s.size_bytes / total * 100;
-    var color = _CACHE_SEG_COLORS[s.key] || 'var(--text2)';
-    var label = _cacheSegLabel(s.key);
-    var val = _fmtBytes(s.size_bytes);
-    bars += '<span class="cache-seg" style="width:' + pct.toFixed(2) + '%;background:' + color + '" title="' + escAttr(label + ' — ' + val) + '"></span>';
-    legend += '<span class="cache-legend-item"><span class="cache-legend-swatch" style="background:' + color + '"></span>' +
-      esc(label) + ' <b>' + val + '</b></span>';
-    aria.push(label + ' ' + val);
-  });
+  var barHtml = _segBarHtml(segs, total, _CACHE_SEG_COLORS, _cacheSegLabel, t('cache_storage_title'));
   var top = '';
   if (d.top_zims && d.top_zims.length) {
     top = '<div class="cache-top-zims"><span class="cache-top-label">' + tH('cache_top_zims') + ':</span> ' +
       d.top_zims.map(function(z) { return esc(z.name) + ' (' + _fmtBytes(z.size_bytes) + ')'; }).join(', ') + '</div>';
   }
-  return titleRow +
-    '<div class="cache-bar" role="img" aria-label="' + escAttr(t('cache_storage_title') + ': ' + aria.join(', ')) + '">' + bars + '</div>' +
-    '<div class="cache-legend">' + legend + '</div>' + top;
+  return titleRow + barHtml + top;
 }
 
 async function cleanupTmpFiles() {
