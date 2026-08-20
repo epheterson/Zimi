@@ -1,6 +1,10 @@
 libzim>=3.1.0
 PyMuPDF>=1.23.0
-mcp>=1.0.0
+# <2.0 on purpose: mcp 2.0 dropped the vendored FastMCP this server is built on
+# (moved it to a separate `fastmcp` distribution), so a bare `mcp` resolves to
+# 2.0 and the MCP server crashes on import (issue #52, hit via OpenWebUI). Pin to
+# the 1.x line that still ships FastMCP until the server is ported.
+mcp>=1.0,<2.0
 certifi>=2024.1.1
 zeroconf>=0.130.0
 # Rescales a captured site's icon into the 48x48 ZIM illustration. Without it

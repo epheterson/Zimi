@@ -43,6 +43,16 @@ def _fake_zim(html, zim_name="testzim"):
     return cleanup
 
 
+class TestMcpServerImport(unittest.TestCase):
+    """Issue #52: mcp 2.0 dropped the vendored FastMCP and the server crashed on
+    import via OpenWebUI. The module must import and stand up its FastMCP under
+    the mcp version requirements resolves — a guard that catches the day someone
+    unpins mcp."""
+
+    def test_the_server_stands_up_a_fastmcp(self):
+        self.assertEqual(type(mcp_server.mcp).__name__, "FastMCP")
+
+
 class TestGetChunksTool(unittest.TestCase):
     ZIM = "testzim"
     PATH = "A/Fixture"

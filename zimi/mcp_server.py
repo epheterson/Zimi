@@ -35,7 +35,24 @@ Claude Code config (Docker via SSH):
 
 import json
 
-from mcp.server.fastmcp import FastMCP
+# FastMCP is the high-level server API this file is built on. It shipped inside
+# the `mcp` package through 1.x at `mcp.server.fastmcp`; `mcp` 2.0 dropped that
+# vendored copy and moved FastMCP to its own `fastmcp` distribution. requirements
+# pins `mcp<2.0` so the first import always resolves, but a user who upgraded mcp
+# by hand (issue #52: crashed under mcp 2.0 via OpenWebUI) falls through to the
+# standalone package, and if neither is present gets a fixable message instead of
+# a bare ModuleNotFoundError.
+try:
+    from mcp.server.fastmcp import FastMCP
+except ModuleNotFoundError:
+    try:
+        from fastmcp import FastMCP
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            "Zimi's MCP server needs FastMCP. Install a compatible mcp with "
+            "`pip install 'mcp<2.0'`, or add the standalone package with "
+            "`pip install fastmcp`."
+        ) from exc
 
 from zimi import server as zimi
 
