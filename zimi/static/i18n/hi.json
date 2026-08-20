@@ -840,6 +840,7 @@
   "create_offline_note": "ऑफ़लाइन मोड चालू है — इसके लिए इंटरनेट चाहिए।",
   "create_offline_sidecar_note": "ऑफ़लाइन मोड चालू है, और आयात सहायक अभी स्थापित नहीं है।",
   "create_open": "खोलें",
+  "create_packaging": "ZIM लिखा जा रहा है — डाउनलोड पूरे हो गए",
   "create_pages_note": "हर पंक्ति में एक पता — एक ZIM में 20 पेज तक।",
   "create_ph_archive": "/srv/captures/site.warc.gz",
   "create_ph_folder": "/srv/documents",

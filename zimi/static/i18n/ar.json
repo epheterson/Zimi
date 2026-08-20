@@ -840,6 +840,7 @@
   "create_offline_note": "وضع عدم الاتصال مُفعَّل — هذا يحتاج إلى اتصال بالإنترنت.",
   "create_offline_sidecar_note": "وضع عدم الاتصال مُفعَّل، وأداة الاستيراد غير مثبَّتة بعد.",
   "create_open": "فتح",
+  "create_packaging": "جارٍ كتابة ملف ZIM — انتهت التنزيلات",
   "create_pages_note": "عنوان واحد في كل سطر — حتى 20 صفحة في ملف ZIM واحد.",
   "create_ph_archive": "/srv/captures/site.warc.gz",
   "create_ph_folder": "/srv/documents",

@@ -1736,6 +1736,7 @@ function _createResetRun() {
   _createDoneMounted = false;
   _createRunSeq++;
   _createRunKey = null;
+  _createRunStartedAt = 0;
 }
 
 // Cancel the running job, or drop a queued one. Both are the same endpoint; an
@@ -2141,8 +2142,17 @@ function _createSyncMetrics(s) {
   // frozen counts, or standing alone when a silent engine never filled a tree.
   var silent = s.active && (_createViz.phase === 'package' || _createViz.phase === 'convert');
   if (silent || (!html && s.active && !_createViz.order.length)) {
+    // What it SAYS matters as much as that it moves. The caption above already
+    // reads "Creating…"; repeating it here was two lines of the same word and
+    // no information (Eric: "a bunch of the same strings repeated"). During
+    // packaging this names the actual work and answers the question the phase
+    // provokes — no, it is not still fetching — and carries elapsed time so a
+    // long write is visibly progressing rather than possibly hung.
+    var msg = s.cancelling ? tH('create_cancelling')
+      : (silent ? tH('create_packaging') : tH('create_running'));
+    var since = _createElapsedText(s);
     html += '<div class="create-status"><span class="spinner-inline" aria-hidden="true"></span>' +
-      '<span>' + tH(s.cancelling ? 'create_cancelling' : 'create_running') + '</span></div>';
+      '<span>' + msg + (since ? ' <span class="create-elapsed">' + esc(since) + '</span>' : '') + '</span></div>';
   }
   if (host.innerHTML !== html) host.innerHTML = html;
 }
@@ -2358,6 +2368,21 @@ function _createSyncOutcome(s) {
 // under it, the size counts up to what it really is, and the way in appears.
 // Under a second and a half, once, and never again — and with reduced motion it
 // is simply there, complete, in one frame. It celebrates a finished ZIM and
+// When the run on screen started, stamped client-side the first time a status
+// says it is active — the live status reply carries phases and counts, not a
+// clock, and this only ever labels the CURRENT run (reset clears it).
+var _createRunStartedAt = 0;
+
+// "m:ss" since this run started, or '' before there is a run to time.
+function _createElapsedText(s) {
+  if (!s || !s.active) return '';
+  if (!_createRunStartedAt) _createRunStartedAt = Date.now();
+  var secs = Math.max(0, Math.round((Date.now() - _createRunStartedAt) / 1000));
+  // Under ten seconds a timer is noise, not reassurance.
+  if (secs < 10) return '';
+  return Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+}
+
 // "1 entry", not "1 entries" (Eric). Every counted metric carries a singular
 // partner key; anything without one falls back to the plural rather than
 // inventing grammar for a language this file cannot reason about.

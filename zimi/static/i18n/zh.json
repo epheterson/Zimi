@@ -840,6 +840,7 @@
   "create_offline_note": "离线模式已开启 — 此项需要联网。",
   "create_offline_sidecar_note": "离线模式已开启，且导入助手尚未安装。",
   "create_open": "打开",
+  "create_packaging": "正在写入 ZIM — 下载已完成",
   "create_pages_note": "每行一个地址 — 一个 ZIM 最多 20 个页面。",
   "create_ph_archive": "/srv/captures/site.warc.gz",
   "create_ph_folder": "/srv/documents",

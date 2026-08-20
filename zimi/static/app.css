@@ -817,6 +817,9 @@
   /* What the finished ZIM is made of: the shared segmented bar (.cache-bar /
      .cache-legend) under the done card, with the on-disk total on its header
      row. Sits on the 4px grid and borrows the card's radius. */
+  /* Elapsed time beside the packaging line — quiet, tabular so it does not
+     jitter as the seconds tick. */
+  .create-elapsed { color: var(--text3); font-variant-numeric: tabular-nums; }
   .create-inside { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
   .create-inside-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
   .create-inside-title { font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text3); }

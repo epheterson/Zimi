@@ -840,6 +840,7 @@
   "create_offline_note": "Включён автономный режим — для этого нужен интернет.",
   "create_offline_sidecar_note": "Включён автономный режим, а помощник импорта ещё не установлен.",
   "create_open": "Открыть",
+  "create_packaging": "Запись ZIM — загрузки завершены",
   "create_pages_note": "По одному адресу в строке — до 20 страниц в одном ZIM.",
   "create_ph_archive": "/srv/captures/site.warc.gz",
   "create_ph_folder": "/srv/documents",
