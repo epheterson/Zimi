@@ -942,7 +942,7 @@ def _relativize_html(page, variants):
             # here shredded one URL into three bogus candidates before the asset
             # carrier ever saw the tag, and a phone then picked the garbage and
             # showed a broken image (Eric, on-device).
-            from zimi.zimwriter import _split_srcset
+            from zimi.zimwriter import _SRCSET_RE, _split_srcset
 
             parts = []
             for url, descriptor in _split_srcset(val):
@@ -2147,8 +2147,24 @@ def probe_page(
     assets = set()
     for m in _ASSET_REF_RE.finditer(page):
         ref = _strip_origin(_first_group(m).strip(), variants)
-        if ref and not ref.startswith(("#", "data:")) and "://" not in ref:
-            assets.add(ref)
+        if not ref or ref.startswith(("#", "data:")):
+            continue
+        # Cross-origin refs USED to be skipped here because the engine could not
+        # carry them. It carries them now — a page's images mostly live on a
+        # sibling CDN — so counting only same-origin ones told the admin "24
+        # assets" for a page that lands 400 (Eric: "the size estimate before
+        # clicking create and after it's done are way off").
+        assets.add(ref)
+    # Every srcset CANDIDATE is its own file, and a modern page ships two or
+    # three per image — ignoring them is most of the remaining gap between the
+    # preview's number and what the capture actually lands.
+    from zimi.zimwriter import _SRCSET_RE, _split_srcset
+
+    for m in _SRCSET_RE.finditer(page):
+        for url, _descriptor in _split_srcset(m.group(3)):
+            ref = _strip_origin(url.strip(), variants)
+            if ref and not ref.startswith(("#", "data:")):
+                assets.add(ref)
     return {
         "url": final_url,
         "title": _page_title_from_html(page, parsed.netloc + parsed.path),
