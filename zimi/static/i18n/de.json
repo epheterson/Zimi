@@ -840,7 +840,7 @@
   "create_offline_note": "Offline-Modus ist aktiv — hierfür wird eine Internetverbindung benötigt.",
   "create_offline_sidecar_note": "Offline-Modus ist aktiv, und das Import-Hilfsprogramm ist noch nicht installiert.",
   "create_open": "Öffnen",
-  "create_packaging": "ZIM wird geschrieben — Downloads sind fertig",
+  "create_packaging": "Assets werden geladen und das ZIM geschrieben",
   "create_pages_note": "Eine Adresse pro Zeile — bis zu 20 Seiten in einem ZIM.",
   "create_ph_archive": "/srv/captures/site.warc.gz",
   "create_ph_folder": "/srv/documents",

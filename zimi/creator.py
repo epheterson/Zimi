@@ -1204,7 +1204,14 @@ def _url_page_path(final_url):
 
 
 def http_asset_carrier(
-    add_item, final_url, timeout, *, carried=None, budget=None, item_factory=None
+    add_item,
+    final_url,
+    timeout,
+    *,
+    carried=None,
+    budget=None,
+    item_factory=None,
+    on_progress=None,
 ):
     """An ``_AssetCarrier`` that pulls same-origin assets over HTTP.
 
@@ -1243,7 +1250,11 @@ def http_asset_carrier(
         return got
 
     carrier = _AssetCarrier(
-        add_item, item_factory or make_asset_item, read, remote_reader=remote_read
+        add_item,
+        item_factory or make_asset_item,
+        read,
+        remote_reader=remote_read,
+        on_progress=on_progress,
     )
     if carried is not None:
         carrier._carried = carried
@@ -1511,6 +1522,10 @@ class BuiltinCapture:
         self._timeout = timeout
         self._max_redirects = max_redirects
         self._budget = budget
+        # This engine fetches a page's images during the WRITE, so the run pane
+        # has nothing to show for minutes unless the carry reports itself.
+        self._note = note or (lambda _m: None)
+        self._last_note = [0.0]
         self.carried = {} if carried is None else carried
         self.mimetypes = set()
         self.count = 0
@@ -1524,7 +1539,19 @@ class BuiltinCapture:
         )
 
     def render(self, target, html, final_url, resolve_link=None):
+        import time as _time
+
         sink, item_factory = target
+
+        def _progress(count, total_bytes):
+            # At most one line a second: this fires per asset, and a page can
+            # carry four hundred of them.
+            now = _time.monotonic()
+            if now - self._last_note[0] < 1.0:
+                return
+            self._last_note[0] = now
+            self._note(f"carried {count} assets, {total_bytes} bytes")
+
         carrier = http_asset_carrier(
             sink,
             final_url,
@@ -1532,6 +1559,7 @@ class BuiltinCapture:
             carried=self.carried,
             budget=self._budget,
             item_factory=item_factory,
+            on_progress=_progress,
         )
         out = render_captured_page(
             carrier, html, final_url=final_url, resolve_link=resolve_link

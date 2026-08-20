@@ -840,7 +840,7 @@
   "create_offline_note": "Le mode hors ligne est actif — ceci nécessite une connexion internet.",
   "create_offline_sidecar_note": "Le mode hors ligne est actif et l'outil d'import n'est pas encore installé.",
   "create_open": "Ouvrir",
-  "create_packaging": "Écriture du ZIM — les téléchargements sont terminés",
+  "create_packaging": "Récupération des ressources et écriture du ZIM",
   "create_pages_note": "Une adresse par ligne — jusqu'à 20 pages dans un seul ZIM.",
   "create_ph_archive": "/srv/captures/site.warc.gz",
   "create_ph_folder": "/srv/documents",

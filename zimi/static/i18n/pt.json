@@ -840,7 +840,7 @@
   "create_offline_note": "O modo offline está ativo — isto precisa de ligação à internet.",
   "create_offline_sidecar_note": "O modo offline está ativo e o auxiliar de importação ainda não está instalado.",
   "create_open": "Abrir",
-  "create_packaging": "A escrever o ZIM — as transferências terminaram",
+  "create_packaging": "A obter recursos e a escrever o ZIM",
   "create_pages_note": "Um endereço por linha — até 20 páginas num ZIM.",
   "create_ph_archive": "/srv/captures/site.warc.gz",
   "create_ph_folder": "/srv/documents",

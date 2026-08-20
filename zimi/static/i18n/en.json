@@ -840,7 +840,7 @@
   "create_offline_note": "Offline mode is on — this needs an internet connection.",
   "create_offline_sidecar_note": "Offline mode is on, and the import helper is not installed yet.",
   "create_open": "Open",
-  "create_packaging": "Writing the ZIM — downloads are done",
+  "create_packaging": "Pulling in assets and writing the ZIM",
   "create_pages_note": "One address per line — up to 20 pages in one ZIM.",
   "create_ph_archive": "/srv/captures/site.warc.gz",
   "create_ph_folder": "/srv/documents",

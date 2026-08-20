@@ -2308,6 +2308,10 @@ _CREATE_RE_FETCHING = re.compile(r"^fetching (\S+)$")
 _CREATE_RE_PACKAGING_ONE = re.compile(r"^packaging (\S+)$")
 _CREATE_RE_SKIPPED = re.compile(r"^skipped (\S+):")
 _CREATE_RE_ASSET = re.compile(r"^asset (done|failed) (\S+) for (\S+)$")
+# The Fast engine's running carry total, emitted at most once a second while it
+# fetches a page's images during the write pass. Turns the packaging phase from
+# a blank pane into live counters (Eric: "this view is still empty and lame").
+_CREATE_RE_CARRIED = re.compile(r"^carried (\d+) assets, (\d+) bytes$")
 _CREATE_RE_TITLE = re.compile(r"^title: (.+)$")
 # Both doors into warc2zim announce themselves the same way — the alive engine
 # handing over its recording, and `zimi import` handing over an archive
@@ -2421,6 +2425,13 @@ def _create_derive_line(job, text):
         events.append(
             _create_count_event("entries", match.group(1), int(match.group(2)))
         )
+        return events, phase
+
+    match = _CREATE_RE_CARRIED.match(line)
+    if match:  # the write pass reporting what it has pulled in so far
+        settle()
+        events.append(_create_count_event("assets", int(match.group(1))))
+        events.append(_create_count_event("bytes", int(match.group(2))))
         return events, phase
 
     match = _CREATE_RE_ASSET.match(line)

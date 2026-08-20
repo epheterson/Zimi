@@ -840,7 +840,7 @@
   "create_offline_note": "מצב לא מקוון פעיל — לזה נדרש חיבור לאינטרנט.",
   "create_offline_sidecar_note": "מצב לא מקוון פעיל, וכלי הייבוא עדיין לא מותקן.",
   "create_open": "פתח",
-  "create_packaging": "כותב את ה-ZIM — ההורדות הסתיימו",
+  "create_packaging": "מושך נכסים וכותב את ה-ZIM",
   "create_pages_note": "כתובת אחת בכל שורה — עד 20 דפים ב-ZIM אחד.",
   "create_ph_archive": "/srv/captures/site.warc.gz",
   "create_ph_folder": "/srv/documents",

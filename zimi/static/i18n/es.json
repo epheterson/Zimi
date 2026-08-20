@@ -840,7 +840,7 @@
   "create_offline_note": "El modo sin conexión está activo: esto necesita conexión a internet.",
   "create_offline_sidecar_note": "El modo sin conexión está activo y el ayudante de importación aún no está instalado.",
   "create_open": "Abrir",
-  "create_packaging": "Escribiendo el ZIM: las descargas han terminado",
+  "create_packaging": "Obteniendo recursos y escribiendo el ZIM",
   "create_pages_note": "Una dirección por línea: hasta 20 páginas en un ZIM.",
   "create_ph_archive": "/srv/captures/site.warc.gz",
   "create_ph_folder": "/srv/documents",
