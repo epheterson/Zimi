@@ -1746,11 +1746,17 @@ def create_page_zim(
         base = _slug(f"{parsed.netloc} {parsed.path}", "page")
         out = _finish_output(out_dir or _srv.ZIM_DIR, out_path, base)
 
-        note(f"packaging {final_url}")
         static_cls = zim_static_item_class()
         with atomic_zim_creator(out, language) as creator:
             raw_page = page  # the declared <link rel=icon> lives in the raw HTML
+            # render() is where a page's images are DOWNLOADED, so the run is
+            # still fetching here — announcing "packaging" before it put the
+            # strip a step ahead of the truth and hung the asset counter under
+            # the wrong heading (Eric: "growing on the package step not fetch
+            # step? Fetch is all download steps"). The packaging line moves to
+            # where the writing actually starts.
             page = capture.render(creator_target(creator), page, final_url)
+            note(f"packaging {final_url}")
             creator.add_item(static_cls("A/index", zim_title, page.encode("utf-8")))
             creator.set_mainpath("A/index")
             add_standard_metadata(

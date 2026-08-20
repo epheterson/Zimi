@@ -2132,7 +2132,10 @@ function _createSyncMetrics(s) {
       : '';
     html += '<div class="create-metric">' +
       '<span class="create-metric-n">' + esc(value) + '</span>' + of +
-      '<span class="create-metric-k">' + tH('create_metric_' + what) + '</span>' +
+      // Singular when there is one of it, here as on the done card ("1 asset",
+      // not "1 assets" — Eric caught it in the live counters too). Bytes has no
+      // singular partner; the helper falls back to the plural key.
+      '<span class="create-metric-k">' + _createCountLabel(what, c.n) + '</span>' +
     '</div>';
   }
   // Packaging (and warc2zim's convert) write one big file and emit no per-item
@@ -2388,7 +2391,12 @@ function _createElapsedText(s) {
 // inventing grammar for a language this file cannot reason about.
 function _createCountLabel(metric, n) {
   var key = 'create_metric_' + metric;
-  return tH(Number(n) === 1 ? key + '_one' : key);
+  if (Number(n) !== 1) return tH(key);
+  // Not every metric HAS a singular partner (bytes is a size, not a count).
+  // A missing key must fall back to the plural rather than print the key.
+  var one = key + '_one';
+  var got = tH(one);
+  return (!got || got === one) ? tH(key) : got;
 }
 
 // The finished ZIM's composition, as the same segmented bar the cache
