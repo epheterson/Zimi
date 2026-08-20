@@ -5242,7 +5242,25 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(400, {"error": "Invalid filename"})
         if not filename.endswith(".zim"):
             return handler._json(400, {"error": "Only .zim files can be deleted"})
+        # A ZIM in a SUBFOLDER (everything `zimi create` writes lands in
+        # created/, and folders are categories now) is listed by its basename,
+        # so joining it onto ZIM_DIR looked in the wrong directory: the delete
+        # 404'd, the file survived, and the next scan brought it straight back
+        # (Eric: "the ones I deleted kept coming back"). Resolve through the
+        # library's own name→path map, which knows where each file actually is,
+        # and keep the traversal guard by requiring the result to live under
+        # ZIM_DIR.
         filepath = os.path.join(_srv.ZIM_DIR, filename)
+        if not os.path.exists(filepath):
+            root = os.path.realpath(_srv.ZIM_DIR)
+            for candidate in (_srv.get_zim_files() or {}).values():
+                if os.path.basename(candidate) != filename:
+                    continue
+                resolved = os.path.realpath(candidate)
+                if resolved == root or not resolved.startswith(root + os.sep):
+                    continue  # outside the library — not ours to delete
+                filepath = resolved
+                break
         if not os.path.exists(filepath):
             return handler._json(404, {"error": f"File not found: {filename}"})
         try:

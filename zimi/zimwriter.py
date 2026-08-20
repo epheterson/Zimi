@@ -210,7 +210,14 @@ class _AssetCarrier:
     Rewrites references to the carried in-ZIM path (relative to an ``A/<slug>``
     article, i.e. ``../<path>``)."""
 
-    def __init__(self, add_item, item_factory, asset_reader, remote_reader=None):
+    def __init__(
+        self,
+        add_item,
+        item_factory,
+        asset_reader,
+        remote_reader=None,
+        on_progress=None,
+    ):
         self._add = add_item
         self._make = item_factory  # (path, mimetype, bytes) -> libzim Item
         self._read = asset_reader
@@ -219,6 +226,11 @@ class _AssetCarrier:
         # instead of dropped. None on the bookmark-export path, whose reader
         # only knows local ZIMs — so that path's behavior is unchanged.
         self._remote = remote_reader
+        # Called (count, total_bytes) after each asset lands, so a long carry
+        # can report itself. The Fast engine fetches a page's images DURING the
+        # packaging step, and with nothing reporting it the run pane sat blank
+        # for minutes (Eric: "this view is still empty and lame").
+        self._on_progress = on_progress
         self._carried = {}  # resolved source path -> in-ZIM path (or None if skipped)
         self.total_bytes = 0
         self.count = 0
@@ -260,7 +272,16 @@ class _AssetCarrier:
             self._carried[key] = None
             return None
         self.mimetypes.add(mime or "application/octet-stream")
+        self._note_progress()
         return in_path
+
+    def _note_progress(self):
+        if not self._on_progress:
+            return
+        try:
+            self._on_progress(self.count, self.total_bytes)
+        except Exception as e:  # progress must never break a capture
+            log.debug("asset progress hook failed: %s", e)
 
     def _carry_remote(self, url):
         """Carry a cross-origin media URL (a CDN-hosted <img>/<source>) and
@@ -293,6 +314,7 @@ class _AssetCarrier:
             self._carried[key] = None
             return None
         self.mimetypes.add(mime or "application/octet-stream")
+        self._note_progress()
         return in_path
 
     def carried_path(self, zim, resolved):
