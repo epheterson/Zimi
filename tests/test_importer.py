@@ -164,7 +164,12 @@ def test_venv_creation_sequence_and_marker(data_dir, monkeypatch):
     assert "warc2zim" in calls[1]
     with open(os.path.join(venv, ".zimi-sidecar.json")) as f:
         marker = json.load(f)
-    assert marker == {"warc2zim": "2.3.1", "python": "3.14"}
+    assert marker["warc2zim"] == "2.3.1"
+    assert marker["python"] == "3.14"
+    # The marker also records whether zimscraperlib's srcset splitter needed
+    # Zimi's patch, so an operator can tell what their sidecar is running.
+    # "not found" here because these tests never build a real venv.
+    assert marker["srcset_patch"] in {"applied", "not needed", "not found"}
     # Second call is a no-op: already installed.
     calls.clear()
     assert importer.ensure_sidecar() == exe

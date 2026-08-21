@@ -240,9 +240,105 @@ def ensure_sidecar(sink=None):
             "output). Nothing was left behind; re-run to try again."
         )
     version = _tool_version(exe)
-    _write_marker(venv, warc2zim=version, python=f"{ver[0]}.{ver[1]}")
+    patched = _patch_srcset_comma_bug(venv, say)
+    _write_marker(
+        venv, warc2zim=version, python=f"{ver[0]}.{ver[1]}", srcset_patch=patched
+    )
     say(f"warc2zim {version or '(unknown version)'} ready")
     return exe
+
+
+# ── one upstream bug, held open until upstream closes it ────────────────────
+#
+# zimscraperlib's srcset rewriter splits the attribute on a bare comma:
+#
+#     value_list = attr_value.split(",")          # rewriting/html.py
+#
+# A srcset candidate URL may itself CONTAIN commas — every Cloudinary- or
+# imgix-style image API puts them in the transform segment, and CNN's does:
+# `?c=16x9&q=h_720,w_1280,c_fill/f_webp`. Split on the bare comma and one
+# candidate becomes three: a URL truncated at the first comma, then `w_1280`,
+# then `c_fill/f_webp`. All three are rewritten into the ZIM as image
+# addresses, and the page renders with almost no pictures.
+#
+# Measured on a warc2zim 2.3.1 capture of cnn.com: 289 fragment candidates
+# across 163 srcset attributes, 2 of 68 images rendering. It affects warc2zim,
+# zimit and every openZIM scraper that rewrites HTML, so it is being reported
+# upstream rather than only worked around — but the alive engine is unusable on
+# a large slice of the web until that lands, and a shipped engine that produces
+# archives with no pictures is not a thing to ship.
+#
+# So: a surgical, idempotent, self-removing patch. It matches the exact buggy
+# body, refuses to touch anything else, and does nothing at all once the
+# installed version no longer contains it. The marker records whether it
+# applied, so an operator can tell what their sidecar is running.
+_SRCSET_BUG = 'value_list = attr_value.split(",")'
+
+_SRCSET_FIX = """value_list = _zimi_split_srcset(attr_value)"""
+
+_SRCSET_HELPER = '''
+
+def _zimi_split_srcset(value):
+    """Split a srcset into candidate strings per the HTML spec.
+
+    Patched in by Zimi. A candidate URL may contain commas, so splitting the
+    attribute on one shreds it. The spec's rule is positional: skip leading
+    whitespace and commas, take the run of non-whitespace as the URL, and
+    everything to the next comma is the descriptor. Returns the candidates in
+    the shape the caller already expects — "<url> <descriptor>" strings.
+    """
+    out = []
+    i, n = 0, len(value)
+    while i < n:
+        while i < n and (value[i].isspace() or value[i] == ","):
+            i += 1
+        if i >= n:
+            break
+        start = i
+        while i < n and not value[i].isspace():
+            i += 1
+        url = value[start:i]
+        desc_start = i
+        while i < n and value[i] != ",":
+            i += 1
+        descriptor = value[desc_start:i].strip()
+        out.append(url + " " + descriptor if descriptor else url)
+    return out
+'''
+
+
+def _patch_srcset_comma_bug(venv, say):
+    """Fix zimscraperlib's srcset splitter in this venv. Returns what happened.
+
+    Idempotent and self-removing: a version that no longer carries the bug is
+    left untouched and reports "not needed", so the day upstream ships the fix
+    this quietly stops doing anything."""
+    import glob
+
+    hits = glob.glob(
+        os.path.join(
+            venv, "lib", "*", "site-packages", "zimscraperlib", "rewriting", "html.py"
+        )
+    )
+    if not hits:
+        return "not found"
+    path = hits[0]
+    try:
+        with open(path, encoding="utf-8") as f:
+            source = f.read()
+    except OSError:
+        return "unreadable"
+    if _SRCSET_BUG not in source:
+        return "not needed"
+    patched = source.replace(_SRCSET_BUG, _SRCSET_FIX, 1) + _SRCSET_HELPER
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(patched)
+    except OSError as e:
+        say(f"could not patch zimscraperlib's srcset splitter: {e}")
+        return "failed"
+    say("patched zimscraperlib's srcset splitter (upstream comma bug)")
+    return "applied"
 
 
 def sidecar_status():
