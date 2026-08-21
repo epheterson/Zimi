@@ -1004,3 +1004,49 @@ def test_the_browser_does_not_announce_itself_as_headless(monkeypatch):
     assert "Headless" not in ua
     assert "Chrome/151.0.7922.34" in ua
     assert USER_AGENT in ua, "an operator reading logs must still see who this was"
+
+
+# ── the furniture a page puts OVER itself ──────────────────────────────────
+
+CONSENT_PAGE = b"""<!doctype html><html><head><style>
+  body { overflow: hidden; margin: 0; }
+  .veil { position: fixed; inset: 0; z-index: 999999; background: #fff; }
+  .masthead { position: sticky; top: 0; z-index: 9998; background: #eee; }
+  .slot { position: fixed; top: 0; left: 0; width: 100%; height: 200px; background: #000; }
+</style></head><body>
+  <header class="masthead">THE MASTHEAD</header>
+  <div class="slot"></div>
+  <div class="veil"><h1>Legal Terms and Privacy</h1>
+    <p>By clicking "Agree", you agree to the Terms of Use.</p>
+    <button>Agree</button></div>
+  <article><h2>THE ARTICLE</h2><p>The reason anyone captured this page.</p></article>
+</body></html>"""
+
+
+@browser
+def test_a_consent_wall_does_not_go_into_the_archive(tmp_path):
+    """A modal in a ZIM is furniture nobody can move.
+
+    Its button calls a script that was stripped, so the article behind it is
+    unreachable for as long as the archive exists. Removing it agrees to
+    nothing — nothing is clicked and no cookie is set; this deletes an element
+    that cannot function offline, the same judgement already applied to every
+    script on the page."""
+    srv, url = _server({"/": ("text/html", CONSENT_PAGE)})
+    session = renderer.RenderedSession(work_dir=str(tmp_path))
+    try:
+        session.start()
+        page = session.capture(url)
+    finally:
+        session.close()
+        srv.shutdown()
+        srv.server_close()
+    html = page.html
+    assert "THE ARTICLE" in html, "the page itself has to survive the cleaning"
+    assert "THE MASTHEAD" in html, "a sticky header is part of the page, not over it"
+    # The wall and the blocked ad slot are both gone from the stored markup.
+    assert 'class="veil"' not in html
+    assert 'class="slot"' not in html, "an empty fixed box is an ad slot, not content"
+    # And the lock the modal left behind is released, or the capture is a page
+    # that renders correctly and still cannot be scrolled.
+    assert "overflow: visible" in html or "overflow:visible" in html

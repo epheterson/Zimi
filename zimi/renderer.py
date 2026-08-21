@@ -487,7 +487,58 @@ _IMAGE_CANDIDATES_JS = r"""(maxElements) => {
   return out;
 }"""
 
+# How much of the viewport a `position: fixed` element must cover before the
+# snapshot treats it as something laid OVER the page rather than part of it.
+# High on purpose: a floating share bar or a sticky footer is under this, and
+# only a modal or its backdrop is over it.
+_OVERLAY_VIEWPORT_SHARE = 0.55
+
 _PREPARE_JS = r"""() => {
+  // -- what is covering the page ----------------------------------------
+  //
+  // A consent modal in an ARCHIVE is dead furniture. Its buttons call scripts
+  // that were stripped, it sets a cookie nothing will ever read, and it sits
+  // at z-index 999999 over the article the person actually captured — so a
+  // ZIM that keeps it is a ZIM whose content can never be reached. CNN's is a
+  // classless <div>, 1280x900, fixed: exactly what this removes.
+  //
+  // Removing it agrees to NOTHING. Nothing is clicked, no consent is given,
+  // no cookie is set and no request is sent. This deletes an element that
+  // cannot function offline, which is the same judgement already applied to
+  // every <script> on the page. Auto-clicking "Agree" would be a different
+  // act entirely — that one is the user's to make, and Zimi does not make it.
+  //
+  // `fixed` only, never `sticky`: CNN's own masthead is a sticky header at
+  // z-index 9998 and belongs in the capture. And an EMPTY fixed box goes too,
+  // whatever its size — that is an ad slot whose ad was blocked at capture
+  // time, and it renders in the archive as a black bar over the headline.
+  const covered = window.innerWidth * window.innerHeight * OVERLAY_SHARE;
+  const overlays = [];
+  document.querySelectorAll('body *').forEach(el => {
+    const cs = getComputedStyle(el);
+    if (cs.position !== 'fixed') return;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;
+    const blocking = r.width * r.height >= covered;
+    const hollow = !(el.innerText || '').trim() && !el.querySelector('img, video, canvas, svg');
+    if (blocking || hollow) overlays.push(el);
+  });
+  // Innermost first, so removing a backdrop never orphans a child this was
+  // also going to count.
+  overlays.forEach(el => { if (el.isConnected) el.remove(); });
+
+  // A modal locks the page behind it, and the lock outlives the modal: a body
+  // left at `overflow: hidden` is a capture nobody can scroll.
+  if (overlays.length) {
+    [document.documentElement, document.body].forEach(el => {
+      if (!el) return;
+      el.style.removeProperty('overflow');
+      el.style.removeProperty('position');
+      el.style.removeProperty('height');
+      el.style.setProperty('overflow', 'visible', 'important');
+    });
+  }
+
   const absolutize = (el, attr) => {
     const raw = el.getAttribute(attr);
     if (!raw) return;
@@ -565,6 +616,10 @@ _PREPARE_JS = r"""() => {
 
   return '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
 }"""
+
+# The one tunable the script reads, bound here so the threshold has a single
+# home in Python rather than a bare number buried in a JavaScript string.
+_PREPARE_JS = _PREPARE_JS.replace("OVERLAY_SHARE", repr(_OVERLAY_VIEWPORT_SHARE))
 
 
 # ── what one navigation produced ────────────────────────────────────────────
