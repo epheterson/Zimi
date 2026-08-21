@@ -124,10 +124,24 @@ QUIET_TIMEOUT = 12.0
 # The pause after everything looks finished, for the paint and the last
 # lazy-loading observer to fire.
 SETTLE = 1.2
-# The lazy-load scroll pass: how many viewport-heights it steps through, and
-# how long it waits at each stop for the images that step revealed.
-SCROLL_STEPS = 12
+# The lazy-load scroll pass: how long it waits at each stop for the images that
+# step revealed, and the two bounds that stop it.
+#
+# It used to stop after a fixed twelve viewport-heights, which on any real
+# front page means stopping a sixth of the way down. CNN's home page renders
+# 56,000px tall; twelve steps of a 900px viewport walked 9,720 of them, so the
+# engine only ever ASKED for the images in the top 17% and the archive held
+# thirty entries where the fast engine's held three hundred and eighty. The
+# scroll is the one thing that decides which pictures a rendered capture has,
+# so it now runs until it reaches the bottom.
+#
+# Bounded by distance and by time rather than by step count, because those are
+# the two things actually worth protecting: an infinite-scroll feed that grows
+# a screen every time one is revealed would otherwise never end, and neither
+# bound cares how tall a viewport happens to be.
 SCROLL_PAUSE = 0.35
+MAX_SCROLL_PX = 150_000
+MAX_SCROLL_SECONDS = 45.0
 # A second quiet wait AFTER the scroll, shorter than the first: the scroll's
 # job is to start those requests, and this is what lets them land.
 SCROLL_QUIET_TIMEOUT = 8.0
@@ -1136,8 +1150,17 @@ class RenderedSession:
             )
             step = max(1, int(self._viewport[1] * 0.9))
             position = 0
-            for _n in range(SCROLL_STEPS):
-                if position >= (height or 0):
+            deadline = time.monotonic() + MAX_SCROLL_SECONDS
+            while position < (height or 0) and position < MAX_SCROLL_PX:
+                if time.monotonic() > deadline:
+                    # A feed that grows a screen for every screen revealed is
+                    # not a page with a bottom. Say so: a capture that quietly
+                    # stopped early is how the last one lost 90% of its images.
+                    self._note(
+                        f"still scrolling after {int(MAX_SCROLL_SECONDS)}s — "
+                        f"keeping the first {position:,}px of the page"
+                    )
+                    log.debug("lazy-load scroll hit its time bound at %spx", position)
                     break
                 position += step
                 page.evaluate("(y) => window.scrollTo(0, y)", position)

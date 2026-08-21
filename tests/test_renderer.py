@@ -550,6 +550,7 @@ browser = pytest.mark.skipif(
     reason="playwright + chromium are not installed here",
 )
 
+
 # A page that is EMPTY until JavaScript runs, holds an image only a scroll
 # reveals, pulls a stylesheet from another origin, and writes its own links.
 def site_index(cdn):
@@ -588,6 +589,7 @@ PNG = (
     b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
     b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
 )
+
 
 def site_routes(cdn):
     return {
@@ -1092,3 +1094,83 @@ def test_a_comma_inside_an_image_url_does_not_shred_the_srcset(tmp_path):
     # And both real sizes survived as distinct candidates.
     assert any("w_480" in c for c in candidates), candidates
     assert any("w_1280" in c for c in candidates), candidates
+
+
+TALL_PAGE = (
+    "<!doctype html><html><body style='margin:0'>"
+    + "".join(f"<div style='height:900px'>block {i}</div>" for i in range(40))
+    + "<div id='floor'>THE BOTTOM</div></body></html>"
+).encode()
+
+
+@browser
+def test_the_lazy_scroll_reaches_the_bottom_of_a_tall_page(tmp_path):
+    """The scroll decides which pictures a rendered capture has.
+
+    It used to stop after a fixed twelve viewport-heights, which on CNN's
+    56,000px front page walked 9,720 of them — so the engine only ever ASKED
+    for the images in the top sixth, and the archive held 30 entries where the
+    fast engine's held 380. This page is 36,000px tall; a step-capped scroll
+    stops a third of the way down it."""
+    srv, url = _server({"/": ("text/html", TALL_PAGE)})
+    session = renderer.RenderedSession(work_dir=str(tmp_path))
+    try:
+        session.start()
+        page = session._context.new_page()
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        # Record the high-water mark BEFORE scrolling: the pass returns to the
+        # top on purpose (the snapshot is taken from there), so reading
+        # scrollY afterwards would always be zero and assert nothing.
+        page.evaluate("""() => {
+          window.__maxY = 0;
+          addEventListener('scroll', () => {
+            window.__maxY = Math.max(window.__maxY, window.scrollY);
+          });
+        }""")
+        session._lazy_scroll(page)
+        reached = page.evaluate("() => window.__maxY || 0")
+        page.close()
+    finally:
+        session.close()
+        srv.shutdown()
+        srv.server_close()
+    # The page is 36,000px tall. Twelve viewport-heights would have stopped
+    # around 9,700 — the number that cost CNN 90% of its images.
+    assert reached >= 30000, f"the scroll stopped {reached}px down a 36,000px page"
+
+
+@browser
+def test_a_page_that_grows_forever_still_ends(tmp_path):
+    """An infinite feed has no bottom, so the bounds are what stop it.
+
+    Without them the loop's exit condition — position past the page height —
+    is one a growing page never satisfies."""
+    srv, url = _server({"/": ("text/html", TALL_PAGE)})
+    session = renderer.RenderedSession(work_dir=str(tmp_path))
+    notes = []
+    session._note = notes.append
+    try:
+        session.start()
+        page = session._context.new_page()
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        # Every scroll adds another screen: the page outruns the scroller.
+        page.evaluate("""() => {
+          addEventListener('scroll', () => {
+            const d = document.createElement('div');
+            d.style.height = '2000px';
+            document.body.appendChild(d);
+          });
+        }""")
+        import time as _t
+
+        started = _t.monotonic()
+        session._lazy_scroll(page)
+        elapsed = _t.monotonic() - started
+        page.close()
+    finally:
+        session.close()
+        srv.shutdown()
+        srv.server_close()
+    # It stops, and it says why rather than quietly truncating the capture.
+    assert elapsed < renderer.MAX_SCROLL_SECONDS + 20, elapsed
+    assert any("still scrolling" in n for n in notes), notes
