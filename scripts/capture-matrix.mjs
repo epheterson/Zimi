@@ -47,10 +47,11 @@ async function mainPathOf(name) {
 }
 
 /** What actually rendered, with nothing but Zimi allowed to answer. */
-async function inspect(browser, name, shotPath) {
+async function inspect(browser, name, shotPath, cookie) {
   const main = await mainPathOf(name);
   if (!main) return { error: 'not in the library' };
   const ctx = await browser.newContext({ ...devices[DEVICE] });
+  if (cookie) await ctx.addCookies([cookie]);
   const page = await ctx.newPage();
   const leaked = [];
   const notFound = [];
@@ -125,11 +126,30 @@ async function inspect(browser, name, shotPath) {
   return { ...seen, leaked: leaked.length, notFound: notFound.length };
 }
 
+/**
+ * A browser session Zimi will answer, or null when it needs no password.
+ *
+ * A page load carries no Authorization header, so on a password-protected
+ * instance every shot is the sign-in wall — which scores zero images, zero
+ * absolute refs and zero leaks, and so passed every check this harness makes.
+ * "every capture is clean" over three photographs of a login form is the same
+ * failure the archives themselves were committing.
+ */
+async function sessionCookie() {
+  if (!TOKEN) return null;
+  const res = await fetch(ZIMI + '/whoami', { headers: auth });
+  const hit = /zimi_session=([^;]+)/.exec(res.headers.get('set-cookie') || '');
+  if (!hit) return null;
+  return { name: 'zimi_session', value: hit[1], domain: new URL(ZIMI).hostname,
+           path: '/', httpOnly: true, secure: false, sameSite: 'Lax' };
+}
+
+const cookie = await sessionCookie();
 const browser = await chromium.launch();
 const rows = [];
 for (const cap of CAPTURES) {
   const shot = OUT ? `${OUT}/${cap.label.replace(/[^\w.-]/g, '_')}.png` : '';
-  const got = await inspect(browser, cap.zim, shot);
+  const got = await inspect(browser, cap.zim, shot, cookie);
   rows.push({ label: cap.label, ...got });
   console.log(`${cap.label.padEnd(26)} ${JSON.stringify(got)}`);
 }
@@ -140,7 +160,13 @@ console.log('capture                    images  loaded  absolute  frags  leaked 
 let bad = 0;
 for (const r of rows) {
   if (r.error) { console.log(`${r.label.padEnd(26)} ERROR: ${r.error}`); bad++; continue; }
-  const flag = (r.absolute > 0 || r.fragments > 0 || r.leaked > 0 || r.consent) ? '  <-- ' : '';
+  // Zero images and zero text is not a clean capture, it is a shot of
+  // nothing — a login wall, a 404, a reader frame that never loaded. It
+  // scores perfectly on every other column, which is exactly why it has to
+  // be caught by name.
+  const empty = r.total === 0 && r.text < 200;
+  const flag = (empty || r.absolute > 0 || r.fragments > 0 || r.leaked > 0 || r.consent)
+    ? (empty ? '  <-- EMPTY, not clean' : '  <-- ') : '';
   if (flag) bad++;
   console.log(
     `${r.label.padEnd(26)} ${String(r.total).padStart(6)} ${String(r.loaded).padStart(7)} ` +
