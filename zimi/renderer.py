@@ -1383,6 +1383,19 @@ class RenderedSession:
             # candidates all exist, and it is the round trips that need the
             # ceiling.
             if tried >= ALIVE_MAX_VARIANTS or spent >= ALIVE_VARIANT_MAX_BYTES:
+                # Said out loud, not just logged. A sweep that stops here has
+                # left image sizes out of the archive, and the person reading
+                # this ZIM on a phone is the one who finds out — an image whose
+                # candidate was never fetched is a 404 at exactly the width
+                # their screen picks. "archived 240 variants" with nothing after
+                # it reads as completion; CNN's front page offers close to four
+                # hundred candidates and this stopped at the ceiling on every
+                # run, silently, which is how it stayed invisible.
+                stopped = "images" if tried >= ALIVE_MAX_VARIANTS else "bytes"
+                self._note(
+                    f"stopped sweeping extra image sizes at its {stopped} limit "
+                    f"— some sizes are not in this archive"
+                )
                 log.debug("variant sweep stopped at its cap on %s", page.url)
                 break
             tried += 1

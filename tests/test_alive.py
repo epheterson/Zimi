@@ -874,3 +874,45 @@ def test_a_303_hop_is_archived_as_a_302_the_converter_keeps(tmp_path):
         f"the hop must survive warc2zim, got {hop.http_status()}"
     )
     assert records[base + "/final"].payload() == final
+
+
+def test_the_variant_sweep_says_when_it_stopped_early(tmp_path, monkeypatch):
+    """A cap that is silent reads as completion.
+
+    The sweep archives the image sizes this viewport did NOT choose, so the
+    replay can answer a differently shaped screen. When it stops at its
+    ceiling, the sizes it did not reach are 404s for exactly the person whose
+    phone picks that width — and the run said "archived 240 image variants"
+    with nothing after it, which reads as "done". CNN's front page offers close
+    to four hundred candidates and hit the ceiling on every single run."""
+    import zimi.renderer as renderer
+
+    notes = []
+    session = renderer.RenderedSession(work_dir=str(tmp_path))
+    session._note = notes.append
+    session._capture_variants = True
+    session._recorder = object()          # recording, so the sweep is live
+    session._context = object()           # non-None; nothing else is touched
+    # Two candidates, and a ceiling of one, so the second trips the cap.
+    monkeypatch.setattr(renderer, "ALIVE_MAX_VARIANTS", 1)
+    monkeypatch.setattr(
+        session, "_fetch_into_archive", lambda url, timeout: 10, raising=False
+    )
+
+    class _Page:
+        url = "https://e.com/"
+
+        def evaluate(self, _script, _arg=None):
+            return ["https://e.com/a.jpg", "https://e.com/b.jpg"]
+
+    try:
+        session._record_variants(_Page())
+    finally:
+        session._recorder = None
+        session._context = None
+        session.close()
+
+    assert any("stopped sweeping" in n for n in notes), notes
+    assert any("not in this archive" in n for n in notes), notes
+    # And it still reports what it DID archive — the cap note replaces nothing.
+    assert any("archived" in n for n in notes), notes
