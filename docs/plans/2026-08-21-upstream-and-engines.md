@@ -39,6 +39,23 @@ Rendered does not have this problem because it collapses the srcset before stori
 
 This is the clearest case for Eric's "own alternative" instinct: nobody serves *one page, JavaScript intact, thirty seconds, no Docker* well. browsertrix is a heavyweight crawler. That gap is Alive's reason to exist.
 
+## A negative result: do NOT make the variant sweep round-robin
+
+Tried and reverted the same night. Writing it down because the idea is attractive enough that someone will have it again.
+
+The sweep has a ceiling of `ALIVE_MAX_VARIANTS = 240` attempts, and cnn.com offers close to four hundred candidates — it hits the cap on every run. In DOM order it therefore buys *every* size of the first ~40 images and *nothing* for the last ~30, which looks obviously wrong: spread the same budget round-robin across images and every image gets at least one alternate size.
+
+Measured, one run each, same page:
+
+```
+DOM order      12 / 68 images loaded, 9 404s
+round-robin     7 / 67 images loaded, 16 404s
+```
+
+Worse, and the reason is the part the argument missed. At replay a browser picks **one specific** candidate per image — the one matching its width and pixel ratio. Fetching every size of some images means the replay's pick is present for those images. Fetching one arbitrary size of every image means the replay's pick is usually absent, and a wrong-size variant is worth exactly nothing. Coverage of images is not the quantity that matters; coverage of *the size that will be requested* is.
+
+Which points at what would actually work, and is not a tonight change: sweep the candidates a real device would choose — the widths and pixel ratios of common phones — rather than either DOM order or breadth-first. That makes the budget buy hits instead of coverage.
+
 ## The upstream contribution — DRAFT, not posted
 
 **Project:** openZIM `zimscraperlib`
