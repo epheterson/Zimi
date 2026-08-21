@@ -49,8 +49,8 @@ var SK = {
   // One-shot: set once the "tap again for reading settings" coachmark has been
   // shown, so the hint never nags a returning reader.
   READER_COACH: 'zimi_reader_settings_coach',
-  // One-shot: set once the "select any word to define it" tip has been shown (or
-  // the moment the reader first uses Define), so the tip appears at most once.
+  // The "select any word to define it" tip's ledger — {n, day, used}. Not a
+  // flag: see _maybeShowDefineHint for why once-per-browser was not once.
   DEFINE_HINT: 'zimi_define_hint_seen',
   // Last-rendered SHARING rows (Server pane) — restored synchronously on
   // pane open so the section doesn't pop in after the status fetches.
@@ -14634,6 +14634,8 @@ function openReader(url) {
     // wiktionary ZIM is installed). Works in the normal reader AND Reader View
     // (same document, listeners attached once per load survive the transform).
     try { _defineAttachToDoc(frame); } catch(e) {}
+    // A consent wall that the ARCHIVE rebuilds every time it is opened.
+    try { _sweepBlockingOverlays(frame); } catch(e) {}
     // Inject responsive CSS + scroll-to-top button for mobile
     try {
       // Web-mirror pages (alive engine, zimit) ship a browser's-eye recording of
@@ -17343,8 +17345,9 @@ function _defineShowTrigger(frame, word, wikt, rect) {
 function _defineRun() {
   var st = _defineState;
   if (!st) return;
-  // The reader has now used Define — retire the one-shot discovery tip for good.
-  try { localStorage.setItem(SK.DEFINE_HINT, '1'); } catch (e) {}
+  // The gesture has been learned. Whatever the tip still had left to say, it
+  // is now saying it to somebody who already knows.
+  _noteDefineUsed();
   _definePopover.innerHTML = '<div class="define-card"><div class="define-word">' +
     esc(st.word) + '</div><div class="define-status">' + tH('define_loading') +
     '</div></div>';
@@ -17449,6 +17452,74 @@ function _defineConsider(frame) {
   if (rect) _defineShowTrigger(frame, word, wikt, rect);
 }
 
+// ── Consent walls that the archive rebuilds ──
+//
+// The capture engines strip a blocking overlay when they serialize a page, but
+// the ALIVE engine cannot: it records the WARC before serialization on purpose
+// (serializing mutates the page, and the recording is meant to hold what the
+// site did, not what Zimi provoked), then warc2zim replays those responses with
+// the site's own JavaScript still running. That JS rebuilds the modal every
+// time the ZIM is opened. Alive's whole promise is that the scripts still run,
+// so the fix cannot be "stop running them" — it has to happen here, in the
+// document, after they have run.
+//
+// Same rule as the renderer's, for the same reason and with the same limits:
+// `fixed` only (a sticky masthead is page furniture and stays), covering most
+// of the viewport, plus empty fixed boxes of any size — an ad slot whose ad was
+// blocked at capture time, which renders as a black bar over the headline.
+//
+// This removes; it never clicks. No consent is given, no cookie is set, no
+// request is sent. The element being deleted is one whose buttons call scripts
+// that no longer exist.
+var OVERLAY_VIEWPORT_SHARE = 0.55;   // must match renderer.py's constant
+var OVERLAY_WATCH_MS = 15000;        // how long a rebuilt wall still gets caught
+
+function _sweepBlockingOverlays(frame) {
+  var doc = frame.contentDocument;
+  var win = frame.contentWindow;
+  if (!doc || !win || !doc.body) return;
+
+  var sweep = function() {
+    var covered = win.innerWidth * win.innerHeight * OVERLAY_VIEWPORT_SHARE;
+    var hit = 0;
+    var all = doc.querySelectorAll('body *');
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      var cs;
+      try { cs = win.getComputedStyle(el); } catch (e) { continue; }
+      if (!cs || cs.position !== 'fixed') continue;
+      var r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) continue;
+      var blocking = r.width * r.height >= covered;
+      var hollow = !(el.innerText || '').trim() &&
+                   !el.querySelector('img, video, canvas, svg, iframe');
+      if (!blocking && !hollow) continue;
+      el.remove();
+      hit++;
+    }
+    // A modal locks the page behind it and the lock outlives the modal: a body
+    // left at overflow:hidden is an article nobody can scroll.
+    if (hit) {
+      [doc.documentElement, doc.body].forEach(function(el) {
+        if (el) el.style.setProperty('overflow', 'visible', 'important');
+      });
+    }
+    return hit;
+  };
+
+  sweep();
+  // The wall usually arrives AFTER load — that is what makes it a replay
+  // problem rather than a markup one. Watch for it, then stop: an observer
+  // that lives as long as the article is a cost every reader pays for a
+  // problem almost no archive has.
+  if (typeof win.MutationObserver !== 'function') return;
+  var obs = new win.MutationObserver(function() { sweep(); });
+  try {
+    obs.observe(doc.documentElement, { childList: true, subtree: true });
+    win.setTimeout(function() { obs.disconnect(); }, OVERLAY_WATCH_MS);
+  } catch (e) {}
+}
+
 function _defineAttachToDoc(frame) {
   var doc = frame.contentDocument;
   if (!doc) return;
@@ -17482,15 +17553,64 @@ function _defineAttachToDoc(frame) {
 }
 
 // ── Define discoverability ──
-// A one-shot teaching tip layered on top of the select-a-word / double-tap
-// gesture, which is the only surface for Define. Shows at most once per browser.
-// Skipped entirely when no wiktionary is installed (feature dormant) or the
-// reader has already met Define.
+// A teaching tip layered on top of the select-a-word / double-tap gesture,
+// which is the only surface for Define. Skipped entirely when no wiktionary is
+// installed (the feature is dormant, so there is nothing to teach).
+//
+// Three rules, in order of how much they mean:
+//
+//  1. Somebody who has USED Define never sees it again, on any device that
+//     syncs this flag. Real usage is the only proof the tip worked, and
+//     teaching a gesture to the person already performing it is nagging.
+//  2. Otherwise, at most once a day. A tip that has not landed yet gets
+//     another chance tomorrow; it does not get another chance this evening.
+//  3. And it gives up after DEFINE_HINT_MAX days of being ignored. A hint
+//     nobody has taken by then is not going to be taken.
+//
+// The old rule was "once per browser, marked the instant it renders", which
+// looks correct and is not: a private tab has no yesterday, so the tip fired
+// on every single visit (Eric, four screenshots in a row), and the one shot it
+// did have was spent whether or not anyone was looking at the tab.
+
+// How many days of being ignored before the tip stops asking.
+var DEFINE_HINT_MAX = 3;
+
+/** The tip's ledger: {n: times shown, day: last day shown, used: met Define}. */
+function _defineHintLedger() {
+  var raw = null;
+  try { raw = JSON.parse(localStorage.getItem(SK.DEFINE_HINT) || 'null'); } catch (e) {}
+  // The pre-ledger flag was the string '1'. Anyone carrying one has already
+  // seen the tip, so honour it as "shown once, today" rather than start them
+  // over — an upgrade must never re-teach a lesson already given.
+  if (raw === '1' || raw === 1) return { n: 1, day: _defineHintToday(), used: false };
+  return (raw && typeof raw === 'object') ? raw : { n: 0, day: null, used: false };
+}
+
+/** Today, as a day number. Local midnight is the boundary a person feels. */
+function _defineHintToday() {
+  return Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
+}
+
+function _saveDefineHint(ledger) {
+  try { localStorage.setItem(SK.DEFINE_HINT, JSON.stringify(ledger)); } catch (e) {}
+}
+
+/** Define was actually used. Retires the tip permanently. */
+function _noteDefineUsed() {
+  var led = _defineHintLedger();
+  if (led.used) return;
+  led.used = true;
+  _saveDefineHint(led);
+}
+
 function _maybeShowDefineHint(doc) {
-  if (_getStorageFlag(SK.DEFINE_HINT)) return;
   if (!readerOpen) return;
   if (!_defineFindWiktionary(_ttsLang(doc))) return; // dormant: nothing to teach
-  try { localStorage.setItem(SK.DEFINE_HINT, '1'); } catch (e) {}
+  var led = _defineHintLedger();
+  if (led.used || led.n >= DEFINE_HINT_MAX) return;
+  var today = _defineHintToday();
+  if (led.day === today) return;
+  _saveDefineHint({ n: led.n + 1, day: today, used: false });
   var tip = document.createElement('div');
   tip.className = 'define-hint';
   tip.setAttribute('role', 'status');
