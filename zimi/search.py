@@ -2115,6 +2115,13 @@ def read_article(zim_name, article_path, max_length=None):
     if zim_name not in zims:
         return {"error": f"ZIM '{zim_name}' not found. Available: {list(zims.keys())}"}
 
+    # Defensive: strip a leading "{zim_name}/" prefix if the caller passed a
+    # glued "zim/path" string (as produced by search/suggest output formatting).
+    # Agents naturally copy the combined path; without this, read() fails with
+    # "Article not found" even though the article exists.
+    if article_path.startswith(f"{zim_name}/"):
+        article_path = article_path[len(f"{zim_name}/"):]
+
     archive = _srv.get_archive(zim_name) or _srv.open_archive(zims[zim_name])
     try:
         try:
@@ -2239,6 +2246,10 @@ def chunk_article(
     zims = _srv.get_zim_files()
     if zim_name not in zims:
         return {"error": "not_found"}
+
+    # Defensive: strip leading "{zim_name}/" prefix (same as read_article).
+    if path.startswith(f"{zim_name}/"):
+        path = path[len(f"{zim_name}/"):]
 
     archive = _srv.get_archive(zim_name) or _srv.open_archive(zims[zim_name])
     try:

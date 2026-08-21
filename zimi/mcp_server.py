@@ -114,7 +114,8 @@ def search(
         lines.append(f"Did you mean '{suggestion}'?\n")
     for r in items[:limit]:
         lines.append(f"- **{r['title']}** [{r['zim']}]")
-        lines.append(f"  Path: {r['zim']}/{r['path']}")
+        lines.append(f"  zim: {r['zim']}")
+        lines.append(f"  path: {r['path']}")
         if r.get("snippet"):
             snippet = r["snippet"][:200]
             lines.append(f"  {snippet}")
@@ -209,7 +210,9 @@ def suggest(query: str, zim: str = "", collection: str = "", limit: int = 10) ->
         for item in items:
             if "error" in item:
                 continue
-            lines.append(f"- {item['title']} [{source}] → {source}/{item['path']}")
+            lines.append(f"- {item['title']} [{source}]")
+            lines.append(f"  zim: {source}")
+            lines.append(f"  path: {item['path']}")
     return "\n".join(lines) if lines else f"No suggestions for '{query}'."
 
 
@@ -265,7 +268,7 @@ def random(zim: str = "") -> str:
     if not result:
         return "No articles found."
 
-    return f"**{result['title']}** [{pick_name}]\nPath: {pick_name}/{result['path']}\n\nUse read(zim=\"{pick_name}\", path=\"{result['path']}\") to read the full article."
+    return f"**{result['title']}** [{pick_name}]\nzim: {pick_name}\npath: {result['path']}\n\nUse read(zim=\"{pick_name}\", path=\"{result['path']}\") to read the full article."
 
 
 @mcp.tool()
@@ -528,7 +531,8 @@ def deep_search(
             continue
         read_count += 1
         lines.append(f"## {read_count}. {article['title']} [{r['zim']}]")
-        lines.append(f"Path: {r['zim']}/{r['path']}")
+        lines.append(f"zim: {r['zim']}")
+        lines.append(f"path: {r['path']}")
         content = article["content"][:3000]
         lines.append(f"\n{content}\n")
 
