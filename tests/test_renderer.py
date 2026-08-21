@@ -1050,3 +1050,45 @@ def test_a_consent_wall_does_not_go_into_the_archive(tmp_path):
     # And the lock the modal left behind is released, or the capture is a page
     # that renders correctly and still cannot be scrolled.
     assert "overflow: visible" in html or "overflow:visible" in html
+
+
+# ── the comma bug, in the browser ──────────────────────────────────────────
+
+COMMA_SRCSET_PAGE = b"""<!doctype html><html><body>
+<img src="https://media.example.com/a.jpg?c=16x9&q=h_720,w_1280,c_fill/f_webp"
+     srcset="https://media.example.com/a.jpg?c=16x9&q=h_270,w_480,c_fill/f_webp 480w,
+             https://media.example.com/a.jpg?c=16x9&q=h_720,w_1280,c_fill/f_webp 1280w"
+     sizes="100vw" alt="commas">
+</body></html>"""
+
+
+@browser
+def test_a_comma_inside_an_image_url_does_not_shred_the_srcset(tmp_path):
+    """CNN's image API puts three commas in every URL it serves.
+
+    Splitting a srcset on the bare comma turns one candidate into three
+    fragments — a truncated URL and two pieces of query string — and the
+    engine then goes and FETCHES `c_fill/f_webp`, 404s, and records the 404
+    into the archive. The spec's rule is positional: skip separators, take the
+    run of non-whitespace as the URL, and the rest up to the next comma is the
+    descriptor."""
+    srv, url = _server({"/": ("text/html", COMMA_SRCSET_PAGE)})
+    session = renderer.RenderedSession(work_dir=str(tmp_path))
+    try:
+        session.start()
+        page = session._context.new_page()
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        candidates = page.evaluate(renderer._IMAGE_CANDIDATES_JS, 50)
+        page.close()
+    finally:
+        session.close()
+        srv.shutdown()
+        srv.server_close()
+    # Every candidate is a whole URL on the original host. Not one of them is a
+    # fragment of somebody's query string.
+    for got in candidates:
+        assert got.startswith("https://media.example.com/a.jpg?"), got
+        assert "c_fill/f_webp" in got, f"a candidate lost its tail: {got}"
+    # And both real sizes survived as distinct candidates.
+    assert any("w_480" in c for c in candidates), candidates
+    assert any("w_1280" in c for c in candidates), candidates

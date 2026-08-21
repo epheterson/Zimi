@@ -416,7 +416,42 @@ def _launch(chromium):
 # stylesheet this document is allowed to read, and the computed backgrounds
 # actually applied to elements — the last of which is what catches a background
 # whose stylesheet is cross-origin and therefore unreadable rule by rule.
+# Splitting a srcset, in the browser, to the same spec as zimwriter's
+# ``_split_srcset``. Spliced into every script below that has to read one.
+#
+# `srcset.split(',')` is wrong and it is wrong in a way that only shows up on
+# real sites: a URL may CONTAIN commas, and CNN's image API puts three in every
+# one of them (`?c=16x9&q=h_720,w_1280,c_fill/f_webp`). Split on the bare comma
+# and a single candidate becomes three fragments — one truncated URL and two
+# pieces of query string, of which `c_fill/f_webp` was dutifully fetched,
+# 404ed, and recorded into an archive.
+#
+# The spec's rule is positional, not delimiter-based: skip leading whitespace
+# and commas, take the run of non-whitespace as the URL, and everything up to
+# the next comma after THAT is the descriptor. This is the fourth home of one
+# bug — two in Python, two in JavaScript that no search for the Python function
+# would ever have found — so it lives in exactly one string now.
+_SRCSET_SPLIT_JS = r"""
+  const splitSrcset = (value) => {
+    const s = String(value || '');
+    const out = [];
+    let i = 0;
+    while (i < s.length) {
+      while (i < s.length && (/\s/.test(s[i]) || s[i] === ',')) i++;
+      if (i >= s.length) break;
+      const start = i;
+      while (i < s.length && !/\s/.test(s[i])) i++;
+      const url = s.slice(start, i);
+      const descStart = i;
+      while (i < s.length && s[i] !== ',') i++;
+      out.push({ url: url, descriptor: s.slice(descStart, i).trim() });
+    }
+    return out;
+  };
+"""
+
 _IMAGE_CANDIDATES_JS = r"""(maxElements) => {
+  SRCSET_SPLIT
   const seen = new Set();
   const out = [];
   const add = (raw, base) => {
@@ -431,7 +466,7 @@ _IMAGE_CANDIDATES_JS = r"""(maxElements) => {
   };
   const addSrcset = (value, base) => {
     if (!value) return;
-    String(value).split(',').forEach(part => add(part.trim().split(/\s+/)[0], base));
+    splitSrcset(value).forEach(c => add(c.url, base));
   };
 
   document.querySelectorAll('img').forEach(img => {
@@ -494,6 +529,7 @@ _IMAGE_CANDIDATES_JS = r"""(maxElements) => {
 _OVERLAY_VIEWPORT_SHARE = 0.55
 
 _PREPARE_JS = r"""() => {
+  SRCSET_SPLIT
   // -- what is covering the page ----------------------------------------
   //
   // A consent modal in an ARCHIVE is dead furniture. Its buttons call scripts
@@ -550,11 +586,11 @@ _PREPARE_JS = r"""() => {
   const absSrcset = (el) => {
     const raw = el.getAttribute('srcset');
     if (!raw) return;
-    el.setAttribute('srcset', raw.split(',').map(part => {
-      const bits = part.trim().split(/\s+/);
-      if (!bits[0]) return part.trim();
-      try { bits[0] = new URL(bits[0], document.baseURI).href; } catch (e) {}
-      return bits.join(' ');
+    el.setAttribute('srcset', splitSrcset(raw).map(c => {
+      if (!c.url) return '';
+      let href = c.url;
+      try { href = new URL(c.url, document.baseURI).href; } catch (e) {}
+      return c.descriptor ? href + ' ' + c.descriptor : href;
     }).filter(Boolean).join(', '));
   };
 
@@ -618,8 +654,12 @@ _PREPARE_JS = r"""() => {
 }"""
 
 # The one tunable the script reads, bound here so the threshold has a single
-# home in Python rather than a bare number buried in a JavaScript string.
+# home in Python rather than a bare number buried in a JavaScript string. The
+# srcset splitter is spliced into both scripts that read a srcset, for the same
+# reason: one implementation, not one per script that happens to need it.
 _PREPARE_JS = _PREPARE_JS.replace("OVERLAY_SHARE", repr(_OVERLAY_VIEWPORT_SHARE))
+_PREPARE_JS = _PREPARE_JS.replace("SRCSET_SPLIT", _SRCSET_SPLIT_JS)
+_IMAGE_CANDIDATES_JS = _IMAGE_CANDIDATES_JS.replace("SRCSET_SPLIT", _SRCSET_SPLIT_JS)
 
 
 # ── what one navigation produced ────────────────────────────────────────────
