@@ -86,6 +86,7 @@ from zimi.zimwriter import (
     _MAX_ASSETS,
     _MAX_TOTAL_ASSET_BYTES,
     _slug,
+    _split_srcset,
     make_asset_item,
 )
 
@@ -1995,15 +1996,21 @@ def _fix_ref(assets, m):
 
 
 def _fix_srcset(assets, m):
+    """Rewrite each candidate in a stored srcset to the asset the ZIM holds.
+
+    Splits with ``_split_srcset`` and not ``.split(",")`` for the reason that
+    cost a day: a candidate URL may contain commas — CNN's image API puts three
+    in every one — so the naive split hands ``carry()`` a truncated URL that
+    matches nothing, and the shredded fragments are written into the archive as
+    if they were image addresses."""
     parts = []
-    for candidate in m.group(3).split(","):
-        bits = candidate.strip().split()
-        if not bits:
+    for url, descriptor in _split_srcset(m.group(3)):
+        if not url:
             continue
-        in_path = assets.carry(bits[0])
+        in_path = assets.carry(url)
         if in_path:
-            bits[0] = _in_zim_ref(in_path)
-        parts.append(" ".join(bits))
+            url = _in_zim_ref(in_path)
+        parts.append(f"{url} {descriptor}".strip())
     return m.group(1) + m.group(2) + ", ".join(parts) + m.group(2)
 
 

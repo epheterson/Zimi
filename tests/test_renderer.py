@@ -1174,3 +1174,33 @@ def test_a_page_that_grows_forever_still_ends(tmp_path):
     # It stops, and it says why rather than quietly truncating the capture.
     assert elapsed < renderer.MAX_SCROLL_SECONDS + 20, elapsed
     assert any("still scrolling" in n for n in notes), notes
+
+
+def test_the_stored_srcset_keeps_urls_that_contain_commas(tmp_path):
+    """The fifth home of the comma bug: the server-side rewriter.
+
+    This one runs over the STORED page, turning each srcset candidate into the
+    asset the ZIM holds. Split on the bare comma and `carry()` is handed a
+    truncated URL that matches nothing — so the image stays pointed at the live
+    internet, and the shredded remains of its query string are written into the
+    archive as if they were image addresses."""
+    url = "https://e.com/a.jpg?c=16x9&q=h_720,w_1280,c_fill/f_webp"
+    sink, assets = _assets(tmp_path, {url: ("image/webp", b"WEBP")})
+    html = f'<img src="x.png" srcset="{url} 1280w, https://e.com/b.jpg 480w">'
+    out = assets.rewrite(html) if hasattr(assets, "rewrite") else None
+    if out is None:  # the rewriter is reached through the module function
+        out = renderer._attr_re("srcset").sub(
+            lambda m: renderer._fix_srcset(assets, m), html
+        )
+    # The comma-bearing candidate was recognised and carried: it resolves into
+    # the ZIM (the query is hashed into the name, which is how a query becomes
+    # part of an asset's identity) rather than staying pointed at the internet.
+    assert "_assets/e_com/a." in out and ".jpg 1280w" in out, out
+    # The one that was never carried keeps its own address, whole.
+    assert "https://e.com/b.jpg 480w" in out, out
+    # And nothing in the result is a fragment of somebody's query string
+    # masquerading as an image address — the shape of the original bug.
+    for candidate in out.split('srcset="')[1].rstrip('">').split(", "):
+        url = candidate.split()[0]
+        assert url.startswith(("http", "../_assets/")), f"shredded candidate: {url}"
+    assert len(sink.items) == 1, "the comma URL was carried exactly once"
