@@ -946,6 +946,10 @@ var _createBrowserReady = _createCapBoot('browser');
 // engine needs is the server's to decide and this client should not be the
 // place that has to be updated when it changes.
 var _createAliveReady = _createCapBoot('alive');
+// Whether yt-dlp is installed on the server, as the server's own answer. The
+// last capability to get one: without it the Video tile was offered
+// unconditionally and the truth only arrived at probe time, as an error.
+var _createVideoReady = _createCapBoot('video');
 // The warc2zim sidecar alone. Not a third question to the server — it is
 // `import_ready`, which the page already asks for, under the name that says
 // what it means to an ENGINE rather than to the import mode. It exists so the
@@ -1850,6 +1854,13 @@ function _createIngest(data) {
   if (typeof data.alive_ready === 'boolean') {
     _createAliveReady = data.alive_ready;
     _createRemember('alive', data.alive_ready);
+  }
+  // Video's half of the same contract. It was the one capability with no
+  // readiness answer, which is exactly why it was the one that shipped
+  // offering a mode the server could not run.
+  if (typeof data.video_ready === 'boolean') {
+    _createVideoReady = data.video_ready;
+    _createRemember('video', data.video_ready);
   }
   // The instance's stored capture defaults (Manage → Creator toggles) become
   // the checkboxes' initial state, so a default the admin flipped there is

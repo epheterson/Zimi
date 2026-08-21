@@ -3339,6 +3339,13 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
         # a client that inferred it would have to be updated the day that
         # changes.
         payload["alive_ready"] = _create_alive_ready()
+        # And whether yt-dlp is here. This one was missing, and its absence is
+        # the whole reason the Create page offered a Video mode on an image
+        # that had no yt-dlp in it — the Pillow bug's shape exactly: a
+        # capability advertised by the client and absent from the server, with
+        # nothing in between able to notice. The parity test in
+        # tests/test_create_routes.py now fails if a mode is added without one.
+        payload["video_ready"] = _create_video_ready()
         # The instance's stored capture defaults (Manage → Creator toggles),
         # so the form's checkboxes start where the admin set them instead of
         # at the factory state — the toggle would otherwise LOOK ignored.
@@ -3555,6 +3562,22 @@ def _create_browser_ready():
         return bool(browser_available())
     except Exception:
         log.exception("rendered-engine probe failed")
+        return False
+
+
+def _create_video_ready():
+    """True when a video capture can run here — yt-dlp is a soft dependency.
+
+    Its own probe, like the other three, because "can this machine do the thing
+    the form is offering" is a question every mode has to be able to answer for
+    itself. The day video needs a second half (ffmpeg, say), this is where that
+    gets decided and no caller changes."""
+    try:
+        from zimi.video import video_available
+
+        return bool(video_available())
+    except Exception:
+        log.exception("video-engine probe failed")
         return False
 
 

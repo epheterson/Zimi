@@ -672,3 +672,62 @@ def test_no_web_mode_reads_a_server_path(monkeypatch, tmp_path):
         # 400s, proving the request reached validation, not a tier gate.
         r = _post("/manage/create", {"mode": "page", "source": "ftp://nope"})
         assert r.status == 400
+
+
+# ── every mode Zimi offers must be able to say whether it can run ──────────
+
+
+def test_every_create_mode_can_answer_whether_it_can_run():
+    """The class of bug that ate a whole day of field testing.
+
+    Pillow was absent from the Docker image, so captures got no favicon.
+    yt-dlp was absent, so a Video mode the Create page cheerfully offered died
+    with "yt-dlp is not installed". Both are the same shape: a capability the
+    client advertises and the server cannot honour, with nothing in between
+    able to notice — the server does not know it is lying and the client has
+    no way to ask.
+
+    Three modes had a readiness probe and one did not, which is exactly why
+    that one was the one that shipped broken. This asserts the mapping is
+    TOTAL: add a mode to CREATE_MODES and this fails until you have said how
+    the server decides it can run it.
+
+    It deliberately does not assert any probe returns True — a laptop without
+    yt-dlp is a legitimate install. What must never happen is a mode with no
+    answer at all."""
+    probes = {
+        "page": manage._create_browser_ready,  # the fast engine needs nothing;
+        "site": manage._create_browser_ready,  # rendered/alive are gated below
+        "video": manage._create_video_ready,
+        "import": manage._create_import_ready,
+        "folder": lambda: True,  # reads the server's own disk; nothing to install
+    }
+    missing = [m for m in manage.CREATE_MODES if m not in probes]
+    assert not missing, f"these modes cannot say whether they can run: {missing}"
+    for mode, probe in probes.items():
+        assert isinstance(probe(), bool), f"{mode}'s readiness probe is not a bool"
+
+
+def test_every_capture_engine_can_answer_whether_it_can_run():
+    """Same guarantee, one level down: an ENGINE is also a thing offered."""
+    probes = {
+        "builtin": lambda: True,  # stdlib urllib; present wherever Python is
+        "rendered": manage._create_browser_ready,
+        "alive": manage._create_alive_ready,
+    }
+    missing = [e for e in manage.CREATE_ENGINES if e not in probes]
+    assert not missing, f"these engines cannot say whether they can run: {missing}"
+    for engine, probe in probes.items():
+        assert isinstance(probe(), bool), f"{engine}'s readiness probe is not a bool"
+
+
+def test_the_status_payload_carries_a_readiness_answer_for_every_gated_mode():
+    """And the answers have to REACH the client.
+
+    A probe nobody sends is a probe nobody can act on: video_ready existed as
+    a fact about the machine long before anything put it in the payload, which
+    is the window the Video mode shipped broken in."""
+    payload = manage._create_status(cursor=0, probe=True)
+    for key in ("import_ready", "browser_ready", "alive_ready", "video_ready"):
+        assert key in payload, f"the client is never told {key}"
+        assert isinstance(payload[key], bool), key

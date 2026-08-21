@@ -106,6 +106,19 @@ def _yt_dlp():
         return None
 
 
+def video_available():
+    """True when a video capture can actually run here.
+
+    The other three engines each answer this question for themselves
+    (``_create_import_ready``, ``_create_browser_ready``,
+    ``_create_alive_ready``) and video did not, so the Create page offered a
+    Video mode on an image with no yt-dlp in it — a form that lies, which is
+    the same shape as the Pillow bug before it. See the parity test in
+    tests/test_create_routes.py: every mode Zimi offers must be able to say
+    whether it can run."""
+    return _yt_dlp() is not None
+
+
 def yt_dlp_version(mod):
     """The version yt-dlp reports for itself, or None when it reports none.
     Provenance records name the tool that did the work, and yt-dlp's release
