@@ -63,16 +63,50 @@ async function inspect(browser, name, shotPath) {
   page.on('response', (r) => { if (r.status() === 404) notFound.push(r.url()); });
   await page.goto(`${ZIMI}/?a=${encodeURIComponent(name + '/' + main)}`,
     { waitUntil: 'networkidle', timeout: 90000 }).catch(() => {});
-  await page.waitForTimeout(5000);
+  await page.waitForTimeout(3000);
   const frame = page.frames().find((f) => f !== page.mainFrame());
+  // Scroll the ARTICLE, not the shell. A capture that keeps loading="lazy"
+  // (the fast engine does; the rendered one strips it) holds every image below
+  // the fold at naturalWidth 0 until it is scrolled past — so measuring
+  // without this reports a perfectly good archive as 13 images out of 68.
+  if (frame) {
+    await frame.evaluate(async () => {
+      await new Promise((done) => {
+        let y = 0;
+        const step = () => {
+          window.scrollBy(0, 800); y += 800;
+          if (y >= document.body.scrollHeight || y > 80000) return done();
+          setTimeout(step, 100);
+        };
+        step();
+      });
+      window.scrollTo(0, 0);
+    }).catch(() => {});
+    await page.waitForTimeout(4000);
+  }
   const seen = frame ? await frame.evaluate(() => {
     const imgs = [...document.images];
     const src = (i) => i.getAttribute('src') || '';
+    // Split a srcset the way the SPEC does. The obvious regex is the very bug
+    // this column exists to detect: a candidate URL may contain commas, so
+    // splitting on one turns a correct srcset into imaginary fragments and the
+    // harness reports a clean capture as broken.
+    const splitSrcset = (value) => {
+      const s = String(value || ''); const out = []; let i = 0;
+      while (i < s.length) {
+        while (i < s.length && (/\s/.test(s[i]) || s[i] === ',')) i++;
+        if (i >= s.length) break;
+        const start = i;
+        while (i < s.length && !/\s/.test(s[i])) i++;
+        out.push(s.slice(start, i));
+        while (i < s.length && s[i] !== ',') i++;
+      }
+      return out;
+    };
     // A candidate that is a piece of a query string rather than an address.
     const fragments = [];
     for (const el of document.querySelectorAll('[srcset]')) {
-      for (const part of (el.getAttribute('srcset') || '').split(/\s*,\s*(?=[^\s]+\s)/)) {
-        const url = part.trim().split(/\s+/)[0];
+      for (const url of splitSrcset(el.getAttribute('srcset'))) {
         if (url && !/^(https?:|data:|\.\.?\/|\/)/.test(url)) fragments.push(url);
       }
     }
