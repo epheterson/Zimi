@@ -32,7 +32,27 @@ Prod is currently running `9527fd8`. Four commits after it have never been deplo
 
 Full suite: 2421 passed, 9 skipped. Touched modules re-verified after the last commits: 124 passed.
 
-## The open one: Rendered carries ~30 assets, Fast carries ~380
+## SOLVED overnight — read this before the section below it
+
+The section that follows was written before the cause was found, and its conclusion is wrong. Keeping it because the instrumentation in it is still the right way to approach the next one of these.
+
+The cause was neither the user agent nor the scroll. `RenderedAssets.carry()` never unescaped `&amp;`. References arrive there having been read back out of serialized HTML, where `&` is written `&amp;`, so every URL with a query string was looked up as something the browser had never fetched — no match in the resource map, no rewrite, and the archive shipped an image still pointed at the live internet. Invisible without a query, which is exactly why CNN's logo resolved and every article thumbnail did not, and why the fast engine was fine all along: `zimwriter` unescapes at the same boundary, with a comment explaining why.
+
+Fixed in `060e8b8`. Measured, same page, same machine, network sealed:
+
+```
+assets carried    29  ->  94
+ZIM entries       48  ->  113
+images in reader   5/71 loaded  ->  70/70 loaded
+still absolute    66  ->  0
+leaked requests    0  ->  0
+```
+
+Then the class was audited rather than the instance: `extract_links` had it too (`4608266` — a crawl was fetching `?a=1&amp;b=2` literally), and a fifth copy of the comma bug turned up in `_fix_srcset` (`ddf0e9f`).
+
+Across five sites and both page engines, sealed and scrolled: zero absolute references, zero fragments, zero leaked requests, no consent walls. Site mode clean. Video mode now fails with a sentence instead of a traceback (`97d77fa`). Full suite 2426 passed, 9 skipped.
+
+## Superseded: the wrong diagnosis, kept for its method
 
 I diagnosed this as the lazy scroll stopping after 12 viewport-heights (9,720px of a 56,638px page). That was a real bug and `6e9f2fd` fixes it, **but it did not change the outcome** — a local CNN capture after the fix still produced 29 assets, 48 entries, 10.7 MB.
 
