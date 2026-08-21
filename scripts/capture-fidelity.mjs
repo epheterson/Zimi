@@ -113,15 +113,32 @@ async function shootZim(browser, name, file, cookie) {
     waitUntil: 'networkidle', timeout: 90000,
   }).catch(() => {});
   await autoScroll(page);
-  await page.screenshot({ path: file, fullPage: true });
   const stats = await imageStats(page);
   // A shot of the login wall is not a measurement, and it looks like a clean
   // zero — the failure mode this harness had on its first run.
   const walled = await page.evaluate(
     () => /sign in/i.test(document.body.innerText || '') && document.images.length === 0
   ).catch(() => false);
+
+  // FULL LENGTH means the whole article, and the article is inside the
+  // reader's iframe. `fullPage` on the SPA grows the OUTER document, which is
+  // one screen of chrome around a fixed-height frame — so a 23,000px capture
+  // was arriving as a 1,992px photograph of its own scroll box. Reopening the
+  // frame's own URL at the top level is the same bytes from the same server,
+  // rendered by the same browser, with nothing to clip it.
+  const inner = await page.evaluate(() => {
+    const f = [...document.querySelectorAll('iframe')].find(f => f.src);
+    return f ? f.src : null;
+  }).catch(() => null);
+  const shot = inner ? await ctx.newPage() : page;
+  if (inner) {
+    await shot.goto(inner, { waitUntil: 'networkidle', timeout: 90000 }).catch(() => {});
+    await autoScroll(shot);
+  }
+  await shot.screenshot({ path: file, fullPage: true });
   await ctx.close();
-  return { ...stats, leakedRequests: leaked.length, ...(walled ? { error: 'not signed in — the shot is the login wall' } : {}) };
+  return { ...stats, leakedRequests: leaked.length, framed: Boolean(inner),
+           ...(walled ? { error: 'not signed in — the shot is the login wall' } : {}) };
 }
 
 /** Full-length shot of the live original, for the side-by-side. */
