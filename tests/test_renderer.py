@@ -916,3 +916,91 @@ def test_the_spool_ceiling_counts_what_is_held_not_what_has_passed_through(tmp_p
         assert session._spool_bytes == 0
     finally:
         session.close()
+
+
+# ── refusals that arrive dressed as successes ──────────────────────────────
+#
+# The bug these exist for: CNN's edge answers a headless browser with HTTP 200,
+# no content type, and thirteen bytes reading "Unknown Error". Nothing raises,
+# the status is 2xx, and the engine used to package that string into a ZIM it
+# reported as finished — a green tick over an empty archive.
+
+
+class _FakePage:
+    """Just enough page to ask the one question ``_refused_page`` asks."""
+
+    def __init__(self, content_type, url="https://e.com/"):
+        self._content_type = content_type
+        self.url = url
+
+    def evaluate(self, _script):
+        if self._content_type is _FakePage:  # sentinel: the page cannot answer
+            raise RuntimeError("execution context was destroyed")
+        return self._content_type
+
+
+def test_a_plain_text_refusal_is_not_packaged_as_a_page():
+    refusal = renderer._refused_page(_FakePage("text/plain"))
+    assert refusal, "a text/plain body is not a web page"
+    assert "text/plain" in refusal
+    # The message has to leave the person somewhere to go, and the fast engine
+    # is where: it fetches without a browser and got this exact page.
+    assert "Fast engine" in refusal
+
+
+def test_a_real_page_is_not_convicted():
+    assert renderer._refused_page(_FakePage("text/html")) == ""
+    assert renderer._refused_page(_FakePage("application/xhtml+xml")) == ""
+    # Case is the browser's business, not a reason to fail a capture.
+    assert renderer._refused_page(_FakePage("TEXT/HTML")) == ""
+
+
+def test_a_tiny_page_is_still_a_page():
+    """The check is a fact about the content type, not a size heuristic.
+
+    A one-line site is a legitimate capture — example.com is 1.2KB and real.
+    Any threshold on bytes would eventually refuse one of those, which is why
+    this asks the browser what it received instead of how much."""
+    assert renderer._refused_page(_FakePage("text/html")) == ""
+
+
+def test_a_page_that_cannot_answer_is_not_convicted():
+    """Absence of evidence convicts nothing: a page whose context is gone gets
+    the benefit of the doubt and the capture proceeds as it did before."""
+    assert renderer._refused_page(_FakePage(_FakePage)) == ""
+    assert renderer._refused_page(_FakePage("")) == ""
+
+
+def test_the_browser_does_not_announce_itself_as_headless(monkeypatch):
+    """The one token that decides whether the answer is a web page at all.
+
+    Zimi still names itself in the same string — what comes out is the word
+    ``Headless``, not the attribution. See ``_user_agent``."""
+    from zimi.library import USER_AGENT
+
+    session = renderer.RenderedSession()
+    real = (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "HeadlessChrome/151.0.7922.34 Safari/537.36"
+    )
+
+    class _Browser:
+        def new_page(self):
+            return _UAPage()
+
+    class _UAPage:
+        def evaluate(self, _script):
+            return real
+
+        def close(self):
+            pass
+
+    session._browser = _Browser()
+    try:
+        ua = session._user_agent()
+    finally:
+        session._browser = None
+        session.close()
+    assert "Headless" not in ua
+    assert "Chrome/151.0.7922.34" in ua
+    assert USER_AGENT in ua, "an operator reading logs must still see who this was"

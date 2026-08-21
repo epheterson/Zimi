@@ -541,8 +541,17 @@ function _createPreviewRows(p) {
   if (!p) return [];
   var rows = [];
   var add = function(k, v) { if (v !== undefined && v !== null && v !== '') rows.push({ k: k, v: String(v) }); };
+  // A count the probe could not take, rendered as nothing rather than as the
+  // word "undefined". The guard in add() cannot do this on its own: `undefined
+  // + ''` is the STRING "undefined", so any concatenation done before the
+  // guard has already turned a missing number into a non-empty value that
+  // sails straight through it. That is the whole of the "Videos undefined"
+  // bug — a video probe on a server without yt-dlp sends no count.
+  var countUpTo = function(n, cap) {
+    return typeof n === 'number' && isFinite(n) ? n + (n >= cap ? '+' : '') : '';
+  };
   if (p.mode === 'video') {
-    add('create_pv_videos', p.videos + (p.videos >= CREATE_PROBE_CAP ? '+' : ''));
+    add('create_pv_videos', countUpTo(p.videos, CREATE_PROBE_CAP));
     add('create_pv_playlist', p.playlist);
     add('create_pv_channel', p.uploader);
   } else if (p.mode === 'import') {

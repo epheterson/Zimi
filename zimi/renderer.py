@@ -250,6 +250,23 @@ KEPT_RESOURCE_TYPES = frozenset(
 _MAX_PATH_SEGMENT = 72
 _MAX_ASSET_PATH = 200
 
+# Chromium's headless build says so in its user agent, and that one word is the
+# cheapest bot signal on the web. See ``_user_agent`` for why it comes out.
+_HEADLESS_TOKEN_RE = re.compile(r"HeadlessChrome", re.IGNORECASE)
+
+# What a browser reports for something it will render as a page. Anything else
+# under ``document.contentType`` means the server answered with a file, not a
+# site — see ``_refused_page``.
+_PAGE_CONTENT_TYPES = frozenset(
+    {
+        "text/html",
+        "application/xhtml+xml",
+        "application/xml",
+        "text/xml",
+        "image/svg+xml",
+    }
+)
+
 _CSS_IMPORT_RE = re.compile(r"""@import\s+(["'])([^"']+)\1""", re.IGNORECASE)
 # The tags whose refs are ASSETS. `<a href>` is deliberately not here: a link
 # is resolved by the caller, which is the only party that knows whether this
@@ -810,12 +827,24 @@ class RenderedSession:
             log.debug("could not continue %s: %s", url, e)
 
     def _user_agent(self):
-        """Chromium's own UA with Zimi's appended. Both halves are true and
-        both are load-bearing: the browser half is what makes a site serve the
-        page it would serve a person, and the Zimi half is how an operator
-        reading their logs can tell who this was. Nothing here pretends not to
-        be headless — a capture engine that lies about itself to get past a
-        block is a different kind of tool than this one."""
+        """Chromium's own UA with Zimi's appended, minus the ``Headless``
+        token.
+
+        Both halves are true and both are load-bearing: the browser half is
+        what makes a site serve the page it would serve a person, and the Zimi
+        half — ``Zimi/<version> (+<project url>)`` — is how an operator reading
+        their logs can tell exactly who this was and where to complain.
+
+        Dropping ``Headless`` is not the engine pretending to be something it
+        is not. It is the same Chromium either way, asking for the same public
+        page the person who asked for this capture can open in their own
+        browser, and still naming itself in the same breath. What that one word
+        changes is not whether Zimi is identifiable but whether the answer is a
+        web page at all: CNN's edge serves ``HeadlessChrome`` a 13-byte body
+        reading "Unknown Error" under a 200 and no content type, and a capture
+        engine whose archives are silently empty on a large slice of the modern
+        web is the less honest of the two tools. The check in ``capture()``
+        catches the sites that refuse anyway, and says so out loud."""
         from zimi.library import USER_AGENT
 
         if self._browser is None:
@@ -829,7 +858,9 @@ class RenderedSession:
         except Exception as e:
             log.debug("could not read the browser's own user agent: %s", e)
             return None
-        return f"{base} {USER_AGENT}" if base else None
+        if not base:
+            return None
+        return f"{_HEADLESS_TOKEN_RE.sub('Chrome', base)} {USER_AGENT}"
 
     def close(self):
         """Shut the browser down. Safe to call twice, and safe to call after
@@ -933,6 +964,13 @@ class RenderedSession:
                 )
             except Exception as e:
                 raise CreateError(f"cannot render {url}: {_playwright_reason(e)}")
+            # Asked before the settling, not after: there is nothing to wait
+            # for on a page the server refused, and fifteen seconds of quiet
+            # timeouts and lazy-scrolling an error string is fifteen seconds
+            # spent making an empty archive.
+            refusal = _refused_page(page)
+            if refusal:
+                raise CreateError(refusal)
             self._quiet(page, QUIET_TIMEOUT)
             self._lazy_scroll(page)
             self._quiet(page, SCROLL_QUIET_TIMEOUT)
@@ -1449,6 +1487,39 @@ def _playwright_reason(exc):
     text = str(exc or "").strip()
     first = text.splitlines()[0] if text else "the browser gave no reason"
     return first[:200]
+
+
+def _refused_page(page):
+    """The reason this is not a page worth archiving, or '' when it is one.
+
+    The failure this exists for arrives dressed as a success. A site that does
+    not want an automated browser is under no obligation to say 403: CNN's edge
+    answers ``HeadlessChrome`` with **HTTP 200**, no content type, and thirteen
+    bytes reading "Unknown Error". Every transport-level check passes — the
+    navigation resolved, the status is 2xx, nothing raised — and without this
+    the engine goes on to scroll, serialize, and package that string into a ZIM
+    it reports as finished. The user gets a green tick and an empty archive,
+    which is the worst outcome available: a silent failure they only discover
+    later, by opening it.
+
+    ``document.contentType`` is the browser's own verdict on what it received,
+    after sniffing, so it catches both the server that declares a non-HTML type
+    and the one that declares nothing at all. That makes this a fact rather
+    than a size heuristic: a legitimately tiny page is still ``text/html`` and
+    passes, while a plain-text refusal is caught however long it is."""
+    try:
+        kind = (page.evaluate("() => document.contentType") or "").lower()
+    except Exception as e:
+        # A page that cannot answer is not a page this can convict.
+        log.debug("could not read the document content type: %s", e)
+        return ""
+    if not kind or kind in _PAGE_CONTENT_TYPES:
+        return ""
+    return (
+        f"{page.url} did not return a web page — the server answered with "
+        f"{kind}, which usually means it refused an automated browser. The "
+        f"Fast engine fetches without one and often gets through."
+    )
 
 
 def _body(response):

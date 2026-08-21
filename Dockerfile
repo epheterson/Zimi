@@ -43,6 +43,16 @@ RUN pip install --no-cache-dir "playwright>=1.40" \
  && chmod -R a+rx /ms-playwright \
  && rm -rf /var/lib/apt/lists/*
 
+# yt-dlp is the video engine, and in the image it is not optional. It is a soft
+# dependency in the package — a laptop install of Zimi that never captures a
+# video should not carry it — but the Create page in THIS container offers
+# "Video" as a mode, and a mode the server cannot honour is a form that lies.
+# Absent, every video capture died with "yt-dlp is not installed"; a few
+# megabytes of pure Python is the whole cost of the offer being true. Its own
+# layer, and the last of the dependency layers, because it is also the one that
+# will be bumped most often: extractors break when sites change.
+RUN pip install --no-cache-dir "yt-dlp>=2024.1.1"
+
 # libmagic1 is the warc2zim sidecar's one system dependency (python-magic
 # binds it at import). Without it every WARC conversion — the alive engine's
 # exit — dies before reading a byte. Its own layer, after the browser layer,

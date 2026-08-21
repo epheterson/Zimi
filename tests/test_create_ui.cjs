@@ -490,6 +490,15 @@ check(rowMap({ mode: 'video', videos: 12 }).create_pv_videos === '12+',
   'a playlist sampled to the cap is reported as "12+", not as exactly 12');
 check(rowMap({ mode: 'video', videos: 3 }).create_pv_videos === '3',
   'a playlist shorter than the cap is reported exactly');
+// Eric's screenshot: a server without yt-dlp cannot count a playlist, and the
+// preview read "Videos undefined". `undefined + ''` is the STRING "undefined",
+// so the row's own emptiness guard never saw a missing value at all.
+check(!('create_pv_videos' in rowMap({ mode: 'video' })),
+  'a count the probe could not take shows no row, never the word "undefined"');
+check(!('create_pv_videos' in rowMap({ mode: 'video', videos: null })),
+  'and a null count is the same absence as a missing one');
+check(rowMap({ mode: 'video', videos: 0 }).create_pv_videos === '0',
+  'but a real zero is a real answer — an empty playlist is not a missing count');
 
 check(rowMap({ mode: 'import', bytes: 9, sidecar_ready: false }).create_pv_helper === 'create_pv_installs',
   'import says whether its helper still has to install');
