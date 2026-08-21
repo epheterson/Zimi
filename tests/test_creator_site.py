@@ -1056,3 +1056,27 @@ def test_cli_refuses_a_folder_among_several_urls(tmp_path):
     r = _cli(tmp_path, "https://a.invalid/x", str(tmp_path))
     assert r.returncode == 2
     assert "every one of them must be a URL" in r.stderr
+
+
+def test_a_link_with_an_escaped_query_is_followed_to_the_real_url():
+    """An href is HTML text, so `?a=1&b=2` is written `?a=1&amp;b=2`.
+
+    A crawl that skips the unescape asks the server for a URL with a literal
+    "&amp;" in it — a 404 if you are lucky and a different page if you are not.
+    Same bug as the one that broke every rendered image with a query string;
+    this is the crawl's copy of it, found by auditing the class rather than by
+    waiting for it to surface."""
+    from zimi.crawler import extract_links
+
+    got = extract_links(
+        '<a href="/s?a=1&amp;b=2">one</a>'
+        '<a href="/plain">two</a>'
+        '<a href="https://e.com/x?u=1&amp;v=2">three</a>',
+        "https://e.com/",
+    )
+    assert got == [
+        "https://e.com/s?a=1&b=2",
+        "https://e.com/plain",
+        "https://e.com/x?u=1&v=2",
+    ], got
+    assert not any("&amp;" in url for url in got)

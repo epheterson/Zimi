@@ -49,6 +49,7 @@ boundary and the license boundary are the same boundary.
 """
 
 import contextlib
+import html as _html
 import logging
 import mimetypes
 import os
@@ -224,7 +225,12 @@ def extract_links(page, base_url):
         hrefm = _HREF_RE.search(tagm.group(0))
         if not hrefm:
             continue
-        val = hrefm.group(2).strip()
+        # Unescaped before it is anything else. An href is HTML text, so a
+        # query arrives written `?a=1&amp;b=2`, and a crawl that skips this
+        # asks the server for a URL with a literal "&amp;" in it — a 404, or
+        # worse, a different page. Same bug as the one that broke every
+        # rendered image with a query string; this is the crawl's copy of it.
+        val = _html.unescape(hrefm.group(2).strip())
         if not val or val.startswith("#"):
             continue
         head = val.split("/", 1)[0]

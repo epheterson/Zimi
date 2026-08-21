@@ -1204,3 +1204,25 @@ def test_the_stored_srcset_keeps_urls_that_contain_commas(tmp_path):
         url = candidate.split()[0]
         assert url.startswith(("http", "../_assets/")), f"shredded candidate: {url}"
     assert len(sink.items) == 1, "the comma URL was carried exactly once"
+
+
+def test_a_reference_read_back_out_of_html_is_unescaped_before_lookup(tmp_path):
+    """`&amp;` in a stored reference is not a different image.
+
+    References reach carry() having been read out of serialized HTML, where &
+    is written &amp;. Look one up unescaped and it is not the URL the browser
+    fetched, so it is not a key in the resource map — carry() returns None, the
+    rewriter leaves the reference alone, and the ZIM ships an image still
+    pointed at the live internet. Invisible without a query, which is why CNN's
+    logo resolved and every article thumbnail did not."""
+    url = "https://e.com/i.jpg?c=16x9&q=h_720,w_1280,c_fill/f_webp"
+    sink, assets = _assets(tmp_path, {url: ("image/jpeg", b"JPEG")})
+    escaped = url.replace("&", "&amp;")
+    assert escaped != url
+    got = assets.carry(escaped)
+    assert got, "an escaped reference must find the asset the browser fetched"
+    assert sink.body(got) == b"JPEG"
+    # And it is the SAME asset as the unescaped form — not a second copy under
+    # a second name, which is the other way this could have been "fixed".
+    assert assets.carry(url) == got
+    assert len(sink.items) == 1
