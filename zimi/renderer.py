@@ -60,6 +60,7 @@ memory event. See ``RenderedSession``.
 """
 
 import hashlib
+import html as _html
 import logging
 import mimetypes
 import os
@@ -1856,7 +1857,29 @@ class RenderedAssets:
 
     def carry(self, url, depth=0):
         """Ensure the asset at ``url`` is in the ZIM; return the in-ZIM path it
-        landed at, or None when it is not something this capture holds."""
+        landed at, or None when it is not something this capture holds.
+
+        The URL is unescaped first, and that one call is the difference between
+        a rendered CNN capture whose images work and one whose images are all
+        broken. References arrive here having been read back out of serialized
+        HTML, where ``&`` is written ``&amp;`` — so an image at
+
+            ...x.jpg?c=16x9&q=h_720,w_1280,c_fill/f_webp
+
+        is looked up as ``?c=16x9&amp;q=...``, which is not the URL the browser
+        fetched and therefore not a key in the resource map. carry() returns
+        None, the rewriter leaves the reference alone, and the archive ships an
+        image still pointed at the live internet.
+
+        It is invisible on any URL without a query — which is exactly the shape
+        of the evidence: CNN's logo and QR codes resolved into the ZIM while
+        every article thumbnail stayed absolute. The fast engine unescapes at
+        the same boundary (zimwriter's carry_ref) and its captures were fine,
+        which is what made this look like a browser problem for a whole day.
+
+        Done here rather than at each call site because this is the one door:
+        markup refs, srcset candidates and CSS urls all come through it."""
+        url = _html.unescape(url or "")
         in_path = _asset_path(url)
         if not in_path:
             return None
