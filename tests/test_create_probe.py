@@ -371,3 +371,40 @@ def test_the_web_cap_matches_the_engines_own():
     from zimi.creator import MAX_PAGE_URLS
 
     assert manage.CREATE_MAX_PAGE_URLS == MAX_PAGE_URLS
+
+
+# ── a video site's refusal is a sentence, not a traceback ──────────────────
+
+
+def test_a_download_refusal_names_what_the_site_did():
+    """yt-dlp raises DownloadError for everything a video site can do to say
+    no. Unwrapped it reached the person as forty lines of Python ending in a
+    URL, which is not a failure anybody can act on."""
+    from zimi.video import _download_refusal
+
+    url = "https://v.example/watch?v=x"
+    cases = {
+        "ERROR: unable to download video data: HTTP Error 403: Forbidden": "403",
+        "ERROR: Sign in to confirm your age": "account",
+        "ERROR: Video unavailable": "unavailable",
+        # Verbatim yt-dlp wording. The word "geo" appears nowhere in it, which
+        # is the reason the matcher keys off real messages and not categories.
+        "ERROR: The uploader has not made this video available in your country": "blocked in this location",
+    }
+    for message, expected in cases.items():
+        got = _download_refusal(Exception(message), url)
+        assert url in got, got
+        assert expected in got, f"{message!r} -> {got!r}"
+        # One sentence, and never the raw exception text pasted through.
+        assert "Traceback" not in got and "ERROR:" not in got
+        assert got.count("\n") == 0, got
+
+
+def test_an_unrecognised_refusal_still_says_something_useful():
+    from zimi.video import _download_refusal
+
+    got = _download_refusal(
+        Exception("something nobody has seen before"), "https://v/x"
+    )
+    assert "something nobody has seen before" not in got, "never paste the raw text"
+    assert "server log" in got, got

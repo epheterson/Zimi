@@ -288,11 +288,68 @@ def _download_entry(mod, entry, workdir, *, fmt, audio_only):
         "subtitleslangs": ["all"],
         "writethumbnail": not audio_only,
     }
-    with mod.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+    try:
+        with mod.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+    except Exception as e:
+        # yt-dlp raises DownloadError for everything a video site can do to
+        # refuse: a 403 on the media stream, an age gate, a geo block, a video
+        # taken down between the probe and the download. Unwrapped, it reached
+        # the person as forty lines of Python traceback ending in a URL — which
+        # is not a failure anybody can act on, and is exactly what every other
+        # refusal in this module already avoids.
+        log.exception("video download failed for %s", url)
+        raise CreateError(_download_refusal(e, url))
     if not info:
         raise CreateError(f"yt-dlp could not download {url}")
     return info
+
+
+# What a video site's refusal looks like in yt-dlp's message, and what a person
+# can do about it. Ordered: the first match wins, so put the specific before
+# the general.
+_DOWNLOAD_REFUSALS = (
+    (
+        "403",
+        "the site refused the download (HTTP 403). Sites throttle "
+        "automated downloads; trying again later, or from a different "
+        "network, often works",
+    ),
+    (
+        "sign in",
+        "the site wants an account for this video, and Zimi does not "
+        "sign in on your behalf",
+    ),
+    (
+        "age",
+        "the video is age-restricted and the site will not serve it "
+        "without an account",
+    ),
+    ("private", "the video is private"),
+    ("unavailable", "the site says the video is unavailable"),
+    # yt-dlp's real geo wording is "has not made this video available in your
+    # country" — the word "geo" appears nowhere in it, which is why these
+    # needles are taken from actual messages rather than from the category name.
+    ("your country", "the video is blocked in this location"),
+    ("geo", "the video is blocked in this location"),
+    ("copyright", "the site removed the video"),
+)
+
+
+def _download_refusal(exc, url):
+    """One sentence naming what the site did, or a plain fallback.
+
+    Never the traceback and never str(exc) whole: yt-dlp's message carries its
+    own formatting codes, the offending URL, and a request to report a bug to
+    yt-dlp, none of which belong in front of the person who asked for a video."""
+    text = str(exc or "").lower()
+    for needle, explanation in _DOWNLOAD_REFUSALS:
+        if needle in text:
+            return f"could not download {url} — {explanation}."
+    return (
+        f"could not download {url} — the site refused it. The server log has "
+        f"what yt-dlp reported."
+    )
 
 
 def _collect_downloads(workdir, info):
