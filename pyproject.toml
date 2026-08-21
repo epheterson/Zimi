@@ -50,8 +50,8 @@ dependencies = [
 [project.optional-dependencies]
 bt = ["libtorrent==2.0.*"]
 pdf = ["PyMuPDF>=1.23.0"]
-mcp = ["mcp>=1.0.0"]
-all = ["PyMuPDF>=1.23.0", "mcp>=1.0.0", "libtorrent==2.0.*"]
+mcp = ["mcp>=1.0.0,<2.0.0"]
+all = ["PyMuPDF>=1.23.0", "mcp>=1.0.0,<2.0.0", "libtorrent==2.0.*"]
 
 [project.scripts]
 zimi = "zimi.server:main"
