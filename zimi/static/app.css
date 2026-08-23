@@ -3041,3 +3041,14 @@
   /* almanac.css loads after this file and pins .almanac-view to a literal 56px;
      the body prefix wins on specificity so the almanac clears the banner too. */
   body .almanac-view { top: var(--under-topbar); }
+
+/* The site's mark beside its name while a capture runs. Fixed box so a
+   tall or wide favicon cannot push the two text lines around, and the
+   header stays one row on a phone. */
+.create-head { display: flex; align-items: center; gap: 12px; }
+.create-head-text { min-width: 0; flex: 1; }
+.create-head-icon {
+  width: 32px; height: 32px; flex: 0 0 32px;
+  border-radius: 6px; object-fit: contain;
+  background: var(--panel, rgba(255,255,255,0.04));
+}

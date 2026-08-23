@@ -1642,6 +1642,10 @@ async function _createProbeSource() {
       _createFormError(data.error || t('create_error_generic'));
     } else {
       _createPreview = data;
+      // Remembered here, at the moment it is known: the probe finds the icon
+      // seconds before a job exists, and the run header wants it from the
+      // first frame rather than after the first poll.
+      _createHeadIcon = (data && typeof data.icon === 'string' && data.icon) || null;
       _createFormError('');
       _createApplyDetectedLanguage(data);
     }
@@ -2012,9 +2016,16 @@ function _renderCreateRun() {
 // under someone who had scrolled up to read it.
 function _createRunShellHtml(s) {
   return '<div class="create-run">' +
+    // The site's own mark, beside its name. A capture runs for a minute and a
+    // half and this screen carried nothing identifying for any of it — Eric
+    // asked for "favicon or anything" twice. The probe hands the icon back as
+    // a data URI, so this costs the browser no request and works offline.
     '<div class="create-head">' +
-      '<div class="create-title" id="create-run-title"></div>' +
-      '<div class="create-caption" id="create-run-sub"></div>' +
+      '<img class="create-head-icon" id="create-run-icon" alt="" hidden>' +
+      '<div class="create-head-text">' +
+        '<div class="create-title" id="create-run-title"></div>' +
+        '<div class="create-caption" id="create-run-sub"></div>' +
+      '</div>' +
     '</div>' +
     _createPhaseStripHtml() +
     '<div class="create-phase-detail" id="create-phase-detail" aria-live="polite"></div>' +
@@ -2085,6 +2096,20 @@ function _createSyncHead(s) {
   _createSetLine(head, title || _createShortSource(source), title ? '' : source);
   _createSetLine(sub, title ? mode + ' · ' + _createShortSource(source) : mode,
     title ? source : '');
+  _createSetHeadIcon();
+}
+
+// The icon the probe found for whatever is being captured. Kept in a module
+// var rather than read off the job: the probe knows it seconds before the job
+// exists, and the point is to have something on screen from the first moment.
+var _createHeadIcon = null;
+
+function _createSetHeadIcon() {
+  var img = document.getElementById('create-run-icon');
+  if (!img) return;
+  if (!_createHeadIcon) { img.hidden = true; img.removeAttribute('src'); return; }
+  if (img.getAttribute('src') !== _createHeadIcon) img.setAttribute('src', _createHeadIcon);
+  img.hidden = false;
 }
 
 // Set an element's text, and give it the full value as a tooltip when what is

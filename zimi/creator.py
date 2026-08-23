@@ -28,6 +28,7 @@ its final name), ``add_standard_metadata``, and ``_register_exports`` so a
 ZIM written into the library directory shows up without a full rescan.
 """
 
+import base64
 import hashlib
 import html as _html
 import logging
@@ -2129,6 +2130,12 @@ _ASSET_REF_RE = re.compile(
 )
 
 
+# How long the preview will wait for a site's icon. Short on purpose: the icon
+# is decoration and the preview is something a person is watching, so a slow
+# favicon host costs the preview nothing rather than holding it up.
+PROBE_ICON_TIMEOUT = 4.0
+
+
 def probe_page(
     url, *, timeout=DEFAULT_FETCH_TIMEOUT, max_redirects=DEFAULT_MAX_REDIRECTS
 ):
@@ -2173,7 +2180,34 @@ def probe_page(
         "spa": looks_like_spa(page),
         "bytes": nbytes,
         "assets": len(assets),
+        "icon": _probe_icon_data_uri(final_url, timeout, page),
     }
+
+
+def _probe_icon_data_uri(final_url, timeout, page):
+    """The site's icon as a ``data:`` URI, or None.
+
+    So the Create page can show WHOSE page is being captured while it is being
+    captured. A capture runs for a minute and a half and the screen carried
+    nothing identifying for any of it — the site's own mark, up front, is the
+    cheapest way to say "yes, the right thing is happening".
+
+    A data URI rather than a URL on purpose. Zimi's UI never reaches the open
+    internet; the server is already holding this page's HTML and is already
+    the thing with a network connection, so it does the fetching and hands
+    back bytes. The browser makes no request it would not otherwise make.
+
+    Best effort in the same way ``site_illustration`` is: the icon is
+    decoration, and a preview must never fail — or wait noticeably longer —
+    because a favicon did not answer."""
+    try:
+        png = site_illustration(final_url, min(timeout, PROBE_ICON_TIMEOUT), page=page)
+    except Exception as e:
+        log.debug("probe could not fetch an icon for %s: %s", final_url, e)
+        return None
+    if not png:
+        return None
+    return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
 
 
 # How far a folder preview looks and how much of it it is willing to read. Two
