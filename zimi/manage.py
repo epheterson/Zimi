@@ -3909,6 +3909,22 @@ def _probe_url(source, *, want_robots=False, engine=None):
         "language": language or _iso3_of(clang),
         "warning_key": None,
     }
+    if is_html:
+        # What the preview can honestly promise. `bytes` above is the DOCUMENT's
+        # weight and the client no longer shows it as a size — CNN's is a sixth
+        # of the finished ZIM. The file count is a fact known without fetching
+        # anything, and the icon is what puts a face on a ninety-second wait.
+        #
+        # Both come from creator's helpers rather than being counted again
+        # here: this endpoint and the CLI probe answering the same question
+        # differently is exactly how one of them ended up never answering it.
+        from zimi.creator import _probe_icon_data_uri, page_asset_refs
+
+        try:
+            out["assets"] = len(page_asset_refs(page, final_url))
+        except Exception:
+            log.exception("probe could not count assets for %s", final_url)
+        out["icon"] = _probe_icon_data_uri(final_url, CREATE_PROBE_TIMEOUT, page)
     if not is_html:
         out["warning_key"] = "create_warn_not_html"
     elif spa and rendered:
