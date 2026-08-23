@@ -561,11 +561,21 @@ function _createPreviewRows(p) {
     if (p.urls > 1) add('create_pv_pages', String(p.urls));
     add('create_pv_title', p.title);
     add(p.urls > 1 ? 'create_pv_first' : 'create_pv_address', p.final_url);
-    // Site mode gets no size. The probe reads ONE page, and a crawl's bytes
-    // are mostly the images and stylesheets of pages it has not looked at —
-    // so this row was a number nowhere near the outcome, which is worse than
-    // no number at all. The byte counter during the run is the honest one.
-    if (p.mode !== 'site') add('create_pv_size', _fmtBytes(p.bytes || 0));
+    // NO size row, for a page either. The probe fetches the HTML and nothing
+    // else, so `bytes` is the document's own weight — and on a modern page the
+    // document is the small part. CNN's is 5.6MB against a 36MB ZIM: the
+    // preview promised a sixth of what arrived, which is the worst kind of
+    // wrong because it looks precise. Site mode already dropped this row for
+    // exactly the same reason and page mode kept it out of habit.
+    //
+    // What IS known before a byte is fetched is how many files the page
+    // references, and that is the honest expectation-setter: "392 files" tells
+    // a person this is a big capture without pretending to know its size. The
+    // live byte counter during the run is the only real number and it arrives
+    // seconds later.
+    if (typeof p.assets === 'number' && p.assets > 0) {
+      add('create_pv_files', String(p.assets));
+    }
     if (p.robots_allowed !== undefined) {
       add('create_pv_robots', t(p.robots_allowed ? 'create_pv_robots_ok' : 'create_pv_robots_no'));
     }

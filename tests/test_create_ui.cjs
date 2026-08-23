@@ -463,11 +463,11 @@ check(_createPreviewRows({ mode: 'folder', files: 47, bytes: 1024 }).length === 
 // Absent facts are absent rows. A preview line reading "Title:" with nothing
 // after it is a worse answer than not asking the question.
 eq(_createPreviewRows({ mode: 'page', final_url: 'http://x/', bytes: 8 }).map(r => r.k),
-  ['create_pv_address', 'create_pv_size'],
+  ['create_pv_address'],
   'a missing title and language drop their rows entirely');
 
 eq(_createPreviewRows({ mode: 'page', title: 'Handbuch', final_url: 'http://x/', bytes: 8 }).map(r => r.k),
-  ['create_pv_title', 'create_pv_address', 'create_pv_size'],
+  ['create_pv_title', 'create_pv_address'],
   'page rows, with no robots line when the server did not report one');
 
 check(rowMap({ mode: 'site', title: 'T', final_url: 'u', bytes: 1, robots_allowed: false })
@@ -482,9 +482,17 @@ eq(_createPreviewRows({ mode: 'site', title: 'T', final_url: 'http://x/', bytes:
   .map(r => r.k),
   ['create_pv_title', 'create_pv_address'],
   'site mode shows no size it cannot measure');
-check(rowMap({ mode: 'page', title: 'T', final_url: 'http://x/', bytes: 4096 })
-  .create_pv_size === '4096 B',
-  'one page IS the whole capture, so page mode keeps its measured size');
+// Eric, again, on a real CNN capture: the preview said 5.58MB and 36.3MB
+// arrived. `bytes` is the DOCUMENT's weight, and on a modern page the document
+// is the small part — so page mode promises no size either. What it can say
+// truthfully is how many files the page references.
+check(!('create_pv_size' in rowMap({ mode: 'page', title: 'T', final_url: 'http://x/', bytes: 4096 })),
+  'page mode never promises a size it measured only the HTML for');
+check(rowMap({ mode: 'page', final_url: 'http://x/', bytes: 4096, assets: 392 })
+  .create_pv_files === '392',
+  'it reports the file count instead, which is a fact known before fetching');
+check(!('create_pv_files' in rowMap({ mode: 'page', final_url: 'http://x/', assets: 0 })),
+  'and a page that references nothing shows no row rather than "0"');
 
 check(rowMap({ mode: 'video', videos: 12 }).create_pv_videos === '12+',
   'a playlist sampled to the cap is reported as "12+", not as exactly 12');
