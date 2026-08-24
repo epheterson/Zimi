@@ -730,8 +730,35 @@ function fmtSize(gb, html) {
 // the raw entry count for stale caches that predate the field. Empty string
 // when neither is a number (e.g. an unreadable ZIM whose entries is '?').
 function _zimCountHtml(z) {
-  const n = (z && typeof z.article_count === 'number') ? z.article_count : (z ? z.entries : undefined);
-  return typeof n === 'number' ? t('n_entries', {n: n.toLocaleString()}) : '';
+  const n = _zimCount(z);
+  // tPlural, not t: this line read "1 entries" on the home screen for every
+  // single-article library — a 67MB medical collection announcing itself with
+  // a grammar mistake. The helper has been here the whole time and this was
+  // the one count that did not use it.
+  return typeof n === 'number' ? tPlural('n_entries', n, {n: n.toLocaleString()}) : '';
+}
+
+// How many things a ZIM holds, as a person would count them.
+//
+// `article_count` is libzim's, and libzim only counts what the ZIM declares an
+// ARTICLE. That is right for an encyclopedia and wrong for a document
+// collection: every zimgit library — food preparation, knots, medicine,
+// post-disaster, water — declares ONE article, its index, and keeps its
+// hundreds of PDFs as ordinary entries. So the home screen introduced a 645MB
+// survival library as "1 entry".
+//
+// A Zimi-made capture is the case where 1 is the truth: one page, plus the
+// images and stylesheets that page needs. Those are marked, so they keep the
+// article count and everything else falls back to entries when the article
+// count is obviously not describing the ZIM.
+function _zimCount(z) {
+  if (!z) return undefined;
+  const articles = typeof z.article_count === 'number' ? z.article_count : undefined;
+  const entries = typeof z.entries === 'number' ? z.entries : undefined;
+  if (articles === undefined) return entries;
+  if (z.zimi_export) return articles;      // a capture really is one page
+  if (articles <= 1 && entries > 1) return entries;
+  return articles;
 }
 // True for ZIMs Zimi itself exported (bookmark exports). Server flags them
 // from Creator metadata; the description sniff covers caches built before the
