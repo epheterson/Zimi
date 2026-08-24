@@ -133,6 +133,17 @@ _rate_buckets_content = {}  # {ip: [timestamps]} — /w/ content
 _rate_buckets_login = {}  # {ip: [timestamps]} — POST /login
 _rate_lock = threading.Lock()
 
+# How long a browser may reuse a ZIM entry without asking.
+#
+# The trade is staleness against round trips, and both sides have burned us. An
+# immutable 24h cache once left a deleted capture's unstyled pages on a phone
+# for an afternoon; `no-cache` then made Back to a 400-file captured page
+# revalidate 52 assets and take eight seconds. A minute is long enough that
+# going back to what you were just reading is instant, and short enough that a
+# replaced archive corrects itself before anybody files a bug — the ETag
+# carries the ZIM file's size and mtime, so the correction is automatic.
+ZIM_CONTENT_MAX_AGE = 60
+
 # Verified Bearer credentials, keyed by digest so the PBKDF2 check runs once
 # per credential per TTL — not on every polled request.
 _authed_cache = {}  # {sha256(bearer): expiry_ts}
@@ -2873,13 +2884,27 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.send_response(200)
 
         self.send_header("Content-Type", mimetype)
-        # no-cache means "store, but ASK before serving" — never immutable.
-        # ZIM content is only immutable while the archive is the same file:
-        # auto-update replaces files in place, and delete-then-recreate reuses
-        # names (Eric's phone spent an afternoon showing a deleted capture's
-        # unstyled pages out of a 24h immutable cache). Asking is one
-        # conditional GET answered by the ETag above with an empty 304.
-        self.send_header("Cache-Control", "no-cache")
+        # A short window, not "ask every time" and not "immutable".
+        #
+        # `no-cache` means "store, but ASK before serving", and it was right
+        # about the danger: ZIM content is only immutable while the archive is
+        # the same file. Auto-update replaces files in place and
+        # delete-then-recreate reuses names, and a 24h immutable cache once
+        # left a deleted capture's unstyled pages on Eric's phone for an
+        # afternoon.
+        #
+        # But asking is not free when a page IS four hundred files. Going Back
+        # to a captured CNN front page revalidated 52 assets — 52 round trips
+        # for bytes the browser was already holding — and took 8.4s against
+        # 1.1s for the same page opened fresh.
+        #
+        # ZIM_CONTENT_MAX_AGE is the whole of the risk the old comment guarded
+        # against, and it is a minute rather than a day. The ETag above already
+        # carries the archive's size and mtime, so a replaced or recreated ZIM
+        # invalidates every entry the moment the window closes — the exposure
+        # is "up to a minute of stale", which is shorter than the afternoon
+        # that caused this rule and shorter than a person's patience for Back.
+        self.send_header("Cache-Control", f"private, max-age={ZIM_CONTENT_MAX_AGE}")
         self.send_header("Vary", "Sec-Fetch-Dest")
         self.send_header("ETag", etag)
 
