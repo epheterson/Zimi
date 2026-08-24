@@ -926,7 +926,6 @@
   "default_flavor_hint": "当 ZIM 提供多个版本时优先选择。",
   "default_username_hint": "默认用户名：{name}",
   "define": "释义",
-  "define_hint": "提示：选择任意单词即可查看释义",
   "define_loading": "查询中…",
   "define_lookup": "查词",
   "define_lookup_prompt": "点按任意单词",

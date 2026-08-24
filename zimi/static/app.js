@@ -49,9 +49,6 @@ var SK = {
   // One-shot: set once the "tap again for reading settings" coachmark has been
   // shown, so the hint never nags a returning reader.
   READER_COACH: 'zimi_reader_settings_coach',
-  // The "select any word to define it" tip's ledger — {n, day, used}. Not a
-  // flag: see _maybeShowDefineHint for why once-per-browser was not once.
-  DEFINE_HINT: 'zimi_define_hint_seen',
   // Last-rendered SHARING rows (Server pane) — restored synchronously on
   // pane open so the section doesn't pop in after the status fetches.
   SHARE_ROWS: 'zimi_share_rows',
@@ -14663,6 +14660,8 @@ function openReader(url) {
     try { _defineAttachToDoc(frame); } catch(e) {}
     // A consent wall that the ARCHIVE rebuilds every time it is opened.
     try { _sweepBlockingOverlays(frame); } catch(e) {}
+    // A captured page's JS-driven chrome, put back in its place.
+    try { _settleCapturedChrome(frame); } catch(e) {}
     // Inject responsive CSS + scroll-to-top button for mobile
     try {
       // Web-mirror pages (alive engine, zimit) ship a browser's-eye recording of
@@ -17372,9 +17371,6 @@ function _defineShowTrigger(frame, word, wikt, rect) {
 function _defineRun() {
   var st = _defineState;
   if (!st) return;
-  // The gesture has been learned. Whatever the tip still had left to say, it
-  // is now saying it to somebody who already knows.
-  _noteDefineUsed();
   _definePopover.innerHTML = '<div class="define-card"><div class="define-word">' +
     esc(st.word) + '</div><div class="define-status">' + tH('define_loading') +
     '</div></div>';
@@ -17501,6 +17497,59 @@ function _defineConsider(frame) {
 var OVERLAY_VIEWPORT_SHARE = 0.55;   // must match renderer.py's constant
 var OVERLAY_WATCH_MS = 15000;        // how long a rebuilt wall still gets caught
 
+// ── a page captured without its JavaScript ──
+//
+// The fast engine stores the markup and drops every script, which is what
+// makes it fast and what makes its archives readable in twenty years. The cost
+// arrives in the chrome, because on a modern page the chrome is JavaScript:
+//
+//  * An ad slot reserves its height in CSS and waits for a script to fill or
+//    collapse it. No script ever comes, so a captured CNN front page opens on
+//    five hundred pixels of nothing (Eric: "Huge space above the header?").
+//  * A sticky header is positioned by a scroll handler. Without one it stays
+//    pinned at the offset it had when the snapshot was taken, so it floats in
+//    the middle of the article as you scroll past (Eric: "that header doesn't
+//    move when i scroll the page very weird").
+//  * A skeleton placeholder pulses until its content arrives. It never
+//    arrives, so it pulses forever (Eric: "There's some pulsing content").
+//
+// None of that is the page being captured badly — every one of those elements
+// is faithfully stored. It is chrome that only ever made sense with a script
+// behind it, and in a static archive the honest thing is to let it settle.
+//
+// Runs on every ZIM. Each rule only fires on the exact condition it names, and
+// a Wikipedia article has no empty ad slots, nothing sticky that matters, and
+// nothing that pulses.
+function _settleCapturedChrome(frame) {
+  var doc = frame.contentDocument;
+  var win = frame.contentWindow;
+  if (!doc || !win || !doc.body) return;
+
+  var css = doc.createElement('style');
+  css.setAttribute('data-zimi', 'settle');
+  css.textContent = [
+    // An animation that repeats forever is waiting for something. Let it
+    // finish its first pass and stop, rather than pulse at the reader all day.
+    '*, *::before, *::after { animation-iteration-count: 1 !important; }',
+    // A reserved box with nothing in it is a hole where an ad was going to be.
+    '[class*="ad-"]:empty, [class*="-ad"]:empty, [class*="advert"]:empty,',
+    '[id*="ad-"]:empty, [id*="-ad"]:empty, ins:empty { display: none !important; }'
+  ].join('\n');
+  (doc.head || doc.documentElement).appendChild(css);
+
+  // Sticky needs a scroll handler that is no longer here. Static puts the
+  // element back in the flow it was written for, which is where a reader
+  // expects to find it. Done in JS because CSS cannot select on a computed
+  // position, and only for elements that really are sticky.
+  try {
+    var all = doc.querySelectorAll('body *');
+    for (var i = 0; i < all.length; i++) {
+      var cs = win.getComputedStyle(all[i]);
+      if (cs && cs.position === 'sticky') all[i].style.setProperty('position', 'static', 'important');
+    }
+  } catch (e) {}
+}
+
 function _sweepBlockingOverlays(frame) {
   var doc = frame.contentDocument;
   var win = frame.contentWindow;
@@ -17575,82 +17624,10 @@ function _defineAttachToDoc(frame) {
   // dismiss it (like a native selection callout) rather than leave it stranded at
   // a stale position. Covers both the raw frame and Reader View (same window).
   try { frame.contentWindow.addEventListener('scroll', _defineHideOnScroll, { passive: true }); } catch (e) {}
-  // First article open with a wiktionary installed → one-shot discovery tip.
-  _maybeShowDefineHint(doc);
-}
-
-// ── Define discoverability ──
-// A teaching tip layered on top of the select-a-word / double-tap gesture,
-// which is the only surface for Define. Skipped entirely when no wiktionary is
-// installed (the feature is dormant, so there is nothing to teach).
-//
-// Three rules, in order of how much they mean:
-//
-//  1. Somebody who has USED Define never sees it again, on any device that
-//     syncs this flag. Real usage is the only proof the tip worked, and
-//     teaching a gesture to the person already performing it is nagging.
-//  2. Otherwise, at most once a day. A tip that has not landed yet gets
-//     another chance tomorrow; it does not get another chance this evening.
-//  3. And it gives up after DEFINE_HINT_MAX days of being ignored. A hint
-//     nobody has taken by then is not going to be taken.
-//
-// The old rule was "once per browser, marked the instant it renders", which
-// looks correct and is not: a private tab has no yesterday, so the tip fired
-// on every single visit (Eric, four screenshots in a row), and the one shot it
-// did have was spent whether or not anyone was looking at the tab.
-
-// How many days of being ignored before the tip stops asking.
-var DEFINE_HINT_MAX = 3;
-
-/** The tip's ledger: {n: times shown, day: last day shown, used: met Define}. */
-function _defineHintLedger() {
-  var raw = null;
-  try { raw = JSON.parse(localStorage.getItem(SK.DEFINE_HINT) || 'null'); } catch (e) {}
-  // The pre-ledger flag was the string '1'. Anyone carrying one has already
-  // seen the tip, so honour it as "shown once, today" rather than start them
-  // over — an upgrade must never re-teach a lesson already given.
-  if (raw === '1' || raw === 1) return { n: 1, day: _defineHintToday(), used: false };
-  return (raw && typeof raw === 'object') ? raw : { n: 0, day: null, used: false };
-}
-
-/** Today, as a day number. Local midnight is the boundary a person feels. */
-function _defineHintToday() {
-  return Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
-}
-
-function _saveDefineHint(ledger) {
-  try { localStorage.setItem(SK.DEFINE_HINT, JSON.stringify(ledger)); } catch (e) {}
-}
-
-/** Define was actually used. Retires the tip permanently. */
-function _noteDefineUsed() {
-  var led = _defineHintLedger();
-  if (led.used) return;
-  led.used = true;
-  _saveDefineHint(led);
-}
-
-function _maybeShowDefineHint(doc) {
-  if (!readerOpen) return;
-  if (!_defineFindWiktionary(_ttsLang(doc))) return; // dormant: nothing to teach
-  var led = _defineHintLedger();
-  if (led.used || led.n >= DEFINE_HINT_MAX) return;
-  var today = _defineHintToday();
-  if (led.day === today) return;
-  _saveDefineHint({ n: led.n + 1, day: today, used: false });
-  var tip = document.createElement('div');
-  tip.className = 'define-hint';
-  tip.setAttribute('role', 'status');
-  tip.innerHTML = '<span class="define-hint-icon">' + _DEFINE_BOOK_ICON + '</span>' +
-    '<span>' + tH('define_hint') + '</span>';
-  document.body.appendChild(tip);
-  requestAnimationFrame(function() { tip.classList.add('visible'); });
-  var kill = function() {
-    tip.classList.remove('visible');
-    setTimeout(function() { if (tip.parentNode) tip.remove(); }, 220);
-  };
-  var timer = setTimeout(kill, 6000);
-  tip.addEventListener('click', function() { clearTimeout(timer); kill(); });
+  // No discovery tip. It was rate-limited twice and Eric still met it twice
+  // more; a teaching aid that has to be tuned that often is one nobody wanted.
+  // Define is still there on a selection or a double-tap, and it is now found
+  // the way every other text gesture on a phone is found — by trying it.
 }
 
 // Close context menu on click anywhere

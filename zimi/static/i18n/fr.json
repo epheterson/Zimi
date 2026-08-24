@@ -926,7 +926,6 @@
   "default_flavor_hint": "Sélectionnée en premier quand un ZIM propose plusieurs variantes.",
   "default_username_hint": "Nom d’utilisateur par défaut : {name}",
   "define": "Définir",
-  "define_hint": "Astuce : sélectionnez un mot pour voir sa définition",
   "define_loading": "Recherche…",
   "define_lookup": "Rechercher un mot",
   "define_lookup_prompt": "Touchez un mot",

@@ -926,7 +926,6 @@
   "default_flavor_hint": "נבחרת ראשונה כש-ZIM מציע מספר גרסאות.",
   "default_username_hint": "שם משתמש ברירת מחדל: {name}",
   "define": "הגדרה",
-  "define_hint": "טיפ: בחר מילה כלשהי כדי לראות את הגדרתה",
   "define_loading": "מחפש…",
   "define_lookup": "חיפוש מילה",
   "define_lookup_prompt": "הקש על מילה כלשהי",

@@ -290,26 +290,8 @@
 
   /* One-shot tip floated bottom-centre on first article open when a wiktionary
      is installed — teaches the select-a-word Define gesture. Dismissible. */
-  .define-hint {
-    position: fixed; z-index: 9999; left: 50%; bottom: 24px;
-    transform: translateX(-50%) translateY(6px);
-    display: flex; align-items: center; gap: 9px;
-    max-width: min(360px, calc(100vw - 32px));
-    min-height: 44px; box-sizing: border-box;
-    background: var(--surface); color: var(--text);
-    border: 1px solid var(--amber-border);
-    font-size: 13px; line-height: 1.35; font-weight: 500;
-    padding: 10px 14px; border-radius: 12px;
-    box-shadow: var(--shadow-popup); cursor: pointer;
-    opacity: 0; transition: opacity .2s, transform .2s;
-  }
-  .define-hint.visible { opacity: 1; transform: translateX(-50%); }
-  .define-hint .define-hint-icon { color: var(--amber); flex-shrink: 0; display: flex; }
-  .define-hint .define-hint-icon svg { width: 18px; height: 18px; }
 
   @media (prefers-reduced-motion: reduce) {
-    .define-hint { transition: opacity .18s; }
-    .define-hint.visible { transform: translateX(-50%); }
   }
 
   /* ── History trail dropdown ── */

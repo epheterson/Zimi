@@ -926,7 +926,6 @@
   "default_flavor_hint": "يتم اختياره أولاً عندما يوفر ZIM عدة أنواع.",
   "default_username_hint": "اسم المستخدم الافتراضي: {name}",
   "define": "تعريف",
-  "define_hint": "نصيحة: حدد أي كلمة لعرض تعريفها",
   "define_loading": "جارٍ البحث…",
   "define_lookup": "البحث عن كلمة",
   "define_lookup_prompt": "انقر على أي كلمة",

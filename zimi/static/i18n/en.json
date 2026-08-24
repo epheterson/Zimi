@@ -926,7 +926,6 @@
   "default_flavor_hint": "Picked first when a ZIM offers multiple variants.",
   "default_username_hint": "Default username: {name}",
   "define": "Define",
-  "define_hint": "Tip: select any word for its definition",
   "define_loading": "Looking up…",
   "define_lookup": "Look up a word",
   "define_lookup_prompt": "Tap any word",
