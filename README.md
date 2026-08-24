@@ -195,18 +195,14 @@ Single sign-on through Cloudflare Access is available for tunnel deployments (ex
 
 ## Documentation
 
-One doc per major feature, each structured as How it works / Configure / Troubleshoot. Start at the [feature guide index](docs/features/README.md).
+Each guide is structured as How it works / Configure / Troubleshoot. Start at the [feature guide index](docs/features/README.md).
 
-- [Reading](docs/features/reading.md) — search ranking, the reader and Reader View, bookmarks and history, word lookup, cross-language articles, PDFs, offline/PWA, accessibility.
-- [Creating ZIMs](docs/features/creation.md) — `zimi create`: folder, page, `--site` crawl, video; the builtin/rendered/alive/zimit engines; capture defaults, size budgets, provenance.
-- [Importing web archives](docs/features/import.md) — `zimi import` (WARC/WACZ via the warc2zim sidecar; CLI-only).
-- [Library & catalog](docs/features/library-and-catalog.md) — installed library, catalog downloads, folders-as-categories, same-flavor auto-update matching.
-- [Sharing](docs/features/sharing.md) — BitTorrent seeding, Nearby (mDNS LAN), the raw-`.zim` download and `/dl/` peer transport.
-- [Users & access](docs/features/users-and-access.md) — public-access modes, named accounts, per-ZIM allowlists, the creator role, the secure first-run bootstrap.
-- [SSO](docs/features/sso.md) — Cloudflare Access trusted-header SSO (experimental).
+- [Reading](docs/features/reading.md) — search and ranking, the reader and Reader View, bookmarks and history, word lookup, cross-language articles, PDFs, offline/PWA, accessibility, the almanac.
+- [Making ZIMs](docs/features/making-zims.md) — `zimi create` for a folder, page, `--site` crawl or video; the four engines and what each trades; bookmarks as a standalone ZIM; `zimi import` for WARC/WACZ.
+- [Getting & sharing](docs/features/getting-and-sharing.md) — catalog and downloads, folders as categories, same-flavor auto-update, BitTorrent seeding, Nearby (mDNS LAN), the `/dl/` peer transport.
+- [Access](docs/features/access.md) — public-access modes, named accounts, per-ZIM allowlists, the creator role, the first-run bootstrap, Cloudflare Access SSO.
 - [Operations](docs/features/operations.md) — `zimi config` + config file, backup/restore, air-gap, `/metrics`, `/health`, update channels, deploy manifests.
-- [Almanac & space](docs/features/almanac.md) — the offline-computed almanac views.
-- [MCP & API](docs/features/mcp-and-api.md) — the MCP server and tools, the stable JSON API, `/openapi.json`, `/chunks`.
+- [API & MCP](docs/features/api-and-mcp.md) — the MCP server and tools, the stable JSON API, `/openapi.json`, `/chunks`.
 
 ## API
 

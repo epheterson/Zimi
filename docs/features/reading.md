@@ -10,7 +10,7 @@ Search across every ZIM at once, open an article, and read it — the part of Zi
 
 **Reader View** re-renders an article as plain, readable prose — one column, your font and size, your theme (dark / light / sepia). It is per-article, and `zimi_reader_auto` opens every article straight into it.
 
-**Bookmarks and history.** Bookmarks group into folders and survive restarts. History records what you opened. Both are stored per user server-side when you are signed in as a named account; an admin without a named user keeps them in the browser, which means they are per-browser and a private window starts empty. See [Users & access](users-and-access.md).
+**Bookmarks and history.** Bookmarks group into folders and survive restarts. History records what you opened. Both are stored per user server-side when you are signed in as a named account; an admin without a named user keeps them in the browser, which means they are per-browser and a private window starts empty. See [Users & access](access.md).
 
 **Word lookup (Define).** Select a word — or double-tap it on a phone — and Zimi looks it up in an installed Wiktionary. It is dormant with no Wiktionary installed. There is no tooltip advertising it; it is found the way every other text gesture is found.
 
@@ -34,7 +34,7 @@ A page captured by the **fast** engine keeps its markup and drops every script. 
 
 None of this is a bad capture — every one of those elements is stored faithfully. It is chrome that only ever made sense with a script behind it. Each rule fires only on the exact condition it names, so an encyclopedia article (no empty ad slots, nothing pulsing) is untouched.
 
-A page captured by **alive** keeps its scripts and does not need this; see [Creating ZIMs](creation.md) for what each engine trades away.
+A page captured by **alive** keeps its scripts and does not need this; see [Creating ZIMs](making-zims.md) for what each engine trades away.
 
 ## Configure
 
@@ -48,9 +48,34 @@ A page captured by **alive** keeps its scripts and does not need this; see [Crea
 
 ## Troubleshoot
 
-- **Bookmarks vanished / a private window shows none** — you are signed in as an admin without a named user, so they live in that browser only. Create a named account and they follow you. See [Users & access](users-and-access.md).
+- **Bookmarks vanished / a private window shows none** — you are signed in as an admin without a named user, so they live in that browser only. Create a named account and they follow you. See [Users & access](access.md).
 - **Selecting a word does nothing** — no Wiktionary is installed. Add one from the catalog and the gesture starts working; nothing else needs enabling.
 - **An old version of the interface keeps loading** — a hard reload clears it. The service worker takes over on the next load after a deploy; a page left open from before will still be on the old bundle.
 - **A captured page still shows a gap or a stranded header** — the settling rules run in Zimi's reader. Opening the same `.zim` in another reader will show the page as captured, gap and all.
 - **A link in a captured page leads nowhere** — only pages inside the capture were saved. Zimi shows what the link pointed at and offers the live address rather than a raw error.
-- **An image is missing in a captured page** — see [Creating ZIMs](creation.md); the engine you chose decides which image sizes the archive holds.
+- **An image is missing in a captured page** — see [Creating ZIMs](making-zims.md); the engine you chose decides which image sizes the archive holds.
+
+---
+
+## Almanac & space
+
+A self-contained astronomical almanac that runs entirely in the browser, computed from formulas — no APIs, no network. It works forever offline.
+
+### How it works
+
+The almanac is a lazy-loaded mini-app (its JS loads only when you open it) reached from the Home view. Everything it shows is derived from math at render time — moon phase, sun and daylight, an animated simulated sky, an interactive star chart with a bright-star catalogue, a Keplerian solar-system orrery with a time machine, a real-timezone sun/world map, meteor showers, and deep-time views. Because it's all computed, it needs no internet and produces the same result on any machine for a given date and location.
+
+Location is asked for once and kept **session-scoped** on purpose — the almanac is deliberately ephemeral (`zimi_almanac_location`). A "time machine" lets you drive the whole scene (orrery, sky, calendars) to any date; the sky, orrery, and map all obey it.
+
+**Deep-links.** Almanac objects (planets, stars, and other entities) can deep-link into the installed library via a closed set of Q-IDs resolved against your ZIMs, so clicking an object opens its article when a matching source is installed.
+
+### Configure
+
+There's nothing to configure server-side — the almanac is a client feature. Location is entered in the UI (browser geolocation, or a manual lat/lon prompt when geolocation is unavailable, e.g. the desktop app). It resets each session by design.
+
+### Troubleshoot
+
+- **It asks for location every time** — intended. The almanac is session-scoped and doesn't persist location.
+- **Geolocation does nothing (desktop app)** — GPS can fail silently in the pywebview shell; enter latitude/longitude manually when prompted.
+- **Clicking an object doesn't open an article** — deep-links resolve against a closed Q-ID set and only land when a ZIM containing that entity is installed. Install the relevant source (e.g. a Wikipedia ZIM) and retry.
+- **The scene looks "wrong" for today** — check the time machine; it may be parked on another date. Reset it to now.

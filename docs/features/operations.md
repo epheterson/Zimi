@@ -12,7 +12,7 @@ Running Zimi as a service: resolving configuration, backing it up, air-gapping i
 
 **Monitoring.** `GET /health` is liveness + build info (allow-filtered, reachable even in `private` mode). `GET /metrics` is Prometheus text exposition (version 0.0.4: HELP/TYPE once per family, counters `_total`, latency as a summary's `_sum`/`_count`) — **admin-gated**, so a scrape target needs the manage credential. The same snapshot is also a field of the admin-only `/manage/stats` JSON the SPA reads.
 
-**Self-update channels.** Two channels: **latest** (default — only finished releases, the day they ship) and **beta** (whatever is newest, pre-release or final). An optional **delay** defers adopting a release by N days (choices 0/1/3/7/14/30, max 365) so you can let a release soak. `ZIMI_OFFLINE=1` performs no update check on any channel regardless. This is Zimi-build updating; ZIM *content* updates are in [Library & catalog](library-and-catalog.md).
+**Self-update channels.** Two channels: **latest** (default — only finished releases, the day they ship) and **beta** (whatever is newest, pre-release or final). An optional **delay** defers adopting a release by N days (choices 0/1/3/7/14/30, max 365) so you can let a release soak. `ZIMI_OFFLINE=1` performs no update check on any channel regardless. This is Zimi-build updating; ZIM *content* updates are in [Library & catalog](getting-and-sharing.md).
 
 **Deploy manifests.** `deploy/` ships `docker-compose.yml`, `kubernetes.yaml`, and a `README.md` covering host/bridge networking and air-gap. See also [Networking & deployment modes](../deployment-networking.md).
 
