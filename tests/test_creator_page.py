@@ -757,3 +757,35 @@ def test_multi_page_delegation_keeps_the_progress_sink(fixture_server, tmp_path)
         [f"{BASE}/blog/post.html"], out_dir=str(tmp_path), progress=lines.append
     )
     assert any("fetching" in line for line in lines)
+
+
+def test_a_resource_hint_does_not_ship_a_404(tmp_path):
+    """A preload is advice to a live browser, not content.
+
+    CNN preloads four fonts by root-relative path. Offline those addresses do
+    not exist, so a captured page fired four 404s before drawing a pixel and
+    then rendered in fallback type — the fonts themselves ARE carried, through
+    the stylesheet that uses them; only the hint pointed at the open web.
+
+    The rendered engine already deletes these when it serializes, so this also
+    stops the two engines disagreeing about what a capture contains."""
+    from zimi.creator import _RESOURCE_HINT_RELS, _carry_stylesheets
+
+    class _Carrier:
+        def _carry(self, _label, _url):
+            return None  # nothing is carried; only the tag handling is at test
+
+    page = (
+        '<link rel="preload" href="/fonts/cnn/x.woff2" as="font" crossorigin>'
+        '<link rel="dns-prefetch" href="//cdn.example">'
+        '<link rel="icon" href="/favicon.ico">'
+        '<p>body</p>'
+    )
+    out = _carry_stylesheets(_Carrier(), "lbl", "https://e.com/a", page)
+    assert "preload" not in out, out
+    assert "dns-prefetch" not in out, out
+    # A hint is not the same as a real relation: the icon link is left alone.
+    assert 'rel="icon"' in out, out
+    assert "<p>body</p>" in out
+    # And the set is the same one the renderer strips.
+    assert "preload" in _RESOURCE_HINT_RELS and "prefetch" in _RESOURCE_HINT_RELS

@@ -1074,6 +1074,14 @@ def _replace_href(tag, new_ref):
     )
 
 
+# Link relations that are advice to a live browser, never content. Offline a
+# preload is a fetch of an address that does not exist in the archive; the
+# rendered engine deletes these in _PREPARE_JS and the fast engine now agrees.
+_RESOURCE_HINT_RELS = frozenset(
+    {"preload", "modulepreload", "prefetch", "preconnect", "dns-prefetch"}
+)
+
+
 def _carry_stylesheets(carrier, label, page_path, page):
     """Carry each same-origin ``<link rel=stylesheet>`` into the ZIM and
     point the link at the carried copy. The carrier rewrites the CSS's own
@@ -1084,7 +1092,25 @@ def _carry_stylesheets(carrier, label, page_path, page):
     def fix(m):
         tag = m.group(0)
         relm = _REL_RE.search(tag)
-        if not relm or "stylesheet" not in relm.group(2).lower():
+        if not relm:
+            return tag
+        rels = relm.group(2).lower().split()
+        # A resource HINT is advice to a live browser about what to fetch
+        # early. Offline it is not advice, it is a request for a file at an
+        # address that does not exist here — CNN preloads four fonts by
+        # root-relative path, so a captured page fired four 404s before it drew
+        # a pixel and then rendered in fallback type. The fonts themselves are
+        # carried, through the stylesheet that actually uses them; only the
+        # hint pointed at the open web.
+        #
+        # Dropped rather than rewritten, because a preload that resolves is
+        # still doing nothing useful in an archive: the stylesheet below asks
+        # for the same file a moment later and gets it. The rendered engine
+        # already deletes these in _PREPARE_JS for the same reason, so this
+        # also stops the two engines disagreeing about what a capture contains.
+        if _RESOURCE_HINT_RELS.intersection(rels):
+            return ""
+        if "stylesheet" not in rels:
             return tag
         hrefm = _HREF_RE.search(tag)
         if not hrefm:
@@ -2158,7 +2184,6 @@ def probe_page(
         "assets": len(assets),
         "icon": _probe_icon_data_uri(final_url, timeout, page),
     }
-
 
 
 def page_asset_refs(page, final_url):
