@@ -16,6 +16,8 @@ Running Zimi as a service: resolving configuration, backing it up, air-gapping i
 
 **Deploy manifests.** `deploy/` ships `docker-compose.yml`, `kubernetes.yaml`, and a `README.md` covering host/bridge networking and air-gap. See also [Networking & deployment modes](../deployment-networking.md).
 
+**Native desktop window.** `zimi desktop` starts the server and opens it in a native window instead of a browser tab (`zimi serve --ui` does the same thing). It needs pywebview, which the packaged macOS, Windows and Linux desktop builds already bundle — a `pip install zimi` gets the subcommand but has to add pywebview itself. Everything else about the instance is identical: same library, same config, same port.
+
 ## Configure
 
 | Setting | Where | Default | Effect |
