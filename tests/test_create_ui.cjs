@@ -488,11 +488,11 @@ eq(_createPreviewRows({ mode: 'site', title: 'T', final_url: 'http://x/', bytes:
 // truthfully is how many files the page references.
 check(!('create_pv_size' in rowMap({ mode: 'page', title: 'T', final_url: 'http://x/', bytes: 4096 })),
   'page mode never promises a size it measured only the HTML for');
-check(rowMap({ mode: 'page', final_url: 'http://x/', bytes: 4096, assets: 392 })
-  .create_pv_files === '392',
-  'it reports the file count instead, which is a fact known before fetching');
-check(!('create_pv_files' in rowMap({ mode: 'page', final_url: 'http://x/', assets: 0 })),
-  'and a page that references nothing shows no row rather than "0"');
+// Nor a file count. It replaced the size and Eric read it as the same promise
+// in different units, which it is: 358 references counted against 413 entries
+// written. The preview now claims nothing about the outcome at all.
+check(!('create_pv_files' in rowMap({ mode: 'page', final_url: 'http://x/', bytes: 4096, assets: 392 })),
+  'the preview promises nothing about the finished ZIM, in any unit');
 
 check(rowMap({ mode: 'video', videos: 12 }).create_pv_videos === '12+',
   'a playlist sampled to the cap is reported as "12+", not as exactly 12');

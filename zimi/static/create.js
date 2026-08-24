@@ -573,9 +573,13 @@ function _createPreviewRows(p) {
     // a person this is a big capture without pretending to know its size. The
     // live byte counter during the run is the only real number and it arrives
     // seconds later.
-    if (typeof p.assets === 'number' && p.assets > 0) {
-      add('create_pv_files', String(p.assets));
-    }
+    // and no file count either. It replaced the size estimate and Eric read it
+    // as the same promise in different units — fairly, because it is: 358
+    // references counted in the markup against 413 entries written. Every
+    // number this preview has ever shown about the OUTCOME has been wrong,
+    // and the run's own counter is right seconds later. So the preview says
+    // what it knows for certain — the title, the address, the language — and
+    // stops guessing.
     if (p.robots_allowed !== undefined) {
       add('create_pv_robots', t(p.robots_allowed ? 'create_pv_robots_ok' : 'create_pv_robots_no'));
     }
