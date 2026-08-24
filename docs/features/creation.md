@@ -13,11 +13,25 @@ Web captures run through one of four **engines**, chosen with `--engine`:
 - **alive** — records the live browser session to a WARC and converts it with warc2zim, so the saved site's JavaScript still runs inside the reader. Needs the browser extra above plus the warc2zim sidecar (`zimi import --setup`).
 - **zimit** — openZIM's browser-based crawler, run via Docker. Extra crawler arguments pass through with `--engine-arg` (write it attached, e.g. `--engine-arg=--workers=2`).
 
+**What each engine trades.** They are not better and worse, they are three bargains. Measured on one CNN front page, iPhone width, served offline with the network sealed:
+
+| Engine | Assets kept | Images that render | What it is for |
+| --- | --- | --- | --- |
+| builtin (fast) | ~380 | all, arriving as you scroll | Biggest archive, correct at any screen width, keeps lazy-loading |
+| rendered | ~95 | all | Smallest archive and exact: each `srcset` collapses to the one image the browser chose, so nothing can re-pick a size the archive lacks |
+| alive | ~315 | fewer on image-heavy sites | The page's own JavaScript still runs — faithful to behaviour, at the cost of image coverage on sites that lazy-load aggressively |
+
+A capture is also **refused rather than packaged** when the site does not return a web page at all. Some sites answer an automated browser with HTTP 200 and a few bytes of error text; the rendered and alive engines check what the browser actually received and fail with the reason instead of writing an archive of an error message.
+
+**Resource hints are dropped.** `<link rel="preload">` and friends are advice to a live browser about what to fetch early. In an archive they are requests for addresses that do not exist, so all of them — `preload`, `modulepreload`, `prefetch`, `preconnect`, `dns-prefetch` — are removed. The files themselves are still carried through the stylesheets and markup that actually use them.
+
 **Capture defaults.** Ad, tracker, and consent-manager requests are blocked during capture by default (`--block-ads`, on for the rendered and alive engines) — smaller ZIMs, and pages that gate on those endpoints render their real content. `--no-block-ads` captures everything. The blocklist snapshot ships in `zimi/assets/blocklist-snapshot.txt.gz` (StevenBlack/hosts, MIT) and is not auto-refreshed. Image-variant capture is a Manage/Creator toggle (`capture_variants`) and a `create` internal option.
 
 **Size budget.** `--max-bytes` caps output (e.g. `512MiB`, `4G`). For `--site` it counts pages plus assets (default 512MiB); for video sources it caps total media (default 4G). Crawls are also bounded by `--max-pages` (site default 200), `--max-depth` (site default 5), and `--delay` between requests (site default 0.5s; robots.txt `Crawl-delay` wins when larger). `--ignore-robots` (site only) crawls disallowed pages and prints a warning.
 
 **Language** is read off the source (a page's `lang`, a folder's HTML, video metadata) and falls back to `eng`; override with `--language` (ISO 639-3). **Output** defaults to the ZIM directory with library registration; `--out` writes an explicit `.zim` path instead. Title/description/creator metadata is set with `--title` / `--description` / `--creator` (creator defaults to `Zimi`).
+
+**Bookmarks as a ZIM.** The Create page's **Bookmarks** tile packages your saved articles into one standalone `.zim` — the articles themselves, with their images and styles carried in, not a list of links. The result opens in any ZIM reader and needs nothing from the library it came from, which makes it the way to hand somebody a reading list that still works on a machine with no internet and no Zimi.
 
 **From the web UI.** The Create page (the topbar `+`) drives the URL-based modes — single page, `--site`, video — for admins and creator-role accounts. **Folder mode and web-archive import are CLI-only.** The web UI has no folder tile and no import tile: folder mode is refused from the web entirely, and import reads a server path, which stays a primary-admin, shell-only operation. Run `zimi create <folder>` / `zimi import <file>` from a terminal on the machine.
 

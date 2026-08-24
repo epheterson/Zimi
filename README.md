@@ -197,6 +197,7 @@ Single sign-on through Cloudflare Access is available for tunnel deployments (ex
 
 One doc per major feature, each structured as How it works / Configure / Troubleshoot. Start at the [feature guide index](docs/features/README.md).
 
+- [Reading](docs/features/reading.md) — search ranking, the reader and Reader View, bookmarks and history, word lookup, cross-language articles, PDFs, offline/PWA, accessibility.
 - [Creating ZIMs](docs/features/creation.md) — `zimi create`: folder, page, `--site` crawl, video; the builtin/rendered/alive/zimit engines; capture defaults, size budgets, provenance.
 - [Importing web archives](docs/features/import.md) — `zimi import` (WARC/WACZ via the warc2zim sidecar; CLI-only).
 - [Library & catalog](docs/features/library-and-catalog.md) — installed library, catalog downloads, folders-as-categories, same-flavor auto-update matching.
