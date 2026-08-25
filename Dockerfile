@@ -68,6 +68,9 @@ RUN pip install --no-cache-dir "playwright>=1.40" \
 # stack trace. Pinning also means a rebuild lands on the version that was
 # tested rather than whatever is current.
 ARG NODE_VERSION=22.20.0
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
+ && rm -rf /var/lib/apt/lists/*
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
