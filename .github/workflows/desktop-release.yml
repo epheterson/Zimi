@@ -91,12 +91,19 @@ jobs:
         run: pip install pytest
 
       # ── Pre-build tests ──────────────────────────────────────────────
-
-      - name: Run unit tests
-        run: python tests/test_unit.py
-
-      - name: Run integration tests
-        run: python -m pytest tests/test_server.py -v
+      #
+      # This is a RELEASE gate, so it runs the whole suite.
+      #
+      # It previously ran two things, and one of them was not a test run at
+      # all: `python tests/test_unit.py` imports the module and exits 0 without
+      # executing any of its 245 tests, because the file has no
+      # `unittest.main()`. That step passed every build it ever gated. The
+      # other named a single file out of ~80.
+      #
+      # Tests needing a browser or a sidecar are `pytest.mark.skipif` and skip
+      # cleanly on a runner that lacks them.
+      - name: Run the test suite
+        run: python -m pytest tests/ -q
 
       # ── Build ─────────────────────────────────────────────────────────
 
