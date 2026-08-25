@@ -789,3 +789,38 @@ def test_a_resource_hint_does_not_ship_a_404(tmp_path):
     assert "<p>body</p>" in out
     # And the set is the same one the renderer strips.
     assert "preload" in _RESOURCE_HINT_RELS and "prefetch" in _RESOURCE_HINT_RELS
+
+
+def test_singlefile_refuses_an_address_that_reads_as_an_option():
+    """The URL becomes argv, so a value starting with `-` is a FLAG.
+
+    There is no shell — the command is a list — so nothing can be injected as
+    shell syntax. But SingleFile's own parser would read `--dump-content` as an
+    option rather than an address, which reaches settings Zimi never meant to
+    expose, and the source is whatever a creator-role account typed.
+
+    create_page_zim checks the scheme before dispatching, so nothing reaches
+    this today that would fail it. Checked again because this function is
+    importable and spawns a process."""
+    from zimi.creator import CreateError
+    from zimi.singlefile import _check_url
+
+    for bad in (
+        "--dump-content",
+        "-x",
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+        "ftp://e.com/x",
+        "http://",          # a scheme with no host is not an address
+        "",
+        None,
+    ):
+        try:
+            _check_url(bad)
+        except CreateError:
+            continue
+        raise AssertionError(f"accepted {bad!r} as a URL")
+
+    # And a real address is not caught by the guard.
+    _check_url("https://www.apple.com/")
+    _check_url("http://127.0.0.1:8899/w/x")

@@ -35,6 +35,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import urllib.parse
 
 from zimi.creator import CreateError
 
@@ -96,6 +97,28 @@ def singlefile_version():
     return out.splitlines()[0] if out else None
 
 
+
+def _check_url(url):
+    """Refuse anything that is not a plain http(s) address.
+
+    The URL becomes ARGV. There is no shell here — the command is a list, so
+    nothing can be injected as shell syntax — but a value beginning with ``-``
+    is read by SingleFile's own parser as a FLAG rather than an address, which
+    is a way to reach options Zimi never meant to expose. The source is
+    user-supplied: any creator-role account can type it.
+
+    ``create_page_zim`` already checks the scheme before dispatching here, so
+    today nothing reaches this that would fail. It is checked again anyway,
+    because this function is importable and spawns a process, and a guarantee
+    that depends on one caller remembering is not a guarantee."""
+    text = str(url or "")
+    parts = urllib.parse.urlsplit(text)
+    if parts.scheme.lower() not in ("http", "https") or not parts.netloc:
+        raise CreateError(f"not an http(s) URL: {text[:120]}")
+    if text.startswith("-"):
+        raise CreateError(f"refusing an address that reads as an option: {text[:120]}")
+
+
 def capture_page(
     url, *, timeout=DEFAULT_TIMEOUT, note=None, block_ads=True, work_dir=None
 ):
@@ -107,6 +130,7 @@ def capture_page(
     never reach the ZIM writer as an empty page.
     """
     say = note or (lambda _m: None)
+    _check_url(url)
     exe = shutil.which(SINGLEFILE_BIN)
     if not exe:
         raise CreateError(INSTALL_HINT)
