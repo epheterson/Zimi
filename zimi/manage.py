@@ -1997,11 +1997,16 @@ def activity_payload(type_filter=None, actor_filter=None):
 # the refusal point at `zimi create <folder>` instead of shrugging "unknown
 # creation mode" at someone who read about it in the docs.
 CREATE_MODES = ("folder", "page", "site", "video", "import")
-# Which engine captures a web page. Mirrors creator.CAPTURE_ENGINES, held here
-# as a literal for the same reason CREATE_MAX_PAGE_URLS is: validating a
-# request must not drag the writer stack into the request thread. The test
-# below pins the two together. zimit is deliberately NOT offered over the web —
-# it wants a docker daemon, and a web form is the wrong place to discover that.
+# Which engine captures a web page. Mirrors creator.OFFERED_ENGINES — every
+# name a person may ASK for, which is a wider set than the ones that build a
+# capture object. Held here as a literal for the same reason CREATE_MAX_PAGE_URLS
+# is: validating a request must not drag the writer stack into the request
+# thread. The test below pins the two together.
+#
+# zimit IS offered here now. It wants a docker daemon, and the old reasoning was
+# that a web form is the wrong place to discover that — but a readiness probe
+# is exactly the right place, so _create_engine refuses it with the reason
+# instead of hiding a working engine from everyone who does have Docker.
 CREATE_ENGINES = ("builtin", "rendered", "alive", "singlefile", "zimit")
 # The engines that can refuse a request before it is made — the ones that drive
 # a browser. Mirrors creator.BLOCKING_ENGINES, held here for the same reason

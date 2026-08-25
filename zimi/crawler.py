@@ -1152,6 +1152,14 @@ def create_zimit_zim(
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
 
+    # "auto" is Zimi's word for "read the page and decide", and Zimi never reads
+    # this page — zimit fetches it inside the container. Passing the sentiment
+    # through would put `--lang auto` on the command line, where it is not a
+    # language at all. Every other engine resolves this against text it has;
+    # the one with no text falls back to the documented default instead.
+    if str(language or "").strip().lower() in ("", LANGUAGE_AUTO):
+        language = "eng"
+
     docker = _docker_cli()
     if not docker:
         raise CreateError(_DOCKER_MISSING)

@@ -409,7 +409,9 @@ def test_a_rendered_capture_does_not_refuse_an_application_shell(tmp_path):
 
 
 def test_the_web_and_the_engines_agree_on_the_engine_names():
-    assert manage.CREATE_ENGINES == creator.CAPTURE_ENGINES
+    # OFFERED, not buildable: the web form's list is the one a person picks
+    # from, and zimit is on it without ever becoming a capture object.
+    assert manage.CREATE_ENGINES == creator.OFFERED_ENGINES
 
 
 def test_the_spa_refusal_names_the_engine_that_can_do_it():
@@ -442,13 +444,30 @@ def test_saying_nothing_means_the_default_engine():
 
 
 def test_an_engine_the_web_does_not_offer_is_refused():
-    # zimit is a real engine and deliberately not one of these: it wants a
-    # docker daemon, and a web form is the wrong place to find that out.
-    for name in ("zimit", "chrome", "../etc"):
+    # A name nothing answers to is refused as unknown. zimit is deliberately
+    # NOT in this list any more: it is a real engine the web form offers, gated
+    # on a readiness probe rather than hidden — see the test below.
+    for name in ("chrome", "../etc", "singlefil"):
         with pytest.raises(ValueError, match="unknown capture engine"):
             manage._create_validate(
                 {"mode": "site", "source": "https://e.com/", "engine": name}
             )
+
+
+def test_zimit_is_offered_and_refused_by_readiness_not_by_hiding(monkeypatch):
+    """The refusal a person gets should name the missing thing. Hiding a
+    working engine from everyone who has Docker, to spare the people who do not
+    from a bad error message, is fixing the wrong end of the problem."""
+    monkeypatch.setattr(manage, "_create_zimit_ready", lambda: False)
+    with pytest.raises(ValueError, match="Docker"):
+        manage._create_validate(
+            {"mode": "page", "source": "https://e.com/", "engine": "zimit"}
+        )
+    monkeypatch.setattr(manage, "_create_zimit_ready", lambda: True)
+    _mode, _src, _title, opts = manage._create_validate(
+        {"mode": "page", "source": "https://e.com/", "engine": "zimit"}
+    )
+    assert opts["engine"] == "zimit"
 
 
 def test_the_probe_reports_the_browser_without_launching_one(monkeypatch):

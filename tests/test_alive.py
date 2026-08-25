@@ -53,9 +53,45 @@ def _online(monkeypatch):
 
 
 def test_the_engines_the_web_offers_are_the_engines_that_exist():
-    assert manage.CREATE_ENGINES == creator.CAPTURE_ENGINES
+    assert manage.CREATE_ENGINES == creator.OFFERED_ENGINES
     assert "alive" in creator.CAPTURE_ENGINES
-    assert creator.ARCHIVE_ENGINES == ("alive",)
+    assert creator.ARCHIVE_ENGINES == ("alive", "zimit")
+
+
+def test_offered_and_buildable_are_different_sets_on_purpose():
+    """zimit is the whole reason there are two names. It is a real choice a
+    person can make and it never becomes a capture object — so anything that
+    reads one tuple expecting the other's meaning is a bug, and these two
+    memberships are the assertion that keeps them apart."""
+    assert "zimit" in creator.OFFERED_ENGINES
+    assert "zimit" not in creator.CAPTURE_ENGINES
+    # Everything buildable is also offerable. The reverse is what varies.
+    assert set(creator.CAPTURE_ENGINES) <= set(creator.OFFERED_ENGINES)
+
+
+def test_the_engine_a_person_asked_for_is_the_engine_that_runs(monkeypatch):
+    """The defect this exists for: alive and zimit both write their own ZIM,
+    both were therefore tested with one ``in ARCHIVE_ENGINES`` check, and that
+    check dispatched BOTH to the alive engine. Asking for zimit ran alive and
+    said nothing — a capture that succeeds with the wrong tool leaves no
+    evidence anywhere a user would look, because the ZIM it produces is real.
+
+    Membership in a set is not a routing decision. One assertion per engine."""
+    ran = []
+    monkeypatch.setattr(
+        "zimi.crawler.create_zimit_zim",
+        lambda url, **kw: ran.append(("zimit", url)) or {"pages": None},
+    )
+    monkeypatch.setattr(
+        "zimi.alive.create_alive_page_zim",
+        lambda url, **kw: ran.append(("alive", url)) or {"pages": 1},
+    )
+    for asked in ("zimit", "alive"):
+        ran.clear()
+        creator.create_page_zim("https://example.com/", engine=asked)
+        assert [who for who, _ in ran] == [
+            asked
+        ], f"asked for {asked} and {ran[0][0] if ran else 'nothing'} ran"
 
 
 def test_the_alive_engine_says_which_half_is_missing(monkeypatch):
@@ -811,9 +847,13 @@ def test_a_real_alive_crawl_becomes_a_real_multi_page_zim(fixture_site, tmp_path
 
 def test_every_engine_the_registry_advertises_can_actually_be_built(tmp_path):
     """``capture_engine`` is the one place a name becomes an object, and
-    ``CAPTURE_ENGINES`` is what the CLI and the web form validate against. A
-    registry that lists a name it cannot construct is a trap for whoever adds
-    the next engine — so every advertised name is built here, for real."""
+    ``CAPTURE_ENGINES`` is what it promises to build. A registry that lists a
+    name it cannot construct is a trap for whoever adds the next engine — so
+    every advertised name is built here, for real.
+
+    It caught exactly that when zimit was added to the wrong tuple, so the
+    second half now checks the other direction too: every name a person may ASK
+    for either builds here or has somewhere else to go."""
     for name in creator.CAPTURE_ENGINES:
         engine = creator.capture_engine(name, work_dir=str(tmp_path))
         try:
@@ -826,6 +866,18 @@ def test_every_engine_the_registry_advertises_can_actually_be_built(tmp_path):
             )
         finally:
             engine.close()
+    # An offered name that builds nothing must be dispatched before packaging,
+    # which is what ARCHIVE_ENGINES membership means. A name in neither set is
+    # one the web form accepts and nothing downstream handles.
+    for name in creator.OFFERED_ENGINES:
+        if name in creator.CAPTURE_ENGINES:
+            continue
+        assert (
+            name in creator.ARCHIVE_ENGINES
+        ), f"{name} is offered, builds no engine, and is not dispatched away"
+        # And it says so out loud rather than reporting an unknown name.
+        with pytest.raises(creator.CreateError, match="does not build a capture"):
+            creator.capture_engine(name, work_dir=str(tmp_path))
 
 
 @browser
@@ -870,9 +922,9 @@ def test_a_303_hop_is_archived_as_a_302_the_converter_keeps(tmp_path):
     records = _recorded(capture.warc_path)
     hop = records.get(base + "/goto")
     assert hop is not None, "the redirect hop never reached the archive"
-    assert hop.http_status() == 302, (
-        f"the hop must survive warc2zim, got {hop.http_status()}"
-    )
+    assert (
+        hop.http_status() == 302
+    ), f"the hop must survive warc2zim, got {hop.http_status()}"
     assert records[base + "/final"].payload() == final
 
 
@@ -891,8 +943,8 @@ def test_the_variant_sweep_says_when_it_stopped_early(tmp_path, monkeypatch):
     session = renderer.RenderedSession(work_dir=str(tmp_path))
     session._note = notes.append
     session._capture_variants = True
-    session._recorder = object()          # recording, so the sweep is live
-    session._context = object()           # non-None; nothing else is touched
+    session._recorder = object()  # recording, so the sweep is live
+    session._context = object()  # non-None; nothing else is touched
     # Two candidates, and a ceiling of one, so the second trips the cap.
     monkeypatch.setattr(renderer, "ALIVE_MAX_VARIANTS", 1)
     monkeypatch.setattr(

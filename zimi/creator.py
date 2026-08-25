@@ -1498,11 +1498,23 @@ def render_captured_page(carrier, page, *, final_url, resolve_link=None):
 # disk that warc2zim turns into a ZIM, not items in a Creator. The callers that
 # package a ZIM themselves therefore dispatch it away before they start; see
 # ``create_page_zim`` and ``crawler.create_site_zim``.
-CAPTURE_ENGINES = ("builtin", "rendered", "alive", "singlefile", "zimit")
+CAPTURE_ENGINES = ("builtin", "rendered", "alive", "singlefile")
 DEFAULT_ENGINE = "builtin"
-# Engines that write their own output file instead of filling a Creator.
-# zimit joins alive here: both write their own ZIM rather than filling a
-# Creator, so both are dispatched away before packaging starts.
+# Every engine a person may ASK for, which is not the same set as the engines
+# ``capture_engine`` can build. zimit is the difference: it is a real choice in
+# the CLI and the web form, but it never becomes a capture object — it is
+# orchestration, a docker run whose product is a finished ZIM.
+#
+# These were one tuple until zimit was promoted to the web form, and collapsing
+# the two meanings broke three things at once: capture_engine("zimit") raised
+# "unknown engine", the multi-URL path started accepting an engine that takes a
+# single URL, and — the one a user would actually have met — asking for zimit
+# silently ran the alive engine instead. Two names, because there are two ideas.
+OFFERED_ENGINES = CAPTURE_ENGINES + ("zimit",)
+# Engines that write their own output file instead of filling a Creator. Both
+# are dispatched away before packaging starts — but to DIFFERENT places, so
+# membership here answers "does this fill a Creator?" and nothing else. It is
+# not a dispatch target; see ``create_page_zim``.
 ARCHIVE_ENGINES = ("alive", "zimit")
 
 
@@ -1702,9 +1714,18 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
             block_ads=kwargs.get("block_ads"),
             capture_variants=kwargs.get("capture_variants"),
         )
+    if name in OFFERED_ENGINES:
+        # A real engine that simply does not live here. Worth its own sentence:
+        # the alternative is telling somebody the name they read in our own
+        # --help is unknown, and sending them to look for a typo there isn't.
+        raise CreateError(
+            f"the {name} engine does not build a capture engine — it writes its "
+            "own ZIM and is dispatched before packaging starts. This is a "
+            "routing mistake in Zimi, not a bad engine name."
+        )
     raise CreateError(
         f"unknown capture engine: {engine} — the engines are "
-        + ", ".join(CAPTURE_ENGINES)
+        + ", ".join(OFFERED_ENGINES)
     )
 
 
@@ -1739,11 +1760,32 @@ def create_page_zim(
 
     note = progress or (lambda _message: None)
 
-    # The alive engine does not fill a Creator, so it cannot come down this
-    # function — everything below here writes a ZIM and it writes a WARC. Sent
-    # on before any of that starts, with the same arguments; the checks this
-    # skips (offline, scheme) are the first thing it does itself.
-    if str(engine or "").strip().lower() in ARCHIVE_ENGINES:
+    # Two engines do not fill a Creator, so neither can come down this function
+    # — everything below here packages a ZIM, and these two produce one of their
+    # own. Each is sent on before any of that starts, and to its OWN entry
+    # point: they are alike in not filling a Creator and alike in nothing else.
+    # Routing both to the same place is precisely the bug that made asking for
+    # zimit quietly hand back an alive capture.
+    #
+    # The checks skipped here (offline, scheme) are the first thing each of them
+    # does itself.
+    name = str(engine or "").strip().lower()
+    if name == "zimit":
+        from zimi.crawler import create_zimit_zim
+
+        return create_zimit_zim(
+            url,
+            site=False,
+            out_dir=out_dir,
+            out_path=out_path,
+            title=title,
+            description=description,
+            language=language,
+            creator_name=creator_name,
+            register=register,
+            progress=progress,
+        )
+    if name == "alive":
         from zimi.alive import create_alive_page_zim
 
         return create_alive_page_zim(
@@ -1989,11 +2031,16 @@ def create_pages_zim(
             register=register,
             progress=progress,
         )
-    if str(engine or "").strip().lower() in ARCHIVE_ENGINES:
+    # Correct for both members: an engine that writes its own ZIM has no
+    # Creator for a second page to go into. Named rather than assumed — the
+    # message said "the alive engine" to everyone, including the person who
+    # asked for zimit.
+    archive_engine = str(engine or "").strip().lower()
+    if archive_engine in ARCHIVE_ENGINES:
         raise CreateError(
-            "the alive engine captures one page or one site, not a list of "
-            f"pages — give it a single URL, or crawl {urllib.parse.urlsplit(wanted[0]).netloc} "
-            "with --site"
+            f"the {archive_engine} engine captures one page or one site, not a "
+            f"list of pages — give it a single URL, or crawl "
+            f"{urllib.parse.urlsplit(wanted[0]).netloc} with --site"
         )
     if is_offline():
         raise CreateError(

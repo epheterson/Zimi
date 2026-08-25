@@ -39,18 +39,31 @@ class _FakeHandler:
 
     _session_cookie = ZimHandler._session_cookie
     _expire_cookie = ZimHandler._expire_cookie
+    # Borrowed for the same reason as the cookie builders: it reads nothing but
+    # ``self.headers``, so the double can run the REAL content negotiation
+    # rather than a guess at it. A stub returning False here would have kept
+    # these tests passing while the browser branch went untested.
+    _wants_html = ZimHandler._wants_html
 
     def __init__(self, headers=None, private=True):
         self.headers = headers or {}
         self._private = private
         self.responses = []
         self.set_cookies = []
+        self.html_responses = []
 
     def _is_private_client(self):
         return self._private
 
     def _json(self, code, data):
         self.responses.append((code, data))
+        return None
+
+    def _html(self, code, body, vary=None):
+        # The browser arm of the same refusal: a login page instead of a JSON
+        # error. Recorded separately so a test can tell WHICH refusal happened
+        # — the status is 401 either way, and that is the whole point.
+        self.html_responses.append((code, vary))
         return None
 
     def _json_cookie(self, code, data, set_cookie):
