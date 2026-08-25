@@ -110,6 +110,27 @@ def test_a_rewrite_always_emits_quotes():
     )
 
 
+def test_a_value_carried_from_the_page_is_escaped_on_the_way_out():
+    """Emitting `pre + '"' + value + '"'` is safe for a value we invented and
+    wrong for one the page gave us: HTML lets a SINGLE-quoted attribute hold a
+    double quote, so `<img src='a"b.png'>` came back out as `<img src="/a"b.png">`
+    — markup broken, src truncated to `/a`. Silent, and shipped for a day."""
+    variants = creator._origin_variants("https://ex.com/")[1]
+    out = creator._relativize_html("<img src='https://ex.com/a\"b.png'>", variants)
+    assert out.count('"') % 2 == 0, out
+    assert "&quot;" in out
+    assert '<img src="/a&quot;b.png">' == out
+
+
+def test_escaping_does_not_double_an_entity_already_there():
+    """Escaping the whole value would turn an existing `&amp;` into
+    `&amp;amp;` — the same shape as the unescaping bug that cost a day. Only
+    the quote is touched; `&` and `<` stay however the page wanted them."""
+    assert zimwriter.attr_quote("x?q=1&amp;r=2") == "x?q=1&amp;r=2"
+    assert zimwriter.attr_quote('a"b') == "a&quot;b"
+    assert zimwriter.attr_quote("plain") == "plain"
+
+
 def test_stripping_an_attribute_leaves_no_double_space():
     """The leading whitespace lives inside `pre` so that removing an attribute
     from an attribute list closes the gap behind it."""

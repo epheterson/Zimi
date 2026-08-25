@@ -59,6 +59,7 @@ from zimi.zimwriter import (
     _resolve_ref,
     _slug,
     add_standard_metadata,
+    attr_quote,
     attr_re,
     atomic_zim_creator,
     has_image_support,
@@ -994,8 +995,9 @@ def _relativize_html(page, variants):
             val = ", ".join(parts)
         else:
             val = _strip_origin(val, variants)
-        # Always quoted on the way out; see attr_re.
-        return f'{prefix}"{val}"'
+        # Always quoted on the way out; escaped because this value came
+        # from the page and a single-quoted attribute may hold a ".
+        return f'{prefix}"{attr_quote(val)}"'
 
     return _ABS_ATTR_RE.sub(fix, page)
 
@@ -1213,7 +1215,7 @@ def _externalize_links(page, base_url, resolve=None):
                 return hm.group(0)  # mailto:, javascript:, data:, tel:
             absolute = urllib.parse.urljoin(base_url, val)
             internal = resolve(absolute) if resolve else None
-            return f'{hm.group("pre")}"{internal or absolute}"'
+            return f'{hm.group("pre")}"{attr_quote(internal or absolute)}"'
 
         return _HREF_RE.sub(fix_href, tag, count=1)
 

@@ -88,6 +88,7 @@ from zimi.zimwriter import (
     _MAX_TOTAL_ASSET_BYTES,
     _slug,
     _split_srcset,
+    attr_quote,
     attr_re,
     make_asset_item,
 )
@@ -2114,7 +2115,7 @@ def _fix_srcset(assets, m):
         if in_path:
             url = _in_zim_ref(in_path)
         parts.append(f"{url} {descriptor}".strip())
-    return f'{m.group("pre")}"{", ".join(parts)}"'
+    return f'{m.group("pre")}"{attr_quote(", ".join(parts))}"'
 
 
 def _rewrite_css_refs(assets, css, base_url):
@@ -2149,7 +2150,7 @@ def _rewrite_style_attrs(assets, html, final_url):
 
     def fix(m):
         css = _rewrite_css_refs(assets, m.group("val"), final_url)
-        return f'{m.group("pre")}"{css}"'
+        return f'{m.group("pre")}"{attr_quote(css)}"'
 
     return _STYLE_ATTR_RE.sub(fix, html)
 

@@ -74,6 +74,25 @@ _ATTR_VALUE = r"""(?P<q>["'])?(?P<val>(?(q).*?|[^\s"'=<>`]*))(?(q)(?P=q))"""
 _ATTR_RE_CACHE = {}
 
 
+def attr_quote(value):
+    """One attribute value, ready to sit inside double quotes.
+
+    Every rewrite here emits ``pre + '"' + value + '"'``, which is correct for
+    a value we invented (a ZIM path) and WRONG for one carried over from the
+    page. HTML lets a single-quoted attribute hold a double quote, so
+
+        <img src='https://ex.com/a"b.png'>
+
+    came back out as ``<img src="/a"b.png">`` — markup broken and the src
+    truncated to ``/a``. Rare in the wild and completely silent when it lands.
+
+    Escaping only the quote, not the whole value: ``&`` and ``<`` are already
+    however the source page wanted them, and re-escaping an existing ``&amp;``
+    would double it into ``&amp;amp;`` — the same class of bug as the one that
+    cost a day when carry() was not unescaping."""
+    return str(value).replace('"', "&quot;")
+
+
 def attr_re(*names):
     """Compiled matcher for an HTML attribute, quoted or bare.
 
@@ -476,7 +495,7 @@ class _AssetCarrier:
                     in_path = carry_ref(url)
                     ref = in_zim_ref(in_path) if in_path else url
                     parts.append((ref + " " + descriptor).strip())
-                return f'{m.group("pre")}"{", ".join(parts)}"'
+                return f'{m.group("pre")}"{attr_quote(", ".join(parts))}"'
 
             tag = _SRC_RE.sub(fix_src, tag)
             tag = _SRCSET_RE.sub(fix_srcset, tag)
