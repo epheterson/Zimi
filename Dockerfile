@@ -63,11 +63,14 @@ RUN pip install --no-cache-dir "playwright>=1.40" \
 # Node, and the two capture tools that need it.
 #
 # From the official tarball at a pinned version, verified against the checksum
-# Node publishes. Debian's own package is 20.19.2 and the SingleFile CLI needs
-# >= 22.4.0 for WebSocket — it exits at import otherwise, saying so only in a
-# stack trace. Pinning also means a rebuild lands on the version that was
-# tested rather than whatever is current.
-ARG NODE_VERSION=22.20.0
+# Node publishes. The version is not arbitrary and both bounds were learned the
+# hard way: Debian's own package is 20.19.2 and the SingleFile CLI refuses to
+# import below 22.4.0 ("WebSocket is not available"); at 22.20.0 it imports and
+# then dies mid-capture on "CloseEvent is not defined", which is a global that
+# arrives in 24. 24.19.0 is the current LTS and the floor that actually works.
+# Pinning also means a rebuild lands on the version that was tested rather than
+# whatever is current.
+ARG NODE_VERSION=24.19.0
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
  && rm -rf /var/lib/apt/lists/*
