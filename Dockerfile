@@ -60,11 +60,32 @@ RUN pip install --no-cache-dir "playwright>=1.40" \
 #
 # Its own layer, before the source copy, so editing Zimi does not reinstall
 # Node. Chromium comes from the Playwright layer above and serves both.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends nodejs npm \
- && npm install -g single-file-cli browsertrix-behaviors \
- && npm cache clean --force \
- && rm -rf /var/lib/apt/lists/*
+# Node, and the two capture tools that need it.
+#
+# From the official tarball at a pinned version, verified against the checksum
+# Node publishes. Debian's own package is 20.19.2 and the SingleFile CLI needs
+# >= 22.4.0 for WebSocket — it exits at import otherwise, saying so only in a
+# stack trace. Pinning also means a rebuild lands on the version that was
+# tested rather than whatever is current.
+ARG NODE_VERSION=22.20.0
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) node_arch=x64 ;; \
+      arm64) node_arch=arm64 ;; \
+      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    tarball="node-v${NODE_VERSION}-linux-${node_arch}.tar.xz"; \
+    base="https://nodejs.org/dist/v${NODE_VERSION}"; \
+    curl -fsSLO "${base}/${tarball}"; \
+    curl -fsSL "${base}/SHASUMS256.txt" -o SHASUMS256.txt; \
+    grep " ${tarball}\$" SHASUMS256.txt | sha256sum -c -; \
+    tar -xJf "${tarball}" -C /usr/local --strip-components=1 \
+        --exclude=CHANGELOG.md --exclude=LICENSE --exclude=README.md; \
+    rm -f "${tarball}" SHASUMS256.txt; \
+    node --version; \
+    npm install -g single-file-cli browsertrix-behaviors; \
+    npm cache clean --force
 
 # yt-dlp is the video engine, and in the image it is not optional. It is a soft
 # dependency in the package — a laptop install of Zimi that never captures a

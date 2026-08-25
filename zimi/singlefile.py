@@ -162,8 +162,20 @@ def capture_page(
         if proc.returncode != 0:
             # The tool's own last line is the part a person can act on; the
             # rest is a Node stack. Never the whole thing.
-            tail = (proc.stderr or proc.stdout or "").strip().splitlines()
-            reason = tail[-1][:200] if tail else "it gave no reason"
+            # The most INFORMATIVE line, not the last one. Node prints its own
+            # version as the final line of a crash, so taking the tail reported
+            # "SingleFile could not capture … — Node.js v20.19.2" and buried the
+            # actual cause — "WebSocket is not available, Node.js 22.4.0 or
+            # later is required" — three lines above it. An error message whose
+            # job is to be actionable must go looking for the actionable line.
+            lines = [
+                ln.strip()
+                for ln in (proc.stderr or proc.stdout or "").splitlines()
+                if ln.strip()
+            ]
+            named = [ln for ln in lines if "error" in ln.lower()]
+            reason = (named[0] if named else (lines[-1] if lines else ""))[:200]
+            reason = reason or "it gave no reason"
             log.warning(
                 "single-file exited %s for %s: %s", proc.returncode, url, reason
             )
