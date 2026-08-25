@@ -2002,7 +2002,7 @@ CREATE_MODES = ("folder", "page", "site", "video", "import")
 # request must not drag the writer stack into the request thread. The test
 # below pins the two together. zimit is deliberately NOT offered over the web —
 # it wants a docker daemon, and a web form is the wrong place to discover that.
-CREATE_ENGINES = ("builtin", "rendered", "alive", "singlefile")
+CREATE_ENGINES = ("builtin", "rendered", "alive", "singlefile", "zimit")
 # The engines that can refuse a request before it is made — the ones that drive
 # a browser. Mirrors creator.BLOCKING_ENGINES, held here for the same reason
 # CREATE_ENGINES is, and pinned to it by the same test.
@@ -2936,6 +2936,11 @@ def _create_engine(value):
             "the singlefile engine needs the SingleFile CLI, and this server "
             "does not have it installed"
         )
+    if name == "zimit" and not _create_zimit_ready():
+        raise ValueError(
+            "the zimit engine runs openZIM's crawler in Docker, and this "
+            "server has no Docker it can reach"
+        )
     if name == "alive" and not _create_alive_ready():
         raise ValueError(
             "the alive engine needs both a browser and the warc2zim sidecar, "
@@ -3352,6 +3357,7 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
         # tests/test_create_routes.py now fails if a mode is added without one.
         payload["video_ready"] = _create_video_ready()
         payload["singlefile_ready"] = _create_singlefile_ready()
+        payload["zimit_ready"] = _create_zimit_ready()
         # The instance's stored capture defaults (Manage → Creator toggles),
         # so the form's checkboxes start where the admin set them instead of
         # at the factory state — the toggle would otherwise LOOK ignored.
@@ -3584,6 +3590,20 @@ def _create_video_ready():
         return bool(video_available())
     except Exception:
         log.exception("video-engine probe failed")
+        return False
+
+
+def _create_zimit_ready():
+    """True when a Docker this server can actually talk to exists.
+
+    zimit is not a library, it is a container, so "installed" means a daemon
+    answering — which is why this asks the CLI rather than checking a path."""
+    try:
+        from zimi.crawler import _docker_cli
+
+        return bool(_docker_cli())
+    except Exception:
+        log.exception("zimit-engine probe failed")
         return False
 
 

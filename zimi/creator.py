@@ -1498,10 +1498,12 @@ def render_captured_page(carrier, page, *, final_url, resolve_link=None):
 # disk that warc2zim turns into a ZIM, not items in a Creator. The callers that
 # package a ZIM themselves therefore dispatch it away before they start; see
 # ``create_page_zim`` and ``crawler.create_site_zim``.
-CAPTURE_ENGINES = ("builtin", "rendered", "alive", "singlefile")
+CAPTURE_ENGINES = ("builtin", "rendered", "alive", "singlefile", "zimit")
 DEFAULT_ENGINE = "builtin"
 # Engines that write their own output file instead of filling a Creator.
-ARCHIVE_ENGINES = ("alive",)
+# zimit joins alive here: both write their own ZIM rather than filling a
+# Creator, so both are dispatched away before packaging starts.
+ARCHIVE_ENGINES = ("alive", "zimit")
 
 
 def creator_target(creator):

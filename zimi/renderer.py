@@ -800,6 +800,9 @@ class RenderedSession:
         # provenance record. None until start() runs, and on an engine that
         # never started there is nothing to claim.
         self._browser_version = None
+        # Set once behaviors actually ran, so provenance names what
+        # revealed the page rather than what was merely installed.
+        self._behaviors_version = None
         self.recorded = 0  # responses written to the archive, this session
         # Every URL this session has already put to the archive — recorded,
         # deduplicated, or deliberately skipped. What the variant sweep asks
@@ -834,7 +837,10 @@ class RenderedSession:
         capture apart from a builtin one after the fact: the two write
         otherwise identical metadata, so without a named engine version the
         reader is left guessing which one made the file."""
-        return {"chromium": self._browser_version} if self._browser_version else {}
+        tools = {"chromium": self._browser_version} if self._browser_version else {}
+        if self._behaviors_version:
+            tools["browsertrix-behaviors"] = self._behaviors_version
+        return tools
 
     # -- lifecycle ---------------------------------------------------------
     def start(self):
@@ -1083,7 +1089,7 @@ class RenderedSession:
             if refusal:
                 raise CreateError(refusal)
             self._quiet(page, QUIET_TIMEOUT)
-            self._lazy_scroll(page)
+            self._reveal(page)
             self._quiet(page, SCROLL_QUIET_TIMEOUT)
             self._image_settle(page)
             _sleep(SETTLE)
@@ -1137,6 +1143,59 @@ class RenderedSession:
             log.debug(
                 "page never went quiet within %.0fs; taking what is there", timeout
             )
+
+    def _reveal(self, page):
+        """Make the page show what it is holding back.
+
+        Webrecorder's behaviors when the operator installed them, our scroll
+        otherwise. Not a wrapper for its own sake: a plain scroll only reaches
+        content that lazy-loads ON SCROLL, and the behaviors catalogue knows the
+        rest — feeds that load on intersection, galleries behind "show more",
+        threads that expand a reply at a time, and the specific sites everybody
+        archives. That knowledge is years of somebody else's archiving and is
+        the thing our loop most obviously lacks.
+
+        The fallback is load-bearing rather than polite. The bundle is AGPL and
+        Zimi is MIT, so Zimi never ships it — which means a capture must work
+        without it, and the scroll below is what "works without it" means."""
+        from zimi.behaviors import (
+            DEFAULT_RUN_SECONDS,
+            RUN_JS,
+            behaviors_source,
+            behaviors_version,
+        )
+
+        source = behaviors_source()
+        how = None
+        if source:
+            try:
+                page.add_script_tag(content=source)
+                how = page.evaluate(RUN_JS, DEFAULT_RUN_SECONDS)
+            except Exception as e:
+                # Anything at all here is survivable: the page is already
+                # loaded, and a revealed page is a bonus over a captured one,
+                # never a precondition for it.
+                log.debug("behaviors did not run: %s", _playwright_reason(e))
+                how = None
+
+        # ALWAYS scroll afterwards, even when the behaviors ran and said they
+        # finished. They are additive, not a replacement — running them INSTEAD
+        # lost a lazy image the plain scroll had always caught, which the suite
+        # caught immediately and a user would have found as a missing picture.
+        # The two overlap heavily and the scroll is cheap; what matters is that
+        # adopting somebody else's coverage never subtracts from our own.
+        self._lazy_scroll(page)
+
+        if how is None or how == "not-loaded":
+            return
+        self._behaviors_version = behaviors_version()
+        # "timeout" is the ordinary outcome on a page with no bottom, not a
+        # failure — it means the behaviors were still finding things when their
+        # time ran out, which is exactly the bound doing its job.
+        self._note(
+            "used browsertrix-behaviors to reveal the page"
+            + (" (stopped at its time limit)" if how == "timeout" else "")
+        )
 
     def _lazy_scroll(self, page):
         """Walk the page top to bottom, pausing.

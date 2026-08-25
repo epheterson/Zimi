@@ -12,7 +12,7 @@ Web captures run through one of four **engines**, chosen with `--engine`:
 - **rendered** — runs a headless Chromium in-process so client-rendered pages produce real content. Needs `pip install 'zimi[browser]'` and `playwright install chromium`.
 - **alive** — records the live browser session to a WARC and converts it with warc2zim, so the saved site's JavaScript still runs inside the reader. Needs the browser extra above plus the warc2zim sidecar (`zimi import --setup`).
 - **singlefile** — hands the page to [SingleFile](https://github.com/gildas-lormeau/SingleFile), the reference implementation of "save this page as one file". It drives a browser, waits for the page to finish, and inlines every image, stylesheet and font as a data URI. The result is a single self-contained entry that **cannot** break: there is nothing to lazy-load and no reference that can fail to resolve, so it is the only engine whose images survive a scroll on every site tested. Costs about a third in size (base64) and stores one entry rather than a browsable tree. Needs Node and `npm install -g single-file-cli`, plus a Chromium.
-- **zimit** — openZIM's browser-based crawler, run via Docker. Extra crawler arguments pass through with `--engine-arg` (write it attached, e.g. `--engine-arg=--workers=2`).
+- **zimit** — openZIM's browser-based crawler (browsertrix), run via Docker. Now available for a single page as well as a `--site` crawl, and offered in the web UI wherever Zimi can reach a Docker daemon. Extra crawler arguments pass through with `--engine-arg` (write it attached, e.g. `--engine-arg=--workers=2`).
 
 **What each engine trades.** They are not better and worse, they are three bargains. Measured on one CNN front page, iPhone width, served offline with the network sealed:
 
@@ -25,6 +25,8 @@ Web captures run through one of four **engines**, chosen with `--engine`:
 A capture is also **refused rather than packaged** when the site does not return a web page at all. Some sites answer an automated browser with HTTP 200 and a few bytes of error text; the rendered and alive engines check what the browser actually received and fail with the reason instead of writing an archive of an error message.
 
 **Resource hints are dropped.** `<link rel="preload">` and friends are advice to a live browser about what to fetch early. In an archive they are requests for addresses that do not exist, so all of them — `preload`, `modulepreload`, `prefetch`, `preconnect`, `dns-prefetch` — are removed. The files themselves are still carried through the stylesheets and markup that actually use them.
+
+**Making a page reveal itself.** The browser engines (rendered, alive, zimit) drive the page before serialising it, because a modern site holds most of its content back until something asks. Zimi's own pass is a scroll. When [browsertrix-behaviors](https://github.com/webrecorder/browsertrix-behaviors) is installed (`npm install -g browsertrix-behaviors`, or point `ZIMI_BEHAVIORS` at a `behaviors.js`), Zimi runs Webrecorder's catalogue first — per-site scripts for the sites people archive most, plus a better generic autoscroll — and then still runs its own scroll, because adopting somebody else's coverage should never subtract from your own. Zimi does not ship the bundle: it is AGPL, so it is used when present and never distributed. Without it every engine works exactly as before.
 
 **Capture defaults.** Ad, tracker, and consent-manager requests are blocked during capture by default (`--block-ads`, on for the rendered and alive engines) — smaller ZIMs, and pages that gate on those endpoints render their real content. `--no-block-ads` captures everything. The blocklist snapshot ships in `zimi/assets/blocklist-snapshot.txt.gz` (StevenBlack/hosts, MIT) and is not auto-refreshed. Image-variant capture is a Manage/Creator toggle (`capture_variants`) and a `create` internal option.
 
@@ -41,6 +43,7 @@ A capture is also **refused rather than packaged** when the site does not return
 | Setting | Where | Default | Effect |
 | --- | --- | --- | --- |
 | `--engine` | flag | `builtin` | `builtin` / `rendered` / `singlefile` / `alive` / `zimit` |
+| `ZIMI_BEHAVIORS` | env | unset | Path to a `behaviors.js`. Zimi otherwise looks in npm's global roots; without it the browser engines fall back to a plain scroll |
 | `--block-ads` / `--no-block-ads` | flag | on (rendered/alive) | Block ad/tracker/consent requests at capture time |
 | `--max-bytes` | flag | 512MiB (site) / 4G (video) | Total size budget |
 | `--max-pages` | flag | 200 (site) | Page cap for `--site` |

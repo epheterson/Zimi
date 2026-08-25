@@ -43,6 +43,29 @@ RUN pip install --no-cache-dir "playwright>=1.40" \
  && chmod -R a+rx /ms-playwright \
  && rm -rf /var/lib/apt/lists/*
 
+# Node, and the two capture tools that need it. Both are AGPL and neither is
+# vendored: they are installed here as separate programs the image happens to
+# carry, exactly as warc2zim (GPL) and zimit (GPL) already are, and Zimi calls
+# them as subprocesses or reads a file they left on disk.
+#
+#   single-file-cli        the reference "save this page as one file". Its
+#                          output is the sturdiest capture Zimi can make —
+#                          every asset a data: URI, so nothing can lazy-load,
+#                          re-fetch, or fail to resolve.
+#   browsertrix-behaviors  Webrecorder's catalogue of per-site scroll/expand
+#                          behaviour. Zimi reads dist/behaviors.js and injects
+#                          it; without it the engines fall back to a plain
+#                          scroll, which is why this layer is optional in
+#                          principle even though the image carries it.
+#
+# Its own layer, before the source copy, so editing Zimi does not reinstall
+# Node. Chromium comes from the Playwright layer above and serves both.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends nodejs npm \
+ && npm install -g single-file-cli browsertrix-behaviors \
+ && npm cache clean --force \
+ && rm -rf /var/lib/apt/lists/*
+
 # yt-dlp is the video engine, and in the image it is not optional. It is a soft
 # dependency in the package — a laptop install of Zimi that never captures a
 # video should not carry it — but the Create page in THIS container offers
