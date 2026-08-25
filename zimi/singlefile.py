@@ -98,6 +98,34 @@ def singlefile_version():
 
 
 
+
+def chromium_path():
+    """Where a usable Chromium is, or ''.
+
+    Playwright's first, because if Zimi can render a page at all then that is
+    the browser it renders with, and using a second one would mean two
+    installs and two behaviours for one job. Playwright is asked directly —
+    it owns the download and knows the layout — and only if that fails do we
+    fall back to whatever is on PATH.
+
+    Returns '' rather than raising: SingleFile can still find a system browser
+    by itself, and a guess of ours must not stop it trying."""
+    try:
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as pw:
+            found = pw.chromium.executable_path
+            if found and os.path.exists(found):
+                return found
+    except Exception as e:
+        log.debug("playwright could not name its chromium: %s", e)
+    for name in ("chromium", "chromium-browser", "google-chrome", "chrome"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return ""
+
+
 def _check_url(url):
     """Refuse anything that is not a plain http(s) address.
 
@@ -138,6 +166,13 @@ def capture_page(
     workdir = tempfile.mkdtemp(prefix=".zimi-singlefile-", dir=work_dir)
     out_path = os.path.join(workdir, "page.html")
     cmd = [exe, url, out_path, *_BASE_ARGS]
+    browser = chromium_path()
+    if browser:
+        # Without this SingleFile goes looking for a system Chrome and fails
+        # with "Chromium executable not found" — on a machine that has a
+        # perfectly good Chromium, installed by Zimi, for the rendered engine.
+        # One browser serves both engines; it just has to be pointed at.
+        cmd.append(f"--browser-executable-path={browser}")
     if block_ads:
         # SingleFile's own blocker, so this engine honours the same capture
         # default as the others rather than quietly ignoring it.
