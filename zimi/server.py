@@ -2214,6 +2214,26 @@ def _self_heal_update_stamps(info, file_cache):
     return repaired > 0
 
 
+def _boot_say(*args, **kwargs):
+    """Boot and status chatter, on stderr.
+
+    stdout is a PROTOCOL channel for two of the ways Zimi is run. The MCP
+    server speaks JSON-RPC over stdio, so a friendly "No ZIM files found in
+    ..." line printed to stdout lands in the middle of the handshake and a
+    strict client rejects the stream. It was doing exactly that: the first
+    thing a new Open WebUI user saw, on the run where they had not put any
+    ZIMs in place yet, was a corrupted protocol rather than an empty library.
+
+    Nothing is lost by moving it. A person running `zimi serve` sees stderr in
+    the same terminal, in the same place; only the file descriptor changes.
+    Actual command OUTPUT -- search results, `zimi list` -- still goes to
+    stdout, where a pipe can read it.
+    """
+    kwargs.setdefault("flush", True)
+    kwargs["file"] = sys.stderr
+    print(*args, **kwargs)
+
+
 def load_cache(force=False):
     """Load ZIM metadata, using persistent disk cache for instant startup.
 
@@ -2421,14 +2441,14 @@ def load_cache(force=False):
 
     cached_count = len(info) - scanned
     if cached_count > 0 and scanned > 0:
-        print(
+        _boot_say(
             f"  Cache loaded: {len(info)} ZIMs ({cached_count} cached, {scanned} scanned) in {elapsed:.1f}s",
             flush=True,
         )
     elif scanned > 0:
-        print(f"  Cache built: {len(info)} ZIMs scanned in {elapsed:.1f}s", flush=True)
+        _boot_say(f"  Cache built: {len(info)} ZIMs scanned in {elapsed:.1f}s", flush=True)
     elif len(info) > 0:
-        print(
+        _boot_say(
             f"  Cache loaded: {len(info)} ZIMs from disk cache in {elapsed:.1f}s",
             flush=True,
         )
@@ -2438,19 +2458,19 @@ def load_cache(force=False):
         # that was actually searched instead of assuming a volume mount.
         searched = [ZIM_DIR] + [p for p in _discovery_probed if p != ZIM_DIR]
         missing = "" if os.path.isdir(ZIM_DIR) else " (directory does not exist)"
-        print(f"  No ZIM files found in {ZIM_DIR}{missing}", flush=True)
+        _boot_say(f"  No ZIM files found in {ZIM_DIR}{missing}", flush=True)
         if os.path.isdir(ZIM_DIR):
             # The scan covers ZIM_DIR plus one level of subfolders; only files
             # nested deeper than that are invisible now, so only they get the
             # hint (a recursive glob at boot is fine — the library is empty).
             deep_zims = glob.glob(os.path.join(ZIM_DIR, "**", "*.zim"), recursive=True)
             if deep_zims:
-                print(
+                _boot_say(
                     f"  Found {len(deep_zims)} ZIM file(s) nested deeper than one folder — "
                     f"Zimi scans {ZIM_DIR} and its immediate subfolders only",
                     flush=True,
                 )
-        print(
+        _boot_say(
             f"  Searched: {', '.join(searched)}. Put .zim files in any of these, "
             f"or point ZIM_DIR / --zim-dir at your ZIM folder.",
             flush=True,

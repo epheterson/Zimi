@@ -68,6 +68,23 @@ mcp = FastMCP(
     "zimi", instructions="Search and read articles from offline ZIM knowledge archives."
 )
 
+# Report ZIMI's version, not FastMCP's.
+#
+# The low-level server carries `version=None`, and the library then answers the
+# handshake with its OWN version — so a client asking what it just connected to
+# was told "zimi 1.26.0" while Zimi was 1.9.0. Harmless until somebody files a
+# bug report with that number in it, or an agent records which server answered.
+#
+# Set after construction because FastMCP's __init__ signature differs between
+# the vendored `mcp.server.fastmcp` and the standalone `fastmcp` distribution
+# (this file already supports both), and only one of them takes `version`.
+# Guarded: a private attribute that moves should cost us a wrong version
+# string, never a server that will not start.
+try:
+    mcp._mcp_server.version = zimi.ZIMI_VERSION
+except Exception:  # pragma: no cover - shape changed upstream
+    pass
+
 
 @mcp.tool()
 def search(
