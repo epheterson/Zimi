@@ -231,7 +231,7 @@ def extract_links(page, base_url):
         # asks the server for a URL with a literal "&amp;" in it — a 404, or
         # worse, a different page. Same bug as the one that broke every
         # rendered image with a query string; this is the crawl's copy of it.
-        val = _html.unescape(hrefm.group(2).strip())
+        val = _html.unescape(hrefm.group("val").strip())
         if not val or val.startswith("#"):
             continue
         head = val.split("/", 1)[0]

@@ -50,16 +50,61 @@ _STRIP_TAGS_RE = re.compile(
 _STRIP_VOID_RE = re.compile(r"<(link|meta)\b[^>]*/?>", re.IGNORECASE)
 _BODY_RE = re.compile(r"<body[^>]*>(.*)</body>", re.IGNORECASE | re.DOTALL)
 
+# ── reading one HTML attribute ──────────────────────────────────────────────
+#
+# Every capture and export path needs "what does this tag's src/href/rel say",
+# and every one of them used to write its own regex for it. There were eight,
+# in four files, and six shared two bugs:
+#
+#   * They required quotes. `<link rel=stylesheet href=/a.css>` is legal HTML5
+#     and common in hand-written pages, and to those six it was invisible — so
+#     the page came out with no stylesheet and nothing said so.
+#   * `\bsrc` matches inside `data-src`, because `-` is not a word character.
+#     A lazy-loading `<img data-src=... src=...>` — which is most images on
+#     most news sites — handed back the placeholder instead of the real image.
+#
+# One builder, so a fix lands once. The value is a single `val` group across
+# all three legal shapes, which is what lets a caller stop caring which one it
+# got. The conditional `(?(q)...)` is doing that work: a closing quote is
+# required only if an opening one was found.
+#
+# This is deliberately not an HTML parser. It reads one attribute out of one
+# tag that a caller has already isolated, which is the whole job.
+_ATTR_VALUE = r"""(?P<q>["'])?(?P<val>(?(q).*?|[^\s"'=<>`]*))(?(q)(?P=q))"""
+_ATTR_RE_CACHE = {}
+
+
+def attr_re(*names):
+    """Compiled matcher for an HTML attribute, quoted or bare.
+
+    Groups: ``pre`` (leading space, the name, the ``=``), ``attr`` (which name
+    matched, for a multi-name call), ``q`` (the quote or None) and ``val``.
+
+    Rewrite with ``m.group("pre") + '"' + new + '"'`` — always emit quotes. A
+    value that arrived bare may not survive being written back bare, and a
+    quoted attribute is correct either way."""
+    rx = _ATTR_RE_CACHE.get(names)
+    if rx is None:
+        # The lookbehind sits AFTER the optional whitespace, so it inspects the
+        # character immediately before the name — `-` in `data-src`, `:` in
+        # `xlink:href`. \b cannot do this: it is satisfied by that same hyphen.
+        alternation = "|".join(names)
+        rx = re.compile(
+            rf"""(?P<pre>\s*(?<![-\w:])(?P<attr>{alternation})\s*=\s*){_ATTR_VALUE}""",
+            re.IGNORECASE | re.DOTALL,
+        )
+        _ATTR_RE_CACHE[names] = rx
+    return rx
+
+
 # Asset carrying. `src` on media tags + `href` on stylesheet links; `url()` in
 # CSS. Kept deliberately simple/bounded — a bookmark ZIM is not a full mirror.
 _STYLESHEET_RE = re.compile(r"<link\b[^>]*>", re.IGNORECASE)
-_HREF_RE = re.compile(r"""href\s*=\s*(["'])(.*?)\1""", re.IGNORECASE | re.DOTALL)
-_REL_RE = re.compile(r"""rel\s*=\s*(["'])(.*?)\1""", re.IGNORECASE | re.DOTALL)
+_HREF_RE = attr_re("href")
+_REL_RE = attr_re("rel")
 _MEDIA_TAG_RE = re.compile(r"<(img|source)\b[^>]*>", re.IGNORECASE)
-_SRC_RE = re.compile(r"""(\bsrc\s*=\s*)(["'])(.*?)\2""", re.IGNORECASE | re.DOTALL)
-_SRCSET_RE = re.compile(
-    r"""(\bsrcset\s*=\s*)(["'])(.*?)\2""", re.IGNORECASE | re.DOTALL
-)
+_SRC_RE = attr_re("src")
+_SRCSET_RE = attr_re("srcset")
 _CSS_URL_RE = re.compile(r"""url\(\s*(['"]?)([^'")]+)\1\s*\)""", re.IGNORECASE)
 
 # Link rewriting. The scheme list is explicit rather than a general
@@ -70,12 +115,11 @@ _NON_PATH_SCHEME_RE = re.compile(
     re.IGNORECASE,
 )
 _ANCHOR_RE = re.compile(r"<a\b([^>]*)>(.*?)</a\s*>", re.IGNORECASE | re.DOTALL)
-_ANCHOR_HREF_RE = re.compile(
-    r"""\s*\bhref\s*=\s*(["'])(.*?)\1""", re.IGNORECASE | re.DOTALL
-)
-_ANCHOR_TITLE_RE = re.compile(
-    r"""\s*\btitle\s*=\s*(["'])(.*?)\1""", re.IGNORECASE | re.DOTALL
-)
+# Same matchers; the names say which job they are doing at the call site. The
+# leading whitespace lives inside `pre`, so stripping one of these out of an
+# attribute list does not leave a double space behind.
+_ANCHOR_HREF_RE = attr_re("href")
+_ANCHOR_TITLE_RE = attr_re("title")
 
 # Bounds so a runaway article/ZIM can't be produced (a bookmark ZIM is small).
 _MAX_ASSET_BYTES = 5 * 1024 * 1024  # per single asset
@@ -417,19 +461,22 @@ class _AssetCarrier:
         def fix_tag(tagm):
             tag = tagm.group(0)
 
+            # Always written back quoted, whatever shape it arrived in: a
+            # rewritten ref is a ZIM path we chose, and quoting it is correct
+            # regardless of what the source page did.
             def fix_src(m):
-                in_path = carry_ref(m.group(3))
+                in_path = carry_ref(m.group("val"))
                 if not in_path:
                     return m.group(0)
-                return m.group(1) + m.group(2) + in_zim_ref(in_path) + m.group(2)
+                return f'{m.group("pre")}"{in_zim_ref(in_path)}"'
 
             def fix_srcset(m):
                 parts = []
-                for url, descriptor in _split_srcset(m.group(3)):
+                for url, descriptor in _split_srcset(m.group("val")):
                     in_path = carry_ref(url)
                     ref = in_zim_ref(in_path) if in_path else url
                     parts.append((ref + " " + descriptor).strip())
-                return m.group(1) + m.group(2) + ", ".join(parts) + m.group(2)
+                return f'{m.group("pre")}"{", ".join(parts)}"'
 
             tag = _SRC_RE.sub(fix_src, tag)
             tag = _SRCSET_RE.sub(fix_srcset, tag)
@@ -444,12 +491,12 @@ class _AssetCarrier:
         for linkm in _STYLESHEET_RE.finditer(html):
             tag = linkm.group(0)
             relm = _REL_RE.search(tag)
-            if not relm or "stylesheet" not in relm.group(2).lower():
+            if not relm or "stylesheet" not in relm.group("val").lower():
                 continue
             hrefm = _HREF_RE.search(tag)
             if not hrefm:
                 continue
-            resolved = _resolve_ref(article_path, hrefm.group(2))
+            resolved = _resolve_ref(article_path, hrefm.group("val"))
             if not resolved:
                 continue
             got = self._read(zim, resolved)
@@ -555,7 +602,7 @@ def _rewrite_links(
         hrefm = _ANCHOR_HREF_RE.search(attrs)
         if not hrefm:
             return m.group(0)
-        href = hrefm.group(2)
+        href = hrefm.group("val")
         target = _resolve_ref(article_path, href)
         if not target:
             return m.group(0)

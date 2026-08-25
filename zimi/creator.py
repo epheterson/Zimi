@@ -59,6 +59,7 @@ from zimi.zimwriter import (
     _resolve_ref,
     _slug,
     add_standard_metadata,
+    attr_re,
     atomic_zim_creator,
     has_image_support,
     history_record,
@@ -95,14 +96,13 @@ DEFAULT_FETCH_TIMEOUT = 30.0
 # got "the wrong favicon").
 _FAVICON_CANDIDATES = ("apple-touch-icon.png", "favicon.png", "favicon.ico")
 # <link rel="…icon…" href="…"> parsing: the tag, then rel/href in any order,
-# quoted or bare.
+# quoted or bare -- which the shared attr_re has handled since it became the
+# one place that knows how an HTML attribute is spelled. These two were the
+# only pair in the tree that got it right; keeping their hand-rolled version
+# would leave two ways to read an attribute and invite the drift back.
 _ICON_LINK_RE = re.compile(r"<link\b[^>]*>", re.IGNORECASE)
-_LINK_REL_RE = re.compile(
-    r"""\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""", re.IGNORECASE
-)
-_LINK_HREF_RE = re.compile(
-    r"""\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""", re.IGNORECASE
-)
+_LINK_REL_RE = _REL_RE
+_LINK_HREF_RE = _HREF_RE
 DEFAULT_MAX_REDIRECTS = 5
 # An SPA shell has scripts and (nearly) no server-rendered text. The
 # threshold is deliberately low: real articles clear it by an order of
@@ -161,9 +161,10 @@ _HEAD_OPEN_RE = re.compile(r"<head\b[^>]*>", re.IGNORECASE)
 _HTML_OPEN_RE = re.compile(r"<html\b[^>]*>", re.IGNORECASE)
 _DOCTYPE_RE = re.compile(r"<!DOCTYPE\b[^>]*>", re.IGNORECASE)
 _A_TAG_RE = re.compile(r"<a\b[^>]*>", re.IGNORECASE)
-_ABS_ATTR_RE = re.compile(
-    r"""(\b(src|href|srcset)\s*=\s*)(["'])(.*?)\3""", re.IGNORECASE | re.DOTALL
-)
+# Three attributes, one matcher. See zimwriter.attr_re for why this is not a
+# hand-rolled regex any more: the quoted-only version could not see
+# `<img src=/a.png>`, and `\bsrc` read `data-src` as `src`.
+_ABS_ATTR_RE = attr_re("src", "href", "srcset")
 _HTML_LANG_RE = re.compile(
     r"""<html\b[^>]*?\blang\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))""", re.IGNORECASE
 )
@@ -977,7 +978,7 @@ def _relativize_html(page, variants):
     carries them like any relative asset."""
 
     def fix(m):
-        prefix, attr, quote, val = m.group(1), m.group(2), m.group(3), m.group(4)
+        prefix, attr, val = m.group("pre"), m.group("attr"), m.group("val")
         if attr.lower() == "srcset":
             # Split by the spec, not by comma: an image URL may CONTAIN commas
             # (CNN's image API: ?q=h_720,w_1280,c_fill/f_webp). Splitting naively
@@ -993,7 +994,8 @@ def _relativize_html(page, variants):
             val = ", ".join(parts)
         else:
             val = _strip_origin(val, variants)
-        return prefix + quote + val + quote
+        # Always quoted on the way out; see attr_re.
+        return f'{prefix}"{val}"'
 
     return _ABS_ATTR_RE.sub(fix, page)
 
@@ -1110,9 +1112,7 @@ def _http_remote_reader(timeout):
 
 
 def _replace_href(tag, new_ref):
-    return _HREF_RE.sub(
-        lambda m: "href=" + m.group(1) + new_ref + m.group(1), tag, count=1
-    )
+    return _HREF_RE.sub(lambda m: f'{m.group("pre")}"{new_ref}"', tag, count=1)
 
 
 # Link relations that are advice to a live browser, never content. Offline a
@@ -1135,7 +1135,7 @@ def _carry_stylesheets(carrier, label, page_path, page):
         relm = _REL_RE.search(tag)
         if not relm:
             return tag
-        rels = relm.group(2).lower().split()
+        rels = relm.group("val").lower().split()
         # A resource HINT is advice to a live browser about what to fetch
         # early. Offline it is not advice, it is a request for a file at an
         # address that does not exist here — CNN preloads four fonts by
@@ -1156,7 +1156,7 @@ def _carry_stylesheets(carrier, label, page_path, page):
         hrefm = _HREF_RE.search(tag)
         if not hrefm:
             return tag
-        resolved = _resolve_ref(page_path, hrefm.group(2))
+        resolved = _resolve_ref(page_path, hrefm.group("val"))
         if not resolved:
             return tag
         in_path = carrier._carry(label, resolved)
@@ -1205,7 +1205,7 @@ def _externalize_links(page, base_url, resolve=None):
         tag = m.group(0)
 
         def fix_href(hm):
-            val = hm.group(2).strip()
+            val = hm.group("val").strip()
             if not val or val.startswith("#"):
                 return hm.group(0)
             head = val.split("/", 1)[0]
@@ -1213,7 +1213,7 @@ def _externalize_links(page, base_url, resolve=None):
                 return hm.group(0)  # mailto:, javascript:, data:, tel:
             absolute = urllib.parse.urljoin(base_url, val)
             internal = resolve(absolute) if resolve else None
-            return "href=" + hm.group(1) + (internal or absolute) + hm.group(1)
+            return f'{hm.group("pre")}"{internal or absolute}"'
 
         return _HREF_RE.sub(fix_href, tag, count=1)
 
@@ -1424,13 +1424,13 @@ def _declared_icon_urls(page, final_url):
         relm = _LINK_REL_RE.search(tag)
         if not relm:
             continue
-        rel = (relm.group(1) or relm.group(2) or relm.group(3) or "").lower()
+        rel = (relm.group("val") or "").lower()
         if "icon" not in rel:
             continue
         hrefm = _LINK_HREF_RE.search(tag)
         if not hrefm:
             continue
-        href = (hrefm.group(1) or hrefm.group(2) or hrefm.group(3) or "").strip()
+        href = (hrefm.group("val") or "").strip()
         if not href or href.lower().startswith("data:"):
             continue
         try:
@@ -2310,7 +2310,7 @@ def page_asset_refs(page, final_url):
         if ref and not ref.startswith(("#", "data:")):
             refs.add(ref)
     for m in _SRCSET_RE.finditer(page):
-        for url, _descriptor in _split_srcset(m.group(3)):
+        for url, _descriptor in _split_srcset(m.group("val")):
             ref = _strip_origin(url.strip(), variants)
             if ref and not ref.startswith(("#", "data:")):
                 refs.add(ref)

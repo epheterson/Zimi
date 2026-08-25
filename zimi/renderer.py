@@ -88,6 +88,7 @@ from zimi.zimwriter import (
     _MAX_TOTAL_ASSET_BYTES,
     _slug,
     _split_srcset,
+    attr_re,
     make_asset_item,
 )
 
@@ -291,10 +292,7 @@ _ASSET_TAG_RE = re.compile(
     r"<(?:img|source|video|audio|track|embed|link|object)\b[^>]*>", re.IGNORECASE
 )
 _LINK_TAG_RE = re.compile(r"<link\b", re.IGNORECASE)
-_ATTR_RE_CACHE = {}
-_STYLE_ATTR_RE = re.compile(
-    r"""(\bstyle\s*=\s*)(["'])(.*?)\2""", re.IGNORECASE | re.DOTALL
-)
+_STYLE_ATTR_RE = attr_re("style")
 _STYLE_ELEM_RE = re.compile(
     r"(<style\b[^>]*>)(.*?)(</style\s*>)", re.IGNORECASE | re.DOTALL
 )
@@ -303,18 +301,13 @@ _STYLE_ELEM_RE = re.compile(
 # instruction to a live browser about a file it is about to want, and offline it
 # is a dangling reference at best.
 _CARRIED_LINK_RELS = ("stylesheet", "icon", "apple-touch-icon", "mask-icon")
-_REL_ATTR_RE = re.compile(r"""\brel\s*=\s*(["'])(.*?)\1""", re.IGNORECASE | re.DOTALL)
+_REL_ATTR_RE = attr_re("rel")
 
 
-def _attr_re(name):
-    """The compiled ``attr="value"`` matcher for one attribute name."""
-    rx = _ATTR_RE_CACHE.get(name)
-    if rx is None:
-        rx = re.compile(
-            r"""(\b%s\s*=\s*)(["'])(.*?)\2""" % name, re.IGNORECASE | re.DOTALL
-        )
-        _ATTR_RE_CACHE[name] = rx
-    return rx
+# Was a second, quoted-only copy of this with its own cache. It could not see
+# `<img src=/a.png>` and it read `data-src` as `src`. One builder now, in
+# zimwriter, where every other capture path can reach it.
+_attr_re = attr_re
 
 
 # ── availability ────────────────────────────────────────────────────────────
@@ -2092,15 +2085,17 @@ def _carried_link(tag):
     m = _REL_ATTR_RE.search(tag)
     if not m:
         return False
-    rels = m.group(2).lower().split()
+    rels = m.group("val").lower().split()
     return any(rel in _CARRIED_LINK_RELS for rel in rels)
 
 
 def _fix_ref(assets, m):
-    in_path = assets.carry(m.group(3).strip())
+    in_path = assets.carry(m.group("val").strip())
     if not in_path:
         return m.group(0)
-    return m.group(1) + m.group(2) + _in_zim_ref(in_path) + m.group(2)
+    # Written back quoted whatever shape it arrived in: the ref is a ZIM path
+    # we chose, so quoting is correct and a bare value may not survive.
+    return f'{m.group("pre")}"{_in_zim_ref(in_path)}"'
 
 
 def _fix_srcset(assets, m):
@@ -2112,14 +2107,14 @@ def _fix_srcset(assets, m):
     matches nothing, and the shredded fragments are written into the archive as
     if they were image addresses."""
     parts = []
-    for url, descriptor in _split_srcset(m.group(3)):
+    for url, descriptor in _split_srcset(m.group("val")):
         if not url:
             continue
         in_path = assets.carry(url)
         if in_path:
             url = _in_zim_ref(in_path)
         parts.append(f"{url} {descriptor}".strip())
-    return m.group(1) + m.group(2) + ", ".join(parts) + m.group(2)
+    return f'{m.group("pre")}"{", ".join(parts)}"'
 
 
 def _rewrite_css_refs(assets, css, base_url):
@@ -2153,8 +2148,8 @@ def _rewrite_style_attrs(assets, html, final_url):
     the imagery ends up: a hero a script sized and painted itself."""
 
     def fix(m):
-        css = _rewrite_css_refs(assets, m.group(3), final_url)
-        return m.group(1) + m.group(2) + css + m.group(2)
+        css = _rewrite_css_refs(assets, m.group("val"), final_url)
+        return f'{m.group("pre")}"{css}"'
 
     return _STYLE_ATTR_RE.sub(fix, html)
 
