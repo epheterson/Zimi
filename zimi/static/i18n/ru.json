@@ -876,6 +876,7 @@
   "create_size_default": "По умолчанию",
   "create_stalled": "Перестало продвигаться",
   "create_start": "Создать",
+  "create_step_convert": "Преобразование",
   "create_step_discover": "Разведка",
   "create_step_fetch": "Загрузка",
   "create_step_package": "Упаковка",

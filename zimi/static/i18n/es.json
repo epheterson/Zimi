@@ -876,6 +876,7 @@
   "create_size_default": "Valor por defecto del motor",
   "create_stalled": "Dejó de avanzar",
   "create_start": "Crear",
+  "create_step_convert": "Convertir",
   "create_step_discover": "Descubrir",
   "create_step_fetch": "Descargar",
   "create_step_package": "Empaquetar",

@@ -876,6 +876,7 @@
   "create_size_default": "Engine default",
   "create_stalled": "Stopped making progress",
   "create_start": "Create",
+  "create_step_convert": "Convert",
   "create_step_discover": "Discover",
   "create_step_fetch": "Fetch",
   "create_step_package": "Package",

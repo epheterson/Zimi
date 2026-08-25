@@ -1031,6 +1031,11 @@ function _openCreateInner(replaceState) {
   if (mv) mv.classList.add('hidden');
   _setWindowTitle(t('create_zim'));
   if (typeof updateTopbar === 'function') updateTopbar();
+  // Opening Create is starting something, not returning to what finished.
+  // A run that has ENDED is cleared here so the page opens on the form; a run
+  // still going is left alone, because picking that up from another tab is
+  // exactly what the poll below is for.
+  _createForgetFinished();
   _renderCreate();
   // First poll carries probe=1 and history=1: the one call that pays for the
   // sidecar check and the recent list, and the one that picks up a job already
@@ -1680,6 +1685,13 @@ async function _createSubmit() {
   if (!body) { _createFormError(t('create_needs_source')); return; }
   _createFormError('');
   _createStashMode();
+  // Whatever finished before is not this. Cleared BEFORE the request goes out,
+  // because the first poll after a submit can still answer with the previous
+  // job — the server has not swapped jobs yet — and for that beat the screen
+  // showed the last capture's completion card under the new one's name (Eric:
+  // "I change domain and click create and it shows the old one's completion
+  // screen before refreshing to the new one").
+  _createForgetFinished();
   _createSubmitting = true;
   // The press must answer the finger NOW, not after the round trip: the
   // button goes busy synchronously (label swap + disabled) so the click never
@@ -1738,6 +1750,19 @@ function _createStartWatching(data) {
 // Take a FINISHED run off the screen (a running one is left alone — that is a
 // job in flight, not a stale answer). Used when a new source is entered over a
 // completed capture.
+// Drop a FINISHED run from the screen and from the state the renderer reads.
+// Never touches a live one: _createClearFinished already refuses while a job
+// is active, and this adds the job identity so a stale poll cannot repaint
+// what was just cleared.
+function _createForgetFinished() {
+  if (_createStatus && _createStatus.active) return;
+  _createJobId = null;
+  _createQueuedId = null;
+  _createDoneMounted = true;   // let _createClearFinished do its work
+  _createClearFinished();
+  _createStatus = null;
+}
+
 function _createClearFinished() {
   if (!_createDoneMounted) return;
   var status = _createStatus;
@@ -2144,6 +2169,18 @@ function _createSyncPhases(s) {
     kids[i].setAttribute('data-state', state);
     if (state === 'active') kids[i].setAttribute('aria-current', 'step');
     else kids[i].removeAttribute('aria-current');
+  }
+  // Step 2 is shared: packaging a ZIM and converting a recording into one are
+  // the same sentence to a person — "it is writing the file now". But the
+  // ALIVE engine spends nearly its whole run converting, so a box permanently
+  // reading "Package" described the wrong activity for a minute at a time
+  // (Eric: "I don't like how on Alive it all happens in Package phase, that
+  // makes no sense"). One box, the name of whichever is actually running.
+  var shared = kids[2] && kids[2].querySelector('.create-step-name');
+  if (shared) {
+    var key = s.phase === 'convert' ? 'create_step_convert' : 'create_step_package';
+    var label = _createT(key);
+    if (shared.textContent !== label) shared.textContent = label;
   }
   var detail = document.getElementById('create-phase-detail');
   if (detail) {

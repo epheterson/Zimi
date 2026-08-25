@@ -876,6 +876,7 @@
   "create_size_default": "Valeur par défaut du moteur",
   "create_stalled": "A cessé de progresser",
   "create_start": "Créer",
+  "create_step_convert": "Conversion",
   "create_step_discover": "Explorer",
   "create_step_fetch": "Récupérer",
   "create_step_package": "Empaqueter",

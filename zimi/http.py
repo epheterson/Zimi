@@ -1520,8 +1520,40 @@ class ZimHandler(BaseHTTPRequestHandler):
             return False
         if _users.resolve_request_user(self) or _users._request_is_admin(self):
             return False
+        # A person who typed or clicked a URL gets the sign-in screen. A
+        # program gets JSON.
+        #
+        # This gate answered every blocked request with
+        # {"error": "authentication required"} — right for a fetch, and for
+        # somebody opening https://…/w/www_cnn_com it is a page of raw JSON
+        # where a login form belongs. Zimi HAS a login screen and simply was
+        # not showing it.
+        #
+        # The SPA shell is the answer: it boots, asks /whoami, finds nobody
+        # signed in, and shows the form. The address is untouched, so once
+        # they are in, the same boot routes them to the article they were
+        # trying to open — the request is not lost, only deferred.
+        #
+        # Still 401. The status is what it always was; only the body now suits
+        # whoever asked. `Vary` because the same URL genuinely has two correct
+        # answers depending on how it was requested.
+        if self._wants_html():
+            self._html(401, SEARCH_UI_HTML, vary="Accept, Sec-Fetch-Dest")
+            return True
         self._json(401, {"error": "authentication required", "login_required": True})
         return True
+
+    def _wants_html(self):
+        """Whether this request came from a browser navigating, not a fetch.
+
+        `Sec-Fetch-Dest: document` is the browser saying so outright and is the
+        signal every current browser sends. Accept is the fallback for anything
+        older, and it has to prefer HTML over JSON rather than merely mention
+        it — an API client that accepts anything must not be handed a page."""
+        if (self.headers.get("Sec-Fetch-Dest") or "").lower() == "document":
+            return True
+        accept = (self.headers.get("Accept") or "").lower()
+        return "text/html" in accept and "application/json" not in accept
 
     def do_GET(self):
         parsed = urlparse(self.path)

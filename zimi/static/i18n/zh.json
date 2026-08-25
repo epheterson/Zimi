@@ -876,6 +876,7 @@
   "create_size_default": "引擎默认值",
   "create_stalled": "停止了进展",
   "create_start": "创建",
+  "create_step_convert": "转换",
   "create_step_discover": "探查",
   "create_step_fetch": "抓取",
   "create_step_package": "打包",
