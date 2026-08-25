@@ -17497,6 +17497,27 @@ function _defineConsider(frame) {
 var OVERLAY_VIEWPORT_SHARE = 0.55;   // must match renderer.py's constant
 var OVERLAY_WATCH_MS = 15000;        // how long a rebuilt wall still gets caught
 
+// What a site calls the grey box it shows while waiting for a fetch. In an
+// archive that fetch never happens, so the box is a promise of content that
+// cannot arrive — it pulses at the reader forever, which is what Eric saw on a
+// captured CNN front page. Conventional names, matched on a substring because
+// every framework spells them slightly differently (skeleton-item, isLoading,
+// shimmer__bar); aria-busy is the one the platform itself defines.
+var SKELETON_SELECTOR = [
+  '[class*="skeleton" i]', '[class*="shimmer" i]', '[class*="placeholder" i]',
+  '[class*="loading" i]', '[class*="-loader" i]', '[class*="loader-" i]',
+  '[aria-busy="true"]'
+].join(',');
+
+// Whether an element holds anything a reader would miss. Text or media counts;
+// a box of empty boxes does not. Shared by the overlay sweep and the skeleton
+// settle because both are answering the same question — is there anything here
+// worth keeping — and answering it two ways is how they drift apart.
+function _isHollow(el) {
+  return !(el.innerText || '').trim() &&
+         !el.querySelector('img, video, canvas, svg, iframe');
+}
+
 // ── a page captured without its JavaScript ──
 //
 // The fast engine stores the markup and drops every script, which is what
@@ -17548,6 +17569,24 @@ function _settleCapturedChrome(frame) {
       if (cs && cs.position === 'sticky') all[i].style.setProperty('position', 'static', 'important');
     }
   } catch (e) {}
+
+  // Skeletons. `animation-iteration-count: 1` above already stops the pulse,
+  // but stopping it is not the same as resolving it: what is left is a grey bar
+  // frozen mid-shimmer, still claiming an article is on its way.
+  //
+  // Empty ones go. A placeholder for content that cannot arrive is not
+  // information, and closing the gap reads better than a hole that looks like a
+  // bug. One that DOES hold something keeps its content and only loses the
+  // animation — the class name is a hint about intent, never permission to
+  // throw away text somebody wrote.
+  try {
+    var skeletons = doc.querySelectorAll(SKELETON_SELECTOR);
+    for (var s = 0; s < skeletons.length; s++) {
+      var el = skeletons[s];
+      if (_isHollow(el)) el.remove();
+      else el.style.setProperty('animation', 'none', 'important');
+    }
+  } catch (e) {}
 }
 
 function _sweepBlockingOverlays(frame) {
@@ -17567,9 +17606,7 @@ function _sweepBlockingOverlays(frame) {
       var r = el.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) continue;
       var blocking = r.width * r.height >= covered;
-      var hollow = !(el.innerText || '').trim() &&
-                   !el.querySelector('img, video, canvas, svg, iframe');
-      if (!blocking && !hollow) continue;
+      if (!blocking && !_isHollow(el)) continue;
       el.remove();
       hit++;
     }
