@@ -3106,7 +3106,7 @@ def main():
     )
     p_create.add_argument(
         "--engine",
-        choices=("builtin", "rendered", "alive", "zimit"),
+        choices=("builtin", "rendered", "alive", "singlefile", "zimit"),
         default="builtin",
         help="Capture engine: builtin (no JavaScript, no install), rendered "
         "(runs a headless Chromium in this process — needs "

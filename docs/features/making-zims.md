@@ -11,6 +11,7 @@ Web captures run through one of four **engines**, chosen with `--engine`:
 - **builtin** (default) — no JavaScript, no install. Fetches HTML and assets directly. Fastest, smallest, and the only engine with zero dependencies.
 - **rendered** — runs a headless Chromium in-process so client-rendered pages produce real content. Needs `pip install 'zimi[browser]'` and `playwright install chromium`.
 - **alive** — records the live browser session to a WARC and converts it with warc2zim, so the saved site's JavaScript still runs inside the reader. Needs the browser extra above plus the warc2zim sidecar (`zimi import --setup`).
+- **singlefile** — hands the page to [SingleFile](https://github.com/gildas-lormeau/SingleFile), the reference implementation of "save this page as one file". It drives a browser, waits for the page to finish, and inlines every image, stylesheet and font as a data URI. The result is a single self-contained entry that **cannot** break: there is nothing to lazy-load and no reference that can fail to resolve, so it is the only engine whose images survive a scroll on every site tested. Costs about a third in size (base64) and stores one entry rather than a browsable tree. Needs Node and `npm install -g single-file-cli`, plus a Chromium.
 - **zimit** — openZIM's browser-based crawler, run via Docker. Extra crawler arguments pass through with `--engine-arg` (write it attached, e.g. `--engine-arg=--workers=2`).
 
 **What each engine trades.** They are not better and worse, they are three bargains. Measured on one CNN front page, iPhone width, served offline with the network sealed:
@@ -39,7 +40,7 @@ A capture is also **refused rather than packaged** when the site does not return
 
 | Setting | Where | Default | Effect |
 | --- | --- | --- | --- |
-| `--engine` | flag | `builtin` | `builtin` / `rendered` / `alive` / `zimit` |
+| `--engine` | flag | `builtin` | `builtin` / `rendered` / `singlefile` / `alive` / `zimit` |
 | `--block-ads` / `--no-block-ads` | flag | on (rendered/alive) | Block ad/tracker/consent requests at capture time |
 | `--max-bytes` | flag | 512MiB (site) / 4G (video) | Total size budget |
 | `--max-pages` | flag | 200 (site) | Page cap for `--site` |
@@ -55,6 +56,7 @@ A capture is also **refused rather than packaged** when the site does not return
 
 - **`--engine rendered` fails to start / no Chromium** — install the browser extra: `pip install 'zimi[browser]'` then `playwright install chromium`.
 - **`--engine alive` errors on conversion** — it needs both the browser extra and the warc2zim sidecar. Run `zimi import --setup` once (network), then `zimi import --status` to confirm.
+- **`--engine singlefile` says the CLI is missing** — install Node, then `npm install -g single-file-cli`. It also needs a Chromium; `playwright install chromium` provides one.
 - **`--engine zimit` can't run** — it shells out to Docker; ensure Docker is installed and the daemon is running.
 - **`--engine-arg` reads as a missing value** — argparse treats a bare flag-shaped token as missing. Write it attached: `--engine-arg=--workers=2`.
 - **Crawl stops early / ZIM smaller than expected** — you hit `--max-bytes`, `--max-pages`, or `--max-depth`, or robots.txt disallowed pages. Raise the caps or add `--ignore-robots` (site only) where appropriate.

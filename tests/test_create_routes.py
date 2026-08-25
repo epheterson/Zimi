@@ -714,6 +714,7 @@ def test_every_capture_engine_can_answer_whether_it_can_run():
         "builtin": lambda: True,  # stdlib urllib; present wherever Python is
         "rendered": manage._create_browser_ready,
         "alive": manage._create_alive_ready,
+        "singlefile": manage._create_singlefile_ready,
     }
     missing = [e for e in manage.CREATE_ENGINES if e not in probes]
     assert not missing, f"these engines cannot say whether they can run: {missing}"

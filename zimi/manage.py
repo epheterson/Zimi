@@ -2002,7 +2002,7 @@ CREATE_MODES = ("folder", "page", "site", "video", "import")
 # request must not drag the writer stack into the request thread. The test
 # below pins the two together. zimit is deliberately NOT offered over the web —
 # it wants a docker daemon, and a web form is the wrong place to discover that.
-CREATE_ENGINES = ("builtin", "rendered", "alive")
+CREATE_ENGINES = ("builtin", "rendered", "alive", "singlefile")
 # The engines that can refuse a request before it is made — the ones that drive
 # a browser. Mirrors creator.BLOCKING_ENGINES, held here for the same reason
 # CREATE_ENGINES is, and pinned to it by the same test.
@@ -2931,6 +2931,11 @@ def _create_engine(value):
         raise ValueError(
             "the rendered engine needs a browser this server does not have " "installed"
         )
+    if name == "singlefile" and not _create_singlefile_ready():
+        raise ValueError(
+            "the singlefile engine needs the SingleFile CLI, and this server "
+            "does not have it installed"
+        )
     if name == "alive" and not _create_alive_ready():
         raise ValueError(
             "the alive engine needs both a browser and the warc2zim sidecar, "
@@ -3346,6 +3351,7 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
         # nothing in between able to notice. The parity test in
         # tests/test_create_routes.py now fails if a mode is added without one.
         payload["video_ready"] = _create_video_ready()
+        payload["singlefile_ready"] = _create_singlefile_ready()
         # The instance's stored capture defaults (Manage → Creator toggles),
         # so the form's checkboxes start where the admin set them instead of
         # at the factory state — the toggle would otherwise LOOK ignored.
@@ -3578,6 +3584,20 @@ def _create_video_ready():
         return bool(video_available())
     except Exception:
         log.exception("video-engine probe failed")
+        return False
+
+
+def _create_singlefile_ready():
+    """True when the SingleFile CLI is on PATH here.
+
+    Its own probe, like the other engines'. A form that offers a capture this
+    machine cannot perform is a form that lies — see the parity test."""
+    try:
+        from zimi.singlefile import singlefile_available
+
+        return bool(singlefile_available())
+    except Exception:
+        log.exception("singlefile-engine probe failed")
         return False
 
 

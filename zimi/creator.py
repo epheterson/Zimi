@@ -1498,7 +1498,7 @@ def render_captured_page(carrier, page, *, final_url, resolve_link=None):
 # disk that warc2zim turns into a ZIM, not items in a Creator. The callers that
 # package a ZIM themselves therefore dispatch it away before they start; see
 # ``create_page_zim`` and ``crawler.create_site_zim``.
-CAPTURE_ENGINES = ("builtin", "rendered", "alive")
+CAPTURE_ENGINES = ("builtin", "rendered", "alive", "singlefile")
 DEFAULT_ENGINE = "builtin"
 # Engines that write their own output file instead of filling a Creator.
 ARCHIVE_ENGINES = ("alive",)
@@ -1676,6 +1676,18 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
             note=kwargs.get("note"),
             block_ads=kwargs.get("block_ads"),
             capture_variants=kwargs.get("capture_variants"),
+        )
+    if name == "singlefile":
+        # SingleFile hands back ONE self-contained document, so it satisfies
+        # the engine contract without a resource map: there are no sibling
+        # assets to carry and nothing to rewrite, because everything the page
+        # needs is already inside it.
+        from zimi.singlefile import SingleFileCapture
+
+        return SingleFileCapture(
+            note=kwargs.get("note"),
+            block_ads=kwargs.get("block_ads"),
+            work_dir=kwargs.get("work_dir"),
         )
     if name == "alive":
         from zimi.alive import AliveCapture
